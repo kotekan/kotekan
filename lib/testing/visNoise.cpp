@@ -5,7 +5,7 @@
 #include "buffer.h"            // for mark_frame_empty, mark_frame_full, register_consumer, reg...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for INFO
-#include "visBuffer.hpp"       // for visFrameView
+#include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for cfloat
 
 #include "gsl-lite.hpp" // for span
@@ -77,7 +77,7 @@ void visNoise::main_thread() {
             break;
         }
         // Copy frame into output buffer
-        auto frame = visFrameView::copy_frame(buf_in, frame_id_in, buf_out, frame_id_out);
+        auto frame = VisFrameView::copy_frame(buf_in, frame_id_in, buf_out, frame_id_out);
 
         // Add noise to visibilities
         int ind = 0;

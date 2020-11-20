@@ -1,5 +1,0 @@
-*****************
-hsaBeamformPulsar
-*****************
-
-.. doxygenclass:: hsaBeamformPulsar

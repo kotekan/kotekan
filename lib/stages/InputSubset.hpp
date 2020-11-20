@@ -1,24 +1,21 @@
 /*****************************************
 @file
-@brief Extract a subset of inputs from a visBuffer.
+@brief Extract a subset of inputs from a VisBuffer.
 - inputSubset : public kotekan::Stage
 *****************************************/
 #ifndef INPUT_SUBSET_HPP
 #define INPUT_SUBSET_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp" // for Stage
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp" // for dset_id_t, state_id_t, fingerprint_t
-#include "visUtil.hpp"        // for prod_ctype
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t, state_id_t, fingerprint_t
 
 #include <map>      // for map
-#include <set>      // for map
-#include <stddef.h> // for size_t
+#include <set>      // for set
+#include <stdint.h> // for uint32_t
 #include <string>   // for string
-#include <tuple>    // for tuple
-#include <utility>  // for pair
 #include <vector>   // for vector
 
 
@@ -32,11 +29,11 @@
  *
  * @par Buffers
  * @buffer in_buf The kotekan buffer from which the visibilities are read, can be any size.
- *     @buffer_format visBuffer structured
- *     @buffer_metadata visMetadata
+ *     @buffer_format VisBuffer structured
+ *     @buffer_metadata VisMetadata
  * @buffer out_buf The kotekan buffer which will be fed the subset of visibilities.
- *     @buffer_format visBuffer structured
- *     @buffer_metadata visMetadata
+ *     @buffer_format VisBuffer structured
+ *     @buffer_metadata VisMetadata
  *
  * @conf  inputs  List of ints. The channel IDs for the inputs to extract.
  *

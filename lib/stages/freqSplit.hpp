@@ -21,21 +21,21 @@
 
 /**
  * @class freqSplit
- * @brief Separate a visBuffer stream into two by selecting frequencies in the upper and lower half
- * of the band.
+ * @brief Separate a VisBuffer stream into two by selecting frequencies in the upper and lower
+ * half of the band.
  *
- * This task takes data coming out of a visBuffer stream and separates it into
+ * This task takes data coming out of a VisBuffer stream and separates it into
  * two streams. It selects which frames to copy to which buffer by assigning
  * frequencies in the upper and lower half of the CHIME band to different buffer
  * streams.
  *
  * @par Buffers
  * @buffer in_buf The buffer to be split
- *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_format VisBuffer structured
+ *         @buffer_metadata VisMetadata
  * @buffer out_bufs The two buffers containing the respective upper or lower band frequencies
- *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_format VisBuffer structured
+ *         @buffer_metadata VisMetadata
  *
  * @conf split_freq             Double. Frequency to split the incoming buffer
  *                              at. Lower frequencies got to the first output

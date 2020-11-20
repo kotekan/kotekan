@@ -1,22 +1,21 @@
 #include "basebandReadout.hpp"
 
-#include "Config.hpp"              // for Config
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "basebandApiManager.hpp"  // for basebandApiManager
-#include "buffer.h"                // for Buffer, mark_frame_empty, register_consumer, wait_fo...
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chimeMetadata.h"         // for chimeMetadata
-#include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, freq_from_bin
-#include "gpsTime.h"               // for FPGA_PERIOD_NS, compute_gps_time, is_gps_global_time...
-#include "kotekanLogging.hpp"      // for INFO, DEBUG, ERROR, WARN
-#include "metadata.h"              // for metadataContainer
-#include "nt_memcpy.h"             // for nt_memcpy
-#include "nt_memset.h"             // for nt_memset
-#include "prometheusMetrics.hpp"   // for Counter, Gauge, MetricFamily, Metrics
-#include "version.h"               // for get_git_commit_hash
-#include "visFile.hpp"             // for create_lockfile
-#include "visFileH5.hpp"           // for create_datatype
-#include "visUtil.hpp"             // for input_ctype, ts_to_double, parse_reorder_default
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "basebandApiManager.hpp" // for basebandApiManager
+#include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_fo...
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chimeMetadata.hpp"      // for chimeMetadata
+#include "kotekanLogging.hpp"     // for INFO, DEBUG, ERROR, WARN
+#include "metadata.h"             // for metadataContainer
+#include "nt_memcpy.h"            // for nt_memcpy
+#include "nt_memset.h"            // for nt_memset
+#include "prometheusMetrics.hpp"  // for Counter, Gauge, MetricFamily, Metrics
+#include "version.h"              // for get_git_commit_hash
+#include "visFile.hpp"            // for create_lockfile
+#include "visFileH5.hpp"          // for create_datatype
+#include "visUtil.hpp"            // for input_ctype, ts_to_double, parse_reorder_default
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span, operator!=
@@ -42,8 +41,6 @@
 #include <memory>                   // for unique_ptr, make_shared, shared_ptr, make_unique
 #include <regex>                    // for match_results<>::_Base_type
 #include <stdexcept>                // for runtime_error
-#include <sys/stat.h>               // for stat, S_IFDIR
-#include <sys/time.h>               // for timeval, timeradd
 #include <thread>                   // for thread, sleep_for
 #include <time.h>                   // for timespec
 #include <tuple>                    // for get
@@ -124,6 +121,7 @@ basebandReadout::~basebandReadout() {}
 
 void basebandReadout::main_thread() {
 
+    auto& tel = Telescope::instance();
     int frame_id = 0;
 
     std::unique_ptr<std::thread> wt;
@@ -138,10 +136,7 @@ void basebandReadout::main_thread() {
 
         if (!lt) {
             int buf_frame = frame_id % buf->num_frames;
-            auto first_meta = (chimeMetadata*)buf->metadata[buf_frame]->metadata;
-
-            stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
-            uint32_t freq_id = bin_number_chime(&stream_id);
+            uint32_t freq_id = tel.to_freq_id(buf, buf_frame);
 
             DEBUG("Initialize baseband metrics for freq_id: {:d}", freq_id);
             readout_counter.labels({std::to_string(freq_id), "done"});
@@ -189,34 +184,14 @@ void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutMana
             basebandDumpStatus& dump_status = std::get<0>(*next_request);
             std::mutex& request_mtx = std::get<1>(*next_request);
 
-            // This should be safe even without a lock, as there is nothing else
-            // yet that can change the dump_status object
+            // Reading the request parameters should be safe even without a
+            // lock, as they are read-only once received.
             const basebandRequest request = dump_status.request;
             // std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
             const uint64_t event_id = request.event_id;
             INFO("Received baseband dump request for event {:d}: {:d} samples starting at count "
                  "{:d}. (next_frame: {:d})",
                  event_id, request.length_fpga, request.start_fpga, next_frame);
-
-            // Checks if the destination directory exists, and if it doesn't, stop processing the
-            // request with an error before trying to read out the samples.
-            //
-            // TODO: once API manager is a Stage, this would naturally belong in REST request
-            // callback
-            struct stat path_status;
-            int stat_rc = stat((_base_dir + request.file_path).c_str(), &path_status);
-            if (!(stat_rc == 0 && path_status.st_mode & S_IFDIR)) {
-                WARN("Baseband destination path {} for request {:d} is not valid",
-                     request.file_path, event_id);
-                std::lock_guard<std::mutex> lock(request_mtx);
-                dump_status.finished = dump_status.started =
-                    std::make_shared<std::chrono::system_clock::time_point>(
-                        std::chrono::system_clock::now());
-                dump_status.state = basebandDumpStatus::State::ERROR;
-                dump_status.reason = "Destination does not exist or is not a directory: "
-                                     + _base_dir + request.file_path;
-                continue;
-            }
 
             {
                 std::lock_guard<std::mutex> lock(request_mtx);
@@ -267,13 +242,15 @@ void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutMana
                             throw std::runtime_error(
                                 "Unhandled basebandDumpData::Status case in a switch statement.");
                     }
-                } else {
-                    INFO("Captured {:d} samples for event {:d} and freq {:d}.",
-                         data.data_length_fpga, data.event_id, data.freq_id);
-
-                    // we are done copying the samples into the readout buffer
-                    mgr.ready({dump_status, data});
                 }
+            }
+
+            if (data.status == basebandDumpData::Status::Ok) {
+                INFO("Captured {:d} samples for event {:d} and freq {:d}.", data.data_length_fpga,
+                     data.event_id, data.freq_id);
+
+                // we are done copying the samples into the readout buffer
+                mgr.ready({dump_status, data});
             }
         }
     }
@@ -366,11 +343,14 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
     // This assumes that the frame's timestamps are in order, but not that they
     // are necessarily contiguous.
 
+    auto& tel = Telescope::instance();
+    const double fpga_period_s = ts_to_double(tel.seq_length());
+
     int dump_start_frame = 0;
     int dump_end_frame = 0;
     int64_t trigger_end_fpga = trigger_start_fpga + trigger_length_fpga;
     double max_wait_time = 1.;
-    double min_wait_time = _samples_per_data_set * FPGA_PERIOD_NS * 1e-9;
+    double min_wait_time = _samples_per_data_set * fpga_period_s;
     bool advance_info = false;
 
     if (trigger_length_fpga > _samples_per_data_set * _num_frames_buffer / 2) {
@@ -407,7 +387,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
         lock_range(dump_start_frame, dump_end_frame);
 
         // Now that the relevant frames are locked, we can unlock the rest of the buffer so
-        // it can continue to opperate.
+        // it can continue to operate.
         manager_lock.unlock();
 
         // Check if the trigger is 'prescient'. That is, if any of the requested data has
@@ -418,11 +398,11 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
             if (!advance_info) {
                 // We only need to print this the first time
                 INFO("Advance dump trigger for {:d}, waiting for {:d} samples ({:.2f} sec)",
-                     event_id, time_to_wait_seq, time_to_wait_seq * FPGA_PERIOD_NS / 1e9);
+                     event_id, time_to_wait_seq, time_to_wait_seq * fpga_period_s);
                 advance_info = true;
             }
             time_to_wait_seq += _samples_per_data_set;
-            double wait_time = time_to_wait_seq * FPGA_PERIOD_NS;
+            double wait_time = time_to_wait_seq * fpga_period_s * 1e9;
             wait_time = std::min(wait_time, max_wait_time);
             wait_time = std::max(wait_time, min_wait_time);
             std::this_thread::sleep_for(std::chrono::nanoseconds((int)wait_time));
@@ -448,8 +428,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
     int buf_frame = dump_start_frame % buf->num_frames;
     auto first_meta = (chimeMetadata*)buf->metadata[buf_frame]->metadata;
 
-    stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
-    uint32_t freq_id = bin_number_chime(&stream_id);
+    uint32_t freq_id = tel.to_freq_id(buf, buf_frame);
 
     // Figure out how much data we have.
     int64_t data_start_fpga = std::max(trigger_start_fpga, first_meta->fpga_seq_num);
@@ -459,7 +438,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
 
     timeval tmp, delta;
     delta.tv_sec = 0;
-    delta.tv_usec = (trigger_start_fpga - first_meta->fpga_seq_num) * FPGA_PERIOD_NS / 1000;
+    delta.tv_usec = (trigger_start_fpga - first_meta->fpga_seq_num) * fpga_period_s * 1e6;
     timeradd(&(first_meta->first_packet_recv_time), &delta, &tmp);
     timespec packet_time0 = {tmp.tv_sec, tmp.tv_usec * 1000};
 
@@ -525,6 +504,8 @@ void basebandReadout::unlock_range(int start_frame, int end_frame) {
 void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump_status,
                                  std::mutex& request_mtx) {
 
+    auto& tel = Telescope::instance();
+
     // TODO Create parent directories.
     std::string filename =
         fmt::format(fmt("{:s}{:s}/{:s}"), _base_dir, dump_status.request.file_path,
@@ -559,7 +540,7 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
     file.createAttribute<uint32_t>("freq_id", HighFive::DataSpace::From(data.freq_id))
         .write(data.freq_id);
 
-    double freq = freq_from_bin(data.freq_id);
+    double freq = Telescope::instance().to_freq(data.freq_id);
     file.createAttribute<double>("freq", HighFive::DataSpace::From(freq)).write(freq);
 
     file.createAttribute<uint64_t>("time0_fpga_count",
@@ -572,8 +553,8 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
 
     timespec time0;
     std::string time0_type;
-    if (is_gps_global_time_set()) {
-        time0 = compute_gps_time(data.data_start_fpga);
+    if (tel.gps_time_enabled()) {
+        time0 = tel.to_time(data.data_start_fpga);
         time0_type = "GPS";
     } else {
         time0 = data.data_start_ctime;
@@ -586,8 +567,8 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
         .write(ftime0_offset);
     file.createAttribute<std::string>("type_time0_ctime", HighFive::DataSpace::From(time0_type))
         .write(time0_type);
-    double delta_t = (double)FPGA_PERIOD_NS / 1e9;
-    file.createAttribute<double>("delta_time", HighFive::DataSpace::From(delta_t)).write(delta_t);
+    double fpga_s = ts_to_double(Telescope::instance().seq_length());
+    file.createAttribute<double>("delta_time", HighFive::DataSpace::From(fpga_s)).write(fpga_s);
 
     size_t num_elements = data.num_elements;
     size_t ntime_chunk = TARGET_CHUNK_SIZE / num_elements;
@@ -627,7 +608,7 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
         if (ii_samp >= data.data_length_fpga)
             break;
         // Add intentional throttling.
-        float stime = _write_throttle * to_write * FPGA_PERIOD_NS;
+        float stime = _write_throttle * to_write * fpga_s * 1e9;
         std::this_thread::sleep_for(std::chrono::nanoseconds((int)stime));
     }
     std::remove(lock_filename.c_str());

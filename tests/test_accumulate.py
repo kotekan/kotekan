@@ -353,9 +353,6 @@ def test_gaussian(gaussian_data):
     assert np.allclose(vis_set.mean(axis=0), exp_vis, atol=7e-4, rtol=0)
     assert np.allclose(vis_set.var(axis=0), frac_var, rtol=7e-2, atol=0)
     assert np.allclose((1.0 / weight_set).mean(axis=0), frac_var, rtol=1e-2, atol=0)
-    vm = (1.0 / weight_set).mean(axis=0)
-    vv = (1.0 / weight_set).std(axis=0)
-    lv = weight_set.shape[0]
 
 
 # Test that we can deal with whole frames being dropped
@@ -374,7 +371,7 @@ def test_missing_frames(drop_frame_data):
     # These tests need a 5 sigma fluctuation to cause failure
     assert np.allclose(vis_set.mean(axis=0), exp_vis, atol=7e-4, rtol=0)
     assert np.allclose(vis_set.var(axis=0), frac_var, rtol=7e-2, atol=0)
-    assert np.allclose((1.0 / weight_set).mean(axis=0), frac_var, rtol=2e-2, atol=0)
+    assert np.allclose((1.0 / weight_set).mean(axis=0), frac_var, rtol=5e-2, atol=0)
 
 
 def test_int_time(time_data):

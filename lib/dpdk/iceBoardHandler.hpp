@@ -8,15 +8,15 @@
 #define ICE_BOARD_HANDLER_HPP
 
 #include "Config.hpp"
+#include "ICETelescope.hpp"
+#include "Telescope.hpp"
 #include "dpdkCore.hpp"
-#include "fpga_header_functions.h"
 #include "prometheusMetrics.hpp"
 #include "util.h" // for e_time
 
 #include "json.hpp"
 
 #include <mutex>
-#include <utils/util.h>
 
 /**
  * @brief Abstract class which contains things which are common to processing
@@ -68,10 +68,10 @@ public:
                     kotekan::bufferContainer& buffer_container, int port);
 
     /// Same abstract function as in @c dpdkRXhandler
-    virtual int handle_packet(struct rte_mbuf* mbuf) = 0;
+    virtual int handle_packet(struct rte_mbuf* mbuf) override = 0;
 
     /// Update common stats, this should be called by subclasses implementing this function as well
-    virtual void update_stats();
+    virtual void update_stats() override;
 
 protected:
     /**
@@ -87,7 +87,8 @@ protected:
      */
     bool align_first_packet(struct rte_mbuf* mbuf) {
         uint64_t seq = iceBoardHandler::get_mbuf_seq_num(mbuf);
-        stream_id_t stream_id = extract_stream_id(iceBoardHandler::get_mbuf_stream_id(mbuf));
+        ice_stream_id_t stream_id =
+            ice_extract_stream_id(iceBoardHandler::get_mbuf_stream_id(mbuf));
 
         // We allow for the fact we might miss the first packet by upto 100 FPGA frames,
         // if this happens then the missing frames at the start of the buffer frame are filled
@@ -119,8 +120,8 @@ protected:
     /**
      * @brief Gets the FPGA seq number from the given packet
      *
-     * @param cur_mbuf The rte_mbuf containing the packet
-     * @return uint64_t The FPGA seq number
+     * @param  cur_mbuf  The rte_mbuf containing the packet
+     * @return           The FPGA seq number
      */
     inline uint64_t get_mbuf_seq_num(struct rte_mbuf* cur_mbuf) {
         return (uint64_t)(*(uint32_t*)(rte_pktmbuf_mtod(cur_mbuf, char*) + 54))
@@ -131,11 +132,11 @@ protected:
     /**
      * @brief Gets the FPGA stream ID from the given packet
      *
-     * @param cur_mbuf The rte_mbuf containing the packet
-     * @return uint16_t The encoded streamID
+     * @param  cur_mbuf  The rte_mbuf containing the packet
+     * @return           The encoded streamID
      */
-    inline uint16_t get_mbuf_stream_id(struct rte_mbuf* cur_mbuf) {
-        return *(uint16_t*)(rte_pktmbuf_mtod(cur_mbuf, char*) + 44);
+    inline stream_t get_mbuf_stream_id(struct rte_mbuf* cur_mbuf) {
+        return {*(uint16_t*)(rte_pktmbuf_mtod(cur_mbuf, char*) + 44)};
     }
 
     /**
@@ -226,7 +227,7 @@ protected:
      * @return int64_t The difference between the current FPGA seq number and the last one seen
      */
     inline int64_t get_packet_diff() {
-        // Since the seq number is actually an unsigned 48-bit numdber, this cast will always be
+        // Since the seq number is actually an unsigned 48-bit number, this cast will always be
         // safe.
         return (int64_t)cur_seq - (int64_t)last_seq;
     }
@@ -296,7 +297,7 @@ protected:
 
     /// The streamID seen by this port handler
     /// Values of 255 = unset
-    stream_id_t port_stream_id = {255, 255, 255, 255};
+    ice_stream_id_t port_stream_id = {255, 255, 255, 255};
 
     /// Set to true after the first packet is alligned.
     bool got_first_packet = false;
@@ -413,34 +414,26 @@ nlohmann::json iceBoardHandler::get_json_port_info() {
 
     std::vector<uint32_t> freq_bins;
     std::vector<float> freq_mhz;
-    stream_id_t temp_stream_id = port_stream_id;
+    ice_stream_id_t temp_stream_id = port_stream_id;
     temp_stream_id.crate_id = port_stream_id.crate_id % 2;
+
+    auto& tel = Telescope::instance();
+
+    // TODO: this could probably be refactored now we have the Telescope object...
+    const int num_shuffle_freq = (num_local_freq == 1 ? 4 : 1);
+
     for (int32_t i = 0; i < num_local_freq; ++i) {
-        if (port_stream_id.crate_id == 255) {
-            // This is the error case where the stream ID hasn't been set yet.
-            if (num_local_freq == 1) {
-                for (int j = 0; j < 4; ++j) {
-                    freq_bins.push_back(std::numeric_limits<uint32_t>::max());
-                    freq_mhz.push_back(0);
-                }
-            } else {
+        for (int j = 0; j < num_shuffle_freq; ++j) {
+            if (port_stream_id.crate_id == 255) {
                 freq_bins.push_back(std::numeric_limits<uint32_t>::max());
                 freq_mhz.push_back(0);
-            }
-        } else if (num_local_freq == 1) { // CHIME
-            // Even though CHIME sets num_local_freq == 1
-            // The packets actually have 4 frequencies and 512 elements before the transpose
-            for (int j = 0; j < 4; ++j) {
+            } else {
                 temp_stream_id.unused = j;
-                freq_bins.push_back(bin_number_chime(&temp_stream_id));
-                freq_mhz.push_back(freq_from_bin(bin_number_chime(&temp_stream_id)));
+                stream_t encoded_id = ice_encode_stream_id(temp_stream_id);
+
+                freq_bins.push_back(tel.to_freq_id(encoded_id, i));
+                freq_mhz.push_back(tel.to_freq(encoded_id, i));
             }
-        } else if (num_local_freq == 8) { // 256 element system (Pathfinder)
-            freq_bins.push_back(bin_number(&temp_stream_id, i));
-            freq_mhz.push_back(freq_from_bin(bin_number(&temp_stream_id, i)));
-        } else if (num_local_freq == 128) { // 16 element system
-            freq_bins.push_back(bin_number_16_elem(&temp_stream_id, i));
-            freq_mhz.push_back(freq_from_bin(bin_number_16_elem(&temp_stream_id, i)));
         }
     }
 

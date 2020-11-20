@@ -1,36 +1,37 @@
 #include "VisSharedMemWriter.hpp"
 
-#include "Hash.hpp"           // for Hash
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "datasetManager.hpp" // for datasetManager
-#include "datasetState.hpp"   // for freqState, eigenvalueState, inputState, prodState, stackState
-#include "kotekanLogging.hpp" // for INFO, DEBUG, ERROR, FATAL_ERROR
-#include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily, Gauge
-#include "visBuffer.hpp"         // for visFrameView, visMetadata
-#include "visUtil.hpp"           // for time_ctype, frameID, ts_to_double, current_time
+#include "Hash.hpp"              // for operator==, operator<, Hash
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "datasetManager.hpp"    // for dset_id_t, datasetManager, fingerprint_t
+#include "datasetState.hpp"      // for freqState, _factory_aliasdatasetState
+#include "factory.hpp"           // for FACTORY
+#include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, INFO, WARN
+#include "prometheusMetrics.hpp" // for Counter, Gauge, Metrics, MetricFamily
+#include "visBuffer.hpp"         // for VisFrameView, VisMetadata
+#include "visUtil.hpp"           // for time_ctype, frameID, operator<, modulo, current_time
 
-#include "fmt.hpp" // for format, fmt
-
-#include <atomic>       // for atomic_bool
-#include <cxxabi.h>     // for _forced_unwind
-#include <errno.h>      // for ENOENT, errno
-#include <exception>    // for exception
-#include <fcntl.h>      // for O_CREAT, O_EXCL, O_RDWR
-#include <functional>   // for _Bind_helper<>::type, bind, function
-#include <future>       // for async, future
-#include <iterator>     // for reverse_iterator
-#include <map>          // for map, _Rb_tree_iterator
-#include <regex>        // for match_results<>::_Base_type
-#include <stdio.h>      // for remove
-#include <string.h>     // for memcpy, strerror
-#include <sys/mman.h>   // for mmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE
-#include <sys/stat.h>   // for S_IRUSR, S_IWUSR
-#include <sys/types.h>  // for uint
-#include <system_error> // for system_error
-#include <tuple>        // for get
-#include <unistd.h>     // for access, F_OK
-#include <utility>      // for pair
-#include <vector>       // for vector
+#include <algorithm>   // for copy, fill_n, copy_backward, equal, max
+#include <atomic>      // for atomic_bool
+#include <deque>       // for deque
+#include <errno.h>     // for errno, ENOENT
+#include <exception>   // for exception
+#include <fcntl.h>     // for O_CREAT, O_EXCL, O_RDWR
+#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <iterator>    // for reverse_iterator
+#include <map>         // for map, _Rb_tree_iterator
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error, out_of_range
+#include <stdio.h>     // for size_t, remove
+#include <string.h>    // for strerror, memcpy, memset
+#include <sys/mman.h>  // for mmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, PROT...
+#include <sys/stat.h>  // for S_IRUSR, S_IWUSR
+#include <sys/time.h>  // for CLOCK_REALTIME
+#include <sys/types.h> // for uint
+#include <time.h>      // for clock_gettime, timespec
+#include <tuple>       // for get
+#include <unistd.h>    // for access, close, ftruncate, F_OK
+#include <utility>     // for pair
+#include <vector>      // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -178,7 +179,7 @@ uint8_t* VisSharedMemWriter::assign_memory(std::string shm_name, size_t shm_size
     return addr;
 }
 
-void VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uint32_t freq_ind) {
+void VisSharedMemWriter::add_sample(const VisFrameView& frame, time_ctype t, uint32_t freq_ind) {
     // calculate the time index for time sample t, add the frame for time sample t at position
     // frequency index
     //
@@ -256,7 +257,7 @@ void VisSharedMemWriter::reset_memory(uint32_t time_ind) {
     DEBUG("Memory reset");
 }
 
-void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t time_ind,
+void VisSharedMemWriter::write_to_memory(const VisFrameView& frame, uint32_t time_ind,
                                          uint32_t freq_ind) {
     // write frame to ring buffer at time_ind and freq_ind
 
@@ -322,7 +323,7 @@ void VisSharedMemWriter::main_thread() {
     // Get one frame for reference
     wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
 
-    auto frame = visFrameView(in_buf, frame_id);
+    auto frame = VisFrameView(in_buf, frame_id);
 
     // Build the frequency index
     std::map<uint32_t, uint32_t> freq_id_map;
@@ -354,9 +355,9 @@ void VisSharedMemWriter::main_thread() {
 
     // Calculate the ring buffer structure
 
-    rbs.data_size = frame.data_size;
-    rbs.metadata_size = sizeof(visMetadata);
-    // Alligns the frame along page size
+    rbs.data_size = frame.data_size();
+    rbs.metadata_size = sizeof(VisMetadata);
+    // Aligns the frame along page size
     rbs.frame_size = _member_alignment(rbs.data_size + rbs.metadata_size + valid_size, alignment);
 
     // memory_size should be _ntime * nfreq * file_frame_size (data + metadata)
@@ -390,9 +391,9 @@ void VisSharedMemWriter::main_thread() {
         }
 
         // Get a view of the current frame
-        auto frame = visFrameView(in_buf, frame_id);
+        auto frame = VisFrameView(in_buf, frame_id);
 
-        if (frame.data_size != rbs.data_size)
+        if (frame.data_size() != rbs.data_size)
             FATAL_ERROR("Size of data changed mid-stream.");
 
         // Check that the dataset ID hasn't chaned
@@ -413,10 +414,10 @@ void VisSharedMemWriter::main_thread() {
             }
         }
 
-        if (frame.data_size != rbs.data_size) {
+        if (frame.data_size() != rbs.data_size) {
             FATAL_ERROR(
                 "The size of the data has changed. Buffer expects: {}. Current frame's size: {}",
-                rbs.data_size, frame.data_size);
+                rbs.data_size, frame.data_size());
             return;
         }
 

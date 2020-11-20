@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Generate fake visBuffer data.
+@brief Generate fake VisBuffer data.
 - FakeVis : public Stage
 - ReplaceVis : public Stage
 *****************************************/
@@ -13,8 +13,8 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "dataset.hpp"         // for dset_id_t
-#include "visBuffer.hpp"       // for visFrameView
+#include "datasetManager.hpp"  // for dset_id_t
+#include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for cfloat
 
 #include <memory>   // for unique_ptr
@@ -24,17 +24,17 @@
 #include <vector>   // for vector
 
 /**
- * @brief Generate fake visibility data into a ``visBuffer``.
+ * @brief Generate fake visibility data into a ``VisBuffer``.
  *
  * This stage produces fake visibility data that can be used to feed
  * downstream kotekan stages for testing. It fills its buffer with frames in
- * the ``visFrameView`` format. Frames are generated for a set of frequencies
+ * the ``VisBuffer`` format. Frames are generated for a set of frequencies
  * and a cadence specified in the config.
  *
  * @par Buffers
  * @buffer out_buf The kotekan buffer which will be fed, can be any size.
- *     @buffer_format visBuffer structured
- *     @buffer_metadata visMetadata
+ *     @buffer_format VisBuffer structured
+ *     @buffer_metadata VisMetadata
  *
  * @conf  num_elements  Int. The number of elements (i.e. inputs) in the
  *                      correlator data,
@@ -122,7 +122,7 @@ private:
     double sleep_after;
 
     /// Fill non vis components. A helper for the fill_mode functions.
-    void fill_non_vis(visFrameView& frame);
+    void fill_non_vis(VisFrameView& frame);
 
     // Use a fixed (configured) dataset ID in the output frames
     bool _fixed_dset_id;
@@ -135,11 +135,11 @@ private:
  *
  * @par Buffers
  * @buffer in_buf The kotekan buffer which will be read from.
- *     @buffer_format visBuffer structured
- *     @buffer_metadata visMetadata
+ *     @buffer_format VisBuffer structured
+ *     @buffer_metadata VisMetadata
  * @buffer out_buf The kotekan buffer to be filled with the replaced data.
- *     @buffer_format visBuffer structured
- *     @buffer_metadata visMetadata
+ *     @buffer_format VisBuffer structured
+ *     @buffer_metadata VisMetadata
  *
  * @author Richard Shaw
  *

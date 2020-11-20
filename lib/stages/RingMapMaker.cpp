@@ -1,13 +1,33 @@
 #include "RingMapMaker.hpp"
 
-#include "StageFactory.hpp"
-#include "datasetManager.hpp"
-#include "visBuffer.hpp"
-#include "visCompression.hpp"
+#include "Hash.hpp"              // for Hash, operator!=, operator<
+#include "Stack.hpp"             // for chimeFeed
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"         // for Telescope
+#include "dataset.hpp"           // for dataset
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t, fingerprint_t
+#include "kotekanLogging.hpp"    // for FATAL_ERROR, WARN, INFO
+#include "prometheusMetrics.hpp" // for Metrics
+#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::weight
 
-#include <cblas.h>
-#include <complex>
-#include <future>
+#include "gsl-lite.hpp" // for span, span<>::iterator
+
+#include <atomic>       // for atomic_bool
+#include <cblas.h>      // for cblas_cgemv, CblasNoTrans, CblasRowMajor
+#include <complex>      // for operator*, complex, operator/, norm, operator-, operato...
+#include <cstdint>      // for uint64_t, uint32_t
+#include <cxxabi.h>     // for __forced_unwind
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, function, _2
+#include <future>       // for async, future
+#include <iterator>     // for begin, end, back_insert_iterator, back_inserter
+#include <memory>       // for allocator_traits<>::value_type
+#include <numeric>      // for iota
+#include <optional>     // for optional
+#include <regex>        // for match_results<>::_Base_type
+#include <sys/types.h>  // for uint
+#include <system_error> // for system_error
+#include <tuple>        // for get, tuple, make_tuple, operator!=, operator<
 
 using namespace std::complex_literals;
 using namespace std::placeholders;
@@ -64,6 +84,10 @@ void RingMapMaker::main_thread() {
     // Buffers to hold result before saving real part
     std::vector<cfloat> tmp_vismap(num_pix);
 
+    auto& dm = datasetManager::instance();
+
+    dset_id_t dset_id;
+
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
@@ -72,19 +96,35 @@ void RingMapMaker::main_thread() {
         }
 
         // Get a view of the current frame
-        auto input_frame = visFrameView(in_buf, in_frame_id);
+        auto input_frame = VisFrameView(in_buf, in_frame_id);
         uint32_t f_id = input_frame.freq_id;
 
-        // Check dataset id hasn't changed
-        if (input_frame.dataset_id != ds_id) {
-            size_t old_num_stack = num_stack;
-            change_dataset_state(input_frame.dataset_id);
-            // This should never happen...
-            if (num_stack != old_num_stack) {
-                // Need to regenerate matrices
-                if (!setup(in_frame_id))
-                    return;
+        // Check relevant states haven't changed
+        dset_id = input_frame.dataset_id;
+        if (dm.fingerprint(dset_id, {"stack", "frequencies"}) != fprint) {
+
+            state_id_t state_id; // will hold state IDs from dataset
+
+            if (auto new_stack = dm.closest_dataset_of_type(dset_id, "stack")) {
+                state_id = new_stack.value().second.state();
+            } else {
+                FATAL_ERROR("Failed to find stack state for dataset {}", dset_id);
             }
+            if (state_id != sstate_id)
+                WARN("Stack state has changed from {} to {}.", sstate_id, state_id);
+
+            if (auto new_freq = dm.closest_dataset_of_type(dset_id, "frequencies")) {
+                state_id = new_freq.value().second.state();
+            } else {
+                FATAL_ERROR("Failed to find freq state for dataset {}", dset_id);
+            }
+            if (state_id != fstate_id)
+                WARN("Freq state has changed from {} to {}.", fstate_id, state_id);
+
+            // Wipe map and regenerate matrices
+            WARN("Clearing maps and regenerating matrices...");
+            if (!setup(in_frame_id))
+                return;
         }
 
         // Find the time index to append to
@@ -196,10 +236,7 @@ void RingMapMaker::rest_callback(kotekan::connectionInstance& conn, nlohmann::js
     return;
 }
 
-void RingMapMaker::change_dataset_state(dset_id_t new_ds_id) {
-
-    // Update stored ID
-    ds_id = new_ds_id;
+void RingMapMaker::change_dataset_state(dset_id_t ds_id) {
 
     auto& dm = datasetManager::instance();
 
@@ -213,6 +250,7 @@ void RingMapMaker::change_dataset_state(dset_id_t new_ds_id) {
     const prodState* pstate = pstate_fut.get();
     const stackState* sstate = sstate_fut.get();
     const freqState* fstate = fstate_fut.get();
+
     if (pstate == nullptr || istate == nullptr || fstate == nullptr) {
         FATAL_ERROR("Could not find all dataset states for incoming dataset with ID {}."
                     "\nOne of them is a nullptr: prod {}, input {}, freq {}.",
@@ -223,6 +261,21 @@ void RingMapMaker::change_dataset_state(dset_id_t new_ds_id) {
     if (sstate == nullptr) {
         FATAL_ERROR("RingMapMaker requires visibilities stacked.");
     }
+
+    // Get the state IDs for stack and freq
+    if (auto sstate_res = dm.closest_dataset_of_type(ds_id, "stack")) {
+        sstate_id = sstate_res.value().second.state();
+    } else {
+        FATAL_ERROR("Could not find stack state for dataset {}.", ds_id);
+    }
+    if (auto fstate_res = dm.closest_dataset_of_type(ds_id, "frequencies")) {
+        fstate_id = fstate_res.value().second.state();
+    } else {
+        FATAL_ERROR("Could not find freq state for dataset {}.", ds_id);
+    }
+
+    // Set the fingerprint
+    fprint = dm.fingerprint(ds_id, {"stack", "frequencies"});
 
     stacks = sstate->get_stack_map();
     prods = pstate->get_prods();
@@ -239,14 +292,14 @@ bool RingMapMaker::setup(size_t frame_id) {
         return false;
     }
 
-    auto in_frame = visFrameView(in_buf, frame_id);
-    ds_id = in_frame.dataset_id;
-    change_dataset_state(ds_id);
+    auto in_frame = VisFrameView(in_buf, frame_id);
+    change_dataset_state(in_frame.dataset_id);
 
     // TODO: make these config options ?
+    float fpga_s = Telescope::instance().seq_length_nsec() * 1e-9;
     num_pix = 511; // # unique NS baselines
     num_pol = 4;
-    num_time = 24. * 3600. / (in_frame.fpga_seq_length * 2.56e-6);
+    num_time = 24. * 3600. / (in_frame.fpga_seq_length * fpga_s);
     num_bl = (num_stack + 1) / 4;
 
     sinza = std::vector<float>(num_pix, 0.);
@@ -394,36 +447,53 @@ RedundantStack::RedundantStack(Config& config, const std::string& unique_name,
 }
 
 void RedundantStack::change_dataset_state(dset_id_t ds_id) {
+
+    double start_time = current_time();
+
     auto& dm = datasetManager::instance();
-    state_id_t stack_state_id;
 
-    // Get input & prod states synchronoulsy
-    auto istate_fut = std::async(&datasetManager::dataset_state<inputState>, &dm, ds_id);
-    auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm, ds_id);
-    auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, ds_id);
-    const inputState* input_state_ptr = istate_fut.get();
-    const prodState* prod_state_ptr = pstate_fut.get();
-    old_stack_state_ptr = sstate_fut.get();
+    // Identify changes to the stack dataset state
+    auto fprint = dm.fingerprint(ds_id, {"stack"});
 
-    if (input_state_ptr == nullptr) {
-        FATAL_ERROR("Could not find inputState for incoming dataset with ID {}.", ds_id);
-        return;
+    if (state_map.count(fprint) == 0) {
+        // Get input & prod states synchronoulsy
+        auto istate_fut = std::async(&datasetManager::dataset_state<inputState>, &dm, ds_id);
+        auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm, ds_id);
+        auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, ds_id);
+        const inputState* input_state_ptr = istate_fut.get();
+        const prodState* prod_state_ptr = pstate_fut.get();
+        const stackState* old_stack_state_ptr = sstate_fut.get();
+
+        if (input_state_ptr == nullptr) {
+            FATAL_ERROR("Could not find inputState for incoming dataset with ID {}.", ds_id);
+            return;
+        }
+        if (prod_state_ptr == nullptr) {
+            FATAL_ERROR("Could not find prodState for incoming dataset with ID {}.", ds_id);
+            return;
+        }
+        if (old_stack_state_ptr == nullptr) {
+            FATAL_ERROR("Could not find stackState for incoming dataset with ID {}.", ds_id);
+            return;
+        }
+
+        // Generate the new stack spec
+        INFO("Stack state has changed. Regenerating stack specs.");
+        auto sspec = full_redundant(input_state_ptr->get_inputs(), prod_state_ptr->get_prods());
+        auto [state_id, sstate_ptr] =
+            dm.create_state<stackState>(sspec.first, std::move(sspec.second));
+
+        // Insert state into map
+        state_map[fprint] = {state_id, sstate_ptr, old_stack_state_ptr};
     }
-    if (prod_state_ptr == nullptr) {
-        FATAL_ERROR("Could not find prodState for incoming dataset with ID {}.", ds_id);
-        return;
-    }
-    if (old_stack_state_ptr == nullptr) {
-        FATAL_ERROR("Could not find stackState for incoming dataset with ID {}.", ds_id);
-        return;
-    }
 
-    auto sspec = full_redundant(input_state_ptr->get_inputs(), prod_state_ptr->get_prods());
-    auto sstate = std::make_unique<stackState>(sspec.first, std::move(sspec.second));
+    // Get the stack spec
+    auto [state_id, new_sstate, old_sstate] = state_map.at(fprint);
+    auto new_ds_id = dm.add_dataset(state_id, ds_id);
 
-    std::tie(stack_state_id, new_stack_state_ptr) = dm.add_state(std::move(sstate));
+    dset_id_map[ds_id] = {new_ds_id, new_sstate, old_sstate};
 
-    output_dset_id = dm.add_dataset(stack_state_id, ds_id);
+    INFO("Created new stack update and registering. Took {:.2f}s", current_time() - start_time);
 }
 
 void RedundantStack::main_thread() {
@@ -436,9 +506,9 @@ void RedundantStack::main_thread() {
         return;
     }
 
-    auto input_frame = visFrameView(in_buf, in_frame_id);
-    input_dset_id = input_frame.dataset_id;
-    change_dataset_state(input_dset_id);
+    // Initialise dataset state
+    auto input_frame = VisFrameView(in_buf, in_frame_id);
+    change_dataset_state(input_frame.dataset_id);
 
     while (!stop_thread) {
 
@@ -448,37 +518,36 @@ void RedundantStack::main_thread() {
         }
 
         // Get a view of the current frame
-        auto input_frame = visFrameView(in_buf, in_frame_id);
+        auto input_frame = VisFrameView(in_buf, in_frame_id);
 
-        // Check dataset id hasn't changed
-        if (input_frame.dataset_id != input_dset_id) {
-            WARN("Input dataset ID has changed. Regenerating stack specs.");
-            input_dset_id = input_frame.dataset_id;
-            change_dataset_state(input_dset_id);
+        // Check we have encountered this dataset ID before
+        if (dset_id_map.count(input_frame.dataset_id) == 0) {
+            change_dataset_state(input_frame.dataset_id);
         }
 
-        const auto& stack_rmap = new_stack_state_ptr->get_rstack_map();
-        const auto& old_stack_map = old_stack_state_ptr->get_stack_map();
-        auto num_stack = new_stack_state_ptr->get_num_stack();
+        // Get the corresponding stack state
+        auto [new_dset_id, new_sstate, old_sstate] = dset_id_map.at(input_frame.dataset_id);
 
-        std::vector<float> stack_norm(new_stack_state_ptr->get_num_stack(), 0.0);
-        std::vector<float> stack_v2(new_stack_state_ptr->get_num_stack(), 0.0);
+        const auto& stack_rmap = new_sstate->get_rstack_map();
+        const auto& old_stack_map = old_sstate->get_stack_map();
+        auto num_stack = new_sstate->get_num_stack();
+
+        std::vector<float> stack_norm(num_stack, 0.0);
+        std::vector<float> stack_v2(num_stack, 0.0);
 
         // Wait for the output buffer frame to be free
         if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
             break;
         }
 
-        // Allocate metadata and get output frame
-        allocate_new_metadata_object(out_buf, output_frame_id);
         // Create view to output frame
-        auto output_frame = visFrameView(out_buf, output_frame_id, input_frame.num_elements,
-                                         num_stack, input_frame.num_ev);
+        auto output_frame = VisFrameView::create_frame_view(
+            out_buf, output_frame_id, input_frame.num_elements, num_stack, input_frame.num_ev);
 
         // Copy over the data we won't modify
         output_frame.copy_metadata(input_frame);
-        output_frame.copy_data(input_frame, {visField::vis, visField::weight});
-        output_frame.dataset_id = output_dset_id;
+        output_frame.copy_data(input_frame, {VisField::vis, VisField::weight});
+        output_frame.dataset_id = new_dset_id;
 
         // Zero the output frame
         std::fill(std::begin(output_frame.vis), std::end(output_frame.vis), 0.0);

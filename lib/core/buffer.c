@@ -61,7 +61,7 @@ void private_reset_consumers(struct Buffer* buf, const int ID);
 int private_mark_frame_empty(struct Buffer* buf, const int id);
 
 struct Buffer* create_buffer(int num_frames, int len, struct metadataPool* pool,
-                             const char* buffer_name, int numa_node) {
+                             const char* buffer_name, const char* buffer_type, int numa_node) {
 
     assert(num_frames > 0);
 
@@ -75,8 +75,9 @@ struct Buffer* create_buffer(int num_frames, int len, struct metadataPool* pool,
 
     buf->shutdown_signal = 0;
 
-    // Copy the buffer buffer name.
+    // Copy the buffer name and type.
     buf->buffer_name = strdup(buffer_name);
+    buf->buffer_type = strdup(buffer_type);
 
     buf->num_frames = num_frames;
     buf->metadata_pool = pool;
@@ -171,6 +172,7 @@ void delete_buffer(struct Buffer* buf) {
     free(buf->producers_done);
     free(buf->consumers_done);
     free(buf->buffer_name);
+    free(buf->buffer_type);
 
     // Free locks and cond vars
     CHECK_ERROR_F(pthread_mutex_destroy(&buf->lock));

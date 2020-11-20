@@ -2,14 +2,29 @@
 #ifndef RINGMAP_HPP
 #define RINGMAP_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "datasetManager.hpp"
-#include "fpga_header_functions.h"
-#include "restServer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t, state_id_t, fingerprint_t
+#include "datasetState.hpp"    // for stackState
+#include "restServer.hpp"      // for connectionInstance
+#include "visUtil.hpp"         // for input_ctype, prod_ctype, time_ctype, stack_ctype, cfloat
 
-#include "gsl-lite.hpp"
+#include "fmt.hpp"  // for format
+#include "json.hpp" // for json
+
+#include <algorithm> // for copy, max
+#include <map>       // for map
+#include <math.h>    // for cos
+#include <mutex>     // for mutex
+#include <stddef.h>  // for size_t
+#include <stdexcept> // for runtime_error
+#include <stdint.h>  // for uint32_t, int64_t, uint8_t
+#include <string>    // for string
+#include <tuple>     // for tuple
+#include <utility>   // for pair
+#include <vector>    // for vector
 
 /**
  * @brief Generate a ringmap from a real-time stream of data.
@@ -18,8 +33,8 @@
  *
  * @par buffers
  * @buffer in_buf The buffer to read from.
- *        @buffer_format visBuffer
- *        @buffer_metadata visMetadata
+ *        @buffer_format VisBuffer
+ *        @buffer_metadata VisMetadata
  *
  * @conf feed_sep       Float, default 0.3048. The separation between feeds (in m)
  * @conf apodization    String, default nuttall. The type of window to use for apodization.
@@ -86,8 +101,10 @@ private:
     modulo<size_t> latest;
     double max_ctime, min_ctime;
 
-    // Dataset ID of incoming stream
-    dset_id_t ds_id;
+    // Fingerprint of the datasets we want to watch for changes
+    fingerprint_t fprint;
+    state_id_t sstate_id;
+    state_id_t fstate_id;
 
     // Configurable
     float feed_sep;
@@ -110,11 +127,11 @@ private:
  *
  * @par buffers
  * @buffer in_buf The buffer to read from.
- *        @buffer_format visBuffer
- *        @buffer_metadata visMetadata
+ *        @buffer_format VisBuffer
+ *        @buffer_metadata VisMetadata
  * @buffer out_buf The buffer to write to.
- *        @buffer_format visBuffer
- *        @buffer_metadata visMetadata
+ *        @buffer_format VisBuffer
+ *        @buffer_metadata VisMetadata
  *
  *
  * @author Tristan Pinsonneault-Marotte
@@ -125,17 +142,16 @@ public:
     RedundantStack(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
 
-    void main_thread();
+    void main_thread() override;
 
 private:
     void change_dataset_state(dset_id_t ds_id);
 
-    // dataset states and IDs
-    dset_id_t output_dset_id;
-    dset_id_t input_dset_id;
-    const prodState* prod_state_ptr;
-    const stackState* old_stack_state_ptr;
-    const stackState* new_stack_state_ptr;
+    // Map the incoming ID to an outgoing one
+    std::map<dset_id_t, std::tuple<dset_id_t, const stackState*, const stackState*>> dset_id_map;
+
+    // Map from the critical incoming states to the correct stackState
+    std::map<fingerprint_t, std::tuple<state_id_t, const stackState*, const stackState*>> state_map;
 
     // Buffers
     Buffer* in_buf;

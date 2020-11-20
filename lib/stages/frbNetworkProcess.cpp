@@ -1,7 +1,8 @@
 #include "frbNetworkProcess.hpp"
 
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
 #include "buffer.h"              // for wait_for_full_frame, mark_frame_empty, register_consumer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "frb_functions.h"       // for FRBHeader
@@ -12,9 +13,10 @@
 
 #include "fmt.hpp" // for format
 
-#include <algorithm>    // for max, max_element
-#include <arpa/inet.h>  // for inet_pton
-#include <chrono>       // for steady_clock::time_point, seconds, operator+, steady_clock
+#include <algorithm>    // for max, max_element, copy
+#include <arpa/inet.h>  // for inet_pton, inet_ntop
+#include <assert.h>     // for assert
+#include <chrono>       // for operator+, operator-, seconds, steady_clock::time_point
 #include <cstring>      // for strerror, memset, size_t
 #include <errno.h>      // for errno, EINTR
 #include <exception>    // for exception
@@ -28,12 +30,13 @@
 #include <regex>        // for match_results<>::_Base_type
 #include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <stdexcept>    // for runtime_error
-#include <string>       // for string, allocator
+#include <string>       // for string
 #include <sys/select.h> // for select, FD_SET, FD_ZERO, FD_ISSET, fd_set
 #include <sys/socket.h> // for AF_INET, bind, socket, sendto, setsockopt, SOCK_DGRAM
 #include <sys/time.h>   // for CLOCK_MONOTONIC, CLOCK_REALTIME, timeval
 #include <thread>       // for thread
 #include <time.h>       // for clock_gettime, timespec
+#include <type_traits>  // for __success_type<>::type
 #include <unistd.h>     // for close
 #include <utility>      // for move, get
 
@@ -68,7 +71,7 @@ frbNetworkProcess::frbNetworkProcess(Config& config_, const std::string& unique_
     register_consumer(in_buf, unique_name.c_str());
 
     // Apply config.
-    udp_frb_packet_size = config.get_default<int>(unique_name, "udp_frb_packet_size", 4264);
+    udp_frb_packet_size = config.get_default<int>(unique_name, "udp_frb_packet_size", 4272);
     udp_frb_port_number = config.get_default<int>(unique_name, "udp_frb_port_number", 1313);
     number_of_nodes = config.get_default<int>(unique_name, "number_of_nodes", 256);
     number_of_subnets = config.get_default<int>(unique_name, "number_of_subnets", 4);
@@ -154,9 +157,10 @@ void frbNetworkProcess::main_thread() {
     t0.tv_nsec = 0; /*  nanoseconds */
 
     // 384 is integration factor and 2560 fpga sampling time in ns
+    const uint32_t fpga_ns = Telescope::instance().seq_length_nsec();
     const unsigned samples_per_frame =
-        samples_per_packet * packets_per_stream * 384;      // number of FPGA samples in each frame
-    unsigned long time_interval = samples_per_frame * 2560; // time per buffer frame in ns
+        samples_per_packet * packets_per_stream * 384; // number of FPGA samples in each frame
+    unsigned long time_interval = samples_per_frame * fpga_ns; // time per buffer frame in ns
 
     long count = 0;
 
@@ -220,7 +224,7 @@ void frbNetworkProcess::main_thread() {
                 add_nsec(t0, nanos_skipped);
             }
             uint64_t offset = (t0.tv_sec * 1e9 + t0.tv_nsec - initial_nsec)
-                              - (header->fpga_count - initial_fpga_count) * 2560;
+                              - (header->fpga_count - initial_fpga_count) * fpga_ns;
             if (offset != 0)
                 WARN("OFFSET in not zero ");
             add_nsec(t0, -1 * offset);

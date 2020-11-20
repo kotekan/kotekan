@@ -3,7 +3,7 @@
 #include "Config.hpp"             // for Config
 #include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_for_...
 #include "bufferContainer.hpp"    // for bufferContainer
-#include "chimeMetadata.h"        // for get_rfi_num_bad_inputs
+#include "chimeMetadata.hpp"      // for get_rfi_num_bad_inputs
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 #include "kotekanLogging.hpp"     // for DEBUG
@@ -26,9 +26,9 @@ REGISTER_HSA_COMMAND(hsaRfiInputSum);
 
 hsaRfiInputSum::hsaRfiInputSum(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    // Note, the rfi_chime_inputsum_private.hsaco kernel may be used in the future.
-    hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_inputsum" KERNEL_EXT,
-               "rfi_chime_inputsum.hsaco") {
+    // Note, the rfi_chime_input_sum_private.hsaco kernel may be used in the future.
+    hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_input_sum" KERNEL_EXT,
+               "rfi_chime_input_sum.hsaco") {
     command_type = gpuCommandType::KERNEL;
     // Retrieve parameters from kotekan config
     // Data Parameters
@@ -38,10 +38,14 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config, const std::string& unique_name,
     // RFI Config Parameters
     _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
     _rfi_sigma_cut = config.get_default<uint32_t>(unique_name, "rfi_sigma_cut", 5);
+    _trunc_bias_switch = config.get_default<bool>(unique_name, "trunc_bias_switch", false);
     // Compute Buffer lengths
     input_frame_len =
         sizeof(float) * _num_elements * _num_local_freq * _samples_per_data_set / _sk_step;
     output_frame_len = sizeof(float) * _num_local_freq * _samples_per_data_set / _sk_step;
+    input_var_frame_len =
+        sizeof(float) * _num_elements * _num_local_freq * _samples_per_data_set / _sk_step;
+    output_var_frame_len = sizeof(float) * _num_local_freq * _samples_per_data_set / _sk_step;
     input_mask_len = sizeof(uint8_t) * _num_elements;
     output_mask_len = sizeof(uint8_t) * _num_local_freq * _samples_per_data_set / _sk_step;
     correction_frame_len = sizeof(uint32_t) * _samples_per_data_set / _sk_step;
@@ -82,6 +86,8 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
     struct __attribute__((aligned(16))) args_t {
         void* input;
         void* output;
+        void* input_var;
+        void* output_var;
         void* input_mask;
         void* output_mask;
         void* lost_sample_correction;
@@ -89,12 +95,18 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
         uint32_t num_bad_inputs;
         uint32_t sk_step;
         uint32_t rfi_sigma_cut;
+        uint32_t trunc_bias_switch;
     } args;
     // Initialize arguments
     memset(&args, 0, sizeof(args));
     // Set arguments
-    args.input = device.get_gpu_memory("timesum", input_frame_len);
+    args.input = device.get_gpu_memory("time_sum", input_frame_len);
     args.output = device.get_gpu_memory_array("rfi_output", gpu_frame_id, output_frame_len);
+
+    args.input_var = device.get_gpu_memory("rfi_time_sum_var", input_var_frame_len);
+    args.output_var =
+        device.get_gpu_memory_array("rfi_output_var", gpu_frame_id, output_var_frame_len);
+
     args.input_mask = device.get_gpu_memory_array("input_mask", gpu_frame_id, input_mask_len);
     args.output_mask =
         device.get_gpu_memory_array("rfi_mask_output", gpu_frame_id, output_mask_len);
@@ -104,6 +116,10 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
     args.num_bad_inputs = num_bad_inputs;
     args.sk_step = _sk_step;
     args.rfi_sigma_cut = _rfi_sigma_cut;
+    if (_trunc_bias_switch)
+        args.trunc_bias_switch = 1;
+    else
+        args.trunc_bias_switch = 0;
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
     // Set kernel execution parameters
@@ -116,8 +132,8 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
     params.grid_size_z = _samples_per_data_set / _sk_step;
     params.num_dims = 3;
     params.private_segment_size = 0;
-    params.group_segment_size = 1024;
-    // Parameters for rfi_chime_inputsum_private.hsaco, for easy switching if needed in future
+    params.group_segment_size = 2048;
+    // Parameters for rfi_chime_input_sum_private.hsaco, for easy switching if needed in future
     /*    params.workgroup_size_x = _num_local_freq;
         params.workgroup_size_y = 1;
         params.workgroup_size_z = 1;

@@ -1,31 +1,27 @@
 #include "InputSubset.hpp"
 
 #include "Config.hpp"          // for Config
-#include "Hash.hpp"            // for operator<
+#include "Hash.hpp"            // for operator!=, operator<, operator==, Hash
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for allocate_new_metadata_object, mark_frame_empty, mark_fram...
 #include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for dset_id_t, state_id_t, datasetManager
-#include "datasetState.hpp"    // for prodState
+#include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager, fingerprint_t
+#include "datasetState.hpp"    // for inputState, prodState, stackState
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN
-#include "visBuffer.hpp"       // for visFrameView, visField, visField::vis, visField::weight
-#include "visUtil.hpp"         // for prod_ctype, frameID, cmap, icmap, modulo, cfloat
+#include "visBuffer.hpp"       // for VisFrameView, VisField, VisField::evec, VisField::flags
+#include "visUtil.hpp"         // for prod_ctype, input_ctype, frameID, cfloat, modulo
 
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>    // for max, binary_search, copy, sort
-#include <atomic>       // for atomic_bool
-#include <complex>      // for complex
-#include <cxxabi.h>     // for __forced_unwind
-#include <exception>    // for exception
-#include <functional>   // for _Bind_helper<>::type, bind, function
-#include <future>       // for future, async
-#include <iterator>     // for back_insert_iterator, back_inserter
-#include <regex>        // for match_results<>::_Base_type
-#include <stdexcept>    // for out_of_range, runtime_error
-#include <stdint.h>     // for uint16_t, uint32_t
-#include <system_error> // for system_error
-#include <utility>      // for pair, tuple_element<>::type
+#include <algorithm>  // for max, copy
+#include <atomic>     // for atomic_bool
+#include <complex>    // for complex
+#include <cstdint>    // for uint32_t, uint16_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <stddef.h>   // for size_t
+#include <stdexcept>  // for out_of_range
+#include <utility>    // for pair
 
 
 using kotekan::bufferContainer;
@@ -144,7 +140,7 @@ void InputSubset::main_thread() {
         }
 
         // Get a view of the current frame
-        auto input_frame = visFrameView(in_buf, input_frame_id);
+        auto input_frame = VisFrameView(in_buf, input_frame_id);
 
         // check if the input dataset has changed
         if (dset_id_map.count(input_frame.dataset_id) == 0) {
@@ -156,12 +152,9 @@ void InputSubset::main_thread() {
             break;
         }
 
-        // Allocate metadata and get output frame
-        allocate_new_metadata_object(out_buf, output_frame_id);
-
         // Create view to output frame
-        auto output_frame = visFrameView(out_buf, output_frame_id, input_ind.size(),
-                                         prod_ind.size(), input_frame.num_ev);
+        auto output_frame = VisFrameView::create_frame_view(
+            out_buf, output_frame_id, input_ind.size(), prod_ind.size(), input_frame.num_ev);
 
         // Copy over subset of visibility shaped data
         for (size_t i = 0; i < prod_ind.size(); i++) {
@@ -187,8 +180,8 @@ void InputSubset::main_thread() {
         output_frame.dataset_id = dset_id_map.at(input_frame.dataset_id);
 
         // Copy the non-input and visibility shaped parts of the buffer
-        output_frame.copy_data(input_frame, {visField::vis, visField::weight, visField::gain,
-                                             visField::flags, visField::evec});
+        output_frame.copy_data(input_frame, {VisField::vis, VisField::weight, VisField::gain,
+                                             VisField::flags, VisField::evec});
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);

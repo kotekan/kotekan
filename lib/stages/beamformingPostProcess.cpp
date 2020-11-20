@@ -3,9 +3,10 @@
 #include "BranchPrediction.hpp" // for unlikely, likely
 #include "Config.hpp"           // for Config
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"        // for stream_t
 #include "buffer.h"             // for Buffer, wait_for_empty_frame, mark_frame_empty, mark_fra...
 #include "bufferContainer.hpp"  // for bufferContainer
-#include "chimeMetadata.h"      // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
+#include "chimeMetadata.hpp"    // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
 #include "vdif_functions.h"     // for VDIFHeader
 
 #include "fmt.hpp" // for format, fmt
@@ -19,7 +20,7 @@
 #include <regex>      // for match_results<>::_Base_type
 #include <stdlib.h>   // for free, malloc
 #include <string.h>   // for memcpy
-#include <string>     // for allocator, string
+#include <string>     // for string
 #include <sys/time.h> // for timeval
 
 using kotekan::bufferContainer;
@@ -151,9 +152,10 @@ void beamformingPostProcess::main_thread() {
                        == (uint32_t)get_fpga_seq_num(in_buf[gpu_id], in_buffer_ID[gpu_id]));
             }
 
-            int stream_id = get_stream_id(in_buf[gpu_id], in_buffer_ID[gpu_id]);
-            int link_id = stream_id & 0x000F;
-            int slot_id = (stream_id & 0x00F0) >> 4;
+            // TODO: port this to use ice_extract_stream_id_t
+            stream_t stream_id = get_stream_id(in_buf[gpu_id], in_buffer_ID[gpu_id]);
+            int link_id = stream_id.id & 0x000F;
+            int slot_id = (stream_id.id & 0x00F0) >> 4;
             thread_ids[i] = link_id + (slot_id << 4);
 
             in_buffer_ID[gpu_id] = (in_buffer_ID[gpu_id] + 1) % in_buf[gpu_id]->num_frames;

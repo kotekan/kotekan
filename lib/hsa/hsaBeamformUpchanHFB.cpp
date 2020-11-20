@@ -16,8 +16,8 @@ REGISTER_HSA_COMMAND(hsaBeamformUpchanHFB);
 hsaBeamformUpchanHFB::hsaBeamformUpchanHFB(Config& config, const std::string& unique_name,
                                            bufferContainer& host_buffers,
                                            hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "upchannelize" KERNEL_EXT,
-               "upchannelize_flip_hfb.hsaco") {
+    hsaCommand(config, unique_name, host_buffers, device, "frb_upchan_amd" KERNEL_EXT,
+               "frb_upchan_amd.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
     // Read parameters from config file.
@@ -28,7 +28,9 @@ hsaBeamformUpchanHFB::hsaBeamformUpchanHFB(Config& config, const std::string& un
     _num_frb_total_beams = config.get<int32_t>(unique_name, "num_frb_total_beams");
     _factor_upchan = config.get<int32_t>(unique_name, "factor_upchan");
 
-    input_frame_len = _num_elements * (_samples_per_data_set + 32) * 2 * sizeof(float);
+    // Kernel uses fp16 complex numbers for input which are the same size as sizeof(float).
+    // The + 64 is to avoid bank conflicts in the transpose output.
+    input_frame_len = _num_elements * (_samples_per_data_set + 64) * sizeof(float);
     output_frame_len = _num_frb_total_beams
                        * (_samples_per_data_set / _downsample_time / _downsample_freq)
                        * sizeof(float);
@@ -60,14 +62,14 @@ hsa_signal_t hsaBeamformUpchanHFB::execute(int gpu_frame_id, hsa_signal_t preced
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 
     kernelParams params;
-    params.workgroup_size_x = 64;
-    params.workgroup_size_y = 1;
-    params.grid_size_x = _samples_per_data_set / 6;
-    params.grid_size_y = 1024; // No. of FRB beams
+    params.workgroup_size_y = 64;
+    params.workgroup_size_x = 1;
+    params.grid_size_y = _samples_per_data_set / 6;
+    params.grid_size_x = 1024; // No. of FRB beams
     params.num_dims = 2;
 
     params.private_segment_size = 0;
-    params.group_segment_size = 3072;
+    params.group_segment_size = 16 * sizeof(float);
 
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
 

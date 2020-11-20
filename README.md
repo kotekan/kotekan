@@ -20,7 +20,9 @@ To build just the base framework:
 
 Cmake build options:
 
-* `-DCMAKE_BUILD_TYPE=Debug` - Builds the project with debug symbols.
+* `-DCMAKE_BUILD_TYPE=Debug` - Builds the project with asserts, debug logging and debug symbols.
+* `-DCMAKE_BUILD_TYPE=Test` - Builds the project with asserts, debug logging, but without debug
+symbols.
 * `-DUSE_DPDK=ON` - Include DPDK support.  Optional `-DRTE_SDK=<build-location>` and
   `-DRTE_TARGET=x86_64-native-linuxapp-gcc` can be provided for non standard build locations.
 * `-DUSE_HSA=ON` - Build with HSA support if available. On by default.
@@ -35,9 +37,6 @@ Cmake build options:
 * `-DUSE_AIRSPY=ON` - Build the AirSpy producer. Requires libairspy.
 * `-DUSE_FFTW=ON` - Build an FFTW-based F-engine. Requires FFTW3.
 * `-DUSE_LAPACK=ON` - Build stages depending on LAPACK.
-  Currently only OpenBLAS built from source is supported (see above).
-* `-DOPENBLAS_PATH=<openblas_prefix>` - Path to OpenBLAS installation,
-  if not in the `CMAKE_PREFIX_PATH`
 * `-DBLAZE_PATH=<blaze_path>` - Path to BLAZE headers. Required if `USE_LAPACK` is set.
 * `-DCOMPILE_DOCS=ON` - Build kotekan documentation. Requires doxygen,
   sphinx (+ sphinx_rtd_theme), and breathe.

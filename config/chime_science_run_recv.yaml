@@ -28,12 +28,17 @@ num_ev: 4
 # other stages (11 and 14, twinned with 3 and 6 respectively)
 cpu_affinity: [7, 11, 14, 15]
 
+telescope:
+  name: CHIMETelescope
+  allow_default_frequency_map: false
+  require_gps: false
+
 dataset_manager:
   use_dataset_broker: True
   ds_broker_host: "10.1.50.11" # recv1
 
 vis_pool:
-  kotekan_metadata_pool: visMetadata
+  kotekan_metadata_pool: VisMetadata
   num_metadata_objects: 500 * buffer_depth
 
 vis_buffer:
@@ -45,6 +50,9 @@ vis_buffer:
     kotekan_buffer: vis
     buffer_depth: 384  # Before slow stage
   visbuf_10s_flags:
+    kotekan_buffer: vis
+    buffer_depth: 4096 # Before slow stage
+  visbuf_10s_flags_delay:
     kotekan_buffer: vis
     buffer_depth: 384  # Before slow stage
   visbuf_10s_stack:
@@ -83,14 +91,12 @@ vis_buffer:
     num_prod: 2048
     buffer_depth: 1024  # Increase as this subset is produced very quickly
   visbuf_10s_timing:
-    num_elements: 11
-    num_prod: 66
+    num_elements: 15
     kotekan_buffer: vis
     buffer_depth: 1024  # Increase as this subset is produced very quickly
 
   visbuf_10s_timing_ne:
-    num_elements: 11
-    num_prod: 66
+    num_elements: 15
     num_ev: 0
     kotekan_buffer: vis
     buffer_depth: 256
@@ -99,12 +105,12 @@ vis_buffer:
 mfreq: &mfreq [107, 344, 619, 938]
 # Larger subset to be sent to map maker, spanning entire band
 mapfreq: &mapfreq [
-        0,   15,   27,   40,   53,   66,   79,   92,  104, 107,
-        184,  196, 209,  220,  234,  245,  259,  281,  293,  305,  318,  333,  344,
-        358,  374,  386,  399,  411,  422,  433,  445,  456,  469,  481,
-        494,  506,  520,  534,  546,  610, 619,  623,  671,  703,  715,  727,
-        740,  752,  805,  824,  837,  852,  863,  886,  903,  917,  928,
-        938,  950,  962,  975,  986, 1000, 1011
+        1, 12, 23, 36, 47, 58, 70, 82, 92, 103, 184, 194, 205, 216,
+        231, 241, 252, 277, 288, 300, 311, 322, 332, 343, 354, 364,
+        376, 387, 399, 409, 420, 431, 442, 477, 488, 499, 509, 520,
+        532, 543, 606, 618, 663, 673, 704, 715, 726, 736, 747, 780,
+        818, 833, 844, 863, 885, 905, 919, 935, 947, 958, 969, 981,
+        995, 1006
     ]
 
 # Updatable config blocks
@@ -124,6 +130,7 @@ updatable_config:
     start_time: 1575950518.4
     update_id: "zero_gain"
     transition_interval: 300.0
+    new_state: true
   26m_gated:
     kotekan_update_endpoint: "json"
     enabled: false
@@ -168,6 +175,7 @@ receive_flags:
   in_buf: visbuf_10s_all
   out_buf: visbuf_10s_flags
   updatable_config: "/updatable_config/flagging"
+  num_kept_updates: 24
 
 vis_debug:
   n2:
@@ -191,15 +199,23 @@ count_check:
     kotekan_stage: countCheck
     in_buf: visbuf_5s_26m_gated
 
+delay_frames:
+  num_frames_to_hold: 3840
+  copy_frame: false
+  kotekan_stage: bufferDelay
+  in_buf: visbuf_10s_flags
+  out_buf: visbuf_10s_flags_delay
+
 apply_gains:
   num_threads: 3
   cpu_affinity: [4, 5, 6]
   kotekan_stage: applyGains
-  in_buf: visbuf_10s_flags
+  in_buf: visbuf_10s_flags_delay
   out_buf: visbuf_10s_gain
   updatable_config: "/updatable_config/gains"
   broker_host: cv0r1
   broker_port: 54328
+  num_kept_updates: 24
 
 stacking:
   num_threads: 3
@@ -210,7 +226,7 @@ stacking:
   stack_type: chime_in_cyl
   exclude_inputs: [
     # These are non-CHIME feeds we want to exclude (26m, noise source channels, etc.)
-      46,  142,  688,  944,  960, 1058, 1166, 1225, 1314, 1521, 2032, 2034,
+      46,  142,  688,  944,  960, 1058, 1141, 1166, 1225, 1314, 1521, 1642, 2032, 2034,
     # Below are the last eight feeds on each cylinder, masked out because their beams are very different
        0,    1,    2,    3,    4,    5,    6,    7,  248,  249,  250,  251,  252,  253,  254,  255,
      256,  257,  258,  259,  260,  261,  262,  263,  504,  505,  506,  507,  508,  509,  510,  511,
@@ -221,6 +237,11 @@ stacking:
     1536, 1537, 1538, 1539, 1540, 1541, 1542, 1543, 1784, 1785, 1786, 1787, 1788, 1789, 1790, 1791,
     1792, 1793, 1794, 1795, 1796, 1797, 1798, 1799, 2040, 2041, 2042, 2043, 2044, 2045, 2046, 2047
   ]
+
+# Export a data quality metric to prometheus
+export_data_quality:
+  kotekan_stage: DataQuality
+  in_buf: visbuf_10s_stack
 
 buffer_status:
   kotekan_stage: bufferStatus
@@ -237,17 +258,17 @@ timing_subset:
   kotekan_stage: InputSubset
   in_buf: visbuf_10s_flags
   out_buf: visbuf_10s_timing
-  inputs: [46, 142, 688, 944, 960, 1058, 1166, 1314, 1543, 2032, 2034]
+  inputs: [46, 142, 256, 688, 768, 944, 960, 1058, 1141, 1166, 1314, 1543, 1642, 2032, 2034]
 
 # Generate the monitoring freq full N^2 stream
 mfreq_subset:
   n2:
-    kotekan_stage: freqSubset
+    kotekan_stage: VisFreqSubset
     in_buf: visbuf_10s_flags
     out_buf: visbuf_10s_mfreq
     subset_list: *mfreq
   stack:
-    kotekan_stage: freqSubset
+    kotekan_stage: VisFreqSubset
     in_buf: visbuf_10s_stack
     out_buf: visbuf_10s_stack_mfreq
     subset_list: *mapfreq
@@ -293,33 +314,33 @@ archive_writers:
   root_path: /data/untransposed/
 
   n2_mf:
-    kotekan_stage: visWriter
+    kotekan_stage: VisWriter
     in_buf: visbuf_10s_mfreq
     instrument_name: chimeN2
 
   chimestack:
-    kotekan_stage: visWriter
+    kotekan_stage: VisWriter
     in_buf: visbuf_10s_stack_ne
     instrument_name: chimestack
 
   26m:
-    kotekan_stage: visWriter
+    kotekan_stage: VisWriter
     in_buf: visbuf_5s_26m_ungated_post
     instrument_name: chime26m
 
   26mgated:
-    kotekan_stage: visWriter
+    kotekan_stage: VisWriter
     in_buf: visbuf_5s_26m_gated_post
     instrument_name: chime26mgated
 
   cal:
-    kotekan_stage: visWriter
+    kotekan_stage: VisWriter
     in_buf: visbuf_10s_cal
     instrument_name: chimecal
     file_length: 256
 
   timing:
-    kotekan_stage: visWriter
+    kotekan_stage: VisWriter
     in_buf: visbuf_10s_timing_ne
     instrument_name: chimetiming
 

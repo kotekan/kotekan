@@ -7,15 +7,15 @@
 #ifndef VIS_FILE_H5_HPP
 #define VIS_FILE_H5_HPP
 
+#include "FrameView.hpp"      // for FrameView
 #include "datasetManager.hpp" // for dset_id_t
 #include "kotekanLogging.hpp" // for logLevel
-#include "visBuffer.hpp"      // for visFrameView
 #include "visFile.hpp"        // for visFile
-#include "visUtil.hpp"        // for time_ctype, freq_ctype, input_ctype, prod_ctype
+#include "visUtil.hpp"        // for time_ctype, freq_ctype, input_ctype, prod_ctype, cfloat
 
 #include <cstdint>                 // for uint32_t
 #include <highfive/H5DataSet.hpp>  // for DataSet
-#include <highfive/H5DataType.hpp> // for DataType
+#include <highfive/H5DataType.hpp> // for DataType, AtomicType, DataType::DataType
 #include <highfive/H5File.hpp>     // for File
 #include <map>                     // for map
 #include <memory>                  // for unique_ptr
@@ -67,7 +67,7 @@ public:
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
      **/
-    void write_sample(uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame) override;
+    void write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameView& frame) override;
 
     /**
      * @brief Return the current number of current time samples.
@@ -172,7 +172,7 @@ public:
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
      **/
-    void write_sample(uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame) override;
+    void write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameView& frame) override;
 
     size_t num_time() override;
 

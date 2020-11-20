@@ -1,16 +1,16 @@
 #ifndef APPLY_GAINS_HPP
 #define APPLY_GAINS_HPP
 
-#include "Config.hpp" // for Config
-#include "Hash.hpp"   // for Hash
-#include "Stage.hpp"  // for Stage
-#include "SynchronizedQueue.hpp"
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "SynchronizedQueue.hpp" // for SynchronizedQueue
 #include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, state_id_t
 #include "prometheusMetrics.hpp" // for Counter, Gauge
+#include "restClient.hpp"        // for restClient
 #include "updateQueue.hpp"       // for updateQueue
-#include "visBuffer.hpp"         // for visFrameView
+#include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for cfloat, frameID
 
 #include "json.hpp" // for json
@@ -23,7 +23,7 @@
 #include <shared_mutex> // for shared_mutex
 #include <stdint.h>     // for uint32_t, uint64_t
 #include <string>       // for string
-#include <thread>       // for thread
+#include <tuple>        // for tuple
 #include <utility>      // for pair
 #include <vector>       // for vector
 
@@ -45,11 +45,11 @@
  *
  * @par Buffers
  * @buffer in_buf The input stream.
- *         @buffer_format visBuffer.
- *         @buffer_metadata visMetadata
+ *         @buffer_format VisBuffer.
+ *         @buffer_metadata VisMetadata
  * @buffer out_buf The output stream.
- *         @buffer_format visBuffer.
- *         @buffer_metadata visMetadata
+ *         @buffer_format VisBuffer.
+ *         @buffer_metadata VisMetadata
  *
  * @conf   num_elements     Int.    The number of elements (i.e. inputs) in the
  *                                  correlator data.
@@ -170,7 +170,7 @@ private:
     std::atomic<bool> started = false;
 
     /// Queue used to send updates into the fetch thread
-    using update_t = std::tuple<std::string, double, double>;
+    using update_t = std::tuple<std::string, double, double, bool>;
     SynchronizedQueue<update_t> update_fetch_queue;
 
 
@@ -191,7 +191,7 @@ private:
 
     /// Test that the frame is valid. On failure it will call FATAL_ERROR and
     /// return false
-    bool validate_frame(const visFrameView& frame) const;
+    bool validate_frame(const VisFrameView& frame) const;
 
     /// Test that the gain is valid. On failure it will call FATAL_ERROR and
     /// return false. Gains failing this *should* have already been rejected,

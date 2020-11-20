@@ -11,21 +11,22 @@
 #include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
-#include "prometheusMetrics.hpp" // for Counter, MetricFamily
-#include "visBuffer.hpp"         // for visFrameView
-#include "visUtil.hpp"           // for time_ctype, movingAverage
+#include "prometheusMetrics.hpp" // for MetricFamily, Counter, Gauge
+#include "visBuffer.hpp"         // for VisFrameView
+#include "visUtil.hpp"           // for time_ctype, modulo, movingAverage
 
-#include <cstdint>     // for uint32_t, uint64_t, uint8_t
+#include <cstdint>     // for uint64_t, uint32_t, uint8_t, int64_t
 #include <map>         // for map
 #include <semaphore.h> // for sem_t
-#include <stdexcept>   // for runtime_error
-#include <string>      // for string, operator+
+#include <set>         // for set
+#include <stddef.h>    // for size_t
+#include <string>      // for string
 
 /**
  * @class VisSharedMemWriter
  * @brief Export calibration data out to a shared memory region
  *
- * This stage is an improvement upon visCalWriter. It exports the
+ * This stage is an improvement upon VisCalWriter. It exports the
  * most recent samples of the calibration data stream to a
  * fixed-length ring-buffer-like shared memory region.
  *
@@ -68,8 +69,8 @@
  *
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write
- *          @buffer_format visBuffer structured
- *          @buffer_metadata visMetadata
+ *          @buffer_format VisBuffer structured
+ *          @buffer_metadata VisMetadata
  *
  * @conf    root_path       String. Location in filesystem containing
  *                          shared memory and semaphore.
@@ -177,13 +178,13 @@ protected:
      * This function contains the logic that decides if and where the sample
      * will be indexed, and if any older samples should be dropped.
      *
-     * @param frame     visFrameView frame to write
+     * @param frame     VisFrameView frame to write
      * @param t         timestamp for sample
      * @param freq_ind  the index for the frequency associated with the frame
      *
      * @return          True if frame successfully written, False otherwise.
      **/
-    void add_sample(const visFrameView& frame, time_ctype t, uint32_t freq_ind);
+    void add_sample(const VisFrameView& frame, time_ctype t, uint32_t freq_ind);
 
     /**
      * Writes a frame directly to memory; updates access record.
@@ -192,7 +193,7 @@ protected:
      * @param   time_ind    Time index that it will be written to.
      * @param   freq_ind    Frequency index that it will be written to.
      **/
-    void write_to_memory(const visFrameView& frame, uint32_t time_ind, uint32_t freq_ind);
+    void write_to_memory(const VisFrameView& frame, uint32_t time_ind, uint32_t freq_ind);
 
     /**
      * Resets a region of shm to 0, and marks in access record as invalid.

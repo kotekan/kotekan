@@ -8,6 +8,8 @@
 #define ICE_BOARD_VDIF
 
 #include "Config.hpp"
+#include "ICETelescope.hpp"
+#include "Telescope.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "iceBoardHandler.hpp"
@@ -57,7 +59,7 @@ public:
     iceBoardVDIF(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container, int port);
 
-    virtual int handle_packet(struct rte_mbuf* mbuf);
+    virtual int handle_packet(struct rte_mbuf* mbuf) override;
 
 protected:
     bool advance_vdif_frame(uint64_t new_seq, bool first_time = false);
@@ -175,6 +177,9 @@ int iceBoardVDIF::handle_packet(struct rte_mbuf* mbuf) {
 }
 
 bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
+
+    auto& tel = Telescope::instance();
+
     struct timeval now;
     gettimeofday(&now, nullptr);
 
@@ -197,15 +202,17 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
         // So this will go wrong once the next leap second happens.  See: issue #498
         // Unix time of the 2018 VDIF epoch, corresponds to 2018.01.01.0:0:0 in UTC
         const uint64_t ref_epoch_offset = 1514764800;
-        if (is_gps_global_time_set() == 1) {
-            timespec gps_time = compute_gps_time(new_seq);
+        if (tel.gps_time_enabled()) {
+            timespec gps_time = tel.to_time(new_seq);
             // Compute the time at fpga_seq_num == 0 in nano seconds
-            // relative to the year 2000 epoch
+            // relative to the 2018 epoch (see above)
             vdif_base_time = gps_time.tv_sec * 1000000000 + gps_time.tv_nsec
-                             - new_seq * FPGA_PERIOD_NS - ref_epoch_offset * 1000000000;
+                             - new_seq * tel.seq_length_nsec() - ref_epoch_offset * 1000000000;
+            DEBUG("Using GPS based vdif_base_time: {:d}", vdif_base_time);
         } else {
-            vdif_base_time = now.tv_sec * 1000000000 + now.tv_usec * 1000 - new_seq * FPGA_PERIOD_NS
-                             - ref_epoch_offset * 1000000000;
+            vdif_base_time = now.tv_sec * 1000000000 + now.tv_usec * 1000
+                             - new_seq * tel.seq_length_nsec() - ref_epoch_offset * 1000000000;
+            DEBUG("Using system clock based vdif_base_time: {:d}", vdif_base_time);
         }
     }
 
@@ -214,14 +221,14 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
     if (port == 0)
         set_first_packet_recv_time(out_buf, out_buf_frame_id, now);
 
-    if (is_gps_global_time_set() == 1) {
-        struct timespec gps_time = compute_gps_time(new_seq);
+    if (tel.gps_time_enabled()) {
+        struct timespec gps_time = tel.to_time(new_seq);
         set_gps_time(out_buf, out_buf_frame_id, gps_time);
     }
 
     set_fpga_seq_num(out_buf, out_buf_frame_id, new_seq);
 
-    // Adcance the lost samples frame
+    // Advance the lost samples frame
     if (!first_time) {
         mark_frame_full(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
         lost_samples_frame_id = (lost_samples_frame_id + 1) % lost_samples_buf->num_frames;
@@ -242,7 +249,7 @@ inline void iceBoardVDIF::handle_lost_samples(int64_t lost_samples) {
         last_seq + samples_per_packet - get_fpga_seq_num(out_buf, out_buf_frame_id);
     uint64_t temp_seq = last_seq + samples_per_packet;
 
-    // TODO this could be made more efficent by breaking it down into blocks of memsets.
+    // TODO this could be made more efficient by breaking it down into blocks of memsets.
     while (lost_samples > 0) {
         if (unlikely(lost_sample_location * frame_size == out_buf->frame_size)) {
             advance_vdif_frame(temp_seq);
@@ -277,6 +284,9 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
         set_vdif_header_options(vdif_frame_location * frame_size, cur_seq);
     }
 
+    auto& tel = Telescope::instance();
+    stream_t encoded_id = ice_encode_stream_id(port_stream_id);
+
     // Create the parts of the VDIF frame that are in this packet.
     int from_idx = header_offset + offset;
     int mbuf_len = mbuf->data_len;
@@ -297,8 +307,8 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
                     vdif_packet_len * num_elements * time_step + // Time step in output frame.
                     vdif_packet_len * elem + // VDIF pack for the correct element (ThreadID).
                     vdif_header_len +        // Offset for the vdif header.
-                    bin_number_16_elem(&port_stream_id,
-                                       freq); // Location in the VDIF packet is just frequency.
+                    tel.to_freq_id(encoded_id,
+                                   freq); // Location in the VDIF packet is just frequency.
 
                 // After all that indexing copy one byte :)
                 out_buf_frame[output_idx] = *(rte_pktmbuf_mtod(mbuf, char*) + from_idx);
@@ -312,6 +322,8 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
 }
 
 inline void iceBoardVDIF::set_vdif_header_options(int vdif_frame_location, uint64_t seq) {
+
+    uint64_t fpga_ns = Telescope::instance().seq_length_nsec();
 
     for (uint32_t time_step = 0; time_step < samples_per_packet; ++time_step) {
         for (int elem = 0; elem < num_elements; ++elem) {
@@ -341,9 +353,9 @@ inline void iceBoardVDIF::set_vdif_header_options(int vdif_frame_location, uint6
             vdif_header->thread_id = elem;
 
             // Current time in nano seconds relative to epoch
-            uint64_t cur_time = (seq + time_step) * FPGA_PERIOD_NS + vdif_base_time;
+            uint64_t cur_time = (seq + time_step) * fpga_ns + vdif_base_time;
             vdif_header->seconds = (cur_time) / 1000000000;
-            vdif_header->data_frame = (cur_time % 1000000000) / FPGA_PERIOD_NS;
+            vdif_header->data_frame = (cur_time % 1000000000) / fpga_ns;
         }
     }
 }

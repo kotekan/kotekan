@@ -1,0 +1,5 @@
+*******************
+hsaTrackingBeamform
+*******************
+
+.. doxygenclass:: hsaTrackingBeamform

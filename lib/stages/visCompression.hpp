@@ -13,11 +13,10 @@
 #include "datasetManager.hpp"    // for dset_id_t, state_id_t, fingerprint_t
 #include "datasetState.hpp"      // for prodState, stackState
 #include "prometheusMetrics.hpp" // for MetricFamily, Gauge, Counter
-#include "visUtil.hpp"           // for input_ctype, rstack_ctype, prod_ctype, frameID
+#include "visUtil.hpp"           // for frameID, rstack_ctype, input_ctype, prod_ctype
 
-#include <cstdint>    // for uint32_t, int8_t, int16_t
+#include <cstdint>    // for uint32_t
 #include <functional> // for function
-#include <iosfwd>     // for ostream
 #include <map>        // for map
 #include <mutex>      // for mutex
 #include <string>     // for string
@@ -37,11 +36,11 @@
  *
  * @par Buffers
  * @buffer in_bufs The input uncompressed data.
- *         @buffer_format visBuffer structured.
- *         @buffer_metadata visMetadata
+ *         @buffer_format VisBuffer structured.
+ *         @buffer_metadata VisMetadata
  * @buffer out_buf The merged and transformed buffer
- *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_format VisBuffer structured
+ *         @buffer_metadata VisMetadata
  *
  * @conf stack_type             String. Type of stacking to apply to the data.
  *                              Look at documentation of stack_X functions for
@@ -120,77 +119,6 @@ private:
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_time_seconds_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& compression_frame_counter;
 };
-
-
-/**
- * @brief Combine all feeds on the same diagonal of the correlation matrix.
- *
- * This is mostly useful for testing as in most cases it will combine
- * non-redundant visibilities.
- *
- * @param inputs The set of inputs.
- * @param prods  The products we are stacking.
- *
- * @returns Stack definition.
- **/
-std::pair<uint32_t, std::vector<rstack_ctype>>
-stack_diagonal(const std::vector<input_ctype>& inputs, const std::vector<prod_ctype>& prods);
-
-/**
- * @brief Stack redundant baselines between cylinder pairs for CHIME.
- *
- * This stacks together redundant baselines between cylinder pairs, but does
- * not stack distinct pairs together. For instance A1,B2 will be stacked in the
- * same group as A2,B3, but not the same group as B1,C2.
- *
- * This will give back stacks ordered by (polarisation pair, cylinder pair, NS
- * feed separation).
- *
- * @param inputs The set of inputs.
- * @param prods  The products we are stacking.
- *
- * @returns Stack definition.
- **/
-std::pair<uint32_t, std::vector<rstack_ctype>>
-stack_chime_in_cyl(const std::vector<input_ctype>& inputs, const std::vector<prod_ctype>& prods);
-
-#define CYL_A 0
-#define CYL_B 1
-#define CYL_C 2
-#define CYL_D 3
-
-#define POL_X 0
-#define POL_Y 1
-
-
-/**
- * @brief The properties of a CHIME feed
- **/
-struct chimeFeed {
-
-    /// The cylinder the feed is on.
-    int8_t cylinder;
-
-    /// The polarisation of the feed
-    int8_t polarisation;
-
-    /// The feed location running South to North
-    int16_t feed_location;
-
-    /**
-     * @brief Get the CHIME feed properties from an input.
-     *
-     * @param input The input to calculate.
-     *
-     * @returns The feed definition.
-     **/
-    static chimeFeed from_input(input_ctype input);
-};
-
-/**
- * @brief Implement an output operator to help debugging.
- **/
-std::ostream& operator<<(std::ostream& os, const chimeFeed& f);
 
 
 #endif

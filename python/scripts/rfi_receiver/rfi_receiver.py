@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 /*********************************************************************************
 * RFI Documentation Header Block
@@ -31,20 +32,11 @@ import os
 import time
 import argparse
 import yaml
-import subprocess
 import requests
 import json
-import imp
 from ch_util import ephemeris
+from kotekan import __version__
 
-# Get version number
-try:
-    _version = imp.load_source("get_versions", "../../_version.py")
-    __version__ = _version.get_versions()["version"]
-    del _version
-except FileNotFoundError:
-    with open("/usr/local/share/rfi_receiver/version.txt") as f:
-        __version__ = f.readline()
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -96,6 +88,7 @@ class CommandLine(object):
             "use_dataset_broker": True,
             "ds_broker_host": "10.1.50.11",
             "ds_broker_port": 12050,
+            "solar_transit_downtime_m": 60,
         }
         self.supportedModes = ["vdif", "pathfinder", "chime"]
         parser = argparse.ArgumentParser(description="RFI Receiver Script")
@@ -228,7 +221,7 @@ class CommandLine(object):
 
 
 class Stream(object):
-    def __init__(self, thread_id, mode, header, known_streams):
+    def __init__(self, thread_id, mode, header, freq_bins, known_streams):
 
         encoded_stream_id = header["encoded_stream_ID"][0]
         if encoded_stream_id not in known_streams:
@@ -243,13 +236,7 @@ class Stream(object):
                     for i in range(header["num_local_freq"][0])
                 ]
             elif mode == "chime":
-                self.bins = [
-                    self.crate * 16
-                    + self.slot_id
-                    + self.link_id * 32
-                    + self.unused * 256
-                    for i in range(header["num_local_freq"][0])
-                ]
+                self.bins = freq_bins
             elif mode == "vdif":
                 self.bins = list(range(header["num_local_freq"][0]))
             self.freqs = [800.0 - float(b) * 400.0 / 1024.0 for b in self.bins]
@@ -316,6 +303,7 @@ def HeaderCheck(header, app):
     return True
 
 
+# Listen for UDP packets from Kotekan
 def data_listener(thread_id):
 
     global waterfall, t_min, app, sk_receive_watchdogs, InitialKotekanConnection
@@ -337,7 +325,10 @@ def data_listener(thread_id):
     mode = app.mode
     firstPacket = True
     vdifPacketSize = global_freq * 4 + RFIHeaderSize
-    chimePacketSize = RFIHeaderSize + 4 * local_freq
+    # CHIME packet: RFIHeader + frequency_bins[local_freq] + rfi_avg[local_freq]
+    chimePacketSize = RFIHeaderSize + 4 * local_freq + 4 * local_freq
+
+    # Packet data type received from Kotekan
     HeaderDataType = np.dtype(
         [
             ("combined_flag", np.uint8, 1),
@@ -354,6 +345,7 @@ def data_listener(thread_id):
     stream_dict = dict()
     known_streams = []
     packetCounter = 0
+    freq_bins_set = set()
 
     while True:
 
@@ -366,17 +358,27 @@ def data_listener(thread_id):
             InitialKotekanConnection = True
             logger.info("Connected to Kotekan")
 
+        # A packet is received on each stream roughly every ~0.126s
         if packet != "":
 
-            if packetCounter % (50 * len(stream_dict) + 1) == 0:
-                logger.info(
-                    "Thread id %d: Receiving Packets from %d Streams"
-                    % (thread_id, len(stream_dict))
+            # Print frequency bins received every ~19s
+            if packetCounter % (150 * len(stream_dict) + 1) == 0:
+                logger.debug(
+                    "data_listener: Thread id: %d, Streams: %d, Receiving frequency bins: %s"
+                    % (thread_id, len(stream_dict), freq_bins_set)
                 )
+                freq_bins_set.clear()
+
             packetCounter += 1
 
             header = np.fromstring(packet[:RFIHeaderSize], dtype=HeaderDataType)
-            data = np.fromstring(packet[RFIHeaderSize:], dtype=np.float32)
+            freq_bins = np.fromstring(
+                packet[RFIHeaderSize : RFIHeaderSize + 4 * local_freq], dtype=np.uint32
+            )
+            freq_bins_set.update(freq_bins)
+            data = np.fromstring(
+                packet[RFIHeaderSize + 4 * local_freq :], dtype=np.float32
+            )
 
             # Create a new stream object each time a new stream connects
             if header["encoded_stream_ID"][0] not in known_streams:
@@ -385,7 +387,7 @@ def data_listener(thread_id):
                     break
                 # Add to the dictionary of Streams
                 stream_dict[header["encoded_stream_ID"][0]] = Stream(
-                    thread_id, mode, header, known_streams
+                    thread_id, mode, header, freq_bins, known_streams
                 )
 
             # On first packet received by any stream
@@ -416,7 +418,7 @@ def data_listener(thread_id):
                     if -1 * roll_amount > waterfall.shape[1]:
                         # Reset Waterfall
                         t_min = datetime.datetime.utcnow()
-                        waterfall[:, :] = -1  # np.nan
+                        waterfall[:, :] = np.nan
                         app.min_seq = header["fpga_seq_num"][0]
                         app.max_seq = (
                             app.min_seq
@@ -427,7 +429,7 @@ def data_listener(thread_id):
                     else:
                         # DO THE ROLL, Note: Roll Amount is negative
                         waterfall = np.roll(waterfall, roll_amount, axis=1)
-                        waterfall[:, roll_amount:] = -1  # np.nan
+                        waterfall[:, roll_amount:] = np.nan
                         app.min_seq -= (
                             roll_amount * timesteps_per_frame * frames_per_packet
                         )
@@ -491,7 +493,8 @@ def bad_input_listener(thread_id):
     RFIHeaderSize = app.config["chime_rfi_header_size"]
     mode = app.mode
     firstPacket = True
-    PacketSize = RFIHeaderSize + 4 * local_freq * num_elements
+    # CHIME packet: RFIHeader + frequency_bins[local_freq] + faulty_counter[local_freq * num_elements]
+    PacketSize = RFIHeaderSize + 4 * local_freq + local_freq * num_elements
     HeaderDataType = np.dtype(
         [
             ("combined_flag", np.uint8, 1),
@@ -528,8 +531,14 @@ def bad_input_listener(thread_id):
             packetCounter += 1
             # Read the header
             header = np.fromstring(packet[:RFIHeaderSize], dtype=HeaderDataType)
+            # Read the frequency bins
+            freq_bins = np.fromstring(
+                packet[RFIHeaderSize : RFIHeaderSize + 4 * local_freq], dtype=np.uint32
+            )
             # Read the data
-            data = np.fromstring(packet[RFIHeaderSize:], dtype=np.uint8)
+            data = np.fromstring(
+                packet[RFIHeaderSize + 4 * local_freq :], dtype=np.uint8
+            )
             # Create a new stream object each time a new stream connects
             if header["encoded_stream_ID"][0] not in known_streams:
                 # logger.debug("New Stream Detected")
@@ -538,7 +547,7 @@ def bad_input_listener(thread_id):
                     break
                 # Add to the dictionary of Streams
                 stream_dict[header["encoded_stream_ID"][0]] = Stream(
-                    thread_id, mode, header, known_streams
+                    thread_id, mode, header, freq_bins, known_streams
                 )
             # On first packet received by any stream
             if firstPacket:
@@ -597,21 +606,15 @@ def TCP_stream():
                 )
                 conn.send(t_min.strftime("%d-%m-%YT%H:%M:%S:%f").encode())
             elif MESSAGE == "w":
-                temp_bi_waterfall = (
-                    np.sum(bi_waterfall[:, :, :max_t_pos], axis=2)
-                    + np.count_nonzero(bi_waterfall[:, :, :max_t_pos] == -1, axis=2)
-                ).astype(float)
-                temp_bi_waterfall /= max_t_pos - np.count_nonzero(
-                    bi_waterfall[:, :, :max_t_pos] == -1, axis=2
-                )
+                temp_bi_waterfall = np.nanmean(bi_waterfall[:, :, :max_t_pos], axis=2)
                 # logger.debug(np.count_nonzero(bi_waterfall[:,:,:max_t_pos]==-1, axis = 2).shape, np.min(np.count_nonzero(bi_waterfall[:,:,:max_t_pos]==-1, axis = 2)), np.max(np.count_nonzero(bi_waterfall[:,:,:max_t_pos]==-1, axis = 2)))
                 # logger.debug(np.nanmin(temp_bi_waterfall), np.nanmax(temp_bi_waterfall), np.nanmean(temp_bi_waterfall))
                 # logger.debug(np.where(temp_bi_waterfall[223,:] > 2)[0].size, temp_bi_waterfall[223,143], np.nanmax(temp_bi_waterfall[223,:]), np.nanmin(temp_bi_waterfall[223,:]))
                 logger.debug(
-                    "Sending Bad Input Watefall Data %d ..."
+                    "Sending Bad Input Waterfall Data %d ..."
                     % (len(temp_bi_waterfall.tostring()))
                 )
-                conn.send(temp_bi_waterfall.tostring())  # Send Watefall
+                conn.send(temp_bi_waterfall.tostring())  # Send Waterfall
             elif MESSAGE == "t":
                 logger.debug(
                     "Sending Bad Input Time Data ...",
@@ -633,15 +636,7 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
         )
 
     # Bad Input Metrics
-    mean_bi_waterfall = (
-        np.sum(bi_waterfall[:, :, :max_t_pos], axis=2)
-        + np.count_nonzero(bi_waterfall[:, :, :max_t_pos] == -1, axis=2)
-    ).astype(float)
-    mean_bi_waterfall /= max_t_pos - np.count_nonzero(
-        bi_waterfall[:, :, :max_t_pos] == -1, axis=2
-    )
-    # mean_bi_waterfall = np.mean(bi_waterfall[:,:,:max_t_pos], axis = 2)
-    mean_bi_waterfall[mean_bi_waterfall < 0] = np.nan
+    mean_bi_waterfall = np.nanmean(bi_waterfall[:, :, :max_t_pos], axis=2)
     bad_input_band = (
         100.0
         * np.nanmedian(mean_bi_waterfall, axis=0)
@@ -665,7 +660,8 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
     metric_dict["overall_rfi_bad_input"].set(num_bad_inputs)
 
     # RFI metrics
-    bad_locs = np.where(np.sum(waterfall, axis=0) == -1 * waterfall.shape[0])[0]
+    # Find which timesteps are not populated yet in the waterfall
+    bad_locs = np.where(np.sum(waterfall, axis=0) == np.nan * waterfall.shape[0])[0]
     if bad_locs.size > 0:
         max_pos = bad_locs[0]
     else:
@@ -678,8 +674,8 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
     confidence = np.abs(waterfall[:, :max_pos] - med) / std
     rfi_mask = np.zeros_like(confidence)
     rfi_mask[confidence > 3.0] = 1.0
-    rfi_mask[waterfall[:, :max_pos] == -1] = -1.0
-    band_perc = 100.0 * np.sum(rfi_mask, axis=1) / float(rfi_mask.shape[1])
+    rfi_mask[waterfall[:, :max_pos] == np.nan] = np.nan
+    band_perc = 100.0 * np.nanmean(rfi_mask, axis=1)
     fbins_mhz = np.round(
         np.array([800.0 - float(b) * 400.0 / 1024.0 for b in np.arange(band.size)]),
         decimals=2,
@@ -687,14 +683,10 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
     fbins = np.arange(band_perc.size)
     for i in range(band_perc.size):
         if np.isnan(band[i]) or band[i] < 0:
-            metric_dict["rfi_band"].labels(fbins_mhz[i], fbins[i]).set(-1)
+            metric_dict["rfi_band"].labels(fbins_mhz[i], fbins[i]).set(np.nan)
         else:
             metric_dict["rfi_band"].labels(fbins_mhz[i], fbins[i]).set(band_perc[i])
-    overall_rfi = (
-        100.0
-        * np.sum(rfi_mask[waterfall[:, :max_pos] != -1])
-        / float(rfi_mask[waterfall[:, :max_pos] != -1].size)
-    )
+    overall_rfi = 100.0 * np.nanmean(rfi_mask[waterfall[:, :max_pos] != np.nan])
     if np.isnan(overall_rfi):
         overall_rfi = -1
     metric_dict["overall_rfi_sk"].set(overall_rfi)
@@ -790,117 +782,104 @@ def http_server2():
     httpd.serve_forever()
 
 
+# Sends message to coco to turn RFI zeroing on/off
+def set_rfi_zeroing(zeroing_on):
+
+    global rfi_zeroing_url, rfi_zeroing_headers
+
+    # Create payload
+    payload = {"rfi_zeroing": zeroing_on}
+    try:
+        r = requests.post(
+            rfi_zeroing_url, data=json.dumps(payload), headers=rfi_zeroing_headers
+        )
+        state = "on" if zeroing_on else "off"
+        if not r.ok:
+            logger.error(
+                f"RFI Solar Transit Toggle: Failed to turn RFI zeroing {state}. Something went wrong in the request."
+            )
+        else:
+            logger.info(
+                f"RFI Solar Transit Toggle: Successfully turned RFI zeroing {state}."
+            )
+            return True
+    except Exception:
+        logger.info("RFI Solar Transit Toggle: Failure to contact coco, is it running?")
+    return False
+
+
 # Disables RFI zeroing during a solar transit
 def rfi_zeroing():
 
     global InitialKotekanConnection
 
-    # Downtime of RFI zeroing in minutes
-    downtime_m = 60
-
-    # Endpoint parameters
-    url = "http://csBfs:54323/rfi-zeroing-toggle"
-    headers = {"content-type": "application/json", "Accept-Charset": "UTF-8"}
+    # Downtime of RFI zeroing
+    downtime_m = app.config["solar_transit_downtime_m"]
+    downtime_s = downtime_m * 60
+    half_window_s = 0.5 * downtime_s
 
     logger.info("RFI Solar Transit Toggle: Starting thread")
     while not InitialKotekanConnection:
         time.sleep(1)
     while True:
         # Wait until the correct UTC time of the solar transit at DRAO (deals with daylight savings time)
-        t_now = datetime.datetime.utcnow()
-        t_transit = ephemeris.solar_transit(t_now)[0]
-        t_diff = datetime.datetime.utcfromtimestamp(t_transit) - t_now
+        time_now = ephemeris.ensure_unix(datetime.datetime.utcnow())
 
-        time_to_transit_s = abs(t_diff.total_seconds())
-        downtime_s = downtime_m * 60
+        # Get the *next* transit in the future
+        time_to_next_transit = ephemeris.solar_transit(time_now) - time_now
 
-        # Check if we are in the transit window, if so set downtime accordingly
-        if time_to_transit_s < 0.5 * 3600 or time_to_transit_s > 23.5 * 3600:
+        # Get the *nearest* transit which we need to determine if we are still in the window
+        time_to_nearest_transit = (
+            ephemeris.solar_transit(time_now - 12 * 3600) - time_now
+        )
 
-            # Calculate time until end of solar transit window
-            downtime_s = time_to_transit_s
-            if time_to_transit_s > 23.5 * 3600:
-                downtime_s = 24 * 3600 - time_to_transit_s
+        logger.info(
+            "RFI Solar Transit Toggle: Time of next transit: {}".format(
+                datetime.datetime.fromtimestamp(time_to_next_transit + time_now)
+            )
+        )
+        logger.info(
+            "RFI Solar Transit Toggle: Time of nearest transit: {}".format(
+                datetime.datetime.fromtimestamp(time_to_nearest_transit + time_now)
+            )
+        )
+
+        new_zeroing_state = True
+
+        # Check if we are within the current transit window and wait until the end of it
+        if abs(time_to_nearest_transit) < half_window_s:
+            new_zeroing_state = False
+            downtime_s = half_window_s + time_to_nearest_transit
+            logger.info(
+                "RFI Solar Transit Toggle: Within solar transit window, disabling zeroing and sleeping for {} seconds until end of window.".format(
+                    downtime_s
+                )
+            )
+        # Otherwise, we wait until the start of the next transit window
         else:
-
-            # Time until 30 mins before next solar transit in seconds
-            sleep_time_s = abs(time_to_transit_s - 0.5 * downtime_m * 60)
-
-            # Wait until the correct UTC time (deals with daylight savings time)
+            new_zeroing_state = True
+            downtime_s = time_to_next_transit - half_window_s
             logger.info(
-                "RFI Solar Transit Toggle: Time of transit: {}".format(
-                    datetime.datetime.fromtimestamp(t_transit)
+                "RFI Solar Transit Toggle: Outside solar transit window, enabling zeroing and sleeping for {} seconds until next window.".format(
+                    downtime_s
                 )
             )
-            logger.info(
-                "RFI Solar Transit Toggle: Time until transit: {}".format(t_diff)
-            )
-            logger.info(
-                "RFI Solar Transit Toggle: Sleeping for {} seconds".format(sleep_time_s)
-            )
 
-            time.sleep(sleep_time_s)
+        # Set new RFI zeroing state
+        success = set_rfi_zeroing(new_zeroing_state)
+
+        # If we failed to set new RFI zeroing state sleep for a few seconds
+        if not success:
 
             logger.info(
-                "RFI Solar Transit Toggle: Waking up to disable RFI zeroing during solar transit"
+                "RFI Solar Transit Toggle: Failed to set new RFI zeroing state. Will wait for a few seconds and try again."
             )
 
-        # Create payload
-        payload = {"rfi_zeroing": False}
+            time.sleep(5)
+            continue
 
-        # Turn RFI zeroing off
-        rfi_zeroing_on = True
-        try:
-            r = requests.post(url, data=json.dumps(payload), headers=headers)
-            if not r.ok:
-                logger.info(
-                    "RFI Solar Transit Toggle: Failed to turn RFI zeroing off. Something went wrong in the request."
-                )
-            else:
-                rfi_zeroing_on = False
-                logger.info(
-                    "RFI Solar Transit Toggle: Successfully turned RFI zeroing off."
-                )
-        except:
-            logger.info(
-                "RFI Solar Transit Toggle: Failure to contact Comet, is it running?"
-            )
-
-        # If we successfully turned RFI zeroing off
-        if not rfi_zeroing_on:
-
-            logger.info(
-                "RFI Solar Transit Toggle: Sleeping %s seconds for duration of solar transit."
-                % (downtime_s)
-            )
-
-            # Wait until sun has passed
-            time.sleep(downtime_s)
-
-            logger.info(
-                "RFI Solar Transit Toggle: Solar transit ended. Waking up to turn RFI zeroing back on."
-            )
-
-            # Payload
-            payload = {"rfi_zeroing": True}
-
-            # Turn rfi zeroing back on
-            try:
-                r = requests.post(url, data=json.dumps(payload), headers=headers)
-                if not r.ok:
-                    logger.info(
-                        "RFI Solar Transit Toggle: Failed to turn RFI zeroing back on. Something went wrong in the request."
-                    )
-                else:
-                    rfi_zeroing_on = True
-                    logger.info(
-                        "RFI Solar Transit Toggle: Successfully turned RFI zeroing back on."
-                    )
-            except:
-                logger.info(
-                    "RFI Solar Transit Toggle: Failure to contact Comet, is it running?"
-                )
-                rfi_zeroing_on = False
+        # Sleep until end of transit window or until the next one occurs
+        time.sleep(downtime_s)
 
 
 if __name__ == "__main__":
@@ -918,13 +897,14 @@ if __name__ == "__main__":
     # Initialize Plot
     nx, ny = app.config["waterfallY"], app.config["waterfallX"]
     waterfall = np.empty([nx, ny], dtype=float)
-    waterfall[:, :] = -1  # np.nan
+    waterfall[:, :] = np.nan
     bi_waterfall = np.empty(
         [app.config["num_global_freq"], app.config["num_elements"], 64], dtype=np.int8
     )
-    bi_waterfall[:, :, :] = -1  # np.nan
+    bi_waterfall[:, :, :] = np.nan
     time.sleep(1)
 
+    # Spawn threads to receive UDP packets from Kotekan
     sk_receive_watchdogs = [datetime.datetime.now()] * app.config["num_receive_threads"]
     receive_threads = []
     for i in range(app.config["num_receive_threads"]):
@@ -955,6 +935,13 @@ if __name__ == "__main__":
     watchdogThread = threading.Thread(target=watchdog_thread)
     watchdogThread.daemon = True
     watchdogThread.start()
+
+    # Endpoint parameters
+    rfi_zeroing_url = "http://csBfs:54323/rfi-zeroing-toggle"
+    rfi_zeroing_headers = {
+        "content-type": "application/json",
+        "Accept-Charset": "UTF-8",
+    }
 
     rfi_zeroingThread = threading.Thread(target=rfi_zeroing)
     rfi_zeroingThread.daemon = True

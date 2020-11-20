@@ -1,4 +1,4 @@
-
+---
 type: config
 log_level: info
 num_elements: 2048
@@ -16,8 +16,12 @@ dataset_manager:
   use_dataset_broker: True
   ds_broker_host: "10.1.50.11" # recv1
 
+telescope:
+  name: CHIMETelescope
+  require_gps: false
+
 vis_pool:
-  kotekan_metadata_pool: visMetadata
+  kotekan_metadata_pool: VisMetadata
   num_metadata_objects: 500 * buffer_depth
 
 vis_buffer:

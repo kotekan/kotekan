@@ -688,4 +688,186 @@ private:
     std::string _update_id;
 };
 
+/**
+ * @brief A dataset state that keeps the beam information of a datatset.
+ *
+ * @author James Willis
+ */
+class beamState : public datasetState {
+public:
+    /**
+     * @brief Constructor
+     * @param data  The beam information as serialized by
+     *              beamState::to_json().
+     */
+    beamState(const nlohmann::json& data) {
+        try {
+            _beams = data.get<std::vector<uint32_t>>();
+        } catch (std::exception& e) {
+            throw std::runtime_error(fmt::format(
+                fmt("beamState: Failure parsing json data ({:s}): {:s}"), data.dump(4), e.what()));
+        }
+    };
+
+    /**
+     * @brief Constructor
+     * @param beams The beam information as a vector of
+     *              beam index maps.
+
+     */
+    beamState(std::vector<uint32_t> beams) : _beams(beams){};
+
+    /**
+     * @brief Constructor
+     * @param num_beams The number of beams. The indices will end up
+     *                  running from 0 to num_beams - 1
+     */
+    beamState(size_t num_beams) : _beams(num_beams) {
+        std::iota(_beams.begin(), _beams.end(), 0);
+    }
+
+    /**
+     * @brief Get beam information (read only).
+     *
+     * @return The beam information as a vector of beam index maps.
+     */
+    const std::vector<uint32_t>& get_beams() const {
+        return _beams;
+    }
+
+private:
+    /// Serialize the data of this state in a json object
+    nlohmann::json data_to_json() const override {
+        nlohmann::json j(_beams);
+        return j;
+    }
+
+    /// Time index map of the dataset state.
+    std::vector<uint32_t> _beams;
+};
+
+/**
+ * @brief A dataset state that keeps the sub-frequency information of a datatset.
+ *
+ * @author James Willis
+ */
+class subfreqState : public datasetState {
+public:
+    /**
+     * @brief Constructor
+     * @param data  The sub-frequency information as serialized by
+     *              subfreqState::to_json().
+     */
+    subfreqState(const nlohmann::json& data) {
+        try {
+            _subfreqs = data.get<std::vector<uint32_t>>();
+        } catch (std::exception& e) {
+            throw std::runtime_error(
+                fmt::format(fmt("subfreqState: Failure parsing json data ({:s}): {:s}"),
+                            data.dump(4), e.what()));
+        }
+    };
+
+    /**
+     * @brief Constructor
+     * @param subfreqs The sub-frequency information as a vector of
+     *              subfreq index maps.
+     */
+    subfreqState(std::vector<uint32_t> subfreqs) : _subfreqs(subfreqs){};
+
+    /**
+     * @brief Constructor
+     * @param num_subfreqs The number of sub-frequencies. The indices will end up
+     *                  running from 0 to num_subfreqs - 1
+     */
+    subfreqState(size_t num_subfreqs) : _subfreqs(num_subfreqs) {
+        std::iota(_subfreqs.begin(), _subfreqs.end(), 0);
+    }
+
+
+    /**
+     * @brief Get sub-frequency information (read only).
+     *
+     * @return The sub-frequency information as a vector of subfreq index maps.
+     */
+    const std::vector<uint32_t>& get_subfreqs() const {
+        return _subfreqs;
+    }
+
+private:
+    /// Serialize the data of this state in a json object
+    nlohmann::json data_to_json() const override {
+        nlohmann::json j(_subfreqs);
+        return j;
+    }
+
+    /// Time index map of the dataset state.
+    std::vector<uint32_t> _subfreqs;
+};
+
+/**
+ * @brief A dataset state that keeps the RFI frame-dropping information of a datatset.
+ *
+ * @author Rick Nitsche
+ */
+class RFIFrameDropState : public datasetState {
+public:
+    /**
+     * @brief Constructor
+     * @param data  The RFI frame-dropping information as serialized by
+     *              RFIFrameDropState::to_json().
+     */
+    RFIFrameDropState(const nlohmann::json& data) {
+        try {
+            enabled = data["enabled"].get<bool>();
+            thresholds = data["thresholds"].get<std::vector<std::pair<float, float>>>();
+        } catch (std::exception& e) {
+            throw std::runtime_error(
+                fmt::format(fmt("RFIFrameDropState: Failure parsing json data ({:s}): {:s}"),
+                            data.dump(4), e.what()));
+        }
+    }
+
+    /**
+     * @brief Constructor
+     * @param enabled       True, if RFI frame-dropping enabled
+     * @param thresholds    Vector of pairs: thresholds and fractions
+     */
+    RFIFrameDropState(bool enabled, std::vector<std::pair<float, float>> thresholds) :
+        enabled(enabled),
+        thresholds(thresholds) {}
+
+    /**
+     * @brief Get RFI frame-dropping enabled information.
+     *
+     * @return True if RFI frame-dropping enabled.
+     */
+    bool get_enabled() const {
+        return enabled;
+    }
+
+    /**
+     * @brief Get RFI frame-dropping thresholds (read only).
+     *
+     * @return Vector of pairs containing <threshold, fraction>, each, in this order.
+     */
+    const std::vector<std::pair<float, float>>& get_thresholds() const {
+        return thresholds;
+    }
+
+private:
+    /// Serialize the data of this state in a json object
+    nlohmann::json data_to_json() const override {
+        nlohmann::json j;
+        j["enabled"] = enabled;
+        j["thresholds"] = thresholds;
+        return j;
+    }
+
+    /// Tells if frame dropping is enabled in the RFIFrameDrop stage.
+    bool enabled;
+
+    std::vector<std::pair<float, float>> thresholds;
+};
+
 #endif // DATASETSTATE_HPP

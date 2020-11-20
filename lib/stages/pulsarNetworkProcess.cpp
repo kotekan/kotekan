@@ -1,12 +1,13 @@
 #include "pulsarNetworkProcess.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for mark_frame_empty, wait_for_full_frame, register_consumer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO, CHECK_MEM
-#include "tx_utils.hpp"        // for add_nsec, get_vlan_from_ip, parse_chime_host_name, CLOCK_...
-#include "vdif_functions.h"    // for VDIFHeader
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "buffer.h"             // for mark_frame_empty, wait_for_full_frame, register_consumer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for FATAL_ERROR, INFO, CHECK_MEM
+#include "pulsar_functions.hpp" // for PSRHeader
+#include "tx_utils.hpp"         // for add_nsec, get_vlan_from_ip, parse_chime_host_name, CLOCK_...
 
 #include <arpa/inet.h>  // for inet_pton
 #include <atomic>       // for atomic_bool
@@ -150,9 +151,9 @@ void pulsarNetworkProcess::main_thread() {
     t0.tv_sec = 0;
     t0.tv_nsec = 0; /*  nanoseconds */
 
-    unsigned long time_interval =
-        num_packet_per_stream * timesamples_per_pulsar_packet * 2560; // time per buffer frame in ns
-    // 2560 is fpga sampling time in ns
+    const uint32_t fpga_ns = Telescope::instance().seq_length_nsec();
+    unsigned long time_interval = num_packet_per_stream * timesamples_per_pulsar_packet
+                                  * fpga_ns; // time per buffer frame in ns
 
     int my_sequence_id =
         (int)(my_node_id / 128) + 2 * ((my_node_id % 128) / 8) + 32 * (my_node_id % 8);
@@ -178,26 +179,26 @@ void pulsarNetworkProcess::main_thread() {
     clock_gettime(CLOCK_MONOTONIC, &t0);
 
     // added to take care of the missed frames
-    VDIFHeader* header = reinterpret_cast<VDIFHeader*>(packet_buffer);
-    int64_t vdif_last_seconds = header->seconds;
-    int64_t vdif_last_frame = header->data_frame;
+    PSRHeader* psr_header = reinterpret_cast<PSRHeader*>(packet_buffer);
+    int64_t psr_header_last_seconds = psr_header->seconds;
+    int64_t psr_header_last_frame = psr_header->data_frame;
 
     while (!stop_thread) {
         packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
         if (packet_buffer == nullptr)
             break;
 
-        header = reinterpret_cast<VDIFHeader*>(packet_buffer);
+        psr_header = reinterpret_cast<PSRHeader*>(packet_buffer);
         time_interval = 2560
-                        * (390625 * (header->seconds - vdif_last_seconds)
-                           + 625 * (header->data_frame - vdif_last_frame));
+                        * (390625 * (psr_header->seconds - psr_header_last_seconds)
+                           + 625 * (psr_header->data_frame - psr_header_last_frame));
 
         add_nsec(t0, time_interval);
         t1.tv_sec = t0.tv_sec;
         t1.tv_nsec = t0.tv_nsec;
 
-        vdif_last_seconds = header->seconds;
-        vdif_last_frame = header->data_frame;
+        psr_header_last_seconds = psr_header->seconds;
+        psr_header_last_frame = psr_header->data_frame;
 
         for (int frame = 0; frame < 80; frame++) {
             for (int beam = 0; beam < _num_beams; beam++) {
@@ -214,8 +215,8 @@ void pulsarNetworkProcess::main_thread() {
 
                 long wait_per_packet = (long)(153600);
 
-                // 61521.25 is the theoritical seperation of packets in ns
-                // I have used 61440 for convinence and also hope this will take care for
+                // 61521.25 is the theoretical seperation of packets in ns
+                // I have used 61440 for convenience and also hope this will take care for
                 // any clock glitches.
                 add_nsec(t1, wait_per_packet);
             }

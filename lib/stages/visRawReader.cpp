@@ -1,42 +1,44 @@
 #include "visRawReader.hpp"
 
-#include "Config.hpp"          // for Config
-#include "Hash.hpp"            // for Hash, operator!=, operator<
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "Config.hpp"       // for Config
+#include "Hash.hpp"         // for Hash, operator<, operator==
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, wait_for_e...
 #include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for state_id_t, datasetManager, dset_id_t
-#include "datasetState.hpp"    // for acqDatasetIdState, eigenvalueState, freqState, inputState
+#include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager, DS_UNIQUE_NAME
+#include "datasetState.hpp"    // for freqState, timeState, eigenvalueState, inputState, metada...
 #include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
-#include "kotekanLogging.hpp"  // for DEBUG, INFO, FATAL_ERROR
+#include "kotekanLogging.hpp"  // for INFO, DEBUG, FATAL_ERROR, ERROR, WARN
 #include "metadata.h"          // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
-#include "visBuffer.hpp"       // for visFrameView, visMetadata
-#include "visUtil.hpp"         // for freq_ctype, prod_ctype, rstack_ctype, stack_ctype, time_c...
+#include "visBuffer.hpp"       // for VisFrameView, VisMetadata
+#include "visUtil.hpp"         // for time_ctype, frameID, freq_ctype, prod_ctype, rstack_ctype
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span<>::iterator, span
 #include "json.hpp"     // for basic_json<>::object_t, json, basic_json, basic_json<>::v...
 
-#include <algorithm>  // for fill, min, max
-#include <atomic>     // for atomic_bool
-#include <cstdint>    // for uint32_t, uint8_t
-#include <cstring>    // for strerror, memcpy
-#include <cxxabi.h>   // for __forced_unwind
-#include <errno.h>    // for errno
-#include <exception>  // for exception
-#include <fcntl.h>    // for open, O_RDONLY
-#include <fstream>    // for ifstream, ios_base::failure, ios_base, basic_ios, basic_i...
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <future>
+#include <algorithm>    // for fill, min, max
+#include <atomic>       // for atomic_bool
+#include <cstdint>      // for uint32_t, uint8_t
+#include <cstring>      // for strerror, memcpy
+#include <cxxabi.h>     // for __forced_unwind
+#include <errno.h>      // for errno
+#include <exception>    // for exception
+#include <fcntl.h>      // for open, O_RDONLY
+#include <fstream>      // for ifstream, ios_base::failure, ios_base, basic_ios, basic_i...
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <future>       // for async, future
 #include <memory>       // for allocator_traits<>::value_type
 #include <regex>        // for match_results<>::_Base_type
-#include <stdexcept>    // for runtime_error, invalid_argument
+#include <stdexcept>    // for runtime_error, invalid_argument, out_of_range
 #include <sys/mman.h>   // for madvise, mmap, munmap, MADV_DONTNEED, MADV_WILLNEED, MAP_...
 #include <sys/stat.h>   // for stat
 #include <system_error> // for system_error
 #include <time.h>       // for nanosleep, timespec
-#include <tuple>        // for get
+#include <tuple>        // for get, make_tuple, tuple
+#include <type_traits>  // for __decay_and_strip<>::__type
 #include <unistd.h>     // for close, off_t
 
 using kotekan::bufferContainer;
@@ -57,6 +59,9 @@ visRawReader::visRawReader(Config& config, const std::string& unique_name,
     sleep_time = config.get_default<float>(unique_name, "sleep_time", -1);
     update_dataset_id = config.get_default<bool>(unique_name, "update_dataset_id", true);
     use_comet = config.get_default<bool>(DS_UNIQUE_NAME, "use_dataset_broker", true);
+    local_dm = config.get_default<bool>(unique_name, "use_local_dataset_man", false);
+    if (local_dm && use_comet)
+        FATAL_ERROR("Cannot use local dataset manager and dataset broker together.")
 
     chunked = config.exists(unique_name, "chunk_size");
     if (chunked) {
@@ -112,12 +117,30 @@ visRawReader::visRawReader(Config& config, const std::string& unique_name,
         _num_stack = _t.at("structure").at("num_stack").get<uint32_t>();
     }
 
+    // Match frequencies to IDs in the Telescope...
+    auto& tel = Telescope::instance();
+    std::map<double, uint32_t> inv_freq_map;
+
+    // ... first construct a map of central frequencies to IDs known by the
+    // telescope object
+    for (uint32_t id = 0; id < tel.num_freq(); id++) {
+        inv_freq_map[tel.to_freq(id)] = id;
+    }
+
+    // ... then use this to match the central frequencies given in the file
     for (auto f : freqs) {
-        // TODO: add freq IDs to raw file format instead of restoring them here
-        // TODO: CHIME specific.
-        uint32_t freq_id = 1024.0 / 400.0 * (800.0 - f.centre);
-        DEBUG("restored freq_id for f_centre={:.2f} : {:d}", f.centre, freq_id);
-        _freqs.push_back({freq_id, f});
+
+        auto it = inv_freq_map.find(f.centre);
+
+        if (it == inv_freq_map.end()) {
+            FATAL_ERROR("Could not match a frequency ID to channel in file at {} MHz. "
+                        "Check you are specifying the correct telescope.",
+                        f.centre);
+            return;
+        }
+
+        DEBUG("restored freq_id for f_centre={:.2f} : {:d}", f.centre, it->second);
+        _freqs.push_back({it->second, f});
     }
 
     // check git version tag
@@ -144,10 +167,10 @@ visRawReader::visRawReader(Config& config, const std::string& unique_name,
     }
 
     // Check metadata is the correct size
-    if (sizeof(visMetadata) != metadata_size) {
+    if (sizeof(VisMetadata) != metadata_size) {
         std::string msg = fmt::format(fmt("Metadata in file {:s} is larger ({:d} bytes) than "
-                                          "visMetadata ({:d} bytes)."),
-                                      filename, metadata_size, sizeof(visMetadata));
+                                          "VisMetadata ({:d} bytes)."),
+                                      filename, metadata_size, sizeof(VisMetadata));
         throw std::runtime_error(msg);
     }
 
@@ -170,7 +193,6 @@ visRawReader::visRawReader(Config& config, const std::string& unique_name,
         if (!use_comet) {
             // Add the states: metadata, time, prod, freq, input,
             // eigenvalue and stack.
-            std::vector<state_id_t> states;
             if (!_stack.empty())
                 states.push_back(dm.create_state<stackState>(_num_stack, std::move(_rstack)).first);
             states.push_back(dm.create_state<inputState>(_inputs).first);
@@ -225,6 +247,10 @@ dset_id_t visRawReader::get_dataset_state(dset_id_t ds_id) {
 
     if (!update_dataset_id || ds_id == dset_id_t::null) {
         new_id = ds_id;
+    } else if (local_dm) {
+        INFO("Registering new dataset with local DM based on {}.", ds_id);
+        datasetManager& dm = datasetManager::instance();
+        new_id = dm.add_dataset(states, ds_id);
     } else if (use_comet) {
         INFO("Registering new dataset with broker based on {}.", ds_id);
         datasetManager& dm = datasetManager::instance();
@@ -321,7 +347,9 @@ void visRawReader::main_thread() {
         } else {
             // Create frame and set structural metadata
             size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
-            auto frame = visFrameView(out_buf, frame_id, _inputs.size(), num_vis, _ev.size());
+
+            auto frame = VisFrameView::create_frame_view(out_buf, frame_id, _inputs.size(), num_vis,
+                                                         _ev.size());
 
             // Fill data with zeros
             std::fill(frame.vis.begin(), frame.vis.end(), 0.0);
@@ -345,7 +373,7 @@ void visRawReader::main_thread() {
         }
 
         // Set the dataset ID to the updated value
-        dset_id_t& ds_id = ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id;
+        dset_id_t& ds_id = ((VisMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id;
         ds_id = get_dataset_state(ds_id);
 
         // Try and clear out the cached data as we don't need it again
@@ -460,7 +488,7 @@ void ensureOrdered::main_thread() {
         if ((wait_for_full_frame(in_buf, unique_name.c_str(), first_ind)) == nullptr) {
             return;
         }
-        auto frame = visFrameView(in_buf, first_ind);
+        auto frame = VisFrameView(in_buf, first_ind);
         if (frame.fpga_seq_length == 0) {
             INFO("Got empty frame ({:d}).", first_ind);
             first_ind++;
@@ -485,7 +513,7 @@ void ensureOrdered::main_thread() {
         if ((wait_for_full_frame(in_buf, unique_name.c_str(), frame_id)) == nullptr) {
             break;
         }
-        auto frame = visFrameView(in_buf, frame_id);
+        auto frame = VisFrameView(in_buf, frame_id);
 
         // Figure out the ordered index of this frame
         t = {std::get<0>(frame.time), ts_to_double(std::get<1>(frame.time))};
@@ -499,8 +527,8 @@ void ensureOrdered::main_thread() {
             if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
                 return;
             }
-            allocate_new_metadata_object(out_buf, output_frame_id);
-            auto output_frame = visFrameView(out_buf, output_frame_id, frame);
+            auto output_frame =
+                VisFrameView::copy_frame(in_buf, frame_id, out_buf, output_frame_id);
             mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
 
             // release input frame
@@ -527,12 +555,12 @@ void ensureOrdered::main_thread() {
             waiting.erase(ready);
             INFO("Frame {:d} is ready to be sent. Releasing buffer.", output_ind);
             // copy frame into output buffer
-            auto past_frame = visFrameView(in_buf, waiting_id);
+            auto past_frame = VisFrameView(in_buf, waiting_id);
             if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
                 return;
             }
-            allocate_new_metadata_object(out_buf, output_frame_id);
-            auto output_frame = visFrameView(out_buf, output_frame_id, past_frame);
+            auto output_frame =
+                VisFrameView::copy_frame(in_buf, waiting_id, out_buf, output_frame_id);
             mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
 
             mark_frame_empty(in_buf, unique_name.c_str(), waiting_id);

@@ -62,7 +62,7 @@ void clRfiInputSum::build(device_interface& param_Device) {
     valDeviceID = param_Device.getDeviceID(param_Device.getGpuID());
     CHECK_CL_ERROR(clBuildProgram(program, 1, &valDeviceID, cl_options.c_str(), nullptr, nullptr));
     // Create Kernel
-    kernel = clCreateKernel(program, "rfi_chime_inputsum", &err);
+    kernel = clCreateKernel(program, "rfi_chime_input_sum", &err);
     CHECK_CL_ERROR(err);
     // Set static kernel arguments
     CHECK_CL_ERROR(clSetKernelArg(kernel, (cl_uint)2, sizeof(int32_t), &_num_elements));

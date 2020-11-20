@@ -1,42 +1,46 @@
 #include "applyGains.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for mark_frame_empty, allocate_new_metadata_object
-#include "bufferContainer.hpp" // for bufferContainer
-#include "configUpdater.hpp"   // for configUpdater
-#include "datasetManager.hpp"  // for dset_id_t, datasetManager, state_id_t
-#include "datasetState.hpp"    // for gainState, freqState, inputState
-#include "kotekanLogging.hpp"  // for WARN, FATAL_ERROR, INFO
-#include "modp_b64.hpp"
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for operator<
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for mark_frame_empty, wait_for_full_frame, allocate_new...
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "configUpdater.hpp"     // for configUpdater
+#include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
+#include "datasetState.hpp"      // for gainState, freqState, inputState
+#include "kotekanLogging.hpp"    // for WARN, FATAL_ERROR, DEBUG, INFO, ERROR
+#include "modp_b64.hpp"          // for modp_b64_decode, modp_b64_decode_len
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
-#include "restClient.hpp"
-#include "visBuffer.hpp" // for visFrameView, visField, visField::vis, visField...
-#include "visFileH5.hpp" // IWYU pragma: keep
-#include "visUtil.hpp"   // for cfloat, modulo, double_to_ts, ts_to_double, fra...
+#include "restClient.hpp"        // for restClient::restReply, restClient
+#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::we...
+#include "visFileH5.hpp"         // IWYU pragma: keep
+#include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double, frameID
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>                 // for copy, max, copy_backward
+#include <algorithm>                 // for max, copy, copy_backward
+#include <assert.h>                  // for assert
+#include <chrono>                    // for operator""s, chrono_literals
 #include <cmath>                     // for abs, pow
-#include <complex>                   // for operator*, operator+, complex, operator""if
-#include <cstdint>                   // for uint64_t
+#include <complex>                   // for operator*, operator+, complex, operator""if, operat...
+#include <cstdint>                   // for uint64_t, uint32_t, uint8_t
 #include <exception>                 // for exception
-#include <functional>                // for _Bind_helper<>::type, _Placeholder, bind, _1
-#include <highfive/H5DataSet.hpp>    // for DataSet, DataSet::getSpace
-#include <highfive/H5DataSpace.hpp>  // for DataSpace, DataSpace::getDimensions
-#include <highfive/H5File.hpp>       // for File, NodeTraits::getDataSet, File::File, File:...
+#include <functional>                // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <highfive/H5DataSet.hpp>    // for DataSet
+#include <highfive/H5File.hpp>       // for File, NodeTraits::getDataSet, File::File, File::Rea...
 #include <highfive/H5Object.hpp>     // for HighFive
 #include <highfive/H5Selection.hpp>  // for SliceTraits::read
 #include <highfive/bits/H5Utils.hpp> // for type_of_array<>::type
-#include <memory>                    // for allocator_traits<>::value_type
+#include <memory>                    // for operator==, __shared_ptr_access, allocator_traits<>...
 #include <pthread.h>                 // for pthread_setaffinity_np
 #include <regex>                     // for match_results<>::_Base_type
 #include <sched.h>                   // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdexcept>                 // for invalid_argument, out_of_range, runtime_error
+#include <stdexcept>                 // for runtime_error, invalid_argument, out_of_range
+#include <string.h>                  // for memcpy
 #include <sys/stat.h>                // for stat
-#include <tuple>                     // for get
+#include <thread>                    // for thread, sleep_for
+#include <tuple>                     // for get, tie, tuple
 
 
 using nlohmann::json;
@@ -114,6 +118,7 @@ bool applyGains::receive_update(json& json) {
     std::string gains_path;
     std::string update_id;
     double transition_interval;
+    bool new_state;
 
     // receive new gains timestamp ("start_time" might move to "start_time")
     try {
@@ -157,8 +162,20 @@ bool applyGains::receive_update(json& json) {
         return false;
     }
 
+    // Should we register a new dataset?
+    try {
+        if (!json.at("new_state").is_boolean())
+            throw std::invalid_argument(fmt::format(fmt("applyGains: received bad gains "
+                                                        "new_state: {:s}"),
+                                                    json.at("new_state").dump()));
+        new_state = json.at("new_state").get<bool>();
+    } catch (std::exception& e) {
+        WARN("Failure reading 'new_state' from update: {:s}", e.what());
+        return false;
+    }
+
     // Signal to fetch thread to get gains from broker
-    update_fetch_queue.put({update_id, transition_interval, new_ts});
+    update_fetch_queue.put({update_id, transition_interval, new_ts, new_state});
 
     INFO("Received gain update with tag {:s}.", update_id);
 
@@ -232,7 +249,7 @@ void applyGains::apply_thread() {
         }
 
         // Create view to input frame
-        auto input_frame = visFrameView(in_buf, input_frame_id);
+        auto input_frame = VisFrameView(in_buf, input_frame_id);
 
         // Check that the input frame has the right sizes
         if (!validate_frame(input_frame))
@@ -265,13 +282,15 @@ void applyGains::apply_thread() {
         }
         allocate_new_metadata_object(out_buf, output_frame_id);
 
-        // Copy frame and create view
-        auto output_frame = visFrameView(out_buf, output_frame_id, input_frame.num_elements,
-                                         input_frame.num_prod, input_frame.num_ev);
+        // Create view to output frame
+        auto output_frame =
+            VisFrameView::create_frame_view(out_buf, output_frame_id, input_frame.num_elements,
+                                            input_frame.num_prod, input_frame.num_ev);
+
 
         // Copy over the data we won't modify
         output_frame.copy_metadata(input_frame);
-        output_frame.copy_data(input_frame, {visField::vis, visField::weight});
+        output_frame.copy_data(input_frame, {VisField::vis, VisField::weight});
 
         // Check if we have already registered this gain update against this
         // input dataset, do so if we haven't, and then label the output data
@@ -343,7 +362,7 @@ void applyGains::fetch_thread() {
         if (!update)
             break;
 
-        auto [update_id, transition_interval, new_ts] = *update;
+        auto [update_id, transition_interval, new_ts, new_state] = *update;
 
         std::optional<applyGains::GainData> gain_data;
         if (read_from_file) {
@@ -359,7 +378,21 @@ void applyGains::fetch_thread() {
         }
 
         // update gains
-        state_id_t state_id = dm.create_state<gainState>(update_id, transition_interval).first;
+        state_id_t state_id;
+        if (new_state) {
+            state_id = dm.create_state<gainState>(update_id, transition_interval).first;
+        }
+        // Use the current dataset ID
+        else {
+            const auto last_update = gains_fifo.get_update(double_to_ts(new_ts)).second;
+            if (last_update == nullptr) {
+                WARN("Failed to retrieve the last update, gains queue empty. Creating new gain "
+                     "state.");
+                state_id = dm.create_state<gainState>(update_id, transition_interval).first;
+            } else {
+                state_id = last_update->state_id;
+            }
+        }
         GainUpdate gain_update{std::move(gain_data.value()), transition_interval, state_id};
 
         {
@@ -538,7 +571,7 @@ void applyGains::initialise() {
     }
 
     // Create view to input frame
-    auto frame = visFrameView(in_buf, 0);
+    auto frame = VisFrameView(in_buf, 0);
 
     auto& dm = datasetManager::instance();
     auto* fstate = dm.dataset_state<freqState>(frame.dataset_id);
@@ -568,7 +601,7 @@ void applyGains::initialise() {
 }
 
 
-bool applyGains::validate_frame(const visFrameView& frame) const {
+bool applyGains::validate_frame(const VisFrameView& frame) const {
 
     // TODO: this should validate that the hashes of the input and frequencies
     // dataset states have not changed whenever the dataset_id changes
@@ -652,6 +685,18 @@ applyGains::calculate_gain(double timestamp, uint32_t freq_ind, std::vector<cflo
 
     if (update_new == nullptr) {
         WARN("No gains update is as old as the currently processed frame.");
+
+        // Look up frequency ID as this method only gets passed the index,
+        // and print more info about late frame
+        for (const auto& [fm_id, fm_ind] : freq_map) {
+            if (fm_ind == freq_ind) {
+                WARN("Frame frequency ID: {}\nFrame timestamp: {}\nUpdate queue: {}", fm_id,
+                     timestamp, gains_fifo);
+                break;
+            }
+        }
+
+
         return {true, -1, state_id_t::null};
     }
 

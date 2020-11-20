@@ -1,9 +1,8 @@
 #include "fakeGpuPattern.hpp"
 
-#include "Config.hpp"              // for Config
-#include "chimeMetadata.h"         // for chimeMetadata
-#include "fpga_header_functions.h" // for freq_from_bin
-#include "visUtil.hpp"             // for prod_index
+#include "Config.hpp"        // for Config
+#include "chimeMetadata.hpp" // for chimeMetadata
+#include "visUtil.hpp"       // for prod_index
 
 #include "gsl-lite.hpp" // for span, span<>::iterator
 
@@ -40,7 +39,7 @@ BlockGpuPattern::BlockGpuPattern(kotekan::Config& config, const std::string& pat
 
 
 void BlockGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, int frame_number,
-                           int freq_id) {
+                           freq_id_t freq_id) {
 
     (void)metadata;
     (void)frame_number;
@@ -67,7 +66,7 @@ LostSamplesGpuPattern::LostSamplesGpuPattern(kotekan::Config& config, const std:
     FakeGpuPattern(config, path) {}
 
 void LostSamplesGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata,
-                                 int frame_number, int freq_id) {
+                                 int frame_number, freq_id_t freq_id) {
     (void)freq_id;
 
     uint32_t norm = _samples_per_data_set - frame_number;
@@ -93,7 +92,7 @@ LostWeightsGpuPattern::LostWeightsGpuPattern(kotekan::Config& config, const std:
     _b(config.get_default<uint32_t>(path, "b", 1)) {}
 
 void LostWeightsGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata,
-                                 int frame_number, int freq_id) {
+                                 int frame_number, freq_id_t freq_id) {
     (void)freq_id;
 
     int32_t lost = ((frame_number + 1) % 4 < 2) ? _b : 0;
@@ -121,7 +120,7 @@ AccumulateGpuPattern::AccumulateGpuPattern(kotekan::Config& config, const std::s
 
 
 void AccumulateGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, int frame_number,
-                                int freq_id) {
+                                freq_id_t freq_id) {
 
     (void)metadata;
     (void)freq_id;
@@ -154,7 +153,7 @@ GaussianGpuPattern::GaussianGpuPattern(kotekan::Config& config, const std::strin
 
 
 void GaussianGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, int frame_number,
-                              int freq_id) {
+                              freq_id_t freq_id) {
 
     (void)metadata;
     (void)frame_number;
@@ -193,8 +192,10 @@ PulsarGpuPattern::PulsarGpuPattern(kotekan::Config& config, const std::string& p
 
 
 void PulsarGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, int frame_number,
-                            int freq_id) {
+                            freq_id_t freq_id) {
     (void)frame_number;
+
+    auto& tel = Telescope::instance();
 
     // Fill frame with zeros
     std::fill(data.begin(), data.end(), 0);
@@ -202,13 +203,12 @@ void PulsarGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, i
     DEBUG2("GPS time %ds%dns", metadata->gps_time.tv_sec, metadata->gps_time.tv_nsec);
 
     // Figure out if we are in a pulse
-    double toa = _polyco.next_toa(metadata->gps_time, freq_from_bin(freq_id));
+    double toa = _polyco.next_toa(metadata->gps_time, tel.to_freq(freq_id));
     double last_toa = toa - 1. / _rot_freq;
     DEBUG2("TOA: %f, last TOA: %f", toa, last_toa);
 
-    // TODO: CHIME specific
     // If so, add 10 to real part
-    if (toa < _samples_per_data_set * 2.56e-6 || last_toa + _pulse_width > 0) {
+    if (toa < _samples_per_data_set * tel.seq_length_nsec() * 1e-9 || last_toa + _pulse_width > 0) {
         // DEBUG("Found pulse!");
         for (size_t i = 0; i < _num_elements; i++) {
             for (size_t j = i; j < _num_elements; j++) {
@@ -224,7 +224,7 @@ MultiFreqGpuPattern::MultiFreqGpuPattern(kotekan::Config& config, const std::str
     FakeGpuPattern(config, path) {}
 
 void MultiFreqGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, int frame_number,
-                               int freq_id) {
+                               freq_id_t freq_id) {
     (void)frame_number;
     (void)metadata;
 

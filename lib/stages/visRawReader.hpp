@@ -34,27 +34,31 @@
  *
  * @par Buffers
  * @buffer out_buf The data read from the raw file.
- *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_format VisBuffer structured
+ *         @buffer_metadata VisMetadata
  *
- * @conf    readahead_blocks    Int. Number of blocks to advise OS to read ahead
- *                              of current read.
- * @conf    chunk_size          Array of [int, int, int]. Read chunk size (freq,
- *                              prod, time). If not specified will read file
- *                              contiguously.
- * @conf    infile              String. Path to the (data-meta-pair of) files to
- *                              read (e.g. "/path/to/0000_000", without .data or
- *                              .meta).
- * @conf    max_read_rate       Float. Maximum read rate for the process in MB/s.
- *                              If the value is zero (default), then no rate
- *                              limiting is applied.
- * @conf    sleep_time          Float. After the data is read pause this long in
- *                              seconds before sending shutdown. If < 0, never
- *                              send a shutdown signal. Default is -1.
- * @conf    update_dataset_id   Bool. Update the dataset ID with information about the
-                                file, for example which time samples does it contain.
- * @conf    use_dataset_broker  Bool. Restore dataset ID from dataset broker (i.e. comet).
- *                              Should be disabled only for testing. Default is true.
+ * @conf    readahead_blocks       Int. Number of blocks to advise OS to read ahead
+ *                                 of current read.
+ * @conf    chunk_size             Array of [int, int, int]. Read chunk size (freq,
+ *                                 prod, time). If not specified will read file
+ *                                 contiguously.
+ * @conf    infile                 String. Path to the (data-meta-pair of) files to
+ *                                 read (e.g. "/path/to/0000_000", without .data or
+ *                                 .meta).
+ * @conf    max_read_rate          Float. Maximum read rate for the process in MB/s.
+ *                                 If the value is zero (default), then no rate
+ *                                 limiting is applied.
+ * @conf    sleep_time             Float. After the data is read pause this long in
+ *                                 seconds before sending shutdown. If < 0, never
+ *                                 send a shutdown signal. Default is -1.
+ * @conf    update_dataset_id      Bool. Update the dataset ID with information about the
+                                   file, for example which time samples does it contain.
+ * @conf    use_dataset_broker     Bool. Restore dataset ID from dataset broker (i.e. comet).
+ *                                 Should be disabled only for testing. Default is true.
+ * @conf    use_local_dataset_man  Bool. Instead of using comet, register metadata on top
+ *                                 of dataset ID in the file. Should only be used for
+ *                                 testing or if original dataset IDs can be lost.
+ *                                 Default is False.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche
  */
@@ -176,6 +180,9 @@ private:
     // whether to use comet to track dataset IDs
     bool use_comet;
 
+    // whether to use the local dataset manager
+    bool local_dm;
+
     // Read chunk size (freq, prod, time)
     std::vector<int> chunk_size;
     // time chunk size
@@ -195,6 +202,9 @@ private:
 
     // Number of blocks to read ahead while reading from disk
     size_t readahead_blocks;
+
+    // Dataset states constructed from metadata
+    std::vector<state_id_t> states;
 
     // Dataset ID to assign to output frames if not using comet
     dset_id_t static_out_dset_id;

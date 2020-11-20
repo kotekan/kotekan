@@ -20,7 +20,7 @@ global_params = {
     "freq_ids": [0, 250],
     "buffer_depth": 5,
     "vis_pool": {
-        "kotekan_metadata_pool": "visMetadata",
+        "kotekan_metadata_pool": "VisMetadata",
         "num_metadata_objects": "500 * buffer_depth",
     },
     "dataset_manager": {"use_dataset_broker": False},

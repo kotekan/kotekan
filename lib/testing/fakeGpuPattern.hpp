@@ -11,8 +11,9 @@
 #ifndef FAKE_GPU_PATTERN_HPP
 #define FAKE_GPU_PATTERN_HPP
 
-#include "Config.hpp"         // for Config
-#include "chimeMetadata.h"    // for chimeMetadata
+#include "Config.hpp" // for Config
+#include "Telescope.hpp"
+#include "chimeMetadata.hpp"  // for chimeMetadata
 #include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "pulsarTiming.hpp"   // for Polyco
@@ -71,7 +72,7 @@ public:
      * @param  freq_id    Global frequency ID.
      **/
     virtual void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
-                      const int freq_id) = 0;
+                      freq_id_t freq_id) = 0;
 
 protected:
     // Configuration info
@@ -95,7 +96,7 @@ public:
 
     /// @sa fakeGpuPattern::fill
     void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
-              const int freq_id) override;
+              freq_id_t freq_id) override;
 };
 
 
@@ -113,7 +114,7 @@ public:
 
     /// @sa fakeGpuPattern::fill
     void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
-              const int freq_id) override;
+              freq_id_t freq_id) override;
 };
 
 
@@ -131,7 +132,7 @@ public:
  *     W = N (2a - b)^2 / 16.
  *
  * This also sets the RFI flagged count to the number of sample lost to allow
- * the `visFrameView.rfi_total` accumulation to be checked.
+ * the `VisFrameView.rfi_total` accumulation to be checked.
  *
  * @conf  b  Int. Number of samples to "drop" on the 2nd and 3rd frames above.
  *                Default is 1.
@@ -143,7 +144,7 @@ public:
 
     /// @sa fakeGpuPattern::fill
     void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
-              const int freq_id) override;
+              freq_id_t freq_id) override;
 
 private:
     uint32_t _b;
@@ -166,7 +167,7 @@ public:
 
     /// @sa fakeGpuPattern::fill
     void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
-              const int freq_id) override;
+              freq_id_t freq_id) override;
 };
 
 
@@ -182,7 +183,7 @@ public:
 
     /// @sa fakeGpuPattern::fill
     void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
-              const int freq_id) override;
+              freq_id_t freq_id) override;
 
 private:
     std::random_device rd;
@@ -214,7 +215,7 @@ public:
 
     /// @sa fakeGpuPattern::fill
     void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
-              const int freq_id) override;
+              freq_id_t freq_id) override;
 
 private:
     float _pulse_width; // in s
@@ -237,6 +238,6 @@ public:
 
     /// @sa fakeGpuPattern::fill
     void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
-              const int freq_id) override;
+              freq_id_t freq_id) override;
 };
 #endif // FAKE_GPU_PATTERN

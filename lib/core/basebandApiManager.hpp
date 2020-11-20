@@ -8,7 +8,6 @@
 #define BASEBAND_API_MANAGER_HPP
 
 #include "basebandReadoutManager.hpp" // for basebandReadoutManager, basebandDumpStatus
-#include "gpsTime.h"                  // for FPGA_PERIOD_NS
 #include "prometheusMetrics.hpp"      // for Counter
 #include "restServer.hpp"             // for connectionInstance, restServer
 
@@ -173,19 +172,6 @@ private:
     /// Constructor, not used directly
     basebandApiManager();
 
-    /// Sampling frequency (Hz)
-    static constexpr double ADC_SAMPLE_RATE = 800e6;
-
-    /// Number of samples in the inital FFT in the F-engine.
-    static constexpr double FPGA_NSAMP_FFT = 2048;
-
-    /// FPGA clock rate (Hz)
-    static constexpr double FPGA_FRAME_RATE = 1. / (FPGA_PERIOD_NS * 1E-9); // =390,625
-    // Can also be done as FPGA_FRAME_RATE = ADC_SAMPLE_RATE / FPGA_NSAMP_FFT
-
-    /// Width of frequency bin, used to calculate frequency of an index, relative to FPGA_FREQ0
-    static constexpr double FPGA_DELTA_FREQ = -ADC_SAMPLE_RATE / FPGA_NSAMP_FFT;
-
     /// Physical constant: elementary charge (C)
     static constexpr double ELEMENTARY_CHARGE = 1.6021766208e-19;
     /// Physical constant: the electric constant (vacuum permittivity, F/m)
@@ -206,9 +192,6 @@ private:
 
     /// Reference frequency in the L1 subsystem. (TODO verify. May be off by 1 bin.)
     static constexpr double L1_REFERERENCE_FREQ = 400e6;
-
-    /// TODO verify. I'm assuming dm_error is 1-sigma.
-    static constexpr double N_DM_ERROR_TOL = 3;
 
     /// convenience wrapper for a pair of starting FPGA frame and length of the dump in FPGA frames
     struct basebandSlice {
