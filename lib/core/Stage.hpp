@@ -45,9 +45,9 @@ public:
     /**
      * @brief Generates a graphviz "dot" string for this stage.
      *
-     * By default this is just the stage name plus some default formating.
+     * By default this is just the stage name plus some default formatting.
      *
-     * @return "dot" style graph discription for this stage.
+     * @return "dot" style graph description for this stage.
      */
     virtual std::string dot_string(const std::string& pre_fix) const;
 

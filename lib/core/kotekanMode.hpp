@@ -5,6 +5,7 @@
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
 #include "metadata.h"          // for metadataPool  // IWYU pragma: keep
+#include "restServer.hpp"
 
 #include <map>    // for map
 #include <string> // for string
@@ -35,8 +36,11 @@ public:
     // Join blocks until all stages have stopped.
     void join();
 
-protected:
-    
+    // HTTP callback that dumps the current buffer state in JSON.
+    void buffer_data_callback(connectionInstance& conn);
+
+    // HTTP callback that dumps the current pipeline graph in `dot` format.
+    void pipeline_dot_graph_callback(connectionInstance& conn);
 
 private:
     Config& config;
