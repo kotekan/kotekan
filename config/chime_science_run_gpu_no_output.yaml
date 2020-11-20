@@ -1394,7 +1394,7 @@ beam_metadata_pool:
 extra_tracking_buffers:
   metadata_pool: beam_metadata_pool
   frame_size: samples_per_data_set * num_pol
-  num_frames: 6
+  num_frames: 8
   beam_buffer_10_0:
     kotekan_buffer: standard
   beam_buffer_10_1:
@@ -1405,7 +1405,7 @@ extra_tracking_buffers:
     kotekan_buffer: standard
   beam_buffer_10_merged:
     kotekan_buffer: standard
-    num_frames: 16
+    num_frames: 20
   beam_buffer_11_0:
     kotekan_buffer: standard
   beam_buffer_11_1:
@@ -1416,7 +1416,7 @@ extra_tracking_buffers:
     kotekan_buffer: standard
   beam_buffer_11_merged:
     kotekan_buffer: standard
-    num_frames: 16
+    num_frames: 20
 
 extra_tracking_beams:
   cpu_affinity: [5,11]
