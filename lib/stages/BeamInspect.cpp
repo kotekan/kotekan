@@ -1,10 +1,10 @@
 #include "BeamInspect.hpp"
 
-#include "visUtil.hpp" // for frameID, modulo
 #include "BeamMetadata.hpp"
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.h"
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"
+#include "buffer.h"
+#include "visUtil.hpp" // for frameID, modulo
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -30,7 +30,7 @@ void BeamInspect::main_thread() {
         if (frame == nullptr)
             break;
 
-        BeamMetadata * metadata = (BeamMetadata *)get_metadata(in_buf, frame_id);
+        BeamMetadata* metadata = (BeamMetadata*)get_metadata(in_buf, frame_id);
         const uint32_t num_freq_per_stream = Telescope::instance().num_freq_per_stream();
 
         std::string frequency_bins = "";
@@ -42,8 +42,8 @@ void BeamInspect::main_thread() {
         }
 
         INFO("Beam RA: {:f}, Dec: {:f}, scaling: {:d}, freq_bins: {:s}, first value: {:d}+{:d}i",
-             metadata->ra, metadata->dec, metadata->scaling, frequency_bins,
-             frame[0] & 0x0F, (frame[0] & 0xF0) >> 4);
+             metadata->ra, metadata->dec, metadata->scaling, frequency_bins, frame[0] & 0x0F,
+             (frame[0] & 0xF0) >> 4);
 
         // TODO Maybe compute some summary statistics
 
@@ -51,4 +51,3 @@ void BeamInspect::main_thread() {
         frame_id++;
     }
 }
-

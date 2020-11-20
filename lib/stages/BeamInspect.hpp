@@ -5,7 +5,7 @@
 #include "Stage.hpp" // for Stage
 #include "bufferContainer.hpp"
 
-#include <string>   // for string
+#include <string> // for string
 
 /**
  * @class BeamInspect
