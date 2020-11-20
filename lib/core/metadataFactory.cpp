@@ -1,5 +1,6 @@
 #include "metadataFactory.hpp"
 
+#include "BeamMetadata.hpp"   // for BeamMetadata
 #include "Config.hpp"         // for Config
 #include "HFBMetadata.hpp"    // for HFBMetadata
 #include "chimeMetadata.hpp"  // for chimeMetadata
@@ -81,6 +82,10 @@ struct metadataPool* metadataFactory::new_pool(const std::string& pool_type,
 
     if (pool_type == "HFBMetadata") {
         return create_metadata_pool(num_metadata_objects, sizeof(struct HFBMetadata));
+    }
+
+    if (pool_type == "BeamMetadata") {
+        return create_metadata_pool(num_metadata_objects, sizeof(struct BeamMetadata));
     }
     // No metadata found
     throw std::runtime_error(fmt::format(fmt("No metadata object named: {:s}"), pool_type));

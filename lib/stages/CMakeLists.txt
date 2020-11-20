@@ -65,7 +65,8 @@ add_library(
     bufferBadInputs.cpp
     RfiFrameDrop.cpp
     VisSharedMemWriter.cpp
-    DataQuality.cpp)
+    DataQuality.cpp
+    BeamExtract.cpp)
 
 target_include_directories(kotekan_stages PRIVATE .)
 
