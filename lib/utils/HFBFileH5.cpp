@@ -36,6 +36,7 @@
 #include <type_traits>                 // for remove_reference<>::type
 #include <unistd.h>                    // for pwrite, TEMP_FAILURE_RETRY
 #include <utility>                     // for move, pair
+#include "visFileH5.hpp"
 
 using namespace HighFive;
 

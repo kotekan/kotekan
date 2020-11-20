@@ -11,7 +11,6 @@
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t
-#include "visFileArchive.hpp"  // for visFileArchive
 #include "visFileH5.hpp"
 #include "visUtil.hpp" // for cfloat, time_ctype, freq_ctype, input_ctype, prod_ctype
 

@@ -46,11 +46,7 @@ REGISTER_KOTEKAN_STAGE(HFBTranspose);
 
 HFBTranspose::HFBTranspose(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&HFBTranspose::main_thread, this)) {
-
-    // Fetch the buffers, register
-    in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    Transpose(config, unique_name, buffer_container) {
 
     // get chunk dimensions for write from config file
     chunk = config.get<std::vector<int>>(unique_name, "chunk_size");
@@ -61,27 +57,6 @@ HFBTranspose::HFBTranspose(Config& config, const std::string& unique_name,
     if (chunk[0] < 1 || chunk[1] < 1 || chunk[2] < 1 || chunk[3] < 1 || chunk[4] < 1)
         throw std::invalid_argument("HFBTranspose: Config: Chunk size needs "
                                     "to be equal to or greater than one.");
-    chunk_t = chunk[2];
-    chunk_f = chunk[0];
-
-    // Get file path to write to
-    filename = config.get<std::string>(unique_name, "outfile");
-
-    // Get a timeout for communication with broker
-    timeout =
-        std::chrono::duration<float>(config.get_default<float>(unique_name, "comet_timeout", 60.));
-
-    // Collect some metadata. The rest is requested from the datasetManager,
-    // once we received the first frame.
-    metadata["archive_version"] = "3.1.0";
-    metadata["notes"] = "";
-    metadata["git_version_tag"] = get_git_commit_hash();
-    char temp[256];
-    std::string username = (getlogin_r(temp, 256) == 0) ? temp : "unknown";
-    metadata["system_user"] = username;
-    gethostname(temp, 256);
-    std::string hostname = temp;
-    metadata["collection_server"] = hostname;
 }
 
 bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
@@ -100,20 +75,24 @@ bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
     const freqState* fstate;
     const beamState* bstate;
     const subfreqState* sfstate;
-    bool timed_out = fstate_fut.wait_for(timeout) == std::future_status::timeout;
-    timed_out = timed_out || (mstate_fut.wait_for(timeout) == std::future_status::timeout);
+    bool timed_out = mstate_fut.wait_for(timeout) == std::future_status::timeout;
+    INFO("mstate timed_out: {}", timed_out);
     if (!timed_out)
         mstate = mstate_fut.get();
     timed_out = timed_out || (tstate_fut.wait_for(timeout) == std::future_status::timeout);
+    INFO("tstate timed_out: {}", timed_out);
     if (!timed_out)
         tstate = tstate_fut.get();
     timed_out = timed_out || (fstate_fut.wait_for(timeout) == std::future_status::timeout);
+    INFO("fstate timed_out: {}", timed_out);
     if (!timed_out)
         fstate = fstate_fut.get();
     timed_out = timed_out || (bstate_fut.wait_for(timeout) == std::future_status::timeout);
+    INFO("bstate timed_out: {}", timed_out);
     if (!timed_out)
         bstate = bstate_fut.get();
     timed_out = timed_out || (sfstate_fut.wait_for(timeout) == std::future_status::timeout);
+    INFO("sfstate timed_out: {}", timed_out);
     if (!timed_out)
         sfstate = sfstate_fut.get();
     if (timed_out) {
@@ -176,9 +155,9 @@ bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
     hfb.resize(chunk_t * chunk_f * eff_data_dim, 0.);
     hfb_weight.resize(chunk_t * chunk_f * eff_data_dim, 0.);
     // init frac_lost to 1.0 to match empty frames
-    frac_lost.resize(chunk_t * chunk_f, 1.);
-    frac_rfi.resize(chunk_t * chunk_f, 0.);
-    dset_id.resize(chunk_t * chunk_f);
+    //frac_lost.resize(chunk_t * chunk_f, 1.);
+    //frac_rfi.resize(chunk_t * chunk_f, 0.);
+    //dset_id.resize(chunk_t * chunk_f);
 
     // Initialise dataset ID array with null IDs
     std::string null_ds_id = fmt::format("{}", dset_id_t::null);
@@ -189,164 +168,14 @@ bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
     return true;
 }
 
-void HFBTranspose::main_thread() {
+std::tuple<size_t, uint64_t, dset_id_t> HFBTranspose::get_frame_data() {
 
-    frameID frame_id(in_buf);
-    uint32_t frames_so_far = 0;
-    // frequency and time indices within chunk
-    uint32_t fi = 0;
-    uint32_t ti = 0;
-    // offset for copying into buffer
-    uint32_t offset = 0;
-
-    // The dataset ID we read from the frame
-    dset_id_t ds_id;
-    // The dataset ID of the state without the time axis
-    dset_id_t base_ds_id;
-    // String formatted dataset ID to be written to the file
-    std::string ds_id_str;
-
-    uint64_t frame_size = 0;
-
-    // wait for a non-empty frame to get dataset ID from
-    uint32_t num_empty_skip = 0;
-    while (true) {
-        // Wait for a frame in the input buffer in order to get the dataset ID
-        if ((wait_for_full_frame(in_buf, unique_name.c_str(), frame_id)) == nullptr) {
-            return;
-        }
-        auto frame = HFBFrameView(in_buf, frame_id);
-
-        // Get the frame size to publish metrics later
-        if (frame_size == 0)
-            frame_size = frame.calculate_buffer_layout(num_beams, num_subfreq).first;
-
-        // If the frame is empty, release the buffer and continue
-        if (frame.fpga_seq_total == 0 && frame.dataset_id == dset_id_t::null) {
-            DEBUG("Got empty frame ({:d}).", frame_id);
-            mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
-            num_empty_skip++;
-        } else {
-            ds_id = frame.dataset_id;
-            break;
-        }
-    }
-
-    if (num_empty_skip > 0) {
-        INFO("Found {:d} empty frames at the start of the file.", num_empty_skip);
-    }
-
-    if (!get_dataset_state(ds_id)) {
-        FATAL_ERROR("Couldn't find ancestor of dataset {}. "
-                    "Make sure there is a stage upstream in the config, that adds the dataset "
-                    "states.\nExiting...",
-                    ds_id);
-        return;
-    }
-
-    // Get the original dataset ID (before adding time axis)
-    base_ds_id = base_dset(ds_id);
-
-    // Once the async get_dataset_state() is done, we have all the metadata to
-    // create a file.
-
-    found_flags = std::vector<bool>(write_t, false);
-
-    // Create HDF5 file
-    //if (stack.size() > 0) {
-    //    file = std::unique_ptr<HFBFileArchive>(
-    //        new HFBFileArchive(filename, metadata, times, freqs, beams, sub_freqs, stack,
-    //                           reverse_stack, num_ev, chunk, kotekan::logLevel(_member_log_level)));
-    //} else {
-    file = std::unique_ptr<HFBFileArchive>(
-        new HFBFileArchive(filename, metadata, times, freqs, beams, sub_freqs, chunk,
-                           kotekan::logLevel(_member_log_level)));
-    //}
-
-    // TODO: it seems like this should be a Counter?
-    auto& transposed_bytes_metric =
-        Metrics::instance().add_gauge("kotekan_hfbtranspose_data_transposed_bytes", unique_name);
-
-    while (!stop_thread) {
-        if (num_empty_skip > 0) {
-            // Write out empty frames that were skipped at start
-            // All arrays are initialised to zero, so we just need to move through them
-            num_empty_skip--;
-        } else {
-            // Wait for a full frame in the input buffer
-            if ((wait_for_full_frame(in_buf, unique_name.c_str(), frame_id)) == nullptr) {
-                break;
-            }
-            auto frame = HFBFrameView(in_buf, frame_id);
-
-            // Collect frames until a chunk is filled
-            // Time-transpose as frames come in
-            // Fastest varying is time (needs to be consistent with reader!)
-            offset = fi * write_t;
-            strided_copy(frame.hfb.data(), hfb.data(), offset * eff_data_dim + ti, write_t,
-                         eff_data_dim);
-            strided_copy(frame.weight.data(), hfb_weight.data(), offset * eff_data_dim + ti,
-                         write_t, eff_data_dim);
-            frac_lost[offset + ti] = frame.fpga_seq_length == 0
-                                         ? 1.
-                                         : 1. - float(frame.fpga_seq_total) / frame.fpga_seq_length;
-
-            // Parse the dataset ID
-            if (frame.fpga_seq_total == 0 && frame.dataset_id == dset_id_t::null) {
-                DEBUG("Got an empty frame.");
-                // Empty frames have a null dataset ID
-                ds_id_str = fmt::format("{}", dset_id_t::null);
-            } else if (frame.dataset_id != ds_id) {
-                // TODO assuming that dataset ID changes here never change dataset dimensions
-                DEBUG("Dataset ID has changed from {} to {}.", ds_id, frame.dataset_id);
-                // Update the dataset ID we are writing out
-                ds_id = frame.dataset_id;
-                // Store original dataset ID (before adding time axis)
-                base_ds_id = base_dset(ds_id);
-                ds_id_str = fmt::format("{}", base_ds_id);
-            } else {
-                // Dataset ID hasn't changed
-                ds_id_str = fmt::format("{}", base_ds_id);
-            }
-            if (ds_id_str.length() != DSET_ID_LEN - 1) {
-                FATAL_ERROR("Formatted dataset ID string does not have expected length.");
-                return;
-            }
-            std::copy(ds_id_str.c_str(), ds_id_str.c_str() + DSET_ID_LEN,
-                      dset_id[offset + ti].hash);
-
-            // move to next frame
-            mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
-        }
-
-        // Increment within read chunk
-        // within a chunk, frequency is the fastest varying index
-        fi = (fi + 1) % write_f;
-        if (fi == 0)
-            ti++;
-        if (ti == write_t) {
-            // chunk is complete
-            write();
-            // increment between chunks
-            increment_chunk();
-            fi = 0;
-            ti = 0;
-
-            // export prometheus metric
-            transposed_bytes_metric.set(frame_size * frames_so_far);
-        }
-
-        frames_so_far++;
-        // Exit when all frames have been written
-        if (frames_so_far == num_time * num_freq) {
-            INFO("Done. Exiting.");
-            exit_kotekan(ReturnCode::CLEAN_EXIT);
-            return;
-        }
-    }
+  auto frame = HFBFrameView(in_buf, frame_id);
+  return std::make_tuple(frame.calculate_frame_size(num_beams, num_subfreq),
+                         frame.fpga_seq_total, frame.dataset_id);
 }
 
-void HFBTranspose::write() {
+void HFBTranspose::write_chunk() {
     DEBUG("Writing at freq {:d} and time {:d}", f_ind, t_ind);
     DEBUG("Writing block of {:d} freqs and {:d} times", write_f, write_t);
 
@@ -380,30 +209,30 @@ void HFBTranspose::increment_chunk() {
     write_t = t_edge ? num_time - t_ind : chunk_t;
 }
 
-dset_id_t HFBTranspose::base_dset(dset_id_t ds_id) {
+void HFBTranspose::create_hdf5_file() {
+  // Create HDF5 file
+  file = std::unique_ptr<HFBFileArchive>(
+      new HFBFileArchive(filename, metadata, times, freqs, beams, sub_freqs, chunk,
+        kotekan::logLevel(_member_log_level)));
+}
 
-    datasetManager& dm = datasetManager::instance();
+void HFBTranspose::copy_frame_data(uint32_t freq_index, uint32_t time_index) {
 
-    try {
-        return dm.datasets().at(ds_id).base_dset();
-    } catch (std::out_of_range& e) {
-        DEBUG("Fetching metadata state...");
-        // fetch a metadata state just to ensure we have a copy of that dataset
-        auto mstate_fut = std::async(&datasetManager::dataset_state<metadataState>, &dm, ds_id);
-        auto ready = mstate_fut.wait_for(timeout);
-        if (ready == std::future_status::timeout) {
-            ERROR("Communication with dataset broker timed out for datatset id {}.", ds_id);
-            dm.stop();
-            exit_kotekan(ReturnCode::DATASET_MANAGER_FAILURE);
-            return ds_id;
-        }
-        const metadataState* mstate = mstate_fut.get();
-        (void)mstate;
-        try {
-            return dm.datasets().at(ds_id).base_dset();
-        } catch (std::out_of_range& e) {
-            FATAL_ERROR("Failed to get base dataset of dataset with ID {}. {}", ds_id, e.what());
-            return ds_id;
-        }
-    }
+  auto frame = HFBFrameView(in_buf, frame_id);
+
+  // Collect frames until a chunk is filled
+  // Time-transpose as frames come in
+  // Fastest varying is time (needs to be consistent with reader!)
+  uint32_t offset = freq_index * write_t;
+  strided_copy(frame.hfb.data(), hfb.data(), offset * eff_data_dim + time_index, write_t,
+               eff_data_dim);
+  strided_copy(frame.weight.data(), hfb_weight.data(), offset * eff_data_dim + time_index,
+               write_t, eff_data_dim);
+  //frac_lost[offset + time_index] = frame.fpga_seq_length == 0
+  //                             ? 1.
+  //                             : 1. - float(frame.fpga_seq_total) / frame.fpga_seq_length;
+}
+
+void HFBTranspose::copy_flags(uint32_t time_index) {
+    (void)time_index;
 }

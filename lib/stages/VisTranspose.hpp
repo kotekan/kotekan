@@ -30,7 +30,7 @@
  * @class VisTranspose
  * @brief Stage to transpose raw visibility data
  *
- * This class inherits from the RawReader base class and reads raw visibility data
+ * This class inherits from the Transpose base class and transposes raw visibility data.
  * @author Tristan Pinsonneault-Marotte, Rick Nitsche
  */
 class VisTranspose : public Transpose {
