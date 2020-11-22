@@ -97,11 +97,11 @@ void kotekanMode::initalize_stages() {
     stages = stage_factory.build_stages();
 
 
-    restServer::instance().register_get_callback("/buffers",
-        std::bind(&kotekanMode::buffer_data_callback, this, _1));
+    restServer::instance().register_get_callback(
+        "/buffers", std::bind(&kotekanMode::buffer_data_callback, this, _1));
 
-    restServer::instance().register_get_callback("/pipeline_dot",
-        std::bind(&kotekanMode::pipeline_dot_graph_callback, this, _1));
+    restServer::instance().register_get_callback(
+        "/pipeline_dot", std::bind(&kotekanMode::pipeline_dot_graph_callback, this, _1));
 
 
     // Update REST server
@@ -188,14 +188,16 @@ void kotekanMode::buffer_data_callback(connectionInstance& conn) {
 }
 
 void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
-    std::string dot = "# This is a DOT formatted pipeline graph, use the graphviz package to plot.\n";
+    std::string dot =
+        "# This is a DOT formatted pipeline graph, use the graphviz package to plot.\n";
     dot += "digraph pipeline {\n";
 
     // Setup buffer nodes
     for (auto& buf : buffer_container.get_buffer_map()) {
-        dot += fmt::format("    \"{:s}\" [label=<{:s}<BR/>{:d}/{:d} ({:.1f}%)> shape=ellipse, color=blue];\n",
-                           buf.first, buf.first, get_num_full_frames(buf.second), buf.second->num_frames,
-                           (float)get_num_full_frames(buf.second)/buf.second->num_frames * 100);
+        dot += fmt::format(
+            "    \"{:s}\" [label=<{:s}<BR/>{:d}/{:d} ({:.1f}%)> shape=ellipse, color=blue];\n",
+            buf.first, buf.first, get_num_full_frames(buf.second), buf.second->num_frames,
+            (float)get_num_full_frames(buf.second) / buf.second->num_frames * 100);
     }
 
     // Setup stage nodes
