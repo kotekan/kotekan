@@ -143,19 +143,43 @@ void kotekanMode::buffer_data_callback(connectionInstance& conn) {
         buf_info["consumers"];
         for (int i = 0; i < MAX_CONSUMERS; ++i) {
             if (buf.second->consumers[i].in_use) {
-                buf_info["consumers"].push_back(buf.second->consumers[i].name);
+                std::string consumer_name = buf.second->consumers[i].name;
+                buf_info["consumers"][consumer_name] = {};
+                buf_info["consumers"][consumer_name]["last_frame_acquired"] =
+                    buf.second->consumers[i].last_frame_acquired;
+                buf_info["consumers"][consumer_name]["last_frame_released"] =
+                    buf.second->consumers[i].last_frame_released;
+                for (int f = 0; f < buf.second->num_frames; ++f) {
+                    buf_info["consumers"][consumer_name]["marked_frame_empty"].push_back(
+                        buf.second->consumers_done[f][i]);
+                }
             }
         }
         buf_info["producers"];
         for (int i = 0; i < MAX_PRODUCERS; ++i) {
             if (buf.second->producers[i].in_use) {
-                buf_info["producers"].push_back(buf.second->producers[i].name);
+                std::string producer_name = buf.second->producers[i].name;
+                buf_info["producers"][producer_name] = {};
+                buf_info["producers"][producer_name]["last_frame_acquired"] =
+                    buf.second->producers[i].last_frame_acquired;
+                buf_info["producers"][producer_name]["last_frame_released"] =
+                    buf.second->producers[i].last_frame_released;
+                for (int f = 0; f < buf.second->num_frames; ++f) {
+                    buf_info["producers"][producer_name]["marked_frame_empty"].push_back(
+                        buf.second->producers_done[f][i]);
+                }
             }
         }
         buf_info["frames"];
         for (int i = 0; i < buf.second->num_frames; ++i) {
             buf_info["frames"].push_back(buf.second->is_full[i]);
         }
+
+        buf_info["num_full_frame"] = get_num_full_frames(buf.second);
+        buf_info["num_frames"] = buf.second->num_frames;
+        buf_info["frame_size"] = buf.second->frame_size;
+        buf_info["last_frame_arrival_time"] = buf.second->last_arrival_time;
+        buf_info["type"] = buf.second->buffer_type;
 
         buffer_json[buf.first] = buf_info;
     }
@@ -169,7 +193,9 @@ void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
 
     // Setup buffer nodes
     for (auto& buf : buffer_container.get_buffer_map()) {
-        dot += "    \"" + buf.first + "\" [shape=doubleoctagon, color=blue];\n";
+        dot += fmt::format("    \"{:s}\" [label=<{:s}<BR/>{:d}/{:d} ({:.1f}%)> shape=ellipse, color=blue];\n",
+                           buf.first, buf.first, get_num_full_frames(buf.second), buf.second->num_frames,
+                           (float)get_num_full_frames(buf.second)/buf.second->num_frames * 100);
     }
 
     // Setup stage nodes
@@ -181,14 +207,14 @@ void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
     for (auto& buf : buffer_container.get_buffer_map()) {
         for (int i = 0; i < MAX_CONSUMERS; ++i) {
             if (buf.second->consumers[i].in_use) {
-                dot += "    \"" + buf.first + "\" -> \""
-                       + std::string(buf.second->consumers[i].name) + "\";\n";
+                dot += fmt::format("    \"{:s}\" -> \"{:s}\";\n", buf.first,
+                                   buf.second->consumers[i].name);
             }
         }
         for (int i = 0; i < MAX_PRODUCERS; ++i) {
             if (buf.second->producers[i].in_use) {
-                dot += "    \"" + std::string(buf.second->producers[i].name) + "\" -> \""
-                       + buf.first + "\";\n";
+                dot += fmt::format("    \"{:s}\" -> \"{:s}\";\n", buf.second->producers[i].name,
+                                   buf.first);
             }
         }
     }
