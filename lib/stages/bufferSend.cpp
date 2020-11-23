@@ -248,8 +248,8 @@ std::string bufferSend::dot_string(const std::string& prefix) const {
     std::string dot = "";
     std::string target = fmt::format("{:s}:{:d}", server_ip, server_port);
     dot += Stage::dot_string(prefix);
-    dot += fmt::format("{:s}\"{:s}\" [shape=doubleoctagon style=filled,color=lightblue]",
-                       prefix, target);
+    dot += fmt::format("{:s}\"{:s}\" [shape=doubleoctagon style=filled,color=lightblue]", prefix,
+                       target);
     dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\"", prefix, get_unique_name(), target);
 
     return dot;

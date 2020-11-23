@@ -411,7 +411,8 @@ std::string dpdkCore::dot_string(const std::string& prefix) const {
     dot += fmt::format("{:s}}\n", prefix);
 
     for (uint i = 0; i < num_ports; ++i) {
-        dot += fmt::format("{:s}port_{:d} [shape=doubleoctagon style=filled,color=lightblue];\n", prefix, i);
+        dot += fmt::format("{:s}port_{:d} [shape=doubleoctagon style=filled,color=lightblue];\n",
+                           prefix, i);
         dot += fmt::format("{:s}port_{:d} -> \"{:s}\";\n", prefix, i, handlers[i]->unique_name);
     }
 

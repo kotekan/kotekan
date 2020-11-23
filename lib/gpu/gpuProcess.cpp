@@ -262,8 +262,8 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
             default:
                 break;
         }
-        dot += fmt::format("{:s}{:s}\"{:s}\" [shape={:s},label=\"{:s}\"];\n",
-                           prefix, prefix, command->get_unique_name(), shape, command->get_name());
+        dot += fmt::format("{:s}{:s}\"{:s}\" [shape={:s},label=\"{:s}\"];\n", prefix, prefix,
+                           command->get_unique_name(), shape, command->get_name());
     }
 
     bool first_item = true;
