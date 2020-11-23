@@ -105,12 +105,12 @@ vis_buffer:
 mfreq: &mfreq [107, 344, 619, 938]
 # Larger subset to be sent to map maker, spanning entire band
 mapfreq: &mapfreq [
-        0,   15,   27,   40,   53,   66,   79,   92,  104, 107,
-        184,  196, 209,  220,  234,  245,  259,  281,  293,  305,  318,  333,  344,
-        358,  374,  386,  399,  411,  422,  433,  445,  456,  469,  481,
-        494,  506,  520,  534,  546,  610, 619,  623,  671,  703,  715,  727,
-        740,  752,  805,  824,  837,  852,  863,  886,  903,  917,  928,
-        938,  950,  962,  975,  986, 1000, 1011
+        1, 12, 23, 36, 47, 58, 70, 82, 92, 103, 184, 194, 205, 216,
+        231, 241, 252, 277, 288, 300, 311, 322, 332, 343, 354, 364,
+        376, 387, 399, 409, 420, 431, 442, 477, 488, 499, 509, 520,
+        532, 543, 606, 618, 663, 673, 704, 715, 726, 736, 747, 780,
+        818, 833, 844, 863, 885, 905, 919, 935, 947, 958, 969, 981,
+        995, 1006
     ]
 
 # Updatable config blocks
@@ -263,12 +263,12 @@ timing_subset:
 # Generate the monitoring freq full N^2 stream
 mfreq_subset:
   n2:
-    kotekan_stage: freqSubset
+    kotekan_stage: VisFreqSubset
     in_buf: visbuf_10s_flags
     out_buf: visbuf_10s_mfreq
     subset_list: *mfreq
   stack:
-    kotekan_stage: freqSubset
+    kotekan_stage: VisFreqSubset
     in_buf: visbuf_10s_stack
     out_buf: visbuf_10s_stack_mfreq
     subset_list: *mapfreq

@@ -13,7 +13,6 @@
 #include <thread>     // for thread
 #include <vector>     // for vector
 
-
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 
@@ -42,6 +41,15 @@ public:
      */
     void join();
     void stop();
+
+    /**
+     * @brief Generates a graphviz "dot" string for this stage.
+     *
+     * By default this is just the stage name plus some default formatting.
+     *
+     * @return "dot" style graph description for this stage.
+     */
+    virtual std::string dot_string(const std::string& prefix) const;
 
 protected:
     std::atomic_bool stop_thread;
