@@ -24,6 +24,7 @@ public:
 
     void finalize_frame(int frame_id) override;
 
+    /// Override default, since the nature of having subframes means the unique name is different.
     virtual std::string get_unique_name() const override;
 
 private:

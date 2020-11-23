@@ -84,6 +84,10 @@ public:
     /// Get to distinguish the flavour of command (copy,kernel,etc)
     gpuCommandType get_command_type();
 
+    /**
+     * @brief Returns the unique name of the command object.
+     * @return The command object unique name.
+     */
     virtual std::string get_unique_name() const;
 
 protected:

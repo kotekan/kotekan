@@ -19,7 +19,6 @@
 #include <stdlib.h> // for free
 #include <utility>  // for pair
 
-
 using namespace std::placeholders;
 
 namespace kotekan {
@@ -96,16 +95,15 @@ void kotekanMode::initalize_stages() {
     StageFactory stage_factory(config, buffer_container);
     stages = stage_factory.build_stages();
 
+    // Update REST server
+    restServer::instance().set_server_affinity(config);
 
+    // Register pipeline status callbacks
     restServer::instance().register_get_callback(
         "/buffers", std::bind(&kotekanMode::buffer_data_callback, this, _1));
 
     restServer::instance().register_get_callback(
         "/pipeline_dot", std::bind(&kotekanMode::pipeline_dot_graph_callback, this, _1));
-
-
-    // Update REST server
-    restServer::instance().set_server_affinity(config);
 }
 
 void kotekanMode::join() {
