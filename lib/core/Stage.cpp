@@ -135,4 +135,8 @@ Stage::~Stage() {
         this_thread.join();
 }
 
+std::string Stage::dot_string(const std::string& prefix) const {
+    return fmt::format("{:s}\"{:s}\" [shape=box, color=darkgreen];\n", prefix, get_unique_name());
+}
+
 } // namespace kotekan

@@ -56,6 +56,10 @@ string& gpuCommand::get_name() {
     return kernel_command;
 }
 
+std::string gpuCommand::get_unique_name() const {
+    return unique_name;
+}
+
 void gpuCommand::pre_execute(int gpu_frame_id) {
     assert(gpu_frame_id < _gpu_buffer_depth);
     assert(gpu_frame_id >= 0);

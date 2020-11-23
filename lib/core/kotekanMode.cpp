@@ -19,6 +19,8 @@
 #include <stdlib.h> // for free
 #include <utility>  // for pair
 
+using namespace std::placeholders;
+
 namespace kotekan {
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
@@ -41,6 +43,8 @@ kotekanMode::~kotekanMode() {
 
     configUpdater::instance().reset();
     restServer::instance().remove_get_callback("/config");
+    restServer::instance().remove_get_callback("/buffers");
+    restServer::instance().remove_get_callback("/pipeline_dot");
     restServer::instance().remove_all_aliases();
 
     for (auto const& stage : stages) {
@@ -93,6 +97,13 @@ void kotekanMode::initalize_stages() {
 
     // Update REST server
     restServer::instance().set_server_affinity(config);
+
+    // Register pipeline status callbacks
+    restServer::instance().register_get_callback(
+        "/buffers", std::bind(&kotekanMode::buffer_data_callback, this, _1));
+
+    restServer::instance().register_get_callback(
+        "/pipeline_dot", std::bind(&kotekanMode::pipeline_dot_graph_callback, this, _1));
 }
 
 void kotekanMode::join() {
@@ -120,6 +131,97 @@ void kotekanMode::stop_stages() {
         INFO_NON_OO("Sending shutdown signal to buffer: {:s}", buf.first);
         send_shutdown_signal(buf.second);
     }
+}
+
+void kotekanMode::buffer_data_callback(connectionInstance& conn) {
+    nlohmann::json buffer_json = {};
+
+    for (auto& buf : buffer_container.get_buffer_map()) {
+        nlohmann::json buf_info = {};
+        buf_info["consumers"];
+        for (int i = 0; i < MAX_CONSUMERS; ++i) {
+            if (buf.second->consumers[i].in_use) {
+                std::string consumer_name = buf.second->consumers[i].name;
+                buf_info["consumers"][consumer_name] = {};
+                buf_info["consumers"][consumer_name]["last_frame_acquired"] =
+                    buf.second->consumers[i].last_frame_acquired;
+                buf_info["consumers"][consumer_name]["last_frame_released"] =
+                    buf.second->consumers[i].last_frame_released;
+                for (int f = 0; f < buf.second->num_frames; ++f) {
+                    buf_info["consumers"][consumer_name]["marked_frame_empty"].push_back(
+                        buf.second->consumers_done[f][i]);
+                }
+            }
+        }
+        buf_info["producers"];
+        for (int i = 0; i < MAX_PRODUCERS; ++i) {
+            if (buf.second->producers[i].in_use) {
+                std::string producer_name = buf.second->producers[i].name;
+                buf_info["producers"][producer_name] = {};
+                buf_info["producers"][producer_name]["last_frame_acquired"] =
+                    buf.second->producers[i].last_frame_acquired;
+                buf_info["producers"][producer_name]["last_frame_released"] =
+                    buf.second->producers[i].last_frame_released;
+                for (int f = 0; f < buf.second->num_frames; ++f) {
+                    buf_info["producers"][producer_name]["marked_frame_empty"].push_back(
+                        buf.second->producers_done[f][i]);
+                }
+            }
+        }
+        buf_info["frames"];
+        for (int i = 0; i < buf.second->num_frames; ++i) {
+            buf_info["frames"].push_back(buf.second->is_full[i]);
+        }
+
+        buf_info["num_full_frame"] = get_num_full_frames(buf.second);
+        buf_info["num_frames"] = buf.second->num_frames;
+        buf_info["frame_size"] = buf.second->frame_size;
+        buf_info["last_frame_arrival_time"] = buf.second->last_arrival_time;
+        buf_info["type"] = buf.second->buffer_type;
+
+        buffer_json[buf.first] = buf_info;
+    }
+
+    conn.send_json_reply(buffer_json);
+}
+
+void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
+    const std::string prefix = "    ";
+    std::string dot =
+        "# This is a DOT formatted pipeline graph, use the graphviz package to plot.\n";
+    dot += "digraph pipeline {\n";
+
+    // Setup buffer nodes
+    for (auto& buf : buffer_container.get_buffer_map()) {
+        dot += fmt::format(
+            "{:s}\"{:s}\" [label=<{:s}<BR/>{:d}/{:d} ({:.1f}%)> shape=ellipse, color=blue];\n",
+            prefix, buf.first, buf.first, get_num_full_frames(buf.second), buf.second->num_frames,
+            (float)get_num_full_frames(buf.second) / buf.second->num_frames * 100);
+    }
+
+    // Setup stage nodes
+    for (auto& stage : stages) {
+        dot += stage.second->dot_string(prefix);
+    }
+
+    // Generate graph edges (producer/consumer relations)
+    for (auto& buf : buffer_container.get_buffer_map()) {
+        for (int i = 0; i < MAX_CONSUMERS; ++i) {
+            if (buf.second->consumers[i].in_use) {
+                dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\";\n", prefix, buf.first,
+                                   buf.second->consumers[i].name);
+            }
+        }
+        for (int i = 0; i < MAX_PRODUCERS; ++i) {
+            if (buf.second->producers[i].in_use) {
+                dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\";\n", prefix,
+                                   buf.second->producers[i].name, buf.first);
+            }
+        }
+    }
+
+    dot += "}\n";
+    conn.send_text_reply(dot);
 }
 
 } // namespace kotekan
