@@ -48,6 +48,7 @@ hsaTrackingUpdatePhase::hsaTrackingUpdatePhase(Config& config, const std::string
                                                bufferContainer& host_buffers,
                                                hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "TrackingUpdatePhase", "") {
+    command_type = gpuCommandType::COPY_IN;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
     _num_beams = config.get<int16_t>(unique_name, "num_beams");

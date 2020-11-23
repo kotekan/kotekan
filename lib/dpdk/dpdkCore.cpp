@@ -405,7 +405,7 @@ std::string dpdkCore::dot_string(const std::string& prefix) const {
     dot += fmt::format("{:s}{:s}label = \"{:s}\";\n", prefix, prefix, get_unique_name());
 
     for (uint i = 0; i < num_ports; ++i) {
-        fmt::format("{:s}{:s} \"{:s}\" [shape=box];\n", prefix, prefix, handlers[i]->unique_name);
+        dot += fmt::format("{:s}{:s} \"{:s}\" [shape=box];\n", prefix, prefix, handlers[i]->unique_name);
     }
 
     dot += fmt::format("{:s}}}\n", prefix);

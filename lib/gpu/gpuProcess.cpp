@@ -245,7 +245,7 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
     dot += fmt::format("{:s}{:s}label = \"{:s}\";\n", prefix, prefix, get_unique_name());
 
     for (auto& command : commands) {
-        std::string shape = "";
+        std::string shape;
         switch (command->get_command_type()) {
             case gpuCommandType::COPY_IN:
                 shape = "trapezium";
@@ -260,6 +260,8 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
                 shape = "invtrapezium";
                 break;
             default:
+                // Hopefully one notices the type wasn't set with this shape.
+                shape = "diamond";
                 break;
         }
         dot += fmt::format("{:s}{:s}\"{:s}\" [shape={:s},label=\"{:s}\"];\n", prefix, prefix,
