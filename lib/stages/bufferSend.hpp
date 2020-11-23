@@ -75,6 +75,9 @@ public:
     /// Main loop for sending data
     void main_thread() override;
 
+    /// Adds the send target server
+    virtual std::string dot_string(const std::string& pre_fix) const override;
+
 private:
     /// The input buffer to send frames from.
     struct Buffer* buf;

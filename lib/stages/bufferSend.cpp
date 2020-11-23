@@ -243,3 +243,14 @@ void bufferSend::connect_to_server() {
         connection_state_cv.wait(connection_lock, [&]() { return !connected || stop_thread; });
     }
 }
+
+std::string bufferSend::dot_string(const std::string& pre_fix) const {
+    std::string dot = "";
+    std::string target = fmt::format("{:s}:{:d}", server_ip, server_port);
+    dot += Stage::dot_string(pre_fix);
+    dot += fmt::format("{:s}\"{:s}\" [shape=doubleoctagon style=filled,color=lightblue]",
+                       pre_fix, target);
+    dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\"", pre_fix, get_unique_name(), target);
+
+    return dot;
+}
