@@ -237,7 +237,7 @@ void gpuProcess::results_thread() {
 }
 
 std::string gpuProcess::dot_string(const std::string& prefix) const {
-    std::string dot = fmt::format("{:s}subgraph \"cluster_{:s}\" {\n", prefix, get_unique_name());
+    std::string dot = fmt::format("{:s}subgraph \"cluster_{:s}\" {{\n", prefix, get_unique_name());
 
     dot += fmt::format("{:s}{:s}style=filled;\n", prefix, prefix);
     dot += fmt::format("{:s}{:s}color=lightgrey;\n", prefix, prefix);
@@ -279,7 +279,7 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
         last_item = command->get_unique_name();
     }
 
-    dot += fmt::format("{:s}}\n", prefix);
+    dot += fmt::format("{:s}}}\n", prefix);
 
     return dot;
 }

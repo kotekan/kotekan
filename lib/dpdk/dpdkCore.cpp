@@ -397,7 +397,7 @@ exit_lcore:
 }
 
 std::string dpdkCore::dot_string(const std::string& prefix) const {
-    std::string dot = fmt::format("{:s}subgraph \"cluster_{:s}\" {\n", prefix, get_unique_name());
+    std::string dot = fmt::format("{:s}subgraph \"cluster_{:s}\" {{\n", prefix, get_unique_name());
 
     dot += fmt::format("{:s}{:s}style=filled;\n", prefix, prefix);
     dot += fmt::format("{:s}{:s}color=lightgrey;\n", prefix, prefix);
@@ -408,7 +408,7 @@ std::string dpdkCore::dot_string(const std::string& prefix) const {
         fmt::format("{:s}{:s} \"{:s}\" [shape=box];\n", prefix, prefix, handlers[i]->unique_name);
     }
 
-    dot += fmt::format("{:s}}\n", prefix);
+    dot += fmt::format("{:s}}}\n", prefix);
 
     for (uint i = 0; i < num_ports; ++i) {
         dot += fmt::format("{:s}port_{:d} [shape=doubleoctagon style=filled,color=lightblue];\n",
