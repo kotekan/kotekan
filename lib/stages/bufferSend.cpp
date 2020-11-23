@@ -244,13 +244,13 @@ void bufferSend::connect_to_server() {
     }
 }
 
-std::string bufferSend::dot_string(const std::string& pre_fix) const {
+std::string bufferSend::dot_string(const std::string& prefix) const {
     std::string dot = "";
     std::string target = fmt::format("{:s}:{:d}", server_ip, server_port);
-    dot += Stage::dot_string(pre_fix);
+    dot += Stage::dot_string(prefix);
     dot += fmt::format("{:s}\"{:s}\" [shape=doubleoctagon style=filled,color=lightblue]",
-                       pre_fix, target);
-    dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\"", pre_fix, get_unique_name(), target);
+                       prefix, target);
+    dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\"", prefix, get_unique_name(), target);
 
     return dot;
 }

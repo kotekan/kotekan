@@ -188,6 +188,7 @@ void kotekanMode::buffer_data_callback(connectionInstance& conn) {
 }
 
 void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
+    const std::string prefix = "    ";
     std::string dot =
         "# This is a DOT formatted pipeline graph, use the graphviz package to plot.\n";
     dot += "digraph pipeline {\n";
@@ -195,28 +196,28 @@ void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
     // Setup buffer nodes
     for (auto& buf : buffer_container.get_buffer_map()) {
         dot += fmt::format(
-            "    \"{:s}\" [label=<{:s}<BR/>{:d}/{:d} ({:.1f}%)> shape=ellipse, color=blue];\n",
-            buf.first, buf.first, get_num_full_frames(buf.second), buf.second->num_frames,
+            "{:s}\"{:s}\" [label=<{:s}<BR/>{:d}/{:d} ({:.1f}%)> shape=ellipse, color=blue];\n",
+            prefix, buf.first, buf.first, get_num_full_frames(buf.second), buf.second->num_frames,
             (float)get_num_full_frames(buf.second) / buf.second->num_frames * 100);
     }
 
     // Setup stage nodes
     for (auto& stage : stages) {
-        dot += stage.second->dot_string("    ");
+        dot += stage.second->dot_string(prefix);
     }
 
     // Generate graph edges (producer/consumer relations)
     for (auto& buf : buffer_container.get_buffer_map()) {
         for (int i = 0; i < MAX_CONSUMERS; ++i) {
             if (buf.second->consumers[i].in_use) {
-                dot += fmt::format("    \"{:s}\" -> \"{:s}\";\n", buf.first,
+                dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\";\n", prefix, buf.first,
                                    buf.second->consumers[i].name);
             }
         }
         for (int i = 0; i < MAX_PRODUCERS; ++i) {
             if (buf.second->producers[i].in_use) {
-                dot += fmt::format("    \"{:s}\" -> \"{:s}\";\n", buf.second->producers[i].name,
-                                   buf.first);
+                dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\";\n", prefix,
+                                   buf.second->producers[i].name, buf.first);
             }
         }
     }

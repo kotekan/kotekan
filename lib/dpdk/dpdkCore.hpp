@@ -154,7 +154,7 @@ public:
 
     void main_thread() override;
 
-    virtual std::string dot_string(const std::string& pre_fix) const override;
+    virtual std::string dot_string(const std::string& prefix) const override;
 
 private:
     /**

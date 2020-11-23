@@ -49,7 +49,7 @@ public:
      *
      * @return "dot" style graph description for this stage.
      */
-    virtual std::string dot_string(const std::string& pre_fix) const;
+    virtual std::string dot_string(const std::string& prefix) const;
 
 protected:
     std::atomic_bool stop_thread;

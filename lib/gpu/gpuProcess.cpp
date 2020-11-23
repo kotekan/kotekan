@@ -236,33 +236,34 @@ void gpuProcess::results_thread() {
     }
 }
 
-std::string gpuProcess::dot_string(const std::string& pre_fix) const {
-    std::string dot = pre_fix + "subgraph " + "\"cluster_" + get_unique_name() + "\" {\n";
+std::string gpuProcess::dot_string(const std::string& prefix) const {
+    std::string dot = fmt::format("{:s}subgraph \"cluster_{:s}\" {\n", prefix, get_unique_name());
 
-    dot += pre_fix + "    style=filled;\n";
-    dot += pre_fix + "    color=lightgrey;\n";
-    dot += pre_fix + "    node [style=filled,color=white];\n";
-    dot += pre_fix + "    label = \"" + get_unique_name() + "\";\n";
+    dot += fmt::format("{:s}{:s}style=filled;\n", prefix, prefix);
+    dot += fmt::format("{:s}{:s}color=lightgrey;\n", prefix, prefix);
+    dot += fmt::format("{:s}{:s}node [style=filled,color=white];\n", prefix, prefix);
+    dot += fmt::format("{:s}{:s}label = \"{:s}\";\n", prefix, prefix, get_unique_name());
 
     for (auto& command : commands) {
-        dot += pre_fix + "    \"" + command->get_unique_name() + "\" [";
+        std::string shape = "";
         switch (command->get_command_type()) {
             case gpuCommandType::COPY_IN:
-                dot += "shape=trapezium";
+                shape = "trapezium";
                 break;
             case gpuCommandType::KERNEL:
-                dot += "shape=box";
+                shape = "box";
                 break;
             case gpuCommandType::BARRIER:
-                dot += "shape=parallelogram";
+                shape = "parallelogram";
                 break;
             case gpuCommandType::COPY_OUT:
-                dot += "shape=invtrapezium";
+                shape = "invtrapezium";
                 break;
             default:
                 break;
         }
-        dot += ",label=\"" + command->get_name() + "\"];\n";
+        dot += fmt::format("{:s}{:s}\"{:s}\" [shape={:s},label=\"{:s}\"];\n",
+                           prefix, prefix, command->get_unique_name(), shape, command->get_name());
     }
 
     bool first_item = true;
@@ -273,12 +274,12 @@ std::string gpuProcess::dot_string(const std::string& pre_fix) const {
             first_item = false;
             continue;
         }
-        dot += pre_fix + "    \"" + last_item + "\" -> \"" + command->get_unique_name()
-               + "\" [style=dotted];\n";
+        dot += fmt::format("{:s}{:s}\"{:s}\" -> \"{:s}\" [style=dotted];\n", prefix, prefix,
+                           last_item, command->get_unique_name());
         last_item = command->get_unique_name();
     }
 
-    dot += pre_fix + "}\n";
+    dot += fmt::format("{:s}}\n", prefix);
 
     return dot;
 }

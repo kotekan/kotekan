@@ -396,25 +396,23 @@ exit_lcore:
     return 0;
 }
 
-std::string dpdkCore::dot_string(const std::string& pre_fix) const {
-    std::string dot = pre_fix + "subgraph " + "\"cluster_" + get_unique_name() + "\" {\n";
+std::string dpdkCore::dot_string(const std::string& prefix) const {
+    std::string dot = fmt::format("{:s}subgraph \"cluster_{:s}\" {\n", prefix, get_unique_name());
 
-    dot += pre_fix + "    style=filled;\n";
-    dot += pre_fix + "    color=lightgrey;\n";
-    dot += pre_fix + "    node [style=filled,color=white];\n";
-    dot += pre_fix + "    label = \"" + get_unique_name() + "\";\n";
+    dot += fmt::format("{:s}{:s}style=filled;\n", prefix, prefix);
+    dot += fmt::format("{:s}{:s}color=lightgrey;\n", prefix, prefix);
+    dot += fmt::format("{:s}{:s}node [style=filled,color=white];\n", prefix, prefix);
+    dot += fmt::format("{:s}{:s}label = \"{:s}\";\n", prefix, prefix, get_unique_name());
 
     for (uint i = 0; i < num_ports; ++i) {
-        dot += pre_fix + "    \"" + handlers[i]->unique_name + "\" [shape=box];\n";
+        fmt::format("{:s}{:s} \"{:s}\" [shape=box];\n", prefix, prefix, handlers[i]->unique_name);
     }
 
-    dot += pre_fix + "}\n";
+    dot += fmt::format("{:s}}\n", prefix);
 
     for (uint i = 0; i < num_ports; ++i) {
-        dot += pre_fix + "port_" + std::to_string(i)
-               + " [shape=Mdiamond style=filled,color=lightblue]";
-        dot +=
-            pre_fix + "port_" + std::to_string(i) + " -> \"" + handlers[i]->unique_name + "\";\n";
+        dot += fmt::format("{:s}port_{:d} [shape=doubleoctagon style=filled,color=lightblue];\n", prefix, i);
+        dot += fmt::format("{:s}port_{:d} -> \"{:s}\";\n", prefix, i, handlers[i]->unique_name);
     }
 
     return dot;
