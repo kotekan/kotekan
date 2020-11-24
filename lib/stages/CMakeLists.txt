@@ -67,7 +67,9 @@ add_library(
     VisSharedMemWriter.cpp
     DataQuality.cpp
     BeamExtract.cpp
-    BeamInspect.cpp)
+    BeamInspect.cpp
+    testDataGen.cpp
+    DPDKShuffleSimulate.cpp)
 
 target_include_directories(kotekan_stages PRIVATE .)
 

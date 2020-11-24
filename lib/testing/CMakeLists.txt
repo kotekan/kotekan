@@ -16,7 +16,6 @@ add_library(
     networkOutputSim.cpp
     simVdifData.cpp
     testDataCheck.cpp
-    testDataGen.cpp
     testDataGenQuad.cpp
     testDataGenFloat.cpp
     TestDropFrames.cpp

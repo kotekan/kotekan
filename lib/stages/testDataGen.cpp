@@ -112,6 +112,8 @@ void testDataGen::main_thread() {
 
     double frame_length = samples_per_data_set * ts_to_double(Telescope::instance().seq_length());
 
+    sleep(60);
+
     while (!stop_thread) {
         double start_time = current_time();
 
