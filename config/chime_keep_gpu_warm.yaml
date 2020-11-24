@@ -1368,6 +1368,41 @@ pulsar:
       - 10.15.50.18
       - 10.16.50.19
 
+##############################
+#### Extra tracking beams ####
+##############################
+
+beam_metadata_pool:
+  kotekan_metadata_pool: BeamMetadata
+  num_metadata_objects: (6 * 4 + 16) * 4
+
+extra_tracking_buffers:
+  metadata_pool: beam_metadata_pool
+  frame_size: samples_per_data_set * num_pol
+  num_frames: 8
+  beam_buffer_10_0:
+    kotekan_buffer: standard
+  beam_buffer_10_1:
+    kotekan_buffer: standard
+  beam_buffer_10_2:
+    kotekan_buffer: standard
+  beam_buffer_10_3:
+    kotekan_buffer: standard
+  beam_buffer_10_merged:
+    kotekan_buffer: standard
+    num_frames: 20
+  beam_buffer_11_0:
+    kotekan_buffer: standard
+  beam_buffer_11_1:
+    kotekan_buffer: standard
+  beam_buffer_11_2:
+    kotekan_buffer: standard
+  beam_buffer_11_3:
+    kotekan_buffer: standard
+  beam_buffer_11_merged:
+    kotekan_buffer: standard
+    num_frames: 20
+
 extra_tracking_beams:
   cpu_affinity: [5,11]
   beam_extract_10:
