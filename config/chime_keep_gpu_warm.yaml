@@ -1,8 +1,12 @@
 ##########################################
 #
-# chime_science_run_gpu.yaml
+# chime_keep_gpu_warm.yaml
 #
-# Config to support the CHIME project with 2048 elements, and 1024 frequencies.
+# This configuration mirrors the chime_science_run_gpu_no_output.yaml config but doesn't
+# include the packet capture from the FPGAs via DPDK.  Instead it generates frames (with mostly
+# random or zero values) at the same cadence as the DPDK stage would if being sent FPGA data.
+# This is used for testing the system when the FPGAs are off, or when we need to keep the system
+# burning power to keep the thermal loading on the GPU server rooms high.
 #
 # This config contains the following main components:
 #
