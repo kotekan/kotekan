@@ -106,11 +106,7 @@ private:
     /// Config variables
     uint32_t _num_gpus;
     uint32_t _samples_per_data_set;
-    /// The number of pulsar beams to extract (starting at 0)
-    uint32_t _num_pulsar_beams;
-    /// The number of total beams in the system
-    uint32_t _num_beams;
-    /// Number of polarizations in each beam
+    uint32_t _num_pulsar;
     uint32_t _num_pol;
     /// number of time samples per packet (3125 or 625)
     uint32_t _timesamples_per_pulsar_packet;

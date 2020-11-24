@@ -27,6 +27,7 @@
  * The default number of tracking beams to be formed is 10. The phases are matrix
  * multiplied with the input data (shape @c n_samp x @c n_elem) and the output is of dimension
  * (@c n_samp x @c n_tracking x @c n_pol x 2). Output data type is 4-4b int packed as char.
+ * Currently  it is float, as we are pending on decision of data truncation scheme.
  *
  * @requires_kernel    tracking_beamformer.hasco
  *
@@ -45,16 +46,20 @@
  *     @gpu_mem_metadata     none
  *
  * @conf   num_elements         Int (default 2048). Number of elements
- * @conf   num_beams            Int (default 10). Number of beams to be formed
+ * @conf   num_beams           Int (default 10). Number of beams to be formed
  * @conf   samples_per_data_set Int (default 49152). Number of time samples in a data set
  * @conf   num_pol              Int (default 2). Number of polarizations
  * @conf   command              String (defualt: "trackingbf_float"). Kernel command.
  * @conf   kernel               String (default: "tracking_beamformer_nbeam.hsaco"). Kernel
  *                              filename.
  *
+ * @todo   finalize output truncation scheme
+ *
  * @author Cherry Ng
  *
  */
+
+
 class hsaTrackingBeamform : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config and initializes the array of
@@ -79,11 +84,11 @@ private:
     /// complex
     int32_t phase_len;
 
-    /// number of elements
+    /// numbler of elements, should be 2048
     int32_t _num_elements;
-    /// number of beams to be formed
+    /// number of beams to be formed, should be 10
     int32_t _num_beams;
-    /// number of polarizations in the data
+    /// number of polarizations in the data, should be 2
     int32_t _num_pol;
     /// number of samples
     int32_t _samples_per_data_set;
