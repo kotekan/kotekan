@@ -113,5 +113,8 @@ void DPDKShuffleSimulate::main_thread() {
                   frame_end_time - time);
             usleep((int)(1e6 * (frame_end_time - time)));
         }
+        // Log message to confirm the system is alive
+        if (fpga_seq / _num_samples_per_dataset % 100 == 0)
+            INFO("Generated {:d} test samples.", fpga_seq);
     }
 }

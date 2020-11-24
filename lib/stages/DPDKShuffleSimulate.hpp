@@ -25,6 +25,10 @@
  *     @buffer_metadata chimeMetadata
  *
  * @conf    samples_per_data_set  The number of samples in each frame.
+ *
+ * @todo Add an option to generate actual simulated voltage data
+ *
+ * @author Andre Renard
  */
 class DPDKShuffleSimulate : public kotekan::Stage {
 public:
