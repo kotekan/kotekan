@@ -32,7 +32,7 @@ STAGE_CONSTRUCTOR(DPDKShuffleSimulate) {
     _num_samples_per_dataset = config.get<int32_t>(unique_name, "samples_per_data_set");
 }
 
-DPDKShuffleSimulate::~DPDKShuffleSimulate() noexcept {}
+DPDKShuffleSimulate::~DPDKShuffleSimulate() {}
 
 void DPDKShuffleSimulate::main_thread() {
 
