@@ -33,7 +33,7 @@ num_elements: 2048
 num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 49152
-buffer_depth: 10
+buffer_depth: 12
 baseband_buffer_depth: 282 # 282 = ~34 seconds after accounting for active frames
 vbuffer_depth: 32
 num_links: 4
