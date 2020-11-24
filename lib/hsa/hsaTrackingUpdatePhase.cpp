@@ -276,7 +276,7 @@ hsa_signal_t hsaTrackingUpdatePhase::execute(int gpu_frame_id, hsa_signal_t prec
         DEBUG("updating phase gain={:f} {:f}", host_gain[0], host_gain[1]);
         time_now_gps = get_gps_time(metadata_buf, metadata_buffer_id);
         if (time_now_gps.tv_sec == 0) {
-            ERROR("GPS time appears to be zero, bad news for beam timing!");
+            WARN("GPS time appears to be zero, bad news for beam timing!");
         }
         // use whichever bank that has no lock
         if (bank_use_0 == 0) { // no more outstanding async copy using bank0
