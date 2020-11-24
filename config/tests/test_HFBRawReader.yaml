@@ -39,6 +39,7 @@ read_raw:
 
 write_hdf5:
   log_level: debug
+  comet_timeout: 180.
   chunk_size:
   - 8
   - 66
