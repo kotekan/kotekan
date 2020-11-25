@@ -1,6 +1,7 @@
 #ifndef VIS_FILE_ARCHIVE_HPP
 #define VIS_FILE_ARCHIVE_HPP
 
+#include "FileArchive.hpp"
 #include "kotekanLogging.hpp" // for logLevel, kotekanLogging
 #include "visUtil.hpp"        // for freq_ctype, prod_ctype, time_ctype, input_ctype
 
@@ -21,7 +22,7 @@
  *
  * @author Richard Shaw
  **/
-class visFileArchive : public kotekan::kotekanLogging {
+class visFileArchive : public FileArchive {
 
 public:
     /**
