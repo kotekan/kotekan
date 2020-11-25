@@ -1,9 +1,9 @@
-FROM docker.pkg.github.com/kotekan/kotekan/kotekan-core:latest
+FROM docker.pkg.github.com/kotekan/kotekan/kotekan-core:develop
 
 ## The maintainer name and email
 MAINTAINER Rick Nitsche <rick@phas.ubc.ca>
 
-# Install iwyu for clang 8.0
+# Install iwyu for clang 9.0
 RUN wget http://launchpadlibrarian.net/461878080/libstdc++6_9.2.1-25ubuntu1_amd64.deb && \
     wget http://launchpadlibrarian.net/458626653/iwyu_8.0-3_amd64.deb && \
     wget http://launchpadlibrarian.net/461877892/gcc-9-base_9.2.1-25ubuntu1_amd64.deb && \

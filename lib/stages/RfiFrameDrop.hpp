@@ -10,15 +10,15 @@
 #include "Stage.hpp"             // for Stage
 #include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for datasetManager
+#include "datasetState.hpp"      // for RFIFrameDropState
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily
 
 #include "json.hpp" // for json
 
-#include <atomic>   // for atomic
-#include <memory>   // for shared_ptr
+#include <mutex>    // for mutex
 #include <stddef.h> // for size_t
 #include <string>   // for string
-#include <tuple>    // for tuple
 #include <vector>   // for vector
 
 
@@ -90,15 +90,16 @@ private:
     /// Output buffer to receive baseline subset visibilities
     Buffer* _buf_out;
 
-    /// Thresholds
-    struct ThresholdData {
-        std::vector<std::tuple<float, size_t, float>> thresholds;
-        std::vector<size_t> sk_exceeds;
-    };
-    std::shared_ptr<ThresholdData> _thresholds;
+    /// Everything that gets changed by dynamic config updates,
+    /// including the resulting dataset state ID, is protected by a mutex.
+    /// Thresholds and fractions are kept in the dataset state directly to avoid duplicates.
+    std::mutex update_mutex;
+    std::vector<size_t> num_sk;
+    std::vector<size_t> sk_exceeds;
+    state_id_t state_id;
+    const RFIFrameDropState* state_ptr = nullptr;
 
-    /// Toggle RFI zeroing
-    std::atomic<bool> _enable_rfi_zero;
+    datasetManager& dm = datasetManager::instance();
 
     /// Prometheus metrics to export
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& failing_frame_counter;

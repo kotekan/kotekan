@@ -3,7 +3,7 @@
 
 #include "Config.hpp" // for Config
 #include "Telescope.hpp"
-#include "chimeMetadata.h"
+#include "chimeMetadata.hpp"
 
 #include <stdint.h> // for int32_t, uint32_t
 #include <string>   // for string

@@ -5,7 +5,7 @@
 #include "Telescope.hpp"         // for Telescope
 #include "buffer.h"              // for Buffer, mark_frame_empty, wait_for_full_frame, register...
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "chimeMetadata.h"       // for get_fpga_seq_num
+#include "chimeMetadata.hpp"     // for get_fpga_seq_num
 #include "kotekanLogging.hpp"    // for DEBUG, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 

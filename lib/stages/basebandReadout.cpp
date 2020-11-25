@@ -1,13 +1,13 @@
 #include "basebandReadout.hpp"
 
-#include "Config.hpp"       // for Config
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"
+#include "Config.hpp"             // for Config
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"          // for Telescope
 #include "basebandApiManager.hpp" // for basebandApiManager
 #include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_fo...
 #include "bufferContainer.hpp"    // for bufferContainer
-#include "chimeMetadata.h"        // for chimeMetadata
-#include "kotekanLogging.hpp"     // for INFO, DEBUG, ERROR, WARN
+#include "chimeMetadata.hpp"      // for chimeMetadata
+#include "kotekanLogging.hpp"     // for INFO, DEBUG, ERROR
 #include "metadata.h"             // for metadataContainer
 #include "nt_memcpy.h"            // for nt_memcpy
 #include "nt_memset.h"            // for nt_memset
@@ -38,10 +38,9 @@
 #include <highfive/H5Group.hpp>     // for Group
 #include <highfive/H5Selection.hpp> // for Selection, SliceTraits::write, SliceTraits::select
 #include <math.h>                   // for fmod
-#include <memory>                   // for unique_ptr, make_shared, shared_ptr, make_unique
+#include <memory>                   // for unique_ptr, make_shared, make_unique, allocator_trai...
 #include <regex>                    // for match_results<>::_Base_type
 #include <stdexcept>                // for runtime_error
-#include <sys/stat.h>               // for stat, S_IFDIR
 #include <sys/time.h>               // for timeval, timeradd
 #include <thread>                   // for thread, sleep_for
 #include <time.h>                   // for timespec
@@ -186,34 +185,14 @@ void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutMana
             basebandDumpStatus& dump_status = std::get<0>(*next_request);
             std::mutex& request_mtx = std::get<1>(*next_request);
 
-            // This should be safe even without a lock, as there is nothing else
-            // yet that can change the dump_status object
+            // Reading the request parameters should be safe even without a
+            // lock, as they are read-only once received.
             const basebandRequest request = dump_status.request;
             // std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
             const uint64_t event_id = request.event_id;
             INFO("Received baseband dump request for event {:d}: {:d} samples starting at count "
                  "{:d}. (next_frame: {:d})",
                  event_id, request.length_fpga, request.start_fpga, next_frame);
-
-            // Checks if the destination directory exists, and if it doesn't, stop processing the
-            // request with an error before trying to read out the samples.
-            //
-            // TODO: once API manager is a Stage, this would naturally belong in REST request
-            // callback
-            struct stat path_status;
-            int stat_rc = stat((_base_dir + request.file_path).c_str(), &path_status);
-            if (!(stat_rc == 0 && path_status.st_mode & S_IFDIR)) {
-                WARN("Baseband destination path {} for request {:d} is not valid",
-                     request.file_path, event_id);
-                std::lock_guard<std::mutex> lock(request_mtx);
-                dump_status.finished = dump_status.started =
-                    std::make_shared<std::chrono::system_clock::time_point>(
-                        std::chrono::system_clock::now());
-                dump_status.state = basebandDumpStatus::State::ERROR;
-                dump_status.reason = "Destination does not exist or is not a directory: "
-                                     + _base_dir + request.file_path;
-                continue;
-            }
 
             {
                 std::lock_guard<std::mutex> lock(request_mtx);
@@ -264,13 +243,15 @@ void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutMana
                             throw std::runtime_error(
                                 "Unhandled basebandDumpData::Status case in a switch statement.");
                     }
-                } else {
-                    INFO("Captured {:d} samples for event {:d} and freq {:d}.",
-                         data.data_length_fpga, data.event_id, data.freq_id);
-
-                    // we are done copying the samples into the readout buffer
-                    mgr.ready({dump_status, data});
                 }
+            }
+
+            if (data.status == basebandDumpData::Status::Ok) {
+                INFO("Captured {:d} samples for event {:d} and freq {:d}.", data.data_length_fpga,
+                     data.event_id, data.freq_id);
+
+                // we are done copying the samples into the readout buffer
+                mgr.ready({dump_status, data});
             }
         }
     }

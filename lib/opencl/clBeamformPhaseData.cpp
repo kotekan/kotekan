@@ -1,7 +1,7 @@
 #include "clBeamformPhaseData.hpp"
 
 #include "buffer.h"
-#include "chimeMetadata.h"
+#include "chimeMetadata.hpp"
 #include "errors.h"
 
 #include <math.h>

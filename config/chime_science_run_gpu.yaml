@@ -70,7 +70,7 @@ frb_scaling: 0.05 #1.0
 # Tracking beams global options
 feed_sep_NS: 0.3048
 feed_sep_EW: 22.0
-num_beams: 10
+num_beams: 12
 num_pol: 2
 
 # RFI global options
@@ -137,6 +137,12 @@ updatable_config:
     9:
       kotekan_update_endpoint: json
       gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    10:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    11:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
   tracking_pointing:
     0:
       kotekan_update_endpoint: json
@@ -188,16 +194,16 @@ updatable_config:
       ra: 53.6197236741
       dec: 54.6433973569
       scaling: 48
-#    10:
-#      kotekan_update_endpoint: json
-#      ra: 53.6197236741
-#      dec: 54.6433973569
-#      scaling: 48
-#    11:
-#      kotekan_update_endpoint: json
-#      ra: 53.6197236741
-#      dec: 54.6433973569
-#      scaling: 48
+    10:
+      kotekan_update_endpoint: json
+      ra: 53.6197236741
+      dec: 54.6433973569
+      scaling: 48
+    11:
+      kotekan_update_endpoint: json
+      ra: 53.6197236741
+      dec: 54.6433973569
+      scaling: 48
   bad_inputs:
     kotekan_update_endpoint: json
     # These inputs are assumed to be in cylinder order
@@ -405,7 +411,7 @@ gain_tracking_buffers:
 
 tracking_output_buffers:
   num_frames: buffer_depth
-  frame_size: samples_per_data_set * num_beams * num_pol * sizeof_float *2
+  frame_size: samples_per_data_set * num_beams * num_pol
   metadata_pool: main_pool
   beamform_tracking_output_buffer_0:
     kotekan_buffer: standard
@@ -1345,7 +1351,8 @@ pulsar:
   timesamples_per_pulsar_packet: 625
   udp_pulsar_packet_size: 5032
   num_packet_per_stream: 80
-  num_stream: num_beams
+  num_pulsar_beams: 10
+  num_stream: 10
   cpu_affinity: [5,11]
   pulsar_output_buffer:
     num_frames: buffer_depth + 4
@@ -1377,6 +1384,113 @@ pulsar:
       - 10.15.50.18
       - 10.16.50.19
 
+##############################
+#### Extra tracking beams ####
+##############################
+
+beam_metadata_pool:
+  kotekan_metadata_pool: BeamMetadata
+  num_metadata_objects: (6 * 4 + 16) * 4
+
+extra_tracking_buffers:
+  metadata_pool: beam_metadata_pool
+  frame_size: samples_per_data_set * num_pol
+  num_frames: 8
+  beam_buffer_10_0:
+    kotekan_buffer: standard
+  beam_buffer_10_1:
+    kotekan_buffer: standard
+  beam_buffer_10_2:
+    kotekan_buffer: standard
+  beam_buffer_10_3:
+    kotekan_buffer: standard
+  beam_buffer_10_merged:
+    kotekan_buffer: standard
+    num_frames: 20
+  beam_buffer_11_0:
+    kotekan_buffer: standard
+  beam_buffer_11_1:
+    kotekan_buffer: standard
+  beam_buffer_11_2:
+    kotekan_buffer: standard
+  beam_buffer_11_3:
+    kotekan_buffer: standard
+  beam_buffer_11_merged:
+    kotekan_buffer: standard
+    num_frames: 20
+
+extra_tracking_beams:
+  cpu_affinity: [5,11]
+  beam_extract_10:
+    extract_beam: 10
+    beam_extract_10_0:
+      kotekan_stage: BeamExtract
+      in_buf: beamform_tracking_output_valved_buffer_0
+      out_buf: beam_buffer_10_0
+    beam_extract_10_1:
+      kotekan_stage: BeamExtract
+      in_buf: beamform_tracking_output_valved_buffer_1
+      out_buf: beam_buffer_10_1
+    beam_extract_10_2:
+      kotekan_stage: BeamExtract
+      in_buf: beamform_tracking_output_valved_buffer_2
+      out_buf: beam_buffer_10_2
+    beam_extract_10_3:
+      kotekan_stage: BeamExtract
+      in_buf: beamform_tracking_output_valved_buffer_3
+      out_buf: beam_buffer_10_3
+    beam_merge_10:
+      kotekan_stage: bufferMerge
+      timeout: 0.1
+      in_bufs:
+        - beam_buffer_10_0
+        - beam_buffer_10_1
+        - beam_buffer_10_2
+        - beam_buffer_10_3
+      out_buf: beam_buffer_10_merged
+    beam_send_10:
+      kotekan_stage: bufferSend
+      buf: beam_buffer_10_merged
+      # Bongo
+      server_ip: 10.1.50.13
+      server_port: 11030
+      log_level: error
+      reconnect_time: 20
+  beam_extract_11:
+    extract_beam: 11
+    beam_extract_11_0:
+      kotekan_stage: BeamExtract
+      in_buf: beamform_tracking_output_valved_buffer_0
+      out_buf: beam_buffer_11_0
+    beam_extract_11_1:
+      kotekan_stage: BeamExtract
+      in_buf: beamform_tracking_output_valved_buffer_1
+      out_buf: beam_buffer_11_1
+    beam_extract_11_2:
+      kotekan_stage: BeamExtract
+      in_buf: beamform_tracking_output_valved_buffer_2
+      out_buf: beam_buffer_11_2
+    beam_extract_11_3:
+      kotekan_stage: BeamExtract
+      in_buf: beamform_tracking_output_valved_buffer_3
+      out_buf: beam_buffer_11_3
+    beam_merge_11:
+      kotekan_stage: bufferMerge
+      timeout: 0.1
+      in_bufs:
+        - beam_buffer_11_0
+        - beam_buffer_11_1
+        - beam_buffer_11_2
+        - beam_buffer_11_3
+      out_buf: beam_buffer_11_merged
+    beam_send_11:
+      kotekan_stage: bufferSend
+      buf: beam_buffer_11_merged
+      # Moose
+      server_ip: 10.1.50.10
+      server_port: 11030
+      log_level: error
+      reconnect_time: 20
 
 #### N2 GPU Post processing ####
 valve:
