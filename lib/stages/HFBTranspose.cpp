@@ -159,7 +159,7 @@ bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
     // init frac_lost to 1.0 to match empty frames
     //frac_lost.resize(chunk_t * chunk_f, 1.);
     //frac_rfi.resize(chunk_t * chunk_f, 0.);
-    //dset_id.resize(chunk_t * chunk_f);
+    dset_id.resize(chunk_t * chunk_f);
 
     // Initialise dataset ID array with null IDs
     std::string null_ds_id = fmt::format("{}", dset_id_t::null);
@@ -183,7 +183,7 @@ void HFBTranspose::write_chunk() {
 
     file->write_block("hfb", f_ind, t_ind, write_f, write_t, hfb.data());
     file->write_block("hfb_weight", f_ind, t_ind, write_f, write_t, hfb_weight.data());
-    //file->write_block("flags/dataset_id", f_ind, t_ind, write_f, write_t, dset_id.data());
+    file->write_block("flags/dataset_id", f_ind, t_ind, write_f, write_t, dset_id.data());
 }
 
 // increment between chunks
