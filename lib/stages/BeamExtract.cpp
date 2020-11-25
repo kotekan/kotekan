@@ -1,10 +1,20 @@
-#include "BeamExtract.hpp"
+#include <time.h>              // for timespec
+#include <atomic>              // for atomic_bool
+#include <exception>           // for exception
+#include <functional>          // for _Bind_helper<>::type, bind, function
+#include <regex>               // for match_results<>::_Base_type
+#include <stdexcept>           // for runtime_error
+#include <vector>              // for vector
 
-#include "BeamMetadata.hpp"
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
-#include "buffer.h"
-#include "chimeMetadata.hpp"
-#include "visUtil.hpp"
+#include "BeamExtract.hpp"
+#include "BeamMetadata.hpp"    // for BeamMetadata
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for get_metadata, allocate_new_metadata_object, mark_frame_empty
+#include "chimeMetadata.hpp"   // for chimeMetadata, beamCoord, get_stream_id
+#include "visUtil.hpp"         // for frameID, modulo
+#include "Telescope.hpp"       // for stream_t
+#include "datasetManager.hpp"  // for dset_id_t
+#include "kotekanLogging.hpp"  // for DEBUG2
 
 using kotekan::bufferContainer;
 using kotekan::Config;

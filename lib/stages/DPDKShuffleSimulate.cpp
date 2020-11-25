@@ -1,15 +1,23 @@
+#include <unistd.h>             // for sleep, usleep
+#include <assert.h>             // for assert
+#include <sys/time.h>           // for gettimeofday, timeval
+#include <atomic>               // for atomic_bool
+#include <cstdint>              // for int32_t
+#include <exception>            // for exception
+#include <regex>                // for match_results<>::_Base_type
+#include <vector>               // for vector
+
 #include "DPDKShuffleSimulate.hpp"
-
-#include "Config.hpp" // for Config
-#include "ICETelescope.hpp"
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"
-#include "kotekanLogging.hpp" // for DEBUG
-#include "visUtil.hpp"
-
-#include <unistd.h> // for usleep
+#include "Config.hpp"           // for Config
+#include "ICETelescope.hpp"     // for ice_stream_id_t, ice_encode_stream_id
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"             // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chimeMetadata.hpp"    // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "kotekanLogging.hpp"   // for DEBUG, INFO
+#include "visUtil.hpp"          // for frameID, current_time, modulo, ts_to_double
+#include "Telescope.hpp"        // for Telescope
+#include "fmt.hpp"              // for format
 
 using kotekan::bufferContainer;
 using kotekan::Config;

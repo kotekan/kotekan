@@ -1,23 +1,23 @@
+#include <stdlib.h>               // for free
+#include <utility>                // for pair
+#include <functional>             // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
+
 #include "kotekanMode.hpp"
-
-#include "Config.hpp"       // for Config
-#include "Stage.hpp"        // for Stage
-#include "StageFactory.hpp" // for StageFactory
-#include "Telescope.hpp"
-#include "buffer.h"              // for delete_buffer, send_shutdown_signal
-#include "bufferFactory.hpp"     // for bufferFactory
-#include "configUpdater.hpp"     // for configUpdater
-#include "datasetManager.hpp"    // for datasetManager
-#include "kotekanLogging.hpp"    // for INFO_NON_OO
-#include "metadata.h"            // for delete_metadata_pool
-#include "metadataFactory.hpp"   // for metadataFactory
-#include "prometheusMetrics.hpp" // for Metrics
-#include "restServer.hpp"        // for restServer, connectionInstance
-
-#include "json.hpp" // for basic_json<>::object_t, json, basic_json<>::value_type
-
-#include <stdlib.h> // for free
-#include <utility>  // for pair
+#include "Config.hpp"             // for Config
+#include "Stage.hpp"              // for Stage
+#include "StageFactory.hpp"       // for StageFactory
+#include "Telescope.hpp"          // for Telescope
+#include "buffer.h"               // for Buffer, StageInfo, get_num_full_frames, delete_buffer
+#include "bufferFactory.hpp"      // for bufferFactory
+#include "configUpdater.hpp"      // for configUpdater
+#include "datasetManager.hpp"     // for datasetManager
+#include "kotekanLogging.hpp"     // for INFO_NON_OO
+#include "metadata.h"             // for delete_metadata_pool
+#include "metadataFactory.hpp"    // for metadataFactory
+#include "prometheusMetrics.hpp"  // for Metrics
+#include "restServer.hpp"         // for restServer, connectionInstance
+#include "json.hpp"               // for basic_json<>::object_t, basic_json<>::value_type, json
+#include "fmt.hpp"                // for format
 
 using namespace std::placeholders;
 

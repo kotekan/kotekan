@@ -6,7 +6,12 @@
 #ifndef BEAMEXTRACT_HPP
 #define BEAMEXTRACT_HPP
 
-#include "Stage.hpp"
+#include <stdint.h>             // for uint32_t
+#include <string>               // for string
+
+#include "Stage.hpp"            // for Stage
+#include "Config.hpp"           // for Config
+#include "bufferContainer.hpp"  // for bufferContainer
 
 /**
  * @class BeamExtract

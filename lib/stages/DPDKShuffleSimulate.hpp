@@ -1,12 +1,13 @@
 #ifndef KOTEKAN_DPDKSHUFFLESIMULATE_HPP
 #define KOTEKAN_DPDKSHUFFLESIMULATE_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp" // for Stage
-#include "bufferContainer.hpp"
+#include <stdint.h>             // for int64_t, uint32_t
+#include <string>               // for string
 
-#include <stdint.h> // for int32_t
-#include <string>   // for string
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "buffer.h"             // for Buffer
 
 /**
  * @class DPDKShuffleSimulate

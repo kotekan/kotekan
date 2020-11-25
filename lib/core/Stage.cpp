@@ -1,22 +1,22 @@
+#include <cxxabi.h>             // for __forced_unwind
+#include <pthread.h>            // for pthread_setaffinity_np, pthread_setname_np
+#include <sched.h>              // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <algorithm>            // for copy, max
+#include <chrono>               // for seconds
+#include <cstdlib>              // for abort
+#include <exception>            // for exception
+#include <future>               // for async, future, future_status, future_status::timeout, launch
+#include <regex>                // for match_results<>::_Base_type
+#include <stdexcept>            // for runtime_error
+#include <system_error>         // for system_error
+#include <thread>               // for thread
+
 #include "Stage.hpp"
-
-#include "Config.hpp"          // for Config
-#include "buffer.h"            // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "util.h"              // for string_tail
-
-#include <algorithm>    // for max
-#include <chrono>       // for seconds
-#include <cstdlib>      // for abort
-#include <cxxabi.h>     // for __forced_unwind
-#include <exception>    // for exception
-#include <future>       // for async, future, future_status, future_status::timeout, launch
-#include <pthread.h>    // for pthread_setaffinity_np, pthread_setname_np
-#include <regex>        // for match_results<>::_Base_type
-#include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdexcept>    // for runtime_error
-#include <system_error> // for system_error
-#include <thread>       // for thread
+#include "Config.hpp"           // for Config
+#include "buffer.h"             // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "util.h"               // for string_tail
+#include "fmt.hpp"              // for format
 
 namespace kotekan {
 
