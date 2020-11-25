@@ -95,6 +95,18 @@ vis_buffer:
     kotekan_buffer: vis
     buffer_depth: 1024  # Increase as this subset is produced very quickly
 
+  visbuf_10s_valve_ringmap:
+    kotekan_buffer: vis
+    num_prod: 17000  # Approximation to the correct size
+  visbuf_10s_valve_cal:
+    kotekan_buffer: vis
+    num_prod: 2048
+    buffer_depth: 512
+  visbuf_10s_valve_timing:
+    num_elements: 15
+    kotekan_buffer: vis
+    buffer_depth: 512
+
   visbuf_10s_timing_ne:
     num_elements: 15
     num_ev: 0
@@ -344,6 +356,19 @@ archive_writers:
     in_buf: visbuf_10s_timing_ne
     instrument_name: chimetiming
 
+send_valves:
+  ringmap:
+    kotekan_stage: Valve
+    in_buf: visbuf_10s_stack_mfreq
+    out_buf: visbuf_10s_valve_ringmap
+  cal:
+    kotekan_stage: Valve
+    in_buf: visbuf_10s_cal
+    out_buf: visbuf_10s_valve_cal
+  timing:
+    kotekan_stage: Valve
+    in_buf: visbuf_10s_timing
+    out_buf: visbuf_10s_valve_timing
 
 # Transmit part of the stack to the recv1 for testing
 buffer_send:
@@ -352,15 +377,15 @@ buffer_send:
 
   stack_mfreq:
     kotekan_stage: bufferSend
-    buf: visbuf_10s_stack_mfreq
+    buf: visbuf_10s_valve_ringmap
     server_port: 14096
 
   cal:
     kotekan_stage: bufferSend
-    buf: visbuf_10s_cal
+    buf: visbuf_10s_valve_cal
     server_port: 15001
 
   timing:
     kotekan_stage: bufferSend
-    buf: visbuf_10s_timing
+    buf: visbuf_10s_valve_timing
     server_port: 15002
