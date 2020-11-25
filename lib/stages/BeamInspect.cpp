@@ -1,10 +1,16 @@
 #include "BeamInspect.hpp"
 
-#include "BeamMetadata.hpp"
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"
-#include "buffer.h"
-#include "visUtil.hpp" // for frameID, modulo
+#include "BeamMetadata.hpp"   // for BeamMetadata
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"      // for Telescope
+#include "buffer.h"           // for get_metadata, mark_frame_empty, register_consumer, wait_fo...
+#include "kotekanLogging.hpp" // for INFO
+#include "visUtil.hpp"        // for frameID, modulo
+
+#include "fmt.hpp" // for format
+
+#include <atomic>   // for atomic_bool
+#include <stdint.h> // for uint8_t, uint32_t
 
 using kotekan::bufferContainer;
 using kotekan::Config;

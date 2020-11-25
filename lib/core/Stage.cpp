@@ -5,7 +5,9 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "util.h"              // for string_tail
 
-#include <algorithm>    // for max
+#include "fmt.hpp" // for format
+
+#include <algorithm>    // for copy, max
 #include <chrono>       // for seconds
 #include <cstdlib>      // for abort
 #include <cxxabi.h>     // for __forced_unwind

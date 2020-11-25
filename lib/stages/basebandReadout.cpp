@@ -1,13 +1,13 @@
 #include "basebandReadout.hpp"
 
-#include "Config.hpp"       // for Config
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"
+#include "Config.hpp"             // for Config
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"          // for Telescope
 #include "basebandApiManager.hpp" // for basebandApiManager
 #include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_fo...
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "chimeMetadata.hpp"      // for chimeMetadata
-#include "kotekanLogging.hpp"     // for INFO, DEBUG, ERROR, WARN
+#include "kotekanLogging.hpp"     // for INFO, DEBUG, ERROR
 #include "metadata.h"             // for metadataContainer
 #include "nt_memcpy.h"            // for nt_memcpy
 #include "nt_memset.h"            // for nt_memset
@@ -38,9 +38,10 @@
 #include <highfive/H5Group.hpp>     // for Group
 #include <highfive/H5Selection.hpp> // for Selection, SliceTraits::write, SliceTraits::select
 #include <math.h>                   // for fmod
-#include <memory>                   // for unique_ptr, make_shared, shared_ptr, make_unique
+#include <memory>                   // for unique_ptr, make_shared, make_unique, allocator_trai...
 #include <regex>                    // for match_results<>::_Base_type
 #include <stdexcept>                // for runtime_error
+#include <sys/time.h>               // for timeval, timeradd
 #include <thread>                   // for thread, sleep_for
 #include <time.h>                   // for timespec
 #include <tuple>                    // for get
