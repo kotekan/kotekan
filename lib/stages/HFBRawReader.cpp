@@ -1,8 +1,8 @@
 #include "HFBRawReader.hpp"
 
 #include "Config.hpp"       // for Config
-#include "Hash.hpp"         // for Hash, operator<, operator==
 #include "HFBFrameView.hpp" // for HFBFrameView, HFBMetadata
+#include "Hash.hpp"         // for Hash, operator<, operator==
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"
 #include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, wait_for_e...
@@ -74,7 +74,7 @@ HFBRawReader::HFBRawReader(Config& config, const std::string& unique_name,
             // Add data specific states
             states.push_back(dm.create_state<beamState>(_beams).first);
             states.push_back(dm.create_state<subfreqState>(_subfreqs).first);
-            
+
             // register it as root dataset
             static_out_dset_id = dm.add_dataset(states);
 
@@ -89,7 +89,8 @@ HFBRawReader::~HFBRawReader() {}
 void HFBRawReader::create_empty_frame(frameID frame_id) {
 
     // Create frame and set structural metadata
-    auto frame = HFBFrameView::create_frame_view(out_buf, frame_id, _beams.size(), _subfreqs.size());
+    auto frame =
+        HFBFrameView::create_frame_view(out_buf, frame_id, _beams.size(), _subfreqs.size());
 
     // Fill data with zeros
     std::fill(frame.hfb.begin(), frame.hfb.end(), 0.0);

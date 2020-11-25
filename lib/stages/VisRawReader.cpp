@@ -51,7 +51,7 @@ REGISTER_KOTEKAN_STAGE(VisRawReader);
 VisRawReader::VisRawReader(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     RawReader(config, unique_name, buffer_container) {
- 
+
     // Extract data specific indices
     _inputs = metadata_json["index_map"]["input"].get<std::vector<input_ctype>>();
     _prods = metadata_json["index_map"]["prod"].get<std::vector<prod_ctype>>();
@@ -79,7 +79,7 @@ VisRawReader::VisRawReader(Config& config, const std::string& unique_name,
         if (!use_comet) {
             // Add data specific states
             if (!_stack.empty())
-              states.push_back(dm.create_state<stackState>(_num_stack, std::move(_rstack)).first);
+                states.push_back(dm.create_state<stackState>(_num_stack, std::move(_rstack)).first);
             states.push_back(dm.create_state<inputState>(_inputs).first);
             states.push_back(dm.create_state<eigenvalueState>(_ev).first);
             states.push_back(dm.create_state<prodState>(_prods).first);
@@ -100,8 +100,8 @@ void VisRawReader::create_empty_frame(frameID frame_id) {
     // Create frame and set structural metadata
     size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
 
-    auto frame = VisFrameView::create_frame_view(out_buf, frame_id, _inputs.size(), num_vis,
-                                                 _ev.size());
+    auto frame =
+        VisFrameView::create_frame_view(out_buf, frame_id, _inputs.size(), num_vis, _ev.size());
 
     // Fill data with zeros
     std::fill(frame.vis.begin(), frame.vis.end(), 0.0);

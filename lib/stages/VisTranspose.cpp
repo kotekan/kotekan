@@ -59,7 +59,6 @@ VisTranspose::VisTranspose(Config& config, const std::string& unique_name,
                                     "to be equal to or greater than one.");
     chunk_t = chunk[2];
     chunk_f = chunk[0];
-
 }
 
 bool VisTranspose::get_dataset_state(dset_id_t ds_id) {
@@ -193,9 +192,9 @@ bool VisTranspose::get_dataset_state(dset_id_t ds_id) {
 
 std::tuple<size_t, uint64_t, dset_id_t> VisTranspose::get_frame_data() {
 
-  auto frame = VisFrameView(in_buf, frame_id);
-  return std::make_tuple(frame.calculate_frame_size(num_input, num_prod, num_ev),
-                         frame.fpga_seq_total, frame.dataset_id);
+    auto frame = VisFrameView(in_buf, frame_id);
+    return std::make_tuple(frame.calculate_frame_size(num_input, num_prod, num_ev),
+                           frame.fpga_seq_total, frame.dataset_id);
 }
 
 void VisTranspose::write_chunk() {
@@ -252,66 +251,66 @@ void VisTranspose::increment_chunk() {
 }
 
 void VisTranspose::create_hdf5_file() {
-  // Create HDF5 file
-  if (stack.size() > 0) {
-    file = std::unique_ptr<visFileArchive>(
-        new visFileArchive(filename, metadata, times, freqs, inputs, prods, stack,
-          reverse_stack, num_ev, chunk, kotekan::logLevel(_member_log_level)));
-  } else {
-    file = std::unique_ptr<visFileArchive>(
-        new visFileArchive(filename, metadata, times, freqs, inputs, prods, num_ev, chunk,
-          kotekan::logLevel(_member_log_level)));
-  }
+    // Create HDF5 file
+    if (stack.size() > 0) {
+        file = std::unique_ptr<visFileArchive>(
+            new visFileArchive(filename, metadata, times, freqs, inputs, prods, stack,
+                               reverse_stack, num_ev, chunk, kotekan::logLevel(_member_log_level)));
+    } else {
+        file = std::unique_ptr<visFileArchive>(
+            new visFileArchive(filename, metadata, times, freqs, inputs, prods, num_ev, chunk,
+                               kotekan::logLevel(_member_log_level)));
+    }
 }
 
 void VisTranspose::copy_frame_data(uint32_t freq_index, uint32_t time_index) {
 
-  auto frame = VisFrameView(in_buf, frame_id);
+    auto frame = VisFrameView(in_buf, frame_id);
 
-  // Collect frames until a chunk is filled
-  // Time-transpose as frames come in
-  // Fastest varying is time (needs to be consistent with reader!)
-  uint32_t offset = freq_index * write_t;
-  strided_copy(frame.vis.data(), vis.data(), offset * eff_data_dim + time_index, write_t,
-               eff_data_dim);
-  strided_copy(frame.weight.data(), vis_weight.data(), offset * eff_data_dim + time_index,
-               write_t, eff_data_dim);
+    // Collect frames until a chunk is filled
+    // Time-transpose as frames come in
+    // Fastest varying is time (needs to be consistent with reader!)
+    uint32_t offset = freq_index * write_t;
+    strided_copy(frame.vis.data(), vis.data(), offset * eff_data_dim + time_index, write_t,
+                 eff_data_dim);
+    strided_copy(frame.weight.data(), vis_weight.data(), offset * eff_data_dim + time_index,
+                 write_t, eff_data_dim);
 
-  strided_copy(frame.eval.data(), eval.data(), freq_index * num_ev * write_t + time_index, write_t,
-               num_ev);
+    strided_copy(frame.eval.data(), eval.data(), freq_index * num_ev * write_t + time_index,
+                 write_t, num_ev);
 
-  strided_copy(frame.evec.data(), evec.data(), freq_index * num_ev * num_input * write_t + time_index,
-               write_t, num_ev * num_input);
+    strided_copy(frame.evec.data(), evec.data(),
+                 freq_index * num_ev * num_input * write_t + time_index, write_t,
+                 num_ev * num_input);
 
-  erms[offset + time_index] = frame.erms;
-  frac_lost[offset + time_index] = frame.fpga_seq_length == 0
-                               ? 1.
-                               : 1. - float(frame.fpga_seq_total) / frame.fpga_seq_length;
-  frac_rfi[offset + time_index] =
-      frame.fpga_seq_length == 0 ? 0. : float(frame.rfi_total) / frame.fpga_seq_length;
-  strided_copy(frame.gain.data(), gain.data(), offset * num_input + time_index, write_t,
-               num_input);
+    erms[offset + time_index] = frame.erms;
+    frac_lost[offset + time_index] =
+        frame.fpga_seq_length == 0 ? 1. : 1. - float(frame.fpga_seq_total) / frame.fpga_seq_length;
+    frac_rfi[offset + time_index] =
+        frame.fpga_seq_length == 0 ? 0. : float(frame.rfi_total) / frame.fpga_seq_length;
+    strided_copy(frame.gain.data(), gain.data(), offset * num_input + time_index, write_t,
+                 num_input);
 }
 
 void VisTranspose::copy_flags(uint32_t time_index) {
 
-  auto frame = VisFrameView(in_buf, frame_id);
+    auto frame = VisFrameView(in_buf, frame_id);
 
-  // Only copy flags if we haven't already
-  if (!found_flags[time_index]) {
-    // Only update flags if they are non-zero
-    bool nz_flags = false;
-    for (uint i = 0; i < num_input; i++) {
-      if (frame.flags[i] != 0.) {
-        nz_flags = true;
-        break;
-      }
+    // Only copy flags if we haven't already
+    if (!found_flags[time_index]) {
+        // Only update flags if they are non-zero
+        bool nz_flags = false;
+        for (uint i = 0; i < num_input; i++) {
+            if (frame.flags[i] != 0.) {
+                nz_flags = true;
+                break;
+            }
+        }
+        if (nz_flags) {
+            // Copy flags into the buffer. These will not be overwritten until
+            // the chunks increment in time
+            strided_copy(frame.flags.data(), input_flags.data(), time_index, write_t, num_input);
+            found_flags[time_index] = true;
+        }
     }
-    if (nz_flags) {
-      // Copy flags into the buffer. These will not be overwritten until
-      // the chunks increment in time
-      strided_copy(frame.flags.data(), input_flags.data(), time_index, write_t, num_input);
-      found_flags[time_index] = true;
-    }
-  }
 }

@@ -1,11 +1,12 @@
 
 #include "HFBFileH5.hpp"
 
-#include "Hash.hpp"           // for Hash
 #include "HFBFrameView.hpp"   // for HFBFrameView
+#include "Hash.hpp"           // for Hash
 #include "datasetManager.hpp" // for datasetManager, dset_id_t
 #include "datasetState.hpp"   // for eigenvalueState, freqState, inputState, prodState
-#include "visUtil.hpp"        // for cfloat, time_ctype, freq_ctype, input_ctype, prod...
+#include "visFileH5.hpp"
+#include "visUtil.hpp" // for cfloat, time_ctype, freq_ctype, input_ctype, prod...
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
@@ -36,7 +37,6 @@
 #include <type_traits>                 // for remove_reference<>::type
 #include <unistd.h>                    // for pwrite, TEMP_FAILURE_RETRY
 #include <utility>                     // for move, pair
-#include "visFileH5.hpp"
 
 using namespace HighFive;
 

@@ -11,7 +11,7 @@
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t
-#include "visUtil.hpp" // for cfloat, time_ctype, freq_ctype, input_ctype, prod_ctype
+#include "visUtil.hpp"         // for cfloat, time_ctype, freq_ctype, input_ctype, prod_ctype
 
 #include "json.hpp" // for json
 
@@ -25,8 +25,8 @@
 
 /**
  * @class Transpose
- * @brief Generic base class that transposes the data to make time the fastest varying value, compresses
- * it and writes it to a file.
+ * @brief Generic base class that transposes the data to make time the fastest varying value,
+ * compresses it and writes it to a file.
  *
  * All classes which inherit from this should provide the following API:
  *
@@ -72,7 +72,7 @@ class Transpose : public kotekan::Stage {
 public:
     /// Constructor; loads parameters from config
     Transpose(kotekan::Config& config, const std::string& unique_name,
-                 kotekan::bufferContainer& buffer_container);
+              kotekan::bufferContainer& buffer_container);
     ~Transpose() = default;
 
     /// Main loop over buffer frames
@@ -85,10 +85,10 @@ protected:
 
     // Buffers
     Buffer* in_buf;
-   
-    // Input buffer frame ID 
+
+    // Input buffer frame ID
     frameID frame_id;
-    
+
     nlohmann::json metadata;
 
     // HDF5 chunk size
@@ -106,7 +106,7 @@ protected:
     // Keep track of the size to write out
     // size of frequency and time dimension of chunk when written to file
     size_t write_f, write_t;
-    
+
     size_t f_ind = 0;
     size_t t_ind = 0;
 
@@ -116,11 +116,11 @@ protected:
 
     // Effective dimension of data
     size_t eff_data_dim;
-  
+
     /// Number of products to write
     size_t num_time;
     size_t num_freq;
-    
+
     // Datasets to be stored until ready to write
     std::vector<dset_id_str> dset_id;
 
@@ -128,22 +128,22 @@ private:
     /// Request dataset states from the datasetManager and prepare all metadata
     /// that is not already set in the constructor.
     virtual bool get_dataset_state(dset_id_t ds_id) = 0;
-    
-    // Get frame size, fpga_seq_total and dataset_id from FrameView 
+
+    // Get frame size, fpga_seq_total and dataset_id from FrameView
     virtual std::tuple<size_t, uint64_t, dset_id_t> get_frame_data() = 0;
-    
+
     // Create FileArchive
     virtual void create_hdf5_file() = 0;
-    
+
     // Copy data into local vectors
     virtual void copy_frame_data(uint32_t freq_index, uint32_t time_index) = 0;
-    
+
     // Copy flags into local vectors
     virtual void copy_flags(uint32_t time_index) = 0;
-    
+
     // Write datasets to file
     virtual void write_chunk() = 0;
-    
+
     // Increment between chunks
     virtual void increment_chunk() = 0;
 

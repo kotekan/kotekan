@@ -49,7 +49,7 @@ using nlohmann::json;
 REGISTER_KOTEKAN_STAGE(ensureOrdered);
 
 RawReader::RawReader(Config& config, const std::string& unique_name,
-                           bufferContainer& buffer_container) :
+                     bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&RawReader::main_thread, this)) {
 
     filename = config.get<std::string>(unique_name, "infile");
@@ -149,7 +149,7 @@ RawReader::RawReader(Config& config, const std::string& unique_name,
     ntime = metadata_json["structure"]["ntime"].get<size_t>();
 
     DEBUG("Metadata fields. frame_size: {}, metadata_size: {}, data_size: {}, nfreq: {}, ntime: {}",
-        file_frame_size, metadata_size, data_size, nfreq, ntime);
+          file_frame_size, metadata_size, data_size, nfreq, ntime);
 
     if (chunked) {
         // Special case if dimensions less than chunk size

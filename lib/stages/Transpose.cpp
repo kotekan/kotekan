@@ -44,7 +44,7 @@ using kotekan::Stage;
 using kotekan::prometheus::Metrics;
 
 Transpose::Transpose(Config& config, const std::string& unique_name,
-                           bufferContainer& buffer_container) :
+                     bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&Transpose::main_thread, this)),
     in_buf(get_buffer("in_buf")),
     frame_id(in_buf) {
@@ -69,7 +69,7 @@ Transpose::Transpose(Config& config, const std::string& unique_name,
 
 void Transpose::main_thread() {
 
-    //frameID frame_id(in_buf);
+    // frameID frame_id(in_buf);
     uint32_t frames_so_far = 0;
     // frequency and time indices within chunk
     uint32_t fi = 0;
@@ -93,12 +93,12 @@ void Transpose::main_thread() {
         if ((wait_for_full_frame(in_buf, unique_name.c_str(), frame_id)) == nullptr) {
             return;
         }
-        
+
         // Get the frame size to publish metrics later
         uint64_t fpga_seq_total;
         dset_id_t frame_ds_id;
         std::tie(frame_size, fpga_seq_total, frame_ds_id) = get_frame_data();
-        
+
         // If the frame is empty, release the buffer and continue
         if (fpga_seq_total == 0 && frame_ds_id == dset_id_t::null) {
             DEBUG("Got empty frame ({:d}).", frame_id);
@@ -152,9 +152,9 @@ void Transpose::main_thread() {
             // Time-transpose as frames come in
             // Fastest varying is time (needs to be consistent with reader!)
             copy_frame_data(fi, ti);
-        
+
             auto [frame_size, fpga_seq_total, frame_ds_id] = get_frame_data();
-            (void) frame_size;
+            (void)frame_size;
 
             // Parse the dataset ID
             if (fpga_seq_total == 0 && frame_ds_id == dset_id_t::null) {

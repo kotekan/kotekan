@@ -7,12 +7,12 @@
 #define _VIS_RAW_READER_HPP
 
 #include "Config.hpp"
+#include "RawReader.hpp"
 #include "Stage.hpp" // for Stage
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp" // for dset_id_t
 #include "visUtil.hpp"        // for freq_ctype (ptr only), input_ctype, prod_ctype, rstack_ctype
-#include "RawReader.hpp"
 
 #include "json.hpp" // for json
 
@@ -70,7 +70,7 @@ public:
 protected:
     // Create an empty frame
     void create_empty_frame(frameID frame_id) override;
-    
+
     // Get dataset ID
     dset_id_t& get_dataset_id(frameID frame_id) override;
 

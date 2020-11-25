@@ -1,7 +1,7 @@
 #include "HFBFileArchive.hpp"
 
-#include "visFile.hpp" // for create_lockfile
 #include "HFBFileH5.hpp" // for create_datatype, AtomicType<>::AtomicType, dset_i...
+#include "visFile.hpp"   // for create_lockfile
 
 #include "fmt.hpp" // for format, fmt
 
@@ -80,8 +80,7 @@ void HFBFileArchive::setup_file(const std::string& name,
                                 const std::vector<time_ctype>& times,
                                 const std::vector<freq_ctype>& freqs,
                                 const std::vector<uint32_t>& subfreqs,
-                                const std::vector<uint32_t>& beams,
-                                std::vector<int> chunk_size) {
+                                const std::vector<uint32_t>& beams, std::vector<int> chunk_size) {
 
     std::string data_filename = fmt::format(fmt("{:s}.h5"), name);
 
@@ -98,24 +97,32 @@ void HFBFileArchive::setup_file(const std::string& name,
                                                 chunk[0], chunk[1], chunk[2]));
     if (chunk[0] > (int)freqs.size()) {
 
-        INFO("HFBFileArchive: Chunk frequency ({}) dimension greater than axes ({}). Will use a smaller "
-             "chunk.", chunk[0], freqs.size())
+        INFO("HFBFileArchive: Chunk frequency ({}) dimension greater than axes ({}). Will use a "
+             "smaller "
+             "chunk.",
+             chunk[0], freqs.size())
         chunk[0] = freqs.size();
     }
     if (chunk[2] > (int)times.size()) {
 
-        INFO("HFBFileArchive: Chunk time ({}) dimension greater than axes({}). Will use a smaller chunk.", chunk[2], times.size())
+        INFO("HFBFileArchive: Chunk time ({}) dimension greater than axes({}). Will use a smaller "
+             "chunk.",
+             chunk[2], times.size())
         chunk[2] = times.size();
     }
     if (chunk[3] > (int)beams.size()) {
 
-        INFO("HFBFileArchive: Chunk beam ({}) dimension greater than axes ({}). Will use a smaller chunk.", chunk[3], beams.size())
+        INFO("HFBFileArchive: Chunk beam ({}) dimension greater than axes ({}). Will use a smaller "
+             "chunk.",
+             chunk[3], beams.size())
         chunk[3] = beams.size();
     }
     if (chunk[4] > (int)subfreqs.size()) {
 
-        INFO("HFBFileArchive: Chunk sub-frequency ({}) dimension greater than axes ({}). Will use a smaller "
-             "chunk.", chunk[4], subfreqs.size())
+        INFO("HFBFileArchive: Chunk sub-frequency ({}) dimension greater than axes ({}). Will use "
+             "a smaller "
+             "chunk.",
+             chunk[4], subfreqs.size())
         chunk[4] = subfreqs.size();
     }
 
@@ -139,15 +146,16 @@ template<typename T>
 void HFBFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f,
                                  size_t chunk_t, const T* data) {
     DEBUG2("Writing {}...", name);
-    if (name == "flags/frac_lost" || name == "flags/frac_rfi"
-        || name == "flags/dataset_id") {
+    if (name == "flags/frac_lost" || name == "flags/frac_rfi" || name == "flags/dataset_id") {
         dset(name).select({f_ind, t_ind}, {chunk_f, chunk_t}).write(data);
-    }
-    else {
+    } else {
         size_t beam_last_dim = dset(name).getSpace().getDimensions().at(1);
         size_t subfreq_last_dim = dset(name).getSpace().getDimensions().at(2);
-        //DEBUG("writing {:d} freq, {:d} times, {:d} beams, {:d} sub-freq at ({:d}, 0, 0, {:d}). Data[0]: {}", chunk_f, chunk_t, beam_last_dim, subfreq_last_dim, f_ind, t_ind, data[0]);
-        dset(name).select({f_ind, 0, 0, t_ind}, {chunk_f, beam_last_dim, subfreq_last_dim, chunk_t}).write(data);
+        // DEBUG("writing {:d} freq, {:d} times, {:d} beams, {:d} sub-freq at ({:d}, 0, 0, {:d}).
+        // Data[0]: {}", chunk_f, chunk_t, beam_last_dim, subfreq_last_dim, f_ind, t_ind, data[0]);
+        dset(name)
+            .select({f_ind, 0, 0, t_ind}, {chunk_f, beam_last_dim, subfreq_last_dim, chunk_t})
+            .write(data);
     }
 }
 
@@ -216,8 +224,8 @@ void HFBFileArchive::create_datasets() {
 
     // Create transposed dataset shapes
     create_dataset("hfb", {"freq", "beam", "subfreq", "time"}, create_datatype<float>(), compress);
-    create_dataset("flags/hfb_weight", {"freq", "beam", "subfreq", "time"}, create_datatype<float>(),
-                   compress);
+    create_dataset("flags/hfb_weight", {"freq", "beam", "subfreq", "time"},
+                   create_datatype<float>(), compress);
     create_dataset("flags/dataset_id", {"freq", "time"}, create_datatype<dset_id_str>(),
                    no_compress);
 

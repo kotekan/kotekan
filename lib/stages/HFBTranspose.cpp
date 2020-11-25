@@ -1,6 +1,8 @@
 #include "HFBTranspose.hpp"
 
 #include "Config.hpp"            // for Config
+#include "HFBFileArchive.hpp"    // for HFBFileArchive
+#include "HFBFrameView.hpp"      // for HFBFrameView
 #include "Hash.hpp"              // for Hash, operator!=
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for wait_for_full_frame, mark_frame_empty, register_consumer
@@ -12,8 +14,6 @@
 #include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, logLevel, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "version.h"             // for get_git_commit_hash
-#include "HFBFrameView.hpp"      // for HFBFrameView
-#include "HFBFileArchive.hpp"    // for HFBFileArchive
 
 #include "fmt.hpp"      // for format
 #include "gsl-lite.hpp" // for span
@@ -150,15 +150,17 @@ bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
     write_t = chunk_t;
     chunk_f = std::min(chunk_f, num_freq);
     write_f = chunk_f;
-    
-    DEBUG("Dataset {} has {:d} times, {:d} frequencies, {:d} beams and {:d} sub-frequencies.\n Data dimension: {:d} bytes, time chunk: {:d}, freq chunk: {:d}", ds_id, num_time, num_freq, num_beams, num_subfreq, eff_data_dim, chunk_t, chunk_f);
+
+    DEBUG("Dataset {} has {:d} times, {:d} frequencies, {:d} beams and {:d} sub-frequencies.\n "
+          "Data dimension: {:d} bytes, time chunk: {:d}, freq chunk: {:d}",
+          ds_id, num_time, num_freq, num_beams, num_subfreq, eff_data_dim, chunk_t, chunk_f);
 
     // Allocate memory for collecting frames
     hfb.resize(chunk_t * chunk_f * eff_data_dim, 0.);
     hfb_weight.resize(chunk_t * chunk_f * eff_data_dim, 0.);
     // init frac_lost to 1.0 to match empty frames
-    //frac_lost.resize(chunk_t * chunk_f, 1.);
-    //frac_rfi.resize(chunk_t * chunk_f, 0.);
+    // frac_lost.resize(chunk_t * chunk_f, 1.);
+    // frac_rfi.resize(chunk_t * chunk_f, 0.);
     dset_id.resize(chunk_t * chunk_f);
 
     // Initialise dataset ID array with null IDs
@@ -172,9 +174,9 @@ bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
 
 std::tuple<size_t, uint64_t, dset_id_t> HFBTranspose::get_frame_data() {
 
-  auto frame = HFBFrameView(in_buf, frame_id);
-  return std::make_tuple(frame.calculate_frame_size(num_beams, num_subfreq),
-                         frame.fpga_seq_total, frame.dataset_id);
+    auto frame = HFBFrameView(in_buf, frame_id);
+    return std::make_tuple(frame.calculate_frame_size(num_beams, num_subfreq), frame.fpga_seq_total,
+                           frame.dataset_id);
 }
 
 void HFBTranspose::write_chunk() {
@@ -212,27 +214,27 @@ void HFBTranspose::increment_chunk() {
 }
 
 void HFBTranspose::create_hdf5_file() {
-  // Create HDF5 file
-  file = std::unique_ptr<HFBFileArchive>(
-      new HFBFileArchive(filename, metadata, times, freqs, beams, sub_freqs, chunk,
-        kotekan::logLevel(_member_log_level)));
+    // Create HDF5 file
+    file = std::unique_ptr<HFBFileArchive>(
+        new HFBFileArchive(filename, metadata, times, freqs, beams, sub_freqs, chunk,
+                           kotekan::logLevel(_member_log_level)));
 }
 
 void HFBTranspose::copy_frame_data(uint32_t freq_index, uint32_t time_index) {
 
-  auto frame = HFBFrameView(in_buf, frame_id);
+    auto frame = HFBFrameView(in_buf, frame_id);
 
-  // Collect frames until a chunk is filled
-  // Time-transpose as frames come in
-  // Fastest varying is time (needs to be consistent with reader!)
-  uint32_t offset = freq_index * write_t;
-  strided_copy(frame.hfb.data(), hfb.data(), offset * eff_data_dim + time_index, write_t,
-               eff_data_dim);
-  strided_copy(frame.weight.data(), hfb_weight.data(), offset * eff_data_dim + time_index,
-               write_t, eff_data_dim);
-  //frac_lost[offset + time_index] = frame.fpga_seq_length == 0
-  //                             ? 1.
-  //                             : 1. - float(frame.fpga_seq_total) / frame.fpga_seq_length;
+    // Collect frames until a chunk is filled
+    // Time-transpose as frames come in
+    // Fastest varying is time (needs to be consistent with reader!)
+    uint32_t offset = freq_index * write_t;
+    strided_copy(frame.hfb.data(), hfb.data(), offset * eff_data_dim + time_index, write_t,
+                 eff_data_dim);
+    strided_copy(frame.weight.data(), hfb_weight.data(), offset * eff_data_dim + time_index,
+                 write_t, eff_data_dim);
+    // frac_lost[offset + time_index] = frame.fpga_seq_length == 0
+    //                             ? 1.
+    //                             : 1. - float(frame.fpga_seq_total) / frame.fpga_seq_length;
 }
 
 void HFBTranspose::copy_flags(uint32_t time_index) {

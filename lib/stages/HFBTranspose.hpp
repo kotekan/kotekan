@@ -6,15 +6,15 @@
 #ifndef HFB_TRANSPOSE_HPP
 #define HFB_TRANSPOSE_HPP
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
+#include "Config.hpp"         // for Config
+#include "HFBFileArchive.hpp" // for HFBFileArchive
+#include "HFBFileH5.hpp"
+#include "Stage.hpp" // for Stage
+#include "Transpose.hpp"
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t
-#include "HFBFileArchive.hpp"  // for HFBFileArchive
-#include "HFBFileH5.hpp"
-#include "visUtil.hpp" // for cfloat, time_ctype, freq_ctype, input_ctype, prod_ctype
-#include "Transpose.hpp"
+#include "visUtil.hpp"         // for cfloat, time_ctype, freq_ctype, input_ctype, prod_ctype
 
 #include "json.hpp" // for json
 
@@ -44,22 +44,22 @@ protected:
     /// Request dataset states from the datasetManager and prepare all metadata
     /// that is not already set in the constructor.
     bool get_dataset_state(dset_id_t ds_id) override;
-   
-    // Get frame size, fpga_seq_total and dataset_id from HFBFrameView 
+
+    // Get frame size, fpga_seq_total and dataset_id from HFBFrameView
     std::tuple<size_t, uint64_t, dset_id_t> get_frame_data() override;
-    
+
     // Create HFBFileArchive
     void create_hdf5_file() override;
 
     // Copy data into local vectors using HFBFrameView
     void copy_frame_data(uint32_t freq_index, uint32_t time_index) override;
-    
+
     // Copy flags into local vectors using HFBFrameView
     void copy_flags(uint32_t time_index) override;
-    
+
     // Write datasets to file
     void write_chunk() override;
-    
+
     // Increment between chunks
     void increment_chunk() override;
 
@@ -68,9 +68,9 @@ private:
     std::vector<time_ctype> time;
     std::vector<float> hfb;
     std::vector<float> hfb_weight;
-    //std::vector<float> frac_lost;
-    //std::vector<float> frac_rfi;
-    //std::vector<float> input_flags;
+    // std::vector<float> frac_lost;
+    // std::vector<float> frac_rfi;
+    // std::vector<float> input_flags;
 
     /// The list of frequencies and inputs that get written into the index maps
     /// of the HDF5 files

@@ -74,7 +74,7 @@ class RawReader : public kotekan::Stage {
 public:
     /// default constructor
     RawReader(kotekan::Config& config, const std::string& unique_name,
-                 kotekan::bufferContainer& buffer_container);
+              kotekan::bufferContainer& buffer_container);
 
     ~RawReader();
 
@@ -105,25 +105,25 @@ public:
 protected:
     // Dataset states constructed from metadata
     std::vector<state_id_t> states;
-    
+
     // The input file
     std::string filename;
 
     // Metadata size
     size_t metadata_size;
-    
+
     // whether to update the dataset ID with info about the file
     bool update_dataset_id;
 
     // whether to use comet to track dataset IDs
     bool use_comet;
-    
+
     // Dataset ID to assign to output frames if not using comet
     dset_id_t static_out_dset_id;
 
     // Metadata file in json format
     json metadata_json;
-    
+
     Buffer* out_buf;
 
 private:
@@ -132,7 +132,7 @@ private:
 
     // Get dataset ID
     virtual dset_id_t& get_dataset_id(frameID frame_id) = 0;
-    
+
     /**
      * @brief Get the new dataset ID.
      *
