@@ -78,23 +78,18 @@ bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
     const beamState* bstate;
     const subfreqState* sfstate;
     bool timed_out = mstate_fut.wait_for(timeout) == std::future_status::timeout;
-    INFO("mstate timed_out: {}", timed_out);
     if (!timed_out)
         mstate = mstate_fut.get();
     timed_out = timed_out || (tstate_fut.wait_for(timeout) == std::future_status::timeout);
-    INFO("tstate timed_out: {}", timed_out);
     if (!timed_out)
         tstate = tstate_fut.get();
     timed_out = timed_out || (fstate_fut.wait_for(timeout) == std::future_status::timeout);
-    INFO("fstate timed_out: {}", timed_out);
     if (!timed_out)
         fstate = fstate_fut.get();
     timed_out = timed_out || (bstate_fut.wait_for(timeout) == std::future_status::timeout);
-    INFO("bstate timed_out: {}", timed_out);
     if (!timed_out)
         bstate = bstate_fut.get();
     timed_out = timed_out || (sfstate_fut.wait_for(timeout) == std::future_status::timeout);
-    INFO("sfstate timed_out: {}", timed_out);
     if (!timed_out)
         sfstate = sfstate_fut.get();
     if (timed_out) {
