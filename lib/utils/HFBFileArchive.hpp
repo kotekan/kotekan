@@ -112,9 +112,6 @@ private:
     HighFive::DataSet dset(const std::string& name);
     size_t length(const std::string& axis_name);
 
-    // Whether to write eigenvalues or not
-    bool write_ev;
-
     // Description of weights stored in hfb_weight dataset
     std::string weight_type;
 
