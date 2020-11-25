@@ -57,6 +57,8 @@ HFBTranspose::HFBTranspose(Config& config, const std::string& unique_name,
     if (chunk[0] < 1 || chunk[1] < 1 || chunk[2] < 1 || chunk[3] < 1 || chunk[4] < 1)
         throw std::invalid_argument("HFBTranspose: Config: Chunk size needs "
                                     "to be equal to or greater than one.");
+    chunk_t = chunk[2];
+    chunk_f = chunk[0];
 }
 
 bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
@@ -143,13 +145,13 @@ bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
     // the dimension of the visibilities is different for stacked data
     eff_data_dim = num_beams * 128; // num_subfreq???
 
-    DEBUG("Dataset {} has {:d} times, {:d} frequencies, {:d} beams, {:d} sub-frequencies", ds_id, num_time, num_freq, num_beams, num_subfreq, eff_data_dim);
-
     // Ensure chunk_size not too large
     chunk_t = std::min(chunk_t, num_time);
     write_t = chunk_t;
     chunk_f = std::min(chunk_f, num_freq);
     write_f = chunk_f;
+    
+    DEBUG("Dataset {} has {:d} times, {:d} frequencies, {:d} beams and {:d} sub-frequencies.\n Data dimension: {:d} bytes, time chunk: {:d}, freq chunk: {:d}", ds_id, num_time, num_freq, num_beams, num_subfreq, eff_data_dim, chunk_t, chunk_f);
 
     // Allocate memory for collecting frames
     hfb.resize(chunk_t * chunk_f * eff_data_dim, 0.);
