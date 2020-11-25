@@ -1,20 +1,21 @@
-#include <time.h>              // for timespec
-#include <atomic>              // for atomic_bool
-#include <exception>           // for exception
-#include <functional>          // for _Bind_helper<>::type, bind, function
-#include <regex>               // for match_results<>::_Base_type
-#include <stdexcept>           // for runtime_error
-#include <vector>              // for vector
-
 #include "BeamExtract.hpp"
-#include "BeamMetadata.hpp"    // for BeamMetadata
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for get_metadata, allocate_new_metadata_object, mark_frame_empty
-#include "chimeMetadata.hpp"   // for chimeMetadata, beamCoord, get_stream_id
-#include "visUtil.hpp"         // for frameID, modulo
-#include "Telescope.hpp"       // for stream_t
-#include "datasetManager.hpp"  // for dset_id_t
-#include "kotekanLogging.hpp"  // for DEBUG2
+
+#include "BeamMetadata.hpp"   // for BeamMetadata
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"      // for stream_t
+#include "buffer.h"           // for get_metadata, allocate_new_metadata_object, mark_frame_empty
+#include "chimeMetadata.hpp"  // for chimeMetadata, beamCoord, get_stream_id
+#include "datasetManager.hpp" // for dset_id_t
+#include "kotekanLogging.hpp" // for DEBUG2
+#include "visUtil.hpp"        // for frameID, modulo
+
+#include <atomic>     // for atomic_bool
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <time.h>     // for timespec
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
