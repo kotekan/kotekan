@@ -55,13 +55,22 @@ void Gauge::set(const double value) {
 }
 
 string Gauge::to_string() {
-    return fmt::format(fmt("{:f} {:d}"), value, last_update_time_stamp);
+    std::ostringstream buf;
+    to_string(buf);
+    return buf.str();
 }
 
 std::ostringstream& Gauge::to_string(std::ostringstream& out) {
     std::lock_guard<std::mutex> lock(metric_lock);
 
-    fmt::print(out, fmt("{:f} {:d}"), value, last_update_time_stamp);
+    if (std::isnan(value)) {
+        fmt::print(out, fmt("NaN {:d}"), last_update_time_stamp);
+    } else if (std::isinf(value)) {
+        fmt::print(out, fmt("{} {:d}"), (value < 0 ? "-Inf" : "+Inf"), last_update_time_stamp);
+    } else {
+        fmt::print(out, fmt("{:f} {:d}"), value, last_update_time_stamp);
+    }
+
     return out;
 }
 
