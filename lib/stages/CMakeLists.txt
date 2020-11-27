@@ -27,8 +27,6 @@ add_library(
     simpleAutocorr.cpp
     freqSplit.cpp
     FreqSubset.cpp
-    VisFreqSubset.cpp
-    HFBFreqSubset.cpp
     prodSubset.cpp
     countCheck.cpp
     visAccumulate.cpp
