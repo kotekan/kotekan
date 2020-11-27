@@ -319,8 +319,12 @@ void applyGains::apply_thread() {
             for (uint32_t jj = ii; jj < input_frame.num_elements; jj++) {
                 // Gains are to be multiplied to vis
                 out_vis[idx] = in_vis[idx] * gain[ii] * gain_conj[jj];
-                // Update the weights.
-                out_weight[idx] = in_weight[idx] * weight_factor[ii] * weight_factor[jj];
+
+                // Update the weights take care not to generate NaN's if both the gain
+                // was zero and the weight was infinite (which can happen if a channel
+                // was turned off)
+                float wp = weight_factor[ii] * weight_factor[jj];
+                out_weight[idx] = (wp == 0 ? 0.0 : in_weight[idx] * wp);
                 idx++;
             }
             // Update the gains.
