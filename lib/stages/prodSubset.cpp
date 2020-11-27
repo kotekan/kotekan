@@ -63,9 +63,9 @@ void prodSubset::change_dataset_state(dset_id_t ds_id) {
         const prodState* prod_state_ptr = dm.dataset_state<prodState>(ds_id);
         if (prod_state_ptr == nullptr) {
             FATAL_ERROR(
-                "Set to not use dataset_broker and couldn't find freqState ancestor of dataset "
+                "Set to not use dataset_broker and couldn't find prodState ancestor of dataset "
                 "{}. Make sure there is a stage upstream in the config, that adds a "
-                "freqState.\nExiting...",
+                "prodState.\nExiting...",
                 ds_id);
         }
 
