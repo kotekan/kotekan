@@ -69,17 +69,20 @@ public:
 
 private:
     /// Copy the first frame of the integration
-    void init_first_frame(float* input_data, float* sum_data, const uint32_t in_frame_id);
+    void init_first_frame(float* input_data, const uint32_t in_frame_id);
     /// Add a frame to the integration
-    void integrate_frame(float* input_data, float* sum_data, const uint32_t in_frame_id);
+    void integrate_frame(float* input_data, const uint32_t in_frame_id);
     /// Normalise frame after integration has been completed
-    void normalise_frame(float* sum_data, const uint32_t in_frame_id);
+    void normalise_frame(const uint32_t in_frame_id);
     /// Reset the state when we restart an integration.
     bool reset_state();
 
     Buffer* in_buf;
     Buffer* cls_buf;
     Buffer* out_buf;
+
+    /// View of the output frame data.
+    gsl::span<float> out_hfb;
 
     /// Config variables
     uint32_t _num_frames_to_integrate;
