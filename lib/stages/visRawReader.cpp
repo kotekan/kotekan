@@ -376,9 +376,17 @@ void visRawReader::main_thread() {
         dset_id_t& ds_id = ((VisMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id;
         ds_id = get_dataset_state(ds_id);
 
-        // Try and clear out the cached data as we don't need it again
+        // Try and clear out the cached data from the memory map as we don't need it again
         if (madvise(mapped_file + file_ind * file_frame_size, file_frame_size, MADV_DONTNEED) == -1)
             DEBUG("madvise failed: {:s}", strerror(errno));
+#ifdef __linux__
+        // Try and clear out the cached data from the page cache as we don't need it again
+        // NOTE: unless we do this in addition to the above madvise the kernel will try and keep as
+        // much of the file in the page cache as possible and it will fill all the available memory
+        if (posix_fadvise(fd, file_ind * file_frame_size, file_frame_size, POSIX_FADV_DONTNEED)
+            == -1)
+            DEBUG("fadvise failed: {:s}", strerror(errno));
+#endif
 
         // Release the frame and advance all the counters
         mark_frame_full(out_buf, unique_name.c_str(), frame_id++);
