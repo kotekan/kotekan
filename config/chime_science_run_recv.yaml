@@ -49,6 +49,8 @@ vis_buffer:
   visbuf_10s_gain:
     kotekan_buffer: vis
     buffer_depth: 384  # Before slow stage
+  visbuf_10s_rf:
+    kotekan_buffer: vis
   visbuf_10s_flags:
     kotekan_buffer: vis
     buffer_depth: 4096 # Before slow stage
@@ -185,9 +187,14 @@ switch_26m_gated:
 receive_flags:
   kotekan_stage: ReceiveFlags
   in_buf: visbuf_10s_all
-  out_buf: visbuf_10s_flags
+  out_buf: visbuf_10s_rf
   updatable_config: "/updatable_config/flagging"
   num_kept_updates: 24
+
+bad_inputs_check:
+  kotekan_stage: BadInputFlag
+  in_buf: visbuf_10s_rf
+  out_buf: visbuf_10s_flags
 
 vis_debug:
   n2:
