@@ -100,7 +100,7 @@ private:
         float weight_diff_sum;
 
         /// Accumulation vectors
-        std::vector<int32_t> hfb1;
+        std::vector<float> hfb1;
         std::vector<float> hfb2;
 
         friend HFBAccumulate;
