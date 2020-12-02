@@ -25,9 +25,9 @@ sample_block_size: 2048
 
 # Set this value to the maximum allowed by the system RAM.
 # Each frame is ~135 MB, and stores about 168ms of data.
-buffer_depth: 10
+buffer_depth: 105
 cpu_affinity: [2,3]
-instrument_name: lab_test
+instrument_name: mcgill_lab_test
 
 # Telescope
 telescope:
@@ -35,7 +35,7 @@ telescope:
   require_gps: false
   query_gps: true # If fpga_master provides GPS time set to true
   gps_host: 127.0.0.1 # Set this to the fpga_master host
-  num_local_freq: 128 # This value doesn't apply to ADC capture
+  num_local_freq: 1 # This value doesn't apply to ADC capture
 
 # Pool
 main_pool:
@@ -64,7 +64,7 @@ dpdk:
   # Format is index = lcore, value = cpu core
   lcore_cpu_map: [0]
   master_lcore_cpu: 1
-  fpga_packet_size: 4680
+  fpga_packet_size: 4160
   samples_per_packet: 2
   capture_n_frames: buffer_depth
   alignment: samples_per_data_set * 100
@@ -78,7 +78,7 @@ dpdk:
     - dpdk_handler: iceBoardStandard
       out_buf: adc_buffer
       lost_samples_buf: lost_samples_buffer
-    # Uncomment if you have more than one port active
+    # Uncomment if you have more than one uio port active
     #- dpdk_handler: none
     #- dpdk_handler: none
     #- dpdk_handler: none
@@ -93,9 +93,15 @@ zero_samples:
   lost_samples_buf: lost_samples_buffer
   zero_value: 0 # Should be set to 255?
 
+metadata_dump:
+  kotekan_stage: chimeMetadataDump
+  in_buf: adc_buffer
+
 raw_file_write:
   kotekan_stage: rawFileWrite
   in_buf: adc_buffer
-  base_dir: /data/
-  file_name: fpga_adc_data
-  file_ext: .adc
+  # *** Change this value for each run ***
+  base_dir: /data
+  file_name: adc_data
+  file_ext: raw
+  exit_after_n_files: buffer_depth
