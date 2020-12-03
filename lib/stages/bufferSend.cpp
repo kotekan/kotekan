@@ -25,8 +25,8 @@
 #include <unistd.h>     // for close, sleep
 #include <vector>       // for vector
 
-// Only Linux supports MSG_NOSIGNAL
-#ifndef __linux__
+// Some systems don't support MSG_NOSIGNAL and don't include it in socket.h
+#ifndef MSG_NOSIGNAL
 #define MSG_NOSIGNAL 0
 #endif
 
