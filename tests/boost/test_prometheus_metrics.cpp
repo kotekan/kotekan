@@ -3,6 +3,7 @@
 #include "prometheusMetrics.hpp" // for Metrics, MetricFamily, Counter, Gauge
 
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_CHECK, BOOST_PP_BOOL_2
+#include <cmath>                             // for sqrt, log
 #include <iostream>                          // for cout, ostream
 #include <string>                            // for string, allocator, basic_string, operator==
 
@@ -30,6 +31,11 @@ BOOST_AUTO_TEST_CASE(simple_metrics) {
     auto& bar = metrics.add_gauge("bar_metric", "foos"); // a metric for the same stage
     bar.set(100);
 
+    auto& baznan = metrics.add_gauge("baznan_metric", "foos"); // a metric with NaNs
+    baznan.set(sqrt(-1));
+    auto& bazinf = metrics.add_gauge("bazinf_metric", "foos"); // a metric with inf
+    bazinf.set(log(0));
+
     foo.inc();
     auto multi_metrics = metrics.serialize();
 
@@ -41,6 +47,12 @@ BOOST_AUTO_TEST_CASE(simple_metrics) {
     // new time series
     BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foos\"} 10.0") != std::string::npos);
     BOOST_CHECK(multi_metrics.find("bar_metric{stage_name=\"foos\"} 100.0") != std::string::npos);
+
+    // proper formatting of NaN
+    BOOST_CHECK(multi_metrics.find("baznan_metric{stage_name=\"foos\"} NaN") != std::string::npos);
+
+    // proper formatting of inf
+    BOOST_CHECK(multi_metrics.find("bazinf_metric{stage_name=\"foos\"} -Inf") != std::string::npos);
 }
 
 BOOST_AUTO_TEST_CASE(remove_stage_metrics) {
