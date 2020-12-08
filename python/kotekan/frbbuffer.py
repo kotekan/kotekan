@@ -49,7 +49,7 @@ class FrbPacket(ctypes.Structure):
             fh.readinto(buf)
 
         header = FrbPacketHeader.from_buffer(buf[4:])
-        struct_name = ("FrbPacket_" + filename).encode("ascii")
+        struct_name = "FrbPacket_" + filename
         struct = type(struct_name, (FrbPacket,), {})
         struct._fields_ = [
             ("header", FrbPacketHeader),

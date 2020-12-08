@@ -97,7 +97,7 @@ private:
     std::vector<size_t> num_sk;
     std::vector<size_t> sk_exceeds;
     state_id_t state_id;
-    const RFIFrameDropState* state_ptr;
+    const RFIFrameDropState* state_ptr = nullptr;
 
     datasetManager& dm = datasetManager::instance();
 

@@ -340,13 +340,10 @@ uint8_t* wait_for_empty_frame(struct Buffer* buf, const char* producer_name, con
 
     CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
 
-// TODO: temporary solution to not print buffer status on gossec
-#ifndef _GOSSEC
-    if (print_stat == 1)
-        print_buffer_status(buf);
-#else
+    // TODO: remove this output until we have a solution which has better control over log levels
+    // if (print_stat == 1)
+    //     print_buffer_status(buf);
     (void)print_stat;
-#endif
 
     if (buf->shutdown_signal == 1)
         return NULL;

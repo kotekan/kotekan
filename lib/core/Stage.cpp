@@ -5,7 +5,9 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "util.h"              // for string_tail
 
-#include <algorithm>    // for max
+#include "fmt.hpp" // for format
+
+#include <algorithm>    // for copy, max
 #include <chrono>       // for seconds
 #include <cstdlib>      // for abort
 #include <cxxabi.h>     // for __forced_unwind
@@ -133,6 +135,10 @@ Stage::~Stage() {
     stop_thread = true;
     if (this_thread.joinable())
         this_thread.join();
+}
+
+std::string Stage::dot_string(const std::string& prefix) const {
+    return fmt::format("{:s}\"{:s}\" [shape=box, color=darkgreen];\n", prefix, get_unique_name());
 }
 
 } // namespace kotekan
