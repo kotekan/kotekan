@@ -8,6 +8,12 @@ num_ev: 4
 num_local_freq: 1
 num_frb_total_beams: 1024
 factor_upchan: 128
+chunk_size:
+  - 64
+  - 64
+  - 128
+  - 128
+  - 128
 
 dataset_manager:
   ds_broker_host: "127.0.0.1"
@@ -25,12 +31,7 @@ hfb_pool:
   num_metadata_objects: '655360'
 
 read_raw:
-  log_level: debug
-  chunk_size:
-  - 64
-  - 66
-  - 128
-  infile:  /mnt/ramdisk/20201110T165412Z_chimeHFB_corr/00000000_0000
+  infile:  20201207T213437Z_chimeHFB_corr/00000000_0000
   kotekan_stage: HFBRawReader
   max_read_rate: 0.0
   out_buf: read_buffer
@@ -40,15 +41,8 @@ read_raw:
 write_hdf5:
   log_level: debug
   comet_timeout: 180.
-  chunk_size:
-  - 8
-  - 66
-  - 128
-  - 128
-  - 128
   kotekan_stage: HFBTranspose
   in_buf: read_buffer
-  #outfile:  /home/willis/hfb_data/moose_data/00000000_0000
   outfile:  ./00000000_0000
 
 #hfb_debug:
