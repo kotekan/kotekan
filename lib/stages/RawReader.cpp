@@ -1,32 +1,31 @@
 #include "RawReader.hpp"
 
-#include "Config.hpp"       // for Config
-#include "Hash.hpp"         // for Hash, operator<, operator==
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"
-#include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, wait_for_e...
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for Hash, operator<, operator==
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.h"            // for mark_frame_full, wait_for_empty_frame, mark_frame_empty
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager, DS_UNIQUE_NAME
-#include "datasetState.hpp"    // for freqState, timeState, eigenvalueState, inputState, metada...
+#include "datasetState.hpp"    // for freqState, timeState, metadataState
 #include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
-#include "kotekanLogging.hpp"  // for INFO, DEBUG, FATAL_ERROR, ERROR, WARN
+#include "kotekanLogging.hpp"  // for INFO, FATAL_ERROR, DEBUG, WARN, ERROR
 #include "metadata.h"          // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
-#include "visBuffer.hpp"       // for VisFrameView, VisMetadata
-#include "visUtil.hpp"         // for time_ctype, frameID, freq_ctype, prod_ctype, rstack_ctype
+#include "visBuffer.hpp"       // for VisFrameView
+#include "visUtil.hpp"         // for time_ctype, freq_ctype, frameID, modulo, current_time
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span<>::iterator, span
-#include "json.hpp"     // for basic_json<>::object_t, json, basic_json, basic_json<>::v...
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for basic_json<>::object_t, json, basic_json, basic_json<>::v...
 
-#include <algorithm>    // for fill, min, max
+#include <algorithm>    // for min, max
 #include <atomic>       // for atomic_bool
-#include <cstdint>      // for uint32_t, uint8_t
+#include <cstdint>      // for uint8_t, uint32_t
 #include <cstring>      // for strerror, memcpy
 #include <cxxabi.h>     // for __forced_unwind
 #include <errno.h>      // for errno
 #include <exception>    // for exception
-#include <fcntl.h>      // for open, O_RDONLY
+#include <fcntl.h>      // for open, posix_fadvise, O_RDONLY, POSIX_FADV_DONTNEED
 #include <fstream>      // for ifstream, ios_base::failure, ios_base, basic_ios, basic_i...
 #include <functional>   // for _Bind_helper<>::type, bind, function
 #include <future>       // for async, future
@@ -37,8 +36,7 @@
 #include <sys/stat.h>   // for stat
 #include <system_error> // for system_error
 #include <time.h>       // for nanosleep, timespec
-#include <tuple>        // for get, make_tuple, tuple
-#include <type_traits>  // for __decay_and_strip<>::__type
+#include <tuple>        // for get
 #include <unistd.h>     // for close, off_t
 
 using kotekan::bufferContainer;
