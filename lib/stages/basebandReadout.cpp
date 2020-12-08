@@ -187,9 +187,10 @@ void basebandReadout::main_thread() {
 
 void basebandReadout::readout_thread(const uint32_t freq_ids[],
                                      std::vector<basebandReadoutManager*>& mgrs) {
-    std::unique_ptr<basebandReadoutManager::requestStatusMutex> next_requests[_num_local_freq] = {};
+    std::unique_ptr<basebandReadoutManager::requestStatusMutex> next_requests[_num_local_freq];
     std::shared_ptr<basebandReadoutManager::requestStatusMutex> next_request;
-    kotekan::prometheus::Counter* request_no_data_counters[_num_local_freq] = {};
+    kotekan::prometheus::Counter* request_no_data_counters[_num_local_freq];
+
     for (int freqidx = 0; freqidx < _num_local_freq; freqidx++) {
         request_no_data_counters[freqidx] =
             &(readout_counter.labels({std::to_string(freq_ids[freqidx]), "no_data"}));
