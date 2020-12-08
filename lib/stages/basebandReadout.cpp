@@ -304,14 +304,6 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[],
                 // INFO("memcpy() call: {:d} = {:d}-{:d} ms", ms_after.count() - ms_before.count(),
                 //       ms_after.count(), ms_before.count());
             }
-
-            if (data.status == basebandDumpData::Status::Ok) {
-                INFO("Captured {:d} samples for event {:d} and freq {:d}.", data.data_length_fpga,
-                     data.event_id, data.freq_id);
-
-                // we are done copying the samples into the readout buffer
-                mgr.ready({dump_status, data});
-            }
         }
     }
 }
