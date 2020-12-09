@@ -160,9 +160,8 @@ void FakeHFB::main_thread() {
             // pattern->fill(output_frame);
 
             for (uint32_t i = 0; i < output_frame.num_beams * output_frame.num_subfreq; i++) {
-                float data = (i % 2 == 0 ? output_frame.freq_id : output_frame.fpga_seq_start);
 
-                output_frame.hfb[i] = data;
+                output_frame.hfb[i] = output_frame.freq_id;
                 output_frame.weight[i] = 1.0;
             }
 
