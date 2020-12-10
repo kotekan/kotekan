@@ -85,23 +85,7 @@ void VisRawReader::create_empty_frame(frameID frame_id) {
     auto frame =
         VisFrameView::create_frame_view(out_buf, frame_id, _inputs.size(), num_vis, _ev.size());
 
-    // Fill data with zeros
-    std::fill(frame.vis.begin(), frame.vis.end(), 0.0);
-    std::fill(frame.weight.begin(), frame.weight.end(), 0.0);
-    std::fill(frame.eval.begin(), frame.eval.end(), 0.0);
-    std::fill(frame.evec.begin(), frame.evec.end(), 0.0);
-    std::fill(frame.gain.begin(), frame.gain.end(), 0.0);
-    std::fill(frame.flags.begin(), frame.flags.end(), 0.0);
-    frame.erms = 0;
-
-    // Set non-structural metadata
-    frame.freq_id = 0;
-    frame.dataset_id = dset_id_t::null;
-    frame.time = std::make_tuple(0, timespec{0, 0});
-
-    // mark frame as empty by ensuring this is 0
-    frame.fpga_seq_length = 0;
-    frame.fpga_seq_total = 0;
+    frame.zero_frame();
 
     DEBUG("VisRawReader: Reading empty frame: {:d}", frame_id);
 }

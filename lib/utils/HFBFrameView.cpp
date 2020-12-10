@@ -172,3 +172,19 @@ HFBFrameView HFBFrameView::create_frame_view(Buffer* buf, const uint32_t index,
 size_t HFBFrameView::data_size() const {
     return buffer_layout.first;
 }
+
+void HFBFrameView::zero_frame() {
+
+    // Fill data with zeros
+    std::memset(hfb.data(), 0, hfb.size() * sizeof(float));
+    std::memset(weight.data(), 0, weight.size() * sizeof(float));
+
+    // Set non-structural metadata
+    freq_id = 0;
+    dataset_id = dset_id_t::null;
+    time = timespec{0, 0};
+
+    // mark frame as empty by ensuring this is 0
+    fpga_seq_length = 0;
+    fpga_seq_total = 0;
+}

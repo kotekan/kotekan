@@ -72,18 +72,7 @@ void HFBRawReader::create_empty_frame(frameID frame_id) {
     auto frame =
         HFBFrameView::create_frame_view(out_buf, frame_id, _beams.size(), _subfreqs.size());
 
-    // Fill data with zeros
-    std::fill(frame.hfb.begin(), frame.hfb.end(), 0.0);
-    std::fill(frame.weight.begin(), frame.weight.end(), 0.0);
-
-    // Set non-structural metadata
-    frame.freq_id = 0;
-    frame.dataset_id = dset_id_t::null;
-    frame.time = timespec{0, 0};
-
-    // mark frame as empty by ensuring this is 0
-    frame.fpga_seq_length = 0;
-    frame.fpga_seq_total = 0;
+    frame.zero_frame();
 
     DEBUG("HFBRawReader: Reading empty frame: {:d}", frame_id);
 }

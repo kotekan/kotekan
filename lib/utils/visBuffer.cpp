@@ -254,3 +254,24 @@ VisFrameView VisFrameView::create_frame_view(Buffer* buf, const uint32_t index,
 size_t VisFrameView::data_size() const {
     return buffer_layout.first;
 }
+
+void VisFrameView::zero_frame() {
+
+    // Fill data with zeros
+    std::memset(vis.data(), 0, vis.size() * sizeof(cfloat));
+    std::memset(weight.data(), 0, weight.size() * sizeof(float));
+    std::memset(eval.data(), 0, eval.size() * sizeof(float));
+    std::memset(evec.data(), 0, evec.size() * sizeof(cfloat));
+    std::memset(gain.data(), 0, gain.size() * sizeof(cfloat));
+    std::memset(flags.data(), 0, flags.size() * sizeof(float));
+    erms = 0;
+
+    // Set non-structural metadata
+    freq_id = 0;
+    dataset_id = dset_id_t::null;
+    time = std::make_tuple(0, timespec{0, 0});
+
+    // mark frame as empty by ensuring this is 0
+    fpga_seq_length = 0;
+    fpga_seq_total = 0;
+}
