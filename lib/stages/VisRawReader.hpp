@@ -11,6 +11,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t
 #include "visUtil.hpp"         // for frameID, input_ctype, prod_ctype, stack_ctype, rstack_ctype
+#include "visBuffer.hpp"
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
@@ -23,7 +24,7 @@
  * This class inherits from the RawReader base class and reads raw visibility data
  * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche
  */
-class VisRawReader : public RawReader {
+class VisRawReader : public RawReader<VisFrameView> {
 
 public:
     /// default constructor
@@ -63,9 +64,6 @@ public:
 protected:
     // Create an empty frame
     void create_empty_frame(frameID frame_id) override;
-
-    // Get dataset ID
-    dset_id_t& get_dataset_id(frameID frame_id) override;
 
 private:
     // The metadata

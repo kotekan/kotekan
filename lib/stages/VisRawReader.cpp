@@ -89,8 +89,3 @@ void VisRawReader::create_empty_frame(frameID frame_id) {
 
     DEBUG("VisRawReader: Reading empty frame: {:d}", frame_id);
 }
-
-dset_id_t& VisRawReader::get_dataset_id(frameID frame_id) {
-    auto frame = VisFrameView(out_buf, frame_id);
-    return frame.dataset_id;
-}

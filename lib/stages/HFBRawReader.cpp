@@ -76,8 +76,3 @@ void HFBRawReader::create_empty_frame(frameID frame_id) {
 
     DEBUG("HFBRawReader: Reading empty frame: {:d}", frame_id);
 }
-
-dset_id_t& HFBRawReader::get_dataset_id(frameID frame_id) {
-    auto frame = HFBFrameView(out_buf, frame_id);
-    return frame.dataset_id;
-}
