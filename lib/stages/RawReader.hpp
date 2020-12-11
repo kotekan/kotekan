@@ -100,7 +100,7 @@ using nlohmann::json;
  *                                 testing or if original dataset IDs can be lost.
  *                                 Default is False.
  *
- * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche
+ * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche, James Willis
  */
 template<typename T>
 class RawReader : public kotekan::Stage {
