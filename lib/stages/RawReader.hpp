@@ -299,8 +299,8 @@ RawReader<T>::RawReader(Config& config, const std::string& unique_name,
 
     // Extract the attributes and index maps
     _metadata = metadata_json["attributes"];
-    _times = metadata_json["index_map"]["time"].get<std::vector<time_ctype>>();
-    auto freqs = metadata_json["index_map"]["freq"].get<std::vector<freq_ctype>>();
+    _times = metadata_json["index_map"]["time"].template get<std::vector<time_ctype>>();
+    auto freqs = metadata_json["index_map"]["freq"].template get<std::vector<freq_ctype>>();
 
     // Match frequencies to IDs in the Telescope...
     auto& tel = Telescope::instance();
@@ -330,17 +330,19 @@ RawReader<T>::RawReader(Config& config, const std::string& unique_name,
 
     // check git version tag
     // TODO: enforce that they match if build type == "release"?
-    if (_metadata.at("git_version_tag").get<std::string>() != std::string(get_git_commit_hash()))
+    if (_metadata.at("git_version_tag").template get<std::string>()
+        != std::string(get_git_commit_hash()))
         INFO("Git version tags don't match: dataset in file {:s} has tag {:s}, while the local git "
              "version tag is {:s}",
-             filename, _metadata.at("git_version_tag").get<std::string>(), get_git_commit_hash());
+             filename, _metadata.at("git_version_tag").template get<std::string>(),
+             get_git_commit_hash());
 
     // Extract the structure
-    file_frame_size = metadata_json["structure"]["frame_size"].get<size_t>();
-    metadata_size = metadata_json["structure"]["metadata_size"].get<size_t>();
-    data_size = metadata_json["structure"]["data_size"].get<size_t>();
-    nfreq = metadata_json["structure"]["nfreq"].get<size_t>();
-    ntime = metadata_json["structure"]["ntime"].get<size_t>();
+    file_frame_size = metadata_json["structure"]["frame_size"].template get<size_t>();
+    metadata_size = metadata_json["structure"]["metadata_size"].template get<size_t>();
+    data_size = metadata_json["structure"]["data_size"].template get<size_t>();
+    nfreq = metadata_json["structure"]["nfreq"].template get<size_t>();
+    ntime = metadata_json["structure"]["ntime"].template get<size_t>();
 
     DEBUG("Metadata fields. frame_size: {}, metadata_size: {}, data_size: {}, nfreq: {}, ntime: {}",
           file_frame_size, metadata_size, data_size, nfreq, ntime);
