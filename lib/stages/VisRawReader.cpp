@@ -10,18 +10,14 @@
 #include "visBuffer.hpp"       // for VisFrameView, VisMetadata
 #include "visUtil.hpp"         // for prod_ctype, rstack_ctype, stack_ctype, input_ctype, frameID
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span<>::iterator, span
-#include "json.hpp"     // for basic_json<>::object_t, basic_json, json, basic_json<>::v...
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for basic_json<>::object_t, basic_json, json, basic_json<>::v...
 
-#include <algorithm>   // for fill, max
-#include <cstdint>     // for uint32_t
-#include <stddef.h>    // for size_t
-#include <stdexcept>   // for runtime_error
-#include <time.h>      // for timespec
-#include <tuple>       // for make_tuple, tuple
-#include <type_traits> // for __decay_and_strip<>::__type
-#include <utility>     // for pair, move
+#include <algorithm> // for fill, max
+#include <cstdint>   // for uint32_t
+#include <stddef.h>  // for size_t
+#include <stdexcept> // for runtime_error
+#include <utility>   // for pair, move
 
 using kotekan::bufferContainer;
 using kotekan::Config;

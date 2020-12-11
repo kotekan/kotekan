@@ -9,7 +9,6 @@
 #include "Config.hpp"          // for Config
 #include "RawReader.hpp"       // for RawReader
 #include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for dset_id_t
 #include "visBuffer.hpp"
 #include "visUtil.hpp" // for frameID, input_ctype, prod_ctype, stack_ctype, rstack_ctype
 

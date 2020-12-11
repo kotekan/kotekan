@@ -17,6 +17,7 @@
 #include <regex>       // for match_results<>::_Base_type
 #include <set>         // for set
 #include <stdexcept>   // for runtime_error
+#include <string.h>    // for memset
 #include <sys/time.h>  // for TIMEVAL_TO_TIMESPEC
 #include <type_traits> // for __decay_and_strip<>::__type
 #include <vector>      // for vector

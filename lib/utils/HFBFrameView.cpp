@@ -16,6 +16,7 @@
 #include <regex>     // for match_results<>::_Base_type
 #include <set>       // for set
 #include <stdexcept> // for runtime_error
+#include <string.h>  // for memset
 #include <tuple>     // for tuple, make_tuple
 #include <vector>    // for vector
 

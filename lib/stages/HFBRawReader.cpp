@@ -11,14 +11,12 @@
 #include "kotekanLogging.hpp"  // for DEBUG, WARN
 #include "visUtil.hpp"         // for frameID
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span<>::iterator, span
-#include "json.hpp"     // for basic_json<>::object_t, json, basic_json, basic_json<>::v...
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for basic_json<>::object_t, json, basic_json, basic_json<>::v...
 
 #include <algorithm> // for fill, max
 #include <cstdint>   // for uint32_t
 #include <stdexcept> // for runtime_error
-#include <time.h>    // for timespec
 #include <utility>   // for pair
 
 using kotekan::bufferContainer;

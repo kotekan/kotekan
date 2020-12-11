@@ -10,7 +10,6 @@
 #include "HFBFrameView.hpp"
 #include "RawReader.hpp"       // for RawReader
 #include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for dset_id_t
 #include "visUtil.hpp"         // for frameID
 
 #include <stdint.h> // for uint32_t
