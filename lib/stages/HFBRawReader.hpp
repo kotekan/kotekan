@@ -6,12 +6,12 @@
 #ifndef _HFB_RAW_READER_HPP
 #define _HFB_RAW_READER_HPP
 
-#include "Config.hpp"          // for Config
+#include "Config.hpp" // for Config
+#include "HFBFrameView.hpp"
 #include "RawReader.hpp"       // for RawReader
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t
 #include "visUtil.hpp"         // for frameID
-#include "HFBFrameView.hpp"
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
