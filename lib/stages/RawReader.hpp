@@ -56,11 +56,17 @@ using nlohmann::json;
  * create_empty_frame(frameID frame_id);
  * get_dataset_id(frameID frame_id);
  *
- * This will divide the file up into time-frequency chunks of set size and
+ * This stage will divide the file up into time-frequency chunks of set size and
  * stream out the frames with time as the *fastest* index. The dataset ID
  * will be restored from the dataset broker if `use_comet` is set. Otherwise
  * a new dataset will be created and the original ID stored in the frames
  * will be lost.
+ *
+ * The chunking strategy aids the downstream Transpose stage that writes to a HDF5
+ * file with a chunked layout. The file writing is most efficient when writing entire
+ * chunks on exact chunk boundaries. The reason for using chunking in the first place
+ * is to enable compression and try to optimise for certain IO patterns
+ * (i.e. read a few frequencies for many times).
  *
  * @par Buffers
  * @buffer out_buf The data read from the raw file.
