@@ -1,6 +1,8 @@
 #ifndef DSET_ID_HPP
 #define DSET_ID_HPP
 
+#include <highfive/H5DataType.hpp> // for DataType, AtomicType, DataType::DataType
+
 const size_t DSET_ID_LEN = 33; // Length of the string used to represent dataset IDs
 struct dset_id_str {
     char hash[DSET_ID_LEN];
