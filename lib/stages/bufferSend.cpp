@@ -25,8 +25,8 @@
 #include <unistd.h>     // for close, sleep
 #include <vector>       // for vector
 
-// Only Linux supports MSG_NOSIGNAL
-#ifndef __linux__
+// Some systems don't support MSG_NOSIGNAL and don't include it in socket.h
+#ifndef MSG_NOSIGNAL
 #define MSG_NOSIGNAL 0
 #endif
 
@@ -242,4 +242,14 @@ void bufferSend::connect_to_server() {
         std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
         connection_state_cv.wait(connection_lock, [&]() { return !connected || stop_thread; });
     }
+}
+
+std::string bufferSend::dot_string(const std::string& prefix) const {
+    std::string dot = Stage::dot_string(prefix);
+    std::string target = fmt::format("{:s}:{:d}", server_ip, server_port);
+    dot += fmt::format("{:s}\"{:s}\" [shape=doubleoctagon style=filled,color=lightblue]", prefix,
+                       target);
+    dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\"", prefix, get_unique_name(), target);
+
+    return dot;
 }

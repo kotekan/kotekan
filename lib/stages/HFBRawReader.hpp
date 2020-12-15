@@ -6,21 +6,14 @@
 #ifndef _HFB_RAW_READER_HPP
 #define _HFB_RAW_READER_HPP
 
-#include "Config.hpp"
-#include "RawReader.hpp"
-#include "Stage.hpp" // for Stage
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp" // for dset_id_t
-#include "visUtil.hpp"        // for freq_ctype (ptr only), input_ctype, prod_ctype, rstack_ctype
+#include "Config.hpp" // for Config
+#include "HFBFrameView.hpp"
+#include "RawReader.hpp"       // for RawReader
+#include "bufferContainer.hpp" // for bufferContainer
+#include "visUtil.hpp"         // for frameID
 
-#include "json.hpp" // for json
-
-#include <map>      // for map
-#include <stddef.h> // for size_t
-#include <stdint.h> // for uint32_t, uint8_t
+#include <stdint.h> // for uint32_t
 #include <string>   // for string
-#include <utility>  // for pair
 #include <vector>   // for vector
 
 /**
@@ -30,7 +23,7 @@
  * This class inherits from the RawReader base class and reads raw 21cm absorber data
  * @author James Willis
  */
-class HFBRawReader : public RawReader {
+class HFBRawReader : public RawReader<HFBFrameView> {
 
 public:
     /// default constructor
@@ -56,9 +49,6 @@ public:
 protected:
     // Create an empty frame
     void create_empty_frame(frameID frame_id) override;
-
-    // Get dataset ID
-    dset_id_t& get_dataset_id(frameID frame_id) override;
 
 private:
     // The metadata

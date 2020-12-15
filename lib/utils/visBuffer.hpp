@@ -7,13 +7,13 @@
 #ifndef VISBUFFER_HPP
 #define VISBUFFER_HPP
 
-#include "Config.hpp"      // for Config
-#include "FrameView.hpp"   // for FrameView
-#include "Telescope.hpp"   // for freq_id_t
-#include "buffer.h"        // for Buffer
-#include "chimeMetadata.h" // for chimeMetadata
-#include "dataset.hpp"     // for dset_id_t
-#include "visUtil.hpp"     // for cfloat
+#include "Config.hpp"         // for Config
+#include "FrameView.hpp"      // for FrameView
+#include "Telescope.hpp"      // for freq_id_t
+#include "buffer.h"           // for Buffer
+#include "chimeMetadata.hpp"  // for chimeMetadata
+#include "datasetManager.hpp" // for dset_id_t
+#include "visUtil.hpp"        // for cfloat
 
 #include "gsl-lite.hpp" // for span
 
@@ -158,6 +158,8 @@ public:
     static size_t calculate_frame_size(uint32_t num_elements, uint32_t num_prod, uint32_t num_ev);
 
     size_t data_size() const override;
+
+    void zero_frame() override;
 
     /**
      * @brief Return a summary of the visibility buffer contents.

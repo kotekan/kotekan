@@ -11,7 +11,7 @@
 #include "Telescope.hpp"
 #include "buffer.h"               // for Buffer
 #include "bufferContainer.hpp"    // for bufferContainer
-#include "chimeMetadata.h"        // for beamCoord
+#include "chimeMetadata.hpp"      // for beamCoord
 #include "hsa/hsa.h"              // for hsa_signal_t
 #include "hsaCommand.hpp"         // for hsaCommand
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
@@ -76,8 +76,11 @@ public:
 
     /// Figure our LST at this frame and the Alt-Az of the 10 sources, then calculate phase delays
     /// at each input
-    void calculate_phase(struct beamCoord beam_coord, timespec time_now, float freq_now,
+    void calculate_phase(const beamCoord& beam_coord, timespec time_now, float freq_now,
                          float* gain, float* output);
+
+    /// Save the beam scaling values to one of the scaling arrays
+    void copy_scaling(const beamCoord& beam_coord, float* scaling);
 
     /// Load gain, update phases every second by alternating the use of 2 banks.
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
@@ -88,22 +91,28 @@ public:
     bool tracking_grab_callback(nlohmann::json& json, const uint8_t beamID);
 
 private:
-    /// Length of arrray of phases, should be 2048 x 10 x 2 for complex
+    /// Length of array of phases in bytes, should be 2048 x _num_beams x 2 for complex
     int32_t phase_frame_len;
+    /// Length of the array of scaling values in bytes.
+    int32_t scaling_frame_len;
     /// One of two alternating array of host phase
     float* host_phase_0;
+    /// One of two alternating array of host scaling
+    float* host_scaling_0;
     /// Two of two alternating array of host phase
     float* host_phase_1;
+    /// Two of two alternating array of host scaling
+    float* host_scaling_1;
     /// Gain stuff--------------------------------
     struct Buffer* gain_buf;
     int32_t gain_len;
     int32_t gain_buf_id;
-    /// Array of gains, float size of 2048*2*10
+    /// Array of gains, float size of 2048 * 2 * _num_beams
     float* host_gain;
 
     /// Number of elements, should be 2048
     uint32_t _num_elements;
-    /// Number of beams, should be 10
+    /// Number of beams
     int16_t _num_beams;
 
     /// Metadata buffer ID

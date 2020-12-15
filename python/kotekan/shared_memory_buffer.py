@@ -420,14 +420,24 @@ class SharedMemoryReader:
             self._data[idx_data, :] = tmp[idx_shm, :]
 
     def _access_record(self):
-        with self.semaphore:
-            record = np.ndarray(
-                (self.num_time, self.num_freq),
-                np.int64,
-                self.shared_mem,
-                self.pos_access_record,
-                order="C",
-            ).copy()
+        try:
+            self.semaphore.acquire(120)
+        except posix_ipc.BusyError:
+            raise SharedMemoryError(
+                "Timed out while waiting for the shared memory resources referenced by '{}'.".format(
+                    self.shared_mem_name
+                )
+            )
+
+        record = np.ndarray(
+            (self.num_time, self.num_freq),
+            np.int64,
+            self.shared_mem,
+            self.pos_access_record,
+            order="C",
+        ).copy()
+
+        self.semaphore.release()
         return record
 
     def _validate_shm(self):

@@ -176,7 +176,8 @@ std::tuple<size_t, uint64_t, dset_id_t> HFBTranspose::get_frame_data() {
 
 void HFBTranspose::write_chunk() {
     DEBUG("Writing at freq {:d} and time {:d}", f_ind, t_ind);
-    DEBUG("Writing block of {:d} freqs and {:d} times. data: {}...{}...{}", write_f, write_t, hfb[0], hfb[write_t], hfb[write_t * 2]);
+    DEBUG("Writing block of {:d} freqs and {:d} times. data: {}...{}...{}", write_f, write_t,
+          hfb[0], hfb[write_t], hfb[write_t * 2]);
 
     file->write_block("hfb", f_ind, t_ind, write_f, write_t, hfb.data());
     file->write_block("hfb_weight", f_ind, t_ind, write_f, write_t, hfb_weight.data());

@@ -3,7 +3,7 @@
 #include "Config.hpp"         // for Config
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"           // for allocate_new_metadata_object, mark_frame_full, register_pr...
-#include "chimeMetadata.h"    // for set_rfi_num_bad_inputs
+#include "chimeMetadata.hpp"  // for set_rfi_num_bad_inputs
 #include "configUpdater.hpp"  // for configUpdater
 #include "kotekanLogging.hpp" // for DEBUG, ERROR
 #include "visUtil.hpp"        // for parse_reorder_default
