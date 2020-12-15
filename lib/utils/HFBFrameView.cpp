@@ -177,8 +177,7 @@ size_t HFBFrameView::data_size() const {
 void HFBFrameView::zero_frame() {
 
     // Fill data with zeros
-    std::memset(hfb.data(), 0, hfb.size() * sizeof(float));
-    std::memset(weight.data(), 0, weight.size() * sizeof(float));
+    std::memset(_frame, 0, data_size());
 
     // Set non-structural metadata
     freq_id = 0;

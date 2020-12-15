@@ -259,12 +259,7 @@ size_t VisFrameView::data_size() const {
 void VisFrameView::zero_frame() {
 
     // Fill data with zeros
-    std::memset(vis.data(), 0, vis.size() * sizeof(cfloat));
-    std::memset(weight.data(), 0, weight.size() * sizeof(float));
-    std::memset(eval.data(), 0, eval.size() * sizeof(float));
-    std::memset(evec.data(), 0, evec.size() * sizeof(cfloat));
-    std::memset(gain.data(), 0, gain.size() * sizeof(cfloat));
-    std::memset(flags.data(), 0, flags.size() * sizeof(float));
+    std::memset(_frame, 0, data_size());
     erms = 0;
 
     // Set non-structural metadata
