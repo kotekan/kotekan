@@ -24,7 +24,6 @@
 #include <cstdint>                 // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
 #include <cstdlib>                 // for size_t, (anonymous), div
 #include <functional>              // for function
-#include <highfive/H5DataType.hpp> // for DataType, AtomicType, DataType::DataType
 #include <iosfwd>                  // for ostream
 #include <map>                     // for map
 #include <math.h>                  // for fmod
