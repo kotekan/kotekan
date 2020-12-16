@@ -6,7 +6,6 @@
 #include "fmt.hpp" // for format, fmt
 
 #include <algorithm>                   // for copy, min
-#include <cstdint>                     // for uint32_t
 #include <cstdio>                      // for remove
 #include <highfive/H5Attribute.hpp>    // for Attribute, Attribute::write
 #include <highfive/H5DataSet.hpp>      // for DataSet, AnnotateTraits::createAttribute, DataSet...
