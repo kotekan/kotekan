@@ -51,6 +51,8 @@ public:
      * @param metadata Metadata attributes.
      * @param times Vector of time indices.
      * @param freqs Vector of frequency indices.
+     * @param beams Vector of beam indices.
+     * @param subfreqs Vector of sub-frequency indices.
      * @param stack Vector of stack indices.
      * @param reverse_stack Vector mapping products to stacks.
      * @param chunk_size HDF5 chunk size (frequencies * beams * sub-frequencies * times).
