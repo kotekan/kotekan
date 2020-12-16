@@ -2,7 +2,6 @@
 #define VIS_FILE_ARCHIVE_HPP
 
 #include "FileArchive.hpp"
-#include "dset_id.hpp"
 #include "kotekanLogging.hpp" // for logLevel, kotekanLogging
 #include "visUtil.hpp"        // for freq_ctype, prod_ctype, time_ctype, input_ctype
 

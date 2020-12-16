@@ -1,5 +1,6 @@
 #include "visFileArchive.hpp"
 
+#include "dset_id.hpp"   // for AtomicType<>::AtomicType, dset_id_str
 #include "visFile.hpp"   // for create_lockfile
 #include "visFileH5.hpp" // for create_datatype, AtomicType<>::AtomicType, dset_i...
 

@@ -4,36 +4,29 @@
 #include "HFBFileArchive.hpp"    // for HFBFileArchive
 #include "HFBFrameView.hpp"      // for HFBFrameView
 #include "Hash.hpp"              // for Hash, operator!=
+#include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"              // for wait_for_full_frame, mark_frame_empty, register_consumer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "dataset.hpp"           // for dataset
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager
 #include "datasetState.hpp"      // for metadataState, stackState, acqDatasetIdState, eigenvalu...
+#include "dset_id.hpp"           // for dset_id_str, DSET_ID_LEN
 #include "errors.h"              // for exit_kotekan, CLEAN_EXIT, ReturnCode
 #include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, logLevel, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
-#include "version.h"             // for get_git_commit_hash
 
 #include "fmt.hpp"      // for format
 #include "gsl-lite.hpp" // for span
+#include "json.hpp"     // for basic_json<>::object_t, json, basic_json,
 
 #include <algorithm>    // for max, fill, min
-#include <atomic>       // for atomic_bool
-#include <complex>      // for complex
 #include <cstdint>      // for uint32_t
 #include <cxxabi.h>     // for __forced_unwind
 #include <exception>    // for exception
-#include <functional>   // for _Bind_helper<>::type, bind, function
 #include <future>       // for async, future
 #include <iterator>     // for make_move_iterator, move_iterator, operator!=
-#include <map>          // for map
-#include <regex>        // for match_results<>::_Base_type
 #include <stdexcept>    // for out_of_range, invalid_argument
 #include <stdint.h>     // for uint32_t, uint64_t
-#include <sys/types.h>  // for uint
 #include <system_error> // for system_error
-#include <unistd.h>     // for gethostname, getlogin_r
 #include <utility>      // for move, pair
 
 

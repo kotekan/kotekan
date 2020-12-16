@@ -11,8 +11,6 @@
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>                   // for max
-#include <complex>                     // for complex
 #include <cstdio>                      // for remove
 #include <cxxabi.h>                    // for __forced_unwind
 #include <errno.h>                     // for errno
@@ -34,7 +32,6 @@
 #include <sys/stat.h>                  // for fstat, stat
 #include <system_error>                // for system_error
 #include <tuple>                       // for make_tuple, tuple, get
-#include <type_traits>                 // for remove_reference<>::type
 #include <unistd.h>                    // for pwrite, TEMP_FAILURE_RETRY
 #include <utility>                     // for move, pair
 

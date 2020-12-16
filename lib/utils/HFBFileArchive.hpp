@@ -2,7 +2,6 @@
 #define HFB_FILE_ARCHIVE_HPP
 
 #include "FileArchive.hpp"
-#include "dset_id.hpp"
 #include "kotekanLogging.hpp" // for logLevel, kotekanLogging
 #include "visUtil.hpp"        // for freq_ctype, prod_ctype, time_ctype, input_ctype
 
@@ -12,6 +11,7 @@
 #include <map>                     // for map
 #include <memory>                  // for allocator, unique_ptr
 #include <stddef.h>                // for size_t
+#include <stdint.h>                // for uint32_t
 #include <string>                  // for string
 #include <vector>                  // for vector
 

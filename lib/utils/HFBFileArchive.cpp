@@ -1,7 +1,7 @@
 #include "HFBFileArchive.hpp"
 
-#include "HFBFileH5.hpp" // for create_datatype, AtomicType<>::AtomicType, dset_i...
-#include "visFile.hpp"   // for create_lockfile
+#include "dset_id.hpp" // for AtomicType<>::AtomicType, dset_id_str
+#include "visFile.hpp" // for create_lockfile
 
 #include "fmt.hpp" // for format, fmt
 
@@ -18,7 +18,6 @@
 #include <highfive/H5Object.hpp>       // for hid_t
 #include <highfive/H5PropertyList.hpp> // for H5Pcreate, H5Pset_chunk, H5Pset_filter, H5P_DATAS...
 #include <highfive/H5Selection.hpp>    // for SliceTraits::select, Selection, SliceTraits::write
-#include <numeric>                     // for iota
 #include <stdexcept>                   // for invalid_argument
 #include <tuple>                       // for make_tuple, get, tuple
 #include <type_traits>                 // for __decay_and_strip<>::__type
