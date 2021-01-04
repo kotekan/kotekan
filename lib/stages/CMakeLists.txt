@@ -36,7 +36,9 @@ add_library(
     BaseWriter.cpp
     VisWriter.cpp
     HFBWriter.cpp
-    visRawReader.cpp
+    RawReader.cpp
+    VisRawReader.cpp
+    HFBRawReader.cpp
     restInspectFrame.cpp
     frbNetworkProcess.cpp
     pulsarNetworkProcess.cpp
@@ -67,7 +69,8 @@ add_library(
     BeamExtract.cpp
     BeamInspect.cpp
     testDataGen.cpp
-    DPDKShuffleSimulate.cpp)
+    DPDKShuffleSimulate.cpp
+    BadInputFlag.cpp)
 
 target_include_directories(kotekan_stages PRIVATE .)
 
