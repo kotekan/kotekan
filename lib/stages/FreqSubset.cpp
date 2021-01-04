@@ -13,7 +13,6 @@
 #include "visUtil.hpp"         // for frameID, freq_ctype, modulo
 
 #include <algorithm>    // for find, max
-#include <atomic>       // for atomic_bool
 #include <cstdint>      // for uint32_t
 #include <cxxabi.h>     // for __forced_unwind
 #include <exception>    // for exception
