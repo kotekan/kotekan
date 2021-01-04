@@ -1,16 +1,18 @@
 #include "FreqSubset.hpp"
 
 #include "Config.hpp"          // for Config
+#include "HFBFrameView.hpp"    // for HFBFrameView
 #include "Hash.hpp"            // for operator<
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for mark_frame_empty, mark_frame_full, register_consumer, reg...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t, state_id_t, datasetManager
 #include "datasetState.hpp"    // for freqState
 #include "kotekanLogging.hpp"  // for FATAL_ERROR
-#include "visUtil.hpp"         // for freq_ctype, frameID, modulo
+#include "visBuffer.hpp"       // for VisFrameView
+#include "visUtil.hpp"         // for frameID, freq_ctype, modulo
 
 #include <algorithm>    // for find, max
-#include <atomic>       // for atomic_bool
 #include <cstdint>      // for uint32_t
 #include <cxxabi.h>     // for __forced_unwind
 #include <exception>    // for exception
@@ -25,9 +27,15 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
+using VisFreqSubset = FreqSubset<VisFrameView>;
+using HFBFreqSubset = FreqSubset<HFBFrameView>;
 
-FreqSubset::FreqSubset(Config& config, const std::string& unique_name,
-                       bufferContainer& buffer_container) :
+REGISTER_KOTEKAN_STAGE(VisFreqSubset);
+REGISTER_KOTEKAN_STAGE(HFBFreqSubset);
+
+template<typename T>
+FreqSubset<T>::FreqSubset(Config& config, const std::string& unique_name,
+                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&FreqSubset::main_thread, this)) {
 
     // Get list of frequencies to subset from config
@@ -42,7 +50,8 @@ FreqSubset::FreqSubset(Config& config, const std::string& unique_name,
     register_producer(out_buf, unique_name.c_str());
 }
 
-void FreqSubset::change_dataset_state(dset_id_t input_dset_id) {
+template<typename T>
+void FreqSubset<T>::change_dataset_state(dset_id_t input_dset_id) {
     auto& dm = datasetManager::instance();
 
     auto fprint = dm.fingerprint(input_dset_id, {"frequencies"});
@@ -81,10 +90,13 @@ void FreqSubset::change_dataset_state(dset_id_t input_dset_id) {
     dset_id_map[input_dset_id] = dm.add_dataset(states_map.at(fprint), input_dset_id);
 }
 
-void FreqSubset::main_thread() {
+template<typename T>
+void FreqSubset<T>::main_thread() {
 
     frameID input_frame_id(in_buf);
     frameID output_frame_id(out_buf);
+
+    std::future<void> change_dset_fut;
 
     while (!stop_thread) {
 
@@ -93,15 +105,17 @@ void FreqSubset::main_thread() {
             break;
         }
 
-        // Get dataset ID and freq ID from input frame
-        std::pair<dset_id_t, uint32_t> frame_data = get_frame_data(input_frame_id);
-        dset_id_t input_dataset_id = frame_data.first;
-        uint32_t freq = frame_data.second;
+        // Create view to input frame
+        auto input_frame = T(in_buf, input_frame_id);
 
         // check if the input dataset has changed
-        if (dset_id_map.count(input_dataset_id) == 0) {
-            change_dset_fut = std::async(&FreqSubset::change_dataset_state, this, input_dataset_id);
+        if (dset_id_map.count(input_frame.dataset_id) == 0) {
+            change_dset_fut =
+                std::async(&FreqSubset::change_dataset_state, this, input_frame.dataset_id);
         }
+
+        // frequency index of this frame
+        uint32_t freq = input_frame.freq_id;
 
         // If this frame is part of subset
         // TODO: Apparently std::set can be used to speed up this search
@@ -112,8 +126,14 @@ void FreqSubset::main_thread() {
                 break;
             }
 
-            // Copy dataset ID to output frame
-            copy_dataset_id(input_dataset_id, input_frame_id, output_frame_id);
+            // Copy frame and create view
+            auto output_frame = T::copy_frame(in_buf, input_frame_id, out_buf, output_frame_id);
+
+            // Wait for the dataset ID for the outgoing frame
+            if (change_dset_fut.valid())
+                change_dset_fut.wait();
+
+            output_frame.dataset_id = dset_id_map.at(input_frame.dataset_id);
 
             // Mark the output buffer and move on
             mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
