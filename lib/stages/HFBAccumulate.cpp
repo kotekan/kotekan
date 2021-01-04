@@ -23,7 +23,6 @@
 #include <math.h>     // for pow
 #include <numeric>    // for iota
 #include <regex>      // for match_results<>::_Base_type
-#include <stddef.h>   // for size_t
 #include <stdexcept>  // for runtime_error
 #include <string.h>   // for memcpy
 #include <string>     // for string
