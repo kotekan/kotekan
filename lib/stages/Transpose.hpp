@@ -45,7 +45,7 @@
  * the transposition makes time the fastest-varying for the data values,
  * where it was frequency before.
  * This stage expects the data to be ordered like RawReader does.
- * Other stages might not gaurentee this same order.
+ * Other stages might not guarentee this same order.
  *
  * @warning Don't run this anywhere but on the transpose (gossec) node.
  * The OpenMP calls could cause issues on systems using kotekan pin

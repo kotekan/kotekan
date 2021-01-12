@@ -21,7 +21,7 @@
  * The class creates and manages writes to a CHIME style correlator archive
  * file in the standard HDF5 format. It also manages the lock file.
  *
- * @author Richard Shaw
+ * @author James Willis
  **/
 class HFBFileArchive : public FileArchive {
 
@@ -131,7 +131,6 @@ private:
 };
 
 
-// TODO: these should be included from HFBFileH5
 // These templated functions are needed in order to tell HighFive how the
 // various structs are converted into HDF5 datatypes
 namespace HighFive {

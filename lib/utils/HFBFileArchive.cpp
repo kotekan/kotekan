@@ -170,11 +170,6 @@ template void HFBFileArchive::write_block<dset_id_str>(std::string name, size_t 
                                                        size_t chunk_f, size_t chunk_t,
                                                        dset_id_str const*);
 
-
-//
-// The following was adapted from HFBFileH5
-//
-
 HFBFileArchive::~HFBFileArchive() {
     file->flush();
     file.reset(nullptr);
@@ -294,7 +289,6 @@ size_t HFBFileArchive::length(const std::string& axis_name) {
 }
 
 
-// TODO: these should be included from HFBFileH5
 // Add support for all our custom types to HighFive
 template<>
 inline DataType HighFive::create_datatype<freq_ctype>() {

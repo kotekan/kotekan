@@ -5,6 +5,12 @@
 
 #include <highfive/H5PropertyList.hpp> // for H5Pcreate, H5Pset_chunk, H5Pset_filter, H5P_DATAS...
 
+/** @brief A Bitshuffle header file.
+ *
+ * Header file to store common Bitshuffle constants.
+ *
+ * @author James Willis
+ **/
 class FileArchive : public kotekan::kotekanLogging {
 
 protected:
