@@ -65,6 +65,7 @@ void visTruncate::main_thread() {
     const float err_init = 0.5 * err_sq_lim;
 
     float err_r, err_i;
+    const __m256 err_init_vec = _mm256_set1_ps(err_init);
     cfloat tr_vis, tr_evec;
     __m256 err_vec, wgt_vec;
     int32_t i_vec;
@@ -98,9 +99,8 @@ void visTruncate::main_thread() {
 
         // truncate visibilities and weights (8 at a time)
         for (i_vec = 0; i_vec < int32_t(frame.num_prod) - 7; i_vec += 8) {
-            err_vec = _mm256_broadcast_ss(&err_init);
             wgt_vec = _mm256_loadu_ps(&output_frame.weight[i_vec]);
-            err_vec = _mm256_div_ps(err_vec, wgt_vec);
+            err_vec = _mm256_div_ps(err_init_vec, wgt_vec);
             err_vec = _mm256_sqrt_ps(err_vec);
             _mm256_store_ps(err_all + i_vec, err_vec);
         }
