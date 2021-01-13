@@ -116,9 +116,6 @@ void Transpose::main_thread() {
     // Get the original dataset ID (before adding time axis)
     base_ds_id = base_dset(ds_id);
 
-    // Once the async get_dataset_state() is done, we have all the metadata to
-    // create a file.
-
     found_flags = std::vector<bool>(write_t, false);
 
     // Create HDF5 file
