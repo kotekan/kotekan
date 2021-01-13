@@ -144,26 +144,4 @@ inline std::string visFileArchive::prod_or_stack() {
     return stacked ? "stack" : "prod";
 }
 
-
-// TODO: these should be included from visFileH5
-// These templated functions are needed in order to tell HighFive how the
-// various structs are converted into HDF5 datatypes
-namespace HighFive {
-template<>
-DataType create_datatype<freq_ctype>();
-template<>
-DataType create_datatype<time_ctype>();
-template<>
-DataType create_datatype<input_ctype>();
-template<>
-DataType create_datatype<prod_ctype>();
-template<>
-DataType create_datatype<cfloat>();
-template<>
-DataType create_datatype<stack_ctype>();
-template<>
-DataType create_datatype<rstack_ctype>();
-}; // namespace HighFive
-
-
 #endif

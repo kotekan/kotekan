@@ -7,6 +7,7 @@
 #include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_fo...
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "chimeMetadata.hpp"      // for chimeMetadata
+#include "h5_support.hpp"         // for create_datatype
 #include "kotekanLogging.hpp"     // for INFO, DEBUG, ERROR
 #include "metadata.h"             // for metadataContainer
 #include "nt_memcpy.h"            // for nt_memcpy
@@ -14,7 +15,6 @@
 #include "prometheusMetrics.hpp"  // for Counter, Gauge, MetricFamily, Metrics
 #include "version.h"              // for get_git_commit_hash
 #include "visFile.hpp"            // for create_lockfile
-#include "visFileH5.hpp"          // for create_datatype
 #include "visUtil.hpp"            // for input_ctype, ts_to_double, parse_reorder_default
 
 #include "fmt.hpp"      // for format, fmt

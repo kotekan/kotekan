@@ -8,12 +8,12 @@
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
 #include "datasetState.hpp"      // for gainState, freqState, inputState
+#include "h5_support.hpp"        // create_datatype
 #include "kotekanLogging.hpp"    // for WARN, FATAL_ERROR, DEBUG, INFO, ERROR
 #include "modp_b64.hpp"          // for modp_b64_decode, modp_b64_decode_len
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
 #include "restClient.hpp"        // for restClient::restReply, restClient
 #include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::we...
-#include "visFileH5.hpp"         // IWYU pragma: keep
 #include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double, frameID
 
 #include "fmt.hpp"      // for format, fmt

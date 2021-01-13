@@ -251,22 +251,4 @@ protected:
         erms_offset, time_offset;
 };
 
-
-// These templated functions are needed in order to tell HighFive how the
-// various structs are converted into HDF5 datatypes
-namespace HighFive {
-template<>
-DataType create_datatype<freq_ctype>();
-template<>
-DataType create_datatype<time_ctype>();
-template<>
-DataType create_datatype<input_ctype>();
-template<>
-DataType create_datatype<prod_ctype>();
-template<>
-DataType create_datatype<cfloat>();
-
-}; // namespace HighFive
-
-
 #endif

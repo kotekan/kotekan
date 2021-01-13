@@ -6,13 +6,14 @@
 #ifndef TRANSPOSE_HPP
 #define TRANSPOSE_HPP
 
+
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t
-#include "dset_id.hpp"
-#include "visUtil.hpp" // for cfloat, time_ctype, freq_ctype, input_ctype, prod_ctype
+#include "h5_support.hpp"      // for AtomicType<>::AtomicType, dset_id_str
+#include "visUtil.hpp"         // for cfloat, time_ctype, freq_ctype, input_ctype, prod_ctype
 
 #include "json.hpp" // for json
 

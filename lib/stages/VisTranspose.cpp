@@ -7,8 +7,8 @@
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager
 #include "datasetState.hpp"      // for metadataState, stackState, acqDatasetIdState, eigenvalu...
-#include "dset_id.hpp"           // for dset_id_str, DSET_ID_LEN
 #include "errors.h"              // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "h5_support.hpp"        // for dset_id_str, DSET_ID_LEN
 #include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, logLevel, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "visBuffer.hpp"         // for VisFrameView

@@ -156,9 +156,6 @@ void FakeHFB::main_thread() {
             output_frame.fpga_seq_length = delta_seq;
             output_frame.fpga_seq_total = delta_seq;
 
-            // Fill out the frame with the selected pattern
-            // pattern->fill(output_frame);
-
             for (uint32_t i = 0; i < output_frame.num_beams * output_frame.num_subfreq; i++) {
 
                 output_frame.hfb[i] = output_frame.freq_id;

@@ -9,8 +9,8 @@
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager
 #include "datasetState.hpp"      // for metadataState, stackState, acqDatasetIdState, eigenvalu...
-#include "dset_id.hpp"           // for dset_id_str, DSET_ID_LEN
 #include "errors.h"              // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "h5_support.hpp"        // for dset_id_str, DSET_ID_LEN
 #include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, logLevel, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 
@@ -175,6 +175,7 @@ void HFBTranspose::write_chunk() {
     file->write_block("hfb", f_ind, t_ind, write_f, write_t, hfb.data());
     file->write_block("hfb_weight", f_ind, t_ind, write_f, write_t, hfb_weight.data());
     file->write_block("flags/dataset_id", f_ind, t_ind, write_f, write_t, dset_id.data());
+    // TODO: add flags/frac_lost flags/frac_rfi
 }
 
 // increment between chunks
