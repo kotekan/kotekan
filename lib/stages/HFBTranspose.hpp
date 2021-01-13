@@ -63,9 +63,7 @@ private:
     std::vector<time_ctype> time;
     std::vector<float> hfb;
     std::vector<float> hfb_weight;
-    // std::vector<float> frac_lost;
-    // std::vector<float> frac_rfi;
-    // std::vector<float> input_flags;
+    std::vector<float> frac_lost;
 
     /// The list of frequencies and inputs that get written into the index maps
     /// of the HDF5 files

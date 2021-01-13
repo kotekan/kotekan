@@ -145,8 +145,7 @@ bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
     hfb.resize(chunk_t * chunk_f * eff_data_dim, 0.);
     hfb_weight.resize(chunk_t * chunk_f * eff_data_dim, 0.);
     // init frac_lost to 1.0 to match empty frames
-    // frac_lost.resize(chunk_t * chunk_f, 1.);
-    // frac_rfi.resize(chunk_t * chunk_f, 0.);
+    frac_lost.resize(chunk_t * chunk_f, 1.);
     dset_id.resize(chunk_t * chunk_f);
 
     // Initialise dataset ID array with null IDs
@@ -172,8 +171,8 @@ void HFBTranspose::write_chunk() {
 
     file->write_block("hfb", f_ind, t_ind, write_f, write_t, hfb.data());
     file->write_block("hfb_weight", f_ind, t_ind, write_f, write_t, hfb_weight.data());
+    file->write_block("flags/frac_lost", f_ind, t_ind, write_f, write_t, frac_lost.data());
     file->write_block("flags/dataset_id", f_ind, t_ind, write_f, write_t, dset_id.data());
-    // TODO: add flags/frac_lost flags/frac_rfi
 }
 
 // increment between chunks
@@ -220,9 +219,8 @@ void HFBTranspose::copy_frame_data(uint32_t freq_index, uint32_t time_index) {
                  eff_data_dim);
     strided_copy(frame.weight.data(), hfb_weight.data(), offset * eff_data_dim + time_index,
                  write_t, eff_data_dim);
-    // frac_lost[offset + time_index] = frame.fpga_seq_length == 0
-    //                             ? 1.
-    //                             : 1. - float(frame.fpga_seq_total) / frame.fpga_seq_length;
+    frac_lost[offset + time_index] =
+        frame.fpga_seq_length == 0 ? 1. : 1. - float(frame.fpga_seq_total) / frame.fpga_seq_length;
 }
 
 void HFBTranspose::copy_flags(uint32_t time_index) {
