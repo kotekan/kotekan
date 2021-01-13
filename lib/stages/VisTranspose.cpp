@@ -131,11 +131,9 @@ bool VisTranspose::get_dataset_state(dset_id_t ds_id) {
     ev = evstate->get_ev();
 
     // unzip the vector of pairs in freqState
-    auto freq_pairs = fstate->get_freqs();
-    for (auto it = std::make_move_iterator(freq_pairs.begin()),
-              end = std::make_move_iterator(freq_pairs.end());
-         it != end; ++it) {
-        freqs.push_back(std::move(it->second));
+    for (auto& [id, freq] : fstate->get_freqs()) {
+        (void)id;
+        freqs.push_back(freq);
     }
 
     // Check if this is baseline-stacked data

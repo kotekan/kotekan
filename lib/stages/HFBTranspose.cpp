@@ -86,7 +86,7 @@ bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
     if (!timed_out)
         sfstate = sfstate_fut.get();
     if (timed_out) {
-        ERROR("Communication with dataset broker timed out for datatset id {}.", ds_id);
+        ERROR("Communication with dataset broker timed out for dataset id {}.", ds_id);
         dm.stop();
         exit_kotekan(ReturnCode::DATASET_MANAGER_FAILURE);
         return false;
@@ -118,11 +118,9 @@ bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
     sub_freqs = sfstate->get_subfreqs();
 
     // unzip the vector of pairs in freqState
-    auto freq_pairs = fstate->get_freqs();
-    for (auto it = std::make_move_iterator(freq_pairs.begin()),
-              end = std::make_move_iterator(freq_pairs.end());
-         it != end; ++it) {
-        freqs.push_back(std::move(it->second));
+    for (auto& [id, freq] : fstate->get_freqs()) {
+        (void)id;
+        freqs.push_back(freq);
     }
 
     num_time = times.size();
