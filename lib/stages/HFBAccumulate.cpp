@@ -38,26 +38,23 @@ REGISTER_KOTEKAN_STAGE(HFBAccumulate);
 
 HFBAccumulate::HFBAccumulate(Config& config_, const std::string& unique_name,
                              bufferContainer& buffer_container) :
-    Stage(config_, unique_name, buffer_container, std::bind(&HFBAccumulate::main_thread, this)) {
+    Stage(config_, unique_name, buffer_container, std::bind(&HFBAccumulate::main_thread, this)),
+    in_buf(get_buffer("hfb_input_buf")),
+    cls_buf(get_buffer("compressed_lost_samples_buf")),
+    out_buf(get_buffer("hfb_output_buf")),
+    _num_frames_to_integrate(
+        config.get_default<uint32_t>(unique_name, "num_frames_to_integrate", 80)),
+    _num_frb_total_beams(config.get<uint32_t>(unique_name, "num_frb_total_beams")),
+    _factor_upchan(config.get<uint32_t>(unique_name, "factor_upchan")),
+    _samples_per_data_set(config.get<uint32_t>(unique_name, "samples_per_data_set")),
+    _good_samples_threshold(config.get<float>(unique_name, "good_samples_threshold")) {
 
-    auto& tel = Telescope::instance();
-
-    // Apply config.
-    _num_frb_total_beams = config.get<uint32_t>(unique_name, "num_frb_total_beams");
-    _num_frames_to_integrate =
-        config.get_default<uint32_t>(unique_name, "num_frames_to_integrate", 80);
-    _factor_upchan = config.get<uint32_t>(unique_name, "factor_upchan");
-    _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
-    _good_samples_threshold = config.get<float>(unique_name, "good_samples_threshold");
-
-    in_buf = get_buffer("hfb_input_buf");
     register_consumer(in_buf, unique_name.c_str());
-
-    cls_buf = get_buffer("compressed_lost_samples_buf");
     register_consumer(cls_buf, unique_name.c_str());
-
-    out_buf = get_buffer("hfb_output_buf");
     register_producer(out_buf, unique_name.c_str());
+
+    hfb1.resize(_num_frb_total_beams * _factor_upchan, 0.0);
+    hfb2.resize(_num_frb_total_beams * _factor_upchan, 0.0);
 
     // weight calculation is hardcoded, so is the weight type name
     const std::string weight_type = "inverse_var";
@@ -65,6 +62,7 @@ HFBAccumulate::HFBAccumulate(Config& config_, const std::string& unique_name,
     const std::string instrument_name =
         config.get_default<std::string>(unique_name, "instrument_name", "chime");
 
+    auto& tel = Telescope::instance();
     std::vector<uint32_t> freq_ids;
 
     // Get the frequency IDs that are on this stream, check the config or just
@@ -93,23 +91,21 @@ HFBAccumulate::HFBAccumulate(Config& config_, const std::string& unique_name,
 
 HFBAccumulate::~HFBAccumulate() {}
 
-void HFBAccumulate::init_first_frame(float* input_data, float* sum_data,
-                                     const uint32_t in_frame_id) {
+void HFBAccumulate::init_first_frame(float* input_data, const uint32_t in_frame_id) {
 
     int64_t fpga_seq_num_start =
         fpga_seq_num_end - (_num_frames_to_integrate - 1) * _samples_per_data_set;
-    memcpy(sum_data, input_data, _num_frb_total_beams * _factor_upchan * sizeof(float));
+    memcpy(out_hfb.data(), input_data, _num_frb_total_beams * _factor_upchan * sizeof(float));
     total_lost_timesamples += get_fpga_seq_num(in_buf, in_frame_id) - fpga_seq_num_start;
     // Get the first FPGA sequence no. to check for missing frames
     fpga_seq_num = get_fpga_seq_num(in_buf, in_frame_id);
     frame++;
 
-    DEBUG("\nInit frame. fpga_seq_start: {:d}. sum_data[0]: {:f}",
-          get_fpga_seq_num(in_buf, in_frame_id), sum_data[0]);
+    DEBUG("\nInit frame. fpga_seq_start: {:d}. out_hfb[0]: {:f}",
+          get_fpga_seq_num(in_buf, in_frame_id), out_hfb[0]);
 }
 
-void HFBAccumulate::integrate_frame(float* input_data, float* sum_data,
-                                    const uint32_t in_frame_id) {
+void HFBAccumulate::integrate_frame(float* input_data, const uint32_t in_frame_id) {
     frame++;
     fpga_seq_num += _samples_per_data_set;
     total_lost_timesamples += get_fpga_seq_num(in_buf, in_frame_id) - fpga_seq_num;
@@ -117,19 +113,19 @@ void HFBAccumulate::integrate_frame(float* input_data, float* sum_data,
 
     // Integrates data from the input buffer to the output buffer.
     for (uint32_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
-        sum_data[i] += input_data[i];
+        out_hfb[i] += input_data[i];
     }
 
-    DEBUG2("\nIntegrate frame {:d}, total_lost_timesamples: {:d}, sum_data[0]: {:f}\n", frame,
-           total_lost_timesamples, sum_data[0]);
+    DEBUG2("\nIntegrate frame {:d}, total_lost_timesamples: {:d}, out_hfb[0]: {:f}\n", frame,
+           total_lost_timesamples, out_hfb[0]);
 }
 
-void HFBAccumulate::normalise_frame(float* sum_data, const uint32_t in_frame_id) {
+void HFBAccumulate::normalise_frame(const uint32_t in_frame_id) {
 
     const float normalise_frac = (float)1.f / (total_timesamples - total_lost_timesamples);
 
     for (uint32_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
-        sum_data[i] *= normalise_frac;
+        out_hfb[i] *= normalise_frac;
     }
 
     DEBUG("Integration completed with {:d} lost samples (~{}%). normalise_frac: {}",
@@ -149,7 +145,6 @@ void HFBAccumulate::main_thread() {
     // Temporary arrays for storing intermediates
     std::vector<float> hfb_even(_num_frb_total_beams * _factor_upchan);
     int32_t samples_even = 0;
-    internalState dset = internalState(_num_frb_total_beams, _factor_upchan);
 
     auto& tel = Telescope::instance();
 
@@ -213,7 +208,7 @@ void HFBAccumulate::main_thread() {
 
         auto out_frame = HFBFrameView(out_buf, out_frame_id);
 
-        float* sum_data = (float*)out_frame.hfb.data();
+        out_hfb = out_frame.hfb;
         float* input_data = (float*)in_buf->frames[in_frame_id];
 
         // Find where the end of the integration is
@@ -246,7 +241,7 @@ void HFBAccumulate::main_thread() {
         // multiplications
         // Perform primary accumulation (assume that the weight is one)
         for (size_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
-            dset.hfb1[i] += input[i];
+            hfb1[i] += input[i];
         }
 
         // We are calculating the weights by differencing even and odd samples.
@@ -264,15 +259,15 @@ void HFBAccumulate::main_thread() {
         else {
             for (size_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
                 float d = input[i] - hfb_even[i];
-                dset.hfb2[i] += d * d;
+                hfb2[i] += d * d;
             }
-            DEBUG2("hfb2[{}]: {}, input[0]: {}, hfb_even[0]: {}", 0, dset.hfb2[0], input[0],
+            DEBUG2("hfb2[{}]: {}, input[0]: {}, hfb_even[0]: {}", 0, hfb2[0], input[0],
                    hfb_even[0]);
 
             // Accumulate the squared samples difference which we need for
             // debiasing the variance estimate
             float samples_diff = samples_in_frame - samples_even;
-            dset.weight_diff_sum += samples_diff * samples_diff;
+            weight_diff_sum += samples_diff * samples_diff;
         }
 
         // When all frames have been integrated output the result
@@ -287,7 +282,7 @@ void HFBAccumulate::main_thread() {
                 (float)(total_timesamples - total_lost_timesamples) / total_timesamples;
 
             // Normalise data
-            normalise_frame(sum_data, in_frame_id);
+            normalise_frame(in_frame_id);
 
             // Only output integration if there are enough good samples
             if (good_samples_frac >= _good_samples_threshold) {
@@ -307,10 +302,10 @@ void HFBAccumulate::main_thread() {
                 float sample_weight_total = total_timesamples - total_lost_timesamples;
 
                 // Debias the weights estimate, by subtracting out the bias estimation
-                float w_debias = dset.weight_diff_sum / pow(sample_weight_total, 2);
+                float w_debias = weight_diff_sum / pow(sample_weight_total, 2);
                 for (size_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
-                    float d = dset.hfb1[i];
-                    dset.hfb2[i] -= w_debias * (d * d);
+                    float d = hfb1[i];
+                    hfb2[i] -= w_debias * (d * d);
                 }
 
                 // Determine the weighting factors (if weight is zero we should just
@@ -319,7 +314,7 @@ void HFBAccumulate::main_thread() {
 
                 // Unpack and invert the weights
                 for (uint32_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
-                    float t = dset.hfb2[i];
+                    float t = hfb2[i];
                     out_frame.weight[i] = w * w / t;
                 }
 
@@ -337,7 +332,12 @@ void HFBAccumulate::main_thread() {
                 if (wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id) == nullptr)
                     return;
 
-                sum_data = (float*)out_buf->frames[out_frame_id];
+                // Create new metadata for new output frame
+                allocate_new_metadata_object(out_buf, out_frame_id);
+                HFBFrameView::set_metadata(out_buf, out_frame_id, _num_frb_total_beams,
+                                           _factor_upchan);
+
+                out_hfb = HFBFrameView(out_buf, out_frame_id).hfb;
             } else {
                 DEBUG("Integration discarded. Too many lost samples.");
             }
@@ -348,17 +348,17 @@ void HFBAccumulate::main_thread() {
 
             // Already started next integration
             if (fpga_seq_num > fpga_seq_num_end_old) {
-                init_first_frame(input_data, sum_data, in_frame_id);
-                reset_state(dset);
+                init_first_frame(input_data, in_frame_id);
+                reset_state();
             }
         } else {
             // If we are on the first frame copy it directly into the
             // output buffer frame so that we don't need to zero the frame
             if (frame == 0) {
-                init_first_frame(input_data, sum_data, in_frame_id);
-                reset_state(dset);
+                init_first_frame(input_data, in_frame_id);
+                reset_state();
             } else
-                integrate_frame(input_data, sum_data, in_frame_id);
+                integrate_frame(input_data, in_frame_id);
         }
 
         fpga_seq_num_end_old = fpga_seq_num_end;
@@ -370,17 +370,13 @@ void HFBAccumulate::main_thread() {
     } // end stop thread
 }
 
-bool HFBAccumulate::reset_state(HFBAccumulate::internalState& state) {
+bool HFBAccumulate::reset_state() {
     // Reset the internal counters
-    state.weight_diff_sum = 0;
+    weight_diff_sum = 0;
 
     // Zero out accumulation arrays
-    std::fill(state.hfb1.begin(), state.hfb1.end(), 0.0);
-    std::fill(state.hfb2.begin(), state.hfb2.end(), 0.0);
+    std::fill(hfb1.begin(), hfb1.end(), 0.0);
+    std::fill(hfb2.begin(), hfb2.end(), 0.0);
 
     return true;
 }
-
-HFBAccumulate::internalState::internalState(size_t num_beams, size_t num_sub_freqs) :
-    hfb1(num_beams * num_sub_freqs),
-    hfb2(num_beams * num_sub_freqs) {}

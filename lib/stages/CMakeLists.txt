@@ -27,8 +27,6 @@ add_library(
     simpleAutocorr.cpp
     freqSplit.cpp
     FreqSubset.cpp
-    VisFreqSubset.cpp
-    HFBFreqSubset.cpp
     prodSubset.cpp
     countCheck.cpp
     visAccumulate.cpp
@@ -38,7 +36,9 @@ add_library(
     BaseWriter.cpp
     VisWriter.cpp
     HFBWriter.cpp
-    visRawReader.cpp
+    RawReader.cpp
+    VisRawReader.cpp
+    HFBRawReader.cpp
     restInspectFrame.cpp
     frbNetworkProcess.cpp
     pulsarNetworkProcess.cpp

@@ -159,6 +159,8 @@ public:
 
     size_t data_size() const override;
 
+    void zero_frame() override;
+
     /**
      * @brief Return a summary of the visibility buffer contents.
      *
