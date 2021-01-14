@@ -219,6 +219,7 @@ void HFBFileArchive::create_datasets() {
     create_dataset("hfb", {"freq", "beam", "subfreq", "time"}, create_datatype<float>(), compress);
     create_dataset("flags/hfb_weight", {"freq", "beam", "subfreq", "time"},
                    create_datatype<float>(), compress);
+    create_dataset("flags/frac_lost", {"freq", "time"}, create_datatype<float>(), no_compress);
     create_dataset("flags/dataset_id", {"freq", "time"}, create_datatype<dset_id_str>(),
                    no_compress);
 
