@@ -24,12 +24,10 @@
 #include <cxxabi.h>     // for __forced_unwind
 #include <exception>    // for exception
 #include <future>       // for async, future
-#include <iterator>     // for make_move_iterator, move_iterator, operator!=
 #include <stdexcept>    // for out_of_range, invalid_argument
 #include <stdint.h>     // for uint32_t, uint64_t
 #include <sys/types.h>  // for uint
 #include <system_error> // for system_error
-#include <utility>      // for move, pair
 
 
 using kotekan::bufferContainer;

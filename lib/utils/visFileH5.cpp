@@ -33,7 +33,6 @@
 #include <sys/stat.h>               // for fstat, stat
 #include <system_error>             // for system_error
 #include <tuple>                    // for make_tuple, tuple, get
-#include <type_traits>              // for remove_reference<>::type
 #include <unistd.h>                 // for pwrite, TEMP_FAILURE_RETRY
 #include <utility>                  // for move, pair
 
