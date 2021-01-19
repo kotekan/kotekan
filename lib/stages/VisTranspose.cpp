@@ -52,6 +52,8 @@ VisTranspose::VisTranspose(Config& config, const std::string& unique_name,
                                     "to be equal to or greater than one.");
     chunk_t = chunk[2];
     chunk_f = chunk[0];
+    
+    metadata["archive_version"] = "3.1.0";
 }
 
 bool VisTranspose::get_dataset_state(dset_id_t ds_id) {

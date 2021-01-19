@@ -51,7 +51,6 @@ Transpose::Transpose(Config& config, const std::string& unique_name,
 
     // Collect some metadata. The rest is requested from the datasetManager,
     // once we received the first frame.
-    metadata["archive_version"] = "3.1.0";
     metadata["notes"] = "";
     metadata["git_version_tag"] = get_git_commit_hash();
     metadata["system_user"] = get_username();

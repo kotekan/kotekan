@@ -50,6 +50,8 @@ HFBTranspose::HFBTranspose(Config& config, const std::string& unique_name,
                                     "to be equal to or greater than one.");
     chunk_t = chunk[2];
     chunk_f = chunk[0];
+
+    metadata["archive_version"] = "4.3.0";
 }
 
 bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
