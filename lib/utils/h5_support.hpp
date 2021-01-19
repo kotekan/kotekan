@@ -21,21 +21,6 @@ inline AtomicType<dset_id_str>::AtomicType() {
     H5Tset_size(_hid, DSET_ID_LEN);
 }
 // \endcond
-
-template<>
-DataType create_datatype<freq_ctype>();
-template<>
-DataType create_datatype<time_ctype>();
-template<>
-DataType create_datatype<input_ctype>();
-template<>
-DataType create_datatype<prod_ctype>();
-template<>
-DataType create_datatype<cfloat>();
-template<>
-DataType create_datatype<stack_ctype>();
-template<>
-DataType create_datatype<rstack_ctype>();
 }; // namespace HighFive
 
 // These templated functions are needed in order to tell HighFive how the
