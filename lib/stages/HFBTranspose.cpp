@@ -162,7 +162,7 @@ std::tuple<size_t, uint64_t, dset_id_t> HFBTranspose::get_frame_data() {
                            frame.dataset_id);
 }
 
-void HFBTranspose::write_chunk() {
+void HFBTranspose::write_chunk(size_t t_ind, size_t f_ind) {
     DEBUG("Writing at freq {:d} and time {:d}", f_ind, t_ind);
     DEBUG("Writing block of {:d} freqs and {:d} times. data: {}...{}...{}", write_f, write_t,
           hfb[0], hfb[write_t], hfb[write_t * 2]);
@@ -178,7 +178,8 @@ void HFBTranspose::write_chunk() {
 // WARNING: This order must be consistent with how HFBRawReader
 //      implements chunked reads. The mechanism for avoiding
 //      overwriting flags also relies on this ordering.
-void HFBTranspose::increment_chunk() {
+void HFBTranspose::increment_chunk(size_t &t_ind, size_t &f_ind,
+                                   bool &t_edge, bool &f_edge) {
     // Figure out where the next chunk starts
     f_ind = f_edge ? 0 : (f_ind + chunk_f) % num_freq;
     if (f_ind == 0) {

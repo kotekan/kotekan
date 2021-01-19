@@ -37,8 +37,8 @@
  *  create_hdf5_file();
  *  copy_frame_data(uint32_t freq_index, uint32_t time_index);
  *  copy_flags(uint32_t time_index);
- *  write_chunk();
- *  increment_chunk();
+ *  write_chunk(size_t t_ind, size_t f_ind);
+ *  increment_chunk(size_t &t_ind, size_t &f_ind, bool &t_edge, bool &f_edge);
  *
  * The data is received as one-dimensional arrays
  * that represent flattened-out time-X-frequency matrices. These are transposed
@@ -109,13 +109,6 @@ protected:
     // size of frequency and time dimension of chunk when written to file
     size_t write_f, write_t;
 
-    size_t f_ind = 0;
-    size_t t_ind = 0;
-
-    // Flags to indicate incomplete chunks
-    bool t_edge = false;
-    bool f_edge = false;
-
     // Effective dimension of data
     size_t eff_data_dim;
 
@@ -144,10 +137,11 @@ private:
     virtual void copy_flags(uint32_t time_index) = 0;
 
     // Write datasets to file
-    virtual void write_chunk() = 0;
+    virtual void write_chunk(size_t t_ind, size_t f_ind) = 0;
 
     // Increment between chunks
-    virtual void increment_chunk() = 0;
+    virtual void increment_chunk(size_t &t_ind, size_t &f_ind,
+                                 bool &t_edge, bool &f_edge) = 0;
 
     /// Extract the base dataset ID
     dset_id_t base_dset(dset_id_t ds_id);

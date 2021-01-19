@@ -188,7 +188,7 @@ std::tuple<size_t, uint64_t, dset_id_t> VisTranspose::get_frame_data() {
                            frame.fpga_seq_total, frame.dataset_id);
 }
 
-void VisTranspose::write_chunk() {
+void VisTranspose::write_chunk(size_t t_ind, size_t f_ind) {
     DEBUG("Writing at freq {:d} and time {:d}", f_ind, t_ind);
     DEBUG("Writing block of {:d} freqs and {:d} times", write_f, write_t);
 
@@ -218,7 +218,8 @@ void VisTranspose::write_chunk() {
 // WARNING: This order must be consistent with how VisRawReader
 //      implements chunked reads. The mechanism for avoiding
 //      overwriting flags also relies on this ordering.
-void VisTranspose::increment_chunk() {
+void VisTranspose::increment_chunk(size_t &t_ind, size_t &f_ind,
+                                   bool &t_edge, bool &f_edge) {
     // Figure out where the next chunk starts
     f_ind = f_edge ? 0 : (f_ind + chunk_f) % num_freq;
     if (f_ind == 0) {

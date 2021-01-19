@@ -53,10 +53,11 @@ protected:
     void copy_flags(uint32_t time_index) override;
 
     // Write datasets to file
-    void write_chunk() override;
+    void write_chunk(size_t t_ind, size_t f_ind) override;
 
     // Increment between chunks
-    void increment_chunk() override;
+    void increment_chunk(size_t &t_ind, size_t &f_ind,
+                         bool &t_edge, bool &f_edge) override;
 
 private:
     // Datasets to be stored until ready to write

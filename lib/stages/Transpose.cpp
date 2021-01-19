@@ -60,13 +60,15 @@ Transpose::Transpose(Config& config, const std::string& unique_name,
 
 void Transpose::main_thread() {
 
-    // frameID frame_id(in_buf);
     uint32_t frames_so_far = 0;
     // frequency and time indices within chunk
-    uint32_t fi = 0;
-    uint32_t ti = 0;
+    uint32_t fi = 0, ti = 0;
     // offset for copying into buffer
     uint32_t offset = 0;
+
+    // Flags to indicate incomplete chunks
+    bool t_edge = false, f_edge = false;
+    size_t f_ind = 0, t_ind = 0;
 
     // The dataset ID we read from the frame
     dset_id_t ds_id;
@@ -182,9 +184,9 @@ void Transpose::main_thread() {
             ti++;
         if (ti == write_t) {
             // chunk is complete
-            write_chunk();
+            write_chunk(t_ind, f_ind);
             // increment between chunks
-            increment_chunk();
+            increment_chunk(t_ind, f_ind, t_edge, f_edge);
             fi = 0;
             ti = 0;
 
