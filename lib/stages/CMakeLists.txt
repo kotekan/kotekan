@@ -97,7 +97,7 @@ if(${USE_HDF5} AND ${USE_OMP})
 endif()
 
 if(${USE_OMP})
-  target_sources(kotekan_stages PRIVATE visTruncate.cpp HFBTruncate.cpp)
+  target_sources(kotekan_stages PRIVATE VisTruncate.cpp HFBTruncate.cpp)
 endif()
 
 if(${USE_LAPACK})

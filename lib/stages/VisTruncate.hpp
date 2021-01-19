@@ -9,7 +9,7 @@
 #include <string> // for string
 
 /**
- * @class visTruncate
+ * @class VisTruncate
  * @brief Truncates visibility, eigenvalue and weight values.
  *
  * eigenvalues and weights are truncated with a fixed precision that is set in
@@ -35,12 +35,12 @@
  *
  * @author Tristan Pinsonneault-Marotte, Rick Nitsche
  */
-class visTruncate : public kotekan::Stage {
+class VisTruncate : public kotekan::Stage {
 public:
     /// Constructor; loads parameters from config
-    visTruncate(kotekan::Config& config, const std::string& unique_name,
+    VisTruncate(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& buffer_container);
-    ~visTruncate() = default;
+    ~VisTruncate() = default;
 
     /// Main loop over buffer frames
     void main_thread() override;

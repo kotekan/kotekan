@@ -1,4 +1,4 @@
-#include "visTruncate.hpp"
+#include "VisTruncate.hpp"
 
 #include "Config.hpp"         // for Config
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
@@ -28,11 +28,11 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_STAGE(visTruncate);
+REGISTER_KOTEKAN_STAGE(VisTruncate);
 
-visTruncate::visTruncate(Config& config, const std::string& unique_name,
+VisTruncate::VisTruncate(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&visTruncate::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&VisTruncate::main_thread, this)) {
 
     // Fetch the buffers, register
     in_buf = get_buffer("in_buf");
@@ -43,22 +43,22 @@ visTruncate::visTruncate(Config& config, const std::string& unique_name,
     // Get truncation parameters from config
     err_sq_lim = config.get<float>(unique_name, "err_sq_lim");
     if (err_sq_lim < 0)
-        throw std::invalid_argument("visTruncate: config: err_sq_lim should"
+        throw std::invalid_argument("VisTruncate: config: err_sq_lim should"
                                     " be positive (is "
                                     + std::to_string(err_sq_lim) + ").");
     w_prec = config.get<float>(unique_name, "weight_fixed_precision");
     if (w_prec < 0)
-        throw std::invalid_argument("visTruncate: config: "
+        throw std::invalid_argument("VisTruncate: config: "
                                     "weight_fixed_precision should be positive (is "
                                     + std::to_string(w_prec) + ").");
     vis_prec = config.get<float>(unique_name, "data_fixed_precision");
     if (vis_prec < 0)
-        throw std::invalid_argument("visTruncate: config: "
+        throw std::invalid_argument("VisTruncate: config: "
                                     "data_fixed_precision should be positive (is "
                                     + std::to_string(vis_prec) + ").");
 }
 
-void visTruncate::main_thread() {
+void VisTruncate::main_thread() {
 
     unsigned int frame_id = 0;
     unsigned int output_frame_id = 0;
@@ -150,7 +150,7 @@ void visTruncate::main_thread() {
         }
 
         if (zero_weight_found) {
-            DEBUG("visTruncate: Frame {:d} has at least one weight value "
+            DEBUG("VisTruncate: Frame {:d} has at least one weight value "
                   "being zero.",
                   frame_id);
             zero_weight_found = false;
