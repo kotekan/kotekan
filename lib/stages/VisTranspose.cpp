@@ -1,6 +1,7 @@
 #include "VisTranspose.hpp"
 
 #include "Config.hpp"            // for Config
+#include "H5Support.hpp"         // for dset_id_str, DSET_ID_LEN
 #include "Hash.hpp"              // for Hash, operator!=
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
@@ -8,7 +9,6 @@
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager
 #include "datasetState.hpp"      // for metadataState, stackState, acqDatasetIdState, eigenvalu...
 #include "errors.h"              // for exit_kotekan, CLEAN_EXIT, ReturnCode
-#include "h5_support.hpp"        // for dset_id_str, DSET_ID_LEN
 #include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, logLevel, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "visBuffer.hpp"         // for VisFrameView

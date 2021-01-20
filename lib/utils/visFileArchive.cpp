@@ -1,7 +1,7 @@
 #include "visFileArchive.hpp"
 
-#include "h5_support.hpp" // for AtomicType<>::AtomicType, dset_id_str
-#include "visFile.hpp"    // for create_lockfile
+#include "H5Support.hpp" // for AtomicType<>::AtomicType, dset_id_str
+#include "visFile.hpp"   // for create_lockfile
 
 #include "fmt.hpp" // for format, fmt
 

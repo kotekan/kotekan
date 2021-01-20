@@ -1,6 +1,7 @@
 #include "applyGains.hpp"
 
 #include "Config.hpp"            // for Config
+#include "H5Support.hpp"         // for create_datatype IWYU pragma: keep
 #include "Hash.hpp"              // for operator<
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for mark_frame_empty, wait_for_full_frame, allocate_new...
@@ -8,7 +9,6 @@
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
 #include "datasetState.hpp"      // for gainState, freqState, inputState
-#include "h5_support.hpp"        // create_datatype
 #include "kotekanLogging.hpp"    // for WARN, FATAL_ERROR, DEBUG, INFO, ERROR
 #include "modp_b64.hpp"          // for modp_b64_decode, modp_b64_decode_len
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
