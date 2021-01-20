@@ -122,7 +122,6 @@ void Transpose::main_thread() {
     // Create HDF5 file
     create_hdf5_file();
 
-    // TODO: it seems like this should be a Counter?
     auto& transposed_bytes_metric =
         Metrics::instance().add_counter("kotekan_transpose_data_transposed_bytes", unique_name);
 

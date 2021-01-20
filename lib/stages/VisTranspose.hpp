@@ -56,8 +56,7 @@ protected:
     void write_chunk(size_t t_ind, size_t f_ind) override;
 
     // Increment between chunks
-    void increment_chunk(size_t &t_ind, size_t &f_ind,
-                         bool &t_edge, bool &f_edge) override;
+    void increment_chunk(size_t& t_ind, size_t& f_ind, bool& t_edge, bool& f_edge) override;
 
 private:
     // Datasets to be stored until ready to write

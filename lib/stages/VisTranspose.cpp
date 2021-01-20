@@ -52,7 +52,7 @@ VisTranspose::VisTranspose(Config& config, const std::string& unique_name,
                                     "to be equal to or greater than one.");
     chunk_t = chunk[2];
     chunk_f = chunk[0];
-    
+
     metadata["archive_version"] = "3.1.0";
 }
 
@@ -220,8 +220,7 @@ void VisTranspose::write_chunk(size_t t_ind, size_t f_ind) {
 // WARNING: This order must be consistent with how VisRawReader
 //      implements chunked reads. The mechanism for avoiding
 //      overwriting flags also relies on this ordering.
-void VisTranspose::increment_chunk(size_t &t_ind, size_t &f_ind,
-                                   bool &t_edge, bool &f_edge) {
+void VisTranspose::increment_chunk(size_t& t_ind, size_t& f_ind, bool& t_edge, bool& f_edge) {
     // Figure out where the next chunk starts
     f_ind = f_edge ? 0 : (f_ind + chunk_f) % num_freq;
     if (f_ind == 0) {

@@ -140,8 +140,7 @@ private:
     virtual void write_chunk(size_t t_ind, size_t f_ind) = 0;
 
     // Increment between chunks
-    virtual void increment_chunk(size_t &t_ind, size_t &f_ind,
-                                 bool &t_edge, bool &f_edge) = 0;
+    virtual void increment_chunk(size_t& t_ind, size_t& f_ind, bool& t_edge, bool& f_edge) = 0;
 
     /// Extract the base dataset ID
     dset_id_t base_dset(dset_id_t ds_id);
