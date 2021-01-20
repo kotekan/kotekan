@@ -43,19 +43,15 @@ VisTruncate::VisTruncate(Config& config, const std::string& unique_name,
     // Get truncation parameters from config
     err_sq_lim = config.get<float>(unique_name, "err_sq_lim");
     if (err_sq_lim < 0)
-        throw std::invalid_argument("VisTruncate: config: err_sq_lim should"
-                                    " be positive (is "
-                                    + std::to_string(err_sq_lim) + ").");
+        FATAL_ERROR("VisTruncate: config: err_sq_lim should be positive (is %f).", err_sq_lim);
     w_prec = config.get<float>(unique_name, "weight_fixed_precision");
     if (w_prec < 0)
-        throw std::invalid_argument("VisTruncate: config: "
-                                    "weight_fixed_precision should be positive (is "
-                                    + std::to_string(w_prec) + ").");
+        FATAL_ERROR("VisTruncate: config: weight_fixed_precision should be positive (is %f).",
+                    w_prec);
     vis_prec = config.get<float>(unique_name, "data_fixed_precision");
     if (vis_prec < 0)
-        throw std::invalid_argument("VisTruncate: config: "
-                                    "data_fixed_precision should be positive (is "
-                                    + std::to_string(vis_prec) + ").");
+        FATAL_ERROR("VisTruncate: config: data_fixed_precision should be positive (is %f).",
+                    vis_prec);
 }
 
 void VisTruncate::main_thread() {

@@ -43,19 +43,15 @@ HFBTruncate::HFBTruncate(Config& config, const std::string& unique_name,
     // Get truncation parameters from config
     err_sq_lim = config.get<float>(unique_name, "err_sq_lim");
     if (err_sq_lim < 0)
-        throw std::invalid_argument("HFBTruncate: config: err_sq_lim should"
-                                    " be positive (is "
-                                    + std::to_string(err_sq_lim) + ").");
+        FATAL_ERROR("HFBTruncate: config: err_sq_lim should be positive (is %f).", err_sq_lim);
     w_prec = config.get<float>(unique_name, "weight_fixed_precision");
     if (w_prec < 0)
-        throw std::invalid_argument("HFBTruncate: config: "
-                                    "weight_fixed_precision should be positive (is "
-                                    + std::to_string(w_prec) + ").");
+        FATAL_ERROR("HFBTruncate: config: weight_fixed_precision should be positive (is %f).",
+                    w_prec);
     hfb_prec = config.get<float>(unique_name, "data_fixed_precision");
     if (hfb_prec < 0)
-        throw std::invalid_argument("HFBTruncate: config: "
-                                    "data_fixed_precision should be positive (is "
-                                    + std::to_string(hfb_prec) + ").");
+        FATAL_ERROR("HFBTruncate: config: data_fixed_precision should be positive (is %f).",
+                    hfb_prec);
 }
 
 void HFBTruncate::main_thread() {
