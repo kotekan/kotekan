@@ -25,6 +25,7 @@ inline AtomicType<dset_id_str>::AtomicType() {
 
 // These templated functions are needed in order to tell HighFive how the
 // various structs are converted into HDF5 datatypes
+// \cond NO_DOC
 template<>
 inline DataType HighFive::create_datatype<freq_ctype>() {
     CompoundType f;
@@ -93,5 +94,6 @@ inline DataType HighFive::create_datatype<stack_ctype>() {
     c.autoCreate();
     return std::move(c);
 }
+// \endcond
 
 #endif
