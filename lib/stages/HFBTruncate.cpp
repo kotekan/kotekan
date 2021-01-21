@@ -93,7 +93,7 @@ void HFBTruncate::main_thread() {
         // Copy frame into output buffer
         auto output_frame = HFBFrameView::copy_frame(in_buf, frame_id, out_buf, output_frame_id);
 
-        // truncate visibilities and weights (8 at a time)
+        // truncate absorber data and weights (8 at a time)
         for (i_vec = 0; i_vec < int32_t(data_size) - 7; i_vec += 8) {
             wgt_vec = _mm256_loadu_ps(&output_frame.weight[i_vec]);
             err_vec = _mm256_div_ps(err_init_vec, wgt_vec);
