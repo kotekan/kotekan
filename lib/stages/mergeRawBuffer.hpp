@@ -11,6 +11,7 @@
 #include "Config.hpp" // for Config
 #include "Stage.hpp"
 #include "bufferContainer.hpp" // for bufferContainer
+#include "BeamMetadata.hpp"   // for BeamMetadata
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
@@ -22,7 +23,7 @@ using std::vector;
 
 /**
  * @class mergeRawBuffer
- * @brief 
+ * @brief The  
  *
  * @par Buffers
  * @buffer in_buf Kotekan buffer of raw packets.
@@ -38,6 +39,8 @@ using std::vector;
  *
  */
 
+
+
 class mergeRawBuffer : public kotekan::Stage {
 public:
     /// Constructor 
@@ -52,13 +55,14 @@ private:
     /// Raw buffer from the correlator
     struct Buffer* in_buf;
 
-    /// Merged buffer 
+    /// Frame merged buffer 
     struct Buffer* out_buf;
 
 
     /// Config variables
     uint32_t _samples_per_data_set;
-    ///uint32_t _compression_factor;
+    uint32_t _raw_frames_per_merged_frame;
+    uint32_t _num_pol;
 };
 
 
