@@ -48,7 +48,11 @@ void mergeRawBuffer::main_thread() {
     uint8_t* in_frame;
     frameID out_buffer_ID(out_buf);
     uint8_t* out_frame;
-
+    // Since the input buffer is a ring buffer and the in_buf_ID goes back to zero
+    // when the ID reaches the num_frame, we need something something to keep the 
+    // turns.
+    uint32_t in_buf_turns = 0;
+    
     while (!stop_thread) {
         // Get an input buffer, This call is blocking!
         in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_buffer_ID);
@@ -61,48 +65,56 @@ void mergeRawBuffer::main_thread() {
         if (out_frame == nullptr)
              break;
         
-        // compute the size of the sub_frame of the out_frame
-	uint32_t sub_frame_index = in_buffer_ID % _raw_frames_per_merged_frame; 
-	uint32_t sub_frame_size = sizeof(BeamMetadata) + in_buf -> frame_size;
+        // compute the frame index for the out_buf
+	uint32_t true_frame_ID = in_buf_turns * in_buf -> num_frames + in_buffer_ID;
+	uint32_t sub_frame_index = true_frame_ID % _raw_frames_per_merged_frame;	
+	// compute the size of the sub_frame of the out_frame
+	uint32_t sub_frame_size = sizeof(FreqIDBeamMetadata) + in_buf -> frame_size;
 	// Get the start position of a sub_out_frame's meatadata
 	uint32_t out_frame_metadata_pos = sub_frame_size * sub_frame_index;
 	// Get the memory block for the metadata of sub_out_frame.
-	BeamMetadata* sub_frame_metadata = (BeamMetadata *)&out_frame[out_frame_metadata_pos];
-	// Copy the in_frame metadata the the out frame's sub_out_frame.
-        memcpy(in_metadata, sub_frame_metadata, sizeof(BeamMetadata));
+	FreqIDBeamMetadata* sub_frame_metadata = (FreqIDBeamMetadata *)&out_frame[out_frame_metadata_pos];
+	// Copy the in_frame metadata the the out frame's subframe metadata
+	// Using memory copy here will give a warning.
+	sub_frame_metadata -> fpga_seq_start = in_metadata -> fpga_seq_start;
+	sub_frame_metadata -> ctime = in_metadata -> ctime;
+	sub_frame_metadata -> stream_id = in_metadata -> stream_id;
+	sub_frame_metadata -> dataset_id = in_metadata -> dataset_id;
+	sub_frame_metadata -> beam_number = in_metadata -> beam_number;
+	sub_frame_metadata -> ra = in_metadata -> ra;
+	sub_frame_metadata -> dec = in_metadata -> dec;
+	sub_frame_metadata -> scaling = in_metadata -> scaling;
+
+	// Add the frequency id into the metadata, for chime one stream has on frequency.
+	// TODO Have the output buffer handle the stream with mulitple frequency
+	const uint32_t num_freq_per_stream = Telescope::instance().num_freq_per_stream();
+
+        for (uint32_t f = 0; f < num_freq_per_stream; ++f) {
+	    // TODO this does not handling the stream with mulitple frequencies. since at right now, 
+	    // num_freq_per_stream is 1
+            sub_frame_metadata -> frequency_bin = Telescope::instance().to_freq_id(in_metadata->stream_id, f);
+        }
+
 	// Get the start position of a sub_out_frame's data
-	uint32_t out_frame_data_pos = out_frame_metadata_pos + sizeof(BeamMetadata);
+	uint32_t out_frame_data_pos = out_frame_metadata_pos + sizeof(FreqIDBeamMetadata);
 	// Get the memory block for the data of of a subframe.
 	uint8_t * sub_frame_data = &out_frame[out_frame_data_pos];
 	// copy data from in frame to sub_out_frame
-	memcpy(in_frame, sub_frame_data, in_buf -> frame_size);
-	std::cout<<"BeamMetadata size:" <<sizeof(BeamMetadata) << std::endl;
-        
+	memcpy(sub_frame_data, in_frame, in_buf -> frame_size);
 
-	BeamMetadata* debud_frame_metadata = (BeamMetadata *)&out_frame[sub_frame_size];
-	DEBUG2("Sub frame Beam RA: {:f}, Dec: {:f}, scaling: {:d}, , beam_num: {:d}", debud_frame_metadata -> ra, 
-	       debud_frame_metadata -> dec, debud_frame_metadata -> scaling, debud_frame_metadata-> beam_number);
-        //INFO("InBuff: Beam RA: {:f}, Dec: {:f}, scaling: {:d}, beam_num: {:d}, \n outBuff: Beam RA: {:f}, Dec: {:f}, scaling: {:d}, beam_num: {:d}",
-        //     in_metadata->ra, in_metadata->dec, in_metadata->scaling, in_metadata->beam_number, 
-	//     out_metadata->ra, out_metadata->dec, out_metadata->scaling, out_metadata->beam_number);
+	FreqIDBeamMetadata* debud_frame_metadata = (FreqIDBeamMetadata *)&out_frame[sub_frame_index * sub_frame_size];
+	DEBUG2("Sub frame Beam RA: {:f}, Dec: {:f}, scaling: {:d}, , beam_num: {:d}, freq_id {:d}\n", debud_frame_metadata -> ra, debud_frame_metadata -> dec, debud_frame_metadata -> scaling, debud_frame_metadata-> beam_number,  debud_frame_metadata-> frequency_bin);
         
-	// INFO("In Buffer: Tenth value: {:d}+{:d}i \n Out Buffer: Tenth value: {:d}+{:d}i", 	in_frame[9] & 0x0F, (in_frame[9] & 0xF0) >> 4, out_frame[9] & 0x0F, (out_frame[9] & 0xF0) >> 4);
-        
-	const uint32_t num_freq_per_stream = Telescope::instance().num_freq_per_stream();
-	std::string frequency_bins = "";
-        for (uint32_t f = 0; f < num_freq_per_stream; ++f) {
-            frequency_bins +=
-                fmt::format("{:d}", Telescope::instance().to_freq_id(in_metadata->stream_id, f));
-            if (f != num_freq_per_stream - 1)
-                frequency_bins += ", ";
-        }
-	//INFO("In Buffer: stream_id: {:s}, freq_bins: {:s}",in_metadata->stream_id, frequency_bins);
-        //INFO("frame type {:S}", typeid(in_frame).name().c_str());
-	//uint32_t total_frames = 0;
-        mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_ID++);
+	mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_ID);
+	in_buffer_ID++;
+	
 	if (sub_frame_index == _raw_frames_per_merged_frame - 1){
-            mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID++);
+            mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
+	    out_buffer_ID++;
 	}
-	INFO("In buffer ID {:d}, out buffer ID {:d}", in_buffer_ID, out_buffer_ID);
+	// If in_buffer_ID goes back to zero, it has read the whole ring buffer once.
+	if ((uint32_t)in_buffer_ID == 0){
+	    in_buf_turns++;
+	}
     }
 }
