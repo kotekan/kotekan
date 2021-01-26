@@ -49,9 +49,9 @@ void mergeRawBuffer::main_thread() {
     frameID out_buffer_ID(out_buf);
     uint8_t* out_frame;
     // Since the input buffer is a ring buffer and the in_buf_ID goes back to zero
-    // when the ID reaches the num_frame, we need something something to keep the 
-    // turns.
-    uint32_t in_buf_turns = 0;
+    // when the ID reaches the num_frame, we need something something to keep track
+    // on the incoming frame number
+    uint32_t in_frame_counter = 0;
     
     while (!stop_thread) {
         // Get an input buffer, This call is blocking!
@@ -66,8 +66,7 @@ void mergeRawBuffer::main_thread() {
              break;
         
         // compute the frame index for the out_buf
-	uint32_t true_frame_ID = in_buf_turns * in_buf -> num_frames + in_buffer_ID;
-	uint32_t sub_frame_index = true_frame_ID % _raw_frames_per_merged_frame;	
+	uint32_t sub_frame_index = in_frame_counter % _raw_frames_per_merged_frame;	
 	// compute the size of the sub_frame of the out_frame
 	uint32_t sub_frame_size = sizeof(FreqIDBeamMetadata) + in_buf -> frame_size;
 	// Get the start position of a sub_out_frame's meatadata
@@ -107,14 +106,11 @@ void mergeRawBuffer::main_thread() {
         
 	mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_ID);
 	in_buffer_ID++;
+	in_frame_counter++;
 	
 	if (sub_frame_index == _raw_frames_per_merged_frame - 1){
             mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
 	    out_buffer_ID++;
-	}
-	// If in_buffer_ID goes back to zero, it has read the whole ring buffer once.
-	if ((uint32_t)in_buffer_ID == 0){
-	    in_buf_turns++;
 	}
     }
 }
