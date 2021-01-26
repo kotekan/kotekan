@@ -26,4 +26,8 @@ struct BeamMetadata {
     uint32_t scaling;
 };
 
+struct FreqIDBeamMetadata:BeamMetadata {
+    uint32_t frequency_bin; 	
+};
+
 #endif // BEAMMETADATA_HPP
