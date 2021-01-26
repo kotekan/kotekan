@@ -87,12 +87,12 @@ void HFBFileArchive::setup_file(const std::string& name,
     // Set HDF5 chunk size
     chunk = chunk_size;
     // Check chunk size
-    // Check chunk size
-    if (chunk[0] < 1 || chunk[1] < 1 || chunk[2] < 1)
-        throw std::invalid_argument(fmt::format(fmt("HFBFileArchive: config: Chunk size needs to "
-                                                    "be greater or equal to (1,1,1) (is ({:d},{:d},"
-                                                    "{:d}))."),
-                                                chunk[0], chunk[1], chunk[2]));
+    if (chunk[0] < 1 || chunk[1] < 1 || chunk[2] < 1 || chunk[3] < 1 || chunk[4] < 1)
+        throw std::invalid_argument(
+            fmt::format(fmt("HFBFileArchive: config: Chunk size needs to "
+                            "be greater or equal to (1,1,1,1,1) (is ({:d},{:d},"
+                            "{:d},{:d},{:d}))."),
+                        chunk[0], chunk[1], chunk[2], chunk[3], chunk[4]));
     if (chunk[0] > (int)freqs.size()) {
 
         INFO("HFBFileArchive: Chunk frequency ({}) dimension greater than axes ({}). Will use a "

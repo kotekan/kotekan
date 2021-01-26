@@ -21,7 +21,7 @@ init_dm: True
 #num_frames: 5
 #samples_per_data_set: 49152
 samples_per_data_set: 1024
-freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 777, 554]
+freq_ids: [3, 50, 777, 554]
 cadence: 0.01 
 
 # Constants

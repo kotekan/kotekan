@@ -40,7 +40,7 @@ HFBTranspose::HFBTranspose(Config& config, const std::string& unique_name,
     Transpose(config, unique_name, buffer_container) {
 
     // get chunk dimensions for write from config file
-    chunk = config.get<std::vector<int>>(unique_name, "chunk_size");
+    chunk = config.get_default<std::vector<int>>(unique_name, "chunk_size", {4, 64, 128, 128, 128});
     if (chunk.size() != 5)
         throw std::invalid_argument("Chunk size needs exactly five elements "
                                     "(has "
@@ -52,6 +52,9 @@ HFBTranspose::HFBTranspose(Config& config, const std::string& unique_name,
     chunk_f = chunk[0];
 
     metadata["archive_version"] = "4.3.0";
+
+    DEBUG("chunk_t: {}, chunk_f: {}, chunk_b: {}, chunk_sf: {}", chunk_t, chunk_f, chunk[3],
+          chunk[4]);
 }
 
 bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {

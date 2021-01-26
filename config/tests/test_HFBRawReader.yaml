@@ -9,7 +9,7 @@ num_local_freq: 1
 num_frb_total_beams: 1024
 factor_upchan: 128
 chunk_size:
-  - 64
+  - 4
   - 64
   - 128
   - 128
@@ -31,7 +31,8 @@ hfb_pool:
   num_metadata_objects: '655360'
 
 read_raw:
-  infile:  20201207T213437Z_chimeHFB_corr/00000000_0000
+  log_level: debug
+  infile: 20210125T212808Z_chimeHFB_corr/00000000_0000
   kotekan_stage: HFBRawReader
   max_read_rate: 0.0
   out_buf: read_buffer
@@ -43,7 +44,7 @@ write_hdf5:
   comet_timeout: 180.
   kotekan_stage: HFBTranspose
   in_buf: read_buffer
-  outfile:  ./00000000_0000
+  outfile:  ./test
 
 #hfb_debug:
 #  kotekan_stage: visDebug

@@ -146,7 +146,7 @@ void Transpose::main_thread() {
 
             // Parse the dataset ID
             if (fpga_seq_total == 0 && frame_ds_id == dset_id_t::null) {
-                DEBUG("Got an empty frame.");
+                DEBUG2("Got an empty frame.");
                 // Empty frames have a null dataset ID
                 ds_id_str = fmt::format("{}", dset_id_t::null);
             } else if (frame_ds_id != ds_id) {
