@@ -9,11 +9,11 @@ num_local_freq: 1
 num_frb_total_beams: 1024
 factor_upchan: 128
 chunk_size:
-  - 4
-  - 64
-  - 128
-  - 128
-  - 128
+  - 16  # chunk_freq 
+  - 64  # chunk_stack
+  - 256 # chunk_time
+  - 16  # chunk_beam
+  - 128 # chunk_sub-freq
 
 dataset_manager:
   ds_broker_host: "127.0.0.1"
