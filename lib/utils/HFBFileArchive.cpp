@@ -147,12 +147,12 @@ void HFBFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, s
     if (name == "flags/frac_lost" || name == "flags/frac_rfi" || name == "flags/dataset_id") {
         dset(name).select({f_ind, t_ind}, {chunk_f, chunk_t}).write(data);
     } else {
-        size_t beam_last_dim = dset(name).getSpace().getDimensions().at(1);
-        size_t subfreq_last_dim = dset(name).getSpace().getDimensions().at(2);
+        size_t subfreq_last_dim = dset(name).getSpace().getDimensions().at(1);
+        size_t beam_last_dim = dset(name).getSpace().getDimensions().at(2);
         // DEBUG("writing {:d} freq, {:d} times, {:d} beams, {:d} sub-freq at ({:d}, 0, 0, {:d}).
         // Data[0]: {}", chunk_f, chunk_t, beam_last_dim, subfreq_last_dim, f_ind, t_ind, data[0]);
         dset(name)
-            .select({f_ind, 0, 0, t_ind}, {chunk_f, beam_last_dim, subfreq_last_dim, chunk_t})
+            .select({f_ind, 0, 0, t_ind}, {chunk_f, subfreq_last_dim, beam_last_dim, chunk_t})
             .write(data);
     }
 }
@@ -216,8 +216,8 @@ void HFBFileArchive::create_datasets() {
     bool no_compress = false;
 
     // Create transposed dataset shapes
-    create_dataset("hfb", {"freq", "beam", "subfreq", "time"}, create_datatype<float>(), compress);
-    create_dataset("flags/hfb_weight", {"freq", "beam", "subfreq", "time"},
+    create_dataset("hfb", {"freq", "subfreq", "beam", "time"}, create_datatype<float>(), compress);
+    create_dataset("flags/hfb_weight", {"freq", "subfreq", "beam", "time"},
                    create_datatype<float>(), compress);
     create_dataset("flags/frac_lost", {"freq", "time"}, create_datatype<float>(), no_compress);
     create_dataset("flags/dataset_id", {"freq", "time"}, create_datatype<dset_id_str>(),

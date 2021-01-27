@@ -132,7 +132,7 @@ bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
     num_subfreq = sub_freqs.size();
 
     // the dimension of the visibilities is different for stacked data
-    eff_data_dim = num_beams * 128; // num_subfreq???
+    eff_data_dim = num_beams * num_subfreq;
 
     // Ensure chunk_size not too large
     chunk_t = std::min(chunk_t, num_time);
@@ -213,6 +213,20 @@ void HFBTranspose::create_hdf5_file() {
 void HFBTranspose::copy_frame_data(uint32_t freq_index, uint32_t time_index) {
 
     auto frame = HFBFrameView(in_buf, frame_id);
+
+    std::vector<float> data_cpy(frame.hfb.data(), frame.hfb.data() + eff_data_dim);
+    std::vector<float> weight_cpy(frame.weight.data(), frame.weight.data() + eff_data_dim);
+
+// Transpose beam and sub-frequency order
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+    for (uint32_t n = 0; n < eff_data_dim; n++) {
+        uint32_t i = n / num_beams;
+        uint32_t j = n % num_beams;
+        frame.hfb[n] = data_cpy[j * num_subfreq + i];
+        frame.weight[n] = weight_cpy[j * num_subfreq + i];
+    }
 
     // Collect frames until a chunk is filled
     // Time-transpose as frames come in
