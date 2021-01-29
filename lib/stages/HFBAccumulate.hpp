@@ -11,10 +11,13 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "dataset.hpp"         // for dset_id_t
+#include "datasetManager.hpp"  // for datasetManager, state_id_t, dset_id_t
 
-#include <stdint.h> // for uint32_t, int64_t
+#include "gsl-lite.hpp" // for span
+
+#include <stdint.h> // for uint32_t, int32_t, int64_t
 #include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class HFBAccumulate
@@ -27,6 +30,8 @@
  * Note: _num_frames_to_integrate cannot go below 16 frames as _num_frames_to_integrate cannot be
  * lower than the max_frames_missing
  *
+ * This stage will also calculate the within sample variance for weights.
+ *
  * The output of this stage is written to a raw file where each chunk is
  * the metadata followed by the frame and indexed by frequency ID.
  * This raw file is then transposed and compressed into a structured
@@ -35,6 +40,8 @@
  * @par Buffers
  * @buffer hfb_input_buffer Kotekan buffer feeding data from any GPU.
  *     @buffer_format Array of @c floats
+ * @buffer cls_buffer Kotekan buffer that contains the compressed lost samples.
+ *     @buffer_format Array of @c uint32_t
  * @buffer hfb_out_buf Kotekan buffer that will be populated with integrated data.
  *     @buffer_format Array of @c floats
  *
@@ -60,17 +67,23 @@ public:
     /// Primary loop to wait for buffers, dig through data,
     /// stuff packets lather, rinse and repeat.
     void main_thread() override;
-    /// Copy the first frame of the integration
-    void init_first_frame(float* input_data, float* sum_data, const uint32_t in_buffer_ID);
-    /// Add a frame to the integration
-    void integrate_frame(float* input_data, float* sum_data, const uint32_t in_buffer_ID);
-    /// Normalise frame after integration has been completed
-    void normalise_frame(float* sum_data, const uint32_t in_buffer_ID);
 
 private:
+    /// Copy the first frame of the integration
+    void init_first_frame(float* input_data, const uint32_t in_frame_id);
+    /// Add a frame to the integration
+    void integrate_frame(float* input_data, const uint32_t in_frame_id);
+    /// Normalise frame after integration has been completed
+    void normalise_frame(const uint32_t in_frame_id);
+    /// Reset the state when we restart an integration.
+    bool reset_state();
+
     Buffer* in_buf;
-    Buffer* compressed_lost_samples_buf;
+    Buffer* cls_buf;
     Buffer* out_buf;
+
+    /// View of the output frame data.
+    gsl::span<float> out_hfb;
 
     /// Config variables
     uint32_t _num_frames_to_integrate;
@@ -85,7 +98,22 @@ private:
     uint32_t frame;
     int64_t fpga_seq_num;
     int64_t fpga_seq_num_end;
-    dset_id_t ds_id;
+
+    /// The sum of the squared weight difference. This is needed for
+    /// de-biasing the weight calculation
+    float weight_diff_sum;
+
+    /// Accumulation vectors
+    std::vector<float> hfb1;
+    std::vector<float> hfb2;
+
+    // dataset ID for the base states
+    dset_id_t base_dataset_id;
+
+    // The base states (freq, beam, sub-freq, meta)
+    std::vector<state_id_t> base_dataset_states;
+
+    datasetManager& dm = datasetManager::instance();
 };
 
 #endif

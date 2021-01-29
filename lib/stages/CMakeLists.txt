@@ -26,7 +26,7 @@ add_library(
     bufferRecv.cpp
     simpleAutocorr.cpp
     freqSplit.cpp
-    freqSubset.cpp
+    FreqSubset.cpp
     prodSubset.cpp
     countCheck.cpp
     visAccumulate.cpp
@@ -36,7 +36,9 @@ add_library(
     BaseWriter.cpp
     VisWriter.cpp
     HFBWriter.cpp
-    visRawReader.cpp
+    RawReader.cpp
+    VisRawReader.cpp
+    HFBRawReader.cpp
     restInspectFrame.cpp
     frbNetworkProcess.cpp
     pulsarNetworkProcess.cpp
@@ -63,7 +65,12 @@ add_library(
     bufferBadInputs.cpp
     RfiFrameDrop.cpp
     VisSharedMemWriter.cpp
-    DataQuality.cpp)
+    DataQuality.cpp
+    BeamExtract.cpp
+    BeamInspect.cpp
+    testDataGen.cpp
+    DPDKShuffleSimulate.cpp
+    BadInputFlag.cpp)
 
 target_include_directories(kotekan_stages PRIVATE .)
 

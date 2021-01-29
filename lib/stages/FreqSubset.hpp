@@ -1,48 +1,48 @@
 /*****************************************
 @file
-@brief Stage for subsetting visibility data by frequency.
-- freqSubset : public kotekan::Stage
+@brief Stage for subsetting data by frequency.
+- FreqSubset : public kotekan::Stage
 *****************************************/
 #ifndef FREQ_SUBSET_HPP
 #define FREQ_SUBSET_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp" // for Stage
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp" // for dset_id_t, state_id_t, fingerprint_t
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t, state_id_t, fingerprint_t
 
 #include <map>      // for map
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
 #include <vector>   // for vector
 
-
 /**
- * @class freqSubset
- * @brief Outputs a VisBuffer stream with a subset of the input frequencies.
+ * @class FreqSubset
+ * @brief Outputs a Buffer stream with a subset of the input frequencies.
  *
- * This task takes data coming out of a VisBuffer stream and selects a subset of
+ * This task takes data coming out of a Buffer stream and selects a subset of
  * frequencies to be passed on to the output buffer.
  *
  * @par Buffers
  * @buffer in_buf The original buffer with all frequencies
- *         @buffer_format VisBuffer structured
- *         @buffer_metadata VisMetadata
+ *         @buffer_format Vis/HFBBuffer structured
+ *         @buffer_metadata Vis/HFBMetadata
  * @buffer out_buf The buffer containing the subset of frequencies
- *         @buffer_format VisBuffer structured
- *         @buffer_metadata VisMetadata
+ *         @buffer_format Vis/HFBBuffer structured
+ *         @buffer_metadata Vis/HFBMetadata
  *
  * @conf  subset_list           Vector of Int. The list of frequencies that go
  *                              in the subset.
  *
  * @author Mateus Fandino
  */
-class freqSubset : public kotekan::Stage {
+template<typename T>
+class FreqSubset : public kotekan::Stage {
 
 public:
     /// Default constructor
-    freqSubset(kotekan::Config& config, const std::string& unique_name,
+    FreqSubset(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     /// Main loop for the stage
@@ -64,6 +64,4 @@ private:
     std::map<dset_id_t, dset_id_t> dset_id_map;
     std::map<fingerprint_t, state_id_t> states_map;
 };
-
-
 #endif

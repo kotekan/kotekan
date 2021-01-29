@@ -314,6 +314,16 @@ int bufferRecv::get_next_frame() {
     return last_frame_id;
 }
 
+std::string bufferRecv::dot_string(const std::string& prefix) const {
+    std::string dot = Stage::dot_string(prefix);
+    std::string source = fmt::format("Port: {:d}", listen_port);
+    dot += fmt::format("{:s}\"{:s}\" [shape=doubleoctagon style=filled,color=lightblue]", prefix,
+                       source);
+    dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\"", prefix, source, get_unique_name());
+
+    return dot;
+}
+
 connInstance::connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
                            const std::string& client_ip, int port, struct timeval read_timeout,
                            bool drop_frames) :

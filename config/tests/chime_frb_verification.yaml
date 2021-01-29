@@ -124,11 +124,11 @@ gpu_beamform_hfb_output_buffers:
     kotekan_buffer: standard
 
 cpu_output_buffers:
-    num_frames: buffer_depth
-    frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
-    metadata_pool: main_pool
-    cpu_output_buffer_0:
-        kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
+  metadata_pool: main_pool
+  cpu_output_buffer_0:
+    kotekan_buffer: standard
 
 cpu_hfb_output_buffers:
     num_frames: buffer_depth
@@ -148,10 +148,10 @@ beamform_hfb_output_buffers:
         kotekan_buffer: hfb
 
 lost_samples_buffer:
-    kotekan_buffer: standard
-    num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set * num_local_freq * num_data_sets
-    metadata_pool: main_pool
+  kotekan_buffer: standard
+  num_frames: 2 * buffer_depth
+  frame_size: samples_per_data_set * num_local_freq * num_data_sets
+  metadata_pool: main_pool
 
 compressed_lost_samples_buffer:
     kotekan_buffer: standard
@@ -169,7 +169,7 @@ cpu_affinity: [2,3,8,9]
 
 gen_data:
   test_data_gen_network:
-    type: random
+    type: random #const
     value: 153
     kotekan_stage: testDataGen
     out_buf: network_buffer_0
@@ -207,7 +207,7 @@ compress_lost_samples:
 copy:
   kotekan_stage: bufferCopy
   in_buf: compressed_lost_samples_buffer
-  out_bufs: 
+  out_bufs:
     - compressed_lost_samples_buffer_cpy
 
 gpu:
@@ -223,6 +223,7 @@ gpu:
     - name: hsaBeamformReorder
     - name: hsaBeamformKernel
     - name: hsaBeamformTranspose
+#   - name: hsaKVFFT
     - name: hsaBeamformUpchanHFB
     - name: hsaBeamformHFBSum
     - name: hsaBeamformOutputData
@@ -284,14 +285,16 @@ read_gain:
       
 check_data:
   bf_data_check_0:
-    num_frames_to_test: 5
+    num_frames_to_test: 1
+    epsilon: 0.001
     kotekan_stage: testDataCheckFloat
     first_buf : gpu_beamform_output_buffer_0
     second_buf: cpu_output_buffer_0
 
-check_data:
+check_hfb_data:
   hfb_data_check_0:
-    num_frames_to_test: 5
+    num_frames_to_test: 1
+    epsilon: 0.001
     kotekan_stage: testDataCheckFloat
     first_buf : gpu_beamform_hfb_output_buffer_0
     second_buf: cpu_hfb_output_buffer_0

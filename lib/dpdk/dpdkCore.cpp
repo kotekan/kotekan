@@ -1,7 +1,7 @@
 #include "dpdkCore.hpp"
 
-#include "Config.hpp" // for Config
-#include "ICETelescope.hpp"
+#include "Config.hpp"           // for Config
+#include "ICETelescope.hpp"     // for ice_stream_id_t
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "captureHandler.hpp"   // for captureHandler
 #include "iceBoardShuffle.hpp"  // for iceBoardShuffle, iceBoardShuffle::shuffle_size
@@ -11,7 +11,7 @@
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for json, basic_json<>::object_t, basic_json, basic_json<...
 
-#include <algorithm>               // for max
+#include <algorithm>               // for copy, max
 #include <atomic>                  // for atomic_bool
 #include <functional>              // for _Bind_helper<>::type, bind, function
 #include <numa.h>                  // for numa_node_of_cpu, numa_num_configured_nodes
@@ -28,6 +28,7 @@
 #include <stdio.h>                 // for fprintf, size_t, stderr
 #include <stdlib.h>                // for malloc, free
 #include <string.h>                // for strncpy, memset
+#include <sys/types.h>             // for uint
 #include <unistd.h>                // for sleep
 #include <vector>                  // for vector
 
@@ -394,4 +395,28 @@ int dpdkCore::lcore_rx(void* args) {
     }
 exit_lcore:
     return 0;
+}
+
+std::string dpdkCore::dot_string(const std::string& prefix) const {
+    std::string dot = fmt::format("{:s}subgraph \"cluster_{:s}\" {{\n", prefix, get_unique_name());
+
+    dot += fmt::format("{:s}{:s}style=filled;\n", prefix, prefix);
+    dot += fmt::format("{:s}{:s}color=lightgrey;\n", prefix, prefix);
+    dot += fmt::format("{:s}{:s}node [style=filled,color=white];\n", prefix, prefix);
+    dot += fmt::format("{:s}{:s}label = \"{:s}\";\n", prefix, prefix, get_unique_name());
+
+    for (uint i = 0; i < num_ports; ++i) {
+        dot += fmt::format("{:s}{:s} \"{:s}\" [shape=box];\n", prefix, prefix,
+                           handlers[i]->unique_name);
+    }
+
+    dot += fmt::format("{:s}}}\n", prefix);
+
+    for (uint i = 0; i < num_ports; ++i) {
+        dot += fmt::format("{:s}port_{:d} [shape=doubleoctagon style=filled,color=lightblue];\n",
+                           prefix, i);
+        dot += fmt::format("{:s}port_{:d} -> \"{:s}\";\n", prefix, i, handlers[i]->unique_name);
+    }
+
+    return dot;
 }

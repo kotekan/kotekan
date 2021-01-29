@@ -93,6 +93,10 @@ void RfiFrameDrop::main_thread() {
     // keep track of the dataset state
     state_id_t last_state_id = state_id_t::null;
 
+    // Lock to protect dataset state and all update data (they are all changed together in either of
+    // the endpoint callbacks)
+    std::unique_lock<std::mutex> lock(update_mutex, std::defer_lock);
+
     while (!stop_thread) {
         // Fetch the input buffers
         uint8_t* frame_in_vis =
@@ -136,7 +140,6 @@ void RfiFrameDrop::main_thread() {
                                  / (4.0 * sk_step * sk_step));
 
         // Lock update mutex to not allow updates being processed during this critical section
-        std::unique_lock<std::mutex> lock(update_mutex);
         lock.lock();
 
         // Check if we need to register a new dataset
@@ -156,7 +159,7 @@ void RfiFrameDrop::main_thread() {
         std::copy(sk_exceeds.begin(), sk_exceeds.end(), sk_exceeds_copy.begin());
 
         // Release the update lock
-        lock.release();
+        lock.unlock();
 
 
         for (size_t ii = 0; ii < num_sub_frames; ii++) {
@@ -270,8 +273,17 @@ bool RfiFrameDrop::rest_enable_callback(nlohmann::json& update) {
     std::lock_guard<std::mutex> lock(update_mutex);
 
     // set enabled and state ID, but copy the rest from the last state
-    std::tie(state_id, state_ptr) =
-        dm.create_state<RFIFrameDropState>(enable_rfi_zero_new, state_ptr->get_thresholds());
+    if (state_ptr)
+        std::tie(state_id, state_ptr) =
+            dm.create_state<RFIFrameDropState>(enable_rfi_zero_new, state_ptr->get_thresholds());
+    else {
+        // If this callback is ran before the other one for the first time, state_ptr is not
+        // initialized yet.
+        std::vector<std::pair<float, float>> dummy_thresholds;
+        std::tie(state_id, state_ptr) =
+            dm.create_state<RFIFrameDropState>(enable_rfi_zero_new, dummy_thresholds);
+    }
+
 
     return true;
 }
@@ -328,9 +340,12 @@ bool RfiFrameDrop::rest_thresholds_callback(nlohmann::json& update) {
     for (const auto& [threshold, fraction] : thresholds_new)
         INFO("  added cut with threshold={}, fraction={}", threshold, fraction);
 
+    // If this callback is ran before the other one for the first time, state_ptr is not
+    // initialized yet.
+    bool enabled = state_ptr ? state_ptr->get_enabled() : false;
+
     // build a new dataset state, copy enable-value
-    std::tie(state_id, state_ptr) =
-        dm.create_state<RFIFrameDropState>(state_ptr->get_enabled(), thresholds_new);
+    std::tie(state_id, state_ptr) = dm.create_state<RFIFrameDropState>(enabled, thresholds_new);
 
     return true;
 }

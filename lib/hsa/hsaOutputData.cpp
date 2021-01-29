@@ -31,6 +31,7 @@ hsaOutputData::hsaOutputData(Config& config, const std::string& unique_name,
     // one of every _num_sub_frame frames.  So we only register one consumer
     // and one producer name which in this case is ok to be static.
     static_unique_name = fmt::format(fmt("hsa_output_static_{:d}"), device.get_gpu_id());
+
     if (_sub_frame_index == 0) {
         register_consumer(network_buffer, static_unique_name.c_str());
         register_producer(output_buffer, static_unique_name.c_str());
@@ -148,4 +149,8 @@ void hsaOutputData::finalize_frame(int frame_id) {
     network_buffer_id = (network_buffer_id + 1) % network_buffer->num_frames;
     output_buffer_id = (output_buffer_id + _num_sub_frames) % output_buffer->num_frames;
     lost_samples_buf_id = (lost_samples_buf_id + 1) % lost_samples_buf->num_frames;
+}
+
+std::string hsaOutputData::get_unique_name() const {
+    return static_unique_name;
 }

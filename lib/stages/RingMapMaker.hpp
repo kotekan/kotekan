@@ -6,8 +6,8 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for dset_id_t
-#include "datasetState.hpp"    // for stackState, prodState
+#include "datasetManager.hpp"  // for dset_id_t, state_id_t, fingerprint_t
+#include "datasetState.hpp"    // for stackState
 #include "restServer.hpp"      // for connectionInstance
 #include "visUtil.hpp"         // for input_ctype, prod_ctype, time_ctype, stack_ctype, cfloat
 
@@ -22,6 +22,7 @@
 #include <stdexcept> // for runtime_error
 #include <stdint.h>  // for uint32_t, int64_t, uint8_t
 #include <string>    // for string
+#include <tuple>     // for tuple
 #include <utility>   // for pair
 #include <vector>    // for vector
 
@@ -100,8 +101,10 @@ private:
     modulo<size_t> latest;
     double max_ctime, min_ctime;
 
-    // Dataset ID of incoming stream
-    dset_id_t ds_id;
+    // Fingerprint of the datasets we want to watch for changes
+    fingerprint_t fprint;
+    state_id_t sstate_id;
+    state_id_t fstate_id;
 
     // Configurable
     float feed_sep;
@@ -144,11 +147,11 @@ public:
 private:
     void change_dataset_state(dset_id_t ds_id);
 
-    // dataset states and IDs
-    dset_id_t output_dset_id;
-    dset_id_t input_dset_id;
-    const stackState* old_stack_state_ptr;
-    const stackState* new_stack_state_ptr;
+    // Map the incoming ID to an outgoing one
+    std::map<dset_id_t, std::tuple<dset_id_t, const stackState*, const stackState*>> dset_id_map;
+
+    // Map from the critical incoming states to the correct stackState
+    std::map<fingerprint_t, std::tuple<state_id_t, const stackState*, const stackState*>> state_map;
 
     // Buffers
     Buffer* in_buf;
