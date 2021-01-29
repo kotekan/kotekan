@@ -252,20 +252,22 @@ RawReader<T>::RawReader(Config& config, const std::string& unique_name,
     if (local_dm && use_comet)
         FATAL_ERROR("Cannot use local dataset manager and dataset broker together.")
 
-    chunk_size = config.get_default<std::vector<int>>(unique_name, "chunk_size", {4, 64, 128});
-    chunked = true;
-    if (chunk_size.size() < 3)
-        throw std::invalid_argument("Chunk size needs at least three "
-                                    "elements (has "
-                                    + std::to_string(chunk_size.size()) + ").");
-    chunk_t = chunk_size[2];
-    chunk_f = chunk_size[0];
-    if (chunk_size[0] < 1 || chunk_size[1] < 1 || chunk_size[2] < 1)
-        throw std::invalid_argument("RawReader: config: Chunk size "
-                                    "needs to be greater or equal to (1,1,1) (is ("
-                                    + std::to_string(chunk_size[0]) + ","
-                                    + std::to_string(chunk_size[1]) + ","
-                                    + std::to_string(chunk_size[2]) + ")).");
+    chunked = config.exists(unique_name, "chunk_size");
+    if (chunked) {
+        chunk_size = config.get<std::vector<int>>(unique_name, "chunk_size");
+        if (chunk_size.size() < 3)
+            throw std::invalid_argument("Chunk size needs at least three "
+                                        "elements (has "
+                                        + std::to_string(chunk_size.size()) + ").");
+        chunk_t = chunk_size[2];
+        chunk_f = chunk_size[0];
+        if (chunk_size[0] < 1 || chunk_size[1] < 1 || chunk_size[2] < 1)
+            throw std::invalid_argument("RawReader: config: Chunk size "
+                                        "needs to be greater or equal to (1,1,1) (is ("
+                                        + std::to_string(chunk_size[0]) + ","
+                                        + std::to_string(chunk_size[1]) + ","
+                                        + std::to_string(chunk_size[2]) + ")).");
+    }
 
     DEBUG("Chunked: {}, chunk_t: {}, chunk_f: {}", chunked, chunk_t, chunk_f);
 

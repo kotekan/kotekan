@@ -8,12 +8,6 @@ num_ev: 4
 num_local_freq: 1
 num_frb_total_beams: 1024
 factor_upchan: 128
-chunk_size:
-  - 16  # chunk_freq 
-  - 64  # chunk_stack
-  - 256 # chunk_time
-  - 16  # chunk_beam
-  - 128 # chunk_sub-freq
 
 dataset_manager:
   ds_broker_host: "127.0.0.1"
@@ -38,6 +32,12 @@ read_raw:
   out_buf: read_buffer
   readahead_blocks: 4
   ignore_versions: True
+  chunk_size:
+    - 16  # chunk_freq 
+    - 64  # chunk_stack
+    - 256 # chunk_time
+    - 16  # chunk_beam
+    - 128 # chunk_sub-freq
 
 write_hdf5:
   log_level: debug
@@ -45,6 +45,12 @@ write_hdf5:
   kotekan_stage: HFBTranspose
   in_buf: read_buffer
   outfile:  ./test
+  chunk_size:
+    - 16  # chunk_freq 
+    - 64  # chunk_stack
+    - 256 # chunk_time
+    - 16  # chunk_beam
+    - 128 # chunk_sub-freq
 
 #hfb_debug:
 #  kotekan_stage: visDebug
