@@ -31,7 +31,7 @@ HFBFileArchive::HFBFileArchive(const std::string& name,
                                const std::vector<time_ctype>& times,
                                const std::vector<freq_ctype>& freqs,
                                const std::vector<uint32_t>& beams,
-                               const std::vector<uint32_t>& subfreqs, std::vector<int> chunk_size,
+                               const std::vector<float>& subfreqs, std::vector<int> chunk_size,
                                const kotekan::logLevel log_level) {
 
     set_log_level(log_level);
@@ -49,7 +49,7 @@ HFBFileArchive::HFBFileArchive(const std::string& name,
 HFBFileArchive::HFBFileArchive(
     const std::string& name, const std::map<std::string, std::string>& metadata,
     const std::vector<time_ctype>& times, const std::vector<freq_ctype>& freqs,
-    const std::vector<uint32_t>& beams, const std::vector<uint32_t>& subfreqs,
+    const std::vector<uint32_t>& beams, const std::vector<float>& subfreqs,
     const std::vector<stack_ctype>& stack, std::vector<rstack_ctype>& reverse_stack,
     std::vector<int> chunk_size, const kotekan::logLevel log_level) {
 
@@ -77,8 +77,8 @@ void HFBFileArchive::setup_file(const std::string& name,
                                 const std::map<std::string, std::string>& metadata,
                                 const std::vector<time_ctype>& times,
                                 const std::vector<freq_ctype>& freqs,
-                                const std::vector<uint32_t>& subfreqs,
-                                const std::vector<uint32_t>& beams, std::vector<int> chunk_size) {
+                                const std::vector<uint32_t>& beams,
+                                const std::vector<float>& subfreqs, std::vector<int> chunk_size) {
 
     std::string data_filename = fmt::format(fmt("{:s}.h5"), name);
 
@@ -179,7 +179,7 @@ HFBFileArchive::~HFBFileArchive() {
 void HFBFileArchive::create_axes(const std::vector<time_ctype>& times,
                                  const std::vector<freq_ctype>& freqs,
                                  const std::vector<uint32_t>& beams,
-                                 const std::vector<uint32_t>& subfreqs) {
+                                 const std::vector<float>& subfreqs) {
 
     create_axis("freq", freqs);
     create_axis("time", times);
@@ -190,7 +190,7 @@ void HFBFileArchive::create_axes(const std::vector<time_ctype>& times,
 void HFBFileArchive::create_axes(const std::vector<time_ctype>& times,
                                  const std::vector<freq_ctype>& freqs,
                                  const std::vector<uint32_t>& beams,
-                                 const std::vector<uint32_t>& subfreqs,
+                                 const std::vector<float>& subfreqs,
                                  const std::vector<stack_ctype>& stack) {
 
     create_axes(times, freqs, beams, subfreqs);

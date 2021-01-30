@@ -70,7 +70,7 @@ private:
     std::vector<time_ctype> times;
     std::vector<freq_ctype> freqs;
     std::vector<uint32_t> beams;
-    std::vector<uint32_t> sub_freqs;
+    std::vector<float> sub_freqs;
 
     /// Number of products to write
     size_t num_beams;
