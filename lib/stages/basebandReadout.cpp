@@ -156,8 +156,6 @@ void basebandReadout::main_thread() {
 }
 
 void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutManager& mgr) {
-    auto& request_no_data_counter = readout_counter.labels({std::to_string(freq_id), "no_data"});
-
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
         // Latency is *key* here. We want to call get_data within 100ms
@@ -169,78 +167,73 @@ void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutMana
             basebandDumpStatus& dump_status = std::get<0>(*next_request);
             std::mutex& request_mtx = std::get<1>(*next_request);
 
-            // Reading the request parameters should be safe even without a
-            // lock, as they are read-only once received.
+            start_processing(dump_status, request_mtx);
+
             const basebandRequest request = dump_status.request;
-            // std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
-            const uint64_t event_id = request.event_id;
-            INFO("Received baseband dump request for event {:d}: {:d} samples starting at count "
-                 "{:d}. (next_frame: {:d})",
-                 event_id, request.length_fpga, request.start_fpga, next_frame);
-
-            {
-                std::lock_guard<std::mutex> lock(request_mtx);
-                dump_status.state = basebandDumpStatus::State::INPROGRESS;
-                dump_status.started = std::make_shared<std::chrono::system_clock::time_point>(
-                    std::chrono::system_clock::now());
-                // Note: the length of the dump still needs to be set with
-                // actual sizes. This is done in `get_data` as it verifies what
-                // is available in the current buffers.
-            }
-
-            DEBUG("Ready to copy samples into the baseband readout buffer");
-
-            // Copying the data from the ring buffer is done in *this* thread. Writing the data
-            // out is done by another thread. This keeps the number of threads that can lock out
-            // the main buffer limited to 2 (listen and main).
             basebandDumpData::Status status =
-                get_data(event_id, request.start_fpga,
+                get_data(request.event_id, request.start_fpga,
                          std::min((int64_t)request.length_fpga, _max_dump_samples));
 
-            // At this point we know how much of the requested data we managed to read from the
-            // buffer (which may be nothing if the request as received too late).
-            {
-                std::lock_guard<std::mutex> lock(request_mtx);
-                if (status != basebandDumpData::Status::Ok) {
-                    INFO("Captured no data for event {:d} and freq {:d}.", event_id, freq_id);
-                    dump_status.state = basebandDumpStatus::State::ERROR;
-                    dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
-                        std::chrono::system_clock::now());
-                    switch (status) {
-                        case basebandDumpData::Status::TooLong:
-                            dump_status.reason = "Request length exceeds the configured limit.";
-                            break;
-                        case basebandDumpData::Status::Late:
-                            dump_status.reason = "No data captured.";
-                            request_no_data_counter.inc();
-                            break;
-                        case basebandDumpData::Status::ReserveFailed:
-                            dump_status.reason = "No free space in the baseband buffer";
-                            break;
-                        case basebandDumpData::Status::Cancelled:
-                            dump_status.reason = "Kotekan exiting.";
-                            break;
-                        default:
-                            INFO("Unknown dump status: {}", int(status));
-                            throw std::runtime_error(
-                                "Unhandled basebandDumpData::Status case in a switch statement.");
-                    }
-                } else {
-                    dump_status.state = basebandDumpStatus::State::DONE;
-                }
-                dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
-                    std::chrono::system_clock::now());
-            }
-
-            if (status == basebandDumpData::Status::Ok) {
-                // INFO("Captured {:d} samples for event {:d} and freq {:d}.", data.data_length_fpga,
-                //      data.event_id, data.freq_id);
-
-                // TODO: still necessary?
-                // we are done copying the samples into the readout buffer
-                //mgr.ready({dump_status, data});
-            }
+            end_processing(status, freq_id, dump_status, request_mtx);
         }
+    }
+}
+
+void basebandReadout::start_processing(basebandDumpStatus& dump_status, std::mutex& request_mtx) {
+    // Reading the request parameters should be safe even without a
+    // lock, as they are read-only once received.
+    const basebandRequest request = dump_status.request;
+    INFO("Received baseband dump request for event {:d}: {:d} samples starting at count "
+         "{:d}. (next_frame: {:d})",
+         request.event_id, request.length_fpga, request.start_fpga, next_frame);
+
+    {
+        std::lock_guard<std::mutex> lock(request_mtx);
+        dump_status.state = basebandDumpStatus::State::INPROGRESS;
+        dump_status.started = std::make_shared<std::chrono::system_clock::time_point>(
+            std::chrono::system_clock::now());
+        // Note: the length of the dump still needs to be set with
+        // actual sizes. This is done in `get_data` as it verifies what
+        // is available in the current buffers.
+    }
+}
+
+void basebandReadout::end_processing(basebandDumpData::Status status, const uint32_t freq_id, basebandDumpStatus& dump_status, std::mutex& request_mtx) {
+    auto& request_no_data_counter = readout_counter.labels({std::to_string(freq_id), "no_data"});
+
+    // At this point we know how much of the requested data we managed to read from the
+    // buffer (which may be nothing if the request as received too late).
+    {
+        std::lock_guard<std::mutex> lock(request_mtx);
+        if (status != basebandDumpData::Status::Ok) {
+            INFO("Captured no data for event {:d} and freq {:d}.", dump_status.request.event_id, freq_id);
+            dump_status.state = basebandDumpStatus::State::ERROR;
+            dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
+                std::chrono::system_clock::now());
+            switch (status) {
+            case basebandDumpData::Status::TooLong:
+                dump_status.reason = "Request length exceeds the configured limit.";
+                break;
+            case basebandDumpData::Status::Late:
+                dump_status.reason = "No data captured.";
+                request_no_data_counter.inc();
+                break;
+            case basebandDumpData::Status::ReserveFailed:
+                dump_status.reason = "No free space in the baseband buffer";
+                break;
+            case basebandDumpData::Status::Cancelled:
+                dump_status.reason = "Kotekan exiting.";
+                break;
+            default:
+                INFO("Unknown dump status: {}", int(status));
+                throw std::runtime_error(
+                    "Unhandled basebandDumpData::Status case in a switch statement.");
+            }
+        } else {
+            dump_status.state = basebandDumpStatus::State::DONE;
+        }
+        dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
+            std::chrono::system_clock::now());
     }
 }
 
@@ -267,6 +260,8 @@ int basebandReadout::add_replace_frame(int frame_id) {
 
 basebandDumpData::Status basebandReadout::get_data(uint64_t event_id, int64_t trigger_start_fpga,
                                            int64_t trigger_length_fpga) {
+    DEBUG("Ready to copy samples into the baseband readout buffer");
+
     // This assumes that the frame's timestamps are in order, but not that they
     // are necessarily contiguous.
 

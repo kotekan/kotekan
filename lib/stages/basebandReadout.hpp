@@ -88,6 +88,11 @@ private:
      * @brief Process incoming requests by copying the baseband data from the ring buffer
      */
     void readout_thread(const uint32_t freq_id, kotekan::basebandReadoutManager& readout_manager);
+
+    /** @brief convenience methods for updating request status and metrics */
+    void start_processing(kotekan::basebandDumpStatus& dump_status, std::mutex& request_mtx);
+    void end_processing(kotekan::basebandDumpData::Status status, const uint32_t freq_id, kotekan::basebandDumpStatus& dump_status, std::mutex& request_mtx);
+
     int add_replace_frame(int frame_id);
     void lock_range(int start_frame, int end_frame);
     void unlock_range(int start_frame, int end_frame);
