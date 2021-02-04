@@ -213,7 +213,6 @@ updatable_config:
                  1023, 1058, 1141, 1166, 1225, 1280, 1281, 1285, 1311, 1314, 1343,
                  1380, 1381, 1479, 1521, 1523, 1543, 1642, 1684, 1687, 1738, 1792,
                  1794, 1910, 1912, 1943, 1945, 1950, 1982, 1984, 1987, 2032, 2034]
-
     start_time: 1535048997.
     update_id: "initial_flags"
   rfi_zeroing_toggle:
@@ -287,6 +286,11 @@ main_pool:
 # HFB Metadata Pool
 hfb_pool:
   kotekan_metadata_pool: HFBMetadata
+  num_metadata_objects: 30 * buffer_depth
+
+# Baseband metadata pool
+baseband_pool:
+  kotekan_metadata_pool: BasebandMetadata
   num_metadata_objects: 30 * buffer_depth
 
 # Input data buffers from the DPDK stage
@@ -649,23 +653,39 @@ zero_samples:
     out_buf: network_buffer_3
 
 # Baseband capture and dump system
+baseband_output_buffers:
+  num_frames: baseband_buffer_depth
+  frame_size: sizeof_int
+  metadata_pool: baseband_pool
+  baseband_output_buffer_0:
+    kotekan_buffer: standard
+  baseband_output_buffer_1:
+    kotekan_buffer: standard
+  baseband_output_buffer_2:
+    kotekan_buffer: standard
+  baseband_output_buffer_3:
+    kotekan_buffer: standard
+
 baseband:
   max_dump_samples: 200000
   num_frames_buffer: baseband_buffer_depth - 10
-  base_dir: /mnt/frb-baseband/
   write_throttle: 0
   baseband0:
     kotekan_stage: basebandReadout
     in_buf: network_buffer_0
+    out_buf: baseband_output_buffer_0
   baseband1:
     kotekan_stage: basebandReadout
     in_buf: network_buffer_1
+    out_buf: baseband_output_buffer_1
   baseband2:
     kotekan_stage: basebandReadout
     in_buf: network_buffer_2
+    out_buf: baseband_output_buffer_2
   baseband3:
     kotekan_stage: basebandReadout
     in_buf: network_buffer_3
+    out_buf: baseband_output_buffer_3
 
 # Buffer bad input updates
 # 1) Reorder list
