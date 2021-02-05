@@ -38,6 +38,7 @@ __constant float HFB_BP[16] = { 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,
                                 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
 
 
+//__kernel void frb_upchan_amd (__global float2 *data, __global float *results_array, __global float *hfb_output_array){
 __kernel void frb_upchan_amd (__global half2 *data, __global float *results_array, __global float *hfb_output_array){
     float2 res[N_TIMES][2];
     float2 sc, b;
@@ -63,6 +64,8 @@ __kernel void frb_upchan_amd (__global half2 *data, __global float *results_arra
                         L; //idx within FFT
             res[i][0] = (float2){data[addr].RE, data[addr].IM};
             res[i][1] = (float2){data[addr+64].RE, data[addr+64].IM};
+            //res[i][0] = data[addr];
+            //res[i][1] = data[addr+64];
             twiddle(sc,WN,amd_bfe((uint)L,0,6));
             butterfly(res[i][0], res[i][1], sc, b);
         }

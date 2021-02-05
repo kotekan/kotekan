@@ -45,7 +45,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     buf = get_buffer("out_buf");
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
-    assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse");
+    assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse" || type == "square");
     if (type == "const" || type == "random" || type == "ramp")
         value = config.get<int>(unique_name, "value");
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
@@ -131,32 +131,76 @@ void testDataGen::main_thread() {
         gettimeofday(&now, nullptr);
         set_first_packet_recv_time(buf, frame_id, now);
 
-        // std::random_device rd;
-        // std::mt19937 gen(rd());
-        // std::uniform_int_distribution<> dis(0, 255);
-        if (type == "random")
-            srand(value);
-        unsigned char temp_output;
-        int num_elements = buf->frame_size / sizeof(uint8_t) / samples_per_data_set;
-        for (uint j = 0; j < buf->frame_size / sizeof(uint8_t); ++j) {
-            if (type == "const") {
-                if (finished_seeding_consant)
-                    break;
-                frame[j] = value;
-            } else if (type == "ramp") {
-                frame[j] = fmod(j * value, 256 * value);
-                //                frame[j] = j*value;
-            } else if (type == "random") {
-                unsigned char new_real;
-                unsigned char new_imaginary;
-                new_real = rand() % 16;
-                new_imaginary = rand() % 16;
-                temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
-                frame[j] = temp_output;
-            } else if (type == "tpluse") {
-                frame[j] = seq_num + j / num_elements + j % num_elements;
+        if (type == "squasdasdare") {
+          float *out = (float*)frame;
+
+          for (uint j = 0; j < buf->frame_size / sizeof(float); j+=2) {
+            float new_real;
+            float new_imaginary;
+            if(j % 16 < 8) {
+                new_real = 0.f;
+                new_imaginary = 0.f;
             }
+            else {
+                new_real = 4.f;
+                new_imaginary = 0.f;
+                //INFO("real: {}, imag: {}", new_real, new_imaginary);
+            }
+            out[j] = new_real;
+            out[j + 1] = new_imaginary;
+          }
         }
+        else {
+          // std::random_device rd;
+          // std::mt19937 gen(rd());
+          // std::uniform_int_distribution<> dis(0, 255);
+          if (type == "random")
+              srand(value);
+          unsigned char temp_output;
+          int num_elements = buf->frame_size / sizeof(uint8_t) / samples_per_data_set;
+          for (uint j = 0; j < buf->frame_size / sizeof(uint8_t); ++j) {
+              if (type == "const") {
+                  //if (finished_seeding_consant)
+                  //    break;
+                  frame[j] = value;
+              } else if (type == "ramp") {
+                  frame[j] = fmod(j * value, 256 * value);
+                  //                frame[j] = j*value;
+              } else if (type == "random") {
+                  unsigned char new_real;
+                  unsigned char new_imaginary;
+                  new_real = rand() % 16;
+                  new_imaginary = rand() % 16;
+                  temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
+                  frame[j] = temp_output;
+              } else if (type == "tpluse") {
+                  frame[j] = seq_num + j / num_elements + j % num_elements;
+              } else if (type == "square") {
+                  unsigned char new_real;
+                  unsigned char new_imaginary;
+                  if(j % 8 < 4) {
+                      new_real = 0;
+                      new_imaginary = 0;
+                  }
+                  else {
+                      new_real = 4;
+                      new_imaginary = 0;
+                      //INFO("real: {}, imag: {}", new_real, new_imaginary);
+                  }
+                  temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
+                  frame[j] = temp_output;
+              }
+          }
+        }
+        if(type == "square") {
+          //float *out = (float*)frame;
+          //float sum = 0.f;
+          //for (uint j = 0; j < buf->frame_size / sizeof(float); j++) {
+          //  sum += out[j];
+          //}
+          //INFO("Sum of data: {}", sum);
+        }
+
         DEBUG("Generated a {:s} test data set in {:s}[{:d}]", type, buf->buffer_name, frame_id);
 
         mark_frame_full(buf, unique_name.c_str(), frame_id);

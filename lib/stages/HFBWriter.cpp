@@ -113,4 +113,5 @@ void HFBWriter::write_data(Buffer* in_buf, int frame_id) {
     time_ctype t = {fpga_seq_start, ts_to_double(time)};
 
     write_frame(frame, frame.dataset_id, frame.freq_id, t);
+    exit_kotekan(ReturnCode::CLEAN_EXIT);
 }

@@ -167,7 +167,8 @@ void HFBAccumulate::main_thread() {
 
         // Check if dataset ID changed
         dset_id_t ds_id_in_new = get_dataset_id(in_buf, in_frame_id);
-        if (ds_id_in_new != ds_id_in) {
+        //if (ds_id_in_new != ds_id_in) {
+        //if (ds_id_in_new == 0) {
             ds_id_in = ds_id_in_new;
 
             // Register base dataset. If no dataset ID was was set in the incoming frame,
@@ -175,7 +176,7 @@ void HFBAccumulate::main_thread() {
             // be registered.
             base_dataset_id = dm.add_dataset(base_dataset_states, ds_id_in);
             DEBUG("Registered base dataset: {}", base_dataset_id)
-        }
+        //}
 
         float* input = (float*)in_frame_ptr;
         uint64_t frame_count = (get_fpga_seq_num(in_buf, in_frame_id) / _samples_per_data_set);
