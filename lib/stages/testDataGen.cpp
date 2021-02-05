@@ -178,7 +178,7 @@ void testDataGen::main_thread() {
               } else if (type == "square") {
                   unsigned char new_real;
                   unsigned char new_imaginary;
-                  if(j % 8 < 4) {
+                  if((j / num_elements) % 8 < 4) {
                       new_real = 0;
                       new_imaginary = 0;
                   }
