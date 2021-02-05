@@ -7,6 +7,7 @@
 #include "Hash.hpp"              // for Hash, operator!=
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"         // for Telescope
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager
 #include "datasetState.hpp"      // for metadataState, stackState, acqDatasetIdState, eigenvalu...
