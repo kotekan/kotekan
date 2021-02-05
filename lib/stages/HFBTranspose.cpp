@@ -118,7 +118,6 @@ bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
 
     times = tstate->get_times();
     beams = bstate->get_beams();
-    sub_freqs = sfstate->get_subfreqs();
 
     // unzip the vector of pairs in freqState
     for (auto& [id, freq] : fstate->get_freqs()) {
@@ -126,10 +125,24 @@ bool HFBTranspose::get_dataset_state(dset_id_t ds_id) {
         freqs.push_back(freq);
     }
 
+    num_subfreq = sfstate->get_subfreqs().size();
     num_time = times.size();
     num_freq = freqs.size();
     num_beams = beams.size();
-    num_subfreq = sub_freqs.size();
+
+    // Populate the sub-frequency index map
+    // Each sub-frequency is the difference from the centre of the sub-band
+    auto& tel = Telescope::instance();
+
+    sub_freqs.resize(num_subfreq);
+
+    const double freq_width = tel.freq_width(0);
+    double freq_diff = 0.5 * freq_width;
+    double freq_inc = freq_width / num_subfreq;
+    for (auto& sf : sub_freqs) {
+        sf = freq_diff;
+        freq_diff -= freq_inc;
+    }
 
     // the dimension of the visibilities is different for stacked data
     eff_data_dim = num_beams * num_subfreq;
