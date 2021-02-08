@@ -31,12 +31,12 @@ dataset_manager:
   use_dataset_broker: false
 
 beam_metadata_pool:
-  kotekan_metadata_pool: BeamMetadata
+  kotekan_metadata_pool: FreqIDBeamMetadata
   num_metadata_objects: 4096
 
 beam_recv_buffer:
   kotekan_buffer: standard
-  num_frames: 10
+  num_frames: 2048
   metadata_pool: beam_metadata_pool
   frame_size: samples_per_data_set * num_pol
 
@@ -47,13 +47,11 @@ merged_buffer:
   # the size of the beam metadata with frequency is 64
   frame_size: (samples_per_data_set * num_pol + freq_id_metadata_size) * raw_frames_per_merged_frame 
 
-raw_file_read:
-  base_dir: /drives/scratch/test_beam_raw
-  file_name: bass_beam_data
-  read0:
-    kotekan_stage: rawFileRead
-    file_ext: raw
-    buf: beam_recv_buffer
+recv:
+  kotekan_stage: bufferRecv
+  buf: beam_recv_buffer
+  listen_port: 12020
+  num_threads: 2
 
 beam_merge:
   kotekan_stage: mergeRawBuffer
