@@ -39,6 +39,8 @@ add_library(
     VisWriter.cpp
     HFBWriter.cpp
     RawReader.cpp
+    #mergedRawFileRead.cpp
+    splitMergedBeamBuffer.cpp
     VisRawReader.cpp
     HFBRawReader.cpp
     restInspectFrame.cpp
