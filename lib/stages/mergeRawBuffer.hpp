@@ -52,7 +52,7 @@ public:
     void main_thread() override;
 
 private:
-    /// Raw buffer from the correlator
+    /// Merged buffer for the merged
     struct Buffer* in_buf;
 
     /// Frame merged buffer 
