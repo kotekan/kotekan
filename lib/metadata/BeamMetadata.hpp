@@ -30,4 +30,13 @@ struct FreqIDBeamMetadata:BeamMetadata {
     uint32_t frequency_bin; 	
 };
 
+struct MergedBeamMetadata{
+    /// Number of the raw frame in one merged frame
+    uint32_t sub_frame_pre_frame;
+    /// The size of the sub frame metadata
+    uint32_t sub_frame_metadata_size;
+    /// The size of the sub frame
+    uint32_t sub_frame_data_size;
+};
+
 #endif // BEAMMETADATA_HPP
