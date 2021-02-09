@@ -107,6 +107,7 @@ public:
     double freq_width(freq_id_t freq_id) const override;
     uint32_t num_freq_per_stream() const override;
     uint32_t num_freq() const override;
+    uint8_t nyquist_zone() const override;
 
     // Dummy time map implementations
     timespec to_time(uint64_t seq) const override;

@@ -1,6 +1,6 @@
-#define BOOST_TEST_MODULE "test_visTranspose"
+#define BOOST_TEST_MODULE "test_VisTranspose"
 
-#include "visTranspose.hpp" // for strided_copy
+#include "Transpose.hpp" // for strided_copy
 
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
 #include <cstdint>                           // for uint32_t, uint8_t
