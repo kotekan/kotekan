@@ -3,7 +3,9 @@
 # raw_file_read.yaml
 #
 # Configuration for tracking extra beam 
-# receivers' raw data file reading
+# receivers' raw data file reading. It 
+# does not merged the frames, only writes
+# out single frame file.
 #
 # Author: Jing Luo
 #
