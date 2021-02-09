@@ -1,10 +1,11 @@
 ##########################################
 #
-# beam_recv_template.yaml
+# beam_recv_raw_record.yaml
 #
-# Starter configuration for extra beam receivers
+# Starter configuration for receiving extra 
+# beam frames and write them to files.
 #
-# Author: Andre Renard
+# Author: Jing Luo
 #
 ##########################################
 ---

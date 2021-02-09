@@ -1,12 +1,12 @@
 
 /**
  * @file
- * @Merge the raw buffer to a buffer with longer timespan.
- *  - mergeRawBuffer : public kotekan::Stage
+ * @Merge the single frame beam buffer to a buffer with longer timespan.
+ *  - mergeBeamBuffer : public kotekan::Stage
  */
 
-#ifndef MERGE_RAW_BUFFER
-#define MERGE_RAW_BUFFER
+#ifndef MERGE_BEAM_BUFFER
+#define MERGE_BEAM_BUFFER
 
 #include "Config.hpp" // for Config
 #include "Stage.hpp"
@@ -22,8 +22,9 @@ using std::vector;
 
 
 /**
- * @class mergeRawBuffer
- * @brief The  
+ * @class mergeBeamBuffer
+ * @brief A stage to merge n single beam frame to one single 
+ *        beam frame.
  *
  * @par Buffers
  * @buffer in_buf Kotekan buffer of raw packets.
@@ -32,7 +33,7 @@ using std::vector;
  *     @buffer_format Array of @c uint32_t
  *
  * @conf   samples_per_data_set  Int.    No. of samples.
- * @conf   compression_factor    Int.    Number of samples to group.
+ * @conf   sub_frames_per_merged_frame  Int.   Number of frames to merge.
  *
  * @author Jing
  *
@@ -41,13 +42,13 @@ using std::vector;
 
 
 
-class mergeRawBuffer : public kotekan::Stage {
+class mergeBeamBuffer : public kotekan::Stage {
 public:
     /// Constructor 
-    mergeRawBuffer(kotekan::Config& config_, const std::string& unique_name,
+    mergeBeamBuffer(kotekan::Config& config_, const std::string& unique_name,
                     kotekan::bufferContainer& buffer_container);
     /// Destructor
-    virtual ~mergeRawBuffer();
+    virtual ~mergeBeamBuffer();
     /// Primary loop to wait for buffers, put package together.
     void main_thread() override;
 
@@ -61,9 +62,8 @@ private:
 
     /// Config variables
     uint32_t _samples_per_data_set;
-    uint32_t _raw_frames_per_merged_frame;
-    uint32_t _num_pol;
+    uint32_t _sub_frames_per_merged_frame;
 };
 
 
-#endif // MERGE_RAW_BUFFER_HPP
+#endif // MERGE_BEAM_BUFFER_HPP

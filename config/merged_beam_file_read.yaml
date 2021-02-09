@@ -3,7 +3,10 @@
 # merged_beam_file_read.yaml
 #
 # Configuration for tracking extra beam 
-# receivers' merged data file reading
+# receivers' merged data file reading.
+# It splits the merged buffer to single
+# beam frame buffers and is a good way 
+# to validate the merged data.
 #
 # Author: Jing Luo
 #
@@ -16,7 +19,7 @@ samples_per_data_set: 49152
 num_pol: 2
 buffer_depth: 105
 freq_id_metadata_size: 72
-raw_frames_per_merged_frame: 6
+sub_frames_per_merged_frame: 11
 
 telescope:
   name: CHIMETelescope
@@ -41,7 +44,7 @@ merged_beam_buffer:
   kotekan_buffer: standard
   num_frames: 2048
   metadata_pool: merged_beam_metadata_pool
-  frame_size: (samples_per_data_set * num_pol + freq_id_metadata_size) * raw_frames_per_merged_frame
+  frame_size: (samples_per_data_set * num_pol + freq_id_metadata_size) * sub_frames_per_merged_frame
 
 beam_recv_buffer:
   kotekan_buffer: standard
