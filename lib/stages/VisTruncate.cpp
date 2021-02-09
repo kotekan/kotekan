@@ -20,7 +20,6 @@
 #include <immintrin.h> // for _mm256_broadcast_ss, _mm256_div_ps, _mm256_loadu_ps, _mm25...
 #include <mm_malloc.h> // for _mm_free, _mm_malloc
 #include <regex>       // for match_results<>::_Base_type
-#include <stdexcept>   // for invalid_argument
 #include <vector>      // for vector
 
 
