@@ -1,4 +1,4 @@
-#include "mergeRawBuffer.hpp"
+#include "mergeBeamBuffer.hpp"
 
 #include "BeamMetadata.hpp"   // for BeamMetadata
 #include "StageFactory.hpp"  // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
@@ -20,17 +20,16 @@ using kotekan::Config;
 using kotekan::Stage;
 using std::string;
 
-REGISTER_KOTEKAN_STAGE(mergeRawBuffer);
+REGISTER_KOTEKAN_STAGE(mergeBeamBuffer);
 
-mergeRawBuffer::mergeRawBuffer(Config& config_, const std::string& unique_name,
+mergeBeamBuffer::mergeBeamBuffer(Config& config_, const std::string& unique_name,
                                bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container,
-          std::bind(&mergeRawBuffer::main_thread, this)) {
+          std::bind(&mergeBeamBuffer::main_thread, this)) {
 
     // Apply config
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
-    _num_pol = config.get<uint32_t>(unique_name, "num_pol");
-    _raw_frames_per_merged_frame = config.get<uint32_t>(unique_name, "raw_frames_per_merged_frame"); 
+    _sub_frames_per_merged_frame = config.get<uint32_t>(unique_name, "sub_frames_per_merged_frame"); 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
@@ -40,10 +39,10 @@ mergeRawBuffer::mergeRawBuffer(Config& config_, const std::string& unique_name,
     
 }
 
-mergeRawBuffer::~mergeRawBuffer() {}
+mergeBeamBuffer::~mergeBeamBuffer() {}
 
 
-void mergeRawBuffer::main_thread() {
+void mergeBeamBuffer::main_thread() {
     frameID in_buffer_ID(in_buf);
     uint8_t* in_frame;
     frameID out_buffer_ID(out_buf);
@@ -62,7 +61,7 @@ void mergeRawBuffer::main_thread() {
 	BeamMetadata* in_metadata = (BeamMetadata*)get_metadata(in_buf, in_buffer_ID);
         
         // Compute the frame index in the outbuffer
-        uint32_t sub_frame_index = in_frame_counter % _raw_frames_per_merged_frame;
+        uint32_t sub_frame_index = in_frame_counter % _sub_frames_per_merged_frame;
         // compute the size of the sub_frame of the out_frame
         uint32_t FreqIDBeamMeta_size = sizeof(FreqIDBeamMetadata);
         uint32_t sub_frame_size = FreqIDBeamMeta_size + in_buf -> frame_size;
@@ -75,7 +74,7 @@ void mergeRawBuffer::main_thread() {
 	    allocate_new_metadata_object(out_buf, out_buffer_ID);
             MergedBeamMetadata* out_metadata = (MergedBeamMetadata*)get_metadata(out_buf, out_buffer_ID);
 	    // populate the merged_buffer/out_buffer frame header.
-	    out_metadata -> sub_frame_pre_frame = _raw_frames_per_merged_frame;
+	    out_metadata -> sub_frame_pre_frame = _sub_frames_per_merged_frame;
             out_metadata -> sub_frame_metadata_size = FreqIDBeamMeta_size;
             out_metadata -> sub_frame_data_size = in_buf -> frame_size;
 	}
@@ -117,13 +116,13 @@ void mergeRawBuffer::main_thread() {
         
 	// Debug code. Check if the subframe matedata is the same. 
    	FreqIDBeamMetadata* debud_frame_metadata = (FreqIDBeamMetadata *)&out_frame[sub_frame_index * sub_frame_size];
-	DEBUG2("Sub frame Beam RA: {:f}, Dec: {:f}, scaling: {:d}, , beam_num: {:d}, freq_id {:d}\n", debud_frame_metadata -> ra, debud_frame_metadata -> dec, debud_frame_metadata -> scaling, debud_frame_metadata-> beam_number,  debud_frame_metadata-> frequency_bin);
+	DEBUG2("Sub frame Beam RA: {:f}, Dec: {:f}, scaling: {:d}, beam_num: {:d}, freq_id {:d}\n", debud_frame_metadata -> ra, debud_frame_metadata -> dec, debud_frame_metadata -> scaling, debud_frame_metadata-> beam_number,  debud_frame_metadata-> frequency_bin);
         
 	mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_ID);
 	in_buffer_ID++;
 	in_frame_counter++;
 	
-	if (sub_frame_index == _raw_frames_per_merged_frame - 1){
+	if (sub_frame_index == _sub_frames_per_merged_frame - 1){
             mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
 	    out_buffer_ID++;
 	}
