@@ -255,8 +255,8 @@ RawReader<T>::RawReader(Config& config, const std::string& unique_name,
     chunked = config.exists(unique_name, "chunk_size");
     if (chunked) {
         chunk_size = config.get<std::vector<int>>(unique_name, "chunk_size");
-        if (chunk_size.size() != 3)
-            throw std::invalid_argument("Chunk size needs exactly three "
+        if (chunk_size.size() < 3)
+            throw std::invalid_argument("Chunk size needs at least three "
                                         "elements (has "
                                         + std::to_string(chunk_size.size()) + ").");
         chunk_t = chunk_size[2];
@@ -268,6 +268,8 @@ RawReader<T>::RawReader(Config& config, const std::string& unique_name,
                                         + std::to_string(chunk_size[1]) + ","
                                         + std::to_string(chunk_size[2]) + ")).");
     }
+
+    DEBUG("Chunked: {}, chunk_t: {}, chunk_f: {}", chunked, chunk_t, chunk_f);
 
     // Get the list of buffers that this stage should connect to
     out_buf = get_buffer("out_buf");
@@ -486,7 +488,7 @@ void RawReader<T>::main_thread() {
         // the max rate
         end_time = current_time();
         double sleep_time_this_frame = min_read_time - (end_time - start_time);
-        DEBUG("Sleep time {}", sleep_time_this_frame);
+        DEBUG2("Sleep time {}", sleep_time_this_frame);
         if (sleep_time > 0) {
             auto ts = double_to_ts(sleep_time_this_frame);
             nanosleep(&ts, nullptr);
