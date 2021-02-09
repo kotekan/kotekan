@@ -1,5 +1,5 @@
-#ifndef VISTRUNCATE
-#define VISTRUNCATE
+#ifndef HFBTRUNCATE
+#define HFBTRUNCATE
 
 #include "Config.hpp"
 #include "Stage.hpp" // for Stage
@@ -9,11 +9,10 @@
 #include <string> // for string
 
 /**
- * @class visTruncate
- * @brief Truncates visibility, eigenvalue and weight values.
+ * @class HFBTruncate
+ * @brief Truncates absorber data and weight values.
  *
- * eigenvalues and weights are truncated with a fixed precision that is set in
- * the config. visibility values are truncated to a precision based on their
+ * Absorber values are truncated to a precision based on their
  * weight.
  *
  * @warning Don't run this anywhere but on the transpose (gossec) node.
@@ -22,25 +21,25 @@
  *
  * @par Buffers
  * @buffer in_buf The input stream.
- *         @buffer_format VisBuffer.
- *         @buffer_metadata VisMetadata
+ *         @buffer_format HFBBuffer.
+ *         @buffer_metadata HFBMetadata
  * @buffer out_buf The output stream with truncated values.
- *         @buffer_format VisBuffer.
- *         @buffer_metadata VisMetadata
+ *         @buffer_format HFBBuffer.
+ *         @buffer_metadata HFBMetadata
  *
- * @conf   err_sq_lim               Limit for the error of visibility truncation.
+ * @conf   err_sq_lim               Limit for the error of absorber truncation.
  * @conf   weight_fixed_precision   Fixed precision for weight truncation.
- * @conf   data_fixed_precision     Fixed precision for eigenvector and visibility truncation (if
- * weights are zero).
+ * @conf   data_fixed_precision     Fixed precision for absorber truncation (if
+ *                                  weights are zero).
  *
- * @author Tristan Pinsonneault-Marotte, Rick Nitsche
+ * @author James Willis
  */
-class visTruncate : public kotekan::Stage {
+class HFBTruncate : public kotekan::Stage {
 public:
     /// Constructor; loads parameters from config
-    visTruncate(kotekan::Config& config, const std::string& unique_name,
+    HFBTruncate(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& buffer_container);
-    ~visTruncate() = default;
+    ~HFBTruncate() = default;
 
     /// Main loop over buffer frames
     void main_thread() override;
@@ -53,7 +52,7 @@ private:
     // Truncation parameters
     float err_sq_lim;
     float w_prec;
-    float vis_prec;
+    float hfb_prec;
 
     // Flag for frame with a zero weight
     bool zero_weight_found;
