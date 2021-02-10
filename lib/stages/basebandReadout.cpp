@@ -1,6 +1,7 @@
 #include "basebandReadout.hpp"
 
 #include "Config.hpp"             // for Config
+#include "H5Support.hpp"          // for create_datatype
 #include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"          // for Telescope
 #include "basebandApiManager.hpp" // for basebandApiManager
@@ -14,7 +15,6 @@
 #include "prometheusMetrics.hpp"  // for Counter, Gauge, MetricFamily, Metrics
 #include "version.h"              // for get_git_commit_hash
 #include "visFile.hpp"            // for create_lockfile
-#include "visFileH5.hpp"          // for create_datatype
 #include "visUtil.hpp"            // for input_ctype, ts_to_double, parse_reorder_default
 
 #include "fmt.hpp"      // for format, fmt
