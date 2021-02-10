@@ -120,7 +120,8 @@ void basebandReadout::main_thread() {
     basebandReadoutManager* mgr = nullptr;
     while (!stop_thread) {
 
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id % in_buf->num_frames) == nullptr) {
+        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id % in_buf->num_frames)
+            == nullptr) {
             break;
         }
 
@@ -158,7 +159,7 @@ void basebandReadout::main_thread() {
 void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutManager& mgr) {
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
-        // Latency is *key* here. We want to call get_data within 100ms
+        // Latency is *key* here. We want to call extract_data within 100ms
         // of L4 sending the trigger.
 
         auto next_request = mgr.get_next_waiting_request();
@@ -170,9 +171,13 @@ void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutMana
             start_processing(dump_status, request_mtx);
 
             const basebandRequest request = dump_status.request;
-            basebandDumpData::Status status =
-                get_data(request.event_id, request.start_fpga,
-                         std::min((int64_t)request.length_fpga, _max_dump_samples));
+            auto data = wait_for_data(request.event_id, freq_id, request.start_fpga,
+                                      std::min((int64_t)request.length_fpga, _max_dump_samples));
+            basebandDumpData::Status status = data.status;
+
+            if (status == basebandDumpData::Status::Ok) {
+                status = extract_data(data);
+            }
 
             end_processing(status, freq_id, dump_status, request_mtx);
         }
@@ -193,12 +198,13 @@ void basebandReadout::start_processing(basebandDumpStatus& dump_status, std::mut
         dump_status.started = std::make_shared<std::chrono::system_clock::time_point>(
             std::chrono::system_clock::now());
         // Note: the length of the dump still needs to be set with
-        // actual sizes. This is done in `get_data` as it verifies what
+        // actual sizes. This is done in `extract_data` as it verifies what
         // is available in the current buffers.
     }
 }
 
-void basebandReadout::end_processing(basebandDumpData::Status status, const uint32_t freq_id, basebandDumpStatus& dump_status, std::mutex& request_mtx) {
+void basebandReadout::end_processing(basebandDumpData::Status status, const uint32_t freq_id,
+                                     basebandDumpStatus& dump_status, std::mutex& request_mtx) {
     auto& request_no_data_counter = readout_counter.labels({std::to_string(freq_id), "no_data"});
 
     // At this point we know how much of the requested data we managed to read from the
@@ -206,28 +212,29 @@ void basebandReadout::end_processing(basebandDumpData::Status status, const uint
     {
         std::lock_guard<std::mutex> lock(request_mtx);
         if (status != basebandDumpData::Status::Ok) {
-            INFO("Captured no data for event {:d} and freq {:d}.", dump_status.request.event_id, freq_id);
+            INFO("Captured no data for event {:d} and freq {:d}.", dump_status.request.event_id,
+                 freq_id);
             dump_status.state = basebandDumpStatus::State::ERROR;
             dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
                 std::chrono::system_clock::now());
             switch (status) {
-            case basebandDumpData::Status::TooLong:
-                dump_status.reason = "Request length exceeds the configured limit.";
-                break;
-            case basebandDumpData::Status::Late:
-                dump_status.reason = "No data captured.";
-                request_no_data_counter.inc();
-                break;
-            case basebandDumpData::Status::ReserveFailed:
-                dump_status.reason = "No free space in the baseband buffer";
-                break;
-            case basebandDumpData::Status::Cancelled:
-                dump_status.reason = "Kotekan exiting.";
-                break;
-            default:
-                INFO("Unknown dump status: {}", int(status));
-                throw std::runtime_error(
-                    "Unhandled basebandDumpData::Status case in a switch statement.");
+                case basebandDumpData::Status::TooLong:
+                    dump_status.reason = "Request length exceeds the configured limit.";
+                    break;
+                case basebandDumpData::Status::Late:
+                    dump_status.reason = "No data captured.";
+                    request_no_data_counter.inc();
+                    break;
+                case basebandDumpData::Status::ReserveFailed:
+                    dump_status.reason = "No free space in the baseband buffer";
+                    break;
+                case basebandDumpData::Status::Cancelled:
+                    dump_status.reason = "Kotekan exiting.";
+                    break;
+                default:
+                    INFO("Unknown dump status: {}", int(status));
+                    throw std::runtime_error(
+                        "Unhandled basebandDumpData::Status case in a switch statement.");
             }
         } else {
             dump_status.state = basebandDumpStatus::State::DONE;
@@ -258,13 +265,18 @@ int basebandReadout::add_replace_frame(int frame_id) {
     return replaced_frame;
 }
 
-basebandDumpData::Status basebandReadout::get_data(uint64_t event_id, int64_t trigger_start_fpga,
-                                           int64_t trigger_length_fpga) {
-    DEBUG("Ready to copy samples into the baseband readout buffer");
+basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const uint32_t freq_id,
+                                                int64_t trigger_start_fpga,
+                                                int64_t trigger_length_fpga) {
+    DEBUG("Waiting for samples to copy into the baseband readout buffer");
+
+    if (trigger_length_fpga > _samples_per_data_set * _num_frames_buffer / 2) {
+        // Too long, I won't allow it.
+        return basebandDumpData::Status::TooLong;
+    }
 
     // This assumes that the frame's timestamps are in order, but not that they
     // are necessarily contiguous.
-
     auto& tel = Telescope::instance();
     const double fpga_period_s = ts_to_double(tel.seq_length());
 
@@ -274,11 +286,6 @@ basebandDumpData::Status basebandReadout::get_data(uint64_t event_id, int64_t tr
     double max_wait_time = 1.;
     double min_wait_time = _samples_per_data_set * fpga_period_s;
     bool advance_info = false;
-
-    if (trigger_length_fpga > _samples_per_data_set * _num_frames_buffer / 2) {
-        // Too long, I won't allow it.
-        return basebandDumpData::Status::TooLong;
-    }
 
     while (!stop_thread) {
         int64_t frame_fpga_seq = -1;
@@ -339,40 +346,44 @@ basebandDumpData::Status basebandReadout::get_data(uint64_t event_id, int64_t tr
     }
     if (stop_thread) {
         return basebandDumpData::Status::Cancelled;
-    }
-
-    if (dump_start_frame >= dump_end_frame) {
+    } else if (dump_start_frame >= dump_end_frame) {
         // Trigger was too late and missed the data. Return an empty dataset.
         INFO("Baseband dump trigger is too late: {:d} >= {:d}", dump_start_frame, dump_end_frame);
         return basebandDumpData::Status::Late;
+    } else {
+        INFO("Dump data ready for {:d}/{:d}: frames {:d}-{:d}.", event_id, freq_id,
+             dump_start_frame, dump_end_frame);
+        return basebandDumpData(event_id, freq_id, trigger_start_fpga, trigger_length_fpga,
+                                dump_start_frame, dump_end_frame);
     }
+}
 
-    int in_buf_frame = dump_start_frame % in_buf->num_frames;
+basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
+    DEBUG("Ready to copy samples into the baseband readout buffer");
+    assert(data.dump_start_frame < data.dump_end_frame);
+
+    const uint64_t event_id = data.event_id;
+
+    int in_buf_frame = data.dump_start_frame % in_buf->num_frames;
     auto first_meta = (chimeMetadata*)in_buf->metadata[in_buf_frame]->metadata;
 
-    uint32_t freq_id = tel.to_freq_id(in_buf, in_buf_frame);
+    const uint32_t freq_id = data.freq_id;
 
     // Figure out how much data we have.
-    int64_t data_start_fpga = std::max(trigger_start_fpga, first_meta->fpga_seq_num);
+    int64_t data_start_fpga = std::max(data.trigger_start_fpga, first_meta->fpga_seq_num);
     // For now just assume that we have the last sample, because the locking logic
     // currently waits for it. Could be made to be more robust.
-    int64_t data_end_fpga = trigger_end_fpga;
-
-    timeval tmp, delta;
-    delta.tv_sec = 0;
-    delta.tv_usec = (trigger_start_fpga - first_meta->fpga_seq_num) * fpga_period_s * 1e6;
-    timeradd(&(first_meta->first_packet_recv_time), &delta, &tmp);
-    timespec packet_time0 = {tmp.tv_sec, tmp.tv_usec * 1000};
+    int64_t data_end_fpga = data.trigger_start_fpga + data.trigger_length_fpga;
 
     INFO("Dump data for {:d}/{:d}: frames {:d}-{:d}; samples {}-{}.", event_id, freq_id,
-         dump_start_frame, dump_end_frame, data_start_fpga, data_end_fpga);
+         data.dump_start_frame, data.dump_end_frame, data_start_fpga, data_end_fpga);
 
     std::vector<uint8_t> empty;
-    basebandDumpData dump(event_id, freq_id, _num_elements, data_start_fpga,
-                          data_end_fpga - data_start_fpga, packet_time0, empty);
+    basebandDumpData dump(basebandDumpData::Status::Cancelled);
     // Fill in the data.
     int64_t next_data_ind = 0;
-    for (int frame_index = dump_start_frame; frame_index < dump_end_frame; frame_index++) {
+    for (int frame_index = data.dump_start_frame; !stop_thread && frame_index < data.dump_end_frame;
+         frame_index++) {
         in_buf_frame = frame_index % in_buf->num_frames;
         auto metadata = (chimeMetadata*)in_buf->metadata[in_buf_frame]->metadata;
         uint8_t* in_buf_data = in_buf->frames[in_buf_frame];
@@ -382,8 +393,7 @@ basebandDumpData::Status basebandReadout::get_data(uint64_t event_id, int64_t tr
             std::min(data_end_fpga - frame_fpga_seq, (int64_t)_samples_per_data_set);
         int64_t data_ind_start = frame_fpga_seq - data_start_fpga + frame_ind_start;
         // The following copy has 0 length unless there is a missing frame.
-        INFO("Copy samples {}/{}-{} to {} ({})", frame_index,
-             frame_ind_start, frame_ind_end,
+        INFO("Copy samples {}/{}-{} to {} ({})", frame_index, frame_ind_start, frame_ind_end,
              out_frame_id, next_data_ind);
 
         // check if there is space for it in the output buffer
@@ -393,23 +403,24 @@ basebandDumpData::Status basebandReadout::get_data(uint64_t event_id, int64_t tr
             // if (frame_out == nullptr)
             //     break;
             if (frame_out != nullptr) {
-                nt_memcpy(out_buf->frames[out_frame_id],
-                          in_buf_data,
+                nt_memcpy(out_buf->frames[out_frame_id], in_buf_data,
                           _num_elements * _samples_per_data_set);
                 allocate_new_metadata_object(out_buf, out_frame_id);
-                BasebandMetadata* out_metadata = (BasebandMetadata*)get_metadata(out_buf, out_frame_id);
+                BasebandMetadata* out_metadata =
+                    (BasebandMetadata*)get_metadata(out_buf, out_frame_id);
 
                 out_metadata->event_id = event_id;
                 out_metadata->freq_id = freq_id;
-                out_metadata->start = trigger_start_fpga;
-                out_metadata->end = trigger_length_fpga;
+                out_metadata->start = data.trigger_start_fpga;
+                out_metadata->end = data.trigger_length_fpga;
                 out_metadata->fpga_seq = frame_fpga_seq;
                 out_metadata->valid_from = frame_ind_start;
                 out_metadata->valid_to = frame_ind_end;
                 mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
             }
         } else {
-            WARN("Output buffer full ({:d}). Dropping frame {:d}/{:d}", out_frame_id, event_id, next_data_ind);
+            WARN("Output buffer full ({:d}). Dropping frame {:d}/{:d}", out_frame_id, event_id,
+                 next_data_ind);
         }
 
         // What data index are we expecting on the next iteration.
@@ -417,7 +428,7 @@ basebandDumpData::Status basebandReadout::get_data(uint64_t event_id, int64_t tr
         // Done with this frame. Allow it to participate in the ring buffer.
         frame_locks[frame_index % _num_frames_buffer].unlock();
     }
-    unlock_range(dump_start_frame, dump_end_frame);
+    unlock_range(data.dump_start_frame, data.dump_end_frame);
 
     if (stop_thread) {
         return basebandDumpData::Status::Cancelled;
@@ -437,4 +448,3 @@ void basebandReadout::unlock_range(int start_frame, int end_frame) {
         frame_locks[frame_index % _num_frames_buffer].unlock();
     }
 }
-
