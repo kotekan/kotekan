@@ -403,8 +403,10 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
             // if (frame_out == nullptr)
             //     break;
             if (frame_out != nullptr) {
-                nt_memcpy(out_buf->frames[out_frame_id], in_buf_data,
-                          _num_elements * _samples_per_data_set);
+                memcpy(in_buf_data + frame_ind_start,
+                       out_buf->frames[out_frame_id],
+                       _num_elements * (frame_ind_end - frame_ind_start));
+
                 allocate_new_metadata_object(out_buf, out_frame_id);
                 BasebandMetadata* out_metadata =
                     (BasebandMetadata*)get_metadata(out_buf, out_frame_id);
@@ -413,9 +415,10 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                 out_metadata->freq_id = freq_id;
                 out_metadata->start = data.trigger_start_fpga;
                 out_metadata->end = data.trigger_length_fpga;
-                out_metadata->fpga_seq = frame_fpga_seq;
-                out_metadata->valid_from = frame_ind_start;
-                out_metadata->valid_to = frame_ind_end;
+                out_metadata->fpga_seq = frame_fpga_seq + frame_ind_start;
+                out_metadata->valid_from = 0;
+                out_metadata->valid_to = frame_ind_end - frame_ind_start;
+
                 mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
             }
         } else {
