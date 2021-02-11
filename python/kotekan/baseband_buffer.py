@@ -8,6 +8,7 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 # === End Python 2/3 compatibility
 
 import ctypes
+import glob
 import os
 import io
 
@@ -54,8 +55,6 @@ class BasebandBuffer(object):
     def from_file(cls, filename):
         """Load a BasebandBuffer from a kotekan dump file.
         """
-        import os
-
         filesize = os.path.getsize(filename)
 
         buf = bytearray(filesize)
@@ -78,6 +77,4 @@ class BasebandBuffer(object):
         -------
         buffers : list of BasebandBuffers
         """
-        import glob
-
         return [cls.from_file(fname) for fname in sorted(glob.glob(pattern))]
