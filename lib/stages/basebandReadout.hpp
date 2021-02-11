@@ -7,7 +7,6 @@
 #ifndef BASEBAND_READOUT_H
 #define BASEBAND_READOUT_H
 
-#include "BipBuffer.hpp"              // for BipBuffer
 #include "Config.hpp"                 // for Config
 #include "Stage.hpp"                  // for Stage
 #include "basebandReadoutManager.hpp" // for basebandDumpData, basebandReadoutManager, baseband...
@@ -15,11 +14,11 @@
 #include "prometheusMetrics.hpp"      // for MetricFamily, Counter, Gauge
 #include "visUtil.hpp"                // for input_ctype
 
-#include <mutex>    // for mutex
-#include <stddef.h> // for size_t
-#include <stdint.h> // for int64_t, uint32_t, uint64_t
-#include <string>   // for string
-#include <vector>   // for vector
+#include <cstddef> // for size_t
+#include <cstdint> // for int64_t, uint32_t, uint64_t
+#include <mutex>   // for mutex
+#include <string>  // for string
+#include <vector>  // for vector
 
 
 constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
