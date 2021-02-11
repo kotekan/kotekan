@@ -26,6 +26,7 @@ class BasebandMetadata(ctypes.Structure):
         ("valid_to", ctypes.c_uint64),
     ]
 
+
 class BasebandBuffer(object):
     """Python representation of a BasebandBuffer dump.
 
@@ -38,16 +39,16 @@ class BasebandBuffer(object):
         raw dumps when the metadata size is given in the first four bytes.
     """
 
+    meta_size = ctypes.sizeof(BasebandMetadata)
+
     def __init__(self, buffer, skip=4):
 
         self._buffer = buffer[skip:]
 
-        meta_size = ctypes.sizeof(BasebandMetadata)
-
-        if len(self._buffer) < meta_size:
+        if len(self._buffer) < self.meta_size:
             raise ValueError("Buffer too small to contain metadata.")
 
-        self.metadata = BasebandMetadata.from_buffer(self._buffer[:meta_size])
+        self.metadata = BasebandMetadata.from_buffer(self._buffer[: self.meta_size])
 
     @classmethod
     def from_file(cls, filename):
@@ -80,6 +81,3 @@ class BasebandBuffer(object):
         import glob
 
         return [cls.from_file(fname) for fname in sorted(glob.glob(pattern))]
-
-
-
