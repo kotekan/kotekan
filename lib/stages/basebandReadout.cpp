@@ -394,7 +394,6 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
         int64_t frame_fpga_seq = metadata->fpga_seq_num;
         int64_t in_start = std::max(data_start_fpga - frame_fpga_seq, (int64_t)0);
         int64_t in_end = std::min(data_end_fpga - frame_fpga_seq, (int64_t)_samples_per_data_set);
-        int64_t data_ind_start = frame_fpga_seq - data_start_fpga + in_start;
         DEBUG("Next input frame: {},  samples {}-{}", frame_index, in_start, in_end);
         while (in_start < in_end) {
             // Do we need a new output frame?
