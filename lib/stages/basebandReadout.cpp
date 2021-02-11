@@ -378,59 +378,82 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     INFO("Dump data for {:d}/{:d}: frames {:d}-{:d}; samples {}-{}.", event_id, freq_id,
          data.dump_start_frame, data.dump_end_frame, data_start_fpga, data_end_fpga);
 
-    std::vector<uint8_t> empty;
-    basebandDumpData dump(basebandDumpData::Status::Cancelled);
-    // Fill in the data.
-    int64_t next_data_ind = 0;
+    // Current frame & metadata in the output buffer
+    uint8_t* out_frame = nullptr;
+    BasebandMetadata* out_metadata = nullptr;
+    // Available space in the `out_frame` (as interval of length `out_remaining`, starting at
+    // `out_start`)
+    int64_t out_start = 0;
+    int64_t out_remaining = 0;
+
     for (int frame_index = data.dump_start_frame; !stop_thread && frame_index < data.dump_end_frame;
          frame_index++) {
         in_buf_frame = frame_index % in_buf->num_frames;
         auto metadata = (chimeMetadata*)in_buf->metadata[in_buf_frame]->metadata;
         uint8_t* in_buf_data = in_buf->frames[in_buf_frame];
         int64_t frame_fpga_seq = metadata->fpga_seq_num;
-        int64_t frame_ind_start = std::max(data_start_fpga - frame_fpga_seq, (int64_t)0);
-        int64_t frame_ind_end =
-            std::min(data_end_fpga - frame_fpga_seq, (int64_t)_samples_per_data_set);
-        int64_t data_ind_start = frame_fpga_seq - data_start_fpga + frame_ind_start;
-        // The following copy has 0 length unless there is a missing frame.
-        INFO("Copy samples {}/{}-{} to {} ({})", frame_index, frame_ind_start, frame_ind_end,
-             out_frame_id, next_data_ind);
+        int64_t in_start = std::max(data_start_fpga - frame_fpga_seq, (int64_t)0);
+        int64_t in_end = std::min(data_end_fpga - frame_fpga_seq, (int64_t)_samples_per_data_set);
+        int64_t data_ind_start = frame_fpga_seq - data_start_fpga + in_start;
+        DEBUG("Next input frame: {},  samples {}-{}", frame_index, in_start, in_end);
+        while (in_start < in_end) {
+            // Do we need a new output frame?
+            if (out_remaining == 0) {
+                // Is there an available output frame?
+                if (!is_frame_empty(out_buf, out_frame_id)) {
+                    // No, skip this frame
+                    WARN("Output buffer full ({:d}). Dropping frame {:d}/{:d}", out_frame_id,
+                         event_id, frame_index);
+                    break;
+                }
+                // Get a pointer to the new out frame (cannot block because of the check above)
+                out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+                if (out_frame == nullptr) {
+                    // Skip this frame
+                    WARN("Can get an output frame ({:d}). Dropping frame {:d}/{:d}", out_frame_id,
+                         event_id, frame_index);
+                    break;
+                }
 
-        // check if there is space for it in the output buffer
-        if (is_frame_empty(out_buf, out_frame_id)) {
-            // This call cannot block because of the check above.
-            uint8_t* frame_out = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
-            // if (frame_out == nullptr)
-            //     break;
-            if (frame_out != nullptr) {
-                memcpy(in_buf_data + frame_ind_start,
-                       out_buf->frames[out_frame_id],
-                       _num_elements * (frame_ind_end - frame_ind_start));
+                out_start = 0;
+                out_remaining = _samples_per_data_set;
 
                 allocate_new_metadata_object(out_buf, out_frame_id);
-                BasebandMetadata* out_metadata =
-                    (BasebandMetadata*)get_metadata(out_buf, out_frame_id);
+                out_metadata = (BasebandMetadata*)get_metadata(out_buf, out_frame_id);
 
                 out_metadata->event_id = event_id;
                 out_metadata->freq_id = freq_id;
                 out_metadata->start = data.trigger_start_fpga;
                 out_metadata->end = data.trigger_length_fpga;
-                out_metadata->fpga_seq = frame_fpga_seq + frame_ind_start;
+                out_metadata->fpga_seq = frame_fpga_seq + in_start;
                 out_metadata->valid_from = 0;
-                out_metadata->valid_to = frame_ind_end - frame_ind_start;
+                out_metadata->valid_to = 0; // gets adjusted as we copy the data
+            }
 
+            // copy the data
+            int64_t copy_len = std::min(in_end - in_start, out_remaining);
+            INFO("Copy samples {}/{}-{} to {} ({}/{})", frame_index, in_start, in_start + copy_len,
+                 out_frame_id, out_start, copy_len);
+            memcpy(out_frame + out_start, in_buf_data + in_start, _num_elements * copy_len);
+            in_start += copy_len;
+            out_start += copy_len;
+            out_metadata->valid_to = out_start;
+            out_remaining -= copy_len;
+            if (out_remaining == 0) {
                 mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
             }
-        } else {
-            WARN("Output buffer full ({:d}). Dropping frame {:d}/{:d}", out_frame_id, event_id,
-                 next_data_ind);
         }
 
-        // What data index are we expecting on the next iteration.
-        next_data_ind = data_ind_start + frame_ind_end - frame_ind_start;
         // Done with this frame. Allow it to participate in the ring buffer.
         frame_locks[frame_index % _num_frames_buffer].unlock();
     }
+
+    // after all input frames are done, flush the out frame if it's incomplete:
+    if (out_remaining > 0) {
+        memset(out_frame + out_start, 0, out_remaining);
+        mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
+    }
+
     unlock_range(data.dump_start_frame, data.dump_end_frame);
 
     if (stop_thread) {
