@@ -489,7 +489,7 @@ void RawReader<T>::main_thread() {
         end_time = current_time();
         double sleep_time_this_frame = min_read_time - (end_time - start_time);
         DEBUG2("Sleep time {}", sleep_time_this_frame);
-        if (sleep_time > 0) {
+        if (sleep_time_this_frame > 0) {
             auto ts = double_to_ts(sleep_time_this_frame);
             nanosleep(&ts, nullptr);
         }
