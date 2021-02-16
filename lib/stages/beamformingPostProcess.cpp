@@ -224,7 +224,7 @@ void beamformingPostProcess::main_thread() {
                     for (uint32_t freq = 0; freq < _num_local_freq; ++freq) {
                         unsigned char* in_buf_data = (unsigned char*)in_frame[thread_id];
                         // The two polarizations.
-                        // Each sample is 4-bit real, 4-bit complex, so byte operations work just
+                        // Each sample is 4-bit real, 4-bit imaginary, so byte operations work just
                         // fine here.
                         out_buf[station_0_index + freq] = in_buf_data[i * 16 + freq * 2];
                         out_buf[station_1_index + freq] = in_buf_data[i * 16 + freq * 2 + 1];
