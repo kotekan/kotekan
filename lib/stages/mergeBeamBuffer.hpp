@@ -1,7 +1,6 @@
-
 /**
  * @file
- * @Merge the single frame beam buffer to a buffer with longer timespan.
+ * @brife Merge the single frame beam buffer to a buffer with longer timespan.
  *  - mergeBeamBuffer : public kotekan::Stage
  */
 
