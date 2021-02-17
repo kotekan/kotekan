@@ -45,11 +45,15 @@ nDiskFileWrite::nDiskFileWrite(Config& config, const string& unique_name,
     disk_base = config.get<std::string>(unique_name, "disk_base");
     num_disks = config.get<uint32_t>(unique_name, "num_disks");
     disk_set = config.get<std::string>(unique_name, "disk_set");
+    file_ext = config.get_default<std::string>(unique_name, "file_ext", "vdif");
     write_to_disk = config.get<bool>(unique_name, "write_to_disk");
     instrument_name =
         config.get_default<std::string>(unique_name, "instrument_name", "no_name_set");
     write_metadata_and_gains =
         config.get_default<bool>(unique_name, "write_metadata_and_gains", true);
+    print_lost_sample_number = 
+	config.get_default<bool>(unique_name, "print_lost_sample_number", true);
+
 }
 
 nDiskFileWrite::~nDiskFileWrite() {}
@@ -113,7 +117,8 @@ void nDiskFileWrite::main_thread() {
     time(&rawtime);
     timeinfo = gmtime(&rawtime);
     strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
-    snprintf(data_set_c, sizeof(data_set_c), "%s_%s_vdif", data_time, instrument_name.c_str());
+    snprintf(data_set_c, sizeof(data_set_c), "%s_%s_%s", data_time, instrument_name.c_str(), 
+             file_ext.c_str());
     dataset_name = data_set_c;
 
     if (write_to_disk) {
@@ -188,8 +193,8 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
         const int file_name_len = 100;
         char file_name[file_name_len];
 
-        snprintf(file_name, file_name_len, "%s/%s/%d/%s/%010zu.vdif", disk_base.c_str(),
-                 disk_set.c_str(), disk_id, dataset_name.c_str(), file_num);
+        snprintf(file_name, file_name_len, "%s/%s/%d/%s/%010zu.%s", disk_base.c_str(),
+                 disk_set.c_str(), disk_id, dataset_name.c_str(), file_num, file_ext.c_str());
 
         // Open the file to write
         if (write_to_disk) {
@@ -214,15 +219,24 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
             if (close(fd) == -1) {
                 ERROR("Cannot close file {:s}", file_name);
             }
-
-            INFO("Data file write done for {:s}, lost_packets {:d}", file_name,
-                 get_lost_timesamples(buf, frame_id));
+            if (print_lost_sample_number){
+               INFO("Data file write done for {:s}, lost_packets {:d}", file_name,
+                    get_lost_timesamples(buf, frame_id));
+            }
+	    else{
+	       INFO("Data file write done for {:s}", file_name);
+	    }
         } else {
             // usleep(0.070 * 1e6);
-            INFO("Disk id {:d}, Lost Packets {:d}, buffer id {:d}", disk_id,
-                 get_lost_timesamples(buf, frame_id), frame_id);
+	    if (print_lost_sample_number){
+               INFO("Disk id {:d}, Lost Packets {:d}, buffer id {:d}", disk_id,
+                    get_lost_timesamples(buf, frame_id), frame_id);
+        
+	    }
+	    else{
+	       INFO("Disk id {:d}", disk_id);	    
+	    }
         }
-
         // TODO make release_info_object work for nConsumers.
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
 

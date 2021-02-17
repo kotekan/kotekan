@@ -80,8 +80,10 @@ raw_capture:
 #################################
    note: bass test
 #Change this if you want to record
+   file_ext: raw
    write_to_disk: True
    write_metadata_and_gains: False
+   print_lost_sample_number: False
    gain_files: Null
    num_disks: 8
    disk_base: /drives
