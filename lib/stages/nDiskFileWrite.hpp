@@ -34,11 +34,13 @@
  * @conf num_disks      Int , the number of drives to read from
  * @conf disk_base      String, the path to the mounted drives
  * @conf disk_set       String, the disk name.
+ * @conf file_ext       String, the extenstion of the output file.
  * @conf write_to_disk  Bool, whether to actually save, alternately operating in dummy mode
  * @conf instrument_name String, used in filenames and stored to metadata text file.
  * @conf write_metadata_and_gains  Bool, Default true.  Flag to control if VDIF/ARO style gains
  *                                 and metadata are copied to the acquisition folder.
- *
+ * @conf print_lost_sample_number Bool, Default true. Flag to control if the number of lost
+ *                                 sample is get printed in the std out.
  * @todo    Make more general, to support more than just ICEboard-generated data.
  *
  * Worked Example with n = 3:
@@ -105,11 +107,16 @@ private:
     std::string disk_base;
     /// A holder for the config parameter disk_set, where to write files
     std::string disk_set;
+    /// The out put file extenstion
+    std::string file_ext;
     /// Boolean config parameter to enable or disable file output
     bool write_to_disk;
 
     /// Flag to enable or disable writing out the metadata and gains
     bool write_metadata_and_gains;
+
+    /// Flag to enable or disable print out the lost sample number in stdout
+    bool print_lost_sample_number;
 
     /// Function to make subdirectories dataset_name on each disk in the disk set
     void mk_dataset_dir();
