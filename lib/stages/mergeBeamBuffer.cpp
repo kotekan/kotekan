@@ -44,9 +44,9 @@ mergeBeamBuffer::~mergeBeamBuffer() {}
 
 void mergeBeamBuffer::main_thread() {
     frameID in_buffer_ID(in_buf);
-    uint8_t* in_frame;
+    uint8_t* in_frame = nullptr;
     frameID out_buffer_ID(out_buf);
-    uint8_t* out_frame;
+    uint8_t* out_frame = nullptr;
     // Since the input buffer is a ring buffer and the in_buf_ID goes back to zero
     // when the ID reaches the num_frame, we need something something to keep track
     // on the incoming frame number
