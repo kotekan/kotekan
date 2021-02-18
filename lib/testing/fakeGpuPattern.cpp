@@ -88,8 +88,7 @@ void LostSamplesGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metada
 
 
 LostWeightsGpuPattern::LostWeightsGpuPattern(kotekan::Config& config, const std::string& path) :
-    FakeGpuPattern(config, path),
-    _b(config.get_default<uint32_t>(path, "b", 1)) {}
+    FakeGpuPattern(config, path), _b(config.get_default<uint32_t>(path, "b", 1)) {}
 
 void LostWeightsGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata,
                                  int frame_number, freq_id_t freq_id) {
@@ -146,10 +145,7 @@ void AccumulateGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadat
 
 
 GaussianGpuPattern::GaussianGpuPattern(kotekan::Config& config, const std::string& path) :
-    FakeGpuPattern(config, path),
-    rd(),
-    gen(rd()),
-    gaussian(0, 1) {}
+    FakeGpuPattern(config, path), rd(), gen(rd()), gaussian(0, 1) {}
 
 
 void GaussianGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, int frame_number,

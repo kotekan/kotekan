@@ -51,9 +51,8 @@ nDiskFileWrite::nDiskFileWrite(Config& config, const string& unique_name,
         config.get_default<std::string>(unique_name, "instrument_name", "no_name_set");
     write_metadata_and_gains =
         config.get_default<bool>(unique_name, "write_metadata_and_gains", true);
-    print_lost_sample_number = 
-	config.get_default<bool>(unique_name, "print_lost_sample_number", true);
-
+    print_lost_sample_number =
+        config.get_default<bool>(unique_name, "print_lost_sample_number", true);
 }
 
 nDiskFileWrite::~nDiskFileWrite() {}
@@ -117,7 +116,7 @@ void nDiskFileWrite::main_thread() {
     time(&rawtime);
     timeinfo = gmtime(&rawtime);
     strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%SZ", timeinfo);
-    snprintf(data_set_c, sizeof(data_set_c), "%s_%s_%s", data_time, instrument_name.c_str(), 
+    snprintf(data_set_c, sizeof(data_set_c), "%s_%s_%s", data_time, instrument_name.c_str(),
              file_ext.c_str());
     dataset_name = data_set_c;
 
@@ -219,23 +218,21 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
             if (close(fd) == -1) {
                 ERROR("Cannot close file {:s}", file_name);
             }
-            if (print_lost_sample_number){
-               INFO("Data file write done for {:s}, lost_packets {:d}", file_name,
-                    get_lost_timesamples(buf, frame_id));
+            if (print_lost_sample_number) {
+                INFO("Data file write done for {:s}, lost_packets {:d}", file_name,
+                     get_lost_timesamples(buf, frame_id));
+            } else {
+                INFO("Data file write done for {:s}", file_name);
             }
-	    else{
-	       INFO("Data file write done for {:s}", file_name);
-	    }
         } else {
             // usleep(0.070 * 1e6);
-	    if (print_lost_sample_number){
-               INFO("Disk id {:d}, Lost Packets {:d}, buffer id {:d}", disk_id,
-                    get_lost_timesamples(buf, frame_id), frame_id);
-        
-	    }
-	    else{
-	       INFO("Disk id {:d}", disk_id);	    
-	    }
+            if (print_lost_sample_number) {
+                INFO("Disk id {:d}, Lost Packets {:d}, buffer id {:d}", disk_id,
+                     get_lost_timesamples(buf, frame_id), frame_id);
+
+            } else {
+                INFO("Disk id {:d}", disk_id);
+            }
         }
         // TODO make release_info_object work for nConsumers.
         mark_frame_empty(buf, unique_name.c_str(), frame_id);

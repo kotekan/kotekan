@@ -8,10 +8,10 @@
 #ifndef SPLITE_MERGED_BEAM_BUFFER
 #define SPLITE_MERGED_BEAM_BUFFER
 
-#include "Config.hpp" // for Config
+#include "BeamMetadata.hpp" // for BeamMetadata
+#include "Config.hpp"       // for Config
 #include "Stage.hpp"
 #include "bufferContainer.hpp" // for bufferContainer
-#include "BeamMetadata.hpp"   // for BeamMetadata
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
@@ -38,10 +38,10 @@ using std::vector;
 
 
 class splitMergedBeamBuffer : public kotekan::Stage {
-public: 
+public:
     /// Constructor
     splitMergedBeamBuffer(kotekan::Config& config_, const std::string& unique_name,
-                    kotekan::bufferContainer& buffer_container);
+                          kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     virtual ~splitMergedBeamBuffer();
@@ -53,9 +53,8 @@ private:
     /// Merged buffer for the merged
     struct Buffer* in_buf;
 
-    /// Frame merged buffer 
+    /// Frame merged buffer
     struct Buffer* out_buf;
 };
 
 #endif // MERGE_RAW_BUFFER_HPP
-

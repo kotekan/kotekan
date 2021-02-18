@@ -31,10 +31,7 @@ public:
      * @param base_dset  The ID of the base datset. Omit to create a root dataset.
      */
     dataset(state_id_t state, std::string type, dset_id_t base_dset = dset_id_t::null) :
-        _state(state),
-        _base_dset(base_dset),
-        _is_root(base_dset == dset_id_t::null),
-        _type(type) {}
+        _state(state), _base_dset(base_dset), _is_root(base_dset == dset_id_t::null), _type(type) {}
 
     /**
      * @brief Dataset constructor from json object.
