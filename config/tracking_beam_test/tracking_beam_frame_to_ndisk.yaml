@@ -15,7 +15,7 @@ cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
 samples_per_data_set: 49152
 num_pol: 2
 buffer_depth: 105
-sub_frames_per_merged_frame: 11
+sub_frames_per_merged_frame: 500
 # The size of metadata with freq ID
 freq_id_metadata_size: 72
 
@@ -34,6 +34,10 @@ beam_metadata_pool:
   kotekan_metadata_pool: FreqIDBeamMetadata
   num_metadata_objects: 4096
 
+merged_beam_metadata_pool:
+  kotekan_metadata_pool: MergedBeamMetadata
+  num_metadata_objects: 60
+
 beam_recv_buffer:
   kotekan_buffer: standard
   num_frames: 2048
@@ -42,8 +46,8 @@ beam_recv_buffer:
 
 merged_buffer:
   kotekan_buffer: standard
-  num_frames: 10
-  metadata_pool: beam_metadata_pool
+  num_frames: 30
+  metadata_pool: merged_beam_metadata_pool
   # freq_id_metadata_size is definded on the top
   frame_size: (samples_per_data_set * num_pol + freq_id_metadata_size) * sub_frames_per_merged_frame 
 

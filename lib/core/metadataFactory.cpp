@@ -90,7 +90,7 @@ struct metadataPool* metadataFactory::new_pool(const std::string& pool_type,
     }
     if (pool_type == "BasebandMetadata") {
         return create_metadata_pool(num_metadata_objects, sizeof(struct BasebandMetadata));
-    if (pool_type == "MergedBeamMetadata"){
+    if (pool_type == "MergedBeamMetadata") {
         return create_metadata_pool(num_metadata_objects, sizeof(struct MergedBeamMetadata));
     }
     // No metadata found
