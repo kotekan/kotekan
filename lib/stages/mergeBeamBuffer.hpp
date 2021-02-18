@@ -7,10 +7,10 @@
 #ifndef MERGE_BEAM_BUFFER
 #define MERGE_BEAM_BUFFER
 
-#include "Config.hpp" // for Config
+#include "BeamMetadata.hpp" // for BeamMetadata
+#include "Config.hpp"       // for Config
 #include "Stage.hpp"
 #include "bufferContainer.hpp" // for bufferContainer
-#include "BeamMetadata.hpp"   // for BeamMetadata
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
@@ -22,7 +22,7 @@ using std::vector;
 
 /**
  * @class mergeBeamBuffer
- * @brief A stage to merge n single beam frame to one single 
+ * @brief A stage to merge n single beam frame to one single
  *        beam frame.
  *
  * @par Buffers
@@ -40,10 +40,9 @@ using std::vector;
  */
 
 
-
 class mergeBeamBuffer : public kotekan::Stage {
 public:
-    /// Constructor 
+    /// Constructor
     mergeBeamBuffer(kotekan::Config& config_, const std::string& unique_name,
                     kotekan::bufferContainer& buffer_container);
     /// Destructor
@@ -55,7 +54,7 @@ private:
     /// Merged buffer for the merged
     struct Buffer* in_buf;
 
-    /// Frame merged buffer 
+    /// Frame merged buffer
     struct Buffer* out_buf;
 
 

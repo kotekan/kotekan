@@ -26,11 +26,11 @@ struct BeamMetadata {
     uint32_t scaling;
 };
 
-struct FreqIDBeamMetadata:BeamMetadata {
-    uint32_t frequency_bin; 	
+struct FreqIDBeamMetadata : BeamMetadata {
+    uint32_t frequency_bin;
 };
 
-struct MergedBeamMetadata{
+struct MergedBeamMetadata {
     /// Number of the raw frame in one merged frame
     uint32_t sub_frame_pre_frame;
     /// The size of the sub frame metadata
