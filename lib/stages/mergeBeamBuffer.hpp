@@ -26,11 +26,14 @@ using std::vector;
  *        beam frame.
  *
  * @par Buffers
- * @buffer in_buf Kotekan buffer of raw packets.
+ * @buffer in_buf Kotekan buffer of raw frames with BeamMetadata
+ *     followed by 4+4-bit voltage data.
  *     @buffer_format Array of @c chars
- * @buffer out_buf Kotekan buffer of compressed lost samples.
+ *     @buffer_metadata BeamMetadata
+ * @buffer out_buf Kotekan buffer with frames containing multiple
+ *     block of metadata in the format of FreqIDMetadata and voltage data.
  *     @buffer_format Array of @c uint32_t
- *
+ *     @buffer_metadata MergedBeamMetadata
  * @conf   samples_per_data_set  Int.    No. of samples.
  * @conf   sub_frames_per_merged_frame  Int.   Number of frames to merge.
  *
@@ -47,17 +50,14 @@ public:
                     kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~mergeBeamBuffer();
-    /// Primary loop to wait for buffers, put package together.
+    /// Primary loop to wait for frames, put package together.
     void main_thread() override;
 
 private:
-    /// Merged buffer for the merged
+    /// The input buffer which has one metadata & voltage block per frame.
     struct Buffer* in_buf;
-
-    /// Frame merged buffer
+    /// The out put buffer with multiple blocks per frame.
     struct Buffer* out_buf;
-
-
     /// Config variables
     uint32_t _samples_per_data_set;
     uint32_t _sub_frames_per_merged_frame;
