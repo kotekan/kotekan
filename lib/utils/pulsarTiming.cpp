@@ -10,7 +10,11 @@
 #include <sys/types.h> // for uint
 
 Polyco::Polyco(double t, float d, double p, double f0, std::vector<float> c) :
-    tmid(t), dm(d), phase_ref(p), rot_freq(f0), coeff(c) {}
+    tmid(t),
+    dm(d),
+    phase_ref(p),
+    rot_freq(f0),
+    coeff(c) {}
 
 Polyco::Polyco() {}
 
