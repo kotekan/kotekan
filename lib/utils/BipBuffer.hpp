@@ -39,7 +39,11 @@ public:
      * Construct a BipBuffer with the specified size of the underlying memory store.
      */
     BipBuffer(const int size) :
-        data(std::make_unique<uint8_t[]>(size)), len(size), read(0), write(0), watermark(0) {}
+        data(std::make_unique<uint8_t[]>(size)),
+        len(size),
+        read(0),
+        write(0),
+        watermark(0) {}
 
 public:
     /// Array for the buffer data

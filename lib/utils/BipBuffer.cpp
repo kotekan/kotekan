@@ -8,11 +8,17 @@
 
 BipWriteReservation::BipWriteReservation(uint8_t* const start, const size_t length,
                                          const size_t write, const bool wraparound) :
-    data(start, length), length(length), write(write), wraparound(wraparound) {}
+    data(start, length),
+    length(length),
+    write(write),
+    wraparound(wraparound) {}
 
 BipReadReservation::BipReadReservation(uint8_t const* const start, const size_t length,
                                        const size_t read, const bool wraparound) :
-    data(start, length), length(length), read(read), wraparound(wraparound) {}
+    data(start, length),
+    length(length),
+    read(read),
+    wraparound(wraparound) {}
 
 std::unique_ptr<BipWriteReservation> BipBufferWriter::reserve(const size_t length) {
     if (length > buffer.len) {

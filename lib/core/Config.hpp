@@ -303,7 +303,8 @@ T Config::get_default(const std::string& base_path, const std::string& name,
 template<class Type>
 Config::configEval<Type>::configEval(const Config& _config, const std::string& base_path,
                                      const std::string& name) :
-    config(_config), unique_name(base_path) {
+    config(_config),
+    unique_name(base_path) {
 
     nlohmann::json value = config.get_value(base_path, name);
 
