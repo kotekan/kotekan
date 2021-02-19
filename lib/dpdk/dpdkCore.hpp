@@ -45,7 +45,10 @@ public:
      */
     dpdkRXhandler(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& buffer_container, int port) :
-        config(config), unique_name(unique_name), buffer_container(buffer_container), port(port) {
+        config(config),
+        unique_name(unique_name),
+        buffer_container(buffer_container),
+        port(port) {
 
         set_log_level(config.get<std::string>(unique_name, "log_level"));
     };
