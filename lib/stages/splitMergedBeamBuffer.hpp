@@ -50,10 +50,10 @@ public:
     void main_thread() override;
 
 private:
-    /// Merged buffer for the merged
+    /// Merged buffer with multiple FreqIDBeamMetadata and voltage blocks per frame
     struct Buffer* in_buf;
 
-    /// Frame merged buffer
+    /// Buffer with single FreqIDBeamMetadata and voltage blocks
     struct Buffer* out_buf;
 };
 

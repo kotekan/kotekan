@@ -34,7 +34,7 @@
  * @conf num_disks      Int , the number of drives to read from
  * @conf disk_base      String, the path to the mounted drives
  * @conf disk_set       String, the disk name.
- * @conf file_ext       String, the extenstion of the output file.
+ * @conf file_ext       String, Default 'vdif', the extenstion of the output file.
  * @conf write_to_disk  Bool, whether to actually save, alternately operating in dummy mode
  * @conf instrument_name String, used in filenames and stored to metadata text file.
  * @conf write_metadata_and_gains  Bool, Default true.  Flag to control if VDIF/ARO style gains

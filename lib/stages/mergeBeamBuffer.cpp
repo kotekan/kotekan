@@ -31,9 +31,7 @@ mergeBeamBuffer::mergeBeamBuffer(Config& config_, const std::string& unique_name
     _sub_frames_per_merged_frame = config.get<uint32_t>(unique_name, "sub_frames_per_merged_frame");
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
-
     out_buf = get_buffer("out_buf");
-
     register_producer(out_buf, unique_name.c_str());
 }
 
@@ -80,8 +78,8 @@ void mergeBeamBuffer::main_thread() {
 
         // Get the start position of a sub_out_frame's meatadata
         // Make sure out_frame is pointed to the right place.
-        if (out_frame == nullptr)
-            break;
+        assert(out_frame != nullptr);
+
         uint32_t out_frame_metadata_pos = sub_frame_size * sub_frame_index;
         // Get the memory block for the metadata of sub_out_frame.
         FreqIDBeamMetadata* sub_frame_metadata =
@@ -110,17 +108,22 @@ void mergeBeamBuffer::main_thread() {
 
         // Get the start position of a sub_out_frame's data
         uint32_t out_frame_data_pos = out_frame_metadata_pos + sizeof(FreqIDBeamMetadata);
+        // Make sure the position does not pass the frame size.
+        assert(out_frame_data_pos < (uint32_t)out_buf->frame_size);
         // Get the memory block for the data of of a subframe.
         uint8_t* sub_frame_data = &out_frame[out_frame_data_pos];
         // copy data from in frame to sub_out_frame
         memcpy(sub_frame_data, in_frame, in_buf->frame_size);
 
-        // Debug code. Check if the subframe matedata is the same.
+// Debug code. Check if the subframe matedata is the same.
+#ifdef DEBUGGING
+
         FreqIDBeamMetadata* debud_frame_metadata =
             (FreqIDBeamMetadata*)&out_frame[sub_frame_index * sub_frame_size];
         DEBUG2("Sub frame Beam RA: {:f}, Dec: {:f}, scaling: {:d}, beam_num: {:d}, freq_id {:d}\n",
                debud_frame_metadata->ra, debud_frame_metadata->dec, debud_frame_metadata->scaling,
                debud_frame_metadata->beam_number, debud_frame_metadata->frequency_bin);
+#endif
 
         mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_ID);
         in_buffer_ID++;
@@ -129,6 +132,7 @@ void mergeBeamBuffer::main_thread() {
         if (sub_frame_index == _sub_frames_per_merged_frame - 1) {
             mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
             out_buffer_ID++;
+            out_frame = nullptr;
         }
     }
 }
