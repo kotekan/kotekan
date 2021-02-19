@@ -1,7 +1,7 @@
 
 /**
  * @file
- * @Split the merged beam buffer to single framed buffer.
+ * @brief Split the merged beam buffer to single framed buffer.
  *  - splitMergedBeamBuffer : public kotekan::Stage
  */
 
