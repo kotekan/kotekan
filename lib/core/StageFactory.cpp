@@ -16,7 +16,8 @@ using std::string;
 namespace kotekan {
 
 StageFactory::StageFactory(Config& config, bufferContainer& buffer_container) :
-    config(config), buffer_container(buffer_container) {
+    config(config),
+    buffer_container(buffer_container) {
 
 #ifdef DEBUGGING
     auto known_stages = StageFactoryRegistry::get_registered_stages();
