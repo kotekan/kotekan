@@ -26,12 +26,6 @@ splitMergedBeamBuffer::splitMergedBeamBuffer(Config& config_, const std::string&
                                              bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container,
           std::bind(&splitMergedBeamBuffer::main_thread, this)) {
-
-    // Apply config
-    //_samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
-    //_num_pol = config.get<uint32_t>(unique_name, "num_pol");
-    //_raw_frames_per_merged_frame = config.get<uint32_t>(unique_name,
-    //"raw_frames_per_merged_frame");
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
