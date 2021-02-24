@@ -42,6 +42,9 @@
  *       @buffer_format unit8_t array of flags
  *       @buffer_metadata none
  *
+ * @conf  fpga_dataset          String. The dataset ID for the data being received from
+ *                              the F-engine.
+ *
  * @author Andre Renard
  */
 class iceBoardStandard : public iceBoardHandler {
@@ -62,7 +65,7 @@ protected:
     /// The output buffer
     struct Buffer* out_buf;
 
-    /// The current frame
+    /// The current frame.
     uint8_t* out_frame;
 
     /// The ID of the current frame
@@ -70,6 +73,9 @@ protected:
 
     /// The flag buffer tracking lost samples
     struct Buffer* lost_samples_buf;
+
+    // Parameters saved from the config files
+    dset_id_t fpga_dataset;
 
     /// The active lost sample frame
     uint8_t* lost_samples_frame;
@@ -92,6 +98,8 @@ iceBoardStandard::iceBoardStandard(kotekan::Config& config, const std::string& u
     register_producer(lost_samples_buf, unique_name.c_str());
     // We want to make sure the flag buffers are zeroed between uses.
     zero_frames(lost_samples_buf);
+
+    fpga_dataset = config.get_default<dset_id_t>("/fpga_dataset", "id", dset_id_t::null);
 
     // TODO Some parts of this function are common to the various ICEboard
     // handlers, and could likely be factored out.
@@ -173,6 +181,7 @@ inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
 
     ice_set_stream_id_t(out_buf, out_frame_id, port_stream_id);
     set_fpga_seq_num(out_buf, out_frame_id, new_seq);
+    set_dataset_id(out_buf, out_frame_id, fpga_dataset);
 
     // Advance the lost samples frame
     if (!first_time) {
