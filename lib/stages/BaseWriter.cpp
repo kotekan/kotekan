@@ -50,12 +50,15 @@ BaseWriter::BaseWriter(Config& config, const std::string& unique_name,
     acq_timeout = config.get_default<double>(unique_name, "acq_timeout", 300);
     ignore_version = config.get_default<bool>(unique_name, "ignore_version", false);
 
+    // Get the list of buffers that this stage should connect to
+    in_buf = get_buffer("in_buf");
+    register_consumer(in_buf, unique_name.c_str());
+
     // Get the type of the file we are writing
     // TODO: we may want to validate here rather than at creation time
     file_type = config.get_default<std::string>(unique_name, "file_type", "hdf5fast");
     if (!FACTORY(visFile)::exists(file_type)) {
-        FATAL_ERROR("Unknown file type '{}'", file_type);
-        return;
+        throw std::runtime_error(fmt::format("Unknown file type '{}'", file_type));
     }
 
     file_length = config.get_default<size_t>(unique_name, "file_length", 1024);
@@ -78,15 +81,12 @@ BaseWriter::BaseWriter(Config& config, const std::string& unique_name,
     auto t = config.get_default<std::vector<std::string>>(unique_name, "critical_states", {});
     for (const auto& state : t) {
         if (!FACTORY(datasetState)::exists(state)) {
-            FATAL_ERROR("Unknown datasetState type '{}' given as `critical_state`", state);
+            throw std::runtime_error(fmt::format(
+                "Unknown datasetState type '{}' given as `critical_state`", state));
             return;
         }
         critical_state_types.insert(state);
     }
-
-    // Get the list of buffers that this stage should connect to
-    in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
 }
 
 void BaseWriter::main_thread() {
