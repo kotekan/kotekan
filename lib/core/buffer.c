@@ -721,9 +721,7 @@ void pass_metadata(struct Buffer* from_buf, int from_ID, struct Buffer* to_buf, 
         return;
     }
 
-    struct metadataContainer* metadata_container = NULL;
-
-    metadata_container = from_buf->metadata[from_ID];
+    struct metadataContainer* metadata_container = from_buf->metadata[from_ID];
 
     CHECK_ERROR_F(pthread_mutex_lock(&to_buf->lock));
 
@@ -840,6 +838,42 @@ void swap_frames(struct Buffer* from_buf, int from_frame_id, struct Buffer* to_b
     uint8_t* temp_frame = from_buf->frames[from_frame_id];
     from_buf->frames[from_frame_id] = to_buf->frames[to_frame_id];
     to_buf->frames[to_frame_id] = temp_frame;
+}
+
+void safe_swap_frame(struct Buffer* src_buf, int src_frame_id, struct Buffer* dest_buf,
+                     int dest_frame_id) {
+    assert(src_buf != dest_buf);
+    assert(src_buf != NULL);
+    assert(dest_buf != NULL);
+    assert(src_frame_id >= 0);
+    assert(src_frame_id < src_buf->num_frames);
+    assert(dest_frame_id >= 0);
+    assert(dest_frame_id < dest_buf->num_frames);
+
+    // Buffer sizes must match exactly
+    if (src_buf->frame_size != dest_buf->frame_size) {
+        FATAL_ERROR_F("Buffer sizes must match for direct copy (%s.frame_size != %s.frame_size)",
+                      src_buf->buffer_name, dest_buf->buffer_name);
+    }
+
+    if (get_num_producers(dest_buf) > 1) {
+        FATAL_ERROR_F("Cannot swap/copy frames into dest buffer %s with more than one producer",
+                      dest_buf->buffer_name);
+    }
+
+    int num_consumers = get_num_consumers(src_buf);
+
+    // Copy or transfer the data part.
+    if (num_consumers == 1) {
+        // Swap the frames
+        uint8_t* temp_frame = src_buf->frames[src_frame_id];
+        src_buf->frames[src_frame_id] = dest_buf->frames[dest_frame_id];
+        dest_buf->frames[dest_frame_id] = temp_frame;
+    } else if (num_consumers > 1) {
+        // Copy the frame data over, leaving the source intact
+        memcpy(dest_buf->frames[dest_frame_id], src_buf->frames[src_frame_id],
+               src_buf->frame_size);
+    }
 }
 
 uint8_t* buffer_malloc(ssize_t len, int numa_node) {
