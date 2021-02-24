@@ -871,8 +871,7 @@ void safe_swap_frame(struct Buffer* src_buf, int src_frame_id, struct Buffer* de
         dest_buf->frames[dest_frame_id] = temp_frame;
     } else if (num_consumers > 1) {
         // Copy the frame data over, leaving the source intact
-        memcpy(dest_buf->frames[dest_frame_id], src_buf->frames[src_frame_id],
-               src_buf->frame_size);
+        memcpy(dest_buf->frames[dest_frame_id], src_buf->frames[src_frame_id], src_buf->frame_size);
     }
 }
 

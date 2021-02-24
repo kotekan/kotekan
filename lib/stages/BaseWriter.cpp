@@ -81,8 +81,8 @@ BaseWriter::BaseWriter(Config& config, const std::string& unique_name,
     auto t = config.get_default<std::vector<std::string>>(unique_name, "critical_states", {});
     for (const auto& state : t) {
         if (!FACTORY(datasetState)::exists(state)) {
-            throw std::runtime_error(fmt::format(
-                "Unknown datasetState type '{}' given as `critical_state`", state));
+            throw std::runtime_error(
+                fmt::format("Unknown datasetState type '{}' given as `critical_state`", state));
             return;
         }
         critical_state_types.insert(state);
