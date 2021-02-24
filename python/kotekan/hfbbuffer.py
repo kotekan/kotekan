@@ -16,8 +16,7 @@ from kotekan import timespec
 
 
 class HFBMetadata(ctypes.Structure):
-    """Wrap a HFBMetadata struct.
-    """
+    """Wrap a HFBMetadata struct."""
 
     _fields_ = [
         ("fpga_seq", ctypes.c_uint64),
@@ -130,8 +129,7 @@ class HFBBuffer(object):
 
     @classmethod
     def from_file(cls, filename):
-        """Load a HFBBuffer from a kotekan dump file.
-        """
+        """Load a HFBBuffer from a kotekan dump file."""
         import os
 
         filesize = os.path.getsize(filename)

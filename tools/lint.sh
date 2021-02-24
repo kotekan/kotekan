@@ -4,6 +4,7 @@
 CLANG_FORMAT=clang-format-8
 
 # kotekan root directory
+# KOTEKAN_DIR="/home/masuilab/kotekan-new/kotekan"
 KOTEKAN_DIR="./"
 
 # Flag to enable iwyu (default OFF)
@@ -110,4 +111,4 @@ git diff --exit-code
 echo "Running cmakelint..."
 source ${KOTEKAN_DIR}/tools/cmakelint.sh ${KOTEKAN_DIR}
 
-exit 0
+ # exit 0

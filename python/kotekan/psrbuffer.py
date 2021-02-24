@@ -45,8 +45,7 @@ class PsrPacketHeader(Structure):
 
 
 class PsrPacket(Structure):
-    """Struct representation of a FRB network packet, as described in ``CHIMEFRB/ch_frb_io/L0_L1_packet.hpp``
-    """
+    """Struct representation of a FRB network packet, as described in ``CHIMEFRB/ch_frb_io/L0_L1_packet.hpp``"""
 
     _pack_ = 1
 

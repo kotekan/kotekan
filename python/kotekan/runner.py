@@ -6,8 +6,6 @@ from future.builtins import *  # noqa  pylint: disable=W0401, W0614
 from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 
 # === End Python 2/3 compatibility
-
-
 import itertools
 import json
 import os
@@ -471,9 +469,7 @@ class VisWriterBuffer(OutputBuffer):
 
 
 class ReadVisBuffer(InputBuffer):
-    """Write down a visBuffer and reads it with rawFileRead.
-
-    """
+    """Write down a visBuffer and reads it with rawFileRead."""
 
     _buf_ind = 0
 
@@ -506,8 +502,7 @@ class ReadVisBuffer(InputBuffer):
         self.stage_block = {stage_name: stage_config}
 
     def write(self):
-        """Write a list of VisBuffer objects to disk.
-        """
+        """Write a list of VisBuffer objects to disk."""
         visbuffer.VisBuffer.to_files(self.buffer_list, self.input_dir + "/" + self.name)
 
 

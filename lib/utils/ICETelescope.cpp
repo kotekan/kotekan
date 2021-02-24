@@ -117,7 +117,6 @@ freq_id_t ICETelescope::to_freq_id(stream_t stream, uint32_t ind) const {
     (void)ind;
 
     auto stream_id = ice_extract_stream_id(stream);
-
     // The default mapping is directly related to the number of ICEBoards in the system,
     // and as a result the number of frequencies in each data stream, so we can select on that.
     switch (_num_freq_per_stream) {

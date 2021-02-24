@@ -16,8 +16,7 @@ from kotekan import timespec
 
 
 class VisMetadata(ctypes.Structure):
-    """Wrap a VisMetadata struct.
-    """
+    """Wrap a VisMetadata struct."""
 
     _fields_ = [
         ("fpga_seq", ctypes.c_uint64),
@@ -161,8 +160,7 @@ class VisBuffer(object):
 
     @classmethod
     def from_file(cls, filename):
-        """Load a visBuffer from a kotekan dump file.
-        """
+        """Load a visBuffer from a kotekan dump file."""
         filesize = os.path.getsize(filename)
 
         buf = bytearray(filesize)
@@ -861,8 +859,7 @@ class GpuBuffer(object):
 
     @classmethod
     def from_file(cls, filename):
-        """Load a GpuBuffer from a kotekan dump file.
-        """
+        """Load a GpuBuffer from a kotekan dump file."""
 
         with io.FileIO(filename, "rb") as fh:
             # first 4 bytes are metadata size

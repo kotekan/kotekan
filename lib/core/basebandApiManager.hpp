@@ -19,6 +19,11 @@
 #include <stdint.h> // for uint32_t, int64_t, uint64_t
 
 
+const int BOARD_SPACING =
+    1048576; // Allow multiple boards with different IDs running without a backplane to share a
+             // basebandReadoutRegistry by hashing the freqidx + BOARD_SPACING * board_id. Can be
+             // any integer > 128, the number of unique freqidxs when running Shuffle 16.
+
 namespace kotekan {
 
 /// Implicit conversion for constructing `nlohmann::json` from a `basebandDumpStatus`
@@ -74,8 +79,8 @@ public:
      * baseband events. The key's value is the status of that baseband dump, and
      * is a list with an element for each frequency index handled on the node.
      * These elements are dictionaries with the following structure:
-     *   - freq_id : int
-     *     Channel's frequency index
+     *   - readout_id : int
+     *     Channel's frequency index + board index * 1048576
      *   - status : str
      *     Channel's dump progress (`waiting/inprogress/done/error`)
      *   - file_name : str
@@ -100,8 +105,8 @@ public:
      * specified baseband dump. The response is a JSON list, with an element for
      * each frequency index handled on the node. Each element is a dictionary
      * with elements:
-     *   - freq_id : int
-     *     Channel's frequency index
+     *   - readout_id : int
+     *     Channel's frequency index + board index * 1048576
      *   - status : str
      *     Channel dump progress (`waiting/inprogress/done/error`)
      *   - file_name : str
@@ -161,12 +166,13 @@ public:
     void handle_request_callback(connectionInstance& conn, nlohmann::json& request);
 
     /**
-     * @brief Register a readout stage for specified frequency
+     * @brief Register a readout stage for specified readout_id, which we defined to be readout_id =
+     * freq_id + board_id * 1048576
      *
      * @return a shared_ptr to the mutex used to guard access to the baseband
      * dump currently in progress.
      */
-    basebandReadoutManager& register_readout_stage(const uint32_t freq_id);
+    basebandReadoutManager& register_readout_stage(const uint32_t readout_id);
 
 private:
     /// Constructor, not used directly
@@ -223,7 +229,7 @@ private:
         std::map<uint32_t, basebandReadoutManager> readout_map;
     };
 
-    /// Map of registered readout stages, indexed by `freq_id`
+    /// Map of registered readout stages, indexed by `readout_id`
     basebandReadoutRegistry readout_registry;
 
     prometheus::Counter& request_counter;
