@@ -36,6 +36,7 @@ public:
     uint32_t num_freq_per_stream() const override;
     uint32_t num_freq() const override;
     double freq_width(freq_id_t freq_id) const override;
+    uint8_t nyquist_zone() const override;
 
     // Implementations of the required time mapping functions
     bool gps_time_enabled() const override;
@@ -87,6 +88,7 @@ protected:
     double freq0_MHz;
     double df_MHz;
     uint32_t nfreq;
+    uint8_t ny_zone;
 
     /// Should we try to get the GPS time from remote server
     bool _query_gps;
