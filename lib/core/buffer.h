@@ -559,8 +559,8 @@ void copy_metadata(struct Buffer* from_buf, int from_frame_id, struct Buffer* to
  *
  * @param[in] src_buf The source buffer
  * @param[in] src_frame_id The source frame ID
- * @param[in] to_buf The destination buffer
- * @param[in] to_frame_id The destination frame ID
+ * @param[in] dest_buf The destination buffer
+ * @param[in] dest_frame_id The destination frame ID
  */
 void safe_swap_frame(struct Buffer* src_buf, int src_frame_id, struct Buffer* dest_buf,
                      int dest_frame_id);
