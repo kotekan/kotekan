@@ -21,7 +21,7 @@ init_dm: True
 #num_frames: 5
 #samples_per_data_set: 49152
 samples_per_data_set: 1024
-freq_ids: [3, 777, 554]
+freq_ids: [3, 50, 777, 554]
 cadence: 0.01 
 
 # Constants
@@ -51,12 +51,12 @@ gen_data:
 write_hfb:
   file_length: 512
   file_type: hfbraw
-  root_path: /mnt/ramdisk
+  root_path: .
 
   kotekan_stage: HFBWriter
   in_buf: hfbbuf_10s
   instrument_name: chimeHFB
 
-buffer_status:
-  kotekan_stage: bufferStatus
-  print_status: false
+#buffer_status:
+#  kotekan_stage: bufferStatus
+#  print_status: false

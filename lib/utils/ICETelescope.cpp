@@ -55,6 +55,7 @@ void ICETelescope::set_sampling_params(double sample_rate, uint32_t fft_length, 
     freq0_MHz = (zone / 2) * sample_rate;
     df_MHz = (zone % 2 ? 1 : -1) * sample_rate / fft_length;
     nfreq = fft_length / 2;
+    ny_zone = zone;
 
     // TODO: revisit this if we think the length might ever not be an integer
     // number of ns
@@ -184,6 +185,10 @@ bool ICETelescope::gps_time_enabled() const {
 
 uint64_t ICETelescope::seq_length_nsec() const {
     return dt_ns;
+}
+
+uint8_t ICETelescope::nyquist_zone() const {
+    return ny_zone;
 }
 
 ice_stream_id_t ice_extract_stream_id(const stream_t encoded_stream_id) {
