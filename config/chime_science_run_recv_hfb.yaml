@@ -37,7 +37,7 @@ hfb_pool:
 
 hfbbuf_10s:
   kotekan_buffer: hfb
-  num_frames: 2048
+  num_frames: 4096
   metadata_pool: hfb_pool
 
 # Kotekan stages

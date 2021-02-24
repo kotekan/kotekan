@@ -156,16 +156,10 @@ void FakeHFB::main_thread() {
             output_frame.fpga_seq_length = delta_seq;
             output_frame.fpga_seq_total = delta_seq;
 
-            // Fill out the frame with the selected pattern
-            // pattern->fill(output_frame);
-
             for (uint32_t i = 0; i < output_frame.num_beams * output_frame.num_subfreq; i++) {
-                float data = (i % 2 == 0 ? output_frame.freq_id : output_frame.fpga_seq_start);
 
-                output_frame.hfb[i] = data;
-
-                // Set weights to zero for now
-                output_frame.weight[i] = 0.0;
+                output_frame.hfb[i] = output_frame.freq_id;
+                output_frame.weight[i] = 1.0;
             }
 
 
@@ -244,8 +238,8 @@ void ReplaceHFB::main_thread() {
             float data = (i % 2 == 0 ? output_frame.freq_id : output_frame.fpga_seq_start);
 
             output_frame.hfb[i] = data;
+            output_frame.weight[i] = 1.f;
         }
-
 
         // Mark the output buffer and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);

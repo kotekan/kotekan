@@ -1,6 +1,7 @@
 
 #include "visFileH5.hpp"
 
+#include "H5Support.hpp"      // for AtomicType<>::AtomicType, dset_id_str
 #include "Hash.hpp"           // for Hash
 #include "datasetManager.hpp" // for datasetManager, dset_id_t
 #include "datasetState.hpp"   // for eigenvalueState, freqState, inputState, prodState
@@ -32,7 +33,6 @@
 #include <sys/stat.h>               // for fstat, stat
 #include <system_error>             // for system_error
 #include <tuple>                    // for make_tuple, tuple, get
-#include <type_traits>              // for remove_reference<>::type
 #include <unistd.h>                 // for pwrite, TEMP_FAILURE_RETRY
 #include <utility>                  // for move, pair
 
@@ -521,57 +521,4 @@ void visFileH5Fast::write_sample(uint32_t time_ind, uint32_t freq_ind,
 
 size_t visFileH5Fast::num_time() {
     return ntime;
-}
-
-
-// Add support for all our custom types to HighFive
-template<>
-DataType HighFive::create_datatype<freq_ctype>() {
-    CompoundType f;
-    f.addMember("centre", H5T_IEEE_F64LE);
-    f.addMember("width", H5T_IEEE_F64LE);
-    f.autoCreate();
-    return std::move(f);
-}
-
-template<>
-DataType HighFive::create_datatype<time_ctype>() {
-    CompoundType t;
-    t.addMember("fpga_count", H5T_STD_U64LE);
-    t.addMember("ctime", H5T_IEEE_F64LE);
-    t.autoCreate();
-    return std::move(t);
-}
-
-template<>
-DataType HighFive::create_datatype<input_ctype>() {
-
-    CompoundType i;
-    hid_t s32 = H5Tcopy(H5T_C_S1);
-    H5Tset_size(s32, 32);
-    // AtomicType<char[32]> s32;
-    i.addMember("chan_id", H5T_STD_U16LE, 0);
-    i.addMember("correlator_input", s32, 2);
-    i.manualCreate(34);
-
-    return std::move(i);
-}
-
-template<>
-DataType HighFive::create_datatype<prod_ctype>() {
-
-    CompoundType p;
-    p.addMember("input_a", H5T_STD_U16LE);
-    p.addMember("input_b", H5T_STD_U16LE);
-    p.autoCreate();
-    return std::move(p);
-}
-
-template<>
-DataType HighFive::create_datatype<cfloat>() {
-    CompoundType c;
-    c.addMember("r", H5T_IEEE_F32LE);
-    c.addMember("i", H5T_IEEE_F32LE);
-    c.autoCreate();
-    return std::move(c);
 }

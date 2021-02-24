@@ -155,6 +155,13 @@ public:
     virtual double freq_width(freq_id_t freq_id) const = 0;
 
     /**
+     * @brief Get which Nyquist zone we are in.
+     *
+     * @return  The Nyquist zone.
+     **/
+    virtual uint8_t nyquist_zone() const = 0;
+
+    /**
      * Convert a sequence number into a UNIX epoch time.
      *
      * @param  seq  The sequence number.

@@ -44,7 +44,7 @@ symbols.
   it is not part of the base compile, even when enabled.
 * `-DUSE_OMP=ON` Build stages using OpenMP. This requires a compiler supporting OpenMP (>= 3.0)
 * `-DOPENSSL_ROOT_DIR=<openssl_root_dir>` Only required for non-standard install locations of OpenSSL
-* `-DBOOST_TESTS=ON` Build tests using The Boost Test Framework.
+* `-DWITH_TESTS=ON` Build kotekans test library and C++ unit tests using The Boost Test Framework.
   pytest-cpp needs to be installed for pytest to find them.
 * `-DSUPERDEBUG=ON` Add extra debugging info and turn off all optimisation to improve coverage.
 * `-DSANITIZE=ON` Turn on extra Clang sanitizers (currently the address sanitizer) for finding issues.
