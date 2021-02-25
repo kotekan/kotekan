@@ -200,14 +200,6 @@ write:
   file_ext: 'dump'
   base_dir: '.'
 
-#baseband:
-#  base_dir: /mnt/gong/cherry/B0329/July10/ForVerification/
-#  file_name: csDg7_bb
-#  read0:
-#    kotekan_stage: rawFileRead
-#    file_ext: dat0
-#    buf: network_buffer_0
-
 cpu_simulate:
   cpu_data_sim_0:
     gain_dir: "./"
@@ -301,22 +293,6 @@ read_gain:
     gain_frb_buf: gain_frb_buffer
     gain_tracking_buf: gain_tracking_buffer
       
-    #check_data:
-    #  bf_data_check_0:
-    #    num_frames_to_test: 2
-    #    epsilon: 0.001
-    #    kotekan_stage: testDataCheckFloat
-    #    first_buf : gpu_beamform_output_buffer_0
-    #    second_buf: cpu_output_buffer_0
-
-    #check_hfb_data:
-    #  hfb_data_check_0:
-    #    num_frames_to_test: 8
-    #    epsilon: 0.001
-    #    kotekan_stage: testDataCheckFloat
-    #    first_buf : gpu_beamform_hfb_output_buffer_0
-    #    second_buf: cpu_hfb_output_buffer_0
-
 updatable_config:
   frb_gain:
     kotekan_update_endpoint: json
