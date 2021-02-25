@@ -44,8 +44,8 @@ REGISTER_KOTEKAN_STAGE(VisWriter);
 VisWriter::VisWriter(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& buffer_container) :
     BaseWriter(config, unique_name, buffer_container) {
-        acq_type = "corr";
-    };
+    acq_type = "corr";
+};
 
 /// Construct the set of metadata
 std::map<std::string, std::string> VisWriter::make_metadata(dset_id_t ds_id) {
