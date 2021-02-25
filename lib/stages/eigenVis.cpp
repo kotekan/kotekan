@@ -10,26 +10,25 @@
 #include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::erms, VisField::eval
 #include "visUtil.hpp"           // for cfloat, frameID, modulo, current_time, cmap, movingAverage
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span
-
-#include <algorithm>  // for fill, max, lower_bound, remove
-#include <atomic>     // for atomic_bool
-#include <cblas.h>    // for openblas_set_num_threads
-#include <cmath>      // for pow, sqrt
-#include <complex>    // for operator*, norm, complex
-#include <cstdint>    // for uint32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <lapacke.h>  // for LAPACKE_cheevr, LAPACK_COL_MAJOR
-#include <map>        // for map, map<>::mapped_type, operator==, map<>::iterator
-#include <memory>     // for make_unique
-#include <numeric>    // for iota
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <time.h>     // for size_t
-#include <tuple>      // for forward_as_tuple
-#include <utility>    // for move, pair, piecewise_construct
+#include <algorithm>    // for fill, max, lower_bound, remove
+#include <atomic>       // for atomic_bool
+#include <cblas.h>      // for openblas_set_num_threads
+#include <cmath>        // for pow, sqrt
+#include <complex>      // for operator*, norm, complex
+#include <cstdint>      // for uint32_t
+#include <exception>    // for exception
+#include <fmt.hpp>      // for format, fmt
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <gsl-lite.hpp> // for span
+#include <lapacke.h>    // for LAPACKE_cheevr, LAPACK_COL_MAJOR
+#include <map>          // for map, map<>::mapped_type, operator==, map<>::iterator
+#include <memory>       // for make_unique
+#include <numeric>      // for iota
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error
+#include <time.h>       // for size_t
+#include <tuple>        // for forward_as_tuple
+#include <utility>      // for move, pair, piecewise_construct
 
 using kotekan::bufferContainer;
 using kotekan::Config;

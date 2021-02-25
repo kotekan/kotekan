@@ -6,10 +6,9 @@
 #include "hsaCommand.hpp"         // for REGISTER_HSA_COMMAND, _factory_aliashsaCommand
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 
-#include "fmt.hpp" // for format, fmt
-
 #include <cstdint>   // for int32_t
 #include <exception> // for exception
+#include <fmt.hpp>   // for format, fmt
 #include <regex>     // for match_results<>::_Base_type
 #include <string.h>  // for memset
 #include <vector>    // for vector

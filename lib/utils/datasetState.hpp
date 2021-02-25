@@ -6,13 +6,12 @@
 #include "gateSpec.hpp" // for gateSpec, _factory_aliasgateSpec
 #include "visUtil.hpp"  // for prod_ctype, rstack_ctype, time_ctype, input_ctype, freq_ctype
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json, basic_json<>::object_t, json_ref, basic_json, basic_json<>...
-
 #include <algorithm> // for copy
 #include <cstdint>   // for uint32_t
 #include <exception> // for exception
+#include <fmt.hpp>   // for format, fmt
 #include <iosfwd>    // for ostream
+#include <json.hpp>  // for json, basic_json<>::object_t, json_ref, basic_json, basic_json<>...
 #include <memory>    // for allocator, unique_ptr
 #include <numeric>   // for iota
 #include <stddef.h>  // for size_t

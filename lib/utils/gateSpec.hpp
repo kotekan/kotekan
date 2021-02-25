@@ -9,9 +9,8 @@
 #include "kotekanLogging.hpp" // for logLevel, kotekanLogging
 #include "pulsarTiming.hpp"   // for SegmentedPolyco
 
-#include "json.hpp" // for json
-
 #include <functional> // for function
+#include <json.hpp>   // for json
 #include <memory>     // for unique_ptr
 #include <string>     // for string
 #include <time.h>     // for timespec

@@ -3,9 +3,8 @@
 #include "kotekanLogging.hpp" // for ERROR_NON_OO
 #include "restServer.hpp"     // for restServer, connectionInstance
 
-#include "fmt.hpp" // for print, format, fmt
-
 #include <cmath>      // for isinf, isnan
+#include <fmt.hpp>    // for print, format, fmt
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
 #include <iterator>   // for begin, end
 #include <ostream>    // for operator<<, basic_ostream

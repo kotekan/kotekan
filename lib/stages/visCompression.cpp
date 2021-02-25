@@ -13,8 +13,6 @@
 #include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::weight
 #include "visUtil.hpp"           // for current_time, modulo, rstack_ctype, cfloat, frameID
 
-#include "gsl-lite.hpp" // for span
-
 #include <algorithm>    // for copy, max, fill, copy_backward, equal
 #include <atomic>       // for atomic_bool
 #include <complex>      // for complex, norm
@@ -23,6 +21,7 @@
 #include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, bind, function, placeholders
 #include <future>       // for async, future
+#include <gsl-lite.hpp> // for span
 #include <iterator>     // for begin, end
 #include <memory>       // for allocator_traits<>::value_type
 #include <pthread.h>    // for pthread_setaffinity_np

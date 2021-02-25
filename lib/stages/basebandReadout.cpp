@@ -17,9 +17,6 @@
 #include "visFile.hpp"            // for create_lockfile
 #include "visUtil.hpp"            // for input_ctype, ts_to_double, parse_reorder_default
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span, operator!=
-
 #include <algorithm>                // for max, copy, copy_backward, min
 #include <assert.h>                 // for assert
 #include <atomic>                   // for atomic_bool
@@ -28,7 +25,9 @@
 #include <cstdio>                   // for remove, snprintf
 #include <deque>                    // for deque
 #include <exception>                // for exception
+#include <fmt.hpp>                  // for format, fmt
 #include <functional>               // for _Bind_helper<>::type, bind, function
+#include <gsl-lite.hpp>             // for span, operator!=
 #include <highfive/H5Attribute.hpp> // for Attribute, Attribute::write
 #include <highfive/H5DataSet.hpp>   // for AnnotateTraits::createAttribute, DataSet, DataSet::r...
 #include <highfive/H5DataSpace.hpp> // for DataSpace::From, DataSpace, DataSpace::DataSpace

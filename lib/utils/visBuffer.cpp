@@ -6,13 +6,12 @@
 #include "chimeMetadata.hpp" // for chimeMetadata, get_stream_id_from_metadata
 #include "metadata.h"        // for metadataContainer
 
-#include "fmt.hpp" // for format, fmt
-
 #include <algorithm>   // for copy
 #include <complex>     // for complex
 #include <cstdint>     // for uint64_t // IWYU pragma: keep
 #include <ctime>       // for gmtime
 #include <exception>   // for exception
+#include <fmt.hpp>     // for format, fmt
 #include <map>         // for map
 #include <regex>       // for match_results<>::_Base_type
 #include <set>         // for set

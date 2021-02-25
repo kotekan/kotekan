@@ -14,10 +14,9 @@
 #include "Stage.hpp"
 #include "bufferContainer.hpp"
 
-#include "json.hpp" // for json
-
-#include <map>    // for map
-#include <string> // for string
+#include <json.hpp> // for json
+#include <map>      // for map
+#include <string>   // for string
 
 namespace kotekan {
 

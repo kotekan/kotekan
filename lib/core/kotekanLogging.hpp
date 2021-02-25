@@ -3,9 +3,8 @@
 
 #include "errors.h" // for _global_log_level  // IWYU pragma: keep
 
-#include "fmt.hpp" // for fmt, basic_string_view, make_format_args, FMT_STRING
-
 #include <errno.h>  // for errno
+#include <fmt.hpp>  // for fmt, basic_string_view, make_format_args, FMT_STRING
 #include <string>   // for string
 #include <syslog.h> // for LOG_ERR, LOG_INFO, LOG_WARNING
 

@@ -7,13 +7,12 @@
 #include "chimeMetadata.hpp"   // for atomic_add_lost_timesamples
 #include "nt_memset.h"         // for nt_memset
 
-#include "json.hpp" // for json, basic_json, basic_json<>::iterator, iter_impl
-
 #include <algorithm>  // for max
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
+#include <json.hpp>   // for json, basic_json, basic_json<>::iterator, iter_impl
 #include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error
 #include <string.h>   // for memcpy, size_t

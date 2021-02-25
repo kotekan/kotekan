@@ -9,11 +9,10 @@
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 #include "restServer.hpp"         // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_R...
 
-#include "fmt.hpp" // for format, fmt
-
 #include <cmath>      // for sin, asin, cos, floor
 #include <cstdint>    // for int32_t
 #include <exception>  // for exception
+#include <fmt.hpp>    // for format, fmt
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, pla...
 #include <regex>      // for match_results<>::_Base_type
 #include <string.h>   // for memcpy, memset

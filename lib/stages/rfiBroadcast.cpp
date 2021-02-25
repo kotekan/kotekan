@@ -16,13 +16,12 @@
 #include "util.h" // for e_time
 #endif
 
-#include "fmt.hpp" // for format, fmt
-
 #include <algorithm>    // for copy, copy_backward, equal, max
 #include <arpa/inet.h>  // for inet_aton
 #include <atomic>       // for atomic_bool
 #include <deque>        // for deque
 #include <exception>    // for exception
+#include <fmt.hpp>      // for format, fmt
 #include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
 #include <mutex>        // for mutex, lock_guard
 #include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP, htons

@@ -6,11 +6,10 @@
 #include "restServer.hpp"     // for connectionInstance, HTTP_RESPONSE, HTTP_RESPONSE::BAD_REQUEST
 #include "visUtil.hpp"        // for json_type_name
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json, basic_json<>::iterator, basic_json, iter_impl, basic...
-
 #include <algorithm> // for find, count
 #include <exception> // for exception
+#include <fmt.hpp>   // for format, fmt
+#include <json.hpp>  // for json, basic_json<>::iterator, basic_json, iter_impl, basic...
 #include <stdexcept> // for runtime_error
 #include <utility>   // for pair
 

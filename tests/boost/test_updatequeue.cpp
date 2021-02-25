@@ -3,12 +3,11 @@
 #include "updateQueue.hpp" // for updateQueue
 #include "visUtil.hpp"     // for operator==
 
-#include "fmt.hpp" // for format
-
 #include <algorithm>                         // for copy, copy_backward, max
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_CHECK, BOOST_PP_BOOL_2
 #include <ctime>                             // for timespec
 #include <deque>                             // for deque, _Deque_iterator
+#include <fmt.hpp>                           // for format
 #include <iostream>                          // for cout, ostream, std
 #include <memory>
 #include <string>  // for operator<<

@@ -2,10 +2,9 @@
 
 #include "visUtil.hpp" // for rstack_ctype, prod_ctype, input_ctype
 
-#include "fmt.hpp" // for format, fmt
-
 #include <algorithm>  // for copy, sort, transform, max
 #include <cstdint>    // for uint32_t, int8_t, int16_t
+#include <fmt.hpp>    // for format, fmt
 #include <functional> // for _Bind_helper<>::type, bind, _1, placeholders
 #include <iterator>   // for back_insert_iterator, begin, end, back_inserter
 #include <math.h>     // for abs

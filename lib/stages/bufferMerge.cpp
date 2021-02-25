@@ -7,15 +7,14 @@
 #include "kotekanLogging.hpp"  // for INFO, DEBUG2, FATAL_ERROR
 #include "visUtil.hpp"         // for frameID, current_time, double_to_ts, modulo
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json, basic_json<>::iterator, basic_json<>::object_t, bas...
-
 #include <algorithm>  // for max
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
 #include <cstring>    // for memcpy
 #include <exception>  // for exception
+#include <fmt.hpp>    // for format, fmt
 #include <functional> // for _Bind_helper<>::type, bind, function
+#include <json.hpp>   // for json, basic_json<>::iterator, basic_json<>::object_t, bas...
 #include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error, invalid_argument
 

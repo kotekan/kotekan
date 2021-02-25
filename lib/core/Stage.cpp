@@ -5,13 +5,12 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "util.h"              // for string_tail
 
-#include "fmt.hpp" // for format
-
 #include <algorithm>    // for copy, max
 #include <chrono>       // for seconds
 #include <cstdlib>      // for abort
 #include <cxxabi.h>     // for __forced_unwind
 #include <exception>    // for exception
+#include <fmt.hpp>      // for format
 #include <future>       // for async, future, future_status, future_status::timeout, launch
 #include <pthread.h>    // for pthread_setaffinity_np, pthread_setname_np
 #include <regex>        // for match_results<>::_Base_type

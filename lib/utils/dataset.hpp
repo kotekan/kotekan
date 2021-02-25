@@ -3,9 +3,8 @@
 
 #include "Hash.hpp" // for operator==, Hash
 
-#include "json.hpp" // for json
-
-#include <string> // for string
+#include <json.hpp> // for json
+#include <string>   // for string
 
 /// DatasetID
 using dset_id_t = Hash;

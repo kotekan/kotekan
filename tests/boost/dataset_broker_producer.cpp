@@ -10,12 +10,11 @@
 #include "restServer.hpp"     // for restServer
 #include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype
 
-#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value...
-
 #include <algorithm>                         // for max
 #include <boost/test/included/unit_test.hpp> // for master_test_suite, BOOST_PP_IIF_1, BOOST_CHECK
 #include <chrono>                            // for milliseconds
 #include <iostream>                          // for ofstream, operator<<, basic_ostream, ostream
+#include <json.hpp>                          // for basic_json<>::object_t, basic_json<>::value...
 #include <map>                               // for map
 #include <stdint.h>                          // for uint32_t
 #include <stdlib.h>                          // for atoi

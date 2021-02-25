@@ -5,10 +5,9 @@
 #include "buffer.h"   // for Buffer // IWYU pragma: keep
 #include "metadata.h" // for metadataPool // IWYU pragma: keep
 
-#include "json.hpp" // for json
-
-#include <map>    // for map
-#include <string> // for string
+#include <json.hpp> // for json
+#include <map>      // for map
+#include <string>   // for string
 
 namespace kotekan {
 

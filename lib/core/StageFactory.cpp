@@ -3,8 +3,7 @@
 #include "Config.hpp"         // for Config
 #include "kotekanLogging.hpp" // for ERROR_NON_OO
 
-#include "fmt.hpp" // for format, fmt
-
+#include <fmt.hpp>   // for format, fmt
 #include <stdexcept> // for runtime_error
 #include <utility>   // for pair
 

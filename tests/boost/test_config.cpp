@@ -11,7 +11,7 @@
 // the code to test:
 #include "Config.hpp" // for Config
 
-#include "json.hpp" // for json_ref, basic_json<>::object_t, json
+#include <json.hpp> // for json_ref, basic_json<>::object_t, json
 
 using kotekan::Config;
 

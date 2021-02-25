@@ -15,13 +15,12 @@
 #include "dataset.hpp"     // for dset_id_t
 #include "visUtil.hpp"     // IWYU pragma: keep
 
-#include "gsl-lite.hpp" // for span
-
-#include <set>      // for set
-#include <stdint.h> // for uint32_t, uint64_t, int64_t
-#include <string>   // for string
-#include <time.h>   // for size_t, timespec
-#include <utility>  // for pair
+#include <gsl-lite.hpp> // for span
+#include <set>          // for set
+#include <stdint.h>     // for uint32_t, uint64_t, int64_t
+#include <string>       // for string
+#include <time.h>       // for size_t, timespec
+#include <utility>      // for pair
 
 
 /**

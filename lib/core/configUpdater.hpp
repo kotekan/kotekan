@@ -5,9 +5,8 @@
 #include "Stage.hpp"      // for Stage
 #include "restServer.hpp" // for connectionInstance
 
-#include "json.hpp" // for json
-
 #include <functional> // for function
+#include <json.hpp>   // for json
 #include <map>        // for map, multimap
 #include <string>     // for string
 #include <vector>     // for vector

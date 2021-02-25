@@ -11,8 +11,6 @@
 #include "visBuffer.hpp"       // for VisFrameView, VisField, VisField::vis, VisField::weight
 #include "visUtil.hpp"         // for prod_ctype, frameID, cmap, icmap, modulo, cfloat
 
-#include "gsl-lite.hpp" // for span
-
 #include <algorithm>    // for max, binary_search, copy, sort
 #include <atomic>       // for atomic_bool
 #include <complex>      // for complex
@@ -20,6 +18,7 @@
 #include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, bind, function
 #include <future>       // for future, async
+#include <gsl-lite.hpp> // for span
 #include <iterator>     // for back_insert_iterator, back_inserter
 #include <regex>        // for match_results<>::_Base_type
 #include <stdexcept>    // for out_of_range, runtime_error

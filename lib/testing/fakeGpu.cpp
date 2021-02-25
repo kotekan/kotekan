@@ -12,20 +12,19 @@
 #include "metadata.h"         // for metadataContainer
 #include "visUtil.hpp"        // for frameID, gpu_N2_size, modulo, operator+
 
-#include "gsl-lite.hpp" // for span
-
-#include <atomic>     // for atomic_bool
-#include <csignal>    // for raise, SIGINT
-#include <cstdint>    // for int32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <random>     // for mt19937, random_device, uniform_real_distribution
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <string>     // for string
-#include <sys/time.h> // for CLOCK_REALTIME, TIMESPEC_TO_TIMEVAL, timeval
-#include <time.h>     // for timespec, clock_gettime, nanosleep
-#include <vector>     // for vector
+#include <atomic>       // for atomic_bool
+#include <csignal>      // for raise, SIGINT
+#include <cstdint>      // for int32_t
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <gsl-lite.hpp> // for span
+#include <random>       // for mt19937, random_device, uniform_real_distribution
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error
+#include <string>       // for string
+#include <sys/time.h>   // for CLOCK_REALTIME, TIMESPEC_TO_TIMEVAL, timeval
+#include <time.h>       // for timespec, clock_gettime, nanosleep
+#include <vector>       // for vector
 
 
 REGISTER_KOTEKAN_STAGE(FakeGpu);

@@ -14,8 +14,7 @@
 #include "prometheusMetrics.hpp"
 #include "util.h" // for e_time
 
-#include "json.hpp"
-
+#include <json.hpp>
 #include <mutex>
 
 /**

@@ -11,8 +11,7 @@
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
 
-#include "json.hpp" // for json
-
+#include <json.hpp> // for json
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
 #include <vector>   // for vector

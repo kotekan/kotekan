@@ -11,11 +11,10 @@
 
 #include "SynchronizedQueue.hpp" // for SynchronizedQueue
 
-#include "gsl-lite.hpp" // for span
-
 #include <chrono>       // for system_clock, system_clock::time_point
 #include <forward_list> // for forward_list
 #include <functional>   // for reference_wrapper
+#include <gsl-lite.hpp> // for span
 #include <memory>       // for unique_ptr, shared_ptr, allocator
 #include <mutex>        // for mutex
 #include <stdint.h>     // for uint64_t, int64_t, uint32_t, uint8_t

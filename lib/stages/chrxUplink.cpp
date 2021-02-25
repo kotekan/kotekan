@@ -6,12 +6,11 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for ERROR, INFO
 
-#include "fmt.hpp" // for format, fmt
-
 #include <arpa/inet.h>  // for inet_addr
 #include <atomic>       // for atomic_bool
 #include <errno.h>      // for errno
 #include <exception>    // for exception
+#include <fmt.hpp>      // for format, fmt
 #include <functional>   // for _Bind_helper<>::type, bind, function
 #include <netinet/in.h> // for sockaddr_in, htons, in_addr
 #include <regex>        // for match_results<>::_Base_type

@@ -2,8 +2,7 @@
 
 #include "errors.h" // for __enable_syslog, __err_msg, __max_log_msg_len
 
-#include "fmt.hpp" // for basic_string_view, print, vformat, basic_format_context, format_args
-
+#include <fmt.hpp>     // for basic_string_view, print, vformat, basic_format_context, format_args
 #include <stdexcept>   // for runtime_error
 #include <stdio.h>     // for stderr
 #include <strings.h>   // for strcasecmp

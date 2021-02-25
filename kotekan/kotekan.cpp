@@ -10,17 +10,16 @@
 #include "version.h"              // for get_kotekan_version, get_cmake_build_options, get_git_...
 #include "visUtil.hpp"            // for regex_split
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
-
 #include <algorithm>   // for max
 #include <array>       // for array
 #include <assert.h>    // for assert
 #include <csignal>     // for signal, SIGINT, sig_atomic_t
 #include <exception>   // for exception
+#include <fmt.hpp>     // for format, fmt
 #include <getopt.h>    // for no_argument, getopt_long, required_argument, option
 #include <iostream>    // for endl, basic_ostream, cout, ostream
 #include <iterator>    // for reverse_iterator
+#include <json.hpp>    // for basic_json<>::object_t, basic_json<>::value_type, json
 #include <map>         // for map
 #include <memory>      // for allocator, shared_ptr
 #include <mutex>       // for mutex, lock_guard

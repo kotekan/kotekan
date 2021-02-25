@@ -8,13 +8,12 @@
 #include "metadata.h"            // for metadataContainer
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 
-#include "fmt.hpp" // for format, fmt
-
 #include <arpa/inet.h> // for inet_addr
 #include <cerrno>      // for errno
 #include <chrono>
 #include <cstring>      // for strerror, size_t
 #include <exception>    // for exception
+#include <fmt.hpp>      // for format, fmt
 #include <functional>   // for _Bind_helper<>::type, bind, ref, function
 #include <regex>        // for match_results<>::_Base_type
 #include <stdexcept>    // for runtime_error

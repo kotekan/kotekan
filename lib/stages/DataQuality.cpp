@@ -10,19 +10,18 @@
 #include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for frameID, modulo
 
-#include "gsl-lite.hpp" // for span
-
-#include <algorithm>  // for copy, copy_backward, equal, max
-#include <atomic>     // for atomic_bool
-#include <deque>      // for deque
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <math.h>     // for pow
-#include <stdexcept>  // for out_of_range
-#include <stdint.h>   // for uint32_t
-#include <string.h>   // for size_t
-#include <string>     // for string, to_string
-#include <vector>     // for vector
+#include <algorithm>    // for copy, copy_backward, equal, max
+#include <atomic>       // for atomic_bool
+#include <deque>        // for deque
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <gsl-lite.hpp> // for span
+#include <math.h>       // for pow
+#include <stdexcept>    // for out_of_range
+#include <stdint.h>     // for uint32_t
+#include <string.h>     // for size_t
+#include <string>       // for string, to_string
+#include <vector>       // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -45,9 +45,8 @@
 #include "kotekanLogging.hpp"
 #include "type.hpp"
 
-#include "fmt.hpp"
-
 #include <cxxabi.h>
+#include <fmt.hpp>
 #include <functional>
 #include <iostream>
 #include <map>

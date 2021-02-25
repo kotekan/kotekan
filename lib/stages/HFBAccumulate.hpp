@@ -13,11 +13,10 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for datasetManager, state_id_t, dset_id_t
 
-#include "gsl-lite.hpp" // for span
-
-#include <stdint.h> // for uint32_t, int32_t, int64_t
-#include <string>   // for string
-#include <vector>   // for vector
+#include <gsl-lite.hpp> // for span
+#include <stdint.h>     // for uint32_t, int32_t, int64_t
+#include <string>       // for string
+#include <vector>       // for vector
 
 /**
  * @class HFBAccumulate

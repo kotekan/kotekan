@@ -16,8 +16,7 @@
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 #include "restServer.hpp"         // for connectionInstance
 
-#include "json.hpp" // for json
-
+#include <json.hpp> // for json
 #include <stdint.h> // for int32_t, uint32_t
 #include <string>   // for string
 #include <vector>   // for vector

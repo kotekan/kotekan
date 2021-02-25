@@ -11,10 +11,9 @@
 #include "restServer.hpp"      // for connectionInstance
 #include "visUtil.hpp"         // for input_ctype, prod_ctype, time_ctype, stack_ctype, cfloat
 
-#include "fmt.hpp"  // for format
-#include "json.hpp" // for json
-
 #include <algorithm> // for copy, max
+#include <fmt.hpp>   // for format
+#include <json.hpp>  // for json
 #include <map>       // for map
 #include <math.h>    // for cos
 #include <mutex>     // for mutex

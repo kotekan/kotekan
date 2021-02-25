@@ -4,11 +4,10 @@
 #include "kotekanLogging.hpp" // for WARN, INFO, FATAL_ERROR
 #include "restClient.hpp"     // for restClient
 
-#include "fmt.hpp"  // for format
-#include "json.hpp" // for basic_json, basic_json<>::object_t, basic_json<>::value_type
-
 #include <cstdint>   // for uint64_t
 #include <exception> // for exception
+#include <fmt.hpp>   // for format
+#include <json.hpp>  // for basic_json, basic_json<>::object_t, basic_json<>::value_type
 #include <math.h>    // for abs
 #include <regex>     // for match_results<>::_Base_type
 #include <stdexcept> // for runtime_error, invalid_argument

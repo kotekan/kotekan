@@ -8,16 +8,15 @@
 #include "visBuffer.hpp"      // for VisFrameView
 #include "visUtil.hpp"        // for cfloat, time_ctype, freq_ctype, input_ctype, prod_ctype
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span
-
 #include <complex>                  // for complex
 #include <cstdio>                   // for remove
 #include <cxxabi.h>                 // for __forced_unwind
 #include <errno.h>                  // for errno
 #include <exception>                // for exception
 #include <fcntl.h>                  // for sync_file_range, posix_fadvise, posix_fallocate, SYN...
+#include <fmt.hpp>                  // for format, fmt
 #include <future>                   // for async, future
+#include <gsl-lite.hpp>             // for span
 #include <highfive/H5Attribute.hpp> // for Attribute, Attribute::write, Attribute::getSpace
 #include <highfive/H5DataSet.hpp>   // for DataSet, DataSet::resize, AnnotateTraits::createAttr...
 #include <highfive/H5DataSpace.hpp> // for DataSpace, DataSpace::From, DataSpace::DataSpace

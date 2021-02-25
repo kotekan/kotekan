@@ -16,9 +16,6 @@
 #include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::we...
 #include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double, frameID
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span
-
 #include <algorithm>                 // for max, copy, copy_backward
 #include <assert.h>                  // for assert
 #include <chrono>                    // for operator""s, chrono_literals
@@ -26,7 +23,9 @@
 #include <complex>                   // for operator*, operator+, complex, operator""if, operat...
 #include <cstdint>                   // for uint64_t, uint32_t, uint8_t
 #include <exception>                 // for exception
+#include <fmt.hpp>                   // for format, fmt
 #include <functional>                // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <gsl-lite.hpp>              // for span
 #include <highfive/H5DataSet.hpp>    // for DataSet
 #include <highfive/H5File.hpp>       // for File, NodeTraits::getDataSet, File::File, File::Rea...
 #include <highfive/H5Object.hpp>     // for HighFive

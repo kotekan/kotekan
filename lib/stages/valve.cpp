@@ -10,11 +10,10 @@
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 #include "visUtil.hpp"           // for frameID, modulo
 
-#include "fmt.hpp" // for format, fmt
-
 #include <atomic>     // for atomic_bool
 #include <cstring>    // for memcpy
 #include <exception>  // for exception
+#include <fmt.hpp>    // for format, fmt
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <stdexcept>  // for runtime_error
 #include <stdint.h>   // for uint8_t

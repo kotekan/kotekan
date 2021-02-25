@@ -13,9 +13,6 @@
 #include "restServer.hpp"        // for connectionInstance, restServer, HTTP_RESPONSE, HTTP_RES...
 #include "visBuffer.hpp"         // for VisFrameView
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span
-
 #include <algorithm>    // for max
 #include <atomic>       // for atomic_bool
 #include <cmath>        // for log10, sqrt
@@ -26,8 +23,10 @@
 #include <dirent.h>     // for opendir
 #include <errno.h>      // for errno
 #include <exception>    // for exception
+#include <fmt.hpp>      // for format, fmt
 #include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
 #include <future>       // for async, future
+#include <gsl-lite.hpp> // for span
 #include <iomanip>      // for operator<<, setprecision
 #include <memory>       // for allocator_traits<>::value_type
 #include <mutex>        // for mutex, lock_guard, unique_lock

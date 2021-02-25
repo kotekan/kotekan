@@ -16,8 +16,7 @@
 #include "hsaCommand.hpp"         // for hsaCommand
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
-#include "json.hpp" // for json
-
+#include <json.hpp>    // for json
 #include <mutex>       // for mutex
 #include <stdint.h>    // for int32_t, int16_t, uint32_t, uint8_t
 #include <string>      // for string

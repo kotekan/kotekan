@@ -7,12 +7,11 @@
 #include "SynchronizedQueue.hpp" // for SynchronizedQueue
 #include "kotekanLogging.hpp"    // for DEBUG_NON_OO, DEBUG2_NON_OO
 
-#include "gsl-lite.hpp" // for span
-
 #include <algorithm>                         // for min
 #include <atomic>                            // for atomic_size_t
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_CHECK, BOOST_PP_BOOL_2
 #include <chrono>                            // for milliseconds
+#include <gsl-lite.hpp>                      // for span
 #include <memory>                            // for unique_ptr
 #include <optional>                          // for optional
 #include <random>                            // for mt19937, uniform_int_distribution, random_d...
