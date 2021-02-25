@@ -126,6 +126,7 @@ public:
      * @param type Type of the files to write.
      * @param root_path Directory to write into.
      * @param instrument_name Instrument name (e.g. chime)
+     * @param acq_type Acquisition type (e.g. corr)
      * @param metadata  Textual metadata to write into the files.
      * @param freq_chunk ID of the frequency chunk being written
      * @param rollover Maximum time length of file.
@@ -137,7 +138,7 @@ public:
      **/
     template<typename... InitArgs>
     visFileBundle(const std::string& type, const std::string& root_path,
-                  const std::string& instrument_name,
+                  const std::string& instrument_name, const std::string& acq_type,
                   const std::map<std::string, std::string>& metadata, int freq_chunk,
                   size_t rollover, size_t window_size, const kotekan::logLevel log_level,
                   InitArgs... args);
@@ -174,6 +175,7 @@ protected:
     const std::string root_path;
 
     const std::string instrument_name;
+    const std::string acq_type;
     const int freq_chunk;
 
     size_t rollover;
@@ -191,12 +193,13 @@ protected:
 // parameter pack into the lambda perfectly.
 template<typename... InitArgs>
 inline visFileBundle::visFileBundle(const std::string& type, const std::string& root_path,
-                                    const std::string& instrument_name,
+                                    const std::string& instrument_name, const std::string& acq_type,
                                     const std::map<std::string, std::string>& metadata,
                                     int freq_chunk, size_t rollover, size_t window_size,
                                     const kotekan::logLevel log_level, InitArgs... args) :
     root_path(root_path),
     instrument_name(instrument_name),
+    acq_type(acq_type),
     freq_chunk(freq_chunk),
     rollover(rollover),
     window_size(window_size) {

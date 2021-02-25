@@ -149,7 +149,7 @@ void BaseWriter::init_acq(dset_id_t ds_id) {
 
     try {
         acq.file_bundle = std::make_unique<visFileBundle>(
-            file_type, root_path, instrument_name, metadata, chunk_id, file_length, window,
+            file_type, root_path, instrument_name, acq_type, metadata, chunk_id, file_length, window,
             kotekan::logLevel(_member_log_level), ds_id, file_length);
     } catch (std::exception& e) {
         FATAL_ERROR("Failed creating file bundle for new acquisition: {:s}", e.what());
