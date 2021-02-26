@@ -8,6 +8,7 @@ then
   echo "All good."
   exit 0
 else
+  make clang-format
   git diff
   exit 1
 fi
