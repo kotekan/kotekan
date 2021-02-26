@@ -6,36 +6,36 @@
 #ifndef _RAW_READER_HPP
 #define _RAW_READER_HPP
 
-#include "Config.hpp"
-#include "Hash.hpp"      // for Hash, operator<, operator==
-#include "Stage.hpp"     // for Stage
-#include "Telescope.hpp" // for Telescope
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp" // for dset_id_t
-#include "datasetState.hpp"   // for freqState, timeState, metadataState
-#include "errors.h"           // for exit_kotekan, CLEAN_EXIT, ReturnCode
-#include "kotekanLogging.hpp" // for INFO, FATAL_ERROR, DEBUG, WARN, ERROR
-#include "metadata.h"         // for metadataContainer
-#include "version.h"          // for get_git_commit_hash
-#include "visUtil.hpp"        // for freq_ctype (ptr only), input_ctype, prod_ctype, rstack_ctype
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for operator==
+#include "Stage.hpp"           // for Stage
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t, datasetManager, state_id_t, DS_UNIQUE_NAME
+#include "datasetState.hpp"    // for freqState, metadataState, timeState
+#include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "kotekanLogging.hpp"  // for INFO, DEBUG, FATAL_ERROR, WARN, DEBUG2
+#include "metadata.h"          // for metadataContainer
+#include "version.h"           // for get_git_commit_hash
+#include "visUtil.hpp"         // for time_ctype, frameID, current_time, double_to_ts, freq_ctype
 
-#include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for json
 
 #include <cstring>    // for strerror, memcpy
 #include <errno.h>    // for errno
 #include <exception>  // for exception
-#include <fcntl.h>    // for open, posix_fadvise, O_RDONLY, POSIX_FADV_DONTNEED
+#include <fcntl.h>    // for O_RDONLY, POSIX_FADV_DONTNEED, open, posix_fadvise
+#include <fmt.hpp>    // for fmt
 #include <fstream>    // for ifstream, ios_base::failure, ios_base, basic_ios, basic_i...
-#include <functional> // for _Bind_helper<>::type, bind, function
+#include <functional> // for bind
 #include <map>        // for map
 #include <regex>      // for match_results<>::_Base_type
 #include <stddef.h>   // for size_t
-#include <stdexcept>  // for runtime_error, invalid_argument, out_of_range
-#include <stdint.h>   // for uint32_t, uint8_t
-#include <string>     // for string
-#include <sys/mman.h> // for madvise, mmap, munmap, MADV_DONTNEED, MADV_WILLNEED, MAP_...
+#include <stdexcept>  // for runtime_error, invalid_argument
+#include <stdint.h>   // for uint8_t, uint32_t
+#include <string>     // for string, to_string, operator+
+#include <sys/mman.h> // for madvise, MADV_DONTNEED, MADV_WILLNEED, MAP_FAILED, MAP_SH...
 #include <sys/stat.h> // for stat
 #include <time.h>     // for nanosleep, timespec
 #include <unistd.h>   // for close, off_t

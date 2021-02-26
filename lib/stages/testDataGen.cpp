@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"       // for Telescope
+#include "Telescope.hpp"       // for Telescope, stream_t
 #include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
@@ -17,6 +17,7 @@
 #include <cstdint>     // for uint64_t
 #include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
+#include <json.hpp>    // for basic_json<>::object_t, json, basic_json, basic_json<>::v...
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error
 #include <stdint.h>    // for uint64_t, uint32_t, uint8_t
