@@ -55,6 +55,11 @@ private:
 
     /// Buffer with single FreqIDBeamMetadata and voltage blocks
     struct Buffer* out_buf;
+    ///
+    bool has_metadata;
+    uint32_t sub_frame_pre_frame;
+    uint32_t sub_frame_metadata_size;
+    uint32_t sub_frame_data_size;
 };
 
 #endif // MERGE_RAW_BUFFER_HPP

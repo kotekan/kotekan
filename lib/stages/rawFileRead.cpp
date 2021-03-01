@@ -67,7 +67,9 @@ void rawFileRead::main_thread() {
             snprintf(full_path, full_path_len, "%s/%s_%s_%07d.%s", base_dir.c_str(), hostname,
                      file_name.c_str(), file_num, file_ext.c_str());
         } else {
-            snprintf(full_path, full_path_len, "%s/%s_%07d.%s", base_dir.c_str(), file_name.c_str(),
+            //snprintf(full_path, full_path_len, "%s/%s_%07d.%s", base_dir.c_str(), file_name.c_str(),
+            //         file_num, file_ext.c_str());
+	    snprintf(full_path, full_path_len, "%s/%010d.%s", base_dir.c_str(),
                      file_num, file_ext.c_str());
         }
 
@@ -93,14 +95,14 @@ void rawFileRead::main_thread() {
         fileSize = ftell(fp);
         rewind(fp);
 
-        if (fread((void*)&metadata_size, sizeof(uint32_t), 1, fp) != 1) {
-            ERROR("rawFileRead: Failed to read file {:s} metadata size value, {:s}", full_path,
-                  strerror(errno));
-            break;
-        }
+//        if (fread((void*)&metadata_size, sizeof(uint32_t), 1, fp) != 1) {
+//            ERROR("rawFileRead: Failed to read file {:s} metadata size value, {:s}", full_path,
+//                  strerror(errno));
+//            break;
+//        }
 
         num_frames_per_file = fileSize / (metadata_size + buf->frame_size);
-
+        INFO("metadata size {:d}, frame size {:d}", metadata_size, buf->frame_size);
         INFO("File size: {:d} bytes, no. of frames: {:d}", fileSize, num_frames_per_file);
 
         // Read each frame from the file and copy into the buffer.
@@ -112,6 +114,7 @@ void rawFileRead::main_thread() {
                 break;
 
             // If metadata exists then lets read it in.
+	    INFO("metadata size {:d}", metadata_size);
             if (metadata_size != 0) {
                 allocate_new_metadata_object(buf, frame_id);
                 struct metadataContainer* mc = get_metadata_container(buf, frame_id);
@@ -123,7 +126,10 @@ void rawFileRead::main_thread() {
                 INFO("rawFileRead: Read in metadata from file {:s}", full_path);
             }
 
+	    INFO("Start reading");
+
             int bytes_read = fread((void*)frame, sizeof(char), buf->frame_size, fp);
+	    INFO("Finish reading");
 
             if (bytes_read != buf->frame_size) {
                 ERROR("rawFileRead: Failed to read file {:s}!", full_path);

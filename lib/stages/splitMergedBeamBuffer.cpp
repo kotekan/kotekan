@@ -26,11 +26,14 @@ splitMergedBeamBuffer::splitMergedBeamBuffer(Config& config_, const std::string&
                                              bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container,
           std::bind(&splitMergedBeamBuffer::main_thread, this)) {
+    
+    has_metadata = config.get<bool>(unique_name, "has_metadata");
+    sub_frame_pre_frame = config.get_default<uint32_t>(unique_name, "sub_frame_pre_frame", 0);
+    sub_frame_metadata_size = config.get_default<uint32_t>(unique_name, "sub_frame_metadata_size", 0);
+    sub_frame_data_size = config.get_default<uint32_t>(unique_name, "sub_frame_data_size", 0);
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
-
     out_buf = get_buffer("out_buf");
-
     register_producer(out_buf, unique_name.c_str());
 }
 
@@ -41,26 +44,44 @@ void splitMergedBeamBuffer::main_thread() {
     uint8_t* in_frame;
     frameID out_buffer_ID(out_buf);
     uint8_t* out_frame;
-    uint32_t sub_frame_matedata_size;
-    uint32_t sub_frame_data_size;
     uint32_t sub_frame_start;
-
+    
+    INFO("sub_frame_pre_frame {:d}, sub_frame_matedata_size {:d}, sub_frame_data_size {:d}",
+         sub_frame_pre_frame, sub_frame_metadata_size, sub_frame_data_size);
     while (!stop_thread) {
         // Get an input buffer, This call is blocking!
         in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_buffer_ID);
         if (in_frame == nullptr)
             break;
+	// When the in comeing buffer has meta data
+        if (has_metadata){
+            MergedBeamMetadata* in_metadata = (MergedBeamMetadata*)get_metadata(in_buf, in_buffer_ID);
+	    sub_frame_pre_frame = in_metadata->sub_frame_pre_frame;
+            sub_frame_metadata_size = in_metadata->sub_frame_metadata_size;
+	    sub_frame_data_size = in_metadata->sub_frame_data_size;
+	    DEBUG2("Number of subframes {:d}, subframe metasize {:d}, subframe data size {:d}:\n",
+                   in_metadata->sub_frame_pre_frame, in_metadata->sub_frame_metadata_size,
+                   in_metadata->sub_frame_data_size);
+	}
+	else{
+	    if (sub_frame_pre_frame == 0){
+	        ERROR("'sub_frame_pre_frame' is required in the configuration when the merged buffer metadata is not provided.");
+		exit(-1);
+	    }
+	    if (sub_frame_metadata_size == 0){
+	        ERROR("'sub_frame_metadata_size' is required in the configuration when the merged buffer metadata is not provided.");
+		exit(-1);
+	    }
+	    if (sub_frame_data_size == 0){
+                ERROR("'sub_frame_data_size' is required in the configuration when the merged buffer metadata is not provided.");
+                exit(-1);
+            }
 
-        MergedBeamMetadata* in_metadata = (MergedBeamMetadata*)get_metadata(in_buf, in_buffer_ID);
-        DEBUG2("Number of subframes {:d}, subframe metasize {:d}, subframe data size {:d}:\n",
-               in_metadata->sub_frame_pre_frame, in_metadata->sub_frame_metadata_size,
-               in_metadata->sub_frame_data_size);
+	}
 
-        sub_frame_matedata_size = in_metadata->sub_frame_metadata_size;
-        sub_frame_data_size = in_metadata->sub_frame_data_size;
-        for (uint32_t i = 0; i < in_metadata->sub_frame_pre_frame; i++) {
+        for (uint32_t i = 0; i < sub_frame_pre_frame; i++) {
             // Compute the merged frame position to unpack the merged frames
-            sub_frame_start = (sub_frame_matedata_size + sub_frame_data_size) * i;
+            sub_frame_start = (sub_frame_metadata_size + sub_frame_data_size) * i;
             // Get an empty out frame
             out_frame = (uint8_t*)wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
             if (out_frame == nullptr)
@@ -81,7 +102,7 @@ void splitMergedBeamBuffer::main_thread() {
             out_metadata->ra = sub_frame_metadata->ra;
             out_metadata->dec = sub_frame_metadata->dec;
             out_metadata->scaling = sub_frame_metadata->scaling;
-            uint8_t* data_start = &in_frame[sub_frame_start + sub_frame_matedata_size];
+            uint8_t* data_start = &in_frame[sub_frame_start + sub_frame_metadata_size];
             // copy data from in frame to out_frame/single frame
             memcpy(out_frame, data_start, sub_frame_data_size);
             mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
