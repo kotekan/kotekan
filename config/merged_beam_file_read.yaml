@@ -19,7 +19,7 @@ samples_per_data_set: 49152
 num_pol: 2
 buffer_depth: 105
 freq_id_metadata_size: 72
-sub_frames_per_merged_frame: 11
+sub_frames_per_merged_frame: 500
 
 telescope:
   name: CHIMETelescope
@@ -37,12 +37,12 @@ merged_beam_metadata_pool:
   num_metadata_objects: 4096
 
 beam_metadata_pool:
-  kotekan_metadata_pool: BeamMetadata
+  kotekan_metadata_pool: FreqIDBeamMetadata
   num_metadata_objects: 4096
 
 merged_beam_buffer:
   kotekan_buffer: standard
-  num_frames: 2048
+  num_frames: 30
   metadata_pool: merged_beam_metadata_pool
   frame_size: (samples_per_data_set * num_pol + freq_id_metadata_size) * sub_frames_per_merged_frame
 
@@ -53,8 +53,8 @@ beam_recv_buffer:
   frame_size: samples_per_data_set * num_pol
 
 raw_file_read:
-  base_dir: /drives/scratch/test_beam_raw
-  file_name: bass_merged_beam_data
+  base_dir: /drives/scratch/chime_full_array_data
+  file_name: "" 
   read0:
     kotekan_stage: rawFileRead
     file_ext: raw
@@ -64,6 +64,10 @@ merged_beam_split:
   kotekan_stage: splitMergedBeamBuffer
   in_buf: merged_beam_buffer
   out_buf: beam_recv_buffer
+  has_metadata: False
+  sub_frame_pre_frame: sub_frames_per_merged_frame
+  sub_frame_metadata_size: freq_id_metadata_size
+  sub_frame_data_size: samples_per_data_set * num_pol
 
 beam_inspect:
   kotekan_stage: BeamInspect
