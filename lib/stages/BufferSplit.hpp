@@ -1,16 +1,11 @@
 #ifndef BUFFER_SPLIT_HPP
 #define BUFFER_SPLIT_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "StageFactory.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include <string>
 #include <string> // for string
-#include <vector>
 #include <vector> // for vector
 
 /**

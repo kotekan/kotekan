@@ -19,7 +19,7 @@
 #include <rte_branch_prediction.h> // for unlikely
 #include <rte_config.h>            // for RTE_PKTMBUF_HEADROOM
 #include <rte_eal.h>               // for rte_eal_init
-#include <rte_errno.h>             // for rte_strerror
+#include <rte_errno.h>             // for rte_strerror, per_lcore__rte_errno, rte_errno
 #include <rte_ether.h>             // for ether_addr
 #include <rte_launch.h>            // for rte_eal_mp_remote_launch, rte_eal_mp_wait_lcore, SKIP...
 #include <rte_lcore.h>             // for rte_lcore_count, rte_lcore_id
