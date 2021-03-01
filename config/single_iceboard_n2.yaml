@@ -238,12 +238,6 @@ split:
     - gpu_output_split_buffer_6
     - gpu_output_split_buffer_7
 
-debug_plots:
-  #kotekan_stage: pyPlotN2
-  in_buf: gpu_output_buffer
-  num_freq: num_freq/8
-  gpu_id: 0
-
 metadata:
   #kotekan_stage: chimeMetadataDump
   in_buf: gpu_output_buffer

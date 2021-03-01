@@ -17,7 +17,7 @@
  * @brief Splits the input buffer into multiple output frames in a round robin fashion.
  *
  * Uses zero copy operations if this stage is the only consumer, if not it uses a deep copy.
- * This stage must be the only producer of on the output buffers
+ * This stage must be the only producer of the output buffers
  *
  * @par Buffers
  * @buffer in_buf The source buffer
