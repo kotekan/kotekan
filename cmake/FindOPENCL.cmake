@@ -50,7 +50,7 @@ endif()
 mark_as_advanced(OPENCL_LIBRARIES)
 
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(OpenCL DEFAULT_MSG OPENCL_LIBRARIES OPENCL_INCLUDE_DIRS)
+find_package_handle_standard_args(OPENCL DEFAULT_MSG OPENCL_LIBRARIES OPENCL_INCLUDE_DIRS)
 
 set(OPENCL_FOUND
     ${OPENCL_FOUND}
