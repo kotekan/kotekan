@@ -1,9 +1,10 @@
 #include "rawFileWrite.hpp"
 
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"              // for Buffer, get_metadata_container, mark_frame_empty, regis...
-#include "bufferContainer.hpp"   // for bufferContainer
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, get_metadata_container, mark_frame_empty, regis...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "errors.h"
 #include "kotekanLogging.hpp"    // for ERROR, INFO
 #include "metadata.h"            // for metadataContainer
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
@@ -41,6 +42,7 @@ rawFileWrite::rawFileWrite(Config& config, const std::string& unique_name,
     _file_ext = config.get<std::string>(unique_name, "file_ext");
     _num_frames_per_file = config.get_default<uint32_t>(unique_name, "num_frames_per_file", 1);
     _prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
+    _exit_after_n_files = config.get_default<uint32_t>(unique_name, "exit_after_n_files", 0);
 }
 
 rawFileWrite::~rawFileWrite() {}
@@ -48,8 +50,8 @@ rawFileWrite::~rawFileWrite() {}
 void rawFileWrite::main_thread() {
 
     int fd;
-    int file_num = 0;
-    int frame_id = 0;
+    uint32_t file_num = 0;
+    uint32_t frame_id = 0;
     uint32_t frame_ctr = 0;
     uint8_t* frame = nullptr;
     char hostname[64];
@@ -74,10 +76,10 @@ void rawFileWrite::main_thread() {
         if (!isFileOpen) {
 
             if (_prefix_hostname) {
-                snprintf(full_path, full_path_len, "%s/%s_%s_%07d.%s", _base_dir.c_str(), hostname,
+                snprintf(full_path, full_path_len, "%s/%s_%s_%07u.%s", _base_dir.c_str(), hostname,
                          _file_name.c_str(), file_num, _file_ext.c_str());
             } else {
-                snprintf(full_path, full_path_len, "%s/%s_%07d.%s", _base_dir.c_str(),
+                snprintf(full_path, full_path_len, "%s/%s_%07u.%s", _base_dir.c_str(),
                          _file_name.c_str(), file_num, _file_ext.c_str());
             }
 
@@ -137,6 +139,13 @@ void rawFileWrite::main_thread() {
         write_time_metric.set(elapsed);
 
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
+
+        // Check if we should exit after writing out a fixed number of files.
+        // Useful for some tests and burst modes.  Will hopefully be replaced by frames
+        // which can contain a "final" signal.
+        if (_exit_after_n_files != 0 && file_num >= _exit_after_n_files) {
+            exit_kotekan(ReturnCode::CLEAN_EXIT);
+        }
 
         frame_id = (frame_id + 1) % buf->num_frames;
     }
