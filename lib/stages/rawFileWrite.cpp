@@ -1,14 +1,14 @@
 #include "rawFileWrite.hpp"
 
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"              // for Buffer, get_metadata_container, mark_frame_empty, regis...
-#include "bufferContainer.hpp"   // for bufferContainer
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, get_metadata_container, mark_frame_empty, regis...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "errors.h"
 #include "kotekanLogging.hpp"    // for ERROR, INFO
 #include "metadata.h"            // for metadataContainer
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "visUtil.hpp"           // for current_time
-#include "errors.h"
 
 #include <atomic>     // for atomic_bool
 #include <errno.h>    // for errno
