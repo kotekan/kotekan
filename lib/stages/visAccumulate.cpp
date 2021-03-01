@@ -236,16 +236,6 @@ void visAccumulate::register_base_dataset_states(
 }
 
 
-dset_id_t visAccumulate::register_gate_dataset(const gateSpec& spec) {
-
-    // register with the datasetManager
-    state_id_t gstate_id = dm.create_state<gatingState>(spec).first;
-
-    // register gated dataset
-    return dm.add_dataset(gstate_id, base_dataset_id);
-}
-
-
 void visAccumulate::main_thread() {
 
     frameID in_frame_id(in_buf);
@@ -578,13 +568,6 @@ bool visAccumulate::reset_state(visAccumulate::internalState& state, timespec t)
             return false;
         }
         state.calculate_weight = state.spec->weight_function(t);
-
-
-        // Update dataset ID if an external change occurred
-        if (state.changed) {
-            state.output_dataset_id = register_gate_dataset(*state.spec.get());
-            state.changed = false;
-        }
     }
 
     // Zero out accumulation arrays
