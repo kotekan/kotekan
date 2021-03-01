@@ -117,7 +117,7 @@ endif()
 
 if(${USE_OPENCL})
     set(ENV{AMDAPPSDKROOT} /opt/rocm/opencl)
-    find_package(OpenCL REQUIRED)
+    find_package(OPENCL REQUIRED)
     set(USE_OPENCL ${OPENCL_FOUND})
 endif()
 

@@ -34,7 +34,7 @@ target_link_libraries(
     PRIVATE libexternal kotekan_libs)
 
 target_include_directories(kotekan_opencl PUBLIC .)
-target_include_directories(kotekan_opencl SYSTEM INTERFACE ${OpenCL_INCLUDE_DIRS})
+target_include_directories(kotekan_opencl SYSTEM INTERFACE ${OPENCL_INCLUDE_DIRS})
 
 add_custom_target(
     kernel_copy

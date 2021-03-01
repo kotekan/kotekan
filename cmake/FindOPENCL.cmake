@@ -52,13 +52,13 @@ mark_as_advanced(OPENCL_LIBRARIES)
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(OpenCL DEFAULT_MSG OPENCL_LIBRARIES OPENCL_INCLUDE_DIRS)
 
-set(OpenCL_FOUND
+set(OPENCL_FOUND
     ${OPENCL_FOUND}
     CACHE INTERNAL "")
-set(OpenCL_LIBRARIES
+set(OPENCL_LIBRARIES
     ${OPENCL_LIBRARIES}
     CACHE INTERNAL "")
-set(OpenCL_INCLUDE_DIRS
+set(OPENCL_INCLUDE_DIRS
     ${OPENCL_INCLUDE_DIRS}
     CACHE INTERNAL "")
 
