@@ -52,16 +52,6 @@ mark_as_advanced(OPENCL_LIBRARIES)
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(OPENCL DEFAULT_MSG OPENCL_LIBRARIES OPENCL_INCLUDE_DIRS)
 
-set(OPENCL_FOUND
-    ${OPENCL_FOUND}
-    CACHE INTERNAL "")
-set(OPENCL_LIBRARIES
-    ${OPENCL_LIBRARIES}
-    CACHE INTERNAL "")
-set(OPENCL_INCLUDE_DIRS
-    ${OPENCL_INCLUDE_DIRS}
-    CACHE INTERNAL "")
-
 if(NOT OPENCL_FOUND)
     message(STATUS "FindOpenCL looked for libraries named: OpenCL")
 endif()
