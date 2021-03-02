@@ -143,7 +143,7 @@ protected:
     std::string instrument_name;
 
     // Acquisition type
-    std::string acq_type;
+    const std::string acq_type;
 
 private:
     /// Construct the set of metadata
