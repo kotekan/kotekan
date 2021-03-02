@@ -45,7 +45,8 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     buf = get_buffer("out_buf");
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
-    assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse");
+    assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse"
+           || type == "square");
     if (type == "const" || type == "random" || type == "ramp")
         value = config.get<int>(unique_name, "value");
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
@@ -155,6 +156,18 @@ void testDataGen::main_thread() {
                 frame[j] = temp_output;
             } else if (type == "tpluse") {
                 frame[j] = seq_num + j / num_elements + j % num_elements;
+            } else if (type == "square") {
+                unsigned char new_real;
+                unsigned char new_imaginary;
+                if ((j / num_elements) % 8 < 4) {
+                    new_real = 0;
+                    new_imaginary = 0;
+                } else {
+                    new_real = 4;
+                    new_imaginary = 0;
+                }
+                temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
+                frame[j] = temp_output;
             }
         }
         DEBUG("Generated a {:s} test data set in {:s}[{:d}]", type, buf->buffer_name, frame_id);
