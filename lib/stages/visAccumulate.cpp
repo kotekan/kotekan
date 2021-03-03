@@ -132,9 +132,6 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
         }
     }
 
-    // register base dataset states to prepare for getting dataset IDs for out frames
-    register_base_dataset_states(instrument_name, freqs, inputs, prods);
-
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
@@ -157,6 +154,9 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
                     "gating config={:s}].",
                     num_freq_in_frame, gating_conf.dump());
     }
+
+    // register base dataset states to prepare for getting dataset IDs for out frames
+    register_base_dataset_states(instrument_name, freqs, inputs, prods);
 
     // Register gating update callbacks
     std::map<std::string, std::function<bool(nlohmann::json&)>> callbacks;
@@ -232,7 +232,19 @@ void visAccumulate::register_base_dataset_states(
     base_dataset_states.push_back(dm.create_state<prodState>(prods).first);
     base_dataset_states.push_back(dm.create_state<eigenvalueState>(0).first);
     base_dataset_states.push_back(
+        dm.create_state<gatingState>(*gated_datasets.at(0).spec.get()).first);
+    base_dataset_states.push_back(
         dm.create_state<metadataState>(weight_type, instrument_name, git_tag).first);
+}
+
+
+dset_id_t visAccumulate::register_gate_dataset(const gateSpec& spec) {
+
+    // register with the datasetManager
+    state_id_t gstate_id = dm.create_state<gatingState>(spec).first;
+
+    // register gated dataset
+    return dm.add_dataset(gstate_id, base_dataset_id);
 }
 
 
@@ -568,6 +580,13 @@ bool visAccumulate::reset_state(visAccumulate::internalState& state, timespec t)
             return false;
         }
         state.calculate_weight = state.spec->weight_function(t);
+
+
+        // Update dataset ID if an external change occurred
+        if (state.changed) {
+            state.output_dataset_id = register_gate_dataset(*state.spec.get());
+            state.changed = false;
+        }
     }
 
     // Zero out accumulation arrays
