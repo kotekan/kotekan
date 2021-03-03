@@ -894,6 +894,48 @@ class DumpBasebandBuffer(OutputBuffer):
         )
 
 
+class ReadBasebandBuffer(InputBuffer):
+    """Write down a BasebandBuffer and reads it with rawFileRead.
+
+    """
+
+    _buf_ind = 0
+
+    def __init__(self, input_dir, buffer_list):
+
+        self.name = "rawbaseband_buf"
+        stage_name = "rawbaseband_read%i" % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.input_dir = input_dir
+        self.buffer_list = buffer_list
+
+        self.buffer_block = {
+            self.name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "baseband_metadata_pool",
+                "num_frames": "buffer_depth",
+                "frame_size": "num_elements * samples_per_data_set",
+            }
+        }
+
+        stage_config = {
+            "kotekan_stage": "rawFileRead",
+            "buf": self.name,
+            "base_dir": input_dir,
+            "file_ext": "dump",
+            "file_name": self.name,
+            "end_interrupt": True,
+        }
+
+        self.stage_block = {stage_name: stage_config}
+
+    def write(self):
+        """Write a list of BasebandBuffer objects to disk.
+        """
+        baseband_buffer.BasebandBuffer.to_files(self.buffer_list, self.input_dir + "/" + self.name)
+
+
 class DumpFrbPostProcessBuffer(InputBuffer):
     """Consume a FRB output buffer and provide its contents as a list of `frbbuffer.FrbPacket`s.
 

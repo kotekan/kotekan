@@ -9,13 +9,13 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 
 import ctypes
 import glob
+import numpy as np
 import os
 import io
 
 
 class BasebandMetadata(ctypes.Structure):
-    """Wrap a BasebandMetadata struct.
-    """
+    """Wrap a BasebandMetadata struct."""
 
     _fields_ = [
         ("event_id", ctypes.c_uint64),
@@ -53,8 +53,7 @@ class BasebandBuffer(object):
 
     @classmethod
     def from_file(cls, filename):
-        """Load a BasebandBuffer from a kotekan dump file.
-        """
+        """Load a BasebandBuffer from a kotekan dump file."""
         filesize = os.path.getsize(filename)
 
         buf = bytearray(filesize)
@@ -78,3 +77,50 @@ class BasebandBuffer(object):
         buffers : list of BasebandBuffers
         """
         return [cls.from_file(fname) for fname in sorted(glob.glob(pattern))]
+
+    @classmethod
+    def to_files(cls, buffers, basename):
+        """Write a list of buffers to disk.
+
+        Parameters
+        ----------
+        buffers : list of BasebandBuffers
+            Buffers to write.
+        basename : str
+            Basename for filenames.
+        """
+        pat = basename + "_%07d.dump"
+
+        msize_c = ctypes.c_int(ctypes.sizeof(BasebandMetadata))
+
+        for ii, buf in enumerate(buffers):
+
+            with open(pat % ii, "wb+") as fh:
+                fh.write(msize_c)
+                fh.write(bytearray(buf._buffer))
+
+    @classmethod
+    def new_from_params(cls, event_id, freq_id, frame_size):
+        """Create a new BasebandBuffer owning its own memory.
+
+        Parameters
+        ----------
+        num_elements, num_prod, num_ev
+            Structural parameters.
+
+        Returns
+        -------
+        buffer : BasebandBuffer
+        """
+
+        # layout = cls.calculate_layout(num_elements, num_prod, num_ev)
+        meta_size = ctypes.sizeof(BasebandMetadata)
+
+        buf = np.zeros(meta_size + frame_size, dtype=np.uint8)
+
+        # Set the structure in the metadata
+        metadata = BasebandMetadata.from_buffer(buf[:meta_size])
+        metadata.event_id = event_id
+        metadata.freq_id = freq_id
+
+        return cls(buf, skip=0)
