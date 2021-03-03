@@ -107,7 +107,12 @@ void visFileBundle::add_file(time_ctype first_time) {
 
     // Construct the name of the new file
     uint32_t time_since_start = (uint32_t)(first_time.ctime - acq_start_time);
-    const std::string file_name = fmt::format(fmt("{:08d}_{:04d}"), time_since_start, freq_chunk);
+    std::string file_name;
+    if (acq_type == "hfb") {
+        file_name = fmt::format(fmt("hfb_{:08d}_{:04d}"), time_since_start, freq_chunk);
+    } else {
+        file_name = fmt::format(fmt("{:08d}_{:04d}"), time_since_start, freq_chunk);
+    }
 
     // Create the file, create room for the first sample and add into the file map
     auto file = mk_file(file_name, acq_name, root_path);

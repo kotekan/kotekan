@@ -37,7 +37,7 @@ hfb_pool:
 
 read_raw:
   log_level: debug
-  infile: 20210209T183459Z_chime_hfb/00000000_0000
+  infile: 20210209T183459Z_chime_hfb/hfb_00000000_0000
   kotekan_stage: HFBRawReader
   max_read_rate: 0.0
   out_buf: read_buffer

@@ -36,8 +36,9 @@ using kotekan::restServer;
 
 
 BaseWriter::BaseWriter(Config& config, const std::string& unique_name,
-                       bufferContainer& buffer_container) :
+                       bufferContainer& buffer_container, const std::string acq_type) :
     Stage(config, unique_name, buffer_container, std::bind(&BaseWriter::main_thread, this)),
+    acq_type(acq_type),
     late_frame_counter(Metrics::instance().add_counter("kotekan_writer_late_frame_total",
                                                        unique_name, {"freq_id"})),
     bad_dataset_frame_counter(Metrics::instance().add_counter(
