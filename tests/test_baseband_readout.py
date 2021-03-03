@@ -11,14 +11,7 @@ import glob
 import random
 import pytest
 
-import numpy as np
-import h5py
-
 from kotekan import runner
-
-# Skip if HDF5 support not built into kotekan
-if not runner.has_hdf5():
-    pytest.skip("HDF5 support not available.", allow_module_level=True)
 
 
 def is_docker():
@@ -140,7 +133,6 @@ def run_baseband(tdir_factory, params=None, rest_commands=None, expect_a_failure
 
     test.run()
 
-    dump_files = glob.glob(str(tmpdir) + "/*.h5")
     return write_buffer.load()
 
 
