@@ -251,34 +251,4 @@ protected:
         erms_offset, time_offset;
 };
 
-
-// These templated functions are needed in order to tell HighFive how the
-// various structs are converted into HDF5 datatypes
-const size_t DSET_ID_LEN = 33; // Length of the string used to represent dataset IDs
-struct dset_id_str {
-    char hash[DSET_ID_LEN];
-};
-namespace HighFive {
-template<>
-DataType create_datatype<freq_ctype>();
-template<>
-DataType create_datatype<time_ctype>();
-template<>
-DataType create_datatype<input_ctype>();
-template<>
-DataType create_datatype<prod_ctype>();
-template<>
-DataType create_datatype<cfloat>();
-
-// \cond NO_DOC
-// Fixed length string to store dataset ID
-template<>
-inline AtomicType<dset_id_str>::AtomicType() {
-    _hid = H5Tcopy(H5T_C_S1);
-    H5Tset_size(_hid, DSET_ID_LEN);
-}
-// \endcond
-}; // namespace HighFive
-
-
 #endif

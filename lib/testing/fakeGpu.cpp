@@ -200,6 +200,10 @@ uint32_t FakeTelescope::num_freq() const {
     return 1024;
 }
 
+uint8_t FakeTelescope::nyquist_zone() const {
+    return 2;
+}
+
 timespec FakeTelescope::to_time(uint64_t /*seq*/) const {
     return {0, 0};
 }

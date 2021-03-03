@@ -1,6 +1,7 @@
 #include "applyGains.hpp"
 
 #include "Config.hpp"            // for Config
+#include "H5Support.hpp"         // IWYU pragma: keep
 #include "Hash.hpp"              // for operator<
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for mark_frame_empty, wait_for_full_frame, allocate_new...
@@ -13,7 +14,6 @@
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
 #include "restClient.hpp"        // for restClient::restReply, restClient
 #include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::we...
-#include "visFileH5.hpp"         // IWYU pragma: keep
 #include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double, frameID
 
 #include "fmt.hpp"      // for format, fmt

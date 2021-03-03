@@ -1,6 +1,8 @@
 #include "basebandReadout.hpp"
 
 #include "BasebandMetadata.hpp"   // for BasebandMetadata
+#include "Config.hpp"             // for Config
+#include "H5Support.hpp"          // for create_datatype
 #include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"          // for Telescope
 #include "basebandApiManager.hpp" // for basebandApiManager
