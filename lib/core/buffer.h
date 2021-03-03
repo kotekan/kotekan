@@ -551,6 +551,21 @@ void copy_metadata(struct Buffer* from_buf, int from_frame_id, struct Buffer* to
                    int to_frame_id);
 
 /**
+ * @brief Swaps a frame or performs a deep copy depending on the number of consumers on the
+ *        source buffer.
+ *
+ * Like @c swap_frames(), but doesn't fail if there is more than one consumer on the source buffer.
+ * Does not pass or copy metadata.
+ *
+ * @param[in] src_buf The source buffer
+ * @param[in] src_frame_id The source frame ID
+ * @param[in] dest_buf The destination buffer
+ * @param[in] dest_frame_id The destination frame ID
+ */
+void safe_swap_frame(struct Buffer* src_buf, int src_frame_id, struct Buffer* dest_buf,
+                     int dest_frame_id);
+
+/**
  * @brief Tells the buffers to stop returning full/empty frames to consumers/producers
  *
  * This function should only be called by the framework, and not by stages.
