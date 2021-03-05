@@ -42,14 +42,20 @@ def run_kotekan(tmpdir_factory):
 
     test.run()
 
-    dump_files = sorted(glob.glob(current_dir + "/rawbaseband_buf_*.dump"))
+    dump_files = sorted(
+        glob.glob(current_dir + "/baseband_raw_12345/baseband_12345_*.data")
+    )
     return dump_files
 
 
 def test_start(tmpdir_factory):
     saved_files = run_kotekan(tmpdir_factory)
-    assert saved_files
-    for i, x in enumerate(
-        [baseband_buffer.BasebandBuffer.from_file(f) for f in saved_files]
-    ):
-        print(i, x.metadata.event_id, x.metadata.freq_id, x.metadata.fpga_seq)
+    assert len(saved_files) == 1
+    freq_dump = baseband_buffer.BasebandBuffer.from_file(saved_files[0])
+    print(
+        freq_dump.metadata.event_id,
+        freq_dump.metadata.freq_id,
+        freq_dump.metadata.fpga_seq,
+    )
+    assert freq_dump.metadata.event_id == 12345
+    assert freq_dump.metadata.freq_id == 0

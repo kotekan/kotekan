@@ -4,8 +4,9 @@
 #include "StageFactory.hpp"
 #include "visUtil.hpp"
 
-#include <errno.h>     // for errno
-#include <fcntl.h>     // for O_CREAT, O_WRONLY
+#include <errno.h>    // for errno
+#include <fcntl.h>    // for O_CREAT, O_WRONLY
+#include <sys/stat.h> // for mkdir
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -44,14 +45,19 @@ void BasebandWriter::main_thread() {
 }
 
 void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
-    auto metadata = (BasebandMetadata*) in_buf->metadata[frame_id]->metadata;
+    auto metadata = (BasebandMetadata*)in_buf->metadata[frame_id]->metadata;
     INFO("Frame {} from {}/{}", metadata->fpga_seq, metadata->event_id, metadata->freq_id);
 
     int fd;
+
+    const std::string event_directory_name =
+        fmt::format("{:s}/baseband_raw_{:d}", _root_path, metadata->event_id);
+    if (baseband_events.count(metadata->event_id) == 0) {
+        mkdir(event_directory_name.c_str(), S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+    }
     if (baseband_events[metadata->event_id].count(metadata->freq_id) == 0) {
-        const std::string name = fmt::format("{:s}/baseband_{:d}_{:d}.data",
-                                             _root_path, metadata->event_id,
-                                             metadata->freq_id);
+        const std::string name = fmt::format("{:s}/baseband_{:d}_{:d}.data", event_directory_name,
+                                             metadata->event_id, metadata->freq_id);
         if ((fd = open(name.c_str(), O_CREAT | O_WRONLY,
                        S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH))
             == -1) {
@@ -59,6 +65,8 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
                 fmt::format(fmt("Failed to open file {:s}: {:s}."), name, strerror(errno)));
         }
         baseband_events[metadata->event_id][metadata->freq_id] = fd;
+        const uint32_t metadata_size = sizeof(BasebandMetadata);
+        write(fd, &metadata_size, sizeof(metadata_size));
     } else {
         fd = baseband_events[metadata->event_id][metadata->freq_id];
     }
