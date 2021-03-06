@@ -6,9 +6,11 @@
 #ifndef BASEBAND_WRITER_HPP
 #define BASEBAND_WRITER_HPP
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
+#include "BasebandMetadata.hpp"
 #include "bufferContainer.hpp" // for bufferContainer
+#include "Config.hpp"          // for Config
+#include "gsl-lite.hpp"        // for span
+#include "Stage.hpp"           // for Stage
 
 #include <cstdint>             // for uint64_t
 #include <map>                 // for map
@@ -22,6 +24,17 @@ public:
 
 private:
     void write_data(Buffer* in_buf, int frame_id);
+
+    /**
+     * @brief write a frame of data into a baseband dump file
+     *
+     * @param fd file descriptor
+     * @param metadata frame metadata
+     * @param data frame data
+     *
+     * @return the number of bytes written, or -1 if there was an error
+     */
+    ssize_t write_frame(const int fd, const BasebandMetadata* metadata, gsl::span<uint8_t> data);
 
     // Parameters saved from the config file
     std::string _root_path;

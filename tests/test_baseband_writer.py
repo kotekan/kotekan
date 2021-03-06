@@ -1,4 +1,5 @@
 import glob
+import io
 import pytest
 
 from kotekan import baseband_buffer, runner
@@ -8,7 +9,7 @@ global_params = {
     "num_elements": 256,
     "total_frames": 60,
     "stream_id": 0,
-    "buffer_depth": 20,
+    "buffer_depth": 6,
     "num_frames_buffer": 18,
     "samples_per_data_set": 1024,
     "baseband_metadata_pool": {
@@ -51,11 +52,22 @@ def run_kotekan(tmpdir_factory):
 def test_start(tmpdir_factory):
     saved_files = run_kotekan(tmpdir_factory)
     assert len(saved_files) == 1
-    freq_dump = baseband_buffer.BasebandBuffer.from_file(saved_files[0])
-    print(
-        freq_dump.metadata.event_id,
-        freq_dump.metadata.freq_id,
-        freq_dump.metadata.fpga_seq,
-    )
-    assert freq_dump.metadata.event_id == 12345
-    assert freq_dump.metadata.freq_id == 0
+
+    metadata_size = baseband_buffer.BasebandBuffer.meta_size
+    frame_size = global_params["num_elements"] * global_params["samples_per_data_set"]
+
+    buf = bytearray(frame_size + metadata_size + 1)
+    frame_index = 0
+    with io.FileIO(saved_files[0], "rb") as fh:
+        while (fh.readinto(buf)):
+            # Check that the frame is valid
+            assert buf[0] == 1
+
+            # Check the frame metadata
+            frame_metadata = baseband_buffer.BasebandMetadata.from_buffer(buf[1:])
+
+            assert frame_metadata.event_id == 12345
+            assert frame_metadata.freq_id == 0
+            assert frame_metadata.fpga_seq == frame_index * frame_size
+
+            frame_index += 1

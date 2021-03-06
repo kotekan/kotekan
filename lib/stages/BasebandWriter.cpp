@@ -1,6 +1,5 @@
 #include "BasebandWriter.hpp"
 
-#include "BasebandMetadata.hpp"
 #include "StageFactory.hpp"
 #include "visUtil.hpp"
 
@@ -55,20 +54,36 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
     if (baseband_events.count(metadata->event_id) == 0) {
         mkdir(event_directory_name.c_str(), S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
     }
+    const std::string file_name = fmt::format("{:s}/baseband_{:d}_{:d}.data", event_directory_name,
+                                              metadata->event_id, metadata->freq_id);
     if (baseband_events[metadata->event_id].count(metadata->freq_id) == 0) {
-        const std::string name = fmt::format("{:s}/baseband_{:d}_{:d}.data", event_directory_name,
-                                             metadata->event_id, metadata->freq_id);
-        if ((fd = open(name.c_str(), O_CREAT | O_WRONLY,
+        if ((fd = open(file_name.c_str(), O_CREAT | O_WRONLY,
                        S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH))
             == -1) {
             throw std::runtime_error(
-                fmt::format(fmt("Failed to open file {:s}: {:s}."), name, strerror(errno)));
+                fmt::format(fmt("Failed to open file {:s}: {:s}."), file_name, strerror(errno)));
         }
         baseband_events[metadata->event_id][metadata->freq_id] = fd;
-        const uint32_t metadata_size = sizeof(BasebandMetadata);
-        write(fd, &metadata_size, sizeof(metadata_size));
     } else {
         fd = baseband_events[metadata->event_id][metadata->freq_id];
     }
-    write(fd, metadata, sizeof(BasebandMetadata));
+    ssize_t bytes_written = write_frame(fd, metadata, gsl::span(in_buf->frames[frame_id], in_buf->frame_size));
+
+    if (bytes_written != in_buf->frame_size) {
+        ERROR("Failed to write buffer to disk for file {:s}", file_name);
+        exit(-1);
+    }
+}
+
+ssize_t BasebandWriter::write_frame(const int fd, const BasebandMetadata* metadata, gsl::span<uint8_t> data) {
+    // Write the "1" marker to indicate that the frame is good
+    const uint8_t ONE = 1;
+    write(fd, &ONE, 1);
+
+    // Write the frame metadata
+    const uint32_t metadata_size = sizeof(BasebandMetadata);
+    write(fd, metadata, metadata_size);
+
+    // Write the contents of the buffer frame to disk.
+    return write(fd, data.data(), data.size());
 }
