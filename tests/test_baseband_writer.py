@@ -17,10 +17,10 @@ global_params = {
         "num_metadata_objects": 4096,
     },
 }
+frame_size = global_params["frame_size"] = global_params["num_elements"] * global_params["samples_per_data_set"]
 
 
 def run_kotekan(tmpdir_factory):
-    frame_size = global_params["num_elements"] * global_params["samples_per_data_set"]
     frame_list = []
     for i in range(global_params["buffer_depth"]):
         frame_list.append(
@@ -29,6 +29,7 @@ def run_kotekan(tmpdir_factory):
             )
         )
         frame_list[i].metadata.fpga_seq = frame_size * i
+        frame_list[i].metadata.valid_to = frame_size
     current_dir = str(tmpdir_factory.getbasetemp())
     read_buffer = runner.ReadBasebandBuffer(current_dir, frame_list)
     read_buffer.write()
@@ -54,7 +55,6 @@ def test_start(tmpdir_factory):
     assert len(saved_files) == 1
 
     metadata_size = baseband_buffer.BasebandBuffer.meta_size
-    frame_size = global_params["num_elements"] * global_params["samples_per_data_set"]
 
     buf = bytearray(frame_size + metadata_size + 1)
     frame_index = 0
@@ -69,5 +69,6 @@ def test_start(tmpdir_factory):
             assert frame_metadata.event_id == 12345
             assert frame_metadata.freq_id == 0
             assert frame_metadata.fpga_seq == frame_index * frame_size
+            assert frame_metadata.valid_to == frame_size
 
             frame_index += 1

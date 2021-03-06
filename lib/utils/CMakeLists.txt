@@ -10,6 +10,7 @@ add_library(
     util.c
     FrameView.cpp
     HFBFrameView.cpp
+    BasebandFrameView.cpp
     visBuffer.cpp
     visUtil.cpp
     visFile.cpp

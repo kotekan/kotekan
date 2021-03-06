@@ -6,7 +6,7 @@
 #ifndef BASEBAND_WRITER_HPP
 #define BASEBAND_WRITER_HPP
 
-#include "BasebandMetadata.hpp"
+#include "BasebandFrameView.hpp"
 #include "bufferContainer.hpp" // for bufferContainer
 #include "Config.hpp"          // for Config
 #include "gsl-lite.hpp"        // for span
@@ -29,12 +29,11 @@ private:
      * @brief write a frame of data into a baseband dump file
      *
      * @param fd file descriptor
-     * @param metadata frame metadata
-     * @param data frame data
+     * @param frame a view on the frame and its metadata
      *
      * @return the number of bytes written, or -1 if there was an error
      */
-    ssize_t write_frame(const int fd, const BasebandMetadata* metadata, gsl::span<uint8_t> data);
+    ssize_t write_frame(const int fd, const BasebandFrameView frame);
 
     // Parameters saved from the config file
     std::string _root_path;

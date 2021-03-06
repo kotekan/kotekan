@@ -44,7 +44,9 @@ void BasebandWriter::main_thread() {
 }
 
 void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
-    auto metadata = (BasebandMetadata*)in_buf->metadata[frame_id]->metadata;
+    const auto frame = BasebandFrameView(in_buf, frame_id);
+    const auto metadata = frame.metadata();
+
     INFO("Frame {} from {}/{}", metadata->fpga_seq, metadata->event_id, metadata->freq_id);
 
     int fd;
@@ -67,7 +69,7 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
     } else {
         fd = baseband_events[metadata->event_id][metadata->freq_id];
     }
-    ssize_t bytes_written = write_frame(fd, metadata, gsl::span(in_buf->frames[frame_id], in_buf->frame_size));
+    ssize_t bytes_written = write_frame(fd, {in_buf, frame_id});
 
     if (bytes_written != in_buf->frame_size) {
         ERROR("Failed to write buffer to disk for file {:s}", file_name);
@@ -75,15 +77,15 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
     }
 }
 
-ssize_t BasebandWriter::write_frame(const int fd, const BasebandMetadata* metadata, gsl::span<uint8_t> data) {
+ssize_t BasebandWriter::write_frame(const int fd, const BasebandFrameView frame) {
     // Write the "1" marker to indicate that the frame is good
     const uint8_t ONE = 1;
     write(fd, &ONE, 1);
 
     // Write the frame metadata
     const uint32_t metadata_size = sizeof(BasebandMetadata);
-    write(fd, metadata, metadata_size);
+    write(fd, frame.metadata(), metadata_size);
 
     // Write the contents of the buffer frame to disk.
-    return write(fd, data.data(), data.size());
+    return write(fd, frame.data(), frame.data_size());
 }
