@@ -16,6 +16,7 @@ add_library(
     visFile.cpp
     visFileRaw.cpp
     hfbFileRaw.cpp
+    BasebandFileRaw.cpp
     visFileRing.cpp
     tx_utils.cpp
     datasetManager.cpp

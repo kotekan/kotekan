@@ -72,3 +72,4 @@ def test_start(tmpdir_factory):
             assert frame_metadata.valid_to == frame_size
 
             frame_index += 1
+    assert frame_index > 0

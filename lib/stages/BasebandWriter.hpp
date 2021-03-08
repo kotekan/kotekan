@@ -7,6 +7,7 @@
 #define BASEBAND_WRITER_HPP
 
 #include "BasebandFrameView.hpp"
+#include "BasebandFileRaw.hpp"
 #include "bufferContainer.hpp" // for bufferContainer
 #include "Config.hpp"          // for Config
 #include "gsl-lite.hpp"        // for span
@@ -23,17 +24,13 @@ public:
     void main_thread() override;
 
 private:
-    void write_data(Buffer* in_buf, int frame_id);
-
     /**
      * @brief write a frame of data into a baseband dump file
      *
-     * @param fd file descriptor
-     * @param frame a view on the frame and its metadata
-     *
-     * @return the number of bytes written, or -1 if there was an error
+     * @param buf      The buffer the frame is in.
+     * @param frame_id The id of the frame to write.
      */
-    ssize_t write_frame(const int fd, const BasebandFrameView frame);
+    void write_data(Buffer* in_buf, int frame_id);
 
     // Parameters saved from the config file
     std::string _root_path;
@@ -41,9 +38,9 @@ private:
     /// Input buffer to read from
     struct Buffer* in_buf;
 
-    /// The set of active baseband dump file descriptors, keyed by their event
-    /// id to frequency map
-    std::unordered_map<uint64_t, std::unordered_map<uint32_t, int>> baseband_events;
+    /// The set of active baseband dump files, keyed by their event id to
+    /// frequency map
+    std::unordered_map<uint64_t, std::unordered_map<uint32_t, BasebandFileRaw>> baseband_events;
 };
 
 #endif // BASEBAND_WRITER_HPP

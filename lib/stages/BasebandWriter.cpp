@@ -49,43 +49,23 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
 
     INFO("Frame {} from {}/{}", metadata->fpga_seq, metadata->event_id, metadata->freq_id);
 
-    int fd;
-
     const std::string event_directory_name =
         fmt::format("{:s}/baseband_raw_{:d}", _root_path, metadata->event_id);
     if (baseband_events.count(metadata->event_id) == 0) {
         mkdir(event_directory_name.c_str(), S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
     }
-    const std::string file_name = fmt::format("{:s}/baseband_{:d}_{:d}.data", event_directory_name,
+
+    const std::string file_name = fmt::format("{:s}/baseband_{:d}_{:d}", event_directory_name,
                                               metadata->event_id, metadata->freq_id);
     if (baseband_events[metadata->event_id].count(metadata->freq_id) == 0) {
-        if ((fd = open(file_name.c_str(), O_CREAT | O_WRONLY,
-                       S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH))
-            == -1) {
-            throw std::runtime_error(
-                fmt::format(fmt("Failed to open file {:s}: {:s}."), file_name, strerror(errno)));
-        }
-        baseband_events[metadata->event_id][metadata->freq_id] = fd;
-    } else {
-        fd = baseband_events[metadata->event_id][metadata->freq_id];
+        // NOTE: emplace the file instance or it will get closed by the destructor
+        baseband_events[metadata->event_id].emplace(metadata->freq_id, file_name);
     }
-    ssize_t bytes_written = write_frame(fd, {in_buf, frame_id});
+    BasebandFileRaw& baseband_file = baseband_events[metadata->event_id].at(metadata->freq_id);
+    ssize_t bytes_written = baseband_file.write_frame({in_buf, frame_id});
 
     if (bytes_written != in_buf->frame_size) {
         ERROR("Failed to write buffer to disk for file {:s}", file_name);
         exit(-1);
     }
-}
-
-ssize_t BasebandWriter::write_frame(const int fd, const BasebandFrameView frame) {
-    // Write the "1" marker to indicate that the frame is good
-    const uint8_t ONE = 1;
-    write(fd, &ONE, 1);
-
-    // Write the frame metadata
-    const uint32_t metadata_size = sizeof(BasebandMetadata);
-    write(fd, frame.metadata(), metadata_size);
-
-    // Write the contents of the buffer frame to disk.
-    return write(fd, frame.data(), frame.data_size());
 }
