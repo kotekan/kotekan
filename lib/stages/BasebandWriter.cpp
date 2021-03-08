@@ -64,8 +64,13 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
     BasebandFileRaw& baseband_file = baseband_events[metadata->event_id].at(metadata->freq_id);
     ssize_t bytes_written = baseband_file.write_frame({in_buf, frame_id});
 
-    if (bytes_written != in_buf->frame_size) {
+    if (bytes_written != metadata->valid_to) {
         ERROR("Failed to write buffer to disk for file {:s}", file_name);
         exit(-1);
+    }
+    if (bytes_written < in_buf->frame_size) {
+        INFO("Closing {}/{}", metadata->event_id, metadata->freq_id);
+        baseband_events[metadata->event_id].erase(
+            baseband_events[metadata->event_id].find(metadata->freq_id));
     }
 }

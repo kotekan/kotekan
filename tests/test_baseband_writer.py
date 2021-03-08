@@ -30,6 +30,7 @@ def run_kotekan(tmpdir_factory):
         )
         frame_list[i].metadata.fpga_seq = frame_size * i
         frame_list[i].metadata.valid_to = frame_size
+    frame_list[-1].metadata.valid_to -= 1234
     current_dir = str(tmpdir_factory.getbasetemp())
     read_buffer = runner.ReadBasebandBuffer(current_dir, frame_list)
     read_buffer.write()
@@ -59,17 +60,23 @@ def test_start(tmpdir_factory):
     buf = bytearray(frame_size + metadata_size + 1)
     frame_index = 0
     with io.FileIO(saved_files[0], "rb") as fh:
+        final_frame = False
         while (fh.readinto(buf)):
             # Check that the frame is valid
             assert buf[0] == 1
 
             # Check the frame metadata
             frame_metadata = baseband_buffer.BasebandMetadata.from_buffer(buf[1:])
-
             assert frame_metadata.event_id == 12345
             assert frame_metadata.freq_id == 0
             assert frame_metadata.fpga_seq == frame_index * frame_size
-            assert frame_metadata.valid_to == frame_size
+
+            if not final_frame:
+                assert frame_metadata.valid_to <= frame_size
+                if frame_metadata.valid_to < frame_size:
+                    final_frame = True
+            else:
+                assert False, "No more event data is allowed after a non-full frame."
 
             frame_index += 1
     assert frame_index > 0
