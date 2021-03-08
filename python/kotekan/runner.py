@@ -472,9 +472,7 @@ class VisWriterBuffer(OutputBuffer):
 
 
 class ReadVisBuffer(InputBuffer):
-    """Write down a visBuffer and reads it with rawFileRead.
-
-    """
+    """Write down a visBuffer and reads it with rawFileRead."""
 
     _buf_ind = 0
 
@@ -507,8 +505,7 @@ class ReadVisBuffer(InputBuffer):
         self.stage_block = {stage_name: stage_config}
 
     def write(self):
-        """Write a list of VisBuffer objects to disk.
-        """
+        """Write a list of VisBuffer objects to disk."""
         visbuffer.VisBuffer.to_files(self.buffer_list, self.input_dir + "/" + self.name)
 
 
@@ -895,9 +892,7 @@ class DumpBasebandBuffer(OutputBuffer):
 
 
 class ReadBasebandBuffer(InputBuffer):
-    """Write down a BasebandBuffer and reads it with rawFileRead.
-
-    """
+    """Write down a BasebandBuffer and reads it with rawFileRead."""
 
     _buf_ind = 0
 
@@ -931,9 +926,10 @@ class ReadBasebandBuffer(InputBuffer):
         self.stage_block = {stage_name: stage_config}
 
     def write(self):
-        """Write a list of BasebandBuffer objects to disk.
-        """
-        baseband_buffer.BasebandBuffer.to_files(self.buffer_list, self.input_dir + "/" + self.name)
+        """Write a list of BasebandBuffer objects to disk."""
+        baseband_buffer.BasebandBuffer.to_files(
+            self.buffer_list, self.input_dir + "/" + self.name
+        )
 
 
 class DumpFrbPostProcessBuffer(InputBuffer):

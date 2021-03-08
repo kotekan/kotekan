@@ -104,6 +104,7 @@ private:
      * @brief Cue up the ring buffer to the requested event's data
      *
      * @param event_id unique identifier of the event in the FRB pipeline
+     * @param freq_id channel frequency received by this stage
      * @param trigger_start_fpga start time, or -1 to use the earliest data available
      * @param trigger_length_fpga number of FPGA samples to include in the dump
      *
