@@ -6,15 +6,16 @@
 #ifndef BASEBAND_WRITER_HPP
 #define BASEBAND_WRITER_HPP
 
-#include "BasebandFrameView.hpp"
 #include "BasebandFileRaw.hpp"
-#include "bufferContainer.hpp" // for bufferContainer
+#include "BasebandFrameView.hpp"
 #include "Config.hpp"          // for Config
-#include "gsl-lite.hpp"        // for span
 #include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include <cstdint>             // for uint64_t
-#include <map>                 // for map
+#include "gsl-lite.hpp" // for span
+
+#include <cstdint> // for uint64_t
+#include <map>     // for map
 
 class BasebandWriter : public kotekan::Stage {
 public:

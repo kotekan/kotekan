@@ -18,5 +18,4 @@ size_t BasebandFrameView::data_size() const {
 void BasebandFrameView::zero_frame() {
     // Fill data with zeros
     std::memset(_frame, 0, buffer->frame_size);
-
 }
