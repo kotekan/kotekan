@@ -2,12 +2,12 @@
 
 #include "visFile.hpp" // for create_lockfile
 
-#include <cstdio>       // for remove
+#include <cstdio>     // for remove
 #include <errno.h>    // for errno
 #include <fcntl.h>    // for O_CREAT, O_WRONLY
-#include <fstream>      // for ofstream, basic_ostream::write, ios
+#include <fstream>    // for ofstream, basic_ostream::write, ios
 #include <stdexcept>  // for runtime_error
-#include <string.h>     // for strerror
+#include <string.h>   // for strerror
 #include <sys/stat.h> // for mkdir
 #include <unistd.h>   // for close, write, TEMP_FAILURE_RETRY
 

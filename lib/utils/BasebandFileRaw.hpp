@@ -3,14 +3,14 @@
 @brief Raw baseband dump output files
 - BasebandFileRaw
 *****************************************/
-#ifndef HFB_FILE_RAW_HPP
-#define HFB_FILE_RAW_HPP
+#ifndef BASEBAND_FILE_RAW_HPP
+#define BASEBAND_FILE_RAW_HPP
 
 #include "BasebandFrameView.hpp"
 #include "kotekanLogging.hpp"
 
-#include <fstream> // for ofstream
-#include <string>  // for string
+#include <string>   // for string
+#include <unistd.h> // for ssize_t
 
 /** @brief A CHIME baseband file in raw format
  *
@@ -43,4 +43,4 @@ private:
     std::string _name;
 };
 
-#endif // HFB_FILE_RAW_HPP
+#endif // BASEBAND_FILE_RAW_HPP
