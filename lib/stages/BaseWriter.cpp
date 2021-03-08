@@ -38,9 +38,9 @@ using kotekan::restServer;
 
 
 BaseWriter::BaseWriter(Config& config, const std::string& unique_name,
-                       bufferContainer& buffer_container, const std::string acq_type) :
+                       bufferContainer& buffer_container, std::vector<std::string> filename_fmt) :
     Stage(config, unique_name, buffer_container, std::bind(&BaseWriter::main_thread, this)),
-    acq_type(acq_type),
+    filename_fmt(filename_fmt),
     late_frame_counter(Metrics::instance().add_counter("kotekan_writer_late_frame_total",
                                                        unique_name, {"freq_id"})),
     bad_dataset_frame_counter(Metrics::instance().add_counter(
@@ -150,10 +150,11 @@ void BaseWriter::init_acq(dset_id_t ds_id) {
     // Construct metadata
     auto metadata = make_metadata(ds_id);
 
+    filename_fmt.at(1) = fmt::format(fmt("{:04d}"), chunk_id);
     try {
         acq.file_bundle = std::make_unique<visFileBundle>(
-            file_type, root_path, instrument_name, acq_type, metadata, chunk_id, file_length,
-            window, kotekan::logLevel(_member_log_level), ds_id, file_length);
+            file_type, root_path, acqname_fmt, filename_fmt, metadata, file_length, window,
+            kotekan::logLevel(_member_log_level), ds_id, file_length);
     } catch (std::exception& e) {
         FATAL_ERROR("Failed creating file bundle for new acquisition: {:s}", e.what());
     }

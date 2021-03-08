@@ -98,7 +98,7 @@
 class BaseWriter : public kotekan::Stage {
 public:
     BaseWriter(kotekan::Config& config, const std::string& unique_name,
-               kotekan::bufferContainer& buffer_container, const std::string acq_type);
+               kotekan::bufferContainer& buffer_container, std::vector<std::string> filename_fmt);
 
     void main_thread() override;
 
@@ -142,8 +142,8 @@ protected:
     // Parameters saved from the config files
     std::string instrument_name;
 
-    // Acquisition type
-    const std::string acq_type;
+    // Acquisition name format
+    std::string acqname_fmt;
 
 private:
     /// Construct the set of metadata
@@ -189,6 +189,9 @@ private:
     size_t window;
     bool ignore_version;
     double acq_timeout;
+
+    // File name format
+    std::vector<std::string> filename_fmt;
 
     /// Input buffer to read from
     Buffer* in_buf;

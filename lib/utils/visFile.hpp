@@ -138,10 +138,9 @@ public:
      **/
     template<typename... InitArgs>
     visFileBundle(const std::string& type, const std::string& root_path,
-                  const std::string& instrument_name, const std::string& acq_type,
-                  const std::map<std::string, std::string>& metadata, int freq_chunk,
-                  size_t rollover, size_t window_size, const kotekan::logLevel log_level,
-                  InitArgs... args);
+                  const std::string& acqname_fmt, const std::vector<std::string> filename_fmt,
+                  const std::map<std::string, std::string>& metadata, size_t rollover,
+                  size_t window_size, const kotekan::logLevel log_level, InitArgs... args);
 
     /**
      * Write a new time sample into this set of files
@@ -174,9 +173,8 @@ protected:
 
     const std::string root_path;
 
-    const std::string instrument_name;
-    const std::string acq_type;
-    const int freq_chunk;
+    const std::string acqname_fmt;
+    const std::vector<std::string> filename_fmt;
 
     size_t rollover;
     size_t window_size;
@@ -193,14 +191,14 @@ protected:
 // parameter pack into the lambda perfectly.
 template<typename... InitArgs>
 inline visFileBundle::visFileBundle(const std::string& type, const std::string& root_path,
-                                    const std::string& instrument_name, const std::string& acq_type,
+                                    const std::string& acqname_fmt,
+                                    const std::vector<std::string> filename_fmt,
                                     const std::map<std::string, std::string>& metadata,
-                                    int freq_chunk, size_t rollover, size_t window_size,
+                                    size_t rollover, size_t window_size,
                                     const kotekan::logLevel log_level, InitArgs... args) :
     root_path(root_path),
-    instrument_name(instrument_name),
-    acq_type(acq_type),
-    freq_chunk(freq_chunk),
+    acqname_fmt(acqname_fmt),
+    filename_fmt(filename_fmt),
     rollover(rollover),
     window_size(window_size) {
 
