@@ -17,19 +17,30 @@ global_params = {
         "num_metadata_objects": 4096,
     },
 }
-frame_size = global_params["frame_size"] = global_params["num_elements"] * global_params["samples_per_data_set"]
+frame_size = global_params["frame_size"] = (
+    global_params["num_elements"] * global_params["samples_per_data_set"]
+)
 
 
-def run_kotekan(tmpdir_factory):
+def run_kotekan(tmpdir_factory, nfreqs=1):
+    """Starts Kotekan with a simulated baseband stream from `nfreq` frequencies being fed into a single `basebandWriter` stage.
+
+    The frequencies will have indexes [0:nfreq], and will be saved into raw baseband dump files in the `tmpdir_factory` subdirectory `baseband_raw_12345`, one frequency per file.
+
+    Returns:
+    --------
+    Sorted list of filenames of the saved baseband files.
+    """
     frame_list = []
     for i in range(global_params["buffer_depth"]):
-        frame_list.append(
-            baseband_buffer.BasebandBuffer.new_from_params(
-                event_id=12345, freq_id=0, frame_size=frame_size
+        for freq_id in range(nfreqs):
+            frame_list.append(
+                baseband_buffer.BasebandBuffer.new_from_params(
+                    event_id=12345, freq_id=freq_id, frame_size=frame_size
+                )
             )
-        )
-        frame_list[i].metadata.fpga_seq = frame_size * i
-        frame_list[i].metadata.valid_to = frame_size
+            frame_list[-1].metadata.fpga_seq = frame_size * i
+            frame_list[-1].metadata.valid_to = frame_size
     frame_list[-1].metadata.valid_to -= 1234
     current_dir = str(tmpdir_factory.getbasetemp())
     read_buffer = runner.ReadBasebandBuffer(current_dir, frame_list)
@@ -51,24 +62,21 @@ def run_kotekan(tmpdir_factory):
     return dump_files
 
 
-def test_start(tmpdir_factory):
-    saved_files = run_kotekan(tmpdir_factory)
-    assert len(saved_files) == 1
-
+def check_baseband_dump(file_name, freq_id=0):
     metadata_size = baseband_buffer.BasebandBuffer.meta_size
 
     buf = bytearray(frame_size + metadata_size + 1)
     frame_index = 0
-    with io.FileIO(saved_files[0], "rb") as fh:
+    with io.FileIO(file_name, "rb") as fh:
         final_frame = False
-        while (fh.readinto(buf)):
+        while fh.readinto(buf):
             # Check that the frame is valid
             assert buf[0] == 1
 
             # Check the frame metadata
             frame_metadata = baseband_buffer.BasebandMetadata.from_buffer(buf[1:])
             assert frame_metadata.event_id == 12345
-            assert frame_metadata.freq_id == 0
+            assert frame_metadata.freq_id == freq_id
             assert frame_metadata.fpga_seq == frame_index * frame_size
 
             if not final_frame:
@@ -80,3 +88,20 @@ def test_start(tmpdir_factory):
 
             frame_index += 1
     assert frame_index > 0
+
+
+def test_simple(tmpdir_factory):
+    """Check receiving a baseband dump with a single frequency and no dropped frames"""
+    saved_files = run_kotekan(tmpdir_factory)
+    assert len(saved_files) == 1
+
+    check_baseband_dump(saved_files[0])
+
+
+def test_multi_freq(tmpdir_factory):
+    """Check receiving a baseband dump with a single frequency and no dropped frames"""
+    saved_files = run_kotekan(tmpdir_factory, 3)
+    assert len(saved_files) == 3
+
+    for freq_id, file_name in enumerate(saved_files):
+        check_baseband_dump(file_name, freq_id)
