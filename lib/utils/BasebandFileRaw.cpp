@@ -35,10 +35,6 @@ BasebandFileRaw::~BasebandFileRaw() {
 
 
 ssize_t BasebandFileRaw::write_frame(const BasebandFrameView& frame) {
-    // Write the "1" marker to indicate that the frame is good
-    const uint8_t ONE = 1;
-    write_raw(&ONE, 1);
-
     // Write the frame metadata
     const uint32_t metadata_size = sizeof(BasebandMetadata);
     write_raw(frame.metadata(), metadata_size);

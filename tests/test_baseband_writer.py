@@ -65,16 +65,13 @@ def run_kotekan(tmpdir_factory, nfreqs=1):
 def check_baseband_dump(file_name, freq_id=0):
     metadata_size = baseband_buffer.BasebandBuffer.meta_size
 
-    buf = bytearray(frame_size + metadata_size + 1)
+    buf = bytearray(frame_size + metadata_size)
     frame_index = 0
     with io.FileIO(file_name, "rb") as fh:
         final_frame = False
         while fh.readinto(buf):
-            # Check that the frame is valid
-            assert buf[0] == 1
-
             # Check the frame metadata
-            frame_metadata = baseband_buffer.BasebandMetadata.from_buffer(buf[1:])
+            frame_metadata = baseband_buffer.BasebandMetadata.from_buffer(buf)
             assert frame_metadata.event_id == 12345
             assert frame_metadata.freq_id == freq_id
             assert frame_metadata.fpga_seq == frame_index * frame_size
