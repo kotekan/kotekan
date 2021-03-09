@@ -43,7 +43,7 @@ private:
     /**
      * @brief write a frame of data into a baseband dump file
      *
-     * @param buf      The buffer the frame is in.
+     * @param in_buf   The buffer the frame is in.
      * @param frame_id The id of the frame to write.
      */
     void write_data(Buffer* in_buf, int frame_id);
