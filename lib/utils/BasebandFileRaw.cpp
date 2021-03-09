@@ -11,22 +11,22 @@
 #include <sys/stat.h> // for mkdir
 #include <unistd.h>   // for close, write, TEMP_FAILURE_RETRY
 
-BasebandFileRaw::BasebandFileRaw(const std::string& name) : _name(name) {
+BasebandFileRaw::BasebandFileRaw(const std::string& name) : name(name) {
 
     DEBUG("Creating new baseband file {}", name);
 
     // Create the lock file and then open other files
-    lock_filename = create_lockfile(_name);
-    if ((fd = open((_name + ".data").c_str(), O_CREAT | O_WRONLY,
+    lock_filename = create_lockfile(name);
+    if ((fd = open((name + ".data").c_str(), O_CREAT | O_WRONLY,
                    S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH))
         == -1) {
         throw std::runtime_error(
-            fmt::format(fmt("Failed to open file {:s}.data: {:s}."), _name, strerror(errno)));
+            fmt::format(fmt("Failed to open file {:s}.data: {:s}."), name, strerror(errno)));
     }
 }
 
 BasebandFileRaw::~BasebandFileRaw() {
-    DEBUG("Closing baseband file {}: {}", _name, fd);
+    DEBUG("Closing baseband file {}: {}", name, fd);
     // TODO: final sync of data file.
     close(fd);
 
@@ -49,7 +49,7 @@ ssize_t BasebandFileRaw::write_raw(const void* data, size_t nb) {
     ssize_t nbytes = TEMP_FAILURE_RETRY(write(fd, data, nb));
 
     if (nbytes < 0) {
-        ERROR("Write error attempting to write {:d} bytes into file {:s}: {:s}", nb, _name,
+        ERROR("Write error attempting to write {:d} bytes into file {:s}: {:s}", nb, name,
               strerror(errno));
         return false;
     }

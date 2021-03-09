@@ -32,15 +32,15 @@ public:
 
     ssize_t write_frame(const BasebandFrameView& frame);
 
+    // File name (used for debugging)
+    const std::string name;
+
 private:
     ssize_t write_raw(const void* data, size_t nb);
 
     // File descriptors and related
     int fd;
     std::string lock_filename;
-
-    // File name (used for debugging)
-    std::string _name;
 };
 
 #endif // BASEBAND_FILE_RAW_HPP
