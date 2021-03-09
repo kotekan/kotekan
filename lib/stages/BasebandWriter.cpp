@@ -3,9 +3,11 @@
 #include "StageFactory.hpp"
 #include "visUtil.hpp" // for current_time
 
+#include <chrono>     // for seconds
 #include <errno.h>    // for errno
 #include <fcntl.h>    // for O_CREAT, O_WRONLY
 #include <sys/stat.h> // for mkdir
+#include <thread>     // for thread
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -23,6 +25,7 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&BasebandWriter::main_thread, this)),
 
     _root_path(config.get_default<std::string>(unique_name, "root_path", ".")),
+    _dump_timeout(config.get_default<double>(unique_name, "dump_timeout", 60)),
     in_buf(get_buffer("in_buf")) {
     register_consumer(in_buf, unique_name.c_str());
 }
@@ -30,6 +33,8 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
 
 void BasebandWriter::main_thread() {
     frameID frame_id(in_buf);
+    INFO("Start the closing thread");
+    std::thread closing_thread(&BasebandWriter::close_old_events, this);
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
@@ -42,11 +47,12 @@ void BasebandWriter::main_thread() {
 
         // Mark the buffer and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
-
-        // TODO: Clean out any acquisitions that have been inactive for long enough
-        // close_old_acqs();
     }
+
+    stop_closing.notify_one();
+    closing_thread.join();
 }
+
 
 void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
     const auto frame = BasebandFrameView(in_buf, frame_id);
@@ -54,6 +60,8 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
 
     INFO("Frame {} from {}/{}", metadata->fpga_seq, metadata->event_id, metadata->freq_id);
 
+    // Lock the event->freq->file map
+    std::unique_lock lk(mtx);
     const std::string event_directory_name =
         fmt::format("{:s}/baseband_raw_{:d}", _root_path, metadata->event_id);
     if (baseband_events.count(metadata->event_id) == 0) {
@@ -80,4 +88,44 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
         baseband_events[metadata->event_id].erase(
             baseband_events[metadata->event_id].find(metadata->freq_id));
     }
+}
+
+
+void BasebandWriter::close_old_events() {
+    // Do not run the loop more often than once a minute
+    const int sweep_cadence_s = std::max(60.0, round(_dump_timeout / 2));
+    while (!stop_thread) {
+        double now = current_time();
+        DEBUG("Run closing thread {:.1f}", now);
+        std::unique_lock lk(mtx);
+        if (stop_closing.wait_for(lk, std::chrono::seconds(sweep_cadence_s))
+            != std::cv_status::timeout) {
+            // is it a notification to exit or a spurious interrupt?
+            if (stop_thread) {
+                return;
+            } else {
+                continue;
+            }
+        }
+
+        // Otherwise, we've waited long enough and can do the sweep
+        for (auto event_it = baseband_events.begin(); event_it != baseband_events.end();) {
+            for (auto event_freq = event_it->second.begin();
+                 event_freq != event_it->second.end();) {
+                // close the frequency file that's been inactive for over a minute
+                if (now - event_freq->second.last_updated > _dump_timeout) {
+                    DEBUG("Cleaning up {}", event_freq->second.file.name);
+                    event_freq = event_it->second.erase(event_freq);
+                } else {
+                    ++event_freq;
+                }
+            }
+            if (event_it->second.empty()) {
+                event_it = baseband_events.erase(event_it);
+            } else {
+                ++event_it;
+            }
+        }
+    }
+    INFO("Closing thread done");
 }

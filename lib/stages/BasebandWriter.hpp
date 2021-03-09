@@ -14,9 +14,24 @@
 
 #include "gsl-lite.hpp" // for span
 
+#include <condition_variable>
 #include <cstdint> // for uint64_t
 #include <map>     // for map
+#include <mutex>
 
+/**
+ * @class BasebandWriter
+ * @brief
+ *
+ * @par Buffers
+ * @buffer in_buf The buffer streaming data to write
+ *         @buffer_format BasebandBuffer structured
+ *         @buffer_metadata BasebandMetadata
+ *
+ * @conf   root_path        String. Location in filesystem to write to.
+ * @conf   dump_timeout     Double (default 60). Close dump files when they
+ *                          have been inactive this long (in seconds).
+ */
 class BasebandWriter : public kotekan::Stage {
 public:
     BasebandWriter(kotekan::Config& config, const std::string& unique_name,
@@ -33,8 +48,14 @@ private:
      */
     void write_data(Buffer* in_buf, int frame_id);
 
+    /**
+     * @brief runs the loop to periodically close stale dump files
+     */
+    void close_old_events();
+
     // Parameters saved from the config file
     std::string _root_path;
+    double _dump_timeout;
 
     /// Input buffer to read from
     struct Buffer* in_buf;
@@ -51,6 +72,12 @@ private:
     /// frequency map
     std::unordered_map<uint64_t, std::unordered_map<uint32_t, BasebandWriterDestination>>
         baseband_events;
+
+    /// synchronizes access to the event map
+    std::mutex mtx;
+
+    /// notifies the file-closing thread (i.e., running `close_old_events`)
+    std::condition_variable stop_closing;
 };
 
 #endif // BASEBAND_WRITER_HPP
