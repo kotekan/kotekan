@@ -1,7 +1,7 @@
 #include "BasebandWriter.hpp"
 
 #include "StageFactory.hpp"
-#include "visUtil.hpp"
+#include "visUtil.hpp" // for current_time
 
 #include <errno.h>    // for errno
 #include <fcntl.h>    // for O_CREAT, O_WRONLY
@@ -12,6 +12,11 @@ using kotekan::Config;
 using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(BasebandWriter);
+
+BasebandWriter::BasebandWriterDestination::BasebandWriterDestination(const std::string& file_name) :
+    file(file_name),
+    last_updated(current_time()) {}
+
 
 BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
                                bufferContainer& buffer_container) :
@@ -61,8 +66,10 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
         // NOTE: emplace the file instance or it will get closed by the destructor
         baseband_events[metadata->event_id].emplace(metadata->freq_id, file_name);
     }
-    BasebandFileRaw& baseband_file = baseband_events[metadata->event_id].at(metadata->freq_id);
+    auto& freq_dump_destination = baseband_events[metadata->event_id].at(metadata->freq_id);
+    BasebandFileRaw& baseband_file = freq_dump_destination.file;
     ssize_t bytes_written = baseband_file.write_frame({in_buf, frame_id});
+    freq_dump_destination.last_updated = current_time();
 
     if (bytes_written != metadata->valid_to) {
         ERROR("Failed to write buffer to disk for file {:s}", file_name);
