@@ -687,6 +687,25 @@ baseband:
     in_buf: network_buffer_3
     out_buf: baseband_output_buffer_3
 
+# Transmit baseband data to frb-baseband
+baseband_send:
+  server_ip: 10.6.50.20
+  server_port: 11027
+  reconnect_time: 20
+  log_level: error
+  baseband_send_0:
+    kotekan_stage: bufferSend
+    buf: baseband_output_buffer_0
+  baseband_send_1:
+    kotekan_stage: bufferSend
+    buf: baseband_output_buffer_1
+  baseband_send_2:
+    kotekan_stage: bufferSend
+    buf: baseband_output_buffer_2
+  baseband_send_3:
+    kotekan_stage: bufferSend
+    buf: baseband_output_buffer_3
+
 # Buffer bad input updates
 # 1) Reorder list
 # 2) Zero bad inputs mask
