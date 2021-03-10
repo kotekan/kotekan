@@ -655,7 +655,7 @@ zero_samples:
 # Baseband capture and dump system
 baseband_output_buffers:
   num_frames: baseband_buffer_depth
-  frame_size: sizeof_int
+  frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
   metadata_pool: baseband_pool
   baseband_output_buffer_0:
     kotekan_buffer: standard

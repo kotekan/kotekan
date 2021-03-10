@@ -2,14 +2,14 @@
 
 #include "visFile.hpp" // for create_lockfile
 
+#include <cstdint>    // for uint32_t
 #include <cstdio>     // for remove
 #include <errno.h>    // for errno
-#include <fcntl.h>    // for O_CREAT, O_WRONLY
-#include <fstream>    // for ofstream, basic_ostream::write, ios
+#include <fcntl.h>    // for open, O_CREAT, O_WRONLY
 #include <stdexcept>  // for runtime_error
 #include <string.h>   // for strerror
-#include <sys/stat.h> // for mkdir
-#include <unistd.h>   // for close, write, TEMP_FAILURE_RETRY
+#include <sys/stat.h> // for S_IRGRP, S_IROTH, S_IRUSR, S_IWGRP, S_IWUSR
+
 
 BasebandFileRaw::BasebandFileRaw(const std::string& name) : name(name) {
 

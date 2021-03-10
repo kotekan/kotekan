@@ -33,7 +33,7 @@ add_library(
     visCompression.cpp
     timeDownsample.cpp
     frbPostProcess.cpp
-    basebandReadout.cpp 
+    basebandReadout.cpp
     BasebandWriter.cpp
     BaseWriter.cpp
     VisWriter.cpp

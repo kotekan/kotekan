@@ -9,6 +9,7 @@
 #include "BasebandFrameView.hpp"
 #include "kotekanLogging.hpp"
 
+#include <cstddef>  // for size_t
 #include <string>   // for string
 #include <unistd.h> // for ssize_t
 
