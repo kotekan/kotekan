@@ -125,8 +125,8 @@ public:
      * Initialise the file bundle
      * @param type Type of the files to write.
      * @param root_path Directory to write into.
-     * @param acqname_fmt Acquistion name format (e.g. chime_corr)
-     * @param filename_fmt File name format (e.g. {"hfb_", "freq_chunk"})
+     * @param acq_fmt Acquistion name format (e.g. chime_corr)
+     * @param file_fmt File name format (e.g. {"hfb_", "freq_chunk"})
      * @param metadata  Textual metadata to write into the files.
      * @param rollover Maximum time length of file.
      * @param window_size Number of "active" timesamples to keep.
@@ -136,10 +136,10 @@ public:
      * @warning The directory will not be created if it doesn't exist.
      **/
     template<typename... InitArgs>
-    visFileBundle(const std::string& type, const std::string& root_path,
-                  const std::string& acqname_fmt, const std::vector<std::string> filename_fmt,
-                  const std::map<std::string, std::string>& metadata, size_t rollover,
-                  size_t window_size, const kotekan::logLevel log_level, InitArgs... args);
+    visFileBundle(const std::string& type, const std::string& root_path, const std::string& acq_fmt,
+                  const std::string& file_fmt, const std::map<std::string, std::string>& metadata,
+                  size_t rollover, size_t window_size, const kotekan::logLevel log_level,
+                  InitArgs... args);
 
     /**
      * Write a new time sample into this set of files
@@ -172,8 +172,8 @@ protected:
 
     const std::string root_path;
 
-    const std::string acqname_fmt;
-    const std::vector<std::string> filename_fmt;
+    const std::string acq_fmt;
+    const std::string file_fmt;
 
     size_t rollover;
     size_t window_size;
@@ -190,14 +190,13 @@ protected:
 // parameter pack into the lambda perfectly.
 template<typename... InitArgs>
 inline visFileBundle::visFileBundle(const std::string& type, const std::string& root_path,
-                                    const std::string& acqname_fmt,
-                                    const std::vector<std::string> filename_fmt,
+                                    const std::string& acq_fmt, const std::string& file_fmt,
                                     const std::map<std::string, std::string>& metadata,
                                     size_t rollover, size_t window_size,
                                     const kotekan::logLevel log_level, InitArgs... args) :
     root_path(root_path),
-    acqname_fmt(acqname_fmt),
-    filename_fmt(filename_fmt),
+    acq_fmt(acq_fmt),
+    file_fmt(file_fmt),
     rollover(rollover),
     window_size(window_size) {
 

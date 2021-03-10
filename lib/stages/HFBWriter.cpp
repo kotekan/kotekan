@@ -44,8 +44,8 @@ REGISTER_KOTEKAN_STAGE(HFBWriter);
 
 HFBWriter::HFBWriter(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& buffer_container) :
-    BaseWriter(config, unique_name, buffer_container, {"hfb_", "0"}) {
-    acqname_fmt = fmt::format("{:s}_{:s}", instrument_name, "hfb");
+    BaseWriter(config, unique_name, buffer_container, "hfb_{seconds_since_start:08d}_0000") {
+    acq_fmt = "{acq_start:%Y%m%dT%H%M%SZ}_" + instrument_name + "_hfb";
 };
 
 /// Construct the set of metadata

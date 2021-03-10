@@ -38,9 +38,9 @@ using kotekan::restServer;
 
 
 BaseWriter::BaseWriter(Config& config, const std::string& unique_name,
-                       bufferContainer& buffer_container, std::vector<std::string> filename_fmt) :
+                       bufferContainer& buffer_container, std::string file_fmt) :
     Stage(config, unique_name, buffer_container, std::bind(&BaseWriter::main_thread, this)),
-    filename_fmt(filename_fmt),
+    file_fmt(file_fmt),
     late_frame_counter(Metrics::instance().add_counter("kotekan_writer_late_frame_total",
                                                        unique_name, {"freq_id"})),
     bad_dataset_frame_counter(Metrics::instance().add_counter(
@@ -144,16 +144,12 @@ void BaseWriter::init_acq(dset_id_t ds_id) {
         return;
     }
 
-    // TODO: chunk ID is not really supported now. Just set it to zero.
-    uint32_t chunk_id = 0;
-
     // Construct metadata
     auto metadata = make_metadata(ds_id);
 
-    filename_fmt.at(1) = fmt::format(fmt("{:04d}"), chunk_id);
     try {
         acq.file_bundle = std::make_unique<visFileBundle>(
-            file_type, root_path, acqname_fmt, filename_fmt, metadata, file_length, window,
+            file_type, root_path, acq_fmt, file_fmt, metadata, file_length, window,
             kotekan::logLevel(_member_log_level), ds_id, file_length);
     } catch (std::exception& e) {
         FATAL_ERROR("Failed creating file bundle for new acquisition: {:s}", e.what());

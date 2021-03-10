@@ -95,7 +95,7 @@ void visFileBundle::add_file(time_ctype first_time) {
     // Start the acq and create the directory if required
     if (acq_name.empty()) {
         // Format the time (annoyingly you still have to use streams for this)
-        acq_name = fmt::format("{:%Y%m%dT%H%M%SZ}_{:s}", *std::gmtime(&t), acqname_fmt);
+        acq_name = fmt::format(acq_fmt, fmt::arg("acq_start", *std::gmtime(&t)));
         // Set the acq fields on the instance
         acq_start_time = first_time.ctime;
 
@@ -106,8 +106,8 @@ void visFileBundle::add_file(time_ctype first_time) {
 
     // Construct the name of the new file
     uint32_t time_since_start = (uint32_t)(first_time.ctime - acq_start_time);
-    std::string file_name = fmt::format(fmt("{:s}{:08d}_{:s}"), filename_fmt.at(0),
-                                        time_since_start, filename_fmt.at(1));
+    std::string file_name =
+        fmt::format(file_fmt, fmt::arg("seconds_since_start", time_since_start));
 
     // Create the file, create room for the first sample and add into the file map
     auto file = mk_file(file_name, acq_name, root_path);
