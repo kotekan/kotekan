@@ -156,9 +156,11 @@ void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutMana
                                       std::min((int64_t)request.length_fpga, _max_dump_samples));
             basebandDumpData::Status status = data.status;
 
+            readout_in_progress_metric.labels({std::to_string(freq_id)}).set(1);
             if (status == basebandDumpData::Status::Ok) {
                 status = extract_data(data);
             }
+            readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
 
             end_processing(status, freq_id, dump_status, request_mtx);
         }
