@@ -35,6 +35,9 @@
  *                          have been inactive this long (in seconds).
  *
  * @par Metrics
+ * @metric kotekan_baseband_writeout_in_progress
+ *         Set to 1 when a frequency is being written to, 0 otherwise.
+
  * @metric kotekan_writer_write_time_seconds
  *         The write time of the raw writer. An exponential moving average over ~10
  *         samples.
@@ -89,6 +92,9 @@ private:
 
     /// Keep track of the average write time
     movingAverage write_time;
+
+    // Prometheus metric to indicate when a per-frequency writeout is in progress
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& write_in_progress_metric;
 
     // Prometheus metric to expose the value of `write_time`
     kotekan::prometheus::Gauge& write_time_metric;

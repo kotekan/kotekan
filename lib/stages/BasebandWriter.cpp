@@ -28,6 +28,8 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
     _root_path(config.get_default<std::string>(unique_name, "root_path", ".")),
     _dump_timeout(config.get_default<double>(unique_name, "dump_timeout", 60)),
     in_buf(get_buffer("in_buf")),
+    write_in_progress_metric(Metrics::instance().add_gauge("kotekan_baseband_writeout_in_progress",
+                                                           unique_name, {"freq_id"})),
     write_time_metric(
         Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name)) {
     register_consumer(in_buf, unique_name.c_str());
@@ -61,23 +63,27 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
     const auto frame = BasebandFrameView(in_buf, frame_id);
     const auto metadata = frame.metadata();
 
-    INFO("Frame {} from {}/{}", metadata->fpga_seq, metadata->event_id, metadata->freq_id);
+    const auto event_id = metadata->event_id;
+    const auto freq_id = metadata->freq_id;
+    INFO("Frame {} from {}/{}", metadata->fpga_seq, event_id, freq_id);
+
+    write_in_progress_metric.labels({std::to_string(freq_id)}).set(1);
 
     // Lock the event->freq->file map
     std::unique_lock lk(mtx);
     const std::string event_directory_name =
-        fmt::format("{:s}/baseband_raw_{:d}", _root_path, metadata->event_id);
-    if (baseband_events.count(metadata->event_id) == 0) {
+        fmt::format("{:s}/baseband_raw_{:d}", _root_path, event_id);
+    if (baseband_events.count(event_id) == 0) {
         mkdir(event_directory_name.c_str(), S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
     }
 
-    const std::string file_name = fmt::format("{:s}/baseband_{:d}_{:d}", event_directory_name,
-                                              metadata->event_id, metadata->freq_id);
-    if (baseband_events[metadata->event_id].count(metadata->freq_id) == 0) {
+    const std::string file_name =
+        fmt::format("{:s}/baseband_{:d}_{:d}", event_directory_name, event_id, freq_id);
+    if (baseband_events[event_id].count(freq_id) == 0) {
         // NOTE: emplace the file instance or it will get closed by the destructor
-        baseband_events[metadata->event_id].emplace(metadata->freq_id, file_name);
+        baseband_events[event_id].emplace(freq_id, file_name);
     }
-    auto& freq_dump_destination = baseband_events[metadata->event_id].at(metadata->freq_id);
+    auto& freq_dump_destination = baseband_events[event_id].at(freq_id);
     BasebandFileRaw& baseband_file = freq_dump_destination.file;
 
     const double start = current_time();
@@ -85,14 +91,15 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
     freq_dump_destination.last_updated = current_time();
     const double elapsed = freq_dump_destination.last_updated - start;
 
+    write_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
+
     if (bytes_written != metadata->valid_to) {
         ERROR("Failed to write buffer to disk for file {:s}", file_name);
         exit(-1);
     }
     if (bytes_written < in_buf->frame_size) {
-        INFO("Closing {}/{}", metadata->event_id, metadata->freq_id);
-        baseband_events[metadata->event_id].erase(
-            baseband_events[metadata->event_id].find(metadata->freq_id));
+        INFO("Closing {}/{}", event_id, freq_id);
+        baseband_events[event_id].erase(baseband_events[event_id].find(freq_id));
     }
 
     // Update average write time in prometheus
