@@ -1,5 +1,7 @@
 #include "BasebandFrameView.hpp"
 
+#include <string.h> // for memset
+
 BasebandFrameView::BasebandFrameView(Buffer* buf, int frame_id) :
     FrameView(buf, frame_id),
     _metadata((BasebandMetadata*)buf->metadata[id]->metadata) {}

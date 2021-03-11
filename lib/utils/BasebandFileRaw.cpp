@@ -1,6 +1,9 @@
 #include "BasebandFileRaw.hpp"
 
-#include "visFile.hpp" // for create_lockfile
+#include "BasebandMetadata.hpp" // for BasebandMetadata
+#include "visFile.hpp"          // for create_lockfile
+
+#include "fmt.hpp" // for format, fmt
 
 #include <cstdint>    // for uint32_t
 #include <cstdio>     // for remove

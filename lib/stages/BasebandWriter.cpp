@@ -12,6 +12,7 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(BasebandWriter);
 
@@ -26,7 +27,9 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
 
     _root_path(config.get_default<std::string>(unique_name, "root_path", ".")),
     _dump_timeout(config.get_default<double>(unique_name, "dump_timeout", 60)),
-    in_buf(get_buffer("in_buf")) {
+    in_buf(get_buffer("in_buf")),
+    write_time_metric(
+        Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name)) {
     register_consumer(in_buf, unique_name.c_str());
 }
 
@@ -76,8 +79,11 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
     }
     auto& freq_dump_destination = baseband_events[metadata->event_id].at(metadata->freq_id);
     BasebandFileRaw& baseband_file = freq_dump_destination.file;
+
+    const double start = current_time();
     ssize_t bytes_written = baseband_file.write_frame({in_buf, frame_id});
     freq_dump_destination.last_updated = current_time();
+    const double elapsed = freq_dump_destination.last_updated - start;
 
     if (bytes_written != metadata->valid_to) {
         ERROR("Failed to write buffer to disk for file {:s}", file_name);
@@ -88,6 +94,10 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
         baseband_events[metadata->event_id].erase(
             baseband_events[metadata->event_id].find(metadata->freq_id));
     }
+
+    // Update average write time in prometheus
+    write_time.add_sample(elapsed);
+    write_time_metric.set(write_time.average());
 }
 
 

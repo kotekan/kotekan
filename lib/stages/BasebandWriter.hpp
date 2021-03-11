@@ -8,9 +8,11 @@
 
 #include "BasebandFileRaw.hpp"
 #include "BasebandFrameView.hpp"
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // for bufferContainer
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily, Gauge
+#include "visUtil.hpp"           // for movingAverage
 
 #include "gsl-lite.hpp" // for span
 
@@ -31,6 +33,12 @@
  * @conf   root_path        String. Location in filesystem to write to.
  * @conf   dump_timeout     Double (default 60). Close dump files when they
  *                          have been inactive this long (in seconds).
+ *
+ * @par Metrics
+ * @metric kotekan_writer_write_time_seconds
+ *         The write time of the raw writer. An exponential moving average over ~10
+ *         samples.
+ *
  */
 class BasebandWriter : public kotekan::Stage {
 public:
@@ -78,6 +86,12 @@ private:
 
     /// notifies the file-closing thread (i.e., running `close_old_events`)
     std::condition_variable stop_closing;
+
+    /// Keep track of the average write time
+    movingAverage write_time;
+
+    // Prometheus metric to expose the value of `write_time`
+    kotekan::prometheus::Gauge& write_time_metric;
 };
 
 #endif // BASEBAND_WRITER_HPP
