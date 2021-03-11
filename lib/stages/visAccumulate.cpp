@@ -132,6 +132,9 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
         }
     }
 
+    // register base dataset states to prepare for getting dataset IDs for out frames
+    register_base_dataset_states(instrument_name, freqs, inputs, prods);
+
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
@@ -154,9 +157,6 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
                     "gating config={:s}].",
                     num_freq_in_frame, gating_conf.dump());
     }
-
-    // register base dataset states to prepare for getting dataset IDs for out frames
-    register_base_dataset_states(instrument_name, freqs, inputs, prods);
 
     // Register gating update callbacks
     std::map<std::string, std::function<bool(nlohmann::json&)>> callbacks;
@@ -231,8 +231,6 @@ void visAccumulate::register_base_dataset_states(
     base_dataset_states.push_back(dm.create_state<inputState>(inputs).first);
     base_dataset_states.push_back(dm.create_state<prodState>(prods).first);
     base_dataset_states.push_back(dm.create_state<eigenvalueState>(0).first);
-    base_dataset_states.push_back(
-        dm.create_state<gatingState>(*gated_datasets.at(0).spec.get()).first);
     base_dataset_states.push_back(
         dm.create_state<metadataState>(weight_type, instrument_name, git_tag).first);
 }
