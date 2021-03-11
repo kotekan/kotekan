@@ -43,7 +43,7 @@ REGISTER_KOTEKAN_STAGE(VisWriter);
 
 VisWriter::VisWriter(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& buffer_container) :
-    BaseWriter(config, unique_name, buffer_container, "{seconds_since_start:08d}_0000")) {
+    BaseWriter(config, unique_name, buffer_container, "{seconds_since_start:08d}_0000") {
     acq_fmt = "{acq_start:%Y%m%dT%H%M%SZ}_" + instrument_name + "_corr";
 };
 
