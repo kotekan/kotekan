@@ -98,7 +98,7 @@
 class BaseWriter : public kotekan::Stage {
 public:
     BaseWriter(kotekan::Config& config, const std::string& unique_name,
-               kotekan::bufferContainer& buffer_container, std::string file_fmt);
+               kotekan::bufferContainer& buffer_container);
 
     void main_thread() override;
 
@@ -145,6 +145,9 @@ protected:
     // Acquisition name format
     std::string acq_fmt;
 
+    // File name format
+    std::string file_fmt;
+
 private:
     /// Construct the set of metadata
     virtual std::map<std::string, std::string> make_metadata(dset_id_t ds_id) = 0;
@@ -189,9 +192,6 @@ private:
     size_t window;
     bool ignore_version;
     double acq_timeout;
-
-    // File name format
-    std::string file_fmt;
 
     /// Input buffer to read from
     Buffer* in_buf;
