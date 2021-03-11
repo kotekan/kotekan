@@ -285,8 +285,10 @@ void visAccumulate::main_thread() {
             base_dataset_id = dm.add_dataset(base_dataset_states, *ds_id_in);
             DEBUG("Registered base dataset: {}", base_dataset_id)
 
-            // Set the output dataset ID for the main visibility accumulation
-            gated_datasets.at(0).output_dataset_id = base_dataset_id;
+            // Set the output dataset ID for all datasets
+            for (auto& state : gated_datasets) {
+                state.output_dataset_id = register_gate_dataset(*state.spec.get());
+            }
         }
 
         int32_t* input = (int32_t*)in_frame;
