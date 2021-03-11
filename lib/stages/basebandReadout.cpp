@@ -58,6 +58,8 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
     out_frame_id(out_buf),
     readout_counter(kotekan::prometheus::Metrics::instance().add_counter(
         "kotekan_baseband_readout_total", unique_name, {"freq_id", "status"})),
+    readout_dropped_frame_counter(kotekan::prometheus::Metrics::instance().add_counter(
+        "kotekan_baseband_readout_dropped_frames_total", unique_name, {"freq_id"})),
     readout_in_progress_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_baseband_readout_in_progress", unique_name, {"freq_id"})) {
 
@@ -111,9 +113,10 @@ void basebandReadout::main_thread() {
             uint32_t freq_id = tel.to_freq_id(in_buf, in_buf_frame);
 
             DEBUG("Initialize baseband metrics for freq_id: {:d}", freq_id);
-            readout_counter.labels({std::to_string(freq_id), "done"});
+            readout_counter.labels({std::to_string(freq_id), "dropped"});
             readout_counter.labels({std::to_string(freq_id), "error"});
             readout_counter.labels({std::to_string(freq_id), "no_data"});
+            readout_dropped_frame_counter.labels({std::to_string(freq_id)});
             readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
 
             INFO("Starting request-listening thread for freq_id: {:d}", freq_id);
@@ -351,6 +354,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     auto first_meta = (chimeMetadata*)in_buf->metadata[in_buf_frame]->metadata;
 
     const uint32_t freq_id = data.freq_id;
+    auto& frame_dropped_counter = readout_dropped_frame_counter.labels({std::to_string(freq_id)});
 
     // Figure out how much data we have.
     int64_t data_start_fpga = std::max(data.trigger_start_fpga, first_meta->fpga_seq_num);
@@ -392,8 +396,9 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                 out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
                 if (out_frame == nullptr) {
                     // Skip this frame
-                    WARN("Can get an output frame ({:d}). Dropping frame {:d}/{:d}", out_frame_id,
-                         event_id, frame_index);
+                    WARN("Cannot get an output frame ({:d}). Dropping frame {:d}/{:d}",
+                         out_frame_id, event_id, frame_index);
+                    frame_dropped_counter.inc();
                     break;
                 }
 
