@@ -50,6 +50,7 @@ class EventDump:
 
     event_id: int
     freq_id: int
+    num_elements: int
     fpga_start_seq: int
     fpga_length: int
 
@@ -59,22 +60,24 @@ class EventDump:
         event_id = metadata.event_id
         freq_id = metadata.freq_id
         fpga_seq = metadata.fpga_seq
-        valid_from = metadata.valid_from
+        num_elements = metadata.num_elements
         valid_to = metadata.valid_to
-        data_start = fpga_seq + valid_from
-        data_length = valid_to - valid_from
-        return cls(event_id, freq_id, data_start, data_length)
+        return cls(event_id, freq_id, num_elements, fpga_seq, valid_to)
 
     def extend(self, metadata):
         """Increase the duration of the event's data with another dumped frame
-        Assumes that the dumped frames record continguous samples, with no holes caused by the output buffer's filling up.
+        Enforces that the dumped frames record continguous samples, with no holes caused by the output buffer's filling up.
         """
+        # check structure matches
+        assert self.event_id == metadata.event_id
+        assert self.freq_id == metadata.freq_id
+        assert self.num_elements == metadata.num_elements
+
+        # check samples are continguous
         fpga_seq = metadata.fpga_seq
-        valid_from = metadata.valid_from
-        valid_to = metadata.valid_to
-        data_start = fpga_seq + valid_from
-        data_length = valid_to - valid_from
-        self.fpga_length += data_length
+        assert fpga_seq == self.fpga_start_seq + self.fpga_length
+
+        self.fpga_length += metadata.valid_to
 
 
 DATAGEN_PNAME = "fakenetwork"
@@ -138,13 +141,13 @@ def run_baseband(tdir_factory, params=None, rest_commands=None, expect_a_failure
 
 def collect_dumped_events(
     dump_frames,
-    num_elements=default_params["num_elements"],
     frame_size=default_params["samples_per_data_set"],
 ):
     """Reconstructs a list of dumped BasebandBuffer frames into a list of `EventDump`s"""
     dumped_events = []
     for frame_no, frame in enumerate(dump_frames):
         event_id = frame.metadata.event_id
+        num_elements = frame.metadata.num_elements
         for j, val in enumerate(frame._buffer[frame.meta_size :]):
             if j >= frame.metadata.valid_to * num_elements:
                 break

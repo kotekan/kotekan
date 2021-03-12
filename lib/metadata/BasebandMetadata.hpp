@@ -12,7 +12,8 @@ struct BasebandMetadata {
     int64_t start;
     int64_t end;
     int64_t fpga_seq;
-    int64_t valid_from;
+    int32_t num_elements;
+    int32_t reserved;
     int64_t valid_to;
 };
 

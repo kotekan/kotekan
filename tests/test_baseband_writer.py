@@ -66,6 +66,7 @@ def run_kotekan(tmpdir_factory, nfreqs=1):
                 baseband_buffer.BasebandBuffer.new_from_params(
                     event_id=12345,
                     freq_id=freq_id,
+                    num_elements=num_elements,
                     frame_size=frame_size,
                     frame_data=generate_tpluse_data(fpga_seq, frame_size, num_elements),
                 )

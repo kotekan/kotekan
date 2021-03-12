@@ -413,7 +413,8 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                 out_metadata->start = data.trigger_start_fpga;
                 out_metadata->end = data.trigger_length_fpga;
                 out_metadata->fpga_seq = frame_fpga_seq + in_start;
-                out_metadata->valid_from = 0;
+                out_metadata->num_elements = _num_elements;
+                out_metadata->reserved = -1;
                 out_metadata->valid_to = 0; // gets adjusted as we copy the data
             }
 

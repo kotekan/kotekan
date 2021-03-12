@@ -13,7 +13,7 @@ const BasebandMetadata* BasebandFrameView::metadata() const {
 
 
 size_t BasebandFrameView::data_size() const {
-    return _metadata->valid_to;
+    return _metadata->valid_to * _metadata->num_elements;
 }
 
 

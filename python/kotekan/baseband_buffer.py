@@ -23,7 +23,8 @@ class BasebandMetadata(ctypes.Structure):
         ("event_start_seq", ctypes.c_uint64),
         ("event_end_seq", ctypes.c_uint64),
         ("fpga_seq", ctypes.c_uint64),
-        ("valid_from", ctypes.c_uint64),
+        ("num_elements", ctypes.c_uint32),
+        ("reserved", ctypes.c_uint32),
         ("valid_to", ctypes.c_uint64),
     ]
 
@@ -100,13 +101,15 @@ class BasebandBuffer(object):
                 fh.write(bytearray(buf._buffer))
 
     @classmethod
-    def new_from_params(cls, event_id, freq_id, frame_size, frame_data=None):
+    def new_from_params(cls, event_id, freq_id, num_elements, frame_size, frame_data=None):
         """Create a new BasebandBuffer owning its own memory.
 
         Parameters
         ----------
         event_id, freq_id
             Baseband event properties
+        num_elements
+            Number of telescope inputs
         frame_size:
             length of frame in bytes
         frame_data: optional List(bytes)
@@ -128,5 +131,6 @@ class BasebandBuffer(object):
         metadata = BasebandMetadata.from_buffer(buf[:meta_size])
         metadata.event_id = event_id
         metadata.freq_id = freq_id
+        metadata.num_elements = num_elements
 
         return cls(buf, skip=0)

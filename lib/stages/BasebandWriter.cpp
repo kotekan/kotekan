@@ -93,9 +93,12 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
 
     write_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
 
-    if (bytes_written != metadata->valid_to) {
+    if (bytes_written != metadata->valid_to * metadata->num_elements) {
         ERROR("Failed to write buffer to disk for file {:s}", file_name);
         exit(-1);
+    }
+    else {
+        INFO("Written {} bytes of data to {:s}", bytes_written, file_name);
     }
     if (bytes_written < in_buf->frame_size) {
         INFO("Closing {}/{}", event_id, freq_id);
