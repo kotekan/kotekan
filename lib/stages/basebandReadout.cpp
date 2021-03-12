@@ -390,6 +390,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                     // No, skip this frame
                     WARN("Output buffer full ({:d}). Dropping frame {:d}/{:d}", out_frame_id,
                          event_id, frame_index);
+                    frame_dropped_counter.inc();
                     break;
                 }
                 // Get a pointer to the new out frame (cannot block because of the check above)
