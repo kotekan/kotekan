@@ -22,6 +22,30 @@ frame_size = global_params["frame_size"] = (
 )
 
 
+def generate_tpluse_data(fpga_seq, length, num_elements):
+    """Simulates sample data using the "tpluse" algorithm from `testDataGen`
+
+    Arguments:
+    ----------
+    fpga_seq
+        starting FPGA sequence number
+    length
+        number of samples to generate
+    num_elements
+        number of telescope inputs
+
+    Returns:
+    --------
+    A list of `length` samples
+    """
+
+    samples = []
+    for j in range(length):
+        val = (fpga_seq + j // num_elements + j % num_elements) % 256
+        samples.append(val)
+    return samples
+
+
 def run_kotekan(tmpdir_factory, nfreqs=1):
     """Starts Kotekan with a simulated baseband stream from `nfreq` frequencies being fed into a single `basebandWriter` stage.
 
@@ -31,17 +55,24 @@ def run_kotekan(tmpdir_factory, nfreqs=1):
     --------
     Sorted list of filenames of the saved baseband files.
     """
+    num_elements = global_params["num_elements"]
+    samples_per_data_set = global_params["samples_per_data_set"]
+
     frame_list = []
     for i in range(global_params["buffer_depth"]):
         for freq_id in range(nfreqs):
+            fpga_seq = frame_size * i
             frame_list.append(
                 baseband_buffer.BasebandBuffer.new_from_params(
-                    event_id=12345, freq_id=freq_id, frame_size=frame_size
+                    event_id=12345,
+                    freq_id=freq_id,
+                    frame_size=frame_size,
+                    frame_data=generate_tpluse_data(fpga_seq, frame_size, num_elements),
                 )
             )
             frame_list[-1].metadata.fpga_seq = frame_size * i
-            frame_list[-1].metadata.valid_to = frame_size
-    frame_list[-1].metadata.valid_to -= 1234
+            frame_list[-1].metadata.valid_to = samples_per_data_set
+    frame_list[-1].metadata.valid_to -= 17
     current_dir = str(tmpdir_factory.getbasetemp())
     read_buffer = runner.ReadBasebandBuffer(current_dir, frame_list)
     read_buffer.write()
@@ -64,6 +95,8 @@ def run_kotekan(tmpdir_factory, nfreqs=1):
 
 def check_baseband_dump(file_name, freq_id=0):
     metadata_size = baseband_buffer.BasebandBuffer.meta_size
+    samples_per_data_set = global_params["samples_per_data_set"]
+    num_elements = global_params["num_elements"]
 
     buf = bytearray(frame_size + metadata_size)
     frame_index = 0
@@ -77,11 +110,23 @@ def check_baseband_dump(file_name, freq_id=0):
             assert frame_metadata.fpga_seq == frame_index * frame_size
 
             if not final_frame:
-                assert frame_metadata.valid_to <= frame_size
-                if frame_metadata.valid_to < frame_size:
+                assert frame_metadata.valid_to <= samples_per_data_set
+                if frame_metadata.valid_to < samples_per_data_set:
                     final_frame = True
             else:
                 assert False, "No more event data is allowed after a non-full frame."
+
+            # Check that the frame data matches tpluse-generated samples
+            for j, val in enumerate(buf[metadata_size:]):
+                if j >= frame_metadata.valid_to * num_elements:
+                    break
+                # calculation used in `testDataGen` for method `tpluse`:
+                expected = (
+                    frame_metadata.fpga_seq + j // num_elements + j % num_elements
+                ) % 256
+                assert (
+                    val == expected
+                ), f"Baseband data mismatch at index {j}/{frame_index}, fpga_seq={frame_metadata.fpga_seq}"
 
             frame_index += 1
     assert frame_index > 0

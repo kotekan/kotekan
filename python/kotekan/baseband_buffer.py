@@ -100,13 +100,17 @@ class BasebandBuffer(object):
                 fh.write(bytearray(buf._buffer))
 
     @classmethod
-    def new_from_params(cls, event_id, freq_id, frame_size):
+    def new_from_params(cls, event_id, freq_id, frame_size, frame_data=None):
         """Create a new BasebandBuffer owning its own memory.
 
         Parameters
         ----------
-        num_elements, num_prod, num_ev
-            Structural parameters.
+        event_id, freq_id
+            Baseband event properties
+        frame_size:
+            length of frame in bytes
+        frame_data: optional List(bytes)
+            value of samples
 
         Returns
         -------
@@ -117,6 +121,8 @@ class BasebandBuffer(object):
         meta_size = ctypes.sizeof(BasebandMetadata)
 
         buf = np.zeros(meta_size + frame_size, dtype=np.uint8)
+        if frame_data:
+            buf[meta_size:] = frame_data
 
         # Set the structure in the metadata
         metadata = BasebandMetadata.from_buffer(buf[:meta_size])
