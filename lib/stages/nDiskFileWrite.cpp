@@ -8,13 +8,12 @@
 #include "kotekanLogging.hpp"  // for ERROR, INFO
 #include "util.h"              // for cp, make_raw_dirs
 
-#include "fmt.hpp" // for format, fmt
-
 #include <algorithm>  // for max
 #include <atomic>     // for atomic_bool
 #include <errno.h>    // for errno
 #include <exception>  // for exception
 #include <fcntl.h>    // for open, O_CREAT, O_WRONLY
+#include <fmt.hpp>    // for format, fmt
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <memory>     // for allocator_traits<>::value_type
 #include <pthread.h>  // for pthread_setaffinity_np

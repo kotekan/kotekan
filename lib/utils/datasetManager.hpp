@@ -11,14 +11,13 @@
 #include "restClient.hpp"        // for restClient::restReply, restClient
 #include "restServer.hpp"        // for connectionInstance
 
-#include "fmt.hpp"  // for fmt
-#include "json.hpp" // for json, basic_json<>::object_t, basic_json, operator!=
-
 #include <atomic>             // for atomic, __atomic_base
 #include <chrono>             // for milliseconds
 #include <condition_variable> // for condition_variable
 #include <exception>          // for exception
+#include <fmt.hpp>            // for fmt
 #include <functional>         // for function
+#include <json.hpp>           // for json, basic_json<>::object_t, basic_json, operator!=
 #include <map>                // for map, _Rb_tree_iterator, operator!=, map<>::iterator
 #include <memory>             // for unique_ptr, allocator, operator==, make_unique
 #include <mutex>              // for mutex, unique_lock, lock_guard

@@ -2,8 +2,7 @@
 
 #include "metadata.h" // for metadataContainer
 
-#include "fmt.hpp" // for format, fmt
-
+#include <fmt.hpp>   // for format, fmt
 #include <stdexcept> // for runtime_error
 #include <string.h>  // for memcpy
 #include <string>    // for string

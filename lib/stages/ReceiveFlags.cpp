@@ -13,18 +13,17 @@
 #include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for frameID, ts_to_double, current_time, double_to_ts, modulo
 
-#include "gsl-lite.hpp" // for span<>::iterator, span
-
-#include <algorithm>   // for copy, fill, copy_backward, max
-#include <atomic>      // for atomic_bool
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, _1, function
-#include <memory>      // for operator==, __shared_ptr_access
-#include <regex>       // for match_results<>::_Base_type
-#include <stdexcept>   // for invalid_argument, runtime_error
-#include <tuple>       // for get
-#include <type_traits> // for add_const<>::type
-#include <utility>     // for pair, move, tuple_element<>::type
+#include <algorithm>    // for copy, fill, copy_backward, max
+#include <atomic>       // for atomic_bool
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <gsl-lite.hpp> // for span<>::iterator, span
+#include <memory>       // for operator==, __shared_ptr_access
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for invalid_argument, runtime_error
+#include <tuple>        // for get
+#include <type_traits>  // for add_const<>::type
+#include <utility>      // for pair, move, tuple_element<>::type
 
 using namespace std::placeholders;
 

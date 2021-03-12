@@ -14,12 +14,11 @@
 #include "version.h"             // for get_git_commit_hash
 #include "visFile.hpp"           // for visFileBundle, _factory_aliasvisFile
 
-#include "fmt.hpp" // for format
-
 #include <algorithm>  // for copy, copy_backward, equal, max
 #include <atomic>     // for atomic_bool
 #include <deque>      // for deque
 #include <exception>  // for exception
+#include <fmt.hpp>    // for format
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error, out_of_range

@@ -6,12 +6,11 @@
 #include "metadata.h"         // for metadataContainer
 #include "visUtil.hpp"        // for frameID, modulo
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json
-
 #include <atomic>     // for atomic_bool
 #include <exception>  // for exception
+#include <fmt.hpp>    // for format, fmt
 #include <functional> // for _Bind_helper<>::type, bind, function
+#include <json.hpp>   // for json
 #include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error, invalid_argument
 #include <stdint.h>   // for uint32_t, uint8_t

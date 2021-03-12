@@ -5,11 +5,10 @@
 #include "kotekanLogging.hpp" // for ERROR, DEBUG2, WARN
 #include "restClient.hpp"
 
-#include "fmt.hpp"  // for format
-#include "json.hpp" // for json, basic_json<>::object_t, basic_json
-
 #include <cstdint>   // for uint64_t
 #include <exception> // for exception
+#include <fmt.hpp>   // for format
+#include <json.hpp>  // for json, basic_json<>::object_t, basic_json
 #include <regex>     // for match_results<>::_Base_type
 #include <stdexcept> // for runtime_error
 #include <utility>   // for tuple_element<>::type

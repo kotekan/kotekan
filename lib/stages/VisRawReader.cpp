@@ -10,13 +10,13 @@
 #include "visBuffer.hpp"       // for VisFrameView, VisMetadata
 #include "visUtil.hpp"         // for prod_ctype, rstack_ctype, stack_ctype, input_ctype, frameID
 
-#include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for basic_json<>::object_t, basic_json, json, basic_json<>::v...
 
-#include <algorithm> // for fill, max
+#include <algorithm> // for max
 #include <cstdint>   // for uint32_t
+#include <fmt.hpp>   // for format, fmt
 #include <stddef.h>  // for size_t
-#include <stdexcept> // for runtime_error
+#include <stdexcept> // for runtime_error, out_of_range
 #include <utility>   // for pair, move
 
 using kotekan::bufferContainer;

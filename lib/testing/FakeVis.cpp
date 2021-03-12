@@ -13,23 +13,22 @@
 #include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for prod_ctype, input_ctype, double_to_ts, current_time, freq...
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span<>::iterator, span
-
-#include <algorithm>   // for max, fill, transform
-#include <atomic>      // for atomic_bool
-#include <complex>     // for complex
-#include <cstdint>     // for uint32_t, int32_t
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, bind, function, placeholders
-#include <iterator>    // for back_insert_iterator, back_inserter, begin, end
-#include <memory>      // for allocator, unique_ptr
-#include <regex>       // for match_results<>::_Base_type
-#include <stdexcept>   // for runtime_error
-#include <time.h>      // for nanosleep, timespec
-#include <tuple>       // for get, make_tuple, tuple
-#include <type_traits> // for __decay_and_strip<>::__type
-#include <utility>     // for pair
+#include <algorithm>    // for max, fill, transform
+#include <atomic>       // for atomic_bool
+#include <complex>      // for complex
+#include <cstdint>      // for uint32_t, int32_t
+#include <exception>    // for exception
+#include <fmt.hpp>      // for format, fmt
+#include <functional>   // for _Bind_helper<>::type, bind, function, placeholders
+#include <gsl-lite.hpp> // for span<>::iterator, span
+#include <iterator>     // for back_insert_iterator, back_inserter, begin, end
+#include <memory>       // for allocator, unique_ptr
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error
+#include <time.h>       // for nanosleep, timespec
+#include <tuple>        // for get, make_tuple, tuple
+#include <type_traits>  // for __decay_and_strip<>::__type
+#include <utility>      // for pair
 
 
 using namespace std::placeholders;

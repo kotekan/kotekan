@@ -5,14 +5,13 @@
 #include "restClient.hpp"     // for restClient::restReply, restClient
 #include "restServer.hpp"     // for restServer, connectionInstance, HTTP_RESPONSE
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for basic_json, basic_json<>::value_type, opera...
-
 #include <atomic>                            // for atomic, __atomic_base
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_BOOL_2, BOOST_TEST...
 #include <chrono>                            // for milliseconds
 #include <cstdint>                           // for uint32_t
+#include <fmt.hpp>                           // for format, fmt
 #include <functional>                        // for _Placeholder, _Bind_helper<>::type, bind
+#include <json.hpp>                          // for basic_json, basic_json<>::value_type, opera...
 #include <string>                            // for allocator, basic_string, string, operator!=
 #include <thread>                            // for sleep_for
 #include <vector>                            // for vector

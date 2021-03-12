@@ -1,30 +1,30 @@
 #include "Transpose.hpp"
 
 #include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for Hash, operator!=
+#include "Hash.hpp"              // for Hash, operator==, operator!=, operator<
 #include "SystemInterface.hpp"   // for get_hostname, get_username
-#include "buffer.h"              // for wait_for_full_frame, mark_frame_empty, register_consumer
+#include "buffer.h"              // for mark_frame_empty, wait_for_full_frame, register_consumer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "dataset.hpp"           // for dataset
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager
-#include "datasetState.hpp"      // for metadataState, stackState, acqDatasetIdState, eigenvalu...
-#include "errors.h"              // for exit_kotekan, CLEAN_EXIT, ReturnCode
-#include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, logLevel, INFO
-#include "prometheusMetrics.hpp" // for Metrics, Gauge
+#include "datasetState.hpp"      // for metadataState
+#include "errors.h"              // for exit_kotekan, ReturnCode, CLEAN_EXIT, DATASET_MANAGER_F...
+#include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, INFO, DEBUG2, ERROR
+#include "prometheusMetrics.hpp" // for Metrics, Counter
 #include "version.h"             // for get_git_commit_hash
 
-#include "fmt.hpp" // for format
-
-#include <algorithm>    // for max, fill, min
+#include <algorithm>    // for copy, fill
 #include <atomic>       // for atomic_bool
 #include <cxxabi.h>     // for __forced_unwind
 #include <exception>    // for exception
+#include <fmt.hpp>      // for format
 #include <functional>   // for _Bind_helper<>::type, bind, function
-#include <future>       // for async, future
+#include <future>       // for async, future, future_status, future_status::timeout
+#include <json.hpp>     // for basic_json<>::object_t, basic_json<>::value_type, json
 #include <map>          // for map
 #include <memory>       // for allocator_traits<>::value_type
 #include <regex>        // for match_results<>::_Base_type
-#include <stdexcept>    // for out_of_range, invalid_argument
+#include <stdexcept>    // for out_of_range, runtime_error
 #include <stdint.h>     // for uint32_t, uint64_t
 #include <system_error> // for system_error
 

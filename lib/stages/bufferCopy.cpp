@@ -4,17 +4,16 @@
 #include "kotekanLogging.hpp" // for INFO, DEBUG2, FATAL_ERROR
 #include "visUtil.hpp"
 
-#include "fmt.hpp" // for format, fmt
-#include "json.hpp"
-
 #include <algorithm>  // for max
 #include <atomic>     // for atomic_bool
 #include <exception>  // for exception
+#include <fmt.hpp>    // for format, fmt
 #include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error, invalid_argument
-#include <stdint.h>   // for uint8_t
-#include <string.h>   // for memcpy
+#include <json.hpp>
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error, invalid_argument
+#include <stdint.h>  // for uint8_t
+#include <string.h>  // for memcpy
 
 
 using nlohmann::json;

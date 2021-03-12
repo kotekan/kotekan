@@ -9,12 +9,11 @@
 #include "test_utils.hpp"     // for CompareCTypes
 #include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype
 
-#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value...
-
 #include <algorithm>                         // for max
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
 #include <exception>                         // for exception
 #include <iostream>                          // for endl, operator<<, ostream, basic_ostream, cout
+#include <json.hpp>                          // for basic_json<>::object_t, basic_json<>::value...
 #include <map>                               // for map
 #include <memory>                            // for allocator, make_unique, unique_ptr
 #include <stdexcept>                         // for out_of_range

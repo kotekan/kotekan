@@ -7,10 +7,9 @@
 #include "metadata.h"         // for metadataPool // IWYU pragma: keep
 #include "visBuffer.hpp"      // for VisFrameView
 
-#include "fmt.hpp" // for format, fmt
-
 #include <cstdint>   // for int32_t, uint32_t
 #include <exception> // for exception
+#include <fmt.hpp>   // for format, fmt
 #include <regex>     // for match_results<>::_Base_type
 #include <stddef.h>  // for size_t
 #include <stdexcept> // for runtime_error

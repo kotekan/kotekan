@@ -12,8 +12,7 @@
 #include "hsaCommand.hpp"         // for hsaCommand
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
-#include "json.hpp" // for json
-
+#include <json.hpp> // for json
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
 #include <vector>   // for vector

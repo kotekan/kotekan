@@ -14,8 +14,7 @@
 #include "datasetState.hpp"      // for RFIFrameDropState
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily
 
-#include "json.hpp" // for json
-
+#include <json.hpp> // for json
 #include <mutex>    // for mutex
 #include <stddef.h> // for size_t
 #include <string>   // for string

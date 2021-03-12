@@ -11,9 +11,6 @@
 #include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::erms, VisField::eval
 #include "visUtil.hpp"           // for cfloat, frameID, current_time, modulo, movingAverage
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span
-
 #include <algorithm>     // for copy, copy_backward, equal, max, min
 #include <atomic>        // for atomic_bool
 #include <blaze/Blaze.h> // for DynamicMatrix, DMatDeclHermExpr, band, HermitianMatrix
@@ -22,7 +19,9 @@
 #include <cstdint>       // for uint32_t, int32_t
 #include <deque>         // for deque
 #include <exception>     // for exception
+#include <fmt.hpp>       // for format, fmt
 #include <functional>    // for _Bind_helper<>::type, bind, function
+#include <gsl-lite.hpp>  // for span
 #include <iostream>      // for basic_ostream::operator<<, operator<<, basic_ostream<>:...
 #include <memory>        // for make_unique
 #include <regex>         // for match_results<>::_Base_type

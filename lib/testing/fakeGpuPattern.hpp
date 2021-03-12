@@ -18,12 +18,11 @@
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "pulsarTiming.hpp"   // for Polyco
 
-#include "gsl-lite.hpp" // for span
-
-#include <random>   // for mt19937, normal_distribution, random_device
-#include <stddef.h> // for size_t
-#include <stdint.h> // for int32_t, uint32_t
-#include <string>   // for string
+#include <gsl-lite.hpp> // for span
+#include <random>       // for mt19937, normal_distribution, random_device
+#include <stddef.h>     // for size_t
+#include <stdint.h>     // for int32_t, uint32_t
+#include <string>       // for string
 
 // Create the abstract factory for generating patterns
 class FakeGpuPattern;
@@ -219,7 +218,7 @@ public:
 
 private:
     float _pulse_width; // in s
-    float _rot_freq;    // in Hz
+    double _rot_freq;   // in Hz
     Polyco _polyco;
 };
 

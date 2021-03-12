@@ -2,9 +2,8 @@
 
 #include "Hash.hpp" // for operator==
 
-#include "json.hpp" // for json, basic_json<>::value_type, basic_json
-
-#include <string> // for string, operator==
+#include <json.hpp> // for json, basic_json<>::value_type, basic_json
+#include <string>   // for string, operator==
 
 using nlohmann::json;
 

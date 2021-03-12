@@ -3,13 +3,12 @@
 
 #include "MurmurHash3.hpp" // for MurmurHash3_x64_128
 
-#include "fmt.hpp"      // for formatter
-#include "gsl-lite.hpp" // for span
-#include "json.hpp"     // for json
-
-#include <iostream> // for istream, ostream
-#include <stdint.h> // for uint64_t
-#include <string>   // for string
+#include <fmt.hpp>      // for formatter
+#include <gsl-lite.hpp> // for span
+#include <iostream>     // for istream, ostream
+#include <json.hpp>     // for json
+#include <stdint.h>     // for uint64_t
+#include <string>       // for string
 
 // Set a value for the hash seed
 #define _SEED 1420

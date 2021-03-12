@@ -11,8 +11,6 @@
 #include "restServer.hpp"        // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RES...
 #include "tx_utils.hpp"          // for add_nsec, CLOCK_ABS_NANOSLEEP, get_vlan_from_ip, parse_...
 
-#include "fmt.hpp" // for format
-
 #include <algorithm>    // for max, max_element, copy
 #include <arpa/inet.h>  // for inet_pton, inet_ntop
 #include <assert.h>     // for assert
@@ -20,6 +18,7 @@
 #include <cstring>      // for strerror, memset, size_t
 #include <errno.h>      // for errno, EINTR
 #include <exception>    // for exception
+#include <fmt.hpp>      // for format
 #include <map>          // for map, map<>::mapped_type
 #include <memory>       // for allocator_traits<>::value_type
 #include <mutex>        // for mutex, unique_lock

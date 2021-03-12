@@ -13,8 +13,6 @@
 #include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::weight
 #include "visUtil.hpp"           // for current_time, modulo, rstack_ctype, cfloat, frameID
 
-#include "gsl-lite.hpp" // for span
-
 #include <algorithm>    // for copy, max, fill, copy_backward, equal
 #include <atomic>       // for atomic_bool
 #include <complex>      // for complex, norm
@@ -23,6 +21,7 @@
 #include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, bind, function, placeholders
 #include <future>       // for async, future
+#include <gsl-lite.hpp> // for span
 #include <iterator>     // for begin, end
 #include <memory>       // for allocator_traits<>::value_type
 #include <pthread.h>    // for pthread_setaffinity_np
@@ -253,10 +252,10 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
 
             // Accumulate the weighted *variances*. Normalising and inversion
             // will be done later
-            out_weight[s.stack] += (1.0 / weight);
+            out_weight[s.stack] += ((float)1.0 / weight);
 
             // Accumulate the weights so we can normalize correctly
-            stack_norm[s.stack] += 1.0;
+            stack_norm[s.stack] += (float)1.0;
         }
 
         // Loop over the stacks and normalise (and invert the variances)
@@ -268,10 +267,10 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
             float norm = stack_norm[stack_ind];
 
             // Invert norm if set, otherwise use zero to set data to zero.
-            float inorm = (norm != 0.0) ? (1.0 / norm) : 0.0;
+            float inorm = (norm != 0.0) ? ((float)1.0 / norm) : (float)0.0;
             float iwgt = (output_frame.weight[stack_ind] != 0.0)
-                             ? (1.0 / output_frame.weight[stack_ind])
-                             : 0.0;
+                             ? ((float)1.0 / output_frame.weight[stack_ind])
+                             : (float)0.0;
 
             output_frame.vis[stack_ind] *= inorm;
             output_frame.weight[stack_ind] = norm * norm * iwgt;
@@ -286,7 +285,7 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
 
         // Calculate residuals (return zero if no data for this freq)
-        float residual = (normt != 0.0) ? (vart / normt) : 0.0;
+        float residual = (normt != 0.0) ? (vart / normt) : (float)0.0;
 
         // Update prometheus metrics
         double elapsed = current_time() - start_time;

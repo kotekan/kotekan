@@ -15,9 +15,8 @@
 #include "restServer.hpp"      // for connectionInstance
 #include "visUtil.hpp"         // for cfloat, input_ctype, prod_ctype, freq_ctype
 
-#include "json.hpp" // for json
-
 #include <fstream>  // for ofstream
+#include <json.hpp> // for json
 #include <map>      // for map
 #include <mutex>    // for mutex
 #include <stddef.h> // for size_t

@@ -14,8 +14,7 @@
 #include "prometheusMetrics.hpp"
 #include "util.h" // for e_time
 
-#include "json.hpp"
-
+#include <json.hpp>
 #include <mutex>
 
 /**
@@ -413,7 +412,7 @@ nlohmann::json iceBoardHandler::get_json_port_info() {
     info["nic_port"] = this->port;
 
     std::vector<uint32_t> freq_bins;
-    std::vector<float> freq_mhz;
+    std::vector<double> freq_mhz;
     ice_stream_id_t temp_stream_id = port_stream_id;
     temp_stream_id.crate_id = port_stream_id.crate_id % 2;
 

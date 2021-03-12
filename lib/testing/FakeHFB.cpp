@@ -15,18 +15,17 @@
 #include "version.h"           // for get_git_commit_hash
 #include "visUtil.hpp"         // for double_to_ts, current_time, freq_ctype, cfloat
 
-#include "gsl-lite.hpp" // for span
-
-#include <algorithm>  // for max, transform
-#include <atomic>     // for atomic_bool
-#include <cstdint>    // for uint32_t, int32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function, placeholders
-#include <iterator>   // for back_insert_iterator, back_inserter, begin, end
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <time.h>     // for nanosleep, timespec
-#include <utility>    // for pair
+#include <algorithm>    // for max, transform
+#include <atomic>       // for atomic_bool
+#include <cstdint>      // for uint32_t, int32_t
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function, placeholders
+#include <gsl-lite.hpp> // for span
+#include <iterator>     // for back_insert_iterator, back_inserter, begin, end
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error
+#include <time.h>       // for nanosleep, timespec
+#include <utility>      // for pair
 
 
 using namespace std::placeholders;

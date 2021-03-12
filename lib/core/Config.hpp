@@ -8,12 +8,11 @@
 
 #include "kotekanLogging.hpp" // for ERROR_NON_OO
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json
-
 #include <complex>     // for complex  // IWYU pragma: keep
 #include <cxxabi.h>    // for __cxa_demangle
 #include <exception>   // for exception
+#include <fmt.hpp>     // for format, fmt
+#include <json.hpp>    // for json
 #include <list>        // for list
 #include <regex>       // for regex, cmatch, regex_match, sregex_token_iterator
 #include <stdexcept>   // for runtime_error

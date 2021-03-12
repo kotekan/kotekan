@@ -10,8 +10,6 @@
 #include "util.h"                // for string_tail
 #include "visUtil.hpp"           // for current_time
 
-#include "fmt.hpp" // for format, fmt
-
 #include <algorithm>       // for copy, max, copy_backward, find, equal
 #include <arpa/inet.h>     // for inet_ntop
 #include <assert.h>        // for assert
@@ -19,6 +17,7 @@
 #include <errno.h>         // for errno
 #include <event2/thread.h> // for evthread_use_pthreads
 #include <exception>       // for exception
+#include <fmt.hpp>         // for format, fmt
 #include <functional>      // for _Bind_helper<>::type, bind, ref, function, placeholders
 #include <memory>          // for allocator_traits<>::value_type
 #include <netinet/in.h>    // for sockaddr_in, htons, in_addr, ntohs

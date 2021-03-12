@@ -15,26 +15,25 @@
 #include "Config.hpp" // for Config
 #include "buffer.h"   // for Buffer
 
-#include "fmt.hpp"      // for format_context, formatter
-#include "gsl-lite.hpp" // for span
-#include "json.hpp"     // for json
-
-#include <algorithm>   // for max
-#include <complex>     // for complex, imag, real
-#include <cstdint>     // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
-#include <cstdlib>     // for size_t, (anonymous), div
-#include <functional>  // for function
-#include <iosfwd>      // for ostream
-#include <map>         // for map
-#include <math.h>      // for fmod
-#include <string>      // for string
-#include <sys/time.h>  // for timeval, CLOCK_REALTIME
-#include <sys/types.h> // for __syscall_slong_t, suseconds_t, time_t
-#include <time.h>      // for timespec, clock_gettime
-#include <tuple>       // for tuple, tie
-#include <type_traits> // for enable_if_t, is_integral, make_unsigned
-#include <utility>     // for pair
-#include <vector>      // for vector
+#include <algorithm>    // for max
+#include <complex>      // for complex, imag, real
+#include <cstdint>      // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
+#include <cstdlib>      // for size_t, (anonymous), div
+#include <fmt.hpp>      // for format_context, formatter
+#include <functional>   // for function
+#include <gsl-lite.hpp> // for span
+#include <iosfwd>       // for ostream
+#include <json.hpp>     // for json
+#include <map>          // for map
+#include <math.h>       // for fmod
+#include <string>       // for string
+#include <sys/time.h>   // for timeval, CLOCK_REALTIME
+#include <sys/types.h>  // for __syscall_slong_t, suseconds_t, time_t
+#include <time.h>       // for timespec, clock_gettime
+#include <tuple>        // for tuple, tie
+#include <type_traits>  // for enable_if_t, is_integral, make_unsigned
+#include <utility>      // for pair
+#include <vector>       // for vector
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;

@@ -10,8 +10,6 @@
 #include "prometheusMetrics.hpp" // for Metrics
 #include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::weight
 
-#include "gsl-lite.hpp" // for span, span<>::iterator
-
 #include <atomic>       // for atomic_bool
 #include <cblas.h>      // for cblas_cgemv, CblasNoTrans, CblasRowMajor
 #include <complex>      // for operator*, complex, operator/, norm, operator-, operato...
@@ -20,6 +18,7 @@
 #include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, function, _2
 #include <future>       // for async, future
+#include <gsl-lite.hpp> // for span, span<>::iterator
 #include <iterator>     // for begin, end, back_insert_iterator, back_inserter
 #include <memory>       // for allocator_traits<>::value_type
 #include <numeric>      // for iota

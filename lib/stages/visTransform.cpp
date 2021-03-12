@@ -14,18 +14,17 @@
 #include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for prod_ctype, input_ctype, freq_ctype, copy_vis_triangle
 
-#include "gsl-lite.hpp" // for span<>::iterator, span
-
-#include <algorithm>  // for fill, max, transform
-#include <atomic>     // for atomic_bool
-#include <cstdint>    // for uint32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <iterator>   // for back_insert_iterator, begin, end, back_inserter
-#include <numeric>    // for iota
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <tuple>      // for get, tie, tuple
+#include <algorithm>    // for fill, max, transform
+#include <atomic>       // for atomic_bool
+#include <cstdint>      // for uint32_t
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <gsl-lite.hpp> // for span<>::iterator, span
+#include <iterator>     // for back_insert_iterator, begin, end, back_inserter
+#include <numeric>      // for iota
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error
+#include <tuple>        // for get, tie, tuple
 
 
 using kotekan::bufferContainer;

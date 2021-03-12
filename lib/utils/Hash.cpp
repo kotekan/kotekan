@@ -1,7 +1,6 @@
 #include "Hash.hpp"
 
-#include "fmt.hpp" // for format
-
+#include <fmt.hpp>    // for format
 #include <inttypes.h> // for SCNx64
 #include <iostream>   // for istream, ostream, basic_istream::read
 #include <stdexcept>  // for invalid_argument

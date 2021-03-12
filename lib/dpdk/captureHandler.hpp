@@ -14,7 +14,7 @@
 #include "packet_copy.h"
 #include "prometheusMetrics.hpp"
 
-#include "json.hpp"
+#include <json.hpp>
 
 /**
  * @brief A simple handler to capture uniformly sized packets into a kotekan buffer

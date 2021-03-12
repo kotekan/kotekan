@@ -50,7 +50,7 @@ public:
      * @param freq   The frequency (MHz) to use for dispersion delay.
      * @returns      Time after t in seconds.
      **/
-    double next_toa(timespec t, float freq) const;
+    double next_toa(timespec t, double freq) const;
 
 private:
     double tmid;

@@ -1,10 +1,9 @@
 #include "Config.hpp"
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json, iter_impl, basic_json<>::object_t, operator>>, basic_json
-
 #include <cstdint>   // for int32_t
+#include <fmt.hpp>   // for format, fmt
 #include <fstream>   // for ifstream, istream, size_t
+#include <json.hpp>  // for json, iter_impl, basic_json<>::object_t, operator>>, basic_json
 #include <map>       // for map<>::key_type
 #include <stdexcept> // for runtime_error
 #include <stdio.h>   // for sprintf

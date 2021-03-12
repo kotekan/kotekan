@@ -7,20 +7,19 @@
 #include "visBuffer.hpp"      // for VisFrameView
 #include "visUtil.hpp"        // for cfloat, input_ctype, ts_to_double, cmap
 
-#include "fmt.hpp"      // for format
-#include "gsl-lite.hpp" // for span
-#include "json.hpp"     // for json, basic_json, basic_json<>::object_t
-
-#include <algorithm> // for copy, max, copy_backward
-#include <complex>   // for complex, operator*
-#include <cstdint>   // for uint32_t, uint16_t
-#include <exception> // for exception
-#include <map>       // for map, map<>::mapped_type
-#include <math.h>    // for cosf, sinf
-#include <regex>     // for match_results<>::_Base_type
-#include <stdexcept> // for invalid_argument, runtime_error
-#include <tuple>     // for get
-#include <vector>    // for vector, __alloc_traits<>::value_type
+#include <algorithm>    // for copy, max, copy_backward
+#include <complex>      // for complex, operator*
+#include <cstdint>      // for uint32_t, uint16_t
+#include <exception>    // for exception
+#include <fmt.hpp>      // for format
+#include <gsl-lite.hpp> // for span
+#include <json.hpp>     // for json, basic_json, basic_json<>::object_t
+#include <map>          // for map, map<>::mapped_type
+#include <math.h>       // for cosf, sinf
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for invalid_argument, runtime_error
+#include <tuple>        // for get
+#include <vector>       // for vector, __alloc_traits<>::value_type
 
 
 // Register test patterns

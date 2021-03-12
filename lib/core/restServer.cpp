@@ -3,8 +3,6 @@
 #include "Config.hpp"         // for Config
 #include "kotekanLogging.hpp" // for ERROR_NON_OO, WARN_NON_OO, INFO_NON_OO, DEBUG_NON_OO
 
-#include "fmt.hpp" // for format, fmt
-
 #include <algorithm>               // for max
 #include <assert.h>                // for assert
 #include <cstdint>                 // for int32_t
@@ -15,6 +13,7 @@
 #include <event2/thread.h>         // for evthread_use_pthreads
 #include <evhttp.h>                // for evhttp_request
 #include <exception>               // for exception
+#include <fmt.hpp>                 // for format, fmt
 #include <mutex>                   // for unique_lock
 #include <netinet/in.h>            // for sockaddr_in, ntohs
 #include <pthread.h>               // for pthread_setaffinity_np, pthread_setname_np

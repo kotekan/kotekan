@@ -11,17 +11,16 @@
 #include "visBuffer.hpp"       // for VisFrameView, VisField, VisField::evec, VisField::flags
 #include "visUtil.hpp"         // for prod_ctype, input_ctype, frameID, cfloat, modulo
 
-#include "gsl-lite.hpp" // for span
-
-#include <algorithm>  // for max, copy
-#include <atomic>     // for atomic_bool
-#include <complex>    // for complex
-#include <cstdint>    // for uint32_t, uint16_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <stddef.h>   // for size_t
-#include <stdexcept>  // for out_of_range
-#include <utility>    // for pair
+#include <algorithm>    // for max, copy
+#include <atomic>       // for atomic_bool
+#include <complex>      // for complex
+#include <cstdint>      // for uint32_t, uint16_t
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <gsl-lite.hpp> // for span
+#include <stddef.h>     // for size_t
+#include <stdexcept>    // for out_of_range
+#include <utility>      // for pair
 
 
 using kotekan::bufferContainer;

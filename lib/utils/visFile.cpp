@@ -1,9 +1,8 @@
 
 #include "visFile.hpp"
 
-#include "fmt.hpp" // for format, fmt
-
 #include <ctime>      // for gmtime, time_t
+#include <fmt.hpp>    // for format, fmt
 #include <fstream>    // for basic_ostream::operator<<, ofstream, endl, basic_ostream, basic_os...
 #include <iterator>   // for reverse_iterator
 #include <libgen.h>   // for dirname, basename

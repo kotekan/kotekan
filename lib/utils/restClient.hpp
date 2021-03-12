@@ -7,14 +7,13 @@
 
 #include "restServer.hpp" // for PORT_REST_SERVER
 
-#include "json.hpp" // for json
-
 #include <atomic>             // for atomic
 #include <condition_variable> // for condition_variable
 #include <event2/buffer.h>    // for evbuffer_iovec
 #include <event2/http.h>      // for evhttp_connection
 #include <event2/util.h>      // for evutil_socket_t
 #include <functional>         // for function
+#include <json.hpp>           // for json
 #include <mutex>              // for mutex
 #include <stddef.h>           // for size_t
 #include <string>             // for string, allocator

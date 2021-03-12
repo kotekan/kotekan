@@ -8,17 +8,16 @@
 #include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for cfloat
 
-#include "gsl-lite.hpp" // for span
-
-#include <atomic>     // for atomic_bool
-#include <cmath>      // for pow
-#include <complex>    // for complex
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for invalid_argument, runtime_error
-#include <stdint.h>   // for uint32_t
-#include <vector>     // for vector
+#include <atomic>       // for atomic_bool
+#include <cmath>        // for pow
+#include <complex>      // for complex
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <gsl-lite.hpp> // for span
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for invalid_argument, runtime_error
+#include <stdint.h>     // for uint32_t
+#include <vector>       // for vector
 
 
 using kotekan::bufferContainer;

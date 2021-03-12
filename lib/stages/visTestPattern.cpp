@@ -13,9 +13,6 @@
 #include "restServer.hpp"        // for connectionInstance, restServer, HTTP_RESPONSE, HTTP_RES...
 #include "visBuffer.hpp"         // for VisFrameView
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span
-
 #include <algorithm>    // for max
 #include <atomic>       // for atomic_bool
 #include <cmath>        // for log10, sqrt
@@ -26,18 +23,20 @@
 #include <dirent.h>     // for opendir
 #include <errno.h>      // for errno
 #include <exception>    // for exception
+#include <fmt.hpp>      // for format, fmt
 #include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
 #include <future>       // for async, future
+#include <gsl-lite.hpp> // for span
 #include <iomanip>      // for operator<<, setprecision
 #include <memory>       // for allocator_traits<>::value_type
 #include <mutex>        // for mutex, lock_guard, unique_lock
 #include <regex>        // for match_results<>::_Base_type
 #include <stdexcept>    // for runtime_error, invalid_argument, out_of_range
+#include <stdint.h>     // for int8_t
 #include <sys/stat.h>   // for mkdir, S_IRGRP, S_IROTH, S_IRWXU
 #include <system_error> // for system_error
 #include <time.h>       // for timespec
 #include <tuple>        // for get
-
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -67,13 +66,7 @@ visTestPattern::visTestPattern(Config& config, const std::string& unique_name,
                                     + std::to_string(_tolerance) + ").");
 
     // report precision: a bit more than error tolerance
-    precision = log10(1. / _tolerance) + 2;
-
-    if (precision < 0) {
-        throw std::invalid_argument("visCheckTestPattern: invalid value for tolerance: %f "
-                                    "(resultet in negative report precision)"
-                                    + std::to_string(_tolerance));
-    }
+    precision = (int8_t)log10(1. / _tolerance) + 2;
     INFO("Using report precision {:d}", precision);
 
     write_dir = config.get<std::string>(unique_name, "write_dir");
@@ -139,7 +132,7 @@ void visTestPattern::main_thread() {
     get_dataset_state(ds_id);
 
     // Comparisons will be against tolerance^2
-    float t2 = _tolerance * _tolerance;
+    double t2 = _tolerance * _tolerance;
 
     auto& bad_values_counter = Metrics::instance().add_gauge(
         "kotekan_vistestpattern_bad_values_total", unique_name, {"name", "freq_id"});

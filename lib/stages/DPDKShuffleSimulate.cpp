@@ -10,12 +10,11 @@
 #include "kotekanLogging.hpp"  // for DEBUG, INFO
 #include "visUtil.hpp"         // for frameID, current_time, modulo, ts_to_double
 
-#include "fmt.hpp" // for format
-
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
 #include <cstdint>    // for int32_t
 #include <exception>  // for exception
+#include <fmt.hpp>    // for format
 #include <regex>      // for match_results<>::_Base_type
 #include <sys/time.h> // for gettimeofday, timeval
 #include <unistd.h>   // for sleep, usleep

@@ -12,12 +12,11 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "restServer.hpp"      // for connectionInstance
 
-#include "json.hpp" // for json
-
 #include <atomic>             // for atomic_bool
 #include <chrono>             // for seconds
 #include <condition_variable> // for condition_variable
 #include <functional>         // for reference_wrapper
+#include <json.hpp>           // for json
 #include <map>                // for map
 #include <netinet/in.h>       // for sockaddr_in
 #include <stdint.h>           // for uint32_t

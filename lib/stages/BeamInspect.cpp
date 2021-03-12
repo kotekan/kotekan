@@ -7,9 +7,8 @@
 #include "kotekanLogging.hpp" // for INFO
 #include "visUtil.hpp"        // for frameID, modulo
 
-#include "fmt.hpp" // for format
-
 #include <atomic>   // for atomic_bool
+#include <fmt.hpp>  // for format
 #include <stdint.h> // for uint8_t, uint32_t
 
 using kotekan::bufferContainer;

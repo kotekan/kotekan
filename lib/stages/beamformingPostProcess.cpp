@@ -9,12 +9,11 @@
 #include "chimeMetadata.hpp"    // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
 #include "vdif_functions.h"     // for VDIFHeader
 
-#include "fmt.hpp" // for format, fmt
-
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
 #include <cstdint>    // for int32_t
 #include <exception>  // for exception
+#include <fmt.hpp>    // for format, fmt
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <math.h>     // for round
 #include <regex>      // for match_results<>::_Base_type

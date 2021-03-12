@@ -4,15 +4,14 @@
 #include "chimeMetadata.hpp" // for chimeMetadata
 #include "visUtil.hpp"       // for prod_index
 
-#include "gsl-lite.hpp" // for span, span<>::iterator
-
-#include <algorithm> // for fill
-#include <cmath>     // for lroundf, pow
-#include <exception> // for exception
-#include <regex>     // for match_results<>::_Base_type
-#include <stdexcept> // for runtime_error
-#include <time.h>    // for timespec  // IWYU pragma: keep
-#include <vector>    // for vector
+#include <algorithm>    // for fill
+#include <cmath>        // for lroundf, pow
+#include <exception>    // for exception
+#include <gsl-lite.hpp> // for span, span<>::iterator
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error
+#include <time.h>       // for timespec  // IWYU pragma: keep
+#include <vector>       // for vector
 
 // Register test patterns
 REGISTER_FAKE_GPU_PATTERN(BlockGpuPattern, "block");
@@ -159,8 +158,8 @@ void GaussianGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata,
     (void)frame_number;
     (void)freq_id;
 
-    float f_auto = pow(_samples_per_data_set, 0.5);
-    float f_cross = pow(_samples_per_data_set / 2, 0.5);
+    float f_auto = (float)pow(_samples_per_data_set, 0.5);
+    float f_cross = (float)pow(_samples_per_data_set / 2, 0.5);
 
     for (size_t i = 0; i < _num_elements; i++) {
         for (size_t j = i; j < _num_elements; j++) {

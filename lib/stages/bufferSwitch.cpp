@@ -8,11 +8,10 @@
 #include "kotekanLogging.hpp"  // for WARN
 #include "visUtil.hpp"         // for frameID  // IWYU pragma: keep
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json, basic_json<>::iterator, basic_json, iter_impl
-
 #include <exception>  // for exception
+#include <fmt.hpp>    // for format, fmt
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
+#include <json.hpp>   // for json, basic_json<>::iterator, basic_json, iter_impl
 #include <stdexcept>  // for runtime_error
 #include <tuple>      // for get
 #include <utility>    // for pair

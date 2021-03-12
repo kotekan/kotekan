@@ -48,6 +48,7 @@ option(WITH_TESTS "Compile testing library and boost C++ unit tests" OFF)
 option(IWYU "Enable include-what-you-use and print suggestions to stderr" OFF)
 option(CCACHE "Use ccache to speed up the build" OFF)
 option(WERROR "Warnings are errors" OFF)
+option(WFLOAT_CONVERSION "Enable -Wfloat-conversion" ON)
 
 if(${CCACHE})
     find_program(CCACHE_PROGRAM ccache)
@@ -66,9 +67,12 @@ if(${WERROR})
 endif()
 # lots of warnings and all warnings as errors
 add_compile_options(-Wall -Wextra)
-add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wzero-as-null-pointer-constant>)
 # Warning about missing override is called differently in clang and gcc
 include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag(-Wzero-as-null-pointer-constant HAVE_ZERO_AS_NULL)
+if(HAVE_ZERO_AS_NULL AND NOT ${IWYU})
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wzero-as-null-pointer-constant>)
+endif()
 check_cxx_compiler_flag(-Winconsistent-missing-override HAVE_INCONSISTANT_MISSING_OVERRIDE)
 if(HAVE_INCONSISTANT_MISSING_OVERRIDE AND NOT ${IWYU})
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Winconsistent-missing-override>)
@@ -76,6 +80,15 @@ endif()
 check_cxx_compiler_flag(-Wsuggest-override HAVE_SUGGEST_OVERRIDE)
 if(HAVE_SUGGEST_OVERRIDE AND NOT ${IWYU})
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wsuggest-override>)
+endif()
+
+# Separate Wfloat-conversion warning Merge with the block above when there are no such warnings
+# anymore in the whole project
+if(${WFLOAT_CONVERSION})
+    check_cxx_compiler_flag(-Wfloat-conversion HAVE_FLOAT_CONVERSION)
+    if(HAVE_FLOAT_CONVERSION AND NOT ${IWYU})
+        add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wfloat-conversion>)
+    endif()
 endif()
 
 # optimization

@@ -12,23 +12,22 @@
 #include "version.h"          // for get_git_commit_hash
 #include "visUtil.hpp"        // for frameID, modulo, freq_ctype
 
-#include "gsl-lite.hpp" // for span
-
-#include <algorithm>  // for max, fill, transform, copy
-#include <atomic>     // for atomic_bool
-#include <cstdint>    // for uint32_t, int32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <iterator>   // for back_insert_iterator, begin, end, back_inserter
-#include <math.h>     // for pow
-#include <numeric>    // for iota
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <string.h>   // for memcpy
-#include <string>     // for string
-#include <time.h>     // for timespec
-#include <utility>    // for pair
-#include <vector>     // for vector, vector<>::iterator
+#include <algorithm>    // for max, fill, transform, copy
+#include <atomic>       // for atomic_bool
+#include <cstdint>      // for uint32_t, int32_t
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <gsl-lite.hpp> // for span
+#include <iterator>     // for back_insert_iterator, begin, end, back_inserter
+#include <math.h>       // for pow
+#include <numeric>      // for iota
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error
+#include <string.h>     // for memcpy
+#include <string>       // for string
+#include <time.h>       // for timespec
+#include <utility>      // for pair
+#include <vector>       // for vector, vector<>::iterator
 
 using kotekan::bufferContainer;
 using kotekan::Config;

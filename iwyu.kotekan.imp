@@ -13,8 +13,8 @@
     { include: [ "<bits/types/sig_atomic_t.h>", private, "<csignal>", public ] },
 
     # Use the main fmt header file only
-    { include: [ "\"fmt/core.h\"", private, "\"fmt.hpp\"", public ] },
-    { include: [ "\"fmt/ostream.h\"", private, "\"fmt.hpp\"", public ] },
+    { include: [ "<fmt/core.h>", private, "<fmt.hpp>", public ] },
+    { include: [ "<fmt/ostream.h>", private, "<fmt.hpp>", public ] },
 
     # libevent
     { symbol: [ "evhttp_request", public, "<evhttp.h>", public ] },

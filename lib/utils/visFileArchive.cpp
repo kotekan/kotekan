@@ -3,11 +3,10 @@
 #include "H5Support.hpp" // for AtomicType<>::AtomicType, dset_id_str
 #include "visFile.hpp"   // for create_lockfile
 
-#include "fmt.hpp" // for format, fmt
-
 #include <algorithm>                   // for copy, max, min
 #include <cstdint>                     // for uint32_t
 #include <cstdio>                      // for remove
+#include <fmt.hpp>                     // for format, fmt
 #include <highfive/H5Attribute.hpp>    // for Attribute, Attribute::write
 #include <highfive/H5DataSet.hpp>      // for DataSet, AnnotateTraits::createAttribute, DataSet...
 #include <highfive/H5DataSpace.hpp>    // for DataSpace::From, DataSpace, DataSpace::DataSpace

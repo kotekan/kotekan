@@ -9,8 +9,7 @@
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 #include "visUtil.hpp"            // for double_to_tv, tv_to_double
 
-#include "fmt.hpp" // for format, fmt
-
+#include <fmt.hpp>    // for format, fmt
 #include <sys/time.h> // for timeval
 #include <time.h>     // for timespec
 

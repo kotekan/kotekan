@@ -7,9 +7,8 @@
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 #include "kotekanLogging.hpp"     // for INFO
 
-#include "fmt.hpp" // for format, fmt
-
 #include <exception> // for exception
+#include <fmt.hpp>   // for format, fmt
 #include <regex>     // for match_results<>::_Base_type
 #include <string.h>  // for memset
 #include <vector>    // for vector

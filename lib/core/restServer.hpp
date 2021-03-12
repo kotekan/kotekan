@@ -3,12 +3,11 @@
 
 #include "Config.hpp" // for Config
 
-#include "json.hpp" // for json
-
 #include <atomic>        // for atomic
 #include <event2/util.h> // for evutil_socket_t
 #include <evhttp.h>      // for evhttp  // IWYU pragma: keep
 #include <functional>    // for function
+#include <json.hpp>      // for json
 #include <map>           // for map
 #include <shared_mutex>  // for shared_timed_mutex
 #include <stdint.h>      // for uint8_t

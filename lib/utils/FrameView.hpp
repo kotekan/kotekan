@@ -8,11 +8,10 @@
 
 #include "buffer.h" // for Buffer
 
-#include "gsl-lite.hpp" // for span
-
-#include <stdint.h> // for uint8_t
-#include <time.h>   // for size_t
-#include <utility>  // for pair
+#include <gsl-lite.hpp> // for span
+#include <stdint.h>     // for uint8_t
+#include <time.h>       // for size_t
+#include <utility>      // for pair
 
 
 /**

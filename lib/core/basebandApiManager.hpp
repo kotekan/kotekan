@@ -11,8 +11,7 @@
 #include "prometheusMetrics.hpp"      // for Counter
 #include "restServer.hpp"             // for connectionInstance, restServer
 
-#include "json.hpp" // for json
-
+#include <json.hpp> // for json
 #include <map>      // for map, map<>::iterator
 #include <math.h>   // for M_PI
 #include <mutex>    // for mutex

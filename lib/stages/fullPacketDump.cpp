@@ -7,12 +7,11 @@
 #include "kotekanLogging.hpp"  // for ERROR, INFO
 #include "restServer.hpp"      // for connectionInstance, restServer, HTTP_RESPONSE, HTTP_RESPO...
 
-#include "fmt.hpp" // for format, fmt
-
 #include <atomic>     // for atomic_bool
 #include <errno.h>    // for errno
 #include <exception>  // for exception
 #include <fcntl.h>    // for open, O_CREAT, O_WRONLY
+#include <fmt.hpp>    // for format, fmt
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
 #include <regex>      // for match_results<>::_Base_type
 #include <stdio.h>    // for snprintf

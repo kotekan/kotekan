@@ -14,8 +14,6 @@
 #include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily
 #include "visUtil.hpp"           // for frameID, modulo
 
-#include "fmt.hpp" // for format, fmt
-
 #include <algorithm>  // for copy, max, copy_backward, equal, fill
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
@@ -23,6 +21,7 @@
 #include <cstring>    // for memcpy
 #include <deque>      // for deque
 #include <exception>  // for exception
+#include <fmt.hpp>    // for format, fmt
 #include <functional> // for _Bind_helper<>::type, function, bind, _Placeholder, _1
 #include <map>        // for map, map<>::mapped_type
 #include <memory>     // for allocator_traits<>::value_type

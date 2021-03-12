@@ -13,10 +13,9 @@
 #include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for cfloat, frameID
 
-#include "json.hpp" // for json
-
 #include <atomic>       // for atomic
 #include <ctime>        // for timespec, size_t
+#include <json.hpp>     // for json
 #include <map>          // for map
 #include <mutex>        // for mutex
 #include <optional>     // for optional

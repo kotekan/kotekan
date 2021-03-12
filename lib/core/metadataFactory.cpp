@@ -8,9 +8,8 @@
 #include "metadata.h"         // for create_metadata_pool
 #include "visBuffer.hpp"      // for VisMetadata
 
-#include "fmt.hpp" // for format, fmt
-
 #include <exception> // for exception
+#include <fmt.hpp>   // for format, fmt
 #include <regex>     // for match_results<>::_Base_type
 #include <stdexcept> // for runtime_error
 #include <stdint.h>  // for uint32_t
