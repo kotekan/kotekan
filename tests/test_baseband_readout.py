@@ -143,17 +143,16 @@ def collect_dumped_events(
 ):
     """Reconstructs a list of dumped BasebandBuffer frames into a list of `EventDump`s"""
     dumped_events = []
-    for frame in dump_frames:
+    for frame_no, frame in enumerate(dump_frames):
         event_id = frame.metadata.event_id
-        for i, val in enumerate(frame._buffer[frame.meta_size :]):
-            if i >= frame.metadata.valid_to:
+        for j, val in enumerate(frame._buffer[frame.meta_size :]):
+            if j >= frame.metadata.valid_to * num_elements:
                 break
             # calculation used in `testDataGen` for method `tpluse`:
-            j = (frame.metadata.fpga_seq + i) % frame_size
-            expected = (j // num_elements + j % num_elements) % 256
+            expected = (frame.metadata.fpga_seq + j // num_elements + j % num_elements) % 256
             assert (
                 val == expected
-            ), f"Baseband data mismatch at index {i}, in_frame_idx={j}"
+            ), f"Baseband data mismatch at index {j}/{frame_no}, fpga_seq={frame.metadata.fpga_seq}"
 
         if not dumped_events or dumped_events[-1].event_id != event_id:
             # start a new event
