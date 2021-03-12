@@ -419,9 +419,10 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
 
             // copy the data
             int64_t copy_len = std::min(in_end - in_start, out_remaining);
-            INFO("Copy samples {}/{}-{} to {} ({}/{})", frame_index, in_start, in_start + copy_len,
-                 out_frame_id, out_start, copy_len);
-            memcpy(out_frame + out_start, in_buf_data + in_start, _num_elements * copy_len);
+            INFO("Copy samples {}/{}-{} to {}/{} ({} bytes)", frame_index, in_start,
+                 in_start + copy_len, out_frame_id, out_start, copy_len * _num_elements);
+            memcpy(out_frame + (out_start * _num_elements),
+                   in_buf_data + (in_start * _num_elements), copy_len * _num_elements);
             in_start += copy_len;
             out_start += copy_len;
             out_metadata->valid_to = out_start;
@@ -437,7 +438,9 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
 
     // after all input frames are done, flush the out frame if it's incomplete:
     if (out_remaining > 0) {
-        memset(out_frame + out_start, 0, out_remaining);
+        INFO("Clearing out the remaining {} samples of the frame: {}/{} ({} bytes)", out_remaining,
+             out_frame_id, out_start, (out_remaining * _num_elements));
+        memset(out_frame + (out_start * _num_elements), 0, out_remaining * _num_elements);
         mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
     }
 
