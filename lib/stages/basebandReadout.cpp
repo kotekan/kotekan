@@ -365,11 +365,15 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     INFO("Dump data for {:d}/{:d}: frames {:d}-{:d}; samples {}-{}.", event_id, freq_id,
          data.dump_start_frame, data.dump_end_frame, data_start_fpga, data_end_fpga);
 
+    // Number of time samples per output frame
+    const int out_frame_samples = out_buf->frame_size / _num_elements;
+
     // Current frame & metadata in the output buffer
     uint8_t* out_frame = nullptr;
     BasebandMetadata* out_metadata = nullptr;
-    // Available space in the `out_frame` (as interval of length `out_remaining`, starting at
-    // `out_start`)
+
+    // Available space in the `out_frame` (as interval of length `out_remaining`
+    // time_samples, starting at `out_start`)
     int64_t out_start = 0;
     int64_t out_remaining = 0;
 
@@ -404,7 +408,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                 }
 
                 out_start = 0;
-                out_remaining = _samples_per_data_set;
+                out_remaining = out_frame_samples;
 
                 allocate_new_metadata_object(out_buf, out_frame_id);
                 out_metadata = (BasebandMetadata*)get_metadata(out_buf, out_frame_id);

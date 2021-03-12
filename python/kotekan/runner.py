@@ -850,11 +850,21 @@ class DumpBasebandBuffer(OutputBuffer):
     ----------
     output_dir : string
         Temporary directory to output to. The dumped files are not removed.
+    num_frames : int or string
+        Number of frames in the buffer
+    frame_size : int or string
+        Frame size in bytes (default: "num_elements * samples_per_data_set")
     """
 
     _buf_ind = 0
 
-    def __init__(self, output_dir, **kwargs):
+    def __init__(
+        self,
+        output_dir,
+        num_frames,
+        frame_size="num_elements * samples_per_data_set",
+        **kwargs,
+    ):
         self.name = f"baseband_output_buffer_{ self.__class__._buf_ind }"
         self.__class__._buf_ind += 1
         self.output_dir = output_dir
@@ -862,8 +872,8 @@ class DumpBasebandBuffer(OutputBuffer):
             self.name: {
                 "kotekan_buffer": "standard",
                 "metadata_pool": "baseband_metadata_pool",
-                "num_frames": 12,
-                "frame_size": "num_elements * samples_per_data_set",
+                "num_frames": num_frames,
+                "frame_size": frame_size,
             },
         }
         stage_name = kwargs.get("stage_name", "dumper_" + self.name)

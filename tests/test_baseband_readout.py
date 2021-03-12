@@ -123,7 +123,11 @@ def run_baseband(tdir_factory, params=None, rest_commands=None, expect_a_failure
         stage_name=DATAGEN_PNAME, num_frames=p["total_frames"], type=p["type"]
     )
 
-    write_buffer = runner.DumpBasebandBuffer(str(tmpdir))
+    write_buffer = runner.DumpBasebandBuffer(
+        str(tmpdir),
+        num_frames="buffer_depth * 4",
+        frame_size="num_elements * samples_per_data_set / 4",
+    )
     test = runner.KotekanStageTester(
         "basebandReadout",
         {},
@@ -152,7 +156,9 @@ def collect_dumped_events(
             if j >= frame.metadata.valid_to * num_elements:
                 break
             # calculation used in `testDataGen` for method `tpluse`:
-            expected = (frame.metadata.fpga_seq + j // num_elements + j % num_elements) % 256
+            expected = (
+                frame.metadata.fpga_seq + j // num_elements + j % num_elements
+            ) % 256
             assert (
                 val == expected
             ), f"Baseband data mismatch at index {j}/{frame_no}, fpga_seq={frame.metadata.fpga_seq}"
