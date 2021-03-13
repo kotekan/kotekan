@@ -1,0 +1,263 @@
+---
+########################
+#### Global options ####
+########################
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
+num_elements: 2048
+num_local_freq: 1
+num_data_sets: 1
+samples_per_data_set: 49152
+buffer_depth: 12
+baseband_buffer_depth: 282 # 282 = ~34 seconds after accounting for active frames
+vbuffer_depth: 32
+num_links: 4
+timesamples_per_packet: 2
+cpu_affinity: [2,3,8,9]
+block_size: 32
+num_gpus: 4
+link_map: [0,1,2,3]
+
+# Constants
+sizeof_float: 4
+sizeof_int: 4
+sizeof_short: 2
+
+# N2 global options
+num_ev: 4
+# This option now does very little. You probably want to look at
+# visAccumulate:integration_time
+num_gpu_frames: 128
+# Sets the number of sub frames for shorter than ~120ms N2 output
+# Please note this requires changing the number of commands in the
+# GPU section, and the accumulate value for `samples_per_data_set`
+num_sub_frames: 4
+
+# FRB global options
+downsample_time: 3
+downsample_freq: 8
+factor_upchan: 128
+factor_upchan_out: 16
+num_frb_total_beams: 1024
+frb_missing_gains: [1.0,1.0]
+frb_scaling: 0.05 #1.0
+
+# Tracking beams global options
+feed_sep_NS: 0.3048
+feed_sep_EW: 22.0
+num_beams: 12
+num_pol: 2
+
+# RFI global options
+sk_step: 256
+rfi_combined: True
+rfi_sigma_cut: 5
+trunc_bias_switch: True
+
+####################
+#### Telescope #####
+####################
+telescope:
+  name: CHIMETelescope
+  require_gps: false # Still run the config if fpga_master is down.
+  query_gps: true
+  query_frequency_map: true
+  require_frequency_map: false
+  allow_default_frequency_map: true
+
+##########################
+#### Dataset manager #####
+##########################
+dataset_manager:
+  # This enables the dataset broker use in GPU kotekan and the RFI server.
+  use_dataset_broker: False
+  ds_broker_host: "10.1.50.11" # recv1
+  ds_broker_port: 12050
+
+
+###########################
+##### Pipeline buffers ####
+###########################
+
+# Main CHIME Metadata Pool
+main_pool:
+  kotekan_metadata_pool: chimeMetadata
+  num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
+                        + 100 * 8 * buffer_depth # This part is for the sk/var output.
+
+# Baseband metadata pool
+baseband_pool:
+  kotekan_metadata_pool: BasebandMetadata
+  num_metadata_objects: 30 * buffer_depth
+
+# Input data buffers from the DPDK stage
+network_buffers:
+  num_frames: baseband_buffer_depth
+  frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
+  metadata_pool: main_pool
+  network_buffer_0:
+    kotekan_buffer: standard
+  network_buffer_1:
+    kotekan_buffer: standard
+  network_buffer_2:
+    kotekan_buffer: standard
+  network_buffer_3:
+    kotekan_buffer: standard
+
+lost_samples_buffer:
+  kotekan_buffer: standard
+  num_frames: 2 * buffer_depth
+  frame_size: samples_per_data_set
+  metadata_pool: main_pool
+
+##########################
+#### Pipeline Stages #####
+##########################
+
+# Main data capture stage
+dpdk:
+  kotekan_stage: dpdkCore
+  # Format is index = lcore, value = cpu core
+  lcore_cpu_map: [0,1,6,7]
+  master_lcore_cpu: 2
+  status_cadence: 60
+  alignment: samples_per_data_set * num_data_sets
+  # Format is index = lcore, value = array of port IDs
+  # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+  # and lcore 1 to service ports 2 and 3.
+  lcore_port_map:
+    - [0]
+    - [1]
+    - [2]
+    - [3]
+  # One handler must be given per port.
+  handlers:
+    - dpdk_handler: iceBoardShuffle
+    - dpdk_handler: iceBoardShuffle
+    - dpdk_handler: iceBoardShuffle
+    - dpdk_handler: iceBoardShuffle
+  out_bufs:
+    - network_buffer_0
+    - network_buffer_1
+    - network_buffer_2
+    - network_buffer_3
+  lost_samples_buf: lost_samples_buffer
+
+# Zero out lost samples recorded at the DPDK stage
+zero_samples:
+  duplicate_ls_buffer: False
+  lost_samples_buf: lost_samples_buffer
+  zero_0:
+    kotekan_stage: zeroSamples
+    out_buf: network_buffer_0
+  zero_1:
+    kotekan_stage: zeroSamples
+    out_buf: network_buffer_1
+  zero_2:
+    kotekan_stage: zeroSamples
+    out_buf: network_buffer_2
+  zero_3:
+    kotekan_stage: zeroSamples
+    out_buf: network_buffer_3
+
+# Baseband capture and dump system
+baseband_output_buffers:
+  num_frames: baseband_buffer_depth
+  frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
+  metadata_pool: baseband_pool
+  baseband_output_buffer_0:
+    kotekan_buffer: standard
+  baseband_output_buffer_1:
+    kotekan_buffer: standard
+  baseband_output_buffer_2:
+    kotekan_buffer: standard
+  baseband_output_buffer_3:
+    kotekan_buffer: standard
+
+baseband:
+  max_dump_samples: 200000
+  num_frames_buffer: baseband_buffer_depth - 10
+  baseband0:
+    kotekan_stage: basebandReadout
+    in_buf: network_buffer_0
+    out_buf: baseband_output_buffer_0
+  baseband1:
+    kotekan_stage: basebandReadout
+    in_buf: network_buffer_1
+    out_buf: baseband_output_buffer_1
+  baseband2:
+    kotekan_stage: basebandReadout
+    in_buf: network_buffer_2
+    out_buf: baseband_output_buffer_2
+  baseband3:
+    kotekan_stage: basebandReadout
+    in_buf: network_buffer_3
+    out_buf: baseband_output_buffer_3
+
+# Save baseband data to /tmp
+baseband_save:
+  base_dir: /tmp
+  baseband_save_0:
+    kotekan_stage: rawFileWrite
+    in_buf: baseband_output_buffer_0
+    file_ext: dump
+    file_name: baseband_output_buffer_0
+    prefix_hostname: false
+  baseband_save_1:
+    kotekan_stage: rawFileWrite
+    in_buf: baseband_output_buffer_1
+    file_ext: dump
+    file_name: baseband_output_buffer_1
+    prefix_hostname: false
+  baseband_save_2:
+    kotekan_stage: rawFileWrite
+    in_buf: baseband_output_buffer_2
+    file_ext: dump
+    file_name: baseband_output_buffer_2
+    prefix_hostname: false
+  baseband_save_3:
+    kotekan_stage: rawFileWrite
+    in_buf: baseband_output_buffer_3
+    file_ext: dump
+    file_name: baseband_output_buffer_3
+    prefix_hostname: false
+
+# # Transmit baseband data to frb-baseband
+# baseband_send:
+#   server_ip: 10.6.50.20
+#   server_port: 11027
+#   reconnect_time: 20
+#   log_level: error
+#   baseband_send_0:
+#     kotekan_stage: bufferSend
+#     buf: baseband_output_buffer_0
+#   baseband_send_1:
+#     kotekan_stage: bufferSend
+#     buf: baseband_output_buffer_1
+#   baseband_send_2:
+#     kotekan_stage: bufferSend
+#     buf: baseband_output_buffer_2
+#   baseband_send_3:
+#     kotekan_stage: bufferSend
+#     buf: baseband_output_buffer_3
+
+
+#### Monitoring and debug stages ####
+
+buffer_status:
+  kotekan_stage: bufferStatus
+  time_delay: 30000000
+  print_status: false
+
+monitor:
+  kotekan_stage: monitorBuffer
+  bufs:
+    - network_buffer_0
+    - network_buffer_1
+    - network_buffer_2
+    - network_buffer_3
+  timeout: 5
+  fill_threshold: 0.98
