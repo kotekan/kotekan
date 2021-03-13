@@ -669,7 +669,6 @@ baseband_output_buffers:
 baseband:
   max_dump_samples: 200000
   num_frames_buffer: baseband_buffer_depth - 10
-  write_throttle: 0
   baseband0:
     kotekan_stage: basebandReadout
     in_buf: network_buffer_0

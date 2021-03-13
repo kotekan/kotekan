@@ -287,7 +287,6 @@ def test_overload_no_crash(tmpdir_factory):
     params = dict(default_params)
     params.update(
         {
-            "write_throttle": 2.0,
             "samples_per_data_set": 16384,
             "num_elements": 128,
             "total_frames": 60,
