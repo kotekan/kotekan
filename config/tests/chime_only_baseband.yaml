@@ -91,7 +91,7 @@ main_pool:
 # Baseband metadata pool
 baseband_pool:
   kotekan_metadata_pool: BasebandMetadata
-  num_metadata_objects: 30 * buffer_depth
+  num_metadata_objects: 30 * buffer_depth * 96
 
 # Input data buffers from the DPDK stage
 network_buffers:
@@ -165,8 +165,8 @@ zero_samples:
 
 # Baseband capture and dump system
 baseband_output_buffers:
-  num_frames: baseband_buffer_depth
-  frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
+  num_frames: 20 * 96 # baseband_buffer_depth
+  frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets / 96
   metadata_pool: baseband_pool
   baseband_output_buffer_0:
     kotekan_buffer: standard
@@ -197,52 +197,53 @@ baseband:
     in_buf: network_buffer_3
     out_buf: baseband_output_buffer_3
 
-# Save baseband data to /tmp
-baseband_save:
-  base_dir: /tmp
-  baseband_save_0:
-    kotekan_stage: rawFileWrite
-    in_buf: baseband_output_buffer_0
-    file_ext: dump
-    file_name: baseband_output_buffer_0
-    prefix_hostname: false
-  baseband_save_1:
-    kotekan_stage: rawFileWrite
-    in_buf: baseband_output_buffer_1
-    file_ext: dump
-    file_name: baseband_output_buffer_1
-    prefix_hostname: false
-  baseband_save_2:
-    kotekan_stage: rawFileWrite
-    in_buf: baseband_output_buffer_2
-    file_ext: dump
-    file_name: baseband_output_buffer_2
-    prefix_hostname: false
-  baseband_save_3:
-    kotekan_stage: rawFileWrite
-    in_buf: baseband_output_buffer_3
-    file_ext: dump
-    file_name: baseband_output_buffer_3
-    prefix_hostname: false
+# # Save baseband data to /tmp
+# baseband_save:
+#   base_dir: /tmp
+#   baseband_save_0:
+#     kotekan_stage: rawFileWrite
+#     in_buf: baseband_output_buffer_0
+#     file_ext: dump
+#     file_name: baseband_output_buffer_0
+#     prefix_hostname: false
+#   baseband_save_1:
+#     kotekan_stage: rawFileWrite
+#     in_buf: baseband_output_buffer_1
+#     file_ext: dump
+#     file_name: baseband_output_buffer_1
+#     prefix_hostname: false
+#   baseband_save_2:
+#     kotekan_stage: rawFileWrite
+#     in_buf: baseband_output_buffer_2
+#     file_ext: dump
+#     file_name: baseband_output_buffer_2
+#     prefix_hostname: false
+#   baseband_save_3:
+#     kotekan_stage: rawFileWrite
+#     in_buf: baseband_output_buffer_3
+#     file_ext: dump
+#     file_name: baseband_output_buffer_3
+#     prefix_hostname: false
 
-# # Transmit baseband data to frb-baseband
-# baseband_send:
-#   server_ip: 10.6.50.20
-#   server_port: 11027
-#   reconnect_time: 20
-#   log_level: error
-#   baseband_send_0:
-#     kotekan_stage: bufferSend
-#     buf: baseband_output_buffer_0
-#   baseband_send_1:
-#     kotekan_stage: bufferSend
-#     buf: baseband_output_buffer_1
-#   baseband_send_2:
-#     kotekan_stage: bufferSend
-#     buf: baseband_output_buffer_2
-#   baseband_send_3:
-#     kotekan_stage: bufferSend
-#     buf: baseband_output_buffer_3
+# Transmit baseband data to frb-baseband
+baseband_send:
+  # server_ip: 10.6.213.19 # cfdn9
+  server_ip: 10.6.50.20 # frb-baseband
+  server_port: 11027
+  reconnect_time: 20
+  log_level: error
+  baseband_send_0:
+    kotekan_stage: bufferSend
+    buf: baseband_output_buffer_0
+  baseband_send_1:
+    kotekan_stage: bufferSend
+    buf: baseband_output_buffer_1
+  baseband_send_2:
+    kotekan_stage: bufferSend
+    buf: baseband_output_buffer_2
+  baseband_send_3:
+    kotekan_stage: bufferSend
+    buf: baseband_output_buffer_3
 
 
 #### Monitoring and debug stages ####
