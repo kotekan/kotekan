@@ -71,7 +71,7 @@ def run_kotekan(tmpdir_factory, nfreqs=1):
                     frame_data=generate_tpluse_data(fpga_seq, frame_size, num_elements),
                 )
             )
-            frame_list[-1].metadata.fpga_seq = frame_size * i
+            frame_list[-1].metadata.frame_fpga_seq = frame_size * i
             frame_list[-1].metadata.valid_to = samples_per_data_set
     frame_list[-1].metadata.valid_to -= 17
     current_dir = str(tmpdir_factory.getbasetemp())
@@ -108,7 +108,7 @@ def check_baseband_dump(file_name, freq_id=0):
             frame_metadata = baseband_buffer.BasebandMetadata.from_buffer(buf)
             assert frame_metadata.event_id == 12345
             assert frame_metadata.freq_id == freq_id
-            assert frame_metadata.fpga_seq == frame_index * frame_size
+            assert frame_metadata.frame_fpga_seq == frame_index * frame_size
 
             if not final_frame:
                 assert frame_metadata.valid_to <= samples_per_data_set
@@ -123,11 +123,11 @@ def check_baseband_dump(file_name, freq_id=0):
                     break
                 # calculation used in `testDataGen` for method `tpluse`:
                 expected = (
-                    frame_metadata.fpga_seq + j // num_elements + j % num_elements
+                    frame_metadata.frame_fpga_seq + j // num_elements + j % num_elements
                 ) % 256
                 assert (
                     val == expected
-                ), f"Baseband data mismatch at index {j}/{frame_index}, fpga_seq={frame_metadata.fpga_seq}"
+                ), f"Baseband data mismatch at index {j}/{frame_index}, fpga_seq={frame_metadata.frame_fpga_seq}"
 
             frame_index += 1
     assert frame_index > 0

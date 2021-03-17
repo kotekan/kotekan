@@ -65,7 +65,7 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
 
     const auto event_id = metadata->event_id;
     const auto freq_id = metadata->freq_id;
-    INFO("Frame {} from {}/{}", metadata->fpga_seq, event_id, freq_id);
+    INFO("Frame {} from {}/{}", metadata->frame_fpga_seq, event_id, freq_id);
 
     write_in_progress_metric.labels({std::to_string(freq_id)}).set(1);
 

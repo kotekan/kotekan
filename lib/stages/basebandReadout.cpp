@@ -119,6 +119,9 @@ void basebandReadout::main_thread() {
             readout_dropped_frame_counter.labels({std::to_string(freq_id)});
             readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
 
+            const auto fpga0_tv = tel.to_time(0);
+            fpga0_ns = fpga0_tv.tv_sec * 1'000'000'000 + fpga0_tv.tv_nsec;
+
             INFO("Starting request-listening thread for freq_id: {:d}", freq_id);
             mgr = &basebandApiManager::instance().register_readout_stage(freq_id);
             lt = std::make_unique<std::thread>([&] { this->readout_thread(freq_id, *mgr); });
@@ -348,6 +351,9 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     DEBUG("Ready to copy samples into the baseband readout buffer");
     assert(data.dump_start_frame < data.dump_end_frame);
 
+    auto& tel = Telescope::instance();
+    const double fpga_period_s = ts_to_double(tel.seq_length());
+
     const uint64_t event_id = data.event_id;
 
     int in_buf_frame = data.dump_start_frame % in_buf->num_frames;
@@ -361,6 +367,16 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     // For now just assume that we have the last sample, because the locking logic
     // currently waits for it. Could be made to be more robust.
     int64_t data_end_fpga = data.trigger_start_fpga + data.trigger_length_fpga;
+
+    timeval tmp, delta;
+    delta.tv_sec = 0;
+    delta.tv_usec = (data.trigger_start_fpga - first_meta->fpga_seq_num) * fpga_period_s * 1e6;
+    timeradd(&(first_meta->first_packet_recv_time), &delta, &tmp);
+    timespec packet_time0 = {tmp.tv_sec, tmp.tv_usec * 1000};
+
+    timespec time0 = tel.to_time(data_start_fpga);
+    double ftime0 = ts_to_double(time0);
+    double ftime0_offset = (time0.tv_nsec - fmod(ftime0, 1.) * 1e9) / 1e9;
 
     INFO("Dump data for {:d}/{:d}: frames {:d}-{:d}; samples {}-{}.", event_id, freq_id,
          data.dump_start_frame, data.dump_end_frame, data_start_fpga, data_end_fpga);
@@ -415,12 +431,19 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
 
                 out_metadata->event_id = event_id;
                 out_metadata->freq_id = freq_id;
-                out_metadata->start = data.trigger_start_fpga;
-                out_metadata->end = data.trigger_length_fpga;
-                out_metadata->fpga_seq = frame_fpga_seq + in_start;
+                out_metadata->event_start_fpga = data.trigger_start_fpga;
+                out_metadata->event_end_fpga = data.trigger_length_fpga;
+
+                out_metadata->time0_fpga = data_start_fpga;
+                out_metadata->time0_ctime = ftime0;
+                out_metadata->time0_ctime_offset = ftime0_offset;
+
+                out_metadata->first_packet_recv_time = ts_to_double(packet_time0);
+                out_metadata->fpga0_ns = fpga0_ns;
+                out_metadata->frame_fpga_seq = frame_fpga_seq + in_start;
+                out_metadata->valid_to = 0; // gets adjusted as we copy the data
                 out_metadata->num_elements = _num_elements;
                 out_metadata->reserved = -1;
-                out_metadata->valid_to = 0; // gets adjusted as we copy the data
             }
 
             // copy the data

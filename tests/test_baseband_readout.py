@@ -59,7 +59,7 @@ class EventDump:
         """Create an EventDump instance from the event's first dumped frame"""
         event_id = metadata.event_id
         freq_id = metadata.freq_id
-        fpga_seq = metadata.fpga_seq
+        fpga_seq = metadata.frame_fpga_seq
         num_elements = metadata.num_elements
         valid_to = metadata.valid_to
         return cls(event_id, freq_id, num_elements, fpga_seq, valid_to)
@@ -74,7 +74,7 @@ class EventDump:
         assert self.num_elements == metadata.num_elements
 
         # check samples are continguous
-        fpga_seq = metadata.fpga_seq
+        fpga_seq = metadata.frame_fpga_seq
         assert fpga_seq == self.fpga_start_seq + self.fpga_length
 
         self.fpga_length += metadata.valid_to
@@ -157,11 +157,11 @@ def collect_dumped_events(
                 break
             # calculation used in `testDataGen` for method `tpluse`:
             expected = (
-                frame.metadata.fpga_seq + j // num_elements + j % num_elements
+                frame.metadata.frame_fpga_seq + j // num_elements + j % num_elements
             ) % 256
             assert (
                 val == expected
-            ), f"Baseband data mismatch at index {j}/{frame_no}, fpga_seq={frame.metadata.fpga_seq}"
+            ), f"Baseband data mismatch at index {j}/{frame_no}, fpga_seq={frame.metadata.frame_fpga_seq}"
 
         if not dumped_events or dumped_events[-1].event_id != event_id:
             # start a new event

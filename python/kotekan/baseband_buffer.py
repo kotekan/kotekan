@@ -18,14 +18,34 @@ class BasebandMetadata(ctypes.Structure):
     """Wrap a BasebandMetadata struct."""
 
     _fields_ = [
+        # event and frequency id
         ("event_id", ctypes.c_uint64),
         ("freq_id", ctypes.c_uint64),
+        #
+        # event start and end at this frequency
         ("event_start_seq", ctypes.c_uint64),
         ("event_end_seq", ctypes.c_uint64),
-        ("fpga_seq", ctypes.c_uint64),
+        #
+        # timestamp of the first captured sample
+        ("time0_fpga", ctypes.c_uint64),
+        ("time0_ctime", ctypes.c_double),
+        ("time0_ctime_offset", ctypes.c_double),
+        #
+        # TOA of the packet with the first sample
+        ("first_packet_recv_time", ctypes.c_double),
+        #
+        # FPGA seq of the first sample in this frame
+        ("frame_fpga_seq", ctypes.c_uint64),
+        #
+        # Number of valid samples in this frame
+        ("valid_to", ctypes.c_uint64),
+        #
+        # Time of FPGA frame=0
+        ("fpga0_ns", ctypes.c_uint64),
+        #
+        # Number of inputs per sample
         ("num_elements", ctypes.c_uint32),
         ("reserved", ctypes.c_uint32),
-        ("valid_to", ctypes.c_uint64),
     ]
 
 
@@ -101,7 +121,9 @@ class BasebandBuffer(object):
                 fh.write(bytearray(buf._buffer))
 
     @classmethod
-    def new_from_params(cls, event_id, freq_id, num_elements, frame_size, frame_data=None):
+    def new_from_params(
+        cls, event_id, freq_id, num_elements, frame_size, frame_data=None
+    ):
         """Create a new BasebandBuffer owning its own memory.
 
         Parameters

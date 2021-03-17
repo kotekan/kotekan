@@ -83,6 +83,9 @@ private:
     int next_frame, oldest_frame;
     std::vector<std::mutex> frame_locks;
 
+    /// The time of FPGA frame=0
+    uint64_t fpga0_ns;
+
     struct Buffer* out_buf;
     frameID out_frame_id;
 
