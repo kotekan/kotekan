@@ -58,6 +58,8 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
     out_frame_id(out_buf),
     readout_counter(kotekan::prometheus::Metrics::instance().add_counter(
         "kotekan_baseband_readout_total", unique_name, {"freq_id", "status"})),
+    readout_sent_frame_counter(kotekan::prometheus::Metrics::instance().add_counter(
+        "kotekan_baseband_readout_sent_frames_total", unique_name, {"freq_id"})),
     readout_dropped_frame_counter(kotekan::prometheus::Metrics::instance().add_counter(
         "kotekan_baseband_readout_dropped_frames_total", unique_name, {"freq_id"})),
     readout_in_progress_metric(kotekan::prometheus::Metrics::instance().add_gauge(
@@ -116,6 +118,7 @@ void basebandReadout::main_thread() {
             readout_counter.labels({std::to_string(freq_id), "done"});
             readout_counter.labels({std::to_string(freq_id), "error"});
             readout_counter.labels({std::to_string(freq_id), "no_data"});
+            readout_sent_frame_counter.labels({std::to_string(freq_id)});
             readout_dropped_frame_counter.labels({std::to_string(freq_id)});
             readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
 
@@ -362,6 +365,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     auto first_meta = (chimeMetadata*)in_buf->metadata[in_buf_frame]->metadata;
 
     const uint32_t freq_id = data.freq_id;
+    auto& frame_sent_counter = readout_sent_frame_counter.labels({std::to_string(freq_id)});
     auto& frame_dropped_counter = readout_dropped_frame_counter.labels({std::to_string(freq_id)});
 
     // Figure out how much data we have.
@@ -460,6 +464,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
             out_remaining -= copy_len;
             if (out_remaining == 0) {
                 mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
+                frame_sent_counter.inc();
             }
         }
 
@@ -473,6 +478,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
               out_frame_id, out_start, (out_remaining * _num_elements));
         memset(out_frame + (out_start * _num_elements), 0, out_remaining * _num_elements);
         mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
+        frame_sent_counter.inc();
     }
 
     unlock_range(data.dump_start_frame, data.dump_end_frame);

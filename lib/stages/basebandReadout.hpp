@@ -61,6 +61,8 @@ constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
  *         The count of DPDK frames dropped because the output buffer is backed up
  * @metric kotekan_baseband_readout_in_progress
  *         Indicator set to 1 when a per-frequency writeout is in progress, 0 otherwise
+ * @metric kotekan_baseband_readout_sent_frames_total
+ *         The count of baseband frames sent to the output buffer for transmission
  *
  * @author Kiyoshi Masui, Davor Cubranic
  */
@@ -134,6 +136,7 @@ private:
     kotekan::basebandDumpData::Status extract_data(kotekan::basebandDumpData data);
 
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& readout_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& readout_sent_frame_counter;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& readout_dropped_frame_counter;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& readout_in_progress_metric;
 };
