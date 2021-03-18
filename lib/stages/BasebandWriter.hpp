@@ -37,7 +37,10 @@
  * @par Metrics
  * @metric kotekan_baseband_writeout_in_progress
  *         Set to 1 when a frequency is being written to, 0 otherwise.
-
+ *
+ * @metric kotekan_baseband_writeout_active_events
+ *         The number of events with any raw files still open
+ *
  * @metric kotekan_writer_write_time_seconds
  *         The write time of the raw writer. An exponential moving average over ~10
  *         samples.
@@ -95,6 +98,9 @@ private:
 
     // Prometheus metric to indicate when a per-frequency writeout is in progress
     kotekan::prometheus::Gauge& write_in_progress_metric;
+
+    // Prometheus metric that counts the number of event dumps with files still open
+    kotekan::prometheus::Gauge& active_event_dumps_metric;
 
     // Prometheus metric to expose the value of `write_time`
     kotekan::prometheus::Gauge& write_time_metric;

@@ -30,6 +30,8 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
     in_buf(get_buffer("in_buf")),
     write_in_progress_metric(
         Metrics::instance().add_gauge("kotekan_baseband_writeout_in_progress", unique_name)),
+    active_event_dumps_metric(
+        Metrics::instance().add_gauge("kotekan_baseband_writeout_active_events", unique_name)),
     write_time_metric(
         Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name)) {
     register_consumer(in_buf, unique_name.c_str());
@@ -71,6 +73,8 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
 
     // Lock the event->freq->file map
     std::unique_lock lk(mtx);
+    active_event_dumps_metric.set(baseband_events.size());
+
     const std::string event_directory_name =
         fmt::format("{:s}/baseband_raw_{:d}", _root_path, event_id);
     if (baseband_events.count(event_id) == 0) {
@@ -141,6 +145,7 @@ void BasebandWriter::close_old_events() {
                 ++event_it;
             }
         }
+        active_event_dumps_metric.set(baseband_events.size());
     }
     INFO("Closing thread done");
 }
