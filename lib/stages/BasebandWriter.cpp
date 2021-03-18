@@ -40,7 +40,6 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
 
 void BasebandWriter::main_thread() {
     frameID frame_id(in_buf);
-    INFO("Start the closing thread");
     std::thread closing_thread(&BasebandWriter::close_old_events, this);
 
     while (!stop_thread) {
@@ -67,7 +66,7 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
 
     const auto event_id = metadata->event_id;
     const auto freq_id = metadata->freq_id;
-    INFO("Frame {} from {}/{}", metadata->frame_fpga_seq, event_id, freq_id);
+    DEBUG("Frame {} from {}/{}", metadata->frame_fpga_seq, event_id, freq_id);
 
     write_in_progress_metric.set(1);
 
@@ -101,7 +100,7 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
         ERROR("Failed to write buffer to disk for file {:s}", file_name);
         exit(-1);
     } else {
-        INFO("Written {} bytes of data to {:s}", bytes_written, file_name);
+        DEBUG("Written {} bytes of data to {:s}", bytes_written, file_name);
     }
 
     // Update average write time in prometheus
@@ -111,11 +110,12 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
 
 
 void BasebandWriter::close_old_events() {
+    DEBUG("Starting the file-closing thread");
     // Do not run the loop more often than once a minute
     const int sweep_cadence_s = std::max(60.0, round(_dump_timeout / 2));
     while (!stop_thread) {
         double now = current_time();
-        DEBUG("Run closing thread {:.1f}", now);
+        DEBUG("Run file-closing thread {:.1f}", now);
         std::unique_lock lk(mtx);
         if (stop_closing.wait_for(lk, std::chrono::seconds(sweep_cadence_s))
             != std::cv_status::timeout) {
@@ -133,7 +133,7 @@ void BasebandWriter::close_old_events() {
                  event_freq != event_it->second.end();) {
                 // close the frequency file that's been inactive for over a minute
                 if (now - event_freq->second.last_updated > _dump_timeout) {
-                    DEBUG("Cleaning up {}", event_freq->second.file.name);
+                    INFO("Closing {}", event_freq->second.file.name);
                     event_freq = event_it->second.erase(event_freq);
                 } else {
                     ++event_freq;
@@ -147,5 +147,5 @@ void BasebandWriter::close_old_events() {
         }
         active_event_dumps_metric.set(baseband_events.size());
     }
-    INFO("Closing thread done");
+    DEBUG("File-closing thread done");
 }
