@@ -37,13 +37,13 @@ telescope:
 # Baseband Metadata Pool
 baseband_metadata_pool:
   kotekan_metadata_pool: BasebandMetadata
-  num_metadata_objects: 4096
+  num_metadata_objects: 65536
 
 baseband_recv_buffer:
   kotekan_buffer: standard
   metadata_pool: baseband_metadata_pool
-  frame_size: num_elements * samples_per_data_set
-  num_frames: 282 # max achievable baseband buffer on GPU nodes
+  frame_size: num_elements * samples_per_data_set / 96
+  num_frames: 282 * 96 # max achievable baseband buffer on GPU nodes
 
 # Kotekan stages
 baseband_recv:
