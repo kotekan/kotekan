@@ -94,7 +94,7 @@ private:
     movingAverage write_time;
 
     // Prometheus metric to indicate when a per-frequency writeout is in progress
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& write_in_progress_metric;
+    kotekan::prometheus::Gauge& write_in_progress_metric;
 
     // Prometheus metric to expose the value of `write_time`
     kotekan::prometheus::Gauge& write_time_metric;

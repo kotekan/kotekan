@@ -28,8 +28,8 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
     _root_path(config.get_default<std::string>(unique_name, "root_path", ".")),
     _dump_timeout(config.get_default<double>(unique_name, "dump_timeout", 60)),
     in_buf(get_buffer("in_buf")),
-    write_in_progress_metric(Metrics::instance().add_gauge("kotekan_baseband_writeout_in_progress",
-                                                           unique_name, {"freq_id"})),
+    write_in_progress_metric(
+        Metrics::instance().add_gauge("kotekan_baseband_writeout_in_progress", unique_name)),
     write_time_metric(
         Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name)) {
     register_consumer(in_buf, unique_name.c_str());
@@ -67,7 +67,7 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
     const auto freq_id = metadata->freq_id;
     INFO("Frame {} from {}/{}", metadata->frame_fpga_seq, event_id, freq_id);
 
-    write_in_progress_metric.labels({std::to_string(freq_id)}).set(1);
+    write_in_progress_metric.set(1);
 
     // Lock the event->freq->file map
     std::unique_lock lk(mtx);
@@ -91,7 +91,7 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
     freq_dump_destination.last_updated = current_time();
     const double elapsed = freq_dump_destination.last_updated - start;
 
-    write_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
+    write_in_progress_metric.set(0);
 
     if (bytes_written != in_buf->frame_size) {
         ERROR("Failed to write buffer to disk for file {:s}", file_name);
