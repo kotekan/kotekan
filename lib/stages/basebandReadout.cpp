@@ -113,7 +113,7 @@ void basebandReadout::main_thread() {
             uint32_t freq_id = tel.to_freq_id(in_buf, in_buf_frame);
 
             DEBUG("Initialize baseband metrics for freq_id: {:d}", freq_id);
-            readout_counter.labels({std::to_string(freq_id), "dropped"});
+            readout_counter.labels({std::to_string(freq_id), "done"});
             readout_counter.labels({std::to_string(freq_id), "error"});
             readout_counter.labels({std::to_string(freq_id), "no_data"});
             readout_dropped_frame_counter.labels({std::to_string(freq_id)});
@@ -194,8 +194,6 @@ void basebandReadout::start_processing(basebandDumpStatus& dump_status, std::mut
 
 void basebandReadout::end_processing(basebandDumpData::Status status, const uint32_t freq_id,
                                      basebandDumpStatus& dump_status, std::mutex& request_mtx) {
-    auto& request_no_data_counter = readout_counter.labels({std::to_string(freq_id), "no_data"});
-
     // At this point we know how much of the requested data we managed to read from the
     // buffer (which may be nothing if the request as received too late).
     {
@@ -209,16 +207,19 @@ void basebandReadout::end_processing(basebandDumpData::Status status, const uint
             switch (status) {
                 case basebandDumpData::Status::TooLong:
                     dump_status.reason = "Request length exceeds the configured limit.";
+                    readout_counter.labels({std::to_string(freq_id), "error"}).inc();
                     break;
                 case basebandDumpData::Status::Late:
                     dump_status.reason = "No data captured.";
-                    request_no_data_counter.inc();
+                    readout_counter.labels({std::to_string(freq_id), "no_data"}).inc();
                     break;
                 case basebandDumpData::Status::ReserveFailed:
                     dump_status.reason = "No free space in the baseband buffer";
+                    readout_counter.labels({std::to_string(freq_id), "error"}).inc();
                     break;
                 case basebandDumpData::Status::Cancelled:
                     dump_status.reason = "Kotekan exiting.";
+                    readout_counter.labels({std::to_string(freq_id), "error"}).inc();
                     break;
                 default:
                     INFO("Unknown dump status: {}", int(status));
@@ -227,6 +228,7 @@ void basebandReadout::end_processing(basebandDumpData::Status status, const uint
             }
         } else {
             dump_status.state = basebandDumpStatus::State::DONE;
+            readout_counter.labels({std::to_string(freq_id), "done"}).inc();
         }
         dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
             std::chrono::system_clock::now());
