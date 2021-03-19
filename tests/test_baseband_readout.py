@@ -50,6 +50,8 @@ class EventDump:
 
     event_id: int
     freq_id: int
+    event_start_seq: int
+    event_end_seq: int
     num_elements: int
     fpga_start_seq: int
     fpga_length: int
@@ -59,10 +61,12 @@ class EventDump:
         """Create an EventDump instance from the event's first dumped frame"""
         event_id = metadata.event_id
         freq_id = metadata.freq_id
+        event_start_seq = metadata.event_start_seq
+        event_end_seq = metadata.event_end_seq
         fpga_seq = metadata.frame_fpga_seq
         num_elements = metadata.num_elements
         valid_to = metadata.valid_to
-        return cls(event_id, freq_id, num_elements, fpga_seq, valid_to)
+        return cls(event_id, freq_id, event_start_seq, event_end_seq, num_elements, fpga_seq, valid_to)
 
     def extend(self, metadata):
         """Increase the duration of the event's data with another dumped frame
@@ -71,6 +75,8 @@ class EventDump:
         # check structure matches
         assert self.event_id == metadata.event_id
         assert self.freq_id == metadata.freq_id
+        assert self.event_start_seq == metadata.event_start_seq
+        assert self.event_end_seq == metadata.event_end_seq
         assert self.num_elements == metadata.num_elements
 
         # check samples are continguous

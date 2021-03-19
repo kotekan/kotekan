@@ -438,7 +438,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                 out_metadata->event_id = event_id;
                 out_metadata->freq_id = freq_id;
                 out_metadata->event_start_fpga = data.trigger_start_fpga;
-                out_metadata->event_end_fpga = data.trigger_length_fpga;
+                out_metadata->event_end_fpga = data.trigger_start_fpga + data.trigger_length_fpga;
 
                 out_metadata->time0_fpga = data_start_fpga;
                 out_metadata->time0_ctime = ftime0;
