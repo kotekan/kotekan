@@ -34,7 +34,7 @@ num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 49152
 buffer_depth: 12
-baseband_buffer_depth: 282 # 282 = ~34 seconds after accounting for active frames
+baseband_buffer_depth: 272 # 272 = ~33 seconds after accounting for active frames
 vbuffer_depth: 32
 num_links: 4
 timesamples_per_packet: 2
@@ -654,7 +654,7 @@ zero_samples:
 
 # Baseband capture and dump system
 baseband_output_buffers:
-  num_frames: 20 * 96 # baseband_buffer_depth
+  num_frames: 12 * 96 # baseband_buffer_depth
   frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets / 96
   metadata_pool: baseband_pool
   baseband_output_buffer_0:
