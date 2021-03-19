@@ -686,9 +686,9 @@ baseband:
     in_buf: network_buffer_3
     out_buf: baseband_output_buffer_3
 
-# Transmit baseband data to frb-baseband
+# Transmit baseband data to the baseband receiver
 baseband_send:
-  server_ip: 10.6.50.20
+  server_ip: 10.6.213.19        # cfDn9
   server_port: 11027
   reconnect_time: 20
   log_level: error
