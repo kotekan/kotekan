@@ -1,0 +1,76 @@
+# Read raw HFB data and write it as HDF5 data
+
+# Constants
+cpu_affinity: []
+log_level: info
+num_elements: 2048
+num_ev: 4
+num_local_freq: 1
+num_frb_total_beams: 1024
+factor_upchan: 128
+
+# Maximum increase in noise (variance) from numerical truncation,
+# with factor of 3 from uniform distribution of errors.
+error_sq_lim: 3e-3
+data_fixed_prec: 1e-4
+weight_fixed_prec: 0.1
+
+dataset_manager:
+  ds_broker_host: "127.0.0.1"
+  ds_broker_port: 12050
+  use_dataset_broker: False
+
+read_buffer:
+  kotekan_buffer: hfb
+  metadata_pool: hfb_pool
+  num_frames: '4096'
+  num_prod: 2048
+
+trunc_buffer:
+  kotekan_buffer: hfb
+  metadata_pool: hfb_pool
+  num_frames: '4096'
+
+hfb_pool:
+  kotekan_metadata_pool: HFBMetadata
+  num_metadata_objects: '655360'
+
+read_raw:
+  log_level: debug
+  infile: 20210209T183459Z_chime_hfb/hfb_00000000_0000
+  kotekan_stage: HFBRawReader
+  max_read_rate: 0.0
+  out_buf: read_buffer
+  readahead_blocks: 4
+  ignore_versions: True
+  chunk_size:
+    - 16  # chunk_freq 
+    - 64  # chunk_stack
+    - 256 # chunk_time
+    - 16  # chunk_beam
+    - 128 # chunk_sub-freq
+
+truncate:
+  kotekan_stage: HFBTruncate
+  err_sq_lim: error_sq_lim
+  data_fixed_precision: data_fixed_prec
+  weight_fixed_precision: weight_fixed_prec
+  in_buf: read_buffer
+  out_buf: trunc_buffer
+
+write_hdf5:
+  log_level: debug
+  comet_timeout: 180.
+  kotekan_stage: HFBTranspose
+  in_buf: trunc_buffer
+  outfile:  ./test
+  chunk_size:
+    - 16  # chunk_freq 
+    - 64  # chunk_stack
+    - 256 # chunk_time
+    - 16  # chunk_beam
+    - 128 # chunk_sub-freq
+
+#hfb_debug:
+#  kotekan_stage: visDebug
+#  in_buf: read_buffer

@@ -1,7 +1,7 @@
 #include "visFileArchive.hpp"
 
+#include "H5Support.hpp" // for AtomicType<>::AtomicType, dset_id_str
 #include "visFile.hpp"   // for create_lockfile
-#include "visFileH5.hpp" // for create_datatype, AtomicType<>::AtomicType, dset_i...
 
 #include "fmt.hpp" // for format, fmt
 
@@ -25,13 +25,6 @@
 #include <utility>                     // for move, pair
 
 using namespace HighFive;
-
-
-// Bitshuffle parameters
-H5Z_filter_t H5Z_BITSHUFFLE = 32008;
-unsigned int BSHUF_H5_COMPRESS_LZ4 = 2;
-unsigned int BSHUF_BLOCK = 0; // let bitshuffle choose
-const std::vector<unsigned int> BSHUF_CD = {BSHUF_BLOCK, BSHUF_H5_COMPRESS_LZ4};
 
 
 // Create an archive file for uncompressed products
@@ -319,76 +312,4 @@ size_t visFileArchive::length(const std::string& axis_name) {
     if (!write_ev && axis_name == "ev")
         return 0;
     return dset(fmt::format(fmt("index_map/{:s}"), axis_name)).getSpace().getDimensions()[0];
-}
-
-
-// TODO: these should be included from visFileH5
-// Add support for all our custom types to HighFive
-template<>
-inline DataType HighFive::create_datatype<freq_ctype>() {
-    CompoundType f;
-    f.addMember("centre", H5T_IEEE_F64LE);
-    f.addMember("width", H5T_IEEE_F64LE);
-    f.autoCreate();
-    return std::move(f);
-}
-
-template<>
-inline DataType HighFive::create_datatype<time_ctype>() {
-    CompoundType t;
-    t.addMember("fpga_count", H5T_STD_U64LE);
-    t.addMember("ctime", H5T_IEEE_F64LE);
-    t.autoCreate();
-    return std::move(t);
-}
-
-template<>
-inline DataType HighFive::create_datatype<input_ctype>() {
-
-    CompoundType i;
-    hid_t s32 = H5Tcopy(H5T_C_S1);
-    H5Tset_size(s32, 32);
-    // AtomicType<char[32]> s32;
-    i.addMember("chan_id", H5T_STD_U16LE, 0);
-    i.addMember("correlator_input", s32, 2);
-    i.manualCreate(34);
-
-    return std::move(i);
-}
-
-template<>
-inline DataType HighFive::create_datatype<prod_ctype>() {
-
-    CompoundType p;
-    p.addMember("input_a", H5T_STD_U16LE);
-    p.addMember("input_b", H5T_STD_U16LE);
-    p.autoCreate();
-    return std::move(p);
-}
-
-template<>
-inline DataType HighFive::create_datatype<cfloat>() {
-    CompoundType c;
-    c.addMember("r", H5T_IEEE_F32LE);
-    c.addMember("i", H5T_IEEE_F32LE);
-    c.autoCreate();
-    return std::move(c);
-}
-
-template<>
-inline DataType HighFive::create_datatype<rstack_ctype>() {
-    CompoundType c;
-    c.addMember("stack", H5T_STD_U32LE);
-    c.addMember("conjugate", H5T_STD_U8LE);
-    c.autoCreate();
-    return std::move(c);
-}
-
-template<>
-inline DataType HighFive::create_datatype<stack_ctype>() {
-    CompoundType c;
-    c.addMember("prod", H5T_STD_U32LE);
-    c.addMember("conjugate", H5T_STD_U8LE);
-    c.autoCreate();
-    return std::move(c);
 }

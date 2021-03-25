@@ -8,11 +8,13 @@
 #include "datasetManager.hpp"    // for dset_id_t, fingerprint_t, datasetManager
 #include "datasetState.hpp"      // for metadataState, _factory_aliasdatasetState
 #include "factory.hpp"           // for FACTORY
-#include "kotekanLogging.hpp"    // for FATAL_ERROR, INFO, WARN, DEBUG, logLevel
+#include "kotekanLogging.hpp"    // for INFO, WARN, FATAL_ERROR, DEBUG, logLevel
 #include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily, Gauge
 #include "restServer.hpp"        // for HTTP_RESPONSE, connectionInstance, restServer
 #include "version.h"             // for get_git_commit_hash
 #include "visFile.hpp"           // for visFileBundle, _factory_aliasvisFile
+
+#include "fmt.hpp" // for format
 
 #include <algorithm>  // for copy, copy_backward, equal, max
 #include <atomic>     // for atomic_bool
@@ -50,12 +52,15 @@ BaseWriter::BaseWriter(Config& config, const std::string& unique_name,
     acq_timeout = config.get_default<double>(unique_name, "acq_timeout", 300);
     ignore_version = config.get_default<bool>(unique_name, "ignore_version", false);
 
+    // Get the list of buffers that this stage should connect to
+    in_buf = get_buffer("in_buf");
+    register_consumer(in_buf, unique_name.c_str());
+
     // Get the type of the file we are writing
     // TODO: we may want to validate here rather than at creation time
     file_type = config.get_default<std::string>(unique_name, "file_type", "hdf5fast");
     if (!FACTORY(visFile)::exists(file_type)) {
-        FATAL_ERROR("Unknown file type '{}'", file_type);
-        return;
+        throw std::runtime_error(fmt::format("Unknown file type '{}'", file_type));
     }
 
     file_length = config.get_default<size_t>(unique_name, "file_length", 1024);
@@ -78,15 +83,12 @@ BaseWriter::BaseWriter(Config& config, const std::string& unique_name,
     auto t = config.get_default<std::vector<std::string>>(unique_name, "critical_states", {});
     for (const auto& state : t) {
         if (!FACTORY(datasetState)::exists(state)) {
-            FATAL_ERROR("Unknown datasetState type '{}' given as `critical_state`", state);
+            throw std::runtime_error(
+                fmt::format("Unknown datasetState type '{}' given as `critical_state`", state));
             return;
         }
         critical_state_types.insert(state);
     }
-
-    // Get the list of buffers that this stage should connect to
-    in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
 }
 
 void BaseWriter::main_thread() {
@@ -141,15 +143,12 @@ void BaseWriter::init_acq(dset_id_t ds_id) {
         return;
     }
 
-    // TODO: chunk ID is not really supported now. Just set it to zero.
-    uint32_t chunk_id = 0;
-
     // Construct metadata
     auto metadata = make_metadata(ds_id);
 
     try {
         acq.file_bundle = std::make_unique<visFileBundle>(
-            file_type, root_path, instrument_name, metadata, chunk_id, file_length, window,
+            file_type, root_path, acq_fmt, file_fmt, metadata, file_length, window,
             kotekan::logLevel(_member_log_level), ds_id, file_length);
     } catch (std::exception& e) {
         FATAL_ERROR("Failed creating file bundle for new acquisition: {:s}", e.what());

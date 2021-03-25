@@ -835,7 +835,7 @@ class ReadRawBuffer(InputBuffer):
         }
 
         stage_config = {
-            "kotekan_stage": "visRawReader",
+            "kotekan_stage": "VisRawReader",
             "infile": infile,
             "out_buf": self.name,
             "chunk_size": chunk_size,

@@ -102,4 +102,4 @@ write_hfb:
 
   kotekan_stage: HFBWriter
   in_buf: beamform_hfb_output_buffer_0
-  instrument_name: chimeHFB
+  instrument_name: chime

@@ -43,7 +43,10 @@ REGISTER_KOTEKAN_STAGE(VisWriter);
 
 VisWriter::VisWriter(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& buffer_container) :
-    BaseWriter(config, unique_name, buffer_container){};
+    BaseWriter(config, unique_name, buffer_container) {
+    acq_fmt = "{acq_start:%Y%m%dT%H%M%SZ}_" + instrument_name + "_corr";
+    file_fmt = "{seconds_since_start:08d}_0000";
+};
 
 /// Construct the set of metadata
 std::map<std::string, std::string> VisWriter::make_metadata(dset_id_t ds_id) {

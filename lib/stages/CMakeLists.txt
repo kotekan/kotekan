@@ -27,8 +27,6 @@ add_library(
     simpleAutocorr.cpp
     freqSplit.cpp
     FreqSubset.cpp
-    VisFreqSubset.cpp
-    HFBFreqSubset.cpp
     prodSubset.cpp
     countCheck.cpp
     visAccumulate.cpp
@@ -38,7 +36,9 @@ add_library(
     BaseWriter.cpp
     VisWriter.cpp
     HFBWriter.cpp
-    visRawReader.cpp
+    RawReader.cpp
+    VisRawReader.cpp
+    HFBRawReader.cpp
     restInspectFrame.cpp
     frbNetworkProcess.cpp
     pulsarNetworkProcess.cpp
@@ -46,6 +46,7 @@ add_library(
     bufferCopy.cpp
     bufferSwitch.cpp
     bufferDelay.cpp
+    BufferSplit.cpp
     InputSubset.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
@@ -93,11 +94,11 @@ if(${USE_HDF5})
 endif()
 
 if(${USE_HDF5} AND ${USE_OMP})
-    target_sources(kotekan_stages PRIVATE visTranspose.cpp)
+    target_sources(kotekan_stages PRIVATE Transpose.cpp VisTranspose.cpp HFBTranspose.cpp)
 endif()
 
 if(${USE_OMP})
-    target_sources(kotekan_stages PRIVATE visTruncate.cpp)
+    target_sources(kotekan_stages PRIVATE VisTruncate.cpp HFBTruncate.cpp)
 endif()
 
 if(${USE_LAPACK})

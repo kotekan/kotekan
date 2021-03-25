@@ -20,7 +20,8 @@
  * @conf base_dir  String. Directory to write into.
  * @conf file_name String. Base filename to write.
  * @conf file_ext  String. File extension.
- * @conf num_frames_per_file Integer. No of frames to write into a single file.
+ * @conf num_frames_per_file Int. No of frames to write into a single file.
+ * @conf exit_after_n_files  Int. Stop writing after this many files, Default 0 = unlimited files.
  *
  * @par Metrics
  * @metric kotekan_rawfilewrite_write_time_seconds
@@ -41,6 +42,7 @@ private:
     std::string _file_name;
     std::string _file_ext;
     uint32_t _num_frames_per_file;
+    uint32_t _exit_after_n_files;
     // Prefix file name with hostname or not
     bool _prefix_hostname;
 };

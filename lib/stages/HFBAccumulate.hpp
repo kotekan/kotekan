@@ -13,7 +13,8 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for datasetManager, state_id_t, dset_id_t
 
-#include <stddef.h> // for size_t
+#include "gsl-lite.hpp" // for span
+
 #include <stdint.h> // for uint32_t, int32_t, int64_t
 #include <string>   // for string
 #include <vector>   // for vector
@@ -69,54 +70,20 @@ public:
 
 private:
     /// Copy the first frame of the integration
-    void init_first_frame(float* input_data, float* sum_data, const uint32_t in_frame_id);
+    void init_first_frame(float* input_data, const uint32_t in_frame_id);
     /// Add a frame to the integration
-    void integrate_frame(float* input_data, float* sum_data, const uint32_t in_frame_id);
+    void integrate_frame(float* input_data, const uint32_t in_frame_id);
     /// Normalise frame after integration has been completed
-    void normalise_frame(float* sum_data, const uint32_t in_frame_id);
-
-    // NOTE: Annoyingly this can't be forward declared, and defined fully externally
-    // as the std::deque needs the complete type
-    // TODO: Place all of internalState's members directly on main class
-    /**
-     * @class internalState
-     * @brief Hold the internal state of a gated accumulation.
-     **/
-    struct internalState {
-
-        /**
-         * @brief Initialise the required fields.
-         *
-         * Everything else will be set by the reset_state call during
-         * initialisation.
-         *
-         * @param  num_beams      No. of FRB beams.
-         * @param  num_sub_freqs  No. of sub-frequencies.
-         **/
-        internalState(size_t num_beams, size_t num_sub_freqs);
-
-        /// The sum of the squared weight difference. This is needed for
-        /// de-biasing the weight calculation
-        float weight_diff_sum;
-
-        /// Accumulation vectors
-        std::vector<float> hfb1;
-        std::vector<float> hfb2;
-
-        friend HFBAccumulate;
-    };
-
-    /**
-     * @brief Reset the state when we restart an integration.
-     *
-     * @param    state  State to reset.
-     * @returns         True if this accumulation was enabled.
-     **/
-    bool reset_state(internalState& state);
+    void normalise_frame(const uint32_t in_frame_id);
+    /// Reset the state when we restart an integration.
+    bool reset_state();
 
     Buffer* in_buf;
     Buffer* cls_buf;
     Buffer* out_buf;
+
+    /// View of the output frame data.
+    gsl::span<float> out_hfb;
 
     /// Config variables
     uint32_t _num_frames_to_integrate;
@@ -131,6 +98,14 @@ private:
     uint32_t frame;
     int64_t fpga_seq_num;
     int64_t fpga_seq_num_end;
+
+    /// The sum of the squared weight difference. This is needed for
+    /// de-biasing the weight calculation
+    float weight_diff_sum;
+
+    /// Accumulation vectors
+    std::vector<float> hfb1;
+    std::vector<float> hfb2;
 
     // dataset ID for the base states
     dset_id_t base_dataset_id;

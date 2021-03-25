@@ -142,6 +142,12 @@ protected:
     // Parameters saved from the config files
     std::string instrument_name;
 
+    // Acquisition name format
+    std::string acq_fmt;
+
+    // File name format
+    std::string file_fmt;
+
 private:
     /// Construct the set of metadata
     virtual std::map<std::string, std::string> make_metadata(dset_id_t ds_id) = 0;
