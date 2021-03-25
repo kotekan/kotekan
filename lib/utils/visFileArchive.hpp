@@ -1,6 +1,7 @@
 #ifndef VIS_FILE_ARCHIVE_HPP
 #define VIS_FILE_ARCHIVE_HPP
 
+#include "FileArchive.hpp"
 #include "kotekanLogging.hpp" // for logLevel, kotekanLogging
 #include "visUtil.hpp"        // for freq_ctype, prod_ctype, time_ctype, input_ctype
 
@@ -21,7 +22,7 @@
  *
  * @author Richard Shaw
  **/
-class visFileArchive : public kotekan::kotekanLogging {
+class visFileArchive : public FileArchive {
 
 public:
     /**
@@ -142,27 +143,5 @@ private:
 inline std::string visFileArchive::prod_or_stack() {
     return stacked ? "stack" : "prod";
 }
-
-
-// TODO: these should be included from visFileH5
-// These templated functions are needed in order to tell HighFive how the
-// various structs are converted into HDF5 datatypes
-namespace HighFive {
-template<>
-DataType create_datatype<freq_ctype>();
-template<>
-DataType create_datatype<time_ctype>();
-template<>
-DataType create_datatype<input_ctype>();
-template<>
-DataType create_datatype<prod_ctype>();
-template<>
-DataType create_datatype<cfloat>();
-template<>
-DataType create_datatype<stack_ctype>();
-template<>
-DataType create_datatype<rstack_ctype>();
-}; // namespace HighFive
-
 
 #endif

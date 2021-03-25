@@ -240,3 +240,53 @@ void gpuProcess::results_thread() {
         gpu_frame_id = (gpu_frame_id + 1) % _gpu_buffer_depth;
     }
 }
+
+std::string gpuProcess::dot_string(const std::string& prefix) const {
+    std::string dot = fmt::format("{:s}subgraph \"cluster_{:s}\" {{\n", prefix, get_unique_name());
+
+    dot += fmt::format("{:s}{:s}style=filled;\n", prefix, prefix);
+    dot += fmt::format("{:s}{:s}color=lightgrey;\n", prefix, prefix);
+    dot += fmt::format("{:s}{:s}node [style=filled,color=white];\n", prefix, prefix);
+    dot += fmt::format("{:s}{:s}label = \"{:s}\";\n", prefix, prefix, get_unique_name());
+
+    for (auto& command : commands) {
+        std::string shape;
+        switch (command->get_command_type()) {
+            case gpuCommandType::COPY_IN:
+                shape = "trapezium";
+                break;
+            case gpuCommandType::KERNEL:
+                shape = "box";
+                break;
+            case gpuCommandType::BARRIER:
+                shape = "parallelogram";
+                break;
+            case gpuCommandType::COPY_OUT:
+                shape = "invtrapezium";
+                break;
+            default:
+                // Hopefully one notices the type wasn't set with this shape.
+                shape = "diamond";
+                break;
+        }
+        dot += fmt::format("{:s}{:s}\"{:s}\" [shape={:s},label=\"{:s}\"];\n", prefix, prefix,
+                           command->get_unique_name(), shape, command->get_name());
+    }
+
+    bool first_item = true;
+    std::string last_item = "";
+    for (auto& command : commands) {
+        if (first_item) {
+            last_item = command->get_unique_name();
+            first_item = false;
+            continue;
+        }
+        dot += fmt::format("{:s}{:s}\"{:s}\" -> \"{:s}\" [style=dotted];\n", prefix, prefix,
+                           last_item, command->get_unique_name());
+        last_item = command->get_unique_name();
+    }
+
+    dot += fmt::format("{:s}}}\n", prefix);
+
+    return dot;
+}

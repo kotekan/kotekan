@@ -20,23 +20,26 @@ __kernel void sum_hfb(__global float *data, __constant uint *compressed_lost_sam
 
   for(int sample=0; sample<num_samples; sample+=4) {
 
-      if(!compressed_lost_samples_buf[sample]) {
+     // Mask data from lost samples.
+     const int mask_0 = 1 - compressed_lost_samples_buf[sample];
+     const int mask_1 = 1 - compressed_lost_samples_buf[sample + 1];
+     const int mask_2 = 1 - compressed_lost_samples_buf[sample + 2];
+     const int mask_3 = 1 - compressed_lost_samples_buf[sample + 3];
 
-          // Load data into vectors
-          data_1.s0 = data[1024*NUM_SUB_FREQS*sample + beam*NUM_SUB_FREQS + freq];
-          data_1.s1 = data[1024*NUM_SUB_FREQS*(sample + 1) + beam*NUM_SUB_FREQS + freq];
-          data_1.s2 = data[1024*NUM_SUB_FREQS*(sample + 2) + beam*NUM_SUB_FREQS + freq];
-          data_1.s3 = data[1024*NUM_SUB_FREQS*(sample + 3) + beam*NUM_SUB_FREQS + freq];
-          
-          data_2.s0 = data[1024*NUM_SUB_FREQS*sample + beam*NUM_SUB_FREQS + freq + 1];
-          data_2.s1 = data[1024*NUM_SUB_FREQS*(sample + 1) + beam*NUM_SUB_FREQS + freq + 1];
-          data_2.s2 = data[1024*NUM_SUB_FREQS*(sample + 2) + beam*NUM_SUB_FREQS + freq + 1];
-          data_2.s3 = data[1024*NUM_SUB_FREQS*(sample + 3) + beam*NUM_SUB_FREQS + freq + 1];
+     // Load data into vectors
+     data_1.s0 = mask_0 * data[1024*NUM_SUB_FREQS*sample + beam*NUM_SUB_FREQS + freq];
+     data_1.s1 = mask_1 * data[1024*NUM_SUB_FREQS*(sample + 1) + beam*NUM_SUB_FREQS + freq];
+     data_1.s2 = mask_2 * data[1024*NUM_SUB_FREQS*(sample + 2) + beam*NUM_SUB_FREQS + freq];
+     data_1.s3 = mask_3 * data[1024*NUM_SUB_FREQS*(sample + 3) + beam*NUM_SUB_FREQS + freq];
+     
+     data_2.s0 = mask_0 * data[1024*NUM_SUB_FREQS*sample + beam*NUM_SUB_FREQS + freq + 1];
+     data_2.s1 = mask_1 * data[1024*NUM_SUB_FREQS*(sample + 1) + beam*NUM_SUB_FREQS + freq + 1];
+     data_2.s2 = mask_2 * data[1024*NUM_SUB_FREQS*(sample + 2) + beam*NUM_SUB_FREQS + freq + 1];
+     data_2.s3 = mask_3 * data[1024*NUM_SUB_FREQS*(sample + 3) + beam*NUM_SUB_FREQS + freq + 1];
  
-          // Add vectors
-          freq_sum_1 += data_1;
-          freq_sum_2 += data_2;
-      }
+     // Add vectors
+     freq_sum_1 += data_1;
+     freq_sum_2 += data_2;
   }
 
   // Write sums back to global

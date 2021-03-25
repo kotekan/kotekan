@@ -1,21 +1,23 @@
 #include "visBuffer.hpp"
 
-#include "FrameView.hpp" // for metadataContainer
-#include "Telescope.hpp"
-#include "buffer.h"        // for Buffer, allocate_new_metadata_object, swap_frames
-#include "chimeMetadata.h" // for chimeMetadata
-#include "metadata.h"      // for metadataContainer
+#include "FrameView.hpp"     // for bind_span, bind_scalar, FrameView
+#include "Telescope.hpp"     // for Telescope
+#include "buffer.h"          // for Buffer, allocate_new_metadata_object
+#include "chimeMetadata.hpp" // for chimeMetadata, get_stream_id_from_metadata
+#include "metadata.h"        // for metadataContainer
 
 #include "fmt.hpp" // for format, fmt
 
 #include <algorithm>   // for copy
-#include <complex>     // for complex  // IWYU pragma: keep
+#include <complex>     // for complex
 #include <cstdint>     // for uint64_t // IWYU pragma: keep
-#include <cstring>     // for memcpy
 #include <ctime>       // for gmtime
+#include <exception>   // for exception
 #include <map>         // for map
+#include <regex>       // for match_results<>::_Base_type
 #include <set>         // for set
 #include <stdexcept>   // for runtime_error
+#include <string.h>    // for memset
 #include <sys/time.h>  // for TIMEVAL_TO_TIMESPEC
 #include <type_traits> // for __decay_and_strip<>::__type
 #include <vector>      // for vector
@@ -250,6 +252,22 @@ VisFrameView VisFrameView::create_frame_view(Buffer* buf, const uint32_t index,
     return VisFrameView(buf, index);
 }
 
-size_t VisFrameView::data_size() {
+size_t VisFrameView::data_size() const {
     return buffer_layout.first;
+}
+
+void VisFrameView::zero_frame() {
+
+    // Fill data with zeros
+    std::memset(_frame, 0, data_size());
+    erms = 0;
+
+    // Set non-structural metadata
+    freq_id = 0;
+    dataset_id = dset_id_t::null;
+    time = std::make_tuple(0, timespec{0, 0});
+
+    // mark frame as empty by ensuring this is 0
+    fpga_seq_length = 0;
+    fpga_seq_total = 0;
 }

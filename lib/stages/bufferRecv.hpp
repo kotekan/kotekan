@@ -80,6 +80,9 @@ public:
     ~bufferRecv();
     void main_thread() override;
 
+    /// Adds the source port to the pipeline dot graph
+    virtual std::string dot_string(const std::string& prefix) const override;
+
 private:
     /**
      * @brief Returns a buffer ID of the next empty buffer, this must be filled

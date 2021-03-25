@@ -3,7 +3,6 @@
 
 #include "Config.hpp"         // for Config
 #include "buffer.h"           // for Buffer
-#include "chimeMetadata.h"    // for stream_t
 #include "factory.hpp"        // for CREATE_FACTORY, Factory, REGISTER_NAMED_TYPE_WITH_FACTORY
 #include "kotekanLogging.hpp" // for kotekanLogging
 
@@ -23,6 +22,18 @@ CREATE_FACTORY(Telescope, const kotekan::Config&, const std::string&);
 
 using freq_id_t = uint32_t;
 #define FREQ_ID_NOT_SET UINT32_MAX
+
+
+/**
+ * @brief A type for the stream ID.
+ *
+ * This is the external interface for it and *must* be used instead of directly
+ * accessing the chimeMetadata::stream_ID member.
+ **/
+struct stream_t {
+    uint64_t id;
+};
+
 
 /**
  * @brief A class to hold telescope specific functionality.
@@ -142,6 +153,13 @@ public:
      * @return  The width of the frequency channel in MHz.
      **/
     virtual double freq_width(freq_id_t freq_id) const = 0;
+
+    /**
+     * @brief Get which Nyquist zone we are in.
+     *
+     * @return  The Nyquist zone.
+     **/
+    virtual uint8_t nyquist_zone() const = 0;
 
     /**
      * Convert a sequence number into a UNIX epoch time.

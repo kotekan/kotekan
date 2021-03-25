@@ -7,15 +7,15 @@
 #ifndef VIS_FILE_H5_HPP
 #define VIS_FILE_H5_HPP
 
+#include "FrameView.hpp"      // for FrameView
 #include "datasetManager.hpp" // for dset_id_t
 #include "kotekanLogging.hpp" // for logLevel
-#include "visBuffer.hpp"      // for VisFrameView
 #include "visFile.hpp"        // for visFile
-#include "visUtil.hpp"        // for time_ctype, freq_ctype, input_ctype, prod_ctype
+#include "visUtil.hpp"        // for time_ctype, freq_ctype, input_ctype, prod_ctype, cfloat
 
 #include <cstdint>                 // for uint32_t
 #include <highfive/H5DataSet.hpp>  // for DataSet
-#include <highfive/H5DataType.hpp> // for DataType
+#include <highfive/H5DataType.hpp> // for DataType, AtomicType, DataType::DataType
 #include <highfive/H5File.hpp>     // for File
 #include <map>                     // for map
 #include <memory>                  // for unique_ptr
@@ -67,7 +67,7 @@ public:
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
      **/
-    void write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) override;
+    void write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameView& frame) override;
 
     /**
      * @brief Return the current number of current time samples.
@@ -172,7 +172,7 @@ public:
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
      **/
-    void write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) override;
+    void write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameView& frame) override;
 
     size_t num_time() override;
 
@@ -250,35 +250,5 @@ protected:
     off_t vis_offset, weight_offset, gcoeff_offset, gexp_offset, eval_offset, evec_offset,
         erms_offset, time_offset;
 };
-
-
-// These templated functions are needed in order to tell HighFive how the
-// various structs are converted into HDF5 datatypes
-const size_t DSET_ID_LEN = 33; // Length of the string used to represent dataset IDs
-struct dset_id_str {
-    char hash[DSET_ID_LEN];
-};
-namespace HighFive {
-template<>
-DataType create_datatype<freq_ctype>();
-template<>
-DataType create_datatype<time_ctype>();
-template<>
-DataType create_datatype<input_ctype>();
-template<>
-DataType create_datatype<prod_ctype>();
-template<>
-DataType create_datatype<cfloat>();
-
-// \cond NO_DOC
-// Fixed length string to store dataset ID
-template<>
-inline AtomicType<dset_id_str>::AtomicType() {
-    _hid = H5Tcopy(H5T_C_S1);
-    H5Tset_size(_hid, DSET_ID_LEN);
-}
-// \endcond
-}; // namespace HighFive
-
 
 #endif

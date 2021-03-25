@@ -47,6 +47,8 @@ CHIME_X:
 
  .end_amd_kernel_code_t
 
+;enable LDS
+s_mov_b32 m0, -1
 
 ;s[0:1] contains input array
 ;s[10:11] contains the presum buffer
@@ -521,63 +523,321 @@ CHIME_X:
       v_bfe_u32 v3, v9, 28, 4  ;r[3]
       v_mad_u32_u24 v19, s10, v3, v2
 
-      ;LOOP over 8 timesteps, counter in s13
-      s_mov_b32 s13, 0
-      LOOP_INNER8:
+      ;LOOP over 8 timesteps, unrolled
+      ;LOOP_INNER8:
+        ;no s_waitcnt between -- 35 ops ok without bank conflicts
         ;ITERATION 0
-
-        ;wait to proceed -- 35 ops is NOT ENOUGH!
-    ;s_waitcnt lgkmcnt(3)
         v_mad_u32_u24 v20, v10, v16, v20 ;x0y0
         v_mad_u32_u24 v24, v10, v17, v24 ;x0y1
         v_mad_u32_u24 v32, v10, v18, v32 ;x0y2
         v_mad_u32_u24 v36, v10, v19, v36 ;x0y3
           ds_bpermute_b32 v10, v44, v10
-
         v_mad_u32_u24 v21, v11, v16, v21 ;x1y0
         v_mad_u32_u24 v25, v11, v17, v25 ;x1y1
         v_mad_u32_u24 v33, v11, v18, v33 ;x1y2
         v_mad_u32_u24 v37, v11, v19, v37 ;x1y3
           ds_bpermute_b32 v11, v44, v11
-
         v_mad_u32_u24 v22, v12, v16, v22 ;x2y0
         v_mad_u32_u24 v26, v12, v17, v26 ;x2y1
         v_mad_u32_u24 v34, v12, v18, v34 ;x2y2
         v_mad_u32_u24 v38, v12, v19, v38 ;x2y3
           ds_bpermute_b32 v12, v44, v12
-
-    ;s_waitcnt lgkmcnt(3)
         v_mad_u32_u24 v23, v13, v16, v23 ;x3y0
         v_mad_u32_u24 v27, v13, v17, v27 ;x3y1
         v_mad_u32_u24 v35, v13, v18, v35 ;x3y2
         v_mad_u32_u24 v39, v13, v19, v39 ;x3y3
           ds_bpermute_b32 v13, v44, v13
-
         v_bfe_u32 v2, v16, 16, 4
         v_bfe_u32 v3, v17, 16, 4
         v_bfe_u32 v8, v18, 16, 4
         v_bfe_u32 v9, v19, 16, 4
-
         v_mad_u32_u24 v28, v14, v2, v28 ;x01y0
         v_mad_u32_u24 v30, v14, v3, v30 ;x01y1
         v_mad_u32_u24 v40, v14, v8, v40 ;x01y2
         v_mad_u32_u24 v42, v14, v9, v42 ;x01y3
           ds_bpermute_b32 v14, v44, v14
-
         v_mad_u32_u24 v29, v15, v2, v29 ;x23y0
         v_mad_u32_u24 v31, v15, v3, v31 ;x23y1
         v_mad_u32_u24 v41, v15, v8, v41 ;x23y2
         v_mad_u32_u24 v43, v15, v9, v43 ;x23y3
           ds_bpermute_b32 v15, v44, v15
-
         v_mov_b32_dpp v16, v16 row_ror:2
         v_mov_b32_dpp v17, v17 row_ror:2
         v_mov_b32_dpp v18, v18 row_ror:2
         v_mov_b32_dpp v19, v19 row_ror:2
-
-        s_add_u32 s13, 1, s13
-        s_cmp_lt_u32 s13, 8
-      s_cbranch_scc1 LOOP_INNER8
+        ;ITERATION 1
+        v_mad_u32_u24 v20, v10, v16, v20 ;x0y0
+        v_mad_u32_u24 v24, v10, v17, v24 ;x0y1
+        v_mad_u32_u24 v32, v10, v18, v32 ;x0y2
+        v_mad_u32_u24 v36, v10, v19, v36 ;x0y3
+          ds_bpermute_b32 v10, v44, v10
+        v_mad_u32_u24 v21, v11, v16, v21 ;x1y0
+        v_mad_u32_u24 v25, v11, v17, v25 ;x1y1
+        v_mad_u32_u24 v33, v11, v18, v33 ;x1y2
+        v_mad_u32_u24 v37, v11, v19, v37 ;x1y3
+          ds_bpermute_b32 v11, v44, v11
+        v_mad_u32_u24 v22, v12, v16, v22 ;x2y0
+        v_mad_u32_u24 v26, v12, v17, v26 ;x2y1
+        v_mad_u32_u24 v34, v12, v18, v34 ;x2y2
+        v_mad_u32_u24 v38, v12, v19, v38 ;x2y3
+          ds_bpermute_b32 v12, v44, v12
+        v_mad_u32_u24 v23, v13, v16, v23 ;x3y0
+        v_mad_u32_u24 v27, v13, v17, v27 ;x3y1
+        v_mad_u32_u24 v35, v13, v18, v35 ;x3y2
+        v_mad_u32_u24 v39, v13, v19, v39 ;x3y3
+          ds_bpermute_b32 v13, v44, v13
+        v_bfe_u32 v2, v16, 16, 4
+        v_bfe_u32 v3, v17, 16, 4
+        v_bfe_u32 v8, v18, 16, 4
+        v_bfe_u32 v9, v19, 16, 4
+        v_mad_u32_u24 v28, v14, v2, v28 ;x01y0
+        v_mad_u32_u24 v30, v14, v3, v30 ;x01y1
+        v_mad_u32_u24 v40, v14, v8, v40 ;x01y2
+        v_mad_u32_u24 v42, v14, v9, v42 ;x01y3
+          ds_bpermute_b32 v14, v44, v14
+        v_mad_u32_u24 v29, v15, v2, v29 ;x23y0
+        v_mad_u32_u24 v31, v15, v3, v31 ;x23y1
+        v_mad_u32_u24 v41, v15, v8, v41 ;x23y2
+        v_mad_u32_u24 v43, v15, v9, v43 ;x23y3
+          ds_bpermute_b32 v15, v44, v15
+        v_mov_b32_dpp v16, v16 row_ror:2
+        v_mov_b32_dpp v17, v17 row_ror:2
+        v_mov_b32_dpp v18, v18 row_ror:2
+        v_mov_b32_dpp v19, v19 row_ror:2
+        ;ITERATION 2
+        v_mad_u32_u24 v20, v10, v16, v20 ;x0y0
+        v_mad_u32_u24 v24, v10, v17, v24 ;x0y1
+        v_mad_u32_u24 v32, v10, v18, v32 ;x0y2
+        v_mad_u32_u24 v36, v10, v19, v36 ;x0y3
+          ds_bpermute_b32 v10, v44, v10
+        v_mad_u32_u24 v21, v11, v16, v21 ;x1y0
+        v_mad_u32_u24 v25, v11, v17, v25 ;x1y1
+        v_mad_u32_u24 v33, v11, v18, v33 ;x1y2
+        v_mad_u32_u24 v37, v11, v19, v37 ;x1y3
+          ds_bpermute_b32 v11, v44, v11
+        v_mad_u32_u24 v22, v12, v16, v22 ;x2y0
+        v_mad_u32_u24 v26, v12, v17, v26 ;x2y1
+        v_mad_u32_u24 v34, v12, v18, v34 ;x2y2
+        v_mad_u32_u24 v38, v12, v19, v38 ;x2y3
+          ds_bpermute_b32 v12, v44, v12
+        v_mad_u32_u24 v23, v13, v16, v23 ;x3y0
+        v_mad_u32_u24 v27, v13, v17, v27 ;x3y1
+        v_mad_u32_u24 v35, v13, v18, v35 ;x3y2
+        v_mad_u32_u24 v39, v13, v19, v39 ;x3y3
+          ds_bpermute_b32 v13, v44, v13
+        v_bfe_u32 v2, v16, 16, 4
+        v_bfe_u32 v3, v17, 16, 4
+        v_bfe_u32 v8, v18, 16, 4
+        v_bfe_u32 v9, v19, 16, 4
+        v_mad_u32_u24 v28, v14, v2, v28 ;x01y0
+        v_mad_u32_u24 v30, v14, v3, v30 ;x01y1
+        v_mad_u32_u24 v40, v14, v8, v40 ;x01y2
+        v_mad_u32_u24 v42, v14, v9, v42 ;x01y3
+          ds_bpermute_b32 v14, v44, v14
+        v_mad_u32_u24 v29, v15, v2, v29 ;x23y0
+        v_mad_u32_u24 v31, v15, v3, v31 ;x23y1
+        v_mad_u32_u24 v41, v15, v8, v41 ;x23y2
+        v_mad_u32_u24 v43, v15, v9, v43 ;x23y3
+          ds_bpermute_b32 v15, v44, v15
+        v_mov_b32_dpp v16, v16 row_ror:2
+        v_mov_b32_dpp v17, v17 row_ror:2
+        v_mov_b32_dpp v18, v18 row_ror:2
+        v_mov_b32_dpp v19, v19 row_ror:2
+        ;ITERATION 3
+        v_mad_u32_u24 v20, v10, v16, v20 ;x0y0
+        v_mad_u32_u24 v24, v10, v17, v24 ;x0y1
+        v_mad_u32_u24 v32, v10, v18, v32 ;x0y2
+        v_mad_u32_u24 v36, v10, v19, v36 ;x0y3
+          ds_bpermute_b32 v10, v44, v10
+        v_mad_u32_u24 v21, v11, v16, v21 ;x1y0
+        v_mad_u32_u24 v25, v11, v17, v25 ;x1y1
+        v_mad_u32_u24 v33, v11, v18, v33 ;x1y2
+        v_mad_u32_u24 v37, v11, v19, v37 ;x1y3
+          ds_bpermute_b32 v11, v44, v11
+        v_mad_u32_u24 v22, v12, v16, v22 ;x2y0
+        v_mad_u32_u24 v26, v12, v17, v26 ;x2y1
+        v_mad_u32_u24 v34, v12, v18, v34 ;x2y2
+        v_mad_u32_u24 v38, v12, v19, v38 ;x2y3
+          ds_bpermute_b32 v12, v44, v12
+        v_mad_u32_u24 v23, v13, v16, v23 ;x3y0
+        v_mad_u32_u24 v27, v13, v17, v27 ;x3y1
+        v_mad_u32_u24 v35, v13, v18, v35 ;x3y2
+        v_mad_u32_u24 v39, v13, v19, v39 ;x3y3
+          ds_bpermute_b32 v13, v44, v13
+        v_bfe_u32 v2, v16, 16, 4
+        v_bfe_u32 v3, v17, 16, 4
+        v_bfe_u32 v8, v18, 16, 4
+        v_bfe_u32 v9, v19, 16, 4
+        v_mad_u32_u24 v28, v14, v2, v28 ;x01y0
+        v_mad_u32_u24 v30, v14, v3, v30 ;x01y1
+        v_mad_u32_u24 v40, v14, v8, v40 ;x01y2
+        v_mad_u32_u24 v42, v14, v9, v42 ;x01y3
+          ds_bpermute_b32 v14, v44, v14
+        v_mad_u32_u24 v29, v15, v2, v29 ;x23y0
+        v_mad_u32_u24 v31, v15, v3, v31 ;x23y1
+        v_mad_u32_u24 v41, v15, v8, v41 ;x23y2
+        v_mad_u32_u24 v43, v15, v9, v43 ;x23y3
+          ds_bpermute_b32 v15, v44, v15
+        v_mov_b32_dpp v16, v16 row_ror:2
+        v_mov_b32_dpp v17, v17 row_ror:2
+        v_mov_b32_dpp v18, v18 row_ror:2
+        v_mov_b32_dpp v19, v19 row_ror:2
+        ;ITERATION 4
+        v_mad_u32_u24 v20, v10, v16, v20 ;x0y0
+        v_mad_u32_u24 v24, v10, v17, v24 ;x0y1
+        v_mad_u32_u24 v32, v10, v18, v32 ;x0y2
+        v_mad_u32_u24 v36, v10, v19, v36 ;x0y3
+          ds_bpermute_b32 v10, v44, v10
+        v_mad_u32_u24 v21, v11, v16, v21 ;x1y0
+        v_mad_u32_u24 v25, v11, v17, v25 ;x1y1
+        v_mad_u32_u24 v33, v11, v18, v33 ;x1y2
+        v_mad_u32_u24 v37, v11, v19, v37 ;x1y3
+          ds_bpermute_b32 v11, v44, v11
+        v_mad_u32_u24 v22, v12, v16, v22 ;x2y0
+        v_mad_u32_u24 v26, v12, v17, v26 ;x2y1
+        v_mad_u32_u24 v34, v12, v18, v34 ;x2y2
+        v_mad_u32_u24 v38, v12, v19, v38 ;x2y3
+          ds_bpermute_b32 v12, v44, v12
+        v_mad_u32_u24 v23, v13, v16, v23 ;x3y0
+        v_mad_u32_u24 v27, v13, v17, v27 ;x3y1
+        v_mad_u32_u24 v35, v13, v18, v35 ;x3y2
+        v_mad_u32_u24 v39, v13, v19, v39 ;x3y3
+          ds_bpermute_b32 v13, v44, v13
+        v_bfe_u32 v2, v16, 16, 4
+        v_bfe_u32 v3, v17, 16, 4
+        v_bfe_u32 v8, v18, 16, 4
+        v_bfe_u32 v9, v19, 16, 4
+        v_mad_u32_u24 v28, v14, v2, v28 ;x01y0
+        v_mad_u32_u24 v30, v14, v3, v30 ;x01y1
+        v_mad_u32_u24 v40, v14, v8, v40 ;x01y2
+        v_mad_u32_u24 v42, v14, v9, v42 ;x01y3
+          ds_bpermute_b32 v14, v44, v14
+        v_mad_u32_u24 v29, v15, v2, v29 ;x23y0
+        v_mad_u32_u24 v31, v15, v3, v31 ;x23y1
+        v_mad_u32_u24 v41, v15, v8, v41 ;x23y2
+        v_mad_u32_u24 v43, v15, v9, v43 ;x23y3
+          ds_bpermute_b32 v15, v44, v15
+        v_mov_b32_dpp v16, v16 row_ror:2
+        v_mov_b32_dpp v17, v17 row_ror:2
+        v_mov_b32_dpp v18, v18 row_ror:2
+        v_mov_b32_dpp v19, v19 row_ror:2
+        ;ITERATION 5
+        v_mad_u32_u24 v20, v10, v16, v20 ;x0y0
+        v_mad_u32_u24 v24, v10, v17, v24 ;x0y1
+        v_mad_u32_u24 v32, v10, v18, v32 ;x0y2
+        v_mad_u32_u24 v36, v10, v19, v36 ;x0y3
+          ds_bpermute_b32 v10, v44, v10
+        v_mad_u32_u24 v21, v11, v16, v21 ;x1y0
+        v_mad_u32_u24 v25, v11, v17, v25 ;x1y1
+        v_mad_u32_u24 v33, v11, v18, v33 ;x1y2
+        v_mad_u32_u24 v37, v11, v19, v37 ;x1y3
+          ds_bpermute_b32 v11, v44, v11
+        v_mad_u32_u24 v22, v12, v16, v22 ;x2y0
+        v_mad_u32_u24 v26, v12, v17, v26 ;x2y1
+        v_mad_u32_u24 v34, v12, v18, v34 ;x2y2
+        v_mad_u32_u24 v38, v12, v19, v38 ;x2y3
+          ds_bpermute_b32 v12, v44, v12
+        v_mad_u32_u24 v23, v13, v16, v23 ;x3y0
+        v_mad_u32_u24 v27, v13, v17, v27 ;x3y1
+        v_mad_u32_u24 v35, v13, v18, v35 ;x3y2
+        v_mad_u32_u24 v39, v13, v19, v39 ;x3y3
+          ds_bpermute_b32 v13, v44, v13
+        v_bfe_u32 v2, v16, 16, 4
+        v_bfe_u32 v3, v17, 16, 4
+        v_bfe_u32 v8, v18, 16, 4
+        v_bfe_u32 v9, v19, 16, 4
+        v_mad_u32_u24 v28, v14, v2, v28 ;x01y0
+        v_mad_u32_u24 v30, v14, v3, v30 ;x01y1
+        v_mad_u32_u24 v40, v14, v8, v40 ;x01y2
+        v_mad_u32_u24 v42, v14, v9, v42 ;x01y3
+          ds_bpermute_b32 v14, v44, v14
+        v_mad_u32_u24 v29, v15, v2, v29 ;x23y0
+        v_mad_u32_u24 v31, v15, v3, v31 ;x23y1
+        v_mad_u32_u24 v41, v15, v8, v41 ;x23y2
+        v_mad_u32_u24 v43, v15, v9, v43 ;x23y3
+          ds_bpermute_b32 v15, v44, v15
+        v_mov_b32_dpp v16, v16 row_ror:2
+        v_mov_b32_dpp v17, v17 row_ror:2
+        v_mov_b32_dpp v18, v18 row_ror:2
+        v_mov_b32_dpp v19, v19 row_ror:2
+        ;ITERATION 6
+        v_mad_u32_u24 v20, v10, v16, v20 ;x0y0
+        v_mad_u32_u24 v24, v10, v17, v24 ;x0y1
+        v_mad_u32_u24 v32, v10, v18, v32 ;x0y2
+        v_mad_u32_u24 v36, v10, v19, v36 ;x0y3
+          ds_bpermute_b32 v10, v44, v10
+        v_mad_u32_u24 v21, v11, v16, v21 ;x1y0
+        v_mad_u32_u24 v25, v11, v17, v25 ;x1y1
+        v_mad_u32_u24 v33, v11, v18, v33 ;x1y2
+        v_mad_u32_u24 v37, v11, v19, v37 ;x1y3
+          ds_bpermute_b32 v11, v44, v11
+        v_mad_u32_u24 v22, v12, v16, v22 ;x2y0
+        v_mad_u32_u24 v26, v12, v17, v26 ;x2y1
+        v_mad_u32_u24 v34, v12, v18, v34 ;x2y2
+        v_mad_u32_u24 v38, v12, v19, v38 ;x2y3
+          ds_bpermute_b32 v12, v44, v12
+        v_mad_u32_u24 v23, v13, v16, v23 ;x3y0
+        v_mad_u32_u24 v27, v13, v17, v27 ;x3y1
+        v_mad_u32_u24 v35, v13, v18, v35 ;x3y2
+        v_mad_u32_u24 v39, v13, v19, v39 ;x3y3
+          ds_bpermute_b32 v13, v44, v13
+        v_bfe_u32 v2, v16, 16, 4
+        v_bfe_u32 v3, v17, 16, 4
+        v_bfe_u32 v8, v18, 16, 4
+        v_bfe_u32 v9, v19, 16, 4
+        v_mad_u32_u24 v28, v14, v2, v28 ;x01y0
+        v_mad_u32_u24 v30, v14, v3, v30 ;x01y1
+        v_mad_u32_u24 v40, v14, v8, v40 ;x01y2
+        v_mad_u32_u24 v42, v14, v9, v42 ;x01y3
+          ds_bpermute_b32 v14, v44, v14
+        v_mad_u32_u24 v29, v15, v2, v29 ;x23y0
+        v_mad_u32_u24 v31, v15, v3, v31 ;x23y1
+        v_mad_u32_u24 v41, v15, v8, v41 ;x23y2
+        v_mad_u32_u24 v43, v15, v9, v43 ;x23y3
+          ds_bpermute_b32 v15, v44, v15
+        v_mov_b32_dpp v16, v16 row_ror:2
+        v_mov_b32_dpp v17, v17 row_ror:2
+        v_mov_b32_dpp v18, v18 row_ror:2
+        v_mov_b32_dpp v19, v19 row_ror:2
+        ;ITERATION 7 - No need to pass data around!
+        v_mad_u32_u24 v20, v10, v16, v20 ;x0y0
+        v_mad_u32_u24 v24, v10, v17, v24 ;x0y1
+        v_mad_u32_u24 v32, v10, v18, v32 ;x0y2
+        v_mad_u32_u24 v36, v10, v19, v36 ;x0y3
+        ;  ds_bpermute_b32 v10, v44, v10
+        v_mad_u32_u24 v21, v11, v16, v21 ;x1y0
+        v_mad_u32_u24 v25, v11, v17, v25 ;x1y1
+        v_mad_u32_u24 v33, v11, v18, v33 ;x1y2
+        v_mad_u32_u24 v37, v11, v19, v37 ;x1y3
+        ;  ds_bpermute_b32 v11, v44, v11
+        v_mad_u32_u24 v22, v12, v16, v22 ;x2y0
+        v_mad_u32_u24 v26, v12, v17, v26 ;x2y1
+        v_mad_u32_u24 v34, v12, v18, v34 ;x2y2
+        v_mad_u32_u24 v38, v12, v19, v38 ;x2y3
+        ;  ds_bpermute_b32 v12, v44, v12
+        v_mad_u32_u24 v23, v13, v16, v23 ;x3y0
+        v_mad_u32_u24 v27, v13, v17, v27 ;x3y1
+        v_mad_u32_u24 v35, v13, v18, v35 ;x3y2
+        v_mad_u32_u24 v39, v13, v19, v39 ;x3y3
+        ;  ds_bpermute_b32 v13, v44, v13
+        v_bfe_u32 v2, v16, 16, 4
+        v_bfe_u32 v3, v17, 16, 4
+        v_bfe_u32 v8, v18, 16, 4
+        v_bfe_u32 v9, v19, 16, 4
+        v_mad_u32_u24 v28, v14, v2, v28 ;x01y0
+        v_mad_u32_u24 v30, v14, v3, v30 ;x01y1
+        v_mad_u32_u24 v40, v14, v8, v40 ;x01y2
+        v_mad_u32_u24 v42, v14, v9, v42 ;x01y3
+        ;  ds_bpermute_b32 v14, v44, v14
+        v_mad_u32_u24 v29, v15, v2, v29 ;x23y0
+        v_mad_u32_u24 v31, v15, v3, v31 ;x23y1
+        v_mad_u32_u24 v41, v15, v8, v41 ;x23y2
+        v_mad_u32_u24 v43, v15, v9, v43 ;x23y3
+        ;  ds_bpermute_b32 v15, v44, v15
+        ;v_mov_b32_dpp v16, v16 row_ror:2
+        ;v_mov_b32_dpp v17, v17 row_ror:2
+        ;v_mov_b32_dpp v18, v18 row_ror:2
+        ;v_mov_b32_dpp v19, v19 row_ror:2
       ;END OF INNER LOOP
 
       ;increment T by 8

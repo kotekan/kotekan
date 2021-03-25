@@ -1,41 +1,40 @@
 
 #include "visFileH5.hpp"
 
+#include "H5Support.hpp"      // for AtomicType<>::AtomicType, dset_id_str
 #include "Hash.hpp"           // for Hash
 #include "datasetManager.hpp" // for datasetManager, dset_id_t
 #include "datasetState.hpp"   // for eigenvalueState, freqState, inputState, prodState
 #include "visBuffer.hpp"      // for VisFrameView
-#include "visUtil.hpp"        // for cfloat, time_ctype, freq_ctype, input_ctype, prod...
+#include "visUtil.hpp"        // for cfloat, time_ctype, freq_ctype, input_ctype, prod_ctype
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>                   // for max
-#include <complex>                     // for complex
-#include <cstdio>                      // for remove
-#include <cxxabi.h>                    // for __forced_unwind
-#include <errno.h>                     // for errno
-#include <exception>                   // for exception
-#include <fcntl.h>                     // for sync_file_range, posix_fadvise, posix_fallocate
-#include <future>                      // for async, future
-#include <highfive/H5Attribute.hpp>    // for Attribute, Attribute::write, Attribute::getSpace
-#include <highfive/H5DataSet.hpp>      // for DataSet, H5Dget_offset, DataSet::resize, Annotate...
-#include <highfive/H5DataSpace.hpp>    // for DataSpace, DataSpace::From, DataSpace::DataSpace
-#include <highfive/H5DataType.hpp>     // for CompoundType, create_datatype, CompoundType::addM...
-#include <highfive/H5File.hpp>         // for File, NodeTraits::createDataSet, File::flush, Nod...
-#include <highfive/H5Group.hpp>        // for Group
-#include <highfive/H5Object.hpp>       // for Object::getId, hid_t, HighFive
-#include <highfive/H5PropertyList.hpp> // for H5Fget_vfd_handle, H5Pcreate, H5Pset_alloc_time
-#include <highfive/H5Selection.hpp>    // for Selection, SliceTraits::write, SliceTraits::select
-#include <numeric>                     // for iota
-#include <stdexcept>                   // for runtime_error, out_of_range
-#include <string.h>                    // for strerror
-#include <sys/stat.h>                  // for fstat, stat
-#include <system_error>                // for system_error
-#include <tuple>                       // for make_tuple, tuple, get
-#include <type_traits>                 // for remove_reference<>::type
-#include <unistd.h>                    // for pwrite, TEMP_FAILURE_RETRY
-#include <utility>                     // for move, pair
+#include <complex>                  // for complex
+#include <cstdio>                   // for remove
+#include <cxxabi.h>                 // for __forced_unwind
+#include <errno.h>                  // for errno
+#include <exception>                // for exception
+#include <fcntl.h>                  // for sync_file_range, posix_fadvise, posix_fallocate, SYN...
+#include <future>                   // for async, future
+#include <highfive/H5Attribute.hpp> // for Attribute, Attribute::write, Attribute::getSpace
+#include <highfive/H5DataSet.hpp>   // for DataSet, DataSet::resize, AnnotateTraits::createAttr...
+#include <highfive/H5DataSpace.hpp> // for DataSpace, DataSpace::From, DataSpace::DataSpace
+#include <highfive/H5DataType.hpp>  // for CompoundType, create_datatype, CompoundType::addMember
+#include <highfive/H5File.hpp>      // for File, NodeTraits::createDataSet, File::flush, NodeTr...
+#include <highfive/H5Group.hpp>     // for Group
+#include <highfive/H5Object.hpp>    // for Object::getId, HighFive
+#include <highfive/H5PropertyList.hpp>
+#include <highfive/H5Selection.hpp> // for Selection, SliceTraits::write, SliceTraits::select
+#include <numeric>                  // for iota
+#include <stdexcept>                // for runtime_error, out_of_range
+#include <string.h>                 // for strerror
+#include <sys/stat.h>               // for fstat, stat
+#include <system_error>             // for system_error
+#include <tuple>                    // for make_tuple, tuple, get
+#include <unistd.h>                 // for pwrite, TEMP_FAILURE_RETRY
+#include <utility>                  // for move, pair
 
 using namespace HighFive;
 
@@ -258,7 +257,9 @@ uint32_t visFileH5::extend_time(time_ctype new_time) {
 }
 
 
-void visFileH5::write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) {
+void visFileH5::write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameView& frame_view) {
+
+    const VisFrameView& frame = static_cast<const VisFrameView&>(frame_view);
 
     // TODO: consider adding checks for all dims
     if (frame.num_ev != num_ev) {
@@ -488,7 +489,10 @@ void visFileH5Fast::deactivate_time(uint32_t time_ind) {
     }
 }
 
-void visFileH5Fast::write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) {
+void visFileH5Fast::write_sample(uint32_t time_ind, uint32_t freq_ind,
+                                 const FrameView& frame_view) {
+
+    const VisFrameView& frame = static_cast<const VisFrameView&>(frame_view);
 
     // TODO: consider adding checks for all dims
     if (frame.num_ev != num_ev) {
@@ -517,57 +521,4 @@ void visFileH5Fast::write_sample(uint32_t time_ind, uint32_t freq_ind, const Vis
 
 size_t visFileH5Fast::num_time() {
     return ntime;
-}
-
-
-// Add support for all our custom types to HighFive
-template<>
-DataType HighFive::create_datatype<freq_ctype>() {
-    CompoundType f;
-    f.addMember("centre", H5T_IEEE_F64LE);
-    f.addMember("width", H5T_IEEE_F64LE);
-    f.autoCreate();
-    return std::move(f);
-}
-
-template<>
-DataType HighFive::create_datatype<time_ctype>() {
-    CompoundType t;
-    t.addMember("fpga_count", H5T_STD_U64LE);
-    t.addMember("ctime", H5T_IEEE_F64LE);
-    t.autoCreate();
-    return std::move(t);
-}
-
-template<>
-DataType HighFive::create_datatype<input_ctype>() {
-
-    CompoundType i;
-    hid_t s32 = H5Tcopy(H5T_C_S1);
-    H5Tset_size(s32, 32);
-    // AtomicType<char[32]> s32;
-    i.addMember("chan_id", H5T_STD_U16LE, 0);
-    i.addMember("correlator_input", s32, 2);
-    i.manualCreate(34);
-
-    return std::move(i);
-}
-
-template<>
-DataType HighFive::create_datatype<prod_ctype>() {
-
-    CompoundType p;
-    p.addMember("input_a", H5T_STD_U16LE);
-    p.addMember("input_b", H5T_STD_U16LE);
-    p.autoCreate();
-    return std::move(p);
-}
-
-template<>
-DataType HighFive::create_datatype<cfloat>() {
-    CompoundType c;
-    c.addMember("r", H5T_IEEE_F32LE);
-    c.addMember("i", H5T_IEEE_F32LE);
-    c.autoCreate();
-    return std::move(c);
 }

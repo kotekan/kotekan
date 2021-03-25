@@ -25,6 +25,9 @@ public:
     void main_thread() override;
     void profile_callback(kotekan::connectionInstance& conn);
 
+    /// Returns the dot string formatted graph for the GPU pipeline
+    virtual std::string dot_string(const std::string& prefix) const override;
+
 protected:
     virtual gpuCommand* create_command(const std::string& cmd_name,
                                        const std::string& unique_name) = 0;

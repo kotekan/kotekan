@@ -18,7 +18,6 @@ using nlohmann::json;
 
 datasetManager::datasetManager() :
     _conn_error_count(0),
-    _timestamp_update(json(0)),
     _stop_request_threads(false),
     _n_request_threads(0),
     _config_applied(false),
@@ -151,9 +150,6 @@ dset_id_t datasetManager::add_dataset(dataset ds) {
                                    new_dset_id, ds.to_json().dump(4),
                                    find->second.to_json().dump(4));
             }
-
-            if (ds.is_root())
-                _known_roots.insert(new_dset_id);
 
             // this dataset was already added
             return new_dset_id;
@@ -311,7 +307,7 @@ bool datasetManager::send_state_parser(std::string& reply) {
     }
 }
 
-void datasetManager::register_dataset(dset_id_t hash, dataset dset) {
+void datasetManager::register_dataset(dset_id_t hash, const dataset& dset) {
     json js_post;
     js_post["ds"] = dset.to_json();
     js_post["hash"] = hash;
@@ -447,9 +443,7 @@ void datasetManager::update_datasets(dset_id_t ds_id) {
     // check if local dataset topology is up to date to include requested ds_id
     dslock.unlock();
     json js_rqst;
-    js_rqst["ts"] = _timestamp_update;
     js_rqst["ds_id"] = ds_id;
-    js_rqst["roots"] = _known_roots;
 
     restClient::restReply reply = _rest_client.make_request_blocking(
         PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host, _ds_broker_port, _retries_rest_client,
@@ -473,7 +467,6 @@ bool datasetManager::parse_reply_dataset_update(restClient::restReply reply) {
     }
 
     json js_reply;
-    json timestamp;
     try {
         js_reply = json::parse(reply.second);
         if (js_reply.at("result") != "success")
@@ -491,9 +484,6 @@ bool datasetManager::parse_reply_dataset_update(restClient::restReply reply) {
                 // insert the new dataset
                 _datasets.insert(std::pair<dset_id_t, dataset>(ds_id, new_dset));
 
-                if (new_dset.is_root())
-                    _known_roots.insert(ds_id);
-
             } catch (std::exception& e) {
                 WARN_NON_OO("datasetManager: failure parsing reply received from broker after "
                             "requesting dataset update: the following exception was thrown when "
@@ -503,7 +493,6 @@ bool datasetManager::parse_reply_dataset_update(restClient::restReply reply) {
                 return false;
             }
         }
-        timestamp = js_reply.at("ts");
     } catch (std::exception& e) {
         WARN_NON_OO("datasetManager: failure parsing reply received from broker "
                     "after requesting dataset update (reply: {:s}): {:s}",
@@ -512,7 +501,6 @@ bool datasetManager::parse_reply_dataset_update(restClient::restReply reply) {
         return false;
     }
 
-    _timestamp_update = timestamp;
     return true;
 }
 

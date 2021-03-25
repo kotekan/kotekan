@@ -77,6 +77,9 @@ public:
      */
     virtual void update_stats() = 0;
 
+    // Allow internal access to handlers from dpdkCore
+    friend class dpdkCore;
+
 protected:
     /// The system config
     kotekan::Config& config;
@@ -150,6 +153,8 @@ public:
     ~dpdkCore();
 
     void main_thread() override;
+
+    virtual std::string dot_string(const std::string& prefix) const override;
 
 private:
     /**

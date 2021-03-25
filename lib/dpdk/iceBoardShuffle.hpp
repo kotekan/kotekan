@@ -12,7 +12,7 @@
 #include "Telescope.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
-#include "chimeMetadata.h"
+#include "chimeMetadata.hpp"
 #include "iceBoardHandler.hpp"
 #include "kotekanLogging.hpp"
 #include "packet_copy.h"
@@ -41,6 +41,9 @@
  * @metric kotekan_dpdk_shuffle_fpga_second_stage_shuffle_errors_total
  *         The total number of FPGA second stage shuffle errors seen
  *
+ * @conf  fpga_dataset          String. The dataset ID for the data being received from
+ *                              the F-engine.
+ *
  * @todo Some parts of the port_data endpoint could be refactored into the base classes
  *
  * @author Andre Renard
@@ -57,10 +60,10 @@ public:
      * @param mbuf The DPDK rte_mbuf containing the packet.
      * @return -1 if there is a serious error requiring shutdown, 0 otherwise.
      */
-    virtual int handle_packet(struct rte_mbuf* mbuf);
+    virtual int handle_packet(struct rte_mbuf* mbuf) override;
 
     /// Updates the prometheus metrics
-    virtual void update_stats();
+    virtual void update_stats() override;
 
 protected:
     /**
@@ -127,6 +130,9 @@ protected:
 
     /// The flag buffer tracking lost samples
     struct Buffer* lost_samples_buf;
+
+    // Parameters saved from the config files
+    dset_id_t fpga_dataset;
 
     /// The active lost sample frame
     uint8_t* lost_samples_frame;
@@ -231,6 +237,9 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
     DEBUG("iceBoardHandler: {:s}", unique_name);
 
     all_stream_ids[port] = {255, 255, 255, 255};
+
+    // Read config
+    fpga_dataset = config.get_default<dset_id_t>("/fpga_dataset", "id", dset_id_t::null);
 
     std::vector<std::string> buffer_names =
         config.get<std::vector<std::string>>(unique_name, "out_bufs");
@@ -413,6 +422,8 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         }
 
         set_fpga_seq_num(out_bufs[i], out_buf_frame_ids[i], new_seq);
+
+        set_dataset_id(out_bufs[i], out_buf_frame_ids[i], fpga_dataset);
     }
 
     if (!first_time) {
@@ -428,6 +439,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     set_fpga_seq_num(lost_samples_buf, lost_samples_frame_id, new_seq);
     set_first_packet_recv_time(lost_samples_buf, lost_samples_frame_id, now);
     set_gps_time(lost_samples_buf, lost_samples_frame_id, gps_time);
+    set_dataset_id(lost_samples_buf, lost_samples_frame_id, fpga_dataset);
 
     // The lost samples buffer is the same for all 4 frequencies,
     // so the stream ID actually covers all 4 possible `unused` freq values.

@@ -15,7 +15,6 @@ For example:
 
 import json
 import requests
-import sys
 import time
 import argparse
 

@@ -1,26 +1,25 @@
 #include "dpdkCore.hpp"
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json, basic_json<>::object_t, basic_json, basic_json<...
-
-#ifdef WITH_NUMA
-#include <numa.h> // for numa_node_of_cpu, numa_num_configured_nodes
-#endif
-#include "Config.hpp" // for Config
-#include "ICETelescope.hpp"
+#include "Config.hpp"           // for Config
+#include "ICETelescope.hpp"     // for ice_stream_id_t
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "captureHandler.hpp"   // for captureHandler
 #include "iceBoardShuffle.hpp"  // for iceBoardShuffle, iceBoardShuffle::shuffle_size
 #include "iceBoardStandard.hpp" // for iceBoardStandard
 #include "iceBoardVDIF.hpp"     // for iceBoardVDIF
 
-#include <algorithm>               // for max
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json, basic_json<>::object_t, basic_json, basic_json<...
+
+#include <algorithm>               // for copy, max
 #include <atomic>                  // for atomic_bool
 #include <functional>              // for _Bind_helper<>::type, bind, function
+#include <numa.h>                  // for numa_node_of_cpu, numa_num_configured_nodes
 #include <regex>                   // for match_results<>::_Base_type
 #include <rte_branch_prediction.h> // for unlikely
 #include <rte_config.h>            // for RTE_PKTMBUF_HEADROOM
 #include <rte_eal.h>               // for rte_eal_init
+#include <rte_errno.h>             // for rte_strerror, per_lcore__rte_errno, rte_errno
 #include <rte_ether.h>             // for ether_addr
 #include <rte_launch.h>            // for rte_eal_mp_remote_launch, rte_eal_mp_wait_lcore, SKIP...
 #include <rte_lcore.h>             // for rte_lcore_count, rte_lcore_id
@@ -30,6 +29,7 @@
 #include <stdio.h>                 // for fprintf, size_t, stderr
 #include <stdlib.h>                // for malloc, free
 #include <string.h>                // for strncpy, memset
+#include <sys/types.h>             // for uint
 #include <unistd.h>                // for sleep
 #include <vector>                  // for vector
 
@@ -147,7 +147,8 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
                 mbuf_size, mbuf_cache_size, sizeof(struct rte_pktmbuf_pool_private),
                 rte_pktmbuf_pool_init, nullptr, rte_pktmbuf_init, nullptr, node_id, 0);
             if (pool == nullptr) {
-                throw std::runtime_error("Cannot create DPDK mbuf pool: " + std::string(rte_strerror(rte_errno)));
+                throw std::runtime_error("Cannot create DPDK mbuf pool: "
+                                         + std::string(rte_strerror(rte_errno)));
             }
         }
         mbuf_pools.push_back(pool);
@@ -232,7 +233,6 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
     strncpy(arg4, dpdk_lcore_map.c_str(), dpdk_lcore_map.length() + 1);
     // Initial memory allocation
     char arg5[] = "--socket-mem";
-    //char arg6[] = "512,512";
     char* arg6 = (char*)malloc(init_mem_alloc.length() + 1);
     strncpy(arg6, init_mem_alloc.c_str(), init_mem_alloc.length() + 1);
     // Generate final options string for EAL initialization
@@ -396,4 +396,28 @@ int dpdkCore::lcore_rx(void* args) {
     }
 exit_lcore:
     return 0;
+}
+
+std::string dpdkCore::dot_string(const std::string& prefix) const {
+    std::string dot = fmt::format("{:s}subgraph \"cluster_{:s}\" {{\n", prefix, get_unique_name());
+
+    dot += fmt::format("{:s}{:s}style=filled;\n", prefix, prefix);
+    dot += fmt::format("{:s}{:s}color=lightgrey;\n", prefix, prefix);
+    dot += fmt::format("{:s}{:s}node [style=filled,color=white];\n", prefix, prefix);
+    dot += fmt::format("{:s}{:s}label = \"{:s}\";\n", prefix, prefix, get_unique_name());
+
+    for (uint i = 0; i < num_ports; ++i) {
+        dot += fmt::format("{:s}{:s} \"{:s}\" [shape=box];\n", prefix, prefix,
+                           handlers[i]->unique_name);
+    }
+
+    dot += fmt::format("{:s}}}\n", prefix);
+
+    for (uint i = 0; i < num_ports; ++i) {
+        dot += fmt::format("{:s}port_{:d} [shape=doubleoctagon style=filled,color=lightblue];\n",
+                           prefix, i);
+        dot += fmt::format("{:s}port_{:d} -> \"{:s}\";\n", prefix, i, handlers[i]->unique_name);
+    }
+
+    return dot;
 }

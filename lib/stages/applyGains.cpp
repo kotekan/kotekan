@@ -1,6 +1,7 @@
 #include "applyGains.hpp"
 
 #include "Config.hpp"            // for Config
+#include "H5Support.hpp"         // IWYU pragma: keep
 #include "Hash.hpp"              // for operator<
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for mark_frame_empty, wait_for_full_frame, allocate_new...
@@ -13,7 +14,6 @@
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
 #include "restClient.hpp"        // for restClient::restReply, restClient
 #include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::we...
-#include "visFileH5.hpp"         // IWYU pragma: keep
 #include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double, frameID
 
 #include "fmt.hpp"      // for format, fmt
@@ -319,8 +319,12 @@ void applyGains::apply_thread() {
             for (uint32_t jj = ii; jj < input_frame.num_elements; jj++) {
                 // Gains are to be multiplied to vis
                 out_vis[idx] = in_vis[idx] * gain[ii] * gain_conj[jj];
-                // Update the weights.
-                out_weight[idx] = in_weight[idx] * weight_factor[ii] * weight_factor[jj];
+
+                // Update the weights take care not to generate NaN's if both the gain
+                // was zero and the weight was infinite (which can happen if a channel
+                // was turned off)
+                float wp = weight_factor[ii] * weight_factor[jj];
+                out_weight[idx] = (wp == 0 ? 0.0 : in_weight[idx] * wp);
                 idx++;
             }
             // Update the gains.

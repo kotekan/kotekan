@@ -84,11 +84,19 @@ class SharedMemoryReader:
         self._time_index_map = {}
 
         self.shared_mem_name = shared_memory_name
-        self.semaphore = posix_ipc.Semaphore(shared_memory_name)
-        shared_mem = posix_ipc.SharedMemory(shared_memory_name)
+
+        try:
+            self.semaphore = posix_ipc.Semaphore(shared_memory_name)
+            self.shared_mem_file = posix_ipc.SharedMemory(shared_memory_name)
+        except posix_ipc.ExistentialError:
+            raise SharedMemoryError(
+                "The shared memory resources referenced by '{}' were not created yet by the writer.".format(
+                    self.shared_mem_name
+                )
+            )
 
         # 0 means entire file
-        self.shared_mem = mmap.mmap(shared_mem.fd, 0, prot=mmap.PROT_READ)
+        self.shared_mem = mmap.mmap(self.shared_mem_file.fd, 0, prot=mmap.PROT_READ)
 
         structure = self._read_structural_data()
         self.num_writes = structure.num_writes
@@ -133,8 +141,6 @@ class SharedMemoryReader:
         self.pos_data = self.pos_access_record + self.size_access_record
 
         self._initial_validation()
-
-        os.close(shared_mem.fd)
 
         # Assign simplified frame structure to data in order to access valid field.
         # The valid field is 4byte-aligned.
@@ -183,6 +189,9 @@ class SharedMemoryReader:
         if hasattr(self, "semaphore"):
             self.semaphore.release()
 
+        if hasattr(self, "shared_mem_file"):
+            os.close(self.shared_mem_file.fd)
+
         if hasattr(self, "shared_mem"):
             self.shared_mem.close()
 
@@ -209,6 +218,7 @@ class SharedMemoryReader:
             If the shared memory is marked as invalid by the writer or if the structural parameters
             have changed.
         """
+
         self.shared_mem.seek(0)
 
         self._validate_shm()
@@ -410,14 +420,24 @@ class SharedMemoryReader:
             self._data[idx_data, :] = tmp[idx_shm, :]
 
     def _access_record(self):
-        with self.semaphore:
-            record = np.ndarray(
-                (self.num_time, self.num_freq),
-                np.int64,
-                self.shared_mem,
-                self.pos_access_record,
-                order="C",
-            ).copy()
+        try:
+            self.semaphore.acquire(120)
+        except posix_ipc.BusyError:
+            raise SharedMemoryError(
+                "Timed out while waiting for the shared memory resources referenced by '{}'.".format(
+                    self.shared_mem_name
+                )
+            )
+
+        record = np.ndarray(
+            (self.num_time, self.num_freq),
+            np.int64,
+            self.shared_mem,
+            self.pos_access_record,
+            order="C",
+        ).copy()
+
+        self.semaphore.release()
         return record
 
     def _validate_shm(self):
@@ -434,6 +454,13 @@ class SharedMemoryReader:
             If the shared memory is marked as invalid by the writer or if the structural parameters
             have changed.
         """
+
+        if os.fstat(self.shared_mem_file.fd).st_nlink == 0:
+            raise SharedMemoryError(
+                "The shared memory referenced by '{}' was unlinked by the writer.".format(
+                    self.shared_mem_name
+                )
+            )
 
         structure = self._read_structural_data()
         num_writes = structure.num_writes

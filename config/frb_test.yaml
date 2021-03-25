@@ -1,6 +1,6 @@
 ##########################################
 #
-# FRB / PSR verification
+# FRB / Tracking Beamformer verification
 #
 # Runs both GPU and CPU FRB beamformer pipelines, include re-ordering, hybrid beamformer, transposer, upchannelizer.
 # using 3840 samples for a quick run, change it to 49152 for the standard operation setting
@@ -69,7 +69,7 @@ gain_frb_buffer:
   metadata_pool: main_pool
   kotekan_buffer: standard
 
-gain_psr_buffer:
+gain_tracking_buffer:
   num_frames: buffer_depth
   frame_size: 2048 * 2 * num_beams * sizeof_float
   metadata_pool: main_pool
@@ -134,10 +134,10 @@ read_gain:
     kotekan_stage: ReadGain
     updatable_config:
       gain_frb: /updatable_config/frb_gain
-      gain_psr: /updatable_config/pulsar_gain
+      gain_tracking: /updatable_config/pulsar_gain
     in_buf: network_buffer_0
     gain_frb_buf: gain_frb_buffer
-    gain_psr_buf: gain_psr_buffer
+    gain_tracking_buf: gain_tracking_buffer
       
 check_data:
   bf_data_check_0:

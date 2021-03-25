@@ -5,7 +5,7 @@
 #include "Telescope.hpp"
 #include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for get_fpga_seq_num, get_stream_id
+#include "chimeMetadata.hpp"   // for get_fpga_seq_num, get_stream_id
 #include "kotekanLogging.hpp"  // for ERROR, INFO, DEBUG
 #include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
 #include "rfi_functions.h"     // for RFIHeader

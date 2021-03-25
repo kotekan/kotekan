@@ -1,18 +1,11 @@
-project( kotekan_opencl )
+project(kotekan_opencl)
 
-include_directories(${OpenCL_INCLUDE_DIR})
-
-include_directories (${KOTEKAN_SOURCE_DIR}/lib)
-include_directories (${KOTEKAN_SOURCE_DIR}/lib/gpu)
-include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
-include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl/kernels)
-include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
-
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-add_definitions(-DCL_SILENCE_DEPRECATION)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    add_definitions(-DCL_SILENCE_DEPRECATION)
 endif()
 
-set ( KOTEKAN_OPENCL_SOURCES
+add_library(
+      kotekan_opencl
       clCommand.cpp
       clDeviceInterface.cpp
       clEventContainer.cpp
@@ -41,14 +34,17 @@ set ( KOTEKAN_OPENCL_SOURCES
       #clRfiOutput.cpp
     )
 
-add_library ( kotekan_opencl ${KOTEKAN_OPENCL_SOURCES} )
+target_link_libraries(
+    kotekan_opencl
+    INTERFACE ${OPENCL_LIBRARIES}
+    PRIVATE libexternal kotekan_libs)
 
-target_link_libraries(kotekan_opencl libexternal)
-target_link_libraries(kotekan_opencl ${OPENCL_LIBRARIES})
+target_include_directories(kotekan_opencl PUBLIC .)
+target_include_directories(kotekan_opencl SYSTEM INTERFACE ${OPENCL_INCLUDE_DIRS})
 
-add_custom_target(kernel_copy
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${KOTEKAN_SOURCE_DIR}/lib/opencl/kernels"
-        "kernels/")
+add_custom_target(
+    kernel_copy
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${KOTEKAN_SOURCE_DIR}/lib/opencl/kernels" "kernels/"
+    COMMENT "Copying OpenCL kernels")
 
-add_dependencies( kotekan_opencl kernel_copy kotekan_gpu )
+add_dependencies(kotekan_opencl kernel_copy kotekan_gpu)
