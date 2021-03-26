@@ -68,7 +68,7 @@ raw_capture:
 #################################
 # THIS IS THE PLACE TO EDIT!!!  #
 #################################
-   note: bass test
+   note: Tracking beam to ndisk with merged non-ordered frames
 #Change this if you want to record
    file_ext: raw
    write_to_disk: True
