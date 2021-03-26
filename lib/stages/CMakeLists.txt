@@ -50,6 +50,7 @@ add_library(
     BufferSplit.cpp
     InputSubset.cpp
     mergeBeamBuffer.cpp
+    sortBeamBuffer.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp
