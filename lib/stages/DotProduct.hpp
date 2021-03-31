@@ -8,7 +8,8 @@
 
 /**
  * @class DotProduct
- * @brief A stage to compute the dot product between two vectors: A and B, which are represented by two buffers. The result is written to an output buffer.
+ * @brief A stage to compute the dot product between two vectors: A and B, which are represented by
+ * two buffers. The result is written to an output buffer.
  *
  * @par Buffers
  * @buffer in_a_buf The input buffer representing vector A.
@@ -24,7 +25,7 @@
 class DotProduct : public kotekan::Stage {
 public:
     DotProduct(kotekan::Config& config, const std::string& unique_name,
-                  kotekan::bufferContainer& buffer_container);
+               kotekan::bufferContainer& buffer_container);
     virtual ~DotProduct();
     void main_thread() override;
 
