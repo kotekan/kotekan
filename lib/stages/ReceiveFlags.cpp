@@ -10,7 +10,7 @@
 #include "datasetState.hpp"      // for flagState
 #include "kotekanLogging.hpp"    // for WARN, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
-#include "visBuffer.hpp"         // for visFrameView
+#include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for frameID, ts_to_double, current_time, double_to_ts, modulo
 
 #include "gsl-lite.hpp" // for span<>::iterator, span
@@ -19,6 +19,7 @@
 #include <atomic>      // for atomic_bool
 #include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <memory>      // for operator==, __shared_ptr_access
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for invalid_argument, runtime_error
 #include <tuple>       // for get
@@ -61,7 +62,7 @@ ReceiveFlags::ReceiveFlags(Config& config, const std::string& unique_name,
     num_kept_updates = config.get_default<uint32_t>(unique_name, "num_kept_updates", 5);
 
     /// FIFO for flags updates
-    flags = updateQueue<std::pair<state_id_t, std::vector<float>>>(num_kept_updates);
+    flags.resize(num_kept_updates);
 
     // we are ready to receive updates with the callback function now!
     // register as a subscriber with configUpdater
@@ -157,7 +158,7 @@ void ReceiveFlags::main_thread() {
         }
 
         // Copy frame into output buffer
-        auto frame_out = visFrameView::copy_frame(buf_in, frame_id_in, buf_out, frame_id_out);
+        auto frame_out = VisFrameView::copy_frame(buf_in, frame_id_in, buf_out, frame_id_out);
 
         // get the frames timestamp
         ts_frame = std::get<1>(frame_out.time);
@@ -174,7 +175,7 @@ void ReceiveFlags::main_thread() {
     }
 }
 
-bool ReceiveFlags::copy_flags_into_frame(const visFrameView& frame_out) {
+bool ReceiveFlags::copy_flags_into_frame(const VisFrameView& frame_out) {
     auto& dm = datasetManager::instance();
 
     std::lock_guard<std::mutex> lock(flags_lock);

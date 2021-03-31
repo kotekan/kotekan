@@ -2,9 +2,10 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"       // for stream_t
 #include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_empty
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for atomic_add_lost_timesamples, get_lost_timesamples, get_fi...
+#include "chimeMetadata.hpp"   // for atomic_add_lost_timesamples, get_lost_timesamples, get_fi...
 
 #include <atomic>     // for atomic_bool
 #include <cstdint>    // for int32_t
@@ -65,7 +66,7 @@ void accumulate::main_thread() {
             uint64_t fpga_seq = get_fpga_seq_num(in_buf, in_frame_id);
             set_fpga_seq_num(out_buf, out_frame_id, fpga_seq);
 
-            uint16_t stream_id = get_stream_id(in_buf, in_frame_id);
+            stream_t stream_id = get_stream_id(in_buf, in_frame_id);
             set_stream_id(out_buf, out_frame_id, stream_id);
 
             timeval time_v = get_first_packet_recv_time(in_buf, in_frame_id);

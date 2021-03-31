@@ -1,7 +1,7 @@
 #include "clBeamformKernel.hpp"
 
-#include "chimeMetadata.h"
-#include "fpga_header_functions.h"
+#include "Telescope.hpp"
+#include "chimeMetadata.hpp"
 
 #include <string>
 
@@ -18,7 +18,6 @@ clBeamformKernel::clBeamformKernel(Config& config, const std::string& unique_nam
               "beamform_tree_scale.cl") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_data_sets = config.get<int>(unique_name, "num_data_sets");
-    _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
     network_buf = host_buffers.get_buffer("network_buf");
 
@@ -37,6 +36,8 @@ clBeamformKernel::clBeamformKernel(Config& config, const std::string& unique_nam
         _inverse_product_remap[_product_remap[i]] = i;
     }
     _scale_factor = config.get<int>(unique_name, "scale_factor");
+
+    num_local_freq = Telescope::instance().num_freq_per_stream();
 }
 
 clBeamformKernel::~clBeamformKernel() {
@@ -81,7 +82,7 @@ void clBeamformKernel::build() {
 
     // Beamforming kernel global and local work space sizes.
     gws[0] = _num_elements / 4;
-    gws[1] = _num_local_freq;
+    gws[1] = num_local_freq;
     gws[2] = _samples_per_data_set / 32;
 
     lws[0] = 64;
@@ -99,15 +100,15 @@ cl_event clBeamformKernel::execute(int gpu_frame_id, cl_event pre_event) {
     int64_t current_seq = get_fpga_seq_num(network_buf, gpu_frame_id);
     int64_t bankID = (current_seq / phase_update_period) % 2;
 
-    int32_t streamID = get_stream_id(network_buf, gpu_frame_id);
+    stream_t streamID = get_stream_id(network_buf, gpu_frame_id);
 
-    uint32_t input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
+    uint32_t input_frame_len = _num_elements * num_local_freq * _samples_per_data_set;
 
     cl_mem input_memory = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     cl_mem phase_memory =
         device.get_gpu_memory_array("phases", bankID, _num_elements * sizeof(float));
 
-    uint32_t output_len = _samples_per_data_set * _num_data_sets * _num_local_freq * 2;
+    uint32_t output_len = _samples_per_data_set * _num_data_sets * num_local_freq * 2;
     cl_mem output_memory_frame =
         device.get_gpu_memory_array("beamform_output_buf", gpu_frame_id, output_len);
 
@@ -123,24 +124,25 @@ cl_event clBeamformKernel::execute(int gpu_frame_id, cl_event pre_event) {
 }
 
 
-cl_mem clBeamformKernel::get_freq_map(int32_t encoded_stream_id) {
-    // CONVERT TO USE STANDARD MEM ALLOC!
-    std::map<int32_t, cl_mem>::iterator it = device_freq_map.find(encoded_stream_id);
+cl_mem clBeamformKernel::get_freq_map(stream_t encoded_stream_id) {
+    // TODO: convert to use standard mem alloc!
+    // TODO: stream_t - uses internal structure
+    auto it = device_freq_map.find(encoded_stream_id.id);
 
     if (it == device_freq_map.end()) {
         // Create the freq map for the first time.
+        auto& tel = Telescope::instance();
         cl_int err;
-        stream_id_t stream_id = extract_stream_id(encoded_stream_id);
-        float freq[_num_local_freq];
+        float freq[num_local_freq];
 
-        for (int j = 0; j < _num_local_freq; ++j) {
-            freq[j] = freq_from_bin(bin_number(&stream_id, j)) / 1000.0;
+        for (int j = 0; j < num_local_freq; ++j) {
+            freq[j] = tel.to_freq(encoded_stream_id, j) / 1000.0;
         }
 
-        device_freq_map[encoded_stream_id] =
+        device_freq_map[encoded_stream_id.id] =
             clCreateBuffer(device.get_context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                           _num_local_freq * sizeof(float), freq, &err);
+                           num_local_freq * sizeof(float), freq, &err);
         CHECK_CL_ERROR(err);
     }
-    return device_freq_map[encoded_stream_id];
+    return device_freq_map.at(encoded_stream_id.id);
 }

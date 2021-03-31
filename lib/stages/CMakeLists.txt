@@ -1,120 +1,131 @@
-project( kotekan_libs )
+project(kotekan_libs)
 
-include_directories (${KOTEKAN_SOURCE_DIR}/lib)
+add_library(
+    kotekan_stages
+    beamformingPostProcess.cpp
+    chrxUplink.cpp
+    computeDualpolPower.cpp
+    fullPacketDump.cpp
+    pulsarPostProcess.cpp
+    ReadGain.cpp
+    nDiskFileWrite.cpp
+    nDiskFileRead.cpp
+    networkPowerStream.cpp
+    integratePowerStream.cpp
+    monitorBuffer.cpp
+    networkInputPowerStream.cpp
+    pyPlotN2.cpp
+    rawFileRead.cpp
+    rawFileWrite.cpp
+    vdifStream.cpp
+    recvSingleDishVDIF.cpp
+    streamSingleDishVDIF.cpp
+    accumulate.cpp
+    bufferStatus.cpp
+    bufferSend.cpp
+    bufferRecv.cpp
+    simpleAutocorr.cpp
+    freqSplit.cpp
+    FreqSubset.cpp
+    prodSubset.cpp
+    countCheck.cpp
+    visAccumulate.cpp
+    visCompression.cpp
+    timeDownsample.cpp
+    frbPostProcess.cpp
+    BaseWriter.cpp
+    VisWriter.cpp
+    HFBWriter.cpp
+    RawReader.cpp
+    VisRawReader.cpp
+    HFBRawReader.cpp
+    restInspectFrame.cpp
+    frbNetworkProcess.cpp
+    pulsarNetworkProcess.cpp
+    bufferMerge.cpp
+    bufferCopy.cpp
+    bufferSwitch.cpp
+    bufferDelay.cpp
+    BufferSplit.cpp
+    InputSubset.cpp
+    # RFI Pipeline Processes
+    rfiVDIF.cpp
+    rfiAVXVDIF.cpp
+    rfiBroadcast.cpp
+    rfiRecord.cpp
+    rfiBadInputFinder.cpp
+    rfiUpdateMetadata.cpp
+    ReceiveFlags.cpp
+    valve.cpp
+    visTransform.cpp
+    visTestPattern.cpp
+    visDebug.cpp
+    removeEv.cpp
+    HFBAccumulate.cpp
+    compressLostSamples.cpp
+    bufferBadInputs.cpp
+    RfiFrameDrop.cpp
+    VisSharedMemWriter.cpp
+    DataQuality.cpp
+    BeamExtract.cpp
+    BeamInspect.cpp
+    testDataGen.cpp
+    DPDKShuffleSimulate.cpp
+    BadInputFlag.cpp)
 
-set ( KOTEKAN_PROCESS_LIB_SOURCES
-      beamformingPostProcess.cpp
-      chrxUplink.cpp
-      computeDualpolPower.cpp
-      fullPacketDump.cpp
-      gpuPostProcess.cpp
-      pulsarPostProcess.cpp
-      ReadGain.cpp
-      nDiskFileWrite.cpp
-      nDiskFileRead.cpp
-      networkPowerStream.cpp
-      integratePowerStream.cpp
-      monitorBuffer.cpp
-      networkInputPowerStream.cpp
-      pyPlotN2.cpp
-      rawFileRead.cpp
-      rawFileWrite.cpp
-      vdifStream.cpp
-      recvSingleDishVDIF.cpp
-      streamSingleDishVDIF.cpp
-      accumulate.cpp
-      bufferStatus.cpp
-      bufferSend.cpp
-      bufferRecv.cpp
-      simpleAutocorr.cpp
-      freqSplit.cpp
-      freqSubset.cpp
-      prodSubset.cpp
-      countCheck.cpp
-      visAccumulate.cpp
-      visCompression.cpp
-      timeDownsample.cpp
-      frbPostProcess.cpp
-      visWriter.cpp
-      visRawReader.cpp
-      restInspectFrame.cpp
-      frbNetworkProcess.cpp
-      pulsarNetworkProcess.cpp
-      bufferMerge.cpp
-      bufferSwitch.cpp
-      #RFI Pipeline Processes
-      rfiVDIF.cpp
-      rfiAVXVDIF.cpp
-      rfiBroadcast.cpp
-      rfiRecord.cpp
-      rfiBadInputFinder.cpp
-      rfiUpdateMetadata.cpp
-      ReceiveFlags.cpp
-      valve.cpp
-      visTransform.cpp
-      visTestPattern.cpp
-      visDebug.cpp
-      removeEv.cpp
-      bufferBadInputs.cpp
-      RfiFrameDrop.cpp
-    )
+target_include_directories(kotekan_stages PRIVATE .)
 
-if (${USE_AIRSPY})
-  include_directories(${LIBAIRSPY_INCLUDE_DIR})
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} airspyInput.cpp)
-endif ()
-if (${USE_FFTW})
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} fftwEngine.cpp)
-endif ()
-
-# HDF5 stuff
-if (${USE_HDF5})
-  # Disable for the moment as requires too modern HDF5 not available in most computers
-  #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} calibration_io.cpp)
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} basebandReadout.cpp applyGains.cpp)
-endif ()
-
-# HDF5 and OpenMP
-if (${USE_HDF5} AND ${USE_OMP})
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visTranspose.cpp)
+if(${USE_AIRSPY})
+    target_sources(kotekan_stages PRIVATE airspyInput.cpp)
+    target_include_directories(kotekan_stages SYSTEM PRIVATE ${LIBAIRSPY_INCLUDE_DIR})
+    target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
+    target_link_libraries(kotekan_stages PRIVATE ${LIBAIRSPY_LIBRARIES})
 endif()
 
-# OpenMP
-if (${USE_OMP})
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visTruncate.cpp)
+if(${USE_FFTW})
+    target_sources(kotekan_stages PRIVATE fftwEngine.cpp)
+    target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
 endif()
 
-if (${USE_LAPACK})
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} eigenVis.cpp)
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} EigenVisIter.cpp)
-endif ()
-
-add_library (kotekan_stages ${KOTEKAN_PROCESS_LIB_SOURCES})
-target_link_libraries( kotekan_stages ${EVENT_LIBRARIES} )
-
-if (${USE_AIRSPY})
-  target_link_libraries(kotekan_stages ${LIBAIRSPY_LIBRARIES})
-endif ()
-if (${USE_FFTW})
-  target_link_libraries(kotekan_stages ${FFTW_LIBRARIES})
-endif ()
-
-if (${USE_HDF5})
-  include_directories (${HDF5_INCLUDE_DIRS})
-  target_link_libraries ( kotekan_stages ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
-endif ()
-if (${USE_EVENT})
-    target_link_libraries( kotekan_stages ${EVENT_LIBRARIES} )
-endif ()
-
-if (${USE_LAPACK})
-  include_directories (${OpenBLAS_INCLUDE_DIRS} ${LAPACK_INCLUDE_DIRS})
-  target_link_libraries ( kotekan_stages  ${OpenBLAS_LIBRARIES} ${LAPACK_LIBRARIES})
-endif ()
-
-# Add atomic for building against GCC
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    target_link_libraries ( kotekan_stages -latomic )
+if(${USE_HDF5})
+    target_sources(kotekan_stages PRIVATE basebandReadout.cpp applyGains.cpp)
+    target_include_directories(kotekan_stages SYSTEM PRIVATE ${HDF5_INCLUDE_DIRS})
+    target_link_libraries(kotekan_stages PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
 endif()
 
-target_link_libraries( kotekan_stages kotekan_utils kotekan_core )
+if(${USE_HDF5} AND ${USE_OMP})
+    target_sources(kotekan_stages PRIVATE Transpose.cpp VisTranspose.cpp HFBTranspose.cpp)
+endif()
+
+if(${USE_OMP})
+    target_sources(kotekan_stages PRIVATE VisTruncate.cpp HFBTruncate.cpp)
+endif()
+
+if(${USE_LAPACK})
+    target_sources(kotekan_stages PRIVATE eigenVis.cpp RingMapMaker.cpp EigenVisIter.cpp)
+    target_include_directories(kotekan_stages SYSTEM PRIVATE ${BLAS_INCLUDE_DIRS}
+                                                             ${LAPACKE_INCLUDE_DIRS} ${BLAZE_PATH})
+    target_link_libraries(kotekan_stages PRIVATE ${BLAS_LIBRARIES})
+    target_link_libraries(kotekan_stages PRIVATE ${LAPACK_LIBRARIES})
+    target_link_libraries(kotekan_stages PRIVATE ${LAPACKE_LIBRARIES})
+endif()
+
+# Libevent is required for bufferRecv
+find_package(LIBEVENT REQUIRED)
+target_link_libraries(
+    kotekan_stages
+    PUBLIC ${LIBEVENT_BASE}
+    PRIVATE ${LIBEVENT_PTHREAD})
+
+target_link_libraries(kotekan_stages PRIVATE kotekan_libs libexternal)
+
+# -lrt is needed for shm_open in VisSharedMemWriter on linux but not Clang
+if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_link_libraries(kotekan_stages PRIVATE rt)
+endif()
+
+# -latomic is needed for atomic operations in applyGains, but it doesn't need to be included
+# separately for clang on macOS
+if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_link_libraries(kotekan_stages PRIVATE atomic)
+endif()

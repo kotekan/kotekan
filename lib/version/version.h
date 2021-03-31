@@ -16,7 +16,7 @@ extern "C" {
 
 /**
  * @brief Get the kotekan version string
- * The version is generated using versioneer, see python/_version.py
+ * The version is generated using versioneer, see python/kotekan/_version.py
  * This version is updated every time make is called
  *
  * @return The kotekan version string

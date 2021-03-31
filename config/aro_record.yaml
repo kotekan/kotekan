@@ -16,6 +16,12 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: DEBUG
 
+telescope:
+  name: ICETelescope
+  require_gps: true
+  query_gps: true
+  gps_host: 127.0.0.1 # Set this to the fpga_master host
+
 instrument_name: aro
 
 power_integration_length: 8192
@@ -106,9 +112,8 @@ raw_capture:
    note: 10m FRB search
 #Change this if you want to record
    write_to_disk: True
-   gain_files:
-   - /home/arofrb/aro_run/gains/gains_FCC0000.pkl
-   - /home/arofrb/aro_run/gains/gains_noisy_FCC0000.pkl
+   write_metadata_and_gains: False
+   gain_files: Null
    num_disks: 10
    disk_base: /drives
    disk_set: L

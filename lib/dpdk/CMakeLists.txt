@@ -1,21 +1,13 @@
-project(kotekan_libs)
+project(kotekan_dpdk)
 
-set(KOTEKAN_DPDK_SOURCES
-        dpdkCore.cpp
-        zeroSamples.cpp
-        invalidateVDIFframes.cpp
-        )
+find_package(NUMA REQUIRED)
 
-add_library(kotekan_dpdk ${KOTEKAN_DPDK_SOURCES})
+add_library(kotekan_dpdk dpdkCore.cpp zeroSamples.cpp invalidateVDIFframes.cpp)
 
 # Link in DPDK
-find_library(dpdk REQUIRED)
+find_package(DPDK REQUIRED)
 message("DPDK include dir: ${DPDK_INCLUDE_DIR}")
-include_directories(SYSTEM ${DPDK_INCLUDE_DIR})
-target_link_libraries(kotekan_dpdk ${DPDK_LIBRARIES})
-
-add_definitions(-DWITH_DPDK)
-
-if(NOT ${NUMA_FOUND})
-    message( FATAL_ERROR "ERROR: libnuma is required for DPDK.  Please install libnuma")
-endif()
+target_include_directories(kotekan_dpdk SYSTEM PRIVATE ${DPDK_INCLUDE_DIR})
+target_link_libraries(kotekan_dpdk PRIVATE ${DPDK_LIBRARIES} ${NUMA_LIBRARY} libexternal
+                                           kotekan_libs)
+target_include_directories(kotekan_dpdk PUBLIC .)

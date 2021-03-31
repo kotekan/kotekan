@@ -26,6 +26,7 @@ old_update_id = f"gains{old_timestamp}"
 new_update_id = f"gains{new_timestamp}"
 
 transition_interval = 10.0
+new_state = True
 
 global_params = {
     "num_elements": 16,
@@ -42,6 +43,7 @@ global_params = {
         "start_time": old_timestamp,
         "update_id": old_update_id,
         "transition_interval": transition_interval,
+        "new_state": new_state,
     },
     "wait": True,
     "sleep_before": 2.0,
@@ -56,12 +58,12 @@ def gen_gains(filename, mult_factor, num_elements, freq):
     nfreq = len(freq)
     gain = (
         np.arange(nfreq)[:, None] * 1j * np.arange(num_elements)[None, :] * mult_factor
-    )
+    ).astype(np.complex64)
 
     # Make some weights zero to test the behaviour of apply_gains
-    weight = np.ones((nfreq, num_elements), dtype=np.float32)
-    weight[:, 1] = 0.0
-    weight[:, 3] = 0.0
+    weight = np.ones((nfreq, num_elements), dtype=np.bool8)
+    weight[:, 1] = False
+    weight[:, 3] = False
 
     with h5py.File(str(filename), "w") as f:
 
@@ -79,12 +81,12 @@ def gen_gains(filename, mult_factor, num_elements, freq):
     return gain, weight
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def gain_path(tmp_path_factory):
     return tmp_path_factory.mktemp("gain")
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def old_gains(gain_path):
 
     # Get the name of the file to write
@@ -95,7 +97,7 @@ def old_gains(gain_path):
     return gen_gains(fname, 1.0, global_params["num_elements"], freq)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def new_gains(gain_path):
 
     # Get the name of the file to write
@@ -106,11 +108,12 @@ def new_gains(gain_path):
     return gen_gains(fname, 2.0, global_params["num_elements"], freq)
 
 
-@pytest.fixture(scope="session")
-def apply_data(tmp_path_factory, gain_path, old_gains, new_gains):
+@pytest.fixture(scope="module", params=["file", "network"])
+def apply_data(request, tmp_path_factory, gain_path, old_gains, new_gains, cal_broker):
 
     output_dir = str(tmp_path_factory.mktemp("output"))
     global_params["gains_dir"] = str(gain_path)
+    global_params["read_from_file"] = True if request.param == "file" else False
 
     # REST commands
     cmds = [
@@ -121,6 +124,7 @@ def apply_data(tmp_path_factory, gain_path, old_gains, new_gains):
                 "update_id": new_update_id,
                 "start_time": new_timestamp,
                 "transition_interval": transition_interval,
+                "new_state": new_state,
             },
         ]
     ]
@@ -139,6 +143,9 @@ def apply_data(tmp_path_factory, gain_path, old_gains, new_gains):
         "file_ext": "dump",
         "base_dir": output_dir,
     }
+
+    host, port = cal_broker.server_address
+    global_params.update({"broker_host": host, "broker_port": port})
 
     test = runner.KotekanStageTester(
         "applyGains",
@@ -177,6 +184,7 @@ def to_triangle(a, b):
     return np.outer(a, b)[np.triu_indices(len(a))]
 
 
+@pytest.mark.serial
 def test_metadata(apply_data):
     """Check that the stable metadata has not changed."""
 

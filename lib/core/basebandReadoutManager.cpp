@@ -1,5 +1,7 @@
 #include "basebandReadoutManager.hpp"
 
+#include <optional> // for optional
+
 
 namespace kotekan {
 
@@ -117,15 +119,15 @@ std::vector<basebandDumpStatus> basebandReadoutManager::all() {
 std::unique_ptr<basebandDumpStatus> basebandReadoutManager::find(uint64_t event_id) {
     std::lock_guard<std::mutex> lock(requests_mtx);
     for (auto it = requests.begin(); it != requests.end(); it++) {
-        std::unique_lock<std::mutex> readout_lock(readout_mtx, std::defer_lock);
-        std::unique_lock<std::mutex> writeout_lock(writeout_mtx, std::defer_lock);
-        if (&(*it) == readout_current) {
-            readout_lock.lock();
-        }
-        if (&(*it) == writeout_current) {
-            writeout_lock.lock();
-        }
         if (it->request.event_id == event_id) {
+            std::unique_lock<std::mutex> readout_lock(readout_mtx, std::defer_lock);
+            std::unique_lock<std::mutex> writeout_lock(writeout_mtx, std::defer_lock);
+            if (&(*it) == readout_current) {
+                readout_lock.lock();
+            }
+            if (&(*it) == writeout_current) {
+                writeout_lock.lock();
+            }
             return std::make_unique<basebandDumpStatus>(*it);
         }
     }

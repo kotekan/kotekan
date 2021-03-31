@@ -11,6 +11,9 @@ import h5py
 import glob
 import os
 import msgpack
+import base64
+from flask import Flask, jsonify, request as flask_req
+from pytest_localserver.http import WSGIServer
 
 from kotekan import runner
 from test_compression import float_allclose
@@ -19,17 +22,50 @@ from test_compression import float_allclose
 if not runner.has_hdf5():
     pytest.skip("HDF5 support not available.", allow_module_level=True)
 
+NULL_DSET_ID = b"00000000000000000000000000000000"
+
+freq = [3, 50, 777, 554]
+
+# frequency to set lost samples
+frac_freq = -2
+frac_lost = 0.8
+frac_rfi = 0.3
+
+# frequency to set empty frames
+empty_freq = 3
+
+# gains parameters
+start_time = 1_500_000_000
+
+old_timestamp = start_time - 10.0
+new_timestamp = start_time + 5.0
+
+old_update_id = f"gains{old_timestamp}"
+new_update_id = f"gains{new_timestamp}"
+
+transition_interval = 10.0
+new_state = True
+
 writer_params = {
     "num_elements": 4,
     "num_ev": 2,
-    "cadence": 5.0,
-    "total_frames": 10,  # One extra sample to ensure we actually get 256
-    "freq": [3, 777, 554],
+    "cadence": 1.0,
+    "total_frames": 10,
+    "freq": freq,
     "chunk_size": [2, 6, 5],
     "mode": "test_pattern_simple",
     "test_pattern_value": [0, 0],
     "file_type": "hdf5fast",
     "dataset_manager": {"use_dataset_broker": False},
+    "updatable_config": "/gains",
+    "use_local_dataset_man": True,
+    "gains": {
+        "kotekan_update_endpoint": "json",
+        "start_time": old_timestamp,
+        "update_id": old_update_id,
+        "transition_interval": transition_interval,
+        "new_state": new_state,
+    },
 }
 
 stack_params = {
@@ -37,17 +73,34 @@ stack_params = {
     "num_ev": 2,
     "cadence": 5.0,
     "file_length": 3,
-    "freq": [3, 777, 554],
+    "freq": freq,
     "chunk_size": [2, 64, 3],
     "dataset_manager": {"use_dataset_broker": False},
 }
 
-frac_lost = 0.8
-frac_rfi = 0.3
+
+@pytest.fixture(scope="module")
+def new_gains():
+    nfreq = len(freq)
+    nelm = writer_params["num_elements"]
+    gain = np.ones((nfreq, nelm), dtype=np.complex64)
+    weight = gain.astype(np.bool8)
+
+    return gain, weight
 
 
 @pytest.fixture(scope="module")
-def transpose(tmpdir_factory):
+def old_gains():
+    nfreq = len(freq)
+    nelm = writer_params["num_elements"]
+    gain = np.ones((nfreq, nelm), dtype=np.complex64)
+    weight = gain.astype(np.bool8)
+
+    return gain, weight
+
+
+@pytest.fixture(scope="module")
+def transpose(tmpdir_factory, cal_broker):
 
     writer_params["file_length"] = writer_params["total_frames"]
 
@@ -59,34 +112,89 @@ def transpose(tmpdir_factory):
         cadence=writer_params["cadence"],
         mode=writer_params["mode"],
         test_pattern_value=writer_params["test_pattern_value"],
+        wait=True,  # make sure cal_broker has time to update
     )
 
-    # Remove the last frequency to test handling of empty frames
-    fsel_buf_name = "fake_freqsel"
+    # Add an applyGain stage to alter the dataset ID
+    gain_buf_name = "gains_applied"
+    fakevis_buffer.buffer_block.update(
+        {
+            gain_buf_name: {
+                "kotekan_buffer": "vis",
+                "metadata_pool": "vis_pool",
+                "num_frames": "buffer_depth",
+            },
+        }
+    )
+    host, port = cal_broker.server_address
+    fakevis_buffer.stage_block.update(
+        {
+            "apply_gains": {
+                "kotekan_stage": "applyGains",
+                "in_buf": fakevis_buffer.name,
+                "out_buf": gain_buf_name,
+                "log_level": "debug",
+                "broker_host": host,
+                "broker_port": port,
+            },
+        }
+    )
+
+    # Remove samples from two frequency to test handling of empty frames
+    fsel_frac_name = "frac_freqsel"
+    fsel_empty_name = "empty_freqsel"
     fsel_buf = {
-        fsel_buf_name: {
+        fsel_frac_name: {
             "kotekan_buffer": "vis",
             "metadata_pool": "vis_pool",
             "num_frames": "buffer_depth",
-        }
+        },
+        fsel_empty_name: {
+            "kotekan_buffer": "vis",
+            "metadata_pool": "vis_pool",
+            "num_frames": "buffer_depth",
+        },
     }
     fakevis_buffer.buffer_block.update(fsel_buf)
     fakevis_buffer.stage_block.update(
         {
-            "fakevis_fsel": {
+            "frac_fsel": {
                 "kotekan_stage": "visDrop",
-                "in_buf": fakevis_buffer.name,
-                "out_buf": fsel_buf_name,
-                "freq": [writer_params["freq"][-1]],
+                "in_buf": gain_buf_name,
+                "out_buf": fsel_frac_name,
+                "freq": [writer_params["freq"][frac_freq]],
                 "frac_lost": frac_lost,
                 "frac_rfi": frac_rfi,
                 "log_level": "debug",
-            }
+            },
+            "empty_fsel": {
+                "kotekan_stage": "visDrop",
+                "in_buf": fsel_frac_name,
+                "out_buf": fsel_empty_name,
+                "freq": [writer_params["freq"][empty_freq]],
+                "log_level": "debug",
+            },
         }
     )
-    fakevis_buffer.name = fsel_buf_name
+    # update the output buffer name
+    fakevis_buffer.name = fsel_empty_name
 
-    # Write fake data in hdf5 format
+    # REST commands for gains update
+    cmds = [
+        ["wait", 2.0, {}],
+        [
+            "post",
+            "gains",
+            {
+                "update_id": new_update_id,
+                "start_time": new_timestamp,
+                "transition_interval": transition_interval,
+                "new_state": new_state,
+            },
+        ],
+    ]
+
+    # Write out the test data in raw and HDF5 simultaneously
     tmpdir_h5 = str(tmpdir_factory.mktemp("dump_h5"))
     dumph5_conf = writer_params.copy()
     dumph5_conf["root_path"] = str(tmpdir_h5)
@@ -97,14 +205,15 @@ def transpose(tmpdir_factory):
     params["root_path"] = tmpdir
 
     writer = runner.KotekanStageTester(
-        "visWriter",
+        "VisWriter",
         {"node_mode": False, "write_ev": True, "file_type": "raw"},
         fakevis_buffer,
         None,
         params,
-        parallel_stage_type="visWriter",
+        parallel_stage_type="VisWriter",
         parallel_stage_config=dumph5_conf,
         noise="random",
+        rest_commands=cmds,
     )
 
     writer.run()
@@ -123,11 +232,11 @@ def transpose(tmpdir_factory):
     raw_buf = runner.ReadRawBuffer(infile, writer_params["chunk_size"])
     outfile = tmpdir + "/transposed"
     transposer = runner.KotekanStageTester(
-        "visTranspose",
+        "VisTranspose",
         {
             "outfile": outfile,
-            "infile": infile,
             "chunk_size": writer_params["chunk_size"],
+            "comet_timeout": 120.0,
         },
         raw_buf,
         None,
@@ -176,10 +285,17 @@ def test_transpose(transpose):
     assert f_tr["flags/inputs"].shape == (n_elems, n_t)
     assert f_tr["flags/frac_lost"].shape == (n_f, n_t)
     assert f_tr["flags/frac_rfi"].shape == (n_f, n_t)
+    assert f_tr["flags/dataset_id"].shape == (n_f, n_t)
 
-    assert (f_tr["flags/frac_lost"][: n_f - 1, :] == 0.0).all()
-    assert np.allclose(f_tr["flags/frac_lost"][-1:, :], frac_lost, rtol=1e-3)
-    assert np.allclose(f_tr["flags/frac_rfi"][-1:, :], frac_rfi, rtol=1e-3)
+    assert (f_tr["flags/frac_lost"][:frac_freq, :] == 0.0).all()
+    assert np.allclose(f_tr["flags/frac_lost"][frac_freq, :], frac_lost, rtol=1e-3)
+    assert np.allclose(f_tr["flags/frac_rfi"][frac_freq, :], frac_rfi, rtol=1e-3)
+    assert (f_tr["flags/dataset_id"][empty_freq, :] == NULL_DSET_ID).all()
+
+    # Check dataset ID change is present
+    # expect starting ID, null ID, and at least one gain update
+    unique_dsets = np.unique(f_tr["flags/dataset_id"][:])
+    assert len(unique_dsets) == 3
 
     # transpose with numpy and see if data is the same
     dsets = ["vis", "flags/vis_weight", "eval", "evec", "erms"]
@@ -227,7 +343,7 @@ def transpose_stack(tmpdir_factory):
     params["root_path"] = tmpdir
 
     writer = runner.KotekanStageTester(
-        "visWriter",
+        "VisWriter",
         {"node_mode": False, "write_ev": True, "file_type": "raw"},
         fakevis_buffer,
         None,
@@ -245,11 +361,12 @@ def transpose_stack(tmpdir_factory):
     raw_buf = runner.ReadRawBuffer(infile, stack_params["chunk_size"])
     outfile = tmpdir + "/transposed"
     transposer = runner.KotekanStageTester(
-        "visTranspose",
+        "VisTranspose",
         {
             "outfile": outfile,
             "infile": infile,
             "chunk_size": writer_params["chunk_size"],
+            "comet_timeout": 120.0,
         },
         raw_buf,
         None,
@@ -291,6 +408,8 @@ def test_transpose_stack(transpose_stack):
     assert f["gain"].shape == (n_f, n_elems, n_t)
     assert f["flags/inputs"].shape == (n_elems, n_t)
     assert f["flags/frac_lost"].shape == (n_f, n_t)
+    assert f["flags/frac_rfi"].shape == (n_f, n_t)
+    assert f["flags/dataset_id"].shape == (n_f, n_t)
     assert f["reverse_map/stack"].shape == (n_prod,)
 
     # check the stack against those in the input file

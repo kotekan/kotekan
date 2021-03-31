@@ -50,6 +50,7 @@ class Counter : public Metric {
 public:
     Counter(const std::vector<std::string>&);
     void inc();
+    void inc(const uint64_t increment);
     std::string to_string() override;
     std::ostringstream& to_string(std::ostringstream& out) override;
 

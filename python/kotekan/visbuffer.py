@@ -7,52 +7,21 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 
 # === End Python 2/3 compatibility
 
-from future.utils import native_str
-
 import ctypes
 import os
 import io
 
 import numpy as np
-
-
-class time_spec(ctypes.Structure):
-    """Struct repr of a timespec type."""
-
-    _fields_ = [("tv", ctypes.c_int64), ("tv_nsec", ctypes.c_uint64)]
-
-    @classmethod
-    def from_float(cls, v):
-        """Create a time_spec from a float.
-
-        Parameters
-        ----------------
-        v : float
-            The interval in seconds.
-
-        Returns
-        -------
-        ts : time_spec
-        """
-        ts = cls()
-        ts.tv = np.floor(v).astype(np.int64)
-        ts.tv_nsec = ((v % 1.0) * 1e9).astype(np.int64)
-        return ts
-
-
-class timeval(ctypes.Structure):
-    """Struct repr of a timeval type."""
-
-    _fields_ = [("tv_sec", ctypes.c_long), ("tv_usec", ctypes.c_long)]
+from kotekan import timespec
 
 
 class VisMetadata(ctypes.Structure):
-    """Wrap a visMetadata struct.
+    """Wrap a VisMetadata struct.
     """
 
     _fields_ = [
         ("fpga_seq", ctypes.c_uint64),
-        ("ctime", time_spec),
+        ("ctime", timespec.time_spec),
         ("fpga_length", ctypes.c_uint64),
         ("fpga_total", ctypes.c_uint64),
         ("rfi_total", ctypes.c_uint64),
@@ -79,8 +48,8 @@ class ChimeMetadata(ctypes.Structure):
 
     _fields_ = [
         ("fpga_seq_num", ctypes.c_uint64),
-        ("first_packet_recv_time", timeval),
-        ("gps_time", time_spec),
+        ("first_packet_recv_time", timespec.timeval),
+        ("gps_time", timespec.time_spec),
         ("lost_timesamples", ctypes.c_int32),
         ("stream_ID", ctypes.c_uint16),
         ("psrCoord", psrCoord),
@@ -120,7 +89,7 @@ class VisBuffer(object):
 
         _data = self._buffer[ctypes.sizeof(VisMetadata) :]
 
-        layout = self.__class__._calculate_layout(
+        layout = self.__class__.calculate_layout(
             self.metadata.num_elements, self.metadata.num_prod, self.metadata.num_ev
         )
 
@@ -132,7 +101,7 @@ class VisBuffer(object):
             setattr(self, member["name"], arr)
 
     @classmethod
-    def _calculate_layout(cls, num_elements, num_prod, num_ev):
+    def calculate_layout(cls, num_elements, num_prod, num_ev):
         """Calculate the buffer layout.
 
         Parameters
@@ -174,7 +143,13 @@ class VisBuffer(object):
             end = member["start"] + num * size
             member["end"] = end
             member["size"] = num * size
-            member["num"] = num
+
+            # make sure this dimension doesn't get squashed out if it's 1 (for everything but erms)
+            if name == "erms":
+                member["num"] = num
+            else:
+                member["num"] = (num,)
+
             member["dtype"] = dtype
             member["name"] = name
 
@@ -188,8 +163,6 @@ class VisBuffer(object):
     def from_file(cls, filename):
         """Load a visBuffer from a kotekan dump file.
         """
-        import os
-
         filesize = os.path.getsize(filename)
 
         buf = bytearray(filesize)
@@ -251,7 +224,7 @@ class VisBuffer(object):
         buffer : VisBuffer
         """
 
-        layout = cls._calculate_layout(num_elements, num_prod, num_ev)
+        layout = cls.calculate_layout(num_elements, num_prod, num_ev)
         meta_size = ctypes.sizeof(VisMetadata)
 
         buf = np.zeros(meta_size + layout["size"], dtype=np.uint8)
@@ -279,18 +252,31 @@ class VisRaw(object):
 
     Parameters
     ----------
-    filename : str
-        Name of file to open.
-    mode : str, optional
-        Mode to open file in. Defaults to read only.
-    mmap : bool, optional
-        Use an mmap to open the file to avoid loading it all into memory.
+    num_time : int
+        Number of time samples.
+    num_freq : int
+        Number of frequencies.
+    metadata : VisMetadata
+        Metadata
+    time : np.ndarray
+        Is the array of times, in the usual correlator file format.
+    index_map
+        Index maps.
+    data : np.ndarray
+        Data.
+    valid_frames : np.ndarray
+        Validity flags for each frame in data.
+    file_metadata
+        From .meta raw file (optional).
+    comet_manager : comet.Manager
+        (optional) A comet manager instance. If this is provided, dataset states will be
+        requested from the comet broker to provide gain/flaginput update IDs.
 
     Attributes
     ----------
     data : np.ndarray
         Contains the datasets. Accessed as a numpy record array.
-    metadata : dict
+    metadata : VisMetadata
         Holds associated metadata, including the index_map.
     valid_frames : np.ndarray
         Indicates whether each frame is populated with valid (1) or not (0)
@@ -299,38 +285,346 @@ class VisRaw(object):
         Is the array of times, in the usual correlator file format.
     """
 
-    def __init__(self, filename, mode="r", mmap=False):
+    def __init__(
+        self,
+        num_time,
+        num_freq,
+        num_prod,
+        metadata,
+        time,
+        index_map,
+        data,
+        valid_frames,
+        file_metadata=None,
+        comet_manager=None,
+    ):
+        self.num_time = num_time
+        self.num_freq = num_freq
+        self.num_prod = num_prod
+        self.metadata = metadata
+        self.time = time
+        self.index_map = index_map
+        self.data = data
+        self.valid_frames = valid_frames
+        self.file_metadata = file_metadata
 
+        # set gain/flag update IDs
+        self.update_id = None
+        if comet_manager is not None:
+            update_id_types = ("gains", "flags")
+            self.update_id = {
+                name: np.ndarray((num_time, num_freq), dtype="<U32")
+                for name in update_id_types
+            }
+            ds = np.array(metadata["dataset_id"]).view("u8,u8").reshape(metadata.shape)
+            for t in range(num_time):
+                for f in range(num_freq):
+                    if valid_frames.astype(np.bool)[t, f]:
+                        ds_id = "{:016x}{:016x}".format(ds[t, f][1], ds[t, f][0])
+
+                        # gains
+                        state = comet_manager.get_state("gains", ds_id)
+                        if state is None:
+                            self.update_id["gains"][t, f] = None
+                        else:
+                            self.update_id["gains"][t, f] = state.data["data"][
+                                "update_id"
+                            ]
+
+                        # flags
+                        state = comet_manager.get_state("flags", ds_id)
+                        if state is None:
+                            self.update_id["flags"][t, f] = None
+                        else:
+                            self.update_id["flags"][t, f] = state.data["data"]
+                    else:
+                        self.update_id["flags"][t, f] = None
+                        self.update_id["gains"][t, f] = None
+
+    @classmethod
+    def frame_struct(cls, size_frame, num_elements, num_stack, num_ev, align_valid):
+        """
+        Construct frame struct.
+
+        Parameters
+        ----------
+        size_frame : int
+            Total size of a frame in bytes.
+        num_elements : int
+            Number of elements in a frame.
+        num_stack : int
+            Number of stacks / products in a frame.
+        num_ev : int
+            Number of eigenvalues in a frame.
+        align_valid : int
+            If `True`, the valid field of the frame will be padded with 3 bytes to be aligned to 4
+            bytes.
+
+        Returns
+        -------
+        numpy.dtype
+            Frame structure.
+        """
+        layout = VisBuffer.calculate_layout(num_elements, num_stack, num_ev)
+
+        # TODO: remove this when we have fixed the alignment issue in kotekan (see self.from_file)
+        dtype_layout = {"names": [], "formats": [], "offsets": []}
+        for member in layout["members"]:
+            dtype_layout["names"].append(member["name"])
+            dtype_layout["offsets"].append(member["start"])
+            if member["num"] == 1:
+                dtype_layout["formats"].append((member["dtype"]))
+            else:
+                dtype_layout["formats"].append((member["dtype"], member["num"]))
+        dtype_layout["itemsize"] = layout["size"]
+        data_struct = np.dtype(dtype_layout)
+
+        if align_valid:
+            # the valid vield (1 byte) is 4-byte-aligned
+            align_valid = 4
+        else:
+            align_valid = 1
+
+        frame_struct = np.dtype(
+            {
+                "names": ["valid", "metadata", "data"],
+                "formats": [np.uint8, VisMetadata, data_struct],
+                "offsets": [0, align_valid, align_valid + ctypes.sizeof(VisMetadata)],
+                "itemsize": size_frame,
+            }
+        )
+        return frame_struct
+
+    @classmethod
+    def from_buffer(cls, buffer, size_frame, num_time, num_freq, comet_manager=None):
+        """
+        Create a VisRaw object from a buffer.
+
+        Parameters
+        ----------
+        buffer : buffer_like
+            Input data.
+        size_frame : int
+            Size of a frame in bytes.
+        num_time : int
+            Number of time samples in the buffer.
+        num_freq : int
+            Number of frequencies in the buffer.
+        comet_manager : comet.Manager
+            (optional) A comet manager instance. If this is provided, dataset states will be
+            requested from the comet broker to provide index maps and gain/flaginput update IDs.
+
+        Returns
+        -------
+        VisRaw
+            VisRaw viewing the data in the buffer.
+
+        Raises
+        ------
+        ValueError
+            If there was a problem parsing the buffer into the VisRaw structure.
+        """
+        # Create a simple struct to access the metadata (num_elements, num_prod, num_ev)
+        align_valid = 4  # valid field is 4 byte aligned
+        frame_struct_simple = np.dtype(
+            {
+                "names": ["valid", "metadata", "data"],
+                "formats": [
+                    np.uint8,
+                    VisMetadata,
+                    (np.void, size_frame - align_valid - ctypes.sizeof(VisMetadata)),
+                ],
+                "offsets": [0, align_valid, align_valid + ctypes.sizeof(VisMetadata)],
+                "itemsize": size_frame,
+            }
+        )
+        raw = buffer.view(dtype=frame_struct_simple)
+        num_elements = np.unique(
+            raw["metadata"][raw["valid"].astype(np.bool)]["num_elements"]
+        )
+        if len(num_elements) > 1:
+            raise ValueError(
+                "Found more than 1 value for `num_elements` in numpy ndarray: {}.".format(
+                    num_elements
+                )
+            )
+        num_elements = num_elements[0]
+        num_prod = np.unique(raw["metadata"][raw["valid"].astype(np.bool)]["num_prod"])
+        if len(num_prod) > 1:
+            raise ValueError(
+                "Found more than 1 value for `num_prod` in numpy ndarray: {}.".format(
+                    num_prod
+                )
+            )
+        num_prod = num_prod[0]
+        num_ev = np.unique(raw["metadata"][raw["valid"].astype(np.bool)]["num_ev"])
+        if len(num_ev) > 1:
+            raise ValueError(
+                "Found more than 1 value for `num_ev` in numpy ndarray: {}.".format(
+                    num_ev
+                )
+            )
+        num_ev = num_ev[0]
+
+        # Now that we have some metadata, we can really parse the data...
+        frame_struct = cls.frame_struct(
+            size_frame, num_elements, num_prod, num_ev, align_valid=True
+        )
+
+        raw = buffer.view(dtype=frame_struct)
+        data = raw["data"]
+        metadata = raw["metadata"]
+        valid_frames = raw["valid"]
+
+        ctime = metadata["ctime"]
+        fpga_seq = metadata["fpga_seq"]
+
+        num_prod = metadata["num_prod"]
+
+        time = np.ndarray(
+            shape=(num_time, num_freq),
+            dtype=[("fpga_count", np.uint64), ("ctime", np.float64)],
+        )
+
+        # flatten time index map (we only need one value per time slot, but we have one per
+        # frame/frequency)
+        for t in range(num_time):
+            ts = []
+            fpga = []
+            for f in range(num_freq):
+                if valid_frames[t, f].astype(np.bool):
+                    ts.append(
+                        timespec.time_spec.from_buffer_copy(ctime[t, f]).to_float()
+                    )
+                    fpga.append(fpga_seq[t, f])
+            ts = np.unique(ts)
+            fpga = np.unique(fpga)
+            if len(ts) != 1 or len(fpga) != 1:
+                if len(ts) == 0 and len(fpga) == 0:
+                    # the whole time slot is invalid
+                    time[t] = (0, 0)
+                else:
+                    raise ValueError(
+                        "Found {} fpga sequences and {} time specs for time index {} "
+                        "(Expected one each).".format(len(fpga), len(ts), t)
+                    )
+            else:
+                time[t] = (fpga[0], ts[0])
+
+        # generate index maps
+        index_map = {"time": time}
+        if comet_manager is not None:
+            # add input, prod, stack and freq
+            state_axis_map = [
+                ("products", "prod"),
+                ("inputs", "input"),
+                ("frequencies", "freq"),
+                ("eigenvalues", "ev"),
+                ("stack", "stack"),
+            ]
+            ds = np.array(metadata["dataset_id"][valid_frames.astype(np.bool)]).view(
+                "u8,u8"
+            )
+            unique_ds = np.unique(ds)
+            state = {names[0]: set() for names in state_axis_map}
+            for ds in unique_ds:
+                ds_id = "{:016x}{:016x}".format(ds[1], ds[0])
+                for names in state_axis_map:
+                    state[names[0]].add(comet_manager.get_state(names[0], ds_id))
+            for names in state_axis_map:
+                if len(state[names[0]]) == 0:
+                    state[names[0]] = None
+                elif len(state[names[0]]) == 1:
+                    state[names[0]] = state[names[0]].pop()
+                else:
+                    raise ValueError(
+                        "Found more than one {} state when looking up dataset IDs "
+                        "found in metadata.".format(names[0])
+                    )
+                if state[names[0]] is not None:
+                    index_map[names[1]] = state[names[0]].data["data"]
+
+            # Convert index_map into numpy arrays
+            if "prod" in index_map:
+                index_map["prod"] = np.array(
+                    [(pp[0], pp[1]) for pp in index_map["prod"]],
+                    dtype=[("input_a", "u2"), ("input_b", "u2")],
+                )
+            if "input" in index_map:
+                index_map["input"] = np.array(
+                    [(inp[0], inp[1]) for inp in index_map["input"]],
+                    dtype=[("chan_id", "u2"), ("correlator_input", "S32")],
+                )
+            if "freq" in index_map:
+                index_map["freq"] = np.array(
+                    [(ff[1]["centre"], ff[1]["width"]) for ff in index_map["freq"]],
+                    dtype=[("centre", np.float32), ("width", np.float32)],
+                )
+            if "ev" in index_map:
+                index_map["ev"] = np.array(index_map["ev"])
+            if "stack" in index_map:
+                index_map["stack"] = np.array(
+                    [(ss[0]["stack"], ss[0]["conjugate"]) for ss in index_map["stack"]],
+                    dtype=[("stack", np.uint32), ("conjugate", np.bool)],
+                )
+
+        return cls(
+            num_time,
+            num_freq,
+            num_prod,
+            metadata,
+            time,
+            index_map=index_map,
+            data=data,
+            valid_frames=valid_frames,
+            comet_manager=comet_manager,
+        )
+
+    @classmethod
+    def from_file(cls, filename, mode="r", mmap=False):
+        """Read correlator files in the raw format.
+
+        Parses the structure of the binary files and loads them
+        into an memmap-ed numpy array.
+
+        Parameters
+        ----------
+        filename : str
+            Name of file to open.
+        mode : str, optional
+            Mode to open file in. Defaults to read only.
+        mmap : bool, optional
+            Currently ignored. Use an mmap to open the file to avoid loading it all into memory.
+
+        Returns
+        -------
+        VisRaw
+            A VisRaw object giving access to the given file.
+        """
         import msgpack
 
         # Get filenames
-        self.filename = self._parse_filename(filename)
-        self.meta_path = self.filename + ".meta"
-        self.data_path = self.filename + ".data"
+        filename = VisRaw._parse_filename(filename)
+        meta_path = filename + ".meta"
+        data_path = filename + ".data"
 
         # Read file metadata
-        with io.open(self.meta_path, "rb") as fh:
+        with io.open(meta_path, "rb") as fh:
             metadata = msgpack.load(fh, raw=False)
 
-        self.index_map = metadata["index_map"]
+        index_map = metadata["index_map"]
 
-        # TODO: (Python 3) Used native_str for compatibility here
-        self.time = np.array(
-            [(t["fpga_count"], t["ctime"]) for t in self.index_map["time"]],
-            dtype=[
-                (native_str("fpga_count"), np.uint64),
-                (native_str("ctime"), np.float64),
-            ],
+        time = np.array(
+            [(t["fpga_count"], t["ctime"]) for t in index_map["time"]],
+            dtype=[("fpga_count", np.uint64), ("ctime", np.float64)],
         )
 
-        self.num_freq = metadata["structure"]["nfreq"]
-        self.num_time = metadata["structure"]["ntime"]
-        self.num_prod = len(self.index_map["prod"])
-        self.num_stack = (
-            len(self.index_map["stack"]) if "stack" in self.index_map else self.num_prod
-        )
-        self.num_elements = len(self.index_map["input"])
-        self.num_ev = len(self.index_map["ev"])
+        num_freq = metadata["structure"]["nfreq"]
+        num_time = metadata["structure"]["ntime"]
+        num_prod = len(index_map["prod"])
+        num_stack = len(index_map["stack"]) if "stack" in index_map else num_prod
+        num_elements = len(index_map["input"])
+        num_ev = len(index_map["ev"])
 
         # TODO: this doesn't work at the moment because kotekan and numpy
         # disagree on how the struct should be aligned. It turns out (as of
@@ -346,41 +640,37 @@ class VisRaw(object):
         #     ("erms", np.float32,  1),
         #     ("gain", np.complex64, self.num_elements),
         # ]
-        # data_struct = np.dtype([(native_str(d[0]),) + d[1:] for d in data_struct], align=True)
+        # data_struct = np.dtype([(d[0],) + d[1:] for d in data_struct], align=True)
 
-        layout = VisBuffer._calculate_layout(
-            self.num_elements, self.num_stack, self.num_ev
-        )
-        dtype_layout = {"names": [], "formats": [], "offsets": []}
-
-        # TODO: remove this when we have fixed the alignment issue in kotekan
-        for member in layout["members"]:
-            dtype_layout["names"].append(member["name"])
-            dtype_layout["offsets"].append(member["start"])
-            dtype_layout["formats"].append((member["dtype"], member["num"]))
-        dtype_layout["itemsize"] = layout["size"]
-        data_struct = np.dtype(dtype_layout)
-
-        frame_struct = np.dtype(
-            {
-                "names": ["valid", "metadata", "data"],
-                "formats": [np.uint8, VisMetadata, data_struct],
-                "itemsize": metadata["structure"]["frame_size"],
-            }
+        frame_struct = cls.frame_struct(
+            metadata["structure"]["frame_size"],
+            num_elements,
+            num_stack,
+            num_ev,
+            align_valid=False,
         )
 
-        # TODO: Python 3 - use native_str for compatibility
+        file_metadata = metadata
+
         # Load data into on-disk numpy array
-        self.raw = np.memmap(
-            native_str(self.data_path),
-            dtype=frame_struct,
-            mode=mode,
-            shape=(self.num_time, self.num_freq),
+        raw = np.memmap(
+            data_path, dtype=frame_struct, mode=mode, shape=(num_time, num_freq)
         )
-        self.data = self.raw["data"]
-        self.metadata = self.raw["metadata"]
-        self.valid_frames = self.raw["valid"]
-        self.file_metadata = metadata
+        data = raw["data"]
+        metadata = raw["metadata"]
+        valid_frames = raw["valid"]
+
+        return cls(
+            num_time,
+            num_freq,
+            num_prod,
+            metadata,
+            time,
+            index_map,
+            data,
+            valid_frames,
+            file_metadata,
+        )
 
     @staticmethod
     def _parse_filename(fname):
@@ -442,7 +732,7 @@ class VisRaw(object):
         ntime = len(time)
 
         msize = ctypes.sizeof(VisMetadata)
-        dsize = VisBuffer._calculate_layout(ninput, nstack, nev)["size"]
+        dsize = VisBuffer.calculate_layout(ninput, nstack, nev)["size"]
 
         structure = {
             "nfreq": nfreq,
@@ -471,7 +761,7 @@ class VisRaw(object):
             msgpack.dump(metadata, fh)
 
         # Open the rawfile
-        rawfile = cls(name, mode="w+")
+        rawfile = cls.from_file(name, mode="w+")
 
         # Set the metadata on the frames that we already have
         rawfile.valid_frames[:] = 1
@@ -538,7 +828,7 @@ def simple_visraw_data(filename, ntime, nfreq, ninput):
 
     # Return read only view
     del raw
-    return VisRaw(filename, mode="r")
+    return VisRaw.from_file(filename, mode="r")
 
 
 def freq_id_to_stream_id(f_id):

@@ -61,7 +61,7 @@ void private_reset_consumers(struct Buffer* buf, const int ID);
 int private_mark_frame_empty(struct Buffer* buf, const int id);
 
 struct Buffer* create_buffer(int num_frames, int len, struct metadataPool* pool,
-                             const char* buffer_name, int numa_node) {
+                             const char* buffer_name, const char* buffer_type, int numa_node) {
 
     assert(num_frames > 0);
 
@@ -75,8 +75,9 @@ struct Buffer* create_buffer(int num_frames, int len, struct metadataPool* pool,
 
     buf->shutdown_signal = 0;
 
-    // Copy the buffer buffer name.
+    // Copy the buffer name and type.
     buf->buffer_name = strdup(buffer_name);
+    buf->buffer_type = strdup(buffer_type);
 
     buf->num_frames = num_frames;
     buf->metadata_pool = pool;
@@ -171,6 +172,7 @@ void delete_buffer(struct Buffer* buf) {
     free(buf->producers_done);
     free(buf->consumers_done);
     free(buf->buffer_name);
+    free(buf->buffer_type);
 
     // Free locks and cond vars
     CHECK_ERROR_F(pthread_mutex_destroy(&buf->lock));
@@ -338,13 +340,10 @@ uint8_t* wait_for_empty_frame(struct Buffer* buf, const char* producer_name, con
 
     CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
 
-// TODO: temporary solution to not print buffer status on gossec
-#ifndef _GOSSEC
-    if (print_stat == 1)
-        print_buffer_status(buf);
-#else
+    // TODO: remove this output until we have a solution which has better control over log levels
+    // if (print_stat == 1)
+    //     print_buffer_status(buf);
     (void)print_stat;
-#endif
 
     if (buf->shutdown_signal == 1)
         return NULL;
@@ -722,9 +721,7 @@ void pass_metadata(struct Buffer* from_buf, int from_ID, struct Buffer* to_buf, 
         return;
     }
 
-    struct metadataContainer* metadata_container = NULL;
-
-    metadata_container = from_buf->metadata[from_ID];
+    struct metadataContainer* metadata_container = from_buf->metadata[from_ID];
 
     CHECK_ERROR_F(pthread_mutex_lock(&to_buf->lock));
 
@@ -843,6 +840,41 @@ void swap_frames(struct Buffer* from_buf, int from_frame_id, struct Buffer* to_b
     to_buf->frames[to_frame_id] = temp_frame;
 }
 
+void safe_swap_frame(struct Buffer* src_buf, int src_frame_id, struct Buffer* dest_buf,
+                     int dest_frame_id) {
+    assert(src_buf != dest_buf);
+    assert(src_buf != NULL);
+    assert(dest_buf != NULL);
+    assert(src_frame_id >= 0);
+    assert(src_frame_id < src_buf->num_frames);
+    assert(dest_frame_id >= 0);
+    assert(dest_frame_id < dest_buf->num_frames);
+
+    // Buffer sizes must match exactly
+    if (src_buf->frame_size != dest_buf->frame_size) {
+        FATAL_ERROR_F("Buffer sizes must match for direct copy (%s.frame_size != %s.frame_size)",
+                      src_buf->buffer_name, dest_buf->buffer_name);
+    }
+
+    if (get_num_producers(dest_buf) > 1) {
+        FATAL_ERROR_F("Cannot swap/copy frames into dest buffer %s with more than one producer",
+                      dest_buf->buffer_name);
+    }
+
+    int num_consumers = get_num_consumers(src_buf);
+
+    // Copy or transfer the data part.
+    if (num_consumers == 1) {
+        // Swap the frames
+        uint8_t* temp_frame = src_buf->frames[src_frame_id];
+        src_buf->frames[src_frame_id] = dest_buf->frames[dest_frame_id];
+        dest_buf->frames[dest_frame_id] = temp_frame;
+    } else if (num_consumers > 1) {
+        // Copy the frame data over, leaving the source intact
+        memcpy(dest_buf->frames[dest_frame_id], src_buf->frames[src_frame_id], src_buf->frame_size);
+    }
+}
+
 uint8_t* buffer_malloc(ssize_t len, int numa_node) {
 
     uint8_t* frame = NULL;
@@ -870,6 +902,7 @@ uint8_t* buffer_malloc(ssize_t len, int numa_node) {
     }
 #endif
 
+#ifndef WITH_NO_MEMLOCK
     // Ask that all pages be kept in memory
     err = mlock((void*)frame, len);
 
@@ -878,6 +911,9 @@ uint8_t* buffer_malloc(ssize_t len, int numa_node) {
         free(frame);
         return NULL;
     }
+#else
+    (void)err;
+#endif
 #endif
     // Zero the new frame
     memset(frame, 0x0, len);

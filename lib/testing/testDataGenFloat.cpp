@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, register_p...
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
 #include "kotekanLogging.hpp"  // for DEBUG
 
 #include <assert.h>    // for assert
@@ -39,6 +39,9 @@ testDataGenFloat::testDataGenFloat(Config& config, const std::string& unique_nam
     if (type == "const" || type == "random" || type == "ramp")
         value = config.get<int>(unique_name, "value");
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
+    _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
+    _first_frame_index = config.get_default<uint32_t>(unique_name, "first_frame_index", 0);
+    _gen_all_const_data = config.get_default<bool>(unique_name, "gen_all_const_data", false);
 }
 
 testDataGenFloat::~testDataGenFloat() {}
@@ -47,7 +50,7 @@ void testDataGenFloat::main_thread() {
 
     int frame_id = 0;
     float* frame = nullptr;
-    uint64_t seq_num = 0;
+    uint64_t seq_num = _samples_per_data_set * _first_frame_index;
     bool finished_seeding_consant = false;
     static struct timeval now;
 
@@ -61,7 +64,7 @@ void testDataGenFloat::main_thread() {
         allocate_new_metadata_object(buf, frame_id);
         set_fpga_seq_num(buf, frame_id, seq_num);
         // TODO This should be dynamic/config controlled.
-        set_stream_id(buf, frame_id, 0);
+        set_stream_id(buf, frame_id, {0});
 
         gettimeofday(&now, nullptr);
         set_first_packet_recv_time(buf, frame_id, now);
@@ -99,14 +102,14 @@ void testDataGenFloat::main_thread() {
             // Test PF seq_num increment.
             if (link_id == 7) {
                 link_id = 0;
-                seq_num += 32768;
+                seq_num += _samples_per_data_set;
             } else {
                 link_id++;
             }
         } else {
-            seq_num += 32768;
+            seq_num += _samples_per_data_set;
         }
-        if (frame_id == 0)
+        if (frame_id == 0 && !_gen_all_const_data)
             finished_seeding_consant = true;
     }
 }

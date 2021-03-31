@@ -15,10 +15,10 @@
 #define FAKE_VIS_PATTERN_HPP
 
 #include "Config.hpp"         // for Config
-#include "dataset.hpp"        // for state_id_t, dset_id_t
+#include "datasetManager.hpp" // for state_id_t, dset_id_t
 #include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
 #include "kotekanLogging.hpp" // for kotekanLogging
-#include "visBuffer.hpp"      // for visFrameView
+#include "visBuffer.hpp"      // for VisFrameView
 #include "visUtil.hpp"        // for cfloat
 
 #include <deque>      // for deque
@@ -63,7 +63,7 @@ public:
      *
      * @param  frame  The vis buffer frame to fill with data.
      **/
-    virtual void fill(visFrameView& frame) = 0;
+    virtual void fill(VisFrameView& frame) = 0;
 };
 
 // Create the abstract factory for generating patterns
@@ -86,7 +86,7 @@ public:
     DefaultVisPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(visFrameView& frame);
+    void fill(VisFrameView& frame) override;
 };
 
 
@@ -102,7 +102,7 @@ public:
     FillIJVisPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(visFrameView& frame);
+    void fill(VisFrameView& frame) override;
 };
 
 
@@ -121,7 +121,7 @@ public:
     FillIJMissingVisPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(visFrameView& frame);
+    void fill(VisFrameView& frame) override;
 };
 
 
@@ -137,7 +137,7 @@ public:
     PhaseIJVisPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(visFrameView& frame);
+    void fill(VisFrameView& frame) override;
 };
 
 
@@ -155,7 +155,7 @@ public:
     ChimeVisPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(visFrameView& frame);
+    void fill(VisFrameView& frame) override;
 };
 
 /**
@@ -170,7 +170,7 @@ public:
     TestPatternSimpleVisPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(visFrameView& frame);
+    void fill(VisFrameView& frame) override;
 
 private:
     cfloat test_pattern_value;
@@ -194,7 +194,7 @@ public:
     TestPatternFreqVisPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(visFrameView& frame);
+    void fill(VisFrameView& frame) override;
 
 private:
     std::vector<cfloat> test_pattern_value;
@@ -215,7 +215,7 @@ public:
     TestPatternInputVisPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(visFrameView& frame);
+    void fill(VisFrameView& frame) override;
 
 private:
     std::vector<cfloat> test_pattern_value;
@@ -225,8 +225,8 @@ private:
 /**
  * @brief Send out some data but change the dataset IDs
  *
- * @conf  state_changes  A series of timestamp-state type pairs. Supported state types are `inputs`
- *and `flags`.
+ * @conf  state_changes  A series of timestamp-state type pairs. Supported state types are `inputs`,
+ * `gains` and `flags`.
  *
  **/
 class ChangeStatePattern : public DefaultVisPattern {
@@ -235,7 +235,7 @@ public:
     ChangeStatePattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(visFrameView& frame);
+    void fill(VisFrameView& frame) override;
 
 private:
     // Alias for the type of a function that will generate the state
@@ -247,6 +247,7 @@ private:
     // parameters.
     state_id_t gen_state_inputs();
     state_id_t gen_state_flags();
+    state_id_t gen_state_gains();
 
     std::optional<dset_id_t> current_dset_id;
 
@@ -254,5 +255,6 @@ private:
 
     size_t _input_update_ind = 0;
     size_t _flag_update_ind = 0;
+    size_t _gain_update_ind = 0;
 };
 #endif // FAKE_VIS_PATTERN

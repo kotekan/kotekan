@@ -11,7 +11,6 @@
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "dpdkCore.hpp"
-#include "fpga_header_functions.h"
 #include "packet_copy.h"
 #include "prometheusMetrics.hpp"
 
@@ -44,10 +43,10 @@ public:
                    kotekan::bufferContainer& buffer_container, int port);
 
     /// Processes the incoming packets
-    int handle_packet(struct rte_mbuf* mbuf);
+    int handle_packet(struct rte_mbuf* mbuf) override;
 
     /// Update stats, not used by this handler yet.
-    virtual void update_stats(){};
+    virtual void update_stats() override{};
 
 protected:
     /// The output buffer
@@ -86,7 +85,7 @@ inline captureHandler::captureHandler(kotekan::Config& config, const std::string
         throw std::runtime_error("The buffer frame size must be a multiple of the packet size");
     }
 
-    // TODO this seems overly restrictive, but removing this requires a generallized `copy_block`
+    // TODO this seems overly restrictive, but removing this requires a generalized `copy_block`
     // function
     if ((packet_size % 32) != 0) {
         throw std::runtime_error("The packet_size must be a multiple of 32 bytes");

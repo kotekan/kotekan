@@ -1,0 +1,61 @@
+---
+type: config
+log_level: info
+num_elements: 2048
+num_local_freq: 1
+udp_packet_size: 4928
+num_data_sets: 1
+samples_per_data_set: 32768
+buffer_depth: 64
+num_gpu_frames: 128
+block_size: 32
+cpu_affinity: [1,6,7,9,14,15]
+num_ev: 4
+
+dataset_manager:
+  use_dataset_broker: True
+  ds_broker_host: "10.1.50.11" # recv1
+
+telescope:
+  name: CHIMETelescope
+  require_gps: false
+
+vis_pool:
+  kotekan_metadata_pool: VisMetadata
+  num_metadata_objects: 500 * buffer_depth
+
+vis_buffer:
+  metadata_pool: vis_pool
+  num_frames: buffer_depth
+  visbuf_10s:
+    kotekan_buffer: vis
+    num_prod: 17000
+  visbuf_10s_redun:
+    kotekan_buffer: vis
+    num_prod: 8000
+
+buffer_status:
+  kotekan_stage: bufferStatus
+  print_status: false
+
+# Kotekan stages
+buffer_recv:
+  kotekan_stage: bufferRecv
+  buf: visbuf_10s
+  listen_port: 14096
+  #cpu_affinity: [0, 8]
+  num_threads: 2
+
+ringmap_pipe:
+  kotekan_stage: visDebug
+  in_buf: visbuf_10s
+
+redundant_stack:
+  kotekan_stage: RedundantStack
+  in_buf: visbuf_10s
+  out_buf: visbuf_10s_redun
+
+ringmaps:
+  kotekan_stage: RingMapMaker
+  in_buf: visbuf_10s_redun
+

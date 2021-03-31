@@ -7,6 +7,7 @@ import signal
 
 from kotekan import runner
 
+from test_dataset_broker import has_redis
 
 params = {
     "num_elements": 5,
@@ -43,6 +44,8 @@ def subset_data(tmpdir_factory):
         pytest.skip(
             "Make sure PYTHONPATH is set to where the comet dataset broker is installed."
         )
+    if not has_redis():
+        pytest.skip("Redis is not available and so comet will fail")
 
     # run the dataset broker
     broker = Popen([broker_path, "--recover", "False"])
@@ -61,7 +64,7 @@ def subset_data(tmpdir_factory):
 
         data_gen = dump_buffer_gen.load()
 
-        ### freqSubset ###
+        ### VisFreqSubset ###
         tmpdir = tmpdir_factory.mktemp("freqsub_broker")
 
         ds_id = data_gen[0].metadata.dataset_id
@@ -77,7 +80,7 @@ def subset_data(tmpdir_factory):
         dump_buffer_subset = runner.DumpVisBuffer(str(tmpdir))
 
         test = runner.KotekanStageTester(
-            "freqSubset", {}, fakevis_buffer_subset, dump_buffer_subset, params
+            "VisFreqSubset", {}, fakevis_buffer_subset, dump_buffer_subset, params
         )
 
         test.run()
@@ -114,7 +117,7 @@ def subset_data(tmpdir_factory):
         data_split_lower = dump_buffer_split_lower.load()
         data_split_higher = dump_buffer_split_higher.load()
 
-        ### 2 visWriter processes ###
+        ### 2 VisWriter processes ###
 
         tmpdir = tmpdir_factory.mktemp("freqsub_write_lower")
 
@@ -180,7 +183,7 @@ def test_subset_broker(subset_data):
     data_write_lower = subset_data[4]
     data_write_higher = subset_data[5]
 
-    # basic checks on the data dumped from fakeVis and freqSubset
+    # basic checks on the data dumped from fakeVis and VisFreqSubset
     subset_lower = [x for x in params["subset_list"] if x < 512]
     subset_higher = [x for x in params["subset_list"] if x >= 512]
 
@@ -223,7 +226,7 @@ def test_subset_broker(subset_data):
     assert counts == [params["total_frames"]] * len(subset_higher)
 
     # this is what it's really about:
-    # check the data the visWriter wrote
+    # check the data the VisWriter wrote
     assert len(data_write_lower.valid_frames) == params["total_frames"]
     assert len(data_write_higher.valid_frames) == params["total_frames"]
 

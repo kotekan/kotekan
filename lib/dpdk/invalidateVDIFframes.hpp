@@ -32,6 +32,10 @@
  *     @buffer_format Array of flags uint8_t flags which are either 0 (unset) or 1 (set)
  *     @buffer_metadata chimeMetadata
  *
+ * @par Metrics
+ * @metric kotekan_vdif_lost_frames_total
+ *        The number of VDIF frames invalidated because of lost packets.
+ *
  * @author Andre Renard
  */
 class invalidateVDIFframes : public kotekan::Stage {

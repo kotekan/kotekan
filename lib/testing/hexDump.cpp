@@ -7,13 +7,13 @@
 #include "kotekanLogging.hpp"  // for DEBUG
 #include "util.h"              // for hex_dump
 
-#include <atomic>            // for atomic_bool
-#include <cstdint>           // for int32_t
-#include <exception>         // for exception
-#include <regex>             // for match_results<>::_Base_type
-#include <stdexcept>         // for runtime_error
-#include <utils/visUtil.hpp> // for frameID, modulo
-#include <vector>            // for vector
+#include <atomic>      // for atomic_bool
+#include <cstdint>     // for int32_t
+#include <exception>   // for exception
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error
+#include <vector>      // for vector
+#include <visUtil.hpp> // for frameID, modulo
 
 
 using kotekan::bufferContainer;

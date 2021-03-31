@@ -12,7 +12,6 @@ Compiling **Kotekan**
    :hidden:
 
    dpdk
-   openblas
 
 
 .. toctree::
@@ -56,8 +55,8 @@ Required for some options
 
 * `fftw3 <http://www.fftw.org/>`_
 * `libairspy <https://github.com/airspy/airspyone_host/tree/master/libairspy>`_
-* `OpenBLAS <http://www.openblas.net/>`_ (see :ref:`openblas`)
-* `LAPACK <http://www.netlib.org/lapack/>`_ (Should automatically be installed with OpenBLAS if a Fortran compiler is present on your system)
+* `OpenBLAS <http://www.openblas.net/>`_ (Install package via ``sudo apt install libopenblas-dev`` on Ubuntu)
+* `LAPACK <http://www.netlib.org/lapack/>`_ (Install packages via: ``sudo apt install liblapack-dev liblapacke-dev`` on Ubuntu)
 * `Blaze <https://bitbucket.org/blaze-lib/blaze/src/master/>`_
   * Download and unpack into `/opt`
 * OpenSSL (Package is called ``libssl-dev`` on Ubuntu).
@@ -121,12 +120,12 @@ Documentation:
 
 * PlantUml::
 
-    sudo wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar
-    sudo mkdir /opt/plantuml; sudo mv plantuml.jar /opt/plantuml
+    sudo wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar -P /opt/plantuml
+    sudo apt-get install default-jre
 
 * Breathe::
 
-    sudo apt-get install -y python-breathe
+    sudo pip install breathe
 
 * Black::
 
@@ -166,7 +165,9 @@ Cmake build options
 -------------------
 
 * ``-DCMAKE_BUILD_TYPE=Debug``
-    Builds the project with debug symbols.
+    Builds the project with asserts, debug logging and debug symbols.
+* ``-DCMAKE_BUILD_TYPE=Test``
+    Builds the project with asserts and debug logging but without debug symbols.
 * ``-DUSE_DPDK=ON``
     Builds with DPDK support, for source installs requires: `-DRTE_SDK=<dir>`
     and `-DRTE_TARGET=x86_64-native-linuxapp-gcc`
@@ -190,11 +191,9 @@ Cmake build options
 * ``-DUSE_FFTW=ON``
     Build an FFTW-based F-engine. Requires FFTW3.
 * ``-DUSE_LAPACK=ON``
-    Build stages depending on LAPACK. Currently only OpenBLAS built from source is supported (see above).
+    Build stages depending on LAPACK.
 * ``-DUSE_OMP=ON``
     Build stages using OpenMP. This requires a compiler supporting OpenMP (>= 3.0, see `OpenMP Compilers and Tools <https://www.openmp.org/resources/openmp-compilers-tools/>`).
-* ``-DOPENBLAS_PATH=<openblas_prefix>``
-    Path to OpenBLAS installation, if not in the ``CMAKE_PREFIX_PATH``
 * ``-DCOMPILE_DOCS=ON``
     Build kotekan documentation. Requires doxygen, sphinx (+ sphinx_rtd_theme), and breathe. Note that docs will only compile if explicitly told to, it is not part of the base compile, even when enabled.
 * ``-DOPENSSL_ROOT_DIR=<openssl_root_dir>``

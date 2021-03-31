@@ -1,9 +1,9 @@
 #include "hsaOutputData.hpp"
 
+#include "Telescope.hpp"
 #include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_for_...
 #include "bufferContainer.hpp"    // for bufferContainer
-#include "chimeMetadata.h"        // for atomic_add_lost_timesamples, get_first_packet_recv_time
-#include "gpsTime.h"              // for compute_gps_time
+#include "chimeMetadata.hpp"      // for atomic_add_lost_timesamples, get_first_packet_recv_time
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_OUT
 #include "hsaCommand.hpp"         // for REGISTER_HSA_COMMAND, _factory_aliashsaCommand, hsaCom...
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
@@ -31,6 +31,7 @@ hsaOutputData::hsaOutputData(Config& config, const std::string& unique_name,
     // one of every _num_sub_frame frames.  So we only register one consumer
     // and one producer name which in this case is ok to be static.
     static_unique_name = fmt::format(fmt("hsa_output_static_{:d}"), device.get_gpu_id());
+
     if (_sub_frame_index == 0) {
         register_consumer(network_buffer, static_unique_name.c_str());
         register_producer(output_buffer, static_unique_name.c_str());
@@ -97,6 +98,8 @@ hsa_signal_t hsaOutputData::execute(int gpu_frame_id, hsa_signal_t precede_signa
 void hsaOutputData::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
 
+    auto& tel = Telescope::instance();
+
     allocate_new_metadata_object(output_buffer, output_buffer_id);
 
     // We make a new copy of the metadata since there are now
@@ -111,13 +114,13 @@ void hsaOutputData::finalize_frame(int frame_id) {
     set_fpga_seq_num(output_buffer, output_buffer_id, fpga_seq_num);
 
     // Subframe updated GPS time
-    struct timespec new_gps_time = compute_gps_time(fpga_seq_num);
+    auto new_gps_time = tel.to_time(fpga_seq_num);
     set_gps_time(output_buffer, output_buffer_id, new_gps_time);
 
     // Subframe updated system_time
     struct timeval sys_time = get_first_packet_recv_time(network_buffer, network_buffer_id);
     double sys_time_d = tv_to_double(sys_time);
-    sys_time_d += _sub_frame_index * _sub_frame_samples * 2.56 / 1000 / 1000;
+    sys_time_d += _sub_frame_index * _sub_frame_samples * tel.seq_length_nsec() * 1e-9;
     sys_time = double_to_tv(sys_time_d);
     set_first_packet_recv_time(output_buffer, output_buffer_id, sys_time);
 
@@ -146,4 +149,8 @@ void hsaOutputData::finalize_frame(int frame_id) {
     network_buffer_id = (network_buffer_id + 1) % network_buffer->num_frames;
     output_buffer_id = (output_buffer_id + _num_sub_frames) % output_buffer->num_frames;
     lost_samples_buf_id = (lost_samples_buf_id + 1) % lost_samples_buf->num_frames;
+}
+
+std::string hsaOutputData::get_unique_name() const {
+    return static_unique_name;
 }

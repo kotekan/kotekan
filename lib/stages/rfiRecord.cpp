@@ -1,13 +1,13 @@
 #include "rfiRecord.hpp"
 
-#include "Config.hpp"              // for Config
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"                // for Buffer, mark_frame_empty, register_consumer, wait_for...
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chimeMetadata.h"         // for get_fpga_seq_num, get_gps_time, get_stream_id_t
-#include "configUpdater.hpp"       // for configUpdater
-#include "fpga_header_functions.h" // for bin_number_chime, stream_id_t
-#include "kotekanLogging.hpp"      // for ERROR, INFO
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.hpp"   // for get_fpga_seq_num, get_gps_time
+#include "configUpdater.hpp"   // for configUpdater
+#include "kotekanLogging.hpp"  // for ERROR, INFO
 
 #include <atomic>     // for atomic_bool
 #include <errno.h>    // for errno
@@ -73,11 +73,14 @@ bool rfiRecord::config_callback(nlohmann::json& json) {
 }
 
 void rfiRecord::main_thread() {
+
     // Initialize variables
     uint32_t frame_id = 0;
     uint8_t* frame = nullptr;
     int64_t fpga_seq_num;
-    stream_id_t stream_id;
+
+    auto& tel = Telescope::instance();
+
     int fd = -1;
     // File name
     char file_name[100];
@@ -94,7 +97,6 @@ void rfiRecord::main_thread() {
         if (_write_to_disk || started) {
 
             fpga_seq_num = get_fpga_seq_num(rfi_buf, frame_id);
-            stream_id = get_stream_id_t(rfi_buf, frame_id);
 
             // Only write a new file every _frames_per_file frames
             if (fpga_seq_num % (_samples_per_data_set * _frames_per_file) == 0) {
@@ -127,7 +129,7 @@ void rfiRecord::main_thread() {
                 }
                 strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%S", &timeinfo);
                 snprintf(file_name, sizeof(file_name), "%s/%sN%09ld_%d.rfi", _output_dir.c_str(),
-                         data_time, gps_time.tv_nsec, bin_number_chime(&stream_id));
+                         data_time, gps_time.tv_nsec, tel.to_freq_id(rfi_buf, frame_id));
 
                 rest_callback_mutex.unlock();
 

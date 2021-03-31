@@ -3,7 +3,7 @@
 #include "Config.hpp"             // for Config
 #include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_for_...
 #include "bufferContainer.hpp"    // for bufferContainer
-#include "chimeMetadata.h"        // for get_first_packet_recv_time
+#include "chimeMetadata.hpp"      // for get_first_packet_recv_time
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_IN
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 #include "kotekanLogging.hpp"     // for DEBUG2, INFO

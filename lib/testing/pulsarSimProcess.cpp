@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for wait_for_empty_frame, mark_frame_full, register_producer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for psrCoord
+#include "chimeMetadata.hpp"   // for beamCoord
 #include "kotekanLogging.hpp"  // for INFO, CHECK_MEM
 #include "vdif_functions.h"    // for VDIFHeader
 
@@ -168,7 +168,7 @@ void pulsarSimProcess::parse_host_name() {
 
 void pulsarSimProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* vdif_header,
                                     const uint64_t fpga_seq_num, struct timeval* time_now,
-                                    struct psrCoord* psr_coord, uint16_t* freq_ids) {
+                                    struct beamCoord* beam_coord, uint16_t* freq_ids) {
     //        assert(sizeof(struct VDIFHeader) == _udp_header_size);
     for (int i = 0; i < num_packet; ++i) { // 16 frames in a stream
         uint64_t fpga_now = (fpga_seq_num + samples_in_frame * i);
@@ -181,8 +181,8 @@ void pulsarSimProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* v
             vdif_header->thread_id = freq_ids[f];
             for (int psr = 0; psr < _num_pulsar; ++psr) { // 10 streams
                 vdif_header->eud1 = psr;                  // beam id
-                uint16_t ra_part = (uint16_t)(psr_coord[f].ra[psr] * 100);
-                uint16_t dec_part = (uint16_t)((psr_coord[f].dec[psr] + 90) * 100);
+                uint16_t ra_part = (uint16_t)(beam_coord[f].ra[psr] * 100);
+                uint16_t dec_part = (uint16_t)((beam_coord[f].dec[psr] + 90) * 100);
                 vdif_header->eud4 = ((ra_part << 16) & 0xFFFF0000) + (dec_part & 0xFFFF);
                 memcpy(&out_buf[(f * _num_pulsar + psr) * num_packet * _udp_packet_size
                                 + i * _udp_packet_size],
@@ -230,7 +230,7 @@ void pulsarSimProcess::main_thread() {
 
     uint64_t fpga_seq_num = 0;
 
-    struct psrCoord psr_coord[_num_gpus];
+    struct beamCoord beam_coord[_num_gpus];
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
     if (out_frame == nullptr)
@@ -249,7 +249,7 @@ void pulsarSimProcess::main_thread() {
             return;
         // Fill the headers of the new buffer
         fpga_seq_num += samples_in_frame * num_packet;
-        fill_headers((unsigned char*)out_frame, &vdif_header, fpga_seq_num, &time_now, psr_coord,
+        fill_headers((unsigned char*)out_frame, &vdif_header, fpga_seq_num, &time_now, beam_coord,
                      (uint16_t*)freq_ids);
     } // end stop thread
 }

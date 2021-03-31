@@ -79,9 +79,9 @@ public:
     void main_thread() override;
 
 private:
-    void fill_headers(unsigned char* out_buf, struct VDIFHeader* vdif_header,
+    void fill_headers(unsigned char* out_buf, struct PSRHeader* psr_header,
                       const uint64_t fpga_seq_num, struct timespec* time_now,
-                      struct psrCoord* psr_coord, uint16_t* freq_ids);
+                      struct beamCoord* beam_coord, uint16_t* freq_ids);
 
     /**
      * @brief Requests a full frame for each of the input buffers until all start with the same @c
@@ -106,7 +106,11 @@ private:
     /// Config variables
     uint32_t _num_gpus;
     uint32_t _samples_per_data_set;
-    uint32_t _num_pulsar;
+    /// The number of pulsar beams to extract (starting at 0)
+    uint32_t _num_pulsar_beams;
+    /// The number of total beams in the system
+    uint32_t _num_beams;
+    /// Number of polarizations in each beam
     uint32_t _num_pol;
     /// number of time samples per packet (3125 or 625)
     uint32_t _timesamples_per_pulsar_packet;

@@ -1,61 +1,73 @@
-project( kotekan_boost_tests )
+project(kotekan_boost_tests)
 
 # Prep ourselves for compiling boost
-find_package(Boost COMPONENTS unit_test_framework REQUIRED)
-include_directories (${Boost_INCLUDE_DIRS} $BOOST_TESTS_DIR)
+find_package(
+    Boost
+    COMPONENTS unit_test_framework
+    REQUIRED)
 
-include_directories (${KOTEKAN_SOURCE_DIR}/lib/stages)
-include_directories (${KOTEKAN_SOURCE_DIR}/lib/utils)
-include_directories (${KOTEKAN_SOURCE_DIR}/lib/core)
-include_directories (${KOTEKAN_SOURCE_DIR}/lib)
-include_directories (${KOTEKAN_SOURCE_DIR}/lib/metadata)
-include_directories (${KOTEKAN_SOURCE_DIR}/include)
+include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 
-set ( KOTEKAN_BOOST_TEST_SOURCES
-      test_bip_buffer.cpp
-      test_dataset_manager.cpp
-      test_dataset_manager_rest.cpp
-      test_updatequeue.cpp
-      test_truncate.cpp
-      test_restclient.cpp
-      test_chime_stacking.cpp
-      test_config.cpp
-      test_prometheus_metrics.cpp
-      test_synchronized_queue.cpp
-      test_hash.cpp
-    )
+add_executable(test_truncate test_truncate.cpp)
+target_link_libraries(test_truncate PRIVATE kotekan_utils)
+
+add_executable(test_synchronized_queue test_synchronized_queue.cpp)
+target_link_libraries(test_synchronized_queue PRIVATE pthread kotekan_utils)
+
+# needs MurmurHash3
+add_executable(test_hash test_hash.cpp)
+target_link_libraries(test_hash PRIVATE libexternal kotekan_utils)
+
+# test_updatequeue needs fmt
+add_executable(test_updatequeue test_updatequeue.cpp)
+target_link_libraries(test_updatequeue PRIVATE libexternal kotekan_utils kotekan_core)
+
+# test_dataset_manager_rest needs fmt
+add_executable(test_dataset_manager_rest test_dataset_manager_rest.cpp)
+target_link_libraries(test_dataset_manager_rest PRIVATE libexternal kotekan_core kotekan_utils)
+
+# test_dataset_manager needs fmt
+add_executable(test_dataset_manager test_dataset_manager.cpp)
+target_link_libraries(test_dataset_manager PRIVATE libexternal kotekan_utils kotekan_core)
+
+# test_restclient needs fmt
+add_executable(test_restclient test_restclient.cpp)
+target_link_libraries(test_restclient PRIVATE libexternal kotekan_core kotekan_utils)
+
+# test_bip_buffer needs fmt
+add_executable(test_bip_buffer test_bip_buffer.cpp)
+target_link_libraries(test_bip_buffer PRIVATE libexternal kotekan_utils kotekan_core)
+
+# test_prometheus_metrics needs fmt and prometheusMetrics
+add_executable(test_prometheus_metrics test_prometheus_metrics.cpp)
+target_link_libraries(test_prometheus_metrics PRIVATE libexternal kotekan_core)
+
+# test_config needs fmt
+add_executable(test_config test_config.cpp)
+target_link_libraries(test_config PRIVATE libexternal kotekan_core kotekan_stages)
+
+# test_chime_stacking needs MurmurHash3 and VisUtil
+add_executable(test_chime_stacking test_chime_stacking.cpp)
+target_link_libraries(test_chime_stacking PRIVATE libexternal kotekan_utils kotekan_stages
+                                                  kotekan_core)
+target_include_directories(test_chime_stacking PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
 
 # source files for broker test
-set ( KOTEKAN_BROKER_TEST_SOURCES
-      dataset_broker_producer.cpp
-      dataset_broker_producer2.cpp
-      dataset_broker_consumer.cpp
-    )
+add_executable(dataset_broker_producer dataset_broker_producer.cpp)
+add_executable(dataset_broker_producer2 dataset_broker_producer2.cpp)
+add_executable(dataset_broker_consumer dataset_broker_consumer.cpp)
+
+# dataset_broker executables need fmt
+target_link_libraries(dataset_broker_producer2 PRIVATE libexternal kotekan_utils kotekan_core)
+target_link_libraries(dataset_broker_producer PRIVATE libexternal kotekan_utils kotekan_core)
+target_link_libraries(dataset_broker_consumer PRIVATE libexternal kotekan_utils kotekan_core)
 
 # list test source files that need HDF5 here:
 if(${USE_HDF5})
-    set(KOTEKAN_BOOST_TEST_SOURCES ${KOTEKAN_BOOST_TEST_SOURCES} test_transpose.cpp)
+    add_executable(test_transpose test_transpose.cpp)
+    target_link_libraries(test_transpose PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
+    # test_transpose needs fmt and VisTranspose
+    target_link_libraries(test_transpose PRIVATE libexternal kotekan_stages kotekan_core
+                                                 kotekan_utils kotekan_metadata)
+    target_include_directories(test_transpose PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
 endif()
-
-# Run through each source
-foreach(testSrc ${KOTEKAN_BOOST_TEST_SOURCES})
-    get_filename_component(testName ${testSrc} NAME_WE)
-    add_executable(${testName} ${testSrc})
-
-    # TODO: fix cmake build for buffer.c : It uses hsa_host_malloc etc.
-    # TODO: remove chimeFeed from visCompression files.
-    # After that it should be enough to link against kotekan_utils kotekan_core
-    target_link_libraries(${testName} kotekan_libs dl m pthread)
-
-    if(${USE_HDF5})
-        include_directories(${HDF5_INCLUDE_DIRS})
-        target_link_libraries(${testName} ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
-    endif()
-endforeach(testSrc)
-
-# Run through each dataset broker test source
-foreach(testSrc ${KOTEKAN_BROKER_TEST_SOURCES})
-	get_filename_component(testName ${testSrc} NAME_WE)
-    add_executable(${testName} ${testSrc})
-    target_link_libraries(${testName} kotekan_utils kotekan_core dl m pthread)
-endforeach(testSrc)

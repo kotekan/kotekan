@@ -77,6 +77,9 @@ public:
      */
     virtual void update_stats() = 0;
 
+    // Allow internal access to handlers from dpdkCore
+    friend class dpdkCore;
+
 protected:
     /// The system config
     kotekan::Config& config;
@@ -151,6 +154,8 @@ public:
 
     void main_thread() override;
 
+    virtual std::string dot_string(const std::string& prefix) const override;
+
 private:
     /**
      * @brief The actual DPDK runtime lcore function
@@ -221,7 +226,7 @@ private:
     uint32_t num_mem_channels;
 
     /// Initial memory allocation in MB
-    uint32_t init_mem_alloc;
+    std::string init_mem_alloc;
 
     /// One of these exists per system port
     dpdkRXhandler** handlers;

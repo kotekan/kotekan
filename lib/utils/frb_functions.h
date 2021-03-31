@@ -12,6 +12,7 @@ struct FRBHeader {
     uint32_t protocol_version;
     int16_t data_nbytes;
     uint16_t fpga_counts_per_sample;
+    uint64_t fpga0_ns;
     uint64_t fpga_count;
     uint16_t nbeams;
     uint16_t nfreq_coarse;
@@ -21,7 +22,7 @@ struct FRBHeader {
     /*Here are some dynamic paramters of the header
       that I have to allocate in frbPostProcess.cpp*/
 
-    // uint16_t * beam_ids = NULL; //size of [nbeams]
+    // uint16_t * beam_ids = nullptr; //size of [nbeams]
     // uint16_t * coarse_freq_ids; //size of [nfreq_coarse];
     // float *scale ; //size of [nbeams * nfreq_coarse];
     // float *offset ; //size of [nbeams * nfreq_coarse] ;

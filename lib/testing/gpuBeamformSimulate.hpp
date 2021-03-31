@@ -8,6 +8,7 @@
 
 #include "Config.hpp"
 #include "Stage.hpp" // for Stage
+#include "Telescope.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 
@@ -41,6 +42,7 @@ private:
     /// Initializes internal variables from config, allocates reorder_map, gain, get metadata buffer
     struct Buffer* input_buf;
     struct Buffer* output_buf;
+    struct Buffer* hfb_output_buf;
 
     /// Number of elements, should be 2048
     int32_t _num_elements;
@@ -64,6 +66,8 @@ private:
     float* _ew_spacing_c;
     /// Default gain values if gain file is missing for this freq, currently set to 1+1j
     std::vector<float> default_gains;
+    /// No. of beams
+    uint32_t _num_frb_total_beams;
 
     /// Directory path where gain files are
     std::string _gain_dir;
@@ -78,7 +82,7 @@ private:
     /// Metadata buffer ID
     int32_t metadata_buffer_id;
     /// Freq bin index, where the 0th is at 800MHz
-    int32_t freq_now;
+    freq_id_t freq_now;
     /// Freq in MHz
     float freq_MHz;
 
@@ -100,6 +104,7 @@ private:
     int* reorder_map_c;
     /// Output data
     float* cpu_final_output;
+    float* cpu_hfb_final_output;
 
     /// Input length, should be nsamp x n_elem x 2
     int input_len;
@@ -109,6 +114,8 @@ private:
     int transposed_len;
     /// output length: n_elem*(nsamp/ds_t/ds_f/2)
     int output_len;
+    /// hfb output length: num_frb_total_beams x num_sub_freq
+    int hfb_output_len;
 
     /// Scaling factor to be applied on the gains, currently set to 1.0 and somewhat deprecated?
     float scaling;

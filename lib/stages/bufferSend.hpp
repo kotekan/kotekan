@@ -51,6 +51,7 @@ struct bufferFrameHeader {
  *                         before @c send() times out and closes the connection.
  * @conf reconnect_time  Int, default 5.  The number of seconds between
  *                         connection attempts to the remote server.
+ * @conf drop_frames     Bool, default true.  Whether to drop frames when buffer fills.
  *
  * @par Metrics
  * @metric kotekan_buffer_send_dropped_frame_count
@@ -74,6 +75,9 @@ public:
     /// Main loop for sending data
     void main_thread() override;
 
+    /// Adds the target server to the pipeline dot graph
+    virtual std::string dot_string(const std::string& prefix) const override;
+
 private:
     /// The input buffer to send frames from.
     struct Buffer* buf;
@@ -89,6 +93,9 @@ private:
 
     /// The number of seconds between connection attempts
     uint32_t reconnect_time;
+
+    /// Whether to drop frames or block if buffer is full
+    bool drop_frames;
 
     /**
      * @brief Number of frame dropped because the send is too slow.

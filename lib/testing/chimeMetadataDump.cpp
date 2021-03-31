@@ -1,12 +1,13 @@
 #include "chimeMetadataDump.hpp"
 
 #include "Config.hpp"
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"                // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "bufferContainer.hpp"     //
-#include "chimeMetadata.h"         // for get_first_packet_recv_time, get_fpga_seq_num, get_gps...
-#include "fpga_header_functions.h" // for bin_number_chime, stream_id_t, freq_from_bin
-#include "kotekanLogging.hpp"      // for INFO
+#include "ICETelescope.hpp"
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp" //
+#include "chimeMetadata.hpp"   // for get_first_packet_recv_time, get_fpga_seq_num, get_gps...
+#include "kotekanLogging.hpp"  // for INFO
 
 #include <atomic>     // for atomic_bool
 #include <functional> // for _Bind_helper<>::type, bind, function
@@ -32,6 +33,8 @@ void chimeMetadataDump::main_thread() {
     int frame_id = 0;
     uint8_t* frame = nullptr;
 
+    auto& tel = Telescope::instance();
+
     while (!stop_thread) {
 
         frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
@@ -39,7 +42,8 @@ void chimeMetadataDump::main_thread() {
             break;
 
         uint64_t fpga_seq = get_fpga_seq_num(in_buf, frame_id);
-        stream_id_t stream_id = get_stream_id_t(in_buf, frame_id);
+        stream_t encoded_stream_id = get_stream_id(in_buf, frame_id);
+        ice_stream_id_t stream_id = ice_extract_stream_id(encoded_stream_id);
         timeval time_v = get_first_packet_recv_time(in_buf, frame_id);
         uint64_t lost_samples = get_lost_timesamples(in_buf, frame_id);
         struct timespec time_s = get_gps_time(in_buf, frame_id);
@@ -59,8 +63,8 @@ void chimeMetadataDump::main_thread() {
              "freq: {:f} MHz , time stamp: {:d}.{:06d} ({:s}.{:06d}), "
              "GPS time: {:d}.{:06d} ({:s}.{:09d})",
              in_buf->buffer_name, frame_id, fpga_seq, stream_id.crate_id, stream_id.slot_id,
-             stream_id.link_id, stream_id.unused, lost_samples, bin_number_chime(&stream_id),
-             freq_from_bin(bin_number_chime(&stream_id)), time_v.tv_sec, time_v.tv_usec, time_buf,
+             stream_id.link_id, stream_id.unused, lost_samples, tel.to_freq_id(encoded_stream_id),
+             tel.to_freq(encoded_stream_id), time_v.tv_sec, time_v.tv_usec, time_buf,
              time_v.tv_usec, time_s.tv_sec, time_s.tv_nsec, gps_time_buf, time_s.tv_nsec);
 
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);

@@ -1,7 +1,8 @@
 #include "frbNetworkProcess.hpp"
 
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
 #include "buffer.h"              // for wait_for_full_frame, mark_frame_empty, register_consumer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "frb_functions.h"       // for FRBHeader
@@ -12,9 +13,10 @@
 
 #include "fmt.hpp" // for format
 
-#include <algorithm>    // for max, max_element
-#include <arpa/inet.h>  // for inet_pton
-#include <chrono>       // for steady_clock::time_point, seconds, operator+, steady_clock
+#include <algorithm>    // for max, max_element, copy
+#include <arpa/inet.h>  // for inet_pton, inet_ntop
+#include <assert.h>     // for assert
+#include <chrono>       // for operator+, operator-, seconds, steady_clock::time_point
 #include <cstring>      // for strerror, memset, size_t
 #include <errno.h>      // for errno, EINTR
 #include <exception>    // for exception
@@ -28,12 +30,13 @@
 #include <regex>        // for match_results<>::_Base_type
 #include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <stdexcept>    // for runtime_error
-#include <string>       // for string, allocator
+#include <string>       // for string
 #include <sys/select.h> // for select, FD_SET, FD_ZERO, FD_ISSET, fd_set
 #include <sys/socket.h> // for AF_INET, bind, socket, sendto, setsockopt, SOCK_DGRAM
 #include <sys/time.h>   // for CLOCK_MONOTONIC, CLOCK_REALTIME, timeval
 #include <thread>       // for thread
 #include <time.h>       // for clock_gettime, timespec
+#include <type_traits>  // for __success_type<>::type
 #include <unistd.h>     // for close
 #include <utility>      // for move, get
 
@@ -68,7 +71,7 @@ frbNetworkProcess::frbNetworkProcess(Config& config_, const std::string& unique_
     register_consumer(in_buf, unique_name.c_str());
 
     // Apply config.
-    udp_frb_packet_size = config.get_default<int>(unique_name, "udp_frb_packet_size", 4264);
+    udp_frb_packet_size = config.get_default<int>(unique_name, "udp_frb_packet_size", 4272);
     udp_frb_port_number = config.get_default<int>(unique_name, "udp_frb_port_number", 1313);
     number_of_nodes = config.get_default<int>(unique_name, "number_of_nodes", 256);
     number_of_subnets = config.get_default<int>(unique_name, "number_of_subnets", 4);
@@ -89,6 +92,11 @@ frbNetworkProcess::~frbNetworkProcess() {
 
     for (auto src : src_sockets) {
         close(src.socket_fd);
+    }
+
+    // close pinging sockets
+    for (auto fd : ping_src_fd) {
+        close(fd);
     }
 }
 
@@ -118,13 +126,21 @@ void frbNetworkProcess::main_thread() {
     int number_of_l1_links = initialize_destinations();
     INFO("number_of_l1_links: {:d}", number_of_l1_links);
 
-    auto ping_thread = std::thread([&] { this->ping_destinations(); });
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    for (auto& i : config.get<std::vector<int>>(unique_name, "cpu_affinity"))
-        CPU_SET(i, &cpuset);
+    std::thread send_ping_thread;
+    std::thread receive_ping_thread;
+    if (_ping_dead_threshold != std::chrono::seconds::zero()) {
+        initialize_pinging_sockets();
 
-    pthread_setaffinity_np(ping_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
+        send_ping_thread = std::thread([&] { this->ping_destinations(); });
+        receive_ping_thread = std::thread([&] { this->receive_ping_responses(); });
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        for (auto& i : config.get<std::vector<int>>(unique_name, "cpu_affinity"))
+            CPU_SET(i, &cpuset);
+
+        pthread_setaffinity_np(send_ping_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
+        pthread_setaffinity_np(receive_ping_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
+    }
 
     // rest server
     using namespace std::placeholders;
@@ -141,9 +157,10 @@ void frbNetworkProcess::main_thread() {
     t0.tv_nsec = 0; /*  nanoseconds */
 
     // 384 is integration factor and 2560 fpga sampling time in ns
+    const uint32_t fpga_ns = Telescope::instance().seq_length_nsec();
     const unsigned samples_per_frame =
-        samples_per_packet * packets_per_stream * 384;      // number of FPGA samples in each frame
-    unsigned long time_interval = samples_per_frame * 2560; // time per buffer frame in ns
+        samples_per_packet * packets_per_stream * 384; // number of FPGA samples in each frame
+    unsigned long time_interval = samples_per_frame * fpga_ns; // time per buffer frame in ns
 
     long count = 0;
 
@@ -207,7 +224,7 @@ void frbNetworkProcess::main_thread() {
                 add_nsec(t0, nanos_skipped);
             }
             uint64_t offset = (t0.tv_sec * 1e9 + t0.tv_nsec - initial_nsec)
-                              - (header->fpga_count - initial_fpga_count) * 2560;
+                              - (header->fpga_count - initial_fpga_count) * fpga_ns;
             if (offset != 0)
                 WARN("OFFSET in not zero ");
             add_nsec(t0, -1 * offset);
@@ -265,7 +282,13 @@ void frbNetworkProcess::main_thread() {
         count++;
     }
     ping_cv.notify_all();
-    ping_thread.join();
+
+    if (send_ping_thread.joinable()) {
+        send_ping_thread.join();
+    }
+    if (receive_ping_thread.joinable()) {
+        receive_ping_thread.join();
+    }
 }
 
 int frbNetworkProcess::initialize_source_sockets() {
@@ -343,71 +366,42 @@ int frbNetworkProcess::initialize_destinations() {
     return link_ip.size();
 }
 
+void frbNetworkProcess::initialize_pinging_sockets() {
+    bool err = false;
 
-// internal data type for keeping track of host checks and replies
-struct DestIpSocketTime {
-    DestIpSocket* dst;
-    std::chrono::steady_clock::time_point last_responded;
-    std::chrono::steady_clock::time_point next_check;
-    std::chrono::steady_clock::time_point last_checked = last_responded;
-    uint16_t ping_seq = 0;
-    friend bool operator<(const DestIpSocketTime& l, const DestIpSocketTime& r) {
-        if (l.next_check == r.next_check) {
-            // break check time ties by host address
-            return l.dst->addr.sin_addr.s_addr > r.dst->addr.sin_addr.s_addr;
-        } else
-            return l.next_check > r.next_check;
+    for (auto& src : src_sockets) {
+        int s = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+        if (s < 0) {
+            ERROR("Cannot create source socket for FRB host pings (requires root). Stopping the "
+                  "pings.");
+            err = true;
+        } else if (bind(s, (struct sockaddr*)&src.addr, sizeof(src.addr)) < 0) {
+            ERROR("Cannot bind source socket for FRB host pings (requires root). Stopping the "
+                  "pings.");
+            err = true;
+        } else {
+            ping_src_fd.push_back(s);
+        }
     }
-};
 
-using RefDestIpSocketTime = std::reference_wrapper<DestIpSocketTime>;
+    if (err) {
+        // close any pinging sockets that were already created
+        for (auto fd : ping_src_fd) {
+            close(fd);
+        }
 
-void frbNetworkProcess::ping_destinations() {
-    if (_ping_dead_threshold == std::chrono::seconds::zero()) {
+        // clear the list so the main thread knows this failed
+        ping_src_fd.clear();
+
         return;
     }
 
-    // raw sockets used as sources for outgoing pings
-    std::vector<int> ping_src_fd;
-
-    // initialize pinging sockets
-    {
-        bool err = false;
-
-        for (auto& src : src_sockets) {
-            int s = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
-            if (s < 0) {
-                ERROR(
-                    "Cannot create source socket for FRB host pings (requires root). Stopping the "
-                    "pings.");
-                err = true;
-            } else if (bind(s, (struct sockaddr*)&src.addr, sizeof(src.addr)) < 0) {
-                ERROR("Cannot bind source socket for FRB host pings (requires root). Stopping the "
-                      "pings.");
-                err = true;
-            } else {
-                ping_src_fd.push_back(s);
-            }
-        }
-
-        if (err) {
-            // close any pinging sockets that were already created
-            for (auto fd : ping_src_fd) {
-                close(fd);
-            }
-            return;
-        }
-    }
-    const int max_ping_src_fd = *std::max_element(ping_src_fd.begin(), ping_src_fd.end());
     // Random number generators to jitter the first ping time between hosts (3-30 s)
     std::random_device rd;  // Will be used to obtain a seed for the random number engine
     std::mt19937 gen(rd()); // Standard mersenne_twister_engine seeded with rd()
     std::uniform_int_distribution<> dis(3000, 30000);
 
-    // quick destination lookup by IP address
-    std::map<uint32_t, DestIpSocketTime> dest_by_ip;
-    // quick destination lookup by next scheduled check time
-    std::priority_queue<RefDestIpSocketTime> dest_by_time;
+    auto now = std::chrono::steady_clock::now();
     for (auto& ipaddr_dst : dest_sockets) {
         // don't even check the inactive destinations
         DestIpSocket& dst = std::get<1>(ipaddr_dst);
@@ -416,12 +410,25 @@ void frbNetworkProcess::ping_destinations() {
         }
         uint32_t ipaddr = std::get<0>(ipaddr_dst);
         // jitter the initial check by a random amount 3-30 s
-        auto now = std::chrono::steady_clock::now();
         auto next_check = now + std::chrono::milliseconds(dis(gen));
         DEBUG("Check host {} in {:%M:%S}", dst.host, next_check - now);
-        DestIpSocketTime& dest_ping_info = dest_by_ip[ipaddr] = {&dst, now, next_check};
+        dest_by_ip[ipaddr] = {&dst, now, next_check};
+    }
+}
+
+
+using RefDestIpSocketTime = std::reference_wrapper<DestIpSocketTime>;
+
+void frbNetworkProcess::ping_destinations() {
+    assert(!ping_src_fd.empty());
+    // quick destination lookup by next scheduled check time
+    std::priority_queue<RefDestIpSocketTime> dest_by_time;
+    for (auto& ipaddr_dst : dest_by_ip) {
+        DestIpSocketTime& dest_ping_info = std::get<1>(ipaddr_dst);
         dest_by_time.push(dest_ping_info);
     }
+    const auto startup_time = dest_by_time.top().get().last_responded;
+    bool startup_phase = true;
 
     // it's silly to have a mutex local to a thread, but we need it for the condition variable used
     // by the main_thread to interrupt this thread's sleep to notify of Kotekan stopping
@@ -429,26 +436,94 @@ void frbNetworkProcess::ping_destinations() {
     std::unique_lock<std::mutex> lock(mtx);
     uint16_t ping_seq = 0;
     while (!stop_thread) {
+        // sleep until the next host is due
         DestIpSocketTime& lru_dest = dest_by_time.top();
-        auto time_since_last_live = std::chrono::steady_clock::now() - lru_dest.last_responded;
+        auto now = std::chrono::steady_clock::now();
+        while (!stop_thread && lru_dest.next_check > now) {
+            DEBUG("Sleep for {:%M:%S} before checking the next host {}", lru_dest.next_check - now,
+                  lru_dest.dst->host);
 
-        DEBUG("Checking: {}", lru_dest.dst->host);
-        DEBUG("Last responded: {:%M:%S} ago", time_since_last_live);
+            // continue sleeping if received a spurious wakeup, i.e., neither the stage was stopped
+            // nor timeout occurred
+            if (ping_cv.wait_for(lock, lru_dest.next_check - now) == std::cv_status::timeout) {
+                break;
+            }
+            now = std::chrono::steady_clock::now();
+        }
+        const auto time_since_last_live = now - lru_dest.last_responded;
 
-        // NOTE: we don't ping if the host is not active, but behave as if it were checked
-        if (send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr, ping_seq)) {
-            lru_dest.last_checked = std::chrono::steady_clock::now();
-            lru_dest.ping_seq = ping_seq;
+        /*
+         * The startup phase lasts for the first `_ping_interval`. During this
+         * time, we send out pings on a quick_check schedule even though the
+         * host is not live yet.
+         */
+        if (startup_phase && (now - startup_time > _ping_interval)) {
+            startup_phase = false;
+        }
+        // special handling for hosts during the startup phase until they go live
+        const bool host_startup = startup_phase && !lru_dest.dst->live;
+
+        DEBUG("Checking: {} ({}, last responded {:%M:%S} ago)", lru_dest.dst->host,
+              (lru_dest.dst->live ? "LIVE" : "DEAD"), time_since_last_live);
+
+        if (host_startup || time_since_last_live >= (_ping_interval - _quick_ping_interval)) {
+            // time to ping again
+            if (send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr,
+                          ping_seq)) {
+                DEBUG("Pinged {}", lru_dest.dst->host);
+                lru_dest.last_checked = now;
+                lru_dest.ping_seq = ping_seq;
+            } else {
+                DEBUG("Pinging {} failed, will retry soon", lru_dest.dst->host);
+            }
             ping_seq++;
+        } else {
+            DEBUG("Don't need to ping {} yet", lru_dest.dst->host);
         }
 
+        // Schedule the next check for the node
+        dest_by_time.pop();
+        if (host_startup) {
+            DEBUG("Schedule a follow-up check for starting-up host {} in {}", lru_dest.dst->host,
+                  _quick_ping_interval);
+            lru_dest.next_check = now + _quick_ping_interval;
+        } else if (lru_dest.dst->live) {
+            if (time_since_last_live >= _ping_interval + _ping_dead_threshold) {
+                INFO("Too long since last ping response ({:%M:%S}), mark host {} dead.",
+                     time_since_last_live, lru_dest.dst->host);
+                lru_dest.dst->live = false;
+                lru_dest.next_check = now + _ping_interval;
+            } else if (time_since_last_live >= _ping_interval - _ping_dead_threshold) {
+                DEBUG("Live host {} has not responded recently, schedule a backup check in {}",
+                      lru_dest.dst->host, _quick_ping_interval);
+                lru_dest.next_check = now + _quick_ping_interval;
+            } else {
+                DEBUG("Schedule a regular check for live host {} in {}", lru_dest.dst->host,
+                      _ping_interval);
+                lru_dest.next_check = lru_dest.last_checked + _ping_interval;
+            }
+        } else {
+            DEBUG("Schedule a regular check for dead host {} in {}", lru_dest.dst->host,
+                  _ping_interval);
+            lru_dest.next_check = lru_dest.last_checked + _ping_interval;
+        }
+        // NOTE: could add a small random delay to next_check
+        dest_by_time.push(lru_dest);
+    }
+}
+
+void frbNetworkProcess::receive_ping_responses() {
+    assert(!ping_src_fd.empty());
+    const int max_ping_src_fd = *std::max_element(ping_src_fd.begin(), ping_src_fd.end());
+
+    while (!stop_thread) {
         // initialize the listening set of sockets for `select`
         fd_set rfds;
         FD_ZERO(&rfds);
         for (int s : ping_src_fd) {
             FD_SET(s, &rfds);
         }
-        bool lru_dest_responded = false;
+
         /*
          * Minimally-blocking check for ping responses received on any of the `ping_src_fd` sockets:
          * wait for a response for no more than 0.7 s, which should be enough to receive replies
@@ -464,16 +539,12 @@ void frbNetworkProcess::ping_destinations() {
                     DEBUG("Select interrupted, try again");
                     continue;
                 } else {
-                    // TODO: stop the pinging thread entirely?
+                    // TODO: stop we crash out at this point?
                     WARN("Ping listening error: {}.", errno);
                     break;
                 }
             }
             for (int s : ping_src_fd) {
-#ifdef DEBUGGING
-                char src_addr_str[INET_ADDRSTRLEN
-                                  + 1]; // Used for decoding host IP in logging statements
-#endif                                  // DEBUGGING
                 if (FD_ISSET(s, &rfds)) {
                     sockaddr_in from; // out-param for `recv_from(2)`
                     int reply_ping_seq = receive_ping(s, from);
@@ -483,16 +554,12 @@ void frbNetworkProcess::ping_destinations() {
                             if (reply_ping_seq == src.ping_seq) {
                                 auto now = std::chrono::steady_clock::now();
                                 DEBUG("Received ping response from: {}. Update `last_responded`.",
-                                      inet_ntop(AF_INET, &from.sin_addr, src_addr_str,
-                                                INET_ADDRSTRLEN + 1));
+                                      src.dst->host);
                                 src.last_responded = now;
                                 if (!src.dst->live) {
                                     INFO("Host {} is responding to pings again, mark live.",
                                          src.dst->host);
                                     src.dst->live = true;
-                                }
-                                if (from.sin_addr.s_addr == lru_dest.dst->addr.sin_addr.s_addr) {
-                                    lru_dest_responded = true;
                                 }
                             } else {
                                 DEBUG(
@@ -500,6 +567,10 @@ void frbNetworkProcess::ping_destinations() {
                                     reply_ping_seq, src.dst->host);
                             }
                         } else {
+#ifdef DEBUGGING
+                            char src_addr_str[INET_ADDRSTRLEN + 1]; // Used for decoding host IP in
+                                                                    // logging statements
+#endif                                                              // DEBUGGING
                             DEBUG("Received ping response from unknown host: {}. Ignored.",
                                   inet_ntop(AF_INET, &from.sin_addr, src_addr_str,
                                             INET_ADDRSTRLEN + 1));
@@ -513,51 +584,6 @@ void frbNetworkProcess::ping_destinations() {
                 FD_SET(s, &rfds);
             }
         }
-
-        // Schedule the next check for the node
-        dest_by_time.pop();
-        if (!lru_dest_responded && lru_dest.dst->live) {
-            /*
-             * If a node has stopped responding recently, we switch to an accelerated check
-             * schedule. Otherwise, give up and mark it dead.
-             */
-            time_since_last_live = std::chrono::steady_clock::now() - lru_dest.last_responded;
-            if (time_since_last_live < _ping_interval + _ping_dead_threshold) {
-                DEBUG("Live host {} has not responded, schedule a backup check in {}",
-                      lru_dest.dst->host, _quick_ping_interval);
-                lru_dest.next_check = std::chrono::steady_clock::now() + _quick_ping_interval;
-            } else {
-                INFO("Too long since last ping response ({:%M:%S}), mark host {} dead.",
-                     time_since_last_live, lru_dest.dst->host);
-                lru_dest.dst->live = false;
-                lru_dest.next_check = std::chrono::steady_clock::now() + _ping_interval;
-            }
-        } else {
-            DEBUG("Schedule a regular check for host {} in {}", lru_dest.dst->host, _ping_interval);
-            lru_dest.next_check = std::chrono::steady_clock::now() + _ping_interval;
-        }
-        // could add another `std::chrono::milliseconds(dis(gen))` random delay to next_check
-        dest_by_time.push(lru_dest);
-
-        // sleep until the next host is due
-        DestIpSocketTime& next_lru_dest = dest_by_time.top();
-        auto now = std::chrono::steady_clock::now();
-        while (!stop_thread && next_lru_dest.next_check > now) {
-            DEBUG("Sleep for {:%M:%S} before checking the next host {}",
-                  next_lru_dest.next_check - now, next_lru_dest.dst->host);
-
-            // continue sleeping if received a spurious wakeup, i.e., neither the stage was stopped
-            // nor timeout occurred
-            if (ping_cv.wait_for(lock, next_lru_dest.next_check - now) == std::cv_status::timeout) {
-                break;
-            }
-            now = std::chrono::steady_clock::now();
-        }
-    }
-
-    // close pinging sockets
-    for (auto fd : ping_src_fd) {
-        close(fd);
     }
 }
 

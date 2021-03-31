@@ -1,0 +1,105 @@
+##########################################
+#
+# Test HFBAccumulate stage
+#
+# Runs the HFBAccumulate stage. Uses testDataGenFloat to generate input frames and the correct output frame.
+# The correct output frame should have entries which are equal to: num_frames_to_integrate x test_value
+#
+##########################################
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
+buffer_depth: 2
+baseband_buffer_depth: 120  # 48Gb, 15s buffer.
+cpu_affinity: [2,3,8,9]
+
+# Constants
+sizeof_float: 4
+sizeof_int: 4
+num_frb_total_beams: 1024
+num_local_freq: 1
+factor_upchan: 128
+downsample_time: 3
+num_frames_to_integrate: 10000
+good_samples_threshold: 0.50
+samples_per_data_set: 49152
+
+dataset_manager:
+  use_dataset_broker: False
+  ds_broker_host: "127.0.0.1"
+  ds_broker_port: 12050
+
+# Pool
+main_pool:
+  kotekan_metadata_pool: chimeMetadata
+  num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
+
+hfb_pool:
+  kotekan_metadata_pool: HFBMetadata
+  num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
+
+# Buffers
+cpu_hfb_output_buffers:
+  num_frames: buffer_depth
+  frame_size: factor_upchan * num_frb_total_beams * sizeof_float
+  metadata_pool: main_pool
+  beamform_hfb_input_buffer_0:
+      num_frames: num_frames_to_integrate
+      kotekan_buffer: standard
+  beamform_hfb_integrate_buffer_0:
+      kotekan_buffer: standard
+
+hfb_output_buffers:
+  num_frames: buffer_depth
+  metadata_pool: main_pool
+  beamform_hfb_output_buffer_0:
+      metadata_pool: hfb_pool
+      kotekan_buffer: hfb
+  beamform_hfb_sum_test_buffer_0:
+      kotekan_buffer: hfb
+
+compressed_lost_samples_buffer:
+  kotekan_buffer: standard
+  num_frames: 2 * buffer_depth
+  frame_size: samples_per_data_set / (factor_upchan * downsample_time) * sizeof_int
+  metadata_pool: main_pool
+
+telescope:
+  name: CHIMETelescope
+  require_gps: false # Still run the config if fpga_master is down.
+  query_gps: false
+  query_frequency_map: false
+  require_frequency_map: false
+  allow_default_frequency_map: true
+
+# Generate input data for HFBAccumulate stage
+gen_hfb_data:
+  log_level: info
+  first_frame_index: 0
+  pattern: "drop"
+  rng_mean: samples_per_data_set
+  kotekan_stage: GenHFBFrames
+  out_buf: beamform_hfb_integrate_buffer_0 
+  cls_out_buf: compressed_lost_samples_buffer
+
+# Run stage under test
+hyper_fine_beam:
+  integrate_hfb_data:
+    kotekan_stage: HFBAccumulate
+    log_level: debug
+    hfb_input_buf: beamform_hfb_integrate_buffer_0
+    compressed_lost_samples_buf: compressed_lost_samples_buffer
+    hfb_output_buf: beamform_hfb_output_buffer_0
+ 
+write_hfb:
+  file_length: 64
+  file_type: hfbraw
+  root_path: .
+  log_level: debug
+
+  kotekan_stage: HFBWriter
+  in_buf: beamform_hfb_output_buffer_0
+  instrument_name: chime

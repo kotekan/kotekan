@@ -29,11 +29,12 @@ setup(
     long_description=long_description,
     url="http://github.com/kotekan/kotekan/",
     packages=find_packages(),
+    py_modules=["_version"],
     install_requires=requirements,
     entry_points="""
         [console_scripts]
         kotekan-ctl=kotekan.scripts.ctl:cli
         polyco-tools=kotekan.scripts.polyco_tools:cli
     """,
-    scripts=["scripts/rfi_receiver.py"],
+    scripts=["scripts/rfi_receiver/rfi_receiver.py"],
 )

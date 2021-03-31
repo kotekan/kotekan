@@ -47,7 +47,7 @@ def written_data_base(outdir, stage_extra=None, root_extra=None):
         stage_params.update(stage_extra)
 
     test = runner.KotekanStageTester(
-        "visWriter", stage_params, fakevis_buffer, None, root_params
+        "VisWriter", stage_params, fakevis_buffer, None, root_params
     )
 
     test.run()

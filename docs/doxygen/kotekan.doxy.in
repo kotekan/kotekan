@@ -885,9 +885,11 @@ RECURSIVE              = YES
 # Note that relative paths are relative to the directory from which doxygen is
 # run.
 
-EXCLUDE                = @PROJECT_SOURCE_DIR@/include \
+EXCLUDE                = @PROJECT_SOURCE_DIR@/external \
                          @PROJECT_SOURCE_DIR@/scripts \
+                         @PROJECT_SOURCE_DIR@/python/scripts \
                          @PROJECT_SOURCE_DIR@/build \
+                         @PROJECT_SOURCE_DIR@/.git \
                          @PROJECT_SOURCE_DIR@/docs
 
 # The EXCLUDE_SYMLINKS tag can be used to select whether or not files or

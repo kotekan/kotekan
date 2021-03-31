@@ -98,6 +98,9 @@ private:
 
     /// array of socket ids
     int* socket_ids;
+
+    /// Number of tracking (pulsar) beams
+    int _num_pulsar_beams;
 };
 
 #endif

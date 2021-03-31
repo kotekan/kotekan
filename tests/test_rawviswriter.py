@@ -37,7 +37,7 @@ def written_data(tmpdir_factory):
     params["root_path"] = tmpdir
 
     test = runner.KotekanStageTester(
-        "visWriter",
+        "VisWriter",
         {"node_mode": False, "file_type": "raw"},
         fakevis_buffer,
         None,
@@ -50,7 +50,7 @@ def written_data(tmpdir_factory):
 
     files = sorted(glob.glob(tmpdir + "/20??????T??????Z_*_corr/*.meta"))
 
-    yield [visbuffer.VisRaw(fname) for fname in files]
+    yield [visbuffer.VisRaw.from_file(fname) for fname in files]
 
 
 @pytest.fixture(scope="module")
@@ -76,7 +76,7 @@ def critical_state_data(tmpdir_factory):
     params["root_path"] = tmpdir
 
     test = runner.KotekanStageTester(
-        "visWriter",
+        "VisWriter",
         {"node_mode": False, "file_type": "raw"},
         fakevis_buffer,
         None,
@@ -89,7 +89,7 @@ def critical_state_data(tmpdir_factory):
 
     files = sorted(glob.glob(tmpdir + "/20??????T??????Z_*_corr/*.meta"))
 
-    yield [visbuffer.VisRaw(fname) for fname in files]
+    yield [visbuffer.VisRaw.from_file(fname) for fname in files]
 
 
 def test_vis(written_data):

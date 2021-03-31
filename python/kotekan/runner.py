@@ -8,12 +8,14 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 # === End Python 2/3 compatibility
 
 
-import os
 import itertools
+import json
+import os
+import shutil
 import subprocess
 import tempfile
 import time
-import json
+import warnings
 
 from . import visbuffer
 from . import frbbuffer
@@ -39,6 +41,8 @@ class KotekanRunner(object):
     rest_port: int
         Port to use for kotekan REST server. Set it to 0 to get a random free port.
         Default: 0.
+    gdb: bool
+        Run in gdb and in a failure case produce a backtrace. Doesn't work if rest commands are supplied.
     """
 
     @classmethod
@@ -73,6 +77,7 @@ class KotekanRunner(object):
         debug=False,
         expect_failure=False,
         rest_port=0,
+        gdb=False,
     ):
 
         self._buffers = buffers if buffers is not None else {}
@@ -82,6 +87,7 @@ class KotekanRunner(object):
         self.debug = debug
         self.expect_failure = expect_failure
         self.rest_port = rest_port
+        self._gdb = gdb
         self.return_code = 0
 
     def run(self):
@@ -112,14 +118,27 @@ class KotekanRunner(object):
             print(yaml.safe_dump(config_dict))
             fh.flush()
 
-            cmd = "%s -b %s -c %s" % (self.kotekan_binary(), rest_addr, fh.name)
-            print(cmd)
-            p = subprocess.Popen(cmd.split(), stdout=f_out, stderr=f_out)
+            if self._gdb and not self._rest_commands:
+                if self._rest_commands:
+                    warnings.warn(
+                        "Sending REST commands is not supported when gdb=True."
+                    )
+
+                cmd = 'gdb %s -batch -ex "run -b %s -c %s" -ex "bt"' % (
+                    self.kotekan_binary(),
+                    rest_addr,
+                    fh.name,
+                )
+                print(cmd)
+                p = subprocess.run(cmd, stdout=f_out, stderr=f_out, shell=True)
+            else:
+                cmd = "%s -b %s -c %s" % (self.kotekan_binary(), rest_addr, fh.name)
+                print(cmd)
+                p = subprocess.Popen(cmd.split(), stdout=f_out, stderr=f_out)
 
             # Run any requested REST commands
-            if self._rest_commands:
+            if self._rest_commands and not self._gdb:
                 import requests
-                import json
 
                 attempt = 0
                 wait = 0.2
@@ -181,7 +200,7 @@ class KotekanRunner(object):
                             headers=rest_header,
                             data=json.dumps(data),
                         )
-                    except:
+                    except requests.RequestException:
                         # print kotekan output if sending REST command fails
                         # (kotekan might have crashed and we want to know)
                         p.wait()
@@ -208,7 +227,8 @@ class KotekanRunner(object):
                 print(open(f_out.name, "r").read())
 
             # Wait for kotekan to finish and capture the output
-            p.wait()
+            if not self._gdb:
+                p.wait()
             self.output = open(f_out.name, "r").read()
 
             # Print out the output from Kotekan for debugging
@@ -260,6 +280,7 @@ class FakeLostSamplesBuffer(InputBuffer):
         stage_config.update(kwargs)
 
         self.stage_block = {stage_name: stage_config}
+        self.global_block = {"telescope": {"name": "fake"}}
 
 
 class FakeNetworkBuffer(InputBuffer):
@@ -342,6 +363,7 @@ class FakeGPUBuffer(InputBuffer):
         stage_config.update(kwargs)
 
         self.stage_block = {stage_name: stage_config}
+        self.global_block = {"telescope": {"name": "fake"}}
 
 
 class FakeVisBuffer(InputBuffer):
@@ -388,7 +410,7 @@ class VisWriterBuffer(OutputBuffer):
     output_dir : string
         Temporary directory to output to. The dumped files are not removed.
     file_type : string
-        File type to write into (see visWriter documentation)
+        File type to write into (see VisWriter documentation)
     in_buf : string
         Optionally specify the name of an input buffer instead of creating one.
     """
@@ -419,7 +441,7 @@ class VisWriterBuffer(OutputBuffer):
             self.buffer_block = {}
 
         stage_config = {
-            "kotekan_stage": "visWriter",
+            "kotekan_stage": "VisWriter",
             "in_buf": buf_name,
             "file_name": self.name,
             "file_type": file_type,
@@ -443,9 +465,9 @@ class VisWriterBuffer(OutputBuffer):
 
         # For now assume only one file is found
         # TODO: Might be nice to be able to check the file is the right one.
-        # But visWriter creates the acquisition and file names on the flight
+        # But VisWriter creates the acquisition and file names on the flight
         flnm = glob.glob(self.output_dir + "/*/*.data")[0]
-        return visbuffer.VisRaw(os.path.splitext(flnm)[0])
+        return visbuffer.VisRaw.from_file(os.path.splitext(flnm)[0])
 
 
 class ReadVisBuffer(InputBuffer):
@@ -813,7 +835,7 @@ class ReadRawBuffer(InputBuffer):
         }
 
         stage_config = {
-            "kotekan_stage": "visRawReader",
+            "kotekan_stage": "VisRawReader",
             "infile": infile,
             "out_buf": self.name,
             "chunk_size": chunk_size,
@@ -984,6 +1006,8 @@ class KotekanStageTester(KotekanRunner):
         If it is not None, gaussian noise with SD=1 is added to the input,
         if it is "random" the random number generator will be initialized with
         a random seed.
+    gdb: bool
+        Run in gdb and in a failure case produce a backtrace. Doesn't work if rest commands are supplied.
     """
 
     def __init__(
@@ -992,17 +1016,20 @@ class KotekanStageTester(KotekanRunner):
         stage_config,
         buffers_in,
         buffers_out,
-        global_config={},
+        global_config=None,
         parallel_stage_type=None,
         parallel_stage_config={},
         rest_commands=None,
         noise=False,
         expect_failure=False,
+        gdb=False,
     ):
 
         config = stage_config.copy()
         parallel_config = parallel_stage_config.copy()
         noise_config = {}
+        if global_config is None:
+            global_config = {}
 
         if noise:
             if buffers_in is None:
@@ -1051,6 +1078,8 @@ class KotekanStageTester(KotekanRunner):
         for buf in itertools.chain(buffers_in, buffers_out):
             stage_block.update(buf.stage_block)
             buffer_block.update(buf.buffer_block)
+            if hasattr(buf, "global_block"):
+                global_config.update(buf.global_block)
 
         if parallel_stage_type is not None:
             parallel_config["kotekan_stage"] = parallel_stage_type
@@ -1068,6 +1097,7 @@ class KotekanStageTester(KotekanRunner):
             global_config,
             rest_commands,
             expect_failure=expect_failure,
+            gdb=gdb,
         )
 
 
@@ -1091,9 +1121,9 @@ main_pool:
     num_metadata_objects: 30 * buffer_depth
 
 vis_pool:
-    kotekan_metadata_pool: visMetadata
+    kotekan_metadata_pool: VisMetadata
     num_metadata_objects: 30 * buffer_depth
-    "int_frames": 64,
+    int_frames: 64
 """
 
 

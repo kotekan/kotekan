@@ -1,0 +1,61 @@
+##########################################
+#
+# chime_science_run_recv_hfb.yaml
+#
+# CHIME 21cm absorber receiver node configuration.
+# Receives frames from each GPU node and writes them in a raw output file. 
+# Stores num_frames_per_file in each output file.
+#
+# Author: James Willis
+#
+##########################################
+---
+type: config
+log_level: info
+buffer_depth: 64
+cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+num_frb_total_beams: 1024
+num_local_freq: 1
+factor_upchan: 128
+
+# Constants
+sizeof_float: 4
+
+dataset_manager:
+  use_dataset_broker: True
+  ds_broker_host: "10.1.50.11" # recv1
+  ds_broker_port: 12050
+
+telescope:
+  name: CHIMETelescope
+  require_gps: false
+
+# 21cm Absorber Metadata Pool
+hfb_pool:
+  kotekan_metadata_pool: HFBMetadata
+  num_metadata_objects: 4096
+
+hfbbuf_10s:
+  kotekan_buffer: hfb
+  num_frames: 4096
+  metadata_pool: hfb_pool
+
+# Kotekan stages
+hfb_recv:
+  kotekan_stage: bufferRecv
+  buf: hfbbuf_10s 
+  listen_port: 11027
+
+# Write raw HFB data
+write_hfb:
+  file_length: 512
+  file_type: hfbraw
+  root_path: /data/untransposed/
+
+  kotekan_stage: HFBWriter
+  in_buf: hfbbuf_10s
+  instrument_name: chime
+
+buffer_status:
+  kotekan_stage: bufferStatus
+  print_status: false

@@ -5,7 +5,8 @@
 #include "Stage.hpp" // for Stage
 #include "bufferContainer.hpp"
 
-#include <string> // for string
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
 
 /**
  * @class rawFileWrite
@@ -19,6 +20,8 @@
  * @conf base_dir  String. Directory to write into.
  * @conf file_name String. Base filename to write.
  * @conf file_ext  String. File extension.
+ * @conf num_frames_per_file Int. No of frames to write into a single file.
+ * @conf exit_after_n_files  Int. Stop writing after this many files, Default 0 = unlimited files.
  *
  * @par Metrics
  * @metric kotekan_rawfilewrite_write_time_seconds
@@ -35,9 +38,13 @@ public:
 
 private:
     struct Buffer* buf;
-    std::string base_dir;
-    std::string file_name;
-    std::string file_ext;
+    std::string _base_dir;
+    std::string _file_name;
+    std::string _file_ext;
+    uint32_t _num_frames_per_file;
+    uint32_t _exit_after_n_files;
+    // Prefix file name with hostname or not
+    bool _prefix_hostname;
 };
 
 #endif

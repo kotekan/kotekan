@@ -4,7 +4,7 @@
 #include "Hash.hpp"           // for Hash
 #include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
 #include "datasetState.hpp"   // for flagState, inputState
-#include "visBuffer.hpp"      // for visFrameView
+#include "visBuffer.hpp"      // for VisFrameView
 #include "visUtil.hpp"        // for cfloat, input_ctype, ts_to_double, cmap
 
 #include "fmt.hpp"      // for format
@@ -45,7 +45,7 @@ DefaultVisPattern::DefaultVisPattern(kotekan::Config& config, const std::string&
     FakeVisPattern(config, path) {}
 
 
-void DefaultVisPattern::fill(visFrameView& frame) {
+void DefaultVisPattern::fill(VisFrameView& frame) {
     auto out_vis = frame.vis;
     // Set diagonal elements to (0, row)
     for (uint32_t i = 0; i < frame.num_elements; i++) {
@@ -70,7 +70,7 @@ FillIJVisPattern::FillIJVisPattern(kotekan::Config& config, const std::string& p
     FakeVisPattern(config, path) {}
 
 
-void FillIJVisPattern::fill(visFrameView& frame) {
+void FillIJVisPattern::fill(VisFrameView& frame) {
     int ind = 0;
     for (uint32_t i = 0; i < frame.num_elements; i++) {
         for (uint32_t j = i; j < frame.num_elements; j++) {
@@ -85,7 +85,7 @@ FillIJMissingVisPattern::FillIJMissingVisPattern(kotekan::Config& config, const 
     FillIJVisPattern(config, path) {}
 
 
-void FillIJMissingVisPattern::fill(visFrameView& frame) {
+void FillIJMissingVisPattern::fill(VisFrameView& frame) {
     FillIJVisPattern::fill(frame);
 
     frame.fpga_seq_total = frame.fpga_seq_length - 2;
@@ -97,7 +97,7 @@ PhaseIJVisPattern::PhaseIJVisPattern(kotekan::Config& config, const std::string&
     FakeVisPattern(config, path) {}
 
 
-void PhaseIJVisPattern::fill(visFrameView& frame) {
+void PhaseIJVisPattern::fill(VisFrameView& frame) {
     int ind = 0;
     for (uint32_t i = 0; i < frame.num_elements; i++) {
         for (uint32_t j = i; j < frame.num_elements; j++) {
@@ -112,7 +112,7 @@ void PhaseIJVisPattern::fill(visFrameView& frame) {
 ChimeVisPattern::ChimeVisPattern(kotekan::Config& config, const std::string& path) :
     FakeVisPattern(config, path) {}
 
-void ChimeVisPattern::fill(visFrameView& frame) {
+void ChimeVisPattern::fill(VisFrameView& frame) {
     int ind = 0;
     for (uint32_t i = 0; i < frame.num_elements; i++) {
         for (uint32_t j = i; j < frame.num_elements; j++) {
@@ -136,7 +136,7 @@ TestPatternSimpleVisPattern::TestPatternSimpleVisPattern(kotekan::Config& config
 }
 
 
-void TestPatternSimpleVisPattern::fill(visFrameView& frame) {
+void TestPatternSimpleVisPattern::fill(VisFrameView& frame) {
     // Fill vis
     int ind = 0;
     for (uint32_t i = 0; i < frame.num_elements; i++) {
@@ -204,7 +204,7 @@ TestPatternFreqVisPattern::TestPatternFreqVisPattern(kotekan::Config& config,
           default_val.real(), default_val.imag(), bins.size());
 }
 
-void TestPatternFreqVisPattern::fill(visFrameView& frame) {
+void TestPatternFreqVisPattern::fill(VisFrameView& frame) {
     cfloat fill_value = test_pattern_value.at(frame.freq_id);
 
     // Fill vis
@@ -262,7 +262,7 @@ TestPatternInputVisPattern::TestPatternInputVisPattern(kotekan::Config& config,
           input_values.size());
 }
 
-void TestPatternInputVisPattern::fill(visFrameView& frame) {
+void TestPatternInputVisPattern::fill(VisFrameView& frame) {
     // Fill vis
     int ind = 0;
     for (uint32_t i = 0; i < frame.num_elements; i++) {
@@ -298,6 +298,7 @@ ChangeStatePattern::ChangeStatePattern(kotekan::Config& config, const std::strin
     std::map<std::string, gen_state> gen_state_map;
     gen_state_map["inputs"] = std::bind(&ChangeStatePattern::gen_state_inputs, this);
     gen_state_map["flags"] = std::bind(&ChangeStatePattern::gen_state_flags, this);
+    gen_state_map["gains"] = std::bind(&ChangeStatePattern::gen_state_gains, this);
 
     auto state_changes = config.get_default<nlohmann::json>(path, "state_changes", {});
 
@@ -315,7 +316,7 @@ ChangeStatePattern::ChangeStatePattern(kotekan::Config& config, const std::strin
     num_elements = config.get<size_t>(path, "num_elements");
 }
 
-void ChangeStatePattern::fill(visFrameView& frame) {
+void ChangeStatePattern::fill(VisFrameView& frame) {
 
     auto& dm = datasetManager::instance();
 
@@ -328,14 +329,15 @@ void ChangeStatePattern::fill(visFrameView& frame) {
 
     // If there are still changes to apply, check that we've exceeded the start
     // time and then update the state
-    if (_dataset_changes.size() > 0) {
+    while (_dataset_changes.size() > 0) {
         auto& [ts, func] = _dataset_changes[0];
 
-        if (frame_time >= ts) {
-            state_id_t id = func();
-            current_dset_id = dm.add_dataset(id, current_dset_id.value());
-            _dataset_changes.pop_front();
-        }
+        if (frame_time < ts)
+            break;
+
+        state_id_t id = func();
+        current_dset_id = dm.add_dataset(id, current_dset_id.value());
+        _dataset_changes.pop_front();
     }
 
     frame.dataset_id = current_dset_id.value();
@@ -360,4 +362,11 @@ state_id_t ChangeStatePattern::gen_state_flags() {
     std::string update_id = fmt::format("flag_update_{}", _flag_update_ind++);
     auto& dm = datasetManager::instance();
     return dm.create_state<flagState>(update_id).first;
+}
+
+state_id_t ChangeStatePattern::gen_state_gains() {
+
+    std::string update_id = fmt::format("gain_update_{}", _gain_update_ind);
+    auto& dm = datasetManager::instance();
+    return dm.create_state<gainState>(update_id, _gain_update_ind++).first;
 }

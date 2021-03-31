@@ -14,7 +14,7 @@
 #include "datasetManager.hpp"    // for dset_id_t
 #include "gateSpec.hpp"          // for gateSpec
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily
-#include "visBuffer.hpp"         // for visFrameView
+#include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for frameID, freq_ctype, input_ctype, prod_ctype
 
 #include <cstdint>    // for uint32_t, int32_t
@@ -31,7 +31,7 @@
 
 /**
  * @class visAccumulate
- * @brief Accumulate the high rate GPU output into integrated visBuffers.
+ * @brief Accumulate the high rate GPU output into integrated VisBuffers.
  *
  * This stage will accumulate the GPU output and calculate the within sample
  * variance for weights.
@@ -44,8 +44,8 @@
  *         @buffer_format GPU packed upper triangle
  *         @buffer_metadata chimeMetadata
  * @buffer out_buf The accumulated and tagged data.
- *         @buffer_format visBuffer structured.
- *         @buffer_metadata visMetadata
+ *         @buffer_format VisBuffer structured.
+ *         @buffer_metadata VisMetadata
  *
  * @conf  samples_per_data_set  Int. The number of samples each GPU buffer has
  *                              been integrated for.
@@ -60,15 +60,18 @@
  * @conf  num_freq_in_frame     Int. Number of frequencies in each GPU frame.
  * @conf  block_size            Int. The block size of the packed data.
  * @conf  input_reorder         Array of [int, int, string]. The reordering mapping.
- *                              Only the first element of each sub-array is used and it is the the
- * index of the input to move into this new location. The remaining elements of the subarray are for
- * correctly labelling the input in ``visWriter``.
+ *                              Only the first element of each sub-array is used and
+ *                              it is the the index of the input to move into this
+ *                              new location. The remaining elements of the subarray
+ *                              are for correctly labelling the input in
+ *                              ``VisWriter``.
  * @conf  low_sample_fraction   If a frames has less than this fraction of the
  *                              data expected, skip it. This is set to 1% by default.
  * @conf  instrument_name       String. Name of the instrument. Default "chime".
  * @conf  freq_ids              Vector of UInt32. Frequency IDs on the stream.
  *                              Default 0..1023.
- * @conf  max_age               Float. Drop frames later than this number of seconds. Default 60.0
+ * @conf  max_age               Float. Drop frames later than this number of seconds.
+ *                              Default is 60.0
  *
  * @par Metrics
  * @metric  kotekan_visaccumulate_skipped_frame_total
@@ -106,7 +109,7 @@ private:
         internalState(Buffer* out_buf, std::unique_ptr<gateSpec> gate_spec, size_t nprod);
 
         /// View of the data accessed by their freq_ind
-        std::vector<visFrameView> frames;
+        std::vector<VisFrameView> frames;
 
         /// The buffer we are outputting too
         Buffer* buf;
@@ -176,7 +179,7 @@ private:
     void combine_gated(internalState& gate, internalState& vis);
 
     /**
-     * @brief Allocate the frame and initialise the visBuffer's for each freq.
+     * @brief Allocate the frame and initialise the VisBuffer's for each freq.
      *
      * This routine will wait on an empty frame to become available on the output buffer.
      *
@@ -189,7 +192,7 @@ private:
     bool initialise_output(internalState& state, int in_frame_id);
 
     /**
-     * @brief Fill in the data sections of visBuffer and release the frame.
+     * @brief Fill in the data sections of VisBuffer and release the frame.
      *
      * @param  state              Dataset to process.
      * @param  newest_frame_time  Used for deciding how late a frame is. A UNIX
@@ -212,19 +215,24 @@ private:
     // Hold the state for any gated data
     std::deque<internalState> gated_datasets;
 
-    // dataset ID for the base (input, prod, freq, meta)
+    // dataset ID for the base states
     dset_id_t base_dataset_id;
 
+    // the base states (input, prod, freq, meta)
+    std::vector<state_id_t> base_dataset_states;
+
+    datasetManager& dm = datasetManager::instance();
 
     /// Sets the metadataState with a hardcoded weight type ("inverse_var"),
     /// prodState, inputState and freqState according to config and an empty
     /// stackState
-    dset_id_t base_dataset_state(std::string& instrument_name,
-                                 std::vector<std::pair<uint32_t, freq_ctype>>& freqs,
-                                 std::vector<input_ctype>& inputs, std::vector<prod_ctype>& prods);
+    void register_base_dataset_states(std::string& instrument_name,
+                                      std::vector<std::pair<uint32_t, freq_ctype>>& freqs,
+                                      std::vector<input_ctype>& inputs,
+                                      std::vector<prod_ctype>& prods);
 
     /// Register a new state with the gating params
-    dset_id_t gate_dataset_state(const gateSpec& spec);
+    dset_id_t register_gate_dataset(const gateSpec& spec);
 
     // Reference to the prometheus metric that we will use for counting skipped
     // frames

@@ -101,6 +101,24 @@ struct DestIpSocket {
     std::atomic_bool live;
 };
 
+/**
+ * @brief internal data type for keeping track of host checks and replies
+ */
+struct DestIpSocketTime {
+    DestIpSocket* dst;
+    std::chrono::steady_clock::time_point last_responded;
+    std::chrono::steady_clock::time_point next_check;
+    std::chrono::steady_clock::time_point last_checked = last_responded;
+    uint16_t ping_seq = 0;
+    friend bool operator<(const DestIpSocketTime& l, const DestIpSocketTime& r) {
+        if (l.next_check == r.next_check) {
+            // break check time ties by host address
+            return l.dst->addr.sin_addr.s_addr > r.dst->addr.sin_addr.s_addr;
+        } else
+            return l.next_check > r.next_check;
+    }
+};
+
 class frbNetworkProcess : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
@@ -171,14 +189,26 @@ private:
     /// for multiple streams)
     std::vector<std::reference_wrapper<DestIpSocket>> stream_dest;
 
+    /// raw sockets used as sources for outgoing pings
+    std::vector<int> ping_src_fd;
+
+    // quick destination lookup by IP address
+    std::map<uint32_t, DestIpSocketTime> dest_by_ip;
+
     /// initialize sockets used to send data to FRB nodes
     int initialize_source_sockets();
 
     /// initialize destination addresses and determine the sending socket to use
     int initialize_destinations();
 
+    /// initialize raw sockets used for pinging
+    void initialize_pinging_sockets();
+
     /// background thread that periodically pings destination hosts and updates their @c live status
     void ping_destinations();
+
+    /// background thread that listens for ping replies from destination hosts
+    void receive_ping_responses();
 
     /// used by @p ping_destinations for periodic sleep interruptible by the @p main_thread on
     /// Kotekan stop

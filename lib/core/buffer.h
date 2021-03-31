@@ -49,7 +49,7 @@ extern "C" {
 #define MAX_STAGE_NAME_LEN 128
 
 /// The maximum number of consumers that can register on a buffer
-#define MAX_CONSUMERS 15
+#define MAX_CONSUMERS 20
 /// The maximum number of producers that can register on a buffer
 #define MAX_PRODUCERS 10
 
@@ -197,6 +197,9 @@ struct Buffer {
 
     /// The name of the buffer for use in debug messages.
     char* buffer_name;
+
+    /// The type of the buffer for use in writing data.
+    char* buffer_type;
 };
 
 /**
@@ -210,11 +213,12 @@ struct Buffer {
  * @param[in] frame_size The length of each frame in bytes.
  * @param[in] pool The metadataPool, which may be shared between more than one buffer.
  * @param[in] buffer_name The unique name of this buffer.
+ * @param[in] buffer_type The type of data this buffer contains.
  * @param[in] numa_node The CPU NUMA memory region to allocate memory in.
  * @returns A buffer object.
  */
 struct Buffer* create_buffer(int num_frames, int frame_size, struct metadataPool* pool,
-                             const char* buffer_name, int numa_node);
+                             const char* buffer_name, const char* buffer_type, int numa_node);
 
 /**
  * @brief Deletes a buffer object and frees all frame memory
@@ -545,6 +549,21 @@ void pass_metadata(struct Buffer* from_buf, int from_frame_id, struct Buffer* to
  */
 void copy_metadata(struct Buffer* from_buf, int from_frame_id, struct Buffer* to_buf,
                    int to_frame_id);
+
+/**
+ * @brief Swaps a frame or performs a deep copy depending on the number of consumers on the
+ *        source buffer.
+ *
+ * Like @c swap_frames(), but doesn't fail if there is more than one consumer on the source buffer.
+ * Does not pass or copy metadata.
+ *
+ * @param[in] src_buf The source buffer
+ * @param[in] src_frame_id The source frame ID
+ * @param[in] dest_buf The destination buffer
+ * @param[in] dest_frame_id The destination frame ID
+ */
+void safe_swap_frame(struct Buffer* src_buf, int src_frame_id, struct Buffer* dest_buf,
+                     int dest_frame_id);
 
 /**
  * @brief Tells the buffers to stop returning full/empty frames to consumers/producers

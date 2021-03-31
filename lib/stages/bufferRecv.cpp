@@ -61,6 +61,7 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     connection_timeout = config.get_default<int>(unique_name, "connection_timeout", 60);
+    drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
 
     buf = get_buffer("buf");
     register_producer(buf, unique_name.c_str());
@@ -168,8 +169,9 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
     INFO("New connection from client: {:s}:{:d}", ip_str, port);
 
     // New connection instance
-    connInstance* instance = new connInstance(accept_args->unique_name, accept_args->buf,
-                                              accept_args->buffer_recv, ip_str, port, read_timeout);
+    connInstance* instance =
+        new connInstance(accept_args->unique_name, accept_args->buf, accept_args->buffer_recv,
+                         ip_str, port, read_timeout, drop_frames);
 
     // Setup logging for the instance object.
     instance->set_log_prefix(accept_args->unique_name + "/instance");
@@ -239,6 +241,17 @@ void bufferRecv::main_thread() {
     listener = socket(AF_INET, SOCK_STREAM, 0);
     evutil_make_socket_nonblocking(listener);
 
+    // This makes is possible to reuse the same socket even if it goes into TIME_WAIT
+    // Used by gossec
+    if (!drop_frames) {
+        int reuse = 1;
+        if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) < 0) {
+            ERROR("Could not set SO_REUSEADDR on socket");
+            close(listener);
+            return;
+        }
+    }
+
     if (bind(listener, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         FATAL_ERROR("Failed to bind to socket 0.0.0.0:{:d}, error: {:d} ({:s})", listen_port, errno,
                     strerror(errno));
@@ -291,7 +304,7 @@ int bufferRecv::get_next_frame() {
 
     // If the frame is full for some reason (items not being consumed fast enough)
     // Then return -1;
-    if (is_frame_empty(buf, current_frame_id) == 0) {
+    if (drop_frames && is_frame_empty(buf, current_frame_id) == 0) {
         return -1;
     }
 
@@ -301,14 +314,26 @@ int bufferRecv::get_next_frame() {
     return last_frame_id;
 }
 
+std::string bufferRecv::dot_string(const std::string& prefix) const {
+    std::string dot = Stage::dot_string(prefix);
+    std::string source = fmt::format("Port: {:d}", listen_port);
+    dot += fmt::format("{:s}\"{:s}\" [shape=doubleoctagon style=filled,color=lightblue]", prefix,
+                       source);
+    dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\"", prefix, source, get_unique_name());
+
+    return dot;
+}
+
 connInstance::connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
-                           const std::string& client_ip, int port, struct timeval read_timeout) :
+                           const std::string& client_ip, int port, struct timeval read_timeout,
+                           bool drop_frames) :
     producer_name(producer_name),
     buf(buf),
     buffer_recv(buffer_recv),
     client_ip(client_ip),
     port(port),
-    read_timeout(read_timeout) {
+    read_timeout(read_timeout),
+    drop_frames(drop_frames) {
 
     frame_space = buffer_malloc(buf->aligned_frame_size, 0);
     CHECK_MEM(frame_space);

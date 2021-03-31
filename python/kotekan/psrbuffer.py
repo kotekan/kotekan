@@ -59,8 +59,6 @@ class PsrPacket(Structure):
         dumped buffer.
 
         """
-        import os
-
         filesize = os.path.getsize(filename)
 
         buf = bytearray(filesize)
@@ -76,7 +74,7 @@ class PsrPacket(Structure):
         else:
             raise ValueError("Don't know how to handle this format")
 
-        struct_name = ("PsrPacket_" + filename).encode("ascii")
+        struct_name = "PsrPacket_" + filename
         struct = type(struct_name, (PsrPacket,), {})
         struct._fields_ = [("header", PsrPacketHeader), ("data", c_uint8 * data_len)]
 
