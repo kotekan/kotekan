@@ -1,0 +1,60 @@
+---
+type: config
+log_level: DEBUG
+cpu_affinity: [0,1,2,3]
+num_local_freq: 1
+samples_per_data_set: 4608
+
+# Constants
+sizeof_float: 4
+
+# Create pool of metadata for each buffer
+main_pool:
+  kotekan_metadata_pool: chimeMetadata
+  num_metadata_objects: 30
+
+# Construct input buffers
+input_buffers:
+  # Both input buffers will share the same 
+  # no. of frames and frame size
+  num_frames: 10
+  frame_size: 128 * sizeof_float
+  input_a_buffer:
+    kotekan_buffer: standard
+    metadata_pool: main_pool
+  input_b_buffer:
+    kotekan_buffer: standard
+    metadata_pool: main_pool
+
+# Construct output buffer
+output_buffer:
+  num_frames: 10
+  frame_size: 128 * sizeof_float
+  kotekan_buffer: standard
+  metadata_pool: main_pool
+
+# Fill input buffers with data
+data_gen:
+  data_gen_a:
+    # Fills each element of a each frame with a constant value
+    kotekan_stage: testDataGenFloat
+    type: const
+    value: 2.0
+    network_out_buf: input_a_buffer
+  data_gen_b:  
+    kotekan_stage: testDataGenFloat
+    type: const
+    value: 3.0
+    network_out_buf: input_b_buffer
+
+# Run stage on input data and write output
+dot_product:
+  kotekan_stage: DotProduct
+  in_a_buf: input_a_buffer
+  in_b_buf: input_b_buffer
+  out_buf: output_buffer
+
+# Dump output buffer to screen
+screen_dump:
+  kotekan_stage: hexDump
+  in_buf: output_buffer
