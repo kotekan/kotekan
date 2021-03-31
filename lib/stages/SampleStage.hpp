@@ -1,5 +1,5 @@
-#ifndef SAMPLEPROCESS_H
-#define SAMPLEPROCESS_H
+#ifndef SAMPLESTAGE_H
+#define SAMPLESTAGE_H
 
 #include "Stage.hpp"
 #include "buffer.h"
@@ -7,7 +7,7 @@
 #include "util.h"
 
 /**
- * @class SampleProcess
+ * @class SampleStage
  * @brief A skeleton consumer stage
  *
  * @par Buffers
@@ -19,11 +19,11 @@
  * @conf    offset  Default 0.      The offset into the frame.
  */
 
-class SampleProcess : public kotekan::Stage {
+class SampleStage : public kotekan::Stage {
 public:
-    SampleProcess(kotekan::Config& config, const std::string& unique_name,
+    SampleStage(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& buffer_container);
-    virtual ~SampleProcess();
+    virtual ~SampleStage();
     void main_thread() override;
 
 private:
@@ -32,4 +32,4 @@ private:
     int32_t _offset;
 };
 
-#endif /* SAMPLEPROCESS_H */
+#endif /* SAMPLESTAGE_H */

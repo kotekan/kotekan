@@ -1,4 +1,4 @@
-#include "SampleProcess.hpp"
+#include "SampleStage.hpp"
 #include "StageFactory.hpp"
 
 #include "errors.h"
@@ -12,17 +12,17 @@ using kotekan::Stage;
 
 // Register the stage with abstract factory.
 // Needed for Kotekan to be able to find the stage.
-REGISTER_KOTEKAN_STAGE(SampleProcess);
+REGISTER_KOTEKAN_STAGE(SampleStage);
 
 /* Constructor for the stage
     TODO: Annotate the arguments everywhere
-    Note, that you can use the macro STAGE_CONSTRUCTOR(SampleProcess)
+    Note, that you can use the macro STAGE_CONSTRUCTOR(SampleStage)
     if your constructor does not need additional customisation
     and you wish to hide the complexity */
-SampleProcess::SampleProcess(Config& config, const string& unique_name,
+SampleStage::SampleStage(Config& config, const string& unique_name,
                              bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, 
-            std::bind(&SampleProcess::main_thread, this)) {
+            std::bind(&SampleStage::main_thread, this)) {
 
         // Register as consumer of in_buf
         in_buf = get_buffer("in_buf");
@@ -35,12 +35,12 @@ SampleProcess::SampleProcess(Config& config, const string& unique_name,
     }
 
 // Deconstructor; what happens when Kotekan shuts down
-SampleProcess::~SampleProcess() {}
+SampleStage::~SampleStage() {}
 
 // Framework managed pthread
-void SampleProcess::main_thread() {
+void SampleStage::main_thread() {
     // Logging function
-    INFO("Sample Process, reached main_thread!");
+    INFO("Sample Stage, reached main_thread!");
 
     // Ring buffer pointer
     frameID frame_id(in_buf);
@@ -58,7 +58,7 @@ void SampleProcess::main_thread() {
             break;
 
         // Logging
-        DEBUG("SampleProcess: Got buffer {:s}[{:d}]", in_buf->buffer_name, frame_id);
+        DEBUG("SampleStage: Got buffer {:s}[{:d}]", in_buf->buffer_name, frame_id);
 
         // Release frame
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
