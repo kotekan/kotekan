@@ -21,7 +21,7 @@
 class SampleStage : public kotekan::Stage {
 public:
     SampleStage(kotekan::Config& config, const std::string& unique_name,
-                  kotekan::bufferContainer& buffer_container);
+                kotekan::bufferContainer& buffer_container);
     virtual ~SampleStage();
     void main_thread() override;
 
