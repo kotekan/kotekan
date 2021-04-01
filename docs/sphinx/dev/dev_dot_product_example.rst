@@ -1,0 +1,67 @@
+********************
+Dot Product Example
+********************
+The following example outlines how to create a dot product between two vectors: A and B, using a `kotekan` pipeline.
+
+Create a Dot Product Stage
+--------------------------
+First we need to create a `kotekan` `Stage` that consumes two input buffers, i.e. vector A and B, and computes the dot product. The `Stage` should also write the result of the computation, A.B, to an output buffer.
+
+The header and source files (`DotProduct.hpp/cpp`) are shown below:
+
+.. literalinclude:: ../../../lib/stages/DotProduct.hpp
+
+.. literalinclude:: ../../../lib/stages/DotProduct.cpp
+    :language: c++
+
+Compile Stage
+-------------
+To compile the stage add the source file to `lib/stages/CMakeLists.txt`:
+
+.. literalinclude:: ../../../lib/stages/CMakeLists.txt
+    :lines: 73-78
+    :linenos:
+
+Move to the `build` directory, call `cmake` to create the `Makefile` and compile `kotekan`:
+
+.. code-block:: bash
+
+    cd build
+    cmake -DCMAKE_BUILD_TYPE=Debug -DWITH_TESTS=ON ..
+    make
+
+Once compilation is complete we need to create a config file for `kotekan` to parse and run.
+
+Pipeline Config Creation
+------------------------
+`kotekan` runs by parsing a configuration file that describes a pipeline. Each config file is written as a `.yaml` file and describes a set of data streams (`Buffers`) through a series of `Stages`. The config file below performs a dot product on two vectors:
+
+.. literalinclude:: ../../../config/examples/dot_product.yaml
+    :language: yaml
+
+The two buffers, `input_a_buffer` and `input_b_buffer`, represent the vectors A and B. `output_buffer` will store the result of the dot product.
+
+.. literalinclude:: ../../../config/examples/dot_product.yaml
+    :lines: 16-34
+    :language: yaml
+
+The `data_gen` section populates the input buffers with constant values: 2.0 and 3.0, using the `testDataGenFloat` `Stage`. 
+
+.. literalinclude:: ../../../config/examples/dot_product.yaml
+    :lines: 36-48
+    :language: yaml
+
+The `dot_product` section runs the `DotProduct` `Stage` on the two input buffers and writes the result to the output buffer.
+
+.. literalinclude:: ../../../config/examples/dot_product.yaml
+    :lines: 50-55
+    :language: yaml
+
+Execute kotekan
+---------------
+To run `kotekan` move to the binary directory and pass the config file as an argument:
+
+.. code-block:: bash
+
+    cd kotekan
+    ./kotekan -c ../../config/examples/dot_product.yaml
