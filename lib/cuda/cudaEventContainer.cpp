@@ -2,7 +2,7 @@
 
 #include "errors.h"
 
-#include <core/buffer.h>
+#include <buffer.h>
 #include <unistd.h>
 
 void cudaEventContainer::set(void* sig) {
