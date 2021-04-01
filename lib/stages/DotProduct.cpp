@@ -91,8 +91,10 @@ void DotProduct::main_thread() {
         }
 
         // Logging
-        DEBUG("Input buffer {:s}[{:d}]", in_a_buf->buffer_name, in_a_frame_id);
-        DEBUG("Input buffer {:s}[{:d}]", in_b_buf->buffer_name, in_b_frame_id);
+        INFO("Input buffer {:s}[{:d}]: {:f}, ..., {:f}, ..., {:f}", in_a_buf->buffer_name,
+             in_a_frame_id, a[0], a[_num_elements / 2], a[_num_elements - 1]);
+        INFO("Input buffer {:s}[{:d}]: {:f}, ..., {:f}, ..., {:f}", in_b_buf->buffer_name,
+             in_b_frame_id, b[0], b[_num_elements / 2], b[_num_elements - 1]);
         INFO("Output buffer {:s}[{:d}]: {:f}, ..., {:f}, ..., {:f}", out_buf->buffer_name,
              out_frame_id, output[0], output[_num_elements / 2], output[_num_elements - 1]);
 
