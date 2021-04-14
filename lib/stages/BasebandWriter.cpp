@@ -27,13 +27,16 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
 
     _root_path(config.get_default<std::string>(unique_name, "root_path", ".")),
     _dump_timeout(config.get_default<double>(unique_name, "dump_timeout", 60)),
+    _max_frames_per_second(config.get_default<uint32_t>(unique_name, "max_frames_per_second", 0)),
     in_buf(get_buffer("in_buf")),
     write_in_progress_metric(
         Metrics::instance().add_gauge("kotekan_baseband_writeout_in_progress", unique_name)),
     active_event_dumps_metric(
         Metrics::instance().add_gauge("kotekan_baseband_writeout_active_events", unique_name)),
     write_time_metric(
-        Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name)) {
+        Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name)),
+    bytes_written_metric(
+        Metrics::instance().add_counter("kotekan_writer_bytes_total", unique_name)) {
     register_consumer(in_buf, unique_name.c_str());
 }
 
@@ -41,6 +44,9 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
 void BasebandWriter::main_thread() {
     frameID frame_id(in_buf);
     std::thread closing_thread(&BasebandWriter::close_old_events, this);
+
+    std::chrono::time_point<std::chrono::steady_clock> period_start;
+    unsigned int frames_in_period;
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
@@ -50,6 +56,34 @@ void BasebandWriter::main_thread() {
 
         // Write the frame to its event+frequency destination file
         write_data(in_buf, frame_id);
+
+        const auto now = std::chrono::steady_clock::now();
+        const std::chrono::duration<double> diff = now - period_start;
+        if (diff > std::chrono::seconds(1)) {
+            DEBUG("Restart step count ({:.3f} s)", diff);
+            period_start = now;
+            frames_in_period = 1;
+        } else {
+            ++frames_in_period;
+
+            double period_throughput = frames_in_period / diff.count();
+            DEBUG("Current step count: {} ({:.2f})", frames_in_period, period_throughput);
+            if (_max_frames_per_second > 0 && period_throughput > _max_frames_per_second) {
+                WARN("Throughput exceeded: {:.2f} >> {}", period_throughput,
+                     _max_frames_per_second);
+                const std::chrono::duration<double> remaining_in_period =
+                    std::chrono::seconds(1) - diff;
+                if (frames_in_period >= _max_frames_per_second) {
+                    INFO("Sleep until the end of the period: {:.3}s", remaining_in_period.count());
+                } else {
+                    const auto throttle_rate =
+                        remaining_in_period / (_max_frames_per_second - frames_in_period);
+                    INFO("Over the quota after {} frames; ({}s remaining, throttle by {:.3} s)",
+                         frames_in_period, remaining_in_period.count(), throttle_rate.count());
+                    std::this_thread::sleep_for(throttle_rate);
+                }
+            }
+        }
 
         // Mark the buffer and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
@@ -102,6 +136,7 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
     } else {
         DEBUG("Written {} bytes of data to {:s}", bytes_written, file_name);
     }
+    bytes_written_metric.inc(bytes_written);
 
     // Update average write time in prometheus
     write_time.add_sample(elapsed);

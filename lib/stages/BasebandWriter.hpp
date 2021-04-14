@@ -31,8 +31,13 @@
  *         @buffer_metadata BasebandMetadata
  *
  * @conf   root_path        String. Location in filesystem to write to.
+ *
  * @conf   dump_timeout     Double (default 60). Close dump files when they
  *                          have been inactive this long (in seconds).
+ *
+ * @conf   max_frames_per_second UInt32 (default 0) Maximum throughput in
+ *                          frames/s at which data is taken out of the input
+ *                          buffer.
  *
  * @par Metrics
  * @metric kotekan_baseband_writeout_in_progress
@@ -44,6 +49,9 @@
  * @metric kotekan_writer_write_time_seconds
  *         The write time of the raw writer. An exponential moving average over ~10
  *         samples.
+ *
+ * @metric kotekan_writer_bytes_total
+ *         Number of bytes written to files since the start of this stage
  *
  */
 class BasebandWriter : public kotekan::Stage {
@@ -70,6 +78,7 @@ private:
     // Parameters saved from the config file
     std::string _root_path;
     double _dump_timeout;
+    uint32_t _max_frames_per_second;
 
     /// Input buffer to read from
     struct Buffer* in_buf;
@@ -104,6 +113,9 @@ private:
 
     // Prometheus metric to expose the value of `write_time`
     kotekan::prometheus::Gauge& write_time_metric;
+
+    // Prometheus counter of total bytes written by the stage
+    kotekan::prometheus::Counter& bytes_written_metric;
 };
 
 #endif // BASEBAND_WRITER_HPP
