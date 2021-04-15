@@ -10,9 +10,9 @@
 #include "Stage.hpp" // for Stage
 #include "bufferContainer.hpp"
 
-#include <stdint.h>      // for uint32_t
-#include <string>        // for string
-#include <unordered_set> // for unordered_set
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class TestDropFrames
@@ -50,8 +50,8 @@ private:
 
     /// Number of time samples, should be a multiple of 3x128 for FRB, standard ops is 49152
     uint32_t _samples_per_data_set;
-    // Frame ids that should not be copied over to the output buffer
-    const std::unordered_set<uint32_t> _missing_frames;
+    // List of missing frames
+    const std::vector<uint32_t> _missing_frames;
     /// Percentage of frames to drop
     const double _drop_frame_chance;
 };

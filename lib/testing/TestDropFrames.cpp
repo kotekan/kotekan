@@ -5,15 +5,16 @@
 #include "buffer.h"           // for Buffer, get_num_consumers, mark_frame_empty, mark_frame_full
 #include "kotekanLogging.hpp" // for INFO
 
-#include <algorithm>  // for find
-#include <atomic>     // for atomic_bool
-#include <cstdint>    // for uint32_t
-#include <cstring>    // for memcpy
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <random>     // for default_random_engine, bernoulli_distribution, random_device
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
+#include <algorithm>     // for find
+#include <atomic>        // for atomic_bool
+#include <cstdint>       // for uint32_t
+#include <cstring>       // for memcpy
+#include <exception>     // for exception
+#include <functional>    // for _Bind_helper<>::type, bind, function
+#include <random>        // for default_random_engine, bernoulli_distribution, random_device
+#include <regex>         // for match_results<>::_Base_type
+#include <stdexcept>     // for runtime_error
+#include <unordered_set> // for unordered_set
 
 
 using kotekan::bufferContainer;
@@ -45,13 +46,17 @@ void TestDropFrames::main_thread() {
     std::default_random_engine gen(rd());
     std::bernoulli_distribution draw_frame_drop(_drop_frame_chance);
 
+    // use a set type for quicker lookup of frames to drop
+    const auto missing_frames =
+        std::unordered_set<uint32_t>(_missing_frames.cbegin(), _missing_frames.cend());
+
     while (!stop_thread) {
         uint8_t* input = wait_for_full_frame(in_buf, unique_name.c_str(), in_buf_id);
         if (input == nullptr)
             break;
 
         // Copy the frame, unless it's in the list of frames to drop or it drew the "DROP" odds
-        if (_missing_frames.size() && _missing_frames.count(frame_count)) {
+        if (missing_frames.size() && missing_frames.count(frame_count)) {
             INFO("Drop frame {} because it is in the missing_frame list.", frame_count);
         } else if (_drop_frame_chance && draw_frame_drop(gen)) {
             INFO("Drop frame {} because it drew the short straw.", frame_count);
