@@ -51,9 +51,7 @@ void TestDropFrames::main_thread() {
             break;
 
         // Copy the frame, unless it's in the list of frames to drop or it drew the "DROP" odds
-        if (_missing_frames.size()
-            && std::find(_missing_frames.begin(), _missing_frames.end(), frame_count)
-                   != _missing_frames.end()) {
+        if (_missing_frames.size() && _missing_frames.count(frame_count)) {
             INFO("Drop frame {} because it is in the missing_frame list.", frame_count);
         } else if (_drop_frame_chance && draw_frame_drop(gen)) {
             INFO("Drop frame {} because it drew the short straw.", frame_count);
