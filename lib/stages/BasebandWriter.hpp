@@ -35,9 +35,9 @@
  * @conf   dump_timeout     Double (default 60). Close dump files when they
  *                          have been inactive this long (in seconds).
  *
- * @conf   max_frames_per_second UInt32 (default 0) Maximum throughput in
+ * @conf   max_frames_per_second Double (default 0) Maximum throughput in
  *                          frames/s at which data is taken out of the input
- *                          buffer.
+ *                          buffer. Value of 0 or less disabled the throttling.
  *
  * @par Metrics
  * @metric kotekan_baseband_writeout_in_progress
@@ -78,7 +78,7 @@ private:
     // Parameters saved from the config file
     std::string _root_path;
     double _dump_timeout;
-    uint32_t _max_frames_per_second;
+    double _max_frames_per_second;
 
     /// Input buffer to read from
     struct Buffer* in_buf;

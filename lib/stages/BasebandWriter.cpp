@@ -27,7 +27,7 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
 
     _root_path(config.get_default<std::string>(unique_name, "root_path", ".")),
     _dump_timeout(config.get_default<double>(unique_name, "dump_timeout", 60)),
-    _max_frames_per_second(config.get_default<uint32_t>(unique_name, "max_frames_per_second", 0)),
+    _max_frames_per_second(config.get_default<double>(unique_name, "max_frames_per_second", 0)),
     in_buf(get_buffer("in_buf")),
     write_in_progress_metric(
         Metrics::instance().add_gauge("kotekan_baseband_writeout_in_progress", unique_name)),
@@ -46,7 +46,7 @@ void BasebandWriter::main_thread() {
     std::thread closing_thread(&BasebandWriter::close_old_events, this);
 
     std::chrono::time_point<std::chrono::steady_clock> period_start;
-    unsigned int frames_in_period;
+    unsigned int frames_in_period = 0;
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
