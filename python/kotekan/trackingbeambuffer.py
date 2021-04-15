@@ -308,6 +308,54 @@ class MergedBeamFrame(BeamFrameBase):
                    num_pol, single_frame_skip, merged_metadata_cls,
                    merged_frame_skip, sub_frame_per_frame)
 
+class SortedTrackingBeamReader(object):
+    """ CHIME Sorted Tracking Beam raw data stream reader from files. 
+    """
+    def __init__(self, files, file_type, num_chan, sample_time,
+                 single_frame_metadata_cls, samples_per_single_frame,
+                 num_pol, samples_per_buffer=None, sub_frame_per_frame=1,
+                 single_frame_skip=0, merged_metadata_cls=None,
+                 merged_frame_skip=0):
+        self.files = files
+        self.files.sort()
+        self.file_type = file_type
+        self.num_chan = num_chan
+        self.single_frame_metadata_cls = single_frame_metadata_cls
+        self.samples_per_single_frame = samples_per_single_frame
+        self.num_pol = num_pol
+        self.single_frame_skip = single_frame_skip
+        self.merged_metadata_cls = merged_metadata_cls
+        self.merged_frame_skip = merged_frame_skip
+        self.sub_frame_per_frame = sub_frame_per_frame
+        self.frame_offset = 0
+        self._frame_buffer = np.zeros((self.samples_per_single_frame, self.num_chan,
+            self.num_pol), dtype='c8')
+
+    def _load_file(self, filename):
+        frames = []
+        if self.file_type == 'merged':
+            merged_frame = MergedBeamFrame.from_file(filename, self.single_frame_metadata_cls,
+                self.samples_per_single_frame, self.num_pol, self.single_frame_skip,
+                self.merged_metadata_cls, self.merged_frame_skip, self.sub_frame_per_frame)
+            for ii in range(merged_frame.sub_frame_per_frame):
+                frames.append(merged_frame.get_single_frame(ii))
+        elif self.file_type == 'single':
+            frame = SingleBeamFrame.from_file(filename, self.single_frame_metadata_cls,
+                self.samples_per_single_frame, self.num_pol, self.single_frame_skip)
+            frames.append(frame)
+        return frames
+    
+    def seek_frame(self, offset):
+        self.frame_offset = offset
+        return self.frame_offset
+
+    def _read_one_frame(self):
+        frames = self._load_file(self.files[self.frame_offset])
+        for ii, fm in enumerate(frames):
+            fm.read_frame()
+            print(fm.metadata.fpga_seq_start, fm.metadata.frequency_bin, self.frame_offset, self.files[self.frame_offset])
+            self._frame_buffer[:, ii, :] = fm.data
+        self.frame_offset += 1
 
 class TrackingBeamReader(object):
     """CHIME Tracking Beam raw data stream reader from files. 
