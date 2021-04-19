@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+<script>
+$(document).ready(function(){
+  $("button").click(function(){
+
+    var retCode = $.get("http://localhost:12048/endpoints", function(data){
+      console.log("Hello World!");
+      alert("Data: " + data);
+    })
+    .done(function() {
+      alert( "second success" );
+    })
+    .fail(function(data, status) {
+      alert("Error: " + data + " status: " + status);
+    })
+
+  });
+});
+</script>
+</head>
+<body>
+
+<button> Get kotekan data from buffer_data_callback</button>
+
+</body>
+</html>
