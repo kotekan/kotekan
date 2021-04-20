@@ -10,8 +10,11 @@ SITE_NAME = 'http://localhost:12048/'
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def proxy(path):
-  print(f'{SITE_NAME}{path}')
-  return get(f'{SITE_NAME}{path}').content
+  #print(f'{SITE_NAME}{path}')
+  data = get(f'{SITE_NAME}{path}')
+  #print(data.json())
+  #return data.json() 
+  return render_template('get_test.html', path=path, data=data)
 
 @app.route('/get_test')
 @cross_origin(origins="*") # allow all origins all methods.

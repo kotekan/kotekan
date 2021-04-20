@@ -6,16 +6,15 @@
 $(document).ready(function(){
   $("button").click(function(){
 
-    var retCode = $.get("http://localhost:12048/endpoints", function(data){
-      console.log("Hello World!");
-      alert("Data: " + data);
-    })
-    .done(function() {
-      alert( "second success" );
-    })
-    .fail(function(data, status) {
-      alert("Error: " + data + " status: " + status);
-    })
+      console.log("Hello World! from get_test. The path is: {{path}}");
+      //alert("Data:  {{data.json()}}");
+      
+      // Convert json escape characters ('&#39;') to double quotes ('"')
+      var test =  "{{data.json()}}".split('&#39;').join('"');
+      
+      // Add double quotes to None elements ('None') then parse json into javascript object
+      var obj = jQuery.parseJSON(test.split('None').join('"None"'));
+      console.log("Parse JSON: " + obj.beamform_hfb_output_buffer_0.frame_size);
 
   });
 });
