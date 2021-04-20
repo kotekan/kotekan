@@ -79,8 +79,8 @@ def cli():
 @click.command()
 @click.argument("unixtime", required=False, default=None, type=float)
 def mjd(unixtime):
-    """ Convert unix time to MJD.
-        Will print MJD now if no time is provided. """
+    """Convert unix time to MJD.
+    Will print MJD now if no time is provided."""
     if unixtime is None:
         ts = Timespec(time.time())
     else:
@@ -89,13 +89,13 @@ def mjd(unixtime):
 
 
 @click.command()
-@click.argument('unixtime', required=False, default=None, type=float)
+@click.argument("unixtime", required=False, default=None, type=float)
 def lst(unixtime):
-    """ Convert unix time to LST (in hours).
-        Will print LST now if no time is provided. """
+    """Convert unix time to LST (in hours).
+    Will print LST now if no time is provided."""
     if unixtime is None:
         unixtime = time.time()
-    click.echo(ephem.unix_to_lsa(unixtime) * 24. / 360.)
+    click.echo(ephem.unix_to_lsa(unixtime) * 24.0 / 360.0)
 
 
 @click.command()
@@ -317,7 +317,7 @@ def update_polyco(
                 "%H:%M %Y-%m-%d"
             )
             enable_cmd = (
-                'curl {} -X POST -H "Content-Type: application/json" -d \'{}\' &&'
+                "curl {} -X POST -H \"Content-Type: application/json\" -d '{}' &&"
                 'curl {} -X POST -H "Content-Type: application/json" '
                 "-d '{{\"enabled\":true}}'"
             ).format(
@@ -325,7 +325,7 @@ def update_polyco(
             )
             update["enabled"] = False
             disable_cmd = (
-                'curl {} -X POST -H "Content-Type: application/json" -d \'{}\' &&'
+                "curl {} -X POST -H \"Content-Type: application/json\" -d '{}' &&"
                 'curl {} -X POST -H "Content-Type: application/json" '
                 "-d '{{\"enabled\":false}}'"
             ).format(
