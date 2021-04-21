@@ -313,7 +313,7 @@ def update_polyco(
                 'curl {} -X POST -H "Content-Type: application/json" '
                 "-d '{{\"enabled\":true}}'"
             ).format(
-                url + "/update-pulsar-gating", json.dumps(update), url + "/26m_gated"
+                url + "/update-pulsar-gating", json.dumps(update), url + "/26m-gated"
             )
             update["enabled"] = False
             disable_cmd = (
@@ -321,7 +321,7 @@ def update_polyco(
                 'curl {} -X POST -H "Content-Type: application/json" '
                 "-d '{{\"enabled\":false}}'"
             ).format(
-                url + "/update-pulsar-gating", json.dumps(update), url + "/26m_gated"
+                url + "/update-pulsar-gating", json.dumps(update), url + "/26m-gated"
             )
             print("Scheduling gating between {} and {}.".format(start_str, end_str))
             with TemporaryFile(mode="w+") as tmpf:
