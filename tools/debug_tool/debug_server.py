@@ -5,25 +5,19 @@ app = Flask(__name__)
 app.config['CORS_ORIGINS'] = ['*']
 CORS(app, support_credentials=True)
 
-SITE_NAME = 'http://localhost:12048/'
+KOTEKAN_ADDRESS = 'http://localhost:12048/'
 
 @app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def proxy(path):
-  #print(f'{SITE_NAME}{path}')
-  data = get(f'{SITE_NAME}{path}')
+@app.route('/debug_tool/kotekan_endpoints/<path:url>', methods=["GET", "POST"])
+def proxy(url):
+  data = get(f'{KOTEKAN_ADDRESS}{url}')
   #print(data.json())
-  #return data.json() 
-  return render_template('get_test.html', path=path, data=data)
+  return render_template('get_test.html', url=url, data=data)
 
 @app.route('/get_test')
 @cross_origin(origins="*") # allow all origins all methods.
 def getBufferData():
     return render_template('get_test.html')
-
-#@app.route('/')
-#def hello_world():
-#    return 'Hello, World!'
 
 if __name__=="__main__":
     app.run()

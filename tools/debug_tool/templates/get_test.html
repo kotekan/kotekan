@@ -2,27 +2,47 @@
 <html>
 <head>
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+</head>
 <script>
-$(document).ready(function(){
-  $("button").click(function(){
+window.onload = function () {
 
-      console.log("Hello World! from get_test. The path is: {{path}}");
-      //alert("Data:  {{data.json()}}");
-      
-      // Convert json escape characters ('&#39;') to double quotes ('"')
-      var test =  "{{data.json()}}".split('&#39;').join('"');
-      
-      // Add double quotes to None elements ('None') then parse json into javascript object
-      var obj = jQuery.parseJSON(test.split('None').join('"None"'));
-      console.log("Parse JSON: " + obj.beamform_hfb_output_buffer_0.frame_size);
+var test =  "{{data.json()}}".split('&#39;').join('"');
 
-  });
-});
+// Add double quotes to None elements ('None') then parse json into javascript object
+var buffers = jQuery.parseJSON(test.split('None').join('"None"'));
+
+// Get buffer names
+var bufNames = Object.keys(buffers);
+
+console.log(buffers.network_buffer_0.frames)
+
+var dps = [];   //dataPoints. 
+
+for (var val in buffers.network_buffer_0.frames) {
+  dps.push({y: buffers.network_buffer_0.frames[val]});     
+}
+
+//Better to construct options first and then pass it as a parameter
+var options = {
+	title: {
+		text: bufNames[11] + " Frames"              
+	},
+	data: [              
+	{
+		// Change type to "doughnut", "line", "splineArea", etc.
+		type: "column",
+        dataPoints: dps
+	}
+	]
+};
+
+$("#chartContainer").CanvasJSChart(options);
+}
 </script>
 </head>
 <body>
-
-<button> Get kotekan data from buffer_data_callback</button>
-
+<div id="chartContainer" style="height: 370px; width: 100%;"></div>
+<script type="text/javascript" src="https://canvasjs.com/assets/script/jquery-1.11.1.min.js"></script>
+<script type="text/javascript" src="https://canvasjs.com/assets/script/jquery.canvasjs.min.js"></script>
 </body>
 </html>
