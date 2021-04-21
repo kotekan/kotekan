@@ -5,16 +5,16 @@ app = Flask(__name__)
 app.config['CORS_ORIGINS'] = ['*']
 CORS(app, support_credentials=True)
 
-KOTEKAN_ADDRESS = 'http://localhost:12048/'
+KOTEKAN_ADDRESS = 'http://localhost:12048'
 
 @app.route('/', defaults={'path': ''})
-@app.route('/debug_tool/kotekan_endpoints/<path:url>', methods=["GET", "POST"])
-def proxy(url):
+@app.route('/debug_tool/pipeline_tree.html', methods=["GET", "POST"])
+def proxy():
 
   # GET request
   if request.method == 'GET':
-    data = get(f'{KOTEKAN_ADDRESS}{url}')
-    return render_template('get_test.html', url=url, data=data)
+    data = get(f'{KOTEKAN_ADDRESS}/buffers')
+    return render_template('pipeline_tree.html', data=data)
 
   # POST request
   if request.method == 'POST':
@@ -28,7 +28,7 @@ def update():
 
   # GET request
   if request.method == 'GET':
-    data = get(f'{KOTEKAN_ADDRESS}buffers')
+    data = get(f'{KOTEKAN_ADDRESS}/buffers')
     #print("Data from kotekan: {}".format(data.json()))
     return data.json()
 
