@@ -159,16 +159,10 @@ def lst(unixtime):
     help="Don't ask for confirmation before sending update.",
 )
 @click.option(
-    "--url",
-    type=str,
-    default=COCO_URL,
-    help="URL for coco.",
+    "--url", type=str, default=COCO_URL, help="URL for coco.",
 )
 @click.option(
-    "--tempo-dir",
-    type=str,
-    default=TEMPO_DIR,
-    help="TEMPO2 runtime directory",
+    "--tempo-dir", type=str, default=TEMPO_DIR, help="TEMPO2 runtime directory",
 )
 @click.option(
     "--schedule",
@@ -230,14 +224,7 @@ def update_polyco(
 
     if not load_polyco:
         pfile = PolycoFile.generate(
-            start_time,
-            end_time,
-            fname,
-            dm,
-            segment,
-            ncoeff,
-            max_ha,
-            tempo_dir,
+            start_time, end_time, fname, dm, segment, ncoeff, max_ha, tempo_dir,
         )
         # Read DM and name from parfile since TEMPO mangles them
         parfile = parse_parfile(fname)
@@ -344,16 +331,10 @@ def update_polyco(
 @click.command()
 @click.argument("fname", type=str)
 @click.option(
-    "--url",
-    type=str,
-    default=COCO_URL,
-    help="URL for coco.",
+    "--url", type=str, default=COCO_URL, help="URL for coco.",
 )
 @click.option(
-    "--tempo-dir",
-    type=str,
-    default=TEMPO_DIR,
-    help="TEMPO2 runtime directory",
+    "--tempo-dir", type=str, default=TEMPO_DIR, help="TEMPO2 runtime directory",
 )
 @click.option(
     "--parfile-dir",
@@ -362,10 +343,7 @@ def update_polyco(
     help="Directory containing pulsar parfiles.",
 )
 @click.option(
-    "--reference",
-    type=float,
-    default=None,
-    help="Reference time for observations.",
+    "--reference", type=float, default=None, help="Reference time for observations.",
 )
 @click.pass_context
 def import_schedule(ctx, fname, url, tempo_dir, parfile_dir, reference):
