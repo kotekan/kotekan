@@ -43,17 +43,24 @@ hexDump::~hexDump() {}
 void hexDump::main_thread() {
 
     frameID frame_id(in_buf);
+    int64_t sum = 0;
 
     while (!stop_thread) {
 
-        uint8_t* frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+        uint64_t* frame = (uint64_t*)wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
         if (frame == nullptr)
             break;
 
-        DEBUG("hexDump: Got buffer {:s}[{:d}]", in_buf->buffer_name, frame_id);
+        sum = 0;
+
+        for (int i = 0; i < in_buf->frame_size/sizeof(uint64_t); ++i) {
+            sum += frame[i];
+        }
+
+        DEBUG("dump sum: {:s}={:d}", in_buf->buffer_name, sum);
 
         // Prints the hex data to screen
-        hex_dump(16, (void*)&frame[_offset], _len);
+        //hex_dump(16, (void*)&frame[_offset], _len);
 
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
         frame_id++;

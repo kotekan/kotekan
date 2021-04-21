@@ -15,7 +15,7 @@ num_gpus: 1
 block_size: 32
 num_data_sets: 1
 
-cpu_affinity: [8, 72, 9, 73, 10, 74, 11, 75, 12, 76, 12, 77, 13, 78, 14, 79, 15, 80]
+cpu_affinity: [8, 57, 9, 58, 10, 59, 11, 60, 12, 61, 13, 62, 14, 63, 15, 64, 16, 65]
 
 # Pool
 main_pool:
@@ -53,14 +53,50 @@ gpu_input_merged_0:
 #    metadata_pool: main_pool
 
 gpu_output_buffers:
-    num_frames: buffer_depth * 4
-
-    frame_size: samples_per_data_set * num_elements * num_local_freq / 8
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_elements * num_local_freq / 1
     #frame_size: num_local_freq * num_blocks * (block_size*block_size)*2*num_data_sets  * sizeof_int
     metadata_pool: main_pool
     gpu_output_buffer:
         kotekan_buffer: standard
+        num_frames: buffer_depth * 2
+    gpu_output_buffer_0:
+        kotekan_buffer: standard
     gpu_output_buffer_1:
+        kotekan_buffer: standard
+    gpu_output_buffer_2:
+        kotekan_buffer: standard
+    gpu_output_buffer_3:
+        kotekan_buffer: standard
+    gpu_output_buffer_4:
+        kotekan_buffer: standard
+    gpu_output_buffer_5:
+        kotekan_buffer: standard
+    gpu_output_buffer_6:
+        kotekan_buffer: standard
+    gpu_output_buffer_7:
+        kotekan_buffer: standard
+
+gpu_copy_buffers:
+    num_frames: 3
+    frame_size: samples_per_data_set * num_elements * num_local_freq / 1
+    #frame_size: num_local_freq * num_blocks * (block_size*block_size)*2*num_data_sets  * sizeof_int
+    metadata_pool: main_pool
+    gpu_copy_buffer_0:
+        kotekan_buffer: standard
+    gpu_copy_buffer_1:
+        kotekan_buffer: standard
+    gpu_copy_buffer_2:
+        kotekan_buffer: standard
+    gpu_copy_buffer_3:
+        kotekan_buffer: standard
+    gpu_copy_buffer_4:
+        kotekan_buffer: standard
+    gpu_copy_buffer_5:
+        kotekan_buffer: standard
+    gpu_copy_buffer_6:
+        kotekan_buffer: standard
+    gpu_copy_buffer_7:
         kotekan_buffer: standard
 
 # Buffers
@@ -88,18 +124,18 @@ gpu_input_buffers:
         kotekan_buffer: standard
     gpu_input_buffer_9:
         kotekan_buffer: standard
-    gpu_input_buffer_10:
-        kotekan_buffer: standard
-    gpu_input_buffer_11:
-        kotekan_buffer: standard
-    gpu_input_buffer_12:
-        kotekan_buffer: standard
-    gpu_input_buffer_13:
-        kotekan_buffer: standard
-    gpu_input_buffer_14:
-        kotekan_buffer: standard
-    gpu_input_buffer_15:
-        kotekan_buffer: standard
+#    gpu_input_buffer_10:
+#        kotekan_buffer: standard
+#    gpu_input_buffer_11:
+#        kotekan_buffer: standard
+#    gpu_input_buffer_12:
+#        kotekan_buffer: standard
+#    gpu_input_buffer_13:
+#        kotekan_buffer: standard
+#    gpu_input_buffer_14:
+#        kotekan_buffer: standard
+#    gpu_input_buffer_15:
+#        kotekan_buffer: standard
 #    gpu_input_buffer_16:
 #        kotekan_buffer: standard
 #    gpu_input_buffer_17:
@@ -142,18 +178,18 @@ lost_samples_buffers:
         kotekan_buffer: standard
     lost_samples_buffer_9:
         kotekan_buffer: standard
-    lost_samples_buffer_10:
-        kotekan_buffer: standard
-    lost_samples_buffer_11:
-        kotekan_buffer: standard
-    lost_samples_buffer_12:
-        kotekan_buffer: standard
-    lost_samples_buffer_13:
-        kotekan_buffer: standard
-    lost_samples_buffer_14:
-        kotekan_buffer: standard
-    lost_samples_buffer_15:
-        kotekan_buffer: standard
+#    lost_samples_buffer_10:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_11:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_12:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_13:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_14:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_15:
+#        kotekan_buffer: standard
 #    lost_samples_buffer_16:
 #        kotekan_buffer: standard
 #    lost_samples_buffer_17:
@@ -175,28 +211,35 @@ lost_samples_buffers:
 dpdk:
     kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
-    lcore_cpu_map: [0,64,1,65,2,66,3,67,4,68,5,69]
-    master_lcore_cpu: 7
+    lcore_cpu_map: [0,1,2,3,4,5,6,7,48,49,50,51,52,53,54,55]
+    master_lcore_cpu: 12
     fpga_packet_size: 4680
     num_mem_channels: 8
     alignment: samples_per_data_set
-    mbuf_cache_size: 250
+    num_mbufs: 2048
+    mbuf_cache_size: 500
+    rx_ring_size: 1024
+    burst_size: 64
     # Format is index = lcore, value = array of port IDs
     # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
     # and lcore 1 to service ports 2 and 3.
     lcore_port_map:
-        - [0,1]
-        - [2,3]
-        - [4,5]
-        - [6,7]
-        - [8,9]
-        - [10,11]
-        - [12,13]
-        - [14,15]
-#        - [16,17]
-#        - [18,19]
-#        - [20,21]
-#        - [22,23]
+        - [0]
+        - [2]
+        - [4]
+        - [6]
+        - [8]
+        - [10]
+        - [12]
+        - [14]
+        - [1]
+        - [3]
+        - [5]
+        - [7]
+        - [9]
+        - [11]
+        - [13]
+        - [15]
 
     # One handler must be given per port on the system.
     handlers:
@@ -230,24 +273,30 @@ dpdk:
         - dpdk_handler: iceBoardStandard
           out_buf: gpu_input_buffer_9
           lost_samples_buf: lost_samples_buffer_9
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_10
-          lost_samples_buf: lost_samples_buffer_10
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_11
-          lost_samples_buf: lost_samples_buffer_11
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_12
-          lost_samples_buf: lost_samples_buffer_12
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_13
-          lost_samples_buf: lost_samples_buffer_13
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_14
-          lost_samples_buf: lost_samples_buffer_14
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_15
-          lost_samples_buf: lost_samples_buffer_15
+        - dpdk_handler: none
+        - dpdk_handler: none
+        - dpdk_handler: none
+        - dpdk_handler: none
+        - dpdk_handler: none
+        - dpdk_handler: none
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_10
+#          lost_samples_buf: lost_samples_buffer_10
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_11
+#          lost_samples_buf: lost_samples_buffer_11
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_12
+#          lost_samples_buf: lost_samples_buffer_12
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_13
+#          lost_samples_buf: lost_samples_buffer_13
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_14
+#          lost_samples_buf: lost_samples_buffer_14
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_15
+#          lost_samples_buf: lost_samples_buffer_15
 #        - dpdk_handler: iceBoardStandard
 #          out_buf: gpu_input_buffer_16
 #          lost_samples_buf: lost_samples_buffer_16
@@ -315,30 +364,30 @@ zero_samples:
         kotekan_stage: zeroSamples
         out_buf: gpu_input_buffer_9
         lost_samples_buf: lost_samples_buffer_9
-    zero_10:
-        kotekan_stage: zeroSamples
-        out_buf: gpu_input_buffer_10
-        lost_samples_buf: lost_samples_buffer_10
-    zero_11:
-        kotekan_stage: zeroSamples
-        out_buf: gpu_input_buffer_11
-        lost_samples_buf: lost_samples_buffer_11
-    zero_12:
-        kotekan_stage: zeroSamples
-        out_buf: gpu_input_buffer_12
-        lost_samples_buf: lost_samples_buffer_12
-    zero_13:
-        kotekan_stage: zeroSamples
-        out_buf: gpu_input_buffer_13
-        lost_samples_buf: lost_samples_buffer_13
-    zero_14:
-        kotekan_stage: zeroSamples
-        out_buf: gpu_input_buffer_14
-        lost_samples_buf: lost_samples_buffer_14
-    zero_15:
-        kotekan_stage: zeroSamples
-        out_buf: gpu_input_buffer_15
-        lost_samples_buf: lost_samples_buffer_15
+#    zero_10:
+#        kotekan_stage: zeroSamples
+#        out_buf: gpu_input_buffer_10
+#        lost_samples_buf: lost_samples_buffer_10
+#    zero_11:
+#        kotekan_stage: zeroSamples
+#        out_buf: gpu_input_buffer_11
+#        lost_samples_buf: lost_samples_buffer_11
+#    zero_12:
+#        kotekan_stage: zeroSamples
+#        out_buf: gpu_input_buffer_12
+#        lost_samples_buf: lost_samples_buffer_12
+#    zero_13:
+#        kotekan_stage: zeroSamples
+#        out_buf: gpu_input_buffer_13
+#        lost_samples_buf: lost_samples_buffer_13
+#    zero_14:
+#        kotekan_stage: zeroSamples
+#        out_buf: gpu_input_buffer_14
+#        lost_samples_buf: lost_samples_buffer_14
+#    zero_15:
+#        kotekan_stage: zeroSamples
+#        out_buf: gpu_input_buffer_15
+#        lost_samples_buf: lost_samples_buffer_15
 #    zero_16:
 #        kotekan_stage: zeroSamples
 #        out_buf: gpu_input_buffer_16
@@ -394,15 +443,21 @@ buffer_merge_0:
         - gpu_input_buffer_7
         - gpu_input_buffer_8
         - gpu_input_buffer_9
-        - gpu_input_buffer_10
-        - gpu_input_buffer_11
-        - gpu_input_buffer_12
-        - gpu_input_buffer_13
-        - gpu_input_buffer_14
-        - gpu_input_buffer_15
+#        - gpu_input_buffer_10
+#        - gpu_input_buffer_11
+#        - gpu_input_buffer_12
+#        - gpu_input_buffer_13
+#        - gpu_input_buffer_14
+#        - gpu_input_buffer_15
+#        - gpu_input_buffer_16
+#        - gpu_input_buffer_17
+#        - gpu_input_buffer_18
+#        - gpu_input_buffer_19
+#        - gpu_input_buffer_20
+#        - gpu_input_buffer_21
+#        - gpu_input_buffer_22
+#        - gpu_input_buffer_23
     out_buf: gpu_input_merged_0
-
-#
 
 #
 #buffer_merge_1:
@@ -433,23 +488,152 @@ buffer_merge_0:
 #    out_buf: gpu_input_merged_1
 #    wait: false
 
+#gpu:
+#    profiling: true
+#   frame_arrival_period: samples_per_data_set / 390625.0 / 16
+#   buffer_depth: 4
+#    commands:
+#        - name: hipInputData
+#        - name: cudaCorrelatorKernel
+#        - name: hipOutputData
+#    gpu_0:
+#        kotekan_stage: hipProcess
+#       gpu_id: 0
+#        in_buffers:
+#            in_buf: gpu_input_merged_0
+#        out_buffers:
+#            output_buf: gpu_output_buffer
+
 gpu:
     profiling: true
-    frame_arrival_period: samples_per_data_set / 390625.0 / 16
-    buffer_depth: 4
+    log_profiling: true
+    frame_arrival_period: samples_per_data_set / 390625.0 / 10
     commands:
-        - name: hipInputData
-#        - name: cudaCorrelatorKernel
-        - name: hipOutputData
+        - name: cudaInputData
+        #- name: cudaCorrelatorKernel
+        - name: cudaOutputData
     gpu_0:
-        kotekan_stage: hipProcess
+        kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
             in_buf: gpu_input_merged_0
+            # Make sure all frames are registered
+            in_buf_0: gpu_input_buffer_0
+            in_buf_1: gpu_input_buffer_1
+            in_buf_2: gpu_input_buffer_2
+            in_buf_3: gpu_input_buffer_3
+            in_buf_4: gpu_input_buffer_4
+            in_buf_5: gpu_input_buffer_5
+            in_buf_6: gpu_input_buffer_6
+            in_buf_7: gpu_input_buffer_7
+            in_buf_8: gpu_input_buffer_8
+            in_buf_9: gpu_input_buffer_9
+#            in_buf_10: gpu_input_buffer_10
+#            in_buf_11: gpu_input_buffer_11
+#            in_buf_12: gpu_input_buffer_12
+#            in_buf_13: gpu_input_buffer_13
+#            in_buf_14: gpu_input_buffer_14
+#            in_buf_15: gpu_input_buffer_15
+#            in_buf_16: gpu_input_buffer_16
+#            in_buf_17: gpu_input_buffer_17
+#            in_buf_18: gpu_input_buffer_18
+#            in_buf_19: gpu_input_buffer_19
+#            in_buf_20: gpu_input_buffer_20
+#            in_buf_21: gpu_input_buffer_21
+#            in_buf_22: gpu_input_buffer_22
+#            in_buf_23: gpu_input_buffer_23
         out_buffers:
             output_buf: gpu_output_buffer
+            output_buf_0: gpu_output_buffer_0
+            output_buf_1: gpu_output_buffer_1
+            output_buf_2: gpu_output_buffer_2
+            output_buf_3: gpu_output_buffer_3
+            output_buf_4: gpu_output_buffer_4
+            output_buf_5: gpu_output_buffer_5
+            output_buf_6: gpu_output_buffer_6
+            output_buf_7: gpu_output_buffer_7
 
 num_sub_frames: 1
+
+split:
+    kotekan_stage: BufferSplit
+    in_buf: gpu_output_buffer
+    out_bufs:
+        - gpu_output_buffer_0
+        - gpu_output_buffer_1
+        - gpu_output_buffer_2
+        - gpu_output_buffer_3
+        - gpu_output_buffer_4
+        - gpu_output_buffer_5
+        - gpu_output_buffer_6
+        - gpu_output_buffer_7
+
+copy_0:
+    kotekan_stage: bufferCopy
+    in_buf: gpu_output_buffer_0
+    out_bufs:
+        - gpu_copy_buffer_0
+copy_1:
+    kotekan_stage: bufferCopy
+    in_buf: gpu_output_buffer_1
+    out_bufs:
+        - gpu_copy_buffer_1
+copy_2:
+    kotekan_stage: bufferCopy
+    in_buf: gpu_output_buffer_2
+    out_bufs:
+        - gpu_copy_buffer_2
+copy_3:
+    kotekan_stage: bufferCopy
+    in_buf: gpu_output_buffer_3
+    out_bufs:
+        - gpu_copy_buffer_3
+copy_4:
+    kotekan_stage: bufferCopy
+    in_buf: gpu_output_buffer_4
+    out_bufs:
+        - gpu_copy_buffer_4
+copy_5:
+    kotekan_stage: bufferCopy
+    in_buf: gpu_output_buffer_5
+    out_bufs:
+        - gpu_copy_buffer_5
+copy_6:
+    kotekan_stage: bufferCopy
+    in_buf: gpu_output_buffer_6
+    out_bufs:
+        - gpu_copy_buffer_6
+copy_7:
+    kotekan_stage: bufferCopy
+    in_buf: gpu_output_buffer_7
+    out_bufs:
+        - gpu_copy_buffer_7
+
+read_0:
+    kotekan_stage: hexDump
+    in_buf: gpu_copy_buffer_0
+read_1:
+    kotekan_stage: hexDump
+    in_buf: gpu_copy_buffer_1
+read_2:
+    kotekan_stage: hexDump
+    in_buf: gpu_copy_buffer_2
+read_3:
+    kotekan_stage: hexDump
+    in_buf: gpu_copy_buffer_3
+read_4:
+    kotekan_stage: hexDump
+    in_buf: gpu_copy_buffer_4
+read_5:
+    kotekan_stage: hexDump
+    in_buf: gpu_copy_buffer_5
+read_6:
+    kotekan_stage: hexDump
+    in_buf: gpu_copy_buffer_6
+read_7:
+    kotekan_stage: hexDump
+    in_buf: gpu_copy_buffer_7
+
 
 #gpu:
 #    profiling: true
@@ -513,3 +697,4 @@ num_sub_frames: 1
 #            network_buf: gpu_input_merged_1
 #        out_buffers:
 #            output_buf: gpu_output_buffer_1
+
