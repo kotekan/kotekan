@@ -37,6 +37,10 @@ struct MergedBeamMetadata {
     uint32_t sub_frame_metadata_size;
     /// The size of the sub frame
     uint32_t sub_frame_data_size;
+    /// Start frequency bin
+    uint32_t freq_start;
+    /// Number channels
+    uint32_t nchan;
 };
 
 #endif // BEAMMETADATA_HPP
