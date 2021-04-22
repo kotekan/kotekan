@@ -358,6 +358,10 @@ def update_polyco(
 @click.pass_context
 def import_schedule(ctx, fname, url, tempo_dir, parfile_dir, reference):
     """NOT IMPLEMENTED YET"""
+    print("Not implemented yet. Aborting.")
+    return
+
+    # WIP
     if reference is None:
         cur_t = time.time()
     else:
