@@ -1,13 +1,27 @@
 <!DOCTYPE html>
 <html>
 <head>
+<title>Page Title</title>
+<style>
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+.full-height {
+  height: 100%;
+  background: white;
+}
+</style>
+
+<!--link rel="stylesheet" href="format.css"-->
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
 </head>
 
 <!DOCTYPE Create chart on page>
 <body>
 <!-- <div id="chartContainer" style="height: 370px; width: 100%;"></div> -->
-<div id="graph"></div>
+<div id="graph" class="full-height"> Kotekan Pipeline</div>
 <script type="text/javascript" src="https://canvasjs.com/assets/script/jquery-1.11.1.min.js"></script>
 <script type="text/javascript" src="https://canvasjs.com/assets/script/jquery.canvasjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.4.1/d3.min.js"></script>
@@ -65,7 +79,7 @@ async function poll() {
     // Get and show the message
     let buffers = await response.json();
     //console.log("Got response: " + message.network_buffer_0.frames);
-    drawTree(buffers);
+    //drawTree(buffers);
   }
 
   // Call poll() again to get the next message
@@ -73,10 +87,9 @@ async function poll() {
 }
 
 // Start polling kotekan for metrics
-poll();
+//poll();
 
-
-function drawTree(data) {
+window.onload = function drawTree(data) {
 
   // Define colours
   var palette = {
@@ -99,12 +112,20 @@ function drawTree(data) {
         "green": "#259286",
         "yellowgreen": "#738A05"
     }
-  
-  
+
+  // Replace "&#39;" chars as single quote "'"
+  var rawData =  "{{data.json()}}".split('&#39;').join('"');
+  // Add double quotes to None elements ('None') then parse json into javascript object
+  var buffers = jQuery.parseJSON(rawData.split('None').join('"None"'));
+  // Get buffer names
+  var bufNames = Object.keys(buffers);
+
   // Set node sizes
   var vis = d3.select("#graph")
               .append("svg");
-  var w = 900, h = 400, r = 20;
+  var w = document.getElementById("graph").clientWidth;
+  var h = document.getElementById("graph").clientHeight;
+  var r = 20;
   
   vis.attr("width", w)
      .attr("height", h);
@@ -112,13 +133,21 @@ function drawTree(data) {
   vis.text("The Graph")
      .select("#graph")
   
-  var centre = 100;
+  var origin_x = w/2, origin_y = 50;
+  var nodes = [], links = [];
+
+  var ctr = 0;
+  for (var val in buffers) {
+    nodes.push({name: val, x: origin_x, y: origin_y+ctr});
+    ctr+=80;
+  }
   
-  // Set node locations
-  var nodes = [{name: "Node 0", x: centre + 10, y: centre + 50},
-               {name: "Node 1", x: centre + 70, y: centre + 10},
-               {name: "Node 2", x: centre + 140, y: centre + 50}]
-  
+  // Create edges
+  for (var i = 0; i <nodes.length; i++) {
+    if(i + 1 < nodes.length)
+      links.push({source: nodes[i], target: nodes[i + 1]});
+  }
+
   // Draw circles
   vis.selectAll("circle.nodes")
         .data(nodes)
@@ -130,13 +159,7 @@ function drawTree(data) {
         .attr("r", r)
         .attr("fill", "black") 
   
-  // Create edges
-  var links = [
-    {source: nodes[0], target: nodes[1]},
-    {source: nodes[2], target: nodes[1]},
-    {source: nodes[0], target: nodes[2]}
-  ]
-  
+ 
   // Draw edges
   vis.selectAll(".line")
      .data(links)
@@ -146,7 +169,8 @@ function drawTree(data) {
      .attr("y1", function(d) { return d.source.y })
      .attr("x2", function(d) { return d.target.x })
      .attr("y2", function(d) { return d.target.y })
-     .style("stroke", "rgb(6,120,155)");
+     .style("stroke", "black");
+     //.style("stroke", "rgb(6,120,155)");
   
   var node = vis
     .selectAll("circle.node")
@@ -163,7 +187,7 @@ function drawTree(data) {
      .attr("font-family",  "Bree Serif")
      .attr("fill",         function(d, i) {  return  palette.blue;  })
      .attr("font-size",    function(d, i) {  return  "1em"; })
-     .attr("text-anchor",  function(d, i) { if (i>0) { return  "beginning"; }      else { return "end" } })
+     //.attr("text-anchor",  function(d, i) { if (i>0) { return  "beginning"; }      else { return "end" } })
 }
 </script>
 
