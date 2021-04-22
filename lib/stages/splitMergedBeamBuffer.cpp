@@ -78,6 +78,13 @@ void splitMergedBeamBuffer::main_thread() {
             }
 
 	}
+	INFO("INPUT subframe {:d}, buffer_size {:d}, data_size {:d}, metasize {:d}",
+	    sub_frame_pre_frame, in_buf->frame_size, sub_frame_data_size, sub_frame_metadata_size);
+
+        if (sub_frame_pre_frame != in_buf->frame_size / (sub_frame_data_size + sub_frame_metadata_size)){
+	    ERROR("Input number of subframe per merged frame does not match the subframes in the buffer.");
+	    exit(-1);
+	}
 
         for (uint32_t i = 0; i < sub_frame_pre_frame; i++) {
             // Compute the merged frame position to unpack the merged frames
@@ -87,12 +94,13 @@ void splitMergedBeamBuffer::main_thread() {
             if (out_frame == nullptr)
                 break;
 
-            // Allocated the new metadata for the outpug buffer
+            // Allocated the new metadata for the output buffer
             allocate_new_metadata_object(out_buf, out_buffer_ID);
-            BeamMetadata* out_metadata = (BeamMetadata*)get_metadata(out_buf, out_buffer_ID);
+            FreqIDBeamMetadata* out_metadata = (FreqIDBeamMetadata*)get_metadata(out_buf, out_buffer_ID);
             // Get pointer to the beam metadata with frequency
             FreqIDBeamMetadata* sub_frame_metadata =
                 (FreqIDBeamMetadata*)&in_frame[sub_frame_start];
+	    DEBUG2("Frame start {:d}", sub_frame_start);
             // Fill up the out put buffer metadata.
             out_metadata->fpga_seq_start = sub_frame_metadata->fpga_seq_start;
             out_metadata->ctime = sub_frame_metadata->ctime;
@@ -102,13 +110,18 @@ void splitMergedBeamBuffer::main_thread() {
             out_metadata->ra = sub_frame_metadata->ra;
             out_metadata->dec = sub_frame_metadata->dec;
             out_metadata->scaling = sub_frame_metadata->scaling;
+	    out_metadata->frequency_bin = sub_frame_metadata->frequency_bin;
             uint8_t* data_start = &in_frame[sub_frame_start + sub_frame_metadata_size];
             // copy data from in frame to out_frame/single frame
             memcpy(out_frame, data_start, sub_frame_data_size);
+	    // Debug line
+	    DEBUG2("Split Sub frame Beam RA: {:f}, Dec: {:f}, scaling: {:d}, beam_num: {:d}, freq_id {:d}, seq_start {:d} Subframe {:d}\n",
+                 sub_frame_metadata->ra, out_metadata->dec, out_metadata->scaling,
+                 out_metadata->beam_number, out_metadata->frequency_bin, out_metadata->fpga_seq_start, sub_frame_pre_frame);
+	    // Next frame.
             mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
             out_buffer_ID++;
         }
-
         mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_ID);
         in_buffer_ID++;
     }
