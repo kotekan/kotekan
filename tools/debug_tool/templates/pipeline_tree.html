@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+</head>
+
+<!DOCTYPE Create chart on page>
+<body>
+<!-- <div id="chartContainer" style="height: 370px; width: 100%;"></div> -->
+<div id="graph"></div>
+<script type="text/javascript" src="https://canvasjs.com/assets/script/jquery-1.11.1.min.js"></script>
+<script type="text/javascript" src="https://canvasjs.com/assets/script/jquery.canvasjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.4.1/d3.min.js"></script>
+</body>
+
+<script>
+function updateChart(buffers) {
+
+    // Get buffer names
+    var bufNames = Object.keys(buffers);
+
+    // Populate datapoints of chart
+    var dps = [];
+    for (var val in buffers.network_buffer_0.frames) {
+      dps.push({y: buffers.network_buffer_0.frames[val]});     
+    }
+    
+    //Better to construct options first and then pass it as a parameter
+    var options = {
+    	title: {
+    		text: bufNames[11] + " Frames"              
+    	},
+    	data: [              
+    	{
+    		// Change type to "doughnut", "line", "splineArea", etc.
+    		type: "column",
+            dataPoints: dps
+    	}
+    	]
+    };
+    
+    $("#chartContainer").CanvasJSChart(options);
+}
+
+// Time between updating kotekan metrics
+const POLL_WAIT_TIME_MS = 2000;
+
+// Poll kotekan via web server every POLL_WAIT_TIME_MS and update page with new metrics
+async function poll() {
+  let response = await fetch("/update");
+  //console.log("Polling... " + response.json());
+
+  if (response.status == 502) {
+    // Status 502 is a connection timeout error,
+    // may happen when the connection was pending for too long,
+    // and the remote server or a proxy closed it
+    // let's reconnect
+  } else if (response.status != 200) {
+    // An error - let's show it
+    console.log("Error: " + response.statusText);
+    // Reconnect in one second
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  } else {
+
+    // Get and show the message
+    let buffers = await response.json();
+    //console.log("Got response: " + message.network_buffer_0.frames);
+    drawTree(buffers);
+  }
+
+  // Call poll() again to get the next message
+  setTimeout(() => { poll(); }, POLL_WAIT_TIME_MS);
+}
+
+// Start polling kotekan for metrics
+poll();
+
+
+function drawTree(data) {
+
+  // Define colours
+  var palette = {
+        "lightgray": "#819090",
+        "gray": "#708284",
+        "mediumgray": "#536870",
+        "darkgray": "#475B62",
+  
+        "darkblue": "#0A2933",
+        "darkerblue": "#042029",
+  
+        "paleryellow": "#FCF4DC",
+        "paleyellow": "#EAE3CB",
+        "yellow": "#A57706",
+        "orange": "#BD3613",
+        "red": "#D11C24",
+        "pink": "#C61C6F",
+        "purple": "#595AB7",
+        "blue": "#2176C7",
+        "green": "#259286",
+        "yellowgreen": "#738A05"
+    }
+  
+  
+  // Set node sizes
+  var vis = d3.select("#graph")
+              .append("svg");
+  var w = 900, h = 400, r = 20;
+  
+  vis.attr("width", w)
+     .attr("height", h);
+  
+  vis.text("The Graph")
+     .select("#graph")
+  
+  var centre = 100;
+  
+  // Set node locations
+  var nodes = [{name: "Node 0", x: centre + 10, y: centre + 50},
+               {name: "Node 1", x: centre + 70, y: centre + 10},
+               {name: "Node 2", x: centre + 140, y: centre + 50}]
+  
+  // Draw circles
+  vis.selectAll("circle.nodes")
+        .data(nodes)
+        .enter()
+        .append("svg:circle")
+        .attr("class", "nodes")
+        .attr("cx", function(d) { return d.x; })
+        .attr("cy", function(d) { return d.y; })
+        .attr("r", r)
+        .attr("fill", "black") 
+  
+  // Create edges
+  var links = [
+    {source: nodes[0], target: nodes[1]},
+    {source: nodes[2], target: nodes[1]},
+    {source: nodes[0], target: nodes[2]}
+  ]
+  
+  // Draw edges
+  vis.selectAll(".line")
+     .data(links)
+     .enter()
+     .append("line")
+     .attr("x1", function(d) { return d.source.x })
+     .attr("y1", function(d) { return d.source.y })
+     .attr("x2", function(d) { return d.target.x })
+     .attr("y2", function(d) { return d.target.y })
+     .style("stroke", "rgb(6,120,155)");
+  
+  var node = vis
+    .selectAll("circle.node")
+    .data(nodes)
+    .enter()
+    .append("g")
+    .attr("class", "node")
+  
+  // Draw labels
+  node.append("text")
+     .text(function(d, i) { return d.name; })
+     .attr("x",    function(d, i) { return d.x + 5; })
+     .attr("y",            function(d, i) { return d.y - r - 5})
+     .attr("font-family",  "Bree Serif")
+     .attr("fill",         function(d, i) {  return  palette.blue;  })
+     .attr("font-size",    function(d, i) {  return  "1em"; })
+     .attr("text-anchor",  function(d, i) { if (i>0) { return  "beginning"; }      else { return "end" } })
+}
+</script>
+
+</html>
