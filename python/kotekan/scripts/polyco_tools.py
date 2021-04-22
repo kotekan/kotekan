@@ -102,7 +102,8 @@ def lst(unixtime):
     "--end-time",
     type=float,
     default=None,
-    help="Specify an end time to generate polyco / match segment with maximum overlap. Defaults to start time + 1.",
+    help="Specify an end time to generate polyco / match segment with maximum overlap.",
+    show_default="start_time + 1 day",
 )
 @click.option(
     "--dm",
@@ -126,25 +127,29 @@ def lst(unixtime):
     "--segment",
     type=float,
     default=300,
-    help="(generate-polyco) Length of polyco segments in minutes (default 300).",
+    help="(generate-polyco) Length of polyco segments in minutes.",
+    show_default=True,
 )
 @click.option(
     "--ncoeff",
     type=int,
     default=12,
     help="(generate-polyco) Number of polyco coefficients to generate.",
+    show_default=True,
 )
 @click.option(
     "--max_ha",
     type=float,
     default=12.0,
     help="(generate-polyco) Maximum hour angle for timing solution to span.",
+    show_default=True,
 )
 @click.option(
     "--format",
     type=click.Choice(["yaml", "json", "dict"]),
     default="yaml",
     help="Config format to print out.",
+    show_default=True,
 )
 @click.option(
     "--offset",
@@ -159,10 +164,14 @@ def lst(unixtime):
     help="Don't ask for confirmation before sending update.",
 )
 @click.option(
-    "--url", type=str, default=COCO_URL, help="URL for coco.",
+    "--url", type=str, default=COCO_URL, help="URL for coco.", show_default=True,
 )
 @click.option(
-    "--tempo-dir", type=str, default=TEMPO_DIR, help="TEMPO2 runtime directory",
+    "--tempo-dir",
+    type=str,
+    default=TEMPO_DIR,
+    help="TEMPO2 runtime directory",
+    show_default=True,
 )
 @click.option(
     "--schedule",
@@ -174,6 +183,7 @@ def lst(unixtime):
     type=click.Choice(["MJD", "LST", "UNIX"]),
     help="How to interpret start and end times. If non-absolute LST is used, will reference to the time the command is run.",
     default="MJD",
+    show_default=True,
 )
 def update_polyco(
     fname,
