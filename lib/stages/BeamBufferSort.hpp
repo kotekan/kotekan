@@ -53,10 +53,10 @@ public:
     /// Transfer a non-frequency id'ed metadata to frequency id'ed metadata
     void nonfreq_meta_2_freq_meta(BeamMetadata* nonfreq_meta,  
         FreqIDBeamMetadata* freq_meta, uint32_t freq_id);
-    ///Fill up a frequency ID'ed metadata based on a exisiting one
-    void fill_metadata(FreqIDBeamMetadata* out_meta, FreqIDBeamMetadata* in_meta, 
-        bool empty_frame, uint32_t frame0, uint32_t freq_offset, int time_offset,        
-        uint32_t freq_id, uint32_t nchan);
+    ///Fill up the empty frame.
+    void fill_empty_frame(uint32_t time_idx, uint32_t freq_idx, 
+        uint64_t fpga_seq_start0, timespec ctime0, uint32_t beam_number, 
+	double ra, double dec, double scaling);
     
     /// Primary loop to wait for buffers, sort beam buffer.
     void main_thread() override;
@@ -81,17 +81,27 @@ private:
     /// Frame fill up status
     std::vector<vector<uint8_t>> queue_status;
     /// Config variables
+    /// If the beam buffer has frequency bin in metadata
     bool has_freq_bin;
+    /// samples per single beam buffer frame
     uint32_t samples_per_data_set;
+    /// Total number of frequency channel
     uint32_t total_freq_chan;
+    /// Use n out put buffer
     uint32_t use_n_out_buffer;
+    /// Time resolution for each sample
     double time_resolution;
     /// Number of frequencies per output buffer
+    /// number of time frames in the sorting queue.
     int wait_nframes;
+    /// The size of the FreqIDBeamMeta
     uint32_t FreqIDBeamMeta_size;
     /// Pad n marginal frames from the start
     uint64_t start_marginal_nframe;
+    /// subFrame, which includes the frame metadata, size
+    /// in the output merged frame. 
     uint32_t sub_frame_size;
+    /// Time span for each subframe.
     long subframe_time_nsec;
 };
 
