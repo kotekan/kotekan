@@ -20,6 +20,8 @@
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error
 #include <stdio.h>     // for fclose, fopen, fread, snprintf, FILE
+#include <stdlib.h>    // for free, malloc
+#include <string.h>    // for memcpy
 #include <sys/types.h> // for uint
 
 
@@ -250,11 +252,16 @@ void ReadGain::read_gain_tracking() {
     // Copy the current set of gains to the output buffer frame.
     memcpy(out_frame_tracking, tracking_beam_gains, gain_tracking_buf->frame_size);
 
+#ifdef DEBUGGING
+    for (int beam_id = 0; beam_id < _num_beams; ++beam_id)
+        DEBUG("Gain_tracking_buf[{:d}]: {:.2f} {:.2f} ", beam_id,
+              out_frame_tracking[beam_id * _num_elements * 2],
+              out_frame_tracking[beam_id * _num_elements * 2 + 1]);
+#endif
+
     mark_frame_full(gain_tracking_buf, unique_name.c_str(), gain_tracking_buf_id);
     DEBUG("Maked gain_tracking_buf frame {:d} full", gain_tracking_buf_id);
     INFO("Time required to load tracking beamformer gains: {:f}", current_time() - start_time);
-    DEBUG("Gain_tracking_buf: {:.2f} {:.2f} {:.2f} ", out_frame_tracking[0], out_frame_tracking[1],
-          out_frame_tracking[2]);
     gain_tracking_buf_id = (gain_tracking_buf_id + 1) % gain_tracking_buf->num_frames;
 }
 
