@@ -78,6 +78,13 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     register_producer(gain_tracking_buf, unique_name.c_str());
     update_gains_tracking = false;
 
+    // Create a space to store gains for all the tracking beams
+    // Initial values will be set by the call back functions below on startup
+    tracking_beam_gains = (float*)malloc(gain_tracking_buf->frame_size);
+    if (tracking_beam_gains == nullptr) {
+        throw std::runtime_error("Could not allocate memory in ReadGain for tracking gains");
+    }
+
     using namespace std::placeholders;
 
     // listen for gain updates FRB
@@ -97,6 +104,11 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
                 return update_gains_tracking_callback(json_msg, beam_id);
             });
     }
+}
+
+ReadGain::~ReadGain() {
+    if (tracking_beam_gains != nullptr)
+        free(tracking_beam_gains);
 }
 
 bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
@@ -214,26 +226,29 @@ void ReadGain::read_gain_tracking() {
             WARN("GPU Cannot open gain file {:s}", filename);
             gains_last_update_success_metric.labels({beam_label}).set(0);
             for (uint i = 0; i < _num_elements; i++) {
-                out_frame_tracking[(beam_id * _num_elements + i) * 2] = default_gains[0];
-                out_frame_tracking[(beam_id * _num_elements + i) * 2 + 1] = default_gains[1];
+                tracking_beam_gains[(beam_id * _num_elements + i) * 2] = default_gains[0];
+                tracking_beam_gains[(beam_id * _num_elements + i) * 2 + 1] = default_gains[1];
             }
         } else {
             if (_num_elements
-                != fread(&out_frame_tracking[beam_id * _num_elements * 2], sizeof(float) * 2,
+                != fread(&tracking_beam_gains[beam_id * _num_elements * 2], sizeof(float) * 2,
                          _num_elements, ptr_myfile)) {
                 WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
                      "gains",
                      filename);
                 gains_last_update_success_metric.labels({beam_label}).set(0);
                 for (uint i = 0; i < _num_elements; i++) {
-                    out_frame_tracking[(beam_id * _num_elements + i) * 2] = default_gains[0];
-                    out_frame_tracking[(beam_id * _num_elements + i) * 2 + 1] = default_gains[1];
+                    tracking_beam_gains[(beam_id * _num_elements + i) * 2] = default_gains[0];
+                    tracking_beam_gains[(beam_id * _num_elements + i) * 2 + 1] = default_gains[1];
                 }
             }
             fclose(ptr_myfile);
         }
         gains_last_update_timestamp_metric.labels({"tracking", beam_label}).set(start_time);
     } // end beam
+
+    // Copy the current set of gains to the output buffer frame.
+    memcpy(out_frame_tracking, tracking_beam_gains, gain_tracking_buf->frame_size);
 
     mark_frame_full(gain_tracking_buf, unique_name.c_str(), gain_tracking_buf_id);
     DEBUG("Maked gain_tracking_buf frame {:d} full", gain_tracking_buf_id);
