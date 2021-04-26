@@ -133,31 +133,60 @@ window.onload = function drawTree(data) {
   vis.text("The Graph")
      .select("#graph")
   
+  var rectWidth = 150, rectHeight = 50;
   var origin_x = w/2, origin_y = 50;
-  var nodes = [], links = [];
+  var spacing = 80;
+  var nodes = [], links = [], stages = [];
 
   var ctr = 0;
   for (var val in buffers) {
     nodes.push({name: val, x: origin_x, y: origin_y+ctr});
-    ctr+=80;
+    ctr+=spacing;
+    for (var stage in buffers[val].producers) {
+        stages.push({name: stage, x: origin_x, y: origin_y+ctr});
+        ctr+=spacing;
+        links.push({source: stages[stages.length - 1], target: nodes[nodes.length - 1]});
+    }
+
+    for (var stage in buffers[val].consumers) {
+        stages.push({name: stage, x: origin_x, y: origin_y+ctr});
+        ctr+=spacing;
+        links.push({source: nodes[nodes.length - 1], target: stages[stages.length - 1]});
+    }
   }
-  
+
   // Create edges
   for (var i = 0; i <nodes.length; i++) {
     if(i + 1 < nodes.length)
       links.push({source: nodes[i], target: nodes[i + 1]});
   }
 
+  console.log(links);
+
   // Draw circles
-  vis.selectAll("circle.nodes")
+  vis.selectAll("buffer.nodes")
         .data(nodes)
         .enter()
-        .append("svg:circle")
+        .append("svg:ellipse")
         .attr("class", "nodes")
-        .attr("cx", function(d) { return d.x; })
-        .attr("cy", function(d) { return d.y; })
-        .attr("r", r)
-        .attr("fill", "black") 
+        .attr("cx", function(d) { return d.x + rectWidth/2; })
+        .attr("cy", function(d) { return d.y + rectHeight/2; })
+        .attr("rx", rectWidth/2)
+        .attr("ry", rectHeight/2)
+        .attr("stroke", "black") 
+        .attr("fill", "white") 
+
+  vis.selectAll("buffer.nodes")
+        .data(stages)
+        .enter()
+        .append("svg:rect")
+        .attr("class", "nodes")
+        .attr("x", function(d) { return d.x; })
+        .attr("y", function(d) { return d.y; })
+        .attr("width", rectWidth)
+        .attr("height", rectHeight)
+        .attr("stroke", "black") 
+        .attr("fill", "white") 
   
  
   // Draw edges
@@ -182,12 +211,29 @@ window.onload = function drawTree(data) {
   // Draw labels
   node.append("text")
      .text(function(d, i) { return d.name; })
-     .attr("x",    function(d, i) { return d.x + 5; })
-     .attr("y",            function(d, i) { return d.y - r - 5})
+     .attr("x",            function(d, i) { return d.x + rectWidth/2; })
+     .attr("y",            function(d, i) { return d.y + rectHeight/2})
      .attr("font-family",  "Bree Serif")
      .attr("fill",         function(d, i) {  return  palette.blue;  })
      .attr("font-size",    function(d, i) {  return  "1em"; })
-     //.attr("text-anchor",  function(d, i) { if (i>0) { return  "beginning"; }      else { return "end" } })
+     .attr("text-anchor", "middle")
+
+  var node = vis
+    .selectAll("circle.node")
+    .data(stages)
+    .enter()
+    .append("g")
+    .attr("class", "node")
+  
+  // Draw Stage labels
+  node.append("text")
+     .text(function(d, i) { return d.name; })
+     .attr("x",            function(d, i) { return d.x + rectWidth/2; })
+     .attr("y",            function(d, i) { return d.y + rectHeight/2})
+     .attr("font-family",  "Bree Serif")
+     .attr("fill",         function(d, i) {  return  palette.blue;  })
+     .attr("font-size",    function(d, i) {  return  "1em"; })
+     .attr("text-anchor", "middle")
 }
 </script>
 

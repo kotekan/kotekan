@@ -2,6 +2,7 @@
 type: config
 log_level: DEBUG
 cpu_affinity: [0,1,2,3]
+num_local_freq: 1
 
 main_pool:
   kotekan_metadata_pool: chimeMetadata

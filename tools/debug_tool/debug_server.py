@@ -14,7 +14,8 @@ def proxy():
   # GET request
   if request.method == 'GET':
     data = get(f'{KOTEKAN_ADDRESS}/buffers')
-    return render_template('pipeline_tree.html', data=data)
+    #return render_template('pipeline_tree.html', data=data)
+    return render_template('tree_example.html', data=data)
 
   # POST request
   if request.method == 'POST':
