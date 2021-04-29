@@ -31,6 +31,8 @@
 <script type="text/javascript" src="https://canvasjs.com/assets/script/jquery-1.11.1.min.js"></script>
 <!-- d3.js library -->	
 <script src="http://d3js.org/d3.v3.min.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/d3-dtree@2.4.1/dist/dTree.min.js"></script>
 	
 <script>
 
@@ -78,7 +80,7 @@ console.log(buffers);
 console.log(json);
 
 //json = convertJSON(json);
-json2 = convertJSON(buffers);
+json2 = convertKotekanJSON(buffers);
 
 
 var treeData = [
@@ -182,6 +184,22 @@ function update(source) {
 
 }
 
+function convertKotekanJSON(object) {
+  for (var key in object) {
+    console.log(key);
+    if (typeof(object[key]) == "object") {
+      var obj = convertKotekanJSON(object[key]);
+      obj.key = obj.name ? obj.name : "";
+      obj.name = key;
+      if (!object["children"])
+        object["children"] = [];
+      object["children"].push(obj);
+      delete object[key];
+    }
+  }
+  return object;
+}
+
 function convertJSON(object) {
   for (var key in object) {
     if (typeof(object[key]) == "object") {
@@ -196,7 +214,6 @@ function convertJSON(object) {
   }
   return object;
 }
-
 </script>
 	
   </body>
