@@ -25,11 +25,10 @@
 <body>
     <a href="../index.html">cola.js home</a>
 <h1>Directed Graph with downward-pointing edges</h1>
-<script src="/home/willis/Work/kotekan/tools/debug_tool/extern/d3v4.js"></script>
-<script src="/home/willis/Work/kotekan/tools/debug_tool/extern/cola.min.js"></script>
+<script src="{{url_for('static', filename='d3v4.js')}}"></script>
+<script src="{{url_for('static', filename='cola.min.js')}}"></script>
 <script type="text/javascript" src="https://canvasjs.com/assets/script/jquery-1.11.1.min.js"></script>
 <script>
-    console.log("Path of javascript: " + window.location.pathname);
     var width = 960,
         height = 500;
 
@@ -53,7 +52,7 @@
         
     console.log(bufNames);
 
-    d3.json("/home/willis/Work/kotekan/tools/debug_tool/extern/chris.json", function (error, graph) {
+    d3.json("{{url_for('static', filename='chris.json')}}", function (error, graph) {
         var nodeRadius = 50;
 
         var nodes = [], links = [];

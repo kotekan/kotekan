@@ -16,6 +16,10 @@ html, body {
 
 <!--link rel="stylesheet" href="format.css"-->
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+<!--script src="http://marvl.infotech.monash.edu/webcola/cola.js"></script-->
+<!--script src="https://ialab.it.monash.edu/webcola/cola.js"></script-->
+<script src="https://cdn.jsdelivr.net/gh/tgdwyer/WebCola/WebCola/cola.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.4.1/d3.min.js"></script>
 </head>
 
 <!DOCTYPE Create chart on page>
@@ -24,7 +28,8 @@ html, body {
 <div id="graph" class="full-height"> Kotekan Pipeline</div>
 <script type="text/javascript" src="https://canvasjs.com/assets/script/jquery-1.11.1.min.js"></script>
 <script type="text/javascript" src="https://canvasjs.com/assets/script/jquery.canvasjs.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.4.1/d3.min.js"></script>
+
+
 </body>
 
 <script>
@@ -156,84 +161,89 @@ window.onload = function drawTree(data) {
   }
 
   // Create edges
-  for (var i = 0; i <nodes.length; i++) {
-    if(i + 1 < nodes.length)
-      links.push({source: nodes[i], target: nodes[i + 1]});
-  }
+  //for (var i = 0; i <nodes.length; i++) {
+  //  if(i + 1 < nodes.length)
+  //    links.push({source: nodes[i], target: nodes[i + 1]});
+  //}
 
   console.log(links);
+var d3cola = cola.d3adaptor()
+    .nodes(nodes)
+    .links(links)
+    .linkDistance(30)
+    .size([w, h]);
 
   // Draw circles
-  vis.selectAll("buffer.nodes")
-        .data(nodes)
-        .enter()
-        .append("svg:ellipse")
-        .attr("class", "nodes")
-        .attr("cx", function(d) { return d.x + rectWidth/2; })
-        .attr("cy", function(d) { return d.y + rectHeight/2; })
-        .attr("rx", rectWidth/2)
-        .attr("ry", rectHeight/2)
-        .attr("stroke", "black") 
-        .attr("fill", "white") 
-
-  vis.selectAll("buffer.nodes")
-        .data(stages)
-        .enter()
-        .append("svg:rect")
-        .attr("class", "nodes")
-        .attr("x", function(d) { return d.x; })
-        .attr("y", function(d) { return d.y; })
-        .attr("width", rectWidth)
-        .attr("height", rectHeight)
-        .attr("stroke", "black") 
-        .attr("fill", "white") 
-  
- 
-  // Draw edges
-  vis.selectAll(".line")
-     .data(links)
-     .enter()
-     .append("line")
-     .attr("x1", function(d) { return d.source.x })
-     .attr("y1", function(d) { return d.source.y })
-     .attr("x2", function(d) { return d.target.x })
-     .attr("y2", function(d) { return d.target.y })
-     .style("stroke", "black");
-     //.style("stroke", "rgb(6,120,155)");
-  
-  var node = vis
-    .selectAll("circle.node")
-    .data(nodes)
-    .enter()
-    .append("g")
-    .attr("class", "node")
-  
-  // Draw labels
-  node.append("text")
-     .text(function(d, i) { return d.name; })
-     .attr("x",            function(d, i) { return d.x + rectWidth/2; })
-     .attr("y",            function(d, i) { return d.y + rectHeight/2})
-     .attr("font-family",  "Bree Serif")
-     .attr("fill",         function(d, i) {  return  palette.blue;  })
-     .attr("font-size",    function(d, i) {  return  "1em"; })
-     .attr("text-anchor", "middle")
-
-  var node = vis
-    .selectAll("circle.node")
-    .data(stages)
-    .enter()
-    .append("g")
-    .attr("class", "node")
-  
-  // Draw Stage labels
-  node.append("text")
-     .text(function(d, i) { return d.name; })
-     .attr("x",            function(d, i) { return d.x + rectWidth/2; })
-     .attr("y",            function(d, i) { return d.y + rectHeight/2})
-     .attr("font-family",  "Bree Serif")
-     .attr("fill",         function(d, i) {  return  palette.blue;  })
-     .attr("font-size",    function(d, i) {  return  "1em"; })
-     .attr("text-anchor", "middle")
+//  vis.selectAll("buffer.nodes")
+//        .data(nodes)
+//        .enter()
+//        .append("svg:ellipse")
+//        .attr("class", "nodes")
+//        .attr("cx", function(d) { return d.x + rectWidth/2; })
+//        .attr("cy", function(d) { return d.y + rectHeight/2; })
+//        .attr("rx", rectWidth/2)
+//        .attr("ry", rectHeight/2)
+//        .attr("stroke", "black") 
+//        .attr("fill", "white") 
+//
+//  vis.selectAll("buffer.nodes")
+//        .data(stages)
+//        .enter()
+//        .append("svg:rect")
+//        .attr("class", "nodes")
+//        .attr("x", function(d) { return d.x; })
+//        .attr("y", function(d) { return d.y; })
+//        .attr("width", rectWidth)
+//        .attr("height", rectHeight)
+//        .attr("stroke", "black") 
+//        .attr("fill", "white") 
+//  
+// 
+//  // Draw edges
+//  vis.selectAll(".line")
+//     .data(links)
+//     .enter()
+//     .append("line")
+//     .attr("x1", function(d) { return d.source.x })
+//     .attr("y1", function(d) { return d.source.y })
+//     .attr("x2", function(d) { return d.target.x })
+//     .attr("y2", function(d) { return d.target.y })
+//     .style("stroke", "black");
+//     //.style("stroke", "rgb(6,120,155)");
+//  
+//  var node = vis
+//    .selectAll("circle.node")
+//    .data(nodes)
+//    .enter()
+//    .append("g")
+//    .attr("class", "node")
+//  
+//  // Draw labels
+//  node.append("text")
+//     .text(function(d, i) { return d.name; })
+//     .attr("x",            function(d, i) { return d.x + rectWidth/2; })
+//     .attr("y",            function(d, i) { return d.y + rectHeight/2})
+//     .attr("font-family",  "Bree Serif")
+//     .attr("fill",         function(d, i) {  return  palette.blue;  })
+//     .attr("font-size",    function(d, i) {  return  "1em"; })
+//     .attr("text-anchor", "middle")
+//
+//  var node = vis
+//    .selectAll("circle.node")
+//    .data(stages)
+//    .enter()
+//    .append("g")
+//    .attr("class", "node")
+//  
+//  // Draw Stage labels
+//  node.append("text")
+//     .text(function(d, i) { return d.name; })
+//     .attr("x",            function(d, i) { return d.x + rectWidth/2; })
+//     .attr("y",            function(d, i) { return d.y + rectHeight/2})
+//     .attr("font-family",  "Bree Serif")
+//     .attr("fill",         function(d, i) {  return  palette.blue;  })
+//     .attr("font-size",    function(d, i) {  return  "1em"; })
+//     .attr("text-anchor", "middle")
 }
 </script>
 
