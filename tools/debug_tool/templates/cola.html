@@ -22,7 +22,7 @@
 
 text {
   font-family: sans-serif;
-  font-size: 20px;
+  font-size: 15px;
   opacity: 1.0;
 }
 
@@ -38,12 +38,15 @@ text {
 <script>
     var width = 960,
         height = 500;
+  //var w = document.getElementById("graph").clientWidth;
+  //var h = document.getElementById("graph").clientHeight;
 
     var color = d3.scaleOrdinal(d3.schemeCategory20);
 
     var d3cola = cola.d3adaptor(d3)
-        .avoidOverlaps(true)
-        .linkDistance(300)
+        //.handleDisconnected(false)
+        //.linkDistance(300)
+        //.groupCompactness(100)
         .size([width, height]);
 
     var svg = d3.select("body").append("svg")
@@ -82,7 +85,8 @@ text {
         graph.nodes = nodes;
         graph.links = links;
         
-        graph.nodes.forEach(function (v) { v.height = v.width = 2 * nodeRadius; });
+        // Set node size larger to space graph out
+        graph.nodes.forEach(function (v) { v.height = v.width = 5 * nodeRadius; });
 
         console.log(graph.nodes)
         console.log(graph.links)
@@ -90,9 +94,13 @@ text {
         d3cola
             .nodes(graph.nodes)
             .links(graph.links)
-            .flowLayout("y", 30)
-            .symmetricDiffLinkLengths(6)
-            .start(10,20,20);
+            .flowLayout("y", 65)
+            //.symmetricDiffLinkLengths(6)
+            //.convergenceThreshold(1e-9)
+            //.defaultNodeSize(100)
+            .handleDisconnected(true)
+            .avoidOverlaps(true)
+            .start(30,20,20);
 
         // define arrow markers for graph links
         svg.append('svg:defs').append('svg:marker')
@@ -121,7 +129,7 @@ text {
             .attr("cy", function(d) { return d.y; })
             .attr("r", nodeRadius)
             .style("fill", function (d) { return color(d.group); })
-            .call(d3cola.drag);
+            //.call(d3cola.drag);
 
         // Draw labels
         //node.append("text")
@@ -135,13 +143,12 @@ text {
 
         node.append("text")
             .attr("class", "labels")
-            .text(function (d) { return d.name; })
+            //.text(function (d) { return d.name; })
             .attr("x", function(d, i) { return d.x + 1.2*nodeRadius; })
             .attr("y", function(d, i) { return d.y + nodeRadius; })
-            .attr("font-family",  "Bree Serif")
+            //.attr("font-family",  "Bree Serif")
             .attr("font-weight", 900)
             .attr("fill",   "black")
-            //.attr("font-size",    function(d, i) {  return  "1em"; })
 
         d3cola.on("tick", function () {
             path.each(function (d) {
