@@ -20,6 +20,13 @@
   marker-end: url(#end-arrow);
 }
 
+text {
+  font-family: sans-serif;
+  font-size: 20px;
+  opacity: 1.0;
+}
+
+
 </style>
 </head>
 <body>
@@ -53,7 +60,7 @@
     console.log(bufNames);
 
     d3.json("{{url_for('static', filename='chris.json')}}", function (error, graph) {
-        var nodeRadius = 50;
+        var nodeRadius = 8;
 
         var nodes = [], links = [];
        
@@ -104,10 +111,14 @@
             .enter().append('svg:path')
             .attr('class', 'link');
 
-        var node = svg.selectAll(".node")
+        var node = svg.selectAll("circle.node")
             .data(graph.nodes)
-            .enter().append("circle")
-            .attr("class", "node")
+            .enter().append("g")
+            .attr("class", "node");
+      
+        node.append("circle")
+            .attr("cx", function(d) { return d.x; })
+            .attr("cy", function(d) { return d.y; })
             .attr("r", nodeRadius)
             .style("fill", function (d) { return color(d.group); })
             .call(d3cola.drag);
@@ -122,9 +133,15 @@
         //   .attr("font-size",    function(d, i) {  return  "1em"; })
         //   .attr("text-anchor", "middle")
 
-
-        node.append("title")
-            .text(function (d) { return d.name; });
+        node.append("text")
+            .attr("class", "labels")
+            .text(function (d) { return d.name; })
+            .attr("x", function(d, i) { return d.x + 1.2*nodeRadius; })
+            .attr("y", function(d, i) { return d.y + nodeRadius; })
+            .attr("font-family",  "Bree Serif")
+            .attr("font-weight", 900)
+            .attr("fill",   "black")
+            //.attr("font-size",    function(d, i) {  return  "1em"; })
 
         d3cola.on("tick", function () {
             path.each(function (d) {
