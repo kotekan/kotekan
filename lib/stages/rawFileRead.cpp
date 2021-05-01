@@ -100,7 +100,8 @@ void rawFileRead::main_thread() {
         }
 
         num_frames_per_file = fileSize / (metadata_size + buf->frame_size);
-        INFO("File size: {:d} bytes, no. of frames: {:d}", fileSize, num_frames_per_file);
+        
+	INFO("File size: {:d} bytes, no. of frames: {:d}", fileSize, num_frames_per_file);
 
         // Read each frame from the file and copy into the buffer.
         for (uint32_t i = 0; i < num_frames_per_file; i++) {
