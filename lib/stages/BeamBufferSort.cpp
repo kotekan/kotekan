@@ -212,7 +212,7 @@ void BeamBufferSort::main_thread(){
 		// Since we use nbuffers, dump all nbuffer.
 		for (uint32_t k=0; k < out_bufs.size(); k++){
 		// Compute the start dump for the buffer
-		// TODO maybe dump more time??
+		// TODO maybe dump more time??, right now it only dumps one time frame.
 		    dump_start = out_buf_start_chan[k] * sub_frame_size;
 		    dump_size = out_buf_nchan[k] * sub_frame_size;
 		    INFO("Dump start {:d} dump_size {:d}", dump_start, dump_size);
@@ -228,6 +228,10 @@ void BeamBufferSort::main_thread(){
                     out_metadata -> sub_frame_data_size = in_buf -> frame_size;
                     out_metadata -> freq_start = out_buf_start_chan[k];
                     out_metadata -> nchan = out_buf_nchan[k];
+		    out_metadata -> fpga_seq_start = fpga_seq_start0;
+		    out_metadata -> ctime = ctime0;
+		    // TODO If we want to dump more than one time frame, this needs to be changed.
+		    out_metadata -> nframe = 1;
 		    // Copy data to the out frame
                     memcpy(output, &sort_queue[i][dump_start], dump_size);
 		    // Debug line
