@@ -41,6 +41,13 @@ struct MergedBeamMetadata {
     uint32_t freq_start;
     /// Number channels
     uint32_t nchan;
+    /// Number of time frame
+    uint32_t nframe;
+    /// The ICEBoard sequence number of start time frame
+    int64_t fpga_seq_start;
+    /// The GPS time of @c fpga_seq_start.
+    timespec ctime;
 };
+
 
 #endif // BEAMMETADATA_HPP
