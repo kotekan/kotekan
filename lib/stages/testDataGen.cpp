@@ -148,11 +148,11 @@ void testDataGen::main_thread() {
                 frame[j] = fmod(j * value, 256 * value);
                 //                frame[j] = j*value;
             } else if (type == "random") {
-                unsigned char new_real;
-                unsigned char new_imaginary;
-                new_real = rand() % 16;
-                new_imaginary = rand() % 16;
-                temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
+                char new_real;
+                char new_imaginary;
+                new_real = (rand() % 15) - 7;      //can't handle -8!
+                new_imaginary = (rand() % 15) - 7; //can't handle -8!
+                temp_output = ((new_real << 4) & 0xF0) | (new_imaginary & 0x0F);
                 frame[j] = temp_output;
             } else if (type == "tpluse") {
                 frame[j] = seq_num + j / num_elements + j % num_elements;

@@ -65,39 +65,39 @@ __global__ void basic_corr(int *input, int *output, int ne, int nt, int nf)
     store_matrix_sync(output + f*n_blk*8*8*2 + 8*8*2*blk_id + 8*8, acci_matrix, 8, mem_col_major);
 }
 
-#define TILE_COARSE_SIZE 2
+#define TILE_COARSE_X 4
+#define TILE_COARSE_Y 2
 #define TENSOR_I 8 //samples
 #define TENSOR_T 32 //samples
-#define TIMES_PER_WORD 8
-#define TENSOR_TWORDS 4
-#define TENSOR_WORDS 32 //(TENSOR_I * TENSOR_T / TIMES_PER_WORD) //words
-#define TILE_SIZE (TENSOR_I * TILE_COARSE_SIZE)
-#define TIME_PRELOAD 8
+#define TENSOR_WORDS 32 //32b ints per tensor
+#define TILE_SIZE 64
+#define TIME_PRELOAD 1
 
-__global__ void corr(int *input, int *output, const int ne, const int nt, const int nf)
+#define ALIGN_OFFSET 0
+
+__global__
+void corr(int *input, int *output, const int ne, const int nt, const int nf)
 {
-    //[I][t][d]
-//    __shared__ int xr[TILE_COARSE_SIZE][TILE_COARSE_SIZE][TENSOR_WORDS], xi[TILE_COARSE_SIZE][TILE_COARSE_SIZE][TENSOR_WORDS],
-//                   yi[TILE_COARSE_SIZE][TILE_COARSE_SIZE][TENSOR_WORDS], yr[TILE_COARSE_SIZE][TILE_COARSE_SIZE][TENSOR_WORDS];
-    __shared__ int d[4*TIME_PRELOAD*TILE_COARSE_SIZE*(0+TENSOR_WORDS)];
-    //Y is data type, time_preload is a loop, X is the element id
+    __shared__ int d[TIME_PRELOAD][TENSOR_WORDS * (TILE_SIZE/TENSOR_I) * 2 + // X inputs
+                     ALIGN_OFFSET+ TENSOR_WORDS * (TILE_SIZE/TENSOR_I) * 2]; // Y inputs
 
-    fragment<matrix_a, 8,8,32, experimental::precision::s4, row_major> xr_matrix;
-    fragment<matrix_a, 8,8,32, experimental::precision::s4, row_major> xi_matrix;
-    fragment<matrix_b, 8,8,32, experimental::precision::s4, col_major> yr_matrix;
-    fragment<matrix_b, 8,8,32, experimental::precision::s4, col_major> yi_matrix;
-//    fragment<accumulator, 8,8,32, int> accii_matrix;
-    fragment<accumulator, 8,8,32, int> accrr_matrix;
-//    fragment<accumulator, 8,8,32, int> accir_matrix;
-    fragment<accumulator, 8,8,32, int> accri_matrix;
-//    fill_fragment(accii_matrix, 0);
-    fill_fragment(accrr_matrix, 0);
-//    fill_fragment(accir_matrix, 0);
-    fill_fragment(accri_matrix, 0);
+    fragment<matrix_a, 8,8,32, experimental::precision::s4, row_major> xr_matrix[2];
+    fragment<matrix_a, 8,8,32, experimental::precision::s4, row_major> xi_matrix[2];
+    fragment<matrix_b, 8,8,32, experimental::precision::s4, col_major> yr_matrix[4];
+    fragment<matrix_b, 8,8,32, experimental::precision::s4, col_major> yi_matrix[4];
+    fragment<accumulator, 8,8,32, int> accrr_matrix[2][4];
+    fragment<accumulator, 8,8,32, int> accri_matrix[2][4];
 
-    int n_tile = (ne/TILE_SIZE)*(ne/TILE_SIZE+1)/2;
+    for (int x=0; x<2; x++) {
+        for (int y=0; y<4; y++) {
+            fill_fragment(accrr_matrix[x][y], 0);
+            fill_fragment(accri_matrix[x][y], 0);
+        }
+    }
+
+    //int n_tile = (ne/TILE_SIZE)*(ne/TILE_SIZE+1)/2;
     int tile_id = blockIdx.x;
-    int f = blockIdx.y;
+    //int f = blockIdx.y;
 
     //x,y coordinates of the upper tiles, cf OpenCL in Action p260
     int tile_x = tile_id;
@@ -112,50 +112,52 @@ __global__ void corr(int *input, int *output, const int ne, const int nt, const 
     int l=threadIdx.x;
     int X=threadIdx.y;
     int Y=threadIdx.z;
-    int offset[4] = {tile_x*2, tile_x*2+1, tile_y*2, tile_y*2+1};
 
-    for (int T=0; T<nt/TENSOR_T; T+=TIME_PRELOAD){
-        //each tile does 4x4 of threads, each doing 8x8 submatrix
-        //read 4 timesteps (id'd by Y) into shared memory:
-/*
-        xi[Y][X][l] = input[((T+Y)*nf+f)*TENSOR_TWORDS*ne*2 + ((tile_x*2 + 0)*TILE_COARSE_SIZE + X)*TENSOR_WORDS + l];
-        xr[Y][X][l] = input[((T+Y)*nf+f)*TENSOR_TWORDS*ne*2 + ((tile_x*2 + 1)*TILE_COARSE_SIZE + X)*TENSOR_WORDS + l];
-        yi[Y][X][l] = input[((T+Y)*nf+f)*TENSOR_TWORDS*ne*2 + ((tile_y*2 + 0)*TILE_COARSE_SIZE + X)*TENSOR_WORDS + l];
-        yr[Y][X][l] = input[((T+Y)*nf+f)*TENSOR_TWORDS*ne*2 + ((tile_y*2 + 1)*TILE_COARSE_SIZE + X)*TENSOR_WORDS + l];
-*/
-        for (int t=0; t<TIME_PRELOAD; t++){
-            d[(((2*Y+0)*TIME_PRELOAD+t)*TILE_COARSE_SIZE + X)*(0+TENSOR_WORDS) + l] = 
-                input[((T+t)*nf+f)*TENSOR_TWORDS*ne*2 + (offset[2*Y+0]*TILE_COARSE_SIZE + X)*TENSOR_WORDS + l];
-            d[(((2*Y+1)*TIME_PRELOAD+t)*TILE_COARSE_SIZE + X)*(0+TENSOR_WORDS) + l] = 
-                input[((T+t)*nf+f)*TENSOR_TWORDS*ne*2 + (offset[2*Y+1]*TILE_COARSE_SIZE + X)*TENSOR_WORDS + l];
+    int xoff = tile_x * TILE_SIZE * TENSOR_WORDS / TENSOR_I * 2;
+    int yoff = tile_y * TILE_SIZE * TENSOR_WORDS / TENSOR_I * 2;
+    for (int T=0; T<nt/TENSOR_T; T+=TIME_PRELOAD) {
+
+        for (int t=0; t<TIME_PRELOAD; t++) {
+            int4 *src_addr = (int4 *) &input[(T + t) * ne * 4 * 2 + (X * 32 + l) * 4 + (Y ? yoff : xoff)];
+            int4 *dst_addr = (int4 *) &d[t][(X * 32 + l) * 4 + Y * (TENSOR_WORDS * 8 * 2 + ALIGN_OFFSET)];
+            *dst_addr = *src_addr;
         }
-
         __syncthreads();
-/*
-        for (int t=0; t<TILE_COARSE_SIZE; t++){
-            load_matrix_sync(xi_matrix, xi[(X+Y+t)%4][X], TENSOR_T);
-            load_matrix_sync(xr_matrix, xr[(X+Y+t)%4][X], TENSOR_T);
-            load_matrix_sync(yi_matrix, yi[(X+Y+t)%4][Y], TENSOR_T);
-            load_matrix_sync(yr_matrix, yr[(X+Y+t)%4][Y], TENSOR_T);
-*/
-        for (int t=0; t<TIME_PRELOAD; t++){
-            load_matrix_sync(xi_matrix, &d[((0*TIME_PRELOAD+t)*TILE_COARSE_SIZE + X)*(0+TENSOR_WORDS)], TENSOR_T);
-            load_matrix_sync(xr_matrix, &d[((1*TIME_PRELOAD+t)*TILE_COARSE_SIZE + X)*(0+TENSOR_WORDS)], TENSOR_T);
-            load_matrix_sync(yi_matrix, &d[((2*TIME_PRELOAD+t)*TILE_COARSE_SIZE + Y)*(0+TENSOR_WORDS)], TENSOR_T);
-            load_matrix_sync(yr_matrix, &d[((3*TIME_PRELOAD+t)*TILE_COARSE_SIZE + Y)*(0+TENSOR_WORDS)], TENSOR_T);
 
-            mma_sync(accrr_matrix, xi_matrix, yi_matrix, accrr_matrix);
-            mma_sync(accrr_matrix, xr_matrix, yr_matrix, accrr_matrix);
-            mma_sync(accri_matrix, xr_matrix, yi_matrix, accri_matrix);
-            mma_sync(accri_matrix, xi_matrix, yr_matrix, accri_matrix);
+        for (int t=0; t<TIME_PRELOAD; t++) {
+            for (int x=0; x<2; x++) {
+                load_matrix_sync(xi_matrix[x], &d[t][((X*2+x) * 2 + 0) * TENSOR_WORDS], TENSOR_T);
+                load_matrix_sync(xr_matrix[x], &d[t][((X*2+x) * 2 + 1) * TENSOR_WORDS], TENSOR_T);
+            }
+            for (int y=0; y<4; y++) {
+                load_matrix_sync(yi_matrix[y], &d[t][((Y*4+y) * 2 + 0) * TENSOR_WORDS + TENSOR_WORDS*8*2 + ALIGN_OFFSET], TENSOR_T);
+                load_matrix_sync(yr_matrix[y], &d[t][((Y*4+y) * 2 + 1) * TENSOR_WORDS + TENSOR_WORDS*8*2 + ALIGN_OFFSET], TENSOR_T);
+            }
+            for (int x=0; x<2; x++) {
+                for (int y=0; y<4; y++) {
+                    mma_sync(accrr_matrix[x][y], xi_matrix[x], yi_matrix[y], accrr_matrix[x][y]);
+                    mma_sync(accrr_matrix[x][y], xr_matrix[x], yr_matrix[y], accrr_matrix[x][y]);
+                    mma_sync(accri_matrix[x][y], xr_matrix[x], yi_matrix[y], accri_matrix[x][y]);
+                    mma_sync(accri_matrix[x][y], xi_matrix[x], yr_matrix[y], accri_matrix[x][y]);
+                }
+            }
         }
         __syncthreads();
     }
 
-    store_matrix_sync(output + ((f*n_tile+tile_id)*2+0)*TILE_SIZE*TILE_SIZE + (Y*TILE_SIZE+X)*TENSOR_I,
-                      accrr_matrix, TILE_SIZE, mem_col_major);
-    store_matrix_sync(output + ((f*n_tile+tile_id)*2+1)*TILE_SIZE*TILE_SIZE + (Y*TILE_SIZE+X)*TENSOR_I,
-                      accri_matrix, TILE_SIZE, mem_col_major);
+    for (int x=0; x<2; x++) {
+        for (int y=0; y<4; y++) {
+            store_matrix_sync(output
+                              + (tile_id*2+0)*TILE_SIZE*TILE_SIZE
+                              + ((Y*4+y)*TILE_SIZE+(X*2+x))*TENSOR_I,
+                              accrr_matrix[x][y], TILE_SIZE, mem_col_major);
+            store_matrix_sync(output
+                              + (tile_id*2+1)*TILE_SIZE*TILE_SIZE
+                              + ((Y*4+y)*TILE_SIZE+(X*2+x))*TENSOR_I,
+                              accri_matrix[x][y], TILE_SIZE, mem_col_major);
+        }
+    }
+
 }
 
 
@@ -174,14 +176,11 @@ cudaEvent_t cudaCorrelatorKernel::execute(int gpu_frame_id, cudaEvent_t pre_even
     CHECK_CUDA_ERROR(cudaEventRecord(pre_events[gpu_frame_id], device.getStream(CUDA_COMPUTE_STREAM)));
 
     CHECK_CUDA_ERROR(cudaFuncSetAttribute (corr, cudaFuncAttributePreferredSharedMemoryCarveout, 100));
-    dim3 blk (32,TILE_COARSE_SIZE,TILE_COARSE_SIZE);
+    dim3 blk (32,4,2);
     dim3 grd (_num_blocks,_num_local_freq);
     corr<<<grd,blk,0,device.getStream(CUDA_COMPUTE_STREAM)>>>
         ((int*)input_memory, (int*)output_memory, _num_elements, _samples_per_data_set, _num_local_freq);
-/*  dim3 blk (32,1,1);
-    dim3 grd (1,_num_blocks,_num_local_freq);
-    basic_corr<<<grd,blk,0,device.getStream(CUDA_COMPUTE_STREAM)>>>
-        ((int*)input_memory, (int*)output_memory, _num_elements, _samples_per_data_set, _num_local_freq);*/
+
     CHECK_CUDA_ERROR(cudaGetLastError());
 
     CHECK_CUDA_ERROR(cudaEventCreate(&post_events[gpu_frame_id]));

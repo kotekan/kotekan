@@ -150,6 +150,36 @@ void gpuSimulate::main_thread() {
                           _num_local_freq);
                 }
             }
+        } else if (_data_format == "4+4b_wmma") {
+            for (int f = 0; f < _num_local_freq; ++f) {
+                for (int b = 0; b < _num_blocks; ++b) {
+                    for (int y = 0; y < _block_size; ++y) {
+                        for (int x = 0; x < _block_size; ++x) {
+                            int real = 0;
+                            int imag = 0;
+                            for (int t = 0; t < _samples_per_data_set; ++t) {
+                                int ix = (t * _num_local_freq + f) * _num_elements
+                                         + (host_block_map[2 * b + 0]) * _block_size + x;
+                                int xi =  (input[ix] & 0x07) - (input[ix] & 0x08);
+                                int xr = ((input[ix] & 0x70) >> 4) - ((input[ix] & 0x80)>>4);
+                                int iy = (t * _num_local_freq + f) * _num_elements
+                                         + (host_block_map[2 * b + 1]) * _block_size + y;
+                                int yi =  (input[iy] & 0x07) - (input[iy] & 0x08);
+                                int yr = ((input[iy] & 0x70) >> 4) - ((input[iy] & 0x80)>>4);
+                                real += xr * yr + xi * yi;
+                                imag += xi * yr - yi * xr;
+                            }
+                            output[(f * _num_blocks + b) * _block_size * _block_size * 2 + x
+                                   + y * _block_size + 0] = imag;
+                            output[(f * _num_blocks + b) * _block_size * _block_size * 2 + x
+                                   + y * _block_size + _block_size * _block_size] = real;
+                            // INFO("real: {:d}, imag: {:d}", real, imag);
+                        }
+                    }
+                    DEBUG("Done block {:d} of {:d} (freq {:d} of {:d})...", b, _num_blocks, f,
+                          _num_local_freq);
+                }
+            }
         } else if (_data_format == "cuda_wmma") {
             printf("CPU Calc:\n");
             uint32_t* input_u = (uint32_t*)input;
@@ -161,18 +191,18 @@ void gpuSimulate::main_thread() {
                             int imag = 0;
                             for (int t = 0; t < _samples_per_data_set / 32; t++) {
                                 for (int tt = 0; tt < 4; tt++) {
-                                    int ix = tt + 4 * x
+                                    int ix = tt + 4*(x%8) + (x/8)*32*2
                                              + 4 * 2 * _block_size * host_block_map[2 * b + 0]
                                              + 4 * 2 * _num_elements * f
                                              + 4 * 2 * _num_elements * _num_local_freq * t;
                                     int xi = input_u[ix];
-                                    int xr = input_u[ix + _block_size * 4];
-                                    int iy = tt + 4 * y
+                                    int xr = input_u[ix + 32];//_block_size * 4];
+                                    int iy = tt + 4*(y%8) + (y/8)*32*2
                                              + 4 * 2 * _block_size * host_block_map[2 * b + 1]
                                              + 4 * 2 * _num_elements * f
                                              + 4 * 2 * _num_elements * _num_local_freq * t;
                                     int yi = input_u[iy];
-                                    int yr = input_u[iy + _block_size * 4];
+                                    int yr = input_u[iy + 32];//_block_size * 4];
                                     real += dot4b(xr, yr) + dot4b(xi, yi);
                                     imag += dot4b(xi, yr) + dot4b(xr, yi); // NOTE: THIS IS WRONG!!!
                                 }
@@ -183,8 +213,49 @@ void gpuSimulate::main_thread() {
                                    + y * _block_size + _block_size * _block_size] = imag;
                         }
                     }
-                    DEBUG("Done block %d of %d (freq %d of %d)...", b, _num_blocks, f,
+                    DEBUG("Done block {:d} of {:d} (freq {:d} of {:d})...", b, _num_blocks, f,
                           _num_local_freq);
+                }
+            }
+        } else if (_data_format == "romein4b"){
+            int block_id = 0;
+            for (int x = 0; block_id < _num_blocks; x++) {
+                for (int y = 0; y <= x; y++) {
+                    host_block_map[2 * block_id + 0] = x;
+                    host_block_map[2 * block_id + 1] = y;
+                    block_id++;
+                }
+            }
+            //[NR_CHANNELS][NR_SAMPLES_PER_CHANNEL / 16][NR_STATIONS][NR_POLARIZATIONS][16]
+            printf("CPU Calc:\n");
+            for (int f = 0; f < _num_local_freq; ++f) {
+                for (int b = 0; b < _num_blocks; ++b) {
+                    for (int y = 0; y < _block_size; ++y) {
+                        for (int x = 0; x < _block_size; ++x) {
+                            int real = 0;
+                            int imag = 0;
+                            for (int t = 0; t < _samples_per_data_set; t++) {
+                                int T = t & 0xfffffff0;
+                                int tt = t & 0xf;
+                                int ix = f * _samples_per_data_set * _num_elements +
+                                         T * _num_elements +
+                                        (host_block_map[2 * b + 1]*_block_size + x) * 16 + tt;
+                                int xr = (input[ix] & 0x07) - (input[ix] & 0x08);
+                                int xi = ((input[ix] & 0x70) >> 4) - ((input[ix] & 0x80) >> 4);
+                                int iy = f * _samples_per_data_set * _num_elements +
+                                         T * _num_elements +
+                                        (host_block_map[2 * b + 0]*_block_size + y) * 16 + tt;
+                                int yr = (input[iy] & 0x07) - (input[iy] & 0x08);
+                                int yi = ((input[iy] & 0x70) >> 4) - ((input[iy] & 0x80) >> 4);
+                                real += xr * yr + xi * yi;
+                                imag += xi * yr - yi * xr;
+                            }
+                            output[(f * _num_blocks + b) * _block_size * _block_size * 2 +
+                                   (y * _block_size + x)*2 + 0] = real;
+                            output[(f * _num_blocks + b) * _block_size * _block_size * 2 +
+                                   (y * _block_size + x)*2 + 1] = -imag;
+                        }
+                    }
                 }
             }
         }

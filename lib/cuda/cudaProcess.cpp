@@ -22,7 +22,6 @@ cudaProcess::cudaProcess(Config& config_, const std::string& unique_name,
     gpuProcess(config_, unique_name, buffer_container) {
     device = new cudaDeviceInterface(config_, gpu_id, _gpu_buffer_depth);
     dev = device;
-    device->prepareStreams();
     CHECK_CUDA_ERROR(cudaProfilerStart());
     init();
 }

@@ -2,7 +2,7 @@
 #
 # verify_cuda_n2.yaml
 #
-# Config to test the cuda N2 kernel prototypes.
+# Config to test John Romein's cuda N2 kernel.
 #
 # Author: Keith Vanderlinde
 #
@@ -16,21 +16,17 @@ log_level: info
 num_links: 4
 freq_array: [4,7,10,16]
 timesamples_per_packet: 2
-block_size: 64
-samples_per_data_set: 4096 #49152 #16384
-num_beams: 1
+block_size: 2
+samples_per_data_set: 3072 #49152 #16384
 num_data_sets: 1
 num_gpus: 1
-buffer_depth: 8
-num_gpu_frames: 16
+buffer_depth: 2 #8
+num_gpu_frames: 4
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
-num_elements: 64 #2048
-num_dishes: num_elements / 2
-dish_rows: 32
-dish_cols: num_dishes / dish_rows
+num_elements: 576*2
 frame_arrival_period: 0.00000256 * samples_per_data_set
-num_local_freq: 1 #32
+num_local_freq: 64
 num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
 sizeof_int: 4
 
@@ -41,15 +37,14 @@ main_pool:
 
 # Buffers
 gpu_input_buffers:
-    num_frames: buffer_depth
+    num_frames: buffer_depth*2
     frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
     metadata_pool: main_pool
     gpu_input_buffer:
         kotekan_buffer: standard
 
 gpu_output_buffers:
-    num_frames: buffer_depth
-#    frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
+    num_frames: buffer_depth*2
     frame_size: num_local_freq * num_blocks * (block_size*block_size) * 2 * num_data_sets  * sizeof_int
     metadata_pool: main_pool
     gpu_output_buffer:
@@ -57,25 +52,25 @@ gpu_output_buffers:
 
 cpu_output_buffers:
     num_frames: buffer_depth
-#    frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
     frame_size: num_local_freq * num_blocks * (block_size*block_size) * 2 * num_data_sets  * sizeof_int
     metadata_pool: main_pool
     cpu_output_buffer:
         kotekan_buffer: standard
 
 gen_data:
-    type: random #const
-    value: 153
+    type: random
+    value: 1532
     kotekan_stage: testDataGen
     out_buf: gpu_input_buffer
 
-data_format: "cuda_wmma"
+data_format: "romein4b"
 
 gpu:
     profiling: true
+    kernel_path: "../../lib/cuda/kernels/"
     commands:
     - name: cudaInputData
-    - name: cudaCorrelatorKernel
+    - name: cudaCorrelatorRomein
     - name: cudaOutputData
     gpu_0:
         kotekan_stage: cudaProcess
@@ -96,9 +91,3 @@ check_data:
     first_buf: gpu_output_buffer
     second_buf: cpu_output_buffer
 
-#check_data:
-#  imag: [0]
-#  real: [98304] #[4816896] #98 * samples_per_dataset
-#  const_data_check:
-#    kotekan_stage: constDataCheck
-#    in_buf: gpu_output_buffer
