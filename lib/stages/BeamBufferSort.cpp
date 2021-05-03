@@ -36,7 +36,9 @@ BeamBufferSort::BeamBufferSort(Config& config_, const std::string& unique_name,
     total_freq_chan = config.get_default<uint32_t>(unique_name, "total_freq_chan", 1024);
     use_n_out_buffer = config.get_default<uint32_t>(unique_name, "use_n_out_buffer", total_freq_chan);    
     wait_nframes = config.get_default<int>(unique_name, "wait_nframes", 20);
-    time_resolution = config.get_default<double>(unique_name, "time_resolution", 2.56e-6);
+    time_resolution = config.get_default<double>(unique_name, "time_resolution", 2.56e-6); 
+    dump_sample = config.get<int>(unique_name, "dump_samples");
+
     FreqIDBeamMeta_size = sizeof(FreqIDBeamMetadata);
     // Total time for one coming frame in nanoseconds.
     subframe_time_nsec = time_resolution * samples_per_data_set * 1000000000;
