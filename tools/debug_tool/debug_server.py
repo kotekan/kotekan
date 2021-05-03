@@ -8,6 +8,7 @@ CORS(app, support_credentials=True)
 
 KOTEKAN_ADDRESS = 'http://localhost:12048'
 
+# Display kotekan pipeline
 @app.route('/', defaults={'path': ''})
 @app.route('/debug_tool/pipeline_tree.html', methods=["GET", "POST"])
 def proxy():
@@ -15,10 +16,7 @@ def proxy():
   # GET request
   if request.method == 'GET':
     data = get(f'{KOTEKAN_ADDRESS}/buffers')
-    #return render_template('pipeline_tree.html', data=data)
-    return render_template('cola.html', data=data)
-    #return render_template('dtree_example.html', data=data)
-    #return render_template('index.html', data=data)
+    return render_template('pipeline_tree.html', data=data)
 
   # POST request
   if request.method == 'POST':
@@ -26,6 +24,7 @@ def proxy():
     print(request.get_json())  # parse as JSON
     return 'Sucesss', 200
 
+# Load file
 @app.route('/', defaults={'req_path': ''})
 @app.route('/<path:req_path>')
 def dir_listing(req_path):
@@ -46,6 +45,7 @@ def dir_listing(req_path):
     files = os.listdir(abs_path)
     return render_template('files.html', files=files)
 
+# Update kotekan metrics
 @app.route('/', defaults={'path': ''})
 @app.route('/update', methods=["GET", "POST"])
 def update():
