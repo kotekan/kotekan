@@ -37,8 +37,9 @@ BeamBufferSort::BeamBufferSort(Config& config_, const std::string& unique_name,
     use_n_out_buffer = config.get_default<uint32_t>(unique_name, "use_n_out_buffer", total_freq_chan);    
     wait_nframes = config.get_default<int>(unique_name, "wait_nframes", 20);
     time_resolution = config.get_default<double>(unique_name, "time_resolution", 2.56e-6); 
-    dump_sample = config.get<int>(unique_name, "dump_samples");
-
+    dump_size = config.get<int>(unique_name, "dump_size");
+    // The data dump size should be smaller than half of queue time samples.
+    assert(dump_size < wait_nframes / 2 * samples_per_data_set);
     FreqIDBeamMeta_size = sizeof(FreqIDBeamMetadata);
     // Total time for one coming frame in nanoseconds.
     subframe_time_nsec = time_resolution * samples_per_data_set * 1000000000;
@@ -131,7 +132,7 @@ void BeamBufferSort::main_thread(){
     uint32_t start_pos;
     uint64_t frame_nr;
     uint8_t* output;
-    uint32_t dump_nframe;
+    uint32_t advance_nframe;
     uint32_t dump_start;
     uint32_t dump_size;
     uint64_t fpga_seq_start;
@@ -141,6 +142,7 @@ void BeamBufferSort::main_thread(){
     double ra;
     double dec;
     double scaling;
+    uint32_t dump_offset = 0 ;  // Dump Offset in the incoming frame 
 
     timespec ctime0;
     
@@ -201,16 +203,38 @@ void BeamBufferSort::main_thread(){
         // Check if time offset is outside of waiting frames, if yes dump the old frames.
 	if (time_offset >= wait_nframes){ // Frame comes beyond the waiting frames, dump old frames.
             // Decide the number of frames to dump.
-            dump_nframe = time_offset - wait_nframes + 1;
-	    INFO("dump_nframe {:d}", dump_nframe);
-            for (uint32_t i = 0; i < dump_nframe; i++){ // Get how many frames need to be dumped
-	        // Check queue fill stauts, if not, fill frames as zero
-		for (uint32_t j = 0; j < queue_status[i].size(); j++){
-		    if (queue_status[i][j] == 0){
-                        fill_empty_frame(i, j, fpga_seq_start0, ctime0, beam_number, ra, dec, scaling);
-		    }
+            advance_nframe = time_offset - wait_nframes + 1;
+	    if (dump_size > advance_nframe){
+	       ndumps =     
+	    } 
+             
+
+
+
+            for (uint32_t i = 0; i < advance_nframe; i++){ // Get how many frames need to be dumped
+		if (dump_size > samples_per_data){
+		
 		}
-		// Finishing filling empty frame , put frame to the out buffer
+		// Check the dump_offset status. How many date samples can be dumpe in this frame. 
+                leftover_in_frame = samples_per_data_set - dump_offset;
+		if (dump_size > samples_per_data)
+                ndumps = leftover_in_frame / dump_size;
+		// Check if there is any data sample remind in the frame, if yes, dump them with the
+		// start date of the next frame.
+		remainder_samples = leftover_in_frame % dump_samples;
+                if (remainder > 0){
+		    ndumps += 1;
+		}
+                
+                // Check queue fill stauts, if not, fill frames as zero
+                for (uint32_t j = 0; j < queue_status[i].size(); j++){
+                    if (queue_status[i][j] == 0){
+                        fill_empty_frame(i, j, fpga_seq_start0, ctime0, beam_number, ra, dec, scaling);
+                    }
+                }		
+		
+		
+		// put frame to the out buffer
 		// Since we use nbuffers, dump all nbuffer.
 		for (uint32_t k=0; k < out_bufs.size(); k++){
 		// Compute the start dump for the buffer
