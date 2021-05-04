@@ -103,6 +103,8 @@ private:
     uint32_t sub_frame_size;
     /// Time span for each subframe.
     long subframe_time_nsec;
+    /// The number of samples to dump out to next stage
+    int dump_size;
 };
 
 #endif //BEAM_BUFFER_SORT_HPP
