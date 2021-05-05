@@ -239,7 +239,11 @@ double movingAverage::average() {
 }
 
 sampleBuffer::sampleBuffer(size_t size) :
-    rbuf(std::make_unique<double[]>(size)), front(0), end(0), buf_size(size), count(0){};
+    rbuf(std::make_unique<double[]>(size)),
+    front(0),
+    end(0),
+    buf_size(size),
+    count(0){};
 
 void sampleBuffer::add_sample(double sample) {
     rbuf[end] = sample;
