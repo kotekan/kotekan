@@ -8,7 +8,6 @@
 #include <regex>     // for sregex_token_iterator, match_results<>::_Base_type, _NFA, regex
 #include <sstream>   // for basic_stringbuf<>::int_type, basic_stringbuf<>::pos_type, basic_st...
 #include <stdexcept> // for runtime_error, invalid_argument
-#include <limits>    // for std::numeric_limits<int>::max() and std::numeric_limits<int>::min()
 
 using nlohmann::json;
 
@@ -240,11 +239,7 @@ double movingAverage::average() {
 }
 
 sampleBuffer::sampleBuffer(size_t size) :
-    rbuf(std::make_unique<double[]>(size)),
-    front(0),
-    end(0),
-    buf_size(size),
-    count(0) {};
+    rbuf(std::make_unique<double[]>(size)), front(0), end(0), buf_size(size), count(0){};
 
 void sampleBuffer::add_sample(double sample) {
     rbuf[end] = sample;
@@ -252,8 +247,7 @@ void sampleBuffer::add_sample(double sample) {
         count++;
     }
 
-    if(count == buf_size)
-    {
+    if (count == buf_size) {
         front = (front + 1) % buf_size;
     }
 
@@ -268,7 +262,7 @@ double sampleBuffer::get_max() {
         return 0.0;
     }
 
-    for(size_t i = 0; i < count; i++) {
+    for (size_t i = 0; i < count; i++) {
         index = (front + i) % buf_size;
         if (max < rbuf[index]) {
             max = rbuf[index];
@@ -286,7 +280,7 @@ double sampleBuffer::get_min() {
         return 0.0;
     }
 
-    for(size_t i = 0; i < count; i++) {
+    for (size_t i = 0; i < count; i++) {
         index = (front + i) % buf_size;
         if (min > rbuf[index]) {
             min = rbuf[index];
@@ -309,13 +303,12 @@ double sampleBuffer::get_avg() {
         sum += rbuf[index];
     }
 
-    return sum/count;
+    return sum / count;
 }
 
 double sampleBuffer::get_std_dev() {
     double standardDeviation = 0.0;
     double mean;
-    size_t i;
     size_t index;
 
     if (count == 0) {
@@ -324,7 +317,7 @@ double sampleBuffer::get_std_dev() {
 
     mean = this->get_avg();
 
-    for(i = 0; i < count; i++) {
+    for (size_t i = 0; i < count; i++) {
         index = (front + i) % buf_size;
         standardDeviation += pow(rbuf[index] - mean, 2);
     }

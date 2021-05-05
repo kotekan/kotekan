@@ -27,6 +27,7 @@
 #include <iosfwd>      // for ostream
 #include <map>         // for map
 #include <math.h>      // for fmod
+#include <memory>      // for unique_ptr
 #include <string>      // for string
 #include <sys/time.h>  // for timeval, CLOCK_REALTIME
 #include <sys/types.h> // for __syscall_slong_t, suseconds_t, time_t
