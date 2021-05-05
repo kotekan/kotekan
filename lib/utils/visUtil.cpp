@@ -253,11 +253,11 @@ void sampleBuffer::add_sample(double sample) {
     }
 
     if(count == buf_size)
-	{
-		front = (front + 1) % buf_size;
-	}
+    {
+        front = (front + 1) % buf_size;
+    }
 
-	end = (end + 1) % buf_size;
+    end = (end + 1) % buf_size;
 }
 
 double sampleBuffer::get_max() {
