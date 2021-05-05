@@ -527,6 +527,65 @@ private:
     bool initialised = false;
 };
 
+/**
+ * @class sampleBuffer
+ *
+ * @brief Store samples and compute statistics.
+ **/
+class sampleBuffer {
+
+public:
+    /**
+     * @brief Create a ring buffer.
+     *
+     * @param size The size of the ring buffer.
+     **/
+    explicit sampleBuffer(size_t size = 100);
+
+    /**
+     * @brief Add a new sample value to the buffer.
+     *        if the buffer is full, the new sample will overwrite the earliest one.
+     *
+     * @param sample The sample to add.
+     **/
+    void add_sample(double sample);
+
+    /**
+     * @brief Return the maximum sample based on all values stored in buffer.
+     *
+     * @return The current maximum sample.
+     **/
+    double get_max();
+
+    /**
+     * @brief Return the minimum sample based on all values stored in buffer.
+     *
+     * @return The current minimum sample.
+     **/
+    double get_min();
+
+    /**
+     * @brief Return the average value based on all samples stored in buffer.
+     *
+     * @return The current average value.
+     **/
+    double get_avg();
+
+    /**
+     * @brief Return the standard deviation based on all samples stored in buffer.
+     *
+     * @return The current standard deviation.
+     **/
+    double get_std_dev();
+
+private:
+    std::unique_ptr<double[]> rbuf;
+    size_t front;
+    size_t end;
+    size_t buf_size;
+    size_t count;
+};
+
 // Zip, unzip adapted from https://gist.github.com/yig/32fe51874f3911d1c612
 // TODO: write a more generalised version with variadic arguments
 /**

@@ -8,6 +8,7 @@
 #include <regex>     // for sregex_token_iterator, match_results<>::_Base_type, _NFA, regex
 #include <sstream>   // for basic_stringbuf<>::int_type, basic_stringbuf<>::pos_type, basic_st...
 #include <stdexcept> // for runtime_error, invalid_argument
+#include <limits>    // for std::numeric_limits<int>::max() and std::numeric_limits<int>::min()
 
 using nlohmann::json;
 
@@ -236,6 +237,99 @@ double movingAverage::average() {
         return NAN;
     }
     return current_value;
+}
+
+sampleBuffer::sampleBuffer(size_t size) :
+    rbuf(std::make_unique<double[]>(size)),
+    front(0),
+    end(0),
+    buf_size(size),
+    count(0) {};
+
+void sampleBuffer::add_sample(double sample) {
+    rbuf[end] = sample;
+    if (count < buf_size) {
+        count++;
+    }
+
+    if(count == buf_size)
+	{
+		front = (front + 1) % buf_size;
+	}
+
+	end = (end + 1) % buf_size;
+}
+
+double sampleBuffer::get_max() {
+    double max = std::numeric_limits<double>::min();
+    size_t index;
+
+    if (count == 0) {
+        return 0.0;
+    }
+
+    for(size_t i = 0; i < count; i++) {
+        index = (front + i) % buf_size;
+        if (max < rbuf[index]) {
+            max = rbuf[index];
+        }
+    }
+
+    return max;
+}
+
+double sampleBuffer::get_min() {
+    double min = std::numeric_limits<double>::max();
+    size_t index;
+
+    if (count == 0) {
+        return 0.0;
+    }
+
+    for(size_t i = 0; i < count; i++) {
+        index = (front + i) % buf_size;
+        if (min > rbuf[index]) {
+            min = rbuf[index];
+        }
+    }
+
+    return min;
+}
+
+double sampleBuffer::get_avg() {
+    double sum = 0.0;
+    size_t index;
+
+    if (count == 0) {
+        return 0.0;
+    }
+
+    for (size_t i = 0; i < count; i++) {
+        index = (front + i) % buf_size;
+        sum += rbuf[index];
+    }
+
+    return sum/count;
+}
+
+double sampleBuffer::get_std_dev() {
+    double standardDeviation = 0.0;
+    double mean;
+    size_t i;
+    size_t index;
+
+    if (count == 0) {
+        return 0.0;
+    }
+
+    mean = this->get_avg();
+
+    for(i = 0; i < count; i++) {
+        index = (front + i) % buf_size;
+        standardDeviation += pow(rbuf[index] - mean, 2);
+    }
+
+    return sqrt(standardDeviation / count);
 }
 
 std::vector<std::string> regex_split(const std::string input, const std::string reg) {
