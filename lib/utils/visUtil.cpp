@@ -238,95 +238,81 @@ double movingAverage::average() {
     return current_value;
 }
 
-sampleBuffer::sampleBuffer(size_t size) :
-    rbuf(std::make_unique<double[]>(size)),
-    front(0),
-    end(0),
-    buf_size(size),
-    count(0){};
+double SlidingWindowMinMax::getMinimum() {
+    return minDeque.front();
+}
 
-void sampleBuffer::add_sample(double sample) {
-    rbuf[end] = sample;
-    if (count < buf_size) {
-        count++;
+double SlidingWindowMinMax::getMaximum() {
+    return maxDeque.front();
+}
+
+void SlidingWindowMinMax::addTail(double val) {
+    while (!minDeque.empty() && val < minDeque.back()) {
+        minDeque.pop_back();
     }
+    minDeque.push_back(val);
 
-    if (count == buf_size) {
-        front = (front + 1) % buf_size;
+    while (!maxDeque.empty() && val > maxDeque.back()) {
+        maxDeque.pop_back();
     }
+    maxDeque.push_back(val);
+}
 
+void SlidingWindowMinMax::removeHead(double val) {
+    if (val == minDeque.front())
+        minDeque.pop_front();
+
+    if (val == maxDeque.front())
+        maxDeque.pop_front();
+}
+
+void StateTracker::add_sample(double new_val) {
+    double old_val = rbuf[end];
+    rbuf[end] = new_val;
+    min_max.addTail(new_val);
     end = (end + 1) % buf_size;
+
+    if (count < buf_size) {
+        double old_avg = avg;
+        avg += (new_val - old_avg) / (++count);
+        dist += (new_val - avg) * (new_val - old_avg);
+        var = dist / (count - 1);
+    } else {
+        double old_avg = avg;
+        min_max.removeHead(old_val);
+        avg = old_avg + (new_val - old_val) / buf_size;
+        var += (new_val - old_val) * (new_val - avg + old_val - old_avg) / (buf_size - 1);
+    }
+
+    std_dev = sqrt(var);
 }
 
-double sampleBuffer::get_max() {
-    double max = std::numeric_limits<double>::min();
-    size_t index;
-
+double StateTracker::get_max() {
     if (count == 0) {
-        return 0.0;
+        return NAN;
     }
-
-    for (size_t i = 0; i < count; i++) {
-        index = (front + i) % buf_size;
-        if (max < rbuf[index]) {
-            max = rbuf[index];
-        }
-    }
-
-    return max;
+    return min_max.getMaximum();
 }
 
-double sampleBuffer::get_min() {
-    double min = std::numeric_limits<double>::max();
-    size_t index;
-
+double StateTracker::get_min() {
     if (count == 0) {
-        return 0.0;
+        return NAN;
     }
-
-    for (size_t i = 0; i < count; i++) {
-        index = (front + i) % buf_size;
-        if (min > rbuf[index]) {
-            min = rbuf[index];
-        }
-    }
-
-    return min;
+    return min_max.getMinimum();
 }
 
-double sampleBuffer::get_avg() {
-    double sum = 0.0;
-    size_t index;
-
+double StateTracker::get_avg() {
     if (count == 0) {
-        return 0.0;
+        return NAN;
     }
-
-    for (size_t i = 0; i < count; i++) {
-        index = (front + i) % buf_size;
-        sum += rbuf[index];
-    }
-
-    return sum / count;
+    return avg;
 }
 
-double sampleBuffer::get_std_dev() {
-    double standardDeviation = 0.0;
-    double mean;
-    size_t index;
-
+double StateTracker::get_std_dev() {
     if (count == 0) {
-        return 0.0;
+        return NAN;
     }
-
-    mean = this->get_avg();
-
-    for (size_t i = 0; i < count; i++) {
-        index = (front + i) % buf_size;
-        standardDeviation += pow(rbuf[index] - mean, 2);
-    }
-
-    return sqrt(standardDeviation / count);
+    return std_dev;
 }
 
 std::vector<std::string> regex_split(const std::string input, const std::string reg) {

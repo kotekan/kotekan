@@ -529,11 +529,51 @@ private:
 };
 
 /**
- * @class sampleBuffer
+ * @class SlidingWindowMinMax
+ *
+ * @brief Use two deques to keep tracking minimum and maximum values.
+ **/
+class SlidingWindowMinMax {
+
+public:
+    /**
+     * @brief Get the current minimum value from the front of minDeque.
+     *
+     * @return The current minimum value.
+     **/
+    double getMinimum();
+
+    /**
+     * @brief Get the current maximum value from the front of maxDeque.
+     *
+     * @return The current maximum value.
+     **/
+    double getMaximum();
+
+    /**
+     * @brief Add a new value to both minDeque and maxDeque.
+     *        The insert position is based on the input value.
+     *        All values greater than the input are removed in minDeque;
+     *        All values less than the input are removed in maxDeque;
+     **/
+    void addTail(double val);
+
+    /**
+     * @brief Remove the given value from the front of minDeque or maxDeque.
+     **/
+    void removeHead(double val);
+
+private:
+    std::deque<double> minDeque;
+    std::deque<double> maxDeque;
+};
+
+/**
+ * @class StateTracker
  *
  * @brief Store samples and compute statistics.
  **/
-class sampleBuffer {
+class StateTracker {
 
 public:
     /**
@@ -541,15 +581,15 @@ public:
      *
      * @param size The size of the ring buffer.
      **/
-    explicit sampleBuffer(size_t size = 100);
+    explicit StateTracker(size_t size = 100);
 
     /**
      * @brief Add a new sample value to the buffer.
      *        if the buffer is full, the new sample will overwrite the earliest one.
      *
-     * @param sample The sample to add.
+     * @param new_val The sample to add.
      **/
-    void add_sample(double sample);
+    void add_sample(double new_val);
 
     /**
      * @brief Return the maximum sample based on all values stored in buffer.
@@ -580,11 +620,16 @@ public:
     double get_std_dev();
 
 private:
+    SlidingWindowMinMax min_max;
     std::unique_ptr<double[]> rbuf;
-    size_t front;
     size_t end;
     size_t buf_size;
     size_t count;
+
+    double avg;
+    double dist;
+    double var;
+    double std_dev;
 };
 
 // Zip, unzip adapted from https://gist.github.com/yig/32fe51874f3911d1c612
