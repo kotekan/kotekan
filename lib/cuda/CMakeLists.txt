@@ -11,12 +11,16 @@ add_library(
     cudaOutputData.cpp
     cudaOutputDataZero.cpp
     # Simple test
-    cudaCorrelatorKernel.cu)
+    cudaCorrelatorKernel.cu
+    # Romein Correlator
+    cudaShuffleRomein.cu
+    cudaCorrelatorRomein.cpp
+    )
 
 target_link_libraries(
     kotekan_cuda
     PRIVATE libexternal kotekan_libs -lstdc++
-    INTERFACE ${CUDA_LIBRARIES})
+    INTERFACE ${CUDA_LIBRARIES} cuda nvrtc)
 
 #set(CUDA_PROPAGATE_HOST_FLAGS OFF)
 #set_property(TARGET kotekan_cuda PROPERTY INTERFACE_COMPILE_OPTIONS "")

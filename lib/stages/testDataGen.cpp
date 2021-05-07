@@ -150,10 +150,14 @@ void testDataGen::main_thread() {
             } else if (type == "random") {
                 char new_real;
                 char new_imaginary;
-                new_real = (rand() % 15) - 7;      //can't handle -8!
-                new_imaginary = (rand() % 15) - 7; //can't handle -8!
+                new_real = (rand() % 15)+1;//offset encoded; can't handle 0
+                                      //-7;//signed; can't handle -8!
+                new_imaginary = (rand() % 15)+1;//offset encoded; can't handle 0
+                                      //-7;//signed; can't handle -8!
                 temp_output = ((new_real << 4) & 0xF0) | (new_imaginary & 0x0F);
                 frame[j] = temp_output;
+//                printf("Input: %d %d %d\n",temp_output, new_real, new_imaginary);
+//                exit(0);
             } else if (type == "tpluse") {
                 frame[j] = seq_num + j / num_elements + j % num_elements;
             } else if (type == "square") {

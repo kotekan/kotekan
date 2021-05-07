@@ -1,30 +1,29 @@
 /**
  * @file
  * @brief CUDA N^2 correlator kernel.
- *  - cudaCorrelatorRomein : public cudaCommand
+ *  - cudaShuffleRomein : public cudaCommand
  */
 
-#ifndef CUDA_CORRELATOR_ROMEIN_HPP
-#define CUDA_CORRELATOR_ROMEIN_HPP
+#ifndef CUDA_SHUFFLE_ROMEIN_CUH
+#define CUDA_SHUFFLE_ROMEIN_CUH
 
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
 
 /**
- * @class cudaCorrelatorRomein
- * @brief cudaCommand for doing an N2 correlation. Uses John Romein's Tensor-based kernel,
- * which must be provided separately. Contact John (romein@astron.nl) for InterleaveCorrelator.cu.
+ * @class cudaShuffleRomein
+ * @brief cudaCommand for doing an N2 correlation. Still prototyping sandbox only.
  *
- * Longer desription goes here.
+ * Longer desription goes here. Kernel still needs heavy optimizing, consider a sandbox only for now.
  *
- * @author Keith Vanderlinde, kernels (not included) by John Romein
+ * @author Keith Vanderlinde
  *
  */
-class cudaCorrelatorRomein : public cudaCommand {
+class cudaShuffleRomein : public cudaCommand {
 public:
-    cudaCorrelatorRomein(kotekan::Config& config, const std::string& unique_name,
-                         kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
-    ~cudaCorrelatorRomein();
+    cudaShuffleRomein(kotekan::Config& config, const std::string& unique_name,
+                   kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+    ~cudaShuffleRomein();
     cudaEvent_t execute(int gpu_frame_id, cudaEvent_t pre_event) override;
 
 protected:
@@ -48,18 +47,6 @@ private:
     /// Global buffer depth for all buffers in system. Sets the number of frames to be queued up in
     /// each buffer.
     int32_t _buffer_depth;
-
-
-    void build(const char **opts, int nopts);
-
-    /// Allocates resources on the GPU for the kernel.
-    CUfunction sq_kernel, tr_kernel, corr_kernel;
-
-    // Kernel values.
-    /// global work space dimension
-    size_t gws[3];
-    /// local work space dimension
-    size_t lws[3];
 };
 
-#endif // CUDA_CORRELATOR_ROMEIN_HPP
+#endif // CUDA_SHUFFLE_ROMEIN_CUH

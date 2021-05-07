@@ -24,9 +24,9 @@ buffer_depth: 2 #8
 num_gpu_frames: 4
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
-num_elements: 576*2
+num_elements: 256*2 #528*2
 frame_arrival_period: 0.00000256 * samples_per_data_set
-num_local_freq: 64
+num_local_freq: 4 #64
 num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
 sizeof_int: 4
 
@@ -63,13 +63,14 @@ gen_data:
     kotekan_stage: testDataGen
     out_buf: gpu_input_buffer
 
-data_format: "romein4b"
+data_format: "4+4b" #"romein4b"
 
 gpu:
     profiling: true
     kernel_path: "../../lib/cuda/kernels/"
     commands:
     - name: cudaInputData
+    - name: cudaShuffleRomein
     - name: cudaCorrelatorRomein
     - name: cudaOutputData
     gpu_0:
@@ -80,14 +81,14 @@ gpu:
         out_buffers:
             output_buf: gpu_output_buffer
 
-cpu:
-    kotekan_stage: gpuSimulate
-    log_level: debug
-    network_in_buf: gpu_input_buffer
-    corr_out_buf: cpu_output_buffer
-
-check_data:
-    kotekan_stage: testDataCheckInt
-    first_buf: gpu_output_buffer
-    second_buf: cpu_output_buffer
+#cpu:
+#    kotekan_stage: gpuSimulate
+#    log_level: info
+#    network_in_buf: gpu_input_buffer
+#    corr_out_buf: cpu_output_buffer
+#
+#check_data:
+#    kotekan_stage: testDataCheckInt
+#    first_buf: gpu_output_buffer
+#    second_buf: cpu_output_buffer
 

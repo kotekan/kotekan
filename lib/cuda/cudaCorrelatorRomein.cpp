@@ -6,9 +6,9 @@ using kotekan::Config;
 
 REGISTER_CUDA_COMMAND(cudaCorrelatorRomein);
 
-cudaCorrelatorRomein::cudaCorrelatorRomein(Config& config, const string& unique_name,
+cudaCorrelatorRomein::cudaCorrelatorRomein(Config& config, const std::string& unique_name,
                                            bufferContainer& host_buffers, cudaDeviceInterface& device) :
-        cudaCommand(config, unique_name, host_buffers, device, "interleaveCorrelator", "InterleaveCorrelator.cu") {
+        cudaCommand(config, unique_name, host_buffers, device, "correlate", "Correlator.cu") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
@@ -22,6 +22,7 @@ cudaCorrelatorRomein::cudaCorrelatorRomein(Config& config, const string& unique_
     std::string stations = fmt::format("-DNR_STATIONS={:d}",_num_elements/2);
     std::string channels = fmt::format("-DNR_CHANNELS={:d}",_num_local_freq);
     std::string nsamples = fmt::format("-DNR_SAMPLES_PER_CHANNEL={:d}",_samples_per_data_set);
+    std::string nstnpblk = fmt::format("-DNR_STATIONS_PER_BLOCK={:d}",64 /*48*/);
     const char *opts[] = {"-arch=compute_75",
                           "-std=c++14",
                           //"-code=sm_75",
@@ -31,10 +32,11 @@ cudaCorrelatorRomein::cudaCorrelatorRomein(Config& config, const string& unique_
                           stations.c_str(),
                           channels.c_str(),
                           nsamples.c_str(),
+                          nstnpblk.c_str(),
                           "-DNR_POLARIZATIONS=2",
                           "-I/usr/local/cuda/include"
     };
-    build(opts,9);
+    build(opts,10);
 }
 
 cudaCorrelatorRomein::~cudaCorrelatorRomein() {}
@@ -43,7 +45,8 @@ cudaEvent_t cudaCorrelatorRomein::execute(int gpu_frame_id, cudaEvent_t pre_even
     pre_execute(gpu_frame_id);
 
     uint32_t input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
-    void *input_memory = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
+//    void *input_memory = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
+    void *input_memory = device.get_gpu_memory("in_romein", input_frame_len);
 
     uint32_t output_len = _num_local_freq * _num_blocks * (_block_size * _block_size) * 2
                           * _num_data_sets * sizeof(int32_t);
@@ -56,24 +59,11 @@ cudaEvent_t cudaCorrelatorRomein::execute(int gpu_frame_id, cudaEvent_t pre_even
     INFO("Starting...");
     CUresult err;
     void *parameters[] = { &output_memory, &input_memory };
-    int nblks_sq = (_num_elements / 128) * (_num_elements / 128 - 1) / 2;
-    if (nblks_sq > 0) {
-        err = cuLaunchKernel(sq_kernel,
-                             2, nblks_sq, _num_local_freq,
-                             32, 2, 2,
-                             0,
-                             device.getStream(CUDA_COMPUTE_STREAM),
-                             parameters, NULL);
-        if (err != CUDA_SUCCESS) {
-            const char *errStr;
-            cuGetErrorString(err, &errStr);
-            INFO("ERROR IN cuLaunchKernel: {}", errStr);
-        }
-    }
-    int nblks_tr = _num_elements/128;
-    err = cuLaunchKernel(tr_kernel,
-                         nblks_tr,_num_local_freq, 1,
-                         32, 4, 1,
+//    int nblks = (_num_elements / 2 / 48) * (_num_elements / 2 / 48 + 1) / 2;
+    int nblks = (_num_elements / 2 / 64) * (_num_elements / 2 / 64);
+    err = cuLaunchKernel(corr_kernel,
+                         nblks,_num_local_freq, 1,
+                         32, 2, 2,
                          0,
                          device.getStream(CUDA_COMPUTE_STREAM),
                          parameters, NULL);
@@ -95,17 +85,11 @@ void cudaCorrelatorRomein::build(const char **opts, int nopts) {
     cudaCommand::build(opts, nopts);
 
     CUresult err;
-    err = cuModuleGetFunction(&sq_kernel, module, "correlateSquare");
+    err = cuModuleGetFunction(&corr_kernel, module, "correlate");
     if (err != CUDA_SUCCESS){
         const char *errStr;
         cuGetErrorString(err, &errStr);
-        INFO("ERROR IN cuModuleGetFunction for correlateSquare: {}",errStr);
-    }
-    err = cuModuleGetFunction(&tr_kernel, module, "correlateTriangle");
-    if (err != CUDA_SUCCESS){
-        const char *errStr;
-        cuGetErrorString(err, &errStr);
-        INFO("ERROR IN cuModuleGetFunction for correlateTriangle: {}", errStr);
+        INFO("ERROR IN cuModuleGetFunction for correlate: {}", errStr);
     }
 
     DEBUG2("BUILT CUDA KERNEL! Yay!");

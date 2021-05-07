@@ -17,10 +17,10 @@ target_link_libraries(kotekan_libs INTERFACE kotekan_version)
 
 target_link_libraries(kotekan_libs INTERFACE libexternal)
 
-if(${WITH_TESTS})
+#if(${WITH_TESTS})
     add_subdirectory(testing)
     target_link_libraries(kotekan_libs INTERFACE kotekan_testing)
-endif()
+#endif()
 
 add_subdirectory(core)
 target_link_libraries(kotekan_libs INTERFACE kotekan_core)

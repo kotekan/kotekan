@@ -90,6 +90,14 @@ void gpuSimulate::main_thread() {
 
 
         if (_data_format == "4+4b") {
+            int block_id = 0;
+            for (int x = 0; block_id < _num_blocks; x++) {
+                for (int y = 0; y <= x; y++) {
+                    host_block_map[2 * block_id + 1] = x;
+                    host_block_map[2 * block_id + 0] = y;
+                    block_id++;
+                }
+            }
             for (int f = 0; f < _num_local_freq; ++f) {
                 for (int b = 0; b < _num_blocks; ++b) {
                     for (int y = 0; y < _block_size; ++y) {
@@ -109,10 +117,10 @@ void gpuSimulate::main_thread() {
                                 imag += xi * yr - yi * xr;
                             }
                             output[(f * _num_blocks + b) * _block_size * _block_size * 2 + x * 2
-                                   + y * _block_size * 2 + 0] = imag;
+                                   + y * _block_size * 2 + 1] = -imag;
                             output[(f * _num_blocks + b) * _block_size * _block_size * 2 + x * 2
-                                   + y * _block_size * 2 + 1] = real;
-                            // INFO("real: {:d}, imag: {:d}", real, imag);
+                                   + y * _block_size * 2 + 0] = real;
+                            //INFO("real: {:d}, imag: {:d}", real, imag);
                         }
                     }
                     DEBUG("Done block {:d} of {:d} (freq {:d} of {:d})...", b, _num_blocks, f,
@@ -226,7 +234,9 @@ void gpuSimulate::main_thread() {
                     block_id++;
                 }
             }
-            //[NR_CHANNELS][NR_SAMPLES_PER_CHANNEL / 16][NR_STATIONS][NR_POLARIZATIONS][16]
+            //Samples[NR_CHANNELS][NR_SAMPLES_PER_CHANNEL / NR_TIMES_PER_BLOCK][NR_STATIONS][NR_POLARIZATIONS][NR_TIMES_PER_BLOCK];
+            //NR_TIMES_PER_BLOCK	32 = (128 / (NR_BITS))
+            //OLD: [NR_CHANNELS][NR_SAMPLES_PER_CHANNEL / 16][NR_STATIONS][NR_POLARIZATIONS][16]
             printf("CPU Calc:\n");
             for (int f = 0; f < _num_local_freq; ++f) {
                 for (int b = 0; b < _num_blocks; ++b) {
@@ -235,25 +245,25 @@ void gpuSimulate::main_thread() {
                             int real = 0;
                             int imag = 0;
                             for (int t = 0; t < _samples_per_data_set; t++) {
-                                int T = t & 0xfffffff0;
-                                int tt = t & 0xf;
+                                int T = t & 0xffffffe0;
+                                int tt = t & 0x1f;
                                 int ix = f * _samples_per_data_set * _num_elements +
                                          T * _num_elements +
-                                        (host_block_map[2 * b + 1]*_block_size + x) * 16 + tt;
+                                        (host_block_map[2 * b + 1]*_block_size + x) * 32 + tt;
                                 int xr = (input[ix] & 0x07) - (input[ix] & 0x08);
-                                int xi = ((input[ix] & 0x70) >> 4) - ((input[ix] & 0x80) >> 4);
+                                int xi = -( ((input[ix] & 0x70) >> 4) - ((input[ix] & 0x80) >> 4) );
                                 int iy = f * _samples_per_data_set * _num_elements +
                                          T * _num_elements +
-                                        (host_block_map[2 * b + 0]*_block_size + y) * 16 + tt;
+                                        (host_block_map[2 * b + 0]*_block_size + y) * 32 + tt;
                                 int yr = (input[iy] & 0x07) - (input[iy] & 0x08);
-                                int yi = ((input[iy] & 0x70) >> 4) - ((input[iy] & 0x80) >> 4);
+                                int yi = -( ((input[iy] & 0x70) >> 4) - ((input[iy] & 0x80) >> 4) );
                                 real += xr * yr + xi * yi;
                                 imag += xi * yr - yi * xr;
                             }
                             output[(f * _num_blocks + b) * _block_size * _block_size * 2 +
                                    (y * _block_size + x)*2 + 0] = real;
                             output[(f * _num_blocks + b) * _block_size * _block_size * 2 +
-                                   (y * _block_size + x)*2 + 1] = -imag;
+                                   (y * _block_size + x)*2 + 1] = imag;
                         }
                     }
                 }
