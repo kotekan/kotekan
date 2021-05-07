@@ -266,7 +266,7 @@ void SlidingWindowMinMax::removeHead(double val) {
         maxDeque.pop_front();
 }
 
-void StateTracker::add_sample(double new_val) {
+void StatTracker::add_sample(double new_val) {
     double old_val = rbuf[end];
     rbuf[end] = new_val;
     min_max.addTail(new_val);
@@ -287,28 +287,28 @@ void StateTracker::add_sample(double new_val) {
     std_dev = sqrt(var);
 }
 
-double StateTracker::get_max() {
+double StatTracker::get_max() {
     if (count == 0) {
         return NAN;
     }
     return min_max.getMaximum();
 }
 
-double StateTracker::get_min() {
+double StatTracker::get_min() {
     if (count == 0) {
         return NAN;
     }
     return min_max.getMinimum();
 }
 
-double StateTracker::get_avg() {
+double StatTracker::get_avg() {
     if (count == 0) {
         return NAN;
     }
     return avg;
 }
 
-double StateTracker::get_std_dev() {
+double StatTracker::get_std_dev() {
     if (count == 0) {
         return NAN;
     }

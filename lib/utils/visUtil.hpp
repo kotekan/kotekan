@@ -569,11 +569,11 @@ private:
 };
 
 /**
- * @class StateTracker
+ * @class StatTracker
  *
  * @brief Store samples and compute statistics.
  **/
-class StateTracker {
+class StatTracker {
 
 public:
     /**
@@ -581,7 +581,7 @@ public:
      *
      * @param size The size of the ring buffer.
      **/
-    explicit StateTracker(size_t size = 100);
+    explicit StatTracker(size_t size = 100);
 
     /**
      * @brief Add a new sample value to the buffer.
