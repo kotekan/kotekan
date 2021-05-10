@@ -1,8 +1,9 @@
 #define BOOST_TEST_MODULE "test_stat_tracker"
 
-#include "visUtil.hpp"
+#include <boost/test/included/unit_test.hpp>  // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
+#include <cmath>                              // for isnan
 
-#include <boost/test/included/unit_test.hpp>
+#include "visUtil.hpp"                        // for StatTracker
 
 BOOST_AUTO_TEST_CASE(_stat_tracker_get_max) {
     StatTracker buf(3);
