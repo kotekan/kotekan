@@ -266,6 +266,16 @@ void SlidingWindowMinMax::removeHead(double val) {
         maxDeque.pop_front();
 }
 
+StatTracker::StatTracker(size_t size) :
+    rbuf(std::make_unique<double[]>(size)),
+    end(0),
+    buf_size(size),
+    count(0),
+    avg(0),
+    dist(0),
+    var(0),
+    std_dev(0){};
+
 void StatTracker::add_sample(double new_val) {
     double old_val = rbuf[end];
     rbuf[end] = new_val;

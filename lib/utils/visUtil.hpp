@@ -23,6 +23,7 @@
 #include <complex>     // for complex, imag, real
 #include <cstdint>     // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
 #include <cstdlib>     // for size_t, (anonymous), div
+#include <deque>       // for deque
 #include <functional>  // for function
 #include <iosfwd>      // for ostream
 #include <map>         // for map
