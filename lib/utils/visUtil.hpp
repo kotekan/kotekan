@@ -529,12 +529,13 @@ private:
     bool initialised = false;
 };
 
-// The following class is modified based on
-// https://www.nayuki.io/page/sliding-window-minimum-maximum-algorithm
 /**
  * @class SlidingWindowMinMax
  *
  * @brief Use two deques to keep tracking minimum and maximum values.
+ *
+ * This class is based on a modified version of:
+ * https://www.nayuki.io/page/sliding-window-minimum-maximum-algorithm
  **/
 class SlidingWindowMinMax {
 
