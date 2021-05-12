@@ -529,7 +529,8 @@ private:
     bool initialised = false;
 };
 
-// The following class is modified based on https://www.nayuki.io/page/sliding-window-minimum-maximum-algorithm
+// The following class is modified based on
+// https://www.nayuki.io/page/sliding-window-minimum-maximum-algorithm
 /**
  * @class SlidingWindowMinMax
  *
