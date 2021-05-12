@@ -40,5 +40,7 @@ Example test ``tests/boost/test_<name>.cpp``:
 
 * Build kotekan with the cmake option ``-DWITH_TESTS=ON`` under ``/kotekan/build``.
 
-* Run your test with ``./tests/boost/test_<name>``.
+* Make sure ``pytest-cpp`` is installed.
+
+* Run your test with ``pytest tests/boost/test_<name>``.
 
