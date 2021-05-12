@@ -238,32 +238,32 @@ double movingAverage::average() {
     return current_value;
 }
 
-double SlidingWindowMinMax::getMinimum() {
-    return minDeque.front();
+double SlidingWindowMinMax::get_min() {
+    return min_deque.front();
 }
 
-double SlidingWindowMinMax::getMaximum() {
-    return maxDeque.front();
+double SlidingWindowMinMax::get_max() {
+    return max_deque.front();
 }
 
-void SlidingWindowMinMax::addTail(double val) {
-    while (!minDeque.empty() && val < minDeque.back()) {
-        minDeque.pop_back();
+void SlidingWindowMinMax::add_tail(double val) {
+    while (!min_deque.empty() && val < min_deque.back()) {
+        min_deque.pop_back();
     }
-    minDeque.push_back(val);
+    min_deque.push_back(val);
 
-    while (!maxDeque.empty() && val > maxDeque.back()) {
-        maxDeque.pop_back();
+    while (!max_deque.empty() && val > max_deque.back()) {
+        max_deque.pop_back();
     }
-    maxDeque.push_back(val);
+    max_deque.push_back(val);
 }
 
-void SlidingWindowMinMax::removeHead(double val) {
-    if (val == minDeque.front())
-        minDeque.pop_front();
+void SlidingWindowMinMax::remove_head(double val) {
+    if (val == min_deque.front())
+        min_deque.pop_front();
 
-    if (val == maxDeque.front())
-        maxDeque.pop_front();
+    if (val == max_deque.front())
+        max_deque.pop_front();
 }
 
 StatTracker::StatTracker(size_t size) :
@@ -279,17 +279,17 @@ StatTracker::StatTracker(size_t size) :
 void StatTracker::add_sample(double new_val) {
     double old_val = rbuf[end];
     rbuf[end] = new_val;
-    min_max.addTail(new_val);
+    min_max.add_tail(new_val);
     end = (end + 1) % buf_size;
 
     if (count < buf_size) {
         double old_avg = avg;
         avg += (new_val - old_avg) / (++count);
         dist += (new_val - avg) * (new_val - old_avg);
-        var = dist / (count - 1);
+        var = (count <= 1) ? NAN : dist / (count - 1);
     } else {
         double old_avg = avg;
-        min_max.removeHead(old_val);
+        min_max.remove_head(old_val);
         avg = old_avg + (new_val - old_val) / buf_size;
         var += (new_val - old_val) * (new_val - avg + old_val - old_avg) / (buf_size - 1);
     }
@@ -301,14 +301,14 @@ double StatTracker::get_max() {
     if (count == 0) {
         return NAN;
     }
-    return min_max.getMaximum();
+    return min_max.get_max();
 }
 
 double StatTracker::get_min() {
     if (count == 0) {
         return NAN;
     }
-    return min_max.getMinimum();
+    return min_max.get_min();
 }
 
 double StatTracker::get_avg() {
@@ -319,7 +319,7 @@ double StatTracker::get_avg() {
 }
 
 double StatTracker::get_std_dev() {
-    if (count == 0) {
+    if (count <= 1) {
         return NAN;
     }
     return std_dev;

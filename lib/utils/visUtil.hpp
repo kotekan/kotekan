@@ -529,6 +529,7 @@ private:
     bool initialised = false;
 };
 
+// The following class is modified based on https://www.nayuki.io/page/sliding-window-minimum-maximum-algorithm
 /**
  * @class SlidingWindowMinMax
  *
@@ -538,35 +539,35 @@ class SlidingWindowMinMax {
 
 public:
     /**
-     * @brief Get the current minimum value from the front of minDeque.
+     * @brief Get the current minimum value from the front of min_deque.
      *
      * @return The current minimum value.
      **/
-    double getMinimum();
+    double get_min();
 
     /**
-     * @brief Get the current maximum value from the front of maxDeque.
+     * @brief Get the current maximum value from the front of max_deque.
      *
      * @return The current maximum value.
      **/
-    double getMaximum();
+    double get_max();
 
     /**
-     * @brief Add a new value to both minDeque and maxDeque.
+     * @brief Add a new value to both min_deque and max_deque.
      *        The insert position is based on the input value.
-     *        All values greater than the input are removed in minDeque;
-     *        All values less than the input are removed in maxDeque;
+     *        All values greater than the input are removed in min_deque;
+     *        All values less than the input are removed in max_deque;
      **/
-    void addTail(double val);
+    void add_tail(double val);
 
     /**
-     * @brief Remove the given value from the front of minDeque or maxDeque.
+     * @brief Remove the given value from the front of min_deque or max_deque.
      **/
-    void removeHead(double val);
+    void remove_head(double val);
 
 private:
-    std::deque<double> minDeque;
-    std::deque<double> maxDeque;
+    std::deque<double> min_deque;
+    std::deque<double> max_deque;
 };
 
 /**
