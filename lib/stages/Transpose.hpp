@@ -119,6 +119,12 @@ protected:
     // Datasets to be stored until ready to write
     std::vector<dset_id_str> dset_id;
 
+    // Compression algorithm
+    std::string comp_alg;
+
+    // Compression level for ZSTD
+    uint32_t zstd_comp_lvl;
+
 private:
     /// Request dataset states from the datasetManager and prepare all metadata
     /// that is not already set in the constructor.

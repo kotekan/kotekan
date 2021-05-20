@@ -37,7 +37,7 @@ hfb_pool:
 
 read_raw:
   log_level: debug
-  infile: 20210209T183459Z_chime_hfb/hfb_00000000_0000
+  infile: 20210520T161353Z_chime_hfb/hfb_00000000_0000
   kotekan_stage: HFBRawReader
   max_read_rate: 0.0
   out_buf: read_buffer
@@ -64,6 +64,8 @@ write_hdf5:
   kotekan_stage: HFBTranspose
   in_buf: trunc_buffer
   outfile:  ./test
+  compress_alg: "zstd"
+  zstd_comp_lvl: 5
   chunk_size:
     - 16  # chunk_freq 
     - 64  # chunk_stack
