@@ -15,13 +15,15 @@ type: config
 log_level: info
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
 samples_per_data_set: 49152
+queue_frame_size: samples_per_data_set
+dump_size: 50000
 num_pol: 2
 total_freq_chan: 1024
 use_n_out_buffer: 1
 time_resolution: 2.56e-6
 wait_nframes: 20
 buffer_depth: 105
-sub_frames_per_merged_frame: 500
+# sub_frames_per_merged_frame: 500
 # One time frame per file
 sub_frames_per_merged_frame1: total_freq_chan / use_n_out_buffer
 sub_frames_per_merged_frame0: total_freq_chan / use_n_out_buffer + total_freq_chan % use_n_out_buffer
@@ -57,7 +59,7 @@ sort_buffers:
   num_frames: 8
   metadata_pool: merged_beam_metadata_pool
   # the size of the beam metadata with frequency is 72
-  frame_size: (samples_per_data_set * num_pol + freq_id_metadata_size) * sub_frames_per_merged_frame1
+  frame_size: (dump_size * num_pol + freq_id_metadata_size) * sub_frames_per_merged_frame1
   sorted_buffer_0:
     kotekan_buffer: standard
     #sorted_buffer_1:
@@ -108,7 +110,7 @@ raw_capture:
 #################################
 # THIS IS THE PLACE TO EDIT!!!  #
 #################################
-   note: 26m baseband recording test B0329+54
+   note: 26M Recording for B1508+55
 #Change this if you want to record
    file_ext: raw
    write_to_disk: True
