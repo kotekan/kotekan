@@ -50,7 +50,12 @@ class MergedBeamMetadata(ctypes.Structure):
     _fields_ = [
         ("sub_frame_per_frame", ctypes.c_uint32),
         ("sub_frame_metadata_size", ctypes.c_uint32),
-        ("sub_frame_data_size", ctypes.c_uint32)
+        ("sub_frame_data_size", ctypes.c_uint32),
+        ("freq_start", ctypes.c_uint32),
+        ("nchan", ctypes.c_uint32),
+        ("nframe", ctypes.c_uint32),
+        ("fpga_seq_start", ctypes.c_uint64),
+        ("ctime", timespec.time_spec)
     ]
 
 # Build uint_8 to complex64 lookup table.
@@ -239,7 +244,7 @@ class MergedBeamFrame(BeamFrameBase):
             print(self.sub_frame_metadata_size, ctypes.sizeof(single_frame_metadata_cls))
             if self.sub_frame_metadata_size != ctypes.sizeof(single_frame_metadata_cls):
                 raise ValueError("Input single frame metadata size does not match the buffer metadata.")
-            if self.sub_frame_data_size != samples_per_single_frame * num_pol:
+            if self.sub_frame_data_size * num_pol != samples_per_single_frame * num_pol:
                 raise ValueError("Input single frame data size does not match the buffer metadata.")
         self.single_frame_metadata_cls = single_frame_metadata_cls
         self.samples_per_single_frame = samples_per_single_frame
@@ -256,8 +261,11 @@ class MergedBeamFrame(BeamFrameBase):
             raise ValueError("Sub-frame data size does not provided"
                              " correctly.")
         self.data_size = len(self._buffer[self.metadata_size:])
+        print(self.data_size, self.sub_frame_per_frame * (self.sub_frame_metadata_size
+            + self.sub_frame_data_size * 2))
+        print(self.sub_frame_per_frame , self.sub_frame_metadata_size, self.sub_frame_data_size)
         if self.data_size != self.sub_frame_per_frame * (self.sub_frame_metadata_size 
-            + self.sub_frame_data_size):
+            + self.sub_frame_data_size * 2):
             raise ValueError("The input `sub_frame_per_frame`,"
                              " `sub_frame_metadata_size`, `sub_frame_data_size`"
                              " does not match the buffer data size.")
@@ -278,7 +286,7 @@ class MergedBeamFrame(BeamFrameBase):
         """
         if index >= self.sub_frame_per_frame:
             raise ValueError("Index out off the subframes in the merged frame.")
-        sub_frame_size = self.sub_frame_data_size + self.sub_frame_metadata_size
+        sub_frame_size = self.sub_frame_data_size * self.num_pol + self.sub_frame_metadata_size
         offset = self.metadata_size + index * sub_frame_size
         sframe_buff = self._buffer[offset:offset + sub_frame_size]
         sframe = SingleBeamFrame(sframe_buff, self.single_frame_metadata_cls, 
