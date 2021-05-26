@@ -359,11 +359,22 @@ class SortedTrackingBeamReader(object):
 
     def _read_one_frame(self):
         frames = self._load_file(self.files[self.frame_offset])
+        start_fpga = 0
+        start_ctime = 0
         for ii, fm in enumerate(frames):
             fm.read_frame()
-            print(fm.metadata.fpga_seq_start, fm.metadata.frequency_bin, self.frame_offset, self.files[self.frame_offset])
+            if ii == 0:
+                start_fpga = fm.metadata.fpga_seq_start
+                start_ctime = fm.metadata.ctime
+            else:
+                #print("ctime test", fm.metadata.ctime.tv, start_ctime.tv, ii)
+                assert fm.metadata.fpga_seq_start == start_fpga
+                assert fm.metadata.ctime.tv == start_ctime.tv
+                assert fm.metadata.ctime.tv_nsec == start_ctime.tv_nsec
+            #print(fm.metadata.fpga_seq_start, fm.metadata.frequency_bin, self.frame_offset, self.files[self.frame_offset])
             self._frame_buffer[:, ii, :] = fm.data
         self.frame_offset += 1
+        return start_fpga, start_ctime
 
 class TrackingBeamReader(object):
     """CHIME Tracking Beam raw data stream reader from files. 
