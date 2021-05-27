@@ -8,8 +8,9 @@
 
 
 .node {
-  #stroke: #fff;
-  #stroke-width: 1.5px;
+  fill: rgba(32, 202, 117, 0.452);
+  /* stroke: #fff; */
+  /* stroke-width: 1.5px; */
 }
 
 .link {
@@ -20,6 +21,11 @@
   marker-end: url(#end-arrow);
 }
 
+.label {
+  fill: rgb(0, 0, 0);
+  font-family: sans-serif;
+  font-size: 15;
+}
 
 </style>
 </head>
@@ -39,13 +45,16 @@
 
     var d3cola = cola.d3adaptor(d3)
         //.handleDisconnected(false)
-        //.linkDistance(300)
+        .linkDistance(80)
         //.groupCompactness(100)
         .size([width, height]);
 
     var svg = d3.select("body").append("svg")
         .attr("width", width)
-        .attr("height", height);
+        .attr("height", height)
+        .call(d3.zoom().on("zoom", function () {
+            svg.attr("transform", d3.event.transform)
+        }));
 
     // Replace "&#39;" chars as single quote "'"
     var rawData =  "{{data.json()}}".split('&#39;').join('"');
@@ -54,33 +63,34 @@
     // Get buffer names
     var bufNames = Object.keys(buffers);
         
-    console.log(bufNames);
+    console.log(buffers);
 
     d3.json("{{url_for('static', filename='chris.json')}}", function (error, graph) {
         var nodeRadius = 8;
 
         var nodes = [], links = [];
-       
-        var buf_ctr = 0;
-        for (var val in buffers) {
+        for (var val of bufNames) {
+          var obj = buffers[val];
           nodes.push({name: val});
-          for (var stage in buffers[val].producers) {
+          for (var stage in obj.producers) {
               nodes.push({name: stage});
-              links.push({source: nodes[nodes.length - 1], target: nodes[buf_ctr]});
+              links.push({source: nodes.find(obj => obj.name === stage), target: nodes.find(obj => obj.name === val)});
           }
 
-          for (var stage in buffers[val].consumers) {
+          if (obj.consumers !== "None") {
+            for (var stage in obj.consumers) {
               nodes.push({name: stage});
-              links.push({source: nodes[buf_ctr], target: nodes[nodes.length - 1]});
+              links.push({source: nodes.find(d => d.name === val), target: nodes.find(d => d.name === stage)});
+            }
           }
-          buf_ctr++;
         }
  
-        graph.nodes = nodes;
+        // remove all duplicated nodes
+        graph.nodes = Array.from(new Set(nodes.map(a => a.name)))
+                      .map(name => {
+                          return nodes.find(a => a.name === name)
+                      });
         graph.links = links;
-        
-        // Set node size larger to space graph out
-        graph.nodes.forEach(function (v) { v.height = v.width = 5 * nodeRadius; });
 
         console.log(graph.nodes)
         console.log(graph.links)
@@ -88,10 +98,10 @@
         d3cola
             .nodes(graph.nodes)
             .links(graph.links)
-            .flowLayout("y", 65)
-            //.symmetricDiffLinkLengths(6)
+            .flowLayout("y", 60)
+            // .symmetricDiffLinkLengths(6)
             //.convergenceThreshold(1e-9)
-            //.defaultNodeSize(100)
+            .defaultNodeSize(100)
             .handleDisconnected(true)
             .avoidOverlaps(true)
             .start(30,20,20);
@@ -110,53 +120,126 @@
 
         var path = svg.selectAll(".link")
             .data(graph.links)
-            .enter().append('svg:path')
+            .enter().append('line')
             .attr('class', 'link');
 
-        var node = svg.selectAll("circle.node")
+        var margin = 6, pad = 12, width = 60, height = 40;
+        var node = svg.selectAll(".node")
             .data(graph.nodes)
-            .enter().append("g")
-            .attr("class", "node");
-      
-        node.append("circle")
-            .attr("cx", function(d) { return d.x; })
-            .attr("cy", function(d) { return d.y; })
-            .attr("r", nodeRadius)
-            .style("fill", function (d) { return color(d.group); })
-            //.call(d3cola.drag);
+            .enter().append("rect")
+            .attr("class", "node")
+            .attr("width", function (d) { return width + 2 * pad + 2 * margin; })
+            .attr("height", function (d) { return height + 2 * pad + 2 * margin; })
+            .attr("rx", 5).attr("ry", 5)
+            .call(d3cola.drag);
 
-        // Draw labels
-        node.append("text")
-            .attr("class", "labels")
-            .text(function (d) { return d.name; })
-            .attr("x", function(d, i) { return d.x + 1.3*nodeRadius; })
-            .attr("y", function(d, i) { return d.y + 0.5*nodeRadius; })
-            .attr("font-family",  "sans-serif")
-            .attr("font-size",  15)
-            .attr("font-color", "black")
+        var label = svg.selectAll(".label")
+            .data(graph.nodes)
+            .enter().append("text")
+            .attr("class", "label")
+            .call(d3cola.drag);
+
+        var insertLinebreaks = function (d) {
+            var el = d3.select(this);
+            var words = d.name.split('/');
+
+            var tspan = el.append('tspan').text(words[0])
+                          .attr('x', margin/2).attr('dy', '15')
+                          .attr("font-size", "15");
+
+            for (var i = 1; i < words.length; i++) {
+                tspan = el.append('tspan').text('/' + words[i]);
+                tspan.attr('x', margin/2).attr('dy', '15')
+                     .attr("font-size", "15");
+            }
+        };
+
+        label.each(insertLinebreaks);
+
+        node.append("title")
+            .text(function (d) { return d.name; });
+
+        // Add utilization for all buffers and record their index
+        var index = [];
+        label._groups[0].reduce((pre, cur, ind) => {
+            if (bufNames.includes(cur.textContent)) {
+                var el = d3.select(cur);
+                tspan = el.append('tspan')
+                          .text(buffers[cur.textContent].num_full_frame + "/" + buffers[cur.textContent].num_frames)
+                tspan.attr('x', margin/2).attr('dy', '15')
+                     .attr("font-size", "15")
+                     .attr("id", "utl");
+                index.push(ind)
+            }
+        }, 0)
+
+        // Update utilization
+        function update_utl(new_buffers){
+            console.log(new_buffers);
+            for (var i of index) {
+                var name = d3.select(label._groups[0][i]).select("tspan").text();
+                d3.select(label._groups[0][i]).select("#utl")
+                  .text(new_buffers[name].num_full_frame + "/" + new_buffers[name].num_frames);
+            }
+        }
+
+        // Time between updating kotekan metrics
+        const POLL_WAIT_TIME_MS = 1000;
+        // Poll kotekan via web server every POLL_WAIT_TIME_MS and update page with new metrics
+        async function poll() {
+            let response = await fetch("/update");
+
+            if (response.status == 502) {
+                // Status 502 is a connection timeout error,
+                // may happen when the connection was pending for too long,
+                // and the remote server or a proxy closed it
+                // let's reconnect
+            } else if (response.status != 200) {
+                // An error - let's show it
+                console.log("Error: " + response.statusText);
+                // Reconnect in one second
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            } else {
+
+                // Get and show the message
+                let new_buffers = await response.json();
+                update_utl(new_buffers);
+            }
+            // Call poll() again to get the next message
+            setTimeout(() => { poll(); }, POLL_WAIT_TIME_MS);
+        }
+        // Start polling kotekan for metrics
+        poll();
 
         d3cola.on("tick", function () {
-            path.each(function (d) {
-                if (isIE()) this.parentNode.insertBefore(this, this);
-            });
-            // draw directed edges with proper padding from node centers
-            path.attr('d', function (d) {
-                var deltaX = d.target.x - d.source.x,
-                    deltaY = d.target.y - d.source.y,
-                    dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY),
-                    normX = deltaX / dist,
-                    normY = deltaY / dist,
-                    sourcePadding = nodeRadius,
-                    targetPadding = nodeRadius + 2,
-                    sourceX = d.source.x + (sourcePadding * normX),
-                    sourceY = d.source.y + (sourcePadding * normY),
-                    targetX = d.target.x - (targetPadding * normX),
-                    targetY = d.target.y - (targetPadding * normY);
-                return 'M' + sourceX + ',' + sourceY + 'L' + targetX + ',' + targetY;
+            node.each(function (d) {
+                d.innerBounds = d.bounds.inflate(- margin);
             });
 
-            node.attr("cx", function (d) { return d.x; })
-                .attr("cy", function (d) { return d.y; });
+            path.each(function (d) {
+                d.route = cola.makeEdgeBetween(d.source.innerBounds, d.target.innerBounds, 5);
+                if (isIE())  this.parentNode.insertBefore(this, this);
+            });
+
+            path.attr("x1", function (d) { return d.route.sourceIntersection.x; })
+                .attr("y1", function (d) { return d.route.sourceIntersection.y; })
+                .attr("x2", function (d) { return d.route.arrowStart.x; })
+                .attr("y2", function (d) { return d.route.arrowStart.y; });
+
+            label.each(function (d) {
+                var b = this.getBBox();
+                d.width = b.width + 2 * margin + 8;
+                d.height = b.height + 2 * margin + 8;
+            });
+
+            node.attr("x", function (d) { return d.innerBounds.x; })
+                .attr("y", function (d) { return d.innerBounds.y; })
+                .attr("width", function (d) { return Math.abs(d.innerBounds.width()); })
+                .attr("height", function (d) { return Math.abs(d.innerBounds.height()); });
+
+            label.attr("transform", function (d) {
+                return "translate(" + d.innerBounds.x + margin + "," + (d.innerBounds.y + margin/2) + ")";
+            });
         });
         // turn on overlap avoidance after first convergence
         //cola.on("end", function () {
