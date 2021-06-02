@@ -84,6 +84,11 @@ public:
     /// Get to distinguish the flavour of command (copy,kernel,etc)
     gpuCommandType get_command_type();
 
+    /// Returns performance information, can be customized to give more detailed stats.
+    virtual std::string get_performance_metric_string() {
+        return "Time: " + std::to_string(get_last_gpu_execution_time()) + " seconds";
+    }
+
     /**
      * @brief Returns the unique name of the command object.
      * @return The command object unique name.

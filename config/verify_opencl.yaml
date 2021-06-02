@@ -25,8 +25,8 @@ buffer_depth: 4
 num_gpu_frames: 16
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
-num_elements: 256 #2048
-num_local_freq: 1
+num_elements: 512
+num_local_freq: 4
 num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
 sizeof_int: 4
 
@@ -70,42 +70,46 @@ gen_data:
   kotekan_stage: testDataGen
   out_buf: gpu_input_buffer
 
-#data_format: dot4b
-data_format: "4+4b"
+data_format: dot4b
+#data_format: "4+4b"
 #full_complicated: false #don't use the ISA-like kernel: intrinsics, extra packing, overflows, etc
 
 gpu:
   profiling: true
-  kernel_path: "./opencl/kernels/"
+  log_profiling: true
+  kernel_path: "../../lib/opencl/kernels/"
   gain_dir: "/etc/kotekan/"
   log_level: debug2
-  commands:
-  - name: clInputData
-  - name: clPresumZero
-  - name: clOutputDataZero
-  - name: clPresumKernel
+  commands: &command_list
+    - name: clInputData
+      in_buf: network_buf
+      gpu_memory_name: voltage
+  #- name: clPresumZero
+  #- name: clOutputDataZero
+  #- name: clPresumKernel
 #  - name: clPreseedKernel
 #  - name: clCorrelatorKernel
-  - name: clKVCorr
-  - name: clOutputData
+    - name: clKVCorr
+    - name: clOutputData
   gpu_0:
     kotekan_stage: clProcess
-    gpu_id: 1
+    commands: *command_list
+    gpu_id: 0
     in_buffers:
       network_buf: gpu_input_buffer
     out_buffers:
       output_buf: gpu_output_buffer
 
-cpu:
-  kotekan_stage: gpuSimulate
-  log_level: debug
-  network_in_buf: gpu_input_buffer
-  corr_out_buf: cpu_output_buffer
-
-check_data:
-  kotekan_stage: testDataCheckInt
-  first_buf: gpu_output_buffer
-  second_buf: cpu_output_buffer
+#cpu:
+#  kotekan_stage: gpuSimulate
+#  log_level: debug
+#  network_in_buf: gpu_input_buffer
+#  corr_out_buf: cpu_output_buffer
+#
+#check_data:
+#  kotekan_stage: testDataCheckInt
+#  first_buf: gpu_output_buffer
+#  second_buf: cpu_output_buffer
 
 #check_data:
 #  imag: [0]

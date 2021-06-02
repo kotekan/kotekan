@@ -41,6 +41,7 @@ gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
 
     _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
     gpu_id = config.get<int>(unique_name, "gpu_id");
+    gpu_thread_id = config.get_default<int>(unique_name, "gpu_thread_id", gpu_id);
 
     frame_arrival_period = config.get_default<double>(unique_name, "frame_arrival_period", 0.0);
 
@@ -63,7 +64,7 @@ gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
 }
 
 gpuProcess::~gpuProcess() {
-    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile/{:d}"), gpu_id));
+    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile/{:d}"), gpu_thread_id));
     for (auto& command : commands)
         delete command;
     for (auto& event : final_signals)
@@ -90,10 +91,14 @@ void gpuProcess::init() {
         std::string command_name = cmd["name"];
         commands.push_back(create_command(command_name, unique_path));
     }
+
+    for (auto &buf : local_buffer_container.get_buffer_map()) {
+        register_host_memory(buf.second);
+    }
 }
 
 void gpuProcess::profile_callback(connectionInstance& conn) {
-    DEBUG(" *** *** *** Profile call made.");
+    //DEBUG(" *** *** *** Profile call made.");
 
     json reply;
 
@@ -141,7 +146,7 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
 void gpuProcess::main_thread() {
     restServer& rest_server = restServer::instance();
     rest_server.register_get_callback(
-        fmt::format(fmt("/gpu_profile/{:d}"), gpu_id),
+        fmt::format(fmt("/gpu_profile/{:d}"), gpu_thread_id),
         std::bind(&gpuProcess::profile_callback, this, std::placeholders::_1));
 
     // Start with the first GPU frame;
@@ -155,7 +160,7 @@ void gpuProcess::main_thread() {
         // INFO("Waiting on preconditions for GPU[{:d}][{:d}]", gpu_id, gpu_frame_id);
         for (auto& command : commands) {
             if (command->wait_on_precondition(gpu_frame_id) != 0) {
-                INFO("Received exit in GPU command precondition! (Command '{:s}')",
+                INFO("Received exit signal from GPU command precondition (Command '{:s}')",
                      command->get_name());
                 goto exit_loop;
             }
@@ -172,8 +177,8 @@ void gpuProcess::main_thread() {
             // TODO Move to config
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
-            for (int j = 4; j < 12; j++)
-                CPU_SET(j, &cpuset);
+            for (auto& i : config.get<std::vector<int>>(unique_name, "cpu_affinity"))
+                CPU_SET(i, &cpuset);
             pthread_setaffinity_np(results_thread_handle.native_handle(), sizeof(cpu_set_t),
                                    &cpuset);
             first_run = false;
@@ -223,11 +228,11 @@ void gpuProcess::results_thread() {
         if (log_profiling) {
             std::string output = "";
             for (uint32_t i = 0; i < commands.size(); ++i) {
-                output = fmt::format(fmt("{:s}kernel: {:s} time: {:f}; \n"), output,
+                output = fmt::format(fmt("{:s}command: {:s} metrics: {:s}; \n"), output,
                                      commands[i]->get_name(),
-                                     commands[i]->get_last_gpu_execution_time());
+                                     commands[i]->get_performance_metric_string());
             }
-            INFO("GPU[{:d}] Profiling: {:s}", gpu_id, output);
+            INFO("GPU[{:d}] Profiling: \n{:s}", gpu_id, output);
         }
 
         final_signals[gpu_frame_id]->reset();

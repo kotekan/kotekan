@@ -33,6 +33,7 @@ protected:
                                        const std::string& unique_name) = 0;
     virtual gpuEventContainer* create_signal() = 0;
     virtual void queue_commands(int gpu_frame_id) = 0;
+    virtual void register_host_memory(struct Buffer * host_buffer) = 0;
     void results_thread();
     void init(void);
 
@@ -50,6 +51,7 @@ protected:
     // Config variables
     uint32_t _gpu_buffer_depth;
     uint32_t gpu_id;
+    uint32_t gpu_thread_id;
 };
 
 #endif // GPU_PROCESS_H

@@ -1,19 +1,20 @@
 /**
  * @file
- * @brief CUDA command to copy data from the GPU to the host
- *  - cudaOutputData : public cudaCommand
+ * @brief HIP command to copy data from the GPU to the host
+ *  - hipOutputData : public hipCommand
  */
 
-#include "cudaOutputData.hpp"
+#include "hipOutputData.hpp"
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using std::string;
 
-REGISTER_CUDA_COMMAND(cudaOutputData);
+REGISTER_HIP_COMMAND(hipOutputData);
 
-cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
-                               bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "", "") {
+hipOutputData::hipOutputData(Config& config, const string& unique_name,
+                               bufferContainer& host_buffers, hipDeviceInterface& device) :
+    hipCommand(config, unique_name, host_buffers, device, "", "") {
 
     in_buffer = host_buffers.get_buffer("in_buf");
     register_consumer(in_buffer, unique_name.c_str());
@@ -24,9 +25,9 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
     for (int i = 0; i < output_buffer->num_frames; i++) {
         uint flags;
         // only register the memory if it isn't already...
-        if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, output_buffer->frames[i])) {
-            CHECK_CUDA_ERROR(
-                cudaHostRegister(output_buffer->frames[i], output_buffer->frame_size, 0));
+        if (hipErrorInvalidValue == hipHostGetFlags(&flags, output_buffer->frames[i])) {
+            CHECK_HIP_ERROR(
+                hipHostRegister(output_buffer->frames[i], output_buffer->frame_size, 0));
         }
     }
 
@@ -39,22 +40,22 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
     command_type = gpuCommandType::COPY_OUT;
 }
 
-cudaOutputData::~cudaOutputData() {
+hipOutputData::~hipOutputData() {
     for (int i = 0; i < output_buffer->num_frames; i++) {
         uint flags;
         // only register the memory if it isn't already...
-        if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, output_buffer->frames[i])) {
-            CHECK_CUDA_ERROR(cudaHostUnregister(output_buffer->frames[i]));
+        if (hipErrorInvalidValue == hipHostGetFlags(&flags, output_buffer->frames[i])) {
+            CHECK_HIP_ERROR(hipHostUnregister(output_buffer->frames[i]));
         }
     }
 }
 
-int cudaOutputData::wait_on_precondition(int gpu_frame_id) {
+int hipOutputData::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     // Wait for there to be data in the input (output) buffer.
     uint8_t* frame =
         wait_for_empty_frame(output_buffer, unique_name.c_str(), output_buffer_precondition_id);
-    if (frame == nullptr)
+    if (frame == NULL)
         return -1;
 
     output_buffer_precondition_id = (output_buffer_precondition_id + 1) % output_buffer->num_frames;
@@ -62,7 +63,7 @@ int cudaOutputData::wait_on_precondition(int gpu_frame_id) {
 }
 
 
-cudaEvent_t cudaOutputData::execute(int gpu_frame_id, cudaEvent_t pre_event) {
+hipEvent_t hipOutputData::execute(int gpu_frame_id, hipEvent_t pre_event) {
     pre_execute(gpu_frame_id);
 
     uint32_t output_len = output_buffer->frame_size;
@@ -77,8 +78,8 @@ cudaEvent_t cudaOutputData::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     return post_events[gpu_frame_id];
 }
 
-void cudaOutputData::finalize_frame(int frame_id) {
-    cudaCommand::finalize_frame(frame_id);
+void hipOutputData::finalize_frame(int frame_id) {
+    hipCommand::finalize_frame(frame_id);
 
     pass_metadata(in_buffer, in_buffer_id, output_buffer, output_buffer_id);
 
@@ -87,10 +88,4 @@ void cudaOutputData::finalize_frame(int frame_id) {
 
     mark_frame_full(output_buffer, unique_name.c_str(), output_buffer_id);
     output_buffer_id = (output_buffer_id + 1) % output_buffer->num_frames;
-}
-
-std::string cudaOutputData::get_performance_metric_string() {
-    double transfer_speed = (double)output_buffer->frame_size
-                            / (double)get_last_gpu_execution_time() / 1000000000;
-    return fmt::format("Speed: {:.2f} GB/s ({:.2f} Gb/s)", transfer_speed, transfer_speed * 8);
 }

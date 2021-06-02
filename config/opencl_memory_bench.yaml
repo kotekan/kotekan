@@ -1,0 +1,69 @@
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: INFO
+
+buffer_depth: 10
+samples_per_data_set: 32768 * 4
+num_local_freq: 8
+num_elements: 256
+num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
+sizeof_int: 4
+num_gpus: 1
+block_size: 32
+num_data_sets: 1
+numa_node: 1
+
+cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 128 * buffer_depth
+
+gpu_input_merged:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_elements * num_local_freq
+    metadata_pool: main_pool
+
+gen_data:
+    type: const
+    value: 153
+    kotekan_stage: testDataGen
+    out_buf: gpu_input_merged
+    wait: true
+
+# OpenCL
+gpu:
+    profiling: true
+    kernel_path: "../../lib/opencl/kernels/"
+    gain_dir: "/etc/kotekan/"
+    log_level: INFO
+    data_format: "4+4b"
+    frame_arrival_period: samples_per_data_set / 390625.0 / 16
+    commands: &command_list
+        - name: clInputData
+          in_buf: network_buf
+          gpu_memory_name: "voltage_data"
+#        - name: clPresumZero
+#        - name: clOutputDataZero
+#        - name: clPresumKernel
+#        - name: clPreseedKernel
+#        - name: clCorrelatorKernel
+#        - name: clKVCorr
+#        - name: clOutputData
+    gpu_0:
+        kotekan_stage: clProcess
+        commands: *command_list
+        gpu_id: 0
+        gpu_thread_id: 0
+        log_profiling: true
+        buffer_depth: 4
+        in_buffers:
+            network_buf: gpu_input_merged
+        out_buffers:
+            #output_buf: gpu_output_buffer
+
