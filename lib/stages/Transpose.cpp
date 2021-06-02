@@ -62,8 +62,6 @@ void Transpose::main_thread() {
     uint32_t frames_so_far = 0;
     // frequency and time indices within chunk
     uint32_t fi = 0, ti = 0;
-    // offset for copying into buffer
-    uint32_t offset = 0;
 
     // Flags to indicate incomplete chunks
     bool t_edge = false, f_edge = false;
@@ -143,6 +141,9 @@ void Transpose::main_thread() {
 
             auto [frame_size, fpga_seq_total, frame_ds_id] = get_frame_data();
             (void)frame_size;
+
+            // Offset into dset_id list
+            uint32_t offset = fi * write_t;
 
             // Parse the dataset ID
             if (fpga_seq_total == 0 && frame_ds_id == dset_id_t::null) {

@@ -1559,6 +1559,7 @@ vis_accumulate:
   # This (12288) is for num_sub_frames = 4, there is currently a config bug that
   # prevents referencing the higher level samples_per_data_set and dividing it
   samples_per_data_set: 12288
+  low_sample_fraction: 0.1
   updatable_config:
     psr0: "/updatable_config/gating/psr0_config"
   acc0:

@@ -285,8 +285,10 @@ void visAccumulate::main_thread() {
             base_dataset_id = dm.add_dataset(base_dataset_states, *ds_id_in);
             DEBUG("Registered base dataset: {}", base_dataset_id)
 
-            // Set the output dataset ID for the main visibility accumulation
-            gated_datasets.at(0).output_dataset_id = base_dataset_id;
+            // Set the output dataset ID for all datasets
+            for (auto& state : gated_datasets) {
+                state.output_dataset_id = register_gate_dataset(*state.spec.get());
+            }
         }
 
         int32_t* input = (int32_t*)in_frame;
@@ -497,6 +499,14 @@ void visAccumulate::combine_gated(visAccumulate::internalState& gate,
     // Copy in the proto weight data
     for (size_t i = 0; i < num_prod_gpu; i++) {
         gate.vis2[i] = scl * (1.0 - scl) * vis.vis2[i];
+    }
+
+    // The number of FPGA frames that went into this integration is the same as
+    // for the ungated dataset. If we don't correct this, only the on gates are
+    // counted.
+    for (size_t i = 0; i < num_freq_in_frame; i++) {
+        gate.frames[i].fpga_seq_total = vis.frames[i].fpga_seq_total;
+        gate.frames[i].rfi_total = vis.frames[i].rfi_total;
     }
 }
 

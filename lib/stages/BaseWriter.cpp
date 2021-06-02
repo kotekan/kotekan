@@ -23,6 +23,7 @@
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error, out_of_range
+#include <time.h>     // for timespec
 #include <utility>    // for pair
 #include <vector>     // for vector
 
@@ -95,18 +96,21 @@ void BaseWriter::main_thread() {
 
     frameID frame_id(in_buf);
 
+    const timespec timeout = double_to_ts(acq_timeout);
+
     while (!stop_thread) {
 
         // Wait for the buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
+        auto status = wait_for_full_frame_timeout(in_buf, unique_name.c_str(), frame_id, timeout);
+        if (status == 0) {
+            // Write frame
+            write_data(in_buf, frame_id);
+
+            // Mark the buffer and move on
+            mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+        } else if (status == -1) {
             break;
         }
-
-        // Write frame
-        write_data(in_buf, frame_id);
-
-        // Mark the buffer and move on
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
 
         // Clean out any acquisitions that have been inactive long
         close_old_acqs();
@@ -143,15 +147,12 @@ void BaseWriter::init_acq(dset_id_t ds_id) {
         return;
     }
 
-    // TODO: chunk ID is not really supported now. Just set it to zero.
-    uint32_t chunk_id = 0;
-
     // Construct metadata
     auto metadata = make_metadata(ds_id);
 
     try {
         acq.file_bundle = std::make_unique<visFileBundle>(
-            file_type, root_path, instrument_name, metadata, chunk_id, file_length, window,
+            file_type, root_path, acq_fmt, file_fmt, metadata, file_length, window,
             kotekan::logLevel(_member_log_level), ds_id, file_length);
     } catch (std::exception& e) {
         FATAL_ERROR("Failed creating file bundle for new acquisition: {:s}", e.what());
