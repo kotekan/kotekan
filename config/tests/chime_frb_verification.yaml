@@ -285,7 +285,7 @@ read_gain:
       
 check_data:
   bf_data_check_0:
-    #num_frames_to_test: 1
+    num_frames_to_test: 1
     epsilon: 0.001
     kotekan_stage: testDataCheckFloat
     first_buf : gpu_beamform_output_buffer_0
@@ -293,7 +293,7 @@ check_data:
 
 check_hfb_data:
   hfb_data_check_0:
-    #num_frames_to_test: 1
+    num_frames_to_test: 1
     epsilon: 0.001
     kotekan_stage: testDataCheckFloat
     first_buf : gpu_beamform_hfb_output_buffer_0
