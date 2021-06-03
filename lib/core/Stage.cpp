@@ -4,6 +4,7 @@
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "util.h"              // for string_tail
+#include "kotekanMode.hpp"
 
 #include "fmt.hpp" // for format
 
