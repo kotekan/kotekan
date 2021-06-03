@@ -22,6 +22,8 @@
 
 namespace kotekan {
 
+extern std::map<std::string, pthread_t> thread_list;
+
 Stage::Stage(Config& config, const std::string& unique_name, bufferContainer& buffer_container_,
              std::function<void(const Stage&)> main_thread_ref) :
     stop_thread(false),
@@ -101,6 +103,9 @@ void Stage::set_cpu_affinity(const std::vector<int>& cpu_affinity_) {
 
 void Stage::start() {
     this_thread = std::thread(main_thread_fn, std::ref(*this));
+
+    // Add stage to the thread list for CPU usage tracking
+    thread_list[unique_name] = this_thread.native_handle();
 
     apply_cpu_affinity();
 }

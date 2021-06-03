@@ -83,6 +83,7 @@ sys.stdout.write(json.dumps(config_json))
 )";
 
 kotekanMode* kotekan_mode = nullptr;
+CpuMonitor* cpu_monitor = nullptr;
 bool running = false;
 std::mutex kotekan_state_lock;
 volatile std::sig_atomic_t sig_value = 0;
@@ -251,6 +252,9 @@ void start_new_kotekan_mode(Config& config, bool dump_config) {
     kotekan_mode->initalize_stages();
     kotekan_mode->start_stages();
     running = true;
+
+    cpu_monitor = new CpuMonitor();
+    cpu_monitor.start();
 }
 
 int main(int argc, char** argv) {
