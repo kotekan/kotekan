@@ -254,7 +254,7 @@ void start_new_kotekan_mode(Config& config, bool dump_config) {
     running = true;
 
     cpu_monitor = new CpuMonitor();
-    cpu_monitor.start();
+    cpu_monitor->start();
 }
 
 int main(int argc, char** argv) {
