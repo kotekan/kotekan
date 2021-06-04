@@ -23,7 +23,7 @@
 
 namespace kotekan {
 
-extern std::map<std::string, pthread_t> thread_list;
+std::map<std::string, pthread_t> thread_list;
 
 Stage::Stage(Config& config, const std::string& unique_name, bufferContainer& buffer_container_,
              std::function<void(const Stage&)> main_thread_ref) :

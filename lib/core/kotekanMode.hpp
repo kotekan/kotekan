@@ -58,9 +58,6 @@ struct CpuStat {
     uint32_t prev_stime = 0;
 };
 
-// List of thread ids <stage_name, thread_id>
-std::map<std::string, pthread_t> thread_list;
-
 // List of CPU usage data <stage_name, CPU_stat>
 std::map<std::string, CpuStat> ult_list;
 
