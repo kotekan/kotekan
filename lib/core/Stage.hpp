@@ -100,9 +100,6 @@ private:
     uint32_t join_timeout;
 };
 
-// List of thread ids <stage_name, thread_id>
-extern std::map<std::string, pthread_t> thread_list;
-
 } // namespace kotekan
 
 /// Helper defined to reduce the boiler plate needed to crate the

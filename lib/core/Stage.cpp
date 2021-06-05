@@ -4,7 +4,7 @@
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "util.h"              // for string_tail
-#include "kotekanMode.hpp"
+#include "cpuMonitor.hpp"
 
 #include "fmt.hpp" // for format
 
@@ -22,8 +22,6 @@
 #include <thread>       // for thread
 
 namespace kotekan {
-
-std::map<std::string, pthread_t> thread_list;
 
 Stage::Stage(Config& config, const std::string& unique_name, bufferContainer& buffer_container_,
              std::function<void(const Stage&)> main_thread_ref) :
@@ -106,7 +104,7 @@ void Stage::start() {
     this_thread = std::thread(main_thread_fn, std::ref(*this));
 
     // Add stage to the thread list for CPU usage tracking
-    thread_list[unique_name] = this_thread.native_handle();
+    CpuMonitor::record_tid(this_thread.native_handle(), unique_name);
 
     apply_cpu_affinity();
 }

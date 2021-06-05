@@ -9,6 +9,7 @@
 #include "util.h"                 // for EVER
 #include "version.h"              // for get_kotekan_version, get_cmake_build_options, get_git_...
 #include "visUtil.hpp"            // for regex_split
+#include "cpuMonitor.hpp"
 
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json

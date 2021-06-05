@@ -51,31 +51,6 @@ private:
     std::map<std::string, struct Buffer*> buffers;
 };
 
-struct CpuStat {
-    double utime_usage = 0;
-    double stime_usage = 0;
-    uint32_t prev_utime = 0;
-    uint32_t prev_stime = 0;
-};
-
-// List of CPU usage data <stage_name, CPU_stat>
-std::map<std::string, CpuStat> ult_list;
-
-uint32_t prev_cpu_time;
-
-class CpuMonitor {
-public:
-    CpuMonitor();
-
-    void start();
-
-    void cpu_ult_call_back(connectionInstance& conn);
-
-private:
-    static void* track_cpu(void *);
-};
-
-
 } // namespace kotekan
 
 /*! @} End of Doxygen Groups*/
