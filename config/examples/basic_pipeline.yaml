@@ -1,6 +1,6 @@
 ---
 type: config
-log_level: DEBUG
+log_level: ERROR
 cpu_affinity: [0,1,2,3]
 
 main_pool:
