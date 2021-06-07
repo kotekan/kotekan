@@ -104,6 +104,11 @@ void Stage::start() {
     this_thread = std::thread(main_thread_fn, std::ref(*this));
 
     // Add stage to the thread list for CPU usage tracking
+    char fname[100];
+    char stage_name[50];
+    strcpy(stage_name, unique_name.c_str());
+    snprintf(fname, sizeof(fname), "stage: %s, tid: %d", stage_name, this_thread.native_handle());
+    ERROR("Stage.cpp: {:s}", fname);
     CpuMonitor::record_tid(this_thread.native_handle(), unique_name);
 
     apply_cpu_affinity();

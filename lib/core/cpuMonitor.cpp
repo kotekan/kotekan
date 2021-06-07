@@ -53,6 +53,10 @@ void* CpuMonitor::track_cpu(void *) {
             snprintf(fname, sizeof(fname), "/proc/self/task/%d/stat", element.second);
             FILE *fp = fopen(fname, "r");
 
+            ERROR_NON_OO("Read stage: {:s}, tid: {:s}", element.first, fname);
+
+            if (!fp) ERROR_NON_OO("Cannot open tid/stat!");
+
             if (fp) {
                 // Get the 14th (utime) and the 15th (stime) numbers
                 uint32_t utime = 0, stime = 0;
@@ -74,10 +78,11 @@ void* CpuMonitor::track_cpu(void *) {
                 itr->second.prev_stime = stime;
             }
         }
+        ERROR_NON_OO("cpu time: {:ld}", cpu_time);
         prev_cpu_time = cpu_time;
 
         // Check each stage periodically
-        std::this_thread::sleep_for(2000ms);
+        std::this_thread::sleep_for(1000ms);
     }
 }
 
