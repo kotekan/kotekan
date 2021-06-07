@@ -1,5 +1,5 @@
-from flask import Flask, json, render_template, request, make_response, send_file, abort
-from flask_cors import CORS, cross_origin
+from flask import Flask, render_template, request, send_file, abort
+from flask_cors import CORS
 from requests import get
 import os
 app = Flask(__name__)
