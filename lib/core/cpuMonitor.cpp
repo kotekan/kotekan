@@ -79,7 +79,7 @@ void* CpuMonitor::track_cpu(void *) {
             }
         }
         ERROR_NON_OO("before time!");
-        ERROR_NON_OO("cpu time: {:ld}", cpu_time);
+        ERROR_NON_OO("cpu time: {:d}", cpu_time);
         prev_cpu_time = cpu_time;
 
         // Check each stage periodically
