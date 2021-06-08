@@ -43,6 +43,8 @@ void* CpuMonitor::track_cpu(void *) {
             cpu_time += num;
         }
 
+        cpu_stat.close();
+
         // Read CPU stat for each thread
         for(auto element : thread_list) {
             char fname[100];
@@ -56,7 +58,8 @@ void* CpuMonitor::track_cpu(void *) {
             if (fp) {
                 // Get the 14th (utime) and the 15th (stime) numbers
                 uint32_t utime = 0, stime = 0;
-                fscanf(fp, "%*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %lu %lu", &utime, &stime);
+                fscanf(fp, "%*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %u %u", &utime, &stime);
+                fclose(fp);
                 ERROR_NON_OO("u={:d}, s={:d}", utime, stime);
                 auto itr = ult_list.find(element.first);
                 if (itr != ult_list.end()) {
