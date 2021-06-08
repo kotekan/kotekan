@@ -53,7 +53,7 @@ void* CpuMonitor::track_cpu(void *) {
             snprintf(fname, sizeof(fname), "/proc/self/task/%d/stat", element.second);
             FILE *fp = fopen(fname, "r");
 
-            ERROR_NON_OO("Read stage: {:s}, tid: {:s}", element.first, element.second);
+            ERROR_NON_OO("Read stage: {:s}, tid: {:d}", element.first, element.second);
 
             if (!fp) ERROR_NON_OO("Cannot open tid/stat!");
 
