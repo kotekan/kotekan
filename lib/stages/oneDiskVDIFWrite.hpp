@@ -61,10 +61,24 @@ private:
     /// one frame. 
     struct Buffer* in_buf;
     /// Buffer for vdif output. 
-    VDIF_FRAME* vdif_frame;
+    VDIF_Frame* vdif_frame;
     uint32_t vdif_samples_per_frame; 
     uint32_t vdif_freq_per_frame;
-    uint32_t time_res_nsec;    
+    uint32_t time_res_nsec;
+    uint32_t vdif_frame_header_size;
+    uint32_t nvdif_payload_per_file;
+    uint32_t num_pol;
+    uint32_t ref_epoch; 
+    int disk_id;
+    int nframe_per_payload;
+    std::string disk_base;
+    std::string disk_set;
+    std::string file_name;
+    std::string file_ext;
+    std::string instrument_name;
+    std::string abs_path;
+    bool use_abs_path;
+    bool write_to_disk;  
 };
 
 #endif // BEAM_VDIF_WRITE_HPP
