@@ -20,8 +20,6 @@ void CpuMonitor::start() {
     pthread_create(&pid, nullptr, CpuMonitor::track_cpu, nullptr);
     pthread_detach(pid);
 
-    ERROR_NON_OO("After pthread_creat");
-
     // Register CPU usage callback
     restServer::instance().register_get_callback(
         "/cpu_ult", std::bind(&CpuMonitor::cpu_ult_call_back, this, _1));
@@ -29,8 +27,6 @@ void CpuMonitor::start() {
 
 void* CpuMonitor::track_cpu(void *) {
     while (1) {
-        ERROR_NON_OO("entered track_cpu");
-
         // Read total CPU stat from /proc/stat first line
         std::string stat;
         std::ifstream cpu_stat("/proc/stat", std::ifstream::in);
@@ -61,6 +57,7 @@ void* CpuMonitor::track_cpu(void *) {
                 // Get the 14th (utime) and the 15th (stime) numbers
                 uint32_t utime = 0, stime = 0;
                 fscanf(fp, "%*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %d %d", &utime, &stime);
+                ERROR_NON_OO("u={:d}, s={:d}", utime, stime);
                 auto itr = ult_list.find(element.first);
                 if (itr != ult_list.end()) {
                     // Compute usr and sys CPU usage
