@@ -10,6 +10,8 @@ add_library(
     ReadGain.cpp
     nDiskFileWrite.cpp
     nDiskFileRead.cpp
+    oneDiskVDIFWrite.cpp
+    oneDiskVDIFWrite.hpp
     networkPowerStream.cpp
     integratePowerStream.cpp
     monitorBuffer.cpp
