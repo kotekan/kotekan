@@ -31,11 +31,11 @@ void* CpuMonitor::track_cpu(void *) {
     while (1) {
         // Read total CPU stat from /proc/stat first line
         std::string stat;
-        FILE *fp = fopen("/proc/stat", "r");
-        fscanf(fp, "%*s %u %u %u %u %u %u %u %u %u",
+        FILE *cpu_fp = fopen("/proc/stat", "r");
+        fscanf(cpu_fp, "%*s %u %u %u %u %u %u %u %u %u",
                &cpu_times[0], &cpu_times[1], &cpu_times[2], &cpu_times[3], &cpu_times[4],
                &cpu_times[5], &cpu_times[6], &cpu_times[7],&cpu_times[8], &cpu_times[9]);
-        fclose(fp);
+        fclose(cpu_fp);
 
         // get total cpu time
         cpu_time = 0;
@@ -48,17 +48,16 @@ void* CpuMonitor::track_cpu(void *) {
         for(auto element : thread_list) {
             char fname[100];
             snprintf(fname, sizeof(fname), "/proc/self/task/%d/stat", element.second);
-            FILE *fp = fopen(fname, "r");
+            FILE *thread_fp = fopen(fname, "r");
 
             ERROR_NON_OO("Read stage: {:s}, tid: {:d}", element.first, element.second);
 
-            if (!fp) ERROR_NON_OO("Cannot open {:s}!", fname);
+            if (!thread_fp) ERROR_NON_OO("Cannot open {:s}!", fname);
 
-            if (fp) {
+            if (thread_fp) {
                 // Get the 14th (utime) and the 15th (stime) numbers
                 uint32_t utime = 0, stime = 0;
-                fscanf(fp, "%*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %u %u", &utime, &stime);
-                fclose(fp);
+                fscanf(thread_fp, "%*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %u %u", &utime, &stime);
                 ERROR_NON_OO("u={:d}, s={:d}", utime, stime);
                 auto itr = ult_list.find(element.first);
                 if (itr != ult_list.end()) {
@@ -79,6 +78,7 @@ void* CpuMonitor::track_cpu(void *) {
                     ult_list[element.first].prev_stime = stime;
                 }
             }
+            fclose(thread_fp);
         }
         ERROR_NON_OO("cpu time: {:d}", cpu_time);
         prev_cpu_time = cpu_time;
