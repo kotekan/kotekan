@@ -69,13 +69,16 @@ void* CpuMonitor::track_cpu(void *) {
                         100 * (utime - itr->second.prev_utime) / (cpu_time - prev_cpu_time);
                     itr->second.stime_usage =
                         100 * (stime - itr->second.prev_stime) / (cpu_time - prev_cpu_time);
+                    // Update thread usr and sys time
+                    itr->second.prev_utime = utime;
+                    itr->second.prev_stime = stime;
                     ERROR_NON_OO("before print!");
                     ERROR_NON_OO("utime= {:03.2f}, stime={:03.2f}", itr->second.utime_usage, itr->second.stime_usage);
+                } else {
+                    ult_list[element.first].prev_utime = utime;
+                    ult_list[element.first].prev_stime = stime;
                 }
                 ERROR_NON_OO("!!!");
-                // Update thread usr and sys time
-                itr->second.prev_utime = utime;
-                itr->second.prev_stime = stime;
             }
         }
         ERROR_NON_OO("before time!");
