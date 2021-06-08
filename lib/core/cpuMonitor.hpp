@@ -26,7 +26,7 @@ public:
 
     static void* track_cpu(void *);
 
-    static void record_tid(pthread_t tid, std::string thread_name);
+    static void record_tid(pid_t tid, std::string thread_name);
 
 private:
     // List of CPU usage data <stage_name, CPU_stat>
@@ -34,7 +34,7 @@ private:
 
     static uint32_t prev_cpu_time;
 
-    static std::map<std::string, pthread_t> thread_list;
+    static std::map<std::string, pid_t> thread_list;
 };
 
 } // namespace kotekan

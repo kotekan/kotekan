@@ -10,7 +10,7 @@ using namespace std::placeholders;
 namespace kotekan {
 
 std::map<std::string, CpuStat> CpuMonitor::ult_list;
-std::map<std::string, pthread_t> CpuMonitor::thread_list;
+std::map<std::string, pid_t> CpuMonitor::thread_list;
 uint32_t CpuMonitor::prev_cpu_time = 0;
 
 CpuMonitor::CpuMonitor() {};
@@ -53,7 +53,7 @@ void* CpuMonitor::track_cpu(void *) {
             snprintf(fname, sizeof(fname), "/proc/self/task/%d/stat", element.second);
             FILE *fp = fopen(fname, "r");
 
-            ERROR_NON_OO("Read stage: {:s}, tid: {:s}", element.first, fname);
+            ERROR_NON_OO("Read stage: {:s}, tid: {:s}", element.first, element.second);
 
             if (!fp) ERROR_NON_OO("Cannot open tid/stat!");
 
@@ -86,7 +86,7 @@ void* CpuMonitor::track_cpu(void *) {
     }
 }
 
-void CpuMonitor::record_tid(pthread_t tid, std::string thread_name) {
+void CpuMonitor::record_tid(pid_t tid, std::string thread_name) {
     // Add stage to the thread list for CPU usage tracking
     thread_list[thread_name] = tid;
 }

@@ -100,16 +100,82 @@ void Stage::set_cpu_affinity(const std::vector<int>& cpu_affinity_) {
     apply_cpu_affinity();
 }
 
+struct dtv_pointer
+{
+  void *val;                    /* Pointer to data, or TLS_DTV_UNALLOCATED.  */
+  void *to_free;                /* Unaligned pointer, for deallocation.  */
+};
+typedef union dtv
+{
+  size_t counter;
+  struct dtv_pointer pointer;
+} dtv_t;
+
+typedef struct list_head
+{
+  struct list_head *next;
+  struct list_head *prev;
+} list_t;
+
+typedef struct
+{
+  int i[4];
+} __128bits;
+
+typedef struct
+{
+  void *tcb;                /* Pointer to the TCB.  Not necessarily the
+                           thread descriptor used by libpthread.  */
+  dtv_t *dtv;
+  void *self;                /* Pointer to the thread descriptor.  */
+  int multiple_threads;
+  int gscope_flag;
+  uintptr_t sysinfo;
+  uintptr_t stack_guard;
+  uintptr_t pointer_guard;
+  unsigned long int vgetcpu_cache[2];
+  unsigned int feature_1;
+  int __glibc_unused1;
+  void *__private_tm[4];
+  void *__private_ss;
+  unsigned long long int ssp_base;
+  __128bits __glibc_unused2[8][4] __attribute__ ((aligned (32)));
+  void *__padding[8];
+} tcbhead_t;
+
+// Used to get tid from pthread_t content
+struct pthread_fake
+{
+    union
+    {
+#if !TLS_DTV_AT_TP
+        tcbhead_t header;
+#else
+        struct
+        {
+            int multiple_threads;
+            int gscope_flag;
+        } header;
+#endif
+        void *__padding[24];
+    };
+    list_t list;
+    pid_t tid;
+    void *others;
+};
+
 void Stage::start() {
     this_thread = std::thread(main_thread_fn, std::ref(*this));
 
     // Add stage to the thread list for CPU usage tracking
+    pthread_t ptr = this_thread.native_handle();
+    pid_t tid = ((pthread_fake *)ptr)->tid;
     char fname[100];
     char stage_name[50];
     strcpy(stage_name, unique_name.c_str());
-    snprintf(fname, sizeof(fname), "stage: %s, tid: %d", stage_name, this_thread.native_handle());
+    snprintf(fname, sizeof(fname), "stage: %s, tid: %d", stage_name, tid);
     ERROR("Stage.cpp: {:s}", fname);
-    CpuMonitor::record_tid(this_thread.native_handle(), unique_name);
+    CpuMonitor::record_tid(tid, unique_name);
 
     apply_cpu_affinity();
 }
