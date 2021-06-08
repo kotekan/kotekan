@@ -61,7 +61,7 @@ void* CpuMonitor::track_cpu(void *) {
                 // Get the 14th (utime) and the 15th (stime) numbers
                 uint32_t utime = 0, stime = 0;
                 fscanf(fp, "%*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %d %d", &utime, &stime);
-
+                ERROR_NON_OO("before calculation!");
                 auto itr = ult_list.find(element.first);
                 if (itr != ult_list.end()) {
                     // Compute usr and sys CPU usage
@@ -69,15 +69,16 @@ void* CpuMonitor::track_cpu(void *) {
                         100 * (utime - itr->second.prev_utime) / (cpu_time - prev_cpu_time);
                     itr->second.stime_usage =
                         100 * (stime - itr->second.prev_stime) / (cpu_time - prev_cpu_time);
-                    
+                    ERROR_NON_OO("before print!");
                     ERROR_NON_OO("utime= {:03.2f}, stime={:03.2f}", itr->second.utime_usage, itr->second.stime_usage);
                 }
-
+                ERROR_NON_OO("!!!");
                 // Update thread usr and sys time
                 itr->second.prev_utime = utime;
                 itr->second.prev_stime = stime;
             }
         }
+        ERROR_NON_OO("before time!");
         ERROR_NON_OO("cpu time: {:ld}", cpu_time);
         prev_cpu_time = cpu_time;
 
