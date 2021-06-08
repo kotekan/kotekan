@@ -3,6 +3,7 @@
 #include "kotekanLogging.hpp"
 #include <pthread.h>
 #include <fstream>
+#include <unistd.h>
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;
