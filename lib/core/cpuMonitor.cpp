@@ -33,7 +33,7 @@ void* CpuMonitor::track_cpu(void *) {
 
         // Read total CPU stat from /proc/stat first line
         std::string stat;
-        std::ifstream cpu_stat("./proc/stat", std::ifstream::in);
+        std::ifstream cpu_stat("/proc/stat", std::ifstream::in);
         getline(cpu_stat, stat);
         std::istringstream iss(stat);
 
