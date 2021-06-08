@@ -26,27 +26,23 @@ void CpuMonitor::start() {
 }
 
 void* CpuMonitor::track_cpu(void *) {
-    uint32_t num;
+    uint32_t cpu_times[10];
     uint32_t cpu_time;
     while (1) {
         // Read total CPU stat from /proc/stat first line
         std::string stat;
-        std::ifstream cpu_stat("/proc/stat", std::ifstream::in);
-        getline(cpu_stat, stat);
-        std::istringstream iss(stat);
+        FILE *fp = fopen("/proc/stat", "r");
+        fscanf(fp, "%*s %u %u %u %u %u %u %u %u %u", &cpu_times[0], &cpu_times[1], &cpu_times[2],
+               &cpu_times[3], &cpu_times[4], &cpu_times[5], &cpu_times[6], &cpu_times[7],
+               &cpu_times[8], &cpu_times[9]);
+        fclose(fp);
 
         // Parse and get total cpu time
-        char prefix[10];
-        iss >> prefix;
-        num = 0;
         cpu_time = 0;
         for (int i = 0; i < 10; i++) {
-            iss >> num;
-            ERROR_NON_OO("num={:d}", num);
-            cpu_time += num;
+            ERROR_NON_OO("num={:d}", cpu_times[i]);
+            cpu_time += cpu_times[i];
         }
-
-        cpu_stat.close();
 
         // Read CPU stat for each thread
         for(auto element : thread_list) {
