@@ -70,7 +70,7 @@ void* CpuMonitor::track_cpu(void *) {
                     itr->second.stime_usage =
                         100 * (stime - itr->second.prev_stime) / (cpu_time - prev_cpu_time);
                     
-                    ERROR_NON_OO("{:s}: utime= {:f}, stime={:f}", itr->first, itr->second.utime_usage, itr->second.stime_usage);
+                    ERROR_NON_OO("{:s}: utime= {:03.2f}, stime={:03.2f}", itr->first, itr->second.utime_usage, itr->second.stime_usage);
                 }
 
                 // Update thread usr and sys time
