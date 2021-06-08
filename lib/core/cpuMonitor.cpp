@@ -26,6 +26,8 @@ void CpuMonitor::start() {
 }
 
 void* CpuMonitor::track_cpu(void *) {
+    uint32_t num;
+    uint32_t cpu_time;
     while (1) {
         // Read total CPU stat from /proc/stat first line
         std::string stat;
@@ -36,8 +38,8 @@ void* CpuMonitor::track_cpu(void *) {
         // Parse and get total cpu time
         char prefix[10];
         iss >> prefix;
-        uint32_t num = 0;
-        uint32_t cpu_time = 0;
+        num = 0;
+        cpu_time = 0;
         for (int i = 0; i < 10; i++) {
             iss >> num;
             ERROR_NON_OO("num={:d}", num);
