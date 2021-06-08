@@ -82,7 +82,7 @@ void* CpuMonitor::track_cpu(void *) {
         prev_cpu_time = cpu_time;
 
         // Check each stage periodically
-        std::this_thread::sleep_for(2000ms);
+        sleep(1);
     }
 }
 
