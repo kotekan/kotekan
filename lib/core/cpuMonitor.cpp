@@ -3,7 +3,6 @@
 #include "kotekanLogging.hpp"
 #include <pthread.h>
 #include <fstream>
-#include <unistd.h>
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;
@@ -57,7 +56,7 @@ void* CpuMonitor::track_cpu(void *) {
             if (fp) {
                 // Get the 14th (utime) and the 15th (stime) numbers
                 uint32_t utime = 0, stime = 0;
-                fscanf(fp, "%*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %d %d", &utime, &stime);
+                fscanf(fp, "%*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %lu %lu", &utime, &stime);
                 ERROR_NON_OO("u={:d}, s={:d}", utime, stime);
                 auto itr = ult_list.find(element.first);
                 if (itr != ult_list.end()) {
@@ -83,7 +82,7 @@ void* CpuMonitor::track_cpu(void *) {
         prev_cpu_time = cpu_time;
 
         // Check each stage periodically
-        sleep(1);
+        std::this_thread::sleep_for(1000ms);
     }
 }
 
