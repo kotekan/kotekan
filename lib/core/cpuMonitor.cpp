@@ -40,6 +40,7 @@ void* CpuMonitor::track_cpu(void *) {
         uint32_t cpu_time = 0;
         for (int i = 0; i < 10; i++) {
             iss >> num;
+            ERROR_NON_OO("num={:d}", num);
             cpu_time += num;
         }
 
