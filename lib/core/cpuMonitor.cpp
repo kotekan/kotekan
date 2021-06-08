@@ -37,7 +37,7 @@ void* CpuMonitor::track_cpu(void *) {
                &cpu_times[5], &cpu_times[6], &cpu_times[7],&cpu_times[8], &cpu_times[9]);
         fclose(fp);
 
-        // Parse and get total cpu time
+        // get total cpu time
         cpu_time = 0;
         for (int i = 0; i < 10; i++) {
             ERROR_NON_OO("num={:d}", cpu_times[i]);
@@ -52,7 +52,7 @@ void* CpuMonitor::track_cpu(void *) {
 
             ERROR_NON_OO("Read stage: {:s}, tid: {:d}", element.first, element.second);
 
-            if (!fp) ERROR_NON_OO("Cannot open tid/stat!");
+            if (!fp) ERROR_NON_OO("Cannot open {:s}!", fname);
 
             if (fp) {
                 // Get the 14th (utime) and the 15th (stime) numbers
