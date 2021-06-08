@@ -60,14 +60,14 @@ void* CpuMonitor::track_cpu(void *) {
                 ERROR_NON_OO("u={:d}, s={:d}", utime, stime);
                 auto itr = ult_list.find(element.first);
                 if (itr != ult_list.end()) {
+                    ERROR_NON_OO("u={:d}, s={:d}, pu={:d}, ps={:d}, ct={:d}, pct={:d}"
+                                , utime, stime, itr->second.prev_utime, itr->second.prev_stime,
+                                cpu_time, prev_cpu_time);
                     // Compute usr and sys CPU usage
                     itr->second.utime_usage =
                         100 * (utime - itr->second.prev_utime) / (cpu_time - prev_cpu_time);
                     itr->second.stime_usage =
                         100 * (stime - itr->second.prev_stime) / (cpu_time - prev_cpu_time);
-                    ERROR_NON_OO("u={:d}, s={:d}, pu={:d}, ps={:d}, ct={:d}, pct={:d}"
-                                , utime, stime, itr->second.prev_utime, itr->second.prev_stime,
-                                cpu_time, prev_cpu_time);
                     // Update thread usr and sys time
                     itr->second.prev_utime = utime;
                     itr->second.prev_stime = stime;
