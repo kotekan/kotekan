@@ -1,6 +1,7 @@
 #include "cpuMonitor.hpp"
 
 #include "kotekanLogging.hpp"
+#include "Stage.hpp"
 #include <pthread.h>
 #include <fstream>
 
@@ -10,7 +11,6 @@ using namespace std::placeholders;
 namespace kotekan {
 
 std::map<std::string, CpuStat> CpuMonitor::ult_list;
-std::map<std::string, pid_t> CpuMonitor::thread_list;
 uint32_t CpuMonitor::prev_cpu_time = 0;
 
 CpuMonitor::CpuMonitor() {};
@@ -45,6 +45,7 @@ void* CpuMonitor::track_cpu(void *) {
         }
 
         // Read CPU stat for each thread
+        std::map<std::string, pid_t> thread_list = Stage::get_thread_list();
         for(auto element : thread_list) {
             char fname[100];
             snprintf(fname, sizeof(fname), "/proc/self/task/%d/stat", element.second);
@@ -86,11 +87,6 @@ void* CpuMonitor::track_cpu(void *) {
         // Check each stage periodically
         std::this_thread::sleep_for(1000ms);
     }
-}
-
-void CpuMonitor::record_tid(pid_t tid, std::string thread_name) {
-    // Add stage to the thread list for CPU usage tracking
-    thread_list[thread_name] = tid;
 }
 
 void CpuMonitor::cpu_ult_call_back(connectionInstance& conn) {

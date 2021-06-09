@@ -51,6 +51,10 @@ public:
      */
     virtual std::string dot_string(const std::string& prefix) const;
 
+    void register_tid(pthread_t ptr);
+    void unregister_tid();
+    static std::map<std::string, pid_t> get_thread_list();
+
 protected:
     std::atomic_bool stop_thread;
     Config& config;
@@ -98,6 +102,8 @@ private:
     /// The number of seconds to wait for a kotekan stage thread to be
     /// joined after the exit signal has been given before exiting ungracefully.
     uint32_t join_timeout;
+
+    static std::map<std::string, pid_t> thread_list;
 };
 
 } // namespace kotekan
