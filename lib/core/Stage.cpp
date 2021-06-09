@@ -146,7 +146,7 @@ typedef struct
 // Used to get tid from pthread_t content
 struct pthread_fake
 {
-    union
+    union uni
     {
 #if !TLS_DTV_AT_TP
         tcbhead_t header;
@@ -175,6 +175,7 @@ void Stage::start() {
     strcpy(stage_name, unique_name.c_str());
     snprintf(fname, sizeof(fname), "stage: %s, tid: %d", stage_name, tid);
     ERROR("Stage.cpp: {:s}", fname);
+    ERROR("size of: {:d}", sizeof(pthread_fake::uni) + sizeof(list_t));
     CpuMonitor::record_tid(tid, unique_name);
 
     apply_cpu_affinity();
