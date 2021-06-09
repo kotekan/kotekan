@@ -59,21 +59,18 @@ void* CpuMonitor::track_cpu(void *) {
                 // Get the 14th (utime) and the 15th (stime) numbers
                 uint32_t utime = 0, stime = 0;
                 fscanf(thread_fp, "%*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %u %u", &utime, &stime);
-                ERROR_NON_OO("u={:d}, s={:d}", utime, stime);
                 auto itr = ult_list.find(element.first);
                 if (itr != ult_list.end()) {
                     ERROR_NON_OO("u={:d}, s={:d}, pu={:d}, ps={:d}, ct={:d}, pct={:d}"
                                 , utime, stime, itr->second.prev_utime, itr->second.prev_stime,
                                 cpu_time, prev_cpu_time);
                     // Compute usr and sys CPU usage
-                    itr->second.utime_usage =
-                        100 * (utime - itr->second.prev_utime) / (cpu_time - prev_cpu_time);
-                    itr->second.stime_usage =
-                        100 * (stime - itr->second.prev_stime) / (cpu_time - prev_cpu_time);
+                    itr->second.utime_usage.add_sample(100 * (utime - itr->second.prev_utime) / (cpu_time - prev_cpu_time));
+                    itr->second.stime_usage.add_sample(100 * (stime - itr->second.prev_stime) / (cpu_time - prev_cpu_time));
                     // Update thread usr and sys time
                     itr->second.prev_utime = utime;
                     itr->second.prev_stime = stime;
-                    ERROR_NON_OO("utime= {:03.2f}, stime={:03.2f}", itr->second.utime_usage, itr->second.stime_usage);
+                    ERROR_NON_OO("utime= {:03.2f}, stime={:03.2f}", itr->second.utime_usage.get_avg(), itr->second.stime_usage.get_avg());
                 } else {
                     ult_list[element.first].prev_utime = utime;
                     ult_list[element.first].prev_stime = stime;
@@ -92,10 +89,10 @@ void* CpuMonitor::track_cpu(void *) {
 void CpuMonitor::cpu_ult_call_back(connectionInstance& conn) {
     nlohmann::json cpu_ult_json = {};
 
-    for (auto element : ult_list) {
+    for (auto &element : ult_list) {
         nlohmann::json thread_cpu_ult = {};
-        thread_cpu_ult["usr_cpu_ult"] = element.second.utime_usage;
-        thread_cpu_ult["sys_cpu_ult"] = element.second.stime_usage;
+        thread_cpu_ult["usr_cpu_ult"] = element.second.utime_usage.get_avg();
+        thread_cpu_ult["sys_cpu_ult"] = element.second.stime_usage.get_avg();
 
         cpu_ult_json[element.first] = thread_cpu_ult;
     }

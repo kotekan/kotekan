@@ -3,6 +3,8 @@
 
 #include "restServer.hpp"
 
+#include "visUtil.hpp"
+
 #include <map>
 #include <string>
 #include <cstdint>
@@ -10,8 +12,8 @@
 namespace kotekan {
 
 struct CpuStat {
-    double utime_usage = 0;
-    double stime_usage = 0;
+    StatTracker utime_usage = StatTracker(120);
+    StatTracker stime_usage = StatTracker(120);
     uint32_t prev_utime = 0;
     uint32_t prev_stime = 0;
 };
