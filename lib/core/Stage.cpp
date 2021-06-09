@@ -100,66 +100,10 @@ void Stage::set_cpu_affinity(const std::vector<int>& cpu_affinity_) {
     apply_cpu_affinity();
 }
 
-struct dtv_pointer
-{
-  void *val;                    /* Pointer to data, or TLS_DTV_UNALLOCATED.  */
-  void *to_free;                /* Unaligned pointer, for deallocation.  */
-};
-typedef union dtv
-{
-  size_t counter;
-  struct dtv_pointer pointer;
-} dtv_t;
-
-typedef struct list_head
-{
-  struct list_head *next;
-  struct list_head *prev;
-} list_t;
-
-typedef struct
-{
-  int i[4];
-} __128bits;
-
-typedef struct
-{
-  void *tcb;                /* Pointer to the TCB.  Not necessarily the
-                           thread descriptor used by libpthread.  */
-  dtv_t *dtv;
-  void *self;                /* Pointer to the thread descriptor.  */
-  int multiple_threads;
-  int gscope_flag;
-  uintptr_t sysinfo;
-  uintptr_t stack_guard;
-  uintptr_t pointer_guard;
-  unsigned long int vgetcpu_cache[2];
-  unsigned int feature_1;
-  int __glibc_unused1;
-  void *__private_tm[4];
-  void *__private_ss;
-  unsigned long long int ssp_base;
-  __128bits __glibc_unused2[8][4] __attribute__ ((aligned (32)));
-  void *__padding[8];
-} tcbhead_t;
-
 // Used to get tid from pthread_t content
 struct pthread_fake
 {
-    union
-    {
-#if !TLS_DTV_AT_TP
-        tcbhead_t header;
-#else
-        struct
-        {
-            int multiple_threads;
-            int gscope_flag;
-        } header;
-#endif
-        void *__padding[24];
-    };
-    list_t list;
+    char unused[720];
     pid_t tid;
     void *others;
 };
