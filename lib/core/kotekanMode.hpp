@@ -6,6 +6,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "metadata.h"          // for metadataPool  // IWYU pragma: keep
 #include "restServer.hpp"
+#include "cpuMonitor.hpp"
 
 #include <map>    // for map
 #include <string> // for string
@@ -45,6 +46,7 @@ public:
 private:
     Config& config;
     bufferContainer buffer_container;
+    CpuMonitor cpu_monitor;
 
     std::map<std::string, Stage*> stages;
     std::map<std::string, struct metadataPool*> metadata_pools;

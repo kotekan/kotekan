@@ -12,8 +12,13 @@ namespace kotekan {
 
 std::map<std::string, CpuStat> CpuMonitor::ult_list;
 uint32_t CpuMonitor::prev_cpu_time = 0;
+bool CpuMonitor::stop_thread = false;
 
 CpuMonitor::CpuMonitor() {};
+
+CpuMonitor::~CpuMonitor() {
+    ult_list.clear();
+}
 
 void CpuMonitor::start() {
     pthread_t pid;
@@ -25,10 +30,14 @@ void CpuMonitor::start() {
         "/cpu_ult", std::bind(&CpuMonitor::cpu_ult_call_back, this, _1));
 }
 
+void CpuMonitor::stop() {
+    stop_thread = true;
+}
+
 void* CpuMonitor::track_cpu(void *) {
     uint32_t cpu_times[10];
     uint32_t cpu_time;
-    while (1) {
+    while (!stop_thread) {
         // Read total CPU stat from /proc/stat first line
         std::string stat;
         FILE *cpu_fp = fopen("/proc/stat", "r");
@@ -40,7 +49,7 @@ void* CpuMonitor::track_cpu(void *) {
         // get total cpu time
         cpu_time = 0;
         for (int i = 0; i < 10; i++) {
-            ERROR_NON_OO("num={:d}", cpu_times[i]);
+            // ERROR_NON_OO("num={:d}", cpu_times[i]);
             cpu_time += cpu_times[i];
         }
 
@@ -51,7 +60,7 @@ void* CpuMonitor::track_cpu(void *) {
             snprintf(fname, sizeof(fname), "/proc/self/task/%d/stat", element.second);
             FILE *thread_fp = fopen(fname, "r");
 
-            ERROR_NON_OO("Read stage: {:s}, tid: {:d}", element.first, element.second);
+            // ERROR_NON_OO("Read stage: {:s}, tid: {:d}", element.first, element.second);
 
             if (!thread_fp) ERROR_NON_OO("Cannot open {:s}!", fname);
 
@@ -61,16 +70,16 @@ void* CpuMonitor::track_cpu(void *) {
                 fscanf(thread_fp, "%*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %u %u", &utime, &stime);
                 auto itr = ult_list.find(element.first);
                 if (itr != ult_list.end()) {
-                    ERROR_NON_OO("u={:d}, s={:d}, pu={:d}, ps={:d}, ct={:d}, pct={:d}"
-                                , utime, stime, itr->second.prev_utime, itr->second.prev_stime,
-                                cpu_time, prev_cpu_time);
+                    // ERROR_NON_OO("u={:d}, s={:d}, pu={:d}, ps={:d}, ct={:d}, pct={:d}"
+                    //             , utime, stime, itr->second.prev_utime, itr->second.prev_stime,
+                    //             cpu_time, prev_cpu_time);
                     // Compute usr and sys CPU usage
                     itr->second.utime_usage.add_sample(100 * (utime - itr->second.prev_utime) / (cpu_time - prev_cpu_time));
                     itr->second.stime_usage.add_sample(100 * (stime - itr->second.prev_stime) / (cpu_time - prev_cpu_time));
                     // Update thread usr and sys time
                     itr->second.prev_utime = utime;
                     itr->second.prev_stime = stime;
-                    ERROR_NON_OO("utime= {:03.2f}, stime={:03.2f}", itr->second.utime_usage.get_avg(), itr->second.stime_usage.get_avg());
+                    // ERROR_NON_OO("utime= {:03.2f}, stime={:03.2f}", itr->second.utime_usage.get_avg(), itr->second.stime_usage.get_avg());
                 } else {
                     ult_list[element.first].prev_utime = utime;
                     ult_list[element.first].prev_stime = stime;
@@ -78,7 +87,7 @@ void* CpuMonitor::track_cpu(void *) {
             }
             fclose(thread_fp);
         }
-        ERROR_NON_OO("cpu time: {:d}", cpu_time);
+        // ERROR_NON_OO("cpu time: {:d}", cpu_time);
         prev_cpu_time = cpu_time;
 
         // Check each stage periodically

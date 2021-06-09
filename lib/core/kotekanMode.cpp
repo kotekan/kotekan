@@ -20,11 +20,8 @@
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
 #include <stdlib.h>   // for free
 #include <utility>    // for pair
-#include <pthread.h>
-#include <fstream>
 
 using namespace std::placeholders;
-using namespace std::chrono_literals;
 
 namespace kotekan {
 
@@ -51,6 +48,7 @@ kotekanMode::~kotekanMode() {
     restServer::instance().remove_get_callback("/buffers");
     restServer::instance().remove_get_callback("/pipeline_dot");
     restServer::instance().remove_all_aliases();
+    cpu_monitor.stop();
 
     for (auto const& stage : stages) {
         if (stage.second != nullptr) {
@@ -123,6 +121,8 @@ void kotekanMode::start_stages() {
         INFO_NON_OO("Starting kotekan_stage: {:s}...", stage.first);
         stage.second->start();
     }
+
+    cpu_monitor.start();
 }
 
 void kotekanMode::stop_stages() {

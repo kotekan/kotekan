@@ -21,14 +21,18 @@ struct CpuStat {
 class CpuMonitor {
 public:
     CpuMonitor();
+    ~CpuMonitor();
 
     void start();
+    void stop();
 
     void cpu_ult_call_back(connectionInstance& conn);
 
     static void* track_cpu(void *);
 
 private:
+    static bool stop_thread;
+
     // List of CPU usage data <stage_name, CPU_stat>
     static std::map<std::string, CpuStat> ult_list;
 
