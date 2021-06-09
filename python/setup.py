@@ -35,6 +35,7 @@ setup(
         [console_scripts]
         kotekan-ctl=kotekan.scripts.ctl:cli
         polyco-tools=kotekan.scripts.polyco_tools:cli
+        baseband-archiver=kotekan.scripts.baseband_archiver:cli
     """,
     scripts=["scripts/rfi_receiver/rfi_receiver.py"],
 )
