@@ -91,8 +91,9 @@ void CpuMonitor::cpu_ult_call_back(connectionInstance& conn) {
 
     for (auto &element : ult_list) {
         nlohmann::json thread_cpu_ult = {};
-        thread_cpu_ult["usr_cpu_ult"] = element.second.utime_usage.get_avg();
-        thread_cpu_ult["sys_cpu_ult"] = element.second.stime_usage.get_avg();
+        // Limit outputs to two digits
+        thread_cpu_ult["usr_cpu_ult"] = floor(element.second.utime_usage.get_avg()*100)/100;
+        thread_cpu_ult["sys_cpu_ult"] = floor(element.second.stime_usage.get_avg()*100)/100;
 
         cpu_ult_json[element.first] = thread_cpu_ult;
     }
