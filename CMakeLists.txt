@@ -50,6 +50,10 @@ option(CCACHE "Use ccache to speed up the build" OFF)
 option(WERROR "Warnings are errors" OFF)
 option(CPU_MONITOR "Enable CPU monitor for each stage" OFF)
 
+if(${CPU_MONITOR})
+    message("Enabled CPU monitor")
+endif()
+
 if(${CCACHE})
     find_program(CCACHE_PROGRAM ccache)
     if(CCACHE_PROGRAM)
