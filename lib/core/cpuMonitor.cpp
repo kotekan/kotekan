@@ -44,7 +44,7 @@ void* CpuMonitor::track_cpu(void*) {
         // Read CPU stats from /proc/stat first line
         std::string stat;
         FILE* cpu_fp = fopen("/proc/stat", "r");
-        fscanf(cpu_fp, "%*s %u %u %u %u %u %u %u %u %u", &cpu_times[0], &cpu_times[1],
+        fscanf(cpu_fp, "%*s %u %u %u %u %u %u %u %u %u %u", &cpu_times[0], &cpu_times[1],
                &cpu_times[2], &cpu_times[3], &cpu_times[4], &cpu_times[5], &cpu_times[6],
                &cpu_times[7], &cpu_times[8], &cpu_times[9]);
         fclose(cpu_fp);
