@@ -116,6 +116,7 @@ private:
     /// joined after the exit signal has been given before exiting ungracefully.
     uint32_t join_timeout;
 
+    // List of all stage tid used for CPU usage tracking
     static std::map<std::string, pid_t> thread_list;
 };
 
