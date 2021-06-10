@@ -64,11 +64,12 @@ void* CpuMonitor::track_cpu(void*) {
             if (thread_fp) {
                 // Get the 14th (utime) and the 15th (stime) stats
                 uint32_t utime = 0, stime = 0;
-                fscanf(thread_fp, "%*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %u %u",
-                       &utime, &stime);
+                int ret =
+                    fscanf(thread_fp, "%*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %u %u",
+                           &utime, &stime);
 
                 auto itr = ult_list.find(element.first);
-                if (itr != ult_list.end()) {
+                if (itr != ult_list.end() && ret == 2) {
                     // Compute usr and sys CPU usage
                     itr->second.utime_usage.add_sample(100 * (utime - itr->second.prev_utime)
                                                        / (cpu_time - prev_cpu_time));
