@@ -10,8 +10,8 @@ samples_per_data_set: 65536
 num_elements: 16
 num_links: 6
 num_freq: 1024
-num_local_freq: num_freq / num_links
-num_freq_in_frame: num_freq / num_links
+num_local_freq: num_freq / 8
+num_freq_in_frame: num_freq / 8
 block_size: 16
 num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
 instrument_name: HartRAO
