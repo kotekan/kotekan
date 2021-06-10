@@ -4,9 +4,9 @@
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
-#include "metadata.h"          // for metadataPool  // IWYU pragma: keep
-#include "restServer.hpp"
 #include "cpuMonitor.hpp"
+#include "metadata.h" // for metadataPool  // IWYU pragma: keep
+#include "restServer.hpp"
 
 #include <map>    // for map
 #include <string> // for string

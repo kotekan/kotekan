@@ -148,15 +148,14 @@ std::string Stage::dot_string(const std::string& prefix) const {
 }
 
 // Used to get tid from pthread_t
-struct pthread_fake
-{
+struct pthread_fake {
     char offset[720];
     pid_t tid;
-    void *others;
+    void* others;
 };
 
 void Stage::register_tid(pthread_t ptr) {
-    pid_t tid = ((pthread_fake *)ptr)->tid;
+    pid_t tid = ((pthread_fake*)ptr)->tid;
     thread_list[unique_name] = tid;
 }
 

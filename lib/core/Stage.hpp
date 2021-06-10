@@ -63,7 +63,7 @@ public:
 
     /**
      * @brief Get the list of all registered tid.
-     * 
+     *
      * @return the copy of the thread list.
      */
     static std::map<std::string, pid_t> get_thread_list();
