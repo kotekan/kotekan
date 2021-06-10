@@ -1,14 +1,14 @@
 #ifndef KOTEKAN_MODE_HPP
 #define KOTEKAN_MODE_HPP
 
-#include <map>                  // for map
-#include <string>               // for string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+#include "metadata.h"          // for metadataPool  // IWYU pragma: keep
+#include "restServer.hpp"      // for connectionInstance
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "metadata.h" // for metadataPool  // IWYU pragma: keep
-#include "restServer.hpp"       // for connectionInstance
+#include <map>    // for map
+#include <string> // for string
 
 
 // doxygen wants the namespace to be documented somewhere
