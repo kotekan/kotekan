@@ -48,7 +48,6 @@ kotekanMode::~kotekanMode() {
     restServer::instance().remove_get_callback("/buffers");
     restServer::instance().remove_get_callback("/pipeline_dot");
     restServer::instance().remove_all_aliases();
-    cpu_monitor.stop();
 
     for (auto const& stage : stages) {
         if (stage.second != nullptr) {
@@ -121,11 +120,21 @@ void kotekanMode::start_stages() {
         INFO_NON_OO("Starting kotekan_stage: {:s}...", stage.first);
         stage.second->start();
     }
-
-    cpu_monitor.start();
+#ifdef CPU_MONITOR
+#ifndef MAC_OSX
+    cpu_monitor = new CpuMonitor();
+    cpu_monitor->start();
+#endif
+#endif
 }
 
 void kotekanMode::stop_stages() {
+#ifdef CPU_MONITOR
+#ifndef MAC_OSX
+    cpu_monitor->stop();
+    delete cpu_monitor;
+#endif
+#endif
     // First set the shutdown variable on all stages
     for (auto const& stage : stages)
         stage.second->stop();

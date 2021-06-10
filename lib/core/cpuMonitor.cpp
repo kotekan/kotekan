@@ -17,6 +17,7 @@ bool CpuMonitor::stop_thread = false;
 CpuMonitor::CpuMonitor() {};
 
 CpuMonitor::~CpuMonitor() {
+    restServer::instance().remove_get_callback("/cpu_ult");
     ult_list.clear();
 }
 

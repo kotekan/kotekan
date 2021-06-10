@@ -46,7 +46,7 @@ public:
 private:
     Config& config;
     bufferContainer buffer_container;
-    CpuMonitor cpu_monitor;
+    CpuMonitor* cpu_monitor;
 
     std::map<std::string, Stage*> stages;
     std::map<std::string, struct metadataPool*> metadata_pools;

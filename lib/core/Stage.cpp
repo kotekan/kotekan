@@ -127,13 +127,11 @@ void Stage::join() {
                   unique_name, join_timeout);
             std::abort();
         }
-        unregister_tid();
     }
 }
 
 void Stage::stop() {
     stop_thread = true;
-    unregister_tid();
 }
 
 void Stage::main_thread() {}
@@ -159,11 +157,6 @@ struct pthread_fake
 
 void Stage::register_tid(pthread_t ptr) {
     pid_t tid = ((pthread_fake *)ptr)->tid;
-    // char fname[100];
-    // char stage_name[50];
-    // strcpy(stage_name, unique_name.c_str());
-    // snprintf(fname, sizeof(fname), "stage: %s, tid: %d", stage_name, tid);
-    // ERROR("Stage.cpp: {:s}", fname);
     thread_list[unique_name] = tid;
 }
 
