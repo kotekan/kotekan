@@ -44,7 +44,7 @@ public:
 
     /**
      * @brief Compute stage CPU usage periodically (thread entry function).
-     * Get CPU stat from /proc/stat and stage stat from /proc/self/<tid>/stat.
+     * Get CPU stat from /proc/stat and stage stat from /proc/self/tid/stat.
      * Thread list maintained and passed by Stage class.
      **/
     static void* track_cpu(void*);
