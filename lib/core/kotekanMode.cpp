@@ -121,13 +121,13 @@ void kotekanMode::start_stages() {
         stage.second->start();
     }
 #if defined(CPU_MONITOR) && !defined(MAC_OSX)
-    cpu_monitor->start();
+    cpu_monitor.start();
 #endif
 }
 
 void kotekanMode::stop_stages() {
 #if defined(CPU_MONITOR) && !defined(MAC_OSX)
-    cpu_monitor->stop();
+    cpu_monitor.stop();
 #endif
     // First set the shutdown variable on all stages
     for (auto const& stage : stages)
