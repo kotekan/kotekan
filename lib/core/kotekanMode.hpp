@@ -46,7 +46,9 @@ public:
 private:
     Config& config;
     bufferContainer buffer_container;
-    CpuMonitor* cpu_monitor;
+#if defined(CPU_MONITOR) && !defined(MAC_OSX)
+    CpuMonitor cpu_monitor;
+#endif
 
     std::map<std::string, Stage*> stages;
     std::map<std::string, struct metadataPool*> metadata_pools;

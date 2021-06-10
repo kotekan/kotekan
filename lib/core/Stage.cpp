@@ -103,9 +103,7 @@ void Stage::set_cpu_affinity(const std::vector<int>& cpu_affinity_) {
 
 void Stage::start() {
     this_thread = std::thread(main_thread_fn, std::ref(*this));
-
-    pthread_t ptr = this_thread.native_handle();
-    register_tid(ptr);
+    register_tid(this_thread.native_handle());
 
     apply_cpu_affinity();
 }
