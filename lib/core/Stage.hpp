@@ -51,8 +51,21 @@ public:
      */
     virtual std::string dot_string(const std::string& prefix) const;
 
+    /**
+     * @brief Add newly created stage tid to thread_list for cpu usage tracking.
+     */
     void register_tid(pthread_t ptr);
+
+    /**
+     * @brief Remove the current stage tid from thread_list.
+     */
     void unregister_tid();
+
+    /**
+     * @brief Get the list of all registered tid.
+     * 
+     * @return the copy of the thread list.
+     */
     static std::map<std::string, pid_t> get_thread_list();
 
 protected:

@@ -48,9 +48,10 @@ option(WITH_TESTS "Compile testing library and boost C++ unit tests" OFF)
 option(IWYU "Enable include-what-you-use and print suggestions to stderr" OFF)
 option(CCACHE "Use ccache to speed up the build" OFF)
 option(WERROR "Warnings are errors" OFF)
-option(CPU_MONITOR "Enable CPU monitor for each stage" OFF)
+option(CPU_MONITOR "Enable CPU usage tracking for each stage" OFF)
 
 if(${CPU_MONITOR})
+    add_definitions(-DCPU_MONITOR)
     message("Enabled CPU monitor")
 endif()
 
