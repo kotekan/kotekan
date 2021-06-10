@@ -1,10 +1,14 @@
+#include <pthread.h>    // for pthread_detach
+#include <math.h>       // for floor
+#include <stdio.h>      // for fclose, fopen, fscanf, snprintf, FILE
+#include <sys/types.h>  // for pid_t
+#include <chrono>       // for operator""ms, chrono_literals
+#include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
+#include <utility>      // for pair
+
 #include "cpuMonitor.hpp"
-
-#include "Stage.hpp"
-#include "kotekanLogging.hpp"
-
-#include <fstream>
-#include <pthread.h>
+#include "Stage.hpp"    // for Stage
+#include "json.hpp"     // for basic_json<>::object_t, json, basic_json<>::value_type
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;
