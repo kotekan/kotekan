@@ -47,12 +47,13 @@ public:
      * Get CPU stat from /proc/stat and stage stat from /proc/self/tid/stat.
      * Thread list maintained and passed by Stage class.
      **/
-    static void* track_cpu(void*);
+    void track_cpu();
 
 private:
-    static bool stop_thread;
-    static std::map<std::string, CpuStat> ult_list;
-    static uint32_t prev_cpu_time;
+    std::thread this_thread;
+    bool stop_thread;
+    std::map<std::string, CpuStat> ult_list;
+    uint32_t prev_cpu_time;
 };
 
 } // namespace kotekan

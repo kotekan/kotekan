@@ -11,10 +11,6 @@ using namespace std::placeholders;
 
 namespace kotekan {
 
-std::map<std::string, CpuStat> CpuMonitor::ult_list;
-uint32_t CpuMonitor::prev_cpu_time = 0;
-bool CpuMonitor::stop_thread = false;
-
 CpuMonitor::CpuMonitor() {
     // Register CPU usage callback
     restServer::instance().register_get_callback(
@@ -27,16 +23,15 @@ CpuMonitor::~CpuMonitor() {
 }
 
 void CpuMonitor::start() {
-    pthread_t pid;
-    pthread_create(&pid, nullptr, CpuMonitor::track_cpu, nullptr);
-    pthread_detach(pid);
+    this_thread = std::thread(&CpuMonitor::track_cpu, this);
+    pthread_detach(this_thread.native_handle());
 }
 
 void CpuMonitor::stop() {
     stop_thread = true;
 }
 
-void* CpuMonitor::track_cpu(void*) {
+void CpuMonitor::track_cpu() {
     while (!stop_thread) {
         uint32_t cpu_times[10];
         uint32_t cpu_time = 0;
