@@ -4,7 +4,6 @@
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "util.h"              // for string_tail
-#include "kotekanMode.hpp"
 
 #include "fmt.hpp" // for format
 
@@ -23,7 +22,7 @@
 
 namespace kotekan {
 
-extern std::map<std::string, pthread_t> thread_list;
+std::map<std::string, pid_t> Stage::thread_list;
 
 Stage::Stage(Config& config, const std::string& unique_name, bufferContainer& buffer_container_,
              std::function<void(const Stage&)> main_thread_ref) :
@@ -104,9 +103,7 @@ void Stage::set_cpu_affinity(const std::vector<int>& cpu_affinity_) {
 
 void Stage::start() {
     this_thread = std::thread(main_thread_fn, std::ref(*this));
-
-    // Add stage to the thread list for CPU usage tracking
-    thread_list[unique_name] = this_thread.native_handle();
+    register_tid(this_thread.native_handle());
 
     apply_cpu_affinity();
 }
@@ -141,10 +138,34 @@ Stage::~Stage() {
     stop_thread = true;
     if (this_thread.joinable())
         this_thread.join();
+    unregister_tid();
 }
 
 std::string Stage::dot_string(const std::string& prefix) const {
     return fmt::format("{:s}\"{:s}\" [shape=box, color=darkgreen];\n", prefix, get_unique_name());
+}
+
+// Used to get tid from pthread_t
+struct pthread_fake {
+    char offset[720];
+    pid_t tid;
+    void* others;
+};
+
+void Stage::register_tid(pthread_t ptr) {
+    pid_t tid = ((pthread_fake*)ptr)->tid;
+    thread_list[unique_name] = tid;
+}
+
+void Stage::unregister_tid() {
+    auto itr = thread_list.find(unique_name);
+    if (itr != thread_list.end()) {
+        thread_list.erase(itr);
+    }
+}
+
+std::map<std::string, pid_t> Stage::get_thread_list() {
+    return thread_list;
 }
 
 } // namespace kotekan
