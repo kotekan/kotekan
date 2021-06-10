@@ -206,7 +206,7 @@ merge:
 gpu:
   num_data_sets: 1
   profiling: true
-  legacy_opencl: ture
+  legacy_opencl: true
   kernel_path: "/var/lib/kotekan/opencl/kernels/"
   log_level: WARN
   frame_arrival_period: samples_per_data_set / 390625 / num_links
