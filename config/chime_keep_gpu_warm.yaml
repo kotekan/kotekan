@@ -636,7 +636,6 @@ baseband:
   max_dump_samples: 200000
   num_frames_buffer: baseband_buffer_depth - 10
   base_dir: /mnt/frb-baseband/
-  write_throttle: 0
   baseband0:
     kotekan_stage: basebandReadout
     in_buf: network_buffer_0

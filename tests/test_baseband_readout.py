@@ -5,19 +5,13 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 
 # === End Python 2/3 compatibility
 
+from dataclasses import dataclass
 import os
 import glob
 import random
 import pytest
 
-import numpy as np
-import h5py
-
 from kotekan import runner
-
-# Skip if HDF5 support not built into kotekan
-if not runner.has_hdf5():
-    pytest.skip("HDF5 support not available.", allow_module_level=True)
 
 
 def is_docker():
@@ -43,7 +37,53 @@ default_params = {
     "value": 153,
     "samples_per_data_set": 1024,
     "rest_mode": "step",
+    "baseband_metadata_pool": {
+        "kotekan_metadata_pool": "BasebandMetadata",
+        "num_metadata_objects": 4096,
+    },
 }
+
+
+@dataclass(frozen=False)
+class EventDump:
+    """Convenience class for reconstructing a complete baseband event from dumped BasebandBuffer"""
+
+    event_id: int
+    freq_id: int
+    event_start_seq: int
+    event_end_seq: int
+    num_elements: int
+    fpga_start_seq: int
+    fpga_length: int
+
+    @classmethod
+    def from_metadata(cls, metadata):
+        """Create an EventDump instance from the event's first dumped frame"""
+        event_id = metadata.event_id
+        freq_id = metadata.freq_id
+        event_start_seq = metadata.event_start_seq
+        event_end_seq = metadata.event_end_seq
+        fpga_seq = metadata.frame_fpga_seq
+        num_elements = metadata.num_elements
+        valid_to = metadata.valid_to
+        return cls(event_id, freq_id, event_start_seq, event_end_seq, num_elements, fpga_seq, valid_to)
+
+    def extend(self, metadata):
+        """Increase the duration of the event's data with another dumped frame
+        Enforces that the dumped frames record continguous samples, with no holes caused by the output buffer's filling up.
+        """
+        # check structure matches
+        assert self.event_id == metadata.event_id
+        assert self.freq_id == metadata.freq_id
+        assert self.event_start_seq == metadata.event_start_seq
+        assert self.event_end_seq == metadata.event_end_seq
+        assert self.num_elements == metadata.num_elements
+
+        # check samples are continguous
+        fpga_seq = metadata.frame_fpga_seq
+        assert fpga_seq == self.fpga_start_seq + self.fpga_length
+
+        self.fpga_length += metadata.valid_to
 
 
 DATAGEN_PNAME = "fakenetwork"
@@ -81,7 +121,6 @@ def run_baseband(tdir_factory, params=None, rest_commands=None, expect_a_failure
 
     p = dict(default_params)
     tmpdir = tdir_factory.mktemp("baseband")
-    p["base_dir"] = str(tmpdir) + "/"
 
     if params:
         p.update(params)
@@ -90,11 +129,16 @@ def run_baseband(tdir_factory, params=None, rest_commands=None, expect_a_failure
         stage_name=DATAGEN_PNAME, num_frames=p["total_frames"], type=p["type"]
     )
 
+    write_buffer = runner.DumpBasebandBuffer(
+        str(tmpdir),
+        num_frames="buffer_depth * 4",
+        frame_size="num_elements * samples_per_data_set / 4",
+    )
     test = runner.KotekanStageTester(
         "basebandReadout",
         {},
         fake_buffer,
-        None,
+        write_buffer,
         p,
         rest_commands=rest_commands,
         expect_failure=expect_a_failure,
@@ -102,34 +146,37 @@ def run_baseband(tdir_factory, params=None, rest_commands=None, expect_a_failure
 
     test.run()
 
-    dump_files = glob.glob(str(tmpdir) + "/*.h5")
-    return dump_files
+    return write_buffer.load()
 
 
-def test_fails_nonwritable(tmpdir_factory):
-    """Using a non-existent `base_dir` parameter will cause immediate exit"""
-    params = {"base_dir": "/not/an/actual/directory", "rest_mode": "none"}
+def collect_dumped_events(
+    dump_frames,
+    frame_size=default_params["samples_per_data_set"],
+):
+    """Reconstructs a list of dumped BasebandBuffer frames into a list of `EventDump`s"""
+    dumped_events = []
+    for frame_no, frame in enumerate(dump_frames):
+        event_id = frame.metadata.event_id
+        num_elements = frame.metadata.num_elements
+        for j, val in enumerate(frame._buffer[frame.meta_size :]):
+            if j >= frame.metadata.valid_to * num_elements:
+                break
+            # calculation used in `testDataGen` for method `tpluse`:
+            expected = (
+                frame.metadata.frame_fpga_seq + j // num_elements + j % num_elements
+            ) % 256
+            assert (
+                val == expected
+            ), f"Baseband data mismatch at index {j}/{frame_no}, fpga_seq={frame.metadata.frame_fpga_seq}"
 
-    run_baseband(tmpdir_factory, params, expect_a_failure=True)
-
-
-def test_io_errors(tmpdir_factory):
-    """Writing with non-existent destination path but baseband continues to work"""
-    rest_commands = [
-        command_rest_frames(1),
-        wait(0.5),
-        command_trigger(437, 839, 10, "doesnt_exist"),
-        command_rest_frames(15),
-        command_trigger(2000, 837),
-        # Give it some time to write the capture before shutdown.
-        wait(0.5),
-        command_rest_frames(5),
-    ]
-    params = {"total_frames": 20, "max_dump_samples": 2123}
-    dump_files = run_baseband(tmpdir_factory, params, rest_commands)
-    assert len(dump_files) == 1
-    f = h5py.File(dump_files[0], "r")
-    assert f["baseband"].shape == (837, default_params["num_elements"])
+        if not dumped_events or dumped_events[-1].event_id != event_id:
+            # start a new event
+            dumped_events.append(EventDump.from_metadata(frame.metadata))
+        else:
+            # extend an existing one
+            event = dumped_events[-1]
+            event.extend(frame.metadata)
+    return dumped_events
 
 
 def test_max_samples(tmpdir_factory):
@@ -146,13 +193,13 @@ def test_max_samples(tmpdir_factory):
         command_rest_frames(5),
     ]
     params = {"total_frames": 30, "max_dump_samples": 2123}
-    dump_files = run_baseband(tmpdir_factory, params, rest_commands)
-    assert len(dump_files) == 1
-    f = h5py.File(dump_files[0], "r")
-    assert f["baseband"].shape == (
-        params["max_dump_samples"],
-        default_params["num_elements"],
-    )
+    dump_frames = run_baseband(tmpdir_factory, params, rest_commands)
+    dumped_events = collect_dumped_events(dump_frames)
+    assert len(dumped_events) == 1
+
+    dumped_event = dumped_events[0]
+    assert dumped_event.fpga_start_seq == 1000
+    assert dumped_event.fpga_length == params["max_dump_samples"]
 
 
 def test_negative_start_time(tmpdir_factory):
@@ -173,10 +220,15 @@ def test_negative_start_time(tmpdir_factory):
         command_rest_frames(5),
     ]
     params = {"total_frames": 30}
-    dump_files = run_baseband(tmpdir_factory, params, rest_commands)
-    assert len(dump_files) == 1
-    f = h5py.File(dump_files[0], "r")
-    assert f["baseband"].shape == (3237, default_params["num_elements"])
+    dump_frames = run_baseband(tmpdir_factory, params, rest_commands)
+    dumped_events = collect_dumped_events(dump_frames)
+    assert len(dumped_events) == 1
+
+    dumped_event = dumped_events[0]
+    assert dumped_event.event_id == 31
+    assert dumped_event.freq_id == 0
+    assert dumped_event.fpga_start_seq == 0
+    assert dumped_event.fpga_length == 3237
 
 
 def test_basic(tmpdir_factory):
@@ -195,28 +247,18 @@ def test_basic(tmpdir_factory):
         wait(0.1),
         command_rest_frames(60),
     ]
-    dump_files = run_baseband(tmpdir_factory, {}, rest_commands)
-    assert len(dump_files) == 3
+
+    dump_frames = run_baseband(tmpdir_factory, {}, rest_commands)
+    dumped_events = collect_dumped_events(dump_frames)
 
     baseband_requests = [
         cmd for cmd in rest_commands if cmd[0] == "post" and cmd[1] == "baseband"
     ]
-    num_elements = default_params["num_elements"]
-    for ii, f in enumerate(sorted(dump_files)):
-        f = h5py.File(f, "r")
-        shape = f["baseband"].shape
-        assert (
-            f.attrs["time0_fpga_count"] * 2560
-            == baseband_requests[ii][2]["start_unix_nano"]
-        )
-        assert f.attrs["event_id"] == baseband_requests[ii][2]["event_id"]
-        assert f.attrs["freq_id"] == 0
-        assert shape == (baseband_requests[ii][2]["duration_nano"] / 2560, num_elements)
-        assert np.all(f["index_map/input"][:]["chan_id"] == np.arange(num_elements))
-        edata = f.attrs["time0_fpga_count"] + np.arange(shape[0], dtype=int)
-        edata = edata[:, None] + np.arange(shape[1], dtype=int)
-        edata = edata % 256
-        assert np.all(f["baseband"][:] == edata)
+    for i, event in enumerate(dumped_events):
+        assert event.event_id == baseband_requests[i][2]["event_id"]
+        assert event.freq_id == 0
+        assert event.fpga_start_seq * 2560 == baseband_requests[i][2]["start_unix_nano"]
+        assert event.fpga_length * 2560 == baseband_requests[i][2]["duration_nano"]
 
 
 def test_missed(tmpdir_factory):
@@ -233,16 +275,17 @@ def test_missed(tmpdir_factory):
         command_trigger(81039, 7091),  # This one never arrives.
         command_rest_frames(10),
     ]
-    dump_files = run_baseband(tmpdir_factory, {}, rest_commands)
+    dump_frames = run_baseband(tmpdir_factory, {}, rest_commands)
+    dumped_events = collect_dumped_events(dump_frames)
+    assert len(dumped_events) == 1
 
-    files = sorted(dump_files)
-    assert len(files) == 1
-    f = h5py.File(files[0], "r")
-    stime = f.attrs["time0_fpga_count"]
-    etime = good_trigger[0] + good_trigger[1]
-    assert stime > good_trigger[0]
-    assert stime < good_trigger[0] + good_trigger[1]
-    assert f["baseband"].shape[0] == etime - stime
+    dumped_event = dumped_events[0]
+    assert (
+        good_trigger[0]
+        <= dumped_event.fpga_start_seq
+        <= good_trigger[0] + good_trigger[1]
+    )
+    assert 0 < dumped_event.fpga_length <= good_trigger[1]
 
 
 def test_overload_no_crash(tmpdir_factory):
@@ -250,7 +293,6 @@ def test_overload_no_crash(tmpdir_factory):
     params = dict(default_params)
     params.update(
         {
-            "write_throttle": 2.0,
             "samples_per_data_set": 16384,
             "num_elements": 128,
             "total_frames": 60,

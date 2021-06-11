@@ -10,11 +10,13 @@ add_library(
     util.c
     FrameView.cpp
     HFBFrameView.cpp
+    BasebandFrameView.cpp
     visBuffer.cpp
     visUtil.cpp
     visFile.cpp
     visFileRaw.cpp
     hfbFileRaw.cpp
+    BasebandFileRaw.cpp
     visFileRing.cpp
     tx_utils.cpp
     datasetManager.cpp

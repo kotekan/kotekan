@@ -33,6 +33,8 @@ add_library(
     visCompression.cpp
     timeDownsample.cpp
     frbPostProcess.cpp
+    basebandReadout.cpp
+    BasebandWriter.cpp
     BaseWriter.cpp
     VisWriter.cpp
     HFBWriter.cpp
@@ -89,7 +91,7 @@ if(${USE_FFTW})
 endif()
 
 if(${USE_HDF5})
-    target_sources(kotekan_stages PRIVATE basebandReadout.cpp applyGains.cpp)
+    target_sources(kotekan_stages PRIVATE applyGains.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${HDF5_INCLUDE_DIRS})
     target_link_libraries(kotekan_stages PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
 endif()
