@@ -19,6 +19,7 @@
 #include <rte_branch_prediction.h> // for unlikely
 #include <rte_config.h>            // for RTE_PKTMBUF_HEADROOM
 #include <rte_eal.h>               // for rte_eal_init
+#include <rte_errno.h>             // for rte_strerror, per_lcore__rte_errno, rte_errno
 #include <rte_ether.h>             // for ether_addr
 #include <rte_launch.h>            // for rte_eal_mp_remote_launch, rte_eal_mp_wait_lcore, SKIP...
 #include <rte_lcore.h>             // for rte_lcore_count, rte_lcore_id
@@ -59,7 +60,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     tx_ring_size = config.get_default<uint32_t>(unique_name, "tx_ring_size", 512);
 
     num_mem_channels = config.get_default<uint32_t>(unique_name, "num_mem_channels", 4);
-    init_mem_alloc = config.get_default<uint32_t>(unique_name, "init_mem_alloc", 256);
+    init_mem_alloc = config.get_default<std::string>(unique_name, "init_mem_alloc", "256");
 
     // Setup the lcore mappings
     // Basically this is mapping the DPDK EAL framework way of assigning threads
@@ -146,7 +147,8 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
                 mbuf_size, mbuf_cache_size, sizeof(struct rte_pktmbuf_pool_private),
                 rte_pktmbuf_pool_init, nullptr, rte_pktmbuf_init, nullptr, node_id, 0);
             if (pool == nullptr) {
-                throw std::runtime_error("Cannot create DPDK mbuf pool.");
+                throw std::runtime_error("Cannot create DPDK mbuf pool: "
+                                         + std::string(rte_strerror(rte_errno)));
             }
         }
         mbuf_pools.push_back(pool);
@@ -169,7 +171,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
 void dpdkCore::create_handlers(bufferContainer& buffer_container) {
     // Create the handlers
     // TODO This could likely be refactored out of this system.
-    // The one problem is that we are using header only builds for efficency,
+    // The one problem is that we are using header only builds for efficiency,
     // so the normal factory model doesn't work here.
     vector<json> handlers_block = config.get<std::vector<json>>(unique_name, "handlers");
     uint32_t port = 0;
@@ -230,10 +232,9 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
     char* arg4 = (char*)malloc(dpdk_lcore_map.length() + 1);
     strncpy(arg4, dpdk_lcore_map.c_str(), dpdk_lcore_map.length() + 1);
     // Initial memory allocation
-    char arg5[] = "-m";
-    char* arg6 = (char*)malloc(std::to_string(init_mem_alloc).length() + 1);
-    strncpy(arg6, std::to_string(init_mem_alloc).c_str(),
-            std::to_string(init_mem_alloc).length() + 1);
+    char arg5[] = "--socket-mem";
+    char* arg6 = (char*)malloc(init_mem_alloc.length() + 1);
+    strncpy(arg6, init_mem_alloc.c_str(), init_mem_alloc.length() + 1);
     // Generate final options string for EAL initialization
     char* argv2[] = {&arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], nullptr};
     int argc2 = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;

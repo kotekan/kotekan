@@ -37,7 +37,7 @@ hfb_pool:
 
 hfbbuf_10s:
   kotekan_buffer: hfb
-  num_frames: 2048
+  num_frames: 4096
   metadata_pool: hfb_pool
 
 # Kotekan stages
@@ -54,7 +54,7 @@ write_hfb:
 
   kotekan_stage: HFBWriter
   in_buf: hfbbuf_10s
-  instrument_name: chimeHFB
+  instrument_name: chime
 
 buffer_status:
   kotekan_stage: bufferStatus

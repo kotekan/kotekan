@@ -32,6 +32,7 @@
 #include <iterator>  // for back_insert_iterator, begin, end, back_inserter
 #include <mutex>     // for lock_guard, mutex
 #include <numeric>   // for iota
+#include <optional>  // for optional
 #include <regex>     // for match_results<>::_Base_type
 #include <stdexcept> // for runtime_error, invalid_argument
 #include <time.h>    // for size_t, timespec
@@ -249,7 +250,7 @@ void visAccumulate::main_thread() {
 
     frameID in_frame_id(in_buf);
 
-    dset_id_t ds_id_in = dset_id_t::null;
+    std::optional<dset_id_t> ds_id_in = std::nullopt;
 
     // Hold the gated datasets that are enabled;
     std::vector<std::reference_wrapper<internalState>> enabled_gated_datasets;
@@ -275,17 +276,19 @@ void visAccumulate::main_thread() {
 
         // Check if dataset ID changed
         dset_id_t ds_id_in_new = get_dataset_id(in_buf, in_frame_id);
-        if (ds_id_in_new != ds_id_in) {
+        if (!ds_id_in || ds_id_in_new != *ds_id_in) {
             ds_id_in = ds_id_in_new;
 
             // Register base dataset. If no dataset ID was was set in the incoming frame,
             // ds_id_in will be dset_id_t::null and thus cause a root dataset to
             // be registered.
-            base_dataset_id = dm.add_dataset(base_dataset_states, ds_id_in);
+            base_dataset_id = dm.add_dataset(base_dataset_states, *ds_id_in);
             DEBUG("Registered base dataset: {}", base_dataset_id)
 
-            // Set the output dataset ID for the main visibility accumulation
-            gated_datasets.at(0).output_dataset_id = base_dataset_id;
+            // Set the output dataset ID for all datasets
+            for (auto& state : gated_datasets) {
+                state.output_dataset_id = register_gate_dataset(*state.spec.get());
+            }
         }
 
         int32_t* input = (int32_t*)in_frame;
@@ -496,6 +499,14 @@ void visAccumulate::combine_gated(visAccumulate::internalState& gate,
     // Copy in the proto weight data
     for (size_t i = 0; i < num_prod_gpu; i++) {
         gate.vis2[i] = scl * (1.0 - scl) * vis.vis2[i];
+    }
+
+    // The number of FPGA frames that went into this integration is the same as
+    // for the ungated dataset. If we don't correct this, only the on gates are
+    // counted.
+    for (size_t i = 0; i < num_freq_in_frame; i++) {
+        gate.frames[i].fpga_seq_total = vis.frames[i].fpga_seq_total;
+        gate.frames[i].rfi_total = vis.frames[i].rfi_total;
     }
 }
 

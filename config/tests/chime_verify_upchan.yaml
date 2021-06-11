@@ -1,10 +1,12 @@
 ##########################################
 #
-# FRB / Tracking beamformer verification
+# Upchannelisation verification
 #
-# Runs both GPU and CPU FRB beamformer pipelines, include re-ordering, hybrid beamformer, transposer, upchannelizer.
-# using 3840 samples for a quick run, change it to 49152 for the standard operation setting
-# Choose either testDataGen to make fake data or read from a previous baseband dump. DPDK should work too but i just didn't put it here
+# Runs GPU FRB beamformer pipeline to test the upchannelizer. A square wave can be injected at the start or directly into the upchan kernel.
+# The output from the upchan kernel is passed to HFBAccumulate and integration is written to a raw file.
+# This uses 4608 samples for a quick run, change it to 49152 for the standard operation setting
+#
+# Author: James Willis
 #
 ##########################################
 ---
@@ -26,6 +28,7 @@ cpu_affinity: [2,3,8,9]
 block_size: 32
 num_gpus: 4
 link_map: [0,1,2,3]
+freq_ids: [3, 777, 554]
 
 # Constants
 sizeof_float: 4
@@ -97,6 +100,13 @@ network_buffers:
   network_buffer_0:
     kotekan_buffer: standard
 
+upchan_test:
+  num_frames: baseband_buffer_depth
+  frame_size: num_elements * (samples_per_data_set + 64) * sizeof_float * 2
+  metadata_pool: main_pool
+  upchan_in:
+    kotekan_buffer: standard
+
 gpu_beamform_output_buffers:
   num_frames: buffer_depth
   frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
@@ -122,20 +132,6 @@ gpu_beamform_hfb_output_buffers:
   metadata_pool: main_pool
   gpu_beamform_hfb_output_buffer_0:
     kotekan_buffer: standard
-
-cpu_output_buffers:
-  num_frames: buffer_depth
-  frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
-  metadata_pool: main_pool
-  cpu_output_buffer_0:
-    kotekan_buffer: standard
-
-cpu_hfb_output_buffers:
-    num_frames: buffer_depth
-    frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
-    metadata_pool: main_pool
-    cpu_hfb_output_buffer_0:
-        kotekan_buffer: standard
 
 beamform_hfb_output_buffers:
     num_frames: buffer_depth
@@ -169,7 +165,7 @@ cpu_affinity: [2,3,8,9]
 
 gen_data:
   test_data_gen_network:
-    type: random #const
+    type: square
     value: 153
     kotekan_stage: testDataGen
     out_buf: network_buffer_0
@@ -178,24 +174,11 @@ gen_data:
     value: 0
     kotekan_stage: testDataGen
     out_buf: lost_samples_buffer
-
-#baseband:
-#  base_dir: /mnt/gong/cherry/B0329/July10/ForVerification/
-#  file_name: csDg7_bb
-#  read0:
-#    kotekan_stage: rawFileRead
-#    file_ext: dat0
-#    buf: network_buffer_0
-
-cpu_simulate:
-  cpu_data_sim_0:
-    gain_dir: "./"
-    ew_spacing: [0.0, 0.1, 0.2, 0.3]
-    northmost_beam: 90.0
-    kotekan_stage: gpuBeamformSimulate
-    network_in_buf: network_buffer_0
-    beam_out_buf: cpu_output_buffer_0
-    hfb_out_buf: cpu_hfb_output_buffer_0
+  test_data_gen_upchan:
+    type: square
+    value: 153
+    kotekan_stage: testDataGen
+    out_buf: upchan_in
 
 compress_lost_samples:
   kotekan_stage: compressLostSamples
@@ -217,6 +200,9 @@ gpu:
     - name: hsaHostToDeviceCopy
       in_buf: hfb_compressed_lost_samples_buf
       gpu_memory_name: hfb_compressed_lost_samples
+      #    - name: hsaHostToDeviceCopy
+      #      in_buf: upchan_buf
+      #      gpu_memory_name: upchan
     - name: hsaOutputDataZero
     - name: hsaAsyncCopyGain
     - name: hsaBarrier
@@ -245,12 +231,13 @@ gpu:
       network_buf: network_buffer_0
       gain_frb_buf: gain_frb_buffer
       hfb_compressed_lost_samples_buf: compressed_lost_samples_buffer_cpy
+      #      upchan_buf: upchan_in
     out_buffers:
       beamform_output_buf: gpu_beamform_output_buffer_0
       beamform_hfb_output_buf: gpu_beamform_hfb_output_buffer_0
 
 hyper_fine_beam:
-  num_frames_to_integrate: 5
+  num_frames_to_integrate: 4
   good_samples_threshold: 0.95
   integrate_hfb_data:
     kotekan_stage: HFBAccumulate
@@ -260,45 +247,22 @@ hyper_fine_beam:
     hfb_output_buf: beamform_hfb_output_buffer_0
   
 hfb:
-    kotekan_stage: rawFileWrite
-    in_buf: beamform_hfb_output_buffer_0
-    file_name: 'hfb_buf'
-    file_ext: 'dump'
-    base_dir: '/home/willis/hfb_data'
-
-hfb_read:
-    kotekan_stage: rawFileRead
-    buf: beamform_hfb_output_buffer_read
-    file_name: 'hfb_buf'
-    prefix_hostname: true 
-    file_ext: 'dump'
-    base_dir: '/home/willis/hfb_data'
+  file_length: 1
+  file_type: hfbraw
+  root_path: .
+  kotekan_stage: HFBWriter
+  in_buf: beamform_hfb_output_buffer_0
+  instrument_name: chimeHFB
 
 read_gain:
-    kotekan_stage: ReadGain
-    updatable_config:
-      gain_frb: /updatable_config/frb_gain
-      gain_tracking: /updatable_config/tracking_gain
-    in_buf: network_buffer_0
-    gain_frb_buf: gain_frb_buffer
-    gain_tracking_buf: gain_tracking_buffer
+  kotekan_stage: ReadGain
+  updatable_config:
+    gain_frb: /updatable_config/frb_gain
+    gain_tracking: /updatable_config/tracking_gain
+  in_buf: network_buffer_0
+  gain_frb_buf: gain_frb_buffer
+  gain_tracking_buf: gain_tracking_buffer
       
-check_data:
-  bf_data_check_0:
-    num_frames_to_test: 1
-    epsilon: 0.001
-    kotekan_stage: testDataCheckFloat
-    first_buf : gpu_beamform_output_buffer_0
-    second_buf: cpu_output_buffer_0
-
-check_hfb_data:
-  hfb_data_check_0:
-    num_frames_to_test: 1
-    epsilon: 0.001
-    kotekan_stage: testDataCheckFloat
-    first_buf : gpu_beamform_hfb_output_buffer_0
-    second_buf: cpu_hfb_output_buffer_0
-
 updatable_config:
   frb_gain:
     kotekan_update_endpoint: json
