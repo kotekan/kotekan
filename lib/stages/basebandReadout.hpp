@@ -50,6 +50,7 @@ constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
  *                              3 x num_elements x this_number.
  * @conf  num_frames_buffer     Int. Number of buffer frames to simultaneously keep
  *                              full of data. Should be few less than in_buf length.
+ * @conf  num_freq_in_frame     Int. Number of frequencies in each GPU frame.
  *
  * @par Metrics
  * @metric kotekan_baseband_readout_total
@@ -77,6 +78,7 @@ private:
     // settings from the config file
     int _num_frames_buffer;
     int _num_elements;
+    size_t _num_freq_in_frame;
     int _samples_per_data_set;
     int64_t _max_dump_samples;
     std::vector<input_ctype> _inputs;
@@ -96,7 +98,8 @@ private:
     /**
      * @brief Process incoming requests by copying the baseband data from the ring buffer
      */
-    void readout_thread(const uint32_t freq_id, kotekan::basebandReadoutManager& readout_manager);
+    void readout_thread(const uint32_t freq_ids[],
+                        const std::vector<kotekan::basebandReadoutManager*>& readout_manager);
 
     //@{
     /// @brief convenience methods for updating request status and metrics */
@@ -114,6 +117,7 @@ private:
      *
      * @param event_id unique identifier of the event in the FRB pipeline
      * @param freq_id channel frequency received by this stage
+     * @param stream_freq_idx in-frame frequency index for the multifrequency stream
      * @param trigger_start_fpga start time, or -1 to use the earliest data available
      * @param trigger_length_fpga number of FPGA samples to include in the dump
      *
@@ -121,6 +125,7 @@ private:
      * an empty one if the frame data was not available for the time requested
      */
     kotekan::basebandDumpData wait_for_data(const uint64_t event_id, const uint32_t freq_id,
+                                            const uint32_t stream_freq_idx,
                                             int64_t trigger_start_fpga,
                                             int64_t trigger_length_fpga);
 

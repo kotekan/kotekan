@@ -7,10 +7,12 @@ namespace kotekan {
 
 
 basebandDumpData::basebandDumpData(const uint64_t event_id_, const uint32_t freq_id_,
-                                   int64_t trigger_start_fpga_, int64_t trigger_length_fpga_,
-                                   int dump_start_frame_, int dump_end_frame_) :
+                                   const uint32_t stream_freq_idx_, int64_t trigger_start_fpga_,
+                                   int64_t trigger_length_fpga_, int dump_start_frame_,
+                                   int dump_end_frame_) :
     event_id(event_id_),
     freq_id(freq_id_),
+    stream_freq_idx(stream_freq_idx_),
     trigger_start_fpga(trigger_start_fpga_),
     trigger_length_fpga(trigger_length_fpga_),
     dump_start_frame(dump_start_frame_),
@@ -21,6 +23,7 @@ basebandDumpData::basebandDumpData(const uint64_t event_id_, const uint32_t freq
 basebandDumpData::basebandDumpData(basebandDumpData::Status status_) :
     event_id(0),
     freq_id(0),
+    stream_freq_idx(0),
     trigger_start_fpga(0),
     trigger_length_fpga(0),
     dump_start_frame(0),
