@@ -15,9 +15,6 @@
     <a href="../index.html">cola.js home</a>
 <h1>Kotekan Pipeline</h1>
 <script>
-    var pipeline = new PipelineViewer();
-    var svg = pipeline.init_svg();
-
     // Replace "&#39;" chars as single quote "'"
     var rawData =  "{{data.json()}}".split('&#39;').join('"');
     // Add double quotes to None elements ('None') then parse json into javascript object
@@ -25,11 +22,12 @@
     // Get buffer names
     var bufNames = Object.keys(buffers);
 
+    var pipeline = new PipelineViewer();
+    pipeline.init_svg();
     pipeline.parse_data(buffers, bufNames);
     pipeline.create_objs();
-    pipeline.start_buff_ult(bufNames, buffers);
+    pipeline.start_buff_ult(buffers, bufNames);
 
-    function isIE() { return ((navigator.appName == 'Microsoft Internet Explorer') || ((navigator.appName == 'Netscape') && (new RegExp("Trident/.*rv:([0-9]{1,}[\.0-9]{0,})").exec(navigator.userAgent) != null))); }
 </script>
 </body>
 </html>

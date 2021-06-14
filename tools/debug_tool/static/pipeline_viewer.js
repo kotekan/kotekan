@@ -1,5 +1,60 @@
 var margin = 6;
 
+function isIE() { return ((navigator.appName == 'Microsoft Internet Explorer') || ((navigator.appName == 'Netscape') && (new RegExp("Trident/.*rv:([0-9]{1,}[\.0-9]{0,})").exec(navigator.userAgent) != null))); }
+
+// Time between updating kotekan metrics
+const POLL_WAIT_TIME_MS = 1000;
+// Poll kotekan via web server every POLL_WAIT_TIME_MS and update page with new metrics
+async function poll(label, index) {
+    let response = await fetch("/update");
+
+    if (response.status == 502) {
+        // Status 502 is a connection timeout error,
+        // may happen when the connection was pending for too long,
+        // and the remote server or a proxy closed it
+        // let's reconnect
+    } else if (response.status != 200) {
+        // An error - let's show it
+        console.log("Error: " + response.statusText);
+        // Reconnect in one second
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    } else {
+
+        // Get and update buffer utilization
+        let new_buffers = await response.json();
+        update_utl(new_buffers, label, index);
+    }
+    // Call poll() again to get the next message
+    setTimeout(() => { poll(label, index); }, POLL_WAIT_TIME_MS);
+}
+
+// Update buffer utilization
+function update_utl(new_buffers, label, index){
+    for (var i of index) {
+        var name = d3.select(label._groups[0][i]).select("tspan").text();
+        d3.select(label._groups[0][i]).select("#utl")
+            .text(new_buffers[name].num_full_frame + "/" + new_buffers[name].num_frames);
+    }
+}
+
+// To avoid long string, break the label by '/'
+var insertLinebreaks = function (d) {
+    var el = d3.select(this);
+    var words = d.name.split('/');
+    var tspan_x = margin/2
+
+    // The first line will be used to check if it is a buffer
+    var tspan = el.append('tspan').text(words[0])
+                    .attr('x', tspan_x).attr('dy', '15')
+                    .attr("font-size", "15");
+
+    for (var i = 1; i < words.length; i++) {
+        tspan = el.append('tspan').text('/' + words[i]);
+        tspan.attr('x', tspan_x).attr('dy', '15')
+                .attr("font-size", "15");
+    }
+};
+
 class PipelineViewer {
     #d3cola;
     #svg;
@@ -22,8 +77,6 @@ class PipelineViewer {
             .call(d3.zoom().on("zoom", function () {
                 svg.attr("transform", d3.event.transform)
             }));
-
-        return this.#svg;
     }
 
     parse_data(buffers, bufNames) {
@@ -78,7 +131,7 @@ class PipelineViewer {
             .attr('fill', '#000');
 
         // Create link objects in svg section
-        this.#link = svg.selectAll(".link")
+        this.#link = this.#svg.selectAll(".link")
             .data(this.#graph.links)
             .enter().append('line')
             .attr('class', 'link');
@@ -87,7 +140,7 @@ class PipelineViewer {
         var pad = 12, width = 60, height = 40;
         var node_width = width + 2 * pad + 2 * margin;
         var node_height = height + 2 * pad + 2 * margin;
-        this.#node = svg.selectAll(".node")
+        this.#node = this.#svg.selectAll(".node")
             .data(this.#graph.nodes)
             .enter().append("rect")
             .attr("class", "node")
@@ -97,29 +150,11 @@ class PipelineViewer {
             .call(this.#d3cola.drag);
 
         // Create label objects (stage and buffer names) in svg section
-        this.#label = svg.selectAll(".label")
+        this.#label = this.#svg.selectAll(".label")
             .data(this.#graph.nodes)
             .enter().append("text")
             .attr("class", "label")
             .call(this.#d3cola.drag);
-
-        // To avoid long string, break the label by '/'
-        var insertLinebreaks = function (d) {
-            var el = d3.select(this);
-            var words = d.name.split('/');
-            var tspan_x = margin/2
-
-            // The first line will be used to check if it is a buffer
-            var tspan = el.append('tspan').text(words[0])
-                            .attr('x', tspan_x).attr('dy', '15')
-                            .attr("font-size", "15");
-
-            for (var i = 1; i < words.length; i++) {
-                tspan = el.append('tspan').text('/' + words[i]);
-                tspan.attr('x', tspan_x).attr('dy', '15')
-                        .attr("font-size", "15");
-            }
-        };
         this.#label.each(insertLinebreaks);
 
         // Add names to identify different nodes
@@ -160,7 +195,7 @@ class PipelineViewer {
         });
     }
 
-    start_buff_ult(bufNames, buffers) {
+    start_buff_ult(buffers, bufNames) {
         // Add utilization for all buffers and record their index
         // Index is used later to dynamically update buffer utilization
         var index = [];
@@ -176,43 +211,9 @@ class PipelineViewer {
             }
         }, 0)
 
-        // Update utilization
-        self = this;
-        function update_utl(new_buffers){
-            for (var i of index) {
-                var name = d3.select(self.#label._groups[0][i]).select("tspan").text();
-                d3.select(self.#label._groups[0][i]).select("#utl")
-                    .text(new_buffers[name].num_full_frame + "/" + new_buffers[name].num_frames);
-            }
-        }
-
-        // Time between updating kotekan metrics
-        const POLL_WAIT_TIME_MS = 1000;
-        // Poll kotekan via web server every POLL_WAIT_TIME_MS and update page with new metrics
-        async function poll() {
-            let response = await fetch("/update");
-
-            if (response.status == 502) {
-                // Status 502 is a connection timeout error,
-                // may happen when the connection was pending for too long,
-                // and the remote server or a proxy closed it
-                // let's reconnect
-            } else if (response.status != 200) {
-                // An error - let's show it
-                console.log("Error: " + response.statusText);
-                // Reconnect in one second
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            } else {
-
-                // Get and update buffer utilization
-                let new_buffers = await response.json();
-                update_utl(new_buffers);
-            }
-            // Call poll() again to get the next message
-            setTimeout(() => { poll(); }, POLL_WAIT_TIME_MS);
-        }
         // Start polling kotekan for metrics
-        poll();
+        var labels = this.#label;
+        poll(labels, index);
     }
 
 }
