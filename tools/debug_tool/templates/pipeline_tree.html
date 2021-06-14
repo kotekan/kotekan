@@ -22,11 +22,11 @@
     // Get buffer names
     var bufNames = Object.keys(buffers);
 
-    var pipeline = new PipelineViewer();
+    var pipeline = new PipelineViewer(buffers, bufNames);
     pipeline.init_svg();
-    pipeline.parse_data(buffers, bufNames);
+    pipeline.parse_data();
     pipeline.create_objs();
-    pipeline.start_buff_ult(buffers, bufNames);
+    pipeline.start_buff_ult();
 
 </script>
 </body>

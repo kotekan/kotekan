@@ -63,6 +63,11 @@ class PipelineViewer {
     #node;
     #label;
 
+    constructor(buffers, bufNames) {
+        this.buffers = buffers;
+        this.bufNames = bufNames;
+    }
+
     init_svg() {
         var width = 960, height = 500;
 
@@ -79,13 +84,13 @@ class PipelineViewer {
             }));
     }
 
-    parse_data(buffers, bufNames) {
+    parse_data() {
         var nodes = [], links = [];
         this.#graph = {};
 
         // For every buffer, add its producers and comsumers to nodes and create links
-        for (var val of bufNames) {
-            var obj = buffers[val];
+        for (var val of this.bufNames) {
+            var obj = this.buffers[val];
             nodes.push({name: val});
 
             for (var stage in obj.producers) {
@@ -195,15 +200,15 @@ class PipelineViewer {
         });
     }
 
-    start_buff_ult(buffers, bufNames) {
+    start_buff_ult() {
         // Add utilization for all buffers and record their index
         // Index is used later to dynamically update buffer utilization
         var index = [];
         this.#label._groups[0].reduce((pre, cur, ind) => {
-            if (bufNames.includes(cur.textContent)) {
+            if (this.bufNames.includes(cur.textContent)) {
                 var el = d3.select(cur);
                 var tspan = el.append('tspan')
-                            .text(buffers[cur.textContent].num_full_frame + "/" + buffers[cur.textContent].num_frames)
+                            .text(this.buffers[cur.textContent].num_full_frame + "/" + this.buffers[cur.textContent].num_frames)
                 tspan.attr('x', margin/2).attr('dy', '15')
                         .attr("font-size", "15")
                         .attr("id", "utl");
