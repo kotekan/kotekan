@@ -48,7 +48,8 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&basebandReadout::main_thread, this)),
     _num_frames_buffer(config.get<int>(unique_name, "num_frames_buffer")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
-    _num_freq_in_frame(config.get_default<size_t>(unique_name, "num_freq_in_frame", 1)),
+    // TODO: rename this parameter to `num_freq_per_stream` in the config
+    _num_freq_per_stream(config.get_default<uint32_t>(unique_name, "num_local_freq", 1)),
     _samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
     _max_dump_samples(config.get_default<uint64_t>(unique_name, "max_dump_samples", 1 << 30)),
     in_buf(get_buffer("in_buf")),
@@ -104,7 +105,7 @@ void basebandReadout::main_thread() {
     std::unique_ptr<std::thread> lt;
 
     std::vector<basebandReadoutManager*> mgrs;
-    uint32_t freq_ids[_num_freq_in_frame];
+    uint32_t freq_ids[_num_freq_per_stream];
     while (!stop_thread) {
 
         if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id % in_buf->num_frames)
@@ -117,12 +118,12 @@ void basebandReadout::main_thread() {
             fpga0_ns = fpga0_tv.tv_sec * 1'000'000'000 + fpga0_tv.tv_nsec;
 
             int in_buf_frame = frame_id % in_buf->num_frames;
-            for (size_t stream_freq_idx = 0; stream_freq_idx < _num_freq_in_frame;
+            for (uint32_t stream_freq_idx = 0; stream_freq_idx < _num_freq_per_stream;
                  ++stream_freq_idx) {
                 uint32_t freq_id = tel.to_freq_id(in_buf, in_buf_frame, stream_freq_idx);
                 freq_ids[stream_freq_idx] = freq_id;
 
-                DEBUG("Initialize baseband metrics for freq_id: {:d}", freq_id);
+                DEBUG("Initialize baseband metrics for freq_id: {:d}/{:d}", freq_id, stream_freq_idx);
                 readout_counter.labels({std::to_string(freq_id), "done"});
                 readout_counter.labels({std::to_string(freq_id), "error"});
                 readout_counter.labels({std::to_string(freq_id), "no_data"});
@@ -135,7 +136,7 @@ void basebandReadout::main_thread() {
                 mgrs.push_back(mgr);
             }
             INFO("Starting request-listening thread for freq_id: {}",
-                 fmt::join(freq_ids, freq_ids + _num_freq_in_frame, ", "));
+                 fmt::join(freq_ids, freq_ids + _num_freq_per_stream, ", "));
             lt = std::make_unique<std::thread>([&] { this->readout_thread(freq_ids, mgrs); });
         }
 
@@ -163,7 +164,7 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[],
         // of L4 sending the trigger.
 
         if (auto next_request = mgrs[0]->get_next_waiting_request()) {
-            for (uint32_t stream_freq_idx = 0; stream_freq_idx < _num_freq_in_frame;
+            for (uint32_t stream_freq_idx = 0; stream_freq_idx < _num_freq_per_stream;
                  ++stream_freq_idx) {
                 uint32_t freq_id = freq_ids[stream_freq_idx];
 
@@ -476,7 +477,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
 
             // copy the data
             int64_t copy_len;
-            if (_num_freq_in_frame == 1) {
+            if (_num_freq_per_stream == 1) {
                 copy_len = std::min(in_end - in_start, out_remaining);
                 DEBUG("Copy samples {}/{}-{} to {}/{} ({} bytes)", frame_index, in_start,
                       in_start + copy_len, out_frame_id, out_start, copy_len * _num_elements);
@@ -488,10 +489,10 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                       "starting at {})",
                       frame_index, in_start, in_start + copy_len, stream_freq_idx, out_frame_id,
                       out_start, _num_elements,
-                      (in_start * _num_freq_in_frame + stream_freq_idx) * _num_elements);
+                      (in_start * _num_freq_per_stream + stream_freq_idx) * _num_elements);
                 memcpy(out_frame + (out_start * _num_elements),
                        in_buf_data
-                           + (in_start * _num_freq_in_frame + stream_freq_idx) * _num_elements,
+                           + (in_start * _num_freq_per_stream + stream_freq_idx) * _num_elements,
                        _num_elements);
             }
             in_start += copy_len;

@@ -50,7 +50,7 @@ constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
  *                              3 x num_elements x this_number.
  * @conf  num_frames_buffer     Int. Number of buffer frames to simultaneously keep
  *                              full of data. Should be few less than in_buf length.
- * @conf  num_freq_in_frame     Int. Number of frequencies in each GPU frame.
+ * @conf  num_local_freq        UInt. Number of frequencies in each GPU frame.
  *
  * @par Metrics
  * @metric kotekan_baseband_readout_total
@@ -78,7 +78,7 @@ private:
     // settings from the config file
     int _num_frames_buffer;
     int _num_elements;
-    size_t _num_freq_in_frame;
+    uint32_t _num_freq_per_stream;
     int _samples_per_data_set;
     int64_t _max_dump_samples;
     std::vector<input_ctype> _inputs;
