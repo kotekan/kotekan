@@ -5,31 +5,17 @@ function isIE() { return ((navigator.appName == 'Microsoft Internet Explorer') |
 // Time between updating kotekan metrics
 const POLL_WAIT_TIME_MS = 1000;
 // Poll kotekan via web server every POLL_WAIT_TIME_MS and update page with new metrics
-async function poll(label, index) {
-    let response = await fetch("/update");
+function poll(label, index) {
+    get_data().then(function (new_buffers) {
+        update_buf_utl(new_buffers, label, index);
+    });
 
-    if (response.status == 502) {
-        // Status 502 is a connection timeout error,
-        // may happen when the connection was pending for too long,
-        // and the remote server or a proxy closed it
-        // let's reconnect
-    } else if (response.status != 200) {
-        // An error - let's show it
-        console.log("Error: " + response.statusText);
-        // Reconnect in one second
-        await new Promise(resolve => setTimeout(resolve, 1000));
-    } else {
-
-        // Get and update buffer utilization
-        let new_buffers = await response.json();
-        update_utl(new_buffers, label, index);
-    }
     // Call poll() again to get the next message
     setTimeout(() => { poll(label, index); }, POLL_WAIT_TIME_MS);
 }
 
 // Update buffer utilization
-function update_utl(new_buffers, label, index){
+function update_buf_utl(new_buffers, label, index){
     for (var i of index) {
         var name = d3.select(label._groups[0][i]).select("tspan").text();
         d3.select(label._groups[0][i]).select("#utl")
@@ -55,6 +41,26 @@ var insertLinebreaks = function (d) {
     }
 };
 
+// Read from endpoint /buffers to get buffer stats
+async function get_data() {
+    let response = await fetch("/buffers");
+
+    if (response.status == 502) {
+        // Status 502 is a connection timeout error,
+        // may happen when the connection was pending for too long,
+        // and the remote server or a proxy closed it
+        // let's reconnect
+    } else if (response.status != 200) {
+        // An error - let's show it
+        console.log("Error: " + response.statusText);
+        // Reconnect in one second
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    } else {
+        // Get buffer stats
+        return await response.json();
+    }
+}
+
 class PipelineViewer {
     #d3cola;
     #svg;
@@ -63,9 +69,9 @@ class PipelineViewer {
     #node;
     #label;
 
-    constructor(buffers, bufNames) {
+    constructor(buffers) {
         this.buffers = buffers;
-        this.bufNames = bufNames;
+        this.bufNames = Object.keys(this.buffers);
     }
 
     init_svg() {

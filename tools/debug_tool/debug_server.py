@@ -9,31 +9,15 @@ CORS(app, support_credentials=True)
 
 KOTEKAN_ADDRESS = "http://localhost:12048"
 
-# Display kotekan pipeline
-@app.route("/", defaults={"path": ""})
-@app.route("/debug_tool/pipeline_tree.html", methods=["GET", "POST"])
-def proxy():
-
-    # GET request
-    if request.method == "GET":
-        data = get(f"{KOTEKAN_ADDRESS}/buffers")
-        return render_template("pipeline_tree.html", data=data)
-
-    # POST request
-    if request.method == "POST":
-        print("Received a POST request")
-        print(request.get_json())  # parse as JSON
-        return "Sucesss", 200
-
-
 # Load file
 @app.route("/", defaults={"req_path": ""})
 @app.route("/<path:req_path>")
 def dir_listing(req_path):
-    BASE_DIR = "/"
+    BASE_DIR = os.getcwd()
 
     # Joining the base and the requested path
     abs_path = os.path.join(BASE_DIR, req_path)
+    print(abs_path)
 
     # Return 404 if path doesn't exist
     if not os.path.exists(abs_path):
@@ -41,6 +25,9 @@ def dir_listing(req_path):
 
     # Check if path is a file and serve
     if os.path.isfile(abs_path):
+        file_name = os.path.basename(abs_path)
+        if 'html' in file_name:
+            return render_template(file_name)
         return send_file(abs_path)
 
     # Show directory contents
@@ -48,14 +35,13 @@ def dir_listing(req_path):
     return render_template("files.html", files=files)
 
 
-# Update kotekan metrics
-@app.route("/", defaults={"path": ""})
-@app.route("/update", methods=["GET", "POST"])
-def update():
+# Dynamically read from the given endpoint
+@app.route("/<endpoint>", methods=["GET", "POST"])
+def update(endpoint):
 
     # GET request
     if request.method == "GET":
-        data = get(f"{KOTEKAN_ADDRESS}/buffers")
+        data = get(f"{KOTEKAN_ADDRESS}/{endpoint}")
         # print("Data from kotekan: {}".format(data.json()))
         return data.json()
 

@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Downward Edges</title>
+<title>Pipeline Viewer</title>
 <link rel= "stylesheet" type= "text/css" href= "{{ url_for('static',filename='styles.css') }}">
 <script src="https://d3js.org/d3.v6.min.js"></script>
 <script src="http://marvl.infotech.monash.edu/webcola/cola.min.js"></script>
@@ -15,18 +15,13 @@
     <a href="../index.html">cola.js home</a>
 <h1>Kotekan Pipeline</h1>
 <script>
-    // Replace "&#39;" chars as single quote "'"
-    var rawData =  "{{data.json()}}".split('&#39;').join('"');
-    // Add double quotes to None elements ('None') then parse json into javascript object
-    var buffers = jQuery.parseJSON(rawData.split('None').join('"None"'));
-    // Get buffer names
-    var bufNames = Object.keys(buffers);
-
-    var pipeline = new PipelineViewer(buffers, bufNames);
-    pipeline.init_svg();
-    pipeline.parse_data();
-    pipeline.create_objs();
-    pipeline.start_buff_ult();
+    get_data().then(function (buffers) {
+        var pipeline = new PipelineViewer(buffers);
+        pipeline.init_svg();
+        pipeline.parse_data();
+        pipeline.create_objs();
+        pipeline.start_buff_ult();
+    });
 
 </script>
 </body>
