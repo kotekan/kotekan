@@ -26,7 +26,7 @@ def dir_listing(req_path):
     # Check if path is a file and serve
     if os.path.isfile(abs_path):
         file_name = os.path.basename(abs_path)
-        if 'html' in file_name:
+        if "html" in file_name:
             return render_template(file_name)
         return send_file(abs_path)
 
