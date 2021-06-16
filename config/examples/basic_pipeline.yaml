@@ -2,23 +2,124 @@
 type: config
 log_level: DEBUG
 cpu_affinity: [0,1,2,3]
+num_local_freq: 1
+buffer_depth: 2
+samples_per_data_set: 4608
+num_data_sets: 1
+baseband_buffer_depth: 120  # 48Gb, 15s buffer.
+num_elements: 2048
 
+# Constants
+sizeof_float: 4
+sizeof_int: 4
+sizeof_short: 2
+
+#FRB global options
+downsample_time: 3
+factor_upchan: 128
+downsample_freq: 8
+num_frb_total_beams: 1024
+reorder_map: [32,33,34,35,40,41,42,43,48,49,50,51,56,57,58,59,96,97,98,99,
+              104,105,106,107,112,113,114,115,120,121,122,123,67,66,65,64,
+              75,74,73,72,83,82,81,80,91,90,89,88,3,2,1,0,11,10,9,8,19,18,
+              17,16,27,26,25,24,152,153,154,155,144,145,146,147,136,137,138,
+              139,128,129,130,131,216,217,218,219,208,209,210,211,200,201,
+              202,203,192,193,194,195,251,250,249,248,243,242,241,240,235,
+              234,233,232,227,226,225,224,187,186,185,184,179,178,177,176,
+              171,170,169,168,163,162,161,160,355,354,353,352,363,362,361,
+              360,371,370,369,368,379,378,377,376,291,290,289,288,299,298,
+              297,296,307,306,305,304,315,314,313,312,259,258,257,256,264,
+              265,266,267,272,273,274,275,280,281,282,283,323,322,321,320,
+              331,330,329,328,339,338,337,336,347,346,345,344,408,409,410,
+              411,400,401,402,403,392,393,394,395,384,385,386,387,472,473,
+              474,475,464,465,466,467,456,457,458,459,448,449,450,451,440,
+              441,442,443,432,433,434,435,424,425,426,427,416,417,418,419,
+              504,505,506,507,496,497,498,499,488,489,490,491,480,481,482,
+              483,36,37,38,39,44,45,46,47,52,53,54,55,60,61,62,63,100,101,
+              102,103,108,109,110,111,116,117,118,119,124,125,126,127,71,70,
+              69,68,79,78,77,76,87,86,85,84,95,94,93,92,7,6,5,4,15,14,13,12,
+              23,22,21,20,31,30,29,28,156,157,158,159,148,149,150,151,140,
+              141,142,143,132,133,134,135,220,221,222,223,212,213,214,215,
+              204,205,206,207,196,197,198,199,255,254,253,252,247,246,245,
+              244,239,238,237,236,231,230,229,228,191,190,189,188,183,182,
+              181,180,175,174,173,172,167,166,165,164,359,358,357,356,367,
+              366,365,364,375,374,373,372,383,382,381,380,295,294,293,292,
+              303,302,301,300,311,310,309,308,319,318,317,316,263,262,261,
+              260,268,269,270,271,276,277,278,279,284,285,286,287,327,326,
+              325,324,335,334,333,332,343,342,341,340,351,350,349,348,412,
+              413,414,415,404,405,406,407,396,397,398,399,388,389,390,391,
+              476,477,478,479,468,469,470,471,460,461,462,463,452,453,454,
+              455,444,445,446,447,436,437,438,439,428,429,430,431,420,421,
+              422,423,508,509,510,511,500,501,502,503,492,493,494,495,484,
+              485,486,487]
+
+# Pool
 main_pool:
   kotekan_metadata_pool: chimeMetadata
-  num_metadata_objects: 30
+  num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
 
-data_gen:
-  kotekan_stage: testDataGen
-  out_buf: example_buffer
-  type: const
-  value: 0x42
+gen_data:
+  network_buffer_0:
+    type: random #const
+    value: 153
+    kotekan_stage: testDataGen
+    out_buf: network_buffer_0
+  test_data_gen_lost_samples:
+    type: const
+    value: 0
+    kotekan_stage: testDataGen
+    out_buf: lost_samples_buffer
 
-example_buffer:
-  kotekan_buffer: standard
-  num_frames: 10
-  frame_size: 128
+# data_gen:
+#   kotekan_stage: testDataGen
+#   out_buf: example_buffer
+#   type: const
+#   value: 0x42
+
+# Buffers
+network_buffers:
+  num_frames: baseband_buffer_depth
+  frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
   metadata_pool: main_pool
+  network_buffer_0:
+    kotekan_buffer: standard
+
+cpu_output_buffers:
+  num_frames: buffer_depth
+  frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
+  metadata_pool: main_pool
+  cpu_output_buffer_0:
+    kotekan_buffer: standard
+
+cpu_hfb_output_buffers:
+    num_frames: buffer_depth
+    frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
+    metadata_pool: main_pool
+    cpu_hfb_output_buffer_0:
+        kotekan_buffer: standard
+
+# example_buffer:
+#   kotekan_buffer: standard
+#   num_frames: 10
+#   frame_size: 128
+#   metadata_pool: main_pool
+
+lost_samples_buffer:
+  kotekan_buffer: standard
+  num_frames: 2 * buffer_depth
+  frame_size: samples_per_data_set * num_local_freq * num_data_sets
+  metadata_pool: main_pool
+
+cpu_simulate:
+  cpu_data_sim_0:
+    gain_dir: "./"
+    ew_spacing: [0.0, 0.1, 0.2, 0.3]
+    northmost_beam: 90.0
+    kotekan_stage: gpuBeamformSimulate
+    network_in_buf: network_buffer_0
+    beam_out_buf: cpu_output_buffer_0
+    hfb_out_buf: cpu_hfb_output_buffer_0
 
 screen_dump:
   kotekan_stage: hexDump
-  in_buf: example_buffer
+  in_buf: network_buffer_0
