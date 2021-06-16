@@ -5,13 +5,26 @@ function isIE() { return ((navigator.appName == 'Microsoft Internet Explorer') |
 // Time between updating kotekan metrics
 const POLL_WAIT_TIME_MS = 1000;
 // Poll kotekan via web server every POLL_WAIT_TIME_MS and update page with new metrics
-function poll(label, index) {
+function poll(buffer_labels, stage_labels, index1, index2) {
     get_data().then(function (new_buffers) {
-        update_buf_utl(new_buffers, label, index);
+        update_buf_utl(new_buffers, buffer_labels, index1);
     });
 
+    get_cpu_stat().then(function (cpu_stats) {
+        update_cpu_utl(cpu_stats, stage_labels, index2);
+    })
+
     // Call poll() again to get the next message
-    setTimeout(() => { poll(label, index); }, POLL_WAIT_TIME_MS);
+    setTimeout(() => { poll(buffer_labels, stage_labels, index1, index2); }, POLL_WAIT_TIME_MS);
+}
+
+function update_cpu_utl(cpu_stats, label, index){
+    for (var i of index) {
+        var name = d3.select(label._groups[0][i]).select("tspan").text();
+        var cpu_ult = cpu_stats[name].usr_cpu_ult + cpu_stats[name].sys_cpu_ult;
+        d3.select(label._groups[0][i]).select("#utl")
+            .text(cpu_ult + "%");
+    }
 }
 
 // Update buffer utilization
@@ -44,6 +57,25 @@ var insertLinebreaks = function (d) {
 // Read from endpoint /buffers to get buffer stats
 async function get_data() {
     let response = await fetch("/buffers");
+
+    if (response.status == 502) {
+        // Status 502 is a connection timeout error,
+        // may happen when the connection was pending for too long,
+        // and the remote server or a proxy closed it
+        // let's reconnect
+    } else if (response.status != 200) {
+        // An error - let's show it
+        console.log("Error: " + response.statusText);
+        // Reconnect in one second
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    } else {
+        // Get buffer stats
+        return await response.json();
+    }
+}
+
+async function get_cpu_stat() {
+    let response = await fetch("/cpu_ult");
 
     if (response.status == 502) {
         // Status 502 is a connection timeout error,
@@ -253,22 +285,35 @@ class PipelineViewer {
     start_buff_ult() {
         // Add utilization for all buffers and record their index
         // Index is used later to dynamically update buffer utilization
-        var index = [];
+        var index1 = [];
         this.#buffer_labels._groups[0].reduce((pre, cur, ind) => {
-            if (this.bufNames.includes(cur.textContent)) {
+            // if (this.bufNames.includes(cur.textContent)) {
                 var el = d3.select(cur);
                 var tspan = el.append('tspan')
                             .text(this.buffers[cur.textContent].num_full_frame + "/" + this.buffers[cur.textContent].num_frames)
                 tspan.attr('x', margin/2).attr('dy', '15')
                         .attr("font-size", "15")
                         .attr("id", "utl");
-                index.push(ind)
-            }
+                index1.push(ind)
+            // }
+        }, 0)
+
+        var index2 = [];
+        this.#stage_labels._groups[0].reduce((pre, cur, ind) => {
+            // if (this.bufNames.includes(cur.textContent)) {
+                var el = d3.select(cur);
+                var tspan = el.append('tspan').text('');
+                tspan.attr('x', margin/2).attr('dy', '15')
+                        .attr("font-size", "15")
+                        .attr("id", "utl");
+                index2.push(ind)
+            // }
         }, 0)
 
         // Start polling kotekan for metrics
-        var labels = this.#buffer_labels;
-        poll(labels, index);
+        var buffer_labels = this.#buffer_labels;
+        var stage_labels = this.#stage_labels;
+        poll(buffer_labels, stage_labels, index1, index2);
     }
 
 }
