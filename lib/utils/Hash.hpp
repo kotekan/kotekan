@@ -8,10 +8,10 @@
 #include "json.hpp"     // for json
 
 // cinttypes needed by some CentOS systems.
-#include <cinttypes>    // IWYU pragma: keep
-#include <iostream>     // for istream, ostream
-#include <stdint.h>     // for uint64_t
-#include <string>       // for string
+#include <cinttypes> // IWYU pragma: keep
+#include <iostream>  // for istream, ostream
+#include <stdint.h>  // for uint64_t
+#include <string>    // for string
 
 // Set a value for the hash seed
 #define _SEED 1420
