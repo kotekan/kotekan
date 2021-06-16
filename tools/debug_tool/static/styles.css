@@ -1,5 +1,9 @@
-.node {
+.buffers {
   fill: rgba(32, 202, 117, 0.452);
+}
+
+.stages {
+  fill: rgba(31, 92, 206, 0.452);
 }
 
 .link {
@@ -10,7 +14,13 @@
   marker-end: url(#end-arrow);
 }
 
-.label {
+.buffer_labels {
+  fill: rgb(0, 0, 0);
+  font-family: sans-serif;
+  font-size: 15;
+}
+
+.stage_labels {
   fill: rgb(0, 0, 0);
   font-family: sans-serif;
   font-size: 15;

@@ -66,7 +66,10 @@ class PipelineViewer {
     #svg;
     #graph;
     #link;
-    #node;
+    #buffers;
+    #stages;
+    #buffer_labels;
+    #stage_labels;
     #label;
 
     constructor(buffers) {
@@ -82,6 +85,7 @@ class PipelineViewer {
             .size([width, height]);
 
         // Add a svg section and employ zooming
+        self = this;
         this.#svg = d3.select("body").append("svg")
             .attr("width", width)
             .attr("height", height)
@@ -91,32 +95,37 @@ class PipelineViewer {
     }
 
     parse_data() {
-        var nodes = [], links = [];
+        var buffers = [], stages = [], links = [];
         this.#graph = {};
 
         // For every buffer, add its producers and comsumers to nodes and create links
         for (var val of this.bufNames) {
             var obj = this.buffers[val];
-            nodes.push({name: val});
+            buffers.push({name: val});
 
             for (var stage in obj.producers) {
-                nodes.push({name: stage});
-                links.push({source: nodes.find(obj => obj.name === stage), target: nodes.find(obj => obj.name === val)});
+                stages.push({name: stage});
+                links.push({source: stages.find(obj => obj.name === stage), target: buffers.find(obj => obj.name === val)});
             }
             if (obj.consumers !== "None") {
                 for (var stage in obj.consumers) {
-                    nodes.push({name: stage});
-                    links.push({source: nodes.find(d => d.name === val), target: nodes.find(d => d.name === stage)});
+                    stages.push({name: stage});
+                    links.push({source: buffers.find(d => d.name === val), target: stages.find(d => d.name === stage)});
                 }
             }
         }
 
         // Remove all duplicated nodes
-        this.#graph.nodes = Array.from(new Set(nodes.map(a => a.name)))
+        this.#graph.buffers = Array.from(new Set(buffers.map(a => a.name)))
             .map(name => {
-                return nodes.find(a => a.name === name)
+                return buffers.find(a => a.name === name)
+            });
+        this.#graph.stages = Array.from(new Set(stages.map(a => a.name)))
+            .map(name => {
+                return stages.find(a => a.name === name)
             });
         this.#graph.links = links;
+        this.#graph.nodes = this.#graph.buffers.concat(this.#graph.stages);
     }
 
     create_objs() {
@@ -151,31 +160,53 @@ class PipelineViewer {
         var pad = 12, width = 60, height = 40;
         var node_width = width + 2 * pad + 2 * margin;
         var node_height = height + 2 * pad + 2 * margin;
-        this.#node = this.#svg.selectAll(".node")
-            .data(this.#graph.nodes)
+        this.#buffers = this.#svg.selectAll(".buffers")
+            .data(this.#graph.buffers)
             .enter().append("rect")
-            .attr("class", "node")
+            .attr("class", "buffers")
+            .attr("width", node_width)
+            .attr("height", node_height)
+            .attr("rx", 25).attr("ry", 25)
+            .call(this.#d3cola.drag);
+
+        this.#stages = this.#svg.selectAll(".stages")
+            .data(this.#graph.stages)
+            .enter().append("rect")
+            .attr("class", "stages")
             .attr("width", node_width)
             .attr("height", node_height)
             .attr("rx", 5).attr("ry", 5)
             .call(this.#d3cola.drag);
 
         // Create label objects (stage and buffer names) in svg section
-        this.#label = this.#svg.selectAll(".label")
-            .data(this.#graph.nodes)
+        this.#buffer_labels = this.#svg.selectAll(".buffer_labels")
+            .data(this.#graph.buffers)
             .enter().append("text")
             .attr("class", "label")
             .call(this.#d3cola.drag);
-        this.#label.each(insertLinebreaks);
+
+        this.#stage_labels = this.#svg.selectAll(".stage_labels")
+            .data(this.#graph.stages)
+            .enter().append("text")
+            .attr("class", "label")
+            .call(this.#d3cola.drag);
+        this.#buffer_labels.each(insertLinebreaks);
+        this.#stage_labels.each(insertLinebreaks);
 
         // Add names to identify different nodes
-        this.#node.append("title")
+        this.#buffers.append("title")
+            .text(function (d) { return d.name; });
+        this.#stages.append("title")
             .text(function (d) { return d.name; });
 
         // Calculate node, link, and label positions
         self = this;
         this.#d3cola.on("tick", function () {
-            self.#node.each(function (d) {
+            self.#buffers.each(function (d) {
+                d.innerBounds = d.bounds.inflate(- margin);
+            });
+
+            self.#stages.each(function (d) {
                 d.innerBounds = d.bounds.inflate(- margin);
             });
 
@@ -189,18 +220,31 @@ class PipelineViewer {
                 .attr("x2", function (d) { return d.route.arrowStart.x; })
                 .attr("y2", function (d) { return d.route.arrowStart.y; });
 
-            self.#label.each(function (d) {
+            self.#buffer_labels.each(function (d) {
+                var b = this.getBBox();
+                d.width = b.width + 2 * margin + 8;
+                d.height = b.height + 2 * margin + 8;
+            });
+            self.#stage_labels.each(function (d) {
                 var b = this.getBBox();
                 d.width = b.width + 2 * margin + 8;
                 d.height = b.height + 2 * margin + 8;
             });
 
-            self.#node.attr("x", function (d) { return d.innerBounds.x; })
+            self.#buffers.attr("x", function (d) { return d.innerBounds.x; })
                 .attr("y", function (d) { return d.innerBounds.y; })
                 .attr("width", function (d) { return Math.abs(d.innerBounds.width()); })
                 .attr("height", function (d) { return Math.abs(d.innerBounds.height()); });
 
-            self.#label.attr("transform", function (d) {
+            self.#stages.attr("x", function (d) { return d.innerBounds.x; })
+                .attr("y", function (d) { return d.innerBounds.y; })
+                .attr("width", function (d) { return Math.abs(d.innerBounds.width()); })
+                .attr("height", function (d) { return Math.abs(d.innerBounds.height()); });
+
+            self.#buffer_labels.attr("transform", function (d) {
+                return "translate(" + d.innerBounds.x + margin + "," + (d.innerBounds.y + margin/2) + ")";
+            });
+            self.#stage_labels.attr("transform", function (d) {
                 return "translate(" + d.innerBounds.x + margin + "," + (d.innerBounds.y + margin/2) + ")";
             });
         });
@@ -210,7 +254,7 @@ class PipelineViewer {
         // Add utilization for all buffers and record their index
         // Index is used later to dynamically update buffer utilization
         var index = [];
-        this.#label._groups[0].reduce((pre, cur, ind) => {
+        this.#buffer_labels._groups[0].reduce((pre, cur, ind) => {
             if (this.bufNames.includes(cur.textContent)) {
                 var el = d3.select(cur);
                 var tspan = el.append('tspan')
@@ -223,7 +267,7 @@ class PipelineViewer {
         }, 0)
 
         // Start polling kotekan for metrics
-        var labels = this.#label;
+        var labels = this.#buffer_labels;
         poll(labels, index);
     }
 
