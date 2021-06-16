@@ -39,7 +39,7 @@ function update_buf_utl(new_buffers, label, index){
 // To avoid long string, break the label by '/'
 var insertLinebreaks = function (d) {
     var el = d3.select(this);
-    var words = d.name.split('/');
+    var words = d.name.split('@');
     var tspan_x = margin/2
 
     // The first line will be used to check if it is a buffer
