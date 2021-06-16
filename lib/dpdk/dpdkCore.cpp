@@ -13,6 +13,8 @@
 
 #include <algorithm>               // for copy, max
 #include <atomic>                  // for atomic_bool
+// cinttypes needed by some CentOS systems.
+#include <cinttypes>               // IWYU pragma: keep
 #include <functional>              // for _Bind_helper<>::type, bind, function
 #include <numa.h>                  // for numa_node_of_cpu, numa_num_configured_nodes
 #include <regex>                   // for match_results<>::_Base_type
