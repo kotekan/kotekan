@@ -25,11 +25,15 @@ clKVCorr::clKVCorr(Config& config, const std::string& unique_name, bufferContain
 
     if (_data_format == "4+4b") {
         if (small_array) {
-            kernel_file_name = config.get_default<string>(unique_name, "kernel_path", ".") + "/"
-                               + config.get_default<string>(unique_name, "kernel", "kv_corr_sm.cl");
-            kernel_file_name =
-                config.get_default<string>(unique_name, "kernel_path", ".") + "/"
-                + config.get_default<string>(unique_name, "kernel", "kv_corr_sm_legacy.cl");
+            if (_legacy_opencl) {
+                kernel_file_name =
+                    config.get_default<string>(unique_name, "kernel_path", ".") + "/"
+                    + config.get_default<string>(unique_name, "kernel", "kv_corr_sm_legacy.cl");
+            } else {
+                kernel_file_name =
+                    config.get_default<string>(unique_name, "kernel_path", ".") + "/"
+                    + config.get_default<string>(unique_name, "kernel", "kv_corr_sm.cl");
+            }
         } else if (_full_complicated) {
             if (small_array)
                 throw std::invalid_argument("Can't do full_complicated with num_elements < 32");
