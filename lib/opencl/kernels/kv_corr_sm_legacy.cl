@@ -1,9 +1,3 @@
-//#define SAMPLES_PER_DATA_SET
-//#define NUM_ELEMENTS
-//#define NUM_FREQS
-//#define BLOCK_SIZE
-//#define COARSE_BLOCK_SIZE
-
 #define xl get_local_id(0)
 #define yl get_local_id(1)
 #define zl get_local_id(2)
@@ -23,6 +17,13 @@
 #define FREQ_ID xgr
 #define TIME_ID ygr
 #define BLOCK_ID zgr
+
+// Requires the following define constants to be passed in at run time
+// * SAMPLES_PER_DATA_SET
+// * NUM_ELEMENTS
+// * NUM_FREQS
+// * BLOCK_SIZE
+// * COARSE_BLOCK_SIZE
 
 // This is the same as the kernel in kv_corr_sm.cl, but with the ifdef tests removed.
 // Removing the ifdefs was needed to support very old versions of the OpenCL compiler

@@ -239,10 +239,6 @@ split:
 #    - gpu_output_split_buffer_6
 #    - gpu_output_split_buffer_7
 
-metadata:
-  #kotekan_stage: chimeMetadataDump
-  in_buf: gpu_output_buffer
-
 # Metadata pool
 vis_pool:
   kotekan_metadata_pool: VisMetadata
