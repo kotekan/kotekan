@@ -16,11 +16,8 @@
 <h1>Kotekan Pipeline</h1>
 <script>
     get_data().then(function (buffers) {
-        var pipeline = new PipelineViewer(buffers);
-        pipeline.init_svg();
-        pipeline.parse_data();
-        pipeline.create_objs();
-        pipeline.start_buff_ult();
+        var pipeline = new PipelineViewer(buffers, d3.select("body"));
+        pipeline.start_viewer();
     });
 
 </script>

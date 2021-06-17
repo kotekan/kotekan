@@ -20,7 +20,10 @@ Then start debug server under ``/tools/debug_tool/``
 
 .. code:: bash
 
-    FLASK_APP=debug_server.py FLASK_DEBUG=1 flask run
+    export FLASK_APP=debug_server.py FLASK_DEBUG=1
+    python debug_server.py
+
+**Note: kotekan address can be specific by adding "-a=<kotelan_addr>" option. The default is ``"http://localhost:12048"``.**
 
 The generated graph is shown here:
 ``http://localhost:5000/templates/pipeline_tree.html``

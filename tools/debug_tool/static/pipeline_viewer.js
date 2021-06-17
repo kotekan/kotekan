@@ -1,5 +1,3 @@
-var margin = 6;
-
 function isIE() { return ((navigator.appName == 'Microsoft Internet Explorer') || ((navigator.appName == 'Netscape') && (new RegExp("Trident/.*rv:([0-9]{1,}[\.0-9]{0,})").exec(navigator.userAgent) != null))); }
 
 // Time between updating kotekan metrics
@@ -24,7 +22,7 @@ function update_buf_utl(new_buffers, label, index){
 }
 
 // To avoid long string, break the label by '/'
-var insertLinebreaks = function (d) {
+var insertLinebreaks = function (d, margin = 6) {
     var el = d3.select(this);
     var words = d.name.split('/');
     var tspan_x = margin/2
@@ -69,20 +67,26 @@ class PipelineViewer {
     #node;
     #label;
 
-    constructor(buffers) {
+    constructor(buffers, body) {
         this.buffers = buffers;
         this.bufNames = Object.keys(this.buffers);
+        this.body = body;
     }
 
-    init_svg() {
-        var width = 960, height = 500;
+    start_viewer() {
+        this.init_svg();
+        this.parse_data();
+        this.create_objs();
+        this.start_buff_ult();
+    }
 
+    init_svg(width = 960, height = 500) {;
         this.#d3cola = cola.d3adaptor(d3)
             .linkDistance(80)
             .size([width, height]);
 
         // Add a svg section and employ zooming
-        this.#svg = d3.select("body").append("svg")
+        this.#svg = this.body.append("svg")
             .attr("width", width)
             .attr("height", height)
             .call(d3.zoom().on("zoom", function () {
@@ -119,7 +123,8 @@ class PipelineViewer {
         this.#graph.links = links;
     }
 
-    create_objs() {
+    create_objs(margin = 6) {
+        var self = this;
         // Set cola parameters and enable non-overlapping
         this.#d3cola.nodes(this.#graph.nodes)
             .links(this.#graph.links)
@@ -173,7 +178,6 @@ class PipelineViewer {
             .text(function (d) { return d.name; });
 
         // Calculate node, link, and label positions
-        self = this;
         this.#d3cola.on("tick", function () {
             self.#node.each(function (d) {
                 d.innerBounds = d.bounds.inflate(- margin);
@@ -206,7 +210,7 @@ class PipelineViewer {
         });
     }
 
-    start_buff_ult() {
+    start_buff_ult(margin = 6) {
         // Add utilization for all buffers and record their index
         // Index is used later to dynamically update buffer utilization
         var index = [];

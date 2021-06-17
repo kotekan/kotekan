@@ -17,7 +17,6 @@ def dir_listing(req_path):
 
     # Joining the base and the requested path
     abs_path = os.path.join(BASE_DIR, req_path)
-    print(abs_path)
 
     # Return 404 if path doesn't exist
     if not os.path.exists(abs_path):
@@ -53,4 +52,10 @@ def update(endpoint):
 
 
 if __name__ == "__main__":
+    from argparse import ArgumentParser
+    parser = ArgumentParser()
+    parser.add_argument('-a')
+    arg = parser.parse_args()
+    if arg.a:
+        KOTEKAN_ADDRESS = arg.a
     app.run()
