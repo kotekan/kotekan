@@ -53,8 +53,9 @@ def update(endpoint):
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
+
     parser = ArgumentParser()
-    parser.add_argument('-a')
+    parser.add_argument("-a")
     arg = parser.parse_args()
     if arg.a:
         KOTEKAN_ADDRESS = arg.a
