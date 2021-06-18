@@ -122,7 +122,7 @@ void kotekanMode::start_stages() {
     }
 
 #if !defined(MAC_OSX)
-    std::map<std::string, std::vector<pid_t>>* list_ptr = cpu_monitor.get_thread_list();
+    std::map<std::string, std::vector<pid_t>>* list_ptr = cpu_monitor.get_tid_list();
     for (auto const& stage : stages) {
         stage.second->update_thread_list(list_ptr);
     }
