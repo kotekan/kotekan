@@ -11,6 +11,7 @@
 #include <stdio.h>     // for fclose, fopen, fscanf, snprintf, FILE
 #include <sys/types.h> // for pid_t
 #include <utility>     // for pair
+#include <unistd.h>
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;
