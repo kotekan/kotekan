@@ -6,7 +6,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "metadata.h"          // for metadataPool  // IWYU pragma: keep
 #include "restServer.hpp"      // for connectionInstance
-#if defined(CPU_MONITOR) && !defined(MAC_OSX)
+#if !defined(MAC_OSX)
 #include "cpuMonitor.hpp"
 #endif
 

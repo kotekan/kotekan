@@ -120,13 +120,18 @@ void kotekanMode::start_stages() {
         INFO_NON_OO("Starting kotekan_stage: {:s}...", stage.first);
         stage.second->start();
     }
-#if defined(CPU_MONITOR) && !defined(MAC_OSX)
+
+#if !defined(MAC_OSX)
+    std::map<std::string, std::vector<pid_t>>* list_ptr = cpu_monitor.get_thread_list();
+    for (auto const& stage : stages) {
+        stage.second->update_thread_list(list_ptr);
+    }
     cpu_monitor.start();
 #endif
 }
 
 void kotekanMode::stop_stages() {
-#if defined(CPU_MONITOR) && !defined(MAC_OSX)
+#if !defined(MAC_OSX)
     cpu_monitor.stop();
 #endif
     // First set the shutdown variable on all stages

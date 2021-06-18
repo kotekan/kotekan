@@ -22,8 +22,6 @@
 
 namespace kotekan {
 
-std::map<std::string, pid_t> Stage::thread_list;
-
 Stage::Stage(Config& config, const std::string& unique_name, bufferContainer& buffer_container_,
              std::function<void(const Stage&)> main_thread_ref) :
     stop_thread(false),
@@ -138,7 +136,7 @@ Stage::~Stage() {
     stop_thread = true;
     if (this_thread.joinable())
         this_thread.join();
-    unregister_tid();
+    unregister_tid(this_thread.native_handle());
 }
 
 std::string Stage::dot_string(const std::string& prefix) const {
@@ -154,18 +152,19 @@ struct pthread_fake {
 
 void Stage::register_tid(pthread_t ptr) {
     pid_t tid = ((pthread_fake*)ptr)->tid;
-    thread_list[unique_name] = tid;
+    thread_list.push_back(tid);
 }
 
-void Stage::unregister_tid() {
-    auto itr = thread_list.find(unique_name);
+void Stage::unregister_tid(pthread_t ptr) {
+    pid_t tid = ((pthread_fake*)ptr)->tid;
+    auto itr = std::find(thread_list.begin(), thread_list.end(), tid);
     if (itr != thread_list.end()) {
         thread_list.erase(itr);
     }
 }
 
-std::map<std::string, pid_t> Stage::get_thread_list() {
-    return thread_list;
+void Stage::update_thread_list(std::map<std::string, std::vector<pid_t>>* list_ptr) {
+    (*list_ptr)[unique_name] = thread_list;
 }
 
 } // namespace kotekan

@@ -50,10 +50,18 @@ public:
      **/
     void track_cpu();
 
+    /**
+     * @brief Get the thead list of all stage tids.
+     * 
+     * @return a pointer to thread_list.
+     **/
+    std::map<std::string, std::vector<pid_t>>* get_tid_list();
+
 private:
     std::thread this_thread;
     bool stop_thread;
-    std::map<std::string, CpuStat> ult_list;
+    std::map<std::string, std::vector<pid_t>> thread_list;
+    std::map<std::string, std::vector<CpuStat>> ult_list;
     uint32_t prev_cpu_time;
 };
 
