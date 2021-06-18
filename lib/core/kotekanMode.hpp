@@ -6,9 +6,9 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "metadata.h"          // for metadataPool  // IWYU pragma: keep
 #include "restServer.hpp"      // for connectionInstance
-#if !defined(MAC_OSX)
+// #if !defined(MAC_OSX)
 #include "cpuMonitor.hpp"
-#endif
+// #endif
 
 #include <map>    // for map
 #include <string> // for string
@@ -48,9 +48,9 @@ public:
 private:
     Config& config;
     bufferContainer buffer_container;
-#if !defined(MAC_OSX)
+// #if !defined(MAC_OSX)
     CpuMonitor cpu_monitor;
-#endif
+// #endif
 
     std::map<std::string, Stage*> stages;
     std::map<std::string, struct metadataPool*> metadata_pools;
