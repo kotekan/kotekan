@@ -48,7 +48,7 @@ public:
 private:
     Config& config;
     bufferContainer buffer_container;
-#if defined(CPU_MONITOR) && !defined(MAC_OSX)
+#if !defined(MAC_OSX)
     CpuMonitor cpu_monitor;
 #endif
 
