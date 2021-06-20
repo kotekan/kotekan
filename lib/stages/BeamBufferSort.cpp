@@ -390,10 +390,10 @@ void BeamBufferSort::main_thread(){
 	memcpy(sub_frame_data, input, in_buf->frame_size);
         // Debug line
 	FreqIDBeamMetadata* debug_meta = (FreqIDBeamMetadata*)&sort_queue[time_offset][freq_bin][0];
-        INFO("Debug RA {:f} Dec: {:f}, scaling: {:d}, beam_num: {:d}, freq_id {:d}, seq_start {:d} stream_id {:d} c_time {:d}\n", 
-             debug_meta->ra, debug_meta->dec, debug_meta->scaling,
-             debug_meta->beam_number, debug_meta->frequency_bin, debug_meta->fpga_seq_start, 
-             debug_meta->stream_id.id, debug_meta -> ctime.tv_sec);	
+        //INFO("Debug RA {:f} Dec: {:f}, scaling: {:d}, beam_num: {:d}, freq_id {:d}, seq_start {:d} stream_id {:d} c_time {:d}\n", 
+        //     debug_meta->ra, debug_meta->dec, debug_meta->scaling,
+        //     debug_meta->beam_number, debug_meta->frequency_bin, debug_meta->fpga_seq_start, 
+        //     debug_meta->stream_id.id, debug_meta -> ctime.tv_sec);	
 
 	// mark fill status is done
 	queue_status[time_offset][freq_bin] = 1;

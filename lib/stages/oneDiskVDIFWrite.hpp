@@ -38,13 +38,6 @@ using std::vector;
  */
 
 
-struct VDIF_Frame {
-    /// VDIF header
-    VDIFHeader* vdif_header;
-    /// Payload
-    uint8_t* payload;
-};
-
 class oneDiskVDIFWrite : public kotekan::Stage {
 public:
     /// Constructor
@@ -57,18 +50,18 @@ public:
     void main_thread() override;
 
 private:
+    /// Private functions 
+   // void oneDiskVDIFWrite::save_meta_data(char* timestr);
+
     /// Input buffer which packs mulitple frequencies comeing at the same time in
     /// one frame. 
     struct Buffer* in_buf;
-    /// Buffer for vdif output. 
-    VDIF_Frame* vdif_frame;
     uint32_t vdif_samples_per_frame; 
     uint32_t vdif_freq_per_frame;
-    uint32_t time_res_nsec;
     uint32_t vdif_frame_header_size;
     uint32_t nvdif_payload_per_file;
     uint32_t num_pol;
-    uint32_t ref_epoch; 
+    float ref_year; 
     int disk_id;
     int nframe_per_payload;
     std::string disk_base;
@@ -78,7 +71,11 @@ private:
     std::string instrument_name;
     std::string abs_path;
     bool use_abs_path;
-    bool write_to_disk;  
+    bool write_to_disk; 
+    double time_resolution;
+    uint64_t time_res_nsec;
+    timespec ref_ct;
+    std::string note; 
 };
 
 #endif // BEAM_VDIF_WRITE_HPP
