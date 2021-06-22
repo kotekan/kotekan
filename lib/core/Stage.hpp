@@ -67,7 +67,7 @@ public:
     /**
      * @brief Add tids to the thread list.
      */
-    void update_thread_list(std::map<std::string, std::vector<pid_t>>* list_ptr);
+    std::vector<pid_t> get_tids();
 
 protected:
     std::atomic_bool stop_thread;

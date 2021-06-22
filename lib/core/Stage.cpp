@@ -164,11 +164,8 @@ void Stage::unregister_tid(pthread_t ptr) {
     }
 }
 
-void Stage::update_thread_list(std::map<std::string, std::vector<pid_t>>* list_ptr) {
-    (*list_ptr)[unique_name] = thread_list;
-    for (auto tid : thread_list) {
-        ERROR_NON_OO("tid in stage: {:d}!!!", tid);
-    }
+std::vector<pid_t> Stage::get_tids() {
+    return thread_list;
 }
 
 } // namespace kotekan
