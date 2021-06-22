@@ -1,14 +1,16 @@
 #ifndef CPU_MONITOR_HPP
 #define CPU_MONITOR_HPP
 
+#include "Config.hpp"     // for Config
 #include "Stage.hpp"      // for Stage
 #include "restServer.hpp" // for connectionInstance
 #include "visUtil.hpp"    // for StatTracker
 
-#include <cstdint> // for uint32_t
-#include <map>     // for map
-#include <string>  // for string
-#include <thread>  // for thread
+#include <cstdint>     // for uint32_t
+#include <map>         // for map
+#include <string>      // for string
+#include <sys/types.h> // for pid_t
+#include <thread>      // for thread
 
 namespace kotekan {
 

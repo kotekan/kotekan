@@ -17,9 +17,13 @@
 #include "fmt.hpp"  // for format
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
 
+#include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
 #include <stdlib.h>   // for free
 #include <utility>    // for pair
+#include <vector>     // for vector
 
 using namespace std::placeholders;
 

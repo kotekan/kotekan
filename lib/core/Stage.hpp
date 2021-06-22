@@ -7,7 +7,6 @@
 
 #include <atomic>      // for atomic_bool
 #include <functional>  // for function
-#include <map>         // for map
 #include <mutex>       // for mutex
 #include <pthread.h>   // for pthread_t
 #include <stdint.h>    // for uint32_t
