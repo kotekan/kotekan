@@ -50,7 +50,6 @@ private:
     bufferContainer buffer_container;
 #if !defined(MAC_OSX)
     CpuMonitor cpu_monitor;
-    bool cpu_monitor_enabled;
 #endif
 
     std::map<std::string, Stage*> stages;
