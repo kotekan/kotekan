@@ -60,16 +60,14 @@ public:
     void register_tid(pthread_t ptr);
 
     /**
-     * @brief Remove the current stage tid from thread_list.
+     * @brief Remove a tid from thread_list.
      */
-    void unregister_tid();
+    void unregister_tid(pthread_t ptr);
 
     /**
-     * @brief Get the list of all registered tid.
-     *
-     * @return the copy of the thread list.
+     * @brief Get tids from the current stage.
      */
-    static std::map<std::string, pid_t> get_thread_list();
+    std::vector<pid_t> get_tids();
 
 protected:
     std::atomic_bool stop_thread;
@@ -119,8 +117,8 @@ private:
     /// joined after the exit signal has been given before exiting ungracefully.
     uint32_t join_timeout;
 
-    // List of all stage tid used for CPU usage tracking
-    static std::map<std::string, pid_t> thread_list;
+    // List of stage tids used for CPU usage tracking
+    std::vector<pid_t> thread_list;
 };
 
 } // namespace kotekan
