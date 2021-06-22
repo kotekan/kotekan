@@ -152,7 +152,6 @@ struct pthread_fake {
 
 void Stage::register_tid(pthread_t ptr) {
     pid_t tid = ((pthread_fake*)ptr)->tid;
-    ERROR_NON_OO("stage: {:s}, tid: {:d}!!!", unique_name, tid);
     thread_list.push_back(tid);
 }
 

@@ -60,12 +60,12 @@ public:
     void register_tid(pthread_t ptr);
 
     /**
-     * @brief Remove the current stage tid from thread_list.
+     * @brief Remove a tid from thread_list.
      */
     void unregister_tid(pthread_t ptr);
 
     /**
-     * @brief Add tids to the thread list.
+     * @brief Get tids from the current stage.
      */
     std::vector<pid_t> get_tids();
 

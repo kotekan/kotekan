@@ -36,7 +36,6 @@ void CpuMonitor::stop() {
 }
 
 void CpuMonitor::track_cpu() {
-    ERROR_NON_OO("enter track_cpu()!!!");
     int core_num = sysconf(_SC_NPROCESSORS_ONLN);
     while (!stop_thread) {
         uint32_t cpu_times[10];
@@ -61,7 +60,6 @@ void CpuMonitor::track_cpu() {
             for (int i = 0; i < 10; i++) {
                 cpu_time += cpu_times[i];
             }
-            ERROR_NON_OO("cpu time: {:d}!!!", cpu_time);
         } else {
             WARN_NON_OO("CPU monitor read insufficient stats from /proc/stat");
         }
@@ -79,7 +77,6 @@ void CpuMonitor::track_cpu() {
                     ret = fscanf(thread_fp, "%*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %*s %u %u",
                                 &utime, &stime);
 
-                    ERROR_NON_OO("{:s} || utime: {:d}, stime:{:d}!!!", fname, utime, stime);
                     auto stage_itr = ult_list.find(stage.first);
                     if (stage_itr != ult_list.end()) {
                         auto thread_itr = (stage_itr->second).find(tid);
@@ -93,8 +90,6 @@ void CpuMonitor::track_cpu() {
                                 // Update thread usr and sys time
                                 (thread_itr->second).prev_utime = utime;
                                 (thread_itr->second).prev_stime = stime;
-                                ERROR_NON_OO("{:d} u_avg: {:f}", thread_itr->first, (thread_itr->second).utime_usage.get_avg());
-                                ERROR_NON_OO("{:d} s_avg: {:f}", thread_itr->first, (thread_itr->second).stime_usage.get_avg());
                             } else {
                                 WARN_NON_OO("CPU monitor read insufficient stats from {:s}", fname);
                             }
@@ -105,13 +100,11 @@ void CpuMonitor::track_cpu() {
                         }
                     } else {
                         // Create new stage and thread record
-                        ERROR_NON_OO("begpre new item!!!");
                         (ult_list[stage.first])[tid].prev_utime = utime;
                         (ult_list[stage.first])[tid].prev_stime = stime;
-                        ERROR_NON_OO("after new item!!!");
                     }
                 } else {
-                    // The stage has been terminated early, add 0 to stats
+                    // The thread has been terminated early, add 0 to stats
                     (ult_list[stage.first])[tid].utime_usage.add_sample(0);
                     (ult_list[stage.first])[tid].stime_usage.add_sample(0);
                     WARN_NON_OO("CPU monitor cannot read from {:s}", fname);
@@ -121,8 +114,6 @@ void CpuMonitor::track_cpu() {
         }
         // Update cpu time
         prev_cpu_time = cpu_time;
-
-        ERROR_NON_OO("round end!!!");
 
         // Wait for next check
         std::this_thread::sleep_for(1000ms);
@@ -137,8 +128,6 @@ void CpuMonitor::cpu_ult_call_back(connectionInstance& conn) {
         for (auto& thread : stage.second) {
             nlohmann::json thread_cpu_ult = {};
             // Limit outputs to two digits
-            ERROR_NON_OO("{:d} u_avg: {:f} ???", thread.first, (thread.second).utime_usage.get_avg());
-            ERROR_NON_OO("{:d} s_avg: {:f} ???", thread.first, (thread.second).stime_usage.get_avg());
             thread_cpu_ult["usr_cpu_ult"] = floor((thread.second).utime_usage.get_avg() * 100) / 100;
             thread_cpu_ult["sys_cpu_ult"] = floor((thread.second).stime_usage.get_avg() * 100) / 100;
             stage_cpu_ult[std::to_string(thread.first)] = thread_cpu_ult;
@@ -151,6 +140,16 @@ void CpuMonitor::cpu_ult_call_back(connectionInstance& conn) {
 
 void CpuMonitor::save_stages(std::map<std::string, Stage*> input_stages) {
     stages = input_stages;
+}
+
+void CpuMonitor::set_affinity(Config& config) {
+    std::vector<int32_t> cpu_affinity = config.get<std::vector<int32_t>>("/cpu_monitor", "cpu_affinity");
+
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    for (auto core_id : cpu_affinity)
+        CPU_SET(core_id, &cpuset);
+    pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
 }
 
 } // namespace kotekan

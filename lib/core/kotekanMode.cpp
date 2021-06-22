@@ -121,18 +121,19 @@ void kotekanMode::start_stages() {
         stage.second->start();
     }
 
-// #if !defined(MAC_OSX)
-    cpu_monitor.save_stages(stages);
-    ERROR_NON_OO("before start!!!")
-    cpu_monitor.start();
-    ERROR_NON_OO("after start!!!")
-// #endif
+#if !defined(MAC_OSX)
+    if (config.get_default<bool>("/cpu_monitor", "enabled", false)) {
+        cpu_monitor.save_stages(stages);
+        cpu_monitor.start();
+        cpu_monitor.set_affinity(config);
+    }
+#endif
 }
 
 void kotekanMode::stop_stages() {
-// #if !defined(MAC_OSX)
+#if !defined(MAC_OSX)
     cpu_monitor.stop();
-// #endif
+#endif
     // First set the shutdown variable on all stages
     for (auto const& stage : stages)
         stage.second->stop();

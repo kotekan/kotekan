@@ -52,9 +52,14 @@ public:
     void track_cpu();
 
     /**
-     * @brief Get the thead list of all stage tids.
+     * @brief Save all stages. Threads are detched from each stage periodically.
      **/
     void save_stages(std::map<std::string, Stage*> input_stages);
+
+    /**
+     * @brief Set cpu affinity based on config file.
+     **/
+    void set_affinity(Config& config);
 
 private:
     std::thread this_thread;
