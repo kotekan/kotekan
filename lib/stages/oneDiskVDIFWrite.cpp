@@ -50,7 +50,8 @@ oneDiskVDIFWrite::oneDiskVDIFWrite(Config& config_, const std::string& unique_na
         config.get_default<std::string>(unique_name, "instrument_name", "no_name_set");
     write_to_disk = config.get_default<bool>(unique_name, "write_to_disk", true);
     nframe_per_payload = config.get<int>(unique_name, "nframe_per_payload");
-    nvdif_payload_per_file = config.get<uint32_t>(unique_name, "nvdif_payload_per_file");
+    // TODO change to frames per frequency
+    vdif_frames_per_freq = config.get<uint32_t>(unique_name, "vdif_frames_per_freq");
     vdif_frame_header_size = config.get<uint32_t>(unique_name, "vdif_frame_header_size");
     num_pol = config.get<uint32_t>(unique_name, "num_pol"); 
     // The refernce epoch would be the last two digit or the year. If it in half of a 
@@ -60,6 +61,7 @@ oneDiskVDIFWrite::oneDiskVDIFWrite(Config& config_, const std::string& unique_na
     ref_time.tm_year = (int)int_year - 1900;
     ref_time.tm_mday = 1;
     if (frac_year > 0){ // The reference time is in the second half of the year
+	assert(frac_year == 0.5);
         ref_time.tm_mon = 6;
     }
     time_t ref_tt = std::mktime(&ref_time);
@@ -104,6 +106,7 @@ void oneDiskVDIFWrite::main_thread(){
     uint32_t vdif_frame_size;
     uint32_t n_vdif_time_frame;
     uint32_t n_vdif_freq_frame;
+    uint32_t nvdif_payload_per_file;
     uint32_t in_buf_frame_size;
     uint32_t target_freq_frame;
     uint32_t src_start;
@@ -200,6 +203,8 @@ void oneDiskVDIFWrite::main_thread(){
             INFO("Time {:d} TIME RES {:d}", in_metadata -> ctime.tv_nsec, time_res_nsec);
 	    //assert(in_metadata -> ctime.tv_nsec % (vdif_samples_per_frame * time_res_nsec) == 0);	
 	    if (file_num == 0 && payload_ctr == 0){
+		// Compute the vdif frames per file.
+		nvdif_payload_per_file = vdif_frames_per_freq * in_metadata -> nchan;
 	        // Get the frame zero for checking start time offset from an integer second. 
                 timespec time0 = in_metadata -> ctime;
 	        add_nsec(time0, -1 * (long)(in_metadata -> fpga_seq_start * time_res_nsec));
@@ -212,8 +217,10 @@ void oneDiskVDIFWrite::main_thread(){
 		    intsec_offset = time0.tv_nsec;
 		}
 		INFO("Intset_off {:d}", intsec_offset);
+		
 		if(write_to_disk){
 		    fprintf(setting_file, "format_version_number=%02d\n", data_format_version);
+		    fprintf(setting_file, "start_freq=%d\n", in_metadata -> freq_start);
                     fprintf(setting_file, "num_freq=%d\n", in_metadata -> nchan);
                     fprintf(setting_file, "num_inputs=%d\n", num_pol);
                     fprintf(setting_file, "num_frames=%d\n", 1); // Not sure what does this one mean
@@ -270,16 +277,23 @@ void oneDiskVDIFWrite::main_thread(){
 	//assert(out_frame_unix_time.tv_nsec % (vdif_samples_per_frame * time_res_nsec) ==0);
         vdif_header -> data_frame = out_frame_unix_time.tv_nsec / (vdif_samples_per_frame * time_res_nsec);
         vdif_header -> thread_id = in_metadata -> freq_start + freq_offset;
-	INFO("Time offset {:d}", time_offset);
+	//INFO("Time offset {:d}", time_offset);
 	// copy vdif frequency per frame (4) from input buffer
-	for (uint32_t ii = 0; ii < vdif_freq_per_frame; ii++){
-            // Copy data to payload
-            src_start = freq_offset * in_buf_frame_size + time_offset + in_metadata -> sub_frame_metadata_size;
-            target_start = ii * vdif_samples_per_frame;
-	    uint8_t* target = &payload[target_start];
-            memcpy(target, &input[src_start], vdif_samples_per_frame * num_pol);
-	    freq_offset ++;
-        }
+	for (uint32_t tt = 0; tt < vdif_samples_per_frame; tt++){
+	    for (uint32_t ii = 0; ii < vdif_freq_per_frame; ii++){
+                // Copy data to payload
+	        // The input buffer is order as freq0(n_sample * n_pol) freq1(n_sample* n_pol) ...
+	        // But the VDIF is order as freq0 (1_sample * n_pol) freq1(1_sample * n_pol) ...
+                src_start = freq_offset * in_buf_frame_size + time_offset + tt * num_pol  + in_metadata -> sub_frame_metadata_size;
+                target_start = (ii * num_pol) + tt * num_pol * vdif_freq_per_frame;
+	        for (uint32_t jj = 0; jj < num_pol; jj++){
+	            payload[target_start +jj] = input[src_start + jj];
+                }
+	    }
+	}
+
+	freq_offset += vdif_freq_per_frame;
+     
 	//INFO("Freq offset {:d}", freq_offset);
 	// If all the frequency from one time is finished, move to the next time.
 	if (freq_offset >= in_metadata -> nchan){
