@@ -59,7 +59,7 @@ private:
     uint32_t vdif_samples_per_frame; 
     uint32_t vdif_freq_per_frame;
     uint32_t vdif_frame_header_size;
-    uint32_t nvdif_payload_per_file;
+    uint32_t vdif_frames_per_freq;
     uint32_t num_pol;
     float ref_year; 
     int disk_id;
