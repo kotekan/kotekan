@@ -83,6 +83,34 @@ uint64_t Gauge::get_time_in_milliseconds() {
     return (uint64_t)(tv.tv_sec) * 1000 + (uint64_t)(tv.tv_usec) / 1000;
 }
 
+EndpointTimer::EndpointTimer(const std::vector<string>& label_values) : Metric(label_values) {}
+
+void EndpointTimer::update(const double value) {
+    std::lock_guard<std::mutex> lock(metric_lock);
+
+    stat_tracker.add_sample(value);
+}
+
+string EndpointTimer::to_string() {
+    std::ostringstream buf;
+    to_string(buf);
+    return buf.str();
+}
+
+std::ostringstream& EndpointTimer::to_string(std::ostringstream& out) {
+    std::lock_guard<std::mutex> lock(metric_lock);
+
+    double max = stat_tracker.get_max();
+    double avg = stat_tracker.get_avg();
+
+    if (std::isnan(max)) {
+        fmt::print(out, fmt("{:f} NaN"), avg);
+    } else {
+        fmt::print(out, fmt("{:f} {:f}"), avg, max);
+    }
+
+    return out;
+}
 
 template<typename T>
 MetricFamily<T>::MetricFamily(const string& name, const string& stage_name,
@@ -108,6 +136,9 @@ string MetricFamily<T>::serialize() {
             break;
         case MetricFamily<T>::MetricType::Gauge:
             out << "# TYPE " << name << " gauge\n";
+            break;
+        case MetricFamily<T>::MetricType::EndpointTimer:
+            out << "# TYPE " << name << " endpoint_timer\n";
             break;
         default:
             out << "# TYPE " << name << " untyped\n";
@@ -191,6 +222,22 @@ MetricFamily<Gauge>& Metrics::add_gauge(const std::string& name, const std::stri
                                         const std::vector<std::string>& label_names) {
     auto f = std::make_shared<MetricFamily<Gauge>>(name, stage_name, label_names,
                                                    MetricFamily<Gauge>::MetricType::Gauge);
+    add(name, stage_name, f);
+    return *f;
+}
+
+EndpointTimer& Metrics::add_endpoint(const std::string& name, const std::string& stage_name) {
+    const std::vector<string> empty_labels;
+    auto f = std::make_shared<MetricFamily<EndpointTimer>>(name, stage_name, empty_labels,
+                                                   MetricFamily<EndpointTimer>::MetricType::EndpointTimer);
+    add(name, stage_name, f);
+    return f->labels({});
+}
+
+MetricFamily<EndpointTimer>& Metrics::add_endpoint(const std::string& name, const std::string& stage_name,
+                                        const std::vector<std::string>& label_names) {
+    auto f = std::make_shared<MetricFamily<EndpointTimer>>(name, stage_name, label_names,
+                                                   MetricFamily<EndpointTimer>::MetricType::EndpointTimer);
     add(name, stage_name, f);
     return *f;
 }

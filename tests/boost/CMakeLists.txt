@@ -43,7 +43,7 @@ target_link_libraries(test_bip_buffer PRIVATE libexternal kotekan_utils kotekan_
 
 # test_prometheus_metrics needs fmt and prometheusMetrics
 add_executable(test_prometheus_metrics test_prometheus_metrics.cpp)
-target_link_libraries(test_prometheus_metrics PRIVATE libexternal kotekan_core)
+target_link_libraries(test_prometheus_metrics PRIVATE libexternal kotekan_core kotekan_utils)
 
 # test_config needs fmt
 add_executable(test_config test_config.cpp)

@@ -1,7 +1,7 @@
 #ifndef PROMETHEUS_METRICS_HPP
 #define PROMETHEUS_METRICS_HPP
 
-#include "restServer.hpp"
+// #include "restServer.hpp"
 
 #include <deque>     // for deque
 #include <iosfwd>    // for ostringstream
@@ -14,8 +14,13 @@
 #include <tuple>     // for tuple
 #include <vector>    // for vector
 
+#include "visUtil.hpp"
 
 namespace kotekan {
+
+class restServer;
+class connectionInstance;
+
 namespace prometheus {
 
 /**
@@ -85,6 +90,17 @@ private:
     uint64_t last_update_time_stamp;
 };
 
+class EndpointTimer : public Metric {
+public:
+    EndpointTimer(const std::vector<std::string>&);
+    void update(const double);
+    std::string to_string() override;
+    std::ostringstream& to_string(std::ostringstream& out) override;
+
+private:
+    StatTracker stat_tracker;
+};
+
 /**
  * @class Serializable
  * @brief Interface for types that can be represented in Prometheus text format.
@@ -113,6 +129,7 @@ public:
     enum class MetricType {
         Counter,
         Gauge,
+        EndpointTimer,
         Untyped,
     };
 
@@ -253,6 +270,11 @@ public:
      * @throw std::runtime_error if the metric with that name is already registered.
      */
     MetricFamily<Gauge>& add_gauge(const std::string& name, const std::string& stage_name,
+                                   const std::vector<std::string>& label_names);
+
+    EndpointTimer& add_endpoint(const std::string& name, const std::string& stage_name);
+
+    MetricFamily<EndpointTimer>& add_endpoint(const std::string& name, const std::string& stage_name,
                                    const std::vector<std::string>& label_names);
 
     /**

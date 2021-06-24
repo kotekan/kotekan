@@ -26,6 +26,8 @@
 #include <sys/time.h>              // for timeval
 #include <utility>                 // for pair
 #include <vector>                  // for vector
+#include <chrono>
+#include <ctime>
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 #endif
@@ -91,6 +93,8 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
             url = aliases[url];
         }
 
+        auto t_start = std::chrono::high_resolution_clock::now();
+
         if (request->type == EVHTTP_REQ_GET) {
             connectionInstance conn(request);
             if (!server->get_callbacks.count(url)) {
@@ -99,6 +103,10 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
                 return;
             }
             server->get_callbacks[url](conn);
+            auto t_end = std::chrono::high_resolution_clock::now();
+            double duration = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+            server->timer_list[url]->update(duration);
+            ERROR_NON_OO("Callback timer: {:s} {:f} ms", url, duration);
             return;
         }
 
@@ -117,6 +125,10 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
             }
 
             server->json_callbacks[url](conn, json_request);
+            auto t_end = std::chrono::high_resolution_clock::now();
+            double duration = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+            server->timer_list[url]->update(duration);
+            ERROR_NON_OO("Callback timer: {:s} {:f} ms", url, duration);
             return;
         }
     }
@@ -138,6 +150,9 @@ void restServer::register_get_callback(string endpoint,
         if (get_callbacks.count(endpoint)) {
             WARN_NON_OO("restServer: Call back {:s} already exists, overriding old call back!!",
                         endpoint);
+        } else {
+            ERROR_NON_OO("new endpoint {:s}", endpoint);
+            timer_list[endpoint] = &(prometheus::Metrics::instance().add_endpoint(endpoint + "[GET]", "/rest_server"));
         }
         get_callbacks[endpoint] = callback;
     }
@@ -155,6 +170,9 @@ void restServer::register_post_callback(string endpoint,
         if (json_callbacks.count(endpoint)) {
             WARN_NON_OO("restServer: Callback {:s} already exists, overriding old callback!!",
                         endpoint);
+        } else {
+            ERROR_NON_OO("new endpoint {:s}", endpoint);
+            timer_list[endpoint] = &(prometheus::Metrics::instance().add_endpoint(endpoint + "[POST]", "/rest_server"));
         }
         json_callbacks[endpoint] = callback;
     }

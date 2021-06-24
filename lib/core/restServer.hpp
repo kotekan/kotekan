@@ -2,6 +2,7 @@
 #define REST_SERVER_HPP
 
 #include "Config.hpp" // for Config
+#include "prometheusMetrics.hpp"
 
 #include "json.hpp" // for json
 
@@ -18,6 +19,7 @@
 
 namespace kotekan {
 
+// class prometheus::EndpointTimer;
 
 enum class HTTP_RESPONSE {
     OK = 200,
@@ -321,6 +323,8 @@ private:
 
     /// Alias map
     std::map<std::string, std::string> aliases;
+
+    std::map<std::string, prometheus::EndpointTimer*> timer_list;
 
     /// Mutex to lock changes to the maps while a request is in progress
     std::shared_timed_mutex callback_map_lock;
