@@ -157,7 +157,7 @@ void restServer::register_get_callback(string endpoint,
         } else {
             // Create a new prometheus metric for the new endpoint
             std::string endpoint_name = endpoint + "[GET]";
-            timer_list[endpoint_name] = &(prometheus::Metrics::instance().add_endpoint(endpoint_name + "[GET]", "/rest_server"));
+            timer_list[endpoint_name] = &(prometheus::Metrics::instance().add_endpoint(endpoint_name, "/rest_server"));
         }
         get_callbacks[endpoint] = callback;
     }
@@ -178,7 +178,7 @@ void restServer::register_post_callback(string endpoint,
         } else {
             // Create a new prometheus metric for the new endpoint
             std::string endpoint_name = endpoint + "[POST]";
-            timer_list[endpoint_name] = &(prometheus::Metrics::instance().add_endpoint(endpoint_name + "[POST]", "/rest_server"));
+            timer_list[endpoint_name] = &(prometheus::Metrics::instance().add_endpoint(endpoint_name, "/rest_server"));
         }
         json_callbacks[endpoint] = callback;
     }
