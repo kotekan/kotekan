@@ -103,10 +103,10 @@ std::ostringstream& EndpointTimer::to_string(std::ostringstream& out) {
     double max = stat_tracker.get_max();
     double avg = stat_tracker.get_avg();
 
-    if (std::isnan(max)) {
-        fmt::print(out, fmt("{:f} NaN"), avg);
+    if (std::isnan(avg)) {
+        fmt::print(out, fmt("NaN NaN"));
     } else {
-        fmt::print(out, fmt("{:f} {:f}"), avg, max);
+        fmt::print(out, fmt("{:f}ms {:f}ms"), avg, max);
     }
 
     return out;

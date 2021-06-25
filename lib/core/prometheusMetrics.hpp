@@ -90,6 +90,10 @@ private:
     uint64_t last_update_time_stamp;
 };
 
+/**
+ * @class EndpointTimer
+ * @brief Represents a metric that can store timer stats and output avg and max
+ */
 class EndpointTimer : public Metric {
 public:
     EndpointTimer(const std::vector<std::string>&);
@@ -272,8 +276,25 @@ public:
     MetricFamily<Gauge>& add_gauge(const std::string& name, const std::string& stage_name,
                                    const std::vector<std::string>& label_names);
 
+    /**
+     * @brief Adds a new metric of type endpoint_timer and no labels
+     *
+     * @param name The name of the metric.
+     * @param stage_name The unique stage name, normally @c unique_name.
+     * @return a reference to the newly created @c EndpointTimer instance
+     * @throw std::runtime_error if the metric with that name is already registered.
+     */
     EndpointTimer& add_endpoint(const std::string& name, const std::string& stage_name);
 
+    /**
+     * @brief Adds a new metric family of type endpoint_timer
+     *
+     * @param name The name of the metric.
+     * @param stage_name The unique stage name, normally @c unique_name.
+     * @param label_names The names of the labels used
+     * @return a reference to the newly created @c MetricFamily<EndpointTimer> instance
+     * @throw std::runtime_error if the metric with that name is already registered.
+     */
     MetricFamily<EndpointTimer>& add_endpoint(const std::string& name, const std::string& stage_name,
                                    const std::vector<std::string>& label_names);
 

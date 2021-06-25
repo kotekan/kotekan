@@ -324,6 +324,7 @@ private:
     /// Alias map
     std::map<std::string, std::string> aliases;
 
+    /// A list to save all endpoint prometheus metrics
     std::map<std::string, prometheus::EndpointTimer*> timer_list;
 
     /// Mutex to lock changes to the maps while a request is in progress
