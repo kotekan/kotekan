@@ -46,6 +46,9 @@ restServer& restServer::instance() {
 
 restServer::restServer() : port(_port), main_thread() {
     stop_thread = false;
+
+    // Create a new prometheus metric group for callback timing
+    this->timer_metrics = &(prometheus::Metrics::instance().add_endpoint("endpoint_timers", "/rest_server", {"endpoint"}));
 }
 
 restServer::~restServer() {
@@ -157,7 +160,7 @@ void restServer::register_get_callback(string endpoint,
         } else {
             // Create a new prometheus metric for the new endpoint
             std::string endpoint_name = endpoint + "[GET]";
-            timer_list[endpoint_name] = &(prometheus::Metrics::instance().add_endpoint(endpoint_name, "/rest_server"));
+            timer_list[endpoint_name] = &(timer_metrics->labels({endpoint_name}));
         }
         get_callbacks[endpoint] = callback;
     }
@@ -178,7 +181,7 @@ void restServer::register_post_callback(string endpoint,
         } else {
             // Create a new prometheus metric for the new endpoint
             std::string endpoint_name = endpoint + "[POST]";
-            timer_list[endpoint_name] = &(prometheus::Metrics::instance().add_endpoint(endpoint_name, "/rest_server"));
+            timer_list[endpoint_name] = &(timer_metrics->labels({endpoint_name}));
         }
         json_callbacks[endpoint] = callback;
     }

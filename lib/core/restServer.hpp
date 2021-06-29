@@ -327,6 +327,9 @@ private:
     /// A list to save all endpoint prometheus metrics
     std::map<std::string, prometheus::EndpointTimer*> timer_list;
 
+    /// A group of all endpoints
+    prometheus::MetricFamily<kotekan::prometheus::EndpointTimer>* timer_metrics;
+
     /// Mutex to lock changes to the maps while a request is in progress
     std::shared_timed_mutex callback_map_lock;
 

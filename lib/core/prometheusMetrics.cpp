@@ -103,13 +103,20 @@ std::ostringstream& EndpointTimer::to_string(std::ostringstream& out) {
     double max = stat_tracker.get_max();
     double avg = stat_tracker.get_avg();
 
-    if (std::isnan(avg)) {
-        fmt::print(out, fmt("NaN NaN"));
-    } else {
-        fmt::print(out, fmt("{:f}ms {:f}ms"), avg, max);
+    if (is_slow()) {
+        fmt::print(out, fmt("{:s}: {:f}ms {:f}ms"), label_values[0], avg, max);
+        out << "\n";
     }
 
     return out;
+}
+
+bool EndpointTimer::is_slow() {
+    double max = stat_tracker.get_max();
+    if (!std::isnan(max)) {
+        return max >= 1.0;
+    }
+    return false;
 }
 
 template<typename T>
@@ -144,20 +151,24 @@ string MetricFamily<T>::serialize() {
             out << "# TYPE " << name << " untyped\n";
     }
     for (auto& m : metrics) {
-        out << name;
-        out << "{"
-            << "stage_name=\"" << stage_name << "\"";
-        if (!label_names.empty()) {
-            auto value = m.label_values.begin();
-            for (auto label : label_names) {
-                out << ",";
-                out << label << "=\"" << *value++ << "\"";
+        if (metric_type == MetricFamily<T>::MetricType::EndpointTimer) {
+            m.to_string(out);
+        } else {
+            out << name;
+            out << "{"
+                << "stage_name=\"" << stage_name << "\"";
+            if (!label_names.empty()) {
+                auto value = m.label_values.begin();
+                for (auto label : label_names) {
+                    out << ",";
+                    out << label << "=\"" << *value++ << "\"";
+                }
             }
+            out << "}"
+                << " ";
+            m.to_string(out);
+            out << "\n";
         }
-        out << "}"
-            << " ";
-        m.to_string(out);
-        out << "\n";
     }
     return out.str();
 }

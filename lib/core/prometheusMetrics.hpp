@@ -100,8 +100,10 @@ public:
     void update(const double);
     std::string to_string() override;
     std::ostringstream& to_string(std::ostringstream& out) override;
+    bool is_slow();
 
 private:
+    /// Structure to store values and compute max and avg.
     StatTracker stat_tracker;
 };
 
