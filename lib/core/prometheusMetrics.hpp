@@ -1,7 +1,7 @@
 #ifndef PROMETHEUS_METRICS_HPP
 #define PROMETHEUS_METRICS_HPP
 
-#include "visUtil.hpp"
+#include "visUtil.hpp" // for StatTracker
 
 #include <deque>     // for deque
 #include <iosfwd>    // for ostringstream

@@ -5,11 +5,11 @@
 
 #include "fmt.hpp" // for format, fmt
 
-#include <algorithm> // for max
-#include <assert.h>  // for assert
-#include <chrono>
-#include <cstdint> // for int32_t
-#include <ctime>
+#include <algorithm>               // for max, copy, copy_backward, equal
+#include <assert.h>                // for assert
+#include <chrono>                  // for operator-, duration, high_resolution_clock, time_point
+#include <cstdint>                 // for int32_t
+#include <deque>                   // for deque
 #include <event2/buffer.h>         // for evbuffer_add, evbuffer_peek, iovec, evbuffer_free
 #include <event2/event.h>          // for event_add, event_base_dispatch, event_base_free, even...
 #include <event2/http.h>           // for evhttp_send_reply, evhttp_add_header, evhttp_request_...
@@ -20,10 +20,11 @@
 #include <mutex>                   // for unique_lock
 #include <netinet/in.h>            // for sockaddr_in, ntohs
 #include <pthread.h>               // for pthread_setaffinity_np, pthread_setname_np
+#include <ratio>                   // for milli
 #include <sched.h>                 // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <stdexcept>               // for runtime_error
 #include <stdlib.h>                // for exit, free, malloc, size_t
-#include <string>                  // for string, basic_string, allocator, operator!=, operator+
+#include <string>                  // for string, basic_string, operator!=, operator+
 #include <sys/socket.h>            // for getsockname, socklen_t
 #include <sys/time.h>              // for timeval
 #include <utility>                 // for pair
