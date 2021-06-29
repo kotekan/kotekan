@@ -128,6 +128,7 @@ void Stage::join() {
 
 void Stage::stop() {
     stop_thread = true;
+    unregister_tid(this_thread.native_handle());
 }
 
 void Stage::main_thread() {}
@@ -136,7 +137,6 @@ Stage::~Stage() {
     stop_thread = true;
     if (this_thread.joinable())
         this_thread.join();
-    unregister_tid(this_thread.native_handle());
 }
 
 std::string Stage::dot_string(const std::string& prefix) const {
