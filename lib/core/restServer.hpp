@@ -19,8 +19,6 @@
 
 namespace kotekan {
 
-// class prometheus::EndpointTimer;
-
 enum class HTTP_RESPONSE {
     OK = 200,
     BAD_REQUEST = 400,

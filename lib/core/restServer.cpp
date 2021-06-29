@@ -5,9 +5,11 @@
 
 #include "fmt.hpp" // for format, fmt
 
-#include <algorithm>               // for max
-#include <assert.h>                // for assert
-#include <cstdint>                 // for int32_t
+#include <algorithm> // for max
+#include <assert.h>  // for assert
+#include <chrono>
+#include <cstdint> // for int32_t
+#include <ctime>
 #include <event2/buffer.h>         // for evbuffer_add, evbuffer_peek, iovec, evbuffer_free
 #include <event2/event.h>          // for event_add, event_base_dispatch, event_base_free, even...
 #include <event2/http.h>           // for evhttp_send_reply, evhttp_add_header, evhttp_request_...
@@ -26,8 +28,6 @@
 #include <sys/time.h>              // for timeval
 #include <utility>                 // for pair
 #include <vector>                  // for vector
-#include <chrono>
-#include <ctime>
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 #endif
@@ -48,7 +48,8 @@ restServer::restServer() : port(_port), main_thread() {
     stop_thread = false;
 
     // Create a new prometheus metric group for callback timing
-    this->timer_metrics = &(prometheus::Metrics::instance().add_endpoint("endpoint_timers", "/rest_server", {"endpoint"}));
+    this->timer_metrics = &(prometheus::Metrics::instance().add_endpoint(
+        "endpoint_timers", "/rest_server", {"endpoint"}));
 }
 
 restServer::~restServer() {
@@ -109,7 +110,7 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
 
             // Compute callback reply time and update prometheus metric
             auto t_end = std::chrono::high_resolution_clock::now();
-            double duration = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+            double duration = std::chrono::duration<double, std::milli>(t_end - t_start).count();
             std::string endpoint_name = url + "[GET]";
             server->timer_list[endpoint_name]->update(duration);
             return;
@@ -133,7 +134,7 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
 
             // Compute callback reply time and update prometheus metric
             auto t_end = std::chrono::high_resolution_clock::now();
-            double duration = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+            double duration = std::chrono::duration<double, std::milli>(t_end - t_start).count();
             std::string endpoint_name = url + "[POST]";
             server->timer_list[endpoint_name]->update(duration);
             return;

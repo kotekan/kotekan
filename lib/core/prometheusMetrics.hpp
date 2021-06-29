@@ -1,7 +1,7 @@
 #ifndef PROMETHEUS_METRICS_HPP
 #define PROMETHEUS_METRICS_HPP
 
-// #include "restServer.hpp"
+#include "visUtil.hpp"
 
 #include <deque>     // for deque
 #include <iosfwd>    // for ostringstream
@@ -13,8 +13,6 @@
 #include <string>    // for string
 #include <tuple>     // for tuple
 #include <vector>    // for vector
-
-#include "visUtil.hpp"
 
 namespace kotekan {
 
@@ -92,7 +90,7 @@ private:
 
 /**
  * @class EndpointTimer
- * @brief Represents a metric that can store timer stats and output avg and max
+ * @brief Represents a metric that can store timer stats and output avg and max reply time
  */
 class EndpointTimer : public Metric {
 public:
@@ -297,8 +295,9 @@ public:
      * @return a reference to the newly created @c MetricFamily<EndpointTimer> instance
      * @throw std::runtime_error if the metric with that name is already registered.
      */
-    MetricFamily<EndpointTimer>& add_endpoint(const std::string& name, const std::string& stage_name,
-                                   const std::vector<std::string>& label_names);
+    MetricFamily<EndpointTimer>& add_endpoint(const std::string& name,
+                                              const std::string& stage_name,
+                                              const std::vector<std::string>& label_names);
 
     /**
      * @brief Adds a new metric of type counter and no labels

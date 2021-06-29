@@ -239,16 +239,17 @@ MetricFamily<Gauge>& Metrics::add_gauge(const std::string& name, const std::stri
 
 EndpointTimer& Metrics::add_endpoint(const std::string& name, const std::string& stage_name) {
     const std::vector<string> empty_labels;
-    auto f = std::make_shared<MetricFamily<EndpointTimer>>(name, stage_name, empty_labels,
-                                                   MetricFamily<EndpointTimer>::MetricType::EndpointTimer);
+    auto f = std::make_shared<MetricFamily<EndpointTimer>>(
+        name, stage_name, empty_labels, MetricFamily<EndpointTimer>::MetricType::EndpointTimer);
     add(name, stage_name, f);
     return f->labels({});
 }
 
-MetricFamily<EndpointTimer>& Metrics::add_endpoint(const std::string& name, const std::string& stage_name,
-                                        const std::vector<std::string>& label_names) {
-    auto f = std::make_shared<MetricFamily<EndpointTimer>>(name, stage_name, label_names,
-                                                   MetricFamily<EndpointTimer>::MetricType::EndpointTimer);
+MetricFamily<EndpointTimer>& Metrics::add_endpoint(const std::string& name,
+                                                   const std::string& stage_name,
+                                                   const std::vector<std::string>& label_names) {
+    auto f = std::make_shared<MetricFamily<EndpointTimer>>(
+        name, stage_name, label_names, MetricFamily<EndpointTimer>::MetricType::EndpointTimer);
     add(name, stage_name, f);
     return *f;
 }
