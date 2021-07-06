@@ -21,24 +21,6 @@ function update_buf_utl(new_buffers, label, index){
     }
 }
 
-// To avoid long string, break the label by '/'
-var insertLinebreaks = function (d, margin = 6) {
-    var el = d3.select(this);
-    var words = d.name.split('/');
-    var tspan_x = margin/2
-
-    // The first line will be used to check if it is a buffer
-    var tspan = el.append('tspan').text(words[0])
-                    .attr('x', tspan_x).attr('dy', '15')
-                    .attr("font-size", "15");
-
-    for (var i = 1; i < words.length; i++) {
-        tspan = el.append('tspan').text('/' + words[i]);
-        tspan.attr('x', tspan_x).attr('dy', '15')
-                .attr("font-size", "15");
-    }
-};
-
 // Read from endpoint /buffers to get buffer stats
 async function get_data() {
     let response = await fetch("/buffers");
@@ -73,22 +55,26 @@ class PipelineViewer {
         this.body = body;
     }
 
-    start_viewer() {
+    start_viewer(width = 960, height = 500, margin = 6) {
+        this.width = width;
+        this.height = height;
+        this.margin = margin;
         this.init_svg();
         this.parse_data();
         this.create_objs();
         this.start_buff_ult();
     }
 
-    init_svg(width = 960, height = 500) {;
+    init_svg() {
         this.#d3cola = cola.d3adaptor(d3)
             .linkDistance(80)
-            .size([width, height]);
+            .size([this.width, this.height]);
 
         // Add a svg section and employ zooming
+        self = this;
         this.#svg = this.body.append("svg")
-            .attr("width", width)
-            .attr("height", height)
+            .attr("width", this.width)
+            .attr("height", this.height)
             .call(d3.zoom().on("zoom", function () {
                 svg.attr("transform", d3.event.transform)
             }));
@@ -123,7 +109,7 @@ class PipelineViewer {
         this.#graph.links = links;
     }
 
-    create_objs(margin = 6) {
+    create_objs() {
         var self = this;
         // Set cola parameters and enable non-overlapping
         this.#d3cola.nodes(this.#graph.nodes)
@@ -154,8 +140,8 @@ class PipelineViewer {
 
         // Create node objects (bounded boxes) in svg section
         var pad = 12, width = 60, height = 40;
-        var node_width = width + 2 * pad + 2 * margin;
-        var node_height = height + 2 * pad + 2 * margin;
+        var node_width = width + 2 * pad + 2 * this.margin;
+        var node_height = height + 2 * pad + 2 * this.margin;
         this.#node = this.#svg.selectAll(".node")
             .data(this.#graph.nodes)
             .enter().append("rect")
@@ -171,7 +157,22 @@ class PipelineViewer {
             .enter().append("text")
             .attr("class", "label")
             .call(this.#d3cola.drag);
-        this.#label.each(insertLinebreaks);
+        this.#label.each(function (d) {
+            var el = d3.select(this);
+            var words = d.name.split('/');
+            var tspan_x = self.margin/2
+
+            // The first line will be used to check if it is a buffer
+            var tspan = el.append('tspan').text(words[0])
+                            .attr('x', tspan_x).attr('dy', '15')
+                            .attr("font-size", "15");
+
+            for (var i = 1; i < words.length; i++) {
+                tspan = el.append('tspan').text('/' + words[i]);
+                tspan.attr('x', tspan_x).attr('dy', '15')
+                        .attr("font-size", "15");
+            }
+        });
 
         // Add names to identify different nodes
         this.#node.append("title")
@@ -180,7 +181,7 @@ class PipelineViewer {
         // Calculate node, link, and label positions
         this.#d3cola.on("tick", function () {
             self.#node.each(function (d) {
-                d.innerBounds = d.bounds.inflate(- margin);
+                d.innerBounds = d.bounds.inflate(- self.margin);
             });
 
             self.#link.each(function (d) {
@@ -195,8 +196,8 @@ class PipelineViewer {
 
             self.#label.each(function (d) {
                 var b = this.getBBox();
-                d.width = b.width + 2 * margin + 8;
-                d.height = b.height + 2 * margin + 8;
+                d.width = b.width + 2 * self.margin + 8;
+                d.height = b.height + 2 * self.margin + 8;
             });
 
             self.#node.attr("x", function (d) { return d.innerBounds.x; })
@@ -205,12 +206,12 @@ class PipelineViewer {
                 .attr("height", function (d) { return Math.abs(d.innerBounds.height()); });
 
             self.#label.attr("transform", function (d) {
-                return "translate(" + d.innerBounds.x + margin + "," + (d.innerBounds.y + margin/2) + ")";
+                return "translate(" + d.innerBounds.x + self.margin + "," + (d.innerBounds.y + self.margin/2) + ")";
             });
         });
     }
 
-    start_buff_ult(margin = 6) {
+    start_buff_ult() {
         // Add utilization for all buffers and record their index
         // Index is used later to dynamically update buffer utilization
         var index = [];
@@ -219,7 +220,7 @@ class PipelineViewer {
                 var el = d3.select(cur);
                 var tspan = el.append('tspan')
                             .text(this.buffers[cur.textContent].num_full_frame + "/" + this.buffers[cur.textContent].num_frames)
-                tspan.attr('x', margin/2).attr('dy', '15')
+                tspan.attr('x', this.margin/2).attr('dy', '15')
                         .attr("font-size", "15")
                         .attr("id", "utl");
                 index.push(ind)
