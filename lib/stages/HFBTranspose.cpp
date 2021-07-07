@@ -222,8 +222,8 @@ void HFBTranspose::increment_chunk(size_t& t_ind, size_t& f_ind, bool& t_edge, b
 void HFBTranspose::create_hdf5_file() {
     // Create HDF5 file
     file = std::unique_ptr<HFBFileArchive>(
-        new HFBFileArchive(filename, metadata, times, freqs, beams, sub_freqs, chunk,
-                           kotekan::logLevel(_member_log_level)));
+        new HFBFileArchive(filename, metadata, times, freqs, beams, sub_freqs, chunk, comp_alg,
+                           zstd_comp_lvl, kotekan::logLevel(_member_log_level)));
 }
 
 void HFBTranspose::copy_frame_data(uint32_t freq_index, uint32_t time_index) {

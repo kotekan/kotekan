@@ -248,13 +248,13 @@ void VisTranspose::increment_chunk(size_t& t_ind, size_t& f_ind, bool& t_edge, b
 void VisTranspose::create_hdf5_file() {
     // Create HDF5 file
     if (stack.size() > 0) {
-        file = std::unique_ptr<visFileArchive>(
-            new visFileArchive(filename, metadata, times, freqs, inputs, prods, stack,
-                               reverse_stack, num_ev, chunk, kotekan::logLevel(_member_log_level)));
+        file = std::unique_ptr<visFileArchive>(new visFileArchive(
+            filename, metadata, times, freqs, inputs, prods, stack, reverse_stack, num_ev, chunk,
+            comp_alg, zstd_comp_lvl, kotekan::logLevel(_member_log_level)));
     } else {
         file = std::unique_ptr<visFileArchive>(
             new visFileArchive(filename, metadata, times, freqs, inputs, prods, num_ev, chunk,
-                               kotekan::logLevel(_member_log_level)));
+                               comp_alg, zstd_comp_lvl, kotekan::logLevel(_member_log_level)));
     }
 }
 
