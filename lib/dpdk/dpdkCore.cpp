@@ -11,8 +11,10 @@
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for json, basic_json<>::object_t, basic_json, basic_json<...
 
-#include <algorithm>               // for copy, max
-#include <atomic>                  // for atomic_bool
+#include <algorithm> // for copy, max
+#include <atomic>    // for atomic_bool
+// cinttypes needed by some CentOS systems.
+#include <cinttypes>               // IWYU pragma: keep
 #include <functional>              // for _Bind_helper<>::type, bind, function
 #include <numa.h>                  // for numa_node_of_cpu, numa_num_configured_nodes
 #include <regex>                   // for match_results<>::_Base_type
