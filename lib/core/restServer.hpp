@@ -5,6 +5,9 @@
 
 #include "json.hpp" // for json
 
+#include "visUtil.hpp"
+#include "prometheusMetrics.hpp"
+
 #include <atomic>        // for atomic
 #include <event2/util.h> // for evutil_socket_t
 #include <evhttp.h>      // for evhttp  // IWYU pragma: keep
@@ -321,6 +324,12 @@ private:
 
     /// Alias map
     std::map<std::string, std::string> aliases;
+
+    /// Map of callback timers
+    std::map<std::string, StatTracker> callback_timers;
+
+    /// callback timer metrics
+    prometheus::MetricFamily<kotekan::prometheus::Gauge>& timer_metrics;
 
     /// Mutex to lock changes to the maps while a request is in progress
     std::shared_timed_mutex callback_map_lock;

@@ -5,6 +5,8 @@
 
 #include "fmt.hpp" // for format, fmt
 
+#include <chrono>
+
 #include <algorithm>               // for max
 #include <assert.h>                // for assert
 #include <cstdint>                 // for int32_t
@@ -42,7 +44,11 @@ restServer& restServer::instance() {
     return server_instance;
 }
 
-restServer::restServer() : port(_port), main_thread() {
+restServer::restServer() :
+    port(_port),
+    main_thread(),
+    timer_metrics(prometheus::Metrics::instance().add_gauge(
+        "kotekan_rest_server_callback_time_miliseconds", "/rest_server", {"endpoint_name", "avg_time", "max_time"})){
     stop_thread = false;
 }
 
@@ -91,6 +97,8 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
             url = aliases[url];
         }
 
+        auto t_start = std::chrono::high_resolution_clock::now();
+
         if (request->type == EVHTTP_REQ_GET) {
             connectionInstance conn(request);
             if (!server->get_callbacks.count(url)) {
@@ -99,6 +107,15 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
                 return;
             }
             server->get_callbacks[url](conn);
+
+            // Compute callback reply time and save it to stat tracker
+            auto t_end = std::chrono::high_resolution_clock::now();
+            double duration = std::chrono::duration<double, std::milli>(t_end - t_start).count();
+            std::string endpoint_name = url + "[GET]";
+            server->callback_timers[endpoint_name].add_sample(duration);
+            double avg = server->callback_timers[endpoint_name].get_avg();
+            double max = server->callback_timers[endpoint_name].get_max();
+            // server->timer_metrics.labels({endpoint_name, std::to_string(avg), std::to_string(max)}).set(duration);
             return;
         }
 
@@ -117,6 +134,15 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
             }
 
             server->json_callbacks[url](conn, json_request);
+
+            // Compute callback reply time and save it to stat tracker
+            auto t_end = std::chrono::high_resolution_clock::now();
+            double duration = std::chrono::duration<double, std::milli>(t_end - t_start).count();
+            std::string endpoint_name = url + "[POST]";
+            server->callback_timers[endpoint_name].add_sample(duration);
+            double avg = server->callback_timers[endpoint_name].get_avg();
+            double max = server->callback_timers[endpoint_name].get_max();
+            // server->timer_metrics.labels({endpoint_name, std::to_string(avg), std::to_string(max)}).set(duration);
             return;
         }
     }
@@ -138,6 +164,9 @@ void restServer::register_get_callback(string endpoint,
         if (get_callbacks.count(endpoint)) {
             WARN_NON_OO("restServer: Call back {:s} already exists, overriding old call back!!",
                         endpoint);
+        } else {
+            std::string endpoint_name = endpoint + "[GET]";
+            callback_timers[endpoint_name] = StatTracker();
         }
         get_callbacks[endpoint] = callback;
     }
@@ -155,6 +184,9 @@ void restServer::register_post_callback(string endpoint,
         if (json_callbacks.count(endpoint)) {
             WARN_NON_OO("restServer: Callback {:s} already exists, overriding old callback!!",
                         endpoint);
+        } else {
+            std::string endpoint_name = endpoint + "[POST]";
+            callback_timers[endpoint_name] = StatTracker();
         }
         json_callbacks[endpoint] = callback;
     }
