@@ -73,7 +73,6 @@ class PipelineViewer {
             .size([this.width, this.height]);
 
         // Add a svg section and employ zooming
-        var self = this;
         var outer = d3.select("body").append("svg")
             .attr("width", this.width)
             .attr("height", this.height);
@@ -83,7 +82,7 @@ class PipelineViewer {
             .attr('width', "100%")
             .attr('height', "100%")
             .call(d3.behavior.zoom().on("zoom", () => {
-                self.#svg.attr("transform", "translate(" + d3.event.translate + ")" + " scale(" + d3.event.scale + ")");
+                this.#svg.attr("transform", "translate(" + d3.event.translate + ")" + " scale(" + d3.event.scale + ")");
             }));
 
         var vis = outer
@@ -167,7 +166,7 @@ class PipelineViewer {
             .attr("width", node_width)
             .attr("height", node_height)
             .attr("rx", 25).attr("ry", 25)
-            .call(self.#d3cola.drag);
+            .call(this.#d3cola.drag);
 
         this.#stages = this.#svg.selectAll(".stages")
             .data(this.#graph.stages)
@@ -176,20 +175,20 @@ class PipelineViewer {
             .attr("width", node_width)
             .attr("height", node_height)
             .attr("rx", 5).attr("ry", 5)
-            .call(self.#d3cola.drag);
+            .call(this.#d3cola.drag);
 
         // Create label objects (stage and buffer names) in svg section
         this.#buffer_labels = this.#svg.selectAll(".buffer_labels")
             .data(this.#graph.buffers)
             .enter().append("text")
             .attr("class", "label")
-            .call(self.#d3cola.drag);
+            .call(this.#d3cola.drag);
 
         this.#stage_labels = this.#svg.selectAll(".stage_labels")
             .data(this.#graph.stages)
             .enter().append("text")
             .attr("class", "label")
-            .call(self.#d3cola.drag);
+            .call(this.#d3cola.drag);
 
         var insertLinebreaks = function (d) {
             var el = d3.select(this);
