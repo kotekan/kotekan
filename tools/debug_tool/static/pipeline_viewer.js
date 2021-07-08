@@ -96,7 +96,7 @@ class PipelineViewer {
         var buffers = [], stages = [], links = [];
         this.#graph = {};
 
-        // For every buffer, add its producers and comsumers to nodes and create links
+        // For every buffer, add its producers and consumers to nodes and create links
         for (var val of this.bufNames) {
             var obj = this.buffers[val];
             buffers.push({name: val});
@@ -288,5 +288,4 @@ class PipelineViewer {
     }
 
 }
-
 
