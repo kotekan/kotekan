@@ -45,8 +45,7 @@ Required for some options
 
 * `h5py <http://docs.h5py.org/en/latest/build.html#source-installation>`_ (Install from source for bitshuffle)::
 
-    python setup.py configure --hdf5=/usr/lib/x86_64-linux-gnu/hdf5/serial/ --hdf5-version=1.10.0
-    python setup.py install
+    pip install --no-binary=h5py h5py
 
 * `Bitshuffle <https://github.com/kiyo-masui/bitshuffle>`_ (Needs to be installed after h5py)::
 
