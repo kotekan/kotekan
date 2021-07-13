@@ -135,7 +135,7 @@ private:
     /// N-S feed separation in m
     float _feed_sep_NS;
     /// E-W feed separation in m
-    int32_t _feed_sep_EW;
+    float _feed_sep_EW;
     /// The instrument latitude
     double _inst_lat;
     /// The instrument longitude
