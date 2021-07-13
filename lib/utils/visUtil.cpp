@@ -315,7 +315,8 @@ double StatTracker::get_max() {
         // brute force way to get max
         double max = std::numeric_limits<double>::lowest();
         size_t size = std::min(count, buf_size);
-        for (size_t i = 0; i < size; i++) max = std::max(max, rbuf[i].value);
+        for (size_t i = 0; i < size; i++)
+            max = std::max(max, rbuf[i].value);
 
         return max;
     }
@@ -332,7 +333,8 @@ double StatTracker::get_min() {
         // brute force way to get min
         double min = std::numeric_limits<double>::max();
         size_t size = std::min(count, buf_size);
-        for (size_t i = 0; i < size; i++) min = std::min(min, rbuf[i].value);
+        for (size_t i = 0; i < size; i++)
+            min = std::min(min, rbuf[i].value);
 
         return min;
     }
