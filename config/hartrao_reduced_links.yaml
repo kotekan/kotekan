@@ -5,16 +5,16 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: debug
 
-buffer_depth: 16
+buffer_depth: 6
 samples_per_data_set: 65536
 num_elements: 16
-num_links: 8
+num_links: 6
 num_freq: 1024
-num_local_freq: num_freq / num_links
-num_freq_in_frame: num_freq / num_links
+num_local_freq: num_freq / 8
+num_freq_in_frame: num_freq / 8
 block_size: 16
 num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
-instrument_name: bleien
+instrument_name: HartRAO
 num_ev: 0
 
 telescope:
@@ -50,10 +50,10 @@ gpu_input_buffers:
     kotekan_buffer: standard
   gpu_input_buffer_5:
     kotekan_buffer: standard
-  gpu_input_buffer_6:
-    kotekan_buffer: standard
-  gpu_input_buffer_7:
-    kotekan_buffer: standard
+#  gpu_input_buffer_6:
+#    kotekan_buffer: standard
+#  gpu_input_buffer_7:
+#    kotekan_buffer: standard
 
 lost_samples_buffers:
   num_frames: buffer_depth
@@ -71,14 +71,14 @@ lost_samples_buffers:
     kotekan_buffer: standard
   lost_samples_buffer_5:
     kotekan_buffer: standard
-  lost_samples_buffer_6:
-    kotekan_buffer: standard
-  lost_samples_buffer_7:
-    kotekan_buffer: standard
+#  lost_samples_buffer_6:
+#    kotekan_buffer: standard
+#  lost_samples_buffer_7:
+#    kotekan_buffer: standard
 
 merged_network_buf:
   kotekan_buffer: standard
-  num_frames: buffer_depth * 8
+  num_frames: buffer_depth * num_links
   frame_size: samples_per_data_set * num_elements * num_local_freq
   metadata_pool: main_pool
 
@@ -105,31 +105,28 @@ gpu_output_split_buffer:
     kotekan_buffer: standard
   gpu_output_split_buffer_5:
     kotekan_buffer: standard
-  gpu_output_split_buffer_6:
-    kotekan_buffer: standard
-  gpu_output_split_buffer_7:
-    kotekan_buffer: standard
+#  gpu_output_split_buffer_6:
+#    kotekan_buffer: standard
+#  gpu_output_split_buffer_7:
+#    kotekan_buffer: standard
 
-cpu_affinity: [4,5,10,11] # other cores are on DPDK
+cpu_affinity: [2,3,6,7] # other cores are on DPDK
 dpdk:
   kotekan_stage: dpdkCore
   # Format is index = lcore, value = cpu core
-  lcore_cpu_map: [0,1,2,3,4,5,6,7]
-  master_lcore_cpu: 8
+  lcore_cpu_map: [0,1,4,5]
+  master_lcore_cpu: 3
+  num_mem_channels: 3
   fpga_packet_size: 4680
   alignment: samples_per_data_set
   # Format is index = lcore, value = array of port IDs
   # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
   # and lcore 1 to service ports 2 and 3.
   lcore_port_map:
-    - [0]
-    - [1]
-    - [2]
-    - [3]
-    - [4]
-    - [5]
-    - [6]
-    - [7]
+    - [0,1]
+    - [2,3]
+    - [4,5]
+    - [6,7]
   # One handler must be given per port on the system.
   handlers:
     - dpdk_handler: iceBoardStandard
@@ -150,12 +147,14 @@ dpdk:
     - dpdk_handler: iceBoardStandard
       out_buf: gpu_input_buffer_5
       lost_samples_buf: lost_samples_buffer_5
-    - dpdk_handler: iceBoardStandard
-      out_buf: gpu_input_buffer_6
-      lost_samples_buf: lost_samples_buffer_6
-    - dpdk_handler: iceBoardStandard
-      out_buf: gpu_input_buffer_7
-      lost_samples_buf: lost_samples_buffer_7
+    - dpdk_handler: none
+    - dpdk_handler: none
+#    - dpdk_handler: iceBoardStandard
+#      out_buf: gpu_input_buffer_6
+#      lost_samples_buf: lost_samples_buffer_6
+#    - dpdk_handler: iceBoardStandard
+#      out_buf: gpu_input_buffer_7
+#      lost_samples_buf: lost_samples_buffer_7
 
 zero_samples:
   zero_0:
@@ -182,14 +181,14 @@ zero_samples:
     kotekan_stage: zeroSamples
     out_buf: gpu_input_buffer_5
     lost_samples_buf: lost_samples_buffer_5
-  zero_6:
-    kotekan_stage: zeroSamples
-    out_buf: gpu_input_buffer_6
-    lost_samples_buf: lost_samples_buffer_6
-  zero_7:
-    kotekan_stage: zeroSamples
-    out_buf: gpu_input_buffer_7
-    lost_samples_buf: lost_samples_buffer_7
+#  zero_6:
+#    kotekan_stage: zeroSamples
+#    out_buf: gpu_input_buffer_6
+#    lost_samples_buf: lost_samples_buffer_6
+#  zero_7:
+#    kotekan_stage: zeroSamples
+#    out_buf: gpu_input_buffer_7
+#    lost_samples_buf: lost_samples_buffer_7
 
 merge:
   kotekan_stage: bufferMerge
@@ -200,13 +199,14 @@ merge:
     - gpu_input_buffer_3
     - gpu_input_buffer_4
     - gpu_input_buffer_5
-    - gpu_input_buffer_6
-    - gpu_input_buffer_7
+#    - gpu_input_buffer_6
+#    - gpu_input_buffer_7
   out_buf: merged_network_buf
 
 gpu:
   num_data_sets: 1
   profiling: true
+  legacy_opencl: true
   kernel_path: "/var/lib/kotekan/opencl/kernels/"
   log_level: WARN
   frame_arrival_period: samples_per_data_set / 390625 / num_links
@@ -236,12 +236,8 @@ split:
     - gpu_output_split_buffer_3
     - gpu_output_split_buffer_4
     - gpu_output_split_buffer_5
-    - gpu_output_split_buffer_6
-    - gpu_output_split_buffer_7
-
-metadata:
-  #kotekan_stage: chimeMetadataDump
-  in_buf: gpu_output_buffer
+#    - gpu_output_split_buffer_6
+#    - gpu_output_split_buffer_7
 
 # Metadata pool
 vis_pool:
@@ -266,10 +262,10 @@ vis_buffers:
     kotekan_buffer: vis
   visbuf_5s_5:
     kotekan_buffer: vis
-  visbuf_5s_6:
-    kotekan_buffer: vis
-  visbuf_5s_7:
-    kotekan_buffer: vis
+#  visbuf_5s_6:
+#    kotekan_buffer: vis
+#  visbuf_5s_7:
+#    kotekan_buffer: vis
 
 vis_accumulate_processes:
   log_level: WARN
@@ -299,14 +295,14 @@ vis_accumulate_processes:
     kotekan_stage: visAccumulate
     in_buf: gpu_output_split_buffer_5
     out_buf: visbuf_5s_5
-  acc_6:
-    kotekan_stage: visAccumulate
-    in_buf: gpu_output_split_buffer_6
-    out_buf: visbuf_5s_6
-  acc_7:
-    kotekan_stage: visAccumulate
-    in_buf: gpu_output_split_buffer_7
-    out_buf: visbuf_5s_7
+#  acc_6:
+#    kotekan_stage: visAccumulate
+#    in_buf: gpu_output_split_buffer_6
+#    out_buf: visbuf_5s_6
+#  acc_7:
+#    kotekan_stage: visAccumulate
+#    in_buf: gpu_output_split_buffer_7
+#    out_buf: visbuf_5s_7
 
 merge_acc:
   kotekan_stage: bufferMerge
@@ -317,8 +313,8 @@ merge_acc:
     - visbuf_5s_3
     - visbuf_5s_4
     - visbuf_5s_5
-    - visbuf_5s_6
-    - visbuf_5s_7
+#    - visbuf_5s_6
+#    - visbuf_5s_7
   out_buf: visbuf_5s_merged
 
 vis_writer:

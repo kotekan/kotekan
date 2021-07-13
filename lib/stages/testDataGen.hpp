@@ -33,6 +33,7 @@
  * @conf  samples_per_data_set  Int. How often to produce data.
  * @conf  stream_id             Int.
  * @conf  num_frames            Int. How many frames to produce. Default inf.
+ * @conf  num_freq_in_frame     Int. Number of frequencies in each GPU frame.
  * @conf  rest_mode             String. "none" (default), "start", or "step.
  *                              How to interact with rest commands to trigger
  *                              data production.
@@ -69,6 +70,7 @@ private:
     bool wait;
     std::string rest_mode;
     int num_frames;
+    size_t _num_freq_in_frame;
     stream_t stream_id;
     uint32_t _first_frame_index;
 };

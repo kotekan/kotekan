@@ -1,0 +1,60 @@
+##########################################
+#
+# pathfinder_recv_baseband.yaml
+#
+# Pathfinder baseband receiver node configuration.
+#
+# Receives baseband dump frames from the PF Kotekan node and writes them to a
+# raw output file.
+#
+# Author: Davor Cubranic and Calvin Leung
+#
+##########################################
+---
+type: config
+log_level: info
+num_elements: 256
+num_local_freq: 8
+samples_per_data_set: 65536
+buffer_depth: 64
+cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+
+# Constants
+sizeof_float: 4
+sizeof_int: 4
+sizeof_short: 2
+
+dataset_manager:
+  use_dataset_broker: False
+
+telescope:
+  name: ICETelescope
+  require_gps: false
+
+# Baseband Metadata Pool
+baseband_metadata_pool:
+  kotekan_metadata_pool: BasebandMetadata
+  num_metadata_objects: 65536
+
+baseband_recv_buffer:
+  kotekan_buffer: standard
+  metadata_pool: baseband_metadata_pool
+  frame_size: num_elements * samples_per_data_set / 96
+  num_frames: 282 * 96 # max achievable baseband buffer on GPU nodes
+
+# Kotekan stages
+baseband_recv:
+  kotekan_stage: bufferRecv
+  buf: baseband_recv_buffer 
+  listen_port: 11028
+
+# Write raw baseband data
+write_baseband:
+  root_path: /data/pf_baseband_raw/
+
+  kotekan_stage: BasebandWriter
+  in_buf: baseband_recv_buffer 
+
+buffer_status:
+  kotekan_stage: bufferStatus
+  print_status: false

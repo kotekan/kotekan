@@ -10,6 +10,8 @@
 
 // DPDK!
 extern "C" {
+// cinttypes needed by some CentOS systems.
+#include <cinttypes>    // IWYU pragma: keep
 #include <rte_ethdev.h> // for rte_eth_conf
 #include <stdint.h>     // for uint32_t, int32_t, uint8_t
 }

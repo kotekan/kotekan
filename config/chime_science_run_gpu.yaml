@@ -688,7 +688,7 @@ baseband:
 
 # Transmit baseband data to the baseband receiver
 baseband_send:
-  server_ip: 10.6.213.19        # cfDn9
+  server_ip: 10.6.50.20        # frb-baseband
   server_port: 11027
   reconnect_time: 20
   log_level: error

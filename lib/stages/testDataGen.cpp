@@ -46,7 +46,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
     assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse"
-           || type == "square");
+           || type == "tpluseplusf" || type == "tpluseplusfprime" || type == "square");
     if (type == "const" || type == "random" || type == "ramp")
         value = config.get<int>(unique_name, "value");
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
@@ -54,6 +54,8 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
     stream_id.id = config.get_default<uint64_t>(unique_name, "stream_id", 0);
     num_frames = config.get_default<int>(unique_name, "num_frames", -1);
+    // TODO: rename this parameter to `num_freq_per_stream` in the config
+    _num_freq_in_frame = config.get_default<size_t>(unique_name, "num_local_freq", 1);
     // Try to generate data based on `samples_per_dataset` cadence or else just generate it as
     // fast as possible.
     wait = config.get_default<bool>(unique_name, "wait", true);
@@ -138,7 +140,7 @@ void testDataGen::main_thread() {
         if (type == "random")
             srand(value);
         unsigned char temp_output;
-        int num_elements = buf->frame_size / sizeof(uint8_t) / samples_per_data_set;
+        int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
         for (uint j = 0; j < buf->frame_size / sizeof(uint8_t); ++j) {
             if (type == "const") {
                 if (finished_seeding_consant)
@@ -155,7 +157,27 @@ void testDataGen::main_thread() {
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output;
             } else if (type == "tpluse") {
-                frame[j] = seq_num + j / num_elements + j % num_elements;
+                int time_idx = j / num_elements;
+                int elem_idx = j % num_elements;
+                frame[j] = seq_num + time_idx + elem_idx;
+            } else if (type == "tpluseplusf") {
+                int time_idx = j / (_num_freq_in_frame * num_elements);
+                int stream_freq_idx = Telescope::instance().to_freq_id(
+                    stream_id,
+                    j % (_num_freq_in_frame * num_elements)
+                        / num_elements); // translate local freq_idx (0..._num_freq_in_frame
+                                         // - 1) to global frequency index (0...1023)
+                int elem_idx = j % num_elements;
+                frame[j] = seq_num + time_idx + stream_freq_idx + elem_idx;
+            } else if (type == "tpluseplusfprime") {
+                int time_idx = j / (_num_freq_in_frame * num_elements);
+                int stream_freq_idx = Telescope::instance().to_freq_id(
+                    stream_id,
+                    j % (_num_freq_in_frame * num_elements)
+                        / num_elements); // translate local freq_idx (0..._num_freq_in_frame
+                                         // - 1) to global frequency index (0...1023)
+                int elem_idx = j % num_elements;
+                frame[j] = 2 * (seq_num + time_idx) + 3 * stream_freq_idx + 5 * elem_idx;
             } else if (type == "square") {
                 unsigned char new_real;
                 unsigned char new_imaginary;

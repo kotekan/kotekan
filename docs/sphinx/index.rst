@@ -18,6 +18,7 @@ Welcome to Kotekan's documentation!
    user/user_introduction
    user/user_config
    user/user_operation
+   user/dev_pipeline_viewer
 
 
 

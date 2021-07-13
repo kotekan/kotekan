@@ -5,6 +5,7 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 
 # === End Python 2/3 compatibility
 
+from collections import defaultdict
 from dataclasses import dataclass
 import os
 import glob
@@ -27,6 +28,7 @@ if is_docker():
     pytest.skip("Does not work in Github Actions docker run.", allow_module_level=True)
 
 default_params = {
+    "telescope": "ICETelescope",
     "max_dump_samples": 3500,
     "num_elements": 256,
     "total_frames": 60,
@@ -66,7 +68,15 @@ class EventDump:
         fpga_seq = metadata.frame_fpga_seq
         num_elements = metadata.num_elements
         valid_to = metadata.valid_to
-        return cls(event_id, freq_id, event_start_seq, event_end_seq, num_elements, fpga_seq, valid_to)
+        return cls(
+            event_id,
+            freq_id,
+            event_start_seq,
+            event_end_seq,
+            num_elements,
+            fpga_seq,
+            valid_to,
+        )
 
     def extend(self, metadata):
         """Increase the duration of the event's data with another dumped frame
@@ -149,6 +159,23 @@ def run_baseband(tdir_factory, params=None, rest_commands=None, expect_a_failure
     return write_buffer.load()
 
 
+def stream_to_freq_id(stream, in_stream_freq_idx, num_freq_per_stream=1):
+    """Python re-implementation of ICETelescope::stream_to_freq_id"""
+    assert num_freq_per_stream in [1, 8]
+
+    link_id = stream & 0xF
+    slot_id = (stream & 0xF0) >> 4
+    crate_id = (stream & 0xF00) >> 8
+    unused = (stream & 0xF000) >> 12
+
+    if num_freq_per_stream == 1:
+        # CHIME: 128 ICEBoards, 2048 elements
+        return crate_id * 16 + slot_id + link_id * 32 + unused * 256
+    elif num_freq_per_stream == 8:
+        # Pathfinder/HIRAX-256: 16 ICEBoards, 256 elements
+        return slot_id + link_id * 16 + in_stream_freq_idx * 128
+
+
 def collect_dumped_events(
     dump_frames,
     frame_size=default_params["samples_per_data_set"],
@@ -162,9 +189,9 @@ def collect_dumped_events(
             if j >= frame.metadata.valid_to * num_elements:
                 break
             # calculation used in `testDataGen` for method `tpluse`:
-            expected = (
-                frame.metadata.frame_fpga_seq + j // num_elements + j % num_elements
-            ) % 256
+            time_idx = j // num_elements
+            elem_idx = j % num_elements
+            expected = (frame.metadata.frame_fpga_seq + time_idx + elem_idx) % 256
             assert (
                 val == expected
             ), f"Baseband data mismatch at index {j}/{frame_no}, fpga_seq={frame.metadata.frame_fpga_seq}"
@@ -175,6 +202,64 @@ def collect_dumped_events(
         else:
             # extend an existing one
             event = dumped_events[-1]
+            event.extend(frame.metadata)
+    return dumped_events
+
+
+def collect_dumped_multi_freq_events(
+    dump_frames,
+    num_freq_per_stream,
+    frame_size=default_params["samples_per_data_set"],
+    stream_id=0,
+):
+    """Reconstructs a list of dumped BasebandBuffer frames into a list of `EventDump`s"""
+    dumped_events = defaultdict(list)
+    for frame_no, frame in enumerate(dump_frames):
+        event_id = frame.metadata.event_id
+        freq_id = frame.metadata.freq_id
+        stream_freq_idx = [
+            stream_to_freq_id(stream_id, i, num_freq_per_stream)
+            for i in range(num_freq_per_stream)
+        ].index(freq_id)
+        num_elements = frame.metadata.num_elements
+        for j, val in enumerate(frame._buffer[frame.meta_size :]):
+            if j >= frame.metadata.valid_to * num_elements:
+                break
+
+            # in the case of multi-frequency dumps, we need to reconstruct
+            # the "j" to be what it was in the testDataGen stage that was
+            # the _input_ to baseband
+            orig_fpga_seq = (frame.metadata.frame_fpga_seq // frame_size) * frame_size
+            orig_j = (
+                (frame.metadata.frame_fpga_seq % frame_size)
+                * (num_elements * num_freq_per_stream)
+                + stream_freq_idx * num_elements
+                + (j // num_elements * (num_freq_per_stream * num_elements))
+                + j % num_elements
+            )
+
+            # calculation used in `testDataGen` for method `tpluseplusfprime`:
+            time_idx = orig_j // (num_freq_per_stream * num_elements)
+            elem_idx = orig_j % num_elements
+            expected = (
+                2 * (orig_fpga_seq + time_idx) + 3 * freq_id + 5 * elem_idx
+            ) % 256
+
+            assert (
+                val == expected
+            ), f"Baseband data mismatch at freq_id={freq_id}, fpga_seq={frame.metadata.frame_fpga_seq} -> {orig_fpga_seq}, index {j}/{frame_no} -> {orig_j}"
+
+        if (
+            not dumped_events[freq_id]
+            or dumped_events[freq_id][-1].event_id != event_id
+        ):
+            # if dumped_events[freq_id]:
+            #     print(dumped_events[freq_id][-1])
+            # start a new event
+            dumped_events[freq_id].append(EventDump.from_metadata(frame.metadata))
+        else:
+            # extend an existing one
+            event = dumped_events[freq_id][-1]
             event.extend(frame.metadata)
     return dumped_events
 
@@ -259,6 +344,47 @@ def test_basic(tmpdir_factory):
         assert event.freq_id == 0
         assert event.fpga_start_seq * 2560 == baseband_requests[i][2]["start_unix_nano"]
         assert event.fpga_length * 2560 == baseband_requests[i][2]["duration_nano"]
+
+
+def test_8_multifreq(tmpdir_factory):
+    # Eight frequencies, one stage.
+    rest_commands = [
+        command_rest_frames(1),  # generate 1 frame = 1024 time samples x 256 feeds
+        wait(0.5),  # in seconds?
+        command_trigger(
+            1437, 1839, 10
+        ),  # capture ~1839 time samples starting at t = 3.67 ms(=1437 x 2.56us) with event id=10
+        command_trigger(20457, 3237, 17),  # similar to above
+        command_trigger(41039, 2091, 31),
+        wait(0.1),
+        command_rest_frames(60),
+    ]
+    params = {
+        "num_local_freq": 8,
+        "type": "tpluseplusfprime",
+        "stream_id": 2,
+    }
+    dump_frames = run_baseband(tmpdir_factory, params, rest_commands)
+    dumped_multi_freq_events = collect_dumped_multi_freq_events(
+        dump_frames,
+        num_freq_per_stream=params["num_local_freq"],
+        stream_id=params["stream_id"],
+    )
+    assert len(dumped_multi_freq_events) == params["num_local_freq"]
+
+    baseband_requests = [
+        cmd for cmd in rest_commands if cmd[0] == "post" and cmd[1] == "baseband"
+    ]
+    for freq_id in dumped_multi_freq_events:
+        dumped_events = dumped_multi_freq_events[freq_id]
+        for i, event in enumerate(dumped_events):
+            assert event.event_id == baseband_requests[i][2]["event_id"]
+            assert event.freq_id == freq_id
+            assert (
+                event.fpga_start_seq * 2560
+                == baseband_requests[i][2]["start_unix_nano"]
+            )
+            assert event.fpga_length * 2560 == baseband_requests[i][2]["duration_nano"]
 
 
 def test_missed(tmpdir_factory):
