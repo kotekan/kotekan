@@ -48,15 +48,15 @@
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        none
  *
- * @conf   num_elements         Int (default 2048). Number of elements
- * @conf   num_beams            Int (default 10). Number of beams
- * @conf   feed_sep_NS          Float (default 0.3048). N-S feed separation in m.
- * @conf   feed_sep_EW          Float (default 22.0). E-W feed separation in m.
- * missing
- * @conf   beam_pointing/i/ra       Float - initial RA (in deg) to form beams on for beam_id=i
- * @conf   beam_pointing/i/dec      Float - initial Dec (in deg) to form beams on for beam_id=i
- * @conf   beam_pointing/i/scaling  Int - nominal scaling for beam_id=i
- * beam basis via endpoint)
+ * @conf   num_elements             Int (default 2048). Number of elements
+ * @conf   num_beams                Int (default 10). Number of beams
+ * @conf   feed_sep_NS              Float. N-S feed separation in m.
+ * @conf   feed_sep_EW              Float. E-W feed separation in m.
+ * @conf   inst_lat                 Double. The Instrument latitude
+ * @conf   inst_long                Double. The Instrument longitude
+ * @conf   beam_pointing/i/ra       Float. initial RA (in deg) to form beams on for beam_id=i
+ * @conf   beam_pointing/i/dec      Float. initial Dec (in deg) to form beams on for beam_id=i
+ * @conf   beam_pointing/i/scaling  Int. nominal scaling for beam_id=i
  *
  * @author Cherry Ng
  *
@@ -136,6 +136,10 @@ private:
     float _feed_sep_NS;
     /// E-W feed separation in m
     int32_t _feed_sep_EW;
+    /// The instrument latitude
+    double _inst_lat;
+    /// The instrument longitude
+    double _inst_long;
 
     /// Which phase bank (0 or 1) is used by with gpu_frame_id
     uint* bankID;
