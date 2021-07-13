@@ -43,6 +43,8 @@ private:
     bool prefix_hostname;
     // Interrupt Kotekan if run out of files to read
     bool end_interrupt;
+    // Flag for ndisk wrote data file
+    bool ndisk_wrote;
 };
 
 #endif

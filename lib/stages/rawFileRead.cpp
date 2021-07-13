@@ -43,7 +43,7 @@ rawFileRead::rawFileRead(Config& config, const std::string& unique_name,
     file_name = config.get<std::string>(unique_name, "file_name");
     file_ext = config.get<std::string>(unique_name, "file_ext");
     prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", false);
-
+    ndisk_wrote = config.get_default<bool>(unique_name, "ndisk_wrote", false);
     // Interrupt Kotekan if run out of files to read.
     end_interrupt = config.get_default<bool>(unique_name, "end_interrupt", false);
 }
@@ -67,8 +67,13 @@ void rawFileRead::main_thread() {
             snprintf(full_path, full_path_len, "%s/%s_%s_%07d.%s", base_dir.c_str(), hostname,
                      file_name.c_str(), file_num, file_ext.c_str());
         } else {
-            snprintf(full_path, full_path_len, "%s/%s_%07d.%s", base_dir.c_str(), file_name.c_str(),
-                     file_num, file_ext.c_str());
+            if (ndisk_wrote)
+		snprintf(full_path, full_path_len, "%s/%s%010d.%s", base_dir.c_str(), file_name.c_str(),
+                         file_num, file_ext.c_str());
+            else{
+                snprintf(full_path, full_path_len, "%s/%s_%07d.%s", base_dir.c_str(), file_name.c_str(),
+                         file_num, file_ext.c_str());
+            }  
         }
 
         INFO("Looking for file: {:s}", full_path);
@@ -92,20 +97,21 @@ void rawFileRead::main_thread() {
         fseek(fp, 0, SEEK_END);
         fileSize = ftell(fp);
         rewind(fp);
-
-        if (fread((void*)&metadata_size, sizeof(uint32_t), 1, fp) != 1) {
-            ERROR("rawFileRead: Failed to read file {:s} metadata size value, {:s}", full_path,
-                  strerror(errno));
-            break;
-        }
+       
+	if (!ndisk_wrote){
+            if (fread((void*)&metadata_size, sizeof(uint32_t), 1, fp) != 1) {
+                ERROR("rawFileRead: Failed to read file {:s} metadata size value, {:s}", full_path,
+                      strerror(errno));
+                break;
+            }
+	}
 
         num_frames_per_file = fileSize / (metadata_size + buf->frame_size);
-
-        INFO("File size: {:d} bytes, no. of frames: {:d}", fileSize, num_frames_per_file);
+	
+	INFO("File size: {:d} bytes, no. of frames: {:d}", fileSize, num_frames_per_file);
 
         // Read each frame from the file and copy into the buffer.
         for (uint32_t i = 0; i < num_frames_per_file; i++) {
-
             // Get an empty buffer to write into
             frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
             if (frame == nullptr)

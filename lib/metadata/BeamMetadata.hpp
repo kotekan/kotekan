@@ -26,4 +26,32 @@ struct BeamMetadata {
     uint32_t scaling;
 };
 
+struct FreqIDBeamMetadata : BeamMetadata {
+    uint32_t frequency_bin;
+};
+
+struct MergedBeamMetadata {
+    /// Number of the raw frame in one merged frame
+    uint32_t sub_frame_pre_frame;
+    /// The size of the sub frame metadata
+    uint32_t sub_frame_metadata_size;
+    /// The size of the sub frame
+    uint32_t sub_frame_data_size;
+    /// Start frequency bin
+    uint32_t freq_start;
+    /// Number channels
+    uint32_t nchan;
+    /// Number of time frame
+    uint32_t nframe;
+    /// Number of time samples per frame
+    uint32_t n_sample_per_frame;
+    /// Number of polarization
+    uint32_t n_pol;
+    /// The ICEBoard sequence number of start time frame
+    int64_t fpga_seq_start;
+    /// The GPS time of @c fpga_seq_start.
+    timespec ctime;
+};
+
+
 #endif // BEAMMETADATA_HPP

@@ -10,6 +10,8 @@ add_library(
     ReadGain.cpp
     nDiskFileWrite.cpp
     nDiskFileRead.cpp
+    oneDiskVDIFWrite.cpp
+    oneDiskVDIFWrite.hpp
     networkPowerStream.cpp
     integratePowerStream.cpp
     monitorBuffer.cpp
@@ -37,6 +39,7 @@ add_library(
     VisWriter.cpp
     HFBWriter.cpp
     RawReader.cpp
+    splitMergedBeamBuffer.cpp
     VisRawReader.cpp
     HFBRawReader.cpp
     restInspectFrame.cpp
@@ -48,6 +51,8 @@ add_library(
     bufferDelay.cpp
     BufferSplit.cpp
     InputSubset.cpp
+    mergeBeamBuffer.cpp
+    BeamBufferSort.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp
