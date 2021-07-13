@@ -49,6 +49,17 @@ restClient::~restClient() {
         ERROR_NON_OO("restClient: event_base_loopbreak() failed.");
     _main_thread.join();
     DEBUG_NON_OO("restClient: event thread stopped.");
+    // Free the various libevent objects
+    if (bev_req_write)
+        bufferevent_free(bev_req_write);
+    if (bev_req_read)
+        bufferevent_free(bev_req_read);
+    if (timer_event)
+        event_free(timer_event);
+    if (_dns)
+        evdns_base_free(_dns, 1);
+    if (_base)
+        event_base_free(_base);
 }
 
 void restClient::timer(evutil_socket_t fd, short event, void* arg) {
@@ -68,25 +79,43 @@ void restClient::event_thread() {
 
     if (evthread_use_pthreads()) {
         FATAL_ERROR_NON_OO("restClient: Cannot use pthreads with libevent!");
+        return;
     }
 
-    // event base and dns base
-    _base = event_base_new();
+    // Create the base event, and exclude using `poll` as a backend API
+    event_config* ev_config = event_config_new();
+    if (!ev_config) {
+        FATAL_ERROR_NON_OO("Failed to create config for libevent");
+        return;
+    }
+    int err = event_config_avoid_method(ev_config, "poll");
+    if (err) {
+        FATAL_ERROR_NON_OO("Failed to exclude poll from the libevent options");
+        return;
+    }
+    _base = event_base_new_with_config(ev_config);
     if (!_base) {
         FATAL_ERROR_NON_OO("restClient: Failure creating new event_base.");
+        return;
     }
 
     // The event loop will run in this seperate thread. We have to schedule requests from
     // this same thread. Therefor we create a bufferevent pair here to pass request pointers in.
     bufferevent* pair[2];
-    if (bufferevent_pair_new(_base, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_THREADSAFE, pair))
+    if (bufferevent_pair_new(_base, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_THREADSAFE, pair)) {
         FATAL_ERROR_NON_OO("restClient: Failure creating bufferevent pair.");
+        return;
+    }
     bev_req_write = pair[0];
     bev_req_read = pair[1];
-    if (bufferevent_disable(bev_req_write, EV_READ))
+    if (bufferevent_disable(bev_req_write, EV_READ)) {
         FATAL_ERROR_NON_OO("restClient: Failure in bufferevent_disable().");
-    if (bufferevent_enable(bev_req_read, EV_READ))
+        return;
+    }
+    if (bufferevent_enable(bev_req_read, EV_READ)) {
         FATAL_ERROR_NON_OO("restClient: Failure in bufferevent_enable().");
+        return;
+    }
 
     // Set a watermark on the input buffer of the bufferevent for reading. This is to prevent
     // it getting filled up so much, that the read callback later starves other threads.
@@ -99,10 +128,10 @@ void restClient::event_thread() {
     _dns = evdns_base_new(_base, 1);
     if (_dns == nullptr) {
         FATAL_ERROR_NON_OO("restClient: evdns_base_new() failed.");
+        return;
     }
 
     // Create a timer to check for the exit condition
-    event* timer_event;
     timer_event = event_new(_base, -1, EV_PERSIST, timer, this);
     timeval interval;
     interval.tv_sec = 0;
@@ -120,16 +149,10 @@ void restClient::event_thread() {
     while (!_stop_thread) {
         if (event_base_dispatch(_base) < 0) {
             FATAL_ERROR_NON_OO("restClient::event_thread(): Failure in the event loop.");
+            break;
         }
     }
     DEBUG_NON_OO("restClient: exiting event loop");
-
-    // Cleanup
-    bufferevent_free(bev_req_write);
-    bufferevent_free(bev_req_read);
-    event_free(timer_event);
-    evdns_base_free(_dns, 1);
-    event_base_free(_base);
 }
 
 void restClient::http_request_done(struct evhttp_request* req, void* arg) {

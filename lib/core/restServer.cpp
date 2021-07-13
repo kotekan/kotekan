@@ -351,12 +351,23 @@ void restServer::http_server_thread() {
     // Allow for using extra threads (not currently needed)
     if (evthread_use_pthreads()) {
         ERROR_NON_OO("restServer: Cannot use pthreads with libevent!");
-        return;
+        exit(1);
     }
 
-    // Create the base event for handling requests
-    event_base = event_base_new();
-    if (event_base == nullptr) {
+    // Create the base event for handling requests,
+    // and exclude using `poll` as a backend API
+    event_config* ev_config = event_config_new();
+    if (!ev_config) {
+        ERROR_NON_OO("Failed to create config for libevent");
+        exit(1);
+    }
+    int err = event_config_avoid_method(ev_config, "poll");
+    if (err) {
+        ERROR_NON_OO("Failed to exclude poll from the libevent options");
+        exit(1);
+    }
+    event_base = event_base_new_with_config(ev_config);
+    if (!event_base) {
         ERROR_NON_OO("restServer: Failed to create libevent base");
         // Use exit() not raise() since this happens early in startup before
         // the signal handlers are all in place.

@@ -140,11 +140,6 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
         ERROR("Failed to accept connection, error {:d} ({:s}).", errno, std::strerror(errno));
         return;
     }
-    if (fd > FD_SETSIZE) {
-        ERROR("Got invalid FD");
-        close(fd);
-        return;
-    }
 
     struct timeval read_timeout = {connection_timeout, 0};
 
@@ -211,7 +206,18 @@ void bufferRecv::main_thread() {
         return;
     }
 
-    base = event_base_new();
+    // Create the base event, and exclude using `poll` as a backend API
+    event_config* ev_config = event_config_new();
+    if (!ev_config) {
+        FATAL_ERROR("Failed to create config for libevent");
+        return;
+    }
+    int err = event_config_avoid_method(ev_config, "poll");
+    if (err) {
+        FATAL_ERROR("Failed to exclude poll from the libevent options");
+        return;
+    }
+    base = event_base_new_with_config(ev_config);
     if (!base) {
         FATAL_ERROR("Failed to create libevent base");
         return;
