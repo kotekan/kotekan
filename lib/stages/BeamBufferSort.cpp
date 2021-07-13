@@ -42,6 +42,8 @@ BeamBufferSort::BeamBufferSort(Config& config_, const std::string& unique_name,
     queue_frame_size =  config.get<uint32_t>(unique_name, "queue_frame_size");
     dump_size = config.get<int>(unique_name, "dump_size");
     align_start_time = config.get_default<bool>(unique_name, "align_start_time", true);
+    nchan_buffer0 = config.get<uint32_t>(unique_name, "nchan_buffer0");
+    nchan_buffer1 = config.get<uint32_t>(unique_name, "nchan_buffer1");
     // The data dump size should be smaller than one third of queue time samples.
     assert(dump_size < wait_nframes / 3 * (int)queue_frame_size);
     FreqIDBeamMeta_size = sizeof(FreqIDBeamMetadata);
@@ -86,10 +88,10 @@ BeamBufferSort::BeamBufferSort(Config& config_, const std::string& unique_name,
     for (uint32_t i = 0; i< use_n_out_buffer; ++i){
         if (i == 0){
 	    // First buffer gets more frequency chan
-	    buf_nchan = nchan + rmder;
+	    buf_nchan = nchan_buffer0;
 	}
 	else{
-	    buf_nchan = nchan;
+	    buf_nchan = nchan_buffer1;
 	}
         out_buf_nchan.push_back(buf_nchan);
 	out_buf_frame0.push_back(0);
