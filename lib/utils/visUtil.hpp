@@ -577,6 +577,12 @@ private:
  * @class StatTracker
  *
  * @brief Store samples and compute statistics.
+ *
+ * There are two ways in this class to implement min/max (i.e., sliding window and brute force).
+ * The sliding window approach uses O(1) time to get min/max but spends more time when a sample is added.
+ * The brute force approach uses O(n) time to traverse the entire buffer without overhead in add_sample().
+ * "is_optimized" is the flag to switch between two methods (true: sliding window; false: brute force).
+ * Normally, if get_min/max() is called often, "is_optimized" should be set to true.
  **/
 class StatTracker {
 
@@ -584,7 +590,7 @@ public:
     /**
      * @brief Create a ring buffer.
      *
-     * @param name Buffer name.
+     * @param name The statistic's name.
      * @param unit Sample unit.
      * @param size The size of the ring buffer.
      * @param is_optimized Flag of min/max optimization.
