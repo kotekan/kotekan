@@ -122,6 +122,10 @@ private:
     int dump_size;
     /// flag to make the output start time align to integer second 
     bool align_start_time;
+    /// number of channels for the first output buffer
+    uint32_t nchan_buffer0;
+    /// number of channels for the rest output buffer
+    uint32_t nchan_buffer1;
 };
 
 #endif //BEAM_BUFFER_SORT_HPP
