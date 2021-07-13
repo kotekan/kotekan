@@ -14,7 +14,7 @@
 #include <atomic>      // for atomic_bool
 #include <chrono>      // for system_clock, system_clock::time_point
 #include <errno.h>     // for errno
-#include <math.h>      // for modf
+#include <math.h>      // for modf and log2
 #include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, bind, function
 #include <iostream>    // for cout
@@ -49,11 +49,11 @@ oneDiskVDIFWrite::oneDiskVDIFWrite(Config& config_, const std::string& unique_na
     instrument_name =
         config.get_default<std::string>(unique_name, "instrument_name", "no_name_set");
     write_to_disk = config.get_default<bool>(unique_name, "write_to_disk", true);
-    nframe_per_payload = config.get<int>(unique_name, "nframe_per_payload");
     // TODO change to frames per frequency
     vdif_frames_per_freq = config.get<uint32_t>(unique_name, "vdif_frames_per_freq");
     vdif_frame_header_size = config.get<uint32_t>(unique_name, "vdif_frame_header_size");
     num_pol = config.get<uint32_t>(unique_name, "num_pol"); 
+    exit_after_n_files = config.get_default<size_t>(unique_name, "exit_after_n_files", 0);
     // The refernce epoch would be the last two digit or the year. If it in half of a 
     // year, add 0.5. 
     ref_year = config.get<double>(unique_name, "ref_year");
@@ -97,18 +97,12 @@ void oneDiskVDIFWrite::main_thread(){
     time_t rawtime;
     struct tm* timeinfo;
     size_t file_num;
-    uint32_t in_frame_count;
-    uint32_t vdif_buf_size;
     uint32_t time_offset = 0;
     uint32_t freq_offset = 0;
-    uint32_t n_vdif_frame;
     uint32_t vdif_frame_data_size;
     uint32_t vdif_frame_size;
-    uint32_t n_vdif_time_frame;
-    uint32_t n_vdif_freq_frame;
     uint32_t nvdif_payload_per_file;
     uint32_t in_buf_frame_size;
-    uint32_t target_freq_frame;
     uint32_t src_start;
     uint32_t target_start;
     uint32_t inframe_ctr = 0;
@@ -119,8 +113,6 @@ void oneDiskVDIFWrite::main_thread(){
     FILE* j_file;
 
     MergedBeamMetadata* in_metadata = nullptr;
-    // telescope object for use later
-    auto& tel = Telescope::instance();
     timespec out_frame_unix_time;
     timespec vdif_file_start_time;
 
@@ -169,7 +161,7 @@ void oneDiskVDIFWrite::main_thread(){
     // If the time beyond 2100, we should consider change the code here
     vdif_header -> ref_epoch = (uint32_t)((ref_year - 2000) * 2) ; // Cast it to int. 
     vdif_header -> unused = 0;
-    vdif_header -> log_num_chan = 3;
+    vdif_header -> log_num_chan = (int)log2 ((float)(vdif_freq_per_frame * num_pol));
     vdif_header -> frame_len = (vdif_frame_data_size + vdif_frame_header_size) / 8;
     vdif_header -> vdif_version = 0;
     vdif_header -> data_type = 1;
@@ -190,7 +182,6 @@ void oneDiskVDIFWrite::main_thread(){
             if (input == nullptr)
                 break;
             in_metadata = (MergedBeamMetadata*)get_metadata(in_buf, in_frame_id);
-            INFO("Data is here\n");      
             // Check if input buffer has the right amount of data.
 	    // Number of channel in the file should be able to divided by 4
 	    assert(in_metadata -> nchan % 4 == 0);
@@ -198,17 +189,14 @@ void oneDiskVDIFWrite::main_thread(){
 	    assert(in_metadata -> sub_frame_data_size % vdif_samples_per_frame == 0);
 	    // Make sure the vdif file has all the frequency from the input buffer
 	    assert(nvdif_payload_per_file % in_metadata -> nchan ==0);
-            // Time resolution must be 2560 ns exactly
-	    // Check if the start is n times of vdif_samples_per_frame * time_res_nsec
-            INFO("Time {:d} TIME RES {:d}", in_metadata -> ctime.tv_nsec, time_res_nsec);
-	    //assert(in_metadata -> ctime.tv_nsec % (vdif_samples_per_frame * time_res_nsec) == 0);	
+            	
 	    if (file_num == 0 && payload_ctr == 0){
 		// Compute the vdif frames per file.
 		nvdif_payload_per_file = vdif_frames_per_freq * in_metadata -> nchan;
 	        // Get the frame zero for checking start time offset from an integer second. 
                 timespec time0 = in_metadata -> ctime;
 	        add_nsec(time0, -1 * (long)(in_metadata -> fpga_seq_start * time_res_nsec));
-                INFO("Time {:d} {:d}", time0.tv_sec, time0.tv_nsec);
+                // INFO("Time {:d} {:d}", time0.tv_sec, time0.tv_nsec);
 		// Check with integer second the offset should go
 		if (time0.tv_nsec > time_res_nsec){
 		    intsec_offset = time0.tv_nsec - 1e9;
@@ -216,7 +204,7 @@ void oneDiskVDIFWrite::main_thread(){
 		else{
 		    intsec_offset = time0.tv_nsec;
 		}
-		INFO("Intset_off {:d}", intsec_offset);
+		// INFO("Intset_off {:d}", intsec_offset);
 		
 		if(write_to_disk){
 		    fprintf(setting_file, "format_version_number=%02d\n", data_format_version);
@@ -226,8 +214,8 @@ void oneDiskVDIFWrite::main_thread(){
                     fprintf(setting_file, "num_frames=%d\n", 1); // Not sure what does this one mean
                     fprintf(setting_file, "num_timesamples=%d\n", nvdif_payload_per_file * vdif_samples_per_frame);
                     fprintf(setting_file, "header_len=%d\n", vdif_frame_header_size); // VDIF
-                    fprintf(setting_file, "packet_len=%d\n",
-                        vdif_frame_header_size + in_metadata -> nchan); // nchan + header_size. TODO: need to confirm the purpose of this.
+                    // nchan + header_size. TODO: need to confirm the purpose of this. 
+		    fprintf(setting_file, "packet_len=%d\n", vdif_frame_header_size + in_metadata -> nchan);
                     fprintf(setting_file, "offset=%d\n", 0);
                     fprintf(setting_file, "data_bits=%d\n", vdif_header -> bits_depth);
                     fprintf(setting_file, "stride=%d\n", 1);
@@ -241,10 +229,6 @@ void oneDiskVDIFWrite::main_thread(){
                     INFO("Created setting log file: {:s}\n", setting_log_file);
 		}
             }    
-
-            // Compute the number of vdif frames in the input buffer 
-	    n_vdif_time_frame = in_metadata -> sub_frame_data_size / vdif_samples_per_frame;
-	    n_vdif_freq_frame = in_metadata -> nchan / vdif_freq_per_frame;
         
 	    // input buffer frame size
 	    in_buf_frame_size = in_metadata -> sub_frame_data_size + in_metadata -> sub_frame_metadata_size;
@@ -274,20 +258,26 @@ void oneDiskVDIFWrite::main_thread(){
 	assert(out_frame_unix_time.tv_sec > ref_ct.tv_sec && "Reference time is beyond current time.");
 	vdif_header -> seconds = out_frame_unix_time.tv_sec - ref_ct.tv_sec;
 	//INFO("second {:d} {:d}", vdif_header -> seconds, out_frame_unix_time.tv_sec - ref_ct.tv_sec);
-	//assert(out_frame_unix_time.tv_nsec % (vdif_samples_per_frame * time_res_nsec) ==0);
+	// Make sure the output frame time is integer of frame resolution + FPGA_start offset.
+	assert((out_frame_unix_time.tv_nsec - intsec_offset) % (vdif_samples_per_frame * time_res_nsec) ==0);
         vdif_header -> data_frame = out_frame_unix_time.tv_nsec / (vdif_samples_per_frame * time_res_nsec);
         vdif_header -> thread_id = in_metadata -> freq_start + freq_offset;
-	//INFO("Time offset {:d}", time_offset);
 	// copy vdif frequency per frame (4) from input buffer
 	for (uint32_t tt = 0; tt < vdif_samples_per_frame; tt++){
 	    for (uint32_t ii = 0; ii < vdif_freq_per_frame; ii++){
                 // Copy data to payload
 	        // The input buffer is order as freq0(n_sample * n_pol) freq1(n_sample* n_pol) ...
 	        // But the VDIF is order as freq0 (1_sample * n_pol) freq1(1_sample * n_pol) ...
-                src_start = freq_offset * in_buf_frame_size + time_offset + tt * num_pol  + in_metadata -> sub_frame_metadata_size;
+                src_start = (freq_offset + ii) * in_buf_frame_size + (time_offset + tt) * num_pol  + in_metadata -> sub_frame_metadata_size;
                 target_start = (ii * num_pol) + tt * num_pol * vdif_freq_per_frame;
 	        for (uint32_t jj = 0; jj < num_pol; jj++){
+	            //if (ii >= 0 && ii < 20){		
+	            //    if (tt > 620 && tt < 630 && time_offset > 49000 && time_offset < 51000)
+	   	    //        INFO("target_index {:d} src_index {:d} tt {:d} ii {:d} freq offset {:d} time offset {:d} frameszie {:d}", target_start +jj, src_start + jj, tt, ii, freq_offset, time_offset, in_buf_frame_size);
+		    //}
 	            payload[target_start +jj] = input[src_start + jj];
+		    assert(tt < 700);
+		    //assert(ii < 1024);
                 }
 	    }
 	}
@@ -316,6 +306,7 @@ void oneDiskVDIFWrite::main_thread(){
                     ERROR("Cannot close file {:s}", full_path);
                 }
                 isFileOpen = false;
+		INFO("Data writing finished.");
                 fprintf(j_file, "%ld %ld %s\n", vdif_file_start_time.tv_sec, vdif_file_start_time.tv_nsec, full_path);
 	    }
 	    else{
@@ -323,10 +314,14 @@ void oneDiskVDIFWrite::main_thread(){
 	    }
             payload_ctr = 0;
             file_num++;
+	    if (exit_after_n_files != 0 && file_num >= exit_after_n_files){
+		INFO("EXIT N FILE {:d} {:d}", file_num, exit_after_n_files);
+	        exit_kotekan(ReturnCode::CLEAN_EXIT);
+	    }
         }
         
 	// If the input data is finished, mark the in buffer empty
-	if (time_offset == in_metadata -> sub_frame_data_size){
+	if (time_offset >= in_metadata -> sub_frame_data_size / num_pol){
 	    mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id);
 	    in_frame_id++;
 	    inframe_ctr++;

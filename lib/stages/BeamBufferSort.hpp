@@ -120,6 +120,8 @@ private:
     long subframe_time_nsec;
     /// The number of samples to dump out to next stage
     int dump_size;
+    /// flag to make the output start time align to integer second 
+    bool align_start_time;
 };
 
 #endif //BEAM_BUFFER_SORT_HPP
