@@ -361,7 +361,7 @@ void restServer::http_server_thread() {
         ERROR_NON_OO("Failed to create config for libevent");
         exit(1);
     }
-    int err = event_config_avoid_method(ev_config, "poll");
+    int err = event_config_avoid_method(ev_config, "select");
     if (err) {
         ERROR_NON_OO("Failed to exclude poll from the libevent options");
         exit(1);
