@@ -61,6 +61,7 @@ private:
     uint32_t vdif_frame_header_size;
     uint32_t vdif_frames_per_freq;
     uint32_t num_pol;
+    size_t exit_after_n_files;
     float ref_year; 
     int disk_id;
     int nframe_per_payload;

@@ -41,7 +41,7 @@ BeamBufferSort::BeamBufferSort(Config& config_, const std::string& unique_name,
     time_resolution = config.get_default<double>(unique_name, "time_resolution", 2.56e-6); 
     queue_frame_size =  config.get<uint32_t>(unique_name, "queue_frame_size");
     dump_size = config.get<int>(unique_name, "dump_size");
-    start_marginal_nframe = config.get_default<uint32_t>(unique_name, "start_marginal_nframe", 3);
+    align_start_time = config.get_default<bool>(unique_name, "align_start_time", true);
     // The data dump size should be smaller than one third of queue time samples.
     assert(dump_size < wait_nframes / 3 * (int)queue_frame_size);
     FreqIDBeamMeta_size = sizeof(FreqIDBeamMetadata);
@@ -168,6 +168,8 @@ void BeamBufferSort::main_thread(){
     uint32_t output_buff_offset = 0; 
     uint32_t src_start;
     uint32_t dest_start;
+    long intsec_offset;
+    long samples_to_align;
 
     // The vector for queue start metadata
     std::vector<FreqIDBeamMetadata*> curr_queue0_metadata;
@@ -180,15 +182,19 @@ void BeamBufferSort::main_thread(){
 
     FreqIDBeamMetadata* in_metadata = nullptr;
     BeamMetadata* non_freq_metadata = nullptr;
+    //MergedBeamMetadata* out_metadata = nullptr;
 
     frameID input_frame_id(in_buf); // Input frame id
+    // A vector for the output buffer frame ID
     std::vector<frameID> output_frame_ids; 
     for (auto& out_buf : out_bufs){
         output_frame_ids.push_back(frameID(out_buf));
     }
+    // A vector for the output start indicator
+    std::vector<bool> dump_started(out_bufs.size(), false);
     
     FreqIDBeamMetadata * temp_freq_metadata = (FreqIDBeamMetadata*)malloc(FreqIDBeamMeta_size);
-
+    
     while (!stop_thread) {
 	// Receive a new frame
         input = wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id);
@@ -221,6 +227,34 @@ void BeamBufferSort::main_thread(){
 	frame_nr = fpga_seq_start / samples_per_data_set;
 	// 1. Check if it is the frist frame, if yes setup the frame0 with marginal nframes.
         if (frame0 == 0){
+            // align the start time from the begining
+	    // Adjust the alignment with the start_marginal_frame
+	    ctime0 = in_metadata -> ctime;
+	    // Compute the FPGA start offset from an integer second
+            timespec FPGA_t0 = ctime0;
+            add_nsec(FPGA_t0, -1 * (long)(in_metadata -> fpga_seq_start * time_resolution_nsec));
+            INFO("Time {:d} {:d}", FPGA_t0.tv_sec, FPGA_t0.tv_nsec);
+            // Check with integer second the offset
+            if (FPGA_t0.tv_nsec > time_resolution_nsec){
+                intsec_offset = FPGA_t0.tv_nsec - 1e9;
+            }
+            else{
+                intsec_offset = FPGA_t0.tv_nsec;
+            }
+            // Get the last time that is aligned with output frame size.
+            long last_align_time_shift = ctime0.tv_nsec % (long)(dump_size * time_resolution_nsec);
+	    INFO("{:d} {:d} {:d}", last_align_time_shift, last_align_time_shift - intsec_offset, ctime0.tv_nsec);
+	    assert((last_align_time_shift - intsec_offset) % ((long)time_resolution_nsec) == 0);
+            samples_to_align = (last_align_time_shift - intsec_offset) / ((long)time_resolution_nsec);
+            if (align_start_time){
+	        start_marginal_nframe = (uint32_t)(samples_to_align / queue_frame_size);
+		uint32_t extra_marginal = (uint32_t)(samples_to_align % queue_frame_size);
+		if (extra_marginal > 0)
+		    // add one more marginal frame for the extra marginal samples
+	            start_marginal_nframe++;
+		in_frame_dump_offset += queue_frame_size - extra_marginal;
+	    }
+
 	    frame0 = frame_nr - start_marginal_nframe;
 	    fpga_seq_start0 = frame0 * samples_per_data_set;
 	    ctime0 = in_metadata -> ctime;
@@ -230,6 +264,7 @@ void BeamBufferSort::main_thread(){
 	    ra = in_metadata -> ra;
 	    dec = in_metadata -> dec;
             scaling = in_metadata -> scaling;
+	    INFO("ctime_nsec {:d}, next_align {:d}, Samples {:d}, rmn {:d} dump size {:d}", ctime0.tv_nsec, last_align_time_shift, samples_to_align, samples_to_align%(long)time_resolution_nsec, dump_size);
 	}
 
 	// Compute time offset
@@ -254,6 +289,7 @@ void BeamBufferSort::main_thread(){
             for (uint32_t i = 0; i < total_freq_chan; i++){
                 curr_queue0_metadata[i] = (FreqIDBeamMetadata*)&sort_queue[0][i][0];
 	    }
+
 	    // Counter for dumped frames
 	    dump_frame_count = 0;
 	    // time offset in the output buffer
@@ -305,25 +341,31 @@ void BeamBufferSort::main_thread(){
 		    copy_size = leftover_in_frame;
 		else
                     copy_size = empty_out_buff;
+
+		// Dump out data to a new buffer. 
                 // Since we use nbuffers, dump all nbuffer.
                 for (uint32_t k=0; k < out_bufs.size(); k++){
                     // When output buffer offset is zero dump old frame get new frames.
 		    if (output_buff_offset == 0){
 			// dump the filled output buffer if it is full.
-			if (output != nullptr)
-			    mark_frame_full(out_bufs.at(k), unique_name.c_str(), output_frame_ids.at(k)++);
+			// We are tried to avoid the empty dump of the start. 
+			if (dump_started[k]){ 
+			    mark_frame_full(out_bufs.at(k), unique_name.c_str(), output_frame_ids.at(k));
+			    output_frame_ids.at(k)++;
+			}
 			// Get a new output buffer frame
 		        output = wait_for_empty_frame(out_bufs.at(k), unique_name.c_str(), output_frame_ids.at(k));
                         if (output == nullptr)
                             break;
                         allocate_new_metadata_object(out_bufs.at(k), output_frame_ids.at(k));
-                        MergedBeamMetadata* out_metadata =
-                            (MergedBeamMetadata*)get_metadata(out_bufs.at(k), output_frame_ids.at(k));
-		    
+                        MergedBeamMetadata* out_metadata = (MergedBeamMetadata*)get_metadata(out_bufs.at(k), output_frame_ids.at(k));
 		        // Fill the merge metadata
                         out_metadata -> sub_frame_pre_frame = out_buf_nchan[k];
                         out_metadata -> sub_frame_metadata_size = FreqIDBeamMeta_size;
-                        out_metadata -> sub_frame_data_size = dump_size;
+			// Time sample * number of polarization.
+                        out_metadata -> sub_frame_data_size = dump_size * num_pol;
+			out_metadata -> n_sample_per_frame = dump_size;
+			out_metadata -> n_pol = num_pol;
                         out_metadata -> freq_start = out_buf_start_chan[k];
                         out_metadata -> nchan = out_buf_nchan[k];
 			// Start fpga seq in the top of frequency band
@@ -360,8 +402,13 @@ void BeamBufferSort::main_thread(){
                         memcpy(&output[dest_start + FreqIDBeamMeta_size + output_buff_offset * num_pol], \
 			       &sort_queue[0][ch_id][src_start], copy_size * num_pol);	
 	            }
+
+		    // Change the dump started indicator to true.
+		    if (!dump_started[k])
+		        dump_started[k] = true;
                     
 		}
+
 		//INFO("Old offset in {:d} out {:d} copy {:d}", in_frame_dump_offset, output_buff_offset, copy_size);
 		in_frame_dump_offset += copy_size;
 		output_buff_offset += copy_size;
@@ -407,8 +454,8 @@ void BeamBufferSort::main_thread(){
         for (uint32_t j = 0; j < total_freq_chan; j++){
             free(sort_queue[i][j]);
         }
+    }
     // Free temp freqid metadata
     free(temp_freq_metadata);
-    }
 
 }
