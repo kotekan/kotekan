@@ -37,6 +37,7 @@
 #include <type_traits> // for enable_if_t, is_integral, make_unsigned
 #include <utility>     // for pair
 #include <vector>      // for vector
+#include <chrono>
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;
@@ -583,9 +584,12 @@ public:
     /**
      * @brief Create a ring buffer.
      *
+     * @param name Buffer name.
+     * @param unit Sample unit.
      * @param size The size of the ring buffer.
+     * @param is_optimized Flag of min/max optimization.
      **/
-    explicit StatTracker(size_t size = 100);
+    explicit StatTracker(std::string name, std::string unit, size_t size = 100, bool is_optimized = true);
 
     /**
      * @brief Add a new sample value to the buffer.
@@ -625,7 +629,12 @@ public:
 
 private:
     SlidingWindowMinMax min_max;
-    std::unique_ptr<double[]> rbuf;
+
+    struct sample {
+        double value;
+        std::chrono::system_clock::time_point time_stamp;
+    };
+    std::unique_ptr<sample[]> rbuf;
     size_t end;
     size_t buf_size;
     size_t count;
@@ -634,6 +643,10 @@ private:
     double dist;
     double var;
     double std_dev;
+
+    std::string name;
+    std::string unit;
+    bool is_optimized;
 };
 
 // Zip, unzip adapted from https://gist.github.com/yig/32fe51874f3911d1c612

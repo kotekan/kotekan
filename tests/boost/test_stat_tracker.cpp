@@ -5,8 +5,8 @@
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
 #include <cmath>                             // for isnan
 
-BOOST_AUTO_TEST_CASE(_stat_tracker_get_max) {
-    StatTracker buf(3);
+BOOST_AUTO_TEST_CASE(_stat_tracker_get_max_optimized) {
+    StatTracker buf("test", "none", 3, true);
 
     BOOST_CHECK(isnan(buf.get_max()));
     buf.add_sample(0.0);
@@ -25,8 +25,48 @@ BOOST_AUTO_TEST_CASE(_stat_tracker_get_max) {
     BOOST_CHECK_EQUAL(buf.get_max(), 0.0);
 }
 
-BOOST_AUTO_TEST_CASE(_stat_tracker_get_min) {
-    StatTracker buf(3);
+BOOST_AUTO_TEST_CASE(_stat_tracker_get_max_unoptimized) {
+    StatTracker buf("test", "none", 3, false);
+
+    BOOST_CHECK(isnan(buf.get_max()));
+    buf.add_sample(0.0);
+    BOOST_CHECK_EQUAL(buf.get_max(), 0.0);
+    buf.add_sample(-2.5);
+    BOOST_CHECK_EQUAL(buf.get_max(), 0.0);
+    buf.add_sample(2.5);
+    BOOST_CHECK_EQUAL(buf.get_max(), 2.5);
+
+    // Overwrite the buffer with all 0.0 and see if the max can be updated.
+    buf.add_sample(0.0);
+    BOOST_CHECK_EQUAL(buf.get_max(), 2.5);
+    buf.add_sample(0.0);
+    BOOST_CHECK_EQUAL(buf.get_max(), 2.5);
+    buf.add_sample(0.0);
+    BOOST_CHECK_EQUAL(buf.get_max(), 0.0);
+}
+
+BOOST_AUTO_TEST_CASE(_stat_tracker_get_min_optimized) {
+    StatTracker buf("test", "none", 3, true);
+
+    BOOST_CHECK(isnan(buf.get_min()));
+    buf.add_sample(0.0);
+    BOOST_CHECK_EQUAL(buf.get_min(), 0.0);
+    buf.add_sample(-2.5);
+    BOOST_CHECK_EQUAL(buf.get_min(), -2.5);
+    buf.add_sample(2.5);
+    BOOST_CHECK_EQUAL(buf.get_min(), -2.5);
+
+    // Overwrite the buffer with all 0.0 and see if the min can be updated.
+    buf.add_sample(0.0);
+    BOOST_CHECK_EQUAL(buf.get_min(), -2.5);
+    buf.add_sample(0.0);
+    BOOST_CHECK_EQUAL(buf.get_min(), 0.0);
+    buf.add_sample(0.0);
+    BOOST_CHECK_EQUAL(buf.get_min(), 0.0);
+}
+
+BOOST_AUTO_TEST_CASE(_stat_tracker_get_min_unoptimized) {
+    StatTracker buf("test", "none", 3, false);
 
     BOOST_CHECK(isnan(buf.get_min()));
     buf.add_sample(0.0);
@@ -46,7 +86,7 @@ BOOST_AUTO_TEST_CASE(_stat_tracker_get_min) {
 }
 
 BOOST_AUTO_TEST_CASE(_stat_tracker_get_avg) {
-    StatTracker buf(3);
+    StatTracker buf("test", "none", 3);
 
     BOOST_CHECK(isnan(buf.get_avg()));
     buf.add_sample(0.0);
@@ -64,7 +104,7 @@ BOOST_AUTO_TEST_CASE(_stat_tracker_get_avg) {
 }
 
 BOOST_AUTO_TEST_CASE(_stat_tracker_get_std_dev) {
-    StatTracker buf(3);
+    StatTracker buf("test", "none", 3);
 
     BOOST_CHECK(isnan(buf.get_std_dev()));
     buf.add_sample(0.0);
