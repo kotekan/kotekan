@@ -31,8 +31,6 @@
 #define R2D 180. / PI
 #define D2R PI / 180.
 #define TAU 2 * PI
-#define inst_long -119.6175
-#define inst_lat 49.3203
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -54,7 +52,10 @@ hsaTrackingUpdatePhase::hsaTrackingUpdatePhase(Config& config, const std::string
     _num_beams = config.get<int16_t>(unique_name, "num_beams");
 
     _feed_sep_NS = config.get<float>(unique_name, "feed_sep_NS");
-    _feed_sep_EW = config.get<int32_t>(unique_name, "feed_sep_EW");
+    _feed_sep_EW = config.get<float>(unique_name, "feed_sep_EW");
+
+    _inst_lat = config.get<double>(unique_name, "inst_lat");
+    _inst_long = config.get<double>(unique_name, "inst_long");
 
     // Just for metadata manipulation
     metadata_buf = host_buffers.get_buffer("network_buf");
@@ -188,7 +189,7 @@ void hsaTrackingUpdatePhase::calculate_phase(const beamCoord& beam_coord, timesp
     double UT = (timeinfo->tm_hour) + (timeinfo->tm_min / 60.)
                 + (timeinfo->tm_sec + time_now.tv_nsec / 1.e9) / 3600.;
     double GST = fmod((T0 + UT * 1.002737909), 24.);
-    double LST = GST + inst_long / 15.;
+    double LST = GST + _inst_long / 15.;
     while (LST < 0) {
         LST = LST + 24;
     }
@@ -201,11 +202,11 @@ void hsaTrackingUpdatePhase::calculate_phase(const beamCoord& beam_coord, timesp
             continue;
         }
         double hour_angle = LST * 15. - beam_coord.ra[b];
-        double alt = sin(beam_coord.dec[b] * D2R) * sin(inst_lat * D2R)
-                     + cos(beam_coord.dec[b] * D2R) * cos(inst_lat * D2R) * cos(hour_angle * D2R);
+        double alt = sin(beam_coord.dec[b] * D2R) * sin(_inst_lat * D2R)
+                     + cos(beam_coord.dec[b] * D2R) * cos(_inst_lat * D2R) * cos(hour_angle * D2R);
         alt = asin(std::clamp(alt, -1.0, 1.0));
-        double az = (sin(beam_coord.dec[b] * D2R) - sin(alt) * sin(inst_lat * D2R))
-                    / (cos(alt) * cos(inst_lat * D2R));
+        double az = (sin(beam_coord.dec[b] * D2R) - sin(alt) * sin(_inst_lat * D2R))
+                    / (cos(alt) * cos(_inst_lat * D2R));
         az = acos(std::clamp(az, -1.0, 1.0));
         if (sin(hour_angle * D2R) >= 0) {
             az = TAU - az;
