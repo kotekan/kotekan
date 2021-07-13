@@ -19,7 +19,8 @@
 #include "gsl-lite.hpp" // for span
 #include "json.hpp"     // for json
 
-#include <algorithm>   // for max
+#include <algorithm> // for max
+#include <chrono>
 #include <complex>     // for complex, imag, real
 #include <cstdint>     // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
 #include <cstdlib>     // for size_t, (anonymous), div
@@ -37,7 +38,6 @@
 #include <type_traits> // for enable_if_t, is_integral, make_unsigned
 #include <utility>     // for pair
 #include <vector>      // for vector
-#include <chrono>
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;
@@ -589,7 +589,8 @@ public:
      * @param size The size of the ring buffer.
      * @param is_optimized Flag of min/max optimization.
      **/
-    explicit StatTracker(std::string name, std::string unit, size_t size = 100, bool is_optimized = true);
+    explicit StatTracker(std::string name, std::string unit, size_t size = 100,
+                         bool is_optimized = true);
 
     /**
      * @brief Add a new sample value to the buffer.
@@ -632,7 +633,7 @@ private:
 
     struct sample {
         double value;
-        std::chrono::system_clock::time_point time_stamp;
+        std::chrono::system_clock::time_point timestamp;
     };
     std::unique_ptr<sample[]> rbuf;
     size_t end;
