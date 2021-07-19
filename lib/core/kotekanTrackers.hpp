@@ -5,6 +5,8 @@
 #include "restServer.hpp"
 #include "visUtil.hpp"
 
+#include <mutex>     // for mutex, lock_guard
+
 namespace kotekan {
 namespace trackers {
 
