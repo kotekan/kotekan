@@ -40,6 +40,26 @@ Stage::Stage(Config& config, const std::string& unique_name, bufferContainer& bu
 
     // Set the timeout for this stage thread to exit
     join_timeout = config.get_default<uint32_t>(unique_name, "join_timeout", 60);
+
+    // Read from tracker config and add trackers
+    if (config.exists(unique_name, "trackers")) {
+        std::vector<tracker_t> tracker_list =
+            get_tracker(config.get_value(unique_name, "trackers"));
+        trackers::KotekanTrackers& KT = trackers::KotekanTrackers::instance();
+        for (auto it : tracker_list)
+            stat_trackers.emplace(it.name, KT.add_tracker(unique_name + "/" + it.name, it.unit,
+                                                          it.size, it.is_optimized));
+    }
+}
+
+std::vector<tracker_t> Stage::get_tracker(nlohmann::json j) {
+    std::vector<tracker_t> tracker_list = {};
+    for (auto i : j) {
+        // size and is_optimized are optinal with default 100 and true
+        tracker_list.push_back(
+            {i["name"], i["unit"], i.value("size", (size_t)100), i.value("is_optimized", true)});
+    }
+    return tracker_list;
 }
 
 struct Buffer* Stage::get_buffer(const std::string& name) {

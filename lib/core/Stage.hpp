@@ -4,6 +4,7 @@
 #include "Config.hpp"          // for Config
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for kotekanLogging
+#include "kotekanTrackers.hpp"
 
 #include <atomic>     // for atomic_bool
 #include <functional> // for function
@@ -20,6 +21,13 @@
 #endif
 
 namespace kotekan {
+
+struct tracker_t {
+    std::string name;
+    std::string unit;
+    size_t size = 100;
+    bool is_optimized = true;
+};
 
 class Stage : public kotekanLogging {
 public:
@@ -76,6 +84,14 @@ protected:
     struct Buffer* get_buffer(const std::string& name);
 
     /**
+     * @brief Get stat tracker info from config tree.
+     *
+     * @param j json objects of tracker info
+     * @return A list of tracker info
+     */
+    std::vector<tracker_t> get_tracker(nlohmann::json j);
+
+    /**
      * @brief Gets an array of buffer pointers linked to the @c name in the config.
      *
      * @param name The name of the array in the config.
@@ -84,6 +100,9 @@ protected:
     std::vector<struct Buffer*> get_buffer_array(const std::string& name);
 
     bufferContainer& buffer_container;
+
+    // A map to store all stat trackers in this stage.
+    std::map<std::string, std::shared_ptr<StatTracker>> stat_trackers;
 
 private:
     std::function<void(const Stage&)> main_thread_fn;

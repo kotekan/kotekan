@@ -12,6 +12,7 @@ add_library(
     errors.c
     kotekanLogging.cpp
     kotekanMode.cpp
+    kotekanTrackers.cpp
     metadata.c
     metadataFactory.cpp
     prometheusMetrics.cpp
