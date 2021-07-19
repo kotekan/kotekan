@@ -101,6 +101,7 @@ void Stage::set_cpu_affinity(const std::vector<int>& cpu_affinity_) {
 
 void Stage::start() {
     this_thread = std::thread(main_thread_fn, std::ref(*this));
+    register_tid(this_thread.native_handle());
 
     apply_cpu_affinity();
 }
@@ -127,6 +128,7 @@ void Stage::join() {
 
 void Stage::stop() {
     stop_thread = true;
+    unregister_tid(this_thread.native_handle());
 }
 
 void Stage::main_thread() {}
@@ -139,6 +141,30 @@ Stage::~Stage() {
 
 std::string Stage::dot_string(const std::string& prefix) const {
     return fmt::format("{:s}\"{:s}\" [shape=box, color=darkgreen];\n", prefix, get_unique_name());
+}
+
+// Used to get tid from pthread_t
+struct pthread_fake {
+    char offset[720];
+    pid_t tid;
+    void* others;
+};
+
+void Stage::register_tid(pthread_t ptr) {
+    pid_t tid = ((pthread_fake*)ptr)->tid;
+    thread_list.push_back(tid);
+}
+
+void Stage::unregister_tid(pthread_t ptr) {
+    pid_t tid = ((pthread_fake*)ptr)->tid;
+    auto itr = std::find(thread_list.begin(), thread_list.end(), tid);
+    if (itr != thread_list.end()) {
+        thread_list.erase(itr);
+    }
+}
+
+std::vector<pid_t> Stage::get_tids() {
+    return thread_list;
 }
 
 } // namespace kotekan

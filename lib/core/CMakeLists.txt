@@ -9,6 +9,7 @@ add_library(
     bufferFactory.cpp
     Config.cpp
     configUpdater.cpp
+    cpuMonitor.cpp
     errors.c
     kotekanLogging.cpp
     kotekanMode.cpp
