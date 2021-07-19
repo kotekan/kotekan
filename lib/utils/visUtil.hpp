@@ -38,6 +38,7 @@
 #include <type_traits> // for enable_if_t, is_integral, make_unsigned
 #include <utility>     // for pair
 #include <vector>      // for vector
+#include <mutex>     // for mutex, lock_guard
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;
