@@ -22,13 +22,6 @@
 
 namespace kotekan {
 
-struct tracker_t {
-    std::string name;
-    std::string unit;
-    size_t size = 100;
-    bool is_optimized = true;
-};
-
 class Stage : public kotekanLogging {
 public:
     Stage(Config& config, const std::string& unique_name, bufferContainer& buffer_container,
@@ -76,20 +69,19 @@ protected:
     void apply_cpu_affinity();
 
     /**
+     * @brief Create trackers based on config.
+     *
+     * @param j json objects of tracker info
+     */
+    void create_trackers(nlohmann::json j);
+
+    /**
      * @brief Get a buffer pointer by config tag.
      *
      * @param name The config tag with the buffer name
      * @return A pointer to the buffer
      */
     struct Buffer* get_buffer(const std::string& name);
-
-    /**
-     * @brief Get stat tracker info from config tree.
-     *
-     * @param j json objects of tracker info
-     * @return A list of tracker info
-     */
-    std::vector<tracker_t> get_tracker(nlohmann::json j);
 
     /**
      * @brief Gets an array of buffer pointers linked to the @c name in the config.

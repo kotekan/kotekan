@@ -43,23 +43,27 @@ Stage::Stage(Config& config, const std::string& unique_name, bufferContainer& bu
 
     // Read from tracker config and add trackers
     if (config.exists(unique_name, "trackers")) {
-        std::vector<tracker_t> tracker_list =
-            get_tracker(config.get_value(unique_name, "trackers"));
-        trackers::KotekanTrackers& KT = trackers::KotekanTrackers::instance();
-        for (auto it : tracker_list)
-            stat_trackers.emplace(it.name, KT.add_tracker(unique_name + "/" + it.name, it.unit,
-                                                          it.size, it.is_optimized));
+        create_trackers(config.get_value(unique_name, "trackers"));
     }
 }
 
-std::vector<tracker_t> Stage::get_tracker(nlohmann::json j) {
-    std::vector<tracker_t> tracker_list = {};
+void Stage::create_trackers(nlohmann::json j) {
+    struct tracker_t {
+        std::string name;
+        std::string unit;
+        size_t size;
+        bool is_optimized;
+    };
+
+    trackers::KotekanTrackers& KT = trackers::KotekanTrackers::instance();
     for (auto i : j) {
         // size and is_optimized are optinal with default 100 and true
-        tracker_list.push_back(
+        tracker_t tracker(
             {i["name"], i["unit"], i.value("size", (size_t)100), i.value("is_optimized", true)});
+        stat_trackers.emplace(tracker.name,
+                              KT.add_tracker(unique_name + "/" + tracker.name, tracker.unit,
+                                             tracker.size, tracker.is_optimized));
     }
-    return tracker_list;
 }
 
 struct Buffer* Stage::get_buffer(const std::string& name) {
