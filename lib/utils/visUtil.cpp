@@ -281,6 +281,8 @@ StatTracker::StatTracker(std::string name, std::string unit, size_t size, bool i
     is_optimized(is_optimized){};
 
 void StatTracker::add_sample(double new_val) {
+    std::lock_guard<std::mutex> lock(tracker_lock);
+
     double old_val = rbuf[end].value;
     rbuf[end].value = new_val;
     rbuf[end].timestamp = std::chrono::system_clock::now();
@@ -305,6 +307,8 @@ void StatTracker::add_sample(double new_val) {
 }
 
 double StatTracker::get_max() {
+    std::lock_guard<std::mutex> lock(tracker_lock);
+
     if (count == 0) {
         return NAN;
     }
@@ -323,6 +327,8 @@ double StatTracker::get_max() {
 }
 
 double StatTracker::get_min() {
+    std::lock_guard<std::mutex> lock(tracker_lock);
+
     if (count == 0) {
         return NAN;
     }
@@ -341,6 +347,8 @@ double StatTracker::get_min() {
 }
 
 double StatTracker::get_avg() {
+    std::lock_guard<std::mutex> lock(tracker_lock);
+
     if (count == 0) {
         return NAN;
     }
@@ -348,10 +356,31 @@ double StatTracker::get_avg() {
 }
 
 double StatTracker::get_std_dev() {
+    std::lock_guard<std::mutex> lock(tracker_lock);
+
     if (count <= 1) {
         return NAN;
     }
     return std_dev;
+}
+
+nlohmann::json StatTracker::get_json() {
+    std::lock_guard<std::mutex> lock(tracker_lock);
+
+    nlohmann::json tracker_json = {};
+    tracker_json["unit"] = unit;
+    tracker_json["is_optimized"] = is_optimized;
+    tracker_json["size"] = buf_size;
+    for (size_t i = 0; i < count; i++) {
+        nlohmann::json sample_json = {};
+        sample_json["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                       rbuf[i].timestamp.time_since_epoch())
+                                       .count();
+        sample_json["value"] = rbuf[i].value;
+        tracker_json["samples"].push_back(sample_json);
+    }
+
+    return tracker_json;
 }
 
 std::vector<std::string> regex_split(const std::string input, const std::string reg) {

@@ -1,14 +1,15 @@
 #include "kotekanMode.hpp"
 
-#include "Config.hpp"            // for Config
-#include "Stage.hpp"             // for Stage
-#include "StageFactory.hpp"      // for StageFactory
-#include "Telescope.hpp"         // for Telescope
-#include "buffer.h"              // for Buffer, StageInfo, get_num_full_frames, delete_buffer
-#include "bufferFactory.hpp"     // for bufferFactory
-#include "configUpdater.hpp"     // for configUpdater
-#include "datasetManager.hpp"    // for datasetManager
-#include "kotekanLogging.hpp"    // for INFO_NON_OO
+#include "Config.hpp"         // for Config
+#include "Stage.hpp"          // for Stage
+#include "StageFactory.hpp"   // for StageFactory
+#include "Telescope.hpp"      // for Telescope
+#include "buffer.h"           // for Buffer, StageInfo, get_num_full_frames, delete_buffer
+#include "bufferFactory.hpp"  // for bufferFactory
+#include "configUpdater.hpp"  // for configUpdater
+#include "datasetManager.hpp" // for datasetManager
+#include "kotekanLogging.hpp" // for INFO_NON_OO
+#include "kotekanTrackers.hpp"
 #include "metadata.h"            // for delete_metadata_pool
 #include "metadataFactory.hpp"   // for metadataFactory
 #include "prometheusMetrics.hpp" // for Metrics
@@ -83,6 +84,9 @@ void kotekanMode::initalize_stages() {
 
     // Apply config for Telescope class
     Telescope::instance(config);
+
+    // Create and register kotekan trackers before stages created
+    trackers::KotekanTrackers::instance().register_with_server(&restServer::instance());
 
     // Create Metadata Pool
     metadataFactory metadata_factory(config);
