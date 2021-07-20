@@ -1,7 +1,13 @@
 #include "kotekanTrackers.hpp"
 
-#include "fmt.hpp"  // for print, format, fmt
-#include "json.hpp" // for json
+#include "kotekanLogging.hpp" // for ERROR_NON_OO
+
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json, basic_json<>::value_type
+
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
+#include <stdexcept>  // for runtime_error
+#include <utility>    // for pair
 
 namespace kotekan {
 namespace trackers {

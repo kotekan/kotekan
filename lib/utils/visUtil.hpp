@@ -30,6 +30,7 @@
 #include <map>         // for map
 #include <math.h>      // for fmod
 #include <memory>      // for unique_ptr
+#include <mutex>       // for mutex, lock_guard
 #include <string>      // for string
 #include <sys/time.h>  // for timeval, CLOCK_REALTIME
 #include <sys/types.h> // for __syscall_slong_t, suseconds_t, time_t
@@ -38,7 +39,6 @@
 #include <type_traits> // for enable_if_t, is_integral, make_unsigned
 #include <utility>     // for pair
 #include <vector>      // for vector
-#include <mutex>     // for mutex, lock_guard
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;

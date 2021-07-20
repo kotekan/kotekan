@@ -3,13 +3,14 @@
 #include "Config.hpp"          // for Config
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanTrackers.hpp" // for KotekanTrackers
 #include "util.h"              // for string_tail
 
 #include "fmt.hpp" // for format
 
 #include <algorithm>    // for copy, max
 #include <chrono>       // for seconds
-#include <cstdlib>      // for abort
+#include <cstdlib>      // for size_t, abort
 #include <cxxabi.h>     // for __forced_unwind
 #include <exception>    // for exception
 #include <future>       // for async, future, future_status, future_status::timeout, launch

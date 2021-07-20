@@ -1,11 +1,14 @@
 #ifndef KOTEKAN_TRACKERS_HPP
 #define KOTEKAN_TRACKERS_HPP
 
-#include "kotekanLogging.hpp"
-#include "restServer.hpp"
-#include "visUtil.hpp"
+#include "restServer.hpp" // for connectionInstance, restServer
+#include "visUtil.hpp"    // for StatTracker
 
-#include <mutex>     // for mutex, lock_guard
+#include <map>      // for map
+#include <memory>   // for shared_ptr
+#include <mutex>    // for mutex
+#include <stddef.h> // for size_t
+#include <string>   // for string
 
 namespace kotekan {
 namespace trackers {
