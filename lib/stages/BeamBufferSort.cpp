@@ -50,14 +50,12 @@ BeamBufferSort::BeamBufferSort(Config& config_, const std::string& unique_name,
     // Total time for one coming frame in nanoseconds.
     subframe_time_nsec = time_resolution * samples_per_data_set * 1e9;
     // Queue frame time resolution
-    // TODO this will be changed. 
+    // TODO this will be changed when implemenet the gated pulsar. 
     queue_frame_resolution_nsec = subframe_time_nsec;
     time_resolution_nsec = time_resolution * 1e9;
     // Number of data samples a queue frame represents.
-    // TODO this will be changed.
+    // TODO this will be changed when this stage is used for gated pulsar.
     queue_frame_represent_size = samples_per_data_set; 
-    // Time delay vector for each channel
-    std::vector<double> time_delay(total_freq_chan, 0.0); // need to change here
     // Set up buffers
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -151,27 +149,19 @@ void BeamBufferSort::main_thread(){
     uint32_t freq_bin;
     int time_offset;
     uint64_t frame_nr;
-    uint8_t* output = nullptr;
     uint8_t* input = nullptr;
     uint32_t advance_nframe;
     uint32_t copy_size;
-    uint64_t fpga_seq_start;
-    uint64_t fpga_seq_start0;
-    uint64_t fpga_seq_start_at_dump; 
+    uint64_t fpga_seq_start, fpga_seq_start0, fpga_seq_start_at_dump; 
     uint64_t frame0 = 0;
     uint32_t beam_number;
-    uint32_t leftover_in_frame;
-    uint32_t empty_out_buff;
+    uint32_t leftover_in_frame, empty_out_buff; // For checking leftover in the input and output 
     uint32_t dump_frame_count;
-    double ra;
-    double dec;
-    double scaling;
+    double ra, dec, scaling; // For the output metadata.
     uint32_t in_frame_dump_offset = 0 ;  // Dump Offset in the incoming frame 
-    uint32_t output_buff_offset = 0; 
-    uint32_t src_start;
-    uint32_t dest_start;
-    long intsec_offset;
-    long samples_to_align;
+    uint32_t output_buff_offset = 0; // Fill offset in the output
+    uint32_t src_start, dest_start; // For data copy position.
+    long intsec_offset, samples_to_align; // For aligning the start time
 
     // The vector for queue start metadata
     std::vector<FreqIDBeamMetadata*> curr_queue0_metadata;
@@ -189,8 +179,10 @@ void BeamBufferSort::main_thread(){
     frameID input_frame_id(in_buf); // Input frame id
     // A vector for the output buffer frame ID
     std::vector<frameID> output_frame_ids; 
+    std::vector<uint8_t*> outputs;
     for (auto& out_buf : out_bufs){
         output_frame_ids.push_back(frameID(out_buf));
+	outputs.push_back(nullptr);
     }
     // A vector for the output start indicator
     std::vector<bool> dump_started(out_bufs.size(), false);
@@ -256,6 +248,7 @@ void BeamBufferSort::main_thread(){
 	            start_marginal_nframe++;
 		in_frame_dump_offset += queue_frame_size - extra_marginal;
 	    }
+	    INFO("Start Marginal {:d}", start_marginal_nframe);
 
 	    frame0 = frame_nr - start_marginal_nframe;
 	    fpga_seq_start0 = frame0 * samples_per_data_set;
@@ -294,9 +287,6 @@ void BeamBufferSort::main_thread(){
 
 	    // Counter for dumped frames
 	    dump_frame_count = 0;
-	    // time offset in the output buffer
-            //INFO("dump frame {:d} {:d}", dump_frame_count, advance_nframe); 
-	    //INFO("outbuffoffset {:d}", dump_size);
 	    while (dump_frame_count < advance_nframe + 1){
 		// in frame dump offset is in the end of queue frame, rotate the queue.
 		if (in_frame_dump_offset >= queue_frame_size){
@@ -350,14 +340,14 @@ void BeamBufferSort::main_thread(){
                     // When output buffer offset is zero dump old frame get new frames.
 		    if (output_buff_offset == 0){
 			// dump the filled output buffer if it is full.
-			// We are tried to avoid the empty dump of the start. 
-			if (dump_started[k]){ 
+			// Avoiding the empty dump of the start. 
+			if (outputs.at(k) != nullptr){ 
 			    mark_frame_full(out_bufs.at(k), unique_name.c_str(), output_frame_ids.at(k));
 			    output_frame_ids.at(k)++;
 			}
 			// Get a new output buffer frame
-		        output = wait_for_empty_frame(out_bufs.at(k), unique_name.c_str(), output_frame_ids.at(k));
-                        if (output == nullptr)
+		        outputs[k] = wait_for_empty_frame(out_bufs.at(k), unique_name.c_str(), output_frame_ids.at(k));
+                        if (outputs[k] == nullptr)
                             break;
                         allocate_new_metadata_object(out_bufs.at(k), output_frame_ids.at(k));
                         MergedBeamMetadata* out_metadata = (MergedBeamMetadata*)get_metadata(out_bufs.at(k), output_frame_ids.at(k));
@@ -379,30 +369,37 @@ void BeamBufferSort::main_thread(){
                         // Compute the start dump for the buffer in the frequency channels
                         // The dump size is not a full frame, we have to select the right 
 		    }
-
+                    
+		    DEBUG2("Buffer {:d} Sender offset {:d} rec offset {:d} copy size {:d}", k, in_frame_dump_offset, output_buff_offset, copy_size);
+		    src_start = FreqIDBeamMeta_size + in_frame_dump_offset * num_pol;
                     // copy data for each channel.
                     for (uint32_t ch_id=out_buf_start_chan[k]; ch_id < out_buf_nchan[k] + out_buf_start_chan[k]; ch_id++){
 			// Get the metadata for each single input frame
 			dest_start = (ch_id - out_buf_start_chan[k]) * (dump_size * num_pol + FreqIDBeamMeta_size);
+			DEBUG2("Buffer {:d} freq_id {:d} dest {:d} copy_size {:d}", k, ch_id, dest_start, copy_size); 
 		        if (output_buff_offset == 0){
                             FreqIDBeamMetadata* dump_frame_metadata = (FreqIDBeamMetadata*)&sort_queue[0][ch_id][0];
 		            // Write output meta	
-                            FreqIDBeamMetadata* sub_frame_metadata = (FreqIDBeamMetadata*)&output[dest_start];
+                            FreqIDBeamMetadata* sub_frame_metadata = (FreqIDBeamMetadata*)&outputs[k][dest_start];
                             // Compute dump data fpga_seq_start and ctime
                             fpga_seq_start_at_dump = dump_frame_metadata -> fpga_seq_start + in_frame_dump_offset;
                             ctime_at_dump = dump_frame_metadata -> ctime;
                             add_nsec(ctime_at_dump, (long)(in_frame_dump_offset * time_resolution_nsec));
-			    //INFO("FPAG_start {:d}, freq {:d} in frame {:d} out frame {:d} RA {:f} dec {:f}", fpga_seq_start_at_dump, ch_id, in_frame_dump_offset, output_buff_offset, dump_frame_metadata-> ra, dump_frame_metadata -> dec);
-                            //INFO("C time int {:d} nsec {:d} frame start {:d} time jump {:d}", ctime_at_dump.tv_sec, ctime_at_dump.tv_nsec, dump_frame_metadata -> ctime.tv_sec, (long)(in_frame_dump_offset * time_resolution_nsec));
                             fill_freq_meta(sub_frame_metadata, ch_id, fpga_seq_start_at_dump, ctime_at_dump, dump_frame_metadata -> stream_id.id,\
                                            dump_frame_metadata -> dataset_id, dump_frame_metadata -> beam_number, dump_frame_metadata -> ra, \
 				           dump_frame_metadata -> dec, dump_frame_metadata -> scaling);
 			}
 			
                         // Copy data to out buffer
-			src_start = FreqIDBeamMeta_size + in_frame_dump_offset * num_pol;
-                        memcpy(&output[dest_start + FreqIDBeamMeta_size + output_buff_offset * num_pol], \
+			DEBUG2("Buffer {:d} freq_id {:d} dest {:d} copy_size {:d}", k, ch_id, dest_start + FreqIDBeamMeta_size + output_buff_offset * num_pol, copy_size);
+                        memcpy(&outputs[k][dest_start + FreqIDBeamMeta_size + output_buff_offset * num_pol], \
 			       &sort_queue[0][ch_id][src_start], copy_size * num_pol);	
+	      		//INFO("Buff {:d} freq {:d}, rec offset {:d} ptr {} framesize {:d} Output0 {:d} + {:d}i output1 {:d} + {:d}i", k, ch_id, output_buff_offset, \
+			     fmt::ptr(outputs[k]), out_bufs.at(k) -> frame_size,
+			     //outputs[k][dest_start + FreqIDBeamMeta_size + output_buff_offset * num_pol] & 0x0F, \
+			     //(outputs[k][dest_start + FreqIDBeamMeta_size + output_buff_offset * num_pol] & 0xF0) >> 4,\
+			     //outputs[k][dest_start + FreqIDBeamMeta_size + output_buff_offset * num_pol +  copy_size * num_pol - 1] & 0x0F,\
+			     //(outputs[k][dest_start + FreqIDBeamMeta_size + output_buff_offset * num_pol + copy_size * num_pol -1] & 0xF0) >> 4);
 	            }
 
 		    // Change the dump started indicator to true.
@@ -411,11 +408,8 @@ void BeamBufferSort::main_thread(){
                     
 		}
 
-		//INFO("Old offset in {:d} out {:d} copy {:d}", in_frame_dump_offset, output_buff_offset, copy_size);
 		in_frame_dump_offset += copy_size;
 		output_buff_offset += copy_size;
-		//INFO("Updated out offset {:d}", output_buff_offset);
-
 	    }
 	    // Update time offset
 	    time_offset = frame_nr - frame0;
@@ -431,19 +425,12 @@ void BeamBufferSort::main_thread(){
             continue;
         }
 	// Copy in frame to the queue.
-        //INFO("In queue {:d} {:d}", time_offset, freq_bin);
 	FreqIDBeamMetadata* sub_frame_metadata = (FreqIDBeamMetadata*)&sort_queue[time_offset][freq_bin][0];
 	memcpy(sub_frame_metadata, in_metadata, FreqIDBeamMeta_size);
 	// copy data
 	uint8_t* sub_frame_data = &sort_queue[time_offset][freq_bin][FreqIDBeamMeta_size];
 	memcpy(sub_frame_data, input, in_buf->frame_size);
-        // Debug line
-	FreqIDBeamMetadata* debug_meta = (FreqIDBeamMetadata*)&sort_queue[time_offset][freq_bin][0];
-        //INFO("Debug RA {:f} Dec: {:f}, scaling: {:d}, beam_num: {:d}, freq_id {:d}, seq_start {:d} stream_id {:d} c_time {:d}\n", 
-        //     debug_meta->ra, debug_meta->dec, debug_meta->scaling,
-        //     debug_meta->beam_number, debug_meta->frequency_bin, debug_meta->fpga_seq_start, 
-        //     debug_meta->stream_id.id, debug_meta -> ctime.tv_sec);	
-
+         
 	// mark fill status is done
 	queue_status[time_offset][freq_bin] = 1;
 	// Mark in frame empty
