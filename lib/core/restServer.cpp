@@ -46,10 +46,10 @@ restServer& restServer::instance() {
 
 restServer::restServer() :
     port(_port),
-    main_thread(),
-    timer_metrics(prometheus::Metrics::instance().add_gauge(
-        "kotekan_rest_server_callback_time_miliseconds", "/rest_server", {"endpoint_name", "avg_time", "max_time"})){
+    main_thread(){
     stop_thread = false;
+    timer_metrics = &prometheus::Metrics::instance().add_gauge(
+        "kotekan_rest_server_callback_time_miliseconds", "/rest_server", {"endpoint_name", "avg_time", "max_time"});
 }
 
 restServer::~restServer() {
@@ -76,6 +76,10 @@ void restServer::start(const std::string& bind_address, u_short port) {
     // Framework level tracking of endpoints.
     using namespace std::placeholders;
     register_get_callback("/endpoints", std::bind(&restServer::endpoint_list_callback, this, _1));
+}
+
+void restServer::stop() {
+    timer_metrics = nullptr;
 }
 
 void restServer::handle_request(struct evhttp_request* request, void* cb_data) {

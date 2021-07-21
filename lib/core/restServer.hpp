@@ -150,6 +150,8 @@ public:
      */
     void start(const std::string& bind_address = "0.0.0.0", u_short port = PORT_REST_SERVER);
 
+    void stop();
+
     /**
      * @brief Set the server thread CPU affinity
      *
@@ -328,8 +330,8 @@ private:
     /// Map of callback timers
     std::map<std::string, StatTracker> callback_timers;
 
-    /// callback timer metrics
-    prometheus::MetricFamily<kotekan::prometheus::Gauge>& timer_metrics;
+    /// Callback timer metrics
+    prometheus::MetricFamily<kotekan::prometheus::Gauge>* timer_metrics;
 
     /// Mutex to lock changes to the maps while a request is in progress
     std::shared_timed_mutex callback_map_lock;
