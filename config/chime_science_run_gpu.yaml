@@ -70,6 +70,8 @@ frb_scaling: 0.05 #1.0
 # Tracking beams global options
 feed_sep_NS: 0.3048
 feed_sep_EW: 22.0
+# Latitude and longitude converted from final geocentric (XYZ) position as calculated
+# in https://bao.chimenet.ca/doc/documents/1327 via NGS NOAA website.
 inst_lat: 49.32070922
 inst_long: -119.62367743
 num_beams: 12
