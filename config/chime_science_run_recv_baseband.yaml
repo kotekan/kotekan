@@ -1,4 +1,4 @@
-##########################################
+#########################################
 #
 # chime_science_run_recv_baseband.yaml
 #
@@ -43,13 +43,14 @@ baseband_recv_buffer:
   kotekan_buffer: standard
   metadata_pool: baseband_metadata_pool
   frame_size: num_elements * samples_per_data_set / 96
-  num_frames: 282 * 96 # max achievable baseband buffer on GPU nodes
+  num_frames: 180 * 96 # max achievable baseband buffer on GPU nodes
 
 # Kotekan stages
 baseband_recv:
   kotekan_stage: bufferRecv
   buf: baseband_recv_buffer 
   listen_port: 11027
+  drop_frames: false
 
 # Write raw baseband data
 write_baseband:
