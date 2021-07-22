@@ -29,7 +29,6 @@
 #include <stdexcept>       // for runtime_error
 #include <stdlib.h>        // for free, malloc
 #include <string>          // for string, allocator, operator+
-#include <sys/select.h>    // for FD_SETSIZE
 #include <sys/socket.h>    // for AF_INET, accept, bind, listen, setsockopt, socket, sock...
 
 namespace kotekan {
