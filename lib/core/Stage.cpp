@@ -19,6 +19,8 @@
 #include <stdexcept>    // for runtime_error
 #include <system_error> // for system_error
 #include <thread>       // for thread
+#include <unistd.h>
+#include <sys/syscall.h>
 
 namespace kotekan {
 
@@ -100,8 +102,16 @@ void Stage::set_cpu_affinity(const std::vector<int>& cpu_affinity_) {
 }
 
 void Stage::start() {
-    this_thread = std::thread(main_thread_fn, std::ref(*this));
-    register_tid(this_thread.native_handle());
+    this_thread = std::thread([&](){
+#if !defined(MAC_OSX)
+        pid_t tid = syscall(SYS_gettid);
+        register_tid(tid);
+#endif
+        main_thread_fn(std::ref(*this));
+#if !defined(MAC_OSX)
+        unregister_tid(tid);
+#endif
+    });
 
     apply_cpu_affinity();
 }
@@ -128,7 +138,6 @@ void Stage::join() {
 
 void Stage::stop() {
     stop_thread = true;
-    unregister_tid(this_thread.native_handle());
 }
 
 void Stage::main_thread() {}
@@ -143,20 +152,11 @@ std::string Stage::dot_string(const std::string& prefix) const {
     return fmt::format("{:s}\"{:s}\" [shape=box, color=darkgreen];\n", prefix, get_unique_name());
 }
 
-// Used to get tid from pthread_t
-struct pthread_fake {
-    char offset[720];
-    pid_t tid;
-    void* others;
-};
-
-void Stage::register_tid(pthread_t ptr) {
-    pid_t tid = ((pthread_fake*)ptr)->tid;
+void Stage::register_tid(pid_t tid) {
     thread_list.push_back(tid);
 }
 
-void Stage::unregister_tid(pthread_t ptr) {
-    pid_t tid = ((pthread_fake*)ptr)->tid;
+void Stage::unregister_tid(pid_t tid) {
     auto itr = std::find(thread_list.begin(), thread_list.end(), tid);
     if (itr != thread_list.end()) {
         thread_list.erase(itr);

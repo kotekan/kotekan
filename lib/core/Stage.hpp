@@ -56,12 +56,12 @@ public:
     /**
      * @brief Add newly created stage tid to thread_list for cpu usage tracking.
      */
-    void register_tid(pthread_t ptr);
+    void register_tid(pid_t ptr);
 
     /**
      * @brief Remove a tid from thread_list.
      */
-    void unregister_tid(pthread_t ptr);
+    void unregister_tid(pid_t ptr);
 
     /**
      * @brief Get tids from the current stage.

@@ -17,8 +17,8 @@ namespace kotekan {
 // Store thread CPU stats
 struct CpuStat {
     // StatTracker object is used to get average usage.
-    StatTracker utime_usage = StatTracker(120);
-    StatTracker stime_usage = StatTracker(120);
+    StatTracker utime_usage = StatTracker("utime_usage", "percent", 120, true);
+    StatTracker stime_usage = StatTracker("stime_usage", "percent", 120, true);
 
     uint32_t prev_utime = 0;
     uint32_t prev_stime = 0;

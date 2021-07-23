@@ -32,7 +32,6 @@ CpuMonitor::~CpuMonitor() {
 
 void CpuMonitor::start() {
     this_thread = std::thread(&CpuMonitor::track_cpu, this);
-    pthread_detach(this_thread.native_handle());
 }
 
 void CpuMonitor::stop() {
@@ -162,6 +161,8 @@ void CpuMonitor::set_affinity(Config& config) {
     for (auto core_id : cpu_affinity)
         CPU_SET(core_id, &cpuset);
     pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
+
+    this_thread.detach();
 }
 
 } // namespace kotekan
