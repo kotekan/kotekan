@@ -7,7 +7,7 @@
 
 #include "fmt.hpp" // for format
 
-#include <algorithm>    // for copy, max
+#include <algorithm>    // for copy, max, find
 #include <chrono>       // for seconds
 #include <cstdlib>      // for abort
 #include <cxxabi.h>     // for __forced_unwind
@@ -17,10 +17,10 @@
 #include <regex>        // for match_results<>::_Base_type
 #include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <stdexcept>    // for runtime_error
+#include <syscall.h>    // for SYS_gettid
 #include <system_error> // for system_error
 #include <thread>       // for thread
-#include <unistd.h>
-#include <sys/syscall.h>
+#include <unistd.h>     // for syscall
 
 namespace kotekan {
 
@@ -102,7 +102,7 @@ void Stage::set_cpu_affinity(const std::vector<int>& cpu_affinity_) {
 }
 
 void Stage::start() {
-    this_thread = std::thread([&](){
+    this_thread = std::thread([&]() {
 #if !defined(MAC_OSX)
         pid_t tid = syscall(SYS_gettid);
         register_tid(tid);

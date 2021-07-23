@@ -8,7 +8,6 @@
 #include <atomic>      // for atomic_bool
 #include <functional>  // for function
 #include <mutex>       // for mutex
-#include <pthread.h>   // for pthread_t
 #include <stdint.h>    // for uint32_t
 #include <string>      // for string
 #include <sys/types.h> // for pid_t
