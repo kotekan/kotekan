@@ -29,10 +29,13 @@ CpuMonitor::CpuMonitor() {
 CpuMonitor::~CpuMonitor() {
     restServer::instance().remove_get_callback("/cpu_ult");
 
-    try {
-        this_thread.join();
-    } catch (std::exception& e) {
-        WARN_NON_OO("cpuMonitor: Failure when joining thread: {:s}", e.what());
+    if (this_thread.joinable()) {
+        stop();
+        try {
+            this_thread.join();
+        } catch (std::exception& e) {
+            WARN_NON_OO("cpuMonitor: Failure when joining thread: {:s}", e.what());
+        }
     }
 }
 
