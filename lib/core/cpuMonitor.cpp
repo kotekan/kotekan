@@ -8,7 +8,7 @@
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
 #include <math.h>     // for floor
-#include <pthread.h>  // for pthread_detach, pthread_setaffinity_np
+#include <pthread.h>  // for pthread_setaffinity_np
 #include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <stdio.h>    // for fclose, fopen, fscanf, snprintf, FILE
 #include <unistd.h>   // for pid_t, sysconf, _SC_NPROCESSORS_ONLN
@@ -28,6 +28,12 @@ CpuMonitor::CpuMonitor() {
 
 CpuMonitor::~CpuMonitor() {
     restServer::instance().remove_get_callback("/cpu_ult");
+
+    try {
+        this_thread.join();
+    } catch (std::exception& e) {
+        WARN_NON_OO("cpuMonitor: Failure when joining thread: {:s}", e.what());
+    }
 }
 
 void CpuMonitor::start() {
@@ -161,8 +167,6 @@ void CpuMonitor::set_affinity(Config& config) {
     for (auto core_id : cpu_affinity)
         CPU_SET(core_id, &cpuset);
     pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
-
-    this_thread.detach();
 }
 
 } // namespace kotekan
