@@ -65,7 +65,7 @@ public:
     /**
      * @brief Get tids from the current stage.
      */
-    std::vector<pid_t> get_tids();
+    const std::vector<pid_t>& get_tids();
 
 protected:
     std::atomic_bool stop_thread;

@@ -17,7 +17,7 @@
 #include <regex>         // for match_results<>::_Base_type
 #include <sched.h>       // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <stdexcept>     // for runtime_error
-#include <sys/syscall.h> // for SYS_gettid
+#include <sys/syscall.h> // for SYS_gettid // IWYU pragma: keep
 #include <system_error>  // for system_error
 #include <thread>        // for thread
 #include <unistd.h>      // for syscall
@@ -163,7 +163,7 @@ void Stage::unregister_tid(pid_t tid) {
     }
 }
 
-std::vector<pid_t> Stage::get_tids() {
+const std::vector<pid_t>& Stage::get_tids() {
     return thread_list;
 }
 
