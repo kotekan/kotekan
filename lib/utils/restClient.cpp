@@ -10,7 +10,6 @@
 #include <event2/bufferevent_struct.h> // for bufferevent
 #include <event2/dns.h>                // for evdns_base_free, evdns_base_new
 #include <event2/event.h>              // for event_base_loopbreak, EV_READ, event_add, event_b...
-#include <event2/event_struct.h>       // for event
 #include <event2/http.h>               // for evhttp_connection_free, evhttp_request_free, evht...
 #include <event2/keyvalq_struct.h>     // for evkeyvalq
 #include <event2/thread.h>             // for evthread_use_pthreads
