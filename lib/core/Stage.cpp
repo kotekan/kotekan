@@ -17,7 +17,8 @@
 #include <regex>         // for match_results<>::_Base_type
 #include <sched.h>       // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <stdexcept>     // for runtime_error
-#include <sys/syscall.h> // for SYS_gettid // IWYU pragma: no_include
+#include <sys/syscall.h> // for SYS_gettid 
+// IWYU pragma: no_include <syscall.h>
 #include <system_error>  // for system_error
 #include <thread>        // for thread
 #include <unistd.h>      // for syscall
