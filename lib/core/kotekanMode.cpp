@@ -17,9 +17,13 @@
 #include "fmt.hpp"  // for format
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
 
+#include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
 #include <stdlib.h>   // for free
 #include <utility>    // for pair
+#include <vector>     // for vector
 
 using namespace std::placeholders;
 
@@ -120,9 +124,20 @@ void kotekanMode::start_stages() {
         INFO_NON_OO("Starting kotekan_stage: {:s}...", stage.first);
         stage.second->start();
     }
+
+#if !defined(MAC_OSX)
+    if (config.get_default<bool>("/cpu_monitor", "enabled", false)) {
+        cpu_monitor.save_stages(stages);
+        cpu_monitor.start();
+        cpu_monitor.set_affinity(config);
+    }
+#endif
 }
 
 void kotekanMode::stop_stages() {
+#if !defined(MAC_OSX)
+    cpu_monitor.stop();
+#endif
     // First set the shutdown variable on all stages
     for (auto const& stage : stages)
         stage.second->stop();
