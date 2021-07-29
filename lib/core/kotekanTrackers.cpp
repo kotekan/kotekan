@@ -8,6 +8,7 @@
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
 #include <stdexcept>  // for runtime_error
 #include <utility>    // for pair
+#include <fstream>
 
 namespace kotekan {
 
@@ -97,6 +98,30 @@ void KotekanTrackers::remove_tracker(std::string stage_name) {
     auto stage_itr = trackers.find(stage_name);
     if (stage_itr != trackers.end()) {
         trackers.erase(stage_itr);
+    }
+}
+
+void KotekanTrackers::set_path(std::string path) {
+    dump_path = path;
+}
+
+void KotekanTrackers::dump_trackers() {
+    if (dump_path.empty()) return;
+
+    nlohmann::json return_json = {};
+
+    for (auto& stage_itr : trackers) {
+        for (auto& tracker_itr : trackers[stage_itr.first]) {
+            return_json[stage_itr.first][tracker_itr.first] = tracker_itr.second->get_json();
+        }
+    }
+
+    std::ofstream dump_file(dump_path + "/trackers_dump.json");
+    if (dump_file.is_open()) {
+        dump_file << return_json;
+    } else {
+        ERROR_NON_OO("Cannot read tracker dump path {:s}. Exiting.", dump_path);
+        throw std::runtime_error(fmt::format(fmt("Cannot read tracker dump path {:s}. Exiting."), dump_path));
     }
 }
 

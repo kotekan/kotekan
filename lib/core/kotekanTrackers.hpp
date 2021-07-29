@@ -79,12 +79,26 @@ public:
      */
     void remove_tracker(std::string stage_name, std::string tracker_name);
 
+    /**
+     * @brief Dump all trackers.
+     */
+    void dump_trackers();
+
+    /**
+     * @brief Set dump path.
+     *
+     * @param path The folder to store trackers_dump.json.
+     */
+    void set_path(std::string path);
+
 private:
     KotekanTrackers();
     ~KotekanTrackers();
 
     // A map to store all trackers <stage_name, <tracker_name, tracker_ptr>>
     std::map<std::string, stage_trackers_t> trackers;
+
+    std::string dump_path;
 
     std::mutex trackers_lock;
 };

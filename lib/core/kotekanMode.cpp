@@ -25,6 +25,7 @@
 #include <stdlib.h>   // for free
 #include <utility>    // for pair
 #include <vector>     // for vector
+#include <filesystem>
 
 using namespace std::placeholders;
 
@@ -53,6 +54,9 @@ kotekanMode::~kotekanMode() {
     restServer::instance().remove_get_callback("/buffers");
     restServer::instance().remove_get_callback("/pipeline_dot");
     restServer::instance().remove_all_aliases();
+
+    // Dump all trackers before cleanup.
+    KotekanTrackers::instance().dump_trackers();
 
     for (auto const& stage : stages) {
         if (stage.second != nullptr) {
@@ -91,6 +95,9 @@ void kotekanMode::initalize_stages() {
 
     // Create and register kotekan trackers before stages created
     KotekanTrackers::instance().register_with_server(&restServer::instance());
+    if (config.get_default<bool>("/trackers_dump", "enabled", false)) {
+        KotekanTrackers::instance().set_path(config.get_default<std::string>("/trackers_dump", "path", std::filesystem::current_path()));
+    }
 
     // Create Metadata Pool
     metadataFactory metadata_factory(config);
