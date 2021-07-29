@@ -89,13 +89,6 @@ protected:
     void apply_cpu_affinity();
 
     /**
-     * @brief Create trackers based on config.
-     *
-     * @param j json objects of tracker info
-     */
-    void create_trackers(nlohmann::json j);
-
-    /**
      * @brief Get a buffer pointer by config tag.
      *
      * @param name The config tag with the buffer name
@@ -112,9 +105,6 @@ protected:
     std::vector<struct Buffer*> get_buffer_array(const std::string& name);
 
     bufferContainer& buffer_container;
-
-    // A map to store all stat trackers in this stage.
-    std::map<std::string, std::shared_ptr<StatTracker>> stat_trackers;
 
 private:
     std::function<void(const Stage&)> main_thread_fn;

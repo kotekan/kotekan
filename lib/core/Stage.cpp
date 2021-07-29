@@ -3,7 +3,6 @@
 #include "Config.hpp"          // for Config
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanTrackers.hpp" // for KotekanTrackers
 #include "util.h"              // for string_tail
 
 #include "fmt.hpp" // for format
@@ -44,30 +43,6 @@ Stage::Stage(Config& config, const std::string& unique_name, bufferContainer& bu
 
     // Set the timeout for this stage thread to exit
     join_timeout = config.get_default<uint32_t>(unique_name, "join_timeout", 60);
-
-    // Read from tracker config and add trackers
-    if (config.exists(unique_name, "trackers")) {
-        create_trackers(config.get_value(unique_name, "trackers"));
-    }
-}
-
-void Stage::create_trackers(nlohmann::json j) {
-    struct tracker_t {
-        std::string name;
-        std::string unit;
-        size_t size;
-        bool is_optimized;
-    };
-
-    trackers::KotekanTrackers& KT = trackers::KotekanTrackers::instance();
-    for (auto i : j) {
-        // size and is_optimized are optinal with default 100 and true
-        tracker_t tracker(
-            {i["name"], i["unit"], i.value("size", (size_t)100), i.value("is_optimized", true)});
-        stat_trackers.emplace(tracker.name,
-                              KT.add_tracker(unique_name + "/" + tracker.name, tracker.unit,
-                                             tracker.size, tracker.is_optimized));
-    }
 }
 
 struct Buffer* Stage::get_buffer(const std::string& name) {

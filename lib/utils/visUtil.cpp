@@ -369,8 +369,6 @@ nlohmann::json StatTracker::get_json() {
 
     nlohmann::json tracker_json = {};
     tracker_json["unit"] = unit;
-    tracker_json["is_optimized"] = is_optimized;
-    tracker_json["size"] = buf_size;
     for (size_t i = 0; i < count; i++) {
         nlohmann::json sample_json = {};
         sample_json["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -379,6 +377,18 @@ nlohmann::json StatTracker::get_json() {
         sample_json["value"] = rbuf[i].value;
         tracker_json["samples"].push_back(sample_json);
     }
+
+    return tracker_json;
+}
+
+nlohmann::json StatTracker::get_current_json() {
+    nlohmann::json tracker_json = {};
+
+    tracker_json["unit"] = unit;
+    tracker_json["min"] = get_min();
+    tracker_json["max"] = get_max();
+    tracker_json["avg"] = get_avg();
+    tracker_json["std"] = get_std_dev();
 
     return tracker_json;
 }

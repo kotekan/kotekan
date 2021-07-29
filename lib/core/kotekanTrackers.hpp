@@ -11,7 +11,8 @@
 #include <string>   // for string
 
 namespace kotekan {
-namespace trackers {
+
+typedef std::map<std::string, std::shared_ptr<StatTracker>> stage_trackers_t;
 
 class KotekanTrackers {
 
@@ -32,12 +33,23 @@ public:
 
     /**
      * @brief The call back function for the REST server to use.
+     * This returns all contents from every tracker and grouped by stage.
      *
      * This function is never called directly.
      *
      * @param conn The connection instance to send results to.
      */
     void trackers_callback(connectionInstance& conn);
+
+    /**
+     * @brief The call back function for the REST server to use.
+     * This returns min/max/avg/std of each tracker and grouped by stage.
+     *
+     * This function is never called directly.
+     *
+     * @param conn The connection instance to send results to.
+     */
+    void trackers_current_callback(connectionInstance& conn);
 
     /**
      * @brief Adds a new tracker
@@ -49,20 +61,34 @@ public:
      * @return a shared pointer to the newly created tracker
      * @throw std::runtime_error if the tracker with that name is already registered.
      */
-    std::shared_ptr<StatTracker> add_tracker(std::string name, std::string unit, size_t size = 100,
+    std::shared_ptr<StatTracker> add_tracker(std::string stage_name, std::string tracker_name, std::string unit, size_t size = 100,
                                              bool is_optimized = true);
+
+    /**
+     * @brief Remove all trackers in the given stage
+     *
+     * @param stage_name The given stage name.
+     */
+    void remove_tracker(std::string stage_name);
+
+    /**
+     * @brief Remove a simgle tracker.
+     *
+     * @param stage_name The given stage name.
+     * @param tracker_name The given tracker name.
+     */
+    void remove_tracker(std::string stage_name, std::string tracker_name);
 
 private:
     KotekanTrackers();
     ~KotekanTrackers();
 
-    // A map to store all trackers <tracker_name, tracker_ptr>
-    std::map<std::string, std::shared_ptr<StatTracker>> trackers;
+    // A map to store all trackers <stage_name, <tracker_name, tracker_ptr>>
+    std::map<std::string, stage_trackers_t> trackers;
 
     std::mutex trackers_lock;
 };
 
-} // namespace trackers
 } // namespace kotekan
 
 #endif /* KOTEKAN_TRACKERS_HPP */

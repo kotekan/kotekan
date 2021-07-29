@@ -5,6 +5,7 @@
 #include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for DEBUG
+#include "kotekanTrackers.hpp" // for KotekanTrackers
 #include "util.h"              // for hex_dump
 
 #include <atomic>      // for atomic_bool
@@ -36,6 +37,11 @@ STAGE_CONSTRUCTOR(hexDump) {
     if (_offset + _len > in_buf->frame_size) {
         throw std::runtime_error("HexDump: cannot print past end of buffer");
     }
+
+    // Create stat tracker
+    kotekan::KotekanTrackers& KT = kotekan::KotekanTrackers::instance();
+    tracker_0 = KT.add_tracker(unique_name, "tracker_0", "none", 10, false);
+    tracker_1 = KT.add_tracker(unique_name, "tracker_1", "none");
 }
 
 hexDump::~hexDump() {}
@@ -54,6 +60,11 @@ void hexDump::main_thread() {
 
         // Prints the hex data to screen
         hex_dump(16, (void*)&frame[_offset], _len);
+
+        // Add sample to trackers
+        static int cnt = 0;
+        tracker_0->add_sample(cnt++);
+        tracker_1->add_sample(cnt<<1);
 
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
         frame_id++;

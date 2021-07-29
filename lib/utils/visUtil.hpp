@@ -643,6 +643,13 @@ public:
      **/
     nlohmann::json get_json();
 
+    /**
+     * @brief Return tracker stats in json format.
+     *
+     * @return A json object of tracker min,max,avg,std.
+     **/
+    nlohmann::json get_current_json();
+
 private:
     SlidingWindowMinMax min_max;
 
