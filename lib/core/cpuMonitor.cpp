@@ -143,6 +143,12 @@ void CpuMonitor::track_cpu() {
 }
 
 void CpuMonitor::cpu_ult_call_back(connectionInstance& conn) {
+
+    if (!this_thread.joinable()) {
+        conn.send_text_reply("CPU monitor has not been started.");
+        return;
+    }
+
     nlohmann::json cpu_ult_json = {};
 
     for (auto& stage : ult_list) {
