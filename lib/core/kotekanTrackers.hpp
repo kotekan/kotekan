@@ -54,14 +54,16 @@ public:
     /**
      * @brief Adds a new tracker
      *
-     * @param name The name of the tracker.
+     * @param stage_name The name of the stage.
+     * @param tracker_name The name of the tracker.
      * @param unit The unit of the tracker.
      * @param size The size of the tracker with default of 100.
      * @param is_optimized The switch of min/max methods of the tracker.
      * @return a shared pointer to the newly created tracker
      * @throw std::runtime_error if the tracker with that name is already registered.
      */
-    std::shared_ptr<StatTracker> add_tracker(std::string stage_name, std::string tracker_name, std::string unit, size_t size = 100,
+    std::shared_ptr<StatTracker> add_tracker(std::string stage_name, std::string tracker_name,
+                                             std::string unit, size_t size = 100,
                                              bool is_optimized = true);
 
     /**

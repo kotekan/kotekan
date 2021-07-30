@@ -64,7 +64,7 @@ void hexDump::main_thread() {
         // Add sample to trackers
         static int cnt = 0;
         tracker_0->add_sample(cnt++);
-        tracker_1->add_sample(cnt<<1);
+        tracker_1->add_sample(cnt << 1);
 
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
         frame_id++;

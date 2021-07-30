@@ -4,14 +4,9 @@
 #include "Config.hpp"          // for Config
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for kotekanLogging
-#include "visUtil.hpp"         // for StatTracker
-
-#include "json.hpp" // for json
 
 #include <atomic>      // for atomic_bool
 #include <functional>  // for function
-#include <map>         // for map
-#include <memory>      // for shared_ptr
 #include <mutex>       // for mutex
 #include <stdint.h>    // for uint32_t
 #include <string>      // for string
