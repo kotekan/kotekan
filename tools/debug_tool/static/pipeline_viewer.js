@@ -3,27 +3,63 @@ function isIE() { return ((navigator.appName == 'Microsoft Internet Explorer') |
 // Time between updating kotekan metrics
 const POLL_WAIT_TIME_MS = 1000;
 // Poll kotekan via web server every POLL_WAIT_TIME_MS and update page with new metrics
-function poll(label, index) {
-    get_data().then(function (new_buffers) {
-        update_buf_utl(new_buffers, label, index);
+function poll(buffer_labels, stage_labels) {
+    get_data("/buffers").then(function (new_buffers) {
+        update_buf_utl(new_buffers, buffer_labels);
     });
 
+    get_data("/cpu_ult").then(function (cpu_stats) {
+        update_cpu_utl(cpu_stats, stage_labels);
+    })
+
     // Call poll() again to get the next message
-    setTimeout(() => { poll(label, index); }, POLL_WAIT_TIME_MS);
+    setTimeout(() => { poll(buffer_labels, stage_labels); }, POLL_WAIT_TIME_MS);
 }
 
 // Update buffer utilization
-function update_buf_utl(new_buffers, label, index){
-    for (var i of index) {
-        var name = d3.select(label[0][i]).select("tspan").text();
-        d3.select(label[0][i]).select("#utl")
+function update_buf_utl(new_buffers, label){
+    label[0].reduce((pre, cur) => {
+        var el = d3.select(cur);
+        var name = el.select("tspan").text();
+        el.select("#utl")
             .text(new_buffers[name].num_full_frame + "/" + new_buffers[name].num_frames);
+    })
+}
+
+// Update stage utilization
+function update_cpu_utl(cpu_stats, label){
+    if ("error" in cpu_stats) {
+        return;
     }
+
+    label[0].reduce((pre, cur) => {
+        var el = d3.select(cur);
+        var name = el.select("tspan").text();
+        var tot_ult = 0, usr_ult = 0, sys_ult = 0;
+
+        d3.select(cpu_stats[name]).forEach((stage) => {
+            var threads = Object.keys(stage[0]);
+            for (tid of threads) {
+                var usr = stage[0][tid]["usr_cpu_ult"];
+                var sys = stage[0][tid]["sys_cpu_ult"];
+                usr_ult += usr;
+                sys_ult += sys;
+                tot_ult += usr + sys;
+            }
+        });
+        // Limit to two decimals
+        usr_ult = usr_ult.toFixed(2);
+        sys_ult = sys_ult.toFixed(2);
+        tot_ult = tot_ult.toFixed(2);
+
+        el.select("title").text("usr: " + usr_ult + "%; sys: " + sys_ult + "%");
+        el.select("#utl").text(tot_ult + "%");
+    }, 0)
 }
 
 // Read from endpoint /buffers to get buffer stats
-async function get_data() {
-    let response = await fetch("/buffers");
+async function get_data(endpoint = "/buffers") {
+    let response = await fetch(endpoint);
 
     if (response.status == 502) {
         // Status 502 is a connection timeout error,
@@ -64,7 +100,7 @@ class PipelineViewer {
         this.init_svg();
         this.parse_data();
         this.create_objs();
-        this.start_buff_ult();
+        this.start_ult();
     }
 
     init_svg() {
@@ -181,18 +217,18 @@ class PipelineViewer {
         this.#buffer_labels = this.#svg.selectAll(".buffer_labels")
             .data(this.#graph.buffers)
             .enter().append("text")
-            .attr("class", "label")
+            .attr("class", "buffer_labels")
             .call(this.#d3cola.drag);
 
         this.#stage_labels = this.#svg.selectAll(".stage_labels")
             .data(this.#graph.stages)
             .enter().append("text")
-            .attr("class", "label")
+            .attr("class", "stage_labels")
             .call(this.#d3cola.drag);
 
         var insertLinebreaks = function (d) {
             var el = d3.select(this);
-            var words = d.name.split('/');
+            var words = d.name.split(' ');
             var tspan_x = self.margin/2
 
             // The first line will be used to check if it is a buffer
@@ -266,25 +302,32 @@ class PipelineViewer {
         });
     }
 
-    start_buff_ult() {
-        // Add utilization for all buffers and record their index
-        // Index is used later to dynamically update buffer utilization
-        var index = [];
-        this.#buffer_labels[0].reduce((pre, cur, ind) => {
-            if (this.bufNames.includes(cur.textContent)) {
-                var el = d3.select(cur);
-                var tspan = el.append('tspan')
-                            .text(this.buffers[cur.textContent].num_full_frame + "/" + this.buffers[cur.textContent].num_frames)
-                tspan.attr('x', this.margin/2).attr('dy', '15')
-                        .attr("font-size", "15")
-                        .attr("id", "utl");
-                index.push(ind)
-            }
+    start_ult() {
+        // Add utilization for buffers
+        this.#buffer_labels[0].reduce((pre, cur) => {
+            var el = d3.select(cur);
+            var tspan = el.append('tspan')
+                        .text(this.buffers[cur.textContent].num_full_frame + "/" + this.buffers[cur.textContent].num_frames)
+            tspan.attr('x', this.margin/2).attr('dy', '15')
+                    .attr("font-size", "15")
+                    .attr("id", "utl");
+        }, 0)
+
+        // Add utilization for stages
+        this.#stage_labels[0].reduce((pre, cur) => {
+            var el = d3.select(cur);
+
+            // Add title as tooltip to show details when mouse moves over.
+            el.append("title").text("usr: 0%; sys: 0%");
+
+            var tspan = el.append('tspan').text("0%");
+            tspan.attr('x', this.margin/2).attr('dy', '15')
+                    .attr("font-size", "15")
+                    .attr("id", "utl");
         }, 0)
 
         // Start polling kotekan for metrics
-        var labels = this.#buffer_labels;
-        poll(labels, index);
+        poll(this.#buffer_labels, this.#stage_labels);
     }
 
 }
