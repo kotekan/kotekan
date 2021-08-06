@@ -5,16 +5,19 @@
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for basic_json<>::value_type, json, operator<<
 
-#include <chrono>     // for milliseconds, duration_cast, system_clock, system_clock::t...
+#include <chrono>     // for system_clock, system_clock::time_point
 #include <errno.h>    // for errno
+#include <exception>  // for exception
 #include <fstream>    // for ofstream, ostream
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
+#include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error
+#include <stdio.h>    // for sprintf
 #include <stdlib.h>   // for exit
-#include <time.h>
-#include <type_traits> // for enable_if<>::type
-#include <unistd.h>    // for gethostname
-#include <utility>     // for pair
+#include <time.h>     // for tm, localtime, time_t
+#include <unistd.h>   // for gethostname
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 namespace kotekan {
 

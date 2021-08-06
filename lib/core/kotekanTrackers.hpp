@@ -1,10 +1,11 @@
 #ifndef KOTEKAN_TRACKERS_HPP
 #define KOTEKAN_TRACKERS_HPP
 
+#include "Config.hpp"     // for Config
 #include "restServer.hpp" // for connectionInstance, restServer
 #include "visUtil.hpp"    // for StatTracker
 
-#include <map>      // for map
+#include <map>      // for map, map<>::value_compare
 #include <memory>   // for shared_ptr
 #include <mutex>    // for mutex
 #include <stddef.h> // for size_t
@@ -14,6 +15,27 @@ namespace kotekan {
 
 typedef std::map<std::string, std::shared_ptr<StatTracker>> stage_trackers_t;
 
+/**
+ * @class KotekanTrackers
+ * @brief Class to manage and keep tracking all registered stat trackers
+ *
+ * This class must be registered with a kotekan REST server instance by
+ * using the @c register_with_server() function.
+ *
+ * The usage is to call @c add_tracker() and save the returned shared pointer
+ * of created tracker in the calling stage. To add samples, call function
+ * @c add_sample() from that shared pointer.
+ *
+ * Two endpoints are used to display tracker content in json format. @c /trackers
+ * shows all samples and their timestamps, and @c /trackers_current gives
+ * min/max/avg/std stats of each tracker.
+ *
+ * To enable tracker dump when error occurs, set trackers->enabled to true and
+ * give a dump file path in trackers->dump_path. The dump file is named
+ * <hostname>_crash_stats_<time>.json.
+ *
+ * This class is a singleton, and can be accessed with @c instance()
+ */
 class KotekanTrackers {
 
 public:
