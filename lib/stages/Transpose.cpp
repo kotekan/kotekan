@@ -190,7 +190,7 @@ void Transpose::main_thread() {
             ti = 0;
 
             // export prometheus metric
-            transposed_bytes_metric.labels({}).inc(frame_size);
+            transposed_bytes_metric->labels({}).inc(frame_size);
         }
 
         frames_so_far++;
