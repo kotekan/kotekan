@@ -18,10 +18,18 @@ class KotekanTrackers {
 
 public:
     /**
-     * @brief Returns an instance of the kotekan trackers.
+     * @brief Set and apply the static config to KotekanTrackers
+     * @param config         The config.
      *
-     * @return Returns the kotekan trackers instance.
+     * @returns A reference to the global KotekanTrackers instance.
      */
+    static KotekanTrackers& instance(const kotekan::Config& config);
+
+    /**
+     * @brief Get the global KotekanTrackers.
+     *
+     * @returns A reference to the global KotekanTrackers instance.
+     **/
     static KotekanTrackers& instance();
 
     /**
@@ -58,7 +66,8 @@ public:
      * @param tracker_name The name of the tracker.
      * @param unit The unit of the tracker.
      * @param size The size of the tracker with default of 100.
-     * @param is_optimized The switch of min/max methods of the tracker.
+     * @param is_optimized The switch of min/max methods of the tracker(see statTracker for
+     * details).
      * @return a shared pointer to the newly created tracker
      * @throw std::runtime_error if the tracker with that name is already registered.
      */
@@ -86,16 +95,12 @@ public:
      */
     void dump_trackers();
 
-    /**
-     * @brief Set dump path.
-     *
-     * @param path The folder to store trackers_dump.json.
-     */
-    void set_path(std::string path);
-
 private:
     KotekanTrackers();
     ~KotekanTrackers();
+
+    // Generate a private static instance.
+    static KotekanTrackers& private_instance();
 
     // A map to store all trackers <stage_name, <tracker_name, tracker_ptr>>
     std::map<std::string, stage_trackers_t> trackers;

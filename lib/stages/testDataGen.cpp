@@ -72,7 +72,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
 
     // Create stat tracker
     kotekan::KotekanTrackers& KT = kotekan::KotekanTrackers::instance();
-    timer = KT.add_tracker(unique_name, "test_data_gen_timer", "sec");
+    timer = KT.add_tracker(unique_name, "frame_fill_time", "sec");
 }
 
 
