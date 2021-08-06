@@ -66,7 +66,7 @@ private:
     fingerprint_t fingerprint = fingerprint_t::null;
 
     // Count how often a bad input has been seen
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& bad_input_counter;
+    kotekan::prometheus::prometheus_counter_ptr_t bad_input_counter;
 };
 
 

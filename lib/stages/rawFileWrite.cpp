@@ -61,8 +61,8 @@ void rawFileWrite::main_thread() {
     const int full_path_len = 200;
     char full_path[full_path_len];
 
-    auto& write_time_metric =
-        Metrics::instance().add_gauge("kotekan_rawfilewrite_write_time_seconds", unique_name);
+    auto write_time_metric =
+        Metrics::instance().add_gauge("kotekan_rawfilewrite_write_time_seconds", unique_name, {});
     while (!stop_thread) {
 
         // This call is blocking.
@@ -136,7 +136,7 @@ void rawFileWrite::main_thread() {
         }
 
         double elapsed = current_time() - st;
-        write_time_metric.set(elapsed);
+        write_time_metric->labels({}).set(elapsed);
 
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
 

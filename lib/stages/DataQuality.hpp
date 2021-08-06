@@ -59,7 +59,7 @@ private:
     std::map<dset_id_t, fingerprint_t> dset_id_map;
 
     /// Prometheus metrics to export
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& data_quality_metric;
+    kotekan::prometheus::prometheus_gauge_ptr_t data_quality_metric;
 };
 
 #endif

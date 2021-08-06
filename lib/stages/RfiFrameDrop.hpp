@@ -102,9 +102,9 @@ private:
     datasetManager& dm = datasetManager::instance();
 
     /// Prometheus metrics to export
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& failing_frame_counter;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& dropped_frame_counter;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& frame_counter;
+    kotekan::prometheus::prometheus_counter_ptr_t failing_frame_counter;
+    kotekan::prometheus::prometheus_counter_ptr_t dropped_frame_counter;
+    kotekan::prometheus::prometheus_counter_ptr_t frame_counter;
 
     size_t num_elements;
     size_t num_sub_frames;

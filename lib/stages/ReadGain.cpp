@@ -167,7 +167,7 @@ void ReadGain::read_gain_frb() {
     ptr_myfile = fopen(filename, "rb");
     if (ptr_myfile == nullptr) {
         WARN("GPU Cannot open gain file {:s}", filename);
-        gains_last_update_success_metric.labels({"frb"}).set(0);
+        gains_last_update_success_metric->labels({"frb"}).set(0);
         for (uint i = 0; i < _num_elements; i++) {
             out_frame_frb[i * 2] = default_gains[0] * scaling;
             out_frame_frb[i * 2 + 1] = default_gains[1] * scaling;
@@ -177,13 +177,13 @@ void ReadGain::read_gain_frb() {
             WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
                  "gains",
                  filename);
-            gains_last_update_success_metric.labels({"frb"}).set(0);
+            gains_last_update_success_metric->labels({"frb"}).set(0);
             for (uint i = 0; i < _num_elements; i++) {
                 out_frame_frb[i * 2] = default_gains[0] * scaling;
                 out_frame_frb[i * 2 + 1] = default_gains[1] * scaling;
             }
         } else {
-            gains_last_update_success_metric.labels({"frb"}).set(1);
+            gains_last_update_success_metric->labels({"frb"}).set(1);
         }
         fclose(ptr_myfile);
         for (uint i = 0; i < _num_elements; i++) {
@@ -191,7 +191,7 @@ void ReadGain::read_gain_frb() {
             out_frame_frb[i * 2 + 1] = out_frame_frb[i * 2 + 1] * scaling;
         }
     }
-    gains_last_update_timestamp_metric.labels({"frb", ""}).set(start_time);
+    gains_last_update_timestamp_metric->labels({"frb", ""}).set(start_time);
     mark_frame_full(gain_frb_buf, unique_name.c_str(), gain_frb_buf_id);
     DEBUG("Maked gain_frb_buf frame {:d} full", gain_frb_buf_id);
     INFO("Time required to load FRB gains: {:f}", current_time() - start_time);
@@ -223,10 +223,10 @@ void ReadGain::read_gain_tracking() {
         INFO("Tracking Beamformer Loading gains from {:s}", filename);
         ptr_myfile = fopen(filename, "rb");
         std::string beam_label = "tracking_beam_" + std::to_string(beam_id);
-        gains_last_update_success_metric.labels({beam_label}).set(1);
+        gains_last_update_success_metric->labels({beam_label}).set(1);
         if (ptr_myfile == nullptr) {
             WARN("GPU Cannot open gain file {:s}", filename);
-            gains_last_update_success_metric.labels({beam_label}).set(0);
+            gains_last_update_success_metric->labels({beam_label}).set(0);
             for (uint i = 0; i < _num_elements; i++) {
                 tracking_beam_gains[(beam_id * _num_elements + i) * 2] = default_gains[0];
                 tracking_beam_gains[(beam_id * _num_elements + i) * 2 + 1] = default_gains[1];
@@ -238,7 +238,7 @@ void ReadGain::read_gain_tracking() {
                 WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
                      "gains",
                      filename);
-                gains_last_update_success_metric.labels({beam_label}).set(0);
+                gains_last_update_success_metric->labels({beam_label}).set(0);
                 for (uint i = 0; i < _num_elements; i++) {
                     tracking_beam_gains[(beam_id * _num_elements + i) * 2] = default_gains[0];
                     tracking_beam_gains[(beam_id * _num_elements + i) * 2 + 1] = default_gains[1];
@@ -246,7 +246,7 @@ void ReadGain::read_gain_tracking() {
             }
             fclose(ptr_myfile);
         }
-        gains_last_update_timestamp_metric.labels({"tracking", beam_label}).set(start_time);
+        gains_last_update_timestamp_metric->labels({"tracking", beam_label}).set(start_time);
     } // end beam
 
     // Copy the current set of gains to the output buffer frame.

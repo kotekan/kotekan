@@ -189,21 +189,17 @@ protected:
     uint64_t rx_shuffle_flags_set = 0;
 
     /// Prometheus metrics
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& third_shuffle_errors_counter;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& third_crc_errors_counter;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
-        third_missing_short_errors_counter;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& third_long_errors_counter;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
-        third_fifo_overflow_errors_counter;
+    kotekan::prometheus::prometheus_gauge_ptr_t third_shuffle_errors_counter;
+    kotekan::prometheus::prometheus_gauge_ptr_t third_crc_errors_counter;
+    kotekan::prometheus::prometheus_gauge_ptr_t third_missing_short_errors_counter;
+    kotekan::prometheus::prometheus_gauge_ptr_t third_long_errors_counter;
+    kotekan::prometheus::prometheus_gauge_ptr_t third_fifo_overflow_errors_counter;
 
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& second_shuffle_errors_counter;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& second_crc_errors_counter;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
-        second_missing_short_errors_counter;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& second_long_errors_counter;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
-        second_fifo_overflow_errors_counter;
+    kotekan::prometheus::prometheus_gauge_ptr_t second_shuffle_errors_counter;
+    kotekan::prometheus::prometheus_gauge_ptr_t second_crc_errors_counter;
+    kotekan::prometheus::prometheus_gauge_ptr_t second_missing_short_errors_counter;
+    kotekan::prometheus::prometheus_gauge_ptr_t second_long_errors_counter;
+    kotekan::prometheus::prometheus_gauge_ptr_t second_fifo_overflow_errors_counter;
 };
 
 iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& unique_name,
@@ -609,27 +605,27 @@ void iceBoardShuffle::update_stats() {
     std::string port_str = std::to_string(port);
 
     for (int i = 0; i < 8; ++i) {
-        third_shuffle_errors_counter.labels({port_str, std::to_string(i)})
+        third_shuffle_errors_counter->labels({port_str, std::to_string(i)})
             .set(fpga_third_stage_shuffle_errors[i]);
     }
 
-    third_crc_errors_counter.labels({port_str}).set(fpga_third_stage_crc_errors);
-    third_missing_short_errors_counter.labels({port_str})
+    third_crc_errors_counter->labels({port_str}).set(fpga_third_stage_crc_errors);
+    third_missing_short_errors_counter->labels({port_str})
         .set(fpga_third_stage_missing_short_errors);
-    third_long_errors_counter.labels({port_str}).set(fpga_third_stage_long_errors);
-    third_fifo_overflow_errors_counter.labels({port_str})
+    third_long_errors_counter->labels({port_str}).set(fpga_third_stage_long_errors);
+    third_fifo_overflow_errors_counter->labels({port_str})
         .set(fpga_third_stage_fifo_overflow_errors);
 
     for (int i = 0; i < 16; ++i) {
-        second_shuffle_errors_counter.labels({port_str, std::to_string(i)})
+        second_shuffle_errors_counter->labels({port_str, std::to_string(i)})
             .set(fpga_second_stage_shuffle_errors[i]);
     }
 
-    second_crc_errors_counter.labels({port_str}).set(fpga_second_stage_crc_errors);
-    second_missing_short_errors_counter.labels({port_str})
+    second_crc_errors_counter->labels({port_str}).set(fpga_second_stage_crc_errors);
+    second_missing_short_errors_counter->labels({port_str})
         .set(fpga_second_stage_missing_short_errors);
-    second_long_errors_counter.labels({port_str}).set(fpga_second_stage_long_errors);
-    second_fifo_overflow_errors_counter.labels({port_str})
+    second_long_errors_counter->labels({port_str}).set(fpga_second_stage_long_errors);
+    second_fifo_overflow_errors_counter->labels({port_str})
         .set(fpga_second_stage_fifo_overflow_errors);
 }
 

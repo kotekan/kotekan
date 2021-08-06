@@ -157,14 +157,14 @@ private:
     struct event_base* base;
 
     /// The number of frames dropped
-    kotekan::prometheus::Counter& dropped_frame_counter;
+    kotekan::prometheus::prometheus_counter_ptr_t dropped_frame_counter;
 
     /// A lock on the @c dropped_frame_counter
     // TODO: move locking to prometheusMetrics?
     std::mutex dropped_frame_count_mutex;
 
     /// Time to receive the data
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& transfer_time_seconds;
+    kotekan::prometheus::prometheus_gauge_ptr_t transfer_time_seconds;
 
     /// A lock on the `transfer_time_seconds`
     std::mutex transfer_time_seconds_mutex;

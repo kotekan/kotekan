@@ -131,7 +131,7 @@ private:
     uint8_t* droppacket;
 
     /// Count of masked packets
-    kotekan::prometheus::Counter& masked_packets_counter;
+    kotekan::prometheus::prometheus_counter_ptr_t masked_packets_counter;
 };
 
 #endif

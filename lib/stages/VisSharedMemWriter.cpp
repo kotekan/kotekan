@@ -136,7 +136,7 @@ void VisSharedMemWriter::wait_for_semaphore() {
 
 #endif
     wait_time_average.add_sample(current_time() - start_time);
-    access_record_wait_time_seconds.labels({_name}).set(wait_time_average.average());
+    access_record_wait_time_seconds->labels({_name}).set(wait_time_average.average());
     return;
 }
 
@@ -206,7 +206,7 @@ void VisSharedMemWriter::add_sample(const VisFrameView& frame, time_ctype t, uin
         INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (only accepting "
              "new times greater than {:d})",
              t.fpga_count, max_time.fpga_count);
-        dropped_frame_counter.labels({std::to_string(frame.freq_id), "order"}).inc();
+        dropped_frame_counter->labels({std::to_string(frame.freq_id), "order"}).inc();
         return;
     } else if (t < min_time) {
         // this data is older than anything else in the map, so we should
@@ -214,7 +214,7 @@ void VisSharedMemWriter::add_sample(const VisFrameView& frame, time_ctype t, uin
         INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (minimum in pool "
              "{:d})",
              t.fpga_count, min_time.fpga_count);
-        dropped_frame_counter.labels({std::to_string(frame.freq_id), "late"}).inc();
+        dropped_frame_counter->labels({std::to_string(frame.freq_id), "late"}).inc();
         return;
     }
 

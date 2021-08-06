@@ -444,7 +444,7 @@ private:
     restClient& _rest_client;
 
     // TODO: this should be a counter, but we don't have it using atomic Ints
-    kotekan::prometheus::Gauge& error_counter;
+    kotekan::prometheus::prometheus_gauge_ptr_t error_counter;
 };
 
 
@@ -568,7 +568,7 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
         PATH_REQUEST_STATE, js_request, _ds_broker_host, _ds_broker_port);
     if (!reply.first) {
         WARN_NON_OO("datasetManager: Failure requesting state from broker: {:s}", reply.second);
-        error_counter.set(++_conn_error_count);
+        error_counter->labels({}).set(++_conn_error_count);
         return nullptr;
     }
 
@@ -622,7 +622,7 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
         WARN_NON_OO("datasetManager: failure parsing reply received from broker after requesting "
                     "state (reply: {:s}): {:s}",
                     reply.second, e.what());
-        error_counter.set(++_conn_error_count);
+        error_counter->labels({}).set(++_conn_error_count);
         return nullptr;
     }
 }

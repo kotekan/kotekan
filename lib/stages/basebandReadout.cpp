@@ -140,10 +140,10 @@ void basebandReadout::main_thread() {
             uint32_t freq_id = tel.to_freq_id(buf, buf_frame);
 
             DEBUG("Initialize baseband metrics for freq_id: {:d}", freq_id);
-            readout_counter.labels({std::to_string(freq_id), "done"});
-            readout_counter.labels({std::to_string(freq_id), "error"});
-            readout_counter.labels({std::to_string(freq_id), "no_data"});
-            readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
+            readout_counter->labels({std::to_string(freq_id), "done"});
+            readout_counter->labels({std::to_string(freq_id), "error"});
+            readout_counter->labels({std::to_string(freq_id), "no_data"});
+            readout_in_progress_metric->labels({std::to_string(freq_id)}).set(0);
 
             INFO("Starting request-listening thread for freq_id: {:d}", freq_id);
             mgr = &basebandApiManager::instance().register_readout_stage(freq_id);
@@ -172,7 +172,7 @@ void basebandReadout::main_thread() {
 }
 
 void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutManager& mgr) {
-    auto& request_no_data_counter = readout_counter.labels({std::to_string(freq_id), "no_data"});
+    auto& request_no_data_counter = readout_counter->labels({std::to_string(freq_id), "no_data"});
 
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
@@ -273,7 +273,7 @@ void basebandReadout::writeout_thread(basebandReadoutManager& mgr) {
             throw std::runtime_error("Mismatched id - abort");
         }
         std::mutex& request_mtx = std::get<1>(*next_request);
-        readout_in_progress_metric.labels({std::to_string(dump_data.freq_id)}).set(1);
+        readout_in_progress_metric->labels({std::to_string(dump_data.freq_id)}).set(1);
 
         // first, get read access to the underlying BipBuffer segment
         BipBufferReader reader(data_buffer);
@@ -310,10 +310,10 @@ void basebandReadout::writeout_thread(basebandReadoutManager& mgr) {
             dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
                 std::chrono::system_clock::now());
             dump_status.reason = e.what();
-            readout_counter.labels({std::to_string(dump_data.freq_id), "error"}).inc();
+            readout_counter->labels({std::to_string(dump_data.freq_id), "error"}).inc();
         }
         reader.advance(*rr);
-        readout_in_progress_metric.labels({std::to_string(dump_data.freq_id)}).set(0);
+        readout_in_progress_metric->labels({std::to_string(dump_data.freq_id)}).set(0);
     }
 }
 
@@ -619,7 +619,7 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
         dump_status.state = basebandDumpStatus::State::DONE;
         dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
             std::chrono::system_clock::now());
-        readout_counter.labels({std::to_string(data.freq_id), "done"}).inc();
+        readout_counter->labels({std::to_string(data.freq_id), "done"}).inc();
         INFO("Baseband dump for event {:d}, freq {:d} complete.", data.event_id, data.freq_id);
     } else {
         std::lock_guard<std::mutex> lock(request_mtx);
@@ -627,7 +627,7 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
         dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
             std::chrono::system_clock::now());
         dump_status.reason = "Kotekan exit before write complete.";
-        readout_counter.labels({std::to_string(data.freq_id), "error"}).inc();
+        readout_counter->labels({std::to_string(data.freq_id), "error"}).inc();
         INFO("Baseband dump for event {:d}, freq {:d} incomplete.", data.event_id, data.freq_id);
     }
     // H5 file goes out of scope and is closed automatically.

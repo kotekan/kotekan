@@ -46,7 +46,7 @@ BaseWriter::BaseWriter(Config& config, const std::string& unique_name,
     bad_dataset_frame_counter(Metrics::instance().add_counter(
         "kotekan_writer_bad_dataset_frame_total", unique_name, {"dataset_id"})),
     write_time_metric(
-        Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name)) {
+        Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name, {})) {
 
     // Fetch any simple configuration
     root_path = config.get_default<std::string>(unique_name, "root_path", ".");
@@ -177,7 +177,7 @@ void BaseWriter::write_frame(const FrameView& frame, dset_id_t dataset_id, uint3
 
     // If the dataset is bad, skip the frame and move onto the next
     if (acq.bad_dataset) {
-        bad_dataset_frame_counter.labels({dataset_id.to_string()}).inc();
+        bad_dataset_frame_counter->labels({dataset_id.to_string()}).inc();
 
         // Check if the frequency we are receiving is on the list of frequencies
         // we are processing
@@ -210,12 +210,12 @@ void BaseWriter::write_frame(const FrameView& frame, dset_id_t dataset_id, uint3
 
         // Increase metric count if we dropped a frame at write time
         if (late) {
-            late_frame_counter.labels({std::to_string(freq_id)}).inc();
+            late_frame_counter->labels({std::to_string(freq_id)}).inc();
         }
 
         // Update average write time in prometheus
         write_time.add_sample(elapsed);
-        write_time_metric.set(write_time.average());
+        write_time_metric->labels({}).set(write_time.average());
     }
 }
 

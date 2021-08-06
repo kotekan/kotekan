@@ -115,12 +115,12 @@ void BadInputFlag::main_thread() {
             // it to Prometheus
             if (frame.flags[i] != 0) {
                 if (std::isinf(frame.weight[auto_ind])) {
-                    bad_input_counter.labels({std::to_string(i), "Inf"}).inc();
+                    bad_input_counter->labels({std::to_string(i), "Inf"}).inc();
                     // TODO: post dataset state changes and turn this on
                     // frame.flags[i] = 0;
 
                 } else if (std::isnan(frame.weight[auto_ind])) {
-                    bad_input_counter.labels({std::to_string(i), "NaN"}).inc();
+                    bad_input_counter->labels({std::to_string(i), "NaN"}).inc();
                     // TODO: post dataset state changes and turn this on
                     // frame.flags[i] = 0;
                 }

@@ -40,7 +40,7 @@ EigenVisIter::EigenVisIter(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&EigenVisIter::main_thread, this)),
     comp_time_seconds_metric(
-        Metrics::instance().add_gauge("kotekan_eigenvisiter_comp_time_seconds", unique_name)),
+        Metrics::instance().add_gauge("kotekan_eigenvisiter_comp_time_seconds", unique_name, {})),
     eigenvalue_metric(Metrics::instance().add_gauge("kotekan_eigenvisiter_eigenvalue", unique_name,
                                                     {"eigenvalue", "freq_id"})),
     iterations_metric(
@@ -200,7 +200,7 @@ void EigenVisIter::update_metrics(uint32_t freq_id, dset_id_t dset_id, double el
     auto key = std::make_pair(freq_id, dset_id);
     auto& calc_time = calc_time_map[key];
     calc_time.add_sample(elapsed_time);
-    comp_time_seconds_metric.set(calc_time.average());
+    comp_time_seconds_metric->labels({}).set(calc_time.average());
 
     // Output eigenvalues to prometheus
     for (uint32_t i = 0; i < _num_eigenvectors; i++) {

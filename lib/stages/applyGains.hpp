@@ -155,9 +155,9 @@ private:
     std::mutex m_frame_ids;
 
     // Prometheus metrics
-    kotekan::prometheus::Gauge& update_age_metric;
-    kotekan::prometheus::Counter& late_update_counter;
-    kotekan::prometheus::Counter& late_frames_counter;
+    kotekan::prometheus::prometheus_gauge_ptr_t update_age_metric;
+    kotekan::prometheus::prometheus_counter_ptr_t late_update_counter;
+    kotekan::prometheus::prometheus_counter_ptr_t late_frames_counter;
 
     /// Read the gain file from disk
     std::optional<GainData> read_gain_file(std::string update_id) const;

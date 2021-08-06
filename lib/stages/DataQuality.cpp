@@ -121,7 +121,7 @@ void DataQuality::main_thread() {
         }
 
         std::vector<std::string> labels = {std::to_string(frame.freq_id)};
-        data_quality_metric.labels(labels).set(sensitivity);
+        data_quality_metric->labels(labels).set(sensitivity);
 
         // Finish up iteration.
         mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id++);

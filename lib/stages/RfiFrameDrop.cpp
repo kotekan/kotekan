@@ -197,7 +197,7 @@ void RfiFrameDrop::main_thread() {
                 if (sk_exceeds_copy.at(kk) > num_sk.at(kk)) {
                     skip = true;
                     failing_frame_counter
-                        .labels({std::to_string(freq_id), std::to_string(thresholds.at(kk).first),
+                        ->labels({std::to_string(freq_id), std::to_string(thresholds.at(kk).first),
                                  std::to_string(thresholds.at(kk).second)})
                         .inc();
                 }
@@ -217,11 +217,11 @@ void RfiFrameDrop::main_thread() {
                 set_dataset_id(_buf_out, frame_id_out, dset_id_out);
                 mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
             } else {
-                dropped_frame_counter.labels({std::to_string(freq_id)}).inc();
+                dropped_frame_counter->labels({std::to_string(freq_id)}).inc();
             }
 
             mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
-            frame_counter.labels({std::to_string(freq_id)}).inc();
+            frame_counter->labels({std::to_string(freq_id)}).inc();
         }
         mark_frame_empty(_buf_in_sk, unique_name.c_str(), frame_id_in_sk++);
     }

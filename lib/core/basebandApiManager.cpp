@@ -101,7 +101,7 @@ basebandApiManager::basebandApiManager() :
     // clang-format off
     request_counter(
         prometheus::Metrics::instance()
-        .add_counter("kotekan_baseband_requests_total", "baseband")
+        .add_counter("kotekan_baseband_requests_total", "baseband", {})
         ) // clang-format on
 {}
 
@@ -241,7 +241,7 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
                                                      {"length_fpga", readout_slice.length_fpga}};
         }
 
-        request_counter.inc();
+        request_counter->labels({}).inc();
 
         conn.send_json_reply(response);
     } catch (const std::exception& ex) {

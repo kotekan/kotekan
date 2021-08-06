@@ -58,7 +58,7 @@ void timeDownsample::main_thread() {
     uint64_t fpga_seq_start = 0;
     int32_t freq_id = -1; // needs to be set by first frame
 
-    auto& skipped_frame_counter = Metrics::instance().add_counter(
+    auto skipped_frame_counter = Metrics::instance().add_counter(
         "kotekan_timedownsample_skipped_frame_total", unique_name, {"freq_id", "reason"});
 
     while (!stop_thread) {
@@ -96,7 +96,7 @@ void timeDownsample::main_thread() {
         // Don't start accumulating unless at the start of window
         if (nframes == 0 and wdw_pos != 0) {
             // Skip this frame
-            skipped_frame_counter.labels({std::to_string(freq_id), "alignment"}).inc();
+            skipped_frame_counter->labels({std::to_string(freq_id), "alignment"}).inc();
             mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
             continue;
         } else if (nframes == 0) { // Start accumulating frames
@@ -157,7 +157,7 @@ void timeDownsample::main_thread() {
 
             timespec output_age = std::get<1>(frame.time) - std::get<1>(output_frame.time);
             if (ts_to_double(output_age) > max_age) {
-                skipped_frame_counter.labels({std::to_string(freq_id), "age"}).inc();
+                skipped_frame_counter->labels({std::to_string(freq_id), "age"}).inc();
                 nframes = 0;
                 continue;
             }

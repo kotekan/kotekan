@@ -36,8 +36,8 @@ void invalidateVDIFframes::main_thread() {
     uint32_t frame_location;
     int64_t lost_samples;
 
-    auto& lost_frame_total =
-        Metrics::instance().add_counter("kotekan_vdif_lost_frames_total", unique_name);
+    auto lost_frame_total =
+        Metrics::instance().add_counter("kotekan_vdif_lost_frames_total", unique_name, {});
 
     while (!stop_thread) {
 
@@ -70,7 +70,7 @@ void invalidateVDIFframes::main_thread() {
         }
 
         atomic_add_lost_timesamples(out_buf, out_buf_frame_id, lost_samples);
-        lost_frame_total.inc(lost_samples);
+        lost_frame_total->labels({}).inc(lost_samples);
 
         mark_frame_empty(lost_samples_buf, unique_name.c_str(), lost_samples_buf_frame_id);
         lost_samples_buf_frame_id = (lost_samples_buf_frame_id + 1) % lost_samples_buf->num_frames;

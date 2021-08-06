@@ -23,7 +23,7 @@ datasetManager::datasetManager() :
     _config_applied(false),
     _rest_client(restClient::instance()),
     error_counter(kotekan::prometheus::Metrics::instance().add_gauge(
-        "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME)) {
+        "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, {})) {
 
     kotekan::restServer::instance().register_get_callback(
         DS_FORCE_UPDATE_ENDPOINT_NAME,
@@ -212,7 +212,7 @@ void datasetManager::request_thread(const json&& request, const std::string&& en
             // Parsing errors are reported by the parsing function.
         } else {
             // Complain and retry...
-            error_counter.set(++_conn_error_count);
+            error_counter->labels({}).set(++_conn_error_count);
             WARN_NON_OO("datasetManager: Failure in connection to broker: {:s}:{:d}/{:s}. Make "
                         "sure the broker is running.",
                         _ds_broker_host, _ds_broker_port, endpoint);
@@ -240,7 +240,7 @@ bool datasetManager::register_state_parser(std::string& reply) {
         WARN_NON_OO("datasetManager: failure parsing reply received from broker after "
                     "registering dataset state (reply: {:s}): {:s}",
                     reply, e.what());
-        error_counter.set(++_conn_error_count);
+        error_counter->labels({}).set(++_conn_error_count);
         return false;
     }
 
@@ -283,7 +283,7 @@ bool datasetManager::register_state_parser(std::string& reply) {
     } catch (std::exception& e) {
         WARN_NON_OO("datasetManager: failure registering dataset state with broker: {:s}",
                     e.what());
-        error_counter.set(++_conn_error_count);
+        error_counter->labels({}).set(++_conn_error_count);
         return false;
     }
     return true;
@@ -302,7 +302,7 @@ bool datasetManager::send_state_parser(std::string& reply) {
         WARN_NON_OO("datasetManager: failure parsing reply received from broker "
                     "after sending dataset state (reply: {:s}): {:s}",
                     reply, e.what());
-        error_counter.set(++_conn_error_count);
+        error_counter->labels({}).set(++_conn_error_count);
         return false;
     }
 }
@@ -339,7 +339,7 @@ bool datasetManager::register_dataset_parser(std::string& reply) {
         WARN_NON_OO("datasetManager: failure parsing reply received from broker "
                     "after registering dataset (reply: {:s}): {:s}",
                     reply, e.what());
-        error_counter.set(++_conn_error_count);
+        error_counter->labels({}).set(++_conn_error_count);
         return false;
     }
 }
@@ -462,7 +462,7 @@ bool datasetManager::parse_reply_dataset_update(restClient::restReply reply) {
     if (!reply.first) {
         WARN_NON_OO("datasetManager: Failure requesting update on datasets from broker: {:s}",
                     reply.second);
-        error_counter.set(++_conn_error_count);
+        error_counter->labels({}).set(++_conn_error_count);
         return false;
     }
 
@@ -489,7 +489,7 @@ bool datasetManager::parse_reply_dataset_update(restClient::restReply reply) {
                             "requesting dataset update: the following exception was thrown when "
                             "parsing dataset {:s} with ID {:s}: {:s}",
                             ds.value().dump(4), ds.key(), e.what());
-                error_counter.set(++_conn_error_count);
+                error_counter->labels({}).set(++_conn_error_count);
                 return false;
             }
         }
@@ -497,7 +497,7 @@ bool datasetManager::parse_reply_dataset_update(restClient::restReply reply) {
         WARN_NON_OO("datasetManager: failure parsing reply received from broker "
                     "after requesting dataset update (reply: {:s}): {:s}",
                     reply.second, e.what());
-        error_counter.set(++_conn_error_count);
+        error_counter->labels({}).set(++_conn_error_count);
         return false;
     }
 

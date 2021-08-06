@@ -129,11 +129,10 @@ private:
     float* tracking_beam_gains;
 
     /// implements `kotekan_gains_last_update_success`
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& gains_last_update_success_metric;
+    kotekan::prometheus::prometheus_gauge_ptr_t gains_last_update_success_metric;
 
     /// implements `kotekan_gains_last_update_timestamp`
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
-        gains_last_update_timestamp_metric;
+    kotekan::prometheus::prometheus_gauge_ptr_t gains_last_update_timestamp_metric;
 };
 
 

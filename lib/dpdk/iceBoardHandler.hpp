@@ -331,19 +331,17 @@ protected:
     int32_t num_local_freq;
 
     /// Prometheus metrics
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_packets_total_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_samples_total_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_lost_packets_total_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& lost_samples_total_metric;
+    kotekan::prometheus::prometheus_gauge_ptr_t rx_packets_total_metric;
+    kotekan::prometheus::prometheus_gauge_ptr_t rx_samples_total_metric;
+    kotekan::prometheus::prometheus_gauge_ptr_t rx_lost_packets_total_metric;
+    kotekan::prometheus::prometheus_gauge_ptr_t lost_samples_total_metric;
 
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_bytes_total_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_errors_total_metric;
+    kotekan::prometheus::prometheus_gauge_ptr_t rx_bytes_total_metric;
+    kotekan::prometheus::prometheus_gauge_ptr_t rx_errors_total_metric;
 
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& rx_ip_cksum_errors_total_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
-        rx_packet_len_errors_total_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
-        rx_out_of_order_errors_total_metric;
+    kotekan::prometheus::prometheus_gauge_ptr_t rx_ip_cksum_errors_total_metric;
+    kotekan::prometheus::prometheus_gauge_ptr_t rx_packet_len_errors_total_metric;
+    kotekan::prometheus::prometheus_gauge_ptr_t rx_out_of_order_errors_total_metric;
 
 private:
     // Last time we've printed a status message
@@ -447,18 +445,18 @@ inline void iceBoardHandler::update_stats() {
 
     std::vector<std::string> port_label = {std::to_string(port)};
 
-    rx_packets_total_metric.labels(port_label).set(rx_packets_total);
-    rx_samples_total_metric.labels(port_label).set(rx_packets_total * samples_per_packet);
-    rx_lost_packets_total_metric.labels(port_label)
+    rx_packets_total_metric->labels(port_label).set(rx_packets_total);
+    rx_samples_total_metric->labels(port_label).set(rx_packets_total * samples_per_packet);
+    rx_lost_packets_total_metric->labels(port_label)
         .set((int)(rx_lost_samples_total / samples_per_packet));
-    lost_samples_total_metric.labels(port_label).set(rx_lost_samples_total);
+    lost_samples_total_metric->labels(port_label).set(rx_lost_samples_total);
 
-    rx_bytes_total_metric.labels(port_label).set(rx_bytes_total);
-    rx_errors_total_metric.labels(port_label).set(rx_errors_total);
+    rx_bytes_total_metric->labels(port_label).set(rx_bytes_total);
+    rx_errors_total_metric->labels(port_label).set(rx_errors_total);
 
-    rx_ip_cksum_errors_total_metric.labels(port_label).set(rx_ip_cksum_errors_total);
-    rx_packet_len_errors_total_metric.labels(port_label).set(rx_packet_len_errors_total);
-    rx_out_of_order_errors_total_metric.labels(port_label).set(rx_out_of_order_errors_total);
+    rx_ip_cksum_errors_total_metric->labels(port_label).set(rx_ip_cksum_errors_total);
+    rx_packet_len_errors_total_metric->labels(port_label).set(rx_packet_len_errors_total);
+    rx_out_of_order_errors_total_metric->labels(port_label).set(rx_out_of_order_errors_total);
 
     double time_now = e_time();
     if (status_cadence != 0 && (time_now - last_status_message_time) > (double)status_cadence) {

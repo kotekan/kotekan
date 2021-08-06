@@ -170,6 +170,11 @@ private:
     std::mutex metrics_lock;
 };
 
+typedef std::shared_ptr<kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>>
+    prometheus_gauge_ptr_t;
+typedef std::shared_ptr<kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>>
+    prometheus_counter_ptr_t;
+
 /**
  * @class Metrics
  * @brief Class for exporting system metrics to a prometheus server
@@ -234,36 +239,16 @@ public:
     std::string serialize();
 
     /**
-     * @brief Adds a new metric of type gauge and no labels
-     *
-     * @param name The name of the metric.
-     * @param stage_name The unique stage name, normally @c unique_name.
-     * @return a reference to the newly created @c Gauge instance
-     * @throw std::runtime_error if the metric with that name is already registered.
-     */
-    Gauge& add_gauge(const std::string& name, const std::string& stage_name);
-
-    /**
      * @brief Adds a new metric family of type gauge
      *
      * @param name The name of the metric.
      * @param stage_name The unique stage name, normally @c unique_name.
      * @param label_names The names of the labels used
-     * @return a reference to the newly created @c MetricFamily<Gauge> instance
+     * @return a shared pointer to the newly created @c MetricFamily<Gauge> object
      * @throw std::runtime_error if the metric with that name is already registered.
      */
-    MetricFamily<Gauge>& add_gauge(const std::string& name, const std::string& stage_name,
-                                   const std::vector<std::string>& label_names);
-
-    /**
-     * @brief Adds a new metric of type counter and no labels
-     *
-     * @param name The name of the metric.
-     * @param stage_name The unique stage name, normally @c unique_name.
-     * @return a reference to the newly created @c Counter instance
-     * @throw std::runtime_error if the metric with that name is already registered.
-     */
-    Counter& add_counter(const std::string& name, const std::string& stage_name);
+    prometheus_gauge_ptr_t add_gauge(const std::string& name, const std::string& stage_name,
+                                     const std::vector<std::string>& label_names);
 
     /**
      * @brief Adds a new metric family of type counter
@@ -271,11 +256,11 @@ public:
      * @param name The name of the metric.
      * @param stage_name The unique stage name, normally @c unique_name.
      * @param label_names The names of the labels used
-     * @return a reference to the newly created @c MetricFamily<Counter> instance
+     * @return a shared pointer to the newly created @c MetricFamily<Counter> object
      * @throw std::runtime_error if the metric with that name is already registered.
      */
-    MetricFamily<Counter>& add_counter(const std::string& name, const std::string& stage_name,
-                                       const std::vector<std::string>& label_names);
+    prometheus_counter_ptr_t add_counter(const std::string& name, const std::string& stage_name,
+                                         const std::vector<std::string>& label_names);
 
     /**
      * @brief Remove all registered stage metrics

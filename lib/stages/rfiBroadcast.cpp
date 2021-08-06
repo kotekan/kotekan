@@ -231,8 +231,8 @@ void rfiBroadcast::main_thread() {
             // Increment the prometheus metrics for the total number of samples and the total number
             // of flagged samples
             uint32_t current_freq_bin = tel.to_freq_id(StreamIDs[0]);
-            sample_counter.labels({std::to_string(current_freq_bin)}).inc(sk_samples_per_frame);
-            flagged_sample_counter.labels({std::to_string(current_freq_bin)}).inc(mask_total);
+            sample_counter->labels({std::to_string(current_freq_bin)}).inc(sk_samples_per_frame);
+            flagged_sample_counter->labels({std::to_string(current_freq_bin)}).inc(mask_total);
 
             // TODO JSW: Handle num_local_freq > 1
             freq_bins[0] = current_freq_bin;

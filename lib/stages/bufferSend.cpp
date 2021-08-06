@@ -41,7 +41,8 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferSend::main_thread, this)),
     dropped_frame_counter(
-        Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count", unique_name)) {
+        Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count", unique_name,
+                                        {})) {
 
     buf = get_buffer("buf");
     register_consumer(buf, unique_name.c_str());
@@ -86,11 +87,11 @@ void bufferSend::main_thread() {
             INFO("Number of full frames in buffer {:s} is {:d} (total frames: {:d}), dropping "
                  "frame_id {:d}",
                  buf->buffer_name, num_full_frames, buf->num_frames, frame_id);
-            dropped_frame_counter.inc();
+            dropped_frame_counter->labels({}).inc();
         } else if (drop_frames && !connected) {
             INFO("Dropping frame {:s}[{:d}], because connection to {:s}:{:d} is down.",
                  buf->buffer_name, frame_id, server_ip, server_port);
-            dropped_frame_counter.inc();
+            dropped_frame_counter->labels({}).inc();
         } else if (connected) {
             // Send header
             struct bufferFrameHeader header;

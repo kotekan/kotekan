@@ -66,11 +66,11 @@ applyGains::applyGains(Config& config, const std::string& unique_name,
     frame_id_in(in_buf),
     frame_id_out(out_buf),
     update_age_metric(
-        Metrics::instance().add_gauge("kotekan_applygains_update_age_seconds", unique_name)),
+        Metrics::instance().add_gauge("kotekan_applygains_update_age_seconds", unique_name, {})),
     late_update_counter(
-        Metrics::instance().add_counter("kotekan_applygains_late_update_count", unique_name)),
+        Metrics::instance().add_counter("kotekan_applygains_late_update_count", unique_name, {})),
     late_frames_counter(
-        Metrics::instance().add_counter("kotekan_applygains_late_frame_count", unique_name)),
+        Metrics::instance().add_counter("kotekan_applygains_late_frame_count", unique_name, {})),
     client(restClient::instance()) {
 
     // Setup the input buffer
@@ -139,7 +139,7 @@ bool applyGains::receive_update(json& json) {
         WARN("applyGains: Received update with a timestamp that is older "
              "than the current frame (The difference is {:f} s).",
              ts_to_double(ts_frame.load()) - new_ts);
-        late_update_counter.inc();
+        late_update_counter->labels({}).inc();
     }
 
     // receive new gains update
@@ -269,7 +269,7 @@ void applyGains::apply_thread() {
 
         // Report number of frames received late and skip the frame entirely
         if (late) {
-            late_frames_counter.inc();
+            late_frames_counter->labels({}).inc();
             std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
             mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
             input_frame_id = frame_id_in++;
@@ -332,7 +332,7 @@ void applyGains::apply_thread() {
         }
 
         // Report how old the gains being applied to the current data are.
-        update_age_metric.set(age);
+        update_age_metric->labels({}).set(age);
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);

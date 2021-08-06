@@ -118,8 +118,8 @@ private:
     /// Moving average of frame zeroing percentage to send to prometheus
     movingAverage perc_zeroed;
     /// Prometheus metrics to export
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& sample_counter;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& flagged_sample_counter;
+    kotekan::prometheus::prometheus_counter_ptr_t sample_counter;
+    kotekan::prometheus::prometheus_counter_ptr_t flagged_sample_counter;
 };
 
 #endif
