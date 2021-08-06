@@ -53,7 +53,7 @@ function update_cpu_utl(cpu_stats, label){
         tot_ult = tot_ult.toFixed(2);
 
         el.select("title").text("usr: " + usr_ult + "%; sys: " + sys_ult + "%");
-        el.select("#utl").text(tot_ult + "%");
+        el.select("#utl").text("CPU: " + tot_ult + "%");
     }, 0)
 }
 
@@ -331,4 +331,3 @@ class PipelineViewer {
     }
 
 }
-
