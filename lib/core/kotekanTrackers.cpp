@@ -3,13 +3,17 @@
 #include "kotekanLogging.hpp" // for ERROR_NON_OO
 
 #include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json, basic_json<>::value_type
+#include "json.hpp" // for basic_json<>::value_type, json, operator<<
 
-#include <fstream>
-#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
-#include <stdexcept>  // for runtime_error
-#include <unistd.h>
-#include <utility> // for pair
+#include <chrono>      // for milliseconds, duration_cast, system_clock, system_clock::t...
+#include <errno.h>     // for errno
+#include <fstream>     // for ofstream, ostream
+#include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
+#include <stdexcept>   // for runtime_error
+#include <stdlib.h>    // for exit
+#include <type_traits> // for enable_if<>::type
+#include <unistd.h>    // for gethostname
+#include <utility>     // for pair
 
 namespace kotekan {
 
