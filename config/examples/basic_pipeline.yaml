@@ -7,6 +7,9 @@ trackers_dump:
   enabled: true
   path: ./
 
+cpu_monitor:
+  enabled: false
+
 main_pool:
   kotekan_metadata_pool: chimeMetadata
   num_metadata_objects: 30
