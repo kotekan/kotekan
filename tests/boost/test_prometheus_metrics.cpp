@@ -61,7 +61,7 @@ BOOST_AUTO_TEST_CASE(remove_stage_metrics) {
     metrics.remove_stage_metrics("foos");
     BOOST_CHECK(metrics.serialize() == "");
 
-    metrics.add_counter("foo_metric", "foo",  {});
+    metrics.add_counter("foo_metric", "foo", {});
     metrics.add_counter("foo_metric", "foos", {});
     auto multi_metrics = metrics.serialize();
     BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foo\"} 0") != std::string::npos);
@@ -131,7 +131,7 @@ BOOST_AUTO_TEST_CASE(gauges_with_labels) {
     m1->labels({"baz"}).set(10); // a different label value of the same metric
 
     auto m2 = metrics.add_gauge("bar_with_labels", "foo",
-                                 {"quux"}); // a different label value of the same metric
+                                {"quux"}); // a different label value of the same metric
     m2->labels({"baz"}).set(42);
 
     auto multi_metrics = metrics.serialize();

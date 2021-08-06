@@ -144,11 +144,11 @@ void visTestPattern::main_thread() {
     auto bad_values_counter = Metrics::instance().add_gauge(
         "kotekan_vistestpattern_bad_values_total", unique_name, {"name", "freq_id"});
     auto avg_error_metric = Metrics::instance().add_gauge("kotekan_vistestpattern_avg_error",
-                                                           unique_name, {"name", "freq_id"});
+                                                          unique_name, {"name", "freq_id"});
     auto min_error_metric = Metrics::instance().add_gauge("kotekan_vistestpattern_min_error",
-                                                           unique_name, {"name", "freq_id"});
+                                                          unique_name, {"name", "freq_id"});
     auto max_error_metric = Metrics::instance().add_gauge("kotekan_vistestpattern_max_error",
-                                                           unique_name, {"name", "freq_id"});
+                                                          unique_name, {"name", "freq_id"});
     auto fpga_sequence_number_metric = Metrics::instance().add_gauge(
         "kotekan_vistestpattern_fpga_sequence_number", unique_name, {"name", "freq_id"});
     auto ctime_seconds_metric = Metrics::instance().add_gauge(

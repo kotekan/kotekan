@@ -44,8 +44,8 @@ ReceiveFlags::ReceiveFlags(Config& config, const std::string& unique_name,
         Metrics::instance().add_counter("kotekan_receiveflags_late_frame_count", unique_name, {})),
     receiveflags_update_age_metric(
         Metrics::instance().add_gauge("kotekan_receiveflags_update_age_seconds", unique_name, {})),
-    late_updates_counter(
-        Metrics::instance().add_counter("kotekan_receiveflags_late_update_count", unique_name, {})) {
+    late_updates_counter(Metrics::instance().add_counter("kotekan_receiveflags_late_update_count",
+                                                         unique_name, {})) {
     // Setup the buffers
     buf_in = get_buffer("in_buf");
     buf_out = get_buffer("out_buf");

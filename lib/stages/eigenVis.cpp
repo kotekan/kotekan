@@ -244,7 +244,7 @@ void eigenVis::main_thread() {
         for (uint32_t i = 0; i < num_eigenvectors; i++) {
             eigenvalue_metric
                 ->labels({std::to_string(i), std::to_string(freq_id),
-                         input_frame.dataset_id.to_string()})
+                          input_frame.dataset_id.to_string()})
                 .set(evals[num_eigenvectors - 1 - i]);
         }
 
