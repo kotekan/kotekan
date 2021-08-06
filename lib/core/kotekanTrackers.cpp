@@ -8,7 +8,8 @@
 #include <fstream>
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
 #include <stdexcept>  // for runtime_error
-#include <utility>    // for pair
+#include <unistd.h>
+#include <utility> // for pair
 
 namespace kotekan {
 
@@ -122,9 +123,22 @@ void KotekanTrackers::dump_trackers() {
         }
     }
 
-    std::ofstream dump_file(dump_path + "/trackers_dump.json");
+    char* host_name = new char[20];
+    int ret = gethostname(host_name, sizeof(host_name));
+    if (ret == -1) {
+        ERROR_NON_OO("Error from gethostname()");
+        exit(errno);
+    }
+
+    std::chrono::system_clock::time_point timestamp = std::chrono::system_clock::now();
+    std::string time = std::to_string(
+        std::chrono::duration_cast<std::chrono::milliseconds>(timestamp.time_since_epoch())
+            .count());
+
+    std::ofstream dump_file(dump_path + "/" + std::string(host_name) + "_" + time + ".json");
     if (dump_file.is_open()) {
         dump_file << return_json;
+        dump_file.close();
     } else {
         ERROR_NON_OO("Cannot read tracker dump path {:s}. Exiting.", dump_path);
         throw std::runtime_error(

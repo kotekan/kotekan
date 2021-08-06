@@ -4,9 +4,7 @@
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
-#include "visUtil.hpp"         // for StatTracker
 
-#include <memory>   // for shared_ptr
 #include <stdint.h> // for int32_t
 #include <string>   // for string
 
@@ -33,10 +31,6 @@ private:
     struct Buffer* in_buf;
     int32_t _len;
     int32_t _offset;
-
-    // kotekan trackers example
-    std::shared_ptr<StatTracker> tracker_0;
-    std::shared_ptr<StatTracker> tracker_1;
 };
 
 #endif
