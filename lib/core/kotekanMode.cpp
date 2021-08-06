@@ -90,11 +90,7 @@ void kotekanMode::initalize_stages() {
     Telescope::instance(config);
 
     // Create and register kotekan trackers before stages created
-    KotekanTrackers::instance().register_with_server(&restServer::instance());
-    if (config.get_default<bool>("/trackers_dump", "enabled", false)) {
-        KotekanTrackers::instance().set_path(
-            config.get_default<std::string>("/trackers_dump", "path", "./"));
-    }
+    KotekanTrackers::instance(config).register_with_server(&restServer::instance());
 
     // Create Metadata Pool
     metadataFactory metadata_factory(config);
