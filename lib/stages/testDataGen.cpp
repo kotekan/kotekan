@@ -204,7 +204,7 @@ void testDataGen::main_thread() {
         if (wait) {
             double time = current_time();
             double frame_end_time = start_time + frame_length;
-            timer->add_sample(frame_end_time);
+            timer->add_sample(time - start_time);
             if (time < frame_end_time)
                 usleep((int)(1e6 * (frame_end_time - time)));
         }
