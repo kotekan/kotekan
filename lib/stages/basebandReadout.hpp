@@ -113,8 +113,8 @@ private:
     /// baseband data array
     BipBuffer data_buffer;
 
-    kotekan::prometheus::MetricFamily::prometheus_counter_ptr_t readout_counter;
-    kotekan::prometheus::MetricFamily::prometheus_gauge_ptr_t readout_in_progress_metric;
+    kotekan::prometheus::prometheus_counter_ptr_t readout_counter;
+    kotekan::prometheus::prometheus_gauge_ptr_t readout_in_progress_metric;
 };
 
 #endif

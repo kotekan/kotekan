@@ -36,7 +36,7 @@ BOOST_AUTO_TEST_CASE(simple_metrics) {
     auto bazinf = metrics.add_gauge("bazinf_metric", "foos", {}); // a metric with inf
     bazinf->labels({}).set(log(0));
 
-    foo.inc();
+    foo->labels({}).inc();
     auto multi_metrics = metrics.serialize();
 
     // new value
@@ -86,8 +86,8 @@ BOOST_AUTO_TEST_CASE(remove_stage_metrics) {
     BOOST_CHECK(metrics.serialize() == "");
 
     // re-adding metrics from stages that were deleted once is also OK
-    metrics.add_counter("foo_metric", "foo");
-    metrics.add_counter("foo_metric", "foos");
+    metrics.add_counter("foo_metric", "foo", {});
+    metrics.add_counter("foo_metric", "foos", {});
     multi_metrics = metrics.serialize();
     BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foo\"} 0") != std::string::npos);
     BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foos\"} 0") != std::string::npos);
