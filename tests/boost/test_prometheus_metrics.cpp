@@ -103,8 +103,8 @@ BOOST_AUTO_TEST_CASE(counters_with_labels) {
     m1->labels({"GET", "/messages"}).inc();
     std::cout << m1->serialize();
     BOOST_CHECK(m1->serialize().find("# HELP http_requests_total\n# TYPE http_requests_total "
-                                    "counter\nhttp_requests_total{stage_name=\"main\",method="
-                                    "\"POST\",handler=\"/messages\"} 1")
+                                     "counter\nhttp_requests_total{stage_name=\"main\",method="
+                                     "\"POST\",handler=\"/messages\"} 1")
                 != std::string::npos);
     BOOST_CHECK(m1->serialize().find(
         "http_requests_total{stage_name=\"main\",method=\"GET\",handler=\"/messages\"} 2"));
