@@ -32,7 +32,7 @@ typedef std::map<std::string, std::shared_ptr<StatTracker>> stage_trackers_t;
  *
  * To enable tracker dump when error occurs, set trackers->enabled to true and
  * give a dump file path in trackers->dump_path. The dump file is named
- * <hostname>_crash_stats_<time>.json.
+ * (hostname)_crash_stats_(time).json.
  *
  * This class is a singleton, and can be accessed with @c instance()
  */
