@@ -74,7 +74,7 @@ public:
     void remove_tracker(std::string stage_name);
 
     /**
-     * @brief Remove a simgle tracker.
+     * @brief Remove a single tracker.
      *
      * @param stage_name The given stage name.
      * @param tracker_name The given tracker name.
