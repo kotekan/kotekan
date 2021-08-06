@@ -54,9 +54,6 @@ kotekanMode::~kotekanMode() {
     restServer::instance().remove_get_callback("/pipeline_dot");
     restServer::instance().remove_all_aliases();
 
-    // Dump all trackers before cleanup.
-    KotekanTrackers::instance().dump_trackers();
-
     for (auto const& stage : stages) {
         if (stage.second != nullptr) {
             delete stage.second;
