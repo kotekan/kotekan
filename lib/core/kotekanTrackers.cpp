@@ -155,7 +155,14 @@ void KotekanTrackers::dump_trackers() {
 
     std::chrono::system_clock::time_point timestamp = std::chrono::system_clock::now();
     std::time_t tt = std::chrono::system_clock::to_time_t(timestamp);
-    std::tm local_tm = *localtime(&tt);
+    std::tm local_tm;
+    std::tm* tm_ptr = localtime_r(&tt, &local_tm);
+
+    if (tm_ptr == nullptr) {
+        ERROR_NON_OO("Error from localtime_r()");
+        return;
+    }
+
     char time_c[50];
     sprintf(time_c, "%d-%d-%d_%d:%d:%d", local_tm.tm_year + 1900, local_tm.tm_mon + 1,
             local_tm.tm_mday, local_tm.tm_hour, local_tm.tm_min, local_tm.tm_sec);
