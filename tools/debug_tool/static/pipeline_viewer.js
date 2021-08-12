@@ -3,13 +3,17 @@ function isIE() { return ((navigator.appName == 'Microsoft Internet Explorer') |
 // Time between updating kotekan metrics
 const POLL_WAIT_TIME_MS = 1000;
 // Poll kotekan via web server every POLL_WAIT_TIME_MS and update page with new metrics
-function poll(buffer_labels, stage_labels) {
+function poll(buffer_labels, stage_labels, sidebar) {
     get_data("/buffers").then(function (new_buffers) {
         update_buf_utl(new_buffers, buffer_labels);
     });
 
-    get_data("/cpu_ult").then(function (cpu_stats) {
-        update_cpu_utl(cpu_stats, stage_labels);
+    // get_data("/cpu_ult").then(function (cpu_stats) {
+    //     update_cpu_utl(cpu_stats, stage_labels);
+    // })
+
+    get_data("/trackers_current").then(function (trackers) {
+        update_trackers(trackers, sidebar);
     })
 
     // Call poll() again to get the next message
@@ -57,6 +61,49 @@ function update_cpu_utl(cpu_stats, label){
     }, 0)
 }
 
+function update_trackers(trackers, sidebar){
+    var stage_names = Object.keys(trackers);
+    for (stage of stage_names) {
+        d3.select(trackers[stage]).forEach((stage_obj) => {
+            var tracker_name = Object.keys(stage_obj[0]);
+
+            for (tracker of tracker_name) {
+                var avg = (stage_obj[0][tracker]["avg"]).toExponential(2);
+                var max = (stage_obj[0][tracker]["max"]).toExponential(2);
+                var min = (stage_obj[0][tracker]["min"]).toExponential(2);
+                var std = (stage_obj[0][tracker]["std"]).toExponential(2);
+
+                var el = document.getElementById(tracker);
+                if (el) {
+                    el = d3.select(el);
+                    el.select("#" + tracker + "_min").text("min: " + min);
+                    el.select("#" + tracker + "_max").text("max: " + max);
+                    el.select("#" + tracker + "_avg").text("avg: " + avg);
+                    el.select("#" + tracker + "_std").text("std: " + std);
+                } else {
+                    var stage_node = document.getElementById(stage + "_div");
+                    var text = d3.select(stage_node).append("div")
+                        .attr("id", tracker);
+                    text.append("p").text(tracker)
+                        .attr("id", tracker + "_name");
+                    text.append("p").text("min: " + min)
+                        .attr("id", tracker + "_min")
+                        .attr("style", "text-align: center");
+                    text.append("p").text("max: " + max)
+                        .attr("id", tracker + "_max")
+                        .attr("style", "text-align: center");
+                    text.append("p").text("avg: " + avg)
+                        .attr("id", tracker + "_avg")
+                        .attr("style", "text-align: center");
+                    text.append("p").text("std: " + std)
+                        .attr("id", tracker + "_std")
+                        .attr("style", "text-align: center");
+                }
+            }
+        });
+    }
+}
+
 // Read from endpoint /buffers to get buffer stats
 async function get_data(endpoint = "/buffers") {
     let response = await fetch(endpoint);
@@ -86,6 +133,8 @@ class PipelineViewer {
     #stages;
     #buffer_labels;
     #stage_labels;
+    #sidebar;
+    #dropdown_btn;
 
     constructor(buffers, body) {
         this.buffers = buffers;
@@ -101,6 +150,7 @@ class PipelineViewer {
         this.parse_data();
         this.create_objs();
         this.start_ult();
+        this.enable_sidebar();
     }
 
     init_svg() {
@@ -111,7 +161,11 @@ class PipelineViewer {
         // Add a svg section and employ zooming
         var outer = d3.select("body").append("svg")
             .attr("width", this.width)
-            .attr("height", this.height);
+            .attr("height", this.height)
+            .attr("class", "main");
+
+        this.#sidebar = d3.select("body").append("div")
+            .attr("class", "sidenav");
 
         outer.append('rect')
             .attr('class', 'background')
@@ -300,6 +354,21 @@ class PipelineViewer {
                 return "translate(" + d.innerBounds.x + self.margin + "," + (d.innerBounds.y + self.margin/2) + ")";
             });
         });
+
+        this.#dropdown_btn = this.#sidebar.selectAll(".dropdown-btn")
+            .data(this.#graph.stages)
+            .enter().append("button")
+            .attr("class", "dropdown-btn")
+            .html(function (d) { return d.name; })
+            .attr("id", function (d) { return d.name + "_button"; });
+
+        this.#dropdown_btn.each(function (d) {
+            var node = document.createElement("div");
+            d3.select(node)
+                .attr("id", d.name + "_div")
+                .attr("class", "dropdown-container");
+            this.parentNode.insertBefore(node, this.nextElementSibling);
+        })
     }
 
     start_ult() {
@@ -327,7 +396,23 @@ class PipelineViewer {
         }, 0)
 
         // Start polling kotekan for metrics
-        poll(this.#buffer_labels, this.#stage_labels);
+        poll(this.#buffer_labels, this.#stage_labels, this.#sidebar);
+    }
+
+    enable_sidebar() {
+        var dropdown = document.getElementsByClassName("dropdown-btn");
+        var i;
+        for (i = 0; i < dropdown.length; i++) {
+            dropdown[i].addEventListener("click", function() {
+            this.classList.toggle("active");
+            var dropdownContent = this.nextElementSibling;
+            if (dropdownContent.style.display === "block") {
+                dropdownContent.style.display = "none";
+            } else {
+                dropdownContent.style.display = "block";
+            }
+            });
+        }
     }
 
 }
