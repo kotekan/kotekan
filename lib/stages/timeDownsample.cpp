@@ -15,6 +15,7 @@
 #include <complex>    // for complex
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
 #include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error
 #include <stdint.h>   // for uint32_t, uint64_t, int32_t

@@ -18,12 +18,11 @@
 
 #include "fmt.hpp" // for format, fmt
 
-#include <algorithm>    // for copy, copy_backward, equal, max
 #include <arpa/inet.h>  // for inet_aton
 #include <atomic>       // for atomic_bool
-#include <deque>        // for deque
 #include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
+#include <memory>       // for __shared_ptr_access
 #include <mutex>        // for mutex, lock_guard
 #include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP, htons
 #include <regex>        // for match_results<>::_Base_type

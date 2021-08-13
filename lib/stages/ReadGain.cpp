@@ -13,7 +13,6 @@
 #include <atomic>      // for atomic_bool
 #include <chrono>      // for seconds
 #include <cstdint>     // for int32_t
-#include <deque>       // for deque
 #include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, bind, _Placeholder, _1, function
 #include <memory>      // for allocator_traits<>::value_type

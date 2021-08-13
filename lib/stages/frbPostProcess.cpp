@@ -17,6 +17,7 @@
 #include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, bind, function
 #include <immintrin.h> // for _mm256_broadcast_ss, __m256, _mm256_load_ps, _mm256_min_ps
+#include <memory>      // for __shared_ptr_access, shared_ptr
 #include <mm_malloc.h> // for posix_memalign
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error

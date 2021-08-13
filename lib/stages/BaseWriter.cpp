@@ -16,9 +16,7 @@
 
 #include "fmt.hpp" // for format
 
-#include <algorithm>  // for copy, copy_backward, equal, max
 #include <atomic>     // for atomic_bool
-#include <deque>      // for deque
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <regex>      // for match_results<>::_Base_type

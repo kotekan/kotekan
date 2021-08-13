@@ -19,7 +19,6 @@
 #include <atomic>       // for atomic_bool
 #include <complex>      // for complex, norm
 #include <cxxabi.h>     // for __forced_unwind
-#include <deque>        // for deque
 #include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, bind, function, placeholders
 #include <future>       // for async, future
