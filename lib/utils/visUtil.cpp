@@ -385,6 +385,13 @@ nlohmann::json StatTracker::get_current_json() {
     nlohmann::json tracker_json = {};
 
     tracker_json["unit"] = unit;
+    size_t ind = (end + buf_size - 1) % buf_size;
+    tracker_json["cur"]["value"] = count ? rbuf[ind].value : NAN;
+    tracker_json["cur"]["timestamp"] = count
+                                           ? std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                 rbuf[ind].timestamp.time_since_epoch())
+                                                 .count()
+                                           : NAN;
     tracker_json["min"] = get_min();
     tracker_json["max"] = get_max();
     tracker_json["avg"] = get_avg();
