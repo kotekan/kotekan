@@ -395,14 +395,14 @@ class PipelineViewer {
             // Add title as tooltip to show details when mouse moves over.
             el.append("title").text("usr: 0%; sys: 0%");
 
-            var tspan = el.append('tspan').text("0%");
+            var tspan = el.append('tspan').text("CPU: 0%");
             tspan.attr('x', this.margin/2).attr('dy', '15')
                     .attr("font-size", "15")
                     .attr("id", "utl");
         }, 0)
 
         // Start polling kotekan for metrics
-        poll(this.#buffer_labels, this.#stage_labels, this.#sidebar);
+        poll(this.#buffer_labels, this.#stage_labels);
     }
 
     // Toggle dropdown display on every button click.
