@@ -3,17 +3,17 @@ function isIE() { return ((navigator.appName == 'Microsoft Internet Explorer') |
 // Time between updating kotekan metrics
 const POLL_WAIT_TIME_MS = 1000;
 // Poll kotekan via web server every POLL_WAIT_TIME_MS and update page with new metrics
-function poll(buffer_labels, stage_labels, sidebar) {
+function poll(buffer_labels, stage_labels) {
     get_data("/buffers").then(function (new_buffers) {
         update_buf_utl(new_buffers, buffer_labels);
     });
 
-    // get_data("/cpu_ult").then(function (cpu_stats) {
-    //     update_cpu_utl(cpu_stats, stage_labels);
-    // })
+    get_data("/cpu_ult").then(function (cpu_stats) {
+        update_cpu_utl(cpu_stats, stage_labels);
+    })
 
     get_data("/trackers_current").then(function (trackers) {
-        update_trackers(trackers, sidebar);
+        update_trackers(trackers);
     })
 
     // Call poll() again to get the next message
@@ -61,19 +61,21 @@ function update_cpu_utl(cpu_stats, label){
     }, 0)
 }
 
-function update_trackers(trackers, sidebar){
+function update_trackers(trackers){
     var stage_names = Object.keys(trackers);
     for (stage of stage_names) {
         d3.select(trackers[stage]).forEach((stage_obj) => {
             var tracker_name = Object.keys(stage_obj[0]);
 
             for (tracker of tracker_name) {
+                // Limit to two-decimal scientific expression.
                 var avg = (stage_obj[0][tracker]["avg"]).toExponential(2);
                 var max = (stage_obj[0][tracker]["max"]).toExponential(2);
                 var min = (stage_obj[0][tracker]["min"]).toExponential(2);
                 var std = (stage_obj[0][tracker]["std"]).toExponential(2);
 
                 var el = document.getElementById(tracker);
+                // If the tracker info exists, just update it.
                 if (el) {
                     el = d3.select(el);
                     el.select("#" + tracker + "_min").text("min: " + min);
@@ -81,6 +83,7 @@ function update_trackers(trackers, sidebar){
                     el.select("#" + tracker + "_avg").text("avg: " + avg);
                     el.select("#" + tracker + "_std").text("std: " + std);
                 } else {
+                    // Create a new tracker info block.
                     var stage_node = document.getElementById(stage + "_div");
                     var text = d3.select(stage_node).append("div")
                         .attr("id", tracker);
@@ -164,6 +167,7 @@ class PipelineViewer {
             .attr("height", this.height)
             .attr("class", "main");
 
+        // Add a sidebar to display all tracker info
         this.#sidebar = d3.select("body").append("div")
             .attr("class", "sidenav");
 
@@ -355,6 +359,7 @@ class PipelineViewer {
             });
         });
 
+        // Each stage name has a button to control its tracker display.
         this.#dropdown_btn = this.#sidebar.selectAll(".dropdown-btn")
             .data(this.#graph.stages)
             .enter().append("button")
@@ -362,6 +367,7 @@ class PipelineViewer {
             .html(function (d) { return d.name; })
             .attr("id", function (d) { return d.name + "_button"; });
 
+        // Each stage stores tracker info in a dropdown menu after its button.
         this.#dropdown_btn.each(function (d) {
             var node = document.createElement("div");
             d3.select(node)
@@ -399,6 +405,7 @@ class PipelineViewer {
         poll(this.#buffer_labels, this.#stage_labels, this.#sidebar);
     }
 
+    // Toggle dropdown display on every button click.
     enable_sidebar() {
         var dropdown = document.getElementsByClassName("dropdown-btn");
         var i;
