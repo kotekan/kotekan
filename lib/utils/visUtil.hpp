@@ -19,14 +19,18 @@
 #include "gsl-lite.hpp" // for span
 #include "json.hpp"     // for json
 
-#include <algorithm>   // for max
+#include <algorithm> // for max
+#include <chrono>
 #include <complex>     // for complex, imag, real
 #include <cstdint>     // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
 #include <cstdlib>     // for size_t, (anonymous), div
+#include <deque>       // for deque
 #include <functional>  // for function
 #include <iosfwd>      // for ostream
 #include <map>         // for map
 #include <math.h>      // for fmod
+#include <memory>      // for unique_ptr
+#include <mutex>       // for mutex, lock_guard
 #include <string>      // for string
 #include <sys/time.h>  // for timeval, CLOCK_REALTIME
 #include <sys/types.h> // for __syscall_slong_t, suseconds_t, time_t
@@ -525,6 +529,149 @@ private:
     double alpha;
 
     bool initialised = false;
+};
+
+/**
+ * @class SlidingWindowMinMax
+ *
+ * @brief Use two deques to keep tracking minimum and maximum values.
+ *
+ * This class is based on a modified version of:
+ * https://www.nayuki.io/page/sliding-window-minimum-maximum-algorithm
+ **/
+class SlidingWindowMinMax {
+
+public:
+    /**
+     * @brief Get the current minimum value from the front of min_deque.
+     *
+     * @return The current minimum value.
+     **/
+    double get_min();
+
+    /**
+     * @brief Get the current maximum value from the front of max_deque.
+     *
+     * @return The current maximum value.
+     **/
+    double get_max();
+
+    /**
+     * @brief Add a new value to both min_deque and max_deque.
+     *        The insert position is based on the input value.
+     *        All values greater than the input are removed in min_deque;
+     *        All values less than the input are removed in max_deque;
+     **/
+    void add_tail(double val);
+
+    /**
+     * @brief Remove the given value from the front of min_deque or max_deque.
+     **/
+    void remove_head(double val);
+
+private:
+    std::deque<double> min_deque;
+    std::deque<double> max_deque;
+};
+
+/**
+ * @class StatTracker
+ *
+ * @brief Store samples and compute statistics.
+ *
+ * There are two ways in this class to implement min/max (i.e., sliding window and brute force).
+ * The sliding window approach uses O(1) time to get min/max but spends more time when a sample is
+ *added. The brute force approach uses O(n) time to traverse the entire buffer without overhead in
+ *add_sample(). "is_optimized" is the flag to switch between two methods (true: sliding window;
+ *false: brute force). Normally, if get_min/max() is called often, "is_optimized" should be set to
+ *true.
+ **/
+class StatTracker {
+
+public:
+    /**
+     * @brief Create a ring buffer.
+     *
+     * @param name The statistic's name.
+     * @param unit Sample unit.
+     * @param size The size of the ring buffer.
+     * @param is_optimized Flag of min/max optimization.
+     **/
+    explicit StatTracker(std::string name, std::string unit, size_t size = 100,
+                         bool is_optimized = true);
+
+    /**
+     * @brief Add a new sample value to the buffer.
+     *        if the buffer is full, the new sample will overwrite the earliest one.
+     *
+     * @param new_val The sample to add.
+     **/
+    void add_sample(double new_val);
+
+    /**
+     * @brief Return the maximum sample based on all values stored in buffer.
+     *
+     * @return The current maximum sample.
+     **/
+    double get_max();
+
+    /**
+     * @brief Return the minimum sample based on all values stored in buffer.
+     *
+     * @return The current minimum sample.
+     **/
+    double get_min();
+
+    /**
+     * @brief Return the average value based on all samples stored in buffer.
+     *
+     * @return The current average value.
+     **/
+    double get_avg();
+
+    /**
+     * @brief Return the standard deviation based on all samples stored in buffer.
+     *
+     * @return The current standard deviation.
+     **/
+    double get_std_dev();
+
+    /**
+     * @brief Return tracker content in json format.
+     *
+     * @return A json object of tracker content.
+     **/
+    nlohmann::json get_json();
+
+    /**
+     * @brief Return tracker stats in json format.
+     *
+     * @return A json object of tracker min,max,avg,std.
+     **/
+    nlohmann::json get_current_json();
+
+private:
+    SlidingWindowMinMax min_max;
+
+    struct sample {
+        double value;
+        std::chrono::system_clock::time_point timestamp;
+    };
+    std::unique_ptr<sample[]> rbuf;
+    size_t end;
+    size_t buf_size;
+    size_t count;
+
+    double avg;
+    double dist;
+    double var;
+    double std_dev;
+
+    std::string name;
+    std::string unit;
+    bool is_optimized;
+
+    std::mutex tracker_lock;
 };
 
 // Zip, unzip adapted from https://gist.github.com/yig/32fe51874f3911d1c612

@@ -23,7 +23,7 @@ ICETelescope::ICETelescope(const kotekan::Config& config, const std::string& pat
     Telescope(config.get<std::string>(path, "log_level")) {
 
     // TODO: rename this parameter to `num_freq_per_stream` in the config
-    _num_freq_per_stream = config.get<uint32_t>(path, "num_local_freq");
+    _num_freq_per_stream = config.get_default<uint32_t>(path, "num_local_freq", 128);
 
     set_sampling_params(config, path);
 
@@ -134,7 +134,8 @@ freq_id_t ICETelescope::to_freq_id(stream_t stream, uint32_t ind) const {
         case 128: // 1 ICEBoard (16 elements) e.g. ARO, Synthesis telescope
             return stream_id.link_id + ind * 8;
         default:
-            FATAL_ERROR("No known frequency mapping for num_freq_per_stream = {:d}");
+            FATAL_ERROR("No known frequency mapping for num_freq_per_stream = {:d}",
+                        _num_freq_per_stream);
             return 0;
     }
 }

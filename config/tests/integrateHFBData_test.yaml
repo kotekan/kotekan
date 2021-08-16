@@ -91,7 +91,8 @@ gen_input_data:
 # Generate expected output data of HFBAccumulate stage
 gen_output_data:
   type: const
-  value: test_value * num_frames_to_integrate
+  # Expected value is normalised
+  value: test_value * num_frames_to_integrate / (_samples_per_data_set * num_frames_to_integrate) 
   test_data_gen_0:
     kotekan_stage: testDataGenFloat
     network_out_buf: beamform_hfb_sum_test_buffer_0

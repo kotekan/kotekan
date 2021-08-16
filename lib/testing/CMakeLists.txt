@@ -12,7 +12,6 @@ add_library(
     gpuBeamformSimulate.cpp
     gpuTrackingBeamformSimulate.cpp
     gpuSimulate.cpp
-    hexDump.cpp
     networkOutputSim.cpp
     simVdifData.cpp
     testDataCheck.cpp

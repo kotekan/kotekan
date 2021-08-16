@@ -41,6 +41,8 @@ private:
     std::string _data_format;
     /// This will enable use of the AMD-intrinsic-laden overly-complex & optimized kernel.
     bool _full_complicated;
+    /// Use this flag for systems with pre-ROCm AMD closed-source drivers.
+    bool _legacy_opencl;
 };
 
 #endif // CL_CORRELATOR_KERNEL
