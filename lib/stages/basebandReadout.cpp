@@ -12,7 +12,7 @@
 #include "metadata.h"             // for metadataContainer
 #include "nt_memcpy.h"            // for nt_memcpy
 #include "nt_memset.h"            // for nt_memset
-#include "prometheusMetrics.hpp"  // for Counter, Gauge, MetricFamily, Metrics
+#include "prometheusMetrics.hpp"  // for MetricFamily, prometheus_counter_ptr_t, Counter, Met...
 #include "version.h"              // for get_git_commit_hash
 #include "visFile.hpp"            // for create_lockfile
 #include "visUtil.hpp"            // for input_ctype, ts_to_double, parse_reorder_default
@@ -20,13 +20,12 @@
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span, operator!=
 
-#include <algorithm>                // for max, copy, copy_backward, min
+#include <algorithm>                // for min, max
 #include <assert.h>                 // for assert
 #include <atomic>                   // for atomic_bool
 #include <chrono>                   // for system_clock::time_point, system_clock, nanoseconds
 #include <cstdint>                  // for uint64_t, uint8_t
 #include <cstdio>                   // for remove, snprintf
-#include <deque>                    // for deque
 #include <exception>                // for exception
 #include <functional>               // for _Bind_helper<>::type, bind, function
 #include <highfive/H5Attribute.hpp> // for Attribute, Attribute::write
@@ -38,7 +37,7 @@
 #include <highfive/H5Group.hpp>     // for Group
 #include <highfive/H5Selection.hpp> // for Selection, SliceTraits::write, SliceTraits::select
 #include <math.h>                   // for fmod
-#include <memory>                   // for unique_ptr, make_shared, make_unique, allocator_trai...
+#include <memory>                   // for unique_ptr, make_shared, __shared_ptr_access, make_u...
 #include <regex>                    // for match_results<>::_Base_type
 #include <stdexcept>                // for runtime_error
 #include <sys/time.h>               // for timeval, timeradd

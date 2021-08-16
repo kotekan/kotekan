@@ -6,22 +6,22 @@
 #include "datasetState.hpp"      // for freqState, _factory_aliasdatasetState
 #include "factory.hpp"           // for FACTORY
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, INFO, WARN
-#include "prometheusMetrics.hpp" // for Counter, Gauge, Metrics, MetricFamily
+#include "prometheusMetrics.hpp" // for Metrics, MetricFamily, Counter, prometheus_counter_ptr_t
 #include "visBuffer.hpp"         // for VisFrameView, VisMetadata
 #include "visUtil.hpp"           // for time_ctype, frameID, operator<, modulo, current_time
 
-#include <algorithm>   // for copy, fill_n, copy_backward, equal, max
+#include <algorithm>   // for fill_n
 #include <atomic>      // for atomic_bool
-#include <deque>       // for deque
 #include <errno.h>     // for errno, ENOENT
 #include <exception>   // for exception
 #include <fcntl.h>     // for O_CREAT, O_EXCL, O_RDWR
 #include <functional>  // for _Bind_helper<>::type, bind, function
 #include <iterator>    // for reverse_iterator
 #include <map>         // for map, _Rb_tree_iterator
+#include <memory>      // for __shared_ptr_access
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error, out_of_range
-#include <stdio.h>     // for size_t, remove
+#include <stdio.h>     // for remove
 #include <string.h>    // for strerror, memcpy, memset
 #include <sys/mman.h>  // for mmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, PROT...
 #include <sys/stat.h>  // for S_IRUSR, S_IWUSR

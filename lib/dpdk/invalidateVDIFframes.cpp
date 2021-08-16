@@ -1,14 +1,15 @@
 #include "invalidateVDIFframes.hpp"
 
-#include "StageFactory.hpp"  // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"          // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
-#include "chimeMetadata.hpp" // for atomic_add_lost_timesamples
-#include "prometheusMetrics.hpp"
-#include "vdif_functions.h" // for VDIFHeader
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for Buffer, mark_frame_empty, mark_frame_full, register_con...
+#include "chimeMetadata.hpp"     // for atomic_add_lost_timesamples
+#include "prometheusMetrics.hpp" // for Metrics, Counter, MetricFamily
+#include "vdif_functions.h"      // for VDIFHeader
 
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
 #include <functional> // for _Bind_helper<>::type, bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
 
 using kotekan::bufferContainer;
 using kotekan::Config;

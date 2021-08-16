@@ -3,9 +3,10 @@
 #include "prometheusMetrics.hpp" // for Metrics, MetricFamily, Counter, Gauge
 
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_CHECK, BOOST_PP_BOOL_2
-#include <cmath>                             // for sqrt, log
+#include <cmath>                             // for log, sqrt
 #include <iostream>                          // for cout, ostream
-#include <string>                            // for string, allocator, basic_string, operator==
+#include <memory>                            // for __shared_ptr_access, shared_ptr
+#include <string>                            // for string, basic_string, operator==, operator<<
 
 using kotekan::prometheus::Metrics;
 
