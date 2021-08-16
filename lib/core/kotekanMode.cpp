@@ -1,14 +1,15 @@
 #include "kotekanMode.hpp"
 
-#include "Config.hpp"            // for Config
-#include "Stage.hpp"             // for Stage
-#include "StageFactory.hpp"      // for StageFactory
-#include "Telescope.hpp"         // for Telescope
-#include "buffer.h"              // for Buffer, StageInfo, get_num_full_frames, delete_buffer
-#include "bufferFactory.hpp"     // for bufferFactory
-#include "configUpdater.hpp"     // for configUpdater
-#include "datasetManager.hpp"    // for datasetManager
-#include "kotekanLogging.hpp"    // for INFO_NON_OO
+#include "Config.hpp"         // for Config
+#include "Stage.hpp"          // for Stage
+#include "StageFactory.hpp"   // for StageFactory
+#include "Telescope.hpp"      // for Telescope
+#include "buffer.h"           // for Buffer, StageInfo, get_num_full_frames, delete_buffer
+#include "bufferFactory.hpp"  // for bufferFactory
+#include "configUpdater.hpp"  // for configUpdater
+#include "datasetManager.hpp" // for datasetManager
+#include "kotekanLogging.hpp" // for INFO_NON_OO
+#include "kotekanTrackers.hpp"
 #include "metadata.h"            // for delete_metadata_pool
 #include "metadataFactory.hpp"   // for metadataFactory
 #include "prometheusMetrics.hpp" // for Metrics
@@ -17,9 +18,13 @@
 #include "fmt.hpp"  // for format
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
 
+#include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
 #include <stdlib.h>   // for free
 #include <utility>    // for pair
+#include <vector>     // for vector
 
 using namespace std::placeholders;
 
@@ -84,6 +89,9 @@ void kotekanMode::initalize_stages() {
     // Apply config for Telescope class
     Telescope::instance(config);
 
+    // Create and register kotekan trackers before stages created
+    KotekanTrackers::instance(config).register_with_server(&restServer::instance());
+
     // Create Metadata Pool
     metadataFactory metadata_factory(config);
     metadata_pools = metadata_factory.build_pools();
@@ -120,9 +128,20 @@ void kotekanMode::start_stages() {
         INFO_NON_OO("Starting kotekan_stage: {:s}...", stage.first);
         stage.second->start();
     }
+
+#if !defined(MAC_OSX)
+    if (config.get_default<bool>("/cpu_monitor", "enabled", false)) {
+        cpu_monitor.save_stages(stages);
+        cpu_monitor.start();
+        cpu_monitor.set_affinity(config);
+    }
+#endif
 }
 
 void kotekanMode::stop_stages() {
+#if !defined(MAC_OSX)
+    cpu_monitor.stop();
+#endif
     // First set the shutdown variable on all stages
     for (auto const& stage : stages)
         stage.second->stop();

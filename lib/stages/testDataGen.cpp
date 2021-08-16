@@ -8,6 +8,7 @@
 #include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
 #include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
 #include "kotekanLogging.hpp"  // for DEBUG, INFO
+#include "kotekanTrackers.hpp" // for KotekanTrackers
 #include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
 #include "visUtil.hpp"         // for current_time, ts_to_double
 
@@ -68,6 +69,10 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     using namespace std::placeholders;
     restServer::instance().register_post_callback(
         endpoint, std::bind(&testDataGen::rest_callback, this, _1, _2));
+
+    // Create stat tracker
+    kotekan::KotekanTrackers& KT = kotekan::KotekanTrackers::instance();
+    timer = KT.add_tracker(unique_name, "frame_fill_time", "sec");
 }
 
 
@@ -199,6 +204,7 @@ void testDataGen::main_thread() {
         if (wait) {
             double time = current_time();
             double frame_end_time = start_time + frame_length;
+            timer->add_sample(time - start_time);
             if (time < frame_end_time)
                 usleep((int)(1e6 * (frame_end_time - time)));
         }

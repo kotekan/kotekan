@@ -142,7 +142,7 @@ static std::string oclGetOpenCLErrorCodeStr(cl_int input) {
 #define CHECK_CL_ERROR(err)                                                                        \
     if (err) {                                                                                     \
         FATAL_ERROR_NON_OO("Error at {:s}:{:d}; Error type: {:s}", __FILE__, __LINE__,             \
-                         oclGetOpenCLErrorCodeStr(err));                                           \
+                           oclGetOpenCLErrorCodeStr(err));                                         \
     }
 
 #endif // CL_UTILS_H

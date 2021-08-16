@@ -5,6 +5,7 @@
 #include <cstring>   // for memset
 #include <exception> // for exception
 #include <iterator>  // for back_insert_iterator, back_inserter
+#include <limits>
 #include <regex>     // for sregex_token_iterator, match_results<>::_Base_type, _NFA, regex
 #include <sstream>   // for basic_stringbuf<>::int_type, basic_stringbuf<>::pos_type, basic_st...
 #include <stdexcept> // for runtime_error, invalid_argument
@@ -266,21 +267,28 @@ void SlidingWindowMinMax::remove_head(double val) {
         max_deque.pop_front();
 }
 
-StatTracker::StatTracker(size_t size) :
-    rbuf(std::make_unique<double[]>(size)),
+StatTracker::StatTracker(std::string name, std::string unit, size_t size, bool is_optimized) :
+    rbuf(std::make_unique<sample[]>(size)),
     end(0),
     buf_size(size),
     count(0),
     avg(0),
     dist(0),
     var(0),
-    std_dev(0){};
+    std_dev(0),
+    name(name),
+    unit(unit),
+    is_optimized(is_optimized){};
 
 void StatTracker::add_sample(double new_val) {
-    double old_val = rbuf[end];
-    rbuf[end] = new_val;
-    min_max.add_tail(new_val);
+    std::lock_guard<std::mutex> lock(tracker_lock);
+
+    double old_val = rbuf[end].value;
+    rbuf[end].value = new_val;
+    rbuf[end].timestamp = std::chrono::system_clock::now();
     end = (end + 1) % buf_size;
+    if (is_optimized)
+        min_max.add_tail(new_val);
 
     if (count < buf_size) {
         double old_avg = avg;
@@ -289,7 +297,8 @@ void StatTracker::add_sample(double new_val) {
         var = (count <= 1) ? NAN : dist / (count - 1);
     } else {
         double old_avg = avg;
-        min_max.remove_head(old_val);
+        if (is_optimized)
+            min_max.remove_head(old_val);
         avg = old_avg + (new_val - old_val) / buf_size;
         var += (new_val - old_val) * (new_val - avg + old_val - old_avg) / (buf_size - 1);
     }
@@ -298,20 +307,48 @@ void StatTracker::add_sample(double new_val) {
 }
 
 double StatTracker::get_max() {
+    std::lock_guard<std::mutex> lock(tracker_lock);
+
     if (count == 0) {
         return NAN;
     }
-    return min_max.get_max();
+
+    if (is_optimized) {
+        return min_max.get_max();
+    } else {
+        // brute force way to get max
+        double max = std::numeric_limits<double>::lowest();
+        size_t size = std::min(count, buf_size);
+        for (size_t i = 0; i < size; i++)
+            max = std::max(max, rbuf[i].value);
+
+        return max;
+    }
 }
 
 double StatTracker::get_min() {
+    std::lock_guard<std::mutex> lock(tracker_lock);
+
     if (count == 0) {
         return NAN;
     }
-    return min_max.get_min();
+
+    if (is_optimized) {
+        return min_max.get_min();
+    } else {
+        // brute force way to get min
+        double min = std::numeric_limits<double>::max();
+        size_t size = std::min(count, buf_size);
+        for (size_t i = 0; i < size; i++)
+            min = std::min(min, rbuf[i].value);
+
+        return min;
+    }
 }
 
 double StatTracker::get_avg() {
+    std::lock_guard<std::mutex> lock(tracker_lock);
+
     if (count == 0) {
         return NAN;
     }
@@ -319,10 +356,48 @@ double StatTracker::get_avg() {
 }
 
 double StatTracker::get_std_dev() {
+    std::lock_guard<std::mutex> lock(tracker_lock);
+
     if (count <= 1) {
         return NAN;
     }
     return std_dev;
+}
+
+nlohmann::json StatTracker::get_json() {
+    std::lock_guard<std::mutex> lock(tracker_lock);
+
+    nlohmann::json tracker_json = {};
+    tracker_json["unit"] = unit;
+    for (size_t i = 0; i < count; i++) {
+        nlohmann::json sample_json = {};
+        sample_json["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                       rbuf[i].timestamp.time_since_epoch())
+                                       .count();
+        sample_json["value"] = rbuf[i].value;
+        tracker_json["samples"].push_back(sample_json);
+    }
+
+    return tracker_json;
+}
+
+nlohmann::json StatTracker::get_current_json() {
+    nlohmann::json tracker_json = {};
+
+    tracker_json["unit"] = unit;
+    size_t ind = (end + buf_size - 1) % buf_size;
+    tracker_json["cur"]["value"] = count ? rbuf[ind].value : NAN;
+    tracker_json["cur"]["timestamp"] = count
+                                           ? std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                 rbuf[ind].timestamp.time_since_epoch())
+                                                 .count()
+                                           : NAN;
+    tracker_json["min"] = get_min();
+    tracker_json["max"] = get_max();
+    tracker_json["avg"] = get_avg();
+    tracker_json["std"] = get_std_dev();
+
+    return tracker_json;
 }
 
 std::vector<std::string> regex_split(const std::string input, const std::string reg) {
