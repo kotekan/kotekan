@@ -4,6 +4,7 @@
 #include "errors.h"               // for get_error_message, get_exit_code, __enable_syslog, exi...
 #include "kotekanLogging.hpp"     // for INFO_NON_OO, logLevel, ERROR_NON_OO, FATAL_ERROR_NON_OO
 #include "kotekanMode.hpp"        // for kotekanMode
+#include "kotekanTrackers.hpp"    // for KotekanTrackers
 #include "prometheusMetrics.hpp"  // for Metrics, Gauge
 #include "restServer.hpp"         // for connectionInstance, HTTP_RESPONSE, restServer, HTTP_RE...
 #include "util.h"                 // for EVER
@@ -494,6 +495,9 @@ int main(int argc, char** argv) {
     // Print error message if there is one.
     if (string(get_error_message()) != "not set") {
         INFO_NON_OO("Fatal error message was: {:s}", get_error_message());
+
+        // Dump all trackers before cleanup.
+        KotekanTrackers::instance().dump_trackers();
     }
 
     closelog();
