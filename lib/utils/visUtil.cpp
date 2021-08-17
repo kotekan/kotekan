@@ -364,6 +364,13 @@ double StatTracker::get_std_dev() {
     return std_dev;
 }
 
+double StatTracker::get_current() {
+    std::lock_guard<std::mutex> lock(tracker_lock);
+
+    size_t ind = (end + buf_size - 1) % buf_size;
+    return count ? rbuf[ind].value : NAN;
+}
+
 nlohmann::json StatTracker::get_json() {
     std::lock_guard<std::mutex> lock(tracker_lock);
 

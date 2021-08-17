@@ -32,7 +32,6 @@ clCommand::~clCommand() {
 }
 
 void clCommand::finalize_frame(int gpu_frame_id) {
-    bool profiling = true;
     if (post_events[gpu_frame_id] != nullptr) {
         if (profiling) {
             cl_ulong start_time, stop_time;
@@ -42,7 +41,9 @@ void clCommand::finalize_frame(int gpu_frame_id) {
             CHECK_CL_ERROR(clGetEventProfilingInfo(post_events[gpu_frame_id],
                                                    CL_PROFILING_COMMAND_END, sizeof(stop_time),
                                                    &stop_time, nullptr));
-            last_gpu_execution_time = ((double)(stop_time - start_time)) * 1e-9;
+            double active_time = (double)(stop_time - start_time) * 1e-9;
+            excute_time->add_sample(active_time);
+            utilization->add_sample(active_time/frame_arrival_period);
         }
 
         CHECK_CL_ERROR(clReleaseEvent(post_events[gpu_frame_id]));

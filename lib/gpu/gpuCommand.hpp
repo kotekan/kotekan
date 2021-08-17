@@ -10,6 +10,7 @@
 #include "Config.hpp"          // for Config
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for kotekanLogging
+#include "kotekanTrackers.hpp" // for kotekanTrackers
 
 #include <stdint.h> // for int32_t
 #include <string>   // for string, allocator
@@ -27,12 +28,13 @@ enum class gpuCommandType { COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET };
  * or resource management instructions to support kernel execution, generally these
  * break down into three categories, copy-in, copy-out, and kernels.
  *
- * @conf buffer_depth  Global buffer depth for all buffer arrays in the subsystem.
- *                     Generally sets the number of frames used for staging input / output.
- * @conf kernel        If an external file (CL, binary, etc) is used, this gives the filename.
- * @conf kernel_path   If an external file is used, this gives the path to search.
- * @conf command       The name used bby this kernel internally for logging, and also the name
- *                     name of the kernel function (where) that applies).
+ * @conf buffer_depth          The number of GPU frames used for pipelining commands
+ * @conf kernel                Filename, if an external file (CL, binary, etc) is used.
+ * @conf kernel_path           If an external file is used, this gives the path to search.
+ * @conf command               The name used bby this kernel internally for logging,
+ *                             and also the name of the kernel function (where that applies).
+ * @conf profiling             Enable the recording of the command runtime
+ * @conf frame_arrival_period  The time between frames, used for some profiling functions
  *
  * @author Keith Vanderlinde
  */
@@ -84,6 +86,11 @@ public:
     /// Get to distinguish the flavour of command (copy,kernel,etc)
     gpuCommandType get_command_type();
 
+    /// Returns performance information, can be customized to give more detailed stats.
+    virtual std::string get_performance_metric_string() {
+        return "Time: " + std::to_string(get_last_gpu_execution_time()) + " seconds";
+    }
+
     /**
      * @brief Returns the unique name of the command object.
      * @return The command object unique name.
@@ -109,8 +116,19 @@ protected:
     /// Sets the number of frames to be queued up in each buffer.
     int32_t _gpu_buffer_depth;
 
-    /// Profiling time for the last signal
-    double last_gpu_execution_time = 0;
+    /// Track the time the command was active on the GPU.
+    /// This is just the time the command is running, and doesn't include time waiting
+    /// in the queue.
+    std::shared_ptr<StatTracker> excute_time;
+
+    /// Almost the same excute_time, but divided by the frame arrival period
+    std::shared_ptr<StatTracker> utilization;
+
+    /// Set to true if we have enabled profiling
+    bool profiling;
+
+    /// The expected time between new frames, used to compute utilization
+    double frame_arrival_period;
 
     /// Type of command
     gpuCommandType command_type = gpuCommandType::NOT_SET;
