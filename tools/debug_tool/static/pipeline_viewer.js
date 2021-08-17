@@ -8,12 +8,12 @@ function poll(buffer_labels, stage_labels) {
         update_buf_utl(new_buffers, buffer_labels);
     });
 
-    // get_data("/cpu_ult").then(function (cpu_stats) {
-    //     update_cpu_utl(cpu_stats, stage_labels);
-    // })
+    get_data("/cpu_ult").then(function (cpu_stats) {
+        update_cpu_utl(cpu_stats, stage_labels);
+    })
 
     get_data("/trackers_current").then(function (trackers) {
-        show_trackers_in_label(trackers, stage_labels);
+        show_trackers_in_label(trackers);
         update_trackers(trackers);
     })
 
@@ -131,7 +131,7 @@ function update_trackers(trackers){
 var show_trackers_in_label = (function() {
     var done = false;
     // This function will only execute once at the first time tracker info arrives.
-    return function (trackers, label) {
+    return function (trackers) {
         if (!done) {
             done = true;
 
