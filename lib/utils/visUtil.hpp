@@ -30,6 +30,7 @@
 #include <map>         // for map
 #include <math.h>      // for fmod
 #include <memory>      // for unique_ptr
+#include <mutex>       // for mutex, lock_guard
 #include <string>      // for string
 #include <sys/time.h>  // for timeval, CLOCK_REALTIME
 #include <sys/types.h> // for __syscall_slong_t, suseconds_t, time_t
@@ -635,6 +636,20 @@ public:
      **/
     double get_std_dev();
 
+    /**
+     * @brief Return tracker content in json format.
+     *
+     * @return A json object of tracker content.
+     **/
+    nlohmann::json get_json();
+
+    /**
+     * @brief Return tracker stats in json format.
+     *
+     * @return A json object of tracker min,max,avg,std.
+     **/
+    nlohmann::json get_current_json();
+
 private:
     SlidingWindowMinMax min_max;
 
@@ -655,6 +670,8 @@ private:
     std::string name;
     std::string unit;
     bool is_optimized;
+
+    std::mutex tracker_lock;
 };
 
 // Zip, unzip adapted from https://gist.github.com/yig/32fe51874f3911d1c612

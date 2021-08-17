@@ -36,8 +36,10 @@ testDataGenFloat::testDataGenFloat(Config& config, const std::string& unique_nam
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
     assert(type == "const" || type == "random" || type == "ramp");
-    if (type == "const" || type == "random" || type == "ramp")
-        value = config.get<int>(unique_name, "value");
+    if (type == "const" || type == "ramp")
+        value = config.get<float>(unique_name, "value");
+    if (type == "random")
+        seed = config.get<int>(unique_name, "seed");
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
     _first_frame_index = config.get_default<uint32_t>(unique_name, "first_frame_index", 0);
@@ -73,7 +75,7 @@ void testDataGenFloat::main_thread() {
         // std::mt19937 gen(rd());
         // std::uniform_int_distribution<> dis(0, 255);
         if (type == "random")
-            srand(value);
+            srand(seed);
         unsigned char temp_output;
         for (uint j = 0; j < buf->frame_size / sizeof(float); ++j) {
             if (type == "const") {
