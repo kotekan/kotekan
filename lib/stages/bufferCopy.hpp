@@ -27,6 +27,7 @@
  *                 This is a named array of output buffers in the format:
  *                 - buffer_name_0
  *                 - buffer_name_1
+ *                 .
  *        @buffer_format any, but all must be the same type.
  *        @buffer_metadata any, but all must be the same type.
  *
