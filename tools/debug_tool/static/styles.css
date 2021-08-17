@@ -35,14 +35,14 @@
 /* Fixed sidenav, full height */
 .sidenav {
   height: 100%;
-  width: 200px;
+  width: 500px;
   position: fixed;
   z-index: 1;
   top: 0;
   right: 0;
   background-color: #67734de7;
-  overflow-x: hidden;
   padding-top: 20px;
+  overflow-x: auto;
 }
 
 /* Style the sidenav links and the dropdown button */
@@ -58,6 +58,7 @@
   text-align: left;
   cursor: pointer;
   outline: none;
+  overflow-x: auto;
 }
 
 /* On mouse-over */
@@ -79,11 +80,31 @@
 
 /* Dropdown container (hidden by default). Optional: add a lighter background color and some left padding to change the design of the dropdown content */
 .dropdown-container {
-  display: none;
+  display: table;
+  overflow-x: auto;
   background-color: #ffffff93;
   padding-left: 8px;
 }
 
 p {
   margin: 2px;
+}
+
+table {
+  border-collapse: collapse;
+  overflow-x: auto;
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  border-spacing: 0;
+  border: 1px solid #ddd;
+}
+
+th, td {
+  text-align: left;
+  padding: 8px;
+}
+
+tr:nth-child(even) {
+  background-color: #f2f2f2;
 }

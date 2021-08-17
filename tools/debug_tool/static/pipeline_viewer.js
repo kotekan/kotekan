@@ -8,11 +8,12 @@ function poll(buffer_labels, stage_labels) {
         update_buf_utl(new_buffers, buffer_labels);
     });
 
-    get_data("/cpu_ult").then(function (cpu_stats) {
-        update_cpu_utl(cpu_stats, stage_labels);
-    })
+    // get_data("/cpu_ult").then(function (cpu_stats) {
+    //     update_cpu_utl(cpu_stats, stage_labels);
+    // })
 
     get_data("/trackers_current").then(function (trackers) {
+        show_trackers_in_label(trackers, stage_labels);
         update_trackers(trackers);
     })
 
@@ -65,47 +66,99 @@ function update_trackers(trackers){
     var stage_names = Object.keys(trackers);
     for (stage of stage_names) {
         d3.select(trackers[stage]).forEach((stage_obj) => {
-            var tracker_name = Object.keys(stage_obj[0]);
 
-            for (tracker of tracker_name) {
-                // Limit to two-decimal scientific expression.
-                var avg = (stage_obj[0][tracker]["avg"]).toExponential(2);
-                var max = (stage_obj[0][tracker]["max"]).toExponential(2);
-                var min = (stage_obj[0][tracker]["min"]).toExponential(2);
-                var std = (stage_obj[0][tracker]["std"]).toExponential(2);
+                var tracker_name = Object.keys(stage_obj[0]);
+                for (tracker of tracker_name) {
+                    // Limit to two-decimal scientific expression.
+                    var avg = (stage_obj[0][tracker]["avg"]).toExponential(2);
+                    var max = (stage_obj[0][tracker]["max"]).toExponential(2);
+                    var min = (stage_obj[0][tracker]["min"]).toExponential(2);
+                    var std = (stage_obj[0][tracker]["std"]).toExponential(2);
+                    var cur = (stage_obj[0][tracker]["cur"]["value"]).toExponential(2);
+                    var unit = stage_obj[0][tracker]["unit"];
 
-                var el = document.getElementById(tracker);
-                // If the tracker info exists, just update it.
-                if (el) {
-                    el = d3.select(el);
-                    el.select("#" + tracker + "_min").text("min: " + min);
-                    el.select("#" + tracker + "_max").text("max: " + max);
-                    el.select("#" + tracker + "_avg").text("avg: " + avg);
-                    el.select("#" + tracker + "_std").text("std: " + std);
-                } else {
-                    // Create a new tracker info block.
-                    var stage_node = document.getElementById(stage + "_div");
-                    var text = d3.select(stage_node).append("div")
-                        .attr("id", tracker);
-                    text.append("p").text(tracker)
-                        .attr("id", tracker + "_name");
-                    text.append("p").text("min: " + min)
-                        .attr("id", tracker + "_min")
-                        .attr("style", "text-align: center");
-                    text.append("p").text("max: " + max)
-                        .attr("id", tracker + "_max")
-                        .attr("style", "text-align: center");
-                    text.append("p").text("avg: " + avg)
-                        .attr("id", tracker + "_avg")
-                        .attr("style", "text-align: center");
-                    text.append("p").text("std: " + std)
-                        .attr("id", tracker + "_std")
-                        .attr("style", "text-align: center");
+                    // Skip if stage is not selected.
+                    var stage_btn = document.getElementById(stage + "_button");
+                    if (stage_btn) {
+                        var el = document.getElementById(stage + "/" + tracker);
+                        // If the tracker info exists, only update it.
+                        if (el) {
+                            document.getElementById(stage + "/" + tracker + "_cur").innerHTML = cur;
+                            document.getElementById(stage + "/" + tracker + "_min").innerHTML = min;
+                            document.getElementById(stage + "/" + tracker + "_max").innerHTML = max;
+                            document.getElementById(stage + "/" + tracker + "_avg").innerHTML = avg;
+                            document.getElementById(stage + "/" + tracker + "_std").innerHTML = std;
+                        } else {
+                            var stage_div = d3.select(document.getElementById(stage + "_div"));
+                            var stage_tbl = document.getElementById(stage + "_table");
+
+                            // Create table if tracker table does not exist.
+                            if (!stage_tbl) {
+                                stage_tbl = stage_div.append("table").attr("id", stage + "_table");
+                                var header_row = stage_tbl.append("tr");
+                                header_row.append("th").text("name");
+                                header_row.append("th").text("cur");
+                                header_row.append("th").text("unit");
+                                header_row.append("th").text("avg");
+                                header_row.append("th").text("std");
+                                header_row.append("th").text("min");
+                                header_row.append("th").text("max");
+                            }
+
+                            // Create a new tracker row.
+                            var tracker_row = stage_tbl.append("tr").attr("id", stage + "/" + tracker);
+                            tracker_row.append("td").text(tracker);
+                            tracker_row.append("td").text(cur).attr("id", stage + "/" + tracker + "_cur");
+                            tracker_row.append("td").text(unit).attr("id", stage + "/" + tracker + "_unit");
+                            tracker_row.append("td").text(avg).attr("id", stage + "/" + tracker + "_avg");
+                            tracker_row.append("td").text(std).attr("id", stage + "/" + tracker + "_std");
+                            tracker_row.append("td").text(min).attr("id", stage + "/" + tracker + "_min");
+                            tracker_row.append("td").text(max).attr("id", stage + "/" + tracker + "_max");
+                        }
+                    }
+
+                    // Update tracker shortcut in nodes.
+                    var target = document.getElementById(stage + "/" + tracker + "_sc");
+                    if (target) {
+                        target.innerHTML = tracker + ": " + cur + " " + unit;
+                    }
+
                 }
-            }
         });
     }
 }
+
+var show_trackers_in_label = (function() {
+    var done = false;
+    // This function will only execute once at the first time tracker info arrives.
+    return function (trackers, label) {
+        if (!done) {
+            done = true;
+
+            var stage_names = Object.keys(trackers);
+            for (stage of stage_names) {
+                d3.select(trackers[stage]).forEach((stage_obj) => {
+                    var tracker_names = Object.keys(stage_obj[0]);
+
+                    // Only scan the first two trackers in a stage.
+                    for (let i = 0; i < 2; i++) {
+                        var tracker = tracker_names[i];
+                        if (tracker) {
+                            var cur = (stage_obj[0][tracker]["cur"]["value"]).toExponential(2);
+                            var unit = stage_obj[0][tracker]["unit"];
+
+                            // Update text and id for easier search later.
+                            var target = document.getElementById(stage + "_" + (i+1));
+                            target.setAttribute("id", stage + "/" + tracker + "_sc");
+                            target.innerHTML = tracker + ": " + cur + " " + unit;
+                        }
+                    }
+                });
+            };
+
+        }
+    }
+})();
 
 // Read from endpoint /buffers to get buffer stats
 async function get_data(endpoint = "/buffers") {
@@ -136,8 +189,6 @@ class PipelineViewer {
     #stages;
     #buffer_labels;
     #stage_labels;
-    #sidebar;
-    #dropdown_btn;
 
     constructor(buffers, body) {
         this.buffers = buffers;
@@ -168,8 +219,9 @@ class PipelineViewer {
             .attr("class", "main");
 
         // Add a sidebar to display all tracker info
-        this.#sidebar = d3.select("body").append("div")
-            .attr("class", "sidenav");
+        d3.select("body").append("div")
+            .attr("class", "sidenav")
+            .attr("id", "sidebar");
 
         outer.append('rect')
             .attr('class', 'background')
@@ -282,6 +334,7 @@ class PipelineViewer {
             .data(this.#graph.stages)
             .enter().append("text")
             .attr("class", "stage_labels")
+            .attr("id", function(d) { return d.name; })
             .call(this.#d3cola.drag);
 
         var insertLinebreaks = function (d) {
@@ -358,29 +411,14 @@ class PipelineViewer {
                 return "translate(" + d.innerBounds.x + self.margin + "," + (d.innerBounds.y + self.margin/2) + ")";
             });
         });
-
-        // Each stage name has a button to control its tracker display.
-        this.#dropdown_btn = this.#sidebar.selectAll(".dropdown-btn")
-            .data(this.#graph.stages)
-            .enter().append("button")
-            .attr("class", "dropdown-btn")
-            .html(function (d) { return d.name; })
-            .attr("id", function (d) { return d.name + "_button"; });
-
-        // Each stage stores tracker info in a dropdown menu after its button.
-        this.#dropdown_btn.each(function (d) {
-            var node = document.createElement("div");
-            d3.select(node)
-                .attr("id", d.name + "_div")
-                .attr("class", "dropdown-container");
-            this.parentNode.insertBefore(node, this.nextElementSibling);
-        })
     }
 
     start_ult() {
-        // Add utilization for buffers
+        // Add utilization for buffers.
         this.#buffer_labels[0].reduce((pre, cur) => {
             var el = d3.select(cur);
+
+            // Add CPU usage to buffers.
             var tspan = el.append('tspan')
                         .text(this.buffers[cur.textContent].num_full_frame + "/" + this.buffers[cur.textContent].num_frames)
             tspan.attr('x', this.margin/2).attr('dy', '15')
@@ -388,17 +426,29 @@ class PipelineViewer {
                     .attr("id", "utl");
         }, 0)
 
-        // Add utilization for stages
+        // Add utilization for stages.
         this.#stage_labels[0].reduce((pre, cur) => {
             var el = d3.select(cur);
+            var stage_name = cur.getAttribute("id");
 
             // Add title as tooltip to show details when mouse moves over.
             el.append("title").text("usr: 0%; sys: 0%");
 
+            // Add CPU usage to stages.
             var tspan = el.append('tspan').text("CPU: 0%");
             tspan.attr('x', this.margin/2).attr('dy', '15')
                     .attr("font-size", "15")
                     .attr("id", "utl");
+
+            // Add spots for first two trackers.
+            el.append('tspan').text("")
+                .attr('x', this.margin/2).attr('dy', '15')
+                .attr("font-size", "15")
+                .attr("id", stage_name + "_1");
+            el.append('tspan').text("")
+                .attr('x', this.margin/2).attr('dy', '15')
+                .attr("font-size", "15")
+                .attr("id", stage_name + "_2");
         }, 0)
 
         // Start polling kotekan for metrics
@@ -419,7 +469,38 @@ class PipelineViewer {
                 dropdownContent.style.display = "block";
             }
             });
-        }
+        };
+
+        // Add click event for each stage.
+        for (let stage of this.#graph.stages) {
+            var el = document.getElementById(stage.name);
+            el.addEventListener("click", function (event) {
+                var stage_name = event.target.parentElement.getAttribute("id");
+                var stage_btn = document.getElementById(stage_name + "_button");
+                var stage_div = document.getElementById(stage_name + "_div");
+            
+                if (stage_btn) {
+                    // Remove stage from sidebar if it exists.
+                    stage_btn.parentElement.removeChild(stage_btn);
+                    stage_div.parentElement.removeChild(stage_div);
+                } else {
+                    // Add stage to sidebar.
+                    var dropdown_btn = d3.select(document.getElementById("sidebar"))
+                        .append("button")
+                        .attr("class", "dropdown-btn")
+                        .text(stage_name)
+                        .attr("id", stage_name + "_button");
+
+                    var div = document.createElement("div");
+                    d3.select(div)
+                        .attr("id", stage_name + "_div")
+                        .attr("class", "dropdown-container");
+
+                    var btn = document.getElementById(stage_name + "_button");
+                    btn.parentNode.insertBefore(div, btn.nextElementSibling);
+                }
+            });
+        };
     }
 
 }
