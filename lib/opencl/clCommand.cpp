@@ -43,7 +43,7 @@ void clCommand::finalize_frame(int gpu_frame_id) {
                                                    &stop_time, nullptr));
             double active_time = (double)(stop_time - start_time) * 1e-9;
             excute_time->add_sample(active_time);
-            utilization->add_sample(active_time/frame_arrival_period);
+            utilization->add_sample(active_time / frame_arrival_period);
         }
 
         CHECK_CL_ERROR(clReleaseEvent(post_events[gpu_frame_id]));

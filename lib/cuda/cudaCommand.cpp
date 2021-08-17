@@ -37,7 +37,7 @@ void cudaCommand::finalize_frame(int gpu_frame_id) {
                                                   post_events[gpu_frame_id]));
             double active_time = exec_time * 1e-3; // convert ms to s
             excute_time->add_sample(active_time);
-            utilization->add_sample(active_time/frame_arrival_period);
+            utilization->add_sample(active_time / frame_arrival_period);
         }
         CHECK_CUDA_ERROR(cudaEventDestroy(pre_events[gpu_frame_id]));
         pre_events[gpu_frame_id] = nullptr;

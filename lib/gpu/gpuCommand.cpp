@@ -44,8 +44,10 @@ gpuCommand::gpuCommand(Config& config_, const std::string& unique_name_,
         frame_arrival_period = config.get<double>(unique_name, "frame_arrival_period");
     }
 
-    excute_time = kotekan::KotekanTrackers::instance().add_tracker(unique_name, get_name() + "_execute_time", "seconds");
-    utilization = kotekan::KotekanTrackers::instance().add_tracker(unique_name, get_name() + "_u", "");
+    excute_time = kotekan::KotekanTrackers::instance().add_tracker(
+        unique_name, get_name() + "_execute_time", "seconds");
+    utilization =
+        kotekan::KotekanTrackers::instance().add_tracker(unique_name, get_name() + "_u", "");
 }
 
 gpuCommand::~gpuCommand() {}

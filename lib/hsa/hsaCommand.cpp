@@ -111,10 +111,10 @@ void hsaCommand::finalize_frame(int frame_id) {
                || command_type == gpuCommandType::COPY_OUT) {
         if (profiling)
             hsa_status = hsa_amd_profiling_get_async_copy_time(signals[frame_id], &copy_time);
-            double active_time =
-                ((double)(copy_time.end - copy_time.start)) / (double)timestamp_frequency_hz;
-            excute_time->add_sample(active_time);
-            utilization->add_sample(active_time/frame_arrival_period);
+        double active_time =
+            ((double)(copy_time.end - copy_time.start)) / (double)timestamp_frequency_hz;
+        excute_time->add_sample(active_time);
+        utilization->add_sample(active_time / frame_arrival_period);
     } else {
         return;
     }
