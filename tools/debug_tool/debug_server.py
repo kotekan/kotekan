@@ -35,7 +35,8 @@ def dir_listing(req_path):
 
 
 # Dynamically read from the given endpoint
-@app.route("/<endpoint>", methods=["GET", "POST"])
+# "/kotekan_instance" is used to differentiate from file system
+@app.route("/kotekan_instance/<endpoint>", methods=["GET", "POST"])
 def update(endpoint):
 
     # GET request

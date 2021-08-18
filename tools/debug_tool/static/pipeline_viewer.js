@@ -4,15 +4,15 @@ function isIE() { return ((navigator.appName == 'Microsoft Internet Explorer') |
 const POLL_WAIT_TIME_MS = 1000;
 // Poll kotekan via web server every POLL_WAIT_TIME_MS and update page with new metrics
 function poll(buffer_labels, stage_labels) {
-    get_data("/buffers").then(function (new_buffers) {
+    get_data("/kotekan_instance/buffers").then(function (new_buffers) {
         update_buf_utl(new_buffers, buffer_labels);
     });
 
-    get_data("/cpu_ult").then(function (cpu_stats) {
+    get_data("/kotekan_instance/cpu_ult").then(function (cpu_stats) {
         update_cpu_utl(cpu_stats, stage_labels);
     })
 
-    get_data("/trackers_current").then(function (trackers) {
+    get_data("/kotekan_instance/trackers_current").then(function (trackers) {
         show_trackers_in_label(trackers);
         update_trackers(trackers);
     })
@@ -161,7 +161,7 @@ var show_trackers_in_label = (function() {
 })();
 
 // Read from endpoint /buffers to get buffer stats
-async function get_data(endpoint = "/buffers") {
+async function get_data(endpoint = "/kotekan_instance/buffers") {
     let response = await fetch(endpoint);
 
     if (response.status == 502) {
