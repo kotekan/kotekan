@@ -8,6 +8,7 @@ app.config["CORS_ORIGINS"] = ["*"]
 CORS(app, support_credentials=True)
 
 KOTEKAN_ADDRESS = "http://localhost:12048"
+DUMP_DIR = "./"
 
 # Load file
 @app.route("/", defaults={"req_path": ""})
@@ -16,6 +17,7 @@ def dir_listing(req_path):
     BASE_DIR = os.getcwd()
 
     # Joining the base and the requested path
+    req_path = req_path.replace("dump_dir", DUMP_DIR)
     abs_path = os.path.join(BASE_DIR, req_path)
 
     # Return 404 if path doesn't exist
@@ -57,7 +59,12 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("-a")
+    parser.add_argument("-d")
     arg = parser.parse_args()
+
     if arg.a:
         KOTEKAN_ADDRESS = arg.a
+    if arg.d:
+        DUMP_DIR = arg.d
+
     app.run()

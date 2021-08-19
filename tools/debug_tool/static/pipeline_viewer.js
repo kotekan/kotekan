@@ -160,7 +160,7 @@ var show_trackers_in_label = (function() {
     }
 })();
 
-// Read from endpoint /buffers to get buffer stats
+// Read useful info from endpoint
 async function get_data(endpoint = "/kotekan_instance/buffers") {
     let response = await fetch(endpoint);
 
@@ -175,8 +175,27 @@ async function get_data(endpoint = "/kotekan_instance/buffers") {
         // Reconnect in one second
         await new Promise(resolve => setTimeout(resolve, 1000));
     } else {
-        // Get buffer stats
-        return await response.json();
+        // Get returned content
+        if (endpoint === "/dump_dir") {
+            // Parse HTML text to a list of file names
+            var htmlString = await response.text();
+            var doc = new DOMParser().parseFromString(htmlString, "text/html");
+            var elements = doc.querySelectorAll("a");
+            var files = [];
+            elements.forEach(function(el) {
+                var text = ((el.innerHTML).replaceAll("\n", "")).replaceAll(" ", "");
+                files.push(text);
+            })
+            return files;
+        } else if (endpoint.includes("crash_stats")) {
+            // Separate buffer and tracker info from dump file
+            var obj = await response.json();
+            var buffers = obj[buffers];
+            var trackers = obj[trackers];
+            return buffers, trackers;
+        } else {
+            return await response.json();
+        }
     }
 }
 

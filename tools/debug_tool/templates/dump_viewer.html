@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Dump Viewer</title>
+<link rel= "stylesheet" type= "text/css" href= "{{ url_for('static',filename='styles.css') }}">
+<script src="https://d3js.org/d3.v3.min.js"></script>
+<script src="http://marvl.infotech.monash.edu/webcola/cola.min.js"></script>
+<script type="text/javascript" src="https://canvasjs.com/assets/script/jquery-1.11.1.min.js"></script>
+<script src="{{url_for('static', filename='pipeline_viewer.js')}}"></script> 
+</head>
+
+<body>
+    <a href="../index.html">cola.js home</a>
+<h1>Kotekan Pipeline</h1>
+<button type="button" class="collapsible" id="collapsible">Select a file</button>
+<div class="content" id="file_dropdown"></div>
+
+<script>
+    var coll = document.getElementById("collapsible");
+    coll.addEventListener("click", function() {
+        this.classList.toggle("active");
+        var content = this.nextElementSibling;
+        if (content.style.display === "block") {
+        content.style.display = "content";
+        } else {
+        content.style.display = "block";
+        }
+    });
+
+    get_data("/dump_dir").then(function (files) {
+        var div = document.getElementById("file_dropdown");
+        var buttons = d3.select(div).selectAll(".choice")
+            .data(files)
+            .enter().append("button")
+            .attr("class", "choice");
+
+        buttons.each(function(d) {
+            this.innerHTML = d.replace("/dump_dir/", "");
+            this.setAttribute("id", d);
+            this.addEventListener("click", function(event) {
+                var endpoint = event.target.getAttribute("id");
+                get_data(endpoint).then(function(buffers, trackers) {
+                    // var pipeline = new PipelineViewer(buffers, d3.select("body"), trackers);
+                    // pipeline.start_viewer();
+                })
+            });
+        })
+    })
+
+</script>
+</body>
+</html>
