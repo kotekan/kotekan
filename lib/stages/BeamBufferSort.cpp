@@ -27,10 +27,12 @@ REGISTER_KOTEKAN_STAGE(BeamBufferSort);
 BeamBufferSort::BeamBufferSort(Config& config_, const std::string& unique_name,
                                bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&BeamBufferSort::main_thread, this)) {
-    uint32_t nchan;
-    uint32_t buf_start_f = 0;
-    uint32_t buf_nchan;
-    uint32_t queue_real_size;
+    uint32_t nchan;           // Totoal number of channels
+    uint32_t buf_start_f = 0; // Start channel id for each buffer
+    uint32_t buf_nchan;       // Temp varible for number of channels at each output buffer
+    // The real data size of the queue. For the gated data, there will be gaps in the queue.
+    // This to keep tracking the data size. 
+    uint32_t queue_real_size; 
     // Apply config
     samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
     has_freq_bin = config.get_default<bool>(unique_name, "has_freq_bin", false);
@@ -44,8 +46,10 @@ BeamBufferSort::BeamBufferSort(Config& config_, const std::string& unique_name,
     align_start_time = config.get_default<bool>(unique_name, "align_start_time", true);
     nchan_buffer0 = config.get<uint32_t>(unique_name, "nchan_buffer0");
     nchan_buffer1 = config.get<uint32_t>(unique_name, "nchan_buffer1");
-    // The data dump size should be smaller than one third of queue time samples.
+    // The data dump size should be smaller than one third of total queue time samples.
+    // Otherwrise, there would be empty beam data buffers. 
     assert(dump_size < wait_nframes / 3 * (int)queue_frame_size);
+    // Size of beam metadata with the frequency ID.  
     FreqIDBeamMeta_size = sizeof(FreqIDBeamMetadata);
     // Total time for one coming frame in nanoseconds.
     subframe_time_nsec = time_resolution * samples_per_data_set * 1e9;
@@ -78,10 +82,6 @@ BeamBufferSort::BeamBufferSort(Config& config_, const std::string& unique_name,
 	queue_status.push_back(std::vector<uint8_t> (total_freq_chan, 0));
     }
 
-    // Assign frequency to the buffers.
-    nchan = total_freq_chan / use_n_out_buffer;
-    // Check if there is any extra channels
-    uint32_t rmder = total_freq_chan % use_n_out_buffer;
     // Assign channels to the output buffer.
     for (uint32_t i = 0; i< use_n_out_buffer; ++i){
         if (i == 0){
@@ -126,16 +126,15 @@ void BeamBufferSort::nonfreq_meta_2_freq_meta(BeamMetadata* nonfreq_meta,\
 void BeamBufferSort::fill_empty_frame(uint32_t time_idx, uint32_t freq_idx, 
     uint64_t fpga_seq_start0, timespec ctime0, uint32_t beam_number, double ra, 
     double dec, double scaling){
-    
-    uint64_t fake_fpga_seq_start;
-    uint32_t fake_freq_bin;     // For metadata in the empty frame
+    // Fill up the empty frame.
+    // For the metadata in the empty frame.
+    uint64_t fake_fpga_seq_start; 
+    uint32_t fake_freq_bin;      
     timespec fake_ctime;
 
     fake_fpga_seq_start = fpga_seq_start0 + time_idx *  queue_frame_represent_size;
     fake_ctime = ctime0;
-    //INFO("Filling empty time {:d}", fake_ctime.tv_sec);
     add_nsec(fake_ctime, (long)(time_idx * queue_frame_resolution_nsec));
-    //INFO("Filling empty time2 {:d}", fake_ctime.tv_sec);
     fake_freq_bin = freq_idx;
     fill_freq_meta((FreqIDBeamMetadata*) &sort_queue[time_idx][freq_idx][0], fake_freq_bin,
         fake_fpga_seq_start, fake_ctime, 0, dset_id_t::null, beam_number, ra, dec, scaling);
@@ -146,6 +145,7 @@ void BeamBufferSort::fill_empty_frame(uint32_t time_idx, uint32_t freq_idx,
 
 
 void BeamBufferSort::main_thread(){
+    // Sort the incoming frames. 
     uint32_t freq_bin;
     int time_offset;
     uint64_t frame_nr;
@@ -174,7 +174,6 @@ void BeamBufferSort::main_thread(){
 
     FreqIDBeamMetadata* in_metadata = nullptr;
     BeamMetadata* non_freq_metadata = nullptr;
-    //MergedBeamMetadata* out_metadata = nullptr;
 
     frameID input_frame_id(in_buf); // Input frame id
     // A vector for the output buffer frame ID
@@ -214,7 +213,6 @@ void BeamBufferSort::main_thread(){
 	    in_metadata = temp_freq_metadata;
 	    nonfreq_meta_2_freq_meta(non_freq_metadata, in_metadata, freq_bin);
         }
-	// INFO("in come start time {:d} {:d}", in_metadata->ctime.tv_sec, in_metadata->ctime.tv_nsec);
 
 	// Get incoming frame number
 	// TODO when it is gated data, this needs to be changed. 
@@ -266,6 +264,13 @@ void BeamBufferSort::main_thread(){
         time_offset = frame_nr - frame0;
 
         // Check if time offset is outside of waiting frames, if yes dump the old frames.
+	// If the incoming frame time > wait frames time, it will start dumping data even
+	// there are empty frames in the queue. The dumping data size depends on how far
+	// the incoming frame exceeds the waiting queue.
+	// NOTE this function assumes that the incoming frames arriving time is not too 
+	// far from the end time of the queue. For the most time, it should be the neigher
+	// frame. 
+	
 	if (time_offset >= wait_nframes){ // Frame comes beyond the waiting frames, dump old frames.
 	    // Decide the number of frames to dump.
 	    // dump offset is the position where data has been dump in the frame.
@@ -280,7 +285,7 @@ void BeamBufferSort::main_thread(){
                 }
             }
 	    //INFO("Start dumping advance {:d}", advance_nframe);
-            // Get the queue start matedata for each frequency.
+            // Get the queue start metadata for each frequency.
             for (uint32_t i = 0; i < total_freq_chan; i++){
                 curr_queue0_metadata[i] = (FreqIDBeamMetadata*)&sort_queue[0][i][0];
 	    }

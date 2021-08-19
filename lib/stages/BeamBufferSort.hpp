@@ -22,13 +22,47 @@ using std::vector;
 
 /**
  * @class BeamBufferSort
- * @brief This stage sort the beam buffer by frequency and time and split buffer by frequencies.
+ * @brief This stage sort the beam buffer by frequency and time. The output also splits the sorted data buffer by frequency groups.
  *
+ * This stage takes in the tracking beam frames and sort frames by frequeny and time so that 
+ * the output data is from the same time and sorted by the frequency channels. 
+ * To enable the ndisk writing, the output data can be put into mulitple output buffers by
+ * frequency groups. 
+ * 
  * @par Buffers
  * @buffer in_buf Kotekan single frame tracking beam buffer.
- *     @buffer_format Array of @c chars
- * @buffer out_buf Kotekan sorted tracking beam buffer.
- *     @buffer_format Array of @c uint32_t
+ *         @buffer_format Array of @c chars
+ * @buffer out_bufs Kotekan sorted tracking beam buffer with multiple frequency of data from the same time.
+ *         @buffer_format Vectory Array of @c chars
+ *
+ * @conf   samples_per_data_set    Uint32_t. Number of time samples in one input frame.
+ * @conf   has_freq_bin            Bool (default: false). If the incoming frames has 
+ *                                 frequency in the metadata.
+ * @conf   total_freq_chan         Uint32_t (default: false). Total frequency channel 
+ *                                 of data. 
+ * @conf   num_pol                 Uint32_t (default: 2). Number of polarizations.
+ * @conf   use_n_out_buffer        Uint32_t. Number of output buffers to use. This is 
+ *                                 also related to the number of channels in each buffer.
+ * @conf   wait_nframes            Uint32_t (default: 20). Number of frames in the sort queue.
+ *                                 Since the incoming data does not always arrive at the same
+ *                                 time, it needs a big enough queue to host the incoming data.  
+ * @conf   time_resolution         Double (default: 2.56e-06). Timing resoulation for each time
+ *                                 sample. 
+ * @conf   queue_frame_size        Number of data samples for each queue frame. For the gated
+ *                                 data, the data size in the queue does not always has the 
+ *                                 same number of data samples with the frame from the correlator.
+ *                                 So the total data size in the queue is wait_nframes * queue_frame_size
+ * @conf   dump_size               Int. Number of time samples for each output. The output size 
+ *                                 should not bigger than 1/3 of total data size in the queue. 
+ * @conf   align_start_time        Bool (default: True). If the start the queue align to the integer
+ *                                 second of start time. VDIF or other VLBI software requrires the 
+ *                                 start time align with the integer seconds.
+ * @conf   nchan_buffer0           Uint32_t. Number of channels in output buffer0. If the total channels can
+ *                                 not be splited evenly to each out buffer, output buffer0 will take the 
+ *                                 remining number of channels and other buffers get the channels evenly. 
+ * @conf   nchan_buffer1           Uint32_t. Number of channels in all other outpub buffers. For instance, 
+ *                                 1024 channels with 10 output buffers. out_buffer0 gets the first 106 channels
+ *                                 and the rest buffers get 102 channels each.   
  *
  * @author Jing Santiago Luo
  *
