@@ -209,5 +209,4 @@ void testDataGen::main_thread() {
                 usleep((int)(1e6 * (frame_end_time - time)));
         }
     }
-    INFO("Calling dump_trackers");
 }
