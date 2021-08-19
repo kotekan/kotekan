@@ -10,6 +10,8 @@
 #include "cpuMonitor.hpp"
 #endif
 
+#include "json.hpp" // for json
+
 #include <map>    // for map
 #include <string> // for string
 

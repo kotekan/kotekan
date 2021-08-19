@@ -6,8 +6,6 @@
 #include "restServer.hpp"  // for connectionInstance, restServer
 #include "visUtil.hpp"     // for StatTracker
 
-#include "json.hpp" // for json
-
 #include <map>      // for map, map<>::value_compare
 #include <memory>   // for shared_ptr
 #include <mutex>    // for mutex
