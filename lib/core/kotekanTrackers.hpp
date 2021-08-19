@@ -6,6 +6,8 @@
 #include "restServer.hpp"  // for connectionInstance, restServer
 #include "visUtil.hpp"     // for StatTracker
 
+#include "json.hpp" // for json
+
 #include <map>      // for map, map<>::value_compare
 #include <memory>   // for shared_ptr
 #include <mutex>    // for mutex
@@ -67,7 +69,7 @@ public:
      *        we need to have a call back to the current kotekan mode.  This function should
      *        only be used by the active kotekanMode object, and be set to nullptr
      *        when the kotekan mode is deleted.
-     * @param kotekan_mode_ptr Pointer to the kotekan mode object or nullptr
+     * @param _kotekan_mode_ptr Pointer to the kotekan mode object or nullptr
      */
     void set_kotekan_mode_ptr(kotekan::kotekanMode* _kotekan_mode_ptr);
 
