@@ -28,11 +28,35 @@ using std::vector;
  * @brief This stage writes the sorted beam buffer to disk in 
  *  vdif format.
  *
- *  @par 
- *  @buffer in_buff kotekan sorted beam buffer in the format of merged buffer.
- *      @buffer_format Array of @c uint32_t
- *  
- *  @author Jing Santiago Luo
+ * @par 
+ * @buffer in_buff kotekan sorted beam buffer in the format of merged buffer.
+ *         @buffer_format Array of @c uint32_t
+ * 
+ * @conf   disk_base                String. The path where disks get mounted
+ * @conf   disk_set                 String. Disk set name. This is designed 
+ *                                  for ndisk writing.
+ * @conf   disk_id                  Int. The disk id number. For n disk writing,
+ *                                  the fold to the data is: 
+ *                                  /disk_base/disk_set/disk_id/  
+ * @conf   file_name                String. File name when using absolute path
+ *                                  recording. 
+ * @conf   file_ext                 String (default: ".vdif"). File extension when using absolute 
+ *                                  path recording.
+ * @conf   use_abs_path             Bool. If use an absolute path to record data.
+ * @conf   abs_path                 String (default: ""). Absolute path to the data 
+ *                                  file folder.
+ * @conf   instrument_name          String (default: "no_name_set"). The instrument name.
+ * @conf   write_to_disk            Bool (default: true). If write data to the disk.
+ * @conf   vdif_frame_per_freq      Uint32_t. Number of frames for each frequency in one
+ *                                  VDIF file.
+ * @conf   vdif_frame_header_size   Uint32_t. Size of VDIF header frame.
+ * @conf   num_pol                  Uint32_t. Number of polarization.
+ * @conf   exit_after_n_files       Size_t (default: 0). Number of files to write out. If zero, 
+ *                                  it will continually writing.
+ * @conf   ref_year                 Double. The reference year for VDIF header. It only accepts
+ *                                  the integer year or the half year (e.g. 2020 or 2020.5)
+ *
+ * @author Jing Santiago Luo
  *
  *
  */
