@@ -256,6 +256,7 @@ class PipelineViewer {
         this.width = width;
         this.height = height;
         this.margin = margin;
+        this.clear();
         this.init_svg();
         this.parse_data();
         this.create_objs();
@@ -270,13 +271,6 @@ class PipelineViewer {
         this.#d3cola = cola.d3adaptor(d3)
             .linkDistance(80)
             .size([this.width, this.height]);
-
-        // Skip the rest if components have been created
-        var main = document.getElementById("main");
-        if (main) {
-            this.#svg = d3.select(document.getElementById("svg_group"));
-            return;
-        }
 
         // Add a svg section and employ zooming
         var outer = d3.select("body").append("svg")
@@ -568,6 +562,18 @@ class PipelineViewer {
                 }
             });
         };
+    }
+
+    // Clear previous graph and sidebar
+    clear() {
+        var graph = document.getElementById("main");
+        var sidebar = document.getElementById("sidebar");
+        if (graph) {
+            graph.parentElement.removeChild(graph);
+        }
+        if (sidebar) {
+            sidebar.parentElement.removeChild(sidebar);
+        }
     }
 
 }

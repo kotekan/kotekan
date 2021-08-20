@@ -14,29 +14,37 @@
 <body>
     <a href="../index.html">cola.js home</a>
 <h1>Kotekan Pipeline</h1>
-<button type="button" class="collapsible" id="collapsible">Select a file</button>
-<div class="content" id="file_dropdown"></div>
+<div class="dropdown">
+    <button onclick="onclick_cb()" class="dropbtn">Select a file</button>
+    <div id="file_dropdown" class="dropdown-content"></div>
+</div>
 
 <script>
-    var coll = document.getElementById("collapsible");
-    coll.addEventListener("click", function() {
-        this.classList.toggle("active");
-        var content = this.nextElementSibling;
-        if (content.style.display === "block") {
-        content.style.display = "none";
-        } else {
-        content.style.display = "block";
+    function onclick_cb() {
+        document.getElementById("file_dropdown").classList.toggle("show");
+    }
+
+    // Close the dropdown if the user clicks outside of it
+    window.onclick = function(event) {
+        if (!event.target.matches('.dropbtn')) {
+            var dropdowns = document.getElementsByClassName("dropdown-content");
+            var i;
+            for (i = 0; i < dropdowns.length; i++) {
+            var openDropdown = dropdowns[i];
+            if (openDropdown.classList.contains('show')) {
+                openDropdown.classList.remove('show');
+            }
+            }
         }
-    });
+    }
 
     get_data("/dump_dir").then(function (files) {
         var div = document.getElementById("file_dropdown");
-        var buttons = d3.select(div).selectAll(".choice")
+        var file_names = d3.select(div).selectAll(".choice")
             .data(files)
-            .enter().append("button")
-            .attr("class", "choice");
+            .enter().append("p");
 
-        buttons.each(function(d) {
+        file_names.each(function(d) {
             this.innerHTML = d.replace("/dump_dir/", "");
             this.setAttribute("id", d);
 
@@ -44,7 +52,7 @@
             this.addEventListener("click", function(event) {
                 var endpoint = event.target.getAttribute("id");
                 get_data(endpoint).then(function(data) {
-                    var pipeline = new PipelineViewer(data[0], d3.select("body"), data[1]);
+                    pipeline = new PipelineViewer(data[0], d3.select("body"), data[1]);
                     pipeline.start_viewer(false);
                 })
             });
