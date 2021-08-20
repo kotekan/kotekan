@@ -32,7 +32,11 @@ using std::vector;
  * @par Buffers
  * @buffer in_buf Kotekan single frame tracking beam buffer.
  *         @buffer_format Array of @c chars
- * @buffer out_bufs Kotekan sorted tracking beam buffer with multiple frequency of data from the same time.
+ * @buffer out_bufs                Output buffer array for Kotekan sorted tracking beam 
+ *                                 buffer with multiple frequency of data from the same 
+ *                                 time. Each buffer in the buffer array contains a 
+ *                                 group of data in different frequency but arrives at
+ *                                 the same time.  
  *         @buffer_format Vectory Array of @c chars
  *
  * @conf   samples_per_data_set    Uint32_t. Number of time samples in one input frame.
