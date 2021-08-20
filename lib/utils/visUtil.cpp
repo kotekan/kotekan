@@ -281,7 +281,7 @@ StatTracker::StatTracker(std::string name, std::string unit, size_t size, bool i
     is_optimized(is_optimized){};
 
 void StatTracker::add_sample(double new_val) {
-    std::lock_guard<std::mutex> lock(tracker_lock);
+    std::lock_guard<std::recursive_mutex> lock(tracker_lock);
 
     double old_val = rbuf[end].value;
     rbuf[end].value = new_val;
@@ -307,6 +307,8 @@ void StatTracker::add_sample(double new_val) {
 }
 
 double StatTracker::get_max() {
+    std::lock_guard<std::recursive_mutex> lock(tracker_lock);
+
     if (count == 0) {
         return NAN;
     }
@@ -325,6 +327,8 @@ double StatTracker::get_max() {
 }
 
 double StatTracker::get_min() {
+    std::lock_guard<std::recursive_mutex> lock(tracker_lock);
+
     if (count == 0) {
         return NAN;
     }
@@ -343,6 +347,8 @@ double StatTracker::get_min() {
 }
 
 double StatTracker::get_avg() {
+    std::lock_guard<std::recursive_mutex> lock(tracker_lock);
+
     if (count == 0) {
         return NAN;
     }
@@ -350,6 +356,8 @@ double StatTracker::get_avg() {
 }
 
 double StatTracker::get_std_dev() {
+    std::lock_guard<std::recursive_mutex> lock(tracker_lock);
+
     if (count <= 1) {
         return NAN;
     }
@@ -357,7 +365,7 @@ double StatTracker::get_std_dev() {
 }
 
 nlohmann::json StatTracker::get_json() {
-    std::lock_guard<std::mutex> lock(tracker_lock);
+    std::lock_guard<std::recursive_mutex> lock(tracker_lock);
 
     nlohmann::json tracker_json = {};
     tracker_json["unit"] = unit;
@@ -378,7 +386,7 @@ nlohmann::json StatTracker::get_json() {
 }
 
 nlohmann::json StatTracker::get_current_json() {
-    std::lock_guard<std::mutex> lock(tracker_lock);
+    std::lock_guard<std::recursive_mutex> lock(tracker_lock);
 
     nlohmann::json tracker_json = {};
 
