@@ -23,7 +23,7 @@
         this.classList.toggle("active");
         var content = this.nextElementSibling;
         if (content.style.display === "block") {
-        content.style.display = "content";
+        content.style.display = "none";
         } else {
         content.style.display = "block";
         }
@@ -39,11 +39,13 @@
         buttons.each(function(d) {
             this.innerHTML = d.replace("/dump_dir/", "");
             this.setAttribute("id", d);
+
+            // Click on a new file will retrigger pipeline drawing.
             this.addEventListener("click", function(event) {
                 var endpoint = event.target.getAttribute("id");
-                get_data(endpoint).then(function(buffers, trackers) {
-                    // var pipeline = new PipelineViewer(buffers, d3.select("body"), trackers);
-                    // pipeline.start_viewer();
+                get_data(endpoint).then(function(data) {
+                    var pipeline = new PipelineViewer(data[0], d3.select("body"), data[1]);
+                    pipeline.start_viewer(false);
                 })
             });
         })

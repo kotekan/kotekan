@@ -161,7 +161,7 @@ var show_trackers_in_label = (function() {
 })();
 
 // Read useful info from endpoint
-async function get_data(endpoint = "/kotekan_instance/buffers") {
+async function get_data(endpoint) {
     let response = await fetch(endpoint);
 
     if (response.status == 502) {
@@ -190,13 +190,21 @@ async function get_data(endpoint = "/kotekan_instance/buffers") {
         } else if (endpoint.includes("crash_stats")) {
             // Separate buffer and tracker info from dump file
             var obj = await response.json();
-            var buffers = obj[buffers];
-            var trackers = obj[trackers];
-            return buffers, trackers;
+            var buffers = obj["buffers"];
+            var trackers = obj["trackers"];
+            return [buffers, trackers];
         } else {
             return await response.json();
         }
     }
+}
+
+function sort_by_key(array, key) {
+    return array.sort(function(a, b) {
+        var x = a[key];
+        var y = b[key];
+        return ((x < y) ? -1 : ((x > y) ? 1 : 0));
+    });
 }
 
 class PipelineViewer {
@@ -209,21 +217,53 @@ class PipelineViewer {
     #buffer_labels;
     #stage_labels;
 
-    constructor(buffers, body) {
+    constructor(buffers, body, trackers) {
         this.buffers = buffers;
         this.bufNames = Object.keys(this.buffers);
         this.body = body;
+        this.trackers = trackers;
+
+        if (trackers) {
+            this.process_timestamp(trackers);
+        }
     }
 
-    start_viewer(width = 960, height = 500, margin = 6) {
+    // Sort samples and find min/max timestamp.
+    process_timestamp(trackers) {
+        var max = 0;
+        var min = Number.MAX_VALUE;
+
+        var stage_names = Object.keys(trackers);
+        for (const stage of stage_names) {
+            d3.select(trackers[stage]).forEach((stage_obj) => {
+
+                var tracker_name = Object.keys(stage_obj[0]);
+                for (const tracker of tracker_name) {
+                    var samples = stage_obj[0][tracker]["samples"];
+                    samples = sort_by_key(samples, "timestamp");
+
+                    min = Math.min(min, samples[0]["timestamp"]);
+                    max = Math.max(max, samples[samples.length - 1]["timestamp"]);
+                }
+            });
+        }
+
+        this.time_min = min;
+        this.time_max = max;
+    }
+
+    start_viewer(isDynamic = false, width = 960, height = 500, margin = 6) {
         this.width = width;
         this.height = height;
         this.margin = margin;
         this.init_svg();
         this.parse_data();
         this.create_objs();
-        this.start_ult();
         this.enable_sidebar();
+
+        if (isDynamic) {
+            this.start_ult();
+        }
     }
 
     init_svg() {
@@ -231,30 +271,38 @@ class PipelineViewer {
             .linkDistance(80)
             .size([this.width, this.height]);
 
+        // Skip the rest if components have been created
+        var main = document.getElementById("main");
+        if (main) {
+            this.#svg = d3.select(document.getElementById("svg_group"));
+            return;
+        }
+
         // Add a svg section and employ zooming
         var outer = d3.select("body").append("svg")
             .attr("width", this.width)
             .attr("height", this.height)
-            .attr("class", "main");
+            .attr("class", "main")
+            .attr("id", "main");
 
         // Add a sidebar to display all tracker info
         d3.select("body").append("div")
             .attr("class", "sidenav")
             .attr("id", "sidebar");
 
-        outer.append('rect')
+        var rect = outer.append('rect')
             .attr('class', 'background')
             .attr('width', "100%")
-            .attr('height', "100%")
-            .call(d3.behavior.zoom().on("zoom", () => {
-                this.#svg.attr("transform", "translate(" + d3.event.translate + ")" + " scale(" + d3.event.scale + ")");
-            }));
+            .attr('height', "100%");
 
         var vis = outer
             .append('g')
             .attr('transform', 'translate(80,80) scale(0.7)');
 
-        this.#svg = vis.append("g");
+        this.#svg = vis.append("g").attr("id", "svg_group");
+        rect.call(d3.behavior.zoom().on("zoom", () => {
+            this.#svg.attr("transform", "translate(" + d3.event.translate + ")" + " scale(" + d3.event.scale + ")");
+        }));
     }
 
     parse_data() {

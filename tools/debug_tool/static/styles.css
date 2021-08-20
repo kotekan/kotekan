@@ -119,6 +119,7 @@ tr:nth-child(even) {
   text-align: left;
   outline: none;
   font-size: 15px;
+  width: max-content;
 }
 
 .active, .collapsible:hover {
@@ -129,5 +130,6 @@ tr:nth-child(even) {
   padding: 0 18px;
   display: none;
   overflow: hidden;
+  width: max-content;
   background-color: #f1f1f1;
 }
