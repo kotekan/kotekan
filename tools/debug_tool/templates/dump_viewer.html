@@ -18,6 +18,10 @@
     <button onclick="onclick_cb()" class="dropbtn">Select a file</button>
     <div id="file_dropdown" class="dropdown-content"></div>
 </div>
+<div class="slidecontainer">
+    <input type="range" min="0" max="100" value="100" class="slider" id="slide_input">
+    <p>Value: <span id="slide_value"></span>%</p>
+</div>
 
 <script>
     function onclick_cb() {
@@ -30,12 +34,19 @@
             var dropdowns = document.getElementsByClassName("dropdown-content");
             var i;
             for (i = 0; i < dropdowns.length; i++) {
-            var openDropdown = dropdowns[i];
-            if (openDropdown.classList.contains('show')) {
-                openDropdown.classList.remove('show');
-            }
+                var openDropdown = dropdowns[i];
+                if (openDropdown.classList.contains('show')) {
+                    openDropdown.classList.remove('show');
+                }
             }
         }
+    }
+
+    var slider = document.getElementById("slide_input");
+    var output = document.getElementById("slide_value");
+    output.innerHTML = slider.value;
+    slider.oninput = function() {
+        output.innerHTML = this.value;
     }
 
     get_data("/dump_dir").then(function (files) {
