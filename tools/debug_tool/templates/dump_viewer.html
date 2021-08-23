@@ -42,13 +42,6 @@
         }
     }
 
-    var slider = document.getElementById("slide_input");
-    var output = document.getElementById("slide_value");
-    output.innerHTML = slider.value;
-    slider.oninput = function() {
-        output.innerHTML = this.value;
-    }
-
     get_data("/dump_dir").then(function (files) {
         var div = document.getElementById("file_dropdown");
         var file_names = d3.select(div).selectAll(".choice")

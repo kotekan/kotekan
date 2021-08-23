@@ -14,7 +14,7 @@ function poll(buffer_labels, stage_labels) {
 
     get_data("/kotekan_instance/trackers_current").then(function (trackers) {
         show_trackers_in_label(trackers);
-        update_trackers(trackers);
+        update_trackers(trackers, true);
     })
 
     // Call poll() again to get the next message
@@ -62,7 +62,30 @@ function update_cpu_utl(cpu_stats, label){
     }, 0)
 }
 
-function update_trackers(trackers){
+// Find the largest timestamp before the given time.
+// var binary_search = function (arr, x) {
+//     let len = arr.length;
+//     if (len == 0) {
+//         return NaN;
+//     }
+
+//     let start = 0;
+//     let end = len - 1;
+
+//     while (start < end){
+//         let mid = Math.floor((start + end)/2);
+//         if (arr[mid]["timestamp"] == x) {
+//             return  arr[mid]["value"];
+//         } else if (arr[mid]["timestamp"] < x) {
+//             start = mid + 1;
+//         } else {
+//             end = mid - 1;
+//         }
+//     }
+//     return arr[start]["value"];
+// }
+
+function update_trackers(trackers, isDynamic, time_required){
     var stage_names = Object.keys(trackers);
     for (stage of stage_names) {
         d3.select(trackers[stage]).forEach((stage_obj) => {
@@ -74,8 +97,21 @@ function update_trackers(trackers){
                     var max = (stage_obj[0][tracker]["max"]).toExponential(2);
                     var min = (stage_obj[0][tracker]["min"]).toExponential(2);
                     var std = (stage_obj[0][tracker]["std"]).toExponential(2);
-                    var cur = (stage_obj[0][tracker]["cur"]["value"]).toExponential(2);
                     var unit = stage_obj[0][tracker]["unit"];
+                    var cur;
+
+                    if (isDynamic) {
+                        cur = (stage_obj[0][tracker]["cur"]["value"]).toExponential(2);
+                    } else {
+                        // Dump viewer shows the last sample before the given timestamp.
+                        var samples = stage_obj[0][tracker]["samples"];
+                        var arr = samples.filter(function(x){return x["timestamp"] <= time_required});
+                        if (arr.length == 0) {
+                            cur = NaN;
+                        } else {
+                            cur = arr[arr.length - 1]["value"].toExponential(2);
+                        }
+                    }
 
                     // Skip if stage is not selected.
                     var stage_btn = document.getElementById(stage + "_button");
@@ -261,9 +297,12 @@ class PipelineViewer {
         this.parse_data();
         this.create_objs();
         this.enable_sidebar();
+        this.reserve_tracker_space();
 
         if (isDynamic) {
             this.start_ult();
+        } else {
+            this.set_up_slider();
         }
     }
 
@@ -474,6 +513,23 @@ class PipelineViewer {
         });
     }
 
+    reserve_tracker_space() {
+        this.#stage_labels[0].reduce((pre, cur) => {
+            var el = d3.select(cur);
+            var stage_name = cur.getAttribute("id");
+
+            // Add spots for first two trackers.
+            el.append('tspan').text("")
+                .attr('x', this.margin/2).attr('dy', '15')
+                .attr("font-size", "15")
+                .attr("id", stage_name + "_1");
+            el.append('tspan').text("")
+                .attr('x', this.margin/2).attr('dy', '15')
+                .attr("font-size", "15")
+                .attr("id", stage_name + "_2");
+        }, 0);
+    }
+
     start_ult() {
         // Add utilization for buffers.
         this.#buffer_labels[0].reduce((pre, cur) => {
@@ -500,16 +556,6 @@ class PipelineViewer {
             tspan.attr('x', this.margin/2).attr('dy', '15')
                     .attr("font-size", "15")
                     .attr("id", "utl");
-
-            // Add spots for first two trackers.
-            el.append('tspan').text("")
-                .attr('x', this.margin/2).attr('dy', '15')
-                .attr("font-size", "15")
-                .attr("id", stage_name + "_1");
-            el.append('tspan').text("")
-                .attr('x', this.margin/2).attr('dy', '15')
-                .attr("font-size", "15")
-                .attr("id", stage_name + "_2");
         }, 0)
 
         // Start polling kotekan for metrics
@@ -539,7 +585,7 @@ class PipelineViewer {
                 var stage_name = event.target.parentElement.getAttribute("id");
                 var stage_btn = document.getElementById(stage_name + "_button");
                 var stage_div = document.getElementById(stage_name + "_div");
-            
+
                 if (stage_btn) {
                     // Remove stage from sidebar if it exists.
                     stage_btn.parentElement.removeChild(stage_btn);
@@ -573,6 +619,54 @@ class PipelineViewer {
         }
         if (sidebar) {
             sidebar.parentElement.removeChild(sidebar);
+        }
+    }
+
+    // Connect with slider input
+    set_up_slider() {
+        var slider = document.getElementById("slide_input");
+        var output = document.getElementById("slide_value");
+        var trackers = this.trackers;
+
+        // Reset slider value to 100%
+        slider.value = 100;
+        output.innerHTML = slider.value;
+
+        // Show first two trackers
+        var stage_names = Object.keys(trackers);
+        for (let stage of stage_names) {
+            d3.select(trackers[stage]).forEach((stage_obj) => {
+                var tracker_names = Object.keys(stage_obj[0]);
+
+                // Only scan the first two trackers in a stage.
+                for (let i = 0; i < 2; i++) {
+                    var tracker = tracker_names[i];
+                    if (tracker) {
+                        // Dump viewer shows the latest value.
+                        var samples = stage_obj[0][tracker]["samples"];
+                        var cur = (samples[samples.length - 1]["value"]).toExponential(2);
+                        var unit = stage_obj[0][tracker]["unit"];
+
+                        // Update text and id for easier search later.
+                        var target = document.getElementById(stage + "_" + (i+1));
+                        target.setAttribute("id", stage + "/" + tracker + "_sc");
+                        target.innerHTML = tracker + ": " + cur + " " + unit;
+                    }
+                }
+            });
+        };
+
+        // Slider callback function
+        // Update tracker info
+        var time_min = this.time_min;
+        var time_max = this.time_max;
+        update_trackers(trackers, false, time_max);
+        slider.oninput = function() {
+            output.innerHTML = this.value;
+            var percent = this.value / 100;
+            var time_required = (time_max - time_min) * percent + time_min;
+
+            update_trackers(trackers, false, time_required);
         }
     }
 
