@@ -54,6 +54,10 @@ void KotekanTrackers::register_with_server(restServer* rest_server) {
         "/trackers_current", std::bind(&KotekanTrackers::trackers_current_callback, this, _1));
 }
 
+void KotekanTrackers::set_kotekan_mode_ptr(kotekan::kotekanMode* _kotekan_mode_ptr) {
+    kotekan_mode_ptr = _kotekan_mode_ptr;
+}
+
 void KotekanTrackers::trackers_callback(connectionInstance& conn) {
     nlohmann::json return_json = {};
 
@@ -138,11 +142,16 @@ void KotekanTrackers::dump_trackers() {
 
     nlohmann::json return_json = {};
 
+    if (kotekan_mode_ptr != nullptr) {
+        return_json["buffers"] = kotekan_mode_ptr->get_buffer_json();
+    }
+
     std::lock_guard<std::mutex> lock(trackers_lock);
 
     for (auto& stage_itr : trackers) {
         for (auto& tracker_itr : trackers[stage_itr.first]) {
-            return_json[stage_itr.first][tracker_itr.first] = tracker_itr.second->get_json();
+            return_json["trackers"][stage_itr.first][tracker_itr.first] =
+                tracker_itr.second->get_json();
         }
     }
 
@@ -178,6 +187,7 @@ void KotekanTrackers::dump_trackers() {
         throw std::runtime_error(
             fmt::format(fmt("Cannot read tracker dump path {:s}. Exiting."), dump_path));
     }
+    INFO_NON_OO("Dumped kotekan statistic tracker (debug) data to {:s}", dump_path);
 }
 
 } // namespace kotekan
