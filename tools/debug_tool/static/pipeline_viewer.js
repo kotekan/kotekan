@@ -63,27 +63,35 @@ function update_cpu_utl(cpu_stats, label){
 }
 
 // Find the largest timestamp before the given time.
-// var binary_search = function (arr, x) {
-//     let len = arr.length;
-//     if (len == 0) {
-//         return NaN;
-//     }
+var binary_search = function (arr, x) {
+    let len = arr.length;
+    if (len == 0) {
+        return NaN;
+    }
 
-//     let start = 0;
-//     let end = len - 1;
+    let start = 0;
+    let end = len - 1;
 
-//     while (start < end){
-//         let mid = Math.floor((start + end)/2);
-//         if (arr[mid]["timestamp"] == x) {
-//             return  arr[mid]["value"];
-//         } else if (arr[mid]["timestamp"] < x) {
-//             start = mid + 1;
-//         } else {
-//             end = mid - 1;
-//         }
-//     }
-//     return arr[start]["value"];
-// }
+    // Return NaN if no time earlier than the given time.
+    if (arr[start]["timestamp"] > x) {
+        return NaN;
+    }
+    if (arr[end]["timestamp"] <= x) {
+        return arr[end]["value"];
+    }
+
+    while (start < end - 1){
+        let mid = Math.floor((start + end)/2);
+        if (arr[mid]["timestamp"] == x) {
+            return  arr[mid]["value"];
+        } else if (arr[mid]["timestamp"] < x) {
+            start = mid;
+        } else {
+            end = mid;
+        }
+    }
+    return arr[start]["value"];
+}
 
 function update_trackers(trackers, isDynamic, time_required){
     var stage_names = Object.keys(trackers);
@@ -104,13 +112,7 @@ function update_trackers(trackers, isDynamic, time_required){
                         cur = (stage_obj[0][tracker]["cur"]["value"]).toExponential(2);
                     } else {
                         // Dump viewer shows the last sample before the given timestamp.
-                        var samples = stage_obj[0][tracker]["samples"];
-                        var arr = samples.filter(function(x){return x["timestamp"] <= time_required});
-                        if (arr.length == 0) {
-                            cur = NaN;
-                        } else {
-                            cur = arr[arr.length - 1]["value"].toExponential(2);
-                        }
+                        cur = (binary_search(stage_obj[0][tracker]["samples"], time_required)).toExponential(2);
                     }
 
                     // Skip if stage is not selected.
@@ -235,6 +237,7 @@ async function get_data(endpoint) {
     }
 }
 
+// Sort objects in ascending order.
 function sort_by_key(array, key) {
     return array.sort(function(a, b) {
         var x = a[key];
@@ -260,7 +263,11 @@ class PipelineViewer {
         this.trackers = trackers;
 
         if (trackers) {
+            // Dump viewer
             this.process_timestamp(trackers);
+            this.isDynamic = false;
+        } else {
+            this.isDynamic = true;
         }
     }
 
@@ -288,7 +295,7 @@ class PipelineViewer {
         this.time_max = max;
     }
 
-    start_viewer(isDynamic = false, width = 960, height = 500, margin = 6) {
+    start_viewer(width = 960, height = 500, margin = 6) {
         this.width = width;
         this.height = height;
         this.margin = margin;
@@ -299,7 +306,7 @@ class PipelineViewer {
         this.enable_sidebar();
         this.reserve_tracker_space();
 
-        if (isDynamic) {
+        if (this.isDynamic) {
             this.start_ult();
         } else {
             this.set_up_slider();
@@ -656,11 +663,11 @@ class PipelineViewer {
             });
         };
 
-        // Slider callback function
-        // Update tracker info
         var time_min = this.time_min;
         var time_max = this.time_max;
         update_trackers(trackers, false, time_max);
+
+        // Slider callback function
         slider.oninput = function() {
             output.innerHTML = this.value;
             var percent = this.value / 100;

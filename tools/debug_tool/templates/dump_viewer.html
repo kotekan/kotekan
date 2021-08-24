@@ -19,7 +19,7 @@
     <div id="file_dropdown" class="dropdown-content"></div>
 </div>
 <div class="slidecontainer">
-    <input type="range" min="0" max="100" value="100" class="slider" id="slide_input">
+    <input type="range" min="0" max="100" step="0.01" value="100" class="slider" id="slide_input">
     <p>Value: <span id="slide_value"></span>%</p>
 </div>
 
@@ -42,22 +42,24 @@
         }
     }
 
+    // Load file menu
     get_data("/dump_dir").then(function (files) {
         var div = document.getElementById("file_dropdown");
         var file_names = d3.select(div).selectAll(".choice")
             .data(files)
             .enter().append("p");
 
+        // Only show files without folder name
         file_names.each(function(d) {
             this.innerHTML = d.replace("/dump_dir/", "");
             this.setAttribute("id", d);
 
-            // Click on a new file will retrigger pipeline drawing.
+            // Click on a new file will retrigger pipeline drawing
             this.addEventListener("click", function(event) {
                 var endpoint = event.target.getAttribute("id");
                 get_data(endpoint).then(function(data) {
                     pipeline = new PipelineViewer(data[0], d3.select("body"), data[1]);
-                    pipeline.start_viewer(false);
+                    pipeline.start_viewer();
                 })
             });
         })

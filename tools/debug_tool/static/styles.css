@@ -109,32 +109,6 @@ tr:nth-child(even) {
   background-color: #f2f2f2;
 }
 
-/* .collapsible {
-  background-color: #777;
-  color: white;
-  cursor: pointer;
-  padding: 18px;
-  width: 100%;
-  border: none;
-  text-align: left;
-  outline: none;
-  font-size: 15px;
-  width: max-content;
-}
-
-.active, .collapsible:hover {
-  background-color: #555;
-}
-
-.content {
-  padding: 0 18px;
-  display: none;
-  overflow: hidden;
-  width: max-content;
-  left: 0%;
-  background-color: #f1f1f1;
-} */
-
 .dropbtn {
   background-color: #3498DB;
   color: white;

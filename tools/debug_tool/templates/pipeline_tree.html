@@ -17,7 +17,7 @@
 <script>
     get_data("/kotekan_instance/buffers").then(function (buffers) {
         var pipeline = new PipelineViewer(buffers, d3.select("body"));
-        pipeline.start_viewer(true);
+        pipeline.start_viewer();
     });
 
 </script>
