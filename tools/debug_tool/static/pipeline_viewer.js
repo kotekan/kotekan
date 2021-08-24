@@ -140,12 +140,12 @@ function update_trackers(trackers, isDynamic, time_required){
                             if (!stage_tbl) {
                                 stage_tbl = stage_div.append("table").attr("id", stage + "_table");
                                 var header_row = stage_tbl.append("tr");
-                                if (!isDynamic) {
-                                    header_row.append("th").text("time");
-                                }
                                 header_row.append("th").text("name");
                                 header_row.append("th").text("cur");
                                 header_row.append("th").text("unit");
+                                if (!isDynamic) {
+                                    header_row.append("th").text("time");
+                                }
                                 header_row.append("th").text("avg");
                                 header_row.append("th").text("std");
                                 header_row.append("th").text("min");
@@ -155,12 +155,12 @@ function update_trackers(trackers, isDynamic, time_required){
                             // Create a new tracker row.
                             var tracker_row = stage_tbl.append("tr").attr("id", stage + "/" + tracker);
                             tracker_row.append("td").text(tracker);
+                            tracker_row.append("td").text(cur).attr("id", stage + "/" + tracker + "_cur");
+                            tracker_row.append("td").text(unit).attr("id", stage + "/" + tracker + "_unit");
                             if (!isDynamic) {
                                 tracker_row.append("td").text(time)
                                     .attr("id", stage + "/" + tracker + "_time");
                             }
-                            tracker_row.append("td").text(cur).attr("id", stage + "/" + tracker + "_cur");
-                            tracker_row.append("td").text(unit).attr("id", stage + "/" + tracker + "_unit");
                             tracker_row.append("td").text(avg).attr("id", stage + "/" + tracker + "_avg");
                             tracker_row.append("td").text(std).attr("id", stage + "/" + tracker + "_std");
                             tracker_row.append("td").text(min).attr("id", stage + "/" + tracker + "_min");
