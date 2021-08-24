@@ -66,7 +66,7 @@ function update_cpu_utl(cpu_stats, label){
 var binary_search = function (arr, x) {
     let len = arr.length;
     if (len == 0) {
-        return NaN;
+        return [NaN, NaN];
     }
 
     let start = 0;
@@ -74,23 +74,23 @@ var binary_search = function (arr, x) {
 
     // Return NaN if no time earlier than the given time.
     if (arr[start]["timestamp"] > x) {
-        return NaN;
+        return [NaN, NaN];
     }
     if (arr[end]["timestamp"] <= x) {
-        return arr[end]["value"];
+        return [arr[end]["value"], arr[end]["timestamp"]];
     }
 
     while (start < end - 1){
         let mid = Math.floor((start + end)/2);
         if (arr[mid]["timestamp"] == x) {
-            return  arr[mid]["value"];
+            return  [arr[mid]["value"], arr[mid]["timestamp"]];
         } else if (arr[mid]["timestamp"] < x) {
             start = mid;
         } else {
             end = mid;
         }
     }
-    return arr[start]["value"];
+    return [arr[start]["value"], arr[start]["timestamp"]];
 }
 
 function update_trackers(trackers, isDynamic, time_required){
@@ -107,12 +107,15 @@ function update_trackers(trackers, isDynamic, time_required){
                     var std = (stage_obj[0][tracker]["std"]).toExponential(2);
                     var unit = stage_obj[0][tracker]["unit"];
                     var cur;
+                    var time;
 
                     if (isDynamic) {
                         cur = (stage_obj[0][tracker]["cur"]["value"]).toExponential(2);
                     } else {
                         // Dump viewer shows the last sample before the given timestamp.
-                        cur = (binary_search(stage_obj[0][tracker]["samples"], time_required)).toExponential(2);
+                        var data = binary_search(stage_obj[0][tracker]["samples"], time_required);
+                        cur = (data[0]).toExponential(2);
+                        time = get_time(data[1]);
                     }
 
                     // Skip if stage is not selected.
@@ -121,6 +124,9 @@ function update_trackers(trackers, isDynamic, time_required){
                         var el = document.getElementById(stage + "/" + tracker);
                         // If the tracker info exists, only update it.
                         if (el) {
+                            if (!isDynamic) {
+                                document.getElementById(stage + "/" + tracker + "_time").innerHTML = time;
+                            }
                             document.getElementById(stage + "/" + tracker + "_cur").innerHTML = cur;
                             document.getElementById(stage + "/" + tracker + "_min").innerHTML = min;
                             document.getElementById(stage + "/" + tracker + "_max").innerHTML = max;
@@ -134,6 +140,9 @@ function update_trackers(trackers, isDynamic, time_required){
                             if (!stage_tbl) {
                                 stage_tbl = stage_div.append("table").attr("id", stage + "_table");
                                 var header_row = stage_tbl.append("tr");
+                                if (!isDynamic) {
+                                    header_row.append("th").text("time");
+                                }
                                 header_row.append("th").text("name");
                                 header_row.append("th").text("cur");
                                 header_row.append("th").text("unit");
@@ -146,6 +155,10 @@ function update_trackers(trackers, isDynamic, time_required){
                             // Create a new tracker row.
                             var tracker_row = stage_tbl.append("tr").attr("id", stage + "/" + tracker);
                             tracker_row.append("td").text(tracker);
+                            if (!isDynamic) {
+                                tracker_row.append("td").text(time)
+                                    .attr("id", stage + "/" + tracker + "_time");
+                            }
                             tracker_row.append("td").text(cur).attr("id", stage + "/" + tracker + "_cur");
                             tracker_row.append("td").text(unit).attr("id", stage + "/" + tracker + "_unit");
                             tracker_row.append("td").text(avg).attr("id", stage + "/" + tracker + "_avg");
@@ -244,6 +257,20 @@ function sort_by_key(array, key) {
         var y = b[key];
         return ((x < y) ? -1 : ((x > y) ? 1 : 0));
     });
+}
+
+// Get formatted time from timestamp.
+function get_time(timestamp) {
+    if (Number.isNaN(timestamp)) {
+        return NaN;
+    }
+    var date = new Date(timestamp);
+    var hours = date.getHours();
+    var minutes = date.getMinutes();
+    var seconds = date.getSeconds();
+    var miliseconds = date.getMilliseconds();
+
+    return hours + ":" + minutes + ":" + seconds + ":" + miliseconds;
 }
 
 class PipelineViewer {
@@ -563,6 +590,16 @@ class PipelineViewer {
             tspan.attr('x', this.margin/2).attr('dy', '15')
                     .attr("font-size", "15")
                     .attr("id", "utl");
+
+            // Add spots for first two trackers.
+            el.append('tspan').text("")
+                .attr('x', this.margin/2).attr('dy', '15')
+                .attr("font-size", "15")
+                .attr("id", stage_name + "_1");
+            el.append('tspan').text("")
+                .attr('x', this.margin/2).attr('dy', '15')
+                .attr("font-size", "15")
+                .attr("id", stage_name + "_2");
         }, 0)
 
         // Start polling kotekan for metrics
@@ -637,7 +674,7 @@ class PipelineViewer {
 
         // Reset slider value to 100%
         slider.value = 100;
-        output.innerHTML = slider.value;
+        output.innerHTML = get_time(this.time_max);
 
         // Show first two trackers
         var stage_names = Object.keys(trackers);
@@ -669,12 +706,13 @@ class PipelineViewer {
 
         // Slider callback function
         slider.oninput = function() {
-            output.innerHTML = this.value;
             var percent = this.value / 100;
-            var time_required = (time_max - time_min) * percent + time_min;
+            var time_required = Math.floor((time_max - time_min) * percent + time_min);
+
+            // Show required time in hour:minute:second:milisec format
+            output.innerHTML = get_time(time_required);
 
             update_trackers(trackers, false, time_required);
         }
     }
-
 }
