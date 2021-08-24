@@ -1,9 +1,10 @@
 #ifndef KOTEKAN_TRACKERS_HPP
 #define KOTEKAN_TRACKERS_HPP
 
-#include "Config.hpp"     // for Config
-#include "restServer.hpp" // for connectionInstance, restServer
-#include "visUtil.hpp"    // for StatTracker
+#include "Config.hpp"      // for Config
+#include "kotekanMode.hpp" // for kotekanMode
+#include "restServer.hpp"  // for connectionInstance, restServer
+#include "visUtil.hpp"     // for StatTracker
 
 #include <map>      // for map, map<>::value_compare
 #include <memory>   // for shared_ptr
@@ -60,6 +61,15 @@ public:
      * @param rest_server The server to register with.
      */
     void register_with_server(restServer* rest_server);
+
+    /**
+     * @brief To get the buffer information needed in the trackers dump file,
+     *        we need to have a call back to the current kotekan mode.  This function should
+     *        only be used by the active kotekanMode object, and be set to nullptr
+     *        when the kotekan mode is deleted.
+     * @param _kotekan_mode_ptr Pointer to the kotekan mode object or nullptr
+     */
+    void set_kotekan_mode_ptr(kotekan::kotekanMode* _kotekan_mode_ptr);
 
     /**
      * @brief The call back function for the REST server to use.
@@ -130,6 +140,9 @@ private:
     std::string dump_path;
 
     std::mutex trackers_lock;
+
+    /// Reference back to the active kotekan_mode object
+    kotekan::kotekanMode* kotekan_mode_ptr = nullptr;
 };
 
 } // namespace kotekan
