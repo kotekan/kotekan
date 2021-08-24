@@ -563,6 +563,16 @@ class PipelineViewer {
             tspan.attr('x', this.margin/2).attr('dy', '15')
                     .attr("font-size", "15")
                     .attr("id", "utl");
+
+            // Add spots for first two trackers.
+            el.append('tspan').text("")
+                .attr('x', this.margin/2).attr('dy', '15')
+                .attr("font-size", "15")
+                .attr("id", stage_name + "_1");
+            el.append('tspan').text("")
+                .attr('x', this.margin/2).attr('dy', '15')
+                .attr("font-size", "15")
+                .attr("id", stage_name + "_2");
         }, 0)
 
         // Start polling kotekan for metrics
@@ -676,5 +686,4 @@ class PipelineViewer {
             update_trackers(trackers, false, time_required);
         }
     }
-
 }

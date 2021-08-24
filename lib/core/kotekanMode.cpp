@@ -54,6 +54,8 @@ kotekanMode::~kotekanMode() {
     restServer::instance().remove_get_callback("/pipeline_dot");
     restServer::instance().remove_all_aliases();
 
+    KotekanTrackers::instance().set_kotekan_mode_ptr(nullptr);
+
     for (auto const& stage : stages) {
         if (stage.second != nullptr) {
             delete stage.second;
@@ -91,6 +93,7 @@ void kotekanMode::initalize_stages() {
 
     // Create and register kotekan trackers before stages created
     KotekanTrackers::instance(config).register_with_server(&restServer::instance());
+    KotekanTrackers::instance().set_kotekan_mode_ptr(this);
 
     // Create Metadata Pool
     metadataFactory metadata_factory(config);
@@ -154,7 +157,7 @@ void kotekanMode::stop_stages() {
     }
 }
 
-void kotekanMode::buffer_data_callback(connectionInstance& conn) {
+nlohmann::json kotekanMode::get_buffer_json() {
     nlohmann::json buffer_json = {};
 
     for (auto& buf : buffer_container.get_buffer_map()) {
@@ -203,7 +206,11 @@ void kotekanMode::buffer_data_callback(connectionInstance& conn) {
         buffer_json[buf.first] = buf_info;
     }
 
-    conn.send_json_reply(buffer_json);
+    return buffer_json;
+}
+
+void kotekanMode::buffer_data_callback(connectionInstance& conn) {
+    conn.send_json_reply(get_buffer_json());
 }
 
 void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {

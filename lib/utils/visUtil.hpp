@@ -671,7 +671,7 @@ private:
     std::string unit;
     bool is_optimized;
 
-    std::mutex tracker_lock;
+    std::recursive_mutex tracker_lock;
 };
 
 // Zip, unzip adapted from https://gist.github.com/yig/32fe51874f3911d1c612
