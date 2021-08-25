@@ -38,6 +38,12 @@ def parse_parfile(fname):
 
 
 def parse_26m_sched(fname, n_ant=8):
+    """Parse a 26m schedule file.
+
+    .. warning::
+        This code is a massive hack. Has clearly never been tested, and so may set fire
+        to your house.
+    """
     sched = []
     with open(fname, "r") as f:
         line = f.readline()
@@ -51,7 +57,7 @@ def parse_26m_sched(fname, n_ant=8):
                         )
                     )
                 # skip index
-                _ = line.pop[0]
+                _ = line.pop(0)
                 name = re.match("^OBS(.+)$", line.pop(0))
                 if name is None:
                     line = f.readline()
@@ -59,12 +65,12 @@ def parse_26m_sched(fname, n_ant=8):
                 name = name.group(1)
                 # skip RA and dec
                 for i in range(2 * n_ant):
-                    _ = line.pop[0]
+                    _ = line.pop(0)
                 # skip random characters
                 for i in range(3):
-                    _ = line.pop[0]
-                lst = float(line.pop[0])
-                dur = float(line.pop[0])
+                    _ = line.pop(0)
+                lst = float(line.pop(0))
+                dur = float(line.pop(0))
                 sched.append({"name": name, "lst": lst, "duration": dur})
             line = f.readline()
     return sched
@@ -364,9 +370,8 @@ def update_polyco(
 )
 @click.pass_context
 def import_schedule(ctx, fname, url, tempo_dir, parfile_dir, reference):
-    """NOT IMPLEMENTED YET"""
-    print("Not implemented yet. Aborting.")
-    return
+
+    raise NotImplementedError("Not implemented yet. Aborting.")
 
     # WIP
     if reference is None:
