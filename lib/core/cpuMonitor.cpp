@@ -119,16 +119,16 @@ void CpuMonitor::track_cpu() {
                         } else {
                             // Create new thread record
                             kotekan::KotekanTrackers& KT = kotekan::KotekanTrackers::instance();
-                            (stage_itr->second)[tid].utime_usage = KT.add_tracker("cpu_monitor", stage.first + "_usr");
-                            (stage_itr->second)[tid].stime_usage = KT.add_tracker("cpu_monitor", stage.first + "_sys");
+                            (stage_itr->second)[tid].utime_usage = KT.add_tracker("cpu_monitor", stage.first + "_usr", "percent");
+                            (stage_itr->second)[tid].stime_usage = KT.add_tracker("cpu_monitor", stage.first + "_sys", "percent");
                             (stage_itr->second)[tid].prev_utime = utime;
                             (stage_itr->second)[tid].prev_stime = stime;
                         }
                     } else {
                         // Create new stage and thread record
                         kotekan::KotekanTrackers& KT = kotekan::KotekanTrackers::instance();
-                        (ult_list[stage.first])[tid].utime_usage = KT.add_tracker("cpu_monitor", stage.first + "_usr");
-                        (ult_list[stage.first])[tid].stime_usage = KT.add_tracker("cpu_monitor", stage.first + "_sys");
+                        (ult_list[stage.first])[tid].utime_usage = KT.add_tracker("cpu_monitor", stage.first + "_usr", "percent");
+                        (ult_list[stage.first])[tid].stime_usage = KT.add_tracker("cpu_monitor", stage.first + "_sys", "percent");
                         (ult_list[stage.first])[tid].prev_utime = utime;
                         (ult_list[stage.first])[tid].prev_stime = stime;
                     }
