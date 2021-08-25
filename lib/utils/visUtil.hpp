@@ -637,6 +637,13 @@ public:
     double get_std_dev();
 
     /**
+     * @brief Return the last value added, will be NAN if no samples have been added
+     *
+     * @return The last sample or NAN
+     **/
+    double get_current();
+
+    /**
      * @brief Return tracker content in json format.
      *
      * @return A json object of tracker content.
