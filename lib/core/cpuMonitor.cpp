@@ -119,16 +119,16 @@ void CpuMonitor::track_cpu() {
                         } else {
                             // Create new thread record
                             kotekan::KotekanTrackers& KT = kotekan::KotekanTrackers::instance();
-                            (stage_itr->second)[tid].utime_usage = KT.add_tracker("cpu_monitor", stage.first + "_usr", "percent");
-                            (stage_itr->second)[tid].stime_usage = KT.add_tracker("cpu_monitor", stage.first + "_sys", "percent");
+                            (stage_itr->second)[tid].utime_usage = KT.add_tracker("cpu_monitor", stage.first + "_usr", "percent", track_len, true);
+                            (stage_itr->second)[tid].stime_usage = KT.add_tracker("cpu_monitor", stage.first + "_sys", "percent", track_len, true);
                             (stage_itr->second)[tid].prev_utime = utime;
                             (stage_itr->second)[tid].prev_stime = stime;
                         }
                     } else {
                         // Create new stage and thread record
                         kotekan::KotekanTrackers& KT = kotekan::KotekanTrackers::instance();
-                        (ult_list[stage.first])[tid].utime_usage = KT.add_tracker("cpu_monitor", stage.first + "_usr", "percent");
-                        (ult_list[stage.first])[tid].stime_usage = KT.add_tracker("cpu_monitor", stage.first + "_sys", "percent");
+                        (ult_list[stage.first])[tid].utime_usage = KT.add_tracker("cpu_monitor", stage.first + "_usr", "percent", track_len, true);
+                        (ult_list[stage.first])[tid].stime_usage = KT.add_tracker("cpu_monitor", stage.first + "_sys", "percent", track_len, true);
                         (ult_list[stage.first])[tid].prev_utime = utime;
                         (ult_list[stage.first])[tid].prev_stime = stime;
                     }
@@ -188,6 +188,10 @@ void CpuMonitor::set_affinity(Config& config) {
     for (auto core_id : cpu_affinity)
         CPU_SET(core_id, &cpuset);
     pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
+}
+
+void CpuMonitor::set_track_len(const uint16_t mins) {
+    track_len = mins * 60;
 }
 
 } // namespace kotekan

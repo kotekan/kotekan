@@ -61,12 +61,18 @@ public:
      **/
     void set_affinity(Config& config);
 
+    /**
+     * @brief Set cpu usage track length.
+     **/
+    void set_track_len(const uint16_t mins);
+
 private:
     std::thread this_thread;
     bool stop_thread;
     std::map<std::string, std::map<pid_t, CpuStat>> ult_list; // <stage_name <tid, cpu_stats>>
     std::map<std::string, Stage*> stages;
     uint32_t prev_cpu_time;
+    uint16_t track_len;
 };
 
 } // namespace kotekan

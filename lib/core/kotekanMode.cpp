@@ -134,6 +134,7 @@ void kotekanMode::start_stages() {
 
 #if !defined(MAC_OSX)
     if (config.get_default<bool>("/cpu_monitor", "enabled", false)) {
+        cpu_monitor.set_track_len(config.get_default<uint16_t>("/cpu_monitor", "track_length", 2));
         cpu_monitor.save_stages(stages);
         cpu_monitor.start();
         cpu_monitor.set_affinity(config);
