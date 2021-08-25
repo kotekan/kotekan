@@ -4,17 +4,17 @@ function isIE() { return ((navigator.appName == 'Microsoft Internet Explorer') |
 const POLL_WAIT_TIME_MS = 1000;
 // Poll kotekan via web server every POLL_WAIT_TIME_MS and update page with new metrics
 function poll(buffer_labels, stage_labels) {
-    get_data("/buffers").then(function (new_buffers) {
+    get_data("/kotekan_instance/buffers").then(function (new_buffers) {
         update_buf_utl(new_buffers, buffer_labels);
     });
 
-    get_data("/cpu_ult").then(function (cpu_stats) {
+    get_data("/kotekan_instance/cpu_ult").then(function (cpu_stats) {
         update_cpu_utl(cpu_stats, stage_labels);
     })
 
-    get_data("/trackers_current").then(function (trackers) {
+    get_data("/kotekan_instance/trackers_current").then(function (trackers) {
         show_trackers_in_label(trackers);
-        update_trackers(trackers);
+        update_trackers(trackers, true);
     })
 
     // Call poll() again to get the next message
@@ -62,7 +62,38 @@ function update_cpu_utl(cpu_stats, label){
     }, 0)
 }
 
-function update_trackers(trackers){
+// Find the largest timestamp before the given time.
+var binary_search = function (arr, x) {
+    let len = arr.length;
+    if (len == 0) {
+        return [NaN, NaN];
+    }
+
+    let start = 0;
+    let end = len - 1;
+
+    // Return NaN if no time earlier than the given time.
+    if (arr[start]["timestamp"] > x) {
+        return [NaN, NaN];
+    }
+    if (arr[end]["timestamp"] <= x) {
+        return [arr[end]["value"], arr[end]["timestamp"]];
+    }
+
+    while (start < end - 1){
+        let mid = Math.floor((start + end)/2);
+        if (arr[mid]["timestamp"] == x) {
+            return  [arr[mid]["value"], arr[mid]["timestamp"]];
+        } else if (arr[mid]["timestamp"] < x) {
+            start = mid;
+        } else {
+            end = mid;
+        }
+    }
+    return [arr[start]["value"], arr[start]["timestamp"]];
+}
+
+function update_trackers(trackers, isDynamic, time_required){
     var stage_names = Object.keys(trackers);
     for (stage of stage_names) {
         d3.select(trackers[stage]).forEach((stage_obj) => {
@@ -74,8 +105,18 @@ function update_trackers(trackers){
                     var max = (stage_obj[0][tracker]["max"]).toExponential(2);
                     var min = (stage_obj[0][tracker]["min"]).toExponential(2);
                     var std = (stage_obj[0][tracker]["std"]).toExponential(2);
-                    var cur = (stage_obj[0][tracker]["cur"]["value"]).toExponential(2);
                     var unit = stage_obj[0][tracker]["unit"];
+                    var cur;
+                    var time;
+
+                    if (isDynamic) {
+                        cur = (stage_obj[0][tracker]["cur"]["value"]).toExponential(2);
+                    } else {
+                        // Dump viewer shows the last sample before the given timestamp.
+                        var data = binary_search(stage_obj[0][tracker]["samples"], time_required);
+                        cur = (data[0]).toExponential(2);
+                        time = get_time(data[1]);
+                    }
 
                     // Skip if stage is not selected.
                     var stage_btn = document.getElementById(stage + "_button");
@@ -83,6 +124,9 @@ function update_trackers(trackers){
                         var el = document.getElementById(stage + "/" + tracker);
                         // If the tracker info exists, only update it.
                         if (el) {
+                            if (!isDynamic) {
+                                document.getElementById(stage + "/" + tracker + "_time").innerHTML = time;
+                            }
                             document.getElementById(stage + "/" + tracker + "_cur").innerHTML = cur;
                             document.getElementById(stage + "/" + tracker + "_min").innerHTML = min;
                             document.getElementById(stage + "/" + tracker + "_max").innerHTML = max;
@@ -99,6 +143,9 @@ function update_trackers(trackers){
                                 header_row.append("th").text("name");
                                 header_row.append("th").text("cur");
                                 header_row.append("th").text("unit");
+                                if (!isDynamic) {
+                                    header_row.append("th").text("time");
+                                }
                                 header_row.append("th").text("avg");
                                 header_row.append("th").text("std");
                                 header_row.append("th").text("min");
@@ -110,6 +157,10 @@ function update_trackers(trackers){
                             tracker_row.append("td").text(tracker);
                             tracker_row.append("td").text(cur).attr("id", stage + "/" + tracker + "_cur");
                             tracker_row.append("td").text(unit).attr("id", stage + "/" + tracker + "_unit");
+                            if (!isDynamic) {
+                                tracker_row.append("td").text(time)
+                                    .attr("id", stage + "/" + tracker + "_time");
+                            }
                             tracker_row.append("td").text(avg).attr("id", stage + "/" + tracker + "_avg");
                             tracker_row.append("td").text(std).attr("id", stage + "/" + tracker + "_std");
                             tracker_row.append("td").text(min).attr("id", stage + "/" + tracker + "_min");
@@ -160,8 +211,8 @@ var show_trackers_in_label = (function() {
     }
 })();
 
-// Read from endpoint /buffers to get buffer stats
-async function get_data(endpoint = "/buffers") {
+// Read useful info from endpoint
+async function get_data(endpoint) {
     let response = await fetch(endpoint);
 
     if (response.status == 502) {
@@ -175,9 +226,51 @@ async function get_data(endpoint = "/buffers") {
         // Reconnect in one second
         await new Promise(resolve => setTimeout(resolve, 1000));
     } else {
-        // Get buffer stats
-        return await response.json();
+        // Get returned content
+        if (endpoint === "/dump_dir") {
+            // Parse HTML text to a list of file names
+            var htmlString = await response.text();
+            var doc = new DOMParser().parseFromString(htmlString, "text/html");
+            var elements = doc.querySelectorAll("a");
+            var files = [];
+            elements.forEach(function(el) {
+                var text = ((el.innerHTML).replaceAll("\n", "")).replaceAll(" ", "");
+                files.push(text);
+            })
+            return files;
+        } else if (endpoint.includes("crash_stats")) {
+            // Separate buffer and tracker info from dump file
+            var obj = await response.json();
+            var buffers = obj["buffers"];
+            var trackers = obj["trackers"];
+            return [buffers, trackers];
+        } else {
+            return await response.json();
+        }
     }
+}
+
+// Sort objects in ascending order.
+function sort_by_key(array, key) {
+    return array.sort(function(a, b) {
+        var x = a[key];
+        var y = b[key];
+        return ((x < y) ? -1 : ((x > y) ? 1 : 0));
+    });
+}
+
+// Get formatted time from timestamp.
+function get_time(timestamp) {
+    if (Number.isNaN(timestamp)) {
+        return NaN;
+    }
+    var date = new Date(timestamp);
+    var hours = date.getHours();
+    var minutes = date.getMinutes();
+    var seconds = date.getSeconds();
+    var miliseconds = date.getMilliseconds();
+
+    return hours + ":" + minutes + ":" + seconds + ":" + miliseconds;
 }
 
 class PipelineViewer {
@@ -190,21 +283,61 @@ class PipelineViewer {
     #buffer_labels;
     #stage_labels;
 
-    constructor(buffers, body) {
+    constructor(buffers, body, trackers) {
         this.buffers = buffers;
         this.bufNames = Object.keys(this.buffers);
         this.body = body;
+        this.trackers = trackers;
+
+        if (trackers) {
+            // Dump viewer
+            this.process_timestamp(trackers);
+            this.isDynamic = false;
+        } else {
+            this.isDynamic = true;
+        }
+    }
+
+    // Sort samples and find min/max timestamp.
+    process_timestamp(trackers) {
+        var max = 0;
+        var min = Number.MAX_VALUE;
+
+        var stage_names = Object.keys(trackers);
+        for (const stage of stage_names) {
+            d3.select(trackers[stage]).forEach((stage_obj) => {
+
+                var tracker_name = Object.keys(stage_obj[0]);
+                for (const tracker of tracker_name) {
+                    var samples = stage_obj[0][tracker]["samples"];
+                    samples = sort_by_key(samples, "timestamp");
+
+                    min = Math.min(min, samples[0]["timestamp"]);
+                    max = Math.max(max, samples[samples.length - 1]["timestamp"]);
+                }
+            });
+        }
+
+        this.time_min = min;
+        this.time_max = max;
     }
 
     start_viewer(width = 960, height = 500, margin = 6) {
         this.width = width;
         this.height = height;
         this.margin = margin;
+        this.clear();
         this.init_svg();
         this.parse_data();
         this.create_objs();
-        this.start_ult();
         this.enable_sidebar();
+        this.reserve_tracker_space();
+
+        if (this.isDynamic) {
+            this.start_ult();
+        } else {
+            this.set_up_slider();
+        }
     }
 
     init_svg() {
@@ -216,26 +349,27 @@ class PipelineViewer {
         var outer = d3.select("body").append("svg")
             .attr("width", this.width)
             .attr("height", this.height)
-            .attr("class", "main");
+            .attr("class", "main")
+            .attr("id", "main");
 
         // Add a sidebar to display all tracker info
         d3.select("body").append("div")
             .attr("class", "sidenav")
             .attr("id", "sidebar");
 
-        outer.append('rect')
+        var rect = outer.append('rect')
             .attr('class', 'background')
             .attr('width', "100%")
-            .attr('height', "100%")
-            .call(d3.behavior.zoom().on("zoom", () => {
-                this.#svg.attr("transform", "translate(" + d3.event.translate + ")" + " scale(" + d3.event.scale + ")");
-            }));
+            .attr('height', "100%");
 
         var vis = outer
             .append('g')
             .attr('transform', 'translate(80,80) scale(0.7)');
 
-        this.#svg = vis.append("g");
+        this.#svg = vis.append("g").attr("id", "svg_group");
+        rect.call(d3.behavior.zoom().on("zoom", () => {
+            this.#svg.attr("transform", "translate(" + d3.event.translate + ")" + " scale(" + d3.event.scale + ")");
+        }));
     }
 
     parse_data() {
@@ -413,6 +547,23 @@ class PipelineViewer {
         });
     }
 
+    reserve_tracker_space() {
+        this.#stage_labels[0].reduce((pre, cur) => {
+            var el = d3.select(cur);
+            var stage_name = cur.getAttribute("id");
+
+            // Add spots for first two trackers.
+            el.append('tspan').text("")
+                .attr('x', this.margin/2).attr('dy', '15')
+                .attr("font-size", "15")
+                .attr("id", stage_name + "_1");
+            el.append('tspan').text("")
+                .attr('x', this.margin/2).attr('dy', '15')
+                .attr("font-size", "15")
+                .attr("id", stage_name + "_2");
+        }, 0);
+    }
+
     start_ult() {
         // Add utilization for buffers.
         this.#buffer_labels[0].reduce((pre, cur) => {
@@ -478,7 +629,7 @@ class PipelineViewer {
                 var stage_name = event.target.parentElement.getAttribute("id");
                 var stage_btn = document.getElementById(stage_name + "_button");
                 var stage_div = document.getElementById(stage_name + "_div");
-            
+
                 if (stage_btn) {
                     // Remove stage from sidebar if it exists.
                     stage_btn.parentElement.removeChild(stage_btn);
@@ -503,4 +654,65 @@ class PipelineViewer {
         };
     }
 
+    // Clear previous graph and sidebar
+    clear() {
+        var graph = document.getElementById("main");
+        var sidebar = document.getElementById("sidebar");
+        if (graph) {
+            graph.parentElement.removeChild(graph);
+        }
+        if (sidebar) {
+            sidebar.parentElement.removeChild(sidebar);
+        }
+    }
+
+    // Connect with slider input
+    set_up_slider() {
+        var slider = document.getElementById("slide_input");
+        var output = document.getElementById("slide_value");
+        var trackers = this.trackers;
+
+        // Reset slider value to 100%
+        slider.value = 100;
+        output.innerHTML = get_time(this.time_max);
+
+        // Show first two trackers
+        var stage_names = Object.keys(trackers);
+        for (let stage of stage_names) {
+            d3.select(trackers[stage]).forEach((stage_obj) => {
+                var tracker_names = Object.keys(stage_obj[0]);
+
+                // Only scan the first two trackers in a stage.
+                for (let i = 0; i < 2; i++) {
+                    var tracker = tracker_names[i];
+                    if (tracker) {
+                        // Dump viewer shows the latest value.
+                        var samples = stage_obj[0][tracker]["samples"];
+                        var cur = (samples[samples.length - 1]["value"]).toExponential(2);
+                        var unit = stage_obj[0][tracker]["unit"];
+
+                        // Update text and id for easier search later.
+                        var target = document.getElementById(stage + "_" + (i+1));
+                        target.setAttribute("id", stage + "/" + tracker + "_sc");
+                        target.innerHTML = tracker + ": " + cur + " " + unit;
+                    }
+                }
+            });
+        };
+
+        var time_min = this.time_min;
+        var time_max = this.time_max;
+        update_trackers(trackers, false, time_max);
+
+        // Slider callback function
+        slider.oninput = function() {
+            var percent = this.value / 100;
+            var time_required = Math.floor((time_max - time_min) * percent + time_min);
+
+            // Show required time in hour:minute:second:milisec format
+            output.innerHTML = get_time(time_required);
+
+            update_trackers(trackers, false, time_required);
+        }
+    }
 }
