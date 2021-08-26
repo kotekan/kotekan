@@ -57,9 +57,9 @@ def update(endpoint):
 if __name__ == "__main__":
     from argparse import ArgumentParser
 
-    parser = ArgumentParser()
-    parser.add_argument("-a")  # add kotekan address setting option
-    parser.add_argument("-d")  # add dump folder setting option
+    parser = ArgumentParser(description="Start Flask server to enable endpoint fetching and file reading.")
+    parser.add_argument("-a", help="set Kotekan address (default: http://localhost:12048)")
+    parser.add_argument("-d", help="set dump file folder (default: ./)")
     arg = parser.parse_args()
 
     if arg.a:
