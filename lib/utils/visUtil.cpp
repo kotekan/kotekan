@@ -365,7 +365,7 @@ double StatTracker::get_std_dev() {
 }
 
 double StatTracker::get_current() {
-    std::lock_guard<std::mutex> lock(tracker_lock);
+    std::lock_guard<std::recursive_mutex> lock(tracker_lock);
 
     size_t ind = (end + buf_size - 1) % buf_size;
     return count ? rbuf[ind].value : NAN;
