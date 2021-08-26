@@ -8,14 +8,10 @@ function poll(buffer_labels, stage_labels) {
         update_buf_utl(new_buffers, buffer_labels);
     });
 
-    get_data("/kotekan_instance/cpu_ult").then(function (cpu_stats) {
-        update_cpu_utl(cpu_stats, stage_labels);
-    })
-
     get_data("/kotekan_instance/trackers_current").then(function (trackers) {
         show_trackers_in_label(trackers);
         update_trackers(trackers, true);
-    })
+    });
 
     // Call poll() again to get the next message
     setTimeout(() => { poll(buffer_labels, stage_labels); }, POLL_WAIT_TIME_MS);
@@ -31,35 +27,146 @@ function update_buf_utl(new_buffers, label){
     })
 }
 
-// Update stage utilization
-function update_cpu_utl(cpu_stats, label){
+// Update sidebar table content
+// stats = [cur, min, max, avg, std, timestamp, unit]
+function update_table(stage, tracker, stats, isDynamic) {
+    // Skip if stage is not selected.
+    var stage_btn = document.getElementById(stage + "_button");
+    if (stage_btn) {
+        var el = document.getElementById(stage + "/" + tracker);
+        var time = get_time(stats[5]);
+        // If the tracker info exists, only update it.
+        if (el) {
+            if (!isDynamic) {
+                document.getElementById(stage + "/" + tracker + "_time").innerHTML = time;
+            }
+            document.getElementById(stage + "/" + tracker + "_cur").innerHTML = stats[0];
+            document.getElementById(stage + "/" + tracker + "_min").innerHTML = stats[1];
+            document.getElementById(stage + "/" + tracker + "_max").innerHTML = stats[2];
+            document.getElementById(stage + "/" + tracker + "_avg").innerHTML = stats[3];
+            document.getElementById(stage + "/" + tracker + "_std").innerHTML = stats[4];
+        } else {
+            var stage_div = d3.select(document.getElementById(stage + "_div"));
+            var stage_tbl = document.getElementById(stage + "_table");
+
+            // Create table if tracker table does not exist.
+            if (!stage_tbl) {
+                stage_tbl = stage_div.append("table").attr("id", stage + "_table");
+                var header_row = stage_tbl.append("tr");
+                header_row.append("th").text("name");
+                header_row.append("th").text("cur");
+                header_row.append("th").text("unit");
+                if (!isDynamic) {
+                    header_row.append("th").text("time");
+                }
+                header_row.append("th").text("avg");
+                header_row.append("th").text("std");
+                header_row.append("th").text("min");
+                header_row.append("th").text("max");
+            } else {
+                stage_tbl = d3.select(stage_tbl);
+            }
+
+            // Create a new tracker row.
+            var tracker_row = stage_tbl.append("tr").attr("id", stage + "/" + tracker);
+            tracker_row.append("td").text(tracker);
+            tracker_row.append("td").text(stats[0]).attr("id", stage + "/" + tracker + "_cur");
+            tracker_row.append("td").text(stats[6]).attr("id", stage + "/" + tracker + "_unit");
+            if (!isDynamic) {
+                tracker_row.append("td").text(time)
+                    .attr("id", stage + "/" + tracker + "_time");
+            }
+            tracker_row.append("td").text(stats[3]).attr("id", stage + "/" + tracker + "_avg");
+            tracker_row.append("td").text(stats[4]).attr("id", stage + "/" + tracker + "_std");
+            tracker_row.append("td").text(stats[1]).attr("id", stage + "/" + tracker + "_min");
+            tracker_row.append("td").text(stats[2]).attr("id", stage + "/" + tracker + "_max");
+        }
+    }
+}
+
+// Update stage cpu usage
+function update_cpu_utl(cpu_stats, isDynamic, time_required){
     if ("error" in cpu_stats) {
         return;
     }
 
-    label[0].reduce((pre, cur) => {
-        var el = d3.select(cur);
-        var name = el.select("tspan").text();
-        var tot_ult = 0, usr_ult = 0, sys_ult = 0;
+    // Process cpu stats
+    var cpu_map = new Map();
+    var tracker_names = Object.keys(cpu_stats);
+    for (tracker of tracker_names) {
+        var words = tracker.split("|");
+        var stage_name = words[0];
+        var type = words[2];
+        var cur, timestamp;
+        if (isDynamic) {
+            cur = cpu_stats[tracker]["cur"]["value"];
+        } else {
+            var data = binary_search(cpu_stats[tracker]["samples"], time_required);
+            cur = data[0];
+            timestamp = data[1];
+        }
 
-        d3.select(cpu_stats[name]).forEach((stage) => {
-            var threads = Object.keys(stage[0]);
-            for (tid of threads) {
-                var usr = stage[0][tid]["usr_cpu_ult"];
-                var sys = stage[0][tid]["sys_cpu_ult"];
-                usr_ult += usr;
-                sys_ult += sys;
-                tot_ult += usr + sys;
+        var avg = (cpu_stats[tracker]["avg"]).toExponential(2);
+        var max = (cpu_stats[tracker]["max"]).toExponential(2);
+        var min = (cpu_stats[tracker]["min"]).toExponential(2);
+        var std = (cpu_stats[tracker]["std"]).toExponential(2);
+        var unit = cpu_stats[tracker]["unit"];
+
+        // Sum all threads in the same stage
+        var list = cpu_map.get(stage_name + "_" + type);
+        if (list === undefined) {
+            list = [0, 0, 0, 0, 0, 0];  // [cur, min, max, avg, std, timestamp]
+        }
+        list[0] += cur;
+        list[1] += min;
+        list[2] += max;
+        list[3] += avg;
+        list[4] += std;
+        list[5] = Math.max(list[5], timestamp);
+        list[6] = unit;
+        cpu_map.set(stage_name + "_" + type, list);
+    }
+
+    for ([key, value] of cpu_map) {
+        var stage_name = key.substring(0, key.length - 4);
+        var type = key.substring(key.length - 4);
+        update_table(stage_name, "cpu" + type, value, isDynamic);
+    }
+}
+
+function update_stats(tracker, stage, isDynamic, time_required) {
+    d3.select(tracker).forEach((stage_obj) => {
+
+        var tracker_name = Object.keys(stage_obj[0]);
+        for (tracker of tracker_name) {
+            // Limit to two-decimal scientific expression.
+            var avg = (stage_obj[0][tracker]["avg"]).toExponential(2);
+            var max = (stage_obj[0][tracker]["max"]).toExponential(2);
+            var min = (stage_obj[0][tracker]["min"]).toExponential(2);
+            var std = (stage_obj[0][tracker]["std"]).toExponential(2);
+            var unit = stage_obj[0][tracker]["unit"];
+            var cur;
+            var time;
+
+            if (isDynamic) {
+                cur = (stage_obj[0][tracker]["cur"]["value"]).toExponential(2);
+            } else {
+                // Dump viewer shows the last sample before the given timestamp.
+                var data = binary_search(stage_obj[0][tracker]["samples"], time_required);
+                cur = (data[0]).toExponential(2);
+                time = data[1];
             }
-        });
-        // Limit to two decimals
-        usr_ult = usr_ult.toFixed(2);
-        sys_ult = sys_ult.toFixed(2);
-        tot_ult = tot_ult.toFixed(2);
 
-        el.select("title").text("usr: " + usr_ult + "%; sys: " + sys_ult + "%");
-        el.select("#utl").text("CPU: " + tot_ult + "%");
-    }, 0)
+            update_table(stage, tracker, [cur, min, max, avg, std, time, unit], isDynamic);
+
+            // Update tracker shortcut in nodes.
+            var target = document.getElementById(stage + "/" + tracker + "_sc");
+            if (target) {
+                target.innerHTML = tracker + ": " + cur + " " + unit;
+            }
+
+        }
+    });
 }
 
 // Find the largest timestamp before the given time.
@@ -96,86 +203,12 @@ var binary_search = function (arr, x) {
 function update_trackers(trackers, isDynamic, time_required){
     var stage_names = Object.keys(trackers);
     for (stage of stage_names) {
-        d3.select(trackers[stage]).forEach((stage_obj) => {
-
-                var tracker_name = Object.keys(stage_obj[0]);
-                for (tracker of tracker_name) {
-                    // Limit to two-decimal scientific expression.
-                    var avg = (stage_obj[0][tracker]["avg"]).toExponential(2);
-                    var max = (stage_obj[0][tracker]["max"]).toExponential(2);
-                    var min = (stage_obj[0][tracker]["min"]).toExponential(2);
-                    var std = (stage_obj[0][tracker]["std"]).toExponential(2);
-                    var unit = stage_obj[0][tracker]["unit"];
-                    var cur;
-                    var time;
-
-                    if (isDynamic) {
-                        cur = (stage_obj[0][tracker]["cur"]["value"]).toExponential(2);
-                    } else {
-                        // Dump viewer shows the last sample before the given timestamp.
-                        var data = binary_search(stage_obj[0][tracker]["samples"], time_required);
-                        cur = (data[0]).toExponential(2);
-                        time = get_time(data[1]);
-                    }
-
-                    // Skip if stage is not selected.
-                    var stage_btn = document.getElementById(stage + "_button");
-                    if (stage_btn) {
-                        var el = document.getElementById(stage + "/" + tracker);
-                        // If the tracker info exists, only update it.
-                        if (el) {
-                            if (!isDynamic) {
-                                document.getElementById(stage + "/" + tracker + "_time").innerHTML = time;
-                            }
-                            document.getElementById(stage + "/" + tracker + "_cur").innerHTML = cur;
-                            document.getElementById(stage + "/" + tracker + "_min").innerHTML = min;
-                            document.getElementById(stage + "/" + tracker + "_max").innerHTML = max;
-                            document.getElementById(stage + "/" + tracker + "_avg").innerHTML = avg;
-                            document.getElementById(stage + "/" + tracker + "_std").innerHTML = std;
-                        } else {
-                            var stage_div = d3.select(document.getElementById(stage + "_div"));
-                            var stage_tbl = document.getElementById(stage + "_table");
-
-                            // Create table if tracker table does not exist.
-                            if (!stage_tbl) {
-                                stage_tbl = stage_div.append("table").attr("id", stage + "_table");
-                                var header_row = stage_tbl.append("tr");
-                                header_row.append("th").text("name");
-                                header_row.append("th").text("cur");
-                                header_row.append("th").text("unit");
-                                if (!isDynamic) {
-                                    header_row.append("th").text("time");
-                                }
-                                header_row.append("th").text("avg");
-                                header_row.append("th").text("std");
-                                header_row.append("th").text("min");
-                                header_row.append("th").text("max");
-                            }
-
-                            // Create a new tracker row.
-                            var tracker_row = stage_tbl.append("tr").attr("id", stage + "/" + tracker);
-                            tracker_row.append("td").text(tracker);
-                            tracker_row.append("td").text(cur).attr("id", stage + "/" + tracker + "_cur");
-                            tracker_row.append("td").text(unit).attr("id", stage + "/" + tracker + "_unit");
-                            if (!isDynamic) {
-                                tracker_row.append("td").text(time)
-                                    .attr("id", stage + "/" + tracker + "_time");
-                            }
-                            tracker_row.append("td").text(avg).attr("id", stage + "/" + tracker + "_avg");
-                            tracker_row.append("td").text(std).attr("id", stage + "/" + tracker + "_std");
-                            tracker_row.append("td").text(min).attr("id", stage + "/" + tracker + "_min");
-                            tracker_row.append("td").text(max).attr("id", stage + "/" + tracker + "_max");
-                        }
-                    }
-
-                    // Update tracker shortcut in nodes.
-                    var target = document.getElementById(stage + "/" + tracker + "_sc");
-                    if (target) {
-                        target.innerHTML = tracker + ": " + cur + " " + unit;
-                    }
-
-                }
-        });
+        if (stage == "cpu_monitor") {
+            update_cpu_utl(trackers[stage], isDynamic, time_required);
+            continue;
+        } else {
+            update_stats(trackers[stage], stage, isDynamic, time_required);
+        }
     }
 }
 
@@ -564,20 +597,7 @@ class PipelineViewer {
         }, 0);
     }
 
-    start_ult() {
-        // Add utilization for buffers.
-        this.#buffer_labels[0].reduce((pre, cur) => {
-            var el = d3.select(cur);
-
-            // Add CPU usage to buffers.
-            var tspan = el.append('tspan')
-                        .text(this.buffers[cur.textContent].num_full_frame + "/" + this.buffers[cur.textContent].num_frames)
-            tspan.attr('x', this.margin/2).attr('dy', '15')
-                    .attr("font-size", "15")
-                    .attr("id", "utl");
-        }, 0)
-
-        // Add utilization for stages.
+    add_cpu_ult() {
         this.#stage_labels[0].reduce((pre, cur) => {
             var el = d3.select(cur);
             var stage_name = cur.getAttribute("id");
@@ -589,19 +609,25 @@ class PipelineViewer {
             var tspan = el.append('tspan').text("CPU: 0%");
             tspan.attr('x', this.margin/2).attr('dy', '15')
                     .attr("font-size", "15")
+                    .attr("id", stage_name + "_utl");
+        }, 0);
+    }
+
+    add_buffer_ult() {
+        // Add utilization for buffers.
+        this.#buffer_labels[0].reduce((pre, cur) => {
+            var el = d3.select(cur);
+
+            // Add CPU usage to buffers.
+            var tspan = el.append('tspan')
+                        .text(this.buffers[cur.textContent].num_full_frame + "/" + this.buffers[cur.textContent].num_frames)
+            tspan.attr('x', this.margin/2).attr('dy', '15')
+                    .attr("font-size", "15")
                     .attr("id", "utl");
-
-            // Add spots for first two trackers.
-            el.append('tspan').text("")
-                .attr('x', this.margin/2).attr('dy', '15')
-                .attr("font-size", "15")
-                .attr("id", stage_name + "_1");
-            el.append('tspan').text("")
-                .attr('x', this.margin/2).attr('dy', '15')
-                .attr("font-size", "15")
-                .attr("id", stage_name + "_2");
         }, 0)
+    }
 
+    start_ult() {
         // Start polling kotekan for metrics
         poll(this.#buffer_labels, this.#stage_labels);
     }
@@ -679,6 +705,7 @@ class PipelineViewer {
         // Show first two trackers
         var stage_names = Object.keys(trackers);
         for (let stage of stage_names) {
+            if (stage == "cpu_monitor") continue;
             d3.select(trackers[stage]).forEach((stage_obj) => {
                 var tracker_names = Object.keys(stage_obj[0]);
 

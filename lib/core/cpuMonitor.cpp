@@ -119,16 +119,16 @@ void CpuMonitor::track_cpu() {
                         } else {
                             // Create new thread record
                             kotekan::KotekanTrackers& KT = kotekan::KotekanTrackers::instance();
-                            (stage_itr->second)[tid].utime_usage = KT.add_tracker("cpu_monitor", stage.first + "_usr", "percent", track_len, true);
-                            (stage_itr->second)[tid].stime_usage = KT.add_tracker("cpu_monitor", stage.first + "_sys", "percent", track_len, true);
+                            (stage_itr->second)[tid].utime_usage = KT.add_tracker("cpu_monitor", stage.first + "|" + std::to_string(tid) + "|usr", "percent", track_len, true);
+                            (stage_itr->second)[tid].stime_usage = KT.add_tracker("cpu_monitor", stage.first + "|" + std::to_string(tid) + "|sys", "percent", track_len, true);
                             (stage_itr->second)[tid].prev_utime = utime;
                             (stage_itr->second)[tid].prev_stime = stime;
                         }
                     } else {
                         // Create new stage and thread record
                         kotekan::KotekanTrackers& KT = kotekan::KotekanTrackers::instance();
-                        (ult_list[stage.first])[tid].utime_usage = KT.add_tracker("cpu_monitor", stage.first + "_usr", "percent", track_len, true);
-                        (ult_list[stage.first])[tid].stime_usage = KT.add_tracker("cpu_monitor", stage.first + "_sys", "percent", track_len, true);
+                        (ult_list[stage.first])[tid].utime_usage = KT.add_tracker("cpu_monitor", stage.first + "|" + std::to_string(tid) + "|usr", "percent", track_len, true);
+                        (ult_list[stage.first])[tid].stime_usage = KT.add_tracker("cpu_monitor", stage.first + "|" + std::to_string(tid) + "|sys", "percent", track_len, true);
                         (ult_list[stage.first])[tid].prev_utime = utime;
                         (ult_list[stage.first])[tid].prev_stime = stime;
                     }
