@@ -9,7 +9,7 @@
 #include "configUpdater.hpp"  // for configUpdater
 #include "datasetManager.hpp" // for datasetManager
 #include "kotekanLogging.hpp" // for INFO_NON_OO
-#include "kotekanTrackers.hpp"
+#include "kotekanTrackers.hpp"   // for KotekanTrackers
 #include "metadata.h"            // for delete_metadata_pool
 #include "metadataFactory.hpp"   // for metadataFactory
 #include "prometheusMetrics.hpp" // for Metrics
@@ -22,6 +22,7 @@
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
 #include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error
+#include <stdint.h>   // for uint16_t
 #include <stdlib.h>   // for free
 #include <utility>    // for pair
 #include <vector>     // for vector

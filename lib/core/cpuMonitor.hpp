@@ -6,8 +6,9 @@
 #include "restServer.hpp" // for connectionInstance
 #include "visUtil.hpp"    // for StatTracker
 
-#include <cstdint>     // for uint32_t
+#include <cstdint>     // for uint32_t, uint16_t
 #include <map>         // for map
+#include <memory>      // for shared_ptr
 #include <string>      // for string
 #include <sys/types.h> // for pid_t
 #include <thread>      // for thread
