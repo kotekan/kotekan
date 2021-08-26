@@ -58,8 +58,8 @@ if __name__ == "__main__":
     from argparse import ArgumentParser
 
     parser = ArgumentParser()
-    parser.add_argument("-a")
-    parser.add_argument("-d")
+    parser.add_argument("-a")  # add kotekan address setting option
+    parser.add_argument("-d")  # add dump folder setting option
     arg = parser.parse_args()
 
     if arg.a:

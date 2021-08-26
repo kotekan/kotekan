@@ -265,12 +265,11 @@ function get_time(timestamp) {
         return NaN;
     }
     var date = new Date(timestamp);
-    var hours = date.getHours();
-    var minutes = date.getMinutes();
-    var seconds = date.getSeconds();
-    var miliseconds = date.getMilliseconds();
+    var minutes = String(date.getMinutes()).padStart(2, "0");
+    var seconds = String(date.getSeconds()).padStart(2, "0");
+    var miliseconds = String(date.getMilliseconds()).padStart(3, "0");
 
-    return hours + ":" + minutes + ":" + seconds + ":" + miliseconds;
+    return minutes + ":" + seconds + ":" + miliseconds;
 }
 
 class PipelineViewer {
@@ -709,7 +708,7 @@ class PipelineViewer {
             var percent = this.value / 100;
             var time_required = Math.floor((time_max - time_min) * percent + time_min);
 
-            // Show required time in hour:minute:second:milisec format
+            // Show required time in minute:second:milisec format
             output.innerHTML = get_time(time_required);
 
             update_trackers(trackers, false, time_required);
