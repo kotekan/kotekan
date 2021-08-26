@@ -59,7 +59,6 @@ protected:
     // Config variables
     uint32_t _gpu_buffer_depth;
     uint32_t gpu_id;
-    uint32_t gpu_thread_id;
 };
 
 #endif // GPU_PROCESS_H

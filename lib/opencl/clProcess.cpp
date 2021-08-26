@@ -60,7 +60,6 @@ void clProcess::queue_commands(int gpu_frame_id) {
 
 void clProcess::register_host_memory(struct Buffer* host_buffer) {
     // Register the host memory in in_buf with the OpenCL run time.
-    ERROR("Called register_host_memory !");
     for (int i = 0; i < host_buffer->num_frames; i++) {
         cl_int err;
         cl_mem cl_mem_prt =
@@ -73,8 +72,8 @@ void clProcess::register_host_memory(struct Buffer* host_buffer) {
         CHECK_CL_ERROR(err);
 
         // As far as I can tell pinned_ptr should always be the same as the host pointer,
-        // if it's not this as implications for upstream processes and so the system should fail
-        // when the condition isn't meet.
+        // if it's not this has implications for upstream processes and so the system should fail
+        // when the condition isn't met.
         if ((void*)host_buffer->frames[i] != pinned_ptr) {
             ERROR("OpenCL registered pointer is different from normal host pointer: {:p}, opencl "
                   "pointer: {:p}",
@@ -83,7 +82,7 @@ void clProcess::register_host_memory(struct Buffer* host_buffer) {
                 "Something wrong with the registration of host memory in OpenCL");
         }
 
-        INFO("Registed frame: {:s}[{:d}]", host_buffer->buffer_name, i);
+        DEBUG("Registed frame: {:s}[{:d}]", host_buffer->buffer_name, i);
         opencl_host_frames.push_back(std::make_tuple(cl_mem_prt, pinned_ptr));
     }
 }

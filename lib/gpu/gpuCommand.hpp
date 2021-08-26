@@ -31,7 +31,7 @@ enum class gpuCommandType { COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET };
  * @conf buffer_depth          The number of GPU frames used for pipelining commands
  * @conf kernel                Filename, if an external file (CL, binary, etc) is used.
  * @conf kernel_path           If an external file is used, this gives the path to search.
- * @conf command               The name used bby this kernel internally for logging,
+ * @conf command               The name used by this kernel internally for logging,
  *                             and also the name of the kernel function (where that applies).
  * @conf profiling             Enable the recording of the command runtime
  * @conf frame_arrival_period  The time between frames, used for some profiling functions
@@ -121,7 +121,7 @@ protected:
     /// in the queue.
     std::shared_ptr<StatTracker> excute_time;
 
-    /// Almost the same excute_time, but divided by the frame arrival period
+    /// Almost the same as excute_time, but divided by the frame arrival period
     std::shared_ptr<StatTracker> utilization;
 
     /// Set to true if we have enabled profiling

@@ -72,6 +72,6 @@ void cudaInputData::finalize_frame(int frame_id) {
 
 std::string cudaInputData::get_performance_metric_string() {
     double transfer_speed =
-        (double)in_buf->frame_size / (double)get_last_gpu_execution_time() / 1000000000;
+        (double)in_buf->frame_size / (double)get_last_gpu_execution_time() * 1e-9;
     return fmt::format("Speed: {:.2f} GB/s ({:.2f} Gb/s)", transfer_speed, transfer_speed * 8);
 }

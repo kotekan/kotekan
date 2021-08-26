@@ -50,12 +50,11 @@ void cudaProcess::queue_commands(int gpu_frame_id) {
         signal = ((cudaCommand*)command)->execute(gpu_frame_id, signal);
     }
     final_signals[gpu_frame_id]->set_signal(signal);
-    INFO("Commands executed.");
+    DEBUG2("Commands executed.");
 }
 
 void cudaProcess::register_host_memory(struct Buffer* host_buffer) {
     // Register the host memory in in_buf with the OpenCL run time.
-    ERROR("Called register_host_memory: {:s}", host_buffer->buffer_name);
     for (int i = 0; i < host_buffer->num_frames; i++) {
         cudaHostRegister(host_buffer->frames[i], host_buffer->aligned_frame_size,
                          cudaHostRegisterDefault);
