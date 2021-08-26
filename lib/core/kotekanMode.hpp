@@ -10,6 +10,8 @@
 #include "cpuMonitor.hpp"
 #endif
 
+#include "json.hpp" // for json
+
 #include <map>    // for map
 #include <string> // for string
 
@@ -41,6 +43,16 @@ public:
 
     // HTTP callback that dumps the current buffer state in JSON.
     void buffer_data_callback(connectionInstance& conn);
+
+    /**
+     * @brief Generate a json structure with active buffer data
+     *
+     * This json also contains all the consumer and producer data needed to generate
+     * a pipeline graph.
+     *
+     * @return Returns JSON formatted data with all the current buffer information
+     */
+    nlohmann::json get_buffer_json();
 
     // HTTP callback that dumps the current pipeline graph in `dot` format.
     void pipeline_dot_graph_callback(connectionInstance& conn);
