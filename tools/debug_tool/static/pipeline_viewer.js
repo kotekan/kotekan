@@ -84,14 +84,21 @@ function update_table(stage, tracker, stats, isDynamic) {
     }
 }
 
-// Update stage cpu usage
+function update_cpu_label(cpu_usage, stage) {
+    var total = cpu_usage[0] + cpu_usage[1];
+    document.getElementById(stage + "_cpu").innerHTML = "CPU: " + total + "%";
+    document.getElementById(stage + "_cpu_detail").innerHTML = "usr: " + cpu_usage[0] + "% sys: " + cpu_usage[1];
+}
+
+// Update stage cpu usage.
 function update_cpu_utl(cpu_stats, isDynamic, time_required){
     if ("error" in cpu_stats) {
         return;
     }
 
-    // Process cpu stats
+    // Process cpu stats.
     var cpu_map = new Map();
+    var stage_usage = new Map();
     var tracker_names = Object.keys(cpu_stats);
     for (tracker of tracker_names) {
         var words = tracker.split("|");
@@ -112,10 +119,14 @@ function update_cpu_utl(cpu_stats, isDynamic, time_required){
         var std = (cpu_stats[tracker]["std"]).toExponential(2);
         var unit = cpu_stats[tracker]["unit"];
 
-        // Sum all threads in the same stage
+        // Sum all threads in the same stage.
         var list = cpu_map.get(stage_name + "_" + type);
+        var list_stage = stage_usage.get(stage_name);
         if (list === undefined) {
-            list = [0, 0, 0, 0, 0, 0];  // [cur, min, max, avg, std, timestamp]
+            list = [0, 0, 0, 0, 0, 0, 0];  // [cur, min, max, avg, std, timestamp, unit]
+            if (list_stage === undefined) {
+                list_stage = [0, 0]  // [usr, sys]
+            }
         }
         list[0] += cur;
         list[1] += min;
@@ -125,12 +136,21 @@ function update_cpu_utl(cpu_stats, isDynamic, time_required){
         list[5] = Math.max(list[5], timestamp);
         list[6] = unit;
         cpu_map.set(stage_name + "_" + type, list);
+
+        if (type == "usr") {
+            list_stage[0] = cur;
+        } else {
+            list_stage[1] = cur;
+        }
+        stage_usage.set(stage_name, list_stage);
     }
 
+    // Display cpu usage.
     for ([key, value] of cpu_map) {
         var stage_name = key.substring(0, key.length - 4);
         var type = key.substring(key.length - 4);
         update_table(stage_name, "cpu" + type, value, isDynamic);
+        update_cpu_label(stage_usage.get(stage_name), stage_name);
     }
 }
 
@@ -365,8 +385,10 @@ class PipelineViewer {
         this.create_objs();
         this.enable_sidebar();
         this.reserve_tracker_space();
+        this.add_cpu_label();
 
         if (this.isDynamic) {
+            this.add_buffer_ult();
             this.start_ult();
         } else {
             this.set_up_slider();
@@ -597,19 +619,20 @@ class PipelineViewer {
         }, 0);
     }
 
-    add_cpu_ult() {
+    add_cpu_label() {
         this.#stage_labels[0].reduce((pre, cur) => {
             var el = d3.select(cur);
             var stage_name = cur.getAttribute("id");
 
             // Add title as tooltip to show details when mouse moves over.
-            el.append("title").text("usr: 0%; sys: 0%");
+            el.append("title").text("usr: 0%; sys: 0%")
+                .attr("id", stage_name + "_cpu_detail");
 
             // Add CPU usage to stages.
             var tspan = el.append('tspan').text("CPU: 0%");
             tspan.attr('x', this.margin/2).attr('dy', '15')
                     .attr("font-size", "15")
-                    .attr("id", stage_name + "_utl");
+                    .attr("id", stage_name + "_cpu");
         }, 0);
     }
 
