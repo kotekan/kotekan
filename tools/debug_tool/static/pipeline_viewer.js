@@ -34,7 +34,7 @@ function update_table(stage, tracker, stats, isDynamic) {
     var stage_btn = document.getElementById(stage + "_button");
     if (stage_btn) {
         var el = document.getElementById(stage + "/" + tracker);
-        var time = get_time(stats[5]);
+        var time = get_time(stats[5], false);
         // If the tracker info exists, only update it.
         if (el) {
             if (!isDynamic) {
@@ -313,16 +313,24 @@ function sort_by_key(array, key) {
 }
 
 // Get formatted time from timestamp.
-function get_time(timestamp) {
+function get_time(timestamp, isFull) {
     if (Number.isNaN(timestamp)) {
         return NaN;
     }
     var date = new Date(timestamp);
+    var years = String(date.getFullYear()).padStart(4, "0");
+    var months = String(date.getMonth()).padStart(2, "0");
+    var days = String(date.getDate()).padStart(2, "0");
+    var hours = String(date.getHours()).padStart(2, "0");
     var minutes = String(date.getMinutes()).padStart(2, "0");
     var seconds = String(date.getSeconds()).padStart(2, "0");
     var miliseconds = String(date.getMilliseconds()).padStart(3, "0");
 
-    return minutes + ":" + seconds + ":" + miliseconds;
+    if (isFull) {
+        return years + "-" + months + "-" + days + "_" + hours + ":" + minutes + ":" + seconds + ":" + miliseconds;
+    } else {
+        return minutes + ":" + seconds + ":" + miliseconds;
+    }
 }
 
 class PipelineViewer {
@@ -722,7 +730,7 @@ class PipelineViewer {
 
         // Reset slider value to 100%
         slider.value = 100;
-        output.innerHTML = get_time(this.time_max);
+        output.innerHTML = get_time(this.time_max, true);
 
         // Show first two trackers
         var stage_names = Object.keys(trackers);
@@ -758,8 +766,8 @@ class PipelineViewer {
             var percent = this.value / 100;
             var time_required = Math.floor((time_max - time_min) * percent + time_min);
 
-            // Show required time in minute:second:milisec format
-            output.innerHTML = get_time(time_required);
+            // Show required time in Y-M-D_H:M:S:MS format
+            output.innerHTML = get_time(time_required, true);
 
             update_trackers(trackers, false, time_required);
         }
