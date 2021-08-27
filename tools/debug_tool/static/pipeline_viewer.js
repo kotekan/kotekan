@@ -113,10 +113,10 @@ function update_cpu_utl(cpu_stats, isDynamic, time_required){
             timestamp = data[1];
         }
 
-        var avg = (cpu_stats[tracker]["avg"]).toExponential(1);
-        var max = (cpu_stats[tracker]["max"]).toExponential(1);
-        var min = (cpu_stats[tracker]["min"]).toExponential(1);
-        var std = (cpu_stats[tracker]["std"]).toExponential(1);
+        var avg = (cpu_stats[tracker]["avg"]).toFixed(1);
+        var max = (cpu_stats[tracker]["max"]).toFixed(1);
+        var min = (cpu_stats[tracker]["min"]).toFixed(1);
+        var std = (cpu_stats[tracker]["std"]).toFixed(1);
         var unit = cpu_stats[tracker]["unit"];
 
         // Sum all threads in the same stage.
