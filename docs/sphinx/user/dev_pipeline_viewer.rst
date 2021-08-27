@@ -36,7 +36,8 @@ CPU usage is monitored by a separate thread in object CpuMonitor. Thread ids are
 and CPU monitor keeps tracking all threads every second by reading from proc file system.
 
 To enable CPU usage tracking, add the following to config:
-.. code-block:: yaml
+.. code-block:: YAML
+
     cpu_monitor:
       enabled: true
       track_length: 2  # save last 2 mins cpu usage.
@@ -47,7 +48,8 @@ Dump files are generated when kotekan goes down due to errors, but it is possibl
 dump by calling ``dump_trackers()`` from ``KotekanTrackers`` instance.
 
 To enable crash dump, add the following to config:
-.. code-block:: yaml
+.. code-block:: YAML
+
     trackers:
       enable_crash_dump: true
       dump_path: ./
@@ -59,6 +61,7 @@ from kotekan endpoints and read dump files from file system.
 
 To start the server:
 .. code-block:: bash
+
     export FLASK_APP=debug_server.py FLASK_DEBUG=1
     python debug_server.py
 
@@ -68,6 +71,7 @@ To start the server:
 
 To stop the server:
 .. code:: bash
+
     Clt + C
 
 Running Pipeline Viewer
