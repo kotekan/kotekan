@@ -1,6 +1,7 @@
 #include "cpuMonitor.hpp"
 
 #include "kotekanLogging.hpp" // for WARN_NON_OO
+#include "kotekanTrackers.hpp"
 
 #include "json.hpp" // for json, basic_json<>::object_t, basic_json<>::value_type
 
@@ -102,11 +103,11 @@ void CpuMonitor::track_cpu() {
                             if (ret == 2) {
                                 // Compute usr and sys CPU usage
                                 (thread_itr->second)
-                                    .utime_usage.add_sample(
+                                    .utime_usage->add_sample(
                                         core_num * 100 * (utime - (thread_itr->second).prev_utime)
                                         / (cpu_time - prev_cpu_time));
                                 (thread_itr->second)
-                                    .stime_usage.add_sample(
+                                    .stime_usage->add_sample(
                                         core_num * 100 * (stime - (thread_itr->second).prev_stime)
                                         / (cpu_time - prev_cpu_time));
                                 // Update thread usr and sys time
@@ -117,18 +118,32 @@ void CpuMonitor::track_cpu() {
                             }
                         } else {
                             // Create new thread record
+                            kotekan::KotekanTrackers& KT = kotekan::KotekanTrackers::instance();
+                            (stage_itr->second)[tid].utime_usage = KT.add_tracker(
+                                "cpu_monitor", stage.first + "|" + std::to_string(tid) + "|usr",
+                                "percent", track_len, true);
+                            (stage_itr->second)[tid].stime_usage = KT.add_tracker(
+                                "cpu_monitor", stage.first + "|" + std::to_string(tid) + "|sys",
+                                "percent", track_len, true);
                             (stage_itr->second)[tid].prev_utime = utime;
                             (stage_itr->second)[tid].prev_stime = stime;
                         }
                     } else {
                         // Create new stage and thread record
+                        kotekan::KotekanTrackers& KT = kotekan::KotekanTrackers::instance();
+                        (ult_list[stage.first])[tid].utime_usage = KT.add_tracker(
+                            "cpu_monitor", stage.first + "|" + std::to_string(tid) + "|usr",
+                            "percent", track_len, true);
+                        (ult_list[stage.first])[tid].stime_usage = KT.add_tracker(
+                            "cpu_monitor", stage.first + "|" + std::to_string(tid) + "|sys",
+                            "percent", track_len, true);
                         (ult_list[stage.first])[tid].prev_utime = utime;
                         (ult_list[stage.first])[tid].prev_stime = stime;
                     }
                 } else {
                     // The thread has been terminated early, add 0 to stats
-                    (ult_list[stage.first])[tid].utime_usage.add_sample(0);
-                    (ult_list[stage.first])[tid].stime_usage.add_sample(0);
+                    (ult_list[stage.first])[tid].utime_usage->add_sample(0);
+                    (ult_list[stage.first])[tid].stime_usage->add_sample(0);
                     WARN_NON_OO("CPU monitor cannot read from {:s}", fname);
                 }
                 fclose(thread_fp);
@@ -157,9 +172,9 @@ void CpuMonitor::cpu_ult_call_back(connectionInstance& conn) {
             nlohmann::json thread_cpu_ult = {};
             // Limit outputs to two digits
             thread_cpu_ult["usr_cpu_ult"] =
-                floor((thread.second).utime_usage.get_avg() * 100) / 100;
+                floor((thread.second).utime_usage->get_current() * 100) / 100;
             thread_cpu_ult["sys_cpu_ult"] =
-                floor((thread.second).stime_usage.get_avg() * 100) / 100;
+                floor((thread.second).stime_usage->get_current() * 100) / 100;
             stage_cpu_ult[std::to_string(thread.first)] = thread_cpu_ult;
         }
         cpu_ult_json[stage.first] = stage_cpu_ult;
@@ -181,6 +196,10 @@ void CpuMonitor::set_affinity(Config& config) {
     for (auto core_id : cpu_affinity)
         CPU_SET(core_id, &cpuset);
     pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
+}
+
+void CpuMonitor::set_track_len(const uint16_t mins) {
+    track_len = mins * 60;
 }
 
 } // namespace kotekan
