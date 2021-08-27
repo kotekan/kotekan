@@ -101,6 +101,7 @@ table {
 }
 
 th, td {
+  font-size: 12px;
   text-align: left;
   padding: 8px;
 }

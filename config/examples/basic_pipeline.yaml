@@ -9,6 +9,7 @@ trackers:
 
 cpu_monitor:
   enabled: false
+  track_length: 2  # save last 2 mins cpu usage.
 
 main_pool:
   kotekan_metadata_pool: chimeMetadata
