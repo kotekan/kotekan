@@ -10,6 +10,7 @@ import os
 import pwd
 from socket import gethostname
 from typing import Dict
+from datetime import datetime
 
 freq0_MHz = None
 df_MHz = None
@@ -17,7 +18,7 @@ nfreq = None
 ny_zone = None
 dt_ns = None
 
-from .. import baseband_buffer, __version__
+from kotekan import baseband_buffer, __version__
 
 
 def parse_reorder_map(inputs_reorder):
@@ -99,9 +100,21 @@ def create_baseband_archive(frame_metadata: baseband_buffer.BasebandMetadata):
         frame_metadata.freq_id,
         frame_metadata.frame_fpga_seq,
     )
+    date = datetime.utcfromtimestamp(frame_metadata.time0_ctime).date()
+    y = str(date.year).zfill(4)
+    m = str(date.month).zfill(2)
+    d = str(date.day).zfill(2)
+    # confirm root path on the recv node.
+    root = f"/data/chime/baseband/raw"
+    file_name = os.path.join(root, f"{y}/{m}/{d}/astro_{event_id}/baseband_{ event_id }_{ freq_id }.h5")
+    # delete the line below to write to the main location.
     file_name = f"baseband_{ event_id }_{ freq_id }.h5"
     dir_name = os.path.dirname(file_name)
     if dir_name:
+        if not os.path.exists(dir_name):
+            if os.path.exists(dir_name.replace('astro', 'rfi')):
+                dir_name = dir_name.replace('astro', 'rfi')
+                file_name = file_name.replace('astro', 'rfi')
         os.makedirs(dir_name, exist_ok=True)
 
     f = h5py.File(file_name, "w")
@@ -120,7 +133,7 @@ def create_baseband_archive(frame_metadata: baseband_buffer.BasebandMetadata):
 
     f.attrs["first_packet_recv_time"] = frame_metadata.first_packet_recv_time
     f.attrs["fpga0_ns"] = frame_metadata.fpga0_ns
-
+    print (f.attrs["time0_ctime"], f.attrs["time0_fpga"], f.attrs["time0_ctime_offset"], )
     return f, file_name
 
 
