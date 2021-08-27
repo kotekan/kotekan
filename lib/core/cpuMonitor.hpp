@@ -73,7 +73,7 @@ private:
     std::map<std::string, std::map<pid_t, CpuStat>> ult_list; // <stage_name <tid, cpu_stats>>
     std::map<std::string, Stage*> stages;
     uint32_t prev_cpu_time;
-    uint16_t track_len;
+    uint16_t track_len = 2;
 };
 
 } // namespace kotekan

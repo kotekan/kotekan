@@ -113,10 +113,10 @@ function update_cpu_utl(cpu_stats, isDynamic, time_required){
             timestamp = data[1];
         }
 
-        var avg = (cpu_stats[tracker]["avg"]).toExponential(2);
-        var max = (cpu_stats[tracker]["max"]).toExponential(2);
-        var min = (cpu_stats[tracker]["min"]).toExponential(2);
-        var std = (cpu_stats[tracker]["std"]).toExponential(2);
+        var avg = (cpu_stats[tracker]["avg"]).toExponential(1);
+        var max = (cpu_stats[tracker]["max"]).toExponential(1);
+        var min = (cpu_stats[tracker]["min"]).toExponential(1);
+        var std = (cpu_stats[tracker]["std"]).toExponential(1);
         var unit = cpu_stats[tracker]["unit"];
 
         // Sum all threads in the same stage.
@@ -632,11 +632,11 @@ class PipelineViewer {
             var stage_name = cur.getAttribute("id");
 
             // Add title as tooltip to show details when mouse moves over.
-            el.append("title").text("usr: 0%; sys: 0%")
+            el.append("title").text("usr: -; sys: -")
                 .attr("id", stage_name + "_cpu_detail");
 
             // Add CPU usage to stages.
-            var tspan = el.append('tspan').text("CPU: 0%");
+            var tspan = el.append('tspan').text("CPU: -");
             tspan.attr('x', this.margin/2).attr('dy', '15')
                     .attr("font-size", "15")
                     .attr("id", stage_name + "_cpu");
