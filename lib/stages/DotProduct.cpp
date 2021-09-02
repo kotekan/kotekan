@@ -30,12 +30,16 @@ STAGE_CONSTRUCTOR(DotProduct) {
 
     // Ensure the input and output buffers are the same
     // length for the dot product
-    if(in_a_buf->frame_size != in_b_buf->frame_size) {
-        throw std::runtime_error(fmt::format(fmt("in_a_buf frame size does not match in_b_buf frame size. {:d} != {:d}"), in_a_buf->frame_size, in_b_buf->frame_size));
+    if (in_a_buf->frame_size != in_b_buf->frame_size) {
+        throw std::runtime_error(
+            fmt::format(fmt("in_a_buf frame size does not match in_b_buf frame size. {:d} != {:d}"),
+                        in_a_buf->frame_size, in_b_buf->frame_size));
     }
 
-    if(in_a_buf->frame_size != out_buf->frame_size) {
-        throw std::runtime_error(fmt::format(fmt("Input frame size does not match output frame size. {:d} != {:d}"), in_a_buf->frame_size, out_buf->frame_size));
+    if (in_a_buf->frame_size != out_buf->frame_size) {
+        throw std::runtime_error(
+            fmt::format(fmt("Input frame size does not match output frame size. {:d} != {:d}"),
+                        in_a_buf->frame_size, out_buf->frame_size));
     }
 
     // Load options that can be set in config

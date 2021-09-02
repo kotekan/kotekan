@@ -19,15 +19,14 @@
  */
 class ExampleProducer : public kotekan::Stage {
 public:
-
     /**
      * @brief Constructor for the stage
      *   Note: you can use the macro STAGE_CONSTRUCTOR(ExampleProducer)
      *   if your constructor does not need additional customisation
-     *   and you wish to hide the complexity. 
+     *   and you wish to hide the complexity.
      */
     ExampleProducer(kotekan::Config& config, const std::string& unique_name,
-                kotekan::bufferContainer& buffer_container);
+                    kotekan::bufferContainer& buffer_container);
 
     /**
      * @brief Deconstructor - what happens when Kotekan shuts down.

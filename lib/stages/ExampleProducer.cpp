@@ -13,7 +13,7 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(ExampleProducer);
 
 ExampleProducer::ExampleProducer(Config& config, const std::string& unique_name,
-                         bufferContainer& buffer_container) :
+                                 bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&ExampleProducer::main_thread, this)) {
 
     // Register as consumer of out_buf
@@ -23,7 +23,7 @@ ExampleProducer::ExampleProducer(Config& config, const std::string& unique_name,
     // Load options that can be set in config
     // unique_name_for_stage, name_of_config, default_value_if_not_set
     _init_value = config.get_default<float>(unique_name, "init_value", 0.f);
-    
+
     // Get the no. of elements in each frame
     _num_elements = out_buf->frame_size / sizeof(float);
 }
@@ -46,12 +46,12 @@ void ExampleProducer::main_thread() {
         if (frame == NULL)
             break;
 
-        float *data = (float *)frame;
+        float* data = (float*)frame;
 
-        for(uint32_t i=0; i<_num_elements; i++) {
+        for (uint32_t i = 0; i < _num_elements; i++) {
             data[i] = _init_value;
         }
-        
+
         INFO("{:s}[{:d}] initialised to: {:f}, ..., {:f}, ..., {:f}", out_buf->buffer_name,
              frame_id, data[0], data[_num_elements / 2], data[_num_elements - 1]);
 

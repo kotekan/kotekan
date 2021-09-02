@@ -13,7 +13,7 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(ExampleConsumer);
 
 ExampleConsumer::ExampleConsumer(Config& config, const std::string& unique_name,
-                         bufferContainer& buffer_container) :
+                                 bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&ExampleConsumer::main_thread, this)) {
 
     // Register as consumer of in_buf
@@ -44,11 +44,11 @@ void ExampleConsumer::main_thread() {
         if (frame == NULL)
             break;
 
-        float *data = (float *)frame;
+        float* data = (float*)frame;
 
         // Logging
-        INFO("{:s}[{:d}]: {:f}, ..., {:f}, ..., {:f}", in_buf->buffer_name,
-             frame_id, data[0], data[_num_elements / 2], data[_num_elements - 1]);
+        INFO("{:s}[{:d}]: {:f}, ..., {:f}, ..., {:f}", in_buf->buffer_name, frame_id, data[0],
+             data[_num_elements / 2], data[_num_elements - 1]);
 
         // Release frame
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
