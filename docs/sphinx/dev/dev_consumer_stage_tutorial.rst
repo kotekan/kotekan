@@ -26,13 +26,13 @@ The steps we will follow for developing the stage are:
 5. Create the header.
 
 
-.. literalinclude:: ../../../lib/stages/SampleStage.cpp
+.. literalinclude:: ../../../lib/stages/ExampleConsumer.cpp
     :language: c++
     :linenos:
 
 Now, let us create the header file.
 
-.. literalinclude:: ../../../lib/stages/SampleStage.hpp
+.. literalinclude:: ../../../lib/stages/ExampleConsumer.hpp
 
 To let the compiler know about the stage, add it to lib/stages/CMakeLists.txt.
 

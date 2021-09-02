@@ -9,9 +9,9 @@ First we need to create a `kotekan` `Stage` that consumes two input buffers, i.e
 
 The header and source files (`DotProduct.hpp/cpp`) are shown below:
 
-.. literalinclude:: ../../../lib/stages/DotProduct.hpp
+.. literalinclude:: ../../../lib/stages/ExampleDotProduct.hpp
 
-.. literalinclude:: ../../../lib/stages/DotProduct.cpp
+.. literalinclude:: ../../../lib/stages/ExampleDotProduct.cpp
     :language: c++
 
 Compile Stage
@@ -56,6 +56,13 @@ The `dot_product` section runs the `DotProduct` `Stage` on the two input buffers
 .. literalinclude:: ../../../config/examples/dot_product.yaml
     :lines: 50-55
     :language: yaml
+
+Pipeline Graph
+--------------
+The graph below shows the pipeline of this example and was generated using the :ref:`Pipeline Viewer <pipeline_viewer>`.
+
+.. image:: images/dot_product_pipeline.png
+    :align: center
 
 Execute kotekan
 ---------------

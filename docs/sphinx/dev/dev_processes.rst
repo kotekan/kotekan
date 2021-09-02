@@ -7,12 +7,12 @@ More detailed info about stages, how they should be structured, and what should 
 
 Minimal Definition
 -------------------
-A minimalist stage is defined in SampleStage.cpp and reproduced below. This should be considered a minimal stage.
+A minimalist stage is defined in ExampleProducer.cpp and reproduced below. This should be considered a minimal stage.
 
-.. literalinclude:: ../../../lib/stages/SampleStage.cpp
+.. literalinclude:: ../../../lib/stages/ExampleProducer.cpp
     :language: c++
     :linenos:
 
 Using breathe to parse the autodoc,
 
-.. doxygenclass:: SampleStage
+.. doxygenclass:: ExampleProducer
