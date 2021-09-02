@@ -8,6 +8,10 @@ samples_per_data_set: 4608
 # Constants
 sizeof_float: 4
 
+cpu_monitor:
+    enabled: true 
+    track_length: 2 # save last 2 mins cpu usage.
+
 # Create pool of metadata for each buffer
 main_pool:
   kotekan_metadata_pool: chimeMetadata
