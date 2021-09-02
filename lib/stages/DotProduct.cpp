@@ -4,25 +4,15 @@
 #include "errors.h"
 #include "visUtil.hpp" // for frameID, modulo
 
-/* Load the classes we will be using
- * TODO: Annotate the includes and usings */
-
+// Include the classes we will be using
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-// Register the stage with abstract factory.
-// Needed for Kotekan to be able to find the stage.
+// Register the stage with the stage factory.
 REGISTER_KOTEKAN_STAGE(DotProduct);
 
-/* Constructor for the stage
-    TODO: Annotate the arguments everywhere
-    Note, that you can use the macro STAGE_CONSTRUCTOR(DotProduct)
-    if your constructor does not need additional customisation
-    and you wish to hide the complexity. */
-DotProduct::DotProduct(Config& config, const std::string& unique_name,
-                       bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&DotProduct::main_thread, this)) {
+STAGE_CONSTRUCTOR(DotProduct) {
 
     // Register as consumer of in_a_buf and in_b_buf
     in_a_buf = get_buffer("in_a_buf");
@@ -40,18 +30,21 @@ DotProduct::DotProduct(Config& config, const std::string& unique_name,
 
     // Ensure the input and output buffers are the same
     // length for the dot product
-    assert(in_a_buf->frame_size == in_b_buf->frame_size
-           && in_a_buf->frame_size == out_buf->frame_size);
+    if(in_a_buf->frame_size != in_b_buf->frame_size) {
+        throw std::runtime_error(fmt::format(fmt("in_a_buf frame size does not match in_b_buf frame size. {:d} != {:d}"), in_a_buf->frame_size, in_b_buf->frame_size));
+    }
+
+    if(in_a_buf->frame_size != out_buf->frame_size) {
+        throw std::runtime_error(fmt::format(fmt("Input frame size does not match output frame size. {:d} != {:d}"), in_a_buf->frame_size, out_buf->frame_size));
+    }
 
     // Load options that can be set in config
     // unique_name_for_stage, name_of_config, default_value_if_not_set
     //_offset = config.get_default<int32_t>(unique_name, "offset", 0);
 }
 
-// Deconstructor; what happens when Kotekan shuts down
 DotProduct::~DotProduct() {}
 
-// Framework managed pthread
 void DotProduct::main_thread() {
 
     // Logging function
@@ -80,7 +73,7 @@ void DotProduct::main_thread() {
         if (out_frame_ptr == nullptr)
             break;
 
-        // Get pointers to float values
+        // Cast pointers to float arrays
         float* a = (float*)frame_a_ptr;
         float* b = (float*)frame_b_ptr;
         float* output = (float*)out_frame_ptr;
@@ -89,14 +82,6 @@ void DotProduct::main_thread() {
         for (uint32_t i = 0; i < _num_elements; i++) {
             output[i] = a[i] * b[i];
         }
-
-        // Logging
-        INFO("Input buffer {:s}[{:d}]: {:f}, ..., {:f}, ..., {:f}", in_a_buf->buffer_name,
-             in_a_frame_id, a[0], a[_num_elements / 2], a[_num_elements - 1]);
-        INFO("Input buffer {:s}[{:d}]: {:f}, ..., {:f}, ..., {:f}", in_b_buf->buffer_name,
-             in_b_frame_id, b[0], b[_num_elements / 2], b[_num_elements - 1]);
-        INFO("Output buffer {:s}[{:d}]: {:f}, ..., {:f}, ..., {:f}", out_buf->buffer_name,
-             out_frame_id, output[0], output[_num_elements / 2], output[_num_elements - 1]);
 
         // Release the input frames and increment the frame indices
         mark_frame_empty(in_a_buf, unique_name.c_str(), in_a_frame_id++);

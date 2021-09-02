@@ -71,7 +71,8 @@ add_library(
     BeamInspect.cpp
     testDataGen.cpp
     DPDKShuffleSimulate.cpp
-    SampleStage.cpp
+    ExampleProducer.cpp
+    ExampleConsumer.cpp
     DotProduct.cpp
     BadInputFlag.cpp)
 
