@@ -45,8 +45,7 @@ Required for some options
 
 * `h5py <http://docs.h5py.org/en/latest/build.html#source-installation>`_ (Install from source for bitshuffle)::
 
-    python setup.py configure --hdf5=/usr/lib/x86_64-linux-gnu/hdf5/serial/ --hdf5-version=1.10.0
-    python setup.py install
+    pip install --no-binary=h5py h5py
 
 * `Bitshuffle <https://github.com/kiyo-masui/bitshuffle>`_ (Needs to be installed after h5py)::
 
@@ -198,7 +197,7 @@ Cmake build options
     Build kotekan documentation. Requires doxygen, sphinx (+ sphinx_rtd_theme), and breathe. Note that docs will only compile if explicitly told to, it is not part of the base compile, even when enabled.
 * ``-DOPENSSL_ROOT_DIR=<openssl_root_dir>``
     Location of the openssl libs and includes.
-* ``-DBOOST_TESTS=ON``
+* ``-DWITH_TESTS=ON``
     Build tests using The Boost Test Framework. pytest-cpp needs to be installed for pytest to find them.
 * ``-DSUPERDEBUG=ON``
     Add extra debugging info and turn off all optimisation to improve coverage.

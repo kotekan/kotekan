@@ -68,6 +68,9 @@ public:
     ReadGain(kotekan::Config& config_, const std::string& unique_name,
              kotekan::bufferContainer& buffer_container);
 
+    /// Destructor.
+    ~ReadGain();
+
     void main_thread() override;
 
     /// Endpoint for providing new directory path for FRB gain updates
@@ -121,6 +124,9 @@ private:
     uint32_t _num_elements;
     /// Number of pulsar beams, should be 10
     int16_t _num_beams;
+
+    /// Array containing all the current tracking beam gains
+    float* tracking_beam_gains;
 
     /// implements `kotekan_gains_last_update_success`
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& gains_last_update_success_metric;

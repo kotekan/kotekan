@@ -188,10 +188,10 @@ private:
 
     /// event base
     /// TODO: use the event base of the restServer
-    struct event_base* _base;
+    struct event_base* _base = nullptr;
 
     /// dns base
-    struct evdns_base* _dns;
+    struct evdns_base* _dns = nullptr;
 
     /// Condition variable to signal that event thread has started
     std::condition_variable _cv_start;
@@ -199,10 +199,13 @@ private:
     std::mutex _mtx_start;
 
     /// Writing socket event to pass requests to the event thread
-    struct bufferevent* bev_req_write;
+    struct bufferevent* bev_req_write = nullptr;
 
     /// Reading socket event to pass requests to the event thread
-    struct bufferevent* bev_req_read;
+    struct bufferevent* bev_req_read = nullptr;
+
+    /// Timer to check for the exit condition
+    struct event* timer_event = nullptr;
 
     /// Lock to protect writing to the bufferevent_pair's output buffer (the datasetManager does
     /// this in threads for example).

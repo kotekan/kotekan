@@ -74,6 +74,7 @@ add_library(
     ExampleProducer.cpp
     ExampleConsumer.cpp
     ExampleDotProduct.cpp
+    hexDump.cpp
     BadInputFlag.cpp)
 
 target_include_directories(kotekan_stages PRIVATE .)
