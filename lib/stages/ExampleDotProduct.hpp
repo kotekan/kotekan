@@ -25,7 +25,7 @@
 class ExampleDotProduct : public kotekan::Stage {
 public:
     ExampleDotProduct(kotekan::Config& config, const std::string& unique_name,
-               kotekan::bufferContainer& buffer_container);
+                      kotekan::bufferContainer& buffer_container);
     virtual ~ExampleDotProduct();
     void main_thread() override;
 
