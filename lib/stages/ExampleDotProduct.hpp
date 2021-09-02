@@ -1,5 +1,5 @@
-#ifndef DOT_PRODUCT_STAGE_H
-#define DOT_PRODUCT_STAGE_H
+#ifndef EXAMPLE_DOT_PRODUCT_STAGE_H
+#define EXAMPLE_DOT_PRODUCT_STAGE_H
 
 #include "Stage.hpp"
 #include "buffer.h"
@@ -7,7 +7,7 @@
 #include "util.h"
 
 /**
- * @class DotProduct
+ * @class ExampleDotProduct
  * @brief A stage to compute the dot product between two vectors: A and B, which are represented by
  * two buffers. The result is written to an output buffer.
  *
@@ -22,11 +22,11 @@
  *      @buffer_format standard
  *      @buffer_metadata any
  */
-class DotProduct : public kotekan::Stage {
+class ExampleDotProduct : public kotekan::Stage {
 public:
-    DotProduct(kotekan::Config& config, const std::string& unique_name,
+    ExampleDotProduct(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
-    virtual ~DotProduct();
+    virtual ~ExampleDotProduct();
     void main_thread() override;
 
 private:
@@ -41,4 +41,4 @@ private:
     uint32_t _num_elements;
 };
 
-#endif /* DOT_PRODUCT_STAGE_H */
+#endif /* EXAMPLE_DOT_PRODUCT_STAGE_H */

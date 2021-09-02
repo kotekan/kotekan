@@ -1,4 +1,4 @@
-#include "DotProduct.hpp"
+#include "ExampleDotProduct.hpp"
 
 #include "StageFactory.hpp"
 #include "errors.h"
@@ -10,9 +10,9 @@ using kotekan::Config;
 using kotekan::Stage;
 
 // Register the stage with the stage factory.
-REGISTER_KOTEKAN_STAGE(DotProduct);
+REGISTER_KOTEKAN_STAGE(ExampleDotProduct);
 
-STAGE_CONSTRUCTOR(DotProduct) {
+STAGE_CONSTRUCTOR(ExampleDotProduct) {
 
     // Register as consumer of in_a_buf and in_b_buf
     in_a_buf = get_buffer("in_a_buf");
@@ -47,9 +47,9 @@ STAGE_CONSTRUCTOR(DotProduct) {
     //_offset = config.get_default<int32_t>(unique_name, "offset", 0);
 }
 
-DotProduct::~DotProduct() {}
+ExampleDotProduct::~ExampleDotProduct() {}
 
-void DotProduct::main_thread() {
+void ExampleDotProduct::main_thread() {
 
     // Logging function
     INFO("Starting main_thread!");

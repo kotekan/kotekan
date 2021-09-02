@@ -47,7 +47,7 @@ data_gen:
 
 # Run stage on input data and write output
 dot_product:
-  kotekan_stage: DotProduct
+  kotekan_stage: ExampleDotProduct
   in_a_buf: input_a_buffer
   in_b_buf: input_b_buffer
   out_buf: output_buffer

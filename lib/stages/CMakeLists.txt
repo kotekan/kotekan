@@ -73,7 +73,7 @@ add_library(
     DPDKShuffleSimulate.cpp
     ExampleProducer.cpp
     ExampleConsumer.cpp
-    DotProduct.cpp
+    ExampleDotProduct.cpp
     BadInputFlag.cpp)
 
 target_include_directories(kotekan_stages PRIVATE .)
