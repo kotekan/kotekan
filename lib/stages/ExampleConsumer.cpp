@@ -41,7 +41,7 @@ void ExampleConsumer::main_thread() {
         // Acquire frame
         uint8_t* frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
         // A null frame is returned on shutdown
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         float* data = (float*)frame;
