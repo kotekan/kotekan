@@ -5,7 +5,7 @@ h5py
 requests
 pyyaml
 tabulate
-comet @ git+ssh://git@github.com/chime-experiment/comet.git
+comet @ git+https://git@github.com/chime-experiment/comet.git
 posix_ipc
 prometheus-client
 jinja2
