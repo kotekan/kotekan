@@ -1,6 +1,6 @@
 # NOTE, for HSA support, the latest version of the rocm package we can use is 3.0.  Later versions
 # have removed files required by the kotekan CHIME code.
-FROM rocm/dev-ubuntu-18.04:3.0
+FROM rocm/dev-ubuntu-18.04
 
 ## The maintainer name and email 
 MAINTAINER Rick Nitsche <rick@phas.ubc.ca>
@@ -17,11 +17,15 @@ RUN rm /etc/apt/sources.list.d/rocm.list && \
     apt-get update
 
 # Install any needed packages to run cmake with full CHIME build options
+#RUN wget -qO - http://repo.radeon.com/rocm/apt/debian/rocm.gpg.key | apt-key add -
+#ADD rocm.gpg.key rocm.gpg.key
+#RUN apt-key add -q rocm.gpg.key
 RUN apt-get update && \
     apt-get install -y software-properties-common=0.96.* && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && \
     apt-get upgrade -y && \
+    apt-get install wget -y && \
     apt-get install -y python3.7=3.7.* \
                        python3-setuptools=39.0.* \
                        python3-pip=9.0.* \
@@ -40,7 +44,7 @@ RUN apt-get update && \
                        dpdk=17.11.* \
                        dpdk-dev=17.11.* \
                        rocm-opencl-dev \
-                       rocm-opencl \
+                       rocm-opencl  \
                        libhdf5-serial-dev=1.10.* \
                        libboost-test-dev=1.65.* \
                        libevent-dev=2.1.* \
@@ -146,6 +150,11 @@ RUN apt-get update && \
                                             sphinxcontrib-plantuml==0.* \
                                             && \
     wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar -P plantuml
+
+
+# Get Kotekan repo
+RUN git clone --branch ael/py3_only https://github.com/kotekan/kotekan.git
+
 
 # Uncomment this to check what version got installed
 # RUN python3.7 -m pip show <package>
