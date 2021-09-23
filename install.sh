@@ -7,6 +7,7 @@ cmake \
         -DCMAKE_BUILD_TYPE=Debug \
         -DCMAKE_CXX_FLAGS_DEBUG="-g -O0"\
         -DCMAKE_C_FLAGS_DEBUG="-g -O0" \
+	-DNO_MEMLOCK=ON \
         -DSUPERDEBUG=ON \
         -DBLAZE_PATH=/code/build/blaze \
         -DBLAS_LIBRARIES=/usr/lib/x86_64-linux-gnu/libopenblas.so.0 \
