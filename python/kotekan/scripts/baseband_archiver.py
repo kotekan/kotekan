@@ -51,8 +51,7 @@ def add_index_map(archive_file, config):
     )
     for i, adc_id in enumerate(adc_ids):
         inputs[adc_id] = input_map[i]
-    archive_file.create_dataset("index_map/inputs", data=inputs)
-
+    archive_file.create_dataset("index_map/input", data=inputs[:])
 
 def set_sampling_params(config):
     """Reimplements ICETelescope::set_sampling_params"""
@@ -123,17 +122,18 @@ def create_baseband_archive(frame_metadata: baseband_buffer.BasebandMetadata):
     f.attrs["delta_time"] = 2.56e-06
     f.attrs["git_version_tag"] = __version__
     f.attrs["system_user"] = pwd.getpwuid(os.getuid()).pw_name
-
+    f.attrs["event_id"] = event_id
     f.attrs["freq_id"] = freq_id
     f.attrs["freq"] = to_freq(freq_id)
 
-    f.attrs["time0_fpga"] = frame_metadata.time0_fpga
+    f.attrs["time0_fpga_count"] = np.uint64(frame_metadata.time0_fpga)
     f.attrs["time0_ctime"] = frame_metadata.time0_ctime
     f.attrs["time0_ctime_offset"] = frame_metadata.time0_ctime_offset
+    f.attrs["type_time0_ctime"] = str(f.attrs["time0_ctime"].dtype)
 
     f.attrs["first_packet_recv_time"] = frame_metadata.first_packet_recv_time
-    f.attrs["fpga0_ns"] = frame_metadata.fpga0_ns
-    print (f.attrs["time0_ctime"], f.attrs["time0_fpga"], f.attrs["time0_ctime_offset"], )
+    #f.attrs["fpga0_ns"] = frame_metadata.fpga0_ns
+    #print(f.attrs["time0_ctime"], f.attrs["time0_fpga"], f.attrs["time0_ctime_offset"],)
     return f, file_name
 
 
@@ -229,10 +229,13 @@ def process_raw_file(file_name: str, config: Dict[str, int], dry_run: bool = Fal
         sample_present[
             frame_start_idx : (frame_start_idx + frame_metadata.valid_to)
         ] = True
+                
     if not dry_run:
         archive_file.create_dataset("baseband", data=baseband)
+        archive_file['baseband'].attrs['axis'] = ['time','input']
         archive_file.create_dataset("sample_present", data=sample_present)
-
+        archive_file['sample_present'].attrs['axis'] = ['time']
+        archive_file['sample_present'].attrs['fill_value'] = False
     found = []
     for seq in sorted(frames_read):
         for f in found:
