@@ -8,6 +8,7 @@ import io
 import numpy as np
 import os
 import pwd
+import yaml
 from socket import gethostname
 from typing import Dict
 from datetime import datetime
@@ -292,9 +293,22 @@ def sample_present_stats(file_name):
             )
         )
 
+def convert(file_name, config_file, stats=False, dry_run=False, verbose=False):
+    """Main function to do the conversion."""
+    with open(config_file) as f:
+        config = yaml.safe_load(f)
+    set_sampling_params(config)
+
+    archive_file_names = []
+    for f in file_name:
+        archive_file_name = process_raw_file(f, config, dry_run, verbose)
+        archive_file_names.append(archive_file_name)
+        if stats and not dry_run:
+            sample_present_stats(archive_file_name)
+    return archive_file_names
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
-@click.argument("file_name", type=click.Path(exists=True), nargs=-1)
+@click.argument("file_names", type=click.Path(exists=True), nargs=-1)
 @click.option(
     "--stats",
     "-s",
@@ -322,19 +336,11 @@ def sample_present_stats(file_name):
     type=click.Path(exists=True),
     help="Kotekan configuration file",
 )
-def cli(file_name, config_file, stats, dry_run, verbose):
+def cli(file_names, config_file, stats, dry_run, verbose):
     """Convert a raw baseband file into an HDF5 baseband archive """
-    import yaml
-
-    with open(config_file) as f:
-        config = yaml.safe_load(f)
-    set_sampling_params(config)
-
-    for f in file_name:
-        archive_file_name = process_raw_file(f, config, dry_run, verbose)
-        if stats and not dry_run:
-            sample_present_stats(archive_file_name)
-
+    archive_file_names = convert(file_names, config_file, stats, dry_run, verbose)
+    print(archive_file_names)
 
 if __name__ == "__main__":
     cli()
+
