@@ -8,35 +8,18 @@ import datetime
 import sqlite3
 import requests
 import sys
-import threading
 import baseband_archiver
+import multiprocessing
 
 # TODO metrics and slack integration.
 ARCHIVER_MOUNT = "/data/chime/baseband/raw"
 NUM_THREADS = 20
 
-class Convert(threading.Thread):
-    def __init__(self, raw_file, config_file):
-        threading.Thread.__init__(self)
-        self.raw_file = raw_file
-        self.config_file = config_file
-
-    def run(self):
-        conv = self.convert()
-        if conv == 0:
-            # TODO: future add hook for datatrail here.
-            self.delete()
-
-    def convert(self):
-        #cmd = "python baseband_archiver.py -c ../../../config/chime_science_run_gpu.yaml /data/baseband_raw/baseband_raw_2021031921580786/baseband_2021031921580786_1.data"
-        #return os.system(cmd)
-        self.converted_file = baseband_archiver.convert([self.raw_file], self.config_file)[0]
-        time.sleep(3)  # assume fake conversion took 3 seconds
-        return 0
-
-    def delete(self):
-        #os.system(f"rm -f {self.raw_file}")
-        return 0
+def convert(file_name, config_file, converted_filenames):
+    converted_file = baseband_archiver.convert([file_name], config_file)[0]
+    converted_filenames[file_name] = converted_file
+    #TODO: add hook for datatrail here in the future.
+    #os.system(f"rm -f {file_name}")
 
 def connect_db():
     db_config_file = "chimefrb_db.yaml"
@@ -105,6 +88,7 @@ def is_ready(event):
     else:
         if files_error + files_done == num_good_nodes * 4:
             ready = True
+            print("Ready (error, done, num good nodes*4) ", files_error, files_done, num_good_nodes*4)
     return ready
 
 def validate_file_existence(files):
@@ -130,6 +114,11 @@ def convert_data(sqlite, conn, e, num_threads):
             print(f"data path: {datapath} not found")
             files = None 
             # TODO: set database status to `MISSING` and exit.
+            print("skipping conversion. Updating state in sqlite DB to MISSING")
+            sqlite.execute(
+                f"UPDATE conversion SET status = 'MISSING' WHERE event_no = {e[0]}"
+            )
+            conn.commit()
         if files is not None:
             # make entry in datatrail, local file with local DB with state CONVERTING
             print("starting conversion. Updating state in sqlite DB")
@@ -139,14 +128,15 @@ def convert_data(sqlite, conn, e, num_threads):
             for i in range(0, len(files), num_threads):
                 chunk = files[i:i+num_threads]
                 threads = []
+                manager = multiprocessing.Manager()
+                converted_filenames = manager.dict()
                 for f in chunk:
-                    th = Convert(f)
+                    th = multiprocessing.Process(target=convert,args=(f, config_file, converted_filenames))
                     th.start()
                     threads.append(th)
                 for th in threads:
                     th.join()
-                    converted_files.append(th.converted_file)
-
+                converted_files += converted_filenames.values()
             exists, missing = validate_file_existence(converted_files)
             if exists:
                 # UPDATE local DB with state FINISHED
@@ -189,8 +179,8 @@ def main():
     ), f"{ARCHIVER_MOUNT} is not mounted, it is required for this process. Exiting!!!"
     db = connect_db()
     conn, sqlite = connect_conversion_db()
-    # sqlite.execute("INSERT INTO conversion VALUES (187844133, 'FINISHED')")
-    # conn.commit()
+    #sqlite.execute("INSERT INTO conversion VALUES (188946317, 'FINISHED')")
+    #conn.commit()
     while True:
         last_event = fetch_last_converted_event(sqlite)
         events = fetch_events(db, last_event[0])
