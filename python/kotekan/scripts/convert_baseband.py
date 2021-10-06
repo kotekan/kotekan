@@ -16,12 +16,14 @@ ARCHIVER_MOUNT = "/data/chime/baseband/raw"
 NUM_THREADS = 20
 
 def convert(file_name, config_file, converted_filenames):
+    """Convert the raw data file to hdf5 and then delete the raw file."""
     converted_file = baseband_archiver.convert([file_name], config_file)[0]
     converted_filenames[file_name] = converted_file
     #TODO: add hook for datatrail here in the future.
     #os.system(f"rm -f {file_name}")
 
 def connect_db():
+    """Set up a connection to the L4 database."""
     db_config_file = "chimefrb_db.yaml"
     with open(db_config_file) as f:
         db_config = yaml.safe_load(f)
@@ -29,6 +31,7 @@ def connect_db():
 
 
 def fetch_events(db, event_no):
+    """Fetch all events with basebandthat arrived after a specific event."""
     quert_str = (
         "SELECT baseband_raw_data.event_no, event_register.timestamp_utc "
         "FROM baseband_raw_data "
@@ -48,6 +51,7 @@ def fetch_events(db, event_no):
 
 
 def is_ready(event):
+    """Ask coco about the status of the event and determine if its ready to be converted."""
     ready = False
     url = "http://csBfs:54323/baseband-status"
     response = requests.get(
@@ -92,6 +96,7 @@ def is_ready(event):
     return ready
 
 def validate_file_existence(files):
+    """Confirm that all converted files are located in the appropriate locations."""
     missing = []
     exists = True
     for f in files:
@@ -101,6 +106,7 @@ def validate_file_existence(files):
     return exists, missing
 
 def convert_data(sqlite, conn, e, num_threads):
+    """Main conversion function to track the conversion of events."""
     datapath = f"/data/baseband_raw/baseband_raw_{e[0]}"
     convert = is_ready(e)
     if convert is True or datetime.datetime.utcnow() > datetime.datetime.strptime(
@@ -151,6 +157,7 @@ def convert_data(sqlite, conn, e, num_threads):
                 print(missing)
 
 def connect_conversion_db():
+    """Connect to the local tracking database."""
     if not os.path.exists("bb_conversion.db"):
         con = sqlite3.connect("bb_conversion.db")
         sqlite = con.cursor()
@@ -165,6 +172,7 @@ def connect_conversion_db():
 
 
 def fetch_last_converted_event(sqlite):
+    """Extract the last fully converted event."""
     event = [0]
     for row in sqlite.execute(
         "SELECT * FROM conversion WHERE status = 'FINISHED' ORDER BY event_no DESC LIMIT 1"
