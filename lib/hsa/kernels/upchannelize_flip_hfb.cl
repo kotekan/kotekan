@@ -271,10 +271,10 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array,
     //Downsample: sum all time and both polarisations (amplitude Re*Re + Im*Im)
     //Each work item processes 2 frequencies
     //so write out 128 numbers only
-    for (int freq=0; freq<3; freq++) {
+    for (int time=0; time<3; time++) {
         //Offset of work item ID + stride in memory of freq + first or second freq being worked on
-        const int time_offset_1 = freq*128 + work_offset;
-        const int time_offset_2 = freq*128 + work_offset + 1;
+        const int time_offset_1 = time*128 + work_offset;
+        const int time_offset_2 = time*128 + work_offset + 1;
 
         time_sum_1 += local_data[time_offset_1].REAL * local_data[time_offset_1].REAL + 
             local_data[time_offset_1].IMAG * local_data[time_offset_1].IMAG;
