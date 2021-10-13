@@ -1,8 +1,8 @@
 #include "cudaEventContainer.hpp"
 
+#include "buffer.h"
 #include "errors.h"
 
-#include <core/buffer.h>
 #include <unistd.h>
 
 void cudaEventContainer::set(void* sig) {
