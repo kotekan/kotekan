@@ -25,8 +25,8 @@ buffer_depth: 4
 num_gpu_frames: 16
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
-num_elements: 512
-num_local_freq: 4
+num_elements: 2048
+num_local_freq: 1
 num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
 sizeof_int: 4
 
@@ -65,14 +65,15 @@ beamform_output_buffers:
         num_frames: buffer_depth
 
 gen_data:
-  type: random #const
+  type: const
   value: 153
   kotekan_stage: testDataGen
   out_buf: gpu_input_buffer
+  wait: false
 
 data_format: dot4b
 #data_format: "4+4b"
-#full_complicated: false #don't use the ISA-like kernel: intrinsics, extra packing, overflows, etc
+full_complicated: true #don't use the ISA-like kernel: intrinsics, extra packing, overflows, etc
 
 gpu:
   profiling: true
@@ -80,15 +81,14 @@ gpu:
   kernel_path: "../../lib/opencl/kernels/"
   gain_dir: "/etc/kotekan/"
   log_level: debug2
+  frame_arrival_period: samples_per_data_set / 390625.0 / 16
   commands: &command_list
     - name: clInputData
       in_buf: network_buf
       gpu_memory_name: voltage
-  #- name: clPresumZero
-  #- name: clOutputDataZero
-  #- name: clPresumKernel
-#  - name: clPreseedKernel
-#  - name: clCorrelatorKernel
+    - name: clPresumZero
+    - name: clOutputDataZero
+    - name: clPresumKernel
     - name: clKVCorr
     - name: clOutputData
   gpu_0:
@@ -105,7 +105,7 @@ gpu:
 #  log_level: debug
 #  network_in_buf: gpu_input_buffer
 #  corr_out_buf: cpu_output_buffer
-#
+##
 #check_data:
 #  kotekan_stage: testDataCheckInt
 #  first_buf: gpu_output_buffer
