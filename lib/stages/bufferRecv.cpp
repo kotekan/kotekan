@@ -52,8 +52,8 @@ REGISTER_KOTEKAN_STAGE(bufferRecv);
 bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)),
-    dropped_frame_counter(
-        Metrics::instance().add_counter("kotekan_buffer_recv_dropped_frame_total", unique_name)),
+    dropped_frame_counter(Metrics::instance().add_counter("kotekan_buffer_recv_dropped_frame_total",
+                                                          unique_name, {})),
     transfer_time_seconds(Metrics::instance().add_gauge("kotekan_buffer_recv_transfer_time_seconds",
                                                         unique_name, {"source"})) {
 
@@ -115,12 +115,12 @@ void bufferRecv::accept_connection(int listener, short event, void* arg) {
 
 void bufferRecv::increment_droped_frame_count() {
     std::lock_guard<mutex> lock(dropped_frame_count_mutex);
-    dropped_frame_counter.inc();
+    dropped_frame_counter->labels({}).inc();
 }
 
 void bufferRecv::set_transfer_time_seconds(const std::string& source_label, const double elapsed) {
     std::lock_guard<mutex> lock(transfer_time_seconds_mutex);
-    transfer_time_seconds.labels({source_label}).set(elapsed);
+    transfer_time_seconds->labels({source_label}).set(elapsed);
 }
 
 void bufferRecv::internal_accept_connection(evutil_socket_t listener, short event, void* arg) {

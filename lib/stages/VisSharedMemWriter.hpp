@@ -225,10 +225,10 @@ protected:
 
 private:
     // Number of dropped frames
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& dropped_frame_counter;
+    kotekan::prometheus::prometheus_counter_ptr_t dropped_frame_counter;
 
     // Time spent waiting for semaphore
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& access_record_wait_time_seconds;
+    kotekan::prometheus::prometheus_gauge_ptr_t access_record_wait_time_seconds;
 
     // Keep track of the average semaphore wait time
     movingAverage wait_time_average;

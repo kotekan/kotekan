@@ -179,38 +179,30 @@ void Metrics::add(const string name, const string stage_name,
     families[key] = metric;
 }
 
-Gauge& Metrics::add_gauge(const std::string& name, const std::string& stage_name) {
-    const std::vector<string> empty_labels;
-    auto f = std::make_shared<MetricFamily<Gauge>>(name, stage_name, empty_labels,
-                                                   MetricFamily<Gauge>::MetricType::Gauge);
-    add(name, stage_name, f);
-    return f->labels({});
+prometheus_gauge_ptr_t Metrics::add_gauge(const std::string& name, const std::string& stage_name,
+                                          const std::vector<std::string>& label_names) {
+    auto gauge = std::make_shared<MetricFamily<Gauge>>(name, stage_name, label_names,
+                                                       MetricFamily<Gauge>::MetricType::Gauge);
+    // If this gauge has no labels, then generate the one (and only) metric in this family.
+    if (label_names.empty()) {
+        gauge->labels({});
+    }
+    add(name, stage_name, gauge);
+    return gauge;
 }
 
-MetricFamily<Gauge>& Metrics::add_gauge(const std::string& name, const std::string& stage_name,
-                                        const std::vector<std::string>& label_names) {
-    auto f = std::make_shared<MetricFamily<Gauge>>(name, stage_name, label_names,
-                                                   MetricFamily<Gauge>::MetricType::Gauge);
-    add(name, stage_name, f);
-    return *f;
-}
-
-Counter& Metrics::add_counter(const std::string& name, const std::string& stage_name) {
-    const std::vector<string> empty_labels;
-    auto f = std::shared_ptr<MetricFamily<Counter>>(new MetricFamily<Counter>(
-        name, stage_name, empty_labels, MetricFamily<Counter>::MetricType::Counter));
-    add(name, stage_name, f);
-    return f->labels({});
-}
-
-MetricFamily<Counter>& Metrics::add_counter(const std::string& name, const std::string& stage_name,
-                                            const std::vector<std::string>& label_names) {
-    auto f = std::shared_ptr<MetricFamily<Counter>>(new MetricFamily<Counter>(
+prometheus_counter_ptr_t Metrics::add_counter(const std::string& name,
+                                              const std::string& stage_name,
+                                              const std::vector<std::string>& label_names) {
+    auto counter = std::shared_ptr<MetricFamily<Counter>>(new MetricFamily<Counter>(
         name, stage_name, label_names, MetricFamily<Counter>::MetricType::Counter));
-    add(name, stage_name, f);
-    return *f;
+    // If this counter has no labels, then generate the one (and only) metric in this family.
+    if (label_names.empty()) {
+        counter->labels({});
+    }
+    add(name, stage_name, counter);
+    return counter;
 }
-
 
 void Metrics::remove_stage_metrics(const string& stage_name) {
     std::lock_guard<std::mutex> lock(metrics_lock);

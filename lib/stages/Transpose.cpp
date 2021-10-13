@@ -120,8 +120,8 @@ void Transpose::main_thread() {
     // Create HDF5 file
     create_hdf5_file();
 
-    auto& transposed_bytes_metric =
-        Metrics::instance().add_counter("kotekan_transpose_data_transposed_bytes", unique_name);
+    auto transposed_bytes_metric =
+        Metrics::instance().add_counter("kotekan_transpose_data_transposed_bytes", unique_name, {});
 
     while (!stop_thread) {
         if (num_empty_skip > 0) {
@@ -190,7 +190,7 @@ void Transpose::main_thread() {
             ti = 0;
 
             // export prometheus metric
-            transposed_bytes_metric.inc(frame_size);
+            transposed_bytes_metric->labels({}).inc(frame_size);
         }
 
         frames_so_far++;

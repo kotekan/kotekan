@@ -11,6 +11,7 @@
 #include <atomic>     // for atomic_bool
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
+#include <memory>     // for __shared_ptr_access, shared_ptr
 #include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error
 #include <stdint.h>   // for uint32_t
@@ -41,9 +42,9 @@ bufferStatus::~bufferStatus() {}
 void bufferStatus::main_thread() {
 
     Metrics& metrics = Metrics::instance();
-    auto& frames_counter =
+    auto frames_counter =
         metrics.add_gauge("kotekan_bufferstatus_frames_total", unique_name, {"buffer_name"});
-    auto& full_frames_counter =
+    auto full_frames_counter =
         metrics.add_gauge("kotekan_bufferstatus_full_frames_total", unique_name, {"buffer_name"});
 
     double last_print_time = current_time();
@@ -57,8 +58,8 @@ void bufferStatus::main_thread() {
         for (auto& buf_entry : buffers) {
             uint32_t num_full_frames = get_num_full_frames(buf_entry.second);
             std::string buffer_name = buf_entry.first;
-            full_frames_counter.labels({buffer_name}).set(num_full_frames);
-            frames_counter.labels({buffer_name}).set(buf_entry.second->num_frames);
+            full_frames_counter->labels({buffer_name}).set(num_full_frames);
+            frames_counter->labels({buffer_name}).set(buf_entry.second->num_frames);
         }
 
         if (print_status && (now - last_print_time) > ((double)time_delay / 1000000.0)) {

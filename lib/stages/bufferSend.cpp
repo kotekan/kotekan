@@ -4,18 +4,19 @@
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for Buffer, get_num_full_frames, mark_frame_empty, register...
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, DEBUG, WARN, INFO
+#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, DEBUG, WARN
 #include "metadata.h"            // for metadataContainer
-#include "prometheusMetrics.hpp" // for Metrics, Counter
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics, prometheus_counter_ptr_t
 
 #include "fmt.hpp" // for format, fmt
 
-#include <arpa/inet.h> // for inet_addr
-#include <cerrno>      // for errno
-#include <chrono>
+#include <arpa/inet.h>  // for inet_addr
+#include <cerrno>       // for errno
+#include <chrono>       // for seconds
 #include <cstring>      // for strerror, size_t
 #include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, bind, ref, function
+#include <memory>       // for __shared_ptr_access
 #include <regex>        // for match_results<>::_Base_type
 #include <stdexcept>    // for runtime_error
 #include <strings.h>    // for bzero
@@ -40,8 +41,8 @@ REGISTER_KOTEKAN_STAGE(bufferSend);
 bufferSend::bufferSend(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferSend::main_thread, this)),
-    dropped_frame_counter(
-        Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count", unique_name)) {
+    dropped_frame_counter(Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count",
+                                                          unique_name, {})) {
 
     buf = get_buffer("buf");
     register_consumer(buf, unique_name.c_str());
@@ -86,11 +87,11 @@ void bufferSend::main_thread() {
             INFO("Number of full frames in buffer {:s} is {:d} (total frames: {:d}), dropping "
                  "frame_id {:d}",
                  buf->buffer_name, num_full_frames, buf->num_frames, frame_id);
-            dropped_frame_counter.inc();
+            dropped_frame_counter->labels({}).inc();
         } else if (drop_frames && !connected) {
             INFO("Dropping frame {:s}[{:d}], because connection to {:s}:{:d} is down.",
                  buf->buffer_name, frame_id, server_ip, server_port);
-            dropped_frame_counter.inc();
+            dropped_frame_counter->labels({}).inc();
         } else if (connected) {
             // Send header
             struct bufferFrameHeader header;

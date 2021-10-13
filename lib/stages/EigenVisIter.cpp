@@ -4,27 +4,26 @@
 #include "Hash.hpp"              // for operator!=, operator<
 #include "LinearAlgebra.hpp"     // for EigConvergenceStats, eigen_masked_subspace, to_blaze_herm
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"              // for allocate_new_metadata_object, mark_frame_empty, mark_fr...
+#include "buffer.h"              // for mark_frame_empty, mark_frame_full, register_consumer
 #include "datasetState.hpp"      // for datasetState, eigenvalueState, state_uptr
 #include "kotekanLogging.hpp"    // for DEBUG
-#include "prometheusMetrics.hpp" // for Gauge, Metrics, MetricFamily
+#include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily, prometheus_gauge_ptr_t
 #include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::erms, VisField::eval
 #include "visUtil.hpp"           // for cfloat, frameID, current_time, modulo, movingAverage
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>     // for copy, copy_backward, equal, max, min
+#include <algorithm>     // for min
 #include <atomic>        // for atomic_bool
 #include <blaze/Blaze.h> // for DynamicMatrix, DMatDeclHermExpr, band, HermitianMatrix
 #include <cblas.h>       // for openblas_set_num_threads
 #include <complex>       // for complex
 #include <cstdint>       // for uint32_t, int32_t
-#include <deque>         // for deque
 #include <exception>     // for exception
 #include <functional>    // for _Bind_helper<>::type, bind, function
 #include <iostream>      // for basic_ostream::operator<<, operator<<, basic_ostream<>:...
-#include <memory>        // for make_unique
+#include <memory>        // for __shared_ptr_access, make_unique
 #include <regex>         // for match_results<>::_Base_type
 #include <stdexcept>     // for runtime_error, out_of_range
 #include <tuple>         // for tie, tuple
@@ -40,7 +39,7 @@ EigenVisIter::EigenVisIter(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&EigenVisIter::main_thread, this)),
     comp_time_seconds_metric(
-        Metrics::instance().add_gauge("kotekan_eigenvisiter_comp_time_seconds", unique_name)),
+        Metrics::instance().add_gauge("kotekan_eigenvisiter_comp_time_seconds", unique_name, {})),
     eigenvalue_metric(Metrics::instance().add_gauge("kotekan_eigenvisiter_eigenvalue", unique_name,
                                                     {"eigenvalue", "freq_id"})),
     iterations_metric(
@@ -200,22 +199,22 @@ void EigenVisIter::update_metrics(uint32_t freq_id, dset_id_t dset_id, double el
     auto key = std::make_pair(freq_id, dset_id);
     auto& calc_time = calc_time_map[key];
     calc_time.add_sample(elapsed_time);
-    comp_time_seconds_metric.set(calc_time.average());
+    comp_time_seconds_metric->labels({}).set(calc_time.average());
 
     // Output eigenvalues to prometheus
     for (uint32_t i = 0; i < _num_eigenvectors; i++) {
-        eigenvalue_metric.labels({std::to_string(i), std::to_string(freq_id)})
+        eigenvalue_metric->labels({std::to_string(i), std::to_string(freq_id)})
             .set(eigpair.first[_num_eigenvectors - 1 - i]);
     }
 
     // Output RMS to prometheus
-    eigenvalue_metric.labels({"rms", std::to_string(freq_id)}).set(stats.rms);
+    eigenvalue_metric->labels({"rms", std::to_string(freq_id)}).set(stats.rms);
 
     // Output convergence stats
     std::vector<std::string> labels = {std::to_string(freq_id)};
-    iterations_metric.labels(labels).set(stats.iterations);
-    eigenvalue_convergence_metric.labels(labels).set(stats.eps_eval);
-    eigenvector_convergence_metric.labels(labels).set(stats.eps_evec);
+    iterations_metric->labels(labels).set(stats.iterations);
+    eigenvalue_convergence_metric->labels(labels).set(stats.eps_eval);
+    eigenvector_convergence_metric->labels(labels).set(stats.eps_evec);
 }
 
 

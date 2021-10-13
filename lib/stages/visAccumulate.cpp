@@ -540,19 +540,19 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
         // the following ones must be too. I think this requires the buffer
         // mechanism being rewritten to fix this one.
         if (ts_to_double(std::get<1>(output_frame.time) - newest_frame_time) > max_age) {
-            skipped_frame_counter.labels({std::to_string(output_frame.freq_id), "age"}).inc();
+            skipped_frame_counter->labels({std::to_string(output_frame.freq_id), "age"}).inc();
             blocked = true;
             continue;
         }
         if (output_frame.fpga_seq_total < minimum_samples) {
-            skipped_frame_counter.labels({std::to_string(output_frame.freq_id), "flagged"}).inc();
+            skipped_frame_counter->labels({std::to_string(output_frame.freq_id), "flagged"}).inc();
             blocked = true;
             continue;
         } else if (blocked) {
             // If we are here, an earlier frame was skipped and thus we have to
             // throw this one away too. Mark it as skipped because it was
             // blocked.
-            skipped_frame_counter.labels({std::to_string(output_frame.freq_id), "blocked"}).inc();
+            skipped_frame_counter->labels({std::to_string(output_frame.freq_id), "blocked"}).inc();
             continue;
         }
 

@@ -202,9 +202,9 @@ private:
     /// Keep track of the average write time
     movingAverage write_time;
 
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& late_frame_counter;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& bad_dataset_frame_counter;
-    kotekan::prometheus::Gauge& write_time_metric;
+    kotekan::prometheus::prometheus_counter_ptr_t late_frame_counter;
+    kotekan::prometheus::prometheus_counter_ptr_t bad_dataset_frame_counter;
+    kotekan::prometheus::prometheus_gauge_ptr_t write_time_metric;
 };
 
 #endif

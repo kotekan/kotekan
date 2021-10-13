@@ -236,7 +236,7 @@ private:
 
     // Reference to the prometheus metric that we will use for counting skipped
     // frames
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& skipped_frame_counter;
+    kotekan::prometheus::prometheus_counter_ptr_t skipped_frame_counter;
 };
 
 #endif

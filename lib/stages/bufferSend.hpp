@@ -102,7 +102,7 @@ private:
      * Only counts dropped data from caused by the send being too slow,
      * it does not include the number of frames dropped because the server is down.
      */
-    kotekan::prometheus::Counter& dropped_frame_counter;
+    kotekan::prometheus::prometheus_counter_ptr_t dropped_frame_counter;
 
     /// Set to true if there is an active connection
     std::atomic<bool> connected;

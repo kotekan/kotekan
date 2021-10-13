@@ -6,18 +6,17 @@
 #include "datasetManager.hpp"    // for fingerprint_t, datasetManager, dset_id_t
 #include "datasetState.hpp"      // for stackState
 #include "kotekanLogging.hpp"    // for FATAL_ERROR
-#include "prometheusMetrics.hpp" // for Gauge, Metrics, MetricFamily
+#include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily, prometheus_gauge_ptr_t
 #include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for frameID, modulo
 
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>  // for copy, copy_backward, equal, max
 #include <atomic>     // for atomic_bool
-#include <deque>      // for deque
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <math.h>     // for pow
+#include <memory>     // for __shared_ptr_access
 #include <stdexcept>  // for out_of_range
 #include <stdint.h>   // for uint32_t
 #include <string.h>   // for size_t
@@ -121,7 +120,7 @@ void DataQuality::main_thread() {
         }
 
         std::vector<std::string> labels = {std::to_string(frame.freq_id)};
-        data_quality_metric.labels(labels).set(sensitivity);
+        data_quality_metric->labels(labels).set(sensitivity);
 
         // Finish up iteration.
         mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id++);

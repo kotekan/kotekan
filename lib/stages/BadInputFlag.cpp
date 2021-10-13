@@ -7,19 +7,18 @@
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager, fingerprint_t
 #include "kotekanLogging.hpp"    // for FATAL_ERROR
-#include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics, prometheus_counter_ptr_t
 #include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for frameID, modulo
 
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>  // for copy, copy_backward, equal, max
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
 #include <cmath>      // for isinf, isnan
-#include <deque>      // for deque
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <future>     // for future
+#include <memory>     // for __shared_ptr_access
 #include <optional>   // for optional
 #include <stddef.h>   // for size_t
 
@@ -115,12 +114,12 @@ void BadInputFlag::main_thread() {
             // it to Prometheus
             if (frame.flags[i] != 0) {
                 if (std::isinf(frame.weight[auto_ind])) {
-                    bad_input_counter.labels({std::to_string(i), "Inf"}).inc();
+                    bad_input_counter->labels({std::to_string(i), "Inf"}).inc();
                     // TODO: post dataset state changes and turn this on
                     // frame.flags[i] = 0;
 
                 } else if (std::isnan(frame.weight[auto_ind])) {
-                    bad_input_counter.labels({std::to_string(i), "NaN"}).inc();
+                    bad_input_counter->labels({std::to_string(i), "NaN"}).inc();
                     // TODO: post dataset state changes and turn this on
                     // frame.flags[i] = 0;
                 }

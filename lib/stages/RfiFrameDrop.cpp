@@ -9,23 +9,22 @@
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chimeMetadata.hpp"     // for chimeMetadata, get_dataset_id, get_fpga_seq_num, set_da...
 #include "configUpdater.hpp"     // for configUpdater
-#include "datasetManager.hpp"    // for dset_id_t, state_id_t, datasetManager
+#include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
 #include "kotekanLogging.hpp"    // for WARN, INFO, DEBUG, DEBUG2
-#include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily
+#include "prometheusMetrics.hpp" // for Metrics, Counter, MetricFamily, prometheus_counter_ptr_t
 #include "visUtil.hpp"           // for frameID, modulo
 
 #include "fmt.hpp" // for format, fmt
 
-#include <algorithm>  // for copy, max, copy_backward, equal, fill
+#include <algorithm>  // for copy, fill, max
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
 #include <cmath>      // for sqrt, fabs
 #include <cstring>    // for memcpy
-#include <deque>      // for deque
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, function, bind, _Placeholder, _1
 #include <map>        // for map, map<>::mapped_type
-#include <memory>     // for allocator_traits<>::value_type
+#include <memory>     // for allocator_traits<>::value_type, __shared_ptr_access
 #include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error
 #include <stdint.h>   // for uint8_t, int64_t, uint32_t
@@ -197,8 +196,8 @@ void RfiFrameDrop::main_thread() {
                 if (sk_exceeds_copy.at(kk) > num_sk.at(kk)) {
                     skip = true;
                     failing_frame_counter
-                        .labels({std::to_string(freq_id), std::to_string(thresholds.at(kk).first),
-                                 std::to_string(thresholds.at(kk).second)})
+                        ->labels({std::to_string(freq_id), std::to_string(thresholds.at(kk).first),
+                                  std::to_string(thresholds.at(kk).second)})
                         .inc();
                 }
                 // Reset counters for the next sub_frame
@@ -217,11 +216,11 @@ void RfiFrameDrop::main_thread() {
                 set_dataset_id(_buf_out, frame_id_out, dset_id_out);
                 mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
             } else {
-                dropped_frame_counter.labels({std::to_string(freq_id)}).inc();
+                dropped_frame_counter->labels({std::to_string(freq_id)}).inc();
             }
 
             mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
-            frame_counter.labels({std::to_string(freq_id)}).inc();
+            frame_counter->labels({std::to_string(freq_id)}).inc();
         }
         mark_frame_empty(_buf_in_sk, unique_name.c_str(), frame_id_in_sk++);
     }

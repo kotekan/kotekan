@@ -41,11 +41,11 @@ ReceiveFlags::ReceiveFlags(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&ReceiveFlags::main_thread, this)),
     receiveflags_late_frame_counter(
-        Metrics::instance().add_counter("kotekan_receiveflags_late_frame_count", unique_name)),
+        Metrics::instance().add_counter("kotekan_receiveflags_late_frame_count", unique_name, {})),
     receiveflags_update_age_metric(
-        Metrics::instance().add_gauge("kotekan_receiveflags_update_age_seconds", unique_name)),
-    late_updates_counter(
-        Metrics::instance().add_counter("kotekan_receiveflags_late_update_count", unique_name)) {
+        Metrics::instance().add_gauge("kotekan_receiveflags_update_age_seconds", unique_name, {})),
+    late_updates_counter(Metrics::instance().add_counter("kotekan_receiveflags_late_update_count",
+                                                         unique_name, {})) {
     // Setup the buffers
     buf_in = get_buffer("in_buf");
     buf_out = get_buffer("out_buf");
@@ -122,7 +122,7 @@ bool ReceiveFlags::flags_callback(nlohmann::json& json) {
         WARN("Received update with a start_time that is older than the current "
              "frame (The difference is {:f} s).",
              ts_to_double(ts_frame) - ts);
-        late_updates_counter.inc();
+        late_updates_counter->labels({}).inc();
     }
 
     auto& dm = datasetManager::instance();
@@ -144,7 +144,7 @@ void ReceiveFlags::main_thread() {
 
     timespec ts_late = {0, 0};
 
-    receiveflags_update_age_metric.set(-ts_to_double(ts_late));
+    receiveflags_update_age_metric->labels({}).set(-ts_to_double(ts_late));
 
     while (!stop_thread) {
 
@@ -184,13 +184,13 @@ bool ReceiveFlags::copy_flags_into_frame(const VisFrameView& frame_out) {
     const auto& [ts_update, update] = flags.get_update(ts_frame);
 
     // Report how old the flags being applied to the current data are.
-    receiveflags_update_age_metric.set(-ts_to_double(ts_update - ts_frame));
+    receiveflags_update_age_metric->labels({}).set(-ts_to_double(ts_update - ts_frame));
 
     if (update == nullptr) {
         WARN("updateQueue: {}\nFlags for frame with timestamp {:f} are not in memory. Dropping "
              "frame...",
              flags, ts_to_double(ts_frame));
-        receiveflags_late_frame_counter.inc();
+        receiveflags_late_frame_counter->labels({}).inc();
         return false;
     }
 

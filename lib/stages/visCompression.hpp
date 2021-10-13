@@ -115,9 +115,9 @@ private:
     // Map from the critical incoming states to the correct stackState
     std::map<fingerprint_t, std::tuple<state_id_t, const stackState*, const prodState*>> state_map;
 
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_residuals_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_time_seconds_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& compression_frame_counter;
+    kotekan::prometheus::prometheus_gauge_ptr_t compression_residuals_metric;
+    kotekan::prometheus::prometheus_gauge_ptr_t compression_time_seconds_metric;
+    kotekan::prometheus::prometheus_counter_ptr_t compression_frame_counter;
 };
 
 

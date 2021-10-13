@@ -17,6 +17,7 @@
 #include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, bind, function
 #include <immintrin.h> // for _mm256_broadcast_ss, __m256, _mm256_load_ps, _mm256_min_ps
+#include <memory>      // for __shared_ptr_access, shared_ptr
 #include <mm_malloc.h> // for posix_memalign
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error
@@ -37,7 +38,7 @@ frbPostProcess::frbPostProcess(Config& config_, const std::string& unique_name,
                                bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&frbPostProcess::main_thread, this)),
     masked_packets_counter(kotekan::prometheus::Metrics::instance().add_counter(
-        "kotekan_frb_masked_packets_total", unique_name)) {
+        "kotekan_frb_masked_packets_total", unique_name, {})) {
     // Apply config.
     _num_gpus = config.get<int32_t>(unique_name, "num_gpus");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
@@ -331,7 +332,7 @@ void frbPostProcess::main_thread() {
                             frb_header_offset[b * _num_gpus + thread_id] = 0.0;
                             scl = 0.0;
                             ofs = 0.0;
-                            masked_packets_counter.inc();
+                            masked_packets_counter->labels({}).inc();
                         } else {
                             // scale to 1-254 (0 and 255 are both error codes)
                             scl = (253.) / (max - min);

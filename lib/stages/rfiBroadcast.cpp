@@ -18,12 +18,11 @@
 
 #include "fmt.hpp" // for format, fmt
 
-#include <algorithm>    // for copy, copy_backward, equal, max
 #include <arpa/inet.h>  // for inet_aton
 #include <atomic>       // for atomic_bool
-#include <deque>        // for deque
 #include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
+#include <memory>       // for __shared_ptr_access
 #include <mutex>        // for mutex, lock_guard
 #include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP, htons
 #include <regex>        // for match_results<>::_Base_type
@@ -231,8 +230,8 @@ void rfiBroadcast::main_thread() {
             // Increment the prometheus metrics for the total number of samples and the total number
             // of flagged samples
             uint32_t current_freq_bin = tel.to_freq_id(StreamIDs[0]);
-            sample_counter.labels({std::to_string(current_freq_bin)}).inc(sk_samples_per_frame);
-            flagged_sample_counter.labels({std::to_string(current_freq_bin)}).inc(mask_total);
+            sample_counter->labels({std::to_string(current_freq_bin)}).inc(sk_samples_per_frame);
+            flagged_sample_counter->labels({std::to_string(current_freq_bin)}).inc(mask_total);
 
             // TODO JSW: Handle num_local_freq > 1
             freq_bins[0] = current_freq_bin;

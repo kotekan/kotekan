@@ -102,13 +102,13 @@ private:
     timespec ts_frame = {0, 0};
 
     /// Number of frames received late
-    kotekan::prometheus::Counter& receiveflags_late_frame_counter;
+    kotekan::prometheus::prometheus_counter_ptr_t receiveflags_late_frame_counter;
 
     /// Update ages
-    kotekan::prometheus::Gauge& receiveflags_update_age_metric;
+    kotekan::prometheus::prometheus_gauge_ptr_t receiveflags_update_age_metric;
 
     /// Number of updates received too late
-    kotekan::prometheus::Counter& late_updates_counter;
+    kotekan::prometheus::prometheus_counter_ptr_t late_updates_counter;
 
     // config values
     /// Number of elements

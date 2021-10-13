@@ -92,14 +92,14 @@ void eigenVis::main_thread() {
 
     openblas_set_num_threads(1);
 
-    auto& eigenvalue_metric = Metrics::instance().add_gauge(
+    auto eigenvalue_metric = Metrics::instance().add_gauge(
         "kotekan_eigenvis_eigenvalue", unique_name, {"eigenvalue", "freq_id", "dataset_id"});
 
-    auto& comp_time_seconds_metric =
-        Metrics::instance().add_gauge("kotekan_eigenvis_comp_time_seconds", unique_name);
+    auto comp_time_seconds_metric =
+        Metrics::instance().add_gauge("kotekan_eigenvis_comp_time_seconds", unique_name, {});
 
     // TODO: this should logically be a Counter
-    auto& lapack_failure_counter = Metrics::instance().add_gauge(
+    auto lapack_failure_counter = Metrics::instance().add_gauge(
         "kotekan_eigenvis_lapack_failure_total", unique_name, {"freq_id", "dataset_id"});
 
     while (!stop_thread) {
@@ -184,7 +184,7 @@ void eigenVis::main_thread() {
 
             // Update prometheus metric about LAPACK failures
             lapack_failure_counter
-                .labels({std::to_string(freq_id), input_frame.dataset_id.to_string()})
+                ->labels({std::to_string(freq_id), input_frame.dataset_id.to_string()})
                 .set(lapack_failure_total);
 
             // Clear frame and advance
@@ -238,19 +238,19 @@ void eigenVis::main_thread() {
 
         // Update average write time in prometheus
         calc_time.add_sample(elapsed_time);
-        comp_time_seconds_metric.set(calc_time.average());
+        comp_time_seconds_metric->labels({}).set(calc_time.average());
 
         // Output eigenvalues to prometheus
         for (uint32_t i = 0; i < num_eigenvectors; i++) {
             eigenvalue_metric
-                .labels({std::to_string(i), std::to_string(freq_id),
-                         input_frame.dataset_id.to_string()})
+                ->labels({std::to_string(i), std::to_string(freq_id),
+                          input_frame.dataset_id.to_string()})
                 .set(evals[num_eigenvectors - 1 - i]);
         }
 
         // Output RMS to prometheus
         eigenvalue_metric
-            .labels({"rms", std::to_string(freq_id), input_frame.dataset_id.to_string()})
+            ->labels({"rms", std::to_string(freq_id), input_frame.dataset_id.to_string()})
             .set(rms);
 
         // Get output buffer for visibilities. Essentially identical to input buffers.
