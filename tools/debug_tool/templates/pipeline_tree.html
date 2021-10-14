@@ -15,7 +15,7 @@
     <a href="../index.html">cola.js home</a>
 <h1>Kotekan Pipeline</h1>
 <script>
-    get_data().then(function (buffers) {
+    get_data("/kotekan_instance/buffers").then(function (buffers) {
         var pipeline = new PipelineViewer(buffers, d3.select("body"));
         pipeline.start_viewer();
     });

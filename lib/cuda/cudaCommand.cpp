@@ -28,19 +28,20 @@ cudaCommand::~cudaCommand() {
 }
 
 void cudaCommand::finalize_frame(int gpu_frame_id) {
-    (void)gpu_frame_id;
-    bool profiling = true;
     if (post_events[gpu_frame_id] != nullptr) {
         if (profiling) {
             float exec_time;
             CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, pre_events[gpu_frame_id],
                                                   post_events[gpu_frame_id]));
-            last_gpu_execution_time = exec_time * 1e-3; // convert ms to s
+            double active_time = exec_time * 1e-3; // convert ms to s
+            excute_time->add_sample(active_time);
+            utilization->add_sample(active_time / frame_arrival_period);
         }
         CHECK_CUDA_ERROR(cudaEventDestroy(pre_events[gpu_frame_id]));
         pre_events[gpu_frame_id] = nullptr;
         CHECK_CUDA_ERROR(cudaEventDestroy(post_events[gpu_frame_id]));
         post_events[gpu_frame_id] = nullptr;
-    } else
-        ERROR("*** WTF? Null event!");
+    } else {
+        FATAL_ERROR("Null event in cudaCommand {:s}, this should never happen!", unique_name);
+    }
 }

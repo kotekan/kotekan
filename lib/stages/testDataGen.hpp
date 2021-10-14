@@ -6,9 +6,11 @@
 #include "Telescope.hpp"       // for stream_t
 #include "bufferContainer.hpp" // for bufferContainer
 #include "restServer.hpp"      // for connectionInstance
+#include "visUtil.hpp"         // for StatTracker
 
 #include "json.hpp" // for json
 
+#include <memory>   // for shared_ptr
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
 
@@ -73,6 +75,9 @@ private:
     size_t _num_freq_in_frame;
     stream_t stream_id;
     uint32_t _first_frame_index;
+
+    // kotekan trackers example
+    std::shared_ptr<StatTracker> timer;
 };
 
 #endif

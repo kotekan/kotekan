@@ -19,7 +19,8 @@
 #include "gsl-lite.hpp" // for span
 #include "json.hpp"     // for json
 
-#include <algorithm>   // for max
+#include <algorithm> // for max
+#include <chrono>
 #include <complex>     // for complex, imag, real
 #include <cstdint>     // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
 #include <cstdlib>     // for size_t, (anonymous), div
@@ -29,6 +30,7 @@
 #include <map>         // for map
 #include <math.h>      // for fmod
 #include <memory>      // for unique_ptr
+#include <mutex>       // for mutex, lock_guard
 #include <string>      // for string
 #include <sys/time.h>  // for timeval, CLOCK_REALTIME
 #include <sys/types.h> // for __syscall_slong_t, suseconds_t, time_t
@@ -576,6 +578,13 @@ private:
  * @class StatTracker
  *
  * @brief Store samples and compute statistics.
+ *
+ * There are two ways in this class to implement min/max (i.e., sliding window and brute force).
+ * The sliding window approach uses O(1) time to get min/max but spends more time when a sample is
+ *added. The brute force approach uses O(n) time to traverse the entire buffer without overhead in
+ *add_sample(). "is_optimized" is the flag to switch between two methods (true: sliding window;
+ *false: brute force). Normally, if get_min/max() is called often, "is_optimized" should be set to
+ *true.
  **/
 class StatTracker {
 
@@ -583,9 +592,13 @@ public:
     /**
      * @brief Create a ring buffer.
      *
+     * @param name The statistic's name.
+     * @param unit Sample unit.
      * @param size The size of the ring buffer.
+     * @param is_optimized Flag of min/max optimization.
      **/
-    explicit StatTracker(size_t size = 100);
+    explicit StatTracker(std::string name, std::string unit, size_t size = 100,
+                         bool is_optimized = true);
 
     /**
      * @brief Add a new sample value to the buffer.
@@ -623,9 +636,35 @@ public:
      **/
     double get_std_dev();
 
+    /**
+     * @brief Return the last value added, will be NAN if no samples have been added
+     *
+     * @return The last sample or NAN
+     **/
+    double get_current();
+
+    /**
+     * @brief Return tracker content in json format.
+     *
+     * @return A json object of tracker content.
+     **/
+    nlohmann::json get_json();
+
+    /**
+     * @brief Return tracker stats in json format.
+     *
+     * @return A json object of tracker min,max,avg,std.
+     **/
+    nlohmann::json get_current_json();
+
 private:
     SlidingWindowMinMax min_max;
-    std::unique_ptr<double[]> rbuf;
+
+    struct sample {
+        double value;
+        std::chrono::system_clock::time_point timestamp;
+    };
+    std::unique_ptr<sample[]> rbuf;
     size_t end;
     size_t buf_size;
     size_t count;
@@ -634,6 +673,12 @@ private:
     double dist;
     double var;
     double std_dev;
+
+    std::string name;
+    std::string unit;
+    bool is_optimized;
+
+    std::recursive_mutex tracker_lock;
 };
 
 // Zip, unzip adapted from https://gist.github.com/yig/32fe51874f3911d1c612

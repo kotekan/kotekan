@@ -70,6 +70,10 @@ frb_scaling: 0.05 #1.0
 # Tracking beams global options
 feed_sep_NS: 0.3048
 feed_sep_EW: 22.0
+# Latitude and longitude converted from final geocentric (XYZ) position as calculated
+# in https://bao.chimenet.ca/doc/documents/1327 via NGS NOAA website.
+inst_lat: 49.32070922
+inst_long: -119.62367743
 num_beams: 12
 num_pol: 2
 
@@ -831,6 +835,7 @@ gpu:
   buffer_depth: 4
   # How many sub frames to devide the N2 products into.
   n_intg: 24576 / num_sub_frames
+  profiling: true
   frame_arrival_period: samples_per_data_set / 390625
   updatable_config:
     tracking_pt: /updatable_config/tracking_pointing

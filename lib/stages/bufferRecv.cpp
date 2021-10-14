@@ -29,7 +29,6 @@
 #include <stdexcept>       // for runtime_error
 #include <stdlib.h>        // for free, malloc
 #include <string>          // for string, allocator, operator+
-#include <sys/select.h>    // for FD_SETSIZE
 #include <sys/socket.h>    // for AF_INET, accept, bind, listen, setsockopt, socket, sock...
 
 namespace kotekan {
@@ -206,7 +205,7 @@ void bufferRecv::main_thread() {
         return;
     }
 
-    // Create the base event, and exclude using `poll` as a backend API
+    // Create the base event, and exclude using `select` as a backend API
     event_config* ev_config = event_config_new();
     if (!ev_config) {
         FATAL_ERROR("Failed to create config for libevent");
@@ -214,7 +213,7 @@ void bufferRecv::main_thread() {
     }
     int err = event_config_avoid_method(ev_config, "select");
     if (err) {
-        FATAL_ERROR("Failed to exclude poll from the libevent options");
+        FATAL_ERROR("Failed to exclude select from the libevent options");
         return;
     }
     base = event_base_new_with_config(ev_config);

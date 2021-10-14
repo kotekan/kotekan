@@ -355,7 +355,7 @@ void restServer::http_server_thread() {
     }
 
     // Create the base event for handling requests,
-    // and exclude using `poll` as a backend API
+    // and exclude using `select` as a backend API
     event_config* ev_config = event_config_new();
     if (!ev_config) {
         ERROR_NON_OO("Failed to create config for libevent");
@@ -363,7 +363,7 @@ void restServer::http_server_thread() {
     }
     int err = event_config_avoid_method(ev_config, "select");
     if (err) {
-        ERROR_NON_OO("Failed to exclude poll from the libevent options");
+        ERROR_NON_OO("Failed to exclude select from the libevent options");
         exit(1);
     }
     event_base = event_base_new_with_config(ev_config);

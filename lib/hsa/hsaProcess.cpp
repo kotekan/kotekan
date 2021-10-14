@@ -51,3 +51,9 @@ void hsaProcess::queue_commands(int gpu_frame_id) {
     }
     final_signals[gpu_frame_id]->set_signal(&signal);
 }
+
+void hsaProcess::register_host_memory(struct Buffer* host_buffer) {
+    // Since we use hsa_host_malloc for all memory with HSA configurations
+    // we do not need to register the memory with the GPU drivers.
+    (void)host_buffer;
+}
