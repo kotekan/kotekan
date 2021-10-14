@@ -123,7 +123,8 @@ void basebandReadout::main_thread() {
                 uint32_t freq_id = tel.to_freq_id(in_buf, in_buf_frame, stream_freq_idx);
                 freq_ids[stream_freq_idx] = freq_id;
 
-                DEBUG("Initialize baseband metrics for freq_id: {:d}/{:d}", freq_id, stream_freq_idx);
+                DEBUG("Initialize baseband metrics for freq_id: {:d}/{:d}", freq_id,
+                      stream_freq_idx);
                 readout_counter.labels({std::to_string(freq_id), "done"});
                 readout_counter.labels({std::to_string(freq_id), "error"});
                 readout_counter.labels({std::to_string(freq_id), "no_data"});
