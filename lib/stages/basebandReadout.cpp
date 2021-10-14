@@ -48,6 +48,8 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&basebandReadout::main_thread, this)),
     _num_frames_buffer(config.get<int>(unique_name, "num_frames_buffer")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
+    // TODO: rename this parameter to `num_freq_per_stream` in the config
+    _num_freq_per_stream(config.get_default<uint32_t>(unique_name, "num_local_freq", 1)),
     _samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
     _max_dump_samples(config.get_default<uint64_t>(unique_name, "max_dump_samples", 1 << 30)),
     in_buf(get_buffer("in_buf")),
@@ -102,7 +104,8 @@ void basebandReadout::main_thread() {
 
     std::unique_ptr<std::thread> lt;
 
-    basebandReadoutManager* mgr = nullptr;
+    std::vector<basebandReadoutManager*> mgrs;
+    uint32_t freq_ids[_num_freq_per_stream];
     while (!stop_thread) {
 
         if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id % in_buf->num_frames)
@@ -111,23 +114,30 @@ void basebandReadout::main_thread() {
         }
 
         if (!lt) {
-            int in_buf_frame = frame_id % in_buf->num_frames;
-            uint32_t freq_id = tel.to_freq_id(in_buf, in_buf_frame);
-
-            DEBUG("Initialize baseband metrics for freq_id: {:d}", freq_id);
-            readout_counter.labels({std::to_string(freq_id), "done"});
-            readout_counter.labels({std::to_string(freq_id), "error"});
-            readout_counter.labels({std::to_string(freq_id), "no_data"});
-            readout_sent_frame_counter.labels({std::to_string(freq_id)});
-            readout_dropped_frame_counter.labels({std::to_string(freq_id)});
-            readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
-
             const auto fpga0_tv = tel.to_time(0);
             fpga0_ns = fpga0_tv.tv_sec * 1'000'000'000 + fpga0_tv.tv_nsec;
 
-            INFO("Starting request-listening thread for freq_id: {:d}", freq_id);
-            mgr = &basebandApiManager::instance().register_readout_stage(freq_id);
-            lt = std::make_unique<std::thread>([&] { this->readout_thread(freq_id, *mgr); });
+            int in_buf_frame = frame_id % in_buf->num_frames;
+            for (uint32_t stream_freq_idx = 0; stream_freq_idx < _num_freq_per_stream;
+                 ++stream_freq_idx) {
+                uint32_t freq_id = tel.to_freq_id(in_buf, in_buf_frame, stream_freq_idx);
+                freq_ids[stream_freq_idx] = freq_id;
+
+                DEBUG("Initialize baseband metrics for freq_id: {:d}/{:d}", freq_id, stream_freq_idx);
+                readout_counter.labels({std::to_string(freq_id), "done"});
+                readout_counter.labels({std::to_string(freq_id), "error"});
+                readout_counter.labels({std::to_string(freq_id), "no_data"});
+                readout_sent_frame_counter.labels({std::to_string(freq_id)});
+                readout_dropped_frame_counter.labels({std::to_string(freq_id)});
+                readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
+
+                basebandReadoutManager* mgr =
+                    &basebandApiManager::instance().register_readout_stage(freq_id);
+                mgrs.push_back(mgr);
+            }
+            INFO("Starting request-listening thread for freq_id: {}",
+                 fmt::join(freq_ids, freq_ids + _num_freq_per_stream, ", "));
+            lt = std::make_unique<std::thread>([&] { this->readout_thread(freq_ids, mgrs); });
         }
 
         int done_frame = add_replace_frame(frame_id);
@@ -137,7 +147,7 @@ void basebandReadout::main_thread() {
 
         frame_id++;
     }
-    if (mgr) {
+    for (auto mgr : mgrs) {
         mgr->stop();
     }
 
@@ -146,32 +156,43 @@ void basebandReadout::main_thread() {
     }
 }
 
-void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutManager& mgr) {
+void basebandReadout::readout_thread(const uint32_t freq_ids[],
+                                     const std::vector<basebandReadoutManager*>& mgrs) {
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
         // Latency is *key* here. We want to call extract_data within 100ms
         // of L4 sending the trigger.
 
-        auto next_request = mgr.get_next_waiting_request();
+        if (auto next_request = mgrs[0]->get_next_waiting_request()) {
+            for (uint32_t stream_freq_idx = 0; stream_freq_idx < _num_freq_per_stream;
+                 ++stream_freq_idx) {
+                uint32_t freq_id = freq_ids[stream_freq_idx];
 
-        if (next_request) {
-            basebandDumpStatus& dump_status = std::get<0>(*next_request);
-            std::mutex& request_mtx = std::get<1>(*next_request);
+                // the first frequency's request was retrieved as part of the
+                // top if-statement, but the rest still need to be done
+                if (stream_freq_idx) {
+                    next_request = mgrs[stream_freq_idx]->get_next_waiting_request();
+                }
 
-            start_processing(dump_status, request_mtx);
+                // basebandDumpStatus& dump_status, std::mutex& request_mtx
+                auto [dump_status, request_mtx] = *next_request;
 
-            readout_in_progress_metric.labels({std::to_string(freq_id)}).set(1);
-            const basebandRequest request = dump_status.request;
-            auto data = wait_for_data(request.event_id, freq_id, request.start_fpga,
-                                      std::min((int64_t)request.length_fpga, _max_dump_samples));
-            basebandDumpData::Status status = data.status;
+                start_processing(dump_status, request_mtx);
 
-            if (status == basebandDumpData::Status::Ok) {
-                status = extract_data(data);
+                readout_in_progress_metric.labels({std::to_string(freq_id)}).set(1);
+                const basebandRequest request = dump_status.request;
+                auto data =
+                    wait_for_data(request.event_id, freq_id, stream_freq_idx, request.start_fpga,
+                                  std::min((int64_t)request.length_fpga, _max_dump_samples));
+                basebandDumpData::Status status = data.status;
+
+                if (status == basebandDumpData::Status::Ok) {
+                    status = extract_data(data);
+                }
+                readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
+
+                end_processing(status, freq_id, dump_status, request_mtx);
             }
-            readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
-
-            end_processing(status, freq_id, dump_status, request_mtx);
         }
     }
 }
@@ -260,6 +281,7 @@ int basebandReadout::add_replace_frame(int frame_id) {
 }
 
 basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const uint32_t freq_id,
+                                                const uint32_t stream_freq_idx,
                                                 int64_t trigger_start_fpga,
                                                 int64_t trigger_length_fpga) {
     DEBUG("Waiting for samples to copy into the baseband readout buffer");
@@ -347,8 +369,8 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
     } else {
         INFO("Dump data ready for {:d}/{:d}: frames {:d}-{:d}.", event_id, freq_id,
              dump_start_frame, dump_end_frame);
-        return basebandDumpData(event_id, freq_id, trigger_start_fpga, trigger_length_fpga,
-                                dump_start_frame, dump_end_frame);
+        return basebandDumpData(event_id, freq_id, stream_freq_idx, trigger_start_fpga,
+                                trigger_length_fpga, dump_start_frame, dump_end_frame);
     }
 }
 
@@ -364,6 +386,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     int in_buf_frame = data.dump_start_frame % in_buf->num_frames;
     auto first_meta = (chimeMetadata*)in_buf->metadata[in_buf_frame]->metadata;
 
+    const uint32_t stream_freq_idx = data.stream_freq_idx;
     const uint32_t freq_id = data.freq_id;
     auto& frame_sent_counter = readout_sent_frame_counter.labels({std::to_string(freq_id)});
     auto& frame_dropped_counter = readout_dropped_frame_counter.labels({std::to_string(freq_id)});
@@ -453,11 +476,25 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
             }
 
             // copy the data
-            int64_t copy_len = std::min(in_end - in_start, out_remaining);
-            DEBUG("Copy samples {}/{}-{} to {}/{} ({} bytes)", frame_index, in_start,
-                  in_start + copy_len, out_frame_id, out_start, copy_len * _num_elements);
-            memcpy(out_frame + (out_start * _num_elements),
-                   in_buf_data + (in_start * _num_elements), copy_len * _num_elements);
+            int64_t copy_len;
+            if (_num_freq_per_stream == 1) {
+                copy_len = std::min(in_end - in_start, out_remaining);
+                DEBUG("Copy samples {}/{}-{} to {}/{} ({} bytes)", frame_index, in_start,
+                      in_start + copy_len, out_frame_id, out_start, copy_len * _num_elements);
+                memcpy(out_frame + (out_start * _num_elements),
+                       in_buf_data + (in_start * _num_elements), copy_len * _num_elements);
+            } else {
+                copy_len = 1;
+                DEBUG("Copy samples {}/{}-{} for in-frame frequency {} to {}/{} ({} bytes, "
+                      "starting at {})",
+                      frame_index, in_start, in_start + copy_len, stream_freq_idx, out_frame_id,
+                      out_start, _num_elements,
+                      (in_start * _num_freq_per_stream + stream_freq_idx) * _num_elements);
+                memcpy(out_frame + (out_start * _num_elements),
+                       in_buf_data
+                           + (in_start * _num_freq_per_stream + stream_freq_idx) * _num_elements,
+                       _num_elements);
+            }
             in_start += copy_len;
             out_start += copy_len;
             out_metadata->valid_to = out_start;

@@ -94,13 +94,15 @@ struct basebandDumpData {
     /// Constructor used to indicate error
     basebandDumpData(Status);
     /// Initialize the container with all parameters but does not fill in the data.
-    basebandDumpData(const uint64_t event_id_, const uint32_t freq_id_, int64_t trigger_start_fpga_,
+    basebandDumpData(const uint64_t event_id_, const uint32_t freq_id_,
+                     const uint32_t stream_freq_idx_, int64_t trigger_start_fpga_,
                      int64_t trigger_length_fpga_, int dump_start_frame, int dump_end_frame);
 
     //@{
     /// Metadata.
     const uint64_t event_id;
     const uint32_t freq_id;
+    const uint32_t stream_freq_idx;
 
     int64_t trigger_start_fpga = 0;
     int64_t trigger_end_fpga = 0;
