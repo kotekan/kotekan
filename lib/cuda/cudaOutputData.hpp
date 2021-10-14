@@ -30,6 +30,8 @@ public:
     virtual cudaEvent_t execute(int buf_frame_id, cudaEvent_t pre_event) override;
     void finalize_frame(int frame_id) override;
 
+    std::string get_performance_metric_string() override;
+
 protected:
     int32_t output_buffer_execute_id;
     int32_t output_buffer_precondition_id;

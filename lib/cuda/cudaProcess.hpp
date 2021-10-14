@@ -26,6 +26,8 @@ public:
     gpuEventContainer* create_signal() override;
     void queue_commands(int gpu_frame_id) override;
 
+    void register_host_memory(struct Buffer* host_buffer) override;
+
     cudaDeviceInterface* device;
 };
 
