@@ -53,6 +53,7 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
     send_timeout = config.get_default<uint32_t>(unique_name, "send_timeout", 20);
     reconnect_time = config.get_default<uint32_t>(unique_name, "reconnect_time", 5);
     drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
+    drop_threshold = config.get_default<float>(unique_name, "drop_threshold", 0.6);
 
     // Publish current dropped frame count.
 
@@ -80,7 +81,7 @@ void bufferSend::main_thread() {
 
         uint32_t num_full_frames = get_num_full_frames(buf);
 
-        if (drop_frames && num_full_frames > (((uint32_t)buf->num_frames + 1) / 2)) {
+        if (drop_frames && num_full_frames > (int32_t)((float)buf->num_frames * drop_threshold)) {
             // If the number of full frames is high, then we drop some frames,
             // because we likely aren't sending fast enough to up with the data rate.
             INFO("Number of full frames in buffer {:s} is {:d} (total frames: {:d}), dropping "
