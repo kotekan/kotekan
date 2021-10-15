@@ -696,6 +696,9 @@ baseband_send:
   server_port: 11027
   reconnect_time: 20
   log_level: error
+  # Don't drop unless the server is down
+  # Baseband readout handles back pressure management
+  drop_threshold: 1.0
   baseband_send_0:
     kotekan_stage: bufferSend
     buf: baseband_output_buffer_0
