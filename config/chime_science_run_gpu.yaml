@@ -671,7 +671,7 @@ baseband_output_buffers:
     kotekan_buffer: standard
 
 baseband:
-  max_dump_samples: 200000
+  max_dump_samples: 300000 # 768ms
   num_frames_buffer: baseband_buffer_depth - 10
   baseband0:
     kotekan_stage: basebandReadout
