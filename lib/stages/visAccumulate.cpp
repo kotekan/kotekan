@@ -539,7 +539,7 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
         // TODO: if we have multifrequencies, if any need to be skipped all of
         // the following ones must be too. I think this requires the buffer
         // mechanism being rewritten to fix this one.
-        if (ts_to_double(std::get<1>(output_frame.time) - newest_frame_time) > max_age) {
+        if (ts_to_double(newest_frame_time - std::get<1>(output_frame.time)) > max_age) {
             skipped_frame_counter.labels({std::to_string(output_frame.freq_id), "age"}).inc();
             blocked = true;
             continue;
