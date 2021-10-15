@@ -5,27 +5,30 @@
 #include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"          // for Telescope
 #include "basebandApiManager.hpp" // for basebandApiManager
-#include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_fo...
+#include "buffer.h"               // for Buffer, mark_frame_full, allocate_new_metadata_object
 #include "chimeMetadata.hpp"      // for chimeMetadata
-#include "kotekanLogging.hpp"     // for INFO, DEBUG, ERROR
+#include "kotekanLogging.hpp"     // for INFO, DEBUG, WARN
 #include "metadata.h"             // for metadataContainer
 #include "prometheusMetrics.hpp"  // for Counter, Gauge, MetricFamily, Metrics
-#include "version.h"              // for get_git_commit_hash
-#include "visUtil.hpp"            // for ts_to_double, parse_reorder_default
+#include "visUtil.hpp"            // for input_ctype, frameID, ts_to_double, modulo, parse_reor...
 
-#include "fmt.hpp" // for format, fmt
+#include "fmt.hpp" // for join
 
-#include <algorithm>  // for max, copy, copy_backward, min
+#include <algorithm>  // for max, copy, copy_backward, equal, min
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
 #include <chrono>     // for system_clock::time_point, system_clock, nanoseconds
-#include <cstdint>    // for uint64_t, uint8_t
-#include <cstdio>     // for remove, snprintf
+#include <cstdint>    // for uint64_t, uint32_t, int64_t, uint8_t
+#include <cstdio>     // for snprintf
 #include <ctime>      // for timespec
+#include <deque>      // for deque
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
-#include <memory>     // for unique_ptr, make_shared, make_unique, allocator_trai...
+#include <math.h>     // for fmod
+#include <memory>     // for unique_ptr, make_shared, allocator_traits<>::value_type
+#include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error
+#include <string.h>   // for memcpy, memset
 #include <sys/time.h> // for timeval, timeradd
 #include <thread>     // for thread, sleep_for
 #include <tuple>      // for get
