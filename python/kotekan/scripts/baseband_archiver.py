@@ -1,8 +1,6 @@
 """Convert a baseband raw file into a standard baseband HDF5 archive
 """
 import click
-import ctypes
-import glob
 import h5py
 import io
 import numpy as np
@@ -108,7 +106,6 @@ def create_baseband_archive(frame_metadata: baseband_buffer.BasebandMetadata):
     root = f"/data/chime/baseband/raw"
     file_name = os.path.join(root, f"{y}/{m}/{d}/astro_{event_id}/baseband_{ event_id }_{ freq_id }.h5")
     # delete the line below to write to the main location.
-    file_name = f"/data/baseband_raw/baseband_raw_2021031921580786/baseband_{ event_id }_{ freq_id }.h5"
     dir_name = os.path.dirname(file_name)
     if dir_name:
         if not os.path.exists(dir_name):

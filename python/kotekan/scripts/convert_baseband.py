@@ -1,7 +1,6 @@
 """Runner script to persistently run and convert data for new events."""
 from MySQLdb import _mysql
 import yaml
-import subprocess
 import os
 import time
 import datetime
@@ -74,7 +73,6 @@ def is_ready(event):
         if isinstance(node_result, dict):
             if node_result["status"] == 200:
                 for transfer in node_result["reply"]:
-                    file_name = transfer["file_name"]
                     if transfer["status"] == "done":
                         files_done += 1
                     elif transfer["status"] == "error":
