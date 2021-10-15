@@ -495,20 +495,21 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
             if (_num_freq_per_stream == 1) {
                 copy_len = std::min(in_end - in_start, out_remaining);
                 DEBUG("Copy samples {}/{}-{} to {}/{} ({} bytes)", frame_index, in_start,
-                      in_start + copy_len, out_frame_id, out_start, copy_len * _num_elements);
+                      in_start + copy_len * _num_elements, out_frame_id, out_start,
+                      copy_len * _num_elements);
                 memcpy(out_frame + (out_start * _num_elements),
                        in_buf_data + (in_start * _num_elements), copy_len * _num_elements);
             } else {
-                copy_len = std::min(1, out_remaining);
+                copy_len = std::min((int64_t)1, out_remaining);
                 DEBUG("Copy samples {}/{}-{} for in-frame frequency {} to {}/{} ({} bytes, "
                       "starting at {})",
-                      frame_index, in_start, in_start + copy_len, stream_freq_idx, out_frame_id,
-                      out_start, copy_len,
+                      frame_index, in_start, in_start + copy_len * _num_elements, stream_freq_idx,
+                      out_frame_id, out_start, copy_len * _num_elements,
                       (in_start * _num_freq_per_stream + stream_freq_idx) * _num_elements);
                 memcpy(out_frame + (out_start * _num_elements),
                        in_buf_data
                            + (in_start * _num_freq_per_stream + stream_freq_idx) * _num_elements,
-                       copy_len);
+                       copy_len * _num_elements);
             }
             in_start += copy_len;
             out_start += copy_len;
