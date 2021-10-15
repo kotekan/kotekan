@@ -423,8 +423,20 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     int64_t out_start = 0;
     int64_t out_remaining = 0;
 
+    // If the output buffer is full, or we get a shutdown signal (null frame),
+    // then instead of continuing to try and get a new output frame for each input frame
+    // simple stop extracting data and release all the input frames.
+    bool stop_extract = false;
+
     for (int frame_index = data.dump_start_frame; !stop_thread && frame_index < data.dump_end_frame;
          frame_index++) {
+
+        if (stop_extract) {
+            frame_dropped_counter.inc();
+            frame_locks[frame_index % _num_frames_buffer].unlock();
+            continue;
+        }
+
         in_buf_frame = frame_index % in_buf->num_frames;
         auto metadata = (chimeMetadata*)in_buf->metadata[in_buf_frame]->metadata;
         uint8_t* in_buf_data = in_buf->frames[in_buf_frame];
@@ -441,6 +453,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                     WARN("Output buffer full ({:d}). Dropping frame {:d}/{:d}", out_frame_id,
                          event_id, frame_index);
                     frame_dropped_counter.inc();
+                    stop_extract = true;
                     break;
                 }
                 // Get a pointer to the new out frame (cannot block because of the check above)
@@ -450,6 +463,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                     WARN("Cannot get an output frame ({:d}). Dropping frame {:d}/{:d}",
                          out_frame_id, event_id, frame_index);
                     frame_dropped_counter.inc();
+                    stop_extract = true;
                     break;
                 }
 
@@ -485,16 +499,16 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                 memcpy(out_frame + (out_start * _num_elements),
                        in_buf_data + (in_start * _num_elements), copy_len * _num_elements);
             } else {
-                copy_len = 1;
+                copy_len = std::min(1, out_remaining);
                 DEBUG("Copy samples {}/{}-{} for in-frame frequency {} to {}/{} ({} bytes, "
                       "starting at {})",
                       frame_index, in_start, in_start + copy_len, stream_freq_idx, out_frame_id,
-                      out_start, _num_elements,
+                      out_start, copy_len,
                       (in_start * _num_freq_per_stream + stream_freq_idx) * _num_elements);
                 memcpy(out_frame + (out_start * _num_elements),
                        in_buf_data
                            + (in_start * _num_freq_per_stream + stream_freq_idx) * _num_elements,
-                       _num_elements);
+                       copy_len);
             }
             in_start += copy_len;
             out_start += copy_len;
