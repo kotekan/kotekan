@@ -52,6 +52,7 @@ def add_index_map(archive_file, config):
         inputs[adc_id] = input_map[i]
     archive_file.create_dataset("index_map/input", data=inputs[:])
 
+
 def set_sampling_params(config):
     """Reimplements ICETelescope::set_sampling_params"""
     sample_rate = config.get("sampling_rate", 800.0)
@@ -104,14 +105,16 @@ def create_baseband_archive(frame_metadata: baseband_buffer.BasebandMetadata):
     d = str(date.day).zfill(2)
     # confirm root path on the recv node.
     root = f"/data/chime/baseband/raw"
-    file_name = os.path.join(root, f"{y}/{m}/{d}/astro_{event_id}/baseband_{ event_id }_{ freq_id }.h5")
+    file_name = os.path.join(
+        root, f"{y}/{m}/{d}/astro_{event_id}/baseband_{ event_id }_{ freq_id }.h5"
+    )
     # delete the line below to write to the main location.
     dir_name = os.path.dirname(file_name)
     if dir_name:
         if not os.path.exists(dir_name):
-            if os.path.exists(dir_name.replace('astro', 'rfi')):
-                dir_name = dir_name.replace('astro', 'rfi')
-                file_name = file_name.replace('astro', 'rfi')
+            if os.path.exists(dir_name.replace("astro", "rfi")):
+                dir_name = dir_name.replace("astro", "rfi")
+                file_name = file_name.replace("astro", "rfi")
         os.makedirs(dir_name, exist_ok=True)
 
     f = h5py.File(file_name, "w")
@@ -130,8 +133,8 @@ def create_baseband_archive(frame_metadata: baseband_buffer.BasebandMetadata):
     f.attrs["type_time0_ctime"] = str(f.attrs["time0_ctime"].dtype)
 
     f.attrs["first_packet_recv_time"] = frame_metadata.first_packet_recv_time
-    #f.attrs["fpga0_ns"] = frame_metadata.fpga0_ns
-    #print(f.attrs["time0_ctime"], f.attrs["time0_fpga"], f.attrs["time0_ctime_offset"],)
+    # f.attrs["fpga0_ns"] = frame_metadata.fpga0_ns
+    # print(f.attrs["time0_ctime"], f.attrs["time0_fpga"], f.attrs["time0_ctime_offset"],)
     return f, file_name
 
 
@@ -142,7 +145,9 @@ def raw_baseband_frames(file_name: str, buf: bytes):
             yield buf
 
 
-def process_raw_file(file_name: str, config: Dict[str, int], dry_run: bool = False, verbose: bool = False):
+def process_raw_file(
+    file_name: str, config: Dict[str, int], dry_run: bool = False, verbose: bool = False
+):
     """Convert raw file `file_name` to a standard baseband HDF5 archive"""
     metadata_size = baseband_buffer.BasebandBuffer.meta_size
 
@@ -167,13 +172,12 @@ def process_raw_file(file_name: str, config: Dict[str, int], dry_run: bool = Fal
             )
 
         if event_id is None:
-            event_id, freq_id = (
-                frame_metadata.event_id,
-                frame_metadata.freq_id,
-            )
+            event_id, freq_id = (frame_metadata.event_id, frame_metadata.freq_id)
 
             if not dry_run:
-                archive_file, archive_file_name = create_baseband_archive(frame_metadata)
+                archive_file, archive_file_name = create_baseband_archive(
+                    frame_metadata
+                )
 
                 add_index_map(archive_file, config)
 
@@ -194,7 +198,7 @@ def process_raw_file(file_name: str, config: Dict[str, int], dry_run: bool = Fal
                 print("Num elements:", num_elements)
 
             baseband = np.zeros(shape=(event_fpga_len, num_elements), dtype=np.uint8)
-            sample_present = np.zeros(shape=(event_fpga_len, ), dtype=bool)
+            sample_present = np.zeros(shape=(event_fpga_len,), dtype=bool)
         else:
             # Data validity check: all frames in the file should be for the same event and frequency
             assert event_id == frame_metadata.event_id
@@ -227,13 +231,13 @@ def process_raw_file(file_name: str, config: Dict[str, int], dry_run: bool = Fal
         sample_present[
             frame_start_idx : (frame_start_idx + frame_metadata.valid_to)
         ] = True
-                
+
     if not dry_run:
         archive_file.create_dataset("baseband", data=baseband)
-        archive_file['baseband'].attrs['axis'] = ['time','input']
+        archive_file["baseband"].attrs["axis"] = ["time", "input"]
         archive_file.create_dataset("sample_present", data=sample_present)
-        archive_file['sample_present'].attrs['axis'] = ['time']
-        archive_file['sample_present'].attrs['fill_value'] = False
+        archive_file["sample_present"].attrs["axis"] = ["time"]
+        archive_file["sample_present"].attrs["fill_value"] = False
     found = []
     for seq in sorted(frames_read):
         for f in found:
@@ -290,6 +294,7 @@ def sample_present_stats(file_name):
             )
         )
 
+
 def convert(file_name, config_file, stats=False, dry_run=False, verbose=False):
     """Main function to do the conversion."""
     with open(config_file) as f:
@@ -303,6 +308,7 @@ def convert(file_name, config_file, stats=False, dry_run=False, verbose=False):
         if stats and not dry_run:
             sample_present_stats(archive_file_name)
     return archive_file_names
+
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.argument("file_names", type=click.Path(exists=True), nargs=-1)
@@ -338,6 +344,6 @@ def cli(file_names, config_file, stats, dry_run, verbose):
     archive_file_names = convert(file_names, config_file, stats, dry_run, verbose)
     print(archive_file_names)
 
+
 if __name__ == "__main__":
     cli()
-
