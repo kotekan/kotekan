@@ -281,7 +281,7 @@ StatTracker::StatTracker(std::string name, std::string unit, size_t size, bool i
     is_optimized(is_optimized){};
 
 void StatTracker::add_sample(double new_val) {
-    std::lock_guard<std::mutex> lock(tracker_lock);
+    std::lock_guard<std::recursive_mutex> lock(tracker_lock);
 
     double old_val = rbuf[end].value;
     rbuf[end].value = new_val;
@@ -307,7 +307,7 @@ void StatTracker::add_sample(double new_val) {
 }
 
 double StatTracker::get_max() {
-    std::lock_guard<std::mutex> lock(tracker_lock);
+    std::lock_guard<std::recursive_mutex> lock(tracker_lock);
 
     if (count == 0) {
         return NAN;
@@ -327,7 +327,7 @@ double StatTracker::get_max() {
 }
 
 double StatTracker::get_min() {
-    std::lock_guard<std::mutex> lock(tracker_lock);
+    std::lock_guard<std::recursive_mutex> lock(tracker_lock);
 
     if (count == 0) {
         return NAN;
@@ -347,7 +347,7 @@ double StatTracker::get_min() {
 }
 
 double StatTracker::get_avg() {
-    std::lock_guard<std::mutex> lock(tracker_lock);
+    std::lock_guard<std::recursive_mutex> lock(tracker_lock);
 
     if (count == 0) {
         return NAN;
@@ -356,7 +356,7 @@ double StatTracker::get_avg() {
 }
 
 double StatTracker::get_std_dev() {
-    std::lock_guard<std::mutex> lock(tracker_lock);
+    std::lock_guard<std::recursive_mutex> lock(tracker_lock);
 
     if (count <= 1) {
         return NAN;
@@ -364,11 +364,22 @@ double StatTracker::get_std_dev() {
     return std_dev;
 }
 
+double StatTracker::get_current() {
+    std::lock_guard<std::recursive_mutex> lock(tracker_lock);
+
+    size_t ind = (end + buf_size - 1) % buf_size;
+    return count ? rbuf[ind].value : NAN;
+}
+
 nlohmann::json StatTracker::get_json() {
-    std::lock_guard<std::mutex> lock(tracker_lock);
+    std::lock_guard<std::recursive_mutex> lock(tracker_lock);
 
     nlohmann::json tracker_json = {};
     tracker_json["unit"] = unit;
+    tracker_json["min"] = get_min();
+    tracker_json["max"] = get_max();
+    tracker_json["avg"] = get_avg();
+    tracker_json["std"] = get_std_dev();
     for (size_t i = 0; i < count; i++) {
         nlohmann::json sample_json = {};
         sample_json["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -382,6 +393,8 @@ nlohmann::json StatTracker::get_json() {
 }
 
 nlohmann::json StatTracker::get_current_json() {
+    std::lock_guard<std::recursive_mutex> lock(tracker_lock);
+
     nlohmann::json tracker_json = {};
 
     tracker_json["unit"] = unit;

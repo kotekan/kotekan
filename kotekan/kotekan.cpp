@@ -484,6 +484,9 @@ int main(int argc, char** argv) {
                 INFO_NON_OO("Attempting to stop and join kotekan_stages...");
                 kotekan_mode->stop_stages();
                 kotekan_mode->join();
+                if (string(get_error_message()) != "not set") {
+                    KotekanTrackers::instance().dump_trackers();
+                }
                 delete kotekan_mode;
             }
             break;
@@ -495,9 +498,6 @@ int main(int argc, char** argv) {
     // Print error message if there is one.
     if (string(get_error_message()) != "not set") {
         INFO_NON_OO("Fatal error message was: {:s}", get_error_message());
-
-        // Dump all trackers before cleanup.
-        KotekanTrackers::instance().dump_trackers();
     }
 
     closelog();

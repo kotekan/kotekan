@@ -6,8 +6,9 @@
 #include "restServer.hpp" // for connectionInstance
 #include "visUtil.hpp"    // for StatTracker
 
-#include <cstdint>     // for uint32_t
+#include <cstdint>     // for uint32_t, uint16_t
 #include <map>         // for map
+#include <memory>      // for shared_ptr
 #include <string>      // for string
 #include <sys/types.h> // for pid_t
 #include <thread>      // for thread
@@ -16,9 +17,8 @@ namespace kotekan {
 
 // Store thread CPU stats
 struct CpuStat {
-    // StatTracker object is used to get average usage.
-    StatTracker utime_usage = StatTracker("utime_usage", "percent", 120, true);
-    StatTracker stime_usage = StatTracker("stime_usage", "percent", 120, true);
+    std::shared_ptr<StatTracker> utime_usage;
+    std::shared_ptr<StatTracker> stime_usage;
 
     uint32_t prev_utime = 0;
     uint32_t prev_stime = 0;
@@ -62,14 +62,20 @@ public:
      **/
     void set_affinity(Config& config);
 
+    /**
+     * @brief Set cpu usage track length.
+     **/
+    void set_track_len(const uint16_t mins);
+
 private:
     std::thread this_thread;
     bool stop_thread;
     std::map<std::string, std::map<pid_t, CpuStat>> ult_list; // <stage_name <tid, cpu_stats>>
     std::map<std::string, Stage*> stages;
     uint32_t prev_cpu_time;
+    uint16_t track_len = 2;
 };
 
 } // namespace kotekan
 
-#endif /* CHIME_HPP */
+#endif /* CPU_MONITOR_HPP */

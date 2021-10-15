@@ -38,6 +38,16 @@ gpuCommand::gpuCommand(Config& config_, const std::string& unique_name_,
             + config.get_default<string>(unique_name, "kernel", default_kernel_file_name);
         kernel_command = config.get_default<string>(unique_name, "command", default_kernel_command);
     }
+
+    profiling = config.get_default<bool>(unique_name, "profiling", true);
+    if (profiling) {
+        frame_arrival_period = config.get<double>(unique_name, "frame_arrival_period");
+    }
+
+    excute_time = kotekan::KotekanTrackers::instance().add_tracker(
+        unique_name, get_name() + "_execute_time", "seconds");
+    utilization =
+        kotekan::KotekanTrackers::instance().add_tracker(unique_name, get_name() + "_u", "");
 }
 
 gpuCommand::~gpuCommand() {}
@@ -66,7 +76,7 @@ void gpuCommand::pre_execute(int gpu_frame_id) {
 }
 
 double gpuCommand::get_last_gpu_execution_time() {
-    return last_gpu_execution_time;
+    return excute_time->get_current();
 }
 
 gpuCommandType gpuCommand::get_command_type() {
