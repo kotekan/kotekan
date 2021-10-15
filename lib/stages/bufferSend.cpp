@@ -81,7 +81,7 @@ void bufferSend::main_thread() {
 
         uint32_t num_full_frames = get_num_full_frames(buf);
 
-        if (drop_frames && num_full_frames > (uint32_t)((float)buf->num_frames * drop_threshold)) {
+        if (drop_frames && (float)num_full_frames / (float)buf->num_frames > drop_threshold) {
             // If the number of full frames is high, then we drop some frames,
             // because we likely aren't sending fast enough to up with the data rate.
             INFO("Number of full frames in buffer {:s} is {:d} (total frames: {:d}), dropping "
