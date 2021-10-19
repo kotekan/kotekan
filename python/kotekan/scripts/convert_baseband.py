@@ -16,7 +16,7 @@ NUM_THREADS = 20
 
 def convert(file_name, config_file, converted_filenames):
     """Convert the raw data file to hdf5 and then delete the raw file."""
-    converted_file = baseband_archiver.convert([file_name], config_file)[0]
+    converted_file = baseband_archiver.convert([file_name], config_file, root=ARCHIVER_MOUNT)[0]
     converted_filenames[file_name] = converted_file
     #TODO: add hook for datatrail here in the future.
     #os.system(f"rm -f {file_name}")
