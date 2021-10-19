@@ -14,12 +14,14 @@ import multiprocessing
 ARCHIVER_MOUNT = "/data/chime/baseband/raw"
 NUM_THREADS = 20
 
+
 def convert(file_name, config_file, converted_filenames):
     """Convert the raw data file to hdf5 and then delete the raw file."""
     converted_file = baseband_archiver.convert([file_name], config_file, root=ARCHIVER_MOUNT)[0]
     converted_filenames[file_name] = converted_file
-    #TODO: add hook for datatrail here in the future.
-    #os.system(f"rm -f {file_name}")
+    # TODO: add hook for datatrail here in the future.
+    # os.system(f"rm -f {file_name}")
+
 
 def connect_db():
     """Set up a connection to the L4 database."""
@@ -90,8 +92,14 @@ def is_ready(event):
     else:
         if files_error + files_done == num_good_nodes * 4:
             ready = True
-            print("Ready (error, done, num good nodes*4) ", files_error, files_done, num_good_nodes*4)
+            print(
+                "Ready (error, done, num good nodes*4) ",
+                files_error,
+                files_done,
+                num_good_nodes * 4,
+            )
     return ready
+
 
 def validate_file_existence(files):
     """Confirm that all converted files are located in the appropriate locations."""
@@ -102,6 +110,7 @@ def validate_file_existence(files):
             missing.append(f)
             exists = False
     return exists, missing
+
 
 def convert_data(sqlite, conn, e, num_threads):
     """Main conversion function to track the conversion of events."""
@@ -116,7 +125,7 @@ def convert_data(sqlite, conn, e, num_threads):
             print(f"Found {num_files} files.")
         else:
             print(f"data path: {datapath} not found")
-            files = None 
+            files = None
             # TODO: set database status to `MISSING` and exit.
             print("skipping conversion. Updating state in sqlite DB to MISSING")
             sqlite.execute(
@@ -130,12 +139,14 @@ def convert_data(sqlite, conn, e, num_threads):
             conn.commit()
             converted_files = []
             for i in range(0, len(files), num_threads):
-                chunk = files[i:i+num_threads]
+                chunk = files[i : i + num_threads]
                 threads = []
                 manager = multiprocessing.Manager()
                 converted_filenames = manager.dict()
                 for f in chunk:
-                    th = multiprocessing.Process(target=convert,args=(f, config_file, converted_filenames))
+                    th = multiprocessing.Process(
+                        target=convert, args=(f, config_file, converted_filenames)
+                    )
                     th.start()
                     threads.append(th)
                 for th in threads:
@@ -151,8 +162,11 @@ def convert_data(sqlite, conn, e, num_threads):
                 conn.commit()
             else:
                 # TODO: send alert/metric
-                print("Failed to successfully convert all files. Run the conversion script manually on these files.")
+                print(
+                    "Failed to successfully convert all files. Run the conversion script manually on these files."
+                )
                 print(missing)
+
 
 def connect_conversion_db():
     """Connect to the local tracking database."""
@@ -185,8 +199,8 @@ def main():
     ), f"{ARCHIVER_MOUNT} is not mounted, it is required for this process. Exiting!!!"
     db = connect_db()
     conn, sqlite = connect_conversion_db()
-    #sqlite.execute("INSERT INTO conversion VALUES (188946317, 'FINISHED')")
-    #conn.commit()
+    # sqlite.execute("INSERT INTO conversion VALUES (188946317, 'FINISHED')")
+    # conn.commit()
     while True:
         last_event = fetch_last_converted_event(sqlite)
         events = fetch_events(db, last_event[0])

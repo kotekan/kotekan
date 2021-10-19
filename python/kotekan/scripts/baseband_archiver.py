@@ -165,6 +165,7 @@ def process_raw_file(
     event_id = freq_id = None
     archive_file_name = archive_file = None
     frames_read = []
+    clip_after = 0
     for b in raw_baseband_frames(file_name, buf):
         # Check the frame metadata
         frame_metadata = baseband_buffer.BasebandMetadata.from_buffer(b)
@@ -176,10 +177,7 @@ def process_raw_file(
             )
 
         if event_id is None:
-            event_id, freq_id = (
-                frame_metadata.event_id,
-                frame_metadata.freq_id,
-            )
+            event_id, freq_id = (frame_metadata.event_id, frame_metadata.freq_id)
 
             if not dry_run:
                 archive_file, archive_file_name = create_baseband_archive(
@@ -204,7 +202,7 @@ def process_raw_file(
                 print("Num elements:", num_elements)
 
             baseband = np.zeros(shape=(event_fpga_len, num_elements), dtype=np.uint8)
-            sample_present = np.zeros(shape=(event_fpga_len,), dtype=bool)
+            # sample_present = np.zeros(shape=(event_fpga_len,), dtype=bool)
         else:
             # Data validity check: all frames in the file should be for the same event and frequency
             assert event_id == frame_metadata.event_id
@@ -234,16 +232,18 @@ def process_raw_file(
         ).reshape(
             frame_metadata.valid_to, num_elements
         )
-        sample_present[
-            frame_start_idx : (frame_start_idx + frame_metadata.valid_to)
-        ] = True
+        # sample_present[
+        #    frame_start_idx : (frame_start_idx + frame_metadata.valid_to)
+        # ] = True
+        clip_after += frame_metadata.valid_to
 
+    baseband = baseband[:clip_after,]
     if not dry_run:
         archive_file.create_dataset("baseband", data=baseband)
         archive_file["baseband"].attrs["axis"] = ["time", "input"]
-        archive_file.create_dataset("sample_present", data=sample_present)
-        archive_file["sample_present"].attrs["axis"] = ["time"]
-        archive_file["sample_present"].attrs["fill_value"] = False
+        # archive_file.create_dataset("sample_present", data=sample_present)
+        # archive_file["sample_present"].attrs["axis"] = ["time"]
+        # archive_file["sample_present"].attrs["fill_value"] = False
     found = []
     for seq in sorted(frames_read):
         for f in found:
@@ -318,8 +318,8 @@ def convert(
     for f in file_name:
         archive_file_name = process_raw_file(f, config, dry_run, verbose, root)
         archive_file_names.append(archive_file_name)
-        if stats and not dry_run:
-            sample_present_stats(archive_file_name)
+        # if stats and not dry_run:
+        #    sample_present_stats(archive_file_name)
     return archive_file_names
 
 
