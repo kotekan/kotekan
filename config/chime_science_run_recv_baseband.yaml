@@ -39,25 +39,55 @@ baseband_metadata_pool:
   kotekan_metadata_pool: BasebandMetadata
   num_metadata_objects: 65536
 
-baseband_recv_buffer:
-  kotekan_buffer: standard
+basdband_bufs:
   metadata_pool: baseband_metadata_pool
   frame_size: num_elements * samples_per_data_set / 96
-  num_frames: 180 * 96 # max achievable baseband buffer on GPU nodes
+  num_frames: 45 * 96
+  baseband_recv_buffer_0:
+    kotekan_buffer: standard
+  baseband_recv_buffer_1:
+    kotekan_buffer: standard
+  baseband_recv_buffer_2:
+    kotekan_buffer: standard
+  baseband_recv_buffer_3:
+    kotekan_buffer: standard
 
 # Kotekan stages
 baseband_recv:
-  kotekan_stage: bufferRecv
-  buf: baseband_recv_buffer 
-  listen_port: 11027
   drop_frames: false
+  recv_0:
+    kotekan_stage: bufferRecv
+    buf: baseband_recv_buffer_0
+    listen_port: 11027
+  recv_1:
+    kotekan_stage: bufferRecv
+    buf: baseband_recv_buffer_1
+    listen_port: 11028
+  recv_2:
+    kotekan_stage: bufferRecv
+    buf: baseband_recv_buffer_2
+    listen_port: 11029
+  recv_3:
+    kotekan_stage: bufferRecv
+    buf: baseband_recv_buffer_3
+    listen_port: 11030
 
-# Write raw baseband data
 write_baseband:
   root_path: /data/baseband_raw/
+  dump_timeout: 300
+  write_0:
+    kotekan_stage: BasebandWriter
+    in_buf: baseband_recv_buffer_0
+  write_1:
+    kotekan_stage: BasebandWriter
+    in_buf: baseband_recv_buffer_1
+  write_2:
+    kotekan_stage: BasebandWriter
+    in_buf: baseband_recv_buffer_2
+  write_3:
+    kotekan_stage: BasebandWriter
+    in_buf: baseband_recv_buffer_3
 
-  kotekan_stage: BasebandWriter
-  in_buf: baseband_recv_buffer 
 
 buffer_status:
   kotekan_stage: bufferStatus

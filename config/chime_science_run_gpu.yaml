@@ -693,7 +693,6 @@ baseband:
 # Transmit baseband data to the baseband receiver
 baseband_send:
   server_ip: 10.6.213.19 # cfDn9
-  server_port: 11027
   reconnect_time: 20
   log_level: error
   # Don't drop unless the server is down
@@ -701,15 +700,19 @@ baseband_send:
   drop_threshold: 1.0
   baseband_send_0:
     kotekan_stage: bufferSend
+    server_port: 11027
     buf: baseband_output_buffer_0
   baseband_send_1:
     kotekan_stage: bufferSend
+    server_port: 11028
     buf: baseband_output_buffer_1
   baseband_send_2:
     kotekan_stage: bufferSend
+    server_port: 11029
     buf: baseband_output_buffer_2
   baseband_send_3:
     kotekan_stage: bufferSend
+    server_port: 11030
     buf: baseband_output_buffer_3
 
 # Buffer bad input updates
