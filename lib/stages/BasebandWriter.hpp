@@ -78,6 +78,7 @@ private:
     std::string _root_path;
     double _dump_timeout;
     double _max_frames_per_second;
+    uint32_t _frame_size;
 
     /// Input buffer to read from
     struct Buffer* in_buf;
@@ -86,7 +87,7 @@ private:
     // constructor that can be used from `map::emplace`
     class BasebandWriterDestination {
     public:
-        BasebandWriterDestination(const std::string&);
+        BasebandWriterDestination(const std::string&, const uint32_t&);
         BasebandFileRaw file;
         double last_updated;
     };

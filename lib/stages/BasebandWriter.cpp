@@ -30,8 +30,9 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(BasebandWriter);
 
-BasebandWriter::BasebandWriterDestination::BasebandWriterDestination(const std::string& file_name) :
-    file(file_name),
+BasebandWriter::BasebandWriterDestination::BasebandWriterDestination(const std::string& file_name,
+                                                                     const uint32_t& frame_size) :
+    file(file_name, frame_size),
     last_updated(current_time()) {}
 
 
@@ -42,6 +43,9 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
     _root_path(config.get_default<std::string>(unique_name, "root_path", ".")),
     _dump_timeout(config.get_default<double>(unique_name, "dump_timeout", 60)),
     _max_frames_per_second(config.get_default<double>(unique_name, "max_frames_per_second", 0)),
+    _frame_size(config.get<uint32_t>(unique_name, "samples_per_data_set")
+                    * config.get<uint32_t>(unique_name, "num_elements")
+                + sizeof(BasebandMetadata)),
     in_buf(get_buffer("in_buf")),
     write_in_progress_metric(
         Metrics::instance().add_gauge("kotekan_baseband_writeout_in_progress", unique_name)),
@@ -132,29 +136,33 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
         fmt::format("{:s}/baseband_{:d}_{:d}", event_directory_name, event_id, freq_id);
     if (baseband_events[event_id].count(freq_id) == 0) {
         // NOTE: emplace the file instance or it will get closed by the destructor
-        baseband_events[event_id].emplace(freq_id, file_name);
+        baseband_events[event_id].emplace(freq_id,
+                                          BasebandWriterDestination(file_name, _frame_size));
     }
     auto& freq_dump_destination = baseband_events[event_id].at(freq_id);
     BasebandFileRaw& baseband_file = freq_dump_destination.file;
 
     const double start = current_time();
-    ssize_t bytes_written = baseband_file.write_frame({in_buf, frame_id});
+    int32_t write_status = baseband_file.write_frame({in_buf, frame_id});
     freq_dump_destination.last_updated = current_time();
     const double elapsed = freq_dump_destination.last_updated - start;
 
     write_in_progress_metric.set(0);
 
-    if (bytes_written != in_buf->frame_size) {
-        ERROR("Failed to write buffer to disk for file {:s}", file_name);
-        exit(-1);
+    if (write_status == -1) {
+        ERROR("Output file is corrupt, dropping frame going to {:s}", file_name);
+    } else if (write_status == 0) {
+        FATAL_ERROR("Cannot write to file {:s}, maybe out of disk space?", file_name);
     } else {
-        DEBUG("Written {} bytes of data to {:s}", bytes_written, file_name);
-    }
-    bytes_written_metric.inc(bytes_written);
+        DEBUG("Written frame with event id {:d} and freq {:d} to {:s}", event_id, freq_id,
+              file_name);
 
-    // Update average write time in prometheus
-    write_time.add_sample(elapsed);
-    write_time_metric.set(write_time.average());
+        bytes_written_metric.inc(frame.data_size() + sizeof(BasebandMetadata));
+
+        // Update average write time in prometheus
+        write_time.add_sample(elapsed);
+        write_time_metric.set(write_time.average());
+    }
 }
 
 

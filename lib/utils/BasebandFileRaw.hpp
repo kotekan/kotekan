@@ -27,21 +27,27 @@
  */
 class BasebandFileRaw : public kotekan::kotekanLogging {
 public:
-    BasebandFileRaw(const std::string& name);
+    BasebandFileRaw(const std::string& name, const uint32_t frame_size);
 
     ~BasebandFileRaw();
 
-    ssize_t write_frame(const BasebandFrameView& frame);
+    int32_t write_frame(const BasebandFrameView& frame);
 
     // File name (used for debugging)
     const std::string name;
 
 private:
-    ssize_t write_raw(const void* data, size_t nb);
+    // The size of each frame in the file (metadata + data).
+    uint32_t frame_size;
+    bool file_corrupt;
 
     // File descriptors and related
     int fd;
     std::string lock_filename;
+
+    uint32_t num_frames;
+    uint32_t write_index;
+    const uint32_t metadata_size = sizeof(BasebandMetadata);
 };
 
 #endif // BASEBAND_FILE_RAW_HPP
