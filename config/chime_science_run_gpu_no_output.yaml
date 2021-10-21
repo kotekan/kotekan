@@ -693,11 +693,12 @@ baseband:
 # Transmit baseband data to the baseband receiver
 baseband_send:
   server_ip: 10.6.213.19 # cfDn9
-  reconnect_time: 20
-  log_level: error
-  # Don't drop unless the server is down
+  reconnect_time: 30
+  send_timeout: 60
+  log_level: info
+  # Keep data in memory even if the receiver node is down
   # Baseband readout handles back pressure management
-  drop_threshold: 1.0
+  drop_frames: false
   baseband_send_0:
     #kotekan_stage: bufferSend
     server_port: 11027

@@ -74,7 +74,7 @@ baseband_recv:
 
 write_baseband:
   root_path: /data/baseband_raw/
-  dump_timeout: 300
+  dump_timeout: 600 # 10 Minutes
   write_0:
     kotekan_stage: BasebandWriter
     in_buf: baseband_recv_buffer_0

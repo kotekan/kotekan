@@ -20,7 +20,7 @@ BasebandFileRaw::BasebandFileRaw(const std::string& name) : name(name) {
 
     // Create the lock file and then open other files
     lock_filename = create_lockfile(name);
-    if ((fd = open((name + ".data").c_str(), O_CREAT | O_WRONLY,
+    if ((fd = open((name + ".data").c_str(), O_CREAT | O_WRONLY | O_APPEND,
                    S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH))
         == -1) {
         throw std::runtime_error(
