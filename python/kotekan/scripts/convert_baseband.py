@@ -147,7 +147,7 @@ def convert_data(sqlite, conn, e, num_threads):
     unlocked = False
     if os.path.exists(datapath):
         unlocked = is_unlocked(datapath)
-        
+
     if unlocked is True or datetime.datetime.utcnow() > datetime.datetime.strptime(
         e[1], "%Y-%m-%d %H:%M:%S.%f"
     ) + datetime.timedelta(hours=3):
