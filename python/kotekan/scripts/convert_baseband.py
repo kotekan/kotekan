@@ -9,15 +9,18 @@ import requests
 import sys
 import baseband_archiver
 import multiprocessing
+from glob import glob
 
 # TODO metrics and slack integration.
 ARCHIVER_MOUNT = "/data/chime/baseband/raw"
-NUM_THREADS = 20
+NUM_THREADS = 10
 
 
 def convert(file_name, config_file, converted_filenames):
     """Convert the raw data file to hdf5 and then delete the raw file."""
-    converted_file = baseband_archiver.convert([file_name], config_file, root=ARCHIVER_MOUNT)[0]
+    converted_file = baseband_archiver.convert(
+        [file_name], config_file, root=ARCHIVER_MOUNT
+    )[0]
     converted_filenames[file_name] = converted_file
     # TODO: add hook for datatrail here in the future.
     # os.system(f"rm -f {file_name}")
@@ -101,6 +104,16 @@ def is_ready(event):
     return ready
 
 
+def is_unlocked(path):
+    """Check for the existence of lock files."""
+    locked_files = glob(path + "/.*.lock")
+    if len(locked_files) == 0:
+        return True
+    else:
+        print("Still locked: ", len(locked_files))
+        return False
+
+
 def validate_file_existence(files):
     """Confirm that all converted files are located in the appropriate locations."""
     missing = []
@@ -115,24 +128,34 @@ def validate_file_existence(files):
 def convert_data(sqlite, conn, e, num_threads):
     """Main conversion function to track the conversion of events."""
     datapath = f"/data/baseband_raw/baseband_raw_{e[0]}"
-    convert = is_ready(e)
-    if convert is True or datetime.datetime.utcnow() > datetime.datetime.strptime(
+    ready = is_ready(e)
+    if (
+        ready is True
+        and not os.path.exists(datapath)
+        and datetime.datetime.utcnow()
+        > datetime.datetime.strptime(e[1], "%Y-%m-%d %H:%M:%S.%f")
+        + datetime.timedelta(hours=1)
+    ):
+        print(f"data path: {datapath} not found")
+        # TODO: set database status to `MISSING` and exit.
+        print("skipping conversion. Updating state in sqlite DB to MISSING")
+        sqlite.execute(
+            f"UPDATE conversion SET status = 'MISSING' WHERE event_no = {e[0]}"
+        )
+        conn.commit()
+
+    unlocked = False
+    if os.path.exists(datapath):
+        unlocked = is_unlocked(datapath)
+        
+    if unlocked is True or datetime.datetime.utcnow() > datetime.datetime.strptime(
         e[1], "%Y-%m-%d %H:%M:%S.%f"
-    ) + datetime.timedelta(hours=1):
-        if os.path.exists(datapath):
-            files = os.listdir(datapath)
-            num_files = len(files)
-            print(f"Found {num_files} files.")
-        else:
-            print(f"data path: {datapath} not found")
-            files = None
-            # TODO: set database status to `MISSING` and exit.
-            print("skipping conversion. Updating state in sqlite DB to MISSING")
-            sqlite.execute(
-                f"UPDATE conversion SET status = 'MISSING' WHERE event_no = {e[0]}"
-            )
-            conn.commit()
-        if files is not None:
+    ) + datetime.timedelta(hours=3):
+        files = os.listdir(datapath)
+        num_files = len(files)
+        print(f"Found {num_files} files.")
+
+        if num_files > 0:
             # make entry in datatrail, local file with local DB with state CONVERTING
             print("starting conversion. Updating state in sqlite DB")
             sqlite.execute(f"INSERT INTO conversion VALUES ({e[0]}, 'CONVERTING')")
