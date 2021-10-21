@@ -45,7 +45,6 @@ private:
     int fd;
     std::string lock_filename;
 
-    uint32_t num_frames;
     uint32_t write_index;
     const uint32_t metadata_size = sizeof(BasebandMetadata);
 };

@@ -18,13 +18,12 @@ BasebandFileRaw::BasebandFileRaw(const std::string& name, const uint32_t frame_s
     name(name),
     frame_size(frame_size) {
 
-    num_frames = 0;
     write_index = 0;
 
     // Create the lock file and then open other files
     DEBUG("Opening baseband file {:s}", name);
     lock_filename = create_lockfile(name);
-    if ((fd = open((name + ".data").c_str(), O_CREAT | O_WRONLY | O_APPEND,
+    if ((fd = open((name + ".data").c_str(), O_CREAT | O_WRONLY,
                    S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH))
         == -1) {
         throw std::runtime_error(
@@ -42,8 +41,7 @@ BasebandFileRaw::BasebandFileRaw(const std::string& name, const uint32_t frame_s
         file_corrupt = true;
     } else {
         file_corrupt = false;
-        num_frames = file_size / frame_size;
-        write_index = num_frames;
+        write_index = file_size / frame_size;
     }
 }
 
@@ -63,14 +61,14 @@ int32_t BasebandFileRaw::write_frame(const BasebandFrameView& frame) {
     }
 
 #ifdef __linux__
-    fallocate(fd, 0, write_index * frame_size, frame_size);
+    fallocate(fd, FALLOC_FL_KEEP_SIZE, write_index * frame_size, frame_size);
 #else
     ftruncate(fd, write_index * (frame_size + 1));
 #endif
 
     // Write in a retry macro loop incase the write was interrupted by a signal
-    ssize_t nbytes =
-        TEMP_FAILURE_RETRY(pwrite(fd, frame.metadata(), metadata_size, write_index * frame_size));
+    ssize_t nbytes = TEMP_FAILURE_RETRY(
+        pwrite(fd, (void*)frame.metadata(), metadata_size, write_index * frame_size));
 
     if (nbytes < 0) {
         ERROR("Write error attempting to write metadata {:d} bytes into file {:s}: {:s}",
@@ -78,8 +76,8 @@ int32_t BasebandFileRaw::write_frame(const BasebandFrameView& frame) {
         return 0;
     }
 
-    nbytes = TEMP_FAILURE_RETRY(
-        pwrite(fd, frame.data(), frame.data_size(), write_index * frame_size + metadata_size));
+    nbytes = TEMP_FAILURE_RETRY(pwrite(fd, (void*)frame.data(), frame.data_size(),
+                                       write_index * frame_size + metadata_size));
 
     if (nbytes < 0) {
         ERROR("Write error attempting to write data {:d} bytes into file {:s}: {:s}",
