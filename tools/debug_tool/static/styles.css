@@ -1,0 +1,189 @@
+.buffers {
+  fill: rgba(25, 179, 177, 0.452);
+}
+
+.stages {
+  fill: rgba(188, 95, 106, 0.452);
+}
+
+.link {
+  fill: none;
+  stroke: #000;
+  stroke-width: 3px;
+  opacity: 0.7;
+  marker-end: url(#end-arrow);
+}
+
+.buffer_labels {
+  fill: rgb(0, 0, 0);
+  font-family: sans-serif;
+  font-size: 15;
+}
+
+.stage_labels {
+  fill: rgb(0, 0, 0);
+  font-family: sans-serif;
+  font-size: 15;
+}
+
+.background {
+  stroke: white;
+  stroke-width: 1px;
+  fill: white;
+}
+
+/* Fixed sidenav, full height */
+.sidenav {
+  height: 100%;
+  width: 500px;
+  position: fixed;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  background-color: #67734de7;
+  padding-top: 20px;
+  overflow-x: auto;
+}
+
+/* Style the sidenav links and the dropdown button */
+.sidenav a, .dropdown-btn {
+  padding: 6px 8px 6px 16px;
+  text-decoration: none;
+  font-size: 20px;
+  color: #d7d8ac;
+  display: block;
+  border: none;
+  background: none;
+  width:100%;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  overflow-x: auto;
+}
+
+/* On mouse-over */
+.sidenav a:hover, .dropdown-btn:hover {
+  color: #dfe5e1;
+}
+
+/* Main content */
+.main {
+  margin-right: 200px; /* Same as the width of the sidenav */
+  padding: 0px 10px;
+}
+
+/* Add an active class to the active dropdown button */
+.active {
+  background-color: #f7b733;
+  color: white;
+}
+
+/* Dropdown container (hidden by default). Optional: add a lighter background color and some left padding to change the design of the dropdown content */
+.dropdown-container {
+  display: table;
+  overflow-x: auto;
+  background-color: #ffffff93;
+  padding-left: 8px;
+}
+
+p {
+  margin: 2px;
+}
+
+table {
+  border-collapse: collapse;
+  overflow-x: auto;
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  border-spacing: 0;
+  border: 1px solid #ddd;
+}
+
+th, td {
+  font-size: 12px;
+  text-align: left;
+  padding: 8px;
+}
+
+tr:nth-child(even) {
+  background-color: #f2f2f2;
+}
+
+.dropbtn {
+  background-color: #3498DB;
+  color: white;
+  padding: 16px;
+  font-size: 16px;
+  border: none;
+  cursor: pointer;
+}
+
+.dropbtn:hover, .dropbtn:focus {
+  background-color: #2980B9;
+}
+
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  background-color: #f1f1f1;
+  min-width: 160px;
+  overflow: auto;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 1;
+}
+
+.dropdown-content p {
+  color: black;
+  padding: 12px 16px;
+  text-decoration: none;
+  display: block;
+  width: max-content;
+}
+
+.dropdown a:hover {background-color: #ddd;}
+
+.show {display: block;}
+
+.slidecontainer {
+  width: 400px;
+}
+
+.slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 15px;
+  border-radius: 5px;
+  background: #d3d3d3;
+  outline: none;
+  opacity: 0.7;
+  -webkit-transition: .2s;
+  transition: opacity .2s;
+}
+
+.slider:hover {
+  opacity: 1;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background: #04AA6D;
+  cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background: #04AA6D;
+  cursor: pointer;
+}

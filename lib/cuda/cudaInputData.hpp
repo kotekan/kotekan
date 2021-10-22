@@ -33,6 +33,7 @@ public:
     cudaEvent_t execute(int gpu_frame_id, cudaEvent_t pre_event) override;
     void finalize_frame(int frame_id) override;
 
+    std::string get_performance_metric_string() override;
 
 protected:
     cudaEvent_t* data_staged_event;

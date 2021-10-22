@@ -141,6 +141,14 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
+    // Because we reserve `num_freq_in_frame` output frames for each input frame, the output
+    // buffer must have at least `num_freq_in_frame` frames allocated.
+    if ((size_t)out_buf->num_frames < num_freq_in_frame) {
+        throw std::runtime_error(fmt::format(
+            "visAccumulate: The number of frames in {:s} ({:d}) is < num_freq_in_frame ({:d})",
+            out_buf->buffer_name, out_buf->num_frames, num_freq_in_frame));
+    }
+
     // Create the state for the main visibility accumulation
     gated_datasets.emplace_back(
         out_buf, gateSpec::create("uniform", "vis", kotekan::logLevel(_member_log_level)),
@@ -531,7 +539,7 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
         // TODO: if we have multifrequencies, if any need to be skipped all of
         // the following ones must be too. I think this requires the buffer
         // mechanism being rewritten to fix this one.
-        if (ts_to_double(std::get<1>(output_frame.time) - newest_frame_time) > max_age) {
+        if (ts_to_double(newest_frame_time - std::get<1>(output_frame.time)) > max_age) {
             skipped_frame_counter.labels({std::to_string(output_frame.freq_id), "age"}).inc();
             blocked = true;
             continue;
