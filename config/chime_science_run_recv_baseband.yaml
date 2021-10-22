@@ -16,7 +16,7 @@ log_level: info
 num_elements: 2048
 num_local_freq: 1
 num_data_sets: 1
-samples_per_data_set: 512
+samples_per_data_set: 49152
 buffer_depth: 64
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
 
@@ -41,53 +41,52 @@ baseband_metadata_pool:
 
 basdband_bufs:
   metadata_pool: baseband_metadata_pool
-  frame_size: num_elements * samples_per_data_set
-  num_frames: 180 * 96
+  frame_size: num_elements * samples_per_data_set / 96
+  num_frames: 45 * 96
   baseband_recv_buffer_0:
     kotekan_buffer: standard
-#  baseband_recv_buffer_1:
-#    kotekan_buffer: standard
-#  baseband_recv_buffer_2:
-#    kotekan_buffer: standard
-#  baseband_recv_buffer_3:
-#    kotekan_buffer: standard
+  baseband_recv_buffer_1:
+    kotekan_buffer: standard
+  baseband_recv_buffer_2:
+    kotekan_buffer: standard
+  baseband_recv_buffer_3:
+    kotekan_buffer: standard
 
 # Kotekan stages
 baseband_recv:
   drop_frames: false
-  connection_timeout: 600 # 10 Minutes
   recv_0:
     kotekan_stage: bufferRecv
     buf: baseband_recv_buffer_0
     listen_port: 11027
-#  recv_1:
-#    kotekan_stage: bufferRecv
-#    buf: baseband_recv_buffer_1
-#    listen_port: 11028
-#  recv_2:
-#    kotekan_stage: bufferRecv
-#    buf: baseband_recv_buffer_2
-#    listen_port: 11029
-#  recv_3:
-#    kotekan_stage: bufferRecv
-#    buf: baseband_recv_buffer_3
-#    listen_port: 11030
+  recv_1:
+    kotekan_stage: bufferRecv
+    buf: baseband_recv_buffer_1
+    listen_port: 11028
+  recv_2:
+    kotekan_stage: bufferRecv
+    buf: baseband_recv_buffer_2
+    listen_port: 11029
+  recv_3:
+    kotekan_stage: bufferRecv
+    buf: baseband_recv_buffer_3
+    listen_port: 11030
 
 write_baseband:
   root_path: /data/baseband_raw/
-  dump_timeout: 1200 # 20 Minutes
+  dump_timeout: 600 # 10 Minutes
   write_0:
     kotekan_stage: BasebandWriter
     in_buf: baseband_recv_buffer_0
-#  write_1:
-#    kotekan_stage: BasebandWriter
-#    in_buf: baseband_recv_buffer_1
-#  write_2:
-#    kotekan_stage: BasebandWriter
-#    in_buf: baseband_recv_buffer_2
-#  write_3:
-#    kotekan_stage: BasebandWriter
-#    in_buf: baseband_recv_buffer_3
+  write_1:
+    kotekan_stage: BasebandWriter
+    in_buf: baseband_recv_buffer_1
+  write_2:
+    kotekan_stage: BasebandWriter
+    in_buf: baseband_recv_buffer_2
+  write_3:
+    kotekan_stage: BasebandWriter
+    in_buf: baseband_recv_buffer_3
 
 
 buffer_status:
