@@ -658,7 +658,7 @@ zero_samples:
 
 # Baseband capture and dump system
 baseband_output_buffers:
-  num_frames: 12 * 96 # baseband_buffer_depth
+  num_frames: 11 * 96 # baseband_buffer_depth
   frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets / 96
   metadata_pool: baseband_pool
   baseband_output_buffer_0:
