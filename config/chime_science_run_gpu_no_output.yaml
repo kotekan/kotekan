@@ -708,7 +708,7 @@ baseband_send:
   server_ip: 10.6.213.19 # cfDn9
   reconnect_time: 60
   send_timeout: 600 # 10 minutes
-  log_level: info
+  log_level: warn
   # Keep data in memory even if the receiver node is down
   # Baseband readout handles back pressure management
   drop_frames: false
@@ -716,18 +716,6 @@ baseband_send:
     #kotekan_stage: bufferSend
     server_port: 11027
     buf: baseband_output_buffer_merged
-#  baseband_send_1:
-#    kotekan_stage: bufferSend
-#    server_port: 11028
-#    buf: baseband_output_buffer_1
-#  baseband_send_2:
-#    kotekan_stage: bufferSend
-#    server_port: 11029
-#    buf: baseband_output_buffer_2
-#  baseband_send_3:
-#    kotekan_stage: bufferSend
-#    server_port: 11030
-#    buf: baseband_output_buffer_3
 
 # Buffer bad input updates
 # 1) Reorder list

@@ -45,12 +45,6 @@ basdband_bufs:
   num_frames: 180 * 96
   baseband_recv_buffer_0:
     kotekan_buffer: standard
-#  baseband_recv_buffer_1:
-#    kotekan_buffer: standard
-#  baseband_recv_buffer_2:
-#    kotekan_buffer: standard
-#  baseband_recv_buffer_3:
-#    kotekan_buffer: standard
 
 # Kotekan stages
 baseband_recv:
@@ -60,18 +54,6 @@ baseband_recv:
     kotekan_stage: bufferRecv
     buf: baseband_recv_buffer_0
     listen_port: 11027
-#  recv_1:
-#    kotekan_stage: bufferRecv
-#    buf: baseband_recv_buffer_1
-#    listen_port: 11028
-#  recv_2:
-#    kotekan_stage: bufferRecv
-#    buf: baseband_recv_buffer_2
-#    listen_port: 11029
-#  recv_3:
-#    kotekan_stage: bufferRecv
-#    buf: baseband_recv_buffer_3
-#    listen_port: 11030
 
 write_baseband:
   root_path: /data/baseband_raw/
@@ -79,16 +61,6 @@ write_baseband:
   write_0:
     kotekan_stage: BasebandWriter
     in_buf: baseband_recv_buffer_0
-#  write_1:
-#    kotekan_stage: BasebandWriter
-#    in_buf: baseband_recv_buffer_1
-#  write_2:
-#    kotekan_stage: BasebandWriter
-#    in_buf: baseband_recv_buffer_2
-#  write_3:
-#    kotekan_stage: BasebandWriter
-#    in_buf: baseband_recv_buffer_3
-
 
 buffer_status:
   kotekan_stage: bufferStatus
