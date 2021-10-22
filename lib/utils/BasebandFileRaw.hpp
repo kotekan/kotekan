@@ -28,6 +28,7 @@
 class BasebandFileRaw : public kotekan::kotekanLogging {
 public:
     BasebandFileRaw(const std::string& name, const uint32_t frame_size);
+    BasebandFileRaw() = delete;
 
     ~BasebandFileRaw();
 
