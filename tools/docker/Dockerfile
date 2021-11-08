@@ -1,4 +1,3 @@
-#FROM rocm/dev-ubuntu-18.04:3.7
 FROM rocm/dev-ubuntu-18.04
 
 ## The maintainer name and email 
