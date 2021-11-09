@@ -4,10 +4,6 @@ FROM rocm/dev-ubuntu-18.04
 LABEL maintainer="Rick Nitsche <rick@phas.ubc.ca>"
 
 # Install any needed packages to run cmake with full CHIME build options
-#RUN wget -qO - http://repo.radeon.com/rocm/apt/debian/rocm.gpg.key | apt-key add -
-#ADD rocm.gpg.key rocm.gpg.key
-#RUN apt-key add -q rocm.gpg.key
-
 RUN apt-get update && \
     apt-get install --no-install-recommends -y software-properties-common=0.96.* && \
     add-apt-repository ppa:deadsnakes/ppa && \
