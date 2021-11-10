@@ -181,7 +181,7 @@ uint64_t ICETelescope::to_seq(timespec time) const {
 
 
 bool ICETelescope::gps_time_enabled() const {
-    return true;
+    return gps_enabled;
 }
 
 uint64_t ICETelescope::seq_length_nsec() const {
