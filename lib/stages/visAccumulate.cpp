@@ -276,6 +276,10 @@ void visAccumulate::main_thread() {
     // Have we initialised a frame for writing yet
     bool init = false;
 
+    bool gps_enabled = Telescope::instance().gps_time_enabled();
+    if (!gps_enabled)
+        WARN("GPS time not set, using much less accurate system time instead.");
+
     while (!stop_thread) {
 
         // Fetch a new frame and get its sequence id
@@ -304,13 +308,14 @@ void visAccumulate::main_thread() {
         uint64_t frame_count = (get_fpga_seq_num(in_buf, in_frame_id) / samples_per_data_set);
 
         // Start and end times of this frame
-        timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
-        // If GPS time is not set, fall back to the system's best guess at the time.
-        if (t_s.tv_sec == 0) {
+        timespec t_s;
+        if (gps_enabled) {
+            t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
+        } else {
+            // If GPS time is not set, fall back to the system's best guess at the time.
             TIMEVAL_TO_TIMESPEC(
                 &((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->first_packet_recv_time,
                 &t_s);
-            WARN("GPS time not set, using much less accurate system time instead.");
         }
         timespec t_e = add_nsec(t_s, samples_per_data_set * tel.seq_length_nsec());
 
