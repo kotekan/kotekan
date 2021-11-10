@@ -276,8 +276,9 @@ void visAccumulate::main_thread() {
     // Have we initialised a frame for writing yet
     bool init = false;
 
-    bool gps_enabled = Telescope::instance().gps_time_enabled();
-    if (!gps_enabled)
+    // Check if we have gps time enabled.
+    bool gps_time_enabled = Telescope::instance().gps_time_enabled();
+    if (!gps_time_enabled)
         WARN("GPS time not set, using much less accurate system time instead.");
 
     while (!stop_thread) {
@@ -309,10 +310,10 @@ void visAccumulate::main_thread() {
 
         // Start and end times of this frame
         timespec t_s;
-        if (gps_enabled) {
+        if (gps_time_enabled) {
             t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
         } else {
-            // If GPS time is not set, fall back to the system's best guess at the time.
+            // If GPS time is not set, fall back to system time.
             TIMEVAL_TO_TIMESPEC(
                 &((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->first_packet_recv_time,
                 &t_s);
