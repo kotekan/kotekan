@@ -304,6 +304,13 @@ void visAccumulate::main_thread() {
 
         // Start and end times of this frame
         timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
+        // GPS time not set
+        if (t_s.tv_sec == 0) {
+            TIMEVAL_TO_TIMESPEC(
+                &((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->first_packet_recv_time,
+                &t_s);
+            WARN("GPS time not set, using much less accurate system time instead.");
+        }
         timespec t_e = add_nsec(t_s, samples_per_data_set * tel.seq_length_nsec());
 
         // If we have wrapped around we need to write out any frames that have
