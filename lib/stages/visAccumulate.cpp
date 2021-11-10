@@ -304,7 +304,7 @@ void visAccumulate::main_thread() {
 
         // Start and end times of this frame
         timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
-        // GPS time not set
+        // If GPS time is not set, fall back to the system's best guess at the time.
         if (t_s.tv_sec == 0) {
             TIMEVAL_TO_TIMESPEC(
                 &((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->first_packet_recv_time,
