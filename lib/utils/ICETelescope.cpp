@@ -130,7 +130,7 @@ freq_id_t ICETelescope::to_freq_id(stream_t stream, uint32_t ind) const {
             return stream_id.slot_id + stream_id.link_id * 16 + ind * 128;
         case 16: // 8 ICEBoards (128 elements) e.g. Allenby
             // TODO: Check this mapping
-            return stream_id.slot_id + stream_id.link_id * 32 + ind * 64;
+            return stream_id.slot_id + stream_id.link_id * 8 + ind * 64;
         case 128: // 1 ICEBoard (16 elements) e.g. ARO, Synthesis telescope
             return stream_id.link_id + ind * 8;
         default:
