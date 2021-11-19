@@ -22,22 +22,23 @@
 #include "gsl-lite.hpp" // for span<>::iterator, span
 #include "json.hpp"     // for json, basic_json, iteration_proxy_value, basic_json<>::...
 
-#include <algorithm> // for copy, max, fill, copy_backward, equal, transform
-#include <assert.h>  // for assert
-#include <atomic>    // for atomic_bool
-#include <cmath>     // for pow
-#include <complex>   // for operator*, complex
-#include <cstring>   // for memcpy
-#include <exception> // for exception
-#include <iterator>  // for back_insert_iterator, begin, end, back_inserter
-#include <mutex>     // for lock_guard, mutex
-#include <numeric>   // for iota
-#include <optional>  // for optional
-#include <regex>     // for match_results<>::_Base_type
-#include <stdexcept> // for runtime_error, invalid_argument
-#include <time.h>    // for size_t, timespec
-#include <tuple>     // for get
-#include <vector>    // for vector, vector<>::iterator, __alloc_traits<>::value_type
+#include <algorithm>  // for copy, max, fill, copy_backward, equal, transform
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <cmath>      // for pow
+#include <complex>    // for operator*, complex
+#include <cstring>    // for memcpy
+#include <exception>  // for exception
+#include <iterator>   // for back_insert_iterator, begin, end, back_inserter
+#include <mutex>      // for lock_guard, mutex
+#include <numeric>    // for iota
+#include <optional>   // for optional
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error, invalid_argument
+#include <sys/time.h> // for TIMEVAL_TO_TIMESPEC
+#include <time.h>     // for size_t, timespec
+#include <tuple>      // for get
+#include <vector>     // for vector, vector<>::iterator, __alloc_traits<>::value_type
 
 
 using namespace std::placeholders;
@@ -140,6 +141,14 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
 
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
+
+    // Because we reserve `num_freq_in_frame` output frames for each input frame, the output
+    // buffer must have at least `num_freq_in_frame` frames allocated.
+    if ((size_t)out_buf->num_frames < num_freq_in_frame) {
+        throw std::runtime_error(fmt::format(
+            "visAccumulate: The number of frames in {:s} ({:d}) is < num_freq_in_frame ({:d})",
+            out_buf->buffer_name, out_buf->num_frames, num_freq_in_frame));
+    }
 
     // Create the state for the main visibility accumulation
     gated_datasets.emplace_back(
@@ -267,6 +276,11 @@ void visAccumulate::main_thread() {
     // Have we initialised a frame for writing yet
     bool init = false;
 
+    // Check if we have gps time enabled.
+    bool gps_time_enabled = Telescope::instance().gps_time_enabled();
+    if (!gps_time_enabled)
+        WARN("GPS time not set, using much less accurate system time instead.");
+
     while (!stop_thread) {
 
         // Fetch a new frame and get its sequence id
@@ -295,7 +309,15 @@ void visAccumulate::main_thread() {
         uint64_t frame_count = (get_fpga_seq_num(in_buf, in_frame_id) / samples_per_data_set);
 
         // Start and end times of this frame
-        timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
+        timespec t_s;
+        if (gps_time_enabled) {
+            t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
+        } else {
+            // If GPS time is not set, fall back to system time.
+            TIMEVAL_TO_TIMESPEC(
+                &((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->first_packet_recv_time,
+                &t_s);
+        }
         timespec t_e = add_nsec(t_s, samples_per_data_set * tel.seq_length_nsec());
 
         // If we have wrapped around we need to write out any frames that have
@@ -531,7 +553,7 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
         // TODO: if we have multifrequencies, if any need to be skipped all of
         // the following ones must be too. I think this requires the buffer
         // mechanism being rewritten to fix this one.
-        if (ts_to_double(std::get<1>(output_frame.time) - newest_frame_time) > max_age) {
+        if (ts_to_double(newest_frame_time - std::get<1>(output_frame.time)) > max_age) {
             skipped_frame_counter.labels({std::to_string(output_frame.freq_id), "age"}).inc();
             blocked = true;
             continue;

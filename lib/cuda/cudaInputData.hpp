@@ -34,6 +34,7 @@ public:
     void finalize_frame(int frame_id) override;
 
     std::string get_performance_metric_string() override;
+
 protected:
     cudaEvent_t* data_staged_event;
 

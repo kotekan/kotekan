@@ -637,6 +637,13 @@ public:
     double get_std_dev();
 
     /**
+     * @brief Return the last value added, will be NAN if no samples have been added
+     *
+     * @return The last sample or NAN
+     **/
+    double get_current();
+
+    /**
      * @brief Return tracker content in json format.
      *
      * @return A json object of tracker content.
@@ -671,7 +678,7 @@ private:
     std::string unit;
     bool is_optimized;
 
-    std::mutex tracker_lock;
+    std::recursive_mutex tracker_lock;
 };
 
 // Zip, unzip adapted from https://gist.github.com/yig/32fe51874f3911d1c612

@@ -15,11 +15,12 @@ public:
               kotekan::bufferContainer& buffer_container);
     virtual ~clProcess();
 
+protected:
     gpuCommand* create_command(const std::string& cmd_name,
                                const std::string& unique_name) override;
     gpuEventContainer* create_signal() override;
     void queue_commands(int gpu_frame_id) override;
-    void register_host_memory(struct Buffer * host_buffer) override;
+    void register_host_memory(struct Buffer* host_buffer) override;
 
     clDeviceInterface* device;
 

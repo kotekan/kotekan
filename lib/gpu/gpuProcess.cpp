@@ -92,14 +92,12 @@ void gpuProcess::init() {
         commands.push_back(create_command(command_name, unique_path));
     }
 
-    for (auto &buf : local_buffer_container.get_buffer_map()) {
+    for (auto& buf : local_buffer_container.get_buffer_map()) {
         register_host_memory(buf.second);
     }
 }
 
 void gpuProcess::profile_callback(connectionInstance& conn) {
-    //DEBUG(" *** *** *** Profile call made.");
-
     json reply;
 
     reply["copy_in"] = json::array();
@@ -118,12 +116,10 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
                 {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
             total_kernel_time += cmd->get_last_gpu_execution_time();
         } else if (cmd->get_command_type() == gpuCommandType::COPY_IN) {
-
             reply["copy_in"].push_back(
                 {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
             total_copy_in_time += cmd->get_last_gpu_execution_time();
         } else if (cmd->get_command_type() == gpuCommandType::COPY_OUT) {
-
             reply["copy_out"].push_back(
                 {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
             total_copy_out_time += cmd->get_last_gpu_execution_time();

@@ -796,6 +796,7 @@ gpu:
   buffer_depth: 4
   # How many sub frames to devide the N2 products into.
   n_intg: 24576 / num_sub_frames
+  profiling: true
   frame_arrival_period: samples_per_data_set / 390625
   updatable_config:
     tracking_pt: /updatable_config/tracking_pointing

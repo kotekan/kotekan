@@ -8,6 +8,7 @@ app.config["CORS_ORIGINS"] = ["*"]
 CORS(app, support_credentials=True)
 
 KOTEKAN_ADDRESS = "http://localhost:12048"
+DUMP_DIR = "./"
 
 # Load file
 @app.route("/", defaults={"req_path": ""})
@@ -16,6 +17,7 @@ def dir_listing(req_path):
     BASE_DIR = os.getcwd()
 
     # Joining the base and the requested path
+    req_path = req_path.replace("dump_dir", DUMP_DIR)
     abs_path = os.path.join(BASE_DIR, req_path)
 
     # Return 404 if path doesn't exist
@@ -35,7 +37,8 @@ def dir_listing(req_path):
 
 
 # Dynamically read from the given endpoint
-@app.route("/<endpoint>", methods=["GET", "POST"])
+# "/kotekan_instance" is used to differentiate from file system
+@app.route("/kotekan_instance/<endpoint>", methods=["GET", "POST"])
 def update(endpoint):
 
     # GET request
@@ -54,9 +57,18 @@ def update(endpoint):
 if __name__ == "__main__":
     from argparse import ArgumentParser
 
-    parser = ArgumentParser()
-    parser.add_argument("-a")
+    parser = ArgumentParser(
+        description="Start Flask server to enable endpoint fetching and file reading."
+    )
+    parser.add_argument(
+        "-a", help="set Kotekan address (default: http://localhost:12048)"
+    )
+    parser.add_argument("-d", help="set dump file folder (default: ./)")
     arg = parser.parse_args()
+
     if arg.a:
         KOTEKAN_ADDRESS = arg.a
+    if arg.d:
+        DUMP_DIR = arg.d
+
     app.run()
