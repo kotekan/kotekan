@@ -41,6 +41,7 @@ gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
 
     _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
     gpu_id = config.get<int>(unique_name, "gpu_id");
+    gpu_thread_id = config.get_default<int>(unique_name, "gpu_thread_id", gpu_id);
 
     frame_arrival_period = config.get_default<double>(unique_name, "frame_arrival_period", 0.0);
 
@@ -63,7 +64,7 @@ gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
 }
 
 gpuProcess::~gpuProcess() {
-    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile/{:d}"), gpu_id));
+    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile/{:d}"), gpu_thread_id));
     for (auto& command : commands)
         delete command;
     for (auto& event : final_signals)
@@ -141,7 +142,7 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
 void gpuProcess::main_thread() {
     restServer& rest_server = restServer::instance();
     rest_server.register_get_callback(
-        fmt::format(fmt("/gpu_profile/{:d}"), gpu_id),
+        fmt::format(fmt("/gpu_profile/{:d}"), gpu_thread_id),
         std::bind(&gpuProcess::profile_callback, this, std::placeholders::_1));
 
     // Start with the first GPU frame;

@@ -5,28 +5,34 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 endif()
 
 add_library(
-    kotekan_opencl
-    clCommand.cpp
-    clDeviceInterface.cpp
-    clEventContainer.cpp
-    clProcess.cpp
-    # Copy-in & general-purpose:
-    clInputData.cpp
-    # CHIME N2 Kernels & copy-out:
-    clOutputDataZero.cpp
-    clPresumZero.cpp
-    clPresumKernel.cpp
-    clPreseedKernel.cpp
-    clCorrelatorKernel.cpp
-    clOutputData.cpp
-    clKVCorr.cpp
-    # CHIME/Pulsar Kernels & copy-out:
-    clBeamformPhaseData.cpp
-    clBeamformKernel.cpp
-    clOutputBeamformResult.cpp
-    # TODO: if these are not compiled, should we remove these RFI Kernels: clRfiTimeSum.cpp
-    # clRfiInputSum.cpp clRfiOutput.cpp
-)
+      kotekan_opencl
+      clCommand.cpp
+      clDeviceInterface.cpp
+      clEventContainer.cpp
+      clProcess.cpp
+
+# Copy-in & general-purpose:
+      clInputData.cpp
+
+# CHIME N2 Kernels & copy-out:
+      clOutputDataZero.cpp
+      clPresumZero.cpp
+      clPresumKernel.cpp
+      clPreseedKernel.cpp
+      clCorrelatorKernel.cpp
+      clOutputData.cpp
+      clKVCorr.cpp
+
+# CHIME/Pulsar Kernels & copy-out:
+      clBeamformPhaseData.cpp
+      clBeamformKernel.cpp
+      clOutputBeamformResult.cpp
+
+#RFI Kernels
+      #clRfiTimeSum.cpp
+      #clRfiInputSum.cpp
+      #clRfiOutput.cpp
+    )
 
 target_link_libraries(
     kotekan_opencl

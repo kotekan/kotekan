@@ -5,6 +5,7 @@
 #include "cuda_profiler_api.h"
 #include "unistd.h"
 #include "util.h"
+#include "Stage.hpp"
 
 #include <iostream>
 #include <sys/time.h>
@@ -58,6 +59,15 @@ void cudaProcess::register_host_memory(struct Buffer* host_buffer) {
     for (int i = 0; i < host_buffer->num_frames; i++) {
         cudaHostRegister(host_buffer->frames[i], host_buffer->aligned_frame_size,
                          cudaHostRegisterDefault);
+        DEBUG("Registered frame: {:s}[{:d}]", host_buffer->buffer_name, i);
+    }
+}
+
+void cudaProcess::register_host_memory(struct Buffer * host_buffer) {
+    // Register the host memory in in_buf with the OpenCL run time.
+    ERROR("Called register_host_memory: {:s}", host_buffer->buffer_name);
+    for (int i = 0; i < host_buffer->num_frames; i++) {
+        cudaHostRegister(host_buffer->frames[i], host_buffer->aligned_frame_size, cudaHostRegisterDefault);
         DEBUG("Registered frame: {:s}[{:d}]", host_buffer->buffer_name, i);
     }
 }

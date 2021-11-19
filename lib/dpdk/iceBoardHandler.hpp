@@ -93,7 +93,7 @@ protected:
         // We allow for the fact we might miss the first packet by upto 100 FPGA frames,
         // if this happens then the missing frames at the start of the buffer frame are filled
         // in as lost packets.
-        if ((seq % alignment) <= 100) {
+        if ((seq % alignment) <= 1000) {
 
             last_seq = seq - seq % alignment;
             cur_seq = seq;
@@ -104,10 +104,10 @@ protected:
                  port, stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused,
                  last_seq, seq);
 
-            if (!check_cross_handler_alignment(last_seq)) {
+            /*if (!check_cross_handler_alignment(last_seq)) {
                 FATAL_ERROR("DPDK failed to align packets between handlers, closing kotekan!");
                 return false;
-            }
+            }*/
 
             got_first_packet = true;
 

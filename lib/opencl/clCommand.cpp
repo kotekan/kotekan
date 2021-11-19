@@ -21,7 +21,7 @@ clCommand::clCommand(Config& config_, const std::string& unique_name_,
 }
 
 clCommand::~clCommand() {
-    if (kernel_command != "") {
+    if (kernel_command != "" && get_command_type() == gpuCommandType::KERNEL) {
         CHECK_CL_ERROR(clReleaseKernel(kernel));
         DEBUG("kernel Freed");
         CHECK_CL_ERROR(clReleaseProgram(program));
@@ -60,7 +60,7 @@ void clCommand::build() {
     char* program_buffer;
     cl_int err;
 
-    if (kernel_command != "") {
+    if (kernel_command != "" && get_command_type() == gpuCommandType::KERNEL) {
         DEBUG2("Building! {:s}", kernel_command)
         fp = fopen(kernel_file_name.c_str(), "r");
         if (fp == nullptr) {
