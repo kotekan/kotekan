@@ -366,9 +366,6 @@ def convert(
 )
 def cli(file_names, config_file, stats, dry_run, verbose, root):
     """Convert a raw baseband file into an HDF5 baseband archive"""
-    t = time.time()
-    archive_file_names = convert(file_names, config_file, stats, dry_run, verbose, root)
-    print(time.time() - t)
-
+    convert(file_names, config_file, stats, dry_run, verbose, root)
 if __name__ == "__main__":
     cli()
