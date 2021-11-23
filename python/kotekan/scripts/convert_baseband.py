@@ -13,7 +13,7 @@ from glob import glob
 
 # TODO metrics and slack integration.
 ARCHIVER_MOUNT = "/data/chime/baseband/raw"
-NUM_THREADS = 10
+NUM_THREADS = 5
 
 
 def convert(file_name, config_file, converted_filenames):
@@ -143,7 +143,8 @@ def convert_data(sqlite, conn, e, num_threads):
             f"UPDATE conversion SET status = 'MISSING' WHERE event_no = {e[0]}"
         )
         conn.commit()
-
+        return
+    print("continuing to check if unlocked")
     unlocked = False
     if os.path.exists(datapath):
         unlocked = is_unlocked(datapath)
@@ -152,6 +153,7 @@ def convert_data(sqlite, conn, e, num_threads):
         e[1], "%Y-%m-%d %H:%M:%S.%f"
     ) + datetime.timedelta(hours=3):
         files = os.listdir(datapath)
+        files = [os.path.join(datapath, f) for f in files]
         num_files = len(files)
         print(f"Found {num_files} files.")
 
@@ -166,6 +168,7 @@ def convert_data(sqlite, conn, e, num_threads):
                 threads = []
                 manager = multiprocessing.Manager()
                 converted_filenames = manager.dict()
+                config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../config/chime_science_run_gpu.yaml")
                 for f in chunk:
                     th = multiprocessing.Process(
                         target=convert, args=(f, config_file, converted_filenames)
@@ -222,11 +225,12 @@ def main():
     ), f"{ARCHIVER_MOUNT} is not mounted, it is required for this process. Exiting!!!"
     db = connect_db()
     conn, sqlite = connect_conversion_db()
-    # sqlite.execute("INSERT INTO conversion VALUES (188946317, 'FINISHED')")
-    # conn.commit()
+    sqlite.execute("INSERT INTO conversion VALUES (192032374, 'FINISHED')")
+    conn.commit()
     while True:
         last_event = fetch_last_converted_event(sqlite)
         events = fetch_events(db, last_event[0])
+        print(events)
         for e in events:
             convert_data(sqlite, conn, e, NUM_THREADS)
         sys.stdout.flush()

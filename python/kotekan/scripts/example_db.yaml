@@ -1,4 +1,4 @@
-host: "frb-L4"
-user: "baseband"
-passwd: "chimefrb@3K"
-db: "commissioning"
+host: "DATABASE HOST"
+user: "DATABASE USER"
+passwd: "DATABASE PASSWORD"
+db: "DATABASE NAME"

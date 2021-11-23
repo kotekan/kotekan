@@ -1,5 +1,6 @@
 """Convert a baseband raw file into a standard baseband HDF5 archive
 """
+import time
 import click
 import h5py
 import io
@@ -143,7 +144,9 @@ def raw_baseband_frames(file_name: str, buf: bytes):
     with io.FileIO(file_name, "rb") as raw_file:
         while raw_file.readinto(buf):
             yield buf
-
+        size = os.path.getsize(file_name)
+        os.posix_fadvise(raw_file.fileno(), 0, size, os.POSIX_FADV_DONTNEED)
+         
 
 def process_raw_file(
     file_name: str,
@@ -157,10 +160,9 @@ def process_raw_file(
 
     if nfreq is None:
         set_sampling_params(config)
-    samples_per_data_set = config.get("samples_per_data_set", 49152)
+    samples_per_data_set = config.get("samples_per_data_set", 512)
     num_elements = config.get("num_elements", 2048)
     frame_size = num_elements * samples_per_data_set
-
     buf = bytearray(frame_size + metadata_size)
     event_id = freq_id = None
     archive_file_name = archive_file = None
@@ -277,8 +279,11 @@ def process_raw_file(
     print(f"Missing: { missing_len / event_fpga_len :.1%}")
 
     if archive_file:
+        print("cleaning cache: h5")
+        size = os.path.getsize(archive_file_name)
+        os.fsync(archive_file.id.get_vfd_handle())
+        os.posix_fadvise(archive_file.id.get_vfd_handle(), 0, size, os.POSIX_FADV_DONTNEED)
         archive_file.close()
-
     return archive_file_name
 
 
@@ -361,9 +366,9 @@ def convert(
 )
 def cli(file_names, config_file, stats, dry_run, verbose, root):
     """Convert a raw baseband file into an HDF5 baseband archive"""
+    t = time.time()
     archive_file_names = convert(file_names, config_file, stats, dry_run, verbose, root)
-    print(archive_file_names)
-
+    print(time.time() - t)
 
 if __name__ == "__main__":
     cli()
