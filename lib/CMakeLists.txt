@@ -55,7 +55,7 @@ if(${USE_CUDA})
     target_link_libraries(kotekan_libs INTERFACE kotekan_cuda kotekan_gpu)
 endif()
 
-if (${USE_HIP})
+if(${USE_HIP})
     add_subdirectory(hip)
     target_link_libraries(kotekan_libs INTERFACE kotekan_hip kotekan_gpu)
 endif()
