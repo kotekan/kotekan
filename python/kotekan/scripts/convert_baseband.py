@@ -10,6 +10,7 @@ import sys
 import baseband_archiver
 import multiprocessing
 from glob import glob
+from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 
 # TODO metrics and slack integration.
 ARCHIVER_MOUNT = "/data/chime/baseband/raw"
@@ -168,7 +169,10 @@ def convert_data(sqlite, conn, e, num_threads):
                 threads = []
                 manager = multiprocessing.Manager()
                 converted_filenames = manager.dict()
-                config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../config/chime_science_run_gpu.yaml")
+                config_file = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "../../../config/chime_science_run_gpu.yaml",
+                )
                 for f in chunk:
                     th = multiprocessing.Process(
                         target=convert, args=(f, config_file, converted_filenames)
@@ -220,18 +224,44 @@ def fetch_last_converted_event(sqlite):
 
 
 def main():
+    registry = CollectorRegistry()
+
+    bce = Gauge(
+        "baseband_conversion_event",
+        "Event for which baseband data is being converted.",
+        registry=registry,
+    )
+    bcle = Gauge(
+        "baseband_conversion_last_event",
+        "Last event for which baseband data was properly converted.",
+        registry=registry,
+    )
+    last_active = Gauge(
+        "baseband_conversion_last_active_timestamp",
+        "Timestamp when the baseband conversion loop was last run..",
+        registry=registry,
+    )
+
     assert os.path.ismount(
         ARCHIVER_MOUNT
     ), f"{ARCHIVER_MOUNT} is not mounted, it is required for this process. Exiting!!!"
     db = connect_db()
     conn, sqlite = connect_conversion_db()
-    sqlite.execute("INSERT INTO conversion VALUES (192032374, 'FINISHED')")
+    # sqlite.execute("INSERT INTO conversion VALUES (192032374, 'FINISHED')")
     conn.commit()
     while True:
         last_event = fetch_last_converted_event(sqlite)
+        bcle.set(last_event[0])
+        last_active.set(time.time())
+        push_to_gateway(
+            "frb-vsop.chime:9091", job="baseband_conversion", registry=registry
+        )
         events = fetch_events(db, last_event[0])
-        print(events)
         for e in events:
+            bce.set(e)
+            push_to_gateway(
+                "frb-vsop.chime:9091", job="baseband_conversion", registry=registry
+            )
             convert_data(sqlite, conn, e, NUM_THREADS)
         sys.stdout.flush()
         time.sleep(300)

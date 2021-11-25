@@ -146,7 +146,7 @@ def raw_baseband_frames(file_name: str, buf: bytes):
             yield buf
         size = os.path.getsize(file_name)
         os.posix_fadvise(raw_file.fileno(), 0, size, os.POSIX_FADV_DONTNEED)
-         
+
 
 def process_raw_file(
     file_name: str,
@@ -239,7 +239,9 @@ def process_raw_file(
         # ] = True
         clip_after += frame_metadata.valid_to
 
-    baseband = baseband[:clip_after,]
+    baseband = baseband[
+        :clip_after,
+    ]
     if not dry_run:
         archive_file.create_dataset("baseband", data=baseband)
         archive_file["baseband"].attrs["axis"] = ["time", "input"]
@@ -282,7 +284,9 @@ def process_raw_file(
         print("cleaning cache: h5")
         size = os.path.getsize(archive_file_name)
         os.fsync(archive_file.id.get_vfd_handle())
-        os.posix_fadvise(archive_file.id.get_vfd_handle(), 0, size, os.POSIX_FADV_DONTNEED)
+        os.posix_fadvise(
+            archive_file.id.get_vfd_handle(), 0, size, os.POSIX_FADV_DONTNEED
+        )
         archive_file.close()
     return archive_file_name
 
@@ -367,5 +371,7 @@ def convert(
 def cli(file_names, config_file, stats, dry_run, verbose, root):
     """Convert a raw baseband file into an HDF5 baseband archive"""
     convert(file_names, config_file, stats, dry_run, verbose, root)
+
+
 if __name__ == "__main__":
     cli()
