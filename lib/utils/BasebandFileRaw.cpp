@@ -5,7 +5,6 @@
 #include "fmt.hpp" // for format, fmt
 
 #include <assert.h>   // for assert
-#include <cstdint>    // for int32_t, uint32_t
 #include <cstdio>     // for remove
 #include <errno.h>    // for errno
 #include <fcntl.h>    // for fallocate, open, posix_fadvise, sync_file_range, FALLOC_FL_KEEP_SIZE
