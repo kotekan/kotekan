@@ -177,8 +177,7 @@ def stream_to_freq_id(stream, in_stream_freq_idx, num_freq_per_stream=1):
 
 
 def collect_dumped_events(
-    dump_frames,
-    frame_size=default_params["samples_per_data_set"],
+    dump_frames, frame_size=default_params["samples_per_data_set"],
 ):
     """Reconstructs a list of dumped BasebandBuffer frames into a list of `EventDump`s"""
     dumped_events = []
@@ -418,11 +417,7 @@ def test_overload_no_crash(tmpdir_factory):
 
     params = dict(default_params)
     params.update(
-        {
-            "samples_per_data_set": 16384,
-            "num_elements": 128,
-            "total_frames": 60,
-        }
+        {"samples_per_data_set": 16384, "num_elements": 128, "total_frames": 60,}
     )
 
     rest_commands = [command_rest_frames(1), wait(0.5)]

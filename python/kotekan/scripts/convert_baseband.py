@@ -223,7 +223,7 @@ def fetch_last_converted_event(sqlite):
     return event
 
 
-def get_size(start_path = '.'):
+def get_size(start_path="."):
     total_size = 0
     for dirpath, dirnames, filenames in os.walk(start_path):
         for f in filenames:
@@ -233,12 +233,14 @@ def get_size(start_path = '.'):
                 total_size += os.path.getsize(fp)
     return total_size
 
+
 def check_inventory():
     path = "/data/baseband_raw"
     total_volume = 0
     for event in os.listdir(path):
-    	total_volume += round(get_size(os.path.join(path, event))/1024**3, 2)
+        total_volume += round(get_size(os.path.join(path, event)) / 1024 ** 3, 2)
     return total_volume
+
 
 def main():
     registry = CollectorRegistry()
@@ -294,7 +296,7 @@ def main():
                 convert_data(sqlite, conn, e, NUM_THREADS)
         sys.stdout.flush()
         time.sleep(300)
-     
+
 
 if __name__ == "__main__":
     main()
