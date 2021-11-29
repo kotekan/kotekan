@@ -160,7 +160,7 @@ def process_raw_file(
 
     if nfreq is None:
         set_sampling_params(config)
-    samples_per_data_set = config.get("samples_per_data_set", 512)
+    samples_per_data_set = 512 #config.get("samples_per_data_set", 512)
     num_elements = config.get("num_elements", 2048)
     frame_size = num_elements * samples_per_data_set
     buf = bytearray(frame_size + metadata_size)

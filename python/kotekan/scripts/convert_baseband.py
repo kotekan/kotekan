@@ -223,6 +223,23 @@ def fetch_last_converted_event(sqlite):
     return event
 
 
+def get_size(start_path = '.'):
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(start_path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            # skip if it is symbolic link
+            if not os.path.islink(fp):
+                total_size += os.path.getsize(fp)
+    return total_size
+
+def check_inventory():
+    path = "/data/baseband_raw"
+    total_volume = 0
+    for event in os.listdir(path):
+    	total_volume += round(get_size(os.path.join(path, event))/1024**3, 2)
+    return total_volume
+
 def main():
     registry = CollectorRegistry()
 
@@ -241,31 +258,43 @@ def main():
         "Timestamp when the baseband conversion loop was last run..",
         registry=registry,
     )
-
+    inventory = Gauge(
+        "baseband_conversion_raw_data_inventory",
+        "Inventory of the raw data on /data/baseband_raw.",
+        registry=registry,
+    )
     assert os.path.ismount(
         ARCHIVER_MOUNT
     ), f"{ARCHIVER_MOUNT} is not mounted, it is required for this process. Exiting!!!"
     db = connect_db()
     conn, sqlite = connect_conversion_db()
-    # sqlite.execute("INSERT INTO conversion VALUES (192032374, 'FINISHED')")
+    # sqlite.execute("INSERT INTO conversion VALUES (200202335, 'FINISHED')")
     conn.commit()
     while True:
         last_event = fetch_last_converted_event(sqlite)
         bcle.set(last_event[0])
         last_active.set(time.time())
+        inv = check_inventory()
+        inventory.set(inv)
         push_to_gateway(
             "frb-vsop.chime:9091", job="baseband_conversion", registry=registry
         )
         events = fetch_events(db, last_event[0])
-        for e in events:
-            bce.set(e)
+        if len(events) == 0:
+            bce.set("--")
             push_to_gateway(
                 "frb-vsop.chime:9091", job="baseband_conversion", registry=registry
             )
-            convert_data(sqlite, conn, e, NUM_THREADS)
+        else:
+            for e in events:
+                bce.set(e[0])
+                push_to_gateway(
+                    "frb-vsop.chime:9091", job="baseband_conversion", registry=registry
+                )
+                convert_data(sqlite, conn, e, NUM_THREADS)
         sys.stdout.flush()
         time.sleep(300)
-
+     
 
 if __name__ == "__main__":
     main()
