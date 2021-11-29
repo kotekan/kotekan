@@ -874,7 +874,7 @@ class DumpBasebandBuffer(OutputBuffer):
                 "metadata_pool": "baseband_metadata_pool",
                 "num_frames": num_frames,
                 "frame_size": frame_size,
-            },
+            }
         }
         stage_name = kwargs.get("stage_name", "dumper_" + self.name)
         stage_config = {

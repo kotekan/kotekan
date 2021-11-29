@@ -1,0 +1,4 @@
+host: "DATABASE HOST"
+user: "DATABASE USER"
+passwd: "DATABASE PASSWORD"
+db: "DATABASE NAME"
