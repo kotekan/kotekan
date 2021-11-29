@@ -5,27 +5,30 @@
 #include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"          // for Telescope
 #include "basebandApiManager.hpp" // for basebandApiManager
-#include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_fo...
+#include "buffer.h"               // for Buffer, mark_frame_full, allocate_new_metadata_object
 #include "chimeMetadata.hpp"      // for chimeMetadata
-#include "kotekanLogging.hpp"     // for INFO, DEBUG, ERROR
+#include "kotekanLogging.hpp"     // for INFO, DEBUG, WARN
 #include "metadata.h"             // for metadataContainer
 #include "prometheusMetrics.hpp"  // for Counter, Gauge, MetricFamily, Metrics
-#include "version.h"              // for get_git_commit_hash
-#include "visUtil.hpp"            // for ts_to_double, parse_reorder_default
+#include "visUtil.hpp"            // for input_ctype, frameID, ts_to_double, modulo, parse_reor...
 
-#include "fmt.hpp" // for format, fmt
+#include "fmt.hpp" // for join
 
-#include <algorithm>  // for max, copy, copy_backward, min
+#include <algorithm>  // for max, copy, copy_backward, equal, min
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
 #include <chrono>     // for system_clock::time_point, system_clock, nanoseconds
-#include <cstdint>    // for uint64_t, uint8_t
-#include <cstdio>     // for remove, snprintf
+#include <cstdint>    // for uint64_t, uint32_t, int64_t, uint8_t
+#include <cstdio>     // for snprintf
 #include <ctime>      // for timespec
+#include <deque>      // for deque
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
-#include <memory>     // for unique_ptr, make_shared, make_unique, allocator_trai...
+#include <math.h>     // for fmod
+#include <memory>     // for unique_ptr, make_shared, allocator_traits<>::value_type
+#include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error
+#include <string.h>   // for memcpy, memset
 #include <sys/time.h> // for timeval, timeradd
 #include <thread>     // for thread, sleep_for
 #include <tuple>      // for get
@@ -423,8 +426,20 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     int64_t out_start = 0;
     int64_t out_remaining = 0;
 
+    // If the output buffer is full, or we get a shutdown signal (null frame),
+    // then instead of continuing to try and get a new output frame for each input frame
+    // simple stop extracting data and release all the input frames.
+    bool stop_extract = false;
+
     for (int frame_index = data.dump_start_frame; !stop_thread && frame_index < data.dump_end_frame;
          frame_index++) {
+
+        if (stop_extract) {
+            frame_dropped_counter.inc();
+            frame_locks[frame_index % _num_frames_buffer].unlock();
+            continue;
+        }
+
         in_buf_frame = frame_index % in_buf->num_frames;
         auto metadata = (chimeMetadata*)in_buf->metadata[in_buf_frame]->metadata;
         uint8_t* in_buf_data = in_buf->frames[in_buf_frame];
@@ -441,6 +456,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                     WARN("Output buffer full ({:d}). Dropping frame {:d}/{:d}", out_frame_id,
                          event_id, frame_index);
                     frame_dropped_counter.inc();
+                    stop_extract = true;
                     break;
                 }
                 // Get a pointer to the new out frame (cannot block because of the check above)
@@ -450,6 +466,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                     WARN("Cannot get an output frame ({:d}). Dropping frame {:d}/{:d}",
                          out_frame_id, event_id, frame_index);
                     frame_dropped_counter.inc();
+                    stop_extract = true;
                     break;
                 }
 
@@ -481,20 +498,21 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
             if (_num_freq_per_stream == 1) {
                 copy_len = std::min(in_end - in_start, out_remaining);
                 DEBUG("Copy samples {}/{}-{} to {}/{} ({} bytes)", frame_index, in_start,
-                      in_start + copy_len, out_frame_id, out_start, copy_len * _num_elements);
+                      in_start + copy_len * _num_elements, out_frame_id, out_start,
+                      copy_len * _num_elements);
                 memcpy(out_frame + (out_start * _num_elements),
                        in_buf_data + (in_start * _num_elements), copy_len * _num_elements);
             } else {
-                copy_len = 1;
+                copy_len = std::min((int64_t)1, out_remaining);
                 DEBUG("Copy samples {}/{}-{} for in-frame frequency {} to {}/{} ({} bytes, "
                       "starting at {})",
-                      frame_index, in_start, in_start + copy_len, stream_freq_idx, out_frame_id,
-                      out_start, _num_elements,
+                      frame_index, in_start, in_start + copy_len * _num_elements, stream_freq_idx,
+                      out_frame_id, out_start, copy_len * _num_elements,
                       (in_start * _num_freq_per_stream + stream_freq_idx) * _num_elements);
                 memcpy(out_frame + (out_start * _num_elements),
                        in_buf_data
                            + (in_start * _num_freq_per_stream + stream_freq_idx) * _num_elements,
-                       _num_elements);
+                       copy_len * _num_elements);
             }
             in_start += copy_len;
             out_start += copy_len;

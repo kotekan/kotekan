@@ -6,20 +6,19 @@
 #ifndef BASEBAND_WRITER_HPP
 #define BASEBAND_WRITER_HPP
 
-#include "BasebandFileRaw.hpp"
-#include "BasebandFrameView.hpp"
+#include "BasebandFileRaw.hpp"   // for BasebandFileRaw
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "prometheusMetrics.hpp" // for Counter, MetricFamily, Gauge
+#include "prometheusMetrics.hpp" // for Gauge, Counter
 #include "visUtil.hpp"           // for movingAverage
 
-#include "gsl-lite.hpp" // for span
-
-#include <condition_variable>
-#include <cstdint> // for uint64_t
-#include <map>     // for map
-#include <mutex>
+#include <condition_variable> // for condition_variable
+#include <cstdint>            // for uint32_t, uint64_t
+#include <mutex>              // for mutex
+#include <string>             // for string
+#include <unordered_map>      // for unordered_map
 
 /**
  * @class BasebandWriter
@@ -79,6 +78,7 @@ private:
     std::string _root_path;
     double _dump_timeout;
     double _max_frames_per_second;
+    uint32_t _frame_size;
 
     /// Input buffer to read from
     struct Buffer* in_buf;
@@ -87,7 +87,7 @@ private:
     // constructor that can be used from `map::emplace`
     class BasebandWriterDestination {
     public:
-        BasebandWriterDestination(const std::string&);
+        BasebandWriterDestination(const std::string&, const uint32_t&);
         BasebandFileRaw file;
         double last_updated;
     };

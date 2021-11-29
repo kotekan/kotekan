@@ -658,7 +658,7 @@ zero_samples:
 
 # Baseband capture and dump system
 baseband_output_buffers:
-  num_frames: 12 * 96 # baseband_buffer_depth
+  num_frames: 11 * 96 # baseband_buffer_depth
   frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets / 96
   metadata_pool: baseband_pool
   baseband_output_buffer_0:
@@ -669,9 +669,12 @@ baseband_output_buffers:
     kotekan_buffer: standard
   baseband_output_buffer_3:
     kotekan_buffer: standard
+  baseband_output_buffer_merged:
+    kotekan_buffer: standard
+    num_frames: 12
 
 baseband:
-  max_dump_samples: 200000
+  max_dump_samples: 300000 # 768ms
   num_frames_buffer: baseband_buffer_depth - 10
   baseband0:
     kotekan_stage: basebandReadout
@@ -690,24 +693,29 @@ baseband:
     in_buf: network_buffer_3
     out_buf: baseband_output_buffer_3
 
+baseband_merge:
+  kotekan_stage: bufferMerge
+  timeout: 0.1
+  in_bufs:
+    - baseband_output_buffer_0
+    - baseband_output_buffer_1
+    - baseband_output_buffer_2
+    - baseband_output_buffer_3
+  out_buf: baseband_output_buffer_merged
+
 # Transmit baseband data to the baseband receiver
 baseband_send:
   server_ip: 10.6.213.19 # cfDn9
-  server_port: 11027
-  reconnect_time: 20
-  log_level: error
+  reconnect_time: 60
+  send_timeout: 600 # 10 minutes
+  log_level: warn
+  # Keep data in memory even if the receiver node is down
+  # Baseband readout handles back pressure management
+  drop_frames: false
   baseband_send_0:
     #kotekan_stage: bufferSend
-    buf: baseband_output_buffer_0
-  baseband_send_1:
-    #kotekan_stage: bufferSend
-    buf: baseband_output_buffer_1
-  baseband_send_2:
-    #kotekan_stage: bufferSend
-    buf: baseband_output_buffer_2
-  baseband_send_3:
-    #kotekan_stage: bufferSend
-    buf: baseband_output_buffer_3
+    server_port: 11027
+    buf: baseband_output_buffer_merged
 
 # Buffer bad input updates
 # 1) Reorder list
