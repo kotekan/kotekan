@@ -158,8 +158,8 @@ def convert_data(sqlite, conn, e, num_threads):
         files = [os.path.join(datapath, f) for f in dp]
         if not unlocked:
             for f in dp:
-                if os.path.exists(os.path.join(datapath, "."+f+".lock")):
-                    fp = os.path.join(datapath, "."+f+".lock")
+                if os.path.exists(os.path.join(datapath, "." + f + ".lock")):
+                    fp = os.path.join(datapath, "." + f + ".lock")
                     os.system(f"rm -f {fp}")
         num_files = len(files)
         print(f"Found {num_files} files.")
