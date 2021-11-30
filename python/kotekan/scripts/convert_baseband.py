@@ -24,7 +24,8 @@ def convert(file_name, config_file, converted_filenames):
     )[0]
     converted_filenames[file_name] = converted_file
     # TODO: add hook for datatrail here in the future.
-    # os.system(f"rm -f {file_name}")
+    if os.path.exists(converted_file):
+        os.system(f"rm -f {file_name}")
 
 
 def connect_db():
