@@ -24,7 +24,8 @@ def convert(file_name, config_file, converted_filenames):
     )[0]
     converted_filenames[file_name] = converted_file
     # TODO: add hook for datatrail here in the future.
-    # os.system(f"rm -f {file_name}")
+    if os.path.exists(converted_file):
+        os.system(f"rm -f {file_name}")
 
 
 def connect_db():
@@ -152,9 +153,14 @@ def convert_data(sqlite, conn, e, num_threads):
 
     if unlocked is True or datetime.datetime.utcnow() > datetime.datetime.strptime(
         e[1], "%Y-%m-%d %H:%M:%S.%f"
-    ) + datetime.timedelta(hours=3):
-        files = os.listdir(datapath)
-        files = [os.path.join(datapath, f) for f in files]
+    ) + datetime.timedelta(hours=6):
+        dp = os.listdir(datapath)
+        files = [os.path.join(datapath, f) for f in dp]
+        if not unlocked:
+            for f in dp:
+                if os.path.exists(os.path.join(datapath, "."+f+".lock")):
+                    fp = os.path.join(datapath, "."+f+".lock")
+                    os.system(f"rm -f {fp}")
         num_files = len(files)
         print(f"Found {num_files} files.")
 
@@ -190,6 +196,7 @@ def convert_data(sqlite, conn, e, num_threads):
                     f"UPDATE conversion SET status = 'FINISHED' WHERE event_no = {e[0]}"
                 )
                 conn.commit()
+                os.system(f"rm -rf /data/baseband_raw/baseband_raw_{e[0]}")
             else:
                 # TODO: send alert/metric
                 print(
@@ -270,8 +277,8 @@ def main():
     ), f"{ARCHIVER_MOUNT} is not mounted, it is required for this process. Exiting!!!"
     db = connect_db()
     conn, sqlite = connect_conversion_db()
-    # sqlite.execute("INSERT INTO conversion VALUES (200202335, 'FINISHED')")
-    conn.commit()
+    # sqlite.execute("INSERT INTO conversion VALUES (200258235, 'FINISHED')")
+    # conn.commit()
     while True:
         last_event = fetch_last_converted_event(sqlite)
         bcle.set(last_event[0])
@@ -283,12 +290,13 @@ def main():
         )
         events = fetch_events(db, last_event[0])
         if len(events) == 0:
-            bce.set("--")
+            bce.set(0)
             push_to_gateway(
                 "frb-vsop.chime:9091", job="baseband_conversion", registry=registry
             )
         else:
             for e in events:
+                print(f"converting event {e}")
                 bce.set(e[0])
                 push_to_gateway(
                     "frb-vsop.chime:9091", job="baseband_conversion", registry=registry

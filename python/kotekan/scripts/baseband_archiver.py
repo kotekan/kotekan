@@ -134,8 +134,6 @@ def create_baseband_archive(
     f.attrs["type_time0_ctime"] = str(f.attrs["time0_ctime"].dtype)
 
     f.attrs["first_packet_recv_time"] = frame_metadata.first_packet_recv_time
-    # f.attrs["fpga0_ns"] = frame_metadata.fpga0_ns
-    # print(f.attrs["time0_ctime"], f.attrs["time0_fpga"], f.attrs["time0_ctime_offset"],)
     return f, file_name
 
 
@@ -278,10 +276,8 @@ def process_raw_file(
     missing_len = 0
     for m in missing:
         missing_len += m[1] - m[0]
-    print(f"Missing: { missing_len / event_fpga_len :.1%}")
 
     if archive_file:
-        print("cleaning cache: h5")
         size = os.path.getsize(archive_file_name)
         os.fsync(archive_file.id.get_vfd_handle())
         os.posix_fadvise(
