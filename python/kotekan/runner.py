@@ -17,6 +17,7 @@ import tempfile
 import time
 import warnings
 
+from . import baseband_buffer
 from . import visbuffer
 from . import frbbuffer
 from . import psrbuffer
@@ -471,9 +472,7 @@ class VisWriterBuffer(OutputBuffer):
 
 
 class ReadVisBuffer(InputBuffer):
-    """Write down a visBuffer and reads it with rawFileRead.
-
-    """
+    """Write down a visBuffer and reads it with rawFileRead."""
 
     _buf_ind = 0
 
@@ -506,8 +505,7 @@ class ReadVisBuffer(InputBuffer):
         self.stage_block = {stage_name: stage_config}
 
     def write(self):
-        """Write a list of VisBuffer objects to disk.
-        """
+        """Write a list of VisBuffer objects to disk."""
         visbuffer.VisBuffer.to_files(self.buffer_list, self.input_dir + "/" + self.name)
 
 
@@ -843,6 +841,105 @@ class ReadRawBuffer(InputBuffer):
         }
 
         self.stage_block = {stage_name: stage_config}
+
+
+class DumpBasebandBuffer(OutputBuffer):
+    """Consume a baseband output buffer and provide its contents at `BasebandBuffer` objects.
+
+    Parameters
+    ----------
+    output_dir : string
+        Temporary directory to output to. The dumped files are not removed.
+    num_frames : int or string
+        Number of frames in the buffer
+    frame_size : int or string
+        Frame size in bytes (default: "num_elements * samples_per_data_set")
+    """
+
+    _buf_ind = 0
+
+    def __init__(
+        self,
+        output_dir,
+        num_frames,
+        frame_size="num_elements * samples_per_data_set",
+        **kwargs,
+    ):
+        self.name = f"baseband_output_buffer_{ self.__class__._buf_ind }"
+        self.__class__._buf_ind += 1
+        self.output_dir = output_dir
+        self.buffer_block = {
+            self.name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "baseband_metadata_pool",
+                "num_frames": num_frames,
+                "frame_size": frame_size,
+            }
+        }
+        stage_name = kwargs.get("stage_name", "dumper_" + self.name)
+        stage_config = {
+            "kotekan_stage": "rawFileWrite",
+            "in_buf": self.name,
+            "file_name": self.name,
+            "file_ext": "dump",
+            "base_dir": self.output_dir,
+            "prefix_hostname": False,
+        }
+        stage_config.update(kwargs)
+        self.stage_block = {stage_name: stage_config}
+
+    def load(self):
+        """Load the output data from a BasebandReadout buffer.
+
+        Returns
+        -------
+        dumps : list of BasebandBuffer
+            The buffer output, one BasebandBuffer instance per frame
+        """
+        return baseband_buffer.BasebandBuffer.load_files(
+            "{}/{}*.dump".format(self.output_dir, self.name)
+        )
+
+
+class ReadBasebandBuffer(InputBuffer):
+    """Write down a BasebandBuffer and reads it with rawFileRead."""
+
+    _buf_ind = 0
+
+    def __init__(self, input_dir, buffer_list):
+
+        self.name = "rawbaseband_buf"
+        stage_name = "rawbaseband_read%i" % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.input_dir = input_dir
+        self.buffer_list = buffer_list
+
+        self.buffer_block = {
+            self.name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "baseband_metadata_pool",
+                "num_frames": "buffer_depth",
+                "frame_size": "num_elements * samples_per_data_set",
+            }
+        }
+
+        stage_config = {
+            "kotekan_stage": "rawFileRead",
+            "buf": self.name,
+            "base_dir": input_dir,
+            "file_ext": "dump",
+            "file_name": self.name,
+            "end_interrupt": True,
+        }
+
+        self.stage_block = {stage_name: stage_config}
+
+    def write(self):
+        """Write a list of BasebandBuffer objects to disk."""
+        baseband_buffer.BasebandBuffer.to_files(
+            self.buffer_list, self.input_dir + "/" + self.name
+        )
 
 
 class DumpFrbPostProcessBuffer(InputBuffer):
