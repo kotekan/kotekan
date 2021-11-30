@@ -116,7 +116,7 @@ def check_baseband_dump(file_name, freq_id=0):
                     final_frame = True
             else:
                 assert False, "No more event data is allowed after a non-full frame."
-            
+
             # Check that the frame data matches tpluse-generated samples
             for j, val in enumerate(buf[metadata_size:]):
                 if j >= frame_metadata.valid_to * num_elements:
@@ -140,6 +140,7 @@ def test_simple(tmpdir_factory):
 
     check_baseband_dump(saved_files[0])
     os.system(f"rm -rf {saved_files[0]}")
+
 
 def test_multi_freq(tmpdir_factory):
     """Check receiving a baseband dump with a single frequency and no dropped frames"""

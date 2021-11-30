@@ -16,8 +16,7 @@ from kotekan import timespec
 
 
 class VisMetadata(ctypes.Structure):
-    """Wrap a VisMetadata struct.
-    """
+    """Wrap a VisMetadata struct."""
 
     _fields_ = [
         ("fpga_seq", ctypes.c_uint64),
@@ -34,7 +33,7 @@ class VisMetadata(ctypes.Structure):
 
 
 class psrCoord(ctypes.Structure):
-    """ Struct repr of psrCoord field in ChimeMetadata."""
+    """Struct repr of psrCoord field in ChimeMetadata."""
 
     _fields_ = [
         ("ra", ctypes.ARRAY(ctypes.c_float, 10)),
@@ -161,8 +160,7 @@ class VisBuffer(object):
 
     @classmethod
     def from_file(cls, filename):
-        """Load a visBuffer from a kotekan dump file.
-        """
+        """Load a visBuffer from a kotekan dump file."""
         filesize = os.path.getsize(filename)
 
         buf = bytearray(filesize)
@@ -832,7 +830,7 @@ def simple_visraw_data(filename, ntime, nfreq, ninput):
 
 
 def freq_id_to_stream_id(f_id):
-    """ Convert a frequency ID to a stream ID. """
+    """Convert a frequency ID to a stream ID."""
     pre_encode = (0, (f_id % 16), (f_id // 16), (f_id // 256))
     stream_id = (
         (pre_encode[0] & 0xF)
@@ -861,8 +859,7 @@ class GpuBuffer(object):
 
     @classmethod
     def from_file(cls, filename):
-        """Load a GpuBuffer from a kotekan dump file.
-        """
+        """Load a GpuBuffer from a kotekan dump file."""
 
         with io.FileIO(filename, "rb") as fh:
             # first 4 bytes are metadata size
