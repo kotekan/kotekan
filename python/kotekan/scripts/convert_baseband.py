@@ -155,15 +155,12 @@ def convert_data(sqlite, conn, e, num_threads):
         e[1], "%Y-%m-%d %H:%M:%S.%f"
     ) + datetime.timedelta(hours=3):
         dp = os.listdir(datapath)
-        if unlocked:
-            files = [os.path.join(datapath, f) for f in dp]
-        else:
-            files = []
+        files = [os.path.join(datapath, f) for f in dp]
+        if not unlocked:
             for f in dp:
                 if os.path.exists(os.path.join(datapath, "."+f+".lock")):
-                    files.append(os.path.join(datapath, "."+f+".lock"))
-                else:
-                    files.append(f)
+                    fp = os.path.join(datapath, "."+f+".lock")
+                    os.system(f"rm -f {fp}")
         num_files = len(files)
         print(f"Found {num_files} files.")
 
