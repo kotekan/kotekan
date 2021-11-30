@@ -1,6 +1,7 @@
 import glob
 import io
 import pytest
+import os
 
 from kotekan import baseband_buffer, runner
 
@@ -11,7 +12,7 @@ global_params = {
     "stream_id": 0,
     "buffer_depth": 6,
     "num_frames_buffer": 18,
-    "samples_per_data_set": 1024,
+    "samples_per_data_set": 512,
     "baseband_metadata_pool": {
         "kotekan_metadata_pool": "BasebandMetadata",
         "num_metadata_objects": 4096,
@@ -109,14 +110,13 @@ def check_baseband_dump(file_name, freq_id=0):
             assert frame_metadata.event_id == 12345
             assert frame_metadata.freq_id == freq_id
             assert frame_metadata.frame_fpga_seq == frame_index * frame_size
-
             if not final_frame:
                 assert frame_metadata.valid_to <= samples_per_data_set
                 if frame_metadata.valid_to < samples_per_data_set:
                     final_frame = True
             else:
                 assert False, "No more event data is allowed after a non-full frame."
-
+            
             # Check that the frame data matches tpluse-generated samples
             for j, val in enumerate(buf[metadata_size:]):
                 if j >= frame_metadata.valid_to * num_elements:
@@ -139,7 +139,7 @@ def test_simple(tmpdir_factory):
     assert len(saved_files) == 1
 
     check_baseband_dump(saved_files[0])
-
+    os.system(f"rm -rf {saved_files[0]}")
 
 def test_multi_freq(tmpdir_factory):
     """Check receiving a baseband dump with a single frequency and no dropped frames"""
