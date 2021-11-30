@@ -276,10 +276,8 @@ def process_raw_file(
     missing_len = 0
     for m in missing:
         missing_len += m[1] - m[0]
-    print(f"Missing: { missing_len / event_fpga_len :.1%}")
 
     if archive_file:
-        print("cleaning cache: h5")
         size = os.path.getsize(archive_file_name)
         os.fsync(archive_file.id.get_vfd_handle())
         os.posix_fadvise(

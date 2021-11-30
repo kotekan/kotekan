@@ -191,6 +191,7 @@ def convert_data(sqlite, conn, e, num_threads):
                     f"UPDATE conversion SET status = 'FINISHED' WHERE event_no = {e[0]}"
                 )
                 conn.commit()
+                os.system(f"rm -rf /data/baseband_raw/baseband_raw_{e[0]}")
             else:
                 # TODO: send alert/metric
                 print(
@@ -269,8 +270,8 @@ def main():
     ), f"{ARCHIVER_MOUNT} is not mounted, it is required for this process. Exiting!!!"
     db = connect_db()
     conn, sqlite = connect_conversion_db()
-    # sqlite.execute("INSERT INTO conversion VALUES (200202335, 'FINISHED')")
-    conn.commit()
+    # sqlite.execute("INSERT INTO conversion VALUES (200258235, 'FINISHED')")
+    # conn.commit()
     while True:
         last_event = fetch_last_converted_event(sqlite)
         bcle.set(last_event[0])
@@ -282,12 +283,13 @@ def main():
         )
         events = fetch_events(db, last_event[0])
         if len(events) == 0:
-            bce.set("--")
+            bce.set(0)
             push_to_gateway(
                 "frb-vsop.chime:9091", job="baseband_conversion", registry=registry
             )
         else:
             for e in events:
+                print(f"converting event {e}")
                 bce.set(e[0])
                 push_to_gateway(
                     "frb-vsop.chime:9091", job="baseband_conversion", registry=registry
