@@ -153,7 +153,7 @@ def convert_data(sqlite, conn, e, num_threads):
 
     if unlocked is True or datetime.datetime.utcnow() > datetime.datetime.strptime(
         e[1], "%Y-%m-%d %H:%M:%S.%f"
-    ) + datetime.timedelta(hours=3):
+    ) + datetime.timedelta(hours=6):
         dp = os.listdir(datapath)
         files = [os.path.join(datapath, f) for f in dp]
         if not unlocked:
