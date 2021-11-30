@@ -17,7 +17,7 @@ TIMEOUT = 10.0
 
 
 def send_get(url, timeout=TIMEOUT):
-    """ Send a get request to the specified URL. """
+    """Send a get request to the specified URL."""
     try:
         r = requests.get(url, timeout=timeout)
     except requests.exceptions.ReadTimeout:
@@ -34,7 +34,7 @@ def send_get(url, timeout=TIMEOUT):
 
 
 def send_post(url, json_data="", timeout=TIMEOUT):
-    """ Send a put request and JSON content to the specified URL. """
+    """Send a put request and JSON content to the specified URL."""
     header = {"Content-type": "application/json"}
     try:
         r = requests.post(url, timeout=timeout, json=json_data, headers=header)
@@ -53,7 +53,7 @@ def send_post(url, json_data="", timeout=TIMEOUT):
 
 @click.group()
 def cli():
-    """ Send commands to the kotekan REST server. """
+    """Send commands to the kotekan REST server."""
     pass
 
 
@@ -66,7 +66,7 @@ def cli():
     help="The URL where the kotekan server can be reached.",
 )
 def start(config, url):
-    """ Start kotekan with yaml CONFIG. """
+    """Start kotekan with yaml CONFIG."""
     with open(config, "r") as stream:
         cfg_yaml = yaml.load(stream)
     send_post(urljoin(url, "start"), json_data=cfg_yaml)
@@ -80,7 +80,7 @@ def start(config, url):
     help="The URL where the kotekan server can be reached.",
 )
 def stop(url):
-    """ Stop kotekan. """
+    """Stop kotekan."""
     send_get(urljoin(url, "stop"), timeout=30.0)
 
 
@@ -92,7 +92,7 @@ def stop(url):
     help="The URL where the kotekan server can be reached.",
 )
 def status(url):
-    """ Query kotekan status. """
+    """Query kotekan status."""
     r = send_get(urljoin(url, "status"))
     if r is None:
         return

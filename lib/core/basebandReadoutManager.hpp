@@ -11,16 +11,14 @@
 
 #include "SynchronizedQueue.hpp" // for SynchronizedQueue
 
-#include "gsl-lite.hpp" // for span
-
 #include <chrono>       // for system_clock, system_clock::time_point
 #include <forward_list> // for forward_list
 #include <functional>   // for reference_wrapper
-#include <memory>       // for unique_ptr, shared_ptr, allocator
+#include <memory>       // for unique_ptr, shared_ptr
 #include <mutex>        // for mutex
-#include <stdint.h>     // for uint64_t, int64_t, uint32_t, uint8_t
+#include <stdint.h>     // for int64_t, uint32_t, uint64_t
 #include <string>       // for string
-#include <time.h>       // for size_t, timespec
+#include <time.h>       // for size_t
 #include <utility>      // for pair
 #include <vector>       // for vector
 
@@ -94,37 +92,25 @@ struct basebandDumpData {
     /// Constructor used to indicate error
     basebandDumpData(Status);
     /// Initialize the container with all parameters but does not fill in the data.
-    basebandDumpData(uint64_t event_id_, uint32_t freq_id_, uint32_t num_elements_,
-                     int64_t data_start_fpga_, uint64_t data_length_fpga_,
-                     timespec data_start_ctime_, const gsl::span<uint8_t>&);
+    basebandDumpData(const uint64_t event_id_, const uint32_t freq_id_,
+                     const uint32_t stream_freq_idx_, int64_t trigger_start_fpga_,
+                     int64_t trigger_length_fpga_, int dump_start_frame, int dump_end_frame);
 
     //@{
     /// Metadata.
     const uint64_t event_id;
     const uint32_t freq_id;
-    const uint32_t num_elements;
-    const int64_t data_start_fpga;
-    const uint64_t data_length_fpga;
-    const timespec data_start_ctime;
+    const uint32_t stream_freq_idx;
+
+    int64_t trigger_start_fpga = 0;
+    int64_t trigger_end_fpga = 0;
+    int64_t trigger_length_fpga = 0;
+    int dump_start_frame = 0;
+    int dump_end_frame = 0;
     //@}
-    /// Data access. Array has length `num_elements * data_length_fpga` and is aligned on a 16-byte
-    /// boundary.
-    const gsl::span<uint8_t> data;
-    /// Original size of the write reservation, regardless of the boundary
-    const size_t reservation_length;
 
     /// Status::Ok if the `data` is valid, or the reason why it was not read out
     const Status status;
-
-    /**
-     * @brief Narrows the span to align it on a 16 byte boundary.
-     *
-     * Helper for basebandDumpData constructor.
-     *
-     * @note The original span should be oversized by at least 15 bytes, since that's how much can
-     * be lost by aligning.
-     */
-    static gsl::span<uint8_t> span_from_length_aligned(const gsl::span<uint8_t>&);
 };
 
 

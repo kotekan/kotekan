@@ -44,7 +44,7 @@ start_time = time.time()
 
 
 def run_flagging(tmpdir_factory, cmds):
-    """ Receive Flags """
+    """Receive Flags"""
 
     tmpdir = tmpdir_factory.mktemp("receiveflags")
 
