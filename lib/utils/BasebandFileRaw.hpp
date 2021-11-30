@@ -39,14 +39,14 @@ public:
 
 private:
     // The size of each frame in the file (metadata + data).
-    uint32_t frame_size;
+    uint64_t frame_size;
     bool file_corrupt;
 
     // File descriptors and related
     int fd;
     std::string lock_filename;
 
-    uint32_t write_index;
+    uint64_t write_index;
     const uint32_t metadata_size = sizeof(BasebandMetadata);
 };
 
