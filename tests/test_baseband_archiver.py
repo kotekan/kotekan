@@ -14,7 +14,7 @@ config = {
     "stream_id": 0,
     "buffer_depth": 6,
     "num_frames_buffer": 18,
-    "samples_per_data_set": 32,
+    "samples_per_data_set": 512,
     "baseband_metadata_pool": {
         "kotekan_metadata_pool": "BasebandMetadata",
         "num_metadata_objects": 4096,
@@ -142,14 +142,14 @@ def check_baseband_archive(file_name):
         assert f.attrs["git_version_tag"] == kotekan.__version__
         assert "collection_server" in f.attrs
         assert "system_user" in f.attrs
-        assert "time0_fpga" in f.attrs
+        assert "time0_fpga_count" in f.attrs
         assert "time0_ctime" in f.attrs
         assert "time0_ctime_offset" in f.attrs
+        assert "type_time0_ctime" in f.attrs
 
         assert "first_packet_recv_time" in f.attrs
-        assert "fpga0_ns" in f.attrs
 
-        inputs = f["index_map/inputs"]
+        inputs = f["index_map/input"]
         assert len(inputs) == num_elements
         assert inputs.dtype.names == ("chan_id", "correlator_input")
 
