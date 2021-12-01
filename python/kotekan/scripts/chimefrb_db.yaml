@@ -1,0 +1,4 @@
+host: "frb-L4"
+user: "baseband"
+passwd: "chimefrb@3K"
+db: "commissioning"

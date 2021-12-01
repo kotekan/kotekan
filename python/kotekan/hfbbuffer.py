@@ -16,8 +16,7 @@ from kotekan import timespec
 
 
 class HFBMetadata(ctypes.Structure):
-    """Wrap a HFBMetadata struct.
-    """
+    """Wrap a HFBMetadata struct."""
 
     _fields_ = [
         ("fpga_seq", ctypes.c_uint64),
@@ -130,8 +129,7 @@ class HFBBuffer(object):
 
     @classmethod
     def from_file(cls, filename):
-        """Load a HFBBuffer from a kotekan dump file.
-        """
+        """Load a HFBBuffer from a kotekan dump file."""
         import os
 
         filesize = os.path.getsize(filename)
@@ -712,7 +710,7 @@ def simple_hfbraw_data(filename, ntime, nfreq, nbeam, nsubfreq):
 
 
 def freq_id_to_stream_id(f_id):
-    """ Convert a frequency ID to a stream ID. """
+    """Convert a frequency ID to a stream ID."""
     pre_encode = (0, (f_id % 16), (f_id // 16), (f_id // 256))
     stream_id = (
         (pre_encode[0] & 0xF)

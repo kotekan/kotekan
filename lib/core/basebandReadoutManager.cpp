@@ -6,43 +6,29 @@
 namespace kotekan {
 
 
-basebandDumpData::basebandDumpData(uint64_t event_id_, uint32_t freq_id_, uint32_t num_elements_,
-                                   int64_t data_start_fpga_, uint64_t data_length_fpga_,
-                                   timespec data_start_ctime_, const gsl::span<uint8_t>& data_) :
+basebandDumpData::basebandDumpData(const uint64_t event_id_, const uint32_t freq_id_,
+                                   const uint32_t stream_freq_idx_, int64_t trigger_start_fpga_,
+                                   int64_t trigger_length_fpga_, int dump_start_frame_,
+                                   int dump_end_frame_) :
     event_id(event_id_),
     freq_id(freq_id_),
-    num_elements(num_elements_),
-    data_start_fpga(data_start_fpga_),
-    data_length_fpga(data_length_fpga_),
-    data_start_ctime(data_start_ctime_),
-    data(span_from_length_aligned(data_)),
-    reservation_length(data_.size()),
+    stream_freq_idx(stream_freq_idx_),
+    trigger_start_fpga(trigger_start_fpga_),
+    trigger_length_fpga(trigger_length_fpga_),
+    dump_start_frame(dump_start_frame_),
+    dump_end_frame(dump_end_frame_),
     status(basebandDumpData::Status::Ok) {}
+
 
 basebandDumpData::basebandDumpData(basebandDumpData::Status status_) :
     event_id(0),
     freq_id(0),
-    num_elements(0),
-    data_start_fpga(0),
-    data_length_fpga(0),
-    data_start_ctime({0, 0}),
-    data(),
-    reservation_length(0),
+    stream_freq_idx(0),
+    trigger_start_fpga(0),
+    trigger_length_fpga(0),
+    dump_start_frame(0),
+    dump_end_frame(0),
     status(status_) {}
-
-gsl::span<uint8_t> basebandDumpData::span_from_length_aligned(const gsl::span<uint8_t>& span_) {
-
-    intptr_t span_start_int = (intptr_t)span_.data() + 15;
-    span_start_int -= span_start_int % 16;
-    uint8_t* span_start = (uint8_t*)span_start_int;
-    size_t length = span_.size();
-    if (span_start > span_.data()) {
-        length -= (span_start - span_.data());
-    }
-    uint8_t* span_end = span_start + length;
-
-    return gsl::span<uint8_t>(span_start, span_end);
-}
 
 
 void basebandReadoutManager::add(basebandRequest req) {
