@@ -59,7 +59,7 @@ public:
      * @param opts         List of options to pass to nvrtc
      **/
     virtual void build(const std::vector<std::string>& kernel_names,
-                       const std::vector<std::string>& opts);
+                       std::vector<std::string>& opts);
 
     /**
      * @brief Execute a kernel, copy, etc.

@@ -49,8 +49,8 @@ void cudaCommand::finalize_frame(int gpu_frame_id) {
     }
 }
 
-void cudaCommand::build(const const std::vector<std::string>& kernel_names,
-                        const std::vector<std::string>& opts) {
+void cudaCommand::build(const std::vector<std::string>& kernel_names,
+                        std::vector<std::string>& opts) {
     size_t program_size;
     FILE* fp;
     char* program_buffer;
