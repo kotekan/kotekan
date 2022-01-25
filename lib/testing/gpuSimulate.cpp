@@ -187,7 +187,7 @@ void gpuSimulate::main_thread() {
                           _num_local_freq);
                 }
             }
-        } else if (_data_format == "romein4b") {
+        } else if (_data_format == "tensor") {
             int block_id = 0;
             for (int x = 0; block_id < _num_blocks; x++) {
                 for (int y = 0; y <= x; y++) {
