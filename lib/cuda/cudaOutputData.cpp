@@ -15,10 +15,10 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, cudaDeviceInterface& device) :
     cudaCommand(config, unique_name, host_buffers, device, "", "") {
 
-    in_buffer = host_buffers.get_buffer("in_buf");
+    in_buffer = host_buffers.get_buffer(config.get<std::string>(unique_name, "in_buf"));
     register_consumer(in_buffer, unique_name.c_str());
 
-    output_buffer = host_buffers.get_buffer("output_buf");
+    output_buffer = host_buffers.get_buffer(config.get<std::string>(unique_name, "out_buf"));
     register_producer(output_buffer, unique_name.c_str());
 
     for (int i = 0; i < output_buffer->num_frames; i++) {
@@ -29,6 +29,8 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
                 cudaHostRegister(output_buffer->frames[i], output_buffer->frame_size, 0));
         }
     }
+
+    _gpu_mem = config.get_default<std::string>(unique_name, "gpu_mem", "n2_output");
 
     output_buffer_execute_id = 0;
     output_buffer_precondition_id = 0;
