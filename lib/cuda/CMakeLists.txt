@@ -14,8 +14,7 @@ add_library(
     # Kernels
     cudaCorrelatorKernel.cu
     cudaCorrelatorAstron.cpp
-    cudaShuffleAstron.cu
-    )
+    cudaShuffleAstron.cu)
 
 target_link_libraries(
     kotekan_cuda
