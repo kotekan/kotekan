@@ -69,7 +69,7 @@ cudaEvent_t cudaOutputData::execute(int gpu_frame_id, cudaEvent_t pre_event) {
 
     uint32_t output_len = output_buffer->frame_size;
 
-    void* gpu_output_frame = device.get_gpu_memory_array("output", gpu_frame_id, output_len);
+    void* gpu_output_frame = device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, output_len);
     void* host_output_frame = (void*)output_buffer->frames[output_buffer_execute_id];
 
     device.async_copy_gpu_to_host(host_output_frame, gpu_output_frame, output_len, pre_event,

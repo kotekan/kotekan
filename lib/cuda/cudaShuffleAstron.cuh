@@ -41,6 +41,11 @@ private:
     /// Global buffer depth for all buffers in system. Sets the number of frames to be queued up in
     /// each buffer.
     int32_t _buffer_depth;
+
+    /// GPU side memory name for the voltage input
+    std::string _gpu_mem_input;
+    /// GPU side memory name for re-ordered output
+    std::string _gpu_mem_output;
 };
 
 #endif // KOTEKAN_CUDA_SHUFFLE_ASTRON_CUH
