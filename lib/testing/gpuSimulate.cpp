@@ -187,6 +187,50 @@ void gpuSimulate::main_thread() {
                           _num_local_freq);
                 }
             }
+        } else if (_data_format == "romein4b") {
+            int block_id = 0;
+            for (int x = 0; block_id < _num_blocks; x++) {
+                for (int y = 0; y <= x; y++) {
+                    host_block_map[2 * block_id + 0] = x;
+                    host_block_map[2 * block_id + 1] = y;
+                    block_id++;
+                }
+            }
+            // Samples[NR_CHANNELS][NR_SAMPLES_PER_CHANNEL /
+            // NR_TIMES_PER_BLOCK][NR_STATIONS][NR_POLARIZATIONS][NR_TIMES_PER_BLOCK];
+            // NR_TIMES_PER_BLOCK	32 = (128 / (NR_BITS))
+            // OLD: [NR_CHANNELS][NR_SAMPLES_PER_CHANNEL / 16][NR_STATIONS][NR_POLARIZATIONS][16]
+            printf("CPU Calc:\n");
+            for (int f = 0; f < _num_local_freq; ++f) {
+                for (int b = 0; b < _num_blocks; ++b) {
+                    for (int y = 0; y < _block_size; ++y) {
+                        for (int x = 0; x < _block_size; ++x) {
+                            int real = 0;
+                            int imag = 0;
+                            for (int t = 0; t < _samples_per_data_set; t++) {
+                                int T = t & 0xffffffe0;
+                                int tt = t & 0x1f;
+                                int ix = f * _samples_per_data_set * _num_elements
+                                         + T * _num_elements
+                                         + (host_block_map[2 * b + 1] * _block_size + x) * 32 + tt;
+                                int xr = (input[ix] & 0x07) - (input[ix] & 0x08);
+                                int xi = -(((input[ix] & 0x70) >> 4) - ((input[ix] & 0x80) >> 4));
+                                int iy = f * _samples_per_data_set * _num_elements
+                                         + T * _num_elements
+                                         + (host_block_map[2 * b + 0] * _block_size + y) * 32 + tt;
+                                int yr = (input[iy] & 0x07) - (input[iy] & 0x08);
+                                int yi = -(((input[iy] & 0x70) >> 4) - ((input[iy] & 0x80) >> 4));
+                                real += xr * yr + xi * yi;
+                                imag += xi * yr - yi * xr;
+                            }
+                            output[(f * _num_blocks + b) * _block_size * _block_size * 2
+                                   + (y * _block_size + x) * 2 + 0] = real;
+                            output[(f * _num_blocks + b) * _block_size * _block_size * 2
+                                   + (y * _block_size + x) * 2 + 1] = imag;
+                        }
+                    }
+                }
+            }
         }
 
         INFO("Simulating GPU processing done for {:s}[{:d}] result is in {:s}[{:d}]",
