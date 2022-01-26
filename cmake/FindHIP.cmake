@@ -1,31 +1,48 @@
-###############################################################################
+# ##################################################################################################
 # FindHIP.cmake
-###############################################################################
+# ##################################################################################################
 
-###############################################################################
+# ##################################################################################################
 # SET: Variable defaults
-###############################################################################
+# ##################################################################################################
 # User defined flags
-set(HIP_HIPCC_FLAGS "" CACHE STRING "Semicolon delimited flags for HIPCC")
-set(HIP_HCC_FLAGS "" CACHE STRING "Semicolon delimited flags for HCC")
-set(HIP_NVCC_FLAGS "" CACHE STRING "Semicolon delimted flags for NVCC")
+set(HIP_HIPCC_FLAGS
+    ""
+    CACHE STRING "Semicolon delimited flags for HIPCC")
+set(HIP_HCC_FLAGS
+    ""
+    CACHE STRING "Semicolon delimited flags for HCC")
+set(HIP_NVCC_FLAGS
+    ""
+    CACHE STRING "Semicolon delimted flags for NVCC")
 mark_as_advanced(HIP_HIPCC_FLAGS HIP_HCC_FLAGS HIP_NVCC_FLAGS)
-set(_hip_configuration_types ${CMAKE_CONFIGURATION_TYPES} ${CMAKE_BUILD_TYPE} Debug MinSizeRel Release RelWithDebInfo)
+set(_hip_configuration_types ${CMAKE_CONFIGURATION_TYPES} ${CMAKE_BUILD_TYPE} Debug MinSizeRel
+                             Release RelWithDebInfo)
 list(REMOVE_DUPLICATES _hip_configuration_types)
 foreach(config ${_hip_configuration_types})
     string(TOUPPER ${config} config_upper)
-    set(HIP_HIPCC_FLAGS_${config_upper} "" CACHE STRING "Semicolon delimited flags for HIPCC")
-    set(HIP_HCC_FLAGS_${config_upper} "" CACHE STRING "Semicolon delimited flags for HCC")
-    set(HIP_NVCC_FLAGS_${config_upper} "" CACHE STRING "Semicolon delimited flags for NVCC")
-    mark_as_advanced(HIP_HIPCC_FLAGS_${config_upper} HIP_HCC_FLAGS_${config_upper} HIP_NVCC_FLAGS_${config_upper})
+    set(HIP_HIPCC_FLAGS_${config_upper}
+        ""
+        CACHE STRING "Semicolon delimited flags for HIPCC")
+    set(HIP_HCC_FLAGS_${config_upper}
+        ""
+        CACHE STRING "Semicolon delimited flags for HCC")
+    set(HIP_NVCC_FLAGS_${config_upper}
+        ""
+        CACHE STRING "Semicolon delimited flags for NVCC")
+    mark_as_advanced(HIP_HIPCC_FLAGS_${config_upper} HIP_HCC_FLAGS_${config_upper}
+                     HIP_NVCC_FLAGS_${config_upper})
 endforeach()
 option(HIP_HOST_COMPILATION_CPP "Host code compilation mode" ON)
-option(HIP_VERBOSE_BUILD "Print out the commands run while compiling the HIP source file.  With the Makefile generator this defaults to VERBOSE variable specified on the command line, but can be forced on with this option." OFF)
+option(
+    HIP_VERBOSE_BUILD
+    "Print out the commands run while compiling the HIP source file.  With the Makefile generator this defaults to VERBOSE variable specified on the command line, but can be forced on with this option."
+    OFF)
 mark_as_advanced(HIP_HOST_COMPILATION_CPP)
 
-###############################################################################
+# ##################################################################################################
 # Set HIP CMAKE Flags
-###############################################################################
+# ##################################################################################################
 # Copy the invocation styles from CXX to HIP
 set(CMAKE_HIP_ARCHIVE_CREATE ${CMAKE_CXX_ARCHIVE_CREATE})
 set(CMAKE_HIP_ARCHIVE_APPEND ${CMAKE_CXX_ARCHIVE_APPEND})
@@ -33,52 +50,56 @@ set(CMAKE_HIP_ARCHIVE_FINISH ${CMAKE_CXX_ARCHIVE_FINISH})
 set(CMAKE_SHARED_LIBRARY_SONAME_HIP_FLAG ${CMAKE_SHARED_LIBRARY_SONAME_CXX_FLAG})
 set(CMAKE_SHARED_LIBRARY_CREATE_HIP_FLAGS ${CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS})
 set(CMAKE_SHARED_LIBRARY_HIP_FLAGS ${CMAKE_SHARED_LIBRARY_CXX_FLAGS})
-#set(CMAKE_SHARED_LIBRARY_LINK_HIP_FLAGS ${CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS})
+# set(CMAKE_SHARED_LIBRARY_LINK_HIP_FLAGS ${CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS})
 set(CMAKE_SHARED_LIBRARY_RUNTIME_HIP_FLAG ${CMAKE_SHARED_LIBRARY_RUNTIME_CXX_FLAG})
 set(CMAKE_SHARED_LIBRARY_RUNTIME_HIP_FLAG_SEP ${CMAKE_SHARED_LIBRARY_RUNTIME_CXX_FLAG_SEP})
 set(CMAKE_SHARED_LIBRARY_LINK_STATIC_HIP_FLAGS ${CMAKE_SHARED_LIBRARY_LINK_STATIC_CXX_FLAGS})
 set(CMAKE_SHARED_LIBRARY_LINK_DYNAMIC_HIP_FLAGS ${CMAKE_SHARED_LIBRARY_LINK_DYNAMIC_CXX_FLAGS})
 
 # Set the CMake Flags to use the HCC Compilier.
-set(CMAKE_HIP_CREATE_SHARED_LIBRARY "${HIP_HIPCC_CMAKE_LINKER_HELPER} ${HCC_PATH} <CMAKE_SHARED_LIBRARY_CXX_FLAGS> <LANGUAGE_COMPILE_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS> <SONAME_FLAG><TARGET_SONAME> -o <TARGET> <OBJECTS> <LINK_LIBRARIES>")
-set(CMAKE_HIP_CREATE_SHARED_MODULE "${HIP_HIPCC_CMAKE_LINKER_HELPER} ${HCC_PATH} <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> <SONAME_FLAG><TARGET_SONAME> -o <TARGET> <LINK_LIBRARIES> -shared" )
-set(CMAKE_HIP_LINK_EXECUTABLE "${HIP_HIPCC_CMAKE_LINKER_HELPER} ${HCC_PATH} <FLAGS> <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES>")
+set(CMAKE_HIP_CREATE_SHARED_LIBRARY
+    "${HIP_HIPCC_CMAKE_LINKER_HELPER} ${HCC_PATH} <CMAKE_SHARED_LIBRARY_CXX_FLAGS> <LANGUAGE_COMPILE_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS> <SONAME_FLAG><TARGET_SONAME> -o <TARGET> <OBJECTS> <LINK_LIBRARIES>"
+)
+set(CMAKE_HIP_CREATE_SHARED_MODULE
+    "${HIP_HIPCC_CMAKE_LINKER_HELPER} ${HCC_PATH} <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> <SONAME_FLAG><TARGET_SONAME> -o <TARGET> <LINK_LIBRARIES> -shared"
+)
+set(CMAKE_HIP_LINK_EXECUTABLE
+    "${HIP_HIPCC_CMAKE_LINKER_HELPER} ${HCC_PATH} <FLAGS> <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES>"
+)
 
-###############################################################################
+# ##################################################################################################
 # FIND: HIP and associated helper binaries
-###############################################################################
+# ##################################################################################################
 # HIP is supported on Linux only
-if(UNIX AND NOT APPLE AND NOT CYGWIN)
+if(UNIX
+   AND NOT APPLE
+   AND NOT CYGWIN)
     # Search for HIP installation
     if(NOT HIP_ROOT_DIR)
         # Search in user specified path first
         find_path(
             HIP_ROOT_DIR
             NAMES hipconfig
-            PATHS
-            ENV ROCM_PATH
-            ENV HIP_PATH
+            PATHS ENV ROCM_PATH ENV HIP_PATH
             PATH_SUFFIXES bin
             DOC "HIP installed location"
-            NO_DEFAULT_PATH
-            )
+            NO_DEFAULT_PATH)
         # Now search in default path
         find_path(
             HIP_ROOT_DIR
             NAMES hipconfig
-            PATHS
-            /opt/rocm
-            /opt/rocm/hip
+            PATHS /opt/rocm /opt/rocm/hip
             PATH_SUFFIXES bin
-            DOC "HIP installed location"
-            )
+            DOC "HIP installed location")
 
         # Check if we found HIP installation
         if(HIP_ROOT_DIR)
             # If so, fix the path
             string(REGEX REPLACE "[/\\\\]?bin[64]*[/\\\\]?$" "" HIP_ROOT_DIR ${HIP_ROOT_DIR})
             # And push it back to the cache
-            set(HIP_ROOT_DIR ${HIP_ROOT_DIR} CACHE PATH "HIP installed location" FORCE)
+            set(HIP_ROOT_DIR
+                ${HIP_ROOT_DIR}
+                CACHE PATH "HIP installed location" FORCE)
         endif()
         if(NOT EXISTS ${HIP_ROOT_DIR})
             if(HIP_FIND_REQUIRED)
@@ -93,15 +114,15 @@ if(UNIX AND NOT APPLE AND NOT CYGWIN)
     find_program(
         HIP_HIPCC_EXECUTABLE
         NAMES hipcc
-        PATHS
-        "${HIP_ROOT_DIR}"
-        ENV ROCM_PATH
-        ENV HIP_PATH
-        /opt/rocm
-        /opt/rocm/hip
+        PATHS "${HIP_ROOT_DIR}"
+              ENV
+              ROCM_PATH
+              ENV
+              HIP_PATH
+              /opt/rocm
+              /opt/rocm/hip
         PATH_SUFFIXES bin
-        NO_DEFAULT_PATH
-        )
+        NO_DEFAULT_PATH)
     if(NOT HIP_HIPCC_EXECUTABLE)
         # Now search in default paths
         find_program(HIP_HIPCC_EXECUTABLE hipcc)
@@ -112,15 +133,15 @@ if(UNIX AND NOT APPLE AND NOT CYGWIN)
     find_program(
         HIP_HIPCONFIG_EXECUTABLE
         NAMES hipconfig
-        PATHS
-        "${HIP_ROOT_DIR}"
-        ENV ROCM_PATH
-        ENV HIP_PATH
-        /opt/rocm
-        /opt/rocm/hip
+        PATHS "${HIP_ROOT_DIR}"
+              ENV
+              ROCM_PATH
+              ENV
+              HIP_PATH
+              /opt/rocm
+              /opt/rocm/hip
         PATH_SUFFIXES bin
-        NO_DEFAULT_PATH
-        )
+        NO_DEFAULT_PATH)
     if(NOT HIP_HIPCONFIG_EXECUTABLE)
         # Now search in default paths
         find_program(HIP_HIPCONFIG_EXECUTABLE hipconfig)
@@ -131,15 +152,15 @@ if(UNIX AND NOT APPLE AND NOT CYGWIN)
     find_program(
         HIP_HIPCC_CMAKE_LINKER_HELPER
         NAMES hipcc_cmake_linker_helper
-        PATHS
-        "${HIP_ROOT_DIR}"
-        ENV ROCM_PATH
-        ENV HIP_PATH
-        /opt/rocm
-        /opt/rocm/hip
+        PATHS "${HIP_ROOT_DIR}"
+              ENV
+              ROCM_PATH
+              ENV
+              HIP_PATH
+              /opt/rocm
+              /opt/rocm/hip
         PATH_SUFFIXES bin
-        NO_DEFAULT_PATH
-        )
+        NO_DEFAULT_PATH)
     if(NOT HIP_HIPCC_CMAKE_LINKER_HELPER)
         # Now search in default paths
         find_program(HIP_HIPCC_CMAKE_LINKER_HELPER hipcc_cmake_linker_helper)
@@ -152,13 +173,15 @@ if(UNIX AND NOT APPLE AND NOT CYGWIN)
             COMMAND ${HIP_HIPCONFIG_EXECUTABLE} --version
             OUTPUT_VARIABLE _hip_version
             ERROR_VARIABLE _hip_error
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_STRIP_TRAILING_WHITESPACE
-            )
+            OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_STRIP_TRAILING_WHITESPACE)
         if(NOT _hip_error)
-            set(HIP_VERSION ${_hip_version} CACHE STRING "Version of HIP as computed from hipcc")
+            set(HIP_VERSION
+                ${_hip_version}
+                CACHE STRING "Version of HIP as computed from hipcc")
         else()
-            set(HIP_VERSION "0.0.0" CACHE STRING "Version of HIP as computed by FindHIP()")
+            set(HIP_VERSION
+                "0.0.0"
+                CACHE STRING "Version of HIP as computed by FindHIP()")
         endif()
         mark_as_advanced(HIP_VERSION)
     endif()
@@ -175,9 +198,10 @@ if(UNIX AND NOT APPLE AND NOT CYGWIN)
         execute_process(
             COMMAND ${HIP_HIPCONFIG_EXECUTABLE} --platform
             OUTPUT_VARIABLE _hip_platform
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            )
-        set(HIP_PLATFORM ${_hip_platform} CACHE STRING "HIP platform as computed by hipconfig")
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        set(HIP_PLATFORM
+            ${_hip_platform}
+            CACHE STRING "HIP platform as computed by hipconfig")
         mark_as_advanced(HIP_PLATFORM)
     endif()
 endif()
@@ -185,17 +209,12 @@ endif()
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(
     HIP
-    REQUIRED_VARS
-    HIP_ROOT_DIR
-    HIP_HIPCC_EXECUTABLE
-    HIP_HIPCONFIG_EXECUTABLE
-    HIP_PLATFORM
-    VERSION_VAR HIP_VERSION
-    )
+    REQUIRED_VARS HIP_ROOT_DIR HIP_HIPCC_EXECUTABLE HIP_HIPCONFIG_EXECUTABLE HIP_PLATFORM
+    VERSION_VAR HIP_VERSION)
 
-###############################################################################
+# ##################################################################################################
 # MACRO: Locate helper files
-###############################################################################
+# ##################################################################################################
 macro(HIP_FIND_HELPER_FILE _name _extension)
     set(_hip_full_name "${_name}.${_extension}")
     get_filename_component(CMAKE_CURRENT_LIST_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
@@ -211,17 +230,19 @@ macro(HIP_FIND_HELPER_FILE _name _extension)
         endif()
     endif()
     # Set this variable as internal, so the user isn't bugged with it.
-    set(HIP_${_name} ${HIP_${_name}} CACHE INTERNAL "Location of ${_full_name}" FORCE)
+    set(HIP_${_name}
+        ${HIP_${_name}}
+        CACHE INTERNAL "Location of ${_full_name}" FORCE)
 endmacro()
 
-###############################################################################
+# ##################################################################################################
 hip_find_helper_file(run_make2cmake cmake)
 hip_find_helper_file(run_hipcc cmake)
-###############################################################################
+# ##################################################################################################
 
-###############################################################################
+# ##################################################################################################
 # MACRO: Reset compiler flags
-###############################################################################
+# ##################################################################################################
 macro(HIP_RESET_FLAGS)
     unset(HIP_HIPCC_FLAGS)
     unset(HIP_HCC_FLAGS)
@@ -234,9 +255,9 @@ macro(HIP_RESET_FLAGS)
     endforeach()
 endmacro()
 
-###############################################################################
+# ##################################################################################################
 # MACRO: Separate the options from the sources
-###############################################################################
+# ##################################################################################################
 macro(HIP_GET_SOURCES_AND_OPTIONS _sources _cmake_options _hipcc_options _hcc_options _nvcc_options)
     set(${_sources})
     set(${_cmake_options})
@@ -260,11 +281,10 @@ macro(HIP_GET_SOURCES_AND_OPTIONS _sources _cmake_options _hipcc_options _hcc_op
             set(_hcc_found_options FALSE)
             set(_nvcc_found_options TRUE)
         elseif(
-                "x${arg}" STREQUAL "xEXCLUDE_FROM_ALL" OR
-                "x${arg}" STREQUAL "xSTATIC" OR
-                "x${arg}" STREQUAL "xSHARED" OR
-                "x${arg}" STREQUAL "xMODULE"
-                )
+            "x${arg}" STREQUAL "xEXCLUDE_FROM_ALL"
+            OR "x${arg}" STREQUAL "xSTATIC"
+            OR "x${arg}" STREQUAL "xSHARED"
+            OR "x${arg}" STREQUAL "xMODULE")
             list(APPEND ${_cmake_options} ${arg})
         else()
             if(_hipcc_found_options)
@@ -281,9 +301,9 @@ macro(HIP_GET_SOURCES_AND_OPTIONS _sources _cmake_options _hipcc_options _hcc_op
     endforeach()
 endmacro()
 
-###############################################################################
+# ##################################################################################################
 # MACRO: Add include directories to pass to the hipcc command
-###############################################################################
+# ##################################################################################################
 set(HIP_HIPCC_INCLUDE_ARGS_USER "")
 macro(HIP_INCLUDE_DIRECTORIES)
     foreach(dir ${ARGN})
@@ -291,9 +311,9 @@ macro(HIP_INCLUDE_DIRECTORIES)
     endforeach()
 endmacro()
 
-###############################################################################
+# ##################################################################################################
 # FUNCTION: Helper to avoid clashes of files with the same basename but different paths
-###############################################################################
+# ##################################################################################################
 function(HIP_COMPUTE_BUILD_PATH path build_path)
     # Convert to cmake style paths
     file(TO_CMAKE_PATH "${path}" bpath)
@@ -317,12 +337,14 @@ function(HIP_COMPUTE_BUILD_PATH path build_path)
     # Strip off the filename
     get_filename_component(bpath "${bpath}" PATH)
 
-    set(${build_path} "${bpath}" PARENT_SCOPE)
+    set(${build_path}
+        "${bpath}"
+        PARENT_SCOPE)
 endfunction()
 
-###############################################################################
+# ##################################################################################################
 # MACRO: Parse OPTIONS from ARGN & set variables prefixed by _option_prefix
-###############################################################################
+# ##################################################################################################
 macro(HIP_PARSE_HIPCC_OPTIONS _option_prefix)
     set(_hip_found_config)
     foreach(arg ${ARGN})
@@ -341,9 +363,9 @@ macro(HIP_PARSE_HIPCC_OPTIONS _option_prefix)
     endforeach()
 endmacro()
 
-###############################################################################
+# ##################################################################################################
 # MACRO: Try and include dependency file if it exists
-###############################################################################
+# ##################################################################################################
 macro(HIP_INCLUDE_HIPCC_DEPENDENCIES dependency_file)
     set(HIP_HIPCC_DEPEND)
     set(HIP_HIPCC_DEPEND_REGENERATE FALSE)
@@ -375,9 +397,9 @@ macro(HIP_INCLUDE_HIPCC_DEPENDENCIES dependency_file)
     endif()
 endmacro()
 
-###############################################################################
+# ##################################################################################################
 # MACRO: Prepare cmake commands for the target
-###############################################################################
+# ##################################################################################################
 macro(HIP_PREPARE_TARGET_COMMANDS _target _format _generated_files _source_files)
     set(_hip_flags "")
     string(TOUPPER "${CMAKE_BUILD_TYPE}" _hip_build_configuration)
@@ -388,13 +410,16 @@ macro(HIP_PREPARE_TARGET_COMMANDS _target _format _generated_files _source_files
     endif()
     set(generated_extension ${CMAKE_${HIP_C_OR_CXX}_OUTPUT_EXTENSION})
 
-    # Initialize list of includes with those specified by the user. Append with
-    # ones specified to cmake directly.
+    # Initialize list of includes with those specified by the user. Append with ones specified to
+    # cmake directly.
     set(HIP_HIPCC_INCLUDE_ARGS ${HIP_HIPCC_INCLUDE_ARGS_USER})
 
     # Add the include directories
     set(include_directories_generator "$<TARGET_PROPERTY:${_target},INCLUDE_DIRECTORIES>")
-    list(APPEND HIP_HIPCC_INCLUDE_ARGS "$<$<BOOL:${include_directories_generator}>:-I$<JOIN:${include_directories_generator}, -I>>")
+    list(
+        APPEND HIP_HIPCC_INCLUDE_ARGS
+        "$<$<BOOL:${include_directories_generator}>:-I$<JOIN:${include_directories_generator}, -I>>"
+    )
 
     get_directory_property(_hip_include_directories INCLUDE_DIRECTORIES)
     list(REMOVE_DUPLICATES _hip_include_directories)
@@ -404,14 +429,16 @@ macro(HIP_PREPARE_TARGET_COMMANDS _target _format _generated_files _source_files
         endforeach()
     endif()
 
-    HIP_GET_SOURCES_AND_OPTIONS(_hip_sources _hip_cmake_options _hipcc_options _hcc_options _nvcc_options ${ARGN})
-    HIP_PARSE_HIPCC_OPTIONS(HIP_HIPCC_FLAGS ${_hipcc_options})
-    HIP_PARSE_HIPCC_OPTIONS(HIP_HCC_FLAGS ${_hcc_options})
-    HIP_PARSE_HIPCC_OPTIONS(HIP_NVCC_FLAGS ${_nvcc_options})
+    hip_get_sources_and_options(_hip_sources _hip_cmake_options _hipcc_options _hcc_options
+                                _nvcc_options ${ARGN})
+    hip_parse_hipcc_options(HIP_HIPCC_FLAGS ${_hipcc_options})
+    hip_parse_hipcc_options(HIP_HCC_FLAGS ${_hcc_options})
+    hip_parse_hipcc_options(HIP_NVCC_FLAGS ${_nvcc_options})
 
     # Add the compile definitions
     set(compile_definition_generator "$<TARGET_PROPERTY:${_target},COMPILE_DEFINITIONS>")
-    list(APPEND HIP_HIPCC_FLAGS "$<$<BOOL:${compile_definition_generator}>:-D$<JOIN:${compile_definition_generator}, -D>>")
+    list(APPEND HIP_HIPCC_FLAGS
+         "$<$<BOOL:${compile_definition_generator}>:-D$<JOIN:${compile_definition_generator}, -D>>")
 
     # Check if we are building shared library.
     set(_hip_build_shared_libs FALSE)
@@ -441,10 +468,18 @@ macro(HIP_PREPARE_TARGET_COMMANDS _target _format _generated_files _source_files
     set(_HIP_NVCC_FLAGS "set(HIP_NVCC_FLAGS ${HIP_NVCC_FLAGS})")
     foreach(config ${_hip_configuration_types})
         string(TOUPPER ${config} config_upper)
-        set(_HIP_HOST_FLAGS "${_HIP_HOST_FLAGS}\nset(CMAKE_HOST_FLAGS_${config_upper} ${CMAKE_${HIP_C_OR_CXX}_FLAGS_${config_upper}})")
-        set(_HIP_HIPCC_FLAGS "${_HIP_HIPCC_FLAGS}\nset(HIP_HIPCC_FLAGS_${config_upper} ${HIP_HIPCC_FLAGS_${config_upper}})")
-        set(_HIP_HCC_FLAGS "${_HIP_HCC_FLAGS}\nset(HIP_HCC_FLAGS_${config_upper} ${HIP_HCC_FLAGS_${config_upper}})")
-        set(_HIP_NVCC_FLAGS "${_HIP_NVCC_FLAGS}\nset(HIP_NVCC_FLAGS_${config_upper} ${HIP_NVCC_FLAGS_${config_upper}})")
+        set(_HIP_HOST_FLAGS
+            "${_HIP_HOST_FLAGS}\nset(CMAKE_HOST_FLAGS_${config_upper} ${CMAKE_${HIP_C_OR_CXX}_FLAGS_${config_upper}})"
+        )
+        set(_HIP_HIPCC_FLAGS
+            "${_HIP_HIPCC_FLAGS}\nset(HIP_HIPCC_FLAGS_${config_upper} ${HIP_HIPCC_FLAGS_${config_upper}})"
+        )
+        set(_HIP_HCC_FLAGS
+            "${_HIP_HCC_FLAGS}\nset(HIP_HCC_FLAGS_${config_upper} ${HIP_HCC_FLAGS_${config_upper}})"
+        )
+        set(_HIP_NVCC_FLAGS
+            "${_HIP_NVCC_FLAGS}\nset(HIP_NVCC_FLAGS_${config_upper} ${HIP_NVCC_FLAGS_${config_upper}})"
+        )
     endforeach()
 
     # Reset the output variable
@@ -465,8 +500,9 @@ macro(HIP_PREPARE_TARGET_COMMANDS _target _format _generated_files _source_files
 
         if(NOT host_flag)
             # Determine output directory
-            HIP_COMPUTE_BUILD_PATH("${file}" hip_build_path)
-            set(hip_compile_output_dir "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_target}.dir/${hip_build_path}")
+            hip_compute_build_path("${file}" hip_build_path)
+            set(hip_compile_output_dir
+                "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_target}.dir/${hip_build_path}")
 
             get_filename_component(basename ${file} NAME)
             set(generated_file_path "${hip_compile_output_dir}/${CMAKE_CFG_INTDIR}")
@@ -475,14 +511,16 @@ macro(HIP_PREPARE_TARGET_COMMANDS _target _format _generated_files _source_files
             # Set file names
             set(generated_file "${generated_file_path}/${generated_file_basename}")
             set(cmake_dependency_file "${hip_compile_output_dir}/${generated_file_basename}.depend")
-            set(custom_target_script_pregen "${hip_compile_output_dir}/${generated_file_basename}.cmake.pre-gen")
+            set(custom_target_script_pregen
+                "${hip_compile_output_dir}/${generated_file_basename}.cmake.pre-gen")
             set(custom_target_script "${hip_compile_output_dir}/${generated_file_basename}.cmake")
 
             # Set properties for object files
-            set_source_files_properties("${generated_file}"
-                PROPERTIES
-                EXTERNAL_OBJECT true # This is an object file not to be compiled, but only be linked
-                )
+            set_source_files_properties(
+                "${generated_file}"
+                PROPERTIES EXTERNAL_OBJECT true # This is an object file not to be compiled, but
+                                                # only be linked
+            )
 
             # Don't add CMAKE_CURRENT_SOURCE_DIR if the path is already an absolute path
             get_filename_component(file_path "${file}" PATH)
@@ -493,14 +531,14 @@ macro(HIP_PREPARE_TARGET_COMMANDS _target _format _generated_files _source_files
             endif()
 
             # Bring in the dependencies
-            HIP_INCLUDE_HIPCC_DEPENDENCIES(${cmake_dependency_file})
+            hip_include_hipcc_dependencies(${cmake_dependency_file})
 
             # Configure the build script
             configure_file("${HIP_run_hipcc}" "${custom_target_script_pregen}" @ONLY)
-            file(GENERATE
+            file(
+                GENERATE
                 OUTPUT "${custom_target_script}"
-                INPUT "${custom_target_script_pregen}"
-                )
+                INPUT "${custom_target_script_pregen}")
             set(main_dep DEPENDS ${source_file})
             if(CMAKE_GENERATOR MATCHES "Makefiles")
                 set(verbose_output "$(VERBOSE)")
@@ -511,26 +549,26 @@ macro(HIP_PREPARE_TARGET_COMMANDS _target _format _generated_files _source_files
             endif()
 
             # Create up the comment string
-            file(RELATIVE_PATH generated_file_relative_path "${CMAKE_BINARY_DIR}" "${generated_file}")
+            file(RELATIVE_PATH generated_file_relative_path "${CMAKE_BINARY_DIR}"
+                 "${generated_file}")
             set(hip_build_comment_string "Building HIPCC object ${generated_file_relative_path}")
 
             # Build the generated file and dependency file
             add_custom_command(
                 OUTPUT ${generated_file}
-                # These output files depend on the source_file and the contents of cmake_dependency_file
-                ${main_dep}
+                       # These output files depend on the source_file and the contents of
+                       # cmake_dependency_file
+                       ${main_dep}
                 DEPENDS ${HIP_HIPCC_DEPEND}
                 DEPENDS ${custom_target_script}
                 # Make sure the output directory exists before trying to write to it.
                 COMMAND ${CMAKE_COMMAND} -E make_directory "${generated_file_path}"
-                COMMAND ${CMAKE_COMMAND} ARGS
-                -D verbose:BOOL=${verbose_output}
-                -D build_configuration:STRING=${_hip_build_configuration}
-                -D "generated_file:STRING=${generated_file}"
-                -P "${custom_target_script}"
+                COMMAND
+                    ${CMAKE_COMMAND} ARGS -D verbose:BOOL=${verbose_output} -D
+                    build_configuration:STRING=${_hip_build_configuration} -D
+                    "generated_file:STRING=${generated_file}" -P "${custom_target_script}"
                 WORKING_DIRECTORY "${hip_compile_output_dir}"
-                COMMENT "${hip_build_comment_string}"
-                )
+                COMMENT "${hip_build_comment_string}")
 
             # Make sure the build system knows the file is generated
             set_source_files_properties(${generated_file} PROPERTIES GENERATED TRUE)
@@ -544,25 +582,38 @@ macro(HIP_PREPARE_TARGET_COMMANDS _target _format _generated_files _source_files
     set(${_source_files} ${_hip_source_files})
 endmacro()
 
-###############################################################################
+# ##################################################################################################
 # HIP_ADD_EXECUTABLE
-###############################################################################
+# ##################################################################################################
 macro(HIP_ADD_EXECUTABLE hip_target)
     # Separate the sources from the options
-    HIP_GET_SOURCES_AND_OPTIONS(_sources _cmake_options _hipcc_options _hcc_options _nvcc_options ${ARGN})
-    HIP_PREPARE_TARGET_COMMANDS(${hip_target} OBJ _generated_files _source_files ${_sources} HIPCC_OPTIONS ${_hipcc_options} HCC_OPTIONS ${_hcc_options} NVCC_OPTIONS ${_nvcc_options})
+    hip_get_sources_and_options(_sources _cmake_options _hipcc_options _hcc_options _nvcc_options
+                                ${ARGN})
+    hip_prepare_target_commands(
+        ${hip_target}
+        OBJ
+        _generated_files
+        _source_files
+        ${_sources}
+        HIPCC_OPTIONS
+        ${_hipcc_options}
+        HCC_OPTIONS
+        ${_hcc_options}
+        NVCC_OPTIONS
+        ${_nvcc_options})
     if(_source_files)
         list(REMOVE_ITEM _sources ${_source_files})
     endif()
     if("x${HCC_HOME}" STREQUAL "x")
         set(HCC_HOME "/opt/rocm/llvm/bin")
     endif()
-    set(CMAKE_HIP_LINK_EXECUTABLE "${HIP_HIPCC_CMAKE_LINKER_HELPER} ${HCC_HOME} <FLAGS> <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES>")
+    set(CMAKE_HIP_LINK_EXECUTABLE
+        "${HIP_HIPCC_CMAKE_LINKER_HELPER} ${HCC_HOME} <FLAGS> <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES>"
+    )
 
-    # If the _sources variable is empty we set _sources to 
-    # the empty quotes "" in the add_executable() call because 
-    # that command requires a list of source files. 
-    if ("${_sources}" STREQUAL "")
+    # If the _sources variable is empty we set _sources to the empty quotes "" in the
+    # add_executable() call because that command requires a list of source files.
+    if("${_sources}" STREQUAL "")
         add_executable(${hip_target} ${_cmake_options} ${_generated_files} "")
     else()
         add_executable(${hip_target} ${_cmake_options} ${_generated_files} ${_sources})
@@ -570,21 +621,33 @@ macro(HIP_ADD_EXECUTABLE hip_target)
     set_target_properties(${hip_target} PROPERTIES LINKER_LANGUAGE HIP)
 endmacro()
 
-###############################################################################
+# ##################################################################################################
 # HIP_ADD_LIBRARY
-###############################################################################
+# ##################################################################################################
 macro(HIP_ADD_LIBRARY hip_target)
     # Separate the sources from the options
-    HIP_GET_SOURCES_AND_OPTIONS(_sources _cmake_options _hipcc_options _hcc_options _nvcc_options ${ARGN})
-    HIP_PREPARE_TARGET_COMMANDS(${hip_target} OBJ _generated_files _source_files ${_sources} ${_cmake_options} HIPCC_OPTIONS ${_hipcc_options} HCC_OPTIONS ${_hcc_options} NVCC_OPTIONS ${_nvcc_options})
+    hip_get_sources_and_options(_sources _cmake_options _hipcc_options _hcc_options _nvcc_options
+                                ${ARGN})
+    hip_prepare_target_commands(
+        ${hip_target}
+        OBJ
+        _generated_files
+        _source_files
+        ${_sources}
+        ${_cmake_options}
+        HIPCC_OPTIONS
+        ${_hipcc_options}
+        HCC_OPTIONS
+        ${_hcc_options}
+        NVCC_OPTIONS
+        ${_nvcc_options})
     if(_source_files)
         list(REMOVE_ITEM _sources ${_source_files})
     endif()
 
-    # If the _sources variable is empty we set _sources to 
-    # the empty quotes "" in the add_library() call because 
-    # that command requires a list of source files. 
-    if ("${_sources}" STREQUAL "")
+    # If the _sources variable is empty we set _sources to the empty quotes "" in the add_library()
+    # call because that command requires a list of source files.
+    if("${_sources}" STREQUAL "")
         add_library(${hip_target} ${_cmake_options} ${_generated_files} "")
     else()
         add_library(${hip_target} ${_cmake_options} ${_generated_files} ${_sources})
