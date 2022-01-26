@@ -126,12 +126,11 @@ freq_id_t ICETelescope::to_freq_id(stream_t stream, uint32_t ind) const {
                    + stream_id.unused * 256;
         case 4: // 32 ICEBoards (512 elements) e.g. HIRAX-256
             return stream_id.slot_id + stream_id.crate_id * 16 + stream_id.link_id * 32 + ind * 256;
-        case 8: // 16 ICEBoards (256 elements) e.g. Pathfinder/HIRAX-128
+        case 8: // 16 ICEBoards (256 elements) e.g. Pathfinder, HIRAX-128, GBO, Hat Creek
             return stream_id.slot_id + stream_id.link_id * 16 + ind * 128;
-        case 16: // 8 ICEBoards (128 elements) e.g. Allenby
-            // TODO: Check this mapping
-            return stream_id.slot_id + stream_id.link_id * 32 + ind * 64;
-        case 128: // 1 ICEBoard (16 elements) e.g. ARO, Synthesis telescope
+        case 16: // 8 ICEBoards (128 elements) e.g. Princeton
+            return stream_id.slot_id + stream_id.link_id * 8 + ind * 64;
+        case 128: // 1 ICEBoard (16 elements) e.g. ARO, Synthesis telescope, etc.
             return stream_id.link_id + ind * 8;
         default:
             FATAL_ERROR("No known frequency mapping for num_freq_per_stream = {:d}",

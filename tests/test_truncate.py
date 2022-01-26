@@ -32,7 +32,7 @@ trunc_params = {
 
 @pytest.fixture(scope="module")
 def vis_data(tmpdir_factory):
-    """ Truncated visibilities """
+    """Truncated visibilities"""
 
     tmpdir = tmpdir_factory.mktemp("vis_data_t")
 
@@ -71,7 +71,7 @@ def vis_data(tmpdir_factory):
 
 @pytest.fixture(scope="module")
 def vis_data_zero_weights(tmpdir_factory):
-    """ Truncated visibilities """
+    """Truncated visibilities"""
 
     tmpdir = tmpdir_factory.mktemp("vis_data_t")
 
