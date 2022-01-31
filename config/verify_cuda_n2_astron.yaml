@@ -63,7 +63,7 @@ gen_data:
     kotekan_stage: testDataGen
     out_buf: gpu_input_buffer
 
-data_format: "tensor" # "4+4b"
+data_format: "cuda_wmma"
 
 gpu:
     profiling: true
