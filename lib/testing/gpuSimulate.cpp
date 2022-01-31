@@ -13,7 +13,6 @@
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error
-#include <stdio.h>    // for printf
 #include <stdlib.h>   // for free, malloc
 #include <vector>     // for vector
 

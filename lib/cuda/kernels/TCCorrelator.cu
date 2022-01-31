@@ -3,6 +3,10 @@
  * @brief The Astron Tensor-Core Correlator kernel.
  * @author John Romein
  *
+ * Pulled from: https://git.astron.nl/RD/tensor-core-correlator
+ *
+ * License in the main LICENSE file.
+ *
  * See the paper: Romein, J. W., “The Tensor-Core Correlator”, Astronomy and Astrophysics, vol. 656,
                   2021. doi:10.1051/0004-6361/202141896.
  *
