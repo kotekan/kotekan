@@ -181,7 +181,7 @@ void gpuSimulate::main_thread() {
                                    + y * _block_size * 2 + 1] = -imag;
                             output[(f * _num_blocks + b) * _block_size * _block_size * 2 + x * 2
                                    + y * _block_size * 2 + 0] = real;
-                            //INFO("real: {:d}, imag: {:d}", real, imag);
+                            // INFO("real: {:d}, imag: {:d}", real, imag);
                         }
                     }
                     DEBUG("Done block {:d} of {:d} (freq {:d} of {:d})...", b, _num_blocks, f,
