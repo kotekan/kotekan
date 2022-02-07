@@ -57,11 +57,7 @@ using std::vector;
  *                                  the integer year or the half year (e.g. 2020 or 2020.5)
  *
  * @author Jing Santiago Luo
- *
- *
  */
-
-
 class oneDiskVDIFWrite : public kotekan::Stage {
 public:
     /// Constructor
