@@ -151,7 +151,7 @@ void oneDiskVDIFWrite::main_thread(){
     INFO("VDIF size {:d} {:d}", vdif_frame_data_size, vdif_frame_size);
     vdif_frame = (uint8_t*) malloc(vdif_frame_size);
     // Cast vdif header
-    vdif_header = (VDIFHeader*) &vdif_frame[0];
+    vdif_header = (VDIFHeader*) vdif_frame;
     // cast vdif payload
     payload = &vdif_frame[vdif_frame_header_size];
     // Fill fixed parts of vdif frame header
