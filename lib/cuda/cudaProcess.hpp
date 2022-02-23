@@ -28,6 +28,8 @@ public:
 
     void register_host_memory(struct Buffer* host_buffer) override;
 
+    void init_thread() override;
+
     cudaDeviceInterface* device;
 };
 

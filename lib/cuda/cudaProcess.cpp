@@ -20,6 +20,11 @@ REGISTER_KOTEKAN_STAGE(cudaProcess);
 cudaProcess::cudaProcess(Config& config_, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     gpuProcess(config_, unique_name, buffer_container) {
+    // This is a bit strange, the GPU ID is a property of the thread, but
+    // this is the constructor, so it's thread is a part of the kotekan core.
+    // We might need to move all the device setup outside the constuctor into the
+    // main thread for thread safety.
+    init_thread();
     device = new cudaDeviceInterface(config_, gpu_id, _gpu_buffer_depth);
     dev = device;
     device->prepareStreams();
@@ -60,4 +65,8 @@ void cudaProcess::register_host_memory(struct Buffer* host_buffer) {
                          cudaHostRegisterDefault);
         DEBUG("Registered frame: {:s}[{:d}]", host_buffer->buffer_name, i);
     }
+}
+
+void cudaProcess::init_thread() {
+    cudaSetDevice(gpu_id);
 }
