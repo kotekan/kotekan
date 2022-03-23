@@ -83,7 +83,7 @@ RUN git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle &&\
 
 # Clone Blaze for the eigenvalue processes
 RUN git clone https://bitbucket.org/blaze-lib/blaze.git blaze && \
-    cd blaze && git checkout v3.4 && cd ..
+    cd blaze && git checkout v3.8 && cd ..
 
 # Install kotekan python dependencies
 RUN python3.7 -m pip install msgpack==1.0.0 \
@@ -106,19 +106,7 @@ RUN python3.7 -m pip install msgpack==1.0.0 \
 RUN git clone --branch ael/py3_only https://github.com/kotekan/kotekan.git
 
 # Build and install kotekan
-RUN cd kotekan/build && \
-    cmake \
-    	    -DNO_MEMLOCK=ON \
-            -DBLAZE_PATH=/code/build/blaze \
-            -DBLAS_LIBRARIES=/usr/lib/x86_64-linux-gnu/libopenblas.so.0 \
-            -DLAPACK_LIBRARIES=/usr/lib/x86_64-linux-gnu/lapack/liblapack.so.3.7.1 \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DUSE_HDF5=ON \
-            -DUSE_LAPACK=ON \
-            -DHIGHFIVE_PATH=/code/build/HighFive \
-            -DWITH_TESTS=ON \
-            .. && \
-    make && make install
+RUN cd kotekan && bash install.sh
 
 # Set ccache to store things sensibly
 ENV CCACHE_NOHASHDIR 1
