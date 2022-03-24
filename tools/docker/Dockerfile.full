@@ -107,6 +107,7 @@ RUN git clone --branch ael/py3_only https://github.com/kotekan/kotekan.git
 
 # Build and install kotekan
 RUN cd kotekan && bash install.sh
+# TODO --> Do python installation of kotekan as well!
 
 # Set ccache to store things sensibly
 ENV CCACHE_NOHASHDIR 1
