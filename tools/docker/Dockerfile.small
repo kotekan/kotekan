@@ -1,8 +1,13 @@
-FROM kotekan_test:latest as base
+FROM kotekan:base as base
+#
+# Switch blaze version for compute node compilation
+RUN cd blaze && git checkout v3.8 && cd ..
 
-# RUN for pth in $(ldd `which kotekan` | grep "=> /" | awk '{print $3}'); do 
+# Build and install kotekan
+RUN cd kotekan $$ git pull && bash install.sh
 
 
+# Reduce image size
 FROM rocm/dev-ubuntu-18.04:3.7
 
 COPY --from=base /usr/lib/x86_64-linux-gnu/libhdf5_serial.so.100       /usr/lib/x86_64-linux-gnu/
