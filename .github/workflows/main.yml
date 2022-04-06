@@ -405,7 +405,7 @@ jobs:
 
     - name: Install bitshuffle
       run: |
-        pip install bitshuffle
+        pip3 install bitshuffle
 
     - name: Clone Blaze and HighFive
       run: |
