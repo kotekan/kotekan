@@ -13,17 +13,23 @@ The JSON is returned in STDOUT, and error messages are returned in STDERR
 try:
     import yaml, json, sys, os, subprocess, errno, argparse
 except ImportError as err:
-    sys.stderr.write("Missing python packages, run: pip3 install -r python/requirements.txt\n"
-                     + "Error message: " + str(err) + "\n")
+    sys.stderr.write(
+        "Missing python packages, run: pip3 install -r python/requirements.txt\n"
+        + "Error message: "
+        + str(err)
+        + "\n"
+    )
     exit(-1)
 
 # Setup arg parser
 parser = argparse.ArgumentParser(description="Convert YAML or Jinja files into JSON")
 parser.add_argument("name", help="Config file name", type=str)
-parser.add_argument("-d", "--dump", help="Dump the yaml, useful with .j2 files",
-                    action="store_true")
-parser.add_argument("-e", "--variables", help="Add extra jinja variables, JSON format",
-                    type=str)
+parser.add_argument(
+    "-d", "--dump", help="Dump the yaml, useful with .j2 files", action="store_true"
+)
+parser.add_argument(
+    "-e", "--variables", help="Add extra jinja variables, JSON format", type=str
+)
 args = parser.parse_args()
 
 options = args.variables
@@ -37,16 +43,21 @@ directory, file_name = os.path.split(file_name_full)
 if file_ext != ".j2":
     # Lint the YAML file, helpful for finding errors
     try:
-        output = subprocess.Popen(["yamllint",
-                                   "-d",
-                                   "{extends: relaxed, \
+        output = subprocess.Popen(
+            [
+                "yamllint",
+                "-d",
+                "{extends: relaxed, \
                                      rules: {line-length: {max: 100}, \
                                             commas: disable, \
                                             brackets: disable, \
-                                            trailing-spaces: {level: warning}}}" ,
-                                   file_name_full],
-                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        response,stderr = output.communicate()
+                                            trailing-spaces: {level: warning}}}",
+                file_name_full,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        response, stderr = output.communicate()
         if response != "":
             sys.stderr.write("yamllint warnings/errors for: ")
             sys.stderr.write(str(response))
@@ -68,7 +79,7 @@ if file_ext != ".j2":
         sys.exit(-1)
 
     if args.dump:
-        sys.stderr.write(yaml.dump(config_yaml)  + "\n")
+        sys.stderr.write(yaml.dump(config_yaml) + "\n")
 
     sys.stdout.write(json.dumps(config_yaml))
 
@@ -77,14 +88,17 @@ else:
         from jinja2 import Template, FileSystemLoader, Environment, select_autoescape
         from jinja2 import TemplateNotFound
     except ImportError as err:
-        sys.stderr.write("Jinja2 required for '.j2' files, run pip3 install -r python/requirements.txt"
-                         + "\nError message: " + str(err) + "\n")
+        sys.stderr.write(
+            "Jinja2 required for '.j2' files, run pip3 install -r python/requirements.txt"
+            + "\nError message: "
+            + str(err)
+            + "\n"
+        )
         exit(-1)
 
     # Load the template
     env = Environment(
-        loader=FileSystemLoader(directory),
-        autoescape=select_autoescape()
+        loader=FileSystemLoader(directory), autoescape=select_autoescape()
     )
     try:
         template = env.get_template(file_name)
