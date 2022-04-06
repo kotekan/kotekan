@@ -162,7 +162,7 @@ void print_help() {
     printf("    --syslog (-s)                  Send a copy of the output to syslog.\n");
     printf("    --no-stderr (-n)               Disables output to std error if syslog (-s) is "
            "enabled.\n");
-    printf("    --variables (-e)               Add Jinja config variables in JSON format\n");
+    printf("    --variables (-e) [json]        Add Jinja config variables in JSON format\n");
     printf("    --version (-v)                 Prints the kotekan version and build details.\n");
 
     printf("    --print-json (-p)              Prints the json version of the config.\n");
@@ -262,7 +262,7 @@ void print_json_version() {
 std::string exec(const std::string& cmd) {
     std::array<char, 256> buffer;
     std::string result;
-    FILE *pipe = popen(cmd.c_str(), "r");
+    FILE* pipe = popen(cmd.c_str(), "r");
     if (!pipe)
         throw std::runtime_error(fmt::format(fmt("popen() for the command {:s} failed!"), cmd));
 
@@ -455,8 +455,7 @@ int main(int argc, char** argv) {
 
         std::string exec_command = "";
         if (jinja_variables == "")
-            exec_command =
-                fmt::format(exec_format_str, yaml_to_json, config_file_name);
+            exec_command = fmt::format(exec_format_str, yaml_to_json, config_file_name);
         else
             exec_command =
                 fmt::format(exec_format_str, yaml_to_json, jinja_variables, config_file_name);
