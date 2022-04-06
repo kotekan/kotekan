@@ -85,7 +85,7 @@ if file_ext != ".j2":
 
 else:
     try:
-        from jinja2 import Template, FileSystemLoader, Environment, select_autoescape
+        from jinja2 import FileSystemLoader, Environment, select_autoescape
         from jinja2 import TemplateNotFound
     except ImportError as err:
         sys.stderr.write(
