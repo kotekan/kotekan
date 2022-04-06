@@ -404,15 +404,8 @@ jobs:
         python3 setup.py build
 
     - name: Install bitshuffle
-      env:
-        HDF5_DIR: /usr/local/opt/hdf5@1.10/
-        LDFLAGS: -L/usr/local/opt/llvm@9/lib
-        CPPFLAGS: -I/usr/local/opt/llvm@9/include
-        CC: /usr/local/opt/llvm@9/bin/clang
       run: |
-        git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle
-        cd bitshuffle && git pull
-        python3 setup.py install --h5plugin --h5plugin-dir=/usr/local/opt/hdf5@1.10/lib/plugin
+        pip install bitshuffle
 
     - name: Clone Blaze and HighFive
       run: |
