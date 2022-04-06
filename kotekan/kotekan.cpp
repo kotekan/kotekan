@@ -23,7 +23,6 @@
 #include <iostream>    // for endl, basic_ostream, cout, ostream
 #include <iterator>    // for reverse_iterator
 #include <map>         // for map
-#include <memory>      // for allocator, shared_ptr
 #include <mutex>       // for mutex, lock_guard
 #include <stdexcept>   // for runtime_error, out_of_range
 #include <stdio.h>     // for printf, fprintf, feof, fgets, popen, stderr, pclose
