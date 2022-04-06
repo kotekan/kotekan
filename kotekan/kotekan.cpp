@@ -53,7 +53,7 @@ const std::string yaml_to_json = R"(
 try:
     import yaml, json, sys, os, subprocess, errno, argparse
 except ImportError as err:
-    sys.stderr.write("Missing python packages, run: pip install -r python/requirements.txt\n"
+    sys.stderr.write("Missing python packages, run: pip3 install -r python/requirements.txt\n"
                      + "Error message: " + str(err) + "\n")
     exit(-1)
 
@@ -84,7 +84,7 @@ if file_ext != ".j2":
                                             commas: disable, \
                                             brackets: disable, \
                                             trailing-spaces: {level: warning}}}" ,
-                                     file_name_full],
+                                   file_name_full],
                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         response,stderr = output.communicate()
         if response != "":
@@ -117,7 +117,7 @@ else:
         from jinja2 import Template, FileSystemLoader, Environment, select_autoescape
         from jinja2 import TemplateNotFound
     except ImportError as err:
-        sys.stderr.write("Jinja2 required for '.j2' files, run pip install -r python/requirements.txt"
+        sys.stderr.write("Jinja2 required for '.j2' files, run pip3 install -r python/requirements.txt"
                          + "\nError message: " + str(err) + "\n")
         exit(-1)
 

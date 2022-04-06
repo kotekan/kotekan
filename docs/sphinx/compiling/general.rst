@@ -25,7 +25,7 @@ Compiling **Kotekan**
 Required
 =========
 * ``pthread``
-* ``python`` and the following python packages ``yaml, json, jinja2``
+* ``python`` and the following python packages ``pyyaml, jinja2``
 * `libevent <http://libevent.org/>`_
 
 Required for some options
