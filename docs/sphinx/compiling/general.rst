@@ -25,7 +25,7 @@ Compiling **Kotekan**
 Required
 =========
 * ``pthread``
-* ``python`` and ``python-YAML``
+* ``python`` and the following python packages ``yaml, json, jinja2``
 * `libevent <http://libevent.org/>`_
 
 Required for some options
@@ -59,6 +59,7 @@ Required for some options
 * `Blaze <https://bitbucket.org/blaze-lib/blaze/src/master/>`_
   * Download and unpack into `/opt`
 * OpenSSL (Package is called ``libssl-dev`` on Ubuntu).
+* Optional python packages can be installed with ``pip3 install -r python/requirements.txt``
 
 Unit tests:
 -----------

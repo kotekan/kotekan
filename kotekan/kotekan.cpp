@@ -50,7 +50,12 @@ using namespace kotekan;
 // Copied from python/scripts/config_to_json.py
 // TODO copy this in automatically at compile time.
 const std::string yaml_to_json = R"(
-import yaml, json, sys, os, subprocess, errno, argparse
+try:
+    import yaml, json, sys, os, subprocess, errno, argparse
+except ImportError as err:
+    sys.stderr.write("Missing python packages, run: pip install -r python/requirements.txt\n"
+                     + "Error message: " + str(err) + "\n")
+    exit(-1)
 
 # Setup arg parser
 parser = argparse.ArgumentParser(description="Convert YAML or Jinja files into JSON")
@@ -108,8 +113,13 @@ if file_ext != ".j2":
     sys.stdout.write(json.dumps(config_yaml))
 
 else:
-    from jinja2 import Template, FileSystemLoader, Environment, select_autoescape
-    from jinja2 import TemplateNotFound
+    try:
+        from jinja2 import Template, FileSystemLoader, Environment, select_autoescape
+        from jinja2 import TemplateNotFound
+    except ImportError as err:
+        sys.stderr.write("Jinja2 required for '.j2' files, run pip install -r python/requirements.txt"
+                         + "\nError message: " + str(err) + "\n")
+        exit(-1)
 
     # Load the template
     env = Environment(

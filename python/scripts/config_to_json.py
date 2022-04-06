@@ -10,7 +10,12 @@ Extra variables can be passed in with the -e flag, in json/dict format:
    
 The JSON is returned in STDOUT, and error messages are returned in STDERR
 """
-import yaml, json, sys, os, subprocess, errno, argparse
+try:
+    import yaml, json, sys, os, subprocess, errno, argparse
+except ImportError as err:
+    sys.stderr.write("Missing python packages, run: pip install -r python/requirements.txt\n"
+                     + "Error message: " + str(err) + "\n")
+    exit(-1)
 
 # Setup arg parser
 parser = argparse.ArgumentParser(description="Convert YAML or Jinja files into JSON")
@@ -39,7 +44,7 @@ if file_ext != ".j2":
                                             commas: disable, \
                                             brackets: disable, \
                                             trailing-spaces: {level: warning}}}" ,
-                                     file_name_full],
+                                   file_name_full],
                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         response,stderr = output.communicate()
         if response != "":
@@ -68,8 +73,13 @@ if file_ext != ".j2":
     sys.stdout.write(json.dumps(config_yaml))
 
 else:
-    from jinja2 import Template, FileSystemLoader, Environment, select_autoescape
-    from jinja2 import TemplateNotFound
+    try:
+        from jinja2 import Template, FileSystemLoader, Environment, select_autoescape
+        from jinja2 import TemplateNotFound
+    except ImportError as err:
+        sys.stderr.write("Jinja2 required for '.j2' files, run pip install -r python/requirements.txt"
+                         + "\nError message: " + str(err) + "\n")
+        exit(-1)
 
     # Load the template
     env = Environment(
@@ -102,5 +112,3 @@ else:
         sys.exit(-1)
 
     sys.stdout.write(json.dumps(config_yaml))
-
-
