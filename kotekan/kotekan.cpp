@@ -30,8 +30,8 @@
 #include <string.h>    // for strdup
 #include <string>      // for string, basic_string, operator!=, operator<<, operator==
 #include <strings.h>   // for strcasecmp
-#include <syslog.h>    // for closelog, openlog, LOG_CONS, LOG_LOCAL1, LOG_NDELAY
 #include <sys/wait.h>  // for waitpid
+#include <syslog.h>    // for closelog, openlog, LOG_CONS, LOG_LOCAL1, LOG_NDELAY
 #include <type_traits> // for underlying_type, underlying_type<>::type
 #include <unistd.h>    // for optarg, sleep, pipe, fork, execvp, dup2
 #include <utility>     // for pair
@@ -287,45 +287,45 @@ std::string exec(std::vector<std::string>& cmd) {
     // create a pipe for interprocess communication
     int pipefds[2];
     if (pipe(pipefds))
-      throw std::runtime_error("Could not create a pipe");
-    
+        throw std::runtime_error("Could not create a pipe");
+
     // fork
     pid_t pid = fork();
     if (pid < 0)
         throw std::runtime_error("Unable to fork!");
 
     if (pid == 0) {
-      // In child process
-      
-      // close the output side of the pipe and redirect
-      // stdout to the input side
-      close(pipefds[0]);
-      dup2(pipefds[1], STDOUT_FILENO);
+        // In child process
 
-      // Convert cmd to a C string array.  The C array has to be writeable,
-      // so we need to strdup.
-      char **args = new char*[cmd.size() + 1];
-      size_t i;
-      for (i = 0; i < cmd.size(); ++i) {
-          args[i] = strdup(cmd[i].c_str());
-      }
-      args[i] = NULL;
+        // close the output side of the pipe and redirect
+        // stdout to the input side
+        close(pipefds[0]);
+        dup2(pipefds[1], STDOUT_FILENO);
 
-      // exec to subprocess.  On success, this does not return.
-      execvp(args[0], args);
+        // Convert cmd to a C string array.  The C array has to be writeable,
+        // so we need to strdup.
+        char** args = new char*[cmd.size() + 1];
+        size_t i;
+        for (i = 0; i < cmd.size(); ++i) {
+            args[i] = strdup(cmd[i].c_str());
+        }
+        args[i] = NULL;
 
-      // exec-ing failed
-      std::cerr << "exec to " << cmd[0] << " failed!" << std::endl;
-      exit(1);
+        // exec to subprocess.  On success, this does not return.
+        execvp(args[0], args);
 
-      // Child can't get here
+        // exec-ing failed
+        ERROR_NON_OO("exec to {:s} failed!", cmd[0]);
+        exit(1);
+
+        // Child can't get here
     }
     // In parent process
 
     // close the input side of the pipe and open a stream for the
     // output side
     close(pipefds[1]);
-    FILE *pipe = fdopen(pipefds[0], "r");
+    FILE* pipe = fdopen(pipefds[0], "r");
     if (!pipe)
         throw std::runtime_error("Could not create stream for exec pipe");
 
