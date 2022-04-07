@@ -23,6 +23,7 @@
 #include <iostream>    // for endl, basic_ostream, cout, ostream
 #include <iterator>    // for reverse_iterator
 #include <map>         // for map
+#include <memory>      // for allocator_traits<>::value_type
 #include <mutex>       // for mutex, lock_guard
 #include <stdexcept>   // for runtime_error, out_of_range
 #include <stdio.h>     // for printf, fprintf, feof, fgets, fdopen, stderr, fclose, STDOUT_FILENO
@@ -309,7 +310,7 @@ std::string exec(std::vector<std::string>& cmd) {
         for (i = 0; i < cmd.size(); ++i) {
             args[i] = strdup(cmd[i].c_str());
         }
-        args[i] = NULL;
+        args[i] = nullptr;
 
         // exec to subprocess.  On success, this does not return.
         execvp(args[0], args);
