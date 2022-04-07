@@ -25,14 +25,15 @@
 #include <map>         // for map
 #include <mutex>       // for mutex, lock_guard
 #include <stdexcept>   // for runtime_error, out_of_range
-#include <stdio.h>     // for printf, fprintf, feof, fgets, popen, stderr, pclose
+#include <stdio.h>     // for printf, fprintf, feof, fgets, fdopen, stderr, fclose, STDOUT_FILENO
 #include <stdlib.h>    // for exit, free
 #include <string.h>    // for strdup
 #include <string>      // for string, basic_string, operator!=, operator<<, operator==
 #include <strings.h>   // for strcasecmp
+#include <sys/wait.h>  // for waitpid
 #include <syslog.h>    // for closelog, openlog, LOG_CONS, LOG_LOCAL1, LOG_NDELAY
 #include <type_traits> // for underlying_type, underlying_type<>::type
-#include <unistd.h>    // for optarg, sleep
+#include <unistd.h>    // for optarg, sleep, pipe, fork, execvp, dup2
 #include <utility>     // for pair
 #include <vector>      // for vector
 
@@ -282,25 +283,71 @@ void print_json_version() {
     std::cout << get_json_version_info().dump(2) << std::endl;
 }
 
-std::string exec(const std::string& cmd) {
+std::string exec(std::vector<std::string>& cmd) {
+    // create a pipe for interprocess communication
+    int pipefds[2];
+    if (pipe(pipefds))
+        throw std::runtime_error("Could not create a pipe");
+
+    // fork
+    pid_t pid = fork();
+    if (pid < 0)
+        throw std::runtime_error("Unable to fork!");
+
+    if (pid == 0) {
+        // In child process
+
+        // close the output side of the pipe and redirect
+        // stdout to the input side
+        close(pipefds[0]);
+        dup2(pipefds[1], STDOUT_FILENO);
+
+        // Convert cmd to a C string array.  The C array has to be writeable,
+        // so we need to strdup.
+        char** args = new char*[cmd.size() + 1];
+        size_t i;
+        for (i = 0; i < cmd.size(); ++i) {
+            args[i] = strdup(cmd[i].c_str());
+        }
+        args[i] = NULL;
+
+        // exec to subprocess.  On success, this does not return.
+        execvp(args[0], args);
+
+        // exec-ing failed
+        ERROR_NON_OO("exec to {:s} failed!", cmd[0]);
+        exit(1);
+
+        // Child can't get here
+    }
+    // In parent process
+
+    // close the input side of the pipe and open a stream for the
+    // output side
+    close(pipefds[1]);
+    FILE* pipe = fdopen(pipefds[0], "r");
+    if (!pipe)
+        throw std::runtime_error("Could not create stream for exec pipe");
+
+    // Read from the child until it exits
     std::array<char, 256> buffer;
     std::string result;
-    FILE* pipe = popen(cmd.c_str(), "r");
-    if (!pipe)
-        throw std::runtime_error(fmt::format(fmt("popen() for the command {:s} failed!"), cmd));
-
     try {
         while (!feof(pipe)) {
             if (fgets(buffer.data(), 256, pipe) != nullptr)
                 result += buffer.data();
         }
     } catch (...) {
-        pclose(pipe);
+        fclose(pipe);
         throw std::runtime_error("Could not read from the exec pipe");
     }
+    fclose(pipe);
 
-    int exitcode = WEXITSTATUS(pclose(pipe));
-    if (exitcode != 0)
+    // Reap the child
+    int exitcode;
+    waitpid(pid, &exitcode, 0);
+
+    if (!WIFEXITED(exitcode) || WEXITSTATUS(exitcode) != 0)
         return "";
     return result;
 }
@@ -466,24 +513,22 @@ int main(int argc, char** argv) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         INFO_NON_OO("Opening config file {:s}", config_file_name);
 
-        // Create the format string, adding the yaml dump, and extra vars if needed
-        std::string exec_format_str = "python -c '{:s}' ";
+        // Create the command line, adding the yaml dump, and extra vars if needed
+        std::vector<std::string> exec_command;
+        exec_command.push_back("python");
+        exec_command.push_back("-c");
+        exec_command.push_back(yaml_to_json);
+
         if (dump_yaml) {
-            exec_format_str += "-d ";
+            exec_command.push_back("-d");
         }
         if (jinja_variables != "") {
-            exec_format_str += "-e '{:s}' ";
+            exec_command.push_back("-e");
+            exec_command.push_back(jinja_variables);
         }
-        exec_format_str += "{:s}";
+        exec_command.push_back(config_file_name);
 
-        std::string exec_command = "";
-        if (jinja_variables == "")
-            exec_command = fmt::format(exec_format_str, yaml_to_json, config_file_name);
-        else
-            exec_command =
-                fmt::format(exec_format_str, yaml_to_json, jinja_variables, config_file_name);
-
-        std::string json_string = exec(exec_command.c_str());
+        std::string json_string = exec(exec_command);
         if (json_string == "") {
             ERROR_NON_OO("Unable to load config from {:s}", config_file_name);
             exit(-1);
