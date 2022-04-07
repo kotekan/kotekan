@@ -51,11 +51,18 @@ using namespace kotekan;
 // Copied from python/scripts/config_to_json.py
 // TODO copy this in automatically at compile time.
 const std::string yaml_to_json = R"(
+import argparse
+import errno
+import json
+import os
+import subprocess
+import sys
+
 try:
-    import yaml, json, sys, os, subprocess, errno, argparse
+    import yaml
 except ImportError as err:
     sys.stderr.write(
-        "Missing python packages, run: pip3 install -r python/requirements.txt\n"
+        "Missing pyyaml, run: pip3 install -r python/requirements.txt\n"
         + "Error message: "
         + str(err)
         + "\n"

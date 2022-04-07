@@ -10,11 +10,18 @@ Extra variables can be passed in with the -e flag, in json/dict format:
    
 The JSON is returned in STDOUT, and error messages are returned in STDERR
 """
+import argparse
+import errno
+import json
+import os
+import subprocess
+import sys
+
 try:
-    import yaml, json, sys, os, subprocess, errno, argparse
+    import yaml
 except ImportError as err:
     sys.stderr.write(
-        "Missing python packages, run: pip3 install -r python/requirements.txt\n"
+        "Missing pyyaml, run: pip3 install -r python/requirements.txt\n"
         + "Error message: "
         + str(err)
         + "\n"
