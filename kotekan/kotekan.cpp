@@ -23,17 +23,18 @@
 #include <iostream>    // for endl, basic_ostream, cout, ostream
 #include <iterator>    // for reverse_iterator
 #include <map>         // for map
-#include <memory>      // for allocator, shared_ptr
+#include <memory>      // for allocator_traits<>::value_type
 #include <mutex>       // for mutex, lock_guard
 #include <stdexcept>   // for runtime_error, out_of_range
-#include <stdio.h>     // for printf, fprintf, feof, fgets, popen, stderr, pclose
+#include <stdio.h>     // for printf, fprintf, feof, fgets, fdopen, stderr, fclose, STDOUT_FILENO
 #include <stdlib.h>    // for exit, free
 #include <string.h>    // for strdup
 #include <string>      // for string, basic_string, operator!=, operator<<, operator==
 #include <strings.h>   // for strcasecmp
+#include <sys/wait.h>  // for waitpid
 #include <syslog.h>    // for closelog, openlog, LOG_CONS, LOG_LOCAL1, LOG_NDELAY
 #include <type_traits> // for underlying_type, underlying_type<>::type
-#include <unistd.h>    // for optarg, sleep
+#include <unistd.h>    // for optarg, sleep, pipe, fork, execvp, dup2
 #include <utility>     // for pair
 #include <vector>      // for vector
 
@@ -47,40 +48,132 @@ using json = nlohmann::json;
 using namespace kotekan;
 
 // Embedded script for converting the YAML config to json
+// Copied from python/scripts/config_to_json.py
+// TODO copy this in automatically at compile time.
 const std::string yaml_to_json = R"(
-import yaml, json, sys, os, subprocess, errno
+import argparse
+import errno
+import json
+import os
+import subprocess
+import sys
 
-file_name = sys.argv[1]
-
-# Lint the YAML file, helpful for finding errors
 try:
-    output = subprocess.Popen(["yamllint",
-                               "-d",
-                               "{extends: relaxed, \
-                                 rules: {line-length: {max: 100}, \
-                                        commas: disable, \
-                                        brackets: disable, \
-                                        trailing-spaces: {level: warning}}}" ,
-                                 file_name],
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    response,stderr = output.communicate()
-    if response != "":
-        sys.stderr.write("yamllint warnings/errors for: ")
-        sys.stderr.write(str(response))
-# TODO: change to checking for OSError subtypes when Python 2 support is removed
-except OSError as e:
-    if e.errno == errno.ENOENT:
-        sys.stderr.write("yamllint not installed, skipping pre-validation\n")
-    else:
-        sys.stderr.write("error with yamllint, skipping pre-validation\n")
+    import yaml
+except ImportError as err:
+    sys.stderr.write(
+        "Missing pyyaml, run: pip3 install -r python/requirements.txt\n"
+        + "Error message: "
+        + str(err)
+        + "\n"
+    )
+    exit(-1)
 
-with open(file_name, "r") as stream:
+# Setup arg parser
+parser = argparse.ArgumentParser(description="Convert YAML or Jinja files into JSON")
+parser.add_argument("name", help="Config file name", type=str)
+parser.add_argument(
+    "-d", "--dump", help="Dump the yaml, useful with .j2 files", action="store_true"
+)
+parser.add_argument(
+    "-e", "--variables", help="Add extra jinja variables, JSON format", type=str
+)
+args = parser.parse_args()
+
+options = args.variables
+
+# Split the file name into the name, directory path, and extension
+file_name_full = args.name
+file_ext = os.path.splitext(file_name_full)[1]
+directory, file_name = os.path.split(file_name_full)
+
+# Treat all files as pure YAML, unless it is a ".j2" file, then run jinja.
+if file_ext != ".j2":
+    # Lint the YAML file, helpful for finding errors
     try:
-        config_json = yaml.load(stream)
-    except yaml.YAMLError as exc:
-        sys.stderr.write(exc)
+        output = subprocess.Popen(
+            [
+                "yamllint",
+                "-d",
+                "{extends: relaxed, \
+                                     rules: {line-length: {max: 100}, \
+                                            commas: disable, \
+                                            brackets: disable, \
+                                            trailing-spaces: {level: warning}}}",
+                file_name_full,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        response, stderr = output.communicate()
+        if response != "":
+            sys.stderr.write("yamllint warnings/errors for: ")
+            sys.stderr.write(str(response))
+    # TODO: change to checking for OSError subtypes when Python 2 support is removed
+    except OSError as e:
+        if e.errno == errno.ENOENT:
+            sys.stderr.write("yamllint not installed, skipping pre-validation\n")
+        else:
+            sys.stderr.write("error with yamllint, skipping pre-validation\n")
 
-sys.stdout.write(json.dumps(config_json))
+    try:
+        with open(file_name_full, "r") as stream:
+            config_yaml = yaml.safe_load(stream)
+    except IOError as err:
+        sys.stderr.write("Error reading file " + file_name_full + ": " + str(err))
+        sys.exit(-1)
+    except yaml.YAMLError as err:
+        sys.stderr.write("Error parsing yaml: \n" + str(err) + "\n")
+        sys.exit(-1)
+
+    if args.dump:
+        sys.stderr.write(yaml.dump(config_yaml) + "\n")
+
+    sys.stdout.write(json.dumps(config_yaml))
+
+else:
+    try:
+        from jinja2 import FileSystemLoader, Environment, select_autoescape
+        from jinja2 import TemplateNotFound
+    except ImportError as err:
+        sys.stderr.write(
+            "Jinja2 required for '.j2' files, run pip3 install -r python/requirements.txt"
+            + "\nError message: "
+            + str(err)
+            + "\n"
+        )
+        exit(-1)
+
+    # Load the template
+    env = Environment(
+        loader=FileSystemLoader(directory), autoescape=select_autoescape()
+    )
+    try:
+        template = env.get_template(file_name)
+    except TemplateNotFound as err:
+        sys.stderr.write("Could not open the file: " + file_name_full + "\n")
+        exit(-1)
+
+    # Parse the optional variables (if any)
+    options_dict = {}
+    if options:
+        options_dict = json.loads(str(options))
+
+    # Convert to yaml
+    config_yaml_raw = template.render(options_dict)
+
+    # Dump the rendered yaml file if requested
+    if args.dump:
+        sys.stderr.write(config_yaml_raw + "\n")
+
+    # TODO Should we also lint the output of the template?
+    try:
+        config_yaml = yaml.safe_load(config_yaml_raw)
+    except yaml.YAMLError as err:
+        sys.stderr.write("Error parsing yaml: \n" + str(err) + "\n")
+        sys.exit(-1)
+
+    sys.stdout.write(json.dumps(config_yaml))
 )";
 
 kotekanMode* kotekan_mode = nullptr;
@@ -101,8 +194,11 @@ void print_help() {
     printf("    --syslog (-s)                  Send a copy of the output to syslog.\n");
     printf("    --no-stderr (-n)               Disables output to std error if syslog (-s) is "
            "enabled.\n");
+    printf("    --variables (-e) [json]        Add Jinja config variables in JSON format\n");
     printf("    --version (-v)                 Prints the kotekan version and build details.\n");
-    printf("    --print-config (-p)            Prints the config file being used.\n\n");
+
+    printf("    --print-json (-p)              Prints the json version of the config.\n");
+    printf("    --print-yaml (-y)              Prints the yaml version of the config.\n\n");
     printf("If no options are given then kotekan runs in daemon mode and\n");
     printf("expects to get it configuration via the REST endpoint '/start'.\n");
     printf("In daemon mode output is only sent to syslog.\n\n");
@@ -195,16 +291,72 @@ void print_json_version() {
     std::cout << get_json_version_info().dump(2) << std::endl;
 }
 
-std::string exec(const std::string& cmd) {
+std::string exec(std::vector<std::string>& cmd) {
+    // create a pipe for interprocess communication
+    int pipefds[2];
+    if (pipe(pipefds))
+        throw std::runtime_error("Could not create a pipe");
+
+    // fork
+    pid_t pid = fork();
+    if (pid < 0)
+        throw std::runtime_error("Unable to fork!");
+
+    if (pid == 0) {
+        // In child process
+
+        // close the output side of the pipe and redirect
+        // stdout to the input side
+        close(pipefds[0]);
+        dup2(pipefds[1], STDOUT_FILENO);
+
+        // Convert cmd to a C string array.  The C array has to be writeable,
+        // so we need to strdup.
+        char** args = new char*[cmd.size() + 1];
+        size_t i;
+        for (i = 0; i < cmd.size(); ++i) {
+            args[i] = strdup(cmd[i].c_str());
+        }
+        args[i] = nullptr;
+
+        // exec to subprocess.  On success, this does not return.
+        execvp(args[0], args);
+
+        // exec-ing failed
+        ERROR_NON_OO("exec to {:s} failed!", cmd[0]);
+        exit(1);
+
+        // Child can't get here
+    }
+    // In parent process
+
+    // close the input side of the pipe and open a stream for the
+    // output side
+    close(pipefds[1]);
+    FILE* pipe = fdopen(pipefds[0], "r");
+    if (!pipe)
+        throw std::runtime_error("Could not create stream for exec pipe");
+
+    // Read from the child until it exits
     std::array<char, 256> buffer;
     std::string result;
-    std::shared_ptr<FILE> pipe(popen(cmd.c_str(), "r"), pclose);
-    if (!pipe)
-        throw std::runtime_error(fmt::format(fmt("popen() for the command {:s} failed!"), cmd));
-    while (!feof(pipe.get())) {
-        if (fgets(buffer.data(), 256, pipe.get()) != nullptr)
-            result += buffer.data();
+    try {
+        while (!feof(pipe)) {
+            if (fgets(buffer.data(), 256, pipe) != nullptr)
+                result += buffer.data();
+        }
+    } catch (...) {
+        fclose(pipe);
+        throw std::runtime_error("Could not read from the exec pipe");
     }
+    fclose(pipe);
+
+    // Reap the child
+    int exitcode;
+    waitpid(pid, &exitcode, 0);
+
+    if (!WIFEXITED(exitcode) || WEXITSTATUS(exitcode) != 0)
+        return "";
     return result;
 }
 
@@ -262,7 +414,9 @@ int main(int argc, char** argv) {
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
     bool enable_stderr = true;
     bool dump_config = false;
+    bool dump_yaml = false;
     std::string bind_address = "0.0.0.0:12048";
+    std::string jinja_variables = "";
     // We disable syslog to start.
     // If only --config is provided, then we only send messages to stderr
     // If --syslog is added, then output is to both syslog and stderr
@@ -276,14 +430,16 @@ int main(int argc, char** argv) {
                                                {"help", no_argument, nullptr, 'h'},
                                                {"syslog", no_argument, nullptr, 's'},
                                                {"no-stderr", no_argument, nullptr, 'n'},
+                                               {"variables", required_argument, nullptr, 'e'},
                                                {"version", no_argument, nullptr, 'v'},
                                                {"version-json", no_argument, nullptr, 'j'},
-                                               {"print-config", no_argument, nullptr, 'p'},
+                                               {"print-json", no_argument, nullptr, 'p'},
+                                               {"print-yaml", no_argument, nullptr, 'y'},
                                                {nullptr, 0, nullptr, 0}};
 
         int option_index = 0;
 
-        int opt_val = getopt_long(argc, argv, "hc:b:snvp", long_options, &option_index);
+        int opt_val = getopt_long(argc, argv, "hc:b:sne:vjpy", long_options, &option_index);
 
         // End of args
         if (opt_val == -1) {
@@ -307,6 +463,9 @@ int main(int argc, char** argv) {
             case 'n':
                 enable_stderr = false;
                 break;
+            case 'e':
+                jinja_variables = string(optarg);
+                break;
             case 'v':
                 print_version();
                 return 0;
@@ -314,6 +473,9 @@ int main(int argc, char** argv) {
             case 'j':
                 print_json_version();
                 return 0;
+                break;
+            case 'y':
+                dump_yaml = true;
                 break;
             case 'p':
                 dump_config = true;
@@ -356,15 +518,37 @@ int main(int argc, char** argv) {
     rest_server.start(address_parts.at(0), std::stoi(address_parts.at(1)));
 
     if (string(config_file_name) != "none") {
-        // TODO should be in a try catch block, to make failures cleaner.
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         INFO_NON_OO("Opening config file {:s}", config_file_name);
 
-        std::string exec_command =
-            fmt::format(fmt("python -c '{:s}' {:s}"), yaml_to_json, config_file_name);
+        // Create the command line, adding the yaml dump, and extra vars if needed
+        std::vector<std::string> exec_command;
+        exec_command.push_back("python");
+        exec_command.push_back("-c");
+        exec_command.push_back(yaml_to_json);
 
-        std::string json_string = exec(exec_command.c_str());
-        json config_json = json::parse(json_string);
+        if (dump_yaml) {
+            exec_command.push_back("-d");
+        }
+        if (jinja_variables != "") {
+            exec_command.push_back("-e");
+            exec_command.push_back(jinja_variables);
+        }
+        exec_command.push_back(config_file_name);
+
+        std::string json_string = exec(exec_command);
+        if (json_string == "") {
+            ERROR_NON_OO("Unable to load config from {:s}", config_file_name);
+            exit(-1);
+        }
+        json config_json = {};
+        try {
+            config_json = json::parse(json_string);
+        } catch (const json::exception& exp) {
+            ERROR_NON_OO("Unable to parse JSON");
+            ERROR_NON_OO("Error {:s}", exp.what());
+            exit(-1);
+        }
         config.update_config(config_json);
         try {
             start_new_kotekan_mode(config, dump_config);
