@@ -31,6 +31,7 @@
 #include <string>      // for string, basic_string, operator!=, operator<<, operator==
 #include <strings.h>   // for strcasecmp
 #include <syslog.h>    // for closelog, openlog, LOG_CONS, LOG_LOCAL1, LOG_NDELAY
+#include <sys/wait.h>  // for waitpid
 #include <type_traits> // for underlying_type, underlying_type<>::type
 #include <unistd.h>    // for optarg, sleep, pipe, fork, execvp, dup2
 #include <utility>     // for pair
