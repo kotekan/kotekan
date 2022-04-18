@@ -43,9 +43,9 @@ private:
     int32_t _buffer_depth;
 
     /// GPU side memory name for the voltage input
-    std::string _gpu_mem_input;
+    std::string _gpu_mem_voltage;
     /// GPU side memory name for re-ordered output
-    std::string _gpu_mem_output;
+    std::string _gpu_mem_ordered_voltage;
 };
 
 #endif // KOTEKAN_CUDA_SHUFFLE_ASTRON_CUH

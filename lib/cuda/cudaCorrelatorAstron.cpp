@@ -20,8 +20,9 @@ cudaCorrelatorAstron::cudaCorrelatorAstron(Config& config, const std::string& un
         config.get_default<int>(unique_name, "elements_per_thread_block", 128);
     _num_blocks = config.get<int>(unique_name, "num_blocks");
     _buffer_depth = config.get<int>(unique_name, "buffer_depth");
-    _gpu_mem_input = config.get_default<std::string>(unique_name, "in_gpu_mem", "voltage");
-    _gpu_mem_output = config.get_default<std::string>(unique_name, "out_gpu_mem", "n2_output");
+    _gpu_mem_voltage = config.get<std::string>(unique_name, "gpu_mem_voltage");
+    _gpu_mem_correlation_matrix =
+        config.get<std::string>(unique_name, "gpu_mem_correlation_matrix");
 
     command_type = gpuCommandType::KERNEL;
 
@@ -52,11 +53,12 @@ cudaEvent_t cudaCorrelatorAstron::execute(int gpu_frame_id, cudaEvent_t pre_even
     pre_execute(gpu_frame_id);
 
     uint32_t input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
-    void* input_memory = device.get_gpu_memory(_gpu_mem_input, input_frame_len);
+    void* input_memory = device.get_gpu_memory(_gpu_mem_voltage, input_frame_len);
 
     uint32_t output_len = _num_local_freq * _num_blocks * (_block_size * _block_size) * 2
                           * _num_data_sets * sizeof(int32_t);
-    void* output_memory = device.get_gpu_memory_array(_gpu_mem_output, gpu_frame_id, output_len);
+    void* output_memory =
+        device.get_gpu_memory_array(_gpu_mem_correlation_matrix, gpu_frame_id, output_len);
 
     if (pre_event)
         CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(CUDA_COMPUTE_STREAM), pre_event, 0));

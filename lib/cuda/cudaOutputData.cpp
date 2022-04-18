@@ -30,7 +30,7 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
         }
     }
 
-    _gpu_mem = config.get_default<std::string>(unique_name, "gpu_mem", "n2_output");
+    _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
 
     output_buffer_execute_id = 0;
     output_buffer_precondition_id = 0;

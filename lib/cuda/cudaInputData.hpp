@@ -15,7 +15,7 @@
  *
  * This is a cudaCommand that async copies a buffer from CPU to GPU.
  *
- * @author Keith Vanderlinde
+ * @author Keith Vanderlinde and Andre Renard
  */
 class cudaInputData : public cudaCommand {
 public:

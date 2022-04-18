@@ -53,9 +53,9 @@ private:
     int32_t _buffer_depth;
 
     /// GPU side memory name for the voltage input
-    std::string _gpu_mem_input;
+    std::string _gpu_mem_voltage;
     /// GPU side memory name for the correlated output
-    std::string _gpu_mem_output;
+    std::string _gpu_mem_correlation_matrix;
 
     // Kernel values.
     /// global work space dimension

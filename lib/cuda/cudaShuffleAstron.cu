@@ -18,8 +18,8 @@ cudaShuffleAstron::cudaShuffleAstron(Config& config, const std::string& unique_n
     _num_blocks = config.get<int>(unique_name, "num_blocks");
     _buffer_depth = config.get<int>(unique_name, "buffer_depth");
 
-    _gpu_mem_input = config.get_default<std::string>(unique_name, "in_gpu_mem", "voltage");
-    _gpu_mem_output = config.get_default<std::string>(unique_name, "out_gpu_mem", "n2_output");
+    _gpu_mem_voltage = config.get<std::string>(unique_name, "gpu_mem_voltage");
+    _gpu_mem_ordered_voltage = config.get<std::string>(unique_name, "gpu_mem_ordered_voltage");
 
     command_type = gpuCommandType::KERNEL;
 }
@@ -72,8 +72,8 @@ cudaEvent_t cudaShuffleAstron::execute(int gpu_frame_id, cudaEvent_t pre_event) 
     pre_execute(gpu_frame_id);
 
     uint32_t input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
-    void *input_memory = device.get_gpu_memory_array(_gpu_mem_input, gpu_frame_id, input_frame_len);
-    void *output_memory = device.get_gpu_memory(_gpu_mem_output, input_frame_len);
+    void *input_memory = device.get_gpu_memory_array(_gpu_mem_voltage, gpu_frame_id, input_frame_len);
+    void *output_memory = device.get_gpu_memory(_gpu_mem_ordered_voltage, input_frame_len);
 
     if (pre_event) CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(CUDA_COMPUTE_STREAM), pre_event, 0));
     CHECK_CUDA_ERROR(cudaEventCreate(&pre_events[gpu_frame_id]));

@@ -20,7 +20,7 @@ block_size: 2
 samples_per_data_set: 3072 #49152 #16384
 num_data_sets: 1
 num_gpus: 1
-buffer_depth: 2 #8
+buffer_depth: 8
 num_gpu_frames: 4
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
@@ -36,32 +36,29 @@ main_pool:
     num_metadata_objects: 15 * buffer_depth
 
 # Buffers
-gpu_input_buffers:
-    num_frames: buffer_depth*2
+host_voltage_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
     frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
     metadata_pool: main_pool
-    gpu_input_buffer:
-        kotekan_buffer: standard
 
-gpu_output_buffers:
-    num_frames: buffer_depth*2
-    frame_size: num_local_freq * num_blocks * (block_size*block_size) * 2 * num_data_sets  * sizeof_int
-    metadata_pool: main_pool
-    gpu_output_buffer:
-        kotekan_buffer: standard
-
-cpu_output_buffers:
+host_correlation_buffer:
+    kotekan_buffer: standard
     num_frames: buffer_depth
     frame_size: num_local_freq * num_blocks * (block_size*block_size) * 2 * num_data_sets  * sizeof_int
     metadata_pool: main_pool
-    cpu_output_buffer:
-        kotekan_buffer: standard
+
+simulated_correlation_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_local_freq * num_blocks * (block_size*block_size) * 2 * num_data_sets  * sizeof_int
+    metadata_pool: main_pool
 
 gen_data:
     type: random
     value: 1532
     kotekan_stage: testDataGen
-    out_buf: gpu_input_buffer
+    out_buf: host_voltage_buffer
 
 data_format: "cuda_wmma"
 
@@ -70,34 +67,35 @@ gpu:
     kernel_path: "../../lib/cuda/kernels/"
     commands: &command_list
     - name: cudaInputData
-      in_buf: voltage
+      in_buf: host_voltage
       gpu_mem: voltage
     - name: cudaShuffleAstron
-      in_gpu_mem: voltage
-      out_gpu_mem: ordered_voltage
+      gpu_mem_voltage: voltage
+      gpu_mem_ordered_voltage: ordered_voltage
     - name: cudaCorrelatorAstron
-      in_gpu_mem: ordered_voltage
-      out_gpu_mem: n2_output
+      gpu_mem_voltage: ordered_voltage
+      gpu_mem_correlation_matrix: correlation_matrix
     - name: cudaOutputData
-      in_buf: voltage # Metadata transfer from here
-      out_buf: n2_output
-      gpu_mem: n2_output
+      in_buf: host_voltage # Metadata transfer from here
+      gpu_mem: correlation_matrix
+      out_buf: host_correlation
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
         commands: *command_list
         in_buffers:
-            voltage: gpu_input_buffer
+            host_voltage: host_voltage_buffer
         out_buffers:
-            n2_output: gpu_output_buffer
+            host_correlation: host_correlation_buffer
 
 cpu:
     kotekan_stage: gpuSimulate
     log_level: info
-    network_in_buf: gpu_input_buffer
-    corr_out_buf: cpu_output_buffer
+    network_in_buf: host_voltage_buffer
+    corr_out_buf: simulated_correlation_buffer
 
 check_data:
     kotekan_stage: testDataCheckInt
-    first_buf: gpu_output_buffer
-    second_buf: cpu_output_buffer
+    first_buf: host_correlation_buffer
+    second_buf: simulated_correlation_buffer
+    num_frames_to_test: buffer_depth

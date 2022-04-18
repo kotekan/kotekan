@@ -10,7 +10,7 @@
  * This is a cudaCommand that async copies a buffer from GPU to CPU.
  * This code also passes metadata along from another buffer.
  *
- * @author Keith Vanderlinde
+ * @author Keith Vanderlinde and Andre Renard
  */
 class cudaOutputData : public cudaCommand {
 public:

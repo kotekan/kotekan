@@ -20,7 +20,7 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
         }
     }
 
-    _gpu_mem = config.get_default<std::string>(unique_name, "gpu_mem", "voltage");
+    _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
 
     in_buffer_id = 0;
     in_buffer_precondition_id = 0;
