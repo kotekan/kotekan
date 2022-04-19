@@ -30,8 +30,6 @@
  *     @gpu_mem_format       Array of @c float
  *     @gpu_mem_metadata     chimeMetadata
  *
- * @todo   Add profiling flag.
- *
  * @author Keith Vanderlinde
  */
 class cudaDeviceInterface final : public gpuDeviceInterface {

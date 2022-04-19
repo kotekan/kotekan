@@ -9,7 +9,7 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
                              bufferContainer& host_buffers, cudaDeviceInterface& device) :
     cudaCommand(config, unique_name, host_buffers, device, "", "") {
 
-    in_buf = host_buffers.get_buffer("in_buf");
+    in_buf = host_buffers.get_buffer(config.get<std::string>(unique_name, "in_buf"));
     register_consumer(in_buf, unique_name.c_str());
 
     for (int i = 0; i < in_buf->num_frames; i++) {
@@ -19,6 +19,8 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
             CHECK_CUDA_ERROR(cudaHostRegister(in_buf->frames[i], in_buf->frame_size, 0));
         }
     }
+
+    _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
 
     in_buffer_id = 0;
     in_buffer_precondition_id = 0;
@@ -54,7 +56,7 @@ cudaEvent_t cudaInputData::execute(int gpu_frame_id, cudaEvent_t pre_event) {
 
     uint32_t input_frame_len = in_buf->frame_size;
 
-    void* gpu_memory_frame = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
+    void* gpu_memory_frame = device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, input_frame_len);
     void* host_memory_frame = (void*)in_buf->frames[in_buffer_id];
 
     device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame, input_frame_len, pre_event,

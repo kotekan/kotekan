@@ -14,12 +14,12 @@
 #include "cudaDeviceInterface.hpp"
 #include "cudaEventContainer.hpp"
 #include "cudaUtils.hpp"
-#include "cuda_runtime_api.h"
 #include "errors.h"
 #include "factory.hpp"
 #include "gpuCommand.hpp"
 #include "kotekanLogging.hpp"
 
+#include <cuda.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string>
@@ -31,8 +31,6 @@
  * This is a base class for CUDA commands to run on NVidia hardware.
  * Kernels and other opersations (I/O) should derive from this class,
  * which handles a lot of queueing and device interface issues.
- *
- * @todo Clean up and refactor GPU code to not require external kernels.
  *
  * @author Keith Vanderlinde
  */
@@ -54,10 +52,20 @@ public:
     /// Destructor that frees memory for the kernel and name.
     virtual ~cudaCommand();
 
-    /** Execute a kernel, copy, etc.
+    /**
+     * @brief Builds a list of kernels from the file with name: @c kernel_file_name
+     *
+     * @param kernel_names Vector list of kernel names in the kernel file
+     * @param opts         List of options to pass to nvrtc
+     **/
+    virtual void build(const std::vector<std::string>& kernel_names,
+                       std::vector<std::string>& opts);
+
+    /**
+     * @brief Execute a kernel, copy, etc.
      * @param gpu_frame_id  The bufferID associated with the GPU commands.
      * @param pre_event     The preceeding event in a sequence of chained event sequence of
-     *commands.
+     *                      commands.
      **/
     virtual cudaEvent_t execute(int gpu_frame_id, cudaEvent_t pre_event) = 0;
 
@@ -71,6 +79,9 @@ protected:
     cudaEvent_t* pre_events;  // tracked locally for cleanup
 
     cudaDeviceInterface& device;
+
+    // Map containing the runtime kernels built with nvrtc from the kernel file (if needed)
+    std::map<std::string, CUfunction> runtime_kernels;
 };
 
 // Create a factory for cudaCommands

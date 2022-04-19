@@ -2,21 +2,23 @@ project(kotekan_cuda)
 
 add_library(
     kotekan_cuda
+    # Core
     cudaCommand.cpp
     cudaDeviceInterface.cpp
     cudaEventContainer.cpp
     cudaProcess.cpp
-    # Copy-in & general-purpose:
+    # Copy & general-purpose:
     cudaInputData.cpp
     cudaOutputData.cpp
     cudaOutputDataZero.cpp
-    # Simple test
-    cudaCorrelatorKernel.cu)
+    # Kernels
+    cudaCorrelatorAstron.cpp
+    cudaShuffleAstron.cu)
 
 target_link_libraries(
     kotekan_cuda
     PRIVATE libexternal kotekan_libs -lstdc++
-    INTERFACE ${CUDA_LIBRARIES})
+    INTERFACE ${CUDA_LIBRARIES} cuda nvrtc)
 
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --forward-unknown-to-host-compiler")
 
