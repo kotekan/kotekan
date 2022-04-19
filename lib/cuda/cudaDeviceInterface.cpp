@@ -12,7 +12,7 @@ cudaDeviceInterface::cudaDeviceInterface(Config& config_, int32_t gpu_id_, int g
     // Find out how many GPUs can be probed.
     int max_num_gpus;
     CHECK_CUDA_ERROR(cudaGetDeviceCount(&max_num_gpus));
-    INFO("Number of CUDA GPUs: %d", max_num_gpus);
+    INFO("Number of CUDA GPUs: {:d}", max_num_gpus);
 
     cudaSetDevice(gpu_id);
 }

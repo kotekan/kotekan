@@ -7,11 +7,12 @@
 #include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
 #include "kotekanLogging.hpp"  // for DEBUG
 
-#include <assert.h>    // for assert
-#include <atomic>      // for atomic_bool
-#include <cmath>       // for fmod
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <cmath>      // for fmod
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <random>
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error
 #include <stdint.h>    // for uint64_t
@@ -38,8 +39,11 @@ testDataGenFloat::testDataGenFloat(Config& config, const std::string& unique_nam
     assert(type == "const" || type == "random" || type == "ramp");
     if (type == "const" || type == "ramp")
         value = config.get<float>(unique_name, "value");
-    if (type == "random")
+    if (type == "random") {
         seed = config.get<int>(unique_name, "seed");
+        _rand_min = config.get_default<float>(unique_name, "rand_min", 0);
+        _rand_max = config.get_default<float>(unique_name, "rand_max", 1);
+    }
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
     _first_frame_index = config.get_default<uint32_t>(unique_name, "first_frame_index", 0);
@@ -76,7 +80,6 @@ void testDataGenFloat::main_thread() {
         // std::uniform_int_distribution<> dis(0, 255);
         if (type == "random")
             srand(seed);
-        unsigned char temp_output;
         for (uint j = 0; j < buf->frame_size / sizeof(float); ++j) {
             if (type == "const") {
                 if (finished_seeding_consant)
@@ -85,12 +88,10 @@ void testDataGenFloat::main_thread() {
             } else if (type == "ramp") {
                 frame[j] = fmod(j * value, 256 * value);
             } else if (type == "random") {
-                unsigned char new_real;
-                unsigned char new_imaginary;
-                new_real = rand() % 16;
-                new_imaginary = rand() % 16;
-                temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
-                frame[j] = temp_output;
+                // Generate a random float between _rand_min and _rand_max
+                static std::mt19937 eng(seed);
+                static std::uniform_real_distribution<float> dis(_rand_min, _rand_max);
+                frame[j] = dis(eng);
             }
         }
         usleep(83000);

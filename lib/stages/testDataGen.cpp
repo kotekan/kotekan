@@ -155,10 +155,10 @@ void testDataGen::main_thread() {
                 frame[j] = fmod(j * value, 256 * value);
                 //                frame[j] = j*value;
             } else if (type == "random") {
-                unsigned char new_real;
-                unsigned char new_imaginary;
-                new_real = rand() % 16;
-                new_imaginary = rand() % 16;
+                char new_real;
+                char new_imaginary;
+                new_real = (rand() % 15) + 1;      // Limit to [-7, 7]
+                new_imaginary = (rand() % 15) + 1; // Limit to [-7, 7]
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output;
             } else if (type == "tpluse") {

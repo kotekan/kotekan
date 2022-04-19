@@ -1,17 +1,11 @@
-/**
- * @file
- * @brief CUDA N^2 correlator kernel.
- *  - cudaCorrelatorKernel : public cudaCommand
- */
-
-#ifndef CUDA_CORRELATOR_KERNEL_CUH
-#define CUDA_CORRELATOR_KERNEL_CUH
+#ifndef KOTEKAN_CUDA_SHUFFLE_ASTRON_CUH
+#define KOTEKAN_CUDA_SHUFFLE_ASTRON_CUH
 
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
 
 /**
- * @class cudaCorrelatorKernel
+ * @class cudaShuffleRomein
  * @brief cudaCommand for doing an N2 correlation. Still prototyping sandbox only.
  *
  * Longer desription goes here. Kernel still needs heavy optimizing, consider a sandbox only for now.
@@ -19,11 +13,11 @@
  * @author Keith Vanderlinde
  *
  */
-class cudaCorrelatorKernel : public cudaCommand {
+class cudaShuffleAstron : public cudaCommand {
 public:
-    cudaCorrelatorKernel(kotekan::Config& config, const std::string& unique_name,
-                   kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
-    ~cudaCorrelatorKernel();
+    cudaShuffleAstron(kotekan::Config& config, const std::string& unique_name,
+                      kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+    ~cudaShuffleAstron();
     cudaEvent_t execute(int gpu_frame_id, cudaEvent_t pre_event) override;
 
 protected:
@@ -47,6 +41,11 @@ private:
     /// Global buffer depth for all buffers in system. Sets the number of frames to be queued up in
     /// each buffer.
     int32_t _buffer_depth;
+
+    /// GPU side memory name for the voltage input
+    std::string _gpu_mem_voltage;
+    /// GPU side memory name for re-ordered output
+    std::string _gpu_mem_ordered_voltage;
 };
 
-#endif // CUDA_CORRELATOR_KERNEL_CUH
+#endif // KOTEKAN_CUDA_SHUFFLE_ASTRON_CUH

@@ -10,16 +10,7 @@
  * This is a cudaCommand that async copies a buffer from GPU to CPU.
  * This code also passes metadata along from another buffer.
  *
- * @par GPU Memory
- * @gpu_mem out_buf          Output buffer, arbitrary size
- *     @gpu_mem_type         staging
- *     @gpu_mem_format       Any
- * @gpu_mem in_buf           Input buffer from which to copy metadata
- *     @gpu_mem_type         staging
- *     @gpu_mem_format       Any
- *
- * @author Keith Vanderlinde
- *
+ * @author Keith Vanderlinde and Andre Renard
  */
 class cudaOutputData : public cudaCommand {
 public:
@@ -35,6 +26,9 @@ public:
 protected:
     int32_t output_buffer_execute_id;
     int32_t output_buffer_precondition_id;
+
+    /// Name of the GPU side memory to transfer data from.
+    std::string _gpu_mem;
 
     Buffer* output_buffer;
     Buffer* in_buffer;
