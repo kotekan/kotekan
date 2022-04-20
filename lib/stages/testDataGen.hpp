@@ -40,6 +40,8 @@
  * @conf  rest_mode             String. "none" (default), "start", or "step.
  *                              How to interact with rest commands to trigger
  *                              data production.
+ * @conf  num_links             Int.  How many links are being simulated, impacts
+ *                              the rate of data generated in the wait = true mode.
  *
  * @par REST Endpoints
  * @endpoint /\<unique_name\>/generate_test_data
@@ -76,6 +78,7 @@ private:
     size_t _num_freq_in_frame;
     stream_t stream_id;
     uint32_t _first_frame_index;
+    uint32_t num_links;
 
     // kotekan trackers example
     std::shared_ptr<StatTracker> timer;

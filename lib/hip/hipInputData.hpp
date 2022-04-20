@@ -40,6 +40,9 @@ public:
 protected:
     hipEvent_t* data_staged_event;
 
+    /// Name of the GPU side memory to transfer data into.
+    std::string _gpu_mem;
+
     int32_t in_buffer_id;
     int32_t in_buffer_precondition_id;
     int32_t in_buffer_finalize_id;

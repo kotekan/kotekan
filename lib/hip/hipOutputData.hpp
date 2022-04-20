@@ -37,6 +37,9 @@ protected:
     int32_t output_buffer_execute_id;
     int32_t output_buffer_precondition_id;
 
+    /// Name of the GPU side memory to transfer data from.
+    std::string _gpu_mem;
+
     Buffer* output_buffer;
     Buffer* in_buffer;
 

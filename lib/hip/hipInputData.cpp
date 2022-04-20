@@ -10,8 +10,10 @@ hipInputData::hipInputData(Config& config, const string& unique_name, bufferCont
                            hipDeviceInterface& device) :
     hipCommand(config, unique_name, host_buffers, device, "hipInputData", "") {
 
-    in_buf = host_buffers.get_buffer("in_buf");
+    in_buf = host_buffers.get_buffer(config.get<std::string>(unique_name, "in_buf"));
     register_consumer(in_buf, unique_name.c_str());
+
+    _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
 
     in_buffer_id = 0;
     in_buffer_precondition_id = 0;
@@ -27,7 +29,7 @@ int hipInputData::wait_on_precondition(int gpu_frame_id) {
 
     // Wait for there to be data in the input (network) buffer.
     uint8_t* frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_buffer_precondition_id);
-    if (frame == NULL)
+    if (frame == nullptr)
         return -1;
 
     in_buffer_precondition_id = (in_buffer_precondition_id + 1) % in_buf->num_frames;
@@ -39,7 +41,7 @@ hipEvent_t hipInputData::execute(int gpu_frame_id, hipEvent_t pre_event) {
 
     uint32_t input_frame_len = in_buf->frame_size;
 
-    void* gpu_memory_frame = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
+    void* gpu_memory_frame = device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, input_frame_len);
     void* host_memory_frame = (void*)in_buf->frames[in_buffer_id];
 
     device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame, input_frame_len, pre_event,

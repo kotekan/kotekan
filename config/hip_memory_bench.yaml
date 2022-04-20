@@ -15,6 +15,7 @@ num_gpus: 1
 block_size: 32
 num_data_sets: 1
 numa_node: 1
+num_links: 16
 
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
 
@@ -40,23 +41,28 @@ gen_data:
     value: 153
     kotekan_stage: testDataGen
     out_buf: host_input
-    wait: false
+    wait: true
 
 gpu:
     profiling: true
     kernel_path: "../../lib/hip/kernels/"
     log_level: INFO
-    frame_arrival_period: samples_per_data_set / 390625.0 / 16
-    commands:
+    frame_arrival_period: samples_per_data_set / 390625.0 / num_links
+    commands: &command_list
         - name: hipInputData
+          in_buf: host_input_data
+          gpu_mem: voltage
         - name: hipOutputData
+          in_buf: host_input_data
+          gpu_mem: correlation_matrix
+          out_buf: host_correlation_matrix
     gpu_0:
         kotekan_stage: hipProcess
+        commands: *command_list
         gpu_id: 0
-        gpu_thread_id: 0
         log_profiling: true
         buffer_depth: 4
         in_buffers:
-            in_buf: host_input
+            host_input_data: host_input
         out_buffers:
-            output_buf: host_output_buf
+            host_correlation_matrix: host_output_buf
