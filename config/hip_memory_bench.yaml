@@ -23,29 +23,33 @@ main_pool:
     kotekan_metadata_pool: chimeMetadata
     num_metadata_objects: 128 * buffer_depth
 
-gpu_input_merged:
+host_input:
     kotekan_buffer: standard
     num_frames: buffer_depth
     frame_size: samples_per_data_set * num_elements * num_local_freq
+    metadata_pool: main_pool
+
+host_output_buf:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_local_freq * num_blocks * (block_size*block_size) * 2 * num_data_sets  * sizeof_int
     metadata_pool: main_pool
 
 gen_data:
     type: const
     value: 153
     kotekan_stage: testDataGen
-    out_buf: gpu_input_merged
-    wait: true
+    out_buf: host_input
+    wait: false
 
-# HIP
 gpu:
     profiling: true
-    kernel_path: "../../lib/opencl/kernels/"
-    gain_dir: "/etc/kotekan/"
+    kernel_path: "../../lib/hip/kernels/"
     log_level: INFO
-    data_format: "4+4b"
     frame_arrival_period: samples_per_data_set / 390625.0 / 16
     commands:
         - name: hipInputData
+        - name: hipOutputData
     gpu_0:
         kotekan_stage: hipProcess
         gpu_id: 0
@@ -53,5 +57,6 @@ gpu:
         log_profiling: true
         buffer_depth: 4
         in_buffers:
-            in_buf: gpu_input_merged
+            in_buf: host_input
         out_buffers:
+            output_buf: host_output_buf

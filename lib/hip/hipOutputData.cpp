@@ -22,15 +22,6 @@ hipOutputData::hipOutputData(Config& config, const string& unique_name,
     output_buffer = host_buffers.get_buffer("output_buf");
     register_producer(output_buffer, unique_name.c_str());
 
-    for (int i = 0; i < output_buffer->num_frames; i++) {
-        uint flags;
-        // only register the memory if it isn't already...
-        if (hipErrorInvalidValue == hipHostGetFlags(&flags, output_buffer->frames[i])) {
-            CHECK_HIP_ERROR(
-                hipHostRegister(output_buffer->frames[i], output_buffer->frame_size, 0));
-        }
-    }
-
     output_buffer_execute_id = 0;
     output_buffer_precondition_id = 0;
 
@@ -40,15 +31,7 @@ hipOutputData::hipOutputData(Config& config, const string& unique_name,
     command_type = gpuCommandType::COPY_OUT;
 }
 
-hipOutputData::~hipOutputData() {
-    for (int i = 0; i < output_buffer->num_frames; i++) {
-        uint flags;
-        // only register the memory if it isn't already...
-        if (hipErrorInvalidValue == hipHostGetFlags(&flags, output_buffer->frames[i])) {
-            CHECK_HIP_ERROR(hipHostUnregister(output_buffer->frames[i]));
-        }
-    }
-}
+hipOutputData::~hipOutputData() {}
 
 int hipOutputData::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
@@ -88,4 +71,10 @@ void hipOutputData::finalize_frame(int frame_id) {
 
     mark_frame_full(output_buffer, unique_name.c_str(), output_buffer_id);
     output_buffer_id = (output_buffer_id + 1) % output_buffer->num_frames;
+}
+
+std::string hipOutputData::get_performance_metric_string() {
+    double transfer_speed =
+        (double)output_buffer->frame_size / (double)get_last_gpu_execution_time() / 1000000000;
+    return "Speed: " + std::to_string(transfer_speed) + " GB/s";
 }

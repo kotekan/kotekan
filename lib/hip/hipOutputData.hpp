@@ -31,6 +31,7 @@ public:
     int wait_on_precondition(int gpu_frame_id) override;
     virtual hipEvent_t execute(int buf_frame_id, hipEvent_t pre_event) override;
     void finalize_frame(int frame_id) override;
+    std::string get_performance_metric_string();
 
 protected:
     int32_t output_buffer_execute_id;

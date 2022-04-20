@@ -8,18 +8,10 @@ REGISTER_HIP_COMMAND(hipInputData);
 
 hipInputData::hipInputData(Config& config, const string& unique_name, bufferContainer& host_buffers,
                            hipDeviceInterface& device) :
-    hipCommand(config, unique_name, host_buffers, device, "", "") {
+    hipCommand(config, unique_name, host_buffers, device, "hipInputData", "") {
 
     in_buf = host_buffers.get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
-
-    for (int i = 0; i < in_buf->num_frames; i++) {
-        uint flags;
-        // only register the memory if it isn't already...
-        if (hipErrorInvalidValue == hipHostGetFlags(&flags, in_buf->frames[i])) {
-            CHECK_HIP_ERROR(hipHostRegister(in_buf->frames[i], in_buf->frame_size, 0));
-        }
-    }
 
     in_buffer_id = 0;
     in_buffer_precondition_id = 0;
@@ -28,15 +20,7 @@ hipInputData::hipInputData(Config& config, const string& unique_name, bufferCont
     command_type = gpuCommandType::COPY_IN;
 }
 
-hipInputData::~hipInputData() {
-    for (int i = 0; i < in_buf->num_frames; i++) {
-        uint flags;
-        // only unregister if it's already been registered
-        if (hipSuccess == hipHostGetFlags(&flags, in_buf->frames[i])) {
-            CHECK_HIP_ERROR(hipHostUnregister(in_buf->frames[i]));
-        }
-    }
-}
+hipInputData::~hipInputData() {}
 
 int hipInputData::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
@@ -45,12 +29,6 @@ int hipInputData::wait_on_precondition(int gpu_frame_id) {
     uint8_t* frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_buffer_precondition_id);
     if (frame == NULL)
         return -1;
-
-    // only register the memory if it isn't already...
-    uint flags;
-    if (hipErrorInvalidValue == hipHostGetFlags(&flags, frame)) {
-        CHECK_HIP_ERROR(hipHostRegister(frame, in_buf->frame_size, 0));
-    }
 
     in_buffer_precondition_id = (in_buffer_precondition_id + 1) % in_buf->num_frames;
     return 0;

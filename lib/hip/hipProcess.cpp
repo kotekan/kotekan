@@ -25,13 +25,10 @@ hipProcess::hipProcess(Config& config_, const string& unique_name,
     device = new hipDeviceInterface(config_, gpu_id, _gpu_buffer_depth);
     dev = device;
     device->prepareStreams();
-    // CHECK_HIP_ERROR(hipProfilerStart());
     init();
 }
 
-hipProcess::~hipProcess() {
-    // CHECK_HIP_ERROR(hipProfilerStop());
-}
+hipProcess::~hipProcess() {}
 
 gpuEventContainer* hipProcess::create_signal() {
     return new hipEventContainer();
@@ -56,7 +53,7 @@ void hipProcess::queue_commands(int gpu_frame_id) {
 }
 
 void hipProcess::register_host_memory(struct Buffer* host_buffer) {
-    // Register the host memory in in_buf with the OpenCL run time.
+    // Register the host memory in in_buf with the HIP run time.
     for (int i = 0; i < host_buffer->num_frames; i++) {
         hipHostRegister(host_buffer->frames[i], host_buffer->aligned_frame_size,
                         hipHostRegisterDefault);
