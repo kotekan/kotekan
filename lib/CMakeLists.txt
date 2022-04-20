@@ -28,11 +28,6 @@ target_link_libraries(kotekan_libs INTERFACE kotekan_core)
 add_subdirectory(metadata)
 target_link_libraries(kotekan_libs INTERFACE kotekan_metadata)
 
-if(${USE_HCC})
-    add_subdirectory(hcc)
-    target_link_libraries(kotekan_libs INTERFACE kotekan_hcc)
-endif()
-
 if(${USE_HSA}
    OR ${USE_OPENCL}
    OR ${USE_CUDA}
