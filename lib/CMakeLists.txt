@@ -35,7 +35,8 @@ endif()
 
 if(${USE_HSA}
    OR ${USE_OPENCL}
-   OR ${USE_CUDA})
+   OR ${USE_CUDA}
+   OR ${USE_HIP})
     add_subdirectory(gpu)
 endif()
 
@@ -52,6 +53,11 @@ endif()
 if(${USE_CUDA})
     add_subdirectory(cuda)
     target_link_libraries(kotekan_libs INTERFACE kotekan_cuda kotekan_gpu)
+endif()
+
+if(${USE_HIP})
+    add_subdirectory(hip)
+    target_link_libraries(kotekan_libs INTERFACE kotekan_hip kotekan_gpu)
 endif()
 
 if(${USE_DPDK})

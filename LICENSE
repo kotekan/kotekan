@@ -168,13 +168,14 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS WITH THE SOFTWARE.
 ===
 
-===== FindHCC.cmake =====
+===== AMD cmake find files for ROCm =====
 
 Files:
   cmake/FindHCC.cmake
+  cmake/FindHIP.cmake
 
 ===
-Copyright (C) 2016 Advanced Micro Devices, Inc. All rights reserved.
+Copyright (C) 2016 - 2021 Advanced Micro Devices, Inc. All rights reserved.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
