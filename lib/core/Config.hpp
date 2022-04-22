@@ -407,7 +407,11 @@ Type Config::configEval<Type>::term() {
     while (current_token == "*" || current_token == "/") {
         if (current_token == "*") {
             next();
-            ret *= factor();
+            if constexpr (std::is_same_v<Type, bool>) {
+                ret &= factor();
+            } else {
+                ret *= factor();
+            }
         }
         if (current_token == "/") {
             // TODO Check for divide by zero.

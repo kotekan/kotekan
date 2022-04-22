@@ -4,6 +4,8 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     add_definitions(-DCL_SILENCE_DEPRECATION)
 endif()
 
+add_definitions(-DCL_TARGET_OPENCL_VERSION=220)
+
 add_library(
     kotekan_opencl
     clCommand.cpp
