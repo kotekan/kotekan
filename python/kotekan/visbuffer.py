@@ -317,7 +317,7 @@ class VisRaw(object):
             ds = np.array(metadata["dataset_id"]).view("u8,u8").reshape(metadata.shape)
             for t in range(num_time):
                 for f in range(num_freq):
-                    if valid_frames.astype(np.bool)[t, f]:
+                    if valid_frames.astype(bool)[t, f]:
                         ds_id = "{:016x}{:016x}".format(ds[t, f][1], ds[t, f][0])
 
                         # gains
@@ -438,7 +438,7 @@ class VisRaw(object):
         )
         raw = buffer.view(dtype=frame_struct_simple)
         num_elements = np.unique(
-            raw["metadata"][raw["valid"].astype(np.bool)]["num_elements"]
+            raw["metadata"][raw["valid"].astype(bool)]["num_elements"]
         )
         if len(num_elements) > 1:
             raise ValueError(
@@ -447,7 +447,7 @@ class VisRaw(object):
                 )
             )
         num_elements = num_elements[0]
-        num_prod = np.unique(raw["metadata"][raw["valid"].astype(np.bool)]["num_prod"])
+        num_prod = np.unique(raw["metadata"][raw["valid"].astype(bool)]["num_prod"])
         if len(num_prod) > 1:
             raise ValueError(
                 "Found more than 1 value for `num_prod` in numpy ndarray: {}.".format(
@@ -455,7 +455,7 @@ class VisRaw(object):
                 )
             )
         num_prod = num_prod[0]
-        num_ev = np.unique(raw["metadata"][raw["valid"].astype(np.bool)]["num_ev"])
+        num_ev = np.unique(raw["metadata"][raw["valid"].astype(bool)]["num_ev"])
         if len(num_ev) > 1:
             raise ValueError(
                 "Found more than 1 value for `num_ev` in numpy ndarray: {}.".format(
@@ -490,7 +490,7 @@ class VisRaw(object):
             ts = []
             fpga = []
             for f in range(num_freq):
-                if valid_frames[t, f].astype(np.bool):
+                if valid_frames[t, f].astype(bool):
                     ts.append(
                         timespec.time_spec.from_buffer_copy(ctime[t, f]).to_float()
                     )
@@ -520,7 +520,7 @@ class VisRaw(object):
                 ("eigenvalues", "ev"),
                 ("stack", "stack"),
             ]
-            ds = np.array(metadata["dataset_id"][valid_frames.astype(np.bool)]).view(
+            ds = np.array(metadata["dataset_id"][valid_frames.astype(bool)]).view(
                 "u8,u8"
             )
             unique_ds = np.unique(ds)
@@ -563,7 +563,7 @@ class VisRaw(object):
             if "stack" in index_map:
                 index_map["stack"] = np.array(
                     [(ss[0]["stack"], ss[0]["conjugate"]) for ss in index_map["stack"]],
-                    dtype=[("stack", np.uint32), ("conjugate", np.bool)],
+                    dtype=[("stack", np.uint32), ("conjugate", bool)],
                 )
 
         return cls(
