@@ -1,9 +1,9 @@
-#include "FRBBeamformer.hpp"
-
-#include "StageFactory.hpp"
-#include "errors.h"
-
+#include <atomic>
 #include <functional>
+
+#include "FRBBeamformer.hpp"
+#include "kotekanLogging.hpp"
+#include "StageFactory.hpp"
 
 using kotekan::bufferContainer;
 using kotekan::Config;
