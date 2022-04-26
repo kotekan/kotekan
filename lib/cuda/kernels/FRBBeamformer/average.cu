@@ -24,7 +24,7 @@ __global__ void FRBBeamformer_average(const int* __restrict__ const E_global,
         "	mov.u32 	r4, %%ctaid.x;\n"
         "	shl.b32 	r5, r4, 11;\n"
         "	and.b32  	r6, r5, 522240;\n"
-        "	mov.u32 	r7, tid.y;\n"
+        "	mov.u32 	r7, %%tid.y;\n"
         "	shl.b32 	r8, r7, 8;\n"
         "	and.b32  	r9, r8, 1792;\n"
         "	mov.u32 	r10, %%tid.x;\n"
