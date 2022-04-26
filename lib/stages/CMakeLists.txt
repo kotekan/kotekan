@@ -50,6 +50,7 @@ add_library(
     bufferDelay.cpp
     BufferSplit.cpp
     InputSubset.cpp
+    FRBBeamformer.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp

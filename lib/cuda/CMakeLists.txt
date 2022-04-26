@@ -13,7 +13,8 @@ add_library(
     cudaOutputDataZero.cpp
     # Kernels
     cudaCorrelatorAstron.cpp
-    cudaShuffleAstron.cu)
+    cudaShuffleAstron.cu
+    kernels/average.fatbin.c)
 
 target_link_libraries(
     kotekan_cuda
