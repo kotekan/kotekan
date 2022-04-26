@@ -140,7 +140,7 @@ __global__ void FRBBeamformer_average(const int* __restrict__ const E_global,
         "	add.s64 	rd10, rd9, rd5;\n"
         "	add.s64 	rd3, rd10, -4;\n"
         "	mov.u32 	r55, 32768;\n"
-        "LBB0_1:                                 // %L577\n"
+        "LBB0_1:                                 // L577\n"
         "                                        // =>This Inner Loop Header: Depth=1\n"
         "	ld.global.u32 	r48, [rd1];\n"
         "	xor.b32  	r49, r48, -2004318072;\n"
@@ -210,7 +210,7 @@ __global__ void FRBBeamformer_average(const int* __restrict__ const E_global,
         "	add.s32 	r55, r55, -1;\n"
         "	setp.ne.s32 	p1, r55, 0;\n"
         "	@p1 bra 	LBB0_1;\n"
-        "// %bb.2:                               // %L1467\n"
+        "// bb.2:                               // L1467\n"
         "	ret;\n"
         //
         ::"l"(E_global),
