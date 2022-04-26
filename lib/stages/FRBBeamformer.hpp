@@ -1,11 +1,11 @@
 #ifndef FRBBEAMFORMER_H
 #define FRBBEAMFORMER_H
 
-#include <string>
-
-#include "bufferContainer.hpp"
 #include "Config.hpp"
 #include "Stage.hpp"
+#include "bufferContainer.hpp"
+
+#include <string>
 
 class FRBBeamformer : public kotekan::Stage {
 public:
