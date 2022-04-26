@@ -14,7 +14,8 @@ add_library(
     # Kernels
     cudaCorrelatorAstron.cpp
     cudaShuffleAstron.cu
-    kernels/average.fatbin.c)
+    kernels/FRBBeamformer/average.cu
+    kernels/FRBBeamformer/average.fatbin.c)
 
 target_link_libraries(
     kotekan_cuda

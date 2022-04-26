@@ -1,0 +1,456 @@
+; PTX CompilerJob of kernel runsteps(CuDeviceVector{Int4x8, 1}, CuDeviceVector{Float32, 1}) for sm_80, blocks_per_sm=1, maxregs=4096
+;  @ /home/eschnett/src/jl/GPUIndexSpaces.jl/test/average.jl:148 within `runsteps`
+define ptx_kernel void @_Z19julia_runsteps_475113CuDeviceArrayI6Int4x8Li1ELi1EES_I7Float32Li1ELi1EE([1 x i64] %state, { i8 addrspace(1)*, i64, [1 x i64], i64 } %0, { i8 addrspace(1)*, i64, [1 x i64], i64 } %1) local_unnamed_addr #1 {
+entry:
+  %.fca.0.extract26 = extractvalue { i8 addrspace(1)*, i64, [1 x i64], i64 } %0, 0
+  %.fca.0.extract1 = extractvalue { i8 addrspace(1)*, i64, [1 x i64], i64 } %1, 0
+;  @ /home/eschnett/src/jl/GPUIndexSpaces.jl/test/average.jl:149 within `runsteps`
+; ┌ @ /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:1385 within `macro expansion`
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/intrinsics/indexing.jl:78 within `#blockIdx`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/intrinsics/indexing.jl:56 within `blockIdx_x`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/intrinsics/indexing.jl:6 within `_index`
+; ││││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/intrinsics/indexing.jl:6 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+       %2 = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x()
+; │└└└└
+; │┌ @ int.jl:492 within `<<`
+    %3 = shl i32 %2, 11
+    %4 = and i32 %3, 522240
+; │└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/intrinsics/indexing.jl:92 within `#threadIdx`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/intrinsics/indexing.jl:46 within `threadIdx_y`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/intrinsics/indexing.jl:6 within `_index`
+; ││││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/intrinsics/indexing.jl:6 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+       %5 = call i32 @llvm.nvvm.read.ptx.sreg.tid.y()
+; │└└└└
+; │┌ @ int.jl:492 within `<<`
+    %6 = shl nuw nsw i32 %5, 8
+    %7 = and i32 %6, 1792
+; │└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/intrinsics/indexing.jl:92 within `#threadIdx`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/intrinsics/indexing.jl:46 within `threadIdx_x`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/intrinsics/indexing.jl:6 within `_index`
+; ││││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/intrinsics/indexing.jl:6 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+       %8 = call i32 @llvm.nvvm.read.ptx.sreg.tid.x()
+; │└└└└
+; │┌ @ int.jl:982 within `&` @ int.jl:336
+    %9 = and i32 %8, 31
+; │└
+; │┌ @ operators.jl:655 within `+` @ int.jl:87
+    %10 = or i32 %7, %4
+    %11 = or i32 %10, %9
+; │└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:194 within `setindex!`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:153 within `#arrayset`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:162 within `arrayset_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:84 within `unsafe_store!`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `pointerset`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+; │││││││┌ @ int.jl:86 within `-`
+          %12 = zext i32 %11 to i64
+; │││││││└
+         %13 = bitcast i8 addrspace(1)* %.fca.0.extract1 to float addrspace(1)*
+         %14 = getelementptr inbounds float, float addrspace(1)* %13, i64 %12
+         store float 0.000000e+00, float addrspace(1)* %14, align 4
+; │└└└└└└
+; │┌ @ operators.jl:655 within `+`
+; ││┌ @ operators.jl:612 within `afoldl`
+; │││┌ @ int.jl:982 within `+` @ int.jl:87
+      %15 = or i32 %11, 32
+; │└└└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:194 within `setindex!`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:153 within `#arrayset`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:162 within `arrayset_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:84 within `unsafe_store!`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `pointerset`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+; │││││││┌ @ int.jl:86 within `-`
+          %16 = zext i32 %15 to i64
+; │││││││└
+         %17 = getelementptr inbounds float, float addrspace(1)* %13, i64 %16
+         store float 0.000000e+00, float addrspace(1)* %17, align 4
+; │└└└└└└
+; │┌ @ operators.jl:655 within `+`
+; ││┌ @ operators.jl:612 within `afoldl`
+; │││┌ @ int.jl:982 within `+` @ int.jl:87
+      %18 = or i32 %11, 64
+; │└└└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:194 within `setindex!`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:153 within `#arrayset`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:162 within `arrayset_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:84 within `unsafe_store!`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `pointerset`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+; │││││││┌ @ int.jl:86 within `-`
+          %19 = zext i32 %18 to i64
+; │││││││└
+         %20 = getelementptr inbounds float, float addrspace(1)* %13, i64 %19
+         store float 0.000000e+00, float addrspace(1)* %20, align 4
+; │└└└└└└
+; │┌ @ operators.jl:655 within `+`
+; ││┌ @ operators.jl:612 within `afoldl`
+; │││┌ @ int.jl:982 within `+` @ int.jl:87
+      %21 = or i32 %11, 96
+; │└└└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:194 within `setindex!`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:153 within `#arrayset`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:162 within `arrayset_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:84 within `unsafe_store!`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `pointerset`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+; │││││││┌ @ int.jl:86 within `-`
+          %22 = zext i32 %21 to i64
+; │││││││└
+         %23 = getelementptr inbounds float, float addrspace(1)* %13, i64 %22
+         store float 0.000000e+00, float addrspace(1)* %23, align 4
+; │└└└└└└
+; │┌ @ operators.jl:655 within `+`
+; ││┌ @ operators.jl:612 within `afoldl`
+; │││┌ @ int.jl:982 within `+` @ int.jl:87
+      %24 = or i32 %11, 128
+; │└└└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:194 within `setindex!`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:153 within `#arrayset`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:162 within `arrayset_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:84 within `unsafe_store!`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `pointerset`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+; │││││││┌ @ int.jl:86 within `-`
+          %25 = zext i32 %24 to i64
+; │││││││└
+         %26 = getelementptr inbounds float, float addrspace(1)* %13, i64 %25
+         store float 0.000000e+00, float addrspace(1)* %26, align 4
+; │└└└└└└
+; │┌ @ operators.jl:655 within `+`
+; ││┌ @ operators.jl:612 within `afoldl`
+; │││┌ @ int.jl:982 within `+` @ int.jl:87
+      %27 = or i32 %11, 160
+; │└└└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:194 within `setindex!`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:153 within `#arrayset`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:162 within `arrayset_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:84 within `unsafe_store!`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `pointerset`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+; │││││││┌ @ int.jl:86 within `-`
+          %28 = zext i32 %27 to i64
+; │││││││└
+         %29 = getelementptr inbounds float, float addrspace(1)* %13, i64 %28
+         store float 0.000000e+00, float addrspace(1)* %29, align 4
+; │└└└└└└
+; │┌ @ operators.jl:655 within `+`
+; ││┌ @ operators.jl:612 within `afoldl`
+; │││┌ @ int.jl:982 within `+` @ int.jl:87
+      %30 = or i32 %11, 192
+; │└└└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:194 within `setindex!`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:153 within `#arrayset`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:162 within `arrayset_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:84 within `unsafe_store!`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `pointerset`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+; │││││││┌ @ int.jl:86 within `-`
+          %31 = zext i32 %30 to i64
+; │││││││└
+         %32 = getelementptr inbounds float, float addrspace(1)* %13, i64 %31
+         store float 0.000000e+00, float addrspace(1)* %32, align 4
+; │└└└└└└
+; │┌ @ operators.jl:655 within `+`
+; ││┌ @ operators.jl:612 within `afoldl`
+; │││┌ @ int.jl:982 within `+` @ int.jl:87
+      %33 = or i32 %11, 224
+; │└└└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:194 within `setindex!`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:153 within `#arrayset`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:162 within `arrayset_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:84 within `unsafe_store!`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `pointerset`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+; │││││││┌ @ int.jl:86 within `-`
+          %34 = zext i32 %33 to i64
+; │││││││└
+         %35 = getelementptr inbounds float, float addrspace(1)* %13, i64 %34
+         store float 0.000000e+00, float addrspace(1)* %35, align 4
+         %36 = shl i32 %2, 8
+         %37 = and i32 %36, 65280
+         %38 = shl nuw nsw i32 %5, 5
+         %39 = and i32 %38, 224
+         %40 = or i32 %39, %37
+         %41 = or i32 %40, %9
+         %42 = zext i32 %41 to i64
+         %43 = bitcast i8 addrspace(1)* %.fca.0.extract26 to [1 x i32] addrspace(1)*
+         %44 = getelementptr inbounds [1 x i32], [1 x i32] addrspace(1)* %43, i64 %42, i64 0
+         %45 = shl nuw nsw i32 %8, 3
+         %46 = and i32 %45, 248
+         %47 = or i32 %10, %46
+         %48 = or i32 %47, 1
+         %49 = zext i32 %48 to i64
+         %50 = add nsw i64 %49, -1
+         %51 = getelementptr inbounds float, float addrspace(1)* %13, i64 %50
+         %narrow = or i32 %47, 2
+         %52 = zext i32 %narrow to i64
+         %53 = add nsw i64 %52, -1
+         %54 = getelementptr inbounds float, float addrspace(1)* %13, i64 %53
+         %55 = or i32 %47, 3
+         %56 = zext i32 %55 to i64
+         %57 = add nsw i64 %56, -1
+         %58 = getelementptr inbounds float, float addrspace(1)* %13, i64 %57
+         %narrow31 = or i32 %47, 4
+         %59 = zext i32 %narrow31 to i64
+         %60 = add nsw i64 %59, -1
+         %61 = getelementptr inbounds float, float addrspace(1)* %13, i64 %60
+         %62 = or i32 %47, 5
+         %63 = zext i32 %62 to i64
+         %64 = add nsw i64 %63, -1
+         %65 = getelementptr inbounds float, float addrspace(1)* %13, i64 %64
+         %narrow32 = or i32 %47, 6
+         %66 = zext i32 %narrow32 to i64
+         %67 = add nsw i64 %66, -1
+         %68 = getelementptr inbounds float, float addrspace(1)* %13, i64 %67
+         %69 = or i32 %47, 7
+         %70 = zext i32 %69 to i64
+         %71 = add nsw i64 %70, -1
+         %72 = getelementptr inbounds float, float addrspace(1)* %13, i64 %71
+         %73 = or i32 %10, 8
+         %narrow33 = add nuw nsw i32 %73, %46
+         %74 = zext i32 %narrow33 to i64
+         %75 = add nsw i64 %74, -1
+         %76 = getelementptr inbounds float, float addrspace(1)* %13, i64 %75
+; └└└└└└└
+; ┌ @ /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:682 within `macro expansion`
+   br label %L577
+
+L577:                                             ; preds = %L577, %entry
+   %value_phi = phi i32 [ 0, %entry ], [ %117, %L577 ]
+; └
+; ┌ @ /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:1322 within `macro expansion`
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:192 within `getindex`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:111 within `#arrayref`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:119 within `arrayref_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:81 within `unsafe_load`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `pointerref`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+         %.unpack = load i32, i32 addrspace(1)* %44, align 4
+; └└└└└└└
+; ┌ @ /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:1802 within `macro expansion`
+; │┌ @ /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:38 within `convert`
+; ││┌ @ int.jl:362 within `xor`
+     %77 = xor i32 %.unpack, -2004318072
+; │└└
+; │┌ @ /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:39 within `convert`
+; ││┌ @ int.jl:336 within `&`
+     %78 = and i32 %77, 252645135
+; │└└
+; │┌ @ /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:40 within `convert`
+; ││┌ @ int.jl:87 within `+`
+     %79 = add nuw i32 %78, 2021161080
+; │└└
+; │┌ @ /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:41 within `convert`
+; ││┌ @ int.jl:362 within `xor`
+     %80 = xor i32 %79, -2139062144
+; │└└
+; │┌ @ /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:42 within `convert`
+; ││┌ @ int.jl:493 within `>>>`
+     %81 = lshr i32 %77, 4
+; ││└
+; ││┌ @ int.jl:336 within `&`
+     %82 = and i32 %81, 252645135
+; │└└
+; │┌ @ /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:43 within `convert`
+; ││┌ @ int.jl:87 within `+`
+     %83 = add nuw i32 %82, 2021161080
+; │└└
+; │┌ @ /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:44 within `convert`
+; ││┌ @ int.jl:362 within `xor`
+     %84 = xor i32 %83, -2139062144
+; └└└
+; ┌ @ /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:1897 within `macro expansion`
+; │┌ @ /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:109 within `#convert`
+; ││┌ @ /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:325 within `cuda_prmt` @ /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:321
+; │││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/asmcall.jl:3 within `_asmcall`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/asmcall.jl:3 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+       %85 = call i32 asm "prmt.b32 $0, $1, $2, $3;", "=r,r,r,i"(i32 %80, i32 0, i32 34944) #2
+       %86 = call i32 asm "prmt.b32 $0, $1, $2, $3;", "=r,r,r,i"(i32 %80, i32 0, i32 39313) #2
+       %87 = call i32 asm "prmt.b32 $0, $1, $2, $3;", "=r,r,r,i"(i32 %80, i32 0, i32 43682) #2
+       %88 = call i32 asm "prmt.b32 $0, $1, $2, $3;", "=r,r,r,i"(i32 %80, i32 0, i32 48051) #2
+       %89 = call i32 asm "prmt.b32 $0, $1, $2, $3;", "=r,r,r,i"(i32 %84, i32 0, i32 34944) #2
+       %90 = call i32 asm "prmt.b32 $0, $1, $2, $3;", "=r,r,r,i"(i32 %84, i32 0, i32 39313) #2
+       %91 = call i32 asm "prmt.b32 $0, $1, $2, $3;", "=r,r,r,i"(i32 %84, i32 0, i32 43682) #2
+       %92 = call i32 asm "prmt.b32 $0, $1, $2, $3;", "=r,r,r,i"(i32 %84, i32 0, i32 48051) #2
+; └└└└└
+; ┌ @ /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:947 within `macro expansion`
+; │┌ @ float.jl:146 within `Float32`
+    %93 = sitofp i32 %85 to float
+    %94 = sitofp i32 %89 to float
+    %95 = sitofp i32 %86 to float
+    %96 = sitofp i32 %90 to float
+    %97 = sitofp i32 %87 to float
+    %98 = sitofp i32 %91 to float
+    %99 = sitofp i32 %88 to float
+    %100 = sitofp i32 %92 to float
+; └└
+; ┌ @ /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:1385 within `macro expansion`
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:192 within `getindex`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:111 within `#arrayref`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:119 within `arrayref_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:81 within `unsafe_load`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `pointerref`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+         %101 = load float, float addrspace(1)* %51, align 4
+; │└└└└└└
+; │┌ @ float.jl:398 within `+`
+    %102 = fadd float %101, %93
+; │└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:194 within `setindex!`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:153 within `#arrayset`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:162 within `arrayset_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:84 within `unsafe_store!`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `pointerset`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+         store float %102, float addrspace(1)* %51, align 4
+; │└└└└└└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:192 within `getindex`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:111 within `#arrayref`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:119 within `arrayref_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:81 within `unsafe_load`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `pointerref`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+         %103 = load float, float addrspace(1)* %54, align 4
+; │└└└└└└
+; │┌ @ float.jl:398 within `+`
+    %104 = fadd float %103, %94
+; │└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:194 within `setindex!`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:153 within `#arrayset`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:162 within `arrayset_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:84 within `unsafe_store!`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `pointerset`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+         store float %104, float addrspace(1)* %54, align 4
+; │└└└└└└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:192 within `getindex`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:111 within `#arrayref`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:119 within `arrayref_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:81 within `unsafe_load`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `pointerref`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+         %105 = load float, float addrspace(1)* %58, align 4
+; │└└└└└└
+; │┌ @ float.jl:398 within `+`
+    %106 = fadd float %105, %95
+; │└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:194 within `setindex!`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:153 within `#arrayset`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:162 within `arrayset_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:84 within `unsafe_store!`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `pointerset`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+         store float %106, float addrspace(1)* %58, align 4
+; │└└└└└└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:192 within `getindex`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:111 within `#arrayref`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:119 within `arrayref_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:81 within `unsafe_load`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `pointerref`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+         %107 = load float, float addrspace(1)* %61, align 4
+; │└└└└└└
+; │┌ @ float.jl:398 within `+`
+    %108 = fadd float %107, %96
+; │└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:194 within `setindex!`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:153 within `#arrayset`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:162 within `arrayset_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:84 within `unsafe_store!`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `pointerset`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+         store float %108, float addrspace(1)* %61, align 4
+; │└└└└└└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:192 within `getindex`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:111 within `#arrayref`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:119 within `arrayref_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:81 within `unsafe_load`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `pointerref`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+         %109 = load float, float addrspace(1)* %65, align 4
+; │└└└└└└
+; │┌ @ float.jl:398 within `+`
+    %110 = fadd float %109, %97
+; │└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:194 within `setindex!`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:153 within `#arrayset`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:162 within `arrayset_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:84 within `unsafe_store!`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `pointerset`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+         store float %110, float addrspace(1)* %65, align 4
+; │└└└└└└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:192 within `getindex`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:111 within `#arrayref`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:119 within `arrayref_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:81 within `unsafe_load`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `pointerref`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+         %111 = load float, float addrspace(1)* %68, align 4
+; │└└└└└└
+; │┌ @ float.jl:398 within `+`
+    %112 = fadd float %111, %98
+; │└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:194 within `setindex!`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:153 within `#arrayset`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:162 within `arrayset_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:84 within `unsafe_store!`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `pointerset`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+         store float %112, float addrspace(1)* %68, align 4
+; │└└└└└└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:192 within `getindex`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:111 within `#arrayref`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:119 within `arrayref_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:81 within `unsafe_load`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `pointerref`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+         %113 = load float, float addrspace(1)* %72, align 4
+; │└└└└└└
+; │┌ @ float.jl:398 within `+`
+    %114 = fadd float %113, %99
+; │└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:194 within `setindex!`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:153 within `#arrayset`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:162 within `arrayset_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:84 within `unsafe_store!`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `pointerset`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+         store float %114, float addrspace(1)* %72, align 4
+; │└└└└└└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:192 within `getindex`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:111 within `#arrayref`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:119 within `arrayref_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:81 within `unsafe_load`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `pointerref`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:9 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+         %115 = load float, float addrspace(1)* %76, align 4
+; │└└└└└└
+; │┌ @ float.jl:398 within `+`
+    %116 = fadd float %115, %100
+; │└
+; │┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:194 within `setindex!`
+; ││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:153 within `#arrayset`
+; │││┌ @ /home/eschnett/.julia/packages/CUDA/Uurn4/src/device/array.jl:162 within `arrayset_bits`
+; ││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:84 within `unsafe_store!`
+; │││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `pointerset`
+; ││││││┌ @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/pointer.jl:44 within `macro expansion` @ /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+         store float %116, float addrspace(1)* %76, align 4
+; │└└└└└└
+; │┌ @ range.jl:837 within `iterate`
+; ││┌ @ promotion.jl:468 within `==`
+     %.not = icmp eq i32 %value_phi, 32767
+; ││└
+    %117 = add nuw nsw i32 %value_phi, 1
+; │└
+   br i1 %.not, label %L1467, label %L577
+
+L1467:                                            ; preds = %L577
+; └
+;  @ /home/eschnett/src/jl/GPUIndexSpaces.jl/test/average.jl:150 within `runsteps`
+  ret void
+}

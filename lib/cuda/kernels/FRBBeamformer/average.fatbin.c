@@ -1,3 +1,4 @@
+// clang-format off
 #ifndef __SKIP_INTERNAL_FATBINARY_HEADERS
 #include "fatbinary_section.h"
 #endif

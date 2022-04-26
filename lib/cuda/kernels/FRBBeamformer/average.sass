@@ -1,0 +1,340 @@
+// PTX CompilerJob of kernel runsteps(CuDeviceVector{Int4x8, 1}, CuDeviceVector{Float32, 1}) for sm_80, blocks_per_sm=1, maxregs=4096
+
+	.headerflags	@"EF_CUDA_TEXMODE_UNIFIED EF_CUDA_64BIT_ADDRESS EF_CUDA_SM80 EF_CUDA_VIRTUAL_SM(EF_CUDA_SM80)"
+	.elftype	@"ET_EXEC"
+
+
+//--------------------- .text._Z19julia_runsteps_681713CuDeviceArrayI6Int4x8Li1ELi1EES_I7Float32Li1ELi1EE --------------------------
+	.section	.text._Z19julia_runsteps_681713CuDeviceArrayI6Int4x8Li1ELi1EES_I7Float32Li1ELi1EE,"ax",@progbits
+	.sectioninfo	@"SHI_REGISTERS=26"
+	.align	128
+        .global         _Z19julia_runsteps_681713CuDeviceArrayI6Int4x8Li1ELi1EES_I7Float32Li1ELi1EE
+        .type           _Z19julia_runsteps_681713CuDeviceArrayI6Int4x8Li1ELi1EES_I7Float32Li1ELi1EE,@function
+        .size           _Z19julia_runsteps_681713CuDeviceArrayI6Int4x8Li1ELi1EES_I7Float32Li1ELi1EE,(.L_x_2 - _Z19julia_runsteps_681713CuDeviceArrayI6Int4x8Li1ELi1EES_I7Float32Li1ELi1EE)
+        .other          _Z19julia_runsteps_681713CuDeviceArrayI6Int4x8Li1ELi1EES_I7Float32Li1ELi1EE,@"STO_CUDA_ENTRY STV_DEFAULT"
+_Z19julia_runsteps_681713CuDeviceArrayI6Int4x8Li1ELi1EES_I7Float32Li1ELi1EE:
+
+.text._Z19julia_runsteps_681713CuDeviceArrayI6Int4x8Li1ELi1EES_I7Float32Li1ELi1EE:
+; Location /home/eschnett/src/jl/GPUIndexSpaces.jl/test/average.jl:148
+        IMAD.MOV.U32 R1, RZ, RZ, c[0x0][0x28] ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        S2R R5, SR_TID.Y ;
+        IMAD.MOV.U32 R11, RZ, RZ, 0x4 ;
+        ULDC.64 UR6, c[0x0][0x118] ;
+        S2R R4, SR_CTAID.X ;
+        UMOV UR4, 0x8000 ;
+        S2R R9, SR_TID.X ;
+; Location ./int.jl:492
+        IMAD.SHL.U32 R2, R5, 0x100, RZ ;
+        IMAD.SHL.U32 R0, R4, 0x800, RZ ;
+        LOP3.LUT R3, R2, 0x700, RZ, 0xc0, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        IMAD.SHL.U32 R2, R4, 0x100, RZ ;
+; Location ./int.jl:87
+        LOP3.LUT R0, R3, 0x7f800, R0, 0xf8, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        IMAD.SHL.U32 R3, R5, 0x20, RZ ;
+; Location ./int.jl:87
+        LOP3.LUT R6, R0, 0x1f, R9, 0xf8, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        LOP3.LUT R3, R3, 0xe0, RZ, 0xc0, !PT ;
+        IMAD.WIDE.U32 R6, R6, R11, c[0x0][0x188] ;
+        LOP3.LUT R2, R3, 0xff00, R2, 0xf8, !PT ;
+        IMAD.SHL.U32 R3, R9, 0x8, RZ ;
+        STG.E [R6.64], RZ ;
+        LOP3.LUT R2, R2, 0x1f, R9, 0xf8, !PT ;
+        STG.E [R6.64+0x80], RZ ;
+        LOP3.LUT R4, R0, 0xf8, R3, 0xf8, !PT ;
+        IMAD.WIDE.U32 R2, R2, R11.reuse, c[0x0][0x168] ;
+        STG.E [R6.64+0x100], RZ ;
+        IMAD.WIDE.U32 R4, R4, R11, c[0x0][0x188] ;
+        STG.E [R6.64+0x180], RZ ;
+        STG.E [R6.64+0x200], RZ ;
+        STG.E [R6.64+0x280], RZ ;
+        STG.E [R6.64+0x300], RZ ;
+        STG.E [R6.64+0x380], RZ ;
+
+.L_x_0:
+        LDG.E R13, [R2.64] ;
+        LDG.E R9, [R4.64] ;
+        LDG.E R11, [R4.64+0x4] ;
+        LDG.E R12, [R4.64+0x8] ;
+        LDG.E R10, [R4.64+0xc] ;
+        LDG.E R0, [R4.64+0x10] ;
+        LDG.E R8, [R4.64+0x14] ;
+        LDG.E R7, [R4.64+0x18] ;
+        LDG.E R6, [R4.64+0x1c] ;
+; Location ./int.jl:362
+        LOP3.LUT R15, R13, 0x88888888, RZ, 0x3c, !PT ;
+; Location ./int.jl:336
+        LOP3.LUT R13, R15, 0xf0f0f0f, RZ, 0xc0, !PT ;
+; Location ./int.jl:493
+        SHF.R.U32.HI R15, RZ, 0x4, R15 ;
+; Location ./int.jl:87
+        IADD3 R13, R13, 0x78787878, RZ ;
+; Location ./int.jl:336
+        LOP3.LUT R17, R15, 0xf0f0f0f, RZ, 0xc0, !PT ;
+; Location ./int.jl:362
+        LOP3.LUT R16, R13, 0x80808080, RZ, 0x3c, !PT ;
+; Location ./int.jl:87
+        IADD3 R17, R17, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        PRMT R14, R16.reuse, 0x8880, RZ ;
+; Location ./int.jl:362
+        LOP3.LUT R17, R17, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        PRMT R13, R16.reuse, 0x9991, RZ ;
+        PRMT R18, R16, 0xaaa2, RZ ;
+; Location ./float.jl:146
+        I2F R14, R14 ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        PRMT R19, R17.reuse, 0x8880, RZ ;
+        PRMT R20, R17, 0x9991, RZ ;
+        PRMT R21, R17.reuse, 0xaaa2, RZ ;
+        PRMT R16, R16, 0xbbb3, RZ ;
+; Location ./float.jl:146
+        I2F R13, R13 ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        PRMT R17, R17, 0xbbb3, RZ ;
+; Location ./float.jl:146
+        I2F R15, R18 ;
+; Location ./float.jl:398
+        FADD R9, R14, R9 ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        STG.E [R4.64], R9 ;
+; Location ./float.jl:146
+        I2F R16, R16 ;
+; Location ./float.jl:398
+        FADD R13, R13, R12 ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        STG.E [R4.64+0x8], R13 ;
+; Location ./float.jl:146
+        I2F R22, R19 ;
+; Location ./float.jl:398
+        FADD R15, R15, R0 ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        LDG.E R9, [R4.64] ;
+        STG.E [R4.64+0x10], R15 ;
+; Location ./float.jl:146
+        I2F R23, R20 ;
+; Location ./float.jl:398
+        FADD R19, R16, R7 ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        LDG.E R12, [R4.64+0x8] ;
+        STG.E [R4.64+0x18], R19 ;
+; Location ./float.jl:146
+        I2F R21, R21 ;
+; Location ./float.jl:398
+        FADD R11, R22, R11 ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        LDG.E R0, [R4.64+0x10] ;
+        STG.E [R4.64+0x4], R11 ;
+; Location ./float.jl:146
+        I2F R17, R17 ;
+; Location ./float.jl:398
+        FADD R23, R23, R10 ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        LDG.E R7, [R4.64+0x18] ;
+        STG.E [R4.64+0xc], R23 ;
+; Location ./float.jl:398
+        FADD R21, R21, R8 ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        LDG.E R11, [R4.64+0x4] ;
+        STG.E [R4.64+0x14], R21 ;
+; Location ./float.jl:398
+        FADD R17, R17, R6 ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        LDG.E R10, [R4.64+0xc] ;
+        STG.E [R4.64+0x1c], R17 ;
+        LDG.E R13, [R2.64] ;
+        LDG.E R8, [R4.64+0x14] ;
+        LDG.E R6, [R4.64+0x1c] ;
+; Location ./int.jl:362
+        LOP3.LUT R15, R13, 0x88888888, RZ, 0x3c, !PT ;
+; Location ./int.jl:336
+        LOP3.LUT R13, R15, 0xf0f0f0f, RZ, 0xc0, !PT ;
+; Location ./int.jl:493
+        SHF.R.U32.HI R15, RZ, 0x4, R15 ;
+; Location ./int.jl:336
+        LOP3.LUT R17, R15, 0xf0f0f0f, RZ, 0xc0, !PT ;
+; Location ./int.jl:87
+        IADD3 R13, R13, 0x78787878, RZ ;
+        IADD3 R17, R17, 0x78787878, RZ ;
+; Location ./int.jl:362
+        LOP3.LUT R16, R13, 0x80808080, RZ, 0x3c, !PT ;
+        LOP3.LUT R17, R17, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        PRMT R14, R16, 0x8880, RZ ;
+        PRMT R13, R16.reuse, 0x9991, RZ ;
+        PRMT R18, R16.reuse, 0xaaa2, RZ ;
+        PRMT R19, R17.reuse, 0x8880, RZ ;
+        PRMT R20, R17.reuse, 0x9991, RZ ;
+        PRMT R21, R17, 0xaaa2, RZ ;
+        PRMT R16, R16, 0xbbb3, RZ ;
+        PRMT R17, R17, 0xbbb3, RZ ;
+; Location ./float.jl:146
+        I2F R14, R14 ;
+        I2F R13, R13 ;
+        I2F R15, R18 ;
+        I2F R16, R16 ;
+        I2F R22, R19 ;
+        I2F R23, R20 ;
+        I2F R21, R21 ;
+        I2F R17, R17 ;
+; Location ./float.jl:398
+        FADD R9, R14, R9 ;
+        FADD R11, R22, R11 ;
+        FADD R13, R13, R12 ;
+        FADD R23, R23, R10 ;
+        FADD R15, R15, R0 ;
+        FADD R21, R21, R8 ;
+        FADD R19, R16, R7 ;
+        FADD R17, R17, R6 ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        STG.E [R4.64], R9 ;
+        STG.E [R4.64+0x4], R11 ;
+        STG.E [R4.64+0x8], R13 ;
+        STG.E [R4.64+0xc], R23 ;
+        STG.E [R4.64+0x10], R15 ;
+        STG.E [R4.64+0x14], R21 ;
+        STG.E [R4.64+0x18], R19 ;
+        STG.E [R4.64+0x1c], R17 ;
+        LDG.E R13, [R2.64] ;
+        LDG.E R9, [R4.64] ;
+        LDG.E R11, [R4.64+0x4] ;
+        LDG.E R12, [R4.64+0x8] ;
+        LDG.E R10, [R4.64+0xc] ;
+        LDG.E R0, [R4.64+0x10] ;
+        LDG.E R8, [R4.64+0x14] ;
+        LDG.E R7, [R4.64+0x18] ;
+        LDG.E R6, [R4.64+0x1c] ;
+; Location ./int.jl:362
+        LOP3.LUT R15, R13, 0x88888888, RZ, 0x3c, !PT ;
+; Location ./int.jl:336
+        LOP3.LUT R13, R15, 0xf0f0f0f, RZ, 0xc0, !PT ;
+; Location ./int.jl:493
+        SHF.R.U32.HI R15, RZ, 0x4, R15 ;
+; Location ./int.jl:336
+        LOP3.LUT R17, R15, 0xf0f0f0f, RZ, 0xc0, !PT ;
+; Location ./int.jl:87
+        IADD3 R13, R13, 0x78787878, RZ ;
+        IADD3 R17, R17, 0x78787878, RZ ;
+; Location ./int.jl:362
+        LOP3.LUT R16, R13, 0x80808080, RZ, 0x3c, !PT ;
+        LOP3.LUT R17, R17, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        PRMT R14, R16, 0x8880, RZ ;
+        PRMT R13, R16.reuse, 0x9991, RZ ;
+        PRMT R18, R16.reuse, 0xaaa2, RZ ;
+        PRMT R19, R17.reuse, 0x8880, RZ ;
+        PRMT R20, R17.reuse, 0x9991, RZ ;
+        PRMT R21, R17, 0xaaa2, RZ ;
+        PRMT R16, R16, 0xbbb3, RZ ;
+        PRMT R17, R17, 0xbbb3, RZ ;
+; Location ./float.jl:146
+        I2F R14, R14 ;
+        I2F R13, R13 ;
+        I2F R15, R18 ;
+        I2F R16, R16 ;
+        I2F R22, R19 ;
+        I2F R23, R20 ;
+        I2F R21, R21 ;
+        I2F R17, R17 ;
+; Location ./float.jl:398
+        FADD R9, R14, R9 ;
+        FADD R11, R22, R11 ;
+        FADD R13, R13, R12 ;
+        FADD R23, R23, R10 ;
+        FADD R15, R15, R0 ;
+        FADD R21, R21, R8 ;
+        FADD R19, R16, R7 ;
+        FADD R17, R17, R6 ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        STG.E [R4.64], R9 ;
+        STG.E [R4.64+0x4], R11 ;
+        STG.E [R4.64+0x8], R13 ;
+        STG.E [R4.64+0xc], R23 ;
+        STG.E [R4.64+0x10], R15 ;
+        STG.E [R4.64+0x14], R21 ;
+        STG.E [R4.64+0x18], R19 ;
+        STG.E [R4.64+0x1c], R17 ;
+        LDG.E R13, [R2.64] ;
+        LDG.E R9, [R4.64] ;
+        LDG.E R11, [R4.64+0x4] ;
+        LDG.E R12, [R4.64+0x8] ;
+        LDG.E R10, [R4.64+0xc] ;
+        LDG.E R0, [R4.64+0x10] ;
+        LDG.E R8, [R4.64+0x14] ;
+        LDG.E R7, [R4.64+0x18] ;
+        LDG.E R6, [R4.64+0x1c] ;
+; Location ./promotion.jl:468
+        UIADD3 UR4, UR4, -0x4, URZ ;
+        ISETP.NE.AND P0, PT, RZ, UR4, PT ;
+; Location ./int.jl:362
+        LOP3.LUT R15, R13, 0x88888888, RZ, 0x3c, !PT ;
+; Location ./int.jl:336
+        LOP3.LUT R13, R15, 0xf0f0f0f, RZ, 0xc0, !PT ;
+; Location ./int.jl:493
+        SHF.R.U32.HI R15, RZ, 0x4, R15 ;
+; Location ./int.jl:336
+        LOP3.LUT R17, R15, 0xf0f0f0f, RZ, 0xc0, !PT ;
+; Location ./int.jl:87
+        IADD3 R13, R13, 0x78787878, RZ ;
+        IADD3 R17, R17, 0x78787878, RZ ;
+; Location ./int.jl:362
+        LOP3.LUT R16, R13, 0x80808080, RZ, 0x3c, !PT ;
+        LOP3.LUT R17, R17, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        PRMT R14, R16, 0x8880, RZ ;
+        PRMT R13, R16.reuse, 0x9991, RZ ;
+        PRMT R18, R16.reuse, 0xaaa2, RZ ;
+        PRMT R19, R17.reuse, 0x8880, RZ ;
+        PRMT R20, R17.reuse, 0x9991, RZ ;
+        PRMT R21, R17, 0xaaa2, RZ ;
+        PRMT R16, R16, 0xbbb3, RZ ;
+        PRMT R17, R17, 0xbbb3, RZ ;
+; Location ./float.jl:146
+        I2F R14, R14 ;
+        I2F R13, R13 ;
+        I2F R15, R18 ;
+        I2F R16, R16 ;
+        I2F R22, R19 ;
+        I2F R23, R20 ;
+        I2F R21, R21 ;
+        I2F R17, R17 ;
+; Location ./float.jl:398
+        FADD R9, R14, R9 ;
+        FADD R11, R22, R11 ;
+        FADD R13, R13, R12 ;
+        FADD R23, R23, R10 ;
+        FADD R15, R15, R0 ;
+        FADD R21, R21, R8 ;
+        FADD R7, R16, R7 ;
+        FADD R17, R17, R6 ;
+; Location /home/eschnett/.julia/packages/LLVM/tVv0H/src/interop/base.jl:45
+        STG.E [R4.64], R9 ;
+        STG.E [R4.64+0x4], R11 ;
+        STG.E [R4.64+0x8], R13 ;
+        STG.E [R4.64+0xc], R23 ;
+        STG.E [R4.64+0x10], R15 ;
+        STG.E [R4.64+0x14], R21 ;
+        STG.E [R4.64+0x18], R7 ;
+        STG.E [R4.64+0x1c], R17 ;
+; Location /home/eschnett/src/jl/GPUIndexSpaces.jl/src/GPUIndexSpaces.jl:1385
+    @P0 BRA `(.L_x_0) ;
+; Location /home/eschnett/src/jl/GPUIndexSpaces.jl/test/average.jl:150
+        EXIT ;
+
+.L_x_1:
+        BRA `(.L_x_1);
+        NOP;
+        NOP;
+        NOP;
+        NOP;
+        NOP;
+        NOP;
+        NOP;
+        NOP;
+        NOP;
+
+.L_x_2:
