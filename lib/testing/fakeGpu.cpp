@@ -27,6 +27,7 @@
 #include <time.h>     // for timespec, clock_gettime, nanosleep
 #include <vector>     // for vector
 
+#define GIGA 1000000000
 
 REGISTER_KOTEKAN_STAGE(FakeGpu);
 REGISTER_TELESCOPE(FakeTelescope, "fake");
@@ -91,8 +92,8 @@ void FakeGpu::main_thread() {
     const auto nprod_gpu = gpu_N2_size(num_elements, block_size);
 
     // Set the start time
-    clock_gettime(CLOCK_REALTIME, &ts);
-
+    //clock_gettime(CLOCK_REALTIME, &ts);
+    ts = tel.to_time(fpga_seq);
     // Calculate the increment in time between samples
     if (pre_accumulate) {
         delta_seq = samples_per_data_set;
@@ -176,6 +177,11 @@ void FakeGpu::main_thread() {
 FakeTelescope::FakeTelescope(const kotekan::Config& config, const std::string& path) :
     Telescope(config.get<std::string>(path, "log_level")) {
     _num_local_freq = config.get_default<uint32_t>(path, "num_local_freq", 1);
+
+    timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    time0_ns = ts.tv_sec;
+    dt_ns = 1e3 / 800.0 * 2048;
 }
 
 freq_id_t FakeTelescope::to_freq_id(stream_t stream_id, uint32_t ind) const {
@@ -204,8 +210,10 @@ uint8_t FakeTelescope::nyquist_zone() const {
     return 2;
 }
 
-timespec FakeTelescope::to_time(uint64_t /*seq*/) const {
-    return {0, 0};
+timespec FakeTelescope::to_time(uint64_t seq) const {
+    auto time_ns = time0_ns + seq * dt_ns;
+    return {(time_t)(time_ns / GIGA), (long)(time_ns % GIGA)};
+    //return {0, 0};
 }
 
 uint64_t FakeTelescope::to_seq(timespec /*time*/) const {
