@@ -171,7 +171,6 @@ DEALINGS WITH THE SOFTWARE.
 ===== AMD cmake find files for ROCm =====
 
 Files:
-  cmake/FindHCC.cmake
   cmake/FindHIP.cmake
 
 ===
