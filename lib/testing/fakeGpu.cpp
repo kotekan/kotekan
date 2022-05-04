@@ -180,7 +180,8 @@ FakeTelescope::FakeTelescope(const kotekan::Config& config, const std::string& p
 
     timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    time0_ns = ts.tv_sec;
+
+    time0_ns = config.get_default<uint32_t>(path, "frame0_nano", ts.tv_sec);
     dt_ns = 1e3 / 800.0 * 2048;
 }
 
