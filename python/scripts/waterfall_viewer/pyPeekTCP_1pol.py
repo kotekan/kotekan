@@ -230,7 +230,7 @@ ax[0][0].yaxis.set_major_formatter(date_format)
 ax[0][1].yaxis.set_visible(False)
 
 d = np.nanmean(waterfall[:, :, 0], axis=1)
-ax[0][1].set_xlim(np.amin(d), np.amax(d))
+#ax[0][1].set_xlim(np.amin(d), np.amax(d))
 ax[0][1].set_ylim([tmin, tmax])
 (im,) = ax[0][1].plot(d, times, ".")
 ax[0][1].set_xlabel("Power (dB, arb)")

@@ -70,7 +70,8 @@ spectrum_output:
     frame_size: ( spectrum_length + one ) * sizeof_float
 
   xengine:
-    kotekan_stage: simpleAutocorr
+    log_level: debug
+    kotekan_stage: SampleAutocorr
     in_buf: post_fengine_buf
     out_buf: post_corr_buf
 
