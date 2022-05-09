@@ -60,7 +60,7 @@ private:
     /// Data should be packed as complex @c float pairs.
     struct Buffer* buf_in;
     /// Kotekan buffer which this stage produces into.
-    struct Buffer* buf_out;
+//    struct Buffer* buf_out;
 
     /// Frame index for the input buffer.
     int frame_in;
@@ -78,6 +78,9 @@ private:
     std::string endpoint;
 
     bool sample_active = false;
+    bool sample_ready = false;
+//    uint* out_local;
+
 };
 
 

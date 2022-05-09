@@ -35,7 +35,7 @@ airspyInput::~airspyInput() {
 void airspyInput::adcstat_callback(kotekan::connectionInstance& conn) {
     dump_adcstat = true;
     while (!adcstat_ready) {usleep(1000);}
-//    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
+
     nlohmann::json reply;
     reply["rms"] = adcrms;
     reply["mean"] = adcmean;
@@ -85,7 +85,7 @@ void airspyInput::rest_callback(kotekan::connectionInstance& conn,
     } catch (...) {}
     try {
         gain_if = json_request["gain_if"];
-        INFO("Updating airspy LNA gain to {:d}", gain_if);
+        INFO("Updating airspy IF gain to {:d}", gain_if);
 
         err = airspy_set_vga_gain(dev, gain_if);
         if (err != AIRSPY_SUCCESS) {
@@ -107,7 +107,7 @@ void airspyInput::rest_callback(kotekan::connectionInstance& conn,
 }
 
 void airspyInput::main_thread() {
-    std::string endpoint = unique_name+"/freq";
+    std::string endpoint = unique_name+"/config";
     using namespace std::placeholders;
     kotekan::restServer& rest_server = kotekan::restServer::instance();
     rest_server.register_post_callback(endpoint,
