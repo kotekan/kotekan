@@ -22,44 +22,58 @@ buffer_depth: 12
 baseband_buffer_depth: 12 # TODO increase this for the baseband buffer
 samples_per_data_set: 32768 * 2
 num_local_freq: 16
+num_freq_in_frame: num_local_freq
 num_elements: 128
 num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
 sizeof_int: 4
 num_gpus: 2
 block_size: 32
 num_data_sets: 1
-data_format: "dot4b"
+data_format: "4+4b"
 # The number of FPGA links per NUMA domain
 num_links: 16
+instrument_name: princeton
+
+# Increase this when we add eigenvalues
+num_ev: 0
 
 cpu_affinity: [8, 9, 10, 11, 12, 13, 14, 15, 16, 32, 33, 34, 35, 36, 37, 38, 39]
 
-# Pool
+###################
+#### telescope ####
+###################
+
+telescope:
+  name: ICETelescope
+  require_gps: false
+  query_gps: true
+  gps_host: 10.40.1.1 # `gw`
+  allow_default_frequency_map: true # Don't fall back on default map
+
+###############
+#### comet ####
+###############
+
+dataset_manager:
+  use_dataset_broker: True
+  ds_broker_host: 10.40.1.5 # aux
+  ds_broker_port: 12050
+
+##################
+#### Metadata ####
+##################
+
 main_pool:
     kotekan_metadata_pool: chimeMetadata
     num_metadata_objects: 128 * buffer_depth
 
-gpu_input_merged:
-    num_frames: buffer_depth * 4
-    frame_size: samples_per_data_set * num_elements * num_local_freq
-    metadata_pool: main_pool
-    gpu_input_merged_0:
-        numa_node: 0
-        kotekan_buffer: standard
-    gpu_input_merged_1:
-        numa_node: 1
-        kotekan_buffer: standard
+vis_pool:
+    kotekan_metadata_pool: VisMetadata
+    num_metadata_objects: 40 * buffer_depth * num_local_freq
 
-gpu_output_buffers:
-    num_frames: buffer_depth
-    frame_size: num_local_freq * num_blocks * (block_size*block_size)*2*num_data_sets  * sizeof_int
-    metadata_pool: main_pool
-    gpu_output_buffer_0:
-        numa_node: 0
-        kotekan_buffer: standard
-    gpu_output_buffer_1:
-        numa_node: 1
-        kotekan_buffer: standard
+#################
+#### Buffers ####
+#################
 
 gpu_input_buffers:
     num_frames: baseband_buffer_depth
@@ -91,6 +105,62 @@ lost_samples_buffers:
         kotekan_buffer: standard
 {%- endfor %}
 
+gpu_input_merged:
+    num_frames: buffer_depth * 4
+    frame_size: samples_per_data_set * num_elements * num_local_freq
+    metadata_pool: main_pool
+    gpu_input_merged_0:
+        numa_node: 0
+        kotekan_buffer: standard
+    gpu_input_merged_1:
+        numa_node: 1
+        kotekan_buffer: standard
+
+gpu_output_buffers:
+    num_frames: buffer_depth
+    frame_size: num_local_freq * num_blocks * (block_size*block_size) * 2  * sizeof_int
+    metadata_pool: main_pool
+    gpu_output_buffer_0:
+        numa_node: 0
+        kotekan_buffer: standard
+    gpu_output_buffer_1:
+        numa_node: 1
+        kotekan_buffer: standard
+{%- for id in range(16) %}
+    gpu_output_split_buffer_{{ id }}:
+        numa_node: 0
+        kotekan_buffer: standard
+{%- endfor %}
+{%- for id in range(16,32) %}
+    gpu_output_split_buffer_{{ id }}:
+        numa_node: 1
+        kotekan_buffer: standard
+{%- endfor %}
+
+vis_buffers:
+    metadata_pool: vis_pool
+    num_frames: buffer_depth * num_local_freq * num_links
+    visbuf_5s_merged:
+        numa_node: 1
+        kotekan_buffer: vis
+{%- for id in range(16) %}
+    visbuf_5s_{{ id }}:
+        numa_node: 0
+        kotekan_buffer: vis
+{%- endfor %}
+{%- for id in range(16,32) %}
+    visbuf_5s_{{ id }}:
+        numa_node: 1
+        kotekan_buffer: vis
+{%- endfor %}
+
+
+################
+#### Stages ####
+################
+
+### Data Capture ###
+
 # DPDK packet capture from FPGA
 {% if enable_fake_data is not defined %}
 dpdk:
@@ -100,7 +170,7 @@ dpdk:
     master_lcore_cpu: 9
     fpga_packet_size: 4160
     num_mem_channels: 8
-    alignment: samples_per_data_set
+    alignment: samples_per_data_set * 32
     mbuf_cache_size: 250
     init_mem_alloc: 1024,1024
     # Format is index = lcore, value = array of port IDs
@@ -142,6 +212,7 @@ zero_samples:
 
 buffer_merge_0:
     kotekan_stage: bufferMerge
+    cpu_affinity: [17]
     in_bufs:
 {%- for id in range(16) %}
         - gpu_input_buffer_{{ id }}
@@ -150,6 +221,7 @@ buffer_merge_0:
 
 buffer_merge_1:
     kotekan_stage: bufferMerge
+    cpu_affinity: [40]
     in_bufs:
 {%- for id in range(16,32) %}
         - gpu_input_buffer_{{ id }}
@@ -171,18 +243,23 @@ gen_data:
         out_buf: gpu_input_merged_1
 {% endif %}
 
+### GPU Processing ###
+
 gpu:
     profiling: true
-    log_profiling: true
+    log_profiling: false
     kernel_path: "../../lib/opencl/kernels/"
     gain_dir: "/etc/kotekan/"
-    log_level: info
+    log_level: warn
     frame_arrival_period: samples_per_data_set / 390625.0 / num_links
     commands: &command_list
-        - name: clInputData
-        - name: clOutputDataZero
-        - name: clKVCorr
-        - name: clOutputData
+      - name: clInputData
+      - name: clPresumZero
+      - name: clOutputDataZero
+      - name: clPresumKernel
+      - name: clPreseedKernel
+      - name: clCorrelatorKernel
+      - name: clOutputData
     gpu_0:
         kotekan_stage: clProcess
         cpu_affinity: [9, 10, 11, 12]
@@ -209,3 +286,83 @@ gpu:
 {%- endfor %}
         out_buffers:
             output_buf: gpu_output_buffer_1
+
+split_0:
+    kotekan_stage: BufferSplit
+    in_buf: gpu_output_buffer_0
+    out_bufs:
+{%- for id in range(16) %}
+        - gpu_output_split_buffer_{{ id }}
+{%- endfor %}
+
+split_1:
+    kotekan_stage: BufferSplit
+    in_buf: gpu_output_buffer_1
+    out_bufs:
+{%- for id in range(16,32) %}
+        - gpu_output_split_buffer_{{ id }}
+{%- endfor %}
+
+### N^2 Accumulation ###
+
+vis_accumulate_stages:
+    log_level: WARN
+    integration_time: 10.0
+{%- for id in range(16) %}
+    acc_{{ id }}:
+        kotekan_stage: visAccumulate
+        in_buf: gpu_output_split_buffer_{{ id }}
+        out_buf: visbuf_5s_{{ id }}
+{%- endfor %}
+{%- for id in range(16,32) %}
+    acc_{{ id }}:
+        kotekan_stage: visAccumulate
+        in_buf: gpu_output_split_buffer_{{ id }}
+        out_buf: visbuf_5s_{{ id }}
+{%- endfor %}
+
+merge_acc:
+    kotekan_stage: bufferMerge
+    # Force a copy into NUMA2 since that contains the output NIC
+    force_copy: true
+    in_bufs:
+{%- for id in range(32) %}
+        - visbuf_5s_{{ id }}
+{%- endfor %}
+    out_buf: visbuf_5s_merged
+
+### N^2 Output ###
+
+# TODO Change to bufferSend
+#vis_writer:
+#    kotekan_stage: VisWriter
+#    in_buf: visbuf_5s_merged
+#    log_level: DEBUG
+#    node_mode: true
+#    file_type: hdf5
+#    root_path: /data/archive/
+#    write_ev: False
+#    file_length: 16
+
+buffer_send:
+  server_ip: 10.40.1.5
+  reconnect_time: 20
+  log_level: warn
+  n2:
+    kotekan_stage: bufferSend
+    buf: visbuf_5s_merged
+    server_port: 11024
+
+monitor:
+  kotekan_stage: monitorBuffer
+  bufs:
+    - gpu_input_buffer_0
+    - gpu_input_buffer_16
+  timeout: 30
+  fill_threshold: 0.98
+
+hex_dump:
+    #kotekan_stage: hexDump
+    len: 2048
+    offset: 0
+    in_buf: gpu_input_merged_0
