@@ -32,6 +32,7 @@ bufferMerge::bufferMerge(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&bufferMerge::main_thread, this)) {
 
     _timeout = config.get_default<double>(unique_name, "timeout", -1.0);
+    _force_copy = config.get_default<bool>(unique_name, "force_copy", false);
 
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
@@ -89,6 +90,16 @@ void bufferMerge::main_thread() {
         return;
     }
 
+    // If any in buffer has more than one consumer force a copy.
+    for (auto& buffer_info : in_bufs) {
+        Buffer* in_buf = std::get<1>(buffer_info);
+        if (get_num_consumers(in_buf) > 1) {
+            WARN("Using a deep copy in {:s} because {:s} has {:d} consumers", unique_name,
+                 in_buf->buffer_name, get_num_consumers(in_buf));
+            _force_copy = true;
+        }
+    }
+
     while (!stop_thread) {
         for (auto& buffer_info : in_bufs) {
             const std::string& internal_buffer_name = std::get<0>(buffer_info);
@@ -123,7 +134,8 @@ void bufferMerge::main_thread() {
                 pass_metadata(in_buf, in_frame_id, out_buf, out_frame_id);
 
                 // Copy or swap the frame.
-                if (get_num_consumers(in_buf) > 1) {
+                if (_force_copy) {
+                    ERROR("Doing deep copy on buffer {:s}", in_buf->buffer_name);
                     std::memcpy(output_frame, in_buf->frames[in_frame_id], in_buf->frame_size);
                 } else {
                     swap_frames(in_buf, in_frame_id, out_buf, out_frame_id);
