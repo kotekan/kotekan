@@ -75,18 +75,18 @@ gpu_input_buffers:
     frame_size: samples_per_data_set * num_elements * num_local_freq
     metadata_pool: main_pool
 {%- for id in range(16) %}
-{% if id in selected_links %}
+{%- if id in selected_links %}
     gpu_input_buffer_{{ id }}:
         numa_node: 0
         kotekan_buffer: standard
-{% endif %}
+{%- endif %}
 {%- endfor %}
 {%- for id in range(16,32) %}
-{% if id in selected_links %}
+{%- if id in selected_links %}
     gpu_input_buffer_{{ id }}:
         numa_node: 1
         kotekan_buffer: standard
-{% endif %}
+{%- endif %}
 {%- endfor %}
 
 lost_samples_buffers:
@@ -94,18 +94,18 @@ lost_samples_buffers:
     frame_size: samples_per_data_set
     metadata_pool: main_pool
 {%- for id in range(16) %}
-{% if id in selected_links %}
+{%- if id in selected_links %}
     lost_samples_buffer_{{ id }}:
         numa_node: 0
         kotekan_buffer: standard
-{% endif %}
+{%- endif %}
 {%- endfor %}
 {%- for id in range(16,32) %}
-{% if id in selected_links %}
+{%- if id in selected_links %}
     lost_samples_buffer_{{ id }}:
         numa_node: 1
         kotekan_buffer: standard
-{% endif %}
+{%- endif %}
 {%- endfor %}
 
 ################
@@ -146,32 +146,28 @@ dpdk:
         - [26,27]
         - [28,29]
         - [30,31]
-        #- [32,33]
 
     # One handler must be given per port on the system.
     handlers:
 {%- for id in range(32) %}
-{% if id in selected_links %}
+{%- if id in selected_links %}
         - dpdk_handler: iceBoardStandard
           out_buf: gpu_input_buffer_{{ id }}
           lost_samples_buf: lost_samples_buffer_{{ id }}
-{% else %}
+{%- else %}
         - dpdk_handler: none
-{% endif %}
+{%- endif %}
 {%- endfor %}
-        # For some reason the mellanox cards want to have a handler
-        #- dpdk_handler: none
-        #- dpdk_handler: none
 
 zero_samples:
 {%- for id in range(32) %}
-{% if id in selected_links %}
+{%- if id in selected_links %}
     zero_{{ id }}:
         kotekan_stage: zeroSamples
         zero_value: 0
         out_buf: gpu_input_buffer_{{ id }}
         lost_samples_buf: lost_samples_buffer_{{ id }}
-{% endif %}
+{%- endif %}
 {%- endfor %}
 
 
@@ -180,7 +176,7 @@ zero_samples:
 # Later this should be changed to a remote kotekan recv
 raw_file_write:
 {%- for id in range(32) %}
-{% if id in selected_links %}
+{%- if id in selected_links %}
     file_write_{{ id }}:
         kotekan_stage: rawFileWrite
         in_buf: gpu_input_buffer_{{ id }}
@@ -190,5 +186,5 @@ raw_file_write:
         file_ext: raw
         # Only include this line if there is one link being used.
         exit_after_n_files: buffer_depth
-{% endif %}
+{%- endif %}
 {%- endfor %}
