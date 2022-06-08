@@ -1,11 +1,11 @@
 #ifndef BEAMFORMING_PHASE_UPDATE_HPP
 #define BEAMFORMING_PHASE_UPDATE_HPP
 
-#include "Config.hpp"          // for Config
-#include "chimeMetadata.hpp"
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // for bufferContainer
+#include "Config.hpp" // for Config
+#include "Stage.hpp"  // for Stage
 #include "Telescope.hpp"
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.hpp"
 
 #include <stdint.h> // for int32_t
 
@@ -23,7 +23,7 @@
  *        @buffer_format Format determined by subclass/kernel requirements
  *        @buffer_metadata none
  *
- * @bufffer gain_buf Complex gains to multiply into the phases
+ * @buffer gain_buf Complex gains to multiply into the phases
  *                   Only used for kernels which apply gains and phases in one step.
  *        @buffer_format Format determined by subclass/kernel requirements
  *        @buffer_metadata none
@@ -104,9 +104,9 @@ protected:
      *                               phases.   For arrays with seperated gains/phases
      *                               this will be set to nullptr
      */
-    virtual void compute_phases(uint8_t * out_frame, const timespec &gps_time,
-                               const std::vector<freq_id_t> &frequencies_in_frame,
-                               uint8_t * gains_frame) = 0;
+    virtual void compute_phases(uint8_t* out_frame, const timespec& gps_time,
+                                const std::vector<freq_id_t>& frequencies_in_frame,
+                                uint8_t* gains_frame) = 0;
 };
 
 

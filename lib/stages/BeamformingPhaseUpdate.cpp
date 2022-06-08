@@ -1,12 +1,12 @@
 #include "BeamformingPhaseUpdate.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "configUpdater.hpp"      // for configUpdater
-#include "kotekanLogging.hpp"  // for DEBUG
-#include "util.h"              // for hex_dump
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"         // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "chimeMetadata.hpp"
+#include "configUpdater.hpp"  // for configUpdater
+#include "kotekanLogging.hpp" // for DEBUG
+#include "util.h"             // for hex_dump
 
 
 using kotekan::bufferContainer;
@@ -36,7 +36,8 @@ STAGE_CONSTRUCTOR(BeamformingPhaseUpdate) {
     frequencies_in_frame.resize(_num_local_freq);
 
     // Get feed locations
-    feed_locations = config.get<std::vector<std::pair<double, double>>>(unique_name, "feed_positions");
+    feed_locations =
+        config.get<std::vector<std::pair<double, double>>>(unique_name, "feed_positions");
 
     // Register function to listen for new beam, and update ra and dec
     using namespace std::placeholders;
@@ -75,8 +76,7 @@ bool BeamformingPhaseUpdate::tracking_update_callback(nlohmann::json& json, cons
             return false;
         }
         INFO("[tracking] Updated Beam={:d} RA={:.2f} Dec={:.2f} Scl={:d}", beam_id,
-             _beam_coord.ra[beam_id], _beam_coord.dec[beam_id],
-             _beam_coord.scaling[beam_id]);
+             _beam_coord.ra[beam_id], _beam_coord.dec[beam_id], _beam_coord.scaling[beam_id]);
     }
     return true;
 }
@@ -103,8 +103,7 @@ void BeamformingPhaseUpdate::main_thread() {
         // If we have a gains buffer we check for new gains
         if (gains_buf != nullptr) {
             if (first_time) {
-                gains_frame = wait_for_full_frame(gains_buf, unique_name.c_str(),
-                                                  gains_frame_id);
+                gains_frame = wait_for_full_frame(gains_buf, unique_name.c_str(), gains_frame_id);
                 if (gains_frame == nullptr)
                     break;
                 first_time = false;
@@ -117,8 +116,8 @@ void BeamformingPhaseUpdate::main_thread() {
                 }
                 if (status == 0) {
                     mark_frame_empty(gains_buf, unique_name.c_str(), gains_frame_id++);
-                    gains_frame = wait_for_full_frame(gains_buf, unique_name.c_str(),
-                                                      gains_frame_id);
+                    gains_frame =
+                        wait_for_full_frame(gains_buf, unique_name.c_str(), gains_frame_id);
                 }
             }
         }
