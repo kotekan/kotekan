@@ -373,7 +373,7 @@ int dpdkCore::lcore_rx(void* args) {
         uint32_t port = ports[i];
         if (core->handlers[port] == nullptr) {
             WARN_NON_OO("No valid handler provided for port {:d}", port);
-            return 0;
+            //return 0;
         }
     }
 
@@ -381,18 +381,20 @@ int dpdkCore::lcore_rx(void* args) {
         for (uint32_t i = 0; i < num_local_ports; ++i) {
             uint32_t port = ports[i];
 
-            const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
+            if (likely(core->handlers[port] != nullptr)) {
+                const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
 
-            for (uint16_t j = 0; j < num_rx; ++j) {
+                for (uint16_t j = 0; j < num_rx; ++j) {
 
-                // Process the packet with the required handler
-                // NOTE: Ideally this wouldn't be a call to a virtual function,
-                // but it's an overhead that's hard to avoid here.
-                if (unlikely(core->handlers[port]->handle_packet(mbufs[j]) != 0)) {
-                    goto exit_lcore;
+                    // Process the packet with the required handler
+                    // NOTE: Ideally this wouldn't be a call to a virtual function,
+                    // but it's an overhead that's hard to avoid here.
+                    if (unlikely(core->handlers[port]->handle_packet(mbufs[j]) != 0)) {
+                        goto exit_lcore;
+                    }
+
+                    rte_pktmbuf_free(mbufs[j]);
                 }
-
-                rte_pktmbuf_free(mbufs[j]);
             }
         }
     }
