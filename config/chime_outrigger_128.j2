@@ -117,7 +117,7 @@ gpu_input_merged:
         kotekan_buffer: standard
 
 gpu_output_buffers:
-    num_frames: buffer_depth
+    num_frames: buffer_depth * 4
     frame_size: num_local_freq * num_blocks * (block_size*block_size) * 2  * sizeof_int
     metadata_pool: main_pool
     gpu_output_buffer_0:
@@ -307,7 +307,8 @@ split_1:
 
 vis_accumulate_stages:
     log_level: WARN
-    integration_time: 10.0
+    integration_time: 180.0
+    max_age: 360.0
 {%- for id in range(16) %}
     acc_{{ id }}:
         kotekan_stage: visAccumulate
