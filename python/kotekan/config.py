@@ -18,7 +18,7 @@ except ImportError:
     pass
 
 
-def load_config_file(file_name_full, dump=False, jinja_options=None):
+def load_config_file(file_name_full, return_dict=False, dump=False, jinja_options=None):
     """
     Load configuration file to json.
 
@@ -28,6 +28,8 @@ def load_config_file(file_name_full, dump=False, jinja_options=None):
     ----------
     file_name_full: str
         Full path to config file.
+    return_dict: bool
+        Return dict instead of str (default False)
     dump: bool
         Dump the yaml to stderr (useful for j2 files)
     jinja_options: str
@@ -37,9 +39,25 @@ def load_config_file(file_name_full, dump=False, jinja_options=None):
     -------
     str
         JSON config data
+    dict
+        If return_dict, returns the config as yaml-defined dictionary
+
+    Raises
+    ------
+    IOError
+        If the config file cannot be opened.
+    yaml.YAMLError
+        If the config file cannot be parsed as yaml.
+    ImportError
+        If yaml is not installed, or if the file is j2 and jinja2 isn't installed.
+    jinja2.TemplateNotFound
+        If the file is .j2 and cannot be parsed by jinja2.
     """
     file_ext = os.path.splitext(file_name_full)[1]
     directory, file_name = os.path.split(file_name_full)
+
+    if yaml is None:
+        raise ImportError("yaml is required for parsing configuration files.")
 
     # Treat all files as pure YAML, unless it is a ".j2" file, then run jinja.
     if file_ext != ".j2":
@@ -74,11 +92,9 @@ def load_config_file(file_name_full, dump=False, jinja_options=None):
             with open(file_name_full, "r") as stream:
                 config_yaml = yaml.safe_load(stream)
         except IOError as err:
-            sys.stderr.write("Error reading file " + file_name_full + ": " + str(err))
-            sys.exit(-1)
+            raise IOError("Error reading file " + file_name_full + ": " + str(err)) from err
         except yaml.YAMLError as err:
-            sys.stderr.write("Error parsing yaml: \n" + str(err) + "\n")
-            sys.exit(-1)
+            raise yaml.YAMLError("Error parsing yaml: \n" + str(err) + "\n") from err
 
         if dump:
             sys.stderr.write(yaml.dump(config_yaml) + "\n")
@@ -107,5 +123,8 @@ def load_config_file(file_name_full, dump=False, jinja_options=None):
 
         # TODO Should we also lint the output of the template?
         config_yaml = yaml.safe_load(config_yaml_raw)
+
+    if return_dict:
+        return config_yaml
 
     return json.dumps(config_yaml)
