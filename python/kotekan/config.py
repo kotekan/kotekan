@@ -131,3 +131,33 @@ def load_config_file(file_name_full, return_dict=False, dump=False, jinja_option
         return config_yaml
 
     return json.dumps(config_yaml)
+
+
+if __name__ == "__main__":
+    """
+    This script converts YAML or Jinja files into JSON for use by kotekan
+
+    All files without a ".j2" extension are treated as YMAL, files with a ".j2"
+    extension are processed by the Jinja template render.
+
+    Extra variables can be passed in with the -e flag, in json/dict format:
+     -e '{"my_val": 20, "my_val2": 30, "my_array": [0,2,1]}'
+
+    The JSON is returned in STDOUT, and error messages are returned in STDERR
+    """
+
+    parser = argparse.ArgumentParser(
+        description="Convert YAML or Jinja files into JSON"
+    )
+    parser.add_argument("name", help="Config file name", type=str)
+    parser.add_argument(
+        "-d", "--dump", help="Dump the yaml, useful with .j2 files", action="store_true"
+    )
+    parser.add_argument(
+        "-e", "--variables", help="Add extra jinja variables, JSON format", type=str
+    )
+    args = parser.parse_args()
+
+    options = args.variables
+
+    print(load_config_file(args.name, dump=args.dump, jinja_options=options))
