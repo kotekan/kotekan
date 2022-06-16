@@ -92,7 +92,9 @@ def load_config_file(file_name_full, return_dict=False, dump=False, jinja_option
             with open(file_name_full, "r") as stream:
                 config_yaml = yaml.safe_load(stream)
         except IOError as err:
-            raise IOError("Error reading file " + file_name_full + ": " + str(err)) from err
+            raise IOError(
+                "Error reading file " + file_name_full + ": " + str(err)
+            ) from err
         except yaml.YAMLError as err:
             raise yaml.YAMLError("Error parsing yaml: \n" + str(err) + "\n") from err
 
@@ -105,7 +107,8 @@ def load_config_file(file_name_full, return_dict=False, dump=False, jinja_option
 
         # Load the template
         env = jinja2.Environment(
-            loader=jinja2.FileSystemLoader(directory), autoescape=jinja2.select_autoescape()
+            loader=jinja2.FileSystemLoader(directory),
+            autoescape=jinja2.select_autoescape(),
         )
         template = env.get_template(file_name)
 
