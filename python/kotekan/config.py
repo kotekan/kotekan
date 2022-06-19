@@ -156,8 +156,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "-e", "--variables", help="Add extra jinja variables, JSON format", type=str
     )
+    parser.add_argument(
+        "-s", "--stderr", help="Print exceptions to stderr", action="store_true"
+    )
     args = parser.parse_args()
 
     options = args.variables
 
-    print(load_config_file(args.name, dump=args.dump, jinja_options=options))
+    try:
+        print(load_config_file(args.name, dump=args.dump, jinja_options=options))
+    except (IOError, yaml.YAMLError, ImportError, jinja2.TemplateNotFound) as err:
+        if args.stderr:
+            sys.stderr.write(err.message + "\n")
+        else:
+            raise err
