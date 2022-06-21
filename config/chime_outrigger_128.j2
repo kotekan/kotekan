@@ -32,7 +32,7 @@ num_data_sets: 1
 data_format: "4+4b"
 # The number of FPGA links per NUMA domain
 num_links: 16
-instrument_name: princeton
+instrument_name: pco
 
 # Increase this when we add eigenvalues
 num_ev: 0
@@ -307,8 +307,8 @@ split_1:
 
 vis_accumulate_stages:
     log_level: WARN
-    integration_time: 180.0
-    max_age: 360.0
+    integration_time: 30.0
+    max_age: 60.0
 {%- for id in range(16) %}
     acc_{{ id }}:
         kotekan_stage: visAccumulate
@@ -346,7 +346,7 @@ merge_acc:
 #    file_length: 16
 
 buffer_send:
-  server_ip: 10.40.1.5
+  server_ip: 10.50.1.7
   reconnect_time: 20
   log_level: warn
   n2:
@@ -367,3 +367,5 @@ hex_dump:
     len: 2048
     offset: 0
     in_buf: gpu_input_merged_0
+
+{% include 'input_reorder/pco_input_reorder.j2' %}
