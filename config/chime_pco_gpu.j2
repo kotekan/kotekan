@@ -1,6 +1,6 @@
 ##########################################
 #
-# chime_outrigger_128.yaml
+# chime_outrigger_pco_gpu.yaml
 #
 # Config to support the CHIME outriggers 128 elements (64 feeds) with OpenCL kernels.
 #
@@ -15,7 +15,8 @@
 type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
-# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+# Note DEBUG
+and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: debug
 
 buffer_depth: 12
@@ -48,7 +49,7 @@ telescope:
   require_gps: false
   query_gps: true
   gps_host: 10.40.1.1 # `gw`
-  allow_default_frequency_map: true # Don't fall back on default map
+  allow_default_frequency_map: true
 
 ###############
 #### comet ####
@@ -70,6 +71,10 @@ main_pool:
 vis_pool:
     kotekan_metadata_pool: VisMetadata
     num_metadata_objects: 40 * buffer_depth * num_local_freq
+
+baseband_pool:
+  kotekan_metadata_pool: BasebandMetadata
+  num_metadata_objects: 4 * num_links * baseband_buffer_depth
 
 #################
 #### Buffers ####
