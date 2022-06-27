@@ -146,6 +146,8 @@ if __name__ == "__main__":
     The JSON is returned in STDOUT, and error messages are returned in STDERR
     """
 
+    import argparse
+
     parser = argparse.ArgumentParser(
         description="Convert YAML or Jinja files into JSON"
     )
@@ -165,8 +167,12 @@ if __name__ == "__main__":
 
     try:
         print(load_config_file(args.name, dump=args.dump, jinja_options=options))
-    except (IOError, yaml.YAMLError, ImportError, jinja2.TemplateNotFound) as err:
+    except (
+        IOError, yaml.YAMLError, ImportError,
+        jinja2.TemplateNotFound,
+        jinja2.exceptions.TemplateSyntaxError
+    ) as err:
         if args.stderr:
-            sys.stderr.write(err.message + "\n")
+            sys.stderr.write("Failure loading config: " + str(err) + "\n")
         else:
             raise err
