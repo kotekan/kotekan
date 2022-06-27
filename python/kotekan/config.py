@@ -168,9 +168,11 @@ if __name__ == "__main__":
     try:
         print(load_config_file(args.name, dump=args.dump, jinja_options=options))
     except (
-        IOError, yaml.YAMLError, ImportError,
+        IOError,
+        yaml.YAMLError,
+        ImportError,
         jinja2.TemplateNotFound,
-        jinja2.exceptions.TemplateSyntaxError
+        jinja2.exceptions.TemplateSyntaxError,
     ) as err:
         if args.stderr:
             sys.stderr.write("Failure loading config: " + str(err) + "\n")
