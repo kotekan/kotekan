@@ -88,9 +88,17 @@ struct metadataPool* metadataFactory::new_pool(const std::string& pool_type,
     if (pool_type == "BeamMetadata") {
         return create_metadata_pool(num_metadata_objects, sizeof(struct BeamMetadata));
     }
+<<<<<<< HEAD
 
     if (pool_type == "BasebandMetadata") {
         return create_metadata_pool(num_metadata_objects, sizeof(struct BasebandMetadata));
+=======
+>>>>>>> 5bcdf5ecec913a6be1c213af6fc08ea45bdde3b3
+    if (pool_type == "FreqIDBeamMetadata"){
+        return create_metadata_pool(num_metadata_objects, sizeof(struct FreqIDBeamMetadata));
+    }
+    if (pool_type == "MergedBeamMetadata") {
+        return create_metadata_pool(num_metadata_objects, sizeof(struct MergedBeamMetadata));
     }
     // No metadata found
     throw std::runtime_error(fmt::format(fmt("No metadata object named: {:s}"), pool_type));

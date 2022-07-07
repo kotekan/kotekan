@@ -1,0 +1,124 @@
+##########################################
+#
+# beam_record_sorted.yaml
+#
+# Configuration for reading tracking beam 
+# frames from files merge and sort packets 
+# to a bigger frame. The missing packets 
+# will be filled up with zeros. 
+#
+# Author: Jing Luo
+#
+##########################################
+---
+type: config
+log_level: info
+cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+samples_per_data_set: 49152
+queue_frame_size: samples_per_data_set
+dump_size: 50000
+num_pol: 2
+total_freq_chan: 1024
+use_n_out_buffer: 1
+time_resolution: 2.56e-6
+wait_nframes: 20
+buffer_depth: 105
+# sub_frames_per_merged_frame: 500
+# One time frame per file
+sub_frames_per_merged_frame1: total_freq_chan / use_n_out_buffer
+sub_frames_per_merged_frame0: total_freq_chan / use_n_out_buffer + total_freq_chan % use_n_out_buffer
+# The size of metadata with freq ID
+freq_id_metadata_size: 72
+
+telescope:
+  name: CHIMETelescope
+  require_gps: true
+  query_gps: true
+  require_frequency_map: true
+  query_frequency_map: true
+  allow_default_frequency_map: false
+
+dataset_manager:
+  use_dataset_broker: false
+
+beam_metadata_pool:
+  kotekan_metadata_pool: BeamMetadata
+  num_metadata_objects: 2048
+
+merged_beam_metadata_pool:
+  kotekan_metadata_pool: MergedBeamMetadata
+  num_metadata_objects: 20
+
+beam_recv_buffer:
+  kotekan_buffer: standard
+  num_frames: 2048
+  metadata_pool: beam_metadata_pool
+  frame_size: samples_per_data_set * num_pol
+
+sort_buffers:
+  num_frames: 8
+  metadata_pool: merged_beam_metadata_pool
+  # the size of the beam metadata with frequency is 72
+  frame_size: (dump_size * num_pol + freq_id_metadata_size) * sub_frames_per_merged_frame1
+  sorted_buffer_0:
+    kotekan_buffer: standard
+    #sorted_buffer_1:
+    #kotekan_buffer: standard
+    #sort_buffer_2:
+    #kotekan_buffer: standard
+    #sort_buffer_3:
+    #kotekan_buffer: standard
+    # sort_buffer_4:
+          # kotekan_buffer: standard
+    # sort_buffer_5:
+          # kotekan_buffer: standard
+    # sort_buffer_6:
+          # kotekan_buffer: standard
+    # sort_buffer_7:
+          # kotekan_buffer: standard
+    # sort_buffer_8:
+          # kotekan_buffer: standard
+    # sort_buffer_9:
+          # kotekan_buffer: standard
+
+recv:
+  kotekan_stage: bufferRecv
+  buf: beam_recv_buffer
+  #listen_port: 12020
+  listen_port: 11030
+  num_threads: 2
+
+sort_frame:
+  kotekan_stage: BeamBufferSort
+  has_freq_bin: false
+  in_buf: beam_recv_buffer
+  out_bufs:
+    - sorted_buffer_0
+      # - sort_buffer_1
+      # - sort_buffer_2
+      # - sort_buffer_3
+      # - sort_buffer_4
+      # - sort_buffer_5
+      #- sort_buffer_6
+      # - sort_buffer_7
+      # - sort_buffer_8
+      # - sort_buffer_9
+
+
+raw_capture:
+   kotekan_stage: nDiskFileWrite
+#################################
+# THIS IS THE PLACE TO EDIT!!!  #
+#################################
+   note: 26M Recording for B1508+55
+#Change this if you want to record
+   file_ext: raw
+   write_to_disk: True
+   write_metadata_and_gains: False
+   print_lost_sample_number: False
+   gain_files: Null
+   num_disks: 8
+   disk_base: /drives
+   disk_set: CHA
+   in_buf: sorted_buffer_0
+
