@@ -208,7 +208,7 @@ dpdk:
     master_lcore_cpu: 9
     fpga_packet_size: 4680
     num_mem_channels: 8
-    alignment: samples_per_data_set
+    alignment: samples_per_data_set * 32
     mbuf_cache_size: 250
     init_mem_alloc: 1024,1024
     # Format is index = lcore, value = array of port IDs
