@@ -1,6 +1,6 @@
-************
+****************
 Versioning Guide
-************
+****************
 
 Generally all development work leading to a new release goes into the ``develop`` branch
 (using a feature branch and pull-request model).
