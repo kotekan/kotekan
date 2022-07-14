@@ -34,6 +34,7 @@ Welcome to Kotekan's documentation!
    dev/dev_dataset_states
    dev/dev_dataset_broker
    dev/dev_style_guide
+   dev/dev_versioning_guide
    dev/dev_unittests
    dev/dev_gate_specs
 
