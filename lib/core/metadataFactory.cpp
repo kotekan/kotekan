@@ -74,23 +74,28 @@ struct metadataPool* metadataFactory::new_pool(const std::string& pool_type,
     uint32_t num_metadata_objects = config.get<uint32_t>(location, "num_metadata_objects");
 
     if (pool_type == "chimeMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(struct chimeMetadata));
+        return create_metadata_pool(num_metadata_objects, sizeof(struct chimeMetadata),
+                                    location.c_str());
     }
 
     if (pool_type == "VisMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(struct VisMetadata));
+        return create_metadata_pool(num_metadata_objects, sizeof(struct VisMetadata),
+                                    location.c_str());
     }
 
     if (pool_type == "HFBMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(struct HFBMetadata));
+        return create_metadata_pool(num_metadata_objects, sizeof(struct HFBMetadata),
+                                    location.c_str());
     }
 
     if (pool_type == "BeamMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(struct BeamMetadata));
+        return create_metadata_pool(num_metadata_objects, sizeof(struct BeamMetadata),
+                                    location.c_str());
     }
 
     if (pool_type == "BasebandMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(struct BasebandMetadata));
+        return create_metadata_pool(num_metadata_objects, sizeof(struct BasebandMetadata),
+                                    location.c_str());
     }
     // No metadata found
     throw std::runtime_error(fmt::format(fmt("No metadata object named: {:s}"), pool_type));
