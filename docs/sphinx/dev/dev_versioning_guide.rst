@@ -6,11 +6,11 @@ Generally all development work leading to a new release goes into the ``develop`
 (using a feature branch and pull-request model).
 Once the ``develop`` branch is ready for a release
 (usually because an instrument is starting a science data run),
-it gets merged into ``main``, at which point it is tagged according to the version format guidelines below:
+it gets merged into ``main``, at which point it is tagged according to the version format guidelines below.
 
 The version tagging format follows this style:
 
-``YYYY.MM[.N][revision]``.
+``YYYY.MM[.N][revision]``
 
 Where ``YYYY`` is the year, ``MM`` is the month with a leading zero, ``N`` is used if more than one full release
 happens in that month and starts at 1 (with zero for the first release implied).
