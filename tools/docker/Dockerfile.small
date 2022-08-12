@@ -1,14 +1,22 @@
 FROM kotekan:base as base
-#
-# Switch blaze version for compute node compilation
-RUN cd blaze && git checkout v3.8 && cd ..
+#FROM chimefrb/outrigger_kotekan:blaze3.8 as base
 
 # Build and install kotekan
-RUN cd kotekan $$ git pull && bash install.sh
+RUN cd kotekan && mkdir -p build && bash install.sh
+
+RUN cd kotekan/python && python3.7 -m pip install .
 
 
 # Reduce image size
-FROM rocm/dev-ubuntu-18.04:3.7
+FROM rocm/dev-ubuntu-18.04
+
+RUN apt-get update && \
+    apt-get install --no-install-recommends -y software-properties-common=0.96.* && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends  python3.7
+
+RUN python3.7 -m pip install pyyaml
 
 COPY --from=base /usr/lib/x86_64-linux-gnu/libhdf5_serial.so.100       /usr/lib/x86_64-linux-gnu/
 COPY --from=base /lib/x86_64-linux-gnu/libpthread.so.0                 /lib/x86_64-linux-gnu/
@@ -33,4 +41,9 @@ COPY --from=base /usr/lib/x86_64-linux-gnu/libaec.so.0                 /usr/lib/
 COPY --from=base /usr/lib/x86_64-linux-gnu/libquadmath.so.0            /usr/lib/x86_64-linux-gnu/
 COPY --from=base /lib/x86_64-linux-gnu/libgcc_s.so.1                   /lib/x86_64-linux-gnu/
 
-COPY --from=base /usr/local/bin/kotekan /usr/local/bin
+COPY --from=base /usr/local/bin/kotekan /usr/local/bin/
+
+# Remove large unused libraries
+RUN rm -rf /opt/rocm-5.2.0/llvm
+
+CMD ["/bin/bash"]

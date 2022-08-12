@@ -1,7 +1,10 @@
-FROM rocm/dev-ubuntu-18.04 as base
+FROM rocm/dev-ubuntu-18.04
 
 ## The maintainer name and email 
 LABEL maintainer="Adam Lanman <adam.lanman@mcgill.ca>"
+
+## Tag this as kotekan:full
+# Includes installation of kotekan python
 
 # Install any needed packages to run cmake with full CHIME build options
 RUN apt-get update && \
@@ -103,11 +106,13 @@ RUN python3.7 -m pip install msgpack==1.0.0 \
     python3.7 -m pip install git+https://github.com/chime-experiment/comet.git
 
 # Get Kotekan repo
-RUN git clone --branch ael/py3_only https://github.com/kotekan/kotekan.git
+#RUN git clone --branch ael/py3_only https://github.com/kotekan/kotekan.git
+ADD . kotekan
 
 # Build and install kotekan
-RUN cd kotekan && bash install.sh
-# TODO --> Do python installation of kotekan as well!
+RUN cd kotekan/python && python3.7 -m pip install . \
+	&& cd ../ && mkdir -p build && bash install.sh \
+	&& rm -rf build
 
 # Set ccache to store things sensibly
 ENV CCACHE_NOHASHDIR 1
@@ -119,37 +124,8 @@ ENV CCACHE_MAXSIZE 1G
 # Set the plugin path so kotekan can find bitshuffle
 ENV HDF5_PLUGIN_PATH /usr/local/hdf5/lib/plugin
 
+# Reduce final size
+RUN rm -rf /opt/rocm-5.2.0/llvm
+
 # Do nothing when the container launches
 CMD ["/bin/bash"]
-
-
-# Size Reduction step
-
-#
-# TODO -- Make sure python dependencies are still installed
-#FROM rocm/dev-ubuntu-18.04:3.7
-#
-#COPY --from=base /usr/lib/x86_64-linux-gnu/libhdf5_serial.so.100       /usr/lib/x86_64-linux-gnu/
-#COPY --from=base /lib/x86_64-linux-gnu/libpthread.so.0                 /lib/x86_64-linux-gnu/
-#COPY --from=base /lib/x86_64-linux-gnu/libm.so.6                       /lib/x86_64-linux-gnu/
-#COPY --from=base /lib/x86_64-linux-gnu/libmvec.so.1                    /lib/x86_64-linux-gnu/
-#COPY --from=base /usr/lib/x86_64-linux-gnu/libopenblas.so.0            /usr/lib/x86_64-linux-gnu/
-#COPY --from=base /usr/lib/x86_64-linux-gnu/liblapacke.so.3             /usr/lib/x86_64-linux-gnu/
-#COPY --from=base /lib/x86_64-linux-gnu/librt.so.1                      /lib/x86_64-linux-gnu/
-#COPY --from=base /usr/lib/x86_64-linux-gnu/libatomic.so.1              /usr/lib/x86_64-linux-gnu/
-#COPY --from=base /usr/lib/x86_64-linux-gnu/libnuma.so.1                /usr/lib/x86_64-linux-gnu/
-#COPY --from=base /usr/lib/x86_64-linux-gnu/libcrypto.so.1.1            /usr/lib/x86_64-linux-gnu/
-#COPY --from=base /usr/lib/x86_64-linux-gnu/libevent-2.1.so.6           /usr/lib/x86_64-linux-gnu/
-#COPY --from=base /usr/lib/x86_64-linux-gnu/libevent_pthreads-2.1.so.6  /usr/lib/x86_64-linux-gnu/
-#COPY --from=base /lib/x86_64-linux-gnu/libc.so.6                       /lib/x86_64-linux-gnu/
-#COPY --from=base /usr/lib/x86_64-linux-gnu/libsz.so.2                  /usr/lib/x86_64-linux-gnu/
-#COPY --from=base /lib/x86_64-linux-gnu/libz.so.1                       /lib/x86_64-linux-gnu/
-#COPY --from=base /lib/x86_64-linux-gnu/libdl.so.2                      /lib/x86_64-linux-gnu/
-#COPY --from=base /usr/lib/x86_64-linux-gnu/libgfortran.so.4            /usr/lib/x86_64-linux-gnu/
-#COPY --from=base /usr/lib/x86_64-linux-gnu/libblas.so.3                /usr/lib/x86_64-linux-gnu/
-#COPY --from=base /usr/lib/x86_64-linux-gnu/liblapack.so.3              /usr/lib/x86_64-linux-gnu/
-#COPY --from=base /usr/lib/x86_64-linux-gnu/libaec.so.0                 /usr/lib/x86_64-linux-gnu/
-#COPY --from=base /usr/lib/x86_64-linux-gnu/libquadmath.so.0            /usr/lib/x86_64-linux-gnu/
-#COPY --from=base /lib/x86_64-linux-gnu/libgcc_s.so.1                   /lib/x86_64-linux-gnu/
-#
-#COPY --from=base /usr/local/bin/kotekan /usr/local/bin
