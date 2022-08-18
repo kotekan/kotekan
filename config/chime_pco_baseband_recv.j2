@@ -31,7 +31,7 @@ sizeof_short: 2
 
 dataset_manager:
   use_dataset_broker: False
-  ds_broker_host: "10.40.1.5 # aux
+  ds_broker_host: 10.40.1.5 # aux
   ds_broker_port: 12050
 
 ###################
@@ -52,16 +52,23 @@ telescope:
 # Baseband Metadata Pool
 baseband_metadata_pool:
   kotekan_metadata_pool: BasebandMetadata
-  num_metadata_objects: 65536
+  num_metadata_objects: 32768 * 2
+
+#################
+#### Buffers ####
+#################
 
 baseband_bufs:
   metadata_pool: baseband_metadata_pool
   frame_size: num_elements * samples_per_data_set
-  num_frames: 180 * 96
+  num_frames: 32768
   baseband_recv_buffer_0:
     kotekan_buffer: standard
 
-# Kotekan stages
+################
+#### Stages ####
+################
+
 baseband_recv:
   drop_frames: false
   connection_timeout: 600 # 10 Minutes

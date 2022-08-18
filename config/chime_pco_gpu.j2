@@ -20,7 +20,7 @@ and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: debug
 
 buffer_depth: 12
-baseband_buffer_depth: 12 # TODO increase this for the baseband buffer
+baseband_buffer_depth: 200 # ~33 seconds, this needs tuning.
 samples_per_data_set: 32768 * 2
 num_local_freq: 16
 num_freq_in_frame: num_local_freq
@@ -74,7 +74,7 @@ vis_pool:
 
 baseband_pool:
   kotekan_metadata_pool: BasebandMetadata
-  num_metadata_objects: 4 * num_links * baseband_buffer_depth
+  num_metadata_objects: 16384 * 2
 
 #################
 #### Buffers ####
@@ -109,6 +109,26 @@ lost_samples_buffers:
         numa_node: 1
         kotekan_buffer: standard
 {%- endfor %}
+
+### Baseband dump output buffers (staging for send to baseband recv)
+baseband_output_buffers:
+    num_frames: 512
+    frame_size: samples_per_data_set * num_elements
+    metadata_pool: baseband_pool
+{%- for id in range(16) %}
+    baseband_output_buffer_{{ id }}:
+        numa_node: 0
+        kotekan_buffer: standard
+{%- endfor %}
+{%- for id in range(16,32) %}
+    baseband_output_buffer_{{ id }}:
+        numa_node: 1
+        kotekan_buffer: standard
+{%- endfor %}
+    baseband_output_buffer_merged:
+        numa_node: 1
+        kotekan_buffer: standard
+        num_frames: 32
 
 gpu_input_merged:
     num_frames: buffer_depth * 4
@@ -215,6 +235,51 @@ zero_samples:
         lost_samples_buf: lost_samples_buffer_{{ id }}
 {%- endfor %}
 
+### Start Baseband Section ###
+baseband:
+    max_dump_samples: 250000 # 671ms
+    num_frames_buffer: baseband_buffer_depth - 10
+{%- for id in range(16) %}
+    baseband_{{ id }}:
+        cpu_affinity: [18,19,20,21]
+        kotekan_stage: basebandReadout
+        in_buf: gpu_input_buffer_{{ id }}
+        out_buf: baseband_output_buffer_{{ id }}:
+{%- endfor %}
+{%- for id in range(16,32) %}
+    baseband_{{ id }}:
+        cpu_affinity: [41,42,43,44]
+        kotekan_stage: basebandReadout
+        in_buf: gpu_input_buffer_{{ id }}
+        out_buf: baseband_output_buffer_{{ id }}:
+{%- endfor %}
+
+baseband_merge:
+    kotekan_stage: bufferMerge
+    timeout: 0.1
+    # Force a copy into NUMA2 since that contains the output NIC
+    force_copy: true
+    in_bufs:
+{%- for id in range(32) %}
+        - baseband_output_buffer_{{ id }}
+{%- endfor %}
+    out_buf: baseband_output_buffer_merged
+
+# Transmit baseband data to the baseband receiver
+baseband_send:
+    kotekan_stage: bufferSend
+    buf: baseband_output_buffer_merged
+    server_port: 11027
+    server_ip: 10.50.1.6 # c1
+    reconnect_time: 60
+    send_timeout: 600 # 10 minutes
+    log_level: warn
+    # Keep data in memory even if the receiver node is down
+    # Baseband readout handles back pressure management
+    drop_frames: false
+
+### End Baseband Section ###
+
 buffer_merge_0:
     kotekan_stage: bufferMerge
     cpu_affinity: [17]
@@ -232,7 +297,7 @@ buffer_merge_1:
         - gpu_input_buffer_{{ id }}
 {%- endfor %}
     out_buf: gpu_input_merged_1
-{% endif %}
+{%- endif %}
 
 # Use fake data instead of FPGA data
 {% if enable_fake_data is defined %}
@@ -338,17 +403,6 @@ merge_acc:
     out_buf: visbuf_5s_merged
 
 ### N^2 Output ###
-
-# TODO Change to bufferSend
-#vis_writer:
-#    kotekan_stage: VisWriter
-#    in_buf: visbuf_5s_merged
-#    log_level: DEBUG
-#    node_mode: true
-#    file_type: hdf5
-#    root_path: /data/archive/
-#    write_ev: False
-#    file_length: 16
 
 buffer_send:
   server_ip: 10.50.1.7
