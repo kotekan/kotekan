@@ -16,7 +16,7 @@ type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG
-and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+# and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: debug
 
 buffer_depth: 12
@@ -56,7 +56,7 @@ telescope:
 ###############
 
 dataset_manager:
-  use_dataset_broker: True
+  use_dataset_broker: true
   ds_broker_host: 10.40.1.5 # aux
   ds_broker_port: 12050
 
@@ -298,6 +298,14 @@ buffer_merge_1:
 {%- endfor %}
     out_buf: gpu_input_merged_1
 {%- endif %}
+
+dump_0:
+    kotekan_stage: chimeMetadataDump
+    in_buf: gpu_input_merged_0
+
+dump_1:
+    kotekan_stage: chimeMetadataDump
+    in_buf: gpu_input_merged_1
 
 # Use fake data instead of FPGA data
 {% if enable_fake_data is defined %}

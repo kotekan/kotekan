@@ -44,6 +44,8 @@ public:
 private:
     /// Input kotekanBuffer.
     struct Buffer* in_buf;
+
+    std::string hex_dump(const int rows, void* addr, int len);
 };
 
 #endif
