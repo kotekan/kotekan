@@ -55,6 +55,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
     stream_id.id = config.get_default<uint64_t>(unique_name, "stream_id", 0);
     num_frames = config.get_default<int>(unique_name, "num_frames", -1);
+    num_links = config.get_default<uint32_t>(unique_name, "num_links", 1);
     // TODO: rename this parameter to `num_freq_per_stream` in the config
     _num_freq_in_frame = config.get_default<size_t>(unique_name, "num_local_freq", 1);
     // Try to generate data based on `samples_per_dataset` cadence or else just generate it as
@@ -118,7 +119,8 @@ void testDataGen::main_thread() {
 
     int link_id = 0;
 
-    double frame_length = samples_per_data_set * ts_to_double(Telescope::instance().seq_length());
+    double frame_length =
+        samples_per_data_set * ts_to_double(Telescope::instance().seq_length()) / num_links;
 
     while (!stop_thread) {
         double start_time = current_time();
@@ -155,10 +157,10 @@ void testDataGen::main_thread() {
                 frame[j] = fmod(j * value, 256 * value);
                 //                frame[j] = j*value;
             } else if (type == "random") {
-                unsigned char new_real;
-                unsigned char new_imaginary;
-                new_real = rand() % 16;
-                new_imaginary = rand() % 16;
+                char new_real;
+                char new_imaginary;
+                new_real = (rand() % 15) + 1;      // Limit to [-7, 7]
+                new_imaginary = (rand() % 15) + 1; // Limit to [-7, 7]
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output;
             } else if (type == "tpluse") {

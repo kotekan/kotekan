@@ -1,24 +1,17 @@
-#include "cudaInputData.hpp"
+#include "hipInputData.hpp"
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using std::string;
 
-REGISTER_CUDA_COMMAND(cudaInputData);
+REGISTER_HIP_COMMAND(hipInputData);
 
-cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
-                             bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "", "") {
+hipInputData::hipInputData(Config& config, const string& unique_name, bufferContainer& host_buffers,
+                           hipDeviceInterface& device) :
+    hipCommand(config, unique_name, host_buffers, device, "hipInputData", "") {
 
     in_buf = host_buffers.get_buffer(config.get<std::string>(unique_name, "in_buf"));
     register_consumer(in_buf, unique_name.c_str());
-
-    for (int i = 0; i < in_buf->num_frames; i++) {
-        uint flags;
-        // only register the memory if it isn't already...
-        if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, in_buf->frames[i])) {
-            CHECK_CUDA_ERROR(cudaHostRegister(in_buf->frames[i], in_buf->frame_size, 0));
-        }
-    }
 
     _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
 
@@ -29,17 +22,9 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
     command_type = gpuCommandType::COPY_IN;
 }
 
-cudaInputData::~cudaInputData() {
-    for (int i = 0; i < in_buf->num_frames; i++) {
-        uint flags;
-        // only unregister if it's already been registered
-        if (cudaSuccess == cudaHostGetFlags(&flags, in_buf->frames[i])) {
-            CHECK_CUDA_ERROR(cudaHostUnregister(in_buf->frames[i]));
-        }
-    }
-}
+hipInputData::~hipInputData() {}
 
-int cudaInputData::wait_on_precondition(int gpu_frame_id) {
+int hipInputData::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
 
     // Wait for there to be data in the input (network) buffer.
@@ -51,7 +36,7 @@ int cudaInputData::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-cudaEvent_t cudaInputData::execute(int gpu_frame_id, cudaEvent_t pre_event) {
+hipEvent_t hipInputData::execute(int gpu_frame_id, hipEvent_t pre_event) {
     pre_execute(gpu_frame_id);
 
     uint32_t input_frame_len = in_buf->frame_size;
@@ -66,14 +51,14 @@ cudaEvent_t cudaInputData::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     return post_events[gpu_frame_id];
 }
 
-void cudaInputData::finalize_frame(int frame_id) {
-    cudaCommand::finalize_frame(frame_id);
+void hipInputData::finalize_frame(int frame_id) {
+    hipCommand::finalize_frame(frame_id);
     mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_finalize_id);
     in_buffer_finalize_id = (in_buffer_finalize_id + 1) % in_buf->num_frames;
 }
 
-std::string cudaInputData::get_performance_metric_string() {
+std::string hipInputData::get_performance_metric_string() {
     double transfer_speed =
-        (double)in_buf->frame_size / (double)get_last_gpu_execution_time() * 1e-9;
-    return fmt::format("Speed: {:.2f} GB/s ({:.2f} Gb/s)", transfer_speed, transfer_speed * 8);
+        (double)in_buf->frame_size / (double)get_last_gpu_execution_time() / 1000000000;
+    return "Speed: " + std::to_string(transfer_speed) + " GB/s";
 }

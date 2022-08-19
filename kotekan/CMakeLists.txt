@@ -1,6 +1,10 @@
 project(kotekan)
 
-add_executable(kotekan kotekan.cpp)
+if(${USE_HIP})
+    hip_add_executable(kotekan kotekan.cpp)
+else()
+    add_executable(kotekan kotekan.cpp)
+endif()
 
 target_compile_definitions(kotekan PRIVATE mssse3 __STDC_LIMIT_MACROS)
 
