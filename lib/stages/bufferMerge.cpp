@@ -135,7 +135,7 @@ void bufferMerge::main_thread() {
 
                 // Copy or swap the frame.
                 if (_force_copy) {
-                    ERROR("Doing deep copy on buffer {:s}", in_buf->buffer_name);
+                    DEBUG("Doing deep copy on buffer {:s}", in_buf->buffer_name);
                     std::memcpy(output_frame, in_buf->frames[in_frame_id], in_buf->frame_size);
                 } else {
                     swap_frames(in_buf, in_frame_id, out_buf, out_frame_id);

@@ -66,7 +66,7 @@ dataset_manager:
 
 main_pool:
     kotekan_metadata_pool: chimeMetadata
-    num_metadata_objects: 128 * buffer_depth
+    num_metadata_objects: 4 * num_links * baseband_buffer_depth
 
 vis_pool:
     kotekan_metadata_pool: VisMetadata
@@ -244,14 +244,14 @@ baseband:
         cpu_affinity: [18,19,20,21]
         kotekan_stage: basebandReadout
         in_buf: gpu_input_buffer_{{ id }}
-        out_buf: baseband_output_buffer_{{ id }}:
+        out_buf: baseband_output_buffer_{{ id }}
 {%- endfor %}
 {%- for id in range(16,32) %}
     baseband_{{ id }}:
         cpu_affinity: [41,42,43,44]
         kotekan_stage: basebandReadout
         in_buf: gpu_input_buffer_{{ id }}
-        out_buf: baseband_output_buffer_{{ id }}:
+        out_buf: baseband_output_buffer_{{ id }}
 {%- endfor %}
 
 baseband_merge:
