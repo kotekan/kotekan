@@ -17,7 +17,7 @@ type: config
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG
 # and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: debug
+log_level: info
 
 buffer_depth: 12
 baseband_buffer_depth: 200 # ~33 seconds, this needs tuning.
@@ -113,7 +113,7 @@ lost_samples_buffers:
 ### Baseband dump output buffers (staging for send to baseband recv)
 baseband_output_buffers:
     num_frames: 512
-    frame_size: samples_per_data_set * num_elements
+    frame_size: 512 * num_elements
     metadata_pool: baseband_pool
 {%- for id in range(16) %}
     baseband_output_buffer_{{ id }}:
