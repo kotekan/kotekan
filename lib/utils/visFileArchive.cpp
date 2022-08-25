@@ -34,7 +34,9 @@ visFileArchive::visFileArchive(const std::string& name,
                                const std::vector<freq_ctype>& freqs,
                                const std::vector<input_ctype>& inputs,
                                const std::vector<prod_ctype>& prods, size_t num_ev,
-                               std::vector<int> chunk_size, const kotekan::logLevel log_level) {
+                               std::vector<int> chunk_size, const std::string comp_alg,
+                               const uint32_t zstd_comp_lvl, const kotekan::logLevel log_level) :
+    FileArchive(comp_alg, zstd_comp_lvl) {
 
     set_log_level(log_level);
 
@@ -53,7 +55,9 @@ visFileArchive::visFileArchive(
     const std::vector<time_ctype>& times, const std::vector<freq_ctype>& freqs,
     const std::vector<input_ctype>& inputs, const std::vector<prod_ctype>& prods,
     const std::vector<stack_ctype>& stack, std::vector<rstack_ctype>& reverse_stack, size_t num_ev,
-    std::vector<int> chunk_size, const kotekan::logLevel log_level) {
+    std::vector<int> chunk_size, const std::string comp_alg, const uint32_t zstd_comp_lvl,
+    const kotekan::logLevel log_level) :
+    FileArchive(comp_alg, zstd_comp_lvl) {
 
     set_log_level(log_level);
 
