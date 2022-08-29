@@ -16,7 +16,9 @@ RUN apt-get update && \
     apt-get update && \
     apt-get install -y --no-install-recommends  python3.7
 
-RUN python3.7 -m pip install pyyaml
+RUN python3.7 -m pip install --upgrade pip==20.2.2 pyyaml && \
+    python3.7 -m pip install --upgrade --force-reinstall setuptools==49.6.0
+
 
 COPY --from=base /usr/lib/x86_64-linux-gnu/libhdf5_serial.so.100       /usr/lib/x86_64-linux-gnu/
 COPY --from=base /lib/x86_64-linux-gnu/libpthread.so.0                 /lib/x86_64-linux-gnu/

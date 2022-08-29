@@ -28,6 +28,7 @@ RUN apt-get update && \
                        cmake=3.10.* \
                        clang-9=1:9-* \
                        clang-format-8=1:8-* \
+                       libomp-dev \
                        dpdk=17.11.* \
                        dpdk-dev=17.11.* \
                        rocm-opencl-dev \

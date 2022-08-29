@@ -29,6 +29,7 @@ cmake \
         -DBLAS_LIBRARIES=/usr/lib/x86_64-linux-gnu/libopenblas.so.0 \
         -DLAPACK_LIBRARIES=/usr/lib/x86_64-linux-gnu/lapack/liblapack.so.3.7.1 \
         -DUSE_HDF5=ON \
+        -DUSE_OMP=ON \
         -DUSE_LAPACK=ON \
         -DHIGHFIVE_PATH=/code/build/HighFive \
         -DWITH_TESTS=$tests \
@@ -40,6 +41,7 @@ cmake \
         -DBLAS_LIBRARIES=/usr/lib/x86_64-linux-gnu/libopenblas.so.0 \
         -DLAPACK_LIBRARIES=/usr/lib/x86_64-linux-gnu/lapack/liblapack.so.3.7.1 \
         -DUSE_HDF5=ON \
+        -DUSE_OMP=ON \
         -DUSE_LAPACK=ON \
         -DHIGHFIVE_PATH=/code/build/HighFive \
         -DWITH_TESTS=$tests \
