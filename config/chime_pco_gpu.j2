@@ -20,7 +20,7 @@ type: config
 log_level: info
 
 buffer_depth: 12
-baseband_buffer_depth: 225 # ~37 seconds.
+baseband_buffer_depth: 220 # ~33 seconds after accounting for margin.
 samples_per_data_set: 32768 * 2
 num_local_freq: 16
 num_freq_in_frame: num_local_freq
@@ -72,7 +72,7 @@ vis_pool:
 
 baseband_pool:
     kotekan_metadata_pool: BasebandMetadata
-    num_metadata_objects: num_links * 1024 * 2
+    num_metadata_objects: num_links * num_local_freq * 1024 * 2
 
 #################
 #### Buffers ####
@@ -110,7 +110,7 @@ lost_samples_buffers:
 
 ### Baseband dump output buffers (staging for send to baseband recv)
 baseband_output_buffers:
-    num_frames: 1024
+    num_frames: 1024 * num_local_freq
     frame_size: 512 * num_elements
     metadata_pool: baseband_pool
 {%- for id in range(16) %}
@@ -247,7 +247,7 @@ zero_samples:
 ### Start Baseband Section ###
 baseband:
     max_dump_samples: 300000 # 768ms
-    num_frames_buffer: baseband_buffer_depth - 15
+    num_frames_buffer: baseband_buffer_depth - 20
 {%- for id in range(16) %}
     baseband_{{ id }}:
         cpu_affinity: [16,17,18,19,20,21,22,23]
