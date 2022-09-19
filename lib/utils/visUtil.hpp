@@ -261,6 +261,14 @@ inline double ts_to_double(const timespec& ts) {
     return (ts.tv_sec + 1e-9 * ts.tv_nsec);
 }
 
+/**
+ * @brief Converts a timespec type into UNIX time in milliseconds as a uint64_t.
+ * @param  ts Time as timespec.
+ * @return    Time in milliseconds as a uint64_t.
+ */
+constexpr uint64_t timespec_to_milliseconds(const timespec& ts) {
+    return (uint64_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1E6);
+}
 
 /**
  * @brief Convert a UNIX time as double into a timespec.

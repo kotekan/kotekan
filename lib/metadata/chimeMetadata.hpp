@@ -1,10 +1,22 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2022 Kotekan Developers
+
+/****************************************************
+* @file   chimeMetadata.hpp
+* @brief  This file declares Chime BeamMetadata 
+*         structure
+*
+* Last update by Mehdi Najafi
+* @date   08 SEP 2022
+*****************************************************/
+
 #ifndef CHIME_METADATA
 #define CHIME_METADATA
 
 #include "Telescope.hpp"
 #include "buffer.h"
 #include "datasetManager.hpp"
-#include "metadata.h"
+#include "metadataFactory.hpp"  // metadata registration
 
 #include <sys/time.h>
 
@@ -44,12 +56,15 @@ struct chimeMetadata {
     /// The stream ID from the ICEBoard
     /// Note in the case of CHIME-2048 the normally unused section
     /// Encodes the port-shuffle frequency information
-    uint16_t stream_ID;
+    uint16_t stream_id;
     /// ID of the dataset
     dset_id_t dataset_id;
     /// The coordinates of the tracking beam (if applicable)
     struct beamCoord beam_coord;
 };
+
+// register this metadata structure
+REGISTER_KOTEKAN_METADATA(chimeMetadata)
 
 // Helper functions to save lots of pointer work
 
@@ -98,7 +113,7 @@ inline uint32_t get_rfi_num_bad_inputs(const struct Buffer* buf, int ID) {
 }
 
 inline stream_t get_stream_id_from_metadata(const chimeMetadata* metadata) {
-    return {(uint64_t)metadata->stream_ID};
+    return {(uint64_t)metadata->stream_id};
 }
 
 inline stream_t get_stream_id(const struct Buffer* buf, int ID) {
@@ -168,7 +183,7 @@ inline void set_rfi_zeroed(struct Buffer* buf, int ID, uint32_t rfi_zeroed) {
 }
 
 inline void set_stream_id_to_metadata(struct chimeMetadata* metadata, stream_t stream_id) {
-    metadata->stream_ID = (uint16_t)(stream_id.id);
+    metadata->stream_id = (uint16_t)(stream_id.id);
 }
 
 inline void set_stream_id(struct Buffer* buf, int ID, stream_t stream_id) {

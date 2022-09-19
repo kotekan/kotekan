@@ -12,7 +12,7 @@ struct HFBMetadata {
     /// The ICEBoard sequence number
     int64_t fpga_seq_start;
     /// The GPS time of @c fpga_seq_start.
-    struct timespec ctime;
+    struct timespec gps_time;
     /// Frequency bin
     freq_id_t freq_id;
     /// Number of samples integrated
@@ -36,7 +36,7 @@ inline int64_t get_fpga_seq_start_hfb(struct Buffer* buf, int ID) {
 
 inline struct timespec get_ctime_hfb(struct Buffer* buf, int ID) {
     struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    return hfb_metadata->ctime;
+    return hfb_metadata->gps_time;
 }
 
 inline freq_id_t get_freq_id(struct Buffer* buf, int ID) {
@@ -78,7 +78,7 @@ inline void set_fpga_seq_start_hfb(struct Buffer* buf, int ID, int64_t seq) {
 
 inline void set_ctime_hfb(struct Buffer* buf, int ID, struct timespec time) {
     struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    hfb_metadata->ctime = time;
+    hfb_metadata->gps_time = time;
 }
 
 inline void set_freq_id(struct Buffer* buf, int ID, freq_id_t freq_id) {

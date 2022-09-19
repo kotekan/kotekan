@@ -1,0 +1,76 @@
+##############################################################
+#
+# beam_recv_assemble.yaml
+#
+# Configuration for receiving beams and writing to "n" disks
+#
+# Author: Mehdi Najafi
+# Date:   14-AUG-2022
+##############################################################
+---
+type: config
+log_level: info
+cpu_affinity: [0,1,2,3]
+samples_per_data_set: 49152
+num_frequencies: 1024
+num_pol: 2
+
+telescope:
+  name: CHIMETelescope
+  require_gps: true
+  query_gps: true
+  require_frequency_map: true
+  query_frequency_map: true
+  allow_default_frequency_map: false
+
+dataset_manager:
+  use_dataset_broker: false
+
+beam_metadata_pool:
+  kotekan_metadata_pool: BeamMetadata
+  num_metadata_objects: 4096
+
+asm_beam_metadata_pool:
+  kotekan_metadata_pool: assembledBeamMetadata
+  num_metadata_objects: 4096
+
+beam_recv_buffer:
+  kotekan_buffer: standard
+  num_frames: num_frequencies
+  metadata_pool: beam_metadata_pool
+  frame_size: samples_per_data_set * num_pol
+
+recv:
+  kotekan_stage: bufferRecv
+  buf: beam_recv_buffer
+  listen_port: 11030
+  num_threads: 2
+
+asm_beam_recv_buffer:
+  kotekan_buffer: standard
+  num_frames: 2*16
+  metadata_pool: asm_beam_metadata_pool
+  frame_size: num_frequencies + num_frequencies * samples_per_data_set * num_pol
+
+beam_assemble:
+  kotekan_stage: BeamAssemble
+  in_buf: beam_recv_buffer
+  out_buf: asm_beam_recv_buffer
+  time_out: 8*126  # milliseconds
+  num_freqs: num_frequencies
+
+raw_capture:
+   kotekan_stage: nDiskFileWrite
+   #note: 2m beam assembling test
+   write_to_disk: True
+   write_metadata_and_gains: False
+   gain_files: Null
+   num_disks: 8
+   disk_base: /drives
+   disk_set: CHF
+   instrument_name: chime_assemble_test
+   in_buf: asm_beam_recv_buffer
+
+#beam_inspect:
+#  kotekan_stage: BeamInspect
+#  in_buf: asm_beam_recv_buffer

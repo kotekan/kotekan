@@ -1,13 +1,23 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2022 Kotekan Developers
+
+/****************************************************
+* @file metadatFactory.cpp
+* @brief This file implements the factory for making 
+*        metadata structures, registered previously.
+*
+* @author Mehdi Najafi
+* @date   28 AUG 2022
+*****************************************************/
+
 #include "metadataFactory.hpp"
 
-#include "BasebandMetadata.hpp" // for BasebandMetadata
-#include "BeamMetadata.hpp"     // for BeamMetadata
 #include "Config.hpp"           // for Config
-#include "HFBMetadata.hpp"      // for HFBMetadata
-#include "chimeMetadata.hpp"    // for chimeMetadata
 #include "kotekanLogging.hpp"   // for INFO_NON_OO
 #include "metadata.h"           // for create_metadata_pool
-#include "visBuffer.hpp"        // for VisMetadata
+
+#include "allMetadata.hpp" // for all metadata structures
+#include "allMetadata.cpp" // for all metadata structures registration
 
 #include "fmt.hpp" // for format, fmt
 
@@ -22,10 +32,6 @@ using std::map;
 using std::string;
 
 namespace kotekan {
-
-metadataFactory::metadataFactory(Config& config) : config(config) {}
-
-metadataFactory::~metadataFactory() {}
 
 map<std::string, struct metadataPool*> metadataFactory::build_pools() {
     map<std::string, struct metadataPool*> pools;
@@ -62,43 +68,6 @@ void metadataFactory::build_from_tree(map<std::string, struct metadataPool*>& po
         // This is a section/scope not a kotekan_metadata_pool block.
         build_from_tree(pools, it.value(), fmt::format(fmt("{:s}/{:s}"), path, it.key()));
     }
-}
-
-
-struct metadataPool* metadataFactory::new_pool(const std::string& pool_type,
-                                               const std::string& location) {
-
-    INFO_NON_OO("Creating metadata pool of type: {:s}, at config tree path: {:s}", pool_type,
-                location);
-
-    uint32_t num_metadata_objects = config.get<uint32_t>(location, "num_metadata_objects");
-
-    if (pool_type == "chimeMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(struct chimeMetadata),
-                                    location.c_str());
-    }
-
-    if (pool_type == "VisMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(struct VisMetadata),
-                                    location.c_str());
-    }
-
-    if (pool_type == "HFBMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(struct HFBMetadata),
-                                    location.c_str());
-    }
-
-    if (pool_type == "BeamMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(struct BeamMetadata),
-                                    location.c_str());
-    }
-
-    if (pool_type == "BasebandMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(struct BasebandMetadata),
-                                    location.c_str());
-    }
-    // No metadata found
-    throw std::runtime_error(fmt::format(fmt("No metadata object named: {:s}"), pool_type));
 }
 
 } // namespace kotekan
