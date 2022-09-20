@@ -66,6 +66,9 @@ void BeamAssemble::main_thread() {
     // thread infinite loop
     while (!stop_thread) {
 
+        // since this constant may change during run-time, keep it here
+        const uint32_t num_freq_per_stream = Telescope::instance().num_freq_per_stream();
+
         // acquire a frame from the input buffer
         in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
         if (in_frame == nullptr)
@@ -92,13 +95,27 @@ void BeamAssemble::main_thread() {
             }
         }
 
+        // check if the timestamp corresponds to the past time frame which no longer considered
+        if ( out_frame_map.size() && current_frame_time_stamp - arriving_data_timeout < out_frame_map.begin()->first)
+        {
+            // log the receiving outdated frame frequency
+            for (uint32_t f = 0; f < num_freq_per_stream; ++f) {
+                // get the frequency id
+                auto freq_id = Telescope::instance().to_freq_id(metadata->stream_id, f);
+                // print info about the late beam
+                printf( fmt::format("LATE Beam RA: {:f}, Dec: {:f}, scaling: {:d}, freq: {:d}, first value: {:d}+{:d}i\n",
+                        metadata->ra, metadata->dec, metadata->scaling, freq_id, 
+                        in_frame[0] & 0x0F, (in_frame[0] & 0xF0) >> 4).c_str() );
+            }
+        }
+
         // determine which output frame to write on based on the timestamp: if this is a new time
         // stamp, make a new entry in the map and acquire an empty frame from the output buffer
         if (out_frame_map.find(current_frame_time_stamp) == out_frame_map.end()) {
             // wait for the first available empty frame
             out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
             if (out_frame == nullptr) {
-                // error/warning message: no output frame buffer available
+                // no output frame buffer available, so leave the thread infinite loop
                 break;
             }
 
@@ -118,9 +135,6 @@ void BeamAssemble::main_thread() {
             // retrieve the output frame from the map
             out_frame = out_frame_map[current_frame_time_stamp].first;
         }
-
-        // since this constant may change during run-time, keep it here
-        const uint32_t num_freq_per_stream = Telescope::instance().num_freq_per_stream();
 
         // loop over received frequencies in the input buffer frame and
         // put their data in the corresponding output buffer frame
