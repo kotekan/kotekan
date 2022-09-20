@@ -53,7 +53,7 @@ void BeamAssemble::main_thread() {
     uint8_t *in_frame, *out_frame;
 
     // the frame map used for timeout controlled frames
-    std::map<uint64_t, std::pair<uint8_t*, int>> out_frame_map;
+    std::map<uint64_t, std::pair<uint8_t*, int>, std::greater<int>> out_frame_map;
 
     // time stamp used for the frame map control
     uint64_t current_frame_time_stamp;
@@ -108,32 +108,33 @@ void BeamAssemble::main_thread() {
                         in_frame[0] & 0x0F, (in_frame[0] & 0xF0) >> 4).c_str() );
             }
         }
+        else {
+            // determine which output frame to write on based on the timestamp: if this is a new time
+            // stamp, make a new entry in the map and acquire an empty frame from the output buffer
+            if (out_frame_map.find(current_frame_time_stamp) == out_frame_map.end()) {
+                // wait for the first available empty frame
+                out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+                if (out_frame == nullptr) {
+                    // no output frame buffer available, so leave the thread infinite loop
+                    break;
+                }
 
-        // determine which output frame to write on based on the timestamp: if this is a new time
-        // stamp, make a new entry in the map and acquire an empty frame from the output buffer
-        if (out_frame_map.find(current_frame_time_stamp) == out_frame_map.end()) {
-            // wait for the first available empty frame
-            out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
-            if (out_frame == nullptr) {
-                // no output frame buffer available, so leave the thread infinite loop
-                break;
+                // allocate a new metadata object for this empty output buffer frame
+                allocate_new_metadata_object(out_buf, out_frame_id);
+
+                // copy the base metadata to this frame metadata
+                copy_base_to_frequency_assembled_Metadata( metadata, get_metadata(out_buf, out_frame_id));
+
+                // add the new output frame to the map
+                out_frame_map[current_frame_time_stamp] = std::make_pair( out_frame, out_frame_id);
+                out_frame_id++;
+
+                // zero all the frame: zeros implies missing data as well
+                memset(out_frame, 0, out_buf->frame_size);
+            } else {
+                // retrieve the output frame from the map
+                out_frame = out_frame_map[current_frame_time_stamp].first;
             }
-
-            // allocate a new metadata object for this empty output buffer frame
-            allocate_new_metadata_object(out_buf, out_frame_id);
-
-            // copy the base metadata to this frame metadata
-            copy_base_to_frequency_assembled_Metadata( metadata, get_metadata(out_buf, out_frame_id));
-
-            // add the new output frame to the map
-            out_frame_map[current_frame_time_stamp] = std::make_pair( out_frame, out_frame_id);
-            out_frame_id++;
-
-            // zero all the frame: zeros implies missing data as well
-            memset(out_frame, 0, out_buf->frame_size);
-        } else {
-            // retrieve the output frame from the map
-            out_frame = out_frame_map[current_frame_time_stamp].first;
         }
 
         // loop over received frequencies in the input buffer frame and
