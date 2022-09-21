@@ -71,6 +71,7 @@ add_library(
     DataQuality.cpp
     BeamExtract.cpp
     BeamInspect.cpp
+    BeamAssemble.cpp
     testDataGen.cpp
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp
