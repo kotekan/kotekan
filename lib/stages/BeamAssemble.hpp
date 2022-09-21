@@ -51,7 +51,7 @@ private:
     struct Buffer* in_buf;
     struct Buffer* out_buf;
     uint32_t num_freq_per_output_frame;
-    uint32_t arriving_data_timeout;
+    int32_t arriving_data_timeout;
 };
 
 #endif // KOTEKAN_BEAMASSEMBLE_HPP

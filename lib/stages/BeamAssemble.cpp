@@ -42,7 +42,7 @@ STAGE_CONSTRUCTOR(BeamAssemble) {
     // retrieve the expected number of frequencies in the output
     num_freq_per_output_frame = config.get<uint32_t>(unique_name, "num_freqs");
     // retrieve the timeout in seconds for the arriving data in input buffer frames
-    arriving_data_timeout = config.get<uint32_t>(unique_name, "time_out");
+    arriving_data_timeout = config.get<int32_t>(unique_name, "time_out");
 }
 
 BeamAssemble::~BeamAssemble() {}
@@ -53,10 +53,10 @@ void BeamAssemble::main_thread() {
     uint8_t *in_frame, *out_frame;
 
     // the frame map used for timeout controlled frames
-    std::map<uint64_t, std::pair<uint8_t*, int>, std::greater<int>> out_frame_map;
+    std::map<int64_t, std::pair<uint8_t*, int>, std::greater<int>> out_frame_map;
 
-    // time stamp used for the frame map control
-    uint64_t current_frame_time_stamp;
+    // timestamp used for the frame map control
+    int64_t current_frame_timestamp;
 
     // allocate new metadata objects for all the output buffer frames
     for (int i = 0; i < out_buf->num_frames; i++) {
@@ -77,14 +77,14 @@ void BeamAssemble::main_thread() {
         // retrieve the metadata and create a new metadata based on it
         BeamMetadata* metadata = (BeamMetadata*)get_metadata(in_buf, in_frame_id);
 
-        // get the current time stamp in milliseconds from the current input frame metadata
-        current_frame_time_stamp = timespec_to_milliseconds(metadata->gps_time);
+        // get the current timestamp in milliseconds from the current input frame metadata
+        current_frame_timestamp = timespec_to_milliseconds(metadata->gps_time);
 
         // loop over the open output frames and release the output frames if the timeout has reached
         for (auto it = out_frame_map.begin(); it != out_frame_map.end();) {
             // check if the time has passed more than arriving_data_timeout since this output frame
             // has been opened
-            if (current_frame_time_stamp - it->first > arriving_data_timeout) {
+            if (current_frame_timestamp - it->first > arriving_data_timeout) {
                 // release the output frame in the map
                 mark_frame_full(out_buf, unique_name.c_str(), it->second.second);
                 // remove the output frame element from the map
@@ -96,7 +96,7 @@ void BeamAssemble::main_thread() {
         }
 
         // check if the timestamp corresponds to the past time frame which no longer considered
-        if ( out_frame_map.size() && current_frame_time_stamp - arriving_data_timeout < out_frame_map.begin()->first)
+        if ( out_frame_map.size() && current_frame_timestamp - arriving_data_timeout < out_frame_map.begin()->first)
         {
             // log the receiving outdated frame frequency
             for (uint32_t f = 0; f < num_freq_per_stream; ++f) {
@@ -111,7 +111,7 @@ void BeamAssemble::main_thread() {
         else {
             // determine which output frame to write on based on the timestamp: if this is a new time
             // stamp, make a new entry in the map and acquire an empty frame from the output buffer
-            if (out_frame_map.find(current_frame_time_stamp) == out_frame_map.end()) {
+            if (out_frame_map.find(current_frame_timestamp) == out_frame_map.end()) {
                 // wait for the first available empty frame
                 out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
                 if (out_frame == nullptr) {
@@ -126,14 +126,14 @@ void BeamAssemble::main_thread() {
                 copy_base_to_frequency_assembled_Metadata( metadata, get_metadata(out_buf, out_frame_id));
 
                 // add the new output frame to the map
-                out_frame_map[current_frame_time_stamp] = std::make_pair( out_frame, out_frame_id);
+                out_frame_map[current_frame_timestamp] = std::make_pair( out_frame, out_frame_id);
                 out_frame_id++;
 
                 // zero all the frame: zeros implies missing data as well
                 memset(out_frame, 0, out_buf->frame_size);
             } else {
                 // retrieve the output frame from the map
-                out_frame = out_frame_map[current_frame_time_stamp].first;
+                out_frame = out_frame_map[current_frame_timestamp].first;
             }
         }
 
@@ -159,7 +159,7 @@ void BeamAssemble::main_thread() {
             out_frame[freq_id] = 1;
 
             // also inform the frequency bin added to the metadata about freq_id
-            FrequencyBin* freq_bin = (FrequencyBin*)get_metadata(out_buf, out_frame_map[current_frame_time_stamp].second);
+            FrequencyBin* freq_bin = (FrequencyBin*)get_metadata(out_buf, out_frame_map[current_frame_timestamp].second);
             frequencyBin_add_frequency_id(freq_bin, freq_id);
 
 #ifdef DEBUGGING
