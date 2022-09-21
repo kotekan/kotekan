@@ -95,8 +95,8 @@ void BeamAssemble::main_thread() {
             }
         }
 
-        // check if the timestamp corresponds to the past time frame which no longer considered
-        if ( out_frame_map.size() && current_frame_timestamp - arriving_data_timeout < out_frame_map.begin()->first)
+        // check if the timestamp corresponds to the past time frame which is no longer considered/accepted
+        if ( out_frame_map.size() && current_frame_timestamp + arriving_data_timeout < out_frame_map.begin()->first)
         {
             // log the receiving outdated frame frequency
             for (uint32_t f = 0; f < num_freq_per_stream; ++f) {
@@ -135,40 +135,40 @@ void BeamAssemble::main_thread() {
                 // retrieve the output frame from the map
                 out_frame = out_frame_map[current_frame_timestamp].first;
             }
-        }
 
-        // loop over received frequencies in the input buffer frame and
-        // put their data in the corresponding output buffer frame
-        for (uint32_t f = 0; f < num_freq_per_stream; ++f) {
-            // get the frequency id
-            auto freq_id = Telescope::instance().to_freq_id(metadata->stream_id, f);
+            // loop over received frequencies in the input buffer frame and
+            // put their data in the corresponding output buffer frame
+            for (uint32_t f = 0; f < num_freq_per_stream; ++f) {
+                // get the frequency id
+                auto freq_id = Telescope::instance().to_freq_id(metadata->stream_id, f);
 
-            // input frame buffer frequency data size
-            auto in_frame_freq_size = in_buf->frame_size / num_freq_per_stream;
+                // input frame buffer frequency data size
+                auto in_frame_freq_size = in_buf->frame_size / num_freq_per_stream;
 
-            // determine the offset based on the frequency id
-            auto out_frame_offset = freq_id * (out_buf->frame_size - num_freq_per_output_frame) / num_freq_per_output_frame;
-            // is that the same as: freq_id * in_frame_freq_size ?
-            // assert(out_frame_offset == freq_id * in_frame_freq_size);
+                // determine the offset based on the frequency id
+                auto out_frame_offset = freq_id * (out_buf->frame_size - num_freq_per_output_frame) / num_freq_per_output_frame;
+                // is that the same as: freq_id * in_frame_freq_size ?
+                // assert(out_frame_offset == freq_id * in_frame_freq_size);
 
-            // copy the data from in_frame to the out_frame + some offset with no change
-            // Note that the first num_freq_per_output_frame is the frequency id indicator,
-            // which is 0 or 1 indicating the frequency data copied to the output
-            memcpy(out_frame + num_freq_per_output_frame + out_frame_offset, in_frame, in_frame_freq_size);
-            // turn on the frequency id indicator, located at the beginning of the output frame
-            out_frame[freq_id] = 1;
+                // copy the data from in_frame to the out_frame + some offset with no change
+                // Note that the first num_freq_per_output_frame is the frequency id indicator,
+                // which is 0 or 1 indicating the frequency data copied to the output
+                memcpy(out_frame + num_freq_per_output_frame + out_frame_offset, in_frame, in_frame_freq_size);
+                // turn on the frequency id indicator, located at the beginning of the output frame
+                out_frame[freq_id] = 1;
 
-            // also inform the frequency bin added to the metadata about freq_id
-            FrequencyBin* freq_bin = (FrequencyBin*)get_metadata(out_buf, out_frame_map[current_frame_timestamp].second);
-            frequencyBin_add_frequency_id(freq_bin, freq_id);
+                // also inform the frequency bin added to the metadata about freq_id
+                FrequencyBin* freq_bin = (FrequencyBin*)get_metadata(out_buf, out_frame_map[current_frame_timestamp].second);
+                frequencyBin_add_frequency_id(freq_bin, freq_id);
 
-#ifdef DEBUGGING
-            // print out some metadata and the first element of frame data
-            printf( fmt::format("Beam RA: {:f}, Dec: {:f}, scaling: {:d}, freq_bins: {:d} in [{:d},{:d}], first value: {:d}+{:d}i\n",
-                    metadata->ra, metadata->dec, metadata->scaling, freq_id, 
-                    freq_bin->lower_band_frequency, freq_bin->higher_band_frequency, 
-                    in_frame[0] & 0x0F, (in_frame[0] & 0xF0) >> 4).c_str() );
-#endif
+    #ifdef DEBUGGING
+                // print out some metadata and the first element of frame data
+                printf( fmt::format("Beam RA: {:f}, Dec: {:f}, scaling: {:d}, freq_bins: {:d} in [{:d},{:d}], first value: {:d}+{:d}i\n",
+                        metadata->ra, metadata->dec, metadata->scaling, freq_id, 
+                        freq_bin->lower_band_frequency, freq_bin->higher_band_frequency, 
+                        in_frame[0] & 0x0F, (in_frame[0] & 0xF0) >> 4).c_str() );
+    #endif
+            }
         }
 
         // TODO later: add some statistics
