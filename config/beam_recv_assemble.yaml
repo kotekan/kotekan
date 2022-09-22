@@ -5,7 +5,7 @@
 # Configuration for receiving beams and writing to "n" disks
 #
 # Author: Mehdi Najafi
-# Date:   14-AUG-2022
+# Date:   14-SEP-2022
 ##############################################################
 ---
 type: config
@@ -56,8 +56,10 @@ beam_assemble:
   kotekan_stage: BeamAssemble
   in_buf: beam_recv_buffer
   out_buf: asm_beam_recv_buffer
-  time_out: 8*126  # milliseconds
+  time_out: 8*126  # the unit here is milliseconds
   num_freqs: num_frequencies
+  beam_printout: False
+  late_beam_printout: False
 
 raw_capture:
    kotekan_stage: nDiskFileWrite

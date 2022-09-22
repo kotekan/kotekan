@@ -37,6 +37,25 @@
  * 
  * @par arriving_data_timeout
  *      timeout in miliseconds for the arriving data
+ * 
+ * @par beam_printout
+ *      check flag to print some information about incoming beam 
+ *      data
+ * 
+ * @par late_beam_printout
+ *      check flag to print some information about late incoming 
+ *      beam data, which are ignored
+ * 
+ * @par received_beam_frames_count
+ *      a counter to keep track of the number of beam frames received
+ * 
+ * @par accepted_beam_frames_count
+ *      a counter to keep track of the number of beam frames received
+ *      and copied to the output buffer frames
+ *
+ * @par missed_beam_frames_count
+ *      a counter to keep track of the number of beam frames received
+ *      late and ignored (not copied to any output buffer frames)
  *
  * @author Mehdi Najafi
  */
@@ -52,6 +71,13 @@ private:
     struct Buffer* out_buf;
     uint32_t num_freq_per_output_frame;
     int32_t arriving_data_timeout;
+
+    bool beam_printout;
+    bool late_beam_printout;
+
+    uint64_t received_beam_frames_count;
+    uint64_t accepted_beam_frames_count;
+    uint64_t missed_beam_frames_count;
 };
 
 #endif // KOTEKAN_BEAMASSEMBLE_HPP
