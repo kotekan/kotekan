@@ -14,7 +14,7 @@
 #include "BeamMetadata.hpp"   // for BeamMetadata
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"      // for Telescope
-#include "buffer.h"           // for get_metadata, mark_frame_empty, register_consumer, wait_fo...
+#include "buffer.h"           // for get_metadata, mark_frame_empty, register_consumer, ...
 #include "kotekanLogging.hpp" // for INFO
 #include "visUtil.hpp"        // for frameID, modulo, ts_to_double
 #include "FrequencyAssembledMetadata.hpp"  // for FrequencyBin
