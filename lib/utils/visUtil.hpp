@@ -266,8 +266,8 @@ inline double ts_to_double(const timespec& ts) {
  * @param  ts Time as timespec.
  * @return    Time in milliseconds as a uint64_t.
  */
-constexpr uint64_t timespec_to_milliseconds(const timespec& ts) {
-    return (uint64_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1E6);
+constexpr int64_t timespec_to_milliseconds(const timespec& ts) {
+    return (int64_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1E6);
 }
 
 /**
