@@ -162,15 +162,20 @@ struct metadataPool {
 
     /// Locks requests for metadata to avoid race conditions.
     pthread_mutex_t pool_lock;
+
+    /// Name of the metadata pool
+    char* unique_name;
 };
 
 /**
  * @brief Creates a new metadata pool with a fixed number of metadata containers.
  * @param[in] num_metadata_objects The number of containers to store in the pool.
  * @param[in] object_size The size of the actual metadata contained in each container.
+ * @param[in] unique_name The name of the pool generated from the config path.
  * @return A metadata pool which can then be associated to one or more buffers.
  */
-struct metadataPool* create_metadata_pool(int num_metadata_objects, size_t object_size);
+struct metadataPool* create_metadata_pool(int num_metadata_objects, size_t object_size,
+                                          const char* unique_name);
 
 /**
  * @brief Deletes a memdata pool and frees all memory associated with its containers.

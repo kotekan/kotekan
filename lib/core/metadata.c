@@ -76,7 +76,8 @@ void decrement_metadata_ref_count(struct metadataContainer* container) {
 
 // *** Metadata pool section ***
 
-struct metadataPool* create_metadata_pool(int num_metadata_objects, size_t object_size) {
+struct metadataPool* create_metadata_pool(int num_metadata_objects, size_t object_size,
+                                          const char* unique_name) {
     struct metadataPool* pool;
     pool = malloc(sizeof(struct metadataPool));
     CHECK_MEM_F(pool);
@@ -84,6 +85,9 @@ struct metadataPool* create_metadata_pool(int num_metadata_objects, size_t objec
     pool->pool_size = num_metadata_objects;
     pool->metadata_object_size = object_size;
     CHECK_ERROR_F(pthread_mutex_init(&pool->pool_lock, NULL));
+
+    pool->unique_name = strdup(unique_name);
+    CHECK_MEM_F(pool->unique_name);
 
     pool->in_use = malloc(pool->pool_size * sizeof(int));
     CHECK_MEM_F(pool->in_use);
@@ -104,8 +108,9 @@ void delete_metadata_pool(struct metadataPool* pool) {
     }
 
     CHECK_ERROR_F(pthread_mutex_destroy(&pool->pool_lock));
-    free(pool->metadata_objects);
+    free(pool->unique_name);
     free(pool->in_use);
+    free(pool->metadata_objects);
 }
 
 struct metadataContainer* request_metadata_object(struct metadataPool* pool) {
@@ -126,9 +131,13 @@ struct metadataContainer* request_metadata_object(struct metadataPool* pool) {
     }
     CHECK_ERROR_F(pthread_mutex_unlock(&pool->pool_lock));
 
-    // We will assume that we cannot use more containers than are in the pool.
-    // If you hit this increase your pool size.
-    assert(container != NULL);
+    if (container == NULL) {
+        ERROR_F("The metadata pool `%s` is out of metadata objects, try increasing "
+                "`num_metadata_objects:` in the config.",
+                pool->unique_name);
+        // Because this will generate a memory error in the core C code we exit immediately.
+        exit(-1);
+    }
 
     return container;
 }
