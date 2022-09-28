@@ -2,13 +2,13 @@
 // Copyright (c) 2022 Kotekan Developers
 
 /****************************************************
-* @file   chimeMetadata.hpp
-* @brief  This file declares Chime BeamMetadata 
-*         structure
-*
-* Last update by Mehdi Najafi
-* @date   08 SEP 2022
-*****************************************************/
+ * @file   chimeMetadata.hpp
+ * @brief  This file declares Chime BeamMetadata
+ *         structure
+ *
+ * Last update by Mehdi Najafi
+ * @date   08 SEP 2022
+ *****************************************************/
 
 #ifndef CHIME_METADATA
 #define CHIME_METADATA
@@ -16,7 +16,7 @@
 #include "Telescope.hpp"
 #include "buffer.h"
 #include "datasetManager.hpp"
-#include "metadataFactory.hpp"  // metadata registration
+#include "metadataFactory.hpp" // metadata registration
 
 #include <sys/time.h>
 
