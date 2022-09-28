@@ -2,29 +2,29 @@
 // Copyright (c) 2022 Kotekan Developers
 
 /****************************************************
-* @file   BeamAssemble.cpp
-* @brief  This file implements the BeamAssemble stage
-*
-* @author Mehdi Najafi
-* @date   28 AUG 2022
-*****************************************************/
+ * @file   BeamAssemble.cpp
+ * @brief  This file implements the BeamAssemble stage
+ *
+ * @author Mehdi Najafi
+ * @date   28 AUG 2022
+ *****************************************************/
 
 #include "BeamAssemble.hpp"
 
-#include "BeamMetadata.hpp"   // for BeamMetadata
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"      // for Telescope
+#include "BeamMetadata.hpp"               // for BeamMetadata
+#include "FrequencyAssembledMetadata.hpp" // for FrequencyBin
+#include "StageFactory.hpp"               // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"                  // for Telescope
 #include "buffer.h"           // for get_metadata, mark_frame_empty, register_consumer, ...
 #include "kotekanLogging.hpp" // for INFO
 #include "visUtil.hpp"        // for frameID, modulo, ts_to_double
-#include "FrequencyAssembledMetadata.hpp"  // for FrequencyBin
 
 #include "fmt.hpp" // for format
 
-#include <map>      // for std::map
-#include <stdint.h> // for uint8_t, uint32_t
-#include <utility>  // for std::make_pair
-#include <functional> // for std::pair
+#include <map>        // for std::map
+#include <tuple>      // for std::tuple
+#include <stdint.h>   // for uint8_t, uint32_t
+#include <functional> // for std::make_tuple, std::get
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -60,7 +60,10 @@ void BeamAssemble::main_thread() {
     uint8_t *in_frame, *out_frame;
 
     // the frame map used for timeout controlled frames
-    std::map<int64_t, std::pair<uint8_t*, int>, std::greater<int>> out_frame_map;
+    std::map<int64_t, std::tuple<uint8_t*,assembledBeamMetadata*,int>, std::greater<int64_t>> out_frame_map;
+
+    // output buffer metadata
+    assembledBeamMetadata *ometadata;
 
     // timestamp used for the frame map control
     int64_t current_frame_timestamp;
@@ -91,18 +94,26 @@ void BeamAssemble::main_thread() {
             // has been opened
             if (current_frame_timestamp - it->first > arriving_data_timeout) {
                 // release the output frame in the map
-                mark_frame_full(out_buf, unique_name.c_str(), it->second.second);
+                mark_frame_full(out_buf, unique_name.c_str(), std::get<2>(it->second));
+                // retrieve the metadata of the released output buffer frame
+                ometadata = std::get<1>(it->second);
+                // print out some statistics about the released output buffer frame
+                INFO("Released output frame RA: {:f}, Dec: {:f}, scaling: {:d}, freq bin: [{:d},{:d}], num_freqs: {:d}\n",
+                        ometadata->ra, ometadata->dec, ometadata->scaling, 
+                        ometadata->lower_band_received_frequency, ometadata->higher_band_received_frequency,
+                        ometadata->num_received_frequencies );
+
                 // remove the output frame element from the map
                 out_frame_map.erase(it++);
-            }
-            else {
+            } else {
                 it++;
             }
         }
 
-        // check if the timestamp corresponds to the past time frame which is no longer considered/accepted
-        if ( out_frame_map.size() && current_frame_timestamp + arriving_data_timeout < out_frame_map.begin()->first)
-        {
+        // check if the timestamp corresponds to the past time frame which is no longer
+        // considered/accepted
+        if (out_frame_map.size()
+            && current_frame_timestamp + arriving_data_timeout < out_frame_map.begin()->first) {
             // increment the number of late/missed incoming beam data frames
             missed_beam_frames_count++;
 
@@ -112,18 +123,19 @@ void BeamAssemble::main_thread() {
                 auto freq_id = Telescope::instance().to_freq_id(metadata->stream_id, f);
                 if (late_beam_printout) {
                     // print info about the late beam
-                    INFO( "LATE Beam RA: {:f}, Dec: {:f}, scaling: {:d}, freq: {:d}, first value: {:d}+{:d}i\n",
-                            metadata->ra, metadata->dec, metadata->scaling, freq_id, 
-                            in_frame[0] & 0x0F, (in_frame[0] & 0xF0) >> 4 );
+                    INFO("LATE Beam RA: {:f}, Dec: {:f}, scaling: {:d}, freq: {:d}, first value: "
+                         "{:d}+{:d}i\n",
+                         metadata->ra, metadata->dec, metadata->scaling, freq_id,
+                         in_frame[0] & 0x0F, (in_frame[0] & 0xF0) >> 4);
                 }
             }
-        }
-        else {
+        } else {
             // increment the number of accepted frame from all incoming beam data frames
             accepted_beam_frames_count++;
 
-            // determine which output frame to write on based on the timestamp: if this is a new time
-            // stamp, make a new entry in the map and acquire an empty frame from the output buffer
+            // determine which output frame to write on based on the timestamp: if this is a new
+            // time stamp, make a new entry in the map and acquire an empty frame from the output
+            // buffer
             if (out_frame_map.find(current_frame_timestamp) == out_frame_map.end()) {
                 // wait for the first available empty frame
                 out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
@@ -135,18 +147,25 @@ void BeamAssemble::main_thread() {
                 // allocate a new metadata object for this empty output buffer frame
                 allocate_new_metadata_object(out_buf, out_frame_id);
 
+                // get the new metadata object for the empty output buffer frame
+                ometadata = (assembledBeamMetadata *)get_metadata(out_buf, out_frame_id);
+
+                // reset the frequency bin part of the output buffer frame metadata
+                frequencyBin_initialize(ometadata);
+
                 // copy the base metadata to this frame metadata
-                copy_base_to_frequency_assembled_Metadata( metadata, get_metadata(out_buf, out_frame_id));
+                copy_base_to_frequency_assembled_Metadata(metadata, ometadata);
 
                 // add the new output frame to the map
-                out_frame_map[current_frame_timestamp] = std::make_pair( out_frame, out_frame_id);
+                out_frame_map[current_frame_timestamp] = std::make_tuple(out_frame, ometadata, out_frame_id);
                 out_frame_id++;
 
                 // zero all the frame: zeros implies missing data as well
                 memset(out_frame, 0, out_buf->frame_size);
             } else {
                 // retrieve the output frame from the map
-                out_frame = out_frame_map[current_frame_timestamp].first;
+                out_frame = std::get<0>( out_frame_map[current_frame_timestamp] );
+                ometadata = std::get<1>( out_frame_map[current_frame_timestamp] );
             }
 
             // loop over received frequencies in the input buffer frame and
@@ -159,27 +178,30 @@ void BeamAssemble::main_thread() {
                 auto in_frame_freq_size = in_buf->frame_size / num_freq_per_stream;
 
                 // determine the offset based on the frequency id
-                auto out_frame_offset = freq_id * (out_buf->frame_size - num_freq_per_output_frame) / num_freq_per_output_frame;
+                auto out_frame_offset = freq_id * (out_buf->frame_size - num_freq_per_output_frame)
+                                        / num_freq_per_output_frame;
                 // is that the same as: freq_id * in_frame_freq_size ?
                 // assert(out_frame_offset == freq_id * in_frame_freq_size);
 
                 // copy the data from in_frame to the out_frame + some offset with no change
                 // Note that the first num_freq_per_output_frame is the frequency id indicator,
                 // which is 0 or 1 indicating the frequency data copied to the output
-                memcpy(out_frame + num_freq_per_output_frame + out_frame_offset, in_frame, in_frame_freq_size);
+                memcpy(out_frame + num_freq_per_output_frame + out_frame_offset, 
+                        in_frame + f*in_frame_freq_size, in_frame_freq_size);
                 // turn on the frequency id indicator, located at the beginning of the output frame
                 out_frame[freq_id] = 1;
 
-                // also inform the frequency bin added to the metadata about freq_id
-                FrequencyBin* freq_bin = (FrequencyBin*)get_metadata(out_buf, out_frame_map[current_frame_timestamp].second);
-                frequencyBin_add_frequency_id(freq_bin, freq_id);
+                // also inform the frequency bin added to the metadata about this freq_id
+                frequencyBin_add_frequency_id(ometadata, freq_id);
 
                 if (beam_printout) {
                     // print out some metadata and the first element of frame data
-                    INFO( "Beam RA: {:f}, Dec: {:f}, scaling: {:d}, freq_bins: {:d} in [{:d},{:d}], first value: {:d}+{:d}i\n",
-                            metadata->ra, metadata->dec, metadata->scaling, freq_id, 
-                            freq_bin->lower_band_frequency, freq_bin->higher_band_frequency, 
-                            in_frame[0] & 0x0F, (in_frame[0] & 0xF0) >> 4 );
+                    INFO("Beam RA: {:f}, Dec: {:f}, scaling: {:d}, freq_bins: {:d} in [{:d},{:d}], "
+                         "first value: {:d}+{:d}i\n",
+                         metadata->ra, metadata->dec, metadata->scaling, freq_id,
+                         ometadata->lower_band_received_frequency,
+                         ometadata->higher_band_received_frequency, in_frame[0] & 0x0F,
+                         (in_frame[0] & 0xF0) >> 4);
                 }
             }
         }
@@ -193,15 +215,22 @@ void BeamAssemble::main_thread() {
     // Be a nice thread: loop over all the open output buffer frames and release them
     for (auto it = out_frame_map.begin(); it != out_frame_map.end();) {
         // release the output frame in the map
-        mark_frame_full(out_buf, unique_name.c_str(), it->second.second);
+        mark_frame_full(out_buf, unique_name.c_str(), std::get<2>(it->second));
+        // retrieve the metadata of the released output buffer frame
+        ometadata = std::get<1>(it->second);
+        // print out some statistics about the released output buffer frame
+        INFO("Released output frame RA: {:f}, Dec: {:f}, scaling: {:d}, freq bin: [{:d},{:d}], num_freqs: {:d}\n",
+                ometadata->ra, ometadata->dec, ometadata->scaling, 
+                ometadata->lower_band_received_frequency, ometadata->higher_band_received_frequency,
+                ometadata->num_received_frequencies );
         // remove the output frame element from the map
         out_frame_map.erase(it++);
     }
 
     // printout some statistics
-    INFO( "Beam Assembly statistics for {:d}ms timeout window: \n    number of incoming frames: {:d}\n"
-          "    number of accepted frames: {:d}\n    number of missed frames: {:d}\n",
-          arriving_data_timeout, received_beam_frames_count, 
-          accepted_beam_frames_count, missed_beam_frames_count);
-
+    INFO("Beam Assembly statistics for {:d}ms timeout window: \n    number of incoming frames: "
+         "{:d}\n"
+         "    number of accepted frames: {:d}\n    number of missed frames: {:d}\n",
+         arriving_data_timeout, received_beam_frames_count, accepted_beam_frames_count,
+         missed_beam_frames_count);
 }

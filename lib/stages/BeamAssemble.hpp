@@ -32,17 +32,17 @@
  *     @buffer_format 4+4-bit complex voltage (beam) data
  *     @buffer_metadata BeamMetadata
  * 
- * @par num_freq_per_output_frame
+ * @conf num_freq_per_output_frame
  *      number of frequencies to be assembled
  * 
- * @par arriving_data_timeout
+ * @conf arriving_data_timeout
  *      timeout in miliseconds for the arriving data
  * 
- * @par beam_printout
+ * @conf beam_printout
  *      check flag to print some information about incoming beam 
  *      data
  * 
- * @par late_beam_printout
+ * @conf late_beam_printout
  *      check flag to print some information about late incoming 
  *      beam data, which are ignored
  * 

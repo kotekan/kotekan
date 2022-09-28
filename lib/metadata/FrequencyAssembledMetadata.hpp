@@ -20,27 +20,34 @@
  * @struct FrequencyBin
  * @brief Frequency bin for a range of frequency ids.
  * *
- * @par num_frequencies
+ * @par num_received_frequencies
  *      The number of frequency ids assigned to the bin
- * @par lower_band_frequency, higher_band_frequency
+ * @par lower_band_received_frequency, higher_band_received_frequency
  *      The frequency id range: [low to high]
  *
  * @author Mehdi Najafi
  */
 struct FrequencyBin {
     /// The lower frequency range
-    uint32_t lower_band_frequency  = std::numeric_limits<uint32_t>::max();
+    uint32_t lower_band_received_frequency  = std::numeric_limits<uint32_t>::max();
     /// The higher frequency range
-    uint32_t higher_band_frequency = std::numeric_limits<uint32_t>::min();
-    /// The number of frequencies
-    uint32_t num_frequencies;
+    uint32_t higher_band_received_frequency = std::numeric_limits<uint32_t>::min();
+    /// The number of frequency ids in the frame attached to this metadata
+    uint32_t num_received_frequencies = 0;
 };
+
+/// initialize the frequency bin
+inline void frequencyBin_initialize(FrequencyBin *bin) {
+    bin->lower_band_received_frequency  = std::numeric_limits<uint32_t>::max();
+    bin->higher_band_received_frequency = std::numeric_limits<uint32_t>::min();
+    bin->num_received_frequencies = 0;
+}
 
 /// add a frequency id to the bin
 inline uint32_t frequencyBin_add_frequency_id(FrequencyBin *bin, const uint32_t freq_id) {
-    if (bin->lower_band_frequency > freq_id ) bin->lower_band_frequency = freq_id;
-    if (bin->higher_band_frequency < freq_id ) bin->higher_band_frequency = freq_id;
-    return ++bin->num_frequencies;
+    if (bin->lower_band_received_frequency > freq_id ) bin->lower_band_received_frequency = freq_id;
+    if (bin->higher_band_received_frequency < freq_id ) bin->higher_band_received_frequency = freq_id;
+    return ++bin->num_received_frequencies;
 }
 
 
