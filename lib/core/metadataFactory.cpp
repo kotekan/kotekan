@@ -2,26 +2,26 @@
 // Copyright (c) 2022 Kotekan Developers
 
 /****************************************************
-* @file metadatFactory.cpp
-* @brief This file implements the factory for making 
-*        metadata structures, registered previously.
-*
-* @author Mehdi Najafi
-* @date   28 AUG 2022
-*****************************************************/
+ * @file metadatFactory.cpp
+ * @brief This file implements the factory for making
+ *        metadata structures, registered previously.
+ *
+ * @author Mehdi Najafi
+ * @date   28 AUG 2022
+ *****************************************************/
 
 #include "metadataFactory.hpp"
 
-#include "Config.hpp"           // for Config
-#include "kotekanLogging.hpp"   // for INFO_NON_OO
-#include "metadata.h"           // for create_metadata_pool
+#include "Config.hpp"         // for Config
+#include "kotekanLogging.hpp" // for INFO_NON_OO
+#include "metadata.h"         // for create_metadata_pool
 
 // include all metadata header files available here
-#include "FrequencyAssembledMetadata.hpp"
-#include "chimeMetadata.hpp"
-#include "BeamMetadata.hpp"
-#include "HFBMetadata.hpp"
 #include "BasebandMetadata.hpp"
+#include "BeamMetadata.hpp"
+#include "FrequencyAssembledMetadata.hpp"
+#include "HFBMetadata.hpp"
+#include "chimeMetadata.hpp"
 
 #include "fmt.hpp" // for format, fmt
 

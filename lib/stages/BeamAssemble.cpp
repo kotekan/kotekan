@@ -21,10 +21,10 @@
 
 #include "fmt.hpp" // for format
 
-#include <map>        // for std::map
-#include <tuple>      // for std::tuple
-#include <stdint.h>   // for uint8_t, uint32_t
 #include <functional> // for std::make_tuple, std::get
+#include <map>        // for std::map
+#include <stdint.h>   // for uint8_t, uint32_t
+#include <tuple>      // for std::tuple
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -60,10 +60,11 @@ void BeamAssemble::main_thread() {
     uint8_t *in_frame, *out_frame;
 
     // the frame map used for timeout controlled frames
-    std::map<int64_t, std::tuple<uint8_t*,assembledBeamMetadata*,int>, std::greater<int64_t>> out_frame_map;
+    std::map<int64_t, std::tuple<uint8_t*, assembledBeamMetadata*, int>, std::greater<int64_t>>
+        out_frame_map;
 
     // output buffer metadata
-    assembledBeamMetadata *ometadata;
+    assembledBeamMetadata* ometadata;
 
     // timestamp used for the frame map control
     int64_t current_frame_timestamp;
@@ -98,10 +99,12 @@ void BeamAssemble::main_thread() {
                 // retrieve the metadata of the released output buffer frame
                 ometadata = std::get<1>(it->second);
                 // print out some statistics about the released output buffer frame
-                INFO("Released output frame RA: {:f}, Dec: {:f}, scaling: {:d}, freq bin: [{:d},{:d}], num_freqs: {:d}\n",
-                        ometadata->ra, ometadata->dec, ometadata->scaling, 
-                        ometadata->lower_band_received_frequency, ometadata->higher_band_received_frequency,
-                        ometadata->num_received_frequencies );
+                INFO("Released output frame RA: {:f}, Dec: {:f}, scaling: {:d}, freq bin: "
+                     "[{:d},{:d}], num_freqs: {:d}\n",
+                     ometadata->ra, ometadata->dec, ometadata->scaling,
+                     ometadata->lower_band_received_frequency,
+                     ometadata->higher_band_received_frequency,
+                     ometadata->num_received_frequencies);
 
                 // remove the output frame element from the map
                 out_frame_map.erase(it++);
@@ -148,7 +151,7 @@ void BeamAssemble::main_thread() {
                 allocate_new_metadata_object(out_buf, out_frame_id);
 
                 // get the new metadata object for the empty output buffer frame
-                ometadata = (assembledBeamMetadata *)get_metadata(out_buf, out_frame_id);
+                ometadata = (assembledBeamMetadata*)get_metadata(out_buf, out_frame_id);
 
                 // reset the frequency bin part of the output buffer frame metadata
                 frequencyBin_initialize(ometadata);
@@ -157,15 +160,16 @@ void BeamAssemble::main_thread() {
                 copy_base_to_frequency_assembled_Metadata(metadata, ometadata);
 
                 // add the new output frame to the map
-                out_frame_map[current_frame_timestamp] = std::make_tuple(out_frame, ometadata, out_frame_id);
+                out_frame_map[current_frame_timestamp] =
+                    std::make_tuple(out_frame, ometadata, out_frame_id);
                 out_frame_id++;
 
                 // zero all the frame: zeros implies missing data as well
                 memset(out_frame, 0, out_buf->frame_size);
             } else {
                 // retrieve the output frame from the map
-                out_frame = std::get<0>( out_frame_map[current_frame_timestamp] );
-                ometadata = std::get<1>( out_frame_map[current_frame_timestamp] );
+                out_frame = std::get<0>(out_frame_map[current_frame_timestamp]);
+                ometadata = std::get<1>(out_frame_map[current_frame_timestamp]);
             }
 
             // loop over received frequencies in the input buffer frame and
@@ -186,8 +190,8 @@ void BeamAssemble::main_thread() {
                 // copy the data from in_frame to the out_frame + some offset with no change
                 // Note that the first num_freq_per_output_frame is the frequency id indicator,
                 // which is 0 or 1 indicating the frequency data copied to the output
-                memcpy(out_frame + num_freq_per_output_frame + out_frame_offset, 
-                        in_frame + f*in_frame_freq_size, in_frame_freq_size);
+                memcpy(out_frame + num_freq_per_output_frame + out_frame_offset,
+                       in_frame + f * in_frame_freq_size, in_frame_freq_size);
                 // turn on the frequency id indicator, located at the beginning of the output frame
                 out_frame[freq_id] = 1;
 
@@ -219,10 +223,11 @@ void BeamAssemble::main_thread() {
         // retrieve the metadata of the released output buffer frame
         ometadata = std::get<1>(it->second);
         // print out some statistics about the released output buffer frame
-        INFO("Released output frame RA: {:f}, Dec: {:f}, scaling: {:d}, freq bin: [{:d},{:d}], num_freqs: {:d}\n",
-                ometadata->ra, ometadata->dec, ometadata->scaling, 
-                ometadata->lower_band_received_frequency, ometadata->higher_band_received_frequency,
-                ometadata->num_received_frequencies );
+        INFO("Released output frame RA: {:f}, Dec: {:f}, scaling: {:d}, freq bin: [{:d},{:d}], "
+             "num_freqs: {:d}\n",
+             ometadata->ra, ometadata->dec, ometadata->scaling,
+             ometadata->lower_band_received_frequency, ometadata->higher_band_received_frequency,
+             ometadata->num_received_frequencies);
         // remove the output frame element from the map
         out_frame_map.erase(it++);
     }
