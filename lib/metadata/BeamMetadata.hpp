@@ -2,21 +2,21 @@
 // Copyright (c) 2022 Kotekan Developers
 
 /****************************************************
-* @file   BeamMetadata.hpp
-* @brief  This file declares the basic BeamMetadata 
-*         structure
-*
-* @author Mehdi Najafi
-* @date   28 AUG 2022
-*****************************************************/
+ * @file   BeamMetadata.hpp
+ * @brief  This file declares the basic BeamMetadata
+ *         structure
+ *
+ * @author Mehdi Najafi
+ * @date   28 AUG 2022
+ *****************************************************/
 
 #ifndef BEAMMETADATA_HPP
 #define BEAMMETADATA_HPP
 
+#include "FrequencyAssembledMetadata.hpp" // FrequencyAssembledMetadata
 #include "Telescope.hpp"                  // stream_t
 #include "dataset.hpp"                    // for dset_id_t
 #include "metadataFactory.hpp"            // metadata registration
-#include "FrequencyAssembledMetadata.hpp" // FrequencyAssembledMetadata
 
 struct BeamMetadata {
     /// The ICEBoard sequence number
