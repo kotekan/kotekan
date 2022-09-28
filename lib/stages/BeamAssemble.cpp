@@ -103,8 +103,7 @@ void BeamAssemble::main_thread() {
                      "[{:d},{:d}], num_freqs: {:d}\n",
                      ometadata->ra, ometadata->dec, ometadata->scaling,
                      ometadata->lower_band_received_frequency,
-                     ometadata->upper_band_received_frequency,
-                     ometadata->num_received_frequencies);
+                     ometadata->upper_band_received_frequency, ometadata->num_received_frequencies);
 
                 // remove the output frame element from the map
                 out_frame_map.erase(it++);
