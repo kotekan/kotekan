@@ -5,7 +5,7 @@
 #include "Telescope.hpp"      // for stream_t
 #include "buffer.h"           // for get_metadata, allocate_new_metadata_object, mark_frame_empty
 #include "chimeMetadata.hpp"  // for chimeMetadata, beamCoord, get_stream_id
-#include "datasetManager.hpp" // for dset_id_t
+#include "dataset.hpp"        // for dset_id_t
 #include "kotekanLogging.hpp" // for DEBUG2
 #include "visUtil.hpp"        // for frameID, modulo
 

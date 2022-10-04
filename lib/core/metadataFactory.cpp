@@ -12,10 +12,6 @@
 
 #include "metadataFactory.hpp"
 
-#include "Config.hpp"         // for Config
-#include "kotekanLogging.hpp" // for INFO_NON_OO
-#include "metadata.h"         // for create_metadata_pool
-
 // include all metadata header files available here
 #include "BasebandMetadata.hpp"
 #include "BeamMetadata.hpp"
@@ -24,12 +20,6 @@
 #include "chimeMetadata.hpp"
 
 #include "fmt.hpp" // for format, fmt
-
-#include <exception> // for exception
-#include <regex>     // for match_results<>::_Base_type
-#include <stdexcept> // for runtime_error
-#include <stdint.h>  // for uint32_t
-#include <vector>    // for vector
 
 using json = nlohmann::json;
 using std::map;

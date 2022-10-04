@@ -19,12 +19,18 @@
 #ifndef METADATA_FACTORY_HPP
 #define METADATA_FACTORY_HPP
 
-#include "Config.hpp" // for Config
-#include "metadata.h" // for metadataPool // IWYU pragma: keep
-
-#include "json.hpp" // for json
-
-#include <map> // for map
+#include <stddef.h>            // for size_t
+#include <stdint.h>            // for uint32_t
+#include <exception>           // for exception
+#include <map>                 // for map, _Rb_tree_iterator
+#include <regex>               // for match_results<>::_Base_type
+#include <stdexcept>           // for runtime_error
+#include <string>              // for string
+#include <vector>              // for vector
+#include "Config.hpp"          // for Config
+#include "json.hpp"            // for json
+#include "kotekanLogging.hpp"  // for ERROR_NON_OO, INFO_NON_OO
+#include "metadata.h"          // for create_metadata_pool, metadataPool
 
 namespace kotekan {
 

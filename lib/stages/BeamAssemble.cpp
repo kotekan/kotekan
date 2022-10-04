@@ -19,11 +19,15 @@
 #include "kotekanLogging.hpp" // for INFO
 #include "visUtil.hpp"        // for frameID, modulo, ts_to_double
 
-#include "fmt.hpp" // for format
-
+#include <string.h>   // for memcpy, memset
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for int32_t, uint32_t, uint8_t, int64_t
+#include <exception>  // for exception
+#include <regex>      // for match_results<>::_Base_type
+#include <utility>    // for pair
+#include <vector>     // for vector
 #include <functional> // for std::make_tuple, std::get
 #include <map>        // for std::map
-#include <stdint.h>   // for uint8_t, uint32_t
 #include <tuple>      // for std::tuple
 
 using kotekan::bufferContainer;

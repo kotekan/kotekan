@@ -5,6 +5,7 @@
 #include "buffer.h"
 #include "dataset.hpp" // for dset_id_t
 #include "metadata.h"
+#include "metadataFactory.hpp" // metadata registration
 
 #include <sys/time.h>
 
@@ -26,6 +27,9 @@ struct HFBMetadata {
     /// ID of the dataset
     dset_id_t dataset_id;
 };
+
+// register this metadata structure
+REGISTER_KOTEKAN_METADATA(HFBMetadata)
 
 // Helper functions to save lots of pointer work
 

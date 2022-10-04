@@ -43,4 +43,7 @@ struct BasebandMetadata {
     int32_t reserved;
 };
 
+// register this metadata structure
+REGISTER_KOTEKAN_METADATA(BasebandMetadata)
+
 #endif // BASEBAND_METADATA_HPP

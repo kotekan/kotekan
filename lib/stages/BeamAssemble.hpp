@@ -19,6 +19,9 @@
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
 
+#include <stdint.h>            // for uint64_t, int32_t, uint32_t
+#include <string>              // for string
+
 /**
  * @class BeamAssemble
  * @brief Assembles incoming beam information from the frames in
