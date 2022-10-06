@@ -19,16 +19,16 @@
 #include "kotekanLogging.hpp" // for INFO
 #include "visUtil.hpp"        // for frameID, modulo, ts_to_double
 
-#include <string.h>   // for memcpy, memset
 #include <atomic>     // for atomic_bool
 #include <cstdint>    // for int32_t, uint32_t, uint8_t, int64_t
 #include <exception>  // for exception
-#include <regex>      // for match_results<>::_Base_type
-#include <utility>    // for pair
-#include <vector>     // for vector
 #include <functional> // for std::make_tuple, std::get
 #include <map>        // for std::map
+#include <regex>      // for match_results<>::_Base_type
+#include <string.h>   // for memcpy, memset
 #include <tuple>      // for std::tuple
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -63,9 +63,28 @@ void BeamAssemble::main_thread() {
     frameID in_frame_id(in_buf), out_frame_id(out_buf);
     uint8_t *in_frame, *out_frame;
 
+    // here I used a frame map for timeout controlled frames, for which
+    // I made custom keys using timestamp, Ra, Dec, Scaling. The types
+    // are integer and float mixture which requires some custom hash key.
+    typedef std::tuple<int64_t, int64_t, int64_t, int64_t> key_t;
+    // special structure for the tuple as the map key
+    struct key_helper {
+        bool operator()(const key_t& v0, const key_t& v1) const {
+            return (std::get<0>(v0) > std::get<0>(v1));
+        }
+        // make a tuple mixture of integers and floats
+        static auto make_key(const int64_t i1, const float f1, const float f2, const uint32_t i2) {
+            // bitwise float to integral type conversion
+            union {
+                float from;
+                int64_t to;
+            } fi1 = {.from = f1}, fi2 = {.from = f2};
+            return std::make_tuple(i1, fi1.to, fi2.to, i2);
+        }
+    };
+
     // the frame map used for timeout controlled frames
-    std::map<int64_t, std::tuple<uint8_t*, assembledBeamMetadata*, int>, std::greater<int64_t>>
-        out_frame_map;
+    std::map<key_t, std::tuple<uint8_t*, assembledBeamMetadata*, int>, key_helper> out_frame_map;
 
     // output buffer metadata
     assembledBeamMetadata* ometadata;
@@ -97,7 +116,7 @@ void BeamAssemble::main_thread() {
         for (auto it = out_frame_map.begin(); it != out_frame_map.end();) {
             // check if the time has passed more than arriving_data_timeout since this output frame
             // has been opened
-            if (current_frame_timestamp - it->first > arriving_data_timeout) {
+            if (current_frame_timestamp - std::get<0>(it->first) > arriving_data_timeout) {
                 // release the output frame in the map
                 mark_frame_full(out_buf, unique_name.c_str(), std::get<2>(it->second));
                 // retrieve the metadata of the released output buffer frame
@@ -119,7 +138,8 @@ void BeamAssemble::main_thread() {
         // check if the timestamp corresponds to the past time frame which is no longer
         // considered/accepted
         if (out_frame_map.size()
-            && current_frame_timestamp + arriving_data_timeout < out_frame_map.begin()->first) {
+            && current_frame_timestamp + arriving_data_timeout
+                   < std::get<0>(out_frame_map.begin()->first)) {
             // increment the number of late/missed incoming beam data frames
             missed_beam_frames_count++;
 
@@ -139,10 +159,14 @@ void BeamAssemble::main_thread() {
             // increment the number of accepted frame from all incoming beam data frames
             accepted_beam_frames_count++;
 
-            // determine which output frame to write on based on the timestamp: if this is a new
-            // time stamp, make a new entry in the map and acquire an empty frame from the output
-            // buffer
-            if (out_frame_map.find(current_frame_timestamp) == out_frame_map.end()) {
+            // create a new key for the map, using the current timestamp, Ra, Dec, and Scaling
+            auto current_frame_key = key_helper::make_key(current_frame_timestamp, metadata->ra,
+                                                          metadata->dec, metadata->scaling);
+
+            // determine which output frame to write on based on the timestamp and RDS:
+            // if this is a new time stamp, make a new entry in the map and acquire an
+            // empty frame from the output buffer
+            if (out_frame_map.find(current_frame_key) == out_frame_map.end()) {
                 // wait for the first available empty frame
                 out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
                 if (out_frame == nullptr) {
@@ -163,7 +187,7 @@ void BeamAssemble::main_thread() {
                 copy_base_to_frequency_assembled_Metadata(metadata, ometadata);
 
                 // add the new output frame to the map
-                out_frame_map[current_frame_timestamp] =
+                out_frame_map[current_frame_key] =
                     std::make_tuple(out_frame, ometadata, out_frame_id);
                 out_frame_id++;
 
@@ -171,8 +195,8 @@ void BeamAssemble::main_thread() {
                 memset(out_frame, 0, out_buf->frame_size);
             } else {
                 // retrieve the output frame from the map
-                out_frame = std::get<0>(out_frame_map[current_frame_timestamp]);
-                ometadata = std::get<1>(out_frame_map[current_frame_timestamp]);
+                out_frame = std::get<0>(out_frame_map[current_frame_key]);
+                ometadata = std::get<1>(out_frame_map[current_frame_key]);
             }
 
             // loop over received frequencies in the input buffer frame and

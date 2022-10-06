@@ -12,13 +12,6 @@
 
 #include "metadataFactory.hpp"
 
-// include all metadata header files available here
-#include "BasebandMetadata.hpp"
-#include "BeamMetadata.hpp"
-#include "FrequencyAssembledMetadata.hpp"
-#include "HFBMetadata.hpp"
-#include "chimeMetadata.hpp"
-
 #include "fmt.hpp" // for format, fmt
 
 using json = nlohmann::json;
