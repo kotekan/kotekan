@@ -7,7 +7,7 @@ So you want to write your first Consumer Stage! This tutorial will walk you thro
 What is a Consumer Stage?
 -------------------------
 Stages can have `producer components` and/or `consumer components`.
-To "consume" means that the stage reads frames from a [Kotekan buffer](/kotekan/dev/dev_buffers.html). To "produce" means it writes frames into a Kotekan buffer.
+To "consume" means that the stage reads frames from a :ref:`Kotekan Buffer <dev_buffers>` . To "produce" means it writes frames into a Kotekan buffer.
 This tutorial will illustrate writing and testing a stage that only has consumer components.
 
 The steps we will follow for developing the stage are:
@@ -15,14 +15,23 @@ The steps we will follow for developing the stage are:
 1. Load the classes we will be using.
 2. Register the stage with abstract factory.
 3. Write a skeleton constructor. Within the constructor:
-   3a. Register the stage as a consumer of `in_buf`.
-   3b. Load some configuration options.
+
+   * Register the stage as a consumer of `in_buf`.
+
+   * Load some configuration options.
+
 4. Write the skeleton for the framework managed pthread. Within this main thread:
-   4a. Declare the pointer to the buffer.
-   4b. Acquire the frame.
-   4c. Handle what happens if a null frame is returned.
-   4d. Release the frame.
-   4e. Increase the ring pointer.
+
+   * Declare the pointer to the buffer.
+
+   * Acquire the frame.
+
+   * Handle what happens if a null frame is returned.
+
+   * Release the frame.
+
+   * Increase the ring pointer.
+
 5. Create the header.
 
 
