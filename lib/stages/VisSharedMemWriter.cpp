@@ -7,7 +7,8 @@
 #include "factory.hpp"           // for FACTORY
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, INFO, WARN
 #include "prometheusMetrics.hpp" // for Counter, Gauge, Metrics, MetricFamily
-#include "visBuffer.hpp"         // for VisFrameView, VisMetadata
+#include "visBuffer.hpp"         // for VisFrameView
+#include "visMetadata.hpp"       // for VisMetadata
 #include "visUtil.hpp"           // for time_ctype, frameID, operator<, modulo, current_time
 
 #include <algorithm>   // for copy, fill_n, copy_backward, equal, max
@@ -21,7 +22,7 @@
 #include <map>         // for map, _Rb_tree_iterator
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error, out_of_range
-#include <stdio.h>     // for size_t, remove
+#include <stdio.h>     // for remove
 #include <string.h>    // for strerror, memcpy, memset
 #include <sys/mman.h>  // for mmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, PROT...
 #include <sys/stat.h>  // for S_IRUSR, S_IWUSR

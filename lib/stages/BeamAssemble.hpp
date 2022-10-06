@@ -75,11 +75,21 @@ private:
     uint32_t num_freq_per_output_frame;
     int32_t arriving_data_timeout;
 
+    /// beam information printout flag, which is set in the config file
     bool beam_printout;
+
+    /// late beam information printout flag, which is set in the config file
     bool late_beam_printout;
 
+    /// a counter to keep track of the number of beam frames received
     uint64_t received_beam_frames_count;
+
+    /// a counter to keep track of the number of beam frames received and copied to the output
+    /// buffer frames
     uint64_t accepted_beam_frames_count;
+
+    /// a counter to keep track of the number of beam frames received late and ignored (not copied
+    /// to any output buffer frames)
     uint64_t missed_beam_frames_count;
 };
 

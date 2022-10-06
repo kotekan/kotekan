@@ -18,8 +18,11 @@
 
 /**
  * @struct FrequencyBin
- * @brief Frequency bin for a range of frequency ids.
- * *
+ * @brief Frequency bin for a range of frequency ids. Please use the
+ *        function: frequencyBin_initialize to initialize this struct
+ *        before using. Frequency IDs should be introduced by calling
+ *        frequencyBin_add_frequency_id function.
+ *
  * @par num_received_frequencies
  *      The number of frequency ids assigned to the bin
  * @par lower_band_received_frequency, upper_band_received_frequency
