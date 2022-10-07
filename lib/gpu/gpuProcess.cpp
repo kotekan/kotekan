@@ -90,11 +90,13 @@ void gpuProcess::init() {
         std::string command_name = cmd["name"];
         commands.push_back(create_command(command_name, unique_path));
     }
+
+    for (auto& buf : local_buffer_container.get_buffer_map()) {
+        register_host_memory(buf.second);
+    }
 }
 
 void gpuProcess::profile_callback(connectionInstance& conn) {
-    DEBUG(" *** *** *** Profile call made.");
-
     json reply;
 
     reply["copy_in"] = json::array();
@@ -113,12 +115,10 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
                 {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
             total_kernel_time += cmd->get_last_gpu_execution_time();
         } else if (cmd->get_command_type() == gpuCommandType::COPY_IN) {
-
             reply["copy_in"].push_back(
                 {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
             total_copy_in_time += cmd->get_last_gpu_execution_time();
         } else if (cmd->get_command_type() == gpuCommandType::COPY_OUT) {
-
             reply["copy_out"].push_back(
                 {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
             total_copy_out_time += cmd->get_last_gpu_execution_time();
@@ -155,7 +155,7 @@ void gpuProcess::main_thread() {
         // INFO("Waiting on preconditions for GPU[{:d}][{:d}]", gpu_id, gpu_frame_id);
         for (auto& command : commands) {
             if (command->wait_on_precondition(gpu_frame_id) != 0) {
-                INFO("Received exit in GPU command precondition! (Command '{:s}')",
+                INFO("Received exit signal from GPU command precondition (Command '{:s}')",
                      command->get_name());
                 goto exit_loop;
             }
@@ -172,8 +172,8 @@ void gpuProcess::main_thread() {
             // TODO Move to config
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
-            for (int j = 4; j < 12; j++)
-                CPU_SET(j, &cpuset);
+            for (auto& i : config.get<std::vector<int>>(unique_name, "cpu_affinity"))
+                CPU_SET(i, &cpuset);
             pthread_setaffinity_np(results_thread_handle.native_handle(), sizeof(cpu_set_t),
                                    &cpuset);
             first_run = false;
@@ -223,11 +223,11 @@ void gpuProcess::results_thread() {
         if (log_profiling) {
             std::string output = "";
             for (uint32_t i = 0; i < commands.size(); ++i) {
-                output = fmt::format(fmt("{:s}kernel: {:s} time: {:f}; \n"), output,
-                                     commands[i]->get_name(),
-                                     commands[i]->get_last_gpu_execution_time());
+                output = fmt::format(fmt("{:s}command: {:s} metrics: {:s}; \n"), output,
+                                     commands[i]->get_unique_name(),
+                                     commands[i]->get_performance_metric_string());
             }
-            INFO("GPU[{:d}] Profiling: {:s}", gpu_id, output);
+            INFO("GPU[{:d}] Profiling: \n{:s}", gpu_id, output);
         }
 
         final_signals[gpu_frame_id]->reset();

@@ -34,7 +34,7 @@ num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 49152
 buffer_depth: 12
-baseband_buffer_depth: 282 # 282 = ~34 seconds after accounting for active frames
+baseband_buffer_depth: 272 # 272 = ~33 seconds after accounting for active frames
 vbuffer_depth: 32
 num_links: 4
 timesamples_per_packet: 2
@@ -291,6 +291,11 @@ main_pool:
 hfb_pool:
   kotekan_metadata_pool: HFBMetadata
   num_metadata_objects: 30 * buffer_depth
+
+# Baseband metadata pool
+baseband_pool:
+  kotekan_metadata_pool: BasebandMetadata
+  num_metadata_objects: 30 * buffer_depth * 96
 
 # Input data buffers from the DPDK stage
 network_buffers:
@@ -652,23 +657,65 @@ zero_samples:
     out_buf: network_buffer_3
 
 # Baseband capture and dump system
+baseband_output_buffers:
+  num_frames: 11 * 96 # baseband_buffer_depth
+  frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets / 96
+  metadata_pool: baseband_pool
+  baseband_output_buffer_0:
+    kotekan_buffer: standard
+  baseband_output_buffer_1:
+    kotekan_buffer: standard
+  baseband_output_buffer_2:
+    kotekan_buffer: standard
+  baseband_output_buffer_3:
+    kotekan_buffer: standard
+  baseband_output_buffer_merged:
+    kotekan_buffer: standard
+    num_frames: 12
+
 baseband:
-  max_dump_samples: 200000
+  max_dump_samples: 300000 # 768ms
   num_frames_buffer: baseband_buffer_depth - 10
-  base_dir: /mnt/frb-baseband/
-  write_throttle: 0
   baseband0:
     kotekan_stage: basebandReadout
     in_buf: network_buffer_0
+    out_buf: baseband_output_buffer_0
   baseband1:
     kotekan_stage: basebandReadout
     in_buf: network_buffer_1
+    out_buf: baseband_output_buffer_1
   baseband2:
     kotekan_stage: basebandReadout
     in_buf: network_buffer_2
+    out_buf: baseband_output_buffer_2
   baseband3:
     kotekan_stage: basebandReadout
     in_buf: network_buffer_3
+    out_buf: baseband_output_buffer_3
+
+baseband_merge:
+  kotekan_stage: bufferMerge
+  timeout: 0.1
+  in_bufs:
+    - baseband_output_buffer_0
+    - baseband_output_buffer_1
+    - baseband_output_buffer_2
+    - baseband_output_buffer_3
+  out_buf: baseband_output_buffer_merged
+
+# Transmit baseband data to the baseband receiver
+baseband_send:
+  server_ip: 10.6.213.19 # cfDn9
+  reconnect_time: 60
+  send_timeout: 600 # 10 minutes
+  log_level: warn
+  # Keep data in memory even if the receiver node is down
+  # Baseband readout handles back pressure management
+  drop_frames: false
+  baseband_send_0:
+    #kotekan_stage: bufferSend
+    server_port: 11027
+    buf: baseband_output_buffer_merged
 
 # Buffer bad input updates
 # 1) Reorder list
@@ -796,6 +843,7 @@ gpu:
   buffer_depth: 4
   # How many sub frames to devide the N2 products into.
   n_intg: 24576 / num_sub_frames
+  profiling: true
   frame_arrival_period: samples_per_data_set / 390625
   updatable_config:
     tracking_pt: /updatable_config/tracking_pointing

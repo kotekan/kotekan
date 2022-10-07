@@ -30,8 +30,6 @@ symbols.
 * `-DUSE_CLOC=ON` - For HSA, use cloc.sh to compile .hsaco binaries.
   Direct toolchain calls are used by default.
 * `-DUSE_OPENCL=ON` - Build with OpenCL support.
-* `-DUSE_HCC=ON` - Build with HCC support, must also set `CXX=hcc`,
-  i.e. `CXX=hcc cmake -DUSE_HCC=ON ..`  This mode has limited support.
 * `-DUSE_CUDA=ON` - Build with CUDA support, requires `nvcc`
 * `-DUSE_HDF5=ON` and `-DHIGHFIVE_PATH=<path>` - To enable the HDF5 writer
 * `-DUSE_AIRSPY=ON` - Build the AirSpy producer. Requires libairspy.

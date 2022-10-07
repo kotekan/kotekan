@@ -13,7 +13,6 @@
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error
-#include <stdio.h>    // for printf
 #include <stdlib.h>   // for free, malloc
 #include <vector>     // for vector
 
@@ -151,39 +150,40 @@ void gpuSimulate::main_thread() {
                 }
             }
         } else if (_data_format == "cuda_wmma") {
-            printf("CPU Calc:\n");
-            uint32_t* input_u = (uint32_t*)input;
+            int block_id = 0;
+            for (int x = 0; block_id < _num_blocks; x++) {
+                for (int y = 0; y <= x; y++) {
+                    host_block_map[2 * block_id + 1] = x;
+                    host_block_map[2 * block_id + 0] = y;
+                    block_id++;
+                }
+            }
             for (int f = 0; f < _num_local_freq; ++f) {
                 for (int b = 0; b < _num_blocks; ++b) {
                     for (int y = 0; y < _block_size; ++y) {
                         for (int x = 0; x < _block_size; ++x) {
                             int real = 0;
                             int imag = 0;
-                            for (int t = 0; t < _samples_per_data_set / 32; t++) {
-                                for (int tt = 0; tt < 4; tt++) {
-                                    int ix = tt + 4 * x
-                                             + 4 * 2 * _block_size * host_block_map[2 * b + 0]
-                                             + 4 * 2 * _num_elements * f
-                                             + 4 * 2 * _num_elements * _num_local_freq * t;
-                                    int xi = input_u[ix];
-                                    int xr = input_u[ix + _block_size * 4];
-                                    int iy = tt + 4 * y
-                                             + 4 * 2 * _block_size * host_block_map[2 * b + 1]
-                                             + 4 * 2 * _num_elements * f
-                                             + 4 * 2 * _num_elements * _num_local_freq * t;
-                                    int yi = input_u[iy];
-                                    int yr = input_u[iy + _block_size * 4];
-                                    real += dot4b(xr, yr) + dot4b(xi, yi);
-                                    imag += dot4b(xi, yr) + dot4b(xr, yi); // NOTE: THIS IS WRONG!!!
-                                }
+                            for (int t = 0; t < _samples_per_data_set; ++t) {
+                                int ix = (t * _num_local_freq + f) * _num_elements
+                                         + (host_block_map[2 * b + 0]) * _block_size + x;
+                                int xi = (input[ix] & 0x0f) - 8;
+                                int xr = ((input[ix] & 0xf0) >> 4) - 8;
+                                int iy = (t * _num_local_freq + f) * _num_elements
+                                         + (host_block_map[2 * b + 1]) * _block_size + y;
+                                int yi = (input[iy] & 0x0f) - 8;
+                                int yr = ((input[iy] & 0xf0) >> 4) - 8;
+                                real += xr * yr + xi * yi;
+                                imag += xi * yr - yi * xr;
                             }
-                            output[(f * _num_blocks + b) * _block_size * _block_size * 2 + x
-                                   + y * _block_size] = real;
-                            output[(f * _num_blocks + b) * _block_size * _block_size * 2 + x
-                                   + y * _block_size + _block_size * _block_size] = imag;
+                            output[(f * _num_blocks + b) * _block_size * _block_size * 2 + x * 2
+                                   + y * _block_size * 2 + 1] = -imag;
+                            output[(f * _num_blocks + b) * _block_size * _block_size * 2 + x * 2
+                                   + y * _block_size * 2 + 0] = real;
+                            // INFO("real: {:d}, imag: {:d}", real, imag);
                         }
                     }
-                    DEBUG("Done block %d of %d (freq %d of %d)...", b, _num_blocks, f,
+                    DEBUG("Done block {:d} of {:d} (freq {:d} of {:d})...", b, _num_blocks, f,
                           _num_local_freq);
                 }
             }

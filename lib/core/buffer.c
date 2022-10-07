@@ -788,8 +788,8 @@ void allocate_new_metadata_object(struct Buffer* buf, int ID) {
         buf->metadata[ID] = request_metadata_object(buf->metadata_pool);
     }
 
-    // We assume for now that we always have enough info objects in the pool.
-    assert(buf->metadata[ID] != NULL);
+    // Make sure we got a metadata object.
+    CHECK_MEM_F(buf->metadata[ID]);
 
     CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
 }

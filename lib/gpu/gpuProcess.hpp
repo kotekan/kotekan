@@ -23,6 +23,14 @@ public:
                kotekan::bufferContainer& buffer_container);
     virtual ~gpuProcess();
     void main_thread() override;
+
+    /**
+     * @brief Reset server call back function for the profiling information
+     *
+     * @param conn The connection object required for the callback
+     * @todo This function will be deprecated by the KotekanTrackers stats once the
+     *       python script for monitoring GPU utilization is updated to that system.
+     */
     void profile_callback(kotekan::connectionInstance& conn);
 
     /// Returns the dot string formatted graph for the GPU pipeline
@@ -33,6 +41,7 @@ protected:
                                        const std::string& unique_name) = 0;
     virtual gpuEventContainer* create_signal() = 0;
     virtual void queue_commands(int gpu_frame_id) = 0;
+    virtual void register_host_memory(struct Buffer* host_buffer) = 0;
     void results_thread();
     void init(void);
 

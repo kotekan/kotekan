@@ -52,6 +52,10 @@ struct bufferFrameHeader {
  * @conf reconnect_time  Int, default 5.  The number of seconds between
  *                         connection attempts to the remote server.
  * @conf drop_frames     Bool, default true.  Whether to drop frames when buffer fills.
+ * @conf drop_threshold  Float, default 0.6  Drop incoming frames if the fraction of full frames
+ *                         to empty frames exceeds this value.  A value of 1.0 means only drop
+ *                         frames if the connection is down, otherwise generate back-pressure
+ *                         This setting has no effect if drop_frames is false
  *
  * @par Metrics
  * @metric kotekan_buffer_send_dropped_frame_count
@@ -96,6 +100,9 @@ private:
 
     /// Whether to drop frames or block if buffer is full
     bool drop_frames;
+
+    /// Threshold to drop frames
+    float drop_threshold;
 
     /**
      * @brief Number of frame dropped because the send is too slow.

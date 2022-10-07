@@ -25,7 +25,7 @@ Compiling **Kotekan**
 Required
 =========
 * ``pthread``
-* ``python`` and ``python-YAML``
+* ``python`` and the following python packages ``pyyaml, jinja2``
 * `libevent <http://libevent.org/>`_
 
 Required for some options
@@ -59,6 +59,7 @@ Required for some options
 * `Blaze <https://bitbucket.org/blaze-lib/blaze/src/master/>`_
   * Download and unpack into `/opt`
 * OpenSSL (Package is called ``libssl-dev`` on Ubuntu).
+* Optional python packages can be installed with ``pip3 install -r python/requirements.txt``
 
 Unit tests:
 -----------
@@ -177,8 +178,6 @@ Cmake build options
     Build for ROCm versions 2.3 or older. Off by default.
 * ``-DUSE_OPENCL=ON``
     Build with OpenCL support.
-* ``-DUSE_HCC=ON``
-    Build with HCC support, must also set `CXX=hcc`, i.e. `CXX=hcc cmake -DUSE_HCC=ON ..`  This mode has limited support.
 * ``-DUSE_CUDA=ON``
     Build support for CUDA kernels and Nvidia GPUs, requires `nvcc`
 * ``-DUSE_HDF5=ON``

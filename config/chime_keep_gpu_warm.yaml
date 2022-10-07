@@ -74,6 +74,10 @@ frb_scaling: 0.05 #1.0
 # Tracking beams global options
 feed_sep_NS: 0.3048
 feed_sep_EW: 22.0
+# Latitude and longitude converted from final geocentric (XYZ) position as calculated
+# in https://bao.chimenet.ca/doc/documents/1327 via NGS NOAA website.
+inst_lat: 49.32070922
+inst_long: -119.62367743
 num_beams: 12
 num_pol: 2
 
@@ -630,25 +634,6 @@ zero_samples:
   zero_3:
     kotekan_stage: zeroSamples
     out_buf: network_buffer_3
-
-# Baseband capture and dump system
-baseband:
-  max_dump_samples: 200000
-  num_frames_buffer: baseband_buffer_depth - 10
-  base_dir: /mnt/frb-baseband/
-  write_throttle: 0
-  baseband0:
-    kotekan_stage: basebandReadout
-    in_buf: network_buffer_0
-  baseband1:
-    kotekan_stage: basebandReadout
-    in_buf: network_buffer_1
-  baseband2:
-    kotekan_stage: basebandReadout
-    in_buf: network_buffer_2
-  baseband3:
-    kotekan_stage: basebandReadout
-    in_buf: network_buffer_3
 
 # Buffer bad input updates
 # 1) Reorder list

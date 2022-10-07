@@ -14,15 +14,8 @@
  * @brief cudaCommand for copying data onto the GPU.
  *
  * This is a cudaCommand that async copies a buffer from CPU to GPU.
- * This code also passes metadata along.
  *
- * @par GPU Memory
- * @gpu_mem in_buf           Input buffer, arbitrary size
- *     @gpu_mem_type         staging
- *     @gpu_mem_format       Any
- *
- * @author Keith Vanderlinde
- *
+ * @author Keith Vanderlinde and Andre Renard
  */
 class cudaInputData : public cudaCommand {
 public:
@@ -33,9 +26,13 @@ public:
     cudaEvent_t execute(int gpu_frame_id, cudaEvent_t pre_event) override;
     void finalize_frame(int frame_id) override;
 
+    std::string get_performance_metric_string() override;
 
 protected:
     cudaEvent_t* data_staged_event;
+
+    /// Name of the GPU side memory to transfer data into.
+    std::string _gpu_mem;
 
     int32_t in_buffer_id;
     int32_t in_buffer_precondition_id;
