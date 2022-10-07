@@ -73,11 +73,11 @@ add_library(
     BeamInspect.cpp
     testDataGen.cpp
     DPDKShuffleSimulate.cpp
+    hexDump.cpp
+    BadInputFlag.cpp
     ExampleProducer.cpp
     ExampleConsumer.cpp
-    ExampleDotProduct.cpp
-    hexDump.cpp
-    BadInputFlag.cpp)
+    ExampleDotProduct.cpp)
 
 target_include_directories(kotekan_stages PRIVATE .)
 

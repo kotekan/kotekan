@@ -13,13 +13,13 @@
  *
  * @par Buffers
  * @buffer in_a_buf The input buffer representing vector A.
- *      @buffer_format standard
+ *      @buffer_format Array of floats
  *      @buffer_metadata none
  * @buffer in_b_buf The input buffer representing vector B.
- *      @buffer_format standard
+ *      @buffer_format Array of floats
  *      @buffer_metadata any
  * @buffer out_buf The output buffer to hold the result.
- *      @buffer_format standard
+ *      @buffer_format Array of floats
  *      @buffer_metadata any
  */
 class ExampleDotProduct : public kotekan::Stage {

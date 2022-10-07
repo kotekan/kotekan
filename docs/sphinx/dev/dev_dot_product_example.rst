@@ -18,16 +18,23 @@ Compile Stage
 -------------
 To compile the stage add the source file to `lib/stages/CMakeLists.txt`:
 
-.. literalinclude:: ../../../lib/stages/CMakeLists.txt
-    :lines: 73-78
-    :linenos:
+.. code-block:: bash
+
+    add_library(
+        kotekan_stages
+        beamformingPostProcess.cpp
+        chrxUplink.cpp
+        ...
+        ExampleProducer.cpp
+        ExampleConsumer.cpp
+        ExampleDotProduct.cpp)
 
 Move to the `build` directory, call `cmake` to create the `Makefile` and compile `kotekan`:
 
 .. code-block:: bash
 
     cd build
-    cmake -DCMAKE_BUILD_TYPE=Debug -DWITH_TESTS=ON ..
+    cmake -DCMAKE_BUILD_TYPE=Debug ..
     make
 
 Once compilation is complete we need to create a config file for `kotekan` to parse and run.

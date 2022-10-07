@@ -64,11 +64,10 @@ void ExampleDotProduct::main_thread() {
 
         // Acquire input frames
         uint8_t* frame_a_ptr = wait_for_full_frame(in_a_buf, unique_name.c_str(), in_a_frame_id);
-        uint8_t* frame_b_ptr = wait_for_full_frame(in_b_buf, unique_name.c_str(), in_b_frame_id);
-
         // A null frame is returned on shutdown
         if (frame_a_ptr == nullptr)
             break;
+        uint8_t* frame_b_ptr = wait_for_full_frame(in_b_buf, unique_name.c_str(), in_b_frame_id);
         if (frame_b_ptr == nullptr)
             break;
 
