@@ -14,7 +14,7 @@
  * @par Buffers
  * @buffer in_a_buf The input buffer representing vector A.
  *      @buffer_format standard
- *      @buffer_metadata any
+ *      @buffer_metadata none
  * @buffer in_b_buf The input buffer representing vector B.
  *      @buffer_format standard
  *      @buffer_metadata any

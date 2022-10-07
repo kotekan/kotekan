@@ -3,7 +3,7 @@ type: config
 log_level: DEBUG
 cpu_affinity: [0,1,2,3]
 num_local_freq: 1
-samples_per_data_set: 4608
+samples_per_data_set: 1024
 
 # Constants
 sizeof_float: 4
