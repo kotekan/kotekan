@@ -27,7 +27,6 @@
 #include <errno.h>    // for errno
 #include <exception>  // for exception
 #include <fcntl.h>    // for open, O_CREAT, O_WRONLY
-#include <filesystem> // for create_directories
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <memory>     // for allocator_traits<>::value_type
 #include <pthread.h>  // for pthread_setaffinity_np
@@ -36,6 +35,7 @@
 #include <stdexcept>  // for runtime_error
 #include <stdio.h>    // for fprintf, snprintf, fclose, fopen, FILE, size_t
 #include <stdlib.h>   // for exit
+#include <sys/stat.h> // for mkdir
 #include <thread>     // for thread
 #include <time.h>     // for gmtime, strftime, time, time_t
 #include <unistd.h>   // for close, write, ssize_t
@@ -88,6 +88,17 @@ std::string nDiskMultiFormatWriter::get_file_extension() {
     ERROR("Unknown requested file format: {:s}\n", file_format);
     exit(-1);
     return "";
+}
+
+void nDiskMultiFormatWriter::string_replace_all(std::string& str, const std::string& from,
+                                                const std::string& to) {
+    if (from.empty())
+        return;
+    size_t start_pos = 0;
+    while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
+        str.replace(start_pos, from.length(), to);
+        start_pos += to.length(); // In case 'to' contains 'from', like replacing 'x' with 'yx'
+    }
 }
 
 std::string nDiskMultiFormatWriter::get_dataset_timestamp() {
@@ -152,11 +163,21 @@ void nDiskMultiFormatWriter::make_folders() {
     std::error_code ec;
     for (uint32_t i = 0; i < num_disks; i++) {
         std::string folder = get_dataset_folder_name(i);
-        if (!std::filesystem::create_directories(folder, ec)) {
-            // check the error_code
-            ERROR("Error creating data set directory: {:s} \n {:s}\n", folder, ec.message());
-            exit(-1);
+        int err = mkdir(folder.c_str(), 0777);
+
+        if (err != -1) {
+            continue;
         }
+
+        if (errno == EEXIST) {
+            printf("The folder: %s, already exists.\nPlease delete the data set, or use another "
+                   "name.\n",
+                   folder.c_str());
+        } else {
+            perror("Error creating data set directory.\n");
+            printf("The directory was: %s \n", folder.c_str());
+        }
+        exit(errno);
     }
 }
 
@@ -231,6 +252,7 @@ void nDiskMultiFormatWriter::raw_file_write_thread(int disk_id) {
     uint8_t* frame = nullptr;
     int64_t num_frames = 0;
     std::string file_name;
+    ssize_t bytes_written;
 
     // thread infinite loop
     while (!stop_thread) {
@@ -292,20 +314,21 @@ void nDiskMultiFormatWriter::raw_file_write_thread(int disk_id) {
             }
 
             // write the number of frequencies
-            write(fd, &num_freq_per_output_frame, sizeof(num_freq_per_output_frame));
+            bytes_written =
+                write(fd, &num_freq_per_output_frame, sizeof(num_freq_per_output_frame));
 
             // write the frame size in bytes
             size_t frame_byte_size = (size_t)buf->frame_size;
-            write(fd, &frame_byte_size, sizeof(size_t));
+            bytes_written = write(fd, &frame_byte_size, sizeof(size_t));
 
             // write the frame data
-            ssize_t bytes_writen = write(fd, frame, buf->frame_size);
+            bytes_written = write(fd, frame, buf->frame_size);
 
-            if (bytes_writen != buf->frame_size) {
+            if (bytes_written != buf->frame_size) {
                 ERROR("Failed to write buffer to disk!!!  Abort, Panic, etc.");
                 exit(-1);
             } else {
-                // INFO("Data writen to file!");
+                // INFO("Data written to file!");
             }
 
             INFO("Data written to {:s}, lost_packets {:d}", file_name,
@@ -363,6 +386,6 @@ void nDiskMultiFormatWriter::raw_file_write_thread(int disk_id) {
 }
 
 /// writes the incoming frames to an HDF5 file
-void nDiskMultiFormatWriter::hdf5_file_write_thread(int disk_id) {
+void nDiskMultiFormatWriter::hdf5_file_write_thread(int /*disk_id*/) {
     INFO("Not Implemented yet!")
 }
