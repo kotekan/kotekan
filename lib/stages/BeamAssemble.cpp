@@ -133,7 +133,7 @@ void BeamAssemble::main_thread() {
                 if (late_beam_printout) {
                     // print info about the late beam
                     INFO("LATE Beam RA: {:f}, Dec: {:f}, scaling: {:d}, freq: {:d}, first value: "
-                         "{:d}+{:d}i\n",
+                         "{:d}+{:d}i",
                          metadata->ra, metadata->dec, metadata->scaling, freq_id,
                          in_frame[0] & 0x0F, (in_frame[0] & 0xF0) >> 4);
                 }
@@ -195,7 +195,7 @@ void BeamAssemble::main_thread() {
                         auto it_ometadata = std::get<1>(it->second);
                         // print out some statistics about the released output buffer frame
                         INFO("Released output frame RA: {:f}, Dec: {:f}, scaling: {:d}, freq bin: "
-                             "[{:d},{:d}], num_freqs: {:d}\n",
+                             "[{:d},{:d}], num_freqs: {:d}",
                              it_ometadata->ra, it_ometadata->dec, it_ometadata->scaling,
                              it_ometadata->lower_band_received_frequency,
                              it_ometadata->upper_band_received_frequency,
@@ -240,7 +240,7 @@ void BeamAssemble::main_thread() {
                 if (beam_printout) {
                     // print out some metadata and the first element of frame data
                     INFO("Beam RA: {:f}, Dec: {:f}, scaling: {:d}, freq_bins: {:d} in [{:d},{:d}], "
-                         "first value: {:d}+{:d}i\n",
+                         "first value: {:d}+{:d}i",
                          metadata->ra, metadata->dec, metadata->scaling, freq_id,
                          ometadata->lower_band_received_frequency,
                          ometadata->upper_band_received_frequency, in_frame[0] & 0x0F,
@@ -263,7 +263,7 @@ void BeamAssemble::main_thread() {
         ometadata = std::get<1>(it->second);
         // print out some statistics about the released output buffer frame
         INFO("Released output frame RA: {:f}, Dec: {:f}, scaling: {:d}, freq bin: [{:d},{:d}], "
-             "num_freqs: {:d}\n",
+             "num_freqs: {:d}",
              ometadata->ra, ometadata->dec, ometadata->scaling,
              ometadata->lower_band_received_frequency, ometadata->upper_band_received_frequency,
              ometadata->num_received_frequencies);
