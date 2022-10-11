@@ -137,7 +137,7 @@ private:
     /// The date/time of that this stage started running
     std::tm invocation_time;
 
-    /// make the dataset folder name out of the given format in @disk_path
+    /// make the dataset folder name out of the given format in disk_path
     std::string get_dataset_folder_name(const int n);
 
     /// provide an extension based on the given file_format

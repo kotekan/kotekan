@@ -69,6 +69,7 @@ raw_capture:
    gain_files: Null
    num_disks: 8
    disk_path: /drives/CHF/{n}/{DATE}T{TIME}Z_chime_assemble_test
+   file_format: raw
    num_freqs: num_frequencies
    max_frames_per_file: 10  # unlimitted
    in_buf: asm_beam_recv_buffer

@@ -274,7 +274,7 @@ void nDiskMultiFormatWriter::raw_file_write_thread(int disk_id) {
 
             if (fd < 0) {
                 // make the output file name
-                file_name = get_dataset_folder_name(disk_id) + fmt::sprintf("%010zu.", file_num)
+                file_name = get_dataset_folder_name(disk_id) + fmt::sprintf("/%010zu.", file_num)
                             + file_extension;
                 // open a file and get its handle
                 fd = open(file_name.c_str(), O_WRONLY | O_CREAT, 0666);
