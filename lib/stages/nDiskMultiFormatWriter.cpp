@@ -331,8 +331,7 @@ void nDiskMultiFormatWriter::raw_file_write_thread(int disk_id) {
                 // INFO("Data written to file!");
             }
 
-            INFO("Data written to {:s}, lost_packets {:d}", file_name,
-                 get_lost_timesamples(buf, frame_id));
+            INFO("Data written to {:s}", file_name);
 
             // increment the number of frames written to the file
             num_frames++;
@@ -358,8 +357,7 @@ void nDiskMultiFormatWriter::raw_file_write_thread(int disk_id) {
 
         } else {
             // usleep(0.070 * 1e6);
-            INFO("Disk id {:d}, Lost Packets {:d}, buffer id {:d}", disk_id,
-                 get_lost_timesamples(buf, frame_id), frame_id);
+            INFO("Disk id {:d}, buffer id {:d}", disk_id, frame_id);
         }
 
         // TODO make release_info_object work for nConsumers.
