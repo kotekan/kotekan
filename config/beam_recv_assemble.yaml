@@ -62,15 +62,15 @@ beam_assemble:
   late_beam_printout: False
 
 raw_capture:
-   kotekan_stage: nDiskFileWrite
+   kotekan_stage: nDiskMultiFormatFileWriter
    #note: 2m beam assembling test
    write_to_disk: True
    write_metadata_and_gains: False
    gain_files: Null
    num_disks: 8
-   disk_base: /drives
-   disk_set: CHF
-   instrument_name: chime_assemble_test
+   disk_path: /drives/CHF/{n}/{DATE}T{TIME}Z_chime_assemble_test
+   num_freqs: num_frequencies
+   max_frames_per_file: 10  # unlimitted
    in_buf: asm_beam_recv_buffer
 
 #beam_inspect:

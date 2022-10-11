@@ -72,6 +72,7 @@ add_library(
     BeamExtract.cpp
     BeamInspect.cpp
     BeamAssemble.cpp
+    nDiskMultiFormatWriter.cpp
     testDataGen.cpp
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp
