@@ -62,7 +62,7 @@ beam_assemble:
   late_beam_printout: False
 
 raw_capture:
-   kotekan_stage: nDiskMultiFormatFileWriter
+   kotekan_stage: nDiskMultiFormatWriter
    #note: 2m beam assembling test
    write_to_disk: True
    write_metadata_and_gains: False

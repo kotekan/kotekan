@@ -282,7 +282,7 @@ void nDiskMultiFormatWriter::raw_file_write_thread(int disk_id) {
                 // set num_frames to -1 just to write -1 at the beginning of the file
                 num_frames = -1;
                 // write the number of frames in this file
-                write(fd, &num_frames, sizeof(num_frames));
+                bytes_written = write(fd, &num_frames, sizeof(num_frames));
                 // reset the num_frames
                 num_frames = 0;
             }
@@ -343,7 +343,7 @@ void nDiskMultiFormatWriter::raw_file_write_thread(int disk_id) {
                 // special close
                 // update the number of frames written to this file
                 lseek(fd, 0, SEEK_SET);
-                write(fd, &num_frames, sizeof(num_frames));
+                bytes_written = write(fd, &num_frames, sizeof(num_frames));
                 lseek(fd, 0, SEEK_END);
 
                 // now close the file handle
@@ -375,7 +375,7 @@ void nDiskMultiFormatWriter::raw_file_write_thread(int disk_id) {
         // special close
         // update the number of frames written to this file
         lseek(fd, 0, SEEK_SET);
-        write(fd, &num_frames, sizeof(num_frames));
+        bytes_written = write(fd, &num_frames, sizeof(num_frames));
         lseek(fd, 0, SEEK_END);
 
         // now close the file handle
