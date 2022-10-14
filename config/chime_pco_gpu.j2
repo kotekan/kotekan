@@ -127,27 +127,10 @@ baseband_output_buffers:
         numa_node: 1
         kotekan_buffer: standard
 
-gpu_input_merged:
-    num_frames: buffer_depth * 4
-    frame_size: samples_per_data_set * num_elements * num_local_freq
-    metadata_pool: main_pool
-    gpu_input_merged_0:
-        numa_node: 0
-        kotekan_buffer: standard
-    gpu_input_merged_1:
-        numa_node: 1
-        kotekan_buffer: standard
-
 gpu_output_buffers:
     num_frames: buffer_depth * 4
     frame_size: num_local_freq * num_blocks * (block_size*block_size) * 2  * sizeof_int
     metadata_pool: main_pool
-    gpu_output_buffer_0:
-        numa_node: 0
-        kotekan_buffer: standard
-    gpu_output_buffer_1:
-        numa_node: 1
-        kotekan_buffer: standard
 {%- for id in range(16) %}
     gpu_output_split_buffer_{{ id }}:
         numa_node: 0
@@ -289,25 +272,6 @@ baseband_send:
 
 ### End Baseband Section ###
 
-buffer_merge_0:
-    kotekan_stage: bufferMerge
-    cpu_affinity: [14]
-    in_bufs:
-{%- for id in range(16) %}
-        - gpu_input_buffer_{{ id }}
-{%- endfor %}
-    out_buf: gpu_input_merged_0
-
-buffer_merge_1:
-    kotekan_stage: bufferMerge
-    cpu_affinity: [38]
-    in_bufs:
-{%- for id in range(16,32) %}
-        - gpu_input_buffer_{{ id }}
-{%- endfor %}
-    out_buf: gpu_input_merged_1
-{%- endif %}
-
 meta_debug_0:
     kotekan_stage: chimeMetadataDump
     in_buf: gpu_input_merged_0
@@ -341,12 +305,26 @@ gpu:
     frame_arrival_period: samples_per_data_set / 390625.0 / num_links
     commands: &command_list
       - name: clInputData
+        gpu_memory: input
+        in_bufs:
+{%- for id in range(16) %}
+            - in_buf_{{ id }}
+{%- endfor %}
       - name: clPresumZero
       - name: clOutputDataZero
       - name: clPresumKernel
       - name: clPreseedKernel
       - name: clCorrelatorKernel
       - name: clOutputData
+        gpu_memory: output
+        in_bufs:
+{%- for id in range(16) %}
+            - in_buf_{{ id }}
+{%- endfor %}
+        out_bufs:
+{%- for id in range(16) %}
+            - out_buf_{{ id }}
+{%- endfor %}
     gpu_0:
         kotekan_stage: clProcess
         cpu_affinity: [10]
@@ -359,35 +337,21 @@ gpu:
             in_buf_{{ id }}: gpu_input_buffer_{{ id }}
 {%- endfor %}
         out_buffers:
-            output_buf: gpu_output_buffer_0
+{%- for id in range(16) %}
+            out_buf_{{ id }}: gpu_output_split_buffer_{{ id }}
+{%- endfor %}
     gpu_1:
         kotekan_stage: clProcess
         cpu_affinity: [34]
         gpu_id: 1
         commands: *command_list
         in_buffers:
-            network_buf: gpu_input_merged_1
-            # We add these buffers here to make sure the memory gets registered
 {%- for id in range(16,32) %}
-            in_buf_{{ id }}: gpu_input_buffer_{{ id }}
+            in_buf_{{ id - 16 }}: gpu_input_buffer_{{ id }}
 {%- endfor %}
         out_buffers:
-            output_buf: gpu_output_buffer_1
-
-split_0:
-    kotekan_stage: BufferSplit
-    in_buf: gpu_output_buffer_0
-    out_bufs:
-{%- for id in range(16) %}
-        - gpu_output_split_buffer_{{ id }}
-{%- endfor %}
-
-split_1:
-    kotekan_stage: BufferSplit
-    in_buf: gpu_output_buffer_1
-    out_bufs:
 {%- for id in range(16,32) %}
-        - gpu_output_split_buffer_{{ id }}
+            out_buf_{{ id - 16 }}: gpu_output_split_buffer_{{ id }}
 {%- endfor %}
 
 ### N^2 Accumulation ###
