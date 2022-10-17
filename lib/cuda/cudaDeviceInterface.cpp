@@ -6,7 +6,9 @@
 
 using kotekan::Config;
 
-cudaDeviceInterface::cudaDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_buffer_depth_) :
+cudaDeviceInterface::cudaDeviceInterface(Config& config_, const string& unique_name,
+                                         int32_t gpu_id_, int gpu_buffer_depth_) :
+
     gpuDeviceInterface(config_, gpu_id_, gpu_buffer_depth_) {
 
     // Find out how many GPUs can be probed.
@@ -15,6 +17,22 @@ cudaDeviceInterface::cudaDeviceInterface(Config& config_, int32_t gpu_id_, int g
     INFO("Number of CUDA GPUs: {:d}", max_num_gpus);
 
     cudaSetDevice(gpu_id);
+
+    // Find out how many GPUs clocks are allowed.
+    unsigned int mem_clock, core_clock, mem_count, core_count;
+    CHECK_CUDA_ERROR(nvmlDeviceGetSupportedMemoryClocks(gpu_id_, &mem_count,  &mem_clock));
+    CHECK_CUDA_ERROR(nvmlDeviceGetSupportedGraphicsClocks(gpu_id_, &core_count,  &core_clock));
+
+    INFO("Allowed GPU core clocks(MHz): ");
+    for (int i = 0; i < mem_count; ++i)  {
+        INFO("{:d}  ", mem_clock[i]);
+    }
+
+    INFO("Allowed GPU graphics clocks(MHz): ");
+    for (int i = 0; i < core_count; ++i)  {
+        INFO("{:d}  ", core_clock[i]);
+    }
+    CHECK_CUDA_ERROR(set_device_clocks(unique_name, gpu_id_));
 }
 
 cudaDeviceInterface::~cudaDeviceInterface() {
@@ -22,6 +40,22 @@ cudaDeviceInterface::~cudaDeviceInterface() {
         CHECK_CUDA_ERROR(cudaStreamDestroy(stream[i]));
     }
     cleanup_memory();
+}
+
+void cudaDeviceInterface::set_device_clocks(const string& unique_name, int32_t gpu_id_) {
+
+    // Set default clocks to zero
+    uint32_t gpu_mem_clock = config.get_default<uint32_t>(unique_name, "gpu_core_clock", 1000);
+    uint32_t gpu_core_clock = config.get_default<uint32_t>(unique_name, "gpu_core_clock", 1000);
+
+    // Get and update the GPU clocks from the config file
+    gpu_mem_clock = config.get<uint32_t>(unique_name, "gpu_mem_clock");
+    gpu_core_clock = config.get<uint32_t>(unique_name, "gpu_core_clock");
+
+    CHECK_CUDA_ERROR(nvmlDeviceSetApplicationsClocks (gpu_id_, gpu_mem_clock, gpu_core_clock))
+
+    INFO("Graphics clock(MHz) of CUDA GPU: {:d} is {:d}", gpu_id_, gpu_core_clock);
+    INFO("Memory clock(MHz) of CUDA GPU: {:d} is {:d}", gpu_id_, gpu_mem_clock);
 }
 
 void* cudaDeviceInterface::alloc_gpu_memory(int len) {

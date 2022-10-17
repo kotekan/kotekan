@@ -34,7 +34,7 @@
  */
 class cudaDeviceInterface final : public gpuDeviceInterface {
 public:
-    cudaDeviceInterface(kotekan::Config& config_, int32_t gpu_id_, int gpu_buffer_depth_);
+    cudaDeviceInterface(kotekan::Config& config_, const string& unique_name, int32_t gpu_id_, int gpu_buffer_depth_);
     ~cudaDeviceInterface();
 
     void prepareStreams();
@@ -52,6 +52,13 @@ public:
      */
     void async_copy_host_to_gpu(void* dst, void* src, size_t len, cudaEvent_t pre_event,
                                 cudaEvent_t& copy_pre_event, cudaEvent_t& copy_post_event);
+
+    /**
+    * @brief Print avialable colcks for given GPU and set sevice clock
+    * @param unique_name Base path from CudaProcess
+    * @param gpu_id_  Device ID
+    */
+    void cudaDeviceInterface::set_device_clocks(const string& unique_name, int32_t gpu_id_);
 
     /**
      * @brief Asynchronous Copies memory from the device GPU (global memory) to host (CPU RAM).
