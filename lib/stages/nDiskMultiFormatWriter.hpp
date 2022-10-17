@@ -33,17 +33,14 @@
  * the data files will be numbered incrementally across the disks.
  *
  * @par Buffers
- *  @buffer in_buf The kotkean buffer with the data to be written
- *  @buffer_metadata metadata The kotkean metadata to be written
+ *  @buffer in_buf The kotekan buffer with the data to be written
+ *  @buffer_metadata metadata The kotekan metadata to be written
  *
- * @conf num_disks      Int , the number of drives to read from
+ * @conf num_disks      Integer, the number of drives to read from
  * @conf disk_path      String, the path to the mounted drives and address
- * @conf file_format    String, the file format. Currently "raw" and "HDF5" are accepted
+ * @conf file_format    String, the file format. Currently "raw" and "vdif" are accepted
  * @conf max_frames_per_file      Int , the number of frames to be written in each file
  * @conf write_to_frame_metadata  Bool, whether to actually save metadata or ignore it
- * @conf write_to_disk  Bool, whether to actually save, alternately operating in dummy mode
- * @conf write_metadata_and_gains  Bool, Default true.  Flag to control if VDIF/ARO style gains
- *                                 and metadata are copied to the acquisition folder.
  *
  * @todo    Add more file formats.
  *
@@ -117,8 +114,11 @@ private:
     /// raw file writer thread function
     void raw_file_write_thread(int disk_id);
 
-    /// hdf5 file writer thread function
-    void hdf5_file_write_thread(int disk_id);
+    /// vdif file writer thread function
+    void vdif_file_write_thread(int disk_id);
+
+    void write_and_check(const int file_handle, void* data_ptr, ssize_t data_size,
+                         const std::string& parameter_name, const std::string& file_name);
 
     /// array of file writer threads
     std::vector<std::thread> file_thread_handles;
@@ -128,12 +128,6 @@ private:
 
     /// A path on an n-disk array used to put the files there
     std::string disk_path;
-
-    /// Boolean config parameter to enable or disable file output
-    bool write_to_disk;
-
-    /// Flag to enable or disable writing out the metadata and gains
-    bool write_metadata_and_gains;
 
     /// The date/time of that this stage started running
     std::tm invocation_time;
@@ -152,12 +146,6 @@ private:
 
     /// replace all occurrences of a substring by another string
     void string_replace_all(std::string& str, const std::string& from, const std::string& to);
-
-    /// Function to write relevant config parameters to a settings.txt file
-    void save_metadata();
-
-    /// Function to backup the FPGA gain file alongside the data
-    void copy_gains(const std::string& gain_file_dir, const std::string& gain_file_name);
 };
 
 #endif // N_DISK_MULTIFORMAT_WRITER_HPP
