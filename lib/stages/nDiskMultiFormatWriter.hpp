@@ -102,9 +102,6 @@ private:
     /// A holder for the config parameter num_disks
     uint32_t num_disks;
 
-    /// Which disk in the array is currently being written to
-    uint32_t disk_id;
-
     /// maximum number of frames expected in each file
     int64_t max_frames_per_file;
 

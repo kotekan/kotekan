@@ -68,8 +68,6 @@ nDiskMultiFormatWriter::nDiskMultiFormatWriter(Config& config, const string& uni
     num_freq_per_output_frame = config.get<uint32_t>(unique_name, "num_freqs");
     // retrieve the maximum number of frames to be written to each file
     max_frames_per_file = config.get<int64_t>(unique_name, "max_frames_per_file");
-    // write to disk boolean as a on/off switch for any real disk activity
-    write_to_disk = config.get<bool>(unique_name, "write_to_disk");
 
     // get the output file extension
     file_extension = get_file_extension();
