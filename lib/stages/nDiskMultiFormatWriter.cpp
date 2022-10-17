@@ -16,32 +16,27 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for Buffer, get_metadata_container, mark_frame_empty, registe...
 #include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for ERROR, INFO
+#include "kotekanLogging.hpp"  // for INFO, FATAL_ERROR, ERROR, DEBUG
 #include "metadata.h"          // for metadataContainer
-#include "util.h"              // for cp
 
-#include "fmt.hpp"      // for format, parse_nonnegative_int, fmt
+#include "fmt.hpp"      // for format, parse_nonnegative_int
 #include "fmt/chrono.h" // for localtime
 
-#include <algorithm>    // for max
-#include <atomic>       // for atomic_bool
-#include <cstdint>      // for int64_t
-#include <ctime>        // for time, tm
-#include <errno.h>      // for errno, EEXIST
-#include <exception>    // for exception
-#include <fcntl.h>      // for open, SEEK_END, SEEK_SET, O_CREAT, O_WRONLY
-#include <functional>   // for _Bind_helper<>::type, bind, function
-#include <memory>       // for allocator_traits<>::value_type
-#include <pthread.h>    // for pthread_setaffinity_np
-#include <regex>        // for match_results<>::_Base_type
-#include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdexcept>    // for runtime_error
-#include <stdio.h>      // for fprintf, size_t, printf, fclose, fopen, perror, FILE
-#include <stdlib.h>     // for exit, size_t
-#include <sys/stat.h>   // for mkdir
-#include <system_error> // for error_code
-#include <thread>       // for thread
-#include <unistd.h>     // for write, lseek, close, ssize_t
+#include <algorithm>  // for max
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for int64_t
+#include <ctime>      // for time
+#include <errno.h>    // for EEXIST, errno
+#include <exception>  // for exception
+#include <fcntl.h>    // for open, SEEK_END, SEEK_SET, O_CREAT, O_WRONLY
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <memory>     // for allocator_traits<>::value_type
+#include <pthread.h>  // for pthread_setaffinity_np
+#include <regex>      // for match_results<>::_Base_type
+#include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <sys/stat.h> // for mkdir
+#include <thread>     // for thread
+#include <unistd.h>   // for lseek, close, write, ssize_t
 
 using kotekan::bufferContainer;
 using kotekan::Config;

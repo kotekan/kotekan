@@ -17,12 +17,12 @@
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
 
-#include <stdint.h> // for uint32_t, int64_t
-#include <string>   // for string
-#include <thread>   // for thread
-#include <time.h>   // for tm
-#include <vector>   // for vector
-
+#include <stdint.h>    // for uint32_t, int64_t
+#include <string>      // for string
+#include <sys/types.h> // for ssize_t
+#include <thread>      // for thread
+#include <time.h>      // for tm
+#include <vector>      // for vector
 
 /**
  * @class nDiskMultiFormatWriter
@@ -33,8 +33,8 @@
  * the data files will be numbered incrementally across the disks.
  *
  * @par Buffers
- *  @buffer in_buf The kotekan buffer with the data to be written
- *  @buffer_metadata metadata The kotekan metadata to be written
+ *  @buffer in_buf The kotekan buffer with the data to be written, which the metadata is also
+ *  attached to.
  *
  * @conf num_disks      Integer, the number of drives to read from
  * @conf disk_path      String, the path to the mounted drives and address
