@@ -32,7 +32,9 @@ cudaDeviceInterface::cudaDeviceInterface(Config& config_, const string& unique_n
     for (int i = 0; i < core_count; ++i)  {
         INFO("{:d}  ", core_clock[i]);
     }
-    CHECK_CUDA_ERROR(set_device_clocks(unique_name, gpu_id_));
+
+    CHECK_CUDA_ERROR(set_device_clocks(mem_clock, core_clock,
+                                       mem_count, core_count));
 }
 
 cudaDeviceInterface::~cudaDeviceInterface() {
@@ -42,20 +44,45 @@ cudaDeviceInterface::~cudaDeviceInterface() {
     cleanup_memory();
 }
 
-void cudaDeviceInterface::set_device_clocks(const string& unique_name, int32_t gpu_id_) {
+void cudaDeviceInterface::set_device_clocks(unsigned int mem_clock, unsigned int core_clock,
+                                            unsigned int mem_count, unsigned int core_count) {
 
     // Set default clocks to zero
-    uint32_t gpu_mem_clock = config.get_default<uint32_t>(unique_name, "gpu_core_clock", 1000);
-    uint32_t gpu_core_clock = config.get_default<uint32_t>(unique_name, "gpu_core_clock", 1000);
+    uint32_t gpu_mem_clock = config.get_default<uint32_t>(unique_name, "gpu_mem_clock", 0);
+    uint32_t gpu_core_clock = config.get_default<uint32_t>(unique_name, "gpu_core_clock", 0);
 
-    // Get and update the GPU clocks from the config file
-    gpu_mem_clock = config.get<uint32_t>(unique_name, "gpu_mem_clock");
-    gpu_core_clock = config.get<uint32_t>(unique_name, "gpu_core_clock");
+    uint32_t get_gpu_mem_clock, get_gpu_core_clock;
 
-    CHECK_CUDA_ERROR(nvmlDeviceSetApplicationsClocks (gpu_id_, gpu_mem_clock, gpu_core_clock))
+    nvmlDeviceGetMaxClockInfo (gpu_id_, gpu_mem_clock, get_gpu_mem_clock);
+    nvmlDeviceGetMaxClockInfo (gpu_id_, gpu_core_clock, get_gpu_core_clock);
 
-    INFO("Graphics clock(MHz) of CUDA GPU: {:d} is {:d}", gpu_id_, gpu_core_clock);
-    INFO("Memory clock(MHz) of CUDA GPU: {:d} is {:d}", gpu_id_, gpu_mem_clock);
+    if (get_gpu_mem_clock != 0 & get_gpu_core_clock != 0) {
+
+        // Get and update the GPU clocks from the config file
+        gpu_mem_clock = config.get<uint32_t>(unique_name, "gpu_mem_clock");
+        gpu_core_clock = config.get<uint32_t>(unique_name, "gpu_core_clock");
+
+        for (int i = 0; i < mem_count; ++i)  {
+             mem_clock[i] == get_gpu_mem_clock;
+             break;
+        }
+
+        if (i == mem_count)
+            gpu_mem_clock = config.get_default<uint32_t>(unique_name, "gpu_mem_clock", 0)
+
+        for (int j = 0; j < core_count; ++j)  {
+            gpu_id vcore_clock[j] == get_gpu_core_clock;
+             break;
+        }
+
+        if (j == core_count)
+            gpu_core_clock = config.get_default<uint32_t>(unique_name, "gpu_core_clock", 0)
+
+        CHECK_CUDA_ERROR(nvmlDeviceSetApplicationsClocks (gpu_id_, mem_clock[i], core_clock[j]));
+    }
+
+    INFO("Memory clock(MHz) of CUDA GPU: {:d} is {:d}", gpu_id_, mem_clock[i]);
+    INFO("Graphics clock(MHz) of CUDA GPU: {:d} is {:d}", gpu_id_, core_clock[j]);
 }
 
 void* cudaDeviceInterface::alloc_gpu_memory(int len) {

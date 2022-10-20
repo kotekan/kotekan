@@ -30,6 +30,8 @@ num_local_freq: 4 #64
 num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
 sizeof_int: 4
 
+
+
 # Pool
 main_pool:
     kotekan_metadata_pool: chimeMetadata
@@ -87,6 +89,9 @@ gpu:
             host_voltage: host_voltage_buffer
         out_buffers:
             host_correlation: host_correlation_buffer
+        # Hardware clocks
+        gpu_core_clock: 1005   #in MHz
+        gpu_mem_clock: 7251    #in MHz
 
 cpu:
     kotekan_stage: gpuSimulate

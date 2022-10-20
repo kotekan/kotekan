@@ -2,8 +2,6 @@
 type: config
 log_level: DEBUG
 cpu_affinity: [0,1,2,3]
-gpu_core_clock: 2000   #in MHz
-gpu_mem_clock: 2000    #in MHz
 
 trackers:
   enable_crash_dump: true
