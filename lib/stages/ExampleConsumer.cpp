@@ -12,6 +12,13 @@ using kotekan::Stage;
 // Register the stage with the stage factory.
 REGISTER_KOTEKAN_STAGE(ExampleConsumer);
 
+/*
+ * ExampleConsumer constructor.  Note that you can instead use the macro
+ *
+ *    STAGE_CONSTRUCTOR(ExampleConsumer)
+ *
+ * which saves the boilerplate of the constructor signature.
+ */
 ExampleConsumer::ExampleConsumer(Config& config, const std::string& unique_name,
                                  bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&ExampleConsumer::main_thread, this)) {

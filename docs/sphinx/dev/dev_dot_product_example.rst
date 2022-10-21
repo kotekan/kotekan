@@ -1,7 +1,7 @@
-********************
-Dot Product Example
-********************
-The following example outlines how to create a dot product between two vectors: A and B, using a `kotekan` pipeline.
+****************
+Pipeline Example
+****************
+The following example outlines how to create a `kotekan` pipeline that performs a dot product between two vectors.
 
 Create a Dot Product Stage
 --------------------------
@@ -49,19 +49,19 @@ Pipeline Config Creation
 The two buffers, `input_a_buffer` and `input_b_buffer`, represent the vectors A and B. `output_buffer` will store the result of the dot product.
 
 .. literalinclude:: ../../../config/examples/dot_product.yaml
-    :lines: 16-34
+    :lines: 10-25
     :language: yaml
 
 The `data_gen` section populates the input buffers with constant values: 2.0 and 3.0, using the `testDataGenFloat` `Stage`. 
 
 .. literalinclude:: ../../../config/examples/dot_product.yaml
-    :lines: 36-48
+    :lines: 27-37
     :language: yaml
 
 The `dot_product` section runs the `DotProduct` `Stage` on the two input buffers and writes the result to the output buffer.
 
 .. literalinclude:: ../../../config/examples/dot_product.yaml
-    :lines: 50-55
+    :lines: 39-44
     :language: yaml
 
 Pipeline Graph
