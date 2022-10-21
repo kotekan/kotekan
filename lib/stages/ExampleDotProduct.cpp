@@ -42,9 +42,6 @@ STAGE_CONSTRUCTOR(ExampleDotProduct) {
                         in_a_buf->frame_size, out_buf->frame_size));
     }
 
-    // Load options that can be set in config
-    // unique_name_for_stage, name_of_config, default_value_if_not_set
-    //_offset = config.get_default<int32_t>(unique_name, "offset", 0);
 }
 
 ExampleDotProduct::~ExampleDotProduct() {}

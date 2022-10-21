@@ -29,7 +29,7 @@ public:
                     kotekan::bufferContainer& buffer_container);
 
     /**
-     * @brief Deconstructor - what happens when Kotekan shuts down.
+     * @brief Deconstructor - Called on shutdown, after @c main_thread has exited.
      */
     virtual ~ExampleProducer();
 
