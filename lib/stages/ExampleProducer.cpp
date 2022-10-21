@@ -23,9 +23,6 @@ ExampleProducer::ExampleProducer(Config& config, const std::string& unique_name,
     // Load options that can be set in config
     // unique_name_for_stage, name_of_config, default_value_if_not_set
     _init_value = config.get_default<float>(unique_name, "init_value", 0.f);
-
-    // Get the no. of elements in each frame
-    _num_elements = out_buf->frame_size / sizeof(float);
 }
 
 
@@ -36,6 +33,9 @@ void ExampleProducer::main_thread() {
 
     // Ring buffer pointer
     frameID frame_id(out_buf);
+
+    // Get the no. of elements in each frame
+    uint32_t frame_length = out_buf->frame_size / sizeof(float);
 
     // Until the thread is stopped
     while (!stop_thread) {
@@ -48,12 +48,12 @@ void ExampleProducer::main_thread() {
 
         float* data = (float*)frame;
 
-        for (uint32_t i = 0; i < _num_elements; i++) {
+        for (uint32_t i = 0; i < frame_length; i++) {
             data[i] = _init_value;
         }
 
         INFO("{:s}[{:d}] initialised to: {:f}, ..., {:f}, ..., {:f}", out_buf->buffer_name,
-             frame_id, data[0], data[_num_elements / 2], data[_num_elements - 1]);
+             frame_id, data[0], data[frame_length / 2], data[frame_length - 1]);
 
         // Release frame
         mark_frame_full(out_buf, unique_name.c_str(), frame_id);

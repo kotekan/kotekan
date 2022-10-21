@@ -44,9 +44,6 @@ private:
 
     // Initialised value
     float _init_value;
-
-    // Length of frame
-    uint32_t _num_elements;
 };
 
 #endif /* EXAMPLE_PRODUCER_H */

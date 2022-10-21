@@ -40,9 +40,6 @@ public:
 private:
     // Input buffer
     Buffer* in_buf;
-
-    // Length of frame
-    uint32_t _num_elements;
 };
 
 #endif /* EXAMPLE_CONSUMER_H */
