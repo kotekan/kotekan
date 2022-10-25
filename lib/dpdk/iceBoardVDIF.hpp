@@ -290,6 +290,7 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
     // Create the parts of the VDIF frame that are in this packet.
     int from_idx = header_offset + offset;
     int mbuf_len = mbuf->data_len;
+    char* mbuf_data_ptr = rte_pktmbuf_mtod(mbuf, char*);
     for (uint32_t time_step = 0; time_step < samples_per_packet; ++time_step) {
         int output_idx_base = (vdif_frame_location * frame_size +           // Frame location in output buffer.
 			       vdif_header_len +        // Offset for the vdif header.
@@ -306,9 +307,10 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
                     assert(mbuf);
                     from_idx -= mbuf_len; // Subtract the last mbuf_len from the current idx.
                     mbuf_len = mbuf->data_len;
+                    mbuf_data_ptr = rte_pktmbuf_mtod(mbuf, char*);
                 }
                 // After all that indexing copy one byte :)
-                out_buf_frame[output_idx] = *(rte_pktmbuf_mtod(mbuf, char*) + from_idx);
+                out_buf_frame[output_idx] = *(mbuf_data_ptr + from_idx);
 
                 from_idx += 1;
 		output_idx += vdif_packet_len; // VDIF packet for the next element (ThreadID).
