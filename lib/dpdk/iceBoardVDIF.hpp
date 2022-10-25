@@ -291,18 +291,18 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
     char* mbuf_data_base = rte_pktmbuf_mtod(mbuf, char*);
     char* mbuf_data_max = mbuf_data_base + mbuf->data_len;
     char* mbuf_data_ptr = mbuf_data_base + header_offset + offset;
-    char* out_ptr_t0_f0 =
-        (out_buf_frame +
-         vdif_frame_location * frame_size + // Frame location in output buffer.
-         vdif_header_len +                  // Offset for the vdif header.
-         tel.to_freq_id(encoded_id, 0));    // Offset for ARO for first frequency.
-    int time_step_offset = vdif_packet_len * num_elements;
-    for (uint32_t time_step = 0; time_step < samples_per_packet; ++time_step) {
-        char* out_ptr_f0 = (out_ptr_t0_f0 +
-                            time_step_offset * time_step); // Time step in output frame.
-        for (int freq = 0; freq < 1024; freq += 8) {
-	    char* out_ptr = (out_ptr_f0 +
-                             freq); // Location in the VDIF packet is just frequency.
+    char* out_t0_f0 = (out_buf_frame        // Pointer to output buffer.
+         + vdif_frame_location * frame_size // Frame location in output buffer.
+         + vdif_header_len                  // Offset for the vdif header.
+         + tel.to_freq_id(encoded_id, 0));  // Offset for ARO for first frequency.
+    // Times are in separate frames, so time stride equals frame_size.
+    for (char* out_t_f0 = out_t0_f0;
+         out_t_f0 < out_t0_f0 + frame_size * samples_per_packet;
+         out_t_f0 += frame_size) {
+        // Location in the VDIF packet is just frequency, but our buffer
+        // has every eigth frequency.
+        for (char* out_t_f = out_t_f0; out_t_f < out_t_f0+1024; out_ptr += 8) {
+            // The different channels get stored in different Threads.
             for (int elem = 0; elem < num_elements; ++elem) {
 
                 // Advance to the next mbuf in the chain.
@@ -316,10 +316,9 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
                     mbuf_data_ptr = mbuf_data_base + offset;
                 }
                 // After all that indexing copy one byte :)
-                *out_ptr = *mbuf_data_ptr;
+                *(out_t_f + elem*vdif_packet_len) = *mbuf_data_ptr;
 
                 mbuf_data_ptr += 1;
-		out_ptr += vdif_packet_len; // VDIF packet for the next element (ThreadID).
             }
             // If we only take 2 elements, then we have to skip 14
             mbuf_data_ptr += total_num_elements - num_elements;
