@@ -288,9 +288,9 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
     stream_t encoded_id = ice_encode_stream_id(port_stream_id);
 
     // Create the parts of the VDIF frame that are in this packet.
-    int from_idx = header_offset + offset;
-    int mbuf_len = mbuf->data_len;
-    char* mbuf_data_ptr = rte_pktmbuf_mtod(mbuf, char*);
+    char* mbuf_data_base = rte_pktmbuf_mtod(mbuf, char*);
+    char* mbuf_data_max = mbuf_data_base + mbuf->data_len;
+    char* mbuf_data_ptr = mbuf_data_base + header_offset + offset;
     int output_idx_base_base =
       (vdif_frame_location * frame_size +           // Frame location in output buffer.
        vdif_header_len +        // Offset for the vdif header.
@@ -305,21 +305,23 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
             for (int elem = 0; elem < num_elements; ++elem) {
 
                 // Advance to the next mbuf in the chain.
-                if (unlikely(from_idx >= mbuf_len)) {
+                if (unlikely(mbuf_data_ptr >= mbuf_data_max)) {
+                    // Keep track of where we are.
+                    int offset = mbuf_data_ptr - mbuf_data_max;
                     mbuf = mbuf->next;
                     assert(mbuf);
-                    from_idx -= mbuf_len; // Subtract the last mbuf_len from the current idx.
-                    mbuf_len = mbuf->data_len;
-                    mbuf_data_ptr = rte_pktmbuf_mtod(mbuf, char*);
+                    mbuf_data_base = rte_pktmbuf_mtod(mbuf, char*);
+                    mbuf_data_max = mbuf_data_base + mbuf->data_len;
+                    mbuf_data_ptr = mbuf_data_base + offset;
                 }
                 // After all that indexing copy one byte :)
-                out_buf_frame[output_idx] = *(mbuf_data_ptr + from_idx);
+                out_buf_frame[output_idx] = *mbuf_data_ptr;
 
-                from_idx += 1;
+                mbuf_data_ptr += 1;
 		output_idx += vdif_packet_len; // VDIF packet for the next element (ThreadID).
             }
             // If we only take 2 elements, then we have to skip 14
-            from_idx += total_num_elements - num_elements;
+            mbuf_data_ptr += total_num_elements - num_elements;
         }
     }
 }
