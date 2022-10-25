@@ -291,11 +291,14 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
     int from_idx = header_offset + offset;
     int mbuf_len = mbuf->data_len;
     char* mbuf_data_ptr = rte_pktmbuf_mtod(mbuf, char*);
+    int output_idx_base_base =
+      (vdif_frame_location * frame_size +           // Frame location in output buffer.
+       vdif_header_len +        // Offset for the vdif header.
+       tel.to_freq_id(encoded_id, 0)); // Offset for ARO as in tel.to_freq_id for _num_freq_per_stream = 128
+    int time_step_offset = vdif_packet_len * num_elements;
     for (uint32_t time_step = 0; time_step < samples_per_packet; ++time_step) {
-        int output_idx_base = (vdif_frame_location * frame_size +           // Frame location in output buffer.
-			       vdif_header_len +        // Offset for the vdif header.
-			       tel.to_freq_id(encoded_id, 0) + // Offset for ARO as in tel.to_freq_id for _num_freq_per_stream = 128
-			       vdif_packet_len * num_elements * time_step); // Time step in output frame.
+        int output_idx_base = (output_idx_base_base +
+			       time_step_offset * time_step); // Time step in output frame.
         for (int freq = 0; freq < 1024; freq += 8) {
 	    int output_idx = (output_idx_base +
 			      freq); // Location in the VDIF packet is just frequency.
