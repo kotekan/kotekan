@@ -296,9 +296,9 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
 			       vdif_header_len +        // Offset for the vdif header.
 			       tel.to_freq_id(encoded_id, 0) + // Offset for ARO as in tel.to_freq_id for _num_freq_per_stream = 128
 			       vdif_packet_len * num_elements * time_step); // Time step in output frame.
-        for (int freq = 0; freq < 128; ++freq) {
+        for (int freq = 0; freq < 1024; freq += 8) {
 	    int output_idx = (output_idx_base +
-			      freq * 8); // Location in the VDIF packet is just frequency.
+			      freq); // Location in the VDIF packet is just frequency.
             for (int elem = 0; elem < num_elements; ++elem) {
 
                 // Advance to the next mbuf in the chain.
