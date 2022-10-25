@@ -291,7 +291,7 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
     char* mbuf_data_base = rte_pktmbuf_mtod(mbuf, char*);
     char* mbuf_data_max = mbuf_data_base + mbuf->data_len;
     char* mbuf_data_ptr = mbuf_data_base + header_offset + offset;
-    char* out_t0_f0 = (out_buf_frame        // Pointer to output buffer.
+    char* out_t0_f0 = (out_buf_frame        // Start of output buffer.
          + vdif_frame_location * frame_size // Frame location in output buffer.
          + vdif_header_len                  // Offset for the vdif header.
          + tel.to_freq_id(encoded_id, 0));  // Offset for ARO for first frequency.
@@ -299,29 +299,25 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
     for (char* out_t_f0 = out_t0_f0;
          out_t_f0 < out_t0_f0 + frame_size * samples_per_packet;
          out_t_f0 += frame_size) {
-        // Location in the VDIF packet is just frequency, but our buffer
-        // has every eigth frequency.
+        // Location in the VDIF packet is just frequency,
+        // but our buffer has every 8th frequency.
         for (char* out_t_f = out_t_f0; out_t_f < out_t_f0+1024; out_ptr += 8) {
-            // The different channels get stored in different Threads.
-            for (int elem = 0; elem < num_elements; ++elem) {
-
-                // Advance to the next mbuf in the chain.
-                if (unlikely(mbuf_data_ptr >= mbuf_data_max)) {
-                    // Keep track of where we are.
-                    int offset = mbuf_data_ptr - mbuf_data_max;
-                    mbuf = mbuf->next;
-                    assert(mbuf);
-                    mbuf_data_base = rte_pktmbuf_mtod(mbuf, char*);
-                    mbuf_data_max = mbuf_data_base + mbuf->data_len;
-                    mbuf_data_ptr = mbuf_data_base + offset;
-                }
-                // After all that indexing copy one byte :)
-                *(out_t_f + elem*vdif_packet_len) = *mbuf_data_ptr;
-
-                mbuf_data_ptr += 1;
+            // Store first channel.
+            *out_t_f = *mbuf_data_ptr;
+            // Store subsequent one in next thread.
+            *(out_t_f+vdif_packet_len) = *(mbuf_data_ptr+1);
+            // Go to next set of elements.
+            mbuf_data_ptr += total_num_elements;
+            // If needed, advance to the next mbuf in the chain.
+            if (unlikely(mbuf_data_ptr >= mbuf_data_max)) {
+                // Keep track of where we are.
+                int mbuf_offset = mbuf_data_ptr - mbuf_data_max;
+                mbuf = mbuf->next;
+                assert(mbuf);
+                mbuf_data_base = rte_pktmbuf_mtod(mbuf, char*);
+                mbuf_data_max = mbuf_data_base + mbuf->data_len;
+                mbuf_data_ptr = mbuf_data_base + mbuf_offset;
             }
-            // If we only take 2 elements, then we have to skip 14
-            mbuf_data_ptr += total_num_elements - num_elements;
         }
     }
 }
