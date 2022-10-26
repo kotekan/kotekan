@@ -291,17 +291,17 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
     char* mbuf_data_base = rte_pktmbuf_mtod(mbuf, char*);
     char* mbuf_data_max = mbuf_data_base + mbuf->data_len;
     char* mbuf_data_ptr = mbuf_data_base + header_offset + offset;
-    char* out_t0_f0 = (out_buf_frame        // Start of output buffer.
+    uint8_t* out_t0_f0 = (out_buf_frame        // Start of output buffer.
          + vdif_frame_location * frame_size // Frame location in output buffer.
          + vdif_header_len                  // Offset for the vdif header.
          + tel.to_freq_id(encoded_id, 0));  // Offset for ARO for first frequency.
     // Times are in separate frames, so time stride equals frame_size.
-    for (char* out_t_f0 = out_t0_f0;
+    for (uint8_t* out_t_f0 = out_t0_f0;
          out_t_f0 < out_t0_f0 + frame_size * samples_per_packet;
          out_t_f0 += frame_size) {
         // Location in the VDIF packet is just frequency,
         // but our buffer has every 8th frequency.
-        for (char* out_t_f = out_t_f0; out_t_f < out_t_f0+1024; out_ptr += 8) {
+        for (uint8_t* out_t_f = out_t_f0; out_t_f < out_t_f0+1024; out_t_f += 8) {
             // Store first channel.
             *out_t_f = *mbuf_data_ptr;
             // Store subsequent one in next thread.
