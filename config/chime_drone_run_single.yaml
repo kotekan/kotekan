@@ -34,7 +34,7 @@ num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 49152
 buffer_depth: 12
-baseband_buffer_depth: 272 # 272 = ~33 seconds after accounting for active frames
+baseband_buffer_depth: 32 # 272 = ~33 seconds after accounting for active frames
 vbuffer_depth: 32
 num_links: 4
 timesamples_per_packet: 2
@@ -228,8 +228,8 @@ updatable_config:
     write_to_disk: false
   rfi_var_record:
     kotekan_update_endpoint: json
-    output_dir: /mnt/gong/RFI/20200409_var/
-    write_to_disk: false
+    output_dir: /mnt/gong/drone_flights/flight3_var/
+    write_to_disk: true
   rfi_pkt_loss_record:
     kotekan_update_endpoint: json
     output_dir: /mnt/gong/RFI/20200409_pkt_loss/
@@ -250,7 +250,8 @@ updatable_config:
       segment: 1800000.0
       rot_freq: 1.0
       t_ref: [59876.0]
-      phase_ref: [0.0]
+      #phase_ref: [0.0]
+      phase_ref: [0.25]
       coeff:
         [[]]
   rfi_zeroing_second_stage:
@@ -1755,13 +1756,13 @@ write_data:
   psr0:
     kotekan_stage: rawFileWrite
     in_buf: visbuf_psr0_eig_10s_merge
-    base_dir: /mnt/gong/drone_flights/test0/
+    base_dir: /mnt/gong/drone_flights/flight3/
     file_name: rawdata_gated
     file_ext: raw
   all:
     kotekan_stage: rawFileWrite
     in_buf: visbuf_10s_merge
-    base_dir: /mnt/gong/drone_flights/test0/
+    base_dir: /mnt/gong/drone_flights/flight3/
     file_name: rawdata_all
     file_ext: raw
 
@@ -1847,16 +1848,16 @@ rfi_var_record:
   total_links: 1
   updatable_config: "/updatable_config/rfi_var_record"
   gpu_0:
-    kotekan_stage: rfiRecord
+    #kotekan_stage: rfiRecord
     rfi_in: gpu_rfi_var_output_buffer_0
   gpu_1:
     kotekan_stage: rfiRecord
     rfi_in: gpu_rfi_var_output_buffer_1
   gpu_2:
-    kotekan_stage: rfiRecord
+    #kotekan_stage: rfiRecord
     rfi_in: gpu_rfi_var_output_buffer_2
   gpu_3:
-    kotekan_stage: rfiRecord
+    #kotekan_stage: rfiRecord
     rfi_in: gpu_rfi_var_output_buffer_3
 
 #### Monitoring and debug stages ####
