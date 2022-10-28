@@ -464,7 +464,7 @@ vis_buffers:
 vis_subset_buffers:
   metadata_pool: vis_pool
   num_elements: 512
-  num_frames: 5 * buffer_depth
+  num_frames: buffer_depth
   visbuf_2s_subset:
     kotekan_buffer: vis
   visbuf_gated_2s_subset:
@@ -1585,7 +1585,7 @@ rfi_stage2:
     out_buf: rfi_vis_buffer_3
 
 vis_accumulate:
-  integration_time: 2.0  # Integrate to roughly 2s cadence
+  integration_time: 2.0  # Integrate to roughly 5s cadence
   # This (12288) is for num_sub_frames = 4, there is currently a config bug that
   # prevents referencing the higher level samples_per_data_set and dividing it
   samples_per_data_set: 12288
@@ -1716,32 +1716,28 @@ vis_debug:
   kotekan_stage: visDebug
   in_buf: visbuf_gated_2s_eig
 
-# write_data:
-#   base_dir: /mnt/gong/drone_flights/flight5/
-#   file_ext: raw
-#   gated:
-#     kotekan_stage: rawFileWrite
-#     in_buf: visbuf_gated_2s_eig
-#     file_name: rawdata_gated
-#   all:
-#     kotekan_stage: rawFileWrite
-#     in_buf: visbuf_2s_subset
-#     file_name: rawdata_all
-#     file_ext: raw
+write_data:
+  base_dir: /mnt/gong/drone_flights/flight5/
+  file_ext: raw
+  gated:
+    kotekan_stage: rawFileWrite
+    in_buf: visbuf_gated_2s_eig
+    file_name: rawdata_gated
+  all:
+    kotekan_stage: rawFileWrite
+    in_buf: visbuf_2s_subset
+    file_name: rawdata_all
+    file_ext: raw
 
 # Transmit all the data to the receiver node
 buffer_send:
   server_ip: 10.1.50.12
   reconnect_time: 20
   log_level: warn
-  all_N2_subset:
-    kotekan_stage: bufferSend
-    buf: visbuf_2s_subset
+  psr_autos:
+    #kotekan_stage: bufferSend
+    buf: visbuf_psr0_autos
     server_port: 11024
-  gated_N2_subset:
-    kotekan_stage: bufferSend
-    buf: visbuf_gated_2s_eig
-    server_port: 11025
 
 
 #### RFI post processing and TX ####
@@ -1815,16 +1811,16 @@ rfi_var_record:
   total_links: 1
   updatable_config: "/updatable_config/rfi_var_record"
   gpu_0:
-    kotekan_stage: rfiRecord
+    #kotekan_stage: rfiRecord
     rfi_in: gpu_rfi_var_output_buffer_0
   gpu_1:
     kotekan_stage: rfiRecord
     rfi_in: gpu_rfi_var_output_buffer_1
   gpu_2:
-    kotekan_stage: rfiRecord
+    #kotekan_stage: rfiRecord
     rfi_in: gpu_rfi_var_output_buffer_2
   gpu_3:
-    kotekan_stage: rfiRecord
+    #kotekan_stage: rfiRecord
     rfi_in: gpu_rfi_var_output_buffer_3
 
 #### Monitoring and debug stages ####
