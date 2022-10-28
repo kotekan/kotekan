@@ -240,7 +240,7 @@ updatable_config:
     # not correlator/FPGA input order.
     element_index: 500
   gating:
-    psr0_config:
+    gated_config:
       kotekan_update_endpoint: "json"
       enabled: true
       # Drone 1pps 50% duty cycle, GPS locked
@@ -443,6 +443,15 @@ vis_int_buffers:
     kotekan_buffer: vis
   visbuf_2s_3:
     kotekan_buffer: vis
+  # Buffers for gated
+  visbuf_gated_2s_0:
+    kotekan_buffer: vis
+  visbuf_gated_2s_1:
+    kotekan_buffer: vis
+  visbuf_gated_2s_2:
+    kotekan_buffer: vis
+  visbuf_gated_2s_3:
+    kotekan_buffer: vis
 
 vis_buffers:
   metadata_pool: vis_pool
@@ -453,21 +462,14 @@ vis_buffers:
     kotekan_buffer: vis
 
 vis_subset_buffers:
+  metadata_pool: vis_pool
   num_elements: 512
+  num_frames: buffer_depth
   visbuf_2s_subset:
     kotekan_buffer: vis
   visbuf_gated_2s_subset:
     kotekan_buffer: vis
   visbuf_gated_2s_eig:
-    kotekan_buffer: vis
-  # Buffers for gated
-  visbuf_gated_2s_0:
-    kotekan_buffer: vis
-  visbuf_gated_2s_1:
-    kotekan_buffer: vis
-  visbuf_gated_2s_2:
-    kotekan_buffer: vis
-  visbuf_gated_2s_3:
     kotekan_buffer: vis
 
 gpu_rfi_output_buffers:
@@ -1589,7 +1591,7 @@ vis_accumulate:
   samples_per_data_set: 12288
   low_sample_fraction: 0.1
   updatable_config:
-    gated: "/updatable_config/gating/gating_config"
+    gated: "/updatable_config/gating/gated_config"
   acc0:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_0
@@ -1717,7 +1719,7 @@ vis_debug:
 write_data:
   base_dir: /mnt/gong/drone_flights/flight5/
   file_ext: raw
-  psr0:
+  gated:
     kotekan_stage: rawFileWrite
     in_buf: visbuf_gated_2s_eig
     file_name: rawdata_gated

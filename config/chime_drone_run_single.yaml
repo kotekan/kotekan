@@ -228,7 +228,7 @@ updatable_config:
     write_to_disk: false
   rfi_var_record:
     kotekan_update_endpoint: json
-    output_dir: /mnt/gong/drone_flights/flight3_var/
+    output_dir: /mnt/gong/drone_flights/flight5_var/
     write_to_disk: true
   rfi_pkt_loss_record:
     kotekan_update_endpoint: json
@@ -240,7 +240,7 @@ updatable_config:
     # not correlator/FPGA input order.
     element_index: 500
   gating:
-    psr0_config:
+    gated_config:
       kotekan_update_endpoint: "json"
       enabled: true
       # Drone 1pps 50% duty cycle, GPS locked
@@ -459,30 +459,30 @@ vis_buffers:
     kotekan_buffer: vis
   visbuf_eig_10s_merge:
     kotekan_buffer: vis
-  visbuf_psr0_eig_10s_merge:
+  visbuf_gated_eig_10s_merge:
     kotekan_buffer: vis
   # Buffers for gated
-  visbuf_psr0_5s_0:
+  visbuf_gated_5s_0:
     kotekan_buffer: vis
-  visbuf_psr0_5s_1:
+  visbuf_gated_5s_1:
     kotekan_buffer: vis
-  visbuf_psr0_5s_2:
+  visbuf_gated_5s_2:
     kotekan_buffer: vis
-  visbuf_psr0_5s_3:
+  visbuf_gated_5s_3:
     kotekan_buffer: vis
-  visbuf_psr0_10s_0:
+  visbuf_gated_10s_0:
     kotekan_buffer: vis
-  visbuf_psr0_10s_1:
+  visbuf_gated_10s_1:
     kotekan_buffer: vis
-  visbuf_psr0_10s_2:
+  visbuf_gated_10s_2:
     kotekan_buffer: vis
-  visbuf_psr0_10s_3:
+  visbuf_gated_10s_3:
     kotekan_buffer: vis
-  visbuf_psr0_10s_merge:
+  visbuf_gated_10s_merge:
     kotekan_buffer: vis
-  visbuf_psr0_10s_merge:
+  visbuf_gated_10s_merge:
     kotekan_buffer: vis
-  visbuf_psr0_autos:
+  visbuf_gated_autos:
     kotekan_buffer: vis
     num_prod: 2048
     num_frames: 10 * buffer_depth
@@ -1606,39 +1606,39 @@ vis_accumulate:
   samples_per_data_set: 12288
   low_sample_fraction: 0.1
   updatable_config:
-    psr0: "/updatable_config/gating/psr0_config"
+    gated: "/updatable_config/gating/gated_config"
   acc0:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_0
     out_buf: visbuf_5s_0
     gating:
-      psr0:
+      gated:
         mode: pulsar
-        buf: visbuf_psr0_5s_0
+        buf: visbuf_gated_5s_0
   acc1:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_1
     out_buf: visbuf_5s_1
     gating:
-      psr0:
+      gated:
         mode: pulsar
-        buf: visbuf_psr0_5s_1
+        buf: visbuf_gated_5s_1
   acc2:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_2
     out_buf: visbuf_5s_2
     gating:
-      psr0:
+      gated:
         mode: pulsar
-        buf: visbuf_psr0_5s_2
+        buf: visbuf_gated_5s_2
   acc3:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_3
     out_buf: visbuf_5s_3
     gating:
-      psr0:
+      gated:
         mode: pulsar
-        buf: visbuf_psr0_5s_3
+        buf: visbuf_gated_5s_3
 
 #### Perform all extra time integration and calculate eigenvalues ####
 # vis_merge_5s:
@@ -1651,15 +1651,15 @@ vis_accumulate:
 #     - visbuf_5s_3
 #   out_buf: visbuf_5s_merge
 
-# vis_merge_gated_psr0:
+# vis_merge_gated_gated:
 #   kotekan_stage: bufferMerge
 #   timeout: 0.1
 #   in_bufs:
-#     - visbuf_psr0_5s_0
-#     - visbuf_psr0_5s_1
-#     - visbuf_psr0_5s_2
-#     - visbuf_psr0_5s_3
-#   out_buf: visbuf_psr0_5s_merge
+#     - visbuf_gated_5s_0
+#     - visbuf_gated_5s_1
+#     - visbuf_gated_5s_2
+#     - visbuf_gated_5s_3
+#   out_buf: visbuf_gated_5s_merge
 
 vis_int_10s:
   num_samples: 2
@@ -1681,20 +1681,20 @@ vis_int_10s:
     out_buf: visbuf_10s_3
   psr_int0:
     kotekan_stage: timeDownsample
-    in_buf: visbuf_psr0_5s_0
-    out_buf: visbuf_psr0_10s_0
+    in_buf: visbuf_gated_5s_0
+    out_buf: visbuf_gated_10s_0
   psr_int1:
     kotekan_stage: timeDownsample
-    in_buf: visbuf_psr0_5s_1
-    out_buf: visbuf_psr0_10s_1
+    in_buf: visbuf_gated_5s_1
+    out_buf: visbuf_gated_10s_1
   psr_int2:
     kotekan_stage: timeDownsample
-    in_buf: visbuf_psr0_5s_2
-    out_buf: visbuf_psr0_10s_2
+    in_buf: visbuf_gated_5s_2
+    out_buf: visbuf_gated_10s_2
   psr_int3:
     kotekan_stage: timeDownsample
-    in_buf: visbuf_psr0_5s_3
-    out_buf: visbuf_psr0_10s_3
+    in_buf: visbuf_gated_5s_3
+    out_buf: visbuf_gated_10s_3
 
 vis_merge_10s:
   kotekan_stage: bufferMerge
@@ -1710,19 +1710,19 @@ psr_vis_merge_10s:
   kotekan_stage: bufferMerge
   timeout: 0.1
   in_bufs:
-    - visbuf_psr0_10s_0
-    - visbuf_psr0_10s_1
-    - visbuf_psr0_10s_2
-    - visbuf_psr0_10s_3
-  out_buf: visbuf_psr0_10s_merge
+    - visbuf_gated_10s_0
+    - visbuf_gated_10s_1
+    - visbuf_gated_10s_2
+    - visbuf_gated_10s_3
+  out_buf: visbuf_gated_10s_merge
 
 eigcalc:
   kotekan_stage: EigenVisIter
   cpu_affinity: [4]
   log_level: warn
 
-  in_buf: visbuf_psr0_10s_merge
-  out_buf: visbuf_psr0_eig_10s_merge
+  in_buf: visbuf_gated_10s_merge
+  out_buf: visbuf_gated_eig_10s_merge
 
   # Convergence config
   tol_eval: 0.00001
@@ -1743,26 +1743,25 @@ eigcalc:
 
 vis_debug:
   kotekan_stage: visDebug
-  in_buf: visbuf_psr0_eig_10s_merge
+  in_buf: visbuf_gated_eig_10s_merge
 
 # Generate the 26m stream
 auto_subset:
   kotekan_stage: prodSubset
-  in_buf: visbuf_psr0_eig_10s_merge
-  out_buf: visbuf_psr0_autos
+  in_buf: visbuf_gated_eig_10s_merge
+  out_buf: visbuf_gated_autos
   prod_subset_type: autos
 
 write_data:
-  psr0:
+  base_dir: /mnt/gong/drone_flights/flight5/
+  gated:
     kotekan_stage: rawFileWrite
-    in_buf: visbuf_psr0_eig_10s_merge
-    base_dir: /mnt/gong/drone_flights/flight3/
+    in_buf: visbuf_gated_eig_10s_merge
     file_name: rawdata_gated
     file_ext: raw
   all:
     kotekan_stage: rawFileWrite
     in_buf: visbuf_10s_merge
-    base_dir: /mnt/gong/drone_flights/flight3/
     file_name: rawdata_all
     file_ext: raw
 
@@ -1773,7 +1772,6 @@ buffer_send:
   log_level: warn
   psr_autos:
     #kotekan_stage: bufferSend
-    buf: visbuf_psr0_autos
     server_port: 11024
 
 
