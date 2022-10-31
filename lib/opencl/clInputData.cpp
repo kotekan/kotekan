@@ -32,18 +32,16 @@ cl_event clInputData::execute(int gpu_frame_id, cl_event pre_event) {
 
     NextFrameCollection in_frame_collection = in_bufs.get_next_frame_execute();
 
-    cl_mem gpu_memory_frame =
-        device.get_gpu_memory_array(_gpu_memory,
-                                    gpu_frame_id,
-                                    in_frame_collection.buf->aligned_frame_size);
+    cl_mem gpu_memory_frame = device.get_gpu_memory_array(
+        _gpu_memory, gpu_frame_id, in_frame_collection.buf->aligned_frame_size);
     void* host_memory_frame = (void*)in_frame_collection.frame;
     // Data transfer to GPU
-    CHECK_CL_ERROR(clEnqueueWriteBuffer(
-        device.getQueue(0), gpu_memory_frame, CL_FALSE,
-        0, // offset
-        in_frame_collection.buf->aligned_frame_size,
-        host_memory_frame, (pre_event == nullptr) ? 0 : 1,
-        (pre_event == nullptr) ? nullptr : &pre_event, &post_events[gpu_frame_id]));
+    CHECK_CL_ERROR(clEnqueueWriteBuffer(device.getQueue(0), gpu_memory_frame, CL_FALSE,
+                                        0, // offset
+                                        in_frame_collection.buf->aligned_frame_size,
+                                        host_memory_frame, (pre_event == nullptr) ? 0 : 1,
+                                        (pre_event == nullptr) ? nullptr : &pre_event,
+                                        &post_events[gpu_frame_id]));
 
     return post_events[gpu_frame_id];
 }

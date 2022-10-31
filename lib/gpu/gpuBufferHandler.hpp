@@ -4,12 +4,13 @@
 #ifndef KOTEKAN_GPU_BUFFER_HANDLER_HPP
 #define KOTEKAN_GPU_BUFFER_HANDLER_HPP
 
-#include "buffer.h"
 #include "Config.hpp"
-#include <string>
-#include <vector>
+#include "buffer.h"
 #include "bufferContainer.hpp"
 #include "visUtil.hpp"
+
+#include <string>
+#include <vector>
 
 /**
  * @brief Structure for holding a frame, frameID and buffer used as a return value
@@ -17,10 +18,10 @@
  */
 struct NextFrameCollection {
     /// The buffer associated with the frame in this structure.
-    struct Buffer * buf;
+    struct Buffer* buf;
 
     /// The frame data, use the @c buf to get details like frame_size
-    uint8_t * frame;
+    uint8_t* frame;
 
     /// The frameID of the @c frame in the ring buffer @c buf
     uint32_t frame_id;
@@ -98,10 +99,11 @@ public:
      * @c wait_on_precondition function of a commandObject.
      */
     void release_frame_finalize();
-private:
 
+private:
     /**
-     * @brief A simple collection of the buffer and its corresponding FrameIDs for the different stages of the command object.
+     * @brief A simple collection of the buffer and its corresponding FrameIDs for the different
+     * stages of the command object.
      */
     struct FrameIDCollection {
         /**
@@ -112,8 +114,7 @@ private:
             buf(buf),
             precondition_id(buf),
             execute_id(buf),
-            finalize_id(buf)
-        {}
+            finalize_id(buf) {}
 
         Buffer* buf;
         frameID precondition_id;

@@ -2,6 +2,7 @@
 // Copyright (c) 2022 Kotekan Developers
 
 #include "gpuBufferHandler.hpp"
+
 #include "json.hpp"
 
 using nlohmann::json;
@@ -11,9 +12,9 @@ using kotekan::Config;
 
 gpuBufferHandler::gpuBufferHandler(kotekan::Config& config, const std::string& unique_name,
                                    kotekan::bufferContainer& host_buffers,
-                                   const std::string buffer_entry,
-                                   const bool producer) :
-    producer(producer), unique_name(unique_name) {
+                                   const std::string buffer_entry, const bool producer) :
+    producer(producer),
+    unique_name(unique_name) {
 
 
     // Get the array of input buffers and record the details in @c in_bufs
@@ -36,9 +37,10 @@ gpuBufferHandler::gpuBufferHandler(kotekan::Config& config, const std::string& u
         if (frame_size == 0) {
             frame_size = buf->aligned_frame_size;
         } else if (frame_size != buf->aligned_frame_size) {
-            throw std::runtime_error(fmt::format(
-                "Buffers must all have frames of the same size, buffer {:s} has frame size {:d}, which doesn't match the size of other buffers {:d}",
-                buf->buffer_name, buf->aligned_frame_size, frame_size));
+            throw std::runtime_error(
+                fmt::format("Buffers must all have frames of the same size, buffer {:s} has frame "
+                            "size {:d}, which doesn't match the size of other buffers {:d}",
+                            buf->buffer_name, buf->aligned_frame_size, frame_size));
         }
 
         if (producer) {
@@ -61,14 +63,12 @@ NextFrameCollection gpuBufferHandler::get_next_frame_precondition() {
     frame_collection.frame_id = buffers[precondition_buffer_id].precondition_id;
     if (producer) {
         frame_collection.frame =
-            wait_for_empty_frame(frame_collection.buf,
-                                 unique_name.c_str(),
+            wait_for_empty_frame(frame_collection.buf, unique_name.c_str(),
                                  buffers[precondition_buffer_id].precondition_id++);
     } else {
         frame_collection.frame =
-            wait_for_full_frame(frame_collection.buf,
-                                 unique_name.c_str(),
-                                 buffers[precondition_buffer_id].precondition_id++);
+            wait_for_full_frame(frame_collection.buf, unique_name.c_str(),
+                                buffers[precondition_buffer_id].precondition_id++);
     }
 
     precondition_buffer_id = (precondition_buffer_id + 1) % buffers.size();
@@ -100,12 +100,10 @@ NextFrameCollection gpuBufferHandler::get_next_frame_finalize() {
 
 void gpuBufferHandler::release_frame_finalize() {
     if (producer) {
-        mark_frame_full(buffers[finalize_buffer_id].buf,
-                        unique_name.c_str(),
+        mark_frame_full(buffers[finalize_buffer_id].buf, unique_name.c_str(),
                         buffers[finalize_buffer_id].finalize_id++);
     } else {
-        mark_frame_empty(buffers[finalize_buffer_id].buf,
-                         unique_name.c_str(),
+        mark_frame_empty(buffers[finalize_buffer_id].buf, unique_name.c_str(),
                          buffers[finalize_buffer_id].finalize_id++);
     }
     finalize_buffer_id = (finalize_buffer_id + 1) % buffers.size();

@@ -9,7 +9,7 @@ clOutputData::clOutputData(Config& config, const std::string& unique_name,
                            bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand(config, unique_name, host_buffers, device, "clOutputData", ""),
     in_bufs(config, unique_name, host_buffers, "in_bufs", false),
-    out_bufs(config, unique_name, host_buffers, "out_bufs", true){
+    out_bufs(config, unique_name, host_buffers, "out_bufs", true) {
 
     _gpu_memory = config.get_default<std::string>(unique_name, "gpu_memory", "output");
 
@@ -39,9 +39,8 @@ cl_event clOutputData::execute(int gpu_frame_id, cl_event pre_event) {
     in_bufs.get_next_frame_execute();
     NextFrameCollection out_frame_collection = out_bufs.get_next_frame_execute();
 
-    cl_mem gpu_output_frame =
-        device.get_gpu_memory_array(_gpu_memory, gpu_frame_id,
-                                    out_frame_collection.buf->aligned_frame_size);
+    cl_mem gpu_output_frame = device.get_gpu_memory_array(
+        _gpu_memory, gpu_frame_id, out_frame_collection.buf->aligned_frame_size);
     void* host_output_frame = (void*)out_frame_collection.frame;
 
     // Transfer data from the device to host
@@ -59,8 +58,8 @@ void clOutputData::finalize_frame(int frame_id) {
     NextFrameCollection in_frame_collection = in_bufs.get_next_frame_finalize();
     NextFrameCollection out_frame_collection = out_bufs.get_next_frame_finalize();
 
-    pass_metadata(in_frame_collection.buf, in_frame_collection.frame_id,
-                  out_frame_collection.buf, out_frame_collection.frame_id);
+    pass_metadata(in_frame_collection.buf, in_frame_collection.frame_id, out_frame_collection.buf,
+                  out_frame_collection.frame_id);
 
     in_bufs.release_frame_finalize();
     out_bufs.release_frame_finalize();

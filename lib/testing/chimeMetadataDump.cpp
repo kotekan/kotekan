@@ -97,7 +97,6 @@ void chimeMetadataDump::main_thread() {
                  stream_id.link_id, stream_id.unused, lost_samples, time_v.tv_sec, time_v.tv_usec,
                  time_buf, time_v.tv_usec, time_s.tv_sec, time_s.tv_nsec, gps_time_buf,
                  time_s.tv_nsec, freq_list, hex_dump(16, frame, 0x110));
-
         }
 
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
