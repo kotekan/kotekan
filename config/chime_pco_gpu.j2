@@ -399,8 +399,8 @@ eigcalc:
     krylov: 2
     subspace: 1
     # Masking config
-    bands_filled: []
-    exclude_inputs: []
+    bands_filled: [[0, 7], [61, 67]]
+    exclude_inputs: [51, 61, 104, 110, 111, 123]
     eigcalc_0:
         kotekan_stage: EigenVisIter
         cpu_affinity: [15]
