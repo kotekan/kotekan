@@ -6,8 +6,6 @@
 #
 # This configuration is not finalized.
 #
-# Set "enable_fake_data" to disable DPDK and instead generate fake data on the CPU
-#
 # Author: Andre Renard
 #
 ##########################################
@@ -20,7 +18,7 @@ type: config
 log_level: info
 
 buffer_depth: 12
-baseband_buffer_depth: 220 # ~33 seconds after accounting for margin.
+baseband_buffer_depth: 228 # ~33 seconds after accounting for margin.
 samples_per_data_set: 32768 * 2
 num_local_freq: 16
 num_freq_in_frame: num_local_freq
@@ -179,7 +177,6 @@ vis_buffers:
 ### Data Capture ###
 
 # DPDK packet capture from FPGA
-{% if enable_fake_data is not defined %}
 dpdk:
     kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
@@ -210,7 +207,6 @@ dpdk:
         - [26,27]
         - [28,29]
         - [30,31]
-
     # One handler must be given per port on the system.
     handlers:
 {%- for id in range(32) %}
@@ -230,7 +226,7 @@ zero_samples:
 ### Start Baseband Section ###
 baseband:
     max_dump_samples: 300000 # 768ms
-    num_frames_buffer: baseband_buffer_depth - 20
+    num_frames_buffer: baseband_buffer_depth - 15
 {%- for id in range(16) %}
     baseband_{{ id }}:
         cpu_affinity: [16,17,18,19,20,21,22,23]
@@ -274,25 +270,12 @@ baseband_send:
 
 meta_debug_0:
     kotekan_stage: chimeMetadataDump
-    in_buf: gpu_input_merged_0
+    in_buf: gpu_input_buffer_0
 
 meta_debug_1:
     kotekan_stage: chimeMetadataDump
-    in_buf: gpu_input_merged_1
+    in_buf: gpu_input_buffer_1
 
-# Use fake data instead of FPGA data
-{% if enable_fake_data is defined %}
-gen_data:
-    type: const
-    value: 153
-    wait: true
-    gen_data_0:
-        kotekan_stage: testDataGen
-        out_buf: gpu_input_merged_0
-    gen_data_1:
-        kotekan_stage: testDataGen
-        out_buf: gpu_input_merged_1
-{% endif %}
 
 ### GPU Processing ###
 
@@ -331,8 +314,6 @@ gpu:
         gpu_id: 0
         commands: *command_list
         in_buffers:
-            network_buf: gpu_input_merged_0
-            # We add these buffers here to make sure the memory gets registered
 {%- for id in range(16) %}
             in_buf_{{ id }}: gpu_input_buffer_{{ id }}
 {%- endfor %}
