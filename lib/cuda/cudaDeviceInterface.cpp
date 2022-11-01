@@ -55,7 +55,7 @@ void cudaDeviceInterface::set_device_clocks(unsigned int mem_clock, unsigned int
     nvmlDeviceGetMaxClockInfo (gpu_id_, gpu_mem_clock, get_gpu_mem_clock);
     nvmlDeviceGetMaxClockInfo (gpu_id_, gpu_core_clock, get_gpu_core_clock);
 
-    if (get_gpu_mem_clock != 0 & get_gpu_core_clock != 0) {
+    if (gpu_mem_clock != 0 && gpu_core_clock != 0) {
 
         // Get and update the GPU clocks from the config file
         gpu_mem_clock = config.get<uint32_t>(unique_name, "gpu_mem_clock");
