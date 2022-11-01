@@ -33,8 +33,7 @@ cudaDeviceInterface::cudaDeviceInterface(Config& config_, const string& unique_n
         INFO("{:d}  ", core_clock[i]);
     }
 
-    CHECK_CUDA_ERROR(set_device_clocks(mem_clock, core_clock,
-                                       mem_count, core_count));
+    set_device_clocks(mem_clock, core_clock, mem_count, core_count));
 }
 
 cudaDeviceInterface::~cudaDeviceInterface() {
