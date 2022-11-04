@@ -211,6 +211,12 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
                 // INFO("Data writen to file!");
             }
 
+#ifdef __linux__
+            // To free the cache memory
+            syncfs(fd);
+            posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
+#endif
+
             if (close(fd) == -1) {
                 ERROR("Cannot close file {:s}", file_name);
             }
