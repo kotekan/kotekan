@@ -1,8 +1,8 @@
-*********************************
-Consumer Stage Unit Test Tutorial
-*********************************
+*******************
+Unit Testing Stages
+*******************
 
-Let us write some basic system tests, so that we can make sure our stage is behaving as expected while we work on it.
+Let us add some basic system tests to the `ExampleConsumer` class describe earlier, so that we can make sure our stage is behaving as expected while we work on it.
 
 Kotekan uses pytest for its system tests. Through the pytest framework you can set up a corresponding producer stage/input buffer, automate the creation of a :ref:`pipeline configuration <user_config>`, run your consumer stage, and then make assertions on its behaviour.
 
