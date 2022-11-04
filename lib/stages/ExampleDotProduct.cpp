@@ -38,7 +38,6 @@ STAGE_CONSTRUCTOR(ExampleDotProduct) {
             fmt::format(fmt("Input frame size does not match output frame size. {:d} != {:d}"),
                         in_a_buf->frame_size, out_buf->frame_size));
     }
-
 }
 
 ExampleDotProduct::~ExampleDotProduct() {}
