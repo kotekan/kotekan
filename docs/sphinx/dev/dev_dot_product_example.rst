@@ -3,42 +3,6 @@ Pipeline Example
 ****************
 The following example outlines how to create a `kotekan` pipeline that performs a dot product between two vectors.
 
-Create a Dot Product Stage
---------------------------
-First we need to create a `kotekan` `Stage` that consumes two input buffers, i.e. vector A and B, and computes the dot product. The `Stage` should also write the result of the computation, A.B, to an output buffer.
-
-The header and source files (`DotProduct.hpp/cpp`) are shown below:
-
-.. literalinclude:: ../../../lib/stages/ExampleDotProduct.hpp
-
-.. literalinclude:: ../../../lib/stages/ExampleDotProduct.cpp
-    :language: c++
-
-Compile Stage
--------------
-To compile the stage add the source file to `lib/stages/CMakeLists.txt`:
-
-.. code-block:: bash
-
-    add_library(
-        kotekan_stages
-        beamformingPostProcess.cpp
-        chrxUplink.cpp
-        ...
-        ExampleProducer.cpp
-        ExampleConsumer.cpp
-        ExampleDotProduct.cpp)
-
-Move to the `build` directory, call `cmake` to create the `Makefile` and compile `kotekan`:
-
-.. code-block:: bash
-
-    cd build
-    cmake -DCMAKE_BUILD_TYPE=Debug ..
-    make
-
-Once compilation is complete we need to create a config file for `kotekan` to parse and run.
-
 Pipeline Config Creation
 ------------------------
 `kotekan` runs by parsing a configuration file that describes a pipeline. Each config file is written as a `.yaml` file and describes a set of data streams (`Buffers`) through a series of `Stages`. The config file below performs a dot product on two vectors:

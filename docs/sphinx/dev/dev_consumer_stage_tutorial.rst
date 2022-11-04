@@ -1,6 +1,6 @@
-************************
-Consumer Stage tutorial
-************************
+*******************************
+Example Consumer Stage tutorial
+*******************************
 
 So you want to write your first Consumer Stage! This tutorial will walk you through the steps for building the foundations of your stage and its associated test.
 
@@ -17,8 +17,6 @@ The steps we will follow for developing the stage are:
 3. Write a skeleton constructor. Within the constructor:
 
    * Register the stage as a consumer of `in_buf`.
-
-   * Load some configuration options.
 
 4. Write the skeleton for the framework managed pthread. Within this main thread:
 
@@ -45,4 +43,4 @@ Now, let us create the header file.
 
 To let the compiler know about the stage, add it to lib/stages/CMakeLists.txt.
 
-The compiling instructions can then be found here: http://lwlab.dunlap.utoronto.ca/kotekan/compiling/general.html.
+The compiling instructions can then be found at :ref:`Compiling Kotekan <compiling>` .

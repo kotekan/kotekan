@@ -37,7 +37,9 @@ Welcome to Kotekan's documentation!
    dev/dev_unittests
    dev/dev_gate_specs
    dev/dev_consumer_stage_tutorial
-   dev/dev_consumer_stage_unit_test_tutorial
+   dev/dev_producer_stage_tutorial
+   dev/dev_producer_consumer_stage_tutorial
    dev/dev_dot_product_example
+   dev/dev_consumer_stage_unit_test_tutorial
 
 You can also peruse the full `doxygen docs <doxygen/>`_.
