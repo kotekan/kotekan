@@ -36,9 +36,6 @@ private:
 
     // Output buffer
     Buffer* out_buf;
-
-    // Length of vectors
-    uint32_t _num_elements;
 };
 
 #endif /* EXAMPLE_DOT_PRODUCT_STAGE_H */

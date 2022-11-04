@@ -16,12 +16,13 @@ ExampleProducer::ExampleProducer(Config& config, const std::string& unique_name,
                                  bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&ExampleProducer::main_thread, this)) {
 
-    // Register as consumer of out_buf
+    // Register as producer of out_buf
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
     // Load options that can be set in config
-    // unique_name_for_stage, name_of_config, default_value_if_not_set
+    // The arguments to config.get_default are the:
+    //     unique_name_for_stage, name_of_config, default_value_if_not_set
     _init_value = config.get_default<float>(unique_name, "init_value", 0.f);
 }
 

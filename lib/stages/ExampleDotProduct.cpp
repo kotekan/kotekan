@@ -25,17 +25,14 @@ STAGE_CONSTRUCTOR(ExampleDotProduct) {
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    // Get the no. of elements in each frame
-    _num_elements = in_a_buf->frame_size / sizeof(float);
-
-    // Ensure the input and output buffers are the same
-    // length for the dot product
+    // Ensure the input buffers are the same length
     if (in_a_buf->frame_size != in_b_buf->frame_size) {
         throw std::runtime_error(
             fmt::format(fmt("in_a_buf frame size does not match in_b_buf frame size. {:d} != {:d}"),
                         in_a_buf->frame_size, in_b_buf->frame_size));
     }
 
+    // Ensure the output buffer length matches the input buffer lengths
     if (in_a_buf->frame_size != out_buf->frame_size) {
         throw std::runtime_error(
             fmt::format(fmt("Input frame size does not match output frame size. {:d} != {:d}"),
@@ -48,13 +45,15 @@ ExampleDotProduct::~ExampleDotProduct() {}
 
 void ExampleDotProduct::main_thread() {
 
-    // Logging function
     INFO("Starting main_thread!");
 
     // Buffer indices
     frameID in_a_frame_id(in_a_buf);
     frameID in_b_frame_id(in_b_buf);
     frameID out_frame_id(out_buf);
+
+    // Length of vectors
+    uint32_t frame_length = in_a_buf->frame_size / sizeof(float);
 
     // Until the thread is stopped
     while (!stop_thread) {
@@ -79,7 +78,7 @@ void ExampleDotProduct::main_thread() {
         float* output = (float*)out_frame_ptr;
 
         // Perform dot product
-        for (uint32_t i = 0; i < _num_elements; i++) {
+        for (uint32_t i = 0; i < frame_length; i++) {
             output[i] = a[i] * b[i];
         }
 
@@ -87,6 +86,7 @@ void ExampleDotProduct::main_thread() {
         mark_frame_empty(in_a_buf, unique_name.c_str(), in_a_frame_id++);
         mark_frame_empty(in_b_buf, unique_name.c_str(), in_b_frame_id++);
 
+        // Release the output frame and increment the output frame index
         mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
     }
 }
