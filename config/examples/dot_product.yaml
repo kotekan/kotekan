@@ -1,8 +1,9 @@
 ---
 type: config
+# Logging level can be OFF, ERROR, WARN, INFO, DEBUG, or DEBUG2
 log_level: DEBUG
+# Which CPUs is kotekan allowed to run on?
 cpu_affinity: [0,1,2,3]
-samples_per_data_set: 1024
 
 # Constants
 sizeof_float: 4
