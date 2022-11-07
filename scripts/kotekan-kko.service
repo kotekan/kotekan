@@ -4,7 +4,7 @@ Restart=no
 WorkingDirectory=/var/lib/kotekan
 TimeoutStopSec=120
 KillSignal=SIGINT
-ExecStart=/usr/local/bin/kotekan -s -n -c /etc/kotekan/chime_pco_gpu.j2
+ExecStart=/usr/local/bin/kotekan -s -n -c /etc/kotekan/chime_kko_gpu.j2
 PIDFile=/var/run/kotekan.pid
 UMask=002
 
