@@ -16,7 +16,7 @@ log_level: info
 num_elements: 128
 num_local_freq: 16
 num_data_sets: 1
-samples_per_data_set: 512
+samples_per_data_set: 4096
 buffer_depth: 64
 cpu_affinity: [0,1,2,3,4]
 
@@ -52,7 +52,7 @@ telescope:
 # Baseband Metadata Pool
 baseband_metadata_pool:
   kotekan_metadata_pool: BasebandMetadata
-  num_metadata_objects: 32768 * 2
+  num_metadata_objects: 4096 * 2
 
 #################
 #### Buffers ####
@@ -61,7 +61,7 @@ baseband_metadata_pool:
 baseband_bufs:
   metadata_pool: baseband_metadata_pool
   frame_size: num_elements * samples_per_data_set
-  num_frames: 32768
+  num_frames: 4096
   baseband_recv_buffer_0:
     kotekan_buffer: standard
 
