@@ -108,8 +108,8 @@ lost_samples_buffers:
 
 ### Baseband dump output buffers (staging for send to baseband recv)
 baseband_output_buffers:
-    num_frames: 1024 * num_local_freq
-    frame_size: 512 * num_elements
+    num_frames: 100 * num_local_freq
+    frame_size: 4096 * num_elements
     metadata_pool: baseband_pool
 {%- for id in range(16) %}
     baseband_output_buffer_{{ id }}:
@@ -225,7 +225,7 @@ zero_samples:
 
 ### Start Baseband Section ###
 baseband:
-    max_dump_samples: 300000 # 768ms
+    max_dump_samples: 1024000 # 1024ms
     num_frames_buffer: baseband_buffer_depth - 15
 {%- for id in range(16) %}
     baseband_{{ id }}:
