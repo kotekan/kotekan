@@ -11,6 +11,7 @@
 #include "metadata.h"             // for metadataContainer
 #include "prometheusMetrics.hpp"  // for Counter, Gauge, MetricFamily, Metrics
 #include "visUtil.hpp"            // for input_ctype, frameID, ts_to_double, modulo, parse_reor...
+#include "kotekanTrackers.hpp"
 
 #include "fmt.hpp" // for join
 
@@ -68,7 +69,16 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
     readout_dropped_frame_counter(kotekan::prometheus::Metrics::instance().add_counter(
         "kotekan_baseband_readout_dropped_frames_total", unique_name, {"freq_id"})),
     readout_in_progress_metric(kotekan::prometheus::Metrics::instance().add_gauge(
-        "kotekan_baseband_readout_in_progress", unique_name, {"freq_id"})) {
+        "kotekan_baseband_readout_in_progress", unique_name, {"freq_id"})),
+    readout_time_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_baseband_readout_time_average", unique_name)),
+    readout_time_max_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_baseband_readout_time_max", unique_name))
+    {
+
+
+    auto &kotekan_tracker = kotekan::KotekanTrackers::instance();
+    readout_time_tracker = kotekan_tracker.add_tracker(unique_name, "readout_time", "seconds", 100, false);
 
     // Get the correlator input meanings, unreordered.
     auto input_reorder = parse_reorder_default(config, unique_name);
@@ -167,6 +177,7 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[],
         // Latency is *key* here. We want to call extract_data within 100ms
         // of L4 sending the trigger.
 
+
         if (auto next_request = mgrs[0]->get_next_waiting_request()) {
             for (uint32_t stream_freq_idx = 0; stream_freq_idx < _num_freq_per_stream;
                  ++stream_freq_idx) {
@@ -190,13 +201,18 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[],
                                   std::min((int64_t)request.length_fpga, _max_dump_samples));
                 basebandDumpData::Status status = data.status;
 
+                double start_time = current_time();
                 if (status == basebandDumpData::Status::Ok) {
                     status = extract_data(data);
                 }
+                readout_time_tracker->add_sample(current_time() - start_time);
+
                 readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
 
                 end_processing(status, freq_id, dump_status, request_mtx);
             }
+            readout_time_metric.set(readout_time_tracker->get_avg());
+            readout_time_max_metric.set(readout_time_tracker->get_max());
         }
     }
 }
