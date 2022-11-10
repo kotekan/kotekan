@@ -211,6 +211,11 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
                 // INFO("Data writen to file!");
             }
 
+            // Free the cache memory -- without this, the cache will fill up and
+            // kotekan will start thrashing while space is being freed.
+            syncfs(fd);
+            posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
+
             if (close(fd) == -1) {
                 ERROR("Cannot close file {:s}", file_name);
             }
