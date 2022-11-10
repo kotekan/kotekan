@@ -79,9 +79,10 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
         _inputs[order_inds[i]] = inputs_copy[i];
     }
 
-    // Memcopy byte alignments assume the following.
-    if (_num_elements % 128) {
-        throw std::runtime_error("num_elements must be multiple of 128");
+    // Memcopy byte alignments assume data has shape (num_elements, n_time, num_local_freq),
+    // while the straight copy assumes (num_elements=16, num_local_freq, n_time).
+    if (!(_num_elements % 128 == 0 || _num_elements == 16)) {
+        throw std::runtime_error("num_elements must be multiple of 128 or equal to 16");
     }
 
     register_consumer(in_buf, unique_name.c_str());
@@ -502,7 +503,32 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                       copy_len * _num_elements);
                 memcpy(out_frame + (out_start * _num_elements),
                        in_buf_data + (in_start * _num_elements), copy_len * _num_elements);
+            } else if (_num_elements == 16) {
+                // Bit of a speed-up for data direct from FPGA boards; each sample contains
+                // 16 channels for different frequencies, so to get a time stream for a given
+                // frequency we have to skip over the others.
+                // Make pointers to 16-byte integers to be able to copy all 16
+                // elements in one go, leaving it to the compiler to optimize this.
+                __int128* out_ptr = (__int128*)out_frame;
+                __int128* in_ptr = (__int128*)in_buf_data;
+
+                copy_len = std::min(in_end - in_start, out_remaining);
+                DEBUG("Copy samples {}/{}-{} for in-frame frequency {} to {}/{} ({} bytes, "
+                      "in 16-byte chunks starting at {} with stride {}.)",
+                      frame_index, in_start, in_start + copy_len * _num_elements, stream_freq_idx,
+                      out_frame_id, out_start, copy_len * _num_elements,
+                      (in_start * _num_freq_per_stream + stream_freq_idx) * _num_elements,
+                      _num_freq_per_stream * _num_elements);
+
+                out_ptr += out_start;
+                in_ptr += in_start * _num_freq_per_stream + stream_freq_idx;
+                for (int i = 0; i < copy_len; i++) {
+                    *out_ptr = *in_ptr;
+                    in_ptr += _num_freq_per_stream;
+                    out_ptr++;
+                }
             } else {
+                // Fall-back: assumes also that frequencies are stored together.
                 copy_len = std::min((int64_t)1, out_remaining);
                 DEBUG("Copy samples {}/{}-{} for in-frame frequency {} to {}/{} ({} bytes, "
                       "starting at {})",
