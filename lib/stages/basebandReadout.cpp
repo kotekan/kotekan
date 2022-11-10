@@ -72,9 +72,9 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
     }
 
     // Memcopy byte alignments assume the following.
-    if (_num_elements % 128) {
-        throw std::runtime_error("num_elements must be multiple of 128");
-    }
+    //if (_num_elements % 128) {
+    //    throw std::runtime_error("num_elements must be multiple of 128");
+    //}
 
     in_buf->register_consumer(unique_name);
 
