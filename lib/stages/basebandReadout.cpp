@@ -32,7 +32,7 @@
 #include <sys/time.h> // for timeval, timeradd
 #include <thread>     // for thread, sleep_for
 #include <tuple>      // for get
-
+#include <smmintrin.h>  // for __m128i, _mm_stream_si128, _mm_stream_load_si128
 
 using kotekan::basebandApiManager;
 using kotekan::basebandDumpData;
@@ -509,8 +509,8 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                 // frequency we have to skip over the others.
                 // Make pointers to 16-byte integers to be able to copy all 16
                 // elements in one go, leaving it to the compiler to optimize this.
-                __int128* out_ptr = (__int128*)out_frame;
-                __int128* in_ptr = (__int128*)in_buf_data;
+                __m128i* out_ptr = (__m128i*)out_frame;
+                __m128i* in_ptr = (__m128i*)in_buf_data;
 
                 copy_len = std::min(in_end - in_start, out_remaining);
                 DEBUG("Copy samples {}/{}-{} for in-frame frequency {} to {}/{} ({} bytes, "
@@ -523,7 +523,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                 out_ptr += out_start;
                 in_ptr += in_start * _num_freq_per_stream + stream_freq_idx;
                 for (int i = 0; i < copy_len; i++) {
-                    *out_ptr = *in_ptr;
+                    _mm_stream_si128(out_ptr, _mm_stream_load_si128(in_ptr));
                     in_ptr += _num_freq_per_stream;
                     out_ptr++;
                 }
