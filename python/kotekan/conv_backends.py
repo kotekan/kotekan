@@ -15,7 +15,7 @@ def get_backend(name):
                 'ARCHIVER_MOUNT' : '/data/princeton/baseband/raw',
                 'NUM_THREADS' : 5,
                 'BB_STATUS_URL' : "http://aux:54323/baseband-status",
-                'KOTEKAN_CONFIG' : "/home/calvin/baseband_commissioning/kotekan/config/chime_pco_gpu.j2",
+                'KOTEKAN_CONFIG' : "/home/calvin/baseband_commissioning/kotekan/config/chime_pco_baseband_recv.j2",
                 'USE_L4_DB' : False,
                 'RAW_PATH' : '/data/baseband_raw/',
                 'PROMETHEUS_GW' : "aux:9091",
