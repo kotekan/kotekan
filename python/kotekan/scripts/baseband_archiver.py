@@ -158,14 +158,21 @@ def process_raw_file(
 
     if nfreq is None:
         set_sampling_params(config)
-    samples_per_data_set = 512  # config.get("samples_per_data_set", 512)
+    samples_per_data_set = config.get("samples_per_data_set", 512)
+    if type(samples_per_data_set) is str:
+        samples_per_data_set = eval(samples_per_data_set)
     num_elements = config.get("num_elements", 2048)
+    if type(num_elements) is str:
+        num_elements = eval(num_elements)
     frame_size = num_elements * samples_per_data_set
     buf = bytearray(frame_size + metadata_size)
     event_id = freq_id = None
     archive_file_name = archive_file = None
     frames_read = []
     clip_after = 0
+    if verbose:
+        print('samples_per_data_set:',samples_per_data_set)
+        print('num_elements:',num_elements)
     for b in raw_baseband_frames(file_name, buf):
         # Check the frame metadata
         frame_metadata = baseband_buffer.BasebandMetadata.from_buffer(b)
@@ -322,7 +329,6 @@ def convert(
         #config = yaml.safe_load(f)
         config_dict = config.load_config_file(config_file,return_dict=True)
     set_sampling_params(config_dict)
-    print('config:',config_dict['samples_per_data_set'])
 
     archive_file_names = []
     for f in file_name:
@@ -370,7 +376,6 @@ def convert(
 )
 def cli(file_names, stats, config, root, dry_run, verbose):
     """Convert a raw baseband file into an HDF5 baseband archive"""
-    print('config:',)
     convert(file_names, config, root, stats, dry_run, verbose)
 
 
