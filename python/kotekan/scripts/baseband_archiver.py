@@ -186,6 +186,7 @@ def process_raw_file(
             )
 
         if event_id is None:
+            # create the .h5 file and set metadata
             event_id, freq_id = (frame_metadata.event_id, frame_metadata.freq_id)
 
             if not dry_run:
@@ -211,7 +212,6 @@ def process_raw_file(
                 print("Num elements:", num_elements)
 
             baseband = np.zeros(shape=(event_fpga_len, num_elements), dtype=np.uint8)
-            # sample_present = np.zeros(shape=(event_fpga_len,), dtype=bool)
         else:
             # Data validity check: all frames in the file should be for the same event and frequency
             assert event_id == frame_metadata.event_id
@@ -241,9 +241,6 @@ def process_raw_file(
         ).reshape(
             frame_metadata.valid_to, num_elements
         )
-        # sample_present[
-        #    frame_start_idx : (frame_start_idx + frame_metadata.valid_to)
-        # ] = True
         clip_after += frame_metadata.valid_to
 
     baseband = baseband[
@@ -252,9 +249,6 @@ def process_raw_file(
     if not dry_run:
         archive_file.create_dataset("baseband", data=baseband)
         archive_file["baseband"].attrs["axis"] = ["time", "input"]
-        # archive_file.create_dataset("sample_present", data=sample_present)
-        # archive_file["sample_present"].attrs["axis"] = ["time"]
-        # archive_file["sample_present"].attrs["fill_value"] = False
     found = []
     for seq in sorted(frames_read):
         for f in found:

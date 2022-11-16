@@ -179,11 +179,12 @@ def convert_data(e, num_threads,sqlite, conn, conv_backend):
             )
             conn.commit()
         return
-    print("continuing to check if unlocked")
+    print(f"Continuing to check {raw_folder} if unlocked")
     unlocked = False
     if os.path.exists(raw_folder):
         unlocked = is_unlocked(raw_folder)
 
+    # wait six hours after last-modified time before attempting to convert
     if unlocked is True or datetime.datetime.utcnow() > datetime.datetime.strptime(
         e[1], "%Y-%m-%d %H:%M:%S.%f"
     ) + datetime.timedelta(hours=6):
@@ -195,7 +196,7 @@ def convert_data(e, num_threads,sqlite, conn, conv_backend):
                     fp = os.path.join(raw_folder, "." + f + ".lock")
                     os.system(f"rm -f {fp}")
         num_files = len(files)
-        print(f"Found {num_files} files.")
+        print(f"Found {num_files} .data files.")
 
         if num_files > 0:
             # make entry in datatrail, local file with local DB with state CONVERTING
@@ -207,7 +208,6 @@ def convert_data(e, num_threads,sqlite, conn, conv_backend):
             converted_files = []
             for i in range(0, len(files), num_threads):
                 chunk = files[i : i + num_threads]
-                print(chunk)
                 threads = []
                 manager = multiprocessing.Manager()
                 converted_filenames = manager.dict()
@@ -217,7 +217,7 @@ def convert_data(e, num_threads,sqlite, conn, conv_backend):
                         conv_backend["KOTEKAN_CONFIG"], # can this take .j2 files?
                     )
                 except FileNotFoundError:
-                    print(f'Could not find Kotekan config file at {conv_backend["KOTEKAN_CONFIG"]}, perhaps you need to run python config.py to convert .j2 to .yaml?')
+                    print(f'Could not find Kotekan config file at {conv_backend["KOTEKAN_CONFIG"]}')
                 for f in chunk:
                     th = multiprocessing.Process(
                         target=convert, args=(f, config_file, converted_filenames)
@@ -228,9 +228,10 @@ def convert_data(e, num_threads,sqlite, conn, conv_backend):
                     th.join()
                 converted_files += converted_filenames.values()
             exists, missing = validate_file_existence(converted_files)
+            print(exists,missing)
             if exists:
                 # UPDATE local DB with state FINISHED
-                print("conversion done.")
+                print("Conversion done. Should remove {raw_folder}.")
                 # COMMENTING THIS OUT FOR PCO commissioning os.system(f"rm -rf " + raw_folder)
                 if sqlite is not None and conn is not None:
                     print("Updating state in sqlite DB")
@@ -279,7 +280,7 @@ def get_size(start_path="."):
             # skip if it is symbolic link
             if not os.path.islink(fp):
                 total_size += os.path.getsize(fp)
-    return total_size
+    return total_size # bytes
 
 
 def check_inventory(raw_filepath):
@@ -427,7 +428,8 @@ def main():
             )
         else:
             for e in events:
-                print(f"converting event {e}")
+                t_global = time.time()
+                print(f"Converting event {e}")
                 bce.set(e[0])
                 push_to_gateway(
                     conv_backend["PROMETHEUS_GW"], job="baseband_conversion", registry=registry
@@ -438,6 +440,7 @@ def main():
                     conn = None
                     sqlite = None
                 convert_data(e, NUM_THREADS,sqlite, conn,conv_backend) # if sqlite or conn are None, will look for events using filepaths.
+                print("Total time to convert all files: ", time.time() - t_global)
         sys.stdout.flush()
         time.sleep(300)
 
