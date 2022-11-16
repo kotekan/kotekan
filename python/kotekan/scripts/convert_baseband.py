@@ -27,7 +27,7 @@ def convert(file_name, config_file, converted_filenames, backend):
     converted_filenames[file_name] = converted_file
     # TODO: add hook for datatrail here in the future.
     if os.path.exists(converted_file):
-        os.system(f"rm -f {file_name}")
+        print(f'Converted {file_name} -> {converted_file}; will remove .data when we validate this') #os.system(f"rm -f {file_name}")
 
 
 def connect_db():
@@ -187,14 +187,12 @@ def convert_data(e, num_threads,sqlite, conn, conv_backend):
     # wait six hours after last-modified time before attempting to convert
     if unlocked is True or datetime.datetime.utcnow() > datetime.datetime.strptime(
         e[1], "%Y-%m-%d %H:%M:%S.%f"
-    ) + datetime.timedelta(hours=6):
-        dp = os.listdir(raw_folder)
-        files = [os.path.join(raw_folder, f) for f in dp]
-        if not unlocked:
-            for f in dp:
-                if os.path.exists(os.path.join(raw_folder, "." + f + ".lock")):
-                    fp = os.path.join(raw_folder, "." + f + ".lock")
-                    os.system(f"rm -f {fp}")
+    ) + datetime.timedelta(hours=6): 
+        files = glob(os.path.join(raw_folder,'*.data'))
+        if not unlocked: # remove the .baseband_{EVENT_ID}.data.lock files and proceed anyway.
+            lock_files = glob(os.path.join(raw_folder,'*.lock'))
+            for lock_file in lock_files:
+                print('Will remove {lock_file}') # os.system(f"rm -f {lock_file}")
         num_files = len(files)
         print(f"Found {num_files} .data files.")
 
