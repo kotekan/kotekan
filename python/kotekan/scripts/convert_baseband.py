@@ -11,6 +11,7 @@ import baseband_archiver
 import multiprocessing
 from glob import glob
 from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
+from kotekan.conv_backends import get_backend
 
 NUM_THREADS = 5
 
@@ -18,7 +19,6 @@ def convert(file_name, config_file, converted_filenames, backend):
     """Convert the raw data file to hdf5 using parameters specified at the backend level.
     Then delete the raw file.
     """
-    backend = conv_backends.get_backend(backend)
     config_file = backend['KOTEKAN_CONFIG']
     root = backend['ARCHIVER_MOUNT']
     converted_file = baseband_archiver.convert(
@@ -214,13 +214,13 @@ def convert_data(e, num_threads,sqlite, conn, conv_backend):
                 try:
                     config_file = os.path.join(
                         os.path.dirname(os.path.abspath(__file__)),
-                        conv_backend["KOTEKAN_CONFIG"], # can this take .j2 files?
+                        conv_backend["KOTEKAN_CONFIG"], 
                     )
                 except FileNotFoundError:
                     print(f'Could not find Kotekan config file at {conv_backend["KOTEKAN_CONFIG"]}')
                 for f in chunk:
                     th = multiprocessing.Process(
-                        target=convert, args=(f, config_file, converted_filenames)
+                        target=convert, args=(f, config_file, converted_filenames,conv_backend)
                     )
                     th.start()
                     threads.append(th)
@@ -398,7 +398,7 @@ def main():
         "Inventory of the raw data on /data/baseband_raw.",
         registry=registry,
     )
-    conv_backend = pco_backend # TODO: test with CHIME backend as well.
+    conv_backend = get_backend('pco') # TODO: test with CHIME backend as well.
     assert os.path.exists(
         conv_backend["ARCHIVER_MOUNT"]
     ), f"{conv_backend['ARCHIVER_MOUNT']} is not mounted, it is required for this process. Exiting!!!"
