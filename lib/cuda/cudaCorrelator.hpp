@@ -3,7 +3,6 @@
 
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
-
 #include "n2k.hpp"
 
 /**
@@ -16,7 +15,7 @@
 class cudaCorrelator : public cudaCommand {
 public:
     cudaCorrelator(kotekan::Config& config, const std::string& unique_name,
-                      kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+                   kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaCorrelator();
     cudaEvent_t execute(int gpu_frame_id, cudaEvent_t pre_event) override;
 
@@ -41,6 +40,6 @@ private:
 
     // Cuda kernel wrapper object
     n2k::Correlator n2correlator;
-  };
+};
 
 #endif // KOTEKAN_CUDA_CORRELATOR_CUH

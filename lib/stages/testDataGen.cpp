@@ -47,8 +47,8 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
     assert(type == "const" || type == "random" || type == "random_signed" || type == "ramp"
-	   || type == "tpluse" || type == "tpluseplusf" || type == "tpluseplusfprime"
-	   || type == "square");
+           || type == "tpluse" || type == "tpluseplusf" || type == "tpluseplusfprime"
+           || type == "square");
     if (type == "const" || type == "random" || type == "random_signed" || type == "ramp")
         value = config.get<int>(unique_name, "value");
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);

@@ -12,7 +12,7 @@
 class zeroLowerTriangle : public kotekan::Stage {
 public:
     zeroLowerTriangle(kotekan::Config& config, const std::string& unique_name,
-                kotekan::bufferContainer& buffer_container);
+                      kotekan::bufferContainer& buffer_container);
     ~zeroLowerTriangle();
     void main_thread() override;
 

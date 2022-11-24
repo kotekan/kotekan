@@ -23,7 +23,7 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(zeroLowerTriangle);
 
 zeroLowerTriangle::zeroLowerTriangle(Config& config, const std::string& unique_name,
-                         bufferContainer& buffer_container) :
+                                     bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&zeroLowerTriangle::main_thread, this)) {
 
     // Apply config.
@@ -38,8 +38,7 @@ zeroLowerTriangle::zeroLowerTriangle(Config& config, const std::string& unique_n
     register_producer(output_buf, unique_name.c_str());
 }
 
-zeroLowerTriangle::~zeroLowerTriangle() {
-}
+zeroLowerTriangle::~zeroLowerTriangle() {}
 
 void zeroLowerTriangle::main_thread() {
 
@@ -57,35 +56,48 @@ void zeroLowerTriangle::main_thread() {
         INFO("Zeroing out lower triangle for {:s}[{:d}] putting result in {:s}[{:d}]",
              input_buf->buffer_name, input_frame_id, output_buf->buffer_name, output_frame_id);
 
-	int nt_inner = _sub_integration_ntime;
-	int n_outer = _samples_per_data_set / nt_inner;
-	    
-	for (int tout = 0; tout < n_outer; ++tout) {
-	  for (int f = 0; f < _num_local_freq; ++f) {
-	    for (int x = 0; x < _num_elements; ++x) {
-	      for (int y = 0; y < _num_elements; ++y) {
-		int real = 0;
-		int imag = 0;
-		if (x <= y) {
-		  real = input[(((tout * _num_local_freq + f) * _num_elements + x) * _num_elements + y) * 2 + 0];
-		  imag = input[(((tout * _num_local_freq + f) * _num_elements + x) * _num_elements + y) * 2 + 1];
-		}
-		output[(((tout * _num_local_freq + f) * _num_elements + x) * _num_elements + y) * 2 + 0] = real;
-		output[(((tout * _num_local_freq + f) * _num_elements + x) * _num_elements + y) * 2 + 1] = imag;
-	      }
-	    }
-	  }
-	}
+        int nt_inner = _sub_integration_ntime;
+        int n_outer = _samples_per_data_set / nt_inner;
 
-	INFO("Zeroing done for {:s}[{:d}] result is in {:s}[{:d}]",
-	     input_buf->buffer_name, input_frame_id, output_buf->buffer_name, output_frame_id);
+        for (int tout = 0; tout < n_outer; ++tout) {
+            for (int f = 0; f < _num_local_freq; ++f) {
+                for (int x = 0; x < _num_elements; ++x) {
+                    for (int y = 0; y < _num_elements; ++y) {
+                        int real = 0;
+                        int imag = 0;
+                        if (x <= y) {
+                            real = input[(((tout * _num_local_freq + f) * _num_elements + x)
+                                              * _num_elements
+                                          + y)
+                                             * 2
+                                         + 0];
+                            imag = input[(((tout * _num_local_freq + f) * _num_elements + x)
+                                              * _num_elements
+                                          + y)
+                                             * 2
+                                         + 1];
+                        }
+                        output[(((tout * _num_local_freq + f) * _num_elements + x) * _num_elements
+                                + y)
+                                   * 2
+                               + 0] = real;
+                        output[(((tout * _num_local_freq + f) * _num_elements + x) * _num_elements
+                                + y)
+                                   * 2
+                               + 1] = imag;
+                    }
+                }
+            }
+        }
 
-	pass_metadata(input_buf, input_frame_id, output_buf, output_frame_id);
-	mark_frame_empty(input_buf, unique_name.c_str(), input_frame_id);
-	mark_frame_full(output_buf, unique_name.c_str(), output_frame_id);
+        INFO("Zeroing done for {:s}[{:d}] result is in {:s}[{:d}]", input_buf->buffer_name,
+             input_frame_id, output_buf->buffer_name, output_frame_id);
 
-	input_frame_id = (input_frame_id + 1) % input_buf->num_frames;
-	output_frame_id = (output_frame_id + 1) % output_buf->num_frames;
+        pass_metadata(input_buf, input_frame_id, output_buf, output_frame_id);
+        mark_frame_empty(input_buf, unique_name.c_str(), input_frame_id);
+        mark_frame_full(output_buf, unique_name.c_str(), output_frame_id);
+
+        input_frame_id = (input_frame_id + 1) % input_buf->num_frames;
+        output_frame_id = (output_frame_id + 1) % output_buf->num_frames;
     }
 }
-

@@ -12,7 +12,7 @@
 class gpuSimulateN2k : public kotekan::Stage {
 public:
     gpuSimulateN2k(kotekan::Config& config, const std::string& unique_name,
-                kotekan::bufferContainer& buffer_container);
+                   kotekan::bufferContainer& buffer_container);
     ~gpuSimulateN2k();
     void main_thread() override;
 
