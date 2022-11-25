@@ -1,6 +1,7 @@
 #include "cudaCommand.hpp"
 
 #include <cuda.h>
+#include <nvPTXCompiler.h>
 #include <nvrtc.h>
 
 using kotekan::bufferContainer;

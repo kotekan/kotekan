@@ -61,6 +61,9 @@ public:
     virtual void build(const std::vector<std::string>& kernel_names,
                        std::vector<std::string>& opts);
 
+    virtual void build_ptx(const std::vector<std::string>& kernel_names,
+                           std::vector<std::string>& opts);
+
     /**
      * @brief Execute a kernel, copy, etc.
      * @param gpu_frame_id  The bufferID associated with the GPU commands.
