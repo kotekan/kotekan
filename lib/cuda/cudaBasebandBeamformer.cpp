@@ -1,4 +1,4 @@
-#include "cudaBasebandBeamformer.cuh"
+#include "cudaBasebandBeamformer.hpp"
 
 #include "math.h"
 

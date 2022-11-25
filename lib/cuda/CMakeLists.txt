@@ -14,7 +14,7 @@ add_library(
     # Kernels
     cudaCorrelatorAstron.cpp
     cudaShuffleAstron.cu
-    cudaBasebandBeamformer.cu)
+    cudaBasebandBeamformer.cpp)
 
 target_link_libraries(
     kotekan_cuda
