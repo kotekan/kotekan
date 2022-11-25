@@ -1,0 +1,105 @@
+##########################################
+#
+# verify_cuda_baseband_beamformer.yaml
+#
+# Config to test Kendrick & Erik's cuda baseband beamformer kernel.
+#
+##########################################
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
+num_links: 4
+freq_array: [4,7,10,16]
+timesamples_per_packet: 2
+num_gpus: 1
+buffer_depth: 1
+num_gpu_frames: 1
+cpu_affinity: [2,3,4,5,8,9,10,11]
+sizeof_float: 4
+sizeof_int: 4
+frame_arrival_period: 0.00000256 * samples_per_data_set
+
+samples_per_data_set: 32768
+num_elements: 128
+num_local_freq: 84*8
+num_beams: 16
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+# Buffers
+host_voltage_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_elements * num_local_freq
+    metadata_pool: main_pool
+
+host_formed_beams_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_beams * num_local_freq * 2
+    metadata_pool: main_pool
+
+# simulated_formed_beams_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     frame_size: samples_per_data_set * num_beams * num_local_freq * 2
+#     metadata_pool: main_pool
+
+gen_data:
+    #type: random #_signed
+    #value: 1532
+    type: const
+    value: 0x11
+    kotekan_stage: testDataGen
+    out_buf: host_voltage_buffer
+
+data_format: "cuda_wmma"
+
+gpu:
+    profiling: true
+    kernel_path: "../../lib/cuda/kernels/"
+    commands: &command_list
+    - name: cudaInputData
+      in_buf: host_voltage
+      gpu_mem: voltage
+    - name: cudaBasebandBeamformer
+      gpu_mem_voltage: voltage
+      gpu_mem_phase: phase
+      gpu_mem_output_scaling: beamformer_scaling
+      gpu_mem_formed_beams: formed_beams
+    - name: cudaOutputData
+      in_buf: host_voltage # Metadata transfer from here
+      gpu_mem: formed_beams
+      out_buf: host_formed_beams
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        commands: *command_list
+        in_buffers:
+            host_voltage: host_voltage_buffer
+        out_buffers:
+            host_formed_beams: host_formed_beams_buffer
+
+# cpu:
+#     kotekan_stage: gpuSimulateBasebandBeamformer
+#     log_level: debug
+#     network_in_buf: host_voltage_buffer
+#     corr_out_buf: simulated_formed_beams_buffer
+# phases, shifts
+
+# check_data:
+#     kotekan_stage: testDataCheckInt
+#     first_buf: lower_triangle_correlation_buffer
+#     second_buf: simulated_correlation_buffer
+#     num_frames_to_test: buffer_depth
+
+hexDump:
+    kotekan_stage: hexDump
+    in_buf: host_formed_beams_buffer
+    len: 32

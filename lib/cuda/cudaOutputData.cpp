@@ -67,7 +67,7 @@ int cudaOutputData::wait_on_precondition(int gpu_frame_id) {
 cudaEvent_t cudaOutputData::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     pre_execute(gpu_frame_id);
 
-    uint32_t output_len = output_buffer->frame_size;
+    size_t output_len = output_buffer->frame_size;
 
     void* gpu_output_frame = device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, output_len);
     void* host_output_frame = (void*)output_buffer->frames[output_buffer_execute_id];

@@ -52,10 +52,10 @@ cudaCorrelatorAstron::~cudaCorrelatorAstron() {}
 cudaEvent_t cudaCorrelatorAstron::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     pre_execute(gpu_frame_id);
 
-    uint32_t input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
+    size_t input_frame_len = (size_t)_num_elements * _num_local_freq * _samples_per_data_set;
     void* input_memory = device.get_gpu_memory(_gpu_mem_voltage, input_frame_len);
 
-    uint32_t output_len = _num_local_freq * _num_blocks * (_block_size * _block_size) * 2
+    size_t output_len = (size_t)_num_local_freq * _num_blocks * (_block_size * _block_size) * 2
                           * _num_data_sets * sizeof(int32_t);
     void* output_memory =
         device.get_gpu_memory_array(_gpu_mem_correlation_matrix, gpu_frame_id, output_len);

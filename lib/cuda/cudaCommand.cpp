@@ -140,3 +140,135 @@ void cudaCommand::build(const std::vector<std::string>& kernel_names,
         }
     }
 }
+
+void cudaCommand::build_ptx(const std::vector<std::string>& kernel_names,
+                            std::vector<std::string>& opts) {
+    size_t program_size;
+    FILE* fp;
+    char* program_buffer;
+    nvPTXCompileResult nv_res;
+    CUresult cu_res;
+    nvPTXCompilerHandle compiler = nullptr;
+    size_t elf_size;
+    char* elf;
+    CUmodule module;
+
+    DEBUG("Building! {:s}", kernel_command)
+
+    // Load the kernel file contents into `program_buffer`
+    fp = fopen(kernel_file_name.c_str(), "r");
+    if (fp == NULL) {
+        FATAL_ERROR("error loading file: {:s}", kernel_file_name.c_str());
+    }
+    fseek(fp, 0, SEEK_END);
+    program_size = ftell(fp);
+    rewind(fp);
+
+    program_buffer = (char*)malloc(program_size + 1);
+    program_buffer[program_size] = '\0';
+    int sizeRead = fread(program_buffer, sizeof(char), program_size, fp);
+    if (sizeRead < (int32_t)program_size)
+        FATAL_ERROR("Error reading the file: {:s}", kernel_file_name);
+    fclose(fp);
+
+    // Convert compiler options to a c-style array.
+    std::vector<char*> cstring_opts;
+    cstring_opts.reserve(opts.size());
+
+    for (auto& str : opts)
+        cstring_opts.push_back(&str[0]);
+
+    // Create the compiler
+    nv_res = nvPTXCompilerCreate(&compiler, program_size, program_buffer);
+    if (nv_res != NVPTXCOMPILE_SUCCESS) {
+        // TODO Report ENUM names.
+        FATAL_ERROR("Could not create PTX compiler, error code: {:d}", nv_res);
+        return;
+    }
+
+    // Compile the code
+    nv_res = nvPTXCompilerCompile(compiler, cstring_opts.size(), cstring_opts.data());
+    // TODO Abstract error checking
+    if (nv_res != NVPTXCOMPILE_SUCCESS) {
+        size_t error_size;
+        char* error_log = nullptr;
+        nv_res = nvPTXCompilerGetErrorLogSize(compiler, &error_size);
+        if (nv_res != NVPTXCOMPILE_SUCCESS) {
+            FATAL_ERROR("Could not get error log size, error code: {:d}", nv_res);
+            return;
+        }
+        if (error_size != 0) {
+            error_log = (char*)malloc(error_size + 1);
+            assert(error_log != nullptr);
+            nv_res = nvPTXCompilerGetErrorLog(compiler, error_log);
+            if (nv_res != NVPTXCOMPILE_SUCCESS) {
+                FATAL_ERROR("Could not get error log, error code: {:d}", nv_res);
+                free(error_log);
+                return;
+            }
+        }
+        FATAL_ERROR("Could not compile PTX: \n{:s}", error_log);
+        free(error_log);
+        return;
+    }
+
+    nv_res = nvPTXCompilerGetCompiledProgramSize(compiler, &elf_size);
+    if (nv_res != NVPTXCOMPILE_SUCCESS) {
+        FATAL_ERROR("Could not get compiled PTX elf size, error code: {:d}", nv_res);
+        return;
+    }
+
+    elf = (char*)malloc(elf_size);
+    assert(elf != nullptr);
+    nv_res = nvPTXCompilerGetCompiledProgram(compiler, (void*)elf);
+    if (nv_res != NVPTXCOMPILE_SUCCESS) {
+        FATAL_ERROR("Could not get compiled PTX elf data, error code: {:d}", nv_res);
+        return;
+    }
+
+    // Dump Logs
+    size_t info_size;
+    nv_res = nvPTXCompilerGetInfoLogSize(compiler, &info_size);
+    if (nv_res != NVPTXCOMPILE_SUCCESS) {
+        FATAL_ERROR("Could not get info log size, error code: {:d}", nv_res);
+        return;
+    }
+
+    if (info_size != 0) {
+        char* info_Log = (char*)malloc(info_size + 1);
+        nv_res = nvPTXCompilerGetInfoLog(compiler, info_Log);
+        if (nv_res != NVPTXCOMPILE_SUCCESS) {
+            FATAL_ERROR("Could not get PTX compiler logs, error code: {:d}", nv_res);
+            free(info_Log);
+            return;
+        }
+        INFO("PTX Compiler logs: \n{:s}", info_Log);
+        free(info_Log);
+    }
+
+    // Cleanup compiler
+    nv_res = nvPTXCompilerDestroy(&compiler);
+    if (nv_res != NVPTXCOMPILE_SUCCESS) {
+        FATAL_ERROR("Could not destroy compiler, error code: {:d}", nv_res);
+        return;
+    }
+
+    // Extract kernels
+    cu_res = cuModuleLoadDataEx(&module, elf, 0, nullptr, nullptr);
+    if (cu_res != CUDA_SUCCESS) {
+        FATAL_ERROR("Could not load module data from elf");
+        return;
+    }
+
+    for (auto& kernel_name : kernel_names) {
+        runtime_kernels.emplace(kernel_name, nullptr);
+        cu_res = cuModuleGetFunction(&runtime_kernels[kernel_name], module, kernel_name.c_str());
+        if (cu_res != CUDA_SUCCESS) {
+            const char* errStr;
+            cuGetErrorString(cu_res, &errStr);
+            FATAL_ERROR("ERROR IN cuModuleGetFunction for correlate: {:s}", errStr);
+        }
+    }
+
+    free(elf);
+}

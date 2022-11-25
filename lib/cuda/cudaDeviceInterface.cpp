@@ -24,7 +24,7 @@ cudaDeviceInterface::~cudaDeviceInterface() {
     cleanup_memory();
 }
 
-void* cudaDeviceInterface::alloc_gpu_memory(int len) {
+void* cudaDeviceInterface::alloc_gpu_memory(size_t len) {
     void* ret;
     CHECK_CUDA_ERROR(cudaMalloc(&ret, len));
     return ret;
@@ -34,11 +34,11 @@ void cudaDeviceInterface::free_gpu_memory(void* ptr) {
 }
 
 
-void* cudaDeviceInterface::get_gpu_memory(const std::string& name, const uint32_t len) {
+void* cudaDeviceInterface::get_gpu_memory(const std::string& name, const size_t len) {
     return gpuDeviceInterface::get_gpu_memory(name, len);
 }
 void* cudaDeviceInterface::get_gpu_memory_array(const std::string& name, const uint32_t index,
-                                                const uint32_t len) {
+                                                const size_t len) {
     return gpuDeviceInterface::get_gpu_memory_array(name, index, len);
 }
 cudaStream_t cudaDeviceInterface::getStream(int stream_id) {

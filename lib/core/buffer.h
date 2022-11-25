@@ -143,7 +143,7 @@ struct Buffer {
     int num_frames;
 
     /// The size of each frame in bytes.
-    int frame_size;
+    size_t frame_size;
 
     /**
      * @brief The padded frame size.
@@ -152,7 +152,7 @@ struct Buffer {
      * you can use this size instead, but data shouldn't
      * be placed past the end of frame_size.  This is just for padding.
      */
-    int aligned_frame_size;
+    size_t aligned_frame_size;
 
     /**
      * @brief Array of producers which are done (marked frame as full).
@@ -217,7 +217,7 @@ struct Buffer {
  * @param[in] numa_node The CPU NUMA memory region to allocate memory in.
  * @returns A buffer object.
  */
-struct Buffer* create_buffer(int num_frames, int frame_size, struct metadataPool* pool,
+struct Buffer* create_buffer(int num_frames, size_t frame_size, struct metadataPool* pool,
                              const char* buffer_name, const char* buffer_type, int numa_node);
 
 /**
