@@ -94,13 +94,13 @@ void nDiskFileRead::file_read_thread(int disk_id) {
         long sz = ftell(in_file);
         rewind(in_file);
 
-        if (sz != buf->frame_size) {
+        if ((size_t)sz != buf->frame_size) {
             ERROR("File size {:d} Frame Size {:d}", sz, buf->frame_size);
         }
-        assert(sz == buf->frame_size);
+        assert((size_t)sz == buf->frame_size);
 
         // Read into buffer
-        if ((uint)buf->frame_size != fread(buf_ptr, 1, sz, in_file)) {
+        if (buf->frame_size != fread(buf_ptr, 1, sz, in_file)) {
             ERROR("Error reading from file!");
         }
         fclose(in_file);

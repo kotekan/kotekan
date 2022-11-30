@@ -65,7 +65,7 @@ void testDataGenQuad::main_thread() {
             set_stream_id(buf[b], f, {0});
             set_first_packet_recv_time(buf[b], f, now);
 
-            for (int j = 0; j < buf[b]->frame_size; ++j)
+            for (size_t j = 0; j < buf[b]->frame_size; ++j)
                 frame[b][j] = v;
         }
     }

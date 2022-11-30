@@ -33,7 +33,7 @@ STAGE_CONSTRUCTOR(hexDump) {
     _offset = config.get_default<int32_t>(unique_name, "offset", 0);
 
     // Check that we won't read past the end
-    if (_offset + _len > in_buf->frame_size) {
+    if ((size_t)(_offset + _len) > in_buf->frame_size) {
         throw std::runtime_error("HexDump: cannot print past end of buffer");
     }
 }

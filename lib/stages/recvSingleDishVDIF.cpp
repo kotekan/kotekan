@@ -55,7 +55,7 @@ void recvSingleDishVDIF::main_thread() {
 
         // Send data to remote server.
         // TODO rate limit this output
-        for (int i = 0; i < out_buf->frame_size / packet_size; ++i) {
+        for (size_t i = 0; i < out_buf->frame_size / packet_size; ++i) {
             /*
                         int bytes_recvd = sendto(socket_fd,
                                          (void *)&frame[packet_size*i],

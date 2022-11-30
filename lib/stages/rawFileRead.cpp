@@ -123,7 +123,7 @@ void rawFileRead::main_thread() {
                 INFO("rawFileRead: Read in metadata from file {:s}", full_path);
             }
 
-            int bytes_read = fread((void*)frame, sizeof(char), buf->frame_size, fp);
+            size_t bytes_read = fread((void*)frame, sizeof(char), buf->frame_size, fp);
 
             if (bytes_read != buf->frame_size) {
                 ERROR("rawFileRead: Failed to read file {:s}!", full_path);

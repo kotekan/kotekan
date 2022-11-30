@@ -117,7 +117,7 @@ void rawFileWrite::main_thread() {
         // Write the contents of the buffer frame to disk.
         ssize_t bytes_writen = write(fd, frame, buf->frame_size);
 
-        if (bytes_writen != buf->frame_size) {
+        if ((size_t)bytes_writen != buf->frame_size) {
             ERROR("Failed to write buffer to disk for file {:s}", full_path);
             exit(-1);
         }

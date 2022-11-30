@@ -81,7 +81,7 @@ void streamSingleDishVDIF::main_thread() {
 
         // Send data to remote server.
         // TODO rate limit this output
-        for (int i = 0; i < in_buf->frame_size / packet_size; ++i) {
+        for (size_t i = 0; i < in_buf->frame_size / packet_size; ++i) {
 
             int bytes_sent = sendto(socket_fd, (void*)&frame[packet_size * i], packet_size, 0,
                                     (struct sockaddr*)&saddr_remote, saddr_len);
