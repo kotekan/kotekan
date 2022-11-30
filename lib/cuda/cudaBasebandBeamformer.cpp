@@ -5,6 +5,16 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 
+#define CHECK_CU_ERROR(result)                                                                   \
+    if (result != CUDA_SUCCESS) {                                                                   \
+      const char* errstr = NULL;						\
+cuGetErrorString(result, &errstr);					\
+internal_logging(LOG_ERR, __log_prefix, "Error at {:s}:{:d}; Error type: {:s}", __FILE__, \
+		 __LINE__, errstr);					\
+std::abort();								\
+}
+
+
 REGISTER_CUDA_COMMAND(cudaBasebandBeamformer);
 
 cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string& unique_name,
@@ -75,13 +85,13 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
     size_t voltage_len = (size_t)_num_elements * _num_local_freq * _samples_per_data_set;
     void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, gpu_frame_id, voltage_len);
 
-	size_t phase_len = (size_t)_num_elements * _num_local_freq * _num_beams * 2;
-	//int8_t* phase_memory = (int8_t*)device.get_gpu_memory_array(_gpu_mem_phase, gpu_frame_id, phase_len);
-	int8_t* phase_memory = (int8_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
+    size_t phase_len = (size_t)_num_elements * _num_local_freq * _num_beams * 2;
+    //int8_t* phase_memory = (int8_t*)device.get_gpu_memory_array(_gpu_mem_phase, gpu_frame_id, phase_len);
+    int8_t* phase_memory = (int8_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
 
-	size_t shift_len = (size_t)_num_local_freq * _num_beams * 2 * sizeof(int32_t);
-	//int32_t* shift_memory = (int32_t*)device.get_gpu_memory_array(_gpu_mem_output_scaling, gpu_frame_id, shift_len);
-	int32_t* shift_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_output_scaling, shift_len);
+    size_t shift_len = (size_t)_num_local_freq * _num_beams * 2 * sizeof(int32_t);
+    //int32_t* shift_memory = (int32_t*)device.get_gpu_memory_array(_gpu_mem_output_scaling, gpu_frame_id, shift_len);
+    int32_t* shift_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_output_scaling, shift_len);
 
     size_t output_len = (size_t)_num_local_freq * _num_beams * _samples_per_data_set * 2;
     void* output_memory =
@@ -103,19 +113,49 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
 	int shared_mem_bytes = 13568 * sizeof(int32_t);
 
 	INFO("Kernel: {:p}", (void*)runtime_kernels[kernel_name]);
-	cudaFuncAttributes attrs;
-	CHECK_CUDA_ERROR(cudaFuncGetAttributes(&attrs, &runtime_kernels[kernel_name]));
-	
-	CHECK_CUDA_ERROR(cudaFuncSetAttribute(runtime_kernels[kernel_name],
-										  cudaFuncAttributeMaxDynamicSharedMemorySize,
-										  shared_mem_bytes));
-	
+
+	/*
+	  cudaFuncAttributes attrs;
+	  CHECK_CUDA_ERROR(cudaFuncGetAttributes(&attrs, &runtime_kernels[kernel_name]));
+	*/
+	int attr = 0;
+	CHECK_CU_ERROR(cuFuncGetAttribute(&attr, CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK, runtime_kernels[kernel_name]));
+	INFO("Max threads per block: {}", attr);
+
+	/*
+	  CHECK_CUDA_ERROR(cudaFuncSetAttribute(runtime_kernels[kernel_name],
+	  cudaFuncAttributeMaxDynamicSharedMemorySize,
+	  shared_mem_bytes));
+	*/
+	CHECK_CU_ERROR(cuFuncSetAttribute(runtime_kernels[kernel_name],
+					  CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+					  shared_mem_bytes));
+
+	attr = 0;
+	CHECK_CU_ERROR(cuFuncGetAttribute(&attr,
+					  CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+					  runtime_kernels[kernel_name]));
+	INFO("Max dynamic shared memory size: {}", attr);
+
 	err = cuLaunchKernel(runtime_kernels[kernel_name],
-						 84*8, 1, 1,
-						 32, 4, 1,
-						 shared_mem_bytes,
-						 device.getStream(CUDA_COMPUTE_STREAM), parameters, NULL);
-    if (err != CUDA_SUCCESS) {
+			     84*8, 1, 1,
+			     32, 4, 1,
+			     shared_mem_bytes,
+			     device.getStream(CUDA_COMPUTE_STREAM), parameters, NULL);
+	/*
+	  CUlaunchConfig config;
+	  config.blockDim.x = 84*8;
+	  config.blockDim.y = 1;
+	  config.blockDim.z = 1;
+	  config.gridDim.x = 32;
+	  config.gridDim.y = 4;
+	  config.gridDim.z = 1;
+	  config.dynamicSmemBytes = shared_mem_bytes;
+	  config.stream = device.getStream(CUDA_COMPUTE_STREAM);
+	  err = cuLaunchKernelEx(&config, &runtime_kernels[kernel_name], parameters, NULL);
+	*/
+
+	if (err != CUDA_SUCCESS) {
         const char* errStr;
         cuGetErrorString(err, &errStr);
 		INFO("Error number: {}", err);
