@@ -251,7 +251,7 @@ inline void iceBoardVDIF::handle_lost_samples(int64_t lost_samples) {
 
     // TODO this could be made more efficient by breaking it down into blocks of memsets.
     while (lost_samples > 0) {
-        if (unlikely(lost_sample_location * frame_size == out_buf->frame_size)) {
+        if (unlikely((size_t)(lost_sample_location * frame_size) == out_buf->frame_size)) {
             advance_vdif_frame(temp_seq);
             lost_sample_location = 0;
         }
@@ -271,12 +271,12 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
 
     int64_t vdif_frame_location = cur_seq - get_fpga_seq_num(out_buf, out_buf_frame_id);
 
-    if (unlikely(vdif_frame_location * frame_size == out_buf->frame_size)) {
+    if (unlikely((size_t)(vdif_frame_location * frame_size) == out_buf->frame_size)) {
         advance_vdif_frame(cur_seq);
         vdif_frame_location = 0;
     }
 
-    assert(vdif_frame_location * frame_size <= out_buf->frame_size);
+    assert((size_t)(vdif_frame_location * frame_size) <= out_buf->frame_size);
 
     // Set the VDIF headers only on the first port
     // since all ports would generate the same header
@@ -327,7 +327,7 @@ inline void iceBoardVDIF::set_vdif_header_options(int vdif_frame_location, uint6
 
     for (uint32_t time_step = 0; time_step < samples_per_packet; ++time_step) {
         for (int elem = 0; elem < num_elements; ++elem) {
-            int header_idx = vdif_frame_location + vdif_packet_len * num_elements * time_step
+            size_t header_idx = vdif_frame_location + vdif_packet_len * num_elements * time_step
                              + vdif_packet_len * elem;
 
             assert(header_idx < out_buf->frame_size);

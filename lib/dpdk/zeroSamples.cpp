@@ -71,7 +71,7 @@ void zeroSamples::main_thread() {
         if (flag_frame == nullptr)
             break;
 
-        for (int32_t i = 0; i < lost_samples_buf->frame_size; ++i) {
+        for (size_t i = 0; i < lost_samples_buf->frame_size; ++i) {
             zero_location = i * sample_size;
             // Check array bounds
             assert((zero_location + sample_size) <= (uint32_t)out_buf->frame_size);
