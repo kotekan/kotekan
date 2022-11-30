@@ -1,5 +1,5 @@
-# Finds libgputils include path and libraries Sets the following if libgputils is found: GPUTILS_FOUND,
-# GPUTILS_INCLUDE_DIR, GPUTILS_LIBRARY
+# Finds libgputils include path and libraries Sets the following if libgputils is found:
+# GPUTILS_FOUND, GPUTILS_INCLUDE_DIR, GPUTILS_LIBRARY
 
 include(FindPackageHandleStandardArgs)
 
