@@ -1,13 +1,12 @@
 #ifndef GPU_SIMULATE_N2K_HPP
 #define GPU_SIMULATE_N2K_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp" // for Stage
-#include "bufferContainer.hpp"
+#include <stdint.h>             // for int32_t
+#include <string>               // for string
 
-#include <stdint.h>    // for int32_t, uint32_t
-#include <string>      // for string
-#include <sys/types.h> // for uint
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "bufferContainer.hpp"  // for bufferContainer
 
 class gpuSimulateN2k : public kotekan::Stage {
 public:

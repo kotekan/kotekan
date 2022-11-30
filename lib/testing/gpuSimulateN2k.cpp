@@ -1,20 +1,16 @@
+#include <atomic>               // for atomic_bool
+#include <cstdint>              // for int32_t
+#include <exception>            // for exception
+#include <functional>           // for _Bind_helper<>::type, bind, function
+#include <regex>                // for match_results<>::_Base_type
+#include <vector>               // for vector
+
 #include "gpuSimulateN2k.hpp"
-
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for DEBUG, INFO
-
-#include <assert.h>   // for assert
-#include <atomic>     // for atomic_bool
-#include <cstdint>    // for int32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <stdlib.h>   // for free, malloc
-#include <vector>     // for vector
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"             // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for INFO, DEBUG
 
 using kotekan::bufferContainer;
 using kotekan::Config;
