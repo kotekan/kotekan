@@ -1,16 +1,17 @@
-#include <stddef.h>             // for size_t
-#include <atomic>               // for atomic_bool
-#include <exception>            // for exception
-#include <functional>           // for _Bind_helper<>::type, bind, function
-#include <regex>                // for match_results<>::_Base_type
-#include <vector>               // for vector
-
 #include "recvSingleDishVDIF.hpp"
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"             // for Buffer, mark_frame_full, register_producer, wait_for_empt...
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for INFO
+
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_full, register_producer, wait_for_empt...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO
+
+#include <atomic>     // for atomic_bool
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stddef.h>   // for size_t
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;
