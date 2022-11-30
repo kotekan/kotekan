@@ -20,7 +20,7 @@
 class cudaBasebandBeamformer : public cudaCommand {
 public:
     cudaBasebandBeamformer(kotekan::Config& config, const std::string& unique_name,
-                         kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+                           kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaBasebandBeamformer();
     cudaEvent_t execute(int gpu_frame_id, cudaEvent_t pre_event) override;
 
@@ -35,7 +35,7 @@ private:
     int32_t _samples_per_data_set;
     // Number of beams to form.
     int32_t _num_beams;
-  
+
     /// GPU side memory name for the voltage input
     std::string _gpu_mem_voltage;
     /// GPU side memory name for the beamforming phases
@@ -45,8 +45,8 @@ private:
     /// GPU side memory name for the beamformed output
     std::string _gpu_mem_formed_beams;
 
-    const std::string kernel_name = "_Z19julia_runsteps_646013CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EE";
-  
+    const std::string kernel_name = "_Z19julia_runsteps_646013CuDeviceArrayI6Int8x4Li1ELi1EES_"
+                                    "I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EE";
 };
 
 #endif // CUDA_BASEBAND_BEAMFORMER_HPP
