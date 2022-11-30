@@ -1,19 +1,19 @@
+#include <visUtil.hpp>          // for frameID, modulo
+#include <stddef.h>             // for size_t
+#include <atomic>               // for atomic_bool
+#include <cstdint>              // for int32_t
+#include <exception>            // for exception
+#include <regex>                // for match_results<>::_Base_type
+#include <stdexcept>            // for runtime_error
+#include <vector>               // for vector
+
 #include "hexDump.hpp"
-
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for DEBUG
-#include "util.h"              // for hex_dump
-
-#include <atomic>      // for atomic_bool
-#include <cstdint>     // for int32_t
-#include <exception>   // for exception
-#include <regex>       // for match_results<>::_Base_type
-#include <stdexcept>   // for runtime_error
-#include <vector>      // for vector
-#include <visUtil.hpp> // for frameID, modulo
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"             // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for DEBUG
+#include "util.h"               // for hex_dump
 
 
 using kotekan::bufferContainer;
