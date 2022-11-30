@@ -97,7 +97,7 @@ void chrxUplink::main_thread() {
             ERROR("Could not send frame to chrx, error: {:d}", errno);
             break;
         }
-        if (bytes_sent != vis_buf->frame_size) {
+        if ((size_t)bytes_sent != vis_buf->frame_size) {
             ERROR("Could not send all bytes: bytes sent = {:d}; frame_size = {:d}", (int)bytes_sent,
                   vis_buf->frame_size);
             break;
@@ -116,7 +116,7 @@ void chrxUplink::main_thread() {
                 ERROR("Could not send gated date frame to ch_acq, error: {:d}", errno);
                 break;
             }
-            if (bytes_sent != gate_buf->frame_size) {
+            if ((size_t)bytes_sent != gate_buf->frame_size) {
                 ERROR("Could not send all bytes in gated data frame: bytes sent = {:d}; frame_size "
                       "= {:d}",
                       (int)bytes_sent, gate_buf->frame_size);

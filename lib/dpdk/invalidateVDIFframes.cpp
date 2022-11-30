@@ -52,7 +52,7 @@ void invalidateVDIFframes::main_thread() {
         if (flag_frame == nullptr)
             break;
 
-        for (int32_t i = 0; i < lost_samples_buf->frame_size; ++i) {
+        for (size_t i = 0; i < lost_samples_buf->frame_size; ++i) {
             frame_location = i * vdif_frame_size * num_elements;
             // Check array bounds
             assert((frame_location + vdif_frame_size * num_elements)
