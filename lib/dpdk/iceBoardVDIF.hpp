@@ -328,7 +328,7 @@ inline void iceBoardVDIF::set_vdif_header_options(int vdif_frame_location, uint6
     for (uint32_t time_step = 0; time_step < samples_per_packet; ++time_step) {
         for (int elem = 0; elem < num_elements; ++elem) {
             size_t header_idx = vdif_frame_location + vdif_packet_len * num_elements * time_step
-                             + vdif_packet_len * elem;
+                                + vdif_packet_len * elem;
 
             assert(header_idx < out_buf->frame_size);
 
