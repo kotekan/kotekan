@@ -77,7 +77,7 @@ void DPDKShuffleSimulate::main_thread() {
 
         // Set contents for lost samples buffer
         for (uint32_t sample = 0; sample < _num_samples_per_dataset; ++sample) {
-	    assert((size_t)_num_samples_per_dataset == lost_samples_buf->frame_size);
+            assert((size_t)_num_samples_per_dataset == lost_samples_buf->frame_size);
             // TODO add option to have some data lost
             lost_samples_frame[sample] = 0;
         }
