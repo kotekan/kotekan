@@ -151,7 +151,7 @@ void rfiRecord::main_thread() {
 
             if (started) {
                 ssize_t bytes_writen = write(fd, frame, rfi_buf->frame_size);
-                if (bytes_writen != rfi_buf->frame_size) {
+                if ((size_t)bytes_writen != rfi_buf->frame_size) {
                     ERROR("Failed to write buffer to disk");
                 }
             }
