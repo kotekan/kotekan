@@ -1,12 +1,12 @@
 #ifndef ZERO_LOWER_TRIANGLE_HPP
 #define ZERO_LOWER_TRIANGLE_HPP
 
-#include <stdint.h>             // for int32_t
-#include <string>               // for string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
+#include <stdint.h> // for int32_t
+#include <string>   // for string
 
 class zeroLowerTriangle : public kotekan::Stage {
 public:
