@@ -1,0 +1,47 @@
+--- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
+kernel-description:
+  name: "bb"
+  description: "baseband beamformer"
+  design-parameters:
+    number-of-beams: 128
+    number-of-complex-components: 2
+    number-of-dishes: 512
+    number-of-frequencies: 16
+    number-of-polarizations: 2
+    number-of-timesamples: 32768
+    shift-parameter-σ: 3
+  compile-parameters:
+    minthreads: 1024
+    blocks_per_sm: 1
+  call-parameters:
+    threads: [32, 32]
+    blocks: [32]
+    shmem: 82048
+  kernel-name: "_Z13julia_bb_448013CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EE"
+  kernel-arguments:
+    - name: "A"
+      intent: in
+      type: Int8
+      indices: [C, D, B, P, F]
+      shape: [2, 512, 128, 2, 16]
+      strides: [1, 2, 1024, 131072, 262144]
+    - name: "E"
+      intent: in
+      type: Int4
+      indices: [C, D, F, P, T]
+      shape: [2, 512, 16, 2, 32768]
+      strides: [1, 2, 1024, 16384, 32768]
+    - name: "s"
+      intent: in
+      type: Int32
+      indices: [B, P, F]
+      shape: [128, 2, 16]
+      strides: [1, 128, 256]
+    - name: "J"
+      intent: out
+      type: Int4
+      indices: [C, T, P, F, B]
+      shape: [2, 32768, 2, 16, 128]
+      strides: [1, 2, 65536, 131072, 2097152]
+...
+

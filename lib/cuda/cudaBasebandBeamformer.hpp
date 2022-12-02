@@ -45,8 +45,7 @@ private:
     /// GPU side memory name for the beamformed output
     std::string _gpu_mem_formed_beams;
 
-    const std::string kernel_name = "_Z19julia_runsteps_646013CuDeviceArrayI6Int8x4Li1ELi1EES_"
-                                    "I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EE";
+  const std::string kernel_name = "_Z13julia_bb_448013CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EE";
 };
 
 #endif // CUDA_BASEBAND_BEAMFORMER_HPP
