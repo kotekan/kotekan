@@ -61,6 +61,20 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
 
 cudaBasebandBeamformer::~cudaBasebandBeamformer() {}
 
+
+// This struct is Erik's interpretation of what Julia is expecting for its "CuDevArray" type.
+template<typename T, int64_t N>
+struct CuDeviceArray {
+  T *ptr;
+  int64_t maxsize;
+  int64_t dims[N];
+  int64_t len;
+};
+
+// Demangled symbol: julia_bb_4480(CuDeviceArray<Int8x4, 1, 1>, CuDeviceArray<Int4x8, 1, 1>, CuDeviceArray<Int32, 1, 1>, CuDeviceArray<CuDeviceArray<Int8x4, 1, 1>, 1, 1>)
+
+typedef struct CuDeviceArray<int32_t, 1> cudevarr_int;
+
 cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     pre_execute(gpu_frame_id);
 
@@ -89,7 +103,37 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
 
     CUresult err;
     // A, E, s, J
-    void* parameters[] = {&phase_memory, &voltage_memory, &shift_memory, &output_memory};
+    //void* parameters[] = {&phase_memory, &voltage_memory, &shift_memory, &output_memory};
+
+    // Try describing the GPU memory arrays to Julia...
+    cudevarr_int arrs[4];
+    arrs[0].ptr = (int32_t*)phase_memory;
+    arrs[0].maxsize = phase_len;
+    arrs[0].dims[0] = phase_len;
+    arrs[0].len = phase_len;
+
+    arrs[1].ptr = (int32_t*)voltage_memory;
+    arrs[1].maxsize = voltage_len;
+    arrs[1].dims[0] = voltage_len;
+    arrs[1].len = voltage_len;
+
+    arrs[2].ptr = shift_memory;
+    arrs[2].maxsize = shift_len;
+    arrs[2].dims[0] = shift_len / sizeof(int32_t);
+    arrs[2].len = shift_len / sizeof(int32_t);
+
+    arrs[3].ptr = (int32_t*)output_memory;
+    arrs[3].maxsize = output_len;
+    arrs[3].dims[0] = output_len;
+    arrs[3].len = output_len;
+
+    //void* parameters[] = {&(arrs[0]), &(arrs[1]), &(arrs[2]), &(arrs[3])};
+
+    // Copy the array descriptors to GPU memory and pass them as parameters...
+    cudevarr_int* gpuarrs = (cudevarr_int*)device.get_gpu_memory("cudevarrs", sizeof(cudevarr_int)*4);
+    CHECK_CUDA_ERROR(cudaMemcpy(gpuarrs, arrs, sizeof(cudevarr_int)*4, cudaMemcpyHostToDevice));
+
+    void* parameters[] = {&(gpuarrs[0]), &(gpuarrs[1]), &(gpuarrs[2]), &(gpuarrs[3])};
 
     int shared_mem_bytes = 82048;
 
