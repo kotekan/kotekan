@@ -373,7 +373,7 @@ int dpdkCore::lcore_rx(void* args) {
         uint32_t port = ports[i];
         if (core->handlers[port] == nullptr) {
             WARN_NON_OO("No valid handler provided for port {:d}", port);
-            //return 0;
+            // return 0;
         }
     }
 
