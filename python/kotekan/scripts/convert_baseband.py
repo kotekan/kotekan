@@ -15,19 +15,20 @@ from kotekan.conv_backends import get_backend
 
 NUM_THREADS = 5
 
+
 def convert(file_name, config_file, converted_filenames, backend):
     """Convert the raw data file to hdf5 using parameters specified at the backend level.
     Then delete the raw file.
     """
-    config_file = backend['KOTEKAN_CONFIG']
-    root = backend['ARCHIVER_MOUNT']
-    converted_file = baseband_archiver.convert(
-        [file_name], config_file, root
-    )[0]
+    config_file = backend["KOTEKAN_CONFIG"]
+    root = backend["ARCHIVER_MOUNT"]
+    converted_file = baseband_archiver.convert([file_name], config_file, root)[0]
     converted_filenames[file_name] = converted_file
     # TODO: add hook for datatrail here in the future.
     if os.path.exists(converted_file):
-        print(f'Converted {file_name} -> {converted_file}; will remove .data when we validate this') #os.system(f"rm -f {file_name}")
+        print(
+            f"Converted {file_name} -> {converted_file}; will remove .data when we validate this"
+        )  # os.system(f"rm -f {file_name}")
 
 
 def connect_db():
@@ -57,7 +58,8 @@ def fetch_events(db, event_no):
         events.append(tuple(row))
     return events
 
-def is_ready(event,coco_url):
+
+def is_ready(event, coco_url):
     """Ask coco about the status of the event and determine if its ready to be converted.
     If coco is down, assumes that the event is ready to be converted.
 
@@ -74,7 +76,7 @@ def is_ready(event,coco_url):
         f"{coco_url}?event_id={event[0]}",
         headers={"Content-Type": "application/json"},
         data='{"coco_report_type": "FULL"}',
-        timeout=3
+        timeout=3,
     )
     try:
         response.raise_for_status()
@@ -141,7 +143,7 @@ def validate_file_existence(files):
     return exists, missing
 
 
-def convert_data(e, num_threads,sqlite, conn, conv_backend):
+def convert_data(e, num_threads, sqlite, conn, conv_backend):
     """Main conversion function to track the conversion of events.
 
     Parameters
@@ -152,17 +154,17 @@ def convert_data(e, num_threads,sqlite, conn, conv_backend):
     num_threads : int
         Default 5, but up to 20 works well.
 
-    sqlite :  
+    sqlite :
         Database connection stuff. If None, will not attempt to update L4-DB.
 
     conn : Database connection stuff.
         Database connection stuff. If None, will not attempt to update L4-DB.
     """
     try:
-        ready = is_ready(e,conv_backend['COCO_URL'])
+        ready = is_ready(e, conv_backend["COCO_URL"])
     except requests.exceptions.HTTPError:
-        ready = True # convert if X engine is down
-    raw_folder = raw_path_from_event_id(e[0],conv_backend["RAW_PATH"])
+        ready = True  # convert if X engine is down
+    raw_folder = raw_path_from_event_id(e[0], conv_backend["RAW_PATH"])
     if (
         ready is True
         and not os.path.exists(raw_folder)
@@ -172,7 +174,7 @@ def convert_data(e, num_threads,sqlite, conn, conv_backend):
     ):
         print(f"data path: {raw_folder} not found; skipping conversion")
         # TODO: set database status to `MISSING` and exit.
-        if backend['USE_L4_DB']: # only CHIME data uses L4_DB
+        if backend["USE_L4_DB"]:  # only CHIME data uses L4_DB
             print("Updating state in sqlite DB to MISSING")
             sqlite.execute(
                 f"UPDATE conversion SET status = 'MISSING' WHERE event_no = {e[0]}"
@@ -187,12 +189,14 @@ def convert_data(e, num_threads,sqlite, conn, conv_backend):
     # wait six hours after last-modified time before attempting to convert
     if unlocked is True or datetime.datetime.utcnow() > datetime.datetime.strptime(
         e[1], "%Y-%m-%d %H:%M:%S.%f"
-    ) + datetime.timedelta(hours=6): 
-        files = glob(os.path.join(raw_folder,'*.data'))
-        if not unlocked: # remove the .baseband_{EVENT_ID}.data.lock files and proceed anyway.
-            lock_files = glob(os.path.join(raw_folder,'*.lock'))
+    ) + datetime.timedelta(hours=6):
+        files = glob(os.path.join(raw_folder, "*.data"))
+        if (
+            not unlocked
+        ):  # remove the .baseband_{EVENT_ID}.data.lock files and proceed anyway.
+            lock_files = glob(os.path.join(raw_folder, "*.lock"))
             for lock_file in lock_files:
-                print('Will remove {lock_file}') # os.system(f"rm -f {lock_file}")
+                print("Will remove {lock_file}")  # os.system(f"rm -f {lock_file}")
         num_files = len(files)
         print(f"Found {num_files} .data files.")
 
@@ -212,13 +216,16 @@ def convert_data(e, num_threads,sqlite, conn, conv_backend):
                 try:
                     config_file = os.path.join(
                         os.path.dirname(os.path.abspath(__file__)),
-                        conv_backend["KOTEKAN_CONFIG"], 
+                        conv_backend["KOTEKAN_CONFIG"],
                     )
                 except FileNotFoundError:
-                    print(f'Could not find Kotekan config file at {conv_backend["KOTEKAN_CONFIG"]}')
+                    print(
+                        f'Could not find Kotekan config file at {conv_backend["KOTEKAN_CONFIG"]}'
+                    )
                 for f in chunk:
                     th = multiprocessing.Process(
-                        target=convert, args=(f, config_file, converted_filenames,conv_backend)
+                        target=convert,
+                        args=(f, config_file, converted_filenames, conv_backend),
                     )
                     th.start()
                     threads.append(th)
@@ -226,7 +233,7 @@ def convert_data(e, num_threads,sqlite, conn, conv_backend):
                     th.join()
                 converted_files += converted_filenames.values()
             exists, missing = validate_file_existence(converted_files)
-            print(exists,missing)
+            print(exists, missing)
             if exists:
                 # UPDATE local DB with state FINISHED
                 print("Conversion done. Should remove {raw_folder}.")
@@ -278,14 +285,17 @@ def get_size(start_path="."):
             # skip if it is symbolic link
             if not os.path.islink(fp):
                 total_size += os.path.getsize(fp)
-    return total_size # bytes
+    return total_size  # bytes
 
 
 def check_inventory(raw_filepath):
     total_volume = 0
     for event in os.listdir(raw_filepath):
-        total_volume += round(get_size(os.path.join(raw_filepath, event)) / 1024 ** 3, 2)
+        total_volume += round(
+            get_size(os.path.join(raw_filepath, event)) / 1024**3, 2
+        )
     return total_volume
+
 
 def events_from_db():
     """Returns a list of events since the last one converted, and the last event converted."""
@@ -295,7 +305,8 @@ def events_from_db():
     events = fetch_events(db, last_event[0])
     return events, last_event
 
-def yyyymmdd_from_event_id(event_id,archiver_mount):
+
+def yyyymmdd_from_event_id(event_id, archiver_mount):
     if str(event_id)[0:4] in ["2019", "2020", "2021", "2022", "2023", "2024"]:
         return event_id[0:4], event_id[4:6], event_id[6:8]
     candidates = []
@@ -303,27 +314,28 @@ def yyyymmdd_from_event_id(event_id,archiver_mount):
         archiver_mount, "20[0-9][0-9]/[0-9]*/[0-9]*/*"
     )  # yyyy/mm/dd/KNOWN-PULSAR_[event_id] gets caught by this pattern
     all_dirs = glob(p)
-    candidates += [
-        os.path.relpath(d, base_dir) for d in all_dirs if str(event_id) in d
-    ]
+    candidates += [os.path.relpath(d, base_dir) for d in all_dirs if str(event_id) in d]
     if len(candidates) == 0:
-        raise OSError("Event {event_id} not found in {archiver_mount}/YYYY/MM/DD") 
+        raise OSError("Event {event_id} not found in {archiver_mount}/YYYY/MM/DD")
     yyyy = candidates[0][0:4]  # e.g. 2021/06/04, no leading or trailing slashes
     mm = candidates[0][5:7]
     dd = candidates[0][8:10]
     return yyyy, mm, dd
 
-def raw_path_from_event_id(event_id,raw_filepath):
-    return os.path.join(raw_filepath,f'baseband_raw_{event_id}')
 
-def h5_path_from_event_id(event_id,archiver_mount):
-    path = glob(os.path.join(archiver_mount, f'*/*/*/*_{event_id}'))
+def raw_path_from_event_id(event_id, raw_filepath):
+    return os.path.join(raw_filepath, f"baseband_raw_{event_id}")
+
+
+def h5_path_from_event_id(event_id, archiver_mount):
+    path = glob(os.path.join(archiver_mount, f"*/*/*/*_{event_id}"))
     if len(path) == 0:
-        raise OSError("Event {event_id} not found in {archiver_mount}/YYYY/MM/DD") 
+        raise OSError("Event {event_id} not found in {archiver_mount}/YYYY/MM/DD")
     else:
         return path[0]
 
-def events_from_filepath(raw_filepath,archiver_mount):
+
+def events_from_filepath(raw_filepath, archiver_mount):
     """If we are not using the L4-db to get the event to be converted, we need to return an adequate list of events. Do this by comparing the raw and converted directory trees.
 
     raw_filepath : str
@@ -336,42 +348,53 @@ def events_from_filepath(raw_filepath,archiver_mount):
     - e[0] must be an integer.
     - e[1] must be a datetime object corresponding roughly to the file creation time.
     """
-    all_raw_folders = glob(os.path.join(raw_filepath, '*'))
-    raw_event_ids = [int(folder.split('_')[-1]) for folder in all_raw_folders]
-    
-    all_h5_folders = glob(os.path.join(archiver_mount, '*/*/*/*'))
-    h5_event_ids = [int(folder.split('_')[-1]) for folder in all_h5_folders]
+    all_raw_folders = glob(os.path.join(raw_filepath, "*"))
+    raw_event_ids = [int(folder.split("_")[-1]) for folder in all_raw_folders]
+
+    all_h5_folders = glob(os.path.join(archiver_mount, "*/*/*/*"))
+    h5_event_ids = [int(folder.split("_")[-1]) for folder in all_h5_folders]
     h5_event_ids.sort()
     # Which conversions need to be done?
     # all conversions which have not begun...
     unstarted = set(raw_event_ids) - set(h5_event_ids)
-    # ...and all the unfinished conversions which are started but do not have the same number of files present in the .data and .h5 folders. 
+    # ...and all the unfinished conversions which are started but do not have the same number of files present in the .data and .h5 folders.
     started = list(set(raw_event_ids).intersection(h5_event_ids))
     started.sort()
     unfinished = []
     for event_id in started:
-        num_raw = len(glob(os.path.join(raw_path_from_event_id(event_id, raw_filepath),'*.data')))
+        num_raw = len(
+            glob(os.path.join(raw_path_from_event_id(event_id, raw_filepath), "*.data"))
+        )
         num_h5 = len(glob(h5_path_from_event_id(event_id, archiver_mount)))
         if num_raw < num_h5:
             unfinished.append(event_id)
-        
+
     finished = set(raw_event_ids) - set(unstarted) - set(unfinished)
     finished = list(finished)
     finished.sort()
     last_event_id = finished[-1]
     todo = unfinished + list(unstarted)
     todo.sort()
-    
+
     events = []
     for event_id in todo:
-        dt = datetime.datetime.fromtimestamp(os.path.getmtime(raw_path_from_event_id(event_id, raw_filepath = raw_filepath)))
+        dt = datetime.datetime.fromtimestamp(
+            os.path.getmtime(
+                raw_path_from_event_id(event_id, raw_filepath=raw_filepath)
+            )
+        )
         events.append((event_id, dt.strftime("%Y-%m-%d %H:%M:%S.%f")))
     # get last_event
-    
-    last_dt = datetime.datetime.fromtimestamp(os.path.getmtime(h5_path_from_event_id(last_event_id, archiver_mount = archiver_mount))).strftime("%Y-%m-%d %H:%M:%S.%f")
+
+    last_dt = datetime.datetime.fromtimestamp(
+        os.path.getmtime(
+            h5_path_from_event_id(last_event_id, archiver_mount=archiver_mount)
+        )
+    ).strftime("%Y-%m-%d %H:%M:%S.%f")
     last_event = (last_event_id, last_dt)
 
     return events, last_event
+
 
 def main():
     registry = CollectorRegistry()
@@ -396,7 +419,7 @@ def main():
         "Inventory of the raw data on /data/baseband_raw.",
         registry=registry,
     )
-    conv_backend = get_backend('pco') # TODO: test with CHIME backend as well.
+    conv_backend = get_backend("pco")  # TODO: test with CHIME backend as well.
     assert os.path.exists(
         conv_backend["ARCHIVER_MOUNT"]
     ), f"{conv_backend['ARCHIVER_MOUNT']} is not mounted, it is required for this process. Exiting!!!"
@@ -404,14 +427,17 @@ def main():
     while True:
         # set last_active, inventory, and bcle.
         last_active.set(time.time())
-        inv = check_inventory(conv_backend['RAW_PATH'])
+        inv = check_inventory(conv_backend["RAW_PATH"])
         inventory.set(inv)
         if conv_backend["USE_L4_DB"]:
             # use db to keep track of conversion to do list
-            events, last_event = events_from_db() 
+            events, last_event = events_from_db()
         else:
             # directly check filepaths for conversion to do list -- at outriggers
-            events, last_event = events_from_filepath(raw_filepath = conv_backend["RAW_PATH"], archiver_mount = conv_backend["ARCHIVER_MOUNT"])
+            events, last_event = events_from_filepath(
+                raw_filepath=conv_backend["RAW_PATH"],
+                archiver_mount=conv_backend["ARCHIVER_MOUNT"],
+            )
         print(events)
         bcle.set(last_event[0])
 
@@ -422,7 +448,9 @@ def main():
         if len(events) == 0:
             bce.set(0)
             push_to_gateway(
-                conv_backend["PROMETHEUS_GW"], job="baseband_conversion", registry=registry
+                conv_backend["PROMETHEUS_GW"],
+                job="baseband_conversion",
+                registry=registry,
             )
         else:
             for e in events:
@@ -430,14 +458,18 @@ def main():
                 print(f"Converting event {e}")
                 bce.set(e[0])
                 push_to_gateway(
-                    conv_backend["PROMETHEUS_GW"], job="baseband_conversion", registry=registry
+                    conv_backend["PROMETHEUS_GW"],
+                    job="baseband_conversion",
+                    registry=registry,
                 )
                 if conv_backend["USE_L4_DB"]:
                     conn, sqlite = connect_conversion_db()
                 else:
                     conn = None
                     sqlite = None
-                convert_data(e, NUM_THREADS,sqlite, conn,conv_backend) # if sqlite or conn are None, will look for events using filepaths.
+                convert_data(
+                    e, NUM_THREADS, sqlite, conn, conv_backend
+                )  # if sqlite or conn are None, will look for events using filepaths.
                 print("Total time to convert all files: ", time.time() - t_global)
         sys.stdout.flush()
         time.sleep(300)

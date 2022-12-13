@@ -7,7 +7,6 @@ import io
 import numpy as np
 import os
 import pwd
-import yaml
 from socket import gethostname
 from typing import Dict
 from datetime import datetime
@@ -18,7 +17,7 @@ nfreq = None
 ny_zone = None
 dt_ns = None
 
-from kotekan import config, baseband_buffer, conv_backends, __version__
+from kotekan import config, baseband_buffer, __version__
 
 
 def parse_reorder_map(inputs_reorder):
@@ -171,8 +170,8 @@ def process_raw_file(
     frames_read = []
     clip_after = 0
     if verbose:
-        print('samples_per_data_set:',samples_per_data_set)
-        print('num_elements:',num_elements)
+        print("samples_per_data_set:", samples_per_data_set)
+        print("num_elements:", num_elements)
     for b in raw_baseband_frames(file_name, buf):
         # Check the frame metadata
         frame_metadata = baseband_buffer.BasebandMetadata.from_buffer(b)
@@ -182,7 +181,7 @@ def process_raw_file(
                 frame_metadata.event_id,
                 frame_metadata.freq_id,
                 frame_metadata.frame_fpga_seq,
-                frame_metadata.time0_fpga
+                frame_metadata.time0_fpga,
             )
 
         if event_id is None:
@@ -320,8 +319,8 @@ def convert(
     """Main function to do the conversion at the level of specifying a conversion backend."""
     with open(config_file) as f:
         # generalize for .j2 files; return_dict=True preserves behavior for .yaml files.
-        #config = yaml.safe_load(f)
-        config_dict = config.load_config_file(config_file,return_dict=True)
+        # config = yaml.safe_load(f)
+        config_dict = config.load_config_file(config_file, return_dict=True)
     set_sampling_params(config_dict)
 
     archive_file_names = []
