@@ -129,7 +129,7 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
     }
 
     const std::string file_name =
-        fmt::format("{:s}/baseband_{:d}_{:d}", event_directory_name, event_id, freq_id);
+        fmt::format("{:s}/baseband_{:d}_{:04d}", event_directory_name, event_id, freq_id);
     if (baseband_events[event_id].count(freq_id) == 0) {
         // NOTE: emplace the file instance or it will get closed by the destructor
         baseband_events[event_id].emplace(std::piecewise_construct, std::forward_as_tuple(freq_id),
