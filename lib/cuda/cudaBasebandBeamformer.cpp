@@ -71,9 +71,14 @@ struct CuDeviceArray {
   int64_t len;
 };
 
+struct bb_parameter {
+  const char *exception;
+  CuDeviceArray<int32_t, 1> arrays[4];
+};
+
 // Demangled symbol: julia_bb_4480(CuDeviceArray<Int8x4, 1, 1>, CuDeviceArray<Int4x8, 1, 1>, CuDeviceArray<Int32, 1, 1>, CuDeviceArray<CuDeviceArray<Int8x4, 1, 1>, 1, 1>)
 
-typedef struct CuDeviceArray<int32_t, 1> cudevarr_int;
+//typedef struct CuDeviceArray<int32_t, 1> cudevarr_int;
 
 cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     pre_execute(gpu_frame_id);
@@ -105,36 +110,79 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
     // A, E, s, J
     //void* parameters[] = {&phase_memory, &voltage_memory, &shift_memory, &output_memory};
 
-    // Try describing the GPU memory arrays to Julia...
-    cudevarr_int arrs[4];
-    arrs[0].ptr = (int32_t*)phase_memory;
-    arrs[0].maxsize = phase_len;
-    arrs[0].dims[0] = phase_len;
-    arrs[0].len = phase_len;
+    /*
+      // Try describing the GPU memory arrays to Julia...
+      cudevarr_int arrs[4];
+      arrs[0].ptr = (int32_t*)phase_memory;
+      arrs[0].maxsize = phase_len;
+      arrs[0].dims[0] = phase_len;
+      arrs[0].len = phase_len;
+  
+      arrs[1].ptr = (int32_t*)voltage_memory;
+      arrs[1].maxsize = voltage_len;
+      arrs[1].dims[0] = voltage_len;
+      arrs[1].len = voltage_len;
+  
+      arrs[2].ptr = shift_memory;
+      arrs[2].maxsize = shift_len;
+      arrs[2].dims[0] = shift_len / sizeof(int32_t);
+      arrs[2].len = shift_len / sizeof(int32_t);
+  
+      arrs[3].ptr = (int32_t*)output_memory;
+      arrs[3].maxsize = output_len;
+      arrs[3].dims[0] = output_len;
+      arrs[3].len = output_len;
+  
+      //void* parameters[] = {&(arrs[0]), &(arrs[1]), &(arrs[2]), &(arrs[3])};
+      // Copy the array descriptors to GPU memory and pass them as parameters...
+      cudevarr_int* gpuarrs = (cudevarr_int*)device.get_gpu_memory("cudevarrs", sizeof(cudevarr_int)*4);
+      CHECK_CUDA_ERROR(cudaMemcpy(gpuarrs, arrs, sizeof(cudevarr_int)*4, cudaMemcpyHostToDevice));
 
-    arrs[1].ptr = (int32_t*)voltage_memory;
-    arrs[1].maxsize = voltage_len;
-    arrs[1].dims[0] = voltage_len;
-    arrs[1].len = voltage_len;
+      void* parameters[] = {&(gpuarrs[0]), &(gpuarrs[1]), &(gpuarrs[2]), &(gpuarrs[3])};
+      */
 
-    arrs[2].ptr = shift_memory;
-    arrs[2].maxsize = shift_len;
-    arrs[2].dims[0] = shift_len / sizeof(int32_t);
-    arrs[2].len = shift_len / sizeof(int32_t);
+    struct bb_parameter bbparams;
 
-    arrs[3].ptr = (int32_t*)output_memory;
-    arrs[3].maxsize = output_len;
-    arrs[3].dims[0] = output_len;
-    arrs[3].len = output_len;
+    bbparams.exception = "exception";
 
-    //void* parameters[] = {&(arrs[0]), &(arrs[1]), &(arrs[2]), &(arrs[3])};
+    bbparams.arrays[0].ptr = (int32_t*)phase_memory;
+    bbparams.arrays[0].maxsize = phase_len;
+    bbparams.arrays[0].dims[0] = phase_len;
+    bbparams.arrays[0].len = phase_len;
+  
+    bbparams.arrays[1].ptr = (int32_t*)voltage_memory;
+    bbparams.arrays[1].maxsize = voltage_len;
+    bbparams.arrays[1].dims[0] = voltage_len;
+    bbparams.arrays[1].len = voltage_len;
+  
+    bbparams.arrays[2].ptr = shift_memory;
+    bbparams.arrays[2].maxsize = shift_len;
+    bbparams.arrays[2].dims[0] = shift_len / sizeof(int32_t);
+    bbparams.arrays[2].len = shift_len / sizeof(int32_t);
 
-    // Copy the array descriptors to GPU memory and pass them as parameters...
-    cudevarr_int* gpuarrs = (cudevarr_int*)device.get_gpu_memory("cudevarrs", sizeof(cudevarr_int)*4);
-    CHECK_CUDA_ERROR(cudaMemcpy(gpuarrs, arrs, sizeof(cudevarr_int)*4, cudaMemcpyHostToDevice));
+    bbparams.arrays[3].ptr = (int32_t*)output_memory;
+    bbparams.arrays[3].maxsize = output_len;
+    bbparams.arrays[3].dims[0] = output_len;
+    bbparams.arrays[3].len = output_len;
 
-    void* parameters[] = {&(gpuarrs[0]), &(gpuarrs[1]), &(gpuarrs[2]), &(gpuarrs[3])};
+    /*
+      struct bb_parameter* gpuparams = (struct bb_parameter*)device.get_gpu_memory("bbparams", sizeof(struct bb_parameter));
+      CHECK_CUDA_ERROR(cudaMemcpy(gpuparams, &bbparams, sizeof(struct bb_parameter),
+      cudaMemcpyHostToDevice));
+      //void** parameters = (void**)&gpuparams;
+      void* parameters[] = {&(gpuparams->exception),
+      &(gpuparams->arrays[0]),
+      &(gpuparams->arrays[1]),
+      &(gpuparams->arrays[2]),
+      &(gpuparams->arrays[3])};
+    */
 
+    void* parameters[] = { &(bbparams.exception),
+			   &(bbparams.arrays[0]),
+			   &(bbparams.arrays[1]),
+			   &(bbparams.arrays[2]),
+			   &(bbparams.arrays[3]), };
+			   
     int shared_mem_bytes = 82048;
 
     INFO("Kernel: {:p}", (void*)runtime_kernels[kernel_name]);
