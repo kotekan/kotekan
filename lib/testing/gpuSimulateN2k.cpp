@@ -79,14 +79,12 @@ void gpuSimulateN2k::main_thread() {
                                 imag += xi * yr - yi * xr;
                             }
 
-                        output[(((tout * _num_local_freq + f) * _num_elements + x) * _num_elements
-                                + y)
-                                   * 2
-                               + 0] = +real;
-                        output[(((tout * _num_local_freq + f) * _num_elements + x) * _num_elements
-                                + y)
-                                   * 2
-                               + 1] = -imag;
+                        // clang-format off
+                        output[(((tout * _num_local_freq + f) * _num_elements + x)
+                                * _num_elements + y) * 2 + 0] = +real;
+                        output[(((tout * _num_local_freq + f) * _num_elements + x)
+                                * _num_elements + y) * 2 + 1] = -imag;
+                        // clang-format on
                     }
                 }
                 DEBUG("Done t_outer {:d} of {:d} (freq {:d} of {:d})...", tout, n_outer, f,

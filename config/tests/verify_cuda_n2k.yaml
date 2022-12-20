@@ -60,8 +60,6 @@ simulated_correlation_buffer:
 gen_data:
     type: random_signed
     value: 1532
-    #type: const
-    #value: 0x11
     kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
 

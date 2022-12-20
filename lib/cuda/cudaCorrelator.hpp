@@ -11,6 +11,29 @@
  *
  * @author Andre Renard (by kindly telling Dustin Lang what to type)
  *
+ * An example of this stage being used can be found in
+ * `config/tests/verify_cuda_n2k.yaml`.
+ *
+ * A CPU implementation is in `lib/testing/gpuSimulateN2k.hpp`.
+ *
+ * Reads config values:
+ * - num_elements -- number of feeds
+ * - num_local_freq -- frequencies
+ * - samples_per_data_set -- number of time samples per Kotekan block
+ * - sub_integration_ntime -- number of time samples that will be summed
+ *     into the correlation matrix
+ *
+ * Input buffer (gpu):
+ * - gpu_mem_voltage -- size per frame: samples_per_data_set * num_elements * num_local_freq
+ *   -4+4-bit complex voltage inputs
+ *
+ * Output buffer (gpu):
+ * - gpu_mem_correlation_triangle -- size per frame: (samples_per_data_set / sub_integration_ntimes) * num_elements^2 * 2 * sizeof(int32)
+ *   -Complex correlation values
+ *
+ * Note: While the output is only supposed to fill the upper triangle
+ * of the correlation matrices, this implementation fills a few of the
+ * below-the-diagonal elements with non-zero values.
  */
 class cudaCorrelator : public cudaCommand {
 public:

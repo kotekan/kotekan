@@ -62,26 +62,18 @@ void zeroLowerTriangle::main_thread() {
                     for (int y = 0; y < _num_elements; ++y) {
                         int real = 0;
                         int imag = 0;
+                        // clang-format off
                         if (x <= y) {
                             real = input[(((tout * _num_local_freq + f) * _num_elements + x)
-                                              * _num_elements
-                                          + y)
-                                             * 2
-                                         + 0];
+                                          * _num_elements + y) * 2 + 0];
                             imag = input[(((tout * _num_local_freq + f) * _num_elements + x)
-                                              * _num_elements
-                                          + y)
-                                             * 2
-                                         + 1];
+                                          * _num_elements + y) * 2 + 1];
                         }
-                        output[(((tout * _num_local_freq + f) * _num_elements + x) * _num_elements
-                                + y)
-                                   * 2
-                               + 0] = real;
-                        output[(((tout * _num_local_freq + f) * _num_elements + x) * _num_elements
-                                + y)
-                                   * 2
-                               + 1] = imag;
+                        output[(((tout * _num_local_freq + f) * _num_elements + x)
+                                * _num_elements + y) * 2 + 0] = real;
+                        output[(((tout * _num_local_freq + f) * _num_elements + x)
+                                * _num_elements + y) * 2 + 1] = imag;
+                        // clang-format on
                     }
                 }
             }

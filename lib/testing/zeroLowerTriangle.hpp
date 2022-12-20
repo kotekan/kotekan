@@ -8,6 +8,35 @@
 #include <stdint.h> // for int32_t
 #include <string>   // for string
 
+/**
+ * @brief Zeroes out the lower-triangle of a correlation matrix
+ * stream.  Created to test the CudaCorrelator stage, which writes
+ * some junk in the lower triangle.
+ *
+ * An example of this stage being used can be found in
+ * `config/tests/verify_cuda_n2k.yaml`.
+ *
+ * Reads config values:
+ * - num_elements -- number of radio input feeds
+ * - num_local_freq -- number of frequencies in the correlation matrix
+ * - samples_per_data_set
+ * - sub_integration_ntime -- how many samples are summed into each
+ *     correlation matrix.
+ *
+ * Input buffer:
+ * - corr_in_buf -- size num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements^2 * 2 * sizeof(int32)
+ *
+ * Output buffer:
+ * - corr_out_buf -- size num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements^2 * 2 * sizeof(int32)
+ *
+ * There are (samples_per_data_set / nt_inner) matrices per kotekan
+ * block, each (num_local_freq * num_elements * num_elements) in size.
+ * This stage copies only the upper-triangle part of the N*N matrix
+ * from the input buffer to the output, zeroing out the
+ * lower-triangle.
+ *
+ */
+
 class zeroLowerTriangle : public kotekan::Stage {
 public:
     zeroLowerTriangle(kotekan::Config& config, const std::string& unique_name,
