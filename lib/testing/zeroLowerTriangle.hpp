@@ -24,10 +24,12 @@
  *     correlation matrix.
  *
  * Input buffer:
- * - corr_in_buf -- size num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements^2 * 2 * sizeof(int32)
+ * - corr_in_buf -- size num_local_freq * (samples_per_data_set / sub_integration_ntime) *
+ * num_elements^2 * 2 * sizeof(int32)
  *
  * Output buffer:
- * - corr_out_buf -- size num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements^2 * 2 * sizeof(int32)
+ * - corr_out_buf -- size num_local_freq * (samples_per_data_set / sub_integration_ntime) *
+ * num_elements^2 * 2 * sizeof(int32)
  *
  * There are (samples_per_data_set / nt_inner) matrices per kotekan
  * block, each (num_local_freq * num_elements * num_elements) in size.

@@ -28,9 +28,8 @@
  *     4+4-bit, complex voltages
  *
  * Output:
- * - corr_out_buf: num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int32
- *     (per frame)
- *     int32, complex correlation values
+ * - corr_out_buf: num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements *
+ * num_elements * 2 * sizeof_int32 (per frame) int32, complex correlation values
  *
  * The output matrix's upper triangle is filled (the lower triangle is
  * zeroed out).

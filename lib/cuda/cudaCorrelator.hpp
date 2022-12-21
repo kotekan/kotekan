@@ -28,8 +28,8 @@
  *   -4+4-bit complex voltage inputs
  *
  * Output buffer (gpu):
- * - gpu_mem_correlation_triangle -- size per frame: (samples_per_data_set / sub_integration_ntimes) * num_elements^2 * 2 * sizeof(int32)
- *   -Complex correlation values
+ * - gpu_mem_correlation_triangle -- size per frame: (samples_per_data_set / sub_integration_ntimes)
+ * * num_elements^2 * 2 * sizeof(int32) -Complex correlation values
  *
  * Note: While the output is only supposed to fill the upper triangle
  * of the correlation matrices, this implementation fills a few of the
