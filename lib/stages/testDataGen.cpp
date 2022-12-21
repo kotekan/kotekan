@@ -47,12 +47,23 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
     assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse"
-           || type == "tpluseplusf" || type == "tpluseplusfprime" || type == "square");
-    if (type == "const" || type == "random" || type == "ramp")
+           || type == "tpluseplusf" || type == "tpluseplusfprime" || type == "square"
+	   || type == "onehot");
+    if (type == "const" || type == "random" || type == "ramp" || type == "onehot")
         value = config.get<int>(unique_name, "value");
     _seed = config.get_default<int>(unique_name, "seed", 0);
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
+    _array_shape = config.get_default<std::vector<int>>(unique_name, "array_shape", std::vector<int>());
+    //INFO("Got array shape of length {:d}", _array_shape.size());
 
+    if (_array_shape.size()) {
+        size_t sz = 1;
+        for (int s: _array_shape)
+	    sz *= s;
+        if (sz != buf->frame_size) {
+	    throw std::invalid_argument("testDataGen: product of 'array_shape' config setting must equal the buffer frame size");
+        }
+    }
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
     stream_id.id = config.get_default<uint64_t>(unique_name, "stream_id", 0);
     num_frames = config.get_default<int>(unique_name, "num_frames", -1);
@@ -123,7 +134,7 @@ void testDataGen::main_thread() {
     double frame_length =
         samples_per_data_set * ts_to_double(Telescope::instance().seq_length()) / num_links;
 
-    if ((type == "random") && _seed)
+    if (((type == "random") || (type == "onehot")) && _seed)
         srand(_seed);
 
     while (!stop_thread) {
@@ -152,7 +163,29 @@ void testDataGen::main_thread() {
             srand(value);
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
-        for (uint j = 0; j < buf->frame_size / sizeof(uint8_t); ++j) {
+	uint n_to_set = buf->frame_size / sizeof(uint8_t);
+	if (type == "onehot") {
+	  bzero(frame, n_to_set);
+	  if (_array_shape.size()) {
+	    std::string istring = "";
+	    size_t j = 0;
+	    for (size_t i=0; i<_array_shape.size(); i++) {
+	      int n = _array_shape[i];
+	      int k = rand() % n;
+	      j = j*n + k;
+	      if (i)
+		istring += ", ";
+	      istring += std::to_string(k);
+	    }
+	    INFO("Set array element {:s} [{:s}] = {:d} to {:d}", buf->buffer_name, istring, j, value);
+	  } else {
+	    int j = rand() % n_to_set;
+	    INFO("Set array element {:s} {:d} to {:d}", buf->buffer_name, j, value);
+	    frame[j] = value;
+	  }
+	  n_to_set = 0;
+	}
+        for (uint j = 0; j < n_to_set; ++j) {
             if (type == "const") {
                 if (finished_seeding_consant)
                     break;

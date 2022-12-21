@@ -80,6 +80,7 @@ private:
     uint32_t _first_frame_index;
     uint32_t num_links;
     int _seed;
+    std::vector<int> _array_shape;
 
     // kotekan trackers example
     std::shared_ptr<StatTracker> timer;
