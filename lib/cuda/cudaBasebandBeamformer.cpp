@@ -96,6 +96,9 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
     int32_t* shift_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_output_scaling, shift_len);
 
     size_t output_len = (size_t)_num_local_freq * _num_beams * _samples_per_data_set * 2;
+    // HACK
+    output_len += 1;
+
     void* output_memory =
         device.get_gpu_memory_array(_gpu_mem_formed_beams, gpu_frame_id, output_len);
 

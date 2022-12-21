@@ -42,7 +42,7 @@ host_voltage_buffer:
 host_formed_beams_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * num_beams * num_local_freq * 2
+    frame_size: samples_per_data_set * num_beams * num_local_freq * 2 + 1
     metadata_pool: main_pool
 
 # simulated_formed_beams_buffer:
@@ -103,3 +103,9 @@ hexDump:
     kotekan_stage: hexDump
     in_buf: host_formed_beams_buffer
     len: 32
+
+hexDumpEnd:
+    kotekan_stage: hexDump
+    in_buf: host_formed_beams_buffer
+    offset: 134217712
+    len: 17
