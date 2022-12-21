@@ -46,6 +46,7 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
     int8_t* cpu_phase_memory = (int8_t*)malloc(phase_len);
     for (size_t i = 0; i < phase_len; i++)
         cpu_phase_memory[i] = 1;
+
     CHECK_CUDA_ERROR(cudaMemcpy(phase_memory, cpu_phase_memory, phase_len, cudaMemcpyHostToDevice));
     free(cpu_phase_memory);
 
@@ -96,8 +97,6 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
     int32_t* shift_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_output_scaling, shift_len);
 
     size_t output_len = (size_t)_num_local_freq * _num_beams * _samples_per_data_set * 2;
-    // HACK
-    output_len += 1;
 
     void* output_memory =
         device.get_gpu_memory_array(_gpu_mem_formed_beams, gpu_frame_id, output_len);
@@ -141,25 +140,9 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
 			   &(bbparams.arrays[3]), };
 
     int shared_mem_bytes = 82048;
-
-    //INFO("Kernel: {:p}", (void*)runtime_kernels[kernel_name]);
-    /*
-      int attr = 0;
-      CHECK_CU_ERROR(cuFuncGetAttribute(&attr, CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK,
-      runtime_kernels[kernel_name]));
-      INFO("Max threads per block: {}", attr);
-    */
-
     CHECK_CU_ERROR(cuFuncSetAttribute(runtime_kernels[kernel_name],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shared_mem_bytes));
-
-    /*
-      int attr = 0;
-      CHECK_CU_ERROR(cuFuncGetAttribute(&attr, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-      runtime_kernels[kernel_name]));
-      INFO("Max dynamic shared memory size: {}", attr);
-    */
 
     err = cuLaunchKernel(runtime_kernels[kernel_name], 32, 1, 1, 32, 32, 1, shared_mem_bytes,
                          device.getStream(CUDA_COMPUTE_STREAM), parameters, NULL);
