@@ -22,9 +22,6 @@ sizeof_float: 4
 sizeof_int: 4
 frame_arrival_period: 0.00000256 * samples_per_data_set
 
-#num_elements: 128
-#num_local_freq: 84*8
-
 samples_per_data_set: 32768
 num_elements: 1024
 num_local_freq: 16
