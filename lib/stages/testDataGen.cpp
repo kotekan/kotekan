@@ -50,6 +50,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
            || type == "tpluseplusf" || type == "tpluseplusfprime" || type == "square");
     if (type == "const" || type == "random" || type == "ramp")
         value = config.get<int>(unique_name, "value");
+    _seed = config.get_default<int>(unique_name, "seed", 0);
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
 
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
@@ -122,6 +123,9 @@ void testDataGen::main_thread() {
     double frame_length =
         samples_per_data_set * ts_to_double(Telescope::instance().seq_length()) / num_links;
 
+    if ((type == "random") && _seed)
+        srand(_seed);
+
     while (!stop_thread) {
         double start_time = current_time();
 
@@ -144,7 +148,7 @@ void testDataGen::main_thread() {
         // std::random_device rd;
         // std::mt19937 gen(rd());
         // std::uniform_int_distribution<> dis(0, 255);
-        if (type == "random")
+        if ((type == "random") && value)
             srand(value);
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;

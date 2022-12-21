@@ -79,6 +79,7 @@ private:
     stream_t stream_id;
     uint32_t _first_frame_index;
     uint32_t num_links;
+    int _seed;
 
     // kotekan trackers example
     std::shared_ptr<StatTracker> timer;
