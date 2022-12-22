@@ -1,4 +1,5 @@
 #include "cudaInputData.hpp"
+#include "chimeMetadata.hpp"
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -50,7 +51,10 @@ int cudaInputData::wait_on_precondition(int gpu_frame_id) {
     if (frame == nullptr)
         return -1;
 
-	DEBUG("cudaInputData: finished waiting for input {:s} id {:d}", in_buf->buffer_name, in_buffer_precondition_id);
+	DEBUG("cudaInputData: finished waiting for input {:s} [{:d}] with metadata 0x{:x} and FPGA seq {:d}",
+		  in_buf->buffer_name, in_buffer_precondition_id,
+		  (long)in_buf->metadata[in_buffer_precondition_id],
+		  get_fpga_seq_num(in_buf, in_buffer_precondition_id));
 	print_full_status(in_buf);
 
     in_buffer_precondition_id = (in_buffer_precondition_id + 1) % in_buf->num_frames;

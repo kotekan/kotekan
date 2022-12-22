@@ -16,7 +16,7 @@ num_links: 4
 freq_array: [4,7,10,16]
 timesamples_per_packet: 2
 num_gpus: 1
-buffer_depth: 2
+buffer_depth: 1
 num_gpu_frames: 1
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
