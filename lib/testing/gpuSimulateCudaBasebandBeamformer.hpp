@@ -19,25 +19,37 @@
  */
 class gpuSimulateCudaBasebandBeamformer : public kotekan::Stage {
 public:
-  gpuSimulateCudaBasebandBeamformer(kotekan::Config& config, const std::string& unique_name,
-		 kotekan::bufferContainer& buffer_container);
-  ~gpuSimulateCudaBasebandBeamformer();
-  void main_thread() override;
+	gpuSimulateCudaBasebandBeamformer(kotekan::Config& config, const std::string& unique_name,
+									  kotekan::bufferContainer& buffer_container);
+	~gpuSimulateCudaBasebandBeamformer();
+	void main_thread() override;
 
 private:
-  struct Buffer* voltage_buf;
-  struct Buffer* phase_buf;
-  struct Buffer* shift_buf;
-  struct Buffer* output_buf;
+	using int4x2_t = uint8_t;
+	void bb_simple(const int8_t *__restrict__ const A,
+				   const int4x2_t *__restrict__ const E,
+				   //const int8_t *__restrict__ const s,
+				   const int32_t *__restrict__ const s,
+				   int4x2_t *__restrict__ const J,
+				   const int T,   // = 32768; // 32768; // number of times
+				   const int B,   // = 96;    // number of beams
+				   const int D,   // = 512;   // number of dishes
+				   const int F    // = 16;    // frequency channels per GPU
+				   );
+	
+	struct Buffer* voltage_buf;
+	struct Buffer* phase_buf;
+	struct Buffer* shift_buf;
+	struct Buffer* output_buf;
 
-  /// Number of elements on the telescope
-  int32_t _num_elements;
-  /// Number of frequencies per data stream sent to each node.
-  int32_t _num_local_freq;
-  /// Total samples in each dataset. Must be a value that is a power of 2.
-  int32_t _samples_per_data_set;
-  // Number of beams to form.
-  int32_t _num_beams;
+	/// Number of elements on the telescope
+	int32_t _num_elements;
+	/// Number of frequencies per data stream sent to each node.
+	int32_t _num_local_freq;
+	/// Total samples in each dataset. Must be a value that is a power of 2.
+	int32_t _samples_per_data_set;
+	// Number of beams to form.
+	int32_t _num_beams;
 };
 
 #endif // SIMULATE_CUDA_BASEBAND_BEAMFORMER_HPP

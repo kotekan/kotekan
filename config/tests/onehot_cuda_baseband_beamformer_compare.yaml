@@ -39,17 +39,17 @@ host_voltage_buffer:
     frame_size: samples_per_data_set * num_elements * num_local_freq
     metadata_pool: main_pool
 
-# host_phase_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: num_elements * num_local_freq * num_beams * 2
-#     metadata_pool: main_pool
-# 
-# host_shift_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: num_local_freq * num_beams * 2 * sizeof_int
-#     metadata_pool: main_pool
+host_phase_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_elements * num_local_freq * num_beams * 2
+    metadata_pool: main_pool
+
+host_shift_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_local_freq * num_beams * 2 * sizeof_int
+    metadata_pool: main_pool
 
 host_formed_beams_buffer:
     kotekan_buffer: standard
@@ -57,36 +57,49 @@ host_formed_beams_buffer:
     frame_size: samples_per_data_set * num_beams * num_local_freq * 2
     metadata_pool: main_pool
 
-# simulated_formed_beams_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: samples_per_data_set * num_beams * num_local_freq * 2
-#     metadata_pool: main_pool
+simulated_formed_beams_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_beams * num_local_freq * 2
+    metadata_pool: main_pool
 
 gen_data:
     type: onehot
     value: 0x55
-    array_shape: [1024, 16, 32768]   #[num_elements, num_local_freq, samples_per_data_set]
+    #array_shape: [512, 2, 16, 32768]   # [ ndish, npol, nfreq, ntime ]
+    # TIME, FREQ, POL, DISH
+    #array_shape: [32768, 16, 2, 512]
+    array_shape: [32768, 2, 16, 512]
     kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
+    #array_shape: [1024, 16, 32768]   #[num_elements, num_local_freq, samples_per_data_set]
     # log_level: debug
 
-# gen_phase:
-#     type: const
-#     value: 0x11
-#     kotekan_stage: testDataGen
-#     out_buf: host_phase_buffer
-#     log_level: debug
-# 
-# gen_shift:
-#     type: const
-#     value: 0x0
-#     kotekan_stage: testDataGen
-#     out_buf: host_shift_buffer
-#     log_level: debug
+printVoltage:
+    kotekan_stage: printSparseUint8
+    #array_shape: [512, 2, 16, 32768]   # [ ndish, npol, nfreq, ntime ]
+    # TIME, FREQ, POL, DISH
+    array_shape: [32768, 16, 2, 512]
+    input_buf: host_voltage_buffer
+
+gen_phase:
+    type: const
+    value: 0x11
+    kotekan_stage: testDataGen
+    out_buf: host_phase_buffer
+    log_level: debug
+
+gen_shift:
+    type: const
+    value: 0x0
+    kotekan_stage: testDataGen
+    out_buf: host_shift_buffer
+    log_level: debug
+
+#data_format: "cuda_wmma"
 
 gpu:
-    log_level: debug
+    # log_level: debug
     profiling: true
     kernel_path: "../../lib/cuda/kernels/"
     commands: &command_list
@@ -111,13 +124,13 @@ gpu:
         out_buffers:
             host_formed_beams: host_formed_beams_buffer
 
-# cpu_beamformer:
-#     kotekan_stage: gpuSimulateCudaBasebandBeamformer
-#     log_level: debug
-#     voltage_in_buf: host_voltage_buffer
-#     phase_in_buf: host_phase_buffer
-#     shift_in_buf: host_shift_buffer
-#     beams_out_buf: simulated_formed_beams_buffer
+cpu_beamformer:
+    kotekan_stage: gpuSimulateCudaBasebandBeamformer
+    log_level: debug
+    voltage_in_buf: host_voltage_buffer
+    phase_in_buf: host_phase_buffer
+    shift_in_buf: host_shift_buffer
+    beams_out_buf: simulated_formed_beams_buffer
 
 # check_data:
 #     kotekan_stage: testDataCheckUchar
@@ -139,11 +152,13 @@ gpu:
 
 printSparseGPU:
     kotekan_stage: printSparseUint8
-    array_shape: [32768, 2, 16, 128]  # samples_per_data_set * npol * num_local_freq * num_beams
+    # BEAM, FREQ, POL, TIME
+    array_shape: [128, 16, 2, 32768]
+    #array_shape: [32768, 2, 16, 128]  # samples_per_data_set * npol * num_local_freq * num_beams
     input_buf: host_formed_beams_buffer
 
-# printSparseCPU:
-#     kotekan_stage: printSparseUint8
-#     array_shape: [32768, 2, 16, 128]  # samples_per_data_set * npol * num_local_freq * num_beams
-#     input_buf: simulated_formed_beams_buffer
-
+printSparseCPU:
+    kotekan_stage: printSparseUint8
+    # BEAM, FREQ, POL, TIME
+    array_shape: [128, 16, 2, 32768]
+    input_buf: simulated_formed_beams_buffer

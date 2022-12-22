@@ -54,15 +54,12 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     _seed = config.get_default<int>(unique_name, "seed", 0);
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
     _array_shape = config.get_default<std::vector<int>>(unique_name, "array_shape", std::vector<int>());
-    //INFO("Got array shape of length {:d}", _array_shape.size());
-
     if (_array_shape.size()) {
         size_t sz = 1;
         for (int s: _array_shape)
-	    sz *= s;
-        if (sz != buf->frame_size) {
-	    throw std::invalid_argument("testDataGen: product of 'array_shape' config setting must equal the buffer frame size");
-        }
+			sz *= s;
+        if (sz != buf->frame_size)
+			throw std::invalid_argument("testDataGen: product of 'array_shape' config setting must equal the buffer frame size");
     }
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
     stream_id.id = config.get_default<uint64_t>(unique_name, "stream_id", 0);
@@ -163,28 +160,29 @@ void testDataGen::main_thread() {
             srand(value);
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
-	uint n_to_set = buf->frame_size / sizeof(uint8_t);
-	if (type == "onehot") {
-	  bzero(frame, n_to_set);
-	  if (_array_shape.size()) {
-	    std::string istring = "";
-	    size_t j = 0;
-	    for (size_t i=0; i<_array_shape.size(); i++) {
-	      int n = _array_shape[i];
-	      int k = rand() % n;
-	      j = j*n + k;
-	      if (i)
-		istring += ", ";
-	      istring += std::to_string(k);
-	    }
-	    INFO("Set array element {:s} [{:s}] = {:d} to {:d}", buf->buffer_name, istring, j, value);
-	  } else {
-	    int j = rand() % n_to_set;
-	    INFO("Set array element {:s} {:d} to {:d}", buf->buffer_name, j, value);
-	    frame[j] = value;
-	  }
-	  n_to_set = 0;
-	}
+		uint n_to_set = buf->frame_size / sizeof(uint8_t);
+		if (type == "onehot") {
+			bzero(frame, n_to_set);
+			if (_array_shape.size()) {
+				std::string istring = "";
+				size_t j = 0;
+				for (size_t i=0; i<_array_shape.size(); i++) {
+					int n = _array_shape[i];
+					int k = rand() % n;
+					j = j*n + k;
+					if (i)
+						istring += ", ";
+					istring += std::to_string(k);
+				}
+				frame[j] = value;
+				INFO("Set {:s}[{:d}] index [{:s}] (flat: {:d} = 0x{:x}) to 0x{:x} ({:d})", buf->buffer_name, frame_id, istring, j, j, value, value);
+			} else {
+				int j = rand() % n_to_set;
+				INFO("Set {:s}[{:d}] flat index {:d} = 0x{:x} to 0x{:x} ({:d})", buf->buffer_name, frame_id, j, j, value, value);
+				frame[j] = value;
+			}
+			n_to_set = 0;
+		}
         for (uint j = 0; j < n_to_set; ++j) {
             if (type == "const") {
                 if (finished_seeding_consant)

@@ -55,7 +55,7 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
 
     int32_t* cpu_shift_memory = (int32_t*)malloc(shift_len);
     for (size_t i = 0; i < shift_len / sizeof(int32_t); i++)
-        cpu_shift_memory[i] = 1;
+        cpu_shift_memory[i] = 0;
     CHECK_CUDA_ERROR(cudaMemcpy(shift_memory, cpu_shift_memory, shift_len, cudaMemcpyHostToDevice));
     free(cpu_shift_memory);
 }
@@ -144,6 +144,7 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shared_mem_bytes));
 
+	DEBUG("Running CUDA Baseband Beamformer on GPU frame {:d}", gpu_frame_id);
     err = cuLaunchKernel(runtime_kernels[kernel_name], 32, 1, 1, 32, 32, 1, shared_mem_bytes,
                          device.getStream(CUDA_COMPUTE_STREAM), parameters, NULL);
 

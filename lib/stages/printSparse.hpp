@@ -68,42 +68,39 @@ void printSparse<A_Type>::main_thread() {
         const A_Type* frame = (A_Type*)wait_for_full_frame(buf, unique_name.c_str(), buf_id);
         if (frame == nullptr)
             break;
-        //INFO(
-		//"Checking that the buffers {:s}[{:d}] and {:s}[{:d}] match, this could take a while...",
-		//first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id);
+        INFO("printSparse: checking {:s}[{:d}]", buf->buffer_name, buf_id);
 
 		int nset = 0;
         for (uint32_t i = 0; i < buf->frame_size/sizeof(A_Type); ++i) {
 			if (!frame[i])
 				continue;
 			nset++;
-			if (nset >= _max)
+			if ((_max > 0) && (nset >= _max))
 				continue;
 			if (_array_shape.size()) {
 				uint32_t j = i;
 				bool first = true;
 				std::string istring = "";
 				for (auto it=_array_shape.rbegin(); it != _array_shape.rend(); it++) {
-					if (!first)
-						istring += ", ";
-					first = false;
 					int n = (*it);
-					istring += std::to_string(j % n);
+					// prepend the index to the string
+					istring = std::to_string(j % n) + (first ? "" : ", ") + istring;
+					first = false;
 					j /= n;
 				}
-				INFO("printSparse: {:s} element {:s} ({:d}) has value {}",
-					 buf->buffer_name, istring, i, frame[i]);
+				INFO("printSparse: {:s}[{:d}] element {:s} ({:d} = 0x{:x}) has value {} = 0x{:x}",
+					 buf->buffer_name, buf_id, istring, i, i, frame[i], frame[i]);
 			} else {
-				INFO("printSparse: {:s} element {:d} has value {}",
-					 buf->buffer_name, i, frame[i]);
+				INFO("printSparse: {:s}[{:d}] element {:d} = 0x{:x} has value {} = 0x{:x}",
+					 buf->buffer_name, buf_id, i, i, frame[i], frame[i]);
 			}
 		}
 		//if (nset == 0) {
-		INFO("printSparse: {:s} has {:d} elements set.", buf->buffer_name, nset);
+		INFO("printSparse: {:s}[{:d}] has {:d} elements set.", buf->buffer_name, buf_id, nset);
 
         mark_frame_empty(buf, unique_name.c_str(), buf_id);
-		buf_id++;
-        //buf_id = (buf_id + 1) % buf->num_frames;
+		//buf_id++;
+        buf_id = (buf_id + 1) % buf->num_frames;
     }
 }
 
