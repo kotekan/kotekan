@@ -6,6 +6,8 @@
 
 #include "cudaOutputData.hpp"
 
+#include "chimeMetadata.hpp"
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 
@@ -59,6 +61,16 @@ int cudaOutputData::wait_on_precondition(int gpu_frame_id) {
     if (frame == nullptr)
         return -1;
 
+	if (output_buffer->metadata[output_buffer_precondition_id]) {
+		DEBUG("cudaOutputData: got output buffer {:s}[{:d}], metadata 0x{:x}, FPGA {:d}",
+			  output_buffer->buffer_name, output_buffer_precondition_id,
+			  (long)output_buffer->metadata[output_buffer_precondition_id],
+			  get_fpga_seq_num(in_buffer, in_buffer_id));
+	} else {
+		DEBUG("cudaOutputData: got output buffer {:s}[{:d}], no existing metadata",
+			  output_buffer->buffer_name, output_buffer_precondition_id);
+	}
+
     output_buffer_precondition_id = (output_buffer_precondition_id + 1) % output_buffer->num_frames;
     return 0;
 }
@@ -84,6 +96,14 @@ void cudaOutputData::finalize_frame(int frame_id) {
 
 	DEBUG("Passing metadata from input {:s}[{:d}] to {:s}[{:d}]",
 		  in_buffer->buffer_name, in_buffer_id, output_buffer->buffer_name, output_buffer_id);
+	DEBUG("FPGA sequence number of input: {:d}", get_fpga_seq_num(in_buffer, in_buffer_id));
+	if (output_buffer->metadata[output_buffer_id]) {
+		DEBUG("Existing FPGA sequence number of output: {:d}", get_fpga_seq_num(output_buffer, output_buffer_id));
+	} else {
+		DEBUG("Output buffer has no metadata set");
+	}
+	print_full_status(in_buffer);
+	print_full_status(output_buffer);
     pass_metadata(in_buffer, in_buffer_id, output_buffer, output_buffer_id);
 
     mark_frame_empty(in_buffer, unique_name.c_str(), in_buffer_id);

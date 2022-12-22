@@ -41,6 +41,8 @@ STAGE_CONSTRUCTOR(hexDump) {
 
 hexDump::~hexDump() {}
 
+#include "unistd.h"
+
 void hexDump::main_thread() {
 
     frameID frame_id(in_buf);
@@ -56,6 +58,9 @@ void hexDump::main_thread() {
         // Prints the hex data to screen
         hex_dump(16, (void*)&frame[_offset], _len);
 
+		sleep(1);
+		
+        DEBUG("hexDump: Releasing buffer {:s}[{:d}]", in_buf->buffer_name, frame_id);
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
         frame_id++;
     }

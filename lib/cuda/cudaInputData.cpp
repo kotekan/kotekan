@@ -42,10 +42,16 @@ cudaInputData::~cudaInputData() {
 int cudaInputData::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
 
+	DEBUG("cudaInputData: waiting for input {:s} id {:d}", in_buf->buffer_name, in_buffer_precondition_id);
+	print_full_status(in_buf);
+	
     // Wait for there to be data in the input (network) buffer.
     uint8_t* frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_buffer_precondition_id);
     if (frame == nullptr)
         return -1;
+
+	DEBUG("cudaInputData: finished waiting for input {:s} id {:d}", in_buf->buffer_name, in_buffer_precondition_id);
+	print_full_status(in_buf);
 
     in_buffer_precondition_id = (in_buffer_precondition_id + 1) % in_buf->num_frames;
     return 0;
@@ -67,9 +73,11 @@ cudaEvent_t cudaInputData::execute(int gpu_frame_id, cudaEvent_t pre_event) {
 }
 
 void cudaInputData::finalize_frame(int frame_id) {
+	DEBUG("cudaInputData: finalize_frame {:s} [{:d}] starting", in_buf->buffer_name, frame_id);
     cudaCommand::finalize_frame(frame_id);
     mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_finalize_id);
     in_buffer_finalize_id = (in_buffer_finalize_id + 1) % in_buf->num_frames;
+	DEBUG("cudaInputData: finalize_frame {:s} [{:d}] finished", in_buf->buffer_name, frame_id);
 }
 
 std::string cudaInputData::get_performance_metric_string() {

@@ -10,12 +10,13 @@ type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: info
+#log_level: info
+log_level: debug
 num_links: 4
 freq_array: [4,7,10,16]
 timesamples_per_packet: 2
 num_gpus: 1
-buffer_depth: 1
+buffer_depth: 2
 num_gpu_frames: 1
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
@@ -39,51 +40,25 @@ host_voltage_buffer:
     frame_size: samples_per_data_set * num_elements * num_local_freq
     metadata_pool: main_pool
 
-# host_phase_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: num_elements * num_local_freq * num_beams * 2
-#     metadata_pool: main_pool
-# 
-# host_shift_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: num_local_freq * num_beams * 2 * sizeof_int
-#     metadata_pool: main_pool
-
 host_formed_beams_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
     frame_size: samples_per_data_set * num_beams * num_local_freq * 2
     metadata_pool: main_pool
 
-# simulated_formed_beams_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: samples_per_data_set * num_beams * num_local_freq * 2
-#     metadata_pool: main_pool
+# gen_data:
+#     type: onehot
+#     value: 0x55
+#     array_shape: [1024, 16, 32768]
+#     kotekan_stage: testDataGen
+#     out_buf: host_voltage_buffer
 
 gen_data:
-    type: onehot
-    value: 0x55
-    array_shape: [1024, 16, 32768]   #[num_elements, num_local_freq, samples_per_data_set]
     kotekan_stage: testDataGen
+    type: const
+    value: 0x0
     out_buf: host_voltage_buffer
-    # log_level: debug
-
-# gen_phase:
-#     type: const
-#     value: 0x11
-#     kotekan_stage: testDataGen
-#     out_buf: host_phase_buffer
-#     log_level: debug
-# 
-# gen_shift:
-#     type: const
-#     value: 0x0
-#     kotekan_stage: testDataGen
-#     out_buf: host_shift_buffer
-#     log_level: debug
+    log_level: debug
 
 gpu:
     log_level: debug
@@ -111,39 +86,13 @@ gpu:
         out_buffers:
             host_formed_beams: host_formed_beams_buffer
 
-# cpu_beamformer:
-#     kotekan_stage: gpuSimulateCudaBasebandBeamformer
-#     log_level: debug
-#     voltage_in_buf: host_voltage_buffer
-#     phase_in_buf: host_phase_buffer
-#     shift_in_buf: host_shift_buffer
-#     beams_out_buf: simulated_formed_beams_buffer
+hexDumpGPU:
+    log_level: debug
+    kotekan_stage: hexDump
+    in_buf: host_formed_beams_buffer
+    len: 16
 
-# check_data:
-#     kotekan_stage: testDataCheckUchar
-#     first_buf: host_formed_beams_buffer
-#     second_buf: simulated_formed_beams_buffer
-#     # num_frames_to_test: buffer_depth
-
-# hexDumpGPU:
-#     log_level: debug
-#     kotekan_stage: hexDump
-#     in_buf: host_formed_beams_buffer
-#     len: 32
-
-# hexDumpCPU:
-#     log_level: debug
-#     kotekan_stage: hexDump
-#     in_buf: simulated_formed_beams_buffer
-#     len: 32
-
-printSparseGPU:
-    kotekan_stage: printSparseUint8
-    array_shape: [32768, 2, 16, 128]  # samples_per_data_set * npol * num_local_freq * num_beams
-    input_buf: host_formed_beams_buffer
-
-# printSparseCPU:
+# printSparseGPU:
 #     kotekan_stage: printSparseUint8
 #     array_shape: [32768, 2, 16, 128]  # samples_per_data_set * npol * num_local_freq * num_beams
-#     input_buf: simulated_formed_beams_buffer
-
+#     input_buf: host_formed_beams_buffer

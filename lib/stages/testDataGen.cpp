@@ -142,9 +142,11 @@ void testDataGen::main_thread() {
             continue;
         }
 
+		DEBUG("testDataGen waiting for frame {:s} [{:d}]", buf->buffer_name, frame_id);
         frame = (uint8_t*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
         if (frame == nullptr)
             break;
+		DEBUG("testDataGen filling frame {:s} [{:d}]", buf->buffer_name, frame_id);
 
         allocate_new_metadata_object(buf, frame_id);
         set_fpga_seq_num(buf, frame_id, seq_num);
@@ -153,7 +155,10 @@ void testDataGen::main_thread() {
         gettimeofday(&now, nullptr);
         set_first_packet_recv_time(buf, frame_id, now);
 
-        // std::random_device rd;
+		DEBUG("testDataGen: set frame {:s} [{:d}] metadata to 0x{:x}; FPGA seq {:d}",
+			  buf->buffer_name, frame_id, (long)buf->metadata[frame_id], get_fpga_seq_num(buf, frame_id));
+
+		// std::random_device rd;
         // std::mt19937 gen(rd());
         // std::uniform_int_distribution<> dis(0, 255);
         if ((type == "random") && value)
