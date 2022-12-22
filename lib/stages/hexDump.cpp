@@ -42,6 +42,7 @@ STAGE_CONSTRUCTOR(hexDump) {
 hexDump::~hexDump() {}
 
 #include "unistd.h"
+#include "chimeMetadata.hpp"
 
 void hexDump::main_thread() {
 
@@ -60,7 +61,11 @@ void hexDump::main_thread() {
 
 		sleep(1);
 		
-        DEBUG("hexDump: Releasing buffer {:s}[{:d}]", in_buf->buffer_name, frame_id);
+        DEBUG("hexDump: Releasing buffer {:s}[{:d}] with metadata 0x{:x} and FPGA seq {:d}",
+			  in_buf->buffer_name, frame_id,
+			  (long)in_buf->metadata[frame_id],
+			  get_fpga_seq_num(in_buf, frame_id));
+
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
         frame_id++;
     }
