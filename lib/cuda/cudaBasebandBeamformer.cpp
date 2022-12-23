@@ -20,7 +20,7 @@ REGISTER_CUDA_COMMAND(cudaBasebandBeamformer);
 cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string& unique_name,
                                                bufferContainer& host_buffers,
                                                cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "baseband_beamformer", "bb1.ptx") {
+    cudaCommand(config, unique_name, host_buffers, device, "baseband_beamformer", "bb.ptx") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
@@ -140,13 +140,14 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
 			   &(bbparams.arrays[2]),
 			   &(bbparams.arrays[3]), };
 
-    int shared_mem_bytes = 82048;
     CHECK_CU_ERROR(cuFuncSetAttribute(runtime_kernels[kernel_name],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shared_mem_bytes));
 
 	DEBUG("Running CUDA Baseband Beamformer on GPU frame {:d}", gpu_frame_id);
-    err = cuLaunchKernel(runtime_kernels[kernel_name], 32, 1, 1, 32, 32, 1, shared_mem_bytes,
+    err = cuLaunchKernel(runtime_kernels[kernel_name],
+						 blocks_x, blocks_y, 1,
+						 threads_x, threads_y, 1, shared_mem_bytes,
                          device.getStream(CUDA_COMPUTE_STREAM), parameters, NULL);
 
     if (err != CUDA_SUCCESS) {

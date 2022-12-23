@@ -25,7 +25,7 @@ frame_arrival_period: 0.00000256 * samples_per_data_set
 samples_per_data_set: 32768
 num_elements: 1024
 num_local_freq: 16
-num_beams: 128
+num_beams: 96
 
 # Pool
 main_pool:
@@ -148,13 +148,13 @@ cpu_beamformer:
 printSparseGPU:
     kotekan_stage: printSparseUint8
     # BEAM, FREQ, POL, TIME
-    array_shape: [128, 16, 2, 32768]
+    array_shape: [96, 16, 2, 32768]
     input_buf: host_formed_beams_buffer
     max_to_print: 8
 
 printSparseCPU:
     kotekan_stage: printSparseUint8
     # BEAM, FREQ, POL, TIME
-    array_shape: [128, 16, 2, 32768]
+    array_shape: [96, 16, 2, 32768]
     input_buf: simulated_formed_beams_buffer
     max_to_print: 8
