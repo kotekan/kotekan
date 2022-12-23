@@ -45,7 +45,7 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
 
     int8_t* cpu_phase_memory = (int8_t*)malloc(phase_len);
     for (size_t i = 0; i < phase_len; i++)
-        cpu_phase_memory[i] = 1;
+        cpu_phase_memory[i] = 0x1;
 
     CHECK_CUDA_ERROR(cudaMemcpy(phase_memory, cpu_phase_memory, phase_len, cudaMemcpyHostToDevice));
     free(cpu_phase_memory);

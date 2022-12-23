@@ -66,26 +66,21 @@ simulated_formed_beams_buffer:
 
 gen_data:
     type: onehot
-    value: 0x55
-    #array_shape: [512, 2, 16, 32768]   # [ ndish, npol, nfreq, ntime ]
-    # TIME, FREQ, POL, DISH
-    #array_shape: [32768, 16, 2, 512]
+    value: 0x04
+    # TIME, POL, FREQ, DISH
     array_shape: [32768, 2, 16, 512]
     kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
-    #array_shape: [1024, 16, 32768]   #[num_elements, num_local_freq, samples_per_data_set]
-    # log_level: debug
 
-printVoltage:
-    kotekan_stage: printSparseUint8
-    #array_shape: [512, 2, 16, 32768]   # [ ndish, npol, nfreq, ntime ]
-    # TIME, FREQ, POL, DISH
-    array_shape: [32768, 16, 2, 512]
-    input_buf: host_voltage_buffer
+# printVoltage:
+#     kotekan_stage: printSparseUint8
+#     # TIME, POL, FREQ, DISH
+#     array_shape: [32768, 2, 16, 512]
+#     input_buf: host_voltage_buffer
 
 gen_phase:
     type: const
-    value: 0x11
+    value: 0x1
     kotekan_stage: testDataGen
     out_buf: host_phase_buffer
     log_level: debug
@@ -96,8 +91,6 @@ gen_shift:
     kotekan_stage: testDataGen
     out_buf: host_shift_buffer
     log_level: debug
-
-#data_format: "cuda_wmma"
 
 gpu:
     # log_level: debug
@@ -155,11 +148,12 @@ printSparseGPU:
     kotekan_stage: printSparseUint8
     # BEAM, FREQ, POL, TIME
     array_shape: [128, 16, 2, 32768]
-    #array_shape: [32768, 2, 16, 128]  # samples_per_data_set * npol * num_local_freq * num_beams
     input_buf: host_formed_beams_buffer
+    max_to_print: 8
 
 printSparseCPU:
     kotekan_stage: printSparseUint8
     # BEAM, FREQ, POL, TIME
     array_shape: [128, 16, 2, 32768]
     input_buf: simulated_formed_beams_buffer
+    max_to_print: 8

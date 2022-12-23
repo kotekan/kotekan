@@ -6,6 +6,7 @@
 #include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "oneHotMetadata.hpp"
 #include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
 #include "kotekanLogging.hpp"  // for DEBUG, INFO
 #include "kotekanTrackers.hpp" // for KotekanTrackers
@@ -166,6 +167,7 @@ void testDataGen::main_thread() {
 			if (_array_shape.size()) {
 				std::string istring = "";
 				size_t j = 0;
+				std::vector<int> indices;
 				for (size_t i=0; i<_array_shape.size(); i++) {
 					int n = _array_shape[i];
 					int k = rand() % n;
@@ -173,9 +175,14 @@ void testDataGen::main_thread() {
 					if (i)
 						istring += ", ";
 					istring += std::to_string(k);
+					indices.push_back(k);
 				}
 				frame[j] = value;
 				INFO("Set {:s}[{:d}] index [{:s}] (flat: {:d} = 0x{:x}) to 0x{:x} ({:d})", buf->buffer_name, frame_id, istring, j, j, value, value);
+				if (metadata_is_onehot(buf, frame_id)) {
+					INFO("One-hot metadata; setting indices");
+					set_onehot_indices(buf, frame_id, indices);
+				}
 			} else {
 				int j = rand() % n_to_set;
 				INFO("Set {:s}[{:d}] flat index {:d} = 0x{:x} to 0x{:x} ({:d})", buf->buffer_name, frame_id, j, j, value, value);
