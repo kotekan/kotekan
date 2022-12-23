@@ -74,6 +74,7 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
 
 	int nprint_v = 0;
 	int nprint_b = 0;
+	int nprint_p = 0;
 	const int nprint_max = 4;
 
 	// J[t,p,f,b] = Σ[d] A[d,b,p,f] E[d,p,f,t]
@@ -95,7 +96,15 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
 						const auto [Eim, Ere] = get4(E[((t * 2 + p) * F + f) * D + d]);
 						Jre += Are * Ere - Aim * Eim;
 						Jim += Are * Eim + Aim * Ere;
-						if ((b == 0) && (Ere || Eim)) {
+						if (Are || Aim) {
+							size_t indx = (((f * 2 + p) * B + b) * D + d) * 2 + 0;
+							if (nprint_p < nprint_max) {
+								DEBUG("bb_simple: found phase f={:d}, p={:d}, b={:d}, d={:d} = index {:d}=0x{:x} with value {:d} = 0x{:x}",
+									  f, p, b, d, indx, indx, Aim, Are);
+								nprint_p++;
+							}
+						}
+						if (Ere || Eim) {
 							size_t indx = ((t * 2 + p) * F + f) * D + d;
 							if (nprint_v < nprint_max) {
 								DEBUG("bb_simple: found voltage f={:d}, p={:d}, t={:d}, d={:d} = index {:d}=0x{:x} = {:d} = 0x{:x}",
@@ -211,10 +220,9 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
 		bool done = false;
 		INFO("Is one-hot? {:}", metadata_is_onehot(voltage_buf, voltage_frame_id));
 		if (metadata_is_onehot(voltage_buf, voltage_frame_id)) {
-			INFO("One-hot voltage input matrix, running quick version");
 			std::vector<int> inds = get_onehot_indices(voltage_buf, voltage_frame_id);
 			if (inds.size() != 4) {
-				INFO("Expected 4 indices in one-hot array, got {:d}", inds.size());
+				INFO("Expected 4 indices in voltage one-hot array, got {:d}", inds.size());
 			} else {
 				int t = inds[0];
 				int p = inds[1];
@@ -222,6 +230,26 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
 				int d = inds[3];
 				int b = -1;
 				INFO("One-hot: time {:d} pol {:d}, freq {:d}, dish {:d}", t, p, f, d);
+				int ndishes = _num_elements / 2;
+				bb_simple_sub(phase, voltage, shift, output,
+							  _samples_per_data_set, _num_beams, ndishes, _num_local_freq,
+							  t, b, d, f, p);
+				done = true;
+			}
+		}
+
+		if (!done && metadata_is_onehot(phase_buf, phase_frame_id)) {
+			std::vector<int> inds = get_onehot_indices(phase_buf, phase_frame_id);
+			if (inds.size() != 5) {
+				INFO("Expected 5 indices in phase one-hot array, got {:d}", inds.size());
+			} else {
+				int f = inds[0];
+				int p = inds[1];
+				int b = inds[2];
+				int d = inds[3];
+				// real/imag = inds[4]
+				int t = -1;
+				INFO("One-hot: freq {:d} pol {:d}, beam {:d}, dish {:d}", f, p, b, d);
 				int ndishes = _num_elements / 2;
 				bb_simple_sub(phase, voltage, shift, output,
 							  _samples_per_data_set, _num_beams, ndishes, _num_local_freq,

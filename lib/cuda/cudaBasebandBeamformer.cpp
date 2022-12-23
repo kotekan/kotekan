@@ -39,7 +39,7 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
     build_ptx({kernel_name}, opts);
 
     // HACK
-
+	/*
     size_t phase_len = (size_t)_num_elements * _num_local_freq * _num_beams * 2;
     int8_t* phase_memory = (int8_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
 
@@ -58,6 +58,7 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
         cpu_shift_memory[i] = 0;
     CHECK_CUDA_ERROR(cudaMemcpy(shift_memory, cpu_shift_memory, shift_len, cudaMemcpyHostToDevice));
     free(cpu_shift_memory);
+	*/
 }
 
 cudaBasebandBeamformer::~cudaBasebandBeamformer() {}
@@ -86,15 +87,15 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
 
     size_t phase_len = (size_t)_num_elements * _num_local_freq * _num_beams * 2;
     // TEMPORARY -- get our local phase memory, not from kotekan
-    // int8_t* phase_memory = (int8_t*)device.get_gpu_memory_array(_gpu_mem_phase, gpu_frame_id,
-    // phase_len);
-    int8_t* phase_memory = (int8_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
+    //int8_t* phase_memory = (int8_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
+    int8_t* phase_memory = (int8_t*)device.get_gpu_memory_array(_gpu_mem_phase, gpu_frame_id,
+																phase_len);
 
     size_t shift_len = (size_t)_num_local_freq * _num_beams * 2 * sizeof(int32_t);
     // TEMPORARY -- get our local shift memory, not from kotekan
-    // int32_t* shift_memory = (int32_t*)device.get_gpu_memory_array(_gpu_mem_output_scaling,
-    // gpu_frame_id, shift_len);
-    int32_t* shift_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_output_scaling, shift_len);
+    //int32_t* shift_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_output_scaling, shift_len);
+	int32_t* shift_memory = (int32_t*)device.get_gpu_memory_array(_gpu_mem_output_scaling,
+																  gpu_frame_id, shift_len);
 
     size_t output_len = (size_t)_num_local_freq * _num_beams * _samples_per_data_set * 2;
 
