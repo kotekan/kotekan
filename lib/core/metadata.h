@@ -165,6 +165,9 @@ struct metadataPool {
 
     /// Name of the metadata pool
     char* unique_name;
+
+	/// Data type of the metadata objects in this pool
+	char* type_name;
 };
 
 /**
@@ -175,7 +178,7 @@ struct metadataPool {
  * @return A metadata pool which can then be associated to one or more buffers.
  */
 struct metadataPool* create_metadata_pool(int num_metadata_objects, size_t object_size,
-                                          const char* unique_name);
+                                          const char* unique_name, const char* type_name);
 
 /**
  * @brief Deletes a memdata pool and frees all memory associated with its containers.

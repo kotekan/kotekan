@@ -29,7 +29,8 @@ num_beams: 128
 
 # Pool
 main_pool:
-    kotekan_metadata_pool: chimeMetadata
+    #kotekan_metadata_pool: chimeMetadata
+    kotekan_metadata_pool: oneHotMetadata
     num_metadata_objects: 15 * buffer_depth
 
 # Buffers
