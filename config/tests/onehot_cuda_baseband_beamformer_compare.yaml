@@ -29,7 +29,6 @@ num_beams: 128
 
 # Pool
 main_pool:
-    #kotekan_metadata_pool: chimeMetadata
     kotekan_metadata_pool: oneHotMetadata
     num_metadata_objects: 15 * buffer_depth
 
@@ -66,7 +65,7 @@ simulated_formed_beams_buffer:
 
 gen_data:
     type: onehot
-    value: 0x04
+    values: [0x01, 0x02, 0x04, 0x07, 0x08, 0x09, 0xc, 0xe, 0xf, 0x10, 0x20, 0x40, 0x70, 0x80, 0x90, 0xc0, 0xe0, 0xf0]
     # TIME, POL, FREQ, DISH
     array_shape: [32768, 2, 16, 512]
     kotekan_stage: testDataGen

@@ -71,7 +71,11 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
 	const int t1 = (t == -1 ? T : t+1);
 	const int d0 = (d == -1 ? 0 : d);
 	const int d1 = (d == -1 ? D : d+1);
-	
+
+	int nprint_v = 0;
+	int nprint_b = 0;
+	const int nprint_max = 4;
+
 	// J[t,p,f,b] = Σ[d] A[d,b,p,f] E[d,p,f,t]
 	//#pragma omp parallel for collapse(2)
 	for (int f = f0; f < f1; ++f) {
@@ -92,9 +96,12 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
 						Jre += Are * Ere - Aim * Eim;
 						Jim += Are * Eim + Aim * Ere;
 						if ((b == 0) && (Ere || Eim)) {
-							size_t indx = ((t * F + f) * 2 + p) * D + d;
-							DEBUG("bb_simple: found voltage f={:d}, p={:d}, t={:d}, d={:d} = index {:d}=0x{:x} = {:d}",
-								  f, p, t, d, indx, indx, E[indx]);
+							size_t indx = ((t * 2 + p) * F + f) * D + d;
+							if (nprint_v < nprint_max) {
+								DEBUG("bb_simple: found voltage f={:d}, p={:d}, t={:d}, d={:d} = index {:d}=0x{:x} = {:d} = 0x{:x}",
+									  f, p, t, d, indx, indx, E[indx], E[indx]);
+								nprint_v++;
+							}
 						}
 					}
 					int oJre = Jre;
@@ -104,8 +111,11 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
 					//J[((b * F + f) * 2 + p) * T + t] = set4(Jre, Jim);
 					J[((b * F + f) * 2 + p) * T + t] = set4(Jim, Jre);
 					if (Jre || Jim) {
-						DEBUG("bb_simple: setting b={:d}(0x{:x}), f={:d}(0x{:x}), p={:d}(0x{:x}), t={:d}(0x{:x}) = index 0x{:x} = {:d}(0x{:x}); before shift by {:d}, re=0x{:x}, im=0x{:x}",
-							  b, b, f, f, p, p, t, t, ((b * F + f) * 2 + p) * T + t, set4(Jim, Jre), set4(Jim,Jre), s[(f * 2 + p) * B + b], oJre, oJim);
+						if (nprint_b < nprint_max) {
+							DEBUG("bb_simple: setting b={:d}(0x{:x}), f={:d}(0x{:x}), p={:d}(0x{:x}), t={:d}(0x{:x}) = index 0x{:x} = {:d}(0x{:x}); before shift by {:d}, re=0x{:x}, im=0x{:x}",
+								  b, b, f, f, p, p, t, t, ((b * F + f) * 2 + p) * T + t, set4(Jim, Jre), set4(Jim,Jre), s[(f * 2 + p) * B + b], oJre, oJim);
+							nprint_b++;
+						}
 					}
 				}
 			}

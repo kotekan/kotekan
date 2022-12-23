@@ -50,8 +50,10 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse"
            || type == "tpluseplusf" || type == "tpluseplusfprime" || type == "square"
 	   || type == "onehot");
-    if (type == "const" || type == "random" || type == "ramp" || type == "onehot")
-        value = config.get<int>(unique_name, "value");
+    if (type == "const" || type == "random" || type == "ramp" || type == "onehot") {
+        value = config.get_default<int>(unique_name, "value", -1999);
+		_value_array = config.get_default<std::vector<int>>(unique_name, "values", std::vector<int>());
+	}
     _seed = config.get_default<int>(unique_name, "seed", 0);
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
     _array_shape = config.get_default<std::vector<int>>(unique_name, "array_shape", std::vector<int>());
@@ -163,6 +165,9 @@ void testDataGen::main_thread() {
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
 		uint n_to_set = buf->frame_size / sizeof(uint8_t);
 		if (type == "onehot") {
+			int val = value;
+			if (_value_array.size())
+				val = _value_array[frame_id_abs % _value_array.size()];
 			bzero(frame, n_to_set);
 			if (_array_shape.size()) {
 				std::string istring = "";
@@ -177,16 +182,16 @@ void testDataGen::main_thread() {
 					istring += std::to_string(k);
 					indices.push_back(k);
 				}
-				frame[j] = value;
-				INFO("Set {:s}[{:d}] index [{:s}] (flat: {:d} = 0x{:x}) to 0x{:x} ({:d})", buf->buffer_name, frame_id, istring, j, j, value, value);
+				frame[j] = val;
+				INFO("Set {:s}[{:d}] index [{:s}] (flat: {:d} = 0x{:x}) to 0x{:x} ({:d})", buf->buffer_name, frame_id, istring, j, j, val, val);
 				if (metadata_is_onehot(buf, frame_id)) {
 					INFO("One-hot metadata; setting indices");
 					set_onehot_indices(buf, frame_id, indices);
 				}
 			} else {
 				int j = rand() % n_to_set;
-				INFO("Set {:s}[{:d}] flat index {:d} = 0x{:x} to 0x{:x} ({:d})", buf->buffer_name, frame_id, j, j, value, value);
-				frame[j] = value;
+				INFO("Set {:s}[{:d}] flat index {:d} = 0x{:x} to 0x{:x} ({:d})", buf->buffer_name, frame_id, j, j, val, val);
+				frame[j] = val;
 			}
 			n_to_set = 0;
 		}
