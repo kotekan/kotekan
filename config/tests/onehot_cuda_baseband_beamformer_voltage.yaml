@@ -15,7 +15,6 @@ num_links: 4
 freq_array: [4,7,10,16]
 timesamples_per_packet: 2
 num_gpus: 1
-buffer_depth: 4
 num_gpu_frames: 1
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
@@ -26,6 +25,13 @@ samples_per_data_set: 32768
 num_elements: 1024
 num_local_freq: 16
 num_beams: 96
+
+#buffer_depth: 4
+buffer_depth: 18
+
+# data gen:
+#num_frames: 25
+#num_frames: 100
 
 # Pool
 main_pool:
@@ -51,6 +57,13 @@ host_shift_buffer:
     frame_size: num_local_freq * num_beams * 2 * sizeof_int
     metadata_pool: main_pool
 
+###### Separate shift buffer for the GPU kernel!
+host_gpu_shift_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_local_freq * num_beams * 2 * sizeof_int
+    metadata_pool: main_pool
+
 host_formed_beams_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
@@ -64,26 +77,30 @@ simulated_formed_beams_buffer:
     metadata_pool: main_pool
 
 gen_data:
+    kotekan_stage: testDataGen
     type: onehot
     values: [0x01, 0x02, 0x04, 0x07, 0x08, 0x09, 0xc, 0xe, 0xf, 0x10, 0x20, 0x40, 0x70, 0x80, 0x90, 0xc0, 0xe0, 0xf0]
     # TIME, POL, FREQ, DISH
     array_shape: [32768, 2, 16, 512]
-    kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
 
 gen_phase:
-    type: const
-    value: 0x1
     kotekan_stage: testDataGen
+    type: const
+    value: 0x20
     out_buf: host_phase_buffer
-    log_level: debug
 
 gen_shift:
-    type: const
-    value: 0x0
     kotekan_stage: testDataGen
+    type: const
+    value: 0x3
     out_buf: host_shift_buffer
-    log_level: debug
+
+gen_gpu_shift:
+    kotekan_stage: testDataGen
+    type: const
+    value: 0x1
+    out_buf: host_gpu_shift_buffer
 
 gpu:
     # log_level: debug
@@ -115,7 +132,8 @@ gpu:
         in_buffers:
             host_voltage: host_voltage_buffer
             host_phase: host_phase_buffer
-            host_shift: host_shift_buffer
+            #host_shift: host_shift_buffer
+            host_shift: host_gpu_shift_buffer
         out_buffers:
             host_formed_beams: host_formed_beams_buffer
 

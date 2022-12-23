@@ -26,7 +26,8 @@ public:
 
 private:
 	using int4x2_t = uint8_t;
-	void bb_simple(const int8_t *__restrict__ const A,
+	void bb_simple(std::string id_tag,
+				   const int8_t *__restrict__ const A,
 				   const int4x2_t *__restrict__ const E,
 				   const int32_t *__restrict__ const s,
 				   int4x2_t *__restrict__ const J,
@@ -35,7 +36,8 @@ private:
 				   const int D,   // = 512;   // number of dishes
 				   const int F    // = 16;    // frequency channels per GPU
 				   );
-	void bb_simple_sub(const int8_t *__restrict__ const A,
+	void bb_simple_sub(std::string id_tag,
+					   const int8_t *__restrict__ const A,
 					   const int4x2_t *__restrict__ const E,
 					   const int32_t *__restrict__ const s,
 					   int4x2_t *__restrict__ const J,

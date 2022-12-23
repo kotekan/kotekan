@@ -7,6 +7,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "errors.h"            // for TEST_PASSED
 #include "kotekanLogging.hpp"  // for DEBUG, INFO, ERROR, FATAL_ERROR
+#include "oneHotMetadata.hpp"
 
 #include <assert.h>    // for assert
 #include <cstdint>     // for int32_t, uint8_t, uint32_t
@@ -70,6 +71,10 @@ void printSparse<A_Type>::main_thread() {
             break;
         INFO("printSparse: checking {:s}[{:d}]", buf->buffer_name, buf_id);
 
+		int frame_counter = 0;
+		if (metadata_is_onehot(buf, buf_id))
+			frame_counter = get_onehot_frame_counter(buf, buf_id);
+
 		int nset = 0;
         for (uint32_t i = 0; i < buf->frame_size/sizeof(A_Type); ++i) {
 			if (!frame[i])
@@ -90,16 +95,21 @@ void printSparse<A_Type>::main_thread() {
 				}
 				INFO("printSparse: {:s}[{:d}] element {:s} ({:d} = 0x{:x}) has value {} = 0x{:x}",
 					 buf->buffer_name, buf_id, istring, i, i, frame[i], frame[i]);
+				if (nset == 1)
+					INFO("PY sparse[\"{:s}\"][{:d}] = (({:s}), 0x{:x})", buf->buffer_name, frame_counter,
+						 istring, frame[i]);
 			} else {
 				INFO("printSparse: {:s}[{:d}] element {:d} = 0x{:x} has value {} = 0x{:x}",
 					 buf->buffer_name, buf_id, i, i, frame[i], frame[i]);
 			}
 		}
-		//if (nset == 0) {
+
 		INFO("printSparse: {:s}[{:d}] has {:d} elements set.", buf->buffer_name, buf_id, nset);
+		if (nset == 0) {
+			INFO("PY sparse[\"{:s}\"][{:d}] = (None, 0)", buf->buffer_name, frame_counter);
+		}
 
         mark_frame_empty(buf, unique_name.c_str(), buf_id);
-		//buf_id++;
         buf_id = (buf_id + 1) % buf->num_frames;
     }
 }

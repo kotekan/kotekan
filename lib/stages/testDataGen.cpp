@@ -185,9 +185,11 @@ void testDataGen::main_thread() {
 				frame[j] = val;
 				INFO("Set {:s}[{:d}] index [{:s}] (flat: {:d} = 0x{:x}) to 0x{:x} ({:d})", buf->buffer_name, frame_id, istring, j, j, val, val);
 				if (metadata_is_onehot(buf, frame_id)) {
-					INFO("One-hot metadata; setting indices");
+					DEBUG("One-hot metadata; setting indices");
 					set_onehot_indices(buf, frame_id, indices);
+					set_onehot_frame_counter(buf, frame_id, frame_id_abs);
 				}
+				INFO("PY onehot[{:d}] = (({:s}), 0x{:x})", frame_id_abs, istring, val);
 			} else {
 				int j = rand() % n_to_set;
 				INFO("Set {:s}[{:d}] flat index {:d} = 0x{:x} to 0x{:x} ({:d})", buf->buffer_name, frame_id, j, j, val, val);

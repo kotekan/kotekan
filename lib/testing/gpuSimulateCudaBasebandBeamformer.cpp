@@ -47,6 +47,7 @@ static constexpr std::array<int8_t, 2> get4(const int4x2_t i) {
 
 
 void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
+												  std::string id_tag,
 												  const int8_t *__restrict__ const A,
 												  const int4x2_t *__restrict__ const E,
 												  const int32_t *__restrict__ const s,
@@ -115,14 +116,19 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
 					}
 					int oJre = Jre;
 					int oJim = Jim;
-					Jre >>= s[(f * 2 + p) * B + b];
-					Jim >>= s[(f * 2 + p) * B + b];
+					int shift = s[(f * 2 + p) * B + b];
+					Jre >>= shift;
+					Jim >>= shift;
 					//J[((b * F + f) * 2 + p) * T + t] = set4(Jre, Jim);
-					J[((b * F + f) * 2 + p) * T + t] = set4(Jim, Jre);
+					int jindx = ((b * F + f) * 2 + p) * T + t;
+					J[jindx] = set4(Jim, Jre);
 					if (Jre || Jim) {
 						if (nprint_b < nprint_max) {
 							DEBUG("bb_simple: setting b={:d}(0x{:x}), f={:d}(0x{:x}), p={:d}(0x{:x}), t={:d}(0x{:x}) = index 0x{:x} = {:d}(0x{:x}); before shift by {:d}, re=0x{:x}, im=0x{:x}",
-								  b, b, f, f, p, p, t, t, ((b * F + f) * 2 + p) * T + t, set4(Jim, Jre), set4(Jim,Jre), s[(f * 2 + p) * B + b], oJre, oJim);
+								  b, b, f, f, p, p, t, t, jindx, set4(Jim, Jre), set4(Jim,Jre), shift, oJre, oJim);
+							if (nprint_b == 0)
+								INFO("PY bb[{:s}] = (({:d}, {:d}, {:d}, {:d}, {:d}), ({:d}, {:d}), ({:d}, {:d}), 0x{:x})",
+									 id_tag, b, f, p, t, jindx, oJre, oJim, Jre, Jim, set4(Jim,Jre));
 							nprint_b++;
 						}
 					}
@@ -137,6 +143,7 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
 
 
 void gpuSimulateCudaBasebandBeamformer::bb_simple(
+												  std::string id_tag,
 												  const int8_t *__restrict__ const A,
 												  const int4x2_t *__restrict__ const E,
 												  //const int8_t *__restrict__ const s,
@@ -147,7 +154,7 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple(
 												  const int D,   // = 512;   // number of dishes
 												  const int F    // = 16;    // frequency channels per GPU
 												  ) {
-	bb_simple_sub(A, E, s, J, T, B, D, F, -1, -1, -1, -1, -1);
+	bb_simple_sub(id_tag, A, E, s, J, T, B, D, F, -1, -1, -1, -1, -1);
 	/*
 	// J[t,p,f,b] = Σ[d] A[d,b,p,f] E[d,p,f,t]
 	//#pragma omp parallel for collapse(2)
@@ -217,6 +224,12 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
 			 voltage_buf->buffer_name, voltage_frame_id, phase_buf->buffer_name, phase_frame_id,
 			 shift_buf->buffer_name, shift_frame_id, output_buf->buffer_name, output_frame_id);
 
+		std::string id_tag = std::to_string(voltage_frame_id);
+		if (metadata_is_onehot(voltage_buf, voltage_frame_id)) {
+			int frame_counter = get_onehot_frame_counter(voltage_buf, voltage_frame_id);
+			id_tag = std::to_string(frame_counter);
+		}
+		
 		bool done = false;
 		INFO("Is one-hot? {:}", metadata_is_onehot(voltage_buf, voltage_frame_id));
 		if (metadata_is_onehot(voltage_buf, voltage_frame_id)) {
@@ -231,7 +244,7 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
 				int b = -1;
 				INFO("One-hot: time {:d} pol {:d}, freq {:d}, dish {:d}", t, p, f, d);
 				int ndishes = _num_elements / 2;
-				bb_simple_sub(phase, voltage, shift, output,
+				bb_simple_sub(id_tag, phase, voltage, shift, output,
 							  _samples_per_data_set, _num_beams, ndishes, _num_local_freq,
 							  t, b, d, f, p);
 				done = true;
@@ -251,7 +264,7 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
 				int t = -1;
 				INFO("One-hot: freq {:d} pol {:d}, beam {:d}, dish {:d}", f, p, b, d);
 				int ndishes = _num_elements / 2;
-				bb_simple_sub(phase, voltage, shift, output,
+				bb_simple_sub(id_tag, phase, voltage, shift, output,
 							  _samples_per_data_set, _num_beams, ndishes, _num_local_freq,
 							  t, b, d, f, p);
 				done = true;
@@ -260,7 +273,7 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
 
 		if (!done) {
 			int ndishes = _num_elements / 2;
-			bb_simple(phase, voltage, shift, output,
+			bb_simple(id_tag, phase, voltage, shift, output,
 					  _samples_per_data_set, _num_beams, ndishes, _num_local_freq);
 		}
 

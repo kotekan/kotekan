@@ -15,12 +15,23 @@
 
 struct oneHotMetadata {
 	struct chimeMetadata chime;
+	int frame_counter;
 	std::vector<int> hotIndices;
 };
 
 inline bool metadata_is_onehot(struct Buffer* buf, int frame_id) {
 	std::cout << "metadata type name: " << buf->metadata_pool->type_name << std::endl;
 	return strcmp(buf->metadata_pool->type_name, "oneHotMetadata") == 0;
+}
+
+inline void set_onehot_frame_counter(struct Buffer* buf, int frame_id, int counter) {
+    struct oneHotMetadata* m = (struct oneHotMetadata*)buf->metadata[frame_id]->metadata;
+    m->frame_counter = counter;
+}
+
+inline int get_onehot_frame_counter(struct Buffer* buf, int frame_id) {
+    struct oneHotMetadata* m = (struct oneHotMetadata*)buf->metadata[frame_id]->metadata;
+    return m->frame_counter;
 }
 
 inline void set_onehot_indices(struct Buffer* buf, int frame_id, std::vector<int> indices) {
