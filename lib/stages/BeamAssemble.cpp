@@ -7,6 +7,8 @@
  *
  * @author Mehdi Najafi
  * @date   28 AUG 2022
+ * @author Aaron B. Pearlman
+ * @date   10 JAN 2023
  *****************************************************/
 
 #include "BeamAssemble.hpp"
@@ -129,7 +131,7 @@ void BeamAssemble::main_thread() {
             // log the receiving outdated frame frequency
             for (uint32_t f = 0; f < num_freq_per_stream; ++f) {
                 // get the frequency id
-                auto freq_id = Telescope::instance().to_freq_id(metadata->stream_id, f);
+                size_t freq_id = Telescope::instance().to_freq_id(metadata->stream_id, f);
                 if (late_beam_printout) {
                     // print info about the late beam
                     INFO("LATE Beam RA: {:f}, Dec: {:f}, scaling: {:d}, freq: {:d}, first value: "
@@ -217,13 +219,13 @@ void BeamAssemble::main_thread() {
             // put their data in the corresponding output buffer frame
             for (uint32_t f = 0; f < num_freq_per_stream; ++f) {
                 // get the frequency id
-                auto freq_id = Telescope::instance().to_freq_id(metadata->stream_id, f);
+                size_t freq_id = Telescope::instance().to_freq_id(metadata->stream_id, f);
 
                 // input frame buffer frequency data size
-                auto in_frame_freq_size = in_buf->frame_size / num_freq_per_stream;
+                size_t in_frame_freq_size = in_buf->frame_size / num_freq_per_stream;
 
                 // determine the offset based on the frequency id
-                auto out_frame_offset = freq_id * (out_buf->frame_size - num_freq_per_output_frame)
+                size_t out_frame_offset = freq_id * (out_buf->frame_size - num_freq_per_output_frame)
                                         / num_freq_per_output_frame;
 
                 // copy the data from in_frame to the out_frame + some offset with no change
@@ -237,14 +239,17 @@ void BeamAssemble::main_thread() {
                 // also inform the frequency bin added to the metadata about this freq_id
                 frequencyBin_add_frequency_id(ometadata, freq_id);
 
-                if (beam_printout) {
+                if (beam_printout) {	    
+		    INFO("freq_id: {:d}, in_frame_freq_size: {:d}, num_freq_per_output_frame: {:d}, out_buf_frame_size: {:d}, out_frame_offset: {:d}, num_freq_per_output_frame: {:d}, num_freq_per_stream: {:d}, f: {:d}",
+		         freq_id, in_frame_freq_size, num_freq_per_output_frame, out_buf->frame_size, out_frame_offset, num_freq_per_output_frame, num_freq_per_stream, f);
+	
                     // print out some metadata and the first element of frame data
-                    INFO("Beam RA: {:f}, Dec: {:f}, scaling: {:d}, freq_bins: {:d} in [{:d},{:d}], "
-                         "first value: {:d}+{:d}i",
-                         metadata->ra, metadata->dec, metadata->scaling, freq_id,
-                         ometadata->lower_band_received_frequency,
-                         ometadata->upper_band_received_frequency, in_frame[0] & 0x0F,
-                         (in_frame[0] & 0xF0) >> 4);
+                    //INFO("Beam RA: {:f}, Dec: {:f}, scaling: {:d}, freq_id: {:d} in [{:d},{:d}], "
+                    //     "first value: {:d}+{:d}i",
+                    //     metadata->ra, metadata->dec, metadata->scaling, freq_id,
+                    //     ometadata->lower_band_received_frequency,
+                    //     ometadata->upper_band_received_frequency, in_frame[0] & 0x0F,
+                    //     (in_frame[0] & 0xF0) >> 4);
                 }
             }
         }

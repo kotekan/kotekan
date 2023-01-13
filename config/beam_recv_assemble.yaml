@@ -58,7 +58,7 @@ beam_assemble:
   out_buf: asm_beam_recv_buffer
   time_out: 8*126  # the unit here is milliseconds
   num_freqs: num_frequencies
-  beam_printout: False
+  beam_printout: True
   late_beam_printout: False
 
 raw_capture:
