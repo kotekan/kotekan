@@ -152,8 +152,8 @@ void nDiskFileWrite::main_thread() {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         INFO("Setting thread affinity");
-        for (auto& i : config.get<std::vector<int>>(unique_name, "cpu_affinity"))
-            CPU_SET(i, &cpuset);
+        for (auto& j : config.get<std::vector<int>>(unique_name, "cpu_affinity"))
+            CPU_SET(j, &cpuset);
 
         pthread_setaffinity_np(file_thread_handles[i].native_handle(), sizeof(cpu_set_t), &cpuset);
     }

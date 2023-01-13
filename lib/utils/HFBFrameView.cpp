@@ -32,7 +32,7 @@ HFBFrameView::HFBFrameView(Buffer* buf, int frame_id) :
     num_subfreq(_metadata->num_subfreq),
 
     // Set the refs to the general _metadata
-    time(_metadata->ctime),
+    time(_metadata->gps_time),
     fpga_seq_start(_metadata->fpga_seq_start),
     fpga_seq_total(_metadata->fpga_seq_total),
     fpga_seq_length(_metadata->fpga_seq_length),
@@ -78,7 +78,7 @@ HFBFrameView HFBFrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer*
 
 // Copy the non-const parts of the metadata
 void HFBFrameView::copy_metadata(HFBFrameView frame_to_copy) {
-    _metadata->ctime = frame_to_copy.metadata()->ctime;
+    _metadata->gps_time = frame_to_copy.metadata()->gps_time;
     _metadata->fpga_seq_start = frame_to_copy.metadata()->fpga_seq_start;
     _metadata->fpga_seq_total = frame_to_copy.metadata()->fpga_seq_total;
     _metadata->fpga_seq_length = frame_to_copy.metadata()->fpga_seq_length;

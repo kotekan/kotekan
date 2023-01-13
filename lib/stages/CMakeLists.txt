@@ -71,6 +71,8 @@ add_library(
     DataQuality.cpp
     BeamExtract.cpp
     BeamInspect.cpp
+    BeamAssemble.cpp
+    nDiskMultiFormatWriter.cpp
     testDataGen.cpp
     DPDKShuffleSimulate.cpp
     hexDump.cpp

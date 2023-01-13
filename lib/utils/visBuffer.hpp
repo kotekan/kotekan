@@ -9,10 +9,10 @@
 
 #include "Config.hpp"         // for Config
 #include "FrameView.hpp"      // for FrameView
-#include "Telescope.hpp"      // for freq_id_t
 #include "buffer.h"           // for Buffer
 #include "chimeMetadata.hpp"  // for chimeMetadata
 #include "datasetManager.hpp" // for dset_id_t
+#include "visMetadata.hpp"    // for VisMetadata
 #include "visUtil.hpp"        // for cfloat
 
 #include "gsl-lite.hpp" // for span
@@ -31,42 +31,6 @@
  * Use this enum to refer to the fields.
  **/
 enum class VisField { vis, weight, flags, eval, evec, erms, gain };
-
-
-/**
- * @struct VisMetadata
- * @brief Metadata for the visibility style buffers
- *
- * @author Richard Shaw
- **/
-struct VisMetadata {
-
-    /// The FPGA sequence number of the integration frame
-    uint64_t fpga_seq_start;
-    /// The ctime of the integration frame
-    timespec ctime;
-    /// Nominal length of the frame in FPGA ticks
-    uint64_t fpga_seq_length;
-    /// Amount of data that actually went into the frame (in FPGA ticks)
-    uint64_t fpga_seq_total;
-    /// The number of FPGA frames flagged as containing RFI. NOTE: This value
-    /// might contain overlap with lost samples, as that counts missing samples
-    /// as well as RFI. For renormalization this value should NOT be used, use
-    /// lost samples (= @c fpga_seq_length - @c fpga_seq_total) instead.
-    uint64_t rfi_total;
-
-    /// ID of the frequency bin
-    freq_id_t freq_id;
-    /// ID of the dataset
-    dset_id_t dataset_id;
-
-    /// Number of elements for data in buffer
-    uint32_t num_elements;
-    /// Number of products for data in buffer
-    uint32_t num_prod;
-    /// Number of eigenvectors and values calculated
-    uint32_t num_ev;
-};
 
 
 /**

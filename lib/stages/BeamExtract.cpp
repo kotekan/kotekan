@@ -5,7 +5,7 @@
 #include "Telescope.hpp"      // for stream_t
 #include "buffer.h"           // for get_metadata, allocate_new_metadata_object, mark_frame_empty
 #include "chimeMetadata.hpp"  // for chimeMetadata, beamCoord, get_stream_id
-#include "datasetManager.hpp" // for dset_id_t
+#include "dataset.hpp"        // for dset_id_t
 #include "kotekanLogging.hpp" // for DEBUG2
 #include "visUtil.hpp"        // for frameID, modulo
 
@@ -84,7 +84,7 @@ void BeamExtract::main_thread() {
         chimeMetadata* in_metadata = (chimeMetadata*)get_metadata(in_buf, in_frame_id);
         BeamMetadata* out_metadata = (BeamMetadata*)get_metadata(out_buf, out_frame_id);
 
-        out_metadata->ctime = in_metadata->gps_time;
+        out_metadata->gps_time = in_metadata->gps_time;
         out_metadata->fpga_seq_start = in_metadata->fpga_seq_num;
         out_metadata->stream_id = get_stream_id(in_buf, in_frame_id);
         // Copy the base dataset ID from the GPU data.

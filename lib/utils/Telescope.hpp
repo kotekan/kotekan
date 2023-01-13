@@ -28,7 +28,7 @@ using freq_id_t = uint32_t;
  * @brief A type for the stream ID.
  *
  * This is the external interface for it and *must* be used instead of directly
- * accessing the chimeMetadata::stream_ID member.
+ * accessing the chimeMetadata::stream_id member.
  **/
 struct stream_t {
     uint64_t id;
