@@ -92,13 +92,13 @@ gen_phase:
 
 gen_shift:
     kotekan_stage: testDataGen
-    type: const
-    value: 0x3
+    type: const32
+    value: 0x4
     out_buf: host_shift_buffer
 
 gen_gpu_shift:
     kotekan_stage: testDataGen
-    type: const
+    type: const32
     value: 0x4
     out_buf: host_gpu_shift_buffer
 
