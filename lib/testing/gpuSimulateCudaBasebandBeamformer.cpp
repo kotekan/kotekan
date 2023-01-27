@@ -117,15 +117,23 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
 					int oJre = Jre;
 					int oJim = Jim;
 					int shift = s[(f * 2 + p) * B + b];
+					// rounding
+					Jre += 1<<(shift-1);
+					Jim += 1<<(shift-1);
 					Jre >>= shift;
 					Jim >>= shift;
+					if (Jre >  7) Jre =  7;
+					if (Jre < -7) Jre = -7;
+					if (Jim >  7) Jim =  7;
+					if (Jim < -7) Jim = -7;
 					//J[((b * F + f) * 2 + p) * T + t] = set4(Jre, Jim);
 					int jindx = ((b * F + f) * 2 + p) * T + t;
 					J[jindx] = set4(Jim, Jre);
 					if (Jre || Jim) {
 						if (nprint_b < nprint_max) {
-							DEBUG("bb_simple: setting b={:d}(0x{:x}), f={:d}(0x{:x}), p={:d}(0x{:x}), t={:d}(0x{:x}) = index 0x{:x} = {:d}(0x{:x}); before shift by {:d}, re=0x{:x}, im=0x{:x}",
-								  b, b, f, f, p, p, t, t, jindx, set4(Jim, Jre), set4(Jim,Jre), shift, oJre, oJim);
+							//	/cpu_beamformer: bb_simple: setting b=3(0x3), f=13(0xd), p=0(0x0), t=15787(0x3dab) = index 0x3d3dab; before shift by 50529027, re=0xe0, im=0xe0, after: re=0x1c, im=0x1c, packed: 0xcc
+							DEBUG("bb_simple: setting b={:d}(0x{:x}), f={:d}(0x{:x}), p={:d}(0x{:x}), t={:d}(0x{:x}) = index 0x{:x}; before shift by {:d} (0x{:x}), re=0x{:x}, im=0x{:x}, after: re=0x{:x}, im=0x{:x}, packed: 0x{:x}",
+								  b, b, f, f, p, p, t, t, jindx, shift, shift, oJre, oJim, Jre, Jim, set4(Jim,Jre));
 							if (nprint_b == 0)
 								INFO("PY bb[{:s}] = (({:d}, {:d}, {:d}, {:d}, {:d}), ({:d}, {:d}), ({:d}, {:d}), 0x{:x})",
 									 id_tag, b, f, p, t, jindx, oJre, oJim, Jre, Jim, set4(Jim,Jre));
