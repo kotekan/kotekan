@@ -29,6 +29,7 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
     _gpu_mem_phase = config.get<std::string>(unique_name, "gpu_mem_phase");
     _gpu_mem_output_scaling = config.get<std::string>(unique_name, "gpu_mem_output_scaling");
     _gpu_mem_formed_beams = config.get<std::string>(unique_name, "gpu_mem_formed_beams");
+    _gpu_mem_info = config.get<std::string>(unique_name, "gpu_mem_info");
 
     command_type = gpuCommandType::KERNEL;
 
@@ -76,7 +77,7 @@ struct CuDeviceArray {
 // And this struct is Erik's interpretation of what Julia is expecting for arguments to the kernel!
 struct bb_parameter {
   const char *exception;
-  CuDeviceArray<int32_t, 1> arrays[4];
+  CuDeviceArray<int32_t, 1> arrays[5];
 };
 
 cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_event) {
@@ -101,6 +102,11 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
 
     void* output_memory =
         device.get_gpu_memory_array(_gpu_mem_formed_beams, gpu_frame_id, output_len);
+
+    size_t info_len = (size_t)(threads_x * threads_y * blocks_x * sizeof(int32_t));
+    //int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
+	int32_t* info_memory = (int32_t*)device.get_gpu_memory_array(_gpu_mem_info,
+																 gpu_frame_id, info_len);
 
     if (pre_event)
         CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(CUDA_COMPUTE_STREAM), pre_event, 0));
@@ -134,12 +140,22 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
     bbparams.arrays[3].dims[0] = output_len;
     bbparams.arrays[3].len = output_len;
 
-    void* parameters[] = { &(bbparams.exception),
-			   &(bbparams.arrays[0]),
-			   &(bbparams.arrays[1]),
-			   &(bbparams.arrays[2]),
-			   &(bbparams.arrays[3]), };
+	bbparams.arrays[4].ptr = (int32_t*)info_memory;
+    bbparams.arrays[4].maxsize = info_len;
+    bbparams.arrays[4].dims[0] = info_len / sizeof(int32_t);
+    bbparams.arrays[4].len = info_len / sizeof(int32_t);
 
+    void* parameters[] = {
+		&(bbparams.exception),
+		&(bbparams.arrays[0]),
+		&(bbparams.arrays[1]),
+		&(bbparams.arrays[2]),
+		&(bbparams.arrays[3]),
+		&(bbparams.arrays[4]),
+	};
+
+	INFO("Kernel_name: {}", kernel_name);
+	INFO("runtime_kernels[kernel_name]: {}", (void*)runtime_kernels[kernel_name]);
     CHECK_CU_ERROR(cuFuncSetAttribute(runtime_kernels[kernel_name],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shared_mem_bytes));

@@ -18,7 +18,7 @@ kernel-description:
     threads: [32, 24]
     blocks: [32]
     shmem_bytes: 67712
-  kernel-name: "_Z13julia_bb_473213CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EE"
+  kernel-name: "_Z13julia_bb_496913CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE"
   kernel-arguments:
     - name: "A"
       intent: in
@@ -44,4 +44,10 @@ kernel-description:
       indices: [C, T, P, F, B]
       shape: [2, 32768, 2, 16, 96]
       strides: [1, 2, 65536, 131072, 2097152]
+    - name: "info"
+      intent: out
+      type: Int32
+      indices: [thread, warp, block]
+      shapes: [32, 24, 32]
+      strides: [1, 32, 768]
 ...
