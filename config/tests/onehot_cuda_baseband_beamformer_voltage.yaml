@@ -31,7 +31,7 @@ buffer_depth: 18
 
 # data gen:
 #num_frames: 25
-#num_frames: 100
+num_frames: 100
 
 # Pool
 main_pool:
@@ -99,7 +99,7 @@ gen_shift:
 gen_gpu_shift:
     kotekan_stage: testDataGen
     type: const
-    value: 0x1
+    value: 0x4
     out_buf: host_gpu_shift_buffer
 
 gpu:
