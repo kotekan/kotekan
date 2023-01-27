@@ -47,10 +47,10 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     buf = get_buffer("out_buf");
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
-    assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse"
+    assert(type == "const" || type == "const32" || type == "random" || type == "ramp" || type == "tpluse"
            || type == "tpluseplusf" || type == "tpluseplusfprime" || type == "square"
 	   || type == "onehot");
-    if (type == "const" || type == "random" || type == "ramp" || type == "onehot") {
+    if (type == "const" || type == "const32" || type == "random" || type == "ramp" || type == "onehot") {
         value = config.get_default<int>(unique_name, "value", -1999);
 		_value_array = config.get_default<std::vector<int>>(unique_name, "values", std::vector<int>());
 	}
@@ -125,6 +125,7 @@ void testDataGen::main_thread() {
     int frame_id = 0;
     int frame_id_abs = 0;
     uint8_t* frame = nullptr;
+    int32_t* frame32 = nullptr;
     uint64_t seq_num = samples_per_data_set * _first_frame_index;
     bool finished_seeding_consant = false;
     static struct timeval now;
@@ -164,6 +165,10 @@ void testDataGen::main_thread() {
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
 		uint n_to_set = buf->frame_size / sizeof(uint8_t);
+		if (type == "const32") {
+			n_to_set /= sizeof(int32_t);
+			frame32 = (int32_t*)frame;
+		}
 		if (type == "onehot") {
 			int val = value;
 			if (_value_array.size())
@@ -202,6 +207,10 @@ void testDataGen::main_thread() {
                 if (finished_seeding_consant)
                     break;
                 frame[j] = value;
+			} else if (type == "const32") {
+                if (finished_seeding_consant)
+                    break;
+                frame32[j] = value;
             } else if (type == "ramp") {
                 frame[j] = fmod(j * value, 256 * value);
                 //                frame[j] = j*value;
