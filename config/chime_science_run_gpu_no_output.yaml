@@ -1537,9 +1537,9 @@ extra_tracking_beams:
     beam_send_11:
       #kotekan_stage: bufferSend
       buf: beam_buffer_11_merged
-      # Moose
-      server_ip: 10.1.50.10
-      server_port: 11030
+      # outrigger-gating
+      server_ip: 10.1.50.12
+      server_port: 68
       log_level: error
       reconnect_time: 20
 
