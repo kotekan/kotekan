@@ -1503,7 +1503,7 @@ extra_tracking_beams:
       #kotekan_stage: bufferSend
       buf: beam_buffer_10_merged
       # outrigger-gating
-      server_ip: 10.1.50.12
+      server_ip: 10.1.50.52
       server_port: 11030
       log_level: error
       reconnect_time: 20
