@@ -1502,8 +1502,8 @@ extra_tracking_beams:
     beam_send_10:
       #kotekan_stage: bufferSend
       buf: beam_buffer_10_merged
-      # Bongo
-      server_ip: 10.1.50.13
+      # outrigger-gating
+      server_ip: 10.1.50.52
       server_port: 11030
       log_level: error
       reconnect_time: 20
@@ -1537,7 +1537,7 @@ extra_tracking_beams:
     beam_send_11:
       #kotekan_stage: bufferSend
       buf: beam_buffer_11_merged
-      # Moose
+      # outrigger-gating
       server_ip: 10.1.50.10
       server_port: 11030
       log_level: error
