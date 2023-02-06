@@ -20,7 +20,8 @@ struct oneHotMetadata {
 };
 
 inline bool metadata_is_onehot(struct Buffer* buf, int frame_id) {
-	std::cout << "metadata type name: " << buf->metadata_pool->type_name << std::endl;
+	// avoid gcc warning about being unused.
+	(void)frame_id;
 	return strcmp(buf->metadata_pool->type_name, "oneHotMetadata") == 0;
 }
 

@@ -39,8 +39,9 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
     };
     build_ptx({kernel_name}, opts);
 
-    // HACK
-	/*
+    // HACK -- this was for setting constant phase & shift arrays in local arrays
+    // (not managed by kotekan)
+    /*
     size_t phase_len = (size_t)_num_elements * _num_local_freq * _num_beams * 2;
     int8_t* phase_memory = (int8_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
 
@@ -59,7 +60,7 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
         cpu_shift_memory[i] = 0;
     CHECK_CUDA_ERROR(cudaMemcpy(shift_memory, cpu_shift_memory, shift_len, cudaMemcpyHostToDevice));
     free(cpu_shift_memory);
-	*/
+    */
 }
 
 cudaBasebandBeamformer::~cudaBasebandBeamformer() {}
@@ -90,13 +91,13 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
     // TEMPORARY -- get our local phase memory, not from kotekan
     //int8_t* phase_memory = (int8_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
     int8_t* phase_memory = (int8_t*)device.get_gpu_memory_array(_gpu_mem_phase, gpu_frame_id,
-																phase_len);
+                                                                phase_len);
 
     size_t shift_len = (size_t)_num_local_freq * _num_beams * 2 * sizeof(int32_t);
     // TEMPORARY -- get our local shift memory, not from kotekan
     //int32_t* shift_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_output_scaling, shift_len);
-	int32_t* shift_memory = (int32_t*)device.get_gpu_memory_array(_gpu_mem_output_scaling,
-																  gpu_frame_id, shift_len);
+    int32_t* shift_memory = (int32_t*)device.get_gpu_memory_array(_gpu_mem_output_scaling,
+                                                                  gpu_frame_id, shift_len);
 
     size_t output_len = (size_t)_num_local_freq * _num_beams * _samples_per_data_set * 2;
 
@@ -105,8 +106,8 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
 
     size_t info_len = (size_t)(threads_x * threads_y * blocks_x * sizeof(int32_t));
     //int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
-	int32_t* info_memory = (int32_t*)device.get_gpu_memory_array(_gpu_mem_info,
-																 gpu_frame_id, info_len);
+    int32_t* info_memory = (int32_t*)device.get_gpu_memory_array(_gpu_mem_info,
+                                                                 gpu_frame_id, info_len);
 
     if (pre_event)
         CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(CUDA_COMPUTE_STREAM), pre_event, 0));
@@ -124,12 +125,12 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
     bbparams.arrays[0].maxsize = phase_len;
     bbparams.arrays[0].dims[0] = phase_len;
     bbparams.arrays[0].len = phase_len;
-  
+
     bbparams.arrays[1].ptr = (int32_t*)voltage_memory;
     bbparams.arrays[1].maxsize = voltage_len;
     bbparams.arrays[1].dims[0] = voltage_len;
     bbparams.arrays[1].len = voltage_len;
-  
+
     bbparams.arrays[2].ptr = shift_memory;
     bbparams.arrays[2].maxsize = shift_len;
     bbparams.arrays[2].dims[0] = shift_len / sizeof(int32_t);
@@ -140,30 +141,30 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
     bbparams.arrays[3].dims[0] = output_len;
     bbparams.arrays[3].len = output_len;
 
-	bbparams.arrays[4].ptr = (int32_t*)info_memory;
+    bbparams.arrays[4].ptr = (int32_t*)info_memory;
     bbparams.arrays[4].maxsize = info_len;
     bbparams.arrays[4].dims[0] = info_len / sizeof(int32_t);
     bbparams.arrays[4].len = info_len / sizeof(int32_t);
 
     void* parameters[] = {
-		&(bbparams.exception),
-		&(bbparams.arrays[0]),
-		&(bbparams.arrays[1]),
-		&(bbparams.arrays[2]),
-		&(bbparams.arrays[3]),
-		&(bbparams.arrays[4]),
-	};
+        &(bbparams.exception),
+        &(bbparams.arrays[0]),
+        &(bbparams.arrays[1]),
+        &(bbparams.arrays[2]),
+        &(bbparams.arrays[3]),
+        &(bbparams.arrays[4]),
+    };
 
-	INFO("Kernel_name: {}", kernel_name);
-	INFO("runtime_kernels[kernel_name]: {}", (void*)runtime_kernels[kernel_name]);
+    DEBUG("Kernel_name: {}", kernel_name);
+    DEBUG("runtime_kernels[kernel_name]: {}", (void*)runtime_kernels[kernel_name]);
     CHECK_CU_ERROR(cuFuncSetAttribute(runtime_kernels[kernel_name],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shared_mem_bytes));
 
-	DEBUG("Running CUDA Baseband Beamformer on GPU frame {:d}", gpu_frame_id);
+    DEBUG("Running CUDA Baseband Beamformer on GPU frame {:d}", gpu_frame_id);
     err = cuLaunchKernel(runtime_kernels[kernel_name],
-						 blocks_x, blocks_y, 1,
-						 threads_x, threads_y, 1, shared_mem_bytes,
+                         blocks_x, blocks_y, 1,
+                         threads_x, threads_y, 1, shared_mem_bytes,
                          device.getStream(CUDA_COMPUTE_STREAM), parameters, NULL);
 
     if (err != CUDA_SUCCESS) {

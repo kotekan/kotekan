@@ -26,12 +26,11 @@ num_elements: 1024
 num_local_freq: 16
 num_beams: 96
 
-#buffer_depth: 4
+#buffer_depth: 2
 buffer_depth: 18
 
 # data gen:
-#num_frames: 25
-num_frames: 100
+num_frames: 18
 
 # Pool
 main_pool:
@@ -52,13 +51,6 @@ host_phase_buffer:
     metadata_pool: main_pool
 
 host_shift_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: num_local_freq * num_beams * 2 * sizeof_int
-    metadata_pool: main_pool
-
-###### Separate shift buffer for the GPU kernel!
-host_gpu_shift_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
     frame_size: num_local_freq * num_beams * 2 * sizeof_int
@@ -103,12 +95,6 @@ gen_shift:
     value: 0x4
     out_buf: host_shift_buffer
 
-gen_gpu_shift:
-    kotekan_stage: testDataGen
-    type: const32
-    value: 0x4
-    out_buf: host_gpu_shift_buffer
-
 gpu:
     # log_level: debug
     profiling: true
@@ -144,25 +130,26 @@ gpu:
         in_buffers:
             host_voltage: host_voltage_buffer
             host_phase: host_phase_buffer
-            #host_shift: host_shift_buffer
-            host_shift: host_gpu_shift_buffer
+            host_shift: host_shift_buffer
         out_buffers:
             host_formed_beams: host_formed_beams_buffer
             host_info: host_info_buffer
 
 cpu_beamformer:
     kotekan_stage: gpuSimulateCudaBasebandBeamformer
-    log_level: debug
+    #log_level: debug
+    # zero out the array before setting values (only needed for one-hot)?
+    zero_output: true
     voltage_in_buf: host_voltage_buffer
     phase_in_buf: host_phase_buffer
     shift_in_buf: host_shift_buffer
     beams_out_buf: simulated_formed_beams_buffer
 
-# check_data:
-#     kotekan_stage: testDataCheckUchar
-#     first_buf: host_formed_beams_buffer
-#     second_buf: simulated_formed_beams_buffer
-#     # num_frames_to_test: buffer_depth
+check_data:
+    kotekan_stage: testDataCheckUchar
+    first_buf: host_formed_beams_buffer
+    second_buf: simulated_formed_beams_buffer
+    num_frames_to_test: 18 # = length of gen_data one-hot vector
 
 # hexDumpGPU:
 #     log_level: debug
@@ -181,11 +168,11 @@ printSparseGPU:
     # BEAM, FREQ, POL, TIME
     array_shape: [96, 16, 2, 32768]
     input_buf: host_formed_beams_buffer
-    max_to_print: 8
+    max_to_print: 2
 
 printSparseCPU:
     kotekan_stage: printSparseUint8
     # BEAM, FREQ, POL, TIME
     array_shape: [96, 16, 2, 32768]
     input_buf: simulated_formed_beams_buffer
-    max_to_print: 8
+    max_to_print: 2
