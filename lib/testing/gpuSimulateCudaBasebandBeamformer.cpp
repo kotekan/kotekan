@@ -45,7 +45,13 @@ static constexpr std::array<int8_t, 2> get4(const int4x2_t i) {
 			int8_t(int8_t(((i >> 4) + 0x08) & 0x0f) - 0x08)};
 }
 
+/**
+ CPU implementation of the CUDA Baseband Beamformer kernel.
 
+ This _sub version can handle "one-hot" arrays, where only a single
+ value of a given parameter contains non-zero values (eg, a single
+ frequency, single time, etc).
+ */
 void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
 												  std::string id_tag,
 												  const int8_t *__restrict__ const A,
@@ -79,21 +85,14 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
 	const int nprint_max = 4;
 
 	// J[t,p,f,b] = Σ[d] A[d,b,p,f] E[d,p,f,t]
-	//#pragma omp parallel for collapse(2)
 	for (int f = f0; f < f1; ++f) {
-		//DEBUG("bb_simple frequence channel {:d} of {:d}", f, F);
 		for (int p = p0; p < p1; ++p) {
 			for (int t = t0; t < t1; ++t) {
 				for (int b = b0; b < b1; ++b) {
 					int Jre = 0, Jim = 0;
-					// This pragma slows things down tenfold
-					// #pragma omp simd
 					for (int d = d0; d < d1; ++d) {
-						//const int Are = A[(((f * 2 + p) * B + b) * D + d) * 2 + 0];
-						//const int Aim = A[(((f * 2 + p) * B + b) * D + d) * 2 + 1];
 						const int Aim = A[(((f * 2 + p) * B + b) * D + d) * 2 + 0];
 						const int Are = A[(((f * 2 + p) * B + b) * D + d) * 2 + 1];
-						//const auto [Ere, Eim] = get4(E[((t * 2 + p) * F + f) * D + d]);
 						const auto [Eim, Ere] = get4(E[((t * 2 + p) * F + f) * D + d]);
 						Jre += Are * Ere - Aim * Eim;
 						Jim += Are * Eim + Aim * Ere;
@@ -126,12 +125,10 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
 					if (Jre < -7) Jre = -7;
 					if (Jim >  7) Jim =  7;
 					if (Jim < -7) Jim = -7;
-					//J[((b * F + f) * 2 + p) * T + t] = set4(Jre, Jim);
 					int jindx = ((b * F + f) * 2 + p) * T + t;
 					J[jindx] = set4(Jim, Jre);
 					if (Jre || Jim) {
 						if (nprint_b < nprint_max) {
-							//	/cpu_beamformer: bb_simple: setting b=3(0x3), f=13(0xd), p=0(0x0), t=15787(0x3dab) = index 0x3d3dab; before shift by 50529027, re=0xe0, im=0xe0, after: re=0x1c, im=0x1c, packed: 0xcc
 							DEBUG("bb_simple: setting b={:d}(0x{:x}), f={:d}(0x{:x}), p={:d}(0x{:x}), t={:d}(0x{:x}) = index 0x{:x}; before shift by {:d} (0x{:x}), re=0x{:x}, im=0x{:x}, after: re=0x{:x}, im=0x{:x}, packed: 0x{:x}",
 								  b, b, f, f, p, p, t, t, jindx, shift, shift, oJre, oJim, Jre, Jim, set4(Jim,Jre));
 							if (nprint_b == 0)
@@ -146,15 +143,10 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
 	}
 }
 
-
-
-
-
 void gpuSimulateCudaBasebandBeamformer::bb_simple(
 												  std::string id_tag,
 												  const int8_t *__restrict__ const A,
 												  const int4x2_t *__restrict__ const E,
-												  //const int8_t *__restrict__ const s,
 												  const int32_t *__restrict__ const s,
 												  int4x2_t *__restrict__ const J,
 												  const int T,   // = 32768; // 32768; // number of times
@@ -163,47 +155,6 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple(
 												  const int F    // = 16;    // frequency channels per GPU
 												  ) {
 	bb_simple_sub(id_tag, A, E, s, J, T, B, D, F, -1, -1, -1, -1, -1);
-	/*
-	// J[t,p,f,b] = Σ[d] A[d,b,p,f] E[d,p,f,t]
-	//#pragma omp parallel for collapse(2)
-	for (int f = 0; f < F; ++f) {
-		//DEBUG("bb_simple frequence channel {:d} of {:d}", f, F);
-		for (int p = 0; p < 2; ++p) {
-			for (int t = 0; t < T; ++t) {
-				for (int b = 0; b < B; ++b) {
-					int Jre = 0, Jim = 0;
-					// This pragma slows things down tenfold
-					// #pragma omp simd
-					for (int d = 0; d < D; ++d) {
-						//const int Are = A[(((f * 2 + p) * B + b) * D + d) * 2 + 0];
-						//const int Aim = A[(((f * 2 + p) * B + b) * D + d) * 2 + 1];
-						const int Aim = A[(((f * 2 + p) * B + b) * D + d) * 2 + 0];
-						const int Are = A[(((f * 2 + p) * B + b) * D + d) * 2 + 1];
-						//const auto [Ere, Eim] = get4(E[((t * 2 + p) * F + f) * D + d]);
-						const auto [Eim, Ere] = get4(E[((t * 2 + p) * F + f) * D + d]);
-						Jre += Are * Ere - Aim * Eim;
-						Jim += Are * Eim + Aim * Ere;
-						if ((b == 0) && (Ere || Eim)) {
-							size_t indx = ((t * F + f) * 2 + p) * D + d;
-							DEBUG("bb_simple: found voltage f={:d}, p={:d}, t={:d}, d={:d} = index {:d}=0x{:x} = {:d}",
-								  f, p, t, d, indx, indx, E[indx]);
-						}
-					}
-					int oJre = Jre;
-					int oJim = Jim;
-					Jre >>= s[(f * 2 + p) * B + b];
-					Jim >>= s[(f * 2 + p) * B + b];
-					//J[((b * F + f) * 2 + p) * T + t] = set4(Jre, Jim);
-					J[((b * F + f) * 2 + p) * T + t] = set4(Jim, Jre);
-					if (Jre || Jim) {
-						DEBUG("bb_simple: setting b={:d}(0x{:x}), f={:d}(0x{:x}), p={:d}(0x{:x}), t={:d}(0x{:x}) = index 0x{:x} = {:d}(0x{:x}); before shift by {:d}, re=0x{:x}, im=0x{:x}",
-							  b, b, f, f, p, p, t, t, ((b * F + f) * 2 + p) * T + t, set4(Jim, Jre), set4(Jim,Jre), s[(f * 2 + p) * B + b], oJre, oJim);
-					}
-				}
-			}
-		}
-	}
-	*/
 }
 
 void gpuSimulateCudaBasebandBeamformer::main_thread() {
