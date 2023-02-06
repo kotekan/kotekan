@@ -94,22 +94,22 @@ struct StageInfo {
  * There can be more than one producer or consumer attached to each buffer, but
  * each one must register with the buffer separately.
  *
- * Consumers must only read data from frames and not write anything back too them.
- * More than one producer can write to a given frame in a multi producer setup,
+ * Consumers must only read data from frames and not write anything back to them.
+ * More than one producer can write to a given frame in a multi-producer setup,
  * but in that case they must coordinate their address space to not overwrite
- * each others values.  Because of this multi-producers are somewhat rare.
+ * each others' values.  Because of this, multi-producers are somewhat rare.
  * Producers also generally shouldn't read from frames, although there is
  * nothing wrong with doing so, it just normally doesn't make sense to do so.
  *
  * Unless the function @c zero_frames() is called on the buffer object, the
  * default behaviour is not to zero the memory of the frames between uses.
- * Therefore it is normally upto the producer(s) to ensure all memory
+ * Therefore it is normally up to the producer(s) to ensure all memory
  * values are either given new data, or zeroed.
  *
  * In the config file a buffer is created with a <tt>kotekan_buffer: standard</tt>
  * named block.   The buffer name becomes the path name of that config block.
  *
- * Note if no consumer is registered for on a buffer, then it will drop
+ * Note that if no consumer is registered for on a buffer, then it will drop
  * the frames and log an INFO statement to notify the user that the data
  * is being dropped.
  *
