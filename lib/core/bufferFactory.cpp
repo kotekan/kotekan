@@ -72,6 +72,8 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
     uint32_t num_frames = config.get<uint32_t>(location, "num_frames");
     string metadataPool_name = config.get_default<std::string>(location, "metadata_pool", "none");
     int32_t numa_node = config.get_default<int32_t>(location, "numa_node", 0);
+    bool use_huge_pages = config.get_default<bool>(location, "use_huge_pages", false);
+    bool mlock_frames = config.get_default<bool>(location, "mlock_frames", true);
 
     struct metadataPool* pool = nullptr;
     if (metadataPool_name != "none") {
@@ -99,7 +101,8 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
     INFO_NON_OO("Creating {:s}Buffer named {:s} with {:d} frames, frame size of {:d} and "
                 "metadata pool {:s} on numa_node {:d}",
                 type_name, name, num_frames, frame_size, metadataPool_name, numa_node);
-    return create_buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(), numa_node);
+    return create_buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(), numa_node,
+                         use_huge_pages, mlock_frames);
 
     // No metadata found
     throw std::runtime_error(fmt::format(fmt("No buffer type named: {:s}"), name));

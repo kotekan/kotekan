@@ -14,11 +14,17 @@
 #include <stdio.h>    // for snprintf
 #include <stdlib.h>   // for free, malloc
 #include <string.h>   // for memset, memcpy, strncmp, strncpy, strdup
+#ifndef MAC_OSX
+#include <linux/mman.h>
 #include <sys/mman.h> // IWYU pragma: keep
+#endif
 #include <time.h>     // for NULL, size_t, timespec
 #ifdef WITH_NUMA
 #include <numa.h> // IWYU pragma: keep
 #endif
+
+// It is assumed this is a power of two in the code.
+#define HUGE_PAGE_SIZE 2097152
 
 struct zero_frames_thread_args {
     struct Buffer* buf;
@@ -61,9 +67,15 @@ void private_reset_consumers(struct Buffer* buf, const int ID);
 int private_mark_frame_empty(struct Buffer* buf, const int id);
 
 struct Buffer* create_buffer(int num_frames, int len, struct metadataPool* pool,
-                             const char* buffer_name, const char* buffer_type, int numa_node) {
+                             const char* buffer_name, const char* buffer_type, int numa_node,
+                             bool use_huge_pages, bool mlock_frames) {
 
     assert(num_frames > 0);
+
+    #ifdef WITH_NUMA
+        // Set NUMA policy
+        numa_set_strict(1);
+    #endif
 
     struct Buffer* buf = malloc(sizeof(struct Buffer));
     CHECK_MEM_F(buf);
@@ -74,6 +86,7 @@ struct Buffer* create_buffer(int num_frames, int len, struct metadataPool* pool,
     CHECK_ERROR_F(pthread_cond_init(&buf->empty_cond, NULL));
 
     buf->shutdown_signal = 0;
+    buf->use_hugepages = use_huge_pages;
 
     // Copy the buffer name and type.
     buf->buffer_name = strdup(buffer_name);
@@ -83,20 +96,13 @@ struct Buffer* create_buffer(int num_frames, int len, struct metadataPool* pool,
     buf->metadata_pool = pool;
     buf->frame_size = len;
 
-    // We align the buffer length to a multiple of the system page size.
-    // This may result in the memory allocated being larger than the size of the
-    // memory requested.  So frame_size is the size requested/used, and aligned_frame_size
-    // is the actual size of the memory space.
-    // To make CPU-GPU transfers more efficient, it is recommended to use the aligned value
-    // so that no partial pages are send in the DMA copy.
-    // NOTE (17/02/02) This may not be needed any more, changed to make aligned
-    // len == requested len.  This should be checked in more detail.
-    buf->aligned_frame_size = len;
-    // buf->aligned_frame_size = PAGESIZE_MEM * (ceil((double)len / (double)PAGESIZE_MEM));
-
-    // Make sure we don't have a math error,
-    // which would make the buffer smaller than it should be.
-    assert(buf->aligned_frame_size >= buf->frame_size);
+    if (use_huge_pages) {
+        // Round up to the nearest huge page size multiple.
+        buf->aligned_frame_size = (int)(((size_t)len + (size_t)HUGE_PAGE_SIZE - 1)
+                                  & -(size_t)HUGE_PAGE_SIZE);
+    } else {
+        buf->aligned_frame_size = len;
+    }
 
     // Create the is_free array
     buf->is_full = malloc(num_frames * sizeof(int));
@@ -151,7 +157,8 @@ struct Buffer* create_buffer(int num_frames, int len, struct metadataPool* pool,
 
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
-        buf->frames[i] = buffer_malloc(buf->aligned_frame_size, numa_node);
+        buf->frames[i] = buffer_malloc(buf->aligned_frame_size, numa_node,
+                                       use_huge_pages, mlock_frames);
         if (buf->frames[i] == NULL)
             return NULL;
     }
@@ -161,7 +168,7 @@ struct Buffer* create_buffer(int num_frames, int len, struct metadataPool* pool,
 
 void delete_buffer(struct Buffer* buf) {
     for (int i = 0; i < buf->num_frames; ++i) {
-        buffer_free(buf->frames[i], buf->aligned_frame_size);
+        buffer_free(buf->frames[i], buf->aligned_frame_size, buf->use_hugepages);
         free(buf->producers_done[i]);
         free(buf->consumers_done[i]);
     }
@@ -875,57 +882,85 @@ void safe_swap_frame(struct Buffer* src_buf, int src_frame_id, struct Buffer* de
     }
 }
 
-uint8_t* buffer_malloc(ssize_t len, int numa_node) {
+uint8_t* buffer_malloc(ssize_t len, int numa_node,
+                       bool use_huge_pages, bool mlock_frames) {
 
     uint8_t* frame = NULL;
     int err;
 
-#ifdef WITH_HSA
+#ifdef WITH_HSA // Support for legacy HSA support used in CHIME
     (void)err;
-    // Is this memory aligned?
     frame = hsa_host_malloc(len, numa_node);
     if (frame == NULL) {
         return NULL;
     }
 #else
+    if (use_huge_pages) {
+#ifndef MAC_OSX
+        void* mapped_frame = mmap(NULL, len, PROT_READ | PROT_WRITE,
+                           MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
+        if (mapped_frame == MAP_FAILED) {
+            ERROR_F("Error mapping huge pages, check available huge pages: %s (%d)",
+                    strerror(errno), errno);
+            return NULL;
+        }
+        // Strictly bind the memory to the required NUMA domain
+#ifndef WITH_NUMA
+        struct bitmask* node_mask = numa_allocate_nodemask();
+        numa_bitmask_setbit(node_mask, numa_node);
+        if (mbind(mapped_frame, len, MPOL_BIND, node_mask, node_mask->size, MPOL_MF_STRICT) < 0) {
+            ERROR_F("Failed to bind huge page frames to requested NUMA node: %s (%d)",
+                    strerror(errno), errno);
+            return NULL;
+        }
+        numa_bitmask_free(node_mask);
+#endif
+        frame = (uint8_t *)mapped_frame;
+#else
+        ERROR_F("Huge pages not supported in Mac OSX.");
+        return NULL;
+#endif
+    } else {
 #ifdef WITH_NUMA
-    frame = (uint8_t*)numa_alloc_onnode(len, numa_node);
-    CHECK_MEM_F(frame);
+        frame = (uint8_t*)numa_alloc_onnode(len, numa_node);
+        CHECK_MEM_F(frame);
 #else
-    (void)numa_node;
-    // Create a page aligned block of memory for the buffer
-    err = posix_memalign((void**)&(frame), PAGESIZE_MEM, len);
-    CHECK_MEM_F(frame);
-    if (err != 0) {
-        ERROR_F("Error creating aligned memory: %d", err);
-        return NULL;
+        (void)numa_node;
+        // Create a page aligned block of memory for the buffer
+        err = posix_memalign((void**)&(frame), PAGESIZE_MEM, len);
+        CHECK_MEM_F(frame);
+        if (err != 0) {
+            ERROR_F("Error creating aligned memory: %d", err);
+            return NULL;
+        }
+#endif
     }
 #endif
 
-#ifndef WITH_NO_MEMLOCK
-    // Ask that all pages be kept in memory
-    err = mlock((void*)frame, len);
+    if (mlock_frames) {
+        // Ask that all pages be kept in memory
+        err = mlock((void*)frame, len);
 
-    if (err == -1) {
-        ERROR_F("Error locking memory: %d - check ulimit -a to check memlock limits", errno);
-        free(frame);
-        return NULL;
+        if (err == -1) {
+            ERROR_F("Error locking memory: %d - check ulimit -a to check memlock limits", errno);
+            free(frame);
+            return NULL;
+        }
     }
-#else
-    (void)err;
-#endif
-#endif
     // Zero the new frame
     memset(frame, 0x0, len);
 
     return frame;
 }
 
-void buffer_free(uint8_t* frame_pointer, size_t size) {
+void buffer_free(uint8_t* frame_pointer, size_t size, bool use_huge_pages) {
 #ifdef WITH_HSA
     (void)size;
     hsa_host_free(frame_pointer);
 #else
+    if (use_huge_pages) {
+        munmap(frame_pointer, size);
+    }
 #ifdef WITH_NUMA
     numa_free(frame_pointer, size);
 #else

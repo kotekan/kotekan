@@ -32,9 +32,11 @@ extern "C" {
 #include "metadata.h" // for metadataPool
 
 #include <pthread.h>   // for pthread_cond_t, pthread_mutex_t
+#include <stdbool.h>   // for bool
 #include <stdint.h>    // for uint8_t
 #include <sys/types.h> // for ssize_t
 #include <time.h>      // for size_t, timespec
+#include <stdbool.h>
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
@@ -200,6 +202,9 @@ struct Buffer {
 
     /// The type of the buffer for use in writing data.
     char* buffer_type;
+
+    /// This buffer use huge pages for its frames if the following is true
+    bool use_hugepages;
 };
 
 /**
@@ -214,11 +219,13 @@ struct Buffer {
  * @param[in] pool The metadataPool, which may be shared between more than one buffer.
  * @param[in] buffer_name The unique name of this buffer.
  * @param[in] buffer_type The type of data this buffer contains.
- * @param[in] numa_node The CPU NUMA memory region to allocate memory in.
+ * @param[in] numa_node The CPU NUMA memory region to allocate memory in.+
+ * @param[in] use_huge_pages Map huge pages with mmap
  * @returns A buffer object.
  */
 struct Buffer* create_buffer(int num_frames, int frame_size, struct metadataPool* pool,
-                             const char* buffer_name, const char* buffer_type, int numa_node);
+                             const char* buffer_name, const char* buffer_type, int numa_node,
+                             bool use_huge_pages, bool mlock_frames);
 
 /**
  * @brief Deletes a buffer object and frees all frame memory
@@ -463,7 +470,7 @@ void swap_frames(struct Buffer* from_buf, int from_frame_id, struct Buffer* to_b
  * @param numa_node The CPU NUMA region to allocate the memory in.
  * @return A pointer to the new memory, or @c NULL if allocation failed.
  */
-uint8_t* buffer_malloc(ssize_t len, int numa_node);
+uint8_t* buffer_malloc(ssize_t len, int numa_node, bool use_huge_pages, bool memlock_frames);
 
 /**
  * @brief Deallocate a frame of memory with the required free method.
@@ -471,7 +478,7 @@ uint8_t* buffer_malloc(ssize_t len, int numa_node);
  * @param frame_pointer The pointer to the memory to free.
  * @param size The size of the memory space to free (needed for NUMA)
  */
-void buffer_free(uint8_t* frame_pointer, size_t size);
+void buffer_free(uint8_t* frame_pointer, size_t size, bool use_huge_pages);
 
 /**
  * @brief Gets the raw metadata block for the given frame

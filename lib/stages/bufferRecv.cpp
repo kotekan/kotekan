@@ -340,7 +340,11 @@ connInstance::connInstance(const std::string& producer_name, Buffer* buf, buffer
     read_timeout(read_timeout),
     drop_frames(drop_frames) {
 
-    frame_space = buffer_malloc(buf->aligned_frame_size, 0);
+    int32_t numa_node = config.get_default<int32_t>(unique_name, "numa_node", 0);
+    bool mlock_frames = config.get_default<bool>(unique_name, "mlock_frames", true);
+
+    frame_space = buffer_malloc(buf->aligned_frame_size, numa_node,
+                                buf->use_hugepages, mlock_frames);
     CHECK_MEM(frame_space);
 
     metadata_space = (uint8_t*)malloc(buf->metadata_pool->metadata_object_size);
