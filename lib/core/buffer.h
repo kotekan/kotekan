@@ -31,12 +31,12 @@ extern "C" {
 
 #include "metadata.h" // for metadataPool
 
-#include <pthread.h>   // for pthread_cond_t, pthread_mutex_t
-#include <stdbool.h>   // for bool
+#include <pthread.h> // for pthread_cond_t, pthread_mutex_t
+#include <stdbool.h> // for bool
+#include <stdbool.h>
 #include <stdint.h>    // for uint8_t
 #include <sys/types.h> // for ssize_t
 #include <time.h>      // for size_t, timespec
-#include <stdbool.h>
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"

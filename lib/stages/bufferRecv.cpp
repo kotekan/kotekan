@@ -163,9 +163,8 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
     INFO("New connection from client: {:s}:{:d}", ip_str, port);
 
     // New connection instance
-    connInstance* instance =
-        new connInstance(accept_args->unique_name, accept_args->buf, accept_args->buffer_recv,
-                         ip_str, port, read_timeout);
+    connInstance* instance = new connInstance(accept_args->unique_name, accept_args->buf,
+                                              accept_args->buffer_recv, ip_str, port, read_timeout);
 
     // Setup logging for the instance object.
     instance->set_log_prefix(accept_args->unique_name + "/instance");
@@ -338,8 +337,8 @@ connInstance::connInstance(const std::string& producer_name, Buffer* buf, buffer
     port(port),
     read_timeout(read_timeout) {
 
-    frame_space = buffer_malloc(buf->aligned_frame_size, buf->numa_node,
-                                buf->use_hugepages, buf->mlock_frames);
+    frame_space = buffer_malloc(buf->aligned_frame_size, buf->numa_node, buf->use_hugepages,
+                                buf->mlock_frames);
     CHECK_MEM(frame_space);
 
     metadata_space = (uint8_t*)malloc(buf->metadata_pool->metadata_object_size);

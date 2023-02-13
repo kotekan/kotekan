@@ -101,8 +101,7 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
                 "metadata pool {:s} on numa_node {:d}",
                 type_name, name, num_frames, frame_size, metadataPool_name, numa_node);
     struct Buffer* buf = create_buffer(num_frames, frame_size, pool, name.c_str(),
-                                       type_name.c_str(), numa_node,
-                                       use_hugepages, mlock_frames);
+                                       type_name.c_str(), numa_node, use_hugepages, mlock_frames);
     if (buf == nullptr) {
         throw std::runtime_error(fmt::format(fmt("Could not create the buffer: {:s}"), name));
     }
