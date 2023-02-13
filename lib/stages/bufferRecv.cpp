@@ -165,7 +165,7 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
     // New connection instance
     connInstance* instance =
         new connInstance(accept_args->unique_name, accept_args->buf, accept_args->buffer_recv,
-                         ip_str, port, read_timeout, drop_frames);
+                         ip_str, port, read_timeout);
 
     // Setup logging for the instance object.
     instance->set_log_prefix(accept_args->unique_name + "/instance");
@@ -330,21 +330,16 @@ std::string bufferRecv::dot_string(const std::string& prefix) const {
 }
 
 connInstance::connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
-                           const std::string& client_ip, int port, struct timeval read_timeout,
-                           bool drop_frames) :
+                           const std::string& client_ip, int port, struct timeval read_timeout) :
     producer_name(producer_name),
     buf(buf),
     buffer_recv(buffer_recv),
     client_ip(client_ip),
     port(port),
-    read_timeout(read_timeout),
-    drop_frames(drop_frames) {
+    read_timeout(read_timeout) {
 
-    int32_t numa_node = config.get_default<int32_t>(unique_name, "numa_node", 0);
-    bool mlock_frames = config.get_default<bool>(unique_name, "mlock_frames", true);
-
-    frame_space = buffer_malloc(buf->aligned_frame_size, numa_node,
-                                buf->use_hugepages, mlock_frames);
+    frame_space = buffer_malloc(buf->aligned_frame_size, buf->numa_node,
+                                buf->use_hugepages, buf->mlock_frames);
     CHECK_MEM(frame_space);
 
     metadata_space = (uint8_t*)malloc(buf->metadata_pool->metadata_object_size);
@@ -355,7 +350,7 @@ connInstance::~connInstance() {
     DEBUG("Closing FD");
     close(fd);
     event_free(event_read);
-    buffer_free(frame_space, buf->aligned_frame_size);
+    buffer_free(frame_space, buf->aligned_frame_size, buf->use_hugepages);
     free(metadata_space);
 }
 

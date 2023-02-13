@@ -118,6 +118,9 @@ struct StageInfo {
  * @conf frame_size The size of the individual ring frames in bytes
  * @conf num_frames The buffer depth of size of the ring
  * @conf metadata_pool The name of the metadata pool to associate with the buffer
+ * @conf numa_node The NUMA domain to mbind the memory into.  Default: 1
+ * @conf use_hugepages Allocate 2MB huge pages for the frames. Default: false
+ * @conf mlock_frames Lock the frame pages with mlock Default: true
  *
  * See metadata.h for more information on metadata pools
  *
@@ -205,6 +208,12 @@ struct Buffer {
 
     /// This buffer use huge pages for its frames if the following is true
     bool use_hugepages;
+
+    /// The buffer has page locked memory frames
+    bool mlock_frames;
+
+    /// The NUMA node the frames are allocated in
+    int numa_node;
 };
 
 /**

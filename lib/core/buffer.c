@@ -21,6 +21,7 @@
 #include <time.h>     // for NULL, size_t, timespec
 #ifdef WITH_NUMA
 #include <numa.h> // IWYU pragma: keep
+#include <numaif.h>
 #endif
 
 // It is assumed this is a power of two in the code.
@@ -68,14 +69,21 @@ int private_mark_frame_empty(struct Buffer* buf, const int id);
 
 struct Buffer* create_buffer(int num_frames, int len, struct metadataPool* pool,
                              const char* buffer_name, const char* buffer_type, int numa_node,
-                             bool use_huge_pages, bool mlock_frames) {
+                             bool use_hugepages, bool mlock_frames) {
 
     assert(num_frames > 0);
 
-    #ifdef WITH_NUMA
-        // Set NUMA policy
-        numa_set_strict(1);
-    #endif
+#ifdef WITH_NUMA
+    // Allocate all memory for a buffer on the NUMA domain it's frames are located.
+    struct bitmask* node_mask = numa_allocate_nodemask();
+    numa_bitmask_setbit(node_mask, numa_node);
+    if (set_mempolicy(MPOL_BIND, node_mask ? node_mask->maskp : NULL,
+                      node_mask ? node_mask->size + 1 : 0) < 0) {
+        ERROR_F("Failed to set memory policy: %s (%d)", strerror(errno), errno);
+        return NULL;
+    }
+    numa_bitmask_free(node_mask);
+#endif
 
     struct Buffer* buf = malloc(sizeof(struct Buffer));
     CHECK_MEM_F(buf);
@@ -86,7 +94,9 @@ struct Buffer* create_buffer(int num_frames, int len, struct metadataPool* pool,
     CHECK_ERROR_F(pthread_cond_init(&buf->empty_cond, NULL));
 
     buf->shutdown_signal = 0;
-    buf->use_hugepages = use_huge_pages;
+    buf->numa_node = numa_node;
+    buf->use_hugepages = use_hugepages;
+    buf->mlock_frames = mlock_frames;
 
     // Copy the buffer name and type.
     buf->buffer_name = strdup(buffer_name);
@@ -96,7 +106,7 @@ struct Buffer* create_buffer(int num_frames, int len, struct metadataPool* pool,
     buf->metadata_pool = pool;
     buf->frame_size = len;
 
-    if (use_huge_pages) {
+    if (use_hugepages) {
         // Round up to the nearest huge page size multiple.
         buf->aligned_frame_size = (int)(((size_t)len + (size_t)HUGE_PAGE_SIZE - 1)
                                   & -(size_t)HUGE_PAGE_SIZE);
@@ -158,10 +168,18 @@ struct Buffer* create_buffer(int num_frames, int len, struct metadataPool* pool,
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
         buf->frames[i] = buffer_malloc(buf->aligned_frame_size, numa_node,
-                                       use_huge_pages, mlock_frames);
+                                       use_hugepages, mlock_frames);
         if (buf->frames[i] == NULL)
             return NULL;
     }
+
+#ifdef WITH_NUMA
+    // Reset the memory policy so that we don't impact other parts of the
+    if (set_mempolicy(MPOL_DEFAULT, NULL, 0) < 0) {
+        ERROR_F("Failed to reset the memory policy to default: %s (%d)", strerror(errno), errno);
+        return NULL;
+    }
+#endif
 
     return buf;
 }
@@ -883,7 +901,7 @@ void safe_swap_frame(struct Buffer* src_buf, int src_frame_id, struct Buffer* de
 }
 
 uint8_t* buffer_malloc(ssize_t len, int numa_node,
-                       bool use_huge_pages, bool mlock_frames) {
+                       bool use_hugepages, bool mlock_frames) {
 
     uint8_t* frame = NULL;
     int err;
@@ -895,7 +913,7 @@ uint8_t* buffer_malloc(ssize_t len, int numa_node,
         return NULL;
     }
 #else
-    if (use_huge_pages) {
+    if (use_hugepages) {
 #ifndef MAC_OSX
         void* mapped_frame = mmap(NULL, len, PROT_READ | PROT_WRITE,
                            MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
@@ -905,10 +923,11 @@ uint8_t* buffer_malloc(ssize_t len, int numa_node,
             return NULL;
         }
         // Strictly bind the memory to the required NUMA domain
-#ifndef WITH_NUMA
+#ifdef WITH_NUMA
         struct bitmask* node_mask = numa_allocate_nodemask();
         numa_bitmask_setbit(node_mask, numa_node);
-        if (mbind(mapped_frame, len, MPOL_BIND, node_mask, node_mask->size, MPOL_MF_STRICT) < 0) {
+        if (mbind(mapped_frame, len, MPOL_BIND, node_mask ? node_mask->maskp : NULL,
+                  node_mask ? node_mask->size + 1 : 0, MPOL_MF_STRICT) < 0) {
             ERROR_F("Failed to bind huge page frames to requested NUMA node: %s (%d)",
                     strerror(errno), errno);
             return NULL;
@@ -953,20 +972,21 @@ uint8_t* buffer_malloc(ssize_t len, int numa_node,
     return frame;
 }
 
-void buffer_free(uint8_t* frame_pointer, size_t size, bool use_huge_pages) {
+void buffer_free(uint8_t* frame_pointer, size_t size, bool use_hugepages) {
 #ifdef WITH_HSA
     (void)size;
     hsa_host_free(frame_pointer);
 #else
-    if (use_huge_pages) {
+    if (use_hugepages) {
         munmap(frame_pointer, size);
-    }
+    } else {
 #ifdef WITH_NUMA
-    numa_free(frame_pointer, size);
+        numa_free(frame_pointer, size);
 #else
-    (void)size;
-    free(frame_pointer);
+        (void)size;
+        free(frame_pointer);
 #endif
+    }
 #endif
 }
 
