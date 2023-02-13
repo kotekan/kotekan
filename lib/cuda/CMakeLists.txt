@@ -1,5 +1,12 @@
 project(kotekan_cuda)
 
+if(${CUDA_ARCHITECTURE})
+    set(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCHITECTURES})
+else()
+    # NVIDIA Ampere
+    set(CMAKE_CUDA_ARCHITECTURES 86)
+endif()
+
 add_library(
     kotekan_cuda
     # Core
@@ -14,6 +21,30 @@ add_library(
     # Kernels
     cudaCorrelatorAstron.cpp
     cudaShuffleAstron.cu)
+
+# C++17
+set_property(TARGET kotekan_cuda PROPERTY CUDA_STANDARD 17)
+
+find_package(GPUTILS)
+if(${GPUTILS_FOUND})
+    message("gputils support enabled")
+    find_package(N2K)
+    if(${N2K_FOUND})
+        message("n2k support enabled")
+        target_include_directories(kotekan_cuda SYSTEM PRIVATE ${N2K_INCLUDE_DIR})
+        # It feels dirty to specify the full path to the SO file here, but wrestling with CMake to
+        # do otherwise was not fruitful.
+        target_link_libraries(kotekan_cuda INTERFACE ${N2K_LIBRARY}/libn2k.so)
+        target_sources(kotekan_cuda PRIVATE cudaCorrelator.cpp)
+    else()
+        message("n2k not found, support disabled in kotekan_cuda")
+    endif()
+    target_include_directories(kotekan_cuda SYSTEM PRIVATE ${GPUTILS_INCLUDE_DIR})
+    target_link_libraries(kotekan_cuda INTERFACE ${GPUTILS_LIBRARY}/libgputils.so)
+
+else()
+    message("gputils not found, support disabled in kotekan_cuda")
+endif()
 
 target_link_libraries(
     kotekan_cuda

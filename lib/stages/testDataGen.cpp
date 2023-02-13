@@ -46,9 +46,10 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     buf = get_buffer("out_buf");
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
-    assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse"
-           || type == "tpluseplusf" || type == "tpluseplusfprime" || type == "square");
-    if (type == "const" || type == "random" || type == "ramp")
+    assert(type == "const" || type == "random" || type == "random_signed" || type == "ramp"
+           || type == "tpluse" || type == "tpluseplusf" || type == "tpluseplusfprime"
+           || type == "square");
+    if (type == "const" || type == "random" || type == "random_signed" || type == "ramp")
         value = config.get<int>(unique_name, "value");
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
 
@@ -144,7 +145,7 @@ void testDataGen::main_thread() {
         // std::random_device rd;
         // std::mt19937 gen(rd());
         // std::uniform_int_distribution<> dis(0, 255);
-        if (type == "random")
+        if ((type == "random") || (type == "random_signed"))
             srand(value);
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
@@ -163,6 +164,13 @@ void testDataGen::main_thread() {
                 new_imaginary = (rand() % 15) + 1; // Limit to [-7, 7]
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output;
+            } else if (type == "random_signed") {
+                char new_real;
+                char new_imaginary;
+                new_real = (rand() % 15) + 1;      // Limit to [-7, 7]
+                new_imaginary = (rand() % 15) + 1; // Limit to [-7, 7]
+                temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
+                frame[j] = temp_output ^ 0x88;
             } else if (type == "tpluse") {
                 int time_idx = j / num_elements;
                 int elem_idx = j % num_elements;
