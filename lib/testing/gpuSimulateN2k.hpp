@@ -15,21 +15,16 @@
  * An example of this stage being used can be found in
  * `config/tests/verify_cuda_n2k.yaml`.
  *
- * Reads config values:
- * - num_elements -- number of feeds or (antennas x polarizations)
- * - num_local_freq
- * - samples_per_data_set
- * - sub_integration_ntime -- number of samples to sum over for each
- *     N^2 correlation matrix.
+ * @par Buffers
+ * @buffer network_in_buf The input voltages.  Size per frame: samples_per_data_set * num_element * num_local_freq
+ * @buffer_format 4+4-bit complex
+ * @buffer corr_out_buf  The output correlation matrix.  Size per frame: num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements^2 * 2 * sizeof_int32
+ * @buffer_format int32 complex
  *
- * Input:
- * - network_in_buf: samples_per_data_set * num_element * num_local_freq
- *     (per frame)
- *     4+4-bit, complex voltages
- *
- * Output:
- * - corr_out_buf: num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements *
- * num_elements * 2 * sizeof_int32 (per frame) int32, complex correlation values
+ * @conf  num_elements         Int.  Number of feeds or (antennas x polarizations).
+ * @conf num_local_freq        Int.  Number of frequencies.
+ * @conf samples_per_data_set  Int.  Number of samples per frame.
+ * @conf sub_integration_ntime Int.  Number of samples to sum over for each N^2 correlation matrix.
  *
  * The output matrix's upper triangle is filled (the lower triangle is
  * zeroed out).
