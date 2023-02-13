@@ -1,11 +1,12 @@
 #ifndef EXAMPLE_CONSUMER_H
 #define EXAMPLE_CONSUMER_H
 
-#include <string>               // for string
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.h"             // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+
+#include <string> // for string
 
 /**
  * @class ExampleConsumer
