@@ -83,7 +83,7 @@ void gpuSimulateN2k::main_thread() {
                         output[(((tout * _num_local_freq + f) * _num_elements + x)
                                 * _num_elements + y) * 2 + 0] = +real;
                         output[(((tout * _num_local_freq + f) * _num_elements + x)
-                                * _num_elements + y) * 2 + 1] = -imag;
+                                * _num_elements + y) * 2 + 1] = +imag;
                         // clang-format on
                     }
                 }
