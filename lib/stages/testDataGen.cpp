@@ -1,32 +1,32 @@
+#include <assert.h>             // for assert
+#include <stdint.h>             // for uint64_t, uint32_t, uint8_t, int32_t
+#include <stdlib.h>             // for rand, srand
+#include <sys/time.h>           // for gettimeofday, timeval
+#include <sys/types.h>          // for uint
+#include <unistd.h>             // for usleep
+#include <strings.h>            // for bzero
+#include <atomic>               // for atomic_bool
+#include <cmath>                // for fmod
+#include <cstdint>              // for uint64_t
+#include <exception>            // for exception
+#include <functional>           // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
+#include <regex>                // for match_results<>::_Base_type
+#include <stdexcept>            // for runtime_error, invalid_argument
+#include <vector>               // for vector
+#include <algorithm>            // for copy, max
+
 #include "testDataGen.hpp"
-
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"       // for Telescope
-#include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_full
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
-#include "oneHotMetadata.hpp"
-#include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
-#include "kotekanLogging.hpp"  // for DEBUG, INFO
-#include "kotekanTrackers.hpp" // for KotekanTrackers
-#include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
-#include "visUtil.hpp"         // for current_time, ts_to_double
-
-#include <assert.h>    // for assert
-#include <atomic>      // for atomic_bool
-#include <cmath>       // for fmod
-#include <cstdint>     // for uint64_t
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
-#include <regex>       // for match_results<>::_Base_type
-#include <stdexcept>   // for runtime_error
-#include <stdint.h>    // for uint64_t, uint32_t, uint8_t
-#include <stdlib.h>    // for rand, srand
-#include <sys/time.h>  // for gettimeofday, timeval
-#include <sys/types.h> // for uint
-#include <unistd.h>    // for usleep
-#include <vector>      // for vector
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"        // for Telescope, stream_t
+#include "buffer.h"             // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chimeMetadata.hpp"    // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "oneHotMetadata.hpp"   // for metadata_is_onehot, set_onehot_frame_counter, set_onehot_...
+#include "kotekanLogging.hpp"   // for INFO, DEBUG
+#include "kotekanTrackers.hpp"  // for KotekanTrackers
+#include "restServer.hpp"       // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
+#include "visUtil.hpp"          // for current_time, ts_to_double, StatTracker
 
 
 using kotekan::bufferContainer;
@@ -59,7 +59,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     _array_shape = config.get_default<std::vector<int>>(unique_name, "array_shape", std::vector<int>());
     if (_array_shape.size()) {
         size_t sz = 1;
-        for (int s: _array_shape)
+        for (int s : _array_shape)
             sz *= s;
         if (sz != buf->frame_size)
             throw std::invalid_argument("testDataGen: product of 'array_shape' config setting must equal the buffer frame size");
@@ -178,10 +178,10 @@ void testDataGen::main_thread() {
                 std::string istring = "";
                 size_t j = 0;
                 std::vector<int> indices;
-                for (size_t i=0; i<_array_shape.size(); i++) {
+                for (size_t i = 0; i < _array_shape.size(); i++) {
                     int n = _array_shape[i];
                     int k = rand() % n;
-                    j = j*n + k;
+                    j = j * n + k;
                     if (i)
                         istring += ", ";
                     istring += std::to_string(k);

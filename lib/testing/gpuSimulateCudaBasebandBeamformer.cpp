@@ -1,11 +1,18 @@
-#include "gpuSimulateCudaBasebandBeamformer.hpp"
+#include <stddef.h>             // for size_t
+#include <array>                // for array
+#include <atomic>               // for atomic_bool
+#include <exception>            // for exception
+#include <functional>           // for _Bind_helper<>::type, bind, function
+#include <regex>                // for match_results<>::_Base_type
+#include <vector>               // for vector
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for INFO, DEBUG
-#include "oneHotMetadata.hpp"
+#include "gpuSimulateCudaBasebandBeamformer.hpp"
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"             // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for INFO, DEBUG
+#include "oneHotMetadata.hpp"   // for metadata_is_onehot, get_onehot_indices, get_onehot_frame_...
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -72,15 +79,15 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
                                                       const int p
                                                       ) {
     const int f0 = (f == -1 ? 0 : f);
-    const int f1 = (f == -1 ? F : f+1);
+    const int f1 = (f == -1 ? F : f + 1);
     const int p0 = (p == -1 ? 0 : p);
-    const int p1 = (p == -1 ? 2 : p+1);
+    const int p1 = (p == -1 ? 2 : p + 1);
     const int b0 = (b == -1 ? 0 : b);
-    const int b1 = (b == -1 ? B : b+1);
+    const int b1 = (b == -1 ? B : b + 1);
     const int t0 = (t == -1 ? 0 : t);
-    const int t1 = (t == -1 ? T : t+1);
+    const int t1 = (t == -1 ? T : t + 1);
     const int d0 = (d == -1 ? 0 : d);
-    const int d1 = (d == -1 ? D : d+1);
+    const int d1 = (d == -1 ? D : d + 1);
 
     int nprint_v = 0;
     int nprint_b = 0;
@@ -124,12 +131,12 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
                     Jim += 1 << (shift - 1);
                     Jre >>= shift;
                     Jim >>= shift;
-                    if (Jre >  7)
-                        Jre =  7;
+                    if (Jre > 7)
+                        Jre = 7;
                     if (Jre < -7)
                         Jre = -7;
-                    if (Jim >  7)
-                        Jim =  7;
+                    if (Jim > 7)
+                        Jim = 7;
                     if (Jim < -7)
                         Jim = -7;
                     int jindx = ((b * F + f) * 2 + p) * T + t;
@@ -263,5 +270,5 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
             mark_frame_empty(shift_buf, unique_name.c_str(), shift_frame_id);
             shift_frame_id = next_frame;
         }
-}
+    }
 }
