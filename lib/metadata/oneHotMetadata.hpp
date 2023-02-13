@@ -1,15 +1,14 @@
 #ifndef ONEHOT_METADATA
 #define ONEHOT_METADATA
 
-#include "chimeMetadata.hpp"
 #include "Telescope.hpp"
 #include "buffer.h"
+#include "chimeMetadata.hpp"
 #include "datasetManager.hpp"
 #include "metadata.h"
 
-#include <vector>
-
 #include <sys/time.h>
+#include <vector>
 
 #pragma pack()
 

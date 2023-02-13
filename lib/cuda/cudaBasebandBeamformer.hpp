@@ -60,7 +60,6 @@ private:
     // The bb.yaml file entry like
     //    shmem_bytes: 67712
     const int shared_mem_bytes = 67712;
-
 };
 
 #endif // CUDA_BASEBAND_BEAMFORMER_HPP

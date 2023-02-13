@@ -74,7 +74,7 @@ struct CuDeviceArray {
     int64_t dims[N];
     int64_t len;
 };
-typedef CuDeviceArray<int32_t,1> kernel_arg;
+typedef CuDeviceArray<int32_t, 1> kernel_arg;
 
 cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     pre_execute(gpu_frame_id);
@@ -141,12 +141,7 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
     arr[4].len = info_len / sizeof(int32_t);
 
     void* parameters[] = {
-        &(exc),
-        &(arr[0]),
-        &(arr[1]),
-        &(arr[2]),
-        &(arr[3]),
-        &(arr[4]),
+        &(exc), &(arr[0]), &(arr[1]), &(arr[2]), &(arr[3]), &(arr[4]),
     };
 
     DEBUG("Kernel_name: {}", kernel_name);

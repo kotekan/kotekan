@@ -8,7 +8,7 @@
 #include "oneHotMetadata.hpp"
 #include "kotekanLogging.hpp"   // for INFO_NON_OO
 #include "metadata.h"           // for create_metadata_pool
-#include "visBuffer.hpp"        // for VisMetadata
+#include "visBuffer.hpp"
 
 #include "fmt.hpp" // for format, fmt
 
