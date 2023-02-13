@@ -32,8 +32,8 @@ if(${GPUTILS_FOUND})
     if(${N2K_FOUND})
         message("n2k support enabled")
         target_include_directories(kotekan_cuda SYSTEM PRIVATE ${N2K_INCLUDE_DIR})
-        # It feels dirty to specify the full path to the SO file here, but
-        # wrestling with CMake to do otherwise was not fruitful.
+        # It feels dirty to specify the full path to the SO file here, but wrestling with CMake to
+        # do otherwise was not fruitful.
         target_link_libraries(kotekan_cuda INTERFACE ${N2K_LIBRARY}/libn2k.so)
         target_sources(kotekan_cuda PRIVATE cudaCorrelator.cpp)
     else()
