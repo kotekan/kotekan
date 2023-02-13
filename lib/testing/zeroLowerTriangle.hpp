@@ -17,17 +17,20 @@
  * `config/tests/verify_cuda_n2k.yaml`.
  *
  * @par Buffers
- * @buffer  corr_in_buf  The input correlation matrix whose lower-triangle is to be zeroed out.  Size per frame: num_local_freq * (samples_per_data_set / sub_integration_ntime) *
- * num_elements^2 * 2 * sizeof(int32)
+ * @buffer  corr_in_buf  The input correlation matrix whose lower-triangle is to be zeroed out. Size
+ * per frame: num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements^2 * 2 *
+ * sizeof(int32)
  * @buffer_format int32 complex
- * @buffer  curr_out_buf  The output correlation matrix with zeroed-out lower triangle.  Size per frame: num_local_freq * (samples_per_data_set / sub_integration_ntime) *
- * num_elements^2 * 2 * sizeof(int32)
+ * @buffer  curr_out_buf  The output correlation matrix with zeroed-out lower triangle.  Size per
+ * frame: num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements^2 * 2 *
+ * sizeof(int32)
  * @buffer_format int32 complex
  *
  * @conf num_elements          Int.  Number of radio input feeds.
  * @conf num_local_freq        Int.  Number of frequencies in the correlation matrix.
  * @conf samples_per_data_set  Int.  Time samples per frame.
- * @conf sub_integration_ntime Int.  Number of time samples that are summed into each correlation matrix.
+ * @conf sub_integration_ntime Int.  Number of time samples that are summed into each correlation
+ * matrix.
  *
  * There are (samples_per_data_set / nt_inner) matrices per kotekan
  * block, each (num_local_freq * num_elements * num_elements) in size.

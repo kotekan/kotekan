@@ -17,17 +17,20 @@
  * A CPU implementation is in `lib/testing/gpuSimulateN2k.hpp`.
  *
  * @par GPU Memory
- * @gpu_mem  gpu_mem_voltage  Input complex voltages of size samples_per_data_set * num_elements * num_local_freq
+ * @gpu_mem  gpu_mem_voltage  Input complex voltages of size samples_per_data_set * num_elements *
+ * num_local_freq
  *   @gpu_mem_type   staging
  *   @gpu_mem_format Array of @c 4+4-bit complex
- * @gpu_mem  gpu_mem_correlation_triangle  Output complex correlation values of size per frame:  (samples_per_data_set / sub_integration_ntimes) * num_elements^2 * 2 * sizeof(int32)
+ * @gpu_mem  gpu_mem_correlation_triangle  Output complex correlation values of size per frame:
+ * (samples_per_data_set / sub_integration_ntimes) * num_elements^2 * 2 * sizeof(int32)
  *   @gpu_mem_type   staging
  *   @gpu_mem_format Array of @c int32
  *
  * @conf   num_elements          Int.  Number of feeds.
  * @conf   num_local_freq        Int.  Number of frequencies.
  * @conf   samples_per_data_set  Int.  Number of time samples per Kotekan block.
- * @conf   sub_integration_ntime Int.  Number of time samples that will be summed into the correlation matrix.
+ * @conf   sub_integration_ntime Int.  Number of time samples that will be summed into the
+ * correlation matrix.
  *
  * Note: While the output is only supposed to fill the upper triangle
  * of the correlation matrices, this implementation fills a few of the
