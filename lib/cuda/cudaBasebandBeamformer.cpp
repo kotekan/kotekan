@@ -69,17 +69,12 @@ cudaBasebandBeamformer::~cudaBasebandBeamformer() {}
 // This struct is Erik's interpretation of what Julia is expecting for its "CuDevArray" type.
 template<typename T, int64_t N>
 struct CuDeviceArray {
-    T *ptr;
+    T* ptr;
     int64_t maxsize;
     int64_t dims[N];
     int64_t len;
 };
-
-// And this struct is Erik's interpretation of what Julia is expecting for arguments to the kernel!
-struct bb_parameter {
-    const char *exception;
-    CuDeviceArray<int32_t, 1> arrays[5];
-};
+typedef CuDeviceArray<int32_t,1> kernel_arg;
 
 cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     pre_execute(gpu_frame_id);
@@ -117,42 +112,41 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
 
     CUresult err;
     // A, E, s, J
-    struct bb_parameter bbparams;
+    const char* exc = "exception";
+    kernel_arg arr[5];
 
-    bbparams.exception = "exception";
+    arr[0].ptr = (int32_t*)phase_memory;
+    arr[0].maxsize = phase_len;
+    arr[0].dims[0] = phase_len;
+    arr[0].len = phase_len;
 
-    bbparams.arrays[0].ptr = (int32_t*)phase_memory;
-    bbparams.arrays[0].maxsize = phase_len;
-    bbparams.arrays[0].dims[0] = phase_len;
-    bbparams.arrays[0].len = phase_len;
+    arr[1].ptr = (int32_t*)voltage_memory;
+    arr[1].maxsize = voltage_len;
+    arr[1].dims[0] = voltage_len;
+    arr[1].len = voltage_len;
 
-    bbparams.arrays[1].ptr = (int32_t*)voltage_memory;
-    bbparams.arrays[1].maxsize = voltage_len;
-    bbparams.arrays[1].dims[0] = voltage_len;
-    bbparams.arrays[1].len = voltage_len;
+    arr[2].ptr = shift_memory;
+    arr[2].maxsize = shift_len;
+    arr[2].dims[0] = shift_len / sizeof(int32_t);
+    arr[2].len = shift_len / sizeof(int32_t);
 
-    bbparams.arrays[2].ptr = shift_memory;
-    bbparams.arrays[2].maxsize = shift_len;
-    bbparams.arrays[2].dims[0] = shift_len / sizeof(int32_t);
-    bbparams.arrays[2].len = shift_len / sizeof(int32_t);
+    arr[3].ptr = (int32_t*)output_memory;
+    arr[3].maxsize = output_len;
+    arr[3].dims[0] = output_len;
+    arr[3].len = output_len;
 
-    bbparams.arrays[3].ptr = (int32_t*)output_memory;
-    bbparams.arrays[3].maxsize = output_len;
-    bbparams.arrays[3].dims[0] = output_len;
-    bbparams.arrays[3].len = output_len;
-
-    bbparams.arrays[4].ptr = (int32_t*)info_memory;
-    bbparams.arrays[4].maxsize = info_len;
-    bbparams.arrays[4].dims[0] = info_len / sizeof(int32_t);
-    bbparams.arrays[4].len = info_len / sizeof(int32_t);
+    arr[4].ptr = (int32_t*)info_memory;
+    arr[4].maxsize = info_len;
+    arr[4].dims[0] = info_len / sizeof(int32_t);
+    arr[4].len = info_len / sizeof(int32_t);
 
     void* parameters[] = {
-        &(bbparams.exception),
-        &(bbparams.arrays[0]),
-        &(bbparams.arrays[1]),
-        &(bbparams.arrays[2]),
-        &(bbparams.arrays[3]),
-        &(bbparams.arrays[4]),
+        &(exc),
+        &(arr[0]),
+        &(arr[1]),
+        &(arr[2]),
+        &(arr[3]),
+        &(arr[4]),
     };
 
     DEBUG("Kernel_name: {}", kernel_name);
