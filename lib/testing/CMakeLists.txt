@@ -13,6 +13,7 @@ add_library(
     gpuTrackingBeamformSimulate.cpp
     gpuSimulate.cpp
     gpuSimulateCudaBasebandBeamformer.cpp
+    gpuSimulateN2k.cpp
     networkOutputSim.cpp
     simVdifData.cpp
     testDataCheck.cpp
@@ -22,7 +23,8 @@ add_library(
     GenHFBFrames.cpp
     pulsarSimProcess.cpp
     visNoise.cpp
-    visDrop.cpp)
+    visDrop.cpp
+    zeroLowerTriangle.cpp)
 
 target_include_directories(kotekan_testing PUBLIC .)
 

@@ -29,7 +29,7 @@
  *         @buffer_format any format
  *         @buffer_metadata chimeMetadata
  *
- * @conf  type                  String. "const", "random", "ramp", or "tpluse".
+ * @conf  type                  String. "const", "random", "random_signed", "ramp", or "tpluse".
  * @conf  value                 Int. Required for type "const" and "ramp".
  * @conf  wait                  Bool, default True. Produce data a set cadence.
  *                              Otherwise just as fast as possible.

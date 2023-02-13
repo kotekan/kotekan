@@ -1,8 +1,14 @@
 #include "ExampleDotProduct.hpp"
 
-#include "StageFactory.hpp"
-#include "errors.h"
-#include "visUtil.hpp" // for frameID, modulo
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "kotekanLogging.hpp" // for INFO
+#include "visUtil.hpp"        // for frameID, modulo
+
+#include "fmt.hpp" // for format, fmt
+
+#include <atomic>    // for atomic_bool
+#include <stdexcept> // for runtime_error
+#include <stdint.h>  // for uint8_t, uint32_t
 
 // Include the classes we will be using
 using kotekan::bufferContainer;
