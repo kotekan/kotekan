@@ -28,7 +28,7 @@ cudaCommand::cudaCommand(Config& config_, const std::string& unique_name_,
 cudaCommand::~cudaCommand() {
     free(pre_events);
     free(post_events);
-    DEBUG("post_events Freed: %s", unique_name.c_str());
+    DEBUG("post_events Freed: {:s}", unique_name.c_str());
 }
 
 void cudaCommand::finalize_frame(int gpu_frame_id) {

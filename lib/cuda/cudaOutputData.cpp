@@ -39,6 +39,8 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
     in_buffer_id = 0;
 
     command_type = gpuCommandType::COPY_OUT;
+
+    kernel_command = "cudaOutputData: " + _gpu_mem;
 }
 
 cudaOutputData::~cudaOutputData() {
@@ -56,8 +58,11 @@ int cudaOutputData::wait_on_precondition(int gpu_frame_id) {
     // Wait for there to be data in the input (output) buffer.
     uint8_t* frame =
         wait_for_empty_frame(output_buffer, unique_name.c_str(), output_buffer_precondition_id);
-    if (frame == nullptr)
+    if (frame == nullptr) {
+        DEBUG("FAILED to wait_for_empty_frame on output_buffer {:s}[:d]",
+              unique_name.c_str(), output_buffer_precondition_id);
         return -1;
+    }
 
     output_buffer_precondition_id = (output_buffer_precondition_id + 1) % output_buffer->num_frames;
     return 0;

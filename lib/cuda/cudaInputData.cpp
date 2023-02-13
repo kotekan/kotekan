@@ -27,6 +27,8 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
     in_buffer_finalize_id = 0;
 
     command_type = gpuCommandType::COPY_IN;
+
+    kernel_command = "cudaInputData: " + _gpu_mem;
 }
 
 cudaInputData::~cudaInputData() {

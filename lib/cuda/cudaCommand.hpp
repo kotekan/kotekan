@@ -29,7 +29,7 @@
  * @brief Base class for defining CUDA commands to execute on GPUs
  *
  * This is a base class for CUDA commands to run on NVidia hardware.
- * Kernels and other opersations (I/O) should derive from this class,
+ * Kernels and other operations (I/O) should derive from this class,
  * which handles a lot of queueing and device interface issues.
  *
  * @author Keith Vanderlinde
