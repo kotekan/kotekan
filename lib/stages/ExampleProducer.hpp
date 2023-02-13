@@ -1,10 +1,11 @@
 #ifndef EXAMPLE_PRODUCER_H
 #define EXAMPLE_PRODUCER_H
-
+#include "Config.hpp" // for Config
 #include "Stage.hpp"
 #include "buffer.h"
-#include "errors.h"
-#include "util.h"
+#include "bufferContainer.hpp" // for bufferContainer
+
+#include <string> // for string
 
 /**
  * @class ExampleProducer
