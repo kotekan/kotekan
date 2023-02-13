@@ -1,0 +1,50 @@
+---
+type: config
+# Logging level can be OFF, ERROR, WARN, INFO, DEBUG, or DEBUG2
+log_level: DEBUG
+# Which CPUs is kotekan allowed to run on?
+cpu_affinity: [0,1,2,3]
+
+# Constants
+sizeof_float: 4
+
+# Construct input buffers
+input_buffers:
+  # Both input buffers will have the same number of frames, and frame size
+  num_frames: 10
+  frame_size: 128 * sizeof_float
+  input_a_buffer:
+    kotekan_buffer: standard
+  input_b_buffer:
+    kotekan_buffer: standard
+
+# Construct output buffer
+output_buffer:
+  num_frames: 10
+  frame_size: 128 * sizeof_float
+  kotekan_buffer: standard
+
+# Create the producer stages that fill the input buffers with data
+data_gen:
+  data_gen_a:
+    # Fills each element of a each frame with a constant value
+    kotekan_stage: ExampleProducer
+    init_value: 2.0
+    out_buf: input_a_buffer
+  data_gen_b:  
+    kotekan_stage: ExampleProducer 
+    init_value: 3.0
+    out_buf: input_b_buffer
+
+# Add the dot-product stage that reads from the input buffers and writes to
+# the output buffer.
+dot_product:
+  kotekan_stage: ExampleDotProduct
+  in_a_buf: input_a_buffer
+  in_b_buf: input_b_buffer
+  out_buf: output_buffer
+
+# Add a consumer stage that prints the output buffer to screen
+screen_dump:
+  kotekan_stage: ExampleConsumer
+  in_buf: output_buffer
