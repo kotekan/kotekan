@@ -14,9 +14,9 @@
 #include <stdio.h>    // for snprintf
 #include <stdlib.h>   // for free, malloc
 #include <string.h>   // for memset, memcpy, strncmp, strncpy, strdup
+#include <sys/mman.h> // IWYU pragma: keep
 #ifndef MAC_OSX
 #include <linux/mman.h>
-#include <sys/mman.h> // IWYU pragma: keep
 #endif
 #include <time.h>     // for NULL, size_t, timespec
 #ifdef WITH_NUMA
