@@ -63,8 +63,6 @@ gen_data:
     kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
 
-data_format: "cuda_wmma"
-
 gpu:
     profiling: true
     kernel_path: "../../lib/cuda/kernels/"

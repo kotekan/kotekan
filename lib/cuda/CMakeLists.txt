@@ -1,7 +1,11 @@
 project(kotekan_cuda)
 
-# NVIDIA Ampere
-set(CMAKE_CUDA_ARCHITECTURES 86)
+if(${CUDA_ARCHITECTURE})
+    set(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCHITECTURES})
+else()
+    # NVIDIA Ampere
+    set(CMAKE_CUDA_ARCHITECTURES 86)
+endif()
 
 add_library(
     kotekan_cuda
