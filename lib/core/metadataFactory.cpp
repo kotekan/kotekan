@@ -74,11 +74,11 @@ struct metadataPool* metadataFactory::new_pool(const std::string& pool_type,
 
     uint32_t num_metadata_objects = config.get<uint32_t>(location, "num_metadata_objects");
 
-	if (pool_type == "oneHotMetadata") {
-		INFO_NON_OO("OneHotMetadata size: {:d}", sizeof(struct oneHotMetadata));
+    if (pool_type == "oneHotMetadata") {
+        INFO_NON_OO("OneHotMetadata size: {:d}", sizeof(struct oneHotMetadata));
         return create_metadata_pool(num_metadata_objects, sizeof(struct oneHotMetadata),
                                     location.c_str(), pool_type.c_str());
-	}
+    }
 
     if (pool_type == "chimeMetadata") {
         return create_metadata_pool(num_metadata_objects, sizeof(struct chimeMetadata),

@@ -44,10 +44,8 @@ static constexpr int4x2_t set4(const int8_t lo, const int8_t hi) {
 }
 
 static constexpr std::array<int8_t, 2> get4(const int4x2_t i) {
-    return {
-        int8_t(int8_t((i + 0x08) & 0x0f) - 0x08),
-        int8_t(int8_t(((i >> 4) + 0x08) & 0x0f) - 0x08)
-    };
+    return {int8_t(int8_t((i + 0x08) & 0x0f) - 0x08),
+            int8_t(int8_t(((i >> 4) + 0x08) & 0x0f) - 0x08)};
 }
 
 /**
@@ -122,14 +120,18 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
                     int oJim = Jim;
                     int shift = s[(f * 2 + p) * B + b];
                     // rounding
-                    Jre += 1<<(shift-1);
-                    Jim += 1<<(shift-1);
+                    Jre += 1 << (shift - 1);
+                    Jim += 1 << (shift - 1);
                     Jre >>= shift;
                     Jim >>= shift;
-                    if (Jre >  7) Jre =  7;
-                    if (Jre < -7) Jre = -7;
-                    if (Jim >  7) Jim =  7;
-                    if (Jim < -7) Jim = -7;
+                    if (Jre >  7)
+                        Jre =  7;
+                    if (Jre < -7)
+                        Jre = -7;
+                    if (Jim >  7)
+                        Jim =  7;
+                    if (Jim < -7)
+                        Jim = -7;
                     int jindx = ((b * F + f) * 2 + p) * T + t;
                     J[jindx] = set4(Jim, Jre);
                     if (Jre || Jim) {

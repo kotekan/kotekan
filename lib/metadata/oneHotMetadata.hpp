@@ -14,15 +14,15 @@
 #pragma pack()
 
 struct oneHotMetadata {
-	struct chimeMetadata chime;
-	int frame_counter;
-	std::vector<int> hotIndices;
+    struct chimeMetadata chime;
+    int frame_counter;
+    std::vector<int> hotIndices;
 };
 
 inline bool metadata_is_onehot(struct Buffer* buf, int frame_id) {
-	// avoid gcc warning about being unused.
-	(void)frame_id;
-	return strcmp(buf->metadata_pool->type_name, "oneHotMetadata") == 0;
+    // avoid gcc warning about being unused.
+    (void)frame_id;
+    return strcmp(buf->metadata_pool->type_name, "oneHotMetadata") == 0;
 }
 
 inline void set_onehot_frame_counter(struct Buffer* buf, int frame_id, int counter) {

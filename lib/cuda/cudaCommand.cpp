@@ -139,9 +139,9 @@ void cudaCommand::build(const std::vector<std::string>& kernel_names,
             cuGetErrorString(err, &errStr);
             FATAL_ERROR("ERROR IN cuModuleGetFunction for correlate: {}", errStr);
         }
-		if (runtime_kernels[kernel_name] == nullptr) {
-			FATAL_ERROR("Failed to find kernel name \"{}\" in compiled PTX module", kernel_name);
-		}
+        if (runtime_kernels[kernel_name] == nullptr) {
+            FATAL_ERROR("Failed to find kernel name \"{}\" in compiled PTX module", kernel_name);
+        }
     }
 }
 

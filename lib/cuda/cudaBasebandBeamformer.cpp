@@ -69,16 +69,16 @@ cudaBasebandBeamformer::~cudaBasebandBeamformer() {}
 // This struct is Erik's interpretation of what Julia is expecting for its "CuDevArray" type.
 template<typename T, int64_t N>
 struct CuDeviceArray {
-  T *ptr;
-  int64_t maxsize;
-  int64_t dims[N];
-  int64_t len;
+    T *ptr;
+    int64_t maxsize;
+    int64_t dims[N];
+    int64_t len;
 };
 
 // And this struct is Erik's interpretation of what Julia is expecting for arguments to the kernel!
 struct bb_parameter {
-  const char *exception;
-  CuDeviceArray<int32_t, 1> arrays[5];
+    const char *exception;
+    CuDeviceArray<int32_t, 1> arrays[5];
 };
 
 cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_event) {

@@ -49,20 +49,20 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     type = config.get<std::string>(unique_name, "type");
     assert(type == "const" || type == "const32" || type == "random" || type == "ramp" || type == "tpluse"
            || type == "tpluseplusf" || type == "tpluseplusfprime" || type == "square"
-	   || type == "onehot");
+           || type == "onehot");
     if (type == "const" || type == "const32" || type == "random" || type == "ramp" || type == "onehot") {
         value = config.get_default<int>(unique_name, "value", -1999);
-		_value_array = config.get_default<std::vector<int>>(unique_name, "values", std::vector<int>());
-	}
+        _value_array = config.get_default<std::vector<int>>(unique_name, "values", std::vector<int>());
+    }
     _seed = config.get_default<int>(unique_name, "seed", 0);
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
     _array_shape = config.get_default<std::vector<int>>(unique_name, "array_shape", std::vector<int>());
     if (_array_shape.size()) {
         size_t sz = 1;
         for (int s: _array_shape)
-			sz *= s;
+            sz *= s;
         if (sz != buf->frame_size)
-			throw std::invalid_argument("testDataGen: product of 'array_shape' config setting must equal the buffer frame size");
+            throw std::invalid_argument("testDataGen: product of 'array_shape' config setting must equal the buffer frame size");
     }
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
     stream_id.id = config.get_default<uint64_t>(unique_name, "stream_id", 0);
@@ -164,50 +164,50 @@ void testDataGen::main_thread() {
             srand(value);
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
-		uint n_to_set = buf->frame_size / sizeof(uint8_t);
-		if (type == "const32") {
-			n_to_set /= sizeof(int32_t);
-			frame32 = (int32_t*)frame;
-		}
-		if (type == "onehot") {
-			int val = value;
-			if (_value_array.size())
-				val = _value_array[frame_id_abs % _value_array.size()];
-			bzero(frame, n_to_set);
-			if (_array_shape.size()) {
-				std::string istring = "";
-				size_t j = 0;
-				std::vector<int> indices;
-				for (size_t i=0; i<_array_shape.size(); i++) {
-					int n = _array_shape[i];
-					int k = rand() % n;
-					j = j*n + k;
-					if (i)
-						istring += ", ";
-					istring += std::to_string(k);
-					indices.push_back(k);
-				}
-				frame[j] = val;
-				INFO("Set {:s}[{:d}] index [{:s}] (flat: {:d} = 0x{:x}) to 0x{:x} ({:d})", buf->buffer_name, frame_id, istring, j, j, val, val);
-				if (metadata_is_onehot(buf, frame_id)) {
-					DEBUG("One-hot metadata; setting indices");
-					set_onehot_indices(buf, frame_id, indices);
-					set_onehot_frame_counter(buf, frame_id, frame_id_abs);
-				}
-				INFO("PY onehot[{:d}] = (({:s}), 0x{:x})", frame_id_abs, istring, val);
-			} else {
-				int j = rand() % n_to_set;
-				INFO("Set {:s}[{:d}] flat index {:d} = 0x{:x} to 0x{:x} ({:d})", buf->buffer_name, frame_id, j, j, val, val);
-				frame[j] = val;
-			}
-			n_to_set = 0;
-		}
+        uint n_to_set = buf->frame_size / sizeof(uint8_t);
+        if (type == "const32") {
+            n_to_set /= sizeof(int32_t);
+            frame32 = (int32_t*)frame;
+        }
+        if (type == "onehot") {
+            int val = value;
+            if (_value_array.size())
+                val = _value_array[frame_id_abs % _value_array.size()];
+            bzero(frame, n_to_set);
+            if (_array_shape.size()) {
+                std::string istring = "";
+                size_t j = 0;
+                std::vector<int> indices;
+                for (size_t i=0; i<_array_shape.size(); i++) {
+                    int n = _array_shape[i];
+                    int k = rand() % n;
+                    j = j*n + k;
+                    if (i)
+                        istring += ", ";
+                    istring += std::to_string(k);
+                    indices.push_back(k);
+                }
+                frame[j] = val;
+                INFO("Set {:s}[{:d}] index [{:s}] (flat: {:d} = 0x{:x}) to 0x{:x} ({:d})", buf->buffer_name, frame_id, istring, j, j, val, val);
+                if (metadata_is_onehot(buf, frame_id)) {
+                    DEBUG("One-hot metadata; setting indices");
+                    set_onehot_indices(buf, frame_id, indices);
+                    set_onehot_frame_counter(buf, frame_id, frame_id_abs);
+                }
+                INFO("PY onehot[{:d}] = (({:s}), 0x{:x})", frame_id_abs, istring, val);
+            } else {
+                int j = rand() % n_to_set;
+                INFO("Set {:s}[{:d}] flat index {:d} = 0x{:x} to 0x{:x} ({:d})", buf->buffer_name, frame_id, j, j, val, val);
+                frame[j] = val;
+            }
+            n_to_set = 0;
+        }
         for (uint j = 0; j < n_to_set; ++j) {
             if (type == "const") {
                 if (finished_seeding_consant)
                     break;
                 frame[j] = value;
-			} else if (type == "const32") {
+            } else if (type == "const32") {
                 if (finished_seeding_consant)
                     break;
                 frame32[j] = value;
@@ -264,7 +264,7 @@ void testDataGen::main_thread() {
         frame_id_abs += 1;
         if (num_frames >= 0 && frame_id_abs >= num_frames) {
             INFO("Frame ID greater than the no. of frames");
-            //exit_kotekan(ReturnCode::CLEAN_EXIT);
+            // exit_kotekan(ReturnCode::CLEAN_EXIT);
             break;
         };
         frame_id = frame_id_abs % buf->num_frames;

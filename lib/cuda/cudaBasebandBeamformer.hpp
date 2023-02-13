@@ -47,19 +47,19 @@ private:
     /// GPU side memory name for the status/info output
     std::string _gpu_mem_info;
 
-	// The bb.yaml file entry like kernel-name = "_Z13julia_bb_...."
-	const std::string kernel_name = "_Z13julia_bb_496913CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE";
-	// The bb.yaml file entry like
-	//    threads: [32, 24]
-	const int threads_x = 32;
-	const int threads_y = 24;
-	// The bb.yaml file entry like
-	//    blocks: [32]
-	const int blocks_x = 32;
-	const int blocks_y = 1;
-	// The bb.yaml file entry like
-	//    shmem_bytes: 67712
-	const int shared_mem_bytes = 67712;
+    // The bb.yaml file entry like kernel-name = "_Z13julia_bb_...."
+    const std::string kernel_name = "_Z13julia_bb_496913CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE";
+    // The bb.yaml file entry like
+    //    threads: [32, 24]
+    const int threads_x = 32;
+    const int threads_y = 24;
+    // The bb.yaml file entry like
+    //    blocks: [32]
+    const int blocks_x = 32;
+    const int blocks_y = 1;
+    // The bb.yaml file entry like
+    //    shmem_bytes: 67712
+    const int shared_mem_bytes = 67712;
 
 };
 

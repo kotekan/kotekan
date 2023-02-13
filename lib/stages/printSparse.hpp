@@ -49,9 +49,9 @@ printSparse<A_Type>::printSparse(kotekan::Config& config, const std::string& uni
     if (_array_shape.size()) {
         size_t sz = sizeof(A_Type);
         for (int s: _array_shape)
-			sz *= s;
+            sz *= s;
         if (sz != buf->frame_size) {
-			throw std::invalid_argument("printSparse: product of 'array_shape' config setting must equal the buffer frame size");
+            throw std::invalid_argument("printSparse: product of 'array_shape' config setting must equal the buffer frame size");
         }
     }
 
@@ -62,7 +62,7 @@ printSparse<A_Type>::~printSparse() {}
 
 template<typename A_Type>
 void printSparse<A_Type>::main_thread() {
-	int buf_id = 0;
+    int buf_id = 0;
     while (!stop_thread) {
 
         // Get frame
@@ -71,43 +71,43 @@ void printSparse<A_Type>::main_thread() {
             break;
         INFO("printSparse: checking {:s}[{:d}]", buf->buffer_name, buf_id);
 
-		int frame_counter = 0;
-		if (metadata_is_onehot(buf, buf_id))
-			frame_counter = get_onehot_frame_counter(buf, buf_id);
+        int frame_counter = 0;
+        if (metadata_is_onehot(buf, buf_id))
+            frame_counter = get_onehot_frame_counter(buf, buf_id);
 
-		int nset = 0;
+        int nset = 0;
         for (uint32_t i = 0; i < buf->frame_size/sizeof(A_Type); ++i) {
-			if (!frame[i])
-				continue;
-			nset++;
-			if ((_max > 0) && (nset >= _max))
-				continue;
-			if (_array_shape.size()) {
-				uint32_t j = i;
-				bool first = true;
-				std::string istring = "";
-				for (auto it=_array_shape.rbegin(); it != _array_shape.rend(); it++) {
-					int n = (*it);
-					// prepend the index to the string
-					istring = std::to_string(j % n) + (first ? "" : ", ") + istring;
-					first = false;
-					j /= n;
-				}
-				INFO("printSparse: {:s}[{:d}] element {:s} ({:d} = 0x{:x}) has value {} = 0x{:x}",
-					 buf->buffer_name, buf_id, istring, i, i, frame[i], frame[i]);
-				if (nset == 1)
-					INFO("PY sparse[\"{:s}\"][{:d}] = (({:s}), 0x{:x})", buf->buffer_name, frame_counter,
-						 istring, frame[i]);
-			} else {
-				INFO("printSparse: {:s}[{:d}] element {:d} = 0x{:x} has value {} = 0x{:x}",
-					 buf->buffer_name, buf_id, i, i, frame[i], frame[i]);
-			}
-		}
+            if (!frame[i])
+                continue;
+            nset++;
+            if ((_max > 0) && (nset >= _max))
+                continue;
+            if (_array_shape.size()) {
+                uint32_t j = i;
+                bool first = true;
+                std::string istring = "";
+                for (auto it=_array_shape.rbegin(); it != _array_shape.rend(); it++) {
+                    int n = (*it);
+                    // prepend the index to the string
+                    istring = std::to_string(j % n) + (first ? "" : ", ") + istring;
+                    first = false;
+                    j /= n;
+                }
+                INFO("printSparse: {:s}[{:d}] element {:s} ({:d} = 0x{:x}) has value {} = 0x{:x}",
+                     buf->buffer_name, buf_id, istring, i, i, frame[i], frame[i]);
+                if (nset == 1)
+                    INFO("PY sparse[\"{:s}\"][{:d}] = (({:s}), 0x{:x})", buf->buffer_name, frame_counter,
+                         istring, frame[i]);
+            } else {
+                INFO("printSparse: {:s}[{:d}] element {:d} = 0x{:x} has value {} = 0x{:x}",
+                     buf->buffer_name, buf_id, i, i, frame[i], frame[i]);
+            }
+        }
 
-		INFO("printSparse: {:s}[{:d}] has {:d} elements set.", buf->buffer_name, buf_id, nset);
-		if (nset == 0) {
-			INFO("PY sparse[\"{:s}\"][{:d}] = (None, 0)", buf->buffer_name, frame_counter);
-		}
+        INFO("printSparse: {:s}[{:d}] has {:d} elements set.", buf->buffer_name, buf_id, nset);
+        if (nset == 0) {
+            INFO("PY sparse[\"{:s}\"][{:d}] = (None, 0)", buf->buffer_name, frame_counter);
+        }
 
         mark_frame_empty(buf, unique_name.c_str(), buf_id);
         buf_id = (buf_id + 1) % buf->num_frames;

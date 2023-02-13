@@ -166,8 +166,8 @@ struct metadataPool {
     /// Name of the metadata pool
     char* unique_name;
 
-	/// Data type of the metadata objects in this pool
-	char* type_name;
+    /// Data type of the metadata objects in this pool
+    char* type_name;
 };
 
 /**
