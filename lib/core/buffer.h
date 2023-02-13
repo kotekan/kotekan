@@ -230,6 +230,7 @@ struct Buffer {
  * @param[in] buffer_type The type of data this buffer contains.
  * @param[in] numa_node The CPU NUMA memory region to allocate memory in.+
  * @param[in] use_huge_pages Map huge pages with mmap
+ * @param[in] mlock_frames If set, mlock the pages of the frame memory
  * @returns A buffer object.
  */
 struct Buffer* create_buffer(int num_frames, int frame_size, struct metadataPool* pool,
@@ -477,6 +478,8 @@ void swap_frames(struct Buffer* from_buf, int from_frame_id, struct Buffer* to_b
  *
  * @param len The size of the frame to allocate in bytes.
  * @param numa_node The CPU NUMA region to allocate the memory in.
+ * @param use_huge_pages Use mmap to allocate huge pages for frames
+ * @param memlock_frames Use mlock to lock frame pages
  * @return A pointer to the new memory, or @c NULL if allocation failed.
  */
 uint8_t* buffer_malloc(ssize_t len, int numa_node, bool use_huge_pages, bool memlock_frames);
@@ -486,6 +489,7 @@ uint8_t* buffer_malloc(ssize_t len, int numa_node, bool use_huge_pages, bool mem
  *
  * @param frame_pointer The pointer to the memory to free.
  * @param size The size of the memory space to free (needed for NUMA)
+ * @param use_huge_pages Toggles the type of "free" call used, must match @c buffer_malloc type
  */
 void buffer_free(uint8_t* frame_pointer, size_t size, bool use_huge_pages);
 
