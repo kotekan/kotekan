@@ -1,5 +1,7 @@
 #include "cudaFRBBeamformer.hpp"
 
+#include <vector>
+
 #include "math.h"
 
 using kotekan::bufferContainer;
@@ -16,6 +18,8 @@ using kotekan::Config;
 
 
 REGISTER_CUDA_COMMAND(cudaFRBBeamformer);
+
+static const size_t sizeof_float16_t = 2;
 
 cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_name,
                                      bufferContainer& host_buffers,
@@ -37,6 +41,34 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
         "--verbose",
     };
     build_ptx({kernel_name}, opts);
+
+    // Assumption:
+    int32_t dish_m = _dish_grid_size;
+    int32_t dish_n = _dish_grid_size;
+    int32_t beam_p = _dish_grid_size * 2;
+    int32_t beam_q = _dish_grid_size * 2;
+    if (dish_m * dish_n > _num_dishes)
+        throw std::runtime_error("Config parameter dish_grid_size^2 must be <= num_dishes");
+    int32_t Td = (_samples_per_data_set + _time_downsampling - 1) / _time_downsampling;
+
+    dishlayout_len = (size_t)dish_m * dish_n * 2 * sizeof(int16_t);
+    // 2 polarizations x 2 for complex
+    phase_len = (size_t)dish_m * dish_n * _num_local_freq * 2 * 2 * sizeof_float16_t;
+    // 2 polarizations
+    voltage_len = (size_t)_num_dishes * _num_local_freq * _samples_per_data_set * 2;
+    beamgrid_len = (size_t)beam_p * beam_q * _num_local_freq * Td * sizeof_float16_t;
+    info_len = (size_t)(threads_x * threads_y * blocks_x * sizeof(int32_t));
+
+    // Allocate GPU memory for dish-layout array, and fill from the config file entry!
+    int16_t* dishlayout_memory = (int16_t*)device.get_gpu_memory(_gpu_mem_dishlayout, dishlayout_len);
+    std::vector<int> dishlayout_config = config.get<std::vector<int> >(unique_name, "frb_beamformer_dish_layout");
+    if (dishlayout_config.size() != (size_t)(dish_m * dish_n))
+        throw std::runtime_error("Config parameter frb_beamformer_dish_layout must have length = dish_grid_size^2");
+    int16_t* dishlayout_cpu_memory = (int16_t*)malloc(dishlayout_len);
+    for (size_t i = 0; i < dishlayout_len / sizeof(int16_t); i++)
+        dishlayout_cpu_memory[i] = dishlayout_config[i];
+    CHECK_CUDA_ERROR(cudaMemcpy(dishlayout_memory, dishlayout_cpu_memory, dishlayout_len, cudaMemcpyHostToDevice));
+    free(dishlayout_cpu_memory);
 }
 
 cudaFRBBeamformer::~cudaFRBBeamformer() {}
@@ -54,30 +86,10 @@ typedef CuDeviceArray<int32_t, 1> kernel_arg;
 cudaEvent_t cudaFRBBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     pre_execute(gpu_frame_id);
 
-    // Assumption:
-    int32_t dish_m = _dish_grid_size;
-    int32_t dish_n = _dish_grid_size;
-    int32_t beam_p = _dish_grid_size * 2;
-    int32_t beam_q = _dish_grid_size * 2;
-    assert(dish_m * dish_n <= _num_dishes);
-    int32_t Td = (_samples_per_data_set + _time_downsampling - 1) / _time_downsampling;
-
-    size_t dishlayout_len = (size_t)dish_m * dish_n * sizeof(int32_t);
-    void* dishlayout_memory = device.get_gpu_memory_array(_gpu_mem_dishlayout, gpu_frame_id, dishlayout_len);
-
-    const size_t sizeof_float16_t = 2;
-    // 2 polarizations x 2 for complex
-    size_t phase_len = (size_t)dish_m * dish_n * _num_local_freq * 2 * 2 * sizeof_float16_t;
+    void* dishlayout_memory = device.get_gpu_memory(_gpu_mem_dishlayout, dishlayout_len);
     void* phase_memory = device.get_gpu_memory_array(_gpu_mem_phase, gpu_frame_id, phase_len);
-
-    // 2 polarizations
-    size_t voltage_len = (size_t)_num_dishes * _num_local_freq * _samples_per_data_set * 2;
     void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, gpu_frame_id, voltage_len);
-
-    size_t beamgrid_len = (size_t)beam_p * beam_q * _num_local_freq * Td * sizeof_float16_t;
     void* beamgrid_memory = device.get_gpu_memory_array(_gpu_mem_beamgrid, gpu_frame_id, beamgrid_len);
-
-    size_t info_len = (size_t)(threads_x * threads_y * blocks_x * sizeof(int32_t));
     int32_t* info_memory =
         (int32_t*)device.get_gpu_memory_array(_gpu_mem_info, gpu_frame_id, info_len);
 
@@ -94,8 +106,8 @@ cudaEvent_t cudaFRBBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_event) 
 
     arr[0].ptr = (int32_t*)dishlayout_memory;
     arr[0].maxsize = dishlayout_len;
-    arr[0].dims[0] = dishlayout_len / sizeof(int32_t);
-    arr[0].len = dishlayout_len / sizeof(int32_t);
+    arr[0].dims[0] = dishlayout_len / sizeof(int16_t);
+    arr[0].len = dishlayout_len / sizeof(int16_t);
 
     arr[1].ptr = (int32_t*)phase_memory;
     arr[1].maxsize = phase_len;

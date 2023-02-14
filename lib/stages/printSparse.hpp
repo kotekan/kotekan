@@ -16,7 +16,15 @@
 #include <stdlib.h>   // for size_t
 #include <string>     // for allocator, string, operator+, to_string, char_traits
 #include <vector>     // for vector
+#include <bits/floatn-common.h>
 
+#include <array>
+#include <cassert>
+#include <complex>
+#include <cstdint>
+#include <cstdlib>
+#include <iostream>
+#include <vector>
 
 template<typename A_Type>
 class printSparse : public kotekan::Stage {
@@ -57,6 +65,26 @@ printSparse<A_Type>::printSparse(kotekan::Config& config, const std::string& uni
 template<typename A_Type>
 printSparse<A_Type>::~printSparse() {}
 
+static std::string format_nice_string(uint8_t x) {
+    return fmt::format("{} = 0x{:x}", x, x);
+}
+static std::string format_nice_string(uint32_t x) {
+    return fmt::format("{} = 0x{:x}", x, x);
+}
+using float16_t = _Float16;
+static std::string format_nice_string(float16_t x) {
+    return fmt::format("{}", (float)x);
+}
+static std::string format_python_string(uint8_t x) {
+    return fmt::format("{}", x);
+}
+static std::string format_python_string(uint32_t x) {
+    return fmt::format("{}", x);
+}
+static std::string format_python_string(float16_t x) {
+    return fmt::format("{}", (float)x);
+}
+
 template<typename A_Type>
 void printSparse<A_Type>::main_thread() {
     int buf_id = 0;
@@ -90,14 +118,13 @@ void printSparse<A_Type>::main_thread() {
                     first = false;
                     j /= n;
                 }
-                INFO("printSparse: {:s}[{:d}] element {:s} ({:d} = 0x{:x}) has value {} = 0x{:x}",
-                     buf->buffer_name, buf_id, istring, i, i, frame[i], frame[i]);
+                INFO("printSparse: {:s}[{:d}] element {:s} ({:d} = 0x{:x}) has value {:s}",
+                     buf->buffer_name, buf_id, istring, i, i, format_nice_string(frame[i]));
                 if (nset == 1)
-                    INFO("PY sparse[\"{:s}\"][{:d}] = (({:s}), 0x{:x})", buf->buffer_name,
-                         frame_counter, istring, frame[i]);
+                    INFO("PY sparse[\"{:s}\"][{:d}] = (({:s}), {:s})", buf->buffer_name,
+                         frame_counter, istring, format_python_string(frame[i]));
             } else {
-                INFO("printSparse: {:s}[{:d}] element {:d} = 0x{:x} has value {} = 0x{:x}",
-                     buf->buffer_name, buf_id, i, i, frame[i], frame[i]);
+                INFO("printSparse: {:s}[{:d}] element {:d} = 0x{:x} has value {:s}", buf->buffer_name, buf_id, i, i, format_nice_string(frame[i]));
             }
         }
 

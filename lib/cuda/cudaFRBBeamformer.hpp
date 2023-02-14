@@ -38,6 +38,17 @@ private:
     /// Time downsampling factor
     int32_t _time_downsampling;
 
+    /// Size in bytes of the dishlayout array
+    size_t dishlayout_len;
+    /// Size in bytes of the phase array
+    size_t phase_len;
+    /// Size in bytes of the voltage array
+    size_t voltage_len;
+    /// Size in bytes of the beamgrid array
+    size_t beamgrid_len;
+    /// Size in bytes of the info array
+    size_t info_len;
+
     /// GPU side memory name for the dish layout input
     std::string _gpu_mem_dishlayout;
     /// GPU side memory name for the voltage input
@@ -49,9 +60,9 @@ private:
     /// GPU side memory name for the status/info output
     std::string _gpu_mem_info;
 
-    // The bb.yaml file entry like kernel-name = "_Z14julia_frb_...."
+    // The bb.yaml file entry like kernel-name = "_Z15julia_frb_...."
     // clang-format off
-    const std::string kernel_name = "_Z14julia_frb_604513CuDeviceArrayI5Int32Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_IS0_Li1ELi1EES_IS2_Li1ELi1EES_IS2_Li1ELi1EES_IS1_Li1ELi1EE";
+    const std::string kernel_name = "_Z15julia_frb_1046713CuDeviceArrayI7Int16x2Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EES_IS2_Li1ELi1EES_IS2_Li1ELi1EES_IS1_Li1ELi1EE";
     // clang-format on
     // The frb.yaml file entry like
     //    threads: [32, 24]
