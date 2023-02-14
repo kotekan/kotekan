@@ -27,12 +27,14 @@ public:
      *
      * @param len      The length of the queue.
      */
-    updateQueue(const size_t len) : _len(len){};
+    updateQueue(const size_t len) :
+        _len(len){};
 
     /**
      * @brief Create an updateQueue of length 0.
      */
-    updateQueue() : _len(0){};
+    updateQueue() :
+        _len(0){};
 
     /**
      * @brief Resize the queue.

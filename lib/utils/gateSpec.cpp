@@ -13,7 +13,8 @@ REGISTER_GATESPEC(pulsarSpec, "pulsar");
 REGISTER_GATESPEC(uniformSpec, "uniform");
 
 
-gateSpec::gateSpec(const std::string& name, const kotekan::logLevel log_level) : _name(name) {
+gateSpec::gateSpec(const std::string& name, const kotekan::logLevel log_level) :
+    _name(name) {
     set_log_level(log_level);
 }
 

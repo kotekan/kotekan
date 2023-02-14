@@ -110,7 +110,8 @@ protected:
     // A forwarding constructor, such that derived classes can skip the main
     // ICETelescope constructor but still construct the Telescope class
     template<typename... Args>
-    ICETelescope(Args&&... args) : Telescope(std::forward<Args>(args)...){};
+    ICETelescope(Args&&... args) :
+        Telescope(std::forward<Args>(args)...){};
 };
 
 

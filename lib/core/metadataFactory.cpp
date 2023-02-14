@@ -23,7 +23,8 @@ using std::string;
 
 namespace kotekan {
 
-metadataFactory::metadataFactory(Config& config) : config(config) {}
+metadataFactory::metadataFactory(Config& config) :
+    config(config) {}
 
 metadataFactory::~metadataFactory() {}
 

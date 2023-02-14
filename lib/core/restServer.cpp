@@ -42,7 +42,9 @@ restServer& restServer::instance() {
     return server_instance;
 }
 
-restServer::restServer() : port(_port), main_thread() {
+restServer::restServer() :
+    port(_port),
+    main_thread() {
     stop_thread = false;
 }
 
@@ -453,7 +455,8 @@ string restServer::get_http_responce_code_text(const HTTP_RESPONSE& status) {
 
 // *** Connection Instance functions ***
 
-connectionInstance::connectionInstance(struct evhttp_request* request) : request(request) {
+connectionInstance::connectionInstance(struct evhttp_request* request) :
+    request(request) {
     event_buffer = evbuffer_new();
     if (event_buffer == nullptr) {
         throw std::runtime_error("Failed to create evbuffer");

@@ -108,7 +108,8 @@ public:
     /**
      * Constructor wrapping an underlying `BipBuffer`
      */
-    BipBufferWriter(BipBuffer& buffer) : buffer(buffer) {}
+    BipBufferWriter(BipBuffer& buffer) :
+        buffer(buffer) {}
 
     /// Reserve a contiguous region of memory in the buffer of size `length`
     /// Return nullptr if the buffer does not contain enough free space.
@@ -173,7 +174,8 @@ public:
     /**
      * Constructor wrapping an underlying `BipBuffer`
      */
-    BipBufferReader(BipBuffer& buffer) : buffer(buffer) {}
+    BipBufferReader(BipBuffer& buffer) :
+        buffer(buffer) {}
 
     /**
      * Request a contiguous region of data ready for reading of size `length`

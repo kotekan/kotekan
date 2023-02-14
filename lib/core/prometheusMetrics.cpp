@@ -17,10 +17,12 @@ using std::string;
 namespace kotekan {
 namespace prometheus {
 
-Metric::Metric(const std::vector<string>& label_values) : label_values(label_values) {}
+Metric::Metric(const std::vector<string>& label_values) :
+    label_values(label_values) {}
 
 
-Counter::Counter(const std::vector<string>& label_values) : Metric(label_values) {}
+Counter::Counter(const std::vector<string>& label_values) :
+    Metric(label_values) {}
 
 void Counter::inc() {
     std::lock_guard<std::mutex> lock(metric_lock);
@@ -46,7 +48,8 @@ std::ostringstream& Counter::to_string(std::ostringstream& out) {
 }
 
 
-Gauge::Gauge(const std::vector<string>& label_values) : Metric(label_values) {}
+Gauge::Gauge(const std::vector<string>& label_values) :
+    Metric(label_values) {}
 
 void Gauge::set(const double value) {
     std::lock_guard<std::mutex> lock(metric_lock);
