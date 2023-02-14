@@ -39,11 +39,9 @@ REGISTER_KOTEKAN_STAGE(HFBAccumulate);
 HFBAccumulate::HFBAccumulate(Config& config_, const std::string& unique_name,
                              bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&HFBAccumulate::main_thread, this)),
-    in_buf(get_buffer("hfb_input_buf")),
-    cls_buf(get_buffer("compressed_lost_samples_buf")),
-    out_buf(get_buffer("hfb_output_buf")),
-    _num_frames_to_integrate(
-        config.get_default<uint32_t>(unique_name, "num_frames_to_integrate", 80)),
+    in_buf(get_buffer("hfb_input_buf")), cls_buf(get_buffer("compressed_lost_samples_buf")),
+    out_buf(get_buffer("hfb_output_buf")), _num_frames_to_integrate(config.get_default<uint32_t>(
+                                               unique_name, "num_frames_to_integrate", 80)),
     _num_frb_total_beams(config.get<uint32_t>(unique_name, "num_frb_total_beams")),
     _factor_upchan(config.get<uint32_t>(unique_name, "factor_upchan")),
     _samples_per_data_set(config.get<uint32_t>(unique_name, "samples_per_data_set")),

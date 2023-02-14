@@ -333,12 +333,8 @@ connInstance::connInstance(const std::string& producer_name, Buffer* buf, buffer
                            const std::string& client_ip, int port, struct timeval read_timeout,
                            bool drop_frames) :
     producer_name(producer_name),
-    buf(buf),
-    buffer_recv(buffer_recv),
-    client_ip(client_ip),
-    port(port),
-    read_timeout(read_timeout),
-    drop_frames(drop_frames) {
+    buf(buf), buffer_recv(buffer_recv), client_ip(client_ip), port(port),
+    read_timeout(read_timeout), drop_frames(drop_frames) {
 
     frame_space = buffer_malloc(buf->aligned_frame_size, 0);
     CHECK_MEM(frame_space);

@@ -61,12 +61,9 @@ REGISTER_KOTEKAN_STAGE(applyGains);
 applyGains::applyGains(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&applyGains::main_thread, this)),
-    in_buf(get_buffer("in_buf")),
-    out_buf(get_buffer("out_buf")),
-    frame_id_in(in_buf),
-    frame_id_out(out_buf),
-    update_age_metric(
-        Metrics::instance().add_gauge("kotekan_applygains_update_age_seconds", unique_name)),
+    in_buf(get_buffer("in_buf")), out_buf(get_buffer("out_buf")), frame_id_in(in_buf),
+    frame_id_out(out_buf), update_age_metric(Metrics::instance().add_gauge(
+                               "kotekan_applygains_update_age_seconds", unique_name)),
     late_update_counter(
         Metrics::instance().add_counter("kotekan_applygains_late_update_count", unique_name)),
     late_frames_counter(

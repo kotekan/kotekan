@@ -89,9 +89,7 @@ MetricFamily<T>::MetricFamily(const string& name, const string& stage_name,
                               const std::vector<string>& label_names,
                               const MetricFamily<T>::MetricType metric_type) :
     name(name),
-    stage_name(stage_name),
-    label_names(label_names),
-    metric_type(metric_type) {}
+    stage_name(stage_name), label_names(label_names), metric_type(metric_type) {}
 
 template<typename T>
 string MetricFamily<T>::serialize() {

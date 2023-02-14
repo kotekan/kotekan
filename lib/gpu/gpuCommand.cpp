@@ -19,11 +19,8 @@ gpuCommand::gpuCommand(Config& config_, const std::string& unique_name_,
                        const std::string& default_kernel_command,
                        const std::string& default_kernel_file_name) :
     kernel_command(default_kernel_command),
-    kernel_file_name(default_kernel_file_name),
-    config(config_),
-    unique_name(unique_name_),
-    host_buffers(host_buffers_),
-    dev(device_) {
+    kernel_file_name(default_kernel_file_name), config(config_), unique_name(unique_name_),
+    host_buffers(host_buffers_), dev(device_) {
     _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
 
     // Set the local log level.
