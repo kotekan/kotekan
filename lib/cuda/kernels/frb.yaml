@@ -1,0 +1,54 @@
+--- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
+kernel-description:
+  name: "frb"
+  description: "FRB beamformer"
+  design-parameters:
+    beam-layout: [48, 48]
+    dish-layout: [24, 24]
+    downsampling-factor: 40
+    number-of-complex-components: 2
+    number-of-dishes: 512
+    number-of-frequencies: 84
+    number-of-polarizations: 2
+    number-of-timesamples: 2064
+    sampling-time: 27.3
+  compile-parameters:
+    minthreads: 768
+    blocks_per_sm: 1
+  call-parameters:
+    threads: [32, 24]
+    blocks: [84]
+    shmem_bytes: 76896
+  kernel-name: "_Z14julia_frb_604513CuDeviceArrayI5Int32Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_IS0_Li1ELi1EES_IS2_Li1ELi1EES_IS2_Li1ELi1EES_IS1_Li1ELi1EE"
+  kernel-arguments:
+    - name: "S"
+      intent: in
+      type: Int32
+      indices: [D]
+      shape: [576]
+      strides: [1]
+    - name: "W"
+      intent: in
+      type: Float16
+      indices: [C, dishM, dishN, F, P]
+      shape: [2, 24, 24, 84, 2]
+      strides: [1, 2, 48, 1152, 96768, 193536]
+    - name: "E"
+      intent: in
+      type: Int4
+      indices: [C, D, F, P, T]
+      shape: [2, 512, 84, 2, 2064]
+      strides: [1, 2, 1024, 86016, 172032]
+    - name: "I"
+      intent: out
+      type: Float16
+      indices: [beamP, beamQ, F, Tds]
+      shape: [48, 48, 84, 52]
+      strides: [1, 48, 2304, 193536]
+    - name: "info"
+      intent: out
+      type: Int32
+      indices: [thread, warp, block]
+      shapes: [32, 24, 84]
+      strides: [1, 32, 768]
+...

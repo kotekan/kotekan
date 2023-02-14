@@ -21,6 +21,7 @@ add_library(
     # Kernels
     cudaCorrelatorAstron.cpp
     cudaShuffleAstron.cu
+    cudaFRBBeamformer.cpp
     cudaBasebandBeamformer.cpp)
 
 # C++17
