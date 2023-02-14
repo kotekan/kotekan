@@ -1,27 +1,29 @@
 #include "buffer.h"
 
-#include "errors.h"    // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, INFO_F, DEBUG_F, WARN_F, DEB...
-#include "metadata.h"  // for metadataContainer, decrement_metadata_ref_count, increment_metada...
+#include "errors.h"    // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, INFO_F, DEBUG_F, WARN_F
+#include "metadata.h"  // for metadataContainer, decrement_metadata_ref_count, increment_...
 #include "nt_memset.h" // for nt_memset
 #include "util.h"      // for e_time
 #ifdef WITH_HSA
 #include "hsaBase.h" // for hsa_host_free, hsa_host_malloc
 #endif
 
-#include <assert.h>   // for assert
-#include <errno.h>    // for ETIMEDOUT
-#include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdio.h>    // for snprintf
-#include <stdlib.h>   // for free, malloc
-#include <string.h>   // for memset, memcpy, strncmp, strncpy, strdup
-#include <sys/mman.h> // IWYU pragma: keep
+#include <asm/mman-common.h> // for MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE
+#include <asm/mman.h>        // for MAP_HUGETLB
+#include <assert.h>          // for assert
+#include <errno.h>           // for errno, ETIMEDOUT
+#include <sched.h>           // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdio.h>           // for snprintf
+#include <stdlib.h>          // for free, malloc
+#include <string.h>          // for memset, strerror, memcpy, strdup, strncmp, strncpy
+#include <sys/mman.h>        // for mlock, mmap, munmap, MAP_FAILED
 #ifndef MAC_OSX
-#include <linux/mman.h>
+#include <linux/mman.h> // for MAP_HUGE_2MB
 #endif
 #include <time.h> // for NULL, size_t, timespec
 #ifdef WITH_NUMA
-#include <numa.h> // IWYU pragma: keep
-#include <numaif.h>
+#include <numa.h>   // for numa_allocate_nodemask, numa_bitmask_free, numa_bitmask_setbit
+#include <numaif.h> // for set_mempolicy, mbind, MPOL_BIND, MPOL_DEFAULT, MPOL_MF_STRICT
 #endif
 
 // It is assumed this is a power of two in the code.
