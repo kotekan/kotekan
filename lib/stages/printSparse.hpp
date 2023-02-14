@@ -50,7 +50,7 @@ printSparse<A_Type>::printSparse(kotekan::Config& config, const std::string& uni
         if (sz != buf->frame_size)
             // clang-format off
             throw std::invalid_argument("printSparse: product of 'array_shape' config setting must equal the buffer frame size");
-            // clang-format on
+        // clang-format on
     }
 }
 

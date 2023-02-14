@@ -68,7 +68,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
         if (sz != buf->frame_size)
             // clang-format off
             throw std::invalid_argument("testDataGen: product of 'array_shape' config setting must equal the buffer frame size");
-            // clang-format on
+        // clang-format on
     }
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
     stream_id.id = config.get_default<uint64_t>(unique_name, "stream_id", 0);
