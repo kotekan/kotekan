@@ -40,7 +40,7 @@ clDeviceInterface::~clDeviceInterface() {
     cleanup_memory();
 }
 
-void* clDeviceInterface::alloc_gpu_memory(int len) {
+void* clDeviceInterface::alloc_gpu_memory(size_t len) {
     cl_int err;
     cl_mem ptr = clCreateBuffer(context, CL_MEM_READ_WRITE, len, nullptr, &err);
     CHECK_CL_ERROR(err);

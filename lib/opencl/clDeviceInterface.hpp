@@ -34,7 +34,7 @@ public:
     cl_mem get_gpu_memory(const std::string& name, const uint32_t len);
 
 protected:
-    void* alloc_gpu_memory(int len) override;
+    void* alloc_gpu_memory(size_t len) override;
     void free_gpu_memory(void*) override;
 
     // Extra data
