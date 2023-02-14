@@ -8,15 +8,15 @@
 #include "hsaBase.h" // for hsa_host_free, hsa_host_malloc
 #endif
 
-#include <asm/mman-common.h> // for MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE
-#include <asm/mman.h>        // for MAP_HUGETLB
-#include <assert.h>          // for assert
-#include <errno.h>           // for errno, ETIMEDOUT
-#include <sched.h>           // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdio.h>           // for snprintf
-#include <stdlib.h>          // for free, malloc
-#include <string.h>          // for memset, strerror, memcpy, strdup, strncmp, strncpy
-#include <sys/mman.h>        // for mlock, mmap, munmap, MAP_FAILED
+// IWYU pragma: no_include <asm/mman-common.h>
+// IWYU pragma: no_include <asm/mman.h>
+#include <assert.h>   // for assert
+#include <errno.h>    // for errno, ETIMEDOUT
+#include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdio.h>    // for snprintf
+#include <stdlib.h>   // for free, malloc
+#include <string.h>   // for memset, strerror, memcpy, strdup, strncmp, strncpy
+#include <sys/mman.h> // for mlock, mmap, munmap, MAP_FAILED
 #ifndef MAC_OSX
 #include <linux/mman.h> // for MAP_HUGE_2MB
 #endif
