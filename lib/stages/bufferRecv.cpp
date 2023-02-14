@@ -331,10 +331,7 @@ std::string bufferRecv::dot_string(const std::string& prefix) const {
 connInstance::connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
                            const std::string& client_ip, int port, struct timeval read_timeout) :
     producer_name(producer_name),
-    buf(buf),
-    buffer_recv(buffer_recv),
-    client_ip(client_ip),
-    port(port),
+    buf(buf), buffer_recv(buffer_recv), client_ip(client_ip), port(port),
     read_timeout(read_timeout) {
 
     frame_space = buffer_malloc(buf->aligned_frame_size, buf->numa_node, buf->use_hugepages,
