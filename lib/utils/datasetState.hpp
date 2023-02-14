@@ -129,8 +129,7 @@ public:
      * @param freqs The frequency information as a vector of
      *              {frequency ID, frequency index map}.
      */
-    freqState(std::vector<std::pair<uint32_t, freq_ctype>> freqs) :
-        _freqs(freqs){};
+    freqState(std::vector<std::pair<uint32_t, freq_ctype>> freqs) : _freqs(freqs){};
 
     /**
      * @brief Get frequency information (read only).
@@ -180,8 +179,7 @@ public:
      * @param inputs The input information as a vector of
      *               input index maps.
      */
-    inputState(std::vector<input_ctype> inputs) :
-        _inputs(inputs){};
+    inputState(std::vector<input_ctype> inputs) : _inputs(inputs){};
 
     /**
      * @brief Get input information (read only).
@@ -230,8 +228,7 @@ public:
      * @param prods The product information as a vector of
      *              product index maps.
      */
-    prodState(std::vector<prod_ctype> prods) :
-        _prods(prods){};
+    prodState(std::vector<prod_ctype> prods) : _prods(prods){};
 
     /**
      * @brief Get product information (read only).
@@ -281,8 +278,7 @@ public:
      *              time index maps.
 
      */
-    timeState(std::vector<time_ctype> times) :
-        _times(times){};
+    timeState(std::vector<time_ctype> times) : _times(times){};
 
     /**
      * @brief Get time information (read only).
@@ -330,16 +326,14 @@ public:
      * @brief Constructor
      * @param ev The eigenvalues.
      */
-    eigenvalueState(std::vector<uint32_t> ev) :
-        _ev(ev){};
+    eigenvalueState(std::vector<uint32_t> ev) : _ev(ev){};
 
     /**
      * @brief Constructor
      * @param num_ev The number of eigenvalues. The indices will end up
      *               running from 0 to num_ev - 1
      */
-    eigenvalueState(size_t num_ev) :
-        _ev(num_ev) {
+    eigenvalueState(size_t num_ev) : _ev(num_ev) {
         std::iota(_ev.begin(), _ev.end(), 0);
     }
 
@@ -413,8 +407,7 @@ public:
      * @param num_stack Number of stacked visibilities.
      */
     stackState(uint32_t num_stack, std::vector<rstack_ctype>&& rstack_map) :
-        _num_stack(num_stack),
-        _rstack_map(rstack_map) {}
+        _num_stack(num_stack), _rstack_map(rstack_map) {}
 
     /**
      * @brief Get stack map information (read only).
@@ -500,8 +493,7 @@ public:
     metadataState(std::string weight_type, std::string instrument_name,
                   std::string git_version_tag) :
         _weight_type(weight_type),
-        _instrument_name(instrument_name),
-        _git_version_tag(git_version_tag) {}
+        _instrument_name(instrument_name), _git_version_tag(git_version_tag) {}
 
     /**
      * @brief Get the weight type (read only).
@@ -558,8 +550,7 @@ public:
      * @param  spec  gateSpec to describe what's happening.
      **/
     gatingState(const gateSpec& spec) :
-        gating_type(FACTORY(gateSpec)::label(spec)),
-        gating_data(spec.to_dm_json()) {}
+        gating_type(FACTORY(gateSpec)::label(spec)), gating_data(spec.to_dm_json()) {}
 
     /**
      * @brief Construct a gating state
@@ -567,8 +558,7 @@ public:
      * @param  data   Full serialised data.
      **/
     gatingState(const nlohmann::json& data) :
-        gating_type(data["type"].get<std::string>()),
-        gating_data(data["data"]) {}
+        gating_type(data["type"].get<std::string>()), gating_data(data["data"]) {}
 
 
     /**
@@ -616,8 +606,7 @@ public:
      * @param  transition_interval  The length of time to blend updates over.
      */
     gainState(std::string update_id, double transition_interval) :
-        _update_id(update_id),
-        _transition_interval(transition_interval){};
+        _update_id(update_id), _transition_interval(transition_interval){};
 
     /**
      * @brief Get the update_id
@@ -677,8 +666,7 @@ public:
      *
      * @param  update_id  The string update_id labelling the applied flags.
      */
-    flagState(std::string update_id) :
-        _update_id(update_id){};
+    flagState(std::string update_id) : _update_id(update_id){};
 
     const std::string& get_update_id() const {
         return _update_id;
@@ -722,16 +710,14 @@ public:
      *              beam index maps.
 
      */
-    beamState(std::vector<uint32_t> beams) :
-        _beams(beams){};
+    beamState(std::vector<uint32_t> beams) : _beams(beams){};
 
     /**
      * @brief Constructor
      * @param num_beams The number of beams. The indices will end up
      *                  running from 0 to num_beams - 1
      */
-    beamState(size_t num_beams) :
-        _beams(num_beams) {
+    beamState(size_t num_beams) : _beams(num_beams) {
         std::iota(_beams.begin(), _beams.end(), 0);
     }
 
@@ -782,16 +768,14 @@ public:
      * @param subfreqs The sub-frequency information as a vector of
      *              subfreq index maps.
      */
-    subfreqState(std::vector<uint32_t> subfreqs) :
-        _subfreqs(subfreqs){};
+    subfreqState(std::vector<uint32_t> subfreqs) : _subfreqs(subfreqs){};
 
     /**
      * @brief Constructor
      * @param num_subfreqs The number of sub-frequencies. The indices will end up
      *                  running from 0 to num_subfreqs - 1
      */
-    subfreqState(size_t num_subfreqs) :
-        _subfreqs(num_subfreqs) {
+    subfreqState(size_t num_subfreqs) : _subfreqs(num_subfreqs) {
         std::iota(_subfreqs.begin(), _subfreqs.end(), 0);
     }
 
@@ -845,8 +829,7 @@ public:
      * @param thresholds    Vector of pairs: thresholds and fractions
      */
     RFIFrameDropState(bool enabled, std::vector<std::pair<float, float>> thresholds) :
-        enabled(enabled),
-        thresholds(thresholds) {}
+        enabled(enabled), thresholds(thresholds) {}
 
     /**
      * @brief Get RFI frame-dropping enabled information.

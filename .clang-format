@@ -36,9 +36,9 @@ BreakBeforeTernaryOperators: true
 BreakConstructorInitializers: AfterColon
 ColumnLimit:     100
 #CommentPragmas: '^@param|@config|@metric|@warning:'
-ConstructorInitializerAllOnOneLineOrOnePerLine: true
+ConstructorInitializerAllOnOneLineOrOnePerLine: false
 # For clang-format-14+:
-PackConstructorInitializers: Never
+# PackConstructorInitializers: Never
 ConstructorInitializerIndentWidth: 4
 ContinuationIndentWidth: 4
 Cpp11BracedListStyle: true

@@ -25,8 +25,7 @@ restClient& restClient::instance() {
     return client_instance;
 }
 
-restClient::restClient() :
-    _main_thread() {
+restClient::restClient() : _main_thread() {
 
     _stop_thread = false;
     _event_thread_started = false;

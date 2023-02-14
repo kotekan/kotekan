@@ -167,8 +167,7 @@ public:
 
 private:
     /// Constructor, we don't want anyone to call this
-    configUpdater() :
-        _config(nullptr) {}
+    configUpdater() : _config(nullptr) {}
 
     /// Creates a new endpoint with a given name
     void create_endpoint(const std::string& name);

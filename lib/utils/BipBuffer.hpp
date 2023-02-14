@@ -39,11 +39,7 @@ public:
      * Construct a BipBuffer with the specified size of the underlying memory store.
      */
     BipBuffer(const int size) :
-        data(std::make_unique<uint8_t[]>(size)),
-        len(size),
-        read(0),
-        write(0),
-        watermark(0) {}
+        data(std::make_unique<uint8_t[]>(size)), len(size), read(0), write(0), watermark(0) {}
 
 public:
     /// Array for the buffer data
@@ -108,8 +104,7 @@ public:
     /**
      * Constructor wrapping an underlying `BipBuffer`
      */
-    BipBufferWriter(BipBuffer& buffer) :
-        buffer(buffer) {}
+    BipBufferWriter(BipBuffer& buffer) : buffer(buffer) {}
 
     /// Reserve a contiguous region of memory in the buffer of size `length`
     /// Return nullptr if the buffer does not contain enough free space.
@@ -174,8 +169,7 @@ public:
     /**
      * Constructor wrapping an underlying `BipBuffer`
      */
-    BipBufferReader(BipBuffer& buffer) :
-        buffer(buffer) {}
+    BipBufferReader(BipBuffer& buffer) : buffer(buffer) {}
 
     /**
      * Request a contiguous region of data ready for reading of size `length`

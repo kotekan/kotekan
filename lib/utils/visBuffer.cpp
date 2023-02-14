@@ -23,25 +23,19 @@
 #include <vector>      // for vector
 
 VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
-    FrameView(buf, frame_id),
-    _metadata((VisMetadata*)buf->metadata[id]->metadata),
+    FrameView(buf, frame_id), _metadata((VisMetadata*)buf->metadata[id]->metadata),
 
     // Calculate the internal buffer layout from the given structure params
     buffer_layout(
         calculate_buffer_layout(_metadata->num_elements, _metadata->num_prod, _metadata->num_ev)),
 
     // Set the const refs to the structural metadata
-    num_elements(_metadata->num_elements),
-    num_prod(_metadata->num_prod),
-    num_ev(_metadata->num_ev),
+    num_elements(_metadata->num_elements), num_prod(_metadata->num_prod), num_ev(_metadata->num_ev),
 
     // Set the refs to the general _metadata
     time(std::tie(_metadata->fpga_seq_start, _metadata->ctime)),
-    fpga_seq_length(_metadata->fpga_seq_length),
-    fpga_seq_total(_metadata->fpga_seq_total),
-    rfi_total(_metadata->rfi_total),
-    freq_id(_metadata->freq_id),
-    dataset_id(_metadata->dataset_id),
+    fpga_seq_length(_metadata->fpga_seq_length), fpga_seq_total(_metadata->fpga_seq_total),
+    rfi_total(_metadata->rfi_total), freq_id(_metadata->freq_id), dataset_id(_metadata->dataset_id),
 
     // Bind the regions of the buffer to spans and references on the view
     vis(bind_span<cfloat>(_frame, buffer_layout.second[VisField::vis])),
