@@ -633,8 +633,4 @@ bool visAccumulate::reset_state(visAccumulate::internalState& state, timespec t)
 visAccumulate::internalState::internalState(Buffer* out_buf, std::unique_ptr<gateSpec> gate_spec,
                                             size_t nprod) :
     buf(out_buf),
-    frame_id(buf),
-    spec(std::move(gate_spec)),
-    changed(true),
-    vis1(2 * nprod),
-    vis2(nprod) {}
+    frame_id(buf), spec(std::move(gate_spec)), changed(true), vis1(2 * nprod), vis2(nprod) {}

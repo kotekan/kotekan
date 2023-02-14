@@ -9,9 +9,7 @@
 #include <string>    // for string
 
 FrameView::FrameView(Buffer* buf, int frame_id) :
-    buffer(buf),
-    id(frame_id),
-    _frame(buffer->frames[id]) {}
+    buffer(buf), id(frame_id), _frame(buffer->frames[id]) {}
 
 FrameView::~FrameView(){};
 

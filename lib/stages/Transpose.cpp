@@ -37,8 +37,7 @@ using kotekan::prometheus::Metrics;
 Transpose::Transpose(Config& config, const std::string& unique_name,
                      bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&Transpose::main_thread, this)),
-    in_buf(get_buffer("in_buf")),
-    frame_id(in_buf) {
+    in_buf(get_buffer("in_buf")), frame_id(in_buf) {
 
     register_consumer(in_buf, unique_name.c_str());
 

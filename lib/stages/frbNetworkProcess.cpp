@@ -588,15 +588,8 @@ void frbNetworkProcess::receive_ping_responses() {
 }
 
 DestIpSocket::DestIpSocket(std::string host, sockaddr_in addr, int s, bool active) :
-    host(std::move(host)),
-    addr(std::move(addr)),
-    sending_socket(s),
-    active(active),
-    live(false) {}
+    host(std::move(host)), addr(std::move(addr)), sending_socket(s), active(active), live(false) {}
 
 DestIpSocket::DestIpSocket(DestIpSocket&& other) :
-    host(std::move(other.host)),
-    addr(std::move(other.addr)),
-    sending_socket(other.sending_socket),
-    active(other.active),
-    live(other.live.load()) {}
+    host(std::move(other.host)), addr(std::move(other.addr)), sending_socket(other.sending_socket),
+    active(other.active), live(other.live.load()) {}
