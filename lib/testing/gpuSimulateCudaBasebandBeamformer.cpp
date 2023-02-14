@@ -1,18 +1,19 @@
-#include <stddef.h>             // for size_t
-#include <array>                // for array
-#include <atomic>               // for atomic_bool
-#include <exception>            // for exception
-#include <functional>           // for _Bind_helper<>::type, bind, function
-#include <regex>                // for match_results<>::_Base_type
-#include <vector>               // for vector
-
 #include "gpuSimulateCudaBasebandBeamformer.hpp"
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"             // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for INFO, DEBUG
-#include "oneHotMetadata.hpp"   // for metadata_is_onehot, get_onehot_indices, get_onehot_frame_...
+
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO, DEBUG
+#include "oneHotMetadata.hpp"  // for metadata_is_onehot, get_onehot_indices, get_onehot_frame_...
+
+#include <array>      // for array
+#include <atomic>     // for atomic_bool
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stddef.h>   // for size_t
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -20,9 +21,10 @@ using kotekan::Config;
 REGISTER_KOTEKAN_STAGE(gpuSimulateCudaBasebandBeamformer);
 
 
-gpuSimulateCudaBasebandBeamformer::gpuSimulateCudaBasebandBeamformer(Config& config, const std::string& unique_name,
-                                                                     bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&gpuSimulateCudaBasebandBeamformer::main_thread, this)) {
+gpuSimulateCudaBasebandBeamformer::gpuSimulateCudaBasebandBeamformer(
+    Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container,
+          std::bind(&gpuSimulateCudaBasebandBeamformer::main_thread, this)) {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
@@ -63,21 +65,13 @@ static constexpr std::array<int8_t, 2> get4(const int4x2_t i) {
  frequency, single time, etc).
  */
 void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
-                                                      std::string id_tag,
-                                                      const int8_t *__restrict__ const A,
-                                                      const int4x2_t *__restrict__ const E,
-                                                      const int32_t *__restrict__ const s,
-                                                      int4x2_t *__restrict__ const J,
-                                                      const int T,   // 32768; // number of times
-                                                      const int B,   // = 96;    // number of beams
-                                                      const int D,   // = 512;   // number of dishes
-                                                      const int F,    // = 16;    // frequency channels per GPU
-                                                      const int t,
-                                                      const int b,
-                                                      const int d,
-                                                      const int f,
-                                                      const int p
-                                                      ) {
+    std::string id_tag, const int8_t* __restrict__ const A, const int4x2_t* __restrict__ const E,
+    const int32_t* __restrict__ const s, int4x2_t* __restrict__ const J,
+    const int T, // 32768; // number of times
+    const int B, // = 96;    // number of beams
+    const int D, // = 512;   // number of dishes
+    const int F, // = 16;    // frequency channels per GPU
+    const int t, const int b, const int d, const int f, const int p) {
     const int f0 = (f == -1 ? 0 : f);
     const int f1 = (f == -1 ? F : f + 1);
     const int p0 = (p == -1 ? 0 : p);
@@ -109,16 +103,20 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
                         if (Are || Aim) {
                             size_t indx = (((f * 2 + p) * B + b) * D + d) * 2 + 0;
                             if (nprint_p < nprint_max) {
+                                // clang-format off
                                 DEBUG("bb_simple: found phase f={:d}, p={:d}, b={:d}, d={:d} = index {:d}=0x{:x} with value {:d} = 0x{:x}",
                                       f, p, b, d, indx, indx, Aim, Are);
+                                // clang-format on
                                 nprint_p++;
                             }
                         }
                         if (Ere || Eim) {
                             size_t indx = ((t * 2 + p) * F + f) * D + d;
                             if (nprint_v < nprint_max) {
+                                // clang-format off
                                 DEBUG("bb_simple: found voltage f={:d}, p={:d}, t={:d}, d={:d} = index {:d}=0x{:x} = {:d} = 0x{:x}",
                                       f, p, t, d, indx, indx, E[indx], E[indx]);
+                                // clang-format on
                                 nprint_v++;
                             }
                         }
@@ -143,11 +141,17 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
                     J[jindx] = set4(Jim, Jre);
                     if (Jre || Jim) {
                         if (nprint_b < nprint_max) {
-                            DEBUG("bb_simple: setting b={:d}(0x{:x}), f={:d}(0x{:x}), p={:d}(0x{:x}), t={:d}(0x{:x}) = index 0x{:x}; before shift by {:d} (0x{:x}), re=0x{:x}, im=0x{:x}, after: re=0x{:x}, im=0x{:x}, packed: 0x{:x}",
-                                  b, b, f, f, p, p, t, t, jindx, shift, shift, oJre, oJim, Jre, Jim, set4(Jim,Jre));
+                            DEBUG("bb_simple: setting b={:d}(0x{:x}), f={:d}(0x{:x}), "
+                                  "p={:d}(0x{:x}), t={:d}(0x{:x}) = index 0x{:x}; before shift by "
+                                  "{:d} (0x{:x}), re=0x{:x}, im=0x{:x}, after: re=0x{:x}, "
+                                  "im=0x{:x}, packed: 0x{:x}",
+                                  b, b, f, f, p, p, t, t, jindx, shift, shift, oJre, oJim, Jre, Jim,
+                                  set4(Jim, Jre));
                             if (nprint_b == 0)
-                                INFO("PY bb[{:s}] = (({:d}, {:d}, {:d}, {:d}, {:d}), ({:d}, {:d}), ({:d}, {:d}), 0x{:x})",
-                                     id_tag, b, f, p, t, jindx, oJre, oJim, Jre, Jim, set4(Jim,Jre));
+                                INFO("PY bb[{:s}] = (({:d}, {:d}, {:d}, {:d}, {:d}), ({:d}, {:d}), "
+                                     "({:d}, {:d}), 0x{:x})",
+                                     id_tag, b, f, p, t, jindx, oJre, oJim, Jre, Jim,
+                                     set4(Jim, Jre));
                             nprint_b++;
                         }
                     }
@@ -158,16 +162,13 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
 }
 
 void gpuSimulateCudaBasebandBeamformer::bb_simple(
-                                                  std::string id_tag,
-                                                  const int8_t *__restrict__ const A,
-                                                  const int4x2_t *__restrict__ const E,
-                                                  const int32_t *__restrict__ const s,
-                                                  int4x2_t *__restrict__ const J,
-                                                  const int T,   // = 32768; // 32768; // number of times
-                                                  const int B,   // = 96;    // number of beams
-                                                  const int D,   // = 512;   // number of dishes
-                                                  const int F    // = 16;    // frequency channels per GPU
-                                                  ) {
+    std::string id_tag, const int8_t* __restrict__ const A, const int4x2_t* __restrict__ const E,
+    const int32_t* __restrict__ const s, int4x2_t* __restrict__ const J,
+    const int T, // = 32768; // 32768; // number of times
+    const int B, // = 96;    // number of beams
+    const int D, // = 512;   // number of dishes
+    const int F  // = 16;    // frequency channels per GPU
+) {
     bb_simple_sub(id_tag, A, E, s, J, T, B, D, F, -1, -1, -1, -1, -1);
 }
 
@@ -179,20 +180,25 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
     int shift_frame_id = 0;
 
     while (!stop_thread) {
-        int4x2_t* voltage = (int4x2_t*)wait_for_full_frame(voltage_buf, unique_name.c_str(), voltage_frame_id);
+        int4x2_t* voltage =
+            (int4x2_t*)wait_for_full_frame(voltage_buf, unique_name.c_str(), voltage_frame_id);
         if (voltage == nullptr)
             break;
-        int8_t* phase = (int8_t*)wait_for_full_frame(phase_buf, unique_name.c_str(), phase_frame_id);
+        int8_t* phase =
+            (int8_t*)wait_for_full_frame(phase_buf, unique_name.c_str(), phase_frame_id);
         if (phase == nullptr)
             break;
-        int32_t* shift = (int32_t*)wait_for_full_frame(shift_buf, unique_name.c_str(), shift_frame_id);
+        int32_t* shift =
+            (int32_t*)wait_for_full_frame(shift_buf, unique_name.c_str(), shift_frame_id);
         if (shift == nullptr)
             break;
-        int4x2_t* output = (int4x2_t*)wait_for_empty_frame(output_buf, unique_name.c_str(), output_frame_id);
+        int4x2_t* output =
+            (int4x2_t*)wait_for_empty_frame(output_buf, unique_name.c_str(), output_frame_id);
         if (output == nullptr)
             break;
 
-        INFO("Simulating GPU processing for {:s}[{:d}] {:s}[{:d}] {:s}[{:d}] putting result in {:s}[{:d}]",
+        INFO("Simulating GPU processing for {:s}[{:d}] {:s}[{:d}] {:s}[{:d}] putting result in "
+             "{:s}[{:d}]",
              voltage_buf->buffer_name, voltage_frame_id, phase_buf->buffer_name, phase_frame_id,
              shift_buf->buffer_name, shift_frame_id, output_buf->buffer_name, output_frame_id);
 
@@ -203,7 +209,9 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
         }
 
         bool done = false;
-        DEBUG("Is voltage buffer one-hot? {:}  Phase? {:}", metadata_is_onehot(voltage_buf, voltage_frame_id), metadata_is_onehot(phase_buf, phase_frame_id));
+        DEBUG("Is voltage buffer one-hot? {:}  Phase? {:}",
+              metadata_is_onehot(voltage_buf, voltage_frame_id),
+              metadata_is_onehot(phase_buf, phase_frame_id));
         if (metadata_is_onehot(voltage_buf, voltage_frame_id)) {
             std::vector<int> inds = get_onehot_indices(voltage_buf, voltage_frame_id);
             if (inds.size() != 4) {
@@ -214,11 +222,11 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
                 int f = inds[2];
                 int d = inds[3];
                 int b = -1;
-                INFO("One-hot voltage buffer: time {:d} pol {:d}, freq {:d}, dish {:d}", t, p, f, d);
+                INFO("One-hot voltage buffer: time {:d} pol {:d}, freq {:d}, dish {:d}", t, p, f,
+                     d);
                 int ndishes = _num_elements / 2;
-                bb_simple_sub(id_tag, phase, voltage, shift, output,
-                              _samples_per_data_set, _num_beams, ndishes, _num_local_freq,
-                              t, b, d, f, p);
+                bb_simple_sub(id_tag, phase, voltage, shift, output, _samples_per_data_set,
+                              _num_beams, ndishes, _num_local_freq, t, b, d, f, p);
                 done = true;
             }
         }
@@ -236,17 +244,16 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
                 int t = -1;
                 INFO("One-hot phase buffer: freq {:d} pol {:d}, beam {:d}, dish {:d}", f, p, b, d);
                 int ndishes = _num_elements / 2;
-                bb_simple_sub(id_tag, phase, voltage, shift, output,
-                              _samples_per_data_set, _num_beams, ndishes, _num_local_freq,
-                              t, b, d, f, p);
+                bb_simple_sub(id_tag, phase, voltage, shift, output, _samples_per_data_set,
+                              _num_beams, ndishes, _num_local_freq, t, b, d, f, p);
                 done = true;
             }
         }
 
         if (!done) {
             int ndishes = _num_elements / 2;
-            bb_simple(id_tag, phase, voltage, shift, output,
-                      _samples_per_data_set, _num_beams, ndishes, _num_local_freq);
+            bb_simple(id_tag, phase, voltage, shift, output, _samples_per_data_set, _num_beams,
+                      ndishes, _num_local_freq);
         }
 
         DEBUG("Simulated GPU processing done for {:s}[{:d}], result is in {:s}[{:d}]",

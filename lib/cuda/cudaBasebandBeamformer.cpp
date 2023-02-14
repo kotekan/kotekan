@@ -38,29 +38,6 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
         "--verbose",
     };
     build_ptx({kernel_name}, opts);
-
-    // HACK -- this was for setting constant phase & shift arrays in local arrays
-    // (not managed by kotekan)
-    /*
-    size_t phase_len = (size_t)_num_elements * _num_local_freq * _num_beams * 2;
-    int8_t* phase_memory = (int8_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
-
-    int8_t* cpu_phase_memory = (int8_t*)malloc(phase_len);
-    for (size_t i = 0; i < phase_len; i++)
-        cpu_phase_memory[i] = 0x1;
-
-    CHECK_CUDA_ERROR(cudaMemcpy(phase_memory, cpu_phase_memory, phase_len, cudaMemcpyHostToDevice));
-    free(cpu_phase_memory);
-
-    size_t shift_len = (size_t)_num_local_freq * _num_beams * 2 * sizeof(int32_t);
-    int32_t* shift_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_output_scaling, shift_len);
-
-    int32_t* cpu_shift_memory = (int32_t*)malloc(shift_len);
-    for (size_t i = 0; i < shift_len / sizeof(int32_t); i++)
-        cpu_shift_memory[i] = 0;
-    CHECK_CUDA_ERROR(cudaMemcpy(shift_memory, cpu_shift_memory, shift_len, cudaMemcpyHostToDevice));
-    free(cpu_shift_memory);
-    */
 }
 
 cudaBasebandBeamformer::~cudaBasebandBeamformer() {}
@@ -83,26 +60,20 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
     void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, gpu_frame_id, voltage_len);
 
     size_t phase_len = (size_t)_num_elements * _num_local_freq * _num_beams * 2;
-    // TEMPORARY -- get our local phase memory, not from kotekan
-    //int8_t* phase_memory = (int8_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
-    int8_t* phase_memory = (int8_t*)device.get_gpu_memory_array(_gpu_mem_phase, gpu_frame_id,
-                                                                phase_len);
+    int8_t* phase_memory =
+        (int8_t*)device.get_gpu_memory_array(_gpu_mem_phase, gpu_frame_id, phase_len);
 
     size_t shift_len = (size_t)_num_local_freq * _num_beams * 2 * sizeof(int32_t);
-    // TEMPORARY -- get our local shift memory, not from kotekan
-    //int32_t* shift_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_output_scaling, shift_len);
-    int32_t* shift_memory = (int32_t*)device.get_gpu_memory_array(_gpu_mem_output_scaling,
-                                                                  gpu_frame_id, shift_len);
+    int32_t* shift_memory =
+        (int32_t*)device.get_gpu_memory_array(_gpu_mem_output_scaling, gpu_frame_id, shift_len);
 
     size_t output_len = (size_t)_num_local_freq * _num_beams * _samples_per_data_set * 2;
-
     void* output_memory =
         device.get_gpu_memory_array(_gpu_mem_formed_beams, gpu_frame_id, output_len);
 
     size_t info_len = (size_t)(threads_x * threads_y * blocks_x * sizeof(int32_t));
-    //int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
-    int32_t* info_memory = (int32_t*)device.get_gpu_memory_array(_gpu_mem_info,
-                                                                 gpu_frame_id, info_len);
+    int32_t* info_memory =
+        (int32_t*)device.get_gpu_memory_array(_gpu_mem_info, gpu_frame_id, info_len);
 
     if (pre_event)
         CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(CUDA_COMPUTE_STREAM), pre_event, 0));
@@ -151,10 +122,9 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
                                       shared_mem_bytes));
 
     DEBUG("Running CUDA Baseband Beamformer on GPU frame {:d}", gpu_frame_id);
-    err = cuLaunchKernel(runtime_kernels[kernel_name],
-                         blocks_x, blocks_y, 1,
-                         threads_x, threads_y, 1, shared_mem_bytes,
-                         device.getStream(CUDA_COMPUTE_STREAM), parameters, NULL);
+    err =
+        cuLaunchKernel(runtime_kernels[kernel_name], blocks_x, blocks_y, 1, threads_x, threads_y, 1,
+                       shared_mem_bytes, device.getStream(CUDA_COMPUTE_STREAM), parameters, NULL);
 
     if (err != CUDA_SUCCESS) {
         const char* errStr;

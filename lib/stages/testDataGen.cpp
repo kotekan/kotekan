@@ -1,32 +1,33 @@
-#include <assert.h>             // for assert
-#include <stdint.h>             // for uint64_t, uint32_t, uint8_t, int32_t
-#include <stdlib.h>             // for rand, srand
-#include <sys/time.h>           // for gettimeofday, timeval
-#include <sys/types.h>          // for uint
-#include <unistd.h>             // for usleep
-#include <strings.h>            // for bzero
-#include <atomic>               // for atomic_bool
-#include <cmath>                // for fmod
-#include <cstdint>              // for uint64_t
-#include <exception>            // for exception
-#include <functional>           // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
-#include <regex>                // for match_results<>::_Base_type
-#include <stdexcept>            // for runtime_error, invalid_argument
-#include <vector>               // for vector
-#include <algorithm>            // for copy, max
-
 #include "testDataGen.hpp"
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"        // for Telescope, stream_t
-#include "buffer.h"             // for Buffer, allocate_new_metadata_object, mark_frame_full
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chimeMetadata.hpp"    // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
-#include "oneHotMetadata.hpp"   // for metadata_is_onehot, set_onehot_frame_counter, set_onehot_...
-#include "kotekanLogging.hpp"   // for INFO, DEBUG
-#include "kotekanTrackers.hpp"  // for KotekanTrackers
-#include "restServer.hpp"       // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
-#include "visUtil.hpp"          // for current_time, ts_to_double, StatTracker
+
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"       // for Telescope, stream_t
+#include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "kotekanLogging.hpp"  // for INFO, DEBUG
+#include "kotekanTrackers.hpp" // for KotekanTrackers
+#include "oneHotMetadata.hpp"  // for metadata_is_onehot, set_onehot_frame_counter, set_onehot_...
+#include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
+#include "visUtil.hpp"         // for current_time, ts_to_double, StatTracker
+
+#include <algorithm>   // for copy, max
+#include <assert.h>    // for assert
+#include <atomic>      // for atomic_bool
+#include <cmath>       // for fmod
+#include <cstdint>     // for uint64_t
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error, invalid_argument
+#include <stdint.h>    // for uint64_t, uint32_t, uint8_t, int32_t
+#include <stdlib.h>    // for rand, srand
+#include <strings.h>   // for bzero
+#include <sys/time.h>  // for gettimeofday, timeval
+#include <sys/types.h> // for uint
+#include <unistd.h>    // for usleep
+#include <vector>      // for vector
 
 
 using kotekan::bufferContainer;
@@ -47,21 +48,27 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     buf = get_buffer("out_buf");
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
-    assert(type == "const" || type == "const32" || type == "random" || type == "random_signed" || type == "ramp" ||
-           type == "tpluse" || type == "tpluseplusf" || type == "tpluseplusfprime" || type == "square" || type == "onehot");
-    if (type == "const" || type == "const32" || type == "random" || type == "random_signed" || type == "ramp" || type == "onehot") {
+    assert(type == "const" || type == "const32" || type == "random" || type == "random_signed"
+           || type == "ramp" || type == "tpluse" || type == "tpluseplusf"
+           || type == "tpluseplusfprime" || type == "square" || type == "onehot");
+    if (type == "const" || type == "const32" || type == "random" || type == "random_signed"
+        || type == "ramp" || type == "onehot") {
         value = config.get_default<int>(unique_name, "value", -1999);
-        _value_array = config.get_default<std::vector<int>>(unique_name, "values", std::vector<int>());
+        _value_array =
+            config.get_default<std::vector<int>>(unique_name, "values", std::vector<int>());
     }
     _seed = config.get_default<int>(unique_name, "seed", 0);
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
-    _array_shape = config.get_default<std::vector<int>>(unique_name, "array_shape", std::vector<int>());
+    _array_shape =
+        config.get_default<std::vector<int>>(unique_name, "array_shape", std::vector<int>());
     if (_array_shape.size()) {
         size_t sz = 1;
         for (int s : _array_shape)
             sz *= s;
         if (sz != buf->frame_size)
+            // clang-format off
             throw std::invalid_argument("testDataGen: product of 'array_shape' config setting must equal the buffer frame size");
+            // clang-format on
     }
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
     stream_id.id = config.get_default<uint64_t>(unique_name, "stream_id", 0);
@@ -187,7 +194,8 @@ void testDataGen::main_thread() {
                     indices.push_back(k);
                 }
                 frame[j] = val;
-                INFO("Set {:s}[{:d}] index [{:s}] (flat: {:d} = 0x{:x}) to 0x{:x} ({:d})", buf->buffer_name, frame_id, istring, j, j, val, val);
+                INFO("Set {:s}[{:d}] index [{:s}] (flat: {:d} = 0x{:x}) to 0x{:x} ({:d})",
+                     buf->buffer_name, frame_id, istring, j, j, val, val);
                 if (metadata_is_onehot(buf, frame_id)) {
                     DEBUG("One-hot metadata; setting indices");
                     set_onehot_indices(buf, frame_id, indices);
@@ -196,7 +204,8 @@ void testDataGen::main_thread() {
                 INFO("PY onehot[{:d}] = (({:s}), 0x{:x})", frame_id_abs, istring, val);
             } else {
                 int j = rand() % n_to_set;
-                INFO("Set {:s}[{:d}] flat index {:d} = 0x{:x} to 0x{:x} ({:d})", buf->buffer_name, frame_id, j, j, val, val);
+                INFO("Set {:s}[{:d}] flat index {:d} = 0x{:x} to 0x{:x} ({:d})", buf->buffer_name,
+                     frame_id, j, j, val, val);
                 frame[j] = val;
             }
             n_to_set = 0;

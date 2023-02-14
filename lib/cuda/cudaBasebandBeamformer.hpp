@@ -48,7 +48,9 @@ private:
     std::string _gpu_mem_info;
 
     // The bb.yaml file entry like kernel-name = "_Z13julia_bb_...."
+    // clang-format off
     const std::string kernel_name = "_Z13julia_bb_496913CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE";
+    // clang-format on
     // The bb.yaml file entry like
     //    threads: [32, 24]
     const int threads_x = 32;

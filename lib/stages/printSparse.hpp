@@ -1,21 +1,21 @@
 #ifndef PRINT_SPARSE_H
 #define PRINT_SPARSE_H
 
-#include <stdlib.h>             // for size_t
-#include <cstdint>              // for uint32_t
-#include <exception>            // for exception
-#include <functional>           // for bind
-#include <regex>                // for match_results<>::_Base_type
-#include <stdexcept>            // for invalid_argument, runtime_error
-#include <string>               // for allocator, string, operator+, to_string, char_traits
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO
+#include "oneHotMetadata.hpp"  // for get_onehot_frame_counter, metadata_is_onehot
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.h"             // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for INFO
-#include "oneHotMetadata.hpp"   // for get_onehot_frame_counter, metadata_is_onehot
+#include <cstdint>    // for uint32_t
+#include <exception>  // for exception
+#include <functional> // for bind
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for invalid_argument, runtime_error
+#include <stdlib.h>   // for size_t
+#include <string>     // for allocator, string, operator+, to_string, char_traits
+#include <vector>     // for vector
 
 
 template<typename A_Type>
@@ -47,9 +47,10 @@ printSparse<A_Type>::printSparse(kotekan::Config& config, const std::string& uni
         size_t sz = sizeof(A_Type);
         for (int s : _array_shape)
             sz *= s;
-        if (sz != buf->frame_size) {
+        if (sz != buf->frame_size)
+            // clang-format off
             throw std::invalid_argument("printSparse: product of 'array_shape' config setting must equal the buffer frame size");
-        }
+            // clang-format on
     }
 }
 
@@ -92,8 +93,8 @@ void printSparse<A_Type>::main_thread() {
                 INFO("printSparse: {:s}[{:d}] element {:s} ({:d} = 0x{:x}) has value {} = 0x{:x}",
                      buf->buffer_name, buf_id, istring, i, i, frame[i], frame[i]);
                 if (nset == 1)
-                    INFO("PY sparse[\"{:s}\"][{:d}] = (({:s}), 0x{:x})", buf->buffer_name, frame_counter,
-                         istring, frame[i]);
+                    INFO("PY sparse[\"{:s}\"][{:d}] = (({:s}), 0x{:x})", buf->buffer_name,
+                         frame_counter, istring, frame[i]);
             } else {
                 INFO("printSparse: {:s}[{:d}] element {:d} = 0x{:x} has value {} = 0x{:x}",
                      buf->buffer_name, buf_id, i, i, frame[i], frame[i]);

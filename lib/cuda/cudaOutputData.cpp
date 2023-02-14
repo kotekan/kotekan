@@ -59,8 +59,8 @@ int cudaOutputData::wait_on_precondition(int gpu_frame_id) {
     uint8_t* frame =
         wait_for_empty_frame(output_buffer, unique_name.c_str(), output_buffer_precondition_id);
     if (frame == nullptr) {
-        DEBUG("FAILED to wait_for_empty_frame on output_buffer {:s}[:d]",
-              unique_name.c_str(), output_buffer_precondition_id);
+        DEBUG("FAILED to wait_for_empty_frame on output_buffer {:s}[:d]", unique_name.c_str(),
+              output_buffer_precondition_id);
         return -1;
     }
 
@@ -87,8 +87,8 @@ cudaEvent_t cudaOutputData::execute(int gpu_frame_id, cudaEvent_t pre_event) {
 void cudaOutputData::finalize_frame(int frame_id) {
     cudaCommand::finalize_frame(frame_id);
 
-    DEBUG("Passing metadata from input {:s}[{:d}] to {:s}[{:d}]",
-          in_buffer->buffer_name, in_buffer_id, output_buffer->buffer_name, output_buffer_id);
+    DEBUG("Passing metadata from input {:s}[{:d}] to {:s}[{:d}]", in_buffer->buffer_name,
+          in_buffer_id, output_buffer->buffer_name, output_buffer_id);
     pass_metadata(in_buffer, in_buffer_id, output_buffer, output_buffer_id);
 
     mark_frame_empty(in_buffer, unique_name.c_str(), in_buffer_id);
