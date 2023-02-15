@@ -103,7 +103,8 @@ cudaEvent_t cudaFRBBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_event) 
     CUresult err;
     // dishlayout (S), phase (W), voltage (E), beamgrid (I), info
     const char* exc = "exception";
-    kernel_arg arr[5];
+    //kernel_arg arr[5];
+    kernel_arg arr[8];
 
     arr[0].ptr = (int32_t*)dishlayout_memory;
     arr[0].maxsize = dishlayout_len;
@@ -130,8 +131,24 @@ cudaEvent_t cudaFRBBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_event) 
     arr[4].dims[0] = info_len / sizeof(int32_t);
     arr[4].len = info_len / sizeof(int32_t);
 
+    arr[5].ptr = (int32_t*)nullptr;
+    arr[5].maxsize = 0;
+    arr[5].dims[0] = 0;
+    arr[5].len = 0;
+
+    arr[6].ptr = (int32_t*)nullptr;
+    arr[6].maxsize = 0;
+    arr[6].dims[0] = 0;
+    arr[6].len = 0;
+
+    arr[7].ptr = (int32_t*)nullptr;
+    arr[7].maxsize = 0;
+    arr[7].dims[0] = 0;
+    arr[7].len = 0;
+
     void* parameters[] = {
         &(exc), &(arr[0]), &(arr[1]), &(arr[2]), &(arr[3]), &(arr[4]),
+        &(arr[5]), &(arr[6]), &(arr[7]),
     };
 
     DEBUG("Kernel_name: {}", kernel_name);

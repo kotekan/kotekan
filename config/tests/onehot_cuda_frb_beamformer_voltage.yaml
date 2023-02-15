@@ -79,16 +79,17 @@ host_info_buffer:
     frame_size: 32 * 24 * 84 * 4
     metadata_pool: main_pool
 
-# simulated_beamgrid_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: beam_grid_size * beam_grid_size * num_local_freq * td * sizeof_float16
-#     metadata_pool: main_pool
+simulated_beamgrid_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: beam_grid_size * beam_grid_size * num_local_freq * td * sizeof_float16
+    metadata_pool: main_pool
 
 gen_data:
     kotekan_stage: testDataGen
     type: onehot
     values: [0x01, 0x02, 0x04, 0x07, 0x08, 0x09, 0xc, 0xe, 0xf, 0x10, 0x20, 0x40, 0x70, 0x80, 0x90, 0xc0, 0xe0, 0xf0]
+    # This order corresponds to the *reverse* order in the frb.yaml file!
     # TIME, POL, FREQ, DISH
     array_shape: [2064, 2, 84, 512]
     out_buf: host_voltage_buffer
@@ -165,14 +166,16 @@ gpu:
 
 printSparseGPU:
     kotekan_stage: printSparseFloat16
-    # BEAMP, BEAMQ, F, TDS
-    array_shape: [48, 48, 84, 52]
+    # This order corresponds to the *reverse* order in the frb.yaml file!
+    # TDS, F, BEAMQ, BEAMP
+    array_shape: [52, 84, 48, 48]
     input_buf: host_beamgrid_buffer
-    max_to_print: 2
+    max_to_print: 8
 
-# printSparseCPU:
-#     kotekan_stage: printSparseUint8
-#     # BEAM, FREQ, POL, TIME
-#     array_shape: [96, 16, 2, 32768]
-#     input_buf: simulated_formed_beams_buffer
-#     max_to_print: 2
+printSparseCPU:
+    kotekan_stage: printSparseFloat16
+    # This order corresponds to the *reverse* order in the frb.yaml file!
+    # TDS, F, BEAMQ, BEAMP
+    array_shape: [52, 84, 48, 48]
+    input_buf: simulated_beamgrid_buffer
+    max_to_print: 8
