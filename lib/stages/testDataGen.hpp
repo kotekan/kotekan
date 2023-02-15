@@ -71,6 +71,8 @@ private:
     std::string endpoint;
     int value;
     std::vector<int> _value_array;
+    float fvalue;
+    std::vector<float> _fvalue_array;
     int step_to_frame;
     bool _pathfinder_test_mode;
     int samples_per_data_set;

@@ -1,5 +1,5 @@
-CHORD FRB beamformer
-Compiling kernel...
+//CHORD FRB beamformer
+//Compiling kernel...
 // PTX CompilerJob of kernel #frb(CuDeviceVector{Int16x2, 1}, CuDeviceVector{Float16x2, 1}, CuDeviceVector{Int4x8, 1}, CuDeviceVector{Float16x2, 1}, CuDeviceVector{Int32, 1}, CuDeviceVector{Int4x8, 1}, CuDeviceVector{Int4x8, 1}, CuDeviceVector{Float16x2, 1}) for sm_86, minthreads=768, blocks_per_sm=1
 
 //

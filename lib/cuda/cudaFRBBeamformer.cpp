@@ -47,8 +47,8 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
     int32_t dish_n = _dish_grid_size;
     int32_t beam_p = _dish_grid_size * 2;
     int32_t beam_q = _dish_grid_size * 2;
-    if (dish_m * dish_n > _num_dishes)
-        throw std::runtime_error("Config parameter dish_grid_size^2 must be <= num_dishes");
+    if (dish_m * dish_n < _num_dishes)
+        throw std::runtime_error("Config parameter dish_grid_size^2 must be >= num_dishes");
     int32_t Td = (_samples_per_data_set + _time_downsampling - 1) / _time_downsampling;
 
     dishlayout_len = (size_t)dish_m * dish_n * 2 * sizeof(int16_t);
@@ -62,8 +62,9 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
     // Allocate GPU memory for dish-layout array, and fill from the config file entry!
     int16_t* dishlayout_memory = (int16_t*)device.get_gpu_memory(_gpu_mem_dishlayout, dishlayout_len);
     std::vector<int> dishlayout_config = config.get<std::vector<int> >(unique_name, "frb_beamformer_dish_layout");
-    if (dishlayout_config.size() != (size_t)(dish_m * dish_n))
-        throw std::runtime_error("Config parameter frb_beamformer_dish_layout must have length = dish_grid_size^2");
+    if (dishlayout_config.size() != (size_t)(dish_m * dish_n * 2))
+        throw std::runtime_error(fmt::format("Config parameter frb_beamformer_dish_layout (length {}) must have length = 2 * dish_grid_size^2 = {}",
+                                             dishlayout_config.size(), 2*dish_m*dish_n));
     int16_t* dishlayout_cpu_memory = (int16_t*)malloc(dishlayout_len);
     for (size_t i = 0; i < dishlayout_len / sizeof(int16_t); i++)
         dishlayout_cpu_memory[i] = dishlayout_config[i];

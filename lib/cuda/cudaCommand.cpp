@@ -175,13 +175,6 @@ void cudaCommand::build_ptx(const std::vector<std::string>& kernel_names,
         FATAL_ERROR("Error reading the file: {:s}", kernel_file_name);
     fclose(fp);
 
-    // Convert compiler options to a c-style array.
-    std::vector<char*> cstring_opts;
-    cstring_opts.reserve(opts.size());
-
-    for (auto& str : opts)
-        cstring_opts.push_back(&str[0]);
-
     // Create the compiler
     nv_res = nvPTXCompilerCreate(&compiler, program_size, program_buffer);
     if (nv_res != NVPTXCOMPILE_SUCCESS) {
@@ -189,6 +182,12 @@ void cudaCommand::build_ptx(const std::vector<std::string>& kernel_names,
         FATAL_ERROR("Could not create PTX compiler, error code: {:d}", nv_res);
         return;
     }
+
+    // Convert compiler options to a c-style array.
+    std::vector<char*> cstring_opts;
+    cstring_opts.reserve(opts.size() + 1);
+    for (auto& str : opts)
+        cstring_opts.push_back(&str[0]);
 
     // Compile the code
     nv_res = nvPTXCompilerCompile(compiler, cstring_opts.size(), cstring_opts.data());
