@@ -55,7 +55,7 @@ public:
 
     /// This function sets the thread specific variables needed for the GPU API
     /// For example CUDA requires the GPU ID be set per thread
-    virtual void set_thread_device() = 0;
+    virtual void set_thread_device() {};
 
     /// Returns the GPU ID handled by this device object
     int get_gpu_id() {
