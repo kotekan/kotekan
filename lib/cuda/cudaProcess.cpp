@@ -23,7 +23,7 @@ cudaProcess::cudaProcess(Config& config_, const std::string& unique_name,
     device = new cudaDeviceInterface(config_, unique_name, gpu_id, _gpu_buffer_depth);
     dev = device;
 
-    uint32_t num_streams = config.get_default<uint32_t>(unique_name, "num_streams", 3);
+    uint32_t num_streams = config.get_default<uint32_t>(unique_name, "num_cuda_streams", 3);
 
     device->prepareStreams(num_streams);
     CHECK_CUDA_ERROR(cudaProfilerStart());

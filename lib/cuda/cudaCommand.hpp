@@ -33,7 +33,11 @@
  * Kernels and other opersations (I/O) should derive from this class,
  * which handles a lot of queueing and device interface issues.
  *
- * @author Keith Vanderlinde
+ * @conf cuda_stream  The ID of the CUDA stream to use for this command, defaults to one of
+ *                    0, 1, 2, for command types COPY_IN, KERNEL, and COPY_OUT respectively.
+ *                    This number must be less than @c num_cuda_streams set in cudaProcess.
+ *
+ * @author Keith Vanderlinde and Andre Renard
  */
 class cudaCommand : public gpuCommand {
 public:
@@ -88,6 +92,7 @@ protected:
 
     cudaDeviceInterface& device;
 
+    /// The ID of the cuda stream to run operations on
     int32_t cuda_stream_id;
 
     // Map containing the runtime kernels built with nvrtc from the kernel file (if needed)
