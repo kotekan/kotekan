@@ -23,6 +23,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <string>
+#include <vector>
 
 /**
  * @class cudaCommand
@@ -67,18 +68,27 @@ public:
      * @param pre_event     The preceeding event in a sequence of chained event sequence of
      *                      commands.
      **/
-    virtual cudaEvent_t execute(int gpu_frame_id, cudaEvent_t pre_event) = 0;
+    virtual cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) = 0;
 
     /** Releases the memory of the event chain arrays per buffer_id
      * @param gpu_frame_id    The bufferID to release all the memory references for.
      **/
     virtual void finalize_frame(int gpu_frame_id) override;
 
+    /// Returns the id of the cuda stream used by the command object
+    int32_t get_cuda_stream_id();
+
 protected:
-    cudaEvent_t* post_events; // tracked locally for cleanup
-    cudaEvent_t* pre_events;  // tracked locally for cleanup
+    void set_command_type(const gpuCommandType& type);
+
+    /// Events queued after the kernel/copy for synchronization and profiling
+    cudaEvent_t* end_events;
+    /// Extra events created at the start of kernels/copies for profiling
+    cudaEvent_t* start_events;
 
     cudaDeviceInterface& device;
+
+    int32_t cuda_stream_id;
 
     // Map containing the runtime kernels built with nvrtc from the kernel file (if needed)
     std::map<std::string, CUfunction> runtime_kernels;

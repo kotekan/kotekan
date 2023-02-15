@@ -11,15 +11,6 @@
 #include "cuda_runtime_api.h"
 #include "gpuDeviceInterface.hpp"
 
-// These adjust the number of queues used by the CUDA runtime
-// One queue is for data transfers to the GPU, one is for kernels,
-// and one is for data transfers from the GPU to host memory.
-// Unless you really know what you are doing, don't change these.
-#define NUM_STREAMS 3
-#define CUDA_INPUT_STREAM 0
-#define CUDA_COMPUTE_STREAM 1
-#define CUDA_OUTPUT_STREAM 2
-
 /**
  * @class cudaDeviceInterface
  * @brief Class to handle CUDA interactions with GPU hardware.
@@ -34,11 +25,19 @@
  */
 class cudaDeviceInterface final : public gpuDeviceInterface {
 public:
-    cudaDeviceInterface(kotekan::Config& config_, int32_t gpu_id_, int gpu_buffer_depth_);
+    cudaDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id,
+                        int gpu_buffer_depth);
     ~cudaDeviceInterface();
 
-    void prepareStreams();
-    cudaStream_t getStream(int param_Dim);
+    void prepareStreams(uint32_t num_streams);
+    cudaStream_t getStream(int32_t cuda_stream_id);
+
+    /// Returns the number of streams available
+    int32_t get_num_streams();
+
+    /// This function calls cudaSetDevice and must be called from every thread operating with this
+    /// gpuDeviceInterface, or making calls directly to one of the cuda streams
+    void set_thread_device() override;
 
     /**
      * @brief Asynchronous copies memory from the host (CPU RAM) to the device GPU (global memory)
@@ -50,8 +49,9 @@ public:
      * @param copy_pre_event The profiling event at the start of this copy
      * @param copy_post_event The event at the end of the copy.
      */
-    void async_copy_host_to_gpu(void* dst, void* src, size_t len, cudaEvent_t pre_event,
-                                cudaEvent_t& copy_pre_event, cudaEvent_t& copy_post_event);
+    void async_copy_host_to_gpu(void* dst, void* src, size_t len, uint32_t cuda_stream_id,
+                                cudaEvent_t pre_event, cudaEvent_t& copy_pre_event,
+                                cudaEvent_t& copy_post_event);
 
     /**
      * @brief Asynchronous Copies memory from the device GPU (global memory) to host (CPU RAM).
@@ -63,8 +63,9 @@ public:
      * @param copy_pre_event The profiling event at the start of this copy
      * @param copy_post_event The event at the end of the copy.
      */
-    void async_copy_gpu_to_host(void* dst, void* src, size_t len, cudaEvent_t pre_event,
-                                cudaEvent_t& copy_pre_event, cudaEvent_t& copy_post_event);
+    void async_copy_gpu_to_host(void* dst, void* src, size_t len, uint32_t cuda_stream_id,
+                                cudaEvent_t pre_event, cudaEvent_t& copy_pre_event,
+                                cudaEvent_t& copy_post_event);
 
     // Function overrides to cast the generic gpu_memory retulsts appropriately.
     void* get_gpu_memory_array(const std::string& name, const uint32_t index, const uint32_t len);
@@ -75,7 +76,7 @@ protected:
     void free_gpu_memory(void*) override;
 
     // Extra data
-    cudaStream_t stream[NUM_STREAMS];
+    std::vector<cudaStream_t> streams;
 
 private:
 };

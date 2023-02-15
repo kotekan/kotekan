@@ -21,7 +21,7 @@ cudaShuffleAstron::cudaShuffleAstron(Config& config, const std::string& unique_n
     _gpu_mem_voltage = config.get<std::string>(unique_name, "gpu_mem_voltage");
     _gpu_mem_ordered_voltage = config.get<std::string>(unique_name, "gpu_mem_ordered_voltage");
 
-    command_type = gpuCommandType::KERNEL;
+    set_command_type(gpuCommandType::KERNEL);
 }
 
 cudaShuffleAstron::~cudaShuffleAstron() {}
@@ -68,26 +68,27 @@ __global__ void shuffle_astron(int *input, int *output, int ne, int nt, int nf) 
         output[((F * nt/32 + blockIdx.y)*ne + E+e)*8 + threadIdx.y] = dd[e];
 }
 
-cudaEvent_t cudaShuffleAstron::execute(int gpu_frame_id, cudaEvent_t pre_event) {
+cudaEvent_t cudaShuffleAstron::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {
     pre_execute(gpu_frame_id);
 
     uint32_t input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
     void *input_memory = device.get_gpu_memory_array(_gpu_mem_voltage, gpu_frame_id, input_frame_len);
     void *output_memory = device.get_gpu_memory(_gpu_mem_ordered_voltage, input_frame_len);
 
-    if (pre_event) CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(CUDA_COMPUTE_STREAM), pre_event, 0));
-    CHECK_CUDA_ERROR(cudaEventCreate(&pre_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(cudaEventRecord(pre_events[gpu_frame_id], device.getStream(CUDA_COMPUTE_STREAM)));
+    if (pre_events[cuda_stream_id]) CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(cuda_stream_id),
+                                             pre_events[cuda_stream_id], 0));
+    CHECK_CUDA_ERROR(cudaEventCreate(&start_events[gpu_frame_id]));
+    CHECK_CUDA_ERROR(cudaEventRecord(start_events[gpu_frame_id], device.getStream(cuda_stream_id)));
 
     dim3 blk (8,8,1);
     dim3 grd (_num_elements/32,_samples_per_data_set/32,_num_local_freq);
-    shuffle_astron<<<grd,blk,0,device.getStream(CUDA_COMPUTE_STREAM)>>>
+    shuffle_astron<<<grd,blk,0,device.getStream(cuda_stream_id)>>>
         ((int*)input_memory, (int*)output_memory, _num_elements, _samples_per_data_set, _num_local_freq);
 
     CHECK_CUDA_ERROR(cudaGetLastError());
 
-    CHECK_CUDA_ERROR(cudaEventCreate(&post_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(cudaEventRecord(post_events[gpu_frame_id], device.getStream(CUDA_COMPUTE_STREAM)));
+    CHECK_CUDA_ERROR(cudaEventCreate(&end_events[gpu_frame_id]));
+    CHECK_CUDA_ERROR(cudaEventRecord(end_events[gpu_frame_id], device.getStream(cuda_stream_id)));
 
-    return post_events[gpu_frame_id];
+    return end_events[gpu_frame_id];
 }

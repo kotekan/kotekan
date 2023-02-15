@@ -25,7 +25,8 @@ struct gpuMemoryBlock {
 class gpuDeviceInterface : public kotekan::kotekanLogging {
 public:
     /// Constructor
-    gpuDeviceInterface(kotekan::Config& config_, int32_t gpu_id_, int gpu_buffer_depth_);
+    gpuDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id,
+                       int gpu_buffer_depth);
     /// Destructor
     virtual ~gpuDeviceInterface();
 
@@ -52,6 +53,10 @@ public:
     // how to free their memory. To be moved into distinct objects...
     void cleanup_memory();
 
+    /// This function sets the thread specific variables needed for the GPU API
+    /// For example CUDA requires the GPU ID be set per thread
+    virtual void set_thread_device() = 0;
+
     /// Returns the GPU ID handled by this device object
     int get_gpu_id() {
         return gpu_id;
@@ -68,6 +73,7 @@ protected:
 
     // Extra data
     kotekan::Config& config;
+    std::string unique_name;
 
     // Config variables
     int gpu_id;

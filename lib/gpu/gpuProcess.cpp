@@ -139,6 +139,8 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
 
 
 void gpuProcess::main_thread() {
+    dev->set_thread_device();
+
     restServer& rest_server = restServer::instance();
     rest_server.register_get_callback(
         fmt::format(fmt("/gpu_profile/{:d}"), gpu_id),
@@ -192,6 +194,8 @@ exit_loop:
 
 
 void gpuProcess::results_thread() {
+    dev->set_thread_device();
+
     // Start with the first GPU frame;
     int gpu_frame_id = 0;
 

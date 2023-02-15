@@ -24,7 +24,7 @@ cudaCorrelatorAstron::cudaCorrelatorAstron(Config& config, const std::string& un
     _gpu_mem_correlation_matrix =
         config.get<std::string>(unique_name, "gpu_mem_correlation_matrix");
 
-    command_type = gpuCommandType::KERNEL;
+    set_command_type(gpuCommandType::KERNEL);
 
     if (_block_size != 2)
         throw std::runtime_error("The block size must be 2 for the Astron TC kernels");
@@ -49,7 +49,8 @@ cudaCorrelatorAstron::cudaCorrelatorAstron(Config& config, const std::string& un
 
 cudaCorrelatorAstron::~cudaCorrelatorAstron() {}
 
-cudaEvent_t cudaCorrelatorAstron::execute(int gpu_frame_id, cudaEvent_t pre_event) {
+cudaEvent_t cudaCorrelatorAstron::execute(int gpu_frame_id,
+                                          const std::vector<cudaEvent_t>& pre_events) {
     pre_execute(gpu_frame_id);
 
     uint32_t input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
@@ -60,11 +61,11 @@ cudaEvent_t cudaCorrelatorAstron::execute(int gpu_frame_id, cudaEvent_t pre_even
     void* output_memory =
         device.get_gpu_memory_array(_gpu_mem_correlation_matrix, gpu_frame_id, output_len);
 
-    if (pre_event)
-        CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(CUDA_COMPUTE_STREAM), pre_event, 0));
-    CHECK_CUDA_ERROR(cudaEventCreate(&pre_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(
-        cudaEventRecord(pre_events[gpu_frame_id], device.getStream(CUDA_COMPUTE_STREAM)));
+    if (pre_events[cuda_stream_id])
+        CHECK_CUDA_ERROR(
+            cudaStreamWaitEvent(device.getStream(cuda_stream_id), pre_events[cuda_stream_id], 0));
+    CHECK_CUDA_ERROR(cudaEventCreate(&start_events[gpu_frame_id]));
+    CHECK_CUDA_ERROR(cudaEventRecord(start_events[gpu_frame_id], device.getStream(cuda_stream_id)));
 
     CUresult err;
     void* parameters[] = {&output_memory, &input_memory};
@@ -72,16 +73,15 @@ cudaEvent_t cudaCorrelatorAstron::execute(int gpu_frame_id, cudaEvent_t pre_even
     int num_thread_blocks =
         (_num_elements / _elements_per_thread_block) * (_num_elements / _elements_per_thread_block);
     err = cuLaunchKernel(runtime_kernels["correlate"], num_thread_blocks, _num_local_freq, 1, 32, 2,
-                         2, 0, device.getStream(CUDA_COMPUTE_STREAM), parameters, NULL);
+                         2, 0, device.getStream(cuda_stream_id), parameters, NULL);
     if (err != CUDA_SUCCESS) {
         const char* errStr;
         cuGetErrorString(err, &errStr);
         INFO("ERROR IN cuLaunchKernel: {}", errStr);
     }
 
-    CHECK_CUDA_ERROR(cudaEventCreate(&post_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(
-        cudaEventRecord(post_events[gpu_frame_id], device.getStream(CUDA_COMPUTE_STREAM)));
+    CHECK_CUDA_ERROR(cudaEventCreate(&end_events[gpu_frame_id]));
+    CHECK_CUDA_ERROR(cudaEventRecord(end_events[gpu_frame_id], device.getStream(cuda_stream_id)));
 
-    return post_events[gpu_frame_id];
+    return end_events[gpu_frame_id];
 }
