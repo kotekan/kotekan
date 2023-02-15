@@ -16,7 +16,8 @@
 #include "gpuProcess.hpp"
 
 /**
- * @class cudaProcess Stage to manage all the kernels and copy commands for a GPU
+ * @class cudaProcess
+ * @brief Stage to manage all the kernels and copy commands for a GPU
  *
  * This stage is responsible for running the cudaCommandObjects which in turn run the
  * various host<->device copies and kernel calls.  Much of the logic exists in the base
