@@ -11,8 +11,8 @@ using kotekan::Config;
 
 clDeviceInterface::clDeviceInterface(Config& config_, const std::string& unique_name,
                                      int32_t gpu_id_, int gpu_buffer_depth_) :
-    gpuDeviceInterface(config_, gpu_id_, gpu_buffer_depth_) {
-    (void)unique_name;
+    gpuDeviceInterface(config_, unique_name, gpu_id_, gpu_buffer_depth_) {
+
     // Get a platform.
     CHECK_CL_ERROR(clGetPlatformIDs(1, &platform_id, nullptr));
     INFO("GPU Id {:d}", gpu_id);
