@@ -38,7 +38,8 @@
  */
 class hipDeviceInterface final : public gpuDeviceInterface {
 public:
-    hipDeviceInterface(kotekan::Config& config_, int32_t gpu_id_, int gpu_buffer_depth_);
+    hipDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id,
+                       int gpu_buffer_depth);
     ~hipDeviceInterface();
 
     void prepareStreams();
