@@ -34,7 +34,8 @@
  * @conf  num_local_freq        Int.  Number of frequencies in each frame.
  * @conf  samples_per_data_set  Int.  Number of time samples per frame.
  * @conf  num_beams             Int.  Number of beams being formed.
- * @conf  zero_output           Bool. Zero out the array before filling it?  Useful when doing one-hot sparse outputs.
+ * @conf  zero_output           Bool. Zero out the array before filling it?  Useful when doing
+ * one-hot sparse outputs.
  */
 class gpuSimulateCudaBasebandBeamformer : public kotekan::Stage {
 public:

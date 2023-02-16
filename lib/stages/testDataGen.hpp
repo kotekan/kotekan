@@ -27,8 +27,10 @@
  *
  * @conf  type                  String. "const", "random", "random_signed", "ramp", or "tpluse".
  * @conf  value                 Int. Required for type "const" and "ramp".
- * @conf  values                Vector of ints. Only used for type "onehot" - sets the array element to a different value for each frame; loops through the values.
- * @conf  seed                  Int. For type "random", "random_signed", and "onehot".  If non-zero, seeds the random number generator on startup for reproducible results.
+ * @conf  values                Vector of ints. Only used for type "onehot" - sets the array element
+ * to a different value for each frame; loops through the values.
+ * @conf  seed                  Int. For type "random", "random_signed", and "onehot".  If non-zero,
+ * seeds the random number generator on startup for reproducible results.
  * @conf  wait                  Bool, default True. Produce data a set cadence.
  *                              Otherwise just as fast as possible.
  * @conf  samples_per_data_set  Int. How often to produce data.
