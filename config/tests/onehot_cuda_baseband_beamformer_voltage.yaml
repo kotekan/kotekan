@@ -94,7 +94,6 @@ gen_shift:
     out_buf: host_shift_buffer
 
 gpu:
-    # log_level: debug
     profiling: true
     kernel_path: "../../lib/cuda/kernels/"
     commands: &command_list

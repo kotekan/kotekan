@@ -62,6 +62,12 @@ private:
     // The bb.yaml file entry like
     //    shmem_bytes: 67712
     const int shared_mem_bytes = 67712;
+
+    // Compiled-in constants in the CUDA kernel -- from bb.yaml
+    const int cuda_nbeams = 96;
+    const int cuda_nelements = 512 * 2;
+    const int cuda_nfreq = 16;
+    const int cuda_nsamples = 32768;
 };
 
 #endif // CUDA_BASEBAND_BEAMFORMER_HPP

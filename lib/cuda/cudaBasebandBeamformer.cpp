@@ -31,6 +31,15 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
     _gpu_mem_formed_beams = config.get<std::string>(unique_name, "gpu_mem_formed_beams");
     _gpu_mem_info = config.get<std::string>(unique_name, "gpu_mem_info");
 
+    if (_num_elements != cuda_nelements)
+        throw std::runtime_error("The num_elements config setting must be " + std::to_string(cuda_nelements) + " for the CUDA baseband beamformer");
+    if (_num_local_freq != cuda_nfreq)
+        throw std::runtime_error("The num_local_freq config setting must be " + std::to_string(cuda_nfreq) + " for the CUDA baseband beamformer");
+    if (_samples_per_data_set != cuda_nsamples)
+        throw std::runtime_error("The samples_per_data_set config setting must be " + std::to_string(cuda_nsamples) + " for the CUDA baseband beamformer");
+    if (_num_beams != cuda_nbeams)
+        throw std::runtime_error("The num_beams config setting must be " + std::to_string(cuda_nbeams) + " for the CUDA baseband beamformer");
+
     command_type = gpuCommandType::KERNEL;
 
     std::vector<std::string> opts = {

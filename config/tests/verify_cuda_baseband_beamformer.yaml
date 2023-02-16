@@ -15,7 +15,7 @@ num_links: 4
 freq_array: [4,7,10,16]
 timesamples_per_packet: 2
 num_gpus: 1
-buffer_depth: 2
+buffer_depth: 3
 num_gpu_frames: 1
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
@@ -25,7 +25,10 @@ frame_arrival_period: 0.00000256 * samples_per_data_set
 samples_per_data_set: 32768
 num_elements: 1024
 num_local_freq: 16
-num_beams: 128
+num_beams: 96
+
+# data gen:
+num_frames: 1
 
 # Pool
 main_pool:
@@ -57,6 +60,13 @@ host_formed_beams_buffer:
     frame_size: samples_per_data_set * num_beams * num_local_freq * 2
     metadata_pool: main_pool
 
+host_info_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    # threads_x * threads_y * blocks_x * sizeof(int32)
+    frame_size: 32 * 24 * 32 * 4
+    metadata_pool: main_pool
+
 simulated_formed_beams_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
@@ -64,29 +74,27 @@ simulated_formed_beams_buffer:
     metadata_pool: main_pool
 
 gen_data:
-    type: random #_signed
-    value: 1532
-    #type: const
-    #value: 0x11
+    type: random_signed
+    # don't seed each frame to the same value!
+    value: 0
+    seed: 0x42
     kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
     log_level: debug
 
 gen_phase:
     type: const
-    value: 0x11
+    value: 0x12
     kotekan_stage: testDataGen
     out_buf: host_phase_buffer
     log_level: debug
 
 gen_shift:
-    type: const
-    value: 0x0
+    type: const32
+    value: 0xA
     kotekan_stage: testDataGen
     out_buf: host_shift_buffer
     log_level: debug
-
-#data_format: "cuda_wmma"
 
 gpu:
     profiling: true
@@ -95,23 +103,37 @@ gpu:
     - name: cudaInputData
       in_buf: host_voltage
       gpu_mem: voltage
+    - name: cudaInputData
+      in_buf: host_phase
+      gpu_mem: phase
+    - name: cudaInputData
+      in_buf: host_shift
+      gpu_mem: shift
     - name: cudaBasebandBeamformer
       gpu_mem_voltage: voltage
       gpu_mem_phase: phase
-      gpu_mem_output_scaling: beamformer_scaling
+      gpu_mem_output_scaling: shift
       gpu_mem_formed_beams: formed_beams
+      gpu_mem_info: info
     - name: cudaOutputData
       in_buf: host_voltage # Metadata transfer from here
       gpu_mem: formed_beams
       out_buf: host_formed_beams
+    - name: cudaOutputData
+      in_buf: host_voltage # Metadata transfer from here
+      gpu_mem: info
+      out_buf: host_info
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
         commands: *command_list
         in_buffers:
             host_voltage: host_voltage_buffer
+            host_phase: host_phase_buffer
+            host_shift: host_shift_buffer
         out_buffers:
             host_formed_beams: host_formed_beams_buffer
+            host_info: host_info_buffer
 
 cpu_beamformer:
     kotekan_stage: gpuSimulateCudaBasebandBeamformer

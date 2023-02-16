@@ -29,7 +29,7 @@ gpuSimulateCudaBasebandBeamformer::gpuSimulateCudaBasebandBeamformer(
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
     _num_beams = config.get<int>(unique_name, "num_beams");
-    bool zero_output = config.get<bool>(unique_name, "zero_output");
+    bool zero_output = config.get_default<bool>(unique_name, "zero_output", false);
     voltage_buf = get_buffer("voltage_in_buf");
     phase_buf = get_buffer("phase_in_buf");
     shift_buf = get_buffer("shift_in_buf");

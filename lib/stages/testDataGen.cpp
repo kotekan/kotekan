@@ -166,7 +166,7 @@ void testDataGen::main_thread() {
         // std::random_device rd;
         // std::mt19937 gen(rd());
         // std::uniform_int_distribution<> dis(0, 255);
-        if ((type == "random") || (type == "random_signed"))
+        if (((type == "random") || (type == "random_signed")) && value)
             srand(value);
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
