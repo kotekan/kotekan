@@ -1,4 +1,4 @@
-'''
+"""
 
 This script fragment, plus the accompanying "_post.py", are used to
 format the CUDA Baseband beamformer one-hot test results into a
@@ -17,7 +17,7 @@ It's used like
 (cat ../../tests/bb_bf_onehot_pre.py; cat log | grep PY | sed "s/.*: PY //g"; cat ../../tests/bb_bf_onehot_post.py) > /tmp/run.py
 python /tmp/run.py
 
-'''
+"""
 bb = {}
 onehot = {}
 sparse = {}
