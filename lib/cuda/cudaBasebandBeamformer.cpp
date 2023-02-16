@@ -5,16 +5,6 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 
-#define CHECK_CU_ERROR(result)                                                                     \
-    if (result != CUDA_SUCCESS) {                                                                  \
-        const char* errstr = NULL;                                                                 \
-        cuGetErrorString(result, &errstr);                                                         \
-        internal_logging(LOG_ERR, __log_prefix, "Error at {:s}:{:d}; Error type: {:s}", __FILE__,  \
-                         __LINE__, errstr);                                                        \
-        std::abort();                                                                              \
-    }
-
-
 REGISTER_CUDA_COMMAND(cudaBasebandBeamformer);
 
 cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string& unique_name,
@@ -32,13 +22,27 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
     _gpu_mem_info = config.get<std::string>(unique_name, "gpu_mem_info");
 
     if (_num_elements != cuda_nelements)
-        throw std::runtime_error("The num_elements config setting must be " + std::to_string(cuda_nelements) + " for the CUDA baseband beamformer");
+        throw std::runtime_error("The num_elements config setting must be "
+                                 + std::to_string(cuda_nelements)
+                                 + " for the CUDA baseband beamformer");
     if (_num_local_freq != cuda_nfreq)
-        throw std::runtime_error("The num_local_freq config setting must be " + std::to_string(cuda_nfreq) + " for the CUDA baseband beamformer");
+        throw std::runtime_error("The num_local_freq config setting must be "
+                                 + std::to_string(cuda_nfreq)
+                                 + " for the CUDA baseband beamformer");
     if (_samples_per_data_set != cuda_nsamples)
-        throw std::runtime_error("The samples_per_data_set config setting must be " + std::to_string(cuda_nsamples) + " for the CUDA baseband beamformer");
+        throw std::runtime_error("The samples_per_data_set config setting must be "
+                                 + std::to_string(cuda_nsamples)
+                                 + " for the CUDA baseband beamformer");
     if (_num_beams != cuda_nbeams)
-        throw std::runtime_error("The num_beams config setting must be " + std::to_string(cuda_nbeams) + " for the CUDA baseband beamformer");
+        throw std::runtime_error("The num_beams config setting must be "
+                                 + std::to_string(cuda_nbeams)
+                                 + " for the CUDA baseband beamformer");
+
+    voltage_len = (size_t)_num_elements * _num_local_freq * _samples_per_data_set;
+    phase_len = (size_t)_num_elements * _num_local_freq * _num_beams * 2;
+    shift_len = (size_t)_num_local_freq * _num_beams * 2 * sizeof(int32_t);
+    output_len = (size_t)_num_local_freq * _num_beams * _samples_per_data_set * 2;
+    info_len = (size_t)(threads_x * threads_y * blocks_x * sizeof(int32_t));
 
     command_type = gpuCommandType::KERNEL;
 
@@ -65,22 +69,13 @@ typedef CuDeviceArray<int32_t, 1> kernel_arg;
 cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     pre_execute(gpu_frame_id);
 
-    size_t voltage_len = (size_t)_num_elements * _num_local_freq * _samples_per_data_set;
     void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, gpu_frame_id, voltage_len);
-
-    size_t phase_len = (size_t)_num_elements * _num_local_freq * _num_beams * 2;
     int8_t* phase_memory =
         (int8_t*)device.get_gpu_memory_array(_gpu_mem_phase, gpu_frame_id, phase_len);
-
-    size_t shift_len = (size_t)_num_local_freq * _num_beams * 2 * sizeof(int32_t);
     int32_t* shift_memory =
         (int32_t*)device.get_gpu_memory_array(_gpu_mem_output_scaling, gpu_frame_id, shift_len);
-
-    size_t output_len = (size_t)_num_local_freq * _num_beams * _samples_per_data_set * 2;
     void* output_memory =
         device.get_gpu_memory_array(_gpu_mem_formed_beams, gpu_frame_id, output_len);
-
-    size_t info_len = (size_t)(threads_x * threads_y * blocks_x * sizeof(int32_t));
     int32_t* info_memory =
         (int32_t*)device.get_gpu_memory_array(_gpu_mem_info, gpu_frame_id, info_len);
 

@@ -71,8 +71,8 @@ void printSparse<A_Type>::main_thread() {
         int frame_counter = 0;
         if (metadata_is_onehot(buf, buf_id)) {
             frame_counter = get_onehot_frame_counter(buf, buf_id);
-            INFO("printSparse: got frame counter for {:s}[{:d}] = {:d}",
-                 buf->buffer_name, buf_id, frame_counter);
+            INFO("printSparse: got frame counter for {:s}[{:d}] = {:d}", buf->buffer_name, buf_id,
+                 frame_counter);
         }
         if (frame_counter < buf_id)
             // HACK -- ugh, metadata copied from voltage (not phase) to baseband

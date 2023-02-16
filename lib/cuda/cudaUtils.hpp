@@ -22,6 +22,17 @@
         std::abort();                                                                              \
     }
 
+// Similar to CHECK_CUDA_ERROR, but for cu API functions (starting with "cu", vs starting with
+// "cuda").
+#define CHECK_CU_ERROR(result)                                                                     \
+    if (result != CUDA_SUCCESS) {                                                                  \
+        const char* errstr = NULL;                                                                 \
+        cuGetErrorString(result, &errstr);                                                         \
+        internal_logging(LOG_ERR, __log_prefix, "Error at {:s}:{:d}; Error type: {:s}", __FILE__,  \
+                         __LINE__, errstr);                                                        \
+        std::abort();                                                                              \
+    }
+
 #define CHECK_CUDA_ERROR_NON_OO(result)                                                            \
     if (result != cudaSuccess) {                                                                   \
         kotekan::kotekanLogging::internal_logging(LOG_ERR, "",                                     \
