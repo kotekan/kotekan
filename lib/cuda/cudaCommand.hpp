@@ -69,8 +69,8 @@ public:
     /**
      * @brief Execute a kernel, copy, etc.
      * @param gpu_frame_id  The bufferID associated with the GPU commands.
-     * @param pre_event     The preceeding event in a sequence of chained event sequence of
-     *                      commands.
+     * @param pre_events    Array of the last events from each cuda stream, indexed by stream
+     *                      number.
      **/
     virtual cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) = 0;
 
