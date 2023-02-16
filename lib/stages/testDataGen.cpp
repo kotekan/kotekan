@@ -200,6 +200,7 @@ void testDataGen::main_thread() {
                     DEBUG("One-hot metadata; setting indices");
                     set_onehot_indices(buf, frame_id, indices);
                     set_onehot_frame_counter(buf, frame_id, frame_id_abs);
+                    INFO("Set {:s}[{:d}] frame counter {:d}", buf->buffer_name, frame_id, frame_id_abs);
                 }
                 INFO("PY onehot[{:d}] = (({:s}), 0x{:x})", frame_id_abs, istring, val);
             } else {

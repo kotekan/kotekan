@@ -205,6 +205,8 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
         std::string id_tag = std::to_string(voltage_frame_id);
         if (metadata_is_onehot(voltage_buf, voltage_frame_id)) {
             int frame_counter = get_onehot_frame_counter(voltage_buf, voltage_frame_id);
+            if (frame_counter < voltage_frame_id)
+                frame_counter = voltage_frame_id;
             id_tag = std::to_string(frame_counter);
         }
 
@@ -214,7 +216,8 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
               metadata_is_onehot(phase_buf, phase_frame_id));
         if (metadata_is_onehot(voltage_buf, voltage_frame_id)) {
             std::vector<int> inds = get_onehot_indices(voltage_buf, voltage_frame_id);
-            if (inds.size() != 4) {
+            if (inds.size() == 0) {
+            } else if (inds.size() != 4) {
                 INFO("Expected 4 indices in voltage one-hot array, got {:d}", inds.size());
             } else {
                 int t = inds[0];
@@ -233,7 +236,8 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
 
         if (!done && metadata_is_onehot(phase_buf, phase_frame_id)) {
             std::vector<int> inds = get_onehot_indices(phase_buf, phase_frame_id);
-            if (inds.size() != 5) {
+            if (inds.size() == 0) {
+            } else if (inds.size() != 5) {
                 INFO("Expected 5 indices in phase one-hot array, got {:d}", inds.size());
             } else {
                 int f = inds[0];

@@ -15,6 +15,7 @@ num_links: 4
 freq_array: [4,7,10,16]
 timesamples_per_packet: 2
 num_gpus: 1
+buffer_depth: 4
 num_gpu_frames: 1
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
@@ -25,8 +26,6 @@ samples_per_data_set: 32768
 num_elements: 1024
 num_local_freq: 16
 num_beams: 96
-
-buffer_depth: 4
 
 # data gen:
 num_frames: 18
@@ -136,7 +135,6 @@ gpu:
 
 cpu_beamformer:
     kotekan_stage: gpuSimulateCudaBasebandBeamformer
-    #log_level: debug
     # zero out the array before setting values (only needed for one-hot)?
     zero_output: true
     voltage_in_buf: host_voltage_buffer

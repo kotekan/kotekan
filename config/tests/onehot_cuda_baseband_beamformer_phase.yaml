@@ -15,7 +15,7 @@ num_links: 4
 freq_array: [4,7,10,16]
 timesamples_per_packet: 2
 num_gpus: 1
-buffer_depth: 4
+buffer_depth: 9
 num_gpu_frames: 1
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
@@ -83,10 +83,10 @@ gen_phase:
     type: onehot
     values: [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0xff]
     # FREQ, POL, BEAM, DISH, REAL_IMAG
-    array_shape: [16, 2, 128, 512, 2]
+    array_shape: [16, 2, 96, 512, 2]
     kotekan_stage: testDataGen
     out_buf: host_phase_buffer
-    log_level: debug
+    #log_level: debug
 
 gen_shift:
     kotekan_stage: testDataGen
