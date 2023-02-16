@@ -20,8 +20,8 @@ public:
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
 private:
-    int32_t input_frame_len;
-    int32_t presum_len;
+    size_t input_frame_len;
+    size_t presum_len;
 
     // TODO maybe factor these into a CHIME command object class?
     int32_t _num_local_freq;

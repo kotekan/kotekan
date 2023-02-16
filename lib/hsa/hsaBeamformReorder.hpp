@@ -75,11 +75,11 @@ public:
 
 private:
     /// Input length, should be nsamp x n_elem
-    int32_t input_frame_len;
+    size_t input_frame_len;
     /// Output length, same as input
-    int32_t output_frame_len;
+    size_t output_frame_len;
     /// Length of reordering index, should be 512
-    int32_t map_len;
+    size_t map_len;
 
     /// Number of element, should be 2048
     int32_t _num_elements;
