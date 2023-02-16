@@ -1,3 +1,6 @@
+'''
+See documentation in bb_bf_onehot_pre.py
+'''
 print("VOLTAGE    CPU(re,im)       CPU(re,im)sh     CPU       GPU")
 for i in range(18):
     if not i in onehot:

@@ -141,7 +141,7 @@ void testDataGen::main_thread() {
     double frame_length =
         samples_per_data_set * ts_to_double(Telescope::instance().seq_length()) / num_links;
 
-    if (((type == "random") || (type == "onehot")) && _seed)
+    if (((type == "random") || (type == "random_signed") || (type == "onehot")) && _seed)
         srand(_seed);
 
     while (!stop_thread) {
@@ -163,11 +163,6 @@ void testDataGen::main_thread() {
         gettimeofday(&now, nullptr);
         set_first_packet_recv_time(buf, frame_id, now);
 
-        // std::random_device rd;
-        // std::mt19937 gen(rd());
-        // std::uniform_int_distribution<> dis(0, 255);
-        if (((type == "random") || (type == "random_signed")) && value)
-            srand(value);
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
         uint n_to_set = buf->frame_size / sizeof(uint8_t);
@@ -280,8 +275,7 @@ void testDataGen::main_thread() {
 
         frame_id_abs += 1;
         if (num_frames >= 0 && frame_id_abs >= num_frames) {
-            INFO("Frame ID greater than the no. of frames");
-            // exit_kotekan(ReturnCode::CLEAN_EXIT);
+            INFO("Generated the requested number of frames ({:d}) - exiting", num_frames);
             break;
         };
         frame_id = frame_id_abs % buf->num_frames;

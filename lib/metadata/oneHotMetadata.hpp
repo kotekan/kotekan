@@ -15,6 +15,7 @@
 struct oneHotMetadata {
     struct chimeMetadata chime;
     int frame_counter;
+    // TODO -- make this a static array because metadata objects get c-copied around.
     std::vector<int> hotIndices;
 };
 
