@@ -43,12 +43,10 @@
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;
 
-#ifdef __HAVE_FLOAT16
-//#warning "Have Float16"
+#if __HAVE_FLOAT16
 using float16_t = _Float16;
 #define KOTEKAN_FLOAT16 1
 #else
-#warning "Do not have Float16"
 #define KOTEKAN_FLOAT16 0
 #endif
 
