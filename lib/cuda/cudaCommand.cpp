@@ -185,7 +185,7 @@ void cudaCommand::build_ptx(const std::vector<std::string>& kernel_names,
 
     // Convert compiler options to a c-style array.
     std::vector<char*> cstring_opts;
-    cstring_opts.reserve(opts.size() + 1);
+    cstring_opts.reserve(opts.size());
     for (auto& str : opts)
         cstring_opts.push_back(&str[0]);
 
