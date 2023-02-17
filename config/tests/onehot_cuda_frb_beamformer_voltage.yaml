@@ -48,12 +48,6 @@ main_pool:
     num_metadata_objects: 15 * buffer_depth
 
 # Buffers
-# host_dishlayout_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: dish_grid_size * dish_grid_size * sizeof_int
-#     metadata_pool: main_pool
-
 host_voltage_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth

@@ -7,16 +7,6 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 
-#define CHECK_CU_ERROR(result)                                                                     \
-    if (result != CUDA_SUCCESS) {                                                                  \
-        const char* errstr = NULL;                                                                 \
-        cuGetErrorString(result, &errstr);                                                         \
-        internal_logging(LOG_ERR, __log_prefix, "Error at {:s}:{:d}; Error type: {:s}", __FILE__,  \
-                         __LINE__, errstr);                                                        \
-        std::abort();                                                                              \
-    }
-
-
 REGISTER_CUDA_COMMAND(cudaFRBBeamformer);
 
 static const size_t sizeof_float16_t = 2;
