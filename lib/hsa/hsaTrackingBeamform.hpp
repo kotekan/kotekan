@@ -70,14 +70,14 @@ public:
 
 private:
     /// Input length, should be nsamp x n_elem x 2 for complex / 2 since we pack two 4-bit in one
-    int32_t input_frame_len;
+    size_t input_frame_len;
     /// Output length, should be num_beams x nsamp x 2 pol x 2 for complex / 2 since we pack two
     /// 4-bit in one
-    int32_t output_frame_len;
+    size_t output_frame_len;
 
     /// Length of the array of phases for beamforming, should be 10 tracking * 2048 elem * 2 for
     /// complex
-    int32_t phase_len;
+    size_t phase_len;
 
     /// number of elements
     int32_t _num_elements;

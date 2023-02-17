@@ -95,22 +95,22 @@ struct StageInfo {
  * There can be more than one producer or consumer attached to each buffer, but
  * each one must register with the buffer separately.
  *
- * Consumers must only read data from frames and not write anything back too them.
- * More than one producer can write to a given frame in a multi producer setup,
+ * Consumers must only read data from frames and not write anything back to them.
+ * More than one producer can write to a given frame in a multi-producer setup,
  * but in that case they must coordinate their address space to not overwrite
- * each others values.  Because of this multi-producers are somewhat rare.
+ * each others' values.  Because of this, multi-producers are somewhat rare.
  * Producers also generally shouldn't read from frames, although there is
  * nothing wrong with doing so, it just normally doesn't make sense to do so.
  *
  * Unless the function @c zero_frames() is called on the buffer object, the
  * default behaviour is not to zero the memory of the frames between uses.
- * Therefore it is normally upto the producer(s) to ensure all memory
+ * Therefore it is normally up to the producer(s) to ensure all memory
  * values are either given new data, or zeroed.
  *
  * In the config file a buffer is created with a <tt>kotekan_buffer: standard</tt>
  * named block.   The buffer name becomes the path name of that config block.
  *
- * Note if no consumer is registered for on a buffer, then it will drop
+ * Note that if no consumer is registered for on a buffer, then it will drop
  * the frames and log an INFO statement to notify the user that the data
  * is being dropped.
  *
@@ -147,7 +147,7 @@ struct Buffer {
     int num_frames;
 
     /// The size of each frame in bytes.
-    int frame_size;
+    size_t frame_size;
 
     /**
      * @brief The padded frame size.
@@ -156,7 +156,7 @@ struct Buffer {
      * you can use this size instead, but data shouldn't
      * be placed past the end of frame_size.  This is just for padding.
      */
-    int aligned_frame_size;
+    size_t aligned_frame_size;
 
     /**
      * @brief Array of producers which are done (marked frame as full).
@@ -232,7 +232,7 @@ struct Buffer {
  * @param[in] mlock_frames If set, mlock the pages of the frame memory
  * @returns A buffer object.
  */
-struct Buffer* create_buffer(int num_frames, int frame_size, struct metadataPool* pool,
+struct Buffer* create_buffer(int num_frames, size_t frame_size, struct metadataPool* pool,
                              const char* buffer_name, const char* buffer_type, int numa_node,
                              bool use_huge_pages, bool mlock_frames);
 
@@ -481,7 +481,7 @@ void swap_frames(struct Buffer* from_buf, int from_frame_id, struct Buffer* to_b
  * @param memlock_frames Use mlock to lock frame pages
  * @return A pointer to the new memory, or @c NULL if allocation failed.
  */
-uint8_t* buffer_malloc(ssize_t len, int numa_node, bool use_huge_pages, bool memlock_frames);
+uint8_t* buffer_malloc(size_t len, int numa_node, bool use_huge_pages, bool memlock_frames);
 
 /**
  * @brief Deallocate a frame of memory with the required free method.

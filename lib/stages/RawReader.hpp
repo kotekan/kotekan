@@ -355,7 +355,7 @@ RawReader<T>::RawReader(Config& config, const std::string& unique_name,
     }
 
     // Check that buffer is large enough
-    if ((unsigned int)(out_buf->frame_size) < data_size || out_buf->frame_size < 0) {
+    if (out_buf->frame_size < data_size) {
         std::string msg =
             fmt::format(fmt("Data in file {:s} is larger ({:d} bytes) than buffer size "
                             "({:d} bytes)."),

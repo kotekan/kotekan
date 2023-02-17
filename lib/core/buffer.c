@@ -69,7 +69,7 @@ void private_reset_consumers(struct Buffer* buf, const int ID);
  */
 int private_mark_frame_empty(struct Buffer* buf, const int id);
 
-struct Buffer* create_buffer(int num_frames, int len, struct metadataPool* pool,
+struct Buffer* create_buffer(int num_frames, size_t len, struct metadataPool* pool,
                              const char* buffer_name, const char* buffer_type, int numa_node,
                              bool use_hugepages, bool mlock_frames) {
 
@@ -903,7 +903,7 @@ void safe_swap_frame(struct Buffer* src_buf, int src_frame_id, struct Buffer* de
     }
 }
 
-uint8_t* buffer_malloc(ssize_t len, int numa_node, bool use_hugepages, bool mlock_frames) {
+uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock_frames) {
 
     uint8_t* frame = NULL;
     int err;

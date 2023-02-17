@@ -6,17 +6,16 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for INFO, ERROR
 
-#include <algorithm>   // for max
-#include <assert.h>    // for assert
-#include <atomic>      // for atomic_bool
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, bind, function
-#include <memory>      // for allocator_traits<>::value_type
-#include <pthread.h>   // for pthread_setaffinity_np
-#include <regex>       // for match_results<>::_Base_type
-#include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdio.h>     // for fclose, fopen, fread, fseek, ftell, rewind, snprintf, FILE
-#include <sys/types.h> // for uint
+#include <algorithm>  // for max
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <memory>     // for allocator_traits<>::value_type
+#include <pthread.h>  // for pthread_setaffinity_np
+#include <regex>      // for match_results<>::_Base_type
+#include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdio.h>    // for fclose, fopen, fread, fseek, ftell, rewind, snprintf, size_t
 
 
 using std::string;
@@ -94,13 +93,13 @@ void nDiskFileRead::file_read_thread(int disk_id) {
         long sz = ftell(in_file);
         rewind(in_file);
 
-        if (sz != buf->frame_size) {
+        if ((size_t)sz != buf->frame_size) {
             ERROR("File size {:d} Frame Size {:d}", sz, buf->frame_size);
         }
-        assert(sz == buf->frame_size);
+        assert((size_t)sz == buf->frame_size);
 
         // Read into buffer
-        if ((uint)buf->frame_size != fread(buf_ptr, 1, sz, in_file)) {
+        if (buf->frame_size != fread(buf_ptr, 1, sz, in_file)) {
             ERROR("Error reading from file!");
         }
         fclose(in_file);

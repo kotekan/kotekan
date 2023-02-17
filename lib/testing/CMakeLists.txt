@@ -12,6 +12,7 @@ add_library(
     gpuBeamformSimulate.cpp
     gpuTrackingBeamformSimulate.cpp
     gpuSimulate.cpp
+    gpuSimulateCudaBasebandBeamformer.cpp
     gpuSimulateN2k.cpp
     networkOutputSim.cpp
     simVdifData.cpp

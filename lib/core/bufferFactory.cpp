@@ -86,7 +86,7 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
 
     size_t frame_size = 0;
     if (type_name == "standard") {
-        frame_size = config.get<uint32_t>(location, "frame_size");
+        frame_size = config.get<size_t>(location, "frame_size");
     } else if (type_name == "vis") {
         frame_size = VisFrameView::calculate_frame_size(config, location);
     } else if (type_name == "hfb") {

@@ -29,7 +29,7 @@
  * @brief Base class for defining CUDA commands to execute on GPUs
  *
  * This is a base class for CUDA commands to run on NVidia hardware.
- * Kernels and other opersations (I/O) should derive from this class,
+ * Kernels and other operations (I/O) should derive from this class,
  * which handles a lot of queueing and device interface issues.
  *
  * @author Keith Vanderlinde
@@ -60,6 +60,9 @@ public:
      **/
     virtual void build(const std::vector<std::string>& kernel_names,
                        std::vector<std::string>& opts);
+
+    virtual void build_ptx(const std::vector<std::string>& kernel_names,
+                           std::vector<std::string>& opts);
 
     /**
      * @brief Execute a kernel, copy, etc.

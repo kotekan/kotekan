@@ -56,7 +56,7 @@ void rfiVDIF::main_thread() {
     uint32_t VDIF_BLOCK_SIZE = _num_local_freq + sizeof(VDIFHeader);
     // Counters and indices
     uint32_t i, j, k, block_counter, power, rfi_index;
-    long ptr_counter;
+    size_t ptr_counter;
     // Holders for real/imag componenets
     char real, imag;
     // Total integration length
