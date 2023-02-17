@@ -34,7 +34,7 @@
  * which handles a lot of queueing and device interface issues.
  *
  * @conf cuda_stream  The ID of the CUDA stream to use for this command, defaults to one of
- *                    0, 1, 2, for command types COPY_IN, KERNEL, and COPY_OUT respectively.
+ *                    0, 1, 2, for command types COPY_IN, COPY_OUT, and KERNEL respectively.
  *                    This number must be less than @c num_cuda_streams set in cudaProcess.
  *
  * @author Keith Vanderlinde and Andre Renard

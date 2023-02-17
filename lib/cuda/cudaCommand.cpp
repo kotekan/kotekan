@@ -45,10 +45,10 @@ void cudaCommand::set_command_type(const gpuCommandType& type) {
         case gpuCommandType::COPY_IN:
             cuda_stream_id = 0;
             break;
-        case gpuCommandType::KERNEL:
+        case gpuCommandType::COPY_OUT:
             cuda_stream_id = 1;
             break;
-        case gpuCommandType::COPY_OUT:
+        case gpuCommandType::KERNEL:
             cuda_stream_id = 2;
             break;
         case gpuCommandType::BARRIER:

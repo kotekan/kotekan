@@ -24,7 +24,7 @@
  * class @c gpuProcess, so that class for more details.
  *
  * @conf num_cuda_streams The number of CUDA streams to setup, the default is 3 for one
- *                        host->device, one kernel, and one device->host stream.
+ *                        host->device, one device->host, and one kernel stream.
  *                        Can be set higher if more than one stream is need for each type
  *                        of operation.  See @c cudaCommand and @c cudaSyncStream for more details.
  *
