@@ -58,9 +58,9 @@ public:
 
 private:
     /// Input length, should be size of num_elem x nsamp x 2
-    int32_t beamform_frame_len;
+    size_t beamform_frame_len;
     /// Output length, should be num_elem x (nsamp+32) x 2
-    int32_t output_frame_len;
+    size_t output_frame_len;
 
     /// Number of elements, should be 2048
     int32_t _num_elements;

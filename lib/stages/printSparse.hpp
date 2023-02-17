@@ -7,6 +7,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for INFO
 #include "oneHotMetadata.hpp"  // for get_onehot_frame_counter, metadata_is_onehot
+#include "visUtil.hpp"         // for frameID, modulo
 
 #include <cstdint>    // for uint32_t
 #include <exception>  // for exception
@@ -16,16 +17,23 @@
 #include <stdlib.h>   // for size_t
 #include <string>     // for allocator, string, operator+, to_string, char_traits
 #include <vector>     // for vector
-#include <bits/floatn-common.h>
 
-#include <array>
-#include <cassert>
-#include <complex>
-#include <cstdint>
-#include <cstdlib>
-#include <iostream>
-#include <vector>
-
+/**
+ * @class printSparse
+ * @brief Prints out data in an (assumed sparse) buffer
+ *
+ * @par Buffers
+ * @buffer input_buf Buffer to print
+ *         @buffer_format (templated: uint8, uint32, float16)
+ *         @buffer_metadata chimeMetadata or oneHotMetadata
+ *
+ * @conf  input_buf    String.  Input buffer name.
+ * @conf  max_to_print Int.  Maximum number of array elements to print.
+ * @conf  array_shape  Vector of int.  Shape of the matrix in the buffer.  When given,
+ *               we will convert the flat index back into the N-dimensional matrix index.
+ *
+ * @author Dustin Lang
+ */
 template<typename A_Type>
 class printSparse : public kotekan::Stage {
 public:
@@ -87,18 +95,24 @@ static std::string format_python_string(float16_t x) {
 
 template<typename A_Type>
 void printSparse<A_Type>::main_thread() {
-    int buf_id = 0;
+    frameID frame_id(buf);
     while (!stop_thread) {
 
         // Get frame
-        const A_Type* frame = (A_Type*)wait_for_full_frame(buf, unique_name.c_str(), buf_id);
+        const A_Type* frame = (A_Type*)wait_for_full_frame(buf, unique_name.c_str(), frame_id);
         if (frame == nullptr)
             break;
-        INFO("printSparse: checking {:s}[{:d}]", buf->buffer_name, buf_id);
+        INFO("printSparse: checking {:s}[{:d}]", buf->buffer_name, frame_id);
 
         int frame_counter = 0;
-        if (metadata_is_onehot(buf, buf_id))
-            frame_counter = get_onehot_frame_counter(buf, buf_id);
+        if (metadata_is_onehot(buf, frame_id)) {
+            frame_counter = get_onehot_frame_counter(buf, frame_id);
+            INFO("printSparse: got frame counter for {:s}[{:d}] = {:d}", buf->buffer_name, frame_id,
+                 frame_counter);
+        }
+        if (frame_counter < int(frame_id))
+            // HACK -- ugh, metadata copied from voltage (not phase) to baseband
+            frame_counter = frame_id;
 
         int nset = 0;
         for (uint32_t i = 0; i < buf->frame_size / sizeof(A_Type); ++i) {
@@ -119,22 +133,22 @@ void printSparse<A_Type>::main_thread() {
                     j /= n;
                 }
                 INFO("printSparse: {:s}[{:d}] element {:s} ({:d} = 0x{:x}) has value {:s}",
-                     buf->buffer_name, buf_id, istring, i, i, format_nice_string(frame[i]));
+                     buf->buffer_name, frame_id, istring, i, i, format_nice_string(frame[i]));
                 if (nset == 1)
                     INFO("PY sparse[\"{:s}\"][{:d}] = (({:s}), {:s})", buf->buffer_name,
                          frame_counter, istring, format_python_string(frame[i]));
             } else {
-                INFO("printSparse: {:s}[{:d}] element {:d} = 0x{:x} has value {:s}", buf->buffer_name, buf_id, i, i, format_nice_string(frame[i]));
+                INFO("printSparse: {:s}[{:d}] element {:d} = 0x{:x} has value {:s}", buf->buffer_name, frame_id, i, i, format_nice_string(frame[i]));
             }
         }
 
-        INFO("printSparse: {:s}[{:d}] has {:d} elements set.", buf->buffer_name, buf_id, nset);
+        INFO("printSparse: {:s}[{:d}] has {:d} elements set.", buf->buffer_name, frame_id, nset);
         if (nset == 0) {
             INFO("PY sparse[\"{:s}\"][{:d}] = (None, 0)", buf->buffer_name, frame_counter);
         }
 
-        mark_frame_empty(buf, unique_name.c_str(), buf_id);
-        buf_id = (buf_id + 1) % buf->num_frames;
+        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        frame_id++;
     }
 }
 

@@ -16,6 +16,26 @@
 /**
  * @class gpuSimulateCudaBasebandBeamformer
  * @brief Stage for faking CUDA baseband beamforming.
+ *
+ * @par Buffers
+ * @buffer voltage_in_buf   Voltages
+ *         @buffer_format Int4+4
+ *         @buffer_metadata chimeMetadata or oneHotMetadata
+ * @buffer phase_in_buf   Beamformer phases
+ *         @buffer_format Int8
+ *         @buffer_metadata chimeMetadata or oneHotMetadata
+ * @buffer shift_in_buf   Number of bits to shift result
+ *         @buffer_format Int32
+ * @buffer beams_out_buf  Output buffer for formed beams
+ *         @buffer_format Int4+4
+ *         @buffer_metadata Copied from voltage_in_buf
+ *
+ * @conf  num_elements          Int.  Number of dishes x polarizations.
+ * @conf  num_local_freq        Int.  Number of frequencies in each frame.
+ * @conf  samples_per_data_set  Int.  Number of time samples per frame.
+ * @conf  num_beams             Int.  Number of beams being formed.
+ * @conf  zero_output           Bool. Zero out the array before filling it?  Useful when doing
+ * one-hot sparse outputs.
  */
 class gpuSimulateCudaBasebandBeamformer : public kotekan::Stage {
 public:

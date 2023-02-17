@@ -47,6 +47,13 @@ private:
     /// GPU side memory name for the status/info output
     std::string _gpu_mem_info;
 
+    // derived gpu array sizes
+    size_t voltage_len;
+    size_t phase_len;
+    size_t shift_len;
+    size_t output_len;
+    size_t info_len;
+
     // The bb.yaml file entry like kernel-name = "_Z13julia_bb_...."
     // clang-format off
     const std::string kernel_name = "_Z13julia_bb_496913CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE";
@@ -62,6 +69,12 @@ private:
     // The bb.yaml file entry like
     //    shmem_bytes: 67712
     const int shared_mem_bytes = 67712;
+
+    // Compiled-in constants in the CUDA kernel -- from bb.yaml
+    const int cuda_nbeams = 96;
+    const int cuda_nelements = 512 * 2;
+    const int cuda_nfreq = 16;
+    const int cuda_nsamples = 32768;
 };
 
 #endif // CUDA_BASEBAND_BEAMFORMER_HPP

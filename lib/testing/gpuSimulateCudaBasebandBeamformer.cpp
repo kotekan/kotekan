@@ -13,6 +13,7 @@
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <regex>      // for match_results<>::_Base_type
 #include <stddef.h>   // for size_t
+#include <stdexcept>  // for runtime_error
 #include <vector>     // for vector
 
 using kotekan::bufferContainer;
@@ -29,7 +30,7 @@ gpuSimulateCudaBasebandBeamformer::gpuSimulateCudaBasebandBeamformer(
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
     _num_beams = config.get<int>(unique_name, "num_beams");
-    bool zero_output = config.get<bool>(unique_name, "zero_output");
+    bool zero_output = config.get_default<bool>(unique_name, "zero_output", false);
     voltage_buf = get_buffer("voltage_in_buf");
     phase_buf = get_buffer("phase_in_buf");
     shift_buf = get_buffer("shift_in_buf");
@@ -205,6 +206,8 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
         std::string id_tag = std::to_string(voltage_frame_id);
         if (metadata_is_onehot(voltage_buf, voltage_frame_id)) {
             int frame_counter = get_onehot_frame_counter(voltage_buf, voltage_frame_id);
+            if (frame_counter < voltage_frame_id)
+                frame_counter = voltage_frame_id;
             id_tag = std::to_string(frame_counter);
         }
 
@@ -214,7 +217,8 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
               metadata_is_onehot(phase_buf, phase_frame_id));
         if (metadata_is_onehot(voltage_buf, voltage_frame_id)) {
             std::vector<int> inds = get_onehot_indices(voltage_buf, voltage_frame_id);
-            if (inds.size() != 4) {
+            if (inds.size() == 0) {
+            } else if (inds.size() != 4) {
                 INFO("Expected 4 indices in voltage one-hot array, got {:d}", inds.size());
             } else {
                 int t = inds[0];
@@ -233,7 +237,8 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
 
         if (!done && metadata_is_onehot(phase_buf, phase_frame_id)) {
             std::vector<int> inds = get_onehot_indices(phase_buf, phase_frame_id);
-            if (inds.size() != 5) {
+            if (inds.size() == 0) {
+            } else if (inds.size() != 5) {
                 INFO("Expected 5 indices in phase one-hot array, got {:d}", inds.size());
             } else {
                 int f = inds[0];

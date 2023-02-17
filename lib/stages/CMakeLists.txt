@@ -73,7 +73,6 @@ add_library(
     BeamInspect.cpp
     testDataGen.cpp
     DPDKShuffleSimulate.cpp
-    hexDump.cpp
     BadInputFlag.cpp
     hexDump.cpp
     printSparse.cpp
