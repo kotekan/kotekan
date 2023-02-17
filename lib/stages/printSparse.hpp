@@ -9,6 +9,8 @@
 #include "oneHotMetadata.hpp"  // for get_onehot_frame_counter, metadata_is_onehot
 #include "visUtil.hpp"         // for frameID, modulo
 
+#include "fmt.hpp"
+
 #include <cstdint>    // for uint32_t
 #include <exception>  // for exception
 #include <functional> // for bind

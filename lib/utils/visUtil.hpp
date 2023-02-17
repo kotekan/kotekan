@@ -20,6 +20,7 @@
 #include "json.hpp"     // for json
 
 #include <algorithm> // for max
+#include <bits/floatn.h>  // for __HAVE_FLOAT16
 #include <chrono>
 #include <complex>     // for complex, imag, real
 #include <cstdint>     // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
