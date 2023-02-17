@@ -138,7 +138,8 @@ void printSparse<A_Type>::main_thread() {
                     INFO("PY sparse[\"{:s}\"][{:d}] = (({:s}), {:s})", buf->buffer_name,
                          frame_counter, istring, format_python_string(frame[i]));
             } else {
-                INFO("printSparse: {:s}[{:d}] element {:d} = 0x{:x} has value {:s}", buf->buffer_name, frame_id, i, i, format_nice_string(frame[i]));
+                INFO("printSparse: {:s}[{:d}] element {:d} = 0x{:x} has value {:s}",
+                     buf->buffer_name, frame_id, i, i, format_nice_string(frame[i]));
             }
         }
 

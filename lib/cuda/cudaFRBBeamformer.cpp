@@ -1,8 +1,8 @@
 #include "cudaFRBBeamformer.hpp"
 
-#include <vector>
-
 #include "math.h"
+
+#include <vector>
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -22,8 +22,7 @@ REGISTER_CUDA_COMMAND(cudaFRBBeamformer);
 static const size_t sizeof_float16_t = 2;
 
 cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_name,
-                                     bufferContainer& host_buffers,
-                                     cudaDeviceInterface& device) :
+                                     bufferContainer& host_buffers, cudaDeviceInterface& device) :
     cudaCommand(config, unique_name, host_buffers, device, "FRB_beamformer", "frb.ptx") {
     _num_dishes = config.get<int>(unique_name, "num_dishes");
     _dish_grid_size = config.get<int>(unique_name, "dish_grid_size");
@@ -60,15 +59,19 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
     info_len = (size_t)(threads_x * threads_y * blocks_x * sizeof(int32_t));
 
     // Allocate GPU memory for dish-layout array, and fill from the config file entry!
-    int16_t* dishlayout_memory = (int16_t*)device.get_gpu_memory(_gpu_mem_dishlayout, dishlayout_len);
-    std::vector<int> dishlayout_config = config.get<std::vector<int> >(unique_name, "frb_beamformer_dish_layout");
+    int16_t* dishlayout_memory =
+        (int16_t*)device.get_gpu_memory(_gpu_mem_dishlayout, dishlayout_len);
+    std::vector<int> dishlayout_config =
+        config.get<std::vector<int>>(unique_name, "frb_beamformer_dish_layout");
     if (dishlayout_config.size() != (size_t)(dish_m * dish_n * 2))
-        throw std::runtime_error(fmt::format("Config parameter frb_beamformer_dish_layout (length {}) must have length = 2 * dish_grid_size^2 = {}",
-                                             dishlayout_config.size(), 2*dish_m*dish_n));
+        throw std::runtime_error(fmt::format("Config parameter frb_beamformer_dish_layout (length "
+                                             "{}) must have length = 2 * dish_grid_size^2 = {}",
+                                             dishlayout_config.size(), 2 * dish_m * dish_n));
     int16_t* dishlayout_cpu_memory = (int16_t*)malloc(dishlayout_len);
     for (size_t i = 0; i < dishlayout_len / sizeof(int16_t); i++)
         dishlayout_cpu_memory[i] = dishlayout_config[i];
-    CHECK_CUDA_ERROR(cudaMemcpy(dishlayout_memory, dishlayout_cpu_memory, dishlayout_len, cudaMemcpyHostToDevice));
+    CHECK_CUDA_ERROR(cudaMemcpy(dishlayout_memory, dishlayout_cpu_memory, dishlayout_len,
+                                cudaMemcpyHostToDevice));
     free(dishlayout_cpu_memory);
 }
 
@@ -90,7 +93,8 @@ cudaEvent_t cudaFRBBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_event) 
     void* dishlayout_memory = device.get_gpu_memory(_gpu_mem_dishlayout, dishlayout_len);
     void* phase_memory = device.get_gpu_memory_array(_gpu_mem_phase, gpu_frame_id, phase_len);
     void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, gpu_frame_id, voltage_len);
-    void* beamgrid_memory = device.get_gpu_memory_array(_gpu_mem_beamgrid, gpu_frame_id, beamgrid_len);
+    void* beamgrid_memory =
+        device.get_gpu_memory_array(_gpu_mem_beamgrid, gpu_frame_id, beamgrid_len);
     int32_t* info_memory =
         (int32_t*)device.get_gpu_memory_array(_gpu_mem_info, gpu_frame_id, info_len);
 
@@ -103,7 +107,7 @@ cudaEvent_t cudaFRBBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_event) 
     CUresult err;
     // dishlayout (S), phase (W), voltage (E), beamgrid (I), info
     const char* exc = "exception";
-    //kernel_arg arr[5];
+    // kernel_arg arr[5];
     kernel_arg arr[8];
 
     arr[0].ptr = (int32_t*)dishlayout_memory;
@@ -147,8 +151,8 @@ cudaEvent_t cudaFRBBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_event) 
     arr[7].len = 0;
 
     void* parameters[] = {
-        &(exc), &(arr[0]), &(arr[1]), &(arr[2]), &(arr[3]), &(arr[4]),
-        &(arr[5]), &(arr[6]), &(arr[7]),
+        &(exc),    &(arr[0]), &(arr[1]), &(arr[2]), &(arr[3]),
+        &(arr[4]), &(arr[5]), &(arr[6]), &(arr[7]),
     };
 
     DEBUG("Kernel_name: {}", kernel_name);

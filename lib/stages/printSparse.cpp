@@ -2,10 +2,10 @@
 
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 
-#include <bits/floatn-common.h>
-#include <complex.h>
 #include <array>
+#include <bits/floatn-common.h>
 #include <cassert>
+#include <complex.h>
 #include <complex>
 #include <cstdint>
 #include <cstdlib>

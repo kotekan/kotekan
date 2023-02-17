@@ -50,8 +50,8 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     buf = get_buffer("out_buf");
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
-    assert(type == "const" || type == "const32" || type == "constf16" || type == "random" || type == "random_signed"
-           || type == "ramp" || type == "tpluse" || type == "tpluseplusf"
+    assert(type == "const" || type == "const32" || type == "constf16" || type == "random"
+           || type == "random_signed" || type == "ramp" || type == "tpluse" || type == "tpluseplusf"
            || type == "tpluseplusfprime" || type == "square" || type == "onehot");
     if (type == "const" || type == "const32" || type == "random" || type == "random_signed"
         || type == "ramp" || type == "onehot") {
