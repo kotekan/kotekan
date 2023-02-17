@@ -77,7 +77,7 @@ void decrement_metadata_ref_count(struct metadataContainer* container) {
 // *** Metadata pool section ***
 
 struct metadataPool* create_metadata_pool(int num_metadata_objects, size_t object_size,
-                                          const char* unique_name) {
+                                          const char* unique_name, const char* type_name) {
     struct metadataPool* pool;
     pool = malloc(sizeof(struct metadataPool));
     CHECK_MEM_F(pool);
@@ -88,6 +88,9 @@ struct metadataPool* create_metadata_pool(int num_metadata_objects, size_t objec
 
     pool->unique_name = strdup(unique_name);
     CHECK_MEM_F(pool->unique_name);
+
+    pool->type_name = strdup(type_name);
+    CHECK_MEM_F(pool->type_name);
 
     pool->in_use = malloc(pool->pool_size * sizeof(int));
     CHECK_MEM_F(pool->in_use);
@@ -109,6 +112,7 @@ void delete_metadata_pool(struct metadataPool* pool) {
 
     CHECK_ERROR_F(pthread_mutex_destroy(&pool->pool_lock));
     free(pool->unique_name);
+    free(pool->type_name);
     free(pool->in_use);
     free(pool->metadata_objects);
 }

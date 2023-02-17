@@ -67,9 +67,9 @@ private:
     /// The network buffer object (i.e. the host input data buffer)
     Buffer* network_buf;
     /// Length of the input frame, should be sizeof_uchar x n_elem x n_freq x nsamp
-    uint32_t input_frame_len;
+    size_t input_frame_len;
     /// Length of the RFI mask
-    uint32_t mask_len;
+    size_t mask_len;
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;
     /// Number of frequencies per GPU (1 for CHIME or 8 for Pathfinder)

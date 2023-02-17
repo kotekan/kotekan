@@ -66,11 +66,11 @@ public:
 
 private:
     /// Length of the input frame, should be sizeof_uchar x n_elem x n_freq x nsamp
-    uint32_t input_frame_len;
+    size_t input_frame_len;
     /// Length of the output frame, should be sizeof_float x n_elem x n_freq x nsamp / sk_step
-    uint32_t output_frame_len;
+    size_t output_frame_len;
     /// Length of the output_var frame, should be sizeof_float x n_freq x nsamp / sk_step
-    uint32_t output_var_frame_len;
+    size_t output_var_frame_len;
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;
     /// Number of frequencies per GPU (1 for CHIME or 8 for Pathfinder)

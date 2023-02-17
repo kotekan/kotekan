@@ -15,6 +15,7 @@
 #include <functional>   // for _Bind_helper<>::type, bind, function
 #include <netinet/in.h> // for sockaddr_in, htons, in_addr
 #include <regex>        // for match_results<>::_Base_type
+#include <stddef.h>     // for size_t
 #include <strings.h>    // for bzero
 #include <sys/socket.h> // for send, connect, socket, AF_INET, SOCK_STREAM
 #include <unistd.h>     // for gethostname, ssize_t
@@ -97,7 +98,7 @@ void chrxUplink::main_thread() {
             ERROR("Could not send frame to chrx, error: {:d}", errno);
             break;
         }
-        if (bytes_sent != vis_buf->frame_size) {
+        if ((size_t)bytes_sent != vis_buf->frame_size) {
             ERROR("Could not send all bytes: bytes sent = {:d}; frame_size = {:d}", (int)bytes_sent,
                   vis_buf->frame_size);
             break;
@@ -116,7 +117,7 @@ void chrxUplink::main_thread() {
                 ERROR("Could not send gated date frame to ch_acq, error: {:d}", errno);
                 break;
             }
-            if (bytes_sent != gate_buf->frame_size) {
+            if ((size_t)bytes_sent != gate_buf->frame_size) {
                 ERROR("Could not send all bytes in gated data frame: bytes sent = {:d}; frame_size "
                       "= {:d}",
                       (int)bytes_sent, gate_buf->frame_size);

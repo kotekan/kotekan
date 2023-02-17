@@ -20,7 +20,8 @@ add_library(
     cudaOutputDataZero.cpp
     # Kernels
     cudaCorrelatorAstron.cpp
-    cudaShuffleAstron.cu)
+    cudaShuffleAstron.cu
+    cudaBasebandBeamformer.cpp)
 
 # C++17
 set_property(TARGET kotekan_cuda PROPERTY CUDA_STANDARD 17)
@@ -34,13 +35,13 @@ if(${GPUTILS_FOUND})
         target_include_directories(kotekan_cuda SYSTEM PRIVATE ${N2K_INCLUDE_DIR})
         # It feels dirty to specify the full path to the SO file here, but wrestling with CMake to
         # do otherwise was not fruitful.
-        target_link_libraries(kotekan_cuda INTERFACE ${N2K_LIBRARY}/libn2k.so)
+        target_link_libraries(kotekan_cuda INTERFACE ${N2K_LIBRARY})
         target_sources(kotekan_cuda PRIVATE cudaCorrelator.cpp)
     else()
         message("n2k not found, support disabled in kotekan_cuda")
     endif()
     target_include_directories(kotekan_cuda SYSTEM PRIVATE ${GPUTILS_INCLUDE_DIR})
-    target_link_libraries(kotekan_cuda INTERFACE ${GPUTILS_LIBRARY}/libgputils.so)
+    target_link_libraries(kotekan_cuda INTERFACE ${GPUTILS_LIBRARY})
 
 else()
     message("gputils not found, support disabled in kotekan_cuda")
@@ -49,7 +50,7 @@ endif()
 target_link_libraries(
     kotekan_cuda
     PRIVATE libexternal kotekan_libs -lstdc++
-    INTERFACE ${CUDA_LIBRARIES} cuda nvrtc)
+    INTERFACE ${CUDA_LIBRARIES} cuda nvrtc nvptxcompiler_static)
 
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --forward-unknown-to-host-compiler")
 

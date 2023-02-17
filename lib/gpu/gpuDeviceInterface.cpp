@@ -19,7 +19,7 @@ void gpuDeviceInterface::cleanup_memory() {
     }
 }
 
-void* gpuDeviceInterface::get_gpu_memory(const std::string& name, const uint32_t len) {
+void* gpuDeviceInterface::get_gpu_memory(const std::string& name, const size_t len) {
 
     // Check if the memory isn't yet allocated
     if (gpu_memory.count(name) == 0) {
@@ -37,7 +37,7 @@ void* gpuDeviceInterface::get_gpu_memory(const std::string& name, const uint32_t
 }
 
 void* gpuDeviceInterface::get_gpu_memory_array(const std::string& name, const uint32_t index,
-                                               const uint32_t len) {
+                                               const size_t len) {
     // Check if the memory isn't yet allocated
     if (gpu_memory.count(name) == 0) {
         for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {

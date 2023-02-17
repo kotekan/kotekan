@@ -63,11 +63,11 @@ public:
 
 private:
     /// Input length, num_frb_total_beams x factor_upchan x 10
-    uint32_t input_frame_len;
+    size_t input_frame_len;
     /// Output length, num_frb_total_beams x factor_upchan
-    uint32_t output_frame_len;
+    size_t output_frame_len;
     /// Length of the compressed lost samples frame
-    uint32_t compressed_lost_samples_frame_len;
+    size_t compressed_lost_samples_frame_len;
 
     /// Total number of FRB formed beams, should be 1024
     uint32_t _num_frb_total_beams;

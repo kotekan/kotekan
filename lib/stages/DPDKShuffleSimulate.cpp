@@ -17,6 +17,7 @@
 #include <cstdint>    // for int32_t
 #include <exception>  // for exception
 #include <regex>      // for match_results<>::_Base_type
+#include <stddef.h>   // for size_t
 #include <sys/time.h> // for gettimeofday, timeval
 #include <unistd.h>   // for sleep, usleep
 #include <vector>     // for vector
@@ -77,7 +78,7 @@ void DPDKShuffleSimulate::main_thread() {
 
         // Set contents for lost samples buffer
         for (uint32_t sample = 0; sample < _num_samples_per_dataset; ++sample) {
-            assert(_num_samples_per_dataset == lost_samples_buf->frame_size);
+            assert((size_t)_num_samples_per_dataset == lost_samples_buf->frame_size);
             // TODO add option to have some data lost
             lost_samples_frame[sample] = 0;
         }

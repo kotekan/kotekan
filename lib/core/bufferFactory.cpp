@@ -84,7 +84,7 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
 
     size_t frame_size = 0;
     if (type_name == "standard") {
-        frame_size = config.get<uint32_t>(location, "frame_size");
+        frame_size = config.get<size_t>(location, "frame_size");
     }
 
     if (type_name == "vis") {

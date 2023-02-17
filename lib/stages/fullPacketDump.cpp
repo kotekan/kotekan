@@ -135,7 +135,7 @@ void fullPacketDump::main_thread() {
 
             ssize_t bytes_writen = write(fd, frame, buf->frame_size);
 
-            if (bytes_writen != buf->frame_size) {
+            if ((size_t)bytes_writen != buf->frame_size) {
                 ERROR("Failed to write buffer to disk!!!  Abort, Panic, etc.");
                 exit(-1);
             }
