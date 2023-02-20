@@ -19,8 +19,7 @@
 #include "gsl-lite.hpp" // for span
 #include "json.hpp"     // for json
 
-#include <algorithm>     // for max
-#include <bits/floatn.h> // for __HAVE_FLOAT16
+#include <algorithm> // for max
 #include <chrono>
 #include <complex>     // for complex, imag, real
 #include <cstdint>     // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
@@ -43,6 +42,12 @@
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;
+
+#if __linux__
+#include <bits/floatn.h> // for __HAVE_FLOAT16
+#else
+#define __HAVE_FLOAT16 0
+#endif
 
 #if __HAVE_FLOAT16
 using float16_t = _Float16;
