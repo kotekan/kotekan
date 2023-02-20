@@ -19,7 +19,7 @@
 class cudaSyncInput : public cudaSyncStream {
 public:
     cudaSyncInput(kotekan::Config& config, const std::string& unique_name,
-                   kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+                  kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaSyncInput();
 };
 
