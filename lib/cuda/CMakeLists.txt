@@ -22,7 +22,8 @@ add_library(
     cudaSyncInput.cpp
     # Kernels
     cudaCorrelatorAstron.cpp
-    cudaShuffleAstron.cu)
+    cudaShuffleAstron.cu
+    cudaBasebandBeamformer.cpp)
 
 # C++17
 set_property(TARGET kotekan_cuda PROPERTY CUDA_STANDARD 17)
@@ -49,7 +50,7 @@ endif()
 target_link_libraries(
     kotekan_cuda
     PRIVATE libexternal kotekan_libs -lstdc++
-    INTERFACE ${CUDA_LIBRARIES} cuda nvrtc)
+    INTERFACE ${CUDA_LIBRARIES} cuda nvrtc nvptxcompiler_static)
 
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --forward-unknown-to-host-compiler")
 

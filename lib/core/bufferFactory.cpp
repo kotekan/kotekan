@@ -71,6 +71,8 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
     uint32_t num_frames = config.get<uint32_t>(location, "num_frames");
     string metadataPool_name = config.get_default<std::string>(location, "metadata_pool", "none");
     int32_t numa_node = config.get_default<int32_t>(location, "numa_node", 0);
+    bool use_hugepages = config.get_default<bool>(location, "use_hugepages", false);
+    bool mlock_frames = config.get_default<bool>(location, "mlock_frames", true);
 
     struct metadataPool* pool = nullptr;
     if (metadataPool_name != "none") {
@@ -84,24 +86,25 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
 
     size_t frame_size = 0;
     if (type_name == "standard") {
-        frame_size = config.get<uint32_t>(location, "frame_size");
-    }
-
-    if (type_name == "vis") {
+        frame_size = config.get<size_t>(location, "frame_size");
+    } else if (type_name == "vis") {
         frame_size = VisFrameView::calculate_frame_size(config, location);
-    }
-
-    if (type_name == "hfb") {
+    } else if (type_name == "hfb") {
         frame_size = HFBFrameView::calculate_frame_size(config, location);
+    } else {
+        // Unknown buffer type
+        throw std::runtime_error(fmt::format(fmt("No buffer type named: {:s}"), type_name));
     }
 
     INFO_NON_OO("Creating {:s}Buffer named {:s} with {:d} frames, frame size of {:d} and "
                 "metadata pool {:s} on numa_node {:d}",
                 type_name, name, num_frames, frame_size, metadataPool_name, numa_node);
-    return create_buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(), numa_node);
-
-    // No metadata found
-    throw std::runtime_error(fmt::format(fmt("No buffer type named: {:s}"), name));
+    struct Buffer* buf = create_buffer(num_frames, frame_size, pool, name.c_str(),
+                                       type_name.c_str(), numa_node, use_hugepages, mlock_frames);
+    if (buf == nullptr) {
+        throw std::runtime_error(fmt::format(fmt("Could not create the buffer: {:s}"), name));
+    }
+    return buf;
 }
 
 } // namespace kotekan

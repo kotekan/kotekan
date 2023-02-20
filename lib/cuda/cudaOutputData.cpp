@@ -39,6 +39,8 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
     in_buffer_id = 0;
 
     set_command_type(gpuCommandType::COPY_OUT);
+
+    kernel_command = "cudaOutputData: " + _gpu_mem;
 }
 
 cudaOutputData::~cudaOutputData() {
@@ -56,8 +58,11 @@ int cudaOutputData::wait_on_precondition(int gpu_frame_id) {
     // Wait for there to be data in the input (output) buffer.
     uint8_t* frame =
         wait_for_empty_frame(output_buffer, unique_name.c_str(), output_buffer_precondition_id);
-    if (frame == nullptr)
+    if (frame == nullptr) {
+        DEBUG("FAILED to wait_for_empty_frame on output_buffer {:s}[:d]", unique_name.c_str(),
+              output_buffer_precondition_id);
         return -1;
+    }
 
     output_buffer_precondition_id = (output_buffer_precondition_id + 1) % output_buffer->num_frames;
     return 0;
@@ -67,7 +72,7 @@ int cudaOutputData::wait_on_precondition(int gpu_frame_id) {
 cudaEvent_t cudaOutputData::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {
     pre_execute(gpu_frame_id);
 
-    uint32_t output_len = output_buffer->frame_size;
+    size_t output_len = output_buffer->frame_size;
 
     void* gpu_output_frame = device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, output_len);
     void* host_output_frame = (void*)output_buffer->frames[output_buffer_execute_id];
@@ -83,6 +88,8 @@ cudaEvent_t cudaOutputData::execute(int gpu_frame_id, const std::vector<cudaEven
 void cudaOutputData::finalize_frame(int frame_id) {
     cudaCommand::finalize_frame(frame_id);
 
+    DEBUG("Passing metadata from input {:s}[{:d}] to {:s}[{:d}]", in_buffer->buffer_name,
+          in_buffer_id, output_buffer->buffer_name, output_buffer_id);
     pass_metadata(in_buffer, in_buffer_id, output_buffer, output_buffer_id);
 
     mark_frame_empty(in_buffer, unique_name.c_str(), in_buffer_id);

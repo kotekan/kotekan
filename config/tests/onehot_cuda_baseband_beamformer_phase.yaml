@@ -1,0 +1,176 @@
+##########################################
+#
+# Config to test Kendrick & Erik's cuda baseband beamformer kernel.
+# using one-hot testing: setting one element in the phase array
+# to a non-zero value, with the voltage array all one constant value.
+#
+##########################################
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
+num_links: 4
+freq_array: [4,7,10,16]
+timesamples_per_packet: 2
+num_gpus: 1
+buffer_depth: 9
+num_gpu_frames: 1
+cpu_affinity: [2,3,4,5,8,9,10,11]
+sizeof_float: 4
+sizeof_int: 4
+frame_arrival_period: 0.00000256 * samples_per_data_set
+
+samples_per_data_set: 32768
+num_elements: 1024
+num_local_freq: 16
+num_beams: 96
+
+# data gen:
+num_frames: 9
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: oneHotMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+# Buffers
+host_voltage_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_elements * num_local_freq
+    metadata_pool: main_pool
+
+host_phase_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_elements * num_local_freq * num_beams * 2
+    metadata_pool: main_pool
+
+host_shift_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_local_freq * num_beams * 2 * sizeof_int
+    metadata_pool: main_pool
+
+host_formed_beams_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_beams * num_local_freq * 2
+    metadata_pool: main_pool
+
+host_info_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    # threads_x * threads_y * blocks_x * sizeof(int32)
+    frame_size: 32 * 24 * 32 * 4
+    metadata_pool: main_pool
+
+simulated_formed_beams_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_beams * num_local_freq * 2
+    metadata_pool: main_pool
+
+gen_data:
+    type: const
+    value: 0x1
+    kotekan_stage: testDataGen
+    out_buf: host_voltage_buffer
+
+gen_phase:
+    type: onehot
+    values: [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0xff]
+    # FREQ, POL, BEAM, DISH, REAL_IMAG
+    array_shape: [16, 2, 96, 512, 2]
+    kotekan_stage: testDataGen
+    out_buf: host_phase_buffer
+    #log_level: debug
+
+gen_shift:
+    kotekan_stage: testDataGen
+    type: const32
+    value: 0x4
+    out_buf: host_shift_buffer
+
+gpu:
+    # log_level: debug
+    profiling: true
+    kernel_path: "../../lib/cuda/kernels/"
+    commands: &command_list
+    - name: cudaInputData
+      in_buf: host_voltage
+      gpu_mem: voltage
+    - name: cudaInputData
+      in_buf: host_phase
+      gpu_mem: phase
+    - name: cudaInputData
+      in_buf: host_shift
+      gpu_mem: shift
+    - name: cudaBasebandBeamformer
+      gpu_mem_voltage: voltage
+      gpu_mem_phase: phase
+      gpu_mem_output_scaling: shift
+      gpu_mem_formed_beams: formed_beams
+      gpu_mem_info: info
+    - name: cudaOutputData
+      in_buf: host_voltage # Metadata transfer from here
+      gpu_mem: formed_beams
+      out_buf: host_formed_beams
+    - name: cudaOutputData
+      in_buf: host_voltage # Metadata transfer from here
+      gpu_mem: info
+      out_buf: host_info
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        commands: *command_list
+        in_buffers:
+            host_voltage: host_voltage_buffer
+            host_phase: host_phase_buffer
+            host_shift: host_shift_buffer
+        out_buffers:
+            host_formed_beams: host_formed_beams_buffer
+            host_info: host_info_buffer
+
+cpu_beamformer:
+    kotekan_stage: gpuSimulateCudaBasebandBeamformer
+    # zero out the array before setting values (only needed for one-hot)?
+    zero_output: true
+    voltage_in_buf: host_voltage_buffer
+    phase_in_buf: host_phase_buffer
+    shift_in_buf: host_shift_buffer
+    beams_out_buf: simulated_formed_beams_buffer
+
+check_data:
+    kotekan_stage: testDataCheckUchar
+    first_buf: host_formed_beams_buffer
+    second_buf: simulated_formed_beams_buffer
+    num_frames_to_test: 9 # = length of gen_data one-hot vector
+
+# hexDumpGPU:
+#     log_level: debug
+#     kotekan_stage: hexDump
+#     in_buf: host_formed_beams_buffer
+#     len: 32
+
+# hexDumpCPU:
+#     log_level: debug
+#     kotekan_stage: hexDump
+#     in_buf: simulated_formed_beams_buffer
+#     len: 32
+
+printSparseGPU:
+    kotekan_stage: printSparseUint8
+    # BEAM, FREQ, POL, TIME
+    array_shape: [96, 16, 2, 32768]
+    input_buf: host_formed_beams_buffer
+    max_to_print: 2
+
+printSparseCPU:
+    kotekan_stage: printSparseUint8
+    # BEAM, FREQ, POL, TIME
+    array_shape: [96, 16, 2, 32768]
+    input_buf: simulated_formed_beams_buffer
+    max_to_print: 2

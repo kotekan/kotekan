@@ -31,10 +31,10 @@ extern "C" {
 
 #include "metadata.h" // for metadataPool
 
-#include <pthread.h>   // for pthread_cond_t, pthread_mutex_t
-#include <stdint.h>    // for uint8_t
-#include <sys/types.h> // for ssize_t
-#include <time.h>      // for size_t, timespec
+#include <pthread.h> // for pthread_cond_t, pthread_mutex_t
+#include <stdbool.h> // for bool
+#include <stdint.h>  // for uint8_t
+#include <time.h>    // for size_t, timespec
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
@@ -94,28 +94,31 @@ struct StageInfo {
  * There can be more than one producer or consumer attached to each buffer, but
  * each one must register with the buffer separately.
  *
- * Consumers must only read data from frames and not write anything back too them.
- * More than one producer can write to a given frame in a multi producer setup,
+ * Consumers must only read data from frames and not write anything back to them.
+ * More than one producer can write to a given frame in a multi-producer setup,
  * but in that case they must coordinate their address space to not overwrite
- * each others values.  Because of this multi-producers are somewhat rare.
+ * each others' values.  Because of this, multi-producers are somewhat rare.
  * Producers also generally shouldn't read from frames, although there is
  * nothing wrong with doing so, it just normally doesn't make sense to do so.
  *
  * Unless the function @c zero_frames() is called on the buffer object, the
  * default behaviour is not to zero the memory of the frames between uses.
- * Therefore it is normally upto the producer(s) to ensure all memory
+ * Therefore it is normally up to the producer(s) to ensure all memory
  * values are either given new data, or zeroed.
  *
  * In the config file a buffer is created with a <tt>kotekan_buffer: standard</tt>
  * named block.   The buffer name becomes the path name of that config block.
  *
- * Note if no consumer is registered for on a buffer, then it will drop
+ * Note that if no consumer is registered for on a buffer, then it will drop
  * the frames and log an INFO statement to notify the user that the data
  * is being dropped.
  *
  * @conf frame_size The size of the individual ring frames in bytes
  * @conf num_frames The buffer depth of size of the ring
  * @conf metadata_pool The name of the metadata pool to associate with the buffer
+ * @conf numa_node The NUMA domain to mbind the memory into.  Default: 1
+ * @conf use_hugepages Allocate 2MB huge pages for the frames. Default: false
+ * @conf mlock_frames Lock the frame pages with mlock Default: true
  *
  * See metadata.h for more information on metadata pools
  *
@@ -143,7 +146,7 @@ struct Buffer {
     int num_frames;
 
     /// The size of each frame in bytes.
-    int frame_size;
+    size_t frame_size;
 
     /**
      * @brief The padded frame size.
@@ -152,7 +155,7 @@ struct Buffer {
      * you can use this size instead, but data shouldn't
      * be placed past the end of frame_size.  This is just for padding.
      */
-    int aligned_frame_size;
+    size_t aligned_frame_size;
 
     /**
      * @brief Array of producers which are done (marked frame as full).
@@ -200,6 +203,15 @@ struct Buffer {
 
     /// The type of the buffer for use in writing data.
     char* buffer_type;
+
+    /// This buffer use huge pages for its frames if the following is true
+    bool use_hugepages;
+
+    /// The buffer has page locked memory frames
+    bool mlock_frames;
+
+    /// The NUMA node the frames are allocated in
+    int numa_node;
 };
 
 /**
@@ -214,11 +226,14 @@ struct Buffer {
  * @param[in] pool The metadataPool, which may be shared between more than one buffer.
  * @param[in] buffer_name The unique name of this buffer.
  * @param[in] buffer_type The type of data this buffer contains.
- * @param[in] numa_node The CPU NUMA memory region to allocate memory in.
+ * @param[in] numa_node The CPU NUMA memory region to allocate memory in.+
+ * @param[in] use_huge_pages Map huge pages with mmap
+ * @param[in] mlock_frames If set, mlock the pages of the frame memory
  * @returns A buffer object.
  */
-struct Buffer* create_buffer(int num_frames, int frame_size, struct metadataPool* pool,
-                             const char* buffer_name, const char* buffer_type, int numa_node);
+struct Buffer* create_buffer(int num_frames, size_t frame_size, struct metadataPool* pool,
+                             const char* buffer_name, const char* buffer_type, int numa_node,
+                             bool use_huge_pages, bool mlock_frames);
 
 /**
  * @brief Deletes a buffer object and frees all frame memory
@@ -461,17 +476,20 @@ void swap_frames(struct Buffer* from_buf, int from_frame_id, struct Buffer* to_b
  *
  * @param len The size of the frame to allocate in bytes.
  * @param numa_node The CPU NUMA region to allocate the memory in.
+ * @param use_huge_pages Use mmap to allocate huge pages for frames
+ * @param memlock_frames Use mlock to lock frame pages
  * @return A pointer to the new memory, or @c NULL if allocation failed.
  */
-uint8_t* buffer_malloc(ssize_t len, int numa_node);
+uint8_t* buffer_malloc(size_t len, int numa_node, bool use_huge_pages, bool memlock_frames);
 
 /**
  * @brief Deallocate a frame of memory with the required free method.
  *
  * @param frame_pointer The pointer to the memory to free.
  * @param size The size of the memory space to free (needed for NUMA)
+ * @param use_huge_pages Toggles the type of "free" call used, must match @c buffer_malloc type
  */
-void buffer_free(uint8_t* frame_pointer, size_t size);
+void buffer_free(uint8_t* frame_pointer, size_t size, bool use_huge_pages);
 
 /**
  * @brief Gets the raw metadata block for the given frame

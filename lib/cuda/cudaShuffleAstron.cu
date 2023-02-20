@@ -71,7 +71,7 @@ __global__ void shuffle_astron(int *input, int *output, int ne, int nt, int nf) 
 cudaEvent_t cudaShuffleAstron::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {
     pre_execute(gpu_frame_id);
 
-    uint32_t input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
+    size_t input_frame_len = (size_t)_num_elements * _num_local_freq * _samples_per_data_set;
     void *input_memory = device.get_gpu_memory_array(_gpu_mem_voltage, gpu_frame_id, input_frame_len);
     void *output_memory = device.get_gpu_memory(_gpu_mem_ordered_voltage, input_frame_len);
 

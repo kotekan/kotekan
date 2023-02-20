@@ -27,6 +27,8 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
     in_buffer_finalize_id = 0;
 
     set_command_type(gpuCommandType::COPY_IN);
+
+    kernel_command = "cudaInputData: " + _gpu_mem;
 }
 
 cudaInputData::~cudaInputData() {
@@ -54,7 +56,7 @@ int cudaInputData::wait_on_precondition(int gpu_frame_id) {
 cudaEvent_t cudaInputData::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {
     pre_execute(gpu_frame_id);
 
-    uint32_t input_frame_len = in_buf->frame_size;
+    size_t input_frame_len = in_buf->frame_size;
 
     void* gpu_memory_frame = device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, input_frame_len);
     void* host_memory_frame = (void*)in_buf->frames[in_buffer_id];

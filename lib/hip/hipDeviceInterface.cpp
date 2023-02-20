@@ -36,11 +36,11 @@ void hipDeviceInterface::free_gpu_memory(void* ptr) {
 }
 
 
-void* hipDeviceInterface::get_gpu_memory(const string& name, const uint32_t len) {
+void* hipDeviceInterface::get_gpu_memory(const string& name, const size_t len) {
     return gpuDeviceInterface::get_gpu_memory(name, len);
 }
 void* hipDeviceInterface::get_gpu_memory_array(const string& name, const uint32_t index,
-                                               const uint32_t len) {
+                                               const size_t len) {
     return gpuDeviceInterface::get_gpu_memory_array(name, index, len);
 }
 hipStream_t hipDeviceInterface::getStream(int stream_id) {

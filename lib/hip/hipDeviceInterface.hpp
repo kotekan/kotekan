@@ -72,8 +72,8 @@ public:
                                 hipEvent_t& copy_pre_event, hipEvent_t& copy_post_event);
 
     // Function overrides to cast the generic gpu_memory retulsts appropriately.
-    void* get_gpu_memory_array(const std::string& name, const uint32_t index, const uint32_t len);
-    void* get_gpu_memory(const std::string& name, const uint32_t len);
+    void* get_gpu_memory_array(const std::string& name, const uint32_t index, const size_t len);
+    void* get_gpu_memory(const std::string& name, const size_t len);
 
 protected:
     void* alloc_gpu_memory(int len) override;
