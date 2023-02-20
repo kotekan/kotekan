@@ -26,6 +26,15 @@ public:
     void finalize_frame(int frame_id) override;
 
 protected:
+    /// A constructor meant to be called by subclassers who need to
+    /// override the constructor behavior
+    cudaSyncStream(kotekan::Config& config, const std::string& unique_name,
+                   kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                   bool called_by_subclasser);
+
+    /// Sets the list of streams on which this object should synchronize.
+    void set_source_cuda_streams(const std::vector<int32_t>& streams);
+
     /// List of stream_id's to sync against
     std::vector<int32_t> _source_cuda_streams;
 };

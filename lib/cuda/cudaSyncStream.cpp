@@ -8,15 +8,25 @@ REGISTER_CUDA_COMMAND(cudaSyncStream);
 cudaSyncStream::cudaSyncStream(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, cudaDeviceInterface& device) :
     cudaCommand(config, unique_name, host_buffers, device, "sync", "") {
+    set_source_cuda_streams(config.get<std::vector<int32_t>>(unique_name, "source_cuda_streams"));
+    set_command_type(gpuCommandType::BARRIER);
+}
 
-    _source_cuda_streams = config.get<std::vector<int32_t>>(unique_name, "source_cuda_streams");
+cudaSyncStream::cudaSyncStream(kotekan::Config& config, const std::string& unique_name,
+                               kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                               bool called_by_subclasser) :
+    cudaCommand(config, unique_name, host_buffers, device, "sync", "") {
+    (void)called_by_subclasser;
+}
+
+void cudaSyncStream::set_source_cuda_streams(const std::vector<int32_t>& source_cuda_streams) {
+    _source_cuda_streams = source_cuda_streams;
     for (auto cuda_stream_id : _source_cuda_streams) {
         if (cuda_stream_id >= device.get_num_streams()) {
             throw std::runtime_error(
                 "Asked for a CUDA stream grater than the maximum number available");
         }
     }
-    set_command_type(gpuCommandType::BARRIER);
 }
 
 cudaSyncStream::~cudaSyncStream() {}

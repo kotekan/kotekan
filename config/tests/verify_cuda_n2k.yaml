@@ -70,15 +70,13 @@ gpu:
     - name: cudaInputData
       in_buf: host_voltage
       gpu_mem: voltage
-    - name: cudaSyncStream
-      cuda_stream: 1
-      source_cuda_streams: [0]
+    - name: cudaSyncInput
     - name: cudaCorrelator
       gpu_mem_voltage: voltage
       gpu_mem_correlation_triangle: correlation_matrix
     - name: cudaSyncStream
-      cuda_stream: 2
-      source_cuda_streams: [1]
+      cuda_stream: 1
+      source_cuda_streams: [2]
     - name: cudaOutputData
       in_buf: host_voltage # Metadata transfer from here
       gpu_mem: correlation_matrix
