@@ -79,11 +79,12 @@ void cudaCommand::finalize_frame(int gpu_frame_id) {
         if (start_events[gpu_frame_id])
             CHECK_CUDA_ERROR(cudaEventDestroy(start_events[gpu_frame_id]));
         start_events[gpu_frame_id] = nullptr;
-        if (end_events[gpu_frame_id])
-            CHECK_CUDA_ERROR(cudaEventDestroy(end_events[gpu_frame_id]));
+    }
+    if (end_events[gpu_frame_id] != nullptr) {
+        CHECK_CUDA_ERROR(cudaEventDestroy(end_events[gpu_frame_id]));
         end_events[gpu_frame_id] = nullptr;
     } else {
-        FATAL_ERROR("Null event in cudaCommand {:s}, this should never happen!", unique_name);
+        FATAL_ERROR("Null end event in cudaCommand {:s}, this should never happen!", unique_name);
     }
 }
 
@@ -319,8 +320,10 @@ void cudaCommand::build_ptx(const std::vector<std::string>& kernel_names,
 }
 
 void cudaCommand::record_start_event(int gpu_frame_id) {
-    CHECK_CUDA_ERROR(cudaEventCreate(&start_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(cudaEventRecord(start_events[gpu_frame_id], device.getStream(cuda_stream_id)));
+    if (profiling) {
+        CHECK_CUDA_ERROR(cudaEventCreate(&start_events[gpu_frame_id]));
+        CHECK_CUDA_ERROR(cudaEventRecord(start_events[gpu_frame_id], device.getStream(cuda_stream_id)));
+    }
 }
 
 cudaEvent_t cudaCommand::record_end_event(int gpu_frame_id) {
