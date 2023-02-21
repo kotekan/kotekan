@@ -30,13 +30,11 @@ cudaEvent_t cudaOutputDataZero::execute(int gpu_frame_id,
     if (pre_events[cuda_stream_id])
         CHECK_CUDA_ERROR(
             cudaStreamWaitEvent(device.getStream(cuda_stream_id), pre_events[cuda_stream_id], 0));
+    record_start_event(gpu_frame_id);
+
     // Data transfer to GPU
-    CHECK_CUDA_ERROR(cudaEventCreate(&start_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(cudaEventRecord(start_events[gpu_frame_id], device.getStream(cuda_stream_id)));
     CHECK_CUDA_ERROR(cudaMemcpyAsync(gpu_memory_frame, output_zeros, output_len,
                                      cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaEventCreate(&end_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(cudaEventRecord(end_events[gpu_frame_id], device.getStream(cuda_stream_id)));
 
-    return end_events[gpu_frame_id];
+    return record_end_event(gpu_frame_id);
 }

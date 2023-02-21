@@ -88,6 +88,12 @@ public:
 protected:
     void set_command_type(const gpuCommandType& type);
 
+    // For subclassers to call to create & record GPU starting events, IFF profiling is on.
+    void record_start_event(int gpu_frame_id);
+
+    // For subclassers to call to create & record GPU ending events.
+    cudaEvent_t record_end_event(int gpu_frame_id);
+
     /// Events queued after the kernel/copy for synchronization and profiling
     cudaEvent_t* end_events;
     /// Extra events created at the start of kernels/copies for profiling

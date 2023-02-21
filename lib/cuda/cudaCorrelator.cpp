@@ -44,16 +44,13 @@ cudaEvent_t cudaCorrelator::execute(int gpu_frame_id, const std::vector<cudaEven
     if (pre_events[cuda_stream_id])
         CHECK_CUDA_ERROR(
             cudaStreamWaitEvent(device.getStream(cuda_stream_id), pre_events[cuda_stream_id], 0));
-    CHECK_CUDA_ERROR(cudaEventCreate(&start_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(cudaEventRecord(start_events[gpu_frame_id], device.getStream(cuda_stream_id)));
+
+    record_start_event(gpu_frame_id);
 
     n2correlator.launch((int*)output_memory, (int8_t*)input_memory, num_subintegrations,
                         _sub_integration_ntime, device.getStream(cuda_stream_id));
 
     CHECK_CUDA_ERROR(cudaGetLastError());
 
-    CHECK_CUDA_ERROR(cudaEventCreate(&end_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(cudaEventRecord(end_events[gpu_frame_id], device.getStream(cuda_stream_id)));
-
-    return end_events[gpu_frame_id];
+    return record_end_event(gpu_frame_id);
 }

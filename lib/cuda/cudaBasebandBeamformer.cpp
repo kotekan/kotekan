@@ -83,8 +83,7 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id,
     if (pre_events[cuda_stream_id])
         CHECK_CUDA_ERROR(
             cudaStreamWaitEvent(device.getStream(cuda_stream_id), pre_events[cuda_stream_id], 0));
-    CHECK_CUDA_ERROR(cudaEventCreate(&start_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(cudaEventRecord(start_events[gpu_frame_id], device.getStream(cuda_stream_id)));
+    record_start_event(gpu_frame_id);
 
     CUresult err;
     // A, E, s, J
@@ -137,8 +136,5 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id,
         ERROR("ERROR IN cuLaunchKernel: {}", errStr);
     }
 
-    CHECK_CUDA_ERROR(cudaEventCreate(&end_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(cudaEventRecord(end_events[gpu_frame_id], device.getStream(cuda_stream_id)));
-
-    return end_events[gpu_frame_id];
+    return record_end_event(gpu_frame_id);
 }

@@ -44,10 +44,7 @@ cudaEvent_t cudaSyncStream::execute(int gpu_frame_id, const std::vector<cudaEven
         }
     }
     // Create an event for the StreamWaits, so other sync commands can sync on this one.
-    CHECK_CUDA_ERROR(cudaEventCreate(&end_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(cudaEventRecord(end_events[gpu_frame_id], device.getStream(cuda_stream_id)));
-
-    return end_events[gpu_frame_id];
+    return record_end_event(gpu_frame_id);
 }
 
 void cudaSyncStream::finalize_frame(int frame_id) {

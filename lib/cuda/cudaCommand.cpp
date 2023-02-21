@@ -317,3 +317,14 @@ void cudaCommand::build_ptx(const std::vector<std::string>& kernel_names,
 
     free(elf);
 }
+
+void cudaCommand::record_start_event(int gpu_frame_id) {
+    CHECK_CUDA_ERROR(cudaEventCreate(&start_events[gpu_frame_id]));
+    CHECK_CUDA_ERROR(cudaEventRecord(start_events[gpu_frame_id], device.getStream(cuda_stream_id)));
+}
+
+cudaEvent_t cudaCommand::record_end_event(int gpu_frame_id) {
+    CHECK_CUDA_ERROR(cudaEventCreate(&end_events[gpu_frame_id]));
+    CHECK_CUDA_ERROR(cudaEventRecord(end_events[gpu_frame_id], device.getStream(cuda_stream_id)));
+    return end_events[gpu_frame_id];
+}
