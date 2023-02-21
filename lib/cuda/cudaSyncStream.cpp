@@ -24,7 +24,7 @@ void cudaSyncStream::set_source_cuda_streams(const std::vector<int32_t>& source_
     for (auto cuda_stream_id : _source_cuda_streams) {
         if (cuda_stream_id >= device.get_num_streams()) {
             throw std::runtime_error(
-                "Asked for a CUDA stream grater than the maximum number available");
+                "Asked to sync on a CUDA stream greater than the maximum number available");
         }
     }
 }

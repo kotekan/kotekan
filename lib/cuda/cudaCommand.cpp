@@ -32,7 +32,7 @@ void cudaCommand::set_command_type(const gpuCommandType& type) {
 
     if (cuda_stream_id >= device.get_num_streams()) {
         throw std::runtime_error(
-            "Asked for a CUDA stream grater than the maximum number available");
+            "Asked for a CUDA stream greater than the maximum number available");
     }
     // If the stream is set (not -1), we don't need to set a default below.
     if (cuda_stream_id >= 0)

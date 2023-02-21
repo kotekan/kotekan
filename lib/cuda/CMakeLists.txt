@@ -20,6 +20,7 @@ add_library(
     cudaOutputDataZero.cpp
     cudaSyncStream.cpp
     cudaSyncInput.cpp
+    cudaSyncOutput.cpp
     # Kernels
     cudaCorrelatorAstron.cpp
     cudaShuffleAstron.cu

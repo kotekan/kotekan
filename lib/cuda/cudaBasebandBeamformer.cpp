@@ -66,7 +66,7 @@ struct CuDeviceArray {
 };
 typedef CuDeviceArray<int32_t, 1> kernel_arg;
 
-cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_event) {
+cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {
     pre_execute(gpu_frame_id);
 
     void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, gpu_frame_id, voltage_len);
@@ -79,11 +79,11 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
     int32_t* info_memory =
         (int32_t*)device.get_gpu_memory_array(_gpu_mem_info, gpu_frame_id, info_len);
 
-    if (pre_event)
-        CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(CUDA_COMPUTE_STREAM), pre_event, 0));
-    CHECK_CUDA_ERROR(cudaEventCreate(&pre_events[gpu_frame_id]));
+    if (pre_events[cuda_stream_id])
+        CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(cuda_stream_id), pre_events[cuda_stream_id], 0));
+    CHECK_CUDA_ERROR(cudaEventCreate(&start_events[gpu_frame_id]));
     CHECK_CUDA_ERROR(
-        cudaEventRecord(pre_events[gpu_frame_id], device.getStream(CUDA_COMPUTE_STREAM)));
+        cudaEventRecord(start_events[gpu_frame_id], device.getStream(cuda_stream_id)));
 
     CUresult err;
     // A, E, s, J
@@ -128,7 +128,7 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
     DEBUG("Running CUDA Baseband Beamformer on GPU frame {:d}", gpu_frame_id);
     err =
         cuLaunchKernel(runtime_kernels[kernel_name], blocks_x, blocks_y, 1, threads_x, threads_y, 1,
-                       shared_mem_bytes, device.getStream(CUDA_COMPUTE_STREAM), parameters, NULL);
+                       shared_mem_bytes, device.getStream(cuda_stream_id), parameters, NULL);
 
     if (err != CUDA_SUCCESS) {
         const char* errStr;
@@ -137,9 +137,9 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id, cudaEvent_t pre_ev
         ERROR("ERROR IN cuLaunchKernel: {}", errStr);
     }
 
-    CHECK_CUDA_ERROR(cudaEventCreate(&post_events[gpu_frame_id]));
+    CHECK_CUDA_ERROR(cudaEventCreate(&end_events[gpu_frame_id]));
     CHECK_CUDA_ERROR(
-        cudaEventRecord(post_events[gpu_frame_id], device.getStream(CUDA_COMPUTE_STREAM)));
+        cudaEventRecord(end_events[gpu_frame_id], device.getStream(cuda_stream_id)));
 
-    return post_events[gpu_frame_id];
+    return end_events[gpu_frame_id];
 }
