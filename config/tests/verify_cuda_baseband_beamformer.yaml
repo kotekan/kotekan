@@ -109,12 +109,14 @@ gpu:
     - name: cudaInputData
       in_buf: host_shift
       gpu_mem: shift
+    - name: cudaSyncInput
     - name: cudaBasebandBeamformer
       gpu_mem_voltage: voltage
       gpu_mem_phase: phase
       gpu_mem_output_scaling: shift
       gpu_mem_formed_beams: formed_beams
       gpu_mem_info: info
+    - name: cudaSyncOutput
     - name: cudaOutputData
       in_buf: host_voltage # Metadata transfer from here
       gpu_mem: formed_beams
