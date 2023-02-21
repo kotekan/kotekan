@@ -322,7 +322,8 @@ void cudaCommand::build_ptx(const std::vector<std::string>& kernel_names,
 void cudaCommand::record_start_event(int gpu_frame_id) {
     if (profiling) {
         CHECK_CUDA_ERROR(cudaEventCreate(&start_events[gpu_frame_id]));
-        CHECK_CUDA_ERROR(cudaEventRecord(start_events[gpu_frame_id], device.getStream(cuda_stream_id)));
+        CHECK_CUDA_ERROR(
+            cudaEventRecord(start_events[gpu_frame_id], device.getStream(cuda_stream_id)));
     }
 }
 
