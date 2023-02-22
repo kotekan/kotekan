@@ -909,7 +909,6 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
     uint8_t* frame = NULL;
 
 #ifdef WITH_HSA // Support for legacy HSA support used in CHIME
-    (void)err;
     frame = hsa_host_malloc(len, numa_node);
     if (frame == NULL) {
         return NULL;
@@ -949,12 +948,11 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
 #else
         (void)numa_node;
         // Create a page aligned block of memory for the buffer
-        err = posix_memalign((void**)&(frame), PAGESIZE_MEM, len);
-        CHECK_MEM_F(frame);
-        if (err != 0) {
+        if (posix_memalign((void**)&(frame), PAGESIZE_MEM, len) != 0) {
             ERROR_F("Error creating aligned memory: %d", err);
             return NULL;
         }
+        CHECK_MEM_F(frame);
 #endif
     }
 #endif
@@ -962,11 +960,9 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
 #ifndef WITH_NO_MEMLOCK
     if (mlock_frames) {
         // Ask that all pages be kept in memory
-        int err = mlock((void*)frame, len);
-
-        if (err == -1) {
+        if (mlock((void*)frame, len) != 0) {
             ERROR_F("Error locking memory: %d - check ulimit -a to check memlock limits", errno);
-            free(frame);
+            buffer_free(frame, len, use_hugepages);
             return NULL;
         }
     }
