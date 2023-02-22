@@ -80,9 +80,6 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id,
     int32_t* info_memory =
         (int32_t*)device.get_gpu_memory_array(_gpu_mem_info, gpu_frame_id, info_len);
 
-    if (pre_events[cuda_stream_id])
-        CHECK_CUDA_ERROR(
-            cudaStreamWaitEvent(device.getStream(cuda_stream_id), pre_events[cuda_stream_id], 0));
     record_start_event(gpu_frame_id);
 
     CUresult err;

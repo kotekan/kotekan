@@ -17,6 +17,7 @@ cudaSyncStream::cudaSyncStream(kotekan::Config& config, const std::string& uniqu
                                bool called_by_subclasser) :
     cudaCommand(config, unique_name, host_buffers, device, "sync", "") {
     (void)called_by_subclasser;
+    command_type = gpuCommandType::BARRIER;
 }
 
 void cudaSyncStream::set_source_cuda_streams(const std::vector<int32_t>& source_cuda_streams) {

@@ -27,7 +27,9 @@ public:
 
 protected:
     /// A constructor meant to be called by subclassers who need to
-    /// override the constructor behavior
+    /// override the constructor behavior.  Specifically, this does not read the config value @c
+    /// source_cuda_stream to set the streams to be waited on, nor does it read @c cuda_stream or
+    /// set the default stream; the subclasser must do these things.
     cudaSyncStream(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
                    bool called_by_subclasser);

@@ -11,7 +11,7 @@ cudaSyncInput::cudaSyncInput(Config& config, const std::string& unique_name,
     cudaSyncStream(config, unique_name, host_buffers, device, true) {
     set_source_cuda_streams({0});
     set_command_type(gpuCommandType::KERNEL);
-    kernel_command = "sync_in";
+    kernel_command = "sync_input";
 }
 
 cudaSyncInput::~cudaSyncInput() {}
