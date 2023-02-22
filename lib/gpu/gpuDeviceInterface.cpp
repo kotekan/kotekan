@@ -6,8 +6,10 @@
 
 using kotekan::Config;
 
-gpuDeviceInterface::gpuDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_buffer_depth_) :
-    config(config_), gpu_id(gpu_id_), gpu_buffer_depth(gpu_buffer_depth_) {}
+gpuDeviceInterface::gpuDeviceInterface(Config& config, const std::string& unique_name,
+                                       int32_t gpu_id, int gpu_buffer_depth) :
+    config(config),
+    unique_name(unique_name), gpu_id(gpu_id), gpu_buffer_depth(gpu_buffer_depth) {}
 
 gpuDeviceInterface::~gpuDeviceInterface() {}
 
