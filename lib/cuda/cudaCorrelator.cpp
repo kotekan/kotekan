@@ -41,10 +41,6 @@ cudaEvent_t cudaCorrelator::execute(int gpu_frame_id, const std::vector<cudaEven
     void* output_memory =
         device.get_gpu_memory_array(_gpu_mem_correlation_triangle, gpu_frame_id, output_array_len);
 
-    if (pre_events[cuda_stream_id])
-        CHECK_CUDA_ERROR(
-            cudaStreamWaitEvent(device.getStream(cuda_stream_id), pre_events[cuda_stream_id], 0));
-
     record_start_event(gpu_frame_id);
 
     n2correlator.launch((int*)output_memory, (int8_t*)input_memory, num_subintegrations,

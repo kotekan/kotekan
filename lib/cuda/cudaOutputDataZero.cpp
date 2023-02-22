@@ -27,9 +27,6 @@ cudaEvent_t cudaOutputDataZero::execute(int gpu_frame_id,
 
     void* gpu_memory_frame = device.get_gpu_memory_array("output", gpu_frame_id, output_len);
 
-    if (pre_events[cuda_stream_id])
-        CHECK_CUDA_ERROR(
-            cudaStreamWaitEvent(device.getStream(cuda_stream_id), pre_events[cuda_stream_id], 0));
     record_start_event(gpu_frame_id);
 
     // Data transfer to GPU
