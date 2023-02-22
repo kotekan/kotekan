@@ -948,7 +948,7 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
 #else
         (void)numa_node;
         // Create a page aligned block of memory for the buffer
-        int err = posix_memalign((void**)&(frame), PAGESIZE_MEM, len)
+        int err = posix_memalign((void**)&(frame), PAGESIZE_MEM, len);
         if (err != 0) {
             ERROR_F("Error creating aligned memory: %d", err);
             return NULL;
