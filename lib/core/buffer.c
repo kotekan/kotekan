@@ -970,6 +970,8 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
             return NULL;
         }
     }
+#else
+    (void)mlock_frames;
 #endif
     // Zero the new frame
     if (zero_new_frames)
