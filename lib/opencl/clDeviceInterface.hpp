@@ -21,7 +21,8 @@
 
 class clDeviceInterface final : public gpuDeviceInterface {
 public:
-    clDeviceInterface(kotekan::Config& config_, int32_t gpu_id_, int gpu_buffer_depth_);
+    clDeviceInterface(kotekan::Config& config_, const std::string& unique_name, int32_t gpu_id_,
+                      int gpu_buffer_depth_);
     ~clDeviceInterface();
 
     void prepareCommandQueue(bool enable_profiling);
