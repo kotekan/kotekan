@@ -6,6 +6,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 #include "oneHotMetadata.hpp"  // for metadata_is_onehot, get_onehot_indices, get_onehot_frame_...
+#include "visUtil.hpp"
 
 #include <array>      // for array
 #include <atomic>     // for atomic_bool
@@ -14,7 +15,8 @@
 #include <regex>      // for match_results<>::_Base_type
 #include <stddef.h>   // for size_t
 #include <stdexcept>  // for runtime_error
-#include <vector>     // for vector
+#include <stdlib.h>
+#include <vector> // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -12,6 +12,7 @@
 
 #include <stdint.h> // for int32_t
 #include <string>   // for string
+#include <vector>
 
 /**
  * @class gpuSimulateCudaFRBBeamformer

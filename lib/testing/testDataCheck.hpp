@@ -8,6 +8,8 @@
 #include "errors.h"            // for TEST_PASSED
 #include "kotekanLogging.hpp"  // for DEBUG, INFO, ERROR, FATAL_ERROR
 
+#include "fmt.hpp"
+
 #include <assert.h>    // for assert
 #include <cstdint>     // for int32_t, uint8_t, uint32_t
 #include <exception>   // for exception
