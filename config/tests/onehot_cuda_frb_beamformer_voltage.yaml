@@ -132,32 +132,31 @@ gpu:
             host_beamgrid: host_beamgrid_buffer
             host_info: host_info_buffer
 
-# cpu_beamformer:
-#     kotekan_stage: gpuSimulateCudaBasebandBeamformer
-#     #log_level: debug
-#     # zero out the array before setting values (only needed for one-hot)?
-#     zero_output: true
-#     voltage_in_buf: host_voltage_buffer
-#     phase_in_buf: host_phase_buffer
-#     shift_in_buf: host_shift_buffer
-#     beams_out_buf: simulated_formed_beams_buffer
+cpu_beamformer:
+    kotekan_stage: gpuSimulateCudaFRBBeamformer
+    #log_level: debug
+    # zero out the array before setting values (only needed for one-hot)?
+    zero_output: true
+    voltage_in_buf: host_voltage_buffer
+    phase_in_buf: host_phase_buffer
+    beams_out_buf: simulated_beamgrid_buffer
 
-# check_data:
-#     kotekan_stage: testDataCheckUchar
-#     first_buf: host_formed_beams_buffer
-#     second_buf: simulated_formed_beams_buffer
-#     num_frames_to_test: 18 # = length of gen_data one-hot vector
+check_data:
+    kotekan_stage: testDataCheckUchar
+    first_buf: host_beamgrid_buffer
+    second_buf: simulated_beamgrid_buffer
+    num_frames_to_test: 18 # = length of gen_data one-hot vector
 
 # hexDumpGPU:
 #     log_level: debug
 #     kotekan_stage: hexDump
-#     in_buf: host_formed_beams_buffer
+#     in_buf: host_beamgrid_buffer
 #     len: 32
 
 # hexDumpCPU:
 #     log_level: debug
 #     kotekan_stage: hexDump
-#     in_buf: simulated_formed_beams_buffer
+#     in_buf: simulated_beamgrid_buffer
 #     len: 32
 
 printSparseGPU:

@@ -44,7 +44,7 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
     output_len = (size_t)_num_local_freq * _num_beams * _samples_per_data_set * 2;
     info_len = (size_t)(threads_x * threads_y * blocks_x * sizeof(int32_t));
 
-    command_type = gpuCommandType::KERNEL;
+    set_command_type(gpuCommandType::KERNEL);
 
     std::vector<std::string> opts = {
         "--gpu-name=sm_86",

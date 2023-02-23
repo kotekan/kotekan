@@ -1,6 +1,7 @@
 #include "cudaFRBBeamformer.hpp"
 
 #include "math.h"
+#include "fmt.hpp"
 
 #include <vector>
 
@@ -24,12 +25,25 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
     _gpu_mem_phase = config.get<std::string>(unique_name, "gpu_mem_phase");
     _gpu_mem_beamgrid = config.get<std::string>(unique_name, "gpu_mem_beamgrid");
     _gpu_mem_info = config.get<std::string>(unique_name, "gpu_mem_info");
-    command_type = gpuCommandType::KERNEL;
+
+    set_command_type(gpuCommandType::KERNEL);
+
     std::vector<std::string> opts = {
         "--gpu-name=sm_86",
         "--verbose",
     };
     build_ptx({kernel_name}, opts);
+
+    if (_samples_per_data_set != cuda_samples_per_data_set)
+        throw std::runtime_error(fmt::format("The samples_per_data_set config setting must be {:d} for the CUDA FRB beamformer", cuda_samples_per_data_set));
+    if (_time_downsampling != cuda_time_downsampling)
+        throw std::runtime_error(fmt::format("The time_downsampling config setting must be {:d} for the CUDA FRB beamformer", cuda_time_downsampling));
+    if (_num_dishes != cuda_num_dishes)
+        throw std::runtime_error(fmt::format("The num_dishes config setting must be {:d} for the CUDA FRB beamformer", cuda_num_dishes));
+    if (_dish_grid_size != cuda_dish_grid_size)
+        throw std::runtime_error(fmt::format("The dish_grid_size config setting must be {:d} for the CUDA FRB beamformer", cuda_dish_grid_size));
+    if (_num_local_freq != cuda_num_local_freq)
+        throw std::runtime_error(fmt::format("The num_local_freq config setting must be {:d} for the CUDA FRB beamformer", cuda_num_local_freq));
 
     // Assumption:
     int32_t dish_m = _dish_grid_size;

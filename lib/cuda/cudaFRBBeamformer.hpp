@@ -75,6 +75,14 @@ private:
     // The frb.yaml file entry like
     //    shmem_bytes: #####
     const int shared_mem_bytes = 76896;
+
+    // Compiled-in constants in the CUDA kernel
+    const int cuda_samples_per_data_set = 2064;
+    const int cuda_time_downsampling = 40;
+    const int cuda_num_dishes = 512;
+    const int cuda_dish_grid_size = 24;
+    const int cuda_num_local_freq = 84;
+
 };
 
 #endif // CUDA_FRB_BEAMFORMER_HPP
