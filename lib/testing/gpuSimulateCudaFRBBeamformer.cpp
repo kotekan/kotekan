@@ -8,12 +8,10 @@
 #include "oneHotMetadata.hpp"  // for metadata_is_onehot, get_onehot_indices, get_onehot_frame_...
 #include "visUtil.hpp"
 
-#include <array>      // for array
 #include <atomic>     // for atomic_bool
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <regex>      // for match_results<>::_Base_type
-#include <stddef.h>   // for size_t
 #include <stdexcept>  // for runtime_error
 #include <stdlib.h>
 #include <vector> // for vector
