@@ -30,7 +30,9 @@ static void frb_simple_sub(const int32_t* __restrict__ const S,
                            const int4x2_t* __restrict__ const E, float16_t* __restrict__ const I,
                            const int t_hot, const int p_hot, const int f_hot, const int d_hot);
 #else
-#warning No float16 -- cannot simulate FRB beamformer!
+//#warning No float16 -- cannot simulate FRB beamformer!
+// Fake it so that some variables declared in the rest of the code still work!
+typedef int16_t float16_t;
 #endif
 
 gpuSimulateCudaFRBBeamformer::gpuSimulateCudaFRBBeamformer(Config& config,
