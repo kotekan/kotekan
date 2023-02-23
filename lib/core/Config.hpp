@@ -86,7 +86,7 @@ public:
     }
 
     /**
-     * @brief Get a config value for a non-arithmetic type (i.e. string, vector, bool)
+     * @brief Get a config value for a non-arithmetic type (string, vector, bool, etc.)
      * @param base_path Path to the value in the config.
      * @param name      Name of the value.
      * @return  The requested value.
