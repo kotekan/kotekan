@@ -320,8 +320,8 @@ if(${COMPILE_DOCS})
 endif()
 
 # Prevent memory locking and setting any memory policies. This is useful when running in restricted
-# environments e.g. Docker containers Note this can also be done with the configuration file for
-# systems which do support memory locking, but were some memory shouldn't be memory locked.
+# environments, e.g. Docker containers.  Note this can also be done with the configuration file for
+# systems which do support memory locking, but where some memory shouldn't be memory locked.
 if(${NO_MEMLOCK})
     message("Do not lock buffer memory.")
     add_definitions(-DWITH_NO_MEMLOCK)
