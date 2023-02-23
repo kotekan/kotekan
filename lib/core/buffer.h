@@ -229,11 +229,14 @@ struct Buffer {
  * @param[in] numa_node The CPU NUMA memory region to allocate memory in.+
  * @param[in] use_huge_pages Map huge pages with mmap
  * @param[in] mlock_frames If set, mlock the pages of the frame memory
+ * @param[in] zero_new_frames In theory some memory allocators don't zero new allocations
+ *                            so by default we zero new frames on startup, but this is expensive
+ *                            and can be disabled by setting this to false.
  * @returns A buffer object.
  */
 struct Buffer* create_buffer(int num_frames, size_t frame_size, struct metadataPool* pool,
                              const char* buffer_name, const char* buffer_type, int numa_node,
-                             bool use_huge_pages, bool mlock_frames);
+                             bool use_huge_pages, bool mlock_frames, bool zero_new_frames);
 
 /**
  * @brief Deletes a buffer object and frees all frame memory
@@ -478,9 +481,11 @@ void swap_frames(struct Buffer* from_buf, int from_frame_id, struct Buffer* to_b
  * @param numa_node The CPU NUMA region to allocate the memory in.
  * @param use_huge_pages Use mmap to allocate huge pages for frames
  * @param memlock_frames Use mlock to lock frame pages
+ * @param zero_new_frames If true, new frames are zeroed with memset
  * @return A pointer to the new memory, or @c NULL if allocation failed.
  */
-uint8_t* buffer_malloc(size_t len, int numa_node, bool use_huge_pages, bool memlock_frames);
+uint8_t* buffer_malloc(size_t len, int numa_node, bool use_huge_pages, bool memlock_frames,
+                       bool zero_new_frames);
 
 /**
  * @brief Deallocate a frame of memory with the required free method.
