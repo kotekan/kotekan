@@ -71,11 +71,11 @@ int private_mark_frame_empty(struct Buffer* buf, const int id);
 
 struct Buffer* create_buffer(int num_frames, size_t len, struct metadataPool* pool,
                              const char* buffer_name, const char* buffer_type, int numa_node,
-                             bool use_hugepages, bool mlock_frames) {
+                             bool use_hugepages, bool mlock_frames, bool zero_new_frames) {
 
     assert(num_frames > 0);
 
-#ifdef WITH_NUMA
+#if defined(WITH_NUMA) && !defined(WITH_NO_MEMLOCK)
     // Allocate all memory for a buffer on the NUMA domain it's frames are located.
     struct bitmask* node_mask = numa_allocate_nodemask();
     numa_bitmask_setbit(node_mask, numa_node);
@@ -170,13 +170,13 @@ struct Buffer* create_buffer(int num_frames, size_t len, struct metadataPool* po
 
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
-        buf->frames[i] =
-            buffer_malloc(buf->aligned_frame_size, numa_node, use_hugepages, mlock_frames);
+        buf->frames[i] = buffer_malloc(buf->aligned_frame_size, numa_node, use_hugepages,
+                                       mlock_frames, zero_new_frames);
         if (buf->frames[i] == NULL)
             return NULL;
     }
 
-#ifdef WITH_NUMA
+#if defined(WITH_NUMA) && !defined(WITH_NO_MEMLOCK)
     // Reset the memory policy so that we don't impact other parts of the
     if (set_mempolicy(MPOL_DEFAULT, NULL, 0) < 0) {
         ERROR_F("Failed to reset the memory policy to default: %s (%d)", strerror(errno), errno);
@@ -903,13 +903,12 @@ void safe_swap_frame(struct Buffer* src_buf, int src_frame_id, struct Buffer* de
     }
 }
 
-uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock_frames) {
+uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock_frames,
+                       bool zero_new_frames) {
 
     uint8_t* frame = NULL;
-    int err;
 
 #ifdef WITH_HSA // Support for legacy HSA support used in CHIME
-    (void)err;
     frame = hsa_host_malloc(len, numa_node);
     if (frame == NULL) {
         return NULL;
@@ -949,28 +948,31 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
 #else
         (void)numa_node;
         // Create a page aligned block of memory for the buffer
-        err = posix_memalign((void**)&(frame), PAGESIZE_MEM, len);
-        CHECK_MEM_F(frame);
+        int err = posix_memalign((void**)&(frame), PAGESIZE_MEM, len);
         if (err != 0) {
             ERROR_F("Error creating aligned memory: %d", err);
             return NULL;
         }
+        CHECK_MEM_F(frame);
 #endif
     }
 #endif
 
+#ifndef WITH_NO_MEMLOCK
     if (mlock_frames) {
         // Ask that all pages be kept in memory
-        err = mlock((void*)frame, len);
-
-        if (err == -1) {
+        if (mlock((void*)frame, len) != 0) {
             ERROR_F("Error locking memory: %d - check ulimit -a to check memlock limits", errno);
-            free(frame);
+            buffer_free(frame, len, use_hugepages);
             return NULL;
         }
     }
+#else
+    (void)mlock_frames;
+#endif
     // Zero the new frame
-    memset(frame, 0x0, len);
+    if (zero_new_frames)
+        memset(frame, 0x0, len);
 
     return frame;
 }
