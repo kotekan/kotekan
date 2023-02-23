@@ -26,7 +26,14 @@ static void frb_simple(const int32_t *__restrict__ const S,
                        const float16_t *__restrict__ const W,
                        const int4x2_t *__restrict__ const E,
                        float16_t *__restrict__ const I);
-
+static void frb_simple_sub(const int32_t *__restrict__ const S,
+                           const float16_t *__restrict__ const W,
+                           const int4x2_t *__restrict__ const E,
+                           float16_t *__restrict__ const I,
+                           const int t_hot,
+                           const int p_hot,
+                           const int f_hot,
+                           const int d_hot);
 
 gpuSimulateCudaFRBBeamformer::gpuSimulateCudaFRBBeamformer(
     Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
@@ -38,6 +45,7 @@ gpuSimulateCudaFRBBeamformer::gpuSimulateCudaFRBBeamformer(
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
     _time_downsampling = config.get<int>(unique_name, "time_downsampling");
     _dishlayout = config.get<std::vector<int>>(unique_name, "frb_beamformer_dish_layout");
+    bool zero_output = config.get_default<bool>(unique_name, "zero_output", false);
 
     voltage_buf = get_buffer("voltage_in_buf");
     phase_buf = get_buffer("phase_in_buf");
@@ -47,6 +55,8 @@ gpuSimulateCudaFRBBeamformer::gpuSimulateCudaFRBBeamformer(
     //register_consumer(dishlayoutshift_buf, unique_name.c_str());
     beamgrid_buf = get_buffer("beams_out_buf");
     register_producer(beamgrid_buf, unique_name.c_str());
+    if (zero_output)
+        zero_frames(beamgrid_buf);
 }
 
 gpuSimulateCudaFRBBeamformer::~gpuSimulateCudaFRBBeamformer() {}
@@ -102,11 +112,11 @@ void gpuSimulateCudaFRBBeamformer::main_thread() {
                 int p = inds[1];
                 int f = inds[2];
                 int d = inds[3];
-                int b = -1;
                 INFO("One-hot voltage buffer: time {:d} pol {:d}, freq {:d}, dish {:d}", t, p, f,
                      d);
                 /////// DO WORK
-                //done = true;
+                frb_simple_sub(S, phase, voltage, output, t, p, f, d);
+                done = true;
             }
         }
 
@@ -197,6 +207,35 @@ static void frb_simple(const int32_t *__restrict__ const S,
                        const float16_t *__restrict__ const W,
                        const int4x2_t *__restrict__ const E,
                        float16_t *__restrict__ const I) {
+    frb_simple_sub(S, W, E, I, -1, -1, -1, -1);
+}
+
+static void frb_simple_sub(const int32_t *__restrict__ const S,
+                           const float16_t *__restrict__ const W,
+                           const int4x2_t *__restrict__ const E,
+                           float16_t *__restrict__ const I,
+                           const int t,
+                           const int p,
+                           const int f,
+                           const int d) {
+    const int f0 = (f == -1 ? 0 : f);
+    const int f1 = (f == -1 ? F : f + 1);
+    const int p0 = (p == -1 ? 0 : p);
+    const int p1 = (p == -1 ? 2 : p + 1);
+    int t0, t1;
+    int tds = 0;
+    if (t == -1) {
+        t0 = -1;
+        t1 = -1;
+    } else {
+        tds = (t / Tds);
+        t0 = tds * Tds;
+        t1 = t0 + Tds;
+    }
+    INFO_NON_OO("frb_simple_sub: t = {:d} -> t0 = {:d}, t1 = {:d}", t, t0, t1);
+    const int d0 = (d == -1 ? 0 : d);
+    const int d1 = (d == -1 ? D : d + 1);
+
     // Check consistency of `S`
     {
         std::vector<bool> E1(M * N, false);
@@ -207,21 +246,20 @@ static void frb_simple(const int32_t *__restrict__ const S,
     }
 
     //#pragma omp parallel for
-    for (int freq = 0; freq < F; ++freq) {
+    for (int freq = f0; freq < f1; ++freq) {
 
         float I1[(2 * M) * (2 * N)];
-        int tds = 0;
         int t_running = 0;
         for (int q = 0; q < 2 * N; ++q)
             for (int p = 0; p < 2 * M; ++p)
                 I1[p + 2 * M * q] = 0;
 
-        for (int time = 0; time < T; ++time) {
-            for (int polr = 0; polr < P; ++polr) {
+        for (int time = t0; time < t1; ++time) {
+            for (int polr = p0; polr < p1; ++polr) {
 
                 // grid the dishes
                 std::complex<float> E1[M * N];
-                for (int d = 0; d < D; ++d)
+                for (int d = d0; d < d1; ++d)
                     E1[S[d]] = std::complex<float>(
                                                    get4(E[d + D * freq + D * F * polr + D * F * P * time])[1],
                                                    get4(E[d + D * freq + D * F * polr + D * F * P * time])[0]);
@@ -267,6 +305,8 @@ static void frb_simple(const int32_t *__restrict__ const S,
 
             t_running += 1;
             if (t_running == Tds) {
+                INFO_NON_OO("frb_simple_sub: hit t_running == Tds, time = {:d}, tds = {:d}",
+                            time, tds);
                 for (int q = 0; q < 2 * N; ++q)
                     for (int p = 0; p < 2 * M; ++p)
                                     I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
