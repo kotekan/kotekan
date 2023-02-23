@@ -22,12 +22,16 @@ using kotekan::Config;
 REGISTER_KOTEKAN_STAGE(gpuSimulateCudaFRBBeamformer);
 
 using int4x2_t = uint8_t;
+#if KOTEKAN_FLOAT16
 static void frb_simple(const int32_t* __restrict__ const S, const float16_t* __restrict__ const W,
                        const int4x2_t* __restrict__ const E, float16_t* __restrict__ const I);
 static void frb_simple_sub(const int32_t* __restrict__ const S,
                            const float16_t* __restrict__ const W,
                            const int4x2_t* __restrict__ const E, float16_t* __restrict__ const I,
                            const int t_hot, const int p_hot, const int f_hot, const int d_hot);
+#else
+#warning No float16 -- cannot simulate FRB beamformer!
+#endif
 
 gpuSimulateCudaFRBBeamformer::gpuSimulateCudaFRBBeamformer(Config& config,
                                                            const std::string& unique_name,
@@ -44,10 +48,8 @@ gpuSimulateCudaFRBBeamformer::gpuSimulateCudaFRBBeamformer(Config& config,
 
     voltage_buf = get_buffer("voltage_in_buf");
     phase_buf = get_buffer("phase_in_buf");
-    // dishlayout_buf = get_buffer("dashlayout_in_buf");
     register_consumer(voltage_buf, unique_name.c_str());
     register_consumer(phase_buf, unique_name.c_str());
-    // register_consumer(dishlayoutshift_buf, unique_name.c_str());
     beamgrid_buf = get_buffer("beams_out_buf");
     register_producer(beamgrid_buf, unique_name.c_str());
     if (zero_output)
@@ -109,9 +111,10 @@ void gpuSimulateCudaFRBBeamformer::main_thread() {
                 int d = inds[3];
                 INFO("One-hot voltage buffer: time {:d} pol {:d}, freq {:d}, dish {:d}", t, p, f,
                      d);
-                /////// DO WORK
+#if KOTEKAN_FLOAT16
                 frb_simple_sub(S, phase, voltage, output, t, p, f, d);
                 done = true;
+#endif
             }
         }
 
@@ -126,7 +129,6 @@ void gpuSimulateCudaFRBBeamformer::main_thread() {
                 int b = inds[2];
                 int d = inds[3];
                 // real/imag = inds[4]
-                int t = -1;
                 INFO("One-hot phase buffer: freq {:d} pol {:d}, beam {:d}, dish {:d}", f, p, b, d);
                 /////// DO WORK
                 // done = true;
@@ -134,8 +136,9 @@ void gpuSimulateCudaFRBBeamformer::main_thread() {
         }
 
         if (!done) {
-            /////// DO WORK
+#if KOTEKAN_FLOAT16
             frb_simple(S, phase, voltage, output);
+#endif
         }
 
         DEBUG("Simulated GPU processing done for {:s}[{:d}], result is in {:s}[{:d}]",
@@ -159,7 +162,8 @@ void gpuSimulateCudaFRBBeamformer::main_thread() {
     free(S);
 }
 
-/// This is from https://github.com/eschnett/IndexSpaces.jl/blob/main/kernels/frb.cxx
+#if KOTEKAN_FLOAT16
+/// This is modified from https://github.com/eschnett/IndexSpaces.jl/blob/main/kernels/frb.cxx
 
 using namespace std::complex_literals;
 using std::norm;
@@ -319,3 +323,4 @@ static void frb_simple_sub(const int32_t* __restrict__ const S,
 
     } // for freq
 }
+#endif
