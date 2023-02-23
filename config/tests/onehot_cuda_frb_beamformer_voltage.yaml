@@ -105,12 +105,14 @@ gpu:
     - name: cudaInputData
       in_buf: host_phase
       gpu_mem: phase
+    - name: cudaSyncInput
     - name: cudaFRBBeamformer
       gpu_mem_voltage: voltage
       gpu_mem_phase: phase
       gpu_mem_dishlayout: dishlayout
       gpu_mem_beamgrid: beamgrid
       gpu_mem_info: info
+    - name: cudaSyncOutput
     - name: cudaOutputData
       in_buf: host_voltage # Metadata transfer from here
       gpu_mem: beamgrid
