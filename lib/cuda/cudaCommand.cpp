@@ -17,37 +17,79 @@ cudaCommand::cudaCommand(Config& config_, const std::string& unique_name_,
     gpuCommand(config_, unique_name_, host_buffers_, device_, default_kernel_command,
                default_kernel_file_name),
     device(device_) {
-    pre_events = (cudaEvent_t*)malloc(_gpu_buffer_depth * sizeof(cudaEvent_t));
-    post_events = (cudaEvent_t*)malloc(_gpu_buffer_depth * sizeof(cudaEvent_t));
+    start_events = (cudaEvent_t*)malloc(_gpu_buffer_depth * sizeof(cudaEvent_t));
+    end_events = (cudaEvent_t*)malloc(_gpu_buffer_depth * sizeof(cudaEvent_t));
     for (int j = 0; j < _gpu_buffer_depth; ++j) {
-        pre_events[j] = nullptr;
-        post_events[j] = nullptr;
+        start_events[j] = nullptr;
+        end_events[j] = nullptr;
+    }
+}
+
+void cudaCommand::set_command_type(const gpuCommandType& type) {
+    command_type = type;
+    // Use the cuda_stream if provided
+    cuda_stream_id = config.get_default<int32_t>(unique_name, "cuda_stream", -1);
+
+    if (cuda_stream_id >= device.get_num_streams()) {
+        throw std::runtime_error(
+            "Asked for a CUDA stream greater than the maximum number available");
+    }
+    // If the stream is set (not -1), we don't need to set a default below.
+    if (cuda_stream_id >= 0)
+        return;
+
+    // If no stream set use a default stream, or generate an error
+    switch (command_type) {
+        case gpuCommandType::NOT_SET:
+            throw std::runtime_error("No command type set");
+            break;
+        case gpuCommandType::COPY_IN:
+            cuda_stream_id = 0;
+            break;
+        case gpuCommandType::COPY_OUT:
+            cuda_stream_id = 1;
+            break;
+        case gpuCommandType::KERNEL:
+            cuda_stream_id = 2;
+            break;
+        case gpuCommandType::BARRIER:
+            throw std::runtime_error("cuda_stream required for barrier type command object");
+            break;
+        default:
+            throw std::runtime_error("Invalid GPU Command type");
     }
 }
 
 cudaCommand::~cudaCommand() {
-    free(pre_events);
-    free(post_events);
+    free(start_events);
+    free(end_events);
     DEBUG("post_events Freed: {:s}", unique_name.c_str());
 }
 
 void cudaCommand::finalize_frame(int gpu_frame_id) {
-    if (post_events[gpu_frame_id] != nullptr) {
+    if (start_events[gpu_frame_id] != nullptr) {
         if (profiling) {
             float exec_time;
-            CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, pre_events[gpu_frame_id],
-                                                  post_events[gpu_frame_id]));
+            CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_events[gpu_frame_id],
+                                                  start_events[gpu_frame_id]));
             double active_time = exec_time * 1e-3; // convert ms to s
             excute_time->add_sample(active_time);
             utilization->add_sample(active_time / frame_arrival_period);
         }
-        CHECK_CUDA_ERROR(cudaEventDestroy(pre_events[gpu_frame_id]));
-        pre_events[gpu_frame_id] = nullptr;
-        CHECK_CUDA_ERROR(cudaEventDestroy(post_events[gpu_frame_id]));
-        post_events[gpu_frame_id] = nullptr;
-    } else {
-        FATAL_ERROR("Null event in cudaCommand {:s}, this should never happen!", unique_name);
+        if (start_events[gpu_frame_id])
+            CHECK_CUDA_ERROR(cudaEventDestroy(start_events[gpu_frame_id]));
+        start_events[gpu_frame_id] = nullptr;
     }
+    if (end_events[gpu_frame_id] != nullptr) {
+        CHECK_CUDA_ERROR(cudaEventDestroy(end_events[gpu_frame_id]));
+        end_events[gpu_frame_id] = nullptr;
+    } else {
+        FATAL_ERROR("Null end event in cudaCommand {:s}, this should never happen!", unique_name);
+    }
+}
+
+int32_t cudaCommand::get_cuda_stream_id() {
+    return cuda_stream_id;
 }
 
 void cudaCommand::build(const std::vector<std::string>& kernel_names,
@@ -61,7 +103,7 @@ void cudaCommand::build(const std::vector<std::string>& kernel_names,
 
     // Load the kernel file contents into `program_buffer`
     fp = fopen(kernel_file_name.c_str(), "r");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         FATAL_ERROR("error loading file: {:s}", kernel_file_name.c_str());
     }
     fseek(fp, 0, SEEK_END);
@@ -77,7 +119,7 @@ void cudaCommand::build(const std::vector<std::string>& kernel_names,
 
     // Create the program object
     nvrtcProgram prog;
-    res = nvrtcCreateProgram(&prog, program_buffer, kernel_command.c_str(), 0, NULL, NULL);
+    res = nvrtcCreateProgram(&prog, program_buffer, kernel_command.c_str(), 0, nullptr, nullptr);
     if (res != NVRTC_SUCCESS) {
         const char* error_str = nvrtcGetErrorString(res);
         INFO("ERROR IN nvrtcCreateProgram: {}", error_str);
@@ -124,7 +166,7 @@ void cudaCommand::build(const std::vector<std::string>& kernel_names,
     CUresult err;
     CUmodule module;
     // Get the module with the kernels
-    err = cuModuleLoadDataEx(&module, ptx, 0, NULL, NULL);
+    err = cuModuleLoadDataEx(&module, ptx, 0, nullptr, nullptr);
     if (err != CUDA_SUCCESS) {
         const char* errStr;
         cuGetErrorString(err, &errStr);
@@ -275,4 +317,18 @@ void cudaCommand::build_ptx(const std::vector<std::string>& kernel_names,
     }
 
     free(elf);
+}
+
+void cudaCommand::record_start_event(int gpu_frame_id) {
+    if (profiling) {
+        CHECK_CUDA_ERROR(cudaEventCreate(&start_events[gpu_frame_id]));
+        CHECK_CUDA_ERROR(
+            cudaEventRecord(start_events[gpu_frame_id], device.getStream(cuda_stream_id)));
+    }
+}
+
+cudaEvent_t cudaCommand::record_end_event(int gpu_frame_id) {
+    CHECK_CUDA_ERROR(cudaEventCreate(&end_events[gpu_frame_id]));
+    CHECK_CUDA_ERROR(cudaEventRecord(end_events[gpu_frame_id], device.getStream(cuda_stream_id)));
+    return end_events[gpu_frame_id];
 }

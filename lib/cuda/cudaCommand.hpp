@@ -23,6 +23,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <string>
+#include <vector>
 
 /**
  * @class cudaCommand
@@ -32,7 +33,11 @@
  * Kernels and other operations (I/O) should derive from this class,
  * which handles a lot of queueing and device interface issues.
  *
- * @author Keith Vanderlinde
+ * @conf cuda_stream  The ID of the CUDA stream to use for this command, defaults to one of
+ *                    0, 1, 2, for command types COPY_IN, COPY_OUT, and KERNEL respectively.
+ *                    This number must be less than @c num_cuda_streams set in cudaProcess.
+ *
+ * @author Keith Vanderlinde and Andre Renard
  */
 class cudaCommand : public gpuCommand {
 public:
@@ -67,21 +72,37 @@ public:
     /**
      * @brief Execute a kernel, copy, etc.
      * @param gpu_frame_id  The bufferID associated with the GPU commands.
-     * @param pre_event     The preceeding event in a sequence of chained event sequence of
-     *                      commands.
+     * @param pre_events    Array of the last events from each cuda stream, indexed by stream
+     *                      number.
      **/
-    virtual cudaEvent_t execute(int gpu_frame_id, cudaEvent_t pre_event) = 0;
+    virtual cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) = 0;
 
     /** Releases the memory of the event chain arrays per buffer_id
      * @param gpu_frame_id    The bufferID to release all the memory references for.
      **/
     virtual void finalize_frame(int gpu_frame_id) override;
 
+    /// Returns the id of the cuda stream used by the command object
+    int32_t get_cuda_stream_id();
+
 protected:
-    cudaEvent_t* post_events; // tracked locally for cleanup
-    cudaEvent_t* pre_events;  // tracked locally for cleanup
+    void set_command_type(const gpuCommandType& type);
+
+    // For subclassers to call to create & record GPU starting events, IFF profiling is on.
+    void record_start_event(int gpu_frame_id);
+
+    // For subclassers to call to create & record GPU ending events.
+    cudaEvent_t record_end_event(int gpu_frame_id);
+
+    /// Events queued after the kernel/copy for synchronization and profiling
+    cudaEvent_t* end_events;
+    /// Extra events created at the start of kernels/copies for profiling
+    cudaEvent_t* start_events;
 
     cudaDeviceInterface& device;
+
+    /// The ID of the cuda stream to run operations on
+    int32_t cuda_stream_id;
 
     // Map containing the runtime kernels built with nvrtc from the kernel file (if needed)
     std::map<std::string, CUfunction> runtime_kernels;

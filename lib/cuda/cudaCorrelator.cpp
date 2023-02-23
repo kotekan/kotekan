@@ -23,12 +23,12 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
         throw std::runtime_error(
             "The sub_integration_ntime parameter must evenly divide samples_per_data_set");
 
-    command_type = gpuCommandType::KERNEL;
+    set_command_type(gpuCommandType::KERNEL);
 }
 
 cudaCorrelator::~cudaCorrelator() {}
 
-cudaEvent_t cudaCorrelator::execute(int gpu_frame_id, cudaEvent_t pre_event) {
+cudaEvent_t cudaCorrelator::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {
     pre_execute(gpu_frame_id);
 
     uint32_t input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
@@ -41,20 +41,12 @@ cudaEvent_t cudaCorrelator::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     void* output_memory =
         device.get_gpu_memory_array(_gpu_mem_correlation_triangle, gpu_frame_id, output_array_len);
 
-    if (pre_event)
-        CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(CUDA_COMPUTE_STREAM), pre_event, 0));
-    CHECK_CUDA_ERROR(cudaEventCreate(&pre_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(
-        cudaEventRecord(pre_events[gpu_frame_id], device.getStream(CUDA_COMPUTE_STREAM)));
+    record_start_event(gpu_frame_id);
 
     n2correlator.launch((int*)output_memory, (int8_t*)input_memory, num_subintegrations,
-                        _sub_integration_ntime, device.getStream(CUDA_COMPUTE_STREAM));
+                        _sub_integration_ntime, device.getStream(cuda_stream_id));
 
     CHECK_CUDA_ERROR(cudaGetLastError());
 
-    CHECK_CUDA_ERROR(cudaEventCreate(&post_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(
-        cudaEventRecord(post_events[gpu_frame_id], device.getStream(CUDA_COMPUTE_STREAM)));
-
-    return post_events[gpu_frame_id];
+    return record_end_event(gpu_frame_id);
 }

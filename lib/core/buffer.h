@@ -31,10 +31,10 @@ extern "C" {
 
 #include "metadata.h" // for metadataPool
 
-#include <pthread.h>   // for pthread_cond_t, pthread_mutex_t
-#include <stdint.h>    // for uint8_t
-#include <sys/types.h> // for ssize_t
-#include <time.h>      // for size_t, timespec
+#include <pthread.h> // for pthread_cond_t, pthread_mutex_t
+#include <stdbool.h> // for bool
+#include <stdint.h>  // for uint8_t
+#include <time.h>    // for size_t, timespec
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
@@ -116,6 +116,9 @@ struct StageInfo {
  * @conf frame_size The size of the individual ring frames in bytes
  * @conf num_frames The buffer depth of size of the ring
  * @conf metadata_pool The name of the metadata pool to associate with the buffer
+ * @conf numa_node The NUMA domain to mbind the memory into.  Default: 1
+ * @conf use_hugepages Allocate 2MB huge pages for the frames. Default: false
+ * @conf mlock_frames Lock the frame pages with mlock Default: true
  *
  * See metadata.h for more information on metadata pools
  *
@@ -200,6 +203,15 @@ struct Buffer {
 
     /// The type of the buffer for use in writing data.
     char* buffer_type;
+
+    /// This buffer use huge pages for its frames if the following is true
+    bool use_hugepages;
+
+    /// The buffer has page locked memory frames
+    bool mlock_frames;
+
+    /// The NUMA node the frames are allocated in
+    int numa_node;
 };
 
 /**
@@ -214,11 +226,17 @@ struct Buffer {
  * @param[in] pool The metadataPool, which may be shared between more than one buffer.
  * @param[in] buffer_name The unique name of this buffer.
  * @param[in] buffer_type The type of data this buffer contains.
- * @param[in] numa_node The CPU NUMA memory region to allocate memory in.
+ * @param[in] numa_node The CPU NUMA memory region to allocate memory in.+
+ * @param[in] use_huge_pages Map huge pages with mmap
+ * @param[in] mlock_frames If set, mlock the pages of the frame memory
+ * @param[in] zero_new_frames In theory some memory allocators don't zero new allocations
+ *                            so by default we zero new frames on startup, but this is expensive
+ *                            and can be disabled by setting this to false.
  * @returns A buffer object.
  */
 struct Buffer* create_buffer(int num_frames, size_t frame_size, struct metadataPool* pool,
-                             const char* buffer_name, const char* buffer_type, int numa_node);
+                             const char* buffer_name, const char* buffer_type, int numa_node,
+                             bool use_huge_pages, bool mlock_frames, bool zero_new_frames);
 
 /**
  * @brief Deletes a buffer object and frees all frame memory
@@ -461,17 +479,22 @@ void swap_frames(struct Buffer* from_buf, int from_frame_id, struct Buffer* to_b
  *
  * @param len The size of the frame to allocate in bytes.
  * @param numa_node The CPU NUMA region to allocate the memory in.
+ * @param use_huge_pages Use mmap to allocate huge pages for frames
+ * @param memlock_frames Use mlock to lock frame pages
+ * @param zero_new_frames If true, new frames are zeroed with memset
  * @return A pointer to the new memory, or @c NULL if allocation failed.
  */
-uint8_t* buffer_malloc(ssize_t len, int numa_node);
+uint8_t* buffer_malloc(size_t len, int numa_node, bool use_huge_pages, bool memlock_frames,
+                       bool zero_new_frames);
 
 /**
  * @brief Deallocate a frame of memory with the required free method.
  *
  * @param frame_pointer The pointer to the memory to free.
  * @param size The size of the memory space to free (needed for NUMA)
+ * @param use_huge_pages Toggles the type of "free" call used, must match @c buffer_malloc type
  */
-void buffer_free(uint8_t* frame_pointer, size_t size);
+void buffer_free(uint8_t* frame_pointer, size_t size, bool use_huge_pages);
 
 /**
  * @brief Gets the raw metadata block for the given frame

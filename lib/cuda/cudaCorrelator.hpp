@@ -41,7 +41,7 @@ public:
     cudaCorrelator(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaCorrelator();
-    cudaEvent_t execute(int gpu_frame_id, cudaEvent_t pre_event) override;
+    cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) override;
 
 protected:
 private:
