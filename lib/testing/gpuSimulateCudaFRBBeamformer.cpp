@@ -22,21 +22,16 @@ using kotekan::Config;
 REGISTER_KOTEKAN_STAGE(gpuSimulateCudaFRBBeamformer);
 
 using int4x2_t = uint8_t;
-static void frb_simple(const int32_t *__restrict__ const S,
-                       const float16_t *__restrict__ const W,
-                       const int4x2_t *__restrict__ const E,
-                       float16_t *__restrict__ const I);
-static void frb_simple_sub(const int32_t *__restrict__ const S,
-                           const float16_t *__restrict__ const W,
-                           const int4x2_t *__restrict__ const E,
-                           float16_t *__restrict__ const I,
-                           const int t_hot,
-                           const int p_hot,
-                           const int f_hot,
-                           const int d_hot);
+static void frb_simple(const int32_t* __restrict__ const S, const float16_t* __restrict__ const W,
+                       const int4x2_t* __restrict__ const E, float16_t* __restrict__ const I);
+static void frb_simple_sub(const int32_t* __restrict__ const S,
+                           const float16_t* __restrict__ const W,
+                           const int4x2_t* __restrict__ const E, float16_t* __restrict__ const I,
+                           const int t_hot, const int p_hot, const int f_hot, const int d_hot);
 
-gpuSimulateCudaFRBBeamformer::gpuSimulateCudaFRBBeamformer(
-    Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
+gpuSimulateCudaFRBBeamformer::gpuSimulateCudaFRBBeamformer(Config& config,
+                                                           const std::string& unique_name,
+                                                           bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&gpuSimulateCudaFRBBeamformer::main_thread, this)) {
     _num_dishes = config.get<int>(unique_name, "num_dishes");
@@ -49,10 +44,10 @@ gpuSimulateCudaFRBBeamformer::gpuSimulateCudaFRBBeamformer(
 
     voltage_buf = get_buffer("voltage_in_buf");
     phase_buf = get_buffer("phase_in_buf");
-    //dishlayout_buf = get_buffer("dashlayout_in_buf");
+    // dishlayout_buf = get_buffer("dashlayout_in_buf");
     register_consumer(voltage_buf, unique_name.c_str());
     register_consumer(phase_buf, unique_name.c_str());
-    //register_consumer(dishlayoutshift_buf, unique_name.c_str());
+    // register_consumer(dishlayoutshift_buf, unique_name.c_str());
     beamgrid_buf = get_buffer("beams_out_buf");
     register_producer(beamgrid_buf, unique_name.c_str());
     if (zero_output)
@@ -68,8 +63,8 @@ void gpuSimulateCudaFRBBeamformer::main_thread() {
     int phase_frame_id = 0;
 
     int32_t* S = (int32_t*)malloc(_dish_grid_size * _dish_grid_size * sizeof(int32_t));
-    for (size_t i = 0; i < _dishlayout.size()/2; i++)
-        S[i] = _dish_grid_size * _dishlayout[i*2+0] + _dishlayout[i*2+1];
+    for (size_t i = 0; i < _dishlayout.size() / 2; i++)
+        S[i] = _dish_grid_size * _dishlayout[i * 2 + 0] + _dishlayout[i * 2 + 1];
 
     while (!stop_thread) {
         int4x2_t* voltage =
@@ -134,7 +129,7 @@ void gpuSimulateCudaFRBBeamformer::main_thread() {
                 int t = -1;
                 INFO("One-hot phase buffer: freq {:d} pol {:d}, beam {:d}, dish {:d}", f, p, b, d);
                 /////// DO WORK
-                //done = true;
+                // done = true;
             }
         }
 
@@ -144,7 +139,8 @@ void gpuSimulateCudaFRBBeamformer::main_thread() {
         }
 
         DEBUG("Simulated GPU processing done for {:s}[{:d}], result is in {:s}[{:d}]",
-              voltage_buf->buffer_name, voltage_frame_id, beamgrid_buf->buffer_name, beamgrid_frame_id);
+              voltage_buf->buffer_name, voltage_frame_id, beamgrid_buf->buffer_name,
+              beamgrid_frame_id);
 
         pass_metadata(voltage_buf, voltage_frame_id, beamgrid_buf, beamgrid_frame_id);
         mark_frame_empty(voltage_buf, unique_name.c_str(), voltage_frame_id);
@@ -161,7 +157,6 @@ void gpuSimulateCudaFRBBeamformer::main_thread() {
         }
     }
     free(S);
-
 }
 
 /// This is from https://github.com/eschnett/IndexSpaces.jl/blob/main/kernels/frb.cxx
@@ -172,18 +167,20 @@ using std::polar;
 
 // Kernel parameters
 
-constexpr int C = 2;  // number of complex components
+constexpr int C = 2;    // number of complex components
 constexpr int T = 2064; // number of times
-constexpr int M = 24;  // number of beams
-constexpr int N = 24;  // number of beams
-constexpr int D = 512; // number of dishes
-constexpr int P = 2;   // number of polarizations
-constexpr int F = 84; // frequency channels per GPU
+constexpr int M = 24;   // number of beams
+constexpr int N = 24;   // number of beams
+constexpr int D = 512;  // number of dishes
+constexpr int P = 2;    // number of polarizations
+constexpr int F = 84;   // frequency channels per GPU
 constexpr int Tds = 40; // time downsampling factor
 
 
 // Integer divide, rounding up (towards positive infinity)
-constexpr int cld(const int x, const int y) { return (x + y - 1) / y; }
+constexpr int cld(const int x, const int y) {
+    return (x + y - 1) / y;
+}
 
 // 4-bit integers
 
@@ -194,30 +191,25 @@ constexpr int4x2_t set4(const int8_t lo, const int8_t hi) {
 
 constexpr std::array<int8_t, 2> get4(const int4x2_t i) {
     return {int8_t(int8_t((i + 0x08) & 0x0f) - 0x08),
-        int8_t(int8_t(((i >> 4) + 0x08) & 0x0f) - 0x08)};
+            int8_t(int8_t(((i >> 4) + 0x08) & 0x0f) - 0x08)};
 }
 
-template <typename T> inline std::complex<T> cispi(const T x) {
+template<typename T>
+inline std::complex<T> cispi(const T x) {
     // return exp(T(M_PI) * x * std::complex<T>(0, 1));
     return polar(T(1), T(M_PI) * x);
     // return std::complex<T>(cos(T(M_PI) * x), sin(T(M_PI) * x));
 }
 
-static void frb_simple(const int32_t *__restrict__ const S,
-                       const float16_t *__restrict__ const W,
-                       const int4x2_t *__restrict__ const E,
-                       float16_t *__restrict__ const I) {
+static void frb_simple(const int32_t* __restrict__ const S, const float16_t* __restrict__ const W,
+                       const int4x2_t* __restrict__ const E, float16_t* __restrict__ const I) {
     frb_simple_sub(S, W, E, I, -1, -1, -1, -1);
 }
 
-static void frb_simple_sub(const int32_t *__restrict__ const S,
-                           const float16_t *__restrict__ const W,
-                           const int4x2_t *__restrict__ const E,
-                           float16_t *__restrict__ const I,
-                           const int t,
-                           const int p,
-                           const int f,
-                           const int d) {
+static void frb_simple_sub(const int32_t* __restrict__ const S,
+                           const float16_t* __restrict__ const W,
+                           const int4x2_t* __restrict__ const E, float16_t* __restrict__ const I,
+                           const int t, const int p, const int f, const int d) {
     const int f0 = (f == -1 ? 0 : f);
     const int f1 = (f == -1 ? F : f + 1);
     const int p0 = (p == -1 ? 0 : p);
@@ -261,8 +253,8 @@ static void frb_simple_sub(const int32_t *__restrict__ const S,
                 std::complex<float> E1[M * N];
                 for (int d = d0; d < d1; ++d)
                     E1[S[d]] = std::complex<float>(
-                                                   get4(E[d + D * freq + D * F * polr + D * F * P * time])[1],
-                                                   get4(E[d + D * freq + D * F * polr + D * F * P * time])[0]);
+                        get4(E[d + D * freq + D * F * polr + D * F * P * time])[1],
+                        get4(E[d + D * freq + D * F * polr + D * F * P * time])[0]);
                 for (int d = D; d < M * N; ++d)
                     E1[S[d]] = 0;
 
@@ -273,10 +265,8 @@ static void frb_simple_sub(const int32_t *__restrict__ const S,
                         std::complex<float> s = 0;
                         for (int n = 0; n < N; ++n) {
                             const std::complex<float> w(
-                                                                          W[0 + C * m + C * M * n + C * M * N * freq +
-                                                                            C * M * N * F * polr],
-                                                                                            W[1 + C * m + C * M * n + C * M * N * freq +
-                                                                                              C * M * N * F * polr]);
+                                W[0 + C * m + C * M * n + C * M * N * freq + C * M * N * F * polr],
+                                W[1 + C * m + C * M * n + C * M * N * freq + C * M * N * F * polr]);
                             const std::complex<float> e1 = E1[n * M + m];
                             s += w * e1 * cispi(float(2 * n * q) / float(2 * N));
                         }
@@ -305,12 +295,12 @@ static void frb_simple_sub(const int32_t *__restrict__ const S,
 
             t_running += 1;
             if (t_running == Tds) {
-                INFO_NON_OO("frb_simple_sub: hit t_running == Tds, time = {:d}, tds = {:d}",
-                            time, tds);
+                INFO_NON_OO("frb_simple_sub: hit t_running == Tds, time = {:d}, tds = {:d}", time,
+                            tds);
                 for (int q = 0; q < 2 * N; ++q)
                     for (int p = 0; p < 2 * M; ++p)
-                                    I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
-                                        I1[p + 2 * M * q];
+                        I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
+                            I1[p + 2 * M * q];
                 tds += 1;
                 t_running = 0;
                 for (int q = 0; q < 2 * N; ++q)
@@ -323,8 +313,8 @@ static void frb_simple_sub(const int32_t *__restrict__ const S,
         if (t_running != 0) {
             for (int q = 0; q < 2 * N; ++q)
                 for (int p = 0; p < 2 * M; ++p)
-                              I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
-                                  I1[p + 2 * M * q];
+                    I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
+                        I1[p + 2 * M * q];
         }
 
     } // for freq

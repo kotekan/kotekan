@@ -22,13 +22,16 @@
  * num_local_freq
  *   @gpu_mem_type   staging
  *   @gpu_mem_format Array of @c int4+4 complex
- * @gpu_mem  gpu_mem_phase  Input complex phases of size num_elements * num_local_freq * num_beams * 2
+ * @gpu_mem  gpu_mem_phase  Input complex phases of size num_elements * num_local_freq * num_beams *
+ * 2
  *   @gpu_mem_type   staging
  *   @gpu_mem_format Array of @c int8
- * @gpu_mem  gpu_mem_output_scaling  Input number of bits to shift result by; size num_local_freq * num_beams * 2
+ * @gpu_mem  gpu_mem_output_scaling  Input number of bits to shift result by; size num_local_freq *
+ * num_beams * 2
  *   @gpu_mem_type   staging
  *   @gpu_mem_format Array of @c int32
- * @gpu_mem  gpu_mem_formed_beams  Output beams; size num_local_freq * num_beams * samples_per_data_set * 2
+ * @gpu_mem  gpu_mem_formed_beams  Output beams; size num_local_freq * num_beams *
+ * samples_per_data_set * 2
  *   @gpu_mem_type   staging
  *   @gpu_mem_format Array of @c int4+4 complex
  * @gpu_mem  gpu_mem_info  Output status information; size threads_x * threads_y * blocks_x

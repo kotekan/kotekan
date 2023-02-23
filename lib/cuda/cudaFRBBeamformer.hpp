@@ -82,7 +82,6 @@ private:
     const int cuda_num_dishes = 512;
     const int cuda_dish_grid_size = 24;
     const int cuda_num_local_freq = 84;
-
 };
 
 #endif // CUDA_FRB_BEAMFORMER_HPP

@@ -48,7 +48,7 @@ private:
     using int4x2_t = uint8_t;
 
     struct Buffer* voltage_buf;
-    //struct Buffer* dashlayout_buf;
+    // struct Buffer* dashlayout_buf;
     struct Buffer* phase_buf;
     struct Buffer* beamgrid_buf;
 

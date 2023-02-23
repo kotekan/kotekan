@@ -135,7 +135,8 @@ void testDataCheck<A_Type>::main_thread() {
                     if (num_errors++ < max_num_errors)
                         ERROR("{:s}[{:d}][{:d}] != {:s}[{:d}][{:d}]; values: ({:}, {:})",
                               first_buf->buffer_name, first_buf_id, i, second_buf->buffer_name,
-                              second_buf_id, i, format_nice_string(first_value), format_nice_string(second_value));
+                              second_buf_id, i, format_nice_string(first_value),
+                              format_nice_string(second_value));
                     error = true;
                 }
             }
