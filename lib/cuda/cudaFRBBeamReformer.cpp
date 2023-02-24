@@ -14,7 +14,8 @@ using kotekan::Config;
 REGISTER_CUDA_COMMAND(cudaFRBBeamReformer);
 
 cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& unique_name,
-                                         bufferContainer& host_buffers, cudaDeviceInterface& device) :
+                                         bufferContainer& host_buffers,
+                                         cudaDeviceInterface& device) :
     cudaCommand(config, unique_name, host_buffers, device, "FRB_beamreformer", "") {
     _num_beams = config.get<int>(unique_name, "num_beams");
     _beam_grid_size = config.get<int>(unique_name, "beam_grid_size");
@@ -54,7 +55,8 @@ cudaEvent_t cudaFRBBeamReformer::execute(int gpu_frame_id,
 
     float16_t* beamgrid_memory =
         (float16_t*)device.get_gpu_memory_array(_gpu_mem_beamgrid, gpu_frame_id, beamgrid_len);
-    float16_t* phase_memory = (float16_t*)device.get_gpu_memory_array(_gpu_mem_phase, gpu_frame_id, phase_len);
+    float16_t* phase_memory =
+        (float16_t*)device.get_gpu_memory_array(_gpu_mem_phase, gpu_frame_id, phase_len);
     float16_t* beamout_memory =
         (float16_t*)device.get_gpu_memory_array(_gpu_mem_beamout, gpu_frame_id, beamout_len);
 
@@ -73,7 +75,8 @@ cudaEvent_t cudaFRBBeamReformer::execute(int gpu_frame_id,
         __half beta = 0.;
 
         // Multiply A and B^T on GPU
-        cublasStatus_t stat = cublasHgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, T, B, rho, &alpha, d_Iin, T, d_W, B, &beta, d_Iout, T);
+        cublasStatus_t stat = cublasHgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, T, B, rho, &alpha,
+                                          d_Iin, T, d_W, B, &beta, d_Iout, T);
         if (stat != CUBLAS_STATUS_SUCCESS) {
             ERROR("Error at {:s}:{:d}: cublasHgemm: {:s}", __FILE__, __LINE__,
                   cublasGetStatusString(stat));
