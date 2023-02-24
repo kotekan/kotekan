@@ -30,6 +30,7 @@ num_local_freq: 84
 # derived: ceil(samples_per_data_set / time_downsampling)
 td: 52
 beam_grid_size: dish_grid_size * 2
+num_beams: 5000
 
 # x = np.arange(576)
 # M = x // 24
@@ -73,6 +74,18 @@ host_info_buffer:
     frame_size: 32 * 24 * 84 * 4
     metadata_pool: main_pool
 
+host_beamphase_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: beam_grid_size * beam_grid_size * num_local_freq * num_beams * sizeof_float16
+    metadata_pool: main_pool
+
+host_beamout_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_beams * num_local_freq * td * sizeof_float16
+    metadata_pool: main_pool
+
 simulated_beamgrid_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
@@ -94,9 +107,16 @@ gen_phase:
     value: 2.0
     out_buf: host_phase_buffer
 
+gen_beamphase:
+    kotekan_stage: testDataGen
+    type: constf16
+    value: 2.0
+    out_buf: host_beamphase_buffer
+
 gpu:
     # log_level: debug
     profiling: true
+    log_profiling: true
     kernel_path: "../../lib/cuda/kernels/"
     commands: &command_list
     - name: cudaInputData
@@ -105,6 +125,9 @@ gpu:
     - name: cudaInputData
       in_buf: host_phase
       gpu_mem: phase
+    - name: cudaInputData
+      in_buf: host_beamphase
+      gpu_mem: beamphase
     - name: cudaSyncInput
     - name: cudaFRBBeamformer
       gpu_mem_voltage: voltage
@@ -112,11 +135,20 @@ gpu:
       gpu_mem_dishlayout: dishlayout
       gpu_mem_beamgrid: beamgrid
       gpu_mem_info: info
+    - name: cudaFRBBeamReformer
+      gpu_mem_beamgrid: beamgrid
+      gpu_mem_phase: beamphase
+      gpu_mem_beamout: beamout
     - name: cudaSyncOutput
+    # Intermediate product...
     - name: cudaOutputData
       in_buf: host_voltage # Metadata transfer from here
       gpu_mem: beamgrid
       out_buf: host_beamgrid
+    - name: cudaOutputData
+      in_buf: host_voltage # Metadata transfer from here
+      gpu_mem: beamout
+      out_buf: host_beamout
     - name: cudaOutputData
       in_buf: host_voltage # Metadata transfer from here
       gpu_mem: info
@@ -128,9 +160,11 @@ gpu:
         in_buffers:
             host_voltage: host_voltage_buffer
             host_phase: host_phase_buffer
+            host_beamphase: host_beamphase_buffer
         out_buffers:
             host_beamgrid: host_beamgrid_buffer
             host_info: host_info_buffer
+            host_beamout: host_beamout_buffer
 
 cpu_beamformer:
     kotekan_stage: gpuSimulateCudaFRBBeamformer
