@@ -46,7 +46,7 @@ dpdk:
     kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
     lcore_cpu_map: [0,1,6,7]
-    master_lcore_cpu: 2
+    main_lcore_cpu: 2
     # Format is index = lcore, value = array of port IDs
     # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
     # and lcore 1 to service ports 2 and 3.
