@@ -87,9 +87,9 @@ inline captureHandler::captureHandler(kotekan::Config& config, const std::string
 
     // TODO this seems overly restrictive, but removing this requires a generalized `copy_block`
     // function
-    // if ((packet_size % 32) != 0) {
-    //    throw std::runtime_error("The packet_size must be a multiple of 32 bytes");
-    //}
+    if ((packet_size % 32) != 0) {
+        throw std::runtime_error("The packet_size must be a multiple of 32 bytes");
+    }
 }
 
 inline int captureHandler::handle_packet(struct rte_mbuf* mbuf) {
