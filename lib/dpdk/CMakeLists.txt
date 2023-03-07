@@ -5,8 +5,7 @@ find_package(NUMA REQUIRED)
 add_library(kotekan_dpdk dpdkCore.cpp zeroSamples.cpp invalidateVDIFframes.cpp)
 
 # The new way to include DPDK
-if(NOT OLD_DPDK)
-    pkg_check_modules(DPDK "libdpdk")
+if(NOT ${OLD_DPDK})
     if(DPDK_FOUND)
         add_definitions(${DPDK_STATIC_CFLAGS})
         set(DPDK_LIBRARIES ${DPDK_STATIC_LDFLAGS})
