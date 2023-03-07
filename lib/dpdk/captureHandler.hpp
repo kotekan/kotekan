@@ -39,21 +39,21 @@
 class captureHandler : public dpdkRXhandler {
 public:
     /// Default constructor
-    captureHandler(kotekan::Config& config, const std::string& unique_name,
-                   kotekan::bufferContainer& buffer_container, int port);
+    captureHandler(kotekan::Config &config, const std::string &unique_name,
+                   kotekan::bufferContainer &buffer_container, int port);
 
     /// Processes the incoming packets
-    int handle_packet(struct rte_mbuf* mbuf) override;
+    int handle_packet(struct rte_mbuf *mbuf) override;
 
     /// Update stats, not used by this handler yet.
-    virtual void update_stats() override{};
+    virtual void update_stats() override {};
 
 protected:
     /// The output buffer
-    struct Buffer* out_buf;
+    struct Buffer *out_buf;
 
     /// The current frame
-    uint8_t* out_frame;
+    uint8_t *out_frame;
 
     /// The ID of the current frame
     int32_t out_frame_id = 0;
@@ -68,16 +68,16 @@ protected:
     bool first_run = true;
 };
 
-inline captureHandler::captureHandler(kotekan::Config& config, const std::string& unique_name,
-                                      kotekan::bufferContainer& buffer_container, int port) :
-    dpdkRXhandler(config, unique_name, buffer_container, port) {
+inline captureHandler::captureHandler(kotekan::Config &config, const std::string &unique_name,
+                                      kotekan::bufferContainer &buffer_container, int port) :
+        dpdkRXhandler(config, unique_name, buffer_container, port) {
 
     out_buf = buffer_container.get_buffer(config.get<std::string>(unique_name, "out_buf"));
     register_producer(out_buf, unique_name.c_str());
 
     packet_size = config.get<uint32_t>(unique_name, "packet_size");
 
-    if (packet_size > (uint32_t)out_buf->frame_size) {
+    if (packet_size > (uint32_t) out_buf->frame_size) {
         throw std::runtime_error("The packet size must be less than the frame size");
     }
 
@@ -87,12 +87,12 @@ inline captureHandler::captureHandler(kotekan::Config& config, const std::string
 
     // TODO this seems overly restrictive, but removing this requires a generalized `copy_block`
     // function
-    if ((packet_size % 32) != 0) {
-        throw std::runtime_error("The packet_size must be a multiple of 32 bytes");
-    }
+    //if ((packet_size % 32) != 0) {
+    //    throw std::runtime_error("The packet_size must be a multiple of 32 bytes");
+    //}
 }
 
-inline int captureHandler::handle_packet(struct rte_mbuf* mbuf) {
+inline int captureHandler::handle_packet(struct rte_mbuf *mbuf) {
 
     // Get the first frame.
     if (first_run) {
@@ -114,13 +114,13 @@ inline int captureHandler::handle_packet(struct rte_mbuf* mbuf) {
     }
 
     // Copy the packet.
-    assert((packet_location + 1) * packet_size <= (uint32_t)out_buf->frame_size);
+    assert((packet_location + 1) * packet_size <= (uint32_t) out_buf->frame_size);
     int offset = 0;
-    copy_block(&mbuf, &out_frame[packet_location * packet_size], packet_size, (int*)&offset);
+    copy_block(&mbuf, &out_frame[packet_location * packet_size], packet_size, (int *) &offset);
 
     packet_location++;
 
-    if (packet_location * packet_size == (uint32_t)out_buf->frame_size) {
+    if (packet_location * packet_size == (uint32_t) out_buf->frame_size) {
         mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
         out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
 

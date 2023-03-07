@@ -51,12 +51,12 @@ REGISTER_KOTEKAN_STAGE(dpdkCore);
 
 static bool __eal_initalized = false;
 
-dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&dpdkCore::main_thread, this)) {
+dpdkCore::dpdkCore(Config &config, const string &unique_name, bufferContainer &buffer_container) :
+        Stage(config, unique_name, buffer_container, std::bind(&dpdkCore::main_thread, this)) {
 
     uint32_t num_mbufs = config.get_default<uint32_t>(unique_name, "num_mbufs", 1024);
     const uint32_t mbuf_cache_size =
-        config.get_default<uint32_t>(unique_name, "mbuf_cache_size", 250);
+            config.get_default<uint32_t>(unique_name, "mbuf_cache_size", 250);
     burst_size = config.get_default<uint32_t>(unique_name, "burst_size", 32);
     rx_ring_size = config.get_default<uint32_t>(unique_name, "rx_ring_size", 512);
     tx_ring_size = config.get_default<uint32_t>(unique_name, "tx_ring_size", 512);
@@ -74,18 +74,17 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
 
     dpdk_init(lcore_cpu_map, master_lcore_cpu);
 
-    num_system_ports = rte_eth_dev_count();
+    num_system_ports = rte_eth_dev_count_avail();
 
     // This default works well for ICE boards,
     // but we might change this to something more genertic
-    memset((void*)&port_conf, 0, sizeof(struct rte_eth_conf));
-    port_conf.rxmode.max_rx_pkt_len =
-        config.get_default<uint32_t>(unique_name, "max_rx_pkt_len", 5000);
-    port_conf.rxmode.jumbo_frame =
-        (uint16_t)config.get_default<bool>(unique_name, "jumbo_frame", true);
-    port_conf.rxmode.hw_strip_crc = 0;
-    port_conf.rxmode.header_split = 0;
-    port_conf.rxmode.hw_ip_checksum = 1;
+    memset((void *) &port_conf, 0, sizeof(struct rte_eth_conf));
+    port_conf.rxmode.max_lro_pkt_size =
+            config.get_default<uint32_t>(unique_name, "max_rx_pkt_len", 5000);
+    port_conf.rxmode.mtu = config.get_default<uint32_t>(unique_name, "max_rx_pkt_len", 5000);
+    port_conf.rxmode.offloads =
+            DEV_RX_OFFLOAD_KEEP_CRC | DEV_RX_OFFLOAD_IPV4_CKSUM | DEV_RX_OFFLOAD_UDP_CKSUM;
+    port_conf.rxmode.split_hdr_size = 0;
 
     // TODO reference why this needs to be 2048
     const uint32_t max_data_size = 2048;
@@ -94,16 +93,16 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     // Convert the lcore to port map into a simple c style struct
     // This is basically done to remove overhead in the critial packet processing loop.
     // TODO check there are no ports assigned twice
-    lcore_port_list = (struct portList*)malloc(num_lcores * sizeof(struct portList));
+    lcore_port_list = (struct portList *) malloc(num_lcores * sizeof(struct portList));
     CHECK_MEM(lcore_port_list);
     int lcore_id = 0;
     num_ports = 0;
     json lcore_port_map = config.get_value(unique_name, "lcore_port_map");
-    for (vector<int> ports : lcore_port_map) {
-        lcore_port_list[lcore_id].ports = (uint32_t*)malloc(ports.size() * sizeof(uint32_t));
+    for (vector<int> ports: lcore_port_map) {
+        lcore_port_list[lcore_id].ports = (uint32_t *) malloc(ports.size() * sizeof(uint32_t));
         CHECK_MEM(lcore_port_list[lcore_id].ports);
         int port_id = 0;
-        for (uint32_t port : ports) {
+        for (uint32_t port: ports) {
             lcore_port_list[lcore_id].ports[port_id++] = port;
         }
         lcore_port_list[lcore_id].num_ports = ports.size();
@@ -115,16 +114,16 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
 
     if (num_ports > num_system_ports) {
         throw std::runtime_error(
-            fmt::format(fmt("Trying to create more ports: {:d}, than DPDK found: {:d}"), num_ports,
-                        num_system_ports));
+                fmt::format(fmt("Trying to create more ports: {:d}, than DPDK found: {:d}"), num_ports,
+                            num_system_ports));
     }
 
     // The plus one is for the master lcore.
     if (rte_lcore_count() != num_lcores + 1) {
         ERROR("Mismatch in the number of lcores");
         throw std::runtime_error(fmt::format(
-            fmt("Num lcores set to: {:d} in the config, but the DPDK run time has: {:d} lcores."),
-            num_lcores, rte_lcore_count()));
+                fmt("Num lcores set to: {:d} in the config, but the DPDK run time has: {:d} lcores."),
+                num_lcores, rte_lcore_count()));
     }
 
     // Get the number of ports on each numa node and create an mbuf pool for that node.
@@ -134,20 +133,20 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
             auto lcore_id = lcore_cpu_map.at(j);
             if (numa_node_of_cpu(lcore_id) == -1) {
                 throw std::runtime_error(
-                    "lcore_id '" + to_string(lcore_id)
-                    + "' failed to map to numa node, is this a valid CPU core id?");
+                        "lcore_id '" + to_string(lcore_id)
+                        + "' failed to map to numa node, is this a valid CPU core id?");
             }
             if (numa_node_of_cpu(lcore_id) == node_id) {
                 num_ports_on_node += lcore_port_list[j].num_ports;
             }
         }
         DEBUG("Number of ports on numa node {:d}: {:d}", node_id, num_ports_on_node);
-        struct rte_mempool* pool = nullptr;
+        struct rte_mempool *pool = nullptr;
         if (num_ports_on_node > 0) {
             pool = rte_mempool_create(
-                ("MBUF_POOL_" + to_string(node_id)).c_str(), num_mbufs * num_ports_on_node,
-                mbuf_size, mbuf_cache_size, sizeof(struct rte_pktmbuf_pool_private),
-                rte_pktmbuf_pool_init, nullptr, rte_pktmbuf_init, nullptr, node_id, 0);
+                    ("MBUF_POOL_" + to_string(node_id)).c_str(), num_mbufs * num_ports_on_node,
+                    mbuf_size, mbuf_cache_size, sizeof(struct rte_pktmbuf_pool_private),
+                    rte_pktmbuf_pool_init, nullptr, rte_pktmbuf_init, nullptr, node_id, 0);
             if (pool == nullptr) {
                 throw std::runtime_error("Cannot create DPDK mbuf pool: "
                                          + std::string(rte_strerror(rte_errno)));
@@ -158,8 +157,8 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
 
     // Init ports referenced in the lcore port mapping
     int i = 0; // Index into lcore_cpu_map
-    for (vector<int> ports : lcore_port_map) {
-        for (uint32_t port : ports) {
+    for (vector<int> ports: lcore_port_map) {
+        for (uint32_t port: ports) {
             // TODO This will fail in a strange way if a port is listed more than once in the
             // config. We should have a check that each port assignment is unique.
             if (port_init(port, lcore_cpu_map.at(i)) != 0) {
@@ -170,7 +169,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     }
 }
 
-void dpdkCore::create_handlers(bufferContainer& buffer_container) {
+void dpdkCore::create_handlers(bufferContainer &buffer_container) {
     // Create the handlers
     // TODO This could likely be refactored out of this system.
     // The one problem is that we are using header only builds for efficiency,
@@ -182,29 +181,29 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
                                                  "to the number of system ports ({:d})"),
                                              handlers_block.size(), num_system_ports));
     }
-    handlers = (dpdkRXhandler**)malloc(num_system_ports * sizeof(dpdkRXhandler*));
+    handlers = (dpdkRXhandler **) malloc(num_system_ports * sizeof(dpdkRXhandler *));
     CHECK_MEM(handlers);
-    for (json& handler : handlers_block) {
+    for (json &handler: handlers_block) {
 
         string handler_name = handler["dpdk_handler"];
         string handler_unique_name = fmt::format(fmt("{:s}/handlers/{:d}"), unique_name, port);
 
         if (handler_name == "iceBoardShuffle") {
             handlers[port] =
-                new iceBoardShuffle(config, handler_unique_name, buffer_container, port);
+                    new iceBoardShuffle(config, handler_unique_name, buffer_container, port);
         } else if (handler_name == "iceBoardStandard") {
             handlers[port] =
-                new iceBoardStandard(config, handler_unique_name, buffer_container, port);
+                    new iceBoardStandard(config, handler_unique_name, buffer_container, port);
         } else if (handler_name == "iceBoardVDIF") {
             handlers[port] = new iceBoardVDIF(config, handler_unique_name, buffer_container, port);
         } else if (handler_name == "captureHandler") {
             handlers[port] =
-                new captureHandler(config, handler_unique_name, buffer_container, port);
+                    new captureHandler(config, handler_unique_name, buffer_container, port);
         } else if (handler_name == "none") {
             handlers[port] = nullptr;
         } else {
             throw std::runtime_error(
-                fmt::format(fmt("The dpdk handler type '{:s}' does not exist."), handler_name));
+                    fmt::format(fmt("The dpdk handler type '{:s}' does not exist."), handler_name));
         }
 
         port++;
@@ -215,7 +214,7 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
 
     string dpdk_lcore_map = fmt::format(fmt("0@{:d},"), master_lcore_cpu);
     int i = 1;
-    for (int& core_id : lcore_cpu_map) {
+    for (int &core_id: lcore_cpu_map) {
         dpdk_lcore_map += fmt::format(fmt("{:d}@{:d},"), i++, core_id);
     }
     dpdk_lcore_map.pop_back(); // Remove the last ","
@@ -226,20 +225,20 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
     char arg0[] = "kotekan";
     // Number of memory channels
     char arg1[] = "-n";
-    char* arg2 = (char*)malloc(std::to_string(num_mem_channels).length() + 1);
+    char *arg2 = (char *) malloc(std::to_string(num_mem_channels).length() + 1);
     strncpy(arg2, std::to_string(num_mem_channels).c_str(),
             std::to_string(num_mem_channels).length() + 1);
     // Lcore map
     char arg3[] = "--lcores";
-    char* arg4 = (char*)malloc(dpdk_lcore_map.length() + 1);
+    char *arg4 = (char *) malloc(dpdk_lcore_map.length() + 1);
     strncpy(arg4, dpdk_lcore_map.c_str(), dpdk_lcore_map.length() + 1);
     // Initial memory allocation
     char arg5[] = "--socket-mem";
-    char* arg6 = (char*)malloc(init_mem_alloc.length() + 1);
+    char *arg6 = (char *) malloc(init_mem_alloc.length() + 1);
     strncpy(arg6, init_mem_alloc.c_str(), init_mem_alloc.length() + 1);
     // Generate final options string for EAL initialization
-    char* argv2[] = {&arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], nullptr};
-    int argc2 = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;
+    char *argv2[] = {&arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], nullptr};
+    int argc2 = (int) (sizeof(argv2) / sizeof(argv2[0])) - 1;
 
     // Initialize the Environment Abstraction Layer (EAL).
     // Currently closing DPDKs EAL isn't offically supported,
@@ -248,7 +247,7 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
         int ret = rte_eal_init(argc2, argv2);
         if (ret < 0)
             throw std::runtime_error(
-                fmt::format(fmt("Failed to init DPDK EAL with error code: {:d}"), ret));
+                    fmt::format(fmt("Failed to init DPDK EAL with error code: {:d}"), ret));
         __eal_initalized = true;
     }
 }
@@ -256,7 +255,7 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
 void dpdkCore::main_thread() {
 
     // Start the packet receiving lcores (basically pthreads)
-    rte_eal_mp_remote_launch(dpdkCore::lcore_rx, (void*)this, SKIP_MASTER);
+    rte_eal_mp_remote_launch(dpdkCore::lcore_rx, (void *) this, SKIP_MAIN);
 
     while (!stop_thread) {
         sleep(1);
@@ -281,7 +280,7 @@ dpdkCore::~dpdkCore() {
     // TODO Make sure DPDK is stopped
     // Requires an experimental feature not yet the version of DPDK used by kotekan
 
-    for (auto& pool : mbuf_pools) {
+    for (auto &pool: mbuf_pools) {
         rte_mempool_free(pool);
     }
 
@@ -322,7 +321,7 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
     // TODO Do we need this?
     for (q = 0; q < tx_rings; q++) {
         retval =
-            rte_eth_tx_queue_setup(port, q, tx_ring_size, rte_eth_dev_socket_id(port), nullptr);
+                rte_eth_tx_queue_setup(port, q, tx_ring_size, rte_eth_dev_socket_id(port), nullptr);
         if (retval < 0) {
             ERROR("Failed to setupt TX queue for port {:d}, error: {:d}", port, retval);
             return retval;
@@ -338,11 +337,11 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
 
     // Report the port MAC address.
     // TODO record the MAC address for export to JSON
-    struct ether_addr addr;
+    rte_ether_addr addr;
     rte_eth_macaddr_get(port, &addr);
     INFO("Port {:d} MAC: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} "
          "memory assigned to numa_node {:d}",
-         (unsigned)port, addr.addr_bytes[0], addr.addr_bytes[1], addr.addr_bytes[2],
+         (unsigned) port, addr.addr_bytes[0], addr.addr_bytes[1], addr.addr_bytes[2],
          addr.addr_bytes[3], addr.addr_bytes[4], addr.addr_bytes[5], numa_node_of_cpu(lcore_id));
 
     // Enable promiscuous mode.
@@ -351,10 +350,10 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
     return 0;
 }
 
-int dpdkCore::lcore_rx(void* args) {
-    dpdkCore* core = (dpdkCore*)args;
+int dpdkCore::lcore_rx(void *args) {
+    dpdkCore *core = (dpdkCore *) args;
 
-    struct rte_mbuf* mbufs[core->burst_size];
+    struct rte_mbuf *mbufs[core->burst_size];
 
     // non-master cores start at 1, but it's easier to 0 base here
     uint32_t lcore = rte_lcore_id() - 1;
@@ -366,7 +365,7 @@ int dpdkCore::lcore_rx(void* args) {
     // The list of ports this thread processes
     struct dpdkCore::portList port_list = core->lcore_port_list[lcore];
     const uint32_t num_local_ports = port_list.num_ports;
-    const uint32_t* ports = port_list.ports;
+    const uint32_t *ports = port_list.ports;
     const uint32_t burst_size = core->burst_size;
 
     for (uint32_t i = 0; i < num_local_ports; ++i) {
@@ -396,11 +395,11 @@ int dpdkCore::lcore_rx(void* args) {
             }
         }
     }
-exit_lcore:
+    exit_lcore:
     return 0;
 }
 
-std::string dpdkCore::dot_string(const std::string& prefix) const {
+std::string dpdkCore::dot_string(const std::string &prefix) const {
     std::string dot = fmt::format("{:s}subgraph \"cluster_{:s}\" {{\n", prefix, get_unique_name());
 
     dot += fmt::format("{:s}{:s}style=filled;\n", prefix, prefix);
