@@ -303,7 +303,7 @@ jobs:
             -DWERROR=ON \
             -DCMAKE_LINK_WHAT_YOU_USE=ON \
             -DCMAKE_BUILD_TYPE=Test \
-            -DUSE_DPDK=ON \
+            -DUSE_OLD_DPDK=ON \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DARCH=haswell \
@@ -364,7 +364,7 @@ jobs:
         docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
         -DWERROR=ON \
         -DCMAKE_LINK_WHAT_YOU_USE=ON \
-        -DUSE_DPDK=ON \
+        -DUSE_OLD_DPDK=ON \
         -DCMAKE_BUILD_TYPE=Test \
         -DUSE_HDF5=ON \
         -DHIGHFIVE_PATH=/code/build/HighFive \
@@ -528,7 +528,7 @@ jobs:
             -DWERROR=ON \
             -DCMAKE_LINK_WHAT_YOU_USE=ON \
             -DCMAKE_BUILD_TYPE=Test \
-            -DUSE_DPDK=ON \
+            -DUSE_OLD_DPDK=ON \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DARCH=haswell \
