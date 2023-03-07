@@ -1,9 +1,9 @@
 # Set the version of CMake required for *all* CMake files in the project. 3.8.2 to match C++17.
 cmake_minimum_required(VERSION 3.8.2)
 project(
-        KOTEKAN
-        DESCRIPTION "A high performance radio data processing pipeline"
-        LANGUAGES C CXX)
+    KOTEKAN
+    DESCRIPTION "A high performance radio data processing pipeline"
+    LANGUAGES C CXX)
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 
 # Require at least c++17 support from the compiler
@@ -96,7 +96,7 @@ if(${SANITIZE})
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fno-optimize-sibling-calls -fsanitize=address")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer")
     set(CMAKE_CXX_FLAGS_DEBUG
-            "${CMAKE_CXX_FLAGS_DEBUG} -fno-optimize-sibling-calls -fsanitize=address")
+        "${CMAKE_CXX_FLAGS_DEBUG} -fno-optimize-sibling-calls -fsanitize=address")
 endif()
 
 if(${USE_HSA})
@@ -148,9 +148,9 @@ if(${USE_LAPACK})
     set(BLA_VENDOR OpenBLAS)
     find_package(BLAS REQUIRED)
     find_path(
-            BLAS_INCLUDE_DIRS cblas.h
-            PATHS /usr/include /usr/local/include
-            PATH_SUFFIXES openblas)
+        BLAS_INCLUDE_DIRS cblas.h
+        PATHS /usr/include /usr/local/include
+        PATH_SUFFIXES openblas)
     message("Using BLAS ${BLAS_LIBRARIES}")
     message("Using BLAS includes ${BLAS_INCLUDE_DIRS}")
     find_package(LAPACK REQUIRED)
@@ -204,18 +204,18 @@ if(IWYU)
     endif()
     message("IWYU enabled: Using iwyu from ${IWYU_PATH} and mapping file ${IWYU_MAPPING_FILE}")
     execute_process(
-            COMMAND ${IWYU_PATH} "--version"
-            OUTPUT_VARIABLE IWYU_VERSION
-            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        COMMAND ${IWYU_PATH} "--version"
+        OUTPUT_VARIABLE IWYU_VERSION
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
     message("IWYU version: ${IWYU_VERSION}")
     set(IWYU_PATH_AND_OPTIONS
-            ${IWYU_PATH}
-            -Xiwyu
-            --max_line_length=100
-            -Xiwyu
-            --mapping_file=${IWYU_MAPPING_FILE}
-            -Xiwyu
-            --no_fwd_decls)
+        ${IWYU_PATH}
+        -Xiwyu
+        --max_line_length=100
+        -Xiwyu
+        --mapping_file=${IWYU_MAPPING_FILE}
+        -Xiwyu
+        --no_fwd_decls)
     set(CMAKE_CXX_INCLUDE_WHAT_YOU_USE ${IWYU_PATH_AND_OPTIONS})
     set(CMAKE_C_INCLUDE_WHAT_YOU_USE ${IWYU_PATH_AND_OPTIONS})
 endif()
@@ -252,16 +252,16 @@ if(${USE_HDF5})
         include(ExternalProject)
         find_package(Git REQUIRED)
         ExternalProject_Add(
-                highfive
-                PREFIX ${CMAKE_BINARY_DIR}/ext
-                GIT_REPOSITORY https://github.com/jrs65/HighFive.git
-                GIT_TAG extensible-datasets
-                TIMEOUT 10
-                UPDATE_COMMAND ${GIT_EXECUTABLE} pull
-                CONFIGURE_COMMAND ""
-                BUILD_COMMAND ""
-                INSTALL_COMMAND ""
-                LOG_DOWNLOAD ON)
+            highfive
+            PREFIX ${CMAKE_BINARY_DIR}/ext
+            GIT_REPOSITORY https://github.com/jrs65/HighFive.git
+            GIT_TAG extensible-datasets
+            TIMEOUT 10
+            UPDATE_COMMAND ${GIT_EXECUTABLE} pull
+            CONFIGURE_COMMAND ""
+            BUILD_COMMAND ""
+            INSTALL_COMMAND ""
+            LOG_DOWNLOAD ON)
         ExternalProject_Get_Property(highfive source_dir)
         set(HIGHFIVE_PATH ${source_dir})
     else()
@@ -291,7 +291,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm -Wl,-no_pie")
 else()
     set(CMAKE_EXE_LINKER_FLAGS
-            "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
+        "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
 endif()
 
 # Disable complex math NaN/INFO range checking for performance
@@ -332,8 +332,8 @@ add_subdirectory(config)
 # Testing with boost
 if(${WITH_TESTS})
     set(_BOOST_TESTS_DIR
-            tests/boost/
-            CACHE INTERNAL "Path to boost test sources")
+        tests/boost/
+        CACHE INTERNAL "Path to boost test sources")
     message("BOOST_TESTS enabled: building tests in " ${_BOOST_TESTS_DIR})
     add_subdirectory(${_BOOST_TESTS_DIR})
 else()
@@ -342,9 +342,9 @@ endif()
 
 # Enforce code formatting rules with clang-format.
 find_program(
-        CLANG_FORMAT_PATH
-        NAMES "clang-format-8" "clang-format"
-        DOC "Path to clang-format executable")
+    CLANG_FORMAT_PATH
+    NAMES "clang-format-8" "clang-format"
+    DOC "Path to clang-format executable")
 if(NOT CLANG_FORMAT_PATH)
     message(STATUS "clang-format not found.")
 else()
@@ -362,8 +362,8 @@ function(exclude_files_containing var exclude_string)
         endif()
     endforeach()
     set(${var}
-            "${listVar}"
-            PARENT_SCOPE)
+        "${listVar}"
+        PARENT_SCOPE)
 endfunction()
 
 if(CLANG_FORMAT_PATH)
@@ -386,7 +386,7 @@ if(CLANG_FORMAT_PATH)
 
     # Use .clang-format file to auto format.
     add_custom_target(
-            clang-format
-            COMMAND ${CLANG_FORMAT_PATH} -style=file -i ${FILES_TO_FORMAT}
-            COMMENT "Running clang-format")
+        clang-format
+        COMMAND ${CLANG_FORMAT_PATH} -style=file -i ${FILES_TO_FORMAT}
+        COMMENT "Running clang-format")
 endif()
