@@ -29,9 +29,9 @@ add_subdirectory(metadata)
 target_link_libraries(kotekan_libs INTERFACE kotekan_metadata)
 
 if(${USE_HSA}
-    OR ${USE_OPENCL}
-    OR ${USE_CUDA}
-    OR ${USE_HIP})
+   OR ${USE_OPENCL}
+   OR ${USE_CUDA}
+   OR ${USE_HIP})
     add_subdirectory(gpu)
 endif()
 
@@ -70,13 +70,15 @@ else()
             add_subdirectory(dpdk)
             target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
         else()
-            message(STATUS "No DPDK found, install package, or for old versions (<19.11) set -DUSE_OLD_DPDK=on")
+            message(
+                STATUS
+                    "No DPDK found, install package, or for old versions (<19.11) set -DUSE_OLD_DPDK=on"
+            )
         endif()
     else()
         message(STATUS "pkg-config needed to include DPDK (>=19.11) support")
     endif()
 endif()
-
 
 # HDF5 stuff
 if(${USE_HDF5})
