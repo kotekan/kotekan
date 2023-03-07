@@ -14,12 +14,10 @@
 #include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, bind, function
 #include <netinet/in.h> // for sockaddr_in, htons, in_addr
-#include <regex>        // for match_results<>::_Base_type
 #include <stddef.h>     // for size_t
 #include <strings.h>    // for bzero
 #include <sys/socket.h> // for send, connect, socket, AF_INET, SOCK_STREAM
 #include <unistd.h>     // for gethostname, ssize_t
-#include <vector>       // for vector
 
 
 using kotekan::bufferContainer;
