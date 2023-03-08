@@ -18,5 +18,5 @@ else()
 endif()
 
 target_link_libraries(kotekan_dpdk PRIVATE ${DPDK_LIBRARIES} ${NUMA_LIBRARY} libexternal
-        kotekan_libs)
+                                           kotekan_libs)
 target_include_directories(kotekan_dpdk PUBLIC .)
