@@ -72,7 +72,7 @@ else()
         else()
             message(
                 STATUS
-                    "No DPDK found, install package, or for old versions (<19.11) set -DUSE_OLD_DPDK=on"
+                    "No DPDK package found, for older versions (<19.11) use -DUSE_OLD_DPDK=ON"
             )
         endif()
     else()
