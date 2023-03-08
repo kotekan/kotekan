@@ -102,16 +102,29 @@ inline int captureHandler::handle_packet(struct rte_mbuf* mbuf) {
         first_run = false;
     }
 
+#ifndef OLD_DPDK
+    if (unlikely((mbuf->ol_flags & RTE_MBUF_F_RX_IP_CKSUM_MASK) == RTE_MBUF_F_RX_IP_CKSUM_BAD)) {
+        WARN("Port: {:d}; Got bad packet IP checksum", port);
+        return 0;
+    }
+    // Check the UDP checksum
+    if (unlikely((mbuf->ol_flags & RTE_MBUF_F_RX_L4_CKSUM_MASK) == RTE_MBUF_F_RX_L4_CKSUM_BAD)) {
+        WARN("Port: {:d}; Got bad packet UDP checksum", port);
+        return 0;
+    }
+#else
     if (unlikely((mbuf->ol_flags | PKT_RX_IP_CKSUM_BAD) == 1)) {
         WARN("Port: {:d}; Got bad packet IP checksum", port);
         return 0;
     }
+#endif
 
     if (unlikely(packet_size != mbuf->pkt_len)) {
         WARN("Port: {:d}; Got packet with size {:d}, but expected size was {:d}", port,
              mbuf->pkt_len, packet_size);
         return 0;
     }
+
 
     // Copy the packet.
     assert((packet_location + 1) * packet_size <= (uint32_t)out_buf->frame_size);
