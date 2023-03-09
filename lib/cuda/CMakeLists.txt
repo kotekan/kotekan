@@ -53,7 +53,6 @@ target_link_libraries(
     PRIVATE libexternal kotekan_libs -lstdc++
     INTERFACE ${CUDA_LIBRARIES} cuda nvrtc nvptxcompiler_static)
 
-
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --forward-unknown-to-host-compiler")
 
 target_include_directories(kotekan_cuda SYSTEM PUBLIC ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
