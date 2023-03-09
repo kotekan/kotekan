@@ -68,6 +68,7 @@ typedef CuDeviceArray<int32_t, 1> kernel_arg;
 
 cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id,
                                             const std::vector<cudaEvent_t>& pre_events) {
+    (void)pre_events;
     pre_execute(gpu_frame_id);
 
     void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, gpu_frame_id, voltage_len);
