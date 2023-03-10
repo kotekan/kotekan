@@ -26,7 +26,7 @@ samples_per_data_set: 2064
 time_downsampling: 40
 num_dishes: 512
 dish_grid_size: 24
-num_local_freq: 84
+num_local_freq: 256
 # derived: ceil(samples_per_data_set / time_downsampling)
 td: 52
 beam_grid_size: dish_grid_size * 2
@@ -71,7 +71,7 @@ host_info_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
     # threads_x * threads_y * blocks_x * sizeof(int32)
-    frame_size: 32 * 24 * 84 * 4
+    frame_size: 32 * 24 * 256 * 4
     metadata_pool: main_pool
 
 host_beamphase_buffer:
@@ -98,7 +98,7 @@ gen_data:
     values: [0x01, 0x02, 0x04, 0x07, 0x08, 0x09, 0xc, 0xe, 0xf, 0x10, 0x20, 0x40, 0x70, 0x80, 0x90, 0xc0, 0xe0, 0xf0]
     # This order corresponds to the *reverse* order in the frb.yaml file!
     # TIME, POL, FREQ, DISH
-    array_shape: [2064, 2, 84, 512]
+    array_shape: [2064, 2, 256, 512]
     out_buf: host_voltage_buffer
 
 gen_phase:
@@ -197,7 +197,7 @@ printSparseGPU:
     kotekan_stage: printSparseFloat16
     # This order corresponds to the *reverse* order in the frb.yaml file!
     # TDS, F, BEAMQ, BEAMP
-    array_shape: [52, 84, 48, 48]
+    array_shape: [52, 256, 48, 48]
     input_buf: host_beamgrid_buffer
     max_to_print: 8
 
@@ -205,6 +205,6 @@ printSparseCPU:
     kotekan_stage: printSparseFloat16
     # This order corresponds to the *reverse* order in the frb.yaml file!
     # TDS, F, BEAMQ, BEAMP
-    array_shape: [52, 84, 48, 48]
+    array_shape: [52, 256, 48, 48]
     input_buf: simulated_beamgrid_buffer
     max_to_print: 8

@@ -60,17 +60,19 @@ private:
     /// GPU side memory name for the status/info output
     std::string _gpu_mem_info;
 
+    // frb-v5
+
     // The bb.yaml file entry like kernel-name = "_Z15julia_frb_...."
     // clang-format off
-    const std::string kernel_name = "_Z15julia_frb_1046713CuDeviceArrayI7Int16x2Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EES_IS2_Li1ELi1EES_IS2_Li1ELi1EES_IS1_Li1ELi1EE";
+    const std::string kernel_name = "_Z15julia_frb_1037413CuDeviceArrayI7Int16x2Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE";
     // clang-format on
     // The frb.yaml file entry like
     //    threads: [32, 24]
     const int threads_x = 32;
     const int threads_y = 24;
     // The frb.yaml file entry like
-    //    blocks: [84]
-    const int blocks_x = 84;
+    //    blocks: [256]
+    const int blocks_x = 256;
     const int blocks_y = 1;
     // The frb.yaml file entry like
     //    shmem_bytes: #####
@@ -81,7 +83,7 @@ private:
     const int cuda_time_downsampling = 40;
     const int cuda_num_dishes = 512;
     const int cuda_dish_grid_size = 24;
-    const int cuda_num_local_freq = 84;
+    const int cuda_num_local_freq = 256;
 };
 
 #endif // CUDA_FRB_BEAMFORMER_HPP
