@@ -32,7 +32,7 @@ td: 52
 beam_grid_size: dish_grid_size * 2
 num_beams: 5000
 
-# x = np.arange(576)
+# x = np.arange(24*24)
 # M = x // 24
 # N = x % 24
 # json.dumps([int(x) for x in np.vstack((M, N)).T.ravel()])
@@ -97,6 +97,7 @@ gen_data:
     type: onehot
     values: [0x01, 0x02, 0x04, 0x07, 0x08, 0x09, 0xc, 0xe, 0xf, 0x10, 0x20, 0x40, 0x70, 0x80, 0x90, 0xc0, 0xe0, 0xf0]
     # This order corresponds to the *reverse* order in the frb.yaml file!
+    # Yaml name: "E"
     # TIME, POL, FREQ, DISH
     array_shape: [2064, 2, 256, 512]
     out_buf: host_voltage_buffer
@@ -140,19 +141,19 @@ gpu:
       gpu_mem_phase: beamphase
       gpu_mem_beamout: beamout
     - name: cudaSyncOutput
-    # Intermediate product...
+    # TEMPorary -- copy back this intermediate product...
     - name: cudaOutputData
-      in_buf: host_voltage # Metadata transfer from here
       gpu_mem: beamgrid
       out_buf: host_beamgrid
-    - name: cudaOutputData
       in_buf: host_voltage # Metadata transfer from here
+    - name: cudaOutputData
       gpu_mem: beamout
       out_buf: host_beamout
-    - name: cudaOutputData
       in_buf: host_voltage # Metadata transfer from here
+    - name: cudaOutputData
       gpu_mem: info
       out_buf: host_info
+      in_buf: host_voltage # Metadata transfer from here
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
@@ -196,15 +197,17 @@ check_data:
 printSparseGPU:
     kotekan_stage: printSparseFloat16
     # This order corresponds to the *reverse* order in the frb.yaml file!
-    # TDS, F, BEAMQ, BEAMP
-    array_shape: [52, 256, 48, 48]
+    # Yaml: "I"
+    # F, TDS, BEAMQ, BEAMP
+    array_shape: [256, 52, 48, 48]
     input_buf: host_beamgrid_buffer
     max_to_print: 8
 
 printSparseCPU:
     kotekan_stage: printSparseFloat16
     # This order corresponds to the *reverse* order in the frb.yaml file!
-    # TDS, F, BEAMQ, BEAMP
-    array_shape: [52, 256, 48, 48]
+    # Yaml: "I"
+    # F, TDS, BEAMQ, BEAMP
+    array_shape: [256, 52, 48, 48]
     input_buf: simulated_beamgrid_buffer
     max_to_print: 8

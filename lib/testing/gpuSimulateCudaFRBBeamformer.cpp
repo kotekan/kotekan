@@ -35,6 +35,20 @@ static void frb_simple_sub(const int32_t* __restrict__ const S,
 typedef int16_t float16_t;
 #endif
 
+// Kernel parameters
+
+constexpr int C = 2;    // number of complex components
+constexpr int T = 2064; // number of times
+constexpr int M = 24;   // number of beams
+constexpr int N = 24;   // number of beams
+constexpr int D = 512;  // number of dishes
+constexpr int P = 2;    // number of polarizations
+constexpr int F = 256;   // frequency channels per GPU
+constexpr int Tds = 40; // time downsampling factor
+
+const int NT = (T + Tds-1) / Tds; // number of downsampled time steps (rounded up)
+
+
 gpuSimulateCudaFRBBeamformer::gpuSimulateCudaFRBBeamformer(Config& config,
                                                            const std::string& unique_name,
                                                            bufferContainer& buffer_container) :
@@ -47,6 +61,13 @@ gpuSimulateCudaFRBBeamformer::gpuSimulateCudaFRBBeamformer(Config& config,
     _time_downsampling = config.get<int>(unique_name, "time_downsampling");
     _dishlayout = config.get<std::vector<int>>(unique_name, "frb_beamformer_dish_layout");
     bool zero_output = config.get_default<bool>(unique_name, "zero_output", false);
+
+    assert(_num_dishes == D);
+    assert(_dish_grid_size == M);
+    assert(_dish_grid_size == N);
+    assert(_num_local_freq == F);
+    assert(_samples_per_data_set == T);
+    assert(_time_downsampling == Tds);
 
     voltage_buf = get_buffer("voltage_in_buf");
     phase_buf = get_buffer("phase_in_buf");
@@ -171,18 +192,6 @@ using namespace std::complex_literals;
 using std::norm;
 using std::polar;
 
-// Kernel parameters
-
-constexpr int C = 2;    // number of complex components
-constexpr int T = 2064; // number of times
-constexpr int M = 24;   // number of beams
-constexpr int N = 24;   // number of beams
-constexpr int D = 512;  // number of dishes
-constexpr int P = 2;    // number of polarizations
-constexpr int F = 84;   // frequency channels per GPU
-constexpr int Tds = 40; // time downsampling factor
-
-
 // Integer divide, rounding up (towards positive infinity)
 constexpr int cld(const int x, const int y) {
     return (x + y - 1) / y;
@@ -257,6 +266,8 @@ static void frb_simple_sub(const int32_t* __restrict__ const S,
 
                 // grid the dishes
                 std::complex<float> E1[M * N];
+                for (int d = 0; d < d0; ++d)
+                    E1[S[d]] = 0;
                 for (int d = d0; d < d1; ++d)
                     E1[S[d]] = std::complex<float>(
                         get4(E[d + D * freq + D * F * polr + D * F * P * time])[1],
@@ -305,7 +316,9 @@ static void frb_simple_sub(const int32_t* __restrict__ const S,
                             tds);
                 for (int q = 0; q < 2 * N; ++q)
                     for (int p = 0; p < 2 * M; ++p)
-                        I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
+                        //I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
+                        // Freq varies slowest
+                        I[p + 2 * M * q + 2 * M * 2 * N * tds + 2 * M * 2 * N * NT * freq] =
                             I1[p + 2 * M * q];
                 tds += 1;
                 t_running = 0;
@@ -319,7 +332,10 @@ static void frb_simple_sub(const int32_t* __restrict__ const S,
         if (t_running != 0) {
             for (int q = 0; q < 2 * N; ++q)
                 for (int p = 0; p < 2 * M; ++p)
-                    I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
+                    // Time varies slowest
+                    //I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
+                    // Freq varies slowest
+                    I[p + 2 * M * q + 2 * M * 2 * N * tds + 2 * M * 2 * N * NT * freq] =
                         I1[p + 2 * M * q];
         }
 
