@@ -12,7 +12,7 @@
 /// Stores a named set of gpu pointer(s) with uniform size
 struct gpuMemoryBlock {
     std::vector<void*> gpu_pointers;
-    uint32_t len;
+    size_t len;
 };
 
 /**
