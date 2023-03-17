@@ -227,8 +227,9 @@ void gpuProcess::results_thread() {
         if (log_profiling) {
             std::string output = "";
             for (uint32_t i = 0; i < commands.size(); ++i) {
-                output = fmt::format(fmt("{:s}command: {:s} metrics: {:s}; \n"), output,
+                output = fmt::format(fmt("{:s}command: {:s} ({:30s}) metrics: {:s}; \n"), output,
                                      commands[i]->get_unique_name(),
+                                     commands[i]->get_name(),
                                      commands[i]->get_performance_metric_string());
             }
             INFO("GPU[{:d}] Profiling: \n{:s}", gpu_id, output);

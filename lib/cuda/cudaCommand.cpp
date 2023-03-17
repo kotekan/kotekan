@@ -71,7 +71,7 @@ void cudaCommand::finalize_frame(int gpu_frame_id) {
         if (profiling) {
             float exec_time;
             CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_events[gpu_frame_id],
-                                                  start_events[gpu_frame_id]));
+                                                  end_events[gpu_frame_id]));
             double active_time = exec_time * 1e-3; // convert ms to s
             excute_time->add_sample(active_time);
             utilization->add_sample(active_time / frame_arrival_period);

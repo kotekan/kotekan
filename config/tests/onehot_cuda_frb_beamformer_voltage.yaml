@@ -181,6 +181,7 @@ check_data:
     first_buf: host_beamgrid_buffer
     second_buf: simulated_beamgrid_buffer
     num_frames_to_test: 18 # = length of gen_data one-hot vector
+    epsilon: 0.005
 
 # hexDumpGPU:
 #     log_level: debug
