@@ -239,7 +239,6 @@ static void frb_simple_sub(const int32_t* __restrict__ const S,
         t0 = tds * Tds;
         t1 = t0 + Tds;
     }
-    INFO_NON_OO("frb_simple_sub: t = {:d} -> t0 = {:d}, t1 = {:d}", t, t0, t1);
     const int d0 = (d == -1 ? 0 : d);
     const int d1 = (d == -1 ? D : d + 1);
 
@@ -312,10 +311,9 @@ static void frb_simple_sub(const int32_t* __restrict__ const S,
 
             t_running += 1;
             if (t_running == Tds) {
-                INFO_NON_OO("frb_simple_sub: hit t_running == Tds, time = {:d}, tds = {:d}", time,
-                            tds);
                 for (int q = 0; q < 2 * N; ++q)
                     for (int p = 0; p < 2 * M; ++p)
+                        // Time varies slowest
                         //I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
                         // Freq varies slowest
                         I[p + 2 * M * q + 2 * M * 2 * N * tds + 2 * M * 2 * N * NT * freq] =
