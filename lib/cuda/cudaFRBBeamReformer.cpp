@@ -67,9 +67,9 @@ cudaEvent_t cudaFRBBeamReformer::execute(int gpu_frame_id,
     for (int f = 0; f < _num_local_freq; f++) {
         int T = Td;
         int B = _num_beams;
-        float16_t* d_Iin = beamgrid_memory + f * T * rho;
-        float16_t* d_W = phase_memory + f * rho * B;
-        float16_t* d_Iout = beamout_memory + f * T * B;
+        float16_t* d_Iin = beamgrid_memory + (size_t)f * T * rho;
+        float16_t* d_W = phase_memory + (size_t)f * rho * B;
+        float16_t* d_Iout = beamout_memory + (size_t)f * T * B;
 
         __half alpha = 1.;
         __half beta = 0.;
