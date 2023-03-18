@@ -45,9 +45,9 @@ constexpr int D = 512;  // number of dishes
 constexpr int F = 256;  // frequency channels per GPU
 constexpr int Tds = 40; // time downsampling factor
 
-#if KOTEKAN_FLOAT16 // to avoid warnings->errors on mac osx CI build
-constexpr int C = 2;    // number of complex components
-constexpr int P = 2;    // number of polarizations
+#if KOTEKAN_FLOAT16                 // to avoid warnings->errors on mac osx CI build
+constexpr int C = 2;                // number of complex components
+constexpr int P = 2;                // number of polarizations
 const int NT = (T + Tds - 1) / Tds; // number of downsampled time steps (rounded up)
 #endif
 
