@@ -25,6 +25,8 @@ public:
     cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) override;
     void finalize_frame(int frame_id) override;
 
+    std::string get_performance_metric_string() override;
+
 protected:
     /// A constructor meant to be called by subclassers who need to
     /// override the constructor behavior.  Specifically, this does not read the config value @c
