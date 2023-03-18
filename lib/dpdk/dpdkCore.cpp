@@ -68,24 +68,36 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     // Basically this is mapping the DPDK EAL framework way of assigning threads
     // into the kotekan framework.
     vector<int> lcore_cpu_map = config.get<std::vector<int>>(unique_name, "lcore_cpu_map");
-    uint32_t master_lcore_cpu = config.get<uint32_t>(unique_name, "master_lcore_cpu");
+    uint32_t main_lcore_cpu = config.get<uint32_t>(unique_name, "main_lcore_cpu");
 
     num_lcores = lcore_cpu_map.size();
 
-    dpdk_init(lcore_cpu_map, master_lcore_cpu);
+    dpdk_init(lcore_cpu_map, main_lcore_cpu);
 
+#ifndef OLD_DPDK
+    num_system_ports = rte_eth_dev_count_avail();
+#else
     num_system_ports = rte_eth_dev_count();
+#endif
 
     // This default works well for ICE boards,
     // but we might change this to something more genertic
     memset((void*)&port_conf, 0, sizeof(struct rte_eth_conf));
-    port_conf.rxmode.max_rx_pkt_len =
-        config.get_default<uint32_t>(unique_name, "max_rx_pkt_len", 5000);
+    uint32_t max_rx_pkt_len = config.get_default<uint32_t>(unique_name, "max_rx_pkt_len", 5000);
+#ifndef OLD_DPDK
+    port_conf.rxmode.max_lro_pkt_size = max_rx_pkt_len;
+    port_conf.rxmode.mtu = max_rx_pkt_len;
+    port_conf.rxmode.offloads =
+        DEV_RX_OFFLOAD_KEEP_CRC | DEV_RX_OFFLOAD_IPV4_CKSUM | DEV_RX_OFFLOAD_UDP_CKSUM;
+    port_conf.rxmode.split_hdr_size = 0;
+#else
+    port_conf.rxmode.max_rx_pkt_len = max_rx_pkt_len;
     port_conf.rxmode.jumbo_frame =
         (uint16_t)config.get_default<bool>(unique_name, "jumbo_frame", true);
     port_conf.rxmode.hw_strip_crc = 0;
     port_conf.rxmode.header_split = 0;
     port_conf.rxmode.hw_ip_checksum = 1;
+#endif
 
     // TODO reference why this needs to be 2048
     const uint32_t max_data_size = 2048;
@@ -119,7 +131,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
                         num_system_ports));
     }
 
-    // The plus one is for the master lcore.
+    // The plus one is for the main lcore.
     if (rte_lcore_count() != num_lcores + 1) {
         ERROR("Mismatch in the number of lcores");
         throw std::runtime_error(fmt::format(
@@ -211,9 +223,9 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
     }
 }
 
-void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
+void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t main_lcore_cpu) {
 
-    string dpdk_lcore_map = fmt::format(fmt("0@{:d},"), master_lcore_cpu);
+    string dpdk_lcore_map = fmt::format(fmt("0@{:d},"), main_lcore_cpu);
     int i = 1;
     for (int& core_id : lcore_cpu_map) {
         dpdk_lcore_map += fmt::format(fmt("{:d}@{:d},"), i++, core_id);
@@ -256,7 +268,12 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
 void dpdkCore::main_thread() {
 
     // Start the packet receiving lcores (basically pthreads)
+#ifndef OLD_DPDK
+    rte_eal_mp_remote_launch(dpdkCore::lcore_rx, (void*)this, SKIP_MAIN);
+#else
+    // Support old DPDK versions
     rte_eal_mp_remote_launch(dpdkCore::lcore_rx, (void*)this, SKIP_MASTER);
+#endif
 
     while (!stop_thread) {
         sleep(1);
@@ -270,7 +287,7 @@ void dpdkCore::main_thread() {
                 handlers[i]->update_stats();
         }
 
-        // Check port status
+        // TODO Check port status
     }
 
     // Wait for the lcores to join
@@ -338,7 +355,11 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
 
     // Report the port MAC address.
     // TODO record the MAC address for export to JSON
+#ifndef OLD_DPDK
+    rte_ether_addr addr;
+#else
     struct ether_addr addr;
+#endif
     rte_eth_macaddr_get(port, &addr);
     INFO("Port {:d} MAC: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} "
          "memory assigned to numa_node {:d}",
@@ -356,7 +377,7 @@ int dpdkCore::lcore_rx(void* args) {
 
     struct rte_mbuf* mbufs[core->burst_size];
 
-    // non-master cores start at 1, but it's easier to 0 base here
+    // non-main cores start at 1, but it's easier to 0 base here
     uint32_t lcore = rte_lcore_id() - 1;
     fprintf(stderr, "lcore ID: %u\n", lcore);
     if (lcore > core->num_lcores) {

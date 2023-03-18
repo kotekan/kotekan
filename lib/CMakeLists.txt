@@ -55,9 +55,27 @@ if(${USE_HIP})
     target_link_libraries(kotekan_libs INTERFACE kotekan_hip kotekan_gpu)
 endif()
 
-if(${USE_DPDK})
+# Include the old DPDK if the USE_OLD_DPDK flag is given.
+if(${USE_OLD_DPDK})
+    add_definitions(-DOLD_DPDK)
     add_subdirectory(dpdk)
     target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
+else()
+    # Check for the new DPDK versions automatically
+    find_package(PkgConfig)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(DPDK libdpdk>=19.11)
+        if(DPDK_FOUND)
+            message(STATUS "Found DPDK, including support for DPDK networking")
+            add_subdirectory(dpdk)
+            target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
+        else()
+            message(
+                STATUS "No DPDK package found, for older versions (<19.11) use -DUSE_OLD_DPDK=ON")
+        endif()
+    else()
+        message(STATUS "pkg-config needed to include DPDK (>=19.11) support")
+    endif()
 endif()
 
 # HDF5 stuff

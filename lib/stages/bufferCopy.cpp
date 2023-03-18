@@ -11,7 +11,6 @@
 #include <atomic>     // for atomic_bool
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error, invalid_argument
 #include <stdint.h>   // for uint8_t
 #include <string.h>   // for memcpy
