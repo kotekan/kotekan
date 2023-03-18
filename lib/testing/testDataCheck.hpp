@@ -113,11 +113,12 @@ void testDataCheck<A_Type>::main_thread() {
         double rel_diff = 0.0;
         uint32_t num_nonzero = 0;
 
-        bool use_almost_equal = (epsilon != 0.0) && ((std::is_same<A_Type, float>::value)
+        bool use_almost_equal = (epsilon != 0.0)
+                                && ((std::is_same<A_Type, float>::value)
 #if KOTEKAN_FLOAT16
-                                                     || (std::is_same<A_Type, float16_t>::value)
+                                    || (std::is_same<A_Type, float16_t>::value)
 #endif
-                                                     );
+                                );
 
         INFO(
             "Checking that the buffers {:s}[{:d}] and {:s}[{:d}] match, this could take a while...",
@@ -145,8 +146,7 @@ void testDataCheck<A_Type>::main_thread() {
                                     "epsilon: {:f}, "
                                     "abs(x-y): {:f}, epsilon * abs(x+y): {:f}",
                                     first_buf->buffer_name, first_buf_id, i,
-                                    second_buf->buffer_name, second_buf_id, i, v1, v2,
-                                    epsilon,
+                                    second_buf->buffer_name, second_buf_id, i, v1, v2, epsilon,
                                     std::abs(first_value - second_value),
                                     epsilon * std::abs(first_value + second_value));
                     }
@@ -168,10 +168,13 @@ void testDataCheck<A_Type>::main_thread() {
             INFO("The buffers {:s}[{:d}] and {:s}[{:d}] are equal", first_buf->buffer_name,
                  first_buf_id, second_buf->buffer_name, second_buf_id);
             if (use_almost_equal) {
-                INFO("Compared {:d} elements.  Average absolute difference: {:g}.  Average relative difference: {:g}",
+                INFO("Compared {:d} elements.  Average absolute difference: {:g}.  Average "
+                     "relative difference: {:g}",
                      num_elements, abs_diff / num_elements, rel_diff / num_elements);
-                INFO("Nonzero elements: {:d}.  Average absolute difference: {:g}.  Average relative difference: {:g}",
-                     num_nonzero, abs_diff / std::max((uint32_t)1, num_nonzero), rel_diff / std::max((uint32_t)1, num_nonzero));
+                INFO("Nonzero elements: {:d}.  Average absolute difference: {:g}.  Average "
+                     "relative difference: {:g}",
+                     num_nonzero, abs_diff / std::max((uint32_t)1, num_nonzero),
+                     rel_diff / std::max((uint32_t)1, num_nonzero));
             }
         }
 

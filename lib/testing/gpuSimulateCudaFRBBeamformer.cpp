@@ -43,10 +43,10 @@ constexpr int M = 24;   // number of beams
 constexpr int N = 24;   // number of beams
 constexpr int D = 512;  // number of dishes
 constexpr int P = 2;    // number of polarizations
-constexpr int F = 256;   // frequency channels per GPU
+constexpr int F = 256;  // frequency channels per GPU
 constexpr int Tds = 40; // time downsampling factor
 
-const int NT = (T + Tds-1) / Tds; // number of downsampled time steps (rounded up)
+const int NT = (T + Tds - 1) / Tds; // number of downsampled time steps (rounded up)
 
 
 gpuSimulateCudaFRBBeamformer::gpuSimulateCudaFRBBeamformer(Config& config,
@@ -314,7 +314,7 @@ static void frb_simple_sub(const int32_t* __restrict__ const S,
                 for (int q = 0; q < 2 * N; ++q)
                     for (int p = 0; p < 2 * M; ++p)
                         // Time varies slowest
-                        //I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
+                        // I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
                         // Freq varies slowest
                         I[p + 2 * M * q + 2 * M * 2 * N * tds + 2 * M * 2 * N * NT * freq] =
                             I1[p + 2 * M * q];
@@ -331,7 +331,7 @@ static void frb_simple_sub(const int32_t* __restrict__ const S,
             for (int q = 0; q < 2 * N; ++q)
                 for (int p = 0; p < 2 * M; ++p)
                     // Time varies slowest
-                    //I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
+                    // I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
                     // Freq varies slowest
                     I[p + 2 * M * q + 2 * M * 2 * N * tds + 2 * M * 2 * N * NT * freq] =
                         I1[p + 2 * M * q];
