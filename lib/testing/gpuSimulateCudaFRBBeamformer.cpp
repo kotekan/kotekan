@@ -8,6 +8,7 @@
 #include "oneHotMetadata.hpp"  // for metadata_is_onehot, get_onehot_indices, get_onehot_frame_...
 #include "visUtil.hpp"
 
+#include <assert.h>
 #include <atomic>     // for atomic_bool
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
@@ -37,17 +38,18 @@ typedef int16_t float16_t;
 
 // Kernel parameters
 
-constexpr int C = 2;    // number of complex components
 constexpr int T = 2064; // number of times
 constexpr int M = 24;   // number of beams
 constexpr int N = 24;   // number of beams
 constexpr int D = 512;  // number of dishes
-constexpr int P = 2;    // number of polarizations
 constexpr int F = 256;  // frequency channels per GPU
 constexpr int Tds = 40; // time downsampling factor
 
+#if KOTEKAN_FLOAT16 // to avoid warnings->errors on mac osx CI build
+constexpr int C = 2;    // number of complex components
+constexpr int P = 2;    // number of polarizations
 const int NT = (T + Tds - 1) / Tds; // number of downsampled time steps (rounded up)
-
+#endif
 
 gpuSimulateCudaFRBBeamformer::gpuSimulateCudaFRBBeamformer(Config& config,
                                                            const std::string& unique_name,
