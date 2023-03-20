@@ -29,8 +29,8 @@ double gettime() {
     return tp.tv_sec + tp.tv_usec / 1.0e+6;
 }
 
-//template<int M>
-//static float Ufunc(int p, float theta) {
+// template<int M>
+// static float Ufunc(int p, float theta) {
 static float Ufunc(int p, int M, float theta) {
     float acc = 0;
     for (int s = 0; s <= M; s++) {
@@ -41,18 +41,14 @@ static float Ufunc(int p, int M, float theta) {
     }
     return acc;
 }
-//template<int M, int N>
-void compute_beam_reformer_phase(int M, int N,
-                                 float16_t* host_phase,
-                                 int _num_local_freq, int _num_beams,
-                                 float* beam_dra, float* beam_ddec,
-                                 float* freqs,
-                                 float dish_spacing_ew, float dish_spacing_ns,
-                                 float bore_zd) {
+// template<int M, int N>
+void compute_beam_reformer_phase(int M, int N, float16_t* host_phase, int _num_local_freq,
+                                 int _num_beams, float* beam_dra, float* beam_ddec, float* freqs,
+                                 float dish_spacing_ew, float dish_spacing_ns, float bore_zd) {
     const float c = 3.0e8;
     const int B = _num_beams;
-    const int Q  = 2*N;
-    const int PQ = 2*M * 2*N;
+    const int Q = 2 * N;
+    const int PQ = 2 * M * 2 * N;
 
     for (int fi = 0; fi < _num_local_freq; fi++) {
         float wavelength = c / freqs[fi];
@@ -75,24 +71,27 @@ void compute_beam_reformer_phase(int M, int N,
             // We could probably get away with small-angle
             // approximations of beam_dra,beam_ddec,
             //   nhat_z ~ sin(zd)
-            //   nhat_y ~ cos(zd) - ddec * sin(zd)    (cos(a-b) ~ cos(a) + b sin(a) when b->0); cos(dra)~1
-            //   nhat_x ~ cos(zd) * dra
+            //   nhat_y ~ cos(zd) - ddec * sin(zd)    (cos(a-b) ~ cos(a) + b sin(a) when b->0);
+            //   cos(dra)~1 nhat_x ~ cos(zd) * dra
             // (but here we don't use the small-angle approx)
-            float theta1 = cosdf(bore_zd - beam_ddec[bi]) * sindf(beam_dra[bi]) * M * dish_spacing_ew / wavelength;
-            float theta2 = cosdf(bore_zd - beam_ddec[bi]) * cosdf(beam_dra[bi]) * N * dish_spacing_ns / wavelength;
+            float theta1 = cosdf(bore_zd - beam_ddec[bi]) * sindf(beam_dra[bi]) * M
+                           * dish_spacing_ew / wavelength;
+            float theta2 = cosdf(bore_zd - beam_ddec[bi]) * cosdf(beam_dra[bi]) * N
+                           * dish_spacing_ns / wavelength;
 
-            float Up[2*M];
-            float Uq[2*N];
-            for (int i = 0; i < 2*M; i++)
-                //Up[i] = Ufunc<M>(i, theta1);
+            float Up[2 * M];
+            float Uq[2 * N];
+            for (int i = 0; i < 2 * M; i++)
+                // Up[i] = Ufunc<M>(i, theta1);
                 Up[i] = Ufunc(i, M, theta1);
-            for (int i = 0; i < 2*N; i++)
-                //Uq[i] = Ufunc<N>(i, theta2);
+            for (int i = 0; i < 2 * N; i++)
+                // Uq[i] = Ufunc<N>(i, theta2);
                 Uq[i] = Ufunc(i, N, theta2);
 
-            for (int p = 0; p < 2*M; p++) {
-                for (int q = 0; q < 2*N; q++) {
-                    host_phase[(size_t)fi * (B * PQ) + bi * PQ + p * Q + q] = (float16_t)(Up[p] * Uq[q]);
+            for (int p = 0; p < 2 * M; p++) {
+                for (int q = 0; q < 2 * N; q++) {
+                    host_phase[(size_t)fi * (B * PQ) + bi * PQ + p * Q + q] =
+                        (float16_t)(Up[p] * Uq[q]);
                 }
             }
         }
@@ -155,15 +154,15 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
     assert(_num_beams == 5000);
     for (int i = 0; i < Nra; i++) {
         for (int j = 0; j < Ndec; j++) {
-            beam_dra [i*Ndec+j] = dra_min  + (dra_max  - dra_min ) * (float)i / (Nra-1);
-            beam_ddec[i*Ndec+j] = ddec_min + (ddec_max - ddec_min) * (float)j / (Ndec-1);
+            beam_dra[i * Ndec + j] = dra_min + (dra_max - dra_min) * (float)i / (Nra - 1);
+            beam_ddec[i * Ndec + j] = ddec_min + (ddec_max - ddec_min) * (float)j / (Ndec - 1);
         }
     }
 
     // FIXME -- the real frequencies should be passed in with the
     // metadata, probably!
     for (int i = 0; i < _num_local_freq; i++) {
-        freqs[i] = 600e6 + i*(1.2e9 / 65536.);
+        freqs[i] = 600e6 + i * (1.2e9 / 65536.);
     }
 
     // FIXME -- the dish spacings, in meters, should be passed in as config parameters!
@@ -186,30 +185,29 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
         double t0 = gettime();
         size_t nr = fread(host_phase, 1, phase_len, f);
         if (nr != phase_len) {
-            INFO("Reading file {:s}: got {:d} bytes, but expected {:d}",
-                 beamphase_cache_fn, nr, phase_len);
+            INFO("Reading file {:s}: got {:d} bytes, but expected {:d}", beamphase_cache_fn, nr,
+                 phase_len);
         } else {
             gotit = true;
         }
         fclose(f);
-        INFO("That took {:g} sec", gettime()-t0);
+        INFO("That took {:g} sec", gettime() - t0);
     }
     if (!gotit) {
-        int M = _beam_grid_size/2;
+        int M = _beam_grid_size / 2;
         int N = M;
         INFO("Computing beam-reformer phase matrix...");
         double t0 = gettime();
-        compute_beam_reformer_phase(M, N, host_phase, _num_local_freq, _num_beams,
-                                    beam_dra, beam_ddec, freqs,
-                                    dish_spacing_ew, dish_spacing_ns, bore_zd);
-        INFO("That took {:g} sec", gettime()-t0);
+        compute_beam_reformer_phase(M, N, host_phase, _num_local_freq, _num_beams, beam_dra,
+                                    beam_ddec, freqs, dish_spacing_ew, dish_spacing_ns, bore_zd);
+        INFO("That took {:g} sec", gettime() - t0);
         INFO("Computed beam-reformer phase matrix");
         f = fopen(beamphase_cache_fn, "w+");
         if (f) {
             size_t nw = fwrite(host_phase, 1, phase_len, f);
             if (nw != phase_len) {
-                INFO("Failed to write beamformer phase matrix to {:s}: {:s}",
-                     beamphase_cache_fn, strerror(errno));
+                INFO("Failed to write beamformer phase matrix to {:s}: {:s}", beamphase_cache_fn,
+                     strerror(errno));
                 fclose(f);
                 unlink(beamphase_cache_fn);
             } else {
@@ -218,15 +216,13 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
                          beamphase_cache_fn, strerror(errno));
                     unlink(beamphase_cache_fn);
                 } else {
-                    INFO("Wrote beamformer phase matrix to {:s}",
-                         beamphase_cache_fn);
+                    INFO("Wrote beamformer phase matrix to {:s}", beamphase_cache_fn);
                 }
             }
         }
     }
 
-    float16_t* phase_memory =
-        (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
+    float16_t* phase_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
 
     CHECK_CUDA_ERROR(cudaMemcpy(phase_memory, host_phase, phase_len, cudaMemcpyHostToDevice));
 
@@ -247,8 +243,7 @@ cudaEvent_t cudaFRBBeamReformer::execute(int gpu_frame_id,
 
     float16_t* beamgrid_memory =
         (float16_t*)device.get_gpu_memory_array(_gpu_mem_beamgrid, gpu_frame_id, beamgrid_len);
-    float16_t* phase_memory =
-        (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
+    float16_t* phase_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
     float16_t* beamout_memory =
         (float16_t*)device.get_gpu_memory_array(_gpu_mem_beamout, gpu_frame_id, beamout_len);
 
