@@ -14,7 +14,7 @@ using kotekan::Config;
 REGISTER_CUDA_COMMAND(cudaFRBBeamReformer);
 
 static float deg2radf(float d) {
-    return M_PI * d / 180.;
+    return d * (float)(M_PI / 180.);
 }
 static float cosdf(float d) {
     return cosf(deg2radf(d));
@@ -22,15 +22,81 @@ static float cosdf(float d) {
 static float sindf(float d) {
     return sinf(deg2radf(d));
 }
+
+double gettime() {
+    struct timeval tp;
+    gettimeofday(&tp, nullptr);
+    return tp.tv_sec + tp.tv_usec / 1.0e+6;
+}
+
+//template<int M>
+//static float Ufunc(int p, float theta) {
 static float Ufunc(int p, int M, float theta) {
     float acc = 0;
     for (int s = 0; s <= M; s++) {
         float A = 1.;
         if (s == 0 || s == M)
             A = 0.5;
-        acc += A * cos((M_PI * (2. * theta - p) * s) / M);
+        acc += A * cosf(((float)M_PI * (2.0f * theta - p) * s) / M);
     }
     return acc;
+}
+//template<int M, int N>
+void compute_beam_reformer_phase(int M, int N,
+                                 float16_t* host_phase,
+                                 int _num_local_freq, int _num_beams,
+                                 float* beam_dra, float* beam_ddec,
+                                 float* freqs,
+                                 float dish_spacing_ew, float dish_spacing_ns,
+                                 float bore_zd) {
+    const float c = 3.0e8;
+    const int B = _num_beams;
+    const int Q  = 2*N;
+    const int PQ = 2*M * 2*N;
+
+    for (int fi = 0; fi < _num_local_freq; fi++) {
+        float wavelength = c / freqs[fi];
+
+        for (int bi = 0; bi < _num_beams; bi++) {
+            // Kendrick's FRB beamforming note, equation 7:
+            //   theta = M (nhat . sigma) / lambda
+            // where nhat is the unit vector in the direction of the sky location
+            // sigma is the dish displacement in meters East-West.
+            //
+            // We'll assume that the dishes are pointed along the meridian, so
+            // the boresight lies in the y,z plane (x=0)
+            //   nhat_0_x = 0  (x is the direction of RA = EW, y of Dec = NS)
+            //   nhat_0_y = cos(zd)
+            //   nhat_0_z = sin(zd)
+            // And nhat for each beam will be
+            //   nhat_z ~ sin(zd - ddec)
+            //   nhat_x ~ cos(zd - ddec) * sin(dra)
+            //   nhat_y ~ cos(zd - ddec) * cos(dra)
+            // We could probably get away with small-angle
+            // approximations of beam_dra,beam_ddec,
+            //   nhat_z ~ sin(zd)
+            //   nhat_y ~ cos(zd) - ddec * sin(zd)    (cos(a-b) ~ cos(a) + b sin(a) when b->0); cos(dra)~1
+            //   nhat_x ~ cos(zd) * dra
+            // (but here we don't use the small-angle approx)
+            float theta1 = cosdf(bore_zd - beam_ddec[bi]) * sindf(beam_dra[bi]) * M * dish_spacing_ew / wavelength;
+            float theta2 = cosdf(bore_zd - beam_ddec[bi]) * cosdf(beam_dra[bi]) * N * dish_spacing_ns / wavelength;
+
+            float Up[2*M];
+            float Uq[2*N];
+            for (int i = 0; i < 2*M; i++)
+                //Up[i] = Ufunc<M>(i, theta1);
+                Up[i] = Ufunc(i, M, theta1);
+            for (int i = 0; i < 2*N; i++)
+                //Uq[i] = Ufunc<N>(i, theta2);
+                Uq[i] = Ufunc(i, N, theta2);
+
+            for (int p = 0; p < 2*M; p++) {
+                for (int q = 0; q < 2*N; q++) {
+                    host_phase[(size_t)fi * (B * PQ) + bi * PQ + p * Q + q] = (float16_t)(Up[p] * Uq[q]);
+                }
+            }
+        }
+    }
 }
 
 cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& unique_name,
@@ -109,61 +175,55 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
     // the meridian.
     float bore_zd = 30.;
 
-    const float c = 3.0e8;
-
-    const int M = _beam_grid_size/2;
-    const int N = M;
-
     float16_t* host_phase = (float16_t*)malloc(phase_len);
     assert(host_phase);
 
-    INFO("Computing beam-reformer phase matrix...");
-    for (int fi = 0; fi < _num_local_freq; fi++) {
-        float wavelength = c / freqs[fi];
-
-        for (int bi = 0; bi < _num_beams; bi++) {
-            // Kendrick's FRB beamforming note, equation 7:
-            //   theta = M (nhat . sigma) / lambda
-            // where nhat is the unit vector in the direction of the sky location
-            // sigma is the dish displacement in meters East-West.
-            //
-            // We'll assume that the dishes are pointed along the meridian, so
-            // the boresight lies in the y,z plane (x=0)
-            //   nhat_0_x = 0  (x is the direction of RA = EW, y of Dec = NS)
-            //   nhat_0_y = cos(zd)
-            //   nhat_0_z = sin(zd)
-            // And nhat for each beam will be
-            //   nhat_z ~ sin(zd - ddec)
-            //   nhat_x ~ cos(zd - ddec) * sin(dra)
-            //   nhat_y ~ cos(zd - ddec) * cos(dra)
-            // We could probably get away with small-angle
-            // approximations of beam_dra,beam_ddec,
-            //   nhat_z ~ sin(zd)
-            //   nhat_y ~ cos(zd) - ddec * sin(zd)    (cos(a-b) ~ cos(a) + b sin(a) when b->0); cos(dra)~1
-            //   nhat_x ~ cos(zd) * dra
-            // (but here we don't use the small-angle approx)
-            float theta1 = cosdf(bore_zd - beam_ddec[bi]) * sindf(beam_dra[bi]) * M * dish_spacing_ew / wavelength;
-            float theta2 = cosdf(bore_zd - beam_ddec[bi]) * cosdf(beam_dra[bi]) * N * dish_spacing_ns / wavelength;
-
-            float Up[2*M];
-            float Uq[2*N];
-            for (int i = 0; i < 2*M; i++)
-                Up[i] = Ufunc(i, M, theta1);
-            for (int i = 0; i < 2*N; i++)
-                Uq[i] = Ufunc(i, N, theta2);
-
-            const int B = _num_beams;
-            const int Q  = 2*N;
-            const int PQ = 2*M * 2*N;
-
-            for (int p = 0; p < 2*M; p++) {
-                for (int q = 0; q < 2*N; q++) {
-                    host_phase[(size_t)fi * (B * PQ) + bi * PQ + p * Q + q] = (float16_t)(Up[p] * Uq[q]);
+    const char* beamphase_cache_fn = "beamphase-cache.bin";
+    FILE* f = fopen(beamphase_cache_fn, "r");
+    bool gotit = false;
+    if (f) {
+        INFO("Trying to read beamformer phase matrix from {:s}...", beamphase_cache_fn);
+        double t0 = gettime();
+        size_t nr = fread(host_phase, 1, phase_len, f);
+        if (nr != phase_len) {
+            INFO("Reading file {:s}: got {:d} bytes, but expected {:d}",
+                 beamphase_cache_fn, nr, phase_len);
+        } else {
+            gotit = true;
+        }
+        fclose(f);
+        INFO("That took {:g} sec", gettime()-t0);
+    }
+    if (!gotit) {
+        int M = _beam_grid_size/2;
+        int N = M;
+        INFO("Computing beam-reformer phase matrix...");
+        double t0 = gettime();
+        compute_beam_reformer_phase(M, N, host_phase, _num_local_freq, _num_beams,
+                                    beam_dra, beam_ddec, freqs,
+                                    dish_spacing_ew, dish_spacing_ns, bore_zd);
+        INFO("That took {:g} sec", gettime()-t0);
+        INFO("Computed beam-reformer phase matrix");
+        f = fopen(beamphase_cache_fn, "w+");
+        if (f) {
+            size_t nw = fwrite(host_phase, 1, phase_len, f);
+            if (nw != phase_len) {
+                INFO("Failed to write beamformer phase matrix to {:s}: {:s}",
+                     beamphase_cache_fn, strerror(errno));
+                fclose(f);
+                unlink(beamphase_cache_fn);
+            } else {
+                if (fclose(f)) {
+                    INFO("Failed to close beamformer phase matrix in {:s}: {:s}",
+                         beamphase_cache_fn, strerror(errno));
+                    unlink(beamphase_cache_fn);
+                } else {
+                    INFO("Wrote beamformer phase matrix to {:s}",
+                         beamphase_cache_fn);
                 }
             }
         }
     }
-    INFO("Computed beam-reformer phase matrix");
 
     float16_t* phase_memory =
         (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
