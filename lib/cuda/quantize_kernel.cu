@@ -55,12 +55,12 @@ __global__ void quantize (const __half2 *in_base, __half2 *outf_base, unsigned i
         
         //computing i values
         unsigned int i = clamped_round_down(__hadd((__low2half(chunkIn[threadIdx.x]) - mean)/scale, __half(8.5)));
-	i = i | (clamped_round_down(__hadd((__high2half(chunkIn[threadIdx.x])      - mean)/scale, __half(8.5))) << 4);
-	i = i | (clamped_round_down(__hadd((__low2half( chunkIn[threadIdx.x + 32]) - mean)/scale, __half(8.5))) << 8));
+        i = i | (clamped_round_down(__hadd((__high2half(chunkIn[threadIdx.x])      - mean)/scale, __half(8.5))) << 4);
+        i = i | (clamped_round_down(__hadd((__low2half( chunkIn[threadIdx.x + 32]) - mean)/scale, __half(8.5))) << 8);
         i = i | (clamped_round_down(__hadd((__high2half(chunkIn[threadIdx.x + 32]) - mean)/scale, __half(8.5))) << 12);
-	i = i | (clamped_round_down(__hadd((__low2half( chunkIn[threadIdx.x + 64]) - mean)/scale, __half(8.5))) << 16);
+        i = i | (clamped_round_down(__hadd((__low2half( chunkIn[threadIdx.x + 64]) - mean)/scale, __half(8.5))) << 16);
         i = i | (clamped_round_down(__hadd((__high2half(chunkIn[threadIdx.x + 64]) - mean)/scale, __half(8.5))) << 20);
-	i = i | (clamped_round_down(__hadd((__low2half( chunkIn[threadIdx.x + 96]) - mean)/scale, __half(8.5))) << 24);
+        i = i | (clamped_round_down(__hadd((__low2half( chunkIn[threadIdx.x + 96]) - mean)/scale, __half(8.5))) << 24);
         i = i | (clamped_round_down(__hadd((__high2half(chunkIn[threadIdx.x + 96]) - mean)/scale, __half(8.5))) << 28);
 
         unsigned int i_shfl = __shfl_sync(0xffffffff, i, threadIdx.x ^ 1);
