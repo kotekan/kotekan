@@ -261,9 +261,19 @@ cudaEvent_t cudaFRBBeamReformer::execute(int gpu_frame_id,
         __half alpha = 1.;
         __half beta = 0.;
 
+        /*
         // Multiply A and B^T on GPU
         cublasStatus_t stat = cublasHgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, T, B, rho, &alpha,
-                                          d_Iin, T, d_W, B, &beta, d_Iout, T);
+        d_Iin, T, d_W, B, &beta, d_Iout, T);
+        */
+
+        // Multiply A^T and B on GPU, where the transposes are
+        // according to cublas, ie, in the Fortran column-major view
+        // of things.  That is, Transpose is the regular C row-major
+        // ordering.
+        cublasStatus_t stat = cublasHgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, T, B, rho, &alpha,
+        d_Iin, rho, d_W, rho, &beta, d_Iout, T);
+
         if (stat != CUBLAS_STATUS_SUCCESS) {
             ERROR("Error at {:s}:{:d}: cublasHgemm: {:s}", __FILE__, __LINE__,
                   cublasGetStatusString(stat));
