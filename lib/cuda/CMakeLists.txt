@@ -27,7 +27,8 @@ add_library(
     cudaBasebandBeamformer.cpp
     cudaFRBBeamformer.cpp
     cudaFRBBeamReformer.cpp
-    quantize_kernel_wrapper.cu)
+    quantize_kernel_wrapper.cu
+    cudaQuantize.cpp)
 
 # C++17
 set_property(TARGET kotekan_cuda PROPERTY CUDA_STANDARD 17)

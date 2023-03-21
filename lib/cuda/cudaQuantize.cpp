@@ -5,14 +5,15 @@
 #include "math.h"
 #include "mma.h"
 
-/*
- void launch_quantize_kernel(cudaStream_t stream, int nframes, const __half2 *in_base,
+void launch_quantize_kernel(cudaStream_t stream, int nframes, const __half2 *in_base,
                             __half2 *outf_base, unsigned int *outi_base,
                             const int *index_array);
- */
-void launch_quantize_kernel(cudaStream_t stream, int nframes, const void *in_base,
-                            void *outf_base, int32_t *outi_base,
-                            const int32_t *index_array);
+
+/*
+  void launch_quantize_kernel(cudaStream_t stream, int nframes, const void *in_base,
+  void *outf_base, int32_t *outi_base,
+  const int32_t *index_array);
+*/
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -32,7 +33,7 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
 
     size_t index_array_len = _num_chunks * 2 * sizeof(int32_t);
     int32_t* index_array_memory =
-        device.get_gpu_memory(_gpu_mem_input, index_array_len);
+        (int32_t*)device.get_gpu_memory(_gpu_mem_input, index_array_len);
 
     int32_t* index_array_host = (int32_t*)malloc(index_array_len);
     assert(index_array_host);
@@ -58,6 +59,7 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
 cudaQuantize::~cudaQuantize() {}
 
 cudaEvent_t cudaQuantize::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {
+    (void)pre_events;
     pre_execute(gpu_frame_id);
 
     size_t input_frame_len = _num_chunks * CHUNK_SIZE * sizeof(float16_t);
@@ -66,8 +68,8 @@ cudaEvent_t cudaQuantize::execute(int gpu_frame_id, const std::vector<cudaEvent_
 
     //  divide by 2 because of packed int4 outputs
     size_t output_frame_len = _num_chunks * CHUNK_SIZE / 2;
-    void* output_memory =
-        device.get_gpu_memory_array(_gpu_mem_output, gpu_frame_id, output_frame_len);
+    int32_t* output_memory =
+        (int32_t*)device.get_gpu_memory_array(_gpu_mem_output, gpu_frame_id, output_frame_len);
 
     size_t meanstd_frame_len = _num_chunks * 2 * sizeof(float16_t);
     void* meanstd_memory =
@@ -75,13 +77,13 @@ cudaEvent_t cudaQuantize::execute(int gpu_frame_id, const std::vector<cudaEvent_
 
     size_t index_array_len = _num_chunks * 2 * sizeof(int32_t);
     int32_t* index_array_memory =
-        device.get_gpu_memory(_gpu_mem_input, index_array_len);
+        (int32_t*)device.get_gpu_memory(_gpu_mem_input, index_array_len);
 
     record_start_event(gpu_frame_id);
 
     launch_quantize_kernel(device.getStream(cuda_stream_id),
                            _num_chunks / FRAME_SIZE,
-                           input_memory, meanstd_memory, output_memory,
+                           (const __half2*)input_memory, (__half2*)meanstd_memory, (unsigned int*)output_memory,
                            index_array_memory);
     CHECK_CUDA_ERROR(cudaGetLastError());
 
