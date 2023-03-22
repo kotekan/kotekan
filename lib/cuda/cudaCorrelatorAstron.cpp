@@ -50,7 +50,8 @@ cudaCorrelatorAstron::cudaCorrelatorAstron(Config& config, const std::string& un
 cudaCorrelatorAstron::~cudaCorrelatorAstron() {}
 
 cudaEvent_t cudaCorrelatorAstron::execute(int gpu_frame_id,
-                                          const std::vector<cudaEvent_t>& pre_events) {
+                                          const std::vector<cudaEvent_t>& pre_events,
+                                          bool* quit) {
     (void)pre_events;
     pre_execute(gpu_frame_id);
 

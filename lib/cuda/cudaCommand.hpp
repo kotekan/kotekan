@@ -75,7 +75,13 @@ public:
      * @param pre_events    Array of the last events from each cuda stream, indexed by stream
      *                      number.
      **/
-    virtual cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) = 0;
+    virtual cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
+                                bool* quit) = 0;
+
+    /**
+     * @brief Called if a previous command requested that the GPU pipeline quit.
+     */
+    virtual void skipped_execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events);
 
     /** Releases the memory of the event chain arrays per buffer_id
      * @param gpu_frame_id    The bufferID to release all the memory references for.

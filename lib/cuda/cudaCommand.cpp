@@ -66,6 +66,9 @@ cudaCommand::~cudaCommand() {
     DEBUG("post_events Freed: {:s}", unique_name.c_str());
 }
 
+void cudaCommand::skipped_execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {
+}
+
 void cudaCommand::finalize_frame(int gpu_frame_id) {
     if (start_events[gpu_frame_id] != nullptr) {
         if (profiling) {
@@ -84,7 +87,7 @@ void cudaCommand::finalize_frame(int gpu_frame_id) {
         CHECK_CUDA_ERROR(cudaEventDestroy(end_events[gpu_frame_id]));
         end_events[gpu_frame_id] = nullptr;
     } else {
-        FATAL_ERROR("Null end event in cudaCommand {:s}, this should never happen!", unique_name);
+        //FATAL_ERROR("Null end event in cudaCommand {:s}, this should never happen!", unique_name);
     }
 }
 
