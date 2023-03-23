@@ -1,8 +1,9 @@
 #include "cudaUpchannelize.hpp"
 
 #include "cudaUtils.hpp"
-#include "fmt.hpp"
 #include "math.h"
+
+#include "fmt.hpp"
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -12,8 +13,7 @@ const int sizeof_float16_t = 2;
 REGISTER_CUDA_COMMAND(cudaUpchannelize);
 
 cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_name,
-                                   bufferContainer& host_buffers,
-                                   cudaDeviceInterface& device) :
+                                   bufferContainer& host_buffers, cudaDeviceInterface& device) :
     cudaCommand(config, unique_name, host_buffers, device, "upchannelize", "upchan.ptx") {
     _num_dishes = config.get<int>(unique_name, "num_dishes");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
@@ -23,21 +23,30 @@ cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_nam
     _gpu_mem_output_voltage = config.get<std::string>(unique_name, "gpu_mem_output_voltage");
     _gpu_mem_gain = config.get<std::string>(unique_name, "gpu_mem_gain");
     _gpu_mem_info = config.get<std::string>(unique_name, "gpu_mem_info");
-    std::vector<float> gains = config.get_default<std::vector<float> >(unique_name, "freq_gains", std::vector<float>());
+    std::vector<float> gains =
+        config.get_default<std::vector<float>>(unique_name, "freq_gains", std::vector<float>());
 
     if (_num_dishes != cuda_ndishes)
-        throw std::runtime_error(fmt::format("The num_dishes config setting must be {:d} for the CUDA Upchannelizer", cuda_ndishes));
+        throw std::runtime_error(fmt::format(
+            "The num_dishes config setting must be {:d} for the CUDA Upchannelizer", cuda_ndishes));
     if (_num_local_freq != cuda_nfreq)
-        throw std::runtime_error(fmt::format("The num_local_freq config setting must be {:d} for the CUDA Upchannelizer", cuda_nfreq));
+        throw std::runtime_error(
+            fmt::format("The num_local_freq config setting must be {:d} for the CUDA Upchannelizer",
+                        cuda_nfreq));
     if (_samples_per_data_set != cuda_nsamples)
-        throw std::runtime_error(fmt::format("The samples_per_data_set config setting must be {:d} for the CUDA Upchannelizer", cuda_nsamples));
+        throw std::runtime_error(fmt::format(
+            "The samples_per_data_set config setting must be {:d} for the CUDA Upchannelizer",
+            cuda_nsamples));
 
     size_t ngains = _num_local_freq * _upchan_factor;
     if (gains.size() == 0)
         for (size_t i = 0; i < ngains; i++)
             gains.push_back(1.0);
     if (gains.size() != ngains)
-        throw std::runtime_error(fmt::format("The number of elements in the 'freq_gains' config setting array must be {:d} for the CUDA Upchannelizer", ngains));
+        throw std::runtime_error(
+            fmt::format("The number of elements in the 'freq_gains' config setting array must be "
+                        "{:d} for the CUDA Upchannelizer",
+                        ngains));
     // number of polarizations
     const int P = 2;
     gain_len = ngains * sizeof(float16_t);
@@ -62,7 +71,6 @@ cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_nam
     const float16_t* gain_host = gains16.data();
     float16_t* gain_gpu = (float16_t*)device.get_gpu_memory(_gpu_mem_gain, gain_len);
     CHECK_CUDA_ERROR(cudaMemcpy(gain_gpu, gain_host, gain_len, cudaMemcpyHostToDevice));
-    
 }
 
 cudaUpchannelize::~cudaUpchannelize() {}
@@ -83,8 +91,10 @@ cudaEvent_t cudaUpchannelize::execute(int gpu_frame_id,
     (void)pre_events;
     pre_execute(gpu_frame_id);
 
-    void* voltage_input_memory = device.get_gpu_memory_array(_gpu_mem_input_voltage, gpu_frame_id, voltage_input_len);
-    void* voltage_output_memory = device.get_gpu_memory_array(_gpu_mem_output_voltage, gpu_frame_id, voltage_output_len);
+    void* voltage_input_memory =
+        device.get_gpu_memory_array(_gpu_mem_input_voltage, gpu_frame_id, voltage_input_len);
+    void* voltage_output_memory =
+        device.get_gpu_memory_array(_gpu_mem_output_voltage, gpu_frame_id, voltage_output_len);
     float16_t* gain_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_gain, gain_len);
     int32_t* info_memory =
         (int32_t*)device.get_gpu_memory_array(_gpu_mem_info, gpu_frame_id, info_len);
@@ -96,25 +106,25 @@ cudaEvent_t cudaUpchannelize::execute(int gpu_frame_id,
     const char* exc = "exception";
     kernel_arg arr[4];
 
-    arr[0].ptr     = (int32_t*)gain_memory;
+    arr[0].ptr = (int32_t*)gain_memory;
     arr[0].maxsize = gain_len;
     arr[0].dims[0] = gain_len / sizeof(float16_t);
-    arr[0].len     = gain_len / sizeof(float16_t);
+    arr[0].len = gain_len / sizeof(float16_t);
 
-    arr[1].ptr     = (int32_t*)voltage_input_memory;
+    arr[1].ptr = (int32_t*)voltage_input_memory;
     arr[1].maxsize = voltage_input_len;
     arr[1].dims[0] = voltage_input_len;
-    arr[1].len     = voltage_input_len;
+    arr[1].len = voltage_input_len;
 
-    arr[2].ptr     = (int32_t*)voltage_output_memory;
+    arr[2].ptr = (int32_t*)voltage_output_memory;
     arr[2].maxsize = voltage_output_len;
     arr[2].dims[0] = voltage_output_len;
-    arr[2].len     = voltage_output_len;
+    arr[2].len = voltage_output_len;
 
-    arr[3].ptr     = (int32_t*)info_memory;
+    arr[3].ptr = (int32_t*)info_memory;
     arr[3].maxsize = info_len;
     arr[3].dims[0] = info_len / sizeof(int32_t);
-    arr[3].len     = info_len / sizeof(int32_t);
+    arr[3].len = info_len / sizeof(int32_t);
 
     void* parameters[] = {
         &(exc), &(arr[0]), &(arr[1]), &(arr[2]), &(arr[3]),
