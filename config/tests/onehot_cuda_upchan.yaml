@@ -27,6 +27,7 @@ num_dishes: 512
 num_local_freq: 16
 upchan_factor: 16
 #freq_gains: [1., 1., ...]
+freq_gains: 20.
 
 # data gen:
 num_frames: 18
@@ -56,11 +57,11 @@ host_info_buffer:
     frame_size: 32 * 16 * 128 * 4
     metadata_pool: main_pool
 
-#simulated_upchan_buffer:
-#    kotekan_buffer: standard
-#    num_frames: buffer_depth
-#    frame_size: samples_per_data_set * 2 * num_local_freq * num_dishes
-#    metadata_pool: main_pool
+simulated_upchan_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * 2 * num_local_freq * num_dishes
+    metadata_pool: main_pool
 
 gen_data:
     kotekan_stage: testDataGen
@@ -103,20 +104,18 @@ gpu:
             host_upchan: host_voltage_upchan_buffer
             host_info: host_info_buffer
 
-#cpu_beamformer:
-#    kotekan_stage: gpuSimulateCudaBasebandBeamformer
-#    # zero out the array before setting values (only needed for one-hot)?
-#    zero_output: true
-#    voltage_in_buf: host_voltage_buffer
-#    phase_in_buf: host_phase_buffer
-#    shift_in_buf: host_shift_buffer
-#    beams_out_buf: simulated_formed_beams_buffer
+cpu_upchan:
+    kotekan_stage: gpuSimulateCudaUpchannelize
+    # zero out the array before setting values (only needed for one-hot)?
+    zero_output: true
+    voltage_in_buf: host_voltage_buffer
+    voltage_out_buf: simulated_upchan_buffer
 
-#check_data:
-#    kotekan_stage: testDataCheckUchar
-#    first_buf: host_formed_beams_buffer
-#    second_buf: simulated_formed_beams_buffer
-#    num_frames_to_test: 18 # = length of gen_data one-hot vector
+check_data:
+    kotekan_stage: testDataCheckUchar
+    first_buf: host_voltage_upchan_buffer
+    second_buf: simulated_upchan_buffer
+    num_frames_to_test: 18 # = length of gen_data one-hot vector
 
 # hexDumpGPU:
 #     log_level: debug
@@ -135,11 +134,11 @@ printSparseGPU:
     # Tu, P, Fu, D
     array_shape: [2048, 2, 256, 512]
     input_buf: host_voltage_upchan_buffer
-    max_to_print: 16
+    max_to_print: 8
 
-# printSparseCPU:
-#     kotekan_stage: printSparseUint8
-#     # Tu, P, Fu, D
-#     array_shape: [2048, 2, 256, 512]
-#     input_buf: simulated_formed_beams_buffer
-#     max_to_print: 2
+printSparseCPU:
+    kotekan_stage: printSparseUint8
+    # Tu, P, Fu, D
+    array_shape: [2048, 2, 256, 512]
+    input_buf: simulated_upchan_buffer
+    max_to_print: 8

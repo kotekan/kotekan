@@ -23,6 +23,8 @@ cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_nam
     _gpu_mem_output_voltage = config.get<std::string>(unique_name, "gpu_mem_output_voltage");
     _gpu_mem_gain = config.get<std::string>(unique_name, "gpu_mem_gain");
     _gpu_mem_info = config.get<std::string>(unique_name, "gpu_mem_info");
+    // Try config value "freq_gains" as either a scalar float or a vector of floats
+    float gain0 = config.get_default<float>(unique_name, "freq_gains", 1.);
     std::vector<float> gains =
         config.get_default<std::vector<float>>(unique_name, "freq_gains", std::vector<float>());
 
@@ -39,9 +41,10 @@ cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_nam
             cuda_nsamples));
 
     size_t ngains = _num_local_freq * _upchan_factor;
-    if (gains.size() == 0)
+    if (gains.size() == 0) {
         for (size_t i = 0; i < ngains; i++)
-            gains.push_back(1.0);
+            gains.push_back(gain0);
+    }
     if (gains.size() != ngains)
         throw std::runtime_error(
             fmt::format("The number of elements in the 'freq_gains' config setting array must be "

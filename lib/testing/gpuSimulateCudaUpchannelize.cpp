@@ -30,6 +30,26 @@ gpuSimulateCudaUpchannelize::gpuSimulateCudaUpchannelize(Config& config,
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
     _upchan_factor = config.get<int>(unique_name, "upchan_factor");
+    // Try config value "freq_gains" as either a scalar float or a vector of floats
+#if KOTEKAN_FLOAT16
+    float gain0 = config.get_default<float>(unique_name, "freq_gains", 1.);
+    std::vector<float> gains =
+        config.get_default<std::vector<float>>(unique_name, "freq_gains", std::vector<float>());
+    size_t ngains = _num_local_freq * _upchan_factor;
+    if (gains.size() == 0) {
+        for (size_t i = 0; i < ngains; i++)
+            gains.push_back(gain0);
+    }
+    if (gains.size() != ngains)
+        throw std::runtime_error(
+            fmt::format("The number of elements in the 'freq_gains' config setting array must be "
+                        "{:d} for gpuSimulateCudaUpchannelize",
+                        ngains));
+    gains16.resize(gains.size());
+    for (size_t i = 0; i < gains.size(); i++)
+        gains16[i] = gains[i];
+#endif
+
     bool zero_output = config.get_default<bool>(unique_name, "zero_output", false);
     voltage_in_buf = get_buffer("voltage_in_buf");
     voltage_out_buf = get_buffer("voltage_out_buf");
@@ -46,9 +66,9 @@ gpuSimulateCudaUpchannelize::~gpuSimulateCudaUpchannelize() {}
 
 constexpr int C = 2;     // number of complex components
 constexpr int T = 32768; // number of times
-constexpr int D = 1;     // TODO 512;   // number of dishes
-constexpr int P = 1;     // TODO 2;     // number of polarizations
-constexpr int F = 1;     // TODO 16;    // frequency channels per GPU
+constexpr int D = 512;   // number of dishes
+constexpr int P = 2;     // number of polarizations
+constexpr int F = 16;    // frequency channels per GPU
 constexpr int U = 16;    // upchannelization factor
 constexpr int M = 4;     // number of taps
 
@@ -222,14 +242,28 @@ constexpr int Ebaridx(int c, int d, int fbar, int p, int tbar) {
 
 // kernel
 #if KOTEKAN_FLOAT16
-void upchan_simple(const float16_t* __restrict__ const W, const float16_t* __restrict__ const G,
-                   const storage_t* __restrict__ const E, storage_t* __restrict__ const Ebar) {
+void upchan_simple_cxx(const float16_t* __restrict__ const W, const float16_t* __restrict__ const G,
+                   const storage_t* __restrict__ const E, storage_t* __restrict__ const Ebar,
+                   int t, int p, int f, int d) {
+    const int t0 = (t == -1 ? 0 : t);
+    const int t1 = (t == -1 ? T : t + 1);
+    const int p0 = (p == -1 ? 0 : p);
+    const int p1 = (p == -1 ? 2 : p + 1);
+    const int f0 = (f == -1 ? 0 : f);
+    const int f1 = (f == -1 ? F : f + 1);
+    const int d0 = (d == -1 ? 0 : d);
+    const int d1 = (d == -1 ? D : d + 1);
+
+    const int tbar0 = t0 / U;
+    const int tbar1 = (t == -1 ? T/U : (tbar0+1));
+
 #pragma omp parallel for collapse(5)
-    for (int f = 0; f < F; ++f) {
-        for (int p = 0; p < P; ++p) {
-            for (int d = 0; d < D; ++d) {
+    for (int f = f0; f < f1; ++f) {
+        for (int p = p0; p < p1; ++p) {
+            for (int d = d0; d < d1; ++d) {
                 for (int u = 0; u < U; ++u) {
-                    for (int tbar = 0; tbar < T / U; ++tbar) {
+                    //for (int tbar = 0; tbar < T / U; ++tbar) {
+                    for (int tbar = tbar0; tbar < tbar1; ++tbar) {
 
                         const int fbar = u + U * f;
 
@@ -267,44 +301,36 @@ void upchan_simple(const float16_t* __restrict__ const W, const float16_t* __res
 ///////////////////////////////////////////////////////////////////////
 
 void gpuSimulateCudaUpchannelize::upchan_simple(
-    std::string tag, const float16_t* __restrict__ const W, const float16_t* __restrict__ const G,
-    // const storage_t *__restrict__ const E,
-    // storage_t *__restrict__ const Ebar,
-    const void* __restrict__ const E, void* __restrict__ const Ebar,
-    const int T, // 32768; // number of times
-    const int D, // = 512;   // number of dishes
-    const int F, // = 16;    // input frequency channels per GPU
-    const int U  // = 16;    // upchannelization factor
-) {}
+    std::string tag,
+    const void* __restrict__ const E, void* __restrict__ const Ebar) {
+    upchan_simple_sub(tag, E, Ebar, -1, -1, -1, -1);
+}
 void gpuSimulateCudaUpchannelize::upchan_simple_sub(
-    std::string tag, const float16_t* __restrict__ const W, const float16_t* __restrict__ const G,
-    // const storage_t *__restrict__ const E,
-    // storage_t *__restrict__ const Ebar,
+    std::string tag,
     const void* __restrict__ const E, void* __restrict__ const Ebar,
-    const int T, // 32768; // number of times
-    const int D, // = 512;   // number of dishes
-    const int F, // = 16;    // input frequency channels per GPU
-    const int U, // = 16;    // upchannelization factor
-    int t, int d, int p, int f) {}
+    int t, int p, int f, int d) {
+
+    std::vector<float16_t> W(M * U); // PFB weight function
+
+    // Set up window function
+    using std::cos, std::pow, std::sin;
+    float sumW = 0;
+    for (int s = 0; s < M * U; ++s) {
+        // sinc-Hanning window function, eqn. (11), with `N=U`
+        W.at(s) =
+            pow(cos(float(M_PI) * (s - (M * U - 1) / 2.0f) / (M * U + 1)), 2) *
+            sinc((s - (M * U - 1) / 2.0f) / U);
+        sumW += W.at(s);
+    }
+    // Normalize the window function
+    for (int s = 0; s < M * U; ++s)
+        //W.at(s) /= (float16_t)sumW;
+        W[s] = W[s] / sumW;
+
+    upchan_simple_cxx(W.data(), gains16.data(), (const storage_t*)E, (storage_t*)Ebar, t, p, f, d);
+
+}
 #endif
-
-/*
-  const int f0 = (f == -1 ? 0 : f);
-  const int f1 = (f == -1 ? F : f + 1);
-  const int p0 = (p == -1 ? 0 : p);
-    const int p1 = (p == -1 ? 2 : p + 1);
-    const int b0 = (b == -1 ? 0 : b);
-    const int b1 = (b == -1 ? B : b + 1);
-    const int t0 = (t == -1 ? 0 : t);
-    const int t1 = (t == -1 ? T : t + 1);
-    const int d0 = (d == -1 ? 0 : d);
-    const int d1 = (d == -1 ? D : d + 1);
-
-    int nprint_v = 0;
-    int nprint_b = 0;
-    int nprint_p = 0;
-    const int nprint_max = 2;
-*/
 
 void gpuSimulateCudaUpchannelize::main_thread() {
     int voltage_frame_id = 0;
@@ -343,18 +369,15 @@ void gpuSimulateCudaUpchannelize::main_thread() {
                 int p = inds[1];
                 int f = inds[2];
                 int d = inds[3];
-                int b = -1;
                 INFO("One-hot voltage buffer: time {:d} pol {:d}, freq {:d}, dish {:d}", t, p, f,
                      d);
-                // upchan_simple_sub(id_tag, phase, voltage, shift, output, _samples_per_data_set,
-                //_num_beams, ndishes, _num_local_freq, t, b, d, f, p);
+                upchan_simple_sub(id_tag, voltage_in, voltage_out, t, p, f, d);
                 done = true;
             }
         }
 
         if (!done) {
-            // upchan_simple(id_tag, phase, voltage, shift, output, _samples_per_data_set,
-            // _num_beams, ndishes, _num_local_freq);
+            upchan_simple(id_tag, voltage_in, voltage_out);
         }
 
         DEBUG("Simulated GPU processing done for {:s}[{:d}], result is in {:s}[{:d}]",
