@@ -72,6 +72,7 @@ gen_data:
 
 gpu:
     profiling: true
+    log_profiling: true
     kernel_path: "../../lib/cuda/kernels/"
     commands: &command_list
     - name: cudaInputData
