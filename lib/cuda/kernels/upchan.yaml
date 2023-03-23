@@ -18,7 +18,7 @@ kernel-description:
     threads: [32, 16]
     blocks: [128]
     shmem_bytes: 69888
-  kernel-name: "_Z17julia_upchan_368413CuDeviceArrayI9Float16x2Li1ELi1EES_IS0_Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE"
+  kernel-name: "_Z17julia_upchan_376513CuDeviceArrayI9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE"
   kernel-arguments:
     - name: "G"
       intent: in
@@ -26,12 +26,6 @@ kernel-description:
       indices: [F̄]
       shape: [256]
       strides: [1]
-    - name: "W"
-      intent: in
-      type: Float16
-      indices: [U, M]
-      shape: [16, 4]
-      strides: [1, 16]
     - name: "E"
       intent: in
       type: Int4

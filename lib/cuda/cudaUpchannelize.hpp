@@ -75,7 +75,7 @@ private:
 
     // The upchan.yaml file entry like kernel-name = "_Z17julia_upchan_..."
     // clang-format off
-    const std::string kernel_name = "_Z17julia_upchan_368413CuDeviceArrayI9Float16x2Li1ELi1EES_IS0_Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE";
+    const std::string kernel_name = "_Z17julia_upchan_376513CuDeviceArrayI9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE";
     // clang-format on
     // The upchan.yaml file entry like
     //    threads: [32, 16]
