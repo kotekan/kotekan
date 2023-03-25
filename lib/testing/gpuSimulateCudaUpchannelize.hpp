@@ -45,16 +45,6 @@ private:
 #if KOTEKAN_FLOAT16
     void upchan_simple(std::string tag, const void* __restrict__ const E,
                        void* __restrict__ const Ebar);
-    /*
-      const float16_t* __restrict__ const W,
-      const float16_t* __restrict__ const G,
-      // const storage_t *__restrict__ const E,
-      // storage_t *__restrict__ const Ebar,
-      const int T, // 32768; // number of times
-      const int D, // = 512;   // number of dishes
-      const int F, // = 16;    // input frequency channels per GPU
-      const int U  // = 16;    // upchannelization factor
-    */
     void upchan_simple_sub(std::string tag, const void* __restrict__ const E,
                            void* __restrict__ const Ebar, int t, int p, int f, int d);
 

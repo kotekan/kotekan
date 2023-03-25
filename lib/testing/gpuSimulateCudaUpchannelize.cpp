@@ -319,18 +319,12 @@ void gpuSimulateCudaUpchannelize::upchan_simple_sub(std::string tag,
 
     upchan_simple_cxx(W.data(), gains16.data(), (const storage_t*)E, (storage_t*)Ebar, t, p, f, d);
 }
-#else
-void gpuSimulateCudaUpchannelize::upchan_simple_sub(std::string tag,
-                                                    const void* __restrict__ const E,
-                                                    void* __restrict__ const Ebar, int t, int p,
-                                                    int f, int d) {
-    ERROR("No Float16 support, so no gpuSimulateCudaUpchannelize!");
-}
-#endif
+
 void gpuSimulateCudaUpchannelize::upchan_simple(std::string tag, const void* __restrict__ const E,
                                                 void* __restrict__ const Ebar) {
     upchan_simple_sub(tag, E, Ebar, -1, -1, -1, -1);
 }
+#endif
 
 void gpuSimulateCudaUpchannelize::main_thread() {
     int voltage_frame_id = 0;
@@ -371,13 +365,21 @@ void gpuSimulateCudaUpchannelize::main_thread() {
                 int d = inds[3];
                 INFO("One-hot voltage buffer: time {:d} pol {:d}, freq {:d}, dish {:d}", t, p, f,
                      d);
+#if KOTEKAN_FLOAT16
                 upchan_simple_sub(id_tag, voltage_in, voltage_out, t, p, f, d);
+#else
+                WARN("No Float16 support, so no gpuSimulateCudaUpchannelize!");
+#endif
                 done = true;
             }
         }
 
         if (!done) {
+#if KOTEKAN_FLOAT16
             upchan_simple(id_tag, voltage_in, voltage_out);
+#else
+                WARN("No Float16 support, so no gpuSimulateCudaUpchannelize!");
+#endif
         }
 
         DEBUG("Simulated GPU processing done for {:s}[{:d}], result is in {:s}[{:d}]",
