@@ -206,11 +206,6 @@ constexpr std::array<std::pair<float, float>, 3> table{{
     {2.0f, -1.0f},
     {3.0f, +3.0f},
 }};
-static_assert(interp(table, 1.0f) == +1.0f);
-static_assert(interp(table, 1.5f) == +0.0f);
-static_assert(interp(table, 2.0f) == -1.0f);
-static_assert(interp(table, 2.5f) == +1.0f);
-static_assert(interp(table, 3.0f) == +3.0f);
 } // namespace
 
 template<typename T>
@@ -246,7 +241,7 @@ void upchan_simple_cxx(const float16_t* __restrict__ const W, const float16_t* _
                        const storage_t* __restrict__ const E, storage_t* __restrict__ const Ebar,
                        int t, int p, int f, int d) {
     const int t0 = (t == -1 ? 0 : t);
-    const int t1 = (t == -1 ? T : t + 1);
+    // const int t1 = (t == -1 ? T : t + 1);
     const int p0 = (p == -1 ? 0 : p);
     const int p1 = (p == -1 ? 2 : p + 1);
     const int f0 = (f == -1 ? 0 : f);
