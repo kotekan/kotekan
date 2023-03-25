@@ -17,7 +17,6 @@
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <iosfwd>     // for size_t
 #include <regex>      // for match_results<>::_Base_type
-#include <stddef.h>   // for size_t
 #include <stdexcept>  // for runtime_error
 #include <utility>    // for pair
 #include <vector>     // for vector
