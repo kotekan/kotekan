@@ -7,13 +7,19 @@
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 #include "oneHotMetadata.hpp"  // for metadata_is_onehot, get_onehot_indices, get_onehot_frame_...
 
+#include <algorithm>  // for max, min
 #include <array>      // for array
+#include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
+#include <complex>    // for complex
+#include <cstdint>    // for int8_t
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
+#include <iosfwd>     // for size_t
 #include <regex>      // for match_results<>::_Base_type
 #include <stddef.h>   // for size_t
 #include <stdexcept>  // for runtime_error
+#include <utility>    // for pair
 #include <vector>     // for vector
 
 using kotekan::bufferContainer;
