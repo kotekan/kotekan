@@ -117,8 +117,6 @@ constexpr std::complex<T> convert(const std::complex<I> i) {
 using storage_t = int4x2_t;
 using value_t = int8_t;
 
-constexpr float maxabserr = 0.8f;
-
 constexpr storage_t set_storage(const int8_t lo, const int8_t hi) {
     return set4(lo, hi);
 }
@@ -143,8 +141,6 @@ constexpr I quantize(const T x, const I imax) {
 
 using storage_t = std::complex<float>;
 using value_t = float;
-
-constexpr float maxabserr = 0.0f;
 
 constexpr storage_t set_storage(const float lo, const float hi) {
     return {lo, hi};
@@ -200,13 +196,6 @@ constexpr U interp(const std::array<std::pair<T, U>, N>& table, const T x) {
                            x);
     assert(false);
 }
-namespace {
-constexpr std::array<std::pair<float, float>, 3> table{{
-    {1.0f, +1.0f},
-    {2.0f, -1.0f},
-    {3.0f, +3.0f},
-}};
-} // namespace
 
 template<typename T>
 constexpr T sinc(const T x) {
@@ -378,7 +367,7 @@ void gpuSimulateCudaUpchannelize::main_thread() {
 #if KOTEKAN_FLOAT16
             upchan_simple(id_tag, voltage_in, voltage_out);
 #else
-                WARN("No Float16 support, so no gpuSimulateCudaUpchannelize!");
+            WARN("No Float16 support, so no gpuSimulateCudaUpchannelize!");
 #endif
         }
 
