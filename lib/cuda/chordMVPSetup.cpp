@@ -29,7 +29,8 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     // 2 for polarizations
     size_t viewsize = num_dishes * num_local_freq * samples_per_data_set * 2;
     size_t fullsize = num_dishes * (num_local_freq * upchan_factor) * frb_bf_samples * 2;
-    INFO("Creating upchan/frb-bf glue buffers: frb-bf input {:s} size {:d}, upchan output {:s} size {:d}",
+    INFO("Creating upchan/frb-bf glue buffers: frb-bf input {:s} size {:d}, upchan output {:s} "
+         "size {:d}",
          fullname, fullsize, viewname, viewsize);
     for (int i = 0; i < device.get_gpu_buffer_depth(); i++) {
         void* real = device.get_gpu_memory_array(fullname, i, fullsize);

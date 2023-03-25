@@ -63,18 +63,20 @@ void* gpuDeviceInterface::get_gpu_memory_array(const std::string& name, const ui
     return gpu_memory[name].gpu_pointers[index];
 }
 
-void* gpuDeviceInterface::create_gpu_memory_view(const std::string& source_name, const size_t source_len,
+void* gpuDeviceInterface::create_gpu_memory_view(const std::string& source_name,
+                                                 const size_t source_len,
                                                  const std::string& dest_name, const size_t offset,
                                                  const size_t dest_len) {
     // Ensure that the view doesn't already exist
     if (gpu_memory.count(dest_name) > 0)
-        throw std::runtime_error(fmt::format("Tried to create_gpu_memory_view {:s} that already exists.", dest_name));
+        throw std::runtime_error(
+            fmt::format("Tried to create_gpu_memory_view {:s} that already exists.", dest_name));
     // Get source
     void* source = get_gpu_memory(source_name, source_len);
 
     // Create dest entry
-    INFO("Creating GPU memory view {:s} with length {:d}, view on {:s} + offset {:d}",
-         dest_name, dest_len, source_name, offset);
+    INFO("Creating GPU memory view {:s} with length {:d}, view on {:s} + offset {:d}", dest_name,
+         dest_len, source_name, offset);
     assert(offset + dest_len < source_len);
     gpu_memory[dest_name].len = dest_len;
     void* dest = (void*)((unsigned char*)source + offset);
@@ -84,13 +86,16 @@ void* gpuDeviceInterface::create_gpu_memory_view(const std::string& source_name,
     return dest;
 }
 
-void gpuDeviceInterface::create_gpu_memory_array_view(const std::string& source_name, const size_t source_len,
-                                                       const std::string& dest_name, const size_t offset, const size_t dest_len) {
+void gpuDeviceInterface::create_gpu_memory_array_view(const std::string& source_name,
+                                                      const size_t source_len,
+                                                      const std::string& dest_name,
+                                                      const size_t offset, const size_t dest_len) {
     INFO("Creating GPU memory array view {:s} with length {:d}, view on {:s} + offset {:d}",
          dest_name, dest_len, source_name, offset);
     // Ensure that the view doesn't already exist
     if (gpu_memory.count(dest_name) > 0)
-        throw std::runtime_error(fmt::format("Tried to create_gpu_memory_array_view {:s} that already exists.", dest_name));
+        throw std::runtime_error(fmt::format(
+            "Tried to create_gpu_memory_array_view {:s} that already exists.", dest_name));
     assert(offset + dest_len < source_len);
 
     for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {

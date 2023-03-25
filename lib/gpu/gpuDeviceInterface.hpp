@@ -52,10 +52,12 @@ public:
     void* get_gpu_memory(const std::string& name, const size_t len);
 
     void* create_gpu_memory_view(const std::string& source_name, const size_t source_len,
-                                 const std::string& view_name, const size_t view_offset, const size_t view_len);
+                                 const std::string& view_name, const size_t view_offset,
+                                 const size_t view_len);
 
     void create_gpu_memory_array_view(const std::string& source_name, const size_t source_len,
-                                      const std::string& view_name, const size_t view_offset, const size_t view_len);
+                                      const std::string& view_name, const size_t view_offset,
+                                      const size_t view_len);
 
     // Can't do this in the destructor because only the derived classes know
     // how to free their memory. To be moved into distinct objects...

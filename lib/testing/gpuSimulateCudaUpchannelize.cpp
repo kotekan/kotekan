@@ -243,8 +243,8 @@ constexpr int Ebaridx(int c, int d, int fbar, int p, int tbar) {
 // kernel
 #if KOTEKAN_FLOAT16
 void upchan_simple_cxx(const float16_t* __restrict__ const W, const float16_t* __restrict__ const G,
-                   const storage_t* __restrict__ const E, storage_t* __restrict__ const Ebar,
-                   int t, int p, int f, int d) {
+                       const storage_t* __restrict__ const E, storage_t* __restrict__ const Ebar,
+                       int t, int p, int f, int d) {
     const int t0 = (t == -1 ? 0 : t);
     const int t1 = (t == -1 ? T : t + 1);
     const int p0 = (p == -1 ? 0 : p);
@@ -255,14 +255,14 @@ void upchan_simple_cxx(const float16_t* __restrict__ const W, const float16_t* _
     const int d1 = (d == -1 ? D : d + 1);
 
     const int tbar0 = t0 / U;
-    const int tbar1 = (t == -1 ? T/U : (tbar0+1));
+    const int tbar1 = (t == -1 ? T / U : (tbar0 + 1));
 
 #pragma omp parallel for collapse(5)
     for (int f = f0; f < f1; ++f) {
         for (int p = p0; p < p1; ++p) {
             for (int d = d0; d < d1; ++d) {
                 for (int u = 0; u < U; ++u) {
-                    //for (int tbar = 0; tbar < T / U; ++tbar) {
+                    // for (int tbar = 0; tbar < T / U; ++tbar) {
                     for (int tbar = tbar0; tbar < tbar1; ++tbar) {
 
                         const int fbar = u + U * f;
@@ -300,15 +300,11 @@ void upchan_simple_cxx(const float16_t* __restrict__ const W, const float16_t* _
 
 ///////////////////////////////////////////////////////////////////////
 
-void gpuSimulateCudaUpchannelize::upchan_simple(
-    std::string tag,
-    const void* __restrict__ const E, void* __restrict__ const Ebar) {
-    upchan_simple_sub(tag, E, Ebar, -1, -1, -1, -1);
-}
-void gpuSimulateCudaUpchannelize::upchan_simple_sub(
-    std::string tag,
-    const void* __restrict__ const E, void* __restrict__ const Ebar,
-    int t, int p, int f, int d) {
+void gpuSimulateCudaUpchannelize::upchan_simple_sub(std::string tag,
+                                                    const void* __restrict__ const E,
+                                                    void* __restrict__ const Ebar, int t, int p,
+                                                    int f, int d) {
+    (void)tag;
 
     std::vector<float16_t> W(M * U); // PFB weight function
 
@@ -317,20 +313,29 @@ void gpuSimulateCudaUpchannelize::upchan_simple_sub(
     float sumW = 0;
     for (int s = 0; s < M * U; ++s) {
         // sinc-Hanning window function, eqn. (11), with `N=U`
-        W.at(s) =
-            pow(cos(float(M_PI) * (s - (M * U - 1) / 2.0f) / (M * U + 1)), 2) *
-            sinc((s - (M * U - 1) / 2.0f) / U);
+        W.at(s) = pow(cos(float(M_PI) * (s - (M * U - 1) / 2.0f) / (M * U + 1)), 2)
+                  * sinc((s - (M * U - 1) / 2.0f) / U);
         sumW += W.at(s);
     }
     // Normalize the window function
     for (int s = 0; s < M * U; ++s)
-        //W.at(s) /= (float16_t)sumW;
+        // W.at(s) /= (float16_t)sumW;
         W[s] = W[s] / sumW;
 
     upchan_simple_cxx(W.data(), gains16.data(), (const storage_t*)E, (storage_t*)Ebar, t, p, f, d);
-
+}
+#else
+void gpuSimulateCudaUpchannelize::upchan_simple_sub(std::string tag,
+                                                    const void* __restrict__ const E,
+                                                    void* __restrict__ const Ebar, int t, int p,
+                                                    int f, int d) {
+    ERROR("No Float16 support, so no gpuSimulateCudaUpchannelize!");
 }
 #endif
+void gpuSimulateCudaUpchannelize::upchan_simple(std::string tag, const void* __restrict__ const E,
+                                                void* __restrict__ const Ebar) {
+    upchan_simple_sub(tag, E, Ebar, -1, -1, -1, -1);
+}
 
 void gpuSimulateCudaUpchannelize::main_thread() {
     int voltage_frame_id = 0;
