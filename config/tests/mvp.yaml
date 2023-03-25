@@ -70,11 +70,11 @@ host_coarse_correlation_buffer:
     frame_size: fpga_freq * (fpga_samples / n2coarse_sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
     metadata_pool: main_pool
 
-host_fine_correlation_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: fpga_freq * (fine_samples / n2fine_sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
-    metadata_pool: main_pool
+# host_fine_correlation_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     frame_size: fpga_freq * (fine_samples / n2fine_sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+#     metadata_pool: main_pool
 
 host_bb_phase_buffer:
     kotekan_buffer: standard
@@ -289,11 +289,11 @@ gpu:
       gpu_mem: frb_info
       out_buf: host_frb_info
       in_buf: host_fpga # Metadata transfer from here
-    # Fine correlation
-    - name: cudaOutputData
-      in_buf: host_fpga # Metadata transfer from here
-      gpu_mem: fine_correlation_matrix
-      out_buf: host_fine_correlation
+    # Fine correlation -- for MVP we're not going to copy this back to host memory (too expensive)
+    # - name: cudaOutputData
+    #   in_buf: host_fpga # Metadata transfer from here
+    #   gpu_mem: fine_correlation_matrix
+    #   out_buf: host_fine_correlation
     # Coarse correlation
     - name: cudaOutputData
       in_buf: host_fpga # Metadata transfer from here
@@ -332,7 +332,7 @@ gpu:
             host_bb_shift: host_bb_shift_buffer
             host_frb_phase: host_frb_phase_buffer
         out_buffers:
-            host_fine_correlation: host_fine_correlation_buffer
+            # host_fine_correlation: host_fine_correlation_buffer
             host_coarse_correlation: host_coarse_correlation_buffer
             host_fine_upchan_info: host_fine_upchan_info
             host_bb_info: host_bb_info
