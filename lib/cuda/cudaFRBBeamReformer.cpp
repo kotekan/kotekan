@@ -273,7 +273,7 @@ cudaEvent_t cudaFRBBeamReformer::execute(int gpu_frame_id,
         // of things.  That is, Transpose is the regular C row-major
         // ordering.
         cublasStatus_t stat = cublasHgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, T, B, rho, &alpha,
-        d_Iin, rho, d_W, rho, &beta, d_Iout, T);
+                                          d_Iin, rho, d_W, rho, &beta, d_Iout, T);
 
         if (stat != CUBLAS_STATUS_SUCCESS) {
             ERROR("Error at {:s}:{:d}: cublasHgemm: {:s}", __FILE__, __LINE__,

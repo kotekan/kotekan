@@ -30,6 +30,8 @@ add_library(
     quantize_kernel_wrapper.cu
     cudaQuantize.cpp
     cudaRechunk.cpp)
+    cudaUpchannelize.cpp
+    chordMVPSetup.cpp)
 
 # C++17
 set_property(TARGET kotekan_cuda PROPERTY CUDA_STANDARD 17)

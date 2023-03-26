@@ -12,6 +12,8 @@
 /// Stores a named set of gpu pointer(s) with uniform size
 struct gpuMemoryBlock {
     std::vector<void*> gpu_pointers;
+    // store the "real" pointers to allow windowed buffer views
+    std::vector<void*> gpu_pointers_to_free;
     size_t len;
 };
 
@@ -48,6 +50,14 @@ public:
      * Should NOT be used for any memory that's copied between GPU and HOST memory.
      */
     void* get_gpu_memory(const std::string& name, const size_t len);
+
+    void* create_gpu_memory_view(const std::string& source_name, const size_t source_len,
+                                 const std::string& view_name, const size_t view_offset,
+                                 const size_t view_len);
+
+    void create_gpu_memory_array_view(const std::string& source_name, const size_t source_len,
+                                      const std::string& view_name, const size_t view_offset,
+                                      const size_t view_len);
 
     // Can't do this in the destructor because only the derived classes know
     // how to free their memory. To be moved into distinct objects...
