@@ -29,8 +29,9 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
         throw std::runtime_error("The num_chunks parameter must be a factor of 32");
     set_command_type(gpuCommandType::KERNEL);
 
-    size_t index_array_len = _num_chunks * 2 * sizeof(int32_t);
-    int32_t* index_array_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_input, index_array_len);
+    std::string _gpu_mem_index = unique_name + "/index";
+    size_t index_array_len = (size_t)_num_chunks * 2 * sizeof(int32_t);
+    int32_t* index_array_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_index, index_array_len);
 
     int32_t* index_array_host = (int32_t*)malloc(index_array_len);
     assert(index_array_host);
@@ -58,22 +59,25 @@ cudaQuantize::~cudaQuantize() {}
 cudaEvent_t cudaQuantize::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
                                   bool* quit) {
     (void)pre_events;
+    (void)quit;
     pre_execute(gpu_frame_id);
 
-    size_t input_frame_len = _num_chunks * CHUNK_SIZE * sizeof(float16_t);
+    size_t input_frame_len = (size_t)_num_chunks * CHUNK_SIZE * sizeof(float16_t);
     void* input_memory = device.get_gpu_memory_array(_gpu_mem_input, gpu_frame_id, input_frame_len);
-
+    INFO("Input frame length: {:d} x {:d} x 2 = {:d}", _num_chunks, CHUNK_SIZE, input_frame_len);
     //  divide by 2 because of packed int4 outputs
-    size_t output_frame_len = _num_chunks * CHUNK_SIZE / 2;
+    size_t output_frame_len = (size_t)_num_chunks * CHUNK_SIZE / 2;
+    INFO("Output frame length: {:d} x {:d} / 2 = {:d}", _num_chunks, CHUNK_SIZE, output_frame_len);
     int32_t* output_memory =
         (int32_t*)device.get_gpu_memory_array(_gpu_mem_output, gpu_frame_id, output_frame_len);
 
-    size_t meanstd_frame_len = _num_chunks * 2 * sizeof(float16_t);
+    size_t meanstd_frame_len = (size_t)_num_chunks * 2 * sizeof(float16_t);
     void* meanstd_memory =
         device.get_gpu_memory_array(_gpu_mem_meanstd, gpu_frame_id, meanstd_frame_len);
 
-    size_t index_array_len = _num_chunks * 2 * sizeof(int32_t);
-    int32_t* index_array_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_input, index_array_len);
+    std::string _gpu_mem_index = unique_name + "/index";
+    size_t index_array_len = (size_t)_num_chunks * 2 * sizeof(int32_t);
+    int32_t* index_array_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_index, index_array_len);
 
     record_start_event(gpu_frame_id);
 
