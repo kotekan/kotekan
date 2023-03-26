@@ -105,9 +105,7 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
     _num_beams = config.get<int>(unique_name, "num_beams");
     _beam_grid_size = config.get<int>(unique_name, "beam_grid_size");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
-    _time_downsampling = config.get<int>(unique_name, "time_downsampling");
-
+    Td = config.get<int>(unique_name, "samples_per_data_set");
     _gpu_mem_beamgrid = config.get<std::string>(unique_name, "gpu_mem_beamgrid");
     _gpu_mem_phase = config.get<std::string>(unique_name, "gpu_mem_phase");
     _gpu_mem_beamout = config.get<std::string>(unique_name, "gpu_mem_beamout");
@@ -115,7 +113,6 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
     set_command_type(gpuCommandType::KERNEL);
 
     rho = _beam_grid_size * _beam_grid_size;
-    Td = (_samples_per_data_set + _time_downsampling - 1) / _time_downsampling;
 
     beamgrid_len = (size_t)_num_local_freq * Td * rho * sizeof(float16_t);
     phase_len = (size_t)_num_local_freq * rho * _num_beams * sizeof(float16_t);
@@ -239,6 +236,7 @@ cudaFRBBeamReformer::~cudaFRBBeamReformer() {
 cudaEvent_t cudaFRBBeamReformer::execute(int gpu_frame_id,
                                          const std::vector<cudaEvent_t>& pre_events, bool* quit) {
     (void)pre_events;
+    (void)quit;
     pre_execute(gpu_frame_id);
 
     float16_t* beamgrid_memory =
