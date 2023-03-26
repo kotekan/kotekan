@@ -68,7 +68,7 @@ __global__ void shuffle_astron(int *input, int *output, int ne, int nt, int nf) 
         output[((F * nt/32 + blockIdx.y)*ne + E+e)*8 + threadIdx.y] = dd[e];
 }
 
-cudaEvent_t cudaShuffleAstron::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {
+cudaEvent_t cudaShuffleAstron::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events, bool* quit) {
     pre_execute(gpu_frame_id);
 
     size_t input_frame_len = (size_t)_num_elements * _num_local_freq * _samples_per_data_set;
