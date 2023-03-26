@@ -70,8 +70,10 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
 
 chordMVPSetup::~chordMVPSetup() {}
 
-cudaEvent_t chordMVPSetup::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {
+cudaEvent_t chordMVPSetup::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
+                                   bool* quit) {
     (void)pre_events;
+    (void)quit;
     pre_execute(gpu_frame_id);
     record_start_event(gpu_frame_id);
     return record_end_event(gpu_frame_id);

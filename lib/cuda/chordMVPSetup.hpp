@@ -16,8 +16,8 @@ public:
     chordMVPSetup(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~chordMVPSetup();
-    virtual cudaEvent_t execute(int gpu_frame_id,
-                                const std::vector<cudaEvent_t>& pre_events) override;
+    virtual cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
+                                bool* quit) override;
 };
 
 #endif // KOTEKAN_CHORD_MVP_SETUP_HPP

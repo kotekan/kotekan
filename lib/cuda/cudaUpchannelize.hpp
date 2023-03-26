@@ -44,7 +44,8 @@ public:
     cudaUpchannelize(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaUpchannelize();
-    cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) override;
+    cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
+                        bool* quit) override;
 
 protected:
 private:
