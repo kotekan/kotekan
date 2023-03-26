@@ -48,7 +48,8 @@ public:
     cudaBasebandBeamformer(kotekan::Config& config, const std::string& unique_name,
                            kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaBasebandBeamformer();
-    cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events, bool* quit) override;
+    cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
+                        bool* quit) override;
 
 protected:
 private:

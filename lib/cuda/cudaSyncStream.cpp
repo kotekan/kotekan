@@ -37,7 +37,8 @@ int cudaSyncStream::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-cudaEvent_t cudaSyncStream::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events, bool* quit) {
+cudaEvent_t cudaSyncStream::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
+                                    bool* quit) {
     for (auto source_stream_id : _source_cuda_streams) {
         if (pre_events[source_stream_id]) {
             CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(cuda_stream_id),

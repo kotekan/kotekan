@@ -28,7 +28,8 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
 
 cudaCorrelator::~cudaCorrelator() {}
 
-cudaEvent_t cudaCorrelator::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events, bool* quit) {
+cudaEvent_t cudaCorrelator::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
+                                    bool* quit) {
     pre_execute(gpu_frame_id);
 
     uint32_t input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;

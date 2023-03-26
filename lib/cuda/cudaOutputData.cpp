@@ -71,7 +71,8 @@ int cudaOutputData::wait_on_precondition(int gpu_frame_id) {
 }
 
 
-cudaEvent_t cudaOutputData::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events, bool* quit) {
+cudaEvent_t cudaOutputData::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
+                                    bool* quit) {
     pre_execute(gpu_frame_id);
 
     skipped[gpu_frame_id] = false;
@@ -97,8 +98,9 @@ void cudaOutputData::finalize_frame(int frame_id) {
     cudaCommand::finalize_frame(frame_id);
 
     if (skipped[frame_id]) {
-        DEBUG("Skipping Cuda output for gpu frame {:d}; input is {:s}[{:d}], output is {:s}[{:d}]", frame_id, in_buffer->buffer_name, in_buffer_id,
-              output_buffer->buffer_name, output_buffer_id);
+        DEBUG("Skipping Cuda output for gpu frame {:d}; input is {:s}[{:d}], output is {:s}[{:d}]",
+              frame_id, in_buffer->buffer_name, in_buffer_id, output_buffer->buffer_name,
+              output_buffer_id);
         mark_frame_empty(in_buffer, unique_name.c_str(), in_buffer_id);
         in_buffer_id = (in_buffer_id + 1) % in_buffer->num_frames;
         return;

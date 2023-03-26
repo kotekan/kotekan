@@ -237,8 +237,7 @@ cudaFRBBeamReformer::~cudaFRBBeamReformer() {
 }
 
 cudaEvent_t cudaFRBBeamReformer::execute(int gpu_frame_id,
-                                         const std::vector<cudaEvent_t>& pre_events,
-                                         bool* quit) {
+                                         const std::vector<cudaEvent_t>& pre_events, bool* quit) {
     (void)pre_events;
     pre_execute(gpu_frame_id);
 

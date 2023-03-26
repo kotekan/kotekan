@@ -56,7 +56,8 @@ void cudaProcess::queue_commands(int gpu_frame_id) {
         // Feed the last signal into the next operation
         if (!quit) {
             command_stream_id = ((cudaCommand*)command)->get_cuda_stream_id();
-            events[command_stream_id] = ((cudaCommand*)command)->execute(gpu_frame_id, events, &quit);
+            events[command_stream_id] =
+                ((cudaCommand*)command)->execute(gpu_frame_id, events, &quit);
         } else
             ((cudaCommand*)command)->skipped_execute(gpu_frame_id, events);
     }

@@ -29,7 +29,7 @@ add_library(
     cudaFRBBeamReformer.cpp
     quantize_kernel_wrapper.cu
     cudaQuantize.cpp
-    cudaRechunk.cpp)
+    cudaRechunk.cpp
     cudaUpchannelize.cpp
     chordMVPSetup.cpp)
 

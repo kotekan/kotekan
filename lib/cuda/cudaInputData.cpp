@@ -53,7 +53,8 @@ int cudaInputData::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-cudaEvent_t cudaInputData::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events, bool* quit) {
+cudaEvent_t cudaInputData::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
+                                   bool* quit) {
     pre_execute(gpu_frame_id);
 
     size_t input_frame_len = in_buf->frame_size;
