@@ -68,6 +68,14 @@ cudaEvent_t cudaRechunk::execute(int gpu_frame_id, const std::vector<cudaEvent_t
     } else {
         // partial output frame -- don't run further GPU kernels.
         *quit = true;
+
+        // MVP HACK!!
+        // Sync on the output stream, because we're setting "quit" and otherwise
+        // nobody is going to wait for the output to finish!
+        int output_stream_id = 1;
+        CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(cuda_stream_id),
+                                             pre_events[output_stream_id]));
+
     }
 
     return record_end_event(gpu_frame_id);
