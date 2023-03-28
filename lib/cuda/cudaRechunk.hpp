@@ -22,8 +22,22 @@
  *   @gpu_mem_type   staging
  *   @gpu_mem_format Array of @c int4
  *
- * @conf   num_chunks          Int.  Number of 256-element "chunks" in the gpu_mem_input
- * time-stream.  Must be a factor of 32.
+ * @conf len_inner_input  - Int
+ * @conf len_inner_output - Int
+ * @conf len_outer        - Int
+ *
+ * This code assumes 2-D input arrays that can be stacked along either
+ * dimension.  This is, for input arrays A and B of size r x c, the
+ * output will look like
+ *    A1,1 A1,2 ... A1,c   B1,1 B1,2, ..., B1,c
+ *    ...
+ *    Ar,1 Ar,2 ... Ar,c   Br,1 Br,2, ..., Br,c
+ *
+ * if you set:
+ *   len_inner_input = c
+ *   len_inner_output = 2*c
+ *   len_outer = r * sizeof(elements)
+ *
  */
 class cudaRechunk : public cudaCommand {
 public:

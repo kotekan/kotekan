@@ -17,8 +17,8 @@
 // can be wrapped around any runtime API call. No-op in release builds.
 #define CHECK_CUDA_ERROR(result)                                                                   \
     if (result != cudaSuccess) {                                                                   \
-        internal_logging(LOG_ERR, __log_prefix, "Error at {:s}:{:d}; Error type: {:s}", __FILE__,  \
-                         __LINE__, cudaGetErrorString(result));                                    \
+        internal_logging(LOG_ERR, __log_prefix, "Error at {:s}:{:d}; Error type: {:s} ({:d})", __FILE__,  \
+                         __LINE__, cudaGetErrorString(result), int(result)); \
         std::abort();                                                                              \
     }
 
