@@ -41,9 +41,14 @@
  */
 class cudaUpchannelize : public cudaCommand {
 public:
+    //cudaUpchannelize(kotekan::Config& config, const std::string& unique_name,
+    //kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     cudaUpchannelize(kotekan::Config& config, const std::string& unique_name,
-                     kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
-    ~cudaUpchannelize();
+                     kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                     std::string name="upchannelize", std::string kernel="upchan.ptx",
+                     int nsamples=32768,
+                     std::string kernel_symbol="_Z17julia_upchan_376513CuDeviceArrayI9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE");
+~cudaUpchannelize();
     cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
                         bool* quit) override;
 
@@ -74,9 +79,10 @@ private:
     size_t voltage_output_len;
     size_t info_len;
 
+    std::string kernel_name;
     // The upchan.yaml file entry like kernel-name = "_Z17julia_upchan_..."
     // clang-format off
-    const std::string kernel_name = "_Z17julia_upchan_376513CuDeviceArrayI9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE";
+    //const std::string kernel_name = "_Z17julia_upchan_376513CuDeviceArrayI9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE";
     // clang-format on
     // The upchan.yaml file entry like
     //    threads: [32, 16]

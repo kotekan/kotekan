@@ -31,6 +31,7 @@ add_library(
     cudaQuantize.cpp
     cudaRechunk.cpp
     cudaUpchannelize.cpp
+    cudaUpchannelize16k.cpp
     chordMVPSetup.cpp)
 
 # C++17
