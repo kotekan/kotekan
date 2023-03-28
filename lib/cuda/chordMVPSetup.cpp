@@ -90,10 +90,11 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
 
     size_t sizeof_float16_t = 2;
 
-    fullsize = frb_td      * frb_freq * rho * sizeof_float16_t;
+    fullsize = frb_td * frb_freq * rho * sizeof_float16_t;
     viewsize = frb_td_good * frb_freq * rho * sizeof_float16_t;
 
-    INFO("FRB1 to FRBRechunk buffer view: FRB1 output is {:s} size {:d}, Rechunk input {:s} size {:d}",
+    INFO("FRB1 to FRBRechunk buffer view: FRB1 output is {:s} size {:d}, Rechunk input {:s} size "
+         "{:d}",
          fullname, fullsize, viewname, viewsize);
     for (int i = 0; i < device.get_gpu_buffer_depth(); i++)
         device.get_gpu_memory_array(fullname, i, fullsize);
@@ -101,17 +102,18 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     device.create_gpu_memory_array_view(fullname, fullsize, viewname, 0, viewsize);
 
     // FRB Rechunk outputs 5 x 51 = 255 into a 256-element array for FRB2
-    
+
     fullname = config.get<std::string>(unique_name, "gpu_mem_frb_brf_input");
     viewname = config.get<std::string>(unique_name, "gpu_mem_frb_rechunk_output");
 
     size_t frb_td_rechunk_real = config.get<int>(unique_name, "frb_td_rechunk_real");
     size_t frb_td_rechunk = config.get<int>(unique_name, "frb_td_rechunk");
 
-    fullsize = frb_td_rechunk      * frb_freq * rho * sizeof_float16_t;
+    fullsize = frb_td_rechunk * frb_freq * rho * sizeof_float16_t;
     viewsize = frb_td_rechunk_real * frb_freq * rho * sizeof_float16_t;
 
-    INFO("FRBRechunk to FRB Beam Reformer buffer view: padded output is {:s} size {:d}, real output is {:s} size {:d}",
+    INFO("FRBRechunk to FRB Beam Reformer buffer view: padded output is {:s} size {:d}, real "
+         "output is {:s} size {:d}",
          fullname, fullsize, viewname, viewsize);
     for (int i = 0; i < device.get_gpu_buffer_depth(); i++) {
         void* real = device.get_gpu_memory_array(fullname, i, fullsize);
@@ -120,7 +122,6 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     }
     // offset = 0
     device.create_gpu_memory_array_view(fullname, fullsize, viewname, 0, viewsize);
-
 }
 
 chordMVPSetup::~chordMVPSetup() {}

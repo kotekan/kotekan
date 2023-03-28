@@ -14,9 +14,9 @@ REGISTER_CUDA_COMMAND(cudaUpchannelize);
 
 cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_name,
                                    bufferContainer& host_buffers, cudaDeviceInterface& device,
-                                   std::string name, std::string kernel_fn,
-                                   int nsamples, std::string kernel_symbol) :
-    //cudaCommand(config, unique_name, host_buffers, device, "upchannelize", "upchan.ptx") {
+                                   std::string name, std::string kernel_fn, int nsamples,
+                                   std::string kernel_symbol) :
+    // cudaCommand(config, unique_name, host_buffers, device, "upchannelize", "upchan.ptx") {
     cudaCommand(config, unique_name, host_buffers, device, name, kernel_fn),
     kernel_name(kernel_symbol) {
     _num_dishes = config.get<int>(unique_name, "num_dishes");
@@ -39,11 +39,11 @@ cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_nam
         throw std::runtime_error(
             fmt::format("The num_local_freq config setting must be {:d} for the CUDA Upchannelizer",
                         cuda_nfreq));
-    //if (_samples_per_data_set != cuda_nsamples)
+    // if (_samples_per_data_set != cuda_nsamples)
     if (_samples_per_data_set != nsamples)
         throw std::runtime_error(fmt::format(
             "The samples_per_data_set config setting must be {:d} for the CUDA Upchannelizer",
-            //cuda_nsamples));
+            // cuda_nsamples));
             nsamples));
 
     size_t ngains = _num_local_freq * _upchan_factor;
@@ -70,8 +70,8 @@ cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_nam
         "--gpu-name=sm_86",
         "--verbose",
     };
-    //INFO("Looking for PTX symbol {:s} in {:s}", get_kernel_function_name(), kernel);
-    //build_ptx({get_kernel_function_name()}, opts);
+    // INFO("Looking for PTX symbol {:s} in {:s}", get_kernel_function_name(), kernel);
+    // build_ptx({get_kernel_function_name()}, opts);
     build_ptx({kernel_symbol}, opts);
 
     std::vector<float16_t> gains16;

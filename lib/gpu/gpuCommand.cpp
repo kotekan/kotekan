@@ -1,8 +1,8 @@
 #include "gpuCommand.hpp"
 
-#include "fmt.hpp"
-
 #include "Config.hpp" // for Config
+
+#include "fmt.hpp"
 
 #include <assert.h>  // for assert
 #include <exception> // for exception

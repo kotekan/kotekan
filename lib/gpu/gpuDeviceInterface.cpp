@@ -56,7 +56,8 @@ void* gpuDeviceInterface::get_gpu_memory_array(const std::string& name, const ui
     }
     // The size must match what has already been allocated.
     if (len != gpu_memory[name].len) {
-        ERROR("get_gpu_memory_array failed: requested name \"{:s}\" size {:d} index {:d}, but existing memory is size {:d}",
+        ERROR("get_gpu_memory_array failed: requested name \"{:s}\" size {:d} index {:d}, but "
+              "existing memory is size {:d}",
               name, len, index, gpu_memory[name].len);
     }
     assert(len == gpu_memory[name].len);

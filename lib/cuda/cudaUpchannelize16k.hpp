@@ -7,8 +7,8 @@
 #ifndef CUDA_UPCHANNELIZE16K_HPP
 #define CUDA_UPCHANNELIZE16K_HPP
 
-#include "cudaUpchannelize.hpp"
 #include "cudaDeviceInterface.hpp"
+#include "cudaUpchannelize.hpp"
 
 /**
  * @class cudaUpchannelize
