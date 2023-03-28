@@ -66,7 +66,13 @@ cudaCommand::~cudaCommand() {
     DEBUG("post_events Freed: {:s}", unique_name.c_str());
 }
 
-void cudaCommand::skipped_execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {}
+void cudaCommand::skipped_execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {
+    (void)pre_events;
+    // FIXME -- not sure we need this!  Would like to accumulate zero
+    // time when commands are skipped; not sure if this is the way.
+    record_start_event(gpu_frame_id);
+    record_end_event(gpu_frame_id);
+}
 
 void cudaCommand::finalize_frame(int gpu_frame_id) {
     if (start_events[gpu_frame_id] != nullptr) {
