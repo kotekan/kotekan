@@ -12,6 +12,8 @@
 #include "kotekanLogging.hpp"  // for kotekanLogging
 #include "kotekanTrackers.hpp" // for kotekanTrackers
 
+#include "fmt.hpp"
+
 #include <stdint.h> // for int32_t
 #include <string>   // for string, allocator
 
@@ -88,7 +90,7 @@ public:
 
     /// Returns performance information, can be customized to give more detailed stats.
     virtual std::string get_performance_metric_string() {
-        return "Time: " + std::to_string(get_last_gpu_execution_time()) + " seconds";
+        return fmt::format("Time: {:.3f} ms", get_last_gpu_execution_time() * 1e3);
     }
 
     /**

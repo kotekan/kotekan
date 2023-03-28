@@ -231,7 +231,7 @@ void gpuProcess::results_thread() {
                                      commands[i]->get_unique_name(), commands[i]->get_name(),
                                      commands[i]->get_performance_metric_string());
             }
-            INFO("GPU[{:d}] Profiling: \n{:s}", gpu_id, output);
+            INFO("GPU[{:d}] frame {:d} Profiling: \n{:s}", gpu_id, gpu_frame_id, output);
         }
 
         final_signals[gpu_frame_id]->reset();

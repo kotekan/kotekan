@@ -1,5 +1,7 @@
 #include "gpuCommand.hpp"
 
+#include "fmt.hpp"
+
 #include "Config.hpp" // for Config
 
 #include <assert.h>  // for assert

@@ -119,6 +119,6 @@ void cudaOutputData::finalize_frame(int frame_id) {
 std::string cudaOutputData::get_performance_metric_string() {
     double t = (double)get_last_gpu_execution_time();
     double transfer_speed = (double)output_buffer->frame_size / t * 1e-9;
-    return fmt::format("Time: {:.6f} seconds, Speed: {:.2f} GB/s ({:.2f} Gb/s)", t, transfer_speed,
+    return fmt::format("Time: {:.3f} ms, Speed: {:.2f} GB/s ({:.2f} Gb/s)", t*1e3, transfer_speed,
                        transfer_speed * 8);
 }
