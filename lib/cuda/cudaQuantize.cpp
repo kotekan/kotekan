@@ -43,7 +43,7 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
             index_array_host[f * FRAME_SIZE * 2 + i] = (f * FRAME_SIZE + i) * CHUNK_SIZE;
         }
         // offset for the mean/scale outputs per chunk
-        index_array_host[f * FRAME_SIZE * 2 + FRAME_SIZE] = f * FRAME_SIZE * 2;
+        index_array_host[f * FRAME_SIZE * 2 + FRAME_SIZE] = f * FRAME_SIZE;
         // offset for the output integers per frame;
         // this is in units of int32s, and the outputs are int4s, hence the divide by 8.
         index_array_host[f * FRAME_SIZE * 2 + FRAME_SIZE + 1] = f * FRAME_SIZE * (CHUNK_SIZE / 8);
