@@ -109,10 +109,13 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
     _gpu_mem_beamgrid = config.get<std::string>(unique_name, "gpu_mem_beamgrid");
     _gpu_mem_phase = config.get<std::string>(unique_name, "gpu_mem_phase");
     _gpu_mem_beamout = config.get<std::string>(unique_name, "gpu_mem_beamout");
-    _cuda_streams = config.get_default<std::vector<int> >(unique_name, "cuda_streams", std::vector<int>());
+    _cuda_streams =
+        config.get_default<std::vector<int>>(unique_name, "cuda_streams", std::vector<int>());
     for (size_t i = 0; i < _cuda_streams.size(); i++) {
         if (_cuda_streams[i] >= device.get_num_streams()) {
-            ERROR("Error: cudaFRBBeamReformer's config setting cuda_streams must have all elements < number of streams on the device = {:d}", device.get_num_streams());
+            ERROR("Error: cudaFRBBeamReformer's config setting cuda_streams must have all elements "
+                  "< number of streams on the device = {:d}",
+                  device.get_num_streams());
         }
     }
 
