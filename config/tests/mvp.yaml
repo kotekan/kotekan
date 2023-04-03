@@ -175,6 +175,8 @@ gpu:
     profiling: true
     log_profiling: true
     kernel_path: "../../lib/cuda/kernels/"
+    # More streams -- for FRBBeamReformer
+    num_cuda_streams: 4
     commands: &command_list
     - name: chordMVPSetup
       upchan_factor: frb_upchan
@@ -301,6 +303,8 @@ gpu:
     # FRB2: FRB Beam Reformer
     - name: cudaFRBBeamReformer
       log_level: debug
+      cuda_streams: [2,3]
+      #cuda_streams: [2,3,4,5]
       gpu_mem_beamgrid: beamchunk
       gpu_mem_phase: beamphase
       gpu_mem_beamout: beamout
@@ -308,6 +312,11 @@ gpu:
       samples_per_data_set: frb_td_rechunk
       num_beams: frb_beams
       beam_grid_size: frb_beam_grid_size
+    # Wait for streams 3,4,5 to finish
+    - name: cudaSyncStream
+      cuda_stream: 2
+      source_cuda_streams: [3]
+      #source_cuda_streams: [3,4,5]
     # FRB3: quantization into 4-bit int
     - name: cudaQuantize
       gpu_mem_input: beamout

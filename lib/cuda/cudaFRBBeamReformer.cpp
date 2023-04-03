@@ -105,18 +105,24 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
     _num_beams = config.get<int>(unique_name, "num_beams");
     _beam_grid_size = config.get<int>(unique_name, "beam_grid_size");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
-    Td = config.get<int>(unique_name, "samples_per_data_set");
+    _Td = config.get<int>(unique_name, "samples_per_data_set");
     _gpu_mem_beamgrid = config.get<std::string>(unique_name, "gpu_mem_beamgrid");
     _gpu_mem_phase = config.get<std::string>(unique_name, "gpu_mem_phase");
     _gpu_mem_beamout = config.get<std::string>(unique_name, "gpu_mem_beamout");
+    _cuda_streams = config.get_default<std::vector<int> >(unique_name, "cuda_streams", std::vector<int>());
+    for (size_t i = 0; i < _cuda_streams.size(); i++) {
+        if (_cuda_streams[i] >= device.get_num_streams()) {
+            ERROR("Error: cudaFRBBeamReformer's config setting cuda_streams must have all elements < number of streams on the device = {:d}", device.get_num_streams());
+        }
+    }
 
     set_command_type(gpuCommandType::KERNEL);
 
     rho = _beam_grid_size * _beam_grid_size;
 
-    beamgrid_len = (size_t)_num_local_freq * Td * rho * sizeof(float16_t);
+    beamgrid_len = (size_t)_num_local_freq * _Td * rho * sizeof(float16_t);
     phase_len = (size_t)_num_local_freq * rho * _num_beams * sizeof(float16_t);
-    beamout_len = (size_t)_num_local_freq * Td * _num_beams * sizeof(float16_t);
+    beamout_len = (size_t)_num_local_freq * _Td * _num_beams * sizeof(float16_t);
 
     cublasStatus_t err = cublasCreate(&(this->handle));
     if (err != CUBLAS_STATUS_SUCCESS) {
@@ -248,30 +254,35 @@ cudaEvent_t cudaFRBBeamReformer::execute(int gpu_frame_id,
     record_start_event(gpu_frame_id);
 
     DEBUG("Running CUDA FRB BeamReformer on GPU frame {:d}: F={:d}, T={:d}, B={:d}, rho={:d}",
-          gpu_frame_id, _num_local_freq, Td, _num_beams, rho);
+          gpu_frame_id, _num_local_freq, _Td, _num_beams, rho);
+
+    int calls_per_stream = (_cuda_streams.size() > 0) ? _num_local_freq / _cuda_streams.size() : 0;
 
     for (int f = 0; f < _num_local_freq; f++) {
-        int T = Td;
         int B = _num_beams;
-        float16_t* d_Iin = beamgrid_memory + (size_t)f * T * rho;
+        float16_t* d_Iin = beamgrid_memory + (size_t)f * _Td * rho;
         float16_t* d_W = phase_memory + (size_t)f * rho * B;
-        float16_t* d_Iout = beamout_memory + (size_t)f * T * B;
+        float16_t* d_Iout = beamout_memory + (size_t)f * _Td * B;
 
         __half alpha = 1.;
         __half beta = 0.;
 
+        if ((calls_per_stream > 0) && (f % calls_per_stream == 0)) {
+            DEBUG("Freq {:d}: set Cuda stream {:d}", f, _cuda_streams[f / calls_per_stream]);
+            cublasSetStream(handle, device.getStream(_cuda_streams[f / calls_per_stream]));
+        }
         /*
         // Multiply A and B^T on GPU
-        cublasStatus_t stat = cublasHgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, T, B, rho, &alpha,
-        d_Iin, T, d_W, B, &beta, d_Iout, T);
+        cublasStatus_t stat = cublasHgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, _Td, B, rho, &alpha,
+        d_Iin, _Td, d_W, B, &beta, d_Iout, _Td);
         */
 
         // Multiply A^T and B on GPU, where the transposes are
         // according to cublas, ie, in the Fortran column-major view
         // of things.  That is, Transpose is the regular C row-major
         // ordering.
-        cublasStatus_t stat = cublasHgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, T, B, rho, &alpha,
-                                          d_Iin, rho, d_W, rho, &beta, d_Iout, T);
+        cublasStatus_t stat = cublasHgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, _Td, B, rho, &alpha,
+                                          d_Iin, rho, d_W, rho, &beta, d_Iout, _Td);
 
         if (stat != CUBLAS_STATUS_SUCCESS) {
             ERROR("Error at {:s}:{:d}: cublasHgemm: {:s}", __FILE__, __LINE__,

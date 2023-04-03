@@ -36,15 +36,14 @@ private:
     int32_t _beam_grid_size;
     /// Number of frequencies per data stream sent to each node.
     int32_t _num_local_freq;
+    /// Total samples in each dataset
+    int32_t _Td;
 
-    /// Total samples in each dataset (before downsampling!)
-    int32_t _samples_per_data_set;
-    /// Time downsampling factor
-    int32_t _time_downsampling;
+    /// CUDA compute streams to use
+    std::vector<int> _cuda_streams;
 
     // Computed values
     int32_t rho;
-    int32_t Td;
 
     /// Size in bytes of the input beamgrid array
     size_t beamgrid_len;
