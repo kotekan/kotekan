@@ -25,7 +25,6 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
     _gpu_mem_voltage = config.get<std::string>(unique_name, "gpu_mem_voltage");
     _gpu_mem_phase = config.get<std::string>(unique_name, "gpu_mem_phase");
     _gpu_mem_beamgrid = config.get<std::string>(unique_name, "gpu_mem_beamgrid");
-    _gpu_mem_info = config.get<std::string>(unique_name, "gpu_mem_info");
 
     set_command_type(gpuCommandType::KERNEL);
 
@@ -73,6 +72,8 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
     beamgrid_len = (size_t)beam_p * beam_q * _num_local_freq * Td * sizeof_float16_t;
     info_len = (size_t)(threads_x * threads_y * blocks_x * sizeof(int32_t));
 
+    host_info.resize(info_len / sizeof(int32_t));
+
     // Allocate GPU memory for dish-layout array, and fill from the config file entry!
     int16_t* dishlayout_memory =
         (int16_t*)device.get_gpu_memory(_gpu_mem_dishlayout, dishlayout_len);
@@ -105,6 +106,7 @@ typedef CuDeviceArray<int32_t, 1> kernel_arg;
 cudaEvent_t cudaFRBBeamformer::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
                                        bool* quit) {
     (void)pre_events;
+    (void)quit;
     pre_execute(gpu_frame_id);
 
     void* dishlayout_memory = device.get_gpu_memory(_gpu_mem_dishlayout, dishlayout_len);
@@ -113,9 +115,12 @@ cudaEvent_t cudaFRBBeamformer::execute(int gpu_frame_id, const std::vector<cudaE
     void* beamgrid_memory =
         device.get_gpu_memory_array(_gpu_mem_beamgrid, gpu_frame_id, beamgrid_len);
     int32_t* info_memory =
-        (int32_t*)device.get_gpu_memory_array(_gpu_mem_info, gpu_frame_id, info_len);
+        (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
 
     record_start_event(gpu_frame_id);
+
+    // Initialize info_memory return codes
+    CHECK_CUDA_ERROR(cudaMemsetAsync(info_memory, 0xff, info_len, device.getStream(cuda_stream_id)));
 
     // dishlayout (S), phase (W), voltage (E), beamgrid (I), info
     const char* exc = "exception";
@@ -168,7 +173,6 @@ cudaEvent_t cudaFRBBeamformer::execute(int gpu_frame_id, const std::vector<cudaE
     };
 
     DEBUG("Kernel_name: {}", kernel_name);
-    DEBUG("runtime_kernels[kernel_name]: {}", (void*)runtime_kernels[kernel_name]);
     CHECK_CU_ERROR(cuFuncSetAttribute(runtime_kernels[kernel_name],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shared_mem_bytes));
@@ -178,5 +182,16 @@ cudaEvent_t cudaFRBBeamformer::execute(int gpu_frame_id, const std::vector<cudaE
                                   threads_y, 1, shared_mem_bytes, device.getStream(cuda_stream_id),
                                   parameters, NULL));
 
+    // Copy "info" result code back to host memory
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info.data(), info_memory, info_len, cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
+
     return record_end_event(gpu_frame_id);
+}
+
+void cudaFRBBeamformer::finalize_frame(int gpu_frame_id) {
+    cudaCommand::finalize_frame(gpu_frame_id);
+    for (size_t i=0; i<host_info.size(); i++)
+        if (host_info[i] != 0)
+            ERROR("cudaFRBBeamformer returned 'info' value {:d} at index {:d} (zero indicates no error)",
+                  host_info[i], i);
 }

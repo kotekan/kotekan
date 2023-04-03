@@ -63,7 +63,7 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
 
     // FPGA to Upchan for Fine Visibility:
 
-    fullname = config.get<std::string>(unique_name, "gpu_mem_fpga");
+    fullname = config.get<std::string>(unique_name, "gpu_mem_voltage");
     viewname = config.get<std::string>(unique_name, "gpu_mem_fine_upchan_input");
 
     fullsize = num_dishes * num_local_freq * samples_per_data_set * 2;

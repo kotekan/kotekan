@@ -19,18 +19,18 @@ sizeof_float: 4
 sizeof_float16: 2
 sizeof_int: 4
 
-fpga_samples: 32768
-fpga_freq: 16
+voltage_samples: 32768
+voltage_freq: 16
 num_dishes: 512
 num_elements: num_dishes * 2
 
-frame_arrival_period: 0.00000170667 * fpga_samples
+frame_arrival_period: 0.00000170667 * voltage_samples
 
 n2coarse_sub_integration_ntime: 16384
 
 # Fine visibilities
 # NOTE that this / 2 MUST match the hard-coded buffer setup login in chordMVPSetup
-fine_samples: fpga_samples / 2
+fine_samples: voltage_samples / 2
 fine_upchan: 16
 n2fine_sub_integration_ntime: 1024
 
@@ -39,7 +39,7 @@ bb_beams: 96
 frb_beams: 5000
 frb_upchan: 16
 frb_samples: 2064
-frb_freq: fpga_freq * frb_upchan
+frb_freq: voltage_freq * frb_upchan
 dish_grid_size: 24
 frb_beam_grid_size: dish_grid_size * 2
 frb_time_downsampling: 40
@@ -66,47 +66,41 @@ main_pool:
     num_metadata_objects: 15 * buffer_depth
 
 # Buffers
-host_fpga_buffer:
+host_voltage_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: fpga_samples * num_dishes * 2 * fpga_freq
+    frame_size: voltage_samples * num_dishes * 2 * voltage_freq
     metadata_pool: main_pool
 
 host_coarse_correlation_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: fpga_freq * (fpga_samples / n2coarse_sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+    frame_size: voltage_freq * (voltage_samples / n2coarse_sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
     metadata_pool: main_pool
 
 # host_fine_correlation_buffer:
 #     kotekan_buffer: standard
 #     num_frames: buffer_depth
-#     frame_size: fpga_freq * (fine_samples / n2fine_sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+#     frame_size: voltage_freq * (fine_samples / n2fine_sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
 #     metadata_pool: main_pool
 
 host_bb_phase_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: num_elements * fpga_freq * bb_beams * 2
+    frame_size: num_elements * voltage_freq * bb_beams * 2
     metadata_pool: main_pool
 
 host_bb_shift_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: fpga_freq * bb_beams * 2 * sizeof_int
+    frame_size: voltage_freq * bb_beams * 2 * sizeof_int
     metadata_pool: main_pool
 
 host_bb_beams_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: fpga_samples * bb_beams * fpga_freq * 2
+    frame_size: voltage_samples * bb_beams * voltage_freq * 2
     metadata_pool: main_pool
-
-# host_beamgrid_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: frb_beam_grid_size * frb_beam_grid_size * num_local_freq * td * sizeof_float16
-#     metadata_pool: main_pool
 
 host_bb_info:
     kotekan_buffer: standard
@@ -129,24 +123,11 @@ host_frb_upchan_info:
     frame_size: 32 * 16 * 128 * 4
     metadata_pool: main_pool
 
-host_frb_info:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    # threads_x * threads_y * blocks_x * sizeof(int32)
-    frame_size: 32 * 24 * 256 * 4
-    metadata_pool: main_pool
-
 host_frb_phase_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
     frame_size: dish_grid_size * dish_grid_size * frb_freq * 2 * 2 * sizeof_float16
     metadata_pool: main_pool
-
-# host_beamout_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: frb_beams * frb_freq * frb_td * sizeof_float16
-#     metadata_pool: main_pool
 
 host_beamquant_buffer:
     kotekan_buffer: standard
@@ -164,11 +145,12 @@ host_beammeanstd_buffer:
 
 gen_data:
     kotekan_stage: testDataGen
-    type: onehot
-    values: [0x01, 0x02, 0x04, 0x07, 0x08, 0x09, 0xc, 0xe, 0xf, 0x10, 0x20, 0x40, 0x70, 0x80, 0x90, 0xc0, 0xe0, 0xf0]
+    #type: onehot
+    #values: [0x01, 0x02, 0x04, 0x07, 0x08, 0x09, 0xc, 0xe, 0xf, 0x10, 0x20, 0x40, 0x70, 0x80, 0x90, 0xc0, 0xe0, 0xf0]
+    type: random_signed
     # TIME, POL, FREQ, DISH
     array_shape: [32768, 2, 16, 512]
-    out_buf: host_fpga_buffer
+    out_buf: host_voltage_buffer
 
 gen_frb_phase:
     kotekan_stage: testDataGen
@@ -196,18 +178,18 @@ gpu:
     commands: &command_list
     - name: chordMVPSetup
       upchan_factor: frb_upchan
-      num_local_freq: fpga_freq
-      samples_per_data_set: fpga_samples
+      num_local_freq: voltage_freq
+      samples_per_data_set: voltage_samples
       gpu_mem_frb_bf_input: bf_input
       gpu_mem_upchan_output: upchan_out
-      gpu_mem_fpga: voltage
+      gpu_mem_voltage: voltage
       gpu_mem_fine_upchan_input: fine_upchan_input
       gpu_mem_frb_bf_output: beamgrid
       gpu_mem_frb_rechunk_input: beamgrid_good
       gpu_mem_frb_rechunk_output: beamchunk_sub
       gpu_mem_frb_brf_input: beamchunk
     - name: cudaInputData
-      in_buf: host_fpga
+      in_buf: host_voltage
       gpu_mem: voltage
     - name: cudaInputData
       in_buf: host_frb_phase
@@ -221,10 +203,10 @@ gpu:
     - name: cudaSyncInput
     # Coarse visibilities
     - name: cudaCorrelator
-      gpu_mem_voltage: fpga
+      gpu_mem_voltage: voltage
       gpu_mem_correlation_triangle: coarse_correlation_matrix
-      num_local_freq: fpga_freq
-      samples_per_data_set: fpga_samples
+      num_local_freq: voltage_freq
+      samples_per_data_set: voltage_samples
       sub_integration_ntime: n2coarse_sub_integration_ntime
     # Fine visibilities -- upchannelized
     - name: cudaUpchannelize16k
@@ -232,97 +214,82 @@ gpu:
       gpu_mem_output_voltage: fine_upchan_out
       gpu_mem_info: fine_upchan_info
       gpu_mem_gain: fine_upchan_gains
-      num_local_freq: fpga_freq
+      num_local_freq: voltage_freq
       samples_per_data_set: fine_samples
       upchan_factor: fine_upchan
     # Fine visibilities
     - name: cudaCorrelator
       gpu_mem_voltage: fine_upchan_out
       gpu_mem_correlation_triangle: fine_correlation_matrix
-      num_local_freq: fpga_freq
+      num_local_freq: voltage_freq
       samples_per_data_set: fine_samples
       sub_integration_ntime: n2fine_sub_integration_ntime
     # Baseband beamformer
     - name: cudaBasebandBeamformer
-      gpu_mem_voltage: fpga
+      gpu_mem_voltage: voltage
       gpu_mem_phase: bb_phase
       gpu_mem_output_scaling: bb_shift
       gpu_mem_formed_beams: bb_beams
       gpu_mem_info: bb_info
-      num_local_freq: fpga_freq
-      samples_per_data_set: fpga_samples
+      num_local_freq: voltage_freq
+      samples_per_data_set: voltage_samples
       num_beams: bb_beams
+    # FRB chain, starting with upchannelization
     - name: cudaUpchannelize
-      gpu_mem_input_voltage: fpga
+      gpu_mem_input_voltage: voltage
       gpu_mem_output_voltage: upchan_out
       gpu_mem_info: upchan_info
       gpu_mem_gain: upchan_gains
-      num_local_freq: fpga_freq
-      samples_per_data_set: fpga_samples
+      num_local_freq: voltage_freq
+      samples_per_data_set: voltage_samples
       upchan_factor: frb_upchan
+    # FRB1: beamformer
     - name: cudaFRBBeamformer
       gpu_mem_voltage: bf_input
       gpu_mem_phase: frb_phase
       gpu_mem_dishlayout: dishlayout
       gpu_mem_beamgrid: beamgrid
-      gpu_mem_info: frb_info
       num_local_freq: frb_freq
       samples_per_data_set: frb_samples
       time_downsampling: frb_time_downsampling
       num_beams: frb_beams
+    # FRB2 & 3 follow after rechunking!
+    #
+    # Begin output of full-rate results
     - name: cudaSyncOutput
     # Status result from Fine-Vis Upchannelizer
     - name: cudaOutputData
       gpu_mem: fine_upchan_info
       out_buf: host_fine_upchan_info
-      in_buf: host_fpga # Metadata transfer from here
+      in_buf: host_voltage # Metadata transfer from here
     # Status result from Baseband beamformer
     - name: cudaOutputData
       gpu_mem: bb_info
       out_buf: host_bb_info
-      in_buf: host_fpga # Metadata transfer from here
+      in_buf: host_voltage # Metadata transfer from here
     # Status result from FRB Upchannelizer
     - name: cudaOutputData
       gpu_mem: upchan_info
       out_buf: host_frb_upchan_info
-      in_buf: host_fpga # Metadata transfer from here
-    # Status result from FRB beamformer kernel
-    - name: cudaOutputData
-      gpu_mem: frb_info
-      out_buf: host_frb_info
-      in_buf: host_fpga # Metadata transfer from here
+      in_buf: host_voltage # Metadata transfer from here
     # Fine correlation -- for MVP we're not going to copy this back to host memory (too expensive)
     # - name: cudaOutputData
-    #   in_buf: host_fpga # Metadata transfer from here
+    #   in_buf: host_voltage # Metadata transfer from here
     #   gpu_mem: fine_correlation_matrix
     #   out_buf: host_fine_correlation
     # Coarse correlation
     - name: cudaOutputData
-      in_buf: host_fpga # Metadata transfer from here
+      in_buf: host_voltage # Metadata transfer from here
       gpu_mem: coarse_correlation_matrix
       out_buf: host_coarse_correlation
     # Baseband formed beams
     - name: cudaOutputData
       gpu_mem: bb_beams
       out_buf: host_bb_beams
-      in_buf: host_fpga
-    #  # # TEMPORARY -- copy back this intermediate product...
-    #  # - name: cudaOutputData
-    #  #   gpu_mem: beamgrid
-    #  #   out_buf: host_beamgrid
-    #  #   in_buf: host_fpga # Metadata transfer from here
-    #  # TEMPORARY -- copy back this intermediate product...
-    #  - name: cudaOutputData
-    #    gpu_mem: beamout
-    #    out_buf: host_beamout
-    #    in_buf: host_voltage # Metadata transfer from here
-    #  # - name: cudaOutputData
-    #  #   gpu_mem: beammeanstd
-    #  #   out_buf: host_beammeanstd
-    #  #   in_buf: host_voltage # Metadata transfer from here
-
-    # STICK THESE AT THE END BECAUSE OF RECHUNKING
-
+      in_buf: host_voltage
+    #
+    # Rechunking!
+    #
     - name: cudaRechunk
       gpu_mem_input: beamgrid_good
       gpu_mem_output: beamchunk_sub
@@ -331,9 +298,9 @@ gpu:
       len_inner_input: frb_td_good * 2 * frb_beam_grid_size * frb_beam_grid_size
       len_inner_output: frb_td_rechunk_real * 2 * frb_beam_grid_size * frb_beam_grid_size
       len_outer: frb_freq
-
+    # FRB2: FRB Beam Reformer
     - name: cudaFRBBeamReformer
-      #gpu_mem_beamgrid: beamgrid
+      log_level: debug
       gpu_mem_beamgrid: beamchunk
       gpu_mem_phase: beamphase
       gpu_mem_beamout: beamout
@@ -341,40 +308,29 @@ gpu:
       samples_per_data_set: frb_td_rechunk
       num_beams: frb_beams
       beam_grid_size: frb_beam_grid_size
-
-    # # CHECK FOR ERRORS
-    # - name: cudaSyncStream
-    #   source_cuda_streams: [0,1,2]
-    #   cuda_stream: 1
-    # ###
-
-    # - name: cudaQuantize
-    #   gpu_mem_input: beamout
-    #   gpu_mem_output: beamquant
-    #   gpu_mem_meanstd: beammeanstd
-    #   num_chunks: frb_beams * frb_freq * frb_td_rechunk / 256
-
-    # # CHECK FOR ERRORS
-    # - name: cudaSyncStream
-    #   source_cuda_streams: [0,1,2]
-    #   cuda_stream: 1
-    # ###
-
+    # FRB3: quantization into 4-bit int
+    - name: cudaQuantize
+      gpu_mem_input: beamout
+      gpu_mem_output: beamquant
+      gpu_mem_meanstd: beammeanstd
+      num_chunks: frb_beams * frb_freq * frb_td_rechunk / 256
+    # Sync rechunked outputs
     - name: cudaSyncOutput
+    # Rechunked outputs
     - name: cudaOutputData
       gpu_mem: beamquant
       out_buf: host_beamquant
-      in_buf: host_fpga # Metadata transfer from here
+      in_buf: host_voltage # Metadata transfer from here
     - name: cudaOutputData
       gpu_mem: beammeanstd
       out_buf: host_beammeanstd
-      in_buf: host_fpga # Metadata transfer from here
+      in_buf: host_voltage # Metadata transfer from here
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
         commands: *command_list
         in_buffers:
-            host_fpga: host_fpga_buffer
+            host_voltage: host_voltage_buffer
             host_bb_phase: host_bb_phase_buffer
             host_bb_shift: host_bb_shift_buffer
             host_frb_phase: host_frb_phase_buffer
@@ -384,23 +340,9 @@ gpu:
             host_fine_upchan_info: host_fine_upchan_info
             host_bb_info: host_bb_info
             host_frb_upchan_info: host_frb_upchan_info
-            host_frb_info: host_frb_info
             host_bb_beams: host_bb_beams_buffer
-            # host_beamout: host_beamout_buffer
             host_beamquant: host_beamquant_buffer
             host_beammeanstd: host_beammeanstd_buffer
-
-# hexDumpGPU:
-#     log_level: debug
-#     kotekan_stage: hexDump
-#     in_buf: host_beamgrid_buffer
-#     len: 32
-
-# hexDumpCPU:
-#     log_level: debug
-#     kotekan_stage: hexDump
-#     in_buf: simulated_beamgrid_buffer
-#     len: 32
 
 printSparseGPU:
     kotekan_stage: printSparseFloat16

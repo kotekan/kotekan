@@ -24,6 +24,7 @@ public:
     ~cudaFRBBeamformer();
     cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
                         bool* quit) override;
+    virtual void finalize_frame(int gpu_frame_id) override;
 
 protected:
 private:
@@ -60,6 +61,8 @@ private:
     std::string _gpu_mem_beamgrid;
     /// GPU side memory name for the status/info output
     std::string _gpu_mem_info;
+
+    std::vector<int32_t> host_info;
 
     // frb-v5
 
