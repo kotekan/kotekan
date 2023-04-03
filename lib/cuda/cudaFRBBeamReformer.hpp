@@ -25,6 +25,7 @@ public:
     ~cudaFRBBeamReformer();
     cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
                         bool* quit) override;
+    void finalize_frame(int frame_id) override;
 
 protected:
 private:
@@ -41,6 +42,7 @@ private:
 
     /// CUDA compute streams to use
     std::vector<int> _cuda_streams;
+    std::vector<std::vector<cudaEvent_t>> sync_events;
 
     // Computed values
     int32_t rho;

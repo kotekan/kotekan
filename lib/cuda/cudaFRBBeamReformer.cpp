@@ -119,6 +119,13 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
         }
     }
 
+    sync_events.resize(_gpu_buffer_depth);
+    if (_cuda_streams.size()) {
+        for (int i = 0; i < _gpu_buffer_depth; i++) {
+            sync_events[i].resize(_cuda_streams.size());
+        }
+    }
+
     set_command_type(gpuCommandType::KERNEL);
 
     rho = _beam_grid_size * _beam_grid_size;
@@ -293,5 +300,29 @@ cudaEvent_t cudaFRBBeamReformer::execute(int gpu_frame_id,
             std::abort();
         }
     }
+
+    if (calls_per_stream > 0) {
+        for (size_t i = 0; i < _cuda_streams.size(); i++) {
+            if (_cuda_streams[i] != cuda_stream_id) {
+                // Create an event on each compute stream that we "forked"
+                CHECK_CUDA_ERROR(cudaEventCreate(&sync_events[gpu_frame_id][i]));
+                CHECK_CUDA_ERROR(cudaEventRecord(sync_events[gpu_frame_id][i],
+                                                 device.getStream(_cuda_streams[i])));
+                // Now wait for that event on the main compute stream.
+                CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(cuda_stream_id),
+                                                     sync_events[gpu_frame_id][i]));
+            }
+        }
+    }
+
     return record_end_event(gpu_frame_id);
+}
+
+void cudaFRBBeamReformer::finalize_frame(int frame_id) {
+    cudaCommand::finalize_frame(frame_id);
+    for (size_t i = 0; i < _cuda_streams.size(); i++) {
+        if (sync_events[frame_id][i])
+            CHECK_CUDA_ERROR(cudaEventDestroy(sync_events[frame_id][i]));
+        sync_events[frame_id][i] = nullptr;
+    }
 }
