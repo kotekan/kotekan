@@ -52,14 +52,14 @@ for gpu_id in range(0, len(gpu_ids)):
     # Kernel tables
     try:
         for kernel in json_data[gpu_id]["kernel"]:
-            ktime = kernel['time']
+            ktime = kernel["time"]
             if ktime is None:
-                ktime = 0.
+                ktime = 0.0
             kernels[gpu_id].append(
                 [
                     os.path.basename(kernel["name"]),
                     "%.6f" % ktime,
-                    "%.4f" % ((kernel["utilization"] or 0.) * 100) + "%",
+                    "%.4f" % ((kernel["utilization"] or 0.0) * 100) + "%",
                 ]
             )
     except Exception:
@@ -69,8 +69,8 @@ for gpu_id in range(0, len(gpu_ids)):
     kernels[gpu_id].append(
         [
             "Total:",
-            "%.6f" % (json_data[gpu_id]["kernel_total_time"] or 0.),
-            "%.4f" % ((json_data[gpu_id]["kernel_utilization"] or 0.) * 100) + "%",
+            "%.6f" % (json_data[gpu_id]["kernel_total_time"] or 0.0),
+            "%.4f" % ((json_data[gpu_id]["kernel_utilization"] or 0.0) * 100) + "%",
         ]
     )
 
@@ -96,15 +96,15 @@ for gpu_id in range(0, len(gpu_ids)):
         copy_outs[gpu_id].append(
             [
                 copy_out["name"],
-                "%.6f" % (copy_out["time"] or 0.),
-                "%.4f" % ((copy_out["utilization"] or 0.) * 100) + "%",
+                "%.6f" % (copy_out["time"] or 0.0),
+                "%.4f" % ((copy_out["utilization"] or 0.0) * 100) + "%",
             ]
         )
     copy_outs[gpu_id].append(
         [
             "Total:",
-            "%.6f" % (json_data[gpu_id]["copy_out_total_time"] or 0.),
-            "%.4f" % ((json_data[gpu_id]["copy_out_utilization"] or 0.) * 100) + "%",
+            "%.6f" % (json_data[gpu_id]["copy_out_total_time"] or 0.0),
+            "%.4f" % ((json_data[gpu_id]["copy_out_utilization"] or 0.0) * 100) + "%",
         ]
     )
 
