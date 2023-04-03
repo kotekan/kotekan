@@ -66,7 +66,8 @@ cudaCommand::~cudaCommand() {
     DEBUG("post_events Freed: {:s}", unique_name.c_str());
 }
 
-cudaEvent_t cudaCommand::skipped_execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {
+cudaEvent_t cudaCommand::skipped_execute(int gpu_frame_id,
+                                         const std::vector<cudaEvent_t>& pre_events) {
     (void)pre_events;
     // FIXME -- not sure we need this!  Would like to accumulate zero
     // time when commands are skipped; not sure if this is the way.
@@ -75,10 +76,11 @@ cudaEvent_t cudaCommand::skipped_execute(int gpu_frame_id, const std::vector<cud
 }
 
 void cudaCommand::finalize_frame(int gpu_frame_id) {
-    if (profiling && (start_events[gpu_frame_id] != nullptr) && (end_events[gpu_frame_id] != nullptr)) {
+    if (profiling && (start_events[gpu_frame_id] != nullptr)
+        && (end_events[gpu_frame_id] != nullptr)) {
         float exec_time;
-        CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_events[gpu_frame_id],
-                                              end_events[gpu_frame_id]));
+        CHECK_CUDA_ERROR(
+            cudaEventElapsedTime(&exec_time, start_events[gpu_frame_id], end_events[gpu_frame_id]));
         // INFO("elapsed time {:s} {:s}: {:g}", unique_name, get_name(), exec_time);
         double active_time = exec_time * 1e-3; // convert ms to s
         excute_time->add_sample(active_time);

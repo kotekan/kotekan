@@ -21,7 +21,7 @@ public:
     virtual cudaEvent_t execute(int buf_frame_id, const std::vector<cudaEvent_t>& pre_events,
                                 bool* quit) override;
     virtual cudaEvent_t skipped_execute(int gpu_frame_id,
-                                 const std::vector<cudaEvent_t>& pre_events) override;
+                                        const std::vector<cudaEvent_t>& pre_events) override;
     void finalize_frame(int frame_id) override;
 
     std::string get_performance_metric_string() override;

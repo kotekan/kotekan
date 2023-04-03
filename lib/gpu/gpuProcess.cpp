@@ -11,11 +11,11 @@
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for json, basic_json<>::object_t, basic_json<>::value_type
 
-#include <algorithm>   // for max
-#include <atomic>      // for atomic_bool
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, ref, _1, fun...
-#include <iosfwd>      // for std
+#include <algorithm>  // for max
+#include <atomic>     // for atomic_bool
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, ref, _1, fun...
+#include <iosfwd>     // for std
 #include <math.h>
 #include <pthread.h>   // for pthread_setaffinity_np
 #include <regex>       // for match_results<>::_Base_type
@@ -115,7 +115,6 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
             reply["kernel"].push_back(
                 {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
             total_kernel_time += isnan(time) ? 0. : time;
-            //INFO("Adding {:f} to total_kernel_time, now {:f}", time, total_kernel_time);
         } else if (cmd->get_command_type() == gpuCommandType::COPY_IN) {
             reply["copy_in"].push_back(
                 {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});

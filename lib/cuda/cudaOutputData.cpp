@@ -90,7 +90,8 @@ cudaEvent_t cudaOutputData::execute(int gpu_frame_id, const std::vector<cudaEven
     return end_events[gpu_frame_id];
 }
 
-cudaEvent_t cudaOutputData::skipped_execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {
+cudaEvent_t cudaOutputData::skipped_execute(int gpu_frame_id,
+                                            const std::vector<cudaEvent_t>& pre_events) {
     skipped[gpu_frame_id] = true;
     return cudaCommand::skipped_execute(gpu_frame_id, pre_events);
 }
