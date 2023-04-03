@@ -247,7 +247,7 @@ cudaEvent_t cudaFRBBeamReformer::execute(int gpu_frame_id,
 
     record_start_event(gpu_frame_id);
 
-    DEBUG("Running CUDA FRB BeamReformer on GPU frame {:d}", gpu_frame_id);
+    DEBUG("Running CUDA FRB BeamReformer on GPU frame {:d}: F={:d}, T={:d}, B={:d}, rho={:d}", gpu_frame_id, _num_local_freq, Td, _num_beams, rho);
 
     for (int f = 0; f < _num_local_freq; f++) {
         int T = Td;

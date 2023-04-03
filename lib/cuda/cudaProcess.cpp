@@ -58,8 +58,13 @@ void cudaProcess::queue_commands(int gpu_frame_id) {
             command_stream_id = ((cudaCommand*)command)->get_cuda_stream_id();
             events[command_stream_id] =
                 ((cudaCommand*)command)->execute(gpu_frame_id, events, &quit);
-        } else
-            ((cudaCommand*)command)->skipped_execute(gpu_frame_id, events);
+        } else {
+            cudaEvent_t event = ((cudaCommand*)command)->skipped_execute(gpu_frame_id, events);
+            if (event != nullptr) {
+                command_stream_id = ((cudaCommand*)command)->get_cuda_stream_id();
+                events[command_stream_id] = event;
+            }
+        }
     }
     // Wait on the very last event from the last command.
     // TODO, this should wait on the last event from every stream!

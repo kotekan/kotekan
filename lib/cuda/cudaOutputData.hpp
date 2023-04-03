@@ -20,7 +20,7 @@ public:
     int wait_on_precondition(int gpu_frame_id) override;
     virtual cudaEvent_t execute(int buf_frame_id, const std::vector<cudaEvent_t>& pre_events,
                                 bool* quit) override;
-    virtual void skipped_execute(int gpu_frame_id,
+    virtual cudaEvent_t skipped_execute(int gpu_frame_id,
                                  const std::vector<cudaEvent_t>& pre_events) override;
     void finalize_frame(int frame_id) override;
 

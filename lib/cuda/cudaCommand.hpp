@@ -81,7 +81,7 @@ public:
     /**
      * @brief Called if a previous command requested that the GPU pipeline quit.
      */
-    virtual void skipped_execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events);
+    virtual cudaEvent_t skipped_execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events);
 
     /** Releases the memory of the event chain arrays per buffer_id
      * @param gpu_frame_id    The bufferID to release all the memory references for.

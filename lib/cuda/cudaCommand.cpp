@@ -66,35 +66,33 @@ cudaCommand::~cudaCommand() {
     DEBUG("post_events Freed: {:s}", unique_name.c_str());
 }
 
-void cudaCommand::skipped_execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {
+cudaEvent_t cudaCommand::skipped_execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {
     (void)pre_events;
     // FIXME -- not sure we need this!  Would like to accumulate zero
     // time when commands are skipped; not sure if this is the way.
     record_start_event(gpu_frame_id);
-    record_end_event(gpu_frame_id);
+    return record_end_event(gpu_frame_id);
 }
 
 void cudaCommand::finalize_frame(int gpu_frame_id) {
-    if (start_events[gpu_frame_id] != nullptr) {
-        if (profiling) {
-            float exec_time;
-            CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_events[gpu_frame_id],
-                                                  end_events[gpu_frame_id]));
-            double active_time = exec_time * 1e-3; // convert ms to s
-            excute_time->add_sample(active_time);
-            utilization->add_sample(active_time / frame_arrival_period);
-        }
-        if (start_events[gpu_frame_id])
-            CHECK_CUDA_ERROR(cudaEventDestroy(start_events[gpu_frame_id]));
-        start_events[gpu_frame_id] = nullptr;
-    }
-    if (end_events[gpu_frame_id] != nullptr) {
-        CHECK_CUDA_ERROR(cudaEventDestroy(end_events[gpu_frame_id]));
-        end_events[gpu_frame_id] = nullptr;
+    if (profiling && (start_events[gpu_frame_id] != nullptr) && (end_events[gpu_frame_id] != nullptr)) {
+        float exec_time;
+        CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_events[gpu_frame_id],
+                                              end_events[gpu_frame_id]));
+        // INFO("elapsed time {:s} {:s}: {:g}", unique_name, get_name(), exec_time);
+        double active_time = exec_time * 1e-3; // convert ms to s
+        excute_time->add_sample(active_time);
+        utilization->add_sample(active_time / frame_arrival_period);
     } else {
-        // FATAL_ERROR("Null end event in cudaCommand {:s}, this should never happen!",
-        // unique_name);
+        excute_time->add_sample(0.);
+        utilization->add_sample(0.);
     }
+    if (start_events[gpu_frame_id])
+        CHECK_CUDA_ERROR(cudaEventDestroy(start_events[gpu_frame_id]));
+    start_events[gpu_frame_id] = nullptr;
+    if (end_events[gpu_frame_id] != nullptr)
+        CHECK_CUDA_ERROR(cudaEventDestroy(end_events[gpu_frame_id]));
+    end_events[gpu_frame_id] = nullptr;
 }
 
 int32_t cudaCommand::get_cuda_stream_id() {
