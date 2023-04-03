@@ -114,13 +114,13 @@ cudaEvent_t cudaFRBBeamformer::execute(int gpu_frame_id, const std::vector<cudaE
     void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, gpu_frame_id, voltage_len);
     void* beamgrid_memory =
         device.get_gpu_memory_array(_gpu_mem_beamgrid, gpu_frame_id, beamgrid_len);
-    int32_t* info_memory =
-        (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
+    int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
 
     record_start_event(gpu_frame_id);
 
     // Initialize info_memory return codes
-    CHECK_CUDA_ERROR(cudaMemsetAsync(info_memory, 0xff, info_len, device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(
+        cudaMemsetAsync(info_memory, 0xff, info_len, device.getStream(cuda_stream_id)));
 
     // dishlayout (S), phase (W), voltage (E), beamgrid (I), info
     const char* exc = "exception";
@@ -183,15 +183,17 @@ cudaEvent_t cudaFRBBeamformer::execute(int gpu_frame_id, const std::vector<cudaE
                                   parameters, NULL));
 
     // Copy "info" result code back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info.data(), info_memory, info_len, cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info.data(), info_memory, info_len,
+                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     return record_end_event(gpu_frame_id);
 }
 
 void cudaFRBBeamformer::finalize_frame(int gpu_frame_id) {
     cudaCommand::finalize_frame(gpu_frame_id);
-    for (size_t i=0; i<host_info.size(); i++)
+    for (size_t i = 0; i < host_info.size(); i++)
         if (host_info[i] != 0)
-            ERROR("cudaFRBBeamformer returned 'info' value {:d} at index {:d} (zero indicates no error)",
+            ERROR("cudaFRBBeamformer returned 'info' value {:d} at index {:d} (zero indicates no "
+                  "error)",
                   host_info[i], i);
 }

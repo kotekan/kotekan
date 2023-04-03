@@ -47,8 +47,6 @@ cudaEvent_t cudaRechunk::execute(int gpu_frame_id, const std::vector<cudaEvent_t
 
     record_start_event(gpu_frame_id);
 
-    cudaEvent_t endevent;
-
     // if (num_leftover) copy leftover_memory to output, incr. num_accumulated
 
     CHECK_CUDA_ERROR(cudaMemcpy2DAsync((void*)((char*)accum_memory + num_accumulated),
