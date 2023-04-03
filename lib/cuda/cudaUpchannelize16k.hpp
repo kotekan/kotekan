@@ -45,7 +45,7 @@ public:
                         kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaUpchannelize16k();
 
-    //std::string get_kernel_function_name() override;
+    // std::string get_kernel_function_name() override;
 
 protected:
 private:

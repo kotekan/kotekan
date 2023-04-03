@@ -70,6 +70,7 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id,
                                             const std::vector<cudaEvent_t>& pre_events,
                                             bool* quit) {
     (void)pre_events;
+    (void)quit;
     pre_execute(gpu_frame_id);
 
     void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, gpu_frame_id, voltage_len);

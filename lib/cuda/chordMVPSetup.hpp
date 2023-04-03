@@ -16,6 +16,14 @@ public:
     chordMVPSetup(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~chordMVPSetup();
+
+    /**
+     * @brief Execute a kernel.  For chordMVPSetup, this is a no-op.
+     * @param gpu_frame_id  The bufferID associated with the GPU commands.
+     * @param pre_events    Array of the last events from each cuda stream, indexed by stream
+     *                      number.
+     * @param quit          Should GPU processing for this frame abort after this command?
+     **/
     virtual cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
                                 bool* quit) override;
 };

@@ -73,6 +73,7 @@ int cudaOutputData::wait_on_precondition(int gpu_frame_id) {
 
 cudaEvent_t cudaOutputData::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
                                     bool* quit) {
+    (void)quit;
     pre_execute(gpu_frame_id);
 
     skipped[gpu_frame_id] = false;

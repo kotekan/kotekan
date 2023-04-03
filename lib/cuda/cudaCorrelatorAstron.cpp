@@ -52,6 +52,7 @@ cudaCorrelatorAstron::~cudaCorrelatorAstron() {}
 cudaEvent_t cudaCorrelatorAstron::execute(int gpu_frame_id,
                                           const std::vector<cudaEvent_t>& pre_events, bool* quit) {
     (void)pre_events;
+    (void)quit;
     pre_execute(gpu_frame_id);
 
     size_t input_frame_len = (size_t)_num_elements * _num_local_freq * _samples_per_data_set;

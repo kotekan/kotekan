@@ -74,6 +74,7 @@ public:
      * @param gpu_frame_id  The bufferID associated with the GPU commands.
      * @param pre_events    Array of the last events from each cuda stream, indexed by stream
      *                      number.
+     * @param quit          Should GPU processing for this frame abort after this command?
      **/
     virtual cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
                                 bool* quit) = 0;
