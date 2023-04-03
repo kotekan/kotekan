@@ -16,6 +16,7 @@
 #include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, ref, _1, fun...
 #include <iosfwd>      // for std
+#include <math.h>
 #include <pthread.h>   // for pthread_setaffinity_np
 #include <regex>       // for match_results<>::_Base_type
 #include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
@@ -108,20 +109,21 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
     double total_kernel_time = 0;
 
     for (auto& cmd : commands) {
-        double time = cmd->get_last_gpu_execution_time();
+        double time = cmd->excute_time->get_avg(); //->get_last_gpu_execution_time();
         double utilization = time / frame_arrival_period;
         if (cmd->get_command_type() == gpuCommandType::KERNEL) {
             reply["kernel"].push_back(
                 {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
-            total_kernel_time += cmd->get_last_gpu_execution_time();
+            total_kernel_time += isnan(time) ? 0. : time;
+            //INFO("Adding {:f} to total_kernel_time, now {:f}", time, total_kernel_time);
         } else if (cmd->get_command_type() == gpuCommandType::COPY_IN) {
             reply["copy_in"].push_back(
                 {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
-            total_copy_in_time += cmd->get_last_gpu_execution_time();
+            total_copy_in_time += isnan(time) ? 0. : time;
         } else if (cmd->get_command_type() == gpuCommandType::COPY_OUT) {
             reply["copy_out"].push_back(
                 {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
-            total_copy_out_time += cmd->get_last_gpu_execution_time();
+            total_copy_out_time += isnan(time) ? 0. : time;
         } else {
             continue;
         }

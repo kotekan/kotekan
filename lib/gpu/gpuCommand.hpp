@@ -99,6 +99,14 @@ public:
      */
     virtual std::string get_unique_name() const;
 
+    /// Track the time the command was active on the GPU.
+    /// This is just the time the command is running, and doesn't include time waiting
+    /// in the queue.
+    std::shared_ptr<StatTracker> excute_time;
+
+    /// Almost the same as excute_time, but divided by the frame arrival period
+    std::shared_ptr<StatTracker> utilization;
+
 protected:
     /// A unique name used for the gpu command. Used in indexing commands in a list and referencing
     /// them by this value.
@@ -117,14 +125,6 @@ protected:
 
     /// Sets the number of frames to be queued up in each buffer.
     int32_t _gpu_buffer_depth;
-
-    /// Track the time the command was active on the GPU.
-    /// This is just the time the command is running, and doesn't include time waiting
-    /// in the queue.
-    std::shared_ptr<StatTracker> excute_time;
-
-    /// Almost the same as excute_time, but divided by the frame arrival period
-    std::shared_ptr<StatTracker> utilization;
 
     /// Set to true if we have enabled profiling
     bool profiling;
