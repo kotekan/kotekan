@@ -47,6 +47,8 @@ cudaEvent_t cudaRechunk::execute(int gpu_frame_id, const std::vector<cudaEvent_t
 
     record_start_event(gpu_frame_id);
 
+    cudaEvent_t endevent;
+
     // if (num_leftover) copy leftover_memory to output, incr. num_accumulated
 
     CHECK_CUDA_ERROR(cudaMemcpy2DAsync((void*)((char*)accum_memory + num_accumulated),
@@ -55,6 +57,8 @@ cudaEvent_t cudaRechunk::execute(int gpu_frame_id, const std::vector<cudaEvent_t
                                        device.getStream(cuda_stream_id)));
     num_accumulated += n_copy;
     if (num_accumulated >= _len_inner_output) {
+        DEBUG("cudaRechunk: accumulated {:d}, output size {:d} -- producing output!",
+              num_accumulated, _len_inner_output);
         // emit an output frame!
         void* output_memory =
             device.get_gpu_memory_array(_gpu_mem_output, gpu_frame_id, output_frame_len);
@@ -65,18 +69,10 @@ cudaEvent_t cudaRechunk::execute(int gpu_frame_id, const std::vector<cudaEvent_t
         num_accumulated -= _len_inner_output;
         // (copy any overflow into the "leftover" array)
     } else {
+        DEBUG("cudaRechunk: accumulated {:d}, output size {:d} -- NOT producing output!",
+              num_accumulated, _len_inner_output);
         // partial output frame -- don't run further GPU kernels.
         *quit = true;
-
-        // MVP HACK!!
-        // Sync on the output stream, because we're setting "quit" and otherwise
-        // nobody is going to wait for the output to finish!
-        /*
-          int output_stream_id = 1;
-          CHECK_CUDA_ERROR(
-          cudaStreamWaitEvent(device.getStream(cuda_stream_id), pre_events[output_stream_id]));
-        */
     }
-
     return record_end_event(gpu_frame_id);
 }
