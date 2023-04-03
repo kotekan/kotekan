@@ -252,8 +252,10 @@ void testDataGen::main_thread() {
                 char new_imaginary;
                 if (_reuse_random && finished_seeding_consant)
                     break;
-                new_real = (rand() % 15) + 1;      // Limit to [-7, 7]
-                new_imaginary = (rand() % 15) + 1; // Limit to [-7, 7]
+                int r = rand();
+                new_real = (r % 15) + 1;      // Limit to [-7, 7]
+                r >>= 4;
+                new_imaginary = (r % 15) + 1; // Limit to [-7, 7]
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output ^ 0x88;
             } else if (type == "tpluse") {
