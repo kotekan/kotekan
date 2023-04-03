@@ -40,7 +40,7 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
     for (int f = 0; f < _num_chunks / FRAME_SIZE; f++) {
         for (int i = 0; i < FRAME_SIZE; i++) {
             // offset of the start of the chunk in the input array, for each chunk.
-            index_array_host[f * FRAME_SIZE * 2 + i] = (f * FRAME_SIZE + i) * CHUNK_SIZE;
+            index_array_host[f * FRAME_SIZE * 2 + i] = (f * FRAME_SIZE + i);
         }
         // offset for the mean/scale outputs per chunk
         index_array_host[f * FRAME_SIZE * 2 + FRAME_SIZE] = f * FRAME_SIZE;
