@@ -225,8 +225,7 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
         ERROR("Unknown exception in BasebandWriter");
         throw;
     }
-    DEBUG("Finished writing data for event {:d}, freq {:d} to {:s}", metadata->event_id,
-          metadata->freq_id, file_name);
+    DEBUG("Finished writing data to file");
 }
 
 
