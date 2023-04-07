@@ -115,8 +115,8 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
         const auto metadata = frame.metadata();
         const auto event_id = metadata->event_id;
         const auto freq_id = metadata->freq_id;
-        DEBUG("Writing frame {} for event_id: {}, freq_id: {}", metadata->frame_fpga_seq, event_id,
-              freq_id);
+        DEBUG("Writing frame {} for event_id: {}, freq_id: {}", metadata->frame_fpga_seq,
+              metadata->event_id, metadata->freq_id);
 
         write_in_progress_metric.set(1);
 
