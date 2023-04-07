@@ -109,58 +109,123 @@ void BasebandWriter::main_thread() {
     closing_thread.join();
 }
 
-
 void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
-    const auto frame = BasebandFrameView(in_buf, frame_id);
-    const auto metadata = frame.metadata();
+    try {
+        const auto frame = BasebandFrameView(in_buf, frame_id);
+        const auto metadata = frame.metadata();
+        const auto event_id = metadata->event_id;
+        const auto freq_id = metadata->freq_id;
+        DEBUG("Writing frame {} for event_id: {}, freq_id: {}", metadata->frame_fpga_seq, event_id,
+              freq_id);
 
-    const auto event_id = metadata->event_id;
-    const auto freq_id = metadata->freq_id;
-    DEBUG("Frame {} from {}/{}", metadata->frame_fpga_seq, event_id, freq_id);
+        write_in_progress_metric.set(1);
 
-    write_in_progress_metric.set(1);
+        // Lock the event->freq->file map
+        std::unique_lock lk(mtx);
+        active_event_dumps_metric.set(baseband_events.size());
 
-    // Lock the event->freq->file map
-    std::unique_lock lk(mtx);
-    active_event_dumps_metric.set(baseband_events.size());
+        const std::string event_directory_name =
+            fmt::format("{:s}/baseband_raw_{:d}", _root_path, event_id);
+        DEBUG("Event directory: {:s}", event_directory_name);
 
-    const std::string event_directory_name =
-        fmt::format("{:s}/baseband_raw_{:d}", _root_path, event_id);
-    if (baseband_events.count(event_id) == 0) {
-        mkdir(event_directory_name.c_str(), S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+        if (baseband_events.count(event_id) == 0) {
+            DEBUG("Creating event directory: {:s}", event_directory_name);
+            const int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
+            const int result = mkdir(event_directory_name.c_str(), mode);
+            if (result != 0) {
+                ERROR("Failed to create event directory: {:s}", event_directory_name);
+                const int errsv = errno;
+                switch (errsv) {
+                    case EACCES:
+                        ERROR("Permission denied: {:s}", std::strerror(errsv));
+                        throw std::runtime_error(std::string("Permission denied: ")
+                                                 + std::strerror(errsv));
+                    case EEXIST:
+                        ERROR("Directory already exists: {:s}", std::strerror(errsv));
+                        throw std::runtime_error(std::string("Directory already exists: ")
+                                                 + std::strerror(errsv));
+                    case EINVAL:
+                        ERROR("Invalid argument: {:s}", std::strerror(errsv));
+                        throw std::runtime_error(std::string("Invalid argument: ")
+                                                 + std::strerror(errsv));
+                    case ELOOP:
+                        ERROR("Too many symbolic links encountered: {:s}", std::strerror(errsv));
+                        throw std::runtime_error(
+                            std::string("Too many symbolic links encountered: ")
+                            + std::strerror(errsv));
+                    case ENAMETOOLONG:
+                        ERROR("Path name too long: {:s}", std::strerror(errsv));
+                        throw std::runtime_error(std::string("Path name too long: ")
+                                                 + std::strerror(errsv));
+                    case ENOENT:
+                        ERROR("No such file or directory: {:s}", std::strerror(errsv));
+                        throw std::runtime_error(std::string("No such file or directory: ")
+                                                 + std::strerror(errsv));
+                    case ENOTDIR:
+                        ERROR("A component of the path is not a directory: {:s}",
+                              std::strerror(errsv));
+                        throw std::runtime_error(
+                            std::string("A component of the path is not a directory: ")
+                            + std::strerror(errsv));
+                    case EPERM:
+                        ERROR("Operation not permitted: {:s}", std::strerror(errsv));
+                        throw std::runtime_error(std::string("Operation not permitted: ")
+                                                 + std::strerror(errsv));
+                    case EROFS:
+                        ERROR("Read-only file system: {:s}", std::strerror(errsv));
+                        throw std::runtime_error(std::string("Read-only file system: ")
+                                                 + std::strerror(errsv));
+                    default:
+                        ERROR("Unable to create directory: {:s}", std::strerror(errsv));
+                        throw std::runtime_error(std::string("Unable to create directory: ")
+                                                 + std::strerror(errsv));
+                }
+            }
+            DEBUG("Completed creating event directory: {:s}", event_directory_name);
+        }
+
+        const std::string file_name =
+            fmt::format("{:s}/baseband_{:d}_{:d}", event_directory_name, event_id, freq_id);
+        DEBUG("Output filename: {:s}", file_name);
+
+        if (baseband_events[event_id].count(freq_id) == 0) {
+            // NOTE: emplace the file instance or it will get closed by the destructor
+            baseband_events[event_id].emplace(std::piecewise_construct,
+                                              std::forward_as_tuple(freq_id),
+                                              std::forward_as_tuple(file_name, _frame_size));
+        }
+        auto& freq_dump_destination = baseband_events[event_id].at(freq_id);
+        BasebandFileRaw& baseband_file = freq_dump_destination.file;
+
+        const double start = current_time();
+        int32_t write_status = baseband_file.write_frame({in_buf, frame_id});
+        freq_dump_destination.last_updated = current_time();
+        const double elapsed = freq_dump_destination.last_updated - start;
+
+        write_in_progress_metric.set(0);
+
+        if (write_status == -1) {
+            ERROR("Output file is corrupt, dropping frame going to {:s}", file_name);
+        } else if (write_status == 0) {
+            FATAL_ERROR("Cannot write to file {:s}, maybe out of disk space?", file_name);
+        } else {
+            DEBUG("Written frame with event id {:d} and freq {:d} to {:s}", event_id, freq_id,
+                  file_name);
+
+            bytes_written_metric.inc(frame.data_size() + sizeof(BasebandMetadata));
+
+            // Update average write time in prometheus
+            write_time.add_sample(elapsed);
+            write_time_metric.set(write_time.average());
+        }
+    } catch (std::exception& e) {
+        ERROR("Exception in BasebandWriter: {:s}", e.what());
+        throw;
+    } catch (...) {
+        ERROR("Unknown exception in BasebandWriter");
+        throw;
     }
-
-    const std::string file_name =
-        fmt::format("{:s}/baseband_{:d}_{:d}", event_directory_name, event_id, freq_id);
-    if (baseband_events[event_id].count(freq_id) == 0) {
-        // NOTE: emplace the file instance or it will get closed by the destructor
-        baseband_events[event_id].emplace(std::piecewise_construct, std::forward_as_tuple(freq_id),
-                                          std::forward_as_tuple(file_name, _frame_size));
-    }
-    auto& freq_dump_destination = baseband_events[event_id].at(freq_id);
-    BasebandFileRaw& baseband_file = freq_dump_destination.file;
-
-    const double start = current_time();
-    int32_t write_status = baseband_file.write_frame({in_buf, frame_id});
-    freq_dump_destination.last_updated = current_time();
-    const double elapsed = freq_dump_destination.last_updated - start;
-
-    write_in_progress_metric.set(0);
-
-    if (write_status == -1) {
-        ERROR("Output file is corrupt, dropping frame going to {:s}", file_name);
-    } else if (write_status == 0) {
-        FATAL_ERROR("Cannot write to file {:s}, maybe out of disk space?", file_name);
-    } else {
-        DEBUG("Written frame with event id {:d} and freq {:d} to {:s}", event_id, freq_id,
-              file_name);
-
-        bytes_written_metric.inc(frame.data_size() + sizeof(BasebandMetadata));
-
-        // Update average write time in prometheus
-        write_time.add_sample(elapsed);
-        write_time_metric.set(write_time.average());
-    }
+    DEBUG("Finished writing data for event {:d}, freq {:d} to {:s}", event_id, freq_id, file_name);
 }
 
 
