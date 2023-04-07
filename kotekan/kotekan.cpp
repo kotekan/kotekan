@@ -524,7 +524,7 @@ int main(int argc, char** argv) {
 
         // Create the command line, adding the yaml dump, and extra vars if needed
         std::vector<std::string> exec_command;
-        exec_command.push_back("python3.7");
+        exec_command.push_back("python3.8");
         exec_command.push_back("-c");
         exec_command.push_back(yaml_to_json);
 
