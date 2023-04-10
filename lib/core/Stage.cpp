@@ -28,10 +28,7 @@ namespace kotekan {
 Stage::Stage(Config& config, const std::string& unique_name, bufferContainer& buffer_container_,
              std::function<void(const Stage&)> main_thread_ref) :
     stop_thread(false),
-    config(config),
-    unique_name(unique_name),
-    this_thread(),
-    buffer_container(buffer_container_),
+    config(config), unique_name(unique_name), this_thread(), buffer_container(buffer_container_),
     main_thread_fn(main_thread_ref) {
 
     set_cpu_affinity(config.get<std::vector<int>>(unique_name, "cpu_affinity"));

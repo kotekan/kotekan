@@ -1,0 +1,107 @@
+##########################################
+#
+# verify_cuda_n2k.yaml
+#
+# Config to test Kendrick's cuda N2 tensor-core kernel.
+#
+##########################################
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
+num_links: 4
+freq_array: [4,7,10,16]
+timesamples_per_packet: 2
+samples_per_data_set: 32768
+num_data_sets: 1
+num_gpus: 1
+buffer_depth: 8
+num_gpu_frames: 4
+cpu_affinity: [2,3,4,5,8,9,10,11]
+sizeof_float: 4
+num_elements: 128
+frame_arrival_period: 0.00000256 * samples_per_data_set
+num_local_freq: 4 #16
+sizeof_int: 4
+sub_integration_ntime: 16384
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+# Buffers
+host_voltage_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
+    metadata_pool: main_pool
+
+host_correlation_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+    metadata_pool: main_pool
+
+lower_triangle_correlation_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+    metadata_pool: main_pool
+
+simulated_correlation_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+    metadata_pool: main_pool
+
+gen_data:
+    type: random_signed
+    value: 1532
+    kotekan_stage: testDataGen
+    out_buf: host_voltage_buffer
+
+gpu:
+    profiling: true
+    kernel_path: "../../lib/cuda/kernels/"
+    commands: &command_list
+    - name: cudaInputData
+      in_buf: host_voltage
+      gpu_mem: voltage
+    - name: cudaSyncInput
+    - name: cudaCorrelator
+      gpu_mem_voltage: voltage
+      gpu_mem_correlation_triangle: correlation_matrix
+    - name: cudaSyncOutput
+    - name: cudaOutputData
+      in_buf: host_voltage # Metadata transfer from here
+      gpu_mem: correlation_matrix
+      out_buf: host_correlation
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        commands: *command_list
+        in_buffers:
+            host_voltage: host_voltage_buffer
+        out_buffers:
+            host_correlation: host_correlation_buffer
+
+zero_lower_triangle:
+    kotekan_stage: zeroLowerTriangle
+    log_level: debug
+    corr_in_buf: host_correlation_buffer
+    corr_out_buf: lower_triangle_correlation_buffer
+
+cpu:
+    kotekan_stage: gpuSimulateN2k
+    log_level: debug
+    network_in_buf: host_voltage_buffer
+    corr_out_buf: simulated_correlation_buffer
+
+check_data:
+    kotekan_stage: testDataCheckInt
+    first_buf: lower_triangle_correlation_buffer
+    second_buf: simulated_correlation_buffer
+    num_frames_to_test: buffer_depth

@@ -11,6 +11,7 @@
 #include <cstdint>     // for int32_t
 #include <exception>   // for exception
 #include <regex>       // for match_results<>::_Base_type
+#include <stddef.h>    // for size_t
 #include <stdexcept>   // for runtime_error
 #include <vector>      // for vector
 #include <visUtil.hpp> // for frameID, modulo
@@ -33,7 +34,7 @@ STAGE_CONSTRUCTOR(hexDump) {
     _offset = config.get_default<int32_t>(unique_name, "offset", 0);
 
     // Check that we won't read past the end
-    if (_offset + _len > in_buf->frame_size) {
+    if ((size_t)(_offset + _len) > in_buf->frame_size) {
         throw std::runtime_error("HexDump: cannot print past end of buffer");
     }
 }

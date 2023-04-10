@@ -21,23 +21,18 @@
 #include <vector>    // for vector
 
 HFBFrameView::HFBFrameView(Buffer* buf, int frame_id) :
-    FrameView(buf, frame_id),
-    _metadata((HFBMetadata*)buf->metadata[id]->metadata),
+    FrameView(buf, frame_id), _metadata((HFBMetadata*)buf->metadata[id]->metadata),
 
     // Calculate the internal buffer layout from the given structure params
     buffer_layout(calculate_buffer_layout(_metadata->num_beams, _metadata->num_subfreq)),
 
     // Set the const refs to the structural metadata
-    num_beams(_metadata->num_beams),
-    num_subfreq(_metadata->num_subfreq),
+    num_beams(_metadata->num_beams), num_subfreq(_metadata->num_subfreq),
 
     // Set the refs to the general _metadata
-    time(_metadata->ctime),
-    fpga_seq_start(_metadata->fpga_seq_start),
-    fpga_seq_total(_metadata->fpga_seq_total),
-    fpga_seq_length(_metadata->fpga_seq_length),
-    freq_id(_metadata->freq_id),
-    dataset_id(_metadata->dataset_id),
+    time(_metadata->ctime), fpga_seq_start(_metadata->fpga_seq_start),
+    fpga_seq_total(_metadata->fpga_seq_total), fpga_seq_length(_metadata->fpga_seq_length),
+    freq_id(_metadata->freq_id), dataset_id(_metadata->dataset_id),
 
     // Bind the regions of the buffer to spans and references on the view
     hfb(bind_span<float>(_frame, buffer_layout.second[HFBField::hfb])),

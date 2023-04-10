@@ -168,9 +168,10 @@ Cmake build options
     Builds the project with asserts, debug logging and debug symbols.
 * ``-DCMAKE_BUILD_TYPE=Test``
     Builds the project with asserts and debug logging but without debug symbols.
-* ``-DUSE_DPDK=ON``
-    Builds with DPDK support, for source installs requires: `-DRTE_SDK=<dir>`
+* ``-DUSE_OLD_DPDK=ON``
+    Builds with DPDK support (<19.11), for source installs requires: `-DRTE_SDK=<dir>`
     and `-DRTE_TARGET=x86_64-native-linuxapp-gcc`
+    Not needed for newer versions of DPDK on Ubuntu 22.04
     See :ref:`dpdk` for more details.
 * ``-DUSE_HSA=ON``
     Build with HSA support if available. Off by default.

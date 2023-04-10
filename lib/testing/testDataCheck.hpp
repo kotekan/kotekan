@@ -96,8 +96,7 @@ void testDataCheck<A_Type>::main_thread() {
             A_Type first_value = *((A_Type*)&(first_frame[i * sizeof(A_Type)]));
             A_Type second_value = *((A_Type*)&(second_frame[i * sizeof(A_Type)]));
 
-            if ((std::is_same<A_Type, float>::value)
-                or (std::is_same<A_Type, unsigned char>::value)) {
+            if (std::is_same<A_Type, float>::value) {
                 if (!almost_equal((double)first_value, (double)second_value, epsilon)) {
                     error = true;
                     num_errors += 1;
@@ -116,9 +115,9 @@ void testDataCheck<A_Type>::main_thread() {
                 // INFO("Checking non float numbers-----------");
                 if (first_value != second_value) {
                     if (num_errors++ < max_num_errors)
-                        ERROR("{:s}[{:d}][{:d}] != {:s}[{:d}][{:d}]; values: ({:f}, {:f})",
+                        ERROR("{:s}[{:d}][{:d}] != {:s}[{:d}][{:d}]; values: ({:d}, {:d})",
                               first_buf->buffer_name, first_buf_id, i, second_buf->buffer_name,
-                              second_buf_id, i, (double)first_value, (double)second_value);
+                              second_buf_id, i, (int)first_value, (int)second_value);
                     error = true;
                 }
             }
@@ -136,8 +135,10 @@ void testDataCheck<A_Type>::main_thread() {
         second_buf_id = (second_buf_id + 1) % second_buf->num_frames;
         frames++;
 
-        if (num_frames_to_test == frames)
+        if (num_frames_to_test == frames) {
+            INFO("Test passed, exiting!");
             TEST_PASSED();
+        }
     }
 }
 

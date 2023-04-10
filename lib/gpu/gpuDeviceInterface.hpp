@@ -25,7 +25,8 @@ struct gpuMemoryBlock {
 class gpuDeviceInterface : public kotekan::kotekanLogging {
 public:
     /// Constructor
-    gpuDeviceInterface(kotekan::Config& config_, int32_t gpu_id_, int gpu_buffer_depth_);
+    gpuDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id,
+                       int gpu_buffer_depth);
     /// Destructor
     virtual ~gpuDeviceInterface();
 
@@ -37,7 +38,7 @@ public:
      * NOTE: if accessing an existing named region then len must match the existing
      * length or the system will throw an assert.
      */
-    void* get_gpu_memory_array(const std::string& name, const uint32_t index, const uint32_t len);
+    void* get_gpu_memory_array(const std::string& name, const uint32_t index, const size_t len);
 
     /**
      * @brief Same as get_gpu_memory_array but gets just one gpu memory buffer
@@ -46,11 +47,15 @@ public:
      * or temporary buffers between kernels.
      * Should NOT be used for any memory that's copied between GPU and HOST memory.
      */
-    void* get_gpu_memory(const std::string& name, const uint32_t len);
+    void* get_gpu_memory(const std::string& name, const size_t len);
 
     // Can't do this in the destructor because only the derived classes know
     // how to free their memory. To be moved into distinct objects...
     void cleanup_memory();
+
+    /// This function sets the thread specific variables needed for the GPU API
+    /// For example CUDA requires the GPU ID be set per thread
+    virtual void set_thread_device(){};
 
     /// Returns the GPU ID handled by this device object
     int get_gpu_id() {
@@ -63,11 +68,12 @@ public:
     }
 
 protected:
-    virtual void* alloc_gpu_memory(int len) = 0;
+    virtual void* alloc_gpu_memory(size_t len) = 0;
     virtual void free_gpu_memory(void*) = 0;
 
     // Extra data
     kotekan::Config& config;
+    std::string unique_name;
 
     // Config variables
     int gpu_id;
