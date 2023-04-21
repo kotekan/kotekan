@@ -106,7 +106,7 @@ host_bb_info:
     kotekan_buffer: standard
     num_frames: buffer_depth
     # threads_x * threads_y * blocks_x * sizeof(int32)
-    frame_size: 32 * 24 * 32 * 4
+    frame_size: 32 * 24 * 512 * 4
     metadata_pool: main_pool
 
 host_fine_upchan_info:
