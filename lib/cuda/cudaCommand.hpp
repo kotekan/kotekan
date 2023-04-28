@@ -67,7 +67,7 @@ public:
                        std::vector<std::string>& opts);
 
     virtual void build_ptx(const std::vector<std::string>& kernel_names,
-                           std::vector<std::string>& opts);
+                           const std::vector<std::string>& opts);
 
     /**
      * @brief Execute a kernel, copy, etc.
