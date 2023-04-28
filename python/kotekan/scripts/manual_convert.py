@@ -4,12 +4,12 @@ import time
 import multiprocessing
 import sys
 
-PCO_ROOT = "/data/princeton/baseband/raw"  # this is the output root
-CONFIG_PATH = "../../../config/chime_pco_baseband_recv.j2"
+PCO_ROOT = "/data/kko/baseband/raw"  # this is the output root
+CONFIG_PATH = "../../../config/chime_kko_baseband_recv.j2"
 
 
 def convert(fname):
-    cmd = f"python baseband_archiver.py -c {CONFIG_PATH} {fname} --root {PCO_ROOT} --verbose"
+    cmd = f"python3.7 baseband_archiver.py -c {CONFIG_PATH} {fname} --root {PCO_ROOT} --verbose"
     os.system(cmd)
 
 

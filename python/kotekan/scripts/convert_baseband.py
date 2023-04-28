@@ -361,16 +361,15 @@ def events_from_filepath(raw_filepath, archiver_mount):
     started = list(set(raw_event_ids).intersection(h5_event_ids))
     started.sort()
     unfinished = []
-    for event_id in started:
-        num_raw = len(
-            glob(os.path.join(raw_path_from_event_id(event_id, raw_filepath), "*.data"))
-        )
-        num_h5 = len(glob(h5_path_from_event_id(event_id, archiver_mount)))
-        if num_raw < num_h5:
+    finished = []
+    for event_id in started: # sort the started events into finished and unfinished 
+        num_raw = len(glob(os.path.join(raw_path_from_event_id(event_id, raw_filepath), "*.data")))
+        num_h5 = len(glob(os.path.join(h5_path_from_event_id(event_id, archiver_mount), "*.h5")))
+        if num_raw > num_h5:
             unfinished.append(event_id)
+        elif num_raw <= num_h5: # equal if we are not removing raw files; assume we are finished if raw files are missing.
+            finished.append(event_id)
 
-    finished = set(raw_event_ids) - set(unstarted) - set(unfinished)
-    finished = list(finished)
     finished.sort()
     last_event_id = finished[-1]
     todo = unfinished + list(unstarted)
@@ -419,7 +418,7 @@ def main():
         "Inventory of the raw data on /data/baseband_raw.",
         registry=registry,
     )
-    conv_backend = get_backend("pco")  # TODO: test with CHIME backend as well.
+    conv_backend = get_backend("kko")  # TODO: test with CHIME backend as well. Change this for other outriggers!
     assert os.path.exists(
         conv_backend["ARCHIVER_MOUNT"]
     ), f"{conv_backend['ARCHIVER_MOUNT']} is not mounted, it is required for this process. Exiting!!!"
