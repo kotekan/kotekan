@@ -60,6 +60,15 @@ private:
     std::string _gpu_mem_phase;
     /// GPU side memory name for the beam output
     std::string _gpu_mem_beamout;
+
+    bool _batched;
+
+    // cublasHgemmBatched -- pre-computed GPU memory locations.
+    // [gpu_frame_id] [freq batch = stream] = [per-freq pointers]
+    std::vector<std::vector<__half**>> _gpu_in_pointers;
+    std::vector<std::vector<__half**>> _gpu_out_pointers;
+    // [freq batch = stream] = [per-freq pointers]
+    std::vector<__half**> _gpu_phase_pointers;
 };
 
 #endif // CUDA_FRB_BEAMFORMER_HPP

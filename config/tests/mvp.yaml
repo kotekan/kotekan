@@ -204,6 +204,11 @@ gpu:
       in_buf: host_bb_shift
       gpu_mem: bb_shift
     - name: cudaSyncInput
+    # If using multiple compute streams in FRB Beam Reformer, must also sync those on inputs!
+    # Could perhaps sync on stream 2 later??
+    - name: cudaSyncStream
+      cuda_stream: 3
+      source_cuda_streams: [0]
     # Coarse visibilities
     - name: cudaCorrelator
       gpu_mem_voltage: voltage
