@@ -33,6 +33,7 @@ static void compute_beam_reformer_phase(int M, int N, float16_t* host_phase, int
     const int Q = 2 * N;
     const int PQ = 2 * M * 2 * N;
 
+#pragma omp parallel for
     for (int fi = 0; fi < _num_local_freq; fi++) {
         float wavelength = c / freqs[fi];
 
