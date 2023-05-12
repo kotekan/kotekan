@@ -18,7 +18,7 @@ kernel-description:
     threads: [32, 16]
     blocks: [128]
     shmem_bytes: 69888
-  kernel-symbol: "_Z17julia_upchan_405313CuDeviceArrayI9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE"
+  kernel-symbol: "_Z17julia_upchan_400613CuDeviceArrayI9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE"
   kernel-arguments:
     - name: "G"
       intent: in

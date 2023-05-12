@@ -64,7 +64,7 @@ private:
     static constexpr int shmem_bytes = 69888;
 
     // Kernel name:
-    const char* const kernel_symbol = "_Z17julia_upchan_405313CuDeviceArrayI9Float16x2Li1ELi1EES_"
+    const char* const kernel_symbol = "_Z17julia_upchan_400613CuDeviceArrayI9Float16x2Li1ELi1EES_"
                                       "I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE";
 
     // Kernel arguments:

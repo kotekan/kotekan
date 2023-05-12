@@ -65,7 +65,7 @@ private:
 
     // Kernel name:
     const char* const kernel_symbol =
-        "_Z13julia_bb_363513CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_"
+        "_Z13julia_bb_362113CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_"
         "IS1_Li1ELi1EES_IS2_Li1ELi1EE";
 
     // Kernel arguments:

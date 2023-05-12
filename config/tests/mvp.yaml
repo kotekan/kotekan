@@ -203,7 +203,8 @@ gpu:
     - name: cudaUpchannelize16k
       gpu_mem_input_voltage: fine_upchan_input
       gpu_mem_output_voltage: fine_upchan_out
-      gpu_mem_gain: fine_upchan_gains
+      gpu_mem_info: fine_upchan_info
+      gpu_mem_gain: fine_upchan_gain
       num_local_freq: voltage_freq
       samples_per_data_set: fine_samples
       upchan_factor: fine_upchan
@@ -224,14 +225,14 @@ gpu:
       samples_per_data_set: voltage_samples
       num_beams: bb_beams
     # FRB chain, starting with upchannelization
-    - name: cudaUpchannelize
-      log_level: debug
+    - name: cudaUpchannelizer_U16
       gpu_mem_input_voltage: voltage
       gpu_mem_output_voltage: upchan_out
       gpu_mem_gain: upchan_gains
       num_local_freq: voltage_freq
       samples_per_data_set: voltage_samples
       upchan_factor: frb_upchan
+      freq_gains: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ]
     # FRB1: beamformer
     - name: cudaFRBBeamformer
       log_level: debug
@@ -239,6 +240,7 @@ gpu:
       gpu_mem_phase: frb_phase
       gpu_mem_dishlayout: dishlayout
       gpu_mem_beamgrid: beamgrid
+      gpu_mem_info: upchan_info
       num_local_freq: frb_freq
       samples_per_data_set: frb_samples
       time_downsampling: frb_time_downsampling
