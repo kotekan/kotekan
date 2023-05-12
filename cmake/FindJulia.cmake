@@ -1,193 +1,117 @@
-# This FindJulia.cmake from
-# <https://github.com/JuliaInterop/libcxxwrap-julia/blob/main/FindJulia.cmake>
-
-# Original FindJulia.cmake from <https://github.com/QuantStack/xtensor-julia-cookiecutter/
-# blob/master/%7B%7Bcookiecutter.github_project_name%7D%7D/cmake/FindJulia.cmake>
+# From <https://raw.githubusercontent.com/xtensor-stack/xtensor-julia-cookiecutter/master/%7B%7Bcookiecutter.github_project_name%7D%7D/cmake/FindJulia.cmake>
 
 if(Julia_FOUND)
     return()
 endif()
 
-# ##################################################################################################
+####################
 # Julia Executable #
-# ##################################################################################################
+####################
 
-if(Julia_PREFIX)
-    message(STATUS "Adding path ${Julia_PREFIX} to search path")
-    list(APPEND CMAKE_PREFIX_PATH ${Julia_PREFIX})
-    message(STATUS "THIS BRANCH")
-else()
-    find_program(Julia_EXECUTABLE julia DOC "Julia executable")
-    string(REGEX REPLACE ".*-NOTFOUND" "" Julia_EXECUTABLE "${Julia_EXECUTABLE}")
-    if(Julia_EXECUTABLE)
-        message(STATUS "Found Julia executable: " ${Julia_EXECUTABLE})
-    endif()
-endif()
+find_program(Julia_EXECUTABLE julia DOC "Julia executable")
+MESSAGE(STATUS "Julia_EXECUTABLE:     ${Julia_EXECUTABLE}")
 
-if(Julia_EXECUTABLE)
+#################
+# Julia Version #
+#################
 
-    # ##############################################################################################
-    # Julia Version #
-    # ##############################################################################################
+execute_process(
+    COMMAND ${Julia_EXECUTABLE} --version
+    OUTPUT_VARIABLE Julia_VERSION_STRING
+)
 
-    if(Julia_EXECUTABLE)
-        execute_process(COMMAND "${Julia_EXECUTABLE}" --startup-file=no --version
-                        OUTPUT_VARIABLE Julia_VERSION_STRING)
-    else()
-        find_file(Julia_VERSION_INCLUDE julia_version.h PATH_SUFFIXES include/julia)
-        file(READ ${Julia_VERSION_INCLUDE} Julia_VERSION_STRING)
-        string(REGEX MATCH "JULIA_VERSION_STRING.*" Julia_VERSION_STRING ${Julia_VERSION_STRING})
-    endif()
+string(
+    REGEX REPLACE ".*([0-9]+\\.[0-9]+\\.[0-9]+).*" "\\1"
+      Julia_VERSION_STRING ${Julia_VERSION_STRING}
+)
 
-    string(REGEX REPLACE ".*([0-9]+\\.[0-9]+\\.[0-9]+).*" "\\1" Julia_VERSION_STRING
-                         "${Julia_VERSION_STRING}")
+MESSAGE(STATUS "Julia_VERSION_STRING: ${Julia_VERSION_STRING}")
 
-    message(STATUS "Julia_VERSION_STRING: ${Julia_VERSION_STRING}")
+####################
+# Julia Share Path #
+####################
 
-    # ##############################################################################################
-    # Julia Includes #
-    # ##############################################################################################
+execute_process(
+    COMMAND ${Julia_EXECUTABLE} --eval "print(joinpath(Sys.BINDIR, Base.DATAROOTDIR, \"julia\"))"
+    OUTPUT_VARIABLE Julia_SHARE_PATH
+)
 
-    set(JULIA_HOME_NAME "Sys.BINDIR")
-    if(${Julia_VERSION_STRING} VERSION_LESS "0.7.0")
-        set(JULIA_HOME_NAME "JULIA_HOME")
-    else()
-        set(USING_LIBDL "using Libdl")
-    endif()
+#############################
+# Julia Include Directories #
+#############################
 
-    if(DEFINED ENV{JULIA_INCLUDE_DIRS})
-        set(JULIA_INCLUDE_DIRS
-            $ENV{JULIA_INCLUDE_DIRS}
-            CACHE STRING "Location of Julia include files")
-    elseif(Julia_EXECUTABLE)
-        execute_process(
-            COMMAND
-                ${Julia_EXECUTABLE} --startup-file=no -E
-                "julia_include_dir = joinpath(match(r\"(.*)(bin)\",${JULIA_HOME_NAME}).captures[1],
-                                              \"include\",
-                                              \"julia\")\n
-                if !isdir(julia_include_dir)  # then we're running directly from build\n
-                # useful for running-from-build:\n
-                julia_base_dir_aux = splitdir(splitdir(${JULIA_HOME_NAME})[1])[1]\n
-                julia_include_dir = joinpath(julia_base_dir_aux, \"usr\", \"include\" )\n
-                julia_include_dir *= \";\" * joinpath(julia_base_dir_aux, \"src\", \"support\")\n
-                julia_include_dir *= \";\" * joinpath(julia_base_dir_aux, \"src\")\n
-                end\n
-                julia_include_dir"
-            OUTPUT_VARIABLE JULIA_INCLUDE_DIRS)
+execute_process(
+    COMMAND ${Julia_SHARE_PATH}/julia-config.jl --cflags
+    OUTPUT_VARIABLE Julia_INCLUDE_DIRS
+)
 
-        string(REGEX REPLACE "\"" "" JULIA_INCLUDE_DIRS "${JULIA_INCLUDE_DIRS}")
-        string(REGEX REPLACE "\n" "" JULIA_INCLUDE_DIRS "${JULIA_INCLUDE_DIRS}")
-        set(JULIA_INCLUDE_DIRS
-            ${JULIA_INCLUDE_DIRS}
-            CACHE PATH "Location of Julia include files")
-    elseif(Julia_PREFIX)
-        set(JULIA_INCLUDE_DIRS ${Julia_PREFIX}/include/julia)
-    endif()
-    set(JULIA_INCLUDE_DIRS ${JULIA_INCLUDE_DIRS};$ENV{includedir})
-    message(STATUS "JULIA_INCLUDE_DIRS:   ${JULIA_INCLUDE_DIRS}")
+string(REGEX REPLACE "\n" "" Julia_INCLUDE_DIRS ${Julia_INCLUDE_DIRS})
+string(REGEX REPLACE "'" "" Julia_INCLUDE_DIRS ${Julia_INCLUDE_DIRS})
+string(REGEX REPLACE " " "  " Julia_INCLUDE_DIRS ${Julia_INCLUDE_DIRS})
+string(CONCAT Julia_INCLUDE_DIRS " " ${Julia_INCLUDE_DIRS} " ")
+string(REGEX REPLACE " -[^I][^ ]* " " " Julia_INCLUDE_DIRS ${Julia_INCLUDE_DIRS})
+string(REGEX REPLACE " -I" " " Julia_INCLUDE_DIRS ${Julia_INCLUDE_DIRS})
+string(REGEX REPLACE "  " " " Julia_INCLUDE_DIRS ${Julia_INCLUDE_DIRS})
+string(REGEX REPLACE "^ " "" Julia_INCLUDE_DIRS ${Julia_INCLUDE_DIRS})
+string(REGEX REPLACE " $" "" Julia_INCLUDE_DIRS ${Julia_INCLUDE_DIRS})
 
-    # ##############################################################################################
-    # Julia Libraries #
-    # ##############################################################################################
+set(Julia_INCLUDE_DIRS ${Julia_INCLUDE_DIRS}
+    CACHE PATH "Location of Julia include files")
+MESSAGE(STATUS "Julia_INCLUDE_DIRS:   ${Julia_INCLUDE_DIRS}")
 
-    if(WIN32)
-        set(CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES} .a;.dll)
-    endif()
+#################
+# Julia Library #
+#################
 
-    if(Julia_EXECUTABLE)
-        execute_process(
-            COMMAND ${Julia_EXECUTABLE} --startup-file=no -E "${USING_LIBDL}\n
-                abspath(Libdl.dlpath((ccall(:jl_is_debugbuild, Cint, ()) != 0) ? \"libjulia-debug\"
-                                                                               : \"libjulia\"))"
-            OUTPUT_VARIABLE JULIA_LIBRARY)
+execute_process(
+    COMMAND ${Julia_SHARE_PATH}/julia-config.jl --ldflags
+    OUTPUT_VARIABLE Julia_LIBRARY_DIR
+)
 
-        string(REGEX REPLACE "\"" "" JULIA_LIBRARY "${JULIA_LIBRARY}")
-        string(REGEX REPLACE "\n" "" JULIA_LIBRARY "${JULIA_LIBRARY}")
-        string(STRIP "${JULIA_LIBRARY}" JULIA_LIBRARY)
+string(REGEX REPLACE "\n" "" Julia_LIBRARY_DIR ${Julia_LIBRARY_DIR})
+string(REGEX REPLACE "'" "" Julia_LIBRARY_DIR ${Julia_LIBRARY_DIR})
+string(REGEX REPLACE " " "  " Julia_LIBRARY_DIR ${Julia_LIBRARY_DIR})
+string(CONCAT Julia_LIBRARY_DIR " " ${Julia_LIBRARY_DIR} " ")
+string(REGEX REPLACE " -[^L][^ ]* " " " Julia_LIBRARY_DIR ${Julia_LIBRARY_DIR})
+string(REGEX REPLACE " -L" " " Julia_LIBRARY_DIR ${Julia_LIBRARY_DIR})
+string(REGEX REPLACE "  " " " Julia_LIBRARY_DIR ${Julia_LIBRARY_DIR})
+string(REGEX REPLACE "^ " "" Julia_LIBRARY_DIR ${Julia_LIBRARY_DIR})
+string(REGEX REPLACE " $" "" Julia_LIBRARY_DIR ${Julia_LIBRARY_DIR})
 
-        if(WIN32)
-            get_filename_component(JULIA_LIBRARY_DIR ${JULIA_LIBRARY} DIRECTORY)
-            get_filename_component(JULIA_LIBRARY_DIR ${JULIA_LIBRARY_DIR} DIRECTORY)
-            find_library(
-                win_JULIA_LIBRARY
-                NAMES libjulia.dll.a
-                PATHS "${JULIA_LIBRARY_DIR}/lib"
-                NO_DEFAULT_PATH)
-            set(JULIA_LIBRARY "${win_JULIA_LIBRARY}")
-        endif()
+execute_process(
+    COMMAND ${Julia_SHARE_PATH}/julia-config.jl --ldlibs
+    OUTPUT_VARIABLE Julia_LIBRARY_NAME
+)
 
-        set(JULIA_LIBRARY
-            "${JULIA_LIBRARY}"
-            CACHE PATH "Julia library")
-    else()
-        find_library(
-            JULIA_LIBRARY
-            NAMES libjulia.${Julia_VERSION_STRING}.dylib julia libjulia.dll.a libjulia
-            CMAKE_FIND_ROOT_PATH_BOTH)
-    endif()
+string(REGEX REPLACE "\n" "" Julia_LIBRARY_NAME ${Julia_LIBRARY_NAME})
+string(REGEX REPLACE "'" "" Julia_LIBRARY_NAME ${Julia_LIBRARY_NAME})
+string(REGEX REPLACE " " "  " Julia_LIBRARY_NAME ${Julia_LIBRARY_NAME})
+string(CONCAT Julia_LIBRARY_NAME " " ${Julia_LIBRARY_NAME} " ")
+string(REGEX REPLACE " -[^l][^ ]* " " " Julia_LIBRARY_NAME ${Julia_LIBRARY_NAME})
+string(REGEX REPLACE " -l" " " Julia_LIBRARY_NAME ${Julia_LIBRARY_NAME})
+string(REGEX REPLACE "  " " " Julia_LIBRARY_NAME ${Julia_LIBRARY_NAME})
+string(REGEX REPLACE "^ " "" Julia_LIBRARY_NAME ${Julia_LIBRARY_NAME})
+string(REGEX REPLACE " $" "" Julia_LIBRARY_NAME ${Julia_LIBRARY_NAME})
 
-    get_filename_component(JULIA_LIBRARY_DIR ${JULIA_LIBRARY} DIRECTORY)
+find_library(Julia_LIBRARY ${Julia_LIBRARY_NAME} HINTS ${Julia_LIBRARY_DIR} REQUIRED)
 
-    message(STATUS "JULIA_LIBRARY_DIR:    ${JULIA_LIBRARY_DIR}")
-    message(STATUS "JULIA_LIBRARY:        ${JULIA_LIBRARY}")
+set(Julia_LIBRARY ${Julia_LIBRARY}
+    CACHE PATH "Julia library")
+MESSAGE(STATUS "Julia_LIBRARY:        ${Julia_LIBRARY}")
 
-    # ##############################################################################################
-    # JULIA_HOME #
-    # ##############################################################################################
+##################################
+# Check for Existence of Headers #
+##################################
 
-    if(Julia_EXECUTABLE)
-        execute_process(COMMAND ${Julia_EXECUTABLE} --startup-file=no -E "${JULIA_HOME_NAME}"
-                        OUTPUT_VARIABLE JULIA_HOME)
+find_path(Julia_MAIN_HEADER julia.h HINTS ${Julia_INCLUDE_DIRS})
 
-        string(REGEX REPLACE "\"" "" JULIA_HOME "${JULIA_HOME}")
-        string(REGEX REPLACE "\n" "" JULIA_HOME "${JULIA_HOME}")
-
-        message(STATUS "JULIA_HOME:           ${JULIA_HOME}")
-
-        # ##########################################################################################
-        # libLLVM version #
-        # ##########################################################################################
-
-        execute_process(COMMAND ${Julia_EXECUTABLE} --startup-file=no -E "Base.libllvm_version"
-                        OUTPUT_VARIABLE Julia_LLVM_VERSION)
-
-        string(REGEX REPLACE "\"" "" Julia_LLVM_VERSION "${Julia_LLVM_VERSION}")
-        string(REGEX REPLACE "\n" "" Julia_LLVM_VERSION "${Julia_LLVM_VERSION}")
-
-        message(STATUS "Julia_LLVM_VERSION:   ${Julia_LLVM_VERSION}")
-    endif()
-
-    # ##############################################################################################
-    # Check for Existence of Headers #
-    # ##############################################################################################
-
-    find_path(Julia_MAIN_HEADER julia.h HINTS ${JULIA_INCLUDE_DIRS})
-
-    # ##############################################################################################
-    # Determine if we are on 32 or 64 bit #
-    # ##############################################################################################
-
-    if(Julia_EXECUTABLE)
-        execute_process(COMMAND ${Julia_EXECUTABLE} --startup-file=no -E "Sys.WORD_SIZE"
-                        OUTPUT_VARIABLE Julia_WORD_SIZE)
-        string(REGEX REPLACE "\n" "" Julia_WORD_SIZE "${Julia_WORD_SIZE}")
-        message(STATUS "Julia_WORD_SIZE:      ${Julia_WORD_SIZE}")
-    endif()
-
-    if($ENV{target} MATCHES "^i686.*")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse -msse2")
-    endif()
-
-endif()
-
-# ##################################################################################################
+###########################
 # FindPackage Boilerplate #
-# ##################################################################################################
+###########################
 
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(
-    Julia
-    REQUIRED_VARS JULIA_LIBRARY JULIA_LIBRARY_DIR JULIA_INCLUDE_DIRS Julia_MAIN_HEADER
-    VERSION_VAR Julia_VERSION_STRING
-    FAIL_MESSAGE "Julia not found")
+find_package_handle_standard_args(Julia
+    REQUIRED_VARS   Julia_LIBRARY Julia_INCLUDE_DIRS
+    VERSION_VAR     Julia_VERSION_STRING
+    FAIL_MESSAGE    "Julia not found"
+)

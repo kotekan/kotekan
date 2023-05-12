@@ -65,11 +65,11 @@ inline int32_t count_zeros(int32_t x) {
  * @returns The result of 2^e
  */
 inline float fast_pow(int8_t e) {
+    float out_f;
     // Construct float bitwise
     uint32_t out_i = ((uint32_t)(127 + e) << 23);
     // Cast into float
-    float out_f;
-    memcpy(&out_f, &out_i, sizeof(float));
+    std::memcpy(&out_f, &out_i, sizeof out_f);
     return out_f;
 }
 
