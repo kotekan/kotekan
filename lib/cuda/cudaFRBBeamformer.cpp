@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief CUDA  kernel
+ * @brief CUDA FRBBeamformer kernel
  *
  * This file has been generated automatically.
  * Do not modify this C++ file, your changes will be lost.
@@ -19,14 +19,14 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 
 /**
- * @class cuda
- * @brief cudaCommand for
+ * @class cudaFRBBeamformer
+ * @brief cudaCommand for FRBBeamformer
  */
-class cuda : public cudaCommand {
+class cudaFRBBeamformer : public cudaCommand {
 public:
-    cuda(Config& config, const std::string& unique_name, bufferContainer& host_buffers,
-         cudaDeviceInterface& device);
-    ~cuda();
+    cudaFRBBeamformer(Config& config, const std::string& unique_name, bufferContainer& host_buffers,
+                      cudaDeviceInterface& device);
+    ~cudaFRBBeamformer();
     cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
                         bool* quit) override;
 
@@ -68,7 +68,7 @@ private:
 
     // Kernel name:
     const char* const kernel_symbol =
-        "_Z15julia_frb_1030913CuDeviceArrayI7Int16x2Li1ELi1EES_I9Float16x2Li1ELi1EES_"
+        "_Z15julia_frb_1026613CuDeviceArrayI7Int16x2Li1ELi1EES_I9Float16x2Li1ELi1EES_"
         "I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE";
 
     // Kernel arguments:
@@ -88,11 +88,11 @@ private:
     const std::string info_memname;
 };
 
-REGISTER_CUDA_COMMAND(cuda);
+REGISTER_CUDA_COMMAND(cudaFRBBeamformer);
 
-cuda::cuda(Config& config, const std::string& unique_name, bufferContainer& host_buffers,
-           cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "", ".ptx"),
+cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_name,
+                                     bufferContainer& host_buffers, cudaDeviceInterface& device) :
+    cudaCommand(config, unique_name, host_buffers, device, "FRBBeamformer", "FRBBeamformer.ptx"),
     S_memname(config.get<std::string>(unique_name, "gpu_mem_dishlayout")),
     W_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
     E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
@@ -133,10 +133,11 @@ cuda::cuda(Config& config, const std::string& unique_name, bufferContainer& host
     build_ptx({kernel_symbol}, opts);
 }
 
-cuda::~cuda() {}
+cudaFRBBeamformer::~cudaFRBBeamformer() {}
 
-cudaEvent_t cuda::execute(const int gpu_frame_id, const std::vector<cudaEvent_t>& /*pre_events*/,
-                          bool* const /*quit*/) {
+cudaEvent_t cudaFRBBeamformer::execute(const int gpu_frame_id,
+                                       const std::vector<cudaEvent_t>& /*pre_events*/,
+                                       bool* const /*quit*/) {
     pre_execute(gpu_frame_id);
 
     void* const S_memory = device.get_gpu_memory_array(S_memname, gpu_frame_id, S_length);
