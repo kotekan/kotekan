@@ -14,6 +14,8 @@ add_library(
     cudaDeviceInterface.cpp
     cudaEventContainer.cpp
     cudaProcess.cpp
+    # Julia
+    juliaManager.cpp
     # Copy & general-purpose:
     cudaInputData.cpp
     cudaOutputData.cpp
@@ -32,7 +34,10 @@ add_library(
     cudaRechunk.cpp
     cudaUpchannelize.cpp
     cudaUpchannelize16k.cpp
-    chordMVPSetup.cpp)
+    cudaUpchannelizer_U16.cpp
+    chordMVPSetup.cpp
+    juliaHelloWorld.cpp
+)
 
 # C++17
 set_property(TARGET kotekan_cuda PROPERTY CUDA_STANDARD 17)
@@ -54,6 +59,15 @@ if(${GPUTILS_FOUND})
 
 else()
     message("gputils not found, support disabled in kotekan_cuda")
+endif()
+
+find_package(Julia)
+if(${Julia_FOUND})
+    message("Julia support enabled")
+    target_include_directories(kotekan_cuda PRIVATE ${Julia_INCLUDE_DIRS})
+    target_link_libraries(kotekan_cuda PUBLIC ${Julia_LIBRARY})
+else()
+    message("Julia not found, support disabled in kotekan_cuda")
 endif()
 
 target_link_libraries(

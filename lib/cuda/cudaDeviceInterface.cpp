@@ -51,7 +51,7 @@ void* cudaDeviceInterface::get_gpu_memory_array(const std::string& name, const u
     return gpuDeviceInterface::get_gpu_memory_array(name, index, len);
 }
 cudaStream_t cudaDeviceInterface::getStream(int32_t cuda_stream_id) {
-    return streams[cuda_stream_id];
+    return streams.at(cuda_stream_id);
 }
 
 int32_t cudaDeviceInterface::get_num_streams() {
