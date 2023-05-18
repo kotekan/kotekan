@@ -54,7 +54,7 @@ telescope:
 ###############
 
 dataset_manager:
-    use_dataset_broker: false #true  We need this to be true for the N2 recv system to work
+    use_dataset_broker: true # We need this to be true for the N2 recv system to work
     ds_broker_host: 10.41.1.5 #??? 
     ds_broker_port: 12050
 
@@ -257,10 +257,10 @@ baseband_merge:
 
 # Transmit baseband data to the baseband receiver
 baseband_send:
-    #kotekan_stage: bufferSend
+    kotekan_stage: bufferSend
     buf: baseband_output_buffer_merged
     server_port: 11027
-    server_ip: 10.50.1.6 # c1
+    server_ip: 10.51.1.6 # c1
     reconnect_time: 60
     send_timeout: 600 # 10 minutes
     log_level: warn
@@ -407,11 +407,11 @@ merge_acc_final:
 ### N^2 Output ###
 
 buffer_send:
-    server_ip: 10.50.1.7
+    server_ip: 10.51.1.7
     reconnect_time: 20
     log_level: warn
     n2:
-        #kotekan_stage: bufferSend
+        kotekan_stage: bufferSend
         buf: visbuf_eig_40s_merged_final
         server_port: 11024
 
