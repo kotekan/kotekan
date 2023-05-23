@@ -1,0 +1,424 @@
+##########################################
+#
+# chime_outrigger_kko_gpu.yaml
+#
+# Config to support the CHIME outriggers 128 elements (64 feeds) with OpenCL kernels.
+#
+# This configuration is not finalized.
+#
+# Author: Andre Renard
+#
+##########################################
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG
+# and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
+
+buffer_depth: 12
+baseband_buffer_depth: 222 # ~33 seconds after accounting for margin.
+samples_per_data_set: 32768 * 2
+num_local_freq: 16
+num_freq_in_frame: num_local_freq
+num_elements: 128
+num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
+sizeof_int: 4
+num_gpus: 2
+block_size: 32
+num_data_sets: 1
+data_format: "4+4b"
+# The number of FPGA links per NUMA domain
+num_links: 16
+instrument_name: pco
+num_ev: 4
+
+cpu_affinity: [11, 12, 13, 35, 36, 37]
+
+###################
+#### telescope ####
+###################
+
+telescope:
+    name: ICETelescope
+    require_gps: false
+    query_gps: true
+    gps_host: 10.40.1.1 # `gw`
+    allow_default_frequency_map: true
+
+###############
+#### comet ####
+###############
+
+dataset_manager:
+    use_dataset_broker: true
+    ds_broker_host: 10.40.1.5 # aux
+    ds_broker_port: 12050
+
+##################
+#### Metadata ####
+##################
+
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 4 * num_links * baseband_buffer_depth
+
+vis_pool:
+    kotekan_metadata_pool: VisMetadata
+    num_metadata_objects: 40 * buffer_depth * num_local_freq
+
+baseband_pool:
+    kotekan_metadata_pool: BasebandMetadata
+    num_metadata_objects: num_links * num_local_freq * 1024 * 2
+
+#################
+#### Buffers ####
+#################
+
+gpu_input_buffers:
+    num_frames: baseband_buffer_depth
+    frame_size: samples_per_data_set * num_elements * num_local_freq
+    metadata_pool: main_pool
+{%- for id in range(16) %}
+    gpu_input_buffer_{{ id }}:
+        numa_node: 0
+        kotekan_buffer: standard
+{%- endfor %}
+{%- for id in range(16,32) %}
+    gpu_input_buffer_{{ id }}:
+        numa_node: 1
+        kotekan_buffer: standard
+{%- endfor %}
+
+lost_samples_buffers:
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set
+    metadata_pool: main_pool
+{%- for id in range(16) %}
+    lost_samples_buffer_{{ id }}:
+        numa_node: 0
+        kotekan_buffer: standard
+{%- endfor %}
+{%- for id in range(16,32) %}
+    lost_samples_buffer_{{ id }}:
+        numa_node: 1
+        kotekan_buffer: standard
+{%- endfor %}
+
+### Baseband dump output buffers (staging for send to baseband recv)
+baseband_output_buffers:
+    num_frames: 165 * num_local_freq
+    frame_size: 4096 * num_elements
+    metadata_pool: baseband_pool
+{%- for id in range(16) %}
+    baseband_output_buffer_{{ id }}:
+        numa_node: 0
+        kotekan_buffer: standard
+{%- endfor %}
+{%- for id in range(16,32) %}
+    baseband_output_buffer_{{ id }}:
+        numa_node: 1
+        kotekan_buffer: standard
+{%- endfor %}
+    baseband_output_buffer_merged:
+        numa_node: 1
+        kotekan_buffer: standard
+
+gpu_output_buffers:
+    num_frames: buffer_depth * 4
+    frame_size: num_local_freq * num_blocks * (block_size*block_size) * 2  * sizeof_int
+    metadata_pool: main_pool
+{%- for id in range(16) %}
+    gpu_output_split_buffer_{{ id }}:
+        numa_node: 0
+        kotekan_buffer: standard
+{%- endfor %}
+{%- for id in range(16,32) %}
+    gpu_output_split_buffer_{{ id }}:
+        numa_node: 1
+        kotekan_buffer: standard
+{%- endfor %}
+
+vis_buffers:
+    metadata_pool: vis_pool
+    num_frames: buffer_depth * num_local_freq * num_links
+    visbuf_40s_merged_0:
+        numa_node: 0
+        kotekan_buffer: vis
+    visbuf_40s_merged_1:
+        numa_node: 1
+        kotekan_buffer: vis
+    visbuf_eig_40s_merged_0:
+        numa_node: 0
+        kotekan_buffer: vis
+    visbuf_eig_40s_merged_1:
+        numa_node: 1
+        kotekan_buffer: vis
+    visbuf_eig_40s_merged_final:
+        numa_node: 1
+        kotekan_buffer: vis
+{%- for id in range(16) %}
+    visbuf_40s_{{ id }}:
+        numa_node: 0
+        kotekan_buffer: vis
+{%- endfor %}
+{%- for id in range(16,32) %}
+    visbuf_40s_{{ id }}:
+        numa_node: 1
+        kotekan_buffer: vis
+{%- endfor %}
+
+
+################
+#### Stages ####
+################
+
+### Data Capture ###
+
+# DPDK packet capture from FPGA
+dpdk:
+    kotekan_stage: dpdkCore
+    # Format is index = lcore, value = cpu core
+    lcore_cpu_map: [0, 1, 2, 3, 4, 5, 6, 7, 24, 25, 26, 27, 28, 29, 30, 31]
+    master_lcore_cpu: 9
+    fpga_packet_size: 4160
+    num_mem_channels: 8
+    alignment: samples_per_data_set * 32
+    mbuf_cache_size: 250
+    init_mem_alloc: 1024,1024
+    # Format is index = lcore, value = array of port IDs
+    # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+    # and lcore 1 to service ports 2 and 3.
+    lcore_port_map:
+        - [0,1]
+        - [2,3]
+        - [4,5]
+        - [6,7]
+        - [8,9]
+        - [10,11]
+        - [12,13]
+        - [14,15]
+        - [16,17]
+        - [18,19]
+        - [20,21]
+        - [22,23]
+        - [24,25]
+        - [26,27]
+        - [28,29]
+        - [30,31]
+    # One handler must be given per port on the system.
+    handlers:
+{%- for id in range(32) %}
+        - dpdk_handler: iceBoardStandard
+          out_buf: gpu_input_buffer_{{ id }}
+          lost_samples_buf: lost_samples_buffer_{{ id }}
+{%- endfor %}
+
+zero_samples:
+{%- for id in range(32) %}
+    zero_{{ id }}:
+        kotekan_stage: zeroSamples
+        out_buf: gpu_input_buffer_{{ id }}
+        lost_samples_buf: lost_samples_buffer_{{ id }}
+{%- endfor %}
+
+### Start Baseband Section ###
+baseband:
+    max_dump_samples: 548864 #1024000 # 1024ms
+    num_frames_buffer: baseband_buffer_depth - 15
+{%- for id in range(16) %}
+    baseband_{{ id }}:
+        cpu_affinity: [16,17,18,19,20,21,22,23]
+        kotekan_stage: basebandReadout
+        in_buf: gpu_input_buffer_{{ id }}
+        out_buf: baseband_output_buffer_{{ id }}
+{%- endfor %}
+{%- for id in range(16,32) %}
+    baseband_{{ id }}:
+        cpu_affinity: [40,41,42,43,44,45,46,47]
+        kotekan_stage: basebandReadout
+        in_buf: gpu_input_buffer_{{ id }}
+        out_buf: baseband_output_buffer_{{ id }}
+{%- endfor %}
+
+baseband_merge:
+    kotekan_stage: bufferMerge
+    timeout: 0.1
+    # Force a copy into NUMA2 since that contains the output NIC
+    force_copy: true
+    in_bufs:
+{%- for id in range(32) %}
+        - baseband_output_buffer_{{ id }}
+{%- endfor %}
+    out_buf: baseband_output_buffer_merged
+
+# Transmit baseband data to the baseband receiver
+baseband_send:
+    kotekan_stage: bufferSend
+    buf: baseband_output_buffer_merged
+    server_port: 11027
+    server_ip: 10.50.1.6 # c1
+    reconnect_time: 60
+    send_timeout: 600 # 10 minutes
+    log_level: warn
+    # Keep data in memory even if the receiver node is down
+    # Baseband readout handles back pressure management
+    drop_frames: false
+
+### End Baseband Section ###
+
+meta_debug_0:
+    kotekan_stage: chimeMetadataDump
+    in_buf: gpu_input_buffer_0
+
+meta_debug_1:
+    kotekan_stage: chimeMetadataDump
+    in_buf: gpu_input_buffer_1
+
+
+### GPU Processing ###
+
+gpu:
+    profiling: true
+    log_profiling: false
+    kernel_path: "/var/lib/kotekan/opencl/kernels/"
+    gain_dir: "/etc/kotekan/"
+    log_level: warn
+    frame_arrival_period: samples_per_data_set / 390625.0 / num_links
+    commands: &command_list
+      - name: clInputData
+        gpu_memory: input
+        in_bufs:
+{%- for id in range(16) %}
+            - in_buf_{{ id }}
+{%- endfor %}
+      - name: clPresumZero
+      - name: clOutputDataZero
+      - name: clPresumKernel
+      - name: clPreseedKernel
+      - name: clCorrelatorKernel
+      - name: clOutputData
+        gpu_memory: output
+        in_bufs:
+{%- for id in range(16) %}
+            - in_buf_{{ id }}
+{%- endfor %}
+        out_bufs:
+{%- for id in range(16) %}
+            - out_buf_{{ id }}
+{%- endfor %}
+    gpu_0:
+        kotekan_stage: clProcess
+        cpu_affinity: [10]
+        gpu_id: 0
+        commands: *command_list
+        in_buffers:
+{%- for id in range(16) %}
+            in_buf_{{ id }}: gpu_input_buffer_{{ id }}
+{%- endfor %}
+        out_buffers:
+{%- for id in range(16) %}
+            out_buf_{{ id }}: gpu_output_split_buffer_{{ id }}
+{%- endfor %}
+    gpu_1:
+        kotekan_stage: clProcess
+        cpu_affinity: [34]
+        gpu_id: 1
+        commands: *command_list
+        in_buffers:
+{%- for id in range(16,32) %}
+            in_buf_{{ id - 16 }}: gpu_input_buffer_{{ id }}
+{%- endfor %}
+        out_buffers:
+{%- for id in range(16,32) %}
+            out_buf_{{ id - 16 }}: gpu_output_split_buffer_{{ id }}
+{%- endfor %}
+
+### N^2 Accumulation ###
+
+vis_accumulate_stages:
+    log_level: WARN
+    integration_time: 40.0
+    max_age: 80.0
+{%- for id in range(16) %}
+    acc_{{ id }}:
+        kotekan_stage: visAccumulate
+        in_buf: gpu_output_split_buffer_{{ id }}
+        out_buf: visbuf_40s_{{ id }}
+{%- endfor %}
+{%- for id in range(16,32) %}
+    acc_{{ id }}:
+        kotekan_stage: visAccumulate
+        in_buf: gpu_output_split_buffer_{{ id }}
+        out_buf: visbuf_40s_{{ id }}
+{%- endfor %}
+
+merge_acc_0:
+    kotekan_stage: bufferMerge
+    in_bufs:
+{%- for id in range(16) %}
+        - visbuf_40s_{{ id }}
+{%- endfor %}
+    out_buf: visbuf_40s_merged_0
+
+merge_acc_1:
+    kotekan_stage: bufferMerge
+    in_bufs:
+{%- for id in range(16,32) %}
+        - visbuf_40s_{{ id }}
+{%- endfor %}
+    out_buf: visbuf_40s_merged_1
+
+eigcalc:
+    log_level: debug
+    # Convergence config
+    tol_eval: 0.00001
+    tol_evec: 0.0001
+    max_iterations: 30
+    num_ev_conv: 2
+    krylov: 2
+    subspace: 1
+    # Masking config
+    bands_filled: [[0, 7], [61, 67]]
+    exclude_inputs: [37, 51, 61, 104, 110, 111, 123]
+    eigcalc_0:
+        kotekan_stage: EigenVisIter
+        cpu_affinity: [15]
+        in_buf: visbuf_40s_merged_0
+        out_buf: visbuf_eig_40s_merged_0
+    eigcalc_1:
+        kotekan_stage: EigenVisIter
+        cpu_affinity: [39]
+        in_buf: visbuf_40s_merged_1
+        out_buf: visbuf_eig_40s_merged_1
+
+merge_acc_final:
+    kotekan_stage: bufferMerge
+    # Force a copy into NUMA2 since that contains the output NIC
+    force_copy: true
+    in_bufs:
+        - visbuf_eig_40s_merged_0
+        - visbuf_eig_40s_merged_1
+    out_buf: visbuf_eig_40s_merged_final
+
+### N^2 Output ###
+
+buffer_send:
+    server_ip: 10.50.1.7
+    reconnect_time: 20
+    log_level: warn
+    n2:
+        kotekan_stage: bufferSend
+        buf: visbuf_eig_40s_merged_final
+        server_port: 11024
+
+monitor:
+    kotekan_stage: monitorBuffer
+    bufs:
+        - gpu_input_buffer_0
+        - gpu_input_buffer_16
+    timeout: 30
+    fill_threshold: 0.98
+
+{% include 'input_reorder/pco_input_reorder.j2' %}
