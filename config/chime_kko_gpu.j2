@@ -225,7 +225,7 @@ zero_samples:
 
 ### Start Baseband Section ###
 baseband:
-    max_dump_samples: 548864 #1024000 # 1024ms
+    max_dump_samples: 548864 # 1.4 seconds.
     num_frames_buffer: baseband_buffer_depth - 15
 {%- for id in range(16) %}
     baseband_{{ id }}:
