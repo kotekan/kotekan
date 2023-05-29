@@ -409,7 +409,7 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& pipestate,
                                                  device.getStream(_cuda_streams[i])));
                 // Now wait for that event on the main compute stream.
                 CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(cuda_stream_id),
-                                                     sync_events[gpu_frame_id][i]));
+                                                     sync_events[pipestate.gpu_frame_id][i]));
             }
         }
     }

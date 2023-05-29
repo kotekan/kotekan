@@ -206,9 +206,15 @@ gpu:
     - name: cudaSyncInput
     # If using multiple compute streams in FRB Beam Reformer, must also sync those on inputs!
     # Could perhaps sync on stream 2 later??
-    - name: cudaSyncStream
-      cuda_stream: 3
-      source_cuda_streams: [0]
+    # - name: cudaSyncStream
+    #   cuda_stream: 3
+    #   source_cuda_streams: [0]
+    # - name: cudaSyncStream
+    #   cuda_stream: 4
+    #   source_cuda_streams: [0]
+    # - name: cudaSyncStream
+    #   cuda_stream: 5
+    #   source_cuda_streams: [0]
     # Coarse visibilities
     - name: cudaCorrelator
       gpu_mem_voltage: voltage
@@ -261,7 +267,19 @@ gpu:
       samples_per_data_set: frb_samples
       time_downsampling: frb_time_downsampling
       num_beams: frb_beams
-    # FRB2 & 3 follow after rechunking!
+    #
+    # Rechunking!
+    #
+    - name: cudaRechunk
+      gpu_mem_input: beamgrid_good
+      gpu_mem_output: beamchunk_sub
+      # Erik's FRB beamformer produces output with rho varying fastest, then T,
+      # then F, so T*rho is the inner size and F is the outer size.
+      len_inner_input: frb_td_good * 2 * frb_beam_grid_size * frb_beam_grid_size
+      len_inner_output: frb_td_rechunk_real * 2 * frb_beam_grid_size * frb_beam_grid_size
+      len_outer: frb_freq
+      set_flag: frb_rechunk
+    # FRB2 & 3 follow after outputs!
     #
     # Begin output of full-rate results
     - name: cudaSyncOutput
@@ -296,18 +314,16 @@ gpu:
       out_buf: host_bb_beams
       in_buf: host_voltage
     #
-    # Rechunking!
+    # Operations on rechunked data
     #
-    - name: cudaRechunk
-      gpu_mem_input: beamgrid_good
-      gpu_mem_output: beamchunk_sub
-      # Erik's FRB beamformer produces output with rho varying fastest, then T,
-      # then F, so T*rho is the inner size and F is the outer size.
-      len_inner_input: frb_td_good * 2 * frb_beam_grid_size * frb_beam_grid_size
-      len_inner_output: frb_td_rechunk_real * 2 * frb_beam_grid_size * frb_beam_grid_size
-      len_outer: frb_freq
     # FRB2: FRB Beam Reformer
+    # Extra compute stream has to wait for Rechunk to finish!!
+    - name: cudaSyncStream
+      required_flag: frb_rechunk
+      cuda_stream: 3
+      source_cuda_streams: [2]
     - name: cudaFRBBeamReformer
+      required_flag: frb_rechunk
       log_level: debug
       cuda_streams: [2,3]
       #cuda_streams: [2,3,4,5]
@@ -319,12 +335,13 @@ gpu:
       num_beams: frb_beams
       beam_grid_size: frb_beam_grid_size
     # Wait for streams 3,4,5 to finish
-    - name: cudaSyncStream
-      cuda_stream: 2
-      source_cuda_streams: [3]
-      #source_cuda_streams: [3,4,5]
+    # - name: cudaSyncStream
+    #   cuda_stream: 2
+    #   source_cuda_streams: [3]
+    #   #source_cuda_streams: [3,4,5]
     # FRB3: quantization into 4-bit int
     - name: cudaQuantize
+      required_flag: frb_rechunk
       gpu_mem_input: beamout
       gpu_mem_output: beamquant
       gpu_mem_meanstd: beammeanstd
@@ -333,10 +350,12 @@ gpu:
     - name: cudaSyncOutput
     # Rechunked outputs
     - name: cudaOutputData
+      required_flag: frb_rechunk
       gpu_mem: beamquant
       out_buf: host_beamquant
       in_buf: host_voltage # Metadata transfer from here
     - name: cudaOutputData
+      required_flag: frb_rechunk
       gpu_mem: beammeanstd
       out_buf: host_beammeanstd
       in_buf: host_voltage # Metadata transfer from here
