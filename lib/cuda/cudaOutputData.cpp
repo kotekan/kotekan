@@ -38,8 +38,6 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
     output_buffer_id = 0;
     in_buffer_id = 0;
 
-    skipped.resize(output_buffer->num_frames);
-
     set_command_type(gpuCommandType::COPY_OUT);
 
     kernel_command = "cudaOutputData: " + _gpu_mem;
@@ -71,43 +69,25 @@ int cudaOutputData::wait_on_precondition(int gpu_frame_id) {
 }
 
 
-cudaEvent_t cudaOutputData::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
-                                    bool* quit) {
-    (void)quit;
-    pre_execute(gpu_frame_id);
-
-    skipped[gpu_frame_id] = false;
+cudaEvent_t cudaOutputData::execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) {
+    pre_execute(pipestate.gpu_frame_id);
 
     size_t output_len = output_buffer->frame_size;
 
-    void* gpu_output_frame = device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, output_len);
+    void* gpu_output_frame = device.get_gpu_memory_array(_gpu_mem, pipestate.gpu_frame_id, output_len);
     void* host_output_frame = (void*)output_buffer->frames[output_buffer_execute_id];
 
     device.async_copy_gpu_to_host(host_output_frame, gpu_output_frame, output_len, cuda_stream_id,
-                                  pre_events[cuda_stream_id], start_events[gpu_frame_id],
-                                  end_events[gpu_frame_id]);
+                                  pre_events[cuda_stream_id], start_events[pipestate.gpu_frame_id],
+                                  end_events[pipestate.gpu_frame_id]);
 
     output_buffer_execute_id = (output_buffer_execute_id + 1) % output_buffer->num_frames;
-    return end_events[gpu_frame_id];
-}
-
-cudaEvent_t cudaOutputData::skipped_execute(int gpu_frame_id,
-                                            const std::vector<cudaEvent_t>& pre_events) {
-    skipped[gpu_frame_id] = true;
-    return cudaCommand::skipped_execute(gpu_frame_id, pre_events);
+    return end_events[pipestate.gpu_frame_id];
 }
 
 void cudaOutputData::finalize_frame(int frame_id) {
     cudaCommand::finalize_frame(frame_id);
 
-    if (skipped[frame_id]) {
-        DEBUG("Skipping Cuda output for gpu frame {:d}; input is {:s}[{:d}], output is {:s}[{:d}]",
-              frame_id, in_buffer->buffer_name, in_buffer_id, output_buffer->buffer_name,
-              output_buffer_id);
-        mark_frame_empty(in_buffer, unique_name.c_str(), in_buffer_id);
-        in_buffer_id = (in_buffer_id + 1) % in_buffer->num_frames;
-        return;
-    }
     DEBUG("Passing metadata from input {:s}[{:d}] to {:s}[{:d}]", in_buffer->buffer_name,
           in_buffer_id, output_buffer->buffer_name, output_buffer_id);
     pass_metadata(in_buffer, in_buffer_id, output_buffer, output_buffer_id);

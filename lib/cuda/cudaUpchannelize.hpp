@@ -50,8 +50,8 @@ public:
         std::string kernel_symbol = "_Z17julia_upchan_376513CuDeviceArrayI9Float16x2Li1ELi1EES_"
                                     "I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE");
     ~cudaUpchannelize();
-    cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
-                        bool* quit) override;
+    cudaEvent_t execute(cudaPipelineState& pipestate,
+                        const std::vector<cudaEvent_t>& pre_events) override;
 
     // virtual std::string get_kernel_function_name();
 protected:

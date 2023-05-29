@@ -44,8 +44,7 @@ public:
     cudaRechunk(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaRechunk();
-    cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
-                        bool* quit) override;
+    cudaEvent_t execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) override;
 
 protected:
 private:
@@ -56,6 +55,8 @@ private:
     size_t num_accumulated;
     // void* leftover_memory;
     // size_t num_leftover;
+
+    std::string _set_flag;
 
     // GPU memory where we assemble the output
     // void* gpu_mem_accum;

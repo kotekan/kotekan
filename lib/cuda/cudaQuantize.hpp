@@ -30,8 +30,8 @@ public:
     cudaQuantize(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaQuantize();
-    cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
-                        bool* quit) override;
+    cudaEvent_t execute(cudaPipelineState& pipestate,
+                        const std::vector<cudaEvent_t>& pre_events) override;
 
     const int CHUNK_SIZE = 256;
     const int FRAME_SIZE = 32;

@@ -97,21 +97,19 @@ struct CuDeviceArray {
 };
 typedef CuDeviceArray<int32_t, 1> kernel_arg;
 
-cudaEvent_t cudaUpchannelize::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
-                                      bool* quit) {
+cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) {
     (void)pre_events;
-    (void)quit;
-    pre_execute(gpu_frame_id);
+    pre_execute(pipestate.gpu_frame_id);
 
     void* voltage_input_memory =
-        device.get_gpu_memory_array(_gpu_mem_input_voltage, gpu_frame_id, voltage_input_len);
+        device.get_gpu_memory_array(_gpu_mem_input_voltage, pipestate.gpu_frame_id, voltage_input_len);
     void* voltage_output_memory =
-        device.get_gpu_memory_array(_gpu_mem_output_voltage, gpu_frame_id, voltage_output_len);
+        device.get_gpu_memory_array(_gpu_mem_output_voltage, pipestate.gpu_frame_id, voltage_output_len);
     float16_t* gain_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_gain, gain_len);
     int32_t* info_memory =
-        (int32_t*)device.get_gpu_memory_array(_gpu_mem_info, gpu_frame_id, info_len);
+        (int32_t*)device.get_gpu_memory_array(_gpu_mem_info, pipestate.gpu_frame_id, info_len);
 
-    record_start_event(gpu_frame_id);
+    record_start_event(pipestate.gpu_frame_id);
 
     CUresult err;
     // A, E, s, J
@@ -148,7 +146,7 @@ cudaEvent_t cudaUpchannelize::execute(int gpu_frame_id, const std::vector<cudaEv
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shared_mem_bytes));
 
-    DEBUG("Running CUDA Upchannelizer on GPU frame {:d}", gpu_frame_id);
+    DEBUG("Running CUDA Upchannelizer on GPU frame {:d}", pipestate.gpu_frame_id);
     err = cuLaunchKernel(runtime_kernels[kernel_name], blocks_x, blocks_y, 1, threads_x, threads_y,
                          1, shared_mem_bytes, device.getStream(cuda_stream_id), parameters, NULL);
 
@@ -159,5 +157,5 @@ cudaEvent_t cudaUpchannelize::execute(int gpu_frame_id, const std::vector<cudaEv
         ERROR("ERROR IN cuLaunchKernel: {}", errStr);
     }
 
-    return record_end_event(gpu_frame_id);
+    return record_end_event(pipestate.gpu_frame_id);
 }

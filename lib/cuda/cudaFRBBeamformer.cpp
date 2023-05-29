@@ -103,20 +103,18 @@ struct CuDeviceArray {
 };
 typedef CuDeviceArray<int32_t, 1> kernel_arg;
 
-cudaEvent_t cudaFRBBeamformer::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
-                                       bool* quit) {
+cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) {
     (void)pre_events;
-    (void)quit;
-    pre_execute(gpu_frame_id);
+    pre_execute(pipestate.gpu_frame_id);
 
     void* dishlayout_memory = device.get_gpu_memory(_gpu_mem_dishlayout, dishlayout_len);
-    void* phase_memory = device.get_gpu_memory_array(_gpu_mem_phase, gpu_frame_id, phase_len);
-    void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, gpu_frame_id, voltage_len);
+    void* phase_memory = device.get_gpu_memory_array(_gpu_mem_phase, pipestate.gpu_frame_id, phase_len);
+    void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, pipestate.gpu_frame_id, voltage_len);
     void* beamgrid_memory =
-        device.get_gpu_memory_array(_gpu_mem_beamgrid, gpu_frame_id, beamgrid_len);
+        device.get_gpu_memory_array(_gpu_mem_beamgrid, pipestate.gpu_frame_id, beamgrid_len);
     int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
 
-    record_start_event(gpu_frame_id);
+    record_start_event(pipestate.gpu_frame_id);
 
     // Initialize info_memory return codes
     CHECK_CUDA_ERROR(
@@ -177,7 +175,7 @@ cudaEvent_t cudaFRBBeamformer::execute(int gpu_frame_id, const std::vector<cudaE
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shared_mem_bytes));
 
-    DEBUG("Running CUDA FRB Beamformer on GPU frame {:d}", gpu_frame_id);
+    DEBUG("Running CUDA FRB Beamformer on GPU frame {:d}", pipestate.gpu_frame_id);
     CHECK_CU_ERROR(cuLaunchKernel(runtime_kernels[kernel_name], blocks_x, blocks_y, 1, threads_x,
                                   threads_y, 1, shared_mem_bytes, device.getStream(cuda_stream_id),
                                   parameters, NULL));
@@ -186,7 +184,7 @@ cudaEvent_t cudaFRBBeamformer::execute(int gpu_frame_id, const std::vector<cudaE
     CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info.data(), info_memory, info_len,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
-    return record_end_event(gpu_frame_id);
+    return record_end_event(pipestate.gpu_frame_id);
 }
 
 void cudaFRBBeamformer::finalize_frame(int gpu_frame_id) {
