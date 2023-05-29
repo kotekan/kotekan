@@ -269,6 +269,12 @@ gpu:
       num_beams: frb_beams
     #
     # Rechunking!
+    # Conceptually, the rechunker should follow the full-rate output stages.
+    # However, the rechunker uses some memory copy operations that contend
+    # for hardware resources (memory controllers) with the output stages,
+    # so we avoid this by putting the rechunker's small memory copies first.
+    # The minor cost is that the output stages are sequenced after the rechunker's
+    # campute, but that's minor.
     #
     - name: cudaRechunk
       gpu_mem_input: beamgrid_good
