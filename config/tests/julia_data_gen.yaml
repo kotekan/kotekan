@@ -1,0 +1,54 @@
+##########################################
+#
+# Julia Hello World
+#
+##########################################
+---
+type: config
+log_level: info
+cpu_affinity: [2,3,4,5,8,9,10,11]
+num_gpus: 1
+num_gpu_frames: 1
+frame_arrival_period: 1.0
+buffer_depth: 4
+
+voltage_samples: 32768
+voltage_freq: 16
+num_dishes: 512
+num_feeds: 2 * num_dishes
+
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 1 * buffer_depth
+
+voltage_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: 32768   # voltage_samples * num_feeds * voltage_freq
+    metadata_pool: main_pool
+
+gen_data:
+    kotekan_stage: juliaDataGen
+    out_buf: voltage_buffer
+  
+# hfb:
+#   file_length: 1
+#   file_type: hfbraw
+#   root_path: .
+#   kotekan_stage: HFBWriter
+#   in_buf: beamform_hfb_output_buffer_0
+#   instrument_name: chimeHFB
+
+gpu:
+    commands: &command_list
+    - name: juliaHelloWorld
+      in_buf: voltage
+      cuda_stream: 0
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        commands: *command_list
+        in_buffers:
+            voltage: voltage_buffer
+        out_buffers: []
+...

@@ -1,0 +1,25 @@
+##########################################
+#
+# Julia Hello World
+#
+##########################################
+---
+type: config
+log_level: info
+cpu_affinity: [2,3,4,5,8,9,10,11]
+num_gpus: 1
+num_gpu_frames: 1
+frame_arrival_period: 1.0
+buffer_depth: 4
+
+gpu:
+    commands: &command_list
+    - name: juliaHelloWorld
+      cuda_stream: 0
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        commands: *command_list
+        in_buffers: []
+        out_buffers: []
+...
