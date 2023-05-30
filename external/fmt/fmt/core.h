@@ -72,6 +72,7 @@
 
 #ifndef FMT_OVERRIDE
 #  if FMT_HAS_FEATURE(cxx_override) || \
+      __cplusplus >= 201103L || \
       (FMT_GCC_VERSION >= 408 && FMT_HAS_GXX_CXX11) || FMT_MSC_VER >= 1900
 #    define FMT_OVERRIDE override
 #  else
