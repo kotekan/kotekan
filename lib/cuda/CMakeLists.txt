@@ -36,6 +36,7 @@ add_library(
     cudaUpchannelize16k.cpp
     cudaUpchannelizer_U16.cpp
     chordMVPSetup.cpp
+    juliaDataGen.cpp
     juliaHelloWorld.cpp
 )
 
