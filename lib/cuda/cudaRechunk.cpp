@@ -11,13 +11,15 @@ REGISTER_CUDA_COMMAND(cudaRechunk);
 
 cudaRechunk::cudaRechunk(Config& config, const std::string& unique_name,
                          bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "cudaRechunk", "") {
+    cudaCommand(config, unique_name, host_buffers, device, "cudaRechunk", ""),
+    output_frame_id(0) {
     _len_inner_input = config.get<int>(unique_name, "len_inner_input");
     _len_inner_output = config.get<int>(unique_name, "len_inner_output");
     _len_outer = config.get<int>(unique_name, "len_outer");
     _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
     _set_flag = config.get_default<std::string>(unique_name, "set_flag", "");
+    _output_frame_counter = config.get_default<std::string>(unique_name, "output_frame_counter", "");
     set_command_type(gpuCommandType::KERNEL);
     num_accumulated = 0;
 
@@ -60,7 +62,7 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
               num_accumulated, _len_inner_output);
         // emit an output frame!
         void* output_memory =
-            device.get_gpu_memory_array(_gpu_mem_output, pipestate.gpu_frame_id, output_frame_len);
+            device.get_gpu_memory_array(_gpu_mem_output, output_frame_id, output_frame_len);
         CHECK_CUDA_ERROR(cudaMemcpyAsync(output_memory, accum_memory, output_frame_len,
                                          cudaMemcpyDeviceToDevice,
                                          device.getStream(cuda_stream_id)));
@@ -71,10 +73,13 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
         // Set the flag to indicate that we have emitted a frame!
         if (_set_flag.size()) {
             pipestate.set_flag(_set_flag, true);
-            // no this doesn't work (MVP has rechunker, full-rate outputs, chunked processing, chunked outputs)
-            //rechunked_frame_id++;
-            //pipestate.gpu_frame_id = rechunked_frame_id;
         }
+        if (_output_frame_counter.size()) {
+            DEBUG("cudaRechunk: set frame counter {:s} = {:d}", _output_frame_counter, output_frame_id);
+            pipestate.set_frame_id(_output_frame_counter, output_frame_id);
+        }
+        output_frame_id = (output_frame_id + 1) % _gpu_buffer_depth;
+
     } else {
         DEBUG("cudaRechunk: accumulated {:d}, output size {:d} -- NOT producing output!",
               num_accumulated, _len_inner_output);

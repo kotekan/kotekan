@@ -75,7 +75,8 @@ int cudaOutputData::wait_on_precondition(int gpu_frame_id) {
 cudaEvent_t cudaOutputData::execute_base(cudaPipelineState& pipestate,
                                          const std::vector<cudaEvent_t>& pre_events) {
     cudaEvent_t rtn = cudaCommand::execute_base(pipestate, pre_events);
-    did_generate_output[pipestate.gpu_frame_id] = (rtn != nullptr);
+    // We use the base GPU frame counter, to match what is passed to finalize_frame.
+    did_generate_output[pipestate.get_frame_id("")] = (rtn != nullptr);
     return rtn;
 }
 

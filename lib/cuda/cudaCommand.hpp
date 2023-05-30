@@ -34,13 +34,15 @@ public:
     bool flag_is_set(const std::string) const;
     // Returns "true" if flag *exists* AND is set to false.
     bool flag_is_false(const std::string) const;
+    void set_frame_id(const std::string, int fid);
+    int get_frame_id(const std::string) const;
 
     int gpu_frame_id;
 protected:
     std::map< std::string, bool > flags;
 
-    // ?? for syncopated pipelines ??
-    // std::map< std::string, int > frame_ids;
+    int base_gpu_frame_id;
+    std::map< std::string, int > frame_ids;
 };
 
 /**
@@ -134,6 +136,9 @@ protected:
 
     // cudaPipelineState flag required for this command to run, set from config "required_flag"
     std::string _required_flag;
+
+    // cudaPipelineState name of the frame counter for this command (eg, if it handles rechunked data)
+    std::string _frame_counter;
 
     // Map containing the runtime kernels built with nvrtc from the kernel file (if needed)
     std::map<std::string, CUfunction> runtime_kernels;
