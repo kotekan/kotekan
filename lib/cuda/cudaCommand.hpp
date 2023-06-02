@@ -32,8 +32,6 @@ public:
     void set_flag(const std::string, bool val);
     bool flag_exists(const std::string) const;
     bool flag_is_set(const std::string) const;
-    // Returns "true" if flag *exists* AND is set to false.
-    bool flag_is_false(const std::string) const;
     void set_frame_id(const std::string, int fid);
     int get_frame_id(const std::string) const;
 

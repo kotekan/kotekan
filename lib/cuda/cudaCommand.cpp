@@ -33,11 +33,6 @@ bool cudaPipelineState::flag_is_set(const std::string key) const {
     return search->second;
 }
 
-bool cudaPipelineState::flag_is_false(const std::string key) const {
-    auto search = flags.find(key);
-    if (search == flags.end())
-        return false;
-    return (search->second == false);
 void cudaPipelineState::set_frame_id(const std::string key, int fid) {
     frame_ids[key] = fid;
 }
