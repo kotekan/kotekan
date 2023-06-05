@@ -25,14 +25,13 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
     _gpu_mem_voltage = config.get<std::string>(unique_name, "gpu_mem_voltage");
     _gpu_mem_phase = config.get<std::string>(unique_name, "gpu_mem_phase");
     _gpu_mem_beamgrid = config.get<std::string>(unique_name, "gpu_mem_beamgrid");
-
-    _gpu_mem_info = "frb_beamformer_info";
+    _gpu_mem_info = unique_name + "/info";
 
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_dishlayout, false, true, true));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_voltage, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_phase, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beamgrid, true, false, true));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_info, false, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_info", true, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
 
@@ -80,7 +79,9 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
     beamgrid_len = (size_t)beam_p * beam_q * _num_local_freq * Td * sizeof_float16_t;
     info_len = (size_t)(threads_x * threads_y * blocks_x * sizeof(int32_t));
 
-    host_info.resize(info_len / sizeof(int32_t));
+    host_info.resize(_gpu_buffer_depth);
+    for (int i=0; i<_gpu_buffer_depth; i++)
+        host_info[i].resize(info_len / sizeof(int32_t));
 
     // Allocate GPU memory for dish-layout array, and fill from the config file entry!
     int16_t* dishlayout_memory =
@@ -120,7 +121,7 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate, const std::
     void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, pipestate.gpu_frame_id, voltage_len);
     void* beamgrid_memory =
         device.get_gpu_memory_array(_gpu_mem_beamgrid, pipestate.gpu_frame_id, beamgrid_len);
-    int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
+    int32_t* info_memory = (int32_t*)device.get_gpu_memory_array(_gpu_mem_info, pipestate.gpu_frame_id, info_len);
 
     record_start_event(pipestate.gpu_frame_id);
 
@@ -130,7 +131,6 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate, const std::
 
     // dishlayout (S), phase (W), voltage (E), beamgrid (I), info
     const char* exc = "exception";
-    // kernel_arg arr[5];
     kernel_arg arr[8];
 
     arr[0].ptr = (int32_t*)dishlayout_memory;
@@ -178,7 +178,6 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate, const std::
         &(arr[4]), &(arr[5]), &(arr[6]), &(arr[7]),
     };
 
-    DEBUG("Kernel_name: {}", kernel_name);
     CHECK_CU_ERROR(cuFuncSetAttribute(runtime_kernels[kernel_name],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shared_mem_bytes));
@@ -189,7 +188,7 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate, const std::
                                   parameters, NULL));
 
     // Copy "info" result code back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info.data(), info_memory, info_len,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory, info_len,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     return record_end_event(pipestate.gpu_frame_id);
@@ -197,9 +196,9 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate, const std::
 
 void cudaFRBBeamformer::finalize_frame(int gpu_frame_id) {
     cudaCommand::finalize_frame(gpu_frame_id);
-    for (size_t i = 0; i < host_info.size(); i++)
-        if (host_info[i] != 0)
+    for (size_t i = 0; i < host_info[gpu_frame_id].size(); i++)
+        if (host_info[gpu_frame_id][i] != 0)
             ERROR("cudaFRBBeamformer returned 'info' value {:d} at index {:d} (zero indicates no "
                   "error)",
-                  host_info[i], i);
+                  host_info[gpu_frame_id][i], i);
 }

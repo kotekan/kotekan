@@ -61,7 +61,8 @@ private:
     /// GPU side memory name for the status/info output
     std::string _gpu_mem_info;
 
-    std::vector<int32_t> host_info;
+    // Host-side buffer array for GPU kernel status/info output
+    std::vector< std::vector<int32_t> > host_info;
 
     // frb-v5
 

@@ -16,7 +16,6 @@ cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_nam
                                    bufferContainer& host_buffers, cudaDeviceInterface& device,
                                    std::string name, std::string kernel_fn, int nsamples,
                                    std::string kernel_symbol) :
-    // cudaCommand(config, unique_name, host_buffers, device, "upchannelize", "upchan.ptx") {
     cudaCommand(config, unique_name, host_buffers, device, name, kernel_fn),
     kernel_name(kernel_symbol) {
     _num_dishes = config.get<int>(unique_name, "num_dishes");
@@ -26,7 +25,7 @@ cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_nam
     _gpu_mem_input_voltage = config.get<std::string>(unique_name, "gpu_mem_input_voltage");
     _gpu_mem_output_voltage = config.get<std::string>(unique_name, "gpu_mem_output_voltage");
     _gpu_mem_gain = config.get<std::string>(unique_name, "gpu_mem_gain");
-    _gpu_mem_info = config.get<std::string>(unique_name, "gpu_mem_info");
+    _gpu_mem_info = unique_name + "/info";
     // Try config value "freq_gains" as either a scalar float or a vector of floats
     float gain0 = config.get_default<float>(unique_name, "freq_gains", 1.);
     std::vector<float> gains =
@@ -39,11 +38,9 @@ cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_nam
         throw std::runtime_error(
             fmt::format("The num_local_freq config setting must be {:d} for the CUDA Upchannelizer",
                         cuda_nfreq));
-    // if (_samples_per_data_set != cuda_nsamples)
     if (_samples_per_data_set != nsamples)
         throw std::runtime_error(fmt::format(
             "The samples_per_data_set config setting must be {:d} for the CUDA Upchannelizer",
-            // cuda_nsamples));
             nsamples));
 
     size_t ngains = _num_local_freq * _upchan_factor;
@@ -64,14 +61,16 @@ cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_nam
     voltage_output_len = voltage_input_len;
     info_len = (size_t)(threads_x * threads_y * blocks_x * sizeof(int32_t));
 
+    host_info.resize(_gpu_buffer_depth);
+    for (int i=0; i<_gpu_buffer_depth; i++)
+        host_info[i].resize(info_len / sizeof(int32_t));
+
     set_command_type(gpuCommandType::KERNEL);
 
     std::vector<std::string> opts = {
         "--gpu-name=sm_86",
         "--verbose",
     };
-    // INFO("Looking for PTX symbol {:s} in {:s}", get_kernel_function_name(), kernel);
-    // build_ptx({get_kernel_function_name()}, opts);
     build_ptx({kernel_symbol}, opts);
 
     std::vector<float16_t> gains16;
@@ -86,8 +85,7 @@ cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_nam
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_gain, false, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input_voltage, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output_voltage, true, false, true));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_info, true, true, true));
-
+    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_info", true, true, true));
 }
 
 cudaUpchannelize::~cudaUpchannelize() {}
@@ -117,7 +115,10 @@ cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate, const std::v
 
     record_start_event(pipestate.gpu_frame_id);
 
-    CUresult err;
+    // Initialize info_memory return codes
+    CHECK_CUDA_ERROR(
+        cudaMemsetAsync(info_memory, 0xff, info_len, device.getStream(cuda_stream_id)));
+
     // A, E, s, J
     const char* exc = "exception";
     kernel_arg arr[4];
@@ -153,15 +154,21 @@ cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate, const std::v
                                       shared_mem_bytes));
 
     DEBUG("Running CUDA Upchannelizer on GPU frame {:d}", pipestate.gpu_frame_id);
-    err = cuLaunchKernel(runtime_kernels[kernel_name], blocks_x, blocks_y, 1, threads_x, threads_y,
-                         1, shared_mem_bytes, device.getStream(cuda_stream_id), parameters, NULL);
+    CHECK_CU_ERROR(cuLaunchKernel(runtime_kernels[kernel_name], blocks_x, blocks_y, 1, threads_x, threads_y,
+                                  1, shared_mem_bytes, device.getStream(cuda_stream_id), parameters, NULL));
 
-    if (err != CUDA_SUCCESS) {
-        const char* errStr;
-        cuGetErrorString(err, &errStr);
-        INFO("Error number: {}", err);
-        ERROR("ERROR IN cuLaunchKernel: {}", errStr);
-    }
+    // Copy "info" result code back to host memory
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory, info_len,
+                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     return record_end_event(pipestate.gpu_frame_id);
+}
+
+void cudaUpchannelize::finalize_frame(int gpu_frame_id) {
+    cudaCommand::finalize_frame(gpu_frame_id);
+    for (size_t i = 0; i < host_info[gpu_frame_id].size(); i++)
+        if (host_info[gpu_frame_id][i] != 0)
+            ERROR("cudaUpchannelize returned 'info' value {:d} at index {:d} (zero indicates no "
+                  "error)",
+                  host_info[gpu_frame_id][i], i);
 }

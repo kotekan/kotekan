@@ -34,7 +34,7 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, true, false, true));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_meanstd, true, false, true));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_index, false, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_index", false, true, true));
 
     size_t index_array_len = (size_t)_num_chunks * 2 * sizeof(int32_t);
     int32_t* index_array_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_index, index_array_len);

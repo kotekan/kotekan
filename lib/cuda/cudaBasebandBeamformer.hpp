@@ -49,6 +49,7 @@ public:
                            kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaBasebandBeamformer();
     cudaEvent_t execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) override;
+    virtual void finalize_frame(int gpu_frame_id) override;
 
 protected:
 private:
@@ -72,6 +73,9 @@ private:
     std::string _gpu_mem_formed_beams;
     /// GPU side memory name for the status/info output
     std::string _gpu_mem_info;
+
+    // Host-side buffer array for GPU kernel status/info output
+    std::vector< std::vector<int32_t> > host_info;
 
     // derived gpu array sizes
     size_t voltage_len;
