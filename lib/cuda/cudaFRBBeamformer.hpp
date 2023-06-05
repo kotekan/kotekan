@@ -38,6 +38,8 @@ private:
     int32_t _samples_per_data_set;
     /// Time downsampling factor
     int32_t _time_downsampling;
+    /// Samples of padding on the voltage buffer.  Must be >= cuda_input_chunk + cuda_time_downsampling.
+    int32_t _samples_padding;
 
     /// Size in bytes of the dishlayout array
     size_t dishlayout_len;
@@ -49,6 +51,10 @@ private:
     size_t beamgrid_len;
     /// Size in bytes of the info array
     size_t info_len;
+    /// Size in bytes of the length "array" = sizeof(int32_t)
+    size_t length_len;
+    /// Size in bytes of the voltage array for each time sample
+    size_t voltage_len_per_sample;
 
     /// GPU side memory name for the dish layout input
     std::string _gpu_mem_dishlayout;
@@ -59,11 +65,20 @@ private:
     /// GPU side memory name for the beamformed output
     std::string _gpu_mem_beamgrid;
 
+    // Internal GPU buffers
+    /// GPU memory name for the input data length (number of samples to process)
+    std::string gpu_mem_length;
     /// GPU memory name for the status/info output
     std::string gpu_mem_info;
 
-    // Host-side buffer array for GPU kernel status/info output
+    /// Host-side array for the lengths
+    std::vector< int32_t > host_length;
+
+    /// Host-side buffer array for GPU kernel status/info output
     std::vector< std::vector<int32_t> > host_info;
+
+    /// Number of samples padded on the front of the input array
+    size_t padded_samples;
 
     // frb-v5
 
@@ -84,7 +99,7 @@ private:
     const int shared_mem_bytes = 76896;
 
     // Compiled-in constants in the CUDA kernel
-    const int cuda_samples_per_data_set = 2064;
+    const int cuda_input_chunk = 48;
     const int cuda_time_downsampling = 40;
     const int cuda_num_dishes = 512;
     const int cuda_dish_grid_size = 24;
