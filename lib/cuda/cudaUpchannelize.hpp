@@ -64,6 +64,8 @@ private:
     /// Upchannelization factor
     int32_t _upchan_factor;
 
+    int32_t _padding;
+
     /// GPU side memory name for the gains
     std::string _gpu_mem_gain;
     /// GPU side memory name for the upchannelized output

@@ -22,6 +22,7 @@ cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_nam
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
     _upchan_factor = config.get<int>(unique_name, "upchan_factor");
+    _padding = config.get_default<int>(unique_name, "padding", 0);
     _gpu_mem_input_voltage = config.get<std::string>(unique_name, "gpu_mem_input_voltage");
     _gpu_mem_output_voltage = config.get<std::string>(unique_name, "gpu_mem_output_voltage");
     _gpu_mem_gain = config.get<std::string>(unique_name, "gpu_mem_gain");
@@ -106,12 +107,18 @@ cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate, const std::v
     pre_execute(pipestate.gpu_frame_id);
 
     void* voltage_input_memory =
-        device.get_gpu_memory_array(_gpu_mem_input_voltage, pipestate.gpu_frame_id, voltage_input_len);
+        device.get_gpu_memory_array(_gpu_mem_input_voltage, pipestate.gpu_frame_id, voltage_input_len + _padding);
     void* voltage_output_memory =
         device.get_gpu_memory_array(_gpu_mem_output_voltage, pipestate.gpu_frame_id, voltage_output_len);
     float16_t* gain_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_gain, gain_len);
     int32_t* info_memory =
         (int32_t*)device.get_gpu_memory_array(_gpu_mem_info, pipestate.gpu_frame_id, info_len);
+
+    void* voltage_overlap_memory = nullptr;
+    if (_padding) {
+        voltage_overlap_memory =
+            device.get_gpu_memory_array(_gpu_mem_input_voltage, (pipestate.gpu_frame_id + 1) % _gpu_buffer_depth, voltage_input_len + _padding);
+    }
 
     record_start_event(pipestate.gpu_frame_id);
 
@@ -160,6 +167,12 @@ cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate, const std::v
     // Copy "info" result code back to host memory
     CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory, info_len,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
+
+    if (_padding) {
+        // Copy padding to the next input frame's GPU memory
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(voltage_overlap_memory, voltage_input_memory, _padding,
+                                         cudaMemcpyDeviceToDevice, device.getStream(cuda_stream_id)));
+    }
 
     return record_end_event(pipestate.gpu_frame_id);
 }

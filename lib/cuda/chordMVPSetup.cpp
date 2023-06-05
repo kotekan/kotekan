@@ -33,8 +33,6 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     // samples of output into a 256-element buffer that is input for
     // FRB2/3.
 
-    // Upchan to FRB-BF:
-
     size_t num_dishes = config.get<int>(unique_name, "num_dishes");
     // (this is fpga frequencies)
     size_t num_local_freq = config.get<int>(unique_name, "num_local_freq");
@@ -45,11 +43,36 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     // 2064
     size_t frb_bf_samples = config.get<int>(unique_name, "frb_samples");
 
-    std::string fullname = config.get<std::string>(unique_name, "gpu_mem_frb_bf_input");
-    std::string viewname = config.get<std::string>(unique_name, "gpu_mem_upchan_output");
+    std::string fullname, viewname;
+    size_t viewsize, fullsize;
+
+    // Upchannelizer overlaps.
+    // We create a padded voltage array, with voltage a view on it.
+    // The input stage will write into the view
+    // The upchannelizer will read the padded voltage array
+    // (and manage it, by copying the end of the array back to the beginning for next frame)
+
+    size_t padding = config.get<int>(unique_name, "voltage_padding");
+    fullname = config.get<std::string>(unique_name, "gpu_mem_voltage_padded");
+    viewname = config.get<std::string>(unique_name, "gpu_mem_voltage");
+    viewsize = num_dishes * num_local_freq * samples_per_data_set * 2;
+    fullsize = viewsize + padding;
+    INFO("Creating padded voltage arrays for upchannelizer: padded {:s}, size {:d} (padding {:d}), view {:s}, size {:d}",
+         fullname, fullsize, padding, viewname, viewsize);
+    for (int i = 0; i < device.get_gpu_buffer_depth(); i++) {
+        void* real = device.get_gpu_memory_array(fullname, i, fullsize);
+        // Zero it out!
+        CHECK_CUDA_ERROR(cudaMemset((unsigned char*)real, 0, fullsize - viewsize));
+    }
+    device.create_gpu_memory_array_view(fullname, fullsize, viewname, padding, viewsize);
+
+    // Upchan to FRB-BF:
+
+    fullname = config.get<std::string>(unique_name, "gpu_mem_frb_bf_input");
+    viewname = config.get<std::string>(unique_name, "gpu_mem_upchan_output");
     // 2 for polarizations
-    size_t viewsize = num_dishes * num_local_freq * samples_per_data_set * 2;
-    size_t fullsize = num_dishes * (num_local_freq * upchan_factor) * frb_bf_samples * 2;
+    viewsize = num_dishes * num_local_freq * samples_per_data_set * 2;
+    fullsize = num_dishes * (num_local_freq * upchan_factor) * frb_bf_samples * 2;
     INFO("Creating upchan/frb-bf glue buffers: frb-bf input {:s} size {:d}, upchan output {:s} "
          "size {:d}",
          fullname, fullsize, viewname, viewsize);

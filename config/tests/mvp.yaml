@@ -46,6 +46,10 @@ frb_time_downsampling: 40
 # # derived: ceil(samples_per_data_set / time_downsampling)
 frb_td: 52
 
+### HACK
+frb_upchan_taps: 4
+frb_upchan_padding: voltage_freq * num_dishes * 2 * frb_upchan * (frb_upchan_taps - 1)
+
 # Number of samples passed from FRB1 to FRBRechunk
 frb_td_good: 51
 
@@ -164,6 +168,8 @@ gpu:
       samples_per_data_set: voltage_samples
       gpu_mem_frb_bf_input: bf_input
       gpu_mem_upchan_output: upchan_out
+      gpu_mem_voltage_padded: voltage_padded
+      voltage_padding: frb_upchan_padding
       gpu_mem_voltage: voltage
       gpu_mem_fine_upchan_input: fine_upchan_input
       gpu_mem_frb_bf_output: beamgrid
@@ -227,12 +233,14 @@ gpu:
       num_beams: bb_beams
     # FRB chain, starting with upchannelization
     - name: cudaUpchannelize
-      gpu_mem_input_voltage: voltage
+      #gpu_mem_input_voltage: voltage
+      gpu_mem_input_voltage: voltage_padded
       gpu_mem_output_voltage: upchan_out
       gpu_mem_gain: upchan_gains
       num_local_freq: voltage_freq
       samples_per_data_set: voltage_samples
       upchan_factor: frb_upchan
+      padding: frb_upchan_padding
     # FRB1: beamformer
     - name: cudaFRBBeamformer
       gpu_mem_voltage: bf_input

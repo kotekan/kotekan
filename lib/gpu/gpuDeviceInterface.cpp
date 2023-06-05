@@ -101,7 +101,7 @@ void gpuDeviceInterface::create_gpu_memory_array_view(const std::string& source_
     if (gpu_memory.count(dest_name) > 0)
         throw std::runtime_error(fmt::format(
             "Tried to create_gpu_memory_array_view {:s} that already exists.", dest_name));
-    assert(offset + dest_len < source_len);
+    assert(offset + dest_len <= source_len);
 
     for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
         // Get source
