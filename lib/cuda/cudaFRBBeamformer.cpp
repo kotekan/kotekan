@@ -31,7 +31,7 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_voltage, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_phase, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beamgrid, true, false, true));
-    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_info", true, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_info", false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
 
@@ -121,7 +121,7 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate, const std::
     void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, pipestate.gpu_frame_id, voltage_len);
     void* beamgrid_memory =
         device.get_gpu_memory_array(_gpu_mem_beamgrid, pipestate.gpu_frame_id, beamgrid_len);
-    int32_t* info_memory = (int32_t*)device.get_gpu_memory_array(gpu_mem_info, pipestate.gpu_frame_id, info_len);
+    int32_t* info_memory = (int32_t*)device.get_gpu_memory(gpu_mem_info, info_len);
 
     record_start_event(pipestate.gpu_frame_id);
 
