@@ -56,13 +56,7 @@ private:
     // void* leftover_memory;
     // size_t num_leftover;
 
-    // The name of the flag to set in the "cudaPipelineState" object when a rechunked frame
-    // is produced.
     std::string _set_flag;
-    // The counter for output frames produced.
-    int output_frame_id;
-    // The name of the frame counter in "cudaPipelineState" to set to output_frame_id.
-    std::string _output_frame_counter;
 
     // GPU memory where we assemble the output
     // void* gpu_mem_accum;

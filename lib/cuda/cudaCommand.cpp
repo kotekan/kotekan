@@ -11,8 +11,7 @@ using std::string;
 using std::to_string;
 
 cudaPipelineState::cudaPipelineState(int _gpu_frame_id) :
-    gpu_frame_id(_gpu_frame_id),
-    base_gpu_frame_id(_gpu_frame_id) {}
+    gpu_frame_id(_gpu_frame_id) {}
 
 cudaPipelineState::~cudaPipelineState() {}
 
@@ -41,22 +40,6 @@ int64_t cudaPipelineState::get_int(const std::string& key) const {
     return intmap.at(key);
 }
 
-void cudaPipelineState::set_frame_id(const std::string key, int fid) {
-    frame_ids[key] = fid;
-}
-
-int cudaPipelineState::get_frame_id(const std::string key) const {
-    if (key.size() == 0)
-        return base_gpu_frame_id;
-
-    auto search = frame_ids.find(key);
-    if (search == frame_ids.end()) {
-        INFO("cudaPipelineState: get_frame_id(\"{:s}\"): counter not found", key);
-        return base_gpu_frame_id;
-    }
-    return search->second;
-}
-
 cudaCommand::cudaCommand(Config& config_, const std::string& unique_name_,
                          bufferContainer& host_buffers_, cudaDeviceInterface& device_,
                          const std::string& default_kernel_command,
@@ -65,7 +48,6 @@ cudaCommand::cudaCommand(Config& config_, const std::string& unique_name_,
                default_kernel_file_name),
     device(device_) {
     _required_flag = config.get_default<std::string>(unique_name, "required_flag", "");
-    _frame_counter = config.get_default<std::string>(unique_name, "frame_counter", "");
     start_events = (cudaEvent_t*)malloc(_gpu_buffer_depth * sizeof(cudaEvent_t));
     end_events = (cudaEvent_t*)malloc(_gpu_buffer_depth * sizeof(cudaEvent_t));
     for (int j = 0; j < _gpu_buffer_depth; ++j) {
@@ -122,7 +104,6 @@ cudaEvent_t cudaCommand::execute_base(cudaPipelineState& pipestate,
         INFO("Required flag \"{:s}\" is not set; skipping stage", _required_flag);
         return nullptr;
     }
-    pipestate.gpu_frame_id = pipestate.get_frame_id(_frame_counter);
     return execute(pipestate, pre_events);
 }
 

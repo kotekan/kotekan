@@ -261,8 +261,7 @@ gpu:
       len_inner_output: frb_td_rechunk_real * 2 * frb_beam_grid_size * frb_beam_grid_size
       len_outer: frb_freq
       set_flag: frb_rechunk
-      output_frame_counter: frb_rechunk
-    # FRB2 & FRB3 kernels follow after outputs!
+    # FRB2 & 3 follow after outputs!
     #
     # Begin output of full-rate results
     - name: cudaSyncOutput
@@ -292,7 +291,6 @@ gpu:
       source_cuda_streams: [2]
     - name: cudaFRBBeamReformer
       required_flag: frb_rechunk
-      frame_counter: frb_rechunk
       log_level: debug
       cuda_streams: [2,3]
       #cuda_streams: [2,3,4,5]
@@ -311,7 +309,6 @@ gpu:
     # FRB3: quantization into 4-bit int
     - name: cudaQuantize
       required_flag: frb_rechunk
-      frame_counter: frb_rechunk
       gpu_mem_input: beamout
       gpu_mem_output: beamquant
       gpu_mem_meanstd: beammeanstd
@@ -321,14 +318,11 @@ gpu:
     # Rechunked outputs
     - name: cudaOutputData
       required_flag: frb_rechunk
-      frame_counter: frb_rechunk
-      log_level: debug
       gpu_mem: beamquant
       out_buf: host_beamquant
       in_buf: host_voltage # Metadata transfer from here
     - name: cudaOutputData
       required_flag: frb_rechunk
-      frame_counter: frb_rechunk
       gpu_mem: beammeanstd
       out_buf: host_beammeanstd
       in_buf: host_voltage # Metadata transfer from here
