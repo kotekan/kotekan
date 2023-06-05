@@ -16,21 +16,29 @@ cudaPipelineState::cudaPipelineState(int _gpu_frame_id) :
 
 cudaPipelineState::~cudaPipelineState() {}
 
-void cudaPipelineState::set_flag(const std::string key, bool val) {
+void cudaPipelineState::set_flag(const std::string& key, bool val) {
     flags[key] = val;
 }
 
-bool cudaPipelineState::flag_exists(const std::string key) const {
+bool cudaPipelineState::flag_exists(const std::string& key) const {
     // C++20
     //return flags.contains(key);
     return (flags.find(key) != flags.end());
 }
 
-bool cudaPipelineState::flag_is_set(const std::string key) const {
+bool cudaPipelineState::flag_is_set(const std::string& key) const {
     auto search = flags.find(key);
     if (search == flags.end())
         return false;
     return search->second;
+}
+
+void cudaPipelineState::set_int(const std::string& key, int64_t val) {
+    intmap[key] = val;
+}
+
+int64_t cudaPipelineState::get_int(const std::string& key) const {
+    return intmap.at(key);
 }
 
 void cudaPipelineState::set_frame_id(const std::string key, int fid) {

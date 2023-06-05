@@ -29,15 +29,19 @@ class cudaPipelineState : public kotekan::kotekanLogging {
 public:
     cudaPipelineState(int _gpu_frame_id);
     virtual ~cudaPipelineState();
-    void set_flag(const std::string, bool val);
-    bool flag_exists(const std::string) const;
-    bool flag_is_set(const std::string) const;
+    void set_flag(const std::string&, bool val);
+    bool flag_exists(const std::string&) const;
+    bool flag_is_set(const std::string&) const;
     void set_frame_id(const std::string, int fid);
     int get_frame_id(const std::string) const;
+    void set_int(const std::string&, int64_t val);
+    int64_t get_int(const std::string&) const;
 
     int gpu_frame_id;
 protected:
     std::map< std::string, bool > flags;
+
+    std::map< std::string, int64_t > intmap;
 
     int base_gpu_frame_id;
     std::map< std::string, int > frame_ids;
