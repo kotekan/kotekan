@@ -58,8 +58,9 @@ private:
     std::string _gpu_mem_phase;
     /// GPU side memory name for the beamformed output
     std::string _gpu_mem_beamgrid;
-    /// GPU side memory name for the status/info output
-    std::string _gpu_mem_info;
+
+    /// GPU memory name for the status/info output
+    std::string gpu_mem_info;
 
     // Host-side buffer array for GPU kernel status/info output
     std::vector< std::vector<int32_t> > host_info;
