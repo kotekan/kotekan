@@ -85,7 +85,7 @@ cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_nam
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_gain, false, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input_voltage, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output_voltage, true, false, true));
-    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_info", true, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_info", false, true, true));
 }
 
 cudaUpchannelize::~cudaUpchannelize() {}
@@ -111,7 +111,7 @@ cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate, const std::v
         device.get_gpu_memory_array(_gpu_mem_output_voltage, pipestate.gpu_frame_id, voltage_output_len);
     float16_t* gain_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_gain, gain_len);
     int32_t* info_memory =
-        (int32_t*)device.get_gpu_memory_array(_gpu_mem_info, pipestate.gpu_frame_id, info_len);
+        (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
 
     record_start_event(pipestate.gpu_frame_id);
 

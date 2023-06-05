@@ -25,7 +25,7 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_phase, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output_scaling, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_formed_beams, true, false, true));
-    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_info", true, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_info", false, true, true));
 
     if (_num_elements != cuda_nelements)
         throw std::runtime_error("The num_elements config setting must be "
@@ -85,7 +85,7 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
     void* output_memory =
         device.get_gpu_memory_array(_gpu_mem_formed_beams, pipestate.gpu_frame_id, output_len);
     int32_t* info_memory =
-        (int32_t*)device.get_gpu_memory_array(_gpu_mem_info, pipestate.gpu_frame_id, info_len);
+        (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
 
     host_info.resize(_gpu_buffer_depth);
     for (int i=0; i<_gpu_buffer_depth; i++)
