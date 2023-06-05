@@ -136,3 +136,24 @@ cudaEvent_t chordMVPSetup::execute(cudaPipelineState& pipestate, const std::vect
     record_start_event(pipestate.gpu_frame_id);
     return record_end_event(pipestate.gpu_frame_id);
 }
+
+std::string chordMVPSetup::get_extra_dot(const std::string& prefix) const {
+    std::string fullname = config.get<std::string>(unique_name, "gpu_mem_frb_bf_input");
+    std::string viewname = config.get<std::string>(unique_name, "gpu_mem_upchan_output");
+    std::string dot = fmt::format("{:s}\"{:s}\" -> \"{:s}\" [style=solid, color=\"red\"];\n",
+                       prefix, viewname, fullname);
+    fullname = config.get<std::string>(unique_name, "gpu_mem_voltage");
+    viewname = config.get<std::string>(unique_name, "gpu_mem_fine_upchan_input");
+    dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\" [style=solid, color=\"red\"];\n",
+                       prefix, fullname, viewname);
+    fullname = config.get<std::string>(unique_name, "gpu_mem_frb_bf_output");
+    viewname = config.get<std::string>(unique_name, "gpu_mem_frb_rechunk_input");
+    dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\" [style=solid, color=\"red\"];\n",
+                       prefix, fullname, viewname);
+
+    fullname = config.get<std::string>(unique_name, "gpu_mem_frb_brf_input");
+    viewname = config.get<std::string>(unique_name, "gpu_mem_frb_rechunk_output");
+    dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\" [style=solid, color=\"red\"];\n",
+                       prefix, viewname, fullname);
+    return dot;
+}

@@ -330,6 +330,11 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
         }
     }
 
+    // Add any extra DOT commands...
+    for (auto& command : commands) {
+        dot += command->get_extra_dot(prefix);
+    }
+
     dot += fmt::format("{:s}}}\n", prefix);
 
     return dot;

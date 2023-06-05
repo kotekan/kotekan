@@ -109,6 +109,15 @@ public:
         return gpu_buffers_used;
     }
 
+    /**
+     * @brief For DOT / graphviz, return an extra string that will be inserted into the DOT
+     * output after the GPU nodes and edges are drawn.
+     */
+    virtual std::string get_extra_dot(const std::string& prefix) const {
+        (void)prefix;
+        return "";
+    }
+
     /// Track the time the command was active on the GPU.
     /// This is just the time the command is running, and doesn't include time waiting
     /// in the queue.

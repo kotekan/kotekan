@@ -25,6 +25,8 @@ public:
      **/
     virtual cudaEvent_t execute(cudaPipelineState& pipestate,
                                 const std::vector<cudaEvent_t>& pre_events) override;
+
+    virtual std::string get_extra_dot(const std::string& prefix) const override;
 };
 
 #endif // KOTEKAN_CHORD_MVP_SETUP_HPP
