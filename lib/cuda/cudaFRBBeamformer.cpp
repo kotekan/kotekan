@@ -26,6 +26,14 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
     _gpu_mem_phase = config.get<std::string>(unique_name, "gpu_mem_phase");
     _gpu_mem_beamgrid = config.get<std::string>(unique_name, "gpu_mem_beamgrid");
 
+    _gpu_mem_info = "frb_beamformer_info";
+
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_dishlayout, false, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_voltage, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_phase, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beamgrid, true, false, true));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_info, false, true, true));
+
     set_command_type(gpuCommandType::KERNEL);
 
     std::vector<std::string> opts = {

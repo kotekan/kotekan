@@ -27,9 +27,15 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
     _gpu_mem_meanstd = config.get<std::string>(unique_name, "gpu_mem_meanstd");
     if (_num_chunks % FRAME_SIZE)
         throw std::runtime_error("The num_chunks parameter must be a factor of 32");
+    std::string _gpu_mem_index = unique_name + "/index";
+
     set_command_type(gpuCommandType::KERNEL);
 
-    std::string _gpu_mem_index = unique_name + "/index";
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, true, false, true));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_meanstd, true, false, true));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_index, false, true, true));
+
     size_t index_array_len = (size_t)_num_chunks * 2 * sizeof(int32_t);
     int32_t* index_array_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_index, index_array_len);
 

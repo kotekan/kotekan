@@ -61,6 +61,10 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     // offset = 0
     device.create_gpu_memory_array_view(fullname, fullsize, viewname, 0, viewsize);
 
+    // We produce custom DOT output to connect the views, so we omit these (and all other) entries.
+    //gpu_buffers_used.push_back(std::make_tuple(fullname, true, false, true));
+    //gpu_buffers_used.push_back(std::make_tuple(viewname, true, true, false));
+
     // FPGA to Upchan for Fine Visibility:
 
     fullname = config.get<std::string>(unique_name, "gpu_mem_voltage");

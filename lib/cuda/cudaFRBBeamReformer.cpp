@@ -120,6 +120,10 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
         }
     }
 
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beamgrid, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_phase, false, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beamout, true, false, true));
+
     sync_events.resize(_gpu_buffer_depth);
     if (_cuda_streams.size()) {
         for (int i = 0; i < _gpu_buffer_depth; i++) {

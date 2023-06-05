@@ -33,6 +33,8 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
 
     _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
 
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem, true, true, false));
+
     output_buffer_execute_id = 0;
     output_buffer_precondition_id = 0;
 

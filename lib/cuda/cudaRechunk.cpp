@@ -23,6 +23,9 @@ cudaRechunk::cudaRechunk(Config& config, const std::string& unique_name,
     set_command_type(gpuCommandType::KERNEL);
     num_accumulated = 0;
 
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, true, false, true));
+
     assert(_len_inner_output % _len_inner_input == 0);
     // leftover_memory =
     // device.get_gpu_memory("leftover", _len_inner_input * _len_outer);

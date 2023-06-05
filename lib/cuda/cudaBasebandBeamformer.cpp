@@ -21,6 +21,12 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
     _gpu_mem_formed_beams = config.get<std::string>(unique_name, "gpu_mem_formed_beams");
     _gpu_mem_info = config.get<std::string>(unique_name, "gpu_mem_info");
 
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_voltage, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_phase, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output_scaling, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_formed_beams, true, false, true));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_info, true, true, true));
+
     if (_num_elements != cuda_nelements)
         throw std::runtime_error("The num_elements config setting must be "
                                  + std::to_string(cuda_nelements)

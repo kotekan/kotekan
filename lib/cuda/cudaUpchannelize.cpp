@@ -82,6 +82,12 @@ cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_nam
     const float16_t* gain_host = gains16.data();
     float16_t* gain_gpu = (float16_t*)device.get_gpu_memory(_gpu_mem_gain, gain_len);
     CHECK_CUDA_ERROR(cudaMemcpy(gain_gpu, gain_host, gain_len, cudaMemcpyHostToDevice));
+
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_gain, false, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input_voltage, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output_voltage, true, false, true));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_info, true, true, true));
+
 }
 
 cudaUpchannelize::~cudaUpchannelize() {}
