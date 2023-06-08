@@ -11,32 +11,49 @@
  * @author Dustin Lang
  *
  * @par GPU Memory
- * @gpu_mem  gpu_mem_input  Input time-stream (matrix) of float16 values
+ * @gpu_mem  gpu_mem_input  Input matrix of data (of unspecified type)
  *   @gpu_mem_type   staging
- *   @gpu_mem_format Array of @c float16
- * @gpu_mem  gpu_mem_meanstd  Output array of float16 means and standard deviations (one mean,std
- * per 256-element "chunk")
+ *   @gpu_mem_format array of raw bytes
+ * @gpu_mem  gpu_mem_output Output matrix of data (of unspecified type)
  *   @gpu_mem_type   staging
- *   @gpu_mem_format Array of @c float16
- * @gpu_mem  gpu_mem_output  Output array of int4 rechunkd values
- *   @gpu_mem_type   staging
- *   @gpu_mem_format Array of @c int4
+ *   @gpu_mem_format Array of raw bytes
  *
- * @conf len_inner_input  - Int
- * @conf len_inner_output - Int
- * @conf len_outer        - Int
+ * @conf cols_input  - Int
+ * @conf cols_output - Int
+ * @conf rows        - Int
  *
- * This code assumes 2-D input arrays that can be stacked along either
- * dimension.  This is, for input arrays A and B of size r x c, the
- * output will look like
- *    A1,1 A1,2 ... A1,c   B1,1 B1,2, ..., B1,c
- *    ...
- *    Ar,1 Ar,2 ... Ar,c   Br,1 Br,2, ..., Br,c
+ * The input array is assumed to be of size (cols_input x rows) bytes.
  *
- * if you set:
- *   len_inner_input = c
- *   len_inner_output = 2*c
- *   len_outer = r * sizeof(elements)
+ * The output array is assumed to be of size (cols_output x rows) bytes.
+ *
+ * Assuming you have:
+ * - Input matrix size R x C, element size S
+ * - Number of input matrices to be concatenated = N
+ *
+ * If you want to "hstack" the input arrays -- that is, keeping the
+ * number of rows the same -- then you can set the cols_input,
+ * cols_output, and rows values to their intuitive values, where
+ * cols_input includes the element size:
+ *
+ *   cols_input = C * S
+ *   rows = R
+ *   cols_output = C * S * N
+ *
+ * If you want to "vstack" the input arrays -- that is, keeping the
+ * number of columns the same -- then you can instead think of this as
+ * simply concatenating the bytes of your input matrices, and
+ * therefore you can set:
+ *   cols_input  = C * R * S
+ *   cols_output = C * R * S * N
+ *   rows = 1
+ *
+ * (That is, in memory, vstack'ing is just like doing a python ravel()
+ * on your arrays and then appending them.)
+ *
+ * (These equations also work if N is not a whole number, ie, for
+ * hstacking, the output column size can be C_out x S rather than
+ * (C_in x N x S); for vstacking, the output column size can be (R_out
+ * x C x S) rather than (R_in x N x C x S).)
  *
  */
 class cudaRechunk : public cudaCommand {
@@ -48,9 +65,9 @@ public:
 
 protected:
 private:
-    size_t _len_inner_input;
-    size_t _len_inner_output;
-    size_t _len_outer;
+    size_t _cols_input;
+    size_t _cols_output;
+    size_t _rows;
 
     size_t num_accumulated;
     // void* leftover_memory;

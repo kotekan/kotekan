@@ -253,13 +253,14 @@ gpu:
     # campute, but that's minor.
     #
     - name: cudaRechunk
+      log_level: debug
       gpu_mem_input: beamgrid_good
       gpu_mem_output: beamchunk_sub
       # Erik's FRB beamformer produces output with rho varying fastest, then T,
       # then F, so T*rho is the inner size and F is the outer size.
-      len_inner_input: frb_td_good * 2 * frb_beam_grid_size * frb_beam_grid_size
-      len_inner_output: frb_td_rechunk_real * 2 * frb_beam_grid_size * frb_beam_grid_size
-      len_outer: frb_freq
+      cols_input: frb_td_good * 2 * frb_beam_grid_size * frb_beam_grid_size
+      cols_output: frb_td_rechunk_real * 2 * frb_beam_grid_size * frb_beam_grid_size
+      rows: frb_freq
       set_flag: frb_rechunk
     # FRB2 & 3 follow after outputs!
     #
@@ -315,6 +316,7 @@ gpu:
       num_chunks: frb_beams * frb_freq * frb_td_rechunk / 256
     # Sync rechunked outputs
     - name: cudaSyncOutput
+      required_flag: frb_rechunk
     # Rechunked outputs
     - name: cudaOutputData
       required_flag: frb_rechunk
