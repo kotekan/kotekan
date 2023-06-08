@@ -22,15 +22,20 @@ cudaRechunk::cudaRechunk(Config& config, const std::string& unique_name,
     cols_accumulated = 0;
 
     gpu_mem_accum = unique_name + "/accum";
+    gpu_mem_leftover = unique_name + "/leftover";
 
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, true, false, true));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "/accum", false, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(get_name() + "/leftover", false, true, true));
 
-    assert(_cols_output % _cols_input == 0);
-    // leftover_memory =
-    // device.get_gpu_memory("leftover", _cols_input * _rows);
-    // num_leftover = 0;
+    // pre-allocate memory buffers
+    size_t output_len = _cols_output * _rows;
+    device.get_gpu_memory(gpu_mem_accum, output_len);
+
+    size_t leftover_len = _cols_input * _rows;
+    device.get_gpu_memory(gpu_mem_leftover, leftover_len);
+    cols_leftover = 0;
 }
 
 cudaRechunk::~cudaRechunk() {}
@@ -43,18 +48,23 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
     size_t input_frame_len = _cols_input * _rows;
     void* input_memory = device.get_gpu_memory_array(_gpu_mem_input, pipestate.gpu_frame_id, input_frame_len);
 
-    size_t output_frame_len = _cols_output * _rows;
-    void* accum_memory = device.get_gpu_memory(gpu_mem_accum, output_frame_len);
+    size_t output_len = _cols_output * _rows;
+    void* accum_memory = device.get_gpu_memory(gpu_mem_accum, output_len);
 
-    size_t cols_to_copy = _cols_input;
-    if (cols_accumulated + _cols_input > _cols_output) {
-        cols_to_copy = _cols_output - cols_accumulated;
-        // Copy the remainder into the leftover_memory.
-    }
+    size_t leftover_len = _cols_input * _rows;
+    void* leftover_memory = device.get_gpu_memory(gpu_mem_leftover, leftover_len);
 
     record_start_event(pipestate.gpu_frame_id);
 
-    // if (num_leftover) copy leftover_memory to output, incr. cols_accumulated
+    size_t cols_to_copy = _cols_input;
+    if (cols_accumulated + cols_to_copy > _cols_output) {
+        cols_to_copy = _cols_output - cols_accumulated;
+        // Copy the remainder into the leftover_memory.
+        size_t cols_leftover = _cols_input - cols_to_copy;
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(leftover_memory, (void*)((char*)input_memory + cols_to_copy),
+                                         cols_leftover * _rows, cudaMemcpyDeviceToDevice,
+                                         device.getStream(cuda_stream_id)));
+    }
 
     CHECK_CUDA_ERROR(cudaMemcpy2DAsync((void*)((char*)accum_memory + cols_accumulated),
                                        _cols_output, input_memory, _cols_input, cols_to_copy,
@@ -66,13 +76,24 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
               cols_accumulated, _cols_output);
         // emit an output frame!
         void* output_memory =
-            device.get_gpu_memory_array(_gpu_mem_output, pipestate.gpu_frame_id, output_frame_len);
-        CHECK_CUDA_ERROR(cudaMemcpyAsync(output_memory, accum_memory, output_frame_len,
+            device.get_gpu_memory_array(_gpu_mem_output, pipestate.gpu_frame_id, output_len);
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(output_memory, accum_memory, output_len,
                                          cudaMemcpyDeviceToDevice,
                                          device.getStream(cuda_stream_id)));
-
         cols_accumulated -= _cols_output;
-        // (copy any overflow into the "leftover" array)
+        // cols_accumulated should be zero at this point!
+        assert(cols_accumulated == 0);
+
+        // After copying 'accum' to 'output', if there is anything in
+        // the 'leftover' array, copy that into the 'accum' array for
+        // next time.
+        if (cols_leftover) {
+            CHECK_CUDA_ERROR(cudaMemcpyAsync(accum_memory, leftover_memory,
+                                             cols_leftover * _rows, cudaMemcpyDeviceToDevice,
+                                             device.getStream(cuda_stream_id)));
+            cols_accumulated = cols_leftover;
+            cols_leftover = 0;
+        }
 
         // Set the flag to indicate that we have emitted a frame!
         if (_set_flag.size()) {
@@ -82,7 +103,6 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
     } else {
         DEBUG("cudaRechunk: accumulated {:d} columns, output columns {:d} -- NOT producing output!",
               cols_accumulated, _cols_output);
-        // partial output frame -- don't run further GPU kernels.
     }
     return record_end_event(pipestate.gpu_frame_id);
 }

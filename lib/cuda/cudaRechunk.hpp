@@ -70,7 +70,7 @@ private:
     size_t _rows;
 
     size_t cols_accumulated;
-    //size_t cols_leftover;
+    size_t cols_leftover;
 
     std::string _set_flag;
 
@@ -81,6 +81,8 @@ private:
 
     /// GPU side memory name for the array where we accumulate the inputs
     std::string gpu_mem_accum;
+    /// GPU side memory name for the array where we store overflowing inputs
+    std::string gpu_mem_leftover;
 
 };
 
