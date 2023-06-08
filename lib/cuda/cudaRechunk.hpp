@@ -81,9 +81,6 @@ private:
 
     /// GPU side memory name for the array where we accumulate the inputs
     std::string gpu_mem_accum;
-    /// GPU side memory name for the array where we store overflowing inputs
-    std::string gpu_mem_leftover;
-
 };
 
 #endif // KOTEKAN_CUDA_RECHUNK_HPP
