@@ -19,10 +19,13 @@ cudaRechunk::cudaRechunk(Config& config, const std::string& unique_name,
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
     _set_flag = config.get_default<std::string>(unique_name, "set_flag", "");
     set_command_type(gpuCommandType::KERNEL);
-    num_accumulated = 0;
+    cols_accumulated = 0;
+
+    gpu_mem_accum = unique_name + "/accum";
 
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, true, false, true));
+    gpu_buffers_used.push_back(std::make_tuple(get_name() + "/accum", false, true, true));
 
     assert(_cols_output % _cols_input == 0);
     // leftover_memory =
@@ -41,26 +44,26 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
     void* input_memory = device.get_gpu_memory_array(_gpu_mem_input, pipestate.gpu_frame_id, input_frame_len);
 
     size_t output_frame_len = _cols_output * _rows;
-    void* accum_memory = device.get_gpu_memory("accum", output_frame_len);
+    void* accum_memory = device.get_gpu_memory(gpu_mem_accum, output_frame_len);
 
-    size_t n_copy = _cols_input;
-    if (num_accumulated + _cols_input > _cols_output) {
-        n_copy = _cols_output - num_accumulated;
+    size_t cols_to_copy = _cols_input;
+    if (cols_accumulated + _cols_input > _cols_output) {
+        cols_to_copy = _cols_output - cols_accumulated;
         // Copy the remainder into the leftover_memory.
     }
 
     record_start_event(pipestate.gpu_frame_id);
 
-    // if (num_leftover) copy leftover_memory to output, incr. num_accumulated
+    // if (num_leftover) copy leftover_memory to output, incr. cols_accumulated
 
-    CHECK_CUDA_ERROR(cudaMemcpy2DAsync((void*)((char*)accum_memory + num_accumulated),
-                                       _cols_output, input_memory, _cols_input, n_copy,
+    CHECK_CUDA_ERROR(cudaMemcpy2DAsync((void*)((char*)accum_memory + cols_accumulated),
+                                       _cols_output, input_memory, _cols_input, cols_to_copy,
                                        _rows, cudaMemcpyDeviceToDevice,
                                        device.getStream(cuda_stream_id)));
-    num_accumulated += n_copy;
-    if (num_accumulated >= _cols_output) {
-        DEBUG("cudaRechunk: accumulated {:d}, output size {:d} -- producing output!",
-              num_accumulated, _cols_output);
+    cols_accumulated += cols_to_copy;
+    if (cols_accumulated >= _cols_output) {
+        DEBUG("cudaRechunk: accumulated {:d} columns, output columns {:d} -- producing output!",
+              cols_accumulated, _cols_output);
         // emit an output frame!
         void* output_memory =
             device.get_gpu_memory_array(_gpu_mem_output, pipestate.gpu_frame_id, output_frame_len);
@@ -68,7 +71,7 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
                                          cudaMemcpyDeviceToDevice,
                                          device.getStream(cuda_stream_id)));
 
-        num_accumulated -= _cols_output;
+        cols_accumulated -= _cols_output;
         // (copy any overflow into the "leftover" array)
 
         // Set the flag to indicate that we have emitted a frame!
@@ -77,8 +80,8 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
             pipestate.set_flag(_set_flag, true);
         }
     } else {
-        DEBUG("cudaRechunk: accumulated {:d}, output size {:d} -- NOT producing output!",
-              num_accumulated, _cols_output);
+        DEBUG("cudaRechunk: accumulated {:d} columns, output columns {:d} -- NOT producing output!",
+              cols_accumulated, _cols_output);
         // partial output frame -- don't run further GPU kernels.
     }
     return record_end_event(pipestate.gpu_frame_id);

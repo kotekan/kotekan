@@ -69,19 +69,19 @@ private:
     size_t _cols_output;
     size_t _rows;
 
-    size_t num_accumulated;
-    // void* leftover_memory;
-    // size_t num_leftover;
+    size_t cols_accumulated;
+    //size_t cols_leftover;
 
     std::string _set_flag;
-
-    // GPU memory where we assemble the output
-    // void* gpu_mem_accum;
 
     /// GPU side memory name for the time-stream input
     std::string _gpu_mem_input;
     /// GPU side memory name for the time-stream output
     std::string _gpu_mem_output;
+
+    /// GPU side memory name for the array where we accumulate the inputs
+    std::string gpu_mem_accum;
+
 };
 
 #endif // KOTEKAN_CUDA_RECHUNK_HPP
