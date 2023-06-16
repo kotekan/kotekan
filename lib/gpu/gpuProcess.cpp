@@ -276,6 +276,7 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
     }
 
     // Draw edges between gpuCommands
+    dot += fmt::format("{:s}{:s}// start gpu command edges\n", prefix, prefix);
     bool first_item = true;
     std::string last_item = "";
     for (auto& command : commands) {
@@ -288,6 +289,7 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
                            last_item, command->get_unique_name());
         last_item = command->get_unique_name();
     }
+    dot += fmt::format("{:s}{:s}// end gpu command edges\n", prefix, prefix);
 
     // Draw GPU buffers (non-array)
     std::set<std::string> gpu_buffers;
