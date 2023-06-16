@@ -19,14 +19,6 @@ cudaUpchannelize16k::cudaUpchannelize16k(Config& config, const std::string& uniq
                      16384,
                      "_Z17julia_upchan_404813CuDeviceArrayI9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_"
                      "IS1_Li1ELi1EES_I5Int32Li1ELi1EE") {
-    //;cudaUpchannelize16k::kernel_name) {
 }
 
 cudaUpchannelize16k::~cudaUpchannelize16k() {}
-
-/*
-std::string cudaUpchannelize16k::get_kernel_function_name() {
-    INFO("cudaUpchannelize16k: get_kernel_function_name(): {:s}", cudaUpchannelize16k::kernel_name);
-    return cudaUpchannelize16k::kernel_name;
-}
-*/

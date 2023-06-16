@@ -23,8 +23,7 @@ public:
     cudaFRBBeamReformer(kotekan::Config& config, const std::string& unique_name,
                         kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaFRBBeamReformer();
-    cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
-                        bool* quit) override;
+    cudaEvent_t execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) override;
     void finalize_frame(int frame_id) override;
 
 protected:
@@ -60,6 +59,15 @@ private:
     std::string _gpu_mem_phase;
     /// GPU side memory name for the beam output
     std::string _gpu_mem_beamout;
+
+    bool _batched;
+
+    // cublasHgemmBatched -- pre-computed GPU memory locations.
+    // [gpu_frame_id] [freq batch = stream] = [per-freq pointers]
+    std::vector<std::vector<__half**>> _gpu_in_pointers;
+    std::vector<std::vector<__half**>> _gpu_out_pointers;
+    // [freq batch = stream] = [per-freq pointers]
+    std::vector<__half**> _gpu_phase_pointers;
 };
 
 #endif // CUDA_FRB_BEAMFORMER_HPP

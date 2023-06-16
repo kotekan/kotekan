@@ -41,8 +41,6 @@
  */
 class cudaUpchannelize : public cudaCommand {
 public:
-    // cudaUpchannelize(kotekan::Config& config, const std::string& unique_name,
-    // kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     cudaUpchannelize(
         kotekan::Config& config, const std::string& unique_name,
         kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
@@ -50,10 +48,10 @@ public:
         std::string kernel_symbol = "_Z17julia_upchan_376513CuDeviceArrayI9Float16x2Li1ELi1EES_"
                                     "I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE");
     ~cudaUpchannelize();
-    cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
-                        bool* quit) override;
+    cudaEvent_t execute(cudaPipelineState& pipestate,
+                        const std::vector<cudaEvent_t>& pre_events) override;
+    virtual void finalize_frame(int gpu_frame_id) override;
 
-    // virtual std::string get_kernel_function_name();
 protected:
 private:
     // Common configuration values (which do not change in a run)
@@ -74,6 +72,9 @@ private:
     std::string _gpu_mem_output_voltage;
     /// GPU side memory name for the status/info output
     std::string _gpu_mem_info;
+
+    // Host-side buffer array for GPU kernel status/info output
+    std::vector< std::vector<int32_t> > host_info;
 
     // derived gpu array sizes
     size_t gain_len;
