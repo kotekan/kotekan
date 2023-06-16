@@ -149,10 +149,11 @@ void gpuProcess::main_thread() {
         std::bind(&gpuProcess::profile_callback, this, std::placeholders::_1));
 
     // Start with the first GPU frame;
-    int gpu_frame_id = 0;
+    int gpu_frame_counter = 0;
     bool first_run = true;
 
     while (!stop_thread) {
+        int gpu_frame_id = gpu_frame_counter % _gpu_buffer_depth;
         // Wait for all the required preconditions
         // This is things like waiting for the input buffer to have data
         // and for there to be free space in the output buffers.
@@ -168,7 +169,7 @@ void gpuProcess::main_thread() {
         DEBUG("Waiting for free slot for GPU[{:d}][{:d}]", gpu_id, gpu_frame_id);
         // We make sure we aren't using a gpu frame that's currently in-flight.
         final_signals[gpu_frame_id]->wait_for_free_slot();
-        queue_commands(gpu_frame_id);
+        queue_commands(gpu_frame_id, gpu_frame_counter);
         if (first_run) {
             results_thread_handle = std::thread(&gpuProcess::results_thread, std::ref(*this));
 
@@ -183,7 +184,7 @@ void gpuProcess::main_thread() {
             first_run = false;
         }
 
-        gpu_frame_id = (gpu_frame_id + 1) % _gpu_buffer_depth;
+        gpu_frame_counter++;
     }
 exit_loop:
     for (auto& sig_container : final_signals) {

@@ -46,11 +46,12 @@ gpuCommand* cudaProcess::create_command(const std::string& cmd_name,
     return cmd;
 }
 
-void cudaProcess::queue_commands(int gpu_frame_id) {
+void cudaProcess::queue_commands(int gpu_frame_id, int gpu_frame_counter) {
     std::vector<cudaEvent_t> events;
     events.resize(device->get_num_streams(), nullptr);
 
     cudaPipelineState pipestate(gpu_frame_id);
+    pipestate.set_int("gpu_frame_counter", gpu_frame_counter);
     cudaEvent_t final_event = nullptr;
 
     for (auto& command : commands) {
