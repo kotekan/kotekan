@@ -119,6 +119,15 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
     CHECK_CUDA_ERROR(cudaMemcpy(dishlayout_memory, dishlayout_cpu_memory, dishlayout_len,
                                 cudaMemcpyHostToDevice));
     free(dishlayout_cpu_memory);
+
+    // DEBUG
+    for (int i = 0; i < _gpu_buffer_depth; i++) {
+        void* voltage_memory =
+            device.get_gpu_memory_array(_gpu_mem_voltage, i, voltage_len);
+        DEBUG("GPUMEM memory_array({:p}, {:d}, {:d}, \"{:s}\", \"{:s}\", \"frb_bf_input_voltage[{:d}]\")",
+              voltage_memory, voltage_len, i, get_name(), _gpu_mem_voltage, i);
+    }
+
 }
 
 cudaFRBBeamformer::~cudaFRBBeamformer() {}
@@ -187,6 +196,9 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate,
     CHECK_CUDA_ERROR(cudaMemcpyAsync(voltage_next, voltage_pad,
                                      padded_samples * voltage_len_per_sample,
                                      cudaMemcpyDeviceToDevice, device.getStream(cuda_stream_id)));
+    DEBUG("GPUMEM copyasync({:p}, {:p}, {:d}, \"{:s}\", \"padding: {:d} samples for frame {:d}\")",
+          voltage_next, voltage_pad, padded_samples * voltage_len_per_sample,
+          get_name(), padded_samples, pipestate.get_int("gpu_frame_counter"));
 
     // Set the number of output samples produced!
     pipestate.set_int("frb_bf_samples", output_frames);
@@ -246,6 +258,9 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate,
     CHECK_CU_ERROR(cuLaunchKernel(runtime_kernels[kernel_name], blocks_x, blocks_y, 1, threads_x,
                                   threads_y, 1, shared_mem_bytes, device.getStream(cuda_stream_id),
                                   parameters, NULL));
+
+    DEBUG("GPUMEM kernel_in({:p}, {:d}, \"{:s}\", \"frb beamformer for frame {:d}\")",
+          voltage_input, voltage_input_len, get_name(), pipestate.get_int("gpu_frame_counter"));
 
     // Copy "info" result code back to host memory
     CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory,
