@@ -81,6 +81,10 @@ private:
 
     /// GPU side memory name for the array where we accumulate the inputs
     std::string gpu_mem_accum;
+
+    /// Optional, name of the field in the pipeline state object that holds the number of input
+    /// columns to copy.
+    std::string _input_columns_field;
 };
 
 #endif // KOTEKAN_CUDA_RECHUNK_HPP

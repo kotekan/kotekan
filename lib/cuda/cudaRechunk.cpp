@@ -18,6 +18,7 @@ cudaRechunk::cudaRechunk(Config& config, const std::string& unique_name,
     _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
     _set_flag = config.get_default<std::string>(unique_name, "set_flag", "");
+    _input_columns_field = config.get_default<std::string>(unique_name, "input_columns_field", "");
     set_command_type(gpuCommandType::KERNEL);
     cols_accumulated = 0;
 
@@ -45,18 +46,26 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
     size_t output_len = _cols_output * _rows;
     void* accum_memory = device.get_gpu_memory(gpu_mem_accum, output_len);
 
-    record_start_event(pipestate.gpu_frame_id);
+    size_t cols_input = _cols_input;
+    if (_input_columns_field.length()) {
+        cols_input = pipestate.get_int(_input_columns_field);
+        DEBUG("cudaRechunk: copying input elements: {:d}, vs avail buffer size {:d}",
+              cols_input, _cols_input);
+        assert(cols_input <= _cols_input);
+    }
 
-    size_t cols_to_copy = _cols_input;
+    size_t cols_to_copy = cols_input;
     size_t cols_leftover = 0;
     if (cols_accumulated + cols_to_copy > _cols_output) {
         cols_to_copy = _cols_output - cols_accumulated;
         // Copy the remainder into the leftover_memory.
-        cols_leftover = _cols_input - cols_to_copy;
+        cols_leftover = cols_input - cols_to_copy;
     }
 
+    record_start_event(pipestate.gpu_frame_id);
+
     CHECK_CUDA_ERROR(cudaMemcpy2DAsync((void*)((char*)accum_memory + cols_accumulated),
-                                       _cols_output, input_memory, _cols_input, cols_to_copy,
+                                       _cols_output, input_memory, cols_input, cols_to_copy,
                                        _rows, cudaMemcpyDeviceToDevice,
                                        device.getStream(cuda_stream_id)));
     cols_accumulated += cols_to_copy;

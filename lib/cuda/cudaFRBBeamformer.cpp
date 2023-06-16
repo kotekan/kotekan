@@ -17,7 +17,11 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
                                      bufferContainer& host_buffers, cudaDeviceInterface& device) :
     cudaCommand(config, unique_name, host_buffers, device, "FRB_beamformer", "frb.ptx") {
 
+    // HACK -- at the very beginning of the run, we pretend we have 40 samples of padding,
+    // so that we get 51 outputs (otherwise we would get 50), so that the rechunker produces
+    // an output frame of 256 outputs after every 5 input frames.
     padded_samples = 40;
+    //padded_samples = 0;
 
     _num_dishes = config.get<int>(unique_name, "num_dishes");
     _dish_grid_size = config.get<int>(unique_name, "dish_grid_size");
@@ -147,7 +151,6 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate, const std::
     CHECK_CUDA_ERROR(
         cudaMemsetAsync(info_memory, 0xff, info_len, device.getStream(cuda_stream_id)));
 
-    // Compute & Copy length
     int32_t valid = _samples_per_data_set + padded_samples;
     int32_t process = (valid / cuda_input_chunk) * cuda_input_chunk;
     int32_t output_frames = (process / cuda_time_downsampling);
@@ -161,6 +164,9 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate, const std::
     // Compute the length of the voltage array to pass to the GPU kernel.
     size_t voltage_input_len = (size_t)process * voltage_len_per_sample;
 
+    DEBUG("CUDA FRB Beamformer, GPU frame {:d}: {:d} new samples + {:d} left over = {:d}, processing {:d}, producing {:d} output samples = {:d} input samples, leaving {:d} for next time",
+          pipestate.gpu_frame_id, _samples_per_data_set, padded_samples, valid, process, output_frames, output_samples, padding_next);
+
     // Padding for next frame...
     padded_samples = padding_next;
     // Copy these padding samples into place!!
@@ -171,9 +177,9 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate, const std::
 
     // Set the number of output samples produced!
     pipestate.set_int("frb_bf_samples", output_frames);
-
-    DEBUG("CUDA FRB Beamformer, GPU frame {:d}: processing {:d} input samples, producing {:d} outputs",
-          pipestate.gpu_frame_id, process, output_frames);
+    int32_t beam_p = _dish_grid_size * 2;
+    int32_t beam_q = _dish_grid_size * 2;
+    pipestate.set_int("frb_bf_bytes_per_freq", (size_t)output_frames * beam_p * beam_q * sizeof_float16_t);
 
     // input samples, dishlayout (S), phase (W), voltage (E), beamgrid (I), info
     const char* exc = "exception";

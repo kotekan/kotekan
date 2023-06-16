@@ -38,24 +38,20 @@ bb_beams: 96
 
 frb_beams: 5000
 frb_upchan: 16
-frb_samples: 2064
+# 2048
+frb_samples: voltage_samples / frb_upchan
 frb_freq: voltage_freq * frb_upchan
 dish_grid_size: 24
 frb_beam_grid_size: dish_grid_size * 2
 frb_time_downsampling: 40
-# # derived: ceil(samples_per_data_set / time_downsampling)
-frb_td: 52
 
 # Number of samples of padding allocated at the front of the voltage arrays
 frb_bf_padding: 88
 
-# Number of samples passed from FRB1 to FRBRechunk
-frb_td_good: 51
+# Max number of samples passed from FRB1 to FRBRechunk
+frb_td_max: 52
 
 # FRB Rechunking
-frb_td_rechunk_real: 255
-
-# Padded rechunked
 frb_td_rechunk: 256
 
 buffer_depth: 4
@@ -170,10 +166,6 @@ gpu:
       gpu_mem_upchan_output: upchan_out
       gpu_mem_voltage: voltage
       gpu_mem_fine_upchan_input: fine_upchan_input
-      gpu_mem_frb_bf_output: beamgrid
-      gpu_mem_frb_rechunk_input: beamgrid_good
-      gpu_mem_frb_rechunk_output: beamchunk_sub
-      gpu_mem_frb_brf_input: beamchunk
     - name: cudaInputData
       in_buf: host_voltage
       gpu_mem: voltage
@@ -260,12 +252,13 @@ gpu:
     #
     - name: cudaRechunk
       log_level: debug
-      gpu_mem_input: beamgrid_good
-      gpu_mem_output: beamchunk_sub
+      gpu_mem_input: beamgrid
+      gpu_mem_output: beamchunk
+      input_columns_field: frb_bf_bytes_per_freq
       # Erik's FRB beamformer produces output with rho varying fastest, then T,
       # then F, so T*rho is the inner size and F is the outer size.
-      cols_input: frb_td_good * 2 * frb_beam_grid_size * frb_beam_grid_size
-      cols_output: frb_td_rechunk_real * 2 * frb_beam_grid_size * frb_beam_grid_size
+      cols_input: frb_td_max * 2 * frb_beam_grid_size * frb_beam_grid_size
+      cols_output: frb_td_rechunk * 2 * frb_beam_grid_size * frb_beam_grid_size
       rows: frb_freq
       set_flag: frb_rechunk
     # FRB2 & 3 follow after outputs!
@@ -353,7 +346,7 @@ gpu:
 # printSparseGPU:
 #     kotekan_stage: printSparseFloat16
 #     # F, B, T
-#     #array_shape: [frb_freq, frb_beams, frb_td]
+#     #array_shape: [frb_freq, frb_beams, frb_td_rechunk]
 #     #input_buf: host_beamout_buffer
 #     input_buf: host_beamquant_buffer
 #     max_to_print: 8

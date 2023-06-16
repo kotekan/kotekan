@@ -27,16 +27,6 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     // views, while doing the Frequency subset would require a
     // cudaMemcpy3DAsync (probably in this class!).)
 
-    // Finally, we use it to glue FRB1 -> CudaRechunk -> FRB2/3, with
-    // a bit of fancy footwork:
-    //   FRB1 produces 52 samples, but the last sample is a bit bogus.
-    //   FRB2/3 want 256 samples.
-    // We construct a buffer view that reduces FRB1's output from 52
-    // to 51 for input to CudaRechunk.
-    // We then construct a buffer view where CudaRechunk places 255
-    // samples of output into a 256-element buffer that is input for
-    // FRB2/3.
-
     // Upchan to FRB-BF:
 
     size_t num_dishes = config.get<int>(unique_name, "num_dishes");
@@ -46,9 +36,10 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
 
     // 2048 * U = 32768
     size_t samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
-    // 2064
-    size_t frb_bf_samples = config.get<int>(unique_name, "frb_samples");
 
+    // 2048
+    size_t frb_bf_samples = config.get<int>(unique_name, "frb_samples");
+    // 88
     size_t frb_bf_padding = config.get<int>(unique_name, "frb_bf_padding");
 
     std::string fullname = config.get<std::string>(unique_name, "gpu_mem_frb_bf_input");
@@ -72,7 +63,7 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     //gpu_buffers_used.push_back(std::make_tuple(fullname, true, false, true));
     //gpu_buffers_used.push_back(std::make_tuple(viewname, true, true, false));
 
-    // FPGA to Upchan for Fine Visibility:
+    // Voltage to Upchan for Fine Visibility:
 
     fullname = config.get<std::string>(unique_name, "gpu_mem_voltage");
     viewname = config.get<std::string>(unique_name, "gpu_mem_fine_upchan_input");
@@ -80,57 +71,11 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     fullsize = num_dishes * num_local_freq * samples_per_data_set * 2;
     viewsize = fullsize / 2;
 
-    INFO("Creating fpga/fine-upchan glue buffers: fpga {:s} size {:d}, fine-upchan input {:s} "
+    INFO("Creating fpga voltage/fine-upchan glue buffers: fpga {:s} size {:d}, fine-upchan input {:s} "
          "size {:d}",
          fullname, fullsize, viewname, viewsize);
     for (int i = 0; i < device.get_gpu_buffer_depth(); i++)
         device.get_gpu_memory_array(fullname, i, fullsize);
-    offset = 0;
-    device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize);
-
-    // FRB1 writes its output into a view on FRBRechunk's input.
-
-    fullname = config.get<std::string>(unique_name, "gpu_mem_frb_bf_output");
-    viewname = config.get<std::string>(unique_name, "gpu_mem_frb_rechunk_input");
-
-    size_t frb_td = config.get<int>(unique_name, "frb_td");
-    size_t frb_td_good = config.get<int>(unique_name, "frb_td_good");
-    size_t frb_beam_grid_size = config.get<int>(unique_name, "frb_beam_grid_size");
-    size_t frb_freq = config.get<int>(unique_name, "frb_freq");
-    size_t rho = frb_beam_grid_size * frb_beam_grid_size;
-
-    size_t sizeof_float16_t = 2;
-
-    fullsize = frb_td * frb_freq * rho * sizeof_float16_t;
-    viewsize = frb_td_good * frb_freq * rho * sizeof_float16_t;
-
-    INFO("FRB1 to FRBRechunk buffer view: FRB1 output is {:s} size {:d}, Rechunk input {:s} size "
-         "{:d}",
-         fullname, fullsize, viewname, viewsize);
-    for (int i = 0; i < device.get_gpu_buffer_depth(); i++)
-        device.get_gpu_memory_array(fullname, i, fullsize);
-    offset = 0;
-    device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize);
-
-    // FRB Rechunk outputs 5 x 51 = 255 into a 256-element array for FRB2
-
-    fullname = config.get<std::string>(unique_name, "gpu_mem_frb_brf_input");
-    viewname = config.get<std::string>(unique_name, "gpu_mem_frb_rechunk_output");
-
-    size_t frb_td_rechunk_real = config.get<int>(unique_name, "frb_td_rechunk_real");
-    size_t frb_td_rechunk = config.get<int>(unique_name, "frb_td_rechunk");
-
-    fullsize = frb_td_rechunk * frb_freq * rho * sizeof_float16_t;
-    viewsize = frb_td_rechunk_real * frb_freq * rho * sizeof_float16_t;
-
-    INFO("FRBRechunk to FRB Beam Reformer buffer view: padded output is {:s} size {:d}, real "
-         "output is {:s} size {:d}",
-         fullname, fullsize, viewname, viewsize);
-    for (int i = 0; i < device.get_gpu_buffer_depth(); i++) {
-        void* real = device.get_gpu_memory_array(fullname, i, fullsize);
-        // Zero out the last element!
-        CHECK_CUDA_ERROR(cudaMemset((unsigned char*)real + viewsize, 0, fullsize - viewsize));
-    }
     offset = 0;
     device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize);
 }
