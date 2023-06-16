@@ -12,8 +12,12 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
 
     // This stage glues together the cudaUpchannelize and cudaFRBBeamformer commands.
     //   cudaUpchannelize produces outputs of size 2048.
-    //   cudaFRBBeamformer consumer inputs of size 2064.
-    // We allocate the latter, and then create a view into it for the former.
+    //   cudaFRBBeamformer consumes inputs of multiples of 48 -- we allocate size 2064.
+    // The cudaFRBBeamformer code processes a varying number of input
+    // samples each time, so there are some leftovers that it copies
+    // into a padding buffer at the beginning of the array.
+    ///
+    // We allocate the latter, and then create an offset view into it for the former.
 
     // We also use it to (incorrectly!) take a *time* subset of half
     // the voltage data to feed the Fine Visibility matrix data
@@ -45,11 +49,13 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     // 2064
     size_t frb_bf_samples = config.get<int>(unique_name, "frb_samples");
 
+    size_t frb_bf_padding = config.get<int>(unique_name, "frb_bf_padding");
+
     std::string fullname = config.get<std::string>(unique_name, "gpu_mem_frb_bf_input");
     std::string viewname = config.get<std::string>(unique_name, "gpu_mem_upchan_output");
     // 2 for polarizations
     size_t viewsize = num_dishes * num_local_freq * samples_per_data_set * 2;
-    size_t fullsize = num_dishes * (num_local_freq * upchan_factor) * frb_bf_samples * 2;
+    size_t fullsize = num_dishes * (num_local_freq * upchan_factor) * (frb_bf_samples + frb_bf_padding) * 2;
     INFO("Creating upchan/frb-bf glue buffers: frb-bf input {:s} size {:d}, upchan output {:s} "
          "size {:d}",
          fullname, fullsize, viewname, viewsize);
@@ -58,8 +64,9 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
         // Zero it out!
         CHECK_CUDA_ERROR(cudaMemset((unsigned char*)real + viewsize, 0, fullsize - viewsize));
     }
-    // offset = 0
-    device.create_gpu_memory_array_view(fullname, fullsize, viewname, 0, viewsize);
+
+    size_t offset = num_dishes * num_local_freq * upchan_factor * frb_bf_padding * 2;
+    device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize);
 
     // We produce custom DOT output to connect the views, so we omit these (and all other) entries.
     //gpu_buffers_used.push_back(std::make_tuple(fullname, true, false, true));
@@ -78,8 +85,8 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
          fullname, fullsize, viewname, viewsize);
     for (int i = 0; i < device.get_gpu_buffer_depth(); i++)
         device.get_gpu_memory_array(fullname, i, fullsize);
-    // offset = 0
-    device.create_gpu_memory_array_view(fullname, fullsize, viewname, 0, viewsize);
+    offset = 0;
+    device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize);
 
     // FRB1 writes its output into a view on FRBRechunk's input.
 
@@ -102,8 +109,8 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
          fullname, fullsize, viewname, viewsize);
     for (int i = 0; i < device.get_gpu_buffer_depth(); i++)
         device.get_gpu_memory_array(fullname, i, fullsize);
-    // offset = 0
-    device.create_gpu_memory_array_view(fullname, fullsize, viewname, 0, viewsize);
+    offset = 0;
+    device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize);
 
     // FRB Rechunk outputs 5 x 51 = 255 into a 256-element array for FRB2
 
@@ -124,8 +131,8 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
         // Zero out the last element!
         CHECK_CUDA_ERROR(cudaMemset((unsigned char*)real + viewsize, 0, fullsize - viewsize));
     }
-    // offset = 0
-    device.create_gpu_memory_array_view(fullname, fullsize, viewname, 0, viewsize);
+    offset = 0;
+    device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize);
 }
 
 chordMVPSetup::~chordMVPSetup() {}

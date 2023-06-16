@@ -29,7 +29,7 @@ frame_arrival_period: 0.00000170667 * voltage_samples
 n2coarse_sub_integration_ntime: 16384
 
 # Fine visibilities
-# NOTE that this / 2 MUST match the hard-coded buffer setup login in chordMVPSetup
+# NOTE that this divide-by-2 MUST match the hard-coded buffer setup logic in chordMVPSetup
 fine_samples: voltage_samples / 2
 fine_upchan: 16
 n2fine_sub_integration_ntime: 1024
@@ -46,6 +46,9 @@ frb_time_downsampling: 40
 # # derived: ceil(samples_per_data_set / time_downsampling)
 frb_td: 52
 
+# Number of samples of padding allocated at the front of the voltage arrays
+frb_bf_padding: 88
+
 # Number of samples passed from FRB1 to FRBRechunk
 frb_td_good: 51
 
@@ -58,7 +61,7 @@ frb_td_rechunk: 256
 buffer_depth: 4
 
 # data gen:
-#num_frames: 180
+num_frames: 100
 
 # Pool
 main_pool:
@@ -124,10 +127,10 @@ host_beammeanstd_buffer:
 
 gen_data:
     kotekan_stage: testDataGen
-    #type: onehot
-    #values: [0x01, 0x02, 0x04, 0x07, 0x08, 0x09, 0xc, 0xe, 0xf, 0x10, 0x20, 0x40, 0x70, 0x80, 0x90, 0xc0, 0xe0, 0xf0]
-    type: random_signed
-    reuse_random: true
+    type: onehot
+    values: [0x01, 0x02, 0x04, 0x07, 0x08, 0x09, 0xc, 0xe, 0xf, 0x10, 0x20, 0x40, 0x70, 0x80, 0x90, 0xc0, 0xe0, 0xf0]
+    #type: random_signed
+    #reuse_random: true
     # TIME, POL, FREQ, DISH
     array_shape: [32768, 2, 16, 512]
     out_buf: host_voltage_buffer
@@ -157,6 +160,7 @@ gpu:
     kernel_path: "../../lib/cuda/kernels/"
     # More streams -- for FRBBeamReformer
     num_cuda_streams: 4
+    #num_cuda_streams: 6
     commands: &command_list
     - name: chordMVPSetup
       upchan_factor: frb_upchan
@@ -235,6 +239,7 @@ gpu:
       upchan_factor: frb_upchan
     # FRB1: beamformer
     - name: cudaFRBBeamformer
+      log_level: debug
       gpu_mem_voltage: bf_input
       gpu_mem_phase: frb_phase
       gpu_mem_dishlayout: dishlayout
@@ -242,6 +247,7 @@ gpu:
       num_local_freq: frb_freq
       samples_per_data_set: frb_samples
       time_downsampling: frb_time_downsampling
+      samples_padding: frb_bf_padding
       num_beams: frb_beams
     #
     # Rechunking!
@@ -340,20 +346,17 @@ gpu:
         out_buffers:
             # host_fine_correlation: host_fine_correlation_buffer
             host_coarse_correlation: host_coarse_correlation_buffer
-            host_fine_upchan_info: host_fine_upchan_info
-            host_bb_info: host_bb_info
-            host_frb_upchan_info: host_frb_upchan_info
             host_bb_beams: host_bb_beams_buffer
             host_beamquant: host_beamquant_buffer
             host_beammeanstd: host_beammeanstd_buffer
 
-printSparseGPU:
-    kotekan_stage: printSparseFloat16
-    # F, B, T
-    #array_shape: [frb_freq, frb_beams, frb_td]
-    #input_buf: host_beamout_buffer
-    input_buf: host_beamquant_buffer
-    max_to_print: 8
+# printSparseGPU:
+#     kotekan_stage: printSparseFloat16
+#     # F, B, T
+#     #array_shape: [frb_freq, frb_beams, frb_td]
+#     #input_buf: host_beamout_buffer
+#     input_buf: host_beamquant_buffer
+#     max_to_print: 8
 
 # x = np.arange(24*24)
 # M = x // 24

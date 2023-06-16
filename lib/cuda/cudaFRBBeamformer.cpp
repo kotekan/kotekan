@@ -172,6 +172,9 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate, const std::
     // Set the number of output samples produced!
     pipestate.set_int("frb_bf_samples", output_frames);
 
+    DEBUG("CUDA FRB Beamformer, GPU frame {:d}: processing {:d} input samples, producing {:d} outputs",
+          pipestate.gpu_frame_id, process, output_frames);
+
     // input samples, dishlayout (S), phase (W), voltage (E), beamgrid (I), info
     const char* exc = "exception";
     kernel_arg arr[7];
