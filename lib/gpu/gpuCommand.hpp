@@ -105,7 +105,7 @@ public:
      * @return A list of GPU buffers touched by this command:
      *    [ (name, is_array, does_read, does_write) ]
      */
-    virtual std::vector< std::tuple< std::string, bool, bool, bool > > get_gpu_buffers() const {
+    virtual std::vector<std::tuple<std::string, bool, bool, bool>> get_gpu_buffers() const {
         return gpu_buffers_used;
     }
 
@@ -155,7 +155,7 @@ protected:
     gpuCommandType command_type = gpuCommandType::NOT_SET;
 
     /// For get_gpu_buffers: a list of GPU buffers used by this command.
-    std::vector< std::tuple< std::string, bool, bool, bool > > gpu_buffers_used;
+    std::vector<std::tuple<std::string, bool, bool, bool>> gpu_buffers_used;
 };
 
 #endif // GPU_COMMAND_H

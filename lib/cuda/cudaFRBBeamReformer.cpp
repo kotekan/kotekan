@@ -334,11 +334,11 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& pipestate,
     (void)pre_events;
     pre_execute(pipestate.gpu_frame_id);
 
-    float16_t* beamgrid_memory =
-        (float16_t*)device.get_gpu_memory_array(_gpu_mem_beamgrid, pipestate.gpu_frame_id, beamgrid_len);
+    float16_t* beamgrid_memory = (float16_t*)device.get_gpu_memory_array(
+        _gpu_mem_beamgrid, pipestate.gpu_frame_id, beamgrid_len);
     float16_t* phase_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
-    float16_t* beamout_memory =
-        (float16_t*)device.get_gpu_memory_array(_gpu_mem_beamout, pipestate.gpu_frame_id, beamout_len);
+    float16_t* beamout_memory = (float16_t*)device.get_gpu_memory_array(
+        _gpu_mem_beamout, pipestate.gpu_frame_id, beamout_len);
 
     record_start_event(pipestate.gpu_frame_id);
 
@@ -360,8 +360,8 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& pipestate,
             __half beta = 0.;
             cublasStatus_t stat = cublasHgemmBatched(
                 handle, CUBLAS_OP_T, CUBLAS_OP_N, _Td, _num_beams, rho, &alpha,
-                _gpu_in_pointers[pipestate.gpu_frame_id][i], rho, _gpu_phase_pointers[i], rho, &beta,
-                _gpu_out_pointers[pipestate.gpu_frame_id][i], _Td, freqs_per_stream);
+                _gpu_in_pointers[pipestate.gpu_frame_id][i], rho, _gpu_phase_pointers[i], rho,
+                &beta, _gpu_out_pointers[pipestate.gpu_frame_id][i], _Td, freqs_per_stream);
             if (stat != CUBLAS_STATUS_SUCCESS) {
                 ERROR("Error at {:s}:{:d}: cublasHgemmBatched: {:s}", __FILE__, __LINE__,
                       cublasGetStatusString(stat));

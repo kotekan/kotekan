@@ -46,7 +46,8 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     std::string viewname = config.get<std::string>(unique_name, "gpu_mem_upchan_output");
     // 2 for polarizations
     size_t viewsize = num_dishes * num_local_freq * samples_per_data_set * 2;
-    size_t fullsize = num_dishes * (num_local_freq * upchan_factor) * (frb_bf_samples + frb_bf_padding) * 2;
+    size_t fullsize =
+        num_dishes * (num_local_freq * upchan_factor) * (frb_bf_samples + frb_bf_padding) * 2;
     INFO("Creating upchan/frb-bf glue buffers: frb-bf input {:s} size {:d}, upchan output {:s} "
          "size {:d}",
          fullname, fullsize, viewname, viewsize);
@@ -60,8 +61,8 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize);
 
     // We produce custom DOT output to connect the views, so we omit these (and all other) entries.
-    //gpu_buffers_used.push_back(std::make_tuple(fullname, true, false, true));
-    //gpu_buffers_used.push_back(std::make_tuple(viewname, true, true, false));
+    // gpu_buffers_used.push_back(std::make_tuple(fullname, true, false, true));
+    // gpu_buffers_used.push_back(std::make_tuple(viewname, true, true, false));
 
     // Voltage to Upchan for Fine Visibility:
 
@@ -71,8 +72,8 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     fullsize = num_dishes * num_local_freq * samples_per_data_set * 2;
     viewsize = fullsize / 2;
 
-    INFO("Creating fpga voltage/fine-upchan glue buffers: fpga {:s} size {:d}, fine-upchan input {:s} "
-         "size {:d}",
+    INFO("Creating fpga voltage/fine-upchan glue buffers: fpga {:s} size {:d}, fine-upchan input "
+         "{:s} size {:d}",
          fullname, fullsize, viewname, viewsize);
     for (int i = 0; i < device.get_gpu_buffer_depth(); i++)
         device.get_gpu_memory_array(fullname, i, fullsize);
@@ -82,7 +83,8 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
 
 chordMVPSetup::~chordMVPSetup() {}
 
-cudaEvent_t chordMVPSetup::execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) {
+cudaEvent_t chordMVPSetup::execute(cudaPipelineState& pipestate,
+                                   const std::vector<cudaEvent_t>& pre_events) {
     (void)pre_events;
     pre_execute(pipestate.gpu_frame_id);
     record_start_event(pipestate.gpu_frame_id);
@@ -93,10 +95,10 @@ std::string chordMVPSetup::get_extra_dot(const std::string& prefix) const {
     std::string fullname = config.get<std::string>(unique_name, "gpu_mem_frb_bf_input");
     std::string viewname = config.get<std::string>(unique_name, "gpu_mem_upchan_output");
     std::string dot = fmt::format("{:s}\"{:s}\" -> \"{:s}\" [style=solid, color=\"red\"];\n",
-                       prefix, viewname, fullname);
+                                  prefix, viewname, fullname);
     fullname = config.get<std::string>(unique_name, "gpu_mem_voltage");
     viewname = config.get<std::string>(unique_name, "gpu_mem_fine_upchan_input");
-    dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\" [style=solid, color=\"red\"];\n",
-                       prefix, fullname, viewname);
+    dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\" [style=solid, color=\"red\"];\n", prefix, fullname,
+                       viewname);
     return dot;
 }

@@ -23,7 +23,8 @@ public:
     cudaFRBBeamReformer(kotekan::Config& config, const std::string& unique_name,
                         kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaFRBBeamReformer();
-    cudaEvent_t execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) override;
+    cudaEvent_t execute(cudaPipelineState& pipestate,
+                        const std::vector<cudaEvent_t>& pre_events) override;
     void finalize_frame(int frame_id) override;
 
 protected:

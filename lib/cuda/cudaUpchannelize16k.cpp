@@ -18,7 +18,6 @@ cudaUpchannelize16k::cudaUpchannelize16k(Config& config, const std::string& uniq
     cudaUpchannelize(config, unique_name, host_buffers, device, "upchannelize16", "upchan-U16.ptx",
                      16384,
                      "_Z17julia_upchan_404813CuDeviceArrayI9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_"
-                     "IS1_Li1ELi1EES_I5Int32Li1ELi1EE") {
-}
+                     "IS1_Li1ELi1EES_I5Int32Li1ELi1EE") {}
 
 cudaUpchannelize16k::~cudaUpchannelize16k() {}

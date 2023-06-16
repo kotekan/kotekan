@@ -17,9 +17,9 @@
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, ref, _1, fun...
 #include <iosfwd>     // for std
 #include <math.h>
-#include <pthread.h>   // for pthread_setaffinity_np
-#include <regex>       // for match_results<>::_Base_type
-#include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <pthread.h> // for pthread_setaffinity_np
+#include <regex>     // for match_results<>::_Base_type
+#include <sched.h>   // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <set>
 #include <stdexcept>   // for runtime_error
 #include <sys/types.h> // for uint
@@ -305,14 +305,14 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
     dot += fmt::format("{:s}subgraph \"cluster_{:s}_mem\" {{\n", prefix, get_unique_name());
     for (std::string name : gpu_buffer_arrays) {
         // shape="box3d"
-        dot += fmt::format("{:s}{:s}\"{:s}\" [shape=\"oval\",color=\"hotpink3\",label=\"{:s}\"];\n", prefix, prefix,
-                           name, name);
+        dot += fmt::format("{:s}{:s}\"{:s}\" [shape=\"oval\",color=\"hotpink3\",label=\"{:s}\"];\n",
+                           prefix, prefix, name, name);
     }
 
     for (std::string name : gpu_buffers) {
         // shape="rect"
-        dot += fmt::format("{:s}{:s}\"{:s}\" [shape=\"oval\",color=\"hotpink\",label=\"{:s}\"];\n", prefix, prefix,
-                           name, name);
+        dot += fmt::format("{:s}{:s}\"{:s}\" [shape=\"oval\",color=\"hotpink\",label=\"{:s}\"];\n",
+                           prefix, prefix, name, name);
     }
     dot += fmt::format("{:s} }}\n", prefix);
 

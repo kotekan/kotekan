@@ -41,7 +41,8 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
     pre_execute(pipestate.gpu_frame_id);
 
     size_t input_frame_len = _cols_input * _rows;
-    void* input_memory = device.get_gpu_memory_array(_gpu_mem_input, pipestate.gpu_frame_id, input_frame_len);
+    void* input_memory =
+        device.get_gpu_memory_array(_gpu_mem_input, pipestate.gpu_frame_id, input_frame_len);
 
     size_t output_len = _cols_output * _rows;
     void* accum_memory = device.get_gpu_memory(gpu_mem_accum, output_len);
@@ -49,8 +50,8 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
     size_t cols_input = _cols_input;
     if (_input_columns_field.length()) {
         cols_input = pipestate.get_int(_input_columns_field);
-        DEBUG("cudaRechunk: copying input elements: {:d}, vs avail buffer size {:d}",
-              cols_input, _cols_input);
+        DEBUG("cudaRechunk: copying input elements: {:d}, vs avail buffer size {:d}", cols_input,
+              _cols_input);
         assert(cols_input <= _cols_input);
     }
 
@@ -65,9 +66,8 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
     record_start_event(pipestate.gpu_frame_id);
 
     CHECK_CUDA_ERROR(cudaMemcpy2DAsync((void*)((char*)accum_memory + cols_accumulated),
-                                       _cols_output, input_memory, cols_input, cols_to_copy,
-                                       _rows, cudaMemcpyDeviceToDevice,
-                                       device.getStream(cuda_stream_id)));
+                                       _cols_output, input_memory, cols_input, cols_to_copy, _rows,
+                                       cudaMemcpyDeviceToDevice, device.getStream(cuda_stream_id)));
     cols_accumulated += cols_to_copy;
     if (cols_accumulated >= _cols_output) {
         DEBUG("cudaRechunk: accumulated {:d} columns, output columns {:d} -- producing output!",
@@ -85,9 +85,9 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
         // After copying 'accum' to 'output', if there were any inputs left over, copy them
         // to the start of the 'accum' array for next time.
         if (cols_leftover) {
-            CHECK_CUDA_ERROR(cudaMemcpyAsync(accum_memory, (void*)((char*)input_memory + cols_to_copy),
-                                             cols_leftover * _rows, cudaMemcpyDeviceToDevice,
-                                             device.getStream(cuda_stream_id)));
+            CHECK_CUDA_ERROR(cudaMemcpyAsync(
+                accum_memory, (void*)((char*)input_memory + cols_to_copy), cols_leftover * _rows,
+                cudaMemcpyDeviceToDevice, device.getStream(cuda_stream_id)));
             cols_accumulated = cols_leftover;
         }
 

@@ -22,7 +22,8 @@ public:
     cudaFRBBeamformer(kotekan::Config& config, const std::string& unique_name,
                       kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaFRBBeamformer();
-    cudaEvent_t execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) override;
+    cudaEvent_t execute(cudaPipelineState& pipestate,
+                        const std::vector<cudaEvent_t>& pre_events) override;
     virtual void finalize_frame(int gpu_frame_id) override;
 
 protected:
@@ -38,7 +39,8 @@ private:
     int32_t _samples_per_data_set;
     /// Time downsampling factor
     int32_t _time_downsampling;
-    /// Samples of padding on the voltage buffer.  Must be >= cuda_input_chunk + cuda_time_downsampling.
+    /// Samples of padding on the voltage buffer.  Must be >= cuda_input_chunk +
+    /// cuda_time_downsampling.
     int32_t _samples_padding;
 
     /// Size in bytes of the dishlayout array
@@ -72,10 +74,10 @@ private:
     std::string gpu_mem_info;
 
     /// Host-side array for the lengths
-    std::vector< int32_t > host_length;
+    std::vector<int32_t> host_length;
 
     /// Host-side buffer array for GPU kernel status/info output
-    std::vector< std::vector<int32_t> > host_info;
+    std::vector<std::vector<int32_t>> host_info;
 
     /// Number of samples padded on the front of the input array
     size_t padded_samples;

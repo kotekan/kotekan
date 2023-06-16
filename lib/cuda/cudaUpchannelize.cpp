@@ -62,7 +62,7 @@ cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_nam
     info_len = (size_t)(threads_x * threads_y * blocks_x * sizeof(int32_t));
 
     host_info.resize(_gpu_buffer_depth);
-    for (int i=0; i<_gpu_buffer_depth; i++)
+    for (int i = 0; i < _gpu_buffer_depth; i++)
         host_info[i].resize(info_len / sizeof(int32_t));
 
     set_command_type(gpuCommandType::KERNEL);
@@ -101,17 +101,17 @@ struct CuDeviceArray {
 };
 typedef CuDeviceArray<int32_t, 1> kernel_arg;
 
-cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) {
+cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate,
+                                      const std::vector<cudaEvent_t>& pre_events) {
     (void)pre_events;
     pre_execute(pipestate.gpu_frame_id);
 
-    void* voltage_input_memory =
-        device.get_gpu_memory_array(_gpu_mem_input_voltage, pipestate.gpu_frame_id, voltage_input_len);
-    void* voltage_output_memory =
-        device.get_gpu_memory_array(_gpu_mem_output_voltage, pipestate.gpu_frame_id, voltage_output_len);
+    void* voltage_input_memory = device.get_gpu_memory_array(
+        _gpu_mem_input_voltage, pipestate.gpu_frame_id, voltage_input_len);
+    void* voltage_output_memory = device.get_gpu_memory_array(
+        _gpu_mem_output_voltage, pipestate.gpu_frame_id, voltage_output_len);
     float16_t* gain_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_gain, gain_len);
-    int32_t* info_memory =
-        (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
+    int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
 
     record_start_event(pipestate.gpu_frame_id);
 
@@ -154,12 +154,14 @@ cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate, const std::v
                                       shared_mem_bytes));
 
     DEBUG("Running CUDA Upchannelizer on GPU frame {:d}", pipestate.gpu_frame_id);
-    CHECK_CU_ERROR(cuLaunchKernel(runtime_kernels[kernel_name], blocks_x, blocks_y, 1, threads_x, threads_y,
-                                  1, shared_mem_bytes, device.getStream(cuda_stream_id), parameters, NULL));
+    CHECK_CU_ERROR(cuLaunchKernel(runtime_kernels[kernel_name], blocks_x, blocks_y, 1, threads_x,
+                                  threads_y, 1, shared_mem_bytes, device.getStream(cuda_stream_id),
+                                  parameters, NULL));
 
     // Copy "info" result code back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory, info_len,
-                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory,
+                                     info_len, cudaMemcpyDeviceToHost,
+                                     device.getStream(cuda_stream_id)));
 
     return record_end_event(pipestate.gpu_frame_id);
 }

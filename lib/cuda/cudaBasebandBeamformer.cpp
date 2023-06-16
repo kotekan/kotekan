@@ -77,18 +77,18 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
     (void)pre_events;
     pre_execute(pipestate.gpu_frame_id);
 
-    void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, pipestate.gpu_frame_id, voltage_len);
+    void* voltage_memory =
+        device.get_gpu_memory_array(_gpu_mem_voltage, pipestate.gpu_frame_id, voltage_len);
     int8_t* phase_memory =
         (int8_t*)device.get_gpu_memory_array(_gpu_mem_phase, pipestate.gpu_frame_id, phase_len);
-    int32_t* shift_memory =
-        (int32_t*)device.get_gpu_memory_array(_gpu_mem_output_scaling, pipestate.gpu_frame_id, shift_len);
+    int32_t* shift_memory = (int32_t*)device.get_gpu_memory_array(
+        _gpu_mem_output_scaling, pipestate.gpu_frame_id, shift_len);
     void* output_memory =
         device.get_gpu_memory_array(_gpu_mem_formed_beams, pipestate.gpu_frame_id, output_len);
-    int32_t* info_memory =
-        (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
+    int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
 
     host_info.resize(_gpu_buffer_depth);
-    for (int i=0; i<_gpu_buffer_depth; i++)
+    for (int i = 0; i < _gpu_buffer_depth; i++)
         host_info[i].resize(info_len / sizeof(int32_t));
 
     record_start_event(pipestate.gpu_frame_id);
@@ -137,12 +137,14 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
                                       shared_mem_bytes));
 
     DEBUG("Running CUDA Baseband Beamformer on GPU frame {:d}", pipestate.gpu_frame_id);
-    CHECK_CU_ERROR(cuLaunchKernel(runtime_kernels[kernel_name], blocks_x, blocks_y, 1, threads_x, threads_y,
-                                  1, shared_mem_bytes, device.getStream(cuda_stream_id), parameters, NULL));
+    CHECK_CU_ERROR(cuLaunchKernel(runtime_kernels[kernel_name], blocks_x, blocks_y, 1, threads_x,
+                                  threads_y, 1, shared_mem_bytes, device.getStream(cuda_stream_id),
+                                  parameters, NULL));
 
     // Copy "info" result code back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory, info_len,
-                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory,
+                                     info_len, cudaMemcpyDeviceToHost,
+                                     device.getStream(cuda_stream_id)));
 
     return record_end_event(pipestate.gpu_frame_id);
 }
@@ -151,7 +153,8 @@ void cudaBasebandBeamformer::finalize_frame(int gpu_frame_id) {
     cudaCommand::finalize_frame(gpu_frame_id);
     for (size_t i = 0; i < host_info[gpu_frame_id].size(); i++)
         if (host_info[gpu_frame_id][i] != 0)
-            ERROR("cudaBasebandBeamformer returned 'info' value {:d} at index {:d} (zero indicates no"
-                  "error)",
-                  host_info[gpu_frame_id][i], i);
+            ERROR(
+                "cudaBasebandBeamformer returned 'info' value {:d} at index {:d} (zero indicates no"
+                "error)",
+                host_info[gpu_frame_id][i], i);
 }

@@ -31,7 +31,8 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
 
 cudaCorrelator::~cudaCorrelator() {}
 
-cudaEvent_t cudaCorrelator::execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) {
+cudaEvent_t cudaCorrelator::execute(cudaPipelineState& pipestate,
+                                    const std::vector<cudaEvent_t>& pre_events) {
     (void)pre_events;
     pre_execute(pipestate.gpu_frame_id);
 
@@ -42,8 +43,8 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState& pipestate, const std::vec
     uint32_t num_subintegrations = _samples_per_data_set / _sub_integration_ntime;
     uint32_t output_array_len =
         num_subintegrations * _num_local_freq * _num_elements * _num_elements * 2 * sizeof(int32_t);
-    void* output_memory =
-        device.get_gpu_memory_array(_gpu_mem_correlation_triangle, pipestate.gpu_frame_id, output_array_len);
+    void* output_memory = device.get_gpu_memory_array(_gpu_mem_correlation_triangle,
+                                                      pipestate.gpu_frame_id, output_array_len);
 
     record_start_event(pipestate.gpu_frame_id);
 

@@ -81,12 +81,14 @@ cudaEvent_t cudaOutputData::execute_base(cudaPipelineState& pipestate,
     return rtn;
 }
 
-cudaEvent_t cudaOutputData::execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) {
+cudaEvent_t cudaOutputData::execute(cudaPipelineState& pipestate,
+                                    const std::vector<cudaEvent_t>& pre_events) {
     pre_execute(pipestate.gpu_frame_id);
 
     size_t output_len = output_buffer->frame_size;
 
-    void* gpu_output_frame = device.get_gpu_memory_array(_gpu_mem, pipestate.gpu_frame_id, output_len);
+    void* gpu_output_frame =
+        device.get_gpu_memory_array(_gpu_mem, pipestate.gpu_frame_id, output_len);
     void* host_output_frame = (void*)output_buffer->frames[output_buffer_execute_id];
 
     device.async_copy_gpu_to_host(host_output_frame, gpu_output_frame, output_len, cuda_stream_id,

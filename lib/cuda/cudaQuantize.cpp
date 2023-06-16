@@ -62,18 +62,20 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
 
 cudaQuantize::~cudaQuantize() {}
 
-cudaEvent_t cudaQuantize::execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) {
+cudaEvent_t cudaQuantize::execute(cudaPipelineState& pipestate,
+                                  const std::vector<cudaEvent_t>& pre_events) {
     (void)pre_events;
     pre_execute(pipestate.gpu_frame_id);
 
     size_t input_frame_len = (size_t)_num_chunks * CHUNK_SIZE * sizeof(float16_t);
-    void* input_memory = device.get_gpu_memory_array(_gpu_mem_input, pipestate.gpu_frame_id, input_frame_len);
+    void* input_memory =
+        device.get_gpu_memory_array(_gpu_mem_input, pipestate.gpu_frame_id, input_frame_len);
     INFO("Input frame length: {:d} x {:d} x 2 = {:d}", _num_chunks, CHUNK_SIZE, input_frame_len);
     //  divide by 2 because of packed int4 outputs
     size_t output_frame_len = (size_t)_num_chunks * CHUNK_SIZE / 2;
     INFO("Output frame length: {:d} x {:d} / 2 = {:d}", _num_chunks, CHUNK_SIZE, output_frame_len);
-    int32_t* output_memory =
-        (int32_t*)device.get_gpu_memory_array(_gpu_mem_output, pipestate.gpu_frame_id, output_frame_len);
+    int32_t* output_memory = (int32_t*)device.get_gpu_memory_array(
+        _gpu_mem_output, pipestate.gpu_frame_id, output_frame_len);
 
     size_t meanstd_frame_len = (size_t)_num_chunks * 2 * sizeof(float16_t);
     void* meanstd_memory =

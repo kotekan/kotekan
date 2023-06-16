@@ -21,7 +21,7 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
     // so that we get 51 outputs (otherwise we would get 50), so that the rechunker produces
     // an output frame of 256 outputs after every 5 input frames.
     padded_samples = 40;
-    //padded_samples = 0;
+    // padded_samples = 0;
 
     _num_dishes = config.get<int>(unique_name, "num_dishes");
     _dish_grid_size = config.get<int>(unique_name, "dish_grid_size");
@@ -99,7 +99,7 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
     length_len = sizeof(int32_t);
 
     host_info.resize(_gpu_buffer_depth);
-    for (int i=0; i<_gpu_buffer_depth; i++)
+    for (int i = 0; i < _gpu_buffer_depth; i++)
         host_info[i].resize(info_len / sizeof(int32_t));
 
     host_length.resize(_gpu_buffer_depth);
@@ -133,13 +133,16 @@ struct CuDeviceArray {
 };
 typedef CuDeviceArray<int32_t, 1> kernel_arg;
 
-cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) {
+cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate,
+                                       const std::vector<cudaEvent_t>& pre_events) {
     (void)pre_events;
     pre_execute(pipestate.gpu_frame_id);
 
     void* dishlayout_memory = device.get_gpu_memory(_gpu_mem_dishlayout, dishlayout_len);
-    void* phase_memory = device.get_gpu_memory_array(_gpu_mem_phase, pipestate.gpu_frame_id, phase_len);
-    void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, pipestate.gpu_frame_id, voltage_len);
+    void* phase_memory =
+        device.get_gpu_memory_array(_gpu_mem_phase, pipestate.gpu_frame_id, phase_len);
+    void* voltage_memory =
+        device.get_gpu_memory_array(_gpu_mem_voltage, pipestate.gpu_frame_id, voltage_len);
     void* beamgrid_memory =
         device.get_gpu_memory_array(_gpu_mem_beamgrid, pipestate.gpu_frame_id, beamgrid_len);
     int32_t* length_memory = (int32_t*)device.get_gpu_memory(gpu_mem_length, length_len);
@@ -157,29 +160,40 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate, const std::
     int32_t output_samples = (process / cuda_time_downsampling) * cuda_time_downsampling;
     host_length[pipestate.gpu_frame_id] = process;
     int32_t padding_next = valid - output_samples;
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(length_memory, host_length.data() + pipestate.gpu_frame_id, length_len, cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(length_memory, host_length.data() + pipestate.gpu_frame_id,
+                                     length_len, cudaMemcpyHostToDevice,
+                                     device.getStream(cuda_stream_id)));
 
     // Compute the offset of the voltage array to pass to the GPU kernel.
-    void* voltage_input = (char*)voltage_memory + (size_t)(_samples_padding - padded_samples) * voltage_len_per_sample;
+    void* voltage_input = (char*)voltage_memory
+                          + (size_t)(_samples_padding - padded_samples) * voltage_len_per_sample;
     // Compute the length of the voltage array to pass to the GPU kernel.
     size_t voltage_input_len = (size_t)process * voltage_len_per_sample;
 
-    DEBUG("CUDA FRB Beamformer, GPU frame {:d}: {:d} new samples + {:d} left over = {:d}, processing {:d}, producing {:d} output samples = {:d} input samples, leaving {:d} for next time",
-          pipestate.gpu_frame_id, _samples_per_data_set, padded_samples, valid, process, output_frames, output_samples, padding_next);
+    DEBUG(
+        "CUDA FRB Beamformer, GPU frame {:d}: {:d} new samples + {:d} left over = {:d}, processing "
+        "{:d}, producing {:d} output samples = {:d} input samples, leaving {:d} for next time",
+        pipestate.gpu_frame_id, _samples_per_data_set, padded_samples, valid, process,
+        output_frames, output_samples, padding_next);
 
     // Padding for next frame...
     padded_samples = padding_next;
     // Copy these padding samples into place!!
     void* voltage_pad = (char*)voltage_input + (size_t)output_samples * voltage_len_per_sample;
-    void* voltage_next = device.get_gpu_memory_array(_gpu_mem_voltage, (pipestate.gpu_frame_id + 1) % _gpu_buffer_depth, voltage_len);
-    voltage_next = (char*)voltage_next + (size_t)(_samples_padding - padded_samples) * voltage_len_per_sample;
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(voltage_next, voltage_pad, padded_samples * voltage_len_per_sample, cudaMemcpyDeviceToDevice, device.getStream(cuda_stream_id)));
+    void* voltage_next = device.get_gpu_memory_array(
+        _gpu_mem_voltage, (pipestate.gpu_frame_id + 1) % _gpu_buffer_depth, voltage_len);
+    voltage_next =
+        (char*)voltage_next + (size_t)(_samples_padding - padded_samples) * voltage_len_per_sample;
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(voltage_next, voltage_pad,
+                                     padded_samples * voltage_len_per_sample,
+                                     cudaMemcpyDeviceToDevice, device.getStream(cuda_stream_id)));
 
     // Set the number of output samples produced!
     pipestate.set_int("frb_bf_samples", output_frames);
     int32_t beam_p = _dish_grid_size * 2;
     int32_t beam_q = _dish_grid_size * 2;
-    pipestate.set_int("frb_bf_bytes_per_freq", (size_t)output_frames * beam_p * beam_q * sizeof_float16_t);
+    pipestate.set_int("frb_bf_bytes_per_freq",
+                      (size_t)output_frames * beam_p * beam_q * sizeof_float16_t);
 
     // input samples, dishlayout (S), phase (W), voltage (E), beamgrid (I), info
     const char* exc = "exception";
@@ -235,8 +249,9 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate, const std::
                                   parameters, NULL));
 
     // Copy "info" result code back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory, info_len,
-                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory,
+                                     info_len, cudaMemcpyDeviceToHost,
+                                     device.getStream(cuda_stream_id)));
 
     return record_end_event(pipestate.gpu_frame_id);
 }

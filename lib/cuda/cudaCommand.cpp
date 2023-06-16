@@ -10,8 +10,7 @@ using kotekan::Config;
 using std::string;
 using std::to_string;
 
-cudaPipelineState::cudaPipelineState(int _gpu_frame_id) :
-    gpu_frame_id(_gpu_frame_id) {}
+cudaPipelineState::cudaPipelineState(int _gpu_frame_id) : gpu_frame_id(_gpu_frame_id) {}
 
 cudaPipelineState::~cudaPipelineState() {}
 
@@ -21,7 +20,7 @@ void cudaPipelineState::set_flag(const std::string& key, bool val) {
 
 bool cudaPipelineState::flag_exists(const std::string& key) const {
     // C++20
-    //return flags.contains(key);
+    // return flags.contains(key);
     return (flags.find(key) != flags.end());
 }
 
@@ -99,8 +98,7 @@ cudaCommand::~cudaCommand() {
 
 cudaEvent_t cudaCommand::execute_base(cudaPipelineState& pipestate,
                                       const std::vector<cudaEvent_t>& pre_events) {
-    if (_required_flag.size() &&
-        !pipestate.flag_is_set(_required_flag)) {
+    if (_required_flag.size() && !pipestate.flag_is_set(_required_flag)) {
         DEBUG("Required flag \"{:s}\" is not set; skipping stage", _required_flag);
         return nullptr;
     }
