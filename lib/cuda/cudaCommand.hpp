@@ -25,6 +25,23 @@
 #include <string>
 #include <vector>
 
+class cudaPipelineState : public kotekan::kotekanLogging {
+public:
+    cudaPipelineState(int _gpu_frame_id);
+    virtual ~cudaPipelineState();
+    void set_flag(const std::string&, bool val);
+    bool flag_exists(const std::string&) const;
+    bool flag_is_set(const std::string&) const;
+    void set_int(const std::string&, int64_t val);
+    int64_t get_int(const std::string&) const;
+
+    int gpu_frame_id;
+
+protected:
+    std::map<std::string, bool> flags;
+    std::map<std::string, int64_t> intmap;
+};
+
 /**
  * @class cudaCommand
  * @brief Base class for defining CUDA commands to execute on GPUs
@@ -70,12 +87,23 @@ public:
                            std::vector<std::string>& opts);
 
     /**
+     * @brief Execute a kernel, with more control over the *cudaPipelineState* object.
+     *        Most subclassers should implement *execute*.
+     * @param pipestate  The pipeline state object.
+     * @param pre_events Array of the last events from each cuda stream, indexed by stream
+     *                   number.
+     */
+    virtual cudaEvent_t execute_base(cudaPipelineState& pipestate,
+                                     const std::vector<cudaEvent_t>& pre_events);
+
+    /**
      * @brief Execute a kernel, copy, etc.
-     * @param gpu_frame_id  The bufferID associated with the GPU commands.
+     * @param pipestate     Pipeline state for this GPU frame.
      * @param pre_events    Array of the last events from each cuda stream, indexed by stream
      *                      number.
      **/
-    virtual cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) = 0;
+    virtual cudaEvent_t execute(cudaPipelineState& pipestate,
+                                const std::vector<cudaEvent_t>& pre_events) = 0;
 
     /** Releases the memory of the event chain arrays per buffer_id
      * @param gpu_frame_id    The bufferID to release all the memory references for.
@@ -103,6 +131,9 @@ protected:
 
     /// The ID of the cuda stream to run operations on
     int32_t cuda_stream_id;
+
+    // cudaPipelineState flag required for this command to run, set from config "required_flag"
+    std::string _required_flag;
 
     // Map containing the runtime kernels built with nvrtc from the kernel file (if needed)
     std::map<std::string, CUfunction> runtime_kernels;

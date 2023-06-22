@@ -9,6 +9,8 @@
 #include "oneHotMetadata.hpp"  // for get_onehot_frame_counter, metadata_is_onehot
 #include "visUtil.hpp"         // for frameID, modulo
 
+#include "fmt.hpp"
+
 #include <cstdint>    // for uint32_t
 #include <exception>  // for exception
 #include <functional> // for bind
@@ -73,6 +75,29 @@ printSparse<A_Type>::printSparse(kotekan::Config& config, const std::string& uni
 template<typename A_Type>
 printSparse<A_Type>::~printSparse() {}
 
+static std::string format_nice_string(uint8_t x) {
+    return fmt::format("{} = 0x{:x}", x, x);
+}
+static std::string format_nice_string(uint32_t x) {
+    return fmt::format("{} = 0x{:x}", x, x);
+}
+#if KOTEKAN_FLOAT16
+static std::string format_nice_string(float16_t x) {
+    return fmt::format("{}", (float)x);
+}
+#endif
+static std::string format_python_string(uint8_t x) {
+    return fmt::format("{}", x);
+}
+static std::string format_python_string(uint32_t x) {
+    return fmt::format("{}", x);
+}
+#if KOTEKAN_FLOAT16
+static std::string format_python_string(float16_t x) {
+    return fmt::format("{}", (float)x);
+}
+#endif
+
 template<typename A_Type>
 void printSparse<A_Type>::main_thread() {
     frameID frame_id(buf);
@@ -112,14 +137,14 @@ void printSparse<A_Type>::main_thread() {
                     first = false;
                     j /= n;
                 }
-                INFO("printSparse: {:s}[{:d}] element {:s} ({:d} = 0x{:x}) has value {} = 0x{:x}",
-                     buf->buffer_name, frame_id, istring, i, i, frame[i], frame[i]);
+                INFO("printSparse: {:s}[{:d}] element {:s} ({:d} = 0x{:x}) has value {:s}",
+                     buf->buffer_name, frame_id, istring, i, i, format_nice_string(frame[i]));
                 if (nset == 1)
-                    INFO("PY sparse[\"{:s}\"][{:d}] = (({:s}), 0x{:x})", buf->buffer_name,
-                         frame_counter, istring, frame[i]);
+                    INFO("PY sparse[\"{:s}\"][{:d}] = (({:s}), {:s})", buf->buffer_name,
+                         frame_counter, istring, format_python_string(frame[i]));
             } else {
-                INFO("printSparse: {:s}[{:d}] element {:d} = 0x{:x} has value {} = 0x{:x}",
-                     buf->buffer_name, frame_id, i, i, frame[i], frame[i]);
+                INFO("printSparse: {:s}[{:d}] element {:d} = 0x{:x} has value {:s}",
+                     buf->buffer_name, frame_id, i, i, format_nice_string(frame[i]));
             }
         }
 
