@@ -74,7 +74,7 @@ cudaEvent_t cudaOutputData::execute(int gpu_frame_id, const std::vector<cudaEven
 
     size_t output_len = output_buffer->frame_size;
 
-    void* gpu_output_frame = device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, output_len);
+    void* gpu_output_frame = device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, output_len * 2);
     void* host_output_frame = (void*)output_buffer->frames[output_buffer_execute_id];
 
     device.async_copy_gpu_to_host(host_output_frame, gpu_output_frame, output_len, cuda_stream_id,
@@ -88,8 +88,8 @@ cudaEvent_t cudaOutputData::execute(int gpu_frame_id, const std::vector<cudaEven
 void cudaOutputData::finalize_frame(int frame_id) {
     cudaCommand::finalize_frame(frame_id);
 
-    DEBUG("Passing metadata from input {:s}[{:d}] to {:s}[{:d}]", in_buffer->buffer_name,
-          in_buffer_id, output_buffer->buffer_name, output_buffer_id);
+    // DEBUG("Passing metadata from input {:s}[{:d}] to {:s}[{:d}]", in_buffer->buffer_name,
+    //       in_buffer_id, output_buffer->buffer_name, output_buffer_id);
     pass_metadata(in_buffer, in_buffer_id, output_buffer, output_buffer_id);
 
     mark_frame_empty(in_buffer, unique_name.c_str(), in_buffer_id);

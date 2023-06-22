@@ -24,82 +24,84 @@ log_level: debug
 buffer_depth: 6
 
 # Default core assignments
-cpu_affinity: [16,17,18,19,28,29,30,31]
+cpu_affinity: [0,1,2,3,8,9,10,11,12,13,14,15]
 
 packets_per_frame: 32768 * 4
 # Set this to the size of the packet plus Ethernet/IP/UDP headers
 packet_size: 8224
 max_rx_pkt_len: 9000
 
+# Global buffer options
 use_hugepages: true
+zero_new_frames: false
 
 main_pool:
   kotekan_metadata_pool: chimeMetadata
   num_metadata_objects: 8 * buffer_depth
-  numa_node: 1
+  numa_node: 0
 
 # Buffers
 network_capture_buf_0:
   kotekan_buffer: standard
-  num_frames: buffer_depth
+  num_frames: 425
   frame_size: packets_per_frame * packet_size
   metadata_pool: main_pool
-  numa_node: 1
+  numa_node: 0
 network_capture_buf_1:
   kotekan_buffer: standard
-  num_frames: buffer_depth
+  num_frames: 425
   frame_size: packets_per_frame * packet_size
   metadata_pool: main_pool
-  numa_node: 1
+  numa_node: 0
 network_capture_buf_2:
-  kotekan_buffer: standard
+  #kotekan_buffer: standard
   num_frames: buffer_depth
   frame_size: packets_per_frame * packet_size
   metadata_pool: main_pool
-  numa_node: 1
+  numa_node: 0
 network_capture_buf_3:
-  kotekan_buffer: standard
+  #kotekan_buffer: standard
   num_frames: buffer_depth
   frame_size: packets_per_frame * packet_size
   metadata_pool: main_pool
-  numa_node: 1
+  numa_node: 0
 
 output_0:
   kotekan_buffer: standard
   num_frames: buffer_depth
   frame_size: packets_per_frame * packet_size / 2
   metadata_pool: main_pool
-  numa_node: 1
+  numa_node: 0
 output_1:
   kotekan_buffer: standard
   num_frames: buffer_depth
   frame_size: packets_per_frame * packet_size / 2
   metadata_pool: main_pool
-  numa_node: 1
+  numa_node: 0
 split_buf_0:
   kotekan_buffer: standard
   num_frames: buffer_depth
   frame_size: packets_per_frame * packet_size / 2
   metadata_pool: main_pool
-  numa_node: 1
+  numa_node: 0
 split_buf_1:
   kotekan_buffer: standard
   num_frames: buffer_depth
   frame_size: packets_per_frame * packet_size / 2
   metadata_pool: main_pool
-  numa_node: 1
+  numa_node: 0
 split_buf_2:
   kotekan_buffer: standard
   num_frames: buffer_depth
   frame_size: packets_per_frame * packet_size / 2
   metadata_pool: main_pool
-  numa_node: 1
+  numa_node: 0
 split_buf_3:
   kotekan_buffer: standard
   num_frames: buffer_depth
   frame_size: packets_per_frame * packet_size / 2
   metadata_pool: main_pool
-  numa_node: 1
+  numa_node: 0
 
 
 # See the dpdkCore class docs in dpdkCore.hpp for details
@@ -107,8 +109,8 @@ split_buf_3:
 dpdk:
   kotekan_stage: dpdkCore
   # Format is index = lcore (logical core), value = cpu core
-  lcore_cpu_map: [25,26,27]
-  main_lcore_cpu: 24
+  lcore_cpu_map: [5,6,7]
+  main_lcore_cpu: 4
   num_mem_channels: 4
   # Format is index = lcore, value = array of port IDs
   # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
@@ -133,14 +135,14 @@ dpdk:
 
 # Force an extra copy!
 merge_input_0:
-    kotekan_stage: bufferMerge
+    #kotekan_stage: bufferMerge
     force_copy: true
     in_bufs:
         - network_capture_buf_0
     out_buf: network_capture_buf_2
 
 merge_input_1:
-    kotekan_stage: bufferMerge
+    #kotekan_stage: bufferMerge
     force_copy: true
     in_bufs:
         - network_capture_buf_1
@@ -149,7 +151,7 @@ merge_input_1:
 gpu:
     profiling: true
     kernel_path: "../../lib/cuda/kernels/"
-    log_profiling: true
+    log_profiling: false
     commands: &command_list
         - name: cudaInputData
           in_buf: host_voltage
@@ -171,13 +173,13 @@ gpu:
     buffer_depth: 3
     gpu_0:
         kotekan_stage: cudaProcess
-        gpu_id: 1
+        gpu_id: 0
         commands: *command_list
         in_buffers:
-            host_voltage: network_capture_buf_2
-            host_voltage1: network_capture_buf_3
-            host_voltage2: network_capture_buf_0
-            host_voltage3: network_capture_buf_1
+            host_voltage: network_capture_buf_0
+            host_voltage1: network_capture_buf_1
+            #host_voltage2: network_capture_buf_2
+            #host_voltage3: network_capture_buf_3
         out_buffers:
             host_correlation: output_0
             host_correlation1: output_1
@@ -185,7 +187,6 @@ gpu:
             host_mem_1: split_buf_1
             host_mem_2: split_buf_2
             host_mem_3: split_buf_3
-
 
 
 hexDump:
@@ -231,7 +232,6 @@ buffer_send_0:
     reconnect_time: 20
     log_level: warn
     buf: split_buf_0
-    #cpu_affinity: [16,17,18,19]
 
 buffer_send_0_1:
     kotekan_stage: bufferSend
@@ -248,7 +248,6 @@ buffer_send_1:
     reconnect_time: 20
     log_level: warn
     buf: split_buf_2
-    #cpu_affinity: [16,17,18,19]
 
 buffer_send_1_1:
     kotekan_stage: bufferSend

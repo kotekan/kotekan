@@ -84,7 +84,7 @@ void bufferSend::main_thread() {
         if (drop_frames && (float)num_full_frames / (float)buf->num_frames > drop_threshold) {
             // If the number of full frames is high, then we drop some frames,
             // because we likely aren't sending fast enough to up with the data rate.
-            INFO("Number of full frames in buffer {:s} is {:d} (total frames: {:d}), dropping "
+            WARN("Number of full frames in buffer {:s} is {:d} (total frames: {:d}), dropping "
                  "frame_id {:d}",
                  buf->buffer_name, num_full_frames, buf->num_frames, frame_id);
             dropped_frame_counter.inc();
@@ -141,7 +141,7 @@ void bufferSend::main_thread() {
             DEBUG2("Sending frame with {:d} bytes", header.frame_size);
             n_sent = 0;
             while ((n = send(socket_fd, &frame[n_sent], (int32_t)header.frame_size - n_sent,
-                             MSG_NOSIGNAL))
+                             MSG_NOSIGNAL | MSG_ZEROCOPY))
                    > 0) {
                 n_sent += n;
                 // DEBUG("Total sent: {:d}", n_sent);
@@ -212,12 +212,16 @@ void bufferSend::connect_to_server() {
 
         // Prevent SIGPIPE on send failure.
         // This is used for MacOS, since linux doesn't have SO_NOSIGPIPE
-#ifdef SO_NOSIGPIPE
         int set = 1;
+#ifdef SO_NOSIGPIPE
+        //int set = 1;
         if (setsockopt(socket_fd, SOL_SOCKET, SO_NOSIGPIPE, (void*)&set, sizeof(int)) < 0) {
             ERROR("bufferSend: setsockopt() NOSIGPIPE ");
         }
 #endif
+        if (setsockopt(socket_fd, SOL_SOCKET, SO_ZEROCOPY, &set, sizeof(set))) {
+            ERROR("bufferSend: setsockopt() SO_ZEROCOPY");
+        }
 
         // Set send timeout.
         struct timeval tv_timeout;

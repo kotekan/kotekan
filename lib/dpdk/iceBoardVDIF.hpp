@@ -61,6 +61,8 @@ public:
 
     virtual int handle_packet(struct rte_mbuf* mbuf) override;
 
+    virtual int worker_copy_packet(struct rte_mbuf* mbuf, uint32_t worker_id) override{};
+
 protected:
     bool advance_vdif_frame(uint64_t new_seq, bool first_time = false);
 

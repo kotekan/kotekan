@@ -70,6 +70,8 @@ public:
     /// Same abstract function as in @c dpdkRXhandler
     virtual int handle_packet(struct rte_mbuf* mbuf) override = 0;
 
+    virtual int worker_copy_packet(struct rte_mbuf* mbuf, uint32_t worker_id) override = 0;
+
     /// Update common stats, this should be called by subclasses implementing this function as well
     virtual void update_stats() override;
 

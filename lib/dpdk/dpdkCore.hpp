@@ -70,6 +70,8 @@ public:
      */
     virtual int handle_packet(struct rte_mbuf* mbuf) = 0;
 
+    virtual int worker_copy_packet(struct rte_mbuf* mbuf, uint32_t worker_id) = 0;
+
     /**
      * @brief Called every 1 second to update stats
      *
@@ -165,6 +167,9 @@ private:
      */
     static int lcore_rx(void* args);
 
+    static int lcore_rx_distributor(void* args);
+    static int lcore_worker(void* args);
+
     /**
      * @brief Starts the DPDK framework (ELA)
      *
@@ -213,6 +218,10 @@ private:
     /// The size of the Transmit ring
     uint32_t tx_ring_size;
 
+    uint32_t num_workers;
+
+    std::vector<int> lcore_cpu_map;
+
     /// Just a list of ports with the length stored with it.
     struct portList {
         uint32_t* ports;
@@ -230,6 +239,10 @@ private:
 
     /// One of these exists per system port
     dpdkRXhandler** handlers;
+
+    std::vector<rte_ring*> worker_rings;
+
+    uint32_t round_robbin_length;
 };
 
 

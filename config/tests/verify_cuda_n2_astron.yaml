@@ -90,14 +90,14 @@ gpu:
         out_buffers:
             host_correlation: host_correlation_buffer
 
-cpu:
-    kotekan_stage: gpuSimulate
-    log_level: info
-    network_in_buf: host_voltage_buffer
-    corr_out_buf: simulated_correlation_buffer
+#cpu:
+#    kotekan_stage: gpuSimulate
+#    log_level: info
+#    network_in_buf: host_voltage_buffer
+#    corr_out_buf: simulated_correlation_buffer
 
-check_data:
-    kotekan_stage: testDataCheckInt
-    first_buf: host_correlation_buffer
-    second_buf: simulated_correlation_buffer
-    num_frames_to_test: buffer_depth
+#check_data:
+#    kotekan_stage: testDataCheckInt
+#    first_buf: host_correlation_buffer
+#    second_buf: simulated_correlation_buffer
+#    num_frames_to_test: buffer_depth

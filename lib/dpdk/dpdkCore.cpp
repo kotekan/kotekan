@@ -7,6 +7,7 @@
 #include "iceBoardShuffle.hpp"  // for iceBoardShuffle, iceBoardShuffle::shuffle_size
 #include "iceBoardStandard.hpp" // for iceBoardStandard
 #include "iceBoardVDIF.hpp"     // for iceBoardVDIF
+#include "rfsocHandler.hpp"
 
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for json, basic_json<>::object_t, basic_json, basic_json<...
@@ -22,18 +23,20 @@
 #include <rte_config.h>            // for RTE_PKTMBUF_HEADROOM
 #include <rte_eal.h>               // for rte_eal_init
 #include <rte_errno.h>             // for rte_strerror, per_lcore__rte_errno, rte_errno
-#include <rte_ether.h>             // for ether_addr
-#include <rte_launch.h>            // for rte_eal_mp_remote_launch, rte_eal_mp_wait_lcore, SKIP...
-#include <rte_lcore.h>             // for rte_lcore_count, rte_lcore_id
-#include <rte_mbuf.h>              // for rte_mbuf, rte_pktmbuf_free, rte_pktmbuf_init, rte_pkt...
-#include <rte_mempool.h>           // for rte_mempool, rte_mempool_create, rte_mempool_free
-#include <stdexcept>               // for runtime_error
-#include <stdio.h>                 // for fprintf, size_t, stderr
-#include <stdlib.h>                // for malloc, free
-#include <string.h>                // for strncpy, memset
-#include <sys/types.h>             // for uint
-#include <unistd.h>                // for sleep
-#include <vector>                  // for vector
+#include <rte_ethdev.h>
+#include <rte_ether.h>   // for ether_addr
+#include <rte_launch.h>  // for rte_eal_mp_remote_launch, rte_eal_mp_wait_lcore, SKIP...
+#include <rte_lcore.h>   // for rte_lcore_count, rte_lcore_id
+#include <rte_mbuf.h>    // for rte_mbuf, rte_pktmbuf_free, rte_pktmbuf_init, rte_pkt...
+#include <rte_mempool.h> // for rte_mempool, rte_mempool_create, rte_mempool_free
+#include <rte_ring.h>
+#include <stdexcept>   // for runtime_error
+#include <stdio.h>     // for fprintf, size_t, stderr
+#include <stdlib.h>    // for malloc, free
+#include <string.h>    // for strncpy, memset
+#include <sys/types.h> // for uint
+#include <unistd.h>    // for sleep
+#include <vector>      // for vector
 
 using nlohmann::json;
 using std::string;
@@ -63,11 +66,13 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
 
     num_mem_channels = config.get_default<uint32_t>(unique_name, "num_mem_channels", 4);
     init_mem_alloc = config.get_default<std::string>(unique_name, "init_mem_alloc", "256");
+    num_workers = config.get_default<uint32_t>(unique_name, "num_workers", 0);
+    round_robbin_length = config.get_default<uint32_t>(unique_name, "round_robbin_length", 64);
 
     // Setup the lcore mappings
     // Basically this is mapping the DPDK EAL framework way of assigning threads
     // into the kotekan framework.
-    vector<int> lcore_cpu_map = config.get<std::vector<int>>(unique_name, "lcore_cpu_map");
+    lcore_cpu_map = config.get<std::vector<int>>(unique_name, "lcore_cpu_map");
     uint32_t main_lcore_cpu = config.get<uint32_t>(unique_name, "main_lcore_cpu");
 
     num_lcores = lcore_cpu_map.size();
@@ -88,8 +93,9 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     port_conf.rxmode.max_lro_pkt_size = max_rx_pkt_len;
     port_conf.rxmode.mtu = max_rx_pkt_len;
     port_conf.rxmode.offloads =
-        DEV_RX_OFFLOAD_KEEP_CRC | DEV_RX_OFFLOAD_IPV4_CKSUM | DEV_RX_OFFLOAD_UDP_CKSUM;
-    port_conf.rxmode.split_hdr_size = 0;
+        RTE_ETH_RX_OFFLOAD_KEEP_CRC | RTE_ETH_RX_OFFLOAD_IPV4_CKSUM | RTE_ETH_RX_OFFLOAD_UDP_CKSUM;
+    // port_conf.rxmode.split_hdr_size = 0;
+    port_conf.link_speeds = RTE_ETH_LINK_SPEED_100G | RTE_ETH_LINK_SPEED_FIXED;
 #else
     port_conf.rxmode.max_rx_pkt_len = max_rx_pkt_len;
     port_conf.rxmode.jumbo_frame =
@@ -125,6 +131,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
 
     create_handlers(buffer_container);
 
+
     if (num_ports > num_system_ports) {
         throw std::runtime_error(
             fmt::format(fmt("Trying to create more ports: {:d}, than DPDK found: {:d}"), num_ports,
@@ -149,8 +156,12 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
                     "lcore_id '" + to_string(lcore_id)
                     + "' failed to map to numa node, is this a valid CPU core id?");
             }
-            if (numa_node_of_cpu(lcore_id) == node_id) {
-                num_ports_on_node += lcore_port_list[j].num_ports;
+            if (num_workers == 0) {
+                if (numa_node_of_cpu(lcore_id) == node_id) {
+                    num_ports_on_node += lcore_port_list[j].num_ports;
+                }
+            } else {
+                num_ports_on_node = 1;
             }
         }
         DEBUG("Number of ports on numa node {:d}: {:d}", node_id, num_ports_on_node);
@@ -166,6 +177,14 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
             }
         }
         mbuf_pools.push_back(pool);
+    }
+
+    for (uint32_t worker_id = 0; worker_id < num_workers; ++worker_id) {
+        rte_ring* rx_worker_ring =
+            rte_ring_create(("Worker_" + std::to_string(worker_id)).c_str(), 512, 0, 0);
+        if (rx_worker_ring == nullptr)
+            throw std::runtime_error("Cannot create worker ring");
+        worker_rings.push_back(rx_worker_ring);
     }
 
     // Init ports referenced in the lcore port mapping
@@ -189,12 +208,13 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
     // so the normal factory model doesn't work here.
     vector<json> handlers_block = config.get<std::vector<json>>(unique_name, "handlers");
     uint32_t port = 0;
-    if (handlers_block.size() != num_system_ports) {
-        throw std::runtime_error(fmt::format(fmt("The number of DPDK handlers ({:d}) must be equal "
-                                                 "to the number of system ports ({:d})"),
-                                             handlers_block.size(), num_system_ports));
-    }
-    handlers = (dpdkRXhandler**)malloc(num_system_ports * sizeof(dpdkRXhandler*));
+    // if (handlers_block.size() != num_system_ports) {
+    //     throw std::runtime_error(fmt::format(fmt("The number of DPDK handlers ({:d}) must be
+    //     equal "
+    //                                              "to the number of system ports ({:d})"),
+    //                                          handlers_block.size(), num_system_ports));
+    // }
+    handlers = (dpdkRXhandler**)malloc(num_workers * sizeof(dpdkRXhandler*));
     CHECK_MEM(handlers);
     for (json& handler : handlers_block) {
 
@@ -212,6 +232,8 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
         } else if (handler_name == "captureHandler") {
             handlers[port] =
                 new captureHandler(config, handler_unique_name, buffer_container, port);
+        } else if (handler_name == "rfsocHandler") {
+            handlers[port] = new rfsocHandler(config, handler_unique_name, buffer_container, port);
         } else if (handler_name == "none") {
             handlers[port] = nullptr;
         } else {
@@ -267,13 +289,26 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t main_lcore_cpu) {
 
 void dpdkCore::main_thread() {
 
-    // Start the packet receiving lcores (basically pthreads)
+    if (num_workers == 0) {
+// Start the packet receiving lcores (basically pthreads)
 #ifndef OLD_DPDK
-    rte_eal_mp_remote_launch(dpdkCore::lcore_rx, (void*)this, SKIP_MAIN);
+        rte_eal_mp_remote_launch(dpdkCore::lcore_rx, (void*)this, SKIP_MAIN);
 #else
-    // Support old DPDK versions
-    rte_eal_mp_remote_launch(dpdkCore::lcore_rx, (void*)this, SKIP_MASTER);
+        // Support old DPDK versions
+        rte_eal_mp_remote_launch(dpdkCore::lcore_rx, (void*)this, SKIP_MASTER);
 #endif
+    } else {
+        INFO("Starting distributor lcore on {:d}, with {:d} workers", 1, num_workers);
+        if (rte_eal_remote_launch(dpdkCore::lcore_rx_distributor, (void*)this, 1) != 0) {
+            ERROR("Could not start distributor lcore");
+        }
+        for (uint32_t i = 0; i < num_workers; ++i) {
+            INFO("Starting worker on lcore {:d}", i + 2);
+            if (rte_eal_remote_launch(dpdkCore::lcore_worker, (void*)this, i + 2) != 0) {
+                ERROR("Could not start worker lcore");
+            }
+        }
+    }
 
     while (!stop_thread) {
         sleep(1);
@@ -315,6 +350,8 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
     int retval;
     uint16_t q;
 
+    INFO("Called port_init port {:d} lcore_id {:d}", port, lcore_id);
+
     if (port >= num_system_ports)
         return -1;
 
@@ -325,9 +362,10 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
         return retval;
     }
 
+
     // Allocate and set up 1 RX queue per Ethernet port.
     for (q = 0; q < rx_rings; q++) {
-        retval = rte_eth_rx_queue_setup(port, q, rx_ring_size, rte_eth_dev_socket_id(port), nullptr,
+        retval = rte_eth_rx_queue_setup(port, q, 1024, rte_eth_dev_socket_id(port), nullptr,
                                         mbuf_pools.at(numa_node_of_cpu(lcore_id)));
         if (retval < 0) {
             ERROR("Failed to setupt RX queue for port {:d}, error: {:d}", port, retval);
@@ -346,12 +384,45 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
         }
     }
 
+    /*
+        uint32_t link_fec_capa;
+        retval = rte_eth_fec_get(port, &link_fec_capa);
+        if (retval != 0) {
+            WARN("Failed to get FEC status, port {:d}, error: {:d}", port, retval);
+            if (retval == -ENOTSUP) {
+                WARN("Card does not support FEC");
+            } else if (retval == -EIO) {
+                WARN("Device is removed?");
+            } else if (retval == -ENODEV) {
+                WARN("Invalid port");
+            }
+        } else {
+            INFO("Port {:d} FEC Status: {:b}", port, link_fec_capa);
+        }
+
+        rte_eth_fec_capa link_fec_capa_array[50];
+        retval = rte_eth_fec_get_capability(port, link_fec_capa_array, 50);
+        if (retval < 0) {
+            WARN("Failed to get FEC status, port {:d}, error: {:d}", port, retval);
+            if (retval == -ENOTSUP) {
+                WARN("Card does not support FEC");
+            } else if (retval == -EIO) {
+                WARN("Device is removed?");
+            } else if (retval == -ENODEV) {
+                WARN("Invalid port");
+            }
+        } else {
+            INFO("Port {:d} Retval num_capa: {:d}", port, retval);
+        }
+    */
+
     // Start the Ethernet port.
     retval = rte_eth_dev_start(port);
     if (retval < 0) {
         ERROR("Failed to start port: {:d}", port);
         return retval;
     }
+
 
     // Report the port MAC address.
     // TODO record the MAC address for export to JSON
@@ -369,6 +440,142 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
     // Enable promiscuous mode.
     rte_eth_promiscuous_enable(port);
 
+    return 0;
+}
+
+int dpdkCore::lcore_worker(void* args) {
+    dpdkCore* core = (dpdkCore*)args;
+
+    const uint32_t burst_size = core->burst_size;
+    rte_mbuf* mbufs[burst_size];
+
+    // TODO make this more general
+    int port = 0;
+
+    int lcore_id = rte_lcore_id();
+    int worker_id = lcore_id - 2;
+    INFO_NON_OO("Worker: lcore {:d}, worker_id: {:d}", lcore_id, worker_id);
+
+    uint64_t total_packets = 0;
+    struct timeval last_time;
+    gettimeofday(&last_time, nullptr);
+
+    while (!core->stop_thread) {
+        uint16_t num_rx =
+            rte_ring_dequeue_burst(core->worker_rings[worker_id], (void**)mbufs, burst_size, NULL);
+
+        if (num_rx == 0)
+            continue;
+        /*
+                for (uint16_t j = 0; j < num_rx; ++j) {
+                    total_packets += 1;
+                    if (unlikely(total_packets % (1250000 * 1) == 0)) {
+                        struct timeval now;
+                        gettimeofday(&now, nullptr);
+                        double elapsed_time = tv_to_double(now) - tv_to_double(last_time);
+                        INFO_NON_OO("Packet rate: {:.0f} pps, data rate: {:.4f}Gb/s",
+                                    total_packets / elapsed_time,
+                                    (double)total_packets * 8224 * 8 / 1e9 / elapsed_time);
+                        last_time = now;
+                        total_packets = 0;
+                    }
+                    // rte_pktmbuf_free(mbufs[j]);
+                }
+        */
+        for (uint16_t j = 0; j < num_rx; ++j) {
+            if (unlikely(core->handlers[worker_id]->handle_packet(mbufs[j]) != 0))
+                break;
+        }
+        rte_pktmbuf_free_bulk(mbufs, num_rx);
+    }
+}
+
+int dpdkCore::lcore_rx_distributor(void* args) {
+    dpdkCore* core = (dpdkCore*)args;
+
+    const uint32_t burst_size = core->burst_size;
+    const uint32_t round_robbin_length = core->round_robbin_length;
+
+    INFO_NON_OO("Started lcore_rx_distributor on lcore: {:d}", rte_lcore_id());
+
+    const uint32_t port = 0;
+    const uint32_t num_workers = core->num_workers;
+
+    rte_mbuf* mbufs[burst_size];
+
+    uint16_t distributor_idx = 0;
+    uint32_t packets_sent_to_worker = 0;
+    uint32_t worker_id = 0;
+    uint64_t total_packets = 0;
+    uint64_t last_seq = 0;
+    uint64_t lost_packets = 0;
+    struct timeval last_time;
+
+    while (!core->stop_thread) {
+        uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
+        if (unlikely(num_rx == 0))
+            continue;
+
+        total_packets += num_rx;
+
+        // Process some of packet header information, copy happens in an other thread
+        for (uint16_t j = 0; j < num_rx; ++j) {
+            uint64_t seq_num = *rte_pktmbuf_mtod_offset(mbufs[j], uint64_t*, 50);
+
+            if (unlikely(last_seq) == 0) {
+                last_seq = seq_num;
+                gettimeofday(&last_time, nullptr);
+            } else if (unlikely(seq_num > last_seq + 16)) {
+                lost_packets += (seq_num - last_seq) / 16;
+            }
+
+            last_seq = seq_num;
+
+            if (unlikely(total_packets % (1250000 * 1) == 0)) {
+                struct timeval now;
+                gettimeofday(&now, nullptr);
+                double elapsed_time = tv_to_double(now) - tv_to_double(last_time);
+                INFO_NON_OO(
+                    "Packet rate: {:.0f} pps, data rate: {:.4f}Gb/s, lost_packets rate: {:.4f}%",
+                    total_packets / elapsed_time,
+                    (double)total_packets * 8224 * 8 / 1e9 / elapsed_time,
+                    (double)lost_packets / (double)total_packets * 100.0);
+                last_time = now;
+                total_packets = 0;
+                lost_packets = 0;
+            }
+        }
+
+
+        // INFO_NON_OO("Sending packets to worker {:d}, total packets: {:d}", worker_id,
+        //             total_packets);
+        //   Transferring the packets directly into the next ring might not be the
+        //   most optimal way to do things since there is more queue overhead
+        //   However this might be offset by not having to store mbufs
+
+
+        uint16_t num_enqueued =
+            rte_ring_enqueue_burst(core->worker_rings[worker_id], (void**)mbufs, num_rx, NULL);
+        packets_sent_to_worker += num_enqueued;
+
+        if (unlikely(num_enqueued < num_rx)) {
+            // TODO we could try another working lcore in this case,
+            // but that has balancing considerations
+            WARN_NON_OO("Packet loss due to full worker lcore ring");
+            while (num_enqueued < num_rx)
+                rte_pktmbuf_free(mbufs[num_enqueued++]);
+        }
+
+        // Note this isn't a perfect load_balancing system.  However, it's cheaper to implement
+        // it this way, and the different should average out over time.
+        // TODO check if the above is true.
+        if (packets_sent_to_worker > round_robbin_length) {
+            // Switch to next worker
+            worker_id = (worker_id + 1) % num_workers;
+            packets_sent_to_worker = 0;
+        }
+    }
+exit_lcore_rx_distributor:
     return 0;
 }
 

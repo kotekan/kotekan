@@ -1,11 +1,8 @@
-/**
- * @file
- * @brief A simple handler to capture uniformly sized packets
- * - captureHandler : public dpdkRXhandler
- */
+//
+// Created by andre on 20/03/23.
+//
 
-#ifndef CAPTURE_HANDLER_HPP
-#define CAPTURE_HANDLER_HPP
+#ifndef KOTEKAN_RFSOC_HANDLER_HPP
 
 #include "Config.hpp"
 #include "buffer.h"
@@ -36,16 +33,17 @@
  *
  * @author Andre Renard
  */
-class captureHandler : public dpdkRXhandler {
+class rfsocHandler : public dpdkRXhandler {
 public:
     /// Default constructor
-    captureHandler(kotekan::Config& config, const std::string& unique_name,
-                   kotekan::bufferContainer& buffer_container, int port);
+    rfsocHandler(kotekan::Config& config, const std::string& unique_name,
+                 kotekan::bufferContainer& buffer_container, int port);
 
-    /// Processes the incoming packets
-    int handle_packet(struct rte_mbuf* mbuf) override;
+    /// Processes the incoming packet header
+    virtual int handle_packet(struct rte_mbuf* mbuf) override;
 
-    virtual int worker_copy_packet(struct rte_mbuf* mbuf, uint32_t worker_id) override{};
+    /// Copy the packet
+    virtual int worker_copy_packet(struct rte_mbuf* mbuf, uint32_t worker_id) override;
 
     /// Update stats, not used by this handler yet.
     virtual void update_stats() override{};
@@ -63,15 +61,22 @@ protected:
     /// Expected Packet size
     uint32_t packet_size;
 
-    /// The location in the out_frame to put the next packet
-    uint32_t packet_location = 0;
+    /// last_seq
+    uint64_t last_seq = 0;
+
+    /// Lost packets
+    uint64_t lost_packets = 0;
+
+    uint64_t total_packets = 0;
+
+    struct timeval last_time;
 
     /// Flag to setup variables for the first run
     bool first_run = true;
 };
 
-inline captureHandler::captureHandler(kotekan::Config& config, const std::string& unique_name,
-                                      kotekan::bufferContainer& buffer_container, int port) :
+inline rfsocHandler::rfsocHandler(kotekan::Config& config, const std::string& unique_name,
+                                  kotekan::bufferContainer& buffer_container, int port) :
     dpdkRXhandler(config, unique_name, buffer_container, port) {
 
     out_buf = buffer_container.get_buffer(config.get<std::string>(unique_name, "out_buf"));
@@ -86,25 +91,10 @@ inline captureHandler::captureHandler(kotekan::Config& config, const std::string
     if ((out_buf->frame_size % packet_size) != 0) {
         throw std::runtime_error("The buffer frame size must be a multiple of the packet size");
     }
-
-    // TODO this seems overly restrictive, but removing this requires a generalized `copy_block`
-    // function
-    if ((packet_size % 32) != 0) {
-        // throw std::runtime_error("The packet_size must be a multiple of 32 bytes");
-    }
 }
 
-inline int captureHandler::handle_packet(struct rte_mbuf* mbuf) {
+inline int rfsocHandler::handle_packet(struct rte_mbuf* mbuf) {
 
-    // Get the first frame.
-    if (first_run) {
-        out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
-        if (out_frame == nullptr)
-            return -1;
-        first_run = false;
-    }
-
-#ifndef OLD_DPDK
     if (unlikely((mbuf->ol_flags & RTE_MBUF_F_RX_IP_CKSUM_MASK) == RTE_MBUF_F_RX_IP_CKSUM_BAD)) {
         WARN("Port: {:d}; Got bad packet IP checksum", port);
         return 0;
@@ -114,12 +104,6 @@ inline int captureHandler::handle_packet(struct rte_mbuf* mbuf) {
         WARN("Port: {:d}; Got bad packet UDP checksum", port);
         return 0;
     }
-#else
-    if (unlikely((mbuf->ol_flags | PKT_RX_IP_CKSUM_BAD) == 1)) {
-        WARN("Port: {:d}; Got bad packet IP checksum", port);
-        return 0;
-    }
-#endif
 
     if (unlikely(packet_size != mbuf->pkt_len)) {
         WARN("Port: {:d}; Got packet with size {:d}, but expected size was {:d}", port,
@@ -127,27 +111,29 @@ inline int captureHandler::handle_packet(struct rte_mbuf* mbuf) {
         return 0;
     }
 
+    uint64_t seq_num = *rte_pktmbuf_mtod_offset(mbuf, uint64_t*, 50);
 
-    // Copy the packet.
-    assert((packet_location + 1) * packet_size <= (uint32_t)out_buf->frame_size);
-    int offset = 0;
-    copy_block(&mbuf, &out_frame[packet_location * packet_size], packet_size, (int*)&offset);
 
-    packet_location++;
+    return 0;
+}
 
-    if (packet_location * packet_size == (uint32_t)out_buf->frame_size) {
-        allocate_new_metadata_object(out_buf, out_frame_id);
-        mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
-        out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
-
-        out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
-        if (out_frame == nullptr)
-            return -1;
-
-        packet_location = 0;
+inline int rfsocHandler::worker_copy_packet(struct rte_mbuf* mbuf, uint32_t worker_id) {
+    (void)mbuf;
+    // INFO("Got packet in worker {:d} copy", worker_id);
+    total_packets += 1;
+    if (total_packets % (1250000 * 1) == 0) {
+        struct timeval now;
+        gettimeofday(&now, nullptr);
+        double elapsed_time = tv_to_double(now) - tv_to_double(last_time);
+        INFO("Packet rate: {:.0f} pps, data rate: {:.4f}Gb/s, lost_packets rate: {:.4f}%",
+             total_packets / elapsed_time, (double)total_packets * 8224 * 8 / 1e9 / elapsed_time,
+             (double)lost_packets / (double)total_packets * 100.0);
+        last_time = now;
+        total_packets = 0;
     }
 
     return 0;
 }
 
-#endif
+#define KOTEKAN_RFSOC_HANDLER_HPP
+#endif // KOTEKAN_RFSOC_HANDLER_HPP

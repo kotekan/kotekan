@@ -228,8 +228,8 @@ void mark_frame_full(struct Buffer* buf, const char* name, const int ID) {
 
         // If there are no consumers registered then we can just mark the buffer empty
         if (private_consumers_done(buf, ID) == 1) {
-            DEBUG_F("No consumers are registered on %s dropping data in frame %d...",
-                    buf->buffer_name, ID);
+            // DEBUG_F("No consumers are registered on %s dropping data in frame %d...",
+            //         buf->buffer_name, ID);
             buf->is_full[ID] = 0;
             if (buf->metadata[ID] != NULL) {
                 decrement_metadata_ref_count(buf->metadata[ID]);
@@ -744,8 +744,8 @@ void print_full_status(struct Buffer* buf) {
 void pass_metadata(struct Buffer* from_buf, int from_ID, struct Buffer* to_buf, int to_ID) {
 
     if (from_buf->metadata[from_ID] == NULL) {
-        WARN_F("No metadata in source buffer %s[%d], was this intended?", from_buf->buffer_name,
-               from_ID);
+        // WARN_F("No metadata in source buffer %s[%d], was this intended?", from_buf->buffer_name,
+        //        from_ID);
         return;
     }
 
@@ -771,9 +771,9 @@ void copy_metadata(struct Buffer* from_buf, int from_ID, struct Buffer* to_buf, 
     CHECK_ERROR_F(pthread_mutex_lock(&to_buf->lock));
 
     if (from_buf->metadata[from_ID] == NULL) {
-        WARN_F("No metadata in source buffer %s[%d], was this intended?", from_buf->buffer_name,
-               from_ID);
-        // Cannot wait to update this to C++14 locks...
+        // WARN_F("No metadata in source buffer %s[%d], was this intended?", from_buf->buffer_name,
+        //        from_ID);
+        //  Cannot wait to update this to C++14 locks...
         goto unlock_exit;
     }
 

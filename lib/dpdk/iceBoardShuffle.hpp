@@ -65,6 +65,8 @@ public:
     /// Updates the prometheus metrics
     virtual void update_stats() override;
 
+    virtual int worker_copy_packet(struct rte_mbuf* mbuf, uint32_t worker_id) override{};
+
 protected:
     /**
      * @brief Advances the @c shuffle_size output frames, and the lost sample frame
