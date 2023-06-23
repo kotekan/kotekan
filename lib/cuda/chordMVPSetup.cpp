@@ -51,13 +51,19 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     INFO("Creating upchan/frb-bf glue buffers: frb-bf input {:s} size {:d}, upchan output {:s} "
          "size {:d}",
          fullname, fullsize, viewname, viewsize);
+
+    size_t offset = num_dishes * num_local_freq * upchan_factor * frb_bf_padding * 2;
+
     for (int i = 0; i < device.get_gpu_buffer_depth(); i++) {
         void* real = device.get_gpu_memory_array(fullname, i, fullsize);
         // Zero it out!
         CHECK_CUDA_ERROR(cudaMemset((unsigned char*)real + viewsize, 0, fullsize - viewsize));
-    }
 
-    size_t offset = num_dishes * num_local_freq * upchan_factor * frb_bf_padding * 2;
+        // DEBUG
+        DEBUG("GPUMEM memory_array_view({:p}, {:d}, {:p}, {:d}, \"{:s}\", \"{:s}\", {:d}, \"upchan/frb-bf\")",
+              real, fullsize, (char*)real + offset, viewsize, fullname, viewname, i);
+
+    }
     device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize);
 
     // We produce custom DOT output to connect the views, so we omit these (and all other) entries.

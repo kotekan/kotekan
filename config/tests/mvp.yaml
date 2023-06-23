@@ -159,6 +159,7 @@ gpu:
     #num_cuda_streams: 6
     commands: &command_list
     - name: chordMVPSetup
+      log_level: debug
       upchan_factor: frb_upchan
       num_local_freq: voltage_freq
       samples_per_data_set: voltage_samples
@@ -223,6 +224,7 @@ gpu:
       num_beams: bb_beams
     # FRB chain, starting with upchannelization
     - name: cudaUpchannelize
+      log_level: debug
       gpu_mem_input_voltage: voltage
       gpu_mem_output_voltage: upchan_out
       gpu_mem_gain: upchan_gains

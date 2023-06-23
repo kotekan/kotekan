@@ -426,8 +426,8 @@ void cudaFRBBeamReformer::finalize_frame(int frame_id) {
     float exec_time;
     for (size_t i = 0; i < _cuda_streams.size(); i++) {
         if (sync_events[frame_id][i] && sync_events[frame_id][i]) {
-            CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_events[frame_id],
-                                                  synced_events[frame_id][i]));
+            CHECK_CUDA_ERROR(
+                cudaEventElapsedTime(&exec_time, start_events[frame_id], sync_events[frame_id][i]));
             INFO("Sync for stream {:d} took {:.3f} ms", _cuda_streams[i], exec_time);
         }
     }
