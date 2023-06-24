@@ -48,6 +48,7 @@
  *
  * @conf station_id   Int   Default 0x4151 ('AQ') Interger stored ascii denoting the standard VDIF
  *                            Station ID.  AQ == ARO
+ * @conf num_elements Int   Default 2.  The number of elements to read
  * @conf offset       Int   Defailt 0.  The offset from the first element.  i.e. a value of 2
  * would select the 3nd and 4rd element (one based), a value of 0 gives 1st and 2nd element
  *
@@ -83,6 +84,9 @@ protected:
     /// Current lost samples frame id
     int lost_samples_frame_id = 0;
 
+    /// The number of elements to extract.
+    int64_t num_elements; // This is also the number of threads.
+
     /// We use the two ADC inputs starting at this offset.
     /// So an offset of 2 reads the 3th and 4th ADC input.
     uint32_t offset;
@@ -103,9 +107,6 @@ protected:
 
     /// The total number of elements in each packet.
     const int64_t total_num_elements = 16;
-
-    /// The number of elements to extract.
-    const int64_t num_elements = 2; // This is also the number of threads.
 };
 
 iceBoardVDIF::iceBoardVDIF(kotekan::Config& config, const std::string& unique_name,
@@ -122,9 +123,10 @@ iceBoardVDIF::iceBoardVDIF(kotekan::Config& config, const std::string& unique_na
     zero_frames(lost_samples_buf);
 
     station_id = config.get_default<uint32_t>(unique_name, "station_id", 0x4151); // AQ
+    num_elements = config.get_default<int64_t>(unique_name, "num_elements", 2);
     offset = config.get_default<uint32_t>(unique_name, "offset", 0);
 
-    if (offset > 14) {
+    if (offset > total_num_elements - num_elements) {
         throw std::runtime_error(fmt::format(fmt("The offset value is too large: {:d}"), offset));
     }
 
@@ -302,10 +304,11 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
         // Location in the VDIF packet is just frequency,
         // but our buffer has every 8th frequency.
         for (uint8_t* out_t_f = out_t_f0; out_t_f < out_t_f0+1024; out_t_f += 8) {
-            // Store first channel.
-            *out_t_f = *mbuf_data_ptr;
-            // Store subsequent one in next thread.
-            *(out_t_f+vdif_packet_len) = *(mbuf_data_ptr+1);
+            uint8_t* out = out_t_f;
+            for (int elem = 0; elem < num_elements; elem++) {
+                *out = mbuf_data_ptr[elem];
+                out += vdif_packet_len;
+            }
             // Go to next set of elements.
             mbuf_data_ptr += total_num_elements;
             // If needed, advance to the next mbuf in the chain.
