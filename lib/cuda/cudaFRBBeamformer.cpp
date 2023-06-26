@@ -169,9 +169,9 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate,
     int32_t output_samples = (process / cuda_time_downsampling) * cuda_time_downsampling;
     host_length[pipestate.gpu_frame_id] = process;
     int32_t padding_next = valid - output_samples;
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(length_memory, host_length.data() + pipestate.gpu_frame_id,
-                                     length_len, cudaMemcpyHostToDevice,
-                                     device.getStream(cuda_stream_id)));
+    //CHECK_CUDA_ERROR(cudaMemcpyAsync(length_memory, host_length.data() + pipestate.gpu_frame_id,
+    //                                 length_len, cudaMemcpyHostToDevice,
+    //                                 device.getStream(cuda_stream_id)));
 
     // Compute the offset of the voltage array to pass to the GPU kernel.
     void* voltage_input = (char*)voltage_memory
