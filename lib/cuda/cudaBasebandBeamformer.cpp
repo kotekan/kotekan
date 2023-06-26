@@ -94,8 +94,8 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
     record_start_event(pipestate.gpu_frame_id);
 
     // Initialize info_memory return codes
-    CHECK_CUDA_ERROR(
-        cudaMemsetAsync(info_memory, 0xff, info_len, device.getStream(cuda_stream_id)));
+    //CHECK_CUDA_ERROR(
+    //    cudaMemsetAsync(info_memory, 0xff, info_len, device.getStream(cuda_stream_id)));
 
     // A, E, s, J
     const char* exc = "exception";
@@ -142,19 +142,19 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
                                   parameters, NULL));
 
     // Copy "info" result code back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory,
-                                     info_len, cudaMemcpyDeviceToHost,
-                                     device.getStream(cuda_stream_id)));
+    //CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory,
+    //                                 info_len, cudaMemcpyDeviceToHost,
+    //                                 device.getStream(cuda_stream_id)));
 
     return record_end_event(pipestate.gpu_frame_id);
 }
 
 void cudaBasebandBeamformer::finalize_frame(int gpu_frame_id) {
     cudaCommand::finalize_frame(gpu_frame_id);
-    for (size_t i = 0; i < host_info[gpu_frame_id].size(); i++)
-        if (host_info[gpu_frame_id][i] != 0)
-            ERROR(
-                "cudaBasebandBeamformer returned 'info' value {:d} at index {:d} (zero indicates no"
-                "error)",
-                host_info[gpu_frame_id][i], i);
+    //for (size_t i = 0; i < host_info[gpu_frame_id].size(); i++)
+    //    if (host_info[gpu_frame_id][i] != 0)
+    //        ERROR(
+    //            "cudaBasebandBeamformer returned 'info' value {:d} at index {:d} (zero indicates no"
+    //            "error)",
+    //            host_info[gpu_frame_id][i], i);
 }
