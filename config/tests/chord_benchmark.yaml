@@ -10,8 +10,11 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
 num_links: 4
+freq_array: [4,7,10,16]
+timesamples_per_packet: 2
 num_gpus: 1
-cpu_affinity: [0,1,2,3,8,9,10,11,12,13,14,15]
+num_gpu_frames: 1
+cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
 sizeof_float16: 2
 sizeof_int: 4
@@ -22,13 +25,6 @@ num_dishes: 512
 num_elements: num_dishes * 2
 
 frame_arrival_period: 0.00000170667 * voltage_samples
-
-# Global buffer options
-zero_new_frames: false
-
-packet_size: 8224
-payload_size: num_dishes * voltage_freq
-max_rx_pkt_len: 9000
 
 n2coarse_sub_integration_ntime: 16384
 
@@ -58,35 +54,20 @@ frb_td_max: 52
 # FRB Rechunking
 frb_td_rechunk: 256
 
-buffer_depth: 8
+buffer_depth: 4
 
 # data gen:
-# num_frames: 100
+num_frames: 100
 
 # Pool
 main_pool:
     kotekan_metadata_pool: oneHotMetadata
-    num_metadata_objects: 15 * buffer_depth * 8
+    num_metadata_objects: 15 * buffer_depth
 
 # Buffers
-host_voltage_buffer_0:
-    kotekan_buffer: standard
-    use_hugepages: true
-    num_frames: buffer_depth * 4
-    frame_size: voltage_samples * num_dishes * 2 * voltage_freq
-    metadata_pool: main_pool
-
-host_voltage_buffer_1:
-    kotekan_buffer: standard
-    use_hugepages: true
-    num_frames: buffer_depth * 4
-    frame_size: voltage_samples * num_dishes * 2 * voltage_freq
-    metadata_pool: main_pool
-
 host_voltage_buffer:
     kotekan_buffer: standard
-    use_hugepages: true
-    num_frames: buffer_depth * 4
+    num_frames: buffer_depth
     frame_size: voltage_samples * num_dishes * 2 * voltage_freq
     metadata_pool: main_pool
 
@@ -141,7 +122,7 @@ host_beammeanstd_buffer:
     metadata_pool: main_pool
 
 gen_data:
-    #kotekan_stage: testDataGen
+    kotekan_stage: testDataGen
     type: onehot
     values: [0x01, 0x02, 0x04, 0x07, 0x08, 0x09, 0xc, 0xe, 0xf, 0x10, 0x20, 0x40, 0x70, 0x80, 0x90, 0xc0, 0xe0, 0xf0]
     #type: random_signed
@@ -149,43 +130,6 @@ gen_data:
     # TIME, POL, FREQ, DISH
     array_shape: [32768, 2, 16, 512]
     out_buf: host_voltage_buffer
-
-# See the dpdkCore class docs in dpdkCore.hpp for details
-# on the options here.
-dpdk:
-  kotekan_stage: dpdkCore
-  packet_size: 8224
-  # Format is index = lcore (logical core), value = cpu core
-  lcore_cpu_map: [5,6,7]
-  main_lcore_cpu: 4
-  num_mem_channels: 4
-  # Format is index = lcore, value = array of port IDs
-  # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
-  # and lcore 1 to service ports 2 and 3.
-  num_workers: 2
-  rx_ring_size: 4096
-  tx_ring_size: 128
-  mbuf_cache_size: 20
-  burst_size: 8
-  lcore_port_map:
-    - [0]
-  # One handler must be given per port.
-  handlers:
-    # This handler is mapped to port 0 which is being handled by lcore 0
-    - dpdk_handler: captureHandler
-      out_buf: host_voltage_buffer_0
-    - dpdk_handler: captureHandler
-      out_buf: host_voltage_buffer_1
-
-
-merge_voltage:
-    kotekan_stage: bufferMerge
-    force_copy: false
-    in_bufs:
-        - host_voltage_buffer_0
-        - host_voltage_buffer_1
-    out_buf: host_voltage_buffer
-
 
 gen_frb_phase:
     kotekan_stage: testDataGen
@@ -206,14 +150,13 @@ gen_bb_shift:
     out_buf: host_bb_shift_buffer
 
 gpu:
-    log_level: warn
+    # log_level: debug
     profiling: true
-    log_profiling: false
+    log_profiling: true
     kernel_path: "../../lib/cuda/kernels/"
     # More streams -- for FRBBeamReformer
     num_cuda_streams: 4
     #num_cuda_streams: 6
-    buffer_depth: 4
     commands: &command_list
     - name: chordMVPSetup
       log_level: debug
@@ -392,8 +335,6 @@ gpu:
         commands: *command_list
         in_buffers:
             host_voltage: host_voltage_buffer
-            host_voltage_0: host_voltage_buffer_0
-            host_voltage_1: host_voltage_buffer_1
             host_bb_phase: host_bb_phase_buffer
             host_bb_shift: host_bb_shift_buffer
             host_frb_phase: host_frb_phase_buffer

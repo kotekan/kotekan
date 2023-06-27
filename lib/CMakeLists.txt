@@ -29,9 +29,9 @@ add_subdirectory(metadata)
 target_link_libraries(kotekan_libs INTERFACE kotekan_metadata)
 
 if(${USE_HSA}
-   OR ${USE_OPENCL}
-   OR ${USE_CUDA}
-   OR ${USE_HIP})
+    OR ${USE_OPENCL}
+    OR ${USE_CUDA}
+    OR ${USE_HIP})
     add_subdirectory(gpu)
 endif()
 

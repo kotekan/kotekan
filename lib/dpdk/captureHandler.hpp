@@ -63,6 +63,8 @@ protected:
     /// Expected Packet size
     uint32_t packet_size;
 
+    uint32_t payload_size;
+
     /// The location in the out_frame to put the next packet
     uint32_t packet_location = 0;
 
@@ -78,18 +80,19 @@ inline captureHandler::captureHandler(kotekan::Config& config, const std::string
     register_producer(out_buf, unique_name.c_str());
 
     packet_size = config.get<uint32_t>(unique_name, "packet_size");
+    payload_size = config.get<uint32_t>(unique_name, "payload_size");
 
-    if (packet_size > (uint32_t)out_buf->frame_size) {
+    if (payload_size > (uint32_t)out_buf->frame_size) {
         throw std::runtime_error("The packet size must be less than the frame size");
     }
 
-    if ((out_buf->frame_size % packet_size) != 0) {
+    if ((out_buf->frame_size % payload_size) != 0) {
         throw std::runtime_error("The buffer frame size must be a multiple of the packet size");
     }
 
     // TODO this seems overly restrictive, but removing this requires a generalized `copy_block`
     // function
-    if ((packet_size % 32) != 0) {
+    if ((payload_size % 32) != 0) {
         // throw std::runtime_error("The packet_size must be a multiple of 32 bytes");
     }
 }
@@ -129,13 +132,13 @@ inline int captureHandler::handle_packet(struct rte_mbuf* mbuf) {
 
 
     // Copy the packet.
-    assert((packet_location + 1) * packet_size <= (uint32_t)out_buf->frame_size);
+    assert((packet_location + 1) * payload_size <= (uint32_t)out_buf->frame_size);
     int offset = 0;
-    copy_block(&mbuf, &out_frame[packet_location * packet_size], packet_size, (int*)&offset);
+    copy_block(&mbuf, &out_frame[packet_location * payload_size], payload_size, (int*)&offset);
 
     packet_location++;
 
-    if (packet_location * packet_size == (uint32_t)out_buf->frame_size) {
+    if (packet_location * payload_size == (uint32_t)out_buf->frame_size) {
         allocate_new_metadata_object(out_buf, out_frame_id);
         mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
         out_frame_id = (out_frame_id + 1) % out_buf->num_frames;

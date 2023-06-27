@@ -26,9 +26,12 @@ buffer_depth: 6
 # Default core assignments
 cpu_affinity: [0,1,2,3,8,9,10,11,12,13,14,15]
 
-packets_per_frame: 32768 * 4
+packets_per_frame: 32768
+voltage_freq: 16
+num_dishes: 512
 # Set this to the size of the packet plus Ethernet/IP/UDP headers
 packet_size: 8224
+payload_size: num_dishes * voltage_freq
 max_rx_pkt_len: 9000
 
 # Global buffer options
@@ -43,26 +46,26 @@ main_pool:
 # Buffers
 network_capture_buf_0:
   kotekan_buffer: standard
-  num_frames: 425
-  frame_size: packets_per_frame * packet_size
+  num_frames: 20 # 425
+  frame_size: packets_per_frame * num_dishes * 2 * voltage_freq
   metadata_pool: main_pool
   numa_node: 0
 network_capture_buf_1:
   kotekan_buffer: standard
-  num_frames: 425
-  frame_size: packets_per_frame * packet_size
+  num_frames: 20 # 425
+  frame_size: packets_per_frame * num_dishes * 2 * voltage_freq
   metadata_pool: main_pool
   numa_node: 0
 network_capture_buf_2:
   #kotekan_buffer: standard
   num_frames: buffer_depth
-  frame_size: packets_per_frame * packet_size
+  frame_size: packets_per_frame * num_dishes * 2 * voltage_freq
   metadata_pool: main_pool
   numa_node: 0
 network_capture_buf_3:
   #kotekan_buffer: standard
   num_frames: buffer_depth
-  frame_size: packets_per_frame * packet_size
+  frame_size: packets_per_frame * num_dishes * 2 * voltage_freq
   metadata_pool: main_pool
   numa_node: 0
 
@@ -132,22 +135,6 @@ dpdk:
     #- dpdk_handler: captureHandler
     #  out_buf: network_capture_buf_2
 
-
-# Force an extra copy!
-merge_input_0:
-    #kotekan_stage: bufferMerge
-    force_copy: true
-    in_bufs:
-        - network_capture_buf_0
-    out_buf: network_capture_buf_2
-
-merge_input_1:
-    #kotekan_stage: bufferMerge
-    force_copy: true
-    in_bufs:
-        - network_capture_buf_1
-    out_buf: network_capture_buf_3
-
 gpu:
     profiling: true
     kernel_path: "../../lib/cuda/kernels/"
@@ -161,14 +148,14 @@ gpu:
           gpu_mem: voltage1
         - name: cudaSyncInput
         - name: cudaSyncOutput
-        - name: cudaOutputData
-          in_buf: host_voltage # Metadata transfer from here
-          gpu_mem: voltage
-          out_buf: host_correlation
-        - name: cudaOutputData
-          in_buf: host_voltage1 # Metadata transfer from here
-          gpu_mem: voltage1
-          out_buf: host_correlation1
+        #- name: cudaOutputData
+        #  in_buf: host_voltage # Metadata transfer from here
+        #  gpu_mem: voltage
+        #  out_buf: host_correlation
+        #- name: cudaOutputData
+        #  in_buf: host_voltage1 # Metadata transfer from here
+        #  gpu_mem: voltage1
+        #  out_buf: host_correlation1
     frame_arrival_period: 2*packets_per_frame/1450000.0
     buffer_depth: 3
     gpu_0:
