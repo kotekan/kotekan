@@ -23,6 +23,22 @@ invalidateVDIFframes::invalidateVDIFframes(Config& config, const std::string& un
     Stage(config, unique_name, buffer_container,
           std::bind(&invalidateVDIFframes::main_thread, this)) {
 
+    // get config parameters including num_threads and calculate vdif_frame[set]_size.
+    // Same as in iceBoardVDIF.hpp
+    uint32_t num_freq, num_elements;
+    num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 0);
+    num_elements = config.get_default<uint32_t>(unique_name, "num_elements", 2);
+    if (num_threads > 0) {
+        num_freq = config.get_default<uint32_t>(unique_name, "num_freq", total_num_freq);
+    } else {
+        // Backward compatibility: information is in num_elements and offset.
+        num_threads = num_elements;
+        num_elements = 1;
+        num_freq = total_num_freq;
+    }
+    vdif_frame_size = num_freq * num_elements + vdif_header_len;
+    vdif_frameset_size = vdif_frame_size * num_threads;
+
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
@@ -34,7 +50,7 @@ invalidateVDIFframes::~invalidateVDIFframes() {}
 
 void invalidateVDIFframes::main_thread() {
 
-    uint32_t frame_location;
+    uint32_t frameset_location;
     int64_t lost_samples;
 
     auto& lost_frame_total =
@@ -54,16 +70,15 @@ void invalidateVDIFframes::main_thread() {
             break;
 
         for (size_t i = 0; i < lost_samples_buf->frame_size; ++i) {
-            frame_location = i * vdif_frame_size * num_elements;
+            frameset_location = i * vdif_frameset_size;
             // Check array bounds
-            assert((frame_location + vdif_frame_size * num_elements)
-                   <= (uint32_t)out_buf->frame_size);
+            assert((frameset_location + vdif_frameset_size) <= (uint32_t)out_buf->frame_size);
             if (flag_frame[i] == 1) {
                 // There is one VDIF frame generated for each element extracted from a sample.  So
                 // losing one sample results in losing one or more (default 2) VDIF frames.
-                for (uint32_t j = 0; j < num_elements; ++j) {
-                    uint32_t sub_frame_location = frame_location + j * vdif_frame_size;
-                    struct VDIFHeader* header = (struct VDIFHeader*)&data_frame[sub_frame_location];
+                for (uint32_t j = 0; j < num_threads; ++j) {
+                    uint32_t frame_location = frameset_location + j * vdif_frame_size;
+                    struct VDIFHeader* header = (struct VDIFHeader*)&data_frame[frame_location];
                     header->invalid = 1;
                 }
                 lost_samples++;

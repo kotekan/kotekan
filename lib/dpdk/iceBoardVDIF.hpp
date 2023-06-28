@@ -19,12 +19,12 @@
 #include "vdif_functions.h"
 
 /**
- * @brief Handler for extacting two elements from 8 links from an
+ * @brief Handler for extacting elements and frequency ranges from 8 links from an
  *        ICEboard running in PFB 16-element mode
  *
  * This mode only works when attached to an ICEboard running in shuffle16 mode with the PFB enabled.
- * The receiving system must be connected to all 8 FPGA links.  And this hander must be used in a
- * group of 8, with all 8 handers attached to the same output buffer and lost samples buffer. The
+ * The receiving system must be connected to all 8 FPGA links.  And this handler must be used in a
+ * group of 8, with all 8 handlers attached to the same output buffer and lost samples buffer. The
  * order of the links attached to the node however does not matter.
  *
  * The output data stream is standard VDIF see: https://vlbi.org/vdif/
@@ -46,13 +46,21 @@
  *       @buffer_format unit8_t array of flags
  *       @buffer_metadata none
  *
- * @conf station_id   Int   Default 0x4151 ('AQ') Interger stored ascii denoting the standard VDIF
- *                            Station ID.  AQ == ARO
- * @conf num_elements Int   Default 2.  The number of elements to read
- * @conf offset       Int   Defailt 0.  The offset from the first element.  i.e. a value of 2
- * would select the 3nd and 4rd element (one based), a value of 0 gives 1st and 2nd element
+ * @conf station_id   Int  Default 0x4151 ('AQ') Interger stored ascii denoting the standard VDIF
+ *                                        Station ID.  AQ == ARO
+ * @conf num_threads  Int  Default 0.     The number of VDIF threads to spread the data over.
+ *                                        If 0, taken from num_elements for backwards compatibility
+ * @conf num_elements Int  Default 2.     Number of input elements to store in a thread
+ * @conf num_freq     Int  Default 1024.  Number of frequency channels to store in a thread
+ * @conf offsets      Array               Starting input offset for each thread (of num_elements)
+ * @conf frequencies  Array               Starting frequency channel for each thread (of num_freq)
+ * @conf offset       Int  Defailt 0.     The offset from the first element.  i.e. a value of 2
+ *                                        would select the 3nd and 4rd element (one based), a value
+ *                                        of 0 gives 1st and 2nd element.
+ *                                        Present for backwards compatibility with old config giles.
  *
  * @author Andre Renard
+ * @author Marten van Kerkwijk
  */
 class iceBoardVDIF : public iceBoardHandler {
 
@@ -84,12 +92,25 @@ protected:
     /// Current lost samples frame id
     int lost_samples_frame_id = 0;
 
-    /// The number of elements to extract.
-    int64_t num_elements; // This is also the number of threads.
+    /// The total number of frequency channels.
+    const uint32_t total_num_freq = 1024;
 
-    /// We use the two ADC inputs starting at this offset.
-    /// So an offset of 2 reads the 3th and 4th ADC input.
-    uint32_t offset;
+    /// The total number of input elements in each packet.
+    const uint32_t total_num_elements = 16;
+
+    /// The number of threads to write.
+    uint32_t num_threads;
+    /// The number of elements per thread.  Also used for backwards compatibility
+    /// if num_threads is not given.  In that case, it is the number of threads,
+    /// with each thread holding one element.
+    uint32_t num_elements;
+    /// The number of frequency channels per thread.
+    uint32_t num_freq;
+    /// Start input element and frequency for each thread in the input buffer.
+    std::vector<uint32_t> offsets = {};
+    std::vector<uint32_t> frequencies = {};
+    /// Corresponding offset in the input buffer: offset + (frequency / 8) * 16
+    std::vector<uint32_t> buffer_offsets = {};
 
     /// VDIF station ID
     uint32_t station_id;
@@ -97,16 +118,15 @@ protected:
     /// Time in nano seconds of the 0 ICEBoard seq number, from the 2000 epoch
     uint64_t vdif_base_time;
 
-    // Note: It might be possible to make some of these more dynamic
-
-    /// The standard VDIF header lenght
-    const int64_t vdif_header_len = 32;
-
-    /// The packet size, which in this case is always 1024
-    const int64_t vdif_packet_len = vdif_header_len + 1024;
-
-    /// The total number of elements in each packet.
-    const int64_t total_num_elements = 16;
+    /// The number of VDIF channels, num_freq * num_elements
+    uint32_t vdif_num_chan;
+    uint32_t vdif_log2_num_chan;
+    /// The standard VDIF header length in bytes
+    const uint32_t vdif_header_len = 32;
+    /// vdif frame size in bytes = vdif_num_chan + vdif_header_len
+    uint32_t vdif_frame_size;
+    /// vdif frame set size in bytes = vdif_frame_size * num_threads
+    uint32_t vdif_frameset_size;
 };
 
 iceBoardVDIF::iceBoardVDIF(kotekan::Config& config, const std::string& unique_name,
@@ -123,11 +143,75 @@ iceBoardVDIF::iceBoardVDIF(kotekan::Config& config, const std::string& unique_na
     zero_frames(lost_samples_buf);
 
     station_id = config.get_default<uint32_t>(unique_name, "station_id", 0x4151); // AQ
-    num_elements = config.get_default<int64_t>(unique_name, "num_elements", 2);
-    offset = config.get_default<uint32_t>(unique_name, "offset", 0);
 
-    if (offset > total_num_elements - num_elements) {
-        throw std::runtime_error(fmt::format(fmt("The offset value is too large: {:d}"), offset));
+    num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 0);
+    num_elements = config.get_default<uint32_t>(unique_name, "num_elements", 2);
+    if (num_threads > 0) {
+        // Default new configuration style: get number of frequencies
+        num_freq = config.get_default<int64_t>(unique_name, "num_freq", total_num_freq);
+        // and the starting input offsets and frequency channels for each thread.
+        offsets = config.get<std::vector<uint32_t>>(unique_name, "offsets");
+        frequencies = config.get<std::vector<uint32_t>>(unique_name, "frequencies");
+    } else {
+        // Backward compatibility: information is in num_elements and offset.
+        num_threads = num_elements;
+        num_elements = 1;
+        num_freq = total_num_freq;
+        uint32_t offset = config.get_default<uint32_t>(unique_name, "offset", 0);
+        offsets.resize(num_threads);
+        std::iota(offsets.begin(), offsets.end(), offset); // offset, offset+1, ...
+        frequencies.assign(num_threads, 0);
+    }
+    // Sanity checks of configuration parameters.
+    if (!(num_elements == 1 || num_elements == 2 || num_elements == 4 || num_elements == 8)) {
+        throw std::runtime_error(fmt::format(fmt("num_elements must be 1, 2, 4, or 8, not {:d}"), num_elements));
+    }
+    if (total_num_freq % num_freq != 0) {
+        throw std::runtime_error(fmt::format(fmt("Number of frequences {:d} per thread must divide into 1024"), num_freq));
+    }
+    if (offsets.size() != num_threads) {
+        throw std::runtime_error(fmt::format(fmt("Number of input offsets should be {:d}, not {:d}"),
+                                             num_threads, offsets.size()));
+    }
+    if (frequencies.size() != num_threads) {
+        throw std::runtime_error(fmt::format(fmt("Number of start frequencies should be {:d}, not {:d}"),
+                                             num_threads, frequencies.size()));
+    }
+    for (uint32_t i_thread = 0; i_thread < num_threads; i_thread++) {
+        if (offsets[i_thread] > total_num_elements - num_elements) {
+            throw std::runtime_error(fmt::format(fmt("The offset range extends too far: {:d}-{:d}"),
+                                                 offsets[i_thread], offsets[i_thread]+num_elements-1));
+        }
+        if (frequencies[i_thread] > total_num_freq - num_freq) {
+            throw std::runtime_error(fmt::format(fmt("The frequency range extends too far: {:d}-{:d}"),
+                                                 frequencies[i_thread], frequencies[i_thread]+num_freq-1));
+        }
+        // With frequencies split 8 ways, insisting on a multiple of 8 for the start frequency ensures
+        // we can copy the same frequency chunk in each input buffer.
+        if (frequencies[i_thread] % 8 != 0) {
+            throw std::runtime_error(fmt::format(fmt("The start frequency must be a multiple of 8: {:d}"),
+                                                 frequencies[i_thread]));
+        }
+    }
+    for (uint32_t i_thread = 0; i_thread < num_threads; i_thread++) {
+        // Calculate true offset in input buffer. This has every eighth frequency,
+        // so for buffer 0, 16 elements for freq 0, then 16 for freq 8, etc.
+      buffer_offsets[i_thread] = offsets[i_thread] + (frequencies[i_thread] / 8) * total_num_elements;
+    }
+    // Calculate fixed VDIF properties.
+    vdif_num_chan = num_freq * num_elements;
+    vdif_log2_num_chan = int(std::log2(vdif_num_chan));
+    vdif_frame_size = vdif_num_chan + vdif_header_len; // Each channel is 4+4 bits = 1 byte
+    vdif_frameset_size = vdif_frame_size * num_threads;
+    if (port == 0) {
+        DEBUG("VDIF: {:d} threads, each containing {:d} input(s) and {:d} frequencies.",
+              num_threads, num_elements, num_freq);
+        DEBUG("VDIF: number of channels = {:d} = 2**{:d}; frame size={:d}, frameset size={:d}.",
+              vdif_num_chan, vdif_log2_num_chan, vdif_frame_size, vdif_frameset_size);
+        for (uint32_t i_thread = 0; i_thread < num_threads; i_thread++) {
+            DEBUG("VDIF: thread {:d} will start at input {:2d} and frequency {:4d}; buffer offset {:4d}",
+                  i_thread, offsets[i_thread], frequencies[i_thread], buffer_offsets[i_thread]);
+        }
     }
 
     std::string endpoint_name = unique_name + "/port_data";
@@ -142,7 +226,7 @@ int iceBoardVDIF::handle_packet(struct rte_mbuf* mbuf) {
 
     // Check if the packet is valid
     if (!iceBoardHandler::check_packet(mbuf))
-        return 0; // Disgards the packet.
+        return 0; // Discards the packet.
 
     if (unlikely(!got_first_packet)) {
         if (likely(!iceBoardHandler::align_first_packet(mbuf))) {
@@ -164,7 +248,7 @@ int iceBoardVDIF::handle_packet(struct rte_mbuf* mbuf) {
 
     // Check if we have an out-of-order or duplicate packet
     if (unlikely(!iceBoardHandler::check_order(diff)))
-        return 0; // For not we just disgard any dublicate/out-of-order packets.
+        return 0; // For now we just discard any dublicate/out-of-order packets.
 
     // Handle lost packets
     if (unlikely(diff > samples_per_packet))
@@ -245,15 +329,13 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
 
 inline void iceBoardVDIF::handle_lost_samples(int64_t lost_samples) {
 
-    const int64_t frame_size = vdif_packet_len * num_elements;
-
     int64_t lost_sample_location =
         last_seq + samples_per_packet - get_fpga_seq_num(out_buf, out_buf_frame_id);
     uint64_t temp_seq = last_seq + samples_per_packet;
 
     // TODO this could be made more efficient by breaking it down into blocks of memsets.
     while (lost_samples > 0) {
-        if (unlikely((size_t)(lost_sample_location * frame_size) == out_buf->frame_size)) {
+        if (unlikely((size_t)(lost_sample_location * vdif_frameset_size) == out_buf->frame_size)) {
             advance_vdif_frame(temp_seq);
             lost_sample_location = 0;
         }
@@ -269,21 +351,19 @@ inline void iceBoardVDIF::handle_lost_samples(int64_t lost_samples) {
 
 void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
 
-    const int64_t frame_size = vdif_packet_len * num_elements;
-
     int64_t vdif_frame_location = cur_seq - get_fpga_seq_num(out_buf, out_buf_frame_id);
 
-    if (unlikely((size_t)(vdif_frame_location * frame_size) == out_buf->frame_size)) {
+    if (unlikely((size_t)(vdif_frame_location * vdif_frameset_size) == out_buf->frame_size)) {
         advance_vdif_frame(cur_seq);
         vdif_frame_location = 0;
     }
 
-    assert((size_t)(vdif_frame_location * frame_size) <= out_buf->frame_size);
+    assert((size_t)(vdif_frame_location * vdif_frameset_size) <= out_buf->frame_size);
 
     // Set the VDIF headers only on the first port
     // since all ports would generate the same header
     if (port == 0) {
-        set_vdif_header_options(vdif_frame_location * frame_size, cur_seq);
+        set_vdif_header_options(vdif_frame_location * vdif_frameset_size, cur_seq);
     }
 
     auto& tel = Telescope::instance();
@@ -292,35 +372,65 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
     // Create the parts of the VDIF frame that are in this packet.
     char* mbuf_data_base = rte_pktmbuf_mtod(mbuf, char*);
     char* mbuf_data_max = mbuf_data_base + mbuf->data_len;
-    char* mbuf_data_ptr = mbuf_data_base + header_offset + offset;
-    uint8_t* out_t0_f0 = (out_buf_frame        // Start of output buffer.
-         + vdif_frame_location * frame_size // Frame location in output buffer.
-         + vdif_header_len                  // Offset for the vdif header.
-         + tel.to_freq_id(encoded_id, 0));  // Offset for ARO for first frequency.
-    // Times are in separate frames, so time stride equals frame_size.
+    char* mbuf_data_ptr = mbuf_data_base + header_offset;
+    uint8_t* out_t0_f0 = (out_buf_frame              // Start of output buffer.
+         + vdif_frame_location * vdif_frameset_size  // Frame location in output buffer.
+         + vdif_header_len);                         // Offset for the vdif header.
+
+    // Offset in output frame for first frequency of this receiver buffer thread (0-7).
+    uint32_t freq_offset = tel.to_freq_id(encoded_id, 0);
+
+    // Times are in separate frames, so time stride equals the size of the VDIF framesets.
     for (uint8_t* out_t_f0 = out_t0_f0;
-         out_t_f0 < out_t0_f0 + frame_size * samples_per_packet;
-         out_t_f0 += frame_size) {
-        // Location in the VDIF packet is just frequency,
-        // but our buffer has every 8th frequency.
-        for (uint8_t* out_t_f = out_t_f0; out_t_f < out_t_f0+1024; out_t_f += 8) {
-            uint8_t* out = out_t_f;
-            for (int elem = 0; elem < num_elements; elem++) {
-                *out = mbuf_data_ptr[elem];
-                out += vdif_packet_len;
+         out_t_f0 < out_t0_f0 + vdif_frameset_size * samples_per_packet;
+         out_t_f0 += vdif_frameset_size) {
+        // Pointer to start of thread in VDIF frame (updated in loop).
+        uint8_t* out_t_p = out_t_f0;
+        for (uint32_t i_thread = 0; i_thread < num_threads; i_thread++) {
+            // Pointer to starting input and frequency in input buffer for this thread.
+            char* in = mbuf_data_ptr + buffer_offsets[i_thread];
+            if (num_elements == 1) {
+                // Dealing with CHIME-style formats, with each input in its own thread.
+                // Location in the VDIF packet is just frequency,
+                // but our buffer has every 8th frequency.
+                for (uint8_t* out = out_t_p+freq_offset; out < out_t_p+num_freq; out += 8) {
+                    *out = *in;
+                    in += total_num_elements;
+                }
+            } else if (num_elements == 2) {
+                // Dealing with CHORD-style chunked format.
+                uint16_t* out_t_fi = (uint16_t*)out_t_p;
+                for (uint16_t* out = out_t_fi+freq_offset; out < out_t_fi+num_freq; out += 8) {
+                    *out = *(uint16_t*)in; // copy 2 consecutive inputs in one go.
+                    in += total_num_elements;
+                }
+            } else if (num_elements == 4) {
+                uint32_t* out_t_fi = (uint32_t*)out_t_p;
+                for (uint32_t* out = out_t_fi+freq_offset; out < out_t_fi+num_freq; out += 8) {
+                    *out = *(uint32_t*)in; // copy 4 consecutive inputs in one go.
+                    in += total_num_elements;
+                }
+            } else { // num_elements == 8
+                uint64_t* out_t_fi = (uint64_t*)out_t_p;
+                for (uint64_t* out = out_t_fi+freq_offset; out < out_t_fi+num_freq; out += 8) {
+                    *out = *(uint64_t*)in; // copy 8 consecutive inputs in one go.
+                    in += total_num_elements;
+                }
             }
-            // Go to next set of elements.
-            mbuf_data_ptr += total_num_elements;
-            // If needed, advance to the next mbuf in the chain.
-            if (unlikely(mbuf_data_ptr >= mbuf_data_max)) {
-                // Keep track of where we are.
-                int mbuf_offset = mbuf_data_ptr - mbuf_data_max;
-                mbuf = mbuf->next;
-                assert(mbuf);
-                mbuf_data_base = rte_pktmbuf_mtod(mbuf, char*);
-                mbuf_data_max = mbuf_data_base + mbuf->data_len;
-                mbuf_data_ptr = mbuf_data_base + mbuf_offset;
-            }
+            // Move output pointer to next VDIF thread.
+            out_t_p += vdif_frame_size;
+        }
+        // Go to next sample (of 128 frequencies and 16 inputs)
+        mbuf_data_ptr += 128 * total_num_elements;
+        // If needed, advance to the next mbuf in the chain.
+        if (mbuf_data_ptr >= mbuf_data_max) {
+            // Keep track of where we are.
+            int mbuf_offset = mbuf_data_ptr - mbuf_data_max;
+            mbuf = mbuf->next;
+            assert(mbuf);
+            mbuf_data_base = rte_pktmbuf_mtod(mbuf, char*);
+            mbuf_data_max = mbuf_data_base + mbuf->data_len;
+            mbuf_data_ptr = mbuf_data_base + mbuf_offset;
         }
     }
 }
@@ -330,9 +440,10 @@ inline void iceBoardVDIF::set_vdif_header_options(int vdif_frame_location, uint6
     uint64_t fpga_ns = Telescope::instance().seq_length_nsec();
 
     for (uint32_t time_step = 0; time_step < samples_per_packet; ++time_step) {
-        for (int elem = 0; elem < num_elements; ++elem) {
-            size_t header_idx = vdif_frame_location + vdif_packet_len * num_elements * time_step
-                                + vdif_packet_len * elem;
+        for (uint32_t i_thread = 0; i_thread < num_threads; ++i_thread) {
+            size_t header_idx = (vdif_frame_location
+                                 + vdif_frameset_size * time_step
+                                 + vdif_frame_size * i_thread);
 
             assert(header_idx < out_buf->frame_size);
 
@@ -343,10 +454,10 @@ inline void iceBoardVDIF::set_vdif_header_options(int vdif_frame_location, uint6
             vdif_header->vdif_version = 1;
             vdif_header->data_type = 1;
             vdif_header->unused = 0;
-            // First half of 2018, corresponds to 2018.01.01.0:0:0 in UTC
+            // First half of 2018, corresponds to 2018-01-01T00:00:00 in UTC
             vdif_header->ref_epoch = 36;
-            vdif_header->frame_len = 132;
-            vdif_header->log_num_chan = 10;
+            vdif_header->frame_len = vdif_frame_size / 8;
+            vdif_header->log_num_chan = vdif_log2_num_chan;
             vdif_header->bits_depth = 3;
             vdif_header->edv = 0;
             vdif_header->eud1 = 0;
@@ -354,7 +465,7 @@ inline void iceBoardVDIF::set_vdif_header_options(int vdif_frame_location, uint6
             vdif_header->eud3 = 0;
             vdif_header->eud4 = 0;
             vdif_header->station_id = station_id;
-            vdif_header->thread_id = elem;
+            vdif_header->thread_id = i_thread;
 
             // Current time in nano seconds relative to epoch
             uint64_t cur_time = (seq + time_step) * fpga_ns + vdif_base_time;
