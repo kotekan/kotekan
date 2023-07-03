@@ -1,0 +1,80 @@
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: debug
+
+# Default buffer depth (number of frames in buffer)
+buffer_depth: 8
+
+# Default core assignments
+cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,13,14,15]
+
+voltage_samples: 32768
+voltage_freq: 16
+num_dishes: 512
+num_elements: num_dishes * 2
+n2coarse_sub_integration_ntime: 16384
+sizeof_int: 4
+
+# Pool
+main_pool:
+  kotekan_metadata_pool: chimeMetadata
+  num_metadata_objects: 15 * buffer_depth
+
+network_capture_buf_0:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: voltage_freq * (voltage_samples / n2coarse_sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+  metadata_pool: main_pool
+  numa_node: 0
+network_capture_buf_1:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: voltage_freq * (voltage_samples / n2coarse_sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+  metadata_pool: main_pool
+  numa_node: 0
+
+network_capture_buf_2:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: voltage_freq * (voltage_samples / n2coarse_sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+  metadata_pool: main_pool
+  numa_node: 0
+network_capture_buf_3:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: voltage_freq * (voltage_samples / n2coarse_sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+  metadata_pool: main_pool
+  numa_node: 0
+
+
+
+buffer_recv_0:
+    kotekan_stage: bufferRecv
+    log_level: info
+    buf: network_capture_buf_0
+    listen_port: 11027
+    num_threads: 1
+
+buffer_recv_1:
+    kotekan_stage: bufferRecv
+    log_level: info
+    buf: network_capture_buf_1
+    listen_port: 11028
+    num_threads: 1
+
+buffer_recv_2:
+    kotekan_stage: bufferRecv
+    log_level: info
+    buf: network_capture_buf_2
+    listen_port: 11029
+    num_threads: 1
+
+buffer_recv_3:
+    kotekan_stage: bufferRecv
+    log_level: info
+    buf: network_capture_buf_3
+    listen_port: 11030
+    num_threads: 1
