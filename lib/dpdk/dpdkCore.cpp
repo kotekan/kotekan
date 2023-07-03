@@ -541,12 +541,12 @@ int dpdkCore::lcore_rx_distributor(void* args) {
                 last_seq = seq_num;
                 gettimeofday(&last_time, nullptr);
             } else if (unlikely(seq_num > last_seq + 16)) {
-                lost_packets += (seq_num - last_seq) / 16;
+                lost_packets += (seq_num - last_seq - 16) / 16;
             }
 
             last_seq = seq_num;
 
-            if (unlikely(total_packets % (1250000 * 1) == 0)) {
+            if (unlikely(total_packets % (1450000 * 5) == 0)) {
                 struct timeval now;
                 gettimeofday(&now, nullptr);
                 double elapsed_time = tv_to_double(now) - tv_to_double(last_time);
@@ -625,25 +625,25 @@ int dpdkCore::lcore_rx(void* args) {
         for (uint16_t j = 0; j < num_rx; ++j) {
 
             total_packets += 1;
-            uint32_t seq_num = *rte_pktmbuf_mtod_offset(mbufs[j], uint32_t*, 46);
+            uint32_t seq_num = *rte_pktmbuf_mtod_offset(mbufs[j], uint32_t*, 42);
 
             if (unlikely(last_seq) == 0) {
                 last_seq = seq_num;
                 gettimeofday(&last_time, nullptr);
-            } else if (unlikely(seq_num > last_seq + 2)) {
-                lost_packets += (seq_num - last_seq) / 2;
+            } else if (unlikely(seq_num > last_seq + 1)) {
+                lost_packets += seq_num - last_seq - 1;
             }
 
             last_seq = seq_num;
 
-            if (unlikely(total_packets % (1250000) == 0)) {
+            if (unlikely(total_packets % (304875 * 5) == 0)) {
                 struct timeval now;
                 gettimeofday(&now, nullptr);
                 double elapsed_time = tv_to_double(now) - tv_to_double(last_time);
                 INFO_NON_OO("Port: {:d} Packet rate: {:.0f} pps, effective data rate: {:.4f}Gb/s, "
                             "lost_packets rate: {:.4f}%",
                             port, total_packets / elapsed_time,
-                            (double)total_packets * 4096 * 8 / 1e9 / elapsed_time,
+                            (double)total_packets * 4076 * 8 / 1e9 / elapsed_time,
                             (double)lost_packets / (double)total_packets * 100.0);
                 last_time = now;
                 total_packets = 0;
