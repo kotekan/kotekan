@@ -68,6 +68,10 @@ main_pool:
     kotekan_metadata_pool: oneHotMetadata
     num_metadata_objects: 15 * buffer_depth * 8
 
+main_pool:
+    kotekan_metadata_pool: oneHotMetadata
+    num_metadata_objects: 15 * buffer_depth * 8
+
 # Buffers
 host_voltage_buffer_0:
     kotekan_buffer: standard
@@ -89,6 +93,16 @@ host_voltage_buffer:
     num_frames: buffer_depth * 4
     frame_size: voltage_samples * num_dishes * 2 * voltage_freq
     metadata_pool: main_pool
+
+{%- for id in range(8) %}
+host_voltage_buffer_numa1_{{ id }}:
+    kotekan_buffer: standard
+    numa_node: 1
+    use_hugepages: true
+    num_frames: buffer_depth * 4
+    frame_size: voltage_samples * num_dishes * 2 * voltage_freq
+    metadata_pool: main_pool
+{%- endfor %}
 
 host_coarse_correlation_buffer:
     kotekan_buffer: standard
@@ -140,23 +154,13 @@ host_beammeanstd_buffer:
     frame_size: frb_beams * frb_freq * frb_td_rechunk * 2 * 2 / 256
     metadata_pool: main_pool
 
-gen_data:
-    #kotekan_stage: testDataGen
-    type: onehot
-    values: [0x01, 0x02, 0x04, 0x07, 0x08, 0x09, 0xc, 0xe, 0xf, 0x10, 0x20, 0x40, 0x70, 0x80, 0x90, 0xc0, 0xe0, 0xf0]
-    #type: random_signed
-    #reuse_random: true
-    # TIME, POL, FREQ, DISH
-    array_shape: [32768, 2, 16, 512]
-    out_buf: host_voltage_buffer
-
 # See the dpdkCore class docs in dpdkCore.hpp for details
 # on the options here.
 dpdk:
   kotekan_stage: dpdkCore
   packet_size: 8224
   # Format is index = lcore (logical core), value = cpu core
-  lcore_cpu_map: [5,6,7]
+  lcore_cpu_map: [5,6,7,24,25,26,27,28,29,30,31]
   main_lcore_cpu: 4
   num_mem_channels: 4
   # Format is index = lcore, value = array of port IDs
@@ -176,7 +180,15 @@ dpdk:
       out_buf: host_voltage_buffer_0
     - dpdk_handler: captureHandler
       out_buf: host_voltage_buffer_1
+{%- for id in range(8) %}
+    - dpdk_handler: captureHandler
+      out_buf: host_voltage_buffer_numa1_{{ id }}
+{%- endfor %}
 
+hexDump:
+  kotekan_stage: hexDump
+  in_buf: host_voltage_buffer_0
+  len: packet_size
 
 merge_voltage:
     kotekan_stage: bufferMerge
@@ -206,9 +218,9 @@ gen_bb_shift:
     out_buf: host_bb_shift_buffer
 
 gpu:
-    log_level: warn
+    log_level: info
     profiling: true
-    log_profiling: false
+    log_profiling: true
     kernel_path: "../../lib/cuda/kernels/"
     # More streams -- for FRBBeamReformer
     num_cuda_streams: 4

@@ -7,10 +7,11 @@
 #include "iceBoardShuffle.hpp"  // for iceBoardShuffle, iceBoardShuffle::shuffle_size
 #include "iceBoardStandard.hpp" // for iceBoardStandard
 #include "iceBoardVDIF.hpp"     // for iceBoardVDIF
+#include "iceCaptureHandler.hpp"
 #include "rfsocHandler.hpp"
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json, basic_json<>::object_t, basic_json, basic_json<...
+#include "fmt.hpp"   // for format, fmt
+#include "json.hpp"  // for json, basic_json<>::object_t, basic_json, basic_json<...
 
 #include <algorithm> // for copy, max
 #include <atomic>    // for atomic_bool
@@ -24,19 +25,19 @@
 #include <rte_eal.h>               // for rte_eal_init
 #include <rte_errno.h>             // for rte_strerror, per_lcore__rte_errno, rte_errno
 #include <rte_ethdev.h>
-#include <rte_ether.h>   // for ether_addr
-#include <rte_launch.h>  // for rte_eal_mp_remote_launch, rte_eal_mp_wait_lcore, SKIP...
-#include <rte_lcore.h>   // for rte_lcore_count, rte_lcore_id
-#include <rte_mbuf.h>    // for rte_mbuf, rte_pktmbuf_free, rte_pktmbuf_init, rte_pkt...
-#include <rte_mempool.h> // for rte_mempool, rte_mempool_create, rte_mempool_free
+#include <rte_ether.h>             // for ether_addr
+#include <rte_launch.h>            // for rte_eal_mp_remote_launch, rte_eal_mp_wait_lcore, SKIP...
+#include <rte_lcore.h>             // for rte_lcore_count, rte_lcore_id
+#include <rte_mbuf.h>              // for rte_mbuf, rte_pktmbuf_free, rte_pktmbuf_init, rte_pkt...
+#include <rte_mempool.h>           // for rte_mempool, rte_mempool_create, rte_mempool_free
 #include <rte_ring.h>
-#include <stdexcept>   // for runtime_error
-#include <stdio.h>     // for fprintf, size_t, stderr
-#include <stdlib.h>    // for malloc, free
-#include <string.h>    // for strncpy, memset
-#include <sys/types.h> // for uint
-#include <unistd.h>    // for sleep
-#include <vector>      // for vector
+#include <stdexcept>               // for runtime_error
+#include <stdio.h>                 // for fprintf, size_t, stderr
+#include <stdlib.h>                // for malloc, free
+#include <string.h>                // for strncpy, memset
+#include <sys/types.h>             // for uint
+#include <unistd.h>                // for sleep
+#include <vector>                  // for vector
 
 using nlohmann::json;
 using std::string;
@@ -161,7 +162,10 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
                     num_ports_on_node += lcore_port_list[j].num_ports;
                 }
             } else {
-                num_ports_on_node = 1;
+                if (node_id == 0)
+                    num_ports_on_node = 1;
+                if (node_id == 1)
+                    num_ports_on_node = 8;
             }
         }
         DEBUG("Number of ports on numa node {:d}: {:d}", node_id, num_ports_on_node);
@@ -193,8 +197,14 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
         for (uint32_t port : ports) {
             // TODO This will fail in a strange way if a port is listed more than once in the
             // config. We should have a check that each port assignment is unique.
-            if (port_init(port, lcore_cpu_map.at(i)) != 0) {
-                throw std::runtime_error(fmt::format(fmt("DPDK Cannot init port: {:d}"), port));
+            if (i == 0) {
+                if (port_init(port, lcore_cpu_map.at(i)) != 0) {
+                    throw std::runtime_error(fmt::format(fmt("DPDK Cannot init port: {:d}"), port));
+                }
+            } else {
+                if (port_init(port, lcore_cpu_map.at(i + 2)) != 0) {
+                    throw std::runtime_error(fmt::format(fmt("DPDK Cannot init port: {:d}"), port));
+                }
             }
         }
         i++;
@@ -214,7 +224,7 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
     //                                              "to the number of system ports ({:d})"),
     //                                          handlers_block.size(), num_system_ports));
     // }
-    handlers = (dpdkRXhandler**)malloc(num_workers * sizeof(dpdkRXhandler*));
+    handlers = (dpdkRXhandler**)malloc(20 * sizeof(dpdkRXhandler*));
     CHECK_MEM(handlers);
     for (json& handler : handlers_block) {
 
@@ -232,6 +242,9 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
         } else if (handler_name == "captureHandler") {
             handlers[port] =
                 new captureHandler(config, handler_unique_name, buffer_container, port);
+        } else if (handler_name == "iceCaptureHandler") {
+            handlers[port] =
+                new iceCaptureHandler(config, handler_unique_name, buffer_container, port);
         } else if (handler_name == "rfsocHandler") {
             handlers[port] = new rfsocHandler(config, handler_unique_name, buffer_container, port);
         } else if (handler_name == "none") {
@@ -308,6 +321,12 @@ void dpdkCore::main_thread() {
                 ERROR("Could not start worker lcore");
             }
         }
+        for (uint32_t i = 0; i < 8; ++i) {
+            INFO("Starting 10G capture handler on lcore {:d}", i + num_workers + 2);
+            if (rte_eal_remote_launch(dpdkCore::lcore_rx, (void*)this, i + num_workers + 2) != 0) {
+                ERROR("Could not start worker lcore");
+            }
+        }
     }
 
     while (!stop_thread) {
@@ -318,8 +337,8 @@ void dpdkCore::main_thread() {
         // it seemed like it was worth leaving it upto the handler
         // to say which stats we actually care about recording.
         for (uint32_t i = 0; i < num_system_ports; ++i) {
-            if (handlers[i] != nullptr)
-                handlers[i]->update_stats();
+            // if (handlers[i] != nullptr)
+            //     handlers[i]->update_stats();
         }
 
         // TODO Check port status
@@ -365,6 +384,7 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
 
     // Allocate and set up 1 RX queue per Ethernet port.
     for (q = 0; q < rx_rings; q++) {
+        assert(mbuf_pools.at(numa_node_of_cpu(lcore_id)) != nullptr);
         retval = rte_eth_rx_queue_setup(port, q, 1024, rte_eth_dev_socket_id(port), nullptr,
                                         mbuf_pools.at(numa_node_of_cpu(lcore_id)));
         if (retval < 0) {
@@ -516,10 +536,9 @@ int dpdkCore::lcore_rx_distributor(void* args) {
         if (unlikely(num_rx == 0))
             continue;
 
-        total_packets += num_rx;
-
         // Process some of packet header information, copy happens in an other thread
         for (uint16_t j = 0; j < num_rx; ++j) {
+            total_packets += 1;
             uint64_t seq_num = *rte_pktmbuf_mtod_offset(mbufs[j], uint64_t*, 50);
 
             if (unlikely(last_seq) == 0) {
@@ -535,11 +554,11 @@ int dpdkCore::lcore_rx_distributor(void* args) {
                 struct timeval now;
                 gettimeofday(&now, nullptr);
                 double elapsed_time = tv_to_double(now) - tv_to_double(last_time);
-                INFO_NON_OO(
-                    "Packet rate: {:.0f} pps, data rate: {:.4f}Gb/s, lost_packets rate: {:.4f}%",
-                    total_packets / elapsed_time,
-                    (double)total_packets * 8224 * 8 / 1e9 / elapsed_time,
-                    (double)lost_packets / (double)total_packets * 100.0);
+                INFO_NON_OO("Port: {:d} Packet rate: {:.0f} pps, data rate: {:.4f}Gb/s, "
+                            "lost_packets rate: {:.4f}%",
+                            port, total_packets / elapsed_time,
+                            (double)total_packets * 8224 * 8 / 1e9 / elapsed_time,
+                            (double)lost_packets / (double)total_packets * 100.0);
                 last_time = now;
                 total_packets = 0;
                 lost_packets = 0;
@@ -582,46 +601,67 @@ exit_lcore_rx_distributor:
 int dpdkCore::lcore_rx(void* args) {
     dpdkCore* core = (dpdkCore*)args;
 
+    // return 0;
     struct rte_mbuf* mbufs[core->burst_size];
 
     // non-main cores start at 1, but it's easier to 0 base here
-    uint32_t lcore = rte_lcore_id() - 1;
-    fprintf(stderr, "lcore ID: %u\n", lcore);
+    uint32_t lcore = rte_lcore_id();
+    const uint32_t port = lcore - 3;
+    fprintf(stderr, "starting lcore_rx on lcore ID: %u using port %u\n", lcore, port);
     if (lcore > core->num_lcores) {
         throw std::runtime_error("lcore mapping error");
     }
 
-    // The list of ports this thread processes
-    struct dpdkCore::portList port_list = core->lcore_port_list[lcore];
-    const uint32_t num_local_ports = port_list.num_ports;
-    const uint32_t* ports = port_list.ports;
     const uint32_t burst_size = core->burst_size;
 
-    for (uint32_t i = 0; i < num_local_ports; ++i) {
-        uint32_t port = ports[i];
-        if (core->handlers[port] == nullptr) {
-            WARN_NON_OO("No valid handler provided for port {:d}", port);
-            return 0;
-        }
-    }
+    uint16_t distributor_idx = 0;
+    uint32_t packets_sent_to_worker = 0;
+    uint32_t worker_id = 0;
+    uint64_t total_packets = 0;
+    uint32_t last_seq = 0;
+    uint64_t lost_packets = 0;
+    struct timeval last_time;
 
     while (!core->stop_thread) {
-        for (uint32_t i = 0; i < num_local_ports; ++i) {
-            uint32_t port = ports[i];
 
-            const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
+        const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
 
-            for (uint16_t j = 0; j < num_rx; ++j) {
+        for (uint16_t j = 0; j < num_rx; ++j) {
 
-                // Process the packet with the required handler
-                // NOTE: Ideally this wouldn't be a call to a virtual function,
-                // but it's an overhead that's hard to avoid here.
-                if (unlikely(core->handlers[port]->handle_packet(mbufs[j]) != 0)) {
-                    goto exit_lcore;
-                }
+            total_packets += 1;
+            uint32_t seq_num = *rte_pktmbuf_mtod_offset(mbufs[j], uint32_t*, 46);
 
-                rte_pktmbuf_free(mbufs[j]);
+            if (unlikely(last_seq) == 0) {
+                last_seq = seq_num;
+                gettimeofday(&last_time, nullptr);
+            } else if (unlikely(seq_num > last_seq + 2)) {
+                lost_packets += (seq_num - last_seq) / 2;
             }
+
+            last_seq = seq_num;
+
+            if (unlikely(total_packets % (1250000) == 0)) {
+                struct timeval now;
+                gettimeofday(&now, nullptr);
+                double elapsed_time = tv_to_double(now) - tv_to_double(last_time);
+                INFO_NON_OO("Port: {:d} Packet rate: {:.0f} pps, effective data rate: {:.4f}Gb/s, "
+                            "lost_packets rate: {:.4f}%",
+                            port, total_packets / elapsed_time,
+                            (double)total_packets * 4096 * 8 / 1e9 / elapsed_time,
+                            (double)lost_packets / (double)total_packets * 100.0);
+                last_time = now;
+                total_packets = 0;
+                lost_packets = 0;
+            }
+
+            // Process the packet with the required handler
+            // NOTE: Ideally this wouldn't be a call to a virtual function,
+            // but it's an overhead that's hard to avoid here.
+            if (unlikely(core->handlers[port + 1]->handle_packet(mbufs[j]) != 0)) {
+                goto exit_lcore;
+            }
+
+            rte_pktmbuf_free(mbufs[j]);
         }
     }
 exit_lcore:

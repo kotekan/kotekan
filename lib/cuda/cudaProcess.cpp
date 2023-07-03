@@ -74,6 +74,6 @@ void cudaProcess::register_host_memory(struct Buffer* host_buffer) {
     for (int i = 0; i < host_buffer->num_frames; i++) {
         cudaHostRegister(host_buffer->frames[i], host_buffer->aligned_frame_size,
                          cudaHostRegisterDefault);
-        DEBUG("Registered frame: {:s}[{:d}]", host_buffer->buffer_name, i);
+        WARN("Registered frame: {:s}[{:d}] (GPU{:d})", host_buffer->buffer_name, i, gpu_id);
     }
 }

@@ -16,6 +16,8 @@
 
 #include "json.hpp"
 
+#include <algorithm>
+
 /**
  * @brief A simple handler to capture uniformly sized packets into a kotekan buffer
  *
@@ -82,6 +84,10 @@ inline captureHandler::captureHandler(kotekan::Config& config, const std::string
     packet_size = config.get<uint32_t>(unique_name, "packet_size");
     payload_size = config.get<uint32_t>(unique_name, "payload_size");
 
+    if (port > 1) {
+        payload_size = 4096;
+    }
+
     if (payload_size > (uint32_t)out_buf->frame_size) {
         throw std::runtime_error("The packet size must be less than the frame size");
     }
@@ -95,12 +101,15 @@ inline captureHandler::captureHandler(kotekan::Config& config, const std::string
     if ((payload_size % 32) != 0) {
         // throw std::runtime_error("The packet_size must be a multiple of 32 bytes");
     }
+
+    INFO("Created captureHandler for port: {:d}", port);
 }
 
 inline int captureHandler::handle_packet(struct rte_mbuf* mbuf) {
 
     // Get the first frame.
     if (first_run) {
+        INFO("First run of captureHandler for port {:d}", port);
         out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
         if (out_frame == nullptr)
             return -1;
@@ -124,17 +133,25 @@ inline int captureHandler::handle_packet(struct rte_mbuf* mbuf) {
     }
 #endif
 
-    if (unlikely(packet_size != mbuf->pkt_len)) {
-        WARN("Port: {:d}; Got packet with size {:d}, but expected size was {:d}", port,
-             mbuf->pkt_len, packet_size);
-        return 0;
+    uint32_t actual_payload_size = payload_size;
+    if (port > 1) {
+        // Reduce the size of the copy if the payload is less than expected.
+        // This is very much a hack to deal with an ICEBoard firmware bug...
+        actual_payload_size = 3584;
+    } else {
+        if (unlikely(packet_size != mbuf->pkt_len)) {
+            WARN("Port: {:d}; Got packet with size {:d}, but expected size was {:d}", port,
+                 mbuf->pkt_len, packet_size);
+            return 0;
+        }
     }
 
 
     // Copy the packet.
     assert((packet_location + 1) * payload_size <= (uint32_t)out_buf->frame_size);
     int offset = 0;
-    copy_block(&mbuf, &out_frame[packet_location * payload_size], payload_size, (int*)&offset);
+    copy_block(&mbuf, &out_frame[packet_location * payload_size], actual_payload_size,
+               (int*)&offset);
 
     packet_location++;
 
