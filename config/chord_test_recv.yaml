@@ -16,29 +16,42 @@ packets_per_frame: 32768 * 4
 packet_size: 8224
 max_rx_pkt_len: 9000
 
+# Pool
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 15 * buffer_depth
 
-network_capture_buf_2:
+voltage_samples: 32768
+voltage_freq: 16
+num_dishes: 512
+num_elements: num_dishes * 2
+n2coarse_sub_integration_ntime: 16384
+sizeof_int: 4
+
+network_capture_buf_0:
   kotekan_buffer: standard
   num_frames: buffer_depth
-  frame_size: packets_per_frame * packet_size / 4
+  frame_size: voltage_freq * (voltage_samples / n2coarse_sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+  metadata_pool: main_pool
   numa_node: 0
-network_capture_buf_3:
+network_capture_buf_1:
   kotekan_buffer: standard
   num_frames: buffer_depth
-  frame_size: packets_per_frame * packet_size / 4
+  frame_size: voltage_freq * (voltage_samples / n2coarse_sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+  metadata_pool: main_pool
   numa_node: 0
 
 
 buffer_recv_0:
     kotekan_stage: bufferRecv
     log_level: warn
-    buf: network_capture_buf_2
+    buf: network_capture_buf_0
     listen_port: 11027
     num_threads: 1
 
 buffer_recv_0:
     kotekan_stage: bufferRecv
     log_level: warn
-    buf: network_capture_buf_3
+    buf: network_capture_buf_1
     listen_port: 11028
     num_threads: 1

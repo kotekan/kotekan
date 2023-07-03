@@ -7,7 +7,6 @@
 #include "iceBoardShuffle.hpp"  // for iceBoardShuffle, iceBoardShuffle::shuffle_size
 #include "iceBoardStandard.hpp" // for iceBoardStandard
 #include "iceBoardVDIF.hpp"     // for iceBoardVDIF
-#include "iceCaptureHandler.hpp"
 #include "rfsocHandler.hpp"
 
 #include "fmt.hpp"   // for format, fmt
@@ -242,9 +241,6 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
         } else if (handler_name == "captureHandler") {
             handlers[port] =
                 new captureHandler(config, handler_unique_name, buffer_container, port);
-        } else if (handler_name == "iceCaptureHandler") {
-            handlers[port] =
-                new iceCaptureHandler(config, handler_unique_name, buffer_container, port);
         } else if (handler_name == "rfsocHandler") {
             handlers[port] = new rfsocHandler(config, handler_unique_name, buffer_container, port);
         } else if (handler_name == "none") {
