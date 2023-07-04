@@ -193,6 +193,7 @@ iceBoardVDIF::iceBoardVDIF(kotekan::Config& config, const std::string& unique_na
                                                  frequencies[i_thread]));
         }
     }
+    buffer_offsets.resize(num_threads);
     for (uint32_t i_thread = 0; i_thread < num_threads; i_thread++) {
         // Calculate true offset in input buffer. This has every eighth frequency,
         // so for buffer 0, 16 elements for freq 0, then 16 for freq 8, etc.
