@@ -122,12 +122,11 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
 
     // DEBUG
     for (int i = 0; i < _gpu_buffer_depth; i++) {
-        void* voltage_memory =
-            device.get_gpu_memory_array(_gpu_mem_voltage, i, voltage_len);
-        DEBUG("GPUMEM memory_array({:p}, {:d}, {:d}, \"{:s}\", \"{:s}\", \"frb_bf_input_voltage[{:d}]\")",
+        void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, i, voltage_len);
+        DEBUG("GPUMEM memory_array({:p}, {:d}, {:d}, \"{:s}\", \"{:s}\", "
+              "\"frb_bf_input_voltage[{:d}]\")",
               voltage_memory, voltage_len, i, get_name(), _gpu_mem_voltage, i);
     }
-
 }
 
 cudaFRBBeamformer::~cudaFRBBeamformer() {}
@@ -197,8 +196,8 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate,
                                      padded_samples * voltage_len_per_sample,
                                      cudaMemcpyDeviceToDevice, device.getStream(cuda_stream_id)));
     DEBUG("GPUMEM copyasync({:p}, {:p}, {:d}, \"{:s}\", \"padding: {:d} samples for frame {:d}\")",
-          voltage_next, voltage_pad, padded_samples * voltage_len_per_sample,
-          get_name(), padded_samples, pipestate.get_int("gpu_frame_counter"));
+          voltage_next, voltage_pad, padded_samples * voltage_len_per_sample, get_name(),
+          padded_samples, pipestate.get_int("gpu_frame_counter"));
 
     // Set the number of output samples produced!
     pipestate.set_int("frb_bf_samples", output_frames);

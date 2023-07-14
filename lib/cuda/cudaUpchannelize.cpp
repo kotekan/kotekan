@@ -91,7 +91,8 @@ cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_nam
     for (int i = 0; i < _gpu_buffer_depth; i++) {
         void* out_memory =
             device.get_gpu_memory_array(_gpu_mem_output_voltage, i, voltage_output_len);
-        DEBUG("GPUMEM memory_array({:p}, {:d}, {:d}, \"{:s}\", \"{:s}\", \"upchan_output_voltage[{:d}]\")",
+        DEBUG("GPUMEM memory_array({:p}, {:d}, {:d}, \"{:s}\", \"{:s}\", "
+              "\"upchan_output_voltage[{:d}]\")",
               out_memory, voltage_output_len, i, get_name(), _gpu_mem_output_voltage, i);
     }
 }
@@ -167,7 +168,8 @@ cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate,
                                   parameters, NULL));
 
     DEBUG("GPUMEM kernel_out({:p}, {:d}, \"{:s}\", \"upchannelizer for frame {:d}\")",
-          voltage_output_memory, voltage_output_len, get_name(), pipestate.get_int("gpu_frame_counter"));
+          voltage_output_memory, voltage_output_len, get_name(),
+          pipestate.get_int("gpu_frame_counter"));
 
     // Copy "info" result code back to host memory
     CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory,

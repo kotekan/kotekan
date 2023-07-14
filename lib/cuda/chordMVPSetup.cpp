@@ -60,9 +60,9 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
         CHECK_CUDA_ERROR(cudaMemset((unsigned char*)real + viewsize, 0, fullsize - viewsize));
 
         // DEBUG
-        DEBUG("GPUMEM memory_array_view({:p}, {:d}, {:p}, {:d}, \"{:s}\", \"{:s}\", {:d}, \"upchan/frb-bf\")",
+        DEBUG("GPUMEM memory_array_view({:p}, {:d}, {:p}, {:d}, \"{:s}\", \"{:s}\", {:d}, "
+              "\"upchan/frb-bf\")",
               real, fullsize, (char*)real + offset, viewsize, fullname, viewname, i);
-
     }
     device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize);
 
