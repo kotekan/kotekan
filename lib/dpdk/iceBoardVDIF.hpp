@@ -377,76 +377,76 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
     auto& tel = Telescope::instance();
     stream_t encoded_id = ice_encode_stream_id(port_stream_id);
 
-    // Create the parts of the VDIF frame that are in this packet.
-    char* mbuf_data_base = rte_pktmbuf_mtod(mbuf, char*);
-    char* mbuf_data_max = mbuf_data_base + mbuf->data_len;
-    char* mbuf_data_ptr = mbuf_data_base + header_offset;
+    // Pointer to where we should start storing our data.
     uint8_t* out_t0_f0 =
         (out_buf_frame                              // Start of output buffer.
          + vdif_frame_location * vdif_frameset_size // Frame location in output buffer.
          + vdif_header_len);                        // Offset for the vdif header.
-
     // Offset in output frame for first frequency of this receiver buffer thread (0-7).
     uint32_t freq_offset = tel.to_freq_id(encoded_id, 0);
-    // Sanity check: there should be an integer number of frames in the input buffer.
-    assert((mbuf_data_max - mbuf_data_ptr) % (128 * total_num_elements) == 0);
+
+    // Buffer holding the first sample.
+    auto mbuf0 = mbuf;
+    // Initial offset to the start of a full 16*128 sample in the input (header done separately);
+    uint32_t mbuf_start_offset = 0;
 
     // Times are in separate frames, so time stride equals the size of the VDIF framesets.
     for (uint8_t* out_t_f0 = out_t0_f0;
          out_t_f0 < out_t0_f0 + vdif_frameset_size * samples_per_packet;
          out_t_f0 += vdif_frameset_size) {
-        // Pointer to start of thread in VDIF frame (updated in loop).
-        uint8_t* out_t_p = out_t_f0;
-        //
+        // Create the parts of the VDIF frame that are in this packet.
         for (uint32_t i_thread = 0; i_thread < num_threads; i_thread++) {
-            // Pointer to starting input and frequency in input buffer for this thread.
-            char* in = mbuf_data_ptr + buffer_offsets[i_thread];
-            if (num_elements == 1) {
-                // Dealing with CHIME-style formats, with each input in its own thread.
-                // Location in the VDIF packet is just frequency,
-                // but our buffer has every 8th frequency.
-                for (uint8_t* out = out_t_p + freq_offset; out < out_t_p + num_freq; out += 8) {
-                    *out = *in;
-                    in += total_num_elements;
-                }
-            } else if (num_elements == 2) {
-                // Dealing with CHORD-style chunked format.
-                uint16_t* out_t_fi = (uint16_t*)out_t_p;
-                for (uint16_t* out = out_t_fi + freq_offset; out < out_t_fi + num_freq; out += 8) {
-                    *out = *(uint16_t*)in; // copy 2 consecutive inputs in one go.
-                    in += total_num_elements;
-                }
-            } else if (num_elements == 4) {
-                uint32_t* out_t_fi = (uint32_t*)out_t_p;
-                for (uint32_t* out = out_t_fi + freq_offset; out < out_t_fi + num_freq; out += 8) {
-                    *out = *(uint32_t*)in; // copy 4 consecutive inputs in one go.
-                    in += total_num_elements;
-                }
-            } else { // num_elements == 8
-                uint64_t* out_t_fi = (uint64_t*)out_t_p;
-                for (uint64_t* out = out_t_fi + freq_offset; out < out_t_fi + num_freq; out += 8) {
-                    *out = *(uint64_t*)in; // copy 8 consecutive inputs in one go.
-                    in += total_num_elements;
-                }
+            // Input start location for this thread.
+            mbuf = mbuf0;
+            char* in = rte_pktmbuf_mtod(mbuf, char*); // pointer to start of buffer
+            char* mbuf_last_sample = in + mbuf->data_len - num_elements;
+            // Adjust pointer to starting element and frequency for this thread.
+            in += header_offset + mbuf_start_offset + buffer_offsets[i_thread];
+            // Output start location.
+            uint8_t* out_t_fi = out_t_f0 + i_thread * vdif_frame_size + freq_offset * num_elements;
+            for (uint8_t* out = out_t_fi;
+                 out < out_t_fi + num_freq * num_elements;
+                 out += 8 * num_elements) {
+                while (unlikely(in > mbuf_last_sample)) {
+                    // Input is beyond start of last sample.
+                    uint32_t beyond_last_sample = in - mbuf_last_sample;
+                    // Go to the next buffer, keeping the pointer in case of a partial sample.
+                    auto in_old = in;
+                    mbuf = mbuf->next;
+                    assert(mbuf);
+                    in = rte_pktmbuf_mtod(mbuf, char*);
+                    mbuf_last_sample = in + mbuf->data_len - num_elements;
+                    in += header_offset + beyond_last_sample - num_elements; // sample location
+                    if (unlikely(beyond_last_sample < num_elements)) {
+                        // Partial sample.
+                        uint32_t n_before = num_elements - beyond_last_sample;
+                        // Copy piece from previous buffer (leaves tmp at out+n_before).
+                        auto tmp = std::copy_n(in_old, n_before, out);
+                        // Copy rest from new buffer (in + n_before is start of buffer data).
+                        std::copy_n(in + n_before, beyond_last_sample, tmp);
+                        // 2023-07-23, MHvK: Tested that this is hit for the first frame
+                        // with num_threads=1, num_elements=8, num_freq=512, frequencies=[512]
+                        // (with the debug statement, one gets large packet loss, unsurprisingly).
+                        // DEBUG("Hit partial sample {:x}", *(uint64_t*)out);
+                        goto next_element;
+                    }
+                } // end of while; input pointer is at sample.
+                std::copy_n(in, num_elements, out);
+            next_element:
+                in += total_num_elements;
             }
-            // Move output pointer to next VDIF thread.
-            out_t_p += vdif_frame_size;
-        }
-        // Go to next sample (of 128 frequencies and 16 inputs)
-        mbuf_data_ptr += 128 * total_num_elements;
+        } // end of loop over threads.
+        // Go to next time sample (of 128 frequencies and 16 inputs)
+        mbuf_start_offset += 128 * total_num_elements;
         // If needed, advance to the next mbuf in the chain.
-        if (mbuf_data_ptr >= mbuf_data_max) {
-            // Keep track of where we are.
-            int mbuf_offset = mbuf_data_ptr - mbuf_data_max;
-            mbuf = mbuf->next;
-            assert(mbuf);
-            mbuf_data_base = rte_pktmbuf_mtod(mbuf, char*);
-            mbuf_data_max = mbuf_data_base + mbuf->data_len;
-            mbuf_data_ptr = mbuf_data_base + mbuf_offset;
-            // Sanity check: there should be an integer number of frames in the input buffer.
-            assert((mbuf_data_max - mbuf_data_ptr) % (128 * total_num_elements) == 0);
+        uint32_t num_data = mbuf0->data_len - header_offset;
+        while (mbuf_start_offset > num_data) {
+            mbuf_start_offset -= num_data;
+            mbuf0 = mbuf0->next;
+            assert(mbuf0);
+            num_data = mbuf0->data_len - header_offset;
         }
-    }
+    } // end of loop over times.
 }
 
 inline void iceBoardVDIF::set_vdif_header_options(int vdif_frame_location, uint64_t seq) {
