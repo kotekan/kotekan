@@ -75,7 +75,6 @@ private:
     /// The size of each VDIF frame and frame set
     uint32_t vdif_frame_size;
     uint32_t vdif_frameset_size;
-
 };
 
 #endif /* ZERO_SAMPLES_HPP */

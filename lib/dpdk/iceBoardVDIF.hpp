@@ -164,40 +164,46 @@ iceBoardVDIF::iceBoardVDIF(kotekan::Config& config, const std::string& unique_na
     }
     // Sanity checks of configuration parameters.
     if (!(num_elements == 1 || num_elements == 2 || num_elements == 4 || num_elements == 8)) {
-        throw std::runtime_error(fmt::format(fmt("num_elements must be 1, 2, 4, or 8, not {:d}"), num_elements));
+        throw std::runtime_error(
+            fmt::format(fmt("num_elements must be 1, 2, 4, or 8, not {:d}"), num_elements));
     }
     if (total_num_freq % num_freq != 0) {
-        throw std::runtime_error(fmt::format(fmt("Number of frequences {:d} per thread must divide into 1024"), num_freq));
+        throw std::runtime_error(fmt::format(
+            fmt("Number of frequences {:d} per thread must divide into 1024"), num_freq));
     }
     if (offsets.size() != num_threads) {
-        throw std::runtime_error(fmt::format(fmt("Number of input offsets should be {:d}, not {:d}"),
-                                             num_threads, offsets.size()));
+        throw std::runtime_error(fmt::format(
+            fmt("Number of input offsets should be {:d}, not {:d}"), num_threads, offsets.size()));
     }
     if (frequencies.size() != num_threads) {
-        throw std::runtime_error(fmt::format(fmt("Number of start frequencies should be {:d}, not {:d}"),
-                                             num_threads, frequencies.size()));
+        throw std::runtime_error(
+            fmt::format(fmt("Number of start frequencies should be {:d}, not {:d}"), num_threads,
+                        frequencies.size()));
     }
     for (uint32_t i_thread = 0; i_thread < num_threads; i_thread++) {
         if (offsets[i_thread] > total_num_elements - num_elements) {
             throw std::runtime_error(fmt::format(fmt("The offset range extends too far: {:d}-{:d}"),
-                                                 offsets[i_thread], offsets[i_thread]+num_elements-1));
+                                                 offsets[i_thread],
+                                                 offsets[i_thread] + num_elements - 1));
         }
         if (frequencies[i_thread] > total_num_freq - num_freq) {
-            throw std::runtime_error(fmt::format(fmt("The frequency range extends too far: {:d}-{:d}"),
-                                                 frequencies[i_thread], frequencies[i_thread]+num_freq-1));
+            throw std::runtime_error(
+                fmt::format(fmt("The frequency range extends too far: {:d}-{:d}"),
+                            frequencies[i_thread], frequencies[i_thread] + num_freq - 1));
         }
-        // With frequencies split 8 ways, insisting on a multiple of 8 for the start frequency ensures
-        // we can copy the same frequency chunk in each input buffer.
+        // With frequencies split 8 ways, insisting on a multiple of 8 for the start frequency
+        // ensures we can copy the same frequency chunk in each input buffer.
         if (frequencies[i_thread] % 8 != 0) {
-            throw std::runtime_error(fmt::format(fmt("The start frequency must be a multiple of 8: {:d}"),
-                                                 frequencies[i_thread]));
+            throw std::runtime_error(fmt::format(
+                fmt("The start frequency must be a multiple of 8: {:d}"), frequencies[i_thread]));
         }
     }
     buffer_offsets.resize(num_threads);
     for (uint32_t i_thread = 0; i_thread < num_threads; i_thread++) {
         // Calculate true offset in input buffer. This has every eighth frequency,
         // so for buffer 0, 16 elements for freq 0, then 16 for freq 8, etc.
-      buffer_offsets[i_thread] = offsets[i_thread] + (frequencies[i_thread] / 8) * total_num_elements;
+        buffer_offsets[i_thread] =
+            offsets[i_thread] + (frequencies[i_thread] / 8) * total_num_elements;
     }
     // Calculate fixed VDIF properties.
     vdif_num_chan = num_freq * num_elements;
@@ -210,7 +216,8 @@ iceBoardVDIF::iceBoardVDIF(kotekan::Config& config, const std::string& unique_na
         DEBUG("VDIF: number of channels = {:d} = 2**{:d}; frame size={:d}, frameset size={:d}.",
               vdif_num_chan, vdif_log2_num_chan, vdif_frame_size, vdif_frameset_size);
         for (uint32_t i_thread = 0; i_thread < num_threads; i_thread++) {
-            DEBUG("VDIF: thread {:d} will start at input {:2d} and frequency {:4d}; buffer offset {:4d}",
+            DEBUG("VDIF: thread {:d} will start at input {:2d} and frequency {:4d}; "
+                  "buffer offset {:4d}",
                   i_thread, offsets[i_thread], frequencies[i_thread], buffer_offsets[i_thread]);
         }
     }
@@ -374,9 +381,10 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
     char* mbuf_data_base = rte_pktmbuf_mtod(mbuf, char*);
     char* mbuf_data_max = mbuf_data_base + mbuf->data_len;
     char* mbuf_data_ptr = mbuf_data_base + header_offset;
-    uint8_t* out_t0_f0 = (out_buf_frame              // Start of output buffer.
-         + vdif_frame_location * vdif_frameset_size  // Frame location in output buffer.
-         + vdif_header_len);                         // Offset for the vdif header.
+    uint8_t* out_t0_f0 =
+        (out_buf_frame                              // Start of output buffer.
+         + vdif_frame_location * vdif_frameset_size // Frame location in output buffer.
+         + vdif_header_len);                        // Offset for the vdif header.
 
     // Offset in output frame for first frequency of this receiver buffer thread (0-7).
     uint32_t freq_offset = tel.to_freq_id(encoded_id, 0);
@@ -394,26 +402,26 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
                 // Dealing with CHIME-style formats, with each input in its own thread.
                 // Location in the VDIF packet is just frequency,
                 // but our buffer has every 8th frequency.
-                for (uint8_t* out = out_t_p+freq_offset; out < out_t_p+num_freq; out += 8) {
+                for (uint8_t* out = out_t_p + freq_offset; out < out_t_p + num_freq; out += 8) {
                     *out = *in;
                     in += total_num_elements;
                 }
             } else if (num_elements == 2) {
                 // Dealing with CHORD-style chunked format.
                 uint16_t* out_t_fi = (uint16_t*)out_t_p;
-                for (uint16_t* out = out_t_fi+freq_offset; out < out_t_fi+num_freq; out += 8) {
+                for (uint16_t* out = out_t_fi + freq_offset; out < out_t_fi + num_freq; out += 8) {
                     *out = *(uint16_t*)in; // copy 2 consecutive inputs in one go.
                     in += total_num_elements;
                 }
             } else if (num_elements == 4) {
                 uint32_t* out_t_fi = (uint32_t*)out_t_p;
-                for (uint32_t* out = out_t_fi+freq_offset; out < out_t_fi+num_freq; out += 8) {
+                for (uint32_t* out = out_t_fi + freq_offset; out < out_t_fi + num_freq; out += 8) {
                     *out = *(uint32_t*)in; // copy 4 consecutive inputs in one go.
                     in += total_num_elements;
                 }
             } else { // num_elements == 8
                 uint64_t* out_t_fi = (uint64_t*)out_t_p;
-                for (uint64_t* out = out_t_fi+freq_offset; out < out_t_fi+num_freq; out += 8) {
+                for (uint64_t* out = out_t_fi + freq_offset; out < out_t_fi + num_freq; out += 8) {
                     *out = *(uint64_t*)in; // copy 8 consecutive inputs in one go.
                     in += total_num_elements;
                 }
@@ -442,9 +450,8 @@ inline void iceBoardVDIF::set_vdif_header_options(int vdif_frame_location, uint6
 
     for (uint32_t time_step = 0; time_step < samples_per_packet; ++time_step) {
         for (uint32_t i_thread = 0; i_thread < num_threads; ++i_thread) {
-            size_t header_idx = (vdif_frame_location
-                                 + vdif_frameset_size * time_step
-                                 + vdif_frame_size * i_thread);
+            size_t header_idx =
+                vdif_frame_location + vdif_frameset_size * time_step + vdif_frame_size * i_thread;
 
             assert(header_idx < out_buf->frame_size);
 
