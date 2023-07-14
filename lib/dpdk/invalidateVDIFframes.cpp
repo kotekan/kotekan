@@ -7,9 +7,15 @@
 #include "vdif_functions.h"      // for VDIFHeader
 
 #include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <exception>  // for exception
 #include <functional> // for bind, function
 #include <memory>     // for __shared_ptr_access, shared_ptr
+#include <regex>      // for match_results<>::_Base_type
 #include <stddef.h>   // for size_t
+#include <stdexcept>  // for runtime_error
+#include <vector>     // for vector
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
