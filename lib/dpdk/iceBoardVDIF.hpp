@@ -388,6 +388,8 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
 
     // Offset in output frame for first frequency of this receiver buffer thread (0-7).
     uint32_t freq_offset = tel.to_freq_id(encoded_id, 0);
+    // Sanity check: there should be an integer number of frames in the input buffer.
+    assert((mbuf_data_max - mbuf_data_ptr) % (128 * total_num_elements) == 0);
 
     // Times are in separate frames, so time stride equals the size of the VDIF framesets.
     for (uint8_t* out_t_f0 = out_t0_f0;
@@ -395,6 +397,7 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
          out_t_f0 += vdif_frameset_size) {
         // Pointer to start of thread in VDIF frame (updated in loop).
         uint8_t* out_t_p = out_t_f0;
+        //
         for (uint32_t i_thread = 0; i_thread < num_threads; i_thread++) {
             // Pointer to starting input and frequency in input buffer for this thread.
             char* in = mbuf_data_ptr + buffer_offsets[i_thread];
@@ -440,6 +443,8 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
             mbuf_data_base = rte_pktmbuf_mtod(mbuf, char*);
             mbuf_data_max = mbuf_data_base + mbuf->data_len;
             mbuf_data_ptr = mbuf_data_base + mbuf_offset;
+            // Sanity check: there should be an integer number of frames in the input buffer.
+            assert((mbuf_data_max - mbuf_data_ptr) % (128 * total_num_elements) == 0);
         }
     }
 }
