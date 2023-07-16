@@ -393,7 +393,7 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
 
     // Buffer and offset to first sample in the input.
     auto mbuf0 = mbuf;
-    uint32_t mbuf_start_offset = 0;  // excludes header_offset.
+    uint32_t mbuf_start_offset = 0; // excludes header_offset.
 
     // Times are in separate frames, so time stride equals the size of the VDIF framesets.
     for (uint8_t* out_t_f0 = out_t0_f0;
@@ -409,8 +409,7 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
             in += header_offset + mbuf_start_offset + buffer_offsets[i_thread];
             // Output start location.
             uint8_t* out_t_fi = out_t_f0 + i_thread * vdif_frame_size;
-            for (uint8_t* out = out_t_fi;
-                 out < out_t_fi + num_freq * num_elements;
+            for (uint8_t* out = out_t_fi; out < out_t_fi + num_freq * num_elements;
                  out += 8 * num_elements) {
                 while (unlikely(in > mbuf_last_sample)) {
                     // Input is beyond start of last sample.
