@@ -127,6 +127,10 @@ protected:
     uint32_t vdif_frame_size;
     /// vdif frame set size in bytes = vdif_frame_size * num_threads
     uint32_t vdif_frameset_size;
+
+    /// frequency offset for thread (here set to sentinel indicating it has not yet
+    /// been set; will be set to real value (0 - 7) in copy_packet_vdif.
+    uint32_t freq_offset = total_num_freq;
 };
 
 iceBoardVDIF::iceBoardVDIF(kotekan::Config& config, const std::string& unique_name,
@@ -374,36 +378,37 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
         set_vdif_header_options(vdif_frame_location * vdif_frameset_size, cur_seq);
     }
 
-    auto& tel = Telescope::instance();
-    stream_t encoded_id = ice_encode_stream_id(port_stream_id);
-
+    // Offset in output frame for first frequency of this receiver buffer thread (0-7).
+    if (freq_offset == total_num_freq) {
+        auto& tel = Telescope::instance();
+        stream_t encoded_id = ice_encode_stream_id(port_stream_id);
+        freq_offset = tel.to_freq_id(encoded_id, 0);
+    }
     // Pointer to where we should start storing our data.
     uint8_t* out_t0_f0 =
         (out_buf_frame                              // Start of output buffer.
          + vdif_frame_location * vdif_frameset_size // Frame location in output buffer.
-         + vdif_header_len);                        // Offset for the vdif header.
-    // Offset in output frame for first frequency of this receiver buffer thread (0-7).
-    uint32_t freq_offset = tel.to_freq_id(encoded_id, 0);
+         + vdif_header_len                          // Offset for the vdif header.
+         + freq_offset * num_elements);             // Offset to first frequency.
 
-    // Buffer holding the first sample.
+    // Buffer and offset to first sample in the input.
     auto mbuf0 = mbuf;
-    // Initial offset to the start of a full 16*128 sample in the input (header done separately);
-    uint32_t mbuf_start_offset = 0;
+    uint32_t mbuf_start_offset = 0;  // excludes header_offset.
 
     // Times are in separate frames, so time stride equals the size of the VDIF framesets.
     for (uint8_t* out_t_f0 = out_t0_f0;
          out_t_f0 < out_t0_f0 + vdif_frameset_size * samples_per_packet;
          out_t_f0 += vdif_frameset_size) {
-        // Create the parts of the VDIF frame that are in this packet.
+        // Copy data by threads, to help cache performance.
         for (uint32_t i_thread = 0; i_thread < num_threads; i_thread++) {
-            // Input start location for this thread.
+            // Set up start buffer.
             mbuf = mbuf0;
             char* in = rte_pktmbuf_mtod(mbuf, char*); // pointer to start of buffer
             char* mbuf_last_sample = in + mbuf->data_len - num_elements;
-            // Adjust pointer to starting element and frequency for this thread.
+            // Adjust pointer to starting element and frequency for this VDIF thread.
             in += header_offset + mbuf_start_offset + buffer_offsets[i_thread];
             // Output start location.
-            uint8_t* out_t_fi = out_t_f0 + i_thread * vdif_frame_size + freq_offset * num_elements;
+            uint8_t* out_t_fi = out_t_f0 + i_thread * vdif_frame_size;
             for (uint8_t* out = out_t_fi;
                  out < out_t_fi + num_freq * num_elements;
                  out += 8 * num_elements) {
@@ -426,7 +431,7 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
                         std::copy_n(in + n_before, beyond_last_sample, tmp);
                         // 2023-07-23, MHvK: Tested that this is hit for the first frame
                         // with num_threads=1, num_elements=8, num_freq=512, frequencies=[512]
-                        // (with the debug statement, one gets large packet loss, unsurprisingly).
+                        // (the debug statement leads to large packet losses, unsurprisingly).
                         // DEBUG("Hit partial sample {:x}", *(uint64_t*)out);
                         goto next_element;
                     }
