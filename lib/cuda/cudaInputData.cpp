@@ -21,6 +21,17 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
     }
 
     _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
+    // Metadata
+    _gpu_mem_dimensions = config.get_default<std::vector<int> >(unique_name, "gpu_mem_dimensions", std::vector<int>());
+    _gpu_mem_type = config.get_default<std::string>(unique_name, "gpu_mem_type", "");
+
+    std::string dims = "";
+    for (int i=0; i<_gpu_mem_dimensions.size(); i++) {
+        if (i)
+            dims += " x ";
+        dims += std::to_string(_gpu_mem_dimensions[i]);
+    }
+    INFO("cudaInputData: {:s} type: \"{:s}\", n dims: {:d}, shape [{:s}]", unique_name, _gpu_mem_type, _gpu_mem_dimensions.size(), dims);
 
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem, true, false, true));
 
@@ -69,6 +80,14 @@ cudaEvent_t cudaInputData::execute(cudaPipelineState& pipestate,
                                   cuda_stream_id, pre_events[cuda_stream_id],
                                   start_events[pipestate.gpu_frame_id],
                                   end_events[pipestate.gpu_frame_id]);
+
+    if (_gpu_mem_dimensions.size()) {
+        cudaArrayMetadata* meta = device.get_gpu_memory_array_metadata(_gpu_mem, pipestate.gpu_frame_id);
+        meta->type = _gpu_mem_type;
+        meta->dims = _gpu_mem_dimensions.size();
+        for (size_t i=0; i<_gpu_mem_dimensions.size(); i++)
+            meta->dim[i] = _gpu_mem_dimensions[i];
+    }
 
     in_buffer_id = (in_buffer_id + 1) % in_buf->num_frames;
     return end_events[pipestate.gpu_frame_id];

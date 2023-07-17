@@ -122,6 +122,18 @@ cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate,
     float16_t* gain_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_gain, gain_len);
     int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
 
+    cudaArrayMetadata* meta_in = device.get_gpu_memory_array_metadata(_gpu_mem_input_voltage, pipestate.gpu_frame_id, false);
+    if (meta_in) {
+        INFO("Upchan: input meta: type \"{:s}\", dims: {:d}, [{:s}]", meta_in->type, meta_in->dims, meta_in->get_dimensions_string());
+        cudaArrayMetadata* meta_out = device.get_gpu_memory_array_metadata(_gpu_mem_output_voltage, pipestate.gpu_frame_id);
+        meta_out->type = "int4+4";
+        meta_out->dims = 4;
+        meta_out->dim[0] = meta_in->dim[0] / _upchan_factor;
+        meta_out->dim[1] = meta_in->dim[1];
+        meta_out->dim[2] = meta_in->dim[2];
+        meta_out->dim[3] = meta_in->dim[3] * _upchan_factor;
+        INFO("Upchan: output meta: type \"{:s}\", dims: {:d}, [{:s}]", meta_out->type, meta_out->dims, meta_out->get_dimensions_string());
+    }
     record_start_event(pipestate.gpu_frame_id);
 
     // Initialize info_memory return codes

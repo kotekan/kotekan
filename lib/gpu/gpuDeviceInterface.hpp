@@ -15,6 +15,7 @@ struct gpuMemoryBlock {
     // store the "real" pointers to allow windowed buffer views
     std::vector<void*> gpu_pointers_to_free;
     size_t len;
+    std::vector<void*> metadata_pointers;
 };
 
 /**
@@ -41,6 +42,9 @@ public:
      * length or the system will throw an assert.
      */
     void* get_gpu_memory_array(const std::string& name, const uint32_t index, const size_t len);
+
+    void* get_gpu_memory_array_metadata(const std::string& name, const uint32_t index,
+                                        bool create=true);
 
     /**
      * @brief Same as get_gpu_memory_array but gets just one gpu memory buffer
@@ -108,6 +112,12 @@ public:
 protected:
     virtual void* alloc_gpu_memory(size_t len) = 0;
     virtual void free_gpu_memory(void*) = 0;
+
+    virtual void* alloc_gpu_metadata() {
+        return nullptr;
+    }
+    virtual void free_gpu_metadata(void*) {
+    }
 
     // Extra data
     kotekan::Config& config;

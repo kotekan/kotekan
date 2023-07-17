@@ -39,6 +39,10 @@ protected:
     int32_t in_buffer_precondition_id;
     int32_t in_buffer_finalize_id;
     Buffer* in_buf;
+
+    // Metadata to copy into the cudaArrayMetadata object, sourced from the config file.
+    std::vector<int> _gpu_mem_dimensions;
+    std::string _gpu_mem_type;
 };
 
 #endif // CUDA_INPUT_DATA_H

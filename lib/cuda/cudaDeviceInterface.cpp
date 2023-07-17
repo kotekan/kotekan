@@ -6,6 +6,16 @@
 
 using kotekan::Config;
 
+std::string cudaArrayMetadata::get_dimensions_string() {
+    std::string dims = "";
+    for (int i=0; i<this->dims; i++) {
+        if (i)
+            dims += " x ";
+        dims += std::to_string(this->dim[i]);
+    }
+    return dims;
+}
+
 cudaDeviceInterface::cudaDeviceInterface(Config& config, const std::string& unique_name,
                                          int32_t gpu_id, int gpu_buffer_depth) :
     gpuDeviceInterface(config, unique_name, gpu_id, gpu_buffer_depth) {
@@ -41,6 +51,19 @@ void* cudaDeviceInterface::alloc_gpu_memory(size_t len) {
 }
 void cudaDeviceInterface::free_gpu_memory(void* ptr) {
     CHECK_CUDA_ERROR(cudaFree(ptr));
+}
+
+void* cudaDeviceInterface::alloc_gpu_metadata() {
+    cudaArrayMetadata* x = new cudaArrayMetadata;
+    return x;
+}
+void cudaDeviceInterface::free_gpu_metadata(void* ptr) {
+    cudaArrayMetadata* x = (cudaArrayMetadata*)ptr;
+    delete x;
+}
+
+cudaArrayMetadata* cudaDeviceInterface::get_gpu_memory_array_metadata(const std::string& name, const uint32_t index, bool create) {
+    return (cudaArrayMetadata*)gpuDeviceInterface::get_gpu_memory_array_metadata(name, index, create);
 }
 
 cudaStream_t cudaDeviceInterface::getStream(int32_t cuda_stream_id) {

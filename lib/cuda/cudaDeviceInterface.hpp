@@ -10,6 +10,25 @@
 #include "cudaUtils.hpp"
 #include "cuda_runtime_api.h"
 #include "gpuDeviceInterface.hpp"
+//#include "library_types.h" // for cudaDataType_t; /usr/local/cuda/include/library_types.h
+
+struct cudaArrayMetadata {
+    cudaArrayMetadata() :
+        //type(CUDA_R_8U),
+        type(""),
+        dims(0)
+    {}
+
+    std::string get_dimensions_string();
+
+    //cudaDataType_t type;
+    std::string type;
+    int dims;
+    int dim[10];
+    // array strides / layouts?
+    // frequencies?
+    // time stamp of first sample / sample interval
+};
 
 /**
  * @class cudaDeviceInterface
@@ -38,6 +57,8 @@ public:
     /// This function calls cudaSetDevice and must be called from every thread operating with this
     /// gpuDeviceInterface, or making calls directly to one of the cuda streams
     void set_thread_device() override;
+
+    cudaArrayMetadata* get_gpu_memory_array_metadata(const std::string& name, const uint32_t index, bool create=true);
 
     /**
      * @brief Asynchronous copies memory from the host (CPU RAM) to the device GPU (global memory)
@@ -72,6 +93,9 @@ public:
 protected:
     void* alloc_gpu_memory(size_t len) override;
     void free_gpu_memory(void*) override;
+
+    void* alloc_gpu_metadata() override;
+    void free_gpu_metadata(void*) override;
 
     // Extra data
     std::vector<cudaStream_t> streams;

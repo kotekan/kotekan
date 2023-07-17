@@ -21,7 +21,25 @@ void gpuDeviceInterface::cleanup_memory() {
             if (mem)
                 free_gpu_memory(mem);
         }
+        for (void* mem : it->second.metadata_pointers) {
+            if (mem)
+                free_gpu_metadata(mem);
+        }
     }
+}
+
+void* gpuDeviceInterface::get_gpu_memory_array_metadata(const std::string& name, const uint32_t index, bool create) {
+    // Memory array must be allocated already
+    if (gpu_memory.count(name) == 0) {
+        FATAL_ERROR("get_gpu_memory_array_metadata for name \"{:s}\": does not exist yet.", name);
+    }
+    // Make sure we aren't asking for an index past the end of the array.
+    assert(index < gpu_memory[name].metadata_pointers.size());
+    // Return the requested memory.
+    void* mem = gpu_memory[name].metadata_pointers[index];
+    if ((mem == nullptr) && create)
+        mem = gpu_memory[name].metadata_pointers[index] = alloc_gpu_metadata();
+    return mem;
 }
 
 void* gpuDeviceInterface::get_gpu_memory(const std::string& name, const size_t len) {
@@ -33,6 +51,7 @@ void* gpuDeviceInterface::get_gpu_memory(const std::string& name, const size_t l
         gpu_memory[name].len = len;
         gpu_memory[name].gpu_pointers.push_back(ptr);
         gpu_memory[name].gpu_pointers_to_free.push_back(ptr);
+        gpu_memory[name].metadata_pointers.push_back(nullptr);
     }
     // The size must match what has already been allocated.
     assert(len == gpu_memory[name].len);
@@ -52,6 +71,7 @@ void* gpuDeviceInterface::get_gpu_memory_array(const std::string& name, const ui
             gpu_memory[name].len = len;
             gpu_memory[name].gpu_pointers.push_back(ptr);
             gpu_memory[name].gpu_pointers_to_free.push_back(ptr);
+            gpu_memory[name].metadata_pointers.push_back(nullptr);
         }
     }
     // The size must match what has already been allocated.
@@ -87,6 +107,7 @@ void* gpuDeviceInterface::create_gpu_memory_view(const std::string& source_name,
     void* dest = (void*)((unsigned char*)source + offset);
     gpu_memory[dest_name].gpu_pointers.push_back(dest);
     gpu_memory[dest_name].gpu_pointers_to_free.push_back(nullptr);
+    gpu_memory[dest_name].metadata_pointers.push_back(nullptr);
 
     return dest;
 }
@@ -110,5 +131,6 @@ void gpuDeviceInterface::create_gpu_memory_array_view(const std::string& source_
         gpu_memory[dest_name].len = dest_len;
         gpu_memory[dest_name].gpu_pointers.push_back((unsigned char*)source + offset);
         gpu_memory[dest_name].gpu_pointers_to_free.push_back(nullptr);
+        gpu_memory[dest_name].metadata_pointers.push_back(nullptr);
     }
 }

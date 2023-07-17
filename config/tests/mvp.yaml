@@ -170,6 +170,11 @@ gpu:
     - name: cudaInputData
       in_buf: host_voltage
       gpu_mem: voltage
+      gpu_mem_type: int4+4
+      #gpu_mem_dimensions: [voltage_samples, 2, voltage_freq, num_dishes]
+      # TIME, POL, FREQ, DISH
+      # same as gen_data
+      gpu_mem_dimensions: [32768, 2, 16, 512]
     - name: cudaInputData
       in_buf: host_frb_phase
       gpu_mem: frb_phase
