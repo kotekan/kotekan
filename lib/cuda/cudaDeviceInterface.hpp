@@ -26,8 +26,22 @@ struct cudaArrayMetadata {
     int dims;
     int dim[10];
     // array strides / layouts?
-    // frequencies?
-    // time stamp of first sample / sample interval
+
+    // These vectors all have the same length.  (Should it be a vector of structs instead?)
+    // frequencies -- integer (0-2047) identifier for FPGA coarse frequencies
+    std::vector<int> coarse_freq;
+    // the upchannelization factor that each frequency has gone through (1 for = FPGA)
+    std::vector<int> freq_upchan_factor;
+    // Time sampling -- for each coarse frequency channel, 2x the FPGA
+    // sample number of the first sample.  The 2x is there to handle
+    // the upchannelization case, where 2 or more samples may get
+    // averaged, producing a new sample that is effectively halfway in
+    // between them, ie, at a half-FPGAsample time.
+    std::vector<int64> half_fpga_sample0;
+    // Time sampling -- for each coarse frequency channel, the factor
+    // by which the time samples have been downsampled relative to
+    // FPGA samples.
+    std::vector<int> time_downsampling_fpga;
 };
 
 /**
