@@ -10,15 +10,15 @@ kernel-description:
     number-of-taps: 4
     number-of-timesamples: 32768
     sampling-time-μsec: 1.7066666666666668
-    upchannelization-factor: 16
+    upchannelization-factor: 128
   compile-parameters:
     minthreads: 512
     blocks_per_sm: 2
   call-parameters:
     threads: [32, 16]
     blocks: [128]
-    shmem_bytes: 69888
-  kernel-symbol: "_Z17julia_upchan_407013CuDeviceArrayI5Int32Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE"
+    shmem_bytes: 66816
+  kernel-symbol: "_Z17julia_upchan_409713CuDeviceArrayI5Int32Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE"
   kernel-arguments:
     - name: "Tactual"
       intent: in
@@ -30,7 +30,7 @@ kernel-description:
       intent: in
       type: Float16
       indices: [F̄]
-      shape: [256]
+      shape: [2048]
       strides: [1]
     - name: "E"
       intent: in
@@ -42,8 +42,8 @@ kernel-description:
       intent: out
       type: Int4
       indices: [C, D, F̄, P, T̄]
-      shape: [2, 512, 256, 2, 2048]
-      strides: [1, 2, 1024, 262144, 524288]
+      shape: [2, 512, 2048, 2, 256]
+      strides: [1, 2, 1024, 2097152, 4194304]
     - name: "info"
       intent: out
       type: Int32
