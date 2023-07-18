@@ -10,6 +10,7 @@
 #include "cudaDeviceInterface.hpp"
 
 #include <array>
+#include <bufferContainer.hpp>
 #include <fmt.hpp>
 #include <stdexcept>
 #include <string>
@@ -26,20 +27,23 @@ class cudaFRBBeamformer : public cudaCommand {
 public:
     cudaFRBBeamformer(Config& config, const std::string& unique_name, bufferContainer& host_buffers,
                       cudaDeviceInterface& device);
-    ~cudaFRBBeamformer();
+    virtual ~cudaFRBBeamformer();
+
+    // int wait_on_precondition(int gpu_frame_id) override;
     cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
                         bool* quit) override;
+    // void finalize_frame(int gpu_frame_id) override;
 
 private:
     // Julia's `CuDevArray` type
-    template<typename T, int64_t N>
+    template<typename T, std::int64_t N>
     struct CuDeviceArray {
         T* ptr;
-        int64_t maxsize; // bytes
-        int64_t dims[N]; // elements
-        int64_t len;     // elements
+        std::int64_t maxsize; // bytes
+        std::int64_t dims[N]; // elements
+        std::int64_t len;     // elements
         CuDeviceArray(void* const ptr, const std::size_t bytes) :
-            ptr(static_cast<T*>(ptr)), maxsize(bytes), dims{int64_t(maxsize / sizeof(T))},
+            ptr(static_cast<T*>(ptr)), maxsize(bytes), dims{std::int64_t(maxsize / sizeof(T))},
             len(maxsize / sizeof(T)) {}
     };
     using kernel_arg = CuDeviceArray<int32_t, 1>;
@@ -68,7 +72,7 @@ private:
 
     // Kernel name:
     const char* const kernel_symbol =
-        "_Z15julia_frb_1026613CuDeviceArrayI7Int16x2Li1ELi1EES_I9Float16x2Li1ELi1EES_"
+        "_Z15julia_frb_1025413CuDeviceArrayI7Int16x2Li1ELi1EES_I9Float16x2Li1ELi1EES_"
         "I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE";
 
     // Kernel arguments:
@@ -130,9 +134,88 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
         "--verbose",
     };
     build_ptx({kernel_symbol}, opts);
+
+    //
+    // const std::string S_buffer_name = "host_" + S_memname;
+    // Buffer* const S_buffer = host_buffers.get_buffer(S_buffer_name.c_str());
+    // assert(S_buffer);
+    //
+    // register_consumer(S_buffer, unique_name.c_str());
+    //
+    //
+    //
+    // const std::string W_buffer_name = "host_" + W_memname;
+    // Buffer* const W_buffer = host_buffers.get_buffer(W_buffer_name.c_str());
+    // assert(W_buffer);
+    //
+    // register_consumer(W_buffer, unique_name.c_str());
+    //
+    //
+    //
+    // const std::string E_buffer_name = "host_" + E_memname;
+    // Buffer* const E_buffer = host_buffers.get_buffer(E_buffer_name.c_str());
+    // assert(E_buffer);
+    //
+    // register_consumer(E_buffer, unique_name.c_str());
+    //
+    //
+    //
+    // const std::string I_buffer_name = "host_" + I_memname;
+    // Buffer* const I_buffer = host_buffers.get_buffer(I_buffer_name.c_str());
+    // assert(I_buffer);
+    //
+    //
+    // register_producer(I_buffer, unique_name.c_str());
+    //
+    //
+    // const std::string info_buffer_name = "host_" + info_memname;
+    // Buffer* const info_buffer = host_buffers.get_buffer(info_buffer_name.c_str());
+    // assert(info_buffer);
+    //
+    //
+    // register_producer(info_buffer, unique_name.c_str());
+    //
+    //
 }
 
 cudaFRBBeamformer::~cudaFRBBeamformer() {}
+
+// int cudaFRBBeamformer::wait_on_precondition(const int gpu_frame_id) {
+//
+//
+//     const std::string S_buffer_name = "host_" + S_memname;
+//     Buffer* const S_buffer = host_buffers.get_buffer(S_buffer_name.c_str());
+//     assert(S_buffer);
+//     uint8_t* const S_frame = wait_for_full_frame(S_buffer, unique_name.c_str(), gpu_frame_id);
+//     if (!S_frame)
+//         return -1;
+//
+//
+//
+//     const std::string W_buffer_name = "host_" + W_memname;
+//     Buffer* const W_buffer = host_buffers.get_buffer(W_buffer_name.c_str());
+//     assert(W_buffer);
+//     uint8_t* const W_frame = wait_for_full_frame(W_buffer, unique_name.c_str(), gpu_frame_id);
+//     if (!W_frame)
+//         return -1;
+//
+//
+//
+//     const std::string E_buffer_name = "host_" + E_memname;
+//     Buffer* const E_buffer = host_buffers.get_buffer(E_buffer_name.c_str());
+//     assert(E_buffer);
+//     uint8_t* const E_frame = wait_for_full_frame(E_buffer, unique_name.c_str(), gpu_frame_id);
+//     if (!E_frame)
+//         return -1;
+//
+//
+//
+//
+//
+//
+//
+//     return 0;
+// }
 
 cudaEvent_t cudaFRBBeamformer::execute(const int gpu_frame_id,
                                        const std::vector<cudaEvent_t>& /*pre_events*/,
@@ -153,12 +236,17 @@ cudaEvent_t cudaFRBBeamformer::execute(const int gpu_frame_id,
     kernel_arg E_arg(E_memory, E_length);
     kernel_arg I_arg(I_memory, I_length);
     kernel_arg info_arg(info_memory, info_length);
-    void* args[] = {&exc_arg, &S_arg, &W_arg, &E_arg, &I_arg, &info_arg};
+    void* args[] = {
+        &exc_arg, &S_arg, &W_arg, &E_arg, &I_arg, &info_arg,
+    };
 
     DEBUG("kernel_symbol: {}", kernel_symbol);
     DEBUG("runtime_kernels[kernel_symbol]: {}", static_cast<void*>(runtime_kernels[kernel_symbol]));
     CHECK_CU_ERROR(cuFuncSetAttribute(runtime_kernels[kernel_symbol],
-    DEBUG("Running CUDA  on GPU frame {:d}", gpu_frame_id);
+                                      CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+                                      shmem_bytes));
+
+    DEBUG("Running CUDA FRBBeamformer on GPU frame {:d}", gpu_frame_id);
     const CUresult err =
         cuLaunchKernel(runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
@@ -177,3 +265,27 @@ cudaEvent_t cudaFRBBeamformer::execute(const int gpu_frame_id,
 
     return record_end_event(pipestate.gpu_frame_id);
 }
+
+// void cudaFRBBeamformer::finalize_frame(const int gpu_frame_id) {
+//
+//
+//
+//
+//
+//
+//
+//
+//     const std::string I_buffer_name = "host_" + I_memname;
+//     Buffer* const I_buffer = host_buffers.get_buffer(I_buffer_name.c_str());
+//     assert(I_buffer);
+//     mark_frame_full(I_buffer, unique_name.c_str(), gpu_frame_id);
+//
+//
+//
+//     const std::string info_buffer_name = "host_" + info_memname;
+//     Buffer* const info_buffer = host_buffers.get_buffer(info_buffer_name.c_str());
+//     assert(info_buffer);
+//     mark_frame_full(info_buffer, unique_name.c_str(), gpu_frame_id);
+//
+//
+// }

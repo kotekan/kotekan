@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief CUDA Upchannelizer_U16 kernel
+ * @brief CUDA Upchannelizer_U128 kernel
  *
  * This file has been generated automatically.
  * Do not modify this C++ file, your changes will be lost.
@@ -20,14 +20,14 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 
 /**
- * @class cudaUpchannelizer_U16
- * @brief cudaCommand for Upchannelizer_U16
+ * @class cudaUpchannelizer_U128
+ * @brief cudaCommand for Upchannelizer_U128
  */
-class cudaUpchannelizer_U16 : public cudaCommand {
+class cudaUpchannelizer_U128 : public cudaCommand {
 public:
-    cudaUpchannelizer_U16(Config& config, const std::string& unique_name,
-                          bufferContainer& host_buffers, cudaDeviceInterface& device);
-    virtual ~cudaUpchannelizer_U16();
+    cudaUpchannelizer_U128(Config& config, const std::string& unique_name,
+                           bufferContainer& host_buffers, cudaDeviceInterface& device);
+    virtual ~cudaUpchannelizer_U128();
 
     // int wait_on_precondition(int gpu_frame_id) override;
     cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
@@ -55,7 +55,7 @@ private:
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_taps = 4;
     static constexpr int cuda_number_of_timesamples = 32768;
-    static constexpr int cuda_upchannelization_factor = 16;
+    static constexpr int cuda_upchannelization_factor = 128;
 
     // Kernel compile parameters:
     static constexpr int minthreads = 512;
@@ -65,16 +65,16 @@ private:
     static constexpr int threads_x = 32;
     static constexpr int threads_y = 16;
     static constexpr int blocks = 128;
-    static constexpr int shmem_bytes = 69888;
+    static constexpr int shmem_bytes = 66816;
 
     // Kernel name:
     const char* const kernel_symbol =
-        "_Z17julia_upchan_407013CuDeviceArrayI5Int32Li1ELi1EES_I9Float16x2Li1ELi1EES_"
+        "_Z17julia_upchan_409713CuDeviceArrayI5Int32Li1ELi1EES_I9Float16x2Li1ELi1EES_"
         "I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE";
 
     // Kernel arguments:
     static constexpr std::size_t Tactual_length = 1UL;
-    static constexpr std::size_t G_length = 512UL;
+    static constexpr std::size_t G_length = 4096UL;
     static constexpr std::size_t E_length = 536870912UL;
     static constexpr std::size_t Ebar_length = 536870912UL;
     static constexpr std::size_t info_length = 262144UL;
@@ -90,13 +90,13 @@ private:
     const std::string info_memname;
 };
 
-REGISTER_CUDA_COMMAND(cudaUpchannelizer_U16);
+REGISTER_CUDA_COMMAND(cudaUpchannelizer_U128);
 
-cudaUpchannelizer_U16::cudaUpchannelizer_U16(Config& config, const std::string& unique_name,
-                                             bufferContainer& host_buffers,
-                                             cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "Upchannelizer_U16",
-                "Upchannelizer_U16.ptx"),
+cudaUpchannelizer_U128::cudaUpchannelizer_U128(Config& config, const std::string& unique_name,
+                                               bufferContainer& host_buffers,
+                                               cudaDeviceInterface& device) :
+    cudaCommand(config, unique_name, host_buffers, device, "Upchannelizer_U128",
+                "Upchannelizer_U128.ptx"),
     Tactual_memname(config.get<std::string>(unique_name, "Tactual")),
     G_memname(config.get<std::string>(unique_name, "gpu_mem_gain")),
     E_memname(config.get<std::string>(unique_name, "gpu_mem_input_voltage")),
@@ -181,9 +181,9 @@ cudaUpchannelizer_U16::cudaUpchannelizer_U16(Config& config, const std::string& 
     //
 }
 
-cudaUpchannelizer_U16::~cudaUpchannelizer_U16() {}
+cudaUpchannelizer_U128::~cudaUpchannelizer_U128() {}
 
-// int cudaUpchannelizer_U16::wait_on_precondition(const int gpu_frame_id) {
+// int cudaUpchannelizer_U128::wait_on_precondition(const int gpu_frame_id) {
 //
 //
 //     const std::string Tactual_buffer_name = "host_" + Tactual_memname;
@@ -220,9 +220,9 @@ cudaUpchannelizer_U16::~cudaUpchannelizer_U16() {}
 //     return 0;
 // }
 
-cudaEvent_t cudaUpchannelizer_U16::execute(const int gpu_frame_id,
-                                           const std::vector<cudaEvent_t>& /*pre_events*/,
-                                           bool* const /*quit*/) {
+cudaEvent_t cudaUpchannelizer_U128::execute(const int gpu_frame_id,
+                                            const std::vector<cudaEvent_t>& /*pre_events*/,
+                                            bool* const /*quit*/) {
     pre_execute(gpu_frame_id);
 
     void* const Tactual_memory =
@@ -250,7 +250,7 @@ cudaEvent_t cudaUpchannelizer_U16::execute(const int gpu_frame_id,
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
-    DEBUG("Running CUDA Upchannelizer_U16 on GPU frame {:d}", gpu_frame_id);
+    DEBUG("Running CUDA Upchannelizer_U128 on GPU frame {:d}", gpu_frame_id);
     const CUresult err =
         cuLaunchKernel(runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
@@ -265,7 +265,7 @@ cudaEvent_t cudaUpchannelizer_U16::execute(const int gpu_frame_id,
     return record_end_event(gpu_frame_id);
 }
 
-// void cudaUpchannelizer_U16::finalize_frame(const int gpu_frame_id) {
+// void cudaUpchannelizer_U128::finalize_frame(const int gpu_frame_id) {
 //
 //
 //
