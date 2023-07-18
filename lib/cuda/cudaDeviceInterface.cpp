@@ -44,7 +44,7 @@ void cudaDeviceInterface::free_gpu_memory(void* ptr) {
 }
 
 cudaStream_t cudaDeviceInterface::getStream(int32_t cuda_stream_id) {
-    return streams[cuda_stream_id];
+    return streams.at(cuda_stream_id);
 }
 
 int32_t cudaDeviceInterface::get_num_streams() {

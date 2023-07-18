@@ -18,7 +18,7 @@ kernel-description:
     threads: [32, 24]
     blocks: [512]
     shmem_bytes: 67712
-  kernel-name: "_Z13julia_bb_362013CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE"
+  kernel-symbol: "_Z13julia_bb_357913CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE"
   kernel-arguments:
     - name: "A"
       intent: in

@@ -226,7 +226,7 @@ void cudaCommand::build(const std::vector<std::string>& kernel_names,
 }
 
 void cudaCommand::build_ptx(const std::vector<std::string>& kernel_names,
-                            std::vector<std::string>& opts) {
+                            const std::vector<std::string>& opts) {
     size_t program_size;
     FILE* fp;
     char* program_buffer;
@@ -264,10 +264,10 @@ void cudaCommand::build_ptx(const std::vector<std::string>& kernel_names,
     }
 
     // Convert compiler options to a c-style array.
-    std::vector<char*> cstring_opts;
+    std::vector<const char*> cstring_opts;
     cstring_opts.reserve(opts.size());
     for (auto& str : opts)
-        cstring_opts.push_back(&str[0]);
+        cstring_opts.push_back(str.c_str());
 
     // Compile the code
     nv_res = nvPTXCompilerCompile(compiler, cstring_opts.size(), cstring_opts.data());
