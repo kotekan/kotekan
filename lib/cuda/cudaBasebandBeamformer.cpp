@@ -32,7 +32,7 @@ public:
     // int wait_on_precondition(int gpu_frame_id) override;
     cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
                         bool* quit) override;
-    // void finalize_frame(int gpu_frame_id) override;
+    void finalize_frame(int gpu_frame_id) override;
 
 private:
     // Julia's `CuDevArray` type
@@ -87,6 +87,9 @@ private:
     const std::string s_memname;
     const std::string J_memname;
     const std::string info_memname;
+
+    // Host-side buffer arrays
+    std::vector<std::vector<std::int32_t>> host_info;
 };
 
 REGISTER_CUDA_COMMAND(cudaBasebandBeamformer);
@@ -100,7 +103,35 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
     E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
     s_memname(config.get<std::string>(unique_name, "gpu_mem_output_scaling")),
     J_memname(config.get<std::string>(unique_name, "gpu_mem_formed_beams")),
-    info_memname(config.get<std::string>(unique_name, "gpu_mem_info")) {
+    info_memname(unique_name + "/info") {
+    // // Add Graphviz entries for the GPU buffers used by this kernel.
+    //
+    //
+    // gpu_buffers_used.push_back(std::make_tuple(A_memname, true, true, false));
+    //
+    //
+    //
+    //
+    // gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
+    //
+    //
+    //
+    //
+    // gpu_buffers_used.push_back(std::make_tuple(s_memname, true, true, false));
+    //
+    //
+    //
+    //
+    // gpu_buffers_used.push_back(std::make_tuple(J_memname, true, true, false));
+    //
+    //
+    //
+    //
+    //
+    // gpu_buffers_used.push_back(std::make_tuple(get_name() + "_info", false, true, true));
+    //
+    //
+
     const int num_elements = config.get<int>(unique_name, "num_elements");
     if (num_elements != (cuda_number_of_dishes * cuda_number_of_polarizations))
         throw std::runtime_error(
@@ -222,9 +253,17 @@ cudaEvent_t cudaBasebandBeamformer::execute(const int gpu_frame_id,
     void* const E_memory = device.get_gpu_memory_array(E_memname, gpu_frame_id, E_length);
     void* const s_memory = device.get_gpu_memory_array(s_memname, gpu_frame_id, s_length);
     void* const J_memory = device.get_gpu_memory_array(J_memname, gpu_frame_id, J_length);
-    void* const info_memory = device.get_gpu_memory_array(info_memname, gpu_frame_id, info_length);
+    std::int32_t* const info_memory =
+        static_cast<std::int32_t*>(device.get_gpu_memory(info_memname, info_length));
+    host_info.resize(_gpu_buffer_depth);
+    for (int i = 0; i < _gpu_buffer_depth; ++i)
+        host_info[i].resize(info_length / sizeof(std::int32_t));
 
     record_start_event(gpu_frame_id);
+
+    // Initialize host-side buffer arrays
+    CHECK_CUDA_ERROR(
+        cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
 
     const char* exc_arg = "exception";
     kernel_arg A_arg(A_memory, A_length);
@@ -254,29 +293,34 @@ cudaEvent_t cudaBasebandBeamformer::execute(const int gpu_frame_id,
         ERROR("cuLaunchKernel: {}", errStr);
     }
 
+    // Copy results back to host memory
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[gpu_frame_id].data(), info_memory, info_length,
+                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
+
     return record_end_event(gpu_frame_id);
 }
 
-// void cudaBasebandBeamformer::finalize_frame(const int gpu_frame_id) {
-//
-//
-//
-//
-//
-//
-//
-//
-//     const std::string J_buffer_name = "host_" + J_memname;
-//     Buffer* const J_buffer = host_buffers.get_buffer(J_buffer_name.c_str());
-//     assert(J_buffer);
-//     mark_frame_full(J_buffer, unique_name.c_str(), gpu_frame_id);
-//
-//
-//
-//     const std::string info_buffer_name = "host_" + info_memname;
-//     Buffer* const info_buffer = host_buffers.get_buffer(info_buffer_name.c_str());
-//     assert(info_buffer);
-//     mark_frame_full(info_buffer, unique_name.c_str(), gpu_frame_id);
-//
-//
-// }
+void cudaBasebandBeamformer::finalize_frame(const int gpu_frame_id) {
+    cudaCommand::finalize_frame(gpu_frame_id);
+
+    //
+    //
+    //
+    //
+    // const std::string J_buffer_name = "host_" + J_memname;
+    // Buffer* const J_buffer = host_buffers.get_buffer(J_buffer_name.c_str());
+    // assert(J_buffer);
+    // mark_frame_full(J_buffer, unique_name.c_str(), gpu_frame_id);
+    //
+    //
+    // const std::string info_buffer_name = "host_" + info_memname;
+    // Buffer* const info_buffer = host_buffers.get_buffer(info_buffer_name.c_str());
+    // assert(info_buffer);
+    // mark_frame_full(info_buffer, unique_name.c_str(), gpu_frame_id);
+    //
+    for (std::size_t i = 0; i < host_info[gpu_frame_id].size(); ++i)
+        if (host_info[gpu_frame_id][i] != 0)
+            ERROR("cudaBasebandBeamformer returned 'info' value {:d} at index {:d} (zero indicates "
+                  "noerror)",
+                  host_info[gpu_frame_id][i], int(i));
+}
