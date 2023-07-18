@@ -142,7 +142,7 @@ void cudaCommand::build(const std::vector<std::string>& kernel_names,
     // Load the kernel file contents into `program_buffer`
     fp = fopen(kernel_file_name.c_str(), "r");
     if (fp == nullptr) {
-        FATAL_ERROR("error loading file: {:s}", kernel_file_name.c_str());
+        FATAL_ERROR("error opening file: {:s}", kernel_file_name.c_str());
     }
     fseek(fp, 0, SEEK_END);
     program_size = ftell(fp);
@@ -242,7 +242,7 @@ void cudaCommand::build_ptx(const std::vector<std::string>& kernel_names,
     // Load the kernel file contents into `program_buffer`
     fp = fopen(kernel_file_name.c_str(), "r");
     if (fp == NULL) {
-        FATAL_ERROR("error loading file: {:s}", kernel_file_name.c_str());
+        FATAL_ERROR("error opening file: {:s} {:s}", getcwd(NULL, 0), kernel_file_name);
     }
     fseek(fp, 0, SEEK_END);
     program_size = ftell(fp);

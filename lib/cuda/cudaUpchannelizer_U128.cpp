@@ -32,7 +32,7 @@ public:
     // int wait_on_precondition(int gpu_frame_id) override;
     cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
                         bool* quit) override;
-    // void finalize_frame(int gpu_frame_id) override;
+    void finalize_frame(int gpu_frame_id) override;
 
 private:
     // Julia's `CuDevArray` type
@@ -88,6 +88,9 @@ private:
     const std::string E_memname;
     const std::string Ebar_memname;
     const std::string info_memname;
+
+    // Host-side buffer arrays
+    std::vector<std::vector<std::int32_t>> host_info;
 };
 
 REGISTER_CUDA_COMMAND(cudaUpchannelizer_U128);
@@ -101,7 +104,35 @@ cudaUpchannelizer_U128::cudaUpchannelizer_U128(Config& config, const std::string
     G_memname(config.get<std::string>(unique_name, "gpu_mem_gain")),
     E_memname(config.get<std::string>(unique_name, "gpu_mem_input_voltage")),
     Ebar_memname(config.get<std::string>(unique_name, "gpu_mem_output_voltage")),
-    info_memname(config.get<std::string>(unique_name, "gpu_mem_info")) {
+    info_memname(unique_name + "/info") {
+    // // Add Graphviz entries for the GPU buffers used by this kernel.
+    //
+    //
+    // gpu_buffers_used.push_back(std::make_tuple(Tactual_memname, true, true, false));
+    //
+    //
+    //
+    //
+    // gpu_buffers_used.push_back(std::make_tuple(G_memname, true, true, false));
+    //
+    //
+    //
+    //
+    // gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
+    //
+    //
+    //
+    //
+    // gpu_buffers_used.push_back(std::make_tuple(Ebar_memname, true, true, false));
+    //
+    //
+    //
+    //
+    //
+    // gpu_buffers_used.push_back(std::make_tuple(get_name() + "_info", false, true, true));
+    //
+    //
+
     const int num_dishes = config.get<int>(unique_name, "num_dishes");
     if (num_dishes != (cuda_number_of_dishes))
         throw std::runtime_error("The num_dishes config setting must be "
@@ -230,9 +261,17 @@ cudaEvent_t cudaUpchannelizer_U128::execute(const int gpu_frame_id,
     void* const G_memory = device.get_gpu_memory_array(G_memname, gpu_frame_id, G_length);
     void* const E_memory = device.get_gpu_memory_array(E_memname, gpu_frame_id, E_length);
     void* const Ebar_memory = device.get_gpu_memory_array(Ebar_memname, gpu_frame_id, Ebar_length);
-    void* const info_memory = device.get_gpu_memory_array(info_memname, gpu_frame_id, info_length);
+    std::int32_t* const info_memory =
+        static_cast<std::int32_t*>(device.get_gpu_memory(info_memname, info_length));
+    host_info.resize(_gpu_buffer_depth);
+    for (int i = 0; i < _gpu_buffer_depth; ++i)
+        host_info[i].resize(info_length / sizeof(std::int32_t));
 
     record_start_event(gpu_frame_id);
+
+    // Initialize host-side buffer arrays
+    CHECK_CUDA_ERROR(
+        cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
 
     const char* exc_arg = "exception";
     kernel_arg Tactual_arg(Tactual_memory, Tactual_length);
@@ -262,29 +301,34 @@ cudaEvent_t cudaUpchannelizer_U128::execute(const int gpu_frame_id,
         ERROR("cuLaunchKernel: {}", errStr);
     }
 
+    // Copy results back to host memory
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[gpu_frame_id].data(), info_memory, info_length,
+                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
+
     return record_end_event(gpu_frame_id);
 }
 
-// void cudaUpchannelizer_U128::finalize_frame(const int gpu_frame_id) {
-//
-//
-//
-//
-//
-//
-//
-//
-//     const std::string Ebar_buffer_name = "host_" + Ebar_memname;
-//     Buffer* const Ebar_buffer = host_buffers.get_buffer(Ebar_buffer_name.c_str());
-//     assert(Ebar_buffer);
-//     mark_frame_full(Ebar_buffer, unique_name.c_str(), gpu_frame_id);
-//
-//
-//
-//     const std::string info_buffer_name = "host_" + info_memname;
-//     Buffer* const info_buffer = host_buffers.get_buffer(info_buffer_name.c_str());
-//     assert(info_buffer);
-//     mark_frame_full(info_buffer, unique_name.c_str(), gpu_frame_id);
-//
-//
-// }
+void cudaUpchannelizer_U128::finalize_frame(const int gpu_frame_id) {
+    cudaCommand::finalize_frame(gpu_frame_id);
+
+    //
+    //
+    //
+    //
+    // const std::string Ebar_buffer_name = "host_" + Ebar_memname;
+    // Buffer* const Ebar_buffer = host_buffers.get_buffer(Ebar_buffer_name.c_str());
+    // assert(Ebar_buffer);
+    // mark_frame_full(Ebar_buffer, unique_name.c_str(), gpu_frame_id);
+    //
+    //
+    // const std::string info_buffer_name = "host_" + info_memname;
+    // Buffer* const info_buffer = host_buffers.get_buffer(info_buffer_name.c_str());
+    // assert(info_buffer);
+    // mark_frame_full(info_buffer, unique_name.c_str(), gpu_frame_id);
+    //
+    for (std::size_t i = 0; i < host_info[gpu_frame_id].size(); ++i)
+        if (host_info[gpu_frame_id][i] != 0)
+            ERROR("cudaUpchannelizer_U128 returned 'info' value {:d} at index {:d} (zero indicates "
+                  "noerror)",
+                  host_info[gpu_frame_id][i], int(i));
+}
