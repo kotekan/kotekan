@@ -30,10 +30,9 @@ public:
     virtual ~cudaBasebandBeamformer();
 
     // int wait_on_precondition(int gpu_frame_id) override;
-    cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
-                        bool* quit) override;
-    // void finalize_frame(int gpu_frame_id) override;
-
+    cudaEvent_t execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) override;        
+    void finalize_frame(int gpu_frame_id) override;
+    
 private:
     // Julia's `CuDevArray` type
     template<typename T, std::int64_t N>
@@ -87,6 +86,10 @@ private:
     const std::string s_memname;
     const std::string J_memname;
     const std::string info_memname;
+
+    /// Host-side buffer array for GPU kernel status/info output
+    std::vector<std::vector<int32_t>> host_info;
+
 };
 
 REGISTER_CUDA_COMMAND(cudaBasebandBeamformer);
@@ -100,9 +103,8 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
     E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
     s_memname(config.get<std::string>(unique_name, "gpu_mem_output_scaling")),
     J_memname(config.get<std::string>(unique_name, "gpu_mem_formed_beams")),
-
-        //info_memname(config.get<std::string>(unique_name, "gpu_mem_info")) {
-    _gpu_mem_info = unique_name + "/info";
+    //info_memname(config.get<std::string>(unique_name, "gpu_mem_info")) {
+    info_memname(unique_name + "/info") {
 
     // Add Graphviz entries for the GPU buffers used by this kernel.
     gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
@@ -225,25 +227,25 @@ cudaBasebandBeamformer::~cudaBasebandBeamformer() {}
 
 cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
                                             const std::vector<cudaEvent_t>& /*pre_events*/) {
-    pre_execute(gpu_frame_id);
+    pre_execute(pipestate.gpu_frame_id);
 
     void* const A_memory = device.get_gpu_memory_array(A_memname, pipestate.gpu_frame_id, A_length);
     void* const E_memory = device.get_gpu_memory_array(E_memname, pipestate.gpu_frame_id, E_length);
     void* const s_memory = device.get_gpu_memory_array(s_memname, pipestate.gpu_frame_id, s_length);
     void* const J_memory = device.get_gpu_memory_array(J_memname, pipestate.gpu_frame_id, J_length);
 
-    int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
+    int32_t* info_memory = (int32_t*)device.get_gpu_memory(info_memname, info_length);
     //void* const info_memory = device.get_gpu_memory_array(info_memname, gpu_frame_id, info_length);
 
     host_info.resize(_gpu_buffer_depth);
     for (int i = 0; i < _gpu_buffer_depth; i++)
-        host_info[i].resize(info_len / sizeof(int32_t));
+        host_info[i].resize(info_length / sizeof(int32_t));
 
     record_start_event(pipestate.gpu_frame_id);
 
     // Initialize info_memory return codes
     CHECK_CUDA_ERROR(
-        cudaMemsetAsync(info_memory, 0xff, info_len, device.getStream(cuda_stream_id)));
+        cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
 
     const char* exc_arg = "exception";
     kernel_arg A_arg(A_memory, A_length);
@@ -275,7 +277,7 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
 
     // Copy "info" result code back to host memory
     CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory,
-                                     info_len, cudaMemcpyDeviceToHost,
+                                     info_length, cudaMemcpyDeviceToHost,
                                      device.getStream(cuda_stream_id)));
 
     return record_end_event(pipestate.gpu_frame_id);
