@@ -66,6 +66,12 @@ main_pool:
     num_metadata_objects: 15 * buffer_depth
 
 # Buffers
+host_upchan_Tactual_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: 4
+    metadata_pool: main_pool
+
 host_voltage_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
@@ -153,6 +159,12 @@ gen_data:
     array_shape: [32768, 2, 16, 512]
     out_buf: host_voltage_buffer
 
+gen_upchan_Tactual:
+    kotekan_stage: testDataGen
+    type: int32
+    value: 32768
+    out_buf: host_upchan_Tactual_buffer
+
 gen_frb_phase:
     kotekan_stage: testDataGen
     type: constf16
@@ -175,7 +187,7 @@ gpu:
     # log_level: debug
     profiling: true
     log_profiling: true
-    kernel_path: "../../lib/cuda/kernels/"
+    kernel_path: "lib/cuda/kernels"
     # More streams -- for FRBBeamReformer
     num_cuda_streams: 4
     commands: &command_list
@@ -191,6 +203,9 @@ gpu:
       gpu_mem_frb_rechunk_input: beamgrid_good
       gpu_mem_frb_rechunk_output: beamchunk_sub
       gpu_mem_frb_brf_input: beamchunk
+    - name: cudaInputData
+      in_buf: host_upchan_Tactual
+      gpu_mem: upchan_Tactual
     - name: cudaInputData
       in_buf: host_voltage
       gpu_mem: voltage
@@ -211,15 +226,15 @@ gpu:
       num_local_freq: voltage_freq
       samples_per_data_set: voltage_samples
       sub_integration_ntime: n2coarse_sub_integration_ntime
-    # Fine visibilities -- upchannelized
-    - name: cudaUpchannelize16k
-      gpu_mem_input_voltage: fine_upchan_input
-      gpu_mem_output_voltage: fine_upchan_out
-      gpu_mem_info: fine_upchan_info
-      gpu_mem_gain: fine_upchan_gain
-      num_local_freq: voltage_freq
-      samples_per_data_set: fine_samples
-      upchan_factor: fine_upchan
+    # # Fine visibilities -- upchannelized
+    # - name: cudaUpchannelize16k
+    #   gpu_mem_input_voltage: fine_upchan_input
+    #   gpu_mem_output_voltage: fine_upchan_out
+    #   gpu_mem_info: fine_upchan_info
+    #   gpu_mem_gain: fine_upchan_gain
+    #   num_local_freq: voltage_freq
+    #   samples_per_data_set: fine_samples
+    #   upchan_factor: fine_upchan
     # Fine visibilities
     - name: cudaCorrelator
       gpu_mem_voltage: fine_upchan_out
@@ -239,6 +254,7 @@ gpu:
       num_beams: bb_beams
     # FRB chain, starting with upchannelization
     - name: cudaUpchannelizer_U16
+      Tactual: upchan_Tactual
       gpu_mem_input_voltage: voltage
       gpu_mem_output_voltage: upchan_out
       gpu_mem_info: upchan_info
@@ -345,6 +361,7 @@ gpu:
             host_voltage: host_voltage_buffer
             host_bb_phase: host_bb_phase_buffer
             host_bb_shift: host_bb_shift_buffer
+            host_upchan_Tactual: host_upchan_Tactual_buffer
             host_frb_phase: host_frb_phase_buffer
         out_buffers:
             # host_fine_correlation: host_fine_correlation_buffer
