@@ -8,6 +8,8 @@
 
 std::any juliaCallAny(const std::function<std::any()>& fun);
 
+void juliaShutdown();
+
 template<typename F, typename R = std::result_of_t<F()>>
 std::enable_if_t<std::is_void_v<R>> juliaCall(const F& fun) {
     juliaCallAny([&]() { return fun(), std::any(std::make_tuple<>()); });

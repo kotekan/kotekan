@@ -11,8 +11,7 @@ public:
     juliaHelloWorld(kotekan::Config& config, const std::string& unique_name,
                     kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~juliaHelloWorld();
-    cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
-                        bool* quit) override;
+    cudaEvent_t execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) override;
 };
 
 REGISTER_CUDA_COMMAND(juliaHelloWorld);
@@ -24,22 +23,26 @@ juliaHelloWorld::juliaHelloWorld(kotekan::Config& config, const std::string& uni
     set_command_type(gpuCommandType::KERNEL);
 }
 
-juliaHelloWorld::~juliaHelloWorld() {}
+juliaHelloWorld::~juliaHelloWorld() {
+    INFO("juliaHelloWorld: Shutting down Julia...");
+    juliaShutdown();
+    INFO("juliaHelloWorld: Done.");
+}
 
-cudaEvent_t juliaHelloWorld::execute(const int gpu_frame_id,
-                                     const std::vector<cudaEvent_t>& /*pre_events*/,
-                                     bool* const /*quit*/) {
+cudaEvent_t juliaHelloWorld::execute(cudaPipelineState& pipestate,
+                                     const std::vector<cudaEvent_t>& /*pre_events*/) {
     static int count = 0;
+    // Note: This aborts the code
     if (++count == 10)
         std::terminate();
 
-    pre_execute(gpu_frame_id);
-    record_start_event(gpu_frame_id);
+    pre_execute(pipestate.gpu_frame_id);
+    record_start_event(pipestate.gpu_frame_id);
 
-    void* const mem = device.get_gpu_memory_array("voltage", gpu_frame_id, 32768);
+    void* const mem = device.get_gpu_memory_array("voltage", pipestate.gpu_frame_id, 32768);
     assert(mem);
 
-    INFO("[HelloWorld: gpu_frame_id={:d}: Calling Julia...", gpu_frame_id);
+    INFO("juliaHelloWorld: gpu_frame_id={:d}: Calling Julia...", pipestate.gpu_frame_id);
     const double retval = juliaCall([&]() {
         (void)jl_eval_string("println(\"Hello, World!\")");
         jl_function_t* const func = jl_get_function(jl_base_module, "sqrt");
@@ -53,7 +56,8 @@ cudaEvent_t juliaHelloWorld::execute(const int gpu_frame_id,
     });
     using std::sqrt;
     assert(retval == sqrt(2.0));
-    INFO("Done.");
 
-    return record_end_event(gpu_frame_id);
+    INFO("juliaHelloWorld: Done calling Julia.");
+
+    return record_end_event(pipestate.gpu_frame_id);
 }
