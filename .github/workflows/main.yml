@@ -20,12 +20,13 @@ on:
 
 env:
   IMG_CORE: docker.pkg.github.com/kotekan/kotekan/kotekan-core
+  IMG_CI: docker.pkg.github.com/kotekan/kotekan/kotekan-ci
   IMG_IWYU: docker.pkg.github.com/kotekan/kotekan/kotekan-iwyu
   PYTEST_TIMEOUT: 60
 
 jobs:
   # Build the docker image
-  build-docker:
+  build-docker-1804:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -67,6 +68,50 @@ jobs:
       run: |
         docker push ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }}
       if: steps.git-diff-docker.outputs.diff
+
+  # Build the docker image
+  build-docker-2204:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Check if CI Dockerfile changed
+      uses: technote-space/get-diff-action@v4
+      id: git-diff-docker-CI
+      with:
+        PATTERNS: tools/CI/Dockerfile
+
+    - name: Extract branch name
+      shell: bash
+      # Get either branch name of a push or source branch of PR, replace all '/' with '.':
+      run: >
+        if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+          echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
+        else
+          echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
+        fi
+      id: extract_branch
+
+    - name: Pull docker image
+      run: |
+        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        docker pull --disable-content-trust ${IMG_CI}:${{ steps.extract_branch.outputs.branch }}
+        echo ::set-output name=status::success
+      if: steps.git-diff-docker-CI.outputs.diff
+      continue-on-error: true
+      id: pull-docker
+    - name: Pull docker image for develop branch
+      run: |
+        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        docker pull --disable-content-trust ${IMG_CI}:develop
+      if: steps.git-diff-docker-CI.outputs.diff != '' && steps.pull-docker.outputs.status != 'success'
+    - name: Build core docker image
+      run: |
+        docker build --cache-from=rocm/dev-ubuntu-22.04,${IMG_CI} -t ${IMG_CI}:${{ steps.extract_branch.outputs.branch }} - < tools/docker/Dockerfile
+      if: steps.git-diff-docker-CI.outputs.diff
+    - name: Push docker image
+      run: |
+        docker push ${IMG_CI}:${{ steps.extract_branch.outputs.branch }}
+      if: steps.git-diff-docker-CI.outputs.diff
 
   # Build the iwyu docker image
   build-docker-iwyu:
