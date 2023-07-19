@@ -160,7 +160,7 @@ jobs:
   # Build a basic version of kotekan
   build-base:
     runs-on: ubuntu-latest
-    needs: build-docker
+    needs: build-docker-1804
 
     steps:
     - uses: actions/checkout@v2
@@ -216,7 +216,7 @@ jobs:
   # Build a full version of kotekan and run the unit tests
   build-full-test:
     runs-on: ubuntu-latest
-    needs: build-docker
+    needs: build-docker-1804
 
     steps:
     - uses: actions/checkout@v2
@@ -302,7 +302,7 @@ jobs:
   # Build a full CHIME version of kotekan
   build-chime:
     runs-on: ubuntu-latest
-    needs: build-docker
+    needs: build-docker-1804
 
     steps:
     - uses: actions/checkout@v2
@@ -363,7 +363,7 @@ jobs:
   # Build a full CHIME version with clang
   build-clang:
     runs-on: ubuntu-latest
-    needs: build-docker
+    needs: build-docker-1804
 
     steps:
     - uses: actions/checkout@v2
@@ -493,7 +493,7 @@ jobs:
   # Build kotekan documentation
   build-docs:
     runs-on: ubuntu-latest
-    needs: build-docker
+    needs: build-docker-1804
 
     steps:
     - uses: actions/checkout@v2
@@ -592,7 +592,7 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
-    needs: build-docker
+    needs: build-docker-1804
 
     steps:
     - uses: actions/checkout@v2
