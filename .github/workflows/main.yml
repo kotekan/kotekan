@@ -105,9 +105,9 @@ jobs:
         docker pull --disable-content-trust ${IMG_CI}:develop
       if: steps.git-diff-docker-CI.outputs.diff != '' && steps.pull-docker.outputs.status != 'success'
       continue-on-error: true
-    - name: Build core docker image
+    - name: Build CI docker image
       run: |
-        docker build --cache-from=rocm/dev-ubuntu-22.04,${IMG_CI} -t ${IMG_CI}:${{ steps.extract_branch.outputs.branch }} - < tools/docker/Dockerfile
+        docker build --cache-from=rocm/dev-ubuntu-22.04,${IMG_CI} -t ${IMG_CI}:${{ steps.extract_branch.outputs.branch }} - < tools/CI/Dockerfile
       if: steps.git-diff-docker-CI.outputs.diff
     - name: Push docker image
       run: |
