@@ -9,7 +9,7 @@ RUN apt-get -y update && \
     apt-get upgrade -y && \
     apt-get install -y python3.11=3.11.* \
                        python3-setuptools=59.6.* \
-                       python3-pip=23.2.* \
+                       python3-pip \
                        python3.11-distutils \
                        python3.11-dev=3.11.* \
                        build-essential=12.* \
