@@ -9,25 +9,25 @@ RUN apt-get -y update && \
     apt-get upgrade -y && \
     apt-get install -y python3.11=3.11.* \
                        python3-setuptools=59.6.* \
-                       python3-pip=23.1.* \
+                       python3-pip=23.2.* \
                        python3.11-distutils \
                        python3.11-dev=3.11.* \
                        build-essential=12.* \
-                       git=2.41.* \
-                       coreutils=9.* \
-                       ccache=4.8.* \
+                       git \
+                       coreutils \
+                       ccache \
                        pkg-config=0.29.* \
-                       gcc=13.* \
-                       gdb=13.* \
-                       cmake=3.27.* \
-                       clang-15=15.* \
-                       clang-format-15=15.* \
-                       dpdk=17.11.* \
-                       dpdk-dev=17.11.* \
-                       libhdf5-serial-dev=1.10.* \
-                       libboost-test-dev=1.82.* \
+                       gcc \
+                       gdb \
+                       cmake \
+                       clang-15 \
+                       clang-format-15 \
+                       dpdk \
+                       dpdk-dev \
+                       libhdf5-serial-dev \
+                       libboost-test-dev \
                        libevent-dev=2.1.* \
-                       libssl-dev=1.1.* \
+                       libssl-dev \
                        wget=1.21.* \
                        && \
     apt-get clean && apt-get autoclean
