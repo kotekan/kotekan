@@ -5,7 +5,7 @@
 ##########################################
 ---
 type: config
-log_level: info
+log_level: debug   # info
 cpu_affinity: [2,3,4,5,8,9,10,11]
 num_gpus: 1
 num_gpu_frames: 1
