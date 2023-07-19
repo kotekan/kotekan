@@ -30,8 +30,8 @@ public:
     virtual ~cudaBasebandBeamformer();
 
     // int wait_on_precondition(int gpu_frame_id) override;
-    cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events,
-                        bool* quit) override;
+    cudaEvent_t execute(cudaPipelineState& pipestate,
+                        const std::vector<cudaEvent_t>& pre_events) override;
     void finalize_frame(int gpu_frame_id) override;
 
 private:
@@ -97,21 +97,18 @@ REGISTER_CUDA_COMMAND(cudaBasebandBeamformer);
 cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string& unique_name,
                                                bufferContainer& host_buffers,
                                                cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "baseband_beamformer", "bb.ptx") {
-    _num_elements = config.get<int>(unique_name, "num_elements");
-    _num_local_freq = config.get<int>(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
-    _num_beams = config.get<int>(unique_name, "num_beams");
-    _gpu_mem_voltage = config.get<std::string>(unique_name, "gpu_mem_voltage");
-    _gpu_mem_phase = config.get<std::string>(unique_name, "gpu_mem_phase");
-    _gpu_mem_output_scaling = config.get<std::string>(unique_name, "gpu_mem_output_scaling");
-    _gpu_mem_formed_beams = config.get<std::string>(unique_name, "gpu_mem_formed_beams");
-    _gpu_mem_info = unique_name + "/info";
-
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_voltage, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_phase, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output_scaling, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_formed_beams, true, false, true));
+    cudaCommand(config, unique_name, host_buffers, device, "BasebandBeamformer",
+                "BasebandBeamformer.ptx"),
+    A_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
+    E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
+    s_memname(config.get<std::string>(unique_name, "gpu_mem_output_scaling")),
+    J_memname(config.get<std::string>(unique_name, "gpu_mem_formed_beams")),
+    info_memname(unique_name + "/info") {
+    // Add Graphviz entries for the GPU buffers used by this kernel.
+    gpu_buffers_used.push_back(std::make_tuple(A_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(s_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(J_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_info", false, true, true));
 
     const int num_elements = config.get<int>(unique_name, "num_elements");
@@ -226,40 +223,21 @@ cudaBasebandBeamformer::~cudaBasebandBeamformer() {}
 //     return 0;
 // }
 
-// This struct is Erik's interpretation of what Julia is expecting for its "CuDevArray" type.
-template<typename T, int64_t N>
-struct CuDeviceArray {
-    T* ptr;
-    int64_t maxsize;
-    int64_t dims[N];
-    int64_t len;
-};
-typedef CuDeviceArray<int32_t, 1> kernel_arg;
-
 cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
-                                            const std::vector<cudaEvent_t>& pre_events) {
-    (void)pre_events;
+                                            const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute(pipestate.gpu_frame_id);
 
-    void* voltage_memory =
-        device.get_gpu_memory_array(_gpu_mem_voltage, pipestate.gpu_frame_id, voltage_len);
-    int8_t* phase_memory =
-        (int8_t*)device.get_gpu_memory_array(_gpu_mem_phase, pipestate.gpu_frame_id, phase_len);
-    int32_t* shift_memory = (int32_t*)device.get_gpu_memory_array(
-        _gpu_mem_output_scaling, pipestate.gpu_frame_id, shift_len);
-    void* output_memory =
-        device.get_gpu_memory_array(_gpu_mem_formed_beams, pipestate.gpu_frame_id, output_len);
-    int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
-
+    void* const A_memory = device.get_gpu_memory_array(A_memname, pipestate.gpu_frame_id, A_length);
+    void* const E_memory = device.get_gpu_memory_array(E_memname, pipestate.gpu_frame_id, E_length);
+    void* const s_memory = device.get_gpu_memory_array(s_memname, pipestate.gpu_frame_id, s_length);
+    void* const J_memory = device.get_gpu_memory_array(J_memname, pipestate.gpu_frame_id, J_length);
+    std::int32_t* const info_memory =
+        static_cast<std::int32_t*>(device.get_gpu_memory(info_memname, info_length));
     host_info.resize(_gpu_buffer_depth);
-    for (int i = 0; i < _gpu_buffer_depth; i++)
-        host_info[i].resize(info_len / sizeof(int32_t));
+    for (int i = 0; i < _gpu_buffer_depth; ++i)
+        host_info[i].resize(info_length / sizeof(std::int32_t));
 
     record_start_event(pipestate.gpu_frame_id);
-
-    // Initialize info_memory return codes
-    CHECK_CUDA_ERROR(
-        cudaMemsetAsync(info_memory, 0xff, info_len, device.getStream(cuda_stream_id)));
 
     // Initialize host-side buffer arrays
     CHECK_CUDA_ERROR(
@@ -281,27 +259,24 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
-    DEBUG("Running CUDA Baseband Beamformer on GPU frame {:d}", pipestate.gpu_frame_id);
-    CHECK_CU_ERROR(cuLaunchKernel(runtime_kernels[kernel_name], blocks_x, blocks_y, 1, threads_x,
-                                  threads_y, 1, shared_mem_bytes, device.getStream(cuda_stream_id),
-                                  parameters, NULL));
+    DEBUG("Running CUDA BasebandBeamformer on GPU frame {:d}", pipestate.gpu_frame_id);
+    const CUresult err =
+        cuLaunchKernel(runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
+                       shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
 
-    // Copy "info" result code back to host memory
+    if (err != CUDA_SUCCESS) {
+        const char* errStr;
+        cuGetErrorString(err, &errStr);
+        INFO("Error number: {}", err);
+        ERROR("cuLaunchKernel: {}", errStr);
+    }
+
+    // Copy results back to host memory
     CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory,
-                                     info_len, cudaMemcpyDeviceToHost,
+                                     info_length, cudaMemcpyDeviceToHost,
                                      device.getStream(cuda_stream_id)));
 
     return record_end_event(pipestate.gpu_frame_id);
-}
-
-void cudaBasebandBeamformer::finalize_frame(int gpu_frame_id) {
-    cudaCommand::finalize_frame(gpu_frame_id);
-    for (size_t i = 0; i < host_info[gpu_frame_id].size(); i++)
-        if (host_info[gpu_frame_id][i] != 0)
-            ERROR(
-                "cudaBasebandBeamformer returned 'info' value {:d} at index {:d} (zero indicates no"
-                "error)",
-                host_info[gpu_frame_id][i], i);
 }
 
 void cudaBasebandBeamformer::finalize_frame(const int gpu_frame_id) {
