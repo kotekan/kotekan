@@ -21,19 +21,19 @@ cudaOutputDataZero::~cudaOutputDataZero() {
     free(output_zeros);
 }
 
-cudaEvent_t cudaOutputDataZero::execute(int gpu_frame_id,
-                                        const std::vector<cudaEvent_t>& pre_events, bool* quit) {
+cudaEvent_t cudaOutputDataZero::execute(cudaPipelineState& pipestate,
+                                        const std::vector<cudaEvent_t>& pre_events) {
     (void)pre_events;
-    (void)quit;
-    pre_execute(gpu_frame_id);
+    pre_execute(pipestate.gpu_frame_id);
 
-    void* gpu_memory_frame = device.get_gpu_memory_array("output", gpu_frame_id, output_len);
+    void* gpu_memory_frame =
+        device.get_gpu_memory_array("output", pipestate.gpu_frame_id, output_len);
 
-    record_start_event(gpu_frame_id);
+    record_start_event(pipestate.gpu_frame_id);
 
     // Data transfer to GPU
     CHECK_CUDA_ERROR(cudaMemcpyAsync(gpu_memory_frame, output_zeros, output_len,
                                      cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
 
-    return record_end_event(gpu_frame_id);
+    return record_end_event(pipestate.gpu_frame_id);
 }

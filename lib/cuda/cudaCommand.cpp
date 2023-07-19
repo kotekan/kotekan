@@ -10,6 +10,35 @@ using kotekan::Config;
 using std::string;
 using std::to_string;
 
+cudaPipelineState::cudaPipelineState(int _gpu_frame_id) : gpu_frame_id(_gpu_frame_id) {}
+
+cudaPipelineState::~cudaPipelineState() {}
+
+void cudaPipelineState::set_flag(const std::string& key, bool val) {
+    flags[key] = val;
+}
+
+bool cudaPipelineState::flag_exists(const std::string& key) const {
+    // C++20
+    // return flags.contains(key);
+    return (flags.find(key) != flags.end());
+}
+
+bool cudaPipelineState::flag_is_set(const std::string& key) const {
+    auto search = flags.find(key);
+    if (search == flags.end())
+        return false;
+    return search->second;
+}
+
+void cudaPipelineState::set_int(const std::string& key, int64_t val) {
+    intmap[key] = val;
+}
+
+int64_t cudaPipelineState::get_int(const std::string& key) const {
+    return intmap.at(key);
+}
+
 cudaCommand::cudaCommand(Config& config_, const std::string& unique_name_,
                          bufferContainer& host_buffers_, cudaDeviceInterface& device_,
                          const std::string& default_kernel_command,
@@ -17,6 +46,7 @@ cudaCommand::cudaCommand(Config& config_, const std::string& unique_name_,
     gpuCommand(config_, unique_name_, host_buffers_, device_, default_kernel_command,
                default_kernel_file_name),
     device(device_) {
+    _required_flag = config.get_default<std::string>(unique_name, "required_flag", "");
     start_events = (cudaEvent_t*)malloc(_gpu_buffer_depth * sizeof(cudaEvent_t));
     end_events = (cudaEvent_t*)malloc(_gpu_buffer_depth * sizeof(cudaEvent_t));
     for (int j = 0; j < _gpu_buffer_depth; ++j) {
@@ -66,13 +96,13 @@ cudaCommand::~cudaCommand() {
     DEBUG("post_events Freed: {:s}", unique_name.c_str());
 }
 
-cudaEvent_t cudaCommand::skipped_execute(int gpu_frame_id,
-                                         const std::vector<cudaEvent_t>& pre_events) {
-    (void)pre_events;
-    // FIXME -- not sure we need this!  Would like to accumulate zero
-    // time when commands are skipped; not sure if this is the way.
-    record_start_event(gpu_frame_id);
-    return record_end_event(gpu_frame_id);
+cudaEvent_t cudaCommand::execute_base(cudaPipelineState& pipestate,
+                                      const std::vector<cudaEvent_t>& pre_events) {
+    if (_required_flag.size() && !pipestate.flag_is_set(_required_flag)) {
+        DEBUG("Required flag \"{:s}\" is not set; skipping stage", _required_flag);
+        return nullptr;
+    }
+    return execute(pipestate, pre_events);
 }
 
 void cudaCommand::finalize_frame(int gpu_frame_id) {

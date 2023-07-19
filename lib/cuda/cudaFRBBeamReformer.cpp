@@ -107,6 +107,7 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
     _beam_grid_size = config.get<int>(unique_name, "beam_grid_size");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _Td = config.get<int>(unique_name, "samples_per_data_set");
+    _batched = config.get_default<bool>(unique_name, "batched", true);
     _gpu_mem_beamgrid = config.get<std::string>(unique_name, "gpu_mem_beamgrid");
     _gpu_mem_phase = config.get<std::string>(unique_name, "gpu_mem_phase");
     _gpu_mem_beamout = config.get<std::string>(unique_name, "gpu_mem_beamout");
@@ -119,6 +120,10 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
                   device.get_num_streams());
         }
     }
+
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beamgrid, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_phase, false, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beamout, true, false, true));
 
     sync_events.resize(_gpu_buffer_depth);
     if (_cuda_streams.size()) {
@@ -244,61 +249,159 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
     free(beam_dra);
     free(beam_ddec);
     free(freqs);
+
+    int nstreams = std::max((int)_cuda_streams.size(), 1);
+    if (_num_local_freq % nstreams != 0) {
+        ERROR("Number of CUDA streams must evenly divide number of frequencies!");
+    }
+    if (nstreams == 1) {
+        // We MUST set the stream -- otherwise it uses the CUDA
+        // default stream, which != our default compute stream!
+        DEBUG("Set cublas stream {:d}", cuda_stream_id);
+        cublasSetStream(handle, device.getStream(cuda_stream_id));
+    }
+
+    // for cublas_hgemmBatched, pre-compute the GPU array pointers.
+    if (_batched) {
+        // GPU-memory arrays of pointers to the input & output
+        // matrices (in GPU memory)
+        __half** in;
+        __half** out;
+        __half** ph;
+        in = (__half**)device.get_gpu_memory(unique_name + "_batch_in",
+                                             _gpu_buffer_depth * _num_local_freq * sizeof(__half*));
+        out = (__half**)device.get_gpu_memory(
+            unique_name + "_batch_out", _gpu_buffer_depth * _num_local_freq * sizeof(__half*));
+        ph = (__half**)device.get_gpu_memory(unique_name + "_batch_ph",
+                                             _num_local_freq * sizeof(__half*));
+
+        // Temporary CPU-memory arrays of pointers to the input &
+        // output matrices (which live in GPU memory); these will get
+        // copied to in/out/ph.
+        __half* host_in[_gpu_buffer_depth * _num_local_freq];
+        __half* host_out[_gpu_buffer_depth * _num_local_freq];
+        __half* host_ph[_gpu_buffer_depth * _num_local_freq];
+
+        // Final CPU-side pointers to GPU memory
+        _gpu_in_pointers.resize(_gpu_buffer_depth);
+        _gpu_out_pointers.resize(_gpu_buffer_depth);
+
+        int freqs_per_stream = _num_local_freq / nstreams;
+
+        // loop over gpu frames
+        for (int gpu_frame_id = 0; gpu_frame_id < _gpu_buffer_depth; gpu_frame_id++) {
+            // GPU input & output memory buffers for this gpu frame #.
+            float16_t* gpu_in_base = (float16_t*)device.get_gpu_memory_array(
+                _gpu_mem_beamgrid, gpu_frame_id, beamgrid_len);
+            float16_t* gpu_out_base = (float16_t*)device.get_gpu_memory_array(
+                _gpu_mem_beamout, gpu_frame_id, beamout_len);
+            // Compute the per-frequency matrix offsets.
+            for (int f = 0; f < _num_local_freq; f++) {
+                host_in[gpu_frame_id * _num_local_freq + f] = gpu_in_base + (size_t)f * _Td * rho;
+                host_out[gpu_frame_id * _num_local_freq + f] =
+                    gpu_out_base + (size_t)f * _Td * _num_beams;
+                if (gpu_frame_id == 0)
+                    host_ph[f] = phase_memory + (size_t)f * rho * _num_beams;
+            }
+            // loop over streams and save the final GPU memory pointers (which we haven't yet filled
+            // with data!)
+            for (int i = 0; i < nstreams; i++) {
+                _gpu_in_pointers[gpu_frame_id].push_back(
+                    in + (gpu_frame_id * nstreams + i) * freqs_per_stream);
+                _gpu_out_pointers[gpu_frame_id].push_back(
+                    out + (gpu_frame_id * nstreams + i) * freqs_per_stream);
+                if (gpu_frame_id == 0)
+                    _gpu_phase_pointers.push_back(ph + i * freqs_per_stream);
+            }
+        }
+        // Now copy the GPU pointer offsets (that we computed on the CPU) over to the GPU!
+        CHECK_CUDA_ERROR(cudaMemcpy(in, host_in,
+                                    _gpu_buffer_depth * _num_local_freq * sizeof(__half*),
+                                    cudaMemcpyHostToDevice));
+        CHECK_CUDA_ERROR(cudaMemcpy(out, host_out,
+                                    _gpu_buffer_depth * _num_local_freq * sizeof(__half*),
+                                    cudaMemcpyHostToDevice));
+        CHECK_CUDA_ERROR(
+            cudaMemcpy(ph, host_ph, _num_local_freq * sizeof(__half*), cudaMemcpyHostToDevice));
+    }
 }
 
 cudaFRBBeamReformer::~cudaFRBBeamReformer() {
     cublasDestroy(this->handle);
 }
 
-cudaEvent_t cudaFRBBeamReformer::execute(int gpu_frame_id,
-                                         const std::vector<cudaEvent_t>& pre_events, bool* quit) {
+cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& pipestate,
+                                         const std::vector<cudaEvent_t>& pre_events) {
     (void)pre_events;
-    (void)quit;
-    pre_execute(gpu_frame_id);
+    pre_execute(pipestate.gpu_frame_id);
 
-    float16_t* beamgrid_memory =
-        (float16_t*)device.get_gpu_memory_array(_gpu_mem_beamgrid, gpu_frame_id, beamgrid_len);
+    float16_t* beamgrid_memory = (float16_t*)device.get_gpu_memory_array(
+        _gpu_mem_beamgrid, pipestate.gpu_frame_id, beamgrid_len);
     float16_t* phase_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
-    float16_t* beamout_memory =
-        (float16_t*)device.get_gpu_memory_array(_gpu_mem_beamout, gpu_frame_id, beamout_len);
+    float16_t* beamout_memory = (float16_t*)device.get_gpu_memory_array(
+        _gpu_mem_beamout, pipestate.gpu_frame_id, beamout_len);
 
-    record_start_event(gpu_frame_id);
+    record_start_event(pipestate.gpu_frame_id);
 
     DEBUG("Running CUDA FRB BeamReformer on GPU frame {:d}: F={:d}, T={:d}, B={:d}, rho={:d}",
-          gpu_frame_id, _num_local_freq, _Td, _num_beams, rho);
+          pipestate.gpu_frame_id, _num_local_freq, _Td, _num_beams, rho);
 
     int calls_per_stream = (_cuda_streams.size() > 0) ? _num_local_freq / _cuda_streams.size() : 0;
 
-    for (int f = 0; f < _num_local_freq; f++) {
-        int B = _num_beams;
-        float16_t* d_Iin = beamgrid_memory + (size_t)f * _Td * rho;
-        float16_t* d_W = phase_memory + (size_t)f * rho * B;
-        float16_t* d_Iout = beamout_memory + (size_t)f * _Td * B;
+    if (_batched) {
+        int nstreams = std::max((int)_cuda_streams.size(), 1);
+        int freqs_per_stream = _num_local_freq / nstreams;
 
-        __half alpha = 1.;
-        __half beta = 0.;
-
-        if ((calls_per_stream > 0) && (f % calls_per_stream == 0)) {
-            DEBUG("Freq {:d}: set Cuda stream {:d}", f, _cuda_streams[f / calls_per_stream]);
-            cublasSetStream(handle, device.getStream(_cuda_streams[f / calls_per_stream]));
+        for (int i = 0; i < nstreams; i++) {
+            if (nstreams > 1) {
+                DEBUG("Set cublas stream {:d}", _cuda_streams[i]);
+                cublasSetStream(handle, device.getStream(_cuda_streams[i]));
+            }
+            __half alpha = 1.;
+            __half beta = 0.;
+            cublasStatus_t stat = cublasHgemmBatched(
+                handle, CUBLAS_OP_T, CUBLAS_OP_N, _Td, _num_beams, rho, &alpha,
+                _gpu_in_pointers[pipestate.gpu_frame_id][i], rho, _gpu_phase_pointers[i], rho,
+                &beta, _gpu_out_pointers[pipestate.gpu_frame_id][i], _Td, freqs_per_stream);
+            if (stat != CUBLAS_STATUS_SUCCESS) {
+                ERROR("Error at {:s}:{:d}: cublasHgemmBatched: {:s}", __FILE__, __LINE__,
+                      cublasGetStatusString(stat));
+                std::abort();
+            }
         }
-        /*
-        // Multiply A and B^T on GPU
-        cublasStatus_t stat = cublasHgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, _Td, B, rho, &alpha,
-        d_Iin, _Td, d_W, B, &beta, d_Iout, _Td);
-        */
 
-        // Multiply A^T and B on GPU, where the transposes are
-        // according to cublas, ie, in the Fortran column-major view
-        // of things.  That is, Transpose is the regular C row-major
-        // ordering.
-        cublasStatus_t stat = cublasHgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, _Td, B, rho, &alpha,
-                                          d_Iin, rho, d_W, rho, &beta, d_Iout, _Td);
+    } else {
+        for (int f = 0; f < _num_local_freq; f++) {
+            int B = _num_beams;
+            float16_t* d_Iin = beamgrid_memory + (size_t)f * _Td * rho;
+            float16_t* d_W = phase_memory + (size_t)f * rho * B;
+            float16_t* d_Iout = beamout_memory + (size_t)f * _Td * B;
 
-        if (stat != CUBLAS_STATUS_SUCCESS) {
-            ERROR("Error at {:s}:{:d}: cublasHgemm: {:s}", __FILE__, __LINE__,
-                  cublasGetStatusString(stat));
-            std::abort();
+            __half alpha = 1.;
+            __half beta = 0.;
+
+            if ((calls_per_stream > 0) && (f % calls_per_stream == 0)) {
+                DEBUG("Freq {:d}: set Cuda stream {:d}", f, _cuda_streams[f / calls_per_stream]);
+                cublasSetStream(handle, device.getStream(_cuda_streams[f / calls_per_stream]));
+            }
+            /*
+            // Multiply A and B^T on GPU
+            cublasStatus_t stat = cublasHgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, _Td, B, rho, &alpha,
+            d_Iin, _Td, d_W, B, &beta, d_Iout, _Td);
+            */
+
+            // Multiply A^T and B on GPU, where the transposes are
+            // according to cublas, ie, in the Fortran column-major view
+            // of things.  That is, Transpose is the regular C row-major
+            // ordering.
+            cublasStatus_t stat = cublasHgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, _Td, B, rho, &alpha,
+                                              d_Iin, rho, d_W, rho, &beta, d_Iout, _Td);
+
+            if (stat != CUBLAS_STATUS_SUCCESS) {
+                ERROR("Error at {:s}:{:d}: cublasHgemm: {:s}", __FILE__, __LINE__,
+                      cublasGetStatusString(stat));
+                std::abort();
+            }
         }
     }
 
@@ -306,20 +409,36 @@ cudaEvent_t cudaFRBBeamReformer::execute(int gpu_frame_id,
         for (size_t i = 0; i < _cuda_streams.size(); i++) {
             if (_cuda_streams[i] != cuda_stream_id) {
                 // Create an event on each compute stream that we "forked"
-                CHECK_CUDA_ERROR(cudaEventCreate(&sync_events[gpu_frame_id][i]));
-                CHECK_CUDA_ERROR(cudaEventRecord(sync_events[gpu_frame_id][i],
+                CHECK_CUDA_ERROR(cudaEventCreate(&sync_events[pipestate.gpu_frame_id][i]));
+                CHECK_CUDA_ERROR(cudaEventRecord(sync_events[pipestate.gpu_frame_id][i],
                                                  device.getStream(_cuda_streams[i])));
                 // Now wait for that event on the main compute stream.
                 CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(cuda_stream_id),
-                                                     sync_events[gpu_frame_id][i]));
+                                                     sync_events[pipestate.gpu_frame_id][i]));
             }
         }
     }
 
-    return record_end_event(gpu_frame_id);
+    return record_end_event(pipestate.gpu_frame_id);
 }
 
 void cudaFRBBeamReformer::finalize_frame(int frame_id) {
+
+    float exec_time;
+    for (size_t i = 0; i < _cuda_streams.size(); i++) {
+        if (sync_events[frame_id][i] && sync_events[frame_id][i]) {
+            CHECK_CUDA_ERROR(
+                cudaEventElapsedTime(&exec_time, start_events[frame_id], sync_events[frame_id][i]));
+            INFO("Sync for stream {:d} took {:.3f} ms", _cuda_streams[i], exec_time);
+        }
+    }
+    if (start_events[frame_id] && end_events[frame_id]) {
+        CHECK_CUDA_ERROR(
+            cudaEventElapsedTime(&exec_time, start_events[frame_id], end_events[frame_id]));
+        INFO("Start to end took {:.3f} ms", exec_time);
+    }
+
+
     cudaCommand::finalize_frame(frame_id);
     for (size_t i = 0; i < _cuda_streams.size(); i++) {
         if (sync_events[frame_id][i])

@@ -99,6 +99,25 @@ public:
      */
     virtual std::string get_unique_name() const;
 
+    /**
+     * @brief For DOT / graphviz, return the list of GPU buffers
+     * read/written by this command.
+     * @return A list of GPU buffers touched by this command:
+     *    [ (name, is_array, does_read, does_write) ]
+     */
+    virtual std::vector<std::tuple<std::string, bool, bool, bool>> get_gpu_buffers() const {
+        return gpu_buffers_used;
+    }
+
+    /**
+     * @brief For DOT / graphviz, return an extra string that will be inserted into the DOT
+     * output after the GPU nodes and edges are drawn.
+     */
+    virtual std::string get_extra_dot(const std::string& prefix) const {
+        (void)prefix;
+        return "";
+    }
+
     /// Track the time the command was active on the GPU.
     /// This is just the time the command is running, and doesn't include time waiting
     /// in the queue.
@@ -134,6 +153,9 @@ protected:
 
     /// Type of command
     gpuCommandType command_type = gpuCommandType::NOT_SET;
+
+    /// For get_gpu_buffers: a list of GPU buffers used by this command.
+    std::vector<std::tuple<std::string, bool, bool, bool>> gpu_buffers_used;
 };
 
 #endif // GPU_COMMAND_H

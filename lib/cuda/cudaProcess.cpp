@@ -46,29 +46,26 @@ gpuCommand* cudaProcess::create_command(const std::string& cmd_name,
     return cmd;
 }
 
-void cudaProcess::queue_commands(int gpu_frame_id) {
+void cudaProcess::queue_commands(int gpu_frame_id, int gpu_frame_counter) {
     std::vector<cudaEvent_t> events;
     events.resize(device->get_num_streams(), nullptr);
-    int32_t command_stream_id = -1;
 
-    bool quit = false;
+    cudaPipelineState pipestate(gpu_frame_id);
+    pipestate.set_int("gpu_frame_counter", gpu_frame_counter);
+    cudaEvent_t final_event = nullptr;
+
     for (auto& command : commands) {
         // Feed the last signal into the next operation
-        if (!quit) {
-            command_stream_id = ((cudaCommand*)command)->get_cuda_stream_id();
-            events[command_stream_id] =
-                ((cudaCommand*)command)->execute(gpu_frame_id, events, &quit);
-        } else {
-            cudaEvent_t event = ((cudaCommand*)command)->skipped_execute(gpu_frame_id, events);
-            if (event != nullptr) {
-                command_stream_id = ((cudaCommand*)command)->get_cuda_stream_id();
-                events[command_stream_id] = event;
-            }
+        cudaEvent_t event = ((cudaCommand*)command)->execute_base(pipestate, events);
+        if (event != nullptr) {
+            int32_t command_stream_id = ((cudaCommand*)command)->get_cuda_stream_id();
+            events[command_stream_id] = event;
+            final_event = event;
         }
     }
     // Wait on the very last event from the last command.
     // TODO, this should wait on the last event from every stream!
-    final_signals[gpu_frame_id]->set_signal(events[command_stream_id]);
+    final_signals[gpu_frame_id]->set_signal(final_event);
     DEBUG2("Commands executed.");
 }
 

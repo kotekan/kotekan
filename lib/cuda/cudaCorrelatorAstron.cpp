@@ -49,21 +49,20 @@ cudaCorrelatorAstron::cudaCorrelatorAstron(Config& config, const std::string& un
 
 cudaCorrelatorAstron::~cudaCorrelatorAstron() {}
 
-cudaEvent_t cudaCorrelatorAstron::execute(int gpu_frame_id,
-                                          const std::vector<cudaEvent_t>& pre_events, bool* quit) {
+cudaEvent_t cudaCorrelatorAstron::execute(cudaPipelineState& pipestate,
+                                          const std::vector<cudaEvent_t>& pre_events) {
     (void)pre_events;
-    (void)quit;
-    pre_execute(gpu_frame_id);
+    pre_execute(pipestate.gpu_frame_id);
 
     size_t input_frame_len = (size_t)_num_elements * _num_local_freq * _samples_per_data_set;
     void* input_memory = device.get_gpu_memory(_gpu_mem_voltage, input_frame_len);
 
     size_t output_len = (size_t)_num_local_freq * _num_blocks * (_block_size * _block_size) * 2
                         * _num_data_sets * sizeof(int32_t);
-    void* output_memory =
-        device.get_gpu_memory_array(_gpu_mem_correlation_matrix, gpu_frame_id, output_len);
+    void* output_memory = device.get_gpu_memory_array(_gpu_mem_correlation_matrix,
+                                                      pipestate.gpu_frame_id, output_len);
 
-    record_start_event(gpu_frame_id);
+    record_start_event(pipestate.gpu_frame_id);
 
     CUresult err;
     void* parameters[] = {&output_memory, &input_memory};
@@ -78,5 +77,5 @@ cudaEvent_t cudaCorrelatorAstron::execute(int gpu_frame_id,
         INFO("ERROR IN cuLaunchKernel: {}", errStr);
     }
 
-    return record_end_event(gpu_frame_id);
+    return record_end_event(pipestate.gpu_frame_id);
 }

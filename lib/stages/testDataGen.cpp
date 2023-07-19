@@ -253,7 +253,7 @@ void testDataGen::main_thread() {
                 if (_reuse_random && finished_seeding_consant)
                     break;
                 int r = rand();
-                new_real = (r % 15) + 1;      // Limit to [-7, 7]
+                new_real = (r % 15) + 1; // Limit to [-7, 7]
                 r >>= 4;
                 new_imaginary = (r % 15) + 1; // Limit to [-7, 7]
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
