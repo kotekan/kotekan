@@ -493,7 +493,7 @@ jobs:
   # Build kotekan documentation
   build-docs:
     runs-on: ubuntu-latest
-    needs: build-docker-1804
+    needs: build-docker-2204
 
     steps:
     - uses: actions/checkout@v2
@@ -502,7 +502,7 @@ jobs:
       uses: technote-space/get-diff-action@v4
       id: git-diff-docker
       with:
-        PATTERNS: tools/docker/Dockerfile
+        PATTERNS: tools/CI/Dockerfile
 
     - name: Extract branch name for docker container
       shell: bash
@@ -529,7 +529,6 @@ jobs:
             -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
             -DWERROR=ON \
             -DCOMPILE_DOCS=ON \
-            -DPLANTUML_PATH=/code/build/plantuml \
             -DWITH_TESTS=OFF ..
         docker run "${OPTS[@]}" make doc
         docker run "${OPTS[@]}" make sphinx
