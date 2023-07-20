@@ -69,7 +69,7 @@ RUN apt-get update && \
     apt-get clean && apt-get autoclean && \
     python3.11 -m pip install --no-cache-dir breathe sphinx \
                                              sphinx_rtd_theme \
-                                             sphinxcontrib-plantuml \
+                                             sphinxcontrib-plantuml
 
 RUN python3.11 -m pip show breathe sphinx_rtd_theme sphinxcontrib-plantuml
 RUN apt-cache policy doxygen graphviz default-jre redis mysql-client libmysqlclient-dev
