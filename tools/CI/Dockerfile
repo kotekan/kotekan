@@ -1,5 +1,7 @@
 FROM rocm/dev-ubuntu-22.04
 
+# So tzdata package doesn't ask for user interaction
+ARG DEBIAN_FRONTEND=noninteractive
 
 # Install any needed packages to run cmake with full CHIME build options
 RUN apt-get -y update && \
@@ -43,9 +45,6 @@ RUN python3.11 -m pip install --upgrade pip==23.2 && \
 
 RUN mkdir -p /code/build
 WORKDIR /code/build
-
-# So tzdata package doesn't ask for user interaction
-ARG DEBIAN_FRONTEND=noninteractive
 
 # Set architecture for all builds done below to haswell, currently the oldest architecture used
 # by github workflows
