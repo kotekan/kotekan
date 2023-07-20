@@ -64,16 +64,15 @@ ENV CXXFLAGS "-march=haswell"
 RUN apt-get update && \
     apt-get -y install doxygen \
                        graphviz \
-                       python-sphinx \
                        default-jre \
                        && \
     apt-get clean && apt-get autoclean && \
-    python3.11 -m pip install --no-cache-dir breathe \
+    python3.11 -m pip install --no-cache-dir breathe sphinx \
                                              sphinx_rtd_theme \
                                              sphinxcontrib-plantuml \
 
 RUN python3.11 -m pip show breathe sphinx_rtd_theme sphinxcontrib-plantuml
-RUN apt-cache policy doxygen graphviz python-sphinx default-jre redis mysql-client libmysqlclient-dev
+RUN apt-cache policy doxygen graphviz default-jre redis mysql-client libmysqlclient-dev
 
 # Uncomment this to check what version got installed
 # RUN python3.11 -m pip show <package>
