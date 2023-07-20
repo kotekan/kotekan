@@ -59,50 +59,6 @@ WORKDIR /code/build
 ENV CFLAGS "-march=haswell"
 ENV CXXFLAGS "-march=haswell"
 
-# Install standard h5py and bitshuffle versions
-RUN python3.11 -m pip install --upgrade h5py \
-                                        bitshuffle
-RUN python3.11 -m pip show h5py bitshuffle
-
-
-# Install OpenBLAS and clone Blaze for the eigenvalue processes
-RUN apt-get update && \
-    apt-get -y install libopenblas-dev \
-                       liblapack-dev \
-                       liblapacke-dev \
-                       && \
-    apt-get clean && apt-get autoclean && \
-    git clone https://bitbucket.org/blaze-lib/blaze.git blaze && \
-    cd blaze && git checkout v3.4 && cd ..
-
-# Install kotekan python dependencies
-RUN python3.11 -m pip install blinker
-RUN python3.11 -m pip install msgpack
-RUN python3.11 -m pip install click
-RUN python3.11 -m pip install future
-RUN python3.11 -m pip install requests
-RUN python3.11 -m pip install pyyaml
-RUN python3.11 -m pip install tabulate
-RUN python3.11 -m pip install pytest
-RUN python3.11 -m pip install pytest-xdist
-RUN python3.11 -m pip install pytest-cpp
-RUN python3.11 -m pip install pytest-localserver
-RUN python3.11 -m pip install --ignore-installed flask
-RUN python3.11 -m pip install pytest-timeout
-RUN python3.11 -m pip install posix_ipc
-
-RUN apt-get update && \
-    apt-get install -y mysql-client \
-        libmysqlclient-dev && \
-    apt-get clean && apt-get autoclean && \
-    python3.11 -m pip install git+https://github.com/chime-experiment/comet.git
-
-RUN python3.11 -m pip show msgpack click future requests pyyaml tabulate pytest pytest-xdist pytest-cpp pytest-localserver flask pytest-timeout posix_ipc 
-
-# Install redis for comet tests
-RUN apt-get update && \
-    apt-get install -y redis && \
-    apt-get clean && apt-get autoclean
 
 # Install documentation dependencies
 RUN apt-get update && \
