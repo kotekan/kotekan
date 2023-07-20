@@ -87,7 +87,7 @@ RUN python3.11 -m pip install pytest
 RUN python3.11 -m pip install pytest-xdist
 RUN python3.11 -m pip install pytest-cpp
 RUN python3.11 -m pip install pytest-localserver
-RUN python3.11 -m pip install flask
+RUN python3.11 -m pip install --ignore-installed flask
 RUN python3.11 -m pip install pytest-timeout
 RUN python3.11 -m pip install posix_ipc
 
