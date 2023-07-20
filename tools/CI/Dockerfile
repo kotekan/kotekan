@@ -37,6 +37,7 @@ RUN apt-get -y update && \
 RUN apt-cache policy python3.11 python3-setuptools python3-pip python3.11-distutils python3.11-dev build-essential git coreutils ccache pkg-config gcc gdb cmake clang-15 clang-format-15 dpdk dpdk-dev libhdf5-serial-dev libboost-test-dev libevent-dev libssl-dev wget
 
 RUN python3.11 -m pip install --upgrade pip && \
+    python3.11 -m pip install --upgrade distro-info && \
     python3.11 -m pip install --upgrade --force-reinstall setuptools && \
     python3.11 -m pip install --upgrade wheel && \
     python3.11 -m pip install --no-cache-dir numpy && \
@@ -75,21 +76,22 @@ RUN apt-get update && \
     cd blaze && git checkout v3.4 && cd ..
 
 # Install kotekan python dependencies
-RUN python3.11 -m pip install msgpack \
-                             click \
-                             future \
-                             requests \
-                             pyyaml \
-                             tabulate \
-                             pytest \
-                             pytest-xdist \
-                             pytest-cpp \
-                             pytest-localserver \
-                             flask \
-                             pytest-timeout \
-                             posix_ipc \
-                             && \
-    apt-get update && \
+RUN python3.11 -m pip install blinker
+RUN python3.11 -m pip install msgpack
+RUN python3.11 -m pip install click
+RUN python3.11 -m pip install future
+RUN python3.11 -m pip install requests
+RUN python3.11 -m pip install pyyaml
+RUN python3.11 -m pip install tabulate
+RUN python3.11 -m pip install pytest
+RUN python3.11 -m pip install pytest-xdist
+RUN python3.11 -m pip install pytest-cpp
+RUN python3.11 -m pip install pytest-localserver
+RUN python3.11 -m pip install flask
+RUN python3.11 -m pip install pytest-timeout
+RUN python3.11 -m pip install posix_ipc
+
+RUN apt-get update && \
     apt-get install -y mysql-client \
         libmysqlclient-dev && \
     apt-get clean && apt-get autoclean && \
