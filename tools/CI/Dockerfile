@@ -9,16 +9,16 @@ RUN apt-get -y update && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y python3.11=3.11.* \
-                       python3-setuptools=59.6.* \
+    apt-get install -y python3.11 \
+                       python3-setuptools \
                        python3-pip \
                        python3.11-distutils \
-                       python3.11-dev=3.11.* \
-                       build-essential=12.* \
+                       python3.11-dev \
+                       build-essential \
                        git \
                        coreutils \
                        ccache \
-                       pkg-config=0.29.* \
+                       pkg-config \
                        gcc \
                        gdb \
                        cmake \
@@ -28,20 +28,24 @@ RUN apt-get -y update && \
                        dpdk-dev \
                        libhdf5-serial-dev \
                        libboost-test-dev \
-                       libevent-dev=2.1.* \
+                       libevent-dev \
                        libssl-dev \
-                       wget=1.21.* \
+                       wget \
                        && \
     apt-get clean && apt-get autoclean
 
-RUN python3.11 -m pip install --upgrade pip==23.2 && \
-    python3.11 -m pip install --upgrade --force-reinstall setuptools==67.8.0 && \
-    python3.11 -m pip install --upgrade wheel==0.38.4 && \
-    python3.11 -m pip install --no-cache-dir numpy==1.24.4 && \
-    python3.11 -m pip install --no-cache-dir pkgconfig==1.5.5 && \
-    python3.11 -m pip install --no-cache-dir --upgrade cython==3.0.0 && \
-    python3.11 -m pip install --no-cache-dir black==23.7.0 &&\
-    python3.11 -m pip install --no-cache-dir cmake_format==0.6.13
+RUN apt-cache policy python3.11 python3-setuptools python3-pip python3.11-distutils python3.11-dev build-essential git coreutils ccache pkg-config gcc gdb cmake clang-15 clang-format-15 dpdk dpdk-dev libhdf5-serial-dev libboost-test-dev libevent-dev libssl-dev wget
+
+RUN python3.11 -m pip install --upgrade pip && \
+    python3.11 -m pip install --upgrade --force-reinstall setuptools && \
+    python3.11 -m pip install --upgrade wheel && \
+    python3.11 -m pip install --no-cache-dir numpy && \
+    python3.11 -m pip install --no-cache-dir pkgconfig && \
+    python3.11 -m pip install --no-cache-dir --upgrade cython && \
+    python3.11 -m pip install --no-cache-dir black && \
+    python3.11 -m pip install --no-cache-dir cmake_format
+
+RUN python3.11 -m pip show h5py pip setuptools wheel numpy pkgconfig cython black cmake_format
 
 RUN mkdir -p /code/build
 WORKDIR /code/build
@@ -54,68 +58,64 @@ WORKDIR /code/build
 ENV CFLAGS "-march=haswell"
 ENV CXXFLAGS "-march=haswell"
 
-# Install h5py from source for bitshuffle, and clone HighFive for kotekan build
-RUN git clone https://github.com/h5py/h5py.git h5py && \
-    cd h5py && git checkout 2.9.0 && \
-    python3.11 setup.py configure --hdf5=/usr/lib/x86_64-linux-gnu/hdf5/serial/ --hdf5-version=1.10.0 && \
-    python3.11 setup.py install
-RUN git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git && \
-    cd HighFive && git pull && cd ..  
+# Install standard h5py and bitshuffle versions
+RUN python3.11 -m pip install --upgrade h5py \
+                                        bitshuffle
+RUN python3.11 -m pip show h5py bitshuffle
 
-# Install bitshuffle
-RUN git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle &&\
-    cd bitshuffle &&\
-    git pull &&\
-    python3.11 setup.py build_ext --march=haswell &&\
-    python3.11 setup.py install --h5plugin --h5plugin-dir=/usr/local/hdf5/lib/plugin
 
 # Install OpenBLAS and clone Blaze for the eigenvalue processes
 RUN apt-get update && \
-    apt-get -y install libopenblas-dev=0.2.* \
-                       liblapack-dev=3.7.* \
-                       liblapacke-dev=3.7.* \
+    apt-get -y install libopenblas-dev \
+                       liblapack-dev \
+                       liblapacke-dev \
                        && \
     apt-get clean && apt-get autoclean && \
     git clone https://bitbucket.org/blaze-lib/blaze.git blaze && \
     cd blaze && git checkout v3.4 && cd ..
 
 # Install kotekan python dependencies
-RUN python3.11 -m pip install msgpack==1.0.0 \
-                             click==7.1.2 \
-                             future==0.18.2 \
-                             requests==2.24.0 \
-                             pyyaml==3.12 \
-                             tabulate==0.8.7 \
-                             pytest==6.0.1 \
-                             pytest-xdist==2.1.0 \
-                             pytest-cpp==1.4.0 \
-                             pytest-localserver==0.5.0 \
-                             flask==1.1.2 \
-                             pytest-timeout==1.4.2 \
-                             posix_ipc==1.0.4 \
+RUN python3.11 -m pip install msgpack \
+                             click \
+                             future \
+                             requests \
+                             pyyaml \
+                             tabulate \
+                             pytest \
+                             pytest-xdist \
+                             pytest-cpp \
+                             pytest-localserver \
+                             flask \
+                             pytest-timeout \
+                             posix_ipc \
                              && \
     apt-get update && \
-    apt-get install -y mysql-client=5.7.* \
-        libmysqlclient-dev=5.7.* && \
+    apt-get install -y mysql-client \
+        libmysqlclient-dev && \
     apt-get clean && apt-get autoclean && \
     python3.11 -m pip install git+https://github.com/chime-experiment/comet.git
 
+RUN python3.11 -m pip show msgpack click future requests pyyaml tabulate pytest pytest-xdist pytest-cpp pytest-localserver flask pytest-timeout posix_ipc 
+
 # Install redis for comet tests
 RUN apt-get update && \
-    apt-get install -y redis=5:4.0.* && \
+    apt-get install -y redis && \
     apt-get clean && apt-get autoclean
 
 # Install documentation dependencies
 RUN apt-get update && \
-    apt-get -y install doxygen=1.8.* \
-                       graphviz=2.40.* \
-                       python-sphinx=1.6.* \
-                       default-jre=2:1.* \
+    apt-get -y install doxygen \
+                       graphviz \
+                       python-sphinx \
+                       default-jre \
                        && \
     apt-get clean && apt-get autoclean && \
-    python3.11 -m pip install --no-cache-dir breathe==4.35.0 \
-                                            sphinx_rtd_theme==1.2.2 \
-                                            sphinxcontrib-plantuml==0.25 \
+    python3.11 -m pip install --no-cache-dir breathe \
+                                             sphinx_rtd_theme \
+                                             sphinxcontrib-plantuml \
+
+RUN python3.11 -m pip show breathe sphinx_rtd_theme sphinxcontrib-plantuml
+RUN apt-cache policy doxygen graphviz python-sphinx default-jre redis mysql-client libmysqlclient-dev
 
 # Uncomment this to check what version got installed
 # RUN python3.11 -m pip show <package>
