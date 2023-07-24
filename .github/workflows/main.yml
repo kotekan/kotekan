@@ -68,7 +68,6 @@ jobs:
     - name: Build and Push Docker Image
       if: contains(steps.changed-files.outputs.all_modified_files, 'tools/CI/Dockerfile')
       run: |
-        docker pull --disable-content-trust ${IMG_CORE}:${GITHUB_REF_NAME}
         docker build --cache-from=${IMG_CI} -t ${IMG_CI}:${GITHUB_REF_NAME} - < tools/CI/Dockerfile
         docker push ${IMG_CI}:${GITHUB_REF_NAME}
       continue-on-error: true
