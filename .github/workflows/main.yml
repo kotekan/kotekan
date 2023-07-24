@@ -490,72 +490,71 @@ jobs:
 
 
   # Build MacOS kotekan
-  build-macos:
-    runs-on: macos-10
+  # Abandon for now -- runners don't seem to pick this up.
+  # build-macos:
+  #   runs-on: macos-10
 
-    steps:
-    - uses: actions/checkout@v2
-    - name: Cache ccache files
-      uses: actions/cache@v1
-      with:
-        path: .ccache
-        key: ccache-macos-build-${{ github.sha }}
-        restore-keys: |
-          ccache-macos-build
+  #   steps:
+  #   - uses: actions/checkout@v2
+  #   - name: Cache ccache files
+  #     uses: actions/cache@v1
+  #     with:
+  #       path: .ccache
+  #       key: ccache-macos-build-${{ github.sha }}
+  #       restore-keys: |
+  #         ccache-macos-build
 
-    - name: Install ccache and libraries
-      run: |
-        brew install hdf5@1.10 boost libevent ccache airspy fftw llvm@9
+  #   - name: Install ccache and libraries
+  #     run: |
+  #       brew install hdf5@1.10 boost libevent ccache airspy fftw llvm@9
 
-    - name: Install h5py?
-      run: |
-        export HDF5_DIR=$(brew --prefix hdf5)
-        pip3 install h5py
+  #   - name: Build h5py from source
+  #     run: |
+  #       git clone https://github.com/h5py/h5py.git h5py && cd h5py && git checkout 2.9.0
+  #       python3 setup.py configure --hdf5=/usr/local/opt/hdf5@1.10/
+  #       python3 setup.py build
 
-    - name: Install bitshuffle
-      run: |
-        export HDF5_DIR=$(brew --prefix hdf5)
-        export CC=gcc
-        export CXX=g++
-        pip3 install bitshuffle
+  #   - name: Install bitshuffle
+  #     run: |
+  #       pip3 install bitshuffle
 
-    - name: Clone Blaze and HighFive
-      run: |
-        git clone https://bitbucket.org/blaze-lib/blaze.git blaze
-        cd blaze && git checkout v3.4 && cd ..
-        git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git
-        cd HighFive && git pull && cd ..
+  #   - name: Clone Blaze and HighFive
+  #     run: |
+  #       git clone https://bitbucket.org/blaze-lib/blaze.git blaze
+  #       cd blaze && git checkout v3.4 && cd ..
+  #       git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git
+  #       cd HighFive && git pull && cd ..
 
-    - name: Install OpenBLAS and LAPACK
-      run: brew install openblas lapack
+  #   - name: Install OpenBLAS and LAPACK
+  #     run: brew install openblas lapack
 
-    - name: Build kotekan
-      env:
-        CCACHE_NOHASHDIR: 1
-        CCACHE_BASEDIR: $GITHUB_WORKSPACE
-        CCACHE_DIR: $GITHUB_WORKSPACE/.ccache/
-        CCACHE_COMPRESS: 1
-        CCACHE_MAXSIZE: 1G
-      run: |
-        # adding this to the above env block breaks and results in sh not finding cmake etc
-        export PATH="/usr/local/opt/hdf5@1.10/bin:$PATH"
-        cd build
-        # the MacOS linker doesn't support --no-as-needed for -DCMAKE_LINK_WHAT_YOU_USE=ON
-        cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
-        -DCMAKE_BUILD_TYPE=Test \
-        -DWERROR=ON \
-        -DUSE_HDF5=ON \
-        -DUSE_OPENCL=ON \
-        -DUSE_FFTW=ON \
-        -DUSE_AIRSPY=ON \
-        -DUSE_LAPACK=ON \
-        -DCMAKE_PREFIX_PATH=/usr/local/opt/openblas/ \
-        -DLAPACKE_DIR=/usr/local/opt/openblas/ \
-        -DBLAZE_PATH=$GITHUB_WORKSPACE/blaze \
-        -DHIGHFIVE_PATH=$GITHUB_WORKSPACE/HighFive \
-        -DCCACHE=ON \
-        -DWITH_TESTS=ON ..
-        make -j 2
+  #   - name: Build kotekan
+  #     env:
+  #       CCACHE_NOHASHDIR: 1
+  #       CCACHE_BASEDIR: $GITHUB_WORKSPACE
+  #       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache/
+  #       CCACHE_COMPRESS: 1
+  #       CCACHE_MAXSIZE: 1G
+  #     run: |
+  #       # adding this to the above env block breaks and results in sh not finding cmake etc
+  #       export PATH="/usr/local/opt/hdf5@1.10/bin:$PATH"
+  #       cd build
+  #       # the MacOS linker doesn't support --no-as-needed for -DCMAKE_LINK_WHAT_YOU_USE=ON
+  #       cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+  #       -DCMAKE_BUILD_TYPE=Test \
+  #       -DWERROR=ON \
+  #       -DUSE_HDF5=ON \
+  #       -DUSE_OPENCL=ON \
+  #       -DUSE_FFTW=ON \
+  #       -DUSE_AIRSPY=ON \
+  #       -DUSE_LAPACK=ON \
+  #       -DCMAKE_PREFIX_PATH=/usr/local/opt/openblas/ \
+  #       -DLAPACKE_DIR=/usr/local/opt/openblas/ \
+  #       -DBLAZE_PATH=$GITHUB_WORKSPACE/blaze \
+  #       -DHIGHFIVE_PATH=$GITHUB_WORKSPACE/HighFive \
+  #       -DCCACHE=ON \
+  #       -DWITH_TESTS=ON ..
+  #       make -j 2
 
   iwyu:
     runs-on: ubuntu-latest
