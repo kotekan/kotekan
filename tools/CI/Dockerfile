@@ -72,7 +72,7 @@ RUN apt-get update && \
                        && \
     apt-get clean && apt-get autoclean && \
     python3.11 -m pip install --no-cache-dir breathe==4.35.* sphinx==6.2.* \
-                                             sphinx_rtd_theme \
+                                             sphinx_rtd_theme==1.2.* \
                                              sphinxcontrib-plantuml
 
 # Uncomment this to check what version got installed
