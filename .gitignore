@@ -11,3 +11,6 @@
 /.vscode/
 /nbproject/
 /cmake-build*/
+build/*
+docs/sphinx/html/*
+.ccache/*

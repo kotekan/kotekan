@@ -2,8 +2,10 @@
 
 # Documentation
 
-Compiled docs are currently available at http://lwlab.dunlap.utoronto.ca/kotekan.
-One day we'll move them to readthedocs...
+Compiled docs are available at https://kotekan.readthedocs.io/en/latest/.
+
+[![Documentation Status](https://readthedocs.org/projects/kotekan/badge/?version=latest)](https://kotekan.readthedocs.io/en/latest/?badge=latest)
+
 
 # Build Instructions
 
