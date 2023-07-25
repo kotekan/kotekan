@@ -33,7 +33,7 @@ else()
     set(PLANTUML_DIR ${PLANTUML_PATH})
 endif()
 
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/conf.py.in" "${BINARY_BUILD_DIR}/conf.py" @ONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/conf.py" "${BINARY_BUILD_DIR}/conf.py" @ONLY)
 
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/_static")
 

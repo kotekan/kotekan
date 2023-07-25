@@ -16,7 +16,8 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-import os, subprocess
+import os
+import subprocess
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
 
@@ -26,7 +27,10 @@ import os, subprocess
 # Settings to determine if we are building on readthedocs
 read_the_docs_build = os.environ.get('READTHEDOCS', None) == 'True'
 if read_the_docs_build:
-     subprocess.call('cd ../doxygen; doxygen', shell=True)
+    subprocess.call('pwd')
+    subprocess.call('mkdir -p ../../build-docs &&\
+        cd ../../build-docs && pwd && cmake -DCOMPILE_DOCS=ON .. && make doc',
+        shell=True)
 
 # If your documentation needs a minimal Sphinx version, state it here.
 #
@@ -38,14 +42,14 @@ if read_the_docs_build:
 import sphinx_rtd_theme
 extensions = ['sphinx.ext.todo',  'breathe', 'sphinxcontrib.plantuml']
 
-# # this is to make plantuml extension find stuff
+# this is to make plantuml extension find stuff
 
 if not read_the_docs_build :
     # Paths (@...@) will be modified by cmake
     plantuml = 'java -jar @PLANTUML_DIR@/plantuml.jar'
     breathe_projects = { "kotekan": "@BINARY_BUILD_DIR@/../doxygen/build/xml/" }
 else :
-    breathe_projects = { "kotekan": "docs/doxygen/build/xml/" }
+    breathe_projects = { "kotekan": "build-docs/docs/doxygen/build/xml/" }
 
 breathe_default_project = "kotekan"
 
