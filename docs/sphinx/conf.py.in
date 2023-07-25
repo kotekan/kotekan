@@ -23,6 +23,11 @@
 
 # -- General configuration ------------------------------------------------
 
+# Settings to determine if we are building on readthedocs
+read_the_docs_build = os.environ.get('READTHEDOCS', None) == 'True'
+if read_the_docs_build:
+     subprocess.call('cd ../doxygen; doxygen', shell=True)
+
 # If your documentation needs a minimal Sphinx version, state it here.
 #
 # needs_sphinx = '1.0'
@@ -109,6 +114,7 @@ html_static_path = ['_static']
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'kotekandoc'
 
+html_extra_path = ['../doxygen/build/html']
 
 # -- Options for LaTeX output ---------------------------------------------
 
