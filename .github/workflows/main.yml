@@ -78,7 +78,6 @@ jobs:
       run: |
         docker build --cache-from=${IMG_CI} -t "${IMG_CI}:${{ steps.get-branch-name.outputs.branch_name }}" - < tools/CI/Dockerfile
         docker push "${IMG_CI}:${{ steps.get-branch-name.outputs.branch_name }}"
-      continue-on-error: true
 
     outputs:
       branch_name: "${{ steps.get-branch-name.outputs.branch_name }}"
@@ -174,7 +173,7 @@ jobs:
 
     - name: Build kotekan
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE}:${{ needs.build-docker-ci.outputs.branch_name }})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CI}:${{ needs.build-docker-ci.outputs.branch_name }})
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
