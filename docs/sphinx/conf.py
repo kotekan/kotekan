@@ -123,8 +123,6 @@ html_static_path = []
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'kotekandoc'
 
-html_extra_path = ['../../build-docs/docs/doxygen/build/html']
-
 # -- Options for LaTeX output ---------------------------------------------
 
 latex_elements = {
