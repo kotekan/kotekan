@@ -115,7 +115,7 @@ html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+html_static_path = []
 
 
 # -- Options for HTMLHelp output ------------------------------------------
@@ -123,7 +123,7 @@ html_static_path = ['_static']
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'kotekandoc'
 
-html_extra_path = ['../doxygen/build/html']
+html_extra_path = ['../../build-docs/docs/doxygen/build/html']
 
 # -- Options for LaTeX output ---------------------------------------------
 
