@@ -10,7 +10,7 @@
 #include "Config.hpp"         // for Config
 #include "FrameView.hpp"      // for FrameView
 #include "Telescope.hpp"      // for freq_id_t
-#include "buffer.h"           // for Buffer
+#include "buffer.hpp"           // for Buffer
 #include "chimeMetadata.hpp"  // for chimeMetadata
 #include "datasetManager.hpp" // for dset_id_t
 #include "visUtil.hpp"        // for cfloat

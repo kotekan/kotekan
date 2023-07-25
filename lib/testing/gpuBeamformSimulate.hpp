@@ -9,7 +9,7 @@
 #include "Config.hpp"
 #include "Stage.hpp" // for Stage
 #include "Telescope.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp"
 
 #include <stdint.h> // for int32_t, uint64_t

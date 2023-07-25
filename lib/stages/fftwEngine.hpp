@@ -7,7 +7,7 @@
 #ifndef FFTW_ENGINE_HPP
 #define FFTW_ENGINE_HPP
 #include "Stage.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "errors.h"
 #include "util.h"
 

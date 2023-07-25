@@ -6,7 +6,7 @@
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "SystemInterface.hpp"   // for get_hostname, get_username
-#include "buffer.h"              // for Buffer
+#include "buffer.hpp"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for datasetManager, dset_id_t
 #include "datasetState.hpp"      // for metadataState, freqState, prodState

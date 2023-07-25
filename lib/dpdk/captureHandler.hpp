@@ -8,7 +8,7 @@
 #define CAPTURE_HANDLER_HPP
 
 #include "Config.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "dpdkCore.hpp"
 #include "packet_copy.h"

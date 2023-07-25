@@ -2,7 +2,7 @@
 #define ONEHOT_METADATA
 
 #include "Telescope.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "chimeMetadata.hpp"
 #include "datasetManager.hpp"
 #include "metadata.h"

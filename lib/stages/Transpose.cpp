@@ -3,7 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "Hash.hpp"              // for Hash, operator!=
 #include "SystemInterface.hpp"   // for get_hostname, get_username
-#include "buffer.h"              // for wait_for_full_frame, mark_frame_empty, register_consumer
+#include "buffer.hpp"              // for wait_for_full_frame, mark_frame_empty, register_consumer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "dataset.hpp"           // for dataset
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager

@@ -2,7 +2,7 @@
 
 #include "Hash.hpp"              // for operator<
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "buffer.hpp"              // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "datasetManager.hpp"    // for fingerprint_t, datasetManager, dset_id_t
 #include "datasetState.hpp"      // for stackState
 #include "kotekanLogging.hpp"    // for FATAL_ERROR

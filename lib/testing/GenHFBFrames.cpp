@@ -3,7 +3,7 @@
 #include "Config.hpp"         // for Config
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"      // for stream_t
-#include "buffer.h"           // for allocate_new_metadata_object, mark_frame_full, register_pr...
+#include "buffer.hpp"           // for allocate_new_metadata_object, mark_frame_full, register_pr...
 #include "chimeMetadata.hpp"  // for atomic_add_lost_timesamples, set_fpga_seq_num, set_stream_id
 #include "datasetManager.hpp" // for dset_id_t
 #include "kotekanLogging.hpp" // for DEBUG, INFO

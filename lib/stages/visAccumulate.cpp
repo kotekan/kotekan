@@ -4,7 +4,7 @@
 #include "Hash.hpp"              // for operator!=
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"         // for Telescope
-#include "buffer.h"              // for register_producer, Buffer, allocate_new_metadata_object
+#include "buffer.hpp"              // for register_producer, Buffer, allocate_new_metadata_object
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chimeMetadata.hpp"     // for chimeMetadata, get_dataset_id, get_fpga_seq_num, get_lo...
 #include "configUpdater.hpp"     // for configUpdater

@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, get_num_consumers, get_num_producers, mark_frame_...
+#include "buffer.hpp"            // for Buffer, get_num_consumers, get_num_producers, mark_frame_...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for INFO, DEBUG2, FATAL_ERROR
 #include "visUtil.hpp"         // for frameID, current_time, double_to_ts, modulo

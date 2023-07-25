@@ -3,7 +3,7 @@
 #include "Config.hpp"       // for Config
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"
-#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for...
+#include "buffer.hpp"            // for Buffer, mark_frame_empty, register_consumer, wait_for...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.hpp"   // for get_fpga_seq_num, get_gps_time
 #include "configUpdater.hpp"   // for configUpdater

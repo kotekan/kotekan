@@ -1,4 +1,4 @@
-#include "buffer.h"
+#include "buffer.hpp"
 
 #include "errors.h"    // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, INFO_F, DEBUG_F, WARN_F
 #include "metadata.h"  // for metadataContainer, decrement_metadata_ref_count, increment_...
@@ -88,7 +88,7 @@ struct Buffer* create_buffer(int num_frames, size_t len, struct metadataPool* po
     numa_bitmask_free(node_mask);
 #endif
 
-    struct Buffer* buf = malloc(sizeof(struct Buffer));
+    struct Buffer* buf = (struct Buffer*)malloc(sizeof(struct Buffer));
     CHECK_MEM_F(buf);
 
     CHECK_ERROR_F(pthread_mutex_init(&buf->lock, NULL));
@@ -118,7 +118,7 @@ struct Buffer* create_buffer(int num_frames, size_t len, struct metadataPool* po
     }
 
     // Create the is_free array
-    buf->is_full = malloc(num_frames * sizeof(int));
+    buf->is_full = (int*)malloc(num_frames * sizeof(int));
 
     if (buf->is_full == NULL) {
         ERROR_F("Error creating is_full array");
@@ -128,11 +128,11 @@ struct Buffer* create_buffer(int num_frames, size_t len, struct metadataPool* po
     memset(buf->is_full, 0, num_frames * sizeof(int));
 
     // Create the array of buffer pointers.
-    buf->frames = malloc(num_frames * sizeof(void*));
+    buf->frames = (uint8_t**)malloc(num_frames * sizeof(void*));
     CHECK_MEM_F(buf->frames);
 
     // Create the info array
-    buf->metadata = malloc(num_frames * sizeof(void*));
+    buf->metadata = (struct metadataContainer**)malloc(num_frames * sizeof(void*));
     CHECK_MEM_F(buf->metadata);
 
     for (int i = 0; i < num_frames; ++i) {
@@ -147,14 +147,14 @@ struct Buffer* create_buffer(int num_frames, size_t len, struct metadataPool* po
     }
 
     // Create the arrays for marking consumers and producers as done.
-    buf->producers_done = malloc(num_frames * sizeof(int*));
+    buf->producers_done = (int**)malloc(num_frames * sizeof(int*));
     CHECK_MEM_F(buf->producers_done);
-    buf->consumers_done = malloc(num_frames * sizeof(int*));
+    buf->consumers_done = (int**)malloc(num_frames * sizeof(int*));
     CHECK_MEM_F(buf->consumers_done);
 
     for (int i = 0; i < num_frames; ++i) {
-        buf->producers_done[i] = malloc(MAX_PRODUCERS * sizeof(int));
-        buf->consumers_done[i] = malloc(MAX_CONSUMERS * sizeof(int));
+        buf->producers_done[i] = (int*)malloc(MAX_PRODUCERS * sizeof(int));
+        buf->consumers_done[i] = (int*)malloc(MAX_CONSUMERS * sizeof(int));
 
         CHECK_MEM_F(buf->producers_done[i]);
         CHECK_MEM_F(buf->consumers_done[i]);
@@ -320,7 +320,7 @@ int private_mark_frame_empty(struct Buffer* buf, const int id) {
     int broadcast = 0;
     if (buf->zero_frames == 1) {
         pthread_t zero_t;
-        struct zero_frames_thread_args* zero_args = malloc(sizeof(struct zero_frames_thread_args));
+        struct zero_frames_thread_args* zero_args = (struct zero_frames_thread_args*)malloc(sizeof(struct zero_frames_thread_args));
         zero_args->ID = id;
         zero_args->buf = buf;
 
@@ -766,7 +766,8 @@ void pass_metadata(struct Buffer* from_buf, int from_ID, struct Buffer* to_buf, 
 }
 
 void copy_metadata(struct Buffer* from_buf, int from_ID, struct Buffer* to_buf, int to_ID) {
-
+    struct metadataContainer* from_metadata_container;
+    struct metadataContainer* to_metadata_container;
     CHECK_ERROR_F(pthread_mutex_lock(&from_buf->lock));
     CHECK_ERROR_F(pthread_mutex_lock(&to_buf->lock));
 
@@ -783,8 +784,8 @@ void copy_metadata(struct Buffer* from_buf, int from_ID, struct Buffer* to_buf, 
         goto unlock_exit;
     }
 
-    struct metadataContainer* from_metadata_container = from_buf->metadata[from_ID];
-    struct metadataContainer* to_metadata_container = to_buf->metadata[to_ID];
+    from_metadata_container = from_buf->metadata[from_ID];
+    to_metadata_container = to_buf->metadata[to_ID];
 
     if (from_metadata_container->metadata_size != to_metadata_container->metadata_size) {
         WARN_F("Metadata sizes don't match, cannot copy metadata!!");

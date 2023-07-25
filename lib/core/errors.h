@@ -132,7 +132,7 @@ void set_error_message_f(const char* format, ...);
     {                                                                                              \
         ERROR_F(m, ##a);                                                                           \
         set_error_message_f(m, ##a);                                                               \
-        exit_kotekan(1);                                                                           \
+        exit_kotekan(ReturnCode::FATAL_ERROR);                                     \
     }
 
 // Exit kotekan after a successful test.

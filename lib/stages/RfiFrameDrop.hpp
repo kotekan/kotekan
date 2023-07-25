@@ -8,7 +8,7 @@
 
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
-#include "buffer.h"              // for Buffer
+#include "buffer.hpp"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for datasetManager
 #include "datasetState.hpp"      // for RFIFrameDropState

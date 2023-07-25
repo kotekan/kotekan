@@ -3,7 +3,7 @@
 
 #include "Config.hpp" // for Config
 #include "Stage.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp" // for bufferContainer
 #include "visUtil.hpp"
 

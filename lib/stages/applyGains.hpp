@@ -4,7 +4,7 @@
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
 #include "SynchronizedQueue.hpp" // for SynchronizedQueue
-#include "buffer.h"              // for Buffer
+#include "buffer.hpp"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, state_id_t
 #include "prometheusMetrics.hpp" // for Counter, Gauge

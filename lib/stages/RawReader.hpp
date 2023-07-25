@@ -10,7 +10,7 @@
 #include "Hash.hpp"      // for Hash, operator<, operator==
 #include "Stage.hpp"     // for Stage
 #include "Telescope.hpp" // for Telescope
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp" // for dset_id_t
 #include "datasetState.hpp"   // for freqState, timeState, metadataState
