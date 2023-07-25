@@ -16,7 +16,8 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-import os, subprocess
+import os
+import subprocess
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
 
@@ -26,7 +27,14 @@ import os, subprocess
 # Settings to determine if we are building on readthedocs
 read_the_docs_build = os.environ.get('READTHEDOCS', None) == 'True'
 if read_the_docs_build:
-     subprocess.call('cd ../doxygen; doxygen', shell=True)
+    subprocess.call('pwd', shell=True)
+    subprocess.call('ls', shell=True)
+    subprocess.call('mkdir -p ../../build-docs &&\
+        cd ../../build-docs && pwd && cmake -DCOMPILE_DOCS=ON .. && make doc',
+        shell=True)
+    html_extra_path = ['../../build-docs/docs/doxygen/build']
+else:
+    html_extra_path = ['@BINARY_BUILD_DIR@/../doxygen/build']
 
 # If your documentation needs a minimal Sphinx version, state it here.
 #
@@ -36,18 +44,31 @@ if read_the_docs_build:
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 import sphinx_rtd_theme
-extensions = ['sphinx.ext.todo',  'breathe', 'sphinxcontrib.plantuml']
+extensions = [
+    'sphinx.ext.autodoc',
+    'sphinx.ext.intersphinx',
+    'sphinx.ext.todo',
+    'sphinx.ext.coverage',
+    'sphinx.ext.mathjax',
+    'sphinx.ext.ifconfig',
+    'sphinx.ext.viewcode',
+    'sphinx.ext.inheritance_diagram',
+    'breathe',
+    'sphinxcontrib.plantuml'
+]
 
-# # this is to make plantuml extension find stuff
+
+# this is to make plantuml extension find stuff
 
 if not read_the_docs_build :
     # Paths (@...@) will be modified by cmake
     plantuml = 'java -jar @PLANTUML_DIR@/plantuml.jar'
     breathe_projects = { "kotekan": "@BINARY_BUILD_DIR@/../doxygen/build/xml/" }
 else :
-    breathe_projects = { "kotekan": "docs/doxygen/build/xml/" }
+    breathe_projects = { "kotekan": "../../build-docs/docs/doxygen/build/xml/" }
 
 breathe_default_project = "kotekan"
+breathe_default_members = ('members', 'undoc-members')
 
 
 # Add any paths that contain templates here, relative to this directory.
@@ -64,7 +85,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'kotekan'
-copyright = u'2018, Kotekan et al'
+copyright = u'2023, Kotekan et al'
 author = u'Kotekan et al'
 
 # The version info for the project you're documenting, acts as replacement for
@@ -111,14 +132,13 @@ html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+# html_static_path = ['_static']
 
 
 # -- Options for HTMLHelp output ------------------------------------------
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'kotekandoc'
-
 
 # -- Options for LaTeX output ---------------------------------------------
 
