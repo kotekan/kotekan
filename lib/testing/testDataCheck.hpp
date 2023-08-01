@@ -188,6 +188,9 @@ void testDataCheck<A_Type>::main_thread() {
         second_buf_id = (second_buf_id + 1) % second_buf->num_frames;
         frames++;
 
+        if (error)
+            TEST_FAILED();
+
         if (num_frames_to_test == frames) {
             INFO("Test passed, exiting!");
             TEST_PASSED();
