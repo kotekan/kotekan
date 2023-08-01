@@ -95,7 +95,7 @@ gen_shift:
 
 gpu:
     profiling: true
-    kernel_path: "../../lib/cuda/kernels/"
+    kernel_path: "lib/cuda/kernels"
     commands: &command_list
     - name: cudaInputData
       in_buf: host_voltage
