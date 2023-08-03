@@ -393,7 +393,8 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
 
     // Buffer and offset to first sample in the input.
     auto mbuf0 = mbuf;
-    uint32_t mbuf_start_offset = 0; // excludes header_offset.
+    // First mbuf in packet includes header, but later ones do not.
+    uint32_t mbuf_start_offset = header_offset;
 
     // Times are in separate frames, so time stride equals the size of the VDIF framesets.
     for (uint8_t* out_t_f0 = out_t0_f0;
@@ -401,12 +402,14 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
          out_t_f0 += vdif_frameset_size) {
         // Copy data by threads, to help cache performance.
         for (uint32_t i_thread = 0; i_thread < num_threads; i_thread++) {
-            // Set up start buffer.
+            // Set up start point for this thread.
             mbuf = mbuf0;
-            char* in = rte_pktmbuf_mtod(mbuf, char*); // pointer to start of buffer
+            // Pointer to start of buffer
+            char* in = rte_pktmbuf_mtod(mbuf, char*);
+            // Pointer to last place where a full element can be read.
             char* mbuf_last_sample = in + mbuf->data_len - num_elements;
-            // Adjust pointer to starting element and frequency for this VDIF thread.
-            in += header_offset + mbuf_start_offset + buffer_offsets[i_thread];
+            // Adjust in pointer to starting element and frequency for this VDIF thread.
+            in += mbuf_start_offset + buffer_offsets[i_thread];
             // Output start location.
             uint8_t* out_t_fi = out_t_f0 + i_thread * vdif_frame_size;
             for (uint8_t* out = out_t_fi; out < out_t_fi + num_freq * num_elements;
@@ -420,7 +423,8 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
                     assert(mbuf);
                     in = rte_pktmbuf_mtod(mbuf, char*);
                     mbuf_last_sample = in + mbuf->data_len - num_elements;
-                    in += header_offset + beyond_last_sample - num_elements; // sample location
+                    // Go to new sample location (subsequent mbuf do not have header).
+                    in += beyond_last_sample - num_elements;
                     if (unlikely(beyond_last_sample < num_elements)) {
                         // Partial sample.
                         uint32_t n_before = num_elements - beyond_last_sample;
@@ -443,12 +447,10 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
         // Go to next time sample (of 128 frequencies and 16 inputs)
         mbuf_start_offset += 128 * total_num_elements;
         // If needed, advance to the next mbuf in the chain.
-        uint32_t num_data = mbuf0->data_len - header_offset;
-        while (mbuf_start_offset > num_data) {
-            mbuf_start_offset -= num_data;
+        while (mbuf_start_offset > mbuf0->data_len) {
+            mbuf_start_offset -= mbuf0->data_len;
             mbuf0 = mbuf0->next;
             assert(mbuf0);
-            num_data = mbuf0->data_len - header_offset;
         }
     } // end of loop over times.
 }
