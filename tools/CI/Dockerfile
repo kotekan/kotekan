@@ -58,6 +58,45 @@ WORKDIR /code/build
 ENV CFLAGS "-march=haswell"
 ENV CXXFLAGS "-march=haswell"
 
+RUN git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git && \
+ cd HighFive && git pull && cd ..
+
+RUN python3.11 -m pip install h5py bitshuffle
+
+# Install OpenBLAS and clone Blaze for the eigenvalue processes
+RUN apt-get update && \
+    apt-get -y install libopenblas-dev=0.3.* \
+                       liblapack-dev=3.10.* \
+                       liblapacke-dev=3.10.* \
+                       && \
+    apt-get clean && apt-get autoclean && \
+    git clone https://bitbucket.org/blaze-lib/blaze.git blaze && \
+    cd blaze && git checkout v3.8 && cd ..
+
+# Install kotekan python dependencies
+RUN python3.11 -m pip install msgpack \
+                              future \
+                              requests \
+                              pyyaml \
+                              tabulate \
+                              pytest \
+                              pytest-xdist \
+                              pytest-cpp \
+                              pytest-localserver \
+                              pytest-timeout \
+                              posix_ipc
+RUN python3.11 -m pip install --ignore-installed flask
+RUN apt-get update && \
+    apt-get install -y mysql-client \
+        libmysqlclient-dev && \
+    apt-get clean && apt-get autoclean && \
+    python3.11 -m pip install git+https://github.com/chime-experiment/comet.git
+
+# Install redis for comet tests
+RUN apt-get update && \
+    apt-get install -y redis=5:6.0.* && \
+    apt-get clean && apt-get autoclean
+
 # Install documentation dependencies
 # Install newer version of doxygen from source. This is slow, but older versions had bugs
 RUN wget https://www.doxygen.nl/files/doxygen-1.9.7.src.tar.gz && ls && \
