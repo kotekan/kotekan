@@ -70,11 +70,19 @@ cudaEvent_t cudaInputData::execute(cudaPipelineState& pipestate,
                                   start_events[pipestate.gpu_frame_id],
                                   end_events[pipestate.gpu_frame_id]);
 
+    // Copy (reference to) metadata also
+    struct metadataContainer* meta = in_buf->metadata[in_buffer_id];
+    if (meta)
+        device.claim_gpu_memory_array_metadata(_gpu_mem, pipestate.gpu_frame_id, meta);
+
     in_buffer_id = (in_buffer_id + 1) % in_buf->num_frames;
     return end_events[pipestate.gpu_frame_id];
 }
 
 void cudaInputData::finalize_frame(int frame_id) {
+    // Release reference to metadata, if we grabbed it
+    device.release_gpu_memory_array_metadata(_gpu_mem, frame_id);
+
     cudaCommand::finalize_frame(frame_id);
     mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_finalize_id);
     in_buffer_finalize_id = (in_buffer_finalize_id + 1) % in_buf->num_frames;

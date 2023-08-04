@@ -3,6 +3,7 @@
 
 #include "Config.hpp"
 #include "kotekanLogging.hpp" // for kotekanLogging
+#include "metadata.h"
 
 #include <map>      // for map
 #include <stdint.h> // for uint32_t, int32_t
@@ -14,7 +15,10 @@ struct gpuMemoryBlock {
     std::vector<void*> gpu_pointers;
     // store the "real" pointers to allow windowed buffer views
     std::vector<void*> gpu_pointers_to_free;
+    std::vector<struct metadataContainer*> metadata_pointers;
     size_t len;
+    // if this is a view, the target of that view; used only for metadata
+    std::string view_source;
 };
 
 /**
@@ -86,6 +90,14 @@ public:
     void* create_gpu_memory_view(const std::string& source_name, const size_t source_len,
                                  const std::string& view_name, const size_t view_offset,
                                  const size_t view_len);
+
+    struct metadataContainer* get_gpu_memory_array_metadata(const std::string& name, const uint32_t index);
+
+    void claim_gpu_memory_array_metadata(const std::string& name, const uint32_t index,
+                                         struct metadataContainer* mc);
+    void release_gpu_memory_array_metadata(const std::string& name, const uint32_t index);
+
+    struct metadataContainer* create_gpu_memory_array_metadata(const std::string& name, const uint32_t index, struct metadataPool* pool);
 
     // Can't do this in the destructor because only the derived classes know
     // how to free their memory. To be moved into distinct objects...

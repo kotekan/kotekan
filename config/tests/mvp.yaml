@@ -61,7 +61,8 @@ num_frames: 100
 
 # Pool
 main_pool:
-    kotekan_metadata_pool: oneHotMetadata
+    #    kotekan_metadata_pool: oneHotMetadata
+    kotekan_metadata_pool: chordMetadata
     num_metadata_objects: 15 * buffer_depth
 
 # Buffers

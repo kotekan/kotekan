@@ -8,6 +8,7 @@
 #include "kotekanLogging.hpp"   // for INFO_NON_OO
 #include "metadata.h"           // for create_metadata_pool
 #include "oneHotMetadata.hpp"
+#include "chordMetadata.hpp"
 #include "visBuffer.hpp"
 
 #include "fmt.hpp" // for format, fmt
@@ -77,6 +78,12 @@ struct metadataPool* metadataFactory::new_pool(const std::string& pool_type,
     if (pool_type == "oneHotMetadata") {
         INFO_NON_OO("OneHotMetadata size: {:d}", sizeof(struct oneHotMetadata));
         return create_metadata_pool(num_metadata_objects, sizeof(struct oneHotMetadata),
+                                    location.c_str(), pool_type.c_str());
+    }
+
+    if (pool_type == "chordMetadata") {
+        INFO_NON_OO("ChordMetadata size: {:d}", sizeof(struct chordMetadata));
+        return create_metadata_pool(num_metadata_objects, sizeof(struct chordMetadata),
                                     location.c_str(), pool_type.c_str());
     }
 

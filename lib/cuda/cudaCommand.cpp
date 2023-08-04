@@ -369,3 +369,13 @@ cudaEvent_t cudaCommand::record_end_event(int gpu_frame_id) {
     CHECK_CUDA_ERROR(cudaEventRecord(end_events[gpu_frame_id], device.getStream(cuda_stream_id)));
     return end_events[gpu_frame_id];
 }
+
+struct chordMetadata* cudaCommand::get_chord_metadata(struct metadataContainer* mc) {
+    if (!mc)
+        return nullptr;
+    if (strcmp(mc->parent_pool->type_name, "chordMetadata")) {
+        FATAL_ERROR("cudaCommand: expected metadata to be type \"chordMetadata\", got \"{:s}\".",
+                    mc->parent_pool->type_name);
+    }
+    return static_cast<struct chordMetadata*>(mc->metadata);
+}

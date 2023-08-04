@@ -2,6 +2,7 @@
 
 #include "cudaUtils.hpp"
 #include "math.h"
+#include "chordMetadata.hpp"
 
 #include "fmt.hpp"
 
@@ -122,6 +123,18 @@ cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate,
     float16_t* gain_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_gain, gain_len);
     int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
 
+    // If input voltage array has metadata, create new metadata for output.
+    struct metadataContainer* mc = device.get_gpu_memory_array_metadata(_gpu_mem_input_voltage, pipestate.gpu_frame_id);
+    if (mc) {
+        struct metadataContainer* mc_out = device.create_gpu_memory_array_metadata(_gpu_mem_output_voltage, pipestate.gpu_frame_id, mc->parent_pool);
+        // ASSUME they are chordMetadata*!
+        struct chordMetadata* meta_out = get_chord_metadata(mc_out);
+        struct chordMetadata* meta_in = get_chord_metadata(mc);
+        chord_metadata_copy(meta_out, meta_in);
+        // FIXME -- adjust the frequencies and times!!
+        DEBUG("cudaUpchannelize: NOT correctly setting metadata!");
+    }
+
     record_start_event(pipestate.gpu_frame_id);
 
     // Initialize info_memory return codes
@@ -180,6 +193,8 @@ cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate,
 }
 
 void cudaUpchannelize::finalize_frame(int gpu_frame_id) {
+    device.release_gpu_memory_array_metadata(_gpu_mem_output_voltage, gpu_frame_id);
+
     cudaCommand::finalize_frame(gpu_frame_id);
     for (size_t i = 0; i < host_info[gpu_frame_id].size(); i++)
         if (host_info[gpu_frame_id][i] != 0)
