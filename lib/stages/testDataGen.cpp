@@ -210,6 +210,8 @@ void testDataGen::main_thread() {
                     set_onehot_frame_counter(buf, frame_id, frame_id_abs);
                     INFO("Set {:s}[{:d}] frame counter {:d}", buf->buffer_name, frame_id,
                          frame_id_abs);
+                } else {
+                    ERROR("Metadata type is not one-hot, not recording one-hot indices anywhere!");
                 }
                 INFO("PY onehot[{:d}] = (({:s}), 0x{:x})", frame_id_abs, istring, val);
             } else {
