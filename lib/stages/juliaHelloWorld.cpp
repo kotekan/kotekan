@@ -49,6 +49,7 @@ void juliaHelloWorld::main_thread() {
     assert(retval == sqrt(2.0));
     INFO("juliaHelloWorld: Done calling Julia.");
 
+    INFO("juliaHelloWorld: Exiting.");
     // `exit_kotekan` sents `SIGINT`, and Julia swallows this signal. Thus raise `SIGTERM`.
     exit_kotekan(CLEAN_EXIT);
     raise(SIGTERM);
