@@ -4,13 +4,14 @@
 #include <cassert>
 #include <julia.h>
 #include <juliaManager.hpp>
+#include <signal.h>
 #include <string>
 
 class juliaHelloWorld : public kotekan::Stage {
 public:
     juliaHelloWorld(kotekan::Config& config, const std::string& unique_name,
                     kotekan::bufferContainer& buffer_container);
-    ~juliaHelloWorld() override;
+    ~juliaHelloWorld();
     void main_thread() override;
 };
 
@@ -22,18 +23,18 @@ juliaHelloWorld::juliaHelloWorld(kotekan::Config& config, const std::string& uni
         return const_cast<kotekan::Stage&>(stage).main_thread();
     }) {
     INFO("juliaHelloWorld: Starting Julia...");
-    kotekan::juliaStartup();
+    juliaStartup();
 }
 
 juliaHelloWorld::~juliaHelloWorld() {
     INFO("juliaHelloWorld: Shutting down Julia...");
-    kotekan::juliaShutdown();
+    juliaShutdown();
     INFO("juliaHelloWorld: Done.");
 }
 
 void juliaHelloWorld::main_thread() {
     INFO("juliaHelloWorld: Calling Julia...");
-    const double retval = kotekan::juliaCall([&]() {
+    const double retval = juliaCall([&]() {
         (void)jl_eval_string("println(\"Hello, World!\")");
         jl_function_t* const func = jl_get_function(jl_base_module, "sqrt");
         jl_value_t* const arg = jl_box_float64(2.0);
@@ -48,6 +49,7 @@ void juliaHelloWorld::main_thread() {
     assert(retval == sqrt(2.0));
     INFO("juliaHelloWorld: Done calling Julia.");
 
-    INFO("juliaHelloWorld: Exiting.");
+    // `exit_kotekan` sents `SIGINT`, and Julia swallows this signal. Thus raise `SIGTERM`.
     exit_kotekan(CLEAN_EXIT);
+    raise(SIGTERM);
 }
