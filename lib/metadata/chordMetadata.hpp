@@ -25,8 +25,6 @@ const int CHORD_META_MAX_DIM = 10;
 struct chordMetadata {
     struct chimeMetadata chime;
     int frame_counter;
-    // TODO -- make this a static array because metadata objects get c-copied around.
-    //std::vector<int> hotIndices;
 
     //cudaDataType_t type;
     //std::string type;
@@ -110,6 +108,10 @@ inline void chord_metadata_copy(struct chordMetadata* out, const struct chordMet
 
 inline bool metadata_is_chord(struct Buffer* buf, int) {
     return strcmp(buf->metadata_pool->type_name, "chordMetadata") == 0;
+}
+
+inline bool metadata_container_is_chord(struct metadataContainer* mc) {
+    return strcmp(mc->parent_pool->type_name, "chordMetadata") == 0;
 }
 
 inline struct chordMetadata* get_chord_metadata(struct Buffer* buf, int frame_id) {

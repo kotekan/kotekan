@@ -225,6 +225,8 @@ void testDataGen::main_thread() {
                     DEBUG("CHORD metadata; setting array sizes and one-hot indices");
                     struct chordMetadata* chordmeta = get_chord_metadata(buf, frame_id);
                     chord_metadata_init(chordmeta);
+                    int nfreq = 0;
+                    int ntime = 0;
                     for (size_t i = 0; i < _array_shape.size(); i++) {
                         int n = _array_shape[i];
                         char name = '\0';
@@ -234,11 +236,29 @@ void testDataGen::main_thread() {
                         chordmeta->set_array_dimension(i, n, name);
                         chordmeta->set_onehot_dimension(i, indices[i], name);
                         //INFO("Chord metadata: set one-hot index {:c} = {:d} (of {:d})", name, indices[i], n);
+                        // HACK -- look for dimension named "F", assume that's = nfreq
+                        if (name == 'F')
+                            nfreq = n;
+                        // HACK -- look for dimension named "T", assume that's a fine time sample
+                        if (name == 'T')
+                            ntime = n;
                     }
                     chordmeta->dims = (int)_array_shape.size();
                     chordmeta->n_one_hot = chordmeta->dims;
                     chordmeta->type = chordDataType::int4p4;
                     chordmeta->frame_counter = frame_id_abs;
+                    if (nfreq) {
+                        assert(nfreq < CHORD_META_MAX_FREQ);
+                        chordmeta->nfreq = nfreq;
+                        for (int i=0; i<nfreq; i++) {
+                            // Arbitrarily number the frequency channels...
+                            chordmeta->coarse_freq[i] = i;
+                            chordmeta->freq_upchan_factor[i] = 1;
+                            int64_t fpgacount = frame_id_abs * ntime;
+                            chordmeta->half_fpga_sample0[i] = 2 * fpgacount;
+                            chordmeta->time_downsampling_fpga[i] = 1;
+                        }
+                    }
 
                     INFO("Chord metadata: array shape {:s}", chordmeta->get_dimensions_string());
                     INFO("Chord metadata: one-hot: {:s}", chordmeta->get_onehot_string());
