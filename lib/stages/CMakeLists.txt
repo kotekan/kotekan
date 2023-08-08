@@ -50,6 +50,10 @@ add_library(
     bufferDelay.cpp
     BufferSplit.cpp
     InputSubset.cpp
+    # Julia
+    juliaManager.cpp
+    juliaHelloWorld.cpp
+    #TODO juliaDataGen.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp
@@ -78,7 +82,8 @@ add_library(
     printSparse.cpp
     ExampleProducer.cpp
     ExampleConsumer.cpp
-    ExampleDotProduct.cpp)
+    ExampleDotProduct.cpp
+)
 
 target_include_directories(kotekan_stages PRIVATE .)
 
@@ -115,6 +120,15 @@ if(${USE_LAPACK})
     target_link_libraries(kotekan_stages PRIVATE ${BLAS_LIBRARIES})
     target_link_libraries(kotekan_stages PRIVATE ${LAPACK_LIBRARIES})
     target_link_libraries(kotekan_stages PRIVATE ${LAPACKE_LIBRARIES})
+endif()
+
+find_package(Julia)
+if(${Julia_FOUND})
+    message("Julia support enabled")
+    target_include_directories(kotekan_stages PRIVATE ${Julia_INCLUDE_DIRS})
+    target_link_libraries(kotekan_stages PUBLIC ${Julia_LIBRARY})
+else()
+    message("Julia not found, support disabled in kotekan_stages")
 endif()
 
 # Libevent is required for bufferRecv
