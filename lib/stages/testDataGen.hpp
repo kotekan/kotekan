@@ -87,6 +87,7 @@ private:
     uint32_t num_links;
     int _seed;
     std::vector<int> _array_shape;
+    std::vector<std::string> _dim_name;
 
     // kotekan trackers example
     std::shared_ptr<StatTracker> timer;

@@ -133,6 +133,7 @@ cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate,
         chord_metadata_copy(meta_out, meta_in);
         // FIXME -- adjust the frequencies and times!!
         DEBUG("cudaUpchannelize: NOT correctly setting metadata!");
+        INFO("cudaUpchannelize: input array shape: {:s}", meta_in->get_dimensions_string());
     }
 
     record_start_event(pipestate.gpu_frame_id);

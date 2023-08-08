@@ -64,18 +64,56 @@ struct chordMetadata {
     // FPGA samples.
     int time_downsampling_fpga[CHORD_META_MAX_FREQ];
 
-    std::string get_dimensions_string();
+    std::string get_dimensions_string() {
+        std::string s;
+        for (int i=0; i<this->dims; i++) {
+            if (i)
+                s += " x ";
+            s += std::string(1, this->dim_names[i]) + "(";
+            s += std::to_string(this->dim[i]) + ")";
+        }
+        return s;
+    }
 
-    std::string get_onehot_string();
+    std::string get_onehot_string() {
+        std::string s;
+        for (int i=0; i<this->n_one_hot; i++) {
+            if (i)
+                s += ", ";
+            s += std::string(1, this->onehot_name[i]) + "=";
+            s += std::to_string(this->onehot_index[i]);
+        }
+        return s;
+    }
 
-    void set_array_dimension(int dim, int size, char name);
+    void set_array_dimension(int dim, int size, char name) {
+        assert(dim < CHORD_META_MAX_DIM);
+        this->dim[dim] = size;
+        this->dim_names[dim] = name;
+    }
 
-    void set_onehot_dimension(int dim, int size, char name);
+    void set_onehot_dimension(int dim, int i, char name) {
+        assert(dim < CHORD_META_MAX_DIM);
+        this->onehot_name[dim] = name;
+        this->onehot_index[dim] = i;
+    }
 
 };
 
+inline void chord_metadata_init(struct chordMetadata* c) {
+    bzero(c, sizeof(struct chordMetadata));
+}
+
 inline void chord_metadata_copy(struct chordMetadata* out, const struct chordMetadata* in) {
     memcpy(out, in, sizeof(struct chordMetadata));
+}
+
+inline bool metadata_is_chord(struct Buffer* buf, int) {
+    return strcmp(buf->metadata_pool->type_name, "chordMetadata") == 0;
+}
+
+inline struct chordMetadata* get_chord_metadata(struct Buffer* buf, int frame_id) {
+    return (struct chordMetadata*)buf->metadata[frame_id]->metadata;
 }
 
 #endif
