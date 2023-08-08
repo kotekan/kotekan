@@ -9,6 +9,7 @@
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 #include "kotekanTrackers.hpp" // for KotekanTrackers
 #include "oneHotMetadata.hpp"  // for metadata_is_onehot, set_onehot_frame_counter, set_onehot_...
+#include "chordMetadata.hpp"
 #include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
 #include "visUtil.hpp"         // for current_time, ts_to_double, StatTracker
 
@@ -75,6 +76,16 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
             throw std::invalid_argument("testDataGen: product of 'array_shape' config setting must equal the buffer frame size");
         // clang-format on
     }
+    _dim_name =
+        config.get_default<std::vector<std::string>>(unique_name, "dim_name", std::vector<std::string>());
+    if (_dim_name.size()) {
+        if (_array_shape.size()) {
+            if (_array_shape.size() != _dim_name.size()) {
+                throw std::invalid_argument("testDataGen: 'array_shape' and 'dim_name' config settings must be the same length!");
+            }
+        }
+    }
+
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
     stream_id.id = config.get_default<uint64_t>(unique_name, "stream_id", 0);
     num_frames = config.get_default<int>(unique_name, "num_frames", -1);
@@ -210,6 +221,28 @@ void testDataGen::main_thread() {
                     set_onehot_frame_counter(buf, frame_id, frame_id_abs);
                     INFO("Set {:s}[{:d}] frame counter {:d}", buf->buffer_name, frame_id,
                          frame_id_abs);
+                } else if (metadata_is_chord(buf, frame_id)) {
+                    DEBUG("CHORD metadata; setting array sizes and one-hot indices");
+                    struct chordMetadata* chordmeta = get_chord_metadata(buf, frame_id);
+                    chord_metadata_init(chordmeta);
+                    for (size_t i = 0; i < _array_shape.size(); i++) {
+                        int n = _array_shape[i];
+                        char name = '\0';
+                        if (_dim_name.size() && _dim_name[i].size())
+                            name = _dim_name[i][0];
+
+                        chordmeta->set_array_dimension(i, n, name);
+                        chordmeta->set_onehot_dimension(i, indices[i], name);
+                        //INFO("Chord metadata: set one-hot index {:c} = {:d} (of {:d})", name, indices[i], n);
+                    }
+                    chordmeta->dims = (int)_array_shape.size();
+                    chordmeta->n_one_hot = chordmeta->dims;
+                    chordmeta->type = chordDataType::int4p4;
+                    chordmeta->frame_counter = frame_id_abs;
+
+                    INFO("Chord metadata: array shape {:s}", chordmeta->get_dimensions_string());
+                    INFO("Chord metadata: one-hot: {:s}", chordmeta->get_onehot_string());
+
                 } else {
                     ERROR("Metadata type is not one-hot, not recording one-hot indices anywhere!");
                 }
