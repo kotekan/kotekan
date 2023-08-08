@@ -1,77 +1,30 @@
 ##########################################
 #
-# Julia Hello World
+# Julia Data Generator
 #
 ##########################################
 ---
 type: config
-log_level: info
+log_level: debug   # info
 cpu_affinity: [2,3,4,5,8,9,10,11]
-num_gpus: 1
-num_gpu_frames: 2
-frame_arrival_period: 1.0
 buffer_depth: 4
 
-voltage_samples: 32768
-voltage_freq: 16
-num_dishes: 512
-num_feeds: 2 * num_dishes
-
+# Pool:
 main_pool:
     kotekan_metadata_pool: chimeMetadata
-    num_metadata_objects: 1 * buffer_depth
+    num_metadata_objects: buffer_depth
 
-voltage_buffer:
+# Buffers
+buffer:
     kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: 32768   # voltage_samples * num_feeds * voltage_freq
     metadata_pool: main_pool
+    num_frames: buffer_depth
+    frame_size: 32768
 
-# dummy_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: 1
-#     metadata_pool: main_pool
-
-gen_data:
+# Stages
+julia_data_gen:
     kotekan_stage: juliaDataGen
-    num_frames: 1   # 10
-    out_buf: voltage_buffer
-
-# hfb:
-#   file_length: 1
-#   file_type: hfbraw
-#   root_path: .
-#   kotekan_stage: HFBWriter
-#   in_buf: beamform_hfb_output_buffer_0
-#   instrument_name: chimeHFB
-
-gpu:
-    commands: &command_list
-    - name: cudaInputData
-      in_buf: host_voltage
-      gpu_mem: voltage
-    # - name: cudaSyncInput
-    - name: juliaHelloWorld
-      in_buf: voltage
-      out_buf: dummy
-      cuda_stream: 0
-    - name: cudaSyncOutput
-    - name: cudaOutputData
-      gpu_mem: dummy
-      in_buf: host_voltage
-      out_buf: host_dummy
-    # - name: rawFileWrite
-    #   base_dir: ...
-    #   file_name: ...
-    #   file_ext: ...
-    #   num_frames_per_file: ...
-    gpu_0:
-        # kotekan_stage: cudaProcess
-        gpu_id: 0
-        commands: *command_list
-        in_buffers:
-            host_voltage: voltage_buffer
-        out_buffers:
-            host_dummy: dummy_buffer
+    num_frames: 10
+    samples_per_data_set: 32768
+    out_buf: buffer
 ...

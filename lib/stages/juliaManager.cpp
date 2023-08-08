@@ -25,7 +25,6 @@ static void runJulia() {
 
     INFO_F("[JM] Starting Julia run-time system");
     // Required: setup the Julia context.
-    // INFO_F("[JM] Initializing Julia...");
     jl_init();
 
     atexit([]() {
@@ -40,16 +39,20 @@ static void runJulia() {
         while (!task) {
             std::unique_lock lk(julia_task_queue_mutex);
             if (!julia_task_queue.empty()) {
+                // INFO_F("[JM] Found new task");
                 task = std::move(julia_task_queue.front());
                 julia_task_queue.pop();
                 if (!task)
                     goto done;
             }
         }
-        if (task)
+        if (task) {
+            // INFO_F("[JM] Running task...");
             task();
-        else
+            // INFO_F("[JM] Done running task.");
+        } else {
             std::this_thread::sleep_for(1ms);
+        }
     }
 
 done:
@@ -58,24 +61,25 @@ done:
 
 void juliaStartup() {
     INFO_F("juliaManager: Starting Julia run-time");
+    if (julia_thread.joinable())
+        return;
     julia_thread = std::thread(runJulia);
 }
 
 void juliaShutdown() {
     INFO_F("juliaManager: Stopping Julia run-time system...");
+    assert(julia_thread.joinable());
     {
         std::unique_lock lk(julia_task_queue_mutex);
         julia_task_queue.push(std::function<void()>());
     }
 
     INFO_F("juliaManager: Waiting for Julia run-time system to stop...");
-    assert(julia_thread);
     julia_thread.join();
     INFO_F("juliaManager: Done.");
 }
 
 std::any juliaCallAny(const std::function<std::any()>& fun) {
-
     // INFO_F("juliaManager: Sending Julia task...");
     std::promise<std::any> send_result;
     {
@@ -87,6 +91,6 @@ std::any juliaCallAny(const std::function<std::any()>& fun) {
     std::future<std::any> recv_result = send_result.get_future();
     const std::any res = recv_result.get();
 
-    // INFO_F("juliaManager: Done.");
+    // INFO_F("juliaManager: Returning result.");
     return res;
 }

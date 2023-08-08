@@ -54,7 +54,7 @@ add_library(
     # Julia
     juliaManager.cpp
     juliaHelloWorld.cpp
-    #TODO juliaDataGen.cpp
+    juliaDataGen.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp
