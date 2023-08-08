@@ -1,0 +1,22 @@
+# Read the Docs configuration file for Sphinx projects
+# See https://docs.readthedocs.io/en/stable/config-file/v2.html for details
+
+# Required
+version: 2
+
+conda:
+  environment: docs/rtd-environment.yml
+
+# Set the OS, Python version and other tools you might need
+build:
+  os: "ubuntu-22.04"
+  tools:
+    python: "miniconda3-4.7"
+  jobs:
+     pre_create_environment:
+       - conda update --yes --quiet --name=base --channel=defaults conda
+
+
+# Build documentation in the "docs/" directory with Sphinx
+sphinx:
+  configuration: docs/sphinx/conf.py
