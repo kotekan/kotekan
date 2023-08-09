@@ -408,6 +408,7 @@ void start_new_kotekan_mode(Config& config, bool dump_config) {
 
 int main(int argc, char** argv) {
 
+    std::signal(SIGHUP, signal_handler);
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
@@ -662,8 +663,8 @@ int main(int argc, char** argv) {
             kotekan_running_metric.set(running);
         }
 
-        if (sig_value == SIGINT || sig_value == SIGTERM) {
-            INFO_NON_OO("Got SIGINT or SIGTERM, shutting down kotekan...");
+        if (sig_value == SIGHUP || sig_value == SIGINT) {
+            INFO_NON_OO("Got SIGHUP or SIGINT, shutting down kotekan...");
             std::lock_guard<std::mutex> lock(kotekan_state_lock);
             if (kotekan_mode != nullptr) {
                 INFO_NON_OO("Attempting to stop and join kotekan_stages...");

@@ -106,7 +106,7 @@ void juliaDataGen::main_thread() {
     }
 
     INFO("Exiting.");
-    // `exit_kotekan` sents `SIGINT`, and Julia swallows this signal. Thus raise `SIGTERM`.
+    // `exit_kotekan` sents `SIGINT`, and Julia swallows this signal. Thus raise `SIGHUP`.
     exit_kotekan(CLEAN_EXIT);
-    raise(SIGTERM);
+    raise(SIGHUP);
 }
