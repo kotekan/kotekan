@@ -69,20 +69,22 @@ int cudaOutputData::wait_on_precondition(int gpu_frame_id) {
 }
 
 
-cudaEvent_t cudaOutputData::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {
-    pre_execute(gpu_frame_id);
+cudaEvent_t cudaOutputData::execute(cudaPipelineState& pipestate,
+                                    const std::vector<cudaEvent_t>& pre_events) {
+    pre_execute(pipestate.gpu_frame_id);
 
     size_t output_len = output_buffer->frame_size;
 
-    void* gpu_output_frame = device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, output_len);
+    void* gpu_output_frame =
+        device.get_gpu_memory_array(_gpu_mem, pipestate.gpu_frame_id, output_len);
     void* host_output_frame = (void*)output_buffer->frames[output_buffer_execute_id];
 
     device.async_copy_gpu_to_host(host_output_frame, gpu_output_frame, output_len, cuda_stream_id,
-                                  pre_events[cuda_stream_id], start_events[gpu_frame_id],
-                                  end_events[gpu_frame_id]);
+                                  pre_events[cuda_stream_id], start_events[pipestate.gpu_frame_id],
+                                  end_events[pipestate.gpu_frame_id]);
 
     output_buffer_execute_id = (output_buffer_execute_id + 1) % output_buffer->num_frames;
-    return end_events[gpu_frame_id];
+    return end_events[pipestate.gpu_frame_id];
 }
 
 void cudaOutputData::finalize_frame(int frame_id) {

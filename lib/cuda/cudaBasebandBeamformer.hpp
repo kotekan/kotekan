@@ -16,13 +16,41 @@
  *
  * Kernel by Kendrick Smith and Erik Schnetter.
  * https://github.com/eschnett/GPUIndexSpaces.jl/blob/main/output/bb1.ptx
+ *
+ * @par GPU Memory
+ * @gpu_mem  gpu_mem_voltage  Input complex voltages of size samples_per_data_set * num_elements *
+ * num_local_freq
+ *   @gpu_mem_type   staging
+ *   @gpu_mem_format Array of @c int4+4 complex
+ * @gpu_mem  gpu_mem_phase  Input complex phases of size num_elements * num_local_freq * num_beams *
+ * 2
+ *   @gpu_mem_type   staging
+ *   @gpu_mem_format Array of @c int8
+ * @gpu_mem  gpu_mem_output_scaling  Input number of bits to shift result by; size num_local_freq *
+ * num_beams * 2
+ *   @gpu_mem_type   staging
+ *   @gpu_mem_format Array of @c int32
+ * @gpu_mem  gpu_mem_formed_beams  Output beams; size num_local_freq * num_beams *
+ * samples_per_data_set * 2
+ *   @gpu_mem_type   staging
+ *   @gpu_mem_format Array of @c int4+4 complex
+ * @gpu_mem  gpu_mem_info  Output status information; size threads_x * threads_y * blocks_x
+ *   @gpu_mem_type   staging
+ *   @gpu_mem_format Array of @c int32
+ *
+ * @conf  num_elements          Int.  Number of dishes x polarizations.
+ * @conf  num_local_freq        Int.  Number of frequencies in each frame.
+ * @conf  samples_per_data_set  Int.  Number of time samples per frame.
+ * @conf  num_beams             Int.  Number of beams being formed.
  */
 class cudaBasebandBeamformer : public cudaCommand {
 public:
     cudaBasebandBeamformer(kotekan::Config& config, const std::string& unique_name,
                            kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaBasebandBeamformer();
-    cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) override;
+    cudaEvent_t execute(cudaPipelineState& pipestate,
+                        const std::vector<cudaEvent_t>& pre_events) override;
+    virtual void finalize_frame(int gpu_frame_id) override;
 
 protected:
 private:

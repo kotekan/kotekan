@@ -37,7 +37,8 @@ int cudaSyncStream::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-cudaEvent_t cudaSyncStream::execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) {
+cudaEvent_t cudaSyncStream::execute(cudaPipelineState& pipestate,
+                                    const std::vector<cudaEvent_t>& pre_events) {
     for (auto source_stream_id : _source_cuda_streams) {
         if (pre_events[source_stream_id]) {
             CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(cuda_stream_id),
@@ -45,7 +46,7 @@ cudaEvent_t cudaSyncStream::execute(int gpu_frame_id, const std::vector<cudaEven
         }
     }
     // Create an event for the StreamWaits, so other sync commands can sync on this one.
-    return record_end_event(gpu_frame_id);
+    return record_end_event(pipestate.gpu_frame_id);
 }
 
 void cudaSyncStream::finalize_frame(int frame_id) {

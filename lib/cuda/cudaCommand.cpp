@@ -10,6 +10,35 @@ using kotekan::Config;
 using std::string;
 using std::to_string;
 
+cudaPipelineState::cudaPipelineState(int _gpu_frame_id) : gpu_frame_id(_gpu_frame_id) {}
+
+cudaPipelineState::~cudaPipelineState() {}
+
+void cudaPipelineState::set_flag(const std::string& key, bool val) {
+    flags[key] = val;
+}
+
+bool cudaPipelineState::flag_exists(const std::string& key) const {
+    // C++20
+    // return flags.contains(key);
+    return (flags.find(key) != flags.end());
+}
+
+bool cudaPipelineState::flag_is_set(const std::string& key) const {
+    auto search = flags.find(key);
+    if (search == flags.end())
+        return false;
+    return search->second;
+}
+
+void cudaPipelineState::set_int(const std::string& key, int64_t val) {
+    intmap[key] = val;
+}
+
+int64_t cudaPipelineState::get_int(const std::string& key) const {
+    return intmap.at(key);
+}
+
 cudaCommand::cudaCommand(Config& config_, const std::string& unique_name_,
                          bufferContainer& host_buffers_, cudaDeviceInterface& device_,
                          const std::string& default_kernel_command,
@@ -66,26 +95,34 @@ cudaCommand::~cudaCommand() {
     DEBUG("post_events Freed: {:s}", unique_name.c_str());
 }
 
+cudaEvent_t cudaCommand::execute_base(cudaPipelineState& pipestate,
+                                      const std::vector<cudaEvent_t>& pre_events) {
+    if (_required_flag.size() && !pipestate.flag_is_set(_required_flag)) {
+        DEBUG("Required flag \"{:s}\" is not set; skipping stage", _required_flag);
+        return nullptr;
+    }
+    return execute(pipestate, pre_events);
+}
+
 void cudaCommand::finalize_frame(int gpu_frame_id) {
-    if (start_events[gpu_frame_id] != nullptr) {
-        if (profiling) {
-            float exec_time;
-            CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_events[gpu_frame_id],
-                                                  start_events[gpu_frame_id]));
-            double active_time = exec_time * 1e-3; // convert ms to s
-            excute_time->add_sample(active_time);
-            utilization->add_sample(active_time / frame_arrival_period);
-        }
-        if (start_events[gpu_frame_id])
-            CHECK_CUDA_ERROR(cudaEventDestroy(start_events[gpu_frame_id]));
-        start_events[gpu_frame_id] = nullptr;
-    }
-    if (end_events[gpu_frame_id] != nullptr) {
-        CHECK_CUDA_ERROR(cudaEventDestroy(end_events[gpu_frame_id]));
-        end_events[gpu_frame_id] = nullptr;
+    if (profiling && (start_events[gpu_frame_id] != nullptr)
+        && (end_events[gpu_frame_id] != nullptr)) {
+        float exec_time;
+        CHECK_CUDA_ERROR(
+            cudaEventElapsedTime(&exec_time, start_events[gpu_frame_id], end_events[gpu_frame_id]));
+        double active_time = exec_time * 1e-3; // convert ms to s
+        excute_time->add_sample(active_time);
+        utilization->add_sample(active_time / frame_arrival_period);
     } else {
-        FATAL_ERROR("Null end event in cudaCommand {:s}, this should never happen!", unique_name);
+        excute_time->add_sample(0.);
+        utilization->add_sample(0.);
     }
+    if (start_events[gpu_frame_id])
+        CHECK_CUDA_ERROR(cudaEventDestroy(start_events[gpu_frame_id]));
+    start_events[gpu_frame_id] = nullptr;
+    if (end_events[gpu_frame_id] != nullptr)
+        CHECK_CUDA_ERROR(cudaEventDestroy(end_events[gpu_frame_id]));
+    end_events[gpu_frame_id] = nullptr;
 }
 
 int32_t cudaCommand::get_cuda_stream_id() {

@@ -18,7 +18,9 @@ public:
                    kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaOutputData();
     int wait_on_precondition(int gpu_frame_id) override;
-    virtual cudaEvent_t execute(int buf_frame_id,
+    virtual cudaEvent_t execute_base(cudaPipelineState& pipestate,
+                                     const std::vector<cudaEvent_t>& pre_events) override;
+    virtual cudaEvent_t execute(cudaPipelineState& pipestate,
                                 const std::vector<cudaEvent_t>& pre_events) override;
     void finalize_frame(int frame_id) override;
 

@@ -11,14 +11,16 @@
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for json, basic_json<>::object_t, basic_json<>::value_type
 
-#include <algorithm>   // for max
-#include <atomic>      // for atomic_bool
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, ref, _1, fun...
-#include <iosfwd>      // for std
-#include <pthread.h>   // for pthread_setaffinity_np
-#include <regex>       // for match_results<>::_Base_type
-#include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <algorithm>  // for max
+#include <atomic>     // for atomic_bool
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, ref, _1, fun...
+#include <iosfwd>     // for std
+#include <math.h>
+#include <pthread.h> // for pthread_setaffinity_np
+#include <regex>     // for match_results<>::_Base_type
+#include <sched.h>   // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <set>
 #include <stdexcept>   // for runtime_error
 #include <sys/types.h> // for uint
 
@@ -147,10 +149,11 @@ void gpuProcess::main_thread() {
         std::bind(&gpuProcess::profile_callback, this, std::placeholders::_1));
 
     // Start with the first GPU frame;
-    int gpu_frame_id = 0;
+    int gpu_frame_counter = 0;
     bool first_run = true;
 
     while (!stop_thread) {
+        int gpu_frame_id = gpu_frame_counter % _gpu_buffer_depth;
         // Wait for all the required preconditions
         // This is things like waiting for the input buffer to have data
         // and for there to be free space in the output buffers.
@@ -166,7 +169,7 @@ void gpuProcess::main_thread() {
         DEBUG("Waiting for free slot for GPU[{:d}][{:d}]", gpu_id, gpu_frame_id);
         // We make sure we aren't using a gpu frame that's currently in-flight.
         final_signals[gpu_frame_id]->wait_for_free_slot();
-        queue_commands(gpu_frame_id);
+        queue_commands(gpu_frame_id, gpu_frame_counter);
         if (first_run) {
             results_thread_handle = std::thread(&gpuProcess::results_thread, std::ref(*this));
 
@@ -181,7 +184,7 @@ void gpuProcess::main_thread() {
             first_run = false;
         }
 
-        gpu_frame_id = (gpu_frame_id + 1) % _gpu_buffer_depth;
+        gpu_frame_counter++;
     }
 exit_loop:
     for (auto& sig_container : final_signals) {
@@ -231,7 +234,7 @@ void gpuProcess::results_thread() {
                                      commands[i]->get_unique_name(),
                                      commands[i]->get_performance_metric_string());
             }
-            INFO("GPU[{:d}] Profiling: \n{:s}", gpu_id, output);
+            INFO("GPU[{:d}] frame {:d} Profiling: \n{:s}", gpu_id, gpu_frame_id, output);
         }
 
         final_signals[gpu_frame_id]->reset();
