@@ -132,6 +132,9 @@ protected:
     /// The ID of the cuda stream to run operations on
     int32_t cuda_stream_id;
 
+    // cudaPipelineState flag required for this command to run, set from config "required_flag"
+    std::string _required_flag;
+
     // Map containing the runtime kernels built with nvrtc from the kernel file (if needed)
     std::map<std::string, CUfunction> runtime_kernels;
 };

@@ -46,6 +46,7 @@ cudaCommand::cudaCommand(Config& config_, const std::string& unique_name_,
     gpuCommand(config_, unique_name_, host_buffers_, device_, default_kernel_command,
                default_kernel_file_name),
     device(device_) {
+    _required_flag = config.get_default<std::string>(unique_name, "required_flag", "");
     start_events = (cudaEvent_t*)malloc(_gpu_buffer_depth * sizeof(cudaEvent_t));
     end_events = (cudaEvent_t*)malloc(_gpu_buffer_depth * sizeof(cudaEvent_t));
     for (int j = 0; j < _gpu_buffer_depth; ++j) {
