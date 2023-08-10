@@ -1,5 +1,7 @@
 #include "gpuDeviceInterface.hpp"
 
+#include "fmt.hpp"
+
 #include <algorithm> // for max
 #include <assert.h>  // for assert
 #include <utility>   // for pair

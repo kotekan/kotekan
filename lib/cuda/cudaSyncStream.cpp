@@ -52,3 +52,9 @@ cudaEvent_t cudaSyncStream::execute(cudaPipelineState& pipestate,
 void cudaSyncStream::finalize_frame(int frame_id) {
     (void)frame_id;
 }
+
+std::string cudaSyncStream::get_performance_metric_string() {
+    // Since this class syncs between different compute streams,
+    // there's not really a firm notion of how long it takes!
+    return "";
+}

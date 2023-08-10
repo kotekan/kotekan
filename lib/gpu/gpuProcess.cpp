@@ -110,20 +110,20 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
     double total_kernel_time = 0;
 
     for (auto& cmd : commands) {
-        double time = cmd->get_last_gpu_execution_time();
+        double time = cmd->excute_time->get_avg(); //->get_last_gpu_execution_time();
         double utilization = time / frame_arrival_period;
         if (cmd->get_command_type() == gpuCommandType::KERNEL) {
             reply["kernel"].push_back(
                 {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
-            total_kernel_time += cmd->get_last_gpu_execution_time();
+            total_kernel_time += isnan(time) ? 0. : time;
         } else if (cmd->get_command_type() == gpuCommandType::COPY_IN) {
             reply["copy_in"].push_back(
                 {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
-            total_copy_in_time += cmd->get_last_gpu_execution_time();
+            total_copy_in_time += isnan(time) ? 0. : time;
         } else if (cmd->get_command_type() == gpuCommandType::COPY_OUT) {
             reply["copy_out"].push_back(
                 {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
-            total_copy_out_time += cmd->get_last_gpu_execution_time();
+            total_copy_out_time += isnan(time) ? 0. : time;
         } else {
             continue;
         }
@@ -230,8 +230,8 @@ void gpuProcess::results_thread() {
         if (log_profiling) {
             std::string output = "";
             for (uint32_t i = 0; i < commands.size(); ++i) {
-                output = fmt::format(fmt("{:s}command: {:s} metrics: {:s}; \n"), output,
-                                     commands[i]->get_unique_name(),
+                output = fmt::format(fmt("{:s}command: {:s} ({:30s}) metrics: {:s}; \n"), output,
+                                     commands[i]->get_unique_name(), commands[i]->get_name(),
                                      commands[i]->get_performance_metric_string());
             }
             INFO("GPU[{:d}] frame {:d} Profiling: \n{:s}", gpu_id, gpu_frame_id, output);
