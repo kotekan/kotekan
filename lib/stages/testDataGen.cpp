@@ -47,15 +47,21 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     buf = get_buffer("out_buf");
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
-    assert(type == "const" || type == "const32" || type == "random" || type == "random_signed"
-           || type == "ramp" || type == "tpluse" || type == "tpluseplusf"
+    assert(type == "const" || type == "const32" || type == "constf16" || type == "random"
+           || type == "random_signed" || type == "ramp" || type == "tpluse" || type == "tpluseplusf"
            || type == "tpluseplusfprime" || type == "square" || type == "onehot");
+    assert(!((type == "constf16") && (KOTEKAN_FLOAT16 == 0)));
     if (type == "const" || type == "const32" || type == "random" || type == "random_signed"
         || type == "ramp" || type == "onehot") {
         value = config.get_default<int>(unique_name, "value", -1999);
         _value_array =
             config.get_default<std::vector<int>>(unique_name, "values", std::vector<int>());
+    } else if (type == "constf16") {
+        fvalue = config.get_default<float>(unique_name, "value", -1.0);
+        _fvalue_array =
+            config.get_default<std::vector<float>>(unique_name, "values", std::vector<float>());
     }
+    _reuse_random = config.get_default<bool>(unique_name, "reuse_random", false);
     _seed = config.get_default<int>(unique_name, "seed", 0);
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
     _array_shape =
@@ -235,6 +241,8 @@ void testDataGen::main_thread() {
             } else if (type == "random") {
                 char new_real;
                 char new_imaginary;
+                if (_reuse_random && finished_seeding_consant)
+                    break;
                 new_real = (rand() % 15) + 1;      // Limit to [-7, 7]
                 new_imaginary = (rand() % 15) + 1; // Limit to [-7, 7]
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
@@ -242,8 +250,12 @@ void testDataGen::main_thread() {
             } else if (type == "random_signed") {
                 char new_real;
                 char new_imaginary;
-                new_real = (rand() % 15) + 1;      // Limit to [-7, 7]
-                new_imaginary = (rand() % 15) + 1; // Limit to [-7, 7]
+                if (_reuse_random && finished_seeding_consant)
+                    break;
+                int r = rand();
+                new_real = (r % 15) + 1; // Limit to [-7, 7]
+                r >>= 4;
+                new_imaginary = (r % 15) + 1; // Limit to [-7, 7]
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output ^ 0x88;
             } else if (type == "tpluse") {
