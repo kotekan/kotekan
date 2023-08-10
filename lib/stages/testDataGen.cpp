@@ -134,6 +134,9 @@ void testDataGen::main_thread() {
     uint64_t seq_num = samples_per_data_set * _first_frame_index;
     bool finished_seeding_consant = false;
     static struct timeval now;
+#if KOTEKAN_FLOAT16
+    float16_t* framef16 = nullptr;
+#endif
 
     int link_id = 0;
 
@@ -168,6 +171,11 @@ void testDataGen::main_thread() {
         if (type == "const32") {
             n_to_set /= sizeof(int32_t);
             frame32 = (int32_t*)frame;
+#if KOTEKAN_FLOAT16
+        } else if (type == "constf16") {
+            n_to_set /= sizeof(float16_t);
+            framef16 = (float16_t*)frame;
+#endif
         }
         if (type == "onehot") {
             int val = value;
@@ -215,6 +223,12 @@ void testDataGen::main_thread() {
                 if (finished_seeding_consant)
                     break;
                 frame32[j] = value;
+#if KOTEKAN_FLOAT16
+            } else if (type == "constf16") {
+                if (finished_seeding_consant)
+                    break;
+                framef16[j] = fvalue;
+#endif
             } else if (type == "ramp") {
                 frame[j] = fmod(j * value, 256 * value);
                 //                frame[j] = j*value;

@@ -43,6 +43,30 @@
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;
 
+#if defined(WITH_CUDA)
+#include <cuda_fp16.h>
+using float16_t = __half;
+#define KOTEKAN_FLOAT16 1
+#else
+#define KOTEKAN_FLOAT16 0
+#endif
+
+/*
+#if __linux__
+//#pragma GCC target("sse2")
+#include <bits/floatn.h> // for __HAVE_FLOAT16
+#else
+#define __HAVE_FLOAT16 0
+#endif
+
+#if __HAVE_FLOAT16
+using float16_t = _Float16;
+#define KOTEKAN_FLOAT16 1
+#else
+#define KOTEKAN_FLOAT16 0
+#endif
+*/
+
 /// Aliased type for storing the layout of members in a struct
 /// The first element of the pair is the total struct size, the second is a map
 /// associating the type T member labels with their offsets
