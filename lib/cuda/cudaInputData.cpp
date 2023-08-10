@@ -22,6 +22,8 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
 
     _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
 
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem, true, false, true));
+
     in_buffer_id = 0;
     in_buffer_precondition_id = 0;
     in_buffer_finalize_id = 0;

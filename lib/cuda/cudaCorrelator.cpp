@@ -23,6 +23,9 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
         throw std::runtime_error(
             "The sub_integration_ntime parameter must evenly divide samples_per_data_set");
 
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_voltage, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_correlation_triangle, true, false, true));
+
     set_command_type(gpuCommandType::KERNEL);
 }
 
