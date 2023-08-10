@@ -38,3 +38,4 @@ RUN git clone https://github.com/kmsmith137/n2k.git \
   && cd n2k \
   && make install
 
+RUN apt install -y --no-install-recommends libdpdk-dev && apt clean
