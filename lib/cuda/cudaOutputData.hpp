@@ -39,8 +39,12 @@ protected:
     int32_t output_buffer_id;
     int32_t in_buffer_id;
 
+    bool got_metadata;
+
 private:
-    // Common configuration values (which do not change in a run)
+    // One bool for each GPU input frame: did this stage run for this input frame?
+    // This is used internally to pass state between execute_base and finalize_frame.
+    std::vector<bool> did_generate_output;
 };
 
 #endif // CUDA_OUTPUT_DATA_H
