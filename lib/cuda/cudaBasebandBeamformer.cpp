@@ -55,6 +55,8 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
 
 cudaBasebandBeamformer::~cudaBasebandBeamformer() {}
 
+    return record_end_event(pipestate.gpu_frame_id);
+}
 
 // This struct is Erik's interpretation of what Julia is expecting for its "CuDevArray" type.
 template<typename T, int64_t N>
@@ -66,20 +68,22 @@ struct CuDeviceArray {
 };
 typedef CuDeviceArray<int32_t, 1> kernel_arg;
 
-cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id,
+cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
                                             const std::vector<cudaEvent_t>& pre_events) {
     (void)pre_events;
-    pre_execute(gpu_frame_id);
+    pre_execute(pipestate.gpu_frame_id);
 
-    void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, gpu_frame_id, voltage_len);
+    void* voltage_memory =
+        device.get_gpu_memory_array(_gpu_mem_voltage, pipestate.gpu_frame_id, voltage_len);
     int8_t* phase_memory =
-        (int8_t*)device.get_gpu_memory_array(_gpu_mem_phase, gpu_frame_id, phase_len);
-    int32_t* shift_memory =
-        (int32_t*)device.get_gpu_memory_array(_gpu_mem_output_scaling, gpu_frame_id, shift_len);
+        (int8_t*)device.get_gpu_memory_array(_gpu_mem_phase, pipestate.gpu_frame_id, phase_len);
+    int32_t* shift_memory = (int32_t*)device.get_gpu_memory_array(
+        _gpu_mem_output_scaling, pipestate.gpu_frame_id, shift_len);
     void* output_memory =
-        device.get_gpu_memory_array(_gpu_mem_formed_beams, gpu_frame_id, output_len);
-    int32_t* info_memory =
-        (int32_t*)device.get_gpu_memory_array(_gpu_mem_info, gpu_frame_id, info_len);
+        device.get_gpu_memory_array(_gpu_mem_formed_beams, pipestate.gpu_frame_id, output_len);
+    int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
+
+    record_start_event(pipestate.gpu_frame_id);
 
     record_start_event(gpu_frame_id);
 
@@ -123,9 +127,10 @@ cudaEvent_t cudaBasebandBeamformer::execute(int gpu_frame_id,
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shared_mem_bytes));
 
-    DEBUG("Running CUDA Baseband Beamformer on GPU frame {:d}", gpu_frame_id);
-    err = cuLaunchKernel(runtime_kernels[kernel_name], blocks_x, blocks_y, 1, threads_x, threads_y,
-                         1, shared_mem_bytes, device.getStream(cuda_stream_id), parameters, NULL);
+    DEBUG("Running CUDA Baseband Beamformer on GPU frame {:d}", pipestate.gpu_frame_id);
+    CHECK_CU_ERROR(cuLaunchKernel(runtime_kernels[kernel_name], blocks_x, blocks_y, 1, threads_x,
+                                  threads_y, 1, shared_mem_bytes, device.getStream(cuda_stream_id),
+                                  parameters, NULL));
 
     if (err != CUDA_SUCCESS) {
         const char* errStr;
