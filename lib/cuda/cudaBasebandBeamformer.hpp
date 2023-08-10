@@ -75,6 +75,9 @@ private:
     /// GPU side memory name for the status/info output
     std::string _gpu_mem_info;
 
+    // Host-side buffer array for GPU kernel status/info output
+    std::vector<std::vector<int32_t>> host_info;
+
     // derived gpu array sizes
     size_t voltage_len;
     size_t phase_len;
