@@ -399,9 +399,10 @@ jobs:
 
     - name: Build h5py from source
       run: |
-        git clone https://github.com/h5py/h5py.git h5py && cd h5py && git checkout 2.9.0
-        python3 setup.py configure --hdf5=/usr/local/opt/hdf5@1.10/
-        python3 setup.py build
+        # git clone https://github.com/h5py/h5py.git h5py && cd h5py && git checkout 2.9.0
+        # python3 setup.py configure --hdf5=/usr/local/opt/hdf5@1.10/
+        # python3 setup.py build
+        pip3 install h5py
 
     - name: Install bitshuffle
       run: |
