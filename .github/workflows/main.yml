@@ -405,6 +405,9 @@ jobs:
         pip3 install h5py
 
     - name: Install bitshuffle
+      # clang support for -march=native
+      env:
+        SYSTEM_VERSION_COMPAT: 1
       run: |
         pip3 install bitshuffle
 
