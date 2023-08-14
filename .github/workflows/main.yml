@@ -433,7 +433,7 @@ jobs:
         export PATH="/usr/local/opt/hdf5@1.10/bin:$PATH"
         cd build
         # the MacOS linker doesn't support --no-as-needed for -DCMAKE_LINK_WHAT_YOU_USE=ON
-        cmake -Wdev -Werror=dev \ #-Wdeprecated -Werror=deprecated \
+        cmake -Wdev -Werror=dev \
         -Wno-deprecated-declarations \
         -DCMAKE_BUILD_TYPE=Test \
         -DWERROR=ON \
