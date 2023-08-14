@@ -87,4 +87,5 @@ if(${USE_HDF5})
     target_link_libraries(test_transpose PRIVATE libexternal kotekan_stages kotekan_core
                                                  kotekan_utils kotekan_metadata)
     target_include_directories(test_transpose PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
+    target_include_directories(test_transpose SYSTEM PUBLIC ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 endif()
