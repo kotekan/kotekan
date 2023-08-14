@@ -39,3 +39,12 @@ RUN git clone https://github.com/kmsmith137/n2k.git \
   && make install
 
 RUN apt install -y --no-install-recommends libdpdk-dev && apt clean
+
+RUN apt install -y --no-install-recommends \
+  libopencl-clang-dev opencl-headers ocl-icd-opencl-dev \
+  libopenblas-dev liblapack-dev liblapacke-dev \
+  libfftw3-dev \
+  libairspy-dev \
+  libhdf5-serial-dev \
+  doxygen graphviz sphinx-doc sphinx-common python3-breathe \
+  && apt clean
