@@ -446,8 +446,10 @@ jobs:
         -DBLAZE_PATH=$GITHUB_WORKSPACE/blaze \
         -DHIGHFIVE_PATH=$GITHUB_WORKSPACE/HighFive \
         -DCCACHE=ON \
-        -DWITH_TESTS=ON ..
-        make -j 2
+        -DWITH_TESTS=ON \
+        -DCXXFLAGS="-DFMT_OVERRIDE=override" \
+        ..
+        make -j 2 DEBUG=1
 
   # Build kotekan documentation
   build-docs:
