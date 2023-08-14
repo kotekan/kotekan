@@ -304,12 +304,13 @@ void gpuSimulateCudaUpchannelize::upchan_simple_sub(std::string tag,
         // sinc-Hanning window function, eqn. (11), with `N=U`
         W.at(s) = pow(cos(float(M_PI) * (s - (M * U - 1) / 2.0f) / (M * U + 1)), 2)
                   * sinc((s - (M * U - 1) / 2.0f) / U);
-        sumW += W.at(s);
+        sumW += (float)W.at(s);
     }
+    float16_t sumW16;
     // Normalize the window function
     for (int s = 0; s < M * U; ++s)
         // W.at(s) /= (float16_t)sumW;
-        W[s] = W[s] / sumW;
+        W[s] = W[s] / sumW16;
 
     upchan_simple_cxx(W.data(), gains16.data(), (const storage_t*)E, (storage_t*)Ebar, t, p, f, d);
 }

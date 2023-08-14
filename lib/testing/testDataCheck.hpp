@@ -55,7 +55,7 @@ testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const std::string&
     num_frames_to_test = config.get_default<int32_t>(unique_name, "num_frames_to_test", 0);
     max_num_errors = config.get_default<int32_t>(unique_name, "max_num_errors", 100);
     epsilon = config.get_default<double>(unique_name, "epsilon",
-                                         std::numeric_limits<A_Type>::epsilon() * 5);
+                                         std::numeric_limits<A_Type>::epsilon() * (A_Type)5);
 }
 
 template<typename A_Type>
@@ -150,8 +150,8 @@ void testDataCheck<A_Type>::main_thread() {
                                     "abs(x-y): {:f}, epsilon * abs(x+y): {:f}",
                                     first_buf->buffer_name, first_buf_id, i,
                                     second_buf->buffer_name, second_buf_id, i, v1, v2, epsilon,
-                                    std::abs(first_value - second_value),
-                                    epsilon * std::abs(first_value + second_value));
+                                    std::abs((float)(first_value - second_value)),
+                                    epsilon * std::abs((float)(first_value + second_value)));
                     }
                 }
             } else { // N2 numbers are int
