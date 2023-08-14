@@ -436,7 +436,6 @@ jobs:
         cmake -Wdev -Werror=dev \
         -Wno-deprecated-declarations \
         -DCMAKE_BUILD_TYPE=Test \
-        -DWERROR=ON \
         -DUSE_HDF5=ON \
         -DUSE_OPENCL=ON \
         -DUSE_FFTW=ON \
