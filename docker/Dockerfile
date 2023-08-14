@@ -48,3 +48,9 @@ RUN apt install -y --no-install-recommends \
   libhdf5-serial-dev \
   doxygen graphviz sphinx-doc sphinx-common python3-breathe \
   && apt clean
+
+RUN git clone https://bitbucket.org/blaze-lib/blaze.git \
+  && cd blaze \
+  && cmake -DCMAKE_INSTALL_PREFIX=/usr/local/ \
+  && make install
+
