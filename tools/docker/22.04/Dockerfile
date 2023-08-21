@@ -64,8 +64,8 @@ RUN python3 -m pip install --upgrade pip && \
     python3 -m pip install --no-cache-dir numpy && \
     python3 -m pip install --no-cache-dir pkgconfig && \
     python3 -m pip install --no-cache-dir --upgrade cython && \
-    python3 -m pip install --no-cache-dir click && \
-    python3 -m pip install --no-cache-dir black && \
+    python3 -m pip install --no-cache-dir click==8.0.2 && \
+    python3 -m pip install --no-cache-dir black==19.10b0 && \
     python3 -m pip install --no-cache-dir cmake_format
 
 RUN python3 -m pip install h5py bitshuffle
@@ -143,9 +143,10 @@ RUN apt-get update && \
                        default-jre \
                        && \
     apt-get clean && apt-get autoclean
-RUN python3 -m pip install --no-cache-dir breathe sphinx \
-                                          sphinx_rtd_theme \
-                                          sphinxcontrib-plantuml
+RUN python3 -m pip install --no-cache-dir breathe==4.35.* \
+                                          sphinx==6.2.* \
+                                          sphinx_rtd_theme==1.2.* \
+                                          sphinxcontrib-plantuml==0.25
 
 
 # Uncomment this to check what version got installed

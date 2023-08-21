@@ -38,6 +38,5 @@ Welcome to Kotekan's documentation!
    dev/dev_gate_specs
    dev/dev_stage_tutorial
    dev/dev_unit_tests
-   doxygenindex
 
 You can also peruse the full `doxygen docs <html/>`_.

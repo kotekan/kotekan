@@ -13,5 +13,6 @@
 /cmake-build*/
 build/*
 build-docs/*
+build-check-format/*
 docs/sphinx/html/*
 .ccache/*

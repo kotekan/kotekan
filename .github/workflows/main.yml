@@ -131,7 +131,6 @@ jobs:
     - name: Run clang-format
       run: |
         mkdir -p build-check-format
-
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-check-format/ ${IMG_2204}:${{ needs.build-docker-2204.outputs.branch_name }})
         docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ..
         docker run "${OPTS[@]}" make clang-format
