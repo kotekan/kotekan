@@ -296,7 +296,7 @@ jobs:
       if: steps.git-diff-docker.outputs.diff != '' && steps.pull-docker.outputs.status != 'success'
     - name: Build core docker image
       run: |
-        docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE} -t ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }} - < tools/docker/Dockerfile
+        docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE} -t ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }} - < tools/docker/18.04/Dockerfile
       if: steps.git-diff-docker.outputs.diff
     - name: Push docker image
       run: |
@@ -312,7 +312,7 @@ jobs:
       uses: technote-space/get-diff-action@v4
       id: git-diff-docker-iwyu
       with:
-        PATTERNS: tools/iwyu/docker/Dockerfile
+        PATTERNS: tools/iwyu/docker/18.04/Dockerfile
 
     - name: Extract branch name
       shell: bash
@@ -340,7 +340,7 @@ jobs:
       if: steps.git-diff-docker-iwyu.outputs.diff != '' && steps.pull-docker-iwyu.outputs.status != 'success'
     - name: Build iwyu docker image
       run: >
-        docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE},${IMG_IWYU} -t ${IMG_IWYU}:${{ steps.extract_branch.outputs.branch }} - < tools/iwyu/docker/Dockerfile
+        docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE},${IMG_IWYU} -t ${IMG_IWYU}:${{ steps.extract_branch.outputs.branch }} - < tools/iwyu/docker/18.04/Dockerfile
       if: steps.git-diff-docker-iwyu.outputs.diff
     - name: Push docker image
       run: |
@@ -569,7 +569,7 @@ jobs:
       uses: technote-space/get-diff-action@v4
       id: git-diff-docker-iwyu
       with:
-        PATTERNS: tools/iwyu/docker/Dockerfile
+        PATTERNS: tools/iwyu/docker/18.04/Dockerfile
 
     - name: Extract branch name for iwyu docker container
       shell: bash
