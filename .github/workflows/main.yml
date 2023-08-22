@@ -299,11 +299,11 @@ jobs:
     - name: Build core docker image
       run: |
         docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE} -t ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }} - < tools/docker/18.04/Dockerfile
-      if: steps.git-diff-docker.outputs.diff AND env.DOCKER_BUILD # Only (re)build 1804 image if requested. The build appears broken as-is
+      if: steps.git-diff-docker.outputs.diff && env.DOCKER_BUILD # Only (re)build 1804 image if requested. The build appears broken as-is
     - name: Push docker image
       run: |
         docker push ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }}
-      if: steps.git-diff-docker.outputs.diff AND env.DOCKER_BUILD
+      if: steps.git-diff-docker.outputs.diff && env.DOCKER_BUILD
 
   # Build the iwyu docker image
   build-docker-iwyu:
