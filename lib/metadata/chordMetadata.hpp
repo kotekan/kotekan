@@ -17,28 +17,29 @@ enum chordDataType {
 };
 
 // Maximum number of frequencies in metadata array
-const int CHORD_META_MAX_FREQ = 1024;
+const int CHORD_META_MAX_FREQ = 16;
 
 // Maximum number of dimensions for arrays
 const int CHORD_META_MAX_DIM = 10;
+
+// Maximum length of dimension names for arrays
+const int CHORD_META_MAX_DIMNAME = 16;
 
 struct chordMetadata {
     struct chimeMetadata chime;
     int frame_counter;
 
     //cudaDataType_t type;
-    //std::string type;
-    //char type[16];
     chordDataType type;
 
     int dims;
     int dim[CHORD_META_MAX_DIM];
     // array strides / layouts?
-    char dim_names[CHORD_META_MAX_DIM]; // 'F', 'T', 'D', etc
+    char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME]; // 'F', 'T', 'D', etc
 
     // One-hot arrays?
     int n_one_hot;
-    char onehot_name[CHORD_META_MAX_DIM];
+    char onehot_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME];
     int onehot_index[CHORD_META_MAX_DIM];
 
     // Per-frequency arrays
@@ -62,15 +63,23 @@ struct chordMetadata {
     // FPGA samples.
     int time_downsampling_fpga[CHORD_META_MAX_FREQ];
 
+    std::string get_dimension_name(size_t i) {
+        return std::string(dim_name[i], strnlen(dim_name[i], CHORD_META_MAX_DIMNAME));
+    }
+
     std::string get_dimensions_string() {
         std::string s;
         for (int i=0; i<this->dims; i++) {
             if (i)
                 s += " x ";
-            s += std::string(1, this->dim_names[i]) + "(";
+            s += get_dimension_name(i) + "(";
             s += std::to_string(this->dim[i]) + ")";
         }
         return s;
+    }
+
+    std::string get_onehot_name(size_t i) {
+        return std::string(onehot_name[i], strnlen(onehot_name[i], CHORD_META_MAX_DIMNAME));
     }
 
     std::string get_onehot_string() {
@@ -78,22 +87,22 @@ struct chordMetadata {
         for (int i=0; i<this->n_one_hot; i++) {
             if (i)
                 s += ", ";
-            s += std::string(1, this->onehot_name[i]) + "=";
+            s += get_onehot_name(i) + "=";
             s += std::to_string(this->onehot_index[i]);
         }
         return s;
     }
 
-    void set_array_dimension(int dim, int size, char name) {
+    void set_array_dimension(int dim, int size, std::string name) {
         assert(dim < CHORD_META_MAX_DIM);
         this->dim[dim] = size;
-        this->dim_names[dim] = name;
+        strncpy(this->dim_name[dim], name.c_str(), CHORD_META_MAX_DIMNAME);
     }
 
-    void set_onehot_dimension(int dim, int i, char name) {
+    void set_onehot_dimension(int dim, int i, std::string name) {
         assert(dim < CHORD_META_MAX_DIM);
-        this->onehot_name[dim] = name;
         this->onehot_index[dim] = i;
+        strncpy(this->onehot_name[dim], name.c_str(), CHORD_META_MAX_DIMNAME);
     }
 
 };
