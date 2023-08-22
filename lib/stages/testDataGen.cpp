@@ -229,26 +229,27 @@ void testDataGen::main_thread() {
                     int ntime = 0;
                     for (size_t i = 0; i < _array_shape.size(); i++) {
                         int n = _array_shape[i];
-                        char name = '\0';
+                        std::string name = "";
                         if (_dim_name.size() && _dim_name[i].size())
-                            name = _dim_name[i][0];
+                            name = _dim_name[i];
 
                         chordmeta->set_array_dimension(i, n, name);
                         chordmeta->set_onehot_dimension(i, indices[i], name);
                         //INFO("Chord metadata: set one-hot index {:c} = {:d} (of {:d})", name, indices[i], n);
                         // HACK -- look for dimension named "F", assume that's = nfreq
-                        if (name == 'F')
+                        if (name == "F")
                             nfreq = n;
                         // HACK -- look for dimension named "T", assume that's a fine time sample
-                        if (name == 'T')
+                        if (name == "T")
                             ntime = n;
                     }
                     chordmeta->dims = (int)_array_shape.size();
                     chordmeta->n_one_hot = chordmeta->dims;
                     chordmeta->type = chordDataType::int4p4;
                     chordmeta->frame_counter = frame_id_abs;
+                    //DEBUG("one-hot: nfreq = {:d}, ntime = {:d}", nfreq, ntime);
                     if (nfreq) {
-                        assert(nfreq < CHORD_META_MAX_FREQ);
+                        assert(nfreq <= CHORD_META_MAX_FREQ);
                         chordmeta->nfreq = nfreq;
                         for (int i=0; i<nfreq; i++) {
                             // Arbitrarily number the frequency channels...

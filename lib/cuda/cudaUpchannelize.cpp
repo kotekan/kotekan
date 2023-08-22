@@ -131,8 +131,8 @@ cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate,
         struct chordMetadata* meta_in = get_chord_metadata(mc);
         chord_metadata_copy(meta_out, meta_in);
         INFO("cudaUpchannelize: input array shape: {:s}", meta_in->get_dimensions_string());
-        assert(meta_in->dim_names[0] == 'T');
-        assert(meta_in->dim_names[2] == 'F');
+        assert(meta_in->get_dimension_name(0) == "T");
+        assert(meta_in->get_dimension_name(2) == "F");
         meta_out->dim[0] /= _upchan_factor;
         meta_out->dim[2] *= _upchan_factor;
         INFO("cudaUpchannelize: output array shape: {:s}", meta_out->get_dimensions_string());
