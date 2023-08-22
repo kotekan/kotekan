@@ -4,7 +4,7 @@
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for StageFactory
 #include "Telescope.hpp"         // for Telescope
-#include "buffer.h"              // for Buffer, StageInfo, get_num_full_frames, delete_buffer
+#include "buffer.hpp"              // for Buffer, StageInfo, get_num_full_frames, delete_buffer
 #include "bufferFactory.hpp"     // for bufferFactory
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for datasetManager

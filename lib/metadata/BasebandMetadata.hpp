@@ -2,7 +2,7 @@
 #define BASEBAND_METADATA_HPP
 
 #include "Telescope.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "chimeMetadata.hpp"
 #include "metadata.h"
 

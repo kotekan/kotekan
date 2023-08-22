@@ -10,7 +10,7 @@
 #include "Config.hpp"
 #include "ICETelescope.hpp"
 #include "Telescope.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "iceBoardHandler.hpp"
 #include "packet_copy.h"

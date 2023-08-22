@@ -4,7 +4,7 @@ add_library(
     kotekan_core
     basebandReadoutManager.cpp
     basebandApiManager.cpp
-    buffer.c
+    buffer.cpp
     bufferContainer.cpp
     bufferFactory.cpp
     Config.cpp

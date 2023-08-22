@@ -9,7 +9,7 @@
 
 #include "Config.hpp"
 #include "assert.h"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "cudaDeviceInterface.hpp"
 #include "cudaEventContainer.hpp"

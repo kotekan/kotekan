@@ -1,6 +1,6 @@
 #include "hsaAsyncCopyGain.hpp"
 
-#include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_for_...
+#include "buffer.hpp"               // for Buffer, mark_frame_empty, register_consumer, wait_for_...
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_IN
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface

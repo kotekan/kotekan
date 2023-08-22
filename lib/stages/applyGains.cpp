@@ -4,7 +4,7 @@
 #include "H5Support.hpp"         // IWYU pragma: keep
 #include "Hash.hpp"              // for operator<
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"              // for mark_frame_empty, wait_for_full_frame, allocate_new...
+#include "buffer.hpp"              // for mark_frame_empty, wait_for_full_frame, allocate_new...
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t

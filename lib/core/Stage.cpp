@@ -1,7 +1,7 @@
 #include "Stage.hpp"
 
 #include "Config.hpp"          // for Config
-#include "buffer.h"            // for Buffer
+#include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "util.h"              // for string_tail
 

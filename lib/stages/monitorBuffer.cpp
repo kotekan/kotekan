@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for print_full_status, Buffer, get_last_arrival_time, get_num...
+#include "buffer.hpp"            // for print_full_status, Buffer, get_last_arrival_time, get_num...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for FATAL_ERROR
 #include "util.h"              // for e_time

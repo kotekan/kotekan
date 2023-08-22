@@ -2,7 +2,7 @@
 #define CHIME_METADATA
 
 #include "Telescope.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "datasetManager.hpp"
 #include "metadata.h"
 

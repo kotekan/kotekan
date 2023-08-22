@@ -25,10 +25,6 @@
 #ifndef BUFFER
 #define BUFFER
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include "metadata.h" // for metadataPool
 
 #include <pthread.h> // for pthread_cond_t, pthread_mutex_t
@@ -598,9 +594,5 @@ void safe_swap_frame(struct Buffer* src_buf, int src_frame_id, struct Buffer* de
  * @param[in] buf The buffer to shutdown
  */
 void send_shutdown_signal(struct Buffer* buf);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

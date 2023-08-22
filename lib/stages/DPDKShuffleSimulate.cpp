@@ -4,7 +4,7 @@
 #include "ICETelescope.hpp"    // for ice_stream_id_t, ice_encode_stream_id
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"       // for Telescope
-#include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "buffer.hpp"            // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
 #include "kotekanLogging.hpp"  // for DEBUG, INFO

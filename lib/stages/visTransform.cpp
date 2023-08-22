@@ -3,7 +3,7 @@
 #include "Config.hpp"       // for Config
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"
-#include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_empty
+#include "buffer.hpp"            // for Buffer, allocate_new_metadata_object, mark_frame_empty
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.hpp"   // for chimeMetadata
 #include "datasetManager.hpp"  // for state_id_t, datasetManager, dset_id_t
