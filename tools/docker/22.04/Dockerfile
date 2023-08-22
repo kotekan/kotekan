@@ -68,7 +68,9 @@ RUN python3 -m pip install --upgrade pip && \
     python3 -m pip install --no-cache-dir black==19.10b0 && \
     python3 -m pip install --no-cache-dir cmake_format
 
-RUN python3 -m pip install h5py bitshuffle
+RUN python3 -m pip install h5py \
+                           hdf5plugin \
+                           bitshuffle
 RUN python3 -m pip install msgpack \
                               future \
                               requests \
@@ -162,6 +164,12 @@ ENV CCACHE_BASEDIR /code/kotekan/
 ENV CCACHE_DIR /code/kotekan/.ccache/
 ENV CCACHE_COMPRESS 1
 ENV CCACHE_MAXSIZE 1G
+
+# We need the `python` command to point to python3
+RUN ln -s /bin/python3 /bin/python
+
+# Set the plugin path so kotekan can find bitshuffle
+ENV HDF5_PLUGIN_PATH /usr/local/lib/python3.10/dist-packages/hdf5plugin/plugins
 
 # Do nothing when the container launches
 CMD ["/bin/bash"]
