@@ -103,6 +103,9 @@ RUN python3.7 -m pip install msgpack==1.0.0 \
                              pytest-xdist==2.1.0 \
                              pytest-cpp==1.4.0 \
                              pytest-localserver==0.5.0 \
+                             jinja2==3.0.3 \
+                             itsdangerous==2.0.1 \
+                             werkzeug==2.0.3 \
                              flask==1.1.2 \
                              pytest-timeout==1.4.2 \
                              posix_ipc==1.0.4 \
@@ -136,7 +139,7 @@ RUN apt-get update && \
                        && \
     apt-get clean && apt-get autoclean && \
     python3.7 -m pip install --no-cache-dir breathe==4.20.* \
-                                            sphinx_rtd_theme==0.5.* \
+                                            sphinx_rtd_theme \
                                             sphinxcontrib-plantuml==0.* \
                                             && \
     wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar -P plantuml

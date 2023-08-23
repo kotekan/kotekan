@@ -124,8 +124,8 @@ RUN apt-get update && \
                        && \
     apt-get clean && apt-get autoclean && \
     git clone https://bitbucket.org/blaze-lib/blaze.git blaze && \
-    cd blaze && git checkout v3.8 && cmake -DCMAKE_INSTALL_PREFIX=/usr/local/ && \
-    make install && cd ..
+    cd blaze && git checkout v3.4 && \
+    cmake -DCMAKE_INSTALL_PREFIX=/usr/local/ && make install && cd ..
 
 # Clone HighFive
 RUN git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git && \
@@ -170,7 +170,6 @@ RUN ln -s /bin/python3 /bin/python
 
 # Set the plugin path so kotekan can find bitshuffle
 ENV HDF5_PLUGIN_PATH /usr/local/lib/python3.10/dist-packages/hdf5plugin/plugins
-
 
 # Do nothing when the container launches
 CMD ["/bin/bash"]
