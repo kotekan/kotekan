@@ -264,6 +264,7 @@ jobs:
   # Build the docker image
   build-docker-1804:
     runs-on: ubuntu-latest
+    permissions: write-all
     steps:
     - uses: actions/checkout@v2
     - name: Check if Dockerfile changed
