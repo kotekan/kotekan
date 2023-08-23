@@ -78,7 +78,7 @@ def test_produce_consume():
             assert call([consumer_path, "--", port]) == 0
         finally:
             pid = broker.pid
-            os.kill(pid, signal.SIGINT)
+            os.kill(pid, signal.SIGTERM)
             broker.terminate()
             log = open(f_out.name, "r").read().split("\n")
             for line in log:
