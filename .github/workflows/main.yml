@@ -299,11 +299,11 @@ jobs:
     - name: Build core docker image
       run: |
         docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE} -t ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }} - < tools/docker/18.04/Dockerfile
-      if: steps.git-diff-docker.outputs.diff && env.DOCKER_BUILD # Only (re)build 1804 image if requested. The build appears broken as-is
+      if: steps.git-diff-docker.outputs.diff && env.DOCKER_BUILD
     - name: Push docker image
       run: |
         docker push ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }}
-      if: steps.git-diff-docker.outputs.diff && env.DOCKER_BUILD
+      if: steps.git-diff-docker.outputs.diff && env.DOCKER_BUILD # Only push 1804 image if requested. The build may be broken
 
   # Build the iwyu docker image
   build-docker-iwyu:
@@ -359,6 +359,7 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Free disk space
+      if: ${{ !env.ACT }} # Don't free up if running locally
       run: |
           df -h
           docker rmi $(docker image ls -aq)

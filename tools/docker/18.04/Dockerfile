@@ -3,6 +3,17 @@ FROM rocm/dev-ubuntu-18.04:3.7
 ## The maintainer name and email 
 MAINTAINER Rick Nitsche <rick@phas.ubc.ca>
 
+# So packages don't ask for user interaction
+ARG DEBIAN_FRONTEND=noninteractive
+
+# Update rocm.list
+RUN rm /etc/apt/sources.list.d/rocm.list && \
+    apt-get update && \
+    apt-get install -y wget=1.19.* && \
+    echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/debian ubuntu main' | tee /etc/apt/sources.list.d/rocm.list  && \
+    wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add - && \
+    apt-get update
+
 # Install any needed packages to run cmake with full CHIME build options
 RUN apt-get update && \
     apt-get install -y software-properties-common=0.96.* && \
@@ -26,8 +37,8 @@ RUN apt-get update && \
                        clang-format-8=1:8-* \
                        dpdk=17.11.* \
                        dpdk-dev=17.11.* \
-                       rocm-opencl-dev=3.* \
-                       rocm-opencl=3.* \
+                       rocm-opencl-dev \
+                       rocm-opencl \
                        libhdf5-serial-dev=1.10.* \
                        libboost-test-dev=1.65.* \
                        libevent-dev=2.1.* \
@@ -47,9 +58,6 @@ RUN python3.7 -m pip install --upgrade pip==20.2.2 && \
 
 RUN mkdir -p /code/build
 WORKDIR /code/build
-
-# So tzdata package doesn't ask for user interaction
-ARG DEBIAN_FRONTEND=noninteractive
 
 # Set architecture for all builds done below to haswell, currently the oldest architecture used
 # by github workflows
@@ -102,8 +110,17 @@ RUN python3.7 -m pip install msgpack==1.0.0 \
     apt-get update && \
     apt-get install -y mysql-client=5.7.* \
         libmysqlclient-dev=5.7.* && \
-    apt-get clean && apt-get autoclean && \
-    python3.7 -m pip install git+https://github.com/chime-experiment/comet.git
+    apt-get clean && apt-get autoclean
+
+# Install specific (older) comet dependencies
+# caput
+RUN git clone https://github.com/radiocosmology/caput.git caput && cd caput && git checkout v22.10.0 && python3.7 -m pip install -e . && cd ..
+# chimedb_dataset
+RUN git clone https://github.com/chime-experiment/chimedb_dataset.git chimedb_dataset && cd chimedb_dataset && git checkout v22.9.0 && python3.7 -m pip install -e . && cd ..
+# mmh3
+RUN python3.7 -m pip install mmh3==3.0.0
+# Install comet
+RUN git clone https://github.com/chime-experiment/comet.git comet && cd comet && git checkout v20.10.1 && sed -i 's/caput/#caput/' requirements.txt && sed -i 's/chimedb.dataset/#chimedb.dataset/' requirements.txt && sed -i 's/mmh3/#mmh3/' requirements.txt && python3.7 -m pip install -e . && cd ..
 
 # Install redis for comet tests
 RUN apt-get update && \
