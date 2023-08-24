@@ -76,6 +76,12 @@ jobs:
         echo "Docker IWYU image: $IMG_IWYU"
         echo "Branch: ${{ steps.get-branch-name.outputs.branch_name }}"
 
+    - name: Pull Docker Image
+      if: contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/22.04/Dockerfile') || env.DOCKER_BUILD
+      run: |
+        docker pull --disable-content-trust "${IMG_2204}:${{ steps.get-branch-name.outputs.branch_name }}"
+      continue-on-error: true
+
     - name: Build and Push Docker Image
       if: contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/22.04/Dockerfile') || env.DOCKER_BUILD
       run: |
@@ -166,10 +172,10 @@ jobs:
       uses: actions/cache@v3
       with:
         path: .ccache
-        key: ccache-base-build-${{ github.sha }}
+        key: ccache-base-build-2204-${{ github.sha }}
         restore-keys: |
-          ccache-base-build
-          ccache-full-build
+          ccache-base-build-2204
+          ccache-full-build-2204
 
     - name: Build kotekan
       run: |
@@ -187,7 +193,7 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
 
   # Build a full version of kotekan and run the unit tests
-  build-full-test-2204:
+  build-full-tests-2204:
     runs-on: ubuntu-latest
     needs: build-docker-2204
 
@@ -205,10 +211,10 @@ jobs:
       uses: actions/cache@v3
       with:
         path: .ccache
-        key: ccache-base-build-${{ github.sha }}
+        key: ccache-full-build-2204-${{ github.sha }}
         restore-keys: |
-          ccache-base-build
-          ccache-full-build
+          ccache-full-build-2204
+          ccache-base-build-2204
 
     - name: Free disk space
       if: ${{ !env.ACT }} # Don't free up if running locally
@@ -257,6 +263,51 @@ jobs:
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_2204}:${{ needs.build-docker-2204.outputs.branch_name }})
         docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
+
+  # Build a full CHIME version of kotekan
+  build-chime-2204:
+    runs-on: ubuntu-latest
+    needs: build-docker-2204
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Cache ccache files
+      uses: actions/cache@v3
+      with:
+        path: .ccache
+        key: ccache-chime-build-2204-${{ github.sha }}
+        restore-keys: |
+          ccache-chime-build-2204
+          ccache-full-build-2204
+
+    - name: Build kotekan
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_1804}:${{ steps.extract_branch.outputs.branch }})
+        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        docker run "${OPTS[@]}" ccache -s
+        docker run "${OPTS[@]}" \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON \
+            -DCMAKE_BUILD_TYPE=Test \
+            -DUSE_OLD_DPDK=ON \
+            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
+            -DARCH=haswell \
+            -DNO_MEMLOCK=ON \
+            -DUSE_OMP=ON \
+            -DWITH_TESTS=OFF \
+            -DCCACHE=ON ..
+        docker run "${OPTS[@]}" make -j 2
+        docker run "${OPTS[@]}" ccache -s
 
 
 
@@ -308,6 +359,12 @@ jobs:
         echo "Docker IWYU image: $IMG_IWYU"
         echo "Branch: ${{ steps.get-branch-name.outputs.branch_name }}"
 
+    - name: Pull Docker Image
+      if: contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/18.04/Dockerfile') || env.DOCKER_BUILD
+      run: |
+        docker pull --disable-content-trust "${IMG_1804}:${{ steps.get-branch-name.outputs.branch_name }}"
+      continue-on-error: true
+
     - name: Build and Push Docker Image
       if: contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/18.04/Dockerfile') || env.DOCKER_BUILD
       run: |
@@ -331,10 +388,10 @@ jobs:
       uses: actions/cache@v1
       with:
         path: .ccache
-        key: ccache-base-build-${{ github.sha }}
+        key: ccache-base-build-1804-${{ github.sha }}
         restore-keys: |
-          ccache-base-build
-          ccache-full-build
+          ccache-base-build-1804
+          ccache-full-build-1804
 
     - name: Check if Dockerfile changed
       uses: technote-space/get-diff-action@v4
@@ -371,7 +428,7 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
 
   # Build a full version of kotekan and run the unit tests
-  build-full-test-1804:
+  build-full-tests-1804:
     runs-on: ubuntu-latest
     needs: build-docker-1804
 
@@ -392,10 +449,10 @@ jobs:
       uses: actions/cache@v1
       with:
         path: .ccache
-        key: ccache-full-build-${{ github.sha }}
+        key: ccache-full-build-1804-${{ github.sha }}
         restore-keys: |
-          ccache-full-build
-          ccache-base-build
+          ccache-full-build-1804
+          ccache-base-build-1804
 
     - name: Check if Dockerfile changed
       uses: technote-space/get-diff-action@v4
@@ -452,7 +509,7 @@ jobs:
         docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
 
   # Build a full CHIME version of kotekan
-  build-chime:
+  build-chime-1804:
     runs-on: ubuntu-latest
     needs: build-docker-1804
 
@@ -463,10 +520,10 @@ jobs:
       uses: actions/cache@v1
       with:
         path: .ccache
-        key: ccache-chime-build-${{ github.sha }}
+        key: ccache-chime-build-1804-${{ github.sha }}
         restore-keys: |
-          ccache-chime-build
-          ccache-full-build
+          ccache-chime-build-1804
+          ccache-full-build-1804
 
     - name: Check if Dockerfile changed
       uses: technote-space/get-diff-action@v4
@@ -518,9 +575,9 @@ jobs:
       uses: actions/cache@v1
       with:
         path: .ccache
-        key: ccache-clang-build-${{ github.sha }}
+        key: ccache-clang-build-1804-${{ github.sha }}
         restore-keys: |
-          ccache-clang-build
+          ccache-clang-build-1804
 
     - name: Check if Dockerfile changed
       uses: technote-space/get-diff-action@v4

@@ -1,4 +1,3 @@
-![](https://github.com/kotekan/kotekan/workflows/include-what-you-use/badge.svg?branch=develop)
 
 # Documentation
 
@@ -9,9 +8,11 @@ Compiled docs are available at https://kotekan.readthedocs.io/en/latest/.
 
 # Build Instructions
 
+[![kotekan-ci-tests](https://github.com/kotekan/kotekan/actions/workflows/main.yml/badge.svg)](https://github.com/kotekan/kotekan/actions/workflows/main.yml)
+
 Detailed instructions at http://lwlab.dunlap.utoronto.ca/kotekan/compiling/general.html.
 
-The project is build using cmake, so you will need to install cmake
+This project is built using cmake, so you will need to install cmake
 before starting a build.
 
 To build just the base framework:

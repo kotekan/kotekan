@@ -126,6 +126,7 @@ RUN python3.7 -m pip install mmh3==3.0.0
 RUN git clone https://github.com/chime-experiment/comet.git comet && cd comet && git checkout v20.10.1 && sed -i 's/caput/#caput/' requirements.txt && sed -i 's/chimedb.dataset/#chimedb.dataset/' requirements.txt && sed -i 's/mmh3/#mmh3/' requirements.txt && python3.7 -m pip install . && cd ..
 
 # Install redis for comet tests
+RUN python3.7 -m pip install aioredis==1.3.1
 RUN apt-get update && \
     apt-get install -y redis=5:4.0.* && \
     apt-get clean && apt-get autoclean
