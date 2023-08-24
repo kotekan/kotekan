@@ -1,0 +1,126 @@
+# NOTE:
+# When we build kotekan on the Github VM we need to take into account a few
+# limitations: first we can't lock very much memory so we need to disable
+# mlock the buffers. Second, the VMs run across a range of CPU
+# architectures (from Haswell to Skylake-AVX512 as of 2020/03). Because our
+# use of ccache shares compiled objects we must target our build for the
+# lowest architecture available or we will occasionally crash with SIGILL
+# when a newer instruction is called than is available.  
+
+
+name: kotekan-iwyu-test
+on:
+  pull_request:
+    branches:
+    - develop
+    - master
+  push:
+    branches:
+    - develop
+    - master
+
+env:
+  REGISTRY: docker.pkg.github.com
+  IMG_IWYU: "docker.pkg.github.com/kotekan/kotekan/kotekan-iwyu"
+  IMG_1804: "docker.pkg.github.com/${{ github.repository }}/kotekan-1804"
+  IMG_2204: "docker.pkg.github.com/${{ github.repository }}/kotekan-2204"
+  PYTEST_TIMEOUT: 60
+
+jobs:
+  # Build the iwyu docker image
+  build-docker-iwyu:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Check if iwyu Dockerfile changed
+      uses: technote-space/get-diff-action@v4
+      id: git-diff-docker-iwyu
+      with:
+        PATTERNS: tools/iwyu/docker/18.04/Dockerfile
+
+    - name: Extract branch name
+      shell: bash
+      # Get either branch name of a push or source branch of PR, replace all '/' with '.':
+      run: >
+        if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+          echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
+        else
+          echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
+        fi
+      id: extract_branch
+
+    - name: Pull IWYU docker image
+      run: |
+        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        docker pull --disable-content-trust ${IMG_IWYU}:${{ steps.extract_branch.outputs.branch }}
+        echo ::set-output name=status::success
+      if: steps.git-diff-docker-iwyu.outputs.diff
+      continue-on-error: true
+      id: pull-docker-iwyu
+    - name: Pull docker image for develop branch
+      run: |
+        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        docker pull --disable-content-trust ${IMG_IWYU}:develop
+      if: steps.git-diff-docker-iwyu.outputs.diff != '' && steps.pull-docker-iwyu.outputs.status != 'success'
+    - name: Build iwyu docker image
+      run: >
+        docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_1804},${IMG_IWYU} -t ${IMG_IWYU}:${{ steps.extract_branch.outputs.branch }} - < tools/iwyu/docker/18.04/Dockerfile
+      if: steps.git-diff-docker-iwyu.outputs.diff
+    - name: Push docker image
+      run: |
+        docker push ${IMG_IWYU}:${{ steps.extract_branch.outputs.branch }}
+      if: steps.git-diff-docker-iwyu.outputs.diff
+
+  iwyu:
+    runs-on: ubuntu-latest
+    needs: build-docker-iwyu
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Check if IWYU Dockerfile changed
+      uses: technote-space/get-diff-action@v4
+      id: git-diff-docker-iwyu
+      with:
+        PATTERNS: tools/iwyu/docker/18.04/Dockerfile
+
+    - name: Extract branch name for iwyu docker container
+      shell: bash
+      # Get either branch name of a push or source branch of PR, replace all '/' with '.'.
+      # If Dockerfile didn't change, use 'develop'.
+      run: >
+        if [ -n "${{ steps.git-diff-docker-iwyu.outputs.diff }}" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
+          else
+            echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
+          fi
+        else
+          echo "::set-output name=branch::develop"
+        fi
+      id: extract_branch
+
+    - name: Configure kotekan
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_IWYU}:${{ steps.extract_branch.outputs.branch }})
+        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        docker run "${OPTS[@]}" \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON \
+            -DCMAKE_BUILD_TYPE=Test \
+            -DUSE_OLD_DPDK=ON \
+            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
+            -DARCH=haswell \
+            -DNO_MEMLOCK=ON \
+            -DUSE_OMP=ON \
+            -DWITH_TESTS=ON \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DIWYU=ON \
+            -DCCACHE=ON ..
+
+    - name: Run iwyu
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_IWYU}:${{ steps.extract_branch.outputs.branch }})
+        docker run "${OPTS[@]}" /code/kotekan/tools/iwyu/docker/iwyu.sh
