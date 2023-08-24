@@ -71,14 +71,15 @@ jobs:
         echo "GitHub Ref: $GITHUB_REF"
         echo "GitHub Head Ref: $GITHUB_HEAD_REF"
         echo "GitHub Ref Name: $GITHUB_REF_NAME"
-        echo "Docker 2204 image: $IMG_2204"
         echo "Docker 1804 image: $IMG_1804"
+        echo "Docker 2204 image: $IMG_2204"
         echo "Docker IWYU image: $IMG_IWYU"
         echo "Branch: ${{ steps.get-branch-name.outputs.branch_name }}"
 
     - name: Build and Push Docker Image
       if: contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/22.04/Dockerfile') || env.DOCKER_BUILD
       run: |
+        echo "Building and pushing ${IMG_2204}:${{ steps.get-branch-name.outputs.branch_name }}"
         docker build --cache-from=${IMG_2204} -t "${IMG_2204}:${{ steps.get-branch-name.outputs.branch_name }}" - < tools/docker/22.04/Dockerfile
         docker push "${IMG_2204}:${{ steps.get-branch-name.outputs.branch_name }}"
 
@@ -290,11 +291,33 @@ jobs:
           echo "branch_name=$(echo ${GITHUB_HEAD_REF} | tr / .)" >> $GITHUB_OUTPUT;
         fi
 
+    - name: Output environment variable details
+      run: |
+        echo "The job_id is: $GITHUB_JOB"
+        echo "The id of this action is: $GITHUB_ACTION"
+        echo "The run id is: $GITHUB_RUN_ID"
+        echo "The repository is: $GITHUB_REPOSITORY"
+        echo "The GitHub Actor's username is: $GITHUB_ACTOR"
+        echo "GitHub SHA: $GITHUB_SHA"
+        echo "GitHub event name: $GITHUB_EVENT_NAME"
+        echo "GitHub Ref: $GITHUB_REF"
+        echo "GitHub Head Ref: $GITHUB_HEAD_REF"
+        echo "GitHub Ref Name: $GITHUB_REF_NAME"
+        echo "Docker 1804 image: $IMG_1804"
+        echo "Docker 2204 image: $IMG_2204"
+        echo "Docker IWYU image: $IMG_IWYU"
+        echo "Branch: ${{ steps.get-branch-name.outputs.branch_name }}"
+
     - name: Build and Push Docker Image
       if: contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/18.04/Dockerfile') || env.DOCKER_BUILD
       run: |
+        echo "Building and pushing ${IMG_1804}:${{ steps.get-branch-name.outputs.branch_name }}"
         docker build --cache-from=${IMG_1804} -t "${IMG_1804}:${{ steps.get-branch-name.outputs.branch_name }}" - < tools/docker/18.04/Dockerfile
         docker push "${IMG_1804}:${{ steps.get-branch-name.outputs.branch_name }}"
+
+    outputs:
+      branch_name: "${{ steps.get-branch-name.outputs.branch_name }}"
+
 
   # Build a basic version of kotekan
   build-base-1804:
