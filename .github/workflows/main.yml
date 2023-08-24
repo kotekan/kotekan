@@ -76,12 +76,6 @@ jobs:
         echo "Docker IWYU image: $IMG_IWYU"
         echo "Branch: ${{ steps.get-branch-name.outputs.branch_name }}"
 
-    - name: Pull Docker Image
-      if: contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/22.04/Dockerfile') || env.DOCKER_BUILD
-      run: |
-        docker pull --disable-content-trust "${IMG_2204}:${{ steps.get-branch-name.outputs.branch_name }}"
-      continue-on-error: true
-
     - name: Build and Push Docker Image
       if: contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/22.04/Dockerfile') || env.DOCKER_BUILD
       run: |
@@ -358,12 +352,6 @@ jobs:
         echo "Docker 2204 image: $IMG_2204"
         echo "Docker IWYU image: $IMG_IWYU"
         echo "Branch: ${{ steps.get-branch-name.outputs.branch_name }}"
-
-    - name: Pull Docker Image
-      if: contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/18.04/Dockerfile') || env.DOCKER_BUILD
-      run: |
-        docker pull --disable-content-trust "${IMG_1804}:${{ steps.get-branch-name.outputs.branch_name }}"
-      continue-on-error: true
 
     - name: Build and Push Docker Image
       if: contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/18.04/Dockerfile') || env.DOCKER_BUILD
