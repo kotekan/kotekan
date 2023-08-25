@@ -264,7 +264,8 @@ jobs:
     needs: build-docker-2204
 
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v3
 
     - name: Login to GitHub Container Registry
       uses: docker/login-action@v2
@@ -283,9 +284,9 @@ jobs:
           ccache-full-build-2204
 
     - name: Build kotekan
+      if: env.RUN_2204_CHIME_TESTS # These aren't working, so for now only run them upon request.
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_1804}:${{ steps.extract_branch.outputs.branch }})
-        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_2204}:${{ needs.build-docker-2204.outputs.branch_name }})
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
@@ -300,6 +301,55 @@ jobs:
             -DUSE_OMP=ON \
             -DWITH_TESTS=OFF \
             -DCCACHE=ON ..
+        docker run "${OPTS[@]}" make -j 2
+        docker run "${OPTS[@]}" ccache -s
+
+  # Build a clang version of kotekan
+  build-clang-2204:
+    runs-on: ubuntu-latest
+    needs: build-docker-2204
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Cache ccache files
+      uses: actions/cache@v3
+      with:
+        path: .ccache
+        key: ccache-clang-build-2204-${{ github.sha }}
+        restore-keys: |
+          ccache-clang-build-2204
+
+    - name: Build kotekan
+      env:
+        CC: clang
+        CXX: clang++
+      if: env.RUN_2204_CLANG_TESTS # These aren't working, so for now only run them upon request.
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_2204}:${{ needs.build-docker-2204.outputs.branch_name }})
+        docker run "${OPTS[@]}" ccache -s
+        docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+        -DWERROR=ON \
+        -DCMAKE_LINK_WHAT_YOU_USE=ON \
+        -DUSE_OLD_DPDK=ON \
+        -DCMAKE_BUILD_TYPE=Test \
+        -DUSE_HDF5=ON \
+        -DHIGHFIVE_PATH=/code/build/HighFive \
+        -DUSE_LAPACK=ON \
+        -DBLAZE_PATH=/code/build/blaze \
+        -DARCH=haswell \
+        -DNO_MEMLOCK=ON \
+        -DUSE_OMP=ON \
+        -DWITH_TESTS=ON \
+        -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s
 
@@ -362,7 +412,6 @@ jobs:
 
     outputs:
       branch_name: "${{ steps.get-branch-name.outputs.branch_name }}"
-
 
   # Build a basic version of kotekan
   build-base-1804:
@@ -552,7 +601,7 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
 
   # Build a full CHIME version with clang
-  build-clang:
+  build-clang-1804:
     runs-on: ubuntu-latest
     needs: build-docker-1804
 
