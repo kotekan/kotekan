@@ -151,6 +151,12 @@ RUN python3 -m pip install --no-cache-dir breathe==4.35.* \
                                           sphinxcontrib-plantuml==0.25
 
 
+# Julia
+RUN wget https://julialang-s3.julialang.org/bin/linux/x64/1.9/julia-1.9.3-linux-x86_64.tar.gz \
+    && tar xvzf julia-1.9.3-linux-x86_64.tar.gz \
+    && ln -s $(pwd)/julia-1.9.3/bin/julia /usr/local/bin/
+
+
 # Uncomment this to check what version got installed
 # RUN python3 -m pip show <package>
 # RUN apt-cache policy <package>
