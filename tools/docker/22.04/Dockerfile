@@ -175,7 +175,10 @@ ENV CCACHE_MAXSIZE 1G
 RUN ln -s /bin/python3 /bin/python
 
 # Set the plugin path so kotekan can find bitshuffle
+# Ideally this would be determined dynamically, but for now...
 ENV HDF5_PLUGIN_PATH /usr/local/lib/python3.10/dist-packages/hdf5plugin/plugins
+
+ENV KOTEKAN_BUILD_DIRNAME build-2204
 
 # Do nothing when the container launches
 CMD ["/bin/bash"]

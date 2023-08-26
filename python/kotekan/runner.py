@@ -49,8 +49,15 @@ class KotekanRunner(object):
     @classmethod
     def kotekan_binary(cls):
         """Determine the kotekan binary to use."""
+        # If we are building using github actions, the binary may be located
+        # in a specific build directory.
+        if os.environ.get('KOTEKAN_BUILD_DIRNAME') is not None :
+            build_dirname = os.environ.get('KOTEKAN_BUILD_DIRNAME')
+        else :
+            build_dirname = "build"
+
         build_dir = os.path.normpath(
-            os.path.join(os.path.dirname(__file__), "..", "..", "build", "kotekan")
+            os.path.join(os.path.dirname(__file__), "..", "..", build_dirname, "kotekan")
         )
         # If this path exists we are using a non installed version of the
         # kotekan python packages. If so we want to run the local kotekan
