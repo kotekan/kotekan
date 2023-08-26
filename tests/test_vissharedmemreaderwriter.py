@@ -129,8 +129,9 @@ def vis_data(tmpdir_factory, comet_broker):
 
 # This test still needs to run alone, because multiple comet instances would have conflicts
 # accessing redis.
-@pytest.mark.skipif(sys.version_info > (3,7),
-                    reason="Test currently only building on old python3.7")
+@pytest.mark.skipif(
+    sys.version_info > (3, 7), reason="Test currently only building on old python3.7"
+)
 @pytest.mark.serial
 def test_shared_mem_buffer(vis_data, comet_broker):
     # start kotekan writer in a thread, to read before it's done (it will delete the shm on exit)

@@ -174,8 +174,10 @@ def subset_data(tmpdir_factory):
         os.kill(pid, signal.SIGINT)
         broker.terminate()
 
-@pytest.mark.skipif(sys.version_info > (3,7),
-                    reason="Test currently only building on old python3.7")
+
+@pytest.mark.skipif(
+    sys.version_info > (3, 7), reason="Test currently only building on old python3.7"
+)
 @pytest.mark.serial
 def test_subset_broker(subset_data):
     data_gen = subset_data[0]
