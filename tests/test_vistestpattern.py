@@ -274,7 +274,8 @@ def test_pattern_no_noise_freq(tmpdir_factory):
 
 
 @pytest.mark.skipif(
-    sys.version_info > (3, 7), reason="Test currently only building on old python3.7"
+    sys.version_info > (3, 7),
+    reason="Test only passes when comet works, which needs old python3.7.",
 )
 def test_no_noise_freq(test_pattern_no_noise_freq):
     # A test was started by sending a command to the endpoint, so the files should exist.

@@ -11,7 +11,6 @@
 /.vscode/
 /nbproject/
 /cmake-build*/
-build/*
 build-docs/*
 build-check-format/*
 build-1804/*

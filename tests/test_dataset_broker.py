@@ -36,7 +36,8 @@ def has_redis(host="localhost", port=6379):
 
 
 @pytest.mark.skipif(
-    sys.version_info > (3, 7), reason="Test currently only building on old python3.7"
+    sys.version_info > (3, 7),
+    reason="Test only passes when comet works, which needs old python3.7.",
 )
 @pytest.mark.serial
 def test_produce_consume():

@@ -43,7 +43,7 @@ template<typename MT, bool SO>
 double rms(const blaze::DenseMatrix<MT, SO>& A) {
     double t = 0.0;
 
-    auto At = blaze::trans(A);
+    auto At = ~A;
     auto* rd = At.data();
     size_t n = At.rows() * At.columns();
 
@@ -56,7 +56,7 @@ template<typename MT, bool TF>
 double rms(const blaze::DenseVector<MT, TF>& A) {
     double t = 0.0;
 
-    auto At = blaze::trans(A);
+    auto At = ~A;
     auto* rd = At.data();
     size_t n = At.size();
 
