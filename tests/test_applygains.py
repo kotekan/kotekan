@@ -61,7 +61,7 @@ def gen_gains(filename, mult_factor, num_elements, freq):
     ).astype(np.complex64)
 
     # Make some weights zero to test the behaviour of apply_gains
-    weight = np.ones((nfreq, num_elements), dtype=np.bool8)
+    weight = np.ones((nfreq, num_elements), dtype=np.bool_)
     weight[:, 1] = False
     weight[:, 3] = False
 
