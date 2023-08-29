@@ -102,10 +102,10 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState& pipestate,
         if (meta) {
             // Attach the metadata to the host buffer frame
             CHECK_ERROR_F(pthread_mutex_lock(&output_buffer->lock));
-            if (output_buffer->metadata[output_buffer_id] == NULL) {
+            if (output_buffer->metadata[output_buffer_execute_id] == NULL) {
                 DEBUG("Passing metadata from GPU array {:s}[{:d}] to output buffer {:s}[{:d}]",
-                      _gpu_mem, pipestate.gpu_frame_id, output_buffer->buffer_name, output_buffer_id);
-                output_buffer->metadata[output_buffer_id] = meta;
+                      _gpu_mem, pipestate.gpu_frame_id, output_buffer->buffer_name, output_buffer_execute_id);
+                output_buffer->metadata[output_buffer_execute_id] = meta;
                 // .... where is this gonna get freed?
                 increment_metadata_ref_count(meta);
             }
