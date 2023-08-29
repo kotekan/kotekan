@@ -54,7 +54,7 @@ testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const std::string&
     num_frames_to_test = config.get_default<int32_t>(unique_name, "num_frames_to_test", 0);
     max_num_errors = config.get_default<int32_t>(unique_name, "max_num_errors", 100);
     epsilon = config.get_default<double>(unique_name, "epsilon",
-                                         std::numeric_limits<A_Type>::epsilon() * (A_Type)5);
+                                         std::numeric_limits<A_Type>::epsilon() * (A_Type)5.0);
 }
 
 template<typename A_Type>
