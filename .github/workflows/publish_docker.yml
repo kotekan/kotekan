@@ -1,0 +1,90 @@
+# If a pull request to the development branch was closed and merged,
+# then rebuild the Docker image if there were changes to it
+
+name: kotekan-docker-dev-build
+on:
+  pull_request:
+    types:
+      - closed
+
+env:
+  REGISTRY: docker.pkg.github.com
+  IMG_1804: "docker.pkg.github.com/${{ github.repository }}/kotekan-1804"
+  IMG_2204: "docker.pkg.github.com/${{ github.repository }}/kotekan-2204"
+
+jobs:
+  build_2204_if_merged:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions: write-all
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Check for file changes
+      uses: tj-actions/changed-files@v37
+      id: changed-files
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Check to see if a docker rebuild is needed
+      id: docker_img
+      run: >
+        if [ ${{ contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/22.04/Dockerfile') || env.DOCKER_BUILD }} ]; then
+          echo "docker_rebuild=1" >> $GITHUB_OUTPUT;
+          echo "img_name=${IMG_2204}:$(echo ${{ github.base_ref }} | tr / .)" >> $GITHUB_OUTPUT;
+        else
+          # The Dockerfile wasn't modified
+          echo "docker_rebuild=" >> $GITHUB_OUTPUT;
+        fi
+
+    - name: Build and Push Docker Image
+      if: steps.docker_img.outputs.docker_rebuild
+      run: |
+        echo "Building and pushing ${{ steps.docker_img.outputs.img_name }}"
+        docker build --cache-from=${IMG_2204} -t "${{ steps.docker_img.outputs.img_name }}" - < tools/docker/22.04/Dockerfile
+        docker push "${{ steps.docker_img.outputs.img_name }}"
+
+  build_1804_if_merged:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions: write-all
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Check for file changes
+      uses: tj-actions/changed-files@v37
+      id: changed-files
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Check to see if a docker rebuild is needed
+      id: docker_img
+      run: >
+        if [ ${{ contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/18.04/Dockerfile') || env.DOCKER_BUILD }} ]; then
+          echo "docker_rebuild=1" >> $GITHUB_OUTPUT;
+          echo "img_name=${IMG_1804}:$(echo ${{ github.base_ref }} | tr / .)" >> $GITHUB_OUTPUT;
+        else
+          # The Dockerfile wasn't modified
+          echo "docker_rebuild=" >> $GITHUB_OUTPUT;
+        fi
+
+    - name: Build and Push Docker Image
+      if: steps.docker_img.outputs.docker_rebuild
+      run: |
+        echo "Building and pushing ${{ steps.docker_img.outputs.img_name }}"
+        docker build --cache-from=${IMG_1804} -t "${{ steps.docker_img.outputs.img_name }}" - < tools/docker/18.04/Dockerfile
+        docker push "${{ steps.docker_img.outputs.img_name }}"
