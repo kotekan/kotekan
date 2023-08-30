@@ -69,6 +69,13 @@ jobs:
           IMAGE_NAME="${IMG_2204}:develop"
         fi
 
+        if docker manifest inspect ${IMAGE_NAME} >/dev/null; then
+          echo "Docker package found."
+        else
+          echo "Docker package NOT found. Setting docker_build=1."
+          echo "docker_build=1" >> $GITHUB_OUTPUT;
+        fi
+
         echo "img_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT;
         echo "Image name: ${IMAGE_NAME}"
 
@@ -363,6 +370,13 @@ jobs:
         else
           echo "Dockerfile was not modified. Using develop branch image."
           IMAGE_NAME="${IMG_1804}:develop"
+        fi
+
+        if docker manifest inspect ${IMAGE_NAME} >/dev/null; then
+          echo "Docker package found."
+        else
+          echo "Docker package NOT found. Setting docker_build=1."
+          echo "docker_build=1" >> $GITHUB_OUTPUT;
         fi
 
         echo "img_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT;
