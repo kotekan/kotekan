@@ -14,7 +14,7 @@ env:
 
 jobs:
   build-2204-if-merged:
-    if: github.event.pull_request.merged == true || env.DOCKER_BUILD
+    if: ${{ github.event.pull_request.merged == true || env.DOCKER_BUILD == '1' }}
     runs-on: ubuntu-latest
     permissions: write-all
 
@@ -36,33 +36,33 @@ jobs:
     - name: Check to see if a docker rebuild is needed
       id: docker_img
       run: |
-        if [ !${GITHUB_BASE_REF} == "" ] ; then
-          echo "GITHUB_BASE_REF needs to be set!  ${GITHUB_BASE_REF}"
-          exit 1
-        fi
-
         IMAGE_NAME="${IMG_2204}:$(echo ${GITHUB_BASE_REF} | tr / .)"
         echo "img_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT;
         echo "docker_build=" >> $GITHUB_OUTPUT; # Default to no rebuild
         echo "Image name: ${IMAGE_NAME}"
 
-        if docker manifest inspect ${IMAGE_NAME} >/dev/null; then
+        if docker manifest inspect ${IMAGE_NAME} >/dev/null ; then
           echo "Docker package found."
         else
           echo "Docker package NOT found. Setting docker_build=1."
           echo "docker_build=1" >> $GITHUB_OUTPUT;
         fi
 
-        if ${{ contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/22.04/Dockerfile') }} == "true" ; then
+        if [[ "${{ contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/22.04/Dockerfile') }}" = "true" ]] ; then
           echo "Modified Dockerfile found. Setting docker_build=1."
           echo "docker_build=1" >> $GITHUB_OUTPUT;
         else
           echo "Dockerfile was not modified."
         fi
 
-        if [ ${{ env.DOCKER_BUILD }} ]; then
+        if [[ "${DOCKER_BUILD}" = "1" ]] ; then
           echo "Rebuild requested. Setting docker_build=1."
           echo "docker_build=1" >> $GITHUB_OUTPUT;
+        fi
+
+        if [[ "${GITHUB_BASE_REF}" = "" ]] ; then
+          echo "GITHUB_BASE_REF needs to be set!  ${GITHUB_BASE_REF}"
+          exit 1
         fi
 
     - name: Build and Push Docker Image
@@ -74,7 +74,7 @@ jobs:
 
 
   build-1804-if-merged:
-    if: github.event.pull_request.merged == true || env.DOCKER_BUILD
+    if: ${{ github.event.pull_request.merged == true || env.DOCKER_BUILD == '1' }}
     runs-on: ubuntu-latest
     permissions: write-all
 
@@ -96,33 +96,33 @@ jobs:
     - name: Check to see if a docker rebuild is needed
       id: docker_img
       run: |
-        if [ !${GITHUB_BASE_REF} == "" ] ; then
-          echo "GITHUB_BASE_REF needs to be set!  ${GITHUB_BASE_REF}"
-          exit 1
-        fi
-
         IMAGE_NAME="${IMG_1804}:$(echo ${GITHUB_BASE_REF} | tr / .)"
         echo "img_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT;
         echo "docker_build=" >> $GITHUB_OUTPUT; # Default to no rebuild
         echo "Image name: ${IMAGE_NAME}"
 
-        if docker manifest inspect ${IMAGE_NAME} >/dev/null; then
+        if docker manifest inspect ${IMAGE_NAME} >/dev/null ; then
           echo "Docker package found."
         else
           echo "Docker package NOT found. Setting docker_build=1."
           echo "docker_build=1" >> $GITHUB_OUTPUT;
         fi
 
-        if ${{ contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/18.04/Dockerfile') }} == "true" ; then
+        if [[ "${{ contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/18.04/Dockerfile') }}" = "true" ]] ; then
           echo "Modified Dockerfile found. Setting docker_build=1."
           echo "docker_build=1" >> $GITHUB_OUTPUT;
         else
           echo "Dockerfile was not modified."
         fi
 
-        if [ ${{ env.DOCKER_BUILD }} ]; then
+        if [[ "${DOCKER_BUILD}" = "1" ]] ; then
           echo "Rebuild requested. Setting docker_build=1."
           echo "docker_build=1" >> $GITHUB_OUTPUT;
+        fi
+
+        if [[ "${GITHUB_BASE_REF}" = "" ]] ; then
+          echo "GITHUB_BASE_REF needs to be set!  ${GITHUB_BASE_REF}"
+          exit 1
         fi
 
     - name: Build and Push Docker Image
