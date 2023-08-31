@@ -14,7 +14,6 @@ env:
 
 jobs:
   build-2204-if-merged:
-    if: ${{ github.event.pull_request.merged == true || env.DOCKER_BUILD == '1' }}
     runs-on: ubuntu-latest
     permissions: write-all
 
@@ -35,6 +34,7 @@ jobs:
 
     - name: Check to see if a docker rebuild is needed
       id: docker_img
+      if: ${{ github.event.pull_request.merged == true || env.DOCKER_BUILD == '1' }}
       run: |
         IMAGE_NAME="${IMG_2204}:$(echo ${GITHUB_BASE_REF} | tr / .)"
         echo "img_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT;
@@ -74,7 +74,6 @@ jobs:
 
 
   build-1804-if-merged:
-    if: ${{ github.event.pull_request.merged == true || env.DOCKER_BUILD == '1' }}
     runs-on: ubuntu-latest
     permissions: write-all
 
@@ -95,6 +94,7 @@ jobs:
 
     - name: Check to see if a docker rebuild is needed
       id: docker_img
+      if: ${{ github.event.pull_request.merged == true || env.DOCKER_BUILD == '1' }}
       run: |
         IMAGE_NAME="${IMG_1804}:$(echo ${GITHUB_BASE_REF} | tr / .)"
         echo "img_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT;
