@@ -31,7 +31,7 @@ add_library(
     restServer.cpp
     Stage.cpp
     StageFactory.cpp
-    $<$<${Julia_FOUND}>:juliaManager.cpp>)
+    $<$<BOOL:${Julia_FOUND}>:juliaManager.cpp>)
 target_include_directories(kotekan_core PUBLIC .)
 
 # Libnuma is optionally used by buffer.c
