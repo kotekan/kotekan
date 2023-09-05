@@ -151,6 +151,16 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Run cmakelint
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" tools/cmakelint.sh /code/kotekan
+
+    - name: Run black
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" black --exclude docs --check .
+
     - name: Run clang-format
       run: |
         mkdir -p build-check-format
@@ -158,16 +168,6 @@ jobs:
         docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ..
         docker run "${OPTS[@]}" make clang-format
         git diff --exit-code
-
-    - name: Run black
-      run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" black --exclude docs --check .
-
-    - name: Run cmakelint
-      run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" tools/cmakelint.sh /code/kotekan
 
   # Build a basic version of kotekan
   build-base-2204:

@@ -1,8 +1,7 @@
 # This FindJulia.cmake from
 # <https://github.com/JuliaInterop/libcxxwrap-julia/blob/main/FindJulia.cmake>
 
-# Original FindJulia.cmake from
-# <https://github.com/QuantStack/xtensor-julia-cookiecutter/
+# Original FindJulia.cmake from <https://github.com/QuantStack/xtensor-julia-cookiecutter/
 # blob/master/%7B%7Bcookiecutter.github_project_name%7D%7D/cmake/FindJulia.cmake>
 
 if(Julia_FOUND)
@@ -98,9 +97,7 @@ if(Julia_EXECUTABLE)
 
     if(Julia_EXECUTABLE)
         execute_process(
-            COMMAND
-                ${Julia_EXECUTABLE} --startup-file=no -E
-                "${USING_LIBDL}\n
+            COMMAND ${Julia_EXECUTABLE} --startup-file=no -E "${USING_LIBDL}\n
                 abspath(Libdl.dlpath((ccall(:jl_is_debugbuild, Cint, ()) != 0) ? \"libjulia-debug\"
                                                                                : \"libjulia\"))"
             OUTPUT_VARIABLE JULIA_LIBRARY)
