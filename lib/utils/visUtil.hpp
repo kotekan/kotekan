@@ -917,7 +917,6 @@ public:
      * @brief Create a frameID for a given buffer.
      *
      * @param buf   Buffer to use.
-     * @returns frameID instance.
      **/
     frameID(const Buffer* buf) : modulo<int>(buf->num_frames) {}
 };

@@ -1,0 +1,133 @@
+# If a pull request to the development branch was closed and merged,
+# then rebuild the Docker image if there were changes to it
+
+name: kotekan-docker-image-merge-build
+on:
+  pull_request:
+    types:
+      - closed
+
+env:
+  REGISTRY: docker.pkg.github.com
+  IMG_1804: "docker.pkg.github.com/${{ github.repository }}/kotekan-1804"
+  IMG_2204: "docker.pkg.github.com/${{ github.repository }}/kotekan-2204"
+
+jobs:
+  build-2204-if-merged:
+    runs-on: ubuntu-latest
+    permissions: write-all
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Check for file changes
+      uses: tj-actions/changed-files@v37
+      id: changed-files
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Check to see if a docker rebuild is needed
+      id: docker_img
+      if: ${{ github.event.pull_request.merged == true || env.DOCKER_BUILD == '1' }}
+      run: |
+        IMAGE_NAME="${IMG_2204}:$(echo ${GITHUB_BASE_REF} | tr / .)"
+        echo "img_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT;
+        echo "docker_build=" >> $GITHUB_OUTPUT; # Default to no rebuild
+        echo "Image name: ${IMAGE_NAME}"
+
+        if docker manifest inspect ${IMAGE_NAME} >/dev/null ; then
+          echo "Docker package found."
+        else
+          echo "Docker package NOT found. Setting docker_build=1."
+          echo "docker_build=1" >> $GITHUB_OUTPUT;
+        fi
+
+        if [[ "${{ contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/22.04/Dockerfile') }}" = "true" ]] ; then
+          echo "Modified Dockerfile found. Setting docker_build=1."
+          echo "docker_build=1" >> $GITHUB_OUTPUT;
+        else
+          echo "Dockerfile was not modified."
+        fi
+
+        if [[ "${DOCKER_BUILD}" = "1" ]] ; then
+          echo "Rebuild requested. Setting docker_build=1."
+          echo "docker_build=1" >> $GITHUB_OUTPUT;
+        fi
+
+        if [[ "${GITHUB_BASE_REF}" = "" ]] ; then
+          echo "GITHUB_BASE_REF needs to be set!  ${GITHUB_BASE_REF}"
+          exit 1
+        fi
+
+    - name: Build and Push Docker Image
+      if: steps.docker_img.outputs.docker_build
+      run: |
+        echo "Building and pushing ${{ steps.docker_img.outputs.img_name }}"
+        docker build --cache-from=${IMG_2204}:develop --cache-from=${{ steps.docker_img.outputs.img_name }} -t "${{ steps.docker_img.outputs.img_name }}" - < tools/docker/22.04/Dockerfile
+        docker push "${{ steps.docker_img.outputs.img_name }}"
+
+
+  build-1804-if-merged:
+    runs-on: ubuntu-latest
+    permissions: write-all
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Check for file changes
+      uses: tj-actions/changed-files@v37
+      id: changed-files
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Check to see if a docker rebuild is needed
+      id: docker_img
+      if: ${{ github.event.pull_request.merged == true || env.DOCKER_BUILD == '1' }}
+      run: |
+        IMAGE_NAME="${IMG_1804}:$(echo ${GITHUB_BASE_REF} | tr / .)"
+        echo "img_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT;
+        echo "docker_build=" >> $GITHUB_OUTPUT; # Default to no rebuild
+        echo "Image name: ${IMAGE_NAME}"
+
+        if docker manifest inspect ${IMAGE_NAME} >/dev/null ; then
+          echo "Docker package found."
+        else
+          echo "Docker package NOT found. Setting docker_build=1."
+          echo "docker_build=1" >> $GITHUB_OUTPUT;
+        fi
+
+        if [[ "${{ contains(steps.changed-files.outputs.all_modified_files, 'tools/docker/18.04/Dockerfile') }}" = "true" ]] ; then
+          echo "Modified Dockerfile found. Setting docker_build=1."
+          echo "docker_build=1" >> $GITHUB_OUTPUT;
+        else
+          echo "Dockerfile was not modified."
+        fi
+
+        if [[ "${DOCKER_BUILD}" = "1" ]] ; then
+          echo "Rebuild requested. Setting docker_build=1."
+          echo "docker_build=1" >> $GITHUB_OUTPUT;
+        fi
+
+        if [[ "${GITHUB_BASE_REF}" = "" ]] ; then
+          echo "GITHUB_BASE_REF needs to be set!  ${GITHUB_BASE_REF}"
+          exit 1
+        fi
+
+    - name: Build and Push Docker Image
+      if: steps.docker_img.outputs.docker_build
+      run: |
+        echo "Building and pushing ${{ steps.docker_img.outputs.img_name }}"
+        docker build --cache-from=${IMG_1804}:develop --cache-from=${{ steps.docker_img.outputs.img_name }} -t "${{ steps.docker_img.outputs.img_name }}" - < tools/docker/18.04/Dockerfile
+        docker push "${{ steps.docker_img.outputs.img_name }}"
