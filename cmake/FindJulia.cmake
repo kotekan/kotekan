@@ -16,7 +16,7 @@ if(Julia_PREFIX)
     message(STATUS "THIS BRANCH")
 else()
     find_program(Julia_EXECUTABLE julia DOC "Julia executable")
-    string(REGEX REPLACE ".*-NOTFOUND" "" Julia_EXECUTABLE "${Julia_EXECUTABLE}"
+    string(REGEX REPLACE ".*-NOTFOUND" "" Julia_EXECUTABLE "${Julia_EXECUTABLE}")
     if(Julia_EXECUTABLE)
         message(STATUS "Found Julia executable: " ${Julia_EXECUTABLE})
     endif()
