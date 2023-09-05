@@ -113,5 +113,4 @@ include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(Julia
     REQUIRED_VARS   Julia_LIBRARY Julia_INCLUDE_DIRS
     VERSION_VAR     Julia_VERSION_STRING
-    FAIL_MESSAGE    "Julia not found"
-)
+    FAIL_MESSAGE    "Julia not found")
