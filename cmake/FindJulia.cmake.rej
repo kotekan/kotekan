@@ -1,0 +1,41 @@
+@@ -24,26 +26,25 @@
+ 
+ if(Julia_EXECUTABLE)
+ 
+-#################
+-# Julia Version #
+-#################
++    # ##############################################################################################
++    # Julia Version #
++    # ##############################################################################################
+ 
+-if(Julia_EXECUTABLE)
+-    execute_process(
++    endif()
+ 
+-if($ENV{target} MATCHES "^i686.*")
+-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse -msse2")
+-endif()
++    if($ENV{target} MATCHES "^i686.*")
++        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse -msse2")
++    endif()
+ 
+ endif()
+ 
+-###########################
++# ##################################################################################################
+ # FindPackage Boilerplate #
+-###########################
++# ##################################################################################################
+ 
+ include(FindPackageHandleStandardArgs)
+-find_package_handle_standard_args(Julia
+-    REQUIRED_VARS   Julia_LIBRARY Julia_LIBRARY_DIR Julia_INCLUDE_DIRS Julia_MAIN_HEADER
+-    VERSION_VAR     Julia_VERSION_STRING
+-    FAIL_MESSAGE    "Julia not found"
+-)
++find_package_handle_standard_args(
++    Julia
++    REQUIRED_VARS Julia_LIBRARY Julia_LIBRARY_DIR Julia_INCLUDE_DIRS Julia_MAIN_HEADER
++    VERSION_VAR Julia_VERSION_STRING
++    FAIL_MESSAGE "Julia not found")
