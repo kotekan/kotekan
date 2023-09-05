@@ -16,8 +16,13 @@ if(Julia_PREFIX)
     message(STATUS "THIS BRANCH")
 else()
     find_program(Julia_EXECUTABLE julia DOC "Julia executable")
-    message(STATUS "Found Julia executable: " ${Julia_EXECUTABLE})
+    string(REGEX REPLACE ".*-NOTFOUND" "" Julia_EXECUTABLE "${Julia_EXECUTABLE}"
+    if(Julia_EXECUTABLE)
+        message(STATUS "Found Julia executable: " ${Julia_EXECUTABLE})
+    endif()
 endif()
+
+if(Julia_EXECUTABLE)
 
 #################
 # Julia Version #
@@ -169,6 +174,8 @@ endif()
 
 if($ENV{target} MATCHES "^i686.*")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse -msse2")
+endif()
+
 endif()
 
 ###########################
