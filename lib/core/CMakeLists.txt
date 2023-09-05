@@ -1,5 +1,16 @@
 project(kotekan_core)
 
+# Julia is a covnenient language to implement stages for testing and development
+find_package(Julia)
+if(${Julia_FOUND})
+    message("Julia support enabled")
+    target_include_directories(kotekan_core PRIVATE ${Julia_INCLUDE_DIRS})
+    target_link_libraries(kotekan_core PUBLIC ${Julia_LIBRARY})
+    add_definitions(-DWITH_JULIA)
+else()
+    message("Julia not found, support disabled in kotekan_core")
+endif()
+
 add_library(
     kotekan_core
     basebandReadoutManager.cpp
@@ -17,22 +28,11 @@ add_library(
     metadata.c
     metadataFactory.cpp
     prometheusMetrics.cpp
-    juliaManager.cpp
+    $<IF:$<Julia_FOUND>,juliaManager.cpp>
     restServer.cpp
     Stage.cpp
     StageFactory.cpp)
 target_include_directories(kotekan_core PUBLIC .)
-
-# Julia is a covnenient language to implement stages for testing and development
-find_package(Julia)
-if(${Julia_FOUND})
-    message("Julia support enabled")
-    target_include_directories(kotekan_core PRIVATE ${Julia_INCLUDE_DIRS})
-    target_link_libraries(kotekan_core PUBLIC ${Julia_LIBRARY})
-    add_definitions(-DWITH_JULIA)
-else()
-    message("Julia not found, support disabled in kotekan_core")
-endif()
 
 # Libnuma is optionally used by buffer.c
 find_package(NUMA)
