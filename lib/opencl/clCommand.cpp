@@ -21,7 +21,7 @@ clCommand::clCommand(Config& config_, const std::string& unique_name_,
 }
 
 clCommand::~clCommand() {
-    if (kernel_command != "") {
+    if (kernel_file_name != "") {
         CHECK_CL_ERROR(clReleaseKernel(kernel));
         DEBUG("kernel Freed");
         CHECK_CL_ERROR(clReleaseProgram(program));
@@ -60,8 +60,8 @@ void clCommand::build() {
     char* program_buffer;
     cl_int err;
 
-    if (kernel_command != "") {
-        DEBUG2("Building! {:s}", kernel_command)
+    if (kernel_file_name != "") {
+        DEBUG2("Building! {:s} from file {:s}", kernel_command, kernel_file_name)
         fp = fopen(kernel_file_name.c_str(), "r");
         if (fp == nullptr) {
             FATAL_ERROR("error loading file: {:s}", kernel_file_name);

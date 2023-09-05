@@ -573,7 +573,7 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
         // Copy the visibilities into place
         map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
                          [&](int32_t pi, int32_t bi, bool conj) {
-                             cfloat t = {(float)state.vis1[2 * bi + 1], (float)state.vis1[2 * bi]};
+                             cfloat t = {(float)state.vis1[2 * bi], (float)state.vis1[2 * bi + 1]};
                              t = !conj ? t : std::conj(t);
                              output_frame.vis[pi] = iw * t;
                          });
