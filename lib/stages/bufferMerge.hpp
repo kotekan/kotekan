@@ -48,6 +48,7 @@
  * @conf timeout       Double. Default -1.0   Timeout in seconds for waiting
  *                       for a frame on any of the input buffers.
  *                       Set to a negative number for no timeout.
+ * @conf force_copy    Bool. Default false.  Forces a copy of the frames into the @c out_buf
  *
  * @author Andre Renard
  */
@@ -87,6 +88,9 @@ protected:
 
     /// The in seconds to wait for a new frame on one of the input buffers.
     double _timeout;
+
+    /// For a copy of the frame
+    bool _force_copy;
 };
 
 #endif

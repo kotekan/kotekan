@@ -7,7 +7,6 @@ import io
 import numpy as np
 import os
 import pwd
-import yaml
 from socket import gethostname
 from typing import Dict
 from datetime import datetime
@@ -18,7 +17,7 @@ nfreq = None
 ny_zone = None
 dt_ns = None
 
-from kotekan import baseband_buffer, __version__
+from kotekan import config, baseband_buffer, __version__
 
 
 def parse_reorder_map(inputs_reorder):
@@ -149,34 +148,44 @@ def raw_baseband_frames(file_name: str, buf: bytes):
 def process_raw_file(
     file_name: str,
     config: Dict[str, int],
+    root: str,
     dry_run: bool = False,
     verbose: bool = False,
-    root: str = "/data/chime/baseband/raw",
 ):
     """Convert raw file `file_name` to a standard baseband HDF5 archive"""
     metadata_size = baseband_buffer.BasebandBuffer.meta_size
 
     if nfreq is None:
         set_sampling_params(config)
-    samples_per_data_set = 512  # config.get("samples_per_data_set", 512)
+    samples_per_data_set = config.get("samples_per_data_set", 512)
+    if type(samples_per_data_set) is str:
+        samples_per_data_set = eval(samples_per_data_set)
     num_elements = config.get("num_elements", 2048)
+    if type(num_elements) is str:
+        num_elements = eval(num_elements)
     frame_size = num_elements * samples_per_data_set
     buf = bytearray(frame_size + metadata_size)
     event_id = freq_id = None
     archive_file_name = archive_file = None
     frames_read = []
     clip_after = 0
+    if verbose:
+        print("samples_per_data_set:", samples_per_data_set)
+        print("num_elements:", num_elements)
     for b in raw_baseband_frames(file_name, buf):
         # Check the frame metadata
         frame_metadata = baseband_buffer.BasebandMetadata.from_buffer(b)
         if verbose:
             print(
+                file_name,
                 frame_metadata.event_id,
                 frame_metadata.freq_id,
                 frame_metadata.frame_fpga_seq,
+                frame_metadata.time0_fpga,
             )
 
         if event_id is None:
+            # create the .h5 file and set metadata
             event_id, freq_id = (frame_metadata.event_id, frame_metadata.freq_id)
 
             if not dry_run:
@@ -202,7 +211,6 @@ def process_raw_file(
                 print("Num elements:", num_elements)
 
             baseband = np.zeros(shape=(event_fpga_len, num_elements), dtype=np.uint8)
-            # sample_present = np.zeros(shape=(event_fpga_len,), dtype=bool)
         else:
             # Data validity check: all frames in the file should be for the same event and frequency
             assert event_id == frame_metadata.event_id
@@ -232,9 +240,6 @@ def process_raw_file(
         ).reshape(
             frame_metadata.valid_to, num_elements
         )
-        # sample_present[
-        #    frame_start_idx : (frame_start_idx + frame_metadata.valid_to)
-        # ] = True
         clip_after += frame_metadata.valid_to
 
     baseband = baseband[
@@ -243,9 +248,6 @@ def process_raw_file(
     if not dry_run:
         archive_file.create_dataset("baseband", data=baseband)
         archive_file["baseband"].attrs["axis"] = ["time", "input"]
-        # archive_file.create_dataset("sample_present", data=sample_present)
-        # archive_file["sample_present"].attrs["axis"] = ["time"]
-        # archive_file["sample_present"].attrs["fill_value"] = False
     found = []
     for seq in sorted(frames_read):
         for f in found:
@@ -309,19 +311,21 @@ def sample_present_stats(file_name):
 def convert(
     file_name,
     config_file,
+    root,
     stats=False,
     dry_run=False,
     verbose=False,
-    root="/data/chime/baseband/raw",
 ):
-    """Main function to do the conversion."""
+    """Main function to do the conversion at the level of specifying a conversion backend."""
     with open(config_file) as f:
-        config = yaml.safe_load(f)
-    set_sampling_params(config)
+        # generalize for .j2 files; return_dict=True preserves behavior for .yaml files.
+        # config = yaml.safe_load(f)
+        config_dict = config.load_config_file(config_file, return_dict=True)
+    set_sampling_params(config_dict)
 
     archive_file_names = []
     for f in file_name:
-        archive_file_name = process_raw_file(f, config, dry_run, verbose, root)
+        archive_file_name = process_raw_file(f, config_dict, root, dry_run, verbose)
         archive_file_names.append(archive_file_name)
         # if stats and not dry_run:
         #    sample_present_stats(archive_file_name)
@@ -338,6 +342,18 @@ def convert(
     help="Print samples-present stats (default: on)",
 )
 @click.option(
+    "--config",
+    "-c",
+    type=click.Path(exists=True),
+    help="Path to Kotekan config file",
+)
+@click.option(
+    "--root",
+    "-r",
+    type=click.Path(exists=True),
+    help="Path containing a /yyyy/mm/dd tree",
+)
+@click.option(
     "--verbose",
     "-v",
     is_flag=True,
@@ -351,22 +367,9 @@ def convert(
     default=False,
     help="Read the raw file but do not create the archive (default: off)",
 )
-@click.option(
-    "--config_file",
-    "-c",
-    type=click.Path(exists=True),
-    help="Kotekan configuration file",
-)
-@click.option(
-    "--root",
-    "-r",
-    type=click.Path(exists=True),
-    default="/data/chime/baseband/raw",
-    help="Root path of the baseband archiver.",
-)
-def cli(file_names, config_file, stats, dry_run, verbose, root):
+def cli(file_names, stats, config, root, dry_run, verbose):
     """Convert a raw baseband file into an HDF5 baseband archive"""
-    convert(file_names, config_file, stats, dry_run, verbose, root)
+    convert(file_names, config, root, stats, dry_run, verbose)
 
 
 if __name__ == "__main__":

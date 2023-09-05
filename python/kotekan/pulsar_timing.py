@@ -43,7 +43,7 @@ class Polyco(object):
         dt = (t - self.tmid) * 1440
         phase = self.phase_ref + dt * 60 * self.f0
         for i in range(len(self.coeff)):
-            phase += self.coeff[i] * dt ** i
+            phase += self.coeff[i] * dt**i
 
         return phase
 

@@ -2,6 +2,7 @@
 #define CL_INPUT_DATA_H
 
 #include "clCommand.hpp"
+#include "gpuBufferHandler.hpp"
 
 class clInputData : public clCommand {
 public:
@@ -12,19 +13,14 @@ public:
     cl_event execute(int gpu_frame_id, cl_event pre_event) override;
     void finalize_frame(int frame_id) override;
 
-
 protected:
+    /// Helper class to manage the buffers
+    gpuBufferHandler in_bufs;
+
     cl_event* data_staged_event;
 
-    int32_t network_buffer_id;
-    int32_t network_buffer_precondition_id;
-    int32_t network_buffer_finalize_id;
-    Buffer* network_buf;
-    int32_t input_frame_len;
-
-    int32_t _num_local_freq;
-    int32_t _num_elements;
-    int32_t _samples_per_data_set;
+    /// Name of the GPU side memory to transfer data into.
+    std::string _gpu_memory;
 };
 
 #endif // CL_INPUT_DATA_H
