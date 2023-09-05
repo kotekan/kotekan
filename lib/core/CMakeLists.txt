@@ -28,10 +28,10 @@ add_library(
     metadata.c
     metadataFactory.cpp
     prometheusMetrics.cpp
-    $<IF:$<Julia_FOUND>,juliaManager.cpp>
     restServer.cpp
     Stage.cpp
-    StageFactory.cpp)
+    StageFactory.cpp
+    $<IF:${Julia_FOUND},juliaManager.cpp>)
 target_include_directories(kotekan_core PUBLIC .)
 
 # Libnuma is optionally used by buffer.c
