@@ -11,14 +11,14 @@
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for json, basic_json<>::object_t, basic_json<>::value_type
 
-#include <algorithm>  // for max
-#include <atomic>     // for atomic_bool
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, ref, _1, fun...
-#include <iosfwd>     // for std
-#include <pthread.h> // for pthread_setaffinity_np
-#include <regex>     // for match_results<>::_Base_type
-#include <sched.h>   // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <algorithm>   // for max
+#include <atomic>      // for atomic_bool
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, ref, _1, fun...
+#include <iosfwd>      // for std
+#include <pthread.h>   // for pthread_setaffinity_np
+#include <regex>       // for match_results<>::_Base_type
+#include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <stdexcept>   // for runtime_error
 #include <sys/types.h> // for uint
 
