@@ -106,6 +106,12 @@ if(${USE_HDF5} AND ${USE_OMP})
     target_sources(kotekan_stages PRIVATE Transpose.cpp VisTranspose.cpp HFBTranspose.cpp)
 endif()
 
+if(${Julia_FOUND})
+    target_include_directories(kotekan_libs INTERFACE ${JULIA_INCLUDE_DIRS})
+    target_link_libraries(kotekan_libs INTERFACE ${JULIA_LIBRARY})
+    add_definitions(-DWITH_JULIA)
+endif()
+
 if(${USE_OMP})
     target_sources(kotekan_stages PRIVATE VisTruncate.cpp HFBTruncate.cpp)
 endif()
