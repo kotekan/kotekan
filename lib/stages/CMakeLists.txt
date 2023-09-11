@@ -107,8 +107,8 @@ if(${USE_HDF5} AND ${USE_OMP})
 endif()
 
 if(${Julia_FOUND})
-    target_include_directories(kotekan_libs INTERFACE ${JULIA_INCLUDE_DIRS})
-    target_link_libraries(kotekan_libs INTERFACE ${JULIA_LIBRARY})
+    target_include_directories(kotekan_stages INTERFACE ${JULIA_INCLUDE_DIRS})
+    target_link_libraries(kotekan_stages INTERFACE ${JULIA_LIBRARY})
     add_definitions(-DWITH_JULIA)
 endif()
 

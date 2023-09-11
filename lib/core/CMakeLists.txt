@@ -25,8 +25,8 @@ add_library(
 target_include_directories(kotekan_core PUBLIC .)
 
 if(${Julia_FOUND})
-    target_include_directories(kotekan_libs INTERFACE ${JULIA_INCLUDE_DIRS})
-    target_link_libraries(kotekan_libs INTERFACE ${JULIA_LIBRARY})
+    target_include_directories(kotekan_core INTERFACE ${JULIA_INCLUDE_DIRS})
+    target_link_libraries(kotekan_core INTERFACE ${JULIA_LIBRARY})
     add_definitions(-DWITH_JULIA)
 endif()
 
