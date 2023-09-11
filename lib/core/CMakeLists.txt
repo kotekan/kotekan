@@ -1,13 +1,5 @@
 project(kotekan_core)
 
-# Julia is a covnenient language to implement stages for testing and development
-find_package(Julia)
-if(${Julia_FOUND})
-    message("Julia support enabled")
-else()
-    message("Julia not found, support disabled in kotekan_core")
-endif()
-
 add_library(
     kotekan_core
     basebandReadoutManager.cpp
@@ -30,12 +22,6 @@ add_library(
     StageFactory.cpp
     $<$<BOOL:${Julia_FOUND}>:juliaManager.cpp>)
 target_include_directories(kotekan_core PUBLIC .)
-
-if(${Julia_FOUND})
-    target_include_directories(kotekan_core PRIVATE ${JULIA_INCLUDE_DIRS})
-    target_link_libraries(kotekan_core PUBLIC ${JULIA_LIBRARY})
-    add_definitions(-DWITH_JULIA)
-endif()
 
 # Libnuma is optionally used by buffer.c
 find_package(NUMA)
