@@ -263,6 +263,11 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         df -h
 
+    - name: Run direct Kotekan tests
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" ./build-2204/kotekan/kotekan --bind-address 0:23000 --config config/tests/julia_hello_world.yaml
+
     - name: Run parallel python tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})

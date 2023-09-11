@@ -78,7 +78,9 @@ add_library(
     printSparse.cpp
     ExampleProducer.cpp
     ExampleConsumer.cpp
-    ExampleDotProduct.cpp)
+    ExampleDotProduct.cpp
+    # Julia
+    $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 
 target_include_directories(kotekan_stages PRIVATE .)
 
