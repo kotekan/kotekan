@@ -4,6 +4,17 @@ project(kotekan_libs)
 
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 
+# Julia is a covnenient language to implement stages for testing and development
+find_package(Julia)
+if(${Julia_FOUND})
+    message("Julia support enabled")
+    target_include_directories(kotekan_libs INTERFACE ${JULIA_INCLUDE_DIRS})
+    target_link_libraries(kotekan_libs INTERFACE ${JULIA_LIBRARY})
+    add_definitions(-DWITH_JULIA)
+else()
+    message("Julia not found, support disabled in kotekan_lib")
+endif()
+
 add_library(kotekan_libs INTERFACE)
 
 add_subdirectory(utils)
@@ -81,15 +92,4 @@ endif()
 # HDF5 stuff
 if(${USE_HDF5})
     target_link_libraries(kotekan_libs INTERFACE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
-endif()
-
-# Julia is a covnenient language to implement stages for testing and development
-find_package(Julia)
-if(${Julia_FOUND})
-    message("Julia support enabled")
-    target_include_directories(kotekan_libs INTERFACE ${JULIA_INCLUDE_DIRS})
-    target_link_libraries(kotekan_libs INTERFACE ${JULIA_LIBRARY})
-    add_definitions(-DWITH_JULIA)
-else()
-    message("Julia not found, support disabled in kotekan_lib")
 endif()
