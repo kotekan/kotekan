@@ -78,16 +78,16 @@ def kotekan_output(tmpdir_factory):
 
 def test_countcheck_restart(kotekan_output):
     output = kotekan_output(restartcount=True)
-    # Kotekan returns 0 whether 'countcheck' raises SIGINT or not.
+    # Kotekan returns 0 whether 'countcheck' raises SIGTERM or not.
     # So I can't check the return code to test 'countcheck'.
     # For now, I parse the output for specific messages from 'countcheck'
-    # and for a SIGINT message. Not very elegant...
+    # and for a SIGTERM message. Not very elegant...
     msg = "Found wrong start time"
-    assert (msg in output) and ("SIGINT" in output)
+    assert (msg in output) and ("SIGTERM" in output)
 
 
 def test_countcheck_norestart(kotekan_output):
-    # Test that countCheck is not raising SIGINT without reason.
+    # Test that countCheck is not raising SIGTERM without reason.
     output = kotekan_output(restartcount=False)
     msg = "Found wrong start time"
     assert msg not in output
