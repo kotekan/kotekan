@@ -19,6 +19,7 @@
 #include <pthread.h>   // for pthread_setaffinity_np
 #include <regex>       // for match_results<>::_Base_type
 #include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <set>         // for set
 #include <stdexcept>   // for runtime_error
 #include <sys/types.h> // for uint
 
