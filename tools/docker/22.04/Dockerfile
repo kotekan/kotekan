@@ -48,6 +48,7 @@ RUN apt-get -y update && \
                        libevent-dev \
                        libnuma-dev \
                        libssl-dev \
+                       libyaml-cpp-dev \
                        wget \
                        flex \
                        bison \
@@ -126,6 +127,19 @@ RUN apt-get update && \
     git clone https://bitbucket.org/blaze-lib/blaze.git blaze && \
     cd blaze && git checkout v3.4 && \
     cmake -DCMAKE_INSTALL_PREFIX=/usr/local/ && make install && cd ..
+
+# Install ASDF
+RUN mkdir src && \
+    ( \
+        cd src && \
+        wget https://github.com/eschnett/asdf-cxx/archive/refs/tags/version/7.2.2.tar.gz && \
+        tar xzf 7.2.2.tar.gz && \
+        cd asdf-cxx-version-7.2.2 && \
+        cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
+        cmake --build build && \
+        cmake --install build && \
+    true) && \
+    rm -rf src
 
 # Clone HighFive
 RUN git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git && \
