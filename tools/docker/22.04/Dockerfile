@@ -127,6 +127,17 @@ RUN apt-get update && \
     cd blaze && git checkout v3.4 && \
     cmake -DCMAKE_INSTALL_PREFIX=/usr/local/ && make install && cd ..
 
+# Install ASDF
+RUN wget https://github.com/eschnett/asdf-cxx/archive/refs/tags/version/7.2.2.tar.gz && \
+    tar xzf 7.2.2.tar.gz && \
+    ls -l && \
+    cd 7.2.2 && \
+    cmake -B build -S . && \
+    cmake --build build && \
+    cmake --install build && \
+    cd .. && \
+    rm -rf 7.2.2.tar.gz 7.2.2 
+
 # Clone HighFive
 RUN git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git && \
  cd HighFive && git pull && cd ..
