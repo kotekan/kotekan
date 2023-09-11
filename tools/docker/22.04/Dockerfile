@@ -48,6 +48,7 @@ RUN apt-get -y update && \
                        libevent-dev \
                        libnuma-dev \
                        libssl-dev \
+                       libyaml-cpp-dev \
                        wget \
                        flex \
                        bison \
