@@ -70,24 +70,6 @@ almost_equal(A_Type x, A_Type y, double epsilon) {
            || std::abs(x - y) < std::numeric_limits<A_Type>::min();
 }
 
-static std::string format_nice_string(uint8_t x) {
-    return fmt::format("{} = 0x{:x}", x, x);
-}
-/*static std::string format_nice_string(uint32_t x) {
-    return fmt::format("{} = 0x{:x}", x, x);
-    }*/
-static std::string format_nice_string(int x) {
-    return fmt::format("{} = 0x{:x}", x, x);
-}
-#if KOTEKAN_FLOAT16
-static std::string format_nice_string(float16_t x) {
-    return fmt::format("{}", (float)x);
-}
-#endif
-static std::string format_nice_string(float x) {
-    return fmt::format("{}", x);
-}
-
 template<typename A_Type>
 void testDataCheck<A_Type>::main_thread() {
 
