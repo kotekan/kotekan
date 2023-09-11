@@ -21,7 +21,7 @@ To build just the base framework:
 	cmake <options> ..
 	make
 
-Cmake build options:
+Cmake build options include:
 
 * `-DCMAKE_BUILD_TYPE=Debug` - Builds the project with asserts, debug logging and debug symbols.
 * `-DCMAKE_BUILD_TYPE=Test` - Builds the project with asserts, debug logging, but without debug
