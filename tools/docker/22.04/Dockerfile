@@ -129,14 +129,15 @@ RUN apt-get update && \
 
 # Install ASDF
 RUN mkdir src && \
-    pushd src && \
-    wget https://github.com/eschnett/asdf-cxx/archive/refs/tags/version/7.2.2.tar.gz && \
-    tar xzf 7.2.2.tar.gz && \
-    cd asdf-cxx-version-7.2.2 && \
-    cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
-    cmake --build build && \
-    cmake --install build && \
-    popd && \
+    ( \
+        cd src && \
+        wget https://github.com/eschnett/asdf-cxx/archive/refs/tags/version/7.2.2.tar.gz && \
+        tar xzf 7.2.2.tar.gz && \
+        cd asdf-cxx-version-7.2.2 && \
+        cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
+        cmake --build build && \
+        cmake --install build && \
+    true) && \
     rm -rf src
 
 # Clone HighFive
