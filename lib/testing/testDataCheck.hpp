@@ -20,7 +20,6 @@
 #include <math.h>      // for abs
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error
-#include <stdlib.h>    // for abs
 #include <string>      // for string, allocator
 #include <type_traits> // for is_same, enable_if
 #include <vector>      // for vector
@@ -55,7 +54,7 @@ testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const std::string&
     num_frames_to_test = config.get_default<int32_t>(unique_name, "num_frames_to_test", 0);
     max_num_errors = config.get_default<int32_t>(unique_name, "max_num_errors", 100);
     epsilon = config.get_default<double>(unique_name, "epsilon",
-                                         std::numeric_limits<A_Type>::epsilon() * (A_Type)5);
+                                         std::numeric_limits<A_Type>::epsilon() * (A_Type)5.0);
 }
 
 template<typename A_Type>
@@ -68,24 +67,6 @@ almost_equal(A_Type x, A_Type y, double epsilon) {
     return std::abs(x - y) <= epsilon * std::abs(x + y)
            // unless the result is subnormal
            || std::abs(x - y) < std::numeric_limits<A_Type>::min();
-}
-
-static std::string format_nice_string(uint8_t x) {
-    return fmt::format("{} = 0x{:x}", x, x);
-}
-/*static std::string format_nice_string(uint32_t x) {
-    return fmt::format("{} = 0x{:x}", x, x);
-    }*/
-static std::string format_nice_string(int x) {
-    return fmt::format("{} = 0x{:x}", x, x);
-}
-#if KOTEKAN_FLOAT16
-static std::string format_nice_string(float16_t x) {
-    return fmt::format("{}", (float)x);
-}
-#endif
-static std::string format_nice_string(float x) {
-    return fmt::format("{}", x);
 }
 
 template<typename A_Type>
