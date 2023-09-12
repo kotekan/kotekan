@@ -43,13 +43,6 @@ void cudaDeviceInterface::free_gpu_memory(void* ptr) {
     CHECK_CUDA_ERROR(cudaFree(ptr));
 }
 
-void* cudaDeviceInterface::get_gpu_memory(const std::string& name, const size_t len) {
-    return gpuDeviceInterface::get_gpu_memory(name, len);
-}
-void* cudaDeviceInterface::get_gpu_memory_array(const std::string& name, const uint32_t index,
-                                                const size_t len) {
-    return gpuDeviceInterface::get_gpu_memory_array(name, index, len);
-}
 cudaStream_t cudaDeviceInterface::getStream(int32_t cuda_stream_id) {
     return streams[cuda_stream_id];
 }

@@ -43,7 +43,8 @@ gpuCommand* hsaProcess::create_command(const std::string& cmd_name,
     return cmd;
 }
 
-void hsaProcess::queue_commands(int gpu_frame_id) {
+void hsaProcess::queue_commands(int gpu_frame_id, int gpu_frame_counter) {
+    (void)gpu_frame_counter;
     hsa_signal_t signal;
     signal.handle = 0;
     for (auto& command : commands) {
