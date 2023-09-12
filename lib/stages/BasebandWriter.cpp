@@ -45,9 +45,8 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
     _frame_size(config.get<uint32_t>(unique_name, "samples_per_data_set")
                     * config.get<uint32_t>(unique_name, "num_elements")
                 + sizeof(BasebandMetadata)),
-    in_buf(get_buffer("in_buf")),
-    write_in_progress_metric(
-        Metrics::instance().add_gauge("kotekan_baseband_writeout_in_progress", unique_name)),
+    in_buf(get_buffer("in_buf")), write_in_progress_metric(Metrics::instance().add_gauge(
+                                      "kotekan_baseband_writeout_in_progress", unique_name)),
     active_event_dumps_metric(
         Metrics::instance().add_gauge("kotekan_baseband_writeout_active_events", unique_name)),
     write_time_metric(

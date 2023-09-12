@@ -1,3 +1,5 @@
+.. _pipeline_viewer:
+
 ****************
 Pipeline Viewer
 ****************
@@ -35,7 +37,8 @@ Starting CPU Monitor
 CPU usage is monitored by a separate thread in object CpuMonitor. Thread ids are saved and passed to CPU monitor by stages, 
 and CPU monitor keeps tracking all threads every second by reading from proc file system.
 
-To enable CPU usage tracking, add the following to config:
+To enable CPU usage tracking, add the following to the config:
+
 .. code-block:: YAML
 
     cpu_monitor:
@@ -48,6 +51,7 @@ Dump files are generated when kotekan goes down due to errors, but it is possibl
 dump by calling ``dump_trackers()`` from ``KotekanTrackers`` instance.
 
 To enable crash dump, add the following to config:
+
 .. code-block:: YAML
 
     trackers:
@@ -60,19 +64,20 @@ Debug server is written in python with Flask, and it provides a way for web inte
 from kotekan endpoints and read dump files from file system.
 
 To start the server:
+
 .. code-block:: bash
 
-    export FLASK_APP=debug_server.py FLASK_DEBUG=1
-    python debug_server.py
+    FLASK_APP=debug_server.py FLASK_DEBUG=1 flask run
 
 **Note: use option -h to see help info**
 "-a=<kotelan_addr>" sets the kotekan address. The default is ``http://localhost:12048``.
 "-d=<dump_folder>" sets the dump folder path. The default is ``./``.
 
 To stop the server:
+
 .. code:: bash
 
-    Clt + C
+    Ctrl + C
 
 Running Pipeline Viewer
 -----------------------

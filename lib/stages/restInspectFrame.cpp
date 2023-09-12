@@ -42,7 +42,7 @@ restInspectFrame::restInspectFrame(Config& config, const std::string& unique_nam
 
     if (len == 0) {
         len = in_buf->frame_size;
-    } else if (len > in_buf->frame_size) {
+    } else if ((size_t)len > in_buf->frame_size) {
         WARN("Requested len ({:d}) is greater than the frame_size ({:d}).", len,
              in_buf->frame_size);
         len = in_buf->frame_size;

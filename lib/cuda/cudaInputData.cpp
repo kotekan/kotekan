@@ -22,11 +22,15 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
 
     _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
 
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem, true, false, true));
+
     in_buffer_id = 0;
     in_buffer_precondition_id = 0;
     in_buffer_finalize_id = 0;
 
-    command_type = gpuCommandType::COPY_IN;
+    set_command_type(gpuCommandType::COPY_IN);
+
+    kernel_command = "cudaInputData: " + _gpu_mem;
 }
 
 cudaInputData::~cudaInputData() {
@@ -51,19 +55,23 @@ int cudaInputData::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-cudaEvent_t cudaInputData::execute(int gpu_frame_id, cudaEvent_t pre_event) {
-    pre_execute(gpu_frame_id);
+cudaEvent_t cudaInputData::execute(cudaPipelineState& pipestate,
+                                   const std::vector<cudaEvent_t>& pre_events) {
+    pre_execute(pipestate.gpu_frame_id);
 
-    uint32_t input_frame_len = in_buf->frame_size;
+    size_t input_frame_len = in_buf->frame_size;
 
-    void* gpu_memory_frame = device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, input_frame_len);
+    void* gpu_memory_frame =
+        device.get_gpu_memory_array(_gpu_mem, pipestate.gpu_frame_id, input_frame_len);
     void* host_memory_frame = (void*)in_buf->frames[in_buffer_id];
 
-    device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame, input_frame_len, pre_event,
-                                  pre_events[gpu_frame_id], post_events[gpu_frame_id]);
+    device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame, input_frame_len,
+                                  cuda_stream_id, pre_events[cuda_stream_id],
+                                  start_events[pipestate.gpu_frame_id],
+                                  end_events[pipestate.gpu_frame_id]);
 
     in_buffer_id = (in_buffer_id + 1) % in_buf->num_frames;
-    return post_events[gpu_frame_id];
+    return end_events[pipestate.gpu_frame_id];
 }
 
 void cudaInputData::finalize_frame(int frame_id) {
@@ -73,7 +81,8 @@ void cudaInputData::finalize_frame(int frame_id) {
 }
 
 std::string cudaInputData::get_performance_metric_string() {
-    double transfer_speed =
-        (double)in_buf->frame_size / (double)get_last_gpu_execution_time() * 1e-9;
-    return fmt::format("Speed: {:.2f} GB/s ({:.2f} Gb/s)", transfer_speed, transfer_speed * 8);
+    double t = (double)get_last_gpu_execution_time();
+    double transfer_speed = (double)in_buf->frame_size / t * 1e-9;
+    return fmt::format("Time: {:.3f} ms, Speed: {:.2f} GB/s ({:.2f} Gb/s)", t * 1e3, transfer_speed,
+                       transfer_speed * 8);
 }

@@ -5,8 +5,7 @@
 #include <string.h> // for memset
 
 BasebandFrameView::BasebandFrameView(Buffer* buf, int frame_id) :
-    FrameView(buf, frame_id),
-    _metadata((BasebandMetadata*)buf->metadata[id]->metadata) {}
+    FrameView(buf, frame_id), _metadata((BasebandMetadata*)buf->metadata[id]->metadata) {}
 
 
 const BasebandMetadata* BasebandFrameView::metadata() const {

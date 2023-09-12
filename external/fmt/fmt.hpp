@@ -7,6 +7,10 @@
     #define FMT_HEADER_ONLY
 #endif
 
+#ifndef FMT_OVERRIDE
+    #define FMT_OVERRIDE override
+#endif
+
 // Enable the fmt() macro for compile time string format checking
 #define FMT_STRING_ALIAS 1
 

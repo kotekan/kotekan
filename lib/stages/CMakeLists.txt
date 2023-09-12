@@ -74,7 +74,13 @@ add_library(
     testDataGen.cpp
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp
-    hexDump.cpp)
+    hexDump.cpp
+    printSparse.cpp
+    ExampleProducer.cpp
+    ExampleConsumer.cpp
+    ExampleDotProduct.cpp
+    # Julia
+    $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 
 target_include_directories(kotekan_stages PRIVATE .)
 
@@ -98,6 +104,12 @@ endif()
 
 if(${USE_HDF5} AND ${USE_OMP})
     target_sources(kotekan_stages PRIVATE Transpose.cpp VisTranspose.cpp HFBTranspose.cpp)
+endif()
+
+if(${Julia_FOUND})
+    target_include_directories(kotekan_stages INTERFACE ${JULIA_INCLUDE_DIRS})
+    target_link_libraries(kotekan_stages INTERFACE ${JULIA_LIBRARY})
+    add_definitions(-DWITH_JULIA)
 endif()
 
 if(${USE_OMP})

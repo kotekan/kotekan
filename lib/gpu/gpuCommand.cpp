@@ -2,6 +2,8 @@
 
 #include "Config.hpp" // for Config
 
+#include "fmt.hpp"
+
 #include <assert.h>  // for assert
 #include <exception> // for exception
 #include <regex>     // for match_results<>::_Base_type
@@ -19,17 +21,14 @@ gpuCommand::gpuCommand(Config& config_, const std::string& unique_name_,
                        const std::string& default_kernel_command,
                        const std::string& default_kernel_file_name) :
     kernel_command(default_kernel_command),
-    kernel_file_name(default_kernel_file_name),
-    config(config_),
-    unique_name(unique_name_),
-    host_buffers(host_buffers_),
-    dev(device_) {
+    kernel_file_name(default_kernel_file_name), config(config_), unique_name(unique_name_),
+    host_buffers(host_buffers_), dev(device_) {
     _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
 
     // Set the local log level.
     std::string s_log_level = config.get<string>(unique_name, "log_level");
     set_log_level(s_log_level);
-    set_log_prefix(unique_name);
+    set_log_prefix(fmt::format("{:s} ({:30s})", unique_name, get_name()));
 
     // Load the kernel if there is one.
     if (default_kernel_file_name != "") {

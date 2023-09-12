@@ -43,6 +43,14 @@
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;
 
+#if defined(WITH_CUDA)
+#include <cuda_fp16.h>
+using float16_t = __half;
+#define KOTEKAN_FLOAT16 1
+#else
+#define KOTEKAN_FLOAT16 0
+#endif
+
 /// Aliased type for storing the layout of members in a struct
 /// The first element of the pair is the total struct size, the second is a map
 /// associating the type T member labels with their offsets
@@ -893,7 +901,6 @@ public:
      * @brief Create a frameID for a given buffer.
      *
      * @param buf   Buffer to use.
-     * @returns frameID instance.
      **/
     frameID(const Buffer* buf) : modulo<int>(buf->num_frames) {}
 };
@@ -910,5 +917,81 @@ struct formatter<frameID> : formatter<int> {
 };
 } // namespace fmt
 
+/**
+ * @brief Pretty-printing for terminal or literal python code.
+ */
+inline std::string format_nice_string(uint8_t x) {
+    return fmt::format("{} = 0x{:x}", x, x);
+}
+inline std::string format_nice_string(uint32_t x) {
+    return fmt::format("{} = 0x{:x}", x, x);
+}
+inline std::string format_nice_string(int x) {
+    return fmt::format("{} = 0x{:x}", x, x);
+}
+#if KOTEKAN_FLOAT16
+inline std::string format_nice_string(float16_t x) {
+    return fmt::format("{}", (float)x);
+}
+#endif
+inline std::string format_nice_string(float x) {
+    return fmt::format("{}", x);
+}
+
+inline std::string format_python_string(uint8_t x) {
+    return fmt::format("{}", x);
+}
+inline std::string format_python_string(uint32_t x) {
+    return fmt::format("{}", x);
+}
+#if KOTEKAN_FLOAT16
+inline std::string format_python_string(float16_t x) {
+    return fmt::format("{}", (float)x);
+}
+#endif
+
+/**
+ * @brief Degrees to radians, as floats
+ */
+inline float deg2radf(float d) {
+    return d * (float)(M_PI / 180.);
+}
+
+/**
+ * @brief Trig functions for angles in degrees, as floats
+ */
+inline float cosdf(float d) {
+    return cosf(deg2radf(d));
+}
+inline float sindf(float d) {
+    return sinf(deg2radf(d));
+}
+
+/**
+ * @brief Returns time of day in floating-point seconds.  Useful if you want to measure the time
+ * between two events.
+ */
+inline double gettime() {
+    struct timeval tp;
+    gettimeofday(&tp, nullptr);
+    return tp.tv_sec + tp.tv_usec / 1.0e+6;
+}
+
+typedef uint8_t int4x2_t;
+
+// Compose a 4+4-bit complex integer
+inline constexpr int4x2_t set4(const int8_t lo, const int8_t hi) {
+    return (uint8_t(lo) & 0x0f) | ((uint8_t(hi) << 4) & 0xf0);
+}
+// Compose a 4+4-bit complex integer
+inline constexpr int4x2_t set4(const std::array<int8_t, 2> a) {
+    return set4(a[0], a[1]);
+}
+
+// Decompose a 4+4-bit complex integer
+inline constexpr std::array<int8_t, 2> get4(const int4x2_t i) {
+    return {int8_t(int8_t((i + 0x08) & 0x0f) - 0x08),
+            int8_t(int8_t(((i >> 4) + 0x08) & 0x0f) - 0x08)};
+}
 
 #endif

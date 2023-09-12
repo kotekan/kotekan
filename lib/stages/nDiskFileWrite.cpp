@@ -204,12 +204,18 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
 
             ssize_t bytes_writen = write(fd, frame, buf->frame_size);
 
-            if (bytes_writen != buf->frame_size) {
+            if ((size_t)bytes_writen != buf->frame_size) {
                 ERROR("Failed to write buffer to disk!!!  Abort, Panic, etc.");
                 exit(-1);
             } else {
                 // INFO("Data writen to file!");
             }
+
+#ifdef __linux__
+            // To free the cache memory
+            syncfs(fd);
+            posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
+#endif
 
             if (close(fd) == -1) {
                 ERROR("Cannot close file {:s}", file_name);

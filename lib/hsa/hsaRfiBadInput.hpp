@@ -68,9 +68,9 @@ public:
 
 private:
     /// Length of the input frame
-    uint32_t input_frame_len;
+    size_t input_frame_len;
     /// Length of the output frame
-    uint32_t output_frame_len;
+    size_t output_frame_len;
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;
     /// Number of frequencies per GPU (1 for CHIME or 8 for Pathfinder)

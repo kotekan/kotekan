@@ -18,7 +18,7 @@ REGISTER_KOTEKAN_STAGE(clProcess);
 clProcess::clProcess(Config& config_, const std::string& unique_name,
                      bufferContainer& buffer_container) :
     gpuProcess(config_, unique_name, buffer_container) {
-    device = new clDeviceInterface(config_, gpu_id, _gpu_buffer_depth);
+    device = new clDeviceInterface(config_, unique_name, gpu_id, _gpu_buffer_depth);
     dev = device;
     device->prepareCommandQueue(true); // yes profiling
     init();
@@ -48,7 +48,8 @@ gpuCommand* clProcess::create_command(const std::string& cmd_name, const std::st
     return cmd;
 }
 
-void clProcess::queue_commands(int gpu_frame_id) {
+void clProcess::queue_commands(int gpu_frame_id, int gpu_frame_counter) {
+    (void)gpu_frame_counter;
     cl_event signal = nullptr;
     for (auto& command : commands) {
         // Feed the last signal into the next operation

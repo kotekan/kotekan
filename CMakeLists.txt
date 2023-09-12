@@ -36,7 +36,7 @@ option(USE_CLOC "Use the CL offline compiler" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_CUDA "Build CUDA GPU Framework" OFF)
 option(USE_HIP "Build HIP GPU Framework" OFF)
-option(USE_DPDK "Enable DPDK Framework" OFF)
+option(USE_OLD_DPDK "Enable old versions of DPDK (<19.11)" OFF)
 option(USE_HDF5 "Build HDF5 output stages" OFF)
 option(USE_OMP "Enable OpenMP" OFF)
 option(USE_OLD_ROCM "Build for ROCm versions 2.3 or older" OFF)
@@ -239,10 +239,6 @@ endif()
 message("GPU Modules Included: " ${GPU_MODULES})
 
 set(INPUT_MODULES "")
-if(${USE_DPDK})
-    set(INPUT_MODULES ${INPUT_MODULES} "DPDK ")
-    find_package(DPDK REQUIRED)
-endif()
 if(${USE_AIRSPY})
     add_definitions(-DWITH_AIRSPY)
     set(INPUT_MODULES ${INPUT_MODULES} "AIRSPY ")
@@ -319,8 +315,9 @@ if(${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)
 endif()
 
-# Turn off memlocking of buffers. This is useful when running in restricted environments e.g. Docker
-# containers
+# Prevent memory locking and setting any memory policies. This is useful when running in restricted
+# environments, e.g. Docker containers.  Note this can also be done with the configuration file for
+# systems which do support memory locking, but where some memory shouldn't be memory locked.
 if(${NO_MEMLOCK})
     message("Do not lock buffer memory.")
     add_definitions(-DWITH_NO_MEMLOCK)

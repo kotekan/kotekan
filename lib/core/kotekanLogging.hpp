@@ -118,7 +118,7 @@ enum class logLevel {
     }
 
 // Use this for fatal errors that kotekan can't recover from.
-// Prints an error message and raises a SIGINT.
+// Prints an error message and raises a SIGTERM.
 #define FATAL_ERROR(m, a...)                                                                       \
     {                                                                                              \
         ERROR(m, ##a);                                                                             \

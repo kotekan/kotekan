@@ -152,12 +152,24 @@ protected:
      * @return True if the packet doesn't have errors and false otherwise.
      */
     inline bool check_packet(struct rte_mbuf* cur_mbuf) {
+#ifndef OLD_DPDK
+        if (unlikely((cur_mbuf->ol_flags & RTE_MBUF_F_RX_IP_CKSUM_MASK)
+                     == RTE_MBUF_F_RX_IP_CKSUM_BAD)
+            || unlikely((cur_mbuf->ol_flags & RTE_MBUF_F_RX_L4_CKSUM_MASK)
+                        == RTE_MBUF_F_RX_L4_CKSUM_BAD)) {
+            WARN("Port: {:d}; Got bad packet IP or UDP checksum", port);
+            rx_ip_cksum_errors_total += 1;
+            rx_errors_total += 1;
+            return false;
+        }
+#else
         if (unlikely((cur_mbuf->ol_flags | PKT_RX_IP_CKSUM_BAD) == 1)) {
             WARN("dpdk: Got bad packet checksum on port {:d}", port);
             rx_ip_cksum_errors_total += 1;
             rx_errors_total += 1;
             return false;
         }
+#endif
         if (unlikely(fpga_packet_size != cur_mbuf->pkt_len)) {
 
             // Checks the packet size matches the expected FPGA packet size.

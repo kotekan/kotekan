@@ -7,8 +7,9 @@
 using kotekan::Config;
 using std::string;
 
-hipDeviceInterface::hipDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_buffer_depth_) :
-    gpuDeviceInterface(config_, gpu_id_, gpu_buffer_depth_) {
+hipDeviceInterface::hipDeviceInterface(kotekan::Config& config, const std::string& unique_name,
+                                       int32_t gpu_id, int gpu_buffer_depth) :
+    gpuDeviceInterface(config, unique_name, gpu_id, gpu_buffer_depth) {
 
     // Find out how many GPUs can be probed.
     int max_num_gpus;
@@ -35,11 +36,11 @@ void hipDeviceInterface::free_gpu_memory(void* ptr) {
 }
 
 
-void* hipDeviceInterface::get_gpu_memory(const string& name, const uint32_t len) {
+void* hipDeviceInterface::get_gpu_memory(const string& name, const size_t len) {
     return gpuDeviceInterface::get_gpu_memory(name, len);
 }
 void* hipDeviceInterface::get_gpu_memory_array(const string& name, const uint32_t index,
-                                               const uint32_t len) {
+                                               const size_t len) {
     return gpuDeviceInterface::get_gpu_memory_array(name, index, len);
 }
 hipStream_t hipDeviceInterface::getStream(int stream_id) {

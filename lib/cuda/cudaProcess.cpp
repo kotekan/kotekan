@@ -20,9 +20,12 @@ REGISTER_KOTEKAN_STAGE(cudaProcess);
 cudaProcess::cudaProcess(Config& config_, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     gpuProcess(config_, unique_name, buffer_container) {
-    device = new cudaDeviceInterface(config_, gpu_id, _gpu_buffer_depth);
+    device = new cudaDeviceInterface(config_, unique_name, gpu_id, _gpu_buffer_depth);
     dev = device;
-    device->prepareStreams();
+
+    uint32_t num_streams = config.get_default<uint32_t>(unique_name, "num_cuda_streams", 3);
+
+    device->prepareStreams(num_streams);
     CHECK_CUDA_ERROR(cudaProfilerStart());
     init();
 }
@@ -43,13 +46,26 @@ gpuCommand* cudaProcess::create_command(const std::string& cmd_name,
     return cmd;
 }
 
-void cudaProcess::queue_commands(int gpu_frame_id) {
-    cudaEvent_t signal = nullptr;
+void cudaProcess::queue_commands(int gpu_frame_id, int gpu_frame_counter) {
+    std::vector<cudaEvent_t> events;
+    events.resize(device->get_num_streams(), nullptr);
+
+    cudaPipelineState pipestate(gpu_frame_id);
+    pipestate.set_int("gpu_frame_counter", gpu_frame_counter);
+    cudaEvent_t final_event = nullptr;
+
     for (auto& command : commands) {
         // Feed the last signal into the next operation
-        signal = ((cudaCommand*)command)->execute(gpu_frame_id, signal);
+        cudaEvent_t event = ((cudaCommand*)command)->execute_base(pipestate, events);
+        if (event != nullptr) {
+            int32_t command_stream_id = ((cudaCommand*)command)->get_cuda_stream_id();
+            events[command_stream_id] = event;
+            final_event = event;
+        }
     }
-    final_signals[gpu_frame_id]->set_signal(signal);
+    // Wait on the very last event from the last command.
+    // TODO, this should wait on the last event from every stream!
+    final_signals[gpu_frame_id]->set_signal(final_event);
     DEBUG2("Commands executed.");
 }
 

@@ -13,13 +13,11 @@
 #include <errno.h>    // for errno
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error
 #include <stdint.h>   // for uint32_t, uint8_t
 #include <string.h>   // for strerror
 #include <sys/stat.h> // for stat
 #include <unistd.h>   // for sleep
-#include <vector>     // for vector
 
 
 inline bool file_exists(char* name) {
@@ -123,7 +121,7 @@ void rawFileRead::main_thread() {
                 INFO("rawFileRead: Read in metadata from file {:s}", full_path);
             }
 
-            int bytes_read = fread((void*)frame, sizeof(char), buf->frame_size, fp);
+            size_t bytes_read = fread((void*)frame, sizeof(char), buf->frame_size, fp);
 
             if (bytes_read != buf->frame_size) {
                 ERROR("rawFileRead: Failed to read file {:s}!", full_path);
