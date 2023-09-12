@@ -7,7 +7,7 @@
 #define HSA_RFI_BAD_INPUT_OUTPUT_H
 
 #include "Config.hpp"             // for Config
-#include "buffer.hpp"               // for Buffer
+#include "buffer.hpp"             // for Buffer
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "hsa/hsa.h"              // for hsa_signal_t
 #include "hsaCommand.hpp"         // for hsaCommand

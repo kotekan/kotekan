@@ -9,7 +9,7 @@
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "Telescope.hpp"       // for freq_id_t, Telescope, stream_t
-#include "buffer.hpp"            // for Buffer
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t
 #include "fakeGpuPattern.hpp"  // for FakeGpuPattern

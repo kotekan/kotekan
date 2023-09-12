@@ -320,7 +320,8 @@ int private_mark_frame_empty(struct Buffer* buf, const int id) {
     int broadcast = 0;
     if (buf->zero_frames == 1) {
         pthread_t zero_t;
-        struct zero_frames_thread_args* zero_args = (struct zero_frames_thread_args*)malloc(sizeof(struct zero_frames_thread_args));
+        struct zero_frames_thread_args* zero_args =
+            (struct zero_frames_thread_args*)malloc(sizeof(struct zero_frames_thread_args));
         zero_args->ID = id;
         zero_args->buf = buf;
 

@@ -3,13 +3,13 @@
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"       // for Telescope, stream_t
-#include "buffer.hpp"            // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "buffer.hpp"          // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "chordMetadata.hpp"
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 #include "kotekanTrackers.hpp" // for KotekanTrackers
 #include "oneHotMetadata.hpp"  // for metadata_is_onehot, set_onehot_frame_counter, set_onehot_...
-#include "chordMetadata.hpp"
 #include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
 #include "visUtil.hpp"         // for current_time, ts_to_double, StatTracker
 
@@ -76,12 +76,13 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
             throw std::invalid_argument("testDataGen: product of 'array_shape' config setting must equal the buffer frame size");
         // clang-format on
     }
-    _dim_name =
-        config.get_default<std::vector<std::string>>(unique_name, "dim_name", std::vector<std::string>());
+    _dim_name = config.get_default<std::vector<std::string>>(unique_name, "dim_name",
+                                                             std::vector<std::string>());
     if (_dim_name.size()) {
         if (_array_shape.size()) {
             if (_array_shape.size() != _dim_name.size()) {
-                throw std::invalid_argument("testDataGen: 'array_shape' and 'dim_name' config settings must be the same length!");
+                throw std::invalid_argument("testDataGen: 'array_shape' and 'dim_name' config "
+                                            "settings must be the same length!");
             }
         }
     }
@@ -235,8 +236,9 @@ void testDataGen::main_thread() {
 
                         chordmeta->set_array_dimension(i, n, name);
                         chordmeta->set_onehot_dimension(i, indices[i], name);
-                        //INFO("Chord metadata: set one-hot index {:c} = {:d} (of {:d})", name, indices[i], n);
-                        // HACK -- look for dimension named "F", assume that's = nfreq
+                        // INFO("Chord metadata: set one-hot index {:c} = {:d} (of {:d})", name,
+                        // indices[i], n);
+                        //  HACK -- look for dimension named "F", assume that's = nfreq
                         if (name == "F")
                             nfreq = n;
                         // HACK -- look for dimension named "T", assume that's a fine time sample
@@ -247,11 +249,11 @@ void testDataGen::main_thread() {
                     chordmeta->n_one_hot = chordmeta->dims;
                     chordmeta->type = chordDataType::int4p4;
                     chordmeta->frame_counter = frame_id_abs;
-                    //DEBUG("one-hot: nfreq = {:d}, ntime = {:d}", nfreq, ntime);
+                    // DEBUG("one-hot: nfreq = {:d}, ntime = {:d}", nfreq, ntime);
                     if (nfreq) {
                         assert(nfreq <= CHORD_META_MAX_FREQ);
                         chordmeta->nfreq = nfreq;
-                        for (int i=0; i<nfreq; i++) {
+                        for (int i = 0; i < nfreq; i++) {
                             // Arbitrarily number the frequency channels...
                             chordmeta->coarse_freq[i] = i;
                             chordmeta->freq_upchan_factor[i] = 1;

@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"            // for Buffer
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "configUpdater.hpp"   // for configUpdater
 #include "kotekanLogging.hpp"  // for WARN

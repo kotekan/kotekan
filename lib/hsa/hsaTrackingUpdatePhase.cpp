@@ -5,7 +5,7 @@
 
 #include "Config.hpp" // for Config
 #include "Telescope.hpp"
-#include "buffer.hpp"               // for mark_frame_empty, Buffer, register_consumer, wait_for...
+#include "buffer.hpp"             // for mark_frame_empty, Buffer, register_consumer, wait_for...
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "configUpdater.hpp"      // for configUpdater
 #include "hsaBase.h"              // for hsa_host_free, hsa_host_malloc

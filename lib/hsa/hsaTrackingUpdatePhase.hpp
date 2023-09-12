@@ -9,7 +9,7 @@
 
 #include "Config.hpp" // for Config
 #include "Telescope.hpp"
-#include "buffer.hpp"               // for Buffer
+#include "buffer.hpp"             // for Buffer
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "chimeMetadata.hpp"      // for beamCoord
 #include "hsa/hsa.h"              // for hsa_signal_t

@@ -4,7 +4,7 @@
 #include "Hash.hpp"           // for operator!=
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"      // for Telescope
-#include "buffer.hpp"           // for mark_frame_empty, register_consumer, wait_for_empty_frame
+#include "buffer.hpp"         // for mark_frame_empty, register_consumer, wait_for_empty_frame
 #include "chimeMetadata.hpp"  // for get_fpga_seq_num, get_lost_timesamples
 #include "datasetManager.hpp" // for state_id_t, dset_id_t, datasetManager
 #include "datasetState.hpp"   // for beamState, freqState, metadataState, subfreqState

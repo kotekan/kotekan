@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"            // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
+#include "buffer.hpp"          // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "powerStreamUtil.hpp" // for IntensityPacketHeader
 

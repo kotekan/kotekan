@@ -2,7 +2,7 @@
 
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"              // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
+#include "buffer.hpp"            // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics

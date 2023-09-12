@@ -3,7 +3,7 @@
 #include "BeamMetadata.hpp"   // for BeamMetadata
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"      // for stream_t
-#include "buffer.hpp"           // for get_metadata, allocate_new_metadata_object, mark_frame_empty
+#include "buffer.hpp"         // for get_metadata, allocate_new_metadata_object, mark_frame_empty
 #include "chimeMetadata.hpp"  // for chimeMetadata, beamCoord, get_stream_id
 #include "datasetManager.hpp" // for dset_id_t
 #include "kotekanLogging.hpp" // for DEBUG2

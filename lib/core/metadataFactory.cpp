@@ -5,10 +5,10 @@
 #include "Config.hpp"           // for Config
 #include "HFBMetadata.hpp"      // for HFBMetadata
 #include "chimeMetadata.hpp"    // for chimeMetadata
-#include "kotekanLogging.hpp"   // for INFO_NON_OO
-#include "metadata.h"           // for create_metadata_pool
-#include "oneHotMetadata.hpp"
 #include "chordMetadata.hpp"
+#include "kotekanLogging.hpp" // for INFO_NON_OO
+#include "metadata.h"         // for create_metadata_pool
+#include "oneHotMetadata.hpp"
 #include "visBuffer.hpp"
 
 #include "fmt.hpp" // for format, fmt

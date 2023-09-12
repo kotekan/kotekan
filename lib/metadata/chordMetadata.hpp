@@ -12,9 +12,7 @@
 
 #pragma pack()
 
-enum chordDataType {
-    int4p4, int8, float16, float32
-};
+enum chordDataType { int4p4, int8, float16, float32 };
 
 // Maximum number of frequencies in metadata array
 const int CHORD_META_MAX_FREQ = 16;
@@ -29,7 +27,7 @@ struct chordMetadata {
     struct chimeMetadata chime;
     int frame_counter;
 
-    //cudaDataType_t type;
+    // cudaDataType_t type;
     chordDataType type;
 
     int dims;
@@ -69,7 +67,7 @@ struct chordMetadata {
 
     std::string get_dimensions_string() {
         std::string s;
-        for (int i=0; i<this->dims; i++) {
+        for (int i = 0; i < this->dims; i++) {
             if (i)
                 s += " x ";
             s += get_dimension_name(i) + "(";
@@ -84,7 +82,7 @@ struct chordMetadata {
 
     std::string get_onehot_string() {
         std::string s;
-        for (int i=0; i<this->n_one_hot; i++) {
+        for (int i = 0; i < this->n_one_hot; i++) {
             if (i)
                 s += ", ";
             s += get_onehot_name(i) + "=";
@@ -104,7 +102,6 @@ struct chordMetadata {
         this->onehot_index[dim] = i;
         strncpy(this->onehot_name[dim], name.c_str(), CHORD_META_MAX_DIMNAME);
     }
-
 };
 
 inline void chord_metadata_init(struct chordMetadata* c) {

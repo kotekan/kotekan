@@ -1,7 +1,7 @@
 #include "invalidateVDIFframes.hpp"
 
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"              // for Buffer, mark_frame_empty, mark_frame_full, register_con...
+#include "buffer.hpp"            // for Buffer, mark_frame_empty, mark_frame_full, register_con...
 #include "chimeMetadata.hpp"     // for atomic_add_lost_timesamples
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 #include "vdif_functions.h"      // for VDIFHeader

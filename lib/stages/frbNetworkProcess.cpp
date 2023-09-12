@@ -3,7 +3,7 @@
 #include "Config.hpp"       // for Config
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"
-#include "buffer.hpp"              // for wait_for_full_frame, mark_frame_empty, register_consumer
+#include "buffer.hpp"            // for wait_for_full_frame, mark_frame_empty, register_consumer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "frb_functions.h"       // for FRBHeader
 #include "kotekanLogging.hpp"    // for DEBUG, INFO, WARN, FATAL_ERROR, ERROR

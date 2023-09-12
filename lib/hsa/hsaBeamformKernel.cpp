@@ -2,7 +2,7 @@
 
 #include "Config.hpp" // for Config
 #include "Telescope.hpp"
-#include "buffer.hpp"               // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "buffer.hpp"             // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
 #include "hsaBase.h"              // for hsa_host_free, hsa_host_malloc

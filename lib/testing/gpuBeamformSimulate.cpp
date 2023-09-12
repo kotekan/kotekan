@@ -3,7 +3,7 @@
 #include "Config.hpp"       // for Config
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"
-#include "buffer.hpp"            // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "buffer.hpp"          // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for ERROR, INFO
 

@@ -5,7 +5,7 @@
 #include "HFBMetadata.hpp"     // for HFBMetadata
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"       // for Telescope
-#include "buffer.hpp"            // for mark_frame_full, register_producer, wait_for_empty_frame
+#include "buffer.hpp"          // for mark_frame_full, register_producer, wait_for_empty_frame
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager
 #include "datasetState.hpp"    // for beamState, freqState, metadataState, subfreqState

@@ -4,7 +4,7 @@
 #include "Config.hpp"           // for Config
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"        // for stream_t
-#include "buffer.hpp"             // for Buffer, wait_for_empty_frame, mark_frame_empty, mark_fra...
+#include "buffer.hpp"           // for Buffer, wait_for_empty_frame, mark_frame_empty, mark_fra...
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "chimeMetadata.hpp"    // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
 #include "vdif_functions.h"     // for VDIFHeader

@@ -9,7 +9,7 @@
 #include "BasebandFileRaw.hpp"   // for BasebandFileRaw
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
-#include "buffer.hpp"              // for Buffer
+#include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "prometheusMetrics.hpp" // for Gauge, Counter
 #include "visUtil.hpp"           // for movingAverage

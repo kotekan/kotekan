@@ -13,7 +13,7 @@
 
 
 #include "Config.hpp" // for Config
-#include "buffer.hpp"   // for Buffer
+#include "buffer.hpp" // for Buffer
 
 #include "fmt.hpp"      // for format_context, formatter
 #include "gsl-lite.hpp" // for span

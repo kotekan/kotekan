@@ -3,7 +3,7 @@
 #include "BeamMetadata.hpp"   // for BeamMetadata
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"      // for Telescope
-#include "buffer.hpp"           // for get_metadata, mark_frame_empty, register_consumer, wait_fo...
+#include "buffer.hpp"         // for get_metadata, mark_frame_empty, register_consumer, wait_fo...
 #include "kotekanLogging.hpp" // for INFO
 #include "visUtil.hpp"        // for frameID, modulo
 

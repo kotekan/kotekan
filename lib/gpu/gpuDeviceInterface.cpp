@@ -118,7 +118,8 @@ void gpuDeviceInterface::create_gpu_memory_array_view(const std::string& source_
     }
 }
 
-struct metadataContainer* gpuDeviceInterface::get_gpu_memory_array_metadata(const std::string& name, const uint32_t index) {
+struct metadataContainer* gpuDeviceInterface::get_gpu_memory_array_metadata(const std::string& name,
+                                                                            const uint32_t index) {
     // Memory array must be allocated already
     if (gpu_memory.count(name) == 0) {
         FATAL_ERROR("get_gpu_memory_array_metadata for name \"{:s}\": does not exist yet.", name);
@@ -133,7 +134,9 @@ struct metadataContainer* gpuDeviceInterface::get_gpu_memory_array_metadata(cons
     return mem;
 }
 
-struct metadataContainer* gpuDeviceInterface::create_gpu_memory_array_metadata(const std::string& name, const uint32_t index, struct metadataPool* pool) {
+struct metadataContainer*
+gpuDeviceInterface::create_gpu_memory_array_metadata(const std::string& name, const uint32_t index,
+                                                     struct metadataPool* pool) {
     // Memory array must be allocated already
     if (gpu_memory.count(name) == 0) {
         FATAL_ERROR("get_gpu_memory_array_metadata for name \"{:s}\": does not exist yet.", name);
@@ -153,7 +156,9 @@ struct metadataContainer* gpuDeviceInterface::create_gpu_memory_array_metadata(c
     return mc;
 }
 
-void gpuDeviceInterface::claim_gpu_memory_array_metadata(const std::string& name, const uint32_t index, struct metadataContainer* mc) {
+void gpuDeviceInterface::claim_gpu_memory_array_metadata(const std::string& name,
+                                                         const uint32_t index,
+                                                         struct metadataContainer* mc) {
     // Memory array must be allocated already
     if (gpu_memory.count(name) == 0) {
         FATAL_ERROR("claim_gpu_memory_array_metadata for name \"{:s}\": does not exist yet.", name);
@@ -172,10 +177,12 @@ void gpuDeviceInterface::claim_gpu_memory_array_metadata(const std::string& name
     gpu_memory[name].metadata_pointers[index] = mc;
 }
 
-void gpuDeviceInterface::release_gpu_memory_array_metadata(const std::string& name, const uint32_t index) {
+void gpuDeviceInterface::release_gpu_memory_array_metadata(const std::string& name,
+                                                           const uint32_t index) {
     // Memory array must be allocated already
     if (gpu_memory.count(name) == 0) {
-        FATAL_ERROR("release_gpu_memory_array_metadata for name \"{:s}\": does not exist yet.", name);
+        FATAL_ERROR("release_gpu_memory_array_metadata for name \"{:s}\": does not exist yet.",
+                    name);
     }
     // Make sure we aren't asking for an index past the end of the array.
     assert(index < gpu_memory[name].metadata_pointers.size());

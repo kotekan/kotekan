@@ -95,13 +95,16 @@ public:
      * @brief Fetches the metadata (if any) attached to the given GPU
      * memory array element.  Return NULL if no metadata.
      */
-    struct metadataContainer* get_gpu_memory_array_metadata(const std::string& name, const uint32_t index);
+    struct metadataContainer* get_gpu_memory_array_metadata(const std::string& name,
+                                                            const uint32_t index);
 
     /**
      * @brief Allocates a new metadata object (from the given pool)
      * and attaches it to this GPU array element.
      */
-    struct metadataContainer* create_gpu_memory_array_metadata(const std::string& name, const uint32_t index, struct metadataPool* pool);
+    struct metadataContainer* create_gpu_memory_array_metadata(const std::string& name,
+                                                               const uint32_t index,
+                                                               struct metadataPool* pool);
 
     /**
      * @brief Attaches the given metadata to this GPU array element,

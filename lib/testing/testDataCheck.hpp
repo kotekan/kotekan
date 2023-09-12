@@ -3,7 +3,7 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
-#include "buffer.hpp"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "buffer.hpp"          // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "errors.h"            // for TEST_PASSED
 #include "kotekanLogging.hpp"  // for DEBUG, INFO, ERROR, FATAL_ERROR
@@ -13,8 +13,6 @@
 
 #include <algorithm>   // for max
 #include <assert.h>    // for assert
-#include <math.h>      // for abs
-#include <algorithm>   // for max
 #include <cstdint>     // for int32_t, uint8_t, uint32_t
 #include <exception>   // for exception
 #include <functional>  // for bind

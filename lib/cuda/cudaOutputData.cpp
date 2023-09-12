@@ -98,13 +98,15 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState& pipestate,
 
     if (!in_buffer) {
         // Check for metadata attached to the GPU frame
-        struct metadataContainer* meta = device.get_gpu_memory_array_metadata(_gpu_mem, pipestate.gpu_frame_id);
+        struct metadataContainer* meta =
+            device.get_gpu_memory_array_metadata(_gpu_mem, pipestate.gpu_frame_id);
         if (meta) {
             // Attach the metadata to the host buffer frame
             CHECK_ERROR_F(pthread_mutex_lock(&output_buffer->lock));
             if (output_buffer->metadata[output_buffer_execute_id] == NULL) {
                 DEBUG("Passing metadata from GPU array {:s}[{:d}] to output buffer {:s}[{:d}]",
-                      _gpu_mem, pipestate.gpu_frame_id, output_buffer->buffer_name, output_buffer_execute_id);
+                      _gpu_mem, pipestate.gpu_frame_id, output_buffer->buffer_name,
+                      output_buffer_execute_id);
                 output_buffer->metadata[output_buffer_execute_id] = meta;
                 // .... where is this gonna get freed?
                 increment_metadata_ref_count(meta);
@@ -122,16 +124,18 @@ void cudaOutputData::finalize_frame(int frame_id) {
 
     if (!got_metadata) {
         if (in_buffer) {
-            DEBUG("Passing metadata from input (host) buffer {:s}[{:d}] to {:s}[{:d}]", in_buffer->buffer_name,
-                  in_buffer_id, output_buffer->buffer_name, output_buffer_id);
+            DEBUG("Passing metadata from input (host) buffer {:s}[{:d}] to {:s}[{:d}]",
+                  in_buffer->buffer_name, in_buffer_id, output_buffer->buffer_name,
+                  output_buffer_id);
             pass_metadata(in_buffer, in_buffer_id, output_buffer, output_buffer_id);
             got_metadata = true;
         }
     } else {
         // ?? does this happen?
-        DEBUG("finalize_frame for GPU frame \"{:s}\"[{:d}], but already got_metadata", _gpu_mem, frame_id);
-        //DEBUG("Add metadata? from input {:s}[{:d}] to {:s}[{:d}]", in_buffer->buffer_name,
-        //in_buffer_id, output_buffer->buffer_name, output_buffer_id);
+        DEBUG("finalize_frame for GPU frame \"{:s}\"[{:d}], but already got_metadata", _gpu_mem,
+              frame_id);
+        // DEBUG("Add metadata? from input {:s}[{:d}] to {:s}[{:d}]", in_buffer->buffer_name,
+        // in_buffer_id, output_buffer->buffer_name, output_buffer_id);
     }
 
     if (in_buffer) {

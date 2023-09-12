@@ -2,7 +2,7 @@
 
 #include "Config.hpp"         // for Config
 #include "HFBFrameView.hpp"   // for HFBFrameView
-#include "buffer.hpp"           // for create_buffer
+#include "buffer.hpp"         // for create_buffer
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.h"         // for metadataPool // IWYU pragma: keep
 #include "visBuffer.hpp"      // for VisFrameView

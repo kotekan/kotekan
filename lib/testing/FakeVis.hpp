@@ -11,7 +11,7 @@
 #include "Config.hpp"          // for Config
 #include "FakeVisPattern.hpp"  // for FakeVisPattern
 #include "Stage.hpp"           // for Stage
-#include "buffer.hpp"            // for Buffer
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t
 #include "visBuffer.hpp"       // for VisFrameView

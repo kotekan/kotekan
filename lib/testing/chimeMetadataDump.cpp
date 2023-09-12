@@ -4,7 +4,7 @@
 #include "ICETelescope.hpp"
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"
-#include "buffer.hpp"            // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "buffer.hpp"          // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp" //
 #include "chimeMetadata.hpp"   // for get_first_packet_recv_time, get_fpga_seq_num, get_gps...
 #include "kotekanLogging.hpp"  // for INFO

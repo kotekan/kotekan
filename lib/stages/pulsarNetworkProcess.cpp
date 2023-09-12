@@ -3,7 +3,7 @@
 #include "Config.hpp"       // for Config
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"
-#include "buffer.hpp"             // for mark_frame_empty, wait_for_full_frame, register_consumer
+#include "buffer.hpp"           // for mark_frame_empty, wait_for_full_frame, register_consumer
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "kotekanLogging.hpp"   // for FATAL_ERROR, INFO, CHECK_MEM
 #include "pulsar_functions.hpp" // for PSRHeader

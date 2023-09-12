@@ -3,7 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "Hash.hpp"              // for operator<
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"              // for mark_frame_empty, mark_frame_full, register_consumer
+#include "buffer.hpp"            // for mark_frame_empty, mark_frame_full, register_consumer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t

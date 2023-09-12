@@ -9,7 +9,7 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
-#include "buffer.hpp"            // for Buffer
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for datasetManager, state_id_t, dset_id_t
 

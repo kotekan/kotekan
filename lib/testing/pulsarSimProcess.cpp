@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"            // for wait_for_empty_frame, mark_frame_full, register_producer
+#include "buffer.hpp"          // for wait_for_empty_frame, mark_frame_full, register_producer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.hpp"   // for beamCoord
 #include "kotekanLogging.hpp"  // for INFO, CHECK_MEM

@@ -4,7 +4,7 @@
 #include "Hash.hpp"              // for Hash, operator<
 #include "Stack.hpp"             // for stack_chime_in_cyl, stack_diagonal
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"              // for wait_for_full_frame, mark_frame_empty, mark_frame_full
+#include "buffer.hpp"            // for wait_for_full_frame, mark_frame_empty, mark_frame_full
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, state_id_t, datasetManager
 #include "datasetState.hpp"      // for stackState, prodState, inputState

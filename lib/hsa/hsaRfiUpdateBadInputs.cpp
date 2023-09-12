@@ -1,7 +1,7 @@
 #include "hsaRfiUpdateBadInputs.hpp"
 
 #include "Config.hpp"             // for Config
-#include "buffer.hpp"               // for mark_frame_empty, register_consumer, Buffer, wait_for_...
+#include "buffer.hpp"             // for mark_frame_empty, register_consumer, Buffer, wait_for_...
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "chimeMetadata.hpp"      // for get_rfi_num_bad_inputs, set_rfi_num_bad_inputs
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_IN
