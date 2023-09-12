@@ -140,9 +140,9 @@ metadataContainer* gpuDeviceInterface::get_gpu_memory_array_metadata(const std::
     return mem;
 }
 
-metadataContainer*
-gpuDeviceInterface::create_gpu_memory_array_metadata(const std::string& name, const uint32_t index,
-                                                     metadataPool* pool) {
+metadataContainer* gpuDeviceInterface::create_gpu_memory_array_metadata(const std::string& name,
+                                                                        const uint32_t index,
+                                                                        metadataPool* pool) {
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     // Memory array must be allocated already
     if (gpu_memory.count(name) == 0) {

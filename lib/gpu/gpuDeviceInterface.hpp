@@ -5,7 +5,7 @@
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "metadata.h"
 
-#include <map>      // for map
+#include <map> // for map
 #include <mutex>
 #include <stdint.h> // for uint32_t, int32_t
 #include <string>   // for string
@@ -98,8 +98,7 @@ public:
      * @param name  the name of the GPU buffer whose metadata you want
      * @param index the GPU buffer array index
      */
-    metadataContainer* get_gpu_memory_array_metadata(const std::string& name,
-                                                     const uint32_t index);
+    metadataContainer* get_gpu_memory_array_metadata(const std::string& name, const uint32_t index);
 
     /**
      * @brief Allocates a new metadata object (from the given pool)
@@ -109,8 +108,7 @@ public:
      * @param pool  the pool that will be used to create the metadata object
      */
     metadataContainer* create_gpu_memory_array_metadata(const std::string& name,
-                                                        const uint32_t index,
-                                                        metadataPool* pool);
+                                                        const uint32_t index, metadataPool* pool);
 
     /**
      * @brief Attaches the given metadata to this GPU array element,
