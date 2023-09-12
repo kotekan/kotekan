@@ -92,13 +92,13 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
         host_info[i].resize(info_len / sizeof(int32_t));
 
     // If input voltage array has metadata, create new metadata for output.
-    struct metadataContainer* mc =
+    metadataContainer* mc =
         device.get_gpu_memory_array_metadata(_gpu_mem_voltage, pipestate.gpu_frame_id);
     if (mc && metadata_container_is_chord(mc)) {
-        struct metadataContainer* mc_out = device.create_gpu_memory_array_metadata(
+        metadataContainer* mc_out = device.create_gpu_memory_array_metadata(
             _gpu_mem_formed_beams, pipestate.gpu_frame_id, mc->parent_pool);
-        struct chordMetadata* meta_out = get_chord_metadata(mc_out);
-        struct chordMetadata* meta_in = get_chord_metadata(mc);
+        chordMetadata* meta_out = get_chord_metadata(mc_out);
+        chordMetadata* meta_in = get_chord_metadata(mc);
         chord_metadata_copy(meta_out, meta_in);
         INFO("cudaBasebandBeamformer: input array shape: {:s}", meta_in->get_dimensions_string());
         // input:

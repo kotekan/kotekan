@@ -124,23 +124,23 @@ cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate,
     int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
 
     // If input voltage array has metadata, create new metadata for output.
-    struct metadataContainer* mc =
+    metadataContainer* mc =
         device.get_gpu_memory_array_metadata(_gpu_mem_input_voltage, pipestate.gpu_frame_id);
     if (mc && metadata_container_is_chord(mc)) {
-        struct metadataContainer* mc_out = device.create_gpu_memory_array_metadata(
+        metadataContainer* mc_out = device.create_gpu_memory_array_metadata(
             _gpu_mem_output_voltage, pipestate.gpu_frame_id, mc->parent_pool);
-        struct chordMetadata* meta_out = get_chord_metadata(mc_out);
-        struct chordMetadata* meta_in = get_chord_metadata(mc);
+        chordMetadata* meta_out = get_chord_metadata(mc_out);
+        chordMetadata* meta_in = get_chord_metadata(mc);
         chord_metadata_copy(meta_out, meta_in);
-        INFO("cudaUpchannelize: input array shape: {:s}", meta_in->get_dimensions_string());
+        DEBUG("cudaUpchannelize: input array shape: {:s}", meta_in->get_dimensions_string());
         assert(meta_in->get_dimension_name(0) == "T");
         assert(meta_in->get_dimension_name(2) == "F");
         meta_out->dim[0] /= _upchan_factor;
         meta_out->dim[2] *= _upchan_factor;
-        INFO("cudaUpchannelize: output array shape: {:s}", meta_out->get_dimensions_string());
+        DEBUG("cudaUpchannelize: output array shape: {:s}", meta_out->get_dimensions_string());
         for (int i = 0; i < meta_in->nfreq; i++) {
             meta_out->freq_upchan_factor[i] *= _upchan_factor;
-            // FIXME -- compute this complicated quantity!!!
+            // TODO -- compute this complicated quantity!!!
             // meta_out->half_fpga_sample0[i] = ;
             meta_out->time_downsampling_fpga[i] *= _upchan_factor;
         }

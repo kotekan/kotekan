@@ -113,8 +113,6 @@ public:
     /// Returns the id of the cuda stream used by the command object
     int32_t get_cuda_stream_id();
 
-    struct chordMetadata* get_chord_metadata(struct metadataContainer* mc);
-
 protected:
     void set_command_type(const gpuCommandType& type);
 

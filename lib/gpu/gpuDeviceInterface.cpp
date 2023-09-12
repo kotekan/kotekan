@@ -16,6 +16,7 @@ gpuDeviceInterface::gpuDeviceInterface(Config& config, const std::string& unique
 gpuDeviceInterface::~gpuDeviceInterface() {}
 
 void gpuDeviceInterface::cleanup_memory() {
+    std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     for (auto it = gpu_memory.begin(); it != gpu_memory.end(); it++) {
         for (void* mem : it->second.gpu_pointers_to_free) {
             if (mem)
@@ -25,6 +26,7 @@ void gpuDeviceInterface::cleanup_memory() {
 }
 
 void* gpuDeviceInterface::get_gpu_memory(const std::string& name, const size_t len) {
+    std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
 
     // Check if the memory isn't yet allocated
     if (gpu_memory.count(name) == 0) {
@@ -45,6 +47,7 @@ void* gpuDeviceInterface::get_gpu_memory(const std::string& name, const size_t l
 
 void* gpuDeviceInterface::get_gpu_memory_array(const std::string& name, const uint32_t index,
                                                const size_t len) {
+    std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     // Check if the memory isn't yet allocated
     if (gpu_memory.count(name) == 0) {
         for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
@@ -75,6 +78,7 @@ void* gpuDeviceInterface::create_gpu_memory_view(const std::string& source_name,
                                                  const size_t source_len,
                                                  const std::string& dest_name, const size_t offset,
                                                  const size_t dest_len) {
+    std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     // Ensure that the view doesn't already exist
     if (gpu_memory.count(dest_name) > 0)
         throw std::runtime_error(
@@ -98,6 +102,7 @@ void gpuDeviceInterface::create_gpu_memory_array_view(const std::string& source_
                                                       const size_t source_len,
                                                       const std::string& dest_name,
                                                       const size_t offset, const size_t dest_len) {
+    std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     INFO("Creating GPU memory array view {:s} with length {:d}, view on {:s} + offset {:d}",
          dest_name, dest_len, source_name, offset);
     // Ensure that the view doesn't already exist
@@ -118,8 +123,9 @@ void gpuDeviceInterface::create_gpu_memory_array_view(const std::string& source_
     }
 }
 
-struct metadataContainer* gpuDeviceInterface::get_gpu_memory_array_metadata(const std::string& name,
-                                                                            const uint32_t index) {
+metadataContainer* gpuDeviceInterface::get_gpu_memory_array_metadata(const std::string& name,
+                                                                     const uint32_t index) {
+    std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     // Memory array must be allocated already
     if (gpu_memory.count(name) == 0) {
         FATAL_ERROR("get_gpu_memory_array_metadata for name \"{:s}\": does not exist yet.", name);
@@ -130,13 +136,14 @@ struct metadataContainer* gpuDeviceInterface::get_gpu_memory_array_metadata(cons
     if (gpu_memory[name].view_source.size())
         return get_gpu_memory_array_metadata(gpu_memory[name].view_source, index);
     // Return the requested memory (may be NULL)
-    struct metadataContainer* mem = gpu_memory[name].metadata_pointers[index];
+    metadataContainer* mem = gpu_memory[name].metadata_pointers[index];
     return mem;
 }
 
-struct metadataContainer*
+metadataContainer*
 gpuDeviceInterface::create_gpu_memory_array_metadata(const std::string& name, const uint32_t index,
-                                                     struct metadataPool* pool) {
+                                                     metadataPool* pool) {
+    std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     // Memory array must be allocated already
     if (gpu_memory.count(name) == 0) {
         FATAL_ERROR("get_gpu_memory_array_metadata for name \"{:s}\": does not exist yet.", name);
@@ -149,7 +156,7 @@ gpuDeviceInterface::create_gpu_memory_array_metadata(const std::string& name, co
     // Make sure the slot isn't occupied.
     assert(gpu_memory[name].metadata_pointers[index] == nullptr);
     // Allocate new metadata obj
-    struct metadataContainer* mc = request_metadata_object(pool);
+    metadataContainer* mc = request_metadata_object(pool);
     assert(mc);
     // Plug it in!
     gpu_memory[name].metadata_pointers[index] = mc;
@@ -158,7 +165,8 @@ gpuDeviceInterface::create_gpu_memory_array_metadata(const std::string& name, co
 
 void gpuDeviceInterface::claim_gpu_memory_array_metadata(const std::string& name,
                                                          const uint32_t index,
-                                                         struct metadataContainer* mc) {
+                                                         metadataContainer* mc) {
+    std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     // Memory array must be allocated already
     if (gpu_memory.count(name) == 0) {
         FATAL_ERROR("claim_gpu_memory_array_metadata for name \"{:s}\": does not exist yet.", name);
@@ -179,6 +187,8 @@ void gpuDeviceInterface::claim_gpu_memory_array_metadata(const std::string& name
 
 void gpuDeviceInterface::release_gpu_memory_array_metadata(const std::string& name,
                                                            const uint32_t index) {
+    std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
+
     // Memory array must be allocated already
     if (gpu_memory.count(name) == 0) {
         FATAL_ERROR("release_gpu_memory_array_metadata for name \"{:s}\": does not exist yet.",
@@ -189,7 +199,7 @@ void gpuDeviceInterface::release_gpu_memory_array_metadata(const std::string& na
     // If view, recurse
     if (gpu_memory[name].view_source.size())
         return release_gpu_memory_array_metadata(gpu_memory[name].view_source, index);
-    struct metadataContainer* mc = gpu_memory[name].metadata_pointers[index];
+    metadataContainer* mc = gpu_memory[name].metadata_pointers[index];
     if (mc) {
         decrement_metadata_ref_count(mc);
         gpu_memory[name].metadata_pointers[index] = nullptr;

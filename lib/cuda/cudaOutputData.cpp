@@ -98,7 +98,7 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState& pipestate,
 
     if (!in_buffer) {
         // Check for metadata attached to the GPU frame
-        struct metadataContainer* meta =
+        metadataContainer* meta =
             device.get_gpu_memory_array_metadata(_gpu_mem, pipestate.gpu_frame_id);
         if (meta) {
             // Attach the metadata to the host buffer frame
@@ -108,7 +108,6 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState& pipestate,
                       _gpu_mem, pipestate.gpu_frame_id, output_buffer->buffer_name,
                       output_buffer_execute_id);
                 output_buffer->metadata[output_buffer_execute_id] = meta;
-                // .... where is this gonna get freed?
                 increment_metadata_ref_count(meta);
             }
             CHECK_ERROR_F(pthread_mutex_unlock(&output_buffer->lock));

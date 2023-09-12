@@ -71,8 +71,7 @@ cudaEvent_t cudaInputData::execute(cudaPipelineState& pipestate,
                                   end_events[pipestate.gpu_frame_id]);
 
     // Copy (reference to) metadata also
-    // FIXME -- need to lock here?
-    struct metadataContainer* meta = in_buf->metadata[in_buffer_id];
+    metadataContainer* meta = in_buf->metadata[in_buffer_id];
     if (meta)
         device.claim_gpu_memory_array_metadata(_gpu_mem, pipestate.gpu_frame_id, meta);
 

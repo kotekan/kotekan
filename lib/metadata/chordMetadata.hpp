@@ -24,7 +24,7 @@ const int CHORD_META_MAX_DIM = 10;
 const int CHORD_META_MAX_DIMNAME = 16;
 
 struct chordMetadata {
-    struct chimeMetadata chime;
+    chimeMetadata chime;
     int frame_counter;
 
     // cudaDataType_t type;
@@ -104,24 +104,35 @@ struct chordMetadata {
     }
 };
 
-inline void chord_metadata_init(struct chordMetadata* c) {
-    bzero(c, sizeof(struct chordMetadata));
+inline void chord_metadata_init(chordMetadata* c) {
+    bzero(c, sizeof(chordMetadata));
 }
 
-inline void chord_metadata_copy(struct chordMetadata* out, const struct chordMetadata* in) {
-    memcpy(out, in, sizeof(struct chordMetadata));
+inline void chord_metadata_copy(chordMetadata* out, const chordMetadata* in) {
+    memcpy(out, in, sizeof(chordMetadata));
 }
 
-inline bool metadata_is_chord(struct Buffer* buf, int) {
+inline bool metadata_is_chord(Buffer* buf, int) {
     return strcmp(buf->metadata_pool->type_name, "chordMetadata") == 0;
 }
 
-inline bool metadata_container_is_chord(struct metadataContainer* mc) {
+inline bool metadata_container_is_chord(metadataContainer* mc) {
     return strcmp(mc->parent_pool->type_name, "chordMetadata") == 0;
 }
 
-inline struct chordMetadata* get_chord_metadata(struct Buffer* buf, int frame_id) {
-    return (struct chordMetadata*)buf->metadata[frame_id]->metadata;
+inline chordMetadata* get_chord_metadata(Buffer* buf, int frame_id) {
+    return (chordMetadata*)buf->metadata[frame_id]->metadata;
+}
+
+inline chordMetadata* get_chord_metadata(metadataContainer* mc) {
+    if (!mc)
+        return nullptr;
+    if (strcmp(mc->parent_pool->type_name, "chordMetadata")) {
+        WARN_NON_OO("Expected metadata to be type \"chordMetadata\", got \"{:s}\".",
+                    mc->parent_pool->type_name);
+        return nullptr;
+    }
+    return static_cast<chordMetadata*>(mc->metadata);
 }
 
 #endif

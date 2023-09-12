@@ -263,13 +263,13 @@ void testDataGen::main_thread() {
                         }
                     }
 
-                    INFO("Chord metadata: array shape {:s}", chordmeta->get_dimensions_string());
-                    INFO("Chord metadata: one-hot: {:s}", chordmeta->get_onehot_string());
+                    DEBUG("Chord metadata: array shape {:s}", chordmeta->get_dimensions_string());
+                    DEBUG("Chord metadata: one-hot: {:s}", chordmeta->get_onehot_string());
 
                 } else {
                     ERROR("Metadata type is not one-hot, not recording one-hot indices anywhere!");
                 }
-                INFO("PY onehot[{:d}] = (({:s}), 0x{:x})", frame_id_abs, istring, val);
+                DEBUG("PY onehot[{:d}] = (({:s}), 0x{:x})", frame_id_abs, istring, val);
             } else {
                 int j = rand() % n_to_set;
                 INFO("Set {:s}[{:d}] flat index {:d} = 0x{:x} to 0x{:x} ({:d})", buf->buffer_name,
