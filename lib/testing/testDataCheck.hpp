@@ -13,8 +13,6 @@
 
 #include <algorithm>   // for max
 #include <assert.h>    // for assert
-#include <math.h>      // for abs
-#include <algorithm>   // for max
 #include <cstdint>     // for int32_t, uint8_t, uint32_t
 #include <exception>   // for exception
 #include <functional>  // for bind
