@@ -31,6 +31,8 @@
  * to a different value for each frame; loops through the values.
  * @conf  seed                  Int. For type "random", "random_signed", and "onehot".  If non-zero,
  * seeds the random number generator on startup for reproducible results.
+ * @conf  reuse_random          Bool, default False.  For "random" types, only generate each random
+ * block once, then keep re-using it.
  * @conf  wait                  Bool, default True. Produce data a set cadence.
  *                              Otherwise just as fast as possible.
  * @conf  samples_per_data_set  Int. How often to produce data.
@@ -70,12 +72,15 @@ private:
     std::string endpoint;
     int value;
     std::vector<int> _value_array;
+    float fvalue;
+    std::vector<float> _fvalue_array;
     int step_to_frame;
     bool _pathfinder_test_mode;
     int samples_per_data_set;
     bool wait;
     std::string rest_mode;
     int num_frames;
+    bool _reuse_random;
     size_t _num_freq_in_frame;
     stream_t stream_id;
     uint32_t _first_frame_index;

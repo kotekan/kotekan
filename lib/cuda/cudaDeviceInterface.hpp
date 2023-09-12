@@ -69,10 +69,6 @@ public:
                                 cudaEvent_t pre_event, cudaEvent_t& copy_start_event,
                                 cudaEvent_t& copy_end_event);
 
-    // Function overrides to cast the generic gpu_memory retulsts appropriately.
-    void* get_gpu_memory_array(const std::string& name, const uint32_t index, const size_t len);
-    void* get_gpu_memory(const std::string& name, const size_t len);
-
 protected:
     void* alloc_gpu_memory(size_t len) override;
     void free_gpu_memory(void*) override;

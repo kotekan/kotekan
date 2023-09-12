@@ -19,8 +19,16 @@ add_library(
     prometheusMetrics.cpp
     restServer.cpp
     Stage.cpp
-    StageFactory.cpp)
+    StageFactory.cpp
+    $<$<BOOL:${Julia_FOUND}>:juliaManager.cpp>)
+
 target_include_directories(kotekan_core PUBLIC .)
+
+if(${Julia_FOUND})
+    target_include_directories(kotekan_core INTERFACE ${JULIA_INCLUDE_DIRS})
+    target_link_libraries(kotekan_core INTERFACE ${JULIA_LIBRARY})
+    add_definitions(-DWITH_JULIA)
+endif()
 
 # Libnuma is optionally used by buffer.c
 find_package(NUMA)

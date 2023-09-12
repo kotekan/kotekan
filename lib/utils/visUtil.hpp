@@ -43,6 +43,14 @@
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;
 
+#if defined(WITH_CUDA)
+#include <cuda_fp16.h>
+using float16_t = __half;
+#define KOTEKAN_FLOAT16 1
+#else
+#define KOTEKAN_FLOAT16 0
+#endif
+
 /// Aliased type for storing the layout of members in a struct
 /// The first element of the pair is the total struct size, the second is a map
 /// associating the type T member labels with their offsets
@@ -908,6 +916,39 @@ struct formatter<frameID> : formatter<int> {
     }
 };
 } // namespace fmt
+
+/**
+ * @brief Pretty-printing for terminal or literal python code.
+ */
+inline std::string format_nice_string(uint8_t x) {
+    return fmt::format("{} = 0x{:x}", x, x);
+}
+inline std::string format_nice_string(uint32_t x) {
+    return fmt::format("{} = 0x{:x}", x, x);
+}
+inline std::string format_nice_string(int x) {
+    return fmt::format("{} = 0x{:x}", x, x);
+}
+#if KOTEKAN_FLOAT16
+inline std::string format_nice_string(float16_t x) {
+    return fmt::format("{}", (float)x);
+}
+#endif
+inline std::string format_nice_string(float x) {
+    return fmt::format("{}", x);
+}
+
+inline std::string format_python_string(uint8_t x) {
+    return fmt::format("{}", x);
+}
+inline std::string format_python_string(uint32_t x) {
+    return fmt::format("{}", x);
+}
+#if KOTEKAN_FLOAT16
+inline std::string format_python_string(float16_t x) {
+    return fmt::format("{}", (float)x);
+}
+#endif
 
 
 #endif

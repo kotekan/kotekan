@@ -10,7 +10,7 @@
  * @brief A synchronization point between one or more cuda streams.
  *
  * This command object adds a set of cudaStreamWaitEvent events to the queue given by @c cuda_stream
- * Which wait on the last event currently in of each of the streams in @c source_cuda_streams
+ * Which wait on the last event currently in each of the streams in @c source_cuda_streams
  *
  * @conf source_cuda_streams Array of cuda streams to synchronize on
  *
@@ -22,8 +22,11 @@ public:
                    kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaSyncStream();
     int wait_on_precondition(int gpu_frame_id) override;
-    cudaEvent_t execute(int gpu_frame_id, const std::vector<cudaEvent_t>& pre_events) override;
+    cudaEvent_t execute(cudaPipelineState& pipestate,
+                        const std::vector<cudaEvent_t>& pre_events) override;
     void finalize_frame(int frame_id) override;
+
+    std::string get_performance_metric_string() override;
 
 protected:
     /// A constructor meant to be called by subclassers who need to

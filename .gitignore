@@ -5,6 +5,8 @@
 .kdev_include_paths
 *.c~
 *.h~
+*~
+*#
 *.swp
 *.pyc
 /.idea/

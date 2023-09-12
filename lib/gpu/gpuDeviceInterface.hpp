@@ -12,7 +12,9 @@
 /// Stores a named set of gpu pointer(s) with uniform size
 struct gpuMemoryBlock {
     std::vector<void*> gpu_pointers;
-    uint32_t len;
+    // store the "real" pointers to allow windowed buffer views
+    std::vector<void*> gpu_pointers_to_free;
+    size_t len;
 };
 
 /**
@@ -48,6 +50,42 @@ public:
      * Should NOT be used for any memory that's copied between GPU and HOST memory.
      */
     void* get_gpu_memory(const std::string& name, const size_t len);
+
+    /**
+     * @brief Creates a GPU memory array that is a view on another GPU
+     * memory array.  (The "source" array need not exist, it will be
+     * created if it does not exist yet.)  That is, the "view" does
+     * not allocate new GPU memory, but rather exposes a sub-array as
+     * though it was an independent array.  This allows, for example,
+     * one GPU stage to write into a (view on a) memory region that
+     * has padding regions on the front or back, or one stage to read
+     * a subset of the output produced by a previous stage, in a
+     * transparent manner.
+     * This method should be called once during setup.
+     * After this has been called, *get_gpu_memory_array* calls for the "source_name"
+     * or "view_name" will return the real or view memory pointers.
+     *
+     * @param source_name like the "name" of get_gpu_memory_array, the
+     *   name of the "real" GPU memory array.
+     * @param source_len  the size in bytes of the "real" GPU memory array.
+     * @param view_name   the name of the view onto the "real" GPU memory array.
+     * @param view_offset the offset in bytes of the view.
+     * @param view_len the length in bytes of the view.  *view_offset*
+     *   + *view_len* must be <= *source_len*.
+     */
+    void create_gpu_memory_array_view(const std::string& source_name, const size_t source_len,
+                                      const std::string& view_name, const size_t view_offset,
+                                      const size_t view_len);
+
+    /**
+     * @brief Creates a chunk of GPU memory that is a view on another GPU
+     * memory chunk.  (The "source" array need not exist, it will be
+     * created with a call to *get_gpu_memory* if it does not exist yet.).
+     * Returns the new memory view pointer.
+     */
+    void* create_gpu_memory_view(const std::string& source_name, const size_t source_len,
+                                 const std::string& view_name, const size_t view_offset,
+                                 const size_t view_len);
 
     // Can't do this in the destructor because only the derived classes know
     // how to free their memory. To be moved into distinct objects...
