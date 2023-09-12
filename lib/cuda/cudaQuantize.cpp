@@ -7,12 +7,6 @@
 void launch_quantize_kernel(cudaStream_t stream, int nframes, const __half2* in_base,
                             __half2* outf_base, unsigned int* outi_base, const int* index_array);
 
-/*
-  void launch_quantize_kernel(cudaStream_t stream, int nframes, const void *in_base,
-  void *outf_base, int32_t *outi_base,
-  const int32_t *index_array);
-*/
-
 using kotekan::bufferContainer;
 using kotekan::Config;
 

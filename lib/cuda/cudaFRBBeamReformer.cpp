@@ -13,24 +13,7 @@ using kotekan::Config;
 
 REGISTER_CUDA_COMMAND(cudaFRBBeamReformer);
 
-static float deg2radf(float d) {
-    return d * (float)(M_PI / 180.);
-}
-static float cosdf(float d) {
-    return cosf(deg2radf(d));
-}
-static float sindf(float d) {
-    return sinf(deg2radf(d));
-}
-
-double gettime() {
-    struct timeval tp;
-    gettimeofday(&tp, nullptr);
-    return tp.tv_sec + tp.tv_usec / 1.0e+6;
-}
-
-// template<int M>
-// static float Ufunc(int p, float theta) {
+// This matches a function defined in Kendrick's beamforming note (eqn 7/8).
 static float Ufunc(int p, int M, float theta) {
     float acc = 0;
     for (int s = 0; s <= M; s++) {
@@ -41,10 +24,10 @@ static float Ufunc(int p, int M, float theta) {
     }
     return acc;
 }
-// template<int M, int N>
-void compute_beam_reformer_phase(int M, int N, float16_t* host_phase, int _num_local_freq,
-                                 int _num_beams, float* beam_dra, float* beam_ddec, float* freqs,
-                                 float dish_spacing_ew, float dish_spacing_ns, float bore_zd) {
+static void compute_beam_reformer_phase(int M, int N, float16_t* host_phase, int _num_local_freq,
+                                        int _num_beams, float* beam_dra, float* beam_ddec,
+                                        float* freqs, float dish_spacing_ew, float dish_spacing_ns,
+                                        float bore_zd) {
     const float c = 3.0e8;
     const int B = _num_beams;
     const int Q = 2 * N;
@@ -82,10 +65,8 @@ void compute_beam_reformer_phase(int M, int N, float16_t* host_phase, int _num_l
             float Up[2 * M];
             float Uq[2 * N];
             for (int i = 0; i < 2 * M; i++)
-                // Up[i] = Ufunc<M>(i, theta1);
                 Up[i] = Ufunc(i, M, theta1);
             for (int i = 0; i < 2 * N; i++)
-                // Uq[i] = Ufunc<N>(i, theta2);
                 Uq[i] = Ufunc(i, N, theta2);
 
             for (int p = 0; p < 2 * M; p++) {
@@ -157,7 +138,7 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
     float* freqs = (float*)malloc(_num_local_freq * sizeof(float));
     assert(freqs);
 
-    // FIXME -- in the real thing this should be an updatable config
+    // TODO -- in the real thing this should be an updatable config
     // or somesuch.  Tracking beams would update single elements of
     // these arrays.
     // We'll place beams on an RA,Dec grid, expressed in *degrees*
@@ -177,17 +158,17 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
         }
     }
 
-    // FIXME -- the real frequencies should be passed in with the
+    // TODO -- the real frequencies should be passed in with the
     // metadata, probably!
     for (int i = 0; i < _num_local_freq; i++) {
         freqs[i] = 600e6 + i * (1.2e9 / 65536.);
     }
 
-    // FIXME -- the dish spacings, in meters, should be passed in as config parameters!
+    // TODO -- the dish spacings, in meters, should be passed in as config parameters!
     float dish_spacing_ew = 6.3;
     float dish_spacing_ns = 8.5;
 
-    // FIXME -- the zenith distance of the dishes, in degrees.  We'll
+    // TODO -- the zenith distance of the dishes, in degrees.  We'll
     // assume the dishes remain pointed at HA=0, ie, they're always on
     // the meridian.
     float bore_zd = 30.;
@@ -383,12 +364,6 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& pipestate,
                 DEBUG("Freq {:d}: set Cuda stream {:d}", f, _cuda_streams[f / calls_per_stream]);
                 cublasSetStream(handle, device.getStream(_cuda_streams[f / calls_per_stream]));
             }
-            /*
-            // Multiply A and B^T on GPU
-            cublasStatus_t stat = cublasHgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, _Td, B, rho, &alpha,
-            d_Iin, _Td, d_W, B, &beta, d_Iout, _Td);
-            */
-
             // Multiply A^T and B on GPU, where the transposes are
             // according to cublas, ie, in the Fortran column-major view
             // of things.  That is, Transpose is the regular C row-major
@@ -428,15 +403,14 @@ void cudaFRBBeamReformer::finalize_frame(int frame_id) {
         if (sync_events[frame_id][i] && sync_events[frame_id][i]) {
             CHECK_CUDA_ERROR(
                 cudaEventElapsedTime(&exec_time, start_events[frame_id], sync_events[frame_id][i]));
-            INFO("Sync for stream {:d} took {:.3f} ms", _cuda_streams[i], exec_time);
+            DEBUG("Sync for stream {:d} took {:.3f} ms", _cuda_streams[i], exec_time);
         }
     }
     if (start_events[frame_id] && end_events[frame_id]) {
         CHECK_CUDA_ERROR(
             cudaEventElapsedTime(&exec_time, start_events[frame_id], end_events[frame_id]));
-        INFO("Start to end took {:.3f} ms", exec_time);
+        DEBUG("Start to end took {:.3f} ms", exec_time);
     }
-
 
     cudaCommand::finalize_frame(frame_id);
     for (size_t i = 0; i < _cuda_streams.size(); i++) {

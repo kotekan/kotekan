@@ -77,34 +77,6 @@ constexpr int F = 16;    // frequency channels per GPU
 constexpr int U = 16;    // upchannelization factor
 constexpr int M = 4;     // number of taps
 
-// 4-bit integers
-
-using int4x2_t = uint8_t;
-
-constexpr int4x2_t set4(const int8_t lo, const int8_t hi) {
-    return (uint8_t(lo) & 0x0f) | ((uint8_t(hi) << 4) & 0xf0);
-}
-constexpr int4x2_t set4(const std::array<int8_t, 2> a) {
-    return set4(a[0], a[1]);
-}
-
-constexpr std::array<int8_t, 2> get4(const int4x2_t i) {
-    return {int8_t(int8_t((i + 0x08) & 0x0f) - 0x08),
-            int8_t(int8_t(((i >> 4) + 0x08) & 0x0f) - 0x08)};
-}
-
-constexpr bool test_get4_set4() {
-    for (int hi = -8; hi <= 7; ++hi) {
-        for (int lo = -8; lo <= 7; ++lo) {
-            if (get4(set4(lo, hi))[0] != lo)
-                return false;
-            if (get4(set4(lo, hi))[1] != hi)
-                return false;
-        }
-    }
-    return true;
-}
-
 // Storage management
 
 template<typename T, typename I>
@@ -116,7 +88,6 @@ constexpr std::complex<T> convert(const std::complex<I> i) {
     return std::complex<T>(convert<I>(i.real()), convert<I>(i.imag()));
 }
 
-#if 1
 // Use 4-bit integers for E and Ebar
 
 using storage_t = int4x2_t;
@@ -140,29 +111,6 @@ constexpr I quantize(const T x, const I imax) {
     const I i = min(imax, max(I(-imax), itmp));
     return i;
 }
-
-#else
-// Use 32-bit floats for E and Ebar
-
-using storage_t = std::complex<float>;
-using value_t = float;
-
-constexpr storage_t set_storage(const float lo, const float hi) {
-    return {lo, hi};
-}
-constexpr storage_t set_storage(const std::array<float, 2> x) {
-    return set_storage(x[0], x[1]);
-}
-constexpr std::array<float, 2> get_storage(const storage_t x) {
-    return {real(x), imag(x)};
-}
-
-template<typename I, typename T>
-constexpr I quantize(const T x, const I imax) {
-    return I(x);
-}
-
-#endif
 
 template<typename I, typename T>
 constexpr std::complex<I> quantize(const std::complex<T> x, const I imax) {

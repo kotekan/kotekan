@@ -33,6 +33,7 @@ public:
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
 
+    // These are the exact array sizes supported by the Cuda code
     const int CHUNK_SIZE = 256;
     const int FRAME_SIZE = 32;
 

@@ -10,25 +10,7 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     cudaCommand(config, unique_name, host_buffers, device, "chordMVPSetup", "") {
     set_command_type(gpuCommandType::COPY_IN);
 
-    // This stage glues together the cudaUpchannelize and cudaFRBBeamformer commands.
-    //   cudaUpchannelize produces outputs of size 2048.
-    //   cudaFRBBeamformer consumes inputs of multiples of 48 -- we allocate size 2064.
-    // The cudaFRBBeamformer code processes a varying number of input
-    // samples each time, so there are some leftovers that it copies
-    // into a padding buffer at the beginning of the array.
-    ///
-    // We allocate the latter, and then create an offset view into it for the former.
-
-    // We also use it to (incorrectly!) take a *time* subset of half
-    // the voltage data to feed the Fine Visibility matrix data
-    // product.  (We should subset the frequencies, but for MVP
-    // purposes we just need to test the rate.  The data layout has T
-    // varying most slowly, so we can do a time subset just with array
-    // views, while doing the Frequency subset would require a
-    // cudaMemcpy3DAsync (probably in this class!).)
-
-    // Upchan to FRB-BF:
-
+    // Upchan to FRB-Beamformer:
     size_t num_dishes = config.get<int>(unique_name, "num_dishes");
     // (this is fpga frequencies)
     size_t num_local_freq = config.get<int>(unique_name, "num_local_freq");
