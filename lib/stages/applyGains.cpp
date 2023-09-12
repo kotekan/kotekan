@@ -467,7 +467,7 @@ std::pair<std::vector<T>, std::vector<uint32_t>> json_base64_to_array(const json
     std::vector<char> decoded_data(modp_b64_decode_len(enc_size));
     auto dec_len = modp_b64_decode(decoded_data.data(), string_data.c_str(), string_data.size());
 
-    if (dec_len < 0) {
+    if (dec_len == MODP_B64_ERROR) {
         throw std::runtime_error("Could not base64 decode the array data.");
     }
 

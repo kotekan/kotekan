@@ -1,8 +1,9 @@
 # Kotekan docker environment instructions
+
 The files in this directory set up an array of docker containers and distributes
 config files to mimick kotekan nodes on a network for testing. It was built to be
 run on the receiver nodes and small changes may be necessary to use it on systems
-other than Ubuntu 16.04.
+other than Ubuntu 18.04.
 
 **To run:**
 

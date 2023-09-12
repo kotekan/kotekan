@@ -47,7 +47,7 @@ extern "C" {
  * int srclen = ...; //the length of number of bytes in src
  * char* dest = (char*) malloc(modp_b64_encode_len);
  * int len = modp_b64_encode(dest, src, sourcelen);
- * if (len == -1) {
+ * if (len == MODP_B64_ERROR) {
  *   printf("Error\n");
  * } else {
  *   printf("b64 = %s\n", dest);

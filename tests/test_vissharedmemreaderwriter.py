@@ -17,6 +17,7 @@ import shutil
 import tempfile
 import threading
 from time import sleep
+import sys
 
 from comet import Manager
 
@@ -63,7 +64,7 @@ def comet_broker():
             yield port
         finally:
             pid = broker.pid
-            os.kill(pid, signal.SIGINT)
+            os.kill(pid, signal.SIGTERM)
             broker.terminate()
             log = open(f_out.name, "r").read().split("\n")
             for line in log:
@@ -128,6 +129,10 @@ def vis_data(tmpdir_factory, comet_broker):
 
 # This test still needs to run alone, because multiple comet instances would have conflicts
 # accessing redis.
+@pytest.mark.skipif(
+    sys.version_info > (3, 7),
+    reason="Test only passes when comet works, which needs old python3.7.",
+)
 @pytest.mark.serial
 def test_shared_mem_buffer(vis_data, comet_broker):
     # start kotekan writer in a thread, to read before it's done (it will delete the shm on exit)
