@@ -22,7 +22,6 @@ using kotekan::Config;
 
 REGISTER_KOTEKAN_STAGE(gpuSimulateCudaFRBBeamformer);
 
-//using int4x2_t = uint8_t;
 #if KOTEKAN_FLOAT16
 static void frb_simple(const int32_t* __restrict__ const S, const float16_t* __restrict__ const W,
                        const int4x2_t* __restrict__ const E, float16_t* __restrict__ const I);
