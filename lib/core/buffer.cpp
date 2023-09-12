@@ -91,10 +91,10 @@ struct Buffer* create_buffer(int num_frames, size_t len, struct metadataPool* po
     struct Buffer* buf = (struct Buffer*)malloc(sizeof(struct Buffer));
     CHECK_MEM_F(buf);
 
-    CHECK_ERROR_F(pthread_mutex_init(&buf->lock, NULL));
+    CHECK_ERROR_F(pthread_mutex_init(&buf->lock, nullptr));
 
-    CHECK_ERROR_F(pthread_cond_init(&buf->full_cond, NULL));
-    CHECK_ERROR_F(pthread_cond_init(&buf->empty_cond, NULL));
+    CHECK_ERROR_F(pthread_cond_init(&buf->full_cond, nullptr));
+    CHECK_ERROR_F(pthread_cond_init(&buf->empty_cond, nullptr));
 
     buf->shutdown_signal = 0;
     buf->numa_node = numa_node;
@@ -178,7 +178,7 @@ struct Buffer* create_buffer(int num_frames, size_t len, struct metadataPool* po
 
 #if defined(WITH_NUMA) && !defined(WITH_NO_MEMLOCK)
     // Reset the memory policy so that we don't impact other parts of the
-    if (set_mempolicy(MPOL_DEFAULT, NULL, 0) < 0) {
+    if (set_mempolicy(MPOL_DEFAULT, nullptr, 0) < 0) {
         ERROR_F("Failed to reset the memory policy to default: %s (%d)", strerror(errno), errno);
         return NULL;
     }
@@ -330,7 +330,7 @@ int private_mark_frame_empty(struct Buffer* buf, const int id) {
         // TODO: Move this to the config file (when buffers.c updated to C++11)
         CPU_SET(5, &cpuset);
 
-        CHECK_ERROR_F(pthread_create(&zero_t, NULL, &private_zero_frames, (void*)zero_args));
+        CHECK_ERROR_F(pthread_create(&zero_t, nullptr, &private_zero_frames, (void*)zero_args));
         CHECK_ERROR_F(pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &cpuset));
         CHECK_ERROR_F(pthread_detach(zero_t));
     } else {
@@ -918,7 +918,7 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
 #else
     if (use_hugepages) {
 #ifndef MAC_OSX
-        void* mapped_frame = mmap(NULL, len, PROT_READ | PROT_WRITE,
+        void* mapped_frame = mmap(nullptr, len, PROT_READ | PROT_WRITE,
                                   MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
         if (mapped_frame == MAP_FAILED) {
             ERROR_F("Error mapping huge pages, check available huge pages: %s (%d)",
