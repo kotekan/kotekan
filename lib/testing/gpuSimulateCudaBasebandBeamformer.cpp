@@ -21,7 +21,6 @@ using kotekan::Config;
 
 REGISTER_KOTEKAN_STAGE(gpuSimulateCudaBasebandBeamformer);
 
-
 gpuSimulateCudaBasebandBeamformer::gpuSimulateCudaBasebandBeamformer(
     Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
@@ -47,16 +46,6 @@ gpuSimulateCudaBasebandBeamformer::~gpuSimulateCudaBasebandBeamformer() {}
 
 // This code is from Erik's
 // https://github.com/eschnett/GPUIndexSpaces.jl/blob/main/kernels/bb.cxx
-
-using int4x2_t = uint8_t;
-static constexpr int4x2_t set4(const int8_t lo, const int8_t hi) {
-    return (uint8_t(lo) & 0x0f) | ((uint8_t(hi) << 4) & 0xf0);
-}
-
-static constexpr std::array<int8_t, 2> get4(const int4x2_t i) {
-    return {int8_t(int8_t((i + 0x08) & 0x0f) - 0x08),
-            int8_t(int8_t(((i >> 4) + 0x08) & 0x0f) - 0x08)};
-}
 
 /**
  CPU implementation of the CUDA Baseband Beamformer kernel.
