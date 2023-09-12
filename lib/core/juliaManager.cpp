@@ -17,18 +17,25 @@ JULIA_DEFINE_FAST_TLS
 
 namespace kotekan {
 
-///
-/// The thread in which the Julia run-time runs
+/**
+ * @brief The thread in which the Julia run-time runs
+ */
 std::thread julia_thread;
 
-/// We use a task queue to communicate between the Kotekan and the
-/// Julia threads. Each task is just a `std::function<void()>`.
+/**
+ * We use a task queue to communicate between the Kotekan and the
+ * Julia threads. Each task is just a `std::function<void()>`.
+ */
 std::mutex julia_task_queue_mutex;
 std::queue<std::function<void()>> julia_task_queue;
 
-/// The Julia task server. This initializes the Julia run-time, waits
-/// for a task in the task queue, and then executes the task. An empty
-/// task shuts down the task server.
+/**
+ * @brief The Julia task server
+ *
+ * This initializes the Julia run-time, waits for a task in the task
+ * queue, and then executes the task. An empty task shuts down the
+ * task server.
+ */
 void runJulia() {
     using namespace std::chrono_literals;
 
@@ -73,8 +80,9 @@ done:
     INFO_F("[JM] Stopped Julia run-time system");
 }
 
-///
-/// Start the Julia run-time
+/**
+ * @brief Start the Julia run-time
+ */
 void juliaStartup() {
     INFO_F("juliaManager: Starting Julia run-time");
     // Do nothing if the Julia run-time is already running
@@ -83,8 +91,9 @@ void juliaStartup() {
     julia_thread = std::thread(runJulia);
 }
 
-///
-/// Stop the Julia run-time
+/**
+ * @brief Stop the Julia run-time
+ */
 void juliaShutdown() {
     INFO_F("juliaManager: Stopping Julia run-time system...");
     // Check whether the Julia run-time is actually running
