@@ -25,8 +25,9 @@ static float Ufunc(int p, int M, float theta) {
     return acc;
 }
 static void compute_beam_reformer_phase(int M, int N, float16_t* host_phase, int _num_local_freq,
-                                        int _num_beams, float* beam_dra, float* beam_ddec, float* freqs,
-                                        float dish_spacing_ew, float dish_spacing_ns, float bore_zd) {
+                                        int _num_beams, float* beam_dra, float* beam_ddec,
+                                        float* freqs, float dish_spacing_ew, float dish_spacing_ns,
+                                        float bore_zd) {
     const float c = 3.0e8;
     const int B = _num_beams;
     const int Q = 2 * N;
