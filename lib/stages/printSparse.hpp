@@ -75,29 +75,6 @@ printSparse<A_Type>::printSparse(kotekan::Config& config, const std::string& uni
 template<typename A_Type>
 printSparse<A_Type>::~printSparse() {}
 
-static std::string format_nice_string(uint8_t x) {
-    return fmt::format("{} = 0x{:x}", x, x);
-}
-static std::string format_nice_string(uint32_t x) {
-    return fmt::format("{} = 0x{:x}", x, x);
-}
-#if KOTEKAN_FLOAT16
-static std::string format_nice_string(float16_t x) {
-    return fmt::format("{}", (float)x);
-}
-#endif
-static std::string format_python_string(uint8_t x) {
-    return fmt::format("{}", x);
-}
-static std::string format_python_string(uint32_t x) {
-    return fmt::format("{}", x);
-}
-#if KOTEKAN_FLOAT16
-static std::string format_python_string(float16_t x) {
-    return fmt::format("{}", (float)x);
-}
-#endif
-
 template<typename A_Type>
 void printSparse<A_Type>::main_thread() {
     frameID frame_id(buf);
