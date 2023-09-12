@@ -45,22 +45,29 @@ endif()
 
 if(${USE_HSA})
     add_subdirectory(hsa)
-    target_link_libraries(kotekan_libs INTERFACE kotekan_hsa kotekan_gpu)
+    target_link_libraries(kotekan_libs INTERFACE kotekan_hsa)
 endif()
 
 if(${USE_OPENCL})
     add_subdirectory(opencl)
-    target_link_libraries(kotekan_libs INTERFACE kotekan_opencl kotekan_gpu)
+    target_link_libraries(kotekan_libs INTERFACE kotekan_opencl)
 endif()
 
 if(${USE_CUDA})
     add_subdirectory(cuda)
-    target_link_libraries(kotekan_libs INTERFACE kotekan_cuda kotekan_gpu)
+    target_link_libraries(kotekan_libs INTERFACE kotekan_cuda)
 endif()
 
 if(${USE_HIP})
     add_subdirectory(hip)
-    target_link_libraries(kotekan_libs INTERFACE kotekan_hip kotekan_gpu)
+    target_link_libraries(kotekan_libs INTERFACE kotekan_hip)
+endif()
+
+if(${USE_HSA}
+   OR ${USE_OPENCL}
+   OR ${USE_CUDA}
+   OR ${USE_HIP})
+    target_link_libraries(kotekan_libs INTERFACE kotekan_gpu)
 endif()
 
 # Include the old DPDK if the USE_OLD_DPDK flag is given.

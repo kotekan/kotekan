@@ -14,18 +14,24 @@ log_level: info
 num_links: 4
 freq_array: [4,7,10,16]
 timesamples_per_packet: 2
-samples_per_data_set: 32768
+
 num_data_sets: 1
 num_gpus: 1
 buffer_depth: 8
 num_gpu_frames: 4
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
-num_elements: 128
 frame_arrival_period: 0.00000256 * samples_per_data_set
-num_local_freq: 4 #16
 sizeof_int: 4
 sub_integration_ntime: 16384
+
+samples_per_data_set: 32768
+
+#num_elements: 128
+#num_local_freq: 4
+
+num_elements: 1024
+num_local_freq: 16
 
 # Pool
 main_pool:
@@ -65,6 +71,7 @@ gen_data:
 
 gpu:
     profiling: true
+    log_profiling: true
     kernel_path: "../../lib/cuda/kernels/"
     commands: &command_list
     - name: cudaInputData

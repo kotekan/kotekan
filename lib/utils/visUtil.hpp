@@ -950,5 +950,48 @@ inline std::string format_python_string(float16_t x) {
 }
 #endif
 
+/**
+ * @brief Degrees to radians, as floats
+ */
+inline float deg2radf(float d) {
+    return d * (float)(M_PI / 180.);
+}
+
+/**
+ * @brief Trig functions for angles in degrees, as floats
+ */
+inline float cosdf(float d) {
+    return cosf(deg2radf(d));
+}
+inline float sindf(float d) {
+    return sinf(deg2radf(d));
+}
+
+/**
+ * @brief Returns time of day in floating-point seconds.  Useful if you want to measure the time
+ * between two events.
+ */
+inline double gettime() {
+    struct timeval tp;
+    gettimeofday(&tp, nullptr);
+    return tp.tv_sec + tp.tv_usec / 1.0e+6;
+}
+
+typedef uint8_t int4x2_t;
+
+// Compose a 4+4-bit complex integer
+inline constexpr int4x2_t set4(const int8_t lo, const int8_t hi) {
+    return (uint8_t(lo) & 0x0f) | ((uint8_t(hi) << 4) & 0xf0);
+}
+// Compose a 4+4-bit complex integer
+inline constexpr int4x2_t set4(const std::array<int8_t, 2> a) {
+    return set4(a[0], a[1]);
+}
+
+// Decompose a 4+4-bit complex integer
+inline constexpr std::array<int8_t, 2> get4(const int4x2_t i) {
+    return {int8_t(int8_t((i + 0x08) & 0x0f) - 0x08),
+            int8_t(int8_t(((i >> 4) + 0x08) & 0x0f) - 0x08)};
+}
 
 #endif
