@@ -4,10 +4,21 @@ project(kotekan_libs)
 
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 
+# Julia is a covnenient language to implement stages for testing and development
+find_package(Julia)
+if(${Julia_FOUND})
+    message("Julia support enabled")
+else()
+    message("Julia not found, support disabled in kotekan_lib")
+endif()
+
 add_library(kotekan_libs INTERFACE)
 
 add_subdirectory(utils)
 target_link_libraries(kotekan_libs INTERFACE kotekan_utils)
+
+add_subdirectory(core)
+target_link_libraries(kotekan_libs INTERFACE kotekan_core)
 
 add_subdirectory(stages)
 target_link_libraries(kotekan_libs INTERFACE kotekan_stages)
@@ -21,9 +32,6 @@ if(${WITH_TESTS})
     add_subdirectory(testing)
     target_link_libraries(kotekan_libs INTERFACE kotekan_testing)
 endif()
-
-add_subdirectory(core)
-target_link_libraries(kotekan_libs INTERFACE kotekan_core)
 
 add_subdirectory(metadata)
 target_link_libraries(kotekan_libs INTERFACE kotekan_metadata)
