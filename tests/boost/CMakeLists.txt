@@ -65,6 +65,20 @@ target_link_libraries(dataset_broker_producer2 PRIVATE libexternal kotekan_utils
 target_link_libraries(dataset_broker_producer PRIVATE libexternal kotekan_utils kotekan_core)
 target_link_libraries(dataset_broker_consumer PRIVATE libexternal kotekan_utils kotekan_core)
 
+# Many tests now need the Cuda include directory for float16_t via visUtil.hpp
+target_include_directories(dataset_broker_producer2 PUBLIC . ${CUDA_INCLUDE_DIR}
+                                                           ${CUDA_INCLUDE_DIRS})
+target_include_directories(dataset_broker_producer PUBLIC . ${CUDA_INCLUDE_DIR}
+                                                          ${CUDA_INCLUDE_DIRS})
+target_include_directories(dataset_broker_consumer PUBLIC . ${CUDA_INCLUDE_DIR}
+                                                          ${CUDA_INCLUDE_DIRS})
+target_include_directories(test_chime_stacking PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
+target_include_directories(test_stat_tracker PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
+target_include_directories(test_updatequeue PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
+target_include_directories(test_dataset_manager PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
+target_include_directories(test_dataset_manager_rest PUBLIC . ${CUDA_INCLUDE_DIR}
+                                                            ${CUDA_INCLUDE_DIRS})
+
 # list test source files that need HDF5 here:
 if(${USE_HDF5})
     add_executable(test_transpose test_transpose.cpp)

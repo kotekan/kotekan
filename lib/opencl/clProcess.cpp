@@ -48,7 +48,8 @@ gpuCommand* clProcess::create_command(const std::string& cmd_name, const std::st
     return cmd;
 }
 
-void clProcess::queue_commands(int gpu_frame_id) {
+void clProcess::queue_commands(int gpu_frame_id, int gpu_frame_counter) {
+    (void)gpu_frame_counter;
     cl_event signal = nullptr;
     for (auto& command : commands) {
         // Feed the last signal into the next operation
