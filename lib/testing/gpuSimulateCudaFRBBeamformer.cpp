@@ -22,7 +22,7 @@ using kotekan::Config;
 
 REGISTER_KOTEKAN_STAGE(gpuSimulateCudaFRBBeamformer);
 
-using int4x2_t = uint8_t;
+//using int4x2_t = uint8_t;
 #if KOTEKAN_FLOAT16
 static void frb_simple(const int32_t* __restrict__ const S, const float16_t* __restrict__ const W,
                        const int4x2_t* __restrict__ const E, float16_t* __restrict__ const I);
@@ -128,7 +128,7 @@ void gpuSimulateCudaFRBBeamformer::main_thread() {
             std::vector<int> inds = get_onehot_indices(voltage_buf, voltage_frame_id);
             if (inds.size() == 0) {
             } else if (inds.size() != 4) {
-                INFO("Expected 4 indices in voltage one-hot array, got {:d}", inds.size());
+                WARN("Expected 4 indices in voltage one-hot array, got {:d}", inds.size());
             } else {
                 int t = inds[0];
                 int p = inds[1];
@@ -140,23 +140,6 @@ void gpuSimulateCudaFRBBeamformer::main_thread() {
                 frb_simple_sub(S, phase, voltage, output, t, p, f, d);
                 done = true;
 #endif
-            }
-        }
-
-        if (!done && metadata_is_onehot(phase_buf, phase_frame_id)) {
-            std::vector<int> inds = get_onehot_indices(phase_buf, phase_frame_id);
-            if (inds.size() == 0) {
-            } else if (inds.size() != 5) {
-                INFO("Expected 5 indices in phase one-hot array, got {:d}", inds.size());
-            } else {
-                int f = inds[0];
-                int p = inds[1];
-                int b = inds[2];
-                int d = inds[3];
-                // real/imag = inds[4]
-                INFO("One-hot phase buffer: freq {:d} pol {:d}, beam {:d}, dish {:d}", f, p, b, d);
-                /////// DO WORK
-                // done = true;
             }
         }
 
@@ -197,18 +180,6 @@ using std::polar;
 // Integer divide, rounding up (towards positive infinity)
 constexpr int cld(const int x, const int y) {
     return (x + y - 1) / y;
-}
-
-// 4-bit integers
-
-
-constexpr int4x2_t set4(const int8_t lo, const int8_t hi) {
-    return (uint8_t(lo) & 0x0f) | ((uint8_t(hi) << 4) & 0xf0);
-}
-
-constexpr std::array<int8_t, 2> get4(const int4x2_t i) {
-    return {int8_t(int8_t((i + 0x08) & 0x0f) - 0x08),
-            int8_t(int8_t(((i >> 4) + 0x08) & 0x0f) - 0x08)};
 }
 
 template<typename T>

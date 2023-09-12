@@ -13,24 +13,7 @@ using kotekan::Config;
 
 REGISTER_CUDA_COMMAND(cudaFRBBeamReformer);
 
-static float deg2radf(float d) {
-    return d * (float)(M_PI / 180.);
-}
-static float cosdf(float d) {
-    return cosf(deg2radf(d));
-}
-static float sindf(float d) {
-    return sinf(deg2radf(d));
-}
-
-double gettime() {
-    struct timeval tp;
-    gettimeofday(&tp, nullptr);
-    return tp.tv_sec + tp.tv_usec / 1.0e+6;
-}
-
-// template<int M>
-// static float Ufunc(int p, float theta) {
+// This matches a function defined in Kendrick's beamforming note (eqn 7/8).
 static float Ufunc(int p, int M, float theta) {
     float acc = 0;
     for (int s = 0; s <= M; s++) {
@@ -41,10 +24,9 @@ static float Ufunc(int p, int M, float theta) {
     }
     return acc;
 }
-// template<int M, int N>
-void compute_beam_reformer_phase(int M, int N, float16_t* host_phase, int _num_local_freq,
-                                 int _num_beams, float* beam_dra, float* beam_ddec, float* freqs,
-                                 float dish_spacing_ew, float dish_spacing_ns, float bore_zd) {
+static void compute_beam_reformer_phase(int M, int N, float16_t* host_phase, int _num_local_freq,
+                                        int _num_beams, float* beam_dra, float* beam_ddec, float* freqs,
+                                        float dish_spacing_ew, float dish_spacing_ns, float bore_zd) {
     const float c = 3.0e8;
     const int B = _num_beams;
     const int Q = 2 * N;
@@ -82,10 +64,8 @@ void compute_beam_reformer_phase(int M, int N, float16_t* host_phase, int _num_l
             float Up[2 * M];
             float Uq[2 * N];
             for (int i = 0; i < 2 * M; i++)
-                // Up[i] = Ufunc<M>(i, theta1);
                 Up[i] = Ufunc(i, M, theta1);
             for (int i = 0; i < 2 * N; i++)
-                // Uq[i] = Ufunc<N>(i, theta2);
                 Uq[i] = Ufunc(i, N, theta2);
 
             for (int p = 0; p < 2 * M; p++) {

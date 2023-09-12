@@ -16,7 +16,11 @@
  * @class cudaFRBBeamReformer
  * @brief cudaCommand for doing final FRB beamforming.  This follows the cudaFRBBeamFormer.
  *
- * Kernel from Nada El-Falou in https://github.com/nadafalou/CHORD/blob/main/mmul.cu
+ * Core code was developed by Nada El-Falou in https://github.com/nadafalou/CHORD/blob/main/mmul.cu
+ *
+ * The phase matrix for the beam locations uses the correct math but
+ * with a lot of placeholder assumptions.  This will need to get
+ * revisited in post-MVP development.
  */
 class cudaFRBBeamReformer : public cudaCommand {
 public:
