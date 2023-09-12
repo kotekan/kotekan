@@ -171,7 +171,7 @@ def subset_data(tmpdir_factory):
         ]
     finally:
         pid = broker.pid
-        os.kill(pid, signal.SIGINT)
+        os.kill(pid, signal.SIGTERM)
         broker.terminate()
 
 
