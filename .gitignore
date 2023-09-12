@@ -13,3 +13,9 @@
 /.vscode/
 /nbproject/
 /cmake-build*/
+build-docs/*
+build-check-format/*
+build-1804/*
+build-2204/*
+docs/sphinx/html/*
+.ccache/*

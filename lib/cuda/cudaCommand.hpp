@@ -97,6 +97,16 @@ public:
                                      const std::vector<cudaEvent_t>& pre_events);
 
     /**
+     * @brief Execute a kernel, with more control over the *cudaPipelineState* object.
+     *        Most subclassers should implement *execute*.
+     * @param pipestate  The pipeline state object.
+     * @param pre_events Array of the last events from each cuda stream, indexed by stream
+     *                   number.
+     */
+    virtual cudaEvent_t execute_base(cudaPipelineState& pipestate,
+                                     const std::vector<cudaEvent_t>& pre_events);
+
+    /**
      * @brief Execute a kernel, copy, etc.
      * @param pipestate     Pipeline state for this GPU frame.
      * @param pre_events    Array of the last events from each cuda stream, indexed by stream

@@ -11,6 +11,7 @@
 
 #include "fmt.hpp"
 
+#include <algorithm>   // for max
 #include <assert.h>    // for assert
 #include <math.h>      // for abs
 #include <algorithm>   // for max
@@ -18,6 +19,7 @@
 #include <exception>   // for exception
 #include <functional>  // for bind
 #include <limits>      // for numeric_limits
+#include <math.h>      // for abs
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error
 #include <string>      // for string, allocator

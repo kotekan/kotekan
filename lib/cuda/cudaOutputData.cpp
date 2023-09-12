@@ -146,6 +146,13 @@ void cudaOutputData::finalize_frame(int frame_id) {
     DEBUG("Generating output {:s}[{:d}] for input GPU frame {:d}", output_buffer->buffer_name,
           output_buffer_id, frame_id);
 
+    if (!did_generate_output[frame_id]) {
+        DEBUG("Did not generate output for input GPU frame {:d}", frame_id);
+        return;
+    }
+    DEBUG("Generating output {:s}[{:d}] for input GPU frame {:d}", output_buffer->buffer_name,
+          output_buffer_id, frame_id);
+
     mark_frame_full(output_buffer, unique_name.c_str(), output_buffer_id);
     output_buffer_id = (output_buffer_id + 1) % output_buffer->num_frames;
     // starting a new output frame, grab metadata from first subsequent frame!

@@ -41,6 +41,7 @@
  *                 of this function requires internal names to select frame.
  *        @buffer_format any, but all must be the same type.
  *        @buffer_metadata any, but all must be the same type.
+ *
  * @buffer out_buf Buffer to get all the frames from the @c in_bufs
  *        @buffer_format Matches the input buffers
  *        @buffer_metadata Matches the input buffers

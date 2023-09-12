@@ -181,8 +181,6 @@ protected:
      * @param frame     VisFrameView frame to write
      * @param t         timestamp for sample
      * @param freq_ind  the index for the frequency associated with the frame
-     *
-     * @return          True if frame successfully written, False otherwise.
      **/
     void add_sample(const VisFrameView& frame, time_ctype t, uint32_t freq_ind);
 

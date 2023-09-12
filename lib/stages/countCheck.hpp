@@ -25,7 +25,7 @@
  * counts per second.
  * It stores this value and checks each frame to look for changes.
  * If the initial time changes by more than 'start_time_tolerance' (default=3)
- * seconds, the stage raises SIGINT.
+ * seconds, the stage raises SIGTERM.
  *
  * @par Buffers
  * @buffer in_buf The buffer whose fpga count will be checked
