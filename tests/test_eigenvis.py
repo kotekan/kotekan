@@ -7,7 +7,6 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 
 import pytest
 import numpy as np
-import sys
 
 from kotekan import runner
 
@@ -57,7 +56,6 @@ def test_basic(tmpdir_factory):
     expected_evec_phase_fact = np.exp(1j * np.arange(num_elements))
 
     eigen_data = run_eigenvis(tmpdir_factory)
-
     for frame in eigen_data:
         largest_eval = frame.eval[0]
         largest_evec = frame.evec[:num_elements]
