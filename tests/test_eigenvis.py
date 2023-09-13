@@ -49,6 +49,7 @@ def run_eigenvis(tdir_factory, params=None):
     test.run()
     return dump_buffer.load()
 
+
 def test_basic(tmpdir_factory):
 
     params = default_params
