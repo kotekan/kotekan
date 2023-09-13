@@ -13,9 +13,7 @@ REGISTER_CUDA_COMMAND(cudaOutputData);
 
 cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "", ""),
-    got_metadata(false) {
-
+    cudaCommand(config, unique_name, host_buffers, device, "", "") {
     std::string in_buf_name = config.get_default<std::string>(unique_name, "in_buf", "");
     if (in_buf_name.size()) {
         in_buffer = host_buffers.get_buffer(in_buf_name);
@@ -121,20 +119,11 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState& pipestate,
 void cudaOutputData::finalize_frame(int frame_id) {
     cudaCommand::finalize_frame(frame_id);
 
-    if (!got_metadata) {
-        if (in_buffer) {
-            DEBUG("Passing metadata from input (host) buffer {:s}[{:d}] to {:s}[{:d}]",
-                  in_buffer->buffer_name, in_buffer_id, output_buffer->buffer_name,
-                  output_buffer_id);
-            pass_metadata(in_buffer, in_buffer_id, output_buffer, output_buffer_id);
-            got_metadata = true;
-        }
-    } else {
-        // ?? does this happen?
-        DEBUG("finalize_frame for GPU frame \"{:s}\"[{:d}], but already got_metadata", _gpu_mem,
-              frame_id);
-        // DEBUG("Add metadata? from input {:s}[{:d}] to {:s}[{:d}]", in_buffer->buffer_name,
-        // in_buffer_id, output_buffer->buffer_name, output_buffer_id);
+    if (in_buffer) {
+        DEBUG("Passing metadata from input (host) buffer {:s}[{:d}] to {:s}[{:d}]",
+              in_buffer->buffer_name, in_buffer_id, output_buffer->buffer_name,
+              output_buffer_id);
+        pass_metadata(in_buffer, in_buffer_id, output_buffer, output_buffer_id);
     }
 
     if (in_buffer) {
@@ -149,17 +138,8 @@ void cudaOutputData::finalize_frame(int frame_id) {
     DEBUG("Generating output {:s}[{:d}] for input GPU frame {:d}", output_buffer->buffer_name,
           output_buffer_id, frame_id);
 
-    if (!did_generate_output[frame_id]) {
-        DEBUG("Did not generate output for input GPU frame {:d}", frame_id);
-        return;
-    }
-    DEBUG("Generating output {:s}[{:d}] for input GPU frame {:d}", output_buffer->buffer_name,
-          output_buffer_id, frame_id);
-
     mark_frame_full(output_buffer, unique_name.c_str(), output_buffer_id);
     output_buffer_id = (output_buffer_id + 1) % output_buffer->num_frames;
-    // starting a new output frame, grab metadata from first subsequent frame!
-    got_metadata = false;
 }
 
 std::string cudaOutputData::get_performance_metric_string() {
