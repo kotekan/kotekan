@@ -1,7 +1,7 @@
 #include "BufferSplit.hpp"
 
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"         // for mark_frame_empty, mark_frame_full, pass_metadata, register_c...
+#include "buffer.hpp"       // for mark_frame_empty, mark_frame_full, pass_metadata, register_c...
 #include "visUtil.hpp"      // for frameID, modulo
 
 #include <algorithm> // for max
@@ -16,7 +16,7 @@ STAGE_CONSTRUCTOR(BufferSplit) {
     register_consumer(in_buf, unique_name.c_str());
 
     out_bufs = get_buffer_array("out_bufs");
-    for (struct Buffer* out_buf : out_bufs)
+    for (Buffer* out_buf : out_bufs)
         register_producer(out_buf, unique_name.c_str());
 }
 

@@ -16,7 +16,7 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer* buf;
+    Buffer* buf;
 
     uint32_t _vdif_port;
     std::string _vdif_server_ip;

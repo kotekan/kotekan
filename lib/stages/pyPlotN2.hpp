@@ -70,7 +70,7 @@ private:
     void make_plot(void);
 
     /// The kotekan buffer object the stage is producing for
-    struct Buffer* buf;
+    Buffer* buf;
     unsigned char* in_local;
     std::string endpoint;
 

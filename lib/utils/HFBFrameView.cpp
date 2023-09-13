@@ -1,7 +1,7 @@
 #include "HFBFrameView.hpp"
 
 #include "FrameView.hpp" // for bind_span, FrameView
-#include "buffer.h"      // for Buffer, allocate_new_metadata_object
+#include "buffer.hpp"    // for Buffer, allocate_new_metadata_object
 #include "metadata.h"    // for metadataContainer
 #include "visUtil.hpp"   // for struct_alignment
 

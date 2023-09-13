@@ -3,8 +3,10 @@
 
 #include "Config.hpp"
 #include "kotekanLogging.hpp" // for kotekanLogging
+#include "metadata.h"
 
-#include <map>      // for map
+#include <map> // for map
+#include <mutex>
 #include <stdint.h> // for uint32_t, int32_t
 #include <string>   // for string
 #include <vector>   // for vector
@@ -14,7 +16,10 @@ struct gpuMemoryBlock {
     std::vector<void*> gpu_pointers;
     // store the "real" pointers to allow windowed buffer views
     std::vector<void*> gpu_pointers_to_free;
+    std::vector<metadataContainer*> metadata_pointers;
     size_t len;
+    // if this is a view, the target of that view; used only for metadata
+    std::string view_source;
 };
 
 /**
@@ -87,6 +92,44 @@ public:
                                  const std::string& view_name, const size_t view_offset,
                                  const size_t view_len);
 
+    /**
+     * @brief Fetches the metadata (if any) attached to the given GPU
+     * memory array element.  Return NULL if no metadata.
+     * @param name  the name of the GPU buffer whose metadata you want
+     * @param index the GPU buffer array index
+     */
+    metadataContainer* get_gpu_memory_array_metadata(const std::string& name, const uint32_t index);
+
+    /**
+     * @brief Allocates a new metadata object (from the given pool)
+     * and attaches it to this GPU array element.
+     * @param name  the name of the GPU buffer whose metadata you want to create
+     * @param index the GPU buffer array index
+     * @param pool  the pool that will be used to create the metadata object
+     */
+    metadataContainer* create_gpu_memory_array_metadata(const std::string& name,
+                                                        const uint32_t index, metadataPool* pool);
+
+    /**
+     * @brief Attaches the given metadata to this GPU array element,
+     * incrementing the reference count.  This should be accompanied
+     * by a *release_gpu_memory_array_metadata* call to release the
+     * reference count.
+     * @param name  the name of the GPU buffer whose metadata you want to create
+     * @param index the GPU buffer array index
+     * @param mc    the metadata container whose ref count will get increased
+     */
+    void claim_gpu_memory_array_metadata(const std::string& name, const uint32_t index,
+                                         metadataContainer* mc);
+
+    /**
+     * @brief Releases a claim on a metadata object (including a newly
+     * created metadata object) attached to the given GPU array
+     * element.  Does nothing if no metadata object has been attached
+     * to this GPU array element.
+     */
+    void release_gpu_memory_array_metadata(const std::string& name, const uint32_t index);
+
     // Can't do this in the destructor because only the derived classes know
     // how to free their memory. To be moved into distinct objects...
     void cleanup_memory();
@@ -119,6 +162,9 @@ protected:
 
 private:
     std::map<std::string, gpuMemoryBlock> gpu_memory;
+
+    // Mutex to protect gpu_memory variable
+    std::recursive_mutex gpu_memory_mutex;
 };
 
 #endif // GPU_DEVICE_INTERFACE_H

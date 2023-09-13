@@ -2,7 +2,7 @@
 
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"              // for Buffer, allocate_new_metadata_object, buffer_free, buff...
+#include "buffer.hpp"            // for Buffer, allocate_new_metadata_object, buffer_free, buff...
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "bufferSend.hpp"        // for bufferFrameHeader
 #include "metadata.h"            // for metadataPool

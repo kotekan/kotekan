@@ -10,7 +10,7 @@
 #include "Config.hpp"          // for Config
 #include "H5Support.hpp"       // for AtomicType<>::AtomicType, dset_id_str
 #include "Stage.hpp"           // for Stage
-#include "buffer.h"            // for Buffer
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t
 #include "visUtil.hpp"         // for cfloat, time_ctype, freq_ctype, input_ctype, prod_ctype

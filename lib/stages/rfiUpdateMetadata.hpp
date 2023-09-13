@@ -50,13 +50,13 @@ public:
 
 private:
     /// The mask of which samples were flagged as RFI
-    struct Buffer* rfi_mask_buf;
+    Buffer* rfi_mask_buf;
 
     /// The mask of which samples were lost to packet loss/network errors.
-    struct Buffer* lost_samples_buf;
+    Buffer* lost_samples_buf;
 
     /// The GPU N2 data, we are a producer of this data
-    struct Buffer* gpu_correlation_buf;
+    Buffer* gpu_correlation_buf;
 
     /// The number of N2 output frames for each input RFI/packet loss frame.
     uint32_t _num_sub_frames;

@@ -11,7 +11,7 @@
 #include "Config.hpp"          // for Config
 #include "HFBFrameView.hpp"    // for HFBFrameView
 #include "Stage.hpp"           // for Stage
-#include "buffer.h"            // for Buffer
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "dataset.hpp"         // for dset_id_t
 #include "visUtil.hpp"         // for cfloat

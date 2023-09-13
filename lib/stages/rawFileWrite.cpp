@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, get_metadata_container, mark_frame_empty, regis...
+#include "buffer.hpp"          // for Buffer, get_metadata_container, mark_frame_empty, regis...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "errors.h"
 #include "kotekanLogging.hpp"    // for ERROR, INFO
@@ -96,7 +96,7 @@ void rawFileWrite::main_thread() {
 
         // Write the meta data to disk
         uint32_t metadata_size = 0;
-        struct metadataContainer* mc = get_metadata_container(buf, frame_id);
+        metadataContainer* mc = get_metadata_container(buf, frame_id);
         if (mc != nullptr) {
             metadata_size = mc->metadata_size;
         }

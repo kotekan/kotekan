@@ -8,7 +8,7 @@
 #define CAPTURE_HANDLER_HPP
 
 #include "Config.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "dpdkCore.hpp"
 #include "packet_copy.h"
@@ -50,7 +50,7 @@ public:
 
 protected:
     /// The output buffer
-    struct Buffer* out_buf;
+    Buffer* out_buf;
 
     /// The current frame
     uint8_t* out_frame;

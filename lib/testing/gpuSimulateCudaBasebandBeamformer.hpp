@@ -63,10 +63,10 @@ private:
                        const int F, // = 16;    // frequency channels per GPU
                        const int t, const int b, const int d, const int f, const int p);
 
-    struct Buffer* voltage_buf;
-    struct Buffer* phase_buf;
-    struct Buffer* shift_buf;
-    struct Buffer* output_buf;
+    Buffer* voltage_buf;
+    Buffer* phase_buf;
+    Buffer* shift_buf;
+    Buffer* output_buf;
 
     /// Number of elements on the telescope
     int32_t _num_elements;

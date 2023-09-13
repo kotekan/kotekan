@@ -2,7 +2,7 @@
 #define BEAMMETADATA_HPP
 
 #include "Telescope.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "chimeMetadata.hpp"
 #include "dataset.hpp" // for dset_id_t
 #include "metadata.h"

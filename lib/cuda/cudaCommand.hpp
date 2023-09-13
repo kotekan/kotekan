@@ -9,7 +9,7 @@
 
 #include "Config.hpp"
 #include "assert.h"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "cudaDeviceInterface.hpp"
 #include "cudaEventContainer.hpp"
@@ -81,10 +81,10 @@ public:
      * @param opts         List of options to pass to nvrtc
      **/
     virtual void build(const std::vector<std::string>& kernel_names,
-                       std::vector<std::string>& opts);
+                       const std::vector<std::string>& opts);
 
     virtual void build_ptx(const std::vector<std::string>& kernel_names,
-                           std::vector<std::string>& opts);
+                           const std::vector<std::string>& opts);
 
     /**
      * @brief Execute a kernel, with more control over the *cudaPipelineState* object.

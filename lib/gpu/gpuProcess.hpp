@@ -41,7 +41,7 @@ protected:
                                        const std::string& unique_name) = 0;
     virtual gpuEventContainer* create_signal() = 0;
     virtual void queue_commands(int gpu_frame_id, int gpu_frame_counter) = 0;
-    virtual void register_host_memory(struct Buffer* host_buffer) = 0;
+    virtual void register_host_memory(Buffer* host_buffer) = 0;
     void results_thread();
     void init(void);
 

@@ -1,4 +1,4 @@
-#include "buffer.h"
+#include "buffer.hpp"
 
 #include "errors.h"    // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, INFO_F, DEBUG_F, WARN_F
 #include "metadata.h"  // for metadataContainer, decrement_metadata_ref_count, increment_...
@@ -30,35 +30,35 @@
 #define HUGE_PAGE_SIZE 2097152
 
 struct zero_frames_thread_args {
-    struct Buffer* buf;
+    Buffer* buf;
     int ID;
 };
 
 void* private_zero_frames(void* args);
 
 // Returns -1 if there is no consumer with that name
-int private_get_consumer_id(struct Buffer* buf, const char* name);
+int private_get_consumer_id(Buffer* buf, const char* name);
 
 // Returns -1 if there is no producer with that name
-int private_get_producer_id(struct Buffer* buf, const char* name);
+int private_get_producer_id(Buffer* buf, const char* name);
 
 // Marks the consumer named by `name` as done for the given ID
-void private_mark_consumer_done(struct Buffer* buf, const char* name, const int ID);
+void private_mark_consumer_done(Buffer* buf, const char* name, const int ID);
 
 // Marks the producer named by `name` as done for the given ID
-void private_mark_producer_done(struct Buffer* buf, const char* name, const int ID);
+void private_mark_producer_done(Buffer* buf, const char* name, const int ID);
 
 // Returns 1 if all consumers are done for the given ID.
-int private_consumers_done(struct Buffer* buf, const int ID);
+int private_consumers_done(Buffer* buf, const int ID);
 
 // Returns 1 if all producers are done for the given ID.
-int private_producers_done(struct Buffer* buf, const int ID);
+int private_producers_done(Buffer* buf, const int ID);
 
 // Resets the list of producers for the given ID
-void private_reset_producers(struct Buffer* buf, const int ID);
+void private_reset_producers(Buffer* buf, const int ID);
 
 // Resets the list of consumers for the given ID
-void private_reset_consumers(struct Buffer* buf, const int ID);
+void private_reset_consumers(Buffer* buf, const int ID);
 
 /**
  * @brief Marks a frame as empty and if the buffer requires zeroing then it starts
@@ -67,11 +67,11 @@ void private_reset_consumers(struct Buffer* buf, const int ID);
  * @param id The id of the frame to mark as empty.
  * @return 1 if the frame was marked as empty, 0 if it is being zeroed.
  */
-int private_mark_frame_empty(struct Buffer* buf, const int id);
+int private_mark_frame_empty(Buffer* buf, const int id);
 
-struct Buffer* create_buffer(int num_frames, size_t len, struct metadataPool* pool,
-                             const char* buffer_name, const char* buffer_type, int numa_node,
-                             bool use_hugepages, bool mlock_frames, bool zero_new_frames) {
+Buffer* create_buffer(int num_frames, size_t len, metadataPool* pool, const char* buffer_name,
+                      const char* buffer_type, int numa_node, bool use_hugepages, bool mlock_frames,
+                      bool zero_new_frames) {
 
     assert(num_frames > 0);
 
@@ -88,13 +88,13 @@ struct Buffer* create_buffer(int num_frames, size_t len, struct metadataPool* po
     numa_bitmask_free(node_mask);
 #endif
 
-    struct Buffer* buf = malloc(sizeof(struct Buffer));
+    Buffer* buf = (Buffer*)malloc(sizeof(Buffer));
     CHECK_MEM_F(buf);
 
-    CHECK_ERROR_F(pthread_mutex_init(&buf->lock, NULL));
+    CHECK_ERROR_F(pthread_mutex_init(&buf->lock, nullptr));
 
-    CHECK_ERROR_F(pthread_cond_init(&buf->full_cond, NULL));
-    CHECK_ERROR_F(pthread_cond_init(&buf->empty_cond, NULL));
+    CHECK_ERROR_F(pthread_cond_init(&buf->full_cond, nullptr));
+    CHECK_ERROR_F(pthread_cond_init(&buf->empty_cond, nullptr));
 
     buf->shutdown_signal = 0;
     buf->numa_node = numa_node;
@@ -118,7 +118,7 @@ struct Buffer* create_buffer(int num_frames, size_t len, struct metadataPool* po
     }
 
     // Create the is_free array
-    buf->is_full = malloc(num_frames * sizeof(int));
+    buf->is_full = (int*)malloc(num_frames * sizeof(int));
 
     if (buf->is_full == NULL) {
         ERROR_F("Error creating is_full array");
@@ -128,11 +128,11 @@ struct Buffer* create_buffer(int num_frames, size_t len, struct metadataPool* po
     memset(buf->is_full, 0, num_frames * sizeof(int));
 
     // Create the array of buffer pointers.
-    buf->frames = malloc(num_frames * sizeof(void*));
+    buf->frames = (uint8_t**)malloc(num_frames * sizeof(void*));
     CHECK_MEM_F(buf->frames);
 
     // Create the info array
-    buf->metadata = malloc(num_frames * sizeof(void*));
+    buf->metadata = (metadataContainer**)malloc(num_frames * sizeof(void*));
     CHECK_MEM_F(buf->metadata);
 
     for (int i = 0; i < num_frames; ++i) {
@@ -147,14 +147,14 @@ struct Buffer* create_buffer(int num_frames, size_t len, struct metadataPool* po
     }
 
     // Create the arrays for marking consumers and producers as done.
-    buf->producers_done = malloc(num_frames * sizeof(int*));
+    buf->producers_done = (int**)malloc(num_frames * sizeof(int*));
     CHECK_MEM_F(buf->producers_done);
-    buf->consumers_done = malloc(num_frames * sizeof(int*));
+    buf->consumers_done = (int**)malloc(num_frames * sizeof(int*));
     CHECK_MEM_F(buf->consumers_done);
 
     for (int i = 0; i < num_frames; ++i) {
-        buf->producers_done[i] = malloc(MAX_PRODUCERS * sizeof(int));
-        buf->consumers_done[i] = malloc(MAX_CONSUMERS * sizeof(int));
+        buf->producers_done[i] = (int*)malloc(MAX_PRODUCERS * sizeof(int));
+        buf->consumers_done[i] = (int*)malloc(MAX_CONSUMERS * sizeof(int));
 
         CHECK_MEM_F(buf->producers_done[i]);
         CHECK_MEM_F(buf->consumers_done[i]);
@@ -178,7 +178,7 @@ struct Buffer* create_buffer(int num_frames, size_t len, struct metadataPool* po
 
 #if defined(WITH_NUMA) && !defined(WITH_NO_MEMLOCK)
     // Reset the memory policy so that we don't impact other parts of the
-    if (set_mempolicy(MPOL_DEFAULT, NULL, 0) < 0) {
+    if (set_mempolicy(MPOL_DEFAULT, nullptr, 0) < 0) {
         ERROR_F("Failed to reset the memory policy to default: %s (%d)", strerror(errno), errno);
         return NULL;
     }
@@ -187,7 +187,7 @@ struct Buffer* create_buffer(int num_frames, size_t len, struct metadataPool* po
     return buf;
 }
 
-void delete_buffer(struct Buffer* buf) {
+void delete_buffer(Buffer* buf) {
     for (int i = 0; i < buf->num_frames; ++i) {
         buffer_free(buf->frames[i], buf->aligned_frame_size, buf->use_hugepages);
         free(buf->producers_done[i]);
@@ -208,7 +208,7 @@ void delete_buffer(struct Buffer* buf) {
     CHECK_ERROR_F(pthread_cond_destroy(&buf->empty_cond));
 }
 
-void mark_frame_full(struct Buffer* buf, const char* name, const int ID) {
+void mark_frame_full(Buffer* buf, const char* name, const int ID) {
     assert(ID >= 0);
     assert(ID < buf->num_frames);
 
@@ -256,7 +256,7 @@ void mark_frame_full(struct Buffer* buf, const char* name, const int ID) {
 void* private_zero_frames(void* args) {
 
     int ID = ((struct zero_frames_thread_args*)(args))->ID;
-    struct Buffer* buf = ((struct zero_frames_thread_args*)(args))->buf;
+    Buffer* buf = ((struct zero_frames_thread_args*)(args))->buf;
 
     assert(ID >= 0);
     assert(ID <= buf->num_frames);
@@ -286,13 +286,13 @@ void* private_zero_frames(void* args) {
     pthread_exit(&ret);
 }
 
-void zero_frames(struct Buffer* buf) {
+void zero_frames(Buffer* buf) {
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
     buf->zero_frames = 1;
     CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
 }
 
-void mark_frame_empty(struct Buffer* buf, const char* consumer_name, const int ID) {
+void mark_frame_empty(Buffer* buf, const char* consumer_name, const int ID) {
     assert(ID >= 0);
     assert(ID < buf->num_frames);
     int broadcast = 0;
@@ -316,11 +316,12 @@ void mark_frame_empty(struct Buffer* buf, const char* consumer_name, const int I
     }
 }
 
-int private_mark_frame_empty(struct Buffer* buf, const int id) {
+int private_mark_frame_empty(Buffer* buf, const int id) {
     int broadcast = 0;
     if (buf->zero_frames == 1) {
         pthread_t zero_t;
-        struct zero_frames_thread_args* zero_args = malloc(sizeof(struct zero_frames_thread_args));
+        struct zero_frames_thread_args* zero_args =
+            (struct zero_frames_thread_args*)malloc(sizeof(struct zero_frames_thread_args));
         zero_args->ID = id;
         zero_args->buf = buf;
 
@@ -329,7 +330,7 @@ int private_mark_frame_empty(struct Buffer* buf, const int id) {
         // TODO: Move this to the config file (when buffers.c updated to C++11)
         CPU_SET(5, &cpuset);
 
-        CHECK_ERROR_F(pthread_create(&zero_t, NULL, &private_zero_frames, (void*)zero_args));
+        CHECK_ERROR_F(pthread_create(&zero_t, nullptr, &private_zero_frames, (void*)zero_args));
         CHECK_ERROR_F(pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &cpuset));
         CHECK_ERROR_F(pthread_detach(zero_t));
     } else {
@@ -344,7 +345,7 @@ int private_mark_frame_empty(struct Buffer* buf, const int id) {
     return broadcast;
 }
 
-uint8_t* wait_for_empty_frame(struct Buffer* buf, const char* producer_name, const int ID) {
+uint8_t* wait_for_empty_frame(Buffer* buf, const char* producer_name, const int ID) {
     assert(ID >= 0);
     assert(ID < buf->num_frames);
 
@@ -380,7 +381,7 @@ uint8_t* wait_for_empty_frame(struct Buffer* buf, const char* producer_name, con
     return buf->frames[ID];
 }
 
-void register_consumer(struct Buffer* buf, const char* name) {
+void register_consumer(Buffer* buf, const char* name) {
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 
     DEBUG_F("Registering consumer %s for buffer %s", name, buf->buffer_name);
@@ -410,7 +411,7 @@ void register_consumer(struct Buffer* buf, const char* name) {
     CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
 }
 
-void unregister_consumer(struct Buffer* buf, const char* name) {
+void unregister_consumer(Buffer* buf, const char* name) {
 
     int broadcast = 0;
 
@@ -444,7 +445,7 @@ void unregister_consumer(struct Buffer* buf, const char* name) {
 }
 
 
-void register_producer(struct Buffer* buf, const char* name) {
+void register_producer(Buffer* buf, const char* name) {
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
     DEBUG_F("Buffer: %s Registering producer: %s", buf->buffer_name, name);
     if (private_get_producer_id(buf, name) != -1) {
@@ -472,7 +473,7 @@ void register_producer(struct Buffer* buf, const char* name) {
     CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
 }
 
-int private_get_consumer_id(struct Buffer* buf, const char* name) {
+int private_get_consumer_id(Buffer* buf, const char* name) {
 
     for (int i = 0; i < MAX_CONSUMERS; ++i) {
         if (buf->consumers[i].in_use == 1
@@ -483,7 +484,7 @@ int private_get_consumer_id(struct Buffer* buf, const char* name) {
     return -1;
 }
 
-int private_get_producer_id(struct Buffer* buf, const char* name) {
+int private_get_producer_id(Buffer* buf, const char* name) {
 
     for (int i = 0; i < MAX_PRODUCERS; ++i) {
         if (buf->producers[i].in_use == 1
@@ -494,15 +495,15 @@ int private_get_producer_id(struct Buffer* buf, const char* name) {
     return -1;
 }
 
-void private_reset_producers(struct Buffer* buf, const int ID) {
+void private_reset_producers(Buffer* buf, const int ID) {
     memset(buf->producers_done[ID], 0, MAX_PRODUCERS * sizeof(int));
 }
 
-void private_reset_consumers(struct Buffer* buf, const int ID) {
+void private_reset_consumers(Buffer* buf, const int ID) {
     memset(buf->consumers_done[ID], 0, MAX_CONSUMERS * sizeof(int));
 }
 
-void private_mark_consumer_done(struct Buffer* buf, const char* name, const int ID) {
+void private_mark_consumer_done(Buffer* buf, const char* name, const int ID) {
     int consumer_id = private_get_consumer_id(buf, name);
     if (consumer_id == -1) {
         ERROR_F("The consumer %s hasn't been registered!", name);
@@ -519,7 +520,7 @@ void private_mark_consumer_done(struct Buffer* buf, const char* name, const int 
     buf->consumers_done[ID][consumer_id] = 1;
 }
 
-void private_mark_producer_done(struct Buffer* buf, const char* name, const int ID) {
+void private_mark_producer_done(Buffer* buf, const char* name, const int ID) {
     int producer_id = private_get_producer_id(buf, name);
     if (producer_id == -1) {
         ERROR_F("The producer %s hasn't been registered!", name);
@@ -536,7 +537,7 @@ void private_mark_producer_done(struct Buffer* buf, const char* name, const int 
     buf->producers_done[ID][producer_id] = 1;
 }
 
-int private_consumers_done(struct Buffer* buf, const int ID) {
+int private_consumers_done(Buffer* buf, const int ID) {
 
     for (int i = 0; i < MAX_CONSUMERS; ++i) {
         if (buf->consumers[i].in_use == 1 && buf->consumers_done[ID][i] == 0)
@@ -545,7 +546,7 @@ int private_consumers_done(struct Buffer* buf, const int ID) {
     return 1;
 }
 
-int private_producers_done(struct Buffer* buf, const int ID) {
+int private_producers_done(Buffer* buf, const int ID) {
 
     for (int i = 0; i < MAX_PRODUCERS; ++i) {
         if (buf->producers[i].in_use == 1 && buf->producers_done[ID][i] == 0)
@@ -554,7 +555,7 @@ int private_producers_done(struct Buffer* buf, const int ID) {
     return 1;
 }
 
-int is_frame_empty(struct Buffer* buf, const int ID) {
+int is_frame_empty(Buffer* buf, const int ID) {
     assert(ID >= 0);
     assert(buf != NULL);
     assert(ID < buf->num_frames);
@@ -572,7 +573,7 @@ int is_frame_empty(struct Buffer* buf, const int ID) {
     return empty;
 }
 
-uint8_t* wait_for_full_frame(struct Buffer* buf, const char* name, const int ID) {
+uint8_t* wait_for_full_frame(Buffer* buf, const char* name, const int ID) {
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 
     int consumer_id = private_get_consumer_id(buf, name);
@@ -594,7 +595,7 @@ uint8_t* wait_for_full_frame(struct Buffer* buf, const char* name, const int ID)
     return buf->frames[ID];
 }
 
-int wait_for_full_frame_timeout(struct Buffer* buf, const char* name, const int ID,
+int wait_for_full_frame_timeout(Buffer* buf, const char* name, const int ID,
                                 const struct timespec timeout) {
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 
@@ -621,7 +622,7 @@ int wait_for_full_frame_timeout(struct Buffer* buf, const char* name, const int 
     return 0;
 }
 
-int get_num_full_frames(struct Buffer* buf) {
+int get_num_full_frames(Buffer* buf) {
     int numFull = 0;
 
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
@@ -637,7 +638,7 @@ int get_num_full_frames(struct Buffer* buf) {
     return numFull;
 }
 
-int get_num_consumers(struct Buffer* buf) {
+int get_num_consumers(Buffer* buf) {
     int num_consumers = 0;
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
     for (int i = 0; i < MAX_CONSUMERS; ++i) {
@@ -649,7 +650,7 @@ int get_num_consumers(struct Buffer* buf) {
     return num_consumers;
 }
 
-int get_num_producers(struct Buffer* buf) {
+int get_num_producers(Buffer* buf) {
     int num_producers = 0;
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
     for (int i = 0; i < MAX_PRODUCERS; ++i) {
@@ -661,7 +662,7 @@ int get_num_producers(struct Buffer* buf) {
     return num_producers;
 }
 
-void print_buffer_status(struct Buffer* buf) {
+void print_buffer_status(Buffer* buf) {
     int is_full[buf->num_frames];
 
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
@@ -684,7 +685,7 @@ void print_buffer_status(struct Buffer* buf) {
     INFO_F("Buffer %s, status: %s", buf->buffer_name, status_string);
 }
 
-void print_full_status(struct Buffer* buf) {
+void print_full_status(Buffer* buf) {
 
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 
@@ -741,7 +742,7 @@ void print_full_status(struct Buffer* buf) {
 }
 
 
-void pass_metadata(struct Buffer* from_buf, int from_ID, struct Buffer* to_buf, int to_ID) {
+void pass_metadata(Buffer* from_buf, int from_ID, Buffer* to_buf, int to_ID) {
 
     if (from_buf->metadata[from_ID] == NULL) {
         WARN_F("No metadata in source buffer %s[%d], was this intended?", from_buf->buffer_name,
@@ -749,7 +750,7 @@ void pass_metadata(struct Buffer* from_buf, int from_ID, struct Buffer* to_buf, 
         return;
     }
 
-    struct metadataContainer* metadata_container = from_buf->metadata[from_ID];
+    metadataContainer* metadata_container = from_buf->metadata[from_ID];
 
     CHECK_ERROR_F(pthread_mutex_lock(&to_buf->lock));
 
@@ -765,8 +766,9 @@ void pass_metadata(struct Buffer* from_buf, int from_ID, struct Buffer* to_buf, 
     CHECK_ERROR_F(pthread_mutex_unlock(&to_buf->lock));
 }
 
-void copy_metadata(struct Buffer* from_buf, int from_ID, struct Buffer* to_buf, int to_ID) {
-
+void copy_metadata(Buffer* from_buf, int from_ID, Buffer* to_buf, int to_ID) {
+    metadataContainer* from_metadata_container;
+    metadataContainer* to_metadata_container;
     CHECK_ERROR_F(pthread_mutex_lock(&from_buf->lock));
     CHECK_ERROR_F(pthread_mutex_lock(&to_buf->lock));
 
@@ -783,8 +785,8 @@ void copy_metadata(struct Buffer* from_buf, int from_ID, struct Buffer* to_buf, 
         goto unlock_exit;
     }
 
-    struct metadataContainer* from_metadata_container = from_buf->metadata[from_ID];
-    struct metadataContainer* to_metadata_container = to_buf->metadata[to_ID];
+    from_metadata_container = from_buf->metadata[from_ID];
+    to_metadata_container = to_buf->metadata[to_ID];
 
     if (from_metadata_container->metadata_size != to_metadata_container->metadata_size) {
         WARN_F("Metadata sizes don't match, cannot copy metadata!!");
@@ -799,7 +801,7 @@ unlock_exit:
     CHECK_ERROR_F(pthread_mutex_unlock(&from_buf->lock));
 }
 
-void allocate_new_metadata_object(struct Buffer* buf, int ID) {
+void allocate_new_metadata_object(Buffer* buf, int ID) {
     assert(ID >= 0);
     assert(ID < buf->num_frames);
 
@@ -822,7 +824,7 @@ void allocate_new_metadata_object(struct Buffer* buf, int ID) {
     CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
 }
 
-uint8_t* swap_external_frame(struct Buffer* buf, int frame_id, uint8_t* external_frame) {
+uint8_t* swap_external_frame(Buffer* buf, int frame_id, uint8_t* external_frame) {
 
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 
@@ -843,8 +845,7 @@ uint8_t* swap_external_frame(struct Buffer* buf, int frame_id, uint8_t* external
     return temp_frame;
 }
 
-void swap_frames(struct Buffer* from_buf, int from_frame_id, struct Buffer* to_buf,
-                 int to_frame_id) {
+void swap_frames(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_frame_id) {
 
     assert(from_buf != to_buf);
     assert(from_buf != NULL);
@@ -868,8 +869,7 @@ void swap_frames(struct Buffer* from_buf, int from_frame_id, struct Buffer* to_b
     to_buf->frames[to_frame_id] = temp_frame;
 }
 
-void safe_swap_frame(struct Buffer* src_buf, int src_frame_id, struct Buffer* dest_buf,
-                     int dest_frame_id) {
+void safe_swap_frame(Buffer* src_buf, int src_frame_id, Buffer* dest_buf, int dest_frame_id) {
     assert(src_buf != dest_buf);
     assert(src_buf != NULL);
     assert(dest_buf != NULL);
@@ -916,7 +916,7 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
 #else
     if (use_hugepages) {
 #ifndef MAC_OSX
-        void* mapped_frame = mmap(NULL, len, PROT_READ | PROT_WRITE,
+        void* mapped_frame = mmap(nullptr, len, PROT_READ | PROT_WRITE,
                                   MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
         if (mapped_frame == MAP_FAILED) {
             ERROR_F("Error mapping huge pages, check available huge pages: %s (%d)",
@@ -996,7 +996,7 @@ void buffer_free(uint8_t* frame_pointer, size_t size, bool use_hugepages) {
 }
 
 // Do not call if there is no metadata
-void* get_metadata(struct Buffer* buf, int ID) {
+void* get_metadata(Buffer* buf, int ID) {
     assert(ID >= 0);
     assert(ID < buf->num_frames);
     assert(buf->metadata[ID] != NULL);
@@ -1005,18 +1005,18 @@ void* get_metadata(struct Buffer* buf, int ID) {
 }
 
 // Might return NULLL
-struct metadataContainer* get_metadata_container(struct Buffer* buf, int ID) {
+metadataContainer* get_metadata_container(Buffer* buf, int ID) {
     assert(ID >= 0);
     assert(ID < buf->num_frames);
 
     return buf->metadata[ID];
 }
 
-double get_last_arrival_time(struct Buffer* buf) {
+double get_last_arrival_time(Buffer* buf) {
     return buf->last_arrival_time;
 }
 
-void send_shutdown_signal(struct Buffer* buf) {
+void send_shutdown_signal(Buffer* buf) {
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
     buf->shutdown_signal = 1;
     CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));

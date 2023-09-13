@@ -2,7 +2,7 @@
 
 #include "FrameView.hpp"     // for bind_span, bind_scalar, FrameView
 #include "Telescope.hpp"     // for Telescope
-#include "buffer.h"          // for Buffer, allocate_new_metadata_object
+#include "buffer.hpp"        // for Buffer, allocate_new_metadata_object
 #include "chimeMetadata.hpp" // for chimeMetadata, get_stream_id_from_metadata
 #include "metadata.h"        // for metadataContainer
 

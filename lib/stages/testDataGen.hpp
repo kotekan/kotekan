@@ -67,7 +67,7 @@ public:
 private:
     void rest_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     bool can_i_go(int frame_id_abs);
-    struct Buffer* buf;
+    Buffer* buf;
     std::string type;
     std::string endpoint;
     int value;
@@ -87,6 +87,7 @@ private:
     uint32_t num_links;
     int _seed;
     std::vector<int> _array_shape;
+    std::vector<std::string> _dim_name;
 
     // kotekan trackers example
     std::shared_ptr<StatTracker> timer;

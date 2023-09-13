@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, mark_frame_full, register_producer, wait_for_empt...
+#include "buffer.hpp"          // for Buffer, mark_frame_full, register_producer, wait_for_empt...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.hpp"   // for atomic_add_lost_timesamples
 #include "nt_memset.h"         // for nt_memset
@@ -38,7 +38,7 @@ zeroSamples::zeroSamples(Config& config, const std::string& unique_name,
     if (_duplicate_ls_buffer) {
         json in_bufs = config.get_value(unique_name, "out_lost_sample_buffers");
         for (json::iterator it = in_bufs.begin(); it != in_bufs.end(); ++it) {
-            struct Buffer* buf = buffer_container.get_buffer(it.value());
+            Buffer* buf = buffer_container.get_buffer(it.value());
             out_lost_sample_bufs.push_back(buf);
             register_producer(buf, unique_name.c_str());
         }

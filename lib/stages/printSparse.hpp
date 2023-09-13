@@ -3,7 +3,7 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
-#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "buffer.hpp"          // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for INFO
 #include "oneHotMetadata.hpp"  // for get_onehot_frame_counter, metadata_is_onehot
@@ -45,7 +45,7 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer* buf;
+    Buffer* buf;
     int _max;
     std::vector<int> _array_shape;
 };
