@@ -3,7 +3,7 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
-#include "buffer.h"            // for Buffer
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
 #include <stdint.h> // for int32_t, uint32_t, uint8_t
@@ -58,10 +58,10 @@ public:
 
 private:
     /// The buffer with the network data
-    struct Buffer* out_buf;
+    Buffer* out_buf;
 
     /// The buffer with the array of flags indicating lost data.
-    struct Buffer* lost_samples_buf;
+    Buffer* lost_samples_buf;
 
     /// Current ID for out_buf
     int32_t out_buf_frame_id = 0;

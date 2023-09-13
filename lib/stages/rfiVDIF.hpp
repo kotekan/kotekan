@@ -57,9 +57,9 @@ public:
 
 private:
     // Kotekan Buffer for VDIF input
-    struct Buffer* buf_in;
+    Buffer* buf_in;
     // Kotekan Buffer for kurtosis output
-    struct Buffer* buf_out;
+    Buffer* buf_out;
     // General config Paramaters
     // Number of elements in the input data
     uint32_t _num_elements;

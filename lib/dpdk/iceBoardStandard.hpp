@@ -10,7 +10,7 @@
 #include "Config.hpp"
 #include "ICETelescope.hpp"
 #include "Telescope.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "chimeMetadata.hpp"
 #include "iceBoardHandler.hpp"
@@ -63,7 +63,7 @@ protected:
     bool copy_packet(struct rte_mbuf* mbuf);
 
     /// The output buffer
-    struct Buffer* out_buf;
+    Buffer* out_buf;
 
     /// The current frame.
     uint8_t* out_frame;
@@ -72,7 +72,7 @@ protected:
     int32_t out_frame_id = 0;
 
     /// The flag buffer tracking lost samples
-    struct Buffer* lost_samples_buf;
+    Buffer* lost_samples_buf;
 
     // Parameters saved from the config files
     dset_id_t fpga_dataset;

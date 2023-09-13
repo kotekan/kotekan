@@ -21,8 +21,8 @@ private:
     void fill_headers(unsigned char* out_buf, struct VDIFHeader* vdif_header, const uint32_t second,
                       const uint32_t fpga_seq_num, const uint32_t num_links, uint32_t* thread_id);
 
-    struct Buffer** in_buf;
-    struct Buffer* vdif_buf;
+    Buffer** in_buf;
+    Buffer* vdif_buf;
 
     // Config variables
     uint32_t _num_fpga_links;

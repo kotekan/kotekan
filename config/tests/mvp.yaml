@@ -61,7 +61,7 @@ num_frames: 100
 
 # Pool
 main_pool:
-    kotekan_metadata_pool: oneHotMetadata
+    kotekan_metadata_pool: chordMetadata
     num_metadata_objects: 15 * buffer_depth
 
 # Buffers
@@ -129,6 +129,7 @@ gen_data:
     #reuse_random: true
     # TIME, POL, FREQ, DISH
     array_shape: [32768, 2, 16, 512]
+    dim_name: ["T", "P", "F", "D"]
     out_buf: host_voltage_buffer
 
 gen_frb_phase:

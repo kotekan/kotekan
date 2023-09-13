@@ -3,7 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "Hash.hpp"              // for operator!=
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"              // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
+#include "buffer.hpp"            // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
 #include "datasetState.hpp"      // for datasetState, eigenvalueState, state_uptr
 #include "kotekanLogging.hpp"    // for DEBUG, ERROR, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily

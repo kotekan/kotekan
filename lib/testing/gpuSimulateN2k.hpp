@@ -39,8 +39,8 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer* input_buf;
-    struct Buffer* output_buf;
+    Buffer* input_buf;
+    Buffer* output_buf;
 
     // Config options
     int32_t _num_local_freq;

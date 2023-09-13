@@ -3,7 +3,7 @@
 #include "Config.hpp"         // for Config
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"      // for Telescope, FREQ_ID_NOT_SET
-#include "buffer.h"           // for mark_frame_full, register_producer, wait_for_empty_frame
+#include "buffer.hpp"         // for mark_frame_full, register_producer, wait_for_empty_frame
 #include "configUpdater.hpp"  // for configUpdater
 #include "kotekanLogging.hpp" // for WARN, INFO, DEBUG
 #include "restServer.hpp"     // for HTTP_RESPONSE, connectionInstance, restServer

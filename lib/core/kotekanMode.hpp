@@ -65,8 +65,8 @@ private:
 #endif
 
     std::map<std::string, Stage*> stages;
-    std::map<std::string, struct metadataPool*> metadata_pools;
-    std::map<std::string, struct Buffer*> buffers;
+    std::map<std::string, metadataPool*> metadata_pools;
+    std::map<std::string, Buffer*> buffers;
 };
 
 } // namespace kotekan

@@ -10,7 +10,7 @@
 #include "Config.hpp"
 #include "ICETelescope.hpp"
 #include "Telescope.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "iceBoardHandler.hpp"
 #include "packet_copy.h"
@@ -70,12 +70,12 @@ protected:
 
     void set_vdif_header_options(int vdif_frame_location, uint64_t seq);
 
-    struct Buffer* out_buf;
+    Buffer* out_buf;
     int32_t out_buf_frame_id = 0;
     uint8_t* out_buf_frame;
 
     /// The flag buffer tracking lost samples
-    struct Buffer* lost_samples_buf;
+    Buffer* lost_samples_buf;
 
     /// The active lost sample frame
     uint8_t* lost_samples_frame;

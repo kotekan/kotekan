@@ -412,7 +412,6 @@ void cudaFRBBeamReformer::finalize_frame(int frame_id) {
         DEBUG("Start to end took {:.3f} ms", exec_time);
     }
 
-
     cudaCommand::finalize_frame(frame_id);
     for (size_t i = 0; i < _cuda_streams.size(); i++) {
         if (sync_events[frame_id][i])

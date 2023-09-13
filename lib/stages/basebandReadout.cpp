@@ -5,7 +5,7 @@
 #include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"          // for Telescope
 #include "basebandApiManager.hpp" // for basebandApiManager
-#include "buffer.h"               // for Buffer, mark_frame_full, allocate_new_metadata_object
+#include "buffer.hpp"             // for Buffer, mark_frame_full, allocate_new_metadata_object
 #include "chimeMetadata.hpp"      // for chimeMetadata
 #include "kotekanLogging.hpp"     // for INFO, DEBUG, WARN
 #include "metadata.h"             // for metadataContainer

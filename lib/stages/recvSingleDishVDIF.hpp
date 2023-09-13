@@ -47,7 +47,7 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer* out_buf;
+    Buffer* out_buf;
 
     /// Port of the listening receiver.
     uint32_t orig_port;

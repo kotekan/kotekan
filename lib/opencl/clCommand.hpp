@@ -16,7 +16,7 @@
 
 #include "Config.hpp"
 #include "assert.h"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "clDeviceInterface.hpp"
 #include "clEventContainer.hpp"

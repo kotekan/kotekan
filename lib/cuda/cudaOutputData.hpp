@@ -39,8 +39,6 @@ protected:
     int32_t output_buffer_id;
     int32_t in_buffer_id;
 
-    bool got_metadata;
-
 private:
     // One bool for each GPU input frame: did this stage run for this input frame?
     // This is used internally to pass state between execute_base and finalize_frame.

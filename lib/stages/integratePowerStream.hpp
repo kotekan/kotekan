@@ -54,9 +54,9 @@ private:
 
     /// Kotekan buffer which this stage consumes from.
     /// Data should be packed with IntensityPacketHeader's.
-    struct Buffer* in_buf;
+    Buffer* in_buf;
     /// Kotekan buffer which this stage produces into.
-    struct Buffer* out_buf;
+    Buffer* out_buf;
 
     /// Number of frequencies in the buffer
     int freqs;

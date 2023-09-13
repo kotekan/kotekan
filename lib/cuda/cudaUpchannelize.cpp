@@ -1,5 +1,6 @@
 #include "cudaUpchannelize.hpp"
 
+#include "chordMetadata.hpp"
 #include "cudaUtils.hpp"
 #include "math.h"
 
@@ -122,6 +123,29 @@ cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate,
     float16_t* gain_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_gain, gain_len);
     int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
 
+    // If input voltage array has metadata, create new metadata for output.
+    metadataContainer* mc =
+        device.get_gpu_memory_array_metadata(_gpu_mem_input_voltage, pipestate.gpu_frame_id);
+    if (mc && metadata_container_is_chord(mc)) {
+        metadataContainer* mc_out = device.create_gpu_memory_array_metadata(
+            _gpu_mem_output_voltage, pipestate.gpu_frame_id, mc->parent_pool);
+        chordMetadata* meta_out = get_chord_metadata(mc_out);
+        chordMetadata* meta_in = get_chord_metadata(mc);
+        chord_metadata_copy(meta_out, meta_in);
+        DEBUG("cudaUpchannelize: input array shape: {:s}", meta_in->get_dimensions_string());
+        assert(meta_in->get_dimension_name(0) == "T");
+        assert(meta_in->get_dimension_name(2) == "F");
+        meta_out->dim[0] /= _upchan_factor;
+        meta_out->dim[2] *= _upchan_factor;
+        DEBUG("cudaUpchannelize: output array shape: {:s}", meta_out->get_dimensions_string());
+        for (int i = 0; i < meta_in->nfreq; i++) {
+            meta_out->freq_upchan_factor[i] *= _upchan_factor;
+            // TODO -- compute this complicated quantity!!!
+            // meta_out->half_fpga_sample0[i] = ;
+            meta_out->time_downsampling_fpga[i] *= _upchan_factor;
+        }
+    }
+
     record_start_event(pipestate.gpu_frame_id);
 
     // Initialize info_memory return codes
@@ -180,6 +204,8 @@ cudaEvent_t cudaUpchannelize::execute(cudaPipelineState& pipestate,
 }
 
 void cudaUpchannelize::finalize_frame(int gpu_frame_id) {
+    device.release_gpu_memory_array_metadata(_gpu_mem_output_voltage, gpu_frame_id);
+
     cudaCommand::finalize_frame(gpu_frame_id);
     for (size_t i = 0; i < host_info[gpu_frame_id].size(); i++)
         if (host_info[gpu_frame_id][i] != 0)

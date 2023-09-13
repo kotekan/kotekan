@@ -89,7 +89,7 @@ public:
 
 private:
     /// The kotekan buffer object the stage is consuming from
-    struct Buffer* buf;
+    Buffer* buf;
 
     /// Which disk in the array is currently being written to
     uint32_t disk_id;

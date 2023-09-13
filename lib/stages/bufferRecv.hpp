@@ -111,7 +111,7 @@ private:
     bool get_worker_stop_thread();
 
     /// The output buffer
-    struct Buffer* buf;
+    Buffer* buf;
 
     /// The port to listen for new connections on
     uint32_t listen_port;
@@ -208,7 +208,7 @@ struct acceptArgs {
     struct event_base* base;
 
     /// The output buffer to attach to
-    struct Buffer* buf;
+    Buffer* buf;
 
     /// The main buffer recv object needs to be called to manage
     /// the frame ID to use (corrdinate between workers)
@@ -233,7 +233,7 @@ struct acceptArgs {
 class connInstance : public kotekan::kotekanLogging {
 public:
     /// Constructor
-    connInstance(const std::string& producer_name, struct Buffer* buf, bufferRecv* buffer_recv,
+    connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
                  const std::string& client_ip, int port, struct timeval read_timeout);
 
     /// Destructor
@@ -272,7 +272,7 @@ public:
     std::string producer_name;
 
     /// The kotekan buffer to transfer data into
-    struct Buffer* buf;
+    Buffer* buf;
 
     /// Pointer to the parient kotekan_stage which owns this instance
     bufferRecv* buffer_recv;

@@ -18,8 +18,8 @@ public:
 private:
     inline void fastSqSumVdif(unsigned char* data, uint* temp_buf, uint* output);
     void parallelSqSumVdif(int loop_idx, int loop_length);
-    struct Buffer* buf_in;
-    struct Buffer* buf_out;
+    Buffer* buf_in;
+    Buffer* buf_out;
 
     int num_freq;
     int num_elem;

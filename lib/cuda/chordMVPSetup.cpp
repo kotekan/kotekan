@@ -11,7 +11,6 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     set_command_type(gpuCommandType::COPY_IN);
 
     // Upchan to FRB-Beamformer:
-
     size_t num_dishes = config.get<int>(unique_name, "num_dishes");
     // (this is fpga frequencies)
     size_t num_local_freq = config.get<int>(unique_name, "num_local_freq");

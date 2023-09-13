@@ -2,7 +2,7 @@
 #define BUFFER_FACTORY_HPP
 
 #include "Config.hpp" // for Config
-#include "buffer.h"   // for Buffer // IWYU pragma: keep
+#include "buffer.hpp" // for Buffer // IWYU pragma: keep
 #include "metadata.h" // for metadataPool // IWYU pragma: keep
 
 #include "json.hpp" // for json
@@ -16,19 +16,19 @@ class bufferFactory {
 
 public:
     // One bufferFactory should be created for each set of config and buffer_container
-    bufferFactory(Config& config, std::map<std::string, struct metadataPool*>& metadataPools);
+    bufferFactory(Config& config, std::map<std::string, metadataPool*>& metadataPools);
     ~bufferFactory();
 
-    std::map<std::string, struct Buffer*> build_buffers();
+    std::map<std::string, Buffer*> build_buffers();
 
 private:
-    void build_from_tree(std::map<std::string, struct Buffer*>& buffers,
-                         const nlohmann::json& config_tree, const std::string& path);
-    struct Buffer* new_buffer(const std::string& type_name, const std::string& name,
-                              const std::string& location);
+    void build_from_tree(std::map<std::string, Buffer*>& buffers, const nlohmann::json& config_tree,
+                         const std::string& path);
+    Buffer* new_buffer(const std::string& type_name, const std::string& name,
+                       const std::string& location);
 
     Config& config;
-    std::map<std::string, struct metadataPool*>& metadataPools;
+    std::map<std::string, metadataPool*>& metadataPools;
 };
 
 } // namespace kotekan

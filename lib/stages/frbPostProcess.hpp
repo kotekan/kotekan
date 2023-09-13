@@ -9,7 +9,7 @@
 
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
-#include "buffer.h"              // for Buffer
+#include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "frb_functions.h"       // for FRBHeader
 #include "prometheusMetrics.hpp" // for Counter
@@ -98,8 +98,8 @@ private:
     Buffer* lost_samples_buf;
     int32_t lost_samples_buf_id;
 
-    struct Buffer** in_buf;
-    struct Buffer* frb_buf;
+    Buffer** in_buf;
+    Buffer* frb_buf;
 
     struct FRBHeader frb_header;
     float* ib;
