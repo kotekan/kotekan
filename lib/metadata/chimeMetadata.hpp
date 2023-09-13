@@ -136,8 +136,7 @@ inline void atomic_add_lost_timesamples(Buffer* buf, int ID, int64_t num_lost_sa
  * @param ID The frame in the buffer to add metadata too
  * @param num_flagged_samples The number of flagged samples to add
  */
-inline void atomic_add_rfi_flagged_samples(Buffer* buf, int ID,
-                                           int64_t num_flagged_samples) {
+inline void atomic_add_rfi_flagged_samples(Buffer* buf, int ID, int64_t num_flagged_samples) {
     metadataContainer* mc = buf->metadata[ID];
     lock_metadata(mc);
     chimeMetadata* chime_metadata = (chimeMetadata*)mc->metadata;

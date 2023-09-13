@@ -69,9 +69,9 @@ void private_reset_consumers(Buffer* buf, const int ID);
  */
 int private_mark_frame_empty(Buffer* buf, const int id);
 
-Buffer* create_buffer(int num_frames, size_t len, metadataPool* pool,
-                             const char* buffer_name, const char* buffer_type, int numa_node,
-                             bool use_hugepages, bool mlock_frames, bool zero_new_frames) {
+Buffer* create_buffer(int num_frames, size_t len, metadataPool* pool, const char* buffer_name,
+                      const char* buffer_type, int numa_node, bool use_hugepages, bool mlock_frames,
+                      bool zero_new_frames) {
 
     assert(num_frames > 0);
 
@@ -845,8 +845,7 @@ uint8_t* swap_external_frame(Buffer* buf, int frame_id, uint8_t* external_frame)
     return temp_frame;
 }
 
-void swap_frames(Buffer* from_buf, int from_frame_id, Buffer* to_buf,
-                 int to_frame_id) {
+void swap_frames(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_frame_id) {
 
     assert(from_buf != to_buf);
     assert(from_buf != NULL);
@@ -870,8 +869,7 @@ void swap_frames(Buffer* from_buf, int from_frame_id, Buffer* to_buf,
     to_buf->frames[to_frame_id] = temp_frame;
 }
 
-void safe_swap_frame(Buffer* src_buf, int src_frame_id, Buffer* dest_buf,
-                     int dest_frame_id) {
+void safe_swap_frame(Buffer* src_buf, int src_frame_id, Buffer* dest_buf, int dest_frame_id) {
     assert(src_buf != dest_buf);
     assert(src_buf != NULL);
     assert(dest_buf != NULL);

@@ -231,8 +231,8 @@ struct Buffer {
  * @returns A buffer object.
  */
 Buffer* create_buffer(int num_frames, size_t frame_size, metadataPool* pool,
-                             const char* buffer_name, const char* buffer_type, int numa_node,
-                             bool use_huge_pages, bool mlock_frames, bool zero_new_frames);
+                      const char* buffer_name, const char* buffer_type, int numa_node,
+                      bool use_huge_pages, bool mlock_frames, bool zero_new_frames);
 
 /**
  * @brief Deletes a buffer object and frees all frame memory
@@ -467,8 +467,7 @@ uint8_t* swap_external_frame(Buffer* buf, int frame_id, uint8_t* external_frame)
  * @param to_buf The buffer to take the frame from @c from_buf
  * @param to_frame_id The frame to replace with the frame from @c from_buf
  */
-void swap_frames(Buffer* from_buf, int from_frame_id, Buffer* to_buf,
-                 int to_frame_id);
+void swap_frames(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_frame_id);
 
 /**
  * @brief Allocates a frame with the required malloc method
@@ -551,8 +550,7 @@ metadataContainer* get_metadata_container(Buffer* buf, int frame_id);
  * @param[in] to_buf The buffer to copy the metadata into
  * @param[in] to_frame_id The frame ID in the @c to_buf to copy the metadata into
  */
-void pass_metadata(Buffer* from_buf, int from_frame_id, Buffer* to_buf,
-                   int to_frame_id);
+void pass_metadata(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_frame_id);
 
 
 /**
@@ -566,8 +564,7 @@ void pass_metadata(Buffer* from_buf, int from_frame_id, Buffer* to_buf,
  * @param[in] to_buf The buffer to copy the metadata into
  * @param[in] to_frame_id The frame ID in the @c to_buf to copy the metadata into
  */
-void copy_metadata(Buffer* from_buf, int from_frame_id, Buffer* to_buf,
-                   int to_frame_id);
+void copy_metadata(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_frame_id);
 
 /**
  * @brief Swaps a frame or performs a deep copy depending on the number of consumers on the
@@ -581,8 +578,7 @@ void copy_metadata(Buffer* from_buf, int from_frame_id, Buffer* to_buf,
  * @param[in] dest_buf The destination buffer
  * @param[in] dest_frame_id The destination frame ID
  */
-void safe_swap_frame(Buffer* src_buf, int src_frame_id, Buffer* dest_buf,
-                     int dest_frame_id);
+void safe_swap_frame(Buffer* src_buf, int src_frame_id, Buffer* dest_buf, int dest_frame_id);
 
 /**
  * @brief Tells the buffers to stop returning full/empty frames to consumers/producers

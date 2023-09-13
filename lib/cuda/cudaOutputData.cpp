@@ -121,8 +121,7 @@ void cudaOutputData::finalize_frame(int frame_id) {
 
     if (in_buffer) {
         DEBUG("Passing metadata from input (host) buffer {:s}[{:d}] to {:s}[{:d}]",
-              in_buffer->buffer_name, in_buffer_id, output_buffer->buffer_name,
-              output_buffer_id);
+              in_buffer->buffer_name, in_buffer_id, output_buffer->buffer_name, output_buffer_id);
         pass_metadata(in_buffer, in_buffer_id, output_buffer, output_buffer_id);
     }
 

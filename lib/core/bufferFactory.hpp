@@ -22,8 +22,8 @@ public:
     std::map<std::string, Buffer*> build_buffers();
 
 private:
-    void build_from_tree(std::map<std::string, Buffer*>& buffers,
-                         const nlohmann::json& config_tree, const std::string& path);
+    void build_from_tree(std::map<std::string, Buffer*>& buffers, const nlohmann::json& config_tree,
+                         const std::string& path);
     Buffer* new_buffer(const std::string& type_name, const std::string& name,
                        const std::string& location);
 

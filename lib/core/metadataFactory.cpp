@@ -67,8 +67,7 @@ void metadataFactory::build_from_tree(map<std::string, metadataPool*>& pools,
 }
 
 
-metadataPool* metadataFactory::new_pool(const std::string& pool_type,
-                                               const std::string& location) {
+metadataPool* metadataFactory::new_pool(const std::string& pool_type, const std::string& location) {
 
     INFO_NON_OO("Creating metadata pool of type: {:s}, at config tree path: {:s}", pool_type,
                 location);
@@ -77,34 +76,34 @@ metadataPool* metadataFactory::new_pool(const std::string& pool_type,
 
     if (pool_type == "oneHotMetadata") {
         INFO_NON_OO("OneHotMetadata size: {:d}", sizeof(oneHotMetadata));
-        return create_metadata_pool(num_metadata_objects, sizeof(oneHotMetadata),
-                                    location.c_str(), pool_type.c_str());
+        return create_metadata_pool(num_metadata_objects, sizeof(oneHotMetadata), location.c_str(),
+                                    pool_type.c_str());
     }
 
     if (pool_type == "chordMetadata") {
         INFO_NON_OO("ChordMetadata size: {:d}", sizeof(chordMetadata));
-        return create_metadata_pool(num_metadata_objects, sizeof(chordMetadata),
-                                    location.c_str(), pool_type.c_str());
+        return create_metadata_pool(num_metadata_objects, sizeof(chordMetadata), location.c_str(),
+                                    pool_type.c_str());
     }
 
     if (pool_type == "chimeMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(chimeMetadata),
-                                    location.c_str(), pool_type.c_str());
+        return create_metadata_pool(num_metadata_objects, sizeof(chimeMetadata), location.c_str(),
+                                    pool_type.c_str());
     }
 
     if (pool_type == "VisMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(VisMetadata),
-                                    location.c_str(), pool_type.c_str());
+        return create_metadata_pool(num_metadata_objects, sizeof(VisMetadata), location.c_str(),
+                                    pool_type.c_str());
     }
 
     if (pool_type == "HFBMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(HFBMetadata),
-                                    location.c_str(), pool_type.c_str());
+        return create_metadata_pool(num_metadata_objects, sizeof(HFBMetadata), location.c_str(),
+                                    pool_type.c_str());
     }
 
     if (pool_type == "BeamMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(BeamMetadata),
-                                    location.c_str(), pool_type.c_str());
+        return create_metadata_pool(num_metadata_objects, sizeof(BeamMetadata), location.c_str(),
+                                    pool_type.c_str());
     }
 
     if (pool_type == "BasebandMetadata") {
