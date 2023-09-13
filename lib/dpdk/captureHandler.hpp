@@ -50,7 +50,7 @@ public:
 
 protected:
     /// The output buffer
-    struct Buffer* out_buf;
+    Buffer* out_buf;
 
     /// The current frame
     uint8_t* out_frame;
