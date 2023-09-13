@@ -101,7 +101,7 @@ private:
     uint* in_buffer_ID;
     /// Pointer to the current frame for each of the `in_buf`s
     uint8_t** in_frame;
-    struct Buffer* pulsar_buf;
+    Buffer* pulsar_buf;
 
     /// Config variables
     uint32_t _num_gpus;

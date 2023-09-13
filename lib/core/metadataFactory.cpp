@@ -29,8 +29,8 @@ metadataFactory::metadataFactory(Config& config) : config(config) {}
 
 metadataFactory::~metadataFactory() {}
 
-map<std::string, struct metadataPool*> metadataFactory::build_pools() {
-    map<std::string, struct metadataPool*> pools;
+map<std::string, metadataPool*> metadataFactory::build_pools() {
+    map<std::string, metadataPool*> pools;
 
     // Start parsing tree, put the metadata_pool's in the "pools" vector
     build_from_tree(pools, config.get_full_config_json(), "");
@@ -38,7 +38,7 @@ map<std::string, struct metadataPool*> metadataFactory::build_pools() {
     return pools;
 }
 
-void metadataFactory::build_from_tree(map<std::string, struct metadataPool*>& pools,
+void metadataFactory::build_from_tree(map<std::string, metadataPool*>& pools,
                                       const json& config_tree, const std::string& path) {
 
     for (json::const_iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
@@ -67,7 +67,7 @@ void metadataFactory::build_from_tree(map<std::string, struct metadataPool*>& po
 }
 
 
-struct metadataPool* metadataFactory::new_pool(const std::string& pool_type,
+metadataPool* metadataFactory::new_pool(const std::string& pool_type,
                                                const std::string& location) {
 
     INFO_NON_OO("Creating metadata pool of type: {:s}, at config tree path: {:s}", pool_type,
@@ -76,39 +76,39 @@ struct metadataPool* metadataFactory::new_pool(const std::string& pool_type,
     uint32_t num_metadata_objects = config.get<uint32_t>(location, "num_metadata_objects");
 
     if (pool_type == "oneHotMetadata") {
-        INFO_NON_OO("OneHotMetadata size: {:d}", sizeof(struct oneHotMetadata));
-        return create_metadata_pool(num_metadata_objects, sizeof(struct oneHotMetadata),
+        INFO_NON_OO("OneHotMetadata size: {:d}", sizeof(oneHotMetadata));
+        return create_metadata_pool(num_metadata_objects, sizeof(oneHotMetadata),
                                     location.c_str(), pool_type.c_str());
     }
 
     if (pool_type == "chordMetadata") {
-        INFO_NON_OO("ChordMetadata size: {:d}", sizeof(struct chordMetadata));
-        return create_metadata_pool(num_metadata_objects, sizeof(struct chordMetadata),
+        INFO_NON_OO("ChordMetadata size: {:d}", sizeof(chordMetadata));
+        return create_metadata_pool(num_metadata_objects, sizeof(chordMetadata),
                                     location.c_str(), pool_type.c_str());
     }
 
     if (pool_type == "chimeMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(struct chimeMetadata),
+        return create_metadata_pool(num_metadata_objects, sizeof(chimeMetadata),
                                     location.c_str(), pool_type.c_str());
     }
 
     if (pool_type == "VisMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(struct VisMetadata),
+        return create_metadata_pool(num_metadata_objects, sizeof(VisMetadata),
                                     location.c_str(), pool_type.c_str());
     }
 
     if (pool_type == "HFBMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(struct HFBMetadata),
+        return create_metadata_pool(num_metadata_objects, sizeof(HFBMetadata),
                                     location.c_str(), pool_type.c_str());
     }
 
     if (pool_type == "BeamMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(struct BeamMetadata),
+        return create_metadata_pool(num_metadata_objects, sizeof(BeamMetadata),
                                     location.c_str(), pool_type.c_str());
     }
 
     if (pool_type == "BasebandMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(struct BasebandMetadata),
+        return create_metadata_pool(num_metadata_objects, sizeof(BasebandMetadata),
                                     location.c_str(), pool_type.c_str());
     }
     // No metadata found

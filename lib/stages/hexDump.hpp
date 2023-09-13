@@ -28,7 +28,7 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer* in_buf;
+    Buffer* in_buf;
     int32_t _len;
     int32_t _offset;
 };

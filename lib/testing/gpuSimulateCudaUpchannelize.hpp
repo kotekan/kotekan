@@ -51,8 +51,8 @@ private:
     std::vector<float16_t> gains16;
 #endif
 
-    struct Buffer* voltage_in_buf;
-    struct Buffer* voltage_out_buf;
+    Buffer* voltage_in_buf;
+    Buffer* voltage_out_buf;
 
     /// Number of dishes in the telescope
     int32_t _num_dishes;

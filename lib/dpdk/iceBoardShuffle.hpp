@@ -123,13 +123,13 @@ protected:
     static const uint32_t shuffle_size = 4;
 
     /// The buffers which are filled by this port
-    struct Buffer* out_bufs[shuffle_size];
+    Buffer* out_bufs[shuffle_size];
 
     /// The active frame for the buffers to fill
     uint8_t* out_buf_frame[shuffle_size];
 
     /// The flag buffer tracking lost samples
-    struct Buffer* lost_samples_buf;
+    Buffer* lost_samples_buf;
 
     // Parameters saved from the config files
     dset_id_t fpga_dataset;

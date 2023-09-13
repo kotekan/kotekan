@@ -45,7 +45,7 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer* buf;
+    Buffer* buf;
     int _max;
     std::vector<int> _array_shape;
 };

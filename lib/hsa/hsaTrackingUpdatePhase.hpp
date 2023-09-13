@@ -104,7 +104,7 @@ private:
     /// Two of two alternating array of host scaling
     float* host_scaling_1;
     /// Gain stuff--------------------------------
-    struct Buffer* gain_buf;
+    Buffer* gain_buf;
     size_t gain_len;
     int32_t gain_buf_id;
     /// Array of gains, float size of 2048 * 2 * _num_beams

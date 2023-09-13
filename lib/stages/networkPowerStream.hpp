@@ -66,7 +66,7 @@ private:
     void tcpConnect();
 
     /// Input kotekanBuffer.
-    struct Buffer* in_buf;
+    Buffer* in_buf;
 
     /// Port of the listening receiver.
     uint32_t dest_port;

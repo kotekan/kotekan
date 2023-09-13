@@ -112,7 +112,7 @@ void rawFileRead::main_thread() {
             // If metadata exists then lets read it in.
             if (metadata_size != 0) {
                 allocate_new_metadata_object(buf, frame_id);
-                struct metadataContainer* mc = get_metadata_container(buf, frame_id);
+                metadataContainer* mc = get_metadata_container(buf, frame_id);
                 assert(metadata_size == mc->metadata_size);
                 if (fread(mc->metadata, metadata_size, 1, fp) != 1) {
                     ERROR("rawFileRead: Failed to read file {:s} metadata,", full_path);

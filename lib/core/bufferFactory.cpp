@@ -22,13 +22,13 @@ using std::string;
 
 namespace kotekan {
 
-bufferFactory::bufferFactory(Config& _config, map<string, struct metadataPool*>& _metadataPools) :
+bufferFactory::bufferFactory(Config& _config, map<string, metadataPool*>& _metadataPools) :
     config(_config), metadataPools(_metadataPools) {}
 
 bufferFactory::~bufferFactory() {}
 
-map<string, struct Buffer*> bufferFactory::build_buffers() {
-    map<string, struct Buffer*> buffers;
+map<string, Buffer*> bufferFactory::build_buffers() {
+    map<string, Buffer*> buffers;
 
     // Start parsing tree, put the buffers in the "pools" vector
     build_from_tree(buffers, config.get_full_config_json(), "");
@@ -36,7 +36,7 @@ map<string, struct Buffer*> bufferFactory::build_buffers() {
     return buffers;
 }
 
-void bufferFactory::build_from_tree(map<string, struct Buffer*>& buffers, const json& config_tree,
+void bufferFactory::build_from_tree(map<string, Buffer*>& buffers, const json& config_tree,
                                     const string& path) {
 
     for (json::const_iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
@@ -64,8 +64,8 @@ void bufferFactory::build_from_tree(map<string, struct Buffer*>& buffers, const 
     }
 }
 
-struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& name,
-                                         const string& location) {
+Buffer* bufferFactory::new_buffer(const string& type_name, const string& name,
+                                  const string& location) {
 
     // DEBUG("Creating buffer of type: {:s}, at config tree path: {:s}", name, location);
     uint32_t num_frames = config.get<uint32_t>(location, "num_frames");
@@ -75,7 +75,7 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
     bool mlock_frames = config.get_default<bool>(location, "mlock_frames", true);
     bool zero_new_frames = config.get_default<bool>(location, "zero_new_frames", true);
 
-    struct metadataPool* pool = nullptr;
+    metadataPool* pool = nullptr;
     if (metadataPool_name != "none") {
         if (metadataPools.count(metadataPool_name) != 1) {
             throw std::runtime_error(fmt::format(
@@ -100,7 +100,7 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
     INFO_NON_OO("Creating {:s}Buffer named {:s} with {:d} frames, frame size of {:d} and "
                 "metadata pool {:s} on numa_node {:d}",
                 type_name, name, num_frames, frame_size, metadataPool_name, numa_node);
-    struct Buffer* buf =
+    Buffer* buf =
         create_buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(), numa_node,
                       use_hugepages, mlock_frames, zero_new_frames);
     if (buf == nullptr) {

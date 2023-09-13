@@ -84,7 +84,7 @@ protected:
     std::vector<std::tuple<std::string, Buffer*, frameID>> in_bufs;
 
     /// The output buffer to put frames into
-    struct Buffer* out_buf;
+    Buffer* out_buf;
 
     /// The in seconds to wait for a new frame on one of the input buffers.
     double _timeout;

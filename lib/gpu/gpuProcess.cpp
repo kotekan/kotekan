@@ -49,7 +49,7 @@ gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
     for (json::iterator it = in_bufs.begin(); it != in_bufs.end(); ++it) {
         std::string internal_name = it.key();
         std::string global_buffer_name = it.value();
-        struct Buffer* buf = buffer_container.get_buffer(global_buffer_name);
+        Buffer* buf = buffer_container.get_buffer(global_buffer_name);
         local_buffer_container.add_buffer(internal_name, buf);
     }
 
@@ -57,7 +57,7 @@ gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
     for (json::iterator it = out_bufs.begin(); it != out_bufs.end(); ++it) {
         std::string internal_name = it.key();
         std::string global_buffer_name = it.value();
-        struct Buffer* buf = buffer_container.get_buffer(global_buffer_name);
+        Buffer* buf = buffer_container.get_buffer(global_buffer_name);
         local_buffer_container.add_buffer(internal_name, buf);
     }
     INFO("GPU Process Starting...");

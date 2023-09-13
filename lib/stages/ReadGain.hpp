@@ -90,9 +90,9 @@ private:
     /// Lock when change status of update_gains
     std::mutex mux;
 
-    struct Buffer* gain_frb_buf;
+    Buffer* gain_frb_buf;
     int32_t gain_frb_buf_id;
-    struct Buffer* gain_tracking_buf;
+    Buffer* gain_tracking_buf;
     int32_t gain_tracking_buf_id;
 
     /// Directory path where gain files are

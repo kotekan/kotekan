@@ -42,15 +42,15 @@ Stage::Stage(Config& config, const std::string& unique_name, bufferContainer& bu
     join_timeout = config.get_default<uint32_t>(unique_name, "join_timeout", 60);
 }
 
-struct Buffer* Stage::get_buffer(const std::string& name) {
+Buffer* Stage::get_buffer(const std::string& name) {
     // NOTE: Maybe require that the buffer be given in the stage, not
     // just somewhere in the path to the stage.
     std::string buf_name = config.get<std::string>(unique_name, name);
     return buffer_container.get_buffer(buf_name);
 }
 
-std::vector<struct Buffer*> Stage::get_buffer_array(const std::string& name) {
-    std::vector<struct Buffer*> bufs;
+std::vector<Buffer*> Stage::get_buffer_array(const std::string& name) {
+    std::vector<Buffer*> bufs;
 
     std::vector<std::string> buf_names = config.get<std::vector<std::string>>(unique_name, name);
     for (auto& buf_name : buf_names) {

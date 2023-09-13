@@ -98,8 +98,8 @@ private:
     Buffer* lost_samples_buf;
     int32_t lost_samples_buf_id;
 
-    struct Buffer** in_buf;
-    struct Buffer* frb_buf;
+    Buffer** in_buf;
+    Buffer* frb_buf;
 
     struct FRBHeader frb_header;
     float* ib;

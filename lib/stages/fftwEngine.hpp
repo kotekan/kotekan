@@ -58,9 +58,9 @@ public:
 private:
     /// Kotekan buffer which this stage consumes from.
     /// Data should be packed as int16_t values, [r,i] in each 32b value.
-    struct Buffer* in_buf;
+    Buffer* in_buf;
     /// Kotekan buffer which this stage produces into.
-    struct Buffer* out_buf;
+    Buffer* out_buf;
 
     /// Frame index for the input buffer.
     int frame_in;

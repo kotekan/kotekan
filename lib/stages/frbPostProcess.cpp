@@ -64,7 +64,7 @@ frbPostProcess::frbPostProcess(Config& config_, const std::string& unique_name,
     udp_packet_size =
         _nbeams * _num_gpus * _factor_upchan_out * _timesamples_per_frb_packet + udp_header_size;
 
-    in_buf = (struct Buffer**)malloc(_num_gpus * sizeof(struct Buffer*));
+    in_buf = (Buffer**)malloc(_num_gpus * sizeof(Buffer*));
     for (int i = 0; i < _num_gpus; ++i) {
         in_buf[i] = get_buffer(fmt::format(fmt("in_buf_{:d}"), i));
         register_consumer(in_buf[i], unique_name.c_str());

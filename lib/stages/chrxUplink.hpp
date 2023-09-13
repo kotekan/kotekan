@@ -17,8 +17,8 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer* vis_buf;
-    struct Buffer* gate_buf;
+    Buffer* vis_buf;
+    Buffer* gate_buf;
 
     // Config variables
     std::string _collection_server_ip;

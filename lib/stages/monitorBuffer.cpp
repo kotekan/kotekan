@@ -37,7 +37,7 @@ void monitorBuffer::main_thread() {
     while (!stop_thread) {
         sleep(1);
         double cur_time = e_time();
-        for (struct Buffer* buf : buffers) {
+        for (Buffer* buf : buffers) {
             double last_arrival = get_last_arrival_time(buf);
             if ((cur_time - last_arrival) > timeout && last_arrival > 1) {
                 for (auto& buf : buffer_container.get_buffer_map()) {

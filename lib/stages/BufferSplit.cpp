@@ -16,7 +16,7 @@ STAGE_CONSTRUCTOR(BufferSplit) {
     register_consumer(in_buf, unique_name.c_str());
 
     out_bufs = get_buffer_array("out_bufs");
-    for (struct Buffer* out_buf : out_bufs)
+    for (Buffer* out_buf : out_bufs)
         register_producer(out_buf, unique_name.c_str());
 }
 

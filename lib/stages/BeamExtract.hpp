@@ -44,8 +44,8 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer* in_buf;
-    struct Buffer* out_buf;
+    Buffer* in_buf;
+    Buffer* out_buf;
 
     uint32_t _num_beams;
     uint32_t _extract_beam;

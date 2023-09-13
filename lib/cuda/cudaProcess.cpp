@@ -69,7 +69,7 @@ void cudaProcess::queue_commands(int gpu_frame_id, int gpu_frame_counter) {
     DEBUG2("Commands executed.");
 }
 
-void cudaProcess::register_host_memory(struct Buffer* host_buffer) {
+void cudaProcess::register_host_memory(Buffer* host_buffer) {
     // Register the host memory in in_buf with the OpenCL run time.
     for (int i = 0; i < host_buffer->num_frames; i++) {
         cudaHostRegister(host_buffer->frames[i], host_buffer->aligned_frame_size,

@@ -40,9 +40,9 @@ public:
 
 private:
     /// Initializes internal variables from config, allocates reorder_map, gain, get metadata buffer
-    struct Buffer* input_buf;
-    struct Buffer* output_buf;
-    struct Buffer* hfb_output_buf;
+    Buffer* input_buf;
+    Buffer* output_buf;
+    Buffer* hfb_output_buf;
 
     /// Number of elements, should be 2048
     int32_t _num_elements;

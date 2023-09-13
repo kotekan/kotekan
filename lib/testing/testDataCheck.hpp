@@ -34,8 +34,8 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer* first_buf;
-    struct Buffer* second_buf;
+    Buffer* first_buf;
+    Buffer* second_buf;
     int num_frames_to_test;
     int max_num_errors;
     double epsilon;

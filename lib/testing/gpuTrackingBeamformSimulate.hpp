@@ -39,7 +39,7 @@ public:
 
 private:
     /// Input
-    struct Buffer* input_buf;
+    Buffer* input_buf;
     /// Input length
     int input_len;
     /// An intermediate array of unpacked data
@@ -47,7 +47,7 @@ private:
     /// Output in CPU
     float* cpu_output;
     /// Output
-    struct Buffer* output_buf;
+    Buffer* output_buf;
     /// Output length
     int output_len;
 
