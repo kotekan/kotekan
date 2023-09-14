@@ -5,6 +5,7 @@
 #include "buffer.hpp"          // for Buffer, get_metadata_container, mark_frame_empty, regis...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.hpp"   // for chimeMetadata
+#include "chordMetadata.hpp"   // for chordMetadata
 #include "errors.h"
 #include "kotekanLogging.hpp"    // for ERROR, INFO
 #include "metadata.h"            // for metadataContainer
@@ -58,10 +59,8 @@ hdf5FileWrite::hdf5FileWrite(Config& config, const std::string& unique_name,
 hdf5FileWrite::~hdf5FileWrite() {}
 
 void hdf5FileWrite::main_thread() {
-
-    bool isFileOpen = false;
     std::string full_path;
-    hid_t fd;
+    hid_t fd = -1;
 
     uint32_t frame_id = 0;
     uint32_t frame_ctr = 0;
@@ -79,8 +78,7 @@ void hdf5FileWrite::main_thread() {
         // Start timing the write time
         const double st = current_time();
 
-        if (!isFileOpen) {
-
+        if (fd < 0) {
             std::ostringstream sbuf;
             sbuf << _base_dir << "/";
             if (_prefix_hostname) {
@@ -98,8 +96,6 @@ void hdf5FileWrite::main_thread() {
                 ERROR("File name was: {:s}", full_path.c_str());
                 exit(errno);
             }
-
-            isFileOpen = true;
         }
 
         // Create group for frame
@@ -142,34 +138,60 @@ void hdf5FileWrite::main_thread() {
 
         // Write the contents of the buffer frame to file
 
+        hid_t type = -1;
         hid_t space = -1;
-        if (_file_name == "phases") {
-            const int rank = 5;
-            // const hsize_t dims[5] =
-            //     {num_frequencies, num_polarizations, num_beams, num_dishes, num_components};
-            const hsize_t dims[rank] = {16, 2, 96, 512, 2};
-            assert(buf->frame_size == 16 * 2 * 96 * 512 * 2);
+
+        if (metadata_container_is_chord(mc)) {
+            // We have proper CHORD metadata and know the buffer type and shape
+            const chordMetadata& metadata = *static_cast<const chordMetadata*>(mc->metadata);
+
+            switch (metadata.type) {
+                case int4p4:
+                    type = H5T_STD_U8LE;
+                    break;
+                case int8:
+                    type = H5T_STD_I8LE;
+                    break;
+                case float16:
+                    // TODO: Define HDF5 float16 type
+                    type = H5T_STD_U16LE;
+                    break;
+                case float32:
+                    static_assert(sizeof(float) == 4);
+                    type = H5T_NATIVE_FLOAT;
+                    break;
+                default:
+                    assert(0);
+            }
+
+            const int rank = metadata.dims;
+            assert(rank >= 0);
+            hsize_t dims[CHORD_META_MAX_DIM];
+            for (int d = 0; d < rank; ++d) {
+                dims[d] = metadata.dim[d];
+            }
+            hsize_t np = 1;
+            for (int d = 0; d < rank; ++d) {
+                np *= dims[d];
+            }
+            assert(buf->frame_size == np);
             space = H5Screate_simple(rank, dims, dims);
-        } else if (_file_name == "voltage") {
-            const int rank = 4;
-            // const hsize_t dims[4] = {num_times, num_polarizations, num_frequencies, num_dishes};
-            const hsize_t dims[rank] = {32768, 2, 16, 512};
-            assert(buf->frame_size == 32768 * 2 * 16 * 512);
-            space = H5Screate_simple(rank, dims, dims);
-        } else if (_file_name == "beams" || _file_name == "wanted_beams") {
-            const int rank = 4;
-            // const hsize_t dims[4] = {num_times, num_polarizations, num_frequencies, num_beams};
-            const hsize_t dims[rank] = {32768, 2, 16, 96};
-            assert(buf->frame_size == 32768 * 2 * 16 * 96);
-            space = H5Screate_simple(rank, dims, dims);
+
         } else {
-            ERROR("Unknown file name {:s}; cannot deduce frame shape", _file_name.c_str());
+            // We don't have proper CHORD metadata and don't know the buffer type and shape
+
+            type = H5T_STD_U8LE;
+            const int rank = 1;
+            hsize_t dims[1];
+            dims[0] = buf->frame_size;
+            space = H5Screate_simple(rank, dims, dims);
         }
+
+        assert(type >= 0);
         assert(space >= 0);
 
-        // TODO: Check buffer_type
-        const hid_t dataset = H5Dcreate(group, buf->buffer_name, H5T_STD_U8LE, space, H5P_DEFAULT,
-                                        H5P_DEFAULT, H5P_DEFAULT);
+        const hid_t dataset =
+            H5Dcreate(group, buf->buffer_name, type, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
         assert(dataset >= 0);
 
         herr_t herr = H5Dwrite(dataset, H5T_NATIVE_UINT8, space, space, H5P_DEFAULT, frame);
@@ -191,11 +213,13 @@ void hdf5FileWrite::main_thread() {
         ++frame_ctr;
 
         if (frame_ctr == _exit_after_n_frames) {
-            herr = H5Fclose(fd);
-            if (herr < 0) {
-                ERROR("Cannot close file {:s}", full_path.c_str());
+            if (fd >= 0) {
+                herr = H5Fclose(fd);
+                if (herr < 0) {
+                    ERROR("Cannot close file {:s}", full_path.c_str());
+                }
+                fd = -1;
             }
-            isFileOpen = false;
             stop_thread = true;
         }
 
@@ -210,6 +234,7 @@ void hdf5FileWrite::main_thread() {
     // Check if we should exit after writing out a fixed number of
     // files. Useful for some tests and burst modes. Will hopefully be
     // replaced by frames which can contain a "final" signal.
-    if (!_exit_with_n_writers || ++n_finished >= _exit_with_n_writers)
+    if (!_exit_with_n_writers || ++n_finished >= _exit_with_n_writers) {
         exit_kotekan(ReturnCode::CLEAN_EXIT);
+    }
 }
