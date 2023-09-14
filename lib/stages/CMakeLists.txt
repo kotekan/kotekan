@@ -17,6 +17,7 @@ add_library(
     pyPlotN2.cpp
     rawFileRead.cpp
     rawFileWrite.cpp
+    hdf5FileWrite.cpp
     vdifStream.cpp
     recvSingleDishVDIF.cpp
     streamSingleDishVDIF.cpp
@@ -54,6 +55,7 @@ add_library(
     juliaManager.cpp
     juliaHelloWorld.cpp
     juliaDataGen.cpp
+    FEngine.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp

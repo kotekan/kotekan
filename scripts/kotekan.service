@@ -8,7 +8,7 @@ Restart=always
 Environment="HSA_ENABLE_SDMA=1"
 WorkingDirectory=/var/lib/kotekan
 TimeoutStopSec=60
-KillSignal=SIGINT
+KillSignal=SIGHUP
 ExecStart=/usr/local/bin/kotekan
 PIDFile=/var/run/kotekan.pid
 UMask=002

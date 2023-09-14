@@ -4,7 +4,6 @@
 #include <cassert>
 #include <julia.h>
 #include <juliaManager.hpp>
-#include <signal.h>
 #include <string>
 
 class juliaHelloWorld : public kotekan::Stage {
@@ -50,7 +49,5 @@ void juliaHelloWorld::main_thread() {
     INFO("juliaHelloWorld: Done calling Julia.");
 
     INFO("juliaHelloWorld: Exiting.");
-    // `exit_kotekan` sents `SIGINT`, and Julia swallows this signal. Thus raise `SIGHUP`.
     exit_kotekan(CLEAN_EXIT);
-    raise(SIGHUP);
 }
