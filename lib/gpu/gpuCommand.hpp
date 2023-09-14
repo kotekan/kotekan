@@ -14,6 +14,7 @@
 
 #include "fmt.hpp"
 
+#include <memory>
 #include <stdint.h> // for int32_t
 #include <string>   // for string, allocator
 
@@ -21,6 +22,8 @@ class gpuDeviceInterface;
 
 /// Enumeration of known GPU command types.
 enum class gpuCommandType { COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET };
+
+class gpuCommandState {};
 
 /**
  * @class gpuCommand
@@ -54,6 +57,7 @@ public:
      */
     gpuCommand(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& host_buffers, gpuDeviceInterface& device,
+               std::shared_ptr<gpuCommandState> = std::shared_ptr<gpuCommandState>(),
                const std::string& default_kernel_command = "",
                const std::string& default_kernel_file_name = "");
     /// Destructor that frees memory for the kernel and name.
@@ -143,6 +147,9 @@ protected:
 
     /// Reference to a derived device interface.
     gpuDeviceInterface& dev;
+
+    /// State that is shared by instances of this command (at one point in the pipeline)
+    std::shared_ptr<gpuCommandState> command_state;
 
     /// Sets the number of frames to be queued up in each buffer.
     int32_t _gpu_buffer_depth;

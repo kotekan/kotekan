@@ -10,6 +10,10 @@ using kotekan::Config;
 using std::string;
 using std::to_string;
 
+// default-constructed global so that people don't have to write
+// "std::shared_ptr<cudaCommandState>()" in a bunch of places.  Basically a custom NULL.
+std::shared_ptr<cudaCommandState> no_cuda_state;
+
 cudaPipelineState::cudaPipelineState(int _gpu_frame_id) : gpu_frame_id(_gpu_frame_id) {}
 
 cudaPipelineState::~cudaPipelineState() {}
@@ -41,9 +45,10 @@ int64_t cudaPipelineState::get_int(const std::string& key) const {
 
 cudaCommand::cudaCommand(Config& config_, const std::string& unique_name_,
                          bufferContainer& host_buffers_, cudaDeviceInterface& device_,
+                         std::shared_ptr<cudaCommandState> state_,
                          const std::string& default_kernel_command,
                          const std::string& default_kernel_file_name) :
-    gpuCommand(config_, unique_name_, host_buffers_, device_, default_kernel_command,
+    gpuCommand(config_, unique_name_, host_buffers_, device_, state_, default_kernel_command,
                default_kernel_file_name),
     device(device_) {
     _required_flag = config.get_default<std::string>(unique_name, "required_flag", "");

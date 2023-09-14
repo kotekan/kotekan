@@ -10,7 +10,8 @@ REGISTER_CUDA_COMMAND(cudaCorrelatorAstron);
 cudaCorrelatorAstron::cudaCorrelatorAstron(Config& config, const std::string& unique_name,
                                            bufferContainer& host_buffers,
                                            cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "correlate", "TCCorrelator.cu") {
+    cudaCommand(config, unique_name, host_buffers, device, no_cuda_state, "correlate",
+                "TCCorrelator.cu") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");

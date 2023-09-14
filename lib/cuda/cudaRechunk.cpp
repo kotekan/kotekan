@@ -11,7 +11,7 @@ REGISTER_CUDA_COMMAND(cudaRechunk);
 
 cudaRechunk::cudaRechunk(Config& config, const std::string& unique_name,
                          bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "cudaRechunk", "") {
+    cudaCommand(config, unique_name, host_buffers, device) {
     _cols_input = config.get<int>(unique_name, "cols_input");
     _cols_output = config.get<int>(unique_name, "cols_output");
     _rows = config.get<int>(unique_name, "rows");
@@ -21,6 +21,7 @@ cudaRechunk::cudaRechunk(Config& config, const std::string& unique_name,
     _input_columns_field = config.get_default<std::string>(unique_name, "input_columns_field", "");
     set_command_type(gpuCommandType::KERNEL);
     cols_accumulated = 0;
+    set_name("cudaRechunk");
 
     gpu_mem_accum = unique_name + "/accum";
 

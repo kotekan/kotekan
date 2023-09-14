@@ -42,6 +42,15 @@ protected:
     std::map<std::string, int64_t> intmap;
 };
 
+class cudaCommandState : public gpuCommandState {
+public:
+    cudaCommandState(kotekan::Config&, const std::string&, kotekan::bufferContainer&,
+                     cudaDeviceInterface&) {}
+};
+
+// use this to avoid having to write "std::shared_ptr<cudaCommandState>()"
+extern std::shared_ptr<cudaCommandState> no_cuda_state;
+
 /**
  * @class cudaCommand
  * @brief Base class for defining CUDA commands to execute on GPUs
@@ -69,6 +78,7 @@ public:
      */
     cudaCommand(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                std::shared_ptr<cudaCommandState> = std::shared_ptr<cudaCommandState>(),
                 const std::string& default_kernel_command = "",
                 const std::string& default_kernel_file_name = "");
     /// Destructor that frees memory for the kernel and name.
