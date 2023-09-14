@@ -40,8 +40,18 @@ gpuEventContainer* cudaProcess::create_signal() {
 
 gpuCommand* cudaProcess::create_command(const std::string& cmd_name,
                                         const std::string& unique_name) {
-    auto cmd = FACTORY(cudaCommand)::create_bare(cmd_name, config, unique_name,
-                                                 local_buffer_container, *device);
+    // Create the cudaCommandState object, if used, for this command class.
+    std::shared_ptr<cudaCommandState> st = FACTORY(cudaCommandState)::create_shared_if_exists(
+        cmd_name, config, unique_name, local_buffer_container, *device);
+    gpuCommand* cmd;
+    if (st)
+        // Create the cudaCommand object (with state arg)
+        cmd = FACTORY_VARIANT(state, cudaCommand)::create_bare(cmd_name, config, unique_name,
+                                                               local_buffer_container, *device, st);
+    else
+        // Create the cudaCommand object (without state arg)
+        cmd = FACTORY(cudaCommand)::create_bare(cmd_name, config, unique_name,
+                                                local_buffer_container, *device);
     DEBUG("Command added: {:s}", cmd_name.c_str());
     return cmd;
 }

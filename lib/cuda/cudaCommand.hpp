@@ -150,10 +150,22 @@ protected:
 };
 
 // Create a factory for cudaCommands
-CREATE_FACTORY(cudaCommand, // const std::string &, const std::string &,
-               kotekan::Config&, const std::string&, kotekan::bufferContainer&,
+CREATE_FACTORY(cudaCommand, kotekan::Config&, const std::string&, kotekan::bufferContainer&,
                cudaDeviceInterface&);
+// ... and another factory for cudaCommands that take a CommandState argument!
+CREATE_FACTORY_VARIANT(state, cudaCommand, kotekan::Config&, const std::string&,
+                       kotekan::bufferContainer&, cudaDeviceInterface&,
+                       const std::shared_ptr<cudaCommandState>&);
+
+// ... and a factory for cudaCommandStates
+CREATE_FACTORY(cudaCommandState, kotekan::Config&, const std::string&, kotekan::bufferContainer&,
+               cudaDeviceInterface&);
+
 #define REGISTER_CUDA_COMMAND(newCommand)                                                          \
     REGISTER_NAMED_TYPE_WITH_FACTORY(cudaCommand, newCommand, #newCommand)
+
+#define REGISTER_CUDA_COMMAND_WITH_STATE(newCommand, newCommandState)                              \
+    REGISTER_NAMED_TYPE_WITH_FACTORY_VARIANT(state, cudaCommand, newCommand, #newCommand);         \
+    REGISTER_NAMED_TYPE_WITH_FACTORY(cudaCommandState, newCommandState, #newCommand)
 
 #endif // CUDA_COMMAND_H
