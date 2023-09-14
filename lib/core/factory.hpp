@@ -119,6 +119,51 @@ public:
     }
 
     /**
+     * Create a new instance of the type, being forgiving if the requested type name does not exist.
+     *
+     * @param  type Label of type to create.
+     * @param  args Arguments for constructor.
+     *
+     * @return          Bare pointer to new object, or NULL if type does not exist.
+     **/
+    static T* create_bare_if_exists(const std::string& type, Args&&... args)
+    {
+        auto& r = type_registry();
+        if (r.find(type) == r.end()) {
+            DEBUG_NON_OO("Could not find subtype name {:s} within {:s} Factory.", type, type_demangle<T>());
+            return nullptr;
+        }
+        DEBUG_NON_OO("FACTORY({:s}): Creating {:s} instance.", typelabel(), type);
+        return r.at(type)(std::forward<Args>(args)...);
+    }
+
+    /**
+     * Create a new instance of the type, being forgiving if the requested type name does not exist.
+     *
+     * @param  type Label of type to create.
+     * @param  args Arguments for constructor.
+     *
+     * @return          Unique pointer to new object (empty if type does not exist).
+     **/
+    static std::unique_ptr<T> create_unique_if_exists(const std::string& type, Args&&... args)
+    {
+        return std::unique_ptr<T>(create_bare_if_exists(type, std::forward<Args>(args)...));
+    }
+
+    /**
+     * Create a new instance of the type, being forgiving if the requested type name does not exist.
+     *
+     * @param  type Label of type to create.
+     * @param  args Arguments for constructor.
+     *
+     * @return          Shared pointer to new object (empty if type does not exist).
+     **/
+    static std::shared_ptr<T> create_shared_if_exists(const std::string& type, Args&&... args)
+    {
+        return std::shared_ptr<T>(create_bare_if_exists(type, std::forward<Args>(args)...));
+    }
+
+    /**
      * Create a new instance of the type.
      *
      * @tparam  U     Subtype to register.
