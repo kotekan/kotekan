@@ -6,7 +6,7 @@
 rm -rf cmake-gpu-tests
 
 # Configure
-cmake -S . -B cmake-gpu-tests -G Ninja -DUSE_CUDA=ON -DUSE_Julia=ON -DUSE_OMP=ON -DWITH_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake -S . -B cmake-gpu-tests -G Ninja -DUSE_CUDA=ON -DUSE_HDF5=ON -DUSE_Julia=ON -DUSE_OMP=ON -DWITH_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
 # Build
 cmake --build cmake-gpu-tests --target kotekan/kotekan

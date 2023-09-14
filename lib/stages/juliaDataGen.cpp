@@ -7,7 +7,6 @@
 #include <fstream>
 #include <julia.h>
 #include <juliaManager.hpp>
-#include <signal.h>
 #include <string>
 
 class juliaDataGen : public kotekan::Stage {
@@ -65,6 +64,10 @@ juliaDataGen::~juliaDataGen() {
 }
 
 void juliaDataGen::main_thread() {
+    static bool done = false;
+    assert(!done);
+    done = true;
+
     const int buffer_depth = buf->num_frames;
 
     for (int frame_index = 0; frame_index < num_frames; ++frame_index) {
@@ -105,8 +108,5 @@ void juliaDataGen::main_thread() {
         mark_frame_full(buf, unique_name.c_str(), frame_id);
     }
 
-    INFO("Exiting.");
-    // `exit_kotekan` sents `SIGINT`, and Julia swallows this signal. Thus raise `SIGHUP`.
-    exit_kotekan(CLEAN_EXIT);
-    raise(SIGHUP);
+    INFO("Done.");
 }

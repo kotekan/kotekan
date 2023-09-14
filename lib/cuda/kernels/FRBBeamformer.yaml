@@ -19,7 +19,7 @@ kernel-description:
     threads: [32, 24]
     blocks: [256]
     shmem_bytes: 76896
-  kernel-symbol: "_Z15julia_frb_1025613CuDeviceArrayI7Int16x2Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE"
+  kernel-symbol: "_Z3frb13CuDeviceArrayI7Int16x2Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE"
   kernel-arguments:
     - name: "S"
       intent: in

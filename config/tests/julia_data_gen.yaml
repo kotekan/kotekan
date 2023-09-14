@@ -27,4 +27,13 @@ julia_data_gen:
     num_frames: 10
     samples_per_data_set: 32768
     out_buf: buffer
+
+write_data:
+  base_dir: /tmp
+  file_ext: data
+  exit_after_n_files: 10
+  write_voltage:
+    kotekan_stage: rawFileWrite
+    in_buf: buffer
+    file_name: buffer
 ...

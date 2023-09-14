@@ -15,7 +15,7 @@
 #include "gsl-lite.hpp" // for span
 
 #include <atomic>     // for atomic_bool
-#include <csignal>    // for raise, SIGTERM
+#include <csignal>    // for raise, SIGHUP
 #include <cstdint>    // for int32_t
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
@@ -59,7 +59,7 @@ FakeGpu::FakeGpu(kotekan::Config& config, const std::string& unique_name,
     // Validate and create test pattern
     if (!FACTORY(FakeGpuPattern)::exists(pattern_name)) {
         ERROR("Test pattern \"%s\" does not exist.", pattern_name.c_str());
-        std::raise(SIGTERM);
+        std::raise(SIGHUP);
     }
     pattern = FACTORY(FakeGpuPattern)::create_unique(pattern_name, config, unique_name);
 
@@ -71,7 +71,7 @@ FakeGpu::FakeGpu(kotekan::Config& config, const std::string& unique_name,
     if ((unsigned int)out_buf->frame_size < expected_frame_size) {
         ERROR("Buffer size too small (%i bytes, minimum required %i bytes)", out_buf->frame_size,
               expected_frame_size);
-        std::raise(SIGTERM);
+        std::raise(SIGHUP);
     }
 }
 

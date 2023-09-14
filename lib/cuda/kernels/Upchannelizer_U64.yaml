@@ -18,7 +18,7 @@ kernel-description:
     threads: [32, 16]
     blocks: [128]
     shmem_bytes: 66816
-  kernel-symbol: "_Z17julia_upchan_407113CuDeviceArrayI5Int32Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE"
+  kernel-symbol: "_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE"
   kernel-arguments:
     - name: "Tactual"
       intent: in
