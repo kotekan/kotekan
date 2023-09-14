@@ -7,11 +7,12 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 
-REGISTER_CUDA_COMMAND(cudaRechunk);
+REGISTER_CUDA_COMMAND_WITH_STATE(cudaRechunk, cudaRechunkState);
 
 cudaRechunk::cudaRechunk(Config& config, const std::string& unique_name,
-                         bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device) {
+                         bufferContainer& host_buffers, cudaDeviceInterface& device,
+                         std::shared_ptr<cudaCommandState> state) :
+    cudaCommand(config, unique_name, host_buffers, device, state) {
     _cols_input = config.get<int>(unique_name, "cols_input");
     _cols_output = config.get<int>(unique_name, "cols_output");
     _rows = config.get<int>(unique_name, "rows");
@@ -20,7 +21,6 @@ cudaRechunk::cudaRechunk(Config& config, const std::string& unique_name,
     _set_flag = config.get_default<std::string>(unique_name, "set_flag", "");
     _input_columns_field = config.get_default<std::string>(unique_name, "input_columns_field", "");
     set_command_type(gpuCommandType::KERNEL);
-    cols_accumulated = 0;
     set_name("cudaRechunk");
 
     gpu_mem_accum = unique_name + "/accum";
@@ -35,6 +35,10 @@ cudaRechunk::cudaRechunk(Config& config, const std::string& unique_name,
 }
 
 cudaRechunk::~cudaRechunk() {}
+
+cudaRechunkState* cudaRechunk::get_state() {
+    return static_cast<cudaRechunkState*>(command_state.get());
+}
 
 cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
                                  const std::vector<cudaEvent_t>& pre_events) {
@@ -58,6 +62,9 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
 
     size_t cols_to_copy = cols_input;
     size_t cols_leftover = 0;
+
+    size_t cols_accumulated = get_state()->cols_accumulated;
+
     if (cols_accumulated + cols_to_copy > _cols_output) {
         cols_to_copy = _cols_output - cols_accumulated;
         // Copy the remainder into the leftover_memory.
@@ -101,5 +108,8 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
         DEBUG("cudaRechunk: accumulated {:d} columns, output columns {:d} -- NOT producing output!",
               cols_accumulated, _cols_output);
     }
+
+    get_state()->cols_accumulated = cols_accumulated;
+
     return record_end_event(pipestate.gpu_frame_id);
 }
