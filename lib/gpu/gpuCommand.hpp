@@ -60,6 +60,8 @@ public:
     virtual ~gpuCommand();
     /// Get that returns the name given to this gpuCommand object.
     std::string& get_name();
+    /// Set the name (used for logging & profiling) for this gpuCommand object.
+    void set_name(const std::string&);
 
     /**
      * @brief This function blocks on whatever resource is required by the command.

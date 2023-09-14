@@ -7,7 +7,7 @@ REGISTER_CUDA_COMMAND(cudaInputData);
 
 cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
                              bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "", "") {
+    cudaCommand(config, unique_name, host_buffers, device) {
 
     in_buf = host_buffers.get_buffer(config.get<std::string>(unique_name, "in_buf"));
     register_consumer(in_buf, unique_name.c_str());
@@ -29,8 +29,7 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
     in_buffer_finalize_id = 0;
 
     set_command_type(gpuCommandType::COPY_IN);
-
-    kernel_command = "cudaInputData: " + _gpu_mem;
+    set_name("input: " + _gpu_mem);
 }
 
 cudaInputData::~cudaInputData() {

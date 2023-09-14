@@ -82,7 +82,7 @@ static void compute_beam_reformer_phase(int M, int N, float16_t* host_phase, int
 cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& unique_name,
                                          bufferContainer& host_buffers,
                                          cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "FRB_beamreformer", "") {
+    cudaCommand(config, unique_name, host_buffers, device) {
     _num_beams = config.get<int>(unique_name, "num_beams");
     _beam_grid_size = config.get<int>(unique_name, "beam_grid_size");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
@@ -113,6 +113,7 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
     }
 
     set_command_type(gpuCommandType::KERNEL);
+    set_name("FRB_beamreformer");
 
     rho = _beam_grid_size * _beam_grid_size;
 

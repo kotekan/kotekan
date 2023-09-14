@@ -20,15 +20,14 @@ gpuCommand::gpuCommand(Config& config_, const std::string& unique_name_,
                        bufferContainer& host_buffers_, gpuDeviceInterface& device_,
                        const std::string& default_kernel_command,
                        const std::string& default_kernel_file_name) :
-    kernel_command(default_kernel_command),
-    kernel_file_name(default_kernel_file_name), config(config_), unique_name(unique_name_),
-    host_buffers(host_buffers_), dev(device_) {
+    kernel_file_name(default_kernel_file_name),
+    config(config_), unique_name(unique_name_), host_buffers(host_buffers_), dev(device_) {
     _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
 
     // Set the local log level.
     std::string s_log_level = config.get<string>(unique_name, "log_level");
     set_log_level(s_log_level);
-    set_log_prefix(fmt::format("{:s} ({:30s})", unique_name, get_name()));
+    set_name(default_kernel_command);
 
     // Load the kernel if there is one.
     if (default_kernel_file_name != "") {
@@ -60,6 +59,10 @@ int gpuCommand::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
+void gpuCommand::set_name(const std::string& c) {
+    kernel_command = c;
+    set_log_prefix(fmt::format("{:s} ({:30s})", unique_name, kernel_command));
+}
 
 string& gpuCommand::get_name() {
     return kernel_command;

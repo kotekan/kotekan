@@ -7,9 +7,9 @@ REGISTER_CUDA_COMMAND(chordMVPSetup);
 
 chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
                              bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "chordMVPSetup", "") {
+    cudaCommand(config, unique_name, host_buffers, device) {
     set_command_type(gpuCommandType::COPY_IN);
-
+    set_name("chordMVPSetup");
     // Upchan to FRB-Beamformer:
     size_t num_dishes = config.get<int>(unique_name, "num_dishes");
     // (this is fpga frequencies)

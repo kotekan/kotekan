@@ -10,7 +10,7 @@ REGISTER_CUDA_COMMAND(cudaCorrelator);
 
 cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "cudaCorrelator", ""),
+    cudaCommand(config, unique_name, host_buffers, device),
     _num_elements(config.get<int>(unique_name, "num_elements")),
     _num_local_freq(config.get<int>(unique_name, "num_local_freq")),
     _samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
@@ -27,6 +27,7 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_correlation_triangle, true, false, true));
 
     set_command_type(gpuCommandType::KERNEL);
+    set_name("cudaCorrelator");
 }
 
 cudaCorrelator::~cudaCorrelator() {}

@@ -14,7 +14,7 @@ REGISTER_CUDA_COMMAND(cudaQuantize);
 
 cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
                            bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "cudaQuantize", "") {
+    cudaCommand(config, unique_name, host_buffers, device) {
     _num_chunks = config.get<int>(unique_name, "num_chunks");
     _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
@@ -24,6 +24,7 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
     std::string _gpu_mem_index = unique_name + "/index";
 
     set_command_type(gpuCommandType::KERNEL);
+    set_name("cudaQuantize");
 
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, true, false, true));

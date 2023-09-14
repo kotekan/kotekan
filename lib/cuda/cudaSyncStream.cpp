@@ -7,7 +7,8 @@ REGISTER_CUDA_COMMAND(cudaSyncStream);
 
 cudaSyncStream::cudaSyncStream(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "sync", "") {
+    cudaCommand(config, unique_name, host_buffers, device) {
+    set_name("sync");
     set_source_cuda_streams(config.get<std::vector<int32_t>>(unique_name, "source_cuda_streams"));
     set_command_type(gpuCommandType::BARRIER);
 }
@@ -15,7 +16,7 @@ cudaSyncStream::cudaSyncStream(Config& config, const std::string& unique_name,
 cudaSyncStream::cudaSyncStream(kotekan::Config& config, const std::string& unique_name,
                                kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
                                bool called_by_subclasser) :
-    cudaCommand(config, unique_name, host_buffers, device, "sync", "") {
+    cudaCommand(config, unique_name, host_buffers, device) {
     (void)called_by_subclasser;
     command_type = gpuCommandType::BARRIER;
 }

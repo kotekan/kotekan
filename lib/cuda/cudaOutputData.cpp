@@ -13,7 +13,7 @@ REGISTER_CUDA_COMMAND(cudaOutputData);
 
 cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "", "") {
+    cudaCommand(config, unique_name, host_buffers, device) {
     std::string in_buf_name = config.get_default<std::string>(unique_name, "in_buf", "");
     if (in_buf_name.size()) {
         in_buffer = host_buffers.get_buffer(in_buf_name);
@@ -45,9 +45,7 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
     did_generate_output.resize(_gpu_buffer_depth);
 
     set_command_type(gpuCommandType::COPY_OUT);
-
-    kernel_command = "cudaOutputData: " + _gpu_mem;
-    set_log_prefix(fmt::format("{:s} ({:30s})", unique_name, get_name()));
+    set_name("output: " + _gpu_mem);
 }
 
 cudaOutputData::~cudaOutputData() {
