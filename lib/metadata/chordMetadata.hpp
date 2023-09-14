@@ -94,7 +94,12 @@ struct chordMetadata {
     void set_array_dimension(int dim, int size, std::string name) {
         assert(dim < CHORD_META_MAX_DIM);
         this->dim[dim] = size;
+        // GCC helpfully tries to warn us that the destination string may end up not
+        // null-terminated, which we know.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
         strncpy(this->dim_name[dim], name.c_str(), CHORD_META_MAX_DIMNAME);
+#pragma GCC diagnostic pop
     }
 
     void set_onehot_dimension(int dim, int i, std::string name) {
