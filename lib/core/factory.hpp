@@ -331,6 +331,22 @@ private:
 #define REGISTER_RTTI_TYPE_WITH_FACTORY(type, subtype) \
     REGISTER_NAMED_TYPE_WITH_FACTORY(type, subtype, typeid(subtype).name())
 
+/*
+ * These are variants on the FACTORY macros if you want to call a different contructor
+ * on the same type.
+ *
+ * (Required so that the symbols names don't conflict)
+ */
+#define FACTORY_VARIANT(X, type) _factory_alias ## X ## type
+#define _FACTORY_NAME_VARIANT(X, type, ...) FACTORY_VARIANT(X, type)
+
+#define CREATE_FACTORY_VARIANT(X, ...)                                \
+using _FACTORY_NAME_VARIANT(X, __VA_ARGS__) = Factory<__VA_ARGS__>;
+
+#define REGISTER_NAMED_TYPE_WITH_FACTORY_VARIANT(X, type, subtype, name)   \
+    auto _register ## X ## type ## subtype = \
+        FACTORY_VARIANT(X, type)::register_type<subtype>(name);
+
 // clang-format on
 
 #endif
