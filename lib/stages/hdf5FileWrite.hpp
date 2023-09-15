@@ -46,7 +46,7 @@ private:
     // Prefix file name with hostname or not
     bool _prefix_hostname;
 
-  static std::atomic<uint32_t> n_finished;
+    static std::atomic<uint32_t> n_finished;
 };
 
 #endif
