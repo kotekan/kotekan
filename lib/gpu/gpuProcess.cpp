@@ -233,7 +233,8 @@ void gpuProcess::results_thread() {
             std::string output = "";
             for (size_t i = 0; i < commands.size(); ++i) {
                 output = fmt::format(fmt("{:s}command: {:s} ({:30s}) metrics: {:s}; \n"), output,
-                                     commands[i][gpu_frame_id]->get_unique_name(), commands[i][gpu_frame_id]->get_name(),
+                                     commands[i][gpu_frame_id]->get_unique_name(),
+                                     commands[i][gpu_frame_id]->get_name(),
                                      commands[i][gpu_frame_id]->get_performance_metric_string());
             }
             INFO("GPU[{:d}] frame {:d} Profiling: \n{:s}", gpu_id, gpu_frame_id, output);

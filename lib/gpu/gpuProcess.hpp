@@ -54,7 +54,7 @@ protected:
 
     std::thread results_thread_handle;
     gpuDeviceInterface* dev;
-    std::vector<std::vector<gpuCommand*> > commands;
+    std::vector<std::vector<gpuCommand*>> commands;
 
     // Config variables
     uint32_t _gpu_buffer_depth;

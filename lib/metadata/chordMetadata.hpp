@@ -11,9 +11,7 @@
 #include <vector>
 
 // One of the warning-silencing pragmas below only applied for gcc >= 8
-#define GCC_VERSION (__GNUC__ * 10000           \
-                     + __GNUC_MINOR__ * 100     \
-                     + __GNUC_PATCHLEVEL__)
+#define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
 #pragma pack()
 
 enum chordDataType { int4p4, int8, float16, float32 };
