@@ -10,6 +10,13 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     cudaCommand(config, unique_name, host_buffers, device, inst) {
     set_command_type(gpuCommandType::COPY_IN);
     set_name("chordMVPSetup");
+
+    // The GPU memory view setup below is "global", so need only do it once.
+    if (instance_num != 0)
+        return;
+
+    // Set up GPU memory views
+
     // Upchan to FRB-Beamformer:
     size_t num_dishes = config.get<int>(unique_name, "num_dishes");
     // (this is fpga frequencies)

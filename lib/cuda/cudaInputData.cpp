@@ -11,13 +11,14 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
     cudaCommand(config, unique_name, host_buffers, device, instance_num) {
 
     in_buf = host_buffers.get_buffer(config.get<std::string>(unique_name, "in_buf"));
-    register_consumer(in_buf, unique_name.c_str());
-
-    for (int i = 0; i < in_buf->num_frames; i++) {
-        uint flags;
-        // only register the memory if it isn't already...
-        if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, in_buf->frames[i])) {
-            CHECK_CUDA_ERROR(cudaHostRegister(in_buf->frames[i], in_buf->frame_size, 0));
+    if (instance_num == 0) {
+        register_consumer(in_buf, unique_name.c_str());
+        for (int i = 0; i < in_buf->num_frames; i++) {
+            uint flags;
+            // only register the memory if it isn't already...
+            if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, in_buf->frames[i])) {
+                CHECK_CUDA_ERROR(cudaHostRegister(in_buf->frames[i], in_buf->frame_size, 0));
+            }
         }
     }
 
@@ -34,11 +35,13 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
 }
 
 cudaInputData::~cudaInputData() {
-    for (int i = 0; i < in_buf->num_frames; i++) {
-        uint flags;
-        // only unregister if it's already been registered
-        if (cudaSuccess == cudaHostGetFlags(&flags, in_buf->frames[i])) {
-            CHECK_CUDA_ERROR(cudaHostUnregister(in_buf->frames[i]));
+    if (instance_num == 0) {
+        for (int i = 0; i < in_buf->num_frames; i++) {
+            uint flags;
+            // only unregister if it's already been registered
+            if (cudaSuccess == cudaHostGetFlags(&flags, in_buf->frames[i])) {
+                CHECK_CUDA_ERROR(cudaHostUnregister(in_buf->frames[i]));
+            }
         }
     }
 }

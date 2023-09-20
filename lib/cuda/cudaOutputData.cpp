@@ -18,19 +18,21 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
     std::string in_buf_name = config.get_default<std::string>(unique_name, "in_buf", "");
     if (in_buf_name.size()) {
         in_buffer = host_buffers.get_buffer(in_buf_name);
-        register_consumer(in_buffer, unique_name.c_str());
+        if (instance_num == 0)
+            register_consumer(in_buffer, unique_name.c_str());
     } else
         in_buffer = nullptr;
 
     output_buffer = host_buffers.get_buffer(config.get<std::string>(unique_name, "out_buf"));
-    register_producer(output_buffer, unique_name.c_str());
-
-    for (int i = 0; i < output_buffer->num_frames; i++) {
-        uint flags;
-        // only register the memory if it isn't already...
-        if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, output_buffer->frames[i])) {
-            CHECK_CUDA_ERROR(
-                cudaHostRegister(output_buffer->frames[i], output_buffer->frame_size, 0));
+    if (instance_num == 0) {
+        register_producer(output_buffer, unique_name.c_str());
+        for (int i = 0; i < output_buffer->num_frames; i++) {
+            uint flags;
+            // only register the memory if it isn't already...
+            if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, output_buffer->frames[i])) {
+                CHECK_CUDA_ERROR(
+                    cudaHostRegister(output_buffer->frames[i], output_buffer->frame_size, 0));
+            }
         }
     }
 
@@ -50,13 +52,14 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
 }
 
 cudaOutputData::~cudaOutputData() {
-    for (int i = 0; i < output_buffer->num_frames; i++) {
-        uint flags;
-        // only register the memory if it isn't already...
-        if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, output_buffer->frames[i])) {
-            CHECK_CUDA_ERROR(cudaHostUnregister(output_buffer->frames[i]));
+    if (instance_num == 0)
+        for (int i = 0; i < output_buffer->num_frames; i++) {
+            uint flags;
+            // only register the memory if it isn't already...
+            if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, output_buffer->frames[i])) {
+                CHECK_CUDA_ERROR(cudaHostUnregister(output_buffer->frames[i]));
+            }
         }
-    }
 }
 
 int cudaOutputData::wait_on_precondition(int) {
