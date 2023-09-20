@@ -66,7 +66,8 @@ gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
 gpuProcess::~gpuProcess() {
     restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile/{:d}"), gpu_id));
     for (auto& command : commands)
-        delete command;
+        for (auto& c : command)
+            delete c;
     for (auto& event : final_signals)
         delete event;
 
@@ -109,19 +110,21 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
     double total_kernel_time = 0;
 
     for (auto& cmd : commands) {
-        double time = cmd->excute_time->get_avg(); //->get_last_gpu_execution_time();
+        // The multiple gpuCommand instances share a StatsTracker object, so we only need
+        // ask the first one for its stats.
+        double time = cmd[0]->excute_time->get_avg(); //->get_last_gpu_execution_time();
         double utilization = time / frame_arrival_period;
-        if (cmd->get_command_type() == gpuCommandType::KERNEL) {
+        if (cmd[0]->get_command_type() == gpuCommandType::KERNEL) {
             reply["kernel"].push_back(
-                {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
+                {{"name", cmd[0]->get_name()}, {"time", time}, {"utilization", utilization}});
             total_kernel_time += isnan(time) ? 0. : time;
-        } else if (cmd->get_command_type() == gpuCommandType::COPY_IN) {
+        } else if (cmd[0]->get_command_type() == gpuCommandType::COPY_IN) {
             reply["copy_in"].push_back(
-                {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
+                {{"name", cmd[0]->get_name()}, {"time", time}, {"utilization", utilization}});
             total_copy_in_time += isnan(time) ? 0. : time;
-        } else if (cmd->get_command_type() == gpuCommandType::COPY_OUT) {
+        } else if (cmd[0]->get_command_type() == gpuCommandType::COPY_OUT) {
             reply["copy_out"].push_back(
-                {{"name", cmd->get_name()}, {"time", time}, {"utilization", utilization}});
+                {{"name", cmd[0]->get_name()}, {"time", time}, {"utilization", utilization}});
             total_copy_out_time += isnan(time) ? 0. : time;
         } else {
             continue;
@@ -158,9 +161,9 @@ void gpuProcess::main_thread() {
         // and for there to be free space in the output buffers.
         // INFO("Waiting on preconditions for GPU[{:d}][{:d}]", gpu_id, gpu_frame_id);
         for (auto& command : commands) {
-            if (command->wait_on_precondition(gpu_frame_id) != 0) {
+            if (command[gpu_frame_id]->wait_on_precondition(gpu_frame_id) != 0) {
                 INFO("Received exit signal from GPU command precondition (Command '{:s}')",
-                     command->get_name());
+                     command[gpu_frame_id]->get_name());
                 goto exit_loop;
             }
         }
@@ -222,16 +225,16 @@ void gpuProcess::results_thread() {
             // which is always called, or make sure that all finalize_frame calls can
             // run even when there is a shutdown in progress.
             if (!stop_thread)
-                command->finalize_frame(gpu_frame_id);
+                command[gpu_frame_id]->finalize_frame(gpu_frame_id);
         }
         DEBUG2("Finished finalizing frames for gpu[{:d}][{:d}]", gpu_id, gpu_frame_id);
 
         if (log_profiling) {
             std::string output = "";
-            for (uint32_t i = 0; i < commands.size(); ++i) {
+            for (size_t i = 0; i < commands.size(); ++i) {
                 output = fmt::format(fmt("{:s}command: {:s} ({:30s}) metrics: {:s}; \n"), output,
-                                     commands[i]->get_unique_name(), commands[i]->get_name(),
-                                     commands[i]->get_performance_metric_string());
+                                     commands[i][gpu_frame_id]->get_unique_name(), commands[i][gpu_frame_id]->get_name(),
+                                     commands[i][gpu_frame_id]->get_performance_metric_string());
             }
             INFO("GPU[{:d}] frame {:d} Profiling: \n{:s}", gpu_id, gpu_frame_id, output);
         }
@@ -253,7 +256,7 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
     // Draw a node for each gpuCommand
     for (auto& command : commands) {
         std::string shape;
-        switch (command->get_command_type()) {
+        switch (command[0]->get_command_type()) {
             case gpuCommandType::COPY_IN:
                 shape = "trapezium";
                 break;
@@ -272,7 +275,7 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
                 break;
         }
         dot += fmt::format("{:s}{:s}\"{:s}\" [shape={:s},label=\"{:s}\"];\n", prefix, prefix,
-                           command->get_unique_name(), shape, command->get_name());
+                           command[0]->get_unique_name(), shape, command[0]->get_name());
     }
 
     // Draw edges between gpuCommands
@@ -281,13 +284,13 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
     std::string last_item = "";
     for (auto& command : commands) {
         if (first_item) {
-            last_item = command->get_unique_name();
+            last_item = command[0]->get_unique_name();
             first_item = false;
             continue;
         }
         dot += fmt::format("{:s}{:s}\"{:s}\" -> \"{:s}\" [style=dotted];\n", prefix, prefix,
-                           last_item, command->get_unique_name());
-        last_item = command->get_unique_name();
+                           last_item, command[0]->get_unique_name());
+        last_item = command[0]->get_unique_name();
     }
     dot += fmt::format("{:s}{:s}// end gpu command edges\n", prefix, prefix);
 
@@ -295,7 +298,7 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
     std::set<std::string> gpu_buffers;
     std::set<std::string> gpu_buffer_arrays;
     for (auto& command : commands) {
-        auto buffs = command->get_gpu_buffers();
+        auto buffs = command[0]->get_gpu_buffers();
         for (auto& buff : buffs)
             if (std::get<1>(buff))
                 gpu_buffer_arrays.insert(std::get<0>(buff));
@@ -318,23 +321,23 @@ std::string gpuProcess::dot_string(const std::string& prefix) const {
 
     // Draw I/O edges on GPU buffers
     for (auto& command : commands) {
-        auto buffs = command->get_gpu_buffers();
+        auto buffs = command[0]->get_gpu_buffers();
         for (auto& buff : buffs) {
             std::string buffname = std::get<0>(buff);
             if (std::get<2>(buff))
                 // Read
                 dot += fmt::format("{:s}{:s}\"{:s}\" -> \"{:s}\" [style=solid];\n", prefix, prefix,
-                                   buffname, command->get_unique_name());
+                                   buffname, command[0]->get_unique_name());
             if (std::get<3>(buff))
                 // Write
                 dot += fmt::format("{:s}{:s}\"{:s}\" -> \"{:s}\" [style=solid];\n", prefix, prefix,
-                                   command->get_unique_name(), buffname);
+                                   command[0]->get_unique_name(), buffname);
         }
     }
 
     // Add any extra DOT commands...
     for (auto& command : commands) {
-        dot += command->get_extra_dot(prefix);
+        dot += command[0]->get_extra_dot(prefix);
     }
 
     dot += fmt::format("{:s}}}\n", prefix);

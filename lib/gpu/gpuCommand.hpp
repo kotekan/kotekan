@@ -23,7 +23,7 @@ class gpuDeviceInterface;
 /// Enumeration of known GPU command types.
 enum class gpuCommandType { COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET };
 
-class gpuCommandState {};
+class gpuCommandState : public kotekan::kotekanLogging {};
 
 /**
  * @class gpuCommand
