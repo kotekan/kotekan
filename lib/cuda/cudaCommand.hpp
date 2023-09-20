@@ -134,9 +134,9 @@ protected:
     cudaEvent_t record_end_event(int gpu_frame_id);
 
     /// Events queued after the kernel/copy for synchronization and profiling
-    cudaEvent_t* end_events;
+    cudaEvent_t end_event;
     /// Extra events created at the start of kernels/copies for profiling
-    cudaEvent_t* start_events;
+    cudaEvent_t start_event;
 
     cudaDeviceInterface& device;
 

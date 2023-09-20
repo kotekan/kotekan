@@ -47,7 +47,7 @@ private:
 
     /// CUDA compute streams to use
     std::vector<int> _cuda_streams;
-    std::vector<std::vector<cudaEvent_t>> sync_events;
+    std::vector<cudaEvent_t> sync_events;
 
     // Computed values
     int32_t rho;

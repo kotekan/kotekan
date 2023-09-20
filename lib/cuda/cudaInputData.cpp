@@ -69,9 +69,8 @@ cudaEvent_t cudaInputData::execute(cudaPipelineState& pipestate,
     void* host_memory_frame = (void*)in_buf->frames[in_buffer_id];
 
     device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame, input_frame_len,
-                                  cuda_stream_id, pre_events[cuda_stream_id],
-                                  start_events[pipestate.gpu_frame_id],
-                                  end_events[pipestate.gpu_frame_id]);
+                                  cuda_stream_id, pre_events[cuda_stream_id], start_event,
+                                  end_event);
 
     // Copy (reference to) metadata also
     metadataContainer* meta = in_buf->metadata[in_buffer_id];
@@ -79,7 +78,7 @@ cudaEvent_t cudaInputData::execute(cudaPipelineState& pipestate,
         device.claim_gpu_memory_array_metadata(_gpu_mem, pipestate.gpu_frame_id, meta);
 
     in_buffer_id = (in_buffer_id + 1) % in_buf->num_frames;
-    return end_events[pipestate.gpu_frame_id];
+    return end_event;
 }
 
 void cudaInputData::finalize_frame(int frame_id) {

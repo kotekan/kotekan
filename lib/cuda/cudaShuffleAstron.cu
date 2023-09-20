@@ -79,8 +79,8 @@ cudaEvent_t cudaShuffleAstron::execute(cudaPipelineState& pipestate, const std::
 
     if (pre_events[cuda_stream_id]) CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(cuda_stream_id),
                                              pre_events[cuda_stream_id], 0));
-    CHECK_CUDA_ERROR(cudaEventCreate(&start_events[pipestate.gpu_frame_id]));
-    CHECK_CUDA_ERROR(cudaEventRecord(start_events[pipestate.gpu_frame_id], device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaEventCreate(&start_event));
+    CHECK_CUDA_ERROR(cudaEventRecord(start_event, device.getStream(cuda_stream_id)));
 
     dim3 blk (8,8,1);
     dim3 grd (_num_elements/32,_samples_per_data_set/32,_num_local_freq);
@@ -89,8 +89,8 @@ cudaEvent_t cudaShuffleAstron::execute(cudaPipelineState& pipestate, const std::
 
     CHECK_CUDA_ERROR(cudaGetLastError());
 
-    CHECK_CUDA_ERROR(cudaEventCreate(&end_events[pipestate.gpu_frame_id]));
-    CHECK_CUDA_ERROR(cudaEventRecord(end_events[pipestate.gpu_frame_id], device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaEventCreate(&end_event));
+    CHECK_CUDA_ERROR(cudaEventRecord(end_event, device.getStream(cuda_stream_id)));
 
-    return end_events[pipestate.gpu_frame_id];
+    return end_event;
 }

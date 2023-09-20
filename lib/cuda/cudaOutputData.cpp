@@ -93,8 +93,7 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState& pipestate,
     void* host_output_frame = (void*)output_buffer->frames[output_buffer_execute_id];
 
     device.async_copy_gpu_to_host(host_output_frame, gpu_output_frame, output_len, cuda_stream_id,
-                                  pre_events[cuda_stream_id], start_events[pipestate.gpu_frame_id],
-                                  end_events[pipestate.gpu_frame_id]);
+                                  pre_events[cuda_stream_id], start_event, end_event);
 
     if (!in_buffer) {
         // Check for metadata attached to the GPU frame
@@ -115,7 +114,7 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState& pipestate,
     }
 
     output_buffer_execute_id = (output_buffer_execute_id + 1) % output_buffer->num_frames;
-    return end_events[pipestate.gpu_frame_id];
+    return end_event;
 }
 
 void cudaOutputData::finalize_frame(int frame_id) {

@@ -52,12 +52,8 @@ cudaCommand::cudaCommand(Config& config_, const std::string& unique_name_,
                default_kernel_command, default_kernel_file_name),
     device(device_) {
     _required_flag = config.get_default<std::string>(unique_name, "required_flag", "");
-    start_events = (cudaEvent_t*)malloc(_gpu_buffer_depth * sizeof(cudaEvent_t));
-    end_events = (cudaEvent_t*)malloc(_gpu_buffer_depth * sizeof(cudaEvent_t));
-    for (int j = 0; j < _gpu_buffer_depth; ++j) {
-        start_events[j] = nullptr;
-        end_events[j] = nullptr;
-    }
+    start_event = nullptr;
+    end_event = nullptr;
 }
 
 void cudaCommand::set_command_type(const gpuCommandType& type) {
@@ -96,8 +92,6 @@ void cudaCommand::set_command_type(const gpuCommandType& type) {
 }
 
 cudaCommand::~cudaCommand() {
-    free(start_events);
-    free(end_events);
     DEBUG("post_events Freed: {:s}", unique_name.c_str());
 }
 
@@ -110,12 +104,10 @@ cudaEvent_t cudaCommand::execute_base(cudaPipelineState& pipestate,
     return execute(pipestate, pre_events);
 }
 
-void cudaCommand::finalize_frame(int gpu_frame_id) {
-    if (profiling && (start_events[gpu_frame_id] != nullptr)
-        && (end_events[gpu_frame_id] != nullptr)) {
+void cudaCommand::finalize_frame(int) {
+    if (profiling && (start_event != nullptr) && (end_event != nullptr)) {
         float exec_time;
-        CHECK_CUDA_ERROR(
-            cudaEventElapsedTime(&exec_time, start_events[gpu_frame_id], end_events[gpu_frame_id]));
+        CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_event, end_event));
         double active_time = exec_time * 1e-3; // convert ms to s
         excute_time->add_sample(active_time);
         utilization->add_sample(active_time / frame_arrival_period);
@@ -123,12 +115,12 @@ void cudaCommand::finalize_frame(int gpu_frame_id) {
         excute_time->add_sample(0.);
         utilization->add_sample(0.);
     }
-    if (start_events[gpu_frame_id])
-        CHECK_CUDA_ERROR(cudaEventDestroy(start_events[gpu_frame_id]));
-    start_events[gpu_frame_id] = nullptr;
-    if (end_events[gpu_frame_id] != nullptr)
-        CHECK_CUDA_ERROR(cudaEventDestroy(end_events[gpu_frame_id]));
-    end_events[gpu_frame_id] = nullptr;
+    if (start_event)
+        CHECK_CUDA_ERROR(cudaEventDestroy(start_event));
+    start_event = nullptr;
+    if (end_event != nullptr)
+        CHECK_CUDA_ERROR(cudaEventDestroy(end_event));
+    end_event = nullptr;
 }
 
 int32_t cudaCommand::get_cuda_stream_id() {
@@ -361,16 +353,15 @@ void cudaCommand::build_ptx(const std::vector<std::string>& kernel_names,
     free(elf);
 }
 
-void cudaCommand::record_start_event(int gpu_frame_id) {
+void cudaCommand::record_start_event(int) {
     if (profiling) {
-        CHECK_CUDA_ERROR(cudaEventCreate(&start_events[gpu_frame_id]));
-        CHECK_CUDA_ERROR(
-            cudaEventRecord(start_events[gpu_frame_id], device.getStream(cuda_stream_id)));
+        CHECK_CUDA_ERROR(cudaEventCreate(&start_event));
+        CHECK_CUDA_ERROR(cudaEventRecord(start_event, device.getStream(cuda_stream_id)));
     }
 }
 
-cudaEvent_t cudaCommand::record_end_event(int gpu_frame_id) {
-    CHECK_CUDA_ERROR(cudaEventCreate(&end_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(cudaEventRecord(end_events[gpu_frame_id], device.getStream(cuda_stream_id)));
-    return end_events[gpu_frame_id];
+cudaEvent_t cudaCommand::record_end_event(int) {
+    CHECK_CUDA_ERROR(cudaEventCreate(&end_event));
+    CHECK_CUDA_ERROR(cudaEventRecord(end_event, device.getStream(cuda_stream_id)));
+    return end_event;
 }

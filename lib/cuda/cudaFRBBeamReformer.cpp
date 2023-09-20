@@ -105,12 +105,7 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_phase, false, true, true));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beamout, true, false, true));
 
-    sync_events.resize(_gpu_buffer_depth);
-    if (_cuda_streams.size()) {
-        for (int i = 0; i < _gpu_buffer_depth; i++) {
-            sync_events[i].resize(_cuda_streams.size());
-        }
-    }
+    sync_events.resize(_cuda_streams.size());
 
     set_command_type(gpuCommandType::KERNEL);
     set_name("FRB_beamreformer");
@@ -384,12 +379,12 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& pipestate,
         for (size_t i = 0; i < _cuda_streams.size(); i++) {
             if (_cuda_streams[i] != cuda_stream_id) {
                 // Create an event on each compute stream that we "forked"
-                CHECK_CUDA_ERROR(cudaEventCreate(&sync_events[pipestate.gpu_frame_id][i]));
-                CHECK_CUDA_ERROR(cudaEventRecord(sync_events[pipestate.gpu_frame_id][i],
-                                                 device.getStream(_cuda_streams[i])));
+                CHECK_CUDA_ERROR(cudaEventCreate(&sync_events[i]));
+                CHECK_CUDA_ERROR(
+                    cudaEventRecord(sync_events[i], device.getStream(_cuda_streams[i])));
                 // Now wait for that event on the main compute stream.
-                CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(cuda_stream_id),
-                                                     sync_events[pipestate.gpu_frame_id][i]));
+                CHECK_CUDA_ERROR(
+                    cudaStreamWaitEvent(device.getStream(cuda_stream_id), sync_events[i]));
             }
         }
     }
@@ -401,22 +396,20 @@ void cudaFRBBeamReformer::finalize_frame(int frame_id) {
 
     float exec_time;
     for (size_t i = 0; i < _cuda_streams.size(); i++) {
-        if (sync_events[frame_id][i] && sync_events[frame_id][i]) {
-            CHECK_CUDA_ERROR(
-                cudaEventElapsedTime(&exec_time, start_events[frame_id], sync_events[frame_id][i]));
+        if (sync_events[i]) {
+            CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_event, sync_events[i]));
             DEBUG("Sync for stream {:d} took {:.3f} ms", _cuda_streams[i], exec_time);
         }
     }
-    if (start_events[frame_id] && end_events[frame_id]) {
-        CHECK_CUDA_ERROR(
-            cudaEventElapsedTime(&exec_time, start_events[frame_id], end_events[frame_id]));
+    if (start_event && end_event) {
+        CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_event, end_event));
         DEBUG("Start to end took {:.3f} ms", exec_time);
     }
 
     cudaCommand::finalize_frame(frame_id);
     for (size_t i = 0; i < _cuda_streams.size(); i++) {
-        if (sync_events[frame_id][i])
-            CHECK_CUDA_ERROR(cudaEventDestroy(sync_events[frame_id][i]));
-        sync_events[frame_id][i] = nullptr;
+        if (sync_events[i])
+            CHECK_CUDA_ERROR(cudaEventDestroy(sync_events[i]));
+        sync_events[i] = nullptr;
     }
 }
