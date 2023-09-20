@@ -44,16 +44,16 @@ std::vector<gpuCommand*> cudaProcess::create_command(const std::string& cmd_name
     // Create the cudaCommandState object, if used, for this command class.
     std::shared_ptr<cudaCommandState> st = FACTORY(cudaCommandState)::create_shared_if_exists(
         cmd_name, config, unique_name, local_buffer_container, *device);
-    for (uint32_t i=0; i<_gpu_buffer_depth; i++) {
+    for (uint32_t i = 0; i < _gpu_buffer_depth; i++) {
         gpuCommand* cmd;
         if (st)
             // Create the cudaCommand object (with state arg)
-            cmd = FACTORY_VARIANT(state, cudaCommand)::create_bare(cmd_name, config, unique_name,
-                                                                   local_buffer_container, *device, st);
+            cmd = FACTORY_VARIANT(state, cudaCommand)::create_bare(
+                cmd_name, config, unique_name, local_buffer_container, *device, i, st);
         else
             // Create the cudaCommand object (without state arg)
             cmd = FACTORY(cudaCommand)::create_bare(cmd_name, config, unique_name,
-                                                    local_buffer_container, *device);
+                                                    local_buffer_container, *device, i);
         cmds.push_back(cmd);
     }
     DEBUG("Command added: {:s}", cmd_name.c_str());

@@ -6,8 +6,8 @@ using kotekan::Config;
 REGISTER_CUDA_COMMAND(chordMVPSetup);
 
 chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
-                             bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device) {
+                             bufferContainer& host_buffers, cudaDeviceInterface& device, int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst) {
     set_command_type(gpuCommandType::COPY_IN);
     set_name("chordMVPSetup");
     // Upchan to FRB-Beamformer:

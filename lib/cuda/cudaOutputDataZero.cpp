@@ -6,8 +6,9 @@ using kotekan::Config;
 REGISTER_CUDA_COMMAND(cudaOutputDataZero);
 
 cudaOutputDataZero::cudaOutputDataZero(Config& config, const std::string& unique_name,
-                                       bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device) {
+                                       bufferContainer& host_buffers, cudaDeviceInterface& device,
+                                       int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst) {
 
     output_len = config.get<int>(unique_name, "data_length");
     output_zeros = malloc(output_len);

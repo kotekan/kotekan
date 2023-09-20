@@ -6,8 +6,9 @@ using kotekan::Config;
 REGISTER_CUDA_COMMAND(cudaSyncStream);
 
 cudaSyncStream::cudaSyncStream(Config& config, const std::string& unique_name,
-                               bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device) {
+                               bufferContainer& host_buffers, cudaDeviceInterface& device,
+                               int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst) {
     set_name("sync");
     set_source_cuda_streams(config.get<std::vector<int32_t>>(unique_name, "source_cuda_streams"));
     set_command_type(gpuCommandType::BARRIER);
@@ -15,8 +16,8 @@ cudaSyncStream::cudaSyncStream(Config& config, const std::string& unique_name,
 
 cudaSyncStream::cudaSyncStream(kotekan::Config& config, const std::string& unique_name,
                                kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
-                               bool called_by_subclasser) :
-    cudaCommand(config, unique_name, host_buffers, device) {
+                               int inst, bool called_by_subclasser) :
+    cudaCommand(config, unique_name, host_buffers, device, inst) {
     (void)called_by_subclasser;
     set_name("sync");
     set_command_type(gpuCommandType::BARRIER);

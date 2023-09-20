@@ -13,8 +13,8 @@ using kotekan::Config;
 REGISTER_CUDA_COMMAND(cudaQuantize);
 
 cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
-                           bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device) {
+                           bufferContainer& host_buffers, cudaDeviceInterface& device, int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst) {
     _num_chunks = config.get<int>(unique_name, "num_chunks");
     _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");

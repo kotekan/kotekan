@@ -12,8 +12,9 @@ using kotekan::Config;
 REGISTER_CUDA_COMMAND(cudaOutputData);
 
 cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
-                               bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device) {
+                               bufferContainer& host_buffers, cudaDeviceInterface& device,
+                               int instance_num) :
+    cudaCommand(config, unique_name, host_buffers, device, instance_num) {
     std::string in_buf_name = config.get_default<std::string>(unique_name, "in_buf", "");
     if (in_buf_name.size()) {
         in_buffer = host_buffers.get_buffer(in_buf_name);

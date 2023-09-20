@@ -80,9 +80,9 @@ static void compute_beam_reformer_phase(int M, int N, float16_t* host_phase, int
 }
 
 cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& unique_name,
-                                         bufferContainer& host_buffers,
-                                         cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device) {
+                                         bufferContainer& host_buffers, cudaDeviceInterface& device,
+                                         int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst) {
     _num_beams = config.get<int>(unique_name, "num_beams");
     _beam_grid_size = config.get<int>(unique_name, "beam_grid_size");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");

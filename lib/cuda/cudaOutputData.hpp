@@ -15,7 +15,8 @@
 class cudaOutputData : public cudaCommand {
 public:
     cudaOutputData(kotekan::Config& config, const std::string& unique_name,
-                   kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+                   kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                   int instance_num);
     ~cudaOutputData();
     int wait_on_precondition(int gpu_frame_id) override;
     virtual cudaEvent_t execute_base(cudaPipelineState& pipestate,

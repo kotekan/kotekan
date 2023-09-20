@@ -78,6 +78,7 @@ public:
      */
     cudaCommand(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                int instance_num,
                 std::shared_ptr<cudaCommandState> = std::shared_ptr<cudaCommandState>(),
                 const std::string& default_kernel_command = "",
                 const std::string& default_kernel_file_name = "");
@@ -151,10 +152,10 @@ protected:
 
 // Create a factory for cudaCommands
 CREATE_FACTORY(cudaCommand, kotekan::Config&, const std::string&, kotekan::bufferContainer&,
-               cudaDeviceInterface&);
+               cudaDeviceInterface&, int);
 // ... and another factory for cudaCommands that take a CommandState argument!
 CREATE_FACTORY_VARIANT(state, cudaCommand, kotekan::Config&, const std::string&,
-                       kotekan::bufferContainer&, cudaDeviceInterface&,
+                       kotekan::bufferContainer&, cudaDeviceInterface&, int,
                        const std::shared_ptr<cudaCommandState>&);
 
 // ... and a factory for cudaCommandStates

@@ -10,9 +10,9 @@ using kotekan::Config;
 REGISTER_CUDA_COMMAND_WITH_STATE(cudaRechunk, cudaRechunkState);
 
 cudaRechunk::cudaRechunk(Config& config, const std::string& unique_name,
-                         bufferContainer& host_buffers, cudaDeviceInterface& device,
+                         bufferContainer& host_buffers, cudaDeviceInterface& device, int inst,
                          std::shared_ptr<cudaCommandState> state) :
-    cudaCommand(config, unique_name, host_buffers, device, state) {
+    cudaCommand(config, unique_name, host_buffers, device, inst, state) {
     _cols_input = config.get<int>(unique_name, "cols_input");
     _cols_output = config.get<int>(unique_name, "cols_output");
     _rows = config.get<int>(unique_name, "rows");

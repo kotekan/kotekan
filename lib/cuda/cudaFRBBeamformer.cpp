@@ -14,8 +14,9 @@ REGISTER_CUDA_COMMAND(cudaFRBBeamformer);
 static const size_t sizeof_float16_t = 2;
 
 cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_name,
-                                     bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, no_cuda_state, "FRB_beamformer",
+                                     bufferContainer& host_buffers, cudaDeviceInterface& device,
+                                     int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_state, "FRB_beamformer",
                 "frb.ptx") {
 
     // HACK -- at the very beginning of the run, we pretend we have 40 samples of padding,

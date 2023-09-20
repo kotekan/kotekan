@@ -6,8 +6,9 @@ using kotekan::Config;
 REGISTER_CUDA_COMMAND(cudaInputData);
 
 cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
-                             bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device) {
+                             bufferContainer& host_buffers, cudaDeviceInterface& device,
+                             int instance_num) :
+    cudaCommand(config, unique_name, host_buffers, device, instance_num) {
 
     in_buf = host_buffers.get_buffer(config.get<std::string>(unique_name, "in_buf"));
     register_consumer(in_buf, unique_name.c_str());

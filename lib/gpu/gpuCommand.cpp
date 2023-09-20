@@ -18,12 +18,12 @@ using std::to_string;
 
 gpuCommand::gpuCommand(Config& config_, const std::string& unique_name_,
                        bufferContainer& host_buffers_, gpuDeviceInterface& device_,
-                       std::shared_ptr<gpuCommandState> state_,
+                       int instance_num_, std::shared_ptr<gpuCommandState> state_,
                        const std::string& default_kernel_command,
                        const std::string& default_kernel_file_name) :
     kernel_file_name(default_kernel_file_name),
     config(config_), unique_name(unique_name_), host_buffers(host_buffers_), dev(device_),
-    command_state(state_) {
+    instance_num(instance_num_), command_state(state_) {
     _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
 
     // Set the local log level.

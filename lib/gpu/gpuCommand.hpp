@@ -56,7 +56,7 @@ public:
      * @param default_kernel_file_name  (optional) external file (e.g. CL) used by a command
      */
     gpuCommand(kotekan::Config& config, const std::string& unique_name,
-               kotekan::bufferContainer& host_buffers, gpuDeviceInterface& device,
+               kotekan::bufferContainer& host_buffers, gpuDeviceInterface& device, int instance_num,
                std::shared_ptr<gpuCommandState> = std::shared_ptr<gpuCommandState>(),
                const std::string& default_kernel_command = "",
                const std::string& default_kernel_file_name = "");
@@ -147,6 +147,10 @@ protected:
 
     /// Reference to a derived device interface.
     gpuDeviceInterface& dev;
+
+    /// Instance number: [0, gpu_buffer_depth) for the command
+    /// instances at this point in the GPU pipeline.
+    int instance_num;
 
     /// State that is shared by instances of this command (at one point in the pipeline)
     std::shared_ptr<gpuCommandState> command_state;

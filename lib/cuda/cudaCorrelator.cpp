@@ -9,8 +9,9 @@ using kotekan::Config;
 REGISTER_CUDA_COMMAND(cudaCorrelator);
 
 cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
-                               bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device),
+                               bufferContainer& host_buffers, cudaDeviceInterface& device,
+                               int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst),
     _num_elements(config.get<int>(unique_name, "num_elements")),
     _num_local_freq(config.get<int>(unique_name, "num_local_freq")),
     _samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),

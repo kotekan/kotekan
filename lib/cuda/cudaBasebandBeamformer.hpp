@@ -46,7 +46,8 @@
 class cudaBasebandBeamformer : public cudaCommand {
 public:
     cudaBasebandBeamformer(kotekan::Config& config, const std::string& unique_name,
-                           kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+                           kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                           int instance);
     ~cudaBasebandBeamformer();
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;

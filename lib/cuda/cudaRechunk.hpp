@@ -68,7 +68,7 @@ public:
 class cudaRechunk : public cudaCommand {
 public:
     cudaRechunk(kotekan::Config& config, const std::string& unique_name,
-                kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device, int inst,
                 std::shared_ptr<cudaCommandState>);
     ~cudaRechunk();
     cudaEvent_t execute(cudaPipelineState& pipestate,
