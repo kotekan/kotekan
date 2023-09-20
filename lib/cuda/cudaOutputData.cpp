@@ -120,6 +120,11 @@ void cudaOutputData::finalize_frame(int frame_id) {
     cudaCommand::finalize_frame(frame_id);
 
     if (in_buffer) {
+        if (did_generate_output[frame_id]) {
+            DEBUG("Passing metadata from input (host) buffer {:s}[{:d}] to {:s}[{:d}]",
+                  in_buffer->buffer_name, in_buffer_id, output_buffer->buffer_name, output_buffer_id);
+            pass_metadata(in_buffer, in_buffer_id, output_buffer, output_buffer_id);
+        }
         mark_frame_empty(in_buffer, unique_name.c_str(), in_buffer_id);
         in_buffer_id = (in_buffer_id + 1) % in_buffer->num_frames;
     }
@@ -131,12 +136,6 @@ void cudaOutputData::finalize_frame(int frame_id) {
 
     DEBUG("Generated CPU output {:s}[{:d}] for input GPU frame {:d}", output_buffer->buffer_name,
           output_buffer_id, frame_id);
-
-    if (in_buffer) {
-        DEBUG("Passing metadata from input (host) buffer {:s}[{:d}] to {:s}[{:d}]",
-              in_buffer->buffer_name, in_buffer_id, output_buffer->buffer_name, output_buffer_id);
-        pass_metadata(in_buffer, in_buffer_id, output_buffer, output_buffer_id);
-    }
 
     mark_frame_full(output_buffer, unique_name.c_str(), output_buffer_id);
     output_buffer_id = (output_buffer_id + 1) % output_buffer->num_frames;
