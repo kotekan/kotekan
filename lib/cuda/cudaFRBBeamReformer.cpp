@@ -97,8 +97,8 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
     if (inst == 0) {
         for (size_t i = 0; i < _cuda_streams.size(); i++)
             if (_cuda_streams[i] >= device.get_num_streams())
-                ERROR("Error: cudaFRBBeamReformer's config setting cuda_streams must have all elements "
-                      "< number of streams on the device = {:d}",
+                ERROR("Error: cudaFRBBeamReformer's config setting cuda_streams must have all "
+                      "elements < number of streams on the device = {:d}",
                       device.get_num_streams());
         if (_num_local_freq % nstreams != 0)
             ERROR("Number of CUDA streams must evenly divide number of frequencies!");
@@ -198,15 +198,16 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
             INFO("Computing beam-reformer phase matrix...");
             double t0 = gettime();
             compute_beam_reformer_phase(M, N, host_phase, _num_local_freq, _num_beams, beam_dra,
-                                        beam_ddec, freqs, dish_spacing_ew, dish_spacing_ns, bore_zd);
+                                        beam_ddec, freqs, dish_spacing_ew, dish_spacing_ns,
+                                        bore_zd);
             INFO("That took {:g} sec", gettime() - t0);
             INFO("Computed beam-reformer phase matrix");
             f = fopen(beamphase_cache_fn, "w+");
             if (f) {
                 size_t nw = fwrite(host_phase, 1, phase_len, f);
                 if (nw != phase_len) {
-                    INFO("Failed to write beamformer phase matrix to {:s}: {:s}", beamphase_cache_fn,
-                         strerror(errno));
+                    INFO("Failed to write beamformer phase matrix to {:s}: {:s}",
+                         beamphase_cache_fn, strerror(errno));
                     fclose(f);
                     unlink(beamphase_cache_fn);
                 } else {
@@ -237,10 +238,10 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
             __half** in;
             __half** out;
             __half** ph;
-            in = (__half**)device.get_gpu_memory(unique_name + "_batch_in",
-                                                 _gpu_buffer_depth * _num_local_freq * sizeof(__half*));
+            in = (__half**)device.get_gpu_memory(
+                unique_name + "_batch_in", _gpu_buffer_depth * _num_local_freq * sizeof(__half*));
             out = (__half**)device.get_gpu_memory(
-                                                  unique_name + "_batch_out", _gpu_buffer_depth * _num_local_freq * sizeof(__half*));
+                unique_name + "_batch_out", _gpu_buffer_depth * _num_local_freq * sizeof(__half*));
             ph = (__half**)device.get_gpu_memory(unique_name + "_batch_ph",
                                                  _num_local_freq * sizeof(__half*));
 
@@ -261,24 +262,25 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
             for (int gpu_frame_id = 0; gpu_frame_id < _gpu_buffer_depth; gpu_frame_id++) {
                 // GPU input & output memory buffers for this gpu frame #.
                 float16_t* gpu_in_base = (float16_t*)device.get_gpu_memory_array(
-                                                                                 _gpu_mem_beamgrid, gpu_frame_id, beamgrid_len);
+                    _gpu_mem_beamgrid, gpu_frame_id, beamgrid_len);
                 float16_t* gpu_out_base = (float16_t*)device.get_gpu_memory_array(
-                                                                                  _gpu_mem_beamout, gpu_frame_id, beamout_len);
+                    _gpu_mem_beamout, gpu_frame_id, beamout_len);
                 // Compute the per-frequency matrix offsets.
                 for (int f = 0; f < _num_local_freq; f++) {
-                    host_in[gpu_frame_id * _num_local_freq + f] = gpu_in_base + (size_t)f * _Td * rho;
+                    host_in[gpu_frame_id * _num_local_freq + f] =
+                        gpu_in_base + (size_t)f * _Td * rho;
                     host_out[gpu_frame_id * _num_local_freq + f] =
                         gpu_out_base + (size_t)f * _Td * _num_beams;
                     if (gpu_frame_id == 0)
                         host_ph[f] = phase_memory + (size_t)f * rho * _num_beams;
                 }
-                // loop over streams and save the final GPU memory pointers (which we haven't yet filled
-                // with data!)
+                // loop over streams and save the final GPU memory pointers (which we haven't yet
+                // filled with data!)
                 for (int i = 0; i < nstreams; i++) {
                     _gpu_in_pointers[gpu_frame_id].push_back(
-                                                             in + (gpu_frame_id * nstreams + i) * freqs_per_stream);
+                        in + (gpu_frame_id * nstreams + i) * freqs_per_stream);
                     _gpu_out_pointers[gpu_frame_id].push_back(
-                                                              out + (gpu_frame_id * nstreams + i) * freqs_per_stream);
+                        out + (gpu_frame_id * nstreams + i) * freqs_per_stream);
                     if (gpu_frame_id == 0)
                         _gpu_phase_pointers.push_back(ph + i * freqs_per_stream);
                 }
@@ -291,7 +293,7 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
                                         _gpu_buffer_depth * _num_local_freq * sizeof(__half*),
                                         cudaMemcpyHostToDevice));
             CHECK_CUDA_ERROR(
-                             cudaMemcpy(ph, host_ph, _num_local_freq * sizeof(__half*), cudaMemcpyHostToDevice));
+                cudaMemcpy(ph, host_ph, _num_local_freq * sizeof(__half*), cudaMemcpyHostToDevice));
         }
     }
 
