@@ -57,7 +57,7 @@ hdf5FileWrite::~hdf5FileWrite() {}
 
 void hdf5FileWrite::main_thread() {
     std::string full_path;
-    hid_t fd = -1;
+    hid_t fd = H5I_UNINIT;
 
     uint32_t frame_id = 0;
     uint32_t frame_ctr = 0;
