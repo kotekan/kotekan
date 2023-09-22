@@ -107,7 +107,7 @@ public:
     /** Releases the memory of the event chain arrays per buffer_id
      * @param gpu_frame_id    The bufferID to release all the memory references for.
      **/
-    virtual void finalize_frame(int gpu_frame_id) override;
+    virtual void finalize_frame() override;
 
     /// Returns the id of the cuda stream used by the command object
     int32_t get_cuda_stream_id();
@@ -116,10 +116,10 @@ protected:
     void set_command_type(const gpuCommandType& type);
 
     // For subclassers to call to create & record GPU starting events, IFF profiling is on.
-    void record_start_event(int gpu_frame_id);
+    void record_start_event();
 
     // For subclassers to call to create & record GPU ending events.
-    cudaEvent_t record_end_event(int gpu_frame_id);
+    cudaEvent_t record_end_event();
 
     /// Events queued after the kernel/copy for synchronization and profiling
     cudaEvent_t end_event;

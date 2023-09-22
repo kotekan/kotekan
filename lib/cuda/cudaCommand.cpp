@@ -104,7 +104,7 @@ cudaEvent_t cudaCommand::execute_base(cudaPipelineState& pipestate,
     return execute(pipestate, pre_events);
 }
 
-void cudaCommand::finalize_frame(int) {
+void cudaCommand::finalize_frame() {
     if (profiling && (start_event != nullptr) && (end_event != nullptr)) {
         float exec_time;
         CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_event, end_event));
@@ -127,14 +127,14 @@ int32_t cudaCommand::get_cuda_stream_id() {
     return cuda_stream_id;
 }
 
-void cudaCommand::record_start_event(int) {
+void cudaCommand::record_start_event() {
     if (profiling) {
         CHECK_CUDA_ERROR(cudaEventCreate(&start_event));
         CHECK_CUDA_ERROR(cudaEventRecord(start_event, device.getStream(cuda_stream_id)));
     }
 }
 
-cudaEvent_t cudaCommand::record_end_event(int) {
+cudaEvent_t cudaCommand::record_end_event() {
     CHECK_CUDA_ERROR(cudaEventCreate(&end_event));
     CHECK_CUDA_ERROR(cudaEventRecord(end_event, device.getStream(cuda_stream_id)));
     return end_event;

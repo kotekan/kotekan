@@ -37,25 +37,17 @@ void cudaSyncStream::set_source_cuda_streams(const std::vector<int32_t>& source_
 
 cudaSyncStream::~cudaSyncStream() {}
 
-int cudaSyncStream::wait_on_precondition(int gpu_frame_id) {
-    (void)gpu_frame_id;
-    return 0;
-}
-
-cudaEvent_t cudaSyncStream::execute(cudaPipelineState& pipestate,
+cudaEvent_t cudaSyncStream::execute(cudaPipelineState&,
                                     const std::vector<cudaEvent_t>& pre_events) {
+    pre_execute();
+    record_start_event();
     for (auto source_stream_id : _source_cuda_streams) {
         if (pre_events[source_stream_id]) {
             CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(cuda_stream_id),
                                                  pre_events[source_stream_id]));
         }
     }
-    // Create an event for the StreamWaits, so other sync commands can sync on this one.
-    return record_end_event(pipestate.gpu_frame_id);
-}
-
-void cudaSyncStream::finalize_frame(int frame_id) {
-    (void)frame_id;
+    return record_end_event();
 }
 
 std::string cudaSyncStream::get_performance_metric_string() {

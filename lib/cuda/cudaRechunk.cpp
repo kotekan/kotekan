@@ -41,13 +41,12 @@ cudaRechunkState* cudaRechunk::get_state() {
 }
 
 cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
-                                 const std::vector<cudaEvent_t>& pre_events) {
-    (void)pre_events;
-    pre_execute(pipestate.gpu_frame_id);
+                                 const std::vector<cudaEvent_t>&) {
+    pre_execute();
 
     size_t input_frame_len = _cols_input * _rows;
     void* input_memory =
-        device.get_gpu_memory_array(_gpu_mem_input, pipestate.gpu_frame_id, input_frame_len);
+        device.get_gpu_memory_array(_gpu_mem_input, gpu_frame_id, input_frame_len);
 
     size_t output_len = _cols_output * _rows;
     void* accum_memory = device.get_gpu_memory(gpu_mem_accum, output_len);
@@ -71,7 +70,7 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
         cols_leftover = cols_input - cols_to_copy;
     }
 
-    record_start_event(pipestate.gpu_frame_id);
+    record_start_event();
 
     CHECK_CUDA_ERROR(cudaMemcpy2DAsync((void*)((char*)accum_memory + cols_accumulated),
                                        _cols_output, input_memory, cols_input, cols_to_copy, _rows,
@@ -82,7 +81,7 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
               cols_accumulated, _cols_output);
         // emit an output frame!
         void* output_memory =
-            device.get_gpu_memory_array(_gpu_mem_output, pipestate.gpu_frame_id, output_len);
+            device.get_gpu_memory_array(_gpu_mem_output, gpu_frame_id, output_len);
         CHECK_CUDA_ERROR(cudaMemcpyAsync(output_memory, accum_memory, output_len,
                                          cudaMemcpyDeviceToDevice,
                                          device.getStream(cuda_stream_id)));
@@ -111,5 +110,5 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
 
     get_state()->cols_accumulated = cols_accumulated;
 
-    return record_end_event(pipestate.gpu_frame_id);
+    return record_end_event();
 }

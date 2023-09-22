@@ -50,7 +50,7 @@ public:
     ~cudaUpchannelize();
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    virtual void finalize_frame(int gpu_frame_id) override;
+    virtual void finalize_frame() override;
 
 protected:
 private:

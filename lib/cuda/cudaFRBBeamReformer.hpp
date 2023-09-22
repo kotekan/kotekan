@@ -30,7 +30,7 @@ public:
     ~cudaFRBBeamReformer();
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    void finalize_frame(int frame_id) override;
+    void finalize_frame() override;
 
 protected:
 private:

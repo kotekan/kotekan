@@ -68,26 +68,29 @@ public:
     void set_name(const std::string&);
 
     /**
+     * @brief This function is called before a new GPU frame is going to be processed.
+     * This is just a monotonic counter, starting from zero!
+     */
+    virtual void start_frame(int64_t gpu_frame_id);
+
+    /**
      * @brief This function blocks on whatever resource is required by the command.
      * For example if this command requires a full buffer frame to copy
      * then it should block on that. It should also block on having any
      * free output buffers that might be referenced by this command.
-     * @param gpu_frame_id  index of the frame, used to check I/O buffer status.
      */
-    virtual int wait_on_precondition(int gpu_frame_id);
+    virtual int wait_on_precondition();
 
     /**
      * @brief Runs some quick sanity checks before, should be called by
      *        derived GPU processes before running execution stages.
-     * @param gpu_frame_id  The bufferID associated with the GPU commands.
      */
-    void pre_execute(int gpu_frame_id);
+    void pre_execute();
 
     /**
      * @brief Releases the memory of the event chain arrays per frame_id
-     * @param gpu_frame_id    The frame id to release all the memory references for.
      */
-    virtual void finalize_frame(int gpu_frame_id);
+    virtual void finalize_frame();
 
     /// Get to return the results of profiling / timing.
     double get_last_gpu_execution_time();
@@ -154,6 +157,9 @@ protected:
 
     /// State that is shared by instances of this command (at one point in the pipeline)
     std::shared_ptr<gpuCommandState> command_state;
+
+    /// The counter for the GPU frame we are currently processing.
+    int64_t gpu_frame_id;
 
     /// Sets the number of frames to be queued up in each buffer.
     int32_t _gpu_buffer_depth;

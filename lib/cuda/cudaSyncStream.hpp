@@ -21,10 +21,8 @@ public:
     cudaSyncStream(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device, int inst);
     ~cudaSyncStream();
-    int wait_on_precondition(int gpu_frame_id) override;
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    void finalize_frame(int frame_id) override;
 
     std::string get_performance_metric_string() override;
 

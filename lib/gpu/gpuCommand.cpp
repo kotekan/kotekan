@@ -52,12 +52,14 @@ gpuCommand::gpuCommand(Config& config_, const std::string& unique_name_,
 
 gpuCommand::~gpuCommand() {}
 
-void gpuCommand::finalize_frame(int gpu_frame_id) {
-    (void)gpu_frame_id;
+void gpuCommand::start_frame(int64_t _gpu_frame_id) {
+    gpu_frame_id = _gpu_frame_id;
 }
 
-int gpuCommand::wait_on_precondition(int gpu_frame_id) {
-    (void)gpu_frame_id;
+void gpuCommand::finalize_frame() {
+}
+
+int gpuCommand::wait_on_precondition() {
     return 0;
 }
 
@@ -74,9 +76,7 @@ std::string gpuCommand::get_unique_name() const {
     return unique_name;
 }
 
-void gpuCommand::pre_execute(int gpu_frame_id) {
-    assert(gpu_frame_id < _gpu_buffer_depth);
-    assert(gpu_frame_id >= 0);
+void gpuCommand::pre_execute() {
 }
 
 double gpuCommand::get_last_gpu_execution_time() {

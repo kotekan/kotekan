@@ -233,6 +233,7 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
 
         // for cublas_hgemmBatched, pre-compute the GPU array pointers.
         if (_batched) {
+            int bufindex = gpu_frame_id % _gpu_buffer_depth;
             // GPU-memory arrays of pointers to the input & output
             // matrices (in GPU memory)
             __half** in;
@@ -277,9 +278,9 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
                 // loop over streams and save the final GPU memory pointers (which we haven't yet
                 // filled with data!)
                 for (int i = 0; i < nstreams; i++) {
-                    _gpu_in_pointers[gpu_frame_id].push_back(
+                    _gpu_in_pointers[bufindex].push_back(
                         in + (gpu_frame_id * nstreams + i) * freqs_per_stream);
-                    _gpu_out_pointers[gpu_frame_id].push_back(
+                    _gpu_out_pointers[bufindex].push_back(
                         out + (gpu_frame_id * nstreams + i) * freqs_per_stream);
                     if (gpu_frame_id == 0)
                         _gpu_phase_pointers.push_back(ph + i * freqs_per_stream);
@@ -309,25 +310,25 @@ cudaFRBBeamReformer::~cudaFRBBeamReformer() {
     cublasDestroy(this->handle);
 }
 
-cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& pipestate,
-                                         const std::vector<cudaEvent_t>& pre_events) {
-    (void)pre_events;
-    pre_execute(pipestate.gpu_frame_id);
+cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&,
+                                         const std::vector<cudaEvent_t>&) {
+    pre_execute();
 
     float16_t* beamgrid_memory = (float16_t*)device.get_gpu_memory_array(
-        _gpu_mem_beamgrid, pipestate.gpu_frame_id, beamgrid_len);
+        _gpu_mem_beamgrid, gpu_frame_id, beamgrid_len);
     float16_t* phase_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
     float16_t* beamout_memory = (float16_t*)device.get_gpu_memory_array(
-        _gpu_mem_beamout, pipestate.gpu_frame_id, beamout_len);
+        _gpu_mem_beamout, gpu_frame_id, beamout_len);
 
-    record_start_event(pipestate.gpu_frame_id);
+    record_start_event();
 
     DEBUG("Running CUDA FRB BeamReformer on GPU frame {:d}: F={:d}, T={:d}, B={:d}, rho={:d}",
-          pipestate.gpu_frame_id, _num_local_freq, _Td, _num_beams, rho);
+          gpu_frame_id, _num_local_freq, _Td, _num_beams, rho);
 
     int calls_per_stream = (_cuda_streams.size() > 0) ? _num_local_freq / _cuda_streams.size() : 0;
 
     if (_batched) {
+        int bufindex = gpu_frame_id % _gpu_buffer_depth;
         int nstreams = std::max((int)_cuda_streams.size(), 1);
         int freqs_per_stream = _num_local_freq / nstreams;
 
@@ -340,8 +341,8 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& pipestate,
             __half beta = 0.;
             cublasStatus_t stat = cublasHgemmBatched(
                 handle, CUBLAS_OP_T, CUBLAS_OP_N, _Td, _num_beams, rho, &alpha,
-                _gpu_in_pointers[pipestate.gpu_frame_id][i], rho, _gpu_phase_pointers[i], rho,
-                &beta, _gpu_out_pointers[pipestate.gpu_frame_id][i], _Td, freqs_per_stream);
+                _gpu_in_pointers[bufindex][i], rho, _gpu_phase_pointers[i], rho,
+                &beta, _gpu_out_pointers[bufindex][i], _Td, freqs_per_stream);
             if (stat != CUBLAS_STATUS_SUCCESS) {
                 ERROR("Error at {:s}:{:d}: cublasHgemmBatched: {:s}", __FILE__, __LINE__,
                       cublasGetStatusString(stat));
@@ -392,11 +393,10 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& pipestate,
         }
     }
 
-    return record_end_event(pipestate.gpu_frame_id);
+    return record_end_event();
 }
 
-void cudaFRBBeamReformer::finalize_frame(int frame_id) {
-
+void cudaFRBBeamReformer::finalize_frame() {
     float exec_time;
     for (size_t i = 0; i < _cuda_streams.size(); i++) {
         if (sync_events[i]) {
@@ -408,8 +408,7 @@ void cudaFRBBeamReformer::finalize_frame(int frame_id) {
         CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_event, end_event));
         DEBUG("Start to end took {:.3f} ms", exec_time);
     }
-
-    cudaCommand::finalize_frame(frame_id);
+    cudaCommand::finalize_frame();
     for (size_t i = 0; i < _cuda_streams.size(); i++) {
         if (sync_events[i])
             CHECK_CUDA_ERROR(cudaEventDestroy(sync_events[i]));

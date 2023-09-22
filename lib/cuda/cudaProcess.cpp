@@ -60,31 +60,30 @@ std::vector<gpuCommand*> cudaProcess::create_command(const std::string& cmd_name
     return cmds;
 }
 
-void cudaProcess::queue_commands(int gpu_frame_id, int gpu_frame_counter) {
+void cudaProcess::queue_commands(int gpu_frame_counter) {
     std::vector<cudaEvent_t> events;
     events.resize(device->get_num_streams(), nullptr);
-
-    cudaPipelineState pipestate(gpu_frame_id);
-    pipestate.set_int("gpu_frame_counter", gpu_frame_counter);
     cudaEvent_t final_event = nullptr;
 
+    cudaPipelineState pipestate(gpu_frame_counter);
+    int icommand = gpu_frame_counter % _gpu_buffer_depth;
     for (auto& command : commands) {
         // Feed the last signal into the next operation
-        cudaEvent_t event = ((cudaCommand*)command[gpu_frame_id])->execute_base(pipestate, events);
+        cudaEvent_t event = ((cudaCommand*)command[icommand])->execute_base(pipestate, events);
         if (event != nullptr) {
-            int32_t command_stream_id = ((cudaCommand*)command[gpu_frame_id])->get_cuda_stream_id();
+            int32_t command_stream_id = ((cudaCommand*)command[icommand])->get_cuda_stream_id();
             events[command_stream_id] = event;
             final_event = event;
         }
     }
     // Wait on the very last event from the last command.
     // TODO, this should wait on the last event from every stream!
-    final_signals[gpu_frame_id]->set_signal(final_event);
+    final_signals[icommand]->set_signal(final_event);
     DEBUG2("Commands executed.");
 }
 
 void cudaProcess::register_host_memory(Buffer* host_buffer) {
-    // Register the host memory in in_buf with the OpenCL run time.
+    // Register the host memory in in_buf with the Cuda run time.
     for (int i = 0; i < host_buffer->num_frames; i++) {
         cudaHostRegister(host_buffer->frames[i], host_buffer->aligned_frame_size,
                          cudaHostRegisterDefault);

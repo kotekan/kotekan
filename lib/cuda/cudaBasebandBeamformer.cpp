@@ -76,18 +76,18 @@ struct CuDeviceArray {
 };
 typedef CuDeviceArray<int32_t, 1> kernel_arg;
 
-cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
+cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState&,
                                             const std::vector<cudaEvent_t>&) {
-    pre_execute(pipestate.gpu_frame_id);
+    pre_execute();
 
     void* voltage_memory =
-        device.get_gpu_memory_array(_gpu_mem_voltage, pipestate.gpu_frame_id, voltage_len);
+        device.get_gpu_memory_array(_gpu_mem_voltage, gpu_frame_id, voltage_len);
     int8_t* phase_memory =
-        (int8_t*)device.get_gpu_memory_array(_gpu_mem_phase, pipestate.gpu_frame_id, phase_len);
+        (int8_t*)device.get_gpu_memory_array(_gpu_mem_phase, gpu_frame_id, phase_len);
     int32_t* shift_memory = (int32_t*)device.get_gpu_memory_array(
-        _gpu_mem_output_scaling, pipestate.gpu_frame_id, shift_len);
+        _gpu_mem_output_scaling, gpu_frame_id, shift_len);
     void* output_memory =
-        device.get_gpu_memory_array(_gpu_mem_formed_beams, pipestate.gpu_frame_id, output_len);
+        device.get_gpu_memory_array(_gpu_mem_formed_beams, gpu_frame_id, output_len);
     int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
 
     host_info.resize(_gpu_buffer_depth);
@@ -96,10 +96,10 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
 
     // If input voltage array has metadata, create new metadata for output.
     metadataContainer* mc =
-        device.get_gpu_memory_array_metadata(_gpu_mem_voltage, pipestate.gpu_frame_id);
+        device.get_gpu_memory_array_metadata(_gpu_mem_voltage, gpu_frame_id);
     if (mc && metadata_container_is_chord(mc)) {
         metadataContainer* mc_out = device.create_gpu_memory_array_metadata(
-            _gpu_mem_formed_beams, pipestate.gpu_frame_id, mc->parent_pool);
+            _gpu_mem_formed_beams, gpu_frame_id, mc->parent_pool);
         chordMetadata* meta_out = get_chord_metadata(mc_out);
         chordMetadata* meta_in = get_chord_metadata(mc);
         chord_metadata_copy(meta_out, meta_in);
@@ -122,7 +122,7 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
         INFO("cudaBasebandBeamformer: output array shape: {:s}", meta_out->get_dimensions_string());
     }
 
-    record_start_event(pipestate.gpu_frame_id);
+    record_start_event();
 
     // Initialize info_memory return codes
     CHECK_CUDA_ERROR(
@@ -167,26 +167,26 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shared_mem_bytes));
 
-    DEBUG("Running CUDA Baseband Beamformer on GPU frame {:d}", pipestate.gpu_frame_id);
+    DEBUG("Running CUDA Baseband Beamformer on GPU frame {:d}", gpu_frame_id);
     CHECK_CU_ERROR(cuLaunchKernel(device.runtime_kernels[kernel_name], blocks_x, blocks_y, 1,
                                   threads_x, threads_y, 1, shared_mem_bytes,
                                   device.getStream(cuda_stream_id), parameters, NULL));
 
     // Copy "info" result code back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[gpu_frame_id % _gpu_buffer_depth].data(), info_memory,
                                      info_len, cudaMemcpyDeviceToHost,
                                      device.getStream(cuda_stream_id)));
 
-    return record_end_event(pipestate.gpu_frame_id);
+    return record_end_event();
 }
 
-void cudaBasebandBeamformer::finalize_frame(int gpu_frame_id) {
+void cudaBasebandBeamformer::finalize_frame() {
     device.release_gpu_memory_array_metadata(_gpu_mem_formed_beams, gpu_frame_id);
-    cudaCommand::finalize_frame(gpu_frame_id);
-    for (size_t i = 0; i < host_info[gpu_frame_id].size(); i++)
-        if (host_info[gpu_frame_id][i] != 0)
+    cudaCommand::finalize_frame();
+    for (size_t i = 0; i < host_info[gpu_frame_id % _gpu_buffer_depth].size(); i++)
+        if (host_info[gpu_frame_id % _gpu_buffer_depth][i] != 0)
             ERROR(
                 "cudaBasebandBeamformer returned 'info' value {:d} at index {:d} (zero indicates no"
                 "error)",
-                host_info[gpu_frame_id][i], i);
+                host_info[gpu_frame_id % _gpu_buffer_depth][i], i);
 }
