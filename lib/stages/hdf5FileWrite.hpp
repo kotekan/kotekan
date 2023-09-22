@@ -12,6 +12,9 @@
  * @class hdf5FileWrite
  * @brief Stream a buffer to disk.
  *
+ * This stage is intended to be used for code development and in tests, not in a production
+ * pipeline. (In a production pipeline one would have to cycle file names.)
+ *
  * @par Buffers:
  * @buffer in_buf Buffer to write to disk.
  *     @buffer_format Any
