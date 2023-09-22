@@ -49,11 +49,13 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
 
     set_command_type(gpuCommandType::KERNEL);
 
-    std::vector<std::string> opts = {
-        "--gpu-name=sm_86",
-        "--verbose",
-    };
-    build_ptx({kernel_name}, opts);
+    if (inst == 0) {
+        std::vector<std::string> opts = {
+            "--gpu-name=sm_86",
+            "--verbose",
+        };
+        device.build_ptx(kernel_file_name, {kernel_name}, opts);
+    }
 
     /*if (_samples_per_data_set != cuda_samples_per_data_set)
         throw std::runtime_error(fmt::format(
@@ -252,14 +254,14 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate,
         &(arr[1]), &(arr[2]), &(arr[3]), &(arr[4]), &(arr[5]), &(arr[6]),
     };
 
-    CHECK_CU_ERROR(cuFuncSetAttribute(runtime_kernels[kernel_name],
+    CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[kernel_name],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shared_mem_bytes));
 
     DEBUG("Running CUDA FRB Beamformer on GPU frame {:d}", pipestate.gpu_frame_id);
-    CHECK_CU_ERROR(cuLaunchKernel(runtime_kernels[kernel_name], blocks_x, blocks_y, 1, threads_x,
-                                  threads_y, 1, shared_mem_bytes, device.getStream(cuda_stream_id),
-                                  parameters, NULL));
+    CHECK_CU_ERROR(cuLaunchKernel(device.runtime_kernels[kernel_name], blocks_x, blocks_y, 1,
+                                  threads_x, threads_y, 1, shared_mem_bytes,
+                                  device.getStream(cuda_stream_id), parameters, NULL));
 
     DEBUG("GPUMEM kernel_in({:p}, {:d}, \"{:s}\", \"frb beamformer for frame {:d}\")",
           voltage_input, voltage_input_len, get_name(), pipestate.get_int("gpu_frame_counter"));

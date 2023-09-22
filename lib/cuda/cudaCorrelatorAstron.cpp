@@ -45,7 +45,7 @@ cudaCorrelatorAstron::cudaCorrelatorAstron(Config& config, const std::string& un
         fmt::format("-DNR_RECEIVERS_PER_BLOCK={:d}", _elements_per_thread_block / 2),
         "-DNR_POLARIZATIONS=2",
         "-I/usr/local/cuda/include"};
-    build({"correlate"}, opts);
+    device.build(kernel_file_name, {"correlate"}, opts);
 }
 
 cudaCorrelatorAstron::~cudaCorrelatorAstron() {}
@@ -70,8 +70,8 @@ cudaEvent_t cudaCorrelatorAstron::execute(cudaPipelineState& pipestate,
 
     int num_thread_blocks =
         (_num_elements / _elements_per_thread_block) * (_num_elements / _elements_per_thread_block);
-    err = cuLaunchKernel(runtime_kernels["correlate"], num_thread_blocks, _num_local_freq, 1, 32, 2,
-                         2, 0, device.getStream(cuda_stream_id), parameters, NULL);
+    err = cuLaunchKernel(device.runtime_kernels["correlate"], num_thread_blocks, _num_local_freq, 1,
+                         32, 2, 2, 0, device.getStream(cuda_stream_id), parameters, NULL);
     if (err != CUDA_SUCCESS) {
         const char* errStr;
         cuGetErrorString(err, &errStr);

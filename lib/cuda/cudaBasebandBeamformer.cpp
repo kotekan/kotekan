@@ -54,11 +54,13 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
 
     set_command_type(gpuCommandType::KERNEL);
 
-    std::vector<std::string> opts = {
-        "--gpu-name=sm_86",
-        "--verbose",
-    };
-    build_ptx({kernel_name}, opts);
+    if (inst == 0) {
+        std::vector<std::string> opts = {
+            "--gpu-name=sm_86",
+            "--verbose",
+        };
+        device.build_ptx(kernel_file_name, {kernel_name}, opts);
+    }
 }
 
 cudaBasebandBeamformer::~cudaBasebandBeamformer() {}
@@ -160,15 +162,15 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
     };
 
     DEBUG("Kernel_name: {}", kernel_name);
-    DEBUG("runtime_kernels[kernel_name]: {}", (void*)runtime_kernels[kernel_name]);
-    CHECK_CU_ERROR(cuFuncSetAttribute(runtime_kernels[kernel_name],
+    // DEBUG("runtime_kernels[kernel_name]: {}", (void*)device.runtime_kernels[kernel_name]);
+    CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[kernel_name],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shared_mem_bytes));
 
     DEBUG("Running CUDA Baseband Beamformer on GPU frame {:d}", pipestate.gpu_frame_id);
-    CHECK_CU_ERROR(cuLaunchKernel(runtime_kernels[kernel_name], blocks_x, blocks_y, 1, threads_x,
-                                  threads_y, 1, shared_mem_bytes, device.getStream(cuda_stream_id),
-                                  parameters, NULL));
+    CHECK_CU_ERROR(cuLaunchKernel(device.runtime_kernels[kernel_name], blocks_x, blocks_y, 1,
+                                  threads_x, threads_y, 1, shared_mem_bytes,
+                                  device.getStream(cuda_stream_id), parameters, NULL));
 
     // Copy "info" result code back to host memory
     CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory,

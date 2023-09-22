@@ -86,18 +86,6 @@ public:
     virtual ~cudaCommand();
 
     /**
-     * @brief Builds a list of kernels from the file with name: @c kernel_file_name
-     *
-     * @param kernel_names Vector list of kernel names in the kernel file
-     * @param opts         List of options to pass to nvrtc
-     **/
-    virtual void build(const std::vector<std::string>& kernel_names,
-                       const std::vector<std::string>& opts);
-
-    virtual void build_ptx(const std::vector<std::string>& kernel_names,
-                           const std::vector<std::string>& opts);
-
-    /**
      * @brief Execute a kernel, with more control over the *cudaPipelineState* object.
      *        Most subclassers should implement *execute*.
      * @param pipestate  The pipeline state object.
@@ -145,9 +133,6 @@ protected:
 
     // cudaPipelineState flag required for this command to run, set from config "required_flag"
     std::string _required_flag;
-
-    // Map containing the runtime kernels built with nvrtc from the kernel file (if needed)
-    std::map<std::string, CUfunction> runtime_kernels;
 };
 
 // Create a factory for cudaCommands
