@@ -12,10 +12,7 @@
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "visUtil.hpp"           // for current_time
 
-#undef NDEBUG
-
 #include <atomic>     // for atomic_bool
-#include <cassert>    // for assert
 #include <errno.h>    // for errno
 #include <exception>  // for exception
 #include <fcntl.h>    // for open, O_CREAT, O_WRONLY
@@ -121,16 +118,21 @@ void hdf5FileWrite::main_thread() {
                 const chimeMetadata* const md = (const chimeMetadata*)mc->metadata;
                 {
                     const hid_t space = H5Screate(H5S_SCALAR);
-                    assert(space >= 0);
+                    if (space < 0)
+                        ERROR("Could not create data space");
                     const hid_t attr = H5Acreate(group, "fpga_seq_num", H5T_STD_I64LE, space,
                                                  H5P_DEFAULT, H5P_DEFAULT);
-                    assert(attr >= 0);
+                    if (attr < 0)
+                        ERROR("Could not create attribute");
                     herr_t herr = H5Awrite(attr, H5T_NATIVE_INT64, &md->fpga_seq_num);
-                    assert(herr >= 0);
+                    if (herr < 0)
+                        ERROR("Could not write attribute");
                     herr = H5Aclose(attr);
-                    assert(herr >= 0);
+                    if (herr < 0)
+                        ERROR("Could not close attribute");
                     herr = H5Sclose(space);
-                    assert(herr >= 0);
+                    if (herr < 0)
+                        ERROR("Could not close attribute");
                 }
                 // TODO: Write other attributes
             }
@@ -161,11 +163,12 @@ void hdf5FileWrite::main_thread() {
                     type = H5T_NATIVE_FLOAT;
                     break;
                 default:
-                    assert(0);
+                    ERROR("Unsupported metadata type");
             }
 
             const int rank = metadata.dims;
-            assert(rank >= 0);
+            if (rank < 0)
+                ERROR("Negative number of metadata dimensions");
             hsize_t dims[CHORD_META_MAX_DIM];
             for (int d = 0; d < rank; ++d) {
                 dims[d] = metadata.dim[d];
@@ -174,7 +177,8 @@ void hdf5FileWrite::main_thread() {
             for (int d = 0; d < rank; ++d) {
                 np *= dims[d];
             }
-            assert(buf->frame_size == np);
+            if (buf->frame_size != np)
+                ERROR("Buffer frame size is different from total metadata array length");
             space = H5Screate_simple(rank, dims, dims);
 
         } else {
@@ -187,26 +191,34 @@ void hdf5FileWrite::main_thread() {
             space = H5Screate_simple(rank, dims, dims);
         }
 
-        assert(type >= 0);
-        assert(space >= 0);
+        if (type < 0)
+            ERROR("Illegal HDF5 data type");
+        if (space < 0)
+            ERROR("Illegal HDF5 data space");
 
         const hid_t dataset =
             H5Dcreate(group, buf->buffer_name, type, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-        assert(dataset >= 0);
+        if (dataset < 0)
+            ERROR("Could not create HDF5 dataset");
 
         herr_t herr = H5Dwrite(dataset, H5T_NATIVE_UINT8, space, space, H5P_DEFAULT, frame);
-        assert(herr >= 0);
+        if (herr < 0)
+            ERROR("Could not write HDF5 dataset");
 
         herr = H5Dclose(dataset);
-        assert(herr >= 0);
+        if (herr < 0)
+            ERROR("Could not close HDF5 dataset");
         herr = H5Sclose(space);
-        assert(herr >= 0);
+        if (herr < 0)
+            ERROR("Could not close HDF5 dataspace");
 
         herr = H5Gclose(group);
-        assert(herr >= 0);
+        if (herr < 0)
+            ERROR("Could not close HDF5 group");
 
         herr = H5Fflush(fd, H5F_SCOPE_GLOBAL);
-        assert(herr >= 0);
+        if (herr < 0)
+            ERROR("Could not flush HDF5 file");
 
         INFO("Data file write done for {:s}", full_path.c_str());
 
