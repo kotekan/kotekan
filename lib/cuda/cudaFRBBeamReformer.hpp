@@ -69,10 +69,9 @@ private:
     bool _batched;
 
     // cublasHgemmBatched -- pre-computed GPU memory locations.
-    // [gpu_frame_id] [freq batch = stream] = [per-freq pointers]
-    std::vector<std::vector<__half**>> _gpu_in_pointers;
-    std::vector<std::vector<__half**>> _gpu_out_pointers;
     // [freq batch = stream] = [per-freq pointers]
+    std::vector<__half**> _gpu_in_pointers;
+    std::vector<__half**> _gpu_out_pointers;
     std::vector<__half**> _gpu_phase_pointers;
 };
 

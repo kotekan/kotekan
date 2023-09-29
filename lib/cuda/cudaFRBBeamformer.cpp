@@ -167,13 +167,15 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate,
     CHECK_CUDA_ERROR(
         cudaMemsetAsync(info_memory, 0xff, info_len, device.getStream(cuda_stream_id)));
 
+    int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
+
     int32_t valid = _samples_per_data_set + padded_samples;
     int32_t process = (valid / cuda_input_chunk) * cuda_input_chunk;
     int32_t output_frames = (process / cuda_time_downsampling);
     int32_t output_samples = (process / cuda_time_downsampling) * cuda_time_downsampling;
-    host_length[gpu_frame_id % _gpu_buffer_depth] = process;
+    host_length[gpu_frame_index] = process;
     int32_t padding_next = valid - output_samples;
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(length_memory, host_length.data() + gpu_frame_id,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(length_memory, host_length.data() + gpu_frame_index,
                                      length_len, cudaMemcpyHostToDevice,
                                      device.getStream(cuda_stream_id)));
 
@@ -268,7 +270,7 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate,
           voltage_input, voltage_input_len, get_name(), gpu_frame_id);
 
     // Copy "info" result code back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[gpu_frame_id % _gpu_buffer_depth].data(), info_memory,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[gpu_frame_index].data(), info_memory,
                                      info_len, cudaMemcpyDeviceToHost,
                                      device.getStream(cuda_stream_id)));
 
