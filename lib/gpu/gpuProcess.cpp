@@ -246,6 +246,7 @@ void gpuProcess::results_thread() {
         }
 
         final_signals[icommand]->reset();
+        gpu_frame_counter++;
     }
 }
 
