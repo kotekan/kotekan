@@ -78,8 +78,7 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
 
 chordMVPSetup::~chordMVPSetup() {}
 
-cudaEvent_t chordMVPSetup::execute(cudaPipelineState&,
-                                   const std::vector<cudaEvent_t>&) {
+cudaEvent_t chordMVPSetup::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
     pre_execute();
     record_start_event();
     return record_end_event();

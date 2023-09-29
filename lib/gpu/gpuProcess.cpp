@@ -210,8 +210,8 @@ void gpuProcess::results_thread() {
 
     while (true) {
         // Wait for a signal to be completed
-        DEBUG2("Waiting for signal for gpu[{:d}], frame {:d}, time: {:f}", gpu_id, gpu_frame_counter,
-               e_time());
+        DEBUG2("Waiting for signal for gpu[{:d}], frame {:d}, time: {:f}", gpu_id,
+               gpu_frame_counter, e_time());
         int icommand = gpu_frame_counter % _gpu_buffer_depth;
         if (final_signals[icommand]->wait_for_signal() == -1) {
             // If wait_for_signal returns -1, then we don't have a signal to wait on,

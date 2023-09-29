@@ -115,14 +115,13 @@ struct CuDeviceArray {
 };
 typedef CuDeviceArray<int32_t, 1> kernel_arg;
 
-cudaEvent_t cudaUpchannelize::execute(cudaPipelineState&,
-                                      const std::vector<cudaEvent_t>&) {
+cudaEvent_t cudaUpchannelize::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
     pre_execute();
 
-    void* voltage_input_memory = device.get_gpu_memory_array(
-        _gpu_mem_input_voltage, gpu_frame_id, voltage_input_len);
-    void* voltage_output_memory = device.get_gpu_memory_array(
-        _gpu_mem_output_voltage, gpu_frame_id, voltage_output_len);
+    void* voltage_input_memory =
+        device.get_gpu_memory_array(_gpu_mem_input_voltage, gpu_frame_id, voltage_input_len);
+    void* voltage_output_memory =
+        device.get_gpu_memory_array(_gpu_mem_output_voltage, gpu_frame_id, voltage_output_len);
     float16_t* gain_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_gain, gain_len);
     int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
 
@@ -195,12 +194,11 @@ cudaEvent_t cudaUpchannelize::execute(cudaPipelineState&,
                                   device.getStream(cuda_stream_id), parameters, NULL));
 
     DEBUG("GPUMEM kernel_out({:p}, {:d}, \"{:s}\", \"upchannelizer for frame {:d}\")",
-          voltage_output_memory, voltage_output_len, get_name(),
-          gpu_frame_id);
+          voltage_output_memory, voltage_output_len, get_name(), gpu_frame_id);
 
     // Copy "info" result code back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[gpu_frame_id % _gpu_buffer_depth].data(), info_memory,
-                                     info_len, cudaMemcpyDeviceToHost,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[gpu_frame_id % _gpu_buffer_depth].data(),
+                                     info_memory, info_len, cudaMemcpyDeviceToHost,
                                      device.getStream(cuda_stream_id)));
 
     return record_end_event();

@@ -40,13 +40,11 @@ cudaRechunkState* cudaRechunk::get_state() {
     return static_cast<cudaRechunkState*>(command_state.get());
 }
 
-cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
-                                 const std::vector<cudaEvent_t>&) {
+cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>&) {
     pre_execute();
 
     size_t input_frame_len = _cols_input * _rows;
-    void* input_memory =
-        device.get_gpu_memory_array(_gpu_mem_input, gpu_frame_id, input_frame_len);
+    void* input_memory = device.get_gpu_memory_array(_gpu_mem_input, gpu_frame_id, input_frame_len);
 
     size_t output_len = _cols_output * _rows;
     void* accum_memory = device.get_gpu_memory(gpu_mem_accum, output_len);

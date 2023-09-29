@@ -240,7 +240,7 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
         __half** out = (__half**)device.get_gpu_memory(
             unique_name + "_batch_out", _gpu_buffer_depth * _num_local_freq * sizeof(__half*));
         __half** ph = (__half**)device.get_gpu_memory(unique_name + "_batch_ph",
-            _num_local_freq * sizeof(__half*));
+                                                      _num_local_freq * sizeof(__half*));
 
         float16_t* phase_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
 
@@ -249,18 +249,18 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
         // filled with data!)
         int bufindex = inst;
         for (int i = 0; i < nstreams; i++) {
-            _gpu_in_pointers   .push_back(in  + (bufindex * nstreams + i) * freqs_per_stream);
-            _gpu_out_pointers  .push_back(out + (bufindex * nstreams + i) * freqs_per_stream);
-            _gpu_phase_pointers.push_back(ph  + i * freqs_per_stream);
+            _gpu_in_pointers.push_back(in + (bufindex * nstreams + i) * freqs_per_stream);
+            _gpu_out_pointers.push_back(out + (bufindex * nstreams + i) * freqs_per_stream);
+            _gpu_phase_pointers.push_back(ph + i * freqs_per_stream);
         }
 
         if (inst == 0) {
             // Temporary CPU-memory arrays of pointers to the input &
             // output matrices (which live in GPU memory); these will get
             // copied to in/out/ph.
-            __half* host_in [_gpu_buffer_depth * _num_local_freq];
+            __half* host_in[_gpu_buffer_depth * _num_local_freq];
             __half* host_out[_gpu_buffer_depth * _num_local_freq];
-            __half* host_ph [_gpu_buffer_depth * _num_local_freq];
+            __half* host_ph[_gpu_buffer_depth * _num_local_freq];
 
             // loop over gpu frames
             for (int gpu_frame_id = 0; gpu_frame_id < _gpu_buffer_depth; gpu_frame_id++) {
@@ -303,15 +303,14 @@ cudaFRBBeamReformer::~cudaFRBBeamReformer() {
     cublasDestroy(this->handle);
 }
 
-cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&,
-                                         const std::vector<cudaEvent_t>&) {
+cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
     pre_execute();
 
-    float16_t* beamgrid_memory = (float16_t*)device.get_gpu_memory_array(
-        _gpu_mem_beamgrid, gpu_frame_id, beamgrid_len);
+    float16_t* beamgrid_memory =
+        (float16_t*)device.get_gpu_memory_array(_gpu_mem_beamgrid, gpu_frame_id, beamgrid_len);
     float16_t* phase_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
-    float16_t* beamout_memory = (float16_t*)device.get_gpu_memory_array(
-        _gpu_mem_beamout, gpu_frame_id, beamout_len);
+    float16_t* beamout_memory =
+        (float16_t*)device.get_gpu_memory_array(_gpu_mem_beamout, gpu_frame_id, beamout_len);
 
     record_start_event();
 
@@ -331,10 +330,10 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&,
             }
             __half alpha = 1.;
             __half beta = 0.;
-            cublasStatus_t stat = cublasHgemmBatched(
-                handle, CUBLAS_OP_T, CUBLAS_OP_N, _Td, _num_beams, rho, &alpha,
-                _gpu_in_pointers[i], rho, _gpu_phase_pointers[i], rho,
-                &beta, _gpu_out_pointers[i], _Td, freqs_per_stream);
+            cublasStatus_t stat =
+                cublasHgemmBatched(handle, CUBLAS_OP_T, CUBLAS_OP_N, _Td, _num_beams, rho, &alpha,
+                                   _gpu_in_pointers[i], rho, _gpu_phase_pointers[i], rho, &beta,
+                                   _gpu_out_pointers[i], _Td, freqs_per_stream);
             if (stat != CUBLAS_STATUS_SUCCESS) {
                 ERROR("Error at {:s}:{:d}: cublasHgemmBatched: {:s}", __FILE__, __LINE__,
                       cublasGetStatusString(stat));

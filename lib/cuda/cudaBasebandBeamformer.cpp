@@ -76,16 +76,14 @@ struct CuDeviceArray {
 };
 typedef CuDeviceArray<int32_t, 1> kernel_arg;
 
-cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState&,
-                                            const std::vector<cudaEvent_t>&) {
+cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
     pre_execute();
 
-    void* voltage_memory =
-        device.get_gpu_memory_array(_gpu_mem_voltage, gpu_frame_id, voltage_len);
+    void* voltage_memory = device.get_gpu_memory_array(_gpu_mem_voltage, gpu_frame_id, voltage_len);
     int8_t* phase_memory =
         (int8_t*)device.get_gpu_memory_array(_gpu_mem_phase, gpu_frame_id, phase_len);
-    int32_t* shift_memory = (int32_t*)device.get_gpu_memory_array(
-        _gpu_mem_output_scaling, gpu_frame_id, shift_len);
+    int32_t* shift_memory =
+        (int32_t*)device.get_gpu_memory_array(_gpu_mem_output_scaling, gpu_frame_id, shift_len);
     void* output_memory =
         device.get_gpu_memory_array(_gpu_mem_formed_beams, gpu_frame_id, output_len);
     int32_t* info_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_info, info_len);
@@ -95,8 +93,7 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState&,
         host_info[i].resize(info_len / sizeof(int32_t));
 
     // If input voltage array has metadata, create new metadata for output.
-    metadataContainer* mc =
-        device.get_gpu_memory_array_metadata(_gpu_mem_voltage, gpu_frame_id);
+    metadataContainer* mc = device.get_gpu_memory_array_metadata(_gpu_mem_voltage, gpu_frame_id);
     if (mc && metadata_container_is_chord(mc)) {
         metadataContainer* mc_out = device.create_gpu_memory_array_metadata(
             _gpu_mem_formed_beams, gpu_frame_id, mc->parent_pool);
@@ -173,8 +170,8 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState&,
                                   device.getStream(cuda_stream_id), parameters, NULL));
 
     // Copy "info" result code back to host memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[gpu_frame_id % _gpu_buffer_depth].data(), info_memory,
-                                     info_len, cudaMemcpyDeviceToHost,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[gpu_frame_id % _gpu_buffer_depth].data(),
+                                     info_memory, info_len, cudaMemcpyDeviceToHost,
                                      device.getStream(cuda_stream_id)));
 
     return record_end_event();

@@ -22,12 +22,10 @@ cudaOutputDataZero::~cudaOutputDataZero() {
     free(output_zeros);
 }
 
-cudaEvent_t cudaOutputDataZero::execute(cudaPipelineState&,
-                                        const std::vector<cudaEvent_t>&) {
+cudaEvent_t cudaOutputDataZero::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
     pre_execute();
 
-    void* gpu_memory_frame =
-        device.get_gpu_memory_array("output", gpu_frame_id, output_len);
+    void* gpu_memory_frame = device.get_gpu_memory_array("output", gpu_frame_id, output_len);
 
     record_start_event();
 

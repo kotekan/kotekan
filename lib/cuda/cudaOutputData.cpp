@@ -57,8 +57,8 @@ cudaOutputData::~cudaOutputData() {
 
 int cudaOutputData::wait_on_precondition() {
     // Wait for there to be space in the host output buffer
-    uint8_t* frame =
-        wait_for_empty_frame(output_buffer, unique_name.c_str(), gpu_frame_id % output_buffer->num_frames);
+    uint8_t* frame = wait_for_empty_frame(output_buffer, unique_name.c_str(),
+                                          gpu_frame_id % output_buffer->num_frames);
     if (frame == nullptr) {
         DEBUG("FAILED to wait_for_empty_frame on output_buffer {:s}[:d]", unique_name.c_str(),
               gpu_frame_id);
@@ -80,8 +80,7 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState&,
 
     size_t output_len = output_buffer->frame_size;
 
-    void* gpu_output_frame =
-        device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, output_len);
+    void* gpu_output_frame = device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, output_len);
     int out_id = gpu_frame_id % output_buffer->num_frames;
     void* host_output_frame = (void*)output_buffer->frames[out_id];
 
@@ -90,8 +89,7 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState&,
 
     if (!in_buffer) {
         // Check for metadata attached to the GPU frame
-        metadataContainer* meta =
-            device.get_gpu_memory_array_metadata(_gpu_mem, gpu_frame_id);
+        metadataContainer* meta = device.get_gpu_memory_array_metadata(_gpu_mem, gpu_frame_id);
         if (meta) {
             // Attach the metadata to the host buffer frame
             CHECK_ERROR_F(pthread_mutex_lock(&output_buffer->lock));
@@ -114,7 +112,8 @@ void cudaOutputData::finalize_frame() {
     if (in_buffer) {
         int in_id = gpu_frame_id % in_buffer->num_frames;
         if (did_generate_output) {
-            DEBUG("Passing metadata from input (host) buffer {:s}[{:d}] to output (host) buffer {:s}[{:d}]",
+            DEBUG("Passing metadata from input (host) buffer {:s}[{:d}] to output (host) buffer "
+                  "{:s}[{:d}]",
                   in_buffer->buffer_name, in_id, output_buffer->buffer_name, out_id);
             pass_metadata(in_buffer, in_id, output_buffer, out_id);
         }

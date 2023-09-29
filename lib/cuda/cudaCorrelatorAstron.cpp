@@ -52,8 +52,7 @@ cudaCorrelatorAstron::cudaCorrelatorAstron(Config& config, const std::string& un
 
 cudaCorrelatorAstron::~cudaCorrelatorAstron() {}
 
-cudaEvent_t cudaCorrelatorAstron::execute(cudaPipelineState&,
-                                          const std::vector<cudaEvent_t>&) {
+cudaEvent_t cudaCorrelatorAstron::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
     pre_execute();
 
     size_t input_frame_len = (size_t)_num_elements * _num_local_freq * _samples_per_data_set;
@@ -61,8 +60,8 @@ cudaEvent_t cudaCorrelatorAstron::execute(cudaPipelineState&,
 
     size_t output_len = (size_t)_num_local_freq * _num_blocks * (_block_size * _block_size) * 2
                         * _num_data_sets * sizeof(int32_t);
-    void* output_memory = device.get_gpu_memory_array(_gpu_mem_correlation_matrix,
-                                                      gpu_frame_id, output_len);
+    void* output_memory =
+        device.get_gpu_memory_array(_gpu_mem_correlation_matrix, gpu_frame_id, output_len);
 
     record_start_event();
 

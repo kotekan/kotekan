@@ -44,20 +44,19 @@ cudaInputData::~cudaInputData() {
 
 int cudaInputData::wait_on_precondition() {
     // Wait for there to be data in the input (network) buffer.
-    uint8_t* frame = wait_for_full_frame(in_buf, unique_name.c_str(), gpu_frame_id % in_buf->num_frames);
+    uint8_t* frame =
+        wait_for_full_frame(in_buf, unique_name.c_str(), gpu_frame_id % in_buf->num_frames);
     if (frame == nullptr)
         return -1;
     return 0;
 }
 
-cudaEvent_t cudaInputData::execute(cudaPipelineState&,
-                                   const std::vector<cudaEvent_t>& pre_events) {
+cudaEvent_t cudaInputData::execute(cudaPipelineState&, const std::vector<cudaEvent_t>& pre_events) {
     pre_execute();
 
     size_t input_frame_len = in_buf->frame_size;
 
-    void* gpu_memory_frame =
-        device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, input_frame_len);
+    void* gpu_memory_frame = device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, input_frame_len);
     void* host_memory_frame = (void*)in_buf->frames[gpu_frame_id % in_buf->num_frames];
 
     device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame, input_frame_len,

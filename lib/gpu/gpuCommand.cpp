@@ -56,8 +56,7 @@ void gpuCommand::start_frame(int64_t _gpu_frame_id) {
     gpu_frame_id = _gpu_frame_id;
 }
 
-void gpuCommand::finalize_frame() {
-}
+void gpuCommand::finalize_frame() {}
 
 int gpuCommand::wait_on_precondition() {
     return 0;
@@ -76,8 +75,7 @@ std::string gpuCommand::get_unique_name() const {
     return unique_name;
 }
 
-void gpuCommand::pre_execute() {
-}
+void gpuCommand::pre_execute() {}
 
 double gpuCommand::get_last_gpu_execution_time() {
     return excute_time->get_current();
