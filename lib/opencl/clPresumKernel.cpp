@@ -8,8 +8,9 @@ using kotekan::Config;
 REGISTER_CL_COMMAND(clPresumKernel);
 
 clPresumKernel::clPresumKernel(Config& config, const std::string& unique_name,
-                               bufferContainer& host_buffers, clDeviceInterface& device) :
-    clCommand(config, unique_name, host_buffers, device, "offsetAccumulateElements",
+                               bufferContainer& host_buffers, clDeviceInterface& device,
+			       int inst) :
+    clCommand(config, unique_name, host_buffers, device, inst, no_cl_state, "offsetAccumulateElements",
               "offset_accumulator.cl") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
@@ -48,8 +49,8 @@ void clPresumKernel::build() {
     lws[2] = 1;
 }
 
-cl_event clPresumKernel::execute(int gpu_frame_id, cl_event pre_event) {
-    pre_execute(gpu_frame_id);
+cl_event clPresumKernel::execute(cl_event pre_event) {
+    pre_execute();
 
     uint32_t presum_len = _num_elements * _num_local_freq * 2 * sizeof(int32_t);
     uint32_t input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
@@ -61,7 +62,7 @@ cl_event clPresumKernel::execute(int gpu_frame_id, cl_event pre_event) {
     setKernelArg(1, presum_memory);
 
     CHECK_CL_ERROR(clEnqueueNDRangeKernel(device.getQueue(1), kernel, 3, nullptr, gws, lws, 1,
-                                          &pre_event, &post_events[gpu_frame_id]));
+                                          &pre_event, &post_event));
 
-    return post_events[gpu_frame_id];
+    return post_event;
 }

@@ -6,8 +6,9 @@ using kotekan::Config;
 REGISTER_CL_COMMAND(clPreseedKernel);
 
 clPreseedKernel::clPreseedKernel(Config& config, const std::string& unique_name,
-                                 bufferContainer& host_buffers, clDeviceInterface& device) :
-    clCommand(config, unique_name, host_buffers, device, "preseed", "preseed_multifreq.cl") {
+                                 bufferContainer& host_buffers, clDeviceInterface& device,
+				 int inst) :
+    clCommand(config, unique_name, host_buffers, device, inst, no_cl_state, "preseed", "preseed_multifreq.cl") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _block_size = config.get<int>(unique_name, "block_size");
@@ -61,8 +62,8 @@ void clPreseedKernel::build() {
     lws[2] = 1;
 }
 
-cl_event clPreseedKernel::execute(int gpu_frame_id, cl_event pre_event) {
-    pre_execute(gpu_frame_id);
+cl_event clPreseedKernel::execute(cl_event pre_event) {
+    pre_execute();
 
     uint32_t presum_len = _num_elements * _num_local_freq * 2 * sizeof(int32_t);
     uint32_t output_len = _num_local_freq * _num_blocks * (_block_size * _block_size) * 2
@@ -75,9 +76,9 @@ cl_event clPreseedKernel::execute(int gpu_frame_id, cl_event pre_event) {
     setKernelArg(1, output_memory_frame);
 
     CHECK_CL_ERROR(clEnqueueNDRangeKernel(device.getQueue(1), kernel, 3, nullptr, gws, lws, 1,
-                                          &pre_event, &post_events[gpu_frame_id]));
+                                          &pre_event, &post_event));
 
-    return post_events[gpu_frame_id];
+    return post_event;
 }
 void clPreseedKernel::defineOutputDataMap() {
     cl_int err;

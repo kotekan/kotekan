@@ -7,10 +7,11 @@
 class clKVCorr : public clCommand {
 public:
     clKVCorr(kotekan::Config& config, const std::string& unique_name,
-             kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
+             kotekan::bufferContainer& host_buffers, clDeviceInterface& device,
+	     int instance_num);
     ~clKVCorr();
     virtual void build() override;
-    virtual cl_event execute(int gpu_frame_id, cl_event pre_event) override;
+    virtual cl_event execute(cl_event pre_event) override;
 
 protected:
     void defineOutputDataMap();

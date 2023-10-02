@@ -7,10 +7,11 @@
 class clPresumKernel : public clCommand {
 public:
     clPresumKernel(kotekan::Config& config, const std::string& unique_name,
-                   kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
+                   kotekan::bufferContainer& host_buffers, clDeviceInterface& device,
+		   int instance_num);
     ~clPresumKernel();
     virtual void build() override;
-    cl_event execute(int gpu_frame_id, cl_event pre_event) override;
+    cl_event execute(cl_event pre_event) override;
 
 protected:
 private:

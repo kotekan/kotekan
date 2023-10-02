@@ -8,9 +8,10 @@
 class clOutputDataZero : public clCommand {
 public:
     clOutputDataZero(kotekan::Config& config, const std::string& unique_name,
-                     kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
+                     kotekan::bufferContainer& host_buffers, clDeviceInterface& device,
+		     int instance_num);
     ~clOutputDataZero();
-    cl_event execute(int gpu_frame_id, cl_event pre_event) override;
+    cl_event execute(cl_event pre_event) override;
 
 private:
     int32_t output_len;

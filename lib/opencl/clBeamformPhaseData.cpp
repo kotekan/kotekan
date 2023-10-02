@@ -1,6 +1,6 @@
 #include "clBeamformPhaseData.hpp"
 
-#include "buffer.h"
+#include "buffer.hpp"
 #include "chimeMetadata.hpp"
 #include "errors.h"
 
@@ -16,8 +16,9 @@ using kotekan::Config;
 REGISTER_CL_COMMAND(clBeamformPhaseData);
 
 clBeamformPhaseData::clBeamformPhaseData(Config& config, const std::string& unique_name,
-                                         bufferContainer& host_buffers, clDeviceInterface& device) :
-    clCommand(config, unique_name, host_buffers, device, "", "") {
+                                         bufferContainer& host_buffers, clDeviceInterface& device,
+					 int inst) :
+    clCommand(config, unique_name, host_buffers, device, inst, no_cl_state, "", "") {
     command_type = gpuCommandType::NOT_SET;
 
     _num_elements = config.get<int>(unique_name, "num_elements");
@@ -46,8 +47,8 @@ void clBeamformPhaseData::build() {
     start_beamform_time = time(nullptr); // Current time.
 }
 
-cl_event clBeamformPhaseData::execute(int gpu_frame_id, cl_event pre_event) {
-    gpuCommand::pre_execute(gpu_frame_id);
+cl_event clBeamformPhaseData::execute(cl_event pre_event) {
+    gpuCommand::pre_execute();
 
     time_t local_beamform_time;
     uint64_t current_seq;
@@ -80,10 +81,10 @@ cl_event clBeamformPhaseData::execute(int gpu_frame_id, cl_event pre_event) {
 
         CHECK_CL_ERROR(clEnqueueWriteBuffer(
             device.getQueue(0), phase_memory, CL_FALSE, 0, _num_elements * sizeof(float),
-            (cl_float*)phases[bankID], 1, &pre_event, &post_events[gpu_frame_id]));
+            (cl_float*)phases[bankID], 1, &pre_event, &post_event));
 
         last_bankID = bankID;
-        return post_events[gpu_frame_id];
+        return post_event;
     }
     return pre_event;
 }

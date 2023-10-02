@@ -54,17 +54,18 @@ int cudaInputData::wait_on_precondition() {
 cudaEvent_t cudaInputData::execute(cudaPipelineState&, const std::vector<cudaEvent_t>& pre_events) {
     pre_execute();
 
+    int buf_index = gpu_frame_id % in_buf->num_frames;
     size_t input_frame_len = in_buf->frame_size;
 
     void* gpu_memory_frame = device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, input_frame_len);
-    void* host_memory_frame = (void*)in_buf->frames[gpu_frame_id % in_buf->num_frames];
+    void* host_memory_frame = (void*)in_buf->frames[buf_index];
 
     device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame, input_frame_len,
                                   cuda_stream_id, pre_events[cuda_stream_id], start_event,
                                   end_event);
 
     // Copy (reference to) metadata also
-    metadataContainer* meta = in_buf->metadata[gpu_frame_id % in_buf->num_frames];
+    metadataContainer* meta = in_buf->metadata[buf_index];
     if (meta)
         device.claim_gpu_memory_array_metadata(_gpu_mem, gpu_frame_id, meta);
 
