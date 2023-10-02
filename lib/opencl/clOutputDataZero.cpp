@@ -7,7 +7,7 @@ REGISTER_CL_COMMAND(clOutputDataZero);
 
 clOutputDataZero::clOutputDataZero(Config& config, const std::string& unique_name,
                                    bufferContainer& host_buffers, clDeviceInterface& device,
-				   int inst) :
+                                   int inst) :
     clCommand(config, unique_name, host_buffers, device, inst, no_cl_state, "", "") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
@@ -35,7 +35,6 @@ cl_event clOutputDataZero::execute(cl_event pre_event) {
     // Data transfer to GPU
     CHECK_CL_ERROR(clEnqueueWriteBuffer(device.getQueue(0), gpu_memory_frame, CL_FALSE,
                                         0, // offset
-                                        output_len, output_zeros, 1, &pre_event,
-                                        &post_event));
+                                        output_len, output_zeros, 1, &pre_event, &post_event));
     return post_event;
 }

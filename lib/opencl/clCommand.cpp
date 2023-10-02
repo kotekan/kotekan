@@ -13,16 +13,13 @@ using std::to_string;
 std::shared_ptr<clCommandState> no_cl_state;
 
 clCommand::clCommand(Config& config_, const std::string& unique_name_,
-                     bufferContainer& host_buffers_, clDeviceInterface& device_,
-		     int instance_num,
-		     std::shared_ptr<gpuCommandState> command_state,
+                     bufferContainer& host_buffers_, clDeviceInterface& device_, int instance_num,
+                     std::shared_ptr<gpuCommandState> command_state,
                      const std::string& default_kernel_command,
                      const std::string& default_kernel_file_name) :
-    gpuCommand(config_, unique_name_, host_buffers_, device_, instance_num, command_state, default_kernel_command,
-               default_kernel_file_name),
-    post_event(nullptr),
-    device(device_) {
-}
+    gpuCommand(config_, unique_name_, host_buffers_, device_, instance_num, command_state,
+               default_kernel_command, default_kernel_file_name),
+    post_event(nullptr), device(device_) {}
 
 clCommand::~clCommand() {
     if (kernel_command != "") {
@@ -37,12 +34,10 @@ void clCommand::finalize_frame() {
     if (post_event != nullptr) {
         if (profiling) {
             cl_ulong start_time, stop_time;
-            CHECK_CL_ERROR(clGetEventProfilingInfo(post_event,
-                                                   CL_PROFILING_COMMAND_START, sizeof(start_time),
-                                                   &start_time, nullptr));
-            CHECK_CL_ERROR(clGetEventProfilingInfo(post_event,
-                                                   CL_PROFILING_COMMAND_END, sizeof(stop_time),
-                                                   &stop_time, nullptr));
+            CHECK_CL_ERROR(clGetEventProfilingInfo(post_event, CL_PROFILING_COMMAND_START,
+                                                   sizeof(start_time), &start_time, nullptr));
+            CHECK_CL_ERROR(clGetEventProfilingInfo(post_event, CL_PROFILING_COMMAND_END,
+                                                   sizeof(stop_time), &stop_time, nullptr));
             double active_time = (double)(stop_time - start_time) * 1e-9;
             excute_time->add_sample(active_time);
             utilization->add_sample(active_time / frame_arrival_period);

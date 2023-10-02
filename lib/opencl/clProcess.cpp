@@ -39,7 +39,8 @@ gpuEventContainer* clProcess::create_signal() {
     return new clEventContainer();
 }
 
-std::vector<gpuCommand*> clProcess::create_command(const std::string& cmd_name, const std::string& unique_name) {
+std::vector<gpuCommand*> clProcess::create_command(const std::string& cmd_name,
+                                                   const std::string& unique_name) {
     std::vector<gpuCommand*> cmds;
     // Create the clCommandState object, if used, for this command class.
     std::shared_ptr<clCommandState> st = FACTORY(clCommandState)::create_shared_if_exists(
@@ -53,9 +54,9 @@ std::vector<gpuCommand*> clProcess::create_command(const std::string& cmd_name, 
         else
             // Create the clCommand object (without state arg)
             cmd = FACTORY(clCommand)::create_bare(cmd_name, config, unique_name,
-						  local_buffer_container, *device, i);
-	// TODO Why is this not in the constructor?
-	cmd->build();
+                                                  local_buffer_container, *device, i);
+        // TODO Why is this not in the constructor?
+        cmd->build();
         cmds.push_back(cmd);
     }
     DEBUG("Command added: {:s}", cmd_name.c_str());
@@ -70,7 +71,7 @@ void clProcess::queue_commands(int gpu_frame_counter) {
         // Feed the last signal into the next operation
         cl_event event = ((clCommand*)command[icommand])->execute(signal);
         if (event != nullptr)
-	    signal = event;
+            signal = event;
     }
     // Wait on the very last event from the last command.
     final_signals[icommand]->set_signal(signal);

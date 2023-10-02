@@ -8,7 +8,7 @@ class clCorrelatorKernel : public clCommand {
 public:
     clCorrelatorKernel(kotekan::Config& config, const std::string& unique_name,
                        kotekan::bufferContainer& host_buffers, clDeviceInterface& device,
-		       int instance_num);
+                       int instance_num);
     ~clCorrelatorKernel();
     virtual void build() override;
     virtual cl_event execute(cl_event pre_event) override;

@@ -7,7 +7,7 @@ class clOutputData : public clCommand {
 public:
     clOutputData(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& host_buffers, clDeviceInterface& device,
-		 int instance_num);
+                 int instance_num);
     ~clOutputData();
     int wait_on_precondition() override;
     virtual cl_event execute(cl_event pre_event) override;

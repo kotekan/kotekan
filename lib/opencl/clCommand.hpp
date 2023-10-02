@@ -33,7 +33,7 @@
 class clCommandState : public gpuCommandState {
 public:
     clCommandState(kotekan::Config&, const std::string&, kotekan::bufferContainer&,
-		   clDeviceInterface&) {}
+                   clDeviceInterface&) {}
 };
 
 // use this to avoid having to write "std::shared_ptr<clCommandState>()"
@@ -56,9 +56,8 @@ public:
      * @param default_kernel_file_name  (optional) external file (e.g. CL) used by a command
      **/
     clCommand(kotekan::Config& config, const std::string& unique_name,
-              kotekan::bufferContainer& host_buffers, clDeviceInterface& device,
-	      int instance_num,
-	      std::shared_ptr<gpuCommandState> = std::shared_ptr<gpuCommandState>(),
+              kotekan::bufferContainer& host_buffers, clDeviceInterface& device, int instance_num,
+              std::shared_ptr<gpuCommandState> = std::shared_ptr<gpuCommandState>(),
               const std::string& default_kernel_command = "",
               const std::string& default_kernel_file_name = "");
     /// Destructor that frees memory for the kernel and name.
@@ -104,7 +103,8 @@ protected:
 
 // Create a factory for clCommands
 CREATE_FACTORY(clCommand, // const std::string &, const std::string &,
-               kotekan::Config&, const std::string&, kotekan::bufferContainer&, clDeviceInterface&, int);
+               kotekan::Config&, const std::string&, kotekan::bufferContainer&, clDeviceInterface&,
+               int);
 
 // ... and another factory for clCommands that take a CommandState argument!
 CREATE_FACTORY_VARIANT(state, clCommand, kotekan::Config&, const std::string&,

@@ -22,8 +22,7 @@ clOutputBeamformResult::~clOutputBeamformResult() {}
 int clOutputBeamformResult::wait_on_precondition() {
     // Wait for there to be data in the input (output) buffer.
     int buf_index = gpu_frame_id % output_buffer->num_frames;
-    uint8_t* frame =
-        wait_for_empty_frame(output_buffer, unique_name.c_str(), buf_index);
+    uint8_t* frame = wait_for_empty_frame(output_buffer, unique_name.c_str(), buf_index);
     if (frame == nullptr)
         return -1;
     return 0;
@@ -40,8 +39,7 @@ cl_event clOutputBeamformResult::execute(cl_event pre_event) {
     void* host_output_frame = (void*)output_buffer->frames[buf_index];
 
     CHECK_CL_ERROR(clEnqueueReadBuffer(device.getQueue(2), output_memory_frame, CL_FALSE, 0,
-                                       output_len, host_output_frame, 1, &pre_event,
-                                       &post_event));
+                                       output_len, host_output_frame, 1, &pre_event, &post_event));
     return post_event;
 }
 

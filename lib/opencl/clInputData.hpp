@@ -7,7 +7,7 @@ class clInputData : public clCommand {
 public:
     clInputData(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& host_buffers, clDeviceInterface& device,
-		int instance_num);
+                int instance_num);
     ~clInputData();
     int wait_on_precondition() override;
     cl_event execute(cl_event pre_event) override;

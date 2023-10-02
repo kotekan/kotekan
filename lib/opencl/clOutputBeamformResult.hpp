@@ -8,7 +8,7 @@ class clOutputBeamformResult : public clCommand {
 public:
     clOutputBeamformResult(kotekan::Config& config, const std::string& unique_name,
                            kotekan::bufferContainer& host_buffers, clDeviceInterface& device,
-			   int instance_num);
+                           int instance_num);
     ~clOutputBeamformResult();
     int wait_on_precondition() override;
     virtual cl_event execute(cl_event param_PrecedeEvent) override;

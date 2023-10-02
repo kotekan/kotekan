@@ -7,8 +7,7 @@
 class clKVCorr : public clCommand {
 public:
     clKVCorr(kotekan::Config& config, const std::string& unique_name,
-             kotekan::bufferContainer& host_buffers, clDeviceInterface& device,
-	     int instance_num);
+             kotekan::bufferContainer& host_buffers, clDeviceInterface& device, int instance_num);
     ~clKVCorr();
     virtual void build() override;
     virtual cl_event execute(cl_event pre_event) override;

@@ -158,7 +158,7 @@ public:
     /// Constructor, no logic added.
     clBeamformPhaseData(kotekan::Config& config, const std::string& unique_name,
                         kotekan::bufferContainer& host_buffers, clDeviceInterface& device,
-			int instance_num);
+                        int instance_num);
     /// Allocate size for phases arrays and initialize start_beamform_time and last_bankID.
     virtual void build() override;
     /// Enqueues a new array of phases on the gpu. Phases are updated every "phase period" (1

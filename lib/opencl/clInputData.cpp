@@ -14,8 +14,8 @@ clInputData::clInputData(Config& config, const std::string& unique_name,
     input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
 
     if (inst == 0) {
-	network_buf = host_buffers.get_buffer("network_buf");
-	register_consumer(network_buf, unique_name.c_str());
+        network_buf = host_buffers.get_buffer("network_buf");
+        register_consumer(network_buf, unique_name.c_str());
     }
     command_type = gpuCommandType::COPY_IN;
 }
@@ -24,8 +24,8 @@ clInputData::~clInputData() {}
 
 int clInputData::wait_on_precondition() {
     // Wait for there to be data in the input (network) buffer.
-    uint8_t* frame =
-        wait_for_full_frame(network_buf, unique_name.c_str(), gpu_frame_id % network_buf->num_frames);
+    uint8_t* frame = wait_for_full_frame(network_buf, unique_name.c_str(),
+                                         gpu_frame_id % network_buf->num_frames);
     if (frame == nullptr)
         return -1;
     return 0;
@@ -39,11 +39,11 @@ cl_event clInputData::execute(cl_event pre_event) {
     void* host_memory_frame = (void*)network_buf->frames[buf_index];
 
     // Data transfer to GPU
-    CHECK_CL_ERROR(clEnqueueWriteBuffer(
-        device.getQueue(0), gpu_memory_frame, CL_FALSE,
-        0, // offset
-        input_frame_len, host_memory_frame, (pre_event == nullptr) ? 0 : 1,
-        (pre_event == nullptr) ? nullptr : &pre_event, &post_event));
+    CHECK_CL_ERROR(
+        clEnqueueWriteBuffer(device.getQueue(0), gpu_memory_frame, CL_FALSE,
+                             0, // offset
+                             input_frame_len, host_memory_frame, (pre_event == nullptr) ? 0 : 1,
+                             (pre_event == nullptr) ? nullptr : &pre_event, &post_event));
 
     return post_event;
 }
