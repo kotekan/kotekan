@@ -981,6 +981,7 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
 void buffer_free(uint8_t* frame_pointer, size_t size, bool use_hugepages) {
 #ifdef WITH_HSA
     (void)size;
+    (void)use_hugepages;
     hsa_host_free(frame_pointer);
 #else
     if (use_hugepages) {
