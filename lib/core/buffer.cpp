@@ -909,7 +909,8 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
     uint8_t* frame = NULL;
 
 #ifdef WITH_HSA // Support for legacy HSA support used in CHIME
-    frame = hsa_host_malloc(len, numa_node);
+    (void)use_hugepages;
+    frame = (uint8_t*)hsa_host_malloc(len, numa_node);
     if (frame == NULL) {
         return NULL;
     }
