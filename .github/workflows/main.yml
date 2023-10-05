@@ -576,6 +576,7 @@ jobs:
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
             -DWITH_TESTS=ON \
+            -DUSA_HSA=ON \
             -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" rm -r lib
