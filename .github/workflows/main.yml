@@ -286,7 +286,7 @@ jobs:
 
   # Build an OpenCL version of kotekan and run the unit tests
   build-opencl-2204:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: build-docker-2204
 
     steps:
