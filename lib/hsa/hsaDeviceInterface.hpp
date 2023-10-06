@@ -51,7 +51,7 @@ public:
     uint32_t get_gpu_numa_node();
 
 protected:
-    void* alloc_gpu_memory(int len) override;
+    void* alloc_gpu_memory(size_t len) override;
     void free_gpu_memory(void*) override;
 
     // GPU HSA variables
