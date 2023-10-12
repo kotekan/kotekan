@@ -83,8 +83,7 @@ add_library(
     printSparse.cpp
     ExampleProducer.cpp
     ExampleConsumer.cpp
-    ExampleDotProduct.cpp
-)
+    ExampleDotProduct.cpp)
 
 target_include_directories(kotekan_stages PRIVATE .)
 
