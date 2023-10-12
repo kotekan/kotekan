@@ -1,4 +1,6 @@
-FROM rocm/dev-ubuntu-18.04:3.7
+# NOTE, for HSA support, the latest version of the rocm package we can use is 3.0.  Later versions
+# have removed files required by the kotekan CHIME code.
+FROM rocm/dev-ubuntu-18.04:3.0
 
 ## The maintainer name and email 
 MAINTAINER Rick Nitsche <rick@phas.ubc.ca>
@@ -10,7 +12,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN rm /etc/apt/sources.list.d/rocm.list && \
     apt-get update && \
     apt-get install -y wget=1.19.* && \
-    echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/debian ubuntu main' | tee /etc/apt/sources.list.d/rocm.list  && \
+    echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/3.0 xenial main' | tee /etc/apt/sources.list.d/rocm.list  && \
     wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add - && \
     apt-get update
 
@@ -50,7 +52,7 @@ RUN apt-get update && \
 RUN python3.7 -m pip install --upgrade pip==20.2.2 && \
     python3.7 -m pip install --upgrade --force-reinstall setuptools==49.6.0 && \
     python3.7 -m pip install --upgrade wheel==0.35.1 && \
-    python3.7 -m pip install --no-cache-dir numpy==1.19.1 && \
+    python3.7 -m pip install --no-cache-dir numpy && \
     python3.7 -m pip install --no-cache-dir pkgconfig==1.5.1 && \
     python3.7 -m pip install --no-cache-dir --upgrade cython==0.29.21 && \
     python3.7 -m pip install --no-cache-dir black==19.10b0 &&\
