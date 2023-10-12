@@ -52,7 +52,6 @@ add_library(
     BufferSplit.cpp
     InputSubset.cpp
     # Julia
-    juliaManager.cpp
     juliaHelloWorld.cpp
     juliaDataGen.cpp
     FEngine.cpp

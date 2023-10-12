@@ -10,7 +10,7 @@ class juliaHelloWorld : public kotekan::Stage {
 public:
     juliaHelloWorld(kotekan::Config& config, const std::string& unique_name,
                     kotekan::bufferContainer& buffer_container);
-    ~juliaHelloWorld();
+    ~juliaHelloWorld() override;
     void main_thread() override;
 };
 
@@ -22,18 +22,18 @@ juliaHelloWorld::juliaHelloWorld(kotekan::Config& config, const std::string& uni
         return const_cast<kotekan::Stage&>(stage).main_thread();
     }) {
     INFO("juliaHelloWorld: Starting Julia...");
-    juliaStartup();
+    kotekan::juliaStartup();
 }
 
 juliaHelloWorld::~juliaHelloWorld() {
     INFO("juliaHelloWorld: Shutting down Julia...");
-    juliaShutdown();
+    kotekan::juliaShutdown();
     INFO("juliaHelloWorld: Done.");
 }
 
 void juliaHelloWorld::main_thread() {
     INFO("juliaHelloWorld: Calling Julia...");
-    const double retval = juliaCall([&]() {
+    const double retval = kotekan::juliaCall([&]() {
         (void)jl_eval_string("println(\"Hello, World!\")");
         jl_function_t* const func = jl_get_function(jl_base_module, "sqrt");
         jl_value_t* const arg = jl_box_float64(2.0);

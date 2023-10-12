@@ -20,7 +20,7 @@ class juliaDataGen : public kotekan::Stage {
 public:
     juliaDataGen(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_conainer);
-    virtual ~juliaDataGen();
+    virtual ~juliaDataGen() override;
     void main_thread() override;
 };
 
@@ -39,7 +39,7 @@ juliaDataGen::juliaDataGen(kotekan::Config& config, const std::string& unique_na
     register_producer(buf, unique_name.c_str());
 
     INFO("Starting Julia...");
-    juliaStartup();
+    kotekan::juliaStartup();
 
     INFO("Defining Julia code...");
     {
@@ -50,7 +50,7 @@ juliaDataGen::juliaDataGen(kotekan::Config& config, const std::string& unique_na
         std::vector<char> julia_source(julia_source_length);
         file.read(julia_source.data(), julia_source_length);
         file.close();
-        juliaCall([&]() {
+        kotekan::juliaCall([&]() {
             jl_value_t* const res = jl_eval_string(julia_source.data());
             assert(res);
         });
@@ -59,7 +59,7 @@ juliaDataGen::juliaDataGen(kotekan::Config& config, const std::string& unique_na
 
 juliaDataGen::~juliaDataGen() {
     INFO("Shutting down Julia...");
-    juliaShutdown();
+    kotekan::juliaShutdown();
     INFO("Done.");
 }
 
@@ -88,7 +88,7 @@ void juliaDataGen::main_thread() {
         set_fpga_seq_num(buf, frame_id, seq_num);
 
         INFO("[{:d}] Filling buffer...", frame_index);
-        juliaCall([&]() {
+        kotekan::juliaCall([&]() {
             jl_module_t* const datagen_module =
                 (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("DataGen"));
             assert(datagen_module);

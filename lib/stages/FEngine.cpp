@@ -50,7 +50,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     register_producer(J_buffer, unique_name.c_str());
 
     INFO("Starting Julia...");
-    juliaStartup();
+    kotekan::juliaStartup();
 
     INFO("Defining Julia code...");
     {
@@ -61,7 +61,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         std::vector<char> julia_source(julia_source_length);
         file.read(julia_source.data(), julia_source_length);
         file.close();
-        juliaCall([&]() {
+        kotekan::juliaCall([&]() {
             jl_value_t* const res = jl_eval_string(julia_source.data());
             assert(res);
         });
@@ -70,7 +70,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
 
 FEngine::~FEngine() {
     INFO("Shutting down Julia...");
-    juliaShutdown();
+    kotekan::juliaShutdown();
     INFO("Done.");
 }
 
@@ -80,7 +80,7 @@ void FEngine::main_thread() {
     stale = true;
 
     INFO("Initializing F-Engine...");
-    juliaCall([&]() {
+    kotekan::juliaCall([&]() {
         jl_module_t* const f_engine_module =
             (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
         assert(f_engine_module);
@@ -142,7 +142,7 @@ void FEngine::main_thread() {
         set_fpga_seq_num(J_buffer, J_frame_id, seq_num);
 
         INFO("[{:d}] Filling A buffer...", frame_index);
-        juliaCall([&]() {
+        kotekan::juliaCall([&]() {
             jl_module_t* const f_engine_module =
                 (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
             assert(f_engine_module);
@@ -162,7 +162,7 @@ void FEngine::main_thread() {
         INFO("[{:d}] Done filling E buffer.", frame_index);
 
         INFO("[{:d}] Filling E buffer...", frame_index);
-        juliaCall([&]() {
+        kotekan::juliaCall([&]() {
             jl_module_t* const f_engine_module =
                 (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
             assert(f_engine_module);
@@ -182,7 +182,7 @@ void FEngine::main_thread() {
         INFO("[{:d}] Done filling E buffer.", frame_index);
 
         INFO("[{:d}] Filling J buffer...", frame_index);
-        juliaCall([&]() {
+        kotekan::juliaCall([&]() {
             jl_module_t* const f_engine_module =
                 (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
             assert(f_engine_module);
