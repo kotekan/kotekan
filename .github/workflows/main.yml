@@ -284,6 +284,78 @@ jobs:
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2204/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
 
+  # Build an OpenCL version of kotekan and run the unit tests
+  build-opencl-2204:
+    runs-on: ubuntu-latest
+    needs: build-docker-2204
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Cache ccache files
+      uses: actions/cache@v3
+      with:
+        path: .ccache
+        key: ccache-opencl-2204-${{ github.sha }}
+        restore-keys: |
+          ccache-opencl-2204
+          ccache-base-build-2204
+
+    - name: Free disk space
+      if: ${{ !env.ACT }} # Don't free up if running locally
+      run: |
+          df -h
+          docker rmi $(docker image ls -aq)
+          df -h
+          sudo apt-get clean
+          sudo apt-get autoclean
+          df -h
+
+    - name: Build kotekan
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2204/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" ccache -s
+        docker run "${OPTS[@]}" \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
+            -DCMAKE_BUILD_TYPE=Test \
+            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
+            -DARCH=haswell \
+            -DNO_MEMLOCK=ON \
+            -DUSE_OMP=ON \
+            -DWITH_TESTS=ON \
+            -DUSE_CUDA=OFF \
+            -DUSE_OPENCL=ON \
+            -DCCACHE=ON ..
+        docker run "${OPTS[@]}" make -j 2
+        docker run "${OPTS[@]}" rm -r lib
+        docker run "${OPTS[@]}" ccache -s
+        df -h
+
+    - name: Run parallel python tests
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile --timeout=${PYTEST_TIMEOUT} -x -m 'not serial'
+
+    - name: Run serial python tests
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial"
+
+    - name: Run boost tests
+      if: env.RUN_2204_BOOST_TESTS # These aren't working, so for now only run them upon request.
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2204/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
+
   # Build a clang version of kotekan
   # Note that this build isn't working at the moment, so for now only run it upon request.
   build-clang-2204:
@@ -564,6 +636,7 @@ jobs:
             -DARCH=haswell \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
+            -DUSE_HSA=ON \
             -DWITH_TESTS=OFF \
             -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2

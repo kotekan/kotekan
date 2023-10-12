@@ -17,6 +17,7 @@ add_library(
     pyPlotN2.cpp
     rawFileRead.cpp
     rawFileWrite.cpp
+    $<$<BOOL:${USE_HDF5}>:hdf5FileWrite.cpp>
     vdifStream.cpp
     recvSingleDishVDIF.cpp
     streamSingleDishVDIF.cpp

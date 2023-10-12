@@ -88,8 +88,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     port_conf.rxmode.max_lro_pkt_size = max_rx_pkt_len;
     port_conf.rxmode.mtu = max_rx_pkt_len;
     port_conf.rxmode.offloads =
-        DEV_RX_OFFLOAD_KEEP_CRC | DEV_RX_OFFLOAD_IPV4_CKSUM | DEV_RX_OFFLOAD_UDP_CKSUM;
-    port_conf.rxmode.split_hdr_size = 0;
+        RTE_ETH_RX_OFFLOAD_KEEP_CRC | RTE_ETH_RX_OFFLOAD_IPV4_CKSUM | RTE_ETH_RX_OFFLOAD_UDP_CKSUM;
 #else
     port_conf.rxmode.max_rx_pkt_len = max_rx_pkt_len;
     port_conf.rxmode.jumbo_frame =
