@@ -87,7 +87,7 @@ hsaDeviceInterface::~hsaDeviceInterface() {
     HSA_CHECK(hsa_status);
 }
 
-void* hsaDeviceInterface::alloc_gpu_memory(int len) {
+void* hsaDeviceInterface::alloc_gpu_memory(size_t len) {
     void* ptr;
     hsa_status_t hsa_status = hsa_amd_memory_pool_allocate(global_region, len, 0, &ptr);
     HSA_CHECK(hsa_status);
