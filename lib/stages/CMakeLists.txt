@@ -17,7 +17,7 @@ add_library(
     pyPlotN2.cpp
     rawFileRead.cpp
     rawFileWrite.cpp
-    hdf5FileWrite.cpp
+    $<$<BOOL:${USE_HDF5}>:hdf5FileWrite.cpp>
     vdifStream.cpp
     recvSingleDishVDIF.cpp
     streamSingleDishVDIF.cpp
@@ -52,9 +52,9 @@ add_library(
     BufferSplit.cpp
     InputSubset.cpp
     # Julia
-    juliaHelloWorld.cpp
-    juliaDataGen.cpp
-    FEngine.cpp
+    $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>
+    $<$<BOOL:${Julia_FOUND}>:juliaDataGen.cpp>
+    $<$<BOOL:${Julia_FOUND}>:FEngine.cpp>
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp

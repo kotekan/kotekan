@@ -36,8 +36,7 @@ add_library(
     cudaUpchannelizer_U32.cpp
     cudaUpchannelizer_U64.cpp
     cudaUpchannelizer_U128.cpp
-    chordMVPSetup.cpp
-)
+    chordMVPSetup.cpp)
 
 # C++17
 set_property(TARGET kotekan_cuda PROPERTY CUDA_STANDARD 17)
