@@ -208,7 +208,7 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate,
                                      info_length, cudaMemcpyDeviceToHost,
                                      device.getStream(cuda_stream_id)));
 
-    return record_end_event(gpu_frame_id);
+    return record_end_event(pipestate.gpu_frame_id);
 }
 
 void cudaFRBBeamformer::finalize_frame(const int gpu_frame_id) {

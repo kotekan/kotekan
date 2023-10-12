@@ -161,34 +161,6 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
     for (int i = 0; i < _gpu_buffer_depth; ++i)
         host_info[i].resize(info_length / sizeof(std::int32_t));
 
-    // If input voltage array has metadata, create new metadata for output.
-    metadataContainer* mc =
-        device.get_gpu_memory_array_metadata(_gpu_mem_voltage, pipestate.gpu_frame_id);
-    if (mc && metadata_container_is_chord(mc)) {
-        metadataContainer* mc_out = device.create_gpu_memory_array_metadata(
-            _gpu_mem_formed_beams, pipestate.gpu_frame_id, mc->parent_pool);
-        chordMetadata* meta_out = get_chord_metadata(mc_out);
-        chordMetadata* meta_in = get_chord_metadata(mc);
-        chord_metadata_copy(meta_out, meta_in);
-        INFO("cudaBasebandBeamformer: input array shape: {:s}", meta_in->get_dimensions_string());
-        // input:
-        // indices: [C, D, F, P, T]
-        // shape: [2, 512, 16, 2, 32768]
-
-        // assert(meta_in->get_dimension_name(0) == "T");
-
-        // output:
-        // type: Int4
-        // indices: [C, T, P, F, B]
-        // shape: [2, 32768, 2, 16, 96]
-
-        meta_out->set_array_dimension(0, _num_beams, "B");
-        meta_out->set_array_dimension(1, _num_local_freq, "F");
-        meta_out->set_array_dimension(2, 2, "P");
-        meta_out->set_array_dimension(3, _samples_per_data_set, "T");
-        INFO("cudaBasebandBeamformer: output array shape: {:s}", meta_out->get_dimensions_string());
-    }
-
     record_start_event(pipestate.gpu_frame_id);
 
     // Initialize host-side buffer arrays
@@ -231,7 +203,7 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
                                      info_length, cudaMemcpyDeviceToHost,
                                      device.getStream(cuda_stream_id)));
 
-    return record_end_event(gpu_frame_id);
+    return record_end_event(pipestate.gpu_frame_id);
 }
 
 void cudaBasebandBeamformer::finalize_frame(const int gpu_frame_id) {
