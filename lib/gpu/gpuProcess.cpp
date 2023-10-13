@@ -155,26 +155,29 @@ void gpuProcess::main_thread() {
     bool first_run = true;
 
     while (!stop_thread) {
-        int icommand = gpu_frame_counter % _gpu_buffer_depth;
 
-        for (auto& command : commands)
-            command[icommand]->start_frame(gpu_frame_counter);
+        for (auto& command : commands) {
+            int ic = gpu_frame_counter % command.size();
+            command[ic]->start_frame(gpu_frame_counter);
+        }
 
         // Wait for all the required preconditions
         // This is things like waiting for the input buffer to have data
         // and for there to be free space in the output buffers.
         // INFO("Waiting on preconditions for GPU[{:d}][{:d}]", gpu_id, gpu_frame_id);
         for (auto& command : commands) {
-            if (command[icommand]->wait_on_precondition() != 0) {
+            int ic = gpu_frame_counter % command.size();
+            if (command[ic]->wait_on_precondition() != 0) {
                 INFO("Received exit signal from GPU command precondition (Command '{:s}')",
-                     command[icommand]->get_name());
+                     command[ic]->get_name());
                 goto exit_loop;
             }
         }
 
         DEBUG("Waiting for free slot for GPU[{:d}] frame {:d}", gpu_id, gpu_frame_counter);
         // We make sure we aren't using a gpu frame that's currently in-flight.
-        final_signals[icommand]->wait_for_free_slot();
+        int ic = gpu_frame_counter % final_signals.size();
+        final_signals[ic]->wait_for_free_slot();
         queue_commands(gpu_frame_counter);
         if (first_run) {
             results_thread_handle = std::thread(&gpuProcess::results_thread, std::ref(*this));
@@ -193,9 +196,8 @@ void gpuProcess::main_thread() {
         gpu_frame_counter++;
     }
 exit_loop:
-    for (auto& sig_container : final_signals) {
+    for (auto& sig_container : final_signals)
         sig_container->stop();
-    }
     INFO("Waiting for GPU packet queues to finish up before freeing memory.");
     if (results_thread_handle.joinable())
         results_thread_handle.join();
@@ -212,8 +214,8 @@ void gpuProcess::results_thread() {
         // Wait for a signal to be completed
         DEBUG2("Waiting for signal for gpu[{:d}], frame {:d}, time: {:f}", gpu_id,
                gpu_frame_counter, e_time());
-        int icommand = gpu_frame_counter % _gpu_buffer_depth;
-        if (final_signals[icommand]->wait_for_signal() == -1) {
+        int ic = gpu_frame_counter % final_signals.size();
+        if (final_signals[ic]->wait_for_signal() == -1) {
             // If wait_for_signal returns -1, then we don't have a signal to wait on,
             // but we have been given a shutdown request, so break this loop.
             break;
@@ -229,23 +231,27 @@ void gpuProcess::results_thread() {
             // Two ways around this would be to have a different call for memory freeing
             // which is always called, or make sure that all finalize_frame calls can
             // run even when there is a shutdown in progress.
-            if (!stop_thread)
-                command[icommand]->finalize_frame();
+            if (!stop_thread) {
+                int ic = gpu_frame_counter % command.size();
+                command[ic]->finalize_frame();
+            }
         }
         DEBUG2("Finished finalizing frames for gpu[{:d}][{:d}]", gpu_id, gpu_frame_counter);
 
         if (log_profiling) {
             std::string output = "";
             for (size_t i = 0; i < commands.size(); ++i) {
+                int ic = gpu_frame_counter % commands[i].size();
                 output = fmt::format(fmt("{:s}command: {:s} ({:30s}) metrics: {:s}; \n"), output,
-                                     commands[i][icommand]->get_unique_name(),
-                                     commands[i][icommand]->get_name(),
-                                     commands[i][icommand]->get_performance_metric_string());
+                                     commands[i][ic]->get_unique_name(),
+                                     commands[i][ic]->get_name(),
+                                     commands[i][ic]->get_performance_metric_string());
             }
             INFO("GPU[{:d}] frame {:d} Profiling: \n{:s}", gpu_id, gpu_frame_counter, output);
         }
 
-        final_signals[icommand]->reset();
+        int ic = gpu_frame_counter % final_signals.size();
+        final_signals[ic]->reset();
         gpu_frame_counter++;
     }
 }
