@@ -232,7 +232,7 @@ void gpuProcess::results_thread() {
             // which is always called, or make sure that all finalize_frame calls can
             // run even when there is a shutdown in progress.
             if (!stop_thread) {
-                int ic = gpu_frame_counter % command.size();
+                ic = gpu_frame_counter % command.size();
                 command[ic]->finalize_frame();
             }
         }
@@ -241,7 +241,7 @@ void gpuProcess::results_thread() {
         if (log_profiling) {
             std::string output = "";
             for (size_t i = 0; i < commands.size(); ++i) {
-                int ic = gpu_frame_counter % commands[i].size();
+                ic = gpu_frame_counter % commands[i].size();
                 output = fmt::format(fmt("{:s}command: {:s} ({:30s}) metrics: {:s}; \n"), output,
                                      commands[i][ic]->get_unique_name(),
                                      commands[i][ic]->get_name(),
@@ -250,7 +250,7 @@ void gpuProcess::results_thread() {
             INFO("GPU[{:d}] frame {:d} Profiling: \n{:s}", gpu_id, gpu_frame_counter, output);
         }
 
-        int ic = gpu_frame_counter % final_signals.size();
+        ic = gpu_frame_counter % final_signals.size();
         final_signals[ic]->reset();
         gpu_frame_counter++;
     }
