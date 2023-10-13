@@ -636,6 +636,7 @@ jobs:
             -DARCH=haswell \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
+            -DUSE_HSA=ON \
             -DWITH_TESTS=OFF \
             -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
