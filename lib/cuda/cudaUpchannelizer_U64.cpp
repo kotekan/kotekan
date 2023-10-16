@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief CUDA BasebandBeamformer kernel
+ * @brief CUDA Upchannelizer_U64 kernel
  *
  * This file has been generated automatically.
  * Do not modify this C++ file, your changes will be lost.
@@ -20,14 +20,14 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 
 /**
- * @class cudaBasebandBeamformer
- * @brief cudaCommand for BasebandBeamformer
+ * @class cudaUpchannelizer_U64
+ * @brief cudaCommand for Upchannelizer_U64
  */
-class cudaBasebandBeamformer : public cudaCommand {
+class cudaUpchannelizer_U64 : public cudaCommand {
 public:
-    cudaBasebandBeamformer(Config& config, const std::string& unique_name,
-                           bufferContainer& host_buffers, cudaDeviceInterface& device);
-    virtual ~cudaBasebandBeamformer();
+    cudaUpchannelizer_U64(Config& config, const std::string& unique_name,
+                          bufferContainer& host_buffers, cudaDeviceInterface& device);
+    virtual ~cudaUpchannelizer_U64();
 
     // int wait_on_precondition(int gpu_frame_id) override;
     cudaEvent_t execute(cudaPipelineState& pipestate,
@@ -49,42 +49,44 @@ private:
     using kernel_arg = CuDeviceArray<int32_t, 1>;
 
     // Kernel design parameters:
-    static constexpr int cuda_number_of_beams = 96;
     static constexpr int cuda_number_of_complex_components = 2;
     static constexpr int cuda_number_of_dishes = 512;
     static constexpr int cuda_number_of_frequencies = 16;
     static constexpr int cuda_number_of_polarizations = 2;
+    static constexpr int cuda_number_of_taps = 4;
     static constexpr int cuda_number_of_timesamples = 32768;
-    static constexpr int cuda_shift_parameter_sigma = 3;
+    static constexpr int cuda_upchannelization_factor = 64;
 
     // Kernel compile parameters:
-    static constexpr int minthreads = 768;
-    static constexpr int blocks_per_sm = 1;
+    static constexpr int minthreads = 512;
+    static constexpr int blocks_per_sm = 2;
 
     // Kernel call parameters:
     static constexpr int threads_x = 32;
-    static constexpr int threads_y = 24;
-    static constexpr int blocks = 512;
-    static constexpr int shmem_bytes = 67712;
+    static constexpr int threads_y = 16;
+    static constexpr int blocks = 128;
+    static constexpr int shmem_bytes = 66816;
 
     // Kernel name:
-    const char* const kernel_symbol = "_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_"
-                                      "I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE";
+    const char* const kernel_symbol =
+        "_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_"
+        "Li1ELi1EES_IS0_Li1ELi1EE";
 
     // Kernel arguments:
-    static constexpr std::size_t A_length = 3145728UL;
+    static constexpr std::size_t Tactual_length = 1UL;
+    static constexpr std::size_t G_length = 2048UL;
     static constexpr std::size_t E_length = 536870912UL;
-    static constexpr std::size_t s_length = 12288UL;
-    static constexpr std::size_t J_length = 100663296UL;
-    static constexpr std::size_t info_length = 1572864UL;
+    static constexpr std::size_t Ebar_length = 536870912UL;
+    static constexpr std::size_t info_length = 262144UL;
 
     // Runtime parameters:
+    std::vector<float> freq_gains;
 
     // GPU memory:
-    const std::string A_memname;
+    const std::string Tactual_memname;
+    const std::string G_memname;
     const std::string E_memname;
-    const std::string s_memname;
-    const std::string J_memname;
+    const std::string Ebar_memname;
     const std::string info_memname;
 
     // Host-side buffer arrays
@@ -93,31 +95,30 @@ private:
     // Declare extra variables (if any)
 };
 
-REGISTER_CUDA_COMMAND(cudaBasebandBeamformer);
+REGISTER_CUDA_COMMAND(cudaUpchannelizer_U64);
 
-cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string& unique_name,
-                                               bufferContainer& host_buffers,
-                                               cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "BasebandBeamformer",
-                "BasebandBeamformer.ptx"),
-    A_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
-    E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
-    s_memname(config.get<std::string>(unique_name, "gpu_mem_output_scaling")),
-    J_memname(config.get<std::string>(unique_name, "gpu_mem_formed_beams")),
+cudaUpchannelizer_U64::cudaUpchannelizer_U64(Config& config, const std::string& unique_name,
+                                             bufferContainer& host_buffers,
+                                             cudaDeviceInterface& device) :
+    cudaCommand(config, unique_name, host_buffers, device, "Upchannelizer_U64",
+                "Upchannelizer_U64.ptx"),
+    Tactual_memname(config.get<std::string>(unique_name, "Tactual")),
+    G_memname(config.get<std::string>(unique_name, "gpu_mem_gain")),
+    E_memname(config.get<std::string>(unique_name, "gpu_mem_input_voltage")),
+    Ebar_memname(config.get<std::string>(unique_name, "gpu_mem_output_voltage")),
     info_memname(unique_name + "/info") {
     // Add Graphviz entries for the GPU buffers used by this kernel
-    gpu_buffers_used.push_back(std::make_tuple(A_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(Tactual_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(G_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(s_memname, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(J_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(Ebar_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_info", false, true, true));
 
-    const int num_elements = config.get<int>(unique_name, "num_elements");
-    if (num_elements != (cuda_number_of_dishes * cuda_number_of_polarizations))
-        throw std::runtime_error(
-            "The num_elements config setting must be "
-            + std::to_string(cuda_number_of_dishes * cuda_number_of_polarizations)
-            + " for the CUDA Baseband Beamformer");
+    const int num_dishes = config.get<int>(unique_name, "num_dishes");
+    if (num_dishes != (cuda_number_of_dishes))
+        throw std::runtime_error("The num_dishes config setting must be "
+                                 + std::to_string(cuda_number_of_dishes)
+                                 + " for the CUDA Baseband Beamformer");
     const int num_local_freq = config.get<int>(unique_name, "num_local_freq");
     if (num_local_freq != (cuda_number_of_frequencies))
         throw std::runtime_error("The num_local_freq config setting must be "
@@ -128,12 +129,19 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
         throw std::runtime_error("The samples_per_data_set config setting must be "
                                  + std::to_string(cuda_number_of_timesamples)
                                  + " for the CUDA Baseband Beamformer");
-    const int num_beams = config.get<int>(unique_name, "num_beams");
-    if (num_beams != (cuda_number_of_beams))
-        throw std::runtime_error("The num_beams config setting must be "
-                                 + std::to_string(cuda_number_of_beams)
+    const int upchan_factor = config.get<int>(unique_name, "upchan_factor");
+    if (upchan_factor != (cuda_upchannelization_factor))
+        throw std::runtime_error("The upchan_factor config setting must be "
+                                 + std::to_string(cuda_upchannelization_factor)
                                  + " for the CUDA Baseband Beamformer");
 
+    const std::vector<float> freq_gains = config.get<std::vector<float>>(unique_name, "freq_gains");
+    std::vector<float16_t> freq_gains16(freq_gains.size());
+    for (std::size_t i = 0; i < freq_gains16.size(); i++)
+        freq_gains16[i] = freq_gains[i];
+    const void* const G_host = freq_gains16.data();
+    void* const G_memory = device.get_gpu_memory(G_memname, G_length);
+    CHECK_CUDA_ERROR(cudaMemcpy(G_memory, G_host, G_length, cudaMemcpyHostToDevice));
 
     set_command_type(gpuCommandType::KERNEL);
     const std::vector<std::string> opts = {
@@ -145,16 +153,18 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
     // Initialize extra variables (if necessary)
 }
 
-cudaBasebandBeamformer::~cudaBasebandBeamformer() {}
+cudaUpchannelizer_U64::~cudaUpchannelizer_U64() {}
 
-cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
-                                            const std::vector<cudaEvent_t>& /*pre_events*/) {
+cudaEvent_t cudaUpchannelizer_U64::execute(cudaPipelineState& pipestate,
+                                           const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute(pipestate.gpu_frame_id);
 
-    void* const A_memory = device.get_gpu_memory_array(A_memname, pipestate.gpu_frame_id, A_length);
+    void* const Tactual_memory =
+        device.get_gpu_memory_array(Tactual_memname, pipestate.gpu_frame_id, Tactual_length);
+    void* const G_memory = device.get_gpu_memory_array(G_memname, pipestate.gpu_frame_id, G_length);
     void* const E_memory = device.get_gpu_memory_array(E_memname, pipestate.gpu_frame_id, E_length);
-    void* const s_memory = device.get_gpu_memory_array(s_memname, pipestate.gpu_frame_id, s_length);
-    void* const J_memory = device.get_gpu_memory_array(J_memname, pipestate.gpu_frame_id, J_length);
+    void* const Ebar_memory =
+        device.get_gpu_memory_array(Ebar_memname, pipestate.gpu_frame_id, Ebar_length);
     std::int32_t* const info_memory =
         static_cast<std::int32_t*>(device.get_gpu_memory(info_memname, info_length));
     host_info.resize(_gpu_buffer_depth);
@@ -168,13 +178,13 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
         cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
 
     const char* exc_arg = "exception";
-    kernel_arg A_arg(A_memory, A_length);
+    kernel_arg Tactual_arg(Tactual_memory, Tactual_length);
+    kernel_arg G_arg(G_memory, G_length);
     kernel_arg E_arg(E_memory, E_length);
-    kernel_arg s_arg(s_memory, s_length);
-    kernel_arg J_arg(J_memory, J_length);
+    kernel_arg Ebar_arg(Ebar_memory, Ebar_length);
     kernel_arg info_arg(info_memory, info_length);
     void* args[] = {
-        &exc_arg, &A_arg, &E_arg, &s_arg, &J_arg, &info_arg,
+        &exc_arg, &Tactual_arg, &G_arg, &E_arg, &Ebar_arg, &info_arg,
     };
 
     // Modify kernel arguments (if necessary)
@@ -186,7 +196,7 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
-    DEBUG("Running CUDA BasebandBeamformer on GPU frame {:d}", pipestate.gpu_frame_id);
+    DEBUG("Running CUDA Upchannelizer_U64 on GPU frame {:d}", pipestate.gpu_frame_id);
     const CUresult err =
         cuLaunchKernel(runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
@@ -206,12 +216,12 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
     return record_end_event(pipestate.gpu_frame_id);
 }
 
-void cudaBasebandBeamformer::finalize_frame(const int gpu_frame_id) {
+void cudaUpchannelizer_U64::finalize_frame(const int gpu_frame_id) {
     cudaCommand::finalize_frame(gpu_frame_id);
 
     for (std::size_t i = 0; i < host_info[gpu_frame_id].size(); ++i)
         if (host_info[gpu_frame_id][i] != 0)
-            ERROR("cudaBasebandBeamformer returned 'info' value {:d} at index {:d} (zero indicates "
+            ERROR("cudaUpchannelizer_U64 returned 'info' value {:d} at index {:d} (zero indicates "
                   "noerror)",
                   host_info[gpu_frame_id][i], int(i));
 }

@@ -17,7 +17,7 @@
 #include <algorithm>   // for max
 #include <array>       // for array
 #include <assert.h>    // for assert
-#include <csignal>     // for signal, SIGINT, SIGTERM, sig_atomic_t
+#include <csignal>     // for signal, SIGHUP, sig_atomic_t
 #include <exception>   // for exception
 #include <getopt.h>    // for no_argument, getopt_long, required_argument, option
 #include <iostream>    // for endl, basic_ostream, cout, ostream
@@ -408,8 +408,7 @@ void start_new_kotekan_mode(Config& config, bool dump_config) {
 
 int main(int argc, char** argv) {
 
-    std::signal(SIGINT, signal_handler);
-    std::signal(SIGTERM, signal_handler);
+    std::signal(SIGHUP, signal_handler);
 
     char* config_file_name = (char*)"none";
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
@@ -628,7 +627,7 @@ int main(int argc, char** argv) {
 
     rest_server.register_get_callback("/kill", [&](connectionInstance& conn) {
         ERROR_NON_OO(
-            "/kill endpoint called, raising SIGTERM to shutdown the kotekan system process.");
+            "/kill endpoint called, raising SIGHUP to shutdown the kotekan system process.");
         kotekan::kotekanLogging::set_error_message("/kill endpoint called.");
         exit_kotekan(ReturnCode::CLEAN_EXIT);
         conn.send_empty_reply(HTTP_RESPONSE::OK);
@@ -662,8 +661,8 @@ int main(int argc, char** argv) {
             kotekan_running_metric.set(running);
         }
 
-        if (sig_value == SIGINT || sig_value == SIGTERM) {
-            INFO_NON_OO("Got SIGINT or SIGTERM, shutting down kotekan...");
+        if (sig_value == SIGHUP || sig_value == SIGINT) {
+            INFO_NON_OO("Got SIGHUP or SIGINT, shutting down kotekan...");
             std::lock_guard<std::mutex> lock(kotekan_state_lock);
             if (kotekan_mode != nullptr) {
                 INFO_NON_OO("Attempting to stop and join kotekan_stages...");

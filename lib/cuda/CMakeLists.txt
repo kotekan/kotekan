@@ -32,6 +32,10 @@ add_library(
     cudaRechunk.cpp
     cudaUpchannelize.cpp
     cudaUpchannelize16k.cpp
+    cudaUpchannelizer_U16.cpp
+    cudaUpchannelizer_U32.cpp
+    cudaUpchannelizer_U64.cpp
+    cudaUpchannelizer_U128.cpp
     chordMVPSetup.cpp)
 
 # C++17

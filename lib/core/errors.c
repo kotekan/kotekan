@@ -1,6 +1,6 @@
 #include "errors.h"
 
-#include <signal.h> // for raise, SIGTERM
+#include <signal.h> // for raise, SIGHUP
 #include <stdarg.h> // for va_end, va_list, va_start
 
 // Default values for log levels.
@@ -27,7 +27,7 @@ void internal_logging_f(int log, const char* format, ...) {
 // Starts kotekan shutdown and sets a status code.
 void exit_kotekan(enum ReturnCode code) {
     __status_code = code;
-    raise(SIGTERM);
+    raise(SIGHUP);
 }
 
 enum ReturnCode get_exit_code() {

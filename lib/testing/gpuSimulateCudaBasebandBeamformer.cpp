@@ -85,9 +85,9 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
                 for (int b = b0; b < b1; ++b) {
                     int Jre = 0, Jim = 0;
                     for (int d = d0; d < d1; ++d) {
-                        const int Aim = A[(((f * 2 + p) * B + b) * D + d) * 2 + 0];
-                        const int Are = A[(((f * 2 + p) * B + b) * D + d) * 2 + 1];
-                        const auto [Eim, Ere] = get4(E[((t * 2 + p) * F + f) * D + d]);
+                        const int Are = A[(((f * 2 + p) * B + b) * D + d) * 2 + 0];
+                        const int Aim = A[(((f * 2 + p) * B + b) * D + d) * 2 + 1];
+                        const auto [Ere, Eim] = get4(E[((t * 2 + p) * F + f) * D + d]);
                         Jre += Are * Ere - Aim * Eim;
                         Jim += Are * Eim + Aim * Ere;
                         if (Are || Aim) {
@@ -95,7 +95,7 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
                             if (nprint_p < nprint_max) {
                                 // clang-format off
                                 DEBUG("bb_simple: found phase f={:d}, p={:d}, b={:d}, d={:d} = index {:d}=0x{:x} with value {:d} = 0x{:x}",
-                                      f, p, b, d, indx, indx, Aim, Are);
+                                      f, p, b, d, indx, indx, Are, Aim);
                                 // clang-format on
                                 nprint_p++;
                             }
@@ -128,7 +128,7 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
                     if (Jim < -7)
                         Jim = -7;
                     int jindx = ((b * F + f) * 2 + p) * T + t;
-                    J[jindx] = set4(Jim, Jre);
+                    J[jindx] = set4(Jre, Jim);
                     if (Jre || Jim) {
                         if (nprint_b < nprint_max) {
                             DEBUG("bb_simple: setting b={:d}(0x{:x}), f={:d}(0x{:x}), "
@@ -136,12 +136,12 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
                                   "{:d} (0x{:x}), re=0x{:x}, im=0x{:x}, after: re=0x{:x}, "
                                   "im=0x{:x}, packed: 0x{:x}",
                                   b, b, f, f, p, p, t, t, jindx, shift, shift, oJre, oJim, Jre, Jim,
-                                  set4(Jim, Jre));
+                                  set4(Jre, Jim));
                             if (nprint_b == 0)
                                 INFO("PY bb[{:s}] = (({:d}, {:d}, {:d}, {:d}, {:d}), ({:d}, {:d}), "
                                      "({:d}, {:d}), 0x{:x})",
                                      id_tag, b, f, p, t, jindx, oJre, oJim, Jre, Jim,
-                                     set4(Jim, Jre));
+                                     set4(Jre, Jim));
                             nprint_b++;
                         }
                     }
