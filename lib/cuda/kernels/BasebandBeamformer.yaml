@@ -1,0 +1,53 @@
+--- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
+kernel-description:
+  name: "bb"
+  description: "baseband beamformer"
+  design-parameters:
+    number-of-beams: 96
+    number-of-complex-components: 2
+    number-of-dishes: 512
+    number-of-frequencies: 16
+    number-of-polarizations: 2
+    number-of-timesamples: 32768
+    sampling-time-μsec: 1.7066666666666668
+    shift-parameter-σ: 3
+  compile-parameters:
+    minthreads: 768
+    blocks_per_sm: 1
+  call-parameters:
+    threads: [32, 24]
+    blocks: [512]
+    shmem_bytes: 67712
+  kernel-symbol: "_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE"
+  kernel-arguments:
+    - name: "A"
+      intent: in
+      type: Int8
+      indices: [C, D, B, P, F]
+      shape: [2, 512, 96, 2, 16]
+      strides: [1, 2, 1024, 98304, 196608]
+    - name: "E"
+      intent: in
+      type: Int4
+      indices: [C, D, F, P, T]
+      shape: [2, 512, 16, 2, 32768]
+      strides: [1, 2, 1024, 16384, 32768]
+    - name: "s"
+      intent: in
+      type: Int32
+      indices: [B, P, F]
+      shape: [96, 2, 16]
+      strides: [1, 96, 192]
+    - name: "J"
+      intent: out
+      type: Int4
+      indices: [C, T, P, F, B]
+      shape: [2, 32768, 2, 16, 96]
+      strides: [1, 2, 65536, 131072, 2097152]
+    - name: "info"
+      intent: out
+      type: Int32
+      indices: [thread, warp, block]
+      shapes: [32, 24, 512]
+      strides: [1, 32, 768]
+...
