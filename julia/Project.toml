@@ -1,0 +1,11 @@
+name = "Kotekan"
+uuid = "4b3ecac4-cfa8-46ac-ae66-cdd0e0e0ae48"
+authors = ["Erik Schnetter <schnetter@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+CUDASIMDTypes = "ba1ee33b-8807-41fd-9812-6d5f2ce04139"
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
+SixelTerm = "65edfddc-f399-4499-8369-a1bd38eee2ea"
+YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
