@@ -14,7 +14,7 @@
 
 #pragma pack()
 
-enum chordDataType { int4p4, int8, float16, float32 };
+enum chordDataType { int4p4, int8, int16, int32, int64, float16, float32, float64 };
 
 // Maximum number of frequencies in metadata array
 const int CHORD_META_MAX_FREQ = 16;
