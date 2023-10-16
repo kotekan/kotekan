@@ -1,0 +1,174 @@
+##########################################
+#
+# FEngine Data Generator
+#
+##########################################
+---
+type: config
+log_level: debug   # info
+cpu_affinity: [0,1,2,3,4,5,6,7]
+buffer_depth: 4
+
+frame_arrival_period: 2.56e-6 * num_times
+
+sizeof_int32: 4
+sizeof_float16: 2
+num_components: 2
+num_polarizations: 2
+
+# F-Engine simulator: Sky
+source_amplitude: 1.0
+source_frequency: 0.3e+9        # Hz
+source_position_sinx: 0.02      # east-west
+source_position_siny: 0.03      # north-south
+
+# F-Engine simulator: Dishes
+num_dishes_M: 32
+num_dishes_N: 16
+dish_separation_x: 6.3          # [m] east-west
+dish_separation_y: 8.5          # [m] north-south
+num_dishes: num_dishes_M * num_dishes_N
+
+# F-Engine simulator: ADC
+adc_frequency: 3.0e+9           # [Hz]
+num_samples_per_frame: 2048
+
+# F-Engine simulator: FT (PFB)
+num_taps: 4
+num_frequencies: 16             # how many frequencies to keep
+num_times: 32768
+
+# Baseband beamformer setup
+num_beams_P: 12
+num_beams_Q: 8
+beam_separation_x: 0.015        # east-west
+beam_separation_y: 0.015        # north-south
+num_beams: num_beams_P * num_beams_Q
+
+# Baseband beamformer
+num_threads: 32
+num_warps: 24
+num_blocks: 512
+
+# Pool:
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 10 * buffer_depth
+
+# Buffers
+host_phase_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_components * num_dishes * num_beams * num_polarizations * num_frequencies
+    metadata_pool: main_pool
+
+host_voltage_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_dishes * num_frequencies * num_polarizations * num_times
+    metadata_pool: main_pool
+
+host_shift_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_int32 * num_beams * num_polarizations * num_frequencies
+    metadata_pool: main_pool
+
+host_beams_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_times * num_polarizations * num_frequencies * num_beams
+    metadata_pool: main_pool
+
+host_wanted_beams_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_times * num_polarizations * num_frequencies * num_beams
+    metadata_pool: main_pool
+
+host_info_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_int32 * num_threads * num_warps * num_blocks
+    metadata_pool: main_pool
+
+# Stages
+gen_voltage:
+    kotekan_stage: FEngine
+    num_frames: 1
+    samples_per_data_set: num_times
+    E_frame_size: num_dishes * num_frequencies * num_polarizations * num_times
+    A_frame_size: num_components * num_dishes * num_beams * num_polarizations * num_frequencies
+    J_frame_size: num_times * num_polarizations * num_frequencies * num_beams
+    E_buffer: host_voltage_buffer
+    A_buffer: host_phase_buffer
+    J_buffer: host_wanted_beams_buffer
+
+gen_shift:
+    kotekan_stage: testDataGen
+    type: const32
+    value: 13
+    out_buf: host_shift_buffer
+
+gpu:
+    kernel_path: "lib/cuda/kernels"
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage: host_voltage_buffer
+            host_phase: host_phase_buffer
+            host_shift: host_shift_buffer
+        out_buffers:
+            host_beams: host_beams_buffer
+            host_info: host_info_buffer
+        commands:
+        - name: cudaInputData
+          in_buf: host_voltage
+          gpu_mem: voltage
+        - name: cudaInputData
+          in_buf: host_phase
+          gpu_mem: phase
+        - name: cudaInputData
+          in_buf: host_shift
+          gpu_mem: shift
+        - name: cudaSyncInput
+        - name: cudaBasebandBeamformer
+          # num_elements: num_dishes * num_polarizations
+          # num_local_freq: num_frequencies
+          # samples_per_data_set: num_times
+          gpu_mem_voltage: voltage
+          gpu_mem_phase: phase
+          gpu_mem_output_scaling: shift
+          gpu_mem_formed_beams: beams
+          gpu_mem_info: info
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: beams
+          out_buf: host_beams
+        - name: cudaOutputData
+          gpu_mem: info
+          out_buf: host_info
+
+write_data:
+  base_dir: /tmp
+  file_ext: data
+  exit_after_n_frames: 1
+  exit_with_n_writers: 4
+  write_voltage:
+    kotekan_stage: hdf5FileWrite
+    in_buf: host_voltage_buffer
+    file_name: voltage
+  write_phase:
+    kotekan_stage: hdf5FileWrite
+    in_buf: host_phase_buffer
+    file_name: phase
+  write_wanted_beams:
+    kotekan_stage: hdf5FileWrite
+    in_buf: host_wanted_beams_buffer
+    file_name: wanted_beams
+  write_beams:
+    kotekan_stage: hdf5FileWrite
+    in_buf: host_beams_buffer
+    file_name: beams
+...
