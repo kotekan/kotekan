@@ -75,11 +75,11 @@ private:
                                       "I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE";
 
     // Kernel arguments:
-    static constexpr std::size_t A_length = 3145728UL;
-    static constexpr std::size_t E_length = 536870912UL;
-    static constexpr std::size_t s_length = 12288UL;
-    static constexpr std::size_t J_length = 100663296UL;
-    static constexpr std::size_t info_length = 1572864UL;
+    static constexpr std::size_t A_length = 3145728ULL;
+    static constexpr std::size_t E_length = 536870912ULL;
+    static constexpr std::size_t s_length = 12288ULL;
+    static constexpr std::size_t J_length = 100663296ULL;
+    static constexpr std::size_t info_length = 1572864ULL;
 
     // Runtime parameters:
 

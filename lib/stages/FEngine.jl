@@ -656,7 +656,7 @@ end
 
 stored_xframes = nothing
 function set_E(ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64, nfreqs::Int64, npolrs::Int64, ntimes::Int64, frame_index::Int64)
-    # @show set_E ptr sz ndishes nfreqs npolrs ntimes frame_index
+    @show set_E ptr sz ndishes nfreqs npolrs ntimes frame_index
     xframes = stored_xframes::AbstractVector{<:XFrame}
     xframe = xframes[frame_index]::XFrame
     @assert length(xframe.data) == sz
@@ -667,8 +667,15 @@ end
 
 stored_beamss = nothing
 function set_A(ptr::Ptr{UInt8}, sz::Int64, ndishs::Int64, nbeams::Int64, npolrs::Int64, nfreqs::Int64, frame_index::Int64)
+    @show set_A ptr sz ndishs nbeams npolrs nfreqs frame_index
     beamss = stored_beamss::AbstractVector{<:BBeams}
     beams = beamss[frame_index]::BBeams
+    if !(length(beams.phases) * sizeof(Complex{Int8}) == sz)
+        @show length(beams.phases) * sizeof(Complex{Int8}) sz
+    end
+    if !(size(beams.phases) == (ndishs, nbeams, npolrs, nfreqs))
+        @show size(beams.phases) (ndishs, nbeams, npolrs, nfreqs)
+    end
     @assert length(beams.phases) * sizeof(Complex{Int8}) == sz
     @assert size(beams.phases) == (ndishs, nbeams, npolrs, nfreqs)
     fill_buffer!(Ptr{Complex{Int8}}(ptr), sz ÷ sizeof(Complex{Int8}), beams.phases)
@@ -676,6 +683,7 @@ function set_A(ptr::Ptr{UInt8}, sz::Int64, ndishs::Int64, nbeams::Int64, npolrs:
 end
 
 function set_J(ptr::Ptr{UInt8}, sz::Int64, ntimes::Int64, npolrs::Int64, nfreqs::Int64, nbeams::Int64, frame_index::Int64)
+    @show set_J ptr, sz ntimes npolrs nfreqs nbeams frame_index
     beamss = stored_beamss::AbstractVector{<:BBeams}
     beams = beamss[frame_index]::BBeams
     @assert length(beams.data) == sz
