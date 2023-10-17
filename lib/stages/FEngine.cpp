@@ -14,9 +14,40 @@
 class FEngine : public kotekan::Stage {
     const std::string unique_name;
 
-    const int num_frames;
-    const int samples_per_data_set;
+    // Basic constants
+    const int num_components;
+    const int num_polarizations;
 
+    // Sky
+    const float source_amplitude;
+    const float source_frequency;
+    const float source_position_x;
+    const float source_position_y;
+
+    // Dishes
+    const float dish_separation_x;
+    const float dish_separation_y;
+    const int num_dishes_M;
+    const int num_dishes_N;
+    const int num_dishes;
+
+    // ADC
+    const float adc_frequency;
+    const int num_taps;
+    const int num_frequencies;
+    const int num_times;
+
+    // Baseband beamformer setup
+    const int num_beams_P;
+    const int num_beams_Q;
+    const float beam_separation_x;
+    const float beam_separation_y;
+    const int num_beams;
+
+    // Pipeline
+    const int num_frames;
+
+    // Kotekan
     const int E_frame_size;
     const int A_frame_size;
     const int J_frame_size;
@@ -40,12 +71,41 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
           [](const kotekan::Stage& stage) {
               return const_cast<kotekan::Stage&>(stage).main_thread();
           }),
-    unique_name(unique_name), num_frames(config.get_default<int>(unique_name, "num_frames", 1)),
-    samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
-    E_frame_size(config.get<int>(unique_name, "E_frame_size")),
-    A_frame_size(config.get<int>(unique_name, "A_frame_size")),
-    J_frame_size(config.get<int>(unique_name, "J_frame_size")), E_buffer(get_buffer("E_buffer")),
-    A_buffer(get_buffer("A_buffer")), J_buffer(get_buffer("J_buffer")) {
+    unique_name(unique_name),
+    // Basic constants
+    num_components(config.get<int>(unique_name, "num_components")),
+    num_polarizations(config.get<int>(unique_name, "num_polarizations")),
+    // Sky
+    source_amplitude(config.get<float>(unique_name, "source_amplitude")),
+    source_frequency(config.get<float>(unique_name, "source_frequency")),
+    source_position_x(config.get<float>(unique_name, "source_position_x")),
+    source_position_y(config.get<float>(unique_name, "source_position_y")),
+    // Dishes
+    dish_separation_x(config.get<float>(unique_name, "dish_separation_x")),
+    dish_separation_y(config.get<float>(unique_name, "dish_separation_y")),
+    num_dishes_M(config.get<int>(unique_name, "num_dishes_M")),
+    num_dishes_N(config.get<int>(unique_name, "num_dishes_N")),
+    num_dishes(num_dishes_M * num_dishes_N),
+    // ADC
+    adc_frequency(config.get<float>(unique_name, "adc_frequency")),
+    num_taps(config.get<int>(unique_name, "num_taps")),
+    num_frequencies(config.get<int>(unique_name, "num_frequencies")),
+    num_times(config.get<int>(unique_name, "num_times")),
+    // Baseband beamformer setup
+    num_beams_P(config.get<int>(unique_name, "num_beams_P")),
+    num_beams_Q(config.get<int>(unique_name, "num_beams_Q")),
+    beam_separation_x(config.get<float>(unique_name, "beam_separation_x")),
+    beam_separation_y(config.get<float>(unique_name, "beam_separation_y")),
+    num_beams(num_beams_P * num_beams_Q),
+    // Pipeline
+    num_frames(config.get<int>(unique_name, "num_frames")),
+    // Frame sizes
+    E_frame_size(num_dishes * num_frequencies * num_polarizations * num_times),
+    A_frame_size(num_components * num_dishes * num_beams * num_polarizations * num_frequencies),
+    J_frame_size(num_times * num_polarizations * num_frequencies * num_beams),
+    // Buffers
+    E_buffer(get_buffer("E_buffer")), A_buffer(get_buffer("A_buffer")),
+    J_buffer(get_buffer("J_buffer")) {
     assert(E_buffer);
     assert(A_buffer);
     assert(J_buffer);
@@ -93,18 +153,18 @@ void FEngine::main_thread() {
         const int nargs = 12;
         jl_value_t** args;
         JL_GC_PUSHARGS(args, nargs);
-        args[0] /* source_amplitude */ = jl_box_float32(1.0);
-        args[1] /* source_frequency */ = jl_box_float32(0.3e+9);
-        args[2] /* source_position_sinx */ = jl_box_float32(0.02);
-        args[3] /* source_position_siny */ = jl_box_float32(0.03);
-        args[4] /* dish_separation_x */ = jl_box_float32(6.3);
-        args[5] /* dish_separation_y */ = jl_box_float32(8.5);
-        args[6] /* ndishes_i */ = jl_box_int64(32);
-        args[7] /* ndishes_j */ = jl_box_int64(16);
-        args[8] /* adc_frequency */ = jl_box_float32(3.0e+9);
-        args[9] /* ntaps */ = jl_box_int64(4);
-        args[10] /* nfreq */ = jl_box_int64(16);
-        args[11] /* ntimes */ = jl_box_int64(32768);
+        args[0] = jl_box_float32(source_amplitude);
+        args[1] = jl_box_float32(source_frequency);
+        args[2] = jl_box_float32(source_position_x);
+        args[3] = jl_box_float32(source_position_y);
+        args[4] = jl_box_float32(dish_separation_x);
+        args[5] = jl_box_float32(dish_separation_y);
+        args[6] = jl_box_int64(num_dishes_M);
+        args[7] = jl_box_int64(num_dishes_N);
+        args[8] = jl_box_float32(adc_frequency);
+        args[9] = jl_box_int64(num_taps);
+        args[10] = jl_box_int64(num_frequencies);
+        args[11] = jl_box_int64(num_times);
         jl_value_t* const res = jl_call(setup, args, nargs);
         assert(res);
         JL_GC_POP();
@@ -116,7 +176,7 @@ void FEngine::main_thread() {
             break;
 
         INFO("[{:d}] Getting buffers...", frame_index);
-        const std::uint64_t seq_num = std::uint64_t(1) * samples_per_data_set * frame_index;
+        const std::uint64_t seq_num = std::uint64_t(1) * num_times * frame_index;
 
         const int A_frame_id = frame_index % A_buffer->num_frames;
         std::uint8_t* const A_frame =
@@ -152,27 +212,16 @@ void FEngine::main_thread() {
             assert(f_engine_module);
             jl_function_t* const set_E = jl_get_function(f_engine_module, "set_E");
             assert(set_E);
-            jl_value_t* arg_ptr = nullptr;
-            jl_value_t* arg_sz = nullptr;
-            jl_value_t* arg_ndishes = nullptr;
-            jl_value_t* arg_nfreqs = nullptr;
-            jl_value_t* arg_npolrs = nullptr;
-            jl_value_t* arg_ntimes = nullptr;
-            jl_value_t* arg_index = nullptr;
-            JL_GC_PUSH7(&arg_ptr, &arg_sz, &arg_ndishes, &arg_nfreqs, &arg_npolrs, &arg_ntimes,
-                        &arg_index);
-            arg_ptr = jl_box_uint8pointer(E_frame);
-            arg_sz = jl_box_int64(E_frame_size);
-            // TODO: Take these from the E metadata
-            arg_ndishes = jl_box_int64(512);
-            arg_nfreqs = jl_box_int64(16);
-            arg_npolrs = jl_box_int64(2);
-            arg_ntimes = jl_box_int64(32768);
-            arg_index = jl_box_int64(frame_index + 1);
             const int nargs = 7;
-            jl_value_t* args[nargs] = {
-                arg_ptr, arg_sz, arg_ndishes, arg_nfreqs, arg_npolrs, arg_ntimes, arg_index,
-            };
+            jl_value_t** args;
+            JL_GC_PUSHARGS(args, nargs);
+            args[0] = jl_box_uint8pointer(E_frame);
+            args[1] = jl_box_int64(E_frame_size);
+            args[2] = jl_box_int64(num_dishes);
+            args[3] = jl_box_int64(num_frequencies);
+            args[4] = jl_box_int64(num_polarizations);
+            args[5] = jl_box_int64(num_times);
+            args[6] = jl_box_int64(frame_index + 1);
             jl_value_t* const res = jl_call(set_E, args, nargs);
             assert(res);
             JL_GC_POP();
@@ -186,27 +235,16 @@ void FEngine::main_thread() {
             assert(f_engine_module);
             jl_function_t* const set_A = jl_get_function(f_engine_module, "set_A");
             assert(set_A);
-            jl_value_t* arg_ptr = nullptr;
-            jl_value_t* arg_sz = nullptr;
-            jl_value_t* arg_ndishes = nullptr;
-            jl_value_t* arg_nbeams = nullptr;
-            jl_value_t* arg_npolrs = nullptr;
-            jl_value_t* arg_nfreqs = nullptr;
-            jl_value_t* arg_index = nullptr;
-            JL_GC_PUSH7(&arg_ptr, &arg_sz, &arg_ndishes, &arg_nbeams, &arg_npolrs, &arg_nfreqs,
-                        &arg_index);
-            arg_ptr = jl_box_uint8pointer(A_frame);
-            arg_sz = jl_box_int64(A_frame_size);
-            // TODO: Take these from the A metadata
-            arg_ndishes = jl_box_int64(512);
-            arg_nbeams = jl_box_int64(96);
-            arg_npolrs = jl_box_int64(2);
-            arg_nfreqs = jl_box_int64(16);
-            arg_index = jl_box_int64(frame_index + 1);
             const int nargs = 7;
-            jl_value_t* args[nargs] = {
-                arg_ptr, arg_sz, arg_ndishes, arg_nbeams, arg_npolrs, arg_nfreqs, arg_index,
-            };
+            jl_value_t** args;
+            JL_GC_PUSHARGS(args, nargs);
+            args[0] = jl_box_uint8pointer(A_frame);
+            args[1] = jl_box_int64(A_frame_size);
+            args[2] = jl_box_int64(num_dishes);
+            args[3] = jl_box_int64(num_beams);
+            args[4] = jl_box_int64(num_polarizations);
+            args[5] = jl_box_int64(num_frequencies);
+            args[6] = jl_box_int64(frame_index + 1);
             jl_value_t* const res = jl_call(set_A, args, nargs);
             assert(res);
             JL_GC_POP();
@@ -220,27 +258,16 @@ void FEngine::main_thread() {
             assert(f_engine_module);
             jl_function_t* const set_J = jl_get_function(f_engine_module, "set_J");
             assert(set_J);
-            jl_value_t* arg_ptr = nullptr;
-            jl_value_t* arg_sz = nullptr;
-            jl_value_t* arg_ntimes = nullptr;
-            jl_value_t* arg_npolrs = nullptr;
-            jl_value_t* arg_nfreqs = nullptr;
-            jl_value_t* arg_nbeams = nullptr;
-            jl_value_t* arg_index = nullptr;
-            JL_GC_PUSH7(&arg_ptr, &arg_sz, &arg_ntimes, &arg_npolrs, &arg_nfreqs, &arg_nbeams,
-                        &arg_index);
-            arg_ptr = jl_box_uint8pointer(J_frame);
-            arg_sz = jl_box_int64(J_frame_size);
-            // TODO: Take these from the J metadata
-            arg_ntimes = jl_box_int64(32768);
-            arg_npolrs = jl_box_int64(2);
-            arg_nfreqs = jl_box_int64(16);
-            arg_nbeams = jl_box_int64(96);
-            arg_index = jl_box_int64(frame_index + 1);
             const int nargs = 7;
-            jl_value_t* args[nargs] = {
-                arg_ptr, arg_sz, arg_ntimes, arg_npolrs, arg_nfreqs, arg_nbeams, arg_index,
-            };
+            jl_value_t** args;
+            JL_GC_PUSHARGS(args, nargs);
+            args[0] = jl_box_uint8pointer(J_frame);
+            args[1] = jl_box_int64(J_frame_size);
+            args[2] = jl_box_int64(num_times);
+            args[3] = jl_box_int64(num_polarizations);
+            args[4] = jl_box_int64(num_frequencies);
+            args[5] = jl_box_int64(num_beams);
+            args[6] = jl_box_int64(frame_index + 1);
             jl_value_t* const res = jl_call(set_J, args, nargs);
             assert(res);
             JL_GC_POP();
@@ -258,12 +285,12 @@ void FEngine::main_thread() {
         std::strncpy(E_metadata->dim_name[1], "P", sizeof E_metadata->dim_name[1]);
         std::strncpy(E_metadata->dim_name[2], "F", sizeof E_metadata->dim_name[2]);
         std::strncpy(E_metadata->dim_name[3], "D", sizeof E_metadata->dim_name[3]);
-        E_metadata->dim[0] = 32768;
-        E_metadata->dim[1] = 2;
-        E_metadata->dim[2] = 16;
-        E_metadata->dim[3] = 512;
+        E_metadata->dim[0] = num_times;
+        E_metadata->dim[1] = num_polarizations;
+        E_metadata->dim[2] = num_frequencies;
+        E_metadata->dim[3] = num_dishes;
         E_metadata->n_one_hot = -1;
-        E_metadata->nfreq = 16;
+        E_metadata->nfreq = num_frequencies;
 
         chordMetadata* const A_metadata = get_chord_metadata(A_buffer, A_frame_id);
         chord_metadata_init(A_metadata);
@@ -276,13 +303,13 @@ void FEngine::main_thread() {
         std::strncpy(A_metadata->dim_name[2], "B", sizeof A_metadata->dim_name[2]);
         std::strncpy(A_metadata->dim_name[3], "D", sizeof A_metadata->dim_name[3]);
         std::strncpy(A_metadata->dim_name[4], "C", sizeof A_metadata->dim_name[4]);
-        A_metadata->dim[0] = 16;
-        A_metadata->dim[1] = 2;
-        A_metadata->dim[2] = 96;
-        A_metadata->dim[3] = 512;
-        A_metadata->dim[4] = 2;
+        A_metadata->dim[0] = num_frequencies;
+        A_metadata->dim[1] = num_polarizations;
+        A_metadata->dim[2] = num_beams;
+        A_metadata->dim[3] = num_dishes;
+        A_metadata->dim[4] = num_polarizations;
         A_metadata->n_one_hot = -1;
-        A_metadata->nfreq = 16;
+        A_metadata->nfreq = num_frequencies;
 
         chordMetadata* const J_metadata = get_chord_metadata(J_buffer, J_frame_id);
         chord_metadata_init(J_metadata);
@@ -294,12 +321,12 @@ void FEngine::main_thread() {
         std::strncpy(J_metadata->dim_name[1], "F", sizeof J_metadata->dim_name[1]);
         std::strncpy(J_metadata->dim_name[2], "P", sizeof J_metadata->dim_name[2]);
         std::strncpy(J_metadata->dim_name[3], "T", sizeof J_metadata->dim_name[3]);
-        J_metadata->dim[0] = 96;
-        J_metadata->dim[1] = 16;
-        J_metadata->dim[2] = 2;
-        J_metadata->dim[3] = 32768;
+        J_metadata->dim[0] = num_beams;
+        J_metadata->dim[1] = num_frequencies;
+        J_metadata->dim[2] = num_polarizations;
+        J_metadata->dim[3] = num_times;
         J_metadata->n_one_hot = -1;
-        J_metadata->nfreq = 16;
+        J_metadata->nfreq = num_frequencies;
 
         mark_frame_full(E_buffer, unique_name.c_str(), E_frame_id);
         mark_frame_full(A_buffer, unique_name.c_str(), A_frame_id);

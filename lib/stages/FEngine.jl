@@ -553,7 +553,7 @@ end
 ################################################################################
 # Main script
 
-function run(source_amplitude::Float, source_frequency::Float, source_position_sinx::Float, source_position_siny::Float,
+function run(source_amplitude::Float, source_frequency::Float, source_position_x::Float, source_position_y::Float,
              dish_separation_x::Float, dish_separation_y::Float, ndishes_i::Int64, ndishes_j::Int64,
              adc_frequency::Float,
              ntaps::Int64, nfreq::Int64, ntimes::Int64,
@@ -561,8 +561,8 @@ function run(source_amplitude::Float, source_frequency::Float, source_position_s
     source = let
         A = Complex{Float}(source_amplitude)
         f₀ = source_frequency       # Hz
-        sinx = source_position_sinx # east-west
-        siny = source_position_siny # north-south
+        sinx = sin(source_position_x) # east-west
+        siny = sin(source_position_y) # north-south
         Source(make_monochromatic_source(A, f₀), sinx, siny)
     end
 
@@ -643,12 +643,12 @@ function fill_buffer!(ptr::Ptr{Complex{Int8}}, sz::Int64, data::AbstractArray{Co
     return flush(stdout)
 end
 
-function setup(source_amplitude=Float(1.0), source_frequency=Float(0.3e+9), source_position_sinx=Float(0.02),
-               source_position_siny=Float(0.03),
+function setup(source_amplitude=Float(1.0), source_frequency=Float(0.3e+9), source_position_x=Float(0.02),
+               source_position_y=Float(0.03),
                dish_separation_x=Float(6.3), dish_separation_y=Float(8.5), ndishes_i=8, ndishes_j=8,
                adc_frequency=Float(3.0e+9),
                ntaps=4, nfreq=64, ntimes=64)
-    return run(Float(source_amplitude), Float(source_frequency), Float(source_position_sinx), Float(source_position_siny),
+    return run(Float(source_amplitude), Float(source_frequency), Float(source_position_x), Float(source_position_y),
                Float(dish_separation_x), Float(dish_separation_y), Int64(ndishes_i), Int64(ndishes_j),
                Float(adc_frequency),
                Int64(ntaps), Int64(nfreq), Int64(ntimes), false)

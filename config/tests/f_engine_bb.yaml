@@ -1,6 +1,6 @@
 ##########################################
 #
-# FEngine Data Generator
+# F-Engine Data Generator
 #
 ##########################################
 ---
@@ -13,14 +13,16 @@ frame_arrival_period: 2.56e-6 * num_times
 
 sizeof_int32: 4
 sizeof_float16: 2
+
+# Basic constants
 num_components: 2
 num_polarizations: 2
 
 # F-Engine simulator: Sky
 source_amplitude: 1.0
 source_frequency: 0.3e+9        # Hz
-source_position_sinx: 0.02      # east-west
-source_position_siny: 0.03      # north-south
+source_position_x: 0.02      # east-west
+source_position_y: 0.03      # north-south
 
 # F-Engine simulator: Dishes
 num_dishes_M: 32
@@ -45,7 +47,7 @@ beam_separation_x: 0.015        # east-west
 beam_separation_y: 0.015        # north-south
 num_beams: num_beams_P * num_beams_Q
 
-# Baseband beamformer
+# Baseband beamformer kernel
 num_threads: 32
 num_warps: 24
 num_blocks: 512
@@ -96,10 +98,6 @@ host_info_buffer:
 gen_voltage:
     kotekan_stage: FEngine
     num_frames: 1
-    samples_per_data_set: num_times
-    E_frame_size: num_dishes * num_frequencies * num_polarizations * num_times
-    A_frame_size: num_components * num_dishes * num_beams * num_polarizations * num_frequencies
-    J_frame_size: num_times * num_polarizations * num_frequencies * num_beams
     E_buffer: host_voltage_buffer
     A_buffer: host_phase_buffer
     J_buffer: host_wanted_beams_buffer
@@ -151,24 +149,24 @@ gpu:
           out_buf: host_info
 
 write_data:
-  base_dir: /tmp
-  file_ext: data
-  exit_after_n_frames: 1
-  exit_with_n_writers: 4
-  write_voltage:
-    kotekan_stage: hdf5FileWrite
-    in_buf: host_voltage_buffer
-    file_name: voltage
-  write_phase:
-    kotekan_stage: hdf5FileWrite
-    in_buf: host_phase_buffer
-    file_name: phase
-  write_wanted_beams:
-    kotekan_stage: hdf5FileWrite
-    in_buf: host_wanted_beams_buffer
-    file_name: wanted_beams
-  write_beams:
-    kotekan_stage: hdf5FileWrite
-    in_buf: host_beams_buffer
-    file_name: beams
+    base_dir: /tmp
+    file_ext: data
+    exit_after_n_frames: 1
+    exit_with_n_writers: 4
+    write_voltage:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_voltage_buffer
+        file_name: voltage
+    write_phase:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_phase_buffer
+        file_name: phase
+    write_wanted_beams:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_wanted_beams_buffer
+        file_name: wanted_beams
+    write_beams:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_beams_buffer
+        file_name: beams
 ...
