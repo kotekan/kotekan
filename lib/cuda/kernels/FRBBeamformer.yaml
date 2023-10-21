@@ -43,7 +43,7 @@ kernel-description:
       intent: out
       type: Float16
       indices: [beamP, beamQ, Tbar, F]
-      shape: [48, 48, 52, 256]
+      shape: [48, 48, 51, 256]
       strides: [1, 48, 2304, 119808]
     - name: "info"
       intent: out
