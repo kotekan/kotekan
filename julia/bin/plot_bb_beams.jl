@@ -11,8 +11,6 @@ t2c(x::NTuple{2}) = Complex(x...)
 i2t(x::Int4x2) = convert(NTuple{2,Int8}, x)
 i2c(x::Int4x2) = t2c(i2t(x))
 
-# beams, phase, voltage, wanted_beams
-
 quantity_E = "voltage"
 file_E = h5open("$(dir)/$(prefix)$(quantity_E).h5")
 dataset_E = file_E[iter]["host_$(quantity_E)_buffer"];
@@ -23,12 +21,14 @@ array_E = reinterpret(Int4x2, array_E);
 array_E::AbstractArray{Int4x2,4};
 ndishs, nfreqs, npolrs, ntimes = size(array_E)
 
-quantity_A = "phase"
+quantity_A = "bb_phase"
 file_A = h5open("$(dir)/$(prefix)$(quantity_A).h5")
 dataset_A = file_A[iter]["host_$(quantity_A)_buffer"];
 @assert dataset_A["dim_name"][] == ["F", "P", "B", "D", "C"]
+array_A = dataset_A[];
+array_A::AbstractArray{Int8,5};
 
-quantity_J0 = "wanted_beams"
+quantity_J0 = "expected_bb_beams"
 file_J0 = h5open("$(dir)/$(prefix)$(quantity_J0).h5")
 dataset_J0 = file_J0[iter]["host_$(quantity_J0)_buffer"];
 @assert dataset_J0["dim_name"][] == ["B", "F", "P", "T"]
@@ -39,7 +39,7 @@ array_J0::AbstractArray{Int4x2,4};
 ntimes′, npolrs′, nfreqs′, nbeams = size(array_J0)
 @assert (ntimes′, npolrs′, nfreqs′) == (ntimes, npolrs, nfreqs)
 
-quantity_J = "beams"
+quantity_J = "bb_beams"
 file_J = h5open("$(dir)/$(prefix)$(quantity_J).h5")
 dataset_J = file_J[iter]["host_$(quantity_J)_buffer"];
 @assert dataset_J["dim_name"][] == ["B", "F", "P", "T"]
