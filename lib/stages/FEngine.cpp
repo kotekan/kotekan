@@ -4,6 +4,7 @@
 #include <cassert>
 #include <chimeMetadata.hpp>
 #include <chordMetadata.hpp>
+#include <complex>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -55,11 +56,13 @@ class FEngine : public kotekan::Stage {
     const std::int64_t A_frame_size;
     const std::int64_t J_frame_size;
     const std::int64_t S_frame_size;
+    const std::int64_t W_frame_size;
 
     Buffer* const E_buffer;
     Buffer* const A_buffer;
     Buffer* const J_buffer;
     Buffer* const S_buffer;
+    Buffer* const W_buffer;
 
 public:
     FEngine(kotekan::Config& config, const std::string& unique_name,
@@ -112,20 +115,25 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
                  * num_frequencies),
     J_frame_size(std::int64_t(1) * num_times * num_polarizations * num_frequencies * bb_num_beams),
     S_frame_size(std::int64_t(1) * sizeof(short) * 2 * num_dish_locations),
+    W_frame_size(std::int64_t(1) * sizeof(unsigned short) * num_components * num_dish_locations_M
+                 * num_dish_locations_N * num_frequencies * num_polarizations),
     // Buffers
     E_buffer(get_buffer("E_buffer")), A_buffer(get_buffer("A_buffer")),
-    J_buffer(get_buffer("J_buffer")), S_buffer(get_buffer("S_buffer")) {
+    J_buffer(get_buffer("J_buffer")), S_buffer(get_buffer("S_buffer")),
+    W_buffer(get_buffer("W_buffer")) {
     assert(num_dishes <= num_dish_locations);
-    assert(std::ptrdiff_t(dish_locations.size()) == 2 * num_dishes);
+    assert(std::ptrdiff_t(dish_locations.size()) == 2 * num_dish_locations);
 
     assert(E_buffer);
     assert(A_buffer);
     assert(J_buffer);
     assert(S_buffer);
+    assert(W_buffer);
     register_producer(E_buffer, unique_name.c_str());
     register_producer(A_buffer, unique_name.c_str());
     register_producer(J_buffer, unique_name.c_str());
     register_producer(S_buffer, unique_name.c_str());
+    register_producer(W_buffer, unique_name.c_str());
 
     INFO("Starting Julia...");
     kotekan::juliaStartup();
@@ -198,7 +206,9 @@ void FEngine::main_thread() {
             wait_for_empty_frame(A_buffer, unique_name.c_str(), A_frame_id);
         if (!A_frame)
             break;
-        assert(std::ptrdiff_t(A_buffer->frame_size) == A_frame_size);
+        if (!(std::ptrdiff_t(A_buffer->frame_size) == A_frame_size))
+            ERROR("A_buffer->frame_size={:d} A_frame_size={:d}", A_buffer->frame_size,
+                  A_frame_size);
         allocate_new_metadata_object(A_buffer, A_frame_id);
         set_fpga_seq_num(A_buffer, A_frame_id, seq_num);
 
@@ -207,7 +217,9 @@ void FEngine::main_thread() {
             wait_for_empty_frame(E_buffer, unique_name.c_str(), E_frame_id);
         if (!E_frame)
             break;
-        assert(std::ptrdiff_t(E_buffer->frame_size) == E_frame_size);
+        if (!(std::ptrdiff_t(E_buffer->frame_size) == E_frame_size))
+            ERROR("E_buffer->frame_size={:d} E_frame_size={:d}", E_buffer->frame_size,
+                  E_frame_size);
         allocate_new_metadata_object(E_buffer, E_frame_id);
         set_fpga_seq_num(E_buffer, E_frame_id, seq_num);
 
@@ -216,11 +228,9 @@ void FEngine::main_thread() {
             wait_for_empty_frame(J_buffer, unique_name.c_str(), J_frame_id);
         if (!J_frame)
             break;
-#warning "TODO"
         if (!(std::ptrdiff_t(J_buffer->frame_size) == J_frame_size))
             ERROR("J_buffer->frame_size={:d} J_frame_size={:d}", J_buffer->frame_size,
                   J_frame_size);
-        assert(std::ptrdiff_t(J_buffer->frame_size) == J_frame_size);
         allocate_new_metadata_object(J_buffer, J_frame_id);
         set_fpga_seq_num(J_buffer, J_frame_id, seq_num);
 
@@ -229,13 +239,22 @@ void FEngine::main_thread() {
             wait_for_empty_frame(S_buffer, unique_name.c_str(), S_frame_id);
         if (!S_frame)
             break;
-#warning "TODO"
         if (!(std::ptrdiff_t(S_buffer->frame_size) == S_frame_size))
             ERROR("S_buffer->frame_size={:d} S_frame_size={:d}", S_buffer->frame_size,
                   S_frame_size);
-        assert(std::ptrdiff_t(S_buffer->frame_size) == S_frame_size);
         allocate_new_metadata_object(S_buffer, S_frame_id);
         set_fpga_seq_num(S_buffer, S_frame_id, seq_num);
+
+        const int W_frame_id = frame_index % W_buffer->num_frames;
+        std::uint8_t* const W_frame =
+            wait_for_empty_frame(W_buffer, unique_name.c_str(), W_frame_id);
+        if (!W_frame)
+            break;
+        if (!(std::ptrdiff_t(W_buffer->frame_size) == W_frame_size))
+            ERROR("W_buffer->frame_size={:d} W_frame_size={:d}", W_buffer->frame_size,
+                  W_frame_size);
+        allocate_new_metadata_object(W_buffer, W_frame_id);
+        set_fpga_seq_num(W_buffer, W_frame_id, seq_num);
 
         INFO("[{:d}] Filling E buffer...", frame_index);
         kotekan::juliaCall([&]() {
@@ -308,19 +327,36 @@ void FEngine::main_thread() {
 
         INFO("[{:d}] Filling S buffer...", frame_index);
         {
-            short* __restrict__ const S = (short*)S_frame;
-            for (int dish = 0; dish < num_dishes; ++dish) {
-                S[2 * dish + 0] = dish_locations[2 * dish + 0];
-                S[2 * dish + 1] = dish_locations[2 * dish + 1];
-            }
-            // Fill dummy locations
-            for (int dish = num_dishes; dish < num_dish_locations; ++dish) {
-                S[2 * dish + 0] = 0;
-                S[2 * dish + 1] = 0;
+            std::int16_t* __restrict__ const S = (std::int16_t*)S_frame;
+            for (int loc = 0; loc < num_dish_locations; ++loc) {
+                S[2 * loc + 0] = dish_locations[2 * loc + 0];
+                S[2 * loc + 1] = dish_locations[2 * loc + 1];
             }
         }
         INFO("[{:d}] Done filling S buffer.", frame_index);
 
+        INFO("[{:d}] Filling W buffer...", frame_index);
+        {
+            std::complex<short>* __restrict__ const W = (std::complex<short>*)W_frame;
+            for (int polr = 0; polr < num_polarizations; ++polr) {
+                for (int freq = 0; freq < num_frequencies; ++freq) {
+                    for (int dishN = 0; dishN < num_dish_locations_N; ++dishN) {
+                        for (int dishM = 0; dishM < num_dish_locations_M; ++dishM) {
+                            const std::size_t ind =
+                                dishM
+                                + num_dish_locations_M
+                                      * (dishN
+                                         + num_dish_locations_N
+                                               * (freq
+                                                  + num_frequencies * (polr + std::size_t(0))));
+#warning "TODO: calculate W in Julia"
+                            W[ind] = 0;
+                        }
+                    }
+                }
+            }
+        }
+        INFO("[{:d}] Done filling W buffer.", frame_index);
 
         // Set metadata
         chordMetadata* const E_metadata = get_chord_metadata(E_buffer, E_frame_id);
@@ -389,10 +425,30 @@ void FEngine::main_thread() {
         S_metadata->n_one_hot = -1;
         S_metadata->nfreq = -1;
 
+        chordMetadata* const W_metadata = get_chord_metadata(W_buffer, W_frame_id);
+        chord_metadata_init(W_metadata);
+        W_metadata->chime.fpga_seq_num = frame_index;
+        W_metadata->frame_counter = frame_index;
+        W_metadata->type = float16;
+        W_metadata->dims = 5;
+        std::strncpy(W_metadata->dim_name[0], "P", sizeof W_metadata->dim_name[0]);
+        std::strncpy(W_metadata->dim_name[1], "F", sizeof W_metadata->dim_name[1]);
+        std::strncpy(W_metadata->dim_name[2], "dishN", sizeof W_metadata->dim_name[2]);
+        std::strncpy(W_metadata->dim_name[3], "dishM", sizeof W_metadata->dim_name[3]);
+        std::strncpy(W_metadata->dim_name[4], "C", sizeof W_metadata->dim_name[4]);
+        W_metadata->dim[0] = num_polarizations;
+        W_metadata->dim[1] = num_frequencies;
+        W_metadata->dim[2] = num_dish_locations_N;
+        W_metadata->dim[3] = num_dish_locations_M;
+        W_metadata->dim[4] = num_components;
+        W_metadata->n_one_hot = -1;
+        W_metadata->nfreq = num_frequencies;
+
         mark_frame_full(E_buffer, unique_name.c_str(), E_frame_id);
         mark_frame_full(A_buffer, unique_name.c_str(), A_frame_id);
         mark_frame_full(J_buffer, unique_name.c_str(), J_frame_id);
         mark_frame_full(S_buffer, unique_name.c_str(), S_frame_id);
+        mark_frame_full(W_buffer, unique_name.c_str(), W_frame_id);
     }
 
     INFO("Done.");
