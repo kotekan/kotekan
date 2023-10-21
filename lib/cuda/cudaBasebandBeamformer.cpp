@@ -149,7 +149,8 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
         device.get_gpu_memory_array_metadata(A_memname, pipestate.gpu_frame_id);
     assert(mc_A && metadata_container_is_chord(mc_A));
     const chordMetadata* const meta_A = get_chord_metadata(mc_A);
-    INFO("input A array shape: {:s}", meta_A->get_dimensions_string());
+    INFO("input A array: {:s} {:s}", meta_A->get_type_string(), meta_A->get_dimensions_string());
+    assert(meta_A->type == int8);
     assert(meta_A->dims == ndims_A);
     for (std::size_t dim = 0; dim < ndims_A; ++dim) {
         assert(std::strncmp(meta_A->dim_name[dim], axislabels_A[ndims_A - 1 - dim],
@@ -164,7 +165,8 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
         device.get_gpu_memory_array_metadata(E_memname, pipestate.gpu_frame_id);
     assert(mc_E && metadata_container_is_chord(mc_E));
     const chordMetadata* const meta_E = get_chord_metadata(mc_E);
-    INFO("input E array shape: {:s}", meta_E->get_dimensions_string());
+    INFO("input E array: {:s} {:s}", meta_E->get_type_string(), meta_E->get_dimensions_string());
+    assert(meta_E->type == int4p4);
     assert(meta_E->dims == ndims_E);
     for (std::size_t dim = 0; dim < ndims_E; ++dim) {
         assert(std::strncmp(meta_E->dim_name[dim], axislabels_E[ndims_E - 1 - dim],
@@ -172,14 +174,15 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
                == 0);
         assert(meta_E->dim[dim] == int(axislengths_E[ndims_E - 1 - dim]));
     }
-    const char* const axislabels_s[] = {};
-    const std::size_t axislengths_s[] = {};
+    const char* const axislabels_s[] = {"B", "P", "F"};
+    const std::size_t axislengths_s[] = {96, 2, 16};
     const std::size_t ndims_s = sizeof axislabels_s / sizeof *axislabels_s;
     const metadataContainer* const mc_s =
         device.get_gpu_memory_array_metadata(s_memname, pipestate.gpu_frame_id);
     assert(mc_s && metadata_container_is_chord(mc_s));
     const chordMetadata* const meta_s = get_chord_metadata(mc_s);
-    INFO("input s array shape: {:s}", meta_s->get_dimensions_string());
+    INFO("input s array: {:s} {:s}", meta_s->get_type_string(), meta_s->get_dimensions_string());
+    assert(meta_s->type == int32);
     assert(meta_s->dims == ndims_s);
     for (std::size_t dim = 0; dim < ndims_s; ++dim) {
         assert(std::strncmp(meta_s->dim_name[dim], axislabels_s[ndims_s - 1 - dim],
@@ -194,13 +197,14 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
         J_memname, pipestate.gpu_frame_id, mc_E->parent_pool);
     chordMetadata* const meta_J = get_chord_metadata(mc_J);
     chord_metadata_copy(meta_J, meta_E);
+    meta_J->type = int4p4;
     meta_J->dims = ndims_J;
     for (std::size_t dim = 0; dim < ndims_J; ++dim) {
         std::strncpy(meta_J->dim_name[dim], axislabels_J[ndims_J - 1 - dim],
                      sizeof meta_J->dim_name[dim]);
         meta_J->dim[dim] = axislengths_J[ndims_J - 1 - dim];
     }
-    INFO("output J array shape: {:s}", meta_J->get_dimensions_string());
+    INFO("output J array: {:s} {:s}", meta_J->get_type_string(), meta_J->get_dimensions_string());
 
     record_start_event(pipestate.gpu_frame_id);
 
