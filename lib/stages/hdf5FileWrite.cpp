@@ -141,6 +141,7 @@ void hdf5FileWrite::main_thread() {
         // Write the contents of the buffer frame to file
 
         hid_t type = -1;
+        std::size_t type_size = 0;
         hid_t space = -1;
 
         if (metadata_container_is_chord(mc)) {
@@ -150,28 +151,36 @@ void hdf5FileWrite::main_thread() {
             switch (metadata.type) {
                 case int4p4:
                     type = H5T_STD_U8LE;
+                    type_size = 1;
                     break;
                 case int8:
                     type = H5T_STD_I8LE;
+                    type_size = 1;
                     break;
                 case int16:
                     type = H5T_STD_I16LE;
+                    type_size = 2;
                     break;
                 case int32:
                     type = H5T_STD_I32LE;
+                    type_size = 4;
                     break;
                 case int64:
                     type = H5T_STD_I64LE;
+                    type_size = 8;
                     break;
                 case float16:
                     // TODO: Define HDF5 float16 type
                     type = H5T_STD_U16LE;
+                    type_size = 2;
                     break;
                 case float32:
                     type = H5T_IEEE_F32LE;
+                    type_size = 4;
                     break;
                 case float64:
                     type = H5T_IEEE_F64LE;
+                    type_size = 8;
                     break;
                 default:
                     ERROR("Unsupported metadata type");
@@ -188,7 +197,7 @@ void hdf5FileWrite::main_thread() {
             for (int d = 0; d < rank; ++d) {
                 np *= dims[d];
             }
-            if (buf->frame_size != np)
+            if (buf->frame_size != np * type_size)
                 ERROR("Buffer frame size is different from total metadata array length");
             space = H5Screate_simple(rank, dims, dims);
 
