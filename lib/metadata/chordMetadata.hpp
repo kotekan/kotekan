@@ -16,6 +16,8 @@
 
 enum chordDataType { int4p4, int8, int16, int32, int64, float16, float32, float64 };
 
+const char* chord_datatype_string(chordDataType type);
+
 // Maximum number of frequencies in metadata array
 const int CHORD_META_MAX_FREQ = 16;
 
@@ -65,6 +67,10 @@ struct chordMetadata {
 
     std::string get_dimension_name(size_t i) const {
         return std::string(dim_name[i], strnlen(dim_name[i], CHORD_META_MAX_DIMNAME));
+    }
+
+    std::string get_type_string() const {
+        return std::string(chord_datatype_string(type));
     }
 
     std::string get_dimensions_string() const {
