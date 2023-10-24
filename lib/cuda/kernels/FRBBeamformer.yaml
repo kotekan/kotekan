@@ -11,6 +11,7 @@ kernel-description:
     number-of-frequencies: 256
     number-of-polarizations: 2
     number-of-timesamples: 2064
+    output-gain: 0.003125
     sampling-time-μsec: 27.30666666666667
   compile-parameters:
     minthreads: 768
