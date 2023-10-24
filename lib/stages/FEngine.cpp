@@ -329,6 +329,7 @@ void FEngine::main_thread() {
         {
             std::int16_t* __restrict__ const S = (std::int16_t*)S_frame;
             for (int loc = 0; loc < num_dish_locations; ++loc) {
+#warning "TODO: Check dish locations for consistency: in range and no overlap"
                 S[2 * loc + 0] = dish_locations[2 * loc + 0];
                 S[2 * loc + 1] = dish_locations[2 * loc + 1];
             }
@@ -337,7 +338,7 @@ void FEngine::main_thread() {
 
         INFO("[{:d}] Filling W buffer...", frame_index);
         {
-            std::complex<short>* __restrict__ const W = (std::complex<short>*)W_frame;
+            std::complex<_Float16>* __restrict__ const W = (std::complex<_Float16>*)W_frame;
             for (int polr = 0; polr < num_polarizations; ++polr) {
                 for (int freq = 0; freq < num_frequencies; ++freq) {
                     for (int dishN = 0; dishN < num_dish_locations_N; ++dishN) {
@@ -349,9 +350,19 @@ void FEngine::main_thread() {
                                          + num_dish_locations_N
                                                * (freq
                                                   + num_frequencies * (polr + std::size_t(0))));
-#warning "TODO: calculate W in Julia"
                             W[ind] = 0;
                         }
+                    }
+                    for (int dish = 0; dish < num_dishes; ++dish) {
+                        const int dishM = dish_locations[2 * dish + 0];
+                        const int dishN = dish_locations[2 * dish + 1];
+                        const std::size_t ind =
+                            dishM
+                            + num_dish_locations_M
+                                  * (dishN
+                                     + num_dish_locations_N
+                                           * (freq + num_frequencies * (polr + std::size_t(0))));
+                        W[ind] = 1 / 16.0;
                     }
                 }
             }
