@@ -13,40 +13,40 @@ i2c(x::Int4x2) = t2c(i2t(x))
 
 quantity_E = "voltage"
 file_E = h5open("$(dir)/$(prefix)$(quantity_E).h5")
-dataset_E = file_E[iter]["host_$(quantity_E)_buffer"];
+dataset_E = file_E[iter]["host_$(quantity_E)_buffer"]
 @assert dataset_E["dim_name"][] == ["T", "P", "F", "D"]
-array_E = dataset_E[];
-array_E::AbstractArray{UInt8,4};
-array_E = reinterpret(Int4x2, array_E);
-array_E::AbstractArray{Int4x2,4};
+array_E = dataset_E[]
+array_E::AbstractArray{UInt8,4}
+array_E = reinterpret(Int4x2, array_E)
+array_E::AbstractArray{Int4x2,4}
 ndishs, nfreqs, npolrs, ntimes = size(array_E)
 
 quantity_A = "bb_phase"
 file_A = h5open("$(dir)/$(prefix)$(quantity_A).h5")
-dataset_A = file_A[iter]["host_$(quantity_A)_buffer"];
+dataset_A = file_A[iter]["host_$(quantity_A)_buffer"]
 @assert dataset_A["dim_name"][] == ["F", "P", "B", "D", "C"]
-array_A = dataset_A[];
-array_A::AbstractArray{Int8,5};
+array_A = dataset_A[]
+array_A::AbstractArray{Int8,5}
 
 quantity_J0 = "expected_bb_beams"
 file_J0 = h5open("$(dir)/$(prefix)$(quantity_J0).h5")
-dataset_J0 = file_J0[iter]["host_$(quantity_J0)_buffer"];
+dataset_J0 = file_J0[iter]["host_$(quantity_J0)_buffer"]
 @assert dataset_J0["dim_name"][] == ["B", "F", "P", "T"]
-array_J0 = dataset_J0[];
-array_J0::AbstractArray{UInt8,4};
-array_J0 = reinterpret(Int4x2, array_J0);
-array_J0::AbstractArray{Int4x2,4};
+array_J0 = dataset_J0[]
+array_J0::AbstractArray{UInt8,4}
+array_J0 = reinterpret(Int4x2, array_J0)
+array_J0::AbstractArray{Int4x2,4}
 ntimes′, npolrs′, nfreqs′, nbeams = size(array_J0)
 @assert (ntimes′, npolrs′, nfreqs′) == (ntimes, npolrs, nfreqs)
 
 quantity_J = "bb_beams"
 file_J = h5open("$(dir)/$(prefix)$(quantity_J).h5")
-dataset_J = file_J[iter]["host_$(quantity_J)_buffer"];
+dataset_J = file_J[iter]["host_$(quantity_J)_buffer"]
 @assert dataset_J["dim_name"][] == ["B", "F", "P", "T"]
-array_J = dataset_J[];
-array_J::AbstractArray{UInt8,4};
-array_J = reinterpret(Int4x2, array_J);
-array_J::AbstractArray{Int4x2,4};
+array_J = dataset_J[]
+array_J::AbstractArray{UInt8,4}
+array_J = reinterpret(Int4x2, array_J)
+array_J::AbstractArray{Int4x2,4}
 ntimes′, npolrs′, nfreqs′, nbeams′ = size(array_J)
 @assert (ntimes′, npolrs′, nfreqs′, nbeams′) == (ntimes, npolrs, nfreqs, nbeams)
 
@@ -102,36 +102,36 @@ freq = 3
 data = Float32[sqrt(sum(abs2(real(Complex{Float32}(i2c(j)))) for j in view(array_E, dish, freq, :, :)) /
                     length(view(array_E, dish, freq, :, :)))
                for dish in 1:ndishs]
-fig = Figure(; resolution=(1280, 960));
-ax = Axis(fig[1, 1]; title="F-engine electric field", xlabel="x", ylabel="y");
+fig = Figure(; resolution=(1280, 960))
+ax = Axis(fig[1, 1]; title="F-engine electric field", xlabel="x", ylabel="y")
 xlims!(ax, dishs_xlim)
 ylims!(ax, dishs_ylim)
-obj = scatter!(ax, dishsx, dishsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)));
-Colorbar(fig[1, 2], obj; label="|dish|₂");
+obj = scatter!(ax, dishsx, dishsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
+Colorbar(fig[1, 2], obj; label="|dish|₂")
 rowsize!(fig.layout, 1, Aspect(1, dishs_ysize / dishs_xsize))
 display(fig)
 
 data = Float32[sqrt(sum(abs2(Complex{Float32}(i2c(j))) for j in view(array_J0, :, :, freq, beam)) /
                     length(view(array_J0, :, :, freq, beam)))
                for beam in 1:nbeams]
-fig = Figure(; resolution=(1280, 960));
-ax = Axis(fig[1, 1]; title="expected baseband beams", xlabel="sky θx", ylabel="sky θy");
+fig = Figure(; resolution=(1280, 960))
+ax = Axis(fig[1, 1]; title="expected baseband beams", xlabel="sky θx", ylabel="sky θy")
 xlims!(ax, beams_xlim)
 ylims!(ax, beams_ylim)
-obj = scatter!(ax, beamsx, beamsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)));
-Colorbar(fig[1, 2], obj; label="|baseband beam|₂");
+obj = scatter!(ax, beamsx, beamsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
+Colorbar(fig[1, 2], obj; label="|baseband beam|₂")
 rowsize!(fig.layout, 1, Aspect(1, beams_ysize / beams_xsize))
 display(fig)
 
 data = Float32[sqrt(sum(abs2(Complex{Float32}(i2c(j))) for j in view(array_J, :, :, freq, beam)) /
                     length(view(array_J, :, 1, freq, beam)))
                for beam in 1:nbeams]
-fig = Figure(; resolution=(1280, 960));
-ax = Axis(fig[1, 1]; title="X-engine baseband beams", xlabel="sky θx", ylabel="sky θy");
+fig = Figure(; resolution=(1280, 960))
+ax = Axis(fig[1, 1]; title="X-engine baseband beams", xlabel="sky θx", ylabel="sky θy")
 xlims!(ax, beams_xlim)
 ylims!(ax, beams_ylim)
-obj = scatter!(ax, beamsx, beamsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)));
-Colorbar(fig[1, 2], obj; label="|baseband beam|₂");
+obj = scatter!(ax, beamsx, beamsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
+Colorbar(fig[1, 2], obj; label="|baseband beam|₂")
 rowsize!(fig.layout, 1, Aspect(1, beams_ysize / beams_xsize))
 display(fig)
 
