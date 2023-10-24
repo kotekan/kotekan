@@ -120,7 +120,7 @@ void hdf5FileWrite::main_thread() {
                     const hid_t space = H5Screate(H5S_SCALAR);
                     if (space < 0)
                         ERROR("Could not create data space");
-                    const hid_t attr = H5Acreate(group, "fpga_seq_num", H5T_STD_I64LE, space,
+                    const hid_t attr = H5Acreate(group, "fpga_seq_num", H5T_NATIVE_INT64, space,
                                                  H5P_DEFAULT, H5P_DEFAULT);
                     if (attr < 0)
                         ERROR("Could not create attribute");
@@ -150,36 +150,36 @@ void hdf5FileWrite::main_thread() {
 
             switch (metadata.type) {
                 case int4p4:
-                    type = H5T_STD_U8LE;
+                    type = H5T_NATIVE_UINT8;
                     type_size = 1;
                     break;
                 case int8:
-                    type = H5T_STD_I8LE;
+                    type = H5T_NATIVE_INT8;
                     type_size = 1;
                     break;
                 case int16:
-                    type = H5T_STD_I16LE;
+                    type = H5T_NATIVE_INT16;
                     type_size = 2;
                     break;
                 case int32:
-                    type = H5T_STD_I32LE;
+                    type = H5T_NATIVE_INT32;
                     type_size = 4;
                     break;
                 case int64:
-                    type = H5T_STD_I64LE;
+                    type = H5T_NATIVE_INT64;
                     type_size = 8;
                     break;
                 case float16:
                     // TODO: Define HDF5 float16 type
-                    type = H5T_STD_U16LE;
+                    type = H5T_NATIVE_UINT16;
                     type_size = 2;
                     break;
                 case float32:
-                    type = H5T_IEEE_F32LE;
+                    type = H5T_NATIVE_FLOAT;
                     type_size = 4;
                     break;
                 case float64:
-                    type = H5T_IEEE_F64LE;
+                    type = H5T_NATIVE_DOUBLE;
                     type_size = 8;
                     break;
                 default:
@@ -204,7 +204,7 @@ void hdf5FileWrite::main_thread() {
         } else {
             // We don't have proper CHORD metadata and don't know the buffer type and shape
 
-            type = H5T_STD_U8LE;
+            type = H5T_NATIVE_UINT8;
             const int rank = 1;
             hsize_t dims[1];
             dims[0] = buf->frame_size;
@@ -250,7 +250,7 @@ void hdf5FileWrite::main_thread() {
                 ERROR("Could not close HDF5 datatype for dim_name");
         }
 
-        herr_t herr = H5Dwrite(dataset, H5T_NATIVE_UINT8, space, space, H5P_DEFAULT, frame);
+        herr_t herr = H5Dwrite(dataset, type, space, space, H5P_DEFAULT, frame);
         if (herr < 0)
             ERROR("Could not write HDF5 dataset");
 
