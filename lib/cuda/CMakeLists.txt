@@ -30,8 +30,10 @@ add_library(
     quantize_kernel_wrapper.cu
     cudaQuantize.cpp
     cudaRechunk.cpp
-    cudaUpchannelize.cpp
-    cudaUpchannelize16k.cpp
+    cudaUpchannelizer_U128.cpp
+    cudaUpchannelizer_U16.cpp
+    cudaUpchannelizer_U32.cpp
+    cudaUpchannelizer_U64.cpp
     chordMVPSetup.cpp)
 
 # C++17
