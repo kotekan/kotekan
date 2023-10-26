@@ -91,7 +91,7 @@ private:
     const std::string info_memname;
 
     // Host-side buffer arrays
-    std::vector<std::vector<std::int32_t>> host_info;
+    std::vector<std::vector<std::uint8_t>> host_info;
 
     // Declare extra variables (if any)
 };
@@ -107,7 +107,10 @@ cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string
     E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
     s_memname(config.get<std::string>(unique_name, "gpu_mem_output_scaling")),
     J_memname(config.get<std::string>(unique_name, "gpu_mem_formed_beams")),
-    info_memname(unique_name + "/gpu_mem_info") {
+    info_memname(unique_name + "/gpu_mem_info")
+
+    ,
+    host_info(_gpu_buffer_depth) {
     // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(std::make_tuple(A_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
@@ -136,11 +139,8 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
     void* const E_memory = device.get_gpu_memory_array(E_memname, pipestate.gpu_frame_id, E_length);
     void* const s_memory = device.get_gpu_memory_array(s_memname, pipestate.gpu_frame_id, s_length);
     void* const J_memory = device.get_gpu_memory_array(J_memname, pipestate.gpu_frame_id, J_length);
-    std::int32_t* const info_memory =
-        static_cast<std::int32_t*>(device.get_gpu_memory(info_memname, info_length));
-    host_info.resize(_gpu_buffer_depth);
-    for (int i = 0; i < _gpu_buffer_depth; ++i)
-        host_info[i].resize(info_length / sizeof(std::int32_t));
+    host_info[pipestate.gpu_frame_id].resize(info_length);
+    void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
     const char* const axislabels_A[] = {"C", "D", "B", "P", "F"};
     const std::size_t axislengths_A[] = {2, 512, 96, 2, 16};
@@ -208,11 +208,6 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
 
     record_start_event(pipestate.gpu_frame_id);
 
-    // Initialize host-side buffer arrays
-    // TODO: Skip this for performance
-    CHECK_CUDA_ERROR(
-        cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
-
     const char* exc_arg = "exception";
     kernel_arg A_arg(A_memory, A_length);
     kernel_arg E_arg(E_memory, E_length);
@@ -225,6 +220,13 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
 
     // Modify kernel arguments (if necessary)
 
+
+    // Copy inputs to device memory
+
+    // Initialize host-side buffer arrays
+    // TODO: Skip this for performance
+    CHECK_CUDA_ERROR(
+        cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
 
     DEBUG("kernel_symbol: {}", kernel_symbol);
     DEBUG("runtime_kernels[kernel_symbol]: {}", static_cast<void*>(runtime_kernels[kernel_symbol]));
@@ -244,6 +246,7 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
     }
 
     // Copy results back to host memory
+    // TODO: Skip this for performance
     CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory,
                                      info_length, cudaMemcpyDeviceToHost,
                                      device.getStream(cuda_stream_id)));
@@ -251,10 +254,11 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
     // Check error codes
     // TODO: Skip this for performance
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-    const std::int32_t error_code = *std::max_element(host_info[pipestate.gpu_frame_id].begin(),
-                                                      host_info[pipestate.gpu_frame_id].end());
+    const std::int32_t error_code =
+        *std::max_element((const std::int32_t*)&*host_info[pipestate.gpu_frame_id].begin(),
+                          (const std::int32_t*)&*host_info[pipestate.gpu_frame_id].end());
     if (error_code != 0)
-        ERROR("CUDA kernel returned error codecuLaunchKernel: {}", error_code);
+        ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
     return record_end_event(pipestate.gpu_frame_id);
 }
