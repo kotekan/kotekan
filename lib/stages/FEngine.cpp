@@ -48,6 +48,11 @@ class FEngine : public kotekan::Stage {
     const float bb_beam_separation_y;
     const int bb_num_beams;
 
+    // Upchannelizer setup
+    const int upchannelization_factor;
+
+    // FRB beamformer setup
+
     // Pipeline
     const int num_frames;
 
@@ -56,12 +61,14 @@ class FEngine : public kotekan::Stage {
     const std::int64_t A_frame_size;
     const std::int64_t J_frame_size;
     const std::int64_t S_frame_size;
+    const std::int64_t G_frame_size;
     const std::int64_t W_frame_size;
 
     Buffer* const E_buffer;
     Buffer* const A_buffer;
     Buffer* const J_buffer;
     Buffer* const S_buffer;
+    Buffer* const G_buffer;
     Buffer* const W_buffer;
 
 public:
@@ -107,6 +114,9 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     bb_beam_separation_x(config.get<float>(unique_name, "bb_beam_separation_x")),
     bb_beam_separation_y(config.get<float>(unique_name, "bb_beam_separation_y")),
     bb_num_beams(bb_num_beams_P * bb_num_beams_Q),
+    // Upchannelizer setup
+    upchannelization_factor(config.get<int>(unique_name, "upchannelization_factor")),
+    // FRB beamformer setup
     // Pipeline
     num_frames(config.get<int>(unique_name, "num_frames")),
     // Frame sizes
@@ -115,12 +125,13 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
                  * num_frequencies),
     J_frame_size(std::int64_t(1) * num_times * num_polarizations * num_frequencies * bb_num_beams),
     S_frame_size(std::int64_t(1) * sizeof(short) * 2 * num_dish_locations),
-    W_frame_size(std::int64_t(1) * sizeof(unsigned short) * num_components * num_dish_locations_M
+    G_frame_size(std::int64_t(1) * sizeof(_Float16) * num_frequencies * upchannelization_factor),
+    W_frame_size(std::int64_t(1) * sizeof(_Float16) * num_components * num_dish_locations_M
                  * num_dish_locations_N * num_frequencies * num_polarizations),
     // Buffers
     E_buffer(get_buffer("E_buffer")), A_buffer(get_buffer("A_buffer")),
     J_buffer(get_buffer("J_buffer")), S_buffer(get_buffer("S_buffer")),
-    W_buffer(get_buffer("W_buffer")) {
+    G_buffer(get_buffer("G_buffer")), W_buffer(get_buffer("W_buffer")) {
     assert(num_dishes <= num_dish_locations);
     assert(std::ptrdiff_t(dish_locations.size()) == 2 * num_dish_locations);
 
@@ -128,11 +139,13 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     assert(A_buffer);
     assert(J_buffer);
     assert(S_buffer);
+    assert(G_buffer);
     assert(W_buffer);
     register_producer(E_buffer, unique_name.c_str());
     register_producer(A_buffer, unique_name.c_str());
     register_producer(J_buffer, unique_name.c_str());
     register_producer(S_buffer, unique_name.c_str());
+    register_producer(G_buffer, unique_name.c_str());
     register_producer(W_buffer, unique_name.c_str());
 
     INFO("Starting Julia...");
@@ -245,6 +258,17 @@ void FEngine::main_thread() {
         allocate_new_metadata_object(S_buffer, S_frame_id);
         set_fpga_seq_num(S_buffer, S_frame_id, seq_num);
 
+        const int G_frame_id = frame_index % G_buffer->num_frames;
+        std::uint8_t* const G_frame =
+            wait_for_empty_frame(G_buffer, unique_name.c_str(), G_frame_id);
+        if (!G_frame)
+            break;
+        if (!(std::ptrdiff_t(G_buffer->frame_size) == G_frame_size))
+            ERROR("G_buffer->frame_size={:d} G_frame_size={:d}", G_buffer->frame_size,
+                  G_frame_size);
+        allocate_new_metadata_object(G_buffer, G_frame_id);
+        set_fpga_seq_num(G_buffer, G_frame_id, seq_num);
+
         const int W_frame_id = frame_index % W_buffer->num_frames;
         std::uint8_t* const W_frame =
             wait_for_empty_frame(W_buffer, unique_name.c_str(), W_frame_id);
@@ -335,6 +359,16 @@ void FEngine::main_thread() {
             }
         }
         INFO("[{:d}] Done filling S buffer.", frame_index);
+
+        INFO("[{:d}] Filling G buffer...", frame_index);
+        {
+            _Float16* __restrict__ const G = (_Float16*)G_frame;
+            for (int freqbar = 0; freqbar < num_frequencies * upchannelization_factor; ++freqbar) {
+                const std::size_t ind = freqbar + std::size_t(0);
+                G[ind] = 1;
+            }
+        }
+        INFO("[{:d}] Done filling G buffer.", frame_index);
 
         INFO("[{:d}] Filling W buffer...", frame_index);
         {
@@ -436,6 +470,17 @@ void FEngine::main_thread() {
         S_metadata->n_one_hot = -1;
         S_metadata->nfreq = -1;
 
+        chordMetadata* const G_metadata = get_chord_metadata(G_buffer, G_frame_id);
+        chord_metadata_init(G_metadata);
+        G_metadata->chime.fpga_seq_num = frame_index;
+        G_metadata->frame_counter = frame_index;
+        G_metadata->type = float16;
+        G_metadata->dims = 1;
+        std::strncpy(G_metadata->dim_name[0], "Fbar", sizeof G_metadata->dim_name[0]);
+        G_metadata->dim[0] = num_frequencies * upchannelization_factor;
+        G_metadata->n_one_hot = -1;
+        G_metadata->nfreq = num_frequencies * upchannelization_factor;
+
         chordMetadata* const W_metadata = get_chord_metadata(W_buffer, W_frame_id);
         chord_metadata_init(W_metadata);
         W_metadata->chime.fpga_seq_num = frame_index;
@@ -459,6 +504,7 @@ void FEngine::main_thread() {
         mark_frame_full(A_buffer, unique_name.c_str(), A_frame_id);
         mark_frame_full(J_buffer, unique_name.c_str(), J_frame_id);
         mark_frame_full(S_buffer, unique_name.c_str(), S_frame_id);
+        mark_frame_full(G_buffer, unique_name.c_str(), G_frame_id);
         mark_frame_full(W_buffer, unique_name.c_str(), W_frame_id);
     }
 
