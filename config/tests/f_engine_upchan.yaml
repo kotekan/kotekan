@@ -9,7 +9,7 @@ log_level: debug   # info
 cpu_affinity: [0,1,2,3,4,5,6,7]
 buffer_depth: 4
 
-frame_arrival_period: 2.56e-6 * upchannelization_factor * num_times
+frame_arrival_period: 2.56e-6 * num_times
 
 sizeof_int16: 2
 sizeof_int32: 4
@@ -68,8 +68,8 @@ num_samples_per_frame: 2048
 
 # F-Engine simulator: FT (PFB)
 num_taps: 4
-num_frequencies: 256            # how many frequencies to keep
-num_times: 2064
+num_frequencies: 16             # how many frequencies to keep
+num_times: 32768
 
 # Baseband beamformer setup
 bb_num_beams_P: 12
@@ -135,10 +135,10 @@ host_expected_bb_beams_buffer:
     frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
     metadata_pool: main_pool
 
-host_frb_intensity_buffer:
+host_upchan_voltage_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * frb_num_output_times * num_frequencies
+    frame_size: num_dishes * (num_frequencies * upchannelization_factor) * num_polarizations * (num_times / upchannelization_factor)
     metadata_pool: main_pool
 
 # Stages
@@ -159,46 +159,41 @@ gpu:
         gpu_id: 0
         in_buffers:
             host_voltage: host_voltage_buffer
-            host_dish_locations: host_dish_locations_buffer
-            host_frb_phase: host_frb_phase_buffer
+            host_upchan_gain: host_upchan_gain_buffer
         out_buffers:
-            host_frb_intensity: host_frb_intensity_buffer
+            host_upchan_voltage: host_upchan_voltage_buffer
         commands:
         - name: cudaInputData
           in_buf: host_voltage
           gpu_mem: voltage
         - name: cudaInputData
-          in_buf: host_dish_locations
-          gpu_mem: dish_locations
-        - name: cudaInputData
-          in_buf: host_frb_phase
-          gpu_mem: frb_phase
+          in_buf: host_upchan_gain
+          gpu_mem: upchan_gain
         - name: cudaSyncInput
-        - name: cudaFRBBeamformer
-          gpu_mem_voltage: voltage
-          gpu_mem_dishlayout: dish_locations
-          gpu_mem_phase: frb_phase
-          gpu_mem_beamgrid: frb_intensity
+        - name: cudaUpchannelizer_U16
+          gpu_mem_input_voltage: voltage
+          gpu_mem_gain: upchan_gain
+          gpu_mem_output_voltage: upchan_voltage
         - name: cudaSyncOutput
         - name: cudaOutputData
-          gpu_mem: frb_intensity
-          out_buf: host_frb_intensity
+          gpu_mem: upchan_voltage
+          out_buf: host_upchan_voltage
 
 write_data:
-  base_dir: /tmp
-  file_ext: data
-  exit_after_n_frames: 1
-  exit_with_n_writers: 3
-  write_voltage:
-    kotekan_stage: hdf5FileWrite
-    in_buf: host_voltage_buffer
-    file_name: upchan_voltage
-  write_frb_phase:
-    kotekan_stage: hdf5FileWrite
-    in_buf: host_frb_phase_buffer
-    file_name: frb_phase
-  write_frb_intensity:
-    kotekan_stage: hdf5FileWrite
-    in_buf: host_frb_intensity_buffer
-    file_name: frb_intensity
+    base_dir: /tmp
+    file_ext: data
+    exit_after_n_frames: 1
+    exit_with_n_writers: 3
+    write_voltage:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_voltage_buffer
+        file_name: voltage
+    write_gain:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_upchan_gain_buffer
+        file_name: upchan_gain
+    write_upchan_voltage:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_upchan_voltage_buffer
+        file_name: upchan_voltage
 ...

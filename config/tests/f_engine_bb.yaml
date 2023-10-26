@@ -33,7 +33,8 @@ dish_separation_x: 6.3          # [m] east-west
 dish_separation_y: 8.5          # [m] north-south
 num_dishes: 512
 
-# 512 dish locations, arranged in a cut-off 22x24 rectangle
+# 24^2 = 576 dish locations. Dishes 0..511 ar real dishes, dishes
+# 512..575 are dummy dishes where the E-field is set to zero
 dish_locations: [
     0, 0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0, 9, 0, 10, 0, 11, 0, 12, 0, 13, 0, 14, 0, 15, 0, 16, 0, 17, 0, 18, 0, 19, 0, 20, 0, 21, 0, 22, 0, 23,
     1, 0, 1, 1, 1, 2, 1, 3, 1, 4, 1, 5, 1, 6, 1, 7, 1, 8, 1, 9, 1, 10, 1, 11, 1, 12, 1, 13, 1, 14, 1, 15, 1, 16, 1, 17, 1, 18, 1, 19, 1, 20, 1, 21, 1, 22, 1, 23,
@@ -77,6 +78,15 @@ bb_beam_separation_x: 0.015        # east-west
 bb_beam_separation_y: 0.015        # north-south
 bb_num_beams: bb_num_beams_P * bb_num_beams_Q
 
+# Upchannelizer setup
+upchannelization_factor: 16
+
+# FRB beamformer setup
+frb_downsampling_factor: 40
+frb_num_output_times: num_times / frb_downsampling_factor # rounding down
+frb_num_beams_P: 2 * num_dish_locations_M
+frb_num_beams_Q: 2 * num_dish_locations_N
+
 # Pool:
 main_pool:
     kotekan_metadata_pool: chordMetadata
@@ -99,6 +109,12 @@ host_bb_shift_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
     frame_size: sizeof_int32 * bb_num_beams * num_polarizations * num_frequencies
+    metadata_pool: main_pool
+
+host_upchan_gain_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_float16 * num_frequencies * upchannelization_factor
     metadata_pool: main_pool
 
 host_frb_phase_buffer:
@@ -133,6 +149,7 @@ gen_voltage:
     A_buffer: host_bb_phase_buffer
     J_buffer: host_expected_bb_beams_buffer
     S_buffer: host_dish_locations_buffer
+    G_buffer: host_upchan_gain_buffer
     W_buffer: host_frb_phase_buffer
 
 gen_shift:
