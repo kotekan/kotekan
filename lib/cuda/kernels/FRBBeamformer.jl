@@ -82,8 +82,8 @@
             nlo = 2 * (thread ÷ 8)
             nlo < 6
         end
-            W_polr0 = W_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) ÷ 6) % 4) % 4) * 6 + 0 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 4) % 4) * 144 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 6) % 6 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 256) % 256) % 256) * 576 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 4) % 8) % 6) * 24) + 0x01]
-            W_polr1 = W_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) ÷ 6) % 4) % 4) * 6 + 147456 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 4) % 4) * 144 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 6) % 6 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 256) % 256) % 256) * 576 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 4) % 8) % 6) * 24) + 0x01]
+            W_polr0 = W_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) ÷ 6) % 4) % 4) * 6 + 0 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 4) % 4) * 144 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 6) % 6 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 256) % 256) % 256) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 4) % 8) % 6) * 24) + 0x01]
+            W_polr1 = W_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) ÷ 6) % 4) % 4) * 6 + 576 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 4) % 4) * 144 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 6) % 6 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 256) % 256) % 256) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 4) % 8) % 6) * 24) + 0x01]
         end
         I_beamQ0 = zero(Float16x2)
         I_beamQ1 = zero(Float16x2)

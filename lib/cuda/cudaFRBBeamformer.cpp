@@ -160,8 +160,8 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate,
                == 0);
         assert(meta_S->dim[dim] == int(axislengths_S[ndims_S - 1 - dim]));
     }
-    const char* const axislabels_W[] = {"C", "dishM", "dishN", "F", "P"};
-    const std::size_t axislengths_W[] = {2, 24, 24, 256, 2};
+    const char* const axislabels_W[] = {"C", "dishM", "dishN", "P", "F"};
+    const std::size_t axislengths_W[] = {2, 24, 24, 2, 256};
     const std::size_t ndims_W = sizeof axislabels_W / sizeof *axislabels_W;
     const metadataContainer* const mc_W =
         device.get_gpu_memory_array_metadata(W_memname, pipestate.gpu_frame_id);

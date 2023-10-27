@@ -31,9 +31,9 @@ kernel-description:
     - name: "W"
       intent: in
       type: Float16
-      indices: [C, dishM, dishN, F, P]
-      shape: [2, 24, 24, 256, 2]
-      strides: [1, 2, 48, 1152, 294912, 589824]
+      indices: [C, dishM, dishN, P, F]
+      shape: [2, 24, 24, 2, 256]
+      strides: [1, 2, 48, 1152, 2304, 589824]
     - name: "E"
       intent: in
       type: Int4

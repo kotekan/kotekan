@@ -127,7 +127,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     S_frame_size(std::int64_t(1) * sizeof(short) * 2 * num_dish_locations),
     G_frame_size(std::int64_t(1) * sizeof(_Float16) * num_frequencies * upchannelization_factor),
     W_frame_size(std::int64_t(1) * sizeof(_Float16) * num_components * num_dish_locations_M
-                 * num_dish_locations_N * num_frequencies * num_polarizations),
+                 * num_dish_locations_N * num_polarizations * num_frequencies),
     // Buffers
     E_buffer(get_buffer("E_buffer")), A_buffer(get_buffer("A_buffer")),
     J_buffer(get_buffer("J_buffer")), S_buffer(get_buffer("S_buffer")),
@@ -373,8 +373,8 @@ void FEngine::main_thread() {
         INFO("[{:d}] Filling W buffer...", frame_index);
         {
             std::complex<_Float16>* __restrict__ const W = (std::complex<_Float16>*)W_frame;
-            for (int polr = 0; polr < num_polarizations; ++polr) {
-                for (int freq = 0; freq < num_frequencies; ++freq) {
+            for (int freq = 0; freq < num_frequencies; ++freq) {
+                for (int polr = 0; polr < num_polarizations; ++polr) {
                     for (int dishN = 0; dishN < num_dish_locations_N; ++dishN) {
                         for (int dishM = 0; dishM < num_dish_locations_M; ++dishM) {
                             const std::size_t ind =
@@ -382,8 +382,8 @@ void FEngine::main_thread() {
                                 + num_dish_locations_M
                                       * (dishN
                                          + num_dish_locations_N
-                                               * (freq
-                                                  + num_frequencies * (polr + std::size_t(0))));
+                                               * (polr
+                                                  + num_polarizations * (freq + std::size_t(0))));
                             W[ind] = 0;
                         }
                     }
@@ -395,7 +395,7 @@ void FEngine::main_thread() {
                             + num_dish_locations_M
                                   * (dishN
                                      + num_dish_locations_N
-                                           * (freq + num_frequencies * (polr + std::size_t(0))));
+                                           * (polr + num_polarizations * (freq + std::size_t(0))));
                         W[ind] = 1 / 16.0;
                     }
                 }
@@ -487,13 +487,13 @@ void FEngine::main_thread() {
         W_metadata->frame_counter = frame_index;
         W_metadata->type = float16;
         W_metadata->dims = 5;
-        std::strncpy(W_metadata->dim_name[0], "P", sizeof W_metadata->dim_name[0]);
-        std::strncpy(W_metadata->dim_name[1], "F", sizeof W_metadata->dim_name[1]);
+        std::strncpy(W_metadata->dim_name[0], "F", sizeof W_metadata->dim_name[0]);
+        std::strncpy(W_metadata->dim_name[1], "P", sizeof W_metadata->dim_name[1]);
         std::strncpy(W_metadata->dim_name[2], "dishN", sizeof W_metadata->dim_name[2]);
         std::strncpy(W_metadata->dim_name[3], "dishM", sizeof W_metadata->dim_name[3]);
         std::strncpy(W_metadata->dim_name[4], "C", sizeof W_metadata->dim_name[4]);
-        W_metadata->dim[0] = num_polarizations;
-        W_metadata->dim[1] = num_frequencies;
+        W_metadata->dim[0] = num_frequencies;
+        W_metadata->dim[1] = num_polarizations;
         W_metadata->dim[2] = num_dish_locations_N;
         W_metadata->dim[3] = num_dish_locations_M;
         W_metadata->dim[4] = num_components;
