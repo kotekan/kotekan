@@ -120,7 +120,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     // Pipeline
     num_frames(config.get<int>(unique_name, "num_frames")),
     // Frame sizes
-    E_frame_size(std::int64_t(1) * num_dishes * num_frequencies * num_polarizations * num_times),
+    E_frame_size(std::int64_t(1) * num_dishes * num_polarizations * num_frequencies * num_times),
     A_frame_size(std::int64_t(1) * num_components * num_dishes * bb_num_beams * num_polarizations
                  * num_frequencies),
     J_frame_size(std::int64_t(1) * num_times * num_polarizations * num_frequencies * bb_num_beams),
@@ -293,8 +293,8 @@ void FEngine::main_thread() {
             args[0] = jl_box_uint8pointer(E_frame);
             args[1] = jl_box_int64(E_frame_size);
             args[2] = jl_box_int64(num_dishes);
-            args[3] = jl_box_int64(num_frequencies);
-            args[4] = jl_box_int64(num_polarizations);
+            args[3] = jl_box_int64(num_polarizations);
+            args[4] = jl_box_int64(num_frequencies);
             args[5] = jl_box_int64(num_times);
             args[6] = jl_box_int64(frame_index + 1);
             jl_value_t* const res = jl_call(set_E, args, nargs);
@@ -411,12 +411,12 @@ void FEngine::main_thread() {
         E_metadata->type = int4p4;
         E_metadata->dims = 4;
         std::strncpy(E_metadata->dim_name[0], "T", sizeof E_metadata->dim_name[0]);
-        std::strncpy(E_metadata->dim_name[1], "P", sizeof E_metadata->dim_name[1]);
-        std::strncpy(E_metadata->dim_name[2], "F", sizeof E_metadata->dim_name[2]);
+        std::strncpy(E_metadata->dim_name[1], "F", sizeof E_metadata->dim_name[1]);
+        std::strncpy(E_metadata->dim_name[2], "P", sizeof E_metadata->dim_name[2]);
         std::strncpy(E_metadata->dim_name[3], "D", sizeof E_metadata->dim_name[3]);
         E_metadata->dim[0] = num_times;
-        E_metadata->dim[1] = num_polarizations;
-        E_metadata->dim[2] = num_frequencies;
+        E_metadata->dim[1] = num_frequencies;
+        E_metadata->dim[2] = num_polarizations;
         E_metadata->dim[3] = num_dishes;
         E_metadata->n_one_hot = -1;
         E_metadata->nfreq = num_frequencies;

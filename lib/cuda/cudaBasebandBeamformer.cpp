@@ -158,8 +158,8 @@ cudaEvent_t cudaBasebandBeamformer::execute(cudaPipelineState& pipestate,
                == 0);
         assert(meta_A->dim[dim] == int(axislengths_A[ndims_A - 1 - dim]));
     }
-    const char* const axislabels_E[] = {"D", "F", "P", "T"};
-    const std::size_t axislengths_E[] = {512, 16, 2, 32768};
+    const char* const axislabels_E[] = {"D", "P", "F", "T"};
+    const std::size_t axislengths_E[] = {512, 2, 16, 32768};
     const std::size_t ndims_E = sizeof axislabels_E / sizeof *axislabels_E;
     const metadataContainer* const mc_E =
         device.get_gpu_memory_array_metadata(E_memname, pipestate.gpu_frame_id);

@@ -126,7 +126,7 @@ host_frb_phase_buffer:
 host_voltage_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: num_dishes * num_frequencies * num_polarizations * num_times
+    frame_size: num_dishes * num_polarizations * num_frequencies * num_times
     metadata_pool: main_pool
 
 host_expected_bb_beams_buffer:
@@ -138,7 +138,7 @@ host_expected_bb_beams_buffer:
 host_upchan_voltage_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: num_dishes * (num_frequencies * upchannelization_factor) * num_polarizations * (num_times / upchannelization_factor)
+    frame_size: num_dishes * num_polarizations * (num_frequencies * upchannelization_factor) * (num_times / upchannelization_factor)
     metadata_pool: main_pool
 
 # Stages

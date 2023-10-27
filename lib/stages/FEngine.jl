@@ -371,12 +371,12 @@ struct XFrame{T}
     Δt::Float
     f₀::Float
     Δf::Float
-    data::Array{Complex{T},4} # [dish, freq, polr, time]
+    data::Array{Complex{T},4} # [dish, polr, freq, time]
 end
 
 function plot(frame::XFrame{T}) where {T<:Real}
     freq = argmax(mappedarray(abs2, frame.data))[4]
-    data = mappedarray(real, reshape((@view frame.data[:, :, :, freq]), size(frame.data, 1), :))
+    data = mappedarray(real, reshape((@view frame.data[:, :, freq, :]), size(frame.data, 1), :))
     times = frame.t₀ .+ (axes(data, 2) .- 1) * frame.Δt
     dishes = axes(data, 2)
 
@@ -404,7 +404,7 @@ function corner_turn(inframes::AbstractVector{FFrame{T}}, ntimes::Int) where {T<
             Δf = inframes′[begin, n].Δf
             data = Complex{T}[
                               inframes′[time, n].data[freq, dish, polr]
-                              for dish in 1:ndishes, freq in 1:nfreqs, polr in 1:npolrs, time in 1:ntimes
+                              for dish in 1:ndishes, polr in 1:npolrs, freq in 1:nfreqs, time in 1:ntimes
                               ]
             XFrame{T}(t₀, Δt, f₀, Δf, data)
         end
@@ -418,10 +418,10 @@ end
 
 function bb(::Type{T}, A::AbstractArray{<:Complex,4}, E::AbstractArray{<:Complex,4}) where {T<:Real}
     # A: [dish, beam, polr, freq]
-    # E: [dish, freq, polr, time]
+    # E: [dish, polr, freq, time]
     # J: [time, polr, freq, beam]
     ndishes, nbeams, npolrs, nfreqs = size(A)
-    ndishes′, nfreqs′, npolrs′, ntimes = size(E)
+    ndishes′, npolrs′, nfreqs′, ntimes = size(E)
     @assert (ndishes, npolrs, nfreqs) == (ndishes′, npolrs′, nfreqs′)
     J = Array{Complex{T},4}(undef, ntimes, npolrs, nfreqs, nbeams)
     @threads for freq in 1:nfreqs
@@ -429,7 +429,7 @@ function bb(::Type{T}, A::AbstractArray{<:Complex,4}, E::AbstractArray{<:Complex
             J[time, polr, freq, beam] = let
                 J0 = zero(Complex{T})
                 for dish in 1:ndishes
-                    J0 += A[dish, beam, polr, freq] * E[dish, freq, polr, time]
+                    J0 += A[dish, beam, polr, freq] * E[dish, polr, freq, time]
                 end
                 J0
             end
@@ -487,7 +487,7 @@ function plot(beams::BBeams{T}) where {T<:Real}
 end
 
 function bb(::Type{T}, xframes::AbstractVector{<:XFrame}, dishes::Dishes, sinxys::Vector{NTuple{2,Float}}) where {T<:Real}
-    ndishes, nfreqs, npolrs, ntimes = size(xframes[begin].data)
+    ndishes, npolrs, nfreqs, ntimes = size(xframes[begin].data)
     @assert ndishes == length(dishes.locations)
     nbeams = length(sinxys)
 
@@ -508,7 +508,7 @@ function bb(::Type{T}, xframes::AbstractVector{<:XFrame}, dishes::Dishes, sinxys
 
     beamss = BBeams{T}[]
     for xframe in xframes
-        # E: [dish, freq, polr, time]
+        # E: [dish, polr, freq, time]
         E = xframe.data
         # J: [time, polr, freq, beam]
         J = bb(T, A, E)
@@ -601,7 +601,7 @@ function run(source_amplitude::Float, source_frequency::Float, source_position_x
 
     xframes = corner_turn(qframes, ntimes)
     global stored_xframes = xframes
-    println("Corner turn output: $(length(xframes)) frames of size (ndishes, nfreqs, npolrs, ntimes)=$(size(xframes[begin].data)) t₀=$(xframes[begin].t₀) Δt=$(xframes[begin].Δt) f₀=$(xframes[begin].f₀) Δf=$(xframes[begin].Δf)")
+    println("Corner turn output: $(length(xframes)) frames of size (ndishes, npolrs, nfreqs, ntimes)=$(size(xframes[begin].data)) t₀=$(xframes[begin].t₀) Δt=$(xframes[begin].Δt) f₀=$(xframes[begin].f₀) Δf=$(xframes[begin].Δf)")
     if do_plot
         fig = plot(xframes[begin])
         display(fig)
@@ -655,12 +655,12 @@ function setup(source_amplitude=Float(1.0), source_frequency=Float(0.3e+9), sour
 end
 
 stored_xframes = nothing
-function set_E(ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64, nfreqs::Int64, npolrs::Int64, ntimes::Int64, frame_index::Int64)
-    @show set_E ptr sz ndishes nfreqs npolrs ntimes frame_index
+function set_E(ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64, npolrs::Int64, nfreqs::Int64, ntimes::Int64, frame_index::Int64)
+    @show set_E ptr sz ndishes npolrs nfreqs ntimes frame_index
     xframes = stored_xframes::AbstractVector{<:XFrame}
     xframe = xframes[frame_index]::XFrame
     @assert length(xframe.data) == sz
-    @assert size(xframe.data) == (ndishes, nfreqs, npolrs, ntimes)
+    @assert size(xframe.data) == (ndishes, npolrs, nfreqs, ntimes)
     fill_buffer_Int4!(ptr, sz, xframe.data)
     return nothing
 end

@@ -29,9 +29,9 @@ kernel-description:
     - name: "E"
       intent: in
       type: Int4
-      indices: [C, D, F, P, T]
-      shape: [2, 512, 16, 2, 32768]
-      strides: [1, 2, 1024, 16384, 32768]
+      indices: [C, D, P, F, T]
+      shape: [2, 512, 2, 16, 32768]
+      strides: [1, 2, 1024, 2048, 32768]
     - name: "s"
       intent: in
       type: Int32

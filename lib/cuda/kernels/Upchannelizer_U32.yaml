@@ -35,15 +35,15 @@ kernel-description:
     - name: "E"
       intent: in
       type: Int4
-      indices: [C, D, F, P, T]
-      shape: [2, 512, 16, 2, 32768]
-      strides: [1, 2, 1024, 16384, 32768]
+      indices: [C, D, P, F, T]
+      shape: [2, 512, 2, 16, 32768]
+      strides: [1, 2, 1024, 2048, 32768]
     - name: "Ē"
       intent: out
       type: Int4
-      indices: [C, D, F̄, P, T̄]
-      shape: [2, 512, 512, 2, 1024]
-      strides: [1, 2, 1024, 524288, 1048576]
+      indices: [C, D, P, F̄, T̄]
+      shape: [2, 512, 2, 512, 1024]
+      strides: [1, 2, 1024, 2048, 1048576]
     - name: "info"
       intent: out
       type: Int32

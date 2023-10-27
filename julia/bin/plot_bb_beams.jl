@@ -14,12 +14,12 @@ i2c(x::Int4x2) = t2c(i2t(x))
 quantity_E = "voltage"
 file_E = h5open("$(dir)/$(prefix)$(quantity_E).h5")
 dataset_E = file_E[iter]["host_$(quantity_E)_buffer"]
-@assert dataset_E["dim_name"][] == ["T", "P", "F", "D"]
+@assert dataset_E["dim_name"][] == ["T", "F", "P", "D"]
 array_E = dataset_E[]
 array_E::AbstractArray{UInt8,4}
 array_E = reinterpret(Int4x2, array_E)
 array_E::AbstractArray{Int4x2,4}
-ndishs, nfreqs, npolrs, ntimes = size(array_E)
+ndishs, npolrs, nfreqs, ntimes = size(array_E)
 
 quantity_A = "bb_phase"
 file_A = h5open("$(dir)/$(prefix)$(quantity_A).h5")
@@ -99,8 +99,8 @@ end
 # freq = 1:nfreqs
 freq = 3
 
-data = Float32[sqrt(sum(abs2(real(Complex{Float32}(i2c(j)))) for j in view(array_E, dish, freq, :, :)) /
-                    length(view(array_E, dish, freq, :, :)))
+data = Float32[sqrt(sum(abs2(real(Complex{Float32}(i2c(j)))) for j in view(array_E, dish, :, freq, :)) /
+                    length(view(array_E, dish, :, freq, :)))
                for dish in 1:ndishs]
 fig = Figure(; resolution=(1280, 960))
 ax = Axis(fig[1, 1]; title="F-engine electric field", xlabel="x", ylabel="y")
