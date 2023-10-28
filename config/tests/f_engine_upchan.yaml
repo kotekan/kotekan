@@ -72,6 +72,8 @@ num_frequencies: 16             # how many frequencies to keep
 num_times: 32768
 
 # Baseband beamformer setup
+bb_num_dishes_M: 32
+bb_num_dishes_N: 16
 bb_num_beams_P: 12
 bb_num_beams_Q: 8
 bb_beam_separation_x: 0.015        # east-west

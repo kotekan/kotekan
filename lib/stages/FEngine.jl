@@ -554,9 +554,11 @@ end
 # Main script
 
 function run(source_amplitude::Float, source_frequency::Float, source_position_x::Float, source_position_y::Float,
-             dish_separation_x::Float, dish_separation_y::Float, ndishes_i::Int64, ndishes_j::Int64,
+             dish_separation_x::Float, dish_separation_y::Float,
              adc_frequency::Float,
              ntaps::Int64, nfreq::Int64, ntimes::Int64,
+             ndishes_i::Int64, ndishes_j::Int64,
+             nbeams_i::Int64, nbeams_j::Int64,
              do_plot::Bool)
     source = let
         A = Complex{Float}(source_amplitude)
@@ -607,11 +609,9 @@ function run(source_amplitude::Float, source_frequency::Float, source_position_x
         display(fig)
     end
 
-    nbeamsi = 12
-    nbeamsj = 8
     beamΔΘi = Float(0.015)
     beamΔΘj = Float(0.015)
-    sinxys = make_baseband_beams(nbeamsi, nbeamsj, beamΔΘi, beamΔΘj)
+    sinxys = make_baseband_beams(nbeams_i, nbeams_j, beamΔΘi, beamΔΘj)
     beams = bb(Float, xframes, dishes, sinxys)
     println("Baseband beams: $(length(beams)) frames of size (ntimes, npolrs, nfreqs, nbeams)=$(size(beams[begin].data)) t₀=$(beams[begin].t₀) Δt=$(beams[begin].Δt) f₀=$(beams[begin].f₀) Δf=$(beams[begin].Δf)")
     if do_plot
@@ -645,13 +645,18 @@ end
 
 function setup(source_amplitude=Float(1.0), source_frequency=Float(0.3e+9), source_position_x=Float(0.02),
                source_position_y=Float(0.03),
-               dish_separation_x=Float(6.3), dish_separation_y=Float(8.5), ndishes_i=8, ndishes_j=8,
+               dish_separation_x=Float(6.3), dish_separation_y=Float(8.5),
                adc_frequency=Float(3.0e+9),
-               ntaps=4, nfreq=64, ntimes=64)
+               ntaps=4, nfreq=64, ntimes=64,
+               ndishes_i=8, ndishes_j=8,
+               nbeams_i=12,nbeams_j=8)
     return run(Float(source_amplitude), Float(source_frequency), Float(source_position_x), Float(source_position_y),
-               Float(dish_separation_x), Float(dish_separation_y), Int64(ndishes_i), Int64(ndishes_j),
+               Float(dish_separation_x), Float(dish_separation_y),
                Float(adc_frequency),
-               Int64(ntaps), Int64(nfreq), Int64(ntimes), false)
+               Int64(ntaps), Int64(nfreq), Int64(ntimes),
+               Int64(ndishes_i), Int64(ndishes_j),
+               Int64(nbeams_i), Int64(nbeams_j),
+               false)
 end
 
 stored_xframes = nothing

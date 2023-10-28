@@ -42,6 +42,8 @@ class FEngine : public kotekan::Stage {
     const int num_times;
 
     // Baseband beamformer setup
+    const int bb_num_dishes_M;
+    const int bb_num_dishes_N;
     const int bb_num_beams_P;
     const int bb_num_beams_Q;
     const float bb_beam_separation_x;
@@ -109,6 +111,8 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     num_frequencies(config.get<int>(unique_name, "num_frequencies")),
     num_times(config.get<int>(unique_name, "num_times")),
     // Baseband beamformer setup
+    bb_num_dishes_M(config.get<int>(unique_name, "bb_num_dishes_M")),
+    bb_num_dishes_N(config.get<int>(unique_name, "bb_num_dishes_N")),
     bb_num_beams_P(config.get<int>(unique_name, "bb_num_beams_P")),
     bb_num_beams_Q(config.get<int>(unique_name, "bb_num_beams_Q")),
     bb_beam_separation_x(config.get<float>(unique_name, "bb_beam_separation_x")),
@@ -185,7 +189,7 @@ void FEngine::main_thread() {
         assert(f_engine_module);
         jl_function_t* const setup = jl_get_function(f_engine_module, "setup");
         assert(setup);
-        const int nargs = 12;
+        const int nargs = 14;
         jl_value_t** args;
         JL_GC_PUSHARGS(args, nargs);
         args[0] = jl_box_float32(source_amplitude);
@@ -195,12 +199,14 @@ void FEngine::main_thread() {
         args[4] = jl_box_float32(dish_separation_x);
         args[5] = jl_box_float32(dish_separation_y);
 #warning "TODO: need to pass dish locations"
-        args[6] = jl_box_int64(16);
-        args[7] = jl_box_int64(32);
-        args[8] = jl_box_float32(adc_frequency);
-        args[9] = jl_box_int64(num_taps);
-        args[10] = jl_box_int64(num_frequencies);
-        args[11] = jl_box_int64(num_times);
+        args[6] = jl_box_float32(adc_frequency);
+        args[7] = jl_box_int64(num_taps);
+        args[8] = jl_box_int64(num_frequencies);
+        args[9] = jl_box_int64(num_times);
+        args[10] = jl_box_int64(bb_num_dishes_M);
+        args[11] = jl_box_int64(bb_num_dishes_N);
+        args[12] = jl_box_int64(bb_num_beams_P);
+        args[13] = jl_box_int64(bb_num_beams_Q);
         jl_value_t* const res = jl_call(setup, args, nargs);
         assert(res);
         JL_GC_POP();
@@ -436,7 +442,7 @@ void FEngine::main_thread() {
         A_metadata->dim[1] = num_polarizations;
         A_metadata->dim[2] = bb_num_beams;
         A_metadata->dim[3] = num_dishes;
-        A_metadata->dim[4] = num_polarizations;
+        A_metadata->dim[4] = num_components;
         A_metadata->n_one_hot = -1;
         A_metadata->nfreq = num_frequencies;
 
