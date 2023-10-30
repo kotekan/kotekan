@@ -279,7 +279,6 @@ jobs:
         docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial"
 
     - name: Run boost tests
-      if: env.RUN_2204_BOOST_TESTS # These aren't working, so for now only run them upon request.
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2204/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
@@ -351,7 +350,6 @@ jobs:
         docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial"
 
     - name: Run boost tests
-      if: env.RUN_2204_BOOST_TESTS # These aren't working, so for now only run them upon request.
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2204/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
