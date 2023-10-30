@@ -91,7 +91,8 @@ else()
                 target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
             else()
                 message(
-                    STATUS "No DPDK package found, for older versions (<19.11) use -DUSE_OLD_DPDK=ON")
+                    STATUS
+                        "No DPDK package found, for older versions (<19.11) use -DUSE_OLD_DPDK=ON")
             endif()
         else()
             message(STATUS "pkg-config needed to include DPDK (>=19.11) support")
