@@ -20,10 +20,10 @@ on:
     - master
 
 env:
-  REGISTRY: docker.pkg.github.com
-  IMG_IWYU: "docker.pkg.github.com/kotekan/kotekan/kotekan-iwyu"
-  IMG_1804: "docker.pkg.github.com/${{ github.repository }}/kotekan-1804"
-  IMG_2204: "docker.pkg.github.com/${{ github.repository }}/kotekan-2204"
+  REGISTRY: ghcr.io
+  IMG_IWYU: "ghcr.io/kotekan/kotekan/kotekan-iwyu"
+  IMG_1804: "ghcr.io/${{ github.repository }}/kotekan-1804"
+  IMG_2204: "ghcr.io/${{ github.repository }}/kotekan-2204"
   PYTEST_TIMEOUT: 60
 
 jobs:
@@ -210,7 +210,7 @@ jobs:
 
   # Build a full version of kotekan and run the unit tests
   build-full-tests-2204:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: build-docker-2204
 
     steps:
@@ -715,7 +715,7 @@ jobs:
 
     - name: Pull IWYU docker image
       run: |
-        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        docker login ghcr.io -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker pull --disable-content-trust ${IMG_IWYU}:${{ steps.extract_branch.outputs.branch }}
         echo ::set-output name=status::success
       if: steps.git-diff-docker-iwyu.outputs.diff
@@ -723,7 +723,7 @@ jobs:
       id: pull-docker-iwyu
     - name: Pull docker image for develop branch
       run: |
-        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        docker login ghcr.io -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker pull --disable-content-trust ${IMG_IWYU}:develop
       if: steps.git-diff-docker-iwyu.outputs.diff != '' && steps.pull-docker-iwyu.outputs.status != 'success'
     - name: Build iwyu docker image
@@ -767,7 +767,7 @@ jobs:
     - name: Configure kotekan
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-1804/ ${IMG_IWYU}:${{ steps.extract_branch.outputs.branch }})
-        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        docker login ghcr.io -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
             -DWERROR=ON \
