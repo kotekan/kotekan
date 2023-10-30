@@ -649,7 +649,7 @@ function setup(source_amplitude=Float(1.0), source_frequency=Float(0.3e+9), sour
                adc_frequency=Float(3.0e+9),
                ntaps=4, nfreq=64, ntimes=64,
                ndishes_i=8, ndishes_j=8,
-               nbeams_i=12,nbeams_j=8)
+               nbeams_i=12, nbeams_j=8)
     return run(Float(source_amplitude), Float(source_frequency), Float(source_position_x), Float(source_position_y),
                Float(dish_separation_x), Float(dish_separation_y),
                Float(adc_frequency),

@@ -16,6 +16,28 @@
 
 enum chordDataType { int4p4, int8, int16, int32, int64, float16, float32, float64 };
 
+constexpr std::size_t chord_datatype_bytes(chordDataType type) {
+    switch (type) {
+        case int4p4:
+            return 1;
+        case int8:
+            return 1;
+        case int16:
+            return 2;
+        case int32:
+            return 4;
+        case int64:
+            return 8;
+        case float16:
+            return 2;
+        case float32:
+            return 4;
+        case float64:
+            return 8;
+    }
+    return -1;
+}
+
 const char* chord_datatype_string(chordDataType type);
 
 // Maximum number of frequencies in metadata array

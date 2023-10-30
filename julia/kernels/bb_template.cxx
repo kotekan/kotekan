@@ -18,6 +18,7 @@
 #include <cassert>
 #include <cstring>
 #include <stdexcept>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -75,25 +76,43 @@ private:
 
     // Kernel arguments:
     {{#kernel_arguments}}
-    static constexpr std::size_t {{{name}}}_length = {{{value}}};
+    // {{{name}}}: {{{kotekan_name}}}
+    static constexpr chordDataType {{{name}}}_type = {{{type}}};
+    static constexpr std::size_t {{{name}}}_rank = 0
+        {{#axes}}
+        +1
+        {{/axes}}
+    ;
+    static constexpr std::array<const char*, {{{name}}}_rank> {{{name}}}_labels = {
+        {{#axes}}
+        "{{{label}}}",
+        {{/axes}}
+    };
+    static constexpr std::array<std::size_t, {{{name}}}_rank> {{{name}}}_lengths = {
+        {{#axes}}
+        {{{length}}},
+        {{/axes}}
+    };
+    static constexpr std::size_t {{{name}}}_length = chord_datatype_bytes({{{name}}}_type)
+        {{#axes}}
+        * {{{length}}}
+        {{/axes}}
+        ;
+    static_assert({{{name}}}_length <= std::size_t(std::numeric_limits<int>::max()));
+    //
     {{/kernel_arguments}}
 
-    // Runtime parameters:
-    {{#runtime_parameters}}
-    {{{type}}} {{{name}}};
-    {{/runtime_parameters}}
-
-    // GPU memory:
-    {{#memnames}}
+    // Kotekan buffer names
+    {{#kernel_arguments}}
     const std::string {{{name}}}_memname;
-    {{/memnames}}
+    {{/kernel_arguments}}
 
     // Host-side buffer arrays
-    {{#memnames}}
+    {{#kernel_arguments}}
     {{^hasbuffer}}
     std::vector<std::vector<std::uint8_t>> host_{{{name}}};
     {{/hasbuffer}}
-    {{/memnames}}
+    {{/kernel_arguments}}
 
     // Declare extra variables (if any)
     {{{declare_extra_variables}}}
@@ -106,40 +125,30 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
                                              bufferContainer& host_buffers,
                                              cudaDeviceInterface& device) :
     cudaCommand(config, unique_name, host_buffers, device, "{{{kernel_name}}}", "{{{kernel_name}}}.ptx")
-    {{#memnames}}
+    {{#kernel_arguments}}
     {{#hasbuffer}}
     , {{{name}}}_memname(config.get<std::string>(unique_name, "{{{kotekan_name}}}"))
     {{/hasbuffer}}
     {{^hasbuffer}}
     , {{{name}}}_memname(unique_name + "/{{{kotekan_name}}}")
     {{/hasbuffer}}
-    {{/memnames}}
+    {{/kernel_arguments}}
 
-    {{#memnames}}
+    {{#kernel_arguments}}
     {{^hasbuffer}}
     , host_{{{name}}}(_gpu_buffer_depth)
     {{/hasbuffer}}
-    {{/memnames}}
+    {{/kernel_arguments}}
 {
     // Add Graphviz entries for the GPU buffers used by this kernel
-    {{#memnames}}
+    {{#kernel_arguments}}
     {{#hasbuffer}}
     gpu_buffers_used.push_back(std::make_tuple({{{name}}}_memname, true, true, false));
     {{/hasbuffer}}
     {{^hasbuffer}}
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_{{{kotekan_name}}}", false, true, true));
     {{/hasbuffer}}
-    {{/memnames}}
-
-    {{#runtime_parameters}}
-    const {{{type}}} {{{name}}} = config.get<{{{type}}}>(unique_name, "{{{name}}}");
-    std::vector<float16_t> freq_gains16(freq_gains.size());
-    for (std::size_t i=0; i<freq_gains16.size(); i++)
-      freq_gains16[i] = freq_gains[i];
-    const void* const G_host = freq_gains16.data();
-    void* const G_memory = device.get_gpu_memory(G_memname, G_length);
-    CHECK_CUDA_ERROR(cudaMemcpy(G_memory, G_host, G_length, cudaMemcpyHostToDevice));
-    {{/runtime_parameters}}
+    {{/kernel_arguments}}
 
     set_command_type(gpuCommandType::KERNEL);
     const std::vector<std::string> opts = {
@@ -158,7 +167,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
                                            const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute(pipestate.gpu_frame_id);
 
-    {{#memnames}}
+    {{#kernel_arguments}}
     {{#hasbuffer}}
     void* const {{{name}}}_memory = device.get_gpu_memory_array({{{name}}}_memname, pipestate.gpu_frame_id, {{{name}}}_length);
     {{/hasbuffer}}
@@ -166,14 +175,12 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
     host_{{{name}}}[pipestate.gpu_frame_id].resize({{{name}}}_length);
     void* const {{{name}}}_memory = device.get_gpu_memory({{{name}}}_memname, {{{name}}}_length);
     {{/hasbuffer}}
-    {{/memnames}}
+    {{/kernel_arguments}}
 
-    {{#memnames}}
+    {{#kernel_arguments}}
     {{#hasbuffer}}
-    const char* const axislabels_{{{name}}}[] = { {{{axislabels}}} };
-    const std::size_t axislengths_{{{name}}}[] = { {{{axislengths}}} };
-    const std::size_t ndims_{{{name}}} = sizeof axislabels_{{{name}}} / sizeof *axislabels_{{{name}}};
     {{^isoutput}}
+    /// {{{name}}} is an input buffer: check metadata
     const metadataContainer* const mc_{{{name}}} =
         device.get_gpu_memory_array_metadata({{{name}}}_memname, pipestate.gpu_frame_id);
     assert(mc_{{{name}}} && metadata_container_is_chord(mc_{{{name}}}));
@@ -181,34 +188,37 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
     INFO("input {{{name}}} array: {:s} {:s}",
         meta_{{{name}}}->get_type_string(),
         meta_{{{name}}}->get_dimensions_string());
-    assert(meta_{{{name}}}->type == {{{type}}});
-    assert(meta_{{{name}}}->dims == ndims_{{{name}}});
-    for (std::size_t dim = 0; dim < ndims_{{{name}}}; ++dim) {
+    assert(meta_{{{name}}}->type == {{{name}}}_type);
+    assert(meta_{{{name}}}->dims == {{{name}}}_rank);
+    for (std::size_t dim = 0; dim < {{{name}}}_rank; ++dim) {
         assert(std::strncmp(meta_{{{name}}}->dim_name[dim],
-                            axislabels_{{{name}}}[ndims_{{{name}}} - 1 - dim],
+                            {{{name}}}_labels[{{{name}}}_rank - 1 - dim],
                             sizeof meta_{{{name}}}->dim_name[dim]) == 0);
-        assert(meta_{{{name}}}->dim[dim] == int(axislengths_{{{name}}}[ndims_{{{name}}} - 1 - dim]));
+        assert(meta_{{{name}}}->dim[dim] == int({{{name}}}_lengths[{{{name}}}_rank - 1 - dim]));
     }
+    //
     {{/isoutput}}
     {{#isoutput}}
+    /// {{{name}}} is an output buffer: set metadata
     metadataContainer* const mc_{{{name}}} =
         device.create_gpu_memory_array_metadata({{{name}}}_memname, pipestate.gpu_frame_id, mc_E->parent_pool);
     chordMetadata* const meta_{{{name}}} = get_chord_metadata(mc_{{{name}}});
     chord_metadata_copy(meta_{{{name}}}, meta_E);
-    meta_{{{name}}}->type = {{{type}}};
-    meta_{{{name}}}->dims = ndims_{{{name}}};
-    for (std::size_t dim = 0; dim < ndims_{{{name}}}; ++dim) {
+    meta_{{{name}}}->type = {{{name}}}_type;
+    meta_{{{name}}}->dims = {{{name}}}_rank;
+    for (std::size_t dim = 0; dim < {{{name}}}_rank; ++dim) {
         std::strncpy(meta_{{{name}}}->dim_name[dim],
-                     axislabels_{{{name}}}[ndims_{{{name}}} - 1 - dim],
+                     {{{name}}}_labels[{{{name}}}_rank - 1 - dim],
                      sizeof meta_{{{name}}}->dim_name[dim]);
-        meta_{{{name}}}->dim[dim] = axislengths_{{{name}}}[ndims_{{{name}}} - 1 - dim];
+        meta_{{{name}}}->dim[dim] = {{{name}}}_lengths[{{{name}}}_rank - 1 - dim];
     }
     INFO("output {{{name}}} array: {:s} {:s}",
         meta_{{{name}}}->get_type_string(),
         meta_{{{name}}}->get_dimensions_string());
+    //
     {{/isoutput}}
     {{/hasbuffer}}
-    {{/memnames}}
+    {{/kernel_arguments}}
 
     record_start_event(pipestate.gpu_frame_id);
 
@@ -223,11 +233,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
         {{/kernel_arguments}}
     };
 
-    // Modify kernel arguments (if necessary)
-    {{{modify_kernel_arguments}}}
-
     // Copy inputs to device memory
-    {{#memnames}}
+    {{#kernel_arguments}}
     {{^hasbuffer}}
     {{^isoutput}}
     CHECK_CUDA_ERROR(cudaMemcpyAsync({{{name}}}_memory,
@@ -237,17 +244,17 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
                                      device.getStream(cuda_stream_id)));
     {{/isoutput}}
     {{/hasbuffer}}
-    {{/memnames}}
+    {{/kernel_arguments}}
 
     // Initialize host-side buffer arrays
     // TODO: Skip this for performance
-    {{#memnames}}
+    {{#kernel_arguments}}
     {{^hasbuffer}}
     {{#isoutput}}
     CHECK_CUDA_ERROR(cudaMemsetAsync({{{name}}}_memory, 0xff, {{{name}}}_length, device.getStream(cuda_stream_id)));
     {{/isoutput}}
     {{/hasbuffer}}
-    {{/memnames}}
+    {{/kernel_arguments}}
 
     DEBUG("kernel_symbol: {}", kernel_symbol);
     DEBUG("runtime_kernels[kernel_symbol]: {}", static_cast<void*>(runtime_kernels[kernel_symbol]));
@@ -257,8 +264,11 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
 
     DEBUG("Running CUDA {{{kernel_name}}} on GPU frame {:d}", pipestate.gpu_frame_id);
     const CUresult err =
-        cuLaunchKernel(runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
-                       shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
+        cuLaunchKernel(runtime_kernels[kernel_symbol],
+                       blocks, 1, 1, threads_x, threads_y, 1,
+                       shmem_bytes,
+                       device.getStream(cuda_stream_id),
+                       args, NULL);
 
     if (err != CUDA_SUCCESS) {
         const char* errStr;
@@ -268,7 +278,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
 
     // Copy results back to host memory
     // TODO: Skip this for performance
-    {{#memnames}}
+    {{#kernel_arguments}}
     {{^hasbuffer}}
     {{#isoutput}}
     CHECK_CUDA_ERROR(cudaMemcpyAsync(host_{{{name}}}[pipestate.gpu_frame_id].data(),
@@ -278,7 +288,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
                                      device.getStream(cuda_stream_id)));
     {{/isoutput}}
     {{/hasbuffer}}
-    {{/memnames}}
+    {{/kernel_arguments}}
 
     // Check error codes
     // TODO: Skip this for performance
@@ -294,7 +304,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
 void cuda{{{kernel_name}}}::finalize_frame(const int gpu_frame_id) {
     cudaCommand::finalize_frame(gpu_frame_id);
 
-    {{#memnames}}
+    {{#kernel_arguments}}
     {{^hasbuffer}}
     {{#isoutput}}
     for (std::size_t i = 0; i < host_{{{name}}}[gpu_frame_id].size(); ++i)
@@ -303,5 +313,5 @@ void cuda{{{kernel_name}}}::finalize_frame(const int gpu_frame_id) {
                   host_{{{name}}}[gpu_frame_id][i], int(i));
     {{/isoutput}}
     {{/hasbuffer}}
-    {{/memnames}}
+    {{/kernel_arguments}}
 }

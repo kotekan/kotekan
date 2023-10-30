@@ -1,45 +1,42 @@
-@inbounds begin #= /home/eschnett/src/kotekan/julia/kernels/bb.jl:824 =#
+@inbounds begin #= /home/eschnett/src/kotekan/julia/kernels/bb.jl:743 =#
     info = 1
-    info_memory[(((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 4)%4)%4)*32+(IndexSpaces.assume_inrange(
-        IndexSpaces.cuda_threadidx(),
-        0,
-        32,
-    )%32)%32+((IndexSpaces.assume_inrange(
+    info_memory[(((IndexSpaces.assume_inrange(
         IndexSpaces.cuda_blockidx(),
         0,
         2048,
-    )%2048)%2048)*128)+0+0x01] = info
-    s_polr0 = s_memory[(0+(((IndexSpaces.assume_inrange(
-        IndexSpaces.cuda_blockidx(),
-        0,
-        2048,
-    )÷16)%128)%128)*32+((IndexSpaces.assume_inrange(
+    )%2048)%2048)*128+((IndexSpaces.assume_inrange(
         IndexSpaces.cuda_warpidx(),
         0,
         4,
-    )%4)*4+(IndexSpaces.assume_inrange(
+    )%4)%4)*32+(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32)%32)%32)+0+0x01] =
+        info
+    s_polr0 = s_memory[(((IndexSpaces.assume_inrange(
         IndexSpaces.cuda_threadidx(),
         0,
         32,
-    )÷8)%4)%16)+0x01]
-    s_polr1 = s_memory[(16+(((IndexSpaces.assume_inrange(
+    )÷8)%4+(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 4)%4)*4)%16+(((IndexSpaces.assume_inrange(
         IndexSpaces.cuda_blockidx(),
         0,
         2048,
-    )÷16)%128)%128)*32+((IndexSpaces.assume_inrange(
-        IndexSpaces.cuda_warpidx(),
-        0,
-        4,
-    )%4)*4+(IndexSpaces.assume_inrange(
+    )÷16)%128)%128)*32+0)+0x01]
+    s_polr1 = s_memory[(((IndexSpaces.assume_inrange(
         IndexSpaces.cuda_threadidx(),
         0,
         32,
-    )÷8)%4)%16)+0x01]
+    )÷8)%4+(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 4)%4)*4)%16+(((IndexSpaces.assume_inrange(
+        IndexSpaces.cuda_blockidx(),
+        0,
+        2048,
+    )÷16)%128)%128)*32+16)+0x01]
     s_polr0 = s_polr0 - 2
     s_polr1 = s_polr1 - 2
     if !(0i32 < s_polr0 < 32i32 && 0i32 < s_polr1 < 32i32)
         info = 2
         info_memory[(((IndexSpaces.assume_inrange(
+            IndexSpaces.cuda_blockidx(),
+            0,
+            2048,
+        )%2048)%2048)*128+((IndexSpaces.assume_inrange(
             IndexSpaces.cuda_warpidx(),
             0,
             4,
@@ -47,11 +44,7 @@
             IndexSpaces.cuda_threadidx(),
             0,
             32,
-        )%32)%32+((IndexSpaces.assume_inrange(
-            IndexSpaces.cuda_blockidx(),
-            0,
-            2048,
-        )%2048)%2048)*128)+0+0x01] = info
+        )%32)%32)+0+0x01] = info
         IndexSpaces.cuda_trap()
     end
     (A_cplx0_dish0, A_cplx1_dish0, A_cplx0_dish4, A_cplx1_dish4) =
@@ -60,23 +53,6 @@
             (
                 (
                     (
-                        (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 4) ÷ 2) %
-                        2
-                    ) % 2
-                ) * 512 +
-                (
-                    (
-                        (
-                            IndexSpaces.assume_inrange(
-                                IndexSpaces.cuda_blockidx(),
-                                0,
-                                2048,
-                            ) ÷ 16
-                        ) % 128
-                    ) % 128
-                ) * 1024 +
-                (
-                    (
                         (
                             (
                                 IndexSpaces.assume_inrange(
@@ -97,6 +73,8 @@
                 ) % 32 +
                 (
                     (
+                        (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 4) % 2) *
+                        8 +
                         (
                             (
                                 IndexSpaces.assume_inrange(
@@ -105,23 +83,9 @@
                                     32,
                                 ) ÷ 8
                             ) % 4
-                        ) * 2 +
-                        (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 4) % 2) *
-                        8
+                        ) * 2
                     ) % 16
-                ) * 32
-            ) + 1i32,
-        )
-    (A_cplx0_dish8, A_cplx1_dish8, A_cplx0_dish12, A_cplx1_dish12) =
-        IndexSpaces.unsafe_load4_global(
-            A_memory,
-            (
-                (
-                    (
-                        (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 4) ÷ 2) %
-                        2
-                    ) % 2
-                ) * 512 +
+                ) * 32 +
                 (
                     (
                         (
@@ -133,6 +97,18 @@
                         ) % 128
                     ) % 128
                 ) * 1024 +
+                (
+                    (
+                        (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 4) ÷ 2) %
+                        2
+                    ) % 2
+                ) * 512
+            ) + 1i32,
+        )
+    (A_cplx0_dish8, A_cplx1_dish8, A_cplx0_dish12, A_cplx1_dish12) =
+        IndexSpaces.unsafe_load4_global(
+            A_memory,
+            (
                 (
                     (
                         (
@@ -156,15 +132,7 @@
                 (
                     (
                         (
-                            (
-                                (
-                                    IndexSpaces.assume_inrange(
-                                        IndexSpaces.cuda_threadidx(),
-                                        0,
-                                        32,
-                                    ) ÷ 8
-                                ) % 4
-                            ) * 2 +
+                            1 +
                             (
                                 IndexSpaces.assume_inrange(
                                     IndexSpaces.cuda_warpidx(),
@@ -172,9 +140,35 @@
                                     4,
                                 ) % 2
                             ) * 8
-                        ) + 1
+                        ) +
+                        (
+                            (
+                                IndexSpaces.assume_inrange(
+                                    IndexSpaces.cuda_threadidx(),
+                                    0,
+                                    32,
+                                ) ÷ 8
+                            ) % 4
+                        ) * 2
                     ) % 16
-                ) * 32
+                ) * 32 +
+                (
+                    (
+                        (
+                            IndexSpaces.assume_inrange(
+                                IndexSpaces.cuda_blockidx(),
+                                0,
+                                2048,
+                            ) ÷ 16
+                        ) % 128
+                    ) % 128
+                ) * 1024 +
+                (
+                    (
+                        (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 4) ÷ 2) %
+                        2
+                    ) % 2
+                ) * 512
             ) + 1i32,
         )
     (A_cplx0_dish0, A_cplx1_dish0) = (
@@ -280,15 +274,48 @@
                             (
                                 (
                                     (
+                                        IndexSpaces.assume_inrange(
+                                            IndexSpaces.cuda_blockidx(),
+                                            0,
+                                            2048,
+                                        ) ÷ 16
+                                    ) % 128
+                                ) % 128
+                            ) * 32 +
+                            (
+                                (
+                                    (
+                                        IndexSpaces.assume_inrange(
+                                            IndexSpaces.cuda_threadidx(),
+                                            0,
+                                            32,
+                                        ) % 4
+                                    ) * 16
+                                ) ÷ 4
+                            ) % 16 +
+                            (
+                                (
+                                    (
+                                        IndexSpaces.assume_inrange(
+                                            IndexSpaces.cuda_warpidx(),
+                                            0,
+                                            4,
+                                        ) ÷ 2
+                                    ) % 2
+                                ) % 2
+                            ) * 16 +
+                            (
+                                (
+                                    (
                                         (
                                             (
                                                 (
                                                     IndexSpaces.assume_inrange(
-                                                        IndexSpaces.cuda_threadidx(),
+                                                        IndexSpaces.cuda_warpidx(),
                                                         0,
-                                                        32,
-                                                    ) ÷ 4
-                                                ) % 8 +
+                                                        4,
+                                                    ) % 2
+                                                ) * 16 +
                                                 (
                                                     IndexSpaces.assume_inrange(
                                                         IndexSpaces.cuda_blockidx(),
@@ -299,11 +326,11 @@
                                             ) +
                                             (
                                                 IndexSpaces.assume_inrange(
-                                                    IndexSpaces.cuda_warpidx(),
+                                                    IndexSpaces.cuda_threadidx(),
                                                     0,
-                                                    4,
-                                                ) % 2
-                                            ) * 16
+                                                    32,
+                                                ) ÷ 4
+                                            ) % 8
                                         ) +
                                         (
                                             (
@@ -319,18 +346,13 @@
                                         ) % 16
                                     ) * 128
                                 ) % 32768
-                            ) * 4096 +
-                            (
-                                (
-                                    (
-                                        IndexSpaces.assume_inrange(
-                                            IndexSpaces.cuda_warpidx(),
-                                            0,
-                                            4,
-                                        ) ÷ 2
-                                    ) % 2
-                                ) % 2
-                            ) * 16 +
+                            ) * 4096
+                        ) + 1i32,
+                    )
+                (E_dish0_time8, E_dish4_time8, E_dish8_time8, E_dish12_time8) =
+                    IndexSpaces.unsafe_load4_global(
+                        E_memory,
+                        (
                             (
                                 (
                                     (
@@ -352,13 +374,18 @@
                                         ) % 4
                                     ) * 16
                                 ) ÷ 4
-                            ) % 16
-                        ) + 1i32,
-                    )
-                (E_dish0_time8, E_dish4_time8, E_dish8_time8, E_dish12_time8) =
-                    IndexSpaces.unsafe_load4_global(
-                        E_memory,
-                        (
+                            ) % 16 +
+                            (
+                                (
+                                    (
+                                        IndexSpaces.assume_inrange(
+                                            IndexSpaces.cuda_warpidx(),
+                                            0,
+                                            4,
+                                        ) ÷ 2
+                                    ) % 2
+                                ) % 2
+                            ) * 16 +
                             (
                                 (
                                     (
@@ -368,11 +395,11 @@
                                                     8 +
                                                     (
                                                         IndexSpaces.assume_inrange(
-                                                            IndexSpaces.cuda_threadidx(),
+                                                            IndexSpaces.cuda_warpidx(),
                                                             0,
-                                                            32,
-                                                        ) ÷ 4
-                                                    ) % 8
+                                                            4,
+                                                        ) % 2
+                                                    ) * 16
                                                 ) +
                                                 (
                                                     IndexSpaces.assume_inrange(
@@ -384,11 +411,11 @@
                                             ) +
                                             (
                                                 IndexSpaces.assume_inrange(
-                                                    IndexSpaces.cuda_warpidx(),
+                                                    IndexSpaces.cuda_threadidx(),
                                                     0,
-                                                    4,
-                                                ) % 2
-                                            ) * 16
+                                                    32,
+                                                ) ÷ 4
+                                            ) % 8
                                         ) +
                                         (
                                             (
@@ -404,59 +431,26 @@
                                         ) % 16
                                     ) * 128
                                 ) % 32768
-                            ) * 4096 +
-                            (
-                                (
-                                    (
-                                        IndexSpaces.assume_inrange(
-                                            IndexSpaces.cuda_warpidx(),
-                                            0,
-                                            4,
-                                        ) ÷ 2
-                                    ) % 2
-                                ) % 2
-                            ) * 16 +
-                            (
-                                (
-                                    (
-                                        IndexSpaces.assume_inrange(
-                                            IndexSpaces.cuda_blockidx(),
-                                            0,
-                                            2048,
-                                        ) ÷ 16
-                                    ) % 128
-                                ) % 128
-                            ) * 32 +
-                            (
-                                (
-                                    (
-                                        IndexSpaces.assume_inrange(
-                                            IndexSpaces.cuda_threadidx(),
-                                            0,
-                                            32,
-                                        ) % 4
-                                    ) * 16
-                                ) ÷ 4
-                            ) % 16
+                            ) * 4096
                         ) + 1i32,
                     )
                 E_shared[((((IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_warpidx(),
-                    0,
-                    4,
-                )÷2)%2)%2)*544+((((((IndexSpaces.assume_inrange(
                     IndexSpaces.cuda_threadidx(),
                     0,
                     32,
-                )÷4)%8+(IndexSpaces.assume_inrange(
+                )%4)*16)÷4)%16+((((((IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_warpidx(),
+                    0,
+                    4,
+                )%2)*16+(IndexSpaces.assume_inrange(
                     IndexSpaces.cuda_blockidx(),
                     0,
                     2048,
                 )%16)*2048)+(IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_warpidx(),
+                    IndexSpaces.cuda_threadidx(),
                     0,
-                    4,
-                )%2)*16)+((IndexSpaces.assume_inrange(
+                    32,
+                )÷4)%8)+((IndexSpaces.assume_inrange(
                     T2,
                     0,
                     32,
@@ -467,120 +461,27 @@
                     128,
                     2048,
                 )÷128)%16)*128)%32)*17+(((IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_threadidx(),
-                    0,
-                    32,
-                )%4)*16)÷4)%16)+0+0x01] = E_dish0_time0
-                E_shared[((((IndexSpaces.assume_inrange(
                     IndexSpaces.cuda_warpidx(),
                     0,
                     4,
-                )÷2)%2)%2)*544+((((((IndexSpaces.assume_inrange(
+                )÷2)%2)%2)*544)+0+0x01] = E_dish0_time0
+                E_shared[(((4+(IndexSpaces.assume_inrange(
                     IndexSpaces.cuda_threadidx(),
                     0,
                     32,
-                )÷4)%8+(IndexSpaces.assume_inrange(
+                )%4)*16)÷4)%16+((((((IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_warpidx(),
+                    0,
+                    4,
+                )%2)*16+(IndexSpaces.assume_inrange(
                     IndexSpaces.cuda_blockidx(),
                     0,
                     2048,
                 )%16)*2048)+(IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_warpidx(),
-                    0,
-                    4,
-                )%2)*16)+((IndexSpaces.assume_inrange(
-                    T2,
-                    0,
-                    32,
-                    128,
-                )÷32)%4)*32)+((IndexSpaces.assume_inrange(
-                    T1,
-                    0,
-                    128,
-                    2048,
-                )÷128)%16)*128)%32)*17+((4+(IndexSpaces.assume_inrange(
                     IndexSpaces.cuda_threadidx(),
                     0,
                     32,
-                )%4)*16)÷4)%16)+0+0x01] = E_dish4_time0
-                E_shared[((((IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_warpidx(),
-                    0,
-                    4,
-                )÷2)%2)%2)*544+((((((IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_threadidx(),
-                    0,
-                    32,
-                )÷4)%8+(IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_blockidx(),
-                    0,
-                    2048,
-                )%16)*2048)+(IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_warpidx(),
-                    0,
-                    4,
-                )%2)*16)+((IndexSpaces.assume_inrange(
-                    T2,
-                    0,
-                    32,
-                    128,
-                )÷32)%4)*32)+((IndexSpaces.assume_inrange(
-                    T1,
-                    0,
-                    128,
-                    2048,
-                )÷128)%16)*128)%32)*17+((8+(IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_threadidx(),
-                    0,
-                    32,
-                )%4)*16)÷4)%16)+0+0x01] = E_dish8_time0
-                E_shared[((((IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_warpidx(),
-                    0,
-                    4,
-                )÷2)%2)%2)*544+((((((IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_threadidx(),
-                    0,
-                    32,
-                )÷4)%8+(IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_blockidx(),
-                    0,
-                    2048,
-                )%16)*2048)+(IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_warpidx(),
-                    0,
-                    4,
-                )%2)*16)+((IndexSpaces.assume_inrange(
-                    T2,
-                    0,
-                    32,
-                    128,
-                )÷32)%4)*32)+((IndexSpaces.assume_inrange(
-                    T1,
-                    0,
-                    128,
-                    2048,
-                )÷128)%16)*128)%32)*17+((12+(IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_threadidx(),
-                    0,
-                    32,
-                )%4)*16)÷4)%16)+0+0x01] = E_dish12_time0
-                E_shared[((((IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_warpidx(),
-                    0,
-                    4,
-                )÷2)%2)%2)*544+((((((8+(IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_threadidx(),
-                    0,
-                    32,
-                )÷4)%8)+(IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_blockidx(),
-                    0,
-                    2048,
-                )%16)*2048)+(IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_warpidx(),
-                    0,
-                    4,
-                )%2)*16)+((IndexSpaces.assume_inrange(
+                )÷4)%8)+((IndexSpaces.assume_inrange(
                     T2,
                     0,
                     32,
@@ -591,27 +492,27 @@
                     128,
                     2048,
                 )÷128)%16)*128)%32)*17+(((IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_threadidx(),
-                    0,
-                    32,
-                )%4)*16)÷4)%16)+0+0x01] = E_dish0_time8
-                E_shared[((((IndexSpaces.assume_inrange(
                     IndexSpaces.cuda_warpidx(),
                     0,
                     4,
-                )÷2)%2)%2)*544+((((((8+(IndexSpaces.assume_inrange(
+                )÷2)%2)%2)*544)+0+0x01] = E_dish4_time0
+                E_shared[(((8+(IndexSpaces.assume_inrange(
                     IndexSpaces.cuda_threadidx(),
                     0,
                     32,
-                )÷4)%8)+(IndexSpaces.assume_inrange(
+                )%4)*16)÷4)%16+((((((IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_warpidx(),
+                    0,
+                    4,
+                )%2)*16+(IndexSpaces.assume_inrange(
                     IndexSpaces.cuda_blockidx(),
                     0,
                     2048,
                 )%16)*2048)+(IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_warpidx(),
+                    IndexSpaces.cuda_threadidx(),
                     0,
-                    4,
-                )%2)*16)+((IndexSpaces.assume_inrange(
+                    32,
+                )÷4)%8)+((IndexSpaces.assume_inrange(
                     T2,
                     0,
                     32,
@@ -621,28 +522,28 @@
                     0,
                     128,
                     2048,
-                )÷128)%16)*128)%32)*17+((4+(IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_threadidx(),
-                    0,
-                    32,
-                )%4)*16)÷4)%16)+0+0x01] = E_dish4_time8
-                E_shared[((((IndexSpaces.assume_inrange(
+                )÷128)%16)*128)%32)*17+(((IndexSpaces.assume_inrange(
                     IndexSpaces.cuda_warpidx(),
                     0,
                     4,
-                )÷2)%2)%2)*544+((((((8+(IndexSpaces.assume_inrange(
+                )÷2)%2)%2)*544)+0+0x01] = E_dish8_time0
+                E_shared[(((12+(IndexSpaces.assume_inrange(
                     IndexSpaces.cuda_threadidx(),
                     0,
                     32,
-                )÷4)%8)+(IndexSpaces.assume_inrange(
+                )%4)*16)÷4)%16+((((((IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_warpidx(),
+                    0,
+                    4,
+                )%2)*16+(IndexSpaces.assume_inrange(
                     IndexSpaces.cuda_blockidx(),
                     0,
                     2048,
                 )%16)*2048)+(IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_warpidx(),
+                    IndexSpaces.cuda_threadidx(),
                     0,
-                    4,
-                )%2)*16)+((IndexSpaces.assume_inrange(
+                    32,
+                )÷4)%8)+((IndexSpaces.assume_inrange(
                     T2,
                     0,
                     32,
@@ -652,28 +553,28 @@
                     0,
                     128,
                     2048,
-                )÷128)%16)*128)%32)*17+((8+(IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_threadidx(),
-                    0,
-                    32,
-                )%4)*16)÷4)%16)+0+0x01] = E_dish8_time8
-                E_shared[((((IndexSpaces.assume_inrange(
+                )÷128)%16)*128)%32)*17+(((IndexSpaces.assume_inrange(
                     IndexSpaces.cuda_warpidx(),
                     0,
                     4,
-                )÷2)%2)%2)*544+((((((8+(IndexSpaces.assume_inrange(
+                )÷2)%2)%2)*544)+0+0x01] = E_dish12_time0
+                E_shared[((((IndexSpaces.assume_inrange(
                     IndexSpaces.cuda_threadidx(),
                     0,
                     32,
-                )÷4)%8)+(IndexSpaces.assume_inrange(
+                )%4)*16)÷4)%16+((((((8+(IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_warpidx(),
+                    0,
+                    4,
+                )%2)*16)+(IndexSpaces.assume_inrange(
                     IndexSpaces.cuda_blockidx(),
                     0,
                     2048,
                 )%16)*2048)+(IndexSpaces.assume_inrange(
-                    IndexSpaces.cuda_warpidx(),
+                    IndexSpaces.cuda_threadidx(),
                     0,
-                    4,
-                )%2)*16)+((IndexSpaces.assume_inrange(
+                    32,
+                )÷4)%8)+((IndexSpaces.assume_inrange(
                     T2,
                     0,
                     32,
@@ -683,11 +584,104 @@
                     0,
                     128,
                     2048,
-                )÷128)%16)*128)%32)*17+((12+(IndexSpaces.assume_inrange(
+                )÷128)%16)*128)%32)*17+(((IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_warpidx(),
+                    0,
+                    4,
+                )÷2)%2)%2)*544)+0+0x01] = E_dish0_time8
+                E_shared[(((4+(IndexSpaces.assume_inrange(
                     IndexSpaces.cuda_threadidx(),
                     0,
                     32,
-                )%4)*16)÷4)%16)+0+0x01] = E_dish12_time8
+                )%4)*16)÷4)%16+((((((8+(IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_warpidx(),
+                    0,
+                    4,
+                )%2)*16)+(IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_blockidx(),
+                    0,
+                    2048,
+                )%16)*2048)+(IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_threadidx(),
+                    0,
+                    32,
+                )÷4)%8)+((IndexSpaces.assume_inrange(
+                    T2,
+                    0,
+                    32,
+                    128,
+                )÷32)%4)*32)+((IndexSpaces.assume_inrange(
+                    T1,
+                    0,
+                    128,
+                    2048,
+                )÷128)%16)*128)%32)*17+(((IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_warpidx(),
+                    0,
+                    4,
+                )÷2)%2)%2)*544)+0+0x01] = E_dish4_time8
+                E_shared[(((8+(IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_threadidx(),
+                    0,
+                    32,
+                )%4)*16)÷4)%16+((((((8+(IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_warpidx(),
+                    0,
+                    4,
+                )%2)*16)+(IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_blockidx(),
+                    0,
+                    2048,
+                )%16)*2048)+(IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_threadidx(),
+                    0,
+                    32,
+                )÷4)%8)+((IndexSpaces.assume_inrange(
+                    T2,
+                    0,
+                    32,
+                    128,
+                )÷32)%4)*32)+((IndexSpaces.assume_inrange(
+                    T1,
+                    0,
+                    128,
+                    2048,
+                )÷128)%16)*128)%32)*17+(((IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_warpidx(),
+                    0,
+                    4,
+                )÷2)%2)%2)*544)+0+0x01] = E_dish8_time8
+                E_shared[(((12+(IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_threadidx(),
+                    0,
+                    32,
+                )%4)*16)÷4)%16+((((((8+(IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_warpidx(),
+                    0,
+                    4,
+                )%2)*16)+(IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_blockidx(),
+                    0,
+                    2048,
+                )%16)*2048)+(IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_threadidx(),
+                    0,
+                    32,
+                )÷4)%8)+((IndexSpaces.assume_inrange(
+                    T2,
+                    0,
+                    32,
+                    128,
+                )÷32)%4)*32)+((IndexSpaces.assume_inrange(
+                    T1,
+                    0,
+                    128,
+                    2048,
+                )÷128)%16)*128)%32)*17+(((IndexSpaces.assume_inrange(
+                    IndexSpaces.cuda_warpidx(),
+                    0,
+                    4,
+                )÷2)%2)%2)*544)+0+0x01] = E_dish12_time8
             end
             IndexSpaces.cuda_sync_threads()
             for T3 = 0:8:31
@@ -713,24 +707,24 @@
                         AselBD_cplx1 = AselB_cplx1_dish0
                         Are = AselBD_cplx0
                         Aim = AselBD_cplx1
-                        E0 = E_shared[((((IndexSpaces.assume_inrange(
-                            IndexSpaces.cuda_warpidx(),
+                        E0 = E_shared[(((((D÷4)%4)*4+(IndexSpaces.assume_inrange(
+                            IndexSpaces.cuda_threadidx(),
                             0,
-                            4,
-                        )÷2)%2)%2)*544+(((((((IndexSpaces.assume_inrange(
+                            32,
+                        )%4)*16)÷4)%16+((((((IndexSpaces.assume_inrange(
+                            IndexSpaces.cuda_blockidx(),
+                            0,
+                            2048,
+                        )%16)*2048+((IndexSpaces.assume_inrange(
                             T3,
                             0,
                             8,
                             32,
-                        )÷8)%4)*8+(IndexSpaces.assume_inrange(
+                        )÷8)%4)*8)+(IndexSpaces.assume_inrange(
                             IndexSpaces.cuda_threadidx(),
                             0,
                             32,
-                        )÷4)%8)+(IndexSpaces.assume_inrange(
-                            IndexSpaces.cuda_blockidx(),
-                            0,
-                            2048,
-                        )%16)*2048)+((IndexSpaces.assume_inrange(
+                        )÷4)%8)+((IndexSpaces.assume_inrange(
                             T2,
                             0,
                             32,
@@ -740,11 +734,11 @@
                             0,
                             128,
                             2048,
-                        )÷128)%16)*128)%32)*17+((((D÷4)%4)*4+(IndexSpaces.assume_inrange(
-                            IndexSpaces.cuda_threadidx(),
+                        )÷128)%16)*128)%32)*17+(((IndexSpaces.assume_inrange(
+                            IndexSpaces.cuda_warpidx(),
                             0,
-                            32,
-                        )%4)*16)÷4)%16)+0x01]
+                            4,
+                        )÷2)%2)%2)*544)+0x01]
                         (E1_cplx0, E1_cplx1) = convert(NTuple{2,Int8x4}, E0)
                         E1re = E1_cplx0
                         E1im = E1_cplx1
@@ -769,24 +763,24 @@
                         AselBD_cplx1 = AselB_cplx1_dish4
                         Are = AselBD_cplx0
                         Aim = AselBD_cplx1
-                        E0 = E_shared[((((IndexSpaces.assume_inrange(
-                            IndexSpaces.cuda_warpidx(),
+                        E0 = E_shared[(((((D÷4)%4)*4+(IndexSpaces.assume_inrange(
+                            IndexSpaces.cuda_threadidx(),
                             0,
-                            4,
-                        )÷2)%2)%2)*544+(((((((IndexSpaces.assume_inrange(
+                            32,
+                        )%4)*16)÷4)%16+((((((IndexSpaces.assume_inrange(
+                            IndexSpaces.cuda_blockidx(),
+                            0,
+                            2048,
+                        )%16)*2048+((IndexSpaces.assume_inrange(
                             T3,
                             0,
                             8,
                             32,
-                        )÷8)%4)*8+(IndexSpaces.assume_inrange(
+                        )÷8)%4)*8)+(IndexSpaces.assume_inrange(
                             IndexSpaces.cuda_threadidx(),
                             0,
                             32,
-                        )÷4)%8)+(IndexSpaces.assume_inrange(
-                            IndexSpaces.cuda_blockidx(),
-                            0,
-                            2048,
-                        )%16)*2048)+((IndexSpaces.assume_inrange(
+                        )÷4)%8)+((IndexSpaces.assume_inrange(
                             T2,
                             0,
                             32,
@@ -796,11 +790,11 @@
                             0,
                             128,
                             2048,
-                        )÷128)%16)*128)%32)*17+((((D÷4)%4)*4+(IndexSpaces.assume_inrange(
-                            IndexSpaces.cuda_threadidx(),
+                        )÷128)%16)*128)%32)*17+(((IndexSpaces.assume_inrange(
+                            IndexSpaces.cuda_warpidx(),
                             0,
-                            32,
-                        )%4)*16)÷4)%16)+0x01]
+                            4,
+                        )÷2)%2)%2)*544)+0x01]
                         (E1_cplx0, E1_cplx1) = convert(NTuple{2,Int8x4}, E0)
                         E1re = E1_cplx0
                         E1im = E1_cplx1
@@ -825,24 +819,24 @@
                         AselBD_cplx1 = AselB_cplx1_dish8
                         Are = AselBD_cplx0
                         Aim = AselBD_cplx1
-                        E0 = E_shared[((((IndexSpaces.assume_inrange(
-                            IndexSpaces.cuda_warpidx(),
+                        E0 = E_shared[(((((D÷4)%4)*4+(IndexSpaces.assume_inrange(
+                            IndexSpaces.cuda_threadidx(),
                             0,
-                            4,
-                        )÷2)%2)%2)*544+(((((((IndexSpaces.assume_inrange(
+                            32,
+                        )%4)*16)÷4)%16+((((((IndexSpaces.assume_inrange(
+                            IndexSpaces.cuda_blockidx(),
+                            0,
+                            2048,
+                        )%16)*2048+((IndexSpaces.assume_inrange(
                             T3,
                             0,
                             8,
                             32,
-                        )÷8)%4)*8+(IndexSpaces.assume_inrange(
+                        )÷8)%4)*8)+(IndexSpaces.assume_inrange(
                             IndexSpaces.cuda_threadidx(),
                             0,
                             32,
-                        )÷4)%8)+(IndexSpaces.assume_inrange(
-                            IndexSpaces.cuda_blockidx(),
-                            0,
-                            2048,
-                        )%16)*2048)+((IndexSpaces.assume_inrange(
+                        )÷4)%8)+((IndexSpaces.assume_inrange(
                             T2,
                             0,
                             32,
@@ -852,11 +846,11 @@
                             0,
                             128,
                             2048,
-                        )÷128)%16)*128)%32)*17+((((D÷4)%4)*4+(IndexSpaces.assume_inrange(
-                            IndexSpaces.cuda_threadidx(),
+                        )÷128)%16)*128)%32)*17+(((IndexSpaces.assume_inrange(
+                            IndexSpaces.cuda_warpidx(),
                             0,
-                            32,
-                        )%4)*16)÷4)%16)+0x01]
+                            4,
+                        )÷2)%2)%2)*544)+0x01]
                         (E1_cplx0, E1_cplx1) = convert(NTuple{2,Int8x4}, E0)
                         E1re = E1_cplx0
                         E1im = E1_cplx1
@@ -881,24 +875,24 @@
                         AselBD_cplx1 = AselB_cplx1_dish12
                         Are = AselBD_cplx0
                         Aim = AselBD_cplx1
-                        E0 = E_shared[((((IndexSpaces.assume_inrange(
-                            IndexSpaces.cuda_warpidx(),
+                        E0 = E_shared[(((((D÷4)%4)*4+(IndexSpaces.assume_inrange(
+                            IndexSpaces.cuda_threadidx(),
                             0,
-                            4,
-                        )÷2)%2)%2)*544+(((((((IndexSpaces.assume_inrange(
+                            32,
+                        )%4)*16)÷4)%16+((((((IndexSpaces.assume_inrange(
+                            IndexSpaces.cuda_blockidx(),
+                            0,
+                            2048,
+                        )%16)*2048+((IndexSpaces.assume_inrange(
                             T3,
                             0,
                             8,
                             32,
-                        )÷8)%4)*8+(IndexSpaces.assume_inrange(
+                        )÷8)%4)*8)+(IndexSpaces.assume_inrange(
                             IndexSpaces.cuda_threadidx(),
                             0,
                             32,
-                        )÷4)%8)+(IndexSpaces.assume_inrange(
-                            IndexSpaces.cuda_blockidx(),
-                            0,
-                            2048,
-                        )%16)*2048)+((IndexSpaces.assume_inrange(
+                        )÷4)%8)+((IndexSpaces.assume_inrange(
                             T2,
                             0,
                             32,
@@ -908,11 +902,11 @@
                             0,
                             128,
                             2048,
-                        )÷128)%16)*128)%32)*17+((((D÷4)%4)*4+(IndexSpaces.assume_inrange(
-                            IndexSpaces.cuda_threadidx(),
+                        )÷128)%16)*128)%32)*17+(((IndexSpaces.assume_inrange(
+                            IndexSpaces.cuda_warpidx(),
                             0,
-                            32,
-                        )%4)*16)÷4)%16)+0x01]
+                            4,
+                        )÷2)%2)%2)*544)+0x01]
                         (E1_cplx0, E1_cplx1) = convert(NTuple{2,Int8x4}, E0)
                         E1re = E1_cplx0
                         E1im = E1_cplx1
@@ -943,11 +937,7 @@
                     Ju_cplx1_time1 = (Ju_cplx1_time1 + 2) >> 0x00000002
                     Ju_time0 = Int16x2((Ju_cplx0_time0, Ju_cplx1_time0))
                     Ju_time1 = Int16x2((Ju_cplx0_time1, Ju_cplx1_time1))
-                    Ju_shared[((((IndexSpaces.assume_inrange(
-                        IndexSpaces.cuda_warpidx(),
-                        0,
-                        4,
-                    )÷2)%2)%2)*640+((IndexSpaces.assume_inrange(
+                    Ju_shared[(((IndexSpaces.assume_inrange(
                         IndexSpaces.cuda_warpidx(),
                         0,
                         4,
@@ -955,43 +945,11 @@
                         IndexSpaces.cuda_threadidx(),
                         0,
                         32,
-                    )÷4)%8)%16+(((((((IndexSpaces.assume_inrange(
-                        T3,
-                        0,
-                        8,
-                        32,
-                    )÷8)%4)*8+(IndexSpaces.assume_inrange(
-                        IndexSpaces.cuda_threadidx(),
-                        0,
-                        32,
-                    )%4)*2)+(IndexSpaces.assume_inrange(
+                    )÷4)%8)%16+((((((IndexSpaces.assume_inrange(
                         IndexSpaces.cuda_blockidx(),
                         0,
                         2048,
-                    )%16)*2048)+((IndexSpaces.assume_inrange(
-                        T2,
-                        0,
-                        32,
-                        128,
-                    )÷32)%4)*32)+((IndexSpaces.assume_inrange(
-                        T1,
-                        0,
-                        128,
-                        2048,
-                    )÷128)%16)*128)%32)*20)+0+0x01] = Ju_time0
-                    Ju_shared[((((IndexSpaces.assume_inrange(
-                        IndexSpaces.cuda_warpidx(),
-                        0,
-                        4,
-                    )÷2)%2)%2)*640+((IndexSpaces.assume_inrange(
-                        IndexSpaces.cuda_warpidx(),
-                        0,
-                        4,
-                    )%2)*8+(IndexSpaces.assume_inrange(
-                        IndexSpaces.cuda_threadidx(),
-                        0,
-                        32,
-                    )÷4)%8)%16+((((((1+((IndexSpaces.assume_inrange(
+                    )%16)*2048+((IndexSpaces.assume_inrange(
                         T3,
                         0,
                         8,
@@ -1000,11 +958,7 @@
                         IndexSpaces.cuda_threadidx(),
                         0,
                         32,
-                    )%4)*2)+(IndexSpaces.assume_inrange(
-                        IndexSpaces.cuda_blockidx(),
-                        0,
-                        2048,
-                    )%16)*2048)+((IndexSpaces.assume_inrange(
+                    )%4)*2)+((IndexSpaces.assume_inrange(
                         T2,
                         0,
                         32,
@@ -1014,11 +968,51 @@
                         0,
                         128,
                         2048,
-                    )÷128)%16)*128)%32)*20)+0+0x01] = Ju_time1
+                    )÷128)%16)*128)%32)*20+(((IndexSpaces.assume_inrange(
+                        IndexSpaces.cuda_warpidx(),
+                        0,
+                        4,
+                    )÷2)%2)%2)*640)+0+0x01] = Ju_time0
+                    Ju_shared[(((IndexSpaces.assume_inrange(
+                        IndexSpaces.cuda_warpidx(),
+                        0,
+                        4,
+                    )%2)*8+(IndexSpaces.assume_inrange(
+                        IndexSpaces.cuda_threadidx(),
+                        0,
+                        32,
+                    )÷4)%8)%16+(((((((IndexSpaces.assume_inrange(
+                        IndexSpaces.cuda_blockidx(),
+                        0,
+                        2048,
+                    )%16)*2048+1)+((IndexSpaces.assume_inrange(
+                        T3,
+                        0,
+                        8,
+                        32,
+                    )÷8)%4)*8)+(IndexSpaces.assume_inrange(
+                        IndexSpaces.cuda_threadidx(),
+                        0,
+                        32,
+                    )%4)*2)+((IndexSpaces.assume_inrange(
+                        T2,
+                        0,
+                        32,
+                        128,
+                    )÷32)%4)*32)+((IndexSpaces.assume_inrange(
+                        T1,
+                        0,
+                        128,
+                        2048,
+                    )÷128)%16)*128)%32)*20+(((IndexSpaces.assume_inrange(
+                        IndexSpaces.cuda_warpidx(),
+                        0,
+                        4,
+                    )÷2)%2)%2)*640)+0+0x01] = Ju_time1
                 end
             end
             IndexSpaces.cuda_sync_threads()
-            Ju_polr0_time0 = Ju_shared[(0+((IndexSpaces.assume_inrange(
+            Ju_polr0_time0 = Ju_shared[(((IndexSpaces.assume_inrange(
                 IndexSpaces.cuda_threadidx(),
                 0,
                 32,
@@ -1026,15 +1020,15 @@
                 IndexSpaces.cuda_warpidx(),
                 0,
                 4,
-            )%4)*4)%16+((((IndexSpaces.assume_inrange(
-                IndexSpaces.cuda_threadidx(),
-                0,
-                32,
-            )%8+(IndexSpaces.assume_inrange(
+            )%4)*4)%16+(((((IndexSpaces.assume_inrange(
                 IndexSpaces.cuda_blockidx(),
                 0,
                 2048,
-            )%16)*2048)+((IndexSpaces.assume_inrange(
+            )%16)*2048+IndexSpaces.assume_inrange(
+                IndexSpaces.cuda_threadidx(),
+                0,
+                32,
+            )%8)+((IndexSpaces.assume_inrange(
                 T2,
                 0,
                 32,
@@ -1044,8 +1038,8 @@
                 0,
                 128,
                 2048,
-            )÷128)%16)*128)%32)*20)+0x01]
-            Ju_polr1_time0 = Ju_shared[(640+((IndexSpaces.assume_inrange(
+            )÷128)%16)*128)%32)*20+0)+0x01]
+            Ju_polr1_time0 = Ju_shared[(((IndexSpaces.assume_inrange(
                 IndexSpaces.cuda_threadidx(),
                 0,
                 32,
@@ -1053,15 +1047,15 @@
                 IndexSpaces.cuda_warpidx(),
                 0,
                 4,
-            )%4)*4)%16+((((IndexSpaces.assume_inrange(
-                IndexSpaces.cuda_threadidx(),
-                0,
-                32,
-            )%8+(IndexSpaces.assume_inrange(
+            )%4)*4)%16+(((((IndexSpaces.assume_inrange(
                 IndexSpaces.cuda_blockidx(),
                 0,
                 2048,
-            )%16)*2048)+((IndexSpaces.assume_inrange(
+            )%16)*2048+IndexSpaces.assume_inrange(
+                IndexSpaces.cuda_threadidx(),
+                0,
+                32,
+            )%8)+((IndexSpaces.assume_inrange(
                 T2,
                 0,
                 32,
@@ -1071,8 +1065,8 @@
                 0,
                 128,
                 2048,
-            )÷128)%16)*128)%32)*20)+0x01]
-            Ju_polr0_time8 = Ju_shared[(0+((IndexSpaces.assume_inrange(
+            )÷128)%16)*128)%32)*20+640)+0x01]
+            Ju_polr0_time8 = Ju_shared[(((IndexSpaces.assume_inrange(
                 IndexSpaces.cuda_threadidx(),
                 0,
                 32,
@@ -1080,15 +1074,15 @@
                 IndexSpaces.cuda_warpidx(),
                 0,
                 4,
-            )%4)*4)%16+(((((8+IndexSpaces.assume_inrange(
-                IndexSpaces.cuda_threadidx(),
-                0,
-                32,
-            )%8)+(IndexSpaces.assume_inrange(
+            )%4)*4)%16+((((((IndexSpaces.assume_inrange(
                 IndexSpaces.cuda_blockidx(),
                 0,
                 2048,
-            )%16)*2048)+((IndexSpaces.assume_inrange(
+            )%16)*2048+8)+IndexSpaces.assume_inrange(
+                IndexSpaces.cuda_threadidx(),
+                0,
+                32,
+            )%8)+((IndexSpaces.assume_inrange(
                 T2,
                 0,
                 32,
@@ -1098,8 +1092,8 @@
                 0,
                 128,
                 2048,
-            )÷128)%16)*128)%32)*20)+0x01]
-            Ju_polr1_time8 = Ju_shared[(640+((IndexSpaces.assume_inrange(
+            )÷128)%16)*128)%32)*20+0)+0x01]
+            Ju_polr1_time8 = Ju_shared[(((IndexSpaces.assume_inrange(
                 IndexSpaces.cuda_threadidx(),
                 0,
                 32,
@@ -1107,15 +1101,15 @@
                 IndexSpaces.cuda_warpidx(),
                 0,
                 4,
-            )%4)*4)%16+(((((8+IndexSpaces.assume_inrange(
-                IndexSpaces.cuda_threadidx(),
-                0,
-                32,
-            )%8)+(IndexSpaces.assume_inrange(
+            )%4)*4)%16+((((((IndexSpaces.assume_inrange(
                 IndexSpaces.cuda_blockidx(),
                 0,
                 2048,
-            )%16)*2048)+((IndexSpaces.assume_inrange(
+            )%16)*2048+8)+IndexSpaces.assume_inrange(
+                IndexSpaces.cuda_threadidx(),
+                0,
+                32,
+            )%8)+((IndexSpaces.assume_inrange(
                 T2,
                 0,
                 32,
@@ -1125,8 +1119,8 @@
                 0,
                 128,
                 2048,
-            )÷128)%16)*128)%32)*20)+0x01]
-            Ju_polr0_time16 = Ju_shared[(0+((IndexSpaces.assume_inrange(
+            )÷128)%16)*128)%32)*20+640)+0x01]
+            Ju_polr0_time16 = Ju_shared[(((IndexSpaces.assume_inrange(
                 IndexSpaces.cuda_threadidx(),
                 0,
                 32,
@@ -1134,15 +1128,15 @@
                 IndexSpaces.cuda_warpidx(),
                 0,
                 4,
-            )%4)*4)%16+(((((16+IndexSpaces.assume_inrange(
-                IndexSpaces.cuda_threadidx(),
-                0,
-                32,
-            )%8)+(IndexSpaces.assume_inrange(
+            )%4)*4)%16+((((((IndexSpaces.assume_inrange(
                 IndexSpaces.cuda_blockidx(),
                 0,
                 2048,
-            )%16)*2048)+((IndexSpaces.assume_inrange(
+            )%16)*2048+16)+IndexSpaces.assume_inrange(
+                IndexSpaces.cuda_threadidx(),
+                0,
+                32,
+            )%8)+((IndexSpaces.assume_inrange(
                 T2,
                 0,
                 32,
@@ -1152,8 +1146,8 @@
                 0,
                 128,
                 2048,
-            )÷128)%16)*128)%32)*20)+0x01]
-            Ju_polr1_time16 = Ju_shared[(640+((IndexSpaces.assume_inrange(
+            )÷128)%16)*128)%32)*20+0)+0x01]
+            Ju_polr1_time16 = Ju_shared[(((IndexSpaces.assume_inrange(
                 IndexSpaces.cuda_threadidx(),
                 0,
                 32,
@@ -1161,15 +1155,15 @@
                 IndexSpaces.cuda_warpidx(),
                 0,
                 4,
-            )%4)*4)%16+(((((16+IndexSpaces.assume_inrange(
-                IndexSpaces.cuda_threadidx(),
-                0,
-                32,
-            )%8)+(IndexSpaces.assume_inrange(
+            )%4)*4)%16+((((((IndexSpaces.assume_inrange(
                 IndexSpaces.cuda_blockidx(),
                 0,
                 2048,
-            )%16)*2048)+((IndexSpaces.assume_inrange(
+            )%16)*2048+16)+IndexSpaces.assume_inrange(
+                IndexSpaces.cuda_threadidx(),
+                0,
+                32,
+            )%8)+((IndexSpaces.assume_inrange(
                 T2,
                 0,
                 32,
@@ -1179,8 +1173,8 @@
                 0,
                 128,
                 2048,
-            )÷128)%16)*128)%32)*20)+0x01]
-            Ju_polr0_time24 = Ju_shared[(0+((IndexSpaces.assume_inrange(
+            )÷128)%16)*128)%32)*20+640)+0x01]
+            Ju_polr0_time24 = Ju_shared[(((IndexSpaces.assume_inrange(
                 IndexSpaces.cuda_threadidx(),
                 0,
                 32,
@@ -1188,15 +1182,15 @@
                 IndexSpaces.cuda_warpidx(),
                 0,
                 4,
-            )%4)*4)%16+(((((24+IndexSpaces.assume_inrange(
-                IndexSpaces.cuda_threadidx(),
-                0,
-                32,
-            )%8)+(IndexSpaces.assume_inrange(
+            )%4)*4)%16+((((((IndexSpaces.assume_inrange(
                 IndexSpaces.cuda_blockidx(),
                 0,
                 2048,
-            )%16)*2048)+((IndexSpaces.assume_inrange(
+            )%16)*2048+24)+IndexSpaces.assume_inrange(
+                IndexSpaces.cuda_threadidx(),
+                0,
+                32,
+            )%8)+((IndexSpaces.assume_inrange(
                 T2,
                 0,
                 32,
@@ -1206,8 +1200,8 @@
                 0,
                 128,
                 2048,
-            )÷128)%16)*128)%32)*20)+0x01]
-            Ju_polr1_time24 = Ju_shared[(640+((IndexSpaces.assume_inrange(
+            )÷128)%16)*128)%32)*20+0)+0x01]
+            Ju_polr1_time24 = Ju_shared[(((IndexSpaces.assume_inrange(
                 IndexSpaces.cuda_threadidx(),
                 0,
                 32,
@@ -1215,15 +1209,15 @@
                 IndexSpaces.cuda_warpidx(),
                 0,
                 4,
-            )%4)*4)%16+(((((24+IndexSpaces.assume_inrange(
-                IndexSpaces.cuda_threadidx(),
-                0,
-                32,
-            )%8)+(IndexSpaces.assume_inrange(
+            )%4)*4)%16+((((((IndexSpaces.assume_inrange(
                 IndexSpaces.cuda_blockidx(),
                 0,
                 2048,
-            )%16)*2048)+((IndexSpaces.assume_inrange(
+            )%16)*2048+24)+IndexSpaces.assume_inrange(
+                IndexSpaces.cuda_threadidx(),
+                0,
+                32,
+            )%8)+((IndexSpaces.assume_inrange(
                 T2,
                 0,
                 32,
@@ -1233,7 +1227,7 @@
                 0,
                 128,
                 2048,
-            )÷128)%16)*128)%32)*20)+0x01]
+            )÷128)%16)*128)%32)*20+640)+0x01]
             (Ju_cplx0_polr0_time0, Ju_cplx1_polr0_time0) =
                 convert(NTuple{2,Int32}, Ju_polr0_time0)
             (Ju_cplx0_polr1_time0, Ju_cplx1_polr1_time0) =
@@ -1630,32 +1624,18 @@
         IndexSpaces.unsafe_store4_global!(
             J_memory,
             (
-                0 +
-                (
-                    (
-                        (
-                            IndexSpaces.assume_inrange(
-                                IndexSpaces.cuda_blockidx(),
-                                0,
-                                2048,
-                            ) ÷ 16
-                        ) % 128
-                    ) % 128
-                ) * 16384 +
                 (
                     (
                         (
                             (
                                 (
                                     (
-                                        (
-                                            IndexSpaces.assume_inrange(
-                                                IndexSpaces.cuda_threadidx(),
-                                                0,
-                                                32,
-                                            ) ÷ 4
+                                        IndexSpaces.assume_inrange(
+                                            IndexSpaces.cuda_threadidx(),
+                                            0,
+                                            32,
                                         ) % 2
-                                    ) * 32 +
+                                    ) * 16 +
                                     (
                                         (
                                             IndexSpaces.assume_inrange(
@@ -1675,16 +1655,29 @@
                                 ) * 2048
                             ) +
                             (
-                                IndexSpaces.assume_inrange(
-                                    IndexSpaces.cuda_threadidx(),
-                                    0,
-                                    32,
+                                (
+                                    IndexSpaces.assume_inrange(
+                                        IndexSpaces.cuda_threadidx(),
+                                        0,
+                                        32,
+                                    ) ÷ 4
                                 ) % 2
-                            ) * 16
+                            ) * 32
                         ) +
                         ((IndexSpaces.assume_inrange(T1, 0, 128, 2048) ÷ 128) % 16) * 128
                     ) ÷ 4
                 ) % 8192 +
+                (
+                    (
+                        (
+                            IndexSpaces.assume_inrange(
+                                IndexSpaces.cuda_blockidx(),
+                                0,
+                                2048,
+                            ) ÷ 16
+                        ) % 128
+                    ) % 128
+                ) * 16384 +
                 (
                     (
                         (
@@ -1697,7 +1690,8 @@
                         (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 4) % 4) *
                         4
                     ) % 16
-                ) * 2097152
+                ) * 2097152 +
+                0
             ) +
             0 +
             0x01,
@@ -1706,32 +1700,18 @@
         IndexSpaces.unsafe_store4_global!(
             J_memory,
             (
-                8192 +
-                (
-                    (
-                        (
-                            IndexSpaces.assume_inrange(
-                                IndexSpaces.cuda_blockidx(),
-                                0,
-                                2048,
-                            ) ÷ 16
-                        ) % 128
-                    ) % 128
-                ) * 16384 +
                 (
                     (
                         (
                             (
                                 (
                                     (
-                                        (
-                                            IndexSpaces.assume_inrange(
-                                                IndexSpaces.cuda_threadidx(),
-                                                0,
-                                                32,
-                                            ) ÷ 4
+                                        IndexSpaces.assume_inrange(
+                                            IndexSpaces.cuda_threadidx(),
+                                            0,
+                                            32,
                                         ) % 2
-                                    ) * 32 +
+                                    ) * 16 +
                                     (
                                         (
                                             IndexSpaces.assume_inrange(
@@ -1751,16 +1731,29 @@
                                 ) * 2048
                             ) +
                             (
-                                IndexSpaces.assume_inrange(
-                                    IndexSpaces.cuda_threadidx(),
-                                    0,
-                                    32,
+                                (
+                                    IndexSpaces.assume_inrange(
+                                        IndexSpaces.cuda_threadidx(),
+                                        0,
+                                        32,
+                                    ) ÷ 4
                                 ) % 2
-                            ) * 16
+                            ) * 32
                         ) +
                         ((IndexSpaces.assume_inrange(T1, 0, 128, 2048) ÷ 128) % 16) * 128
                     ) ÷ 4
                 ) % 8192 +
+                (
+                    (
+                        (
+                            IndexSpaces.assume_inrange(
+                                IndexSpaces.cuda_blockidx(),
+                                0,
+                                2048,
+                            ) ÷ 16
+                        ) % 128
+                    ) % 128
+                ) * 16384 +
                 (
                     (
                         (
@@ -1773,7 +1766,8 @@
                         (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 4) % 4) *
                         4
                     ) % 16
-                ) * 2097152
+                ) * 2097152 +
+                8192
             ) +
             0 +
             0x01,
@@ -1781,13 +1775,14 @@
         )
     end
     info = 0
-    info_memory[(((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 4)%4)%4)*32+(IndexSpaces.assume_inrange(
-        IndexSpaces.cuda_threadidx(),
-        0,
-        32,
-    )%32)%32+((IndexSpaces.assume_inrange(
+    info_memory[(((IndexSpaces.assume_inrange(
         IndexSpaces.cuda_blockidx(),
         0,
         2048,
-    )%2048)%2048)*128)+0+0x01] = info
+    )%2048)%2048)*128+((IndexSpaces.assume_inrange(
+        IndexSpaces.cuda_warpidx(),
+        0,
+        4,
+    )%4)%4)*32+(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32)%32)%32)+0+0x01] =
+        info
 end

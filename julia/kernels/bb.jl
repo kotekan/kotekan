@@ -304,106 +304,79 @@ function make_bb_kernel()
 
     # E-matrix layout
 
-    layout_E_memory = Layout(
-        Dict(
-            int4value => SIMD(:simd, 1, 4),
-            cplx => SIMD(:simd, 4, 2),
-            dish01 => SIMD(:simd, 4 * 2, 4),
-            dish2etc => Memory(:memory, 1, idiv(D, 4)),
-            polr => Memory(:memory, idiv(D, 4), P),
-            freq => Memory(:memory, idiv(D, 4) * P, F),
-            time => Memory(:memory, idiv(D, 4) * P * F, T),
-        ),
-    )
+    layout_E_memory = Layout(Dict(int4value => SIMD(:simd, 1, 4),
+                                  cplx => SIMD(:simd, 4, 2),
+                                  dish01 => SIMD(:simd, 4 * 2, 4),
+                                  dish2etc => Memory(:memory, 1, idiv(D, 4)),
+                                  polr => Memory(:memory, idiv(D, 4), P),
+                                  freq => Memory(:memory, idiv(D, 4) * P, F),
+                                  time => Memory(:memory, idiv(D, 4) * P * F, T)))
 
     # A-matrix layout
 
-    layout_A_memory = Layout(
-        Dict(
-            int8value => SIMD(:simd, 1, 8),
-            cplx => SIMD(:simd, 8, 2),
-            dish0 => SIMD(:simd, 8 * 2, 2),
-            dish1etc => Memory(:memory, 1, idiv(D, 2)),
-            beam => Memory(:memory, idiv(D, 2), B),
-            polr => Memory(:memory, idiv(D, 2) * B, P),
-            freq => Memory(:memory, idiv(D, 2) * B * P, F),
-        ),
-    )
+    layout_A_memory = Layout(Dict(int8value => SIMD(:simd, 1, 8),
+                                  cplx => SIMD(:simd, 8, 2),
+                                  dish0 => SIMD(:simd, 8 * 2, 2),
+                                  dish1etc => Memory(:memory, 1, idiv(D, 2)),
+                                  beam => Memory(:memory, idiv(D, 2), B),
+                                  polr => Memory(:memory, idiv(D, 2) * B, P),
+                                  freq => Memory(:memory, idiv(D, 2) * B * P, F)))
 
     # s layout
 
-    layout_s_global = Layout(
-        Dict(
-            int32value => SIMD(:simd, 1, 32),
-            beam => Memory(:memory, 1, B),
-            polr => Memory(:memory, B, P),
-            freq => Memory(:memory, B * P, F),
-        ),
-    )
+    layout_s_global = Layout(Dict(int32value => SIMD(:simd, 1, 32),
+                                  beam => Memory(:memory, 1, B),
+                                  polr => Memory(:memory, B, P),
+                                  freq => Memory(:memory, B * P, F)))
 
     # J-matrix layout
 
-    layout_J_memory = Layout(
-        Dict(
-            int4value => SIMD(:simd, 1, 4),
-            cplx => SIMD(:simd, 4, 2),
-            time01 => SIMD(:simd, 8, 4),
-            time2etc => Memory(:memory, 1, idiv(T, 4)),
-            polr => Memory(:memory, idiv(T, 4), P),
-            freq => Memory(:memory, idiv(T, 4) * P, F),
-            beam => Memory(:memory, idiv(T, 4) * P * F, B),
-        ),
-    )
+    layout_J_memory = Layout(Dict(int4value => SIMD(:simd, 1, 4),
+                                  cplx => SIMD(:simd, 4, 2),
+                                  time01 => SIMD(:simd, 8, 4),
+                                  time2etc => Memory(:memory, 1, idiv(T, 4)),
+                                  polr => Memory(:memory, idiv(T, 4), P),
+                                  freq => Memory(:memory, idiv(T, 4) * P, F),
+                                  beam => Memory(:memory, idiv(T, 4) * P * F, B)))
 
     # info layout
 
-    layout_info_memory = Layout(
-        Dict(
-            int32value => SIMD(:simd, 1, 32),
-            Index{Physics,ThreadTag}(:thread, 1, num_threads) => Memory(:memory, 1, num_threads),
-            Index{Physics,WarpTag}(:warp, 1, num_warps) => Memory(:memory, num_threads, num_warps),
-            Index{Physics,BlockTag}(:block, 1, num_blocks) => Memory(:memory, num_threads * num_warps, num_blocks),
-        ),
-    )
+    layout_info_memory = Layout(Dict(int32value => SIMD(:simd, 1, 32),
+                                     Index{Physics,ThreadTag}(:thread, 1, num_threads) => Memory(:memory, 1, num_threads),
+                                     Index{Physics,WarpTag}(:warp, 1, num_warps) => Memory(:memory, num_threads, num_warps),
+                                     Index{Physics,BlockTag}(:block, 1, num_blocks) => Memory(:memory, num_threads * num_warps,
+                                                                                              num_blocks)))
 
     # Shared memory layouts
 
     # E-matrix layout
 
     # Section 3, eqn. (13)
-    layout_E_shared = Layout(
-        Dict(
-            int4value => SIMD(:simd, 1, 4),
-            cplx => SIMD(:simd, 4, 2),
-            dish01 => SIMD(:simd, 4 * 2, 4),
-            dish2etc => Shared(:shared, 1, idiv(D, 4)),
-            time01234 => Shared(:shared, idiv(D, 4) + 1, 32),
-            time56 => loopT2,
-            time7etc => loopT1,
-            Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
-            Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
-            Polr(:polr, Bp, Wp) => Shared(:shared, (idiv(D, 4) + 1) * 32, Wp),
-            freq => Block(:block, Bt * Bp, F),
-        ),
-    )
+    layout_E_shared = Layout(Dict(int4value => SIMD(:simd, 1, 4),
+                                  cplx => SIMD(:simd, 4, 2),
+                                  dish01 => SIMD(:simd, 4 * 2, 4),
+                                  dish2etc => Shared(:shared, 1, idiv(D, 4)),
+                                  time01234 => Shared(:shared, idiv(D, 4) + 1, 32),
+                                  time56 => loopT2,
+                                  time7etc => loopT1,
+                                  Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
+                                  Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
+                                  Polr(:polr, Bp, Wp) => Shared(:shared, (idiv(D, 4) + 1) * 32, Wp),
+                                  freq => Block(:block, Bt * Bp, F)))
 
     # Ju layout
 
-    layout_Ju_shared = Layout(
-        Dict(
-            int16value => SIMD(:simd, 1, 16),
-            cplx => SIMD(:simd, 16, 2),
-            beam => Shared(:shared, 1, B),
-            time01234 => Shared(:shared, B + 4, 32),
-            time56 => loopT2,
-            time7etc => loopT1,
-            Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
-            Dish(:dish, idiv(D, Wd), Wd) => Shared(:shared, (B + 4) * 32, Wd),
-            Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
-            Polr(:polr, Bp, Wp) => Shared(:shared, (B + 4) * 32 * Wd, Wp),
-            freq => Block(:block, Bt * Bp, F),
-        ),
-    )
+    layout_Ju_shared = Layout(Dict(int16value => SIMD(:simd, 1, 16),
+                                   cplx => SIMD(:simd, 16, 2),
+                                   beam => Shared(:shared, 1, B),
+                                   time01234 => Shared(:shared, B + 4, 32),
+                                   time56 => loopT2,
+                                   time7etc => loopT1,
+                                   Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
+                                   Dish(:dish, idiv(D, Wd), Wd) => Shared(:shared, (B + 4) * 32, Wd),
+                                   Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
+                                   Polr(:polr, Bp, Wp) => Shared(:shared, (B + 4) * 32 * Wd, Wp),
+                                   freq => Block(:block, Bt * Bp, F)))
 
     # Register layouts
 
@@ -416,138 +389,112 @@ function make_bb_kernel()
         num_warps_for_Ecopy = Wd * num_time_warps_for_Ecopy
         @assert 4 * num_time_warps_for_Ecopy * num_time_registers_for_Ecopy == 32
         @assert 1 ≤ num_warps_for_Ecopy ≤ 32
-        layout_E_registers = Layout(
-            Dict(
-                int4value => SIMD(:simd, 1, 4),
-                cplx => SIMD(:simd, 4, C),
-                dish01 => SIMD(:simd, 4 * C, 4),
-                dish23 => Register(:dish, 4, 4),
-                dish456 => Thread(:thread, 1, 8),
-                dish78 => Warp(:warp, 1, Wd),
-                time01 => Thread(:thread, 8, 4),
-                Time(:time, 4, num_time_warps_for_Ecopy) => Warp(:warp, Wd, num_time_warps_for_Ecopy),
-                Time(:time, 4 * num_time_warps_for_Ecopy, num_time_registers_for_Ecopy) =>
-                    Register(:time, 4 * num_time_warps_for_Ecopy, num_time_registers_for_Ecopy),
-                time56 => loopT2,
-                time7etc => loopT1,
-                Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
-                Polr(:polr, 1, P) => Block(:block, Bt, Bp),
-                freq => Block(:block, Bt * Bp, F),
-            ),
-        )
+        layout_E_registers = Layout(Dict(int4value => SIMD(:simd, 1, 4),
+                                         cplx => SIMD(:simd, 4, C),
+                                         dish01 => SIMD(:simd, 4 * C, 4),
+                                         dish23 => Register(:dish, 4, 4),
+                                         dish456 => Thread(:thread, 1, 8),
+                                         dish78 => Warp(:warp, 1, Wd),
+                                         time01 => Thread(:thread, 8, 4),
+                                         Time(:time, 4, num_time_warps_for_Ecopy) => Warp(:warp, Wd, num_time_warps_for_Ecopy),
+                                         Time(:time, 4 * num_time_warps_for_Ecopy, num_time_registers_for_Ecopy) => Register(:time,
+                                                                                                                             4 *
+                                                                                                                             num_time_warps_for_Ecopy,
+                                                                                                                             num_time_registers_for_Ecopy),
+                                         time56 => loopT2,
+                                         time7etc => loopT1,
+                                         Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
+                                         Polr(:polr, 1, P) => Block(:block, Bt, Bp),
+                                         freq => Block(:block, Bt * Bp, F)))
     elseif D == 64
         @assert Wd == 1
         num_time_warps_for_Ecopy = Wb
         num_time_iters_for_Ecopy = 1
         num_warps_for_Ecopy = Wd * num_time_warps_for_Ecopy * Wp
         @assert 1 ≤ num_warps_for_Ecopy ≤ 32
-        layout_E_registers = Layout(
-            Dict(
-                int4value => SIMD(:simd, 1, 4),
-                cplx => SIMD(:simd, 4, C),
-                dish01 => SIMD(:simd, 4 * C, 4),
-                dish23 => Register(:dish, 4, 4),
-                dish45 => Thread(:thread, 1, 4),
-                time012 => Thread(:thread, 4, 8),
-                time3 => Register(:time, 8, 2),
-                time4 => Warp(:warp, 1, Wb),
-                time56 => loopT2,
-                time7etc => loopT1,
-                Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
-                Polr(:polr, 1, P) => Warp(:warp, Wb, Wp),
-                freq => Block(:block, Bt * Bp, F),
-            ),
-        )
+        layout_E_registers = Layout(Dict(int4value => SIMD(:simd, 1, 4),
+                                         cplx => SIMD(:simd, 4, C),
+                                         dish01 => SIMD(:simd, 4 * C, 4),
+                                         dish23 => Register(:dish, 4, 4),
+                                         dish45 => Thread(:thread, 1, 4),
+                                         time012 => Thread(:thread, 4, 8),
+                                         time3 => Register(:time, 8, 2),
+                                         time4 => Warp(:warp, 1, Wb),
+                                         time56 => loopT2,
+                                         time7etc => loopT1,
+                                         Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
+                                         Polr(:polr, 1, P) => Warp(:warp, Wb, Wp),
+                                         freq => Block(:block, Bt * Bp, F)))
     else
         @assert false
     end
 
     # for multiplication with A
     @assert 4 * loopD.length * 4 * Wd == D
-    layout_E0_registers = Layout(
-        Dict(
-            int4value => SIMD(:simd, 1, 4),
-            cplx => SIMD(:simd, 4, C),
-            dish01 => SIMD(:simd, 4 * C, 4), # mma input k, bits 01
-            Dish(:dish, 4, loopD.length) => loopD,
-            Dish(:dish, 4 * loopD.length, 4) => Thread(:thread, 1, 4),  # mma input k, bits 23
-            Dish(:dish, 4 * loopD.length * 4, Wd) => Warp(:warp, 1, Wd),
-            time012 => Thread(:thread, 4, 8), # mma input n, bits 012
-            time34 => loopT3,
-            time56 => loopT2,
-            time7etc => loopT1,
-            Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
-            Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
-            Polr(:polr, Bp, Wp) => Warp(:warp, Wd * Wb, Wp),
-            freq => Block(:block, Bt * Bp, F),
-        ),
-    )
+    layout_E0_registers = Layout(Dict(int4value => SIMD(:simd, 1, 4),
+                                      cplx => SIMD(:simd, 4, C),
+                                      dish01 => SIMD(:simd, 4 * C, 4), # mma input k, bits 01
+                                      Dish(:dish, 4, loopD.length) => loopD,
+                                      Dish(:dish, 4 * loopD.length, 4) => Thread(:thread, 1, 4),  # mma input k, bits 23
+                                      Dish(:dish, 4 * loopD.length * 4, Wd) => Warp(:warp, 1, Wd),
+                                      time012 => Thread(:thread, 4, 8), # mma input n, bits 012
+                                      time34 => loopT3,
+                                      time56 => loopT2,
+                                      time7etc => loopT1,
+                                      Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
+                                      Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
+                                      Polr(:polr, Bp, Wp) => Warp(:warp, Wd * Wb, Wp),
+                                      freq => Block(:block, Bt * Bp, F)))
 
     # A-matrix layout
 
     # Section 4, eqn. (17)
     @assert 4 * loopD.length * 4 * Wd == D
     @assert 8 * loopB.length * Wb == B
-    layout_A_registers = Layout(
-        Dict(
-            int8value => SIMD(:simd, 1, 8),
-            cplx => Register(:cplx, 1, C),
-            dish01 => SIMD(:simd, 8, 4), # mma input k, bits 01
-            Dish(:dish, 4, loopD.length) => Register(:dish, 4, loopD.length),
-            Dish(:dish, 4 * loopD.length, 4) => Thread(:thread, 1, 4),  # mma input k, bits 23
-            Dish(:dish, 4 * loopD.length * 4, Wd) => Warp(:warp, 1, Wd),
-            beam012 => Thread(:thread, 4, 8), # mma output m, bits 012
-            Beam(:beam, 8, loopB.length) => Register(:beam, 8, loopB.length),
-            Beam(:beam, 8 * loopB.length, Wb) => Warp(:warp, Wd, Wb),
-            Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
-            Polr(:polr, Bp, Wp) => Warp(:warp, Wd * Wb, Wp),
-            freq => Block(:block, Bt * Bp, F),
-        ),
-    )
+    layout_A_registers = Layout(Dict(int8value => SIMD(:simd, 1, 8),
+                                     cplx => Register(:cplx, 1, C),
+                                     dish01 => SIMD(:simd, 8, 4), # mma input k, bits 01
+                                     Dish(:dish, 4, loopD.length) => Register(:dish, 4, loopD.length),
+                                     Dish(:dish, 4 * loopD.length, 4) => Thread(:thread, 1, 4),  # mma input k, bits 23
+                                     Dish(:dish, 4 * loopD.length * 4, Wd) => Warp(:warp, 1, Wd),
+                                     beam012 => Thread(:thread, 4, 8), # mma output m, bits 012
+                                     Beam(:beam, 8, loopB.length) => Register(:beam, 8, loopB.length),
+                                     Beam(:beam, 8 * loopB.length, Wb) => Warp(:warp, Wd, Wb),
+                                     Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
+                                     Polr(:polr, Bp, Wp) => Warp(:warp, Wd * Wb, Wp),
+                                     freq => Block(:block, Bt * Bp, F)))
 
     # J-matrix layout
 
     # Section 5, eqn. (24)
-    layout_J_registers = Layout(
-        Dict(
-            int32value => SIMD(:simd, 1, 32),
-            cplx => Register(:cplx, 1, C),
-            time012 => Thread(:thread, 1, 8),
-            time34 => Register(:time, 8, 4),
-            time56 => loopT2,
-            time7etc => loopT1,
-            Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
-            beam01 => Thread(:thread, 8, 4),
-            beam2etc => Warp(:warp, 1, Wd * Wb * Wp),
-            Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
-            Polr(:polr, Bp, Wp) => Register(:polr, Bp, Wp),
-            freq => Block(:block, Bt * Bp, F),
-        ),
-    )
+    layout_J_registers = Layout(Dict(int32value => SIMD(:simd, 1, 32),
+                                     cplx => Register(:cplx, 1, C),
+                                     time012 => Thread(:thread, 1, 8),
+                                     time34 => Register(:time, 8, 4),
+                                     time56 => loopT2,
+                                     time7etc => loopT1,
+                                     Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
+                                     beam01 => Thread(:thread, 8, 4),
+                                     beam2etc => Warp(:warp, 1, Wd * Wb * Wp),
+                                     Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
+                                     Polr(:polr, Bp, Wp) => Register(:polr, Bp, Wp),
+                                     freq => Block(:block, Bt * Bp, F)))
 
     # s layout
 
-    layout_s_registers = Layout(
-        Dict(
-            int32value => SIMD(:simd, 1, 32),
-            beam01 => Thread(:thread, 8, 4),
-            beam2etc => Warp(:warp, 1, idiv(B, 4)),
-            Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
-            Polr(:polr, Bp, Wp) => Register(:polr, Bp, Wp),
-            freq => Block(:block, Bt * Bp, F),
-        ),
-    )
+    layout_s_registers = Layout(Dict(int32value => SIMD(:simd, 1, 32),
+                                     beam01 => Thread(:thread, 8, 4),
+                                     beam2etc => Warp(:warp, 1, idiv(B, 4)),
+                                     Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
+                                     Polr(:polr, Bp, Wp) => Register(:polr, Bp, Wp),
+                                     freq => Block(:block, Bt * Bp, F)))
 
     # info layout
 
-    layout_info_registers = Layout(
-        Dict(
-            int32value => SIMD(:simd, 1, 32),
-            Index{Physics,ThreadTag}(:thread, 1, num_threads) => Thread(:thread, 1, num_threads),
-            Index{Physics,WarpTag}(:warp, 1, num_warps) => Warp(:warp, 1, num_warps),
-            Index{Physics,BlockTag}(:block, 1, num_blocks) => Block(:block, 1, num_blocks),
-        ),
-    )
+    layout_info_registers = Layout(Dict(int32value => SIMD(:simd, 1, 32),
+                                        Index{Physics,ThreadTag}(:thread, 1, num_threads) => Thread(:thread, 1, num_threads),
+                                        Index{Physics,WarpTag}(:warp, 1, num_warps) => Warp(:warp, 1, num_warps),
+                                        Index{Physics,BlockTag}(:block, 1, num_blocks) => Block(:block, 1, num_blocks)))
 
     # Generate code
 
@@ -564,40 +511,36 @@ function make_bb_kernel()
             apply!(emitter, :info => layout_info_registers, 2i32)
             store!(emitter, :info_memory => layout_info_memory, :info)
             trap!(emitter)
-            nothing
+            return nothing
         end
     elseif Wp == 2
         if!(emitter, :(!(0i32 < s_polr0 < 32i32 && 0i32 < s_polr1 < 32i32))) do emitter
             apply!(emitter, :info => layout_info_registers, 2i32)
             store!(emitter, :info_memory => layout_info_memory, :info)
             trap!(emitter)
-            nothing
+            return nothing
         end
     else
         @assert false
     end
 
     if D == 512
-        layout_A0_registers = Layout(
-            Dict(
-                int8value => SIMD(:simd, 1, 8),
-                cplx => SIMD(:simd, 8, 2),       # want register
-                dish0 => SIMD(:simd, 16, 2),     # want simd3
-                dish1 => Register(:cplx, 1, C),  # want simd4
-                dish2 => Register(:dish, 4, 2),  # final
-                dish34 => Thread(:thread, 2, 4), # want register
-                dish5 => Thread(:thread, 1, 2),  # final
-                dish6 => Register(:dish, 8, 2),  # want thread2
-                dish78 => Warp(:warp, 1, 4),     # final
-                beam0 => Register(:dish, 16, 2), # want thread4
-                beam12 => Thread(:thread, 8, 4), # final
-                beam3 => Register(:beam, 8, 2),  # final
-                beam4etc => Warp(:warp, 4, Wb),
-                Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
-                Polr(:polr, Bp, Wp) => Warp(:warp, Wd, Wp),
-                freq => Block(:block, Bt * P, F),
-            ),
-        )
+        layout_A0_registers = Layout(Dict(int8value => SIMD(:simd, 1, 8),
+                                          cplx => SIMD(:simd, 8, 2),       # want register
+                                          dish0 => SIMD(:simd, 16, 2),     # want simd3
+                                          dish1 => Register(:cplx, 1, C),  # want simd4
+                                          dish2 => Register(:dish, 4, 2),  # final
+                                          dish34 => Thread(:thread, 2, 4), # want register
+                                          dish5 => Thread(:thread, 1, 2),  # final
+                                          dish6 => Register(:dish, 8, 2),  # want thread2
+                                          dish78 => Warp(:warp, 1, 4),     # final
+                                          beam0 => Register(:dish, 16, 2), # want thread4
+                                          beam12 => Thread(:thread, 8, 4), # final
+                                          beam3 => Register(:beam, 8, 2),  # final
+                                          beam4etc => Warp(:warp, 4, Wb),
+                                          Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
+                                          Polr(:polr, Bp, Wp) => Warp(:warp, Wd, Wp),
+                                          freq => Block(:block, Bt * P, F)))
 
         load!(emitter, :A => layout_A0_registers, :A_memory => layout_A_memory; align=16)
         permute!(emitter, :A, :A, Register(:cplx, 1, C), SIMD(:simd, 16, 2))
@@ -606,23 +549,19 @@ function make_bb_kernel()
         permute!(emitter, :A, :A, Register(:dish, 16, 2), Thread(:thread, 4, 2))
     elseif D == 64
         @assert Wd == 1
-        layout_A0_registers = Layout(
-            Dict(
-                int8value => SIMD(:simd, 1, 8),
-                cplx => SIMD(:simd, 8, 2),       # want register
-                dish0 => SIMD(:simd, 16, 2),     # want simd3
-                dish1 => Register(:cplx, 1, C),  # want simd4
-                dish2 => Register(:dish, 4, 2),  # final
-                dish3 => Thread(:thread, 4, 2),  # want register
-                dish45 => Thread(:thread, 1, 4), # final
-                beam0 => Register(:dish, 8, 2),  # want thread2
-                beam12 => Thread(:thread, 8, 4), # final
-                beam3 => Warp(:warp, Wd, Wb),
-                Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
-                Polr(:polr, Bp, Wp) => Warp(:warp, Wd * Wb, Wp),
-                freq => Block(:block, Bt * Bp, F),
-            ),
-        )
+        layout_A0_registers = Layout(Dict(int8value => SIMD(:simd, 1, 8),
+                                          cplx => SIMD(:simd, 8, 2),       # want register
+                                          dish0 => SIMD(:simd, 16, 2),     # want simd3
+                                          dish1 => Register(:cplx, 1, C),  # want simd4
+                                          dish2 => Register(:dish, 4, 2),  # final
+                                          dish3 => Thread(:thread, 4, 2),  # want register
+                                          dish45 => Thread(:thread, 1, 4), # final
+                                          beam0 => Register(:dish, 8, 2),  # want thread2
+                                          beam12 => Thread(:thread, 8, 4), # final
+                                          beam3 => Warp(:warp, Wd, Wb),
+                                          Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
+                                          Polr(:polr, Bp, Wp) => Warp(:warp, Wd * Wb, Wp),
+                                          freq => Block(:block, Bt * Bp, F)))
 
         load!(emitter, :A => layout_A0_registers, :A_memory => layout_A_memory; align=16)
         permute!(emitter, :A, :A, Register(:cplx, 1, C), SIMD(:simd, 16, 2))
@@ -640,7 +579,7 @@ function make_bb_kernel()
             if!(emitter, :(IndexSpaces.cuda_warpidx() < $(Int32(num_warps_for_Ecopy)))) do emitter
                 load!(emitter, :E => layout_E_registers, :E_memory => layout_E_memory; align=16)
                 store!(emitter, :E_shared => layout_E_shared, :E)
-                nothing
+                return nothing
             end
             sync_threads!(emitter)
 
@@ -650,24 +589,20 @@ function make_bb_kernel()
                     select!(emitter, :AselB, :A, Register(:beam, loopB.offset, loopB.length) => loopB)
 
                     @assert 8 * loopB.length * Wb == B
-                    layout_Jureim_registers = Layout(
-                        Dict(
-                            int32value => SIMD(:simd, 1, 32),
-                            Dish(:dish, idiv(D, Wd), Wd) => Warp(:warp, 1, Wd),
-                            time0 => Register(:time, 1, 2), # mma spectator 0
-                            time12 => Thread(:thread, 1, 4), # mma spectator 12
-                            time34 => loopT3,
-                            time56 => loopT2,
-                            time7etc => loopT1,
-                            Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
-                            beam012 => Thread(:thread, 4, 8), # mma output 012
-                            Beam(:beam, 8, loopB.length) => loopB,
-                            Beam(:beam, 8 * loopB.length, Wb) => Warp(:warp, Wd, Wb),
-                            Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
-                            Polr(:polr, Bp, Wp) => Warp(:warp, Wd * Wb, Wp),
-                            freq => Block(:block, Bt * Bp, F),
-                        ),
-                    )
+                    layout_Jureim_registers = Layout(Dict(int32value => SIMD(:simd, 1, 32),
+                                                          Dish(:dish, idiv(D, Wd), Wd) => Warp(:warp, 1, Wd),
+                                                          time0 => Register(:time, 1, 2), # mma spectator 0
+                                                          time12 => Thread(:thread, 1, 4), # mma spectator 12
+                                                          time34 => loopT3,
+                                                          time56 => loopT2,
+                                                          time7etc => loopT1,
+                                                          Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
+                                                          beam012 => Thread(:thread, 4, 8), # mma output 012
+                                                          Beam(:beam, 8, loopB.length) => loopB,
+                                                          Beam(:beam, 8 * loopB.length, Wb) => Warp(:warp, Wd, Wb),
+                                                          Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
+                                                          Polr(:polr, Bp, Wp) => Warp(:warp, Wd * Wb, Wp),
+                                                          freq => Block(:block, Bt * Bp, F)))
 
                     apply!(emitter, :Jurepos => layout_Jureim_registers, Int32(0))
                     apply!(emitter, :Jureneg => layout_Jureim_registers, Int32(0))
@@ -685,40 +620,31 @@ function make_bb_kernel()
                         split!(emitter, [:E1re, :E1im], :E1, cplx)
 
                         mma_beams = [beam0, beam1, beam2]
-                        mma_dishes = [
-                            Dish(:dish, 1, 2), Dish(:dish, 2, 2), Dish(:dish, 4 * loopD.length, 2), Dish(:dish, 8 * loopD.length, 2)
-                        ]
+                        mma_dishes = [Dish(:dish, 1, 2), Dish(:dish, 2, 2), Dish(:dish, 4 * loopD.length, 2),
+                                      Dish(:dish, 8 * loopD.length, 2)]
                         mma_times = [time0, time1, time2]
-                        mma_row_col_m8n8k16_s8!(
-                            emitter,
-                            :Jurepos,
-                            :Are => (mma_beams, mma_dishes),
-                            :E1re => (mma_dishes, mma_times),
-                            :Jurepos => (mma_beams, mma_times),
-                        )
-                        mma_row_col_m8n8k16_s8!(
-                            emitter,
-                            :Jureneg,
-                            :Aim => (mma_beams, mma_dishes),
-                            :E1im => (mma_dishes, mma_times),
-                            :Jureneg => (mma_beams, mma_times),
-                        )
-                        mma_row_col_m8n8k16_s8!(
-                            emitter,
-                            :Juim,
-                            :Are => (mma_beams, mma_dishes),
-                            :E1im => (mma_dishes, mma_times),
-                            :Juim => (mma_beams, mma_times),
-                        )
-                        mma_row_col_m8n8k16_s8!(
-                            emitter,
-                            :Juim,
-                            :Aim => (mma_beams, mma_dishes),
-                            :E1re => (mma_dishes, mma_times),
-                            :Juim => (mma_beams, mma_times),
-                        )
+                        mma_row_col_m8n8k16_s8!(emitter,
+                                                :Jurepos,
+                                                :Are => (mma_beams, mma_dishes),
+                                                :E1re => (mma_dishes, mma_times),
+                                                :Jurepos => (mma_beams, mma_times))
+                        mma_row_col_m8n8k16_s8!(emitter,
+                                                :Jureneg,
+                                                :Aim => (mma_beams, mma_dishes),
+                                                :E1im => (mma_dishes, mma_times),
+                                                :Jureneg => (mma_beams, mma_times))
+                        mma_row_col_m8n8k16_s8!(emitter,
+                                                :Juim,
+                                                :Are => (mma_beams, mma_dishes),
+                                                :E1im => (mma_dishes, mma_times),
+                                                :Juim => (mma_beams, mma_times))
+                        mma_row_col_m8n8k16_s8!(emitter,
+                                                :Juim,
+                                                :Aim => (mma_beams, mma_dishes),
+                                                :E1re => (mma_dishes, mma_times),
+                                                :Juim => (mma_beams, mma_times))
 
-                        nothing
+                        return nothing
                     end
 
                     apply!(emitter, :Jure, [:Jurepos, :Jureneg], (Jurepos, Jureneg) -> :($Jurepos - $Jureneg))
@@ -739,32 +665,28 @@ function make_bb_kernel()
 
                     store!(emitter, :Ju_shared => layout_Ju_shared, :Ju)
 
-                    nothing
+                    return nothing
                 end
 
-                nothing
+                return nothing
             end
             sync_threads!(emitter)
 
             # Step 3: reduce and quantize
 
-            layout_Ju_registers = Layout(
-                Dict(
-                    int16value => SIMD(:simd, 1, 16),
-                    cplx => SIMD(:simd, 16, C),
-                    Dish(:dish, 4 * loopD.length * 4, Wd) => Register(:dish, 4 * loopD.length * 4, Wd),
-                    beam01 => Thread(:thread, 8, 4),
-                    beam2etc => Warp(:warp, 1, Wd * Wb * Wp),
-                    time012 => Thread(:thread, 1, 8),
-                    time34 => Register(:time, 8, 4),
-                    time56 => loopT2,
-                    time7etc => loopT1,
-                    Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
-                    Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
-                    Polr(:polr, Bp, Wp) => Register(:polr, Bp, Wp),
-                    freq => Block(:block, Bt * Bp, F),
-                ),
-            )
+            layout_Ju_registers = Layout(Dict(int16value => SIMD(:simd, 1, 16),
+                                              cplx => SIMD(:simd, 16, C),
+                                              Dish(:dish, 4 * loopD.length * 4, Wd) => Register(:dish, 4 * loopD.length * 4, Wd),
+                                              beam01 => Thread(:thread, 8, 4),
+                                              beam2etc => Warp(:warp, 1, Wd * Wb * Wp),
+                                              time012 => Thread(:thread, 1, 8),
+                                              time34 => Register(:time, 8, 4),
+                                              time56 => loopT2,
+                                              time7etc => loopT1,
+                                              Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
+                                              Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
+                                              Polr(:polr, Bp, Wp) => Register(:polr, Bp, Wp),
+                                              freq => Block(:block, Bt * Bp, F)))
 
             load!(emitter, :Ju => layout_Ju_registers, :Ju_shared => layout_Ju_shared)
             widen!(emitter, :Ju, :Ju, SIMD(:simd, 16, 2) => Register(:cplx, 1, C))
@@ -789,18 +711,16 @@ function make_bb_kernel()
             # TODO: Try this: Shift values left by 4, rely on saturation when converting, then shift right and mask (doesn't work)
             # TODO: Try this: Pack to Int16, the clamp, then pack to Int8 (doesn't work, no efficient 16-bit clamp)
             apply!(emitter, :J, [:J], J -> :(clamp($J, ($(-Int32(0x7))):($(+Int32(0x7))))))
-            narrow3!(
-                emitter,
-                :J,
-                :J,
-                Register(:cplx, 1, C) => SIMD(:simd, 4, 2),
-                Register(:time, 8, 2) => SIMD(:simd, 8, 2),
-                Register(:time, 16, 2) => SIMD(:simd, 16, 2),
-            )
+            narrow3!(emitter,
+                     :J,
+                     :J,
+                     Register(:cplx, 1, C) => SIMD(:simd, 4, 2),
+                     Register(:time, 8, 2) => SIMD(:simd, 8, 2),
+                     Register(:time, 16, 2) => SIMD(:simd, 16, 2))
 
             unselect!(emitter, :Jper, :J, loopT2 => Register(:time, loopT2.offset, loopT2.length))
 
-            nothing
+            return nothing
         end
 
         permute!(emitter, :Jper, :Jper, Register(:time, 32, 2), SIMD(:simd, 8, 2))
@@ -813,20 +733,18 @@ function make_bb_kernel()
 
         store!(emitter, :J_memory => layout_J_memory, :Jper; align=16)
 
-        nothing
+        return nothing
     end
 
     apply!(emitter, :info => layout_info_registers, 0i32)
     store!(emitter, :info_memory => layout_info_memory, :info)
 
-    stmts = clean_code(
-        quote
-            @inbounds begin
-                $(emitter.init_statements...)
-                $(emitter.statements...)
-            end
-        end,
-    )
+    stmts = clean_code(quote
+                           @inbounds begin
+                               $(emitter.init_statements...)
+                               $(emitter.statements...)
+                           end
+                       end)
 
     return stmts
 end
@@ -850,7 +768,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
     if output_kernel
         open("output-$card/bb-$setup.jl", "w") do fh
-            println(fh, bb_kernel)
+            return println(fh, bb_kernel)
         end
     end
 
@@ -865,9 +783,11 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     shmem_bytes = kernel_setup.shmem_bytes
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 99 * 1024 # NVIDIA A10/A40 have 99 kB shared memory
-    kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm bb(
-        CUDA.zeros(Int8x4, 0), CUDA.zeros(Int4x8, 0), CUDA.zeros(Int32, 0), CUDA.zeros(Int4x8, 0), CUDA.zeros(Int32, 0)
-    )
+    kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm bb(CUDA.zeros(Int8x4, 0),
+                                                                                                            CUDA.zeros(Int4x8, 0),
+                                                                                                            CUDA.zeros(Int32, 0),
+                                                                                                            CUDA.zeros(Int4x8, 0),
+                                                                                                            CUDA.zeros(Int32, 0))
     attributes(kernel.fun)[CUDA.CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES] = shmem_bytes
 
     if compile_only
@@ -878,159 +798,139 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         ptx = read("output-$card/bb-$setup.ptx", String)
         ptx = replace(ptx, r".extern .func ([^;]*);"s => s".func \1.noreturn\n{\n\ttrap;\n}")
         open("output-$card/bb-$setup.ptx", "w") do fh
-            write(fh, ptx)
+            return write(fh, ptx)
         end
         kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
         open("output-$card/bb-$setup.yaml", "w") do fh
-            print(
-                fh,
-                """
-        --- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
-        kernel-description:
-          name: "bb"
-          description: "baseband beamformer"
-          design-parameters:
-            number-of-beams: $B
-            number-of-complex-components: $C
-            number-of-dishes: $D
-            number-of-frequencies: $F
-            number-of-polarizations: $P
-            number-of-timesamples: $T
-            sampling-time-μsec: $sampling_time_μsec
-            shift-parameter-σ: $σ
-          compile-parameters:
-            minthreads: $(num_threads * num_warps)
-            blocks_per_sm: $num_blocks_per_sm
-          call-parameters:
-            threads: [$num_threads, $num_warps]
-            blocks: [$num_blocks]
-            shmem_bytes: $shmem_bytes
-          kernel-symbol: "$kernel_symbol"
-          kernel-arguments:
-            - name: "A"
-              intent: in
-              type: Int8
-              indices: [C, D, B, P, F]
-              shape: [$C, $D, $B, $P, $F]
-              strides: [1, $C, $(C*D), $(C*D*B), $(C*D*B*P)]
-            - name: "E"
-              intent: in
-              type: Int4
-              indices: [C, D, P, F, T]
-              shape: [$C, $D, $P, $F, $T]
-              strides: [1, $C, $(C*D), $(C*D*P), $(C*D*P*F)]
-            - name: "s"
-              intent: in
-              type: Int32
-              indices: [B, P, F]
-              shape: [$B, $P, $F]
-              strides: [1, $B, $(B*P)]
-            - name: "J"
-              intent: out
-              type: Int4
-              indices: [C, T, P, F, B]
-              shape: [$C, $T, $P, $F, $B]
-              strides: [1, $C, $(C*T), $(C*T*P), $(C*T*P*F)]
-            - name: "info"
-              intent: out
-              type: Int32
-              indices: [thread, warp, block]
-              shapes: [$num_threads, $num_warps, $num_blocks]
-              strides: [1, $num_threads, $(num_threads*num_warps)]
-        ...
-        """,
-            )
+            return print(fh,
+                         """
+                 --- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
+                 kernel-description:
+                   name: "bb"
+                   description: "baseband beamformer"
+                   design-parameters:
+                     number-of-beams: $B
+                     number-of-complex-components: $C
+                     number-of-dishes: $D
+                     number-of-frequencies: $F
+                     number-of-polarizations: $P
+                     number-of-timesamples: $T
+                     sampling-time-μsec: $sampling_time_μsec
+                     shift-parameter-σ: $σ
+                   compile-parameters:
+                     minthreads: $(num_threads * num_warps)
+                     blocks_per_sm: $num_blocks_per_sm
+                   call-parameters:
+                     threads: [$num_threads, $num_warps]
+                     blocks: [$num_blocks]
+                     shmem_bytes: $shmem_bytes
+                   kernel-symbol: "$kernel_symbol"
+                   kernel-arguments:
+                     - name: "A"
+                       intent: in
+                       type: Int8
+                       indices: [C, D, B, P, F]
+                       shape: [$C, $D, $B, $P, $F]
+                       strides: [1, $C, $(C*D), $(C*D*B), $(C*D*B*P)]
+                     - name: "E"
+                       intent: in
+                       type: Int4
+                       indices: [C, D, P, F, T]
+                       shape: [$C, $D, $P, $F, $T]
+                       strides: [1, $C, $(C*D), $(C*D*P), $(C*D*P*F)]
+                     - name: "s"
+                       intent: in
+                       type: Int32
+                       indices: [B, P, F]
+                       shape: [$B, $P, $F]
+                       strides: [1, $B, $(B*P)]
+                     - name: "J"
+                       intent: out
+                       type: Int4
+                       indices: [C, T, P, F, B]
+                       shape: [$C, $T, $P, $F, $B]
+                       strides: [1, $C, $(C*T), $(C*T*P), $(C*T*P*F)]
+                     - name: "info"
+                       intent: out
+                       type: Int32
+                       indices: [thread, warp, block]
+                       shapes: [$num_threads, $num_warps, $num_blocks]
+                       strides: [1, $num_threads, $(num_threads*num_warps)]
+                 ...
+                 """)
         end
         cxx = read("kernels/bb_template.cxx", String)
-        cxx = Mustache.render(
-            cxx,
-            Dict(
-                "kernel_name" => "BasebandBeamformer_$setup",
-                "kernel_design_parameters" => [
-                    Dict("type" => "int", "name" => "cuda_number_of_beams", "value" => "$B"),
-                    Dict("type" => "int", "name" => "cuda_number_of_complex_components", "value" => "$C"),
-                    Dict("type" => "int", "name" => "cuda_number_of_dishes", "value" => "$D"),
-                    Dict("type" => "int", "name" => "cuda_number_of_frequencies", "value" => "$F"),
-                    Dict("type" => "int", "name" => "cuda_number_of_polarizations", "value" => "$P"),
-                    Dict("type" => "int", "name" => "cuda_number_of_timesamples", "value" => "$T"),
-                    # Dict("type" => "double", "name" => "cuda_sampling_time_usec", "value" => "$sampling_time_μsec"),
-                    Dict("type" => "int", "name" => "cuda_shift_parameter_sigma", "value" => "$σ"),
-                ],
-                "minthreads" => num_threads * num_warps,
-                "num_blocks_per_sm" => num_blocks_per_sm,
-                "num_threads" => num_threads,
-                "num_warps" => num_warps,
-                "num_blocks" => num_blocks,
-                "shmem_bytes" => shmem_bytes,
-                "kernel_symbol" => kernel_symbol,
-                "kernel_arguments" => let
-                    @assert 8 * C * D * B * P * F ÷ 8 < 0x80000000
-                    @assert 4 * C * D * P * F * T ÷ 8 < 0x80000000
-                    @assert 32 * B * P * F ÷ 8 < 0x80000000
-                    @assert 4 * C * T * P * F * B ÷ 8 < 0x80000000
-                    @assert 32 * num_threads * num_warps * num_blocks ÷ 8 < 0x80000000
-                    [
-                        Dict("name" => "A", "value" => "$(8 * C * D * B * P * F ÷ 8)ULL"),
-                        Dict("name" => "E", "value" => "$(4 * C * D * P * F * T ÷ 8)ULL"),
-                        Dict("name" => "s", "value" => "$(32 * B * P * F ÷ 8)ULL"),
-                        Dict("name" => "J", "value" => "$(4 * C * T * P * F * B ÷ 8)ULL"),
-                        Dict("name" => "info", "value" => "$(32 * num_threads * num_warps * num_blocks ÷ 8)ULL"),
-                    ]
-                end,
-                "memnames" => [
-                    Dict(
-                        "name" => "A",
-                        "kotekan_name" => "gpu_mem_phase",
-                        "type" => "int8",
-                        "axislabels" => """ "C", "D", "B", "P", "F" """,
-                        "axislengths" => "$C, $D, $B, $P, $F",
-                        "isoutput" => false,
-                        "hasbuffer" => true,
-                    ),
-                    Dict(
-                        "name" => "E",
-                        "kotekan_name" => "gpu_mem_voltage",
-                        "type" => "int4p4",
-                        "axislabels" => """ "D", "P", "F", "T" """,
-                        "axislengths" => "$D, $P, $F, $T",
-                        "isoutput" => false,
-                        "hasbuffer" => true,
-                    ),
-                    Dict(
-                        "name" => "s",
-                        "kotekan_name" => "gpu_mem_output_scaling",
-                        "type" => "int32",
-                        "axislabels" => """ "B", "P", "F" """,
-                        "axislengths" => "$B, $P, $F",
-                        "isoutput" => false,
-                        "hasbuffer" => true,
-                    ),
-                    Dict(
-                        "name" => "J",
-                        "type" => "int4p4",
-                        "kotekan_name" => "gpu_mem_formed_beams",
-                        "axislabels" => """ "T", "P", "F", "B" """,
-                        "axislengths" => "$T, $P, $F, $B",
-                        "isoutput" => true,
-                        "hasbuffer" => true,
-                    ),
-                    Dict(
-                        "name" => "info",
-                        "kotekan_name" => "gpu_mem_info",
-                        "type" => "int32",
-                        "isoutput" => true,
-                        "hasbuffer" => false,
-                    ),
-                ],
-                # "check_kotekan_parameters" => [
-                #     Dict("name" => "num_elements", "value" => "cuda_number_of_dishes * cuda_number_of_polarizations"),
-                #     Dict("name" => "num_local_freq", "value" => "cuda_number_of_frequencies"),
-                #     Dict("name" => "samples_per_data_set", "value" => "cuda_number_of_timesamples"),
-                #     Dict("name" => "num_beams", "value" => "cuda_number_of_beams"),
-                # ],
-                "runtime_parameters" => [],
-            ),
-        )
+        cxx = Mustache.render(cxx,
+                              Dict("kernel_name" => "BasebandBeamformer_$setup",
+                                   "kernel_design_parameters" => [Dict("type" => "int", "name" => "cuda_number_of_beams",
+                                                                       "value" => "$B"),
+                                                                  Dict("type" => "int",
+                                                                       "name" => "cuda_number_of_complex_components",
+                                                                       "value" => "$C"),
+                                                                  Dict("type" => "int", "name" => "cuda_number_of_dishes",
+                                                                       "value" => "$D"),
+                                                                  Dict("type" => "int", "name" => "cuda_number_of_frequencies",
+                                                                       "value" => "$F"),
+                                                                  Dict("type" => "int", "name" => "cuda_number_of_polarizations",
+                                                                       "value" => "$P"),
+                                                                  Dict("type" => "int", "name" => "cuda_number_of_timesamples",
+                                                                       "value" => "$T"),
+                                                                  # Dict("type" => "double", "name" => "cuda_sampling_time_usec", "value" => "$sampling_time_μsec"),
+                                                                  Dict("type" => "int", "name" => "cuda_shift_parameter_sigma",
+                                                                       "value" => "$σ")],
+                                   "minthreads" => num_threads * num_warps,
+                                   "num_blocks_per_sm" => num_blocks_per_sm,
+                                   "num_threads" => num_threads,
+                                   "num_warps" => num_warps,
+                                   "num_blocks" => num_blocks,
+                                   "shmem_bytes" => shmem_bytes,
+                                   "kernel_symbol" => kernel_symbol,
+                                   "kernel_arguments" => [Dict("name" => "A",
+                                                               "kotekan_name" => "gpu_mem_phase",
+                                                               "type" => "int8",
+                                                               "axes" => [Dict("label" => "C", "length" => C),
+                                                                          Dict("label" => "D", "length" => D),
+                                                                          Dict("label" => "B", "length" => B),
+                                                                          Dict("label" => "P", "length" => P),
+                                                                          Dict("label" => "F", "length" => F)],
+                                                               "isoutput" => false,
+                                                               "hasbuffer" => true
+                                                               # "value" => "$(8 * C * D * B * P * F ÷ 8)ULL",
+                                                               ),
+                                                          Dict("name" => "E",
+                                                               "kotekan_name" => "gpu_mem_voltage",
+                                                               "type" => "int4p4",
+                                                               "axes" => [Dict("label" => "D", "length" => D),
+                                                                          Dict("label" => "P", "length" => P),
+                                                                          Dict("label" => "F", "length" => F),
+                                                                          Dict("label" => "T", "length" => T)],
+                                                               "isoutput" => false,
+                                                               "hasbuffer" => true),
+                                                          Dict("name" => "s",
+                                                               "kotekan_name" => "gpu_mem_output_scaling",
+                                                               "type" => "int32",
+                                                               "axes" => [Dict("label" => "B", "length" => B),
+                                                                          Dict("label" => "P", "length" => P),
+                                                                          Dict("label" => "F", "length" => F)],
+                                                               "isoutput" => false,
+                                                               "hasbuffer" => true),
+                                                          Dict("name" => "J",
+                                                               "type" => "int4p4",
+                                                               "kotekan_name" => "gpu_mem_formed_beams",
+                                                               "axes" => [Dict("label" => "T", "length" => T),
+                                                                          Dict("label" => "P", "length" => P),
+                                                                          Dict("label" => "F", "length" => F),
+                                                                          Dict("label" => "B", "length" => B)],
+                                                               "isoutput" => true,
+                                                               "hasbuffer" => true),
+                                                          Dict("name" => "info",
+                                                               "kotekan_name" => "gpu_mem_info",
+                                                               "type" => "int32",
+                                                               "axes" => [Dict("label" => "thread", "length" => num_threads),
+                                                                          Dict("label" => "warp", "length" => num_warps),
+                                                                          Dict("label" => "block", "length" => num_blocks)],
+                                                               "isoutput" => true,
+                                                               "hasbuffer" => false)]))
         write("output-$card/bb-$setup.cxx", cxx)
     end
 
@@ -1138,9 +1038,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 @assert max(abs(Ju.re), abs(Ju.im)) ≤ 32767
                 J = Ju
                 J = shift(J, s - σ)
-                reinterpret(Int4x2, J_wanted)[((b * F + f) * P + p) * T + t + 1] = Int4x2(
-                    Int32(clamp(J.re, -7:+7)), Int32(clamp(J.im, -7:+7))
-                )
+                reinterpret(Int4x2, J_wanted)[((b * F + f) * P + p) * T + t + 1] = Int4x2(Int32(clamp(J.re, -7:+7)),
+                                                                                          Int32(clamp(J.im, -7:+7)))
             end
         end
     end
@@ -1160,16 +1059,14 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         println("Starting $nruns benchmark runs...")
         stats = @timed begin
             for run in 1:nruns
-                kernel(
-                    A_cuda,
-                    E_cuda,
-                    s_cuda,
-                    J_cuda,
-                    info_cuda;
-                    threads=(num_threads, num_warps),
-                    blocks=num_blocks,
-                    shmem=shmem_bytes,
-                )
+                kernel(A_cuda,
+                       E_cuda,
+                       s_cuda,
+                       J_cuda,
+                       info_cuda;
+                       threads=(num_threads, num_warps),
+                       blocks=num_blocks,
+                       shmem=shmem_bytes,)
             end
             synchronize()
         end
