@@ -34,7 +34,7 @@ jobs:
   build-docker-2204:
     runs-on: self-hosted
     container: 
-        image: ubuntu:22.04
+        image: myoung34/github-runner
         options: --user root
     permissions: write-all
 
