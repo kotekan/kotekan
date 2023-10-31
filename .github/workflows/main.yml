@@ -34,7 +34,7 @@ jobs:
   build-docker-2204:
     runs-on: self-hosted
     container: 
-        image: alpine:latest
+        image: ubuntu:22.04
         options: --user root
     permissions: write-all
 
