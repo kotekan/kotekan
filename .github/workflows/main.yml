@@ -34,7 +34,7 @@ jobs:
   build-docker-2204:
     runs-on: self-hosted
     container: 
-        image: docker/github-actions
+        image: docker/github-actions:v1
         options: --user root
     permissions: write-all
 
@@ -215,7 +215,7 @@ jobs:
   build-full-tests-2204:
     runs-on: self-hosted
     container: 
-        image: docker/github-actions
+        image: docker/github-actions:v1
         options: --user root
     needs: build-docker-2204
 
