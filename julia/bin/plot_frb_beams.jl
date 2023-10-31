@@ -44,7 +44,7 @@ array_I::AbstractArray{Float16,4}
 nbeamps, nbeamqs, ntimebars, nfreqs′ = size(array_I)
 @assert nfreqs′ == nfreqs
 
-array_I = map(x -> x==Inf ? prevfloat(typemax(x)) : x, array_I)
+array_I = map(x -> x == Inf ? prevfloat(typemax(x)) : x, array_I)
 
 # TODO: Read this from metadata
 num_dish_locations_M = 24

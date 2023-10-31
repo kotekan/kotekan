@@ -15,6 +15,7 @@
 #include <cudaCommand.hpp>
 #include <cudaDeviceInterface.hpp>
 #include <fmt.hpp>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -76,15 +77,81 @@ private:
         "Li1ELi1EES_IS0_Li1ELi1EE";
 
     // Kernel arguments:
-    static constexpr std::size_t Tactual_length = 4UL;
-    static constexpr std::size_t G_length = 4096UL;
-    static constexpr std::size_t E_length = 536870912UL;
-    static constexpr std::size_t Ebar_length = 536870912UL;
-    static constexpr std::size_t info_length = 262144UL;
+    // Tactual: Tactual
+    static constexpr chordDataType Tactual_type = int32;
+    static constexpr std::size_t Tactual_rank = 0;
+    static constexpr std::array<const char*, Tactual_rank> Tactual_labels = {};
+    static constexpr std::array<std::size_t, Tactual_rank> Tactual_lengths = {};
+    static constexpr std::size_t Tactual_length = chord_datatype_bytes(Tactual_type);
+    static_assert(Tactual_length <= std::size_t(std::numeric_limits<int>::max()));
+    //
+    // G: gpu_mem_gain
+    static constexpr chordDataType G_type = float16;
+    static constexpr std::size_t G_rank = 0 + 1;
+    static constexpr std::array<const char*, G_rank> G_labels = {
+        "Fbar",
+    };
+    static constexpr std::array<std::size_t, G_rank> G_lengths = {
+        2048,
+    };
+    static constexpr std::size_t G_length = chord_datatype_bytes(G_type) * 2048;
+    static_assert(G_length <= std::size_t(std::numeric_limits<int>::max()));
+    //
+    // E: gpu_mem_input_voltage
+    static constexpr chordDataType E_type = int4p4;
+    static constexpr std::size_t E_rank = 0 + 1 + 1 + 1 + 1;
+    static constexpr std::array<const char*, E_rank> E_labels = {
+        "D",
+        "P",
+        "F",
+        "T",
+    };
+    static constexpr std::array<std::size_t, E_rank> E_lengths = {
+        512,
+        2,
+        16,
+        32768,
+    };
+    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 16 * 32768;
+    static_assert(E_length <= std::size_t(std::numeric_limits<int>::max()));
+    //
+    // Ebar: gpu_mem_output_voltage
+    static constexpr chordDataType Ebar_type = int4p4;
+    static constexpr std::size_t Ebar_rank = 0 + 1 + 1 + 1 + 1;
+    static constexpr std::array<const char*, Ebar_rank> Ebar_labels = {
+        "D",
+        "P",
+        "Fbar",
+        "Tbar",
+    };
+    static constexpr std::array<std::size_t, Ebar_rank> Ebar_lengths = {
+        512,
+        2,
+        2048,
+        256,
+    };
+    static constexpr std::size_t Ebar_length =
+        chord_datatype_bytes(Ebar_type) * 512 * 2 * 2048 * 256;
+    static_assert(Ebar_length <= std::size_t(std::numeric_limits<int>::max()));
+    //
+    // info: gpu_mem_info
+    static constexpr chordDataType info_type = int32;
+    static constexpr std::size_t info_rank = 0 + 1 + 1 + 1;
+    static constexpr std::array<const char*, info_rank> info_labels = {
+        "thread",
+        "warp",
+        "block",
+    };
+    static constexpr std::array<std::size_t, info_rank> info_lengths = {
+        32,
+        16,
+        128,
+    };
+    static constexpr std::size_t info_length = chord_datatype_bytes(info_type) * 32 * 16 * 128;
+    static_assert(info_length <= std::size_t(std::numeric_limits<int>::max()));
+    //
 
-    // Runtime parameters:
-
-    // GPU memory:
+    // Kotekan buffer names
     const std::string Tactual_memname;
     const std::string G_memname;
     const std::string E_memname;
@@ -94,8 +161,6 @@ private:
     // Host-side buffer arrays
     std::vector<std::vector<std::uint8_t>> host_Tactual;
     std::vector<std::vector<std::uint8_t>> host_info;
-
-    // Declare extra variables (if any)
 };
 
 REGISTER_CUDA_COMMAND(cudaUpchannelizer_U128);
@@ -119,7 +184,6 @@ cudaUpchannelizer_U128::cudaUpchannelizer_U128(Config& config, const std::string
     gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(Ebar_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
-
 
     set_command_type(gpuCommandType::KERNEL);
     const std::vector<std::string> opts = {
@@ -146,54 +210,51 @@ cudaEvent_t cudaUpchannelizer_U128::execute(cudaPipelineState& pipestate,
     host_info[pipestate.gpu_frame_id].resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
-    const char* const axislabels_G[] = {"Fbar"};
-    const std::size_t axislengths_G[] = {2048};
-    const std::size_t ndims_G = sizeof axislabels_G / sizeof *axislabels_G;
+    /// G is an input buffer: check metadata
     const metadataContainer* const mc_G =
         device.get_gpu_memory_array_metadata(G_memname, pipestate.gpu_frame_id);
     assert(mc_G && metadata_container_is_chord(mc_G));
     const chordMetadata* const meta_G = get_chord_metadata(mc_G);
     INFO("input G array: {:s} {:s}", meta_G->get_type_string(), meta_G->get_dimensions_string());
-    assert(meta_G->type == float16);
-    assert(meta_G->dims == ndims_G);
-    for (std::size_t dim = 0; dim < ndims_G; ++dim) {
-        assert(std::strncmp(meta_G->dim_name[dim], axislabels_G[ndims_G - 1 - dim],
+    assert(meta_G->type == G_type);
+    assert(meta_G->dims == G_rank);
+    for (std::size_t dim = 0; dim < G_rank; ++dim) {
+        assert(std::strncmp(meta_G->dim_name[dim], G_labels[G_rank - 1 - dim],
                             sizeof meta_G->dim_name[dim])
                == 0);
-        assert(meta_G->dim[dim] == int(axislengths_G[ndims_G - 1 - dim]));
+        assert(meta_G->dim[dim] == int(G_lengths[G_rank - 1 - dim]));
     }
-    const char* const axislabels_E[] = {"D", "P", "F", "T"};
-    const std::size_t axislengths_E[] = {512, 2, 16, 32768};
-    const std::size_t ndims_E = sizeof axislabels_E / sizeof *axislabels_E;
+    //
+    /// E is an input buffer: check metadata
     const metadataContainer* const mc_E =
         device.get_gpu_memory_array_metadata(E_memname, pipestate.gpu_frame_id);
     assert(mc_E && metadata_container_is_chord(mc_E));
     const chordMetadata* const meta_E = get_chord_metadata(mc_E);
     INFO("input E array: {:s} {:s}", meta_E->get_type_string(), meta_E->get_dimensions_string());
-    assert(meta_E->type == int4p4);
-    assert(meta_E->dims == ndims_E);
-    for (std::size_t dim = 0; dim < ndims_E; ++dim) {
-        assert(std::strncmp(meta_E->dim_name[dim], axislabels_E[ndims_E - 1 - dim],
+    assert(meta_E->type == E_type);
+    assert(meta_E->dims == E_rank);
+    for (std::size_t dim = 0; dim < E_rank; ++dim) {
+        assert(std::strncmp(meta_E->dim_name[dim], E_labels[E_rank - 1 - dim],
                             sizeof meta_E->dim_name[dim])
                == 0);
-        assert(meta_E->dim[dim] == int(axislengths_E[ndims_E - 1 - dim]));
+        assert(meta_E->dim[dim] == int(E_lengths[E_rank - 1 - dim]));
     }
-    const char* const axislabels_Ebar[] = {"D", "P", "Fbar", "Tbar"};
-    const std::size_t axislengths_Ebar[] = {512, 2, 2048, 256};
-    const std::size_t ndims_Ebar = sizeof axislabels_Ebar / sizeof *axislabels_Ebar;
+    //
+    /// Ebar is an output buffer: set metadata
     metadataContainer* const mc_Ebar = device.create_gpu_memory_array_metadata(
         Ebar_memname, pipestate.gpu_frame_id, mc_E->parent_pool);
     chordMetadata* const meta_Ebar = get_chord_metadata(mc_Ebar);
     chord_metadata_copy(meta_Ebar, meta_E);
-    meta_Ebar->type = int4p4;
-    meta_Ebar->dims = ndims_Ebar;
-    for (std::size_t dim = 0; dim < ndims_Ebar; ++dim) {
-        std::strncpy(meta_Ebar->dim_name[dim], axislabels_Ebar[ndims_Ebar - 1 - dim],
+    meta_Ebar->type = Ebar_type;
+    meta_Ebar->dims = Ebar_rank;
+    for (std::size_t dim = 0; dim < Ebar_rank; ++dim) {
+        std::strncpy(meta_Ebar->dim_name[dim], Ebar_labels[Ebar_rank - 1 - dim],
                      sizeof meta_Ebar->dim_name[dim]);
-        meta_Ebar->dim[dim] = axislengths_Ebar[ndims_Ebar - 1 - dim];
+        meta_Ebar->dim[dim] = Ebar_lengths[Ebar_rank - 1 - dim];
     }
     INFO("output Ebar array: {:s} {:s}", meta_Ebar->get_type_string(),
          meta_Ebar->get_dimensions_string());
+    //
 
     record_start_event(pipestate.gpu_frame_id);
 
@@ -207,9 +268,7 @@ cudaEvent_t cudaUpchannelizer_U128::execute(cudaPipelineState& pipestate,
         &exc_arg, &Tactual_arg, &G_arg, &E_arg, &Ebar_arg, &info_arg,
     };
 
-    // Modify kernel arguments (if necessary)
     *(std::int32_t*)host_Tactual[pipestate.gpu_frame_id].data() = cuda_number_of_timesamples;
-
 
     // Copy inputs to device memory
     CHECK_CUDA_ERROR(cudaMemcpyAsync(Tactual_memory, host_Tactual[pipestate.gpu_frame_id].data(),

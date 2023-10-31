@@ -15,6 +15,7 @@
 #include <cudaCommand.hpp>
 #include <cudaDeviceInterface.hpp>
 #include <fmt.hpp>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -79,15 +80,86 @@ private:
         "Li1ELi1EES_I5Int32Li1ELi1EE";
 
     // Kernel arguments:
-    static constexpr std::size_t S_length = 2304UL;
-    static constexpr std::size_t W_length = 1179648UL;
-    static constexpr std::size_t E_length = 541065216UL;
-    static constexpr std::size_t I_length = 60162048UL;
-    static constexpr std::size_t info_length = 786432UL;
+    // S: gpu_mem_dishlayout
+    static constexpr chordDataType S_type = int16;
+    static constexpr std::size_t S_rank = 0 + 1 + 1;
+    static constexpr std::array<const char*, S_rank> S_labels = {
+        "MN",
+        "D",
+    };
+    static constexpr std::array<std::size_t, S_rank> S_lengths = {
+        2,
+        576,
+    };
+    static constexpr std::size_t S_length = chord_datatype_bytes(S_type) * 2 * 576;
+    static_assert(S_length <= std::size_t(std::numeric_limits<int>::max()));
+    //
+    // W: gpu_mem_phase
+    static constexpr chordDataType W_type = float16;
+    static constexpr std::size_t W_rank = 0 + 1 + 1 + 1 + 1 + 1;
+    static constexpr std::array<const char*, W_rank> W_labels = {
+        "C", "dishM", "dishN", "P", "F",
+    };
+    static constexpr std::array<std::size_t, W_rank> W_lengths = {
+        2, 24, 24, 2, 256,
+    };
+    static constexpr std::size_t W_length = chord_datatype_bytes(W_type) * 2 * 24 * 24 * 2 * 256;
+    static_assert(W_length <= std::size_t(std::numeric_limits<int>::max()));
+    //
+    // E: gpu_mem_voltage
+    static constexpr chordDataType E_type = int4p4;
+    static constexpr std::size_t E_rank = 0 + 1 + 1 + 1 + 1;
+    static constexpr std::array<const char*, E_rank> E_labels = {
+        "D",
+        "P",
+        "F",
+        "T",
+    };
+    static constexpr std::array<std::size_t, E_rank> E_lengths = {
+        512,
+        2,
+        256,
+        2064,
+    };
+    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 256 * 2064;
+    static_assert(E_length <= std::size_t(std::numeric_limits<int>::max()));
+    //
+    // I: gpu_mem_beamgrid
+    static constexpr chordDataType I_type = float16;
+    static constexpr std::size_t I_rank = 0 + 1 + 1 + 1 + 1;
+    static constexpr std::array<const char*, I_rank> I_labels = {
+        "beamP",
+        "beamQ",
+        "Tbar",
+        "F",
+    };
+    static constexpr std::array<std::size_t, I_rank> I_lengths = {
+        48,
+        48,
+        51,
+        256,
+    };
+    static constexpr std::size_t I_length = chord_datatype_bytes(I_type) * 48 * 48 * 51 * 256;
+    static_assert(I_length <= std::size_t(std::numeric_limits<int>::max()));
+    //
+    // info: gpu_mem_info
+    static constexpr chordDataType info_type = int32;
+    static constexpr std::size_t info_rank = 0 + 1 + 1 + 1;
+    static constexpr std::array<const char*, info_rank> info_labels = {
+        "thread",
+        "warp",
+        "block",
+    };
+    static constexpr std::array<std::size_t, info_rank> info_lengths = {
+        32,
+        24,
+        256,
+    };
+    static constexpr std::size_t info_length = chord_datatype_bytes(info_type) * 32 * 24 * 256;
+    static_assert(info_length <= std::size_t(std::numeric_limits<int>::max()));
+    //
 
-    // Runtime parameters:
-
-    // GPU memory:
+    // Kotekan buffer names
     const std::string S_memname;
     const std::string W_memname;
     const std::string E_memname;
@@ -96,8 +168,6 @@ private:
 
     // Host-side buffer arrays
     std::vector<std::vector<std::uint8_t>> host_info;
-
-    // Declare extra variables (if any)
 };
 
 REGISTER_CUDA_COMMAND(cudaFRBBeamformer);
@@ -119,7 +189,6 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
     gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(I_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
-
 
     set_command_type(gpuCommandType::KERNEL);
     const std::vector<std::string> opts = {
@@ -144,69 +213,65 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate,
     host_info[pipestate.gpu_frame_id].resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
-    const char* const axislabels_S[] = {"MN", "D"};
-    const std::size_t axislengths_S[] = {2, 576};
-    const std::size_t ndims_S = sizeof axislabels_S / sizeof *axislabels_S;
+    /// S is an input buffer: check metadata
     const metadataContainer* const mc_S =
         device.get_gpu_memory_array_metadata(S_memname, pipestate.gpu_frame_id);
     assert(mc_S && metadata_container_is_chord(mc_S));
     const chordMetadata* const meta_S = get_chord_metadata(mc_S);
     INFO("input S array: {:s} {:s}", meta_S->get_type_string(), meta_S->get_dimensions_string());
-    assert(meta_S->type == int16);
-    assert(meta_S->dims == ndims_S);
-    for (std::size_t dim = 0; dim < ndims_S; ++dim) {
-        assert(std::strncmp(meta_S->dim_name[dim], axislabels_S[ndims_S - 1 - dim],
+    assert(meta_S->type == S_type);
+    assert(meta_S->dims == S_rank);
+    for (std::size_t dim = 0; dim < S_rank; ++dim) {
+        assert(std::strncmp(meta_S->dim_name[dim], S_labels[S_rank - 1 - dim],
                             sizeof meta_S->dim_name[dim])
                == 0);
-        assert(meta_S->dim[dim] == int(axislengths_S[ndims_S - 1 - dim]));
+        assert(meta_S->dim[dim] == int(S_lengths[S_rank - 1 - dim]));
     }
-    const char* const axislabels_W[] = {"C", "dishM", "dishN", "P", "F"};
-    const std::size_t axislengths_W[] = {2, 24, 24, 2, 256};
-    const std::size_t ndims_W = sizeof axislabels_W / sizeof *axislabels_W;
+    //
+    /// W is an input buffer: check metadata
     const metadataContainer* const mc_W =
         device.get_gpu_memory_array_metadata(W_memname, pipestate.gpu_frame_id);
     assert(mc_W && metadata_container_is_chord(mc_W));
     const chordMetadata* const meta_W = get_chord_metadata(mc_W);
     INFO("input W array: {:s} {:s}", meta_W->get_type_string(), meta_W->get_dimensions_string());
-    assert(meta_W->type == float16);
-    assert(meta_W->dims == ndims_W);
-    for (std::size_t dim = 0; dim < ndims_W; ++dim) {
-        assert(std::strncmp(meta_W->dim_name[dim], axislabels_W[ndims_W - 1 - dim],
+    assert(meta_W->type == W_type);
+    assert(meta_W->dims == W_rank);
+    for (std::size_t dim = 0; dim < W_rank; ++dim) {
+        assert(std::strncmp(meta_W->dim_name[dim], W_labels[W_rank - 1 - dim],
                             sizeof meta_W->dim_name[dim])
                == 0);
-        assert(meta_W->dim[dim] == int(axislengths_W[ndims_W - 1 - dim]));
+        assert(meta_W->dim[dim] == int(W_lengths[W_rank - 1 - dim]));
     }
-    const char* const axislabels_E[] = {"D", "P", "F", "T"};
-    const std::size_t axislengths_E[] = {512, 2, 256, 2064};
-    const std::size_t ndims_E = sizeof axislabels_E / sizeof *axislabels_E;
+    //
+    /// E is an input buffer: check metadata
     const metadataContainer* const mc_E =
         device.get_gpu_memory_array_metadata(E_memname, pipestate.gpu_frame_id);
     assert(mc_E && metadata_container_is_chord(mc_E));
     const chordMetadata* const meta_E = get_chord_metadata(mc_E);
     INFO("input E array: {:s} {:s}", meta_E->get_type_string(), meta_E->get_dimensions_string());
-    assert(meta_E->type == int4p4);
-    assert(meta_E->dims == ndims_E);
-    for (std::size_t dim = 0; dim < ndims_E; ++dim) {
-        assert(std::strncmp(meta_E->dim_name[dim], axislabels_E[ndims_E - 1 - dim],
+    assert(meta_E->type == E_type);
+    assert(meta_E->dims == E_rank);
+    for (std::size_t dim = 0; dim < E_rank; ++dim) {
+        assert(std::strncmp(meta_E->dim_name[dim], E_labels[E_rank - 1 - dim],
                             sizeof meta_E->dim_name[dim])
                == 0);
-        assert(meta_E->dim[dim] == int(axislengths_E[ndims_E - 1 - dim]));
+        assert(meta_E->dim[dim] == int(E_lengths[E_rank - 1 - dim]));
     }
-    const char* const axislabels_I[] = {"beamP", "beamQ", "Tbar", "F"};
-    const std::size_t axislengths_I[] = {48, 48, 51, 256};
-    const std::size_t ndims_I = sizeof axislabels_I / sizeof *axislabels_I;
+    //
+    /// I is an output buffer: set metadata
     metadataContainer* const mc_I = device.create_gpu_memory_array_metadata(
         I_memname, pipestate.gpu_frame_id, mc_E->parent_pool);
     chordMetadata* const meta_I = get_chord_metadata(mc_I);
     chord_metadata_copy(meta_I, meta_E);
-    meta_I->type = float16;
-    meta_I->dims = ndims_I;
-    for (std::size_t dim = 0; dim < ndims_I; ++dim) {
-        std::strncpy(meta_I->dim_name[dim], axislabels_I[ndims_I - 1 - dim],
+    meta_I->type = I_type;
+    meta_I->dims = I_rank;
+    for (std::size_t dim = 0; dim < I_rank; ++dim) {
+        std::strncpy(meta_I->dim_name[dim], I_labels[I_rank - 1 - dim],
                      sizeof meta_I->dim_name[dim]);
-        meta_I->dim[dim] = axislengths_I[ndims_I - 1 - dim];
+        meta_I->dim[dim] = I_lengths[I_rank - 1 - dim];
     }
     INFO("output I array: {:s} {:s}", meta_I->get_type_string(), meta_I->get_dimensions_string());
+    //
 
     record_start_event(pipestate.gpu_frame_id);
 
@@ -219,9 +284,6 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate,
     void* args[] = {
         &exc_arg, &S_arg, &W_arg, &E_arg, &I_arg, &info_arg,
     };
-
-    // Modify kernel arguments (if necessary)
-
 
     // Copy inputs to device memory
 

@@ -166,8 +166,6 @@ private:
 
     // Host-side buffer arrays
     std::vector<std::vector<std::uint8_t>> host_info;
-
-    // Declare extra variables (if any)
 };
 
 REGISTER_CUDA_COMMAND(cudaBasebandBeamformer_chord);

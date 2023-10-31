@@ -113,9 +113,6 @@ private:
     std::vector<std::vector<std::uint8_t>> host_{{{name}}};
     {{/hasbuffer}}
     {{/kernel_arguments}}
-
-    // Declare extra variables (if any)
-    {{{declare_extra_variables}}}
 };
 
 REGISTER_CUDA_COMMAND(cuda{{{kernel_name}}});

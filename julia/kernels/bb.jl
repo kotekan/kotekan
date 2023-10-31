@@ -894,9 +894,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                                                                           Dict("label" => "P", "length" => P),
                                                                           Dict("label" => "F", "length" => F)],
                                                                "isoutput" => false,
-                                                               "hasbuffer" => true
-                                                               # "value" => "$(8 * C * D * B * P * F ÷ 8)ULL",
-                                                               ),
+                                                               "hasbuffer" => true),
                                                           Dict("name" => "E",
                                                                "kotekan_name" => "gpu_mem_voltage",
                                                                "type" => "int4p4",
