@@ -166,9 +166,8 @@ RUN python3 -m pip install --no-cache-dir breathe==4.35.* \
 
 
 # Julia
-RUN wget https://julialang-s3.julialang.org/bin/linux/x64/1.9/julia-1.9.3-linux-x86_64.tar.gz \
-    && tar xvzf julia-1.9.3-linux-x86_64.tar.gz \
-    && ln -s $(pwd)/julia-1.9.3/bin/julia /usr/local/bin/
+RUN apt-get update && apt-get install -y curl \
+    && curl -fsSL https://install.julialang.org | sh -s -- -y
 
 
 # Uncomment this to check what version got installed
