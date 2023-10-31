@@ -51,7 +51,7 @@ void fftwEngine::main_thread() {
             break;
 
         for (int j = 0; j < samples_per_input_frame / 2; j += spectrum_length) {
-            DEBUG("Running FFT, {:i}", in_local[2 * j]);
+            DEBUG("Running FFT, {}", in_local[2 * j]);
             for (int i = 0; i < spectrum_length; i++) {
                 samples[i][0] = in_local[2 * (i + j)];
                 samples[i][1] = in_local[2 * (i + j) + 1];

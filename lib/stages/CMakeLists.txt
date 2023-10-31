@@ -80,6 +80,9 @@ add_library(
     ExampleProducer.cpp
     ExampleConsumer.cpp
     ExampleDotProduct.cpp
+    SampleAutocorr.cpp
+    SimpleCrosscorr.cpp
+    AirspyAlign.cpp
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 

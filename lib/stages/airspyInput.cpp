@@ -2,10 +2,15 @@
 
 #include "Config.hpp"
 #include "StageFactory.hpp"
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for DEBUG
+#include "restServer.hpp"      // for connectionInstance
+#include <fcntl.h>
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using std::string;
 
 REGISTER_KOTEKAN_STAGE(airspyInput);
 
@@ -21,7 +26,12 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
     gain_lna = config.get_default<int>(unique_name, "gain_lna", 5);                 // MAX: 14
     gain_if = config.get_default<int>(unique_name, "gain_if", 5);                   // MAX: 15
     gain_mix = config.get_default<int>(unique_name, "gain_mix", 5);                 // MAX: 15
+ 
+    airspy_sn = config.get_default<long>(unique_name, "serial", 0);
+    airspy_fn = config.get_default<std::string>(unique_name, "airspy_file", "");
+
     biast_power = config.get_default<bool>(unique_name, "biast_power", false) ? 1 : 0;
+    autostart = config.get_default<bool>(unique_name, "autostart", true) ? 1 : 0;
 }
 
 airspyInput::~airspyInput() {
@@ -94,11 +104,30 @@ void airspyInput::rest_callback(kotekan::connectionInstance& conn,
         }
         else success=true;
     } catch (...) {}
+    try {
+        gain_if = json_request["gain_if"];
+        INFO("Updating airspy IF gain to {:d}", gain_if);
+
+        err = airspy_start_rx(a_device, airspy_callback, static_cast<void*>(this));
+        if (err != AIRSPY_SUCCESS) {
+            ERROR("airspy_start_rx() failed: {:s} ({:d})", airspy_error_name((enum airspy_error)err),
+                  err)
+        }
+        else success=true;
+    } catch (...) {}
+    try {
+        int add_lag = json_request["add_lag"];
+        INFO("Updating airspy lag by {:d}", add_lag);
+        success=true;
+        pthread_mutex_lock(&recv_busy);
+        lag += add_lag*BYTES_PER_SAMPLE;
+        pthread_mutex_unlock(&recv_busy);
+    } catch (...) {}
 
     if (success) {
         usleep(10000);
-        adcstat_callback(conn);
-//        conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
+//        adcstat_callback(conn);
+        conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 //        dump_rms = true;
     }
     else {
@@ -107,6 +136,7 @@ void airspyInput::rest_callback(kotekan::connectionInstance& conn,
 }
 
 void airspyInput::main_thread() {
+    int err;
     std::string endpoint = unique_name+"/config";
     using namespace std::placeholders;
     kotekan::restServer& rest_server = kotekan::restServer::instance();
@@ -128,7 +158,13 @@ void airspyInput::main_thread() {
         FATAL_ERROR("Error in airspyInput. Cannot find device.");
         return;
     }
-    airspy_start_rx(a_device, airspy_callback, static_cast<void*>(this));
+    if (autostart) {
+        err = airspy_start_rx(a_device, airspy_callback, static_cast<void*>(this));
+        if (err != AIRSPY_SUCCESS) {
+            ERROR("airspy_start_rx() failed: {:s} ({:d})", airspy_error_name((enum airspy_error)err),
+                  err)
+        }
+    }
 }
 
 int airspyInput::airspy_callback(airspy_transfer_t* transfer) {
@@ -143,6 +179,18 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
     void* in = transfer->samples;
     size_t bt = transfer->sample_count * BYTES_PER_SAMPLE;
     while (bt > 0) {
+        if (lag > 0) {
+            if (lag > bt){
+                lag -= bt;
+                bt = 0;
+                continue;
+            }
+            else {
+                bt-= lag;
+                in = (void*)((char*)in + lag);
+                lag=0;
+            }
+        }
         if (frame_loc == 0) {
             DEBUG("Airspy waiting for frame_id {:d}", frame_id);
             frame_ptr = (unsigned char*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
@@ -150,11 +198,12 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
                 break;
         }
 
-        size_t copy_length = bt < buf->frame_size ? bt : buf->frame_size;
-        DEBUG("Filling Buffer {:d} With {:d} Data Samples", frame_id, copy_length / 2 / 2);
+        size_t copy_length = bt < (buf->frame_size-frame_loc) ? bt : (buf->frame_size-frame_loc);
+        DEBUG("Filling Buffer {:d} With {:d} Data Samples", frame_id, copy_length / BYTES_PER_SAMPLE);
         // FILL THE BUFFER
         memcpy(frame_ptr + frame_loc, in, copy_length);
         bt -= copy_length;
+        in = (void*)((char*)in + copy_length);
         frame_loc = (frame_loc + copy_length) % buf->frame_size;
 
         if (frame_loc == 0) {
@@ -163,11 +212,11 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
                 float mean = 0, rms = 0;
                 float rail = 0;
                 short *fr = (short*)frame_ptr;
-                for (int i=0; i<buf->frame_size/2; i++) if (abs(fr[i]) >= (2<<10)) rail++;
+                for (uint i=0; i<buf->frame_size/2; i++) if (abs(fr[i]) >= (2<<10)) rail++;
                 rail/=buf->frame_size/2;
-                for (int i=0; i<buf->frame_size/2; i++) mean+=(float)fr[i];
+                for (uint i=0; i<buf->frame_size/2; i++) mean+=(float)fr[i];
                 mean/=buf->frame_size/2;
-                for (int i=0; i<buf->frame_size/2; i++) rms+=((float)fr[i]-mean)*((float)fr[i]-mean);
+                for (uint i=0; i<buf->frame_size/2; i++) rms+=((float)fr[i]-mean)*((float)fr[i]-mean);
                 rms=sqrt(rms/(buf->frame_size/2));
                 INFO("Airspy ADC mean: {:f}, RMS: {:f}, rail fraction {:f}",mean,rms,rail);
                 adcrailfrac=rail;
@@ -187,7 +236,22 @@ struct airspy_device* airspyInput::init_device() {
     int result;
     uint8_t board_id = AIRSPY_BOARD_ID_INVALID;
 
-    result = airspy_open(&dev);
+    if (airspy_sn) {
+        result = airspy_open_sn(&dev,airspy_sn);
+    }
+    else if (not airspy_fn.empty()) {
+        int airspy_fd = open(airspy_fn.c_str(), O_RDWR);
+        if (airspy_fd == -1) {
+            ERROR("Error opening file: {:s}\n",airspy_fn);
+            return nullptr;
+        }
+        result = airspy_open_sn(&dev,airspy_fd);
+        close(airspy_fd);
+    }
+    else {
+        result = airspy_open(&dev);
+    }
+
     if (result != AIRSPY_SUCCESS) {
         ERROR("airspy_open() failed: {:s} ({:d})", airspy_error_name((enum airspy_error)result),
               result);
@@ -230,6 +294,7 @@ struct airspy_device* airspyInput::init_device() {
     }
 
     result = airspy_set_sample_type(dev, AIRSPY_SAMPLE_INT16_IQ);
+//    result = airspy_set_sample_type(dev, AIRSPY_SAMPLE_INT16_REAL);
     if (result != AIRSPY_SUCCESS) {
         ERROR("airspy_set_sample_type() failed: {:s} ({:d})",
               airspy_error_name((enum airspy_error)result), result);

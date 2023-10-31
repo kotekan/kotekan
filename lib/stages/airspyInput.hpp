@@ -12,6 +12,7 @@
 #include "buffer.hpp"
 #include "errors.h"
 #include "util.h"
+#include "restServer.hpp"      // for connectionInstance
 
 #include <airspy.h>
 #include <signal.h>
@@ -149,10 +150,16 @@ private:
     /// Binary flag, should be 0 or 1.
     int biast_power;
 
+    uint lag=0;
+
+    long airspy_sn;
+    std::string airspy_fn;
+
     struct airspy_device* dev;
 
     bool dump_adcstat = false;
     bool adcstat_ready = false;
+    bool autostart = true;
     float adcrms, adcrailfrac, adcmean;
 
 };

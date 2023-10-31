@@ -18,11 +18,12 @@ log_level: info
 
 instrument_name: airspy
 
-samples_per_data_set: 32768
+samples_per_data_set: 131072
+#samples_per_data_set: 1048576
 bytes_per_sample: 2
 buffer_depth: 10
 cpu_affinity: [4,5,6,7]
-num_elements: 1
+num_elements: 2
 one: 1
 two: 2
 sizeof_float: 4
@@ -46,40 +47,49 @@ input_bufB:
 sample_bw: 10. #MHz, must be float?
 freq: 1421.    #MHz
 airspy_inputA:
+#  log_level: debug
   kotekan_stage: airspyInput
   out_buf: input_bufA
-  gain_lna: 10 #0-14
-  gain_mix: 10 #0-15
-  gain_if:  10 #0-15
+  gain_lna: 12 #0-14
+  gain_mix: 12 #0-15
+  gain_if:  12 #0-15
   biast_power: false
-  autostart: false
-  serial: 0x03A464C834658167
+  autostart: true
+#  serial: 0x03A464C834658167
+  serial: 0x466C64C8335838C7
 
-airspy_inputB:
-  kotekan_stage: airspyInput
-  out_buf: input_bufB
-  gain_lna: 10 #0-14
-  gain_mix: 10 #0-15
-  gain_if:  10 #0-15
-  biast_power: false
-  autostart: false
-  serial: 0x440464C8394C614F
+#airspy_inputB:
+#  log_level: debug
+#  kotekan_stage: airspyInput
+#  out_buf: input_bufB
+#  gain_lna: 10 #0-14
+#  gain_mix: 10 #0-15
+#  gain_if:  10 #0-15
+# biast_power: false
+#  autostart: true
+#  serial: 0x440464C8394C614F
 
 lag_align:
+  log_level: debug
   kotekan_stage: AirspyAlign
-  inA_buf: input_bufA
-  inB_buf: input_bufB
+  in_bufA: input_bufA
+  in_bufB: input_bufB
 
 
 integration_length: 64
 power_integration_length: 64
 spectrum_length: 1024
 
-post_fengine_buf:
+post_fengine_bufA:
   kotekan_buffer: standard
   metadata_pool: meta_pool
   num_frames: buffer_depth
-  frame_size: samples_per_data_set * sizeof_float # * 2 for complex / 2 for half-size
+  frame_size: samples_per_data_set * sizeof_float *2 # * 2 for complex / 2 for half-size
+post_fengine_bufB:
+  kotekan_buffer: standard
+  metadata_pool: meta_pool
+  num_frames: buffer_depth
+  frame_size: samples_per_data_set * sizeof_float *2 # * 2 for complex / 2 for half-size
 
 spectrum_output:
   fengine:
@@ -88,7 +98,7 @@ spectrum_output:
     out_buf: post_fengine_bufA
 
   fengine:
-    kotekan_stage: fftwEngine
+#    kotekan_stage: fftwEngine
     in_buf: input_bufB
     out_buf: post_fengine_bufB
 
@@ -101,9 +111,9 @@ correlation_output:
 
   xengine:
     log_level: debug
-    kotekan_stage: SimpleCrosscorr
-    inA_buf: post_fengine_bufA
-    inB_buf: post_fengine_bufB
+#    kotekan_stage: SimpleCrosscorr
+    in_bufA: post_fengine_bufA
+    in_bufB: post_fengine_bufB
     out_buf: post_corr_buf
 
 #  power_stream:
