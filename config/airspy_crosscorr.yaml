@@ -18,8 +18,8 @@ log_level: info
 
 instrument_name: airspy
 
-samples_per_data_set: 131072
-#samples_per_data_set: 1048576
+#samples_per_data_set: 131072
+samples_per_data_set: 1048576
 bytes_per_sample: 2
 buffer_depth: 10
 cpu_affinity: [4,5,6,7]
@@ -46,28 +46,23 @@ input_bufB:
 
 sample_bw: 10. #MHz, must be float?
 freq: 1421.    #MHz
+gain_lna: 3 #0-14
+gain_mix: 3 #0-15
+gain_if:  3 #0-15
+biast_power: false
+autostart: true
 airspy_inputA:
 #  log_level: debug
   kotekan_stage: airspyInput
   out_buf: input_bufA
-  gain_lna: 12 #0-14
-  gain_mix: 12 #0-15
-  gain_if:  12 #0-15
-  biast_power: false
-  autostart: true
-#  serial: 0x03A464C834658167
-  serial: 0x466C64C8335838C7
+  serial: 0x03A464C834658167
+#  serial: 0x466C64C8335838C7
 
-#airspy_inputB:
+airspy_inputB:
 #  log_level: debug
-#  kotekan_stage: airspyInput
-#  out_buf: input_bufB
-#  gain_lna: 10 #0-14
-#  gain_mix: 10 #0-15
-#  gain_if:  10 #0-15
-# biast_power: false
-#  autostart: true
-#  serial: 0x440464C8394C614F
+  kotekan_stage: airspyInput
+  out_buf: input_bufB
+  serial: 0x440464C8394C614F
 
 lag_align:
   log_level: debug

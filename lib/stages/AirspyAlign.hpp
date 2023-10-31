@@ -59,9 +59,8 @@ private:
     Buffer* buf_inA;
     Buffer* buf_inB;
 
-    void *extra_bufA;
-    void *extra_bufB;
-    int max_buf_lag;
+    short *localA;
+    short *localB;
     bool going = false;
 
     /// Frame index for the input buffer.
