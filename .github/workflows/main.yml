@@ -33,7 +33,8 @@ jobs:
   # Ubuntu 22.04 docker image build and push
   build-docker-2204:
     runs-on: self-hosted
-    options: --user root
+    container:
+      options: --user root
     permissions: write-all
 
     steps:
