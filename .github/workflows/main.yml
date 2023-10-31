@@ -214,6 +214,9 @@ jobs:
   # Build a full version of kotekan and run the unit tests
   build-full-tests-2204:
     runs-on: self-hosted
+    container: 
+        image: myoung34/github-runner
+        options: --user root
     needs: build-docker-2204
 
     steps:
