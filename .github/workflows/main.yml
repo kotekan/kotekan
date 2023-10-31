@@ -33,6 +33,9 @@ jobs:
   # Ubuntu 22.04 docker image build and push
   build-docker-2204:
     runs-on: self-hosted
+    container: 
+        image: summerwind/actions-runner:ubuntu-22.04
+        options: --user root
     permissions: write-all
 
     steps:
@@ -211,6 +214,9 @@ jobs:
   # Build a full version of kotekan and run the unit tests
   build-full-tests-2204:
     runs-on: self-hosted
+    container: 
+        image: summerwind/actions-runner:ubuntu-22.04
+        options: --user root
     needs: build-docker-2204
 
     steps:
