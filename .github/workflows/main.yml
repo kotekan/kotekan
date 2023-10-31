@@ -33,8 +33,9 @@ jobs:
   # Ubuntu 22.04 docker image build and push
   build-docker-2204:
     runs-on: self-hosted
-    container:
-      options: --user root
+    container: 
+        image: alpine:latest
+        options: --user root
     permissions: write-all
 
     steps:
