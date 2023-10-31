@@ -33,7 +33,6 @@ jobs:
   # Ubuntu 22.04 docker image build and push
   build-docker-2204:
     runs-on: self-hosted
-    shell: bash
     permissions: write-all
 
     steps:
@@ -212,7 +211,6 @@ jobs:
   # Build a full version of kotekan and run the unit tests
   build-full-tests-2204:
     runs-on: self-hosted
-    shell: bash
     needs: build-docker-2204
 
     steps:
@@ -235,6 +233,7 @@ jobs:
           ccache-base-build-2204
 
     - name: Build kotekan
+      shell: bash
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2204/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" ccache -s
