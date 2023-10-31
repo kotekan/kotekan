@@ -34,7 +34,7 @@ jobs:
   build-docker-2204:
     runs-on: self-hosted
     container: 
-        image: myoung34/github-runner
+        image: node:18
         options: --user root
     permissions: write-all
 
@@ -215,7 +215,7 @@ jobs:
   build-full-tests-2204:
     runs-on: self-hosted
     container: 
-        image: myoung34/github-runner
+        image: node:18
         options: --user root
     needs: build-docker-2204
 
