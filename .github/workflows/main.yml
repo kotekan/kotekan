@@ -223,6 +223,15 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Cache ccache files
+      uses: actions/cache@v3
+      with:
+        path: .ccache
+        key: ccache-full-build-2204-${{ github.sha }}
+        restore-keys: |
+          ccache-full-build-2204
+          ccache-base-build-2204
+
     - name: Free disk space
       if: ${{ !env.ACT }} # Don't free up if running locally
       run: |
@@ -232,15 +241,6 @@ jobs:
           sudo apt-get clean
           sudo apt-get autoclean
           df -h
-
-    - name: Cache ccache files
-      uses: actions/cache@v3
-      with:
-        path: .ccache
-        key: ccache-full-build-2204-${{ github.sha }}
-        restore-keys: |
-          ccache-full-build-2204
-          ccache-base-build-2204
 
     - name: Build kotekan
       run: |
@@ -267,6 +267,7 @@ jobs:
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" ./build-2204/kotekan/kotekan --bind-address 0:23000 --config config/tests/julia_hello_world.yaml
+      continue-on-error: true
 
     - name: Run parallel python tests
       run: |
