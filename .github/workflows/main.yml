@@ -241,12 +241,7 @@ jobs:
     - name: Build kotekan
       shell: bash
       run: |
-        echo $(pwd)
-        ls
-        ls ..
-        ls ../..
-        ls /
-        OPTS=(--rm --mount type=bind,source="$(pwd)",target=/code/kotekan -w /code/kotekan/build-2204/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,source="/home/lwlab/kotekan-runner/_work/kotekan/kotekan/",target=/code/kotekan -w /code/kotekan/build-2204/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
