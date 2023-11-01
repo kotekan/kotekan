@@ -243,7 +243,7 @@ jobs:
       run: |
         echo $(pwd)
         ls
-        OPTS=(--rm --volume type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2204/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,source="$(pwd)",target=/code/kotekan -w /code/kotekan/build-2204/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
