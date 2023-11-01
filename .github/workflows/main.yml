@@ -32,10 +32,7 @@ jobs:
 
   # Ubuntu 22.04 docker image build and push
   build-docker-2204:
-    runs-on: self-hosted
-    container: 
-        image: summerwind/actions-runner:ubuntu-22.04
-        options: --user root
+    runs-on: ubuntu-latest
     permissions: write-all
 
     steps:
@@ -213,10 +210,7 @@ jobs:
 
   # Build a full version of kotekan and run the unit tests
   build-full-tests-2204:
-    runs-on: self-hosted
-    container: 
-        image: summerwind/actions-runner:ubuntu-22.04
-        options: --user root
+    runs-on: ubuntu-latest
     needs: build-docker-2204
 
     steps:
@@ -229,6 +223,16 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Free disk space
+      if: ${{ !env.ACT }} # Don't free up if running locally
+      run: |
+          df -h
+          docker rmi $(docker image ls -aq)
+          df -h
+          sudo apt-get clean
+          sudo apt-get autoclean
+          df -h
+
     - name: Cache ccache files
       uses: actions/cache@v3
       with:
@@ -239,9 +243,8 @@ jobs:
           ccache-base-build-2204
 
     - name: Build kotekan
-      shell: bash
       run: |
-        OPTS=(--rm --mount type=bind,source="/home/lwlab/kotekan-runner/_work/kotekan/kotekan/",target=/code/kotekan -w /code/kotekan/build-2204/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2204/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
@@ -262,27 +265,30 @@ jobs:
 
     - name: Run direct Kotekan tests
       run: |
-        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" ./build-2204/kotekan/kotekan --bind-address 0:23000 --config config/tests/julia_hello_world.yaml
 
     - name: Run parallel python tests
       run: |
-        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile --timeout=${PYTEST_TIMEOUT} -x -m 'not serial'
 
     - name: Run serial python tests
       run: |
-        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial"
 
     - name: Run boost tests
       run: |
-        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2204/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2204/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
 
   # Build an OpenCL version of kotekan and run the unit tests
   build-opencl-2204:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    container: 
+      image: summerwind/actions-runner:ubuntu-22.04
+      options: --user root
     needs: build-docker-2204
 
     steps:
@@ -304,19 +310,10 @@ jobs:
           ccache-opencl-2204
           ccache-base-build-2204
 
-    - name: Free disk space
-      if: ${{ !env.ACT }} # Don't free up if running locally
-      run: |
-          df -h
-          docker rmi $(docker image ls -aq)
-          df -h
-          sudo apt-get clean
-          sudo apt-get autoclean
-          df -h
-
     - name: Build kotekan
+      shell: bash
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2204/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2204/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
@@ -337,18 +334,21 @@ jobs:
         df -h
 
     - name: Run parallel python tests
+      shell: bash
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile --timeout=${PYTEST_TIMEOUT} -x -m 'not serial'
 
     - name: Run serial python tests
+      shell: bash
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial"
 
     - name: Run boost tests
+      shell: bash
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2204/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2204/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
 
   # Build a clang version of kotekan
