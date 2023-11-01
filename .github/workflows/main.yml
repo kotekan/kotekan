@@ -328,7 +328,7 @@ jobs:
             -DUSE_CUDA=OFF \
             -DUSE_OPENCL=ON \
             -DCCACHE=ON ..
-        docker run "${OPTS[@]}" make -j 2
+        docker run "${OPTS[@]}" make -j
         docker run "${OPTS[@]}" rm -r lib
         docker run "${OPTS[@]}" ccache -s
         df -h
@@ -350,6 +350,10 @@ jobs:
       run: |
         OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2204/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
+
+    - name: Clean up
+      run: |
+        rm -rf kotekan
 
   # Build a clang version of kotekan
   # Note that this build isn't working at the moment, so for now only run it upon request.
