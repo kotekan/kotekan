@@ -322,7 +322,6 @@ jobs:
             -DCMAKE_BUILD_TYPE=Test \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
-            -DARCH=haswell \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
             -DWITH_TESTS=ON \
