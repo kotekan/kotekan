@@ -241,7 +241,8 @@ jobs:
     - name: Build kotekan
       shell: bash
       run: |
-        $(pwd)
+        echo $(pwd)
+        ls
         OPTS=(--rm --volume type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2204/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
