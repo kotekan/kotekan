@@ -33,7 +33,10 @@ add_library(
     CHIMETelescope.cpp
     SystemInterface.cpp)
 
-target_link_libraries(kotekan_utils PRIVATE libexternal PUBLIC kotekan_libs)
+target_link_libraries(
+    kotekan_utils
+    PRIVATE libexternal
+    PUBLIC kotekan_libs)
 target_include_directories(kotekan_utils PUBLIC .)
 
 # HDF5 stuff
