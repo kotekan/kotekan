@@ -33,6 +33,10 @@ using float16_t = _Float16;
 #endif
 
 #if !defined KOTEKAN_FLOAT16
+#define KOTEKAN_FLOAT16 0
+#endif
+
+#if !KOTEKAN_FLOAT16
 #error "The F-Engine simulator requires float16 support"
 #endif
 
