@@ -206,18 +206,23 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
         in = (void*)((char*)in + copy_length);
         frame_loc = (frame_loc + copy_length) % buf->frame_size;
 
+#ifdef IQ_SAMPLING
+#else
+            short *fr = (short*)frame_ptr;
+            for (uint i=0; i<buf->frame_size/BYTES_PER_SAMPLE; i++) fr[i]-=2048;
+#endif
         if (frame_loc == 0) {
             DEBUG("Airspy Buffer {:d} Full", frame_id);
             if (dump_adcstat){
                 float mean = 0, rms = 0;
                 float rail = 0;
                 short *fr = (short*)frame_ptr;
-                for (uint i=0; i<buf->frame_size/2; i++) if (abs(fr[i]) >= (2<<10)) rail++;
-                rail/=buf->frame_size/2;
-                for (uint i=0; i<buf->frame_size/2; i++) mean+=(float)fr[i];
-                mean/=buf->frame_size/2;
-                for (uint i=0; i<buf->frame_size/2; i++) rms+=((float)fr[i]-mean)*((float)fr[i]-mean);
-                rms=sqrt(rms/(buf->frame_size/2));
+                for (uint i=0; i<buf->frame_size/BYTES_PER_SAMPLE; i++) if (abs(fr[i]) >= (2<<10)) rail++;
+                rail/=buf->frame_size/BYTES_PER_SAMPLE;
+                for (uint i=0; i<buf->frame_size/BYTES_PER_SAMPLE; i++) mean+=(float)fr[i];
+                mean/=buf->frame_size/BYTES_PER_SAMPLE;
+                for (uint i=0; i<buf->frame_size/BYTES_PER_SAMPLE; i++) rms+=((float)fr[i]-mean)*((float)fr[i]-mean);
+                rms=sqrt(rms/(buf->frame_size/BYTES_PER_SAMPLE));
                 INFO("Airspy ADC mean: {:f}, RMS: {:f}, rail fraction {:f}",mean,rms,rail);
                 adcrailfrac=rail;
                 adcrms=rms;
@@ -293,8 +298,11 @@ struct airspy_device* airspyInput::init_device() {
         }
     }
 
+#ifdef IQ_SAMPLING
     result = airspy_set_sample_type(dev, AIRSPY_SAMPLE_INT16_IQ);
-//    result = airspy_set_sample_type(dev, AIRSPY_SAMPLE_INT16_REAL);
+#else
+    result = airspy_set_sample_type(dev, AIRSPY_SAMPLE_RAW);
+#endif
     if (result != AIRSPY_SUCCESS) {
         ERROR("airspy_set_sample_type() failed: {:s} ({:d})",
               airspy_error_name((enum airspy_error)result), result);

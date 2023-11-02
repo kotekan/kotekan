@@ -36,9 +36,9 @@ SimpleCrosscorr::SimpleCrosscorr(Config& config, const std::string& unique_name,
     buf_out = get_buffer("out_buf");
     register_producer(buf_out, unique_name.c_str());
 
-    spectrum_length = config.get_default<int>(unique_name, "spectrum_length", 1024);
+    spectrum_length = config.get_default<uint>(unique_name, "spectrum_length", 1024);
     spectrum_out = (float*)calloc(spectrum_length, sizeof(float) * 4);
-    integration_length = config.get_default<int>(unique_name, "integration_length", 1024);
+    integration_length = config.get_default<uint>(unique_name, "integration_length", 1024);
 }
 
 SimpleCrosscorr::~SimpleCrosscorr() {
@@ -48,13 +48,13 @@ SimpleCrosscorr::~SimpleCrosscorr() {
 void SimpleCrosscorr::main_thread() {
     float* inA_local;
     float* inB_local;
-    uint* out_local; //AA, BB, ABr, ABi
+    float* out_local; //AA, BB, ABr, ABi
 
     float Ar,Ai,Br,Bi;
     frame_inA = 0;
     frame_inB = 0;
     frame_out = 0;
-    int integration_ct = 0;
+    uint integration_ct = 0;
     int out_loc = 0;
 
     int samples_per_frame = buf_inA->frame_size / (2 * sizeof(float));
@@ -63,7 +63,7 @@ void SimpleCrosscorr::main_thread() {
     while (!stop_thread) {
         inA_local = (float*)wait_for_full_frame(buf_inA, unique_name.c_str(), frame_inA);
         inB_local = (float*)wait_for_full_frame(buf_inB, unique_name.c_str(), frame_inB);
-/*
+
         if ((inA_local == nullptr) || (inB_local == nullptr))
             break;
 
@@ -75,20 +75,24 @@ void SimpleCrosscorr::main_thread() {
                 Br = inB_local[(i + j) * 2];
                 Bi = inB_local[(i + j) * 2 + 1];
 
-                spectrum_out[4*i+0] += (Ar * Ar + Ai * Ai) / integration_length;
-                spectrum_out[4*i+1] += (Br * Br + Bi * Bi) / integration_length;
-                spectrum_out[4*i+2] += (Ar * Br + Ai * Bi) / integration_length;
-                spectrum_out[4*i+3] += (Ai * Br - Bi * Ar) / integration_length;
+//                spectrum_out[4*i+0] += (Ar * Ar + Ai * Ai) / integration_length;
+//                spectrum_out[4*i+1] += (Br * Br + Bi * Bi) / integration_length;
+//                spectrum_out[4*i+2] += (Ar * Br + Ai * Bi) / integration_length;
+//                spectrum_out[4*i+3] += (Ai * Br - Bi * Ar) / integration_length;
+                spectrum_out[i+0] += (Ar * Ar + Ai * Ai) / integration_length;
+                spectrum_out[i+spectrum_length*1] += (Br * Br + Bi * Bi) / integration_length;
+                spectrum_out[i+spectrum_length*2] += (Ar * Br + Ai * Bi) / integration_length;
+                spectrum_out[i+spectrum_length*3] += (Ai * Br - Bi * Ar) / integration_length;
             }
             integration_ct++;
 
             if (integration_ct >= integration_length) {
                 if (out_loc == 0)
                     out_local =
-                        (uint*)wait_for_empty_frame(buf_out, unique_name.c_str(), frame_out);
+                        (float*)wait_for_empty_frame(buf_out, unique_name.c_str(), frame_out);
                 for (int i = 0; i < spectrum_length*4; i++)
                     out_local[out_loc++] = spectrum_out[i];
-                out_local[out_loc++] = integration_ct;
+                ((uint*)out_local)[out_loc++] = integration_ct;
 
                 if (out_loc * sizeof(uint) == (uint32_t)buf_out->frame_size) {
                     mark_frame_full(buf_out, unique_name.c_str(), frame_out);
@@ -101,7 +105,7 @@ void SimpleCrosscorr::main_thread() {
                 integration_ct = 0;
             }
         }
-*/
+
         mark_frame_empty(buf_inA, unique_name.c_str(), frame_inA);
         mark_frame_empty(buf_inB, unique_name.c_str(), frame_inB);
         frame_inA = (frame_inA + 1) % buf_inA->num_frames;

@@ -35,8 +35,9 @@ AirspyAlign::AirspyAlign(Config& config, const std::string& unique_name,
     buf_inB = get_buffer("in_bufB");
     register_consumer(buf_inB, unique_name.c_str());
 
-    localA = (short *)malloc(buf_inA->frame_size);
-    localB = (short *)malloc(buf_inB->frame_size);
+    lag_window = config.get_default<unsigned int>(unique_name, "lag_window", buf_inA->frame_size/sizeof(short)); //samples
+    localA = (short *)malloc(lag_window*sizeof(short));
+    localB = (short *)malloc(lag_window*sizeof(short));
 }
 
 AirspyAlign::~AirspyAlign() {
@@ -51,60 +52,91 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
 
     while (going) {usleep(1000);}
 
-    int samples_per_frame = buf_inA->frame_size / (sizeof(short));
+    nlohmann::json a = nlohmann::json::array();
+    nlohmann::json b = nlohmann::json::array();
 
+#ifdef IQ_SAMPLING
     fftwf_complex *spectrumA, *spectrumB, *spectrumC;
     fftwf_complex *samplesA, *samplesB, *samplesC;
     fftwf_plan fft_planA, fft_planB, fft_planC;
 
-    samplesA = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * samples_per_frame/2);
-    spectrumA = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * samples_per_frame/2);
-    fft_planA = (fftwf_plan_s*)fftwf_plan_dft_1d(samples_per_frame/2, samplesA, spectrumA, FFTW_FORWARD, FFTW_ESTIMATE);
+    samplesA = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2);
+    spectrumA = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2);
+    fft_planA = (fftwf_plan_s*)fftwf_plan_dft_1d(lag_window/2, samplesA, spectrumA, FFTW_FORWARD, FFTW_ESTIMATE);
 
-    samplesB = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * samples_per_frame/2);
-    spectrumB = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * samples_per_frame/2);
-    fft_planB = (fftwf_plan_s*)fftwf_plan_dft_1d(samples_per_frame/2, samplesB, spectrumB, FFTW_FORWARD, FFTW_ESTIMATE);
+    samplesB = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2);
+    spectrumB = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2);
+    fft_planB = (fftwf_plan_s*)fftwf_plan_dft_1d(lag_window/2, samplesB, spectrumB, FFTW_FORWARD, FFTW_ESTIMATE);
 
-    samplesC = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * samples_per_frame/2);
-    spectrumC = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * samples_per_frame/2);
-    fft_planC = (fftwf_plan_s*)fftwf_plan_dft_1d(samples_per_frame/2, samplesC, spectrumC, FFTW_BACKWARD, FFTW_ESTIMATE);
+    samplesC = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2);
+    spectrumC = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2);
+    fft_planC = (fftwf_plan_s*)fftwf_plan_dft_1d(lag_window/2, spectrumC, samplesC, FFTW_BACKWARD, FFTW_ESTIMATE);
 
-
-    nlohmann::json a = nlohmann::json::array();
-    nlohmann::json b = nlohmann::json::array();
-    for (int i = 0; i < samples_per_frame/2; i++) {
+    for (unsigned int i = 0; i < lag_window/2; i++) {
         samplesA[i][0] = localA[2 * i];
         samplesA[i][1] = localA[2 * i + 1];
         samplesB[i][0] = localB[2 * i];
         samplesB[i][1] = localB[2 * i + 1];
-//        int o = 1234; //synthetic offset
-//        samplesB[i][0] = inA_local[2 * (i+o)%(samples_per_frame/2)];
-//        samplesB[i][1] = inA_local[2 * (i+o)%(samples_per_frame/2) + 1];
-
+        //int o = 1234; //synthetic offset
+        //samplesB[i][0] = inA_local[2 * (i+o)%(samples_per_frame/2)];
+        //samplesB[i][1] = inA_local[2 * (i+o)%(samples_per_frame/2) + 1];
         a.push_back(samplesA[i][0]);
         a.push_back(samplesA[i][1]);
         b.push_back(samplesB[i][0]);
         b.push_back(samplesB[i][1]);
     }
+#else
+    fftwf_complex *spectrumA, *spectrumB, *spectrumC;
+    float *samplesA, *samplesB, *samplesC;
+    fftwf_plan fft_planA, fft_planB, fft_planC;
+
+    samplesA = (float*)fftwf_malloc(sizeof(float) * lag_window);
+    spectrumA = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2+1);
+    fft_planA = (fftwf_plan_s*)fftwf_plan_dft_r2c_1d(lag_window, samplesA, spectrumA, FFTW_ESTIMATE);
+
+    samplesB = (float*)fftwf_malloc(sizeof(float) * lag_window);
+    spectrumB = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2+1);
+    fft_planB = (fftwf_plan_s*)fftwf_plan_dft_r2c_1d(lag_window, samplesB, spectrumB, FFTW_ESTIMATE);
+
+    samplesC = (float*)fftwf_malloc(sizeof(float) * lag_window);
+    spectrumC = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2+1);
+    fft_planC = (fftwf_plan_s*)fftwf_plan_dft_c2r_1d(lag_window, spectrumC, samplesC, FFTW_ESTIMATE);
+
+    for (unsigned int i = 0; i < lag_window; i++) {
+        samplesA[i] = localA[i];
+        samplesB[i] = localB[i];
+        //int o = 1234; //synthetic offset
+        //samplesB[i] = inA_local[2 * (i+o)%(samples_per_frame)];
+        a.push_back(samplesA[i]);
+        b.push_back(samplesB[i]);
+    }
+#endif
+
     fftwf_execute(fft_planA);
     fftwf_execute(fft_planB);
 
-    for (int i = 0; i < samples_per_frame/2; i++) {
+#ifdef IQ_SAMPLING
+    for (unsigned int i = 0; i < lag_window/2; i++) {
+#else
+    for (unsigned int i = 0; i < lag_window/2+1; i++) {
+#endif
         float Ar = spectrumA[0][i];
         float Ai = spectrumA[1][i];
         float Br = spectrumB[0][i];
         float Bi = spectrumB[1][i];
         //A \times B*
-        samplesC[i][0] = Ar * Br + Ai * Bi;
-        samplesC[i][1] = Ai * Br - Bi * Ar;
+        spectrumC[i][0] = Ar * Br + Ai * Bi;
+        spectrumC[i][1] = Ai * Br - Bi * Ar;
     }
     fftwf_execute(fft_planC);
 
     float maxval=0, meanval=0, var=0;
     int lag = 0;
     nlohmann::json corr = nlohmann::json::array();
-    for (int i=0; i < samples_per_frame/2; i++){
-        float val = sqrt(spectrumC[0][i]*spectrumC[0][i] + spectrumC[1][i]*spectrumC[1][i]);
+
+#ifdef IQ_SAMPLING
+    for (unsigned int i=0; i < lag_window/2; i++){
+        float val = sqrt(samplesC[0][i]*samplesC[0][i] + samplesC[1][i]*samplesC[1][i]);
         corr.push_back(val);
         if (val > maxval) {
             lag = i;
@@ -112,32 +144,54 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
         }
         meanval += val;
     }
-    meanval /= samples_per_frame/2;
-    for (int i=0; i < samples_per_frame/2; i++){
-        float val = spectrumC[0][i]-meanval;
+    meanval /= lag_window/2;
+    for (unsigned int i=0; i < lag_window/2; i++){
+        float val = sqrt(samplesC[0][i]*samplesC[0][i] + samplesC[1][i]*samplesC[1][i]);;
         var += val*val;
     }
-    var /= samples_per_frame/2;
+    var /= lag_window/2;
+#else
+    for (unsigned int i=0; i < lag_window; i++){
+        float val = samplesC[i];
+        corr.push_back(val);
+        if (val > maxval) {
+            lag = i;
+            maxval = val;
+        }
+        meanval += val;
+    }
+    meanval /= lag_window;
+    for (unsigned int i=0; i < lag_window; i++){
+        float val = samplesC[i];;
+        var += val*val;
+    }
+    var /= lag_window;
+#endif
+
     float std = sqrt(var);
     DEBUG("Align: Max: {}, Mean: {}, RMS: {}",maxval, meanval, std);
-    if (maxval > meanval+5*std) {
+    if (maxval > meanval+10*std) {
         DEBUG("Lag found!\n");
         DEBUG("Lag {}\n",lag);
-        going=false;
+
+        reply["lag"] = lag;
+    //    reply["a"] = a;
+    //    reply["b"] = b;
+    //    reply["corr"] = corr;
+        conn.send_json_reply(reply);
     }
     else {
+        DEBUG("NO Lag found!\n");
+        reply["lag"] = 0;
+        conn.send_json_reply(reply);
     }
 
     fftwf_free(samplesA);
     fftwf_free(samplesB);
+    fftwf_free(samplesC);
     fftwf_free(spectrumA);
+    fftwf_free(spectrumB);
     fftwf_free(spectrumC);
-
-    reply["lag"] = lag;
-//    reply["a"] = a;
-//    reply["b"] = b;
-//    reply["corr"] = corr;
-    conn.send_json_reply(reply);
 }
 
 
@@ -153,6 +207,8 @@ void AirspyAlign::main_thread() {
 
     frame_inA = 0;
     frame_inB = 0;
+    uint copied = 0; //samples
+    uint samples_per_frame = buf_inA->frame_size/sizeof(short);
 
     //assumes the arrays are aligned
     while (!stop_thread) {
@@ -164,9 +220,14 @@ void AirspyAlign::main_thread() {
             break;
 
         if (going) {
-            memcpy(localA, inA, buf_inA->frame_size);
-            memcpy(localB, inB, buf_inB->frame_size);
-            going=false;
+            int copylen= ((lag_window-copied) > samples_per_frame) ? samples_per_frame : lag_window-copied;
+            memcpy(localA+copied*sizeof(short), inA, copylen*sizeof(short));
+            memcpy(localB+copied*sizeof(short), inB, copylen*sizeof(short));
+            copied += copylen;
+            if (copied >= lag_window) {
+                copied=0;
+                going=false;
+            }
         }
 
         mark_frame_empty(buf_inA, unique_name.c_str(), frame_inA);

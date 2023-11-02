@@ -37,13 +37,13 @@ networkPowerStream::networkPowerStream(Config& config, const std::string& unique
     register_consumer(in_buf, unique_name.c_str());
 
     // PER BUFFER
-    times = config.get<int>(unique_name, "samples_per_data_set")
-            / config.get<int>(unique_name, "power_integration_length");
     freqs = config.get<int>(unique_name, "num_freq");
     elems = config.get<int>(unique_name, "num_elements");
+    times = config.get<int>(unique_name, "samples_per_data_set")
+            / config.get<int>(unique_name, "power_integration_length");
 
-    freq0 = config.get_default<float>(unique_name, "freq", 600.) * 1e6;
-    sample_bw = config.get_default<float>(unique_name, "sample_bw", 200.) * 1e6;
+    freq0 = config.get_default<float>(unique_name, "freq", 1420.) * 1e6;
+    sample_bw = config.get_default<float>(unique_name, "sample_bw", 10.) * 1e6;
 
     dest_port = config.get<uint32_t>(unique_name, "destination_port");
     dest_server_ip = config.get<std::string>(unique_name, "destination_ip");
@@ -64,14 +64,8 @@ networkPowerStream::networkPowerStream(Config& config, const std::string& unique
 
     frame_idx = 0;
 
-    // Prevent SIGPIPE on send failure.
-    // This is used for MacOS, since linux doesn't have SO_NOSIGPIPE
-#ifdef SO_NOSIGPIPE
-    int set = 1;
-    if (setsockopt(socket_fd, SOL_SOCKET, SO_NOSIGPIPE, (void*)&set, sizeof(int)) < 0) {
-        ERROR("bufferSend: setsockopt() NOSIGPIPE ");
-    }
-#endif
+//    signal(SIGPIPE, SIG_IGN);
+
 }
 
 networkPowerStream::~networkPowerStream() {}
@@ -135,30 +129,30 @@ void networkPowerStream::main_thread() {
         while (!stop_thread) {
             // Wait for a full buffer.
             frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-            if (frame == nullptr)
-                break;
+            if (frame == nullptr) break;
 
-            while (atomic_flag_test_and_set(&socket_lock)) {
-            }
+            while (atomic_flag_test_and_set(&socket_lock)) {}
             if (tcp_connected) {
                 atomic_flag_clear(&socket_lock);
                 for (int t = 0; t < times; t++) {
                     packet_header->frame_idx = frame_idx++;
-                    for (int p = 0; p < elems; p++) {
-                        packet_header->elem_idx = p;
+                    for (int e = 0; e < elems; e++) {
+                        packet_header->elem_idx = e;
+
                         packet_header->samples_summed =
-                            ((uint*)frame)[t * elems * (freqs + 1) + p * (freqs + 1) + freqs];
-                        memcpy(local_data, frame + (t * elems + p) * (freqs + 1) * sizeof(uint),
-                               freqs * sizeof(uint));
+                            ((uint*)frame)[t * (elems * freqs + 1) + elems * freqs];
+
+                        memcpy(local_data,
+                               frame + (t * (elems * freqs + 1) + e * freqs) * sizeof(float),
+                               freqs * sizeof(float));
                         uint32_t bytes_sent = send(socket_fd, packet_buffer, packet_length, 0);
                         if (bytes_sent != packet_length) {
-                            ERROR("Lost TCP connection!");
-                            while (atomic_flag_test_and_set(&socket_lock)) {
-                            }
+                            INFO("Lost TCP connection!");
+                            while (atomic_flag_test_and_set(&socket_lock)) {}
                             close(socket_fd);
                             tcp_connected = false;
                             atomic_flag_clear(&socket_lock);
-                            break;
+                            e=elems; t=times; //instead of break-up-two
                         }
                     }
                 }
@@ -186,7 +180,7 @@ void networkPowerStream::main_thread() {
 }
 
 void networkPowerStream::tcpConnect() {
-    //    INFO("Connecting TCP Power Stream!");
+    INFO("Connecting TCP Power Stream!");
     struct sockaddr_in address;
     address.sin_addr.s_addr = inet_addr(dest_server_ip.c_str());
     address.sin_port = htons(dest_port);
@@ -197,6 +191,14 @@ void networkPowerStream::tcpConnect() {
         ERROR("Could not create TCP socket for output stream");
         return;
     }
+    // Prevent SIGPIPE on send failure.
+    // This is used for MacOS, since linux doesn't have SO_NOSIGPIPE
+#ifdef SO_NOSIGPIPE
+    int set = 1;
+    if (setsockopt(socket_fd, SOL_SOCKET, SO_NOSIGPIPE, (void*)&set, sizeof(int)) < 0) {
+        ERROR("bufferSend: setsockopt() NOSIGPIPE ");
+    }
+#endif
 
     // TODO: handle errors, make dynamic
     struct timeval timeout;
@@ -204,8 +206,7 @@ void networkPowerStream::tcpConnect() {
     timeout.tv_usec = 200000;
 
     if (connect(socket_fd, (struct sockaddr*)&address, sizeof(address)) != 0) {
-        while (atomic_flag_test_and_set(&socket_lock)) {
-        }
+        while (atomic_flag_test_and_set(&socket_lock)) {}
         tcp_connecting = false;
         close(socket_fd);
         atomic_flag_clear(&socket_lock);

@@ -67,9 +67,9 @@ private:
 
     // options
     /// Length of the spectrum being autocorrelated.
-    int spectrum_length;
+    uint spectrum_length;
     /// Number of samples to integrate per output.
-    int integration_length;
+    uint integration_length;
     /// Buffer for accumulating and staging the output.
     float* spectrum_out;
 };

@@ -62,6 +62,7 @@ private:
     short *localA;
     short *localB;
     bool going = false;
+    unsigned int lag_window;
 
     /// Frame index for the input buffer.
     int frame_inA;
