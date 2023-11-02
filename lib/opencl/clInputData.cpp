@@ -7,7 +7,7 @@ REGISTER_CL_COMMAND(clInputData);
 
 clInputData::clInputData(Config& config, const std::string& unique_name,
                          bufferContainer& host_buffers, clDeviceInterface& device, int inst) :
-    clCommand(config, unique_name, host_buffers, device, inst, no_cl_state, "", "") {
+    clCommand(config, unique_name, host_buffers, device, inst, no_cl_command_state, "", "") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");

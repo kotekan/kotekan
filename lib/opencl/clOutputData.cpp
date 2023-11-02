@@ -7,7 +7,7 @@ REGISTER_CL_COMMAND(clOutputData);
 
 clOutputData::clOutputData(Config& config, const std::string& unique_name,
                            bufferContainer& host_buffers, clDeviceInterface& device, int inst) :
-    clCommand(config, unique_name, host_buffers, device, inst, no_cl_state, "", "") {
+    clCommand(config, unique_name, host_buffers, device, inst, no_cl_command_state, "", "") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _block_size = config.get<int>(unique_name, "block_size");

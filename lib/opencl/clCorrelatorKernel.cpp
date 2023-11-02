@@ -11,7 +11,7 @@ REGISTER_CL_COMMAND(clCorrelatorKernel);
 clCorrelatorKernel::clCorrelatorKernel(Config& config, const std::string& unique_name,
                                        bufferContainer& host_buffers, clDeviceInterface& device,
                                        int inst) :
-    clCommand(config, unique_name, host_buffers, device, inst, no_cl_state, "corr",
+    clCommand(config, unique_name, host_buffers, device, inst, no_cl_command_state, "corr",
               "pairwise_correlator.cl") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");

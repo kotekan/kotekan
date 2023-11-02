@@ -11,7 +11,7 @@ REGISTER_CUDA_COMMAND(cudaBasebandBeamformer);
 cudaBasebandBeamformer::cudaBasebandBeamformer(Config& config, const std::string& unique_name,
                                                bufferContainer& host_buffers,
                                                cudaDeviceInterface& device, int inst) :
-    cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_state,
+    cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state,
                 "baseband_beamformer", "bb.ptx") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");

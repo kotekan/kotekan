@@ -10,7 +10,7 @@ using std::to_string;
 
 // default-constructed global so that people don't have to write
 // "std::shared_ptr<clCommandState>()" in a bunch of places.  Basically a custom NULL.
-std::shared_ptr<clCommandState> no_cl_state;
+std::shared_ptr<clCommandState> no_cl_command_state;
 
 clCommand::clCommand(Config& config_, const std::string& unique_name_,
                      bufferContainer& host_buffers_, clDeviceInterface& device_, int instance_num,

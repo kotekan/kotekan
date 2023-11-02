@@ -18,7 +18,7 @@ REGISTER_CL_COMMAND(clBeamformPhaseData);
 clBeamformPhaseData::clBeamformPhaseData(Config& config, const std::string& unique_name,
                                          bufferContainer& host_buffers, clDeviceInterface& device,
                                          int inst) :
-    clCommand(config, unique_name, host_buffers, device, inst, no_cl_state, "", "") {
+    clCommand(config, unique_name, host_buffers, device, inst, no_cl_command_state, "", "") {
     command_type = gpuCommandType::NOT_SET;
 
     _num_elements = config.get<int>(unique_name, "num_elements");

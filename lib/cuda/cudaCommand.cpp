@@ -12,7 +12,7 @@ using std::to_string;
 
 // default-constructed global so that people don't have to write
 // "std::shared_ptr<cudaCommandState>()" in a bunch of places.  Basically a custom NULL.
-std::shared_ptr<cudaCommandState> no_cuda_state;
+std::shared_ptr<cudaCommandState> no_cuda_command_state;
 
 cudaPipelineState::cudaPipelineState(int _gpu_frame_id) : gpu_frame_id(_gpu_frame_id) {}
 

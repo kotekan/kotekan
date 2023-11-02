@@ -37,7 +37,7 @@ public:
 };
 
 // use this to avoid having to write "std::shared_ptr<clCommandState>()"
-extern std::shared_ptr<clCommandState> no_cl_state;
+extern std::shared_ptr<clCommandState> no_cl_command_state;
 
 /**
  * @class clCommand

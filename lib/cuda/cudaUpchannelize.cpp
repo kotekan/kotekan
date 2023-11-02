@@ -17,7 +17,8 @@ cudaUpchannelize::cudaUpchannelize(Config& config, const std::string& unique_nam
                                    bufferContainer& host_buffers, cudaDeviceInterface& device,
                                    int inst, std::string name, std::string kernel_fn, int nsamples,
                                    std::string kernel_symbol) :
-    cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_state, name, kernel_fn),
+    cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state, name,
+                kernel_fn),
     kernel_name(kernel_symbol) {
     _num_dishes = config.get<int>(unique_name, "num_dishes");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");

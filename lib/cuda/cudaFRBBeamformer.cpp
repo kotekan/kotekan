@@ -16,8 +16,8 @@ static const size_t sizeof_float16_t = 2;
 cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_name,
                                      bufferContainer& host_buffers, cudaDeviceInterface& device,
                                      int inst) :
-    cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_state, "FRB_beamformer",
-                "frb.ptx") {
+    cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state,
+                "FRB_beamformer", "frb.ptx") {
 
     // HACK -- at the very beginning of the run, we pretend we have 40 samples of padding,
     // so that we get 51 outputs (otherwise we would get 50), so that the rechunker produces

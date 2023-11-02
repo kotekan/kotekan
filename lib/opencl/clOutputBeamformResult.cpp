@@ -8,7 +8,7 @@ REGISTER_CL_COMMAND(clOutputBeamformResult);
 clOutputBeamformResult::clOutputBeamformResult(Config& config, const std::string& unique_name,
                                                bufferContainer& host_buffers,
                                                clDeviceInterface& device, int inst) :
-    clCommand(config, unique_name, host_buffers, device, inst, no_cl_state, "", "") {
+    clCommand(config, unique_name, host_buffers, device, inst, no_cl_command_state, "", "") {
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _num_data_sets = config.get<int>(unique_name, "num_data_sets");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");

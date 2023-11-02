@@ -15,8 +15,8 @@ REGISTER_CL_COMMAND(clBeamformKernel);
 clBeamformKernel::clBeamformKernel(Config& config, const std::string& unique_name,
                                    bufferContainer& host_buffers, clDeviceInterface& device,
                                    int inst) :
-    clCommand(config, unique_name, host_buffers, device, inst, no_cl_state, "gpu_beamforming",
-              "beamform_tree_scale.cl") {
+    clCommand(config, unique_name, host_buffers, device, inst, no_cl_command_state,
+              "gpu_beamforming", "beamform_tree_scale.cl") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_data_sets = config.get<int>(unique_name, "num_data_sets");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
