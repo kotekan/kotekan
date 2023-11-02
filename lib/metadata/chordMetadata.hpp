@@ -7,6 +7,8 @@
 #include "datasetManager.hpp"
 #include "metadata.h"
 
+#include <sstream>
+#include <string>
 #include <sys/time.h>
 #include <vector>
 
@@ -63,37 +65,35 @@ struct chordMetadata {
     // FPGA samples.
     int time_downsampling_fpga[CHORD_META_MAX_FREQ];
 
-    std::string get_dimension_name(size_t i) {
+    std::string get_dimension_name(size_t i) const {
         return std::string(dim_name[i], strnlen(dim_name[i], CHORD_META_MAX_DIMNAME));
     }
 
-    std::string get_dimensions_string() {
-        std::string s;
+    std::string get_dimensions_string() const {
+        std::ostringstream s;
         for (int i = 0; i < this->dims; i++) {
             if (i)
-                s += " x ";
-            s += get_dimension_name(i) + "(";
-            s += std::to_string(this->dim[i]) + ")";
+                s << " x ";
+            s << get_dimension_name(i) << "(" << dim[i] << ")";
         }
-        return s;
+        return s.str();
     }
 
-    std::string get_onehot_name(size_t i) {
+    std::string get_onehot_name(size_t i) const {
         return std::string(onehot_name[i], strnlen(onehot_name[i], CHORD_META_MAX_DIMNAME));
     }
 
-    std::string get_onehot_string() {
-        std::string s;
+    std::string get_onehot_string() const {
+        std::ostringstream s;
         for (int i = 0; i < this->n_one_hot; i++) {
             if (i)
-                s += ", ";
-            s += get_onehot_name(i) + "=";
-            s += std::to_string(this->onehot_index[i]);
+                s << ", ";
+            s << get_onehot_name(i) << "=" << onehot_index[i];
         }
-        return s;
+        return s.str();
     }
 
-    void set_array_dimension(int dim, int size, std::string name) {
+    void set_array_dimension(int dim, int size, const std::string& name) {
         assert(dim < CHORD_META_MAX_DIM);
         this->dim[dim] = size;
         // GCC helpfully tries to warn us that the destination string may end up not
@@ -106,7 +106,7 @@ struct chordMetadata {
 #pragma GCC diagnostic pop
     }
 
-    void set_onehot_dimension(int dim, int i, std::string name) {
+    void set_onehot_dimension(int dim, int i, const std::string& name) {
         assert(dim < CHORD_META_MAX_DIM);
         this->onehot_index[dim] = i;
         strncpy(this->onehot_name[dim], name.c_str(), CHORD_META_MAX_DIMNAME);
@@ -125,12 +125,27 @@ inline bool metadata_is_chord(Buffer* buf, int) {
     return strcmp(buf->metadata_pool->type_name, "chordMetadata") == 0;
 }
 
-inline bool metadata_container_is_chord(metadataContainer* mc) {
+inline bool metadata_container_is_chord(const metadataContainer* mc) {
     return strcmp(mc->parent_pool->type_name, "chordMetadata") == 0;
+}
+
+inline const chordMetadata* get_chord_metadata(const Buffer* buf, int frame_id) {
+    return (const chordMetadata*)buf->metadata[frame_id]->metadata;
 }
 
 inline chordMetadata* get_chord_metadata(Buffer* buf, int frame_id) {
     return (chordMetadata*)buf->metadata[frame_id]->metadata;
+}
+
+inline const chordMetadata* get_chord_metadata(const metadataContainer* mc) {
+    if (!mc)
+        return nullptr;
+    if (strcmp(mc->parent_pool->type_name, "chordMetadata")) {
+        WARN_NON_OO("Expected metadata to be type \"chordMetadata\", got \"{:s}\".",
+                    mc->parent_pool->type_name);
+        return nullptr;
+    }
+    return static_cast<const chordMetadata*>(mc->metadata);
 }
 
 inline chordMetadata* get_chord_metadata(metadataContainer* mc) {
