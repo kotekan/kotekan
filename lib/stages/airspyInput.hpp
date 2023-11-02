@@ -138,8 +138,8 @@ private:
     // options
     /// Frequency of the LO, in Hz
     uint freq;
-    /// Sampling bandwidth, in Hz. Should be 2500000 or 10000000
-    uint sample_bw;
+    /// Sampling rate, in SPS. Should be 2500000 or 10000000
+    uint sample_rate;
     /// Gain of the LNA, should be an integer in the range 0-14
     int gain_lna;
     /// Gain of the mixer amp, should be an integer in the range 0-15

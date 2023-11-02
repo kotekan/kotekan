@@ -44,7 +44,7 @@ input_bufB:
   num_frames: buffer_depth
   frame_size: samples_per_data_set * bytes_per_sample
 
-sample_bw: 10. #MHz, must be float?
+sample_rate: 10. #MHz, must be float?
 freq: 1422.    #MHz
 gain_lna: 14 #0-14
 gain_mix: 15 #0-15

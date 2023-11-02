@@ -22,7 +22,7 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
     register_producer(buf, unique_name.c_str());
 
     freq = config.get_default<float>(unique_name, "freq", 1420) * 1000000;          // MHz
-    sample_bw = config.get_default<float>(unique_name, "sample_bw", 2.5) * 1000000; // BW in Hz
+    sample_rate = config.get_default<float>(unique_name, "sample_rate", 2.5) * 1e6; // Rate in MSPS
     gain_lna = config.get_default<int>(unique_name, "gain_lna", 5);                 // MAX: 14
     gain_if = config.get_default<int>(unique_name, "gain_if", 5);                   // MAX: 15
     gain_mix = config.get_default<int>(unique_name, "gain_mix", 5);                 // MAX: 15
@@ -282,14 +282,14 @@ struct airspy_device* airspyInput::init_device() {
         int samplerate_idx = -1;
         for (uint i = 0; i < supported_samplerate_count; i++) {
             INFO("Samplerate: idx {:d} = {:d} Hz", i, supported_samplerates[i]);
-            if (supported_samplerates[i] == sample_bw)
+            if (supported_samplerates[i] == sample_rate)
                 samplerate_idx = i;
         }
         if (samplerate_idx < 0) {
-            ERROR("Unsupported sample rate: {:f} Hz", sample_bw);
+            ERROR("Unsupported sample rate: {:f} Hz", sample_rate);
             return nullptr;
         }
-        INFO("Selected sample rate: {:d} Hz -> idx {:d}", sample_bw, samplerate_idx)
+        INFO("Selected sample rate: {:d} Hz -> idx {:d}", sample_rate, samplerate_idx)
         result = airspy_set_samplerate(dev, samplerate_idx);
         if (result != AIRSPY_SUCCESS) {
             ERROR("airspy_set_samplerate() failed: {:s} ({:d})",

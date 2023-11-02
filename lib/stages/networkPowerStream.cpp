@@ -43,7 +43,7 @@ networkPowerStream::networkPowerStream(Config& config, const std::string& unique
             / config.get<int>(unique_name, "power_integration_length");
 
     freq0 = config.get_default<float>(unique_name, "freq", 1420.) * 1e6;
-    sample_bw = config.get_default<float>(unique_name, "sample_bw", 10.) * 1e6;
+    sample_bw = config.get_default<float>(unique_name, "sample_rate", 5.) / 2 * 1e6;
 
     dest_port = config.get<uint32_t>(unique_name, "destination_port");
     dest_server_ip = config.get<std::string>(unique_name, "destination_ip");

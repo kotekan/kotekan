@@ -79,7 +79,7 @@ void SimpleCrosscorr::main_thread() {
 //                spectrum_out[4*i+1] += (Br * Br + Bi * Bi) / integration_length;
 //                spectrum_out[4*i+2] += (Ar * Br + Ai * Bi) / integration_length;
 //                spectrum_out[4*i+3] += (Ai * Br - Bi * Ar) / integration_length;
-                spectrum_out[i+0] += (Ar * Ar + Ai * Ai) / integration_length;
+                spectrum_out[i+spectrum_length*0] += (Ar * Ar + Ai * Ai) / integration_length;
                 spectrum_out[i+spectrum_length*1] += (Br * Br + Bi * Bi) / integration_length;
                 spectrum_out[i+spectrum_length*2] += (Ar * Br + Ai * Bi) / integration_length;
                 spectrum_out[i+spectrum_length*3] += (Ai * Br - Bi * Ar) / integration_length;
