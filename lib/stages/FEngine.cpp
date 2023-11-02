@@ -13,6 +13,29 @@
 #include <string>
 #include <vector>
 
+// Find float16:
+
+// Try using CUDA's float16
+#if !defined KOTEKAN_FLOAT16 && defined WITH_CUDA
+#include <cuda_fp16.h>
+using float16_t = __half;
+#define KOTEKAN_FLOAT16 1
+#endif
+
+// Try using the compiler's float16 (e.g. GCC 12 supports this)
+#if !defined KOTEKAN_FLOAT16
+#define __STDC_WANT_IEC_60559_TYPES_EXT__
+#include <float.h>
+#if defined __FLT16_MAX__
+using float16_t = _Float16;
+#define KOTEKAN_FLOAT16 1
+#endif
+#endif
+
+#if !defined KOTEKAN_FLOAT16
+#error "The F-Engine simulator requires float16 support"
+#endif
+
 class FEngine : public kotekan::Stage {
     const std::string unique_name;
 
@@ -129,8 +152,8 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
                  * num_frequencies),
     J_frame_size(std::int64_t(1) * num_times * num_polarizations * num_frequencies * bb_num_beams),
     S_frame_size(std::int64_t(1) * sizeof(short) * 2 * num_dish_locations),
-    G_frame_size(std::int64_t(1) * sizeof(_Float16) * num_frequencies * upchannelization_factor),
-    W_frame_size(std::int64_t(1) * sizeof(_Float16) * num_components * num_dish_locations_M
+    G_frame_size(std::int64_t(1) * sizeof(float16_t) * num_frequencies * upchannelization_factor),
+    W_frame_size(std::int64_t(1) * sizeof(float16_t) * num_components * num_dish_locations_M
                  * num_dish_locations_N * num_polarizations * num_frequencies),
     // Buffers
     E_buffer(get_buffer("E_buffer")), A_buffer(get_buffer("A_buffer")),
@@ -368,17 +391,17 @@ void FEngine::main_thread() {
 
         INFO("[{:d}] Filling G buffer...", frame_index);
         {
-            _Float16* __restrict__ const G = (_Float16*)G_frame;
+            float16_t* __restrict__ const G = (float16_t*)G_frame;
             for (int freqbar = 0; freqbar < num_frequencies * upchannelization_factor; ++freqbar) {
                 const std::size_t ind = freqbar + std::size_t(0);
-                G[ind] = 1;
+                G[ind] = 1.0;
             }
         }
         INFO("[{:d}] Done filling G buffer.", frame_index);
 
         INFO("[{:d}] Filling W buffer...", frame_index);
         {
-            std::complex<_Float16>* __restrict__ const W = (std::complex<_Float16>*)W_frame;
+            std::complex<float16_t>* __restrict__ const W = (std::complex<float16_t>*)W_frame;
             for (int freq = 0; freq < num_frequencies; ++freq) {
                 for (int polr = 0; polr < num_polarizations; ++polr) {
                     for (int dishN = 0; dishN < num_dish_locations_N; ++dishN) {
@@ -390,7 +413,7 @@ void FEngine::main_thread() {
                                          + num_dish_locations_N
                                                * (polr
                                                   + num_polarizations * (freq + std::size_t(0))));
-                            W[ind] = 0;
+                            W[ind] = 0.0;
                         }
                     }
                     for (int dish = 0; dish < num_dishes; ++dish) {

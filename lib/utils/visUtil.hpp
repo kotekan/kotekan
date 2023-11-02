@@ -48,7 +48,13 @@ using cfloat = typename std::complex<float>;
 using float16_t = __half;
 #define KOTEKAN_FLOAT16 1
 #else
+#define __STDC_WANT_IEC_60559_TYPES_EXT__
+#include <float.h>
+#if defined __FLT16_MAX__
+using float16_t = _Float16;
+#else
 #define KOTEKAN_FLOAT16 0
+#endif
 #endif
 
 /// Aliased type for storing the layout of members in a struct
