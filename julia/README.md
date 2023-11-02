@@ -6,10 +6,7 @@
   is to use [juliaup](https://github.com/JuliaLang/juliaup). Julia
   will be installed into the directory `.julia` in your home
   directory.
-- Instantiate the Julia package dependencies. This is mostly trivial,
-  except for the code generator `IndexSpaces` which isn't registered
-  as an official Julia package yet, so we have to manually point to
-  its url.
+- Instantiate the Julia package dependencies.
   - Start Julia:
     ```sh
     cd julia
@@ -17,13 +14,9 @@
     ```
     The `--project=@.` argument is important, it selects the current
     project, which is similar to a Python virtual environment.
-  - You are now in the Julia REPL (Julia command line). Download `IndexSpaces` manually:
+  - Install all Julia package dependencies:
     ```Julia
     using Pkg
-    Pkg.add("https://github.com/eschnett/IndexSpaces.jl")
-    ```
-  - Download all other packages:
-    ```Julia
     Pkg.update()
     ```
     This might take a bit because Julia is quite independent, and will
