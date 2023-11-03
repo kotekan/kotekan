@@ -1,8 +1,6 @@
 #ifndef PROMETHEUS_METRICS_HPP
 #define PROMETHEUS_METRICS_HPP
 
-#include "restServer.hpp"
-
 #include <deque>     // for deque
 #include <iosfwd>    // for ostringstream
 #include <map>       // for map
@@ -16,6 +14,10 @@
 
 
 namespace kotekan {
+
+    class restServer;
+    class connectionInstance;
+
 namespace prometheus {
 
 /**
