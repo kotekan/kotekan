@@ -28,7 +28,7 @@ target_link_libraries(kotekan_libs INTERFACE kotekan_version)
 
 target_link_libraries(kotekan_libs INTERFACE libexternal)
 
-if(${WITH_TESTS})
+if(${WITH_TESTS} OR ${WITH_BOOST_TESTS})
     add_subdirectory(testing)
     target_link_libraries(kotekan_libs INTERFACE kotekan_testing)
 endif()
