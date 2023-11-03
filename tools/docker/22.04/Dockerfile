@@ -168,7 +168,7 @@ RUN python3 -m pip install --no-cache-dir breathe==4.35.* \
 # Julia
 RUN apt-get update && apt-get install -y curl \
     && curl -fsSL https://install.julialang.org | sh -s -- -y
-
+ENV PATH="$PATH:/root/.juliaup/bin"
 
 # Uncomment this to check what version got installed
 # RUN python3 -m pip show <package>
