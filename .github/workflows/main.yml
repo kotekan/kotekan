@@ -131,8 +131,7 @@ jobs:
             -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
             -DDOXYGEN_EXECUTABLE=/usr/local/bin/doxygen \
             -DWERROR=ON \
-            -DCOMPILE_DOCS=ON \
-            -DWITH_TESTS=OFF ..
+            -DCOMPILE_DOCS=ON
         docker run "${OPTS[@]}" make doc
         docker run "${OPTS[@]}" make sphinx
 
@@ -256,7 +255,7 @@ jobs:
             -DARCH=haswell \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
-            -DWITH_TESTS=ON \
+            -DWITH_BOOST_TESTS=ON \
             -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" rm -r lib
@@ -324,7 +323,7 @@ jobs:
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
-            -DWITH_TESTS=ON \
+            -DWITH_BOOST_TESTS=ON \
             -DUSE_CUDA=OFF \
             -DUSE_OPENCL=ON \
             -DCCACHE=ON ..
@@ -574,7 +573,7 @@ jobs:
             -DARCH=haswell \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
-            -DWITH_TESTS=ON \
+            -DWITH_BOOST_TESTS=ON \
             -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" rm -r lib
@@ -636,7 +635,6 @@ jobs:
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
             -DUSE_HSA=ON \
-            -DWITH_TESTS=OFF \
             -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s

@@ -70,12 +70,13 @@ if(${USE_HSA}
     target_link_libraries(kotekan_libs INTERFACE kotekan_gpu)
 endif()
 
-# Include the old DPDK if the USE_OLD_DPDK flag is given.
-if(${WITH_TESTS})
+# Don't include DPDK for boost tests
+if(${WITH_BOOST_TESTS})
     # DPDK + boost tests = linker issues.
     message(STATUS "Note that DPDK will *NOT* be included for builds with tests.")
     # So do nothing...
 else()
+    # Include the old DPDK if the USE_OLD_DPDK flag is given.
     if(${USE_OLD_DPDK})
         add_definitions(-DOLD_DPDK)
         add_subdirectory(dpdk)
