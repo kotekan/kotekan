@@ -54,6 +54,9 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
 
     nlohmann::json a = nlohmann::json::array();
     nlohmann::json b = nlohmann::json::array();
+    nlohmann::json fa = nlohmann::json::array();
+    nlohmann::json fb = nlohmann::json::array();
+    nlohmann::json fc = nlohmann::json::array();
 
 #ifdef IQ_SAMPLING
     fftwf_complex *spectrumA, *spectrumB, *spectrumC;
@@ -104,9 +107,9 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
 
     for (unsigned int i = 0; i < lag_window; i++) {
         samplesA[i] = localA[i];
-        samplesB[i] = localB[i];
-        //int o = 1234; //synthetic offset
-        //samplesB[i] = inA_local[2 * (i+o)%(samples_per_frame)];
+//        samplesB[i] = localB[i];
+        int o = 12345; //synthetic offset
+        samplesB[i] = localA[(i+o)%lag_window];
         a.push_back(samplesA[i]);
         b.push_back(samplesB[i]);
     }
@@ -120,13 +123,20 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
 #else
     for (unsigned int i = 0; i < lag_window/2+1; i++) {
 #endif
-        float Ar = spectrumA[0][i];
-        float Ai = spectrumA[1][i];
-        float Br = spectrumB[0][i];
-        float Bi = spectrumB[1][i];
+        float Ar = spectrumA[i][0];
+        float Ai = spectrumA[i][1];
+        float Br = spectrumB[i][0];
+        float Bi = spectrumB[i][1];
         //A \times B*
         spectrumC[i][0] = Ar * Br + Ai * Bi;
         spectrumC[i][1] = Ai * Br - Bi * Ar;
+
+//        fa.push_back(Ar);
+//        fa.push_back(Ai);
+//        fb.push_back(Br);
+//        fb.push_back(Bi);
+//        fc.push_back(spectrumC[i][0]);
+//        fc.push_back(spectrumC[i][1]);
     }
     fftwf_execute(fft_planC);
 
@@ -152,7 +162,7 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
     var /= lag_window/2;
 #else
     for (unsigned int i=0; i < lag_window; i++){
-        float val = samplesC[i];
+        float val = abs(samplesC[i]);
         corr.push_back(val);
         if (val > maxval) {
             lag = i;
@@ -162,7 +172,7 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
     }
     meanval /= lag_window;
     for (unsigned int i=0; i < lag_window; i++){
-        float val = samplesC[i];;
+        float val = abs(samplesC[i])-meanval;
         var += val*val;
     }
     var /= lag_window;
@@ -170,19 +180,25 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
 
     float std = sqrt(var);
     DEBUG("Align: Max: {}, Mean: {}, RMS: {}",maxval, meanval, std);
-    if (maxval > meanval+10*std) {
+    if (maxval > meanval+1*std) {
         DEBUG("Lag found!\n");
         DEBUG("Lag {}\n",lag);
 
         reply["lag"] = lag;
-    //    reply["a"] = a;
-    //    reply["b"] = b;
-    //    reply["corr"] = corr;
+//        reply["a"] = a;
+//        reply["b"] = b;
+//        reply["corr"] = corr;
         conn.send_json_reply(reply);
     }
     else {
         DEBUG("NO Lag found!\n");
+//        reply["a"] = a;
+//        reply["b"] = b;
+//        reply["fa"] = fa;
+//        reply["fb"] = fb;
+//        reply["fc"] = fc;
         reply["lag"] = 0;
+//        reply["corr"] = corr;
         conn.send_json_reply(reply);
     }
 
@@ -192,6 +208,9 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
     fftwf_free(spectrumA);
     fftwf_free(spectrumB);
     fftwf_free(spectrumC);
+    fftwf_destroy_plan(fft_planA);
+    fftwf_destroy_plan(fft_planB);
+    fftwf_destroy_plan(fft_planC);
 }
 
 
@@ -221,8 +240,8 @@ void AirspyAlign::main_thread() {
 
         if (going) {
             int copylen= ((lag_window-copied) > samples_per_frame) ? samples_per_frame : lag_window-copied;
-            memcpy(localA+copied*sizeof(short), inA, copylen*sizeof(short));
-            memcpy(localB+copied*sizeof(short), inB, copylen*sizeof(short));
+            memcpy((char*)localA+copied*sizeof(short), inA, copylen*sizeof(short));
+            memcpy((char*)localB+copied*sizeof(short), inB, copylen*sizeof(short));
             copied += copylen;
             if (copied >= lag_window) {
                 copied=0;
