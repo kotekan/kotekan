@@ -143,7 +143,8 @@ void gpuDeviceInterface::create_gpu_memory_ringbuffer(const std::string& source_
     gpu_memory[dest_name].len = dest_len;
     gpu_memory[dest_name].view_source = source_name;
     for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
-        gpu_memory[dest_name].gpu_pointers.push_back((unsigned char*)source + offset + i*dest_len);
+        gpu_memory[dest_name].gpu_pointers.push_back((unsigned char*)source + offset
+                                                     + i * dest_len);
         gpu_memory[dest_name].gpu_pointers_to_free.push_back(nullptr);
         gpu_memory[dest_name].metadata_pointers.push_back(nullptr);
     }
