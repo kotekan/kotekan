@@ -123,6 +123,32 @@ void gpuDeviceInterface::create_gpu_memory_array_view(const std::string& source_
     }
 }
 
+void gpuDeviceInterface::create_gpu_memory_ringbuffer(const std::string& source_name,
+                                                      const size_t source_len,
+                                                      const std::string& dest_name,
+                                                      const size_t offset, const size_t dest_len) {
+    std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
+    INFO("Creating GPU memory ringbuffer view {:s} with length {:d}, view on {:s} + offset {:d}",
+         dest_name, dest_len, source_name, offset);
+    // Ensure that the view doesn't already exist
+    if (gpu_memory.count(dest_name) > 0)
+        throw std::runtime_error(fmt::format(
+            "Tried to create_gpu_memory_ringbuffer {:s} that already exists.", dest_name));
+    assert(offset + dest_len * gpu_buffer_depth <= source_len);
+
+    // Get source
+    void* source = get_gpu_memory(source_name, source_len);
+
+    // Create dest entries
+    gpu_memory[dest_name].len = dest_len;
+    gpu_memory[dest_name].view_source = source_name;
+    for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
+        gpu_memory[dest_name].gpu_pointers.push_back((unsigned char*)source + offset + i*dest_len);
+        gpu_memory[dest_name].gpu_pointers_to_free.push_back(nullptr);
+        gpu_memory[dest_name].metadata_pointers.push_back(nullptr);
+    }
+}
+
 metadataContainer* gpuDeviceInterface::get_gpu_memory_array_metadata(const std::string& name,
                                                                      const uint32_t index) {
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
