@@ -559,6 +559,7 @@ function run(source_amplitude::Float, source_frequency::Float, source_position_x
              ntaps::Int64, nfreq::Int64, ntimes::Int64,
              ndishes_i::Int64, ndishes_j::Int64,
              nbeams_i::Int64, nbeams_j::Int64,
+             nframes::Int64,
              do_plot::Bool)
     source = let
         A = Complex{Float}(source_amplitude)
@@ -583,9 +584,9 @@ function run(source_amplitude::Float, source_frequency::Float, source_position_x
     # nfreq = 64 # Number of frequencies(fixed by F - engine)
     # ntimes = 64 # Number of times in X - engine input
 
-    nframes = ntimes + ntaps - 1
+    nsamples = nframes * ntimes + ntaps - 1
 
-    aframes = adc_sample(Float, source, dishes, adc, 2 * nfreq, nframes)
+    aframes = adc_sample(Float, source, dishes, adc, 2 * nfreq, nsamples)
     println("ADC output: $(length(aframes)) frames of size (ntimes, ndishes, npolrs)=$(size(aframes[begin].data)) t₀=$(aframes[begin].t₀) Δt=$(aframes[begin].Δt)")
     if do_plot
         fig = plot(aframes[begin])
@@ -649,13 +650,15 @@ function setup(source_amplitude=Float(1.0), source_frequency=Float(0.3e+9), sour
                adc_frequency=Float(3.0e+9),
                ntaps=4, nfreq=64, ntimes=64,
                ndishes_i=8, ndishes_j=8,
-               nbeams_i=12, nbeams_j=8)
+               nbeams_i=12, nbeams_j=8,
+               nframes=1)
     return run(Float(source_amplitude), Float(source_frequency), Float(source_position_x), Float(source_position_y),
                Float(dish_separation_x), Float(dish_separation_y),
                Float(adc_frequency),
                Int64(ntaps), Int64(nfreq), Int64(ntimes),
                Int64(ndishes_i), Int64(ndishes_j),
                Int64(nbeams_i), Int64(nbeams_j),
+               Int64(nframes),
                false)
 end
 
@@ -663,6 +666,9 @@ stored_xframes = nothing
 function set_E(ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64, npolrs::Int64, nfreqs::Int64, ntimes::Int64, frame_index::Int64)
     @show set_E ptr sz ndishes npolrs nfreqs ntimes frame_index
     xframes = stored_xframes::AbstractVector{<:XFrame}
+    if frame_index ∉ axes(xframes)[1]
+        println("Frame index $frame_index does not exist in E field")
+    end
     xframe = xframes[frame_index]::XFrame
     @assert length(xframe.data) == sz
     @assert size(xframe.data) == (ndishes, npolrs, nfreqs, ntimes)
@@ -674,6 +680,9 @@ stored_beamss = nothing
 function set_A(ptr::Ptr{UInt8}, sz::Int64, ndishs::Int64, nbeams::Int64, npolrs::Int64, nfreqs::Int64, frame_index::Int64)
     @show set_A ptr sz ndishs nbeams npolrs nfreqs frame_index
     beamss = stored_beamss::AbstractVector{<:BBeams}
+    if frame_index ∉ axes(beamss)[1]
+        println("Frame index $frame_index does not exist in A field")
+    end
     beams = beamss[frame_index]::BBeams
     if !(length(beams.phases) * sizeof(Complex{Int8}) == sz)
         @show length(beams.phases) * sizeof(Complex{Int8}) sz
@@ -690,6 +699,9 @@ end
 function set_J(ptr::Ptr{UInt8}, sz::Int64, ntimes::Int64, npolrs::Int64, nfreqs::Int64, nbeams::Int64, frame_index::Int64)
     @show set_J ptr, sz ntimes npolrs nfreqs nbeams frame_index
     beamss = stored_beamss::AbstractVector{<:BBeams}
+    if frame_index ∉ axes(beamss)[1]
+        println("Frame index $frame_index does not exist in J field")
+    end
     beams = beamss[frame_index]::BBeams
     @assert length(beams.data) == sz
     @assert size(beams.data) == (ntimes, npolrs, nfreqs, nbeams)

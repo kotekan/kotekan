@@ -189,7 +189,7 @@ void FEngine::main_thread() {
         assert(f_engine_module);
         jl_function_t* const setup = jl_get_function(f_engine_module, "setup");
         assert(setup);
-        const int nargs = 14;
+        const int nargs = 15;
         jl_value_t** args;
         JL_GC_PUSHARGS(args, nargs);
         args[0] = jl_box_float32(source_amplitude);
@@ -207,6 +207,7 @@ void FEngine::main_thread() {
         args[11] = jl_box_int64(bb_num_dishes_N);
         args[12] = jl_box_int64(bb_num_beams_P);
         args[13] = jl_box_int64(bb_num_beams_Q);
+        args[14] = jl_box_int64(num_frames);
         jl_value_t* const res = jl_call(setup, args, nargs);
         assert(res);
         JL_GC_POP();
