@@ -101,6 +101,9 @@ public:
      * "view" name will return a view into the full memory chunk,
      * where adjacent array indices are contiguous.
      *
+     * The "source" singleton and "dest" array each have their own
+     * metadata objects.
+     *
      * @param source_name like the "name" of get_gpu_memory, the
      *   name of the "real" GPU memory array.
      * @param source_len  the size in bytes of the "real" GPU memory array.
@@ -172,6 +175,8 @@ public:
 protected:
     virtual void* alloc_gpu_memory(size_t len) = 0;
     virtual void free_gpu_memory(void*) = 0;
+
+    bool is_view_of_same_size(const std::string& name);
 
     // Extra data
     kotekan::Config& config;

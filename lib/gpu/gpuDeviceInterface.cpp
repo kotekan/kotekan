@@ -136,10 +136,10 @@ void gpuDeviceInterface::create_gpu_memory_ringbuffer(const std::string& source_
             "Tried to create_gpu_memory_ringbuffer {:s} that already exists.", dest_name));
     assert(offset + dest_len * gpu_buffer_depth <= source_len);
 
-    // Get source
+    // Get/create the full buffer ("source")
     void* source = get_gpu_memory(source_name, source_len);
 
-    // Create dest entries
+    // Create "dest" entries (views)
     gpu_memory[dest_name].len = dest_len;
     gpu_memory[dest_name].view_source = source_name;
     for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
@@ -160,7 +160,7 @@ metadataContainer* gpuDeviceInterface::get_gpu_memory_array_metadata(const std::
     // Make sure we aren't asking for an index past the end of the array.
     assert(index < gpu_memory[name].metadata_pointers.size());
     // If view, recurse
-    if (gpu_memory[name].view_source.size())
+    if (is_view_of_same_size(name))
         return get_gpu_memory_array_metadata(gpu_memory[name].view_source, index);
     // Return the requested memory (may be NULL)
     metadataContainer* mem = gpu_memory[name].metadata_pointers[index];
@@ -178,7 +178,7 @@ metadataContainer* gpuDeviceInterface::create_gpu_memory_array_metadata(const st
     // Make sure we aren't asking for an index past the end of the array.
     assert(index < gpu_memory[name].metadata_pointers.size());
     // If view, recurse
-    if (gpu_memory[name].view_source.size())
+    if (is_view_of_same_size(name))
         return create_gpu_memory_array_metadata(gpu_memory[name].view_source, index, pool);
     // Make sure the slot isn't occupied.
     assert(gpu_memory[name].metadata_pointers[index] == nullptr);
@@ -188,6 +188,12 @@ metadataContainer* gpuDeviceInterface::create_gpu_memory_array_metadata(const st
     // Plug it in!
     gpu_memory[name].metadata_pointers[index] = mc;
     return mc;
+}
+
+bool gpuDeviceInterface::is_view_of_same_size(const std::string& name) {
+    return gpu_memory[name].view_source.size() &&
+        (gpu_memory[gpu_memory[name].view_source].metadata_pointers.size() ==
+         gpu_memory[name].metadata_pointers.size());
 }
 
 void gpuDeviceInterface::claim_gpu_memory_array_metadata(const std::string& name,
@@ -200,8 +206,9 @@ void gpuDeviceInterface::claim_gpu_memory_array_metadata(const std::string& name
     }
     // Make sure we aren't asking for an index past the end of the array.
     assert(index < gpu_memory[name].metadata_pointers.size());
-    // If view, recurse
-    if (gpu_memory[name].view_source.size())
+    // If view of an array of the same size, recurse
+    // (in "ringbuffer" views, the source is a singleton)
+    if (is_view_of_same_size(name))
         return claim_gpu_memory_array_metadata(gpu_memory[name].view_source, index, mc);
     // Make sure the slot is empty
     if (gpu_memory[name].metadata_pointers[index]) {
@@ -224,7 +231,7 @@ void gpuDeviceInterface::release_gpu_memory_array_metadata(const std::string& na
     // Make sure we aren't asking for an index past the end of the array.
     assert(index < gpu_memory[name].metadata_pointers.size());
     // If view, recurse
-    if (gpu_memory[name].view_source.size())
+    if (is_view_of_same_size(name))
         return release_gpu_memory_array_metadata(gpu_memory[name].view_source, index);
     metadataContainer* mc = gpu_memory[name].metadata_pointers[index];
     if (mc) {
