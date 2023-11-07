@@ -284,7 +284,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     end
 
     if output_kernel
-        open("output-$card/xpose-$setup.jl", "w") do fh
+        open("output-$card/xpose_$setup.jl", "w") do fh
             return println(fh, xpose_stmts)
         end
     end
@@ -313,13 +313,13 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     end
 
     if output_kernel
-        ptx = read("output-$card/xpose-$setup.ptx", String)
+        ptx = read("output-$card/xpose_$setup.ptx", String)
         ptx = replace(ptx, r".extern .func ([^;]*);"s => s".func \1.noreturn\n{\n\ttrap;\n}")
-        open("output-$card/xpose-$setup.ptx", "w") do fh
+        open("output-$card/xpose_$setup.ptx", "w") do fh
             return write(fh, ptx)
         end
         kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
-        open("output-$card/xpose-$setup.yaml", "w") do fh
+        open("output-$card/xpose_$setup.yaml", "w") do fh
             return print(fh,
                          """
                  --- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
@@ -418,7 +418,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                                                                           Dict("label" => "block", "length" => num_blocks)],
                                                                "isoutput" => true,
                                                                "hasbuffer" => false)]))
-        write("output-$card/xpose-$setup.cxx", cxx)
+        write("output-$card/xpose_$setup.cxx", cxx)
     end
 
     println("Done.")
@@ -427,12 +427,12 @@ end
 
 if CUDA.functional()
     # Output kernel
-    open("output-$card/xpose-$setup.ptx", "w") do fh
+    open("output-$card/xpose_$setup.ptx", "w") do fh
         redirect_stdout(fh) do
             @device_code_ptx main(; compile_only=true)
         end
     end
-    open("output-$card/xpose-$setup.sass", "w") do fh
+    open("output-$card/xpose_$setup.sass", "w") do fh
         redirect_stdout(fh) do
             @device_code_sass main(; compile_only=true)
         end
