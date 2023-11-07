@@ -131,7 +131,8 @@ jobs:
             -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
             -DDOXYGEN_EXECUTABLE=/usr/local/bin/doxygen \
             -DWERROR=ON \
-            -DCOMPILE_DOCS=ON
+            -DCOMPILE_DOCS=ON \
+            ..
         docker run "${OPTS[@]}" make doc
         docker run "${OPTS[@]}" make sphinx
 
