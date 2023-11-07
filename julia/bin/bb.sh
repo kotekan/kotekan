@@ -17,12 +17,12 @@ done
 
 # Generate kernel
 for setup in $setups; do
-    julia --project=@. --optimize kernels/bb-$setup.jl 2>&1 | tee output-A40/bb-$setup.out
+    julia --project=@. --optimize kernels/bb_$setup.jl 2>&1 | tee output-A40/bb_$setup.out
 done
 
 # Format generated C++ code
 for setup in $setups; do
-    clang-format -i output-A40/bb-$setup.cxx
+    clang-format -i output-A40/bb_$setup.cxx
 done
 
 # Format generated Julia code
@@ -30,8 +30,8 @@ julia --project=@. --eval 'using JuliaFormatter; JuliaFormatter.format_file("out
 
 # Copy kernel into Kotekan
 for setup in $setups; do
-    cp output-A40/bb-$setup.cxx ../lib/cuda/cudaBasebandBeamformer_$setup.cpp
-    cp output-A40/bb-$setup.jl ../lib/cuda/kernels/BasebandBeamformer_$setup.jl
-    cp output-A40/bb-$setup.ptx ../lib/cuda/kernels/BasebandBeamformer_$setup.ptx
-    cp output-A40/bb-$setup.yaml ../lib/cuda/kernels/BasebandBeamformer_$setup.yaml
+    cp output-A40/bb_$setup.cxx ../lib/cuda/cudaBasebandBeamformer_$setup.cpp
+    cp output-A40/bb_$setup.jl ../lib/cuda/kernels/BasebandBeamformer_$setup.jl
+    cp output-A40/bb_$setup.ptx ../lib/cuda/kernels/BasebandBeamformer_$setup.ptx
+    cp output-A40/bb_$setup.yaml ../lib/cuda/kernels/BasebandBeamformer_$setup.yaml
 done

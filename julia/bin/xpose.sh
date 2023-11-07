@@ -17,12 +17,12 @@ done
 
 # Generate kernel
 for setup in $setups; do
-    julia --project=@. --optimize kernels/xpose-$setup.jl 2>&1 | tee output-A40/xpose-$setup.out
+    julia --project=@. --optimize kernels/xpose_$setup.jl 2>&1 | tee output-A40/xpose_$setup.out
 done
 
 # Format generated C++ code
 for setup in $setups; do
-    clang-format -i output-A40/xpose-$setup.cxx
+    clang-format -i output-A40/xpose_$setup.cxx
 done
 
 # Format generated Julia code
@@ -30,8 +30,8 @@ julia --project=@. --eval 'using JuliaFormatter; JuliaFormatter.format_file("out
 
 # Copy kernel into Kotekan
 for setup in $setups; do
-    cp output-A40/xpose-$setup.cxx ../lib/cuda/cudaTransposeKernel_$setup.cpp
-    cp output-A40/xpose-$setup.jl ../lib/cuda/kernels/TransposeKernel_$setup.jl
-    cp output-A40/xpose-$setup.ptx ../lib/cuda/kernels/TransposeKernel_$setup.ptx
-    cp output-A40/xpose-$setup.yaml ../lib/cuda/kernels/TransposeKernel_$setup.yaml
+    cp output-A40/xpose_$setup.cxx ../lib/cuda/cudaTransposeKernel_$setup.cpp
+    cp output-A40/xpose_$setup.jl ../lib/cuda/kernels/TransposeKernel_$setup.jl
+    cp output-A40/xpose_$setup.ptx ../lib/cuda/kernels/TransposeKernel_$setup.ptx
+    cp output-A40/xpose_$setup.yaml ../lib/cuda/kernels/TransposeKernel_$setup.yaml
 done

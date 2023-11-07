@@ -767,7 +767,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     end
 
     if output_kernel
-        open("output-$card/bb-$setup.jl", "w") do fh
+        open("output-$card/bb_$setup.jl", "w") do fh
             return println(fh, bb_kernel)
         end
     end
@@ -795,13 +795,13 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     end
 
     if output_kernel
-        ptx = read("output-$card/bb-$setup.ptx", String)
+        ptx = read("output-$card/bb_$setup.ptx", String)
         ptx = replace(ptx, r".extern .func ([^;]*);"s => s".func \1.noreturn\n{\n\ttrap;\n}")
-        open("output-$card/bb-$setup.ptx", "w") do fh
+        open("output-$card/bb_$setup.ptx", "w") do fh
             return write(fh, ptx)
         end
         kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
-        open("output-$card/bb-$setup.yaml", "w") do fh
+        open("output-$card/bb_$setup.yaml", "w") do fh
             return print(fh,
                          """
                  --- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
@@ -929,7 +929,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                                                                           Dict("label" => "block", "length" => num_blocks)],
                                                                "isoutput" => true,
                                                                "hasbuffer" => false)]))
-        write("output-$card/bb-$setup.cxx", cxx)
+        write("output-$card/bb_$setup.cxx", cxx)
     end
 
     println("Allocating input data...")
@@ -1136,12 +1136,12 @@ end
 
 if CUDA.functional()
     # Output kernel
-    open("output-$card/bb-$setup.ptx", "w") do fh
+    open("output-$card/bb_$setup.ptx", "w") do fh
         redirect_stdout(fh) do
             @device_code_ptx main(; compile_only=true)
         end
     end
-    open("output-$card/bb-$setup.sass", "w") do fh
+    open("output-$card/bb_$setup.sass", "w") do fh
         redirect_stdout(fh) do
             @device_code_sass main(; compile_only=true)
         end

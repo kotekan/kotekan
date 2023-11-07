@@ -15,23 +15,25 @@ for U in $Ufactors; do
     rm -f ../lib/cuda/kernels/Upchannelizer_U$U.yaml
 done
 
-# Generate kernel
+# Generate kernels
 for U in $Ufactors; do
-    julia --project=@. --optimize kernels/upchan-U$U.jl 2>&1 | tee output-A40/upchan-U$U.out
+    julia --project=@. --optimize kernels/upchan_U$U.jl 2>&1 | tee output-A40/upchan_U$U.out &
 done
+wait
 
 # Format generated C++ code
 for U in $Ufactors; do
-    clang-format -i output-A40/upchan-U$U.cxx
+    clang-format -i output-A40/upchan_U$U.cxx &
 done
 
 # Format generated Julia code
-julia --project=@. --eval 'using JuliaFormatter; JuliaFormatter.format_file("output-A40")'
+julia --project=@. --eval 'using JuliaFormatter; JuliaFormatter.format_file("output-A40")' &
+wait
 
 # Copy kernel into Kotekan
 for U in $Ufactors; do
-    cp output-A40/upchan-U$U.cxx ../lib/cuda/cudaUpchannelizer_U$U.cpp
-    cp output-A40/upchan-U$U.jl ../lib/cuda/kernels/Upchannelizer_U$U.jl
-    cp output-A40/upchan-U$U.ptx ../lib/cuda/kernels/Upchannelizer_U$U.ptx
-    cp output-A40/upchan-U$U.yaml ../lib/cuda/kernels/Upchannelizer_U$U.yaml
+    cp output-A40/upchan_U$U.cxx ../lib/cuda/cudaUpchannelizer_U$U.cpp
+    cp output-A40/upchan_U$U.jl ../lib/cuda/kernels/Upchannelizer_U$U.jl
+    cp output-A40/upchan_U$U.ptx ../lib/cuda/kernels/Upchannelizer_U$U.ptx
+    cp output-A40/upchan_U$U.yaml ../lib/cuda/kernels/Upchannelizer_U$U.yaml
 done
