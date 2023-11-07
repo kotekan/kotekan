@@ -1,7 +1,7 @@
-Base.remove_linenums!
-
 # CHORD upchannelization kernel
 # <CHORD_GPU_upchannelization.pdf>
+
+# TODO: Use Base.remove_linenums!
 
 using CUDA
 using CUDASIMDTypes
@@ -56,7 +56,7 @@ end
 
 const sampling_time_μsec = 4096 / (2 * 1200)
 const C = 2
-const T = 32768
+const T = 65536   # 32768
 const D = 512
 const P = 2
 const F₀ = 16
@@ -1496,7 +1496,7 @@ println("[Creating upchan kernel...]")
 const upchan_kernel = make_upchan_kernel()
 println("[Done creating upchan kernel]")
 
-open("output-A40/upchan-U$U.jl", "w") do fh
+open("output-A40/upchan_U$U.jl", "w") do fh
     return println(fh, upchan_kernel)
 end
 
@@ -1697,13 +1697,13 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
 end
 
 function fix_ptx_kernel()
-    ptx = read("output-A40/upchan-U$U.ptx", String)
+    ptx = read("output-A40/upchan_U$U.ptx", String)
     ptx = replace(ptx, r".extern .func ([^;]*);"s => s".func \1.noreturn\n{\n\ttrap;\n}")
-    open("output-A40/upchan-U$U.ptx", "w") do fh
+    open("output-A40/upchan_U$U.ptx", "w") do fh
         return write(fh, ptx)
     end
     kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
-    open("output-A40/upchan-U$U.yaml", "w") do fh
+    open("output-A40/upchan_U$U.yaml", "w") do fh
         return print(fh,
                      """
              --- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
@@ -1774,7 +1774,7 @@ function fix_ptx_kernel()
                                                                    "value" => "$P"),
                                                               Dict("type" => "int", "name" => "cuda_number_of_taps",
                                                                    "value" => "$M"),
-                                                              Dict("type" => "int", "name" => "cuda_number_of_timesamples",
+                                                              Dict("type" => "int", "name" => "cuda_max_number_of_timesamples",
                                                                    "value" => "$T"),
                                                               # Dict("type" => "double", "name" => "cuda_sampling_time_usec", "value" => "$sampling_time_μsec"),
                                                               Dict("type" => "int", "name" => "cuda_upchannelization_factor",
@@ -1824,21 +1824,21 @@ function fix_ptx_kernel()
                                                                       Dict("label" => "block", "length" => num_blocks)],
                                                            "isoutput" => true,
                                                            "hasbuffer" => false)]))
-    write("output-A40/upchan-U$U.cxx", cxx)
+    write("output-A40/upchan_U$U.cxx", cxx)
     return nothing
 end
 
 if CUDA.functional()
     # Output kernel
     println("Writing PTX code...")
-    open("output-A40/upchan-U$U.ptx", "w") do fh
+    open("output-A40/upchan_U$U.ptx", "w") do fh
         redirect_stdout(fh) do
             @device_code_ptx main(; compile_only=true, silent=true)
         end
     end
     fix_ptx_kernel()
     println("Writing SASS code...")
-    open("output-A40/upchan-U$U.sass", "w") do fh
+    open("output-A40/upchan_U$U.sass", "w") do fh
         redirect_stdout(fh) do
             @device_code_sass main(; compile_only=true, silent=true)
         end
