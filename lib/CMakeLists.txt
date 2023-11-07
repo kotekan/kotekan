@@ -28,7 +28,7 @@ target_link_libraries(kotekan_libs INTERFACE kotekan_version)
 
 target_link_libraries(kotekan_libs INTERFACE libexternal)
 
-if(${WITH_TESTS})
+if(${WITH_TESTS} OR ${WITH_BOOST_TESTS})
     add_subdirectory(testing)
     target_link_libraries(kotekan_libs INTERFACE kotekan_testing)
 endif()
@@ -70,26 +70,34 @@ if(${USE_HSA}
     target_link_libraries(kotekan_libs INTERFACE kotekan_gpu)
 endif()
 
-# Include the old DPDK if the USE_OLD_DPDK flag is given.
-if(${USE_OLD_DPDK})
-    add_definitions(-DOLD_DPDK)
-    add_subdirectory(dpdk)
-    target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
+# Don't include DPDK for boost tests
+if(${WITH_BOOST_TESTS})
+    # DPDK + boost tests = linker issues.
+    message(STATUS "Note that DPDK will *NOT* be included for builds with tests.")
+    # So do nothing...
 else()
-    # Check for the new DPDK versions automatically
-    find_package(PkgConfig)
-    if(PKG_CONFIG_FOUND)
-        pkg_check_modules(DPDK libdpdk>=19.11)
-        if(DPDK_FOUND)
-            message(STATUS "Found DPDK, including support for DPDK networking")
-            add_subdirectory(dpdk)
-            target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
-        else()
-            message(
-                STATUS "No DPDK package found, for older versions (<19.11) use -DUSE_OLD_DPDK=ON")
-        endif()
+    # Include the old DPDK if the USE_OLD_DPDK flag is given.
+    if(${USE_OLD_DPDK})
+        add_definitions(-DOLD_DPDK)
+        add_subdirectory(dpdk)
+        target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
     else()
-        message(STATUS "pkg-config needed to include DPDK (>=19.11) support")
+        # Check for the new DPDK versions automatically
+        find_package(PkgConfig)
+        if(PKG_CONFIG_FOUND)
+            pkg_check_modules(DPDK libdpdk>=19.11)
+            if(DPDK_FOUND)
+                message(STATUS "Found DPDK, including support for DPDK networking")
+                add_subdirectory(dpdk)
+                target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
+            else()
+                message(
+                    STATUS
+                        "No DPDK package found, for older versions (<19.11) use -DUSE_OLD_DPDK=ON")
+            endif()
+        else()
+            message(STATUS "pkg-config needed to include DPDK (>=19.11) support")
+        endif()
     endif()
 endif()
 
