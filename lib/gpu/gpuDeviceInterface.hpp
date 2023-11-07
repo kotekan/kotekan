@@ -176,6 +176,11 @@ protected:
     virtual void* alloc_gpu_memory(size_t len) = 0;
     virtual void free_gpu_memory(void*) = 0;
 
+    // Internal function to check whether the memory array "name" is a
+    // view onto another memory array with the same number of
+    // elements; the "create_gpu_memory_ringbuffer" method creates an
+    // array of views onto a monolithic chunk of memory, and we need
+    // to treat that case differently.
     bool is_view_of_same_size(const std::string& name);
 
     // Extra data
