@@ -24,28 +24,57 @@ idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 # Base.clamp(x::Complex, a, b) = Complex(clamp(x.re, a, b), clamp(x.im, a, b))
 # Base.clamp(x::Complex, ab::UnitRange) = clamp(x, ab.start, ab.stop)
 
-# CHORD Setup
+# Setup
 
-# Compile-time constants (section 4.4)
+# const setup = :chord
+setup::Symbol
 
-# Full CHORD
+@static if setup ≡ :chord
+
+    # CHORD Setup
+
+    # Compile-time constants (section 4.4)
+
+    # Full CHORD
+    const D = 512
+    const M = 24
+    const N = 24
+    const P = 2
+    const F₀ = 256
+    const F = 256               # benchmarking A30: 56; A40: 84
+
+    const Touter = 48
+    const Tinner = 4
+
+    const W = 24                # number of warps
+    const B = 1                 # number of blocks per SM
+
+elseif setup ≡ :pathfinder
+
+    # CHORD pathfinder (case 2)
+    const D = 64
+    const M = 8
+    const N = 12
+    const P = 2
+    const F₀ = 16 * 128
+    const F = 16 * 128
+
+    const Touter = 48
+    const Tinner = 6
+
+    const W = 6                 # number of warps
+    const B = 4                 # number of blocks per SM (TODO: check!)
+
+else
+    @assert false
+end
+
 const sampling_time_μsec = 16 * 4096 / (2 * 1200)
 const C = 2
 const T = 2064
-const D = 512
-const M = 24
-const N = 24
-const P = 2
-const F₀ = 256
-const F = 256                   # benchmarking A30: 56; A40: 84
 
-const Touter = 48
-const Tinner = 4
 const Tds = 40                  # downsampling factor
 const output_gain = 1 / (8 * Tds)
-
-const W = 24                    # number of warps
-const B = 1                     # number of blocks per SM
 
 # Derived compile-time parameters (section 4.4)
 const Mpad = nextpow(2, M)
@@ -217,7 +246,6 @@ const layout_W_memory = Layout(Dict(FloatValue(:floatvalue, 1, 16) => SIMD(:simd
 
 # I layout
 
-@assert Mpad == Npad == 32
 const layout_I_memory = Layout(Dict(FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
                                     BeamP(:beamP, 1, 2) => SIMD(:simd, 16, 2),
                                     BeamP(:beamP, 2, M) => Memory(:memory, 1, M),
@@ -268,18 +296,24 @@ const layout_Fsh2_shared = Layout(Dict(IntValue(:intvalue, 1, 4) => SIMD(:simd, 
                                        Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter))))
 
 # Section 4.10, eqn. (76)
-@assert Npad ≤ 32
+@assert Npad in [16, 32]
 const layout_Gsh_shared = Layout(Dict(FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
                                       Cplx(:cplx, 1, C) => SIMD(:simd, 16, 2),
-                                      # DishM(:dishM, 1, M) => Shared(:shared, 1, M),
+                                      # DishM(:dishM, 1, M) => Shared(:shared, 1, M),n
                                       DishMlo(:dishMlo, 1, idiv(M, 4)) => Shared(:shared, 1, idiv(M, 4)),
                                       DishMhi(:dishMhi, 1, 4) => Shared(:shared, idiv(M, 4), 4),
                                       BeamQ(:beamQ, 1, 2) => Shared(:shared, ΣG0, 2),
-                                      BeamQ(:beamQ, 2, 2) => Shared(:shared, ΣG1 * 16, 2),
-                                      BeamQ(:beamQ, 4, 2) => Shared(:shared, ΣG1 * 8, 2),
-                                      BeamQ(:beamQ, 8, 2) => Shared(:shared, ΣG1 * 4, 2),
-                                      BeamQ(:beamQ, 16, 2) => Shared(:shared, ΣG1 * 2, 2),
-                                      BeamQ(:beamQ, 32, 2) => Shared(:shared, ΣG1, 2),
+                                      ifelse(Npad == 32,
+                                             [BeamQ(:beamQ, 2, 2) => Shared(:shared, ΣG1 * 16, 2),
+                                              BeamQ(:beamQ, 4, 2) => Shared(:shared, ΣG1 * 8, 2),
+                                              BeamQ(:beamQ, 8, 2) => Shared(:shared, ΣG1 * 4, 2),
+                                              BeamQ(:beamQ, 16, 2) => Shared(:shared, ΣG1 * 2, 2),
+                                              BeamQ(:beamQ, 32, 2) => Shared(:shared, ΣG1 * 1, 2)], [])...,
+                                      ifelse(Npad == 16,
+                                             [BeamQ(:beamQ, 2, 2) => Shared(:shared, ΣG1 * 8, 2),
+                                              BeamQ(:beamQ, 4, 2) => Shared(:shared, ΣG1 * 4, 2),
+                                              BeamQ(:beamQ, 8, 2) => Shared(:shared, ΣG1 * 2, 2),
+                                              BeamQ(:beamQ, 16, 2) => Shared(:shared, ΣG1 * 1, 2)], [])...,
                                       Freq(:freq, 1, F) => Block(:block, 1, F),
                                       Polr(:polr, 1, P) => Shared(:shared, Mpad, 2),
                                       Time(:time, 1, Tinner) => Shared(:shared, Mpad * 2, Tinner),
@@ -314,29 +348,70 @@ const kernel_setup = KernelSetup(num_threads, num_warps, num_blocks, num_blocks_
 
 # Copying global memory to shared memory (Fsh1) (section 4.6)
 function copy_global_memory_to_Fsh1!(emitter)
-    # Eqn. (90)
-    layout_E_registers = Layout(Dict(IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
-                                     Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
-                                     Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
-                                     Dish(:dish, 4, 4) => Register(:dish, 4, 4),
-                                     Dish(:dish, 16, 16) => Thread(:thread, 1, 16),
-                                     Dish(:dish, 256, idiv(D, 256)) => Register(:dish, 256, idiv(D, 256)),
-                                     Freq(:freq, 1, F) => Block(:block, 1, F),
-                                     Polr(:polr, 1, P) => Thread(:thread, 16, 2),
-                                     Time(:time, 1, idiv(Touter, 2)) => Warp(:warp, 1, W),
-                                     Time(:time, idiv(Touter, 2), 2) => Register(:time, idiv(Touter, 2), 2),
-                                     Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter))))
-    load!(emitter, :E => layout_E_registers, :E_memory => layout_E_memory; align=16)
-    # Swap polr0, dish3
-    permute!(emitter, :E, :E, Polr(:polr, 1, P), Dish(:dish, 8, 2))
-    # E -> F shuffle
-    # 1. swap polr0, cplx0
-    # 2. swap timehi, dish0
-    # 3. swap cplx0, dish1
-    permute!(emitter, :E, :E, Polr(:polr, 1, P), Cplx(:cplx, 1, C))
-    permute!(emitter, :E, :E, Time(:time, idiv(Touter, 2), 2), Dish(:dish, 1, 2))
-    permute!(emitter, :E, :E, Cplx(:cplx, 1, C), Dish(:dish, 2, 2))
-    store!(emitter, :Fsh1_shared => layout_Fsh1_shared, :E)
+    if setup === :chord
+
+        # Eqn. (88)
+        @assert D % 256 == 0
+        @assert Touter % 2 == 0
+        @assert (idiv(D, 256) * idiv(Touter, 2)) % W == 0
+        # Eqn. (90)
+        layout_E_registers = Layout(Dict(IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
+                                         Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
+                                         Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
+                                         Dish(:dish, 4, 4) => Register(:dish, 4, 4),
+                                         Dish(:dish, 16, 16) => Thread(:thread, 1, 16),
+                                         Dish(:dish, 256, idiv(D, 256)) => Register(:dish, 256, idiv(D, 256)),
+                                         Freq(:freq, 1, F) => Block(:block, 1, F),
+                                         Polr(:polr, 1, P) => Thread(:thread, 16, 2),
+                                         Time(:time, 1, idiv(Touter, 2)) => Warp(:warp, 1, W),
+                                         Time(:time, idiv(Touter, 2), 2) => Register(:time, idiv(Touter, 2), 2),
+                                         Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter))))
+        load!(emitter, :E => layout_E_registers, :E_memory => layout_E_memory; align=16)
+        # Swap polr0, dish3
+        permute!(emitter, :E, :E, Polr(:polr, 1, P), Dish(:dish, 8, 2))
+        # E -> F shuffle
+        # 1. swap polr0, cplx0
+        # 2. swap timehi, dish0
+        # 3. swap cplx0, dish1
+        permute!(emitter, :E, :E, Polr(:polr, 1, P), Cplx(:cplx, 1, C))
+        permute!(emitter, :E, :E, Time(:time, idiv(Touter, 2), 2), Dish(:dish, 1, 2))
+        permute!(emitter, :E, :E, Cplx(:cplx, 1, C), Dish(:dish, 2, 2))
+        store!(emitter, :Fsh1_shared => layout_Fsh1_shared, :E)
+
+    elseif setup === :pathfinder
+
+        # Eqn. (83)
+        @assert D == 64
+        @assert Touter % 8 == 0
+        @assert idiv(Touter, 8) % W == 0
+        # Eqn. (85)
+        layout_E_registers = Layout(Dict(IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
+                                         Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
+                                         Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
+                                         Dish(:dish, 4, 4) => Register(:dish, 4, 4),
+                                         Dish(:dish, 16, 4) => Thread(:thread, 1, 4),
+                                         Freq(:freq, 1, F) => Block(:block, 1, F),
+                                         Polr(:polr, 1, P) => Thread(:thread, 4, 2),
+                                         Time(:time, 1, 4) => Thread(:thread, 8, 4),
+                                         Time(:time, 4, idiv(Touter, 8)) => Warp(:warp, 1, W),
+                                         Time(:time, idiv(Touter, 2), 2) => Register(:time, idiv(Touter, 2), 2),
+                                         Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter))))
+        load!(emitter, :E => layout_E_registers, :E_memory => layout_E_memory; align=16)
+        # Swap polr0, dish3
+        permute!(emitter, :E, :E, Polr(:polr, 1, P), Dish(:dish, 8, 2))
+        # E -> F shuffle
+        # 1. swap polr0, cplx0
+        # 2. swap timehi, dish0
+        # 3. swap cplx0, dish1
+        permute!(emitter, :E, :E, Polr(:polr, 1, P), Cplx(:cplx, 1, C))
+        permute!(emitter, :E, :E, Time(:time, idiv(Touter, 2), 2), Dish(:dish, 1, 2))
+        permute!(emitter, :E, :E, Cplx(:cplx, 1, C), Dish(:dish, 2, 2))
+        store!(emitter, :Fsh1_shared => layout_Fsh1_shared, :E)
+
+    else
+        @assert false
+    end
+
     return nothing
 end
 
@@ -888,6 +963,7 @@ function make_frb_kernel()
         merge!(emitter, :Γ¹, [:Γ¹_re, :Γ¹_im], Cplx(:cplx, 1, C) => Register(:cplx, 1, C))
 
         # (41)
+        # TODO: see beginning of section 3.2, we have r=3 or 4, need to implement the spectator indices
         @assert trailing_zeros(Npad) == 5
         N4 = Int32(idiv(N, 4))
         layout_Γ²_registers = Layout(Dict(FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
@@ -1262,7 +1338,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     !silent && println("CHORD FRB beamformer")
 
     if output_kernel
-        open("output-$card/frb.jl", "w") do fh
+        open("output-$card/frb_$setup.jl", "w") do fh
             return println(fh, frb_kernel)
         end
     end
@@ -1471,13 +1547,13 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 end
 
 function fix_ptx_kernel()
-    ptx = read("output-$card/frb.ptx", String)
+    ptx = read("output-$card/frb_$setup.ptx", String)
     ptx = replace(ptx, r".extern .func ([^;]*);"s => s".func \1.noreturn\n{\n\ttrap;\n}")
-    open("output-$card/frb.ptx", "w") do fh
+    open("output-$card/frb_$setup.ptx", "w") do fh
         return write(fh, ptx)
     end
     kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
-    open("output-$card/frb.yaml", "w") do fh
+    open("output-$card/frb_$setup.yaml", "w") do fh
         return print(fh,
                      """
              --- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
@@ -1612,20 +1688,20 @@ function fix_ptx_kernel()
                                                                       Dict("label" => "block", "length" => num_blocks)],
                                                            "isoutput" => true,
                                                            "hasbuffer" => false)]))
-    write("output-$card/frb.cxx", cxx)
+    write("output-$card/frb_$setup.cxx", cxx)
     return nothing
 end
 
 if CUDA.functional()
     # Output kernel
     main(; output_kernel=true)
-    open("output-$card/frb.ptx", "w") do fh
+    open("output-$card/frb_$setup.ptx", "w") do fh
         redirect_stdout(fh) do
             @device_code_ptx main(; compile_only=true, silent=true)
         end
     end
     fix_ptx_kernel()
-    open("output-$card/frb.sass", "w") do fh
+    open("output-$card/frb_$setup.sass", "w") do fh
         redirect_stdout(fh) do
             @device_code_sass main(; compile_only=true, silent=true)
         end
