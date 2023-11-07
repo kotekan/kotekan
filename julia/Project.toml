@@ -15,3 +15,6 @@ Mustache = "ffc61752-8dc7-55ee-8c37-f3e9cdd09e70"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SixelTerm = "65edfddc-f399-4499-8369-a1bd38eee2ea"
 YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
+
+[compat]
+IndexSpaces = "0.1.1"
