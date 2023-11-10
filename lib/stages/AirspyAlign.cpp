@@ -15,6 +15,7 @@
 #include <stdint.h>    // for uint32_t
 #include <stdlib.h>    // for calloc, free
 #include <string.h>    // for memset
+#include <unistd.h>    // for usleep
 #include <sys/types.h> // for uint
 #include <vector>      // for vector
 #include "fftw3.h"

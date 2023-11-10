@@ -26,7 +26,7 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
     gain_lna = config.get_default<int>(unique_name, "gain_lna", 5);                 // MAX: 14
     gain_if = config.get_default<int>(unique_name, "gain_if", 5);                   // MAX: 15
     gain_mix = config.get_default<int>(unique_name, "gain_mix", 5);                 // MAX: 15
- 
+
     airspy_sn = config.get_default<long>(unique_name, "serial", 0);
     airspy_fn = config.get_default<std::string>(unique_name, "airspy_file", "");
 
@@ -100,17 +100,6 @@ void airspyInput::rest_callback(kotekan::connectionInstance& conn,
         err = airspy_set_vga_gain(dev, gain_if);
         if (err != AIRSPY_SUCCESS) {
             ERROR("airspy_set_vga_gain() failed: {:s} ({:d})", airspy_error_name((enum airspy_error)err),
-                  err)
-        }
-        else success=true;
-    } catch (...) {}
-    try {
-        gain_if = json_request["gain_if"];
-        INFO("Updating airspy IF gain to {:d}", gain_if);
-
-        err = airspy_start_rx(a_device, airspy_callback, static_cast<void*>(this));
-        if (err != AIRSPY_SUCCESS) {
-            ERROR("airspy_start_rx() failed: {:s} ({:d})", airspy_error_name((enum airspy_error)err),
                   err)
         }
         else success=true;

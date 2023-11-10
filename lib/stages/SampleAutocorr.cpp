@@ -15,7 +15,7 @@
 #include <string.h>    // for memset
 #include <sys/types.h> // for uint
 #include <vector>      // for vector
-
+#include <unistd.h>    // for usleep
 
 using kotekan::bufferContainer;
 using kotekan::Config;
