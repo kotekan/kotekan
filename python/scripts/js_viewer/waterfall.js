@@ -349,8 +349,8 @@ waterfall.prototype.addRecordButton =
 		this.fn_idx = 0
 		var marg=15
 		var width=$("#"+target).width()
-	    wrapper=$("<div style='margin:10px,width:100%'/>").uniqueId()
-	    			.height(30).width(width-2*marg).appendTo($("#"+target))
+	    wrapper=$("<div/>").uniqueId().css({'margin':marg,'width':'100%'})
+	    			.height(45).width(width-2*marg).appendTo($("#"+target))
 
 		this.record_fn=$("<input type='text'/>")
 				.css({'width':'50%','float':'left', 'font-size':'16pt', 'margin-top':5})
@@ -396,7 +396,13 @@ waterfall.prototype.addAirspyGainControl =
 			})
 		   .then(r =>
 			   	fetch('http://'+o.kotekan_url+':'+o.kotekan_port+'/airspy_input/adcstat',{})
-			   		 .then(r => r.json().then(data => console.log(data)))
+			   		 .then(r => r.json().then(data => {
+			   		 		self.adc=data
+			   		 		self.adcmean.text("Mean: "+self.adc['mean'].toFixed(2))
+			   		 		self.adcrms.text("RMS: "+self.adc['rms'].toFixed(2))
+			   		 		self.adcrailfrac.text("Rail %: "+(self.adc['railfrac']*100).toFixed(2))
+			   		 		console.log(data)}
+			   		 	))
 
 		   )
 		}
@@ -408,13 +414,25 @@ waterfall.prototype.addAirspyGainControl =
 	    wrapper=$("<div style='margin:10px,width:100%'/>").uniqueId()
 	    			.height(slider_height).width(width-2*marg).appendTo($("#"+target))
 
+	    gainwrap=$('<div/>').uniqueId().css({width:3*(slider_width+4)}).appendTo(wrapper)
 		$("<p/>").css({'font-family':'sans-serif','text-align':'center','margin':marg})
-		    		.text("Gain").appendTo(wrapper)		    		
+		    		.text("Gain").appendTo(gainwrap)
+
+	    adcwrap=$('<div/>').uniqueId().css({width:'auto'}).appendTo(wrapper)
+			    .css({'font-family':'sans-serif','font-size':'10pt','text-align':'left','margin':marg})
+		$("<p>").text("ADC Stats").css({'font-size':'14pt','text-align':'center'}).appendTo(adcwrap)
+		this.adcmean = $("<div/>").css({'position':'relative','left':'30px'})
+				.text("Mean: "+this.adc['mean']).appendTo(adcwrap)
+		this.adcrms = $("<p/>").css({'position':'relative','left':'30px'})
+				.text("RMS: "+this.adc['rms']).appendTo(adcwrap)
+		this.adcrailfrac = $("<p/>").css({'position':'relative','left':'30px'})
+				.text("Rail %: "+this.adc['railfrac']).appendTo(adcwrap)
+
 
 	    {
 		    lnawrap = $("<div style='float:left'/>").width(slider_width)
-		    			.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(wrapper)
-		    $("<p/>").css({'font-family':'sans-serif', 'margin':2})
+		    			.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(gainwrap)
+		    $("<p/>").css({'font-family':'sans-serif', 'margin':2, 'margin-bottom':15})
 		    		.text("LNA").appendTo(lnawrap)
 
 		    gain_lna=$("<div/>").uniqueId().appendTo(lnawrap).css({'margin':'auto'})
@@ -431,8 +449,8 @@ waterfall.prototype.addAirspyGainControl =
     	}
 	    {
 		    mixwrap = $("<div style='float:left'/>").width(slider_width)
-		    			.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(wrapper)
-		    $("<p/>").css({'font-family':'sans-serif','margin':2})
+		    			.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(gainwrap)
+		    $("<p/>").css({'font-family':'sans-serif','margin':2, 'margin-bottom':15})
 		    		.text("MIX").appendTo(mixwrap)
 
 		    gain_mix=$("<div/>").uniqueId().appendTo(mixwrap).css({'margin':'auto'})
@@ -449,8 +467,8 @@ waterfall.prototype.addAirspyGainControl =
     	}
 	    {
 		    ifwrap = $("<div style='float:left'/>").width(slider_width)
-		    			.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(wrapper)
-		    $("<p/>").css({'font-family':'sans-serif', 'margin':2})
+		    			.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(gainwrap)
+		    $("<p/>").css({'font-family':'sans-serif', 'margin':2, 'margin-bottom':15})
 		    		.text("IF").appendTo(ifwrap)
 
 		    gain_if=$("<div/>").uniqueId().appendTo(ifwrap).css({'margin':'auto'})

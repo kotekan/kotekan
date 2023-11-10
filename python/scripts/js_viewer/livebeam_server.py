@@ -129,8 +129,6 @@ class MyServerProtocol(WebSocketServerProtocol):
          else:
             print("Missed data from vis {}".format(i))
 
-#      print(KotekanConn.frame_idx, KotekanConn.frame_raw_cad, KotekanConn.frame_utc0)
-
       sample_time = KotekanConn.frame_utc0 + KotekanConn.frame_raw_cad * KotekanConn.frame_int_len * (KotekanConn.frame_idx - KotekanConn.frame_idx0);
       send_data = np.int8(MSG_TYPE['timestep']).tobytes() + \
                   np.float64(sample_time).tobytes() + \
