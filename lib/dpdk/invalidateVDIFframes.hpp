@@ -63,12 +63,18 @@ private:
     /// Current
     int32_t lost_samples_buf_frame_id = 0;
 
-    /// The number of VDIF frames expected
-    /// It might be possible to make this dynamic
-    const uint32_t num_elements = 2;
+    /// The total number of frequency channels.
+    const uint32_t total_num_freq = 1024;
 
-    /// The size of each VDIF frame
-    const uint32_t vdif_frame_size = 1056; // 32 header + 1024 data
+    /// The number of VDIF threads expected in each frameset.
+    uint32_t num_threads;
+
+    /// The standard VDIF header lenght
+    const uint32_t vdif_header_len = 32;
+
+    /// The size of each VDIF frame and frame set
+    uint32_t vdif_frame_size;
+    uint32_t vdif_frameset_size;
 };
 
 #endif /* ZERO_SAMPLES_HPP */
