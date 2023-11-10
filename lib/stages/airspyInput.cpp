@@ -202,7 +202,11 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
                 float mean = 0, rms = 0;
                 float rail = 0;
                 short *fr = (short*)frame_ptr;
+#ifdef IQ_SAMPLING
                 for (uint i=0; i<buf->frame_size/BYTES_PER_SAMPLE; i++) if (abs(fr[i]) >= (2<<10)) rail++;
+#else
+                for (uint i=0; i<buf->frame_size/BYTES_PER_SAMPLE; i++) if (abs(fr[i]-2048) >= (2<<10)) rail++;
+#endif
                 rail/=buf->frame_size/BYTES_PER_SAMPLE;
                 for (uint i=0; i<buf->frame_size/BYTES_PER_SAMPLE; i++) mean+=(float)fr[i];
                 mean/=buf->frame_size/BYTES_PER_SAMPLE;

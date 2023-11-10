@@ -88,3 +88,9 @@ correlation_output:
     destination_ip: "127.0.0.1"
     destination_protocol: TCP
     in_buf: post_corr_buf
+
+  spawn_pyviewer:
+    kotekan_stage: SpawnProcess
+    in_buf: post_corr_buf
+    path: "../../python/scripts/js_viewer/"
+    exec: "./livebeam_server.py"

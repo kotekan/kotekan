@@ -83,6 +83,7 @@ add_library(
     SampleAutocorr.cpp
     SimpleCrosscorr.cpp
     AirspyAlign.cpp
+    SpawnProcess.cpp
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 

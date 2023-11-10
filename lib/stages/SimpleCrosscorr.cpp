@@ -69,7 +69,7 @@ void SimpleCrosscorr::main_thread() {
 
         for (int j = 0; j < samples_per_frame; j += spectrum_length) {
 
-            for (int i = 0; i < spectrum_length; i++) {
+            for (uint i = 0; i < spectrum_length; i++) {
                 Ar = inA_local[(i + j) * 2];
                 Ai = inA_local[(i + j) * 2 + 1];
                 Br = inB_local[(i + j) * 2];
@@ -90,7 +90,7 @@ void SimpleCrosscorr::main_thread() {
                 if (out_loc == 0)
                     out_local =
                         (float*)wait_for_empty_frame(buf_out, unique_name.c_str(), frame_out);
-                for (int i = 0; i < spectrum_length*4; i++)
+                for (uint i = 0; i < spectrum_length*4; i++)
                     out_local[out_loc++] = spectrum_out[i];
                 ((uint*)out_local)[out_loc++] = integration_ct;
 
