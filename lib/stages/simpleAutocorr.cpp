@@ -44,7 +44,7 @@ simpleAutocorr::~simpleAutocorr() {
 
 void simpleAutocorr::main_thread() {
     float* in_local;
-    uint* out_local;
+    float* out_local;
 
     float re, im;
     frame_in = 0;
@@ -58,27 +58,26 @@ void simpleAutocorr::main_thread() {
         in_local = (float*)wait_for_full_frame(buf_in, unique_name.c_str(), frame_in);
         if (in_local == nullptr)
             break;
+
         for (int j = 0; j < samples_per_frame; j += spectrum_length) {
             for (int i = 0; i < spectrum_length; i++) {
                 re = in_local[(i + j) * 2];
                 im = in_local[(i + j) * 2 + 1];
-                spectrum_out[i] += (re * re + im * im) / integration_length;
+                spectrum_out[i] += re * re + im * im;
             }
             integration_ct++;
 
             if (integration_ct >= integration_length) {
                 if (out_loc == 0)
-                    out_local =
-                        (uint*)wait_for_empty_frame(buf_out, unique_name.c_str(), frame_out);
+                    out_local = (float*)wait_for_empty_frame(buf_out, unique_name.c_str(), frame_out);
                 for (int i = 0; i < spectrum_length; i++)
-                    out_local[out_loc++] = spectrum_out[i];
+                    out_local[out_loc++] = spectrum_out[i]/integration_length;
                 out_local[out_loc++] = integration_ct;
 
                 if (out_loc * sizeof(uint) == (uint32_t)buf_out->frame_size) {
                     mark_frame_full(buf_out, unique_name.c_str(), frame_out);
                     frame_out = (frame_out + 1) % buf_out->num_frames;
                     out_loc = 0;
-                    DEBUG("Finished integrating a frame!");
                 }
 
                 memset(spectrum_out, 0, spectrum_length * sizeof(float));

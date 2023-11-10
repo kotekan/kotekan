@@ -39,11 +39,12 @@ networkPowerStream::networkPowerStream(Config& config, const std::string& unique
     // PER BUFFER
     freqs = config.get<int>(unique_name, "num_freq");
     elems = config.get<int>(unique_name, "num_elements");
-    times = config.get<int>(unique_name, "samples_per_data_set")
-            / config.get<int>(unique_name, "power_integration_length");
+    times = 1;
+    //config.get<int>(unique_name, "samples_per_data_set")
+    //        / config.get<int>(unique_name, "power_integration_length");
 
     freq0 = config.get_default<float>(unique_name, "freq", 1420.) * 1e6;
-    sample_bw = config.get_default<float>(unique_name, "sample_rate", 5.) / 2 * 1e6;
+    sample_bw = config.get_default<float>(unique_name, "sample_bw", 2.5) * 1e6;
 
     dest_port = config.get<uint32_t>(unique_name, "destination_port");
     dest_server_ip = config.get<std::string>(unique_name, "destination_ip");
@@ -54,17 +55,15 @@ networkPowerStream::networkPowerStream(Config& config, const std::string& unique
     header.packet_length = freqs * sizeof(float);
     header.header_length = sizeof(IntensityPacketHeader);
     header.samples_per_packet = freqs;
-    header.sample_type = 4;                       // uint32
-    header.raw_cadence = 1 / (sample_bw / freqs); // 2.56e-6;
+    header.sample_type = 4; // uint32
+    header.raw_cadence = 1 / (sample_bw / freqs);
     header.num_freqs = freqs;
     header.num_elems = elems;
-    header.samples_summed = config.get<int>(unique_name, "power_integration_length");
+    header.samples_summed = config.get<int>(unique_name, "integration_length");
     header.handshake_idx = -1;
     header.handshake_utc = -1;
 
     frame_idx = 0;
-
-//    signal(SIGPIPE, SIG_IGN);
 
 }
 
@@ -109,8 +108,8 @@ void networkPowerStream::main_thread() {
                     packet_header->elem_idx = p;
                     packet_header->samples_summed =
                         ((uint*)frame)[t * elems * (freqs + 1) + p * (freqs + 1) + freqs];
-                    memcpy(local_data, frame + (t * elems + p) * (freqs + 1) * sizeof(uint),
-                           freqs * sizeof(uint));
+                    memcpy(local_data, frame + (t * elems + p) * (freqs + 1) * sizeof(float),
+                           freqs * sizeof(float));
                     // Send data to remote server.
                     uint32_t bytes_sent =
                         sendto(socket_fd, packet_buffer, packet_length, 0,
@@ -127,6 +126,7 @@ void networkPowerStream::main_thread() {
     } else if (dest_protocol == "TCP") {
         // TCP variables
         while (!stop_thread) {
+            DEBUG("PowerStream frame {}",frame_id);
             // Wait for a full buffer.
             frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
             if (frame == nullptr) break;
@@ -180,7 +180,7 @@ void networkPowerStream::main_thread() {
 }
 
 void networkPowerStream::tcpConnect() {
-    INFO("Connecting TCP Power Stream!");
+
     struct sockaddr_in address;
     address.sin_addr.s_addr = inet_addr(dest_server_ip.c_str());
     address.sin_port = htons(dest_port);

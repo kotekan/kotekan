@@ -44,7 +44,7 @@ input_bufB:
   num_frames: buffer_depth
   frame_size: samples_per_data_set * bytes_per_sample
 
-sample_rate: 10. #MHz, must be float?
+sample_bw: 10. #MHz, must be float?
 freq: 1422.    #MHz
 gain_lna: 14 #0-14
 gain_mix: 15 #0-15
@@ -62,10 +62,11 @@ airspy_inputB:
 #  log_level: debug
   kotekan_stage: airspyInput
   out_buf: input_bufB
+#  serial: 0x440464C8394C614F
   serial: 0x744C60C821458E4F
 
 lag_align:
-#  log_level: debug
+  log_level: debug
   kotekan_stage: AirspyAlign
   in_bufA: input_bufA
   in_bufB: input_bufB

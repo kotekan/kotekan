@@ -532,6 +532,13 @@ void connectionInstance::send_json_reply(const json& json_reply) {
         != 0) {
         throw std::runtime_error("Failed to add header to reply");
     }
+    if (evhttp_add_header(evhttp_request_get_output_headers(request), "Access-Control-Allow-Origin", "*") ||
+        evhttp_add_header(evhttp_request_get_output_headers(request), "Access-Control-Allow-Methods", "GET") ||
+        evhttp_add_header(evhttp_request_get_output_headers(request), "Access-Control-Allow-Headers", "x-prototype-version,x-requested-with") ||
+        evhttp_add_header(evhttp_request_get_output_headers(request), "Access-Control-Max-Age", "2520")
+        ) {
+        throw std::runtime_error("Failed to add header to reply");
+    }
 
     if (evbuffer_add(event_buffer, (void*)json_string.c_str(), json_string.size()) != 0) {
         throw std::runtime_error("Failed to add JSON string to reply message");

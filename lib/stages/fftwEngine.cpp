@@ -76,7 +76,7 @@ void fftwEngine::main_thread() {
         for (int j = 0; j < samples_per_input_frame; j += spectrum_length*2) {
             DEBUG("Running FFT, {}", in_local[j]);
             for (int i = 0; i < spectrum_length*2; i++) {
-                samples[i] = in_local[i+j];//-2048;
+                samples[i] = (float)in_local[i+j] / spectrum_length;
             }
             fftwf_execute(fft_plan);
             memcpy(out_local, spectrum, sizeof(fftwf_complex) * spectrum_length);

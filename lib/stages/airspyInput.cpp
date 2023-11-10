@@ -22,7 +22,7 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
     register_producer(buf, unique_name.c_str());
 
     freq = config.get_default<float>(unique_name, "freq", 1420) * 1000000;          // MHz
-    sample_rate = config.get_default<float>(unique_name, "sample_rate", 2.5) * 1e6; // Rate in MSPS
+    sample_rate = config.get_default<float>(unique_name, "sample_bw", 2.5) * 1e6;   // IQ MSPS = BW MHz
     gain_lna = config.get_default<int>(unique_name, "gain_lna", 5);                 // MAX: 14
     gain_if = config.get_default<int>(unique_name, "gain_if", 5);                   // MAX: 15
     gain_mix = config.get_default<int>(unique_name, "gain_mix", 5);                 // MAX: 15
@@ -199,18 +199,14 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
         }
 
         size_t copy_length = bt < (buf->frame_size-frame_loc) ? bt : (buf->frame_size-frame_loc);
-        DEBUG("Filling Buffer {:d} With {:d} Data Samples", frame_id, copy_length / BYTES_PER_SAMPLE);
+        DEBUG("Filling Buffer {:d} With {:d} Data Samples {}", frame_id, copy_length / BYTES_PER_SAMPLE, transfer->sample_count);
+
         // FILL THE BUFFER
         memcpy(frame_ptr + frame_loc, in, copy_length);
         bt -= copy_length;
         in = (void*)((char*)in + copy_length);
         frame_loc = (frame_loc + copy_length) % buf->frame_size;
 
-#ifdef IQ_SAMPLING
-#else
-            short *fr = (short*)frame_ptr;
-            for (uint i=0; i<buf->frame_size/BYTES_PER_SAMPLE; i++) fr[i]-=2048;
-#endif
         if (frame_loc == 0) {
             DEBUG("Airspy Buffer {:d} Full", frame_id);
             if (dump_adcstat){
@@ -223,13 +219,20 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
                 mean/=buf->frame_size/BYTES_PER_SAMPLE;
                 for (uint i=0; i<buf->frame_size/BYTES_PER_SAMPLE; i++) rms+=((float)fr[i]-mean)*((float)fr[i]-mean);
                 rms=sqrt(rms/(buf->frame_size/BYTES_PER_SAMPLE));
-                INFO("Airspy ADC mean: {:f}, RMS: {:f}, rail fraction {:f}",mean,rms,rail);
                 adcrailfrac=rail;
                 adcrms=rms;
                 adcmean=mean;
+#ifndef IQ_SAMPLING
+                adcmean-=2048;
+#endif
+                INFO("Airspy ADC mean: {:f}, RMS: {:f}, rail fraction {:f}",adcmean,adcrms,adcrailfrac);
                 adcstat_ready=true;
                 dump_adcstat=false;
             }
+#ifndef IQ_SAMPLING
+            short *fr = (short*)frame_ptr;
+            for (uint i=0; i<buf->frame_size/BYTES_PER_SAMPLE; i++) fr[i]-=2048;
+#endif
             mark_frame_full(buf, unique_name.c_str(), frame_id);
             frame_id = (frame_id + 1) % buf->num_frames;
         }

@@ -31,13 +31,7 @@ meta_pool:
   kotekan_metadata_pool: chimeMetadata
   num_metadata_objects: 5 * buffer_depth
 
-input_bufA:
-  kotekan_buffer: standard
-  metadata_pool: meta_pool
-  num_frames: buffer_depth
-  frame_size: samples_per_data_set * bytes_per_sample
-
-input_bufB:
+input_buf:
   kotekan_buffer: standard
   metadata_pool: meta_pool
   num_frames: buffer_depth
@@ -45,34 +39,18 @@ input_bufB:
 
 sample_bw: 10. #MHz, must be float?
 freq: 1421.    #MHz
-airspy_inputA:
+airspy_input:
   kotekan_stage: airspyInput
-  out_buf: input_bufA
-  gain_lna: 10 #0-14
-  gain_mix: 10 #0-15
-  gain_if:  10 #0-15
+  out_buf: input_buf
+  gain_lna: 14 #0-14
+  gain_mix: 15 #0-15
+  gain_if:  15 #0-15
   biast_power: false
-  autostart: false
-  serial: 0x03A464C834658167
-
-airspy_inputB:
-  kotekan_stage: airspyInput
-  out_buf: input_bufB
-  gain_lna: 10 #0-14
-  gain_mix: 10 #0-15
-  gain_if:  10 #0-15
-  biast_power: false
-  autostart: false
-  serial: 0x440464C8394C614F
-
-lag_align:
-  kotekan_stage: AirspyAlign
-  inA_buf: input_bufA
-  inB_buf: input_bufB
+  autostart: true
+#  serial: 0x03A464C834658167
 
 
-integration_length: 64
-power_integration_length: 64
+integration_length: 256
 spectrum_length: 1024
 
 post_fengine_buf:
@@ -84,33 +62,29 @@ post_fengine_buf:
 spectrum_output:
   fengine:
     kotekan_stage: fftwEngine
-    in_buf: input_bufA
-    out_buf: post_fengine_bufA
-
-  fengine:
-    kotekan_stage: fftwEngine
-    in_buf: input_bufB
-    out_buf: post_fengine_bufB
+    in_buf: input_buf
+    out_buf: post_fengine_buf
 
 correlation_output:
   post_corr_buf:
     kotekan_buffer: standard
     metadata_pool: meta_pool
     num_frames: buffer_depth
-    frame_size: ( spectrum_length * 4 + one ) * sizeof_float
+    frame_size: ( spectrum_length + one ) * sizeof_float
 
   xengine:
     log_level: debug
-    kotekan_stage: SimpleCrosscorr
-    inA_buf: post_fengine_bufA
-    inB_buf: post_fengine_bufB
+    kotekan_stage: simpleAutocorr
+    in_buf: post_fengine_buf
     out_buf: post_corr_buf
 
-#  power_stream:
-#    kotekan_stage: networkPowerStream
-#    num_freq: 1024
-#    samples_per_data_set: 64
-#    destination_port: 23401
-#    destination_ip: "127.0.0.1"
-#    destination_protocol: TCP
-#    in_buf: post_corr_buf
+
+  power_stream:
+    log_level: info
+    kotekan_stage: networkPowerStream
+    num_elements: 1
+    num_freq: spectrum_length
+    destination_port: 23401
+    destination_ip: "127.0.0.1"
+    destination_protocol: TCP
+    in_buf: post_corr_buf
