@@ -112,7 +112,7 @@ void networkPowerStream::main_thread() {
                            freqs * sizeof(float));
                     // Send data to remote server.
                     uint32_t bytes_sent =
-                        sendto(socket_fd, packet_buffer, packet_length, 0,
+                        sendto(socket_fd, packet_buffer, packet_length, MSG_NOSIGNAL,
                                (struct sockaddr*)&saddr_remote, sizeof(sockaddr_in));
                     if (bytes_sent != packet_length)
                         ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");
@@ -145,14 +145,16 @@ void networkPowerStream::main_thread() {
                         memcpy(local_data,
                                frame + (t * (elems * freqs + 1) + e * freqs) * sizeof(float),
                                freqs * sizeof(float));
-                        uint32_t bytes_sent = send(socket_fd, packet_buffer, packet_length, 0);
+                        uint32_t bytes_sent = send(socket_fd, packet_buffer, packet_length, MSG_NOSIGNAL);
                         if (bytes_sent != packet_length) {
-                            INFO("Lost TCP connection!");
+                            INFO("Lost TCP connection! {} {} {}",t,e, tcp_connected);
                             while (atomic_flag_test_and_set(&socket_lock)) {}
                             close(socket_fd);
                             tcp_connected = false;
                             atomic_flag_clear(&socket_lock);
                             e=elems; t=times; //instead of break-up-two
+                            INFO("Breaking");
+                            break;
                         }
                     }
                 }
@@ -207,6 +209,7 @@ void networkPowerStream::tcpConnect() {
 
     if (connect(socket_fd, (struct sockaddr*)&address, sizeof(address)) != 0) {
         while (atomic_flag_test_and_set(&socket_lock)) {}
+        ERROR("TCP failed to connect: {} {}", tcp_connected, tcp_connecting);
         tcp_connecting = false;
         close(socket_fd);
         atomic_flag_clear(&socket_lock);
@@ -220,7 +223,7 @@ void networkPowerStream::tcpConnect() {
         header.handshake_idx = handshake_idx;
         header.handshake_utc = handshake_utc;
         atomic_flag_clear(&socket_lock);
-        int bytes_sent = send(socket_fd, (void*)&header, sizeof(header), 0);
+        int bytes_sent = send(socket_fd, (void*)&header, sizeof(header), MSG_NOSIGNAL);
         if (bytes_sent != sizeof(header)) {
             ERROR("Could not send TCP header for output stream");
             while (atomic_flag_test_and_set(&socket_lock)) {
@@ -244,7 +247,7 @@ void networkPowerStream::tcpConnect() {
         //  YX  XY  YY  XX  LR  RL  LL  RR  I   Q   U   V
         for (int e = 0; e < elems; e++)
             ((char*)((char*)info + info_size - elems * sizeof(char)))[e] = -5 - e;
-        bytes_sent = send(socket_fd, info, info_size, 0);
+        bytes_sent = send(socket_fd, info, info_size, MSG_NOSIGNAL);
         free(info);
         if (bytes_sent != info_size) {
             ERROR("Could not send TCP header for output stream");

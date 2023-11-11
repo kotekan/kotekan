@@ -139,7 +139,7 @@ void airspyInput::main_thread() {
 
     frame_id = 0;
     frame_loc = 0;
-    recv_busy = PTHREAD_MUTEX_INITIALIZER;
+    recv_busy = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
 
     airspy_init();
     a_device = init_device();

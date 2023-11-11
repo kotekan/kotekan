@@ -73,7 +73,6 @@ function waterfall(container){
     						.css('display','none')
     						.appendTo(this.jqcontainer)
 
-
     var freq_div = $("<div/>").uniqueId().height(20)
     						.css({
 		           				'position':'relative',
@@ -193,13 +192,12 @@ waterfall.prototype.openSocket =
 	       self.draw();
 	    }
 	    this.socket.onerror = function(error) {
-			alert(`[error]`);
 		};
 
 	    this.socket.onclose = function(e) {
-	       console.log("Connection closed.");
-	       this.socket = null;
-	       this.isopen = false;
+ 			console.log("Connection closed.");
+// 	        this.socket = null;
+	        this.isopen = false;
 	    }
 	}
 
@@ -332,7 +330,7 @@ waterfall.prototype.addStartStop =
 				.css({margin:"0 auto",display:"block"})
 				.click(function() {
 				 	if ( $( this ).text() === "Stop" ) {
-						$( this ).button( "option", {label: "Resume", icons: {primary: "ui-icon-play"}})
+						$( this ).button( "option", {label: "Start", icons: {primary: "ui-icon-play"}})
 						self.stop();
 				    } else {
 						$( this ).button( "option", {label: "Stop", icons: {primary: "ui-icon-stop"}})

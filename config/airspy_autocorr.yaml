@@ -92,5 +92,4 @@ correlation_output:
   spawn_pyviewer:
     kotekan_stage: SpawnProcess
     in_buf: post_corr_buf
-    path: "../../python/scripts/js_viewer/"
-    exec: "./livebeam_server.py"
+    exec: "../../python/scripts/js_viewer/livebeam_server.py"

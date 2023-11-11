@@ -16,7 +16,8 @@
 #include <string.h>    // for memset
 #include <sys/types.h> // for uint
 #include <vector>      // for vector
-
+#include <spawn.h>     // for spawn
+#include <signal.h>    // for kill
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -31,19 +32,24 @@ SpawnProcess::SpawnProcess(Config& config, const std::string& unique_name,
     buf = get_buffer("in_buf");
     register_consumer(buf, unique_name.c_str());
 
-    exec_cmd = std::string("cd ")+config.get_default<std::string>(unique_name, "path", "./");
-    exec_cmd += std::string(" && ");
-    exec_cmd += config.get_default<std::string>(unique_name, "exec", "");
+//    exec_cmd = std::string("\"cd ")+config.get_default<std::string>(unique_name, "path", "./");
+//    exec_cmd += std::string(" && ");
+    exec_cmd = config.get_default<std::string>(unique_name, "exec", "");// + "\"";
     INFO("SpawnProcess: {}",exec_cmd);
 }
 
 SpawnProcess::~SpawnProcess() {
-    pclose(exec_proc);
 }
 
 void SpawnProcess::main_thread() {
-    std::thread thr = std::thread(&SpawnProcess::exec, this);
-            thr.detach();
+    pid_t pid;
+    extern char **environ;
+    char *cmd_cstr = const_cast<char*>(exec_cmd.c_str() );
+    INFO("Executable: {}",cmd_cstr);
+    char *v[] = {"/bin/sh", "-c", cmd_cstr, NULL};
+    int status = posix_spawn(&pid, "/bin/sh", NULL, NULL, v, environ);
+    INFO("Status: {}",status);
+    if (status > 0) perror("ERROR:");
 
     int frame_id = 0;
 
@@ -56,8 +62,5 @@ void SpawnProcess::main_thread() {
         frame_id = (frame_id + 1) % buf->num_frames;
     }
 
-}
-
-void SpawnProcess::exec(void){
-    exec_proc = popen(exec_cmd.c_str(), "w");
+    kill(pid,SIGINT);
 }

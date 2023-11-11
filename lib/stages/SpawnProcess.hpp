@@ -50,13 +50,10 @@ public:
 
     /// Primary loop, which waits on input frames, FFTs, and dumps to output.
     void main_thread() override;
-    void exec();
 
 private:
     std::string exec_cmd;
     Buffer* buf;
-
-    FILE* exec_proc;
 };
 
 
