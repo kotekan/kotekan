@@ -209,7 +209,6 @@ void networkPowerStream::tcpConnect() {
 
     if (connect(socket_fd, (struct sockaddr*)&address, sizeof(address)) != 0) {
         while (atomic_flag_test_and_set(&socket_lock)) {}
-        ERROR("TCP failed to connect: {} {}", tcp_connected, tcp_connecting);
         tcp_connecting = false;
         close(socket_fd);
         atomic_flag_clear(&socket_lock);
