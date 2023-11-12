@@ -42,6 +42,18 @@ airspyInput::~airspyInput() {
     airspy_exit();
 }
 
+void airspyInput::config_callback(kotekan::connectionInstance& conn) {
+    nlohmann::json reply;
+    reply["lna_gain"] = gain_lna;
+    reply["mix_gain"] = gain_mix;
+    reply["if_gain"] = gain_if;
+    reply["samplerate"] = sample_rate;
+    reply["freq"] = freq;
+    reply["airspy_sn"] = airspy_sn;
+
+    conn.send_json_reply(reply);
+}
+
 void airspyInput::adcstat_callback(kotekan::connectionInstance& conn) {
     dump_adcstat = true;
     while (!adcstat_ready) {usleep(1000);}
@@ -115,9 +127,7 @@ void airspyInput::rest_callback(kotekan::connectionInstance& conn,
 
     if (success) {
         usleep(10000);
-//        adcstat_callback(conn);
         conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
-//        dump_rms = true;
     }
     else {
         conn.send_error("Couldn't parse airspy rx parameters.\n", kotekan::HTTP_RESPONSE::BAD_REQUEST);
@@ -136,6 +146,9 @@ void airspyInput::main_thread() {
     rest_server.register_get_callback(endpoint,
                                       std::bind(&airspyInput::adcstat_callback, this, _1));
 
+    endpoint = unique_name+"/get_config";
+    rest_server.register_get_callback(endpoint,
+                                      std::bind(&airspyInput::config_callback, this, _1));
 
     frame_id = 0;
     frame_loc = 0;
@@ -367,6 +380,7 @@ struct airspy_device* airspyInput::init_device() {
          read_partid_serialno.part_id[1]);
     INFO("Serial Number: {:#08X}{:08X}", read_partid_serialno.serial_no[2],
          read_partid_serialno.serial_no[3]);
+    airspy_sn = (((long)read_partid_serialno.serial_no[2])<<32) + read_partid_serialno.serial_no[3];
 
     return dev;
 }

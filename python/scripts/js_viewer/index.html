@@ -9,6 +9,9 @@
 	<script src="https://cdn.jsdelivr.net/npm/jquery-numeric@1.5.0/jquery.numeric.min.js"></script>
 	<script src="https://cdn.jsdelivr.net/npm/raphael@2.3.0/raphael.min.js"></script>
 	<script src="https://cdn.jsdelivr.net/npm/tinycolor2@1.6.0/cjs/tinycolor.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.1/plotly-basic.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.1/plotly-cartesian.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.13.6/underscore-min.js"></script>
 	<script src="lib/img_plotting.js"></script>
 	<script src="waterfall.js"></script>
 	<style>
@@ -30,13 +33,15 @@
 			wf = new waterfall("img_holder");
 			wf.addColorSelect("interaction_tab",['viridis','inferno','magma','plasma','jet','gray','heat'])
 			wf.addColorBar("interaction_tab")
-			wf.addColorSlider("interaction_tab",[-20,20])
+			wf.addColorSlider("interaction_tab",[-30,30])
 			wf.addStartStop("interaction_tab")
-			//wfaddBufferControl("interaction_tab")
 			wf.addWaterfallControl("interaction_tab")
 			wf.addRecordButton("interaction_tab")
 			wf.addAirspyGainControl("interaction_tab")
 			//wf.addStatusHeader("status_header")
+			wf.add_spectrum("spectrum_holder")
+			wf.add_baseline_control("interaction_tab")
+			wf.add_spectrum_excess("interaction_tab")
 		}
 
 	</script>
@@ -44,7 +49,10 @@
 
 <body onload="init();">
 	<div id="status_header"></div><div style='clear:both'/>
-	<div id="img_holder" style="position:relative; float:left"></div>
+	<div style="position:relative; float:left">
+		<div id="img_holder" style="position:relative; float:left"></div>
+		<div id="spectrum_holder" style="position:relative; float: left;"></div>
+	</div>
 	<div id="interaction_tab" style="position:relative; float:left; width:400px; margin-left:30px"></div>
 </body>
 

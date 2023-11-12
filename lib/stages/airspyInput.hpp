@@ -115,6 +115,7 @@ public:
     void rest_callback(kotekan::connectionInstance& conn,
                                    nlohmann::json& json_request);
     void adcstat_callback(kotekan::connectionInstance& conn);
+    void config_callback(kotekan::connectionInstance& conn);
 
 private:
     /// kotekan buffer object which will be fed
