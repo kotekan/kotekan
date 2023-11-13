@@ -94,26 +94,28 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
     float *samplesA, *samplesB, *samplesC;
     fftwf_plan fft_planA, fft_planB, fft_planC;
 
-    samplesA = (float*)fftwf_malloc(sizeof(float) * lag_window);
-    spectrumA = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2+1);
-    fft_planA = (fftwf_plan_s*)fftwf_plan_dft_r2c_1d(lag_window, samplesA, spectrumA, FFTW_ESTIMATE);
+    samplesA = (float*)fftwf_malloc(sizeof(float) * lag_window*2);
+    spectrumA = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window*2/2+1);
+    fft_planA = (fftwf_plan_s*)fftwf_plan_dft_r2c_1d(lag_window*2, samplesA, spectrumA, FFTW_ESTIMATE);
 
-    samplesB = (float*)fftwf_malloc(sizeof(float) * lag_window);
-    spectrumB = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2+1);
-    fft_planB = (fftwf_plan_s*)fftwf_plan_dft_r2c_1d(lag_window, samplesB, spectrumB, FFTW_ESTIMATE);
+    samplesB = (float*)fftwf_malloc(sizeof(float) * lag_window*2);
+    spectrumB = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window*2/2+1);
+    fft_planB = (fftwf_plan_s*)fftwf_plan_dft_r2c_1d(lag_window*2, samplesB, spectrumB, FFTW_ESTIMATE);
 
-    samplesC = (float*)fftwf_malloc(sizeof(float) * lag_window);
-    spectrumC = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2+1);
-    fft_planC = (fftwf_plan_s*)fftwf_plan_dft_c2r_1d(lag_window, spectrumC, samplesC, FFTW_ESTIMATE);
+    samplesC = (float*)fftwf_malloc(sizeof(float) * lag_window*2);
+    spectrumC = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2*2+1);
+    fft_planC = (fftwf_plan_s*)fftwf_plan_dft_c2r_1d(lag_window*2, spectrumC, samplesC, FFTW_ESTIMATE);
 
     for (unsigned int i = 0; i < lag_window; i++) {
         samplesA[i] = localA[i];
 //        samplesB[i] = localB[i];
         int o = 12345; //synthetic offset
-        samplesB[i] = localA[(i+o)%lag_window];
+        samplesB[i] = (i+o)>lag_window ? 0: localA[i+o];
         a.push_back(samplesA[i]);
         b.push_back(samplesB[i]);
     }
+    memset(&samplesA[lag_window],0,lag_window*sizeof(float));
+    memset(&samplesB[lag_window],0,lag_window*sizeof(float));
 #endif
 
     fftwf_execute(fft_planA);
@@ -122,7 +124,7 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
 #ifdef IQ_SAMPLING
     for (unsigned int i = 0; i < lag_window/2; i++) {
 #else
-    for (unsigned int i = 0; i < lag_window/2+1; i++) {
+    for (unsigned int i = 0; i < lag_window/2*2+1; i++) {
 #endif
         float Ar = spectrumA[i][0];
         float Ai = spectrumA[i][1];
@@ -143,7 +145,8 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
 
     float maxval=0, meanval=0, var=0;
     int lag = 0;
-    nlohmann::json corr = nlohmann::json::array();
+    nlohmann::json corr_pos = nlohmann::json::array();
+    nlohmann::json corr_neg = nlohmann::json::array();
 
 #ifdef IQ_SAMPLING
     for (unsigned int i=0; i < lag_window/2; i++){
@@ -162,21 +165,34 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
     }
     var /= lag_window/2;
 #else
-    for (unsigned int i=0; i < lag_window; i++){
-        float val = abs(samplesC[i]);
-        corr.push_back(val);
+    uint edge_truncate = lag_window*0.1;
+    for (unsigned int i=0; i < lag_window-edge_truncate; i++){
+        float norm = ((float)lag_window)-i;
+        float val = abs(samplesC[i]/norm);
         if (val > maxval) {
             lag = i;
             maxval = val;
         }
         meanval += val;
+        corr_pos.push_back(val);
+
+        val = abs(samplesC[2*lag_window-i]/norm);
+        if (val > maxval) {
+            lag = -i;
+            maxval = val;
+        }
+        meanval += val;
+        corr_neg.push_back(val);
     }
-    meanval /= lag_window;
-    for (unsigned int i=0; i < lag_window; i++){
-        float val = abs(samplesC[i])-meanval;
+    meanval /= (lag_window-edge_truncate)*2;
+    for (unsigned int i=0; i < lag_window-edge_truncate; i++){
+        float norm = ((float)lag_window)-i;
+        float val = abs(samplesC[i]/norm)-meanval;
+        var += val*val;
+        val = abs(samplesC[2*lag_window-i]/norm)-meanval;
         var += val*val;
     }
-    var /= lag_window;
+    var /= (lag_window-edge_truncate)*2;
 #endif
 
     float std = sqrt(var);
@@ -188,7 +204,8 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
         reply["lag"] = lag;
 //        reply["a"] = a;
 //        reply["b"] = b;
-//        reply["corr"] = corr;
+        reply["corr_pos"] = corr_pos;
+        reply["corr_neg"] = corr_neg;
         conn.send_json_reply(reply);
     }
     else {
@@ -199,7 +216,8 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
 //        reply["fb"] = fb;
 //        reply["fc"] = fc;
         reply["lag"] = 0;
-//        reply["corr"] = corr;
+        reply["corr_pos"] = corr_pos;
+        reply["corr_neg"] = corr_neg;
         conn.send_json_reply(reply);
     }
 

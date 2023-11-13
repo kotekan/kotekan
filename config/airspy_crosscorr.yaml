@@ -95,8 +95,8 @@ spectrum_output:
     in_buf: input_bufB
     out_buf: post_fengine_bufB
 
+integration_length: 1024
 correlation_output:
-  integration_length: 4096
   post_corr_buf:
     kotekan_buffer: standard
     metadata_pool: meta_pool
@@ -114,9 +114,12 @@ correlation_output:
     kotekan_stage: networkPowerStream
     num_elements: 4
     num_freq: 1024
-    samples_per_data_set: 64
-    power_integration_length: 64
     destination_port: 23401
     destination_ip: "127.0.0.1"
     destination_protocol: TCP
     in_buf: post_corr_buf
+
+#  spawn_pyviewer:
+#    kotekan_stage: SpawnProcess
+#    in_buf: post_corr_buf
+#    exec: "../../python/scripts/js_viewer/livebeam_server.py"

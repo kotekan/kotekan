@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<title>Data from Kotekan</title>
+<head>
+	<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+	<link rel="stylesheet" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.11.2/themes/smoothness/jquery-ui.css" />
+	<script src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.11.2/jquery-ui.min.js"></script>
+	<script src="http://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+	<script src="https://cdn.jsdelivr.net/npm/jquery-numeric@1.5.0/jquery.numeric.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/raphael@2.3.0/raphael.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/tinycolor2@1.6.0/cjs/tinycolor.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.1/plotly-basic.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.1/plotly-cartesian.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.13.6/underscore-min.js"></script>
+	<script src="lib/img_plotting.js"></script>
+	<script src="waterfall_crosscorr.js"></script>
+	<style>
+		.axis path,
+		.axis line {
+		    fill: none;
+		    stroke: black;
+		    shape-rendering: crispEdges;
+		}
+		.axis text {
+		    font-family: sans-serif;font-family: sans-serif;
+		}
+	</style>
+	<link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon"> 
+	<script type="text/javascript">
+		var waterfall;
+
+		function init() {
+			wf = new waterfall("img_holder");
+			wf.addColorSelect("interaction_tab",['viridis','inferno','magma','plasma','jet','gray','heat'])
+			wf.addColorBar("interaction_tab")
+			wf.addColorSlider("interaction_tab",[-30,30])
+			wf.addStartStop("interaction_tab")
+			//wf.addWaterfallControl("interaction_tab")
+			wf.addRecordButton("interaction_tab")
+			//wf.addAirspyGainControl("interaction_tab")
+			//wf.addStatusHeader("status_header")
+			//wf.add_spectrum("spectrum_holder")
+			//wf.add_baseline_control("interaction_tab")
+			//wf.add_spectrum_excess("interaction_tab")
+            wf.addLagcorr("interaction_tab")
+        }
+
+	</script>
+</head>
+
+<body onload="init();">
+	<div id="status_header"></div><div style='clear:both'/>
+	<div style="position:relative; float:left">
+		<div id="img_holder" style="position:relative; float:left"></div>
+		<div id="spectrum_holder" style="position:relative; float: left;"></div>
+	</div>
+	<div id="interaction_tab" style="position:relative; float:left; width:400px; margin-left:30px"></div>
+</body>
+
+</html>
