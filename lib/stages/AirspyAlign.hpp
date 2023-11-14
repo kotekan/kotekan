@@ -51,7 +51,9 @@ public:
 
     /// Primary loop, which waits on input frames, FFTs, and dumps to output.
     void main_thread() override;
-    void start_callback(kotekan::connectionInstance& conn);
+    void start_callback(kotekan::connectionInstance& conn, bool);
+    void lag_only(kotekan::connectionInstance& conn);
+    void lag_n_corr(kotekan::connectionInstance& conn);
 
 private:
     /// Kotekan buffer which this stage consumes from.

@@ -20,17 +20,10 @@ fftwEngine::fftwEngine(Config& config, const std::string& unique_name,
 
     spectrum_length = config.get_default<int>(unique_name, "spectrum_length", 1024);
 
-#ifdef IQ_SAMPLING
-    samples = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * spectrum_length);
-    spectrum = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * spectrum_length);
-    fft_plan =
-        (fftwf_plan_s*)fftwf_plan_dft_1d(spectrum_length, samples, spectrum, FFTW_FORWARD, FFTW_ESTIMATE);
-#else
     samples = (float*)fftwf_malloc(sizeof(float) * spectrum_length * 2);
     spectrum = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * spectrum_length + 1);
     fft_plan =
         (fftwf_plan_s*)fftwf_plan_dft_r2c_1d(spectrum_length*2, samples, spectrum, FFTW_ESTIMATE);    
-#endif
 
 }
 
@@ -58,23 +51,7 @@ void fftwEngine::main_thread() {
         if (out_local == nullptr)
             break;
 
-#ifdef IQ_SAMPLING
-        for (int j = 0; j < samples_per_input_frame / 2; j += spectrum_length) {
-            DEBUG("Running FFT, {}", in_local[2 * j]);
-            for (int i = 0; i < spectrum_length; i++) {
-                samples[i][0] = in_local[2 * (i + j)];
-                samples[i][1] = in_local[2 * (i + j) + 1];
-            }
-            fftwf_execute(fft_plan);
-            memcpy(out_local, spectrum + spectrum_length / 2,
-                   sizeof(fftwf_complex) * spectrum_length / 2);
-            memcpy(out_local + spectrum_length / 2, spectrum,
-                   sizeof(fftwf_complex) * spectrum_length / 2);
-            out_local += spectrum_length;
-        }
-#else
         for (int j = 0; j < samples_per_input_frame; j += spectrum_length*2) {
-            DEBUG("Running FFT, {}", in_local[j]);
             for (int i = 0; i < spectrum_length*2; i++) {
                 samples[i] = (float)in_local[i+j] / spectrum_length;
             }
@@ -82,7 +59,6 @@ void fftwEngine::main_thread() {
             memcpy(out_local, spectrum, sizeof(fftwf_complex) * spectrum_length);
             out_local += spectrum_length;
         }
-#endif
 
         mark_frame_empty(in_buf, unique_name.c_str(), frame_in);
         mark_frame_full(out_buf, unique_name.c_str(), frame_out);

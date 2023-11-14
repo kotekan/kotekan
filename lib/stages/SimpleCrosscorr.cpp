@@ -67,18 +67,14 @@ void SimpleCrosscorr::main_thread() {
         if ((inA_local == nullptr) || (inB_local == nullptr))
             break;
 
-        for (int j = 0; j < samples_per_frame; j += spectrum_length) {
+        for (int j = 0; j < samples_per_frame; j += spectrum_length) { //for each spectrum j
 
-            for (uint i = 0; i < spectrum_length; i++) {
+            for (uint i = 0; i < spectrum_length; i++) { //take each spectral sample i
                 Ar = inA_local[(i + j) * 2];
                 Ai = inA_local[(i + j) * 2 + 1];
                 Br = inB_local[(i + j) * 2];
                 Bi = inB_local[(i + j) * 2 + 1];
 
-//                spectrum_out[4*i+0] += (Ar * Ar + Ai * Ai) / integration_length;
-//                spectrum_out[4*i+1] += (Br * Br + Bi * Bi) / integration_length;
-//                spectrum_out[4*i+2] += (Ar * Br + Ai * Bi) / integration_length;
-//                spectrum_out[4*i+3] += (Ai * Br - Bi * Ar) / integration_length;
                 spectrum_out[i+spectrum_length*0] += (Ar * Ar + Ai * Ai) / integration_length;
                 spectrum_out[i+spectrum_length*1] += (Br * Br + Bi * Bi) / integration_length;
                 spectrum_out[i+spectrum_length*2] += (Ar * Br + Ai * Bi) / integration_length;

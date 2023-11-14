@@ -39,10 +39,11 @@ airspyInput::~airspyInput() {
         airspy_stop_rx(a_device);
         airspy_close(a_device);
     }
-    airspy_exit();
+    if (airspy_opened)
+        airspy_exit();
 }
 
-void airspyInput::config_callback(kotekan::connectionInstance& conn) {
+void airspyInput::get_config_callback(kotekan::connectionInstance& conn) {
     nlohmann::json reply;
     reply["lna_gain"] = gain_lna;
     reply["mix_gain"] = gain_mix;
@@ -67,7 +68,28 @@ void airspyInput::adcstat_callback(kotekan::connectionInstance& conn) {
     adcstat_ready = false;
 }
 
-void airspyInput::rest_callback(kotekan::connectionInstance& conn,
+void airspyInput::restart_callback(kotekan::connectionInstance& conn) {
+    if (a_device != nullptr) {
+        airspy_stop_rx(a_device);
+        airspy_close(a_device);
+    }
+    a_device = init_device();
+    if (a_device == nullptr) {
+        FATAL_ERROR("Error in airspyInput. Cannot find device.");
+        return;
+    }
+    int err = airspy_start_rx(a_device, airspy_callback, static_cast<void*>(this));
+    if (err != AIRSPY_SUCCESS) {
+        ERROR("airspy_start_rx() failed: {:s} ({:d})", airspy_error_name((enum airspy_error)err),
+                err)
+    }
+
+    nlohmann::json reply;
+    reply["status"] = true;
+    conn.send_json_reply(reply);
+}
+
+void airspyInput::set_config_callback(kotekan::connectionInstance& conn,
                                    nlohmann::json& json_request) {
     int err;
     bool success=false;
@@ -136,11 +158,12 @@ void airspyInput::rest_callback(kotekan::connectionInstance& conn,
 
 void airspyInput::main_thread() {
     int err;
-    std::string endpoint = unique_name+"/config";
+    std::string endpoint;
     using namespace std::placeholders;
     kotekan::restServer& rest_server = kotekan::restServer::instance();
+    endpoint = unique_name+"/set_config";
     rest_server.register_post_callback(endpoint,
-                                      std::bind(&airspyInput::rest_callback, this, _1, _2));
+                                      std::bind(&airspyInput::set_config_callback, this, _1, _2));
 
     endpoint = unique_name+"/adcstat";
     rest_server.register_get_callback(endpoint,
@@ -148,13 +171,23 @@ void airspyInput::main_thread() {
 
     endpoint = unique_name+"/get_config";
     rest_server.register_get_callback(endpoint,
-                                      std::bind(&airspyInput::config_callback, this, _1));
+                                      std::bind(&airspyInput::get_config_callback, this, _1));
+
+    endpoint = unique_name+"/restart";
+    rest_server.register_get_callback(endpoint,
+                                      std::bind(&airspyInput::restart_callback, this, _1));
 
     frame_id = 0;
     frame_loc = 0;
     recv_busy = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
 
-    airspy_init();
+    err = airspy_init();
+    if (err != AIRSPY_SUCCESS)
+    {
+        INFO("Failed to init Airspy library. Possibly expected?");
+        airspy_opened=false;
+    }
+
     a_device = init_device();
     if (a_device == nullptr) {
         FATAL_ERROR("Error in airspyInput. Cannot find device.");
@@ -168,6 +201,7 @@ void airspyInput::main_thread() {
         }
     }
 }
+//#include <sys/time.h>
 
 int airspyInput::airspy_callback(airspy_transfer_t* transfer) {
     airspyInput* proc = static_cast<airspyInput*>(transfer->ctx);
@@ -177,6 +211,9 @@ int airspyInput::airspy_callback(airspy_transfer_t* transfer) {
 void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
     // make sure two callbacks don't run at once
     pthread_mutex_lock(&recv_busy);
+//    struct timeval tv;
+//    gettimeofday (&tv, NULL);
+//    DEBUG("AirspyData {} {}", tv.tv_sec, tv.tv_usec);
 
     void* in = transfer->samples;
     size_t bt = transfer->sample_count * BYTES_PER_SAMPLE;
@@ -215,11 +252,7 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
                 float mean = 0, rms = 0;
                 float rail = 0;
                 short *fr = (short*)frame_ptr;
-#ifdef IQ_SAMPLING
-                for (uint i=0; i<buf->frame_size/BYTES_PER_SAMPLE; i++) if (abs(fr[i]) >= (2<<10)) rail++;
-#else
                 for (uint i=0; i<buf->frame_size/BYTES_PER_SAMPLE; i++) if (abs(fr[i]-2048) >= (2<<10)) rail++;
-#endif
                 rail/=buf->frame_size/BYTES_PER_SAMPLE;
                 for (uint i=0; i<buf->frame_size/BYTES_PER_SAMPLE; i++) mean+=(float)fr[i];
                 mean/=buf->frame_size/BYTES_PER_SAMPLE;
@@ -228,17 +261,15 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
                 adcrailfrac=rail;
                 adcrms=rms;
                 adcmean=mean;
-#ifndef IQ_SAMPLING
                 adcmean-=2048;
-#endif
+
                 INFO("Airspy ADC mean: {:f}, RMS: {:f}, rail fraction {:f}",adcmean,adcrms,adcrailfrac);
                 adcstat_ready=true;
                 dump_adcstat=false;
             }
-#ifndef IQ_SAMPLING
             short *fr = (short*)frame_ptr;
             for (uint i=0; i<buf->frame_size/BYTES_PER_SAMPLE; i++) fr[i]-=2048;
-#endif
+
             mark_frame_full(buf, unique_name.c_str(), frame_id);
             frame_id = (frame_id + 1) % buf->num_frames;
         }
@@ -307,11 +338,7 @@ struct airspy_device* airspyInput::init_device() {
         }
     }
 
-#ifdef IQ_SAMPLING
-    result = airspy_set_sample_type(dev, AIRSPY_SAMPLE_INT16_IQ);
-#else
     result = airspy_set_sample_type(dev, AIRSPY_SAMPLE_RAW);
-#endif
     if (result != AIRSPY_SUCCESS) {
         ERROR("airspy_set_sample_type() failed: {:s} ({:d})",
               airspy_error_name((enum airspy_error)result), result);

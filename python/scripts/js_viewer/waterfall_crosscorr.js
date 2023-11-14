@@ -11,19 +11,19 @@ function waterfall(container){
     this.kotekan_port= 12048
 
 	this.num_freqs=1024;
-	this.waterfall_buffer_length=1000;
+	this.waterfall_buffer_length=300;
 	this.waterfall_buffer_display_length=300;
 	this.plot_width=512;
 	this.margin=[100,100];
 	this.waterfall_plot_height=500;
 
     this.n_inputs=2;
-    this.datatype=[['auto','auto'],['real','imag']]
+//    this.datatype=[['auto','auto'],['real','imag']]
     this.datatype=[['auto','auto'],['mag','phase']]
 
     this.spectrum_baseline=[];
 	this.timearr=[];
-	this.ms_per_datum=25.;
+	this.ms_per_datum=100.;
 	this.freq_list=[];
 
 	this.cb = new imgPlotter();
@@ -31,9 +31,9 @@ function waterfall(container){
 	this.cb.min=0;
 	this.cb.max=20;
 
-	this.cb_phase = new imgPlotter();
-    this.cb_phase.min = -Math.PI
-    this.cb_phase.max = Math.PI
+	this.cb_ph = new imgPlotter();
+    this.cb_ph.min = -Math.PI
+    this.cb_ph.max = Math.PI
 
 	this.cb_ri = new imgPlotter();
     this.cb_ri.min = -0.1
@@ -41,7 +41,7 @@ function waterfall(container){
 
 	this.time=new Date().getTime();
 
-    $("#"+this.container).width(this.plot_width+this.margin[0])
+    $("#"+this.container).parent().width(this.plot_width+this.margin[0])
     this.jqcontainer=$("#"+this.container)
     	.css('position','relative')
     	.attr('width',this.plot_width+this.margin[0])
@@ -49,31 +49,40 @@ function waterfall(container){
 		.width(this.plot_width+this.margin[0])
     	.height(this.waterfall_plot_height+this.margin[1])
 
-    var yaxis_div = $( "<div/>").uniqueId()
+    var time_div = $( "<div/>").uniqueId()
         .css({'width':this.margin[0],
                 'font-size':'10pt',
                 'float':'left'})
         .appendTo(this.jqcontainer)
-	this.yaxis_scale = d3.time.scale.utc()
-			    .domain([new Date(this.time),
-			    		 new Date(this.time+this.waterfall_buffer_display_length*this.ms_per_datum)])
-			    .range([0, this.waterfall_plot_height]);
-    this.yaxis = d3.svg.axis().ticks(this.waterfall_plot_height*this.ms_per_datum/1000/2)
-				              .scale(this.yaxis_scale).orient("left").tickFormat(d3.time.format('%H:%M:%S'))
-    this.yaxisplot=d3.select('#'+yaxis_div[0].id).append("svg")
-	    .style("position","relative")
-	    .attr("height", this.waterfall_plot_height)
-		.append("g")
-	    .attr("transform", "translate(" + this.margin[0] + "," + 0 + ")")
-	    .call(this.yaxis)
-    this.yaxisplot.select('path').style({'stroke': 'black', 'fill': 'none', 'stroke-width': '1px'})
-    this.yaxisplot.append("text")
-			.attr("text-anchor","middle")
-			.attr("font-size",20)
-			.attr("y",-this.margin[0]+35)
-			.attr("x",-this.waterfall_plot_height/2)
-			.attr("transform", "rotate(-90)")
-			.text("Time");
+
+	this.time_scale = []
+	this.time_axis = []
+	this.time_axisplot = []
+	for (i=0; i<this.n_inputs; i++){
+		var time_axisdiv = $("<div/>").uniqueId().appendTo(time_div)
+				.css({height:this.waterfall_plot_height/2,width:100,float:'left'})
+		this.time_scale[i] = d3.time.scale.utc()
+					.domain([new Date(this.time),
+							 new Date(this.time+this.waterfall_buffer_display_length*this.ms_per_datum)])
+					.range([0, this.waterfall_plot_height/2]);
+		this.time_axis[i] = d3.svg.axis().ticks(this.waterfall_plot_height*this.ms_per_datum/1000/5)
+								.scale(this.time_scale[i]).orient("left").tickFormat(d3.time.format('%H:%M:%S'))
+		this.time_axisplot[i]=d3.select('#'+time_axisdiv[0].id).append("svg")
+			.style("position","relative")
+			.attr("height", this.waterfall_plot_height/2)
+			.append("g")
+			.attr("transform", "translate(" + this.margin[0] + "," + 0 + ")")
+			.call(this.time_axis[i])
+		this.time_axisplot[i].select('path').style({'stroke': 'black', 'fill': 'none', 'stroke-width': '1px'})
+	}
+	$("<div/>").appendTo(time_div)
+		.css({'position':'absolute','left':0,'top':this.waterfall_plot_height/2})
+		.css({'transform':'translate(0,-50%)'})
+	.append($("<p/>")
+		.css({'font-family':'sans-serif','font-size':20})		
+		.css({'text-align':'center'})
+		.css({"rotate":"-90deg"})
+		.text("Time"));
 
     var waterfall_plot_div=$( "<div/>").uniqueId()
                             .css({
@@ -99,8 +108,10 @@ function waterfall(container){
                                     .appendTo(waterfall_plot_div)
         }
     }
-                        
-    var freq_div = $("<div/>").uniqueId().height(20)
+
+	$("<div/>").appendTo(this.jqcontainer).css({width:this.margin[0],height:20,float:'left'})
+
+	var freq_div = $("<div/>").uniqueId().height(20)
     						.css({
 		           				'position':'relative','float':'left',
 		        				'font-size':'8pt',
@@ -109,23 +120,27 @@ function waterfall(container){
 	            			})
 	            			.attr('class','axis')
 							.appendTo(this.jqcontainer)
-	this.freq_scale = d3.scale.linear().range([0,this.plot_width]).domain([1,2]);
-	this.freq_axis = d3.svg.axis().scale(this.freq_scale).orient("bottom")
-	this.freq_axisplot=d3.select('#'+freq_div[0].id).append("svg")
-	    .style("position","absolute")
-	    .style("left",-10)
-	    .attr("width", this.plot_width+20)
-		.append("g")
-	    .attr("transform", "translate(" + 10 + "," + 0 + ")")
-	    .call(this.freq_axis)
-	
-	this.freq_axisplot.append("text")
-			.attr("text-anchor","middle")
-			.attr("font-size",20)
-			.attr("x",this.plot_width/2)
-			.attr("y",this.margin[1]/2)
-			.text("Frequency [MHz]");
+	this.freq_scale = []
+	this.freq_axis = []
+	this.freq_axisplot = []
+	for (i=0; i<this.n_inputs; i++){
+		var freq_axisdiv = $("<div/>").uniqueId().appendTo(freq_div)
+				.css({width:this.plot_width/2,height:20,float:'left'})
+		this.freq_scale[i] = d3.scale.linear().range([0,this.plot_width/2]).domain([1,2]);
+		this.freq_axis[i] = d3.svg.axis().scale(this.freq_scale[i]).orient("bottom").ticks(5)
+		this.freq_axisplot[i]=d3.select('#'+freq_axisdiv[0].id).append("svg")
+			.style("position","relative")
+			.style("left",-10)
+			.attr("width", this.plot_width/2+20)
+			.append("g")
+			.attr("transform", "translate(" + 10 + "," + 0 + ")")
+			.call(this.freq_axis[i])
+	}
 
+	$("<p/>").appendTo(freq_div)
+		.css({'font-family':'sans-serif','font-size':20})		
+		.css({'text-align':'center'})
+		.text("Frequency [MHz]");
 }
 
 waterfall.prototype.draw =
@@ -147,7 +162,7 @@ waterfall.prototype.dodraw =
 
         for (xi = 0; xi<this.n_inputs; xi++)
             for (yi = 0; yi<this.n_inputs; yi++) {
-                this.scroll_canvas[xi][yi].attr('height', this.waterfall_buffer_display_length)
+                this.scroll_canvas[xi][yi].attr('height', Math.min(scd[xi][yi].length,this.waterfall_buffer_display_length))
             }
         for (xi = 0; xi<this.n_inputs; xi++)
             for (yi = 0; yi<this.n_inputs; yi++) {
@@ -157,7 +172,7 @@ waterfall.prototype.dodraw =
                 var disp_start=Math.max(0,scd[xi][yi].length-this.waterfall_buffer_display_length);
                 if ((this.datatype[xi][yi] == 'auto') || (this.datatype[xi][yi] == 'mag')) blitter=this.cb
                 else if ((this.datatype[xi][yi] == 'real') || (this.datatype[xi][yi] == 'imag')) blitter=this.cb_ri
-                else if (this.datatype[xi][yi] == 'phase') blitter=this.cb_phase
+                else if (this.datatype[xi][yi] == 'phase') blitter=this.cb_ph
                 else{
                     console.log("Unknown data type!")
                     return
@@ -169,7 +184,7 @@ waterfall.prototype.dodraw =
                             scroll_img[j][i]=10*Math.log10(scd[xi][yi][j][i])
                         }
                         else if (this.datatype[xi][yi] == 'mag') {
-                            scroll_img[j][i]=_mag(scd[1][0][j][i], scd[1][1][j][i])
+                            scroll_img[j][i]=10*Math.log10(_mag(scd[1][0][j][i], scd[1][1][j][i]))
                         }
                         else if ((this.datatype[xi][yi] == 'real') || (this.datatype[xi][yi] == 'imag')){
                             scroll_img[j][i]=scd[xi][yi][j][i]
@@ -185,38 +200,12 @@ waterfall.prototype.dodraw =
                     }
                 }
                 c.putImageData(imageData, 0, 0);
-
-                if (scd[xi][yi].length > this.waterfall_buffer_display_length)
-                {
-                    this.yaxis_scale.domain([ new Date(this.timearr[this.timearr.length-this.waterfall_buffer_display_length]*1e3),
-                                        new Date(this.timearr[this.timearr.length-1]*1e3) ])
-                    this.yaxisplot.call(this.yaxis)
-                }
-            }
-/*
-		this.spectrum = _.map(_.transpose(this.scroll_data),_mean)
-		this.spectrum_latest = _.map(_.transpose(this.scroll_data),_.last)
-		
-		var f = Array.from(this.freq_list)
-		var spectrum_plot_data_update = {
-			x: [f,f,f],
-			y: [_.map(this.spectrum,_dB),_.map(this.spectrum_latest,_dB),_.map(this.spectrum_baseline,_dB)],
+				for (i=0; i<this.n_inputs;i++){
+                    this.time_scale[i].domain([ new Date(_.first(this.timearr)*1e3),
+                                        	    new Date(this.timearr[this.timearr.length-1]*1e3) ])
+                    this.time_axisplot[i].call(this.time_axis[i])
+				}
 		}
-		var spectrum_plot_layout_update = {
-			'yaxis.range':[this.cb.min,this.cb.max],
-			'yaxis.visible':[this.show_spectrum_mean,this.show_spectrum_latest,this.show_spectrum_baseline]
-		}
-		Plotly.update(this.spectrum_plot, spectrum_plot_data_update,spectrum_plot_layout_update);
-
-
-		var spectrum_excess_plot_data_update = {
-			x: [f,f],
-			y: [_.map(_.map(this.spectrum,(v, i) => v / this.spectrum_baseline[i]),_dB),
-				_.map(_.map(this.spectrum_latest,(v, i) => v / this.spectrum_baseline[i]),_dB),
-				],
-		}
-		Plotly.restyle(this.spectrum_excess_plot, spectrum_excess_plot_data_update);
-*/
 	}
 
 waterfall.prototype.openSocket =
@@ -249,8 +238,10 @@ waterfall.prototype.openSocket =
 	       	  switch (msgtype) {
 	       	  	case 1: //freq list
 	       	  	  self.freq_list = new Float32Array(e.data.slice(1))
-				  self.freq_scale.domain([self.freq_list[0],self.freq_list[self.num_freqs-1]])
-				  self.freq_axisplot.call(self.freq_axis)
+				  for (i=0; i<self.n_inputs; i++){
+					  self.freq_scale[i].domain([self.freq_list[0],self.freq_list[self.num_freqs-1]])
+					  self.freq_axisplot[i].call(self.freq_axis[i])
+				  }
 				  break;
 	       	  	case 2: //timestep
 		       	  var timestamp = new Float64Array(e.data.slice(1,9))[0]
@@ -317,8 +308,6 @@ waterfall.prototype.addColorSlider =
 							}
 							self.draw();
 						}})
-//		cbslider.width(width);
-
 
 		var rr=Raphael($("<div style='position:relative'/>").uniqueId().appendTo(wrapper)[0].id,width, 50);
 		rr.canvas.style.position="absolute";
@@ -393,18 +382,7 @@ waterfall.prototype.addColorSelect =
 
 waterfall.prototype.start = function() {
 	self=this
-/*
-    fetch('http://'+self.kotekan_url+':'+self.kotekan_port+'/airspy_input/get_config',{})
-		.then(r => r.json().then(data => {
-			self.airspy_config=data
-			self.slider_gain_lna.slider('value',self.airspy_config["lna_gain"])
-			self.slider_gain_lnat.text(self.airspy_config["lna_gain"])
-			self.slider_gain_mix.slider('value',self.airspy_config["lna_gain"])
-			self.slider_gain_mixt.text(self.airspy_config["mix_gain"])
-			self.slider_gain_if.slider('value',self.airspy_config["lna_gain"])
-			self.slider_gain_ift.text(self.airspy_config["if_gain"])
-		}))
-        */
+
 	this.openSocket();
 }
 waterfall.prototype.stop = function() {
@@ -469,13 +447,12 @@ waterfall.prototype.addRecordButton =
 	}
 
 waterfall.prototype.addAirspyGainControl =
-	function(target)
+	function(target,stage_url)
 	{
 		self=this
-		this.adc={'mean':0, 'rms':0, 'railfrac':0};
 
-		change_gain = function(type,value,o){
-			fetch('http://'+o.kotekan_url+':'+o.kotekan_port+'/airspy_input/config', {
+		let change_gain = function(type,value){
+			fetch('http://'+self.kotekan_url+':'+self.kotekan_port+'/'+stage_url+'/set_config', {
 				mode: 'no-cors',
 			    method: 'POST',
 			    headers: {
@@ -484,93 +461,102 @@ waterfall.prototype.addAirspyGainControl =
 			    },
 			    body: JSON.stringify({[type]: value})
 			})
-		   .then(r =>
-			   	fetch('http://'+o.kotekan_url+':'+o.kotekan_port+'/airspy_input/adcstat',{})
-			   		 .then(r => r.json().then(data => {
-			   		 		self.adc=data
-			   		 		self.adcmean.text("Mean: "+self.adc['mean'].toFixed(2))
-			   		 		self.adcrms.text("RMS: "+self.adc['rms'].toFixed(2))
-			   		 		self.adcrailfrac.text("Rail %: "+(self.adc['railfrac']*100).toFixed(2))
-					 }))
-		   )
+		   .then(check_adcstats)
+		}
+		let check_adcstats = function(){
+			fetch('http://'+self.kotekan_url+':'+self.kotekan_port+'/'+stage_url+'/adcstat',{})
+				.then(r => r.json().then(data => {
+					adcmean.text("Mean: "+data['mean'].toFixed(2))
+					adcrms.text("RMS: "+data['rms'].toFixed(2))
+					adcrailfrac.text("Rail %: "+(data['railfrac']*100).toFixed(2))
+	 			}))
 		}
 
 		var marg=15
-		var width=$("#"+target).width()
 	    var slider_width=50
 	    var slider_height=200
-	    wrapper=$("<div style='margin:10px,width:100%'/>").uniqueId()
-	    			.height(slider_height).width(width-2*marg).appendTo($("#"+target))
+	    var wrapper=$("<div'/>").uniqueId().height(slider_height)
+					.width((this.plot_width+this.margin[0])/2-1)
+					.css({'margin':'10px', 'float':'left', 'margin':'0px'})
+					.appendTo($("#"+target))
 
-	    gainwrap=$('<div/>').uniqueId().css({width:3*(slider_width+4)}).appendTo(wrapper)
+	    var gainwrap=$('<div/>').uniqueId().css({width:3*(slider_width+4)}).appendTo(wrapper)
 		$("<p/>").css({'font-family':'sans-serif','text-align':'center','margin':marg})
 		    		.text("Gain").appendTo(gainwrap)
 
-	    adcwrap=$('<div/>').uniqueId().css({width:'auto'}).appendTo(wrapper)
+	    var adcwrap=$('<div/>').uniqueId().css({width:'auto'}).appendTo(wrapper)
 			    .css({'font-family':'sans-serif','font-size':'10pt','text-align':'left','margin':marg})
 		$("<p>").text("ADC Stats").css({'font-size':'14pt','text-align':'center'}).appendTo(adcwrap)
-		this.adcmean = $("<div/>").css({'position':'relative','left':'30px'})
-				.text("Mean: "+this.adc['mean']).appendTo(adcwrap)
-		this.adcrms = $("<p/>").css({'position':'relative','left':'30px'})
-				.text("RMS: "+this.adc['rms']).appendTo(adcwrap)
-		this.adcrailfrac = $("<p/>").css({'position':'relative','left':'30px'})
-				.text("Rail %: "+this.adc['railfrac']).appendTo(adcwrap)
+		var adcmean = $("<div/>").css({'position':'relative','left':'30px'})
+				.text("Mean: ").appendTo(adcwrap)
+		var adcrms = $("<p/>").css({'position':'relative','left':'30px'})
+				.text("RMS: ").appendTo(adcwrap)
+		var adcrailfrac = $("<p/>").css({'position':'relative','left':'30px'})
+				.text("Rail %: ").appendTo(adcwrap)
 
 
-	    {
-		    lnawrap = $("<div style='float:left'/>").width(slider_width)
-		    			.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(gainwrap)
-		    $("<p/>").css({'font-family':'sans-serif', 'margin':2, 'margin-bottom':15})
-		    		.text("LNA").appendTo(lnawrap)
+		var lnawrap = $("<div style='float:left'/>").width(slider_width)
+					.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(gainwrap)
+		$("<p/>").css({'font-family':'sans-serif', 'margin':2, 'margin-bottom':15})
+				.text("LNA").appendTo(lnawrap)
 
-		    this.slider_gain_lna=$("<div/>").uniqueId().appendTo(lnawrap).css({'margin':'auto'})
-						.slider({min:0,max:14,value:10,step:1,
-							orientation: "vertical",
-							slide:function(event, ui){
-								lna_gain=ui.value;
-								change_gain("gain_lna",lna_gain,self)
-								self.slider_gain_lnat.text(ui.value);
-							}
-						})
-		    this.slider_gain_lnat=$("<p/>").css({'font-family':'sans-serif','text-align':'center','margin':2})
-		    		.text(10).appendTo(lnawrap)
-    	}
-	    {
-		    mixwrap = $("<div style='float:left'/>").width(slider_width)
-		    			.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(gainwrap)
-		    $("<p/>").css({'font-family':'sans-serif','margin':2, 'margin-bottom':15})
-		    		.text("MIX").appendTo(mixwrap)
+		var slider_gain_lna=$("<div/>").uniqueId().appendTo(lnawrap).css({'margin':'auto'})
+					.slider({min:0,max:14,value:10,step:1,
+						orientation: "vertical",
+						slide:function(event, ui){
+							lna_gain=ui.value;
+							change_gain("gain_lna",lna_gain)
+							slider_gain_lnat.text(ui.value);
+						}
+					})
+		var slider_gain_lnat=$("<p/>").css({'font-family':'sans-serif','text-align':'center','margin':2})
+				.text(10).appendTo(lnawrap)
 
-			this.slider_gain_mix=$("<div/>").uniqueId().appendTo(mixwrap).css({'margin':'auto'})
-						.slider({min:0,max:15,value:10,step:1,
-							orientation: "vertical",
-							slide:function(event, ui){
-								mix_gain=ui.value;
-								change_gain("gain_mix",mix_gain,self)
-								self.slider_gain_mixt.text(ui.value);
-							}
-						})
-			this.slider_gain_mixt=$("<p/>").css({'font-family':'sans-serif', 'margin':2})
-		    		.text("10").appendTo(mixwrap)
-    	}
-	    {
-		    ifwrap = $("<div style='float:left'/>").width(slider_width)
-		    			.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(gainwrap)
-		    $("<p/>").css({'font-family':'sans-serif', 'margin':2, 'margin-bottom':15})
-		    		.text("IF").appendTo(ifwrap)
+		var mixwrap = $("<div style='float:left'/>").width(slider_width)
+					.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(gainwrap)
+		$("<p/>").css({'font-family':'sans-serif','margin':2, 'margin-bottom':15})
+				.text("MIX").appendTo(mixwrap)
 
-			this.slider_gain_if=$("<div/>").uniqueId().appendTo(ifwrap).css({'margin':'auto'})
-						.slider({min:0,max:15,value:10,step:1,
-							orientation: "vertical",
-							slide:function(event, ui){
-								if_gain=ui.value;
-								change_gain("gain_if",if_gain,self)
-								self.slider_gain_ift.text(ui.value);
-							}
-						})
-			this.slider_gain_ift=$("<p/>").css({'font-family':'sans-serif', 'margin':2})
-		    		.text("10").appendTo(ifwrap)
-    	}
+		var slider_gain_mix=$("<div/>").uniqueId().appendTo(mixwrap).css({'margin':'auto'})
+					.slider({min:0,max:15,value:10,step:1,
+						orientation: "vertical",
+						slide:function(event, ui){
+							mix_gain=ui.value;
+							change_gain("gain_mix",mix_gain)
+							slider_gain_mixt.text(ui.value);
+						}
+					})
+		var slider_gain_mixt=$("<p/>").css({'font-family':'sans-serif', 'margin':2})
+				.text("10").appendTo(mixwrap)
+
+		var ifwrap = $("<div style='float:left'/>").width(slider_width)
+					.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(gainwrap)
+		$("<p/>").css({'font-family':'sans-serif', 'margin':2, 'margin-bottom':15})
+				.text("IF").appendTo(ifwrap)
+
+		var slider_gain_if=$("<div/>").uniqueId().appendTo(ifwrap).css({'margin':'auto'})
+					.slider({min:0,max:15,value:10,step:1,
+						orientation: "vertical",
+						slide:function(event, ui){
+							if_gain=ui.value;
+							change_gain("gain_if",if_gain)
+							slider_gain_ift.text(ui.value);
+						}
+					})
+		var slider_gain_ift=$("<p/>").css({'font-family':'sans-serif', 'margin':2})
+				.text("10").appendTo(ifwrap)
+
+		fetch('http://'+self.kotekan_url+':'+self.kotekan_port+'/'+stage_url+'/get_config',{})
+			.then(r => r.json().then(data => {
+				slider_gain_lna.slider('value',data["lna_gain"])
+				slider_gain_lnat.text(data["lna_gain"])
+				slider_gain_mix.slider('value',data["mix_gain"])
+				slider_gain_mixt.text(data["mix_gain"])
+				slider_gain_if.slider('value',data["if_gain"])
+				slider_gain_ift.text(data["if_gain"])
+			}))
+		check_adcstats()
+
 	}
 
 
@@ -619,6 +605,8 @@ waterfall.prototype.change_palette=
 	function(event, data)
 	{
 		this.cb.gradientScale(this.cb.colormaps[data.item.label]);
+		this.cb_ri.gradientScale(this.cb_ri.colormaps[data.item.label]);
+		this.cb_ph.gradientScale(this.cb_ph.colormaps[data.item.label]);
 		this.cb_rect.attr({fill:this.cb.cb_grad})
 		this.draw();
 	}
@@ -628,25 +616,113 @@ waterfall.prototype.addLagcorr=
         self=this
         wrapper=$("<div style='margin:0px'/>").uniqueId().appendTo($("#"+target))
             .height(300).width(this.plot_width)
-        negcorr_plot_data = {x: [],y: [],type: 'scatter',name:'Negative Lag (A ahead)'}
-        poscorr_plot_data = {x: [],y: [],type: 'scatter',name:'Positive Lag (B ahead)'}
+		poscorr_plot_data = {x: [],y: [],type: 'scatter',name:'Positive Lag (A ahead)'}
+		negcorr_plot_data = {x: [],y: [],type: 'scatter',name:'Negative Lag (B ahead)'}
+		var lag=0
 
-        self.baseline_btn = $("<button/>").appendTo($("<div/>").appendTo(wrapper))
-            .button({label:'Calculate Lag Corr',icons:{primary: "ui-icon-play"}})
-            .css({margin:"0 auto",display:"block"})
+        var calc_lag_btn = $("<button/>").appendTo($("<div/>").appendTo(wrapper))
+            .button({label:'Calculate Lag Corr'})
+            .css({margin:"0 auto",display:"block",float:'left'})
             .click(function() {
-                fetch('http://'+self.kotekan_url+':'+self.kotekan_port+'/lag_align/go',{})
+                fetch('http://'+self.kotekan_url+':'+self.kotekan_port+'/lag_align/cal_lag',{})
                     .then(r => r.json().then(data => {
-                        lagcorr_plot_update = {
-                            x: [_.range(0,-data.corr_neg.length,-1),_.range(0,data.corr_pos.length)],
-                            y: [data.corr_neg,data.corr_pos]
-                        }
-                        Plotly.restyle(self.lagcorr_plot, lagcorr_plot_update);
-                    }))
+						lag = data.lag
+					}))
                 });
+		var show_corr_btn = $("<button/>").appendTo($("<div/>").appendTo(wrapper))
+			.button({label:'Show Lag Corr (SLOW)'})
+			.css({margin:"0 auto",display:"block",float:'left'})
+			.click(function() {
+				fetch('http://'+self.kotekan_url+':'+self.kotekan_port+'/lag_align/get_correlation',{})
+					.then(r => r.json().then(data => {
+						lagcorr_plot_update = {
+							x: [_.range(0,data.corr_pos.length),_.range(0,-data.corr_neg.length,-1)],
+							y: [data.corr_pos,data.corr_neg]
+						}
+						Plotly.restyle(self.lagcorr_plot, lagcorr_plot_update);
+						lag = data.lag
+					}))
+				});
+		var set_lag_btn = $("<button/>").appendTo($("<div/>").appendTo(wrapper))
+			.button({label:'Apply Lag'})
+			.css({margin:"0 auto",display:"block",float:'left'})
+			.click(function() {
+				if (lag > 0) target='airspy_inputA'
+				else if (lag < 0) target='airspy_inputB'
+				else {
+					console.log("Zero lag, all set!")
+				}
+				fetch('http://localhost:12048/'+target+'/set_config', {
+					mode: 'no-cors',
+					method: 'POST',
+					headers: {
+						'Accept': 'application/json',
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({'add_lag': Math.abs(lag)})
+				})
+			})
+
+		var restart_a_btn = $("<button/>").appendTo($("<div/>").appendTo(wrapper))
+			.button({label:'Restart A & Align'})
+			.css({margin:"0 auto",display:"block",float:'left'})
+			.click(function() {
+				fetch('http://'+self.kotekan_url+':'+self.kotekan_port+'/airspy_inputA/restart',{})
+				.then(r => r.json().then(data => {
+					console.log("Restarting... ",data)
+					fetch('http://'+self.kotekan_url+':'+self.kotekan_port+'/lag_align/cal_lag',{})
+					.then(r => r.json().then(data => {
+						lag = data.lag
+						if (lag > 0) target='airspy_inputA'
+						else if (lag < 0) target='airspy_inputB'
+						else {
+							console.log("Zero lag, all set!")
+						}
+						fetch('http://localhost:12048/'+target+'/set_config', {
+							mode: 'no-cors',
+							method: 'POST',
+							headers: {
+								'Accept': 'application/json',
+								'Content-Type': 'application/json'
+							},
+							body: JSON.stringify({'add_lag': Math.abs(lag)})
+						})
+					}))
+				}))
+			})
+
+			var restart_b_btn = $("<button/>").appendTo($("<div/>").appendTo(wrapper))
+			.button({label:'Restart B & Align'})
+			.css({margin:"0 auto",display:"block",float:'left'})
+			.click(function() {
+				fetch('http://'+self.kotekan_url+':'+self.kotekan_port+'/airspy_inputB/restart',{})
+				.then(r => r.json().then(data => {
+					console.log("Restarting... ",data)
+					fetch('http://'+self.kotekan_url+':'+self.kotekan_port+'/lag_align/cal_lag',{})
+					.then(r => r.json().then(data => {
+						lag = data.lag
+						if (lag > 0) target='airspy_inputA'
+						else if (lag < 0) target='airspy_inputB'
+						else {
+							console.log("Zero lag, all set!")
+						}
+						fetch('http://localhost:12048/'+target+'/set_config', {
+							mode: 'no-cors',
+							method: 'POST',
+							headers: {
+								'Accept': 'application/json',
+								'Content-Type': 'application/json'
+							},
+							body: JSON.stringify({'add_lag': Math.abs(lag)})
+						})
+					}))
+				}))
+			})
+
 
         var plotdiv = $("<div/>").uniqueId().appendTo(wrapper)
             .height("100%").width("100%")
+			.css({float:'left'})
         this.lagcorr_plot = plotdiv.attr('id')
 
         var layout = {
@@ -654,10 +730,10 @@ waterfall.prototype.addLagcorr=
 			xaxis: {title: {text: 'Lag (Samples)'},linecolor: 'black',zeroline:false},
 			yaxis: {title: {text: 'Correlation Strength (arb)'},linecolor: 'black',zeroline:false},
 			margin: {t:30, l:50, r:10, b:40},
-			legend: {xanchor:'right',x:1.0,y:0.}
+			legend: {xanchor:'right',x:1.0,y:0.2}
 		}
 
-        Plotly.newPlot(this.lagcorr_plot, [negcorr_plot_data,poscorr_plot_data], layout, {staticPlot: true});
+        Plotly.newPlot(this.lagcorr_plot, [poscorr_plot_data,negcorr_plot_data], layout, {staticPlot: true});
     }
 
     /*

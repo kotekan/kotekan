@@ -32,6 +32,7 @@ class KotekanPowerStream():
       TCP_PORT = self.port
       self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       self.sock.bind((TCP_IP, TCP_PORT))
+      self.sock.settimeout(1)
       self.sock.listen(1)
       self.connect_tcp()
       self.looph=reactor.callLater(0.001, self.receive_frame)
@@ -158,6 +159,8 @@ class MyServerProtocol(WebSocketServerProtocol):
         self.transport.loseConnection() 
         return
 
+#      print(KotekanConn.frame_utc0, KotekanConn.frame_idx, KotekanConn.frame_int_len, KotekanConn.frame_raw_cad * KotekanConn.frame_int_len, \
+#            KotekanConn.frame_raw_cad * KotekanConn.frame_int_len * (KotekanConn.frame_idx - KotekanConn.frame_idx0))
       sample_time = KotekanConn.frame_utc0 + KotekanConn.frame_raw_cad * KotekanConn.frame_int_len * (KotekanConn.frame_idx - KotekanConn.frame_idx0)
       send_data = np.int8(MSG_TYPE['timestep']).tobytes() + \
                   np.float64(sample_time).tobytes() + \

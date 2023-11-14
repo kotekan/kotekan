@@ -57,7 +57,7 @@ post_fengine_buf:
   kotekan_buffer: standard
   metadata_pool: meta_pool
   num_frames: buffer_depth
-  frame_size: samples_per_data_set * sizeof_float # * 2 for complex / 2 for half-size
+  frame_size: samples_per_data_set * sizeof_float # * 2 for complex / 2 for r->i fft
 
 spectrum_output:
   fengine:

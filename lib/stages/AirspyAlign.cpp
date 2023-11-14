@@ -46,50 +46,18 @@ AirspyAlign::~AirspyAlign() {
     free(localB);
 }
 
+void AirspyAlign::lag_only(kotekan::connectionInstance& conn) {
+    this->start_callback(conn,false);
+}
+void AirspyAlign::lag_n_corr(kotekan::connectionInstance& conn){
+    this->start_callback(conn,true);
+}
 
-void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
-    nlohmann::json reply;
+
+void AirspyAlign::start_callback(kotekan::connectionInstance& conn, bool send_corr) {
     going = true;
-
     while (going) {usleep(1000);}
 
-    nlohmann::json a = nlohmann::json::array();
-    nlohmann::json b = nlohmann::json::array();
-    nlohmann::json fa = nlohmann::json::array();
-    nlohmann::json fb = nlohmann::json::array();
-    nlohmann::json fc = nlohmann::json::array();
-
-#ifdef IQ_SAMPLING
-    fftwf_complex *spectrumA, *spectrumB, *spectrumC;
-    fftwf_complex *samplesA, *samplesB, *samplesC;
-    fftwf_plan fft_planA, fft_planB, fft_planC;
-
-    samplesA = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2);
-    spectrumA = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2);
-    fft_planA = (fftwf_plan_s*)fftwf_plan_dft_1d(lag_window/2, samplesA, spectrumA, FFTW_FORWARD, FFTW_ESTIMATE);
-
-    samplesB = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2);
-    spectrumB = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2);
-    fft_planB = (fftwf_plan_s*)fftwf_plan_dft_1d(lag_window/2, samplesB, spectrumB, FFTW_FORWARD, FFTW_ESTIMATE);
-
-    samplesC = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2);
-    spectrumC = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * lag_window/2);
-    fft_planC = (fftwf_plan_s*)fftwf_plan_dft_1d(lag_window/2, spectrumC, samplesC, FFTW_BACKWARD, FFTW_ESTIMATE);
-
-    for (unsigned int i = 0; i < lag_window/2; i++) {
-        samplesA[i][0] = localA[2 * i];
-        samplesA[i][1] = localA[2 * i + 1];
-        samplesB[i][0] = localB[2 * i];
-        samplesB[i][1] = localB[2 * i + 1];
-        //int o = 1234; //synthetic offset
-        //samplesB[i][0] = inA_local[2 * (i+o)%(samples_per_frame/2)];
-        //samplesB[i][1] = inA_local[2 * (i+o)%(samples_per_frame/2) + 1];
-        a.push_back(samplesA[i][0]);
-        a.push_back(samplesA[i][1]);
-        b.push_back(samplesB[i][0]);
-        b.push_back(samplesB[i][1]);
-    }
-#else
     fftwf_complex *spectrumA, *spectrumB, *spectrumC;
     float *samplesA, *samplesB, *samplesC;
     fftwf_plan fft_planA, fft_planB, fft_planC;
@@ -108,24 +76,15 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
 
     for (unsigned int i = 0; i < lag_window; i++) {
         samplesA[i] = localA[i];
-//        samplesB[i] = localB[i];
-        int o = 12345; //synthetic offset
-        samplesB[i] = (i+o)>lag_window ? 0: localA[i+o];
-        a.push_back(samplesA[i]);
-        b.push_back(samplesB[i]);
+        samplesB[i] = localB[i];
     }
     memset(&samplesA[lag_window],0,lag_window*sizeof(float));
     memset(&samplesB[lag_window],0,lag_window*sizeof(float));
-#endif
 
     fftwf_execute(fft_planA);
     fftwf_execute(fft_planB);
 
-#ifdef IQ_SAMPLING
-    for (unsigned int i = 0; i < lag_window/2; i++) {
-#else
     for (unsigned int i = 0; i < lag_window/2*2+1; i++) {
-#endif
         float Ar = spectrumA[i][0];
         float Ai = spectrumA[i][1];
         float Br = spectrumB[i][0];
@@ -133,13 +92,6 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
         //A \times B*
         spectrumC[i][0] = Ar * Br + Ai * Bi;
         spectrumC[i][1] = Ai * Br - Bi * Ar;
-
-//        fa.push_back(Ar);
-//        fa.push_back(Ai);
-//        fb.push_back(Br);
-//        fb.push_back(Bi);
-//        fc.push_back(spectrumC[i][0]);
-//        fc.push_back(spectrumC[i][1]);
     }
     fftwf_execute(fft_planC);
 
@@ -148,23 +100,6 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
     nlohmann::json corr_pos = nlohmann::json::array();
     nlohmann::json corr_neg = nlohmann::json::array();
 
-#ifdef IQ_SAMPLING
-    for (unsigned int i=0; i < lag_window/2; i++){
-        float val = sqrt(samplesC[0][i]*samplesC[0][i] + samplesC[1][i]*samplesC[1][i]);
-        corr.push_back(val);
-        if (val > maxval) {
-            lag = i;
-            maxval = val;
-        }
-        meanval += val;
-    }
-    meanval /= lag_window/2;
-    for (unsigned int i=0; i < lag_window/2; i++){
-        float val = sqrt(samplesC[0][i]*samplesC[0][i] + samplesC[1][i]*samplesC[1][i]);;
-        var += val*val;
-    }
-    var /= lag_window/2;
-#else
     uint edge_truncate = lag_window*0.1;
     for (unsigned int i=0; i < lag_window-edge_truncate; i++){
         float norm = ((float)lag_window)-i;
@@ -193,31 +128,29 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
         var += val*val;
     }
     var /= (lag_window-edge_truncate)*2;
-#endif
-
     float std = sqrt(var);
+
+    nlohmann::json reply;
+    //TODO: messagepack
     DEBUG("Align: Max: {}, Mean: {}, RMS: {}",maxval, meanval, std);
     if (maxval > meanval+1*std) {
         DEBUG("Lag found!\n");
         DEBUG("Lag {}\n",lag);
 
         reply["lag"] = lag;
-//        reply["a"] = a;
-//        reply["b"] = b;
-        reply["corr_pos"] = corr_pos;
-        reply["corr_neg"] = corr_neg;
+        if (send_corr){
+            reply["corr_pos"] = corr_pos;
+            reply["corr_neg"] = corr_neg;
+        }
         conn.send_json_reply(reply);
     }
     else {
         DEBUG("NO Lag found!\n");
-//        reply["a"] = a;
-//        reply["b"] = b;
-//        reply["fa"] = fa;
-//        reply["fb"] = fb;
-//        reply["fc"] = fc;
         reply["lag"] = 0;
-        reply["corr_pos"] = corr_pos;
-        reply["corr_neg"] = corr_neg;
+        if (send_corr){
+            reply["corr_pos"] = corr_pos;
+            reply["corr_neg"] = corr_neg;
+        }
         conn.send_json_reply(reply);
     }
 
@@ -234,11 +167,15 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn) {
 
 
 void AirspyAlign::main_thread() {
-    std::string endpoint = unique_name+"/go";
+    std::string endpoint;
     kotekan::restServer& rest_server = kotekan::restServer::instance();
     using namespace std::placeholders;
+    endpoint = unique_name+"/cal_lag";
     rest_server.register_get_callback(endpoint,
-                                      std::bind(&AirspyAlign::start_callback, this, _1));
+                                      std::bind(&AirspyAlign::lag_only, this, _1));
+    endpoint = unique_name+"/get_correlation";
+    rest_server.register_get_callback(endpoint,
+                                      std::bind(&AirspyAlign::lag_n_corr, this, _1));
 
     short* inA;
     short* inB;

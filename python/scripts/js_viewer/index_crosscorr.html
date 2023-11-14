@@ -37,7 +37,8 @@
 			wf.addStartStop("interaction_tab")
 			//wf.addWaterfallControl("interaction_tab")
 			wf.addRecordButton("interaction_tab")
-			//wf.addAirspyGainControl("interaction_tab")
+			wf.addAirspyGainControl("gain_holder","airspy_inputA")
+			wf.addAirspyGainControl("gain_holder","airspy_inputB")
 			//wf.addStatusHeader("status_header")
 			//wf.add_spectrum("spectrum_holder")
 			//wf.add_baseline_control("interaction_tab")
@@ -49,10 +50,9 @@
 </head>
 
 <body onload="init();">
-	<div id="status_header"></div><div style='clear:both'/>
 	<div style="position:relative; float:left">
-		<div id="img_holder" style="position:relative; float:left"></div>
-		<div id="spectrum_holder" style="position:relative; float: left;"></div>
+		<div id="img_holder" style="position:relative; float:left; width=100%"></div>
+		<div id="gain_holder" style="position:relative; float: left; width=100%"></div>
 	</div>
 	<div id="interaction_tab" style="position:relative; float:left; width:400px; margin-left:30px"></div>
 </body>

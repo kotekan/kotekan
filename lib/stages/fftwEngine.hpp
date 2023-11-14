@@ -69,11 +69,8 @@ private:
 
     // options
     /// FFTW buffer for staging the input samples.
-#ifdef IQ_SAMPLING
-    fftwf_complex* samples;
-#else
     float *samples;
-#endif
+
     /// FFTW buffer which returns the FFT'd results.
     fftwf_complex* spectrum;
     /// FFTW object containing information about the transform

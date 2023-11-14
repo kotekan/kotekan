@@ -112,10 +112,11 @@ public:
     void airspy_producer(airspy_transfer_t* transfer);
 
 
-    void rest_callback(kotekan::connectionInstance& conn,
+    void set_config_callback(kotekan::connectionInstance& conn,
                                    nlohmann::json& json_request);
     void adcstat_callback(kotekan::connectionInstance& conn);
-    void config_callback(kotekan::connectionInstance& conn);
+    void get_config_callback(kotekan::connectionInstance& conn);
+    void restart_callback(kotekan::connectionInstance& conn);
 
 private:
     /// kotekan buffer object which will be fed
@@ -152,6 +153,7 @@ private:
     int biast_power;
 
     uint lag=0;
+    bool airspy_opened=true;
 
     long airspy_sn;
     std::string airspy_fn;
