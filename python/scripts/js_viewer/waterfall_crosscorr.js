@@ -381,8 +381,6 @@ waterfall.prototype.addColorSelect =
 	}
 
 waterfall.prototype.start = function() {
-	self=this
-
 	this.openSocket();
 }
 waterfall.prototype.stop = function() {
@@ -475,7 +473,7 @@ waterfall.prototype.addAirspyGainControl =
 		var marg=15
 	    var slider_width=50
 	    var slider_height=200
-	    var wrapper=$("<div'/>").uniqueId().height(slider_height)
+	    var wrapper=$("<div'/>").uniqueId().height('100%')
 					.width((this.plot_width+this.margin[0])/2-1)
 					.css({'margin':'10px', 'float':'left', 'margin':'0px'})
 					.appendTo($("#"+target))
@@ -735,69 +733,3 @@ waterfall.prototype.addLagcorr=
 
         Plotly.newPlot(this.lagcorr_plot, [poscorr_plot_data,negcorr_plot_data], layout, {staticPlot: true});
     }
-
-    /*
-waterfall.prototype.add_spectrum=
-	function(target){
-		this.freeze_baseline = false
-	    wrapper=$("<div style='margin:0px'/>").uniqueId().appendTo($("#"+target))
-				.height(300).width(this.plot_width+this.margin[0]/2-1)
-				.css({'margin-left':this.margin[0]/2})
-		spectrum_plot_data_mean     = {x: [],y: [],type: 'scatter',name:'Mean'}			
-		spectrum_plot_data_latest   = {x: [],y: [],type: 'scatter',name:'Latest'}
-		spectrum_plot_data_baseline = {x: [],y: [],type: 'scatter',name:'Baseline'}			
-		var data = [spectrum_plot_data_mean, spectrum_plot_data_latest, spectrum_plot_data_baseline];
-		this.show_spectrum_mean = true
-		this.show_spectrum_latest = true
-		this.show_spectrum_baseline = true
-
-		this.spectrum_plot = wrapper.attr('id')
-
-		var layout = {
-			title: {text:'Spectral Power'},
-			xaxis: {title: {text: 'Frequency (MHz)'},linecolor: 'black',zeroline:false},
-			yaxis: {title: {text: 'Power (dB bits^2)'},linecolor: 'black',zeroline:false},
-			margin: {t:30, l:50, r:10, b:40},
-			legend: {xanchor:'right',x:1.0,y:0.}
-		}
-
-		Plotly.newPlot(this.spectrum_plot, data, layout, {staticPlot: true});
-	}
-
-waterfall.prototype.add_baseline_control=
-	function(target){
-		self=this
-		wrapper=$("<div/>").uniqueId().appendTo($("#"+target)).css({margin:45})
-		self.baseline_btn = $("<button/>").appendTo($("<div/>").appendTo(wrapper))
-				.button({label:'Take a Spectral Baseline',icons:{primary: "ui-icon-play"}})
-				.css({margin:"0 auto",display:"block"})
-				.click(function() {
-						self.spectrum_baseline = _.map(_.transpose(self.scroll_data),_mean)
-				});
-	}
-
-waterfall.prototype.add_spectrum_excess=
-	function(target){
-		this.freeze_baseline = false
-	    wrapper=$("<div style='margin:0px'/>").uniqueId().appendTo($("#"+target))
-				.height(200).width(this.plot_width+this.margin[0]/2-1)
-				.css({'margin-left':this.margin[0]/2})
-		spectrum_plot_excess_mean     = {x: [],y: [],type: 'scatter',name:'Mean'}			
-		spectrum_plot_excess_latest   = {x: [],y: [],type: 'scatter',name:'Latest'}
-		var data = [spectrum_plot_excess_mean, spectrum_plot_excess_latest];
-		this.show_spectrum_excess_mean = true
-		this.show_spectrum_excess_latest = true
-
-		this.spectrum_excess_plot = wrapper.attr('id')
-
-		var layout = {
-			title: {text:'Excess Spectral Power'},
-			xaxis: {title: {text: 'Frequency (MHz)'},linecolor: 'black',zeroline:false},
-			yaxis: {title: {text: 'Excess Power (dB bits^2)'},linecolor: 'black',zeroline:false,range:[-5,5]},
-			margin: {t:30, l:50, r:10, b:40},
-			legend: {xanchor:'right',x:1.0,y:0.}
-		}
-
-		Plotly.newPlot(this.spectrum_excess_plot, data, layout, {staticPlot: true});
-	}
-*/

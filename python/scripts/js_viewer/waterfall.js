@@ -5,6 +5,8 @@ function waterfall(container){
     var self=this;
     this.container=container
 
+	this.kotekan_url = "localhost"
+	this.kotekan_port= 12048
 
 	this.num_freqs=1024;
 	this.waterfall_buffer_length=1000;
@@ -124,7 +126,8 @@ waterfall.prototype.dodraw =
 		var scd=this.scroll_data;
 		var scroll_img=[];
 
-	    this.scroll_canvas.attr('height', this.waterfall_buffer_display_length)
+		var ntimes_displayed = Math.min(scd.length,this.waterfall_buffer_display_length)
+	    this.scroll_canvas.attr('height', ntimes_displayed)
 		var img_mean=Array.apply(null, new Array(this.num_freqs)).map(Number.prototype.valueOf,0);
 		var disp_start=Math.max(0,scd.length-this.waterfall_buffer_display_length);
 		for (i=0; i<this.num_freqs; i++) {
@@ -139,18 +142,17 @@ waterfall.prototype.dodraw =
 		for (j=disp_start; j<scd.length; j++){
 			scroll_img[j]=[]
 			for (i=0; i<this.num_freqs; i++){
-					scroll_img[j][i]=10*Math.log10(scd[j][i]);///img_mean[i]);
+					scroll_img[j][i]=10*Math.log10(scd[j][i]);
 					this.cb.setPixel(imageData,i,j-disp_start,scroll_img[j][i])
 			}
 		}
 		c.putImageData(imageData, 0, 0);
 
-		if (scd.length > this.waterfall_buffer_display_length)
-		{
-			this.yaxis_scale.domain([ new Date(this.timearr[this.timearr.length-this.waterfall_buffer_display_length]*1e3),
-								new Date(this.timearr[this.timearr.length-1]*1e3) ])
-			this.yaxisplot.call(this.yaxis)
-		}
+		c.putImageData(imageData, 0, 0);
+		this.yaxis_scale.domain([ new Date(this.timearr[this.timearr.length-ntimes_displayed]*1e3),
+								  new Date(this.timearr[this.timearr.length-1]*1e3) ])
+		this.yaxisplot.call(this.yaxis)
+
 
 		this.spectrum = _.map(_.transpose(this.scroll_data),_mean)
 		this.spectrum_latest = _.map(_.transpose(this.scroll_data),_.last)
@@ -343,17 +345,6 @@ waterfall.prototype.addColorSelect =
 	}
 
 waterfall.prototype.start = function() {
-	self=this
-	fetch('http://'+self.kotekan_url+':'+self.kotekan_port+'/airspy_input/get_config',{})
-		.then(r => r.json().then(data => {
-			self.airspy_config=data
-			self.slider_gain_lna.slider('value',self.airspy_config["lna_gain"])
-			self.slider_gain_lnat.text(self.airspy_config["lna_gain"])
-			self.slider_gain_mix.slider('value',self.airspy_config["lna_gain"])
-			self.slider_gain_mixt.text(self.airspy_config["mix_gain"])
-			self.slider_gain_if.slider('value',self.airspy_config["lna_gain"])
-			self.slider_gain_ift.text(self.airspy_config["if_gain"])
-		}))
 	this.openSocket();
 }
 waterfall.prototype.stop = function() {
@@ -418,15 +409,12 @@ waterfall.prototype.addRecordButton =
 	}
 
 waterfall.prototype.addAirspyGainControl =
-	function(target)
+	function(target,stage_url)
 	{
 		self=this
-		this.adc={'mean':0, 'rms':0, 'railfrac':0};
-		this.kotekan_url = "localhost"
-		this.kotekan_port= 12048
 
-		change_gain = function(type,value,o){
-			fetch('http://'+o.kotekan_url+':'+o.kotekan_port+'/airspy_input/config', {
+		let change_gain = function(type,value){
+			fetch('http://'+self.kotekan_url+':'+self.kotekan_port+'/'+stage_url+'/set_config', {
 				mode: 'no-cors',
 			    method: 'POST',
 			    headers: {
@@ -435,94 +423,104 @@ waterfall.prototype.addAirspyGainControl =
 			    },
 			    body: JSON.stringify({[type]: value})
 			})
-		   .then(r =>
-			   	fetch('http://'+o.kotekan_url+':'+o.kotekan_port+'/airspy_input/adcstat',{})
-			   		 .then(r => r.json().then(data => {
-			   		 		self.adc=data
-			   		 		self.adcmean.text("Mean: "+self.adc['mean'].toFixed(2))
-			   		 		self.adcrms.text("RMS: "+self.adc['rms'].toFixed(2))
-			   		 		self.adcrailfrac.text("Rail %: "+(self.adc['railfrac']*100).toFixed(2))
-					 }))
-		   )
+		   .then(check_adcstats)
+		}
+		let check_adcstats = function(){
+			fetch('http://'+self.kotekan_url+':'+self.kotekan_port+'/'+stage_url+'/adcstat',{})
+				.then(r => r.json().then(data => {
+					adcmean.text("Mean: "+data['mean'].toFixed(2))
+					adcrms.text("RMS: "+data['rms'].toFixed(2))
+					adcrailfrac.text("Rail %: "+(data['railfrac']*100).toFixed(2))
+	 			}))
 		}
 
 		var marg=15
-		var width=$("#"+target).width()
 	    var slider_width=50
 	    var slider_height=200
-	    wrapper=$("<div style='margin:10px,width:100%'/>").uniqueId()
-	    			.height(slider_height).width(width-2*marg).appendTo($("#"+target))
+	    var wrapper=$("<div'/>").uniqueId().height('100%')
+					.width((this.plot_width+this.margin[0])/2-1)
+					.css({'margin':'10px', 'float':'left', 'margin':'0px'})
+					.appendTo($("#"+target))
 
-	    gainwrap=$('<div/>').uniqueId().css({width:3*(slider_width+4)}).appendTo(wrapper)
+	    var gainwrap=$('<div/>').uniqueId().css({width:3*(slider_width+4)}).appendTo(wrapper)
 		$("<p/>").css({'font-family':'sans-serif','text-align':'center','margin':marg})
 		    		.text("Gain").appendTo(gainwrap)
 
-	    adcwrap=$('<div/>').uniqueId().css({width:'auto'}).appendTo(wrapper)
+	    var adcwrap=$('<div/>').uniqueId().css({width:'auto'}).appendTo(wrapper)
 			    .css({'font-family':'sans-serif','font-size':'10pt','text-align':'left','margin':marg})
 		$("<p>").text("ADC Stats").css({'font-size':'14pt','text-align':'center'}).appendTo(adcwrap)
-		this.adcmean = $("<div/>").css({'position':'relative','left':'30px'})
-				.text("Mean: "+this.adc['mean']).appendTo(adcwrap)
-		this.adcrms = $("<p/>").css({'position':'relative','left':'30px'})
-				.text("RMS: "+this.adc['rms']).appendTo(adcwrap)
-		this.adcrailfrac = $("<p/>").css({'position':'relative','left':'30px'})
-				.text("Rail %: "+this.adc['railfrac']).appendTo(adcwrap)
+		var adcmean = $("<div/>").css({'position':'relative','left':'30px'})
+				.text("Mean: ").appendTo(adcwrap)
+		var adcrms = $("<p/>").css({'position':'relative','left':'30px'})
+				.text("RMS: ").appendTo(adcwrap)
+		var adcrailfrac = $("<p/>").css({'position':'relative','left':'30px'})
+				.text("Rail %: ").appendTo(adcwrap)
 
 
-	    {
-		    lnawrap = $("<div style='float:left'/>").width(slider_width)
-		    			.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(gainwrap)
-		    $("<p/>").css({'font-family':'sans-serif', 'margin':2, 'margin-bottom':15})
-		    		.text("LNA").appendTo(lnawrap)
+		var lnawrap = $("<div style='float:left'/>").width(slider_width)
+					.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(gainwrap)
+		$("<p/>").css({'font-family':'sans-serif', 'margin':2, 'margin-bottom':15})
+				.text("LNA").appendTo(lnawrap)
 
-		    this.slider_gain_lna=$("<div/>").uniqueId().appendTo(lnawrap).css({'margin':'auto'})
-						.slider({min:0,max:14,value:10,step:1,
-							orientation: "vertical",
-							slide:function(event, ui){
-								lna_gain=ui.value;
-								change_gain("gain_lna",lna_gain,self)
-								self.slider_gain_lnat.text(ui.value);
-							}
-						})
-		    this.slider_gain_lnat=$("<p/>").css({'font-family':'sans-serif','text-align':'center','margin':2})
-		    		.text(10).appendTo(lnawrap)
-    	}
-	    {
-		    mixwrap = $("<div style='float:left'/>").width(slider_width)
-		    			.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(gainwrap)
-		    $("<p/>").css({'font-family':'sans-serif','margin':2, 'margin-bottom':15})
-		    		.text("MIX").appendTo(mixwrap)
+		var slider_gain_lna=$("<div/>").uniqueId().appendTo(lnawrap).css({'margin':'auto'})
+					.slider({min:0,max:14,value:10,step:1,
+						orientation: "vertical",
+						slide:function(event, ui){
+							lna_gain=ui.value;
+							change_gain("gain_lna",lna_gain)
+							slider_gain_lnat.text(ui.value);
+						}
+					})
+		var slider_gain_lnat=$("<p/>").css({'font-family':'sans-serif','text-align':'center','margin':2})
+				.text(10).appendTo(lnawrap)
 
-			this.slider_gain_mix=$("<div/>").uniqueId().appendTo(mixwrap).css({'margin':'auto'})
-						.slider({min:0,max:15,value:10,step:1,
-							orientation: "vertical",
-							slide:function(event, ui){
-								mix_gain=ui.value;
-								change_gain("gain_mix",mix_gain,self)
-								self.slider_gain_mixt.text(ui.value);
-							}
-						})
-			this.slider_gain_mixt=$("<p/>").css({'font-family':'sans-serif', 'margin':2})
-		    		.text("10").appendTo(mixwrap)
-    	}
-	    {
-		    ifwrap = $("<div style='float:left'/>").width(slider_width)
-		    			.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(gainwrap)
-		    $("<p/>").css({'font-family':'sans-serif', 'margin':2, 'margin-bottom':15})
-		    		.text("IF").appendTo(ifwrap)
+		var mixwrap = $("<div style='float:left'/>").width(slider_width)
+					.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(gainwrap)
+		$("<p/>").css({'font-family':'sans-serif','margin':2, 'margin-bottom':15})
+				.text("MIX").appendTo(mixwrap)
 
-			this.slider_gain_if=$("<div/>").uniqueId().appendTo(ifwrap).css({'margin':'auto'})
-						.slider({min:0,max:15,value:10,step:1,
-							orientation: "vertical",
-							slide:function(event, ui){
-								if_gain=ui.value;
-								change_gain("gain_if",if_gain,self)
-								self.slider_gain_ift.text(ui.value);
-							}
-						})
-			this.slider_gain_ift=$("<p/>").css({'font-family':'sans-serif', 'margin':2})
-		    		.text("10").appendTo(ifwrap)
-    	}
+		var slider_gain_mix=$("<div/>").uniqueId().appendTo(mixwrap).css({'margin':'auto'})
+					.slider({min:0,max:15,value:10,step:1,
+						orientation: "vertical",
+						slide:function(event, ui){
+							mix_gain=ui.value;
+							change_gain("gain_mix",mix_gain)
+							slider_gain_mixt.text(ui.value);
+						}
+					})
+		var slider_gain_mixt=$("<p/>").css({'font-family':'sans-serif', 'margin':2})
+				.text("10").appendTo(mixwrap)
+
+		var ifwrap = $("<div style='float:left'/>").width(slider_width)
+					.css({'font-family':'sans-serif','text-align':'center','margin':2}).appendTo(gainwrap)
+		$("<p/>").css({'font-family':'sans-serif', 'margin':2, 'margin-bottom':15})
+				.text("IF").appendTo(ifwrap)
+
+		var slider_gain_if=$("<div/>").uniqueId().appendTo(ifwrap).css({'margin':'auto'})
+					.slider({min:0,max:15,value:10,step:1,
+						orientation: "vertical",
+						slide:function(event, ui){
+							if_gain=ui.value;
+							change_gain("gain_if",if_gain)
+							slider_gain_ift.text(ui.value);
+						}
+					})
+		var slider_gain_ift=$("<p/>").css({'font-family':'sans-serif', 'margin':2})
+				.text("10").appendTo(ifwrap)
+
+		fetch('http://'+self.kotekan_url+':'+self.kotekan_port+'/'+stage_url+'/get_config',{})
+			.then(r => r.json().then(data => {
+				slider_gain_lna.slider('value',data["lna_gain"])
+				slider_gain_lnat.text(data["lna_gain"])
+				slider_gain_mix.slider('value',data["mix_gain"])
+				slider_gain_mixt.text(data["mix_gain"])
+				slider_gain_if.slider('value',data["if_gain"])
+				slider_gain_ift.text(data["if_gain"])
+			}))
+		check_adcstats()
+
 	}
+
 
 
 waterfall.prototype.addWaterfallControl =
@@ -604,10 +602,10 @@ waterfall.prototype.add_spectrum=
 waterfall.prototype.add_baseline_control=
 	function(target){
 		self=this
-		wrapper=$("<div/>").uniqueId().appendTo($("#"+target)).css({margin:45})
-		self.baseline_btn = $("<button/>").appendTo($("<div/>").appendTo(wrapper))
+		wrapper=$("<div/>").uniqueId().appendTo($("#"+target))
+						.css({position:'relative',float:'left'})
+		self.baseline_btn = $("<button/>").appendTo(wrapper)
 				.button({label:'Take a Spectral Baseline',icons:{primary: "ui-icon-play"}})
-				.css({margin:"0 auto",display:"block"})
 				.click(function() {
 						self.spectrum_baseline = _.map(_.transpose(self.scroll_data),_mean)
 				});
@@ -616,9 +614,9 @@ waterfall.prototype.add_baseline_control=
 waterfall.prototype.add_spectrum_excess=
 	function(target){
 		this.freeze_baseline = false
-	    wrapper=$("<div style='margin:0px'/>").uniqueId().appendTo($("#"+target))
-				.height(200).width(this.plot_width+this.margin[0]/2-1)
-				.css({'margin-left':this.margin[0]/2})
+	    wrapper=$("<div/>").uniqueId().appendTo($("#"+target))
+				.height(200).width(this.plot_width+this.margin[0]/2)
+				.css({position:'relative',float:'left'})
 		spectrum_plot_excess_mean     = {x: [],y: [],type: 'scatter',name:'Mean'}			
 		spectrum_plot_excess_latest   = {x: [],y: [],type: 'scatter',name:'Latest'}
 		var data = [spectrum_plot_excess_mean, spectrum_plot_excess_latest];
