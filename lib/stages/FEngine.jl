@@ -10,6 +10,7 @@ using Base.Threads
 using CUDASIMDTypes
 using CairoMakie
 using FFTW
+using LinearAlgebra
 using MappedArrays
 using SixelTerm
 
@@ -139,11 +140,20 @@ function pfb(samples::AbstractVector{<:AbstractArray{T,2}}; ntaps=4, window=sinc
     # Window function
     w = window(ntaps, lblock)
 
-    ts_sec = Array{T,2}(undef, lblock * ntaps, nfeeds)
-    P = plan_rfft(ts_sec, 1)
+    println("pfb: plan_rfft...")
+    ts_secs = [Array{T,2}(undef, lblock * ntaps, nfeeds) for thr in 1:Threads.nthreads()]
+    Ps = [plan_rfft(ts_secs[thr], 1) for thr in 1:Threads.nthreads()]
+    fts = [Array{Complex{T},2}(undef, div(lblock * ntaps, 2) + 1, nfeeds) for thr in 1:Threads.nthreads()]
 
     # Iterate over blocks and perform the PFB
-    for bi in 1:nblocks
+    println("pfb: ft...")
+    @threads for bi in 1:nblocks
+        thr = Threads.threadid()
+        # thr == 1 && println("pfb: block $bi: sample...")
+        ts_sec = ts_secs[thr]
+        P = Ps[thr]
+        ft = fts[thr]
+
         # Cut out the correct timestream section
         for ti in 1:ntaps
             for ai in 1:nfeeds, i in 1:lblock
@@ -152,12 +162,15 @@ function pfb(samples::AbstractVector{<:AbstractArray{T,2}}; ntaps=4, window=sinc
         end
 
         # Perform a real FFT(with applied window function)
-        ft = P * ts_sec
+        # thr == 1 && println("pfb: block $bi: FFT...")
+        mul!(ft, P, ts_sec)
 
-        # Choose every n - th frequency
+        # Choose every `n`th frequency
+        # thr == 1 && println("pfb: block $bi: choose frequencies...")
         spec[bi] = ft[begin:ntaps:end, :]
     end
 
+    println("pfb: done.")
     return spec::AbstractVector{<:AbstractArray{Complex{T},2}}
 end
 
@@ -324,8 +337,11 @@ function f_engine(inframes::AbstractVector{ADCFrame{T}}, ntaps::Int) where {T<:R
     # TODO: Select interesting frequencies
     f₀′ += Δf′
 
+    println("f_engine: reshape #1...")
     indata = [reshape(frame.data, size(frame.data, 1), :) for frame in inframes]::AbstractVector{<:AbstractArray{T,2}}
+    println("f_engine: pfb...")
     outdata = pfb(indata; ntaps)
+    println("f_engine: reshape #2...")
     nframes′ = length(outdata)
     outframes = Vector{FFrame{T}}(undef, nframes′)
     @threads for n in 1:nframes′
@@ -333,6 +349,7 @@ function f_engine(inframes::AbstractVector{ADCFrame{T}}, ntaps::Int) where {T<:R
         outframes[n] = FFrame(t₀′ + (n - 1) * Δt′, Δt′, f₀′, Δf′,
                               reshape(outdata[n], size(outdata[n], 1), ndishes, npolrs)[(begin + 1):end, :, :])
     end
+    println("f_engine: done.")
 
     return outframes::AbstractVector{FFrame{T}}
 end
@@ -563,7 +580,7 @@ function run(source_amplitude::Float, source_frequency::Float, source_position_x
              do_plot::Bool)
     source = let
         A = Complex{Float}(source_amplitude)
-        f₀ = source_frequency       # Hz
+        f₀ = source_frequency         # Hz
         sinx = sin(source_position_x) # east-west
         siny = sin(source_position_y) # north-south
         Source(make_monochromatic_source(A, f₀), sinx, siny)
