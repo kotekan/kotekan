@@ -194,13 +194,8 @@ void upchan_simple_cxx(const float16_t* __restrict__ const W, const float16_t* _
     const int tbar0 = t0 / U;
     const int tbar1 = (t == -1 ? T / U : (tbar0 + 1));
 
-    // All this junk is to avoid triggering a warning (which gets treated as an error) in the CI,
-    // because it doesn't know about OpenMP.
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunknown-pragmas"
+#ifdef _OPENMP
 #pragma omp parallel for collapse(5)
-#pragma GCC diagnostic pop
 #endif
     for (int f = f0; f < f1; ++f) {
         for (int p = p0; p < p1; ++p) {
