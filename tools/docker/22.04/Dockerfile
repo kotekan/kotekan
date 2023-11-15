@@ -29,8 +29,8 @@ RUN apt-get -y update && \
                        coreutils \
                        ccache \
                        pkg-config \
-                       gcc \
-                       g++ \
+                       gcc-12 \
+                       g++-12 \
                        make \
                        file \
                        gdb \
@@ -186,6 +186,11 @@ ENV CCACHE_MAXSIZE 1G
 
 # We need the `python` command to point to python3
 RUN ln -s /bin/python3 /bin/python
+
+# Use G++12 as the default
+RUN rm /usr/bin/gcc /usr/bin/g++ && \
+    ln -s g++-12 /usr/bin/g++ && \
+    ln -s gcc-12 /usr/bin/gcc
 
 # Set the plugin path so kotekan can find bitshuffle
 # Ideally this would be determined dynamically, but for now...

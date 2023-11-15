@@ -120,7 +120,7 @@ void hdf5FileWrite::main_thread() {
                     const hid_t space = H5Screate(H5S_SCALAR);
                     if (space < 0)
                         ERROR("Could not create data space");
-                    const hid_t attr = H5Acreate(group, "fpga_seq_num", H5T_STD_I64LE, space,
+                    const hid_t attr = H5Acreate(group, "fpga_seq_num", H5T_NATIVE_INT64, space,
                                                  H5P_DEFAULT, H5P_DEFAULT);
                     if (attr < 0)
                         ERROR("Could not create attribute");
@@ -141,6 +141,7 @@ void hdf5FileWrite::main_thread() {
         // Write the contents of the buffer frame to file
 
         hid_t type = -1;
+        std::size_t type_size = 0;
         hid_t space = -1;
 
         if (metadata_container_is_chord(mc)) {
@@ -149,18 +150,37 @@ void hdf5FileWrite::main_thread() {
 
             switch (metadata.type) {
                 case int4p4:
-                    type = H5T_STD_U8LE;
+                    type = H5T_NATIVE_UINT8;
+                    type_size = 1;
                     break;
                 case int8:
-                    type = H5T_STD_I8LE;
+                    type = H5T_NATIVE_INT8;
+                    type_size = 1;
+                    break;
+                case int16:
+                    type = H5T_NATIVE_INT16;
+                    type_size = 2;
+                    break;
+                case int32:
+                    type = H5T_NATIVE_INT32;
+                    type_size = 4;
+                    break;
+                case int64:
+                    type = H5T_NATIVE_INT64;
+                    type_size = 8;
                     break;
                 case float16:
                     // TODO: Define HDF5 float16 type
-                    type = H5T_STD_U16LE;
+                    type = H5T_NATIVE_UINT16;
+                    type_size = 2;
                     break;
                 case float32:
-                    static_assert(sizeof(float) == 4);
                     type = H5T_NATIVE_FLOAT;
+                    type_size = 4;
+                    break;
+                case float64:
+                    type = H5T_NATIVE_DOUBLE;
+                    type_size = 8;
                     break;
                 default:
                     ERROR("Unsupported metadata type");
@@ -177,14 +197,14 @@ void hdf5FileWrite::main_thread() {
             for (int d = 0; d < rank; ++d) {
                 np *= dims[d];
             }
-            if (buf->frame_size != np)
+            if (buf->frame_size != np * type_size)
                 ERROR("Buffer frame size is different from total metadata array length");
             space = H5Screate_simple(rank, dims, dims);
 
         } else {
             // We don't have proper CHORD metadata and don't know the buffer type and shape
 
-            type = H5T_STD_U8LE;
+            type = H5T_NATIVE_UINT8;
             const int rank = 1;
             hsize_t dims[1];
             dims[0] = buf->frame_size;
@@ -201,7 +221,36 @@ void hdf5FileWrite::main_thread() {
         if (dataset < 0)
             ERROR("Could not create HDF5 dataset");
 
-        herr_t herr = H5Dwrite(dataset, H5T_NATIVE_UINT8, space, space, H5P_DEFAULT, frame);
+        if (metadata_container_is_chord(mc)) {
+            // Write dimension names
+            const chordMetadata& metadata = *static_cast<const chordMetadata*>(mc->metadata);
+
+            hid_t dim_name_type = H5Tcreate(H5T_STRING, CHORD_META_MAX_DIMNAME);
+            if (dim_name_type < 0)
+                ERROR("Could not create HDF5 datatype for dim_name");
+            const hsize_t dim_name_dims[1]{static_cast<hsize_t>(metadata.dims)};
+            hid_t dim_name_space = H5Screate_simple(1, dim_name_dims, nullptr);
+            if (dim_name_space < 0)
+                ERROR("Could not create HDF5 dataspace for dim_name");
+            hid_t dim_name_attr = H5Acreate2(dataset, "dim_name", dim_name_type, dim_name_space,
+                                             H5P_DEFAULT, H5P_DEFAULT);
+            if (dim_name_attr < 0)
+                ERROR("Could not create HDF5 attribute for dim_name");
+            herr_t herr = H5Awrite(dim_name_attr, dim_name_type, metadata.dim_name);
+            if (herr < 0)
+                ERROR("Could not write HDF5 attribute for dim_name");
+            herr = H5Aclose(dim_name_attr);
+            if (herr < 0)
+                ERROR("Could not close HDF5 attribute for dim_name");
+            herr = H5Sclose(dim_name_space);
+            if (herr < 0)
+                ERROR("Could not close HDF5 dataspace for dim_name");
+            herr = H5Tclose(dim_name_type);
+            if (herr < 0)
+                ERROR("Could not close HDF5 datatype for dim_name");
+        }
+
+        herr_t herr = H5Dwrite(dataset, type, space, space, H5P_DEFAULT, frame);
         if (herr < 0)
             ERROR("Could not write HDF5 dataset");
 

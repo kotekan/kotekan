@@ -44,7 +44,7 @@ simpleAutocorr::~simpleAutocorr() {
 
 void simpleAutocorr::main_thread() {
     float* in_local;
-    uint* out_local;
+    uint* out_local = nullptr;
 
     float re, im;
     frame_in = 0;

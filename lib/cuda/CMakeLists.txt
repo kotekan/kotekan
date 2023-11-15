@@ -24,14 +24,17 @@ add_library(
     # Kernels
     cudaCorrelatorAstron.cpp
     cudaShuffleAstron.cu
-    cudaBasebandBeamformer.cpp
+    cudaBasebandBeamformer_chord.cpp
+    cudaBasebandBeamformer_pathfinder.cpp
     cudaFRBBeamformer.cpp
     cudaFRBBeamReformer.cpp
     quantize_kernel_wrapper.cu
     cudaQuantize.cpp
     cudaRechunk.cpp
-    cudaUpchannelize.cpp
-    cudaUpchannelize16k.cpp
+    cudaUpchannelizer_U16.cpp
+    cudaUpchannelizer_U32.cpp
+    cudaUpchannelizer_U64.cpp
+    cudaUpchannelizer_U128.cpp
     chordMVPSetup.cpp)
 
 # C++17
