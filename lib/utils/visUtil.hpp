@@ -51,6 +51,7 @@ using float16_t = __half;
 #include <float.h>
 #if defined __FLT16_MAX__
 using float16_t = _Float16;
+#define KOTEKAN_FLOAT16 1
 #else
 #define KOTEKAN_FLOAT16 0
 #endif
