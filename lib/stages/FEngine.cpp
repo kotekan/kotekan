@@ -162,7 +162,13 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
 
     INFO("Defining Julia code...");
     {
-        std::ifstream file("lib/stages/FEngine.jl");
+        const auto julia_source_filename =
+            "lib/stages/FEngine.jl" std::ifstream file(julia_source_filename);
+        if (!file.is_open())
+            FATAL_ERROR(
+                "Could not open the file \"{:s}\" with the Julia source code for the F-Engine "
+                "simulator",
+                julia_source_filename);
         file.seekg(0, std::ios_base::end);
         const auto julia_source_length = file.tellg();
         file.seekg(0);
