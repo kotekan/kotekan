@@ -12,29 +12,7 @@
 #include <juliaManager.hpp>
 #include <string>
 #include <vector>
-
-// Find float16:
-
-// Try using CUDA's float16
-#if !defined KOTEKAN_FLOAT16 && defined WITH_CUDA
-#include <cuda_fp16.h>
-using float16_t = __half;
-#define KOTEKAN_FLOAT16 1
-#endif
-
-// Try using the compiler's float16 (e.g. GCC 12 supports this)
-#if !defined KOTEKAN_FLOAT16
-#define __STDC_WANT_IEC_60559_TYPES_EXT__
-#include <float.h>
-#if defined __FLT16_MAX__
-using float16_t = _Float16;
-#define KOTEKAN_FLOAT16 1
-#endif
-#endif
-
-#if !defined KOTEKAN_FLOAT16
-#define KOTEKAN_FLOAT16 0
-#endif
+#include <visUtil.hpp>
 
 #if !KOTEKAN_FLOAT16
 #error "The F-Engine simulator requires float16 support"
@@ -184,7 +162,13 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
 
     INFO("Defining Julia code...");
     {
-        std::ifstream file("lib/stages/FEngine.jl");
+        const auto julia_source_filename =
+            "lib/stages/FEngine.jl" std::ifstream file(julia_source_filename);
+        if (!file.is_open())
+            FATAL_ERROR(
+                "Could not open the file \"{:s}\" with the Julia source code for the F-Engine "
+                "simulator",
+                julia_source_filename);
         file.seekg(0, std::ios_base::end);
         const auto julia_source_length = file.tellg();
         file.seekg(0);

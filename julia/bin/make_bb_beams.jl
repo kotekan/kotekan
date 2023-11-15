@@ -1,7 +1,6 @@
-using Revise
 using HDF5
 
-includet("/Users/eschnett/src/kotekan/lib/stages/FEngine.jl")
+include("..//lib/stages/FEngine.jl")
 
 source_amplitude = 1.0
 source_frequency = 0.3e+9
