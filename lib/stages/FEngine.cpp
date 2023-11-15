@@ -162,8 +162,8 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
 
     INFO("Defining Julia code...");
     {
-        const auto julia_source_filename =
-            "lib/stages/FEngine.jl" std::ifstream file(julia_source_filename);
+        const auto julia_source_filename = "lib/stages/FEngine.jl";
+        std::ifstream file(julia_source_filename);
         if (!file.is_open())
             FATAL_ERROR(
                 "Could not open the file \"{:s}\" with the Julia source code for the F-Engine "
