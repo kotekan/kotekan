@@ -6,7 +6,10 @@ type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: info
+log_level: debug
+#    log_level: info
+cpu_affinity: [2,3,4,5,8,9,10,11]
+frame_arrival_period: 0.001
 
 buffer_depth: 4
 
@@ -82,13 +85,12 @@ gpuA:
         out_buffers:
             host_mid: host_mid_buffer
 
-
 gpuB:
     # log_level: debug
     profiling: true
     log_profiling: true
     kernel_path: "../../lib/cuda/kernels/"
-    commands: &command_list
+    commands: &command_list2
     - name: cudaInputData
       in_buf: host_mid
       #gpu_mem: in
@@ -100,15 +102,14 @@ gpuB:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
-        commands: *command_list
+        commands: *command_list2
         in_buffers:
             host_mid: host_mid_buffer
         out_buffers:
             host_out: host_out_buffer
 
-
 printSparseGPU:
     kotekan_stage: printSparseUint8
     #array_shape: []
     input_buf: host_out_buffer
-    max_to_print: 8
+    max_to_print: 1

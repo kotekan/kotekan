@@ -24,14 +24,15 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
     output_buffer = host_buffers.get_buffer(config.get<std::string>(unique_name, "out_buf"));
     register_producer(output_buffer, unique_name.c_str());
 
-    for (int i = 0; i < output_buffer->num_frames; i++) {
-        uint flags;
-        // only register the memory if it isn't already...
-        if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, output_buffer->frames[i])) {
-            CHECK_CUDA_ERROR(
-                cudaHostRegister(output_buffer->frames[i], output_buffer->frame_size, 0));
+    if (output_buffer->frame_size)
+        for (int i = 0; i < output_buffer->num_frames; i++) {
+            uint flags;
+            // only register the memory if it isn't already...
+            if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, output_buffer->frames[i])) {
+                CHECK_CUDA_ERROR(
+                                 cudaHostRegister(output_buffer->frames[i], output_buffer->frame_size, 0));
+            }
         }
-    }
 
     if (output_buffer->frame_size == 0)
         _gpu_mem = "";

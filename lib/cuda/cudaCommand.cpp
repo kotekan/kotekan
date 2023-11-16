@@ -104,7 +104,7 @@ cudaEvent_t cudaCommand::execute_base(cudaPipelineState& pipestate,
 }
 
 bool cudaCommand::should_execute(cudaPipelineState& pipestate,
-                                 const std::vector<cudaEvent_t>& pre_events) {
+                                 const std::vector<cudaEvent_t>&) {
     if (_required_flag.size() && !pipestate.flag_is_set(_required_flag)) {
         DEBUG("Required flag \"{:s}\" is not set; skipping stage", _required_flag);
         return false;

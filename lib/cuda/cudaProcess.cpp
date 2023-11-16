@@ -22,9 +22,8 @@ cudaProcess::cudaProcess(Config& config_, const std::string& unique_name,
     gpuProcess(config_, unique_name, buffer_container) {
     std::string device_name = config_.get_default<std::string>(unique_name, "device",
                                                                "device_" + std::to_string(gpu_id));
-    device = cudaDeviceInterface.get(device_name, config_, gpu_id, _gpu_buffer_depth);
-    //new cudaDeviceInterface(config_, unique_name, gpu_id, _gpu_buffer_depth);
-    dev = device;
+    device = cudaDeviceInterface::get(device_name, config_, gpu_id, _gpu_buffer_depth);
+    dev = device.get();
 
     uint32_t num_streams = config.get_default<uint32_t>(unique_name, "num_cuda_streams", 3);
 
@@ -43,6 +42,8 @@ gpuEventContainer* cudaProcess::create_signal() {
 
 gpuCommand* cudaProcess::create_command(const std::string& cmd_name,
                                         const std::string& unique_name) {
+    INFO("CudaProcess creating command: {:s}, {:s}", unique_name, cmd_name);
+
     auto cmd = FACTORY(cudaCommand)::create_bare(cmd_name, config, unique_name,
                                                  local_buffer_container, *device);
     DEBUG("Command added: {:s}", cmd_name.c_str());
@@ -57,13 +58,18 @@ void cudaProcess::queue_commands(int gpu_frame_id, int gpu_frame_counter) {
     pipestate.set_int("gpu_frame_counter", gpu_frame_counter);
     cudaEvent_t final_event = nullptr;
 
-    for (auto& command : commands) {
-        // Feed the last signal into the next operation
-        cudaEvent_t event = ((cudaCommand*)command)->execute_base(pipestate, events);
-        if (event != nullptr) {
-            int32_t command_stream_id = ((cudaCommand*)command)->get_cuda_stream_id();
-            events[command_stream_id] = event;
-            final_event = event;
+    {
+        // Grab the lock for queuing GPU commands
+        std::lock_guard<std::recursive_mutex> lock(device->gpu_command_mutex);
+
+        for (auto& command : commands) {
+            // Feed the last signal into the next operation
+            cudaEvent_t event = ((cudaCommand*)command)->execute_base(pipestate, events);
+            if (event != nullptr) {
+                int32_t command_stream_id = ((cudaCommand*)command)->get_cuda_stream_id();
+                events[command_stream_id] = event;
+                final_event = event;
+            }
         }
     }
     // Wait on the very last event from the last command.

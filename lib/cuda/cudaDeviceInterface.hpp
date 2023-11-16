@@ -28,8 +28,8 @@ public:
     /**
      * @brief Get/create in a singleton dictionary of devices.
      */
-    static cudaDeviceInterface& get(const std::string& name, kotekan::Config& config,
-                                    int32_t gpu_id, int gpu_buffer_depth);
+    static std::shared_ptr<cudaDeviceInterface> get(const std::string& name, kotekan::Config& config,
+                                                    int32_t gpu_id, int gpu_buffer_depth);
 
     cudaDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id,
                         int gpu_buffer_depth);
@@ -75,6 +75,9 @@ public:
                                 cudaEvent_t pre_event, cudaEvent_t& copy_start_event,
                                 cudaEvent_t& copy_end_event);
 
+    // Mutex for queuing GPU commands
+    std::recursive_mutex gpu_command_mutex;
+
 protected:
     void* alloc_gpu_memory(size_t len) override;
     void free_gpu_memory(void*) override;
@@ -83,7 +86,7 @@ protected:
     std::vector<cudaStream_t> streams;
 
     // Singleton dictionary
-    static std::map<std::string, cudaDeviceInterface> inst_map;
+    static std::map<std::string, std::shared_ptr<cudaDeviceInterface> > inst_map;
 private:
 };
 

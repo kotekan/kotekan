@@ -64,13 +64,11 @@ gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
 }
 
 gpuProcess::~gpuProcess() {
-    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile/{:d}"), gpu_id));
+    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile/{:s}"), unique_name));
     for (auto& command : commands)
         delete command;
     for (auto& event : final_signals)
         delete event;
-
-    delete dev;
 }
 
 void gpuProcess::init() {
@@ -144,7 +142,7 @@ void gpuProcess::main_thread() {
 
     restServer& rest_server = restServer::instance();
     rest_server.register_get_callback(
-        fmt::format(fmt("/gpu_profile/{:d}"), gpu_id),
+        fmt::format(fmt("/gpu_profile/{:s}"), unique_name),
         std::bind(&gpuProcess::profile_callback, this, std::placeholders::_1));
 
     // Start with the first GPU frame;

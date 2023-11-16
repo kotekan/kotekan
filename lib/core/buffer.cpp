@@ -170,10 +170,16 @@ Buffer* create_buffer(int num_frames, size_t len, metadataPool* pool, const char
 
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
-        buf->frames[i] = buffer_malloc(buf->aligned_frame_size, numa_node, use_hugepages,
-                                       mlock_frames, zero_new_frames);
-        if (buf->frames[i] == NULL)
-            return NULL;
+        if (len) {
+            buf->frames[i] = buffer_malloc(buf->aligned_frame_size, numa_node, use_hugepages,
+                                           mlock_frames, zero_new_frames);
+            if (buf->frames[i] == NULL)
+                return NULL;
+        } else {
+            // Put in a pattern != NULL, because NULL is used for signalling, eg in
+            // wait_for_empty_frame.
+            buf->frames[i] = (uint8_t*)0xffffffff;
+        }
     }
 
 #if defined(WITH_NUMA) && !defined(WITH_NO_MEMLOCK)

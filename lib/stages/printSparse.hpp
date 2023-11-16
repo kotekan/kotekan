@@ -101,7 +101,7 @@ void printSparse<A_Type>::main_thread() {
             if (!frame[i])
                 continue;
             nset++;
-            if ((_max > 0) && (nset >= _max))
+            if ((_max > 0) && (nset > _max))
                 continue;
             if (_array_shape.size()) {
                 uint32_t j = i;

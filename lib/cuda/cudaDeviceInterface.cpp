@@ -6,13 +6,12 @@
 
 using kotekan::Config;
 
-cudaDeviceInterface& cudaDeviceInterface::get(std::string& name, Config& config,
-                                              int32_t gpu_id, int gpu_buffer_depth) {
-    //std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
-    if (inst_map.count(name) == 0) {
-        // Create & store
-        inst_map[name] = cudaDeviceInterface(name, config, gpu_id, gpu_buffer_depth);
-    }
+std::map<std::string, std::shared_ptr<cudaDeviceInterface> > cudaDeviceInterface::inst_map;
+
+std::shared_ptr<cudaDeviceInterface> cudaDeviceInterface::get(const std::string& name, Config& config,
+                                                              int32_t gpu_id, int gpu_buffer_depth) {
+    if (inst_map.count(name) == 0)
+        inst_map[name] = std::make_shared<cudaDeviceInterface>(config, name, gpu_id, gpu_buffer_depth);
     return inst_map[name];
 }
 
@@ -62,8 +61,8 @@ int32_t cudaDeviceInterface::get_num_streams() {
 }
 
 void cudaDeviceInterface::prepareStreams(uint32_t num_streams) {
-    // Create command queues
-    for (uint32_t i = 0; i < num_streams; ++i) {
+    // Create GPU command queues
+    for (uint32_t i = streams.size(); i < num_streams; ++i) {
         cudaStream_t stream = nullptr;
         CHECK_CUDA_ERROR(cudaStreamCreate(&stream));
         streams.push_back(stream);
