@@ -356,6 +356,9 @@ void testDataGen::main_thread() {
             }
             n_to_set = 0;
         }
+        if (_value_array.size() && ((type == "const") || (type == "const8") || (type == "const16") || (type == "const32")))
+            // Cycle through "values" array, if given
+            value = _value_array[frame_id_abs % _value_array.size()];
         for (uint j = 0; j < n_to_set; ++j) {
             if (type == "const") {
                 if (finished_seeding_constant)

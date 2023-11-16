@@ -25,6 +25,12 @@
  */
 class cudaDeviceInterface final : public gpuDeviceInterface {
 public:
+    /**
+     * @brief Get/create in a singleton dictionary of devices.
+     */
+    static cudaDeviceInterface& get(const std::string& name, kotekan::Config& config,
+                                    int32_t gpu_id, int gpu_buffer_depth);
+
     cudaDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id,
                         int gpu_buffer_depth);
     ~cudaDeviceInterface();
@@ -76,6 +82,8 @@ protected:
     // Extra data
     std::vector<cudaStream_t> streams;
 
+    // Singleton dictionary
+    static std::map<std::string, cudaDeviceInterface> inst_map;
 private:
 };
 

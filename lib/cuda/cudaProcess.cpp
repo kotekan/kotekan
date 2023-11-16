@@ -20,7 +20,10 @@ REGISTER_KOTEKAN_STAGE(cudaProcess);
 cudaProcess::cudaProcess(Config& config_, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     gpuProcess(config_, unique_name, buffer_container) {
-    device = new cudaDeviceInterface(config_, unique_name, gpu_id, _gpu_buffer_depth);
+    std::string device_name = config_.get_default<std::string>(unique_name, "device",
+                                                               "device_" + std::to_string(gpu_id));
+    device = cudaDeviceInterface.get(device_name, config_, gpu_id, _gpu_buffer_depth);
+    //new cudaDeviceInterface(config_, unique_name, gpu_id, _gpu_buffer_depth);
     dev = device;
 
     uint32_t num_streams = config.get_default<uint32_t>(unique_name, "num_cuda_streams", 3);

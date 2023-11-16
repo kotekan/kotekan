@@ -6,6 +6,16 @@
 
 using kotekan::Config;
 
+cudaDeviceInterface& cudaDeviceInterface::get(std::string& name, Config& config,
+                                              int32_t gpu_id, int gpu_buffer_depth) {
+    //std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
+    if (inst_map.count(name) == 0) {
+        // Create & store
+        inst_map[name] = cudaDeviceInterface(name, config, gpu_id, gpu_buffer_depth);
+    }
+    return inst_map[name];
+}
+
 cudaDeviceInterface::cudaDeviceInterface(Config& config, const std::string& unique_name,
                                          int32_t gpu_id, int gpu_buffer_depth) :
     gpuDeviceInterface(config, unique_name, gpu_id, gpu_buffer_depth) {

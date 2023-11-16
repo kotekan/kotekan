@@ -12,17 +12,20 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
     in_buf = host_buffers.get_buffer(config.get<std::string>(unique_name, "in_buf"));
     register_consumer(in_buf, unique_name.c_str());
 
-    for (int i = 0; i < in_buf->num_frames; i++) {
-        uint flags;
-        // only register the memory if it isn't already...
-        if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, in_buf->frames[i])) {
-            CHECK_CUDA_ERROR(cudaHostRegister(in_buf->frames[i], in_buf->frame_size, 0));
+    if (in_buf->frame_size) {
+        for (int i = 0; i < in_buf->num_frames; i++) {
+            uint flags;
+            // only register the memory if it isn't already...
+            if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, in_buf->frames[i])) {
+                CHECK_CUDA_ERROR(cudaHostRegister(in_buf->frames[i], in_buf->frame_size, 0));
+            }
         }
-    }
 
-    _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
+        _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
 
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem, true, false, true));
+        gpu_buffers_used.push_back(std::make_tuple(_gpu_mem, true, false, true));
+    } else
+        _gpu_mem = "";
 
     in_buffer_id = 0;
     in_buffer_precondition_id = 0;
@@ -34,13 +37,14 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
 }
 
 cudaInputData::~cudaInputData() {
-    for (int i = 0; i < in_buf->num_frames; i++) {
-        uint flags;
-        // only unregister if it's already been registered
-        if (cudaSuccess == cudaHostGetFlags(&flags, in_buf->frames[i])) {
-            CHECK_CUDA_ERROR(cudaHostUnregister(in_buf->frames[i]));
+    if (in_buf->frame_size)
+        for (int i = 0; i < in_buf->num_frames; i++) {
+            uint flags;
+            // only unregister if it's already been registered
+            if (cudaSuccess == cudaHostGetFlags(&flags, in_buf->frames[i])) {
+                CHECK_CUDA_ERROR(cudaHostUnregister(in_buf->frames[i]));
+            }
         }
-    }
 }
 
 int cudaInputData::wait_on_precondition(int gpu_frame_id) {
@@ -61,27 +65,30 @@ cudaEvent_t cudaInputData::execute(cudaPipelineState& pipestate,
 
     size_t input_frame_len = in_buf->frame_size;
 
-    void* gpu_memory_frame =
-        device.get_gpu_memory_array(_gpu_mem, pipestate.gpu_frame_id, input_frame_len);
-    void* host_memory_frame = (void*)in_buf->frames[in_buffer_id];
+    if (input_frame_len) {
+        void* gpu_memory_frame =
+            device.get_gpu_memory_array(_gpu_mem, pipestate.gpu_frame_id, input_frame_len);
+        void* host_memory_frame = (void*)in_buf->frames[in_buffer_id];
 
-    device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame, input_frame_len,
-                                  cuda_stream_id, pre_events[cuda_stream_id],
-                                  start_events[pipestate.gpu_frame_id],
-                                  end_events[pipestate.gpu_frame_id]);
+        device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame, input_frame_len,
+                                      cuda_stream_id, pre_events[cuda_stream_id],
+                                      start_events[pipestate.gpu_frame_id],
+                                      end_events[pipestate.gpu_frame_id]);
 
-    // Copy (reference to) metadata also
-    metadataContainer* meta = in_buf->metadata[in_buffer_id];
-    if (meta)
-        device.claim_gpu_memory_array_metadata(_gpu_mem, pipestate.gpu_frame_id, meta);
+        // Copy (reference to) metadata also
+        metadataContainer* meta = in_buf->metadata[in_buffer_id];
+        if (meta)
+            device.claim_gpu_memory_array_metadata(_gpu_mem, pipestate.gpu_frame_id, meta);
+    }
 
     in_buffer_id = (in_buffer_id + 1) % in_buf->num_frames;
     return end_events[pipestate.gpu_frame_id];
 }
 
 void cudaInputData::finalize_frame(int frame_id) {
-    // Release reference to metadata, if we grabbed it
-    device.release_gpu_memory_array_metadata(_gpu_mem, frame_id);
+    if (in_buf->frame_size)
+        // Release reference to metadata, if we grabbed it
+        device.release_gpu_memory_array_metadata(_gpu_mem, frame_id);
 
     cudaCommand::finalize_frame(frame_id);
     mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_finalize_id);

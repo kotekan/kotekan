@@ -33,9 +33,12 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
         }
     }
 
-    _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
-
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem, true, true, false));
+    if (output_buffer->frame_size == 0)
+        _gpu_mem = "";
+    else {
+        _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
+        gpu_buffers_used.push_back(std::make_tuple(_gpu_mem, true, true, false));
+    }
 
     output_buffer_execute_id = 0;
     output_buffer_precondition_id = 0;
@@ -51,13 +54,14 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
 }
 
 cudaOutputData::~cudaOutputData() {
-    for (int i = 0; i < output_buffer->num_frames; i++) {
-        uint flags;
-        // only register the memory if it isn't already...
-        if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, output_buffer->frames[i])) {
-            CHECK_CUDA_ERROR(cudaHostUnregister(output_buffer->frames[i]));
+    if (output_buffer->frame_size)
+        for (int i = 0; i < output_buffer->num_frames; i++) {
+            uint flags;
+            // only register the memory if it isn't already...
+            if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, output_buffer->frames[i])) {
+                CHECK_CUDA_ERROR(cudaHostUnregister(output_buffer->frames[i]));
+            }
         }
-    }
 }
 
 int cudaOutputData::wait_on_precondition(int) {
@@ -75,9 +79,14 @@ int cudaOutputData::wait_on_precondition(int) {
 
 cudaEvent_t cudaOutputData::execute_base(cudaPipelineState& pipestate,
                                          const std::vector<cudaEvent_t>& pre_events) {
-    cudaEvent_t rtn = cudaCommand::execute_base(pipestate, pre_events);
-    did_generate_output[pipestate.gpu_frame_id] = (rtn != nullptr);
-    return rtn;
+    /*
+     cudaEvent_t rtn = cudaCommand::execute_base(pipestate, pre_events);
+     did_generate_output[pipestate.gpu_frame_id] = (rtn != nullptr);
+     return rtn;
+     */
+    bool should = should_execute(pipestate, pre_events);
+    did_generate_output[pipestate.gpu_frame_id] = should;
+    return execute(pipestate, pre_events);
 }
 
 cudaEvent_t cudaOutputData::execute(cudaPipelineState& pipestate,
@@ -86,29 +95,31 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState& pipestate,
 
     size_t output_len = output_buffer->frame_size;
 
-    void* gpu_output_frame =
-        device.get_gpu_memory_array(_gpu_mem, pipestate.gpu_frame_id, output_len);
-    void* host_output_frame = (void*)output_buffer->frames[output_buffer_execute_id];
+    if (output_len) {
+        void* gpu_output_frame =
+            device.get_gpu_memory_array(_gpu_mem, pipestate.gpu_frame_id, output_len);
+        void* host_output_frame = (void*)output_buffer->frames[output_buffer_execute_id];
 
-    device.async_copy_gpu_to_host(host_output_frame, gpu_output_frame, output_len, cuda_stream_id,
-                                  pre_events[cuda_stream_id], start_events[pipestate.gpu_frame_id],
-                                  end_events[pipestate.gpu_frame_id]);
+        device.async_copy_gpu_to_host(host_output_frame, gpu_output_frame, output_len, cuda_stream_id,
+                                      pre_events[cuda_stream_id], start_events[pipestate.gpu_frame_id],
+                                      end_events[pipestate.gpu_frame_id]);
 
-    if (!in_buffer) {
-        // Check for metadata attached to the GPU frame
-        metadataContainer* meta =
-            device.get_gpu_memory_array_metadata(_gpu_mem, pipestate.gpu_frame_id);
-        if (meta) {
-            // Attach the metadata to the host buffer frame
-            CHECK_ERROR_F(pthread_mutex_lock(&output_buffer->lock));
-            if (output_buffer->metadata[output_buffer_execute_id] == NULL) {
-                DEBUG("Passing metadata from GPU array {:s}[{:d}] to output buffer {:s}[{:d}]",
-                      _gpu_mem, pipestate.gpu_frame_id, output_buffer->buffer_name,
-                      output_buffer_execute_id);
-                output_buffer->metadata[output_buffer_execute_id] = meta;
-                increment_metadata_ref_count(meta);
+        if (!in_buffer) {
+            // Check for metadata attached to the GPU frame
+            metadataContainer* meta =
+                device.get_gpu_memory_array_metadata(_gpu_mem, pipestate.gpu_frame_id);
+            if (meta) {
+                // Attach the metadata to the host buffer frame
+                CHECK_ERROR_F(pthread_mutex_lock(&output_buffer->lock));
+                if (output_buffer->metadata[output_buffer_execute_id] == NULL) {
+                    DEBUG("Passing metadata from GPU array {:s}[{:d}] to output buffer {:s}[{:d}]",
+                          _gpu_mem, pipestate.gpu_frame_id, output_buffer->buffer_name,
+                          output_buffer_execute_id);
+                    output_buffer->metadata[output_buffer_execute_id] = meta;
+                    increment_metadata_ref_count(meta);
+                }
+                CHECK_ERROR_F(pthread_mutex_unlock(&output_buffer->lock));
             }
-            CHECK_ERROR_F(pthread_mutex_unlock(&output_buffer->lock));
         }
     }
 
