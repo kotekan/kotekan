@@ -89,6 +89,8 @@ struct chordMetadata {
     // FPGA samples.
     int time_downsampling_fpga[CHORD_META_MAX_FREQ];
 
+    chordMetadata();
+
     std::string get_dimension_name(size_t i) const {
         return std::string(dim_name[i], strnlen(dim_name[i], CHORD_META_MAX_DIMNAME));
     }
