@@ -14,7 +14,7 @@
 
 #pragma pack()
 
-enum chordDataType { int4p4, int8, int16, int32, int64, float16, float32, float64 };
+enum chordDataType { unknown_type, int4p4, int8, int16, int32, int64, float16, float32, float64 };
 
 constexpr std::size_t chord_datatype_bytes(chordDataType type) {
     switch (type) {
@@ -34,8 +34,10 @@ constexpr std::size_t chord_datatype_bytes(chordDataType type) {
             return 4;
         case float64:
             return 8;
+        case unknown_type:
+        default:
+            return -1;
     }
-    return -1;
 }
 
 const char* chord_datatype_string(chordDataType type);

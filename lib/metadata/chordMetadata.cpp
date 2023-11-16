@@ -18,6 +18,7 @@ const char* chord_datatype_string(chordDataType type) {
             return "float32";
         case float64:
             return "float64";
+        case unknown_type:
         default:
             return "<unknown-type>";
     }
