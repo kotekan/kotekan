@@ -1,0 +1,114 @@
+##########################################
+#
+##########################################
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
+
+buffer_depth: 4
+
+# data gen:
+num_frames: 10
+
+frame_size: 1024
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+# Buffers
+host_in_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    # frame_size: 
+    metadata_pool: main_pool
+
+# Buffer used for signalling only, between the two GPU pipelines.
+host_mid_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: 0
+    metadata_pool: main_pool
+
+host_out_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    #frame_size: num_elements * voltage_freq * bb_beams * 2
+    metadata_pool: main_pool
+
+gen_data:
+    kotekan_stage: testDataGen
+    type: const8
+    values: [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]
+    array_shape: [64, 16]
+    dim_name: ["X", "Y"]
+    out_buf: host_in_buffer
+
+gpuA:
+    # log_level: debug
+    profiling: true
+    log_profiling: true
+    kernel_path: "../../lib/cuda/kernels/"
+    commands: &command_list
+    - name: cudaInputData
+      in_buf: host_in
+      gpu_mem: in
+    - name: cudaSyncInput
+    # - name: cudaRechunk
+    #   log_level: debug
+    #   gpu_mem_input: beamgrid
+    #   gpu_mem_output: beamchunk
+    #   input_columns_field: frb_bf_bytes_per_freq
+    #   # Erik's FRB beamformer produces output with rho varying fastest, then T,
+    #   # then F, so T*rho is the inner size and F is the outer size.
+    #   cols_input: frb_td_max * 2 * frb_beam_grid_size * frb_beam_grid_size
+    #   cols_output: frb_td_rechunk * 2 * frb_beam_grid_size * frb_beam_grid_size
+    #   rows: frb_freq
+    #   set_flag: frb_rechunk
+    - name: cudaSyncOutput
+    - name: cudaOutputData
+      #gpu_mem: 
+      out_buf: host_mid
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        commands: *command_list
+        in_buffers:
+            host_in: host_in_buffer
+        out_buffers:
+            host_mid: host_mid_buffer
+
+
+gpuB:
+    # log_level: debug
+    profiling: true
+    log_profiling: true
+    kernel_path: "../../lib/cuda/kernels/"
+    commands: &command_list
+    - name: cudaInputData
+      in_buf: host_mid
+      #gpu_mem: in
+    #- name: cudaSyncInput
+    - name: cudaSyncOutput
+    - name: cudaOutputData
+      gpu_mem: in
+      out_buf: host_out
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        commands: *command_list
+        in_buffers:
+            host_mid: host_mid_buffer
+        out_buffers:
+            host_out: host_out_buffer
+
+
+printSparseGPU:
+    kotekan_stage: printSparseUint8
+    #array_shape: []
+    input_buf: host_out_buffer
+    max_to_print: 8
