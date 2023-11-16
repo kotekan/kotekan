@@ -463,8 +463,12 @@ void testDataGen::main_thread() {
         } else {
             seq_num += samples_per_data_set;
         }
-        if (frame_id == 0)
-            finished_seeding_constant = true;
+        if (frame_id == 0) {
+            if (_value_array.size() && (_value_array.size != (size_t)buf->num_frames)) {
+                // this "finished_seeding" business does not work
+            } else
+                finished_seeding_constant = true;
+        }
 
         if (wait) {
             double time = current_time();

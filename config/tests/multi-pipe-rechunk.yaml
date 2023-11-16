@@ -14,9 +14,12 @@ frame_arrival_period: 0.001
 buffer_depth: 4
 
 # data gen:
-num_frames: 10
+num_frames: 20
 
+input_size: 4
 frame_size: 4
+
+rechunk_factor: 5
 
 # Pool
 main_pool:
@@ -40,7 +43,7 @@ host_mid_buffer:
 host_out_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    #frame_size: num_elements * voltage_freq * bb_beams * 2
+    frame_size: input_size * rechunk_factor
     metadata_pool: main_pool
 
 gen_data:
@@ -61,8 +64,19 @@ gpuA:
       in_buf: host_in
       gpu_mem: in
     - name: cudaSyncInput
+    - name: cudaRechunk
+      gpu_mem_input: in
+      gpu_mem_output: chunk
+      output_async: true
+      #input_columns_field: frb_bf_bytes_per_freq
+      cols_input: 1
+      cols_output: rechunk_factor
+      rows: input_size
+      set_flag: rechunked
     - name: cudaSyncOutput
+      required_flag: rechunked
     - name: cudaOutputData
+      required_flag: rechunked
       out_buf: host_mid
     gpu_0:
         kotekan_stage: cudaProcess
@@ -74,7 +88,6 @@ gpuA:
             host_mid: host_mid_buffer
 
 gpuB:
-    # log_level: debug
     profiling: true
     log_profiling: true
     kernel_path: "../../lib/cuda/kernels/"
@@ -83,7 +96,8 @@ gpuB:
       in_buf: host_mid
     - name: cudaSyncOutput
     - name: cudaOutputData
-      gpu_mem: in
+      #gpu_mem: in
+      gpu_mem: chunk
       out_buf: host_out
     gpu_0:
         kotekan_stage: cudaProcess
@@ -94,8 +108,11 @@ gpuB:
         out_buffers:
             host_out: host_out_buffer
 
-printSparseGPU:
+# print:
+#     kotekan_stage: hexDump
+#     in_buf: host_out_buffer
+#     len: 20
+print:
     kotekan_stage: printSparseUint8
-    #array_shape: []
     input_buf: host_out_buffer
-    max_to_print: 1
+    max_to_print: 20

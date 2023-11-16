@@ -66,6 +66,9 @@ public:
 
 protected:
 private:
+    bool _output_async;
+    int output_id;
+
     size_t _cols_input;
     size_t _cols_output;
     size_t _rows;
