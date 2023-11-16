@@ -188,7 +188,6 @@ gpu:
 
 write_data:
   base_dir: /tmp
-  file_ext: data
   exit_after_n_frames: 1
   exit_with_n_writers: 3
   write_voltage:

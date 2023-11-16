@@ -178,6 +178,7 @@ gpu:
           samples_per_data_set: num_times
           num_local_freq: num_frequencies
           sub_integration_ntime: n2coarse_sub_integration_ntime
+TODO: TRANSPOSE OUTPUT: [FREQ, BASELINE, TIME], WITH TIME FASTEST VARYING
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: coarse_correlation_matrix
@@ -185,7 +186,6 @@ gpu:
 
 write_data:
   base_dir: /tmp
-  file_ext: data
   exit_after_n_frames: 1
   exit_with_n_writers: 2
   write_voltage:

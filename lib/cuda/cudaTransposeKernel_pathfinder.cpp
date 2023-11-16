@@ -158,8 +158,6 @@ cudaTransposeKernel_pathfinder::cudaTransposeKernel_pathfinder(Config& config,
         "--verbose",
     };
     build_ptx({kernel_symbol}, opts);
-
-    // Initialize extra variables (if necessary)
 }
 
 cudaTransposeKernel_pathfinder::~cudaTransposeKernel_pathfinder() {}

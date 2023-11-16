@@ -146,7 +146,7 @@ host_upchan_voltage_buffer:
 # Stages
 gen_voltage:
     kotekan_stage: FEngine
-    num_frames: 1
+    num_frames: 10
     E_buffer: host_voltage_buffer
     A_buffer: host_bb_phase_buffer
     J_buffer: host_expected_bb_beams_buffer
@@ -183,19 +183,18 @@ gpu:
 
 write_data:
     base_dir: /tmp
-    file_ext: data
-    exit_after_n_frames: 1
+    exit_after_n_frames: 10
     exit_with_n_writers: 3
     write_voltage:
-        kotekan_stage: hdf5FileWrite
+        kotekan_stage: asdfFileWrite
         in_buf: host_voltage_buffer
         file_name: voltage
     write_gain:
-        kotekan_stage: hdf5FileWrite
+        kotekan_stage: asdfFileWrite
         in_buf: host_upchan_gain_buffer
         file_name: upchan_gain
     write_upchan_voltage:
-        kotekan_stage: hdf5FileWrite
+        kotekan_stage: asdfFileWrite
         in_buf: host_upchan_voltage_buffer
         file_name: upchan_voltage
 ...

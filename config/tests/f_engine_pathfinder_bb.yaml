@@ -197,23 +197,22 @@ gpu:
 
 write_data:
     base_dir: /tmp
-    file_ext: data
     exit_after_n_frames: 10
     exit_with_n_writers: 4
     write_voltage:
-        kotekan_stage: hdf5FileWrite
+        kotekan_stage: asdfFileWrite
         in_buf: host_voltage_buffer
         file_name: pathfinder_voltage
     write_bb_phase:
-        kotekan_stage: hdf5FileWrite
+        kotekan_stage: asdfFileWrite
         in_buf: host_bb_phase_buffer
         file_name: pathfinder_bb_phase
     write_expected_bb_beams:
-        kotekan_stage: hdf5FileWrite
+        kotekan_stage: asdfFileWrite
         in_buf: host_expected_bb_beams_buffer
         file_name: pathfinder_expected_bb_beams
     write_bb_beams:
-        kotekan_stage: hdf5FileWrite
+        kotekan_stage: asdfFileWrite
         in_buf: host_bb_beams_buffer
         file_name: pathfinder_bb_beams
 ...
