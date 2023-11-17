@@ -44,7 +44,8 @@ option(NO_MEMLOCK "Do not lock buffer memory (useful when running in Docker)" OF
 option(SUPERDEBUG "Enable extra debugging with no optimisation" OFF)
 option(SANITIZE "Enable clang sanitizers for testing" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
-option(WITH_TESTS "Compile testing library and boost C++ unit tests" OFF)
+option(WITH_TESTS "Compile testing library" OFF)
+option(WITH_BOOST_TESTS "Compile boost C++ unit tests" OFF)
 option(IWYU "Enable include-what-you-use and print suggestions to stderr" OFF)
 option(CCACHE "Use ccache to speed up the build" OFF)
 option(WERROR "Warnings are errors" OFF)
@@ -330,7 +331,7 @@ add_subdirectory(external)
 add_subdirectory(config)
 
 # Testing with boost
-if(${WITH_TESTS})
+if(${WITH_BOOST_TESTS})
     set(_BOOST_TESTS_DIR
         tests/boost/
         CACHE INTERNAL "Path to boost test sources")

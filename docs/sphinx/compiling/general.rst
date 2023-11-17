@@ -198,6 +198,8 @@ Cmake build options
 * ``-DOPENSSL_ROOT_DIR=<openssl_root_dir>``
     Location of the openssl libs and includes.
 * ``-DWITH_TESTS=ON``
+    Build kotekans test library.
+* ``-DWITH_BOOST_TESTS=ON``
     Build tests using The Boost Test Framework. pytest-cpp needs to be installed for pytest to find them.
 * ``-DSUPERDEBUG=ON``
     Add extra debugging info and turn off all optimisation to improve coverage.

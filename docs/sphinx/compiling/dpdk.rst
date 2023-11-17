@@ -13,7 +13,9 @@ To install DPDK on Ubuntu 22.04 install run
 
      sudo apt install dpdk dpdk-dev dpdk-kmods-dkms
 
-Then CMake will automatically include it.
+Then CMake will automatically include it. Note that DPDK
+is not compatible with BOOST tests, so will be disabled if
+the ``-DWITH_BOOST_TESTS`` option is enabled.
 
 To install DPDK on ubuntu 18.04 simply run:
 
