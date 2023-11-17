@@ -23,6 +23,16 @@ class gpuDeviceInterface;
 /// Enumeration of known GPU command types.
 enum class gpuCommandType { COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET };
 
+/**
+ * @class gpuCommandState
+ * @brief Base class for shared state between peer gpuCommand objects.
+ *
+ * Each gpuCommand is responsible for processing one frame of data at
+ * a time for one stage in a GPU pipeline.  Since multiple frames can
+ * be active at once, multiple gpuCommand objects are created for each
+ * each step in the GPU pipeline.  Sometimes, these peers need to
+ * share state, and this base class gives them a mechanism to do that.
+ */
 class gpuCommandState : public kotekan::kotekanLogging {};
 
 /**
