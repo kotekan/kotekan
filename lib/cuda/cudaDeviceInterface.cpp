@@ -101,7 +101,8 @@ void cudaDeviceInterface::build(const std::string& kernel_filename,
 
     for (auto& kernel_name : kernel_names)
         if (runtime_kernels.count(kernel_name))
-            FATAL_ERROR("Building CUDA kernels in file {:s}: kernel \"{:s}\" already exists.", kernel_filename, kernel_name);
+            FATAL_ERROR("Building CUDA kernels in file {:s}: kernel \"{:s}\" already exists.",
+                        kernel_filename, kernel_name);
 
     // DEBUG("Building! {:s}", kernel_command)
     //  Load the kernel file contents into `program_buffer`
@@ -205,7 +206,8 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
 
     for (auto& kernel_name : kernel_names)
         if (runtime_kernels.count(kernel_name))
-            FATAL_ERROR("Building CUDA kernels in file {:s}: kernel \"{:s}\" already exists.", kernel_filename, kernel_name);
+            FATAL_ERROR("Building CUDA kernels in file {:s}: kernel \"{:s}\" already exists.",
+                        kernel_filename, kernel_name);
     // DEBUG("Building! {:s}", kernel_command)
 
     // Load the kernel file contents into `program_buffer`
