@@ -100,11 +100,8 @@ Buffer* bufferFactory::new_buffer(const string& type_name, const string& name,
     INFO_NON_OO("Creating {:s}Buffer named {:s} with {:d} frames, frame size of {:d} and "
                 "metadata pool {:s} on numa_node {:d}",
                 type_name, name, num_frames, frame_size, metadataPool_name, numa_node);
-    Buffer* buf = create_buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(),
-                                numa_node, use_hugepages, mlock_frames, zero_new_frames);
-    if (buf == nullptr) {
-        throw std::runtime_error(fmt::format(fmt("Could not create the buffer: {:s}"), name));
-    }
+    Buffer* buf = new Buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(),
+                             numa_node, use_hugepages, mlock_frames, zero_new_frames);
     return buf;
 }
 

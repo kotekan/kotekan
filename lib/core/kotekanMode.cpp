@@ -66,8 +66,7 @@ kotekanMode::~kotekanMode() {
 
     for (auto const& buf : buffers) {
         if (buf.second != nullptr) {
-            delete_buffer(buf.second);
-            free(buf.second);
+            delete buf.second;
         }
     }
 

@@ -8,6 +8,9 @@
 #include "hsaBase.h" // for hsa_host_free, hsa_host_malloc
 #endif
 #include "kotekanLogging.hpp"
+#include "fmt.hpp" // for fmt, basic_string_view, make_format_args, FMT_STRING
+
+#include <stdexcept>
 
 // IWYU pragma: no_include <asm/mman-common.h>
 // IWYU pragma: no_include <asm/mman.h>
@@ -72,10 +75,20 @@ int private_mark_frame_empty(Buffer* buf, const int id);
 
 //void private_mark_frame_full(Buffer* buf, const char* name, const int ID);
 
-Buffer* create_buffer(int num_frames, size_t len, metadataPool* pool, const char* buffer_name,
-                      const char* buffer_type, int numa_node, bool use_hugepages, bool mlock_frames,
-                      bool zero_new_frames) {
-
+Buffer::Buffer(int _num_frames, size_t len, metadataPool* pool, const char* _buffer_name,
+               const char* _buffer_type, int _numa_node, bool _use_hugepages, bool _mlock_frames,
+               bool zero_new_frames) :
+    shutdown_signal(0),
+    num_frames(_num_frames),
+    frame_size(len),
+    // By default don't zero buffers at the end of their use.
+    zero_frames(0),
+    last_arrival_time(0),
+    metadata_pool(pool),
+    use_hugepages(_use_hugepages),
+    mlock_frames(_mlock_frames),
+    numa_node(_numa_node)
+{
     assert(num_frames > 0);
 
 #if defined(WITH_NUMA) && !defined(WITH_NO_MEMLOCK)
@@ -85,136 +98,112 @@ Buffer* create_buffer(int num_frames, size_t len, metadataPool* pool, const char
     if (set_mempolicy(MPOL_BIND, node_mask ? node_mask->maskp : NULL,
                       node_mask ? node_mask->size + 1 : 0)
         < 0) {
-        ERROR_F("Failed to set memory policy: %s (%d)", strerror(errno), errno);
-        return NULL;
+        throw std::runtime_error(fmt::format(fmt("Failed to set memory policy: %s (%d)"), strerror(errno), errno));
     }
     numa_bitmask_free(node_mask);
 #endif
 
-    Buffer* buf = (Buffer*)malloc(sizeof(Buffer));
-    CHECK_MEM_F(buf);
+    CHECK_ERROR_F(pthread_mutex_init(&lock, nullptr));
 
-    CHECK_ERROR_F(pthread_mutex_init(&buf->lock, nullptr));
-
-    CHECK_ERROR_F(pthread_cond_init(&buf->full_cond, nullptr));
-    CHECK_ERROR_F(pthread_cond_init(&buf->empty_cond, nullptr));
-
-    buf->shutdown_signal = 0;
-    buf->numa_node = numa_node;
-    buf->use_hugepages = use_hugepages;
-    buf->mlock_frames = mlock_frames;
+    CHECK_ERROR_F(pthread_cond_init(&full_cond, nullptr));
+    CHECK_ERROR_F(pthread_cond_init(&empty_cond, nullptr));
 
     // Copy the buffer name and type.
-    buf->buffer_name = strdup(buffer_name);
-    buf->buffer_type = strdup(buffer_type);
-
-    buf->num_frames = num_frames;
-    buf->metadata_pool = pool;
-    buf->frame_size = len;
+    buffer_name = strdup(_buffer_name);
+    buffer_type = strdup(_buffer_type);
 
     if (use_hugepages) {
         // Round up to the nearest huge page size multiple.
-        buf->aligned_frame_size =
+        aligned_frame_size =
             (int)(((size_t)len + (size_t)HUGE_PAGE_SIZE - 1) & -(size_t)HUGE_PAGE_SIZE);
     } else {
-        buf->aligned_frame_size = len;
+        aligned_frame_size = len;
     }
 
     // Create the is_free array
-    buf->is_full = (int*)malloc(num_frames * sizeof(int));
-
-    if (buf->is_full == NULL) {
-        ERROR_F("Error creating is_full array");
-        return NULL;
+    is_full = (int*)malloc(num_frames * sizeof(int));
+    if (is_full == NULL) {
+        throw std::runtime_error("Error create Buffer:is_full array");
     }
-
-    memset(buf->is_full, 0, num_frames * sizeof(int));
+    memset(is_full, 0, num_frames * sizeof(int));
 
     // Create the array of buffer pointers.
-    buf->frames = (uint8_t**)malloc(num_frames * sizeof(void*));
-    CHECK_MEM_F(buf->frames);
+    frames = (uint8_t**)malloc(num_frames * sizeof(void*));
+    CHECK_MEM_F(frames);
 
     // Create the info array
-    buf->metadata = (metadataContainer**)malloc(num_frames * sizeof(void*));
-    CHECK_MEM_F(buf->metadata);
-
+    metadata = (metadataContainer**)malloc(num_frames * sizeof(void*));
+    CHECK_MEM_F(metadata);
     for (int i = 0; i < num_frames; ++i) {
-        buf->metadata[i] = NULL;
+        metadata[i] = NULL;
     }
 
     for (int i = 0; i < MAX_PRODUCERS; ++i) {
-        buf->producers[i].in_use = 0;
+        producers[i].in_use = 0;
     }
     for (int i = 0; i < MAX_CONSUMERS; ++i) {
-        buf->consumers[i].in_use = 0;
+        consumers[i].in_use = 0;
     }
 
     // Create the arrays for marking consumers and producers as done.
-    buf->producers_done = (int**)malloc(num_frames * sizeof(int*));
-    CHECK_MEM_F(buf->producers_done);
-    buf->consumers_done = (int**)malloc(num_frames * sizeof(int*));
-    CHECK_MEM_F(buf->consumers_done);
+    producers_done = (int**)malloc(num_frames * sizeof(int*));
+    CHECK_MEM_F(producers_done);
+    consumers_done = (int**)malloc(num_frames * sizeof(int*));
+    CHECK_MEM_F(consumers_done);
 
     for (int i = 0; i < num_frames; ++i) {
-        buf->producers_done[i] = (int*)malloc(MAX_PRODUCERS * sizeof(int));
-        buf->consumers_done[i] = (int*)malloc(MAX_CONSUMERS * sizeof(int));
+        producers_done[i] = (int*)malloc(MAX_PRODUCERS * sizeof(int));
+        consumers_done[i] = (int*)malloc(MAX_CONSUMERS * sizeof(int));
 
-        CHECK_MEM_F(buf->producers_done[i]);
-        CHECK_MEM_F(buf->consumers_done[i]);
+        CHECK_MEM_F(producers_done[i]);
+        CHECK_MEM_F(consumers_done[i]);
 
-        private_reset_producers(buf, i);
-        private_reset_consumers(buf, i);
+        private_reset_producers(this, i);
+        private_reset_consumers(this, i);
     }
-
-    // By default don't zero buffers at the end of their use.
-    buf->zero_frames = 0;
-
-    buf->last_arrival_time = 0;
 
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
         if (len) {
-            buf->frames[i] = buffer_malloc(buf->aligned_frame_size, numa_node, use_hugepages,
+            frames[i] = buffer_malloc(aligned_frame_size, numa_node, use_hugepages,
                                            mlock_frames, zero_new_frames);
-            if (buf->frames[i] == NULL)
-                return NULL;
+            if (frames[i] == NULL) {
+                throw std::runtime_error(fmt::format(fmt("Failed to allocate Buffer memory: %d bytes: %s (%d)"), aligned_frame_size, strerror(errno), errno));
+            }
         } else {
             // Put in a pattern != NULL, because NULL is used for signalling, eg in
             // wait_for_empty_frame.
-            buf->frames[i] = (uint8_t*)0xffffffff;
+            frames[i] = (uint8_t*)0xffffffff;
         }
     }
 
 #if defined(WITH_NUMA) && !defined(WITH_NO_MEMLOCK)
     // Reset the memory policy so that we don't impact other parts of the
     if (set_mempolicy(MPOL_DEFAULT, nullptr, 0) < 0) {
-        ERROR_F("Failed to reset the memory policy to default: %s (%d)", strerror(errno), errno);
-        return NULL;
+        throw std::runtime_error(fmt::format(fmt("Failed to reset memory policy to default: %s (%d)"), strerror(errno), errno));
     }
 #endif
-
-    return buf;
 }
 
-void delete_buffer(Buffer* buf) {
-    for (int i = 0; i < buf->num_frames; ++i) {
-        buffer_free(buf->frames[i], buf->aligned_frame_size, buf->use_hugepages);
-        free(buf->producers_done[i]);
-        free(buf->consumers_done[i]);
+Buffer::~Buffer() {
+    for (int i = 0; i < num_frames; ++i) {
+        buffer_free(frames[i], aligned_frame_size, use_hugepages);
+        free(producers_done[i]);
+        free(consumers_done[i]);
     }
 
-    free(buf->frames);
-    free(buf->is_full);
-    free(buf->metadata);
-    free(buf->producers_done);
-    free(buf->consumers_done);
-    free(buf->buffer_name);
-    free(buf->buffer_type);
+    free(frames);
+    free(is_full);
+    free(metadata);
+    free(producers_done);
+    free(consumers_done);
+    free(buffer_name);
+    free(buffer_type);
 
     // Free locks and cond vars
-    CHECK_ERROR_F(pthread_mutex_destroy(&buf->lock));
-    CHECK_ERROR_F(pthread_cond_destroy(&buf->full_cond));
-    CHECK_ERROR_F(pthread_cond_destroy(&buf->empty_cond));
+    CHECK_ERROR_F(pthread_mutex_destroy(&lock));
+    CHECK_ERROR_F(pthread_cond_destroy(&full_cond));
+    CHECK_ERROR_F(pthread_cond_destroy(&empty_cond));
 }
 
 void mark_frame_full(Buffer* buf, const char* name, const int ID) {

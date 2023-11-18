@@ -25,6 +25,7 @@
 #ifndef BUFFER
 #define BUFFER
 
+#include "kotekanLogging.hpp"
 #include "metadata.h" // for metadataPool
 
 #include <pthread.h> // for pthread_cond_t, pthread_mutex_t
@@ -65,6 +66,12 @@ struct StageInfo {
 
     /// Last frame to be released with a call to mark_frame_*
     int last_frame_released;
+};
+
+class GenericBuffer  : public kotekan::kotekanLogging {
+public:
+    GenericBuffer() {}
+    virtual ~GenericBuffer() {};
 };
 
 /**
@@ -120,8 +127,13 @@ struct StageInfo {
  *
  * @author Andre Renard
  */
-struct Buffer {
-
+class Buffer : public GenericBuffer {
+public:
+    Buffer(int num_frames, size_t len, metadataPool* pool, const char* buffer_name,
+           const char* buffer_type, int numa_node, bool use_hugepages, bool mlock_frames,
+           bool zero_new_frames);
+    ~Buffer() override;
+    //protected:
     /// The main lock for frame state management
     pthread_mutex_t lock;
 
