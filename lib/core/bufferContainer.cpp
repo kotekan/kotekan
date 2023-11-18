@@ -15,7 +15,7 @@ bufferContainer::bufferContainer() {}
 
 bufferContainer::~bufferContainer() {}
 
-void bufferContainer::add_buffer(const string& name, Buffer* buf) {
+void bufferContainer::add_buffer(const string& name, GenericBuffer* buf) {
     if (buffers.count(name) != 0) {
         throw std::runtime_error(fmt::format(fmt("The buffer named {:s} already exists!"), name));
     }
@@ -27,14 +27,26 @@ Buffer* bufferContainer::get_buffer(const string& name) {
         throw std::runtime_error(fmt::format(fmt("The buffer named {:s} doesn't exist!"), name));
         return nullptr;
     }
-    return buffers[name];
+    GenericBuffer* gb = buffers[name];
+    if (!gb->is_basic()) {
+        throw std::runtime_error(fmt::format(fmt("The buffer named {:s} is not a basic Buffer!"), name));
+    }
+    return dynamic_cast<Buffer*>(gb);
 }
 
-map<string, Buffer*>& bufferContainer::get_buffer_map() {
+map<string, GenericBuffer*>& bufferContainer::get_buffer_map() {
     return buffers;
 }
 
-void bufferContainer::set_buffer_map(map<string, Buffer*>& buffer_map) {
+map<string, Buffer*> bufferContainer::get_basic_buffer_map() {
+    map<string, Buffer*> b;
+    for (auto v : buffers)
+        if (v.second->is_basic())
+            b[v.first] = dynamic_cast<Buffer*>(v.second);
+    return b;
+}
+
+void bufferContainer::set_buffer_map(map<string, GenericBuffer*>& buffer_map) {
     buffers = buffer_map;
 }
 

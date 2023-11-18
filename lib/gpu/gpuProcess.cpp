@@ -90,7 +90,7 @@ void gpuProcess::init() {
         commands.push_back(create_command(command_name, unique_path));
     }
 
-    for (auto& buf : local_buffer_container.get_buffer_map()) {
+    for (auto& buf : local_buffer_container.get_basic_buffer_map()) {
         register_host_memory(buf.second);
     }
 }

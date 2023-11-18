@@ -72,6 +72,36 @@ class GenericBuffer  : public kotekan::kotekanLogging {
 public:
     GenericBuffer() {}
     virtual ~GenericBuffer() {};
+    virtual void print_full_status() {};
+
+    virtual bool is_basic() = 0;
+
+    /// The main lock for frame state management
+    pthread_mutex_t lock;
+
+    /// The condition variable for calls to @c wait_for_full_buffer
+    pthread_cond_t full_cond;
+
+    /// The condition variable for calls to @c wait_for_empty_buffer
+    pthread_cond_t empty_cond;
+
+    /**
+     * @brief Shutdown variable
+     * Set to 1 when the system should stop returning
+     * new frames for producers and consumers.
+     */
+    int shutdown_signal;
+
+    void send_shutdown_signal();
+
+};
+
+class RingBuffer : public GenericBuffer {
+public:
+    RingBuffer(size_t, metadataPool*, const char*,
+               const char*, int, bool, bool, bool) {}
+    ~RingBuffer() override {}
+    bool is_basic() override { return false; }
 };
 
 /**
@@ -133,23 +163,17 @@ public:
            const char* buffer_type, int numa_node, bool use_hugepages, bool mlock_frames,
            bool zero_new_frames);
     ~Buffer() override;
-    //protected:
-    /// The main lock for frame state management
-    pthread_mutex_t lock;
 
-    /// The condition variable for calls to @c wait_for_full_buffer
-    pthread_cond_t full_cond;
-
-    /// The condition variable for calls to @c wait_for_empty_buffer
-    pthread_cond_t empty_cond;
+    bool is_basic() override { return true; }
 
     /**
-     * @brief Shutdown variable
-     * Set to 1 when the system should stop returning
-     * new frames for producers and consumers.
+     * @brief Prints a summary the frames and state of the producers and consumers.
+     *
+     * @param buf The buffer object
      */
-    int shutdown_signal;
+    void print_full_status() override;
 
+    //protected:
     /// The number of frames kept by this object
     int num_frames;
 
@@ -442,13 +466,6 @@ double get_last_arrival_time(Buffer* buf);
  * @param[in] buf The buffer object
  */
 void print_buffer_status(Buffer* buf);
-
-/**
- * @brief Prints a summary the frames and state of the producers and consumers.
- *
- * @param buf The buffer object
- */
-void print_full_status(Buffer* buf);
 
 /**
  * @brief Allocates a new metadata object from the associated pool

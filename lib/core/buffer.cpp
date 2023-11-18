@@ -78,7 +78,6 @@ int private_mark_frame_empty(Buffer* buf, const int id);
 Buffer::Buffer(int _num_frames, size_t len, metadataPool* pool, const char* _buffer_name,
                const char* _buffer_type, int _numa_node, bool _use_hugepages, bool _mlock_frames,
                bool zero_new_frames) :
-    shutdown_signal(0),
     num_frames(_num_frames),
     frame_size(len),
     // By default don't zero buffers at the end of their use.
@@ -464,7 +463,7 @@ void buffer_wrote_to_ring_buffer(Buffer* buf, /*const char* name,*/ size_t sz) {
     CHECK_ERROR_F(pthread_cond_broadcast(&buf->full_cond));
 }
 
-uint8_t* buffer_claim_next_full_frame(Buffer* buf, const char* consumer_name, const int frame_id) {
+uint8_t* buffer_claim_next_full_frame(Buffer* buf, const char*, const int frame_id) {
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 
     //int consumer_id = private_get_consumer_id(buf, name);
@@ -838,17 +837,17 @@ void print_buffer_status(Buffer* buf) {
     INFO_F("Buffer %s, status: %s", buf->buffer_name, status_string);
 }
 
-void print_full_status(Buffer* buf) {
+void Buffer::print_full_status() {
 
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+    CHECK_ERROR_F(pthread_mutex_lock(&lock));
 
-    char status_string[buf->num_frames + 1];
-    status_string[buf->num_frames] = '\0';
+    char status_string[num_frames + 1];
+    status_string[num_frames] = '\0';
 
-    INFO_F("--------------------- %s ---------------------", buf->buffer_name);
+    INFO_F("--------------------- %s ---------------------", buffer_name);
 
-    for (int i = 0; i < buf->num_frames; ++i) {
-        if (buf->is_full[i] == 1) {
+    for (int i = 0; i < num_frames; ++i) {
+        if (is_full[i] == 1) {
             status_string[i] = 'X';
         } else {
             status_string[i] = '_';
@@ -860,38 +859,38 @@ void print_full_status(Buffer* buf) {
     INFO_F("---- Producers ----");
 
     for (int producer_id = 0; producer_id < MAX_PRODUCERS; ++producer_id) {
-        if (buf->producers[producer_id].in_use == 1) {
-            for (int i = 0; i < buf->num_frames; ++i) {
-                if (buf->producers_done[i][producer_id] == 1) {
+        if (producers[producer_id].in_use == 1) {
+            for (int i = 0; i < num_frames; ++i) {
+                if (producers_done[i][producer_id] == 1) {
                     status_string[i] = '+';
                 } else {
                     status_string[i] = '_';
                 }
             }
-            INFO_F("%-30s : %s (%d, %d)", buf->producers[producer_id].name, status_string,
-                   buf->producers[producer_id].last_frame_acquired,
-                   buf->producers[producer_id].last_frame_released);
+            INFO_F("%-30s : %s (%d, %d)", producers[producer_id].name, status_string,
+                   producers[producer_id].last_frame_acquired,
+                   producers[producer_id].last_frame_released);
         }
     }
 
     INFO_F("---- Consumers ----");
 
     for (int consumer_id = 0; consumer_id < MAX_CONSUMERS; ++consumer_id) {
-        if (buf->consumers[consumer_id].in_use == 1) {
-            for (int i = 0; i < buf->num_frames; ++i) {
-                if (buf->consumers_done[i][consumer_id] == 1) {
+        if (consumers[consumer_id].in_use == 1) {
+            for (int i = 0; i < num_frames; ++i) {
+                if (consumers_done[i][consumer_id] == 1) {
                     status_string[i] = '=';
                 } else {
                     status_string[i] = '_';
                 }
             }
-            INFO_F("%-30s : %s (%d, %d)", buf->consumers[consumer_id].name, status_string,
-                   buf->consumers[consumer_id].last_frame_acquired,
-                   buf->consumers[consumer_id].last_frame_released);
+            INFO_F("%-30s : %s (%d, %d)", consumers[consumer_id].name, status_string,
+                   consumers[consumer_id].last_frame_acquired,
+                   consumers[consumer_id].last_frame_released);
         }
     }
 
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+    CHECK_ERROR_F(pthread_mutex_unlock(&lock));
 }
 
 
@@ -1171,11 +1170,10 @@ double get_last_arrival_time(Buffer* buf) {
     return buf->last_arrival_time;
 }
 
-void send_shutdown_signal(Buffer* buf) {
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
-    buf->shutdown_signal = 1;
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
-
-    CHECK_ERROR_F(pthread_cond_broadcast(&buf->empty_cond));
-    CHECK_ERROR_F(pthread_cond_broadcast(&buf->full_cond));
+void GenericBuffer::send_shutdown_signal() {
+    CHECK_ERROR_F(pthread_mutex_lock(&lock));
+    shutdown_signal = 1;
+    CHECK_ERROR_F(pthread_mutex_unlock(&lock));
+    CHECK_ERROR_F(pthread_cond_broadcast(&empty_cond));
+    CHECK_ERROR_F(pthread_cond_broadcast(&full_cond));
 }

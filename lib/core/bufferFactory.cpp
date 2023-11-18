@@ -27,16 +27,23 @@ bufferFactory::bufferFactory(Config& _config, map<string, metadataPool*>& _metad
 
 bufferFactory::~bufferFactory() {}
 
-map<string, Buffer*> bufferFactory::build_buffers() {
-    map<string, Buffer*> buffers;
+map<string, GenericBuffer*> bufferFactory::build_buffers() {
+    map<string, GenericBuffer*> buffers;
 
-    // Start parsing tree, put the buffers in the "pools" vector
+    // Start parsing tree, put the buffers in the "buffers" map
     build_from_tree(buffers, config.get_full_config_json(), "");
 
+    /*
+    // ugh, upcast the map values
+    map<string, Buffer*> b;
+    for (auto it : buffers)
+    b[it.first] = dynamic_cast<Buffer*>(it.second);
+    return b;
+    */
     return buffers;
 }
 
-void bufferFactory::build_from_tree(map<string, Buffer*>& buffers, const json& config_tree,
+void bufferFactory::build_from_tree(map<string, GenericBuffer*>& buffers, const json& config_tree,
                                     const string& path) {
 
     for (json::const_iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
@@ -64,7 +71,7 @@ void bufferFactory::build_from_tree(map<string, Buffer*>& buffers, const json& c
     }
 }
 
-Buffer* bufferFactory::new_buffer(const string& type_name, const string& name,
+GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& name,
                                   const string& location) {
 
     // DEBUG("Creating buffer of type: {:s}, at config tree path: {:s}", name, location);
@@ -92,6 +99,15 @@ Buffer* bufferFactory::new_buffer(const string& type_name, const string& name,
         frame_size = VisFrameView::calculate_frame_size(config, location);
     } else if (type_name == "hfb") {
         frame_size = HFBFrameView::calculate_frame_size(config, location);
+    } else if (type_name == "ring") {
+
+        INFO_NON_OO("Creating {:s}Buffer named {:s} with frame size of {:d} and "
+                    "metadata pool {:s} on numa_node {:d}",
+                    type_name, name, frame_size, metadataPool_name, numa_node);
+        RingBuffer* buf = new RingBuffer(frame_size, pool, name.c_str(), type_name.c_str(),
+                                         numa_node, use_hugepages, mlock_frames, zero_new_frames);
+        return buf;
+
     } else {
         // Unknown buffer type
         throw std::runtime_error(fmt::format(fmt("No buffer type named: {:s}"), type_name));

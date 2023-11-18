@@ -41,7 +41,7 @@ void monitorBuffer::main_thread() {
             double last_arrival = get_last_arrival_time(buf);
             if ((cur_time - last_arrival) > timeout && last_arrival > 1) {
                 for (auto& buf : buffer_container.get_buffer_map()) {
-                    print_full_status(buf.second);
+                    buf.second->print_full_status();
                 }
                 usleep(50000);
                 FATAL_ERROR("The buffer {:s} hasn't received a frame for {:f} seconds.\nClosing "
@@ -55,7 +55,7 @@ void monitorBuffer::main_thread() {
             float fraction_full = (float)num_full_fames / (float)num_frames;
             if (fraction_full > fill_threshold) {
                 for (auto& buf : buffer_container.get_buffer_map()) {
-                    print_full_status(buf.second);
+                    buf.second->print_full_status();
                 }
                 usleep(50000);
                 FATAL_ERROR("The fraction of full frames {:f} ({:d}/{:d}) is greater than the "

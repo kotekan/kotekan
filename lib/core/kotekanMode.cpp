@@ -154,14 +154,14 @@ void kotekanMode::stop_stages() {
     // should wake up stages which are blocked.
     for (auto const& buf : buffers) {
         INFO_NON_OO("Sending shutdown signal to buffer: {:s}", buf.first);
-        send_shutdown_signal(buf.second);
+        buf.second->send_shutdown_signal();
     }
 }
 
 nlohmann::json kotekanMode::get_buffer_json() {
     nlohmann::json buffer_json = {};
 
-    for (auto& buf : buffer_container.get_buffer_map()) {
+    for (auto& buf : buffer_container.get_basic_buffer_map()) {
         nlohmann::json buf_info = {};
         buf_info["consumers"];
         for (int i = 0; i < MAX_CONSUMERS; ++i) {
@@ -221,7 +221,7 @@ void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
     dot += "digraph pipeline {\n";
 
     // Setup buffer nodes
-    for (auto& buf : buffer_container.get_buffer_map()) {
+    for (auto& buf : buffer_container.get_basic_buffer_map()) {
         dot += fmt::format(
             "{:s}\"{:s}\" [label=<{:s}<BR/>{:d}/{:d} ({:.1f}%)> shape=ellipse, color=blue];\n",
             prefix, buf.first, buf.first, get_num_full_frames(buf.second), buf.second->num_frames,
@@ -234,7 +234,7 @@ void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
     }
 
     // Generate graph edges (producer/consumer relations)
-    for (auto& buf : buffer_container.get_buffer_map()) {
+    for (auto& buf : buffer_container.get_basic_buffer_map()) {
         for (int i = 0; i < MAX_CONSUMERS; ++i) {
             if (buf.second->consumers[i].in_use) {
                 dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\";\n", prefix, buf.first,

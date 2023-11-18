@@ -29,7 +29,7 @@ REGISTER_KOTEKAN_STAGE(bufferStatus);
 bufferStatus::bufferStatus(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferStatus::main_thread, this)) {
-    buffers = buffer_container.get_buffer_map();
+    buffers = buffer_container.get_basic_buffer_map();
 
     // Apply config.
     time_delay = config.get_default<int>(unique_name, "time_delay", 1000000);
