@@ -7,6 +7,7 @@
 #ifdef WITH_HSA
 #include "hsaBase.h" // for hsa_host_free, hsa_host_malloc
 #endif
+#include "kotekanLogging.hpp"
 
 // IWYU pragma: no_include <asm/mman-common.h>
 // IWYU pragma: no_include <asm/mman.h>
@@ -68,6 +69,8 @@ void private_reset_consumers(Buffer* buf, const int ID);
  * @return 1 if the frame was marked as empty, 0 if it is being zeroed.
  */
 int private_mark_frame_empty(Buffer* buf, const int id);
+
+//void private_mark_frame_full(Buffer* buf, const char* name, const int ID);
 
 Buffer* create_buffer(int num_frames, size_t len, metadataPool* pool, const char* buffer_name,
                       const char* buffer_type, int numa_node, bool use_hugepages, bool mlock_frames,
@@ -222,6 +225,8 @@ void mark_frame_full(Buffer* buf, const char* name, const int ID) {
 
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 
+    //private_mark_frame_full(buf, name, ID);
+    //void private_mark_frame_full(Buffer* buf, const char* name, const int ID) {
     int set_full = 0;
     int set_empty = 0;
 
@@ -245,6 +250,7 @@ void mark_frame_full(Buffer* buf, const char* name, const int ID) {
             private_reset_consumers(buf, ID);
         }
     }
+    //}
 
     CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
 
@@ -258,6 +264,7 @@ void mark_frame_full(Buffer* buf, const char* name, const int ID) {
         // CHECK_ERROR_F( pthread_cond_broadcast(&buf->empty_cond) );
     }
 }
+
 
 void* private_zero_frames(void* args) {
 
@@ -308,10 +315,28 @@ void mark_frame_empty(Buffer* buf, const char* consumer_name, const int ID) {
     // so that we don't block for a long time here.
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 
-    private_mark_consumer_done(buf, consumer_name, ID);
+    if (buf->ring_buffer_size) {
 
-    if (private_consumers_done(buf, ID) == 1) {
-        broadcast = private_mark_frame_empty(buf, ID);
+        // Reader has consumed ring_buffer_read_size bytes!
+        INFO_NON_OO("Ring buffer: mark_frame_empty.  Available: {:d} - Claimed: {:d},  Read size: {:d}",
+                    buf->ring_buffer_elements, buf->ring_buffer_elements_claimed, buf->ring_buffer_read_size);
+        assert(buf->ring_buffer_elements >= buf->ring_buffer_read_size);
+        assert(buf->ring_buffer_elements_claimed >= buf->ring_buffer_read_size);
+        buf->ring_buffer_elements -= buf->ring_buffer_read_size;
+        buf->ring_buffer_elements_claimed -= buf->ring_buffer_read_size;
+        buf->ring_buffer_read_cursor = (buf->ring_buffer_read_cursor + buf->ring_buffer_read_size) % buf->ring_buffer_size;
+        INFO_NON_OO("Ring buffer: mark_frame_empty (read {:d}).  Now available: {:d} - Claimed: {:d}",
+                    buf->ring_buffer_read_size, buf->ring_buffer_elements, buf->ring_buffer_elements_claimed);
+        broadcast = 1;
+
+    } else {
+    
+        private_mark_consumer_done(buf, consumer_name, ID);
+
+        if (private_consumers_done(buf, ID) == 1) {
+            broadcast = private_mark_frame_empty(buf, ID);
+        }
+
     }
 
     CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
@@ -385,6 +410,105 @@ uint8_t* wait_for_empty_frame(Buffer* buf, const char* producer_name, const int 
 
     buf->producers[producer_id].last_frame_acquired = ID;
     return buf->frames[ID];
+}
+
+void buffer_set_ring_buffer_size(Buffer* buf, size_t sz) {
+    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+    buf->ring_buffer_size = sz;
+    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+}
+
+void buffer_set_ring_buffer_read_size(Buffer* buf, size_t sz) {
+    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+    buf->ring_buffer_read_size = sz;
+    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+}
+
+int buffer_wait_for_ring_buffer_writable(Buffer* buf, size_t sz) {
+    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+
+    while (1) {
+        INFO_NON_OO("Ring buffer: waiting to write {:d} elements.  Currently available: {:d}, size {:d}",
+               sz, buf->ring_buffer_elements, buf->ring_buffer_size);
+        if (buf->ring_buffer_elements + sz <= buf->ring_buffer_size)
+            break;
+        if (buf->shutdown_signal == 1)
+            break;
+        INFO_NON_OO("Ring buffer: waiting for space to write...");
+        pthread_cond_wait(&buf->empty_cond, &buf->lock);
+    }
+
+    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+    return 0;
+}
+
+void buffer_wrote_to_ring_buffer(Buffer* buf, /*const char* name,*/ size_t sz) {
+    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+
+    buf->ring_buffer_elements += sz;
+    INFO_NON_OO("Ring buffer: wrote {:d}.  Now available: {:d}", sz, buf->ring_buffer_elements);
+    buf->ring_buffer_write_cursor = (buf->ring_buffer_write_cursor + sz) % buf->ring_buffer_size;
+
+    // If we filled a read-size block, mark the next frame as full.
+    //if (buf->ring_buffer_elements >= buf->ring_buffer_read_size)
+    //private_mark_frame_full(buf, name, ring_buffer_full_frame);
+    //ring_buffer_full_frame = (ring_buffer_full_frame + 1) % buf->num_frames;
+
+    // If there are no consumers registered then we can just mark the buffer empty
+    /*
+    if (private_consumers_done(buf, ID) == 1) {
+        DEBUG_F("No consumers are registered on %s dropping data in frame %d...",
+                buf->buffer_name, ID);
+        buf->is_full[ID] = 0;
+        if (buf->metadata[ID] != NULL) {
+            decrement_metadata_ref_count(buf->metadata[ID]);
+            buf->metadata[ID] = NULL;
+        }
+        set_empty = 1;
+        private_reset_consumers(buf, ID);
+    }
+    */
+    
+    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+
+    // Signal consumer
+    CHECK_ERROR_F(pthread_cond_broadcast(&buf->full_cond));
+}
+
+uint8_t* buffer_claim_next_full_frame(Buffer* buf, const char* consumer_name, const int frame_id) {
+    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+
+    //int consumer_id = private_get_consumer_id(buf, name);
+    //assert(consumer_id != -1);
+
+    assert(buf->ring_buffer_size);
+
+    // HACK -- only works for single consumer
+    //assert(consumer_id == 0);
+
+    // DEBUG - prints
+    while (1) {
+        INFO_NON_OO("Ring buffer: waiting for input data frame {:d}.  Need: {:d}.  Available: {:d} - Claimed: {:d}",
+                    frame_id, buf->ring_buffer_read_size, buf->ring_buffer_elements, buf->ring_buffer_elements_claimed);
+        if (buf->ring_buffer_elements - buf->ring_buffer_elements_claimed >= buf->ring_buffer_read_size)
+                break;
+        if (buf->shutdown_signal)
+            break;
+        // FIXME???
+        //if (buf->consumers_done[ID][consumer_id] == 1)
+        //break;
+        INFO_NON_OO("Ring buffer: waiting on condition variable for input data");
+        pthread_cond_wait(&buf->full_cond, &buf->lock);
+    }
+    // Claim!
+    buf->ring_buffer_elements_claimed += buf->ring_buffer_read_size;
+    // (read cursor is moved when elements are released??? no, that's not right!)
+
+    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+    if (buf->shutdown_signal == 1)
+        return NULL;
+    //buf->consumers[consumer_id].last_frame_acquired = ID;
+    return buf->frames[frame_id];
 }
 
 void register_consumer(Buffer* buf, const char* name) {
@@ -585,11 +709,45 @@ uint8_t* wait_for_full_frame(Buffer* buf, const char* name, const int ID) {
     int consumer_id = private_get_consumer_id(buf, name);
     assert(consumer_id != -1);
 
-    // This loop exists when is_full == 1 (i.e. a full buffer) AND
-    // when this producer hasn't already marked this buffer as
-    while ((buf->is_full[ID] == 0 || buf->consumers_done[ID][consumer_id] == 1)
-           && buf->shutdown_signal == 0) {
-        pthread_cond_wait(&buf->full_cond, &buf->lock);
+    if (buf->ring_buffer_size) {
+
+        // HACK -- only works for single consumer
+        assert(consumer_id == 0);
+
+        // DEBUG - prints
+        while (1) {
+            INFO_NON_OO("Ring buffer: waiting for input data frame {:d}.  Need: {:d}.  Available: {:d}",
+                        ID, buf->ring_buffer_read_size, buf->ring_buffer_elements);
+            if (buf->ring_buffer_elements >= buf->ring_buffer_read_size)
+                break;
+            if (buf->shutdown_signal)
+                break;
+            // FIXME???
+            //if (buf->consumers_done[ID][consumer_id] == 1)
+            //break;
+            INFO_NON_OO("Ring buffer: waiting on condition variable for input data");
+            pthread_cond_wait(&buf->full_cond, &buf->lock);
+        }
+        /*
+        INFO_F("Ring buffer: waiting for input data.  Need: {:d}.  Available: {:d}",
+               ring_buffer_read_size, ring_buffer_elements);
+        while ((ring_buffer_elements <= ring_buffer_read_size ||
+                buf->consumers_done[ID][consumer_id] == 1)
+               && buf->shutdown_signal == 0) {
+            INFO_F("Ring buffer: waiting on condition variable for input data");
+            pthread_cond_wait(&buf->full_cond, &buf->lock);
+         }
+        */
+
+    } else {
+
+        // This loop exists when is_full == 1 (i.e. a full buffer) AND
+        // when this producer hasn't already marked this buffer as
+        while ((buf->is_full[ID] == 0 || buf->consumers_done[ID][consumer_id] == 1)
+               && buf->shutdown_signal == 0) {
+            pthread_cond_wait(&buf->full_cond, &buf->lock);
+        }
+
     }
 
     CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));

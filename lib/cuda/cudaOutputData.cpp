@@ -80,11 +80,6 @@ int cudaOutputData::wait_on_precondition(int) {
 
 cudaEvent_t cudaOutputData::execute_base(cudaPipelineState& pipestate,
                                          const std::vector<cudaEvent_t>& pre_events) {
-    /*
-     cudaEvent_t rtn = cudaCommand::execute_base(pipestate, pre_events);
-     did_generate_output[pipestate.gpu_frame_id] = (rtn != nullptr);
-     return rtn;
-     */
     bool should = should_execute(pipestate, pre_events);
     did_generate_output[pipestate.gpu_frame_id] = should;
     return execute(pipestate, pre_events);

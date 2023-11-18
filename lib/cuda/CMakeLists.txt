@@ -35,6 +35,8 @@ add_library(
     cudaUpchannelizer_U32.cpp
     cudaUpchannelizer_U64.cpp
     cudaUpchannelizer_U128.cpp
+    cudaCopyToRingbuffer.cpp
+    cudaCopyFromRingbuffer.cpp
     chordMVPSetup.cpp)
 
 # C++17

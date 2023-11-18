@@ -20,6 +20,12 @@ struct gpuMemoryBlock {
     size_t len;
     // if this is a view, the target of that view; used only for metadata
     std::string view_source;
+
+    // ring buffers only
+    //size_t write_cursor;
+    //size_t read_cursor;
+    //Buffer* ring_buffer_signal;
+
 };
 
 /**
@@ -130,6 +136,13 @@ public:
      */
     void release_gpu_memory_array_metadata(const std::string& name, const uint32_t index);
 
+
+    //
+    //void set_ring_buffer(const std::string& name, Buffer* b);
+    //
+    //bool ring_buffer_can_write(const std::string& name, const size_t n);
+
+    
     // Can't do this in the destructor because only the derived classes know
     // how to free their memory. To be moved into distinct objects...
     void cleanup_memory();

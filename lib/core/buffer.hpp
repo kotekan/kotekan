@@ -208,6 +208,15 @@ struct Buffer {
 
     /// The NUMA node the frames are allocated in
     int numa_node;
+
+    /// Ring buffers only, SINGLE CONSUMER:
+    size_t ring_buffer_size;
+    size_t ring_buffer_elements;
+    size_t ring_buffer_elements_claimed;
+    size_t ring_buffer_read_size;
+    size_t ring_buffer_write_cursor;
+    size_t ring_buffer_read_cursor;
+    size_t ring_buffer_full_frame;
 };
 
 /**
@@ -323,6 +332,18 @@ void mark_frame_empty(Buffer* buf, const char* consumer_name, const int frame_id
  *          a call to @c mark_frame_full() with that producer and frame_id
  */
 uint8_t* wait_for_empty_frame(Buffer* buf, const char* producer_name, const int frame_id);
+
+/// RING BUFFER
+
+void buffer_set_ring_buffer_size(Buffer* buf, size_t sz);
+
+void buffer_set_ring_buffer_read_size(Buffer* buf, size_t sz);
+
+int buffer_wait_for_ring_buffer_writable(Buffer* buf, size_t sz);
+
+void buffer_wrote_to_ring_buffer(Buffer* buf, size_t sz);
+
+uint8_t* buffer_claim_next_full_frame(Buffer* buf, const char* consumer_name, const int frame_id);
 
 /**
  * @brief Blocks until the frame requested by frame_id is full.
