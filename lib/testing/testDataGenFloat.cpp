@@ -34,7 +34,7 @@ testDataGenFloat::testDataGenFloat(Config& config, const std::string& unique_nam
     Stage(config, unique_name, buffer_container, std::bind(&testDataGenFloat::main_thread, this)) {
 
     buf = get_buffer("network_out_buf");
-    register_producer(buf, unique_name.c_str());
+    buf->register_producer(unique_name);
     type = config.get<std::string>(unique_name, "type");
     assert(type == "const" || type == "random" || type == "ramp");
     if (type == "const" || type == "ramp")

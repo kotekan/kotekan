@@ -33,6 +33,10 @@
 #include <stdint.h>  // for uint8_t
 #include <time.h>    // for size_t, timespec
 
+#include <map>
+#include <vector>
+#include <string>
+
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 
@@ -49,13 +53,18 @@
 class StageInfo {
 public:
     // Non-copyable signatures
-    StageInfo(const std::string& _name) :
+    StageInfo(const std::string& _name, int _num_frames) :
         name(_name),
+        num_frames(_num_frames),
         last_frame_acquired(-1),
-        last_frame_released(-1) {}
+        last_frame_released(-1),
+        is_done(_num_frames) {
+    }
     // moves allowed
-    StageInfo(StageInfo&&) = default;
-    StageInfo& operator=(StageInfo&&) = default;
+    //StageInfo(StageInfo&&) = default;
+    //StageInfo& operator=(StageInfo&&) = default;
+    StageInfo(StageInfo&&) = delete;
+    StageInfo& operator=(StageInfo&&) = delete;
     // you shall not copy
     StageInfo(const StageInfo&) = delete;
     StageInfo& operator=(const StageInfo&) = delete;
@@ -66,17 +75,23 @@ public:
     /// The name of the stage (consumer or producer)
     const std::string name;
 
+    int num_frames;
+
     /// Last frame acquired with a call to wait_for_*
     int last_frame_acquired;
 
     /// Last frame to be released with a call to mark_frame_*
     int last_frame_released;
+
+    std::vector<bool> is_done;
 };
 
 class GenericBuffer  : public kotekan::kotekanLogging {
 public:
     GenericBuffer(const std::string&,
-                  const std::string&);
+                  const std::string&,
+                  metadataPool* pool,
+                  int num_frames);
     virtual ~GenericBuffer();
     virtual void print_full_status() {};
 
@@ -128,14 +143,14 @@ public:
      *
      * @return int The number of consumers on the buffer
      */
-    int get_num_consumers() const;
+    int get_num_consumers();
 
     /**
      * @brief Get the number of producers for this buffer
      *
      * @return int The number of producers on this buffer
      */
-    int get_num_producers() const;
+    int get_num_producers();
 
     /// The main lock for frame state management
     pthread_mutex_t lock;
@@ -145,6 +160,9 @@ public:
 
     /// The condition variable for calls to @c wait_for_empty_buffer
     pthread_cond_t empty_cond;
+
+    /// The number of frames kept by this object
+    int num_frames;
 
     /**
      * @brief Shutdown variable
@@ -169,14 +187,15 @@ public:
     metadataPool* metadata_pool;
 
 protected:
-    virtual void registered_producer(StageInfo&) {}
+    //virtual void registered_producer(StageInfo&) {}
     
 };
 
 class RingBuffer : public GenericBuffer {
 public:
-    RingBuffer(size_t, metadataPool*, const std::string&,
-               const std::string&, int, bool, bool, bool);
+    //size_t, 
+    RingBuffer(metadataPool*, const std::string&,
+               const std::string&); //, int, bool, bool, bool);
     ~RingBuffer() override {}
     bool is_basic() override { return false; }
 };
@@ -251,9 +270,6 @@ public:
     void print_full_status() override;
 
     //protected:
-    /// The number of frames kept by this object
-    int num_frames;
-
     /// The size of each frame in bytes.
     size_t frame_size;
 
@@ -271,14 +287,15 @@ public:
      * Format is [ID][producer]
      * zero means not done, 1 means done (marked as full)
      */
-    int** producers_done;
+    //int** producers_done;
+    //std::map<std::string, std::vector<bool> > producers_done;
 
     /**
      * @brief Array of consumers which are done (marked frame as empty).
      * Format is [ID][consumer]
      * zero means not done, 1 means done (marked as empty)
      */
-    int** consumers_done;
+    //int** consumers_done;
 
     /// Flag set to indicate if the frames should be zeroed between uses
     int zero_frames;

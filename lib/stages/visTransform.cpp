@@ -50,13 +50,13 @@ visTransform::visTransform(Config& config, const std::string& unique_name,
     // Fetch the input buffers, register them, and store them in our buffer vector
     for (auto name : input_buffer_names) {
         auto buf = buffer_container.get_buffer(name);
-        register_consumer(buf, unique_name.c_str());
+        buf->register_consumer(unique_name);
         in_bufs.push_back({buf, 0});
     }
 
     // Setup the output vector
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Get the indices for reordering
     auto input_reorder = parse_reorder_default(config, unique_name);

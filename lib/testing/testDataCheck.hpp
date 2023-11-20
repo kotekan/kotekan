@@ -47,9 +47,9 @@ testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const std::string&
     kotekan::Stage(config, unique_name, buffer_container,
                    std::bind(&testDataCheck::main_thread, this)) {
     first_buf = get_buffer("first_buf");
-    register_consumer(first_buf, unique_name.c_str());
+    first_buf->register_consumer(unique_name);
     second_buf = get_buffer("second_buf");
-    register_consumer(second_buf, unique_name.c_str());
+    second_buf->register_consumer(unique_name);
 
     num_frames_to_test = config.get_default<int32_t>(unique_name, "num_frames_to_test", 0);
     max_num_errors = config.get_default<int32_t>(unique_name, "max_num_errors", 100);

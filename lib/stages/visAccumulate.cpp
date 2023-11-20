@@ -137,10 +137,10 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
     register_base_dataset_states(instrument_name, freqs, inputs, prods);
 
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Because we reserve `num_freq_in_frame` output frames for each input frame, the output
     // buffer must have at least `num_freq_in_frame` frames allocated.
@@ -207,7 +207,7 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
 
         // Fetch and register the buffer
         auto buf = buffer_container.get_buffer(buffer_name);
-        register_producer(buf, unique_name.c_str());
+        buf->register_producer(unique_name);
 
         // Create the gated datasets and register the update callback
         gated_datasets.emplace_back(

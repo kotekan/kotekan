@@ -71,10 +71,10 @@ applyGains::applyGains(Config& config, const std::string& unique_name,
     client(restClient::instance()) {
 
     // Setup the input buffer
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // Setup the output buffer
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Apply config.
     // Number of gain versions kept. Default is 5.

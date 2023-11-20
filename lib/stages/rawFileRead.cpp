@@ -36,7 +36,7 @@ rawFileRead::rawFileRead(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&rawFileRead::main_thread, this)) {
 
     buf = get_buffer("buf");
-    register_producer(buf, unique_name.c_str());
+    buf->register_producer(unique_name);
     base_dir = config.get<std::string>(unique_name, "base_dir");
     file_name = config.get<std::string>(unique_name, "file_name");
     file_ext = config.get<std::string>(unique_name, "file_ext");

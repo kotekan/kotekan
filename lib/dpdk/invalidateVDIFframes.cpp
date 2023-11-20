@@ -24,10 +24,10 @@ invalidateVDIFframes::invalidateVDIFframes(Config& config, const std::string& un
           std::bind(&invalidateVDIFframes::main_thread, this)) {
 
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     lost_samples_buf = get_buffer("lost_samples_buf");
-    register_consumer(lost_samples_buf, unique_name.c_str());
+    lost_samples_buf->register_consumer(unique_name);
 }
 
 invalidateVDIFframes::~invalidateVDIFframes() {}

@@ -273,7 +273,7 @@ RawReader<T>::RawReader(Config& config, const std::string& unique_name,
 
     // Get the list of buffers that this stage should connect to
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Read the metadata
     std::string md_filename = (filename + ".meta");

@@ -80,7 +80,7 @@ VisSharedMemWriter::VisSharedMemWriter(Config& config, const std::string& unique
 
     // Setup the input vector
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // Check if any of the old buffer files exist
     // Remove them, if they do

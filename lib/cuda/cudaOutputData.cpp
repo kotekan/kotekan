@@ -17,12 +17,12 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
     std::string in_buf_name = config.get_default<std::string>(unique_name, "in_buf", "");
     if (in_buf_name.size()) {
         in_buffer = host_buffers.get_buffer(in_buf_name);
-        register_consumer(in_buffer, unique_name.c_str());
+        in_buffer->register_consumer(unique_name);
     } else
         in_buffer = nullptr;
 
     output_buffer = host_buffers.get_buffer(config.get<std::string>(unique_name, "out_buf"));
-    register_producer(output_buffer, unique_name.c_str());
+    output_buffer->register_producer(unique_name);
 
     if (output_buffer->frame_size)
         for (int i = 0; i < output_buffer->num_frames; i++) {

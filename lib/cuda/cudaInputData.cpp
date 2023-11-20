@@ -10,7 +10,7 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
     cudaCommand(config, unique_name, host_buffers, device, "", "") {
 
     in_buf = host_buffers.get_buffer(config.get<std::string>(unique_name, "in_buf"));
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     if (in_buf->frame_size) {
         for (int i = 0; i < in_buf->num_frames; i++) {

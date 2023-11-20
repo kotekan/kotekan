@@ -27,7 +27,7 @@ STAGE_CONSTRUCTOR(hexDump) {
 
     // Register as consumer on buffer
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // Get some configuration options
     _len = config.get_default<int32_t>(unique_name, "len", 128);

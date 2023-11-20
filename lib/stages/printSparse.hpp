@@ -56,7 +56,7 @@ printSparse<A_Type>::printSparse(kotekan::Config& config, const std::string& uni
     kotekan::Stage(config, unique_name, buffer_container,
                    std::bind(&printSparse::main_thread, this)) {
     buf = get_buffer("input_buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
 
     _max = config.get_default<int>(unique_name, "max_to_print", 0);
     _array_shape =

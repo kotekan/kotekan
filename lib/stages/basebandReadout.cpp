@@ -80,9 +80,9 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
         throw std::runtime_error("num_elements must be multiple of 128");
     }
 
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Ensure input buffer is long enough.
     if (in_buf->num_frames <= _num_frames_buffer) {

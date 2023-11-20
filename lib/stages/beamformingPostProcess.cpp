@@ -40,10 +40,10 @@ beamformingPostProcess::beamformingPostProcess(Config& config, const std::string
     in_buf = (Buffer**)malloc(_num_gpus * sizeof(Buffer*));
     for (uint32_t i = 0; i < _num_gpus; ++i) {
         in_buf[i] = get_buffer(fmt::format(fmt("beam_in_buf_{:d}"), i));
-        register_consumer(in_buf[i], unique_name.c_str());
+        in_buf[i]->register_consumer(unique_name);
     }
     vdif_buf = get_buffer("vdif_out_buf");
-    register_producer(vdif_buf, unique_name.c_str());
+    vdif_buf->register_producer(unique_name);
 }
 
 beamformingPostProcess::~beamformingPostProcess() {

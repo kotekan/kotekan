@@ -91,7 +91,7 @@ networkOutputSim::networkOutputSim(Config& config_, const std::string& unique_na
     Stage(config_, unique_name, buffer_container, std::bind(&networkOutputSim::main_thread, this)) {
 
     buf = get_buffer("network_out_buf");
-    register_producer(buf, unique_name.c_str());
+    buf->register_producer(unique_name);
     num_links_in_group = config.get<int>(unique_name, "num_links_in_group");
     link_id = config.get<int>(unique_name, "link_id");
     pattern = config.get<int>(unique_name, "pattern");

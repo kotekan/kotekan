@@ -47,9 +47,9 @@ HFBAccumulate::HFBAccumulate(Config& config_, const std::string& unique_name,
     _samples_per_data_set(config.get<uint32_t>(unique_name, "samples_per_data_set")),
     _good_samples_threshold(config.get<float>(unique_name, "good_samples_threshold")) {
 
-    register_consumer(in_buf, unique_name.c_str());
-    register_consumer(cls_buf, unique_name.c_str());
-    register_producer(out_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
+    cls_buf->register_consumer(unique_name);
+    out_buf->register_producer(unique_name);
 
     hfb1.resize(_num_frb_total_beams * _factor_upchan, 0.0);
     hfb2.resize(_num_frb_total_beams * _factor_upchan, 0.0);

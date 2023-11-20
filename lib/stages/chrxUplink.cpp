@@ -32,9 +32,9 @@ chrxUplink::chrxUplink(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&chrxUplink::main_thread, this)) {
 
     vis_buf = get_buffer("chrx_in_buf");
-    register_consumer(vis_buf, unique_name.c_str());
+    vis_buf->register_consumer(unique_name);
     gate_buf = get_buffer("gate_in_buf");
-    register_consumer(gate_buf, unique_name.c_str());
+    gate_buf->register_consumer(unique_name);
 }
 
 chrxUplink::~chrxUplink() {}

@@ -29,7 +29,7 @@ bufferCopy::bufferCopy(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&bufferCopy::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     _copy_metadata = config.get_default<bool>(unique_name, "copy_metadata", false);
 
@@ -67,7 +67,7 @@ bufferCopy::bufferCopy(Config& config, const std::string& unique_name,
                                                     buffer_name));
         }
 
-        register_producer(out_buf, unique_name.c_str());
+        out_buf->register_producer(unique_name);
         INFO("Adding buffer: {:s}:{:s}", internal_name, out_buf->buffer_name);
         out_bufs.push_back(std::make_tuple(internal_name, out_buf, frameID(out_buf)));
     }
@@ -88,7 +88,7 @@ void bufferCopy::main_thread() {
             Buffer* out_buf = std::get<1>(buffer_info);
             frameID& out_frame_id = std::get<2>(buffer_info);
 
-            if (get_num_producers(out_buf) != 1) {
+            if (out_buf->get_num_producers() != 1) {
                 FATAL_ERROR("Cannot copy into buffer: {:s} as it has more than one producer.",
                             internal_buffer_name);
                 return;

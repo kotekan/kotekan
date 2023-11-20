@@ -66,9 +66,9 @@ gpuTrackingBeamformSimulate::gpuTrackingBeamformSimulate(Config& config,
 
 
     input_buf = get_buffer("network_in_buf");
-    register_consumer(input_buf, unique_name.c_str());
+    input_buf->register_consumer(unique_name);
     output_buf = get_buffer("beam_out_buf");
-    register_producer(output_buf, unique_name.c_str());
+    output_buf->register_producer(unique_name);
 
     input_len = _samples_per_data_set * _num_elements * 2;
     output_len = _samples_per_data_set * _num_beams * _num_pol * 2;

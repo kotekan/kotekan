@@ -21,7 +21,7 @@ REGISTER_KOTEKAN_STAGE(BeamInspect);
 STAGE_CONSTRUCTOR(BeamInspect) {
     // Register as consumer on buffer
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 }
 
 BeamInspect::~BeamInspect() {}

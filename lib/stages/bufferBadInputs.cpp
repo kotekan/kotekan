@@ -33,7 +33,7 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
     input_remap = std::get<0>(input_reorder);
 
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     out_buffer_ID = 0;
 }

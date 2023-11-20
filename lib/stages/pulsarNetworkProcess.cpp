@@ -42,7 +42,7 @@ pulsarNetworkProcess::pulsarNetworkProcess(Config& config_, const std::string& u
     Stage(config_, unique_name, buffer_container,
           std::bind(&pulsarNetworkProcess::main_thread, this)) {
     in_buf = get_buffer("pulsar_out_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // Apply config.
     udp_pulsar_packet_size = config.get<int>(unique_name, "udp_pulsar_packet_size");

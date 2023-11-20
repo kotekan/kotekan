@@ -14,7 +14,7 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&airspyInput::main_thread, this)) {
 
     buf = get_buffer("out_buf");
-    register_producer(buf, unique_name.c_str());
+    buf->register_producer(unique_name);
 
     freq = config.get_default<float>(unique_name, "freq", 1420) * 1000000;          // MHz
     sample_bw = config.get_default<float>(unique_name, "sample_bw", 2.5) * 1000000; // BW in Hz

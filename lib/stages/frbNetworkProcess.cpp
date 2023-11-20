@@ -68,7 +68,7 @@ frbNetworkProcess::frbNetworkProcess(Config& config_, const std::string& unique_
         config_.get_default<uint32_t>(unique_name, "ping_dead_threshold", 30))} {
 
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // Apply config.
     udp_frb_packet_size = config.get_default<int>(unique_name, "udp_frb_packet_size", 4272);

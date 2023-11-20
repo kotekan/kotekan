@@ -51,9 +51,9 @@ EigenVisIter::EigenVisIter(Config& config, const std::string& unique_name,
         "kotekan_eigenvisiter_eigenvector_convergence", unique_name, {"freq_id"})) {
 
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     _num_eigenvectors = config.get<uint32_t>(unique_name, "num_ev");
 

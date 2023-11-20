@@ -60,10 +60,10 @@ pulsarPostProcess::pulsarPostProcess(Config& config_, const std::string& unique_
 
     for (uint32_t i = 0; i < _num_gpus; ++i) {
         in_buf[i] = get_buffer("network_input_buffer_" + std::to_string(i));
-        register_consumer(in_buf[i], unique_name.c_str());
+        in_buf[i]->register_consumer(unique_name);
     }
     pulsar_buf = get_buffer("pulsar_out_buf");
-    register_producer(pulsar_buf, unique_name.c_str());
+    pulsar_buf->register_producer(unique_name);
 }
 
 pulsarPostProcess::~pulsarPostProcess() {

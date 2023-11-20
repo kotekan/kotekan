@@ -59,9 +59,9 @@ rfiBroadcast::rfiBroadcast(Config& config, const std::string& unique_name,
     // Get buffer from framework
     rfi_mask_buf = get_buffer("rfi_mask");
     // Register stage as consumer
-    register_consumer(rfi_buf, unique_name.c_str());
+    rfi_buf->register_consumer(unique_name);
     // Register stage as consumer
-    register_consumer(rfi_mask_buf, unique_name.c_str());
+    rfi_mask_buf->register_consumer(unique_name);
 
     // Intialize internal config
     _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");

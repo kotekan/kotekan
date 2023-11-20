@@ -67,13 +67,13 @@ frbPostProcess::frbPostProcess(Config& config_, const std::string& unique_name,
     in_buf = (Buffer**)malloc(_num_gpus * sizeof(Buffer*));
     for (int i = 0; i < _num_gpus; ++i) {
         in_buf[i] = get_buffer(fmt::format(fmt("in_buf_{:d}"), i));
-        register_consumer(in_buf[i], unique_name.c_str());
+        in_buf[i]->register_consumer(unique_name);
     }
     frb_buf = get_buffer("out_buf");
-    register_producer(frb_buf, unique_name.c_str());
+    frb_buf->register_producer(unique_name);
 
     lost_samples_buf = get_buffer("lost_samples_buf");
-    register_consumer(lost_samples_buf, unique_name.c_str());
+    lost_samples_buf->register_consumer(unique_name);
     lost_samples_buf_id = 0;
 
     // Dynamic header

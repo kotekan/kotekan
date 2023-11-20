@@ -36,9 +36,9 @@ gpuSimulate::gpuSimulate(Config& config, const std::string& unique_name,
     _data_format = config.get_default<std::string>(unique_name, "data_format", "4+4b");
 
     input_buf = get_buffer("network_in_buf");
-    register_consumer(input_buf, unique_name.c_str());
+    input_buf->register_consumer(unique_name);
     output_buf = get_buffer("corr_out_buf");
-    register_producer(output_buf, unique_name.c_str());
+    output_buf->register_producer(unique_name);
 
     int block_map_len = _num_blocks * 2 * sizeof(uint32_t);
     host_block_map = (uint32_t*)malloc(block_map_len);

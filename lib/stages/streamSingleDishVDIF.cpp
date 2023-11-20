@@ -30,7 +30,7 @@ streamSingleDishVDIF::streamSingleDishVDIF(Config& config, const std::string& un
     Stage(config, unique_name, buffer_container,
           std::bind(&streamSingleDishVDIF::main_thread, this)) {
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // Apply config.
     num_freq = config.get<int>(unique_name, "num_freq");

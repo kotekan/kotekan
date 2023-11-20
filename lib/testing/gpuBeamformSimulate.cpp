@@ -66,12 +66,12 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const std::string& uniq
     scaling = config.get_default<float>(unique_name, "frb_scaling", 1.0);
 
     input_buf = get_buffer("network_in_buf");
-    register_consumer(input_buf, unique_name.c_str());
+    input_buf->register_consumer(unique_name);
     output_buf = get_buffer("beam_out_buf");
-    register_producer(output_buf, unique_name.c_str());
+    output_buf->register_producer(unique_name);
 
     hfb_output_buf = get_buffer("hfb_out_buf");
-    register_producer(hfb_output_buf, unique_name.c_str());
+    hfb_output_buf->register_producer(unique_name);
 
     input_len = _samples_per_data_set * _num_elements * 2;
     input_len_padded = input_len * 2;

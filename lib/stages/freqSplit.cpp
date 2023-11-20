@@ -42,12 +42,12 @@ freqSplit::freqSplit(Config& config, const std::string& unique_name,
 
     // Setup the input buffer
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // Fetch the output buffers, register them, and store them in our buffer vector
     for (auto name : output_buffer_names) {
         auto buf = buffer_container.get_buffer(name);
-        register_producer(buf, unique_name.c_str());
+        buf->register_producer(unique_name);
         out_bufs.push_back({buf, 0});
     }
 

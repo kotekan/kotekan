@@ -44,7 +44,7 @@ pulsarSimProcess::pulsarSimProcess(Config& config_, const std::string& unique_na
     _udp_header_size = config.get<int32_t>(unique_name, "udp_pulsar_header_size");
 
     pulsar_buf = get_buffer("pulsar_out_buf");
-    register_producer(pulsar_buf, unique_name.c_str());
+    pulsar_buf->register_producer(unique_name);
 }
 
 pulsarSimProcess::~pulsarSimProcess() {}

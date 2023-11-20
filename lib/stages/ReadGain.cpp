@@ -62,7 +62,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
 
     metadata_buf = get_buffer("in_buf");
-    register_consumer(metadata_buf, unique_name.c_str());
+    metadata_buf->register_consumer(unique_name);
     metadata_buffer_id = 0;
     metadata_buffer_precondition_id = 0;
     freq_idx = FREQ_ID_NOT_SET;
@@ -71,13 +71,13 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     // Gain for FRB
     gain_frb_buf = get_buffer("gain_frb_buf");
     gain_frb_buf_id = 0;
-    register_producer(gain_frb_buf, unique_name.c_str());
+    gain_frb_buf->register_producer(unique_name);
     update_gains_frb = false;
 
     // Gain for Tracking Beamformer
     gain_tracking_buf = get_buffer("gain_tracking_buf");
     gain_tracking_buf_id = 0;
-    register_producer(gain_tracking_buf, unique_name.c_str());
+    gain_tracking_buf->register_producer(unique_name);
     update_gains_tracking = false;
 
     // Create a space to store gains for all the tracking beams
@@ -280,7 +280,7 @@ void ReadGain::main_thread() {
 
     mark_frame_empty(metadata_buf, unique_name.c_str(), metadata_buffer_id);
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
-    unregister_consumer(metadata_buf, unique_name.c_str());
+    metadata_buf->unregister_consumer(unique_name);
 
     while (!stop_thread) {
         {

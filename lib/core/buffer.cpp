@@ -40,9 +40,6 @@ struct zero_frames_thread_args {
 
 void* private_zero_frames(void* args);
 
-// Returns -1 if there is no consumer with that name
-int private_get_consumer_id(Buffer* buf, const char* name);
-
 // Returns -1 if there is no producer with that name
 int private_get_producer_id(Buffer* buf, const char* name);
 
@@ -76,10 +73,12 @@ int private_mark_frame_empty(Buffer* buf, const int id);
 //void private_mark_frame_full(Buffer* buf, const char* name, const int ID);
 
 GenericBuffer::GenericBuffer(const std::string& _buffer_name, const std::string& _buffer_type,
-                             metadataPool* pool) :
+                             metadataPool* pool, int _num_frames) :
+    num_frames(_num_frames),
     buffer_name(_buffer_name),
     buffer_type(_buffer_type),
     metadata_pool(pool) {
+
     CHECK_ERROR_F(pthread_mutex_init(&lock, nullptr));
     CHECK_ERROR_F(pthread_cond_init(&full_cond, nullptr));
     CHECK_ERROR_F(pthread_cond_init(&empty_cond, nullptr));
@@ -103,16 +102,14 @@ GenericBuffer::~GenericBuffer() {
     CHECK_ERROR_F(pthread_cond_destroy(&empty_cond));
 }
 
-RingBuffer::RingBuffer(const std::string& _buffer_name, const std::string& _buffer_type,
-                       metadataPool* pool) :
-    GenericBuffer(_buffer_name, _buffer_type, pool) {
+RingBuffer::RingBuffer(metadataPool* pool, const std::string& _buffer_name, const std::string& _buffer_type) :
+    GenericBuffer(_buffer_name, _buffer_type, pool, 1) {
 }
 
-Buffer::Buffer(int _num_frames, size_t len, metadataPool* pool, const std::string& _buffer_name,
+Buffer::Buffer(int num_frames, size_t len, metadataPool* pool, const std::string& _buffer_name,
                const std::string& _buffer_type, int _numa_node, bool _use_hugepages, bool _mlock_frames,
                bool zero_new_frames) :
-    GenericBuffer(_buffer_name, _buffer_type, pool),
-    num_frames(_num_frames),
+    GenericBuffer(_buffer_name, _buffer_type, pool, num_frames),
     frame_size(len),
     // By default don't zero buffers at the end of their use.
     zero_frames(0),
@@ -162,6 +159,7 @@ Buffer::Buffer(int _num_frames, size_t len, metadataPool* pool, const std::strin
     }
 
     // Create the arrays for marking consumers and producers as done.
+    /*
     producers_done = (int**)malloc(num_frames * sizeof(int*));
     CHECK_MEM_F(producers_done);
     consumers_done = (int**)malloc(num_frames * sizeof(int*));
@@ -177,6 +175,7 @@ Buffer::Buffer(int _num_frames, size_t len, metadataPool* pool, const std::strin
         private_reset_producers(this, i);
         private_reset_consumers(this, i);
     }
+    */
 
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
@@ -204,15 +203,17 @@ Buffer::Buffer(int _num_frames, size_t len, metadataPool* pool, const std::strin
 Buffer::~Buffer() {
     for (int i = 0; i < num_frames; ++i) {
         buffer_free(frames[i], aligned_frame_size, use_hugepages);
-        free(producers_done[i]);
-        free(consumers_done[i]);
+        /*
+          free(producers_done[i]);
+          free(consumers_done[i]);
+        */
     }
 
     free(frames);
     free(is_full);
     free(metadata);
-    free(producers_done);
-    free(consumers_done);
+    //free(producers_done);
+    //free(consumers_done);
 }
 
 void mark_frame_full(Buffer* buf, const char* name, const int ID) {
@@ -388,7 +389,7 @@ uint8_t* wait_for_empty_frame(Buffer* buf, const char* producer_name, const int 
     // If the buffer isn't full, i.e. is_full[ID] == 0, then we never sleep on the cond var.
     // The second condition stops us from using a buffer we've already filled,
     // and forces a wait until that buffer has been marked as empty.
-    while ((buf->is_full[ID] == 1 || buf->producers_done[ID][producer_id] == 1)
+    while ((buf->is_full[ID] == 1 || buf->producers.at(producer_name).is_done[ID])
            && buf->shutdown_signal == 0) {
         DEBUG_F("wait_for_empty_frame: %s waiting for empty frame ID = %d in buffer %s",
                 producer_name, ID, buf->buffer_name);
@@ -406,7 +407,7 @@ uint8_t* wait_for_empty_frame(Buffer* buf, const char* producer_name, const int 
     if (buf->shutdown_signal == 1)
         return NULL;
 
-    buf->producers[producer_id].last_frame_acquired = ID;
+    buf->producers.at(producer_name).last_frame_acquired = ID;
     return buf->frames[ID];
 }
 
@@ -509,52 +510,34 @@ uint8_t* buffer_claim_next_full_frame(Buffer* buf, const char*, const int frame_
     return buf->frames[frame_id];
 }
 
-void register_consumer(Buffer* buf, const char* name) {
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+void GenericBuffer::register_consumer(const std::string& name) {
+    CHECK_ERROR_F(pthread_mutex_lock(&lock));
 
-    DEBUG_F("Registering consumer %s for buffer %s", name, buf->buffer_name);
+    DEBUG("Registering consumer {:s} for buffer {:s}", name, buffer_name);
 
-    if (private_get_consumer_id(buf, name) != -1) {
-        ERROR_F("You cannot register two consumers with the same name!");
+    auto const& ins = consumers.try_emplace(name, name, num_frames);
+    if (!ins.second) {
+        ERROR_F("You cannot register two consumers with the same name (\"{:s}\")!", name);
         assert(0); // Optional
-        CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+        CHECK_ERROR_F(pthread_mutex_unlock(&lock));
         return;
     }
+    //registered_consumer(ins.second);
 
-    for (int i = 0; i < MAX_CONSUMERS; ++i) {
-        if (buf->consumers[i].in_use == 0) {
-            buf->consumers[i].in_use = 1;
-            // -1 here means no frame has been acquired/released
-            buf->consumers[i].last_frame_acquired = -1;
-            buf->consumers[i].last_frame_released = -1;
-            strncpy(buf->consumers[i].name, name, MAX_STAGE_NAME_LEN);
-            CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
-            return;
-        }
-    }
-
-    ERROR_F("No free slot for consumer, please change buffer.h MAX_CONSUMERS");
-    assert(0); // Optional
-
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+    CHECK_ERROR_F(pthread_mutex_unlock(&lock));
 }
 
-void unregister_consumer(Buffer* buf, const char* name) {
+void GenericBuffer::unregister_consumer(const std::string& name) {
+    //int broadcast = 0;
+    CHECK_ERROR_F(pthread_mutex_lock(&lock));
+    DEBUG("Unregistering consumer {:s} for buffer {:s}", name, buffer_name);
 
-    int broadcast = 0;
-
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
-
-    DEBUG_F("Unregistering consumer %s for buffer %s", name, buf->buffer_name);
-
-    int consumer_id = private_get_consumer_id(buf, name);
-    if (consumer_id == -1) {
-        ERROR_F("The consumer %s hasn't been registered, cannot unregister!", name);
+    size_t nrem = consumers.erase(name);
+    if (nrem == 0) {
+        ERROR("The consumer {:s} hasn't been registered, cannot unregister!", name);
     }
 
-    buf->consumers[consumer_id].in_use = 0;
-    snprintf(buf->consumers[consumer_id].name, MAX_STAGE_NAME_LEN, "unregistered");
-
+    /*
     // Check if removing this consumer would cause any of the frames
     // which are currently full to become empty.
     for (int id = 0; id < buf->num_frames; ++id) {
@@ -562,31 +545,32 @@ void unregister_consumer(Buffer* buf, const char* name) {
             broadcast |= private_mark_frame_empty(buf, id);
         }
     }
+    */
 
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+    CHECK_ERROR_F(pthread_mutex_unlock(&lock));
 
     // Signal producers if we found something could be empty after
     // removal of this consumer.
-    if (broadcast == 1) {
-        CHECK_ERROR_F(pthread_cond_broadcast(&buf->empty_cond));
-    }
+    //if (broadcast == 1) {
+    CHECK_ERROR_F(pthread_cond_broadcast(&empty_cond));
+    //}
 }
 
 
 void GenericBuffer::register_producer(const std::string& name) {
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
-    DEBUG_F("Buffer: %s Registering producer: %s", buf->buffer_name, name);
+    CHECK_ERROR_F(pthread_mutex_lock(&lock));
+    DEBUG("Buffer: {:s} Registering producer: {:s}", buffer_name, name);
 
-    auto const& ins = producers.try_emplace(name, name);
-    if (!ins.first) {
-        ERROR_F("You cannot register two producers with the same name (\"{:s}\")!", name);
+    auto const& ins = producers.try_emplace(name, name, num_frames);
+    if (!ins.second) {
+        ERROR("You cannot register two producers with the same name (\"{:s}\")!", name);
         assert(0); // Optional
-        CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+        CHECK_ERROR_F(pthread_mutex_unlock(&lock));
         return;
     }
-    registered_producer(ins.second);
+    //registered_producer(ins.first.second);
 
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+    CHECK_ERROR_F(pthread_mutex_unlock(&lock));
 }
 
 /*
@@ -594,85 +578,41 @@ void GenericBuffer::register_producer(const std::string& name) {
   }
 */
 
-int private_get_consumer_id(Buffer* buf, const char* name) {
-
-    for (int i = 0; i < MAX_CONSUMERS; ++i) {
-        if (buf->consumers[i].in_use == 1
-            && strncmp(buf->consumers[i].name, name, MAX_STAGE_NAME_LEN) == 0) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-int private_get_producer_id(Buffer* buf, const char* name) {
-
-    for (int i = 0; i < MAX_PRODUCERS; ++i) {
-        if (buf->producers[i].in_use == 1
-            && strncmp(buf->producers[i].name, name, MAX_STAGE_NAME_LEN) == 0) {
-            return i;
-        }
-    }
-    return -1;
-}
-
 void private_reset_producers(Buffer* buf, const int ID) {
-    memset(buf->producers_done[ID], 0, MAX_PRODUCERS * sizeof(int));
+    for (auto& x : buf->producers)
+        x.second.is_done[ID] = false;
 }
 
 void private_reset_consumers(Buffer* buf, const int ID) {
-    memset(buf->consumers_done[ID], 0, MAX_CONSUMERS * sizeof(int));
+    for (auto& x : buf->consumers)
+        x.second.is_done[ID] = false;
 }
 
-void private_mark_consumer_done(Buffer* buf, const char* name, const int ID) {
-    int consumer_id = private_get_consumer_id(buf, name);
-    if (consumer_id == -1) {
-        ERROR_F("The consumer %s hasn't been registered!", name);
-    }
-
-    // DEBUG_F("%s->consumers_done[%d][%d] == %d", buf->buffer_name, ID, consumer_id,
-    // buf->consumers_done[ID][consumer_id] );
-
-    assert(consumer_id != -1);
-    // The consumer we are marking as done, shouldn't already be done!
-    assert(buf->consumers_done[ID][consumer_id] == 0);
-
-    buf->consumers[consumer_id].last_frame_released = ID;
-    buf->consumers_done[ID][consumer_id] = 1;
+void private_mark_consumer_done(Buffer* buf, const std::string& name, const int ID) {
+    auto& con = buf->consumers.at(name);
+    assert(con.is_done[ID] == false);
+    con.last_frame_released = ID;
+    con.is_done[ID] = true;
 }
 
 void private_mark_producer_done(Buffer* buf, const char* name, const int ID) {
-    int producer_id = private_get_producer_id(buf, name);
-    if (producer_id == -1) {
-        ERROR_F("The producer %s hasn't been registered!", name);
-    }
-
-    // DEBUG_F("%s->producers_done[%d][%d] == %d", buf->buffer_name, ID, producer_id,
-    // buf->producers_done[ID][producer_id] );
-
-    assert(producer_id != -1);
-    // The producer we are marking as done, shouldn't already be done!
-    assert(buf->producers_done[ID][producer_id] == 0);
-
-    buf->producers[producer_id].last_frame_released = ID;
-    buf->producers_done[ID][producer_id] = 1;
+    auto& pro = buf->producers.at(name);
+    assert(pro.is_done[ID] == false);
+    pro.last_frame_released = ID;
+    pro.is_done[ID] = true;
 }
 
 int private_consumers_done(Buffer* buf, const int ID) {
-
-    for (int i = 0; i < MAX_CONSUMERS; ++i) {
-        if (buf->consumers[i].in_use == 1 && buf->consumers_done[ID][i] == 0)
+    for (auto& c : buf->consumers)
+        if (!c.second.is_done[ID])
             return 0;
-    }
     return 1;
 }
 
 int private_producers_done(Buffer* buf, const int ID) {
-
-    for (int i = 0; i < MAX_PRODUCERS; ++i) {
-        if (buf->producers[i].in_use == 1 && buf->producers_done[ID][i] == 0)
+    for (auto& x : buf->producers)
+        if (!x.second.is_done[ID])
             return 0;
-    }
     return 1;
 }
 
@@ -694,17 +634,13 @@ int is_frame_empty(Buffer* buf, const int ID) {
     return empty;
 }
 
-uint8_t* wait_for_full_frame(Buffer* buf, const char* name, const int ID) {
+uint8_t* wait_for_full_frame(Buffer* buf, const std::string& name, const int ID) {
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 
-    int consumer_id = private_get_consumer_id(buf, name);
-    assert(consumer_id != -1);
+    auto& cons = buf->consumers.at(name);
 
     if (buf->ring_buffer_size) {
-
         // HACK -- only works for single consumer
-        assert(consumer_id == 0);
-
         // DEBUG - prints
         while (1) {
             INFO_NON_OO("Ring buffer: waiting for input data frame {:d}.  Need: {:d}.  Available: {:d}",
@@ -734,7 +670,7 @@ uint8_t* wait_for_full_frame(Buffer* buf, const char* name, const int ID) {
 
         // This loop exists when is_full == 1 (i.e. a full buffer) AND
         // when this producer hasn't already marked this buffer as
-        while ((buf->is_full[ID] == 0 || buf->consumers_done[ID][consumer_id] == 1)
+        while ((buf->is_full[ID] == 0 || cons.is_done[ID])
                && buf->shutdown_signal == 0) {
             pthread_cond_wait(&buf->full_cond, &buf->lock);
         }
@@ -746,7 +682,7 @@ uint8_t* wait_for_full_frame(Buffer* buf, const char* name, const int ID) {
     if (buf->shutdown_signal == 1)
         return NULL;
 
-    buf->consumers[consumer_id].last_frame_acquired = ID;
+    cons.last_frame_acquired = ID;
     return buf->frames[ID];
 }
 
@@ -754,13 +690,12 @@ int wait_for_full_frame_timeout(Buffer* buf, const char* name, const int ID,
                                 const struct timespec timeout) {
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 
-    int consumer_id = private_get_consumer_id(buf, name);
-    assert(consumer_id != -1);
+    auto& cons = buf->consumers.at(name);
     int err = 0;
 
     // This loop exists when is_full == 1 (i.e. a full buffer) AND
     // when this producer hasn't already marked this buffer as
-    while ((buf->is_full[ID] == 0 || buf->consumers_done[ID][consumer_id] == 1)
+    while ((buf->is_full[ID] == 0 || cons.is_done[ID])
            && buf->shutdown_signal == 0 && err == 0) {
         err = pthread_cond_timedwait(&buf->full_cond, &buf->lock, &timeout);
     }
@@ -773,7 +708,7 @@ int wait_for_full_frame_timeout(Buffer* buf, const char* name, const int ID,
     if (err == ETIMEDOUT)
         return 1;
 
-    buf->consumers[consumer_id].last_frame_acquired = ID;
+    cons.last_frame_acquired = ID;
     return 0;
 }
 
@@ -793,17 +728,17 @@ int get_num_full_frames(Buffer* buf) {
     return numFull;
 }
 
-int get_num_consumers(Buffer* buf) {
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+int GenericBuffer::get_num_consumers() {
+    CHECK_ERROR_F(pthread_mutex_lock(&lock));
     int n = consumers.size();
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+    CHECK_ERROR_F(pthread_mutex_unlock(&lock));
     return n;
 }
 
-int get_num_producers(Buffer* buf) {
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+int GenericBuffer::get_num_producers() {
+    CHECK_ERROR_F(pthread_mutex_lock(&lock));
     int n = producers.size();
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+    CHECK_ERROR_F(pthread_mutex_unlock(&lock));
     return n;
 }
 
@@ -851,37 +786,31 @@ void Buffer::print_full_status() {
 
     INFO_F("---- Producers ----");
 
-    for (int producer_id = 0; producer_id < MAX_PRODUCERS; ++producer_id) {
-        if (producers[producer_id].in_use == 1) {
-            for (int i = 0; i < num_frames; ++i) {
-                if (producers_done[i][producer_id] == 1) {
-                    status_string[i] = '+';
-                } else {
-                    status_string[i] = '_';
-                }
-            }
-            INFO_F("%-30s : %s (%d, %d)", producers[producer_id].name, status_string,
-                   producers[producer_id].last_frame_acquired,
-                   producers[producer_id].last_frame_released);
+    for (auto& xit : producers)
+        for (int i = 0; i < num_frames; ++i) {
+            auto& x = xit.second;
+            if (x.is_done[i])
+                status_string[i] = '+';
+            else
+                status_string[i] = '_';
+            INFO_F("%-30s : %s (%d, %d)", x.name, status_string,
+                   x.last_frame_acquired,
+                   x.last_frame_released);
         }
-    }
 
     INFO_F("---- Consumers ----");
 
-    for (int consumer_id = 0; consumer_id < MAX_CONSUMERS; ++consumer_id) {
-        if (consumers[consumer_id].in_use == 1) {
-            for (int i = 0; i < num_frames; ++i) {
-                if (consumers_done[i][consumer_id] == 1) {
-                    status_string[i] = '=';
-                } else {
-                    status_string[i] = '_';
-                }
-            }
-            INFO_F("%-30s : %s (%d, %d)", consumers[consumer_id].name, status_string,
-                   consumers[consumer_id].last_frame_acquired,
-                   consumers[consumer_id].last_frame_released);
+    for (auto& xit : consumers)
+        for (int i = 0; i < num_frames; ++i) {
+            auto& x = xit.second;
+            if (x.is_done[i])
+                status_string[i] = '=';
+            else
+                status_string[i] = '_';
+            INFO_F("%-30s : %s (%d, %d)", x.name, status_string,
+                   x.last_frame_acquired,
+                   x.last_frame_released);
         }
-    }
 
     CHECK_ERROR_F(pthread_mutex_unlock(&lock));
 }
@@ -974,13 +903,7 @@ uint8_t* swap_external_frame(Buffer* buf, int frame_id, uint8_t* external_frame)
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 
     // Check that we don't have more than one producer.
-    int num_producers = 0;
-    for (int i = 0; i < MAX_PRODUCERS; ++i) {
-        if (buf->producers[i].in_use == 1) {
-            num_producers++;
-        }
-    }
-    assert(num_producers == 1);
+    assert(buf->producers.size() == 1);
 
     uint8_t* temp_frame = buf->frames[frame_id];
     buf->frames[frame_id] = external_frame;
@@ -1001,10 +924,10 @@ void swap_frames(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_fra
     assert(to_frame_id < to_buf->num_frames);
     assert(from_buf->aligned_frame_size == to_buf->aligned_frame_size);
 
-    int num_consumers = get_num_consumers(from_buf);
+    int num_consumers = from_buf->get_num_consumers();
     assert(num_consumers == 1);
     (void)num_consumers;
-    int num_producers = get_num_producers(to_buf);
+    int num_producers = to_buf->get_num_producers();
     assert(num_producers == 1);
     (void)num_producers;
 
@@ -1029,12 +952,12 @@ void safe_swap_frame(Buffer* src_buf, int src_frame_id, Buffer* dest_buf, int de
                       src_buf->buffer_name, dest_buf->buffer_name);
     }
 
-    if (get_num_producers(dest_buf) > 1) {
+    if (dest_buf->get_num_producers() > 1) {
         FATAL_ERROR_F("Cannot swap/copy frames into dest buffer %s with more than one producer",
                       dest_buf->buffer_name);
     }
 
-    int num_consumers = get_num_consumers(src_buf);
+    int num_consumers = src_buf->get_num_consumers();
 
     // Copy or transfer the data part.
     if (num_consumers == 1) {

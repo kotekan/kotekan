@@ -48,8 +48,8 @@ rfiAVXVDIF::rfiAVXVDIF(Config& config, const std::string& unique_name,
     buf_in = get_buffer("vdif_in");
     buf_out = get_buffer("rfi_out");
     // Register Consumer/Producer
-    register_consumer(buf_in, unique_name.c_str());
-    register_producer(buf_out, unique_name.c_str());
+    buf_in->register_consumer(unique_name);
+    buf_out->register_producer(unique_name);
 
     // Apply config.
     // Standard config variables

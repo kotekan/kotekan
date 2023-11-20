@@ -26,7 +26,7 @@ recvSingleDishVDIF::recvSingleDishVDIF(Config& config, const std::string& unique
           std::bind(&recvSingleDishVDIF::main_thread, this)) {
 
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Apply config.
     num_freq = config.get<int>(unique_name, "num_freq");

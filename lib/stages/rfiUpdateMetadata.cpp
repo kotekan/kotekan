@@ -28,14 +28,14 @@ rfiUpdateMetadata::rfiUpdateMetadata(Config& config, const std::string& unique_n
 
     // Register on buffers
     rfi_mask_buf = get_buffer("rfi_mask_buf");
-    register_consumer(rfi_mask_buf, unique_name.c_str());
+    rfi_mask_buf->register_consumer(unique_name);
     lost_samples_buf = get_buffer("lost_samples_buf");
-    register_consumer(lost_samples_buf, unique_name.c_str());
+    lost_samples_buf->register_consumer(unique_name);
 
     // We make ourselves a producer of the GPU correlation buffer so that this stage
     // has to release it before other stages can process it.
     gpu_correlation_buf = get_buffer("gpu_correlation_buf");
-    register_producer(gpu_correlation_buf, unique_name.c_str());
+    gpu_correlation_buf->register_producer(unique_name);
 
     // General config parameters
     _sk_step = config.get<uint32_t>(unique_name, "sk_step");

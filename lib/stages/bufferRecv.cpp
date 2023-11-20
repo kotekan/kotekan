@@ -63,7 +63,7 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
 
     buf = get_buffer("buf");
-    register_producer(buf, unique_name.c_str());
+    buf->register_producer(unique_name);
 }
 
 bufferRecv::~bufferRecv() {}

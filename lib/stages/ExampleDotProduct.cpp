@@ -22,14 +22,14 @@ STAGE_CONSTRUCTOR(ExampleDotProduct) {
 
     // Register as consumer of in_a_buf and in_b_buf
     in_a_buf = get_buffer("in_a_buf");
-    register_consumer(in_a_buf, unique_name.c_str());
+    in_a_buf->register_consumer(unique_name);
 
     in_b_buf = get_buffer("in_b_buf");
-    register_consumer(in_b_buf, unique_name.c_str());
+    in_b_buf->register_consumer(unique_name);
 
     // Register as a producer of out_buf
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Ensure the input buffers are the same length
     if (in_a_buf->frame_size != in_b_buf->frame_size) {

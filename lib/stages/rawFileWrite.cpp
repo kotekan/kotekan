@@ -36,7 +36,7 @@ rawFileWrite::rawFileWrite(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&rawFileWrite::main_thread, this)) {
 
     buf = get_buffer("in_buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
     _base_dir = config.get<std::string>(unique_name, "base_dir");
     _file_name = config.get<std::string>(unique_name, "file_name");
     _file_ext = config.get<std::string>(unique_name, "file_ext");

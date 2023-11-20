@@ -44,7 +44,7 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
         Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count", unique_name)) {
 
     buf = get_buffer("buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
 
     connected = false;
     server_ip = config.get<std::string>(unique_name, "server_ip");

@@ -40,7 +40,7 @@ fullPacketDump::fullPacketDump(Config& config, const std::string& unique_name,
 
     link_id = config.get<int>(unique_name, "link_id");
     buf = get_buffer("network_in_buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
 
     // Apply config.
     _packet_size = config.get<int>(unique_name, "udp_packet_size");

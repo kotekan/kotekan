@@ -31,7 +31,7 @@ countCheck::countCheck(Config& config, const std::string& unique_name,
 
     // Setup the input buffer
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // Fetch tolerance from config.
     start_time_tolerance = config.get_default<int>(unique_name, "start_time_tolerance", 3);

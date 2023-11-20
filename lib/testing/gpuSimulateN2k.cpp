@@ -30,9 +30,9 @@ gpuSimulateN2k::gpuSimulateN2k(Config& config, const std::string& unique_name,
     _sub_integration_ntime = config.get<int>(unique_name, "sub_integration_ntime");
 
     input_buf = get_buffer("network_in_buf");
-    register_consumer(input_buf, unique_name.c_str());
+    input_buf->register_consumer(unique_name);
     output_buf = get_buffer("corr_out_buf");
-    register_producer(output_buf, unique_name.c_str());
+    output_buf->register_producer(unique_name);
 }
 
 gpuSimulateN2k::~gpuSimulateN2k() {}

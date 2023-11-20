@@ -55,7 +55,7 @@ BaseWriter::BaseWriter(Config& config, const std::string& unique_name,
 
     // Get the list of buffers that this stage should connect to
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // Get the type of the file we are writing
     // TODO: we may want to validate here rather than at creation time

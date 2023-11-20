@@ -13,11 +13,11 @@ REGISTER_KOTEKAN_STAGE(BufferSplit);
 
 STAGE_CONSTRUCTOR(BufferSplit) {
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     out_bufs = get_buffer_array("out_bufs");
     for (Buffer* out_buf : out_bufs)
-        register_producer(out_buf, unique_name.c_str());
+        out_buf->register_producer(unique_name);
 }
 
 BufferSplit::~BufferSplit() {}

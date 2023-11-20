@@ -160,38 +160,32 @@ void kotekanMode::stop_stages() {
 
 nlohmann::json kotekanMode::get_buffer_json() {
     nlohmann::json buffer_json = {};
-
+    // FIXME -- uses get_basic_buffer_map -- make this a member function on GenericBuffer?
     for (auto& buf : buffer_container.get_basic_buffer_map()) {
         nlohmann::json buf_info = {};
         buf_info["consumers"];
-        for (int i = 0; i < MAX_CONSUMERS; ++i) {
-            if (buf.second->consumers[i].in_use) {
-                std::string consumer_name = buf.second->consumers[i].name;
-                buf_info["consumers"][consumer_name] = {};
-                buf_info["consumers"][consumer_name]["last_frame_acquired"] =
-                    buf.second->consumers[i].last_frame_acquired;
-                buf_info["consumers"][consumer_name]["last_frame_released"] =
-                    buf.second->consumers[i].last_frame_released;
-                for (int f = 0; f < buf.second->num_frames; ++f) {
-                    buf_info["consumers"][consumer_name]["marked_frame_empty"].push_back(
-                        buf.second->consumers_done[f][i]);
-                }
-            }
+        for (auto& cit : buf.second->consumers) {
+            auto& c = cit.second;
+            std::string consumer_name = c.name;
+            buf_info["consumers"][consumer_name] = {};
+            buf_info["consumers"][consumer_name]["last_frame_acquired"] =
+                c.last_frame_acquired;
+            buf_info["consumers"][consumer_name]["last_frame_released"] =
+                c.last_frame_released;
+            for (int f = 0; f < buf.second->num_frames; ++f)
+                buf_info["consumers"][consumer_name]["marked_frame_empty"].push_back(c.is_done[f] ? 1 : 0);
         }
         buf_info["producers"];
-        for (int i = 0; i < MAX_PRODUCERS; ++i) {
-            if (buf.second->producers[i].in_use) {
-                std::string producer_name = buf.second->producers[i].name;
-                buf_info["producers"][producer_name] = {};
-                buf_info["producers"][producer_name]["last_frame_acquired"] =
-                    buf.second->producers[i].last_frame_acquired;
-                buf_info["producers"][producer_name]["last_frame_released"] =
-                    buf.second->producers[i].last_frame_released;
-                for (int f = 0; f < buf.second->num_frames; ++f) {
-                    buf_info["producers"][producer_name]["marked_frame_empty"].push_back(
-                        buf.second->producers_done[f][i]);
-                }
-            }
+        for (auto& pit : buf.second->producers) {
+            auto& p = pit.second;
+            std::string producer_name = p.name;
+            buf_info["producers"][producer_name] = {};
+            buf_info["producers"][producer_name]["last_frame_acquired"] =
+                p.last_frame_acquired;
+            buf_info["producers"][producer_name]["last_frame_released"] =
+                p.last_frame_released;
+            for (int f = 0; f < buf.second->num_frames; ++f)
+                buf_info["producers"][producer_name]["marked_frame_empty"].push_back(p.is_done[f] ? 1 : 0);
         }
         buf_info["frames"];
         for (int i = 0; i < buf.second->num_frames; ++i) {
@@ -235,18 +229,12 @@ void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
 
     // Generate graph edges (producer/consumer relations)
     for (auto& buf : buffer_container.get_basic_buffer_map()) {
-        for (int i = 0; i < MAX_CONSUMERS; ++i) {
-            if (buf.second->consumers[i].in_use) {
-                dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\";\n", prefix, buf.first,
-                                   buf.second->consumers[i].name);
-            }
-        }
-        for (int i = 0; i < MAX_PRODUCERS; ++i) {
-            if (buf.second->producers[i].in_use) {
-                dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\";\n", prefix,
-                                   buf.second->producers[i].name, buf.first);
-            }
-        }
+        for (auto& cit : buf.second->consumers)
+            dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\";\n", prefix, buf.first,
+                               cit.second.name);
+        for (auto& pit : buf.second->producers)
+            dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\";\n", prefix,
+                               pit.second.name, buf.first);
     }
 
     dot += "}\n";

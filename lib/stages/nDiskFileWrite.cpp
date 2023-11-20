@@ -39,7 +39,7 @@ nDiskFileWrite::nDiskFileWrite(Config& config, const string& unique_name,
                                bufferContainer& buffer_containter) :
     Stage(config, unique_name, buffer_containter, std::bind(&nDiskFileWrite::main_thread, this)) {
     buf = get_buffer("in_buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
 
     // Apply config.
     disk_base = config.get<std::string>(unique_name, "disk_base");

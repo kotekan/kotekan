@@ -32,7 +32,7 @@ testDataGenQuad::testDataGenQuad(Config& config, const std::string& unique_name,
     buf[2] = get_buffer("out_buf2");
     buf[3] = get_buffer("out_buf3");
     for (int i = 0; i < 4; i++)
-        register_producer(buf[i], unique_name.c_str());
+        buf[i]->register_producer(unique_name);
 
     type = config.get<std::string>(unique_name, "type");
     if (type == "const")

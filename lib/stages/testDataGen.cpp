@@ -46,7 +46,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&testDataGen::main_thread, this)) {
 
     buf = get_buffer("out_buf");
-    register_producer(buf, unique_name.c_str());
+    buf->register_producer(unique_name);
     type = config.get<std::string>(unique_name, "type");
     assert(type == "const" || type == "const8" || type == "const16" || type == "const32"
            || type == "constf16" || type == "random" || type == "random_signed" || type == "ramp"

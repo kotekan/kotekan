@@ -29,9 +29,9 @@ simpleAutocorr::simpleAutocorr(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&simpleAutocorr::main_thread, this)) {
 
     buf_in = get_buffer("in_buf");
-    register_consumer(buf_in, unique_name.c_str());
+    buf_in->register_consumer(unique_name);
     buf_out = get_buffer("out_buf");
-    register_producer(buf_out, unique_name.c_str());
+    buf_out->register_producer(unique_name);
 
     spectrum_length = config.get_default<int>(unique_name, "spectrum_length", 1024);
     spectrum_out = (float*)calloc(spectrum_length, sizeof(float));

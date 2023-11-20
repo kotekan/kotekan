@@ -22,7 +22,7 @@ constDataCheck::constDataCheck(kotekan::Config& config, const std::string& uniqu
                    std::bind(&constDataCheck::main_thread, this)) {
 
     buf = get_buffer("in_buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
     ref_real = config.get<std::vector<int32_t>>(unique_name, "real");
     ref_imag = config.get<std::vector<int32_t>>(unique_name, "imag");
     num_frames_to_test = config.get_default<int32_t>(unique_name, "num_frames_to_test", 0);

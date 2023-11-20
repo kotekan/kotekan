@@ -150,12 +150,12 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     assert(S_buffer);
     assert(G_buffer);
     assert(W_buffer);
-    register_producer(E_buffer, unique_name.c_str());
-    register_producer(A_buffer, unique_name.c_str());
-    register_producer(J_buffer, unique_name.c_str());
-    register_producer(S_buffer, unique_name.c_str());
-    register_producer(G_buffer, unique_name.c_str());
-    register_producer(W_buffer, unique_name.c_str());
+    E_buffer->register_producer(unique_name);
+    A_buffer->register_producer(unique_name);
+    J_buffer->register_producer(unique_name);
+    S_buffer->register_producer(unique_name);
+    G_buffer->register_producer(unique_name);
+    W_buffer->register_producer(unique_name);
 
     INFO("Starting Julia...");
     kotekan::juliaStartup();

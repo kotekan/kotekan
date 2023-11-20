@@ -64,7 +64,7 @@ FakeGpu::FakeGpu(kotekan::Config& config, const std::string& unique_name,
     pattern = FACTORY(FakeGpuPattern)::create_unique(pattern_name, config, unique_name);
 
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Check that the buffer is large enough
     auto expected_frame_size = num_freq_in_frame * gpu_N2_size(num_elements, block_size);

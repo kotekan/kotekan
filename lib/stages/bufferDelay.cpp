@@ -32,10 +32,10 @@ bufferDelay::bufferDelay(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&bufferDelay::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Buffer sizes must match exactly
     if (in_buf->frame_size != out_buf->frame_size) {
@@ -80,7 +80,7 @@ void bufferDelay::main_thread() {
             if (output_frame == nullptr)
                 return;
 
-            if (_copy_frame || get_num_consumers(in_buf) > 1) {
+            if (_copy_frame || in_buf->get_num_consumers() > 1) {
                 allocate_new_metadata_object(out_buf, out_frame_id);
                 // Metadata sizes must match exactly
                 if (in_buf->metadata[in_frame_release_id]->metadata_size

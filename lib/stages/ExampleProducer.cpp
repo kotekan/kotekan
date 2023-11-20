@@ -26,7 +26,7 @@ ExampleProducer::ExampleProducer(Config& config, const std::string& unique_name,
 
     // Register as producer of out_buf
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Load options that can be set in config
     // The arguments to config.get_default are the:

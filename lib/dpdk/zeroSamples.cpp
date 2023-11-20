@@ -31,7 +31,7 @@ zeroSamples::zeroSamples(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&zeroSamples::main_thread, this)) {
 
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     _duplicate_ls_buffer = config.get_default<bool>(unique_name, "duplicate_ls_buffer", false);
     // Register as producer for all desired multiplied lost samples buffers
@@ -40,12 +40,12 @@ zeroSamples::zeroSamples(Config& config, const std::string& unique_name,
         for (json::iterator it = in_bufs.begin(); it != in_bufs.end(); ++it) {
             Buffer* buf = buffer_container.get_buffer(it.value());
             out_lost_sample_bufs.push_back(buf);
-            register_producer(buf, unique_name.c_str());
+            buf->register_producer(unique_name);
         }
     }
 
     lost_samples_buf = get_buffer("lost_samples_buf");
-    register_consumer(lost_samples_buf, unique_name.c_str());
+    lost_samples_buf->register_consumer(unique_name);
 
     sample_size = config.get_default<uint32_t>(unique_name.c_str(), "sample_size", 2048);
     zero_value = config.get_default<uint8_t>(unique_name.c_str(), "zero_value", 0x88);

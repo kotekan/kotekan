@@ -104,8 +104,9 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
         INFO_NON_OO("Creating {:s}Buffer named {:s} with frame size of {:d} and "
                     "metadata pool {:s} on numa_node {:d}",
                     type_name, name, frame_size, metadataPool_name, numa_node);
-        RingBuffer* buf = new RingBuffer(frame_size, pool, name.c_str(), type_name.c_str(),
-                                         numa_node, use_hugepages, mlock_frames, zero_new_frames);
+        RingBuffer* buf = new RingBuffer(pool, name, type_name);
+        //frame_size, 
+        //numa_node, use_hugepages, mlock_frames, zero_new_frames);
         return buf;
 
     } else {
@@ -116,7 +117,7 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
     INFO_NON_OO("Creating {:s}Buffer named {:s} with {:d} frames, frame size of {:d} and "
                 "metadata pool {:s} on numa_node {:d}",
                 type_name, name, num_frames, frame_size, metadataPool_name, numa_node);
-    Buffer* buf = new Buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(),
+    Buffer* buf = new Buffer(num_frames, frame_size, pool, name, type_name,
                              numa_node, use_hugepages, mlock_frames, zero_new_frames);
     return buf;
 }

@@ -45,7 +45,7 @@ hdf5FileWrite::hdf5FileWrite(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&hdf5FileWrite::main_thread, this)) {
 
     buf = get_buffer("in_buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
     _base_dir = config.get<std::string>(unique_name, "base_dir");
     _file_name = config.get<std::string>(unique_name, "file_name");
     _prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
@@ -217,7 +217,7 @@ void hdf5FileWrite::main_thread() {
             ERROR("Illegal HDF5 data space");
 
         const hid_t dataset =
-            H5Dcreate(group, buf->buffer_name, type, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            H5Dcreate(group, buf->buffer_name.c_str(), type, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
         if (dataset < 0)
             ERROR("Could not create HDF5 dataset");
 

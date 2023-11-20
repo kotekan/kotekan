@@ -33,7 +33,7 @@ networkInputPowerStream::networkInputPowerStream(Config& config, const std::stri
           std::bind(&networkInputPowerStream::main_thread, this)) {
 
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // PER BUFFER
     freqs = config.get<int>(unique_name, "num_freq");

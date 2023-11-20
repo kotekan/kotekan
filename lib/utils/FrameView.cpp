@@ -35,12 +35,7 @@ void FrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, 
     }
 
     // Calculate the number of consumers on the source buffer
-    int num_consumers = 0;
-    for (int i = 0; i < MAX_CONSUMERS; ++i) {
-        if (buf_src->consumers[i].in_use == 1) {
-            num_consumers++;
-        }
-    }
+    int num_consumers = buf_src->get_num_consumers();
 
     // Copy or transfer the data part.
     if (num_consumers == 1) {

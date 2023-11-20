@@ -53,7 +53,7 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
         Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name)),
     bytes_written_metric(
         Metrics::instance().add_counter("kotekan_writer_bytes_total", unique_name)) {
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 }
 
 

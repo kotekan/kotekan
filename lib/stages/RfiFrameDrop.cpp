@@ -55,9 +55,9 @@ RfiFrameDrop::RfiFrameDrop(Config& config, const std::string& unique_name,
     _buf_in_vis = get_buffer("in_buf_vis");
     _buf_in_sk = get_buffer("in_buf_sk");
     _buf_out = get_buffer("out_buf");
-    register_consumer(_buf_in_vis, unique_name.c_str());
-    register_consumer(_buf_in_sk, unique_name.c_str());
-    register_producer(_buf_out, unique_name.c_str());
+    _buf_in_vis->register_consumer(unique_name);
+    _buf_in_sk->register_consumer(unique_name);
+    _buf_out->register_producer(unique_name);
 
     auto num_samples = config.get<size_t>(unique_name, "samples_per_data_set");
     sk_step = config.get<size_t>(unique_name, "sk_step");
@@ -239,7 +239,7 @@ void RfiFrameDrop::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_des
                         buf_src->frame_size, buf_dest->frame_size));
     }
 
-    int num_consumers = get_num_consumers(buf_src);
+    int num_consumers = buf_src->get_num_consumers();
 
     // Copy or transfer the data part.
     if (num_consumers == 1) {

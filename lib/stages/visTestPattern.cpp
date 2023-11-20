@@ -55,9 +55,9 @@ visTestPattern::visTestPattern(Config& config, const std::string& unique_name,
 
     // Setup the buffers
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     _tolerance = config.get_default<double>(unique_name, "tolerance", 1e-6);
     _report_freq = config.get_default<uint64_t>(unique_name, "report_freq", 1000);

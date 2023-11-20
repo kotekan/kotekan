@@ -33,7 +33,7 @@ restInspectFrame::restInspectFrame(Config& config, const std::string& unique_nam
 
     in_buf = get_buffer("in_buf");
     in_buf_config_name = config.get<std::string>(unique_name, "in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     len = config.get_default<int32_t>(unique_name, "len", 0);
 

@@ -36,7 +36,7 @@ rfiRecord::rfiRecord(Config& config, const std::string& unique_name,
     // Get buffer from framework
     rfi_buf = get_buffer("rfi_in");
     // Register stage as consumer
-    register_consumer(rfi_buf, unique_name.c_str());
+    rfi_buf->register_consumer(unique_name);
 
     // General config parameters
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");

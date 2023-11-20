@@ -31,8 +31,8 @@ integratePowerStream::integratePowerStream(Config& config, const std::string& un
 
     in_buf = get_buffer("in_buf");
     out_buf = get_buffer("out_buf");
-    register_consumer(in_buf, unique_name.c_str());
-    register_producer(out_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
+    out_buf->register_producer(unique_name);
 
     integration_length = config.get<int>(unique_name, "integration");
 }

@@ -46,7 +46,7 @@ rfiBadInputFinder::rfiBadInputFinder(Config& config, const std::string& unique_n
     // Get buffer from framework
     rfi_buf = get_buffer("rfi_in");
     // Register stage as consumer
-    register_consumer(rfi_buf, unique_name.c_str());
+    rfi_buf->register_consumer(unique_name);
 
     // Intialize internal config
     _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");

@@ -53,7 +53,7 @@ RingMapMaker::RingMapMaker(Config& config, const std::string& unique_name,
         "ringmap", std::bind(&RingMapMaker::rest_callback_get, this, std::placeholders::_1));
 
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // config parameters
     feed_sep = config.get_default<float>(unique_name, "feed_sep", 0.3048);
@@ -441,9 +441,9 @@ RedundantStack::RedundantStack(Config& config, const std::string& unique_name,
 
     // Get buffers from config
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 }
 
 void RedundantStack::change_dataset_state(dset_id_t ds_id) {

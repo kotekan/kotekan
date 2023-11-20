@@ -33,11 +33,11 @@ gpuSimulateCudaBasebandBeamformer::gpuSimulateCudaBasebandBeamformer(
     voltage_buf = get_buffer("voltage_in_buf");
     phase_buf = get_buffer("phase_in_buf");
     shift_buf = get_buffer("shift_in_buf");
-    register_consumer(voltage_buf, unique_name.c_str());
-    register_consumer(phase_buf, unique_name.c_str());
-    register_consumer(shift_buf, unique_name.c_str());
+    voltage_buf->register_consumer(unique_name);
+    phase_buf->register_consumer(unique_name);
+    shift_buf->register_consumer(unique_name);
     output_buf = get_buffer("beams_out_buf");
-    register_producer(output_buf, unique_name.c_str());
+    output_buf->register_producer(unique_name);
     if (zero_output)
         zero_frames(output_buf);
 }

@@ -32,7 +32,7 @@ visDebug::visDebug(Config& config, const std::string& unique_name,
 
     // Setup the input vector
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     _output_period = config.get_default<int>(unique_name, "output_period", 1000);
 }

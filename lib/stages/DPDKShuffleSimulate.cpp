@@ -32,11 +32,11 @@ STAGE_CONSTRUCTOR(DPDKShuffleSimulate) {
 
     // Register as consumer on buffer
     lost_samples_buf = get_buffer("lost_samples_buf");
-    register_producer(lost_samples_buf, unique_name.c_str());
+    lost_samples_buf->register_producer(unique_name);
 
     for (uint32_t i = 0; i < shuffle_size; ++i) {
         voltage_data_buf[i] = get_buffer(fmt::format("voltage_data_buf_{:d}", i));
-        register_producer(voltage_data_buf[i], unique_name.c_str());
+        voltage_data_buf[i]->register_producer(unique_name);
     }
 
     // Get some configuration options

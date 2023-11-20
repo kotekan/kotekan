@@ -47,9 +47,9 @@ computeDualpolPower::computeDualpolPower(Config& config, const std::string& uniq
     Stage(config, unique_name, buffer_container,
           std::bind(&computeDualpolPower::main_thread, this)) {
     buf_in = get_buffer("vdif_in_buf");
-    register_consumer(buf_in, unique_name.c_str());
+    buf_in->register_consumer(unique_name);
     buf_out = get_buffer("power_out_buf");
-    register_producer(buf_out, unique_name.c_str());
+    buf_out->register_producer(unique_name);
 
     timesteps_in = config.get<int>(unique_name, "samples_per_data_set");
     integration_length = config.get<int>(unique_name, "power_integration_length");

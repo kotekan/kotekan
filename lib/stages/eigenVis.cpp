@@ -43,9 +43,9 @@ eigenVis::eigenVis(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&eigenVis::main_thread, this)) {
 
     input_buffer = get_buffer("in_buf");
-    register_consumer(input_buffer, unique_name.c_str());
+    input_buffer->register_consumer(unique_name);
     output_buffer = get_buffer("out_buf");
-    register_producer(output_buffer, unique_name.c_str());
+    output_buffer->register_producer(unique_name);
     num_eigenvectors = config.get<uint32_t>(unique_name, "num_ev");
     num_diagonals_filled = config.get_default<uint32_t>(unique_name, "num_diagonals_filled", 0);
     // Read a list from the config, but permit it to be absent (implying empty).

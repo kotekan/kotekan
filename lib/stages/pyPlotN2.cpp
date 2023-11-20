@@ -40,7 +40,7 @@ pyPlotN2::pyPlotN2(Config& config, const std::string& unique_name,
 
 {
     buf = get_buffer("in_buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
     gpu_id = config.get<int>(unique_name, "gpu_id");
     in_local = (unsigned char*)malloc(buf->frame_size);
     endpoint = unique_name + "/plot_corr_matrix/" + std::to_string(gpu_id);

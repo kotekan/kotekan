@@ -55,7 +55,7 @@ FakeHFB::FakeHFB(Config& config, const std::string& unique_name,
 
     // Fetch the buffer, register it
     out_buf = buffer_container.get_buffer(buffer_name);
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Get frequency IDs from config
     freq = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
@@ -204,11 +204,11 @@ ReplaceHFB::ReplaceHFB(Config& config, const std::string& unique_name,
 
     // Setup the input buffer
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // Setup the output buffer
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 }
 
 void ReplaceHFB::main_thread() {

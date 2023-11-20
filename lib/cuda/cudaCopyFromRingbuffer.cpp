@@ -17,7 +17,7 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
     _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
     signal_buffer = host_buffers.get_buffer(config.get<std::string>(unique_name, "host_signal"));
-    register_consumer(signal_buffer, unique_name.c_str());
+    signal_buffer->register_consumer(unique_name);
 
     input_cursor = 0;
     set_command_type(gpuCommandType::KERNEL);

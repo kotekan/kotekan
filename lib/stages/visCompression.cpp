@@ -56,8 +56,8 @@ baselineCompression::baselineCompression(Config& config, const std::string& uniq
     compression_frame_counter(Metrics::instance().add_counter(
         "kotekan_baselinecompression_frame_total", unique_name, {"thread_id"})) {
 
-    register_consumer(in_buf, unique_name.c_str());
-    register_producer(out_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
+    out_buf->register_producer(unique_name);
 
     // Fill out the map of stack types
     stack_type_defs["diagonal"] = stack_diagonal;

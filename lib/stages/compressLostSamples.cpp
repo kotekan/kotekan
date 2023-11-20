@@ -31,10 +31,10 @@ compressLostSamples::compressLostSamples(Config& config_, const std::string& uni
     _zero_all_in_group = config.get<bool>(unique_name, "zero_all_in_group");
 
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     if (_samples_per_data_set != (uint32_t)in_buf->frame_size) {
         throw std::runtime_error("compressLostSamples in_frame has the wrong size.");

@@ -38,10 +38,10 @@ GenHFBFrames::GenHFBFrames(Config& config, const std::string& unique_name,
     _num_samples = _samples_per_data_set / _factor_upchan / _downsample_time;
 
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     cls_out_buf = get_buffer("cls_out_buf");
-    register_producer(cls_out_buf, unique_name.c_str());
+    cls_out_buf->register_producer(unique_name);
 
     dataset_id = config.get_default<dset_id_t>(
         unique_name, "dataset_id", dset_id_t::from_string("f65bec4949ca616fbeea62660351edcb"));

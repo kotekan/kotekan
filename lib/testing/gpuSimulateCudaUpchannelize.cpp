@@ -58,8 +58,8 @@ gpuSimulateCudaUpchannelize::gpuSimulateCudaUpchannelize(Config& config,
     bool zero_output = config.get_default<bool>(unique_name, "zero_output", false);
     voltage_in_buf = get_buffer("voltage_in_buf");
     voltage_out_buf = get_buffer("voltage_out_buf");
-    register_consumer(voltage_in_buf, unique_name.c_str());
-    register_producer(voltage_out_buf, unique_name.c_str());
+    voltage_in_buf->register_consumer(unique_name);
+    voltage_out_buf->register_producer(unique_name);
     if (zero_output)
         zero_frames(voltage_out_buf);
 }

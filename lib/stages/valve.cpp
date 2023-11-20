@@ -32,9 +32,9 @@ Valve::Valve(Config& config, const std::string& unique_name, bufferContainer& bu
     Stage(config, unique_name, buffer_container, std::bind(&Valve::main_thread, this)) {
 
     _buf_in = get_buffer("in_buf");
-    register_consumer(_buf_in, unique_name.c_str());
+    _buf_in->register_consumer(unique_name);
     _buf_out = get_buffer("out_buf");
-    register_producer(_buf_out, unique_name.c_str());
+    _buf_out->register_producer(unique_name);
 }
 
 void Valve::main_thread() {
@@ -92,7 +92,7 @@ void Valve::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int 
                         buf_dest->metadata[frame_id_dest]->metadata_size));
     }
 
-    int num_consumers = get_num_consumers(buf_src);
+    int num_consumers = buf_src->get_num_consumers();
 
     // Copy or transfer the data part.
     if (num_consumers == 1) {

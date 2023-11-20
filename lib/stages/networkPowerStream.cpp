@@ -34,7 +34,7 @@ networkPowerStream::networkPowerStream(Config& config, const std::string& unique
           std::bind(&networkPowerStream::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // PER BUFFER
     times = config.get<int>(unique_name, "samples_per_data_set")

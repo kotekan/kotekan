@@ -19,7 +19,7 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
     //_input_columns_field = config.get_default<std::string>(unique_name, "input_columns_field", "");
     signal_buffer = host_buffers.get_buffer(config.get<std::string>(unique_name, "host_signal"));
-    register_producer(signal_buffer, unique_name.c_str());
+    signal_buffer->register_producer(unique_name);
     buffer_set_ring_buffer_size(signal_buffer, _ring_buffer_size);
     buffer_set_ring_buffer_read_size(signal_buffer, _output_size);
 
@@ -30,7 +30,7 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, true, false, true));
 }
 
-int cudaCopyToRingbuffer::wait_on_precondition(int gpu_frame_id) {
+int cudaCopyToRingbuffer::wait_on_precondition(int) {
     return buffer_wait_for_ring_buffer_writable(signal_buffer, _input_size);
 }
 

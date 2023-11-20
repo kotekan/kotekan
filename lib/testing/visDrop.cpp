@@ -28,9 +28,9 @@ visDrop::visDrop(Config& config, const std::string& unique_name,
 
     // Setup the buffers
     buf_in = get_buffer("in_buf");
-    register_consumer(buf_in, unique_name.c_str());
+    buf_in->register_consumer(unique_name);
     buf_out = get_buffer("out_buf");
-    register_producer(buf_out, unique_name.c_str());
+    buf_out->register_producer(unique_name);
 
     drop_freqs = config.get_default<std::vector<uint32_t>>(unique_name, "freq", {});
     INFO("Dropping {:d} frequencies.", drop_freqs.size());

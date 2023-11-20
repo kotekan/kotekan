@@ -28,10 +28,10 @@ BeamExtract::BeamExtract(Config& config_, const std::string& unique_name,
     Stage(config_, unique_name, buffer_container, std::bind(&BeamExtract::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     _num_beams = config.get<uint32_t>(unique_name, "num_beams");
     _extract_beam = config.get<uint32_t>(unique_name, "extract_beam");

@@ -42,7 +42,7 @@ nDiskFileRead::nDiskFileRead(Config& config, const std::string& unique_name,
     starting_index = config.get<uint32_t>(unique_name, "starting_file_index");
 
     // Mark as producer
-    register_producer(buf, unique_name.c_str());
+    buf->register_producer(unique_name);
 }
 
 void nDiskFileRead::main_thread() {

@@ -28,9 +28,9 @@ accumulate::accumulate(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&accumulate::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _num_gpu_frames = config.get<int32_t>(unique_name, "num_gpu_frames");
 }

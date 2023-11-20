@@ -28,7 +28,7 @@ simVdifData::simVdifData(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&simVdifData::main_thread, this)) {
     buf = get_buffer("network_out_buf");
-    register_producer(buf, unique_name.c_str());
+    buf->register_producer(unique_name);
 }
 
 simVdifData::~simVdifData() {}

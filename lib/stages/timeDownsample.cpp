@@ -36,9 +36,9 @@ timeDownsample::timeDownsample(Config& config, const std::string& unique_name,
 
     // Fetch the buffers, register
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Get the number of time samples to combine
     nsamp = config.get_default<int>(unique_name, "num_samples", 2);

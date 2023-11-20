@@ -32,9 +32,9 @@ TestDropFrames::TestDropFrames(Config& config, const std::string& unique_name,
     INFO("Stage will drop {:d} / {:.2}% frames.", _missing_frames.size(), _drop_frame_chance * 100);
 
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 }
 
 void TestDropFrames::main_thread() {
@@ -65,7 +65,7 @@ void TestDropFrames::main_thread() {
             if (output == nullptr)
                 break;
 
-            int num_consumers = get_num_consumers(in_buf);
+            int num_consumers = in_buf->get_num_consumers();
 
             // Copy or transfer the data part.
             if (num_consumers == 1) {

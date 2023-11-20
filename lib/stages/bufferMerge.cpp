@@ -34,7 +34,7 @@ bufferMerge::bufferMerge(Config& config, const std::string& unique_name,
     _timeout = config.get_default<double>(unique_name, "timeout", -1.0);
 
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     json buffer_list = config.get<std::vector<json>>(unique_name, "in_bufs");
     Buffer* in_buf = nullptr;
@@ -66,7 +66,7 @@ bufferMerge::bufferMerge(Config& config, const std::string& unique_name,
                                                     buffer_name));
         }
 
-        register_consumer(in_buf, unique_name.c_str());
+        in_buf->register_consumer(unique_name);
         INFO("Adding buffer: {:s}:{:s}", internal_name, in_buf->buffer_name);
         in_bufs.push_back(std::make_tuple(internal_name, in_buf, frameID(in_buf)));
     }
@@ -84,7 +84,7 @@ void bufferMerge::main_thread() {
 
     frameID out_frame_id(out_buf);
 
-    if (get_num_producers(out_buf) != 1) {
+    if (out_buf->get_num_producers() != 1) {
         FATAL_ERROR("Cannot merge into a buffer with more than one producer");
         return;
     }
@@ -123,7 +123,7 @@ void bufferMerge::main_thread() {
                 pass_metadata(in_buf, in_frame_id, out_buf, out_frame_id);
 
                 // Copy or swap the frame.
-                if (get_num_consumers(in_buf) > 1) {
+                if (in_buf->get_num_consumers() > 1) {
                     std::memcpy(output_frame, in_buf->frames[in_frame_id], in_buf->frame_size);
                 } else {
                     swap_frames(in_buf, in_frame_id, out_buf, out_frame_id);

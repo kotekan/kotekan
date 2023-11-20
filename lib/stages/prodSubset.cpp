@@ -40,11 +40,11 @@ prodSubset::prodSubset(Config& config, const std::string& unique_name,
 
     // Get buffers
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
     // TODO: Size of buffer is not adjusted for baseline subset.
     //       ~ 3/4 of buffer will be unused.
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     auto subset_list = parse_prod_subset(config, unique_name);
     _base_prod_ind = std::get<0>(subset_list);

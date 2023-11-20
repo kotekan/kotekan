@@ -49,8 +49,8 @@ ReceiveFlags::ReceiveFlags(Config& config, const std::string& unique_name,
     // Setup the buffers
     buf_in = get_buffer("in_buf");
     buf_out = get_buffer("out_buf");
-    register_consumer(buf_in, unique_name.c_str());
-    register_producer(buf_out, unique_name.c_str());
+    buf_in->register_consumer(unique_name);
+    buf_out->register_producer(unique_name);
 
     // Apply kotekan config
     int num = config.get<int>(unique_name, "num_elements");

@@ -38,7 +38,7 @@ DataQuality::DataQuality(Config& config_, const std::string& unique_name,
                                                       unique_name, {"freq_id"})) {
 
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 }
 
 DataQuality::~DataQuality() {}
