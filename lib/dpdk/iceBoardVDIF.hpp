@@ -113,7 +113,7 @@ iceBoardVDIF::iceBoardVDIF(kotekan::Config& config, const std::string& unique_na
     iceBoardHandler(config, unique_name, buffer_container, port) {
 
     out_buf = buffer_container.get_buffer(config.get<std::string>(unique_name, "out_buf"));
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     lost_samples_buf =
         buffer_container.get_buffer(config.get<std::string>(unique_name, "lost_samples_buf"));

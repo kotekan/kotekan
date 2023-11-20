@@ -248,12 +248,12 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
     }
     for (uint32_t i = 0; i < shuffle_size; ++i) {
         out_bufs[i] = buffer_container.get_buffer(buffer_names[i]);
-        register_producer(out_bufs[i], unique_name.c_str());
+        out_bufs[i]->register_producer(unique_name);
     }
 
     lost_samples_buf =
         buffer_container.get_buffer(config.get<std::string>(unique_name, "lost_samples_buf"));
-    register_producer(lost_samples_buf, unique_name.c_str());
+    lost_samples_buf->register_producer(unique_name);
     // We want to make sure the flag buffers are zeroed between uses.
     zero_frames(lost_samples_buf);
 

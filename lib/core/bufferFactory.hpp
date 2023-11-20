@@ -20,6 +20,7 @@ public:
     ~bufferFactory();
 
     std::map<std::string, GenericBuffer*> build_buffers();
+    //std::map<std::string, RingBuffer*> build_ringbuffers();
 
 private:
     void build_from_tree(std::map<std::string, GenericBuffer*>& buffers, const nlohmann::json& config_tree,

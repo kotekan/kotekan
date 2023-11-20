@@ -42,24 +42,29 @@
 /// The system page size, this might become more dynamic someday
 #define PAGESIZE_MEM 4096
 
-/// The max length of a stage (consumer or producer) name.
-#define MAX_STAGE_NAME_LEN 128
-
-/// The maximum number of consumers that can register on a buffer
-#define MAX_CONSUMERS 20
-/// The maximum number of producers that can register on a buffer
-#define MAX_PRODUCERS 10
-
 /**
  * @struct StageInfo
  * @brief Internal structure for tracking consumer and producer names.
  */
-struct StageInfo {
+class StageInfo {
+public:
+    // Non-copyable signatures
+    StageInfo(const std::string& _name) :
+        name(_name),
+        last_frame_acquired(-1),
+        last_frame_released(-1) {}
+    // moves allowed
+    StageInfo(StageInfo&&) = default;
+    StageInfo& operator=(StageInfo&&) = default;
+    // you shall not copy
+    StageInfo(const StageInfo&) = delete;
+    StageInfo& operator=(const StageInfo&) = delete;
+    
     /// Set to 1 if the stage is active
-    int in_use;
+    //int in_use;
 
     /// The name of the stage (consumer or producer)
-    char name[MAX_STAGE_NAME_LEN];
+    const std::string name;
 
     /// Last frame acquired with a call to wait_for_*
     int last_frame_acquired;
@@ -70,11 +75,67 @@ struct StageInfo {
 
 class GenericBuffer  : public kotekan::kotekanLogging {
 public:
-    GenericBuffer() {}
-    virtual ~GenericBuffer() {};
+    GenericBuffer(const std::string&,
+                  const std::string&);
+    virtual ~GenericBuffer();
     virtual void print_full_status() {};
 
     virtual bool is_basic() = 0;
+
+    /**
+     * @brief Tells the buffers to stop returning full/empty frames to consumers/producers
+     *
+     * This function should only be called by the framework, and not by stages.
+     * Once called it will cause all @c wait_for_empty_frame() and @c wait_for_full_frame()
+     * calls to wake up and return NULL; or NULL on the next time they are called.
+     */
+    void send_shutdown_signal();
+
+    /**
+     * @brief Register a consumer with a given name.
+     *
+     * In order to use a buffer a consumer must first register its name so that
+     * the buffer object can track which consumers have signed off on each frame.
+     *
+     * @param[in] name The name of the consumer.
+     */
+    void register_consumer(const std::string& name);
+
+    /**
+     * @brief Removes the consumer with the given name
+     *
+     * In some cases it may make sense to stop being a consumer of a given
+     * buffer while the pipeline is running.  However this is likely an edge
+     * case for most pipelines.  In general it is not expected for stages
+     * to unregister when they close.
+     *
+     * @param name The name of the consumer to unregister
+     */
+    void unregister_consumer(const std::string& name);
+
+    /**
+     * @brief Register a producer with a given name.
+     *
+     * In order to use a buffer a producer must first register its name so that
+     * the buffer object can track which producers have signed off on each frame.
+     *
+     * @param[in] name The name of the producer.
+     */
+    void register_producer(const std::string& name);
+
+    /**
+     * @brief Get the number of consumers on this buffer
+     *
+     * @return int The number of consumers on the buffer
+     */
+    int get_num_consumers() const;
+
+    /**
+     * @brief Get the number of producers for this buffer
+     *
+     * @return int The number of producers on this buffer
+     */
+    int get_num_producers() const;
 
     /// The main lock for frame state management
     pthread_mutex_t lock;
@@ -92,14 +153,30 @@ public:
      */
     int shutdown_signal;
 
-    void send_shutdown_signal();
+    /// The list of consumer names registered to this buffer
+    std::map<std::string, StageInfo> consumers;
 
+    /// The list of producer names registered to this buffer
+    std::map<std::string, StageInfo> producers;
+
+    /// The name of the buffer for use in debug messages.
+    std::string buffer_name;
+
+    /// The type of the buffer for use in writing data.
+    std::string buffer_type;
+
+    /// The pool of info objects
+    metadataPool* metadata_pool;
+
+protected:
+    virtual void registered_producer(StageInfo&) {}
+    
 };
 
 class RingBuffer : public GenericBuffer {
 public:
-    RingBuffer(size_t, metadataPool*, const char*,
-               const char*, int, bool, bool, bool) {}
+    RingBuffer(size_t, metadataPool*, const std::string&,
+               const std::string&, int, bool, bool, bool);
     ~RingBuffer() override {}
     bool is_basic() override { return false; }
 };
@@ -159,13 +236,13 @@ public:
  */
 class Buffer : public GenericBuffer {
 public:
-    Buffer(int num_frames, size_t len, metadataPool* pool, const char* buffer_name,
-           const char* buffer_type, int numa_node, bool use_hugepages, bool mlock_frames,
+    Buffer(int num_frames, size_t len, metadataPool* pool, const std::string& buffer_name,
+           const std::string& buffer_type, int numa_node, bool use_hugepages, bool mlock_frames,
            bool zero_new_frames);
     ~Buffer() override;
 
     bool is_basic() override { return true; }
-
+    
     /**
      * @brief Prints a summary the frames and state of the producers and consumers.
      *
@@ -203,12 +280,6 @@ public:
      */
     int** consumers_done;
 
-    /// The list of consumer names registered to this buffer
-    struct StageInfo consumers[MAX_CONSUMERS];
-
-    /// The list of producer names registered to this buffer
-    struct StageInfo producers[MAX_PRODUCERS];
-
     /// Flag set to indicate if the frames should be zeroed between uses
     int zero_frames;
 
@@ -226,15 +297,6 @@ public:
 
     /// Array of buffer info objects, for tracking information about each buffer.
     metadataContainer** metadata;
-
-    /// The pool of info objects
-    metadataPool* metadata_pool;
-
-    /// The name of the buffer for use in debug messages.
-    char* buffer_name;
-
-    /// The type of the buffer for use in writing data.
-    char* buffer_type;
 
     /// This buffer use huge pages for its frames if the following is true
     bool use_hugepages;
@@ -276,7 +338,7 @@ public:
  * @returns A buffer object.
  */
 Buffer* create_buffer(int num_frames, size_t frame_size, metadataPool* pool,
-                      const char* buffer_name, const char* buffer_type, int numa_node,
+                      const std::string& buffer_name, const std::string& buffer_type, int numa_node,
                       bool use_huge_pages, bool mlock_frames, bool zero_new_frames);
 
 /**
@@ -292,41 +354,6 @@ void delete_buffer(Buffer* buf);
  * @param[in] buf The buffer object which will be set to automatically zero all frames
  */
 void zero_frames(Buffer* buf);
-
-/**
- * @brief Register a consumer with a given name.
- *
- * In order to use a buffer a consumer must first register its name so that
- * the buffer object can track which consumers have signed off on each frame.
- *
- * @param[in] buf The buffer to register on
- * @param[in] name The name of the consumer.
- */
-void register_consumer(Buffer* buf, const char* name);
-
-/**
- * @brief Removes the consumer with the given name
- *
- * In some cases it may make sense to stop being a consumer of a given
- * buffer while the pipeline is running.  However this is likely an edge
- * case for most pipelines.  In general it is not expected for stages
- * to unregister when they close.
- *
- * @param buf The buffer to unregister from
- * @param name The name of the consumer to unregister
- */
-void unregister_consumer(Buffer* buf, const char* name);
-
-/**
- * @brief Register a producer with a given name.
- *
- * In order to use a buffer a producer must first register its name so that
- * the buffer object can track which producers have signed off on each frame.
- *
- * @param[in] buf The buffer to register on
- * @param[in] name The name of the producer.
- */
-void register_producer(Buffer* buf, const char* name);
 
 /**
  * @brief Marks a buffer frame as full.
@@ -436,22 +463,6 @@ int is_frame_empty(Buffer* buf, const int frame_id);
  * @returns The number of currently full frames in the buffer
  */
 int get_num_full_frames(Buffer* buf);
-
-/**
- * @brief Get the number of consumers on this buffer
- *
- * @param buf The buffer
- * @return int The number of consumers on the buffer
- */
-int get_num_consumers(Buffer* buf);
-
-/**
- * @brief Get the number of producers for this buffer
- *
- * @param buf The buffer
- * @return int The number of producers on this buffer
- */
-int get_num_producers(Buffer* buf);
 
 /**
  * @brief Returns the last time a frame was marked as full
@@ -602,7 +613,6 @@ metadataContainer* get_metadata_container(Buffer* buf, int frame_id);
  */
 void pass_metadata(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_frame_id);
 
-
 /**
  * @brief Makes a fully deep copy of the metadata from one object to another
  *
@@ -629,16 +639,5 @@ void copy_metadata(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_f
  * @param[in] dest_frame_id The destination frame ID
  */
 void safe_swap_frame(Buffer* src_buf, int src_frame_id, Buffer* dest_buf, int dest_frame_id);
-
-/**
- * @brief Tells the buffers to stop returning full/empty frames to consumers/producers
- *
- * This function should only be called by the framework, and not by stages.
- * Once called it will cause all @c wait_for_empty_frame() and @c wait_for_full_frame()
- * calls to wake up and return NULL; or NULL on the next time they are called.
- *
- * @param[in] buf The buffer to shutdown
- */
-void send_shutdown_signal(Buffer* buf);
 
 #endif

@@ -75,15 +75,48 @@ int private_mark_frame_empty(Buffer* buf, const int id);
 
 //void private_mark_frame_full(Buffer* buf, const char* name, const int ID);
 
-Buffer::Buffer(int _num_frames, size_t len, metadataPool* pool, const char* _buffer_name,
-               const char* _buffer_type, int _numa_node, bool _use_hugepages, bool _mlock_frames,
+GenericBuffer::GenericBuffer(const std::string& _buffer_name, const std::string& _buffer_type,
+                             metadataPool* pool) :
+    buffer_name(_buffer_name),
+    buffer_type(_buffer_type),
+    metadata_pool(pool) {
+    CHECK_ERROR_F(pthread_mutex_init(&lock, nullptr));
+    CHECK_ERROR_F(pthread_cond_init(&full_cond, nullptr));
+    CHECK_ERROR_F(pthread_cond_init(&empty_cond, nullptr));
+
+    /*
+      for (int i = 0; i < MAX_PRODUCERS; ++i) {
+      producers[i].in_use = 0;
+      }
+      for (int i = 0; i < MAX_CONSUMERS; ++i) {
+      consumers[i].in_use = 0;
+      }
+    */
+    
+
+}
+
+GenericBuffer::~GenericBuffer() {
+    // Free locks and cond vars
+    CHECK_ERROR_F(pthread_mutex_destroy(&lock));
+    CHECK_ERROR_F(pthread_cond_destroy(&full_cond));
+    CHECK_ERROR_F(pthread_cond_destroy(&empty_cond));
+}
+
+RingBuffer::RingBuffer(const std::string& _buffer_name, const std::string& _buffer_type,
+                       metadataPool* pool) :
+    GenericBuffer(_buffer_name, _buffer_type, pool) {
+}
+
+Buffer::Buffer(int _num_frames, size_t len, metadataPool* pool, const std::string& _buffer_name,
+               const std::string& _buffer_type, int _numa_node, bool _use_hugepages, bool _mlock_frames,
                bool zero_new_frames) :
+    GenericBuffer(_buffer_name, _buffer_type, pool),
     num_frames(_num_frames),
     frame_size(len),
     // By default don't zero buffers at the end of their use.
     zero_frames(0),
     last_arrival_time(0),
-    metadata_pool(pool),
     use_hugepages(_use_hugepages),
     mlock_frames(_mlock_frames),
     numa_node(_numa_node)
@@ -101,15 +134,6 @@ Buffer::Buffer(int _num_frames, size_t len, metadataPool* pool, const char* _buf
     }
     numa_bitmask_free(node_mask);
 #endif
-
-    CHECK_ERROR_F(pthread_mutex_init(&lock, nullptr));
-
-    CHECK_ERROR_F(pthread_cond_init(&full_cond, nullptr));
-    CHECK_ERROR_F(pthread_cond_init(&empty_cond, nullptr));
-
-    // Copy the buffer name and type.
-    buffer_name = strdup(_buffer_name);
-    buffer_type = strdup(_buffer_type);
 
     if (use_hugepages) {
         // Round up to the nearest huge page size multiple.
@@ -135,13 +159,6 @@ Buffer::Buffer(int _num_frames, size_t len, metadataPool* pool, const char* _buf
     CHECK_MEM_F(metadata);
     for (int i = 0; i < num_frames; ++i) {
         metadata[i] = NULL;
-    }
-
-    for (int i = 0; i < MAX_PRODUCERS; ++i) {
-        producers[i].in_use = 0;
-    }
-    for (int i = 0; i < MAX_CONSUMERS; ++i) {
-        consumers[i].in_use = 0;
     }
 
     // Create the arrays for marking consumers and producers as done.
@@ -196,13 +213,6 @@ Buffer::~Buffer() {
     free(metadata);
     free(producers_done);
     free(consumers_done);
-    free(buffer_name);
-    free(buffer_type);
-
-    // Free locks and cond vars
-    CHECK_ERROR_F(pthread_mutex_destroy(&lock));
-    CHECK_ERROR_F(pthread_cond_destroy(&full_cond));
-    CHECK_ERROR_F(pthread_cond_destroy(&empty_cond));
 }
 
 void mark_frame_full(Buffer* buf, const char* name, const int ID) {
@@ -563,33 +573,26 @@ void unregister_consumer(Buffer* buf, const char* name) {
 }
 
 
-void register_producer(Buffer* buf, const char* name) {
+void GenericBuffer::register_producer(const std::string& name) {
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
     DEBUG_F("Buffer: %s Registering producer: %s", buf->buffer_name, name);
-    if (private_get_producer_id(buf, name) != -1) {
-        ERROR_F("You cannot register two consumers with the same name!");
+
+    auto const& ins = producers.try_emplace(name, name);
+    if (!ins.first) {
+        ERROR_F("You cannot register two producers with the same name (\"{:s}\")!", name);
         assert(0); // Optional
         CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
         return;
     }
-
-    for (int i = 0; i < MAX_PRODUCERS; ++i) {
-        if (buf->producers[i].in_use == 0) {
-            buf->producers[i].in_use = 1;
-            // -1 here means no frame has been acquired/released
-            buf->producers[i].last_frame_acquired = -1;
-            buf->producers[i].last_frame_released = -1;
-            strncpy(buf->producers[i].name, name, MAX_STAGE_NAME_LEN);
-            CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
-            return;
-        }
-    }
-
-    ERROR_F("No free slot for producer, please change buffer.h MAX_PRODUCERS");
-    assert(0); // Optional
+    registered_producer(ins.second);
 
     CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
 }
+
+/*
+  void Buffer::registered_producer(StageInfo&) {
+  }
+*/
 
 int private_get_consumer_id(Buffer* buf, const char* name) {
 
@@ -791,27 +794,17 @@ int get_num_full_frames(Buffer* buf) {
 }
 
 int get_num_consumers(Buffer* buf) {
-    int num_consumers = 0;
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
-    for (int i = 0; i < MAX_CONSUMERS; ++i) {
-        if (buf->consumers[i].in_use == 1) {
-            num_consumers++;
-        }
-    }
+    int n = consumers.size();
     CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
-    return num_consumers;
+    return n;
 }
 
 int get_num_producers(Buffer* buf) {
-    int num_producers = 0;
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
-    for (int i = 0; i < MAX_PRODUCERS; ++i) {
-        if (buf->producers[i].in_use == 1) {
-            num_producers++;
-        }
-    }
+    int n = producers.size();
     CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
-    return num_producers;
+    return n;
 }
 
 void print_buffer_status(Buffer* buf) {
