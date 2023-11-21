@@ -62,12 +62,12 @@ void zeroSamples::main_thread() {
 
         lost_samples = 0;
 
-        uint8_t* data_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_frame_id);
+        uint8_t* data_frame = out_buf->wait_for_empty_frame(unique_name, out_buf_frame_id);
         if (data_frame == nullptr)
             break;
 
         uint8_t* flag_frame =
-            wait_for_full_frame(lost_samples_buf, unique_name.c_str(), lost_samples_buf_frame_id);
+            lost_samples_buf->wait_for_full_frame(unique_name, lost_samples_buf_frame_id);
         if (flag_frame == nullptr)
             break;
 
@@ -82,21 +82,21 @@ void zeroSamples::main_thread() {
         }
         if (_duplicate_ls_buffer) {
             for (size_t i = 0; i < out_lost_sample_bufs.size(); i++) {
-                uint8_t* new_flag_frame = wait_for_empty_frame(
-                    out_lost_sample_bufs[i], unique_name.c_str(), lost_samples_buf_frame_id);
+                uint8_t* new_flag_frame = out_lost_sample_bufs[i]->wait_for_empty_frame(
+                       unique_name, lost_samples_buf_frame_id);
                 if (new_flag_frame == nullptr)
                     break;
                 memcpy(new_flag_frame, flag_frame, lost_samples_buf->frame_size);
-                mark_frame_full(out_lost_sample_bufs[i], unique_name.c_str(),
+                out_lost_sample_bufs[i]->mark_frame_full(unique_name,
                                 lost_samples_buf_frame_id);
             }
         }
         atomic_add_lost_timesamples(out_buf, out_buf_frame_id, lost_samples);
 
-        mark_frame_empty(lost_samples_buf, unique_name.c_str(), lost_samples_buf_frame_id);
+        lost_samples_buf->mark_frame_empty(unique_name, lost_samples_buf_frame_id);
         lost_samples_buf_frame_id = (lost_samples_buf_frame_id + 1) % lost_samples_buf->num_frames;
 
-        mark_frame_full(out_buf, unique_name.c_str(), out_buf_frame_id);
+        out_buf->mark_frame_full(unique_name, out_buf_frame_id);
         out_buf_frame_id = (out_buf_frame_id + 1) % out_buf->num_frames;
     }
 }

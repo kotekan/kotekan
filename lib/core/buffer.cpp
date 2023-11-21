@@ -83,7 +83,7 @@ Buffer::Buffer(int num_frames, size_t len, metadataPool* pool, const std::string
     GenericBuffer(_buffer_name, _buffer_type, pool, num_frames),
     frame_size(len),
     // By default don't zero buffers at the end of their use.
-    zero_frames(false),
+    _zero_frames(false),
     frames(num_frames, nullptr),
     is_full(num_frames, false),
     last_arrival_time(0),
@@ -186,6 +186,7 @@ void Buffer::mark_frame_full(const std::string& name, const int ID) {
     }
 }
 
+//// DON't change this one
 void* private_zero_frames(void* args) {
 
     int ID = ((struct zero_frames_thread_args*)(args))->ID;
@@ -219,9 +220,9 @@ void* private_zero_frames(void* args) {
     pthread_exit(&ret);
 }
 
-void zero_frames(Buffer* buf) {
+void Buffer::zero_frames() {
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
-    buf->zero_frames = 1;
+    _zero_frames = true;
     CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
 }
 
@@ -269,7 +270,7 @@ void mark_frame_empty(Buffer* buf, const std::string& consumer_name, const int I
 
 bool Buffer::private_mark_frame_empty(const int ID) {
     bool broadcast = false;
-    if (zero_frames == 1) {
+    if (_zero_frames) {
         pthread_t zero_t;
         struct zero_frames_thread_args* zero_args =
             (struct zero_frames_thread_args*)malloc(sizeof(struct zero_frames_thread_args));

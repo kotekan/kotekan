@@ -388,7 +388,7 @@ public:
      * @brief Zero all frames after all consumers have marked them as empty
      *
      */
-    void do_zero_frames();
+    void zero_frames();
 
     /**
      * @brief Marks a buffer frame as full.
@@ -520,7 +520,7 @@ public:
     //int** consumers_done;
 
     /// Flag set to indicate if the frames should be zeroed between uses
-    bool zero_frames;
+    bool _zero_frames;
 
     /// The array of frames (the actual data we are carrying)
     std::vector<uint8_t*> frames;

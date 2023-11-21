@@ -255,7 +255,7 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
         buffer_container.get_buffer(config.get<std::string>(unique_name, "lost_samples_buf"));
     lost_samples_buf->register_producer(unique_name);
     // We want to make sure the flag buffers are zeroed between uses.
-    zero_frames(lost_samples_buf);
+    lost_samples_buf->zero_frames();
 
     std::string endpoint_name = unique_name + "/port_data";
     kotekan::restServer::instance().register_get_callback(
@@ -395,14 +395,14 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
     for (uint32_t i = 0; i < shuffle_size; ++i) {
         if (!first_time) {
-            mark_frame_full(out_bufs[i], unique_name.c_str(), out_buf_frame_ids[i]);
+            out_bufs[i]->mark_frame_full(unique_name, out_buf_frame_ids[i]);
 
             // Advance frame ID
             out_buf_frame_ids[i] = (out_buf_frame_ids[i] + 1) % out_bufs[i]->num_frames;
         }
 
         out_buf_frame[i] =
-            wait_for_empty_frame(out_bufs[i], unique_name.c_str(), out_buf_frame_ids[i]);
+            out_bufs[i]->wait_for_empty_frame(unique_name, out_buf_frame_ids[i]);
         if (out_buf_frame[i] == nullptr)
             return false;
 
@@ -427,11 +427,11 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     }
 
     if (!first_time) {
-        mark_frame_full(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
+        lost_samples_buf->mark_frame_full(unique_name, lost_samples_frame_id);
         lost_samples_frame_id = (lost_samples_frame_id + 1) % lost_samples_buf->num_frames;
     }
     lost_samples_frame =
-        wait_for_empty_frame(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
+        lost_samples_buf->wait_for_empty_frame(unique_name, lost_samples_frame_id);
     if (lost_samples_frame == nullptr)
         return false;
 

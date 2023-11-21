@@ -171,11 +171,11 @@ inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
 
     // Advance the frame
     if (!first_time) {
-        mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
+        out_buf->mark_frame_full(unique_name, out_frame_id);
         out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
 
         // Advance the lost samples frame
-        mark_frame_full(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
+        lost_samples_buf->mark_frame_full(unique_name, lost_samples_frame_id);
         lost_samples_frame_id = (lost_samples_frame_id + 1) % lost_samples_buf->num_frames;
     }
 
@@ -186,13 +186,13 @@ inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
     }
 
     // Get new output frame
-    out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+    out_frame = out_buf->wait_for_empty_frame(unique_name, out_frame_id);
     if (out_frame == nullptr)
         return false;
 
     // Get new lost samples frame
     lost_samples_frame =
-        wait_for_empty_frame(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
+        lost_samples_buf->wait_for_empty_frame(unique_name, lost_samples_frame_id);
     if (lost_samples_frame == nullptr)
         return false;
 

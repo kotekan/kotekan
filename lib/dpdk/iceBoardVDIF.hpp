@@ -185,13 +185,13 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
 
     // Advance the frame
     if (!first_time) {
-        mark_frame_full(out_buf, unique_name.c_str(), out_buf_frame_id);
+        out_buf->mark_frame_full(unique_name, out_buf_frame_id);
 
         // Advance frame ID
         out_buf_frame_id = (out_buf_frame_id + 1) % out_buf->num_frames;
     }
 
-    out_buf_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_frame_id);
+    out_buf_frame = out_buf->wait_for_empty_frame(unique_name, out_buf_frame_id);
     if (out_buf_frame == nullptr)
         return false;
 
@@ -230,11 +230,11 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
 
     // Advance the lost samples frame
     if (!first_time) {
-        mark_frame_full(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
+        lost_samples_buf->mark_frame_full(unique_name, lost_samples_frame_id);
         lost_samples_frame_id = (lost_samples_frame_id + 1) % lost_samples_buf->num_frames;
     }
     lost_samples_frame =
-        wait_for_empty_frame(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
+        lost_samples_buf->wait_for_empty_frame(unique_name, lost_samples_frame_id);
     if (lost_samples_frame == nullptr)
         return false;
 
