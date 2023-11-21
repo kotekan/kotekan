@@ -17,11 +17,9 @@ buffer_depth: 4
 num_frames: 20
 
 input_size: 4
-frame_size: 4
+output_size: 5
 
-rechunk_factor: 5
-
-ring_buffer_size: 30
+ring_buffer_size: 10
 
 # Pool
 main_pool:
@@ -32,20 +30,19 @@ main_pool:
 host_in_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    # frame_size: 
+    frame_size: input_size
     metadata_pool: main_pool
 
 # Buffer used for signalling only, between the two GPU pipelines.
 host_signal_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: 0
+    kotekan_buffer: ring
+    #ring_buffer_size: 
     metadata_pool: main_pool
 
 host_out_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: input_size * rechunk_factor
+    frame_size: output_size
     metadata_pool: main_pool
 
 gen_data:
@@ -67,7 +64,7 @@ gpuA:
     - name: cudaSyncInput
     - name: cudaCopyToRingbuffer
       #input_size: input_size
-      output_size: input_size * rechunk_factor
+      #output_size: output_size
       #ring_buffer_size: 30
       host_signal: host_sig
       gpu_mem_input: in
@@ -90,7 +87,7 @@ gpuB:
     #- name: cudaInputData
     #  in_buf: host_mid
     - name: cudaCopyFromRingbuffer
-      output_size: input_size * rechunk_factor
+      #output_size: 
       #ring_buffer_size:
       gpu_mem_input: ringbuf
       gpu_mem_output: chunk

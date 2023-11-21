@@ -35,9 +35,9 @@ add_library(
     cudaUpchannelizer_U32.cpp
     cudaUpchannelizer_U64.cpp
     cudaUpchannelizer_U128.cpp
+    cudaCopyFromRingbuffer.cpp
+    cudaCopyToRingbuffer.cpp
     chordMVPSetup.cpp)
-    #cudaCopyToRingbuffer.cpp
-    #cudaCopyFromRingbuffer.cpp
 
 # C++17
 set_property(TARGET kotekan_cuda PROPERTY CUDA_STANDARD 17)

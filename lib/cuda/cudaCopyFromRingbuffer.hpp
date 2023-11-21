@@ -46,7 +46,7 @@ private:
     std::string _gpu_mem_output;
 
     // Host side signalling buffer
-    Buffer* signal_buffer;
+    RingBuffer* signal_buffer;
     
 };
 

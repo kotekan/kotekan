@@ -54,7 +54,6 @@
  */
 class StageInfo {
 public:
-    // Non-copyable signatures
     StageInfo(const std::string& _name, int _num_frames) :
         name(_name),
         num_frames(_num_frames),
@@ -62,21 +61,16 @@ public:
         last_frame_released(-1),
         is_done(_num_frames) {
     }
-    // moves allowed
-    //StageInfo(StageInfo&&) = default;
-    //StageInfo& operator=(StageInfo&&) = default;
+    // No copies or moves allowed
     StageInfo(StageInfo&&) = delete;
     StageInfo& operator=(StageInfo&&) = delete;
-    // you shall not copy
     StageInfo(const StageInfo&) = delete;
     StageInfo& operator=(const StageInfo&) = delete;
     
-    /// Set to 1 if the stage is active
-    //int in_use;
-
     /// The name of the stage (consumer or producer)
     const std::string name;
 
+    /// The number of frames being processed by this object
     int num_frames;
 
     /// Last frame acquired with a call to wait_for_*
@@ -85,6 +79,7 @@ public:
     /// Last frame to be released with a call to mark_frame_*
     int last_frame_released;
 
+    // Is this producer/consumer done with each frame?
     std::vector<bool> is_done;
 };
 
@@ -116,7 +111,7 @@ public:
      *
      * @param[in] name The name of the consumer.
      */
-    void register_consumer(const std::string& name);
+    virtual void register_consumer(const std::string& name);
 
     /**
      * @brief Removes the consumer with the given name
@@ -128,7 +123,7 @@ public:
      *
      * @param name The name of the consumer to unregister
      */
-    void unregister_consumer(const std::string& name);
+    virtual void unregister_consumer(const std::string& name);
 
     /**
      * @brief Register a producer with a given name.
@@ -138,7 +133,7 @@ public:
      *
      * @param[in] name The name of the producer.
      */
-    void register_producer(const std::string& name);
+    virtual void register_producer(const std::string& name);
 
     /**
      * @brief Get the number of consumers on this buffer
@@ -211,13 +206,9 @@ public:
     /// The main lock for frame state management
     std::recursive_mutex mutex;
 
-    // Lock for full condition variable
-    //std::mutex full_mutex;
     /// The condition variable for calls to @c wait_for_full_buffer
     std::condition_variable_any full_cond;
 
-    // Lock for empty condition variable
-    //std::mutex empty_mutex;
     /// The condition variable for calls to @c wait_for_empty_buffer
     std::condition_variable_any empty_cond;
 
@@ -248,37 +239,30 @@ public:
 
     /// Array of buffer info objects, for tracking information about each buffer.
     std::vector<metadataContainer*> metadata;
-
-protected:
-    //virtual void registered_producer(StageInfo&) {}
 };
 
 class RingBuffer : public GenericBuffer {
 public:
-    //size_t, 
-    RingBuffer(metadataPool*, const std::string&,
-               const std::string&); //, int, bool, bool, bool);
+    RingBuffer(size_t, metadataPool*, const std::string&, const std::string&);
     ~RingBuffer() override {}
     bool is_basic() override { return false; }
 
-    //void buffer_set_ring_buffer_size(Buffer* buf, size_t sz);
+    void register_consumer(const std::string& name) override;
+    void register_producer(const std::string& name) override;
 
-    //void buffer_set_ring_buffer_read_size(Buffer* buf, size_t sz);
+    int wait_for_writable(const std::string& producer_name, size_t sz);
 
-    int buffer_wait_for_ring_buffer_writable(size_t sz);
+    void wrote(const std::string& producer_name, size_t sz);
 
-    void buffer_wrote_to_ring_buffer(size_t sz);
+    int wait_and_claim_readable(const std::string& consumer_name, size_t sz);
 
-    uint8_t* buffer_claim_next_full_frame(const std::string& consumer_name, const int frame_id);
-    
-    /// Ring buffers only, SINGLE CONSUMER:
-    size_t ring_buffer_size;
-    size_t ring_buffer_elements;
-    size_t ring_buffer_elements_claimed;
-    size_t ring_buffer_read_size;
-    size_t ring_buffer_write_cursor;
-    size_t ring_buffer_read_cursor;
-    size_t ring_buffer_full_frame;
+    void read(const std::string& consumer_name, size_t sz);
+
+    size_t size;
+    size_t elements;
+    size_t claimed;
+    //size_t write_cursor;
+    //size_t read_cursor;
 };
 
 /**
@@ -492,21 +476,6 @@ public:
      * be placed past the end of frame_size.  This is just for padding.
      */
     size_t aligned_frame_size;
-
-    /**
-     * @brief Array of producers which are done (marked frame as full).
-     * Format is [ID][producer]
-     * zero means not done, 1 means done (marked as full)
-     */
-    //int** producers_done;
-    //std::map<std::string, std::vector<bool> > producers_done;
-
-    /**
-     * @brief Array of consumers which are done (marked frame as empty).
-     * Format is [ID][consumer]
-     * zero means not done, 1 means done (marked as empty)
-     */
-    //int** consumers_done;
 
     /// Flag set to indicate if the frames should be zeroed between uses
     bool _zero_frames;

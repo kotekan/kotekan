@@ -16,7 +16,7 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
     _ring_buffer_size = config.get<int>(unique_name, "ring_buffer_size");
     _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
-    signal_buffer = host_buffers.get_buffer(config.get<std::string>(unique_name, "host_signal"));
+    signal_buffer = dynamic_cast<RingBuffer*>(host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "host_signal")));
     signal_buffer->register_consumer(unique_name);
 
     input_cursor = 0;
@@ -28,11 +28,10 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
 
 int cudaCopyFromRingbuffer::wait_on_precondition(int frame_id) {
     // Wait for there to be data in the input (network) buffer.
-    INFO("Waiting for data frame {:d}...", frame_id);
-    //uint8_t* frame = signal_buffer->wait_for_full_frame(unique_name, frame_id);
-    uint8_t* frame = buffer_claim_next_full_frame(signal_buffer, unique_name.c_str(), frame_id);
-    INFO("Finished waiting for data frame {:d}.", frame_id);
-    if (frame == nullptr)
+    DEBUG("Waiting for data frame {:d}...", frame_id);
+    int offset = signal_buffer->wait_and_claim_readable(unique_name, _output_size);
+    DEBUG("Finished waiting for data frame {:d}.", frame_id);
+    if (offset == -1)
         return -1;
     return 0;
 }
@@ -68,5 +67,5 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
 
 void cudaCopyFromRingbuffer::finalize_frame(int frame_id) {
     cudaCommand::finalize_frame(frame_id);
-    signal_buffer->mark_frame_empty(unique_name, frame_id);
+    signal_buffer->read(unique_name, _output_size);
 }

@@ -103,12 +103,13 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
         frame_size = HFBFrameView::calculate_frame_size(config, location);
     } else if (type_name == "ring") {
 
-        INFO_NON_OO("Creating {:s}Buffer named {:s} with frame size of {:d} and "
+        size_t ringbuf_size = config.get<size_t>(location, "ring_buffer_size");
+        INFO_NON_OO("Creating {:s}Buffer named {:s} with ring buffer size of {:d} and "
                     "metadata pool {:s} on numa_node {:d}",
-                    type_name, name, frame_size, metadataPool_name, numa_node);
-        RingBuffer* buf = new RingBuffer(pool, name, type_name);
-        //frame_size, 
-        //numa_node, use_hugepages, mlock_frames, zero_new_frames);
+                    type_name, name, ringbuf_size, metadataPool_name, numa_node);
+        RingBuffer* buf = new RingBuffer(ringbuf_size, pool, name, type_name);
+        buf->set_log_level(s_log_level);
+        buf->set_log_prefix("RingBuffer \"" + name + "\"");
         return buf;
 
     } else {

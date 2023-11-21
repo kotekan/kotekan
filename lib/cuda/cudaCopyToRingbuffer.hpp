@@ -34,6 +34,7 @@ public:
 
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
+    void finalize_frame(int gpu_frame_id) override;
 
 protected:
 private:
@@ -51,7 +52,7 @@ private:
     std::string _gpu_mem_output;
 
     // Host side buffer
-    Buffer* signal_buffer;
+    RingBuffer* signal_buffer;
 
     /// Optional, name of the field in the pipeline state object that holds the number of input
     /// columns to copy.
