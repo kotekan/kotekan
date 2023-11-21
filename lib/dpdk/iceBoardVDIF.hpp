@@ -119,7 +119,7 @@ iceBoardVDIF::iceBoardVDIF(kotekan::Config& config, const std::string& unique_na
         buffer_container.get_buffer(config.get<std::string>(unique_name, "lost_samples_buf"));
     lost_samples_buf->register_producer(unique_name);
     // We want to make sure the flag buffers are zeroed between uses.
-    zero_frames(lost_samples_buf);
+    lost_samples_buf->zero_frames();
 
     station_id = config.get_default<uint32_t>(unique_name, "station_id", 0x4151); // AQ
     offset = config.get_default<uint32_t>(unique_name, "offset", 0);
@@ -216,7 +216,7 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
         }
     }
 
-    allocate_new_metadata_object(out_buf, out_buf_frame_id);
+    out_buf->allocate_new_metadata_object(out_buf_frame_id);
 
     if (port == 0)
         set_first_packet_recv_time(out_buf, out_buf_frame_id, now);

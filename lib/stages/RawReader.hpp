@@ -433,7 +433,7 @@ void RawReader<T>::main_thread() {
         start_time = current_time();
 
         // Wait for an empty frame in the output buffer
-        if ((frame = wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id)) == nullptr) {
+        if ((frame = out_buf->wait_for_empty_frame(unique_name, frame_id)) == nullptr) {
             break;
         }
 
@@ -446,7 +446,7 @@ void RawReader<T>::main_thread() {
         file_ind = position_map(ind);
 
         // Allocate the metadata space
-        allocate_new_metadata_object(out_buf, frame_id);
+        out_buf->allocate_new_metadata_object(frame_id);
 
         // Check first byte indicating empty frame
         if (*(mapped_file + file_ind * file_frame_size) != 0) {
@@ -480,7 +480,7 @@ void RawReader<T>::main_thread() {
 #endif
 
         // Release the frame and advance all the counters
-        mark_frame_full(out_buf, unique_name.c_str(), frame_id++);
+        out_buf->mark_frame_full(unique_name, frame_id++);
         read_ind++;
         ind++;
 

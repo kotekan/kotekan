@@ -65,7 +65,7 @@ void HFBTruncate::main_thread() {
 
     // get the first frame (just to find out about data size)
     // (we don't mark it empty, so it's read again in the main loop)
-    if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr)
+    if (in_buf->wait_for_full_frame(unique_name, frame_id) == nullptr)
         return;
     auto frame = HFBFrameView(in_buf, frame_id);
 
@@ -78,13 +78,13 @@ void HFBTruncate::main_thread() {
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
-        if ((wait_for_full_frame(in_buf, unique_name.c_str(), frame_id)) == nullptr) {
+        if ((in_buf->wait_for_full_frame(unique_name, frame_id)) == nullptr) {
             break;
         }
         auto frame = HFBFrameView(in_buf, frame_id);
 
         // Wait for empty frame
-        if ((wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id)) == nullptr) {
+        if ((out_buf->wait_for_empty_frame(unique_name, output_frame_id)) == nullptr) {
             break;
         }
 
@@ -127,9 +127,9 @@ void HFBTruncate::main_thread() {
         }
 
         // mark as full
-        mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
+        out_buf->mark_frame_full(unique_name, output_frame_id++);
         // move to next frame
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+        in_buf->mark_frame_empty(unique_name, frame_id++);
     }
     _mm_free(err_all);
 }

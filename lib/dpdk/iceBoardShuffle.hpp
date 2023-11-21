@@ -406,7 +406,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         if (out_buf_frame[i] == nullptr)
             return false;
 
-        allocate_new_metadata_object(out_bufs[i], out_buf_frame_ids[i]);
+        out_bufs[i]->allocate_new_metadata_object(out_buf_frame_ids[i]);
 
         set_first_packet_recv_time(out_bufs[i], out_buf_frame_ids[i], now);
         set_gps_time(out_bufs[i], out_buf_frame_ids[i], gps_time);
@@ -435,7 +435,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     if (lost_samples_frame == nullptr)
         return false;
 
-    allocate_new_metadata_object(lost_samples_buf, lost_samples_frame_id);
+    lost_samples_buf->allocate_new_metadata_object(lost_samples_frame_id);
     set_fpga_seq_num(lost_samples_buf, lost_samples_frame_id, new_seq);
     set_first_packet_recv_time(lost_samples_buf, lost_samples_frame_id, now);
     set_gps_time(lost_samples_buf, lost_samples_frame_id, gps_time);

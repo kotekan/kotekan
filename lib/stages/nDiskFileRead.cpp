@@ -77,7 +77,7 @@ void nDiskFileRead::file_read_thread(int disk_id) {
     while (!stop_thread) {
 
         unsigned char* buf_ptr =
-            (unsigned char*)wait_for_empty_frame(buf, unique_name.c_str(), buf_id);
+            (unsigned char*)buf->wait_for_empty_frame(unique_name, buf_id);
         if (buf_ptr == nullptr)
             break;
 
@@ -105,7 +105,7 @@ void nDiskFileRead::file_read_thread(int disk_id) {
         fclose(in_file);
         INFO("{:s} Read Complete Marking Frame ID {:d} Full\n", file_name, buf_id);
 
-        mark_frame_full(buf, unique_name.c_str(), buf_id);
+        buf->mark_frame_full(unique_name, buf_id);
 
         // Go to next file
         buf_id = (buf_id + num_disks) % buf->num_frames;

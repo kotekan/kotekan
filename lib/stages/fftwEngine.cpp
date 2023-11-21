@@ -43,10 +43,10 @@ void fftwEngine::main_thread() {
     int samples_per_input_frame = in_buf->frame_size / BYTES_PER_SAMPLE;
 
     while (!stop_thread) {
-        in_local = (short*)wait_for_full_frame(in_buf, unique_name.c_str(), frame_in);
+        in_local = (short*)in_buf->wait_for_full_frame(unique_name, frame_in);
         if (in_local == nullptr)
             break;
-        out_local = (fftwf_complex*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_out);
+        out_local = (fftwf_complex*)out_buf->wait_for_empty_frame(unique_name, frame_out);
         if (out_local == nullptr)
             break;
 
@@ -64,8 +64,8 @@ void fftwEngine::main_thread() {
             out_local += spectrum_length;
         }
 
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_in);
-        mark_frame_full(out_buf, unique_name.c_str(), frame_out);
+        in_buf->mark_frame_empty(unique_name, frame_in);
+        out_buf->mark_frame_full(unique_name, frame_out);
         frame_in = (frame_in + 1) % in_buf->num_frames;
         frame_out = (frame_out + 1) % out_buf->num_frames;
     }

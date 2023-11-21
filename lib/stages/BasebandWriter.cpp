@@ -66,7 +66,7 @@ void BasebandWriter::main_thread() {
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, frame_id) == nullptr) {
             break;
         }
 
@@ -102,7 +102,7 @@ void BasebandWriter::main_thread() {
         }
 
         // Mark the buffer and move on
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+        in_buf->mark_frame_empty(unique_name, frame_id++);
     }
 
     stop_closing.notify_one();

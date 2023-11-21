@@ -68,7 +68,7 @@ void hdf5FileWrite::main_thread() {
     while (!stop_thread) {
 
         // This call is blocking.
-        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        frame = buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
@@ -109,7 +109,7 @@ void hdf5FileWrite::main_thread() {
         }
 
         // Write the metadata to file
-        struct metadataContainer* mc = get_metadata_container(buf, frame_id);
+        struct metadataContainer* mc = buf->get_metadata_container(frame_id);
         if (mc != nullptr) {
             const uint32_t metadata_size = mc->metadata_size;
 
@@ -287,7 +287,7 @@ void hdf5FileWrite::main_thread() {
         double elapsed = current_time() - st;
         write_time_metric.set(elapsed);
 
-        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_empty(unique_name, frame_id);
 
         frame_id = (frame_id + 1) % buf->num_frames;
     }

@@ -89,7 +89,7 @@ void networkInputPowerStream::main_thread() {
         char* local_buf = (char*)calloc(packet_length, sizeof(char));
 
         while (!stop_thread) {
-            frame = wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
+            frame = out_buf->wait_for_empty_frame(unique_name, frame_id);
             if (frame == nullptr)
                 break;
 
@@ -107,7 +107,7 @@ void networkInputPowerStream::main_thread() {
                 }
             }
 
-            mark_frame_full(out_buf, unique_name.c_str(), frame_id);
+            out_buf->mark_frame_full(unique_name, frame_id);
             frame_id = (frame_id + 1) % out_buf->num_frames;
         }
 
@@ -147,7 +147,7 @@ void networkInputPowerStream::main_thread() {
 
         while (!stop_thread) {
             unsigned char* buf_ptr =
-                (unsigned char*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
+                (unsigned char*)out_buf->wait_for_empty_frame(unique_name, frame_id);
             if (buf_ptr == nullptr)
                 break;
 
@@ -160,7 +160,7 @@ void networkInputPowerStream::main_thread() {
                     buf_ptr += (freqs + 1) * sizeof(int);
                 }
             }
-            mark_frame_full(out_buf, unique_name.c_str(), frame_id);
+            out_buf->mark_frame_full(unique_name, frame_id);
             frame_id = (frame_id + 1) % out_buf->num_frames;
         }
         free(recv_buffer);

@@ -11,6 +11,7 @@
 #include "fmt.hpp" // for fmt, basic_string_view, make_format_args, FMT_STRING
 
 #include <stdexcept>
+#include <chrono>
 
 // IWYU pragma: no_include <asm/mman-common.h>
 // IWYU pragma: no_include <asm/mman.h>
@@ -141,17 +142,28 @@ Buffer::~Buffer() {
         buffer_free(frames[i], aligned_frame_size, use_hugepages);
 }
 
+bool GenericBuffer::set_metadata(int ID, metadataContainer* meta) {
+    assert(ID >= 0);
+    assert(ID < num_frames);
+    buffer_lock lock(mutex);
+    if (metadata[ID] != nullptr)
+        return false;
+    metadata[ID] = meta;
+    increment_metadata_ref_count(meta);
+    return true;
+}
+
+
 void Buffer::mark_frame_full(const std::string& name, const int ID) {
     assert(ID >= 0);
-    assert(ID < buf->num_frames);
+    assert(ID < num_frames);
 
     // DEBUG_F("Frame %s[%d] being marked full by producer %s\n", buf->buffer_name, ID, name);
 
+    bool set_full = false;
+    bool set_empty = false;
     {
         buffer_lock lock(mutex);
-
-        bool set_full = false;
-        bool set_empty = false;
 
         private_mark_producer_done(name, ID);
         if (private_producers_done(ID)) {
@@ -188,84 +200,61 @@ void Buffer::mark_frame_full(const std::string& name, const int ID) {
 
 //// DON't change this one
 void* private_zero_frames(void* args) {
-
     int ID = ((struct zero_frames_thread_args*)(args))->ID;
     Buffer* buf = ((struct zero_frames_thread_args*)(args))->buf;
+    free(args);
+    buf->_impl_zero_frame(ID);
+    return nullptr;
+}
 
+void Buffer::_impl_zero_frame(const int ID) {
     assert(ID >= 0);
-    assert(ID <= buf->num_frames);
+    assert(ID <= num_frames);
 
     // This zeros everything, but for VDIF we just need to header zeroed.
-    int div_256 = 256 * (buf->frame_size / 256);
-    nt_memset((void*)buf->frames[ID], 0x00, div_256);
-    memset((void*)&buf->frames[ID][div_256], 0x00, buf->frame_size - div_256);
+    int div_256 = 256 * (frame_size / 256);
+    nt_memset((void*)frames[ID], 0x00, div_256);
+    memset((void*)&frames[ID][div_256], 0x00, frame_size - div_256);
 
     // HACK: Just zero the first two words of the VDIF header
-    // for (int i = 0; i < buf->frame_size/1056; ++i) {
-    //    *((uint64_t*)&buf->frames[ID][i*1056]) = 0;
+    // for (int i = 0; i < frame_size/1056; ++i) {
+    //    *((uint64_t*)&frames[ID][i*1056]) = 0;
     //}
+    {
+        buffer_lock lock(mutex);
 
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
-
-    buf->is_full[ID] = 0;
-    private_reset_consumers(ID);
-
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
-
-    CHECK_ERROR_F(pthread_cond_broadcast(&buf->empty_cond));
-
-    free(args);
+        is_full[ID] = false;
+        private_reset_consumers(ID);
+    }
+    empty_cond.notify_all();
 
     int ret = 0;
     pthread_exit(&ret);
 }
 
 void Buffer::zero_frames() {
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+    buffer_lock lock(mutex);
     _zero_frames = true;
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
 }
 
-void mark_frame_empty(Buffer* buf, const std::string& consumer_name, const int ID) {
+void Buffer::mark_frame_empty(const std::string& consumer_name, const int ID) {
     assert(ID >= 0);
-    assert(ID < buf->num_frames);
-    int broadcast = 0;
+    assert(ID < num_frames);
+    bool broadcast = false;
 
     // If we've been asked to zero the buffer do it here.
     // This needs to happen out side of the critical section
     // so that we don't block for a long time here.
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
-
-    if (buf->ring_buffer_size) {
-
-        // Reader has consumed ring_buffer_read_size bytes!
-        INFO_NON_OO("Ring buffer: mark_frame_empty.  Available: {:d} - Claimed: {:d},  Read size: {:d}",
-                    buf->ring_buffer_elements, buf->ring_buffer_elements_claimed, buf->ring_buffer_read_size);
-        assert(buf->ring_buffer_elements >= buf->ring_buffer_read_size);
-        assert(buf->ring_buffer_elements_claimed >= buf->ring_buffer_read_size);
-        buf->ring_buffer_elements -= buf->ring_buffer_read_size;
-        buf->ring_buffer_elements_claimed -= buf->ring_buffer_read_size;
-        buf->ring_buffer_read_cursor = (buf->ring_buffer_read_cursor + buf->ring_buffer_read_size) % buf->ring_buffer_size;
-        INFO_NON_OO("Ring buffer: mark_frame_empty (read {:d}).  Now available: {:d} - Claimed: {:d}",
-                    buf->ring_buffer_read_size, buf->ring_buffer_elements, buf->ring_buffer_elements_claimed);
-        broadcast = 1;
-
-    } else {
-
-        buf->consumers.at(consumer_name).is_done[ID] = true;
-
+    {
+        buffer_lock lock(mutex);
+        consumers.at(consumer_name).is_done[ID] = true;
         if (private_consumers_done(ID)) {
             broadcast = private_mark_frame_empty(ID);
         }
-
     }
-
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
-
     // Signal producer
-    if (broadcast == 1) {
-        CHECK_ERROR_F(pthread_cond_broadcast(&buf->empty_cond));
-    }
+    if (broadcast)
+        empty_cond.notify_all();
 }
 
 bool Buffer::private_mark_frame_empty(const int ID) {
@@ -297,142 +286,41 @@ bool Buffer::private_mark_frame_empty(const int ID) {
     return broadcast;
 }
 
-uint8_t* wait_for_empty_frame(Buffer* buf, const std::string& producer_name, const int ID) {
+uint8_t* Buffer::wait_for_empty_frame(const std::string& producer_name, const int ID) {
     assert(ID >= 0);
-    assert(ID < buf->num_frames);
+    assert(ID < num_frames);
 
-    int print_stat = 0;
+    StageInfo* pro;
+    bool print_stat = 0;
 
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+    std::unique_lock<std::recursive_mutex> lock(mutex);
 
-    auto& pro = buf->producers[producer_name];
-
+    pro = &producers.at(producer_name);
     // If the buffer isn't full, i.e. is_full[ID] == 0, then we never sleep on the cond var.
     // The second condition stops us from using a buffer we've already filled,
     // and forces a wait until that buffer has been marked as empty.
-    while ((buf->is_full[ID] == 1 || pro.is_done[ID])
-           && buf->shutdown_signal == 0) {
-        DEBUG_F("wait_for_empty_frame: %s waiting for empty frame ID = %d in buffer %s",
-                producer_name, ID, buf->buffer_name);
-        print_stat = 1;
-        pthread_cond_wait(&buf->empty_cond, &buf->lock);
+    while ((is_full[ID] || pro->is_done[ID])
+           && !shutdown_signal) {
+        DEBUG("wait_for_empty_frame: {:s} waiting for empty frame ID = {:d} in buffer {:s}",
+              producer_name, ID, buffer_name);
+        print_stat = true;
+        empty_cond.wait(lock);
     }
-
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+    lock.unlock();
 
     // TODO: remove this output until we have a solution which has better control over log levels
     // if (print_stat == 1)
     //     print_buffer_status(buf);
     (void)print_stat;
 
-    if (buf->shutdown_signal == 1)
+    if (shutdown_signal)
         return NULL;
-
-    pro.last_frame_acquired = ID;
-    return buf->frames[ID];
-}
-
-void buffer_set_ring_buffer_size(Buffer* buf, size_t sz) {
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
-    buf->ring_buffer_size = sz;
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
-}
-
-void buffer_set_ring_buffer_read_size(Buffer* buf, size_t sz) {
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
-    buf->ring_buffer_read_size = sz;
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
-}
-
-int buffer_wait_for_ring_buffer_writable(Buffer* buf, size_t sz) {
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
-
-    while (1) {
-        INFO_NON_OO("Ring buffer: waiting to write {:d} elements.  Currently available: {:d}, size {:d}",
-               sz, buf->ring_buffer_elements, buf->ring_buffer_size);
-        if (buf->ring_buffer_elements + sz <= buf->ring_buffer_size)
-            break;
-        if (buf->shutdown_signal == 1)
-            break;
-        INFO_NON_OO("Ring buffer: waiting for space to write...");
-        pthread_cond_wait(&buf->empty_cond, &buf->lock);
-    }
-
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
-    return 0;
-}
-
-void buffer_wrote_to_ring_buffer(Buffer* buf, /*const char* name,*/ size_t sz) {
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
-
-    buf->ring_buffer_elements += sz;
-    INFO_NON_OO("Ring buffer: wrote {:d}.  Now available: {:d}", sz, buf->ring_buffer_elements);
-    buf->ring_buffer_write_cursor = (buf->ring_buffer_write_cursor + sz) % buf->ring_buffer_size;
-
-    // If we filled a read-size block, mark the next frame as full.
-    //if (buf->ring_buffer_elements >= buf->ring_buffer_read_size)
-    //private_mark_frame_full(buf, name, ring_buffer_full_frame);
-    //ring_buffer_full_frame = (ring_buffer_full_frame + 1) % buf->num_frames;
-
-    // If there are no consumers registered then we can just mark the buffer empty
-    /*
-    if (private_consumers_done(buf, ID) == 1) {
-        DEBUG_F("No consumers are registered on %s dropping data in frame %d...",
-                buf->buffer_name, ID);
-        buf->is_full[ID] = 0;
-        if (buf->metadata[ID] != NULL) {
-            decrement_metadata_ref_count(buf->metadata[ID]);
-            buf->metadata[ID] = NULL;
-        }
-        set_empty = 1;
-        private_reset_consumers(buf, ID);
-    }
-    */
-    
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
-
-    // Signal consumer
-    CHECK_ERROR_F(pthread_cond_broadcast(&buf->full_cond));
-}
-
-uint8_t* buffer_claim_next_full_frame(Buffer* buf, const std::string&, const int frame_id) {
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
-
-    //int consumer_id = private_get_consumer_id(buf, name);
-    //assert(consumer_id != -1);
-
-    assert(buf->ring_buffer_size);
-
-    // HACK -- only works for single consumer
-    //assert(consumer_id == 0);
-
-    // DEBUG - prints
-    while (1) {
-        INFO_NON_OO("Ring buffer: waiting for input data frame {:d}.  Need: {:d}.  Available: {:d} - Claimed: {:d}",
-                    frame_id, buf->ring_buffer_read_size, buf->ring_buffer_elements, buf->ring_buffer_elements_claimed);
-        if (buf->ring_buffer_elements - buf->ring_buffer_elements_claimed >= buf->ring_buffer_read_size)
-                break;
-        if (buf->shutdown_signal)
-            break;
-        // FIXME???
-        //if (buf->consumers_done[ID][consumer_id] == 1)
-        //break;
-        INFO_NON_OO("Ring buffer: waiting on condition variable for input data");
-        pthread_cond_wait(&buf->full_cond, &buf->lock);
-    }
-    // Claim!
-    buf->ring_buffer_elements_claimed += buf->ring_buffer_read_size;
-    // (read cursor is moved when elements are released??? no, that's not right!)
-
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
-    if (buf->shutdown_signal == 1)
-        return NULL;
-    //buf->consumers[consumer_id].last_frame_acquired = ID;
-    return buf->frames[frame_id];
+    pro->last_frame_acquired = ID;
+    return frames[ID];
 }
 
 void GenericBuffer::register_consumer(const std::string& name) {
-    CHECK_ERROR_F(pthread_mutex_lock(&lock));
+    buffer_lock lock(mutex);
 
     DEBUG("Registering consumer {:s} for buffer {:s}", name, buffer_name);
 
@@ -440,58 +328,51 @@ void GenericBuffer::register_consumer(const std::string& name) {
     if (!ins.second) {
         ERROR_F("You cannot register two consumers with the same name (\"{:s}\")!", name);
         assert(0); // Optional
-        CHECK_ERROR_F(pthread_mutex_unlock(&lock));
         return;
     }
     //registered_consumer(ins.second);
-
-    CHECK_ERROR_F(pthread_mutex_unlock(&lock));
 }
 
 void GenericBuffer::unregister_consumer(const std::string& name) {
     //int broadcast = 0;
-    CHECK_ERROR_F(pthread_mutex_lock(&lock));
-    DEBUG("Unregistering consumer {:s} for buffer {:s}", name, buffer_name);
+    {
+        buffer_lock lock(mutex);
+        DEBUG("Unregistering consumer {:s} for buffer {:s}", name, buffer_name);
 
-    size_t nrem = consumers.erase(name);
-    if (nrem == 0) {
-        ERROR("The consumer {:s} hasn't been registered, cannot unregister!", name);
-    }
-
-    /*
-    // Check if removing this consumer would cause any of the frames
-    // which are currently full to become empty.
-    for (int id = 0; id < buf->num_frames; ++id) {
-        if (private_consumers_done(buf, id) == 1) {
-            broadcast |= private_mark_frame_empty(buf, id);
+        size_t nrem = consumers.erase(name);
+        if (nrem == 0) {
+            ERROR("The consumer {:s} hasn't been registered, cannot unregister!", name);
         }
+
+        /*
+        // Check if removing this consumer would cause any of the frames
+        // which are currently full to become empty.
+        for (int id = 0; id < buf->num_frames; ++id) {
+            if (private_consumers_done(buf, id) == 1) {
+                broadcast |= private_mark_frame_empty(buf, id);
+            }
+        }
+        */
     }
-    */
-
-    CHECK_ERROR_F(pthread_mutex_unlock(&lock));
-
     // Signal producers if we found something could be empty after
     // removal of this consumer.
     //if (broadcast == 1) {
-    CHECK_ERROR_F(pthread_cond_broadcast(&empty_cond));
+    empty_cond.notify_all();
     //}
 }
 
 
 void GenericBuffer::register_producer(const std::string& name) {
-    CHECK_ERROR_F(pthread_mutex_lock(&lock));
+    buffer_lock lock(mutex);
     DEBUG("Buffer: {:s} Registering producer: {:s}", buffer_name, name);
 
     auto const& ins = producers.try_emplace(name, name, num_frames);
     if (!ins.second) {
         ERROR("You cannot register two producers with the same name (\"{:s}\")!", name);
         assert(0); // Optional
-        CHECK_ERROR_F(pthread_mutex_unlock(&lock));
         return;
     }
     //registered_producer(ins.first.second);
-
-    CHECK_ERROR_F(pthread_mutex_unlock(&lock));
 }
 
 /*
@@ -537,158 +418,100 @@ bool Buffer::private_producers_done(const int ID) {
     return true;
 }
 
-int is_frame_empty(Buffer* buf, const int ID) {
+bool Buffer::is_frame_empty(const int ID) {
     assert(ID >= 0);
-    assert(buf != NULL);
-    assert(ID < buf->num_frames);
+    assert(ID < num_frames);
 
-    int empty = 1;
+    bool empty = true;
 
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
-
-    if (buf->is_full[ID] == 1) {
-        empty = 0;
-    }
-
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
-
+    buffer_lock lock(mutex);
+    if (is_full[ID])
+        empty = false;
     return empty;
 }
 
-uint8_t* wait_for_full_frame(Buffer* buf, const std::string& name, const int ID) {
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+uint8_t* Buffer::wait_for_full_frame(const std::string& name, const int ID) {
+    StageInfo* con;
+    std::unique_lock<std::recursive_mutex> lock(mutex);
+    con = &consumers.at(name);
+    // This loop exists when is_full == 1 (i.e. a full buffer) AND
+    // when this producer hasn't already marked this buffer as
+    while ((!is_full[ID] || con->is_done[ID])
+           && !shutdown_signal)
+        full_cond.wait(lock);
+    lock.unlock();
 
-    auto& cons = buf->consumers.at(name);
-
-    if (buf->ring_buffer_size) {
-        // HACK -- only works for single consumer
-        // DEBUG - prints
-        while (1) {
-            INFO_NON_OO("Ring buffer: waiting for input data frame {:d}.  Need: {:d}.  Available: {:d}",
-                        ID, buf->ring_buffer_read_size, buf->ring_buffer_elements);
-            if (buf->ring_buffer_elements >= buf->ring_buffer_read_size)
-                break;
-            if (buf->shutdown_signal)
-                break;
-            // FIXME???
-            //if (buf->consumers_done[ID][consumer_id] == 1)
-            //break;
-            INFO_NON_OO("Ring buffer: waiting on condition variable for input data");
-            pthread_cond_wait(&buf->full_cond, &buf->lock);
-        }
-        /*
-        INFO_F("Ring buffer: waiting for input data.  Need: {:d}.  Available: {:d}",
-               ring_buffer_read_size, ring_buffer_elements);
-        while ((ring_buffer_elements <= ring_buffer_read_size ||
-                buf->consumers_done[ID][consumer_id] == 1)
-               && buf->shutdown_signal == 0) {
-            INFO_F("Ring buffer: waiting on condition variable for input data");
-            pthread_cond_wait(&buf->full_cond, &buf->lock);
-         }
-        */
-
-    } else {
-
-        // This loop exists when is_full == 1 (i.e. a full buffer) AND
-        // when this producer hasn't already marked this buffer as
-        while ((buf->is_full[ID] == 0 || cons.is_done[ID])
-               && buf->shutdown_signal == 0) {
-            pthread_cond_wait(&buf->full_cond, &buf->lock);
-        }
-
-    }
-
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
-
-    if (buf->shutdown_signal == 1)
-        return NULL;
-
-    cons.last_frame_acquired = ID;
-    return buf->frames[ID];
+    if (shutdown_signal)
+        return nullptr;
+    con->last_frame_acquired = ID;
+    return frames[ID];
 }
 
-int wait_for_full_frame_timeout(Buffer* buf, const std::string& name, const int ID,
-                                const struct timespec timeout) {
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
-
-    auto& cons = buf->consumers.at(name);
+int Buffer::wait_for_full_frame_timeout(const std::string& name, const int ID,
+                                        const struct timespec timeout) {
+    std::chrono::duration dur = std::chrono::seconds{timeout.tv_sec} + std::chrono::nanoseconds{timeout.tv_nsec};
+    StageInfo* con;
+    std::cv_status st;
+    std::unique_lock<std::recursive_mutex> lock(mutex);
+    con = &consumers.at(name);
     int err = 0;
 
     // This loop exists when is_full == 1 (i.e. a full buffer) AND
     // when this producer hasn't already marked this buffer as
-    while ((buf->is_full[ID] == 0 || cons.is_done[ID])
-           && buf->shutdown_signal == 0 && err == 0) {
-        err = pthread_cond_timedwait(&buf->full_cond, &buf->lock, &timeout);
-    }
+    while ((!is_full[ID] || con->is_done[ID])
+           && !shutdown_signal && err == 0)
+        st = full_cond.wait_for(lock, dur);
+    lock.unlock();
 
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
-
-    if (buf->shutdown_signal == 1)
+    if (shutdown_signal)
         return -1;
 
-    if (err == ETIMEDOUT)
+    if (st == std::cv_status::timeout)
         return 1;
 
-    cons.last_frame_acquired = ID;
+    con->last_frame_acquired = ID;
     return 0;
 }
 
-int get_num_full_frames(Buffer* buf) {
+int Buffer::get_num_full_frames() {
+    buffer_lock lock(mutex);
     int numFull = 0;
-
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
-
-    for (int i = 0; i < buf->num_frames; ++i) {
-        if (buf->is_full[i] == 1) {
+    for (int i = 0; i < num_frames; ++i)
+        if (is_full[i])
             numFull++;
-        }
-    }
-
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
-
     return numFull;
 }
 
 int GenericBuffer::get_num_consumers() {
-    CHECK_ERROR_F(pthread_mutex_lock(&lock));
-    int n = consumers.size();
-    CHECK_ERROR_F(pthread_mutex_unlock(&lock));
-    return n;
+    buffer_lock lock(mutex);
+    return consumers.size();
 }
 
 int GenericBuffer::get_num_producers() {
-    CHECK_ERROR_F(pthread_mutex_lock(&lock));
-    int n = producers.size();
-    CHECK_ERROR_F(pthread_mutex_unlock(&lock));
-    return n;
+    buffer_lock lock(mutex);
+    return producers.size();
 }
 
-void print_buffer_status(Buffer* buf) {
-    int is_full[buf->num_frames];
-
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
-
-    memcpy(is_full, buf->is_full, buf->num_frames * sizeof(int));
-
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
-
-    char status_string[buf->num_frames + 1];
-
-    for (int i = 0; i < buf->num_frames; ++i) {
-        if (is_full[i] == 1) {
-            status_string[i] = 'X';
-        } else {
-            status_string[i] = '_';
-        }
+void Buffer::print_buffer_status() {
+    std::vector<bool> local_is_full;
+    {
+        buffer_lock lock(mutex);
+        local_is_full = is_full;
     }
-    status_string[buf->num_frames] = '\0';
-
-    INFO_F("Buffer %s, status: %s", buf->buffer_name, status_string);
+    char status_string[num_frames + 1];
+    for (int i = 0; i < num_frames; ++i) {
+        if (local_is_full[i])
+            status_string[i] = 'X';
+        else
+            status_string[i] = '_';
+    }
+    status_string[num_frames] = '\0';
+    INFO("Buffer {:s}, status: {:s}", buffer_name, std::string(status_string));
 }
 
 void Buffer::print_full_status() {
 
-    CHECK_ERROR_F(pthread_mutex_lock(&lock));
+    buffer_lock lock(mutex);
 
     char status_string[num_frames + 1];
     status_string[num_frames] = '\0';
@@ -696,11 +519,10 @@ void Buffer::print_full_status() {
     INFO_F("--------------------- %s ---------------------", buffer_name);
 
     for (int i = 0; i < num_frames; ++i) {
-        if (is_full[i] == 1) {
+        if (is_full[i])
             status_string[i] = 'X';
-        } else {
+        else
             status_string[i] = '_';
-        }
     }
 
     INFO_F("Full Frames (X)                : %s", status_string);
@@ -732,8 +554,6 @@ void Buffer::print_full_status() {
                    x.last_frame_acquired,
                    x.last_frame_released);
         }
-
-    CHECK_ERROR_F(pthread_mutex_unlock(&lock));
 }
 
 
@@ -747,37 +567,26 @@ void pass_metadata(Buffer* from_buf, int from_ID, Buffer* to_buf, int to_ID) {
 
     metadataContainer* metadata_container = from_buf->metadata[from_ID];
 
-    CHECK_ERROR_F(pthread_mutex_lock(&to_buf->lock));
-
-    // In case we've already moved the metadata we don't want to increment the ref count.
-    if (to_buf->metadata[to_ID] == NULL) {
-        to_buf->metadata[to_ID] = metadata_container;
-        increment_metadata_ref_count(metadata_container);
-    }
-
-    // If this is true then the to_buf already has a metadata container for this ID and its
-    // different!
-    assert(to_buf->metadata[to_ID] == metadata_container);
-    CHECK_ERROR_F(pthread_mutex_unlock(&to_buf->lock));
+    bool set = to_buf->set_metadata(to_ID, metadata_container);
+    assert(set);
 }
 
 void copy_metadata(Buffer* from_buf, int from_ID, Buffer* to_buf, int to_ID) {
     metadataContainer* from_metadata_container;
     metadataContainer* to_metadata_container;
-    CHECK_ERROR_F(pthread_mutex_lock(&from_buf->lock));
-    CHECK_ERROR_F(pthread_mutex_lock(&to_buf->lock));
+
+    std::scoped_lock lock(from_buf->mutex, to_buf->mutex);
 
     if (from_buf->metadata[from_ID] == NULL) {
         WARN_F("No metadata in source buffer %s[%d], was this intended?", from_buf->buffer_name,
                from_ID);
-        // Cannot wait to update this to C++14 locks...
-        goto unlock_exit;
+        return;
     }
 
     if (to_buf->metadata[to_ID] == NULL) {
         WARN_F("No metadata in dest buffer %s[%d], was this intended?", from_buf->buffer_name,
                from_ID);
-        goto unlock_exit;
+        return;
     }
 
     from_metadata_container = from_buf->metadata[from_ID];
@@ -785,51 +594,42 @@ void copy_metadata(Buffer* from_buf, int from_ID, Buffer* to_buf, int to_ID) {
 
     if (from_metadata_container->metadata_size != to_metadata_container->metadata_size) {
         WARN_F("Metadata sizes don't match, cannot copy metadata!!");
-        goto unlock_exit;
+        return;
     }
 
     memcpy(to_metadata_container->metadata, from_metadata_container->metadata,
            from_metadata_container->metadata_size);
-
-unlock_exit:
-    CHECK_ERROR_F(pthread_mutex_unlock(&to_buf->lock));
-    CHECK_ERROR_F(pthread_mutex_unlock(&from_buf->lock));
 }
 
-void allocate_new_metadata_object(Buffer* buf, int ID) {
+void GenericBuffer::allocate_new_metadata_object(int ID) {
     assert(ID >= 0);
-    assert(ID < buf->num_frames);
+    assert(ID < num_frames);
 
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+    buffer_lock lock(mutex);
 
-    if (buf->metadata_pool == NULL) {
+    if (metadata_pool == NULL) {
         FATAL_ERROR_F("No metadata pool on %s but metadata was needed by a producer",
-                      buf->buffer_name);
+                      buffer_name);
     }
 
-    DEBUG2_F("Called allocate_new_metadata_object, buf %p, %d", buf, ID);
+    DEBUG2_F("Called allocate_new_metadata_object, buf %p, %d", this, ID);
 
-    if (buf->metadata[ID] == NULL) {
-        buf->metadata[ID] = request_metadata_object(buf->metadata_pool);
-    }
+    if (metadata[ID] == NULL)
+        metadata[ID] = request_metadata_object(metadata_pool);
 
     // Make sure we got a metadata object.
-    CHECK_MEM_F(buf->metadata[ID]);
-
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+    CHECK_MEM_F(metadata[ID]);
 }
 
-uint8_t* swap_external_frame(Buffer* buf, int frame_id, uint8_t* external_frame) {
+uint8_t* Buffer::swap_external_frame(int frame_id, uint8_t* external_frame) {
 
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+    buffer_lock lock(mutex);
 
     // Check that we don't have more than one producer.
-    assert(buf->producers.size() == 1);
+    assert(producers.size() == 1);
 
-    uint8_t* temp_frame = buf->frames[frame_id];
-    buf->frames[frame_id] = external_frame;
-
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+    uint8_t* temp_frame = frames[frame_id];
+    frames[frame_id] = external_frame;
 
     return temp_frame;
 }
@@ -987,30 +787,171 @@ void buffer_free(uint8_t* frame_pointer, size_t size, bool use_hugepages) {
 }
 
 // Do not call if there is no metadata
-void* get_metadata(Buffer* buf, int ID) {
+void* GenericBuffer::get_metadata(int ID) {
     assert(ID >= 0);
-    assert(ID < buf->num_frames);
-    assert(buf->metadata[ID] != NULL);
-
-    return buf->metadata[ID]->metadata;
+    assert(ID < num_frames);
+    assert(metadata[ID] != NULL);
+    return metadata[ID]->metadata;
 }
 
 // Might return NULLL
-metadataContainer* get_metadata_container(Buffer* buf, int ID) {
+metadataContainer* GenericBuffer::get_metadata_container(int ID) {
     assert(ID >= 0);
-    assert(ID < buf->num_frames);
-
-    return buf->metadata[ID];
+    assert(ID < num_frames);
+    return metadata[ID];
 }
 
-double get_last_arrival_time(Buffer* buf) {
-    return buf->last_arrival_time;
+double Buffer::get_last_arrival_time() {
+    return last_arrival_time;
 }
 
 void GenericBuffer::send_shutdown_signal() {
-    CHECK_ERROR_F(pthread_mutex_lock(&lock));
-    shutdown_signal = 1;
-    CHECK_ERROR_F(pthread_mutex_unlock(&lock));
-    CHECK_ERROR_F(pthread_cond_broadcast(&empty_cond));
-    CHECK_ERROR_F(pthread_cond_broadcast(&full_cond));
+    {
+        buffer_lock lock(mutex);
+        shutdown_signal = true;
+    }
+    empty_cond.notify_all();
+    full_cond.notify_all();
 }
+
+/////////////// RING BUFFER
+/*
+void mark_frame_empty(Buffer* buf, const std::string& consumer_name, const int ID) {
+...        // Reader has consumed ring_buffer_read_size bytes!
+        INFO_NON_OO("Ring buffer: mark_frame_empty.  Available: {:d} - Claimed: {:d},  Read size: {:d}",
+                    buf->ring_buffer_elements, buf->ring_buffer_elements_claimed, buf->ring_buffer_read_size);
+        assert(buf->ring_buffer_elements >= buf->ring_buffer_read_size);
+        assert(buf->ring_buffer_elements_claimed >= buf->ring_buffer_read_size);
+        buf->ring_buffer_elements -= buf->ring_buffer_read_size;
+        buf->ring_buffer_elements_claimed -= buf->ring_buffer_read_size;
+        buf->ring_buffer_read_cursor = (buf->ring_buffer_read_cursor + buf->ring_buffer_read_size) % buf->ring_buffer_size;
+        INFO_NON_OO("Ring buffer: mark_frame_empty (read {:d}).  Now available: {:d} - Claimed: {:d}",
+                    buf->ring_buffer_read_size, buf->ring_buffer_elements, buf->ring_buffer_elements_claimed);
+        broadcast = 1;
+
+)
+
+void buffer_set_ring_buffer_size(Buffer* buf, size_t sz) {
+    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+    buf->ring_buffer_size = sz;
+    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+}
+
+void buffer_set_ring_buffer_read_size(Buffer* buf, size_t sz) {
+    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+    buf->ring_buffer_read_size = sz;
+    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+}
+
+int buffer_wait_for_ring_buffer_writable(Buffer* buf, size_t sz) {
+    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+
+    while (1) {
+        INFO_NON_OO("Ring buffer: waiting to write {:d} elements.  Currently available: {:d}, size {:d}",
+               sz, buf->ring_buffer_elements, buf->ring_buffer_size);
+        if (buf->ring_buffer_elements + sz <= buf->ring_buffer_size)
+            break;
+        if (buf->shutdown_signal == 1)
+            break;
+        INFO_NON_OO("Ring buffer: waiting for space to write...");
+        pthread_cond_wait(&buf->empty_cond, &buf->lock);
+    }
+
+    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+    return 0;
+}
+
+void buffer_wrote_to_ring_buffer(Buffer* buf,  size_t sz) {
+    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+
+    buf->ring_buffer_elements += sz;
+    INFO_NON_OO("Ring buffer: wrote {:d}.  Now available: {:d}", sz, buf->ring_buffer_elements);
+    buf->ring_buffer_write_cursor = (buf->ring_buffer_write_cursor + sz) % buf->ring_buffer_size;
+
+    // If we filled a read-size block, mark the next frame as full.
+    //if (buf->ring_buffer_elements >= buf->ring_buffer_read_size)
+    //private_mark_frame_full(buf, name, ring_buffer_full_frame);
+    //ring_buffer_full_frame = (ring_buffer_full_frame + 1) % buf->num_frames;
+
+    // If there are no consumers registered then we can just mark the buffer empty
+    ///if (private_consumers_done(buf, ID) == 1) {
+    ///    DEBUG_F("No consumers are registered on %s dropping data in frame %d...",
+    ///            buf->buffer_name, ID);
+    ///    buf->is_full[ID] = 0;
+    ///    if (buf->metadata[ID] != NULL) {
+    ///        decrement_metadata_ref_count(buf->metadata[ID]);
+    ///        buf->metadata[ID] = NULL;
+    ///    }
+    ///    set_empty = 1;
+    ///    private_reset_consumers(buf, ID);
+    ///}
+
+    
+    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+
+    // Signal consumer
+    CHECK_ERROR_F(pthread_cond_broadcast(&buf->full_cond));
+}
+
+uint8_t* buffer_claim_next_full_frame(Buffer* buf, const std::string&, const int frame_id) {
+    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+
+    //int consumer_id = private_get_consumer_id(buf, name);
+    //assert(consumer_id != -1);
+
+    assert(buf->ring_buffer_size);
+
+    // HACK -- only works for single consumer
+    //assert(consumer_id == 0);
+
+    // DEBUG - prints
+    while (1) {
+        INFO_NON_OO("Ring buffer: waiting for input data frame {:d}.  Need: {:d}.  Available: {:d} - Claimed: {:d}",
+                    frame_id, buf->ring_buffer_read_size, buf->ring_buffer_elements, buf->ring_buffer_elements_claimed);
+        if (buf->ring_buffer_elements - buf->ring_buffer_elements_claimed >= buf->ring_buffer_read_size)
+                break;
+        if (buf->shutdown_signal)
+            break;
+        // FIXME???
+        //if (buf->consumers_done[ID][consumer_id] == 1)
+        //break;
+        INFO_NON_OO("Ring buffer: waiting on condition variable for input data");
+        pthread_cond_wait(&buf->full_cond, &buf->lock);
+    }
+    // Claim!
+    buf->ring_buffer_elements_claimed += buf->ring_buffer_read_size;
+    // (read cursor is moved when elements are released??? no, that's not right!)
+
+    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
+    if (buf->shutdown_signal == 1)
+        return NULL;
+    //buf->consumers[consumer_id].last_frame_acquired = ID;
+    return buf->frames[frame_id];
+}
+
+uint8_t* Buffer::wait_for_full_frame(const std::string& name, const int ID) {
+    if (buf->ring_buffer_size) {
+        // HACK -- only works for single consumer
+        // DEBUG - prints
+        while (1) {
+            INFO_NON_OO("Ring buffer: waiting for input data frame {:d}.  Need: {:d}.  Available: {:d}",
+                        ID, buf->ring_buffer_read_size, buf->ring_buffer_elements);
+            if (buf->ring_buffer_elements >= buf->ring_buffer_read_size)
+                break;
+            if (buf->shutdown_signal)
+                break;
+            // FIXME???
+            //if (buf->consumers_done[ID][consumer_id] == 1)
+            //break;
+            INFO_NON_OO("Ring buffer: waiting on condition variable for input data");
+            pthread_cond_wait(&buf->full_cond, &buf->lock);
+        }
+        ///INFO_F("Ring buffer: waiting for input data.  Need: {:d}.  Available: {:d}",
+        ///       ring_buffer_read_size, ring_buffer_elements);
+        ///while ((ring_buffer_elements <= ring_buffer_read_size ||
+        ///        buf->consumers_done[ID][consumer_id] == 1)
+        ///       && buf->shutdown_signal == 0) {
+        ///    INFO_F("Ring buffer: waiting on condition variable for input data");
+        ///    pthread_cond_wait(&buf->full_cond, &buf->lock);
+        /// }
+*/

@@ -113,7 +113,7 @@ void networkOutputSim::main_thread() {
     int constant = 9;
 
     while (!stop_thread) {
-        frame = (unsigned char*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+        frame = (unsigned char*)buf->wait_for_empty_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
@@ -149,7 +149,7 @@ void networkOutputSim::main_thread() {
             exit(-1);
         }
 
-        mark_frame_full(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_full(unique_name, frame_id);
 
         frame_id = (frame_id + num_links_in_group) % (buf->num_frames);
 

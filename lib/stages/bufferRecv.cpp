@@ -308,7 +308,7 @@ int bufferRecv::get_next_frame() {
 
     // If the frame is full for some reason (items not being consumed fast enough)
     // Then return -1;
-    if (drop_frames && is_frame_empty(buf, current_frame_id) == 0) {
+    if (drop_frames && buf->is_frame_empty(current_frame_id) == 0) {
         return -1;
     }
 
@@ -477,22 +477,22 @@ void connInstance::internal_read_callback() {
             } else {
                 // This call cannot be blocking because we checked that
                 // the frame is empty in get_next_frame()
-                uint8_t* frame = wait_for_empty_frame(buf, producer_name.c_str(), frame_id);
+                uint8_t* frame = buf->wait_for_empty_frame(producer_name, frame_id);
                 if (frame == nullptr)
                     return;
 
-                allocate_new_metadata_object(buf, frame_id);
+                buf->allocate_new_metadata_object(frame_id);
 
                 // Swap the frame pointers
-                frame_space = swap_external_frame(buf, frame_id, frame_space);
+                frame_space = buf->swap_external_frame(frame_id, frame_space);
 
                 // We could also swap the metadata,
                 // but this is more complex, and mucher lower overhead to just memcpy here.
-                void* metadata = get_metadata(buf, frame_id);
+                void* metadata = buf->get_metadata(frame_id);
                 if (metadata != nullptr)
                     memcpy(metadata, metadata_space, buf_frame_header.metadata_size);
 
-                mark_frame_full(buf, producer_name.c_str(), frame_id);
+                buf->mark_frame_full(producer_name, frame_id);
 
                 // Save a prometheus metric of the elapsed time
                 double elapsed = current_time() - start_time;

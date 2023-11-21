@@ -48,7 +48,7 @@ void countCheck::main_thread() {
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
 
@@ -73,7 +73,7 @@ void countCheck::main_thread() {
         }
 
         // Mark the buffers and move on
-        mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
+        in_buf->mark_frame_empty(unique_name, input_frame_id);
 
         // Advance the current frame ids
         input_frame_id = (input_frame_id + 1) % in_buf->num_frames;

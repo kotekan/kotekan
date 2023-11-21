@@ -55,7 +55,7 @@ void bufferStatus::main_thread() {
         double now = current_time();
 
         for (auto& buf_entry : buffers) {
-            uint32_t num_full_frames = get_num_full_frames(buf_entry.second);
+            uint32_t num_full_frames = buf_entry.second->get_num_full_frames();
             std::string buffer_name = buf_entry.first;
             full_frames_counter.labels({buffer_name}).set(num_full_frames);
             frames_counter.labels({buffer_name}).set(buf_entry.second->num_frames);
@@ -65,7 +65,7 @@ void bufferStatus::main_thread() {
             last_print_time = now;
             INFO("BUFFER_STATUS");
             for (auto& buf_entry : buffers)
-                print_buffer_status(buf_entry.second);
+                buf_entry.second->print_buffer_status();
         }
     }
     INFO("Closing Buffer Status thread");

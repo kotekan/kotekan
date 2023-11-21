@@ -121,13 +121,13 @@ void FakeGpu::main_thread() {
 
         } else {
 
-            int32_t* output = (int*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
+            int32_t* output = (int*)out_buf->wait_for_empty_frame(unique_name, frame_id);
             if (output == nullptr)
                 break;
 
             DEBUG("Simulating GPU buffer in {}[{}]", out_buf->buffer_name, frame_id);
 
-            allocate_new_metadata_object(out_buf, frame_id);
+            out_buf->allocate_new_metadata_object(frame_id);
             set_fpga_seq_num(out_buf, frame_id, fpga_seq);
             set_stream_id(out_buf, frame_id, {(uint64_t)freq});
 
@@ -146,7 +146,7 @@ void FakeGpu::main_thread() {
             }
 
             // Mark full and move onto next frame...
-            mark_frame_full(out_buf, unique_name.c_str(), frame_id++);
+            out_buf->mark_frame_full(unique_name, frame_id++);
         }
 
         // Increase total frame count

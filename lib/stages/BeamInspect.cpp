@@ -32,11 +32,11 @@ void BeamInspect::main_thread() {
 
     while (!stop_thread) {
 
-        uint8_t* frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+        uint8_t* frame = in_buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
-        BeamMetadata* metadata = (BeamMetadata*)get_metadata(in_buf, frame_id);
+        BeamMetadata* metadata = (BeamMetadata*)in_buf->get_metadata(frame_id);
         const uint32_t num_freq_per_stream = Telescope::instance().num_freq_per_stream();
 
         std::string frequency_bins = "";
@@ -53,7 +53,7 @@ void BeamInspect::main_thread() {
 
         // TODO Maybe compute some summary statistics
 
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+        in_buf->mark_frame_empty(unique_name, frame_id);
         frame_id++;
     }
 }

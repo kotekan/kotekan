@@ -70,7 +70,7 @@ void simVdifData::main_thread() {
     //    for (int ct=0; ct<100; ct++) {
     while (!stop_thread) {
         unsigned char* buf_ptr =
-            (unsigned char*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+            (unsigned char*)buf->wait_for_empty_frame(unique_name, frame_id);
         if (buf_ptr == nullptr)
             break;
         stop_time = e_time();
@@ -93,7 +93,7 @@ void simVdifData::main_thread() {
         }
         //        INFO("Generated a test data set in {:s}[{:d}]", buf.buffer_name, frame_id);
 
-        mark_frame_full(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_full(unique_name, frame_id);
         frame_id = (frame_id + 1) % buf->num_frames;
         header.data_frame++;
 

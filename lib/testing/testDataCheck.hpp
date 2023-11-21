@@ -79,12 +79,12 @@ void testDataCheck<A_Type>::main_thread() {
     while (!stop_thread) {
 
         // Get both full frames
-        uint8_t* first_frame = wait_for_full_frame(first_buf, unique_name.c_str(), first_buf_id);
+        uint8_t* first_frame = first_buf->wait_for_full_frame(unique_name, first_buf_id);
         if (first_frame == nullptr)
             break;
         DEBUG("testDataCheck: Got the first buffer {:s}[{:d}]", first_buf->buffer_name,
               first_buf_id);
-        uint8_t* second_frame = wait_for_full_frame(second_buf, unique_name.c_str(), second_buf_id);
+        uint8_t* second_frame = second_buf->wait_for_full_frame(unique_name, second_buf_id);
         if (second_frame == nullptr)
             break;
         DEBUG("testDataCheck: Got the second buffer {:s}[{:d}]", second_buf->buffer_name,
@@ -162,8 +162,8 @@ void testDataCheck<A_Type>::main_thread() {
             }
         }
 
-        mark_frame_empty(first_buf, unique_name.c_str(), first_buf_id);
-        mark_frame_empty(second_buf, unique_name.c_str(), second_buf_id);
+        first_buf->mark_frame_empty(unique_name, first_buf_id);
+        second_buf->mark_frame_empty(unique_name, second_buf_id);
 
         first_buf_id = (first_buf_id + 1) % first_buf->num_frames;
         second_buf_id = (second_buf_id + 1) % second_buf->num_frames;

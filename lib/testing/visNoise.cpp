@@ -68,12 +68,12 @@ void visNoise::main_thread() {
 
     while (!stop_thread) {
         // Wait for data in the input buffer
-        if ((wait_for_full_frame(buf_in, unique_name.c_str(), frame_id_in)) == nullptr) {
+        if ((buf_in->wait_for_full_frame(unique_name, frame_id_in)) == nullptr) {
             break;
         }
 
         // Wait for space in the output buffer
-        if (wait_for_empty_frame(buf_out, unique_name.c_str(), frame_id_out) == nullptr) {
+        if (buf_out->wait_for_empty_frame(unique_name, frame_id_out) == nullptr) {
             break;
         }
         // Copy frame into output buffer
@@ -107,8 +107,8 @@ void visNoise::main_thread() {
         }
 
         // Mark output frame full and input frame empty
-        mark_frame_full(buf_out, unique_name.c_str(), frame_id_out);
-        mark_frame_empty(buf_in, unique_name.c_str(), frame_id_in);
+        buf_out->mark_frame_full(unique_name, frame_id_out);
+        buf_in->mark_frame_empty(unique_name, frame_id_in);
         // Move forward one frame
         frame_id_out = (frame_id_out + 1) % buf_out->num_frames;
         frame_id_in = (frame_id_in + 1) % buf_in->num_frames;

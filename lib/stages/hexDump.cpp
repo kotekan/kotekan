@@ -47,7 +47,7 @@ void hexDump::main_thread() {
 
     while (!stop_thread) {
 
-        uint8_t* frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+        uint8_t* frame = in_buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
@@ -56,7 +56,7 @@ void hexDump::main_thread() {
         // Prints the hex data to screen
         hex_dump(16, (void*)&frame[_offset], _len);
 
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+        in_buf->mark_frame_empty(unique_name, frame_id);
         frame_id++;
     }
 }

@@ -101,13 +101,13 @@ void BaseWriter::main_thread() {
     while (!stop_thread) {
 
         // Wait for the buffer to be filled with data
-        auto status = wait_for_full_frame_timeout(in_buf, unique_name.c_str(), frame_id, timeout);
+        auto status = in_buf->wait_for_full_frame_timeout(unique_name, frame_id, timeout);
         if (status == 0) {
             // Write frame
             write_data(in_buf, frame_id);
 
             // Mark the buffer and move on
-            mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+            in_buf->mark_frame_empty(unique_name, frame_id++);
         } else if (status == -1) {
             break;
         }

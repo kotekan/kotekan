@@ -14,7 +14,7 @@ FrameView::FrameView(Buffer* buf, int frame_id) :
 FrameView::~FrameView(){};
 
 void FrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int frame_id_dest) {
-    allocate_new_metadata_object(buf_dest, frame_id_dest);
+    buf_dest->allocate_new_metadata_object(frame_id_dest);
 
     // Buffer sizes must match exactly
     if (buf_src->frame_size != buf_dest->frame_size) {

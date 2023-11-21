@@ -29,7 +29,7 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
 int cudaCopyFromRingbuffer::wait_on_precondition(int frame_id) {
     // Wait for there to be data in the input (network) buffer.
     INFO("Waiting for data frame {:d}...", frame_id);
-    //uint8_t* frame = wait_for_full_frame(signal_buffer, unique_name.c_str(), frame_id);
+    //uint8_t* frame = signal_buffer->wait_for_full_frame(unique_name, frame_id);
     uint8_t* frame = buffer_claim_next_full_frame(signal_buffer, unique_name.c_str(), frame_id);
     INFO("Finished waiting for data frame {:d}.", frame_id);
     if (frame == nullptr)
@@ -68,5 +68,5 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
 
 void cudaCopyFromRingbuffer::finalize_frame(int frame_id) {
     cudaCommand::finalize_frame(frame_id);
-    mark_frame_empty(signal_buffer, unique_name.c_str(), frame_id);
+    signal_buffer->mark_frame_empty(unique_name, frame_id);
 }

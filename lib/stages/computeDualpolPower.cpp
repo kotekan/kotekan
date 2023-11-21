@@ -79,10 +79,10 @@ void computeDualpolPower::main_thread() {
     std::thread this_thread[nthreads];
 
     while (!stop_thread) {
-        in_local = (unsigned char*)wait_for_full_frame(buf_in, unique_name, buf_in_id);
+        in_local = (unsigned char*)buf_in->wait_for_full_frame(unique_name, buf_in_id);
         if (in_local == nullptr)
             break;
-        out_local = (unsigned char*)wait_for_empty_frame(buf_out, unique_name, buf_out_id);
+        out_local = (unsigned char*)buf_out->wait_for_empty_frame(unique_name, buf_out_id);
         if (out_local == nullptr)
             break;
 #ifdef DEBUGGING
@@ -101,8 +101,8 @@ void computeDualpolPower::main_thread() {
 
         DEBUG("TIME USED FOR INTEGRATION: {:f}ms\n", (e_time() - start_time) * 1000);
 
-        mark_frame_empty(buf_in, unique_name.c_str(), buf_in_id);
-        mark_frame_full(buf_out, unique_name.c_str(), buf_out_id);
+        buf_in->mark_frame_empty(unique_name, buf_in_id);
+        buf_out->mark_frame_full(unique_name, buf_out_id);
         buf_in_id = (buf_in_id + 1) % buf_in->num_frames;
         buf_out_id = (buf_out_id + 1) % (buf_out->num_frames);
     }

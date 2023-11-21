@@ -105,14 +105,14 @@ void rawFileRead::main_thread() {
         for (uint32_t i = 0; i < num_frames_per_file; i++) {
 
             // Get an empty buffer to write into
-            frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+            frame = buf->wait_for_empty_frame(unique_name, frame_id);
             if (frame == nullptr)
                 break;
 
             // If metadata exists then lets read it in.
             if (metadata_size != 0) {
-                allocate_new_metadata_object(buf, frame_id);
-                metadataContainer* mc = get_metadata_container(buf, frame_id);
+                buf->allocate_new_metadata_object(frame_id);
+                metadataContainer* mc = buf->get_metadata_container(frame_id);
                 assert(metadata_size == mc->metadata_size);
                 if (fread(mc->metadata, metadata_size, 1, fp) != 1) {
                     ERROR("rawFileRead: Failed to read file {:s} metadata,", full_path);
@@ -130,7 +130,7 @@ void rawFileRead::main_thread() {
 
             INFO("rawFileRead: Read frame data from {:s} into {:s}[{:d}]", full_path,
                  buf->buffer_name, frame_id);
-            mark_frame_full(buf, unique_name.c_str(), frame_id);
+            buf->mark_frame_full(unique_name, frame_id);
             frame_id = (frame_id + 1) % buf->num_frames;
         }
 

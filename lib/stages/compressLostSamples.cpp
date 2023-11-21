@@ -57,11 +57,11 @@ void compressLostSamples::main_thread() {
 
     while (!stop_thread) {
         // Get an input buffer, This call is blocking!
-        in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_buffer_ID);
+        in_frame = in_buf->wait_for_full_frame(unique_name, in_buffer_ID);
         if (in_frame == nullptr)
             break;
 
-        out_frame = (uint32_t*)wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
+        out_frame = (uint32_t*)out_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
         if (out_frame == nullptr)
             break;
 
@@ -86,13 +86,13 @@ void compressLostSamples::main_thread() {
         }
 
         // Create new metadata
-        allocate_new_metadata_object(out_buf, out_buffer_ID);
+        out_buf->allocate_new_metadata_object(out_buffer_ID);
         copy_metadata(in_buf, in_buffer_ID, out_buf, out_buffer_ID);
         zero_lost_samples(out_buf, out_buffer_ID);
         atomic_add_lost_timesamples(out_buf, out_buffer_ID, total_lost_samples);
 
-        mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
-        mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_ID);
+        out_buf->mark_frame_full(unique_name, out_buffer_ID);
+        in_buf->mark_frame_empty(unique_name, in_buffer_ID);
 
         out_buffer_ID++;
         in_buffer_ID++;

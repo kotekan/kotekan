@@ -61,11 +61,11 @@ void GenHFBFrames::main_thread() {
     INFO("num_lost_samples: {}, lost_frac: {:e}", num_lost_samples, lost_frac);
 
     while (!stop_thread) {
-        uint8_t* frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+        uint8_t* frame = out_buf->wait_for_empty_frame(unique_name, out_frame_id);
         if (frame == nullptr)
             break;
 
-        uint8_t* cls_frame = wait_for_empty_frame(cls_out_buf, unique_name.c_str(), cls_frame_id);
+        uint8_t* cls_frame = cls_out_buf->wait_for_empty_frame(unique_name, cls_frame_id);
         if (cls_frame == nullptr)
             break;
 
@@ -101,19 +101,19 @@ void GenHFBFrames::main_thread() {
               data[131072 - 1], total_lost_samples);
 
         // Create metadata
-        allocate_new_metadata_object(out_buf, out_frame_id);
+        out_buf->allocate_new_metadata_object(out_frame_id);
         set_fpga_seq_num(out_buf, out_frame_id, seq_num);
         set_dataset_id(out_buf, out_frame_id, dataset_id);
         set_stream_id(out_buf, out_frame_id, stream_id);
 
-        allocate_new_metadata_object(cls_out_buf, cls_frame_id);
+        cls_out_buf->allocate_new_metadata_object(cls_frame_id);
         set_fpga_seq_num(cls_out_buf, cls_frame_id, seq_num);
         zero_lost_samples(cls_out_buf, cls_frame_id);
         atomic_add_lost_timesamples(cls_out_buf, cls_frame_id, total_lost_samples);
 
         seq_num += _samples_per_data_set;
-        mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
-        mark_frame_full(cls_out_buf, unique_name.c_str(), cls_frame_id++);
+        out_buf->mark_frame_full(unique_name, out_frame_id++);
+        cls_out_buf->mark_frame_full(unique_name, cls_frame_id++);
 
     } // end stop thread
 }

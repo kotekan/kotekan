@@ -88,7 +88,7 @@ void rfiRecord::main_thread() {
     // Endless Loop
     while (!stop_thread) {
         // Get Frame
-        frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
+        frame = rfi_buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
         // Lock mutex
@@ -160,7 +160,7 @@ void rfiRecord::main_thread() {
         }
 
         // Mark Frame Empty
-        mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
+        rfi_buf->mark_frame_empty(unique_name, frame_id);
         // Move forward one frame/link/file
         frame_id = (frame_id + 1) % rfi_buf->num_frames;
     }

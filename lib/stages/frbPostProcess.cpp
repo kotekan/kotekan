@@ -143,19 +143,19 @@ void frbPostProcess::main_thread() {
 
     while (!stop_thread) {
         // Get the next output buffer, id = 0 to start.
-        uint8_t* out_frame = wait_for_empty_frame(frb_buf, unique_name.c_str(), out_buffer_ID);
+        uint8_t* out_frame = frb_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
         if (out_frame == nullptr)
             return;
         // Get an input buffer, This call is blocking!
         for (int i = 0; i < _num_gpus; ++i) {
-            in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
+            in_frame[i] = in_buf[i]->wait_for_full_frame(unique_name, in_buffer_ID[i]);
             if (in_frame[i] == nullptr)
                 return;
         }
 
         // Information on drop packets
         uint8_t* lost_samples_frame =
-            wait_for_full_frame(lost_samples_buf, unique_name.c_str(), lost_samples_buf_id);
+            lost_samples_buf->wait_for_full_frame(unique_name, lost_samples_buf_id);
         if (lost_samples_frame == nullptr)
             return;
 
@@ -188,10 +188,10 @@ void frbPostProcess::main_thread() {
             // Advance lost_samples buffer by the amount of known dropped frames across all inputs
             for (int i = 0; i < (max_fpga_count - start_fpga_count) / _samples_per_data_set; ++i) {
                 INFO("Advance lost_samples");
-                mark_frame_empty(lost_samples_buf, unique_name.c_str(), lost_samples_buf_id);
+                lost_samples_buf->mark_frame_empty(unique_name, lost_samples_buf_id);
                 lost_samples_buf_id = (lost_samples_buf_id + 1) % lost_samples_buf->num_frames;
                 lost_samples_frame =
-                    wait_for_full_frame(lost_samples_buf, unique_name.c_str(), lost_samples_buf_id);
+                    lost_samples_buf->wait_for_full_frame(unique_name, lost_samples_buf_id);
                 if (lost_samples_frame == nullptr)
                     return;
             }
@@ -202,10 +202,10 @@ void frbPostProcess::main_thread() {
             for (int i = 0; i < _num_gpus; ++i) {
                 while (max_fpga_count > get_fpga_seq_num(in_buf[i], in_buffer_ID[i])) {
                     INFO("Advance {} from {}", i, get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
-                    mark_frame_empty(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
+                    in_buf[i]->mark_frame_empty(unique_name, in_buffer_ID[i]);
                     in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
                     in_frame[i] =
-                        wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
+                        in_buf[i]->wait_for_full_frame(unique_name, in_buffer_ID[i]);
                     if (in_frame[i] == nullptr)
                         return;
                 }
@@ -387,16 +387,16 @@ void frbPostProcess::main_thread() {
             frb_header.fpga_count += fpga_counts_per_sample * _timesamples_per_frb_packet;
         } // end looping 128 time samples
 
-        mark_frame_full(frb_buf, unique_name.c_str(), out_buffer_ID);
+        frb_buf->mark_frame_full(unique_name, out_buffer_ID);
         out_buffer_ID = (out_buffer_ID + 1) % frb_buf->num_frames;
 
-        mark_frame_empty(lost_samples_buf, unique_name.c_str(), lost_samples_buf_id);
+        lost_samples_buf->mark_frame_empty(unique_name, lost_samples_buf_id);
         lost_samples_buf_id = (lost_samples_buf_id + 1) % lost_samples_buf->num_frames;
 
         // Release the input buffers
         for (int i = 0; i < _num_gpus; ++i) {
             // release_info_object(in_buf[gpu_id], in_buffer_ID[i]);
-            mark_frame_empty(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
+            in_buf[i]->mark_frame_empty(unique_name, in_buffer_ID[i]);
             in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
         }
     } // end stop thread

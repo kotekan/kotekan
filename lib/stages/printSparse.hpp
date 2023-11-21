@@ -81,7 +81,7 @@ void printSparse<A_Type>::main_thread() {
     while (!stop_thread) {
 
         // Get frame
-        const A_Type* frame = (A_Type*)wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        const A_Type* frame = (A_Type*)buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
         INFO("printSparse: checking {:s}[{:d}]", buf->buffer_name, frame_id);
@@ -130,7 +130,7 @@ void printSparse<A_Type>::main_thread() {
             INFO("PY sparse[\"{:s}\"][{:d}] = (None, 0)", buf->buffer_name, frame_counter);
         }
 
-        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_empty(unique_name, frame_id);
         frame_id++;
     }
 }

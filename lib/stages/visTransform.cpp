@@ -123,7 +123,7 @@ void visTransform::main_thread() {
             auto timeout = double_to_ts(current_time() + 0.1);
 
             // Find the next available buffer
-            int status = wait_for_full_frame_timeout(buf, unique_name.c_str(), frame_id, timeout);
+            int status = buf->wait_for_full_frame_timeout(unique_name, frame_id, timeout);
             if (status == 1)
                 continue; // Timed out, try next buffer
             if (status == -1)
@@ -134,7 +134,7 @@ void visTransform::main_thread() {
             frame = buf->frames[frame_id];
 
             // Wait for the buffer to be filled with data
-            if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
+            if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
                 break;
             }
 
@@ -162,8 +162,8 @@ void visTransform::main_thread() {
             std::fill(output_frame.gain.begin(), output_frame.gain.end(), 1.0);
 
             // Mark the buffers and move on
-            mark_frame_empty(buf, unique_name.c_str(), frame_id);
-            mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
+            buf->mark_frame_empty(unique_name, frame_id);
+            out_buf->mark_frame_full(unique_name, output_frame_id);
 
             // Advance the current frame ids
             std::get<1>(buffer_pair) = (frame_id + 1) % buf->num_frames;

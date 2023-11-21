@@ -59,11 +59,11 @@ void BeamExtract::main_thread() {
 
     while (!stop_thread) {
 
-        in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
+        in_frame = in_buf->wait_for_full_frame(unique_name, in_frame_id);
         if (in_frame == nullptr)
             break;
 
-        out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+        out_frame = out_buf->wait_for_empty_frame(unique_name, out_frame_id);
         if (out_frame == nullptr)
             break;
 
@@ -79,10 +79,10 @@ void BeamExtract::main_thread() {
         }
 
         // Copy over the relevant metadata
-        allocate_new_metadata_object(out_buf, out_frame_id);
+        out_buf->allocate_new_metadata_object(out_frame_id);
 
-        chimeMetadata* in_metadata = (chimeMetadata*)get_metadata(in_buf, in_frame_id);
-        BeamMetadata* out_metadata = (BeamMetadata*)get_metadata(out_buf, out_frame_id);
+        chimeMetadata* in_metadata = (chimeMetadata*)in_buf->get_metadata(in_frame_id);
+        BeamMetadata* out_metadata = (BeamMetadata*)out_buf->get_metadata(out_frame_id);
 
         out_metadata->ctime = in_metadata->gps_time;
         out_metadata->fpga_seq_start = in_metadata->fpga_seq_num;
@@ -102,7 +102,7 @@ void BeamExtract::main_thread() {
                out_metadata->fpga_seq_start);
         DEBUG2("Some data values: {:d},{:d}", out_frame[0] & 0x0F, (out_frame[0] & 0xF0) >> 4);
 
-        mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id++);
-        mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
+        in_buf->mark_frame_empty(unique_name, in_frame_id++);
+        out_buf->mark_frame_full(unique_name, out_frame_id++);
     }
 }

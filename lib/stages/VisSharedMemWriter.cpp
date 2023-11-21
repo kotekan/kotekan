@@ -321,7 +321,7 @@ void VisSharedMemWriter::main_thread() {
 
     // Set up the structure of the ring buffer shared memory
     // Get one frame for reference
-    wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+    in_buf->wait_for_full_frame(unique_name, frame_id);
 
     auto frame = VisFrameView(in_buf, frame_id);
 
@@ -386,7 +386,7 @@ void VisSharedMemWriter::main_thread() {
 
 
         // Wait for the buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, frame_id) == nullptr) {
             break;
         }
 
@@ -429,6 +429,6 @@ void VisSharedMemWriter::main_thread() {
 
 
         // marks the buffer and moves on
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+        in_buf->mark_frame_empty(unique_name, frame_id++);
     }
 }

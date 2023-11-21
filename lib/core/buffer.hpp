@@ -168,25 +168,10 @@ public:
     void allocate_new_metadata_object(int frame_id);
 
     /**
-     * @brief Swaps the provided frame of memory with the internal frame
-     *        given by @c frame_id
-     *
-     * @warning The frame returned will no longer be controlled by this buffer,
-     *          and so must be freeded by the system taking it.  Also the frame
-     *          given will be used and freed by the buffer, so the providing system
-     *          must not attempt to free it.
-     * @warning This function should only be used by single producer stages.
-     * @warning The extra frame provided to this function must be allocated with
-     *          @c buffer_malloc() and the frame returned by this function must be
-     *          freed with @c buffer_free()
-     * @warning Take care when using this function!
-     *
-     * @param frame_id The frame to swap
-     * @param external_frame The extra frame to use in place of the existing internal frame.
-     * @return The internal frame
+     * Returns true if successful, false if metadata was already set.
      */
-    uint8_t* swap_external_frame(int frame_id, uint8_t* external_frame);
-
+    bool set_metadata(int frame_id, metadataContainer* meta);
+    
     /**
      * @brief Gets the raw metadata block for the given frame
      *
@@ -244,7 +229,7 @@ public:
      * Set to 1 when the system should stop returning
      * new frames for producers and consumers.
      */
-    int shutdown_signal;
+    bool shutdown_signal;
 
     /// The list of consumer names registered to this buffer
     std::map<std::string, StageInfo> consumers;
@@ -266,25 +251,6 @@ public:
 
 protected:
     //virtual void registered_producer(StageInfo&) {}
-
-private:
-    void private_mark_producer_done(const std::string& name, const int ID);
-    // Returns true if all producers are done for the given ID.
-    bool private_producers_done(const int ID);
-    // Resets the list of producers for the given ID
-    void private_reset_producers(const int ID);
-    // Returns true if all consumers are done for the given ID.
-    bool private_consumers_done(const int ID);
-    /**
-     * @brief Marks a frame as empty and if the buffer requires zeroing then it starts
-     *        the zeroing thread and delays marking it as empty until the zeroing is done.
-     * @param id The id of the frame to mark as empty.
-     * @return 1 if the frame was marked as empty, 0 if it is being zeroed.
-     */
-     bool private_mark_frame_empty(const int ID);
-    // Resets the list of consumers for the given ID
-    void private_reset_consumers(const int ID);
-
 };
 
 class RingBuffer : public GenericBuffer {
@@ -427,7 +393,7 @@ public:
      *          a call to @c mark_frame_full() with that producer and frame_id
      */
     uint8_t* wait_for_empty_frame(const std::string& producer_name, const int frame_id);
-    
+
     /**
      * @brief Blocks until the frame requested by frame_id is full.
      *
@@ -470,7 +436,7 @@ public:
      * @param[in] frame_id The id of the frame to check.
      * @warning This should not be used to gain access to an empty frame, use @c wait_for_empty_frame()
      */
-    int is_frame_empty(const int frame_id);
+    bool is_frame_empty(const int frame_id);
 
     /**
      * @brief Returns the number of currently full frames.
@@ -478,6 +444,26 @@ public:
      * @returns The number of currently full frames in the buffer
      */
     int get_num_full_frames();
+
+    /**
+     * @brief Swaps the provided frame of memory with the internal frame
+     *        given by @c frame_id
+     *
+     * @warning The frame returned will no longer be controlled by this buffer,
+     *          and so must be freeded by the system taking it.  Also the frame
+     *          given will be used and freed by the buffer, so the providing system
+     *          must not attempt to free it.
+     * @warning This function should only be used by single producer stages.
+     * @warning The extra frame provided to this function must be allocated with
+     *          @c buffer_malloc() and the frame returned by this function must be
+     *          freed with @c buffer_free()
+     * @warning Take care when using this function!
+     *
+     * @param frame_id The frame to swap
+     * @param external_frame The extra frame to use in place of the existing internal frame.
+     * @return The internal frame
+     */
+    uint8_t* swap_external_frame(int frame_id, uint8_t* external_frame);
 
     /**
      * @brief Returns the last time a frame was marked as full
@@ -491,6 +477,9 @@ public:
      */
     void print_buffer_status();
 
+    // don't call this
+    void _impl_zero_frame(const int ID);
+    
     //protected:
     /// The size of each frame in bytes.
     size_t frame_size;
@@ -542,6 +531,24 @@ public:
 
     /// The NUMA node the frames are allocated in
     int numa_node;
+
+protected:
+    void private_mark_producer_done(const std::string& name, const int ID);
+    // Returns true if all producers are done for the given ID.
+    bool private_producers_done(const int ID);
+    // Resets the list of producers for the given ID
+    void private_reset_producers(const int ID);
+    // Returns true if all consumers are done for the given ID.
+    bool private_consumers_done(const int ID);
+    /**
+     * @brief Marks a frame as empty and if the buffer requires zeroing then it starts
+     *        the zeroing thread and delays marking it as empty until the zeroing is done.
+     * @param id The id of the frame to mark as empty.
+     * @return 1 if the frame was marked as empty, 0 if it is being zeroed.
+     */
+     bool private_mark_frame_empty(const int ID);
+    // Resets the list of consumers for the given ID
+    void private_reset_consumers(const int ID);
 };
 
 /**

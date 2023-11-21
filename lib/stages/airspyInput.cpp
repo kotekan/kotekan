@@ -60,7 +60,7 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
     while (bt > 0) {
         if (frame_loc == 0) {
             DEBUG("Airspy waiting for frame_id {:d}", frame_id);
-            frame_ptr = (unsigned char*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+            frame_ptr = (unsigned char*)buf->wait_for_empty_frame(unique_name, frame_id);
             if (frame_ptr == nullptr)
                 break;
         }
@@ -74,7 +74,7 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
 
         if (frame_loc == 0) {
             DEBUG("Airspy Buffer {:d} Full", frame_id);
-            mark_frame_full(buf, unique_name.c_str(), frame_id);
+            buf->mark_frame_full(unique_name, frame_id);
             frame_id = (frame_id + 1) % buf->num_frames;
         }
     }

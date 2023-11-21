@@ -68,7 +68,7 @@ cudaOutputData::~cudaOutputData() {
 int cudaOutputData::wait_on_precondition(int) {
     // Wait for there to be space in the host output buffer
     uint8_t* frame =
-        wait_for_empty_frame(output_buffer, unique_name.c_str(), output_buffer_precondition_id);
+        output_buffer->wait_for_empty_frame(unique_name, output_buffer_precondition_id);
     if (frame == nullptr) {
         DEBUG("FAILED to wait_for_empty_frame on output_buffer {:s}[:d]", unique_name.c_str(),
               output_buffer_precondition_id);
@@ -106,15 +106,11 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState& pipestate,
                 device.get_gpu_memory_array_metadata(_gpu_mem, pipestate.gpu_frame_id);
             if (meta) {
                 // Attach the metadata to the host buffer frame
-                CHECK_ERROR_F(pthread_mutex_lock(&output_buffer->lock));
-                if (output_buffer->metadata[output_buffer_execute_id] == NULL) {
+                bool passed = output_buffer->set_metadata(output_buffer_execute_id, meta);
+                if (passed)
                     DEBUG("Passing metadata from GPU array {:s}[{:d}] to output buffer {:s}[{:d}]",
                           _gpu_mem, pipestate.gpu_frame_id, output_buffer->buffer_name,
                           output_buffer_execute_id);
-                    output_buffer->metadata[output_buffer_execute_id] = meta;
-                    increment_metadata_ref_count(meta);
-                }
-                CHECK_ERROR_F(pthread_mutex_unlock(&output_buffer->lock));
             }
         }
     }
@@ -133,7 +129,7 @@ void cudaOutputData::finalize_frame(int frame_id) {
                   output_buffer_id);
             pass_metadata(in_buffer, in_buffer_id, output_buffer, output_buffer_id);
         }
-        mark_frame_empty(in_buffer, unique_name.c_str(), in_buffer_id);
+        in_buffer->mark_frame_empty(unique_name, in_buffer_id);
         in_buffer_id = (in_buffer_id + 1) % in_buffer->num_frames;
     }
 
@@ -145,7 +141,7 @@ void cudaOutputData::finalize_frame(int frame_id) {
     DEBUG("Generated CPU output {:s}[{:d}] for input GPU frame {:d}", output_buffer->buffer_name,
           output_buffer_id, frame_id);
 
-    mark_frame_full(output_buffer, unique_name.c_str(), output_buffer_id);
+    output_buffer->mark_frame_full(unique_name, output_buffer_id);
     output_buffer_id = (output_buffer_id + 1) % output_buffer->num_frames;
 }
 

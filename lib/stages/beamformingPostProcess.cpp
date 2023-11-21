@@ -124,7 +124,7 @@ void beamformingPostProcess::main_thread() {
     uint32_t fpga_seq_num = 0;
 
     // Get the first output buffer which will always be id = 0 to start.
-    uint8_t* vdif_frame = wait_for_empty_frame(vdif_buf, unique_name.c_str(), out_buffer_ID);
+    uint8_t* vdif_frame = vdif_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
 
     while (!stop_thread) {
 
@@ -140,7 +140,7 @@ void beamformingPostProcess::main_thread() {
 
             // This call is blocking!
             in_frame[i] =
-                wait_for_full_frame(in_buf[gpu_id], unique_name, in_buffer_ID[gpu_id]);
+                in_buf[gpu_id]->wait_for_full_frame(unique_name, in_buffer_ID[gpu_id]);
             if (in_frame[i] == nullptr)
                 goto end_loop;
 
@@ -193,12 +193,12 @@ void beamformingPostProcess::main_thread() {
                         frame = 0;
                         second++;
 
-                        mark_frame_full(vdif_buf, unique_name.c_str(), out_buffer_ID);
+                        vdif_buf->mark_frame_full(unique_name, out_buffer_ID);
 
                         // Get a new output buffer
                         out_buffer_ID = (out_buffer_ID + 1) % vdif_buf->num_frames;
                         vdif_frame =
-                            wait_for_empty_frame(vdif_buf, unique_name.c_str(), out_buffer_ID);
+                            vdif_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
                         if (vdif_frame == nullptr)
                             goto end_loop;
 
@@ -240,7 +240,7 @@ void beamformingPostProcess::main_thread() {
         for (uint32_t i = 0; i < _num_fpga_links; ++i) {
             int gpu_id = _link_map[i];
 
-            mark_frame_empty(in_buf[gpu_id], unique_name.c_str(), in_buffer_ID_final[gpu_id]);
+            in_buf[gpu_id]->mark_frame_empty(unique_name, in_buffer_ID_final[gpu_id]);
             in_buffer_ID_final[gpu_id] =
                 (in_buffer_ID_final[gpu_id] + 1) % in_buf[gpu_id]->num_frames;
         }

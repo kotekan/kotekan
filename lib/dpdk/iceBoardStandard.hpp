@@ -103,7 +103,7 @@ iceBoardStandard::iceBoardStandard(kotekan::Config& config, const std::string& u
         buffer_container.get_buffer(config.get<std::string>(unique_name, "lost_samples_buf"));
     lost_samples_buf->register_producer(unique_name);
     // We want to make sure the flag buffers are zeroed between uses.
-    zero_frames(lost_samples_buf);
+    lost_samples_buf->zero_frames();
 
     fpga_dataset = config.get_default<dset_id_t>("/fpga_dataset", "id", dset_id_t::null);
 
@@ -197,7 +197,7 @@ inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
         return false;
 
     // Set metadata values.
-    allocate_new_metadata_object(out_buf, out_frame_id);
+    out_buf->allocate_new_metadata_object(out_frame_id);
 
     set_first_packet_recv_time(out_buf, out_frame_id, now);
 

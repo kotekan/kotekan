@@ -66,7 +66,7 @@ void bufferDelay::main_thread() {
 
     while (!stop_thread) {
 
-        uint8_t* input_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
+        uint8_t* input_frame = in_buf->wait_for_full_frame(unique_name, in_frame_id);
         if (input_frame == nullptr)
             return;
 
@@ -76,12 +76,12 @@ void bufferDelay::main_thread() {
         if (in_frame_hold_ctr >= _num_frames_to_hold) {
 
             // Get a new output frame
-            output_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+            output_frame = out_buf->wait_for_empty_frame(unique_name, out_frame_id);
             if (output_frame == nullptr)
                 return;
 
             if (_copy_frame || in_buf->get_num_consumers() > 1) {
-                allocate_new_metadata_object(out_buf, out_frame_id);
+                out_buf->allocate_new_metadata_object(out_frame_id);
                 // Metadata sizes must match exactly
                 if (in_buf->metadata[in_frame_release_id]->metadata_size
                     != out_buf->metadata[out_frame_id]->metadata_size) {
@@ -101,11 +101,11 @@ void bufferDelay::main_thread() {
                   "{:d}, in_frame_hold_ctr: {:d}, in_frame_release_id: {:d}",
                   in_frame_id, in_frame_hold_ctr, in_frame_release_id);
 
-            mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
+            out_buf->mark_frame_full(unique_name, out_frame_id);
             out_frame_id++;
 
             // Release the input buffer frame.
-            mark_frame_empty(in_buf, unique_name.c_str(), in_frame_release_id);
+            in_buf->mark_frame_empty(unique_name, in_frame_release_id);
             in_frame_release_id++;
         } else {
             in_frame_hold_ctr++;

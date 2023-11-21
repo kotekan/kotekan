@@ -105,7 +105,7 @@ void eigenVis::main_thread() {
     while (!stop_thread) {
 
         // Get input visibilities. We assume the shape of these doesn't change.
-        if (wait_for_full_frame(input_buffer, unique_name.c_str(), input_frame_id) == nullptr) {
+        if (input_buffer->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
         auto input_frame = VisFrameView(input_buffer, input_frame_id);
@@ -188,7 +188,7 @@ void eigenVis::main_thread() {
                 .set(lapack_failure_total);
 
             // Clear frame and advance
-            mark_frame_empty(input_buffer, unique_name.c_str(), input_frame_id++);
+            input_buffer->mark_frame_empty(unique_name, input_frame_id++);
             continue;
         }
 
@@ -254,7 +254,7 @@ void eigenVis::main_thread() {
             .set(rms);
 
         // Get output buffer for visibilities. Essentially identical to input buffers.
-        if (wait_for_empty_frame(output_buffer, unique_name.c_str(), output_frame_id) == nullptr) {
+        if (output_buffer->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
             break;
         }
 
@@ -281,7 +281,7 @@ void eigenVis::main_thread() {
         output_frame.erms = rms;
 
         // Finish up interation.
-        mark_frame_empty(input_buffer, unique_name.c_str(), input_frame_id++);
-        mark_frame_full(output_buffer, unique_name.c_str(), output_frame_id++);
+        input_buffer->mark_frame_empty(unique_name, input_frame_id++);
+        output_buffer->mark_frame_full(unique_name, output_frame_id++);
     }
 }

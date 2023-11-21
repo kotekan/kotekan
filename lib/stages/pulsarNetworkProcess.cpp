@@ -158,10 +158,10 @@ void pulsarNetworkProcess::main_thread() {
     int my_sequence_id =
         (int)(my_node_id / 128) + 2 * ((my_node_id % 128) / 8) + 32 * (my_node_id % 8);
 
-    packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+    packet_buffer = in_buf->wait_for_full_frame(unique_name, frame_id);
     if (packet_buffer == nullptr)
         return;
-    mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+    in_buf->mark_frame_empty(unique_name, frame_id);
     frame_id = (frame_id + 1) % in_buf->num_frames;
 
     clock_gettime(CLOCK_REALTIME, &t0);
@@ -184,7 +184,7 @@ void pulsarNetworkProcess::main_thread() {
     int64_t psr_header_last_frame = psr_header->data_frame;
 
     while (!stop_thread) {
-        packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+        packet_buffer = in_buf->wait_for_full_frame(unique_name, frame_id);
         if (packet_buffer == nullptr)
             break;
 
@@ -222,7 +222,7 @@ void pulsarNetworkProcess::main_thread() {
             }
         }
 
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+        in_buf->mark_frame_empty(unique_name, frame_id);
         frame_id = (frame_id + 1) % in_buf->num_frames;
     }
     return;

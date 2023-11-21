@@ -241,7 +241,7 @@ void applyGains::apply_thread() {
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
 
@@ -268,16 +268,16 @@ void applyGains::apply_thread() {
         if (late) {
             late_frames_counter.inc();
             std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
-            mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
+            in_buf->mark_frame_empty(unique_name, input_frame_id);
             input_frame_id = frame_id_in++;
             continue;
         }
 
         // Wait for the output buffer to be empty of data
-        if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
+        if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
             break;
         }
-        allocate_new_metadata_object(out_buf, output_frame_id);
+        out_buf->allocate_new_metadata_object(output_frame_id);
 
         // Create view to output frame
         auto output_frame =
@@ -332,8 +332,8 @@ void applyGains::apply_thread() {
         update_age_metric.set(age);
 
         // Mark the buffers and move on
-        mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
-        mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
+        out_buf->mark_frame_full(unique_name, output_frame_id);
+        in_buf->mark_frame_empty(unique_name, input_frame_id);
 
         // Get the current values of the shared frame IDs.
         {
@@ -567,7 +567,7 @@ void applyGains::initialise() {
     }
 
     // Wait for the input buffer to be filled with data
-    if (wait_for_full_frame(in_buf, unique_name.c_str(), 0) == nullptr) {
+    if (in_buf->wait_for_full_frame(unique_name, 0) == nullptr) {
         return;
     }
 

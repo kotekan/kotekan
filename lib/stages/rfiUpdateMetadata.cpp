@@ -56,12 +56,12 @@ void rfiUpdateMetadata::main_thread() {
 
     while (!stop_thread) {
         uint8_t* rfi_mask_frame =
-            wait_for_full_frame(rfi_mask_buf, unique_name.c_str(), rfi_mask_frame_id);
+            rfi_mask_buf->wait_for_full_frame(unique_name, rfi_mask_frame_id);
         if (rfi_mask_frame == nullptr)
             break;
 
         uint8_t* lost_samples_frame =
-            wait_for_full_frame(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
+            lost_samples_buf->wait_for_full_frame(unique_name, lost_samples_frame_id);
         if (lost_samples_frame == nullptr)
             break;
 
@@ -71,8 +71,8 @@ void rfiUpdateMetadata::main_thread() {
             // have a copy of the metadata at this point.  This is true only if hsaRfiMaskOutput
             // comes after hsaOutputData, this is not really ideal, but I cannot find an easy way
             // around it.
-            uint8_t* gpu_correlation_frame = wait_for_empty_frame(
-                gpu_correlation_buf, unique_name.c_str(), gpu_correlation_frame_id);
+            uint8_t* gpu_correlation_frame = gpu_correlation_buf->wait_for_empty_frame(
+                unique_name, gpu_correlation_frame_id);
             if (gpu_correlation_frame == nullptr)
                 break;
 
@@ -115,14 +115,14 @@ void rfiUpdateMetadata::main_thread() {
                                             net_lost_samples);
             }
 
-            mark_frame_full(gpu_correlation_buf, unique_name.c_str(), gpu_correlation_frame_id);
+            gpu_correlation_buf->mark_frame_full(unique_name, gpu_correlation_frame_id);
             gpu_correlation_frame_id++;
         }
 
-        mark_frame_empty(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
+        lost_samples_buf->mark_frame_empty(unique_name, lost_samples_frame_id);
         lost_samples_frame_id++;
 
-        mark_frame_empty(rfi_mask_buf, unique_name.c_str(), rfi_mask_frame_id);
+        rfi_mask_buf->mark_frame_empty(unique_name, rfi_mask_frame_id);
         rfi_mask_frame_id++;
     }
 }

@@ -100,16 +100,16 @@ void RfiFrameDrop::main_thread() {
     while (!stop_thread) {
         // Fetch the input buffers
         uint8_t* frame_in_vis =
-            wait_for_full_frame(_buf_in_vis, unique_name.c_str(), frame_id_in_vis);
+            _buf_in_vis->wait_for_full_frame(unique_name, frame_id_in_vis);
         float* frame_in_sk =
-            (float*)wait_for_full_frame(_buf_in_sk, unique_name.c_str(), frame_id_in_sk);
+            (float*)_buf_in_sk->wait_for_full_frame(unique_name, frame_id_in_sk);
 
         // Test to ensure we actually got valid buffers back
         if (frame_in_vis == nullptr || frame_in_sk == nullptr)
             break;
 
-        auto* metadata_vis = (chimeMetadata*)get_metadata(_buf_in_vis, frame_id_in_vis);
-        auto* metadata_sk = (chimeMetadata*)get_metadata(_buf_in_sk, frame_id_in_sk);
+        auto* metadata_vis = (chimeMetadata*)_buf_in_vis->get_metadata(frame_id_in_vis);
+        auto* metadata_sk = (chimeMetadata*)_buf_in_sk->get_metadata(frame_id_in_sk);
 
         // Set the frequency index from the stream id of the metadata
         uint32_t freq_id = tel.to_freq_id(_buf_in_vis, frame_id_in_vis);
@@ -122,13 +122,13 @@ void RfiFrameDrop::main_thread() {
         if (vis_seq < sk_seq) {
             DEBUG("Dropping incoming N2 frame to sync up. Vis frame: {}; SK frame: {}, diff {}",
                   vis_seq, sk_seq, vis_seq - sk_seq);
-            mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
+            _buf_in_vis->mark_frame_empty(unique_name, frame_id_in_vis++);
             continue;
         }
         if (sk_seq < vis_seq) {
             DEBUG("Dropping incoming SK frame to sync up. Vis frame: {}; SK frame: {}, diff {}",
                   vis_seq, sk_seq, vis_seq - sk_seq);
-            mark_frame_empty(_buf_in_sk, unique_name.c_str(), frame_id_in_sk++);
+            _buf_in_sk->mark_frame_empty(unique_name, frame_id_in_sk++);
             continue;
         }
         DEBUG2("Frames are synced. Vis frame: {}; SK frame: {}, diff {}", vis_seq, sk_seq,
@@ -164,7 +164,7 @@ void RfiFrameDrop::main_thread() {
 
         for (size_t ii = 0; ii < num_sub_frames; ii++) {
 
-            if (wait_for_full_frame(_buf_in_vis, unique_name.c_str(), frame_id_in_vis) == nullptr) {
+            if (_buf_in_vis->wait_for_full_frame(unique_name, frame_id_in_vis) == nullptr) {
                 break;
             }
 
@@ -176,7 +176,7 @@ void RfiFrameDrop::main_thread() {
             // will resync
             if (sf_seq != (int64_t)(sk_seq + ii * samples_per_sub_frame)) {
                 DEBUG("Lost synchronization. Dropping data and resetting.");
-                mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
+                _buf_in_vis->mark_frame_empty(unique_name, frame_id_in_vis++);
                 break;
             }
 
@@ -210,20 +210,20 @@ void RfiFrameDrop::main_thread() {
             // incoming frame then we leave the output as is.
             if (!skip || !enabled_copy) {
 
-                if (wait_for_empty_frame(_buf_out, unique_name.c_str(), frame_id_out) == nullptr) {
+                if (_buf_out->wait_for_empty_frame(unique_name, frame_id_out) == nullptr) {
                     break;
                 }
                 copy_frame(_buf_in_vis, frame_id_in_vis, _buf_out, frame_id_out);
                 set_dataset_id(_buf_out, frame_id_out, dset_id_out);
-                mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
+                _buf_out->mark_frame_full(unique_name, frame_id_out++);
             } else {
                 dropped_frame_counter.labels({std::to_string(freq_id)}).inc();
             }
 
-            mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
+            _buf_in_vis->mark_frame_empty(unique_name, frame_id_in_vis++);
             frame_counter.labels({std::to_string(freq_id)}).inc();
         }
-        mark_frame_empty(_buf_in_sk, unique_name.c_str(), frame_id_in_sk++);
+        _buf_in_sk->mark_frame_empty(unique_name, frame_id_in_sk++);
     }
 }
 

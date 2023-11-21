@@ -323,18 +323,18 @@ void gpuBeamformSimulate::main_thread() {
 
     while (!stop_thread) {
         unsigned char* input =
-            (unsigned char*)wait_for_full_frame(input_buf, unique_name.c_str(), input_buf_id);
+            (unsigned char*)input_buf->wait_for_full_frame(unique_name, input_buf_id);
         if (input == nullptr)
             break;
 
         float* output =
-            (float*)wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
+            (float*)output_buf->wait_for_empty_frame(unique_name, output_buf_id);
 
         if (output == nullptr)
             break;
 
         float* hfb_output =
-            (float*)wait_for_empty_frame(hfb_output_buf, unique_name.c_str(), output_buf_id);
+            (float*)hfb_output_buf->wait_for_empty_frame(unique_name, output_buf_id);
 
         if (hfb_output == nullptr)
             break;
@@ -571,9 +571,9 @@ void gpuBeamformSimulate::main_thread() {
              input_buf->buffer_name, input_buf_id, output_buf->buffer_name, output_buf_id);
 
         pass_metadata(input_buf, input_buf_id, output_buf, output_buf_id);
-        mark_frame_empty(input_buf, unique_name.c_str(), input_buf_id);
-        mark_frame_full(output_buf, unique_name.c_str(), output_buf_id);
-        mark_frame_full(hfb_output_buf, unique_name.c_str(), output_buf_id);
+        input_buf->mark_frame_empty(unique_name, input_buf_id);
+        output_buf->mark_frame_full(unique_name, output_buf_id);
+        hfb_output_buf->mark_frame_full(unique_name, output_buf_id);
 
         input_buf_id = (input_buf_id + 1) % input_buf->num_frames;
         metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;

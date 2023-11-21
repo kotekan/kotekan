@@ -186,11 +186,11 @@ void testDataGen::main_thread() {
             continue;
         }
 
-        frame = (uint8_t*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+        frame = (uint8_t*)buf->wait_for_empty_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
-        allocate_new_metadata_object(buf, frame_id);
+        buf->allocate_new_metadata_object(frame_id);
         set_fpga_seq_num(buf, frame_id, seq_num);
         set_stream_id(buf, frame_id, stream_id);
 
@@ -443,7 +443,7 @@ void testDataGen::main_thread() {
         }
         DEBUG("Generated a {:s} test data set in {:s}[{:d}]", type, buf->buffer_name, frame_id);
 
-        mark_frame_full(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_full(unique_name, frame_id);
 
         frame_id_abs += 1;
         if (num_frames >= 0 && frame_id_abs >= num_frames) {

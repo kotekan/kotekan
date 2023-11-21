@@ -232,7 +232,7 @@ void pulsarSimProcess::main_thread() {
 
     struct beamCoord beam_coord[_num_gpus];
     // Get the first output buffer which will always be id = 0 to start.
-    uint8_t* out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
+    uint8_t* out_frame = pulsar_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
     if (out_frame == nullptr)
         return;
 
@@ -242,9 +242,9 @@ void pulsarSimProcess::main_thread() {
     while (!stop_thread) {
         // Get an input buffer, This call is blocking!
         // If this is the first time wait until we get the start of an interger second period.
-        mark_frame_full(pulsar_buf, unique_name.c_str(), out_buffer_ID);
+        pulsar_buf->mark_frame_full(unique_name, out_buffer_ID);
         out_buffer_ID = (out_buffer_ID + 1) % pulsar_buf->num_frames;
-        out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
+        out_frame = pulsar_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
         if (out_frame == nullptr)
             return;
         // Fill the headers of the new buffer

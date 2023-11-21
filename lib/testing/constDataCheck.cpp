@@ -40,7 +40,7 @@ void constDataCheck::main_thread() {
 
     while (!stop_thread) {
 
-        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        frame = buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
@@ -69,7 +69,7 @@ void constDataCheck::main_thread() {
                  buf->buffer_name, frame_id, rfr, rfi);
         //                    ref_real, ref_imag);
 
-        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_empty(unique_name, frame_id);
         frame_id = (frame_id + 1) % buf->num_frames;
         framect++;
 

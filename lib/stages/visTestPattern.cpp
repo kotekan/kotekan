@@ -129,7 +129,7 @@ void visTestPattern::main_thread() {
     uint64_t i_frame = 0;
 
     // Wait for the first frame
-    if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
+    if (in_buf->wait_for_full_frame(unique_name, frame_id) == nullptr) {
         INFO("No frames in input buffer on start.");
         if (outfile.is_open())
             outfile.close();
@@ -156,7 +156,7 @@ void visTestPattern::main_thread() {
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, frame_id) == nullptr) {
             break;
         }
 
@@ -272,7 +272,7 @@ void visTestPattern::main_thread() {
                     // pass this bad frame to the output buffer:
 
                     // Wait for an empty frame in the output buffer
-                    if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id)
+                    if (out_buf->wait_for_empty_frame(unique_name, output_frame_id)
                         == nullptr) {
                         break;
                     }
@@ -285,7 +285,7 @@ void visTestPattern::main_thread() {
                                 in_buf->frame_size);
 
 
-                    mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
+                    out_buf->mark_frame_full(unique_name, output_frame_id);
 
                     // Advance output frame id
                     output_frame_id++;
@@ -337,7 +337,7 @@ void visTestPattern::main_thread() {
             }
         }
 
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+        in_buf->mark_frame_empty(unique_name, frame_id);
 
         // Advance input frame id
         frame_id++;

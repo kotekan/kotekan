@@ -189,10 +189,10 @@ nlohmann::json kotekanMode::get_buffer_json() {
         }
         buf_info["frames"];
         for (int i = 0; i < buf.second->num_frames; ++i) {
-            buf_info["frames"].push_back(buf.second->is_full[i]);
+            buf_info["frames"].push_back(buf.second->is_full[i] ? 1 : 0);
         }
 
-        buf_info["num_full_frame"] = get_num_full_frames(buf.second);
+        buf_info["num_full_frame"] = buf.second->get_num_full_frames();
         buf_info["num_frames"] = buf.second->num_frames;
         buf_info["frame_size"] = buf.second->frame_size;
         buf_info["last_frame_arrival_time"] = buf.second->last_arrival_time;
@@ -218,8 +218,8 @@ void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
     for (auto& buf : buffer_container.get_basic_buffer_map()) {
         dot += fmt::format(
             "{:s}\"{:s}\" [label=<{:s}<BR/>{:d}/{:d} ({:.1f}%)> shape=ellipse, color=blue];\n",
-            prefix, buf.first, buf.first, get_num_full_frames(buf.second), buf.second->num_frames,
-            (float)get_num_full_frames(buf.second) / buf.second->num_frames * 100);
+            prefix, buf.first, buf.first, buf.second->get_num_full_frames(), buf.second->num_frames,
+            (float)buf.second->get_num_full_frames() / buf.second->num_frames * 100);
     }
 
     // Setup stage nodes

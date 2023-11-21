@@ -51,7 +51,7 @@ int cudaInputData::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
 
     // Wait for there to be data in the input (network) buffer.
-    uint8_t* frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_buffer_precondition_id);
+    uint8_t* frame = in_buf->wait_for_full_frame(unique_name, in_buffer_precondition_id);
     if (frame == nullptr)
         return -1;
 
@@ -91,7 +91,7 @@ void cudaInputData::finalize_frame(int frame_id) {
         device.release_gpu_memory_array_metadata(_gpu_mem, frame_id);
 
     cudaCommand::finalize_frame(frame_id);
-    mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_finalize_id);
+    in_buf->mark_frame_empty(unique_name, in_buffer_finalize_id);
     in_buffer_finalize_id = (in_buffer_finalize_id + 1) % in_buf->num_frames;
 }
 

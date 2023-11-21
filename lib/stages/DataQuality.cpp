@@ -90,7 +90,7 @@ void DataQuality::main_thread() {
     while (!stop_thread) {
 
         // Get input visibilities. We assume the shape of these doesn't change.
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
 
@@ -124,7 +124,7 @@ void DataQuality::main_thread() {
         data_quality_metric.labels(labels).set(sensitivity);
 
         // Finish up iteration.
-        mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id++);
+        in_buf->mark_frame_empty(unique_name, input_frame_id++);
 
     } // end stop thread
 }

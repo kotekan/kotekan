@@ -50,7 +50,7 @@ void ExampleProducer::main_thread() {
     while (!stop_thread) {
 
         // Acquire frame
-        uint8_t* frame = wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
+        uint8_t* frame = out_buf->wait_for_empty_frame(unique_name, frame_id);
         // A null frame is returned on shutdown
         if (frame == nullptr)
             break;
@@ -65,7 +65,7 @@ void ExampleProducer::main_thread() {
              frame_id, data[0], data[frame_length / 2], data[frame_length - 1]);
 
         // Release frame
-        mark_frame_full(out_buf, unique_name.c_str(), frame_id);
+        out_buf->mark_frame_full(unique_name, frame_id);
 
         // Increase the ring pointer
         frame_id++;

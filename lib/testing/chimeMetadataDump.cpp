@@ -37,7 +37,7 @@ void chimeMetadataDump::main_thread() {
 
     while (!stop_thread) {
 
-        frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+        frame = in_buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
@@ -67,7 +67,7 @@ void chimeMetadataDump::main_thread() {
              tel.to_freq(encoded_stream_id), time_v.tv_sec, time_v.tv_usec, time_buf,
              time_v.tv_usec, time_s.tv_sec, time_s.tv_nsec, gps_time_buf, time_s.tv_nsec);
 
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+        in_buf->mark_frame_empty(unique_name, frame_id);
         frame_id = (frame_id + 1) % in_buf->num_frames;
     }
 }

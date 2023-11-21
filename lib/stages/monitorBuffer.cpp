@@ -38,7 +38,7 @@ void monitorBuffer::main_thread() {
         sleep(1);
         double cur_time = e_time();
         for (Buffer* buf : buffers) {
-            double last_arrival = get_last_arrival_time(buf);
+            double last_arrival = buf->get_last_arrival_time();
             if ((cur_time - last_arrival) > timeout && last_arrival > 1) {
                 for (auto& buf : buffer_container.get_buffer_map()) {
                     buf.second->print_full_status();
@@ -51,7 +51,7 @@ void monitorBuffer::main_thread() {
             }
 
             uint32_t num_frames = buf->num_frames;
-            uint32_t num_full_fames = get_num_full_frames(buf);
+            uint32_t num_full_fames = buf->get_num_full_frames();
             float fraction_full = (float)num_full_fames / (float)num_frames;
             if (fraction_full > fill_threshold) {
                 for (auto& buf : buffer_container.get_buffer_map()) {

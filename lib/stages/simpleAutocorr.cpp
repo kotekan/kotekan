@@ -55,7 +55,7 @@ void simpleAutocorr::main_thread() {
     int samples_per_frame = buf_in->frame_size / (2 * sizeof(float));
 
     while (!stop_thread) {
-        in_local = (float*)wait_for_full_frame(buf_in, unique_name.c_str(), frame_in);
+        in_local = (float*)buf_in->wait_for_full_frame(unique_name, frame_in);
         if (in_local == nullptr)
             break;
         for (int j = 0; j < samples_per_frame; j += spectrum_length) {
@@ -69,13 +69,13 @@ void simpleAutocorr::main_thread() {
             if (integration_ct >= integration_length) {
                 if (out_loc == 0)
                     out_local =
-                        (uint*)wait_for_empty_frame(buf_out, unique_name.c_str(), frame_out);
+                        (uint*)buf_out->wait_for_empty_frame(unique_name, frame_out);
                 for (int i = 0; i < spectrum_length; i++)
                     out_local[out_loc++] = spectrum_out[i];
                 out_local[out_loc++] = integration_ct;
 
                 if (out_loc * sizeof(uint) == (uint32_t)buf_out->frame_size) {
-                    mark_frame_full(buf_out, unique_name.c_str(), frame_out);
+                    buf_out->mark_frame_full(unique_name, frame_out);
                     frame_out = (frame_out + 1) % buf_out->num_frames;
                     out_loc = 0;
                     DEBUG("Finished integrating a frame!");
@@ -85,7 +85,7 @@ void simpleAutocorr::main_thread() {
                 integration_ct = 0;
             }
         }
-        mark_frame_empty(buf_in, unique_name.c_str(), frame_in);
+        buf_in->mark_frame_empty(unique_name, frame_in);
         frame_in = (frame_in + 1) % buf_in->num_frames;
     }
 }

@@ -99,13 +99,13 @@ void bufferMerge::main_thread() {
             if (_timeout < 0) {
                 DEBUG2("Waiting for {:s}[{:d}]", in_buf->buffer_name, in_frame_id);
                 uint8_t* input_frame =
-                    wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
+                    in_buf->wait_for_full_frame(unique_name, in_frame_id);
                 if (input_frame == nullptr)
                     goto exit_loop; // Shutdown condition
             } else {
                 auto timeout = double_to_ts(current_time() + _timeout);
                 int status =
-                    wait_for_full_frame_timeout(in_buf, unique_name.c_str(), in_frame_id, timeout);
+                    in_buf->wait_for_full_frame_timeout(unique_name, in_frame_id, timeout);
                 if (status == 1)
                     continue;
                 if (status == -1)
@@ -115,7 +115,7 @@ void bufferMerge::main_thread() {
             if (select_frame(internal_buffer_name, in_buf, in_frame_id)) {
 
                 uint8_t* output_frame =
-                    wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+                    out_buf->wait_for_empty_frame(unique_name, out_frame_id);
                 if (output_frame == nullptr)
                     break;
 
@@ -129,12 +129,12 @@ void bufferMerge::main_thread() {
                     swap_frames(in_buf, in_frame_id, out_buf, out_frame_id);
                 }
 
-                mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
+                out_buf->mark_frame_full(unique_name, out_frame_id);
                 out_frame_id++;
             }
 
             // We always release the input buffer even if it isn't selected.
-            mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id);
+            in_buf->mark_frame_empty(unique_name, in_frame_id);
 
             // Increase the in_frame_id for the input buffer
             in_frame_id++;

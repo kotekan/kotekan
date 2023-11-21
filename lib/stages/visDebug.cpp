@@ -51,7 +51,7 @@ void visDebug::main_thread() {
     while (!stop_thread) {
 
         // Wait for the buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, frame_id) == nullptr) {
             break;
         }
 
@@ -65,7 +65,7 @@ void visDebug::main_thread() {
         frame_dataset_counter.labels({frame.dataset_id.to_string()}).inc();
 
         // Mark the buffers and move on
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+        in_buf->mark_frame_empty(unique_name, frame_id);
 
         // Advance the current frame ids
         frame_id = (frame_id + 1) % in_buf->num_frames;
