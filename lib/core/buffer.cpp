@@ -38,6 +38,10 @@ struct zero_frames_thread_args {
     int ID;
 };
 
+//#define BUFFER_LOCK std::lock_guard<std::recursive_mutex> _lock(mutex)
+typedef std::lock_guard<std::recursive_mutex> buffer_lock;
+
+/*
 void* private_zero_frames(void* args);
 
 // Returns -1 if there is no producer with that name
@@ -48,58 +52,25 @@ void private_mark_consumer_done(Buffer* buf, const char* name, const int ID);
 
 // Marks the producer named by `name` as done for the given ID
 void private_mark_producer_done(Buffer* buf, const char* name, const int ID);
-
-// Returns 1 if all consumers are done for the given ID.
-int private_consumers_done(Buffer* buf, const int ID);
-
-// Returns 1 if all producers are done for the given ID.
-int private_producers_done(Buffer* buf, const int ID);
-
-// Resets the list of producers for the given ID
-void private_reset_producers(Buffer* buf, const int ID);
-
-// Resets the list of consumers for the given ID
-void private_reset_consumers(Buffer* buf, const int ID);
-
-/**
- * @brief Marks a frame as empty and if the buffer requires zeroing then it starts
- *        the zeroing thread and delays marking it as empty until the zeroing is done.
- * @param buf The buffer the frame to empty is in.
- * @param id The id of the frame to mark as empty.
- * @return 1 if the frame was marked as empty, 0 if it is being zeroed.
- */
-int private_mark_frame_empty(Buffer* buf, const int id);
-
-//void private_mark_frame_full(Buffer* buf, const char* name, const int ID);
+*/
 
 GenericBuffer::GenericBuffer(const std::string& _buffer_name, const std::string& _buffer_type,
                              metadataPool* pool, int _num_frames) :
     num_frames(_num_frames),
     buffer_name(_buffer_name),
     buffer_type(_buffer_type),
-    metadata_pool(pool) {
-
-    CHECK_ERROR_F(pthread_mutex_init(&lock, nullptr));
-    CHECK_ERROR_F(pthread_cond_init(&full_cond, nullptr));
-    CHECK_ERROR_F(pthread_cond_init(&empty_cond, nullptr));
-
-    /*
-      for (int i = 0; i < MAX_PRODUCERS; ++i) {
-      producers[i].in_use = 0;
-      }
-      for (int i = 0; i < MAX_CONSUMERS; ++i) {
-      consumers[i].in_use = 0;
-      }
-    */
-    
-
+    metadata_pool(pool),
+    metadata(num_frames, NULL) {
+    //CHECK_ERROR_F(pthread_mutex_init(&lock, nullptr));
+    //CHECK_ERROR_F(pthread_cond_init(&full_cond, nullptr));
+    //CHECK_ERROR_F(pthread_cond_init(&empty_cond, nullptr));
 }
 
 GenericBuffer::~GenericBuffer() {
     // Free locks and cond vars
-    CHECK_ERROR_F(pthread_mutex_destroy(&lock));
-    CHECK_ERROR_F(pthread_cond_destroy(&full_cond));
-    CHECK_ERROR_F(pthread_cond_destroy(&empty_cond));
+    //CHECK_ERROR_F(pthread_mutex_destroy(&lock));
+    //CHECK_ERROR_F(pthread_cond_destroy(&full_cond));
+    //CHECK_ERROR_F(pthread_cond_destroy(&empty_cond));
 }
 
 RingBuffer::RingBuffer(metadataPool* pool, const std::string& _buffer_name, const std::string& _buffer_type) :
@@ -112,7 +83,9 @@ Buffer::Buffer(int num_frames, size_t len, metadataPool* pool, const std::string
     GenericBuffer(_buffer_name, _buffer_type, pool, num_frames),
     frame_size(len),
     // By default don't zero buffers at the end of their use.
-    zero_frames(0),
+    zero_frames(false),
+    frames(num_frames, nullptr),
+    is_full(num_frames, false),
     last_arrival_time(0),
     use_hugepages(_use_hugepages),
     mlock_frames(_mlock_frames),
@@ -140,49 +113,12 @@ Buffer::Buffer(int num_frames, size_t len, metadataPool* pool, const std::string
         aligned_frame_size = len;
     }
 
-    // Create the is_free array
-    is_full = (int*)malloc(num_frames * sizeof(int));
-    if (is_full == NULL) {
-        throw std::runtime_error("Error create Buffer:is_full array");
-    }
-    memset(is_full, 0, num_frames * sizeof(int));
-
-    // Create the array of buffer pointers.
-    frames = (uint8_t**)malloc(num_frames * sizeof(void*));
-    CHECK_MEM_F(frames);
-
-    // Create the info array
-    metadata = (metadataContainer**)malloc(num_frames * sizeof(void*));
-    CHECK_MEM_F(metadata);
-    for (int i = 0; i < num_frames; ++i) {
-        metadata[i] = NULL;
-    }
-
-    // Create the arrays for marking consumers and producers as done.
-    /*
-    producers_done = (int**)malloc(num_frames * sizeof(int*));
-    CHECK_MEM_F(producers_done);
-    consumers_done = (int**)malloc(num_frames * sizeof(int*));
-    CHECK_MEM_F(consumers_done);
-
-    for (int i = 0; i < num_frames; ++i) {
-        producers_done[i] = (int*)malloc(MAX_PRODUCERS * sizeof(int));
-        consumers_done[i] = (int*)malloc(MAX_CONSUMERS * sizeof(int));
-
-        CHECK_MEM_F(producers_done[i]);
-        CHECK_MEM_F(consumers_done[i]);
-
-        private_reset_producers(this, i);
-        private_reset_consumers(this, i);
-    }
-    */
-
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
         if (len) {
             frames[i] = buffer_malloc(aligned_frame_size, numa_node, use_hugepages,
                                            mlock_frames, zero_new_frames);
-            if (frames[i] == NULL) {
+            if (frames[i] == nullptr) {
                 throw std::runtime_error(fmt::format(fmt("Failed to allocate Buffer memory: %d bytes: %s (%d)"), aligned_frame_size, strerror(errno), errno));
             }
         } else {
@@ -201,69 +137,54 @@ Buffer::Buffer(int num_frames, size_t len, metadataPool* pool, const std::string
 }
 
 Buffer::~Buffer() {
-    for (int i = 0; i < num_frames; ++i) {
+    for (int i = 0; i < num_frames; ++i)
         buffer_free(frames[i], aligned_frame_size, use_hugepages);
-        /*
-          free(producers_done[i]);
-          free(consumers_done[i]);
-        */
-    }
-
-    free(frames);
-    free(is_full);
-    free(metadata);
-    //free(producers_done);
-    //free(consumers_done);
 }
 
-void mark_frame_full(Buffer* buf, const char* name, const int ID) {
+void Buffer::mark_frame_full(const std::string& name, const int ID) {
     assert(ID >= 0);
     assert(ID < buf->num_frames);
 
     // DEBUG_F("Frame %s[%d] being marked full by producer %s\n", buf->buffer_name, ID, name);
 
-    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
+    {
+        buffer_lock lock(mutex);
 
-    //private_mark_frame_full(buf, name, ID);
-    //void private_mark_frame_full(Buffer* buf, const char* name, const int ID) {
-    int set_full = 0;
-    int set_empty = 0;
+        bool set_full = false;
+        bool set_empty = false;
 
-    private_mark_producer_done(buf, name, ID);
-    if (private_producers_done(buf, ID) == 1) {
-        private_reset_producers(buf, ID);
-        buf->is_full[ID] = 1;
-        buf->last_arrival_time = e_time();
-        set_full = 1;
+        private_mark_producer_done(name, ID);
+        if (private_producers_done(ID)) {
+            private_reset_producers(ID);
+            is_full[ID] = true;
+            last_arrival_time = e_time();
+            set_full = true;
 
-        // If there are no consumers registered then we can just mark the buffer empty
-        if (private_consumers_done(buf, ID) == 1) {
-            DEBUG_F("No consumers are registered on %s dropping data in frame %d...",
-                    buf->buffer_name, ID);
-            buf->is_full[ID] = 0;
-            if (buf->metadata[ID] != NULL) {
-                decrement_metadata_ref_count(buf->metadata[ID]);
-                buf->metadata[ID] = NULL;
+            // If there are no consumers registered then we can just mark the buffer empty
+            if (private_consumers_done(ID)) {
+                DEBUG("No consumers are registered on {:s} dropping data in frame {:d}...",
+                      buffer_name, ID);
+                is_full[ID] = false;
+                if (metadata[ID] != NULL) {
+                    decrement_metadata_ref_count(metadata[ID]);
+                    metadata[ID] = NULL;
+                }
+                set_empty = true;
+                private_reset_consumers(ID);
             }
-            set_empty = 1;
-            private_reset_consumers(buf, ID);
         }
     }
-    //}
-
-    CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
 
     // Signal consumer
-    if (set_full == 1) {
-        CHECK_ERROR_F(pthread_cond_broadcast(&buf->full_cond));
-    }
+    if (set_full)
+        //CHECK_ERROR_F(pthread_cond_broadcast(&buf->full_cond));
+        full_cond.notify_all();
 
     // Signal producer
-    if (set_empty == 1) {
+    if (set_empty) {
         // CHECK_ERROR_F( pthread_cond_broadcast(&buf->empty_cond) );
     }
 }
-
 
 void* private_zero_frames(void* args) {
 
@@ -286,7 +207,7 @@ void* private_zero_frames(void* args) {
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 
     buf->is_full[ID] = 0;
-    private_reset_consumers(buf, ID);
+    private_reset_consumers(ID);
 
     CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
 
@@ -304,7 +225,7 @@ void zero_frames(Buffer* buf) {
     CHECK_ERROR_F(pthread_mutex_unlock(&buf->lock));
 }
 
-void mark_frame_empty(Buffer* buf, const char* consumer_name, const int ID) {
+void mark_frame_empty(Buffer* buf, const std::string& consumer_name, const int ID) {
     assert(ID >= 0);
     assert(ID < buf->num_frames);
     int broadcast = 0;
@@ -329,11 +250,11 @@ void mark_frame_empty(Buffer* buf, const char* consumer_name, const int ID) {
         broadcast = 1;
 
     } else {
-    
-        private_mark_consumer_done(buf, consumer_name, ID);
 
-        if (private_consumers_done(buf, ID) == 1) {
-            broadcast = private_mark_frame_empty(buf, ID);
+        buf->consumers.at(consumer_name).is_done[ID] = true;
+
+        if (private_consumers_done(ID)) {
+            broadcast = private_mark_frame_empty(ID);
         }
 
     }
@@ -346,14 +267,14 @@ void mark_frame_empty(Buffer* buf, const char* consumer_name, const int ID) {
     }
 }
 
-int private_mark_frame_empty(Buffer* buf, const int id) {
-    int broadcast = 0;
-    if (buf->zero_frames == 1) {
+bool Buffer::private_mark_frame_empty(const int ID) {
+    bool broadcast = false;
+    if (zero_frames == 1) {
         pthread_t zero_t;
         struct zero_frames_thread_args* zero_args =
             (struct zero_frames_thread_args*)malloc(sizeof(struct zero_frames_thread_args));
-        zero_args->ID = id;
-        zero_args->buf = buf;
+        zero_args->ID = ID;
+        zero_args->buf = this;
 
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
@@ -364,18 +285,18 @@ int private_mark_frame_empty(Buffer* buf, const int id) {
         CHECK_ERROR_F(pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &cpuset));
         CHECK_ERROR_F(pthread_detach(zero_t));
     } else {
-        buf->is_full[id] = 0;
-        private_reset_consumers(buf, id);
-        broadcast = 1;
+        is_full[ID] = 0;
+        private_reset_consumers(ID);
+        broadcast = true;
     }
-    if (buf->metadata[id] != NULL) {
-        decrement_metadata_ref_count(buf->metadata[id]);
-        buf->metadata[id] = NULL;
+    if (metadata[ID] != NULL) {
+        decrement_metadata_ref_count(metadata[ID]);
+        metadata[ID] = NULL;
     }
     return broadcast;
 }
 
-uint8_t* wait_for_empty_frame(Buffer* buf, const char* producer_name, const int ID) {
+uint8_t* wait_for_empty_frame(Buffer* buf, const std::string& producer_name, const int ID) {
     assert(ID >= 0);
     assert(ID < buf->num_frames);
 
@@ -383,13 +304,12 @@ uint8_t* wait_for_empty_frame(Buffer* buf, const char* producer_name, const int 
 
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 
-    int producer_id = private_get_producer_id(buf, producer_name);
-    assert(producer_id != -1);
+    auto& pro = buf->producers[producer_name];
 
     // If the buffer isn't full, i.e. is_full[ID] == 0, then we never sleep on the cond var.
     // The second condition stops us from using a buffer we've already filled,
     // and forces a wait until that buffer has been marked as empty.
-    while ((buf->is_full[ID] == 1 || buf->producers.at(producer_name).is_done[ID])
+    while ((buf->is_full[ID] == 1 || pro.is_done[ID])
            && buf->shutdown_signal == 0) {
         DEBUG_F("wait_for_empty_frame: %s waiting for empty frame ID = %d in buffer %s",
                 producer_name, ID, buf->buffer_name);
@@ -407,7 +327,7 @@ uint8_t* wait_for_empty_frame(Buffer* buf, const char* producer_name, const int 
     if (buf->shutdown_signal == 1)
         return NULL;
 
-    buf->producers.at(producer_name).last_frame_acquired = ID;
+    pro.last_frame_acquired = ID;
     return buf->frames[ID];
 }
 
@@ -474,7 +394,7 @@ void buffer_wrote_to_ring_buffer(Buffer* buf, /*const char* name,*/ size_t sz) {
     CHECK_ERROR_F(pthread_cond_broadcast(&buf->full_cond));
 }
 
-uint8_t* buffer_claim_next_full_frame(Buffer* buf, const char*, const int frame_id) {
+uint8_t* buffer_claim_next_full_frame(Buffer* buf, const std::string&, const int frame_id) {
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 
     //int consumer_id = private_get_consumer_id(buf, name);
@@ -578,13 +498,13 @@ void GenericBuffer::register_producer(const std::string& name) {
   }
 */
 
-void private_reset_producers(Buffer* buf, const int ID) {
-    for (auto& x : buf->producers)
+void Buffer::private_reset_producers(const int ID) {
+    for (auto& x : producers)
         x.second.is_done[ID] = false;
 }
 
-void private_reset_consumers(Buffer* buf, const int ID) {
-    for (auto& x : buf->consumers)
+void Buffer::private_reset_consumers(const int ID) {
+    for (auto& x : consumers)
         x.second.is_done[ID] = false;
 }
 
@@ -595,25 +515,25 @@ void private_mark_consumer_done(Buffer* buf, const std::string& name, const int 
     con.is_done[ID] = true;
 }
 
-void private_mark_producer_done(Buffer* buf, const char* name, const int ID) {
-    auto& pro = buf->producers.at(name);
+void Buffer::private_mark_producer_done(const std::string& name, const int ID) {
+    auto& pro = producers.at(name);
     assert(pro.is_done[ID] == false);
     pro.last_frame_released = ID;
     pro.is_done[ID] = true;
 }
 
-int private_consumers_done(Buffer* buf, const int ID) {
-    for (auto& c : buf->consumers)
+bool Buffer::private_consumers_done(const int ID) {
+    for (auto& c : consumers)
         if (!c.second.is_done[ID])
-            return 0;
-    return 1;
+            return false;
+    return true;
 }
 
-int private_producers_done(Buffer* buf, const int ID) {
-    for (auto& x : buf->producers)
+bool Buffer::private_producers_done(const int ID) {
+    for (auto& x : producers)
         if (!x.second.is_done[ID])
-            return 0;
-    return 1;
+            return false;
+    return true;
 }
 
 int is_frame_empty(Buffer* buf, const int ID) {
@@ -686,7 +606,7 @@ uint8_t* wait_for_full_frame(Buffer* buf, const std::string& name, const int ID)
     return buf->frames[ID];
 }
 
-int wait_for_full_frame_timeout(Buffer* buf, const char* name, const int ID,
+int wait_for_full_frame_timeout(Buffer* buf, const std::string& name, const int ID,
                                 const struct timespec timeout) {
     CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 

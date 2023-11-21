@@ -79,10 +79,10 @@ void computeDualpolPower::main_thread() {
     std::thread this_thread[nthreads];
 
     while (!stop_thread) {
-        in_local = (unsigned char*)wait_for_full_frame(buf_in, unique_name.c_str(), buf_in_id);
+        in_local = (unsigned char*)wait_for_full_frame(buf_in, unique_name, buf_in_id);
         if (in_local == nullptr)
             break;
-        out_local = (unsigned char*)wait_for_empty_frame(buf_out, unique_name.c_str(), buf_out_id);
+        out_local = (unsigned char*)wait_for_empty_frame(buf_out, unique_name, buf_out_id);
         if (out_local == nullptr)
             break;
 #ifdef DEBUGGING

@@ -140,7 +140,7 @@ void beamformingPostProcess::main_thread() {
 
             // This call is blocking!
             in_frame[i] =
-                wait_for_full_frame(in_buf[gpu_id], unique_name.c_str(), in_buffer_ID[gpu_id]);
+                wait_for_full_frame(in_buf[gpu_id], unique_name, in_buffer_ID[gpu_id]);
             if (in_frame[i] == nullptr)
                 goto end_loop;
 

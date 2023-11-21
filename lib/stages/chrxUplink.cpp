@@ -105,7 +105,7 @@ void chrxUplink::main_thread() {
 
         if (_enable_gating) {
             //            DEBUG("Getting gated buffer");
-            gate_frame = wait_for_full_frame(gate_buf, unique_name.c_str(), buffer_ID);
+            gate_frame = wait_for_full_frame(gate_buf, unique_name, buffer_ID);
             if (gate_frame == nullptr)
                 break;
 

@@ -36,6 +36,8 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <mutex>
+#include <condition_variable>
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
@@ -152,14 +154,87 @@ public:
      */
     int get_num_producers();
 
+    /**
+     * @brief Allocates a new metadata object from the associated pool
+     *
+     * Needs to be called by the first producer in a chain, or by a producer
+     * generating a new type of metadata for the next stage.  If the producer is
+     * just passing the metadata down stream from the input buffer use @c pass_metadata()
+     *
+     * The metadata type is based on the pool type associated with the buffer object
+     *
+     * @param[in] frame_id The frame ID to assign a metadata object too.
+     */
+    void allocate_new_metadata_object(int frame_id);
+
+    /**
+     * @brief Swaps the provided frame of memory with the internal frame
+     *        given by @c frame_id
+     *
+     * @warning The frame returned will no longer be controlled by this buffer,
+     *          and so must be freeded by the system taking it.  Also the frame
+     *          given will be used and freed by the buffer, so the providing system
+     *          must not attempt to free it.
+     * @warning This function should only be used by single producer stages.
+     * @warning The extra frame provided to this function must be allocated with
+     *          @c buffer_malloc() and the frame returned by this function must be
+     *          freed with @c buffer_free()
+     * @warning Take care when using this function!
+     *
+     * @param frame_id The frame to swap
+     * @param external_frame The extra frame to use in place of the existing internal frame.
+     * @return The internal frame
+     */
+    uint8_t* swap_external_frame(int frame_id, uint8_t* external_frame);
+
+    /**
+     * @brief Gets the raw metadata block for the given frame
+     *
+     * Returns a raw <tt>void *</tt> pointer which can then be cast as the
+     * the metadata type associated with the buffer.
+     *
+     * @warning Only call this function for a @c frame_id for which you have
+     * access via a call to @c wait_for_full_frame() and use this metadata before
+     * calling @p mark_frame_empty(), because it could be dereferenced and returned
+     * to the metadata pool after that call.
+     * If you are adding a new metadata object, please *also* call
+     * @c allocate_new_metadata_object() before asking for the metadata object.
+     *
+     * @param[in] frame_id The frame to return the metadata for.
+     * @returns A pointer to the metadata object (needs to be cast)
+     */
+    void* get_metadata(int frame_id);
+
+    /**
+     * @brief Returns the container for the metadata.
+     *
+     * This works exactly the same way as @p get_metadata() but returns a
+     * @c metadataContainer which holds the reference count, locks, etc.
+     *
+     * @warning Only call this function for a @c frame_id for which you have
+     * access via a call to @c wait_for_full_frame() and use this metadata before
+     * calling @p mark_frame_empty(), because it could be dereferenced and returned
+     * to the metadata pool after that call.
+     * If you are adding a new metadata object, please *also* call
+     * @c allocate_new_metadata_object() before asking for the metadata object.
+     *
+     * @param[in] frame_id The frame to return the metadata for.
+     * @returns A pointer to the metadata_container
+     */
+    metadataContainer* get_metadata_container(int frame_id);
+
     /// The main lock for frame state management
-    pthread_mutex_t lock;
+    std::recursive_mutex mutex;
 
+    // Lock for full condition variable
+    //std::mutex full_mutex;
     /// The condition variable for calls to @c wait_for_full_buffer
-    pthread_cond_t full_cond;
+    std::condition_variable_any full_cond;
 
+    // Lock for empty condition variable
+    //std::mutex empty_mutex;
     /// The condition variable for calls to @c wait_for_empty_buffer
-    pthread_cond_t empty_cond;
+    std::condition_variable_any empty_cond;
 
     /// The number of frames kept by this object
     int num_frames;
@@ -186,9 +261,30 @@ public:
     /// The pool of info objects
     metadataPool* metadata_pool;
 
+    /// Array of buffer info objects, for tracking information about each buffer.
+    std::vector<metadataContainer*> metadata;
+
 protected:
     //virtual void registered_producer(StageInfo&) {}
-    
+
+private:
+    void private_mark_producer_done(const std::string& name, const int ID);
+    // Returns true if all producers are done for the given ID.
+    bool private_producers_done(const int ID);
+    // Resets the list of producers for the given ID
+    void private_reset_producers(const int ID);
+    // Returns true if all consumers are done for the given ID.
+    bool private_consumers_done(const int ID);
+    /**
+     * @brief Marks a frame as empty and if the buffer requires zeroing then it starts
+     *        the zeroing thread and delays marking it as empty until the zeroing is done.
+     * @param id The id of the frame to mark as empty.
+     * @return 1 if the frame was marked as empty, 0 if it is being zeroed.
+     */
+     bool private_mark_frame_empty(const int ID);
+    // Resets the list of consumers for the given ID
+    void private_reset_consumers(const int ID);
+
 };
 
 class RingBuffer : public GenericBuffer {
@@ -198,6 +294,25 @@ public:
                const std::string&); //, int, bool, bool, bool);
     ~RingBuffer() override {}
     bool is_basic() override { return false; }
+
+    //void buffer_set_ring_buffer_size(Buffer* buf, size_t sz);
+
+    //void buffer_set_ring_buffer_read_size(Buffer* buf, size_t sz);
+
+    int buffer_wait_for_ring_buffer_writable(size_t sz);
+
+    void buffer_wrote_to_ring_buffer(size_t sz);
+
+    uint8_t* buffer_claim_next_full_frame(const std::string& consumer_name, const int frame_id);
+    
+    /// Ring buffers only, SINGLE CONSUMER:
+    size_t ring_buffer_size;
+    size_t ring_buffer_elements;
+    size_t ring_buffer_elements_claimed;
+    size_t ring_buffer_read_size;
+    size_t ring_buffer_write_cursor;
+    size_t ring_buffer_read_cursor;
+    size_t ring_buffer_full_frame;
 };
 
 /**
@@ -269,6 +384,113 @@ public:
      */
     void print_full_status() override;
 
+    /**
+     * @brief Zero all frames after all consumers have marked them as empty
+     *
+     */
+    void do_zero_frames();
+
+    /**
+     * @brief Marks a buffer frame as full.
+     *
+     * This function is used by a producer to sign off that it will no longer write
+     * data to this frame.
+     *
+     * @param[in] producer_name The name of the producer registered with @c register_producer()
+     * @param[in] frame_id The frame ID to be marked as full
+     */
+    void mark_frame_full(const std::string& producer_name, const int frame_id);
+
+    /**
+     * @brief Marks a buffer frame as empty
+     *
+     * Used by a consumer to sign off that it will no longer read data from this frame.
+     *
+     * @param[in] consumer_name The name of the consumer registered with @c register_consumer()
+     * @param[in] frame_id The frame ID to be marked as empty
+     */
+    void mark_frame_empty(const std::string& consumer_name, const int frame_id);
+
+    /**
+     * @brief Blocks until the frame requested by frame_id is empty.
+     *
+     * This blocking function will return only when the frame_id request is marked
+     * as empty internally, or the function @c send_shutdown_signal() is called, which
+     * causes the function to return a @c NULL pointer.
+     * Generally a stage should exit and cleanup if NULL is returned.
+     *
+     * @param[in] producer_name The name of the registered producer requesting the frame_id
+     * @param[in] frame_id The id of the frame to wait for.
+     * @returns A pointer to the frame, or NULL if the buffer is shutting down.
+     * @warning After calling this function for a given producer and frame_id it
+     *          should not be called again on that frame_id until after
+     *          a call to @c mark_frame_full() with that producer and frame_id
+     */
+    uint8_t* wait_for_empty_frame(const std::string& producer_name, const int frame_id);
+    
+    /**
+     * @brief Blocks until the frame requested by frame_id is full.
+     *
+     * This blocking function will return only when the frame_id request is marked
+     * as full internally, or the function @c send_shutdown_signal() is called, which
+     * causes the function to return a @c NULL pointer.
+     * Generally a stage should exit and cleanup if NULL is returned.
+     *
+     * @param[in] consumer_name The name of the registered producer requesting the frame_id
+     * @param[in] frame_id The id of the frame to wait for.
+     * @returns A pointer to the frame, or NULL if the buffer is shutting down.
+     * @warning After calling this function for a given consumer and frame_id it
+     *          should not be called again on that frame_id until after
+     *          a call to @c mark_frame_empty() with that consumer and frame_id
+     */
+    uint8_t* wait_for_full_frame(const std::string& consumer_name, const int frame_id);
+
+    /**
+     * @brief Wait for a full frame on the given buffer up to timeout.
+     *
+     * This function will timeout after `wait` seconds.
+     *
+     * @param[in] name Name of the stage.
+     * @param[in] ID Frame ID to wait at.
+     * @param[in] timeout Exit after this we exceed this *absolute* time.
+     *
+     * @return Return status:
+     *   - `0`: Success! We have a new frame.
+     *   - `1`: Failure! We timed out waiting.
+     *   - `-1`: Failure! We received the thread exit signal.
+     **/
+    int wait_for_full_frame_timeout(const std::string& name, const int ID,
+                                    const struct timespec timeout);
+
+    /**
+     * @brief Checks if the requested buffer is empty.
+     *
+     * Returns 1 if the buffer is empty, and 0 if the frame is full.
+     *
+     * @param[in] frame_id The id of the frame to check.
+     * @warning This should not be used to gain access to an empty frame, use @c wait_for_empty_frame()
+     */
+    int is_frame_empty(const int frame_id);
+
+    /**
+     * @brief Returns the number of currently full frames.
+     *
+     * @returns The number of currently full frames in the buffer
+     */
+    int get_num_full_frames();
+
+    /**
+     * @brief Returns the last time a frame was marked as full
+     * @param buf The buffer to get the last arrival time for.
+     * @return A double (with units: seconds) containing the unix time of the last frame arrival
+     */
+    double get_last_arrival_time();
+
+    /**
+     * @brief Prints a picture of the frames which are currently full.
+     */
+    void print_buffer_status();
+
     //protected:
     /// The size of each frame in bytes.
     size_t frame_size;
@@ -298,22 +520,19 @@ public:
     //int** consumers_done;
 
     /// Flag set to indicate if the frames should be zeroed between uses
-    int zero_frames;
+    bool zero_frames;
 
     /// The array of frames (the actual data we are carrying)
-    uint8_t** frames;
+    std::vector<uint8_t*> frames;
 
     /**
      * @brief Flag variables to say which frames are full
      * A 0 at index I means the frame at index I is not full, one means it is full.
      */
-    int* is_full;
+    std::vector<bool> is_full;
 
     /// The last time a frame was marked as full (used for arrival rate)
     double last_arrival_time;
-
-    /// Array of buffer info objects, for tracking information about each buffer.
-    metadataContainer** metadata;
 
     /// This buffer use huge pages for its frames if the following is true
     bool use_hugepages;
@@ -323,15 +542,6 @@ public:
 
     /// The NUMA node the frames are allocated in
     int numa_node;
-
-    /// Ring buffers only, SINGLE CONSUMER:
-    size_t ring_buffer_size;
-    size_t ring_buffer_elements;
-    size_t ring_buffer_elements_claimed;
-    size_t ring_buffer_read_size;
-    size_t ring_buffer_write_cursor;
-    size_t ring_buffer_read_cursor;
-    size_t ring_buffer_full_frame;
 };
 
 /**
@@ -364,171 +574,6 @@ Buffer* create_buffer(int num_frames, size_t frame_size, metadataPool* pool,
  * @param[in] buf The buffer to delete.
  */
 void delete_buffer(Buffer* buf);
-
-/**
- * @brief Zero all frames after all consumers have marked them as empty
- *
- * @param[in] buf The buffer object which will be set to automatically zero all frames
- */
-void zero_frames(Buffer* buf);
-
-/**
- * @brief Marks a buffer frame as full.
- *
- * This function is used by a producer to sign off that it will no longer write
- * data to this frame.
- *
- * @param[in] buf The buffer containing the frame to mark as full
- * @param[in] producer_name The name of the producer registered with @c register_producer()
- * @param[in] frame_id The frame ID to be marked as full
- */
-void mark_frame_full(Buffer* buf, const char* producer_name, const int frame_id);
-
-/**
- * @brief Marks a buffer frame as empty
- *
- * Used by a consumer to sign off that it will no longer read data from this frame.
- *
- * @param[in] buf The buffer containing the frame to mark as empty
- * @param[in] consumer_name The name of the consumer registered with @c register_consumer()
- * @param[in] frame_id The frame ID to be marked as empty
- */
-void mark_frame_empty(Buffer* buf, const char* consumer_name, const int frame_id);
-
-/**
- * @brief Blocks until the frame requested by frame_id is empty.
- *
- * This blocking function will return only when the frame_id request is marked
- * as empty internally, or the function @c send_shutdown_signal() is called, which
- * causes the function to return a @c NULL pointer.
- * Generally a stage should exit and cleanup if NULL is returned.
- *
- * @param[in] buf The buffer object
- * @param[in] producer_name The name of the registered producer requesting the frame_id
- * @param[in] frame_id The id of the frame to wait for.
- * @returns A pointer to the frame, or NULL if the buffer is shutting down.
- * @warning After calling this function for a given producer and frame_id it
- *          should not be called again on that frame_id until after
- *          a call to @c mark_frame_full() with that producer and frame_id
- */
-uint8_t* wait_for_empty_frame(Buffer* buf, const char* producer_name, const int frame_id);
-
-/// RING BUFFER
-
-void buffer_set_ring_buffer_size(Buffer* buf, size_t sz);
-
-void buffer_set_ring_buffer_read_size(Buffer* buf, size_t sz);
-
-int buffer_wait_for_ring_buffer_writable(Buffer* buf, size_t sz);
-
-void buffer_wrote_to_ring_buffer(Buffer* buf, size_t sz);
-
-uint8_t* buffer_claim_next_full_frame(Buffer* buf, const char* consumer_name, const int frame_id);
-
-/**
- * @brief Blocks until the frame requested by frame_id is full.
- *
- * This blocking function will return only when the frame_id request is marked
- * as full internally, or the function @c send_shutdown_signal() is called, which
- * causes the function to return a @c NULL pointer.
- * Generally a stage should exit and cleanup if NULL is returned.
- *
- * @param[in] buf The buffer object
- * @param[in] consumer_name The name of the registered producer requesting the frame_id
- * @param[in] frame_id The id of the frame to wait for.
- * @returns A pointer to the frame, or NULL if the buffer is shutting down.
- * @warning After calling this function for a given consumer and frame_id it
- *          should not be called again on that frame_id until after
- *          a call to @c mark_frame_empty() with that consumer and frame_id
- */
-uint8_t* wait_for_full_frame(Buffer* buf, const char* consumer_name, const int frame_id);
-
-
-/**
- * @brief Wait for a full frame on the given buffer up to timeout.
- *
- * This function will timeout after `wait` seconds.
- *
- * @param[in] buf Buffer to wait on.
- * @param[in] name Name of the stage.
- * @param[in] ID Frame ID to wait at.
- * @param[in] timeout Exit after this we exceed this *absolute* time.
- *
- * @return Return status:
- *   - `0`: Success! We have a new frame.
- *   - `1`: Failure! We timed out waiting.
- *   - `-1`: Failure! We received the thread exit signal.
- **/
-int wait_for_full_frame_timeout(Buffer* buf, const char* name, const int ID,
-                                const struct timespec timeout);
-
-/**
- * @brief Checks if the requested buffer is empty.
- *
- * Returns 1 if the buffer is empty, and 0 if the frame is full.
- *
- * @param[in] buf The buffer object
- * @param[in] frame_id The id of the frame to check.
- * @warning This should not be used to gain access to an empty frame, use @c wait_for_empty_frame()
- */
-int is_frame_empty(Buffer* buf, const int frame_id);
-
-/**
- * @brief Returns the number of currently full frames.
- *
- * @param[in] buf The buffer object
- * @returns The number of currently full frames in the buffer
- */
-int get_num_full_frames(Buffer* buf);
-
-/**
- * @brief Returns the last time a frame was marked as full
- * @param buf The buffer to get the last arrival time for.
- * @return A double (with units: seconds) containing the unix time of the last frame arrival
- */
-double get_last_arrival_time(Buffer* buf);
-
-/**
- * @brief Prints a picture of the frames which are currently full.
- *
- * @param[in] buf The buffer object
- */
-void print_buffer_status(Buffer* buf);
-
-/**
- * @brief Allocates a new metadata object from the associated pool
- *
- * Needs to be called by the first producer in a chain, or by a producer
- * generating a new type of metadata for the next stage.  If the producer is
- * just passing the metadata down stream from the input buffer use @c pass_metadata()
- *
- * The metadata type is based on the pool type associated with the buffer object
- *
- * @param[in] buf The buffer object
- * @param[in] frame_id The frame ID to assign a metadata object too.
- */
-void allocate_new_metadata_object(Buffer* buf, int frame_id);
-
-/**
- * @brief Swaps the provided frame of memory with the internal frame
- *        given by @c frame_id
- *
- * @warning The frame returned will no longer be controlled by this buffer,
- *          and so must be freeded by the system taking it.  Also the frame
- *          given will be used and freed by the buffer, so the providing system
- *          must not attempt to free it.
- * @warning This function should only be used by single producer stages.
- * @warning The extra frame provided to this function must be allocated with
- *          @c buffer_malloc() and the frame returned by this function must be
- *          freed with @c buffer_free()
- * @warning Take care when using this function!
- *
- * @param buf The buffer object to swap with
- * @param frame_id The frame to swap
- * @param external_frame The extra frame to use in place of the existing internal frame.
- * @return The internal frame
- */
-uint8_t* swap_external_frame(Buffer* buf, int frame_id, uint8_t* external_frame);
 
 /**
  * @brief Swaps frames between two buffers with identical size for the given frame_ids
@@ -568,44 +613,6 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_huge_pages, bool meml
  * @param use_huge_pages Toggles the type of "free" call used, must match @c buffer_malloc type
  */
 void buffer_free(uint8_t* frame_pointer, size_t size, bool use_huge_pages);
-
-/**
- * @brief Gets the raw metadata block for the given frame
- *
- * Returns a raw <tt>void *</tt> pointer which can then be cast as the
- * the metadata type associated with the buffer.
- *
- * @warning Only call this function for a @c frame_id for which you have
- * access via a call to @c wait_for_full_frame() and use this metadata before
- * calling @p mark_frame_empty(), because it could be dereferenced and returned
- * to the metadata pool after that call.
- * If you are adding a new metadata object, please *also* call
- * @c allocate_new_metadata_object() before asking for the metadata object.
- *
- * @param[in] buf The buffer object
- * @param[in] frame_id The frame to return the metadata for.
- * @returns A pointer to the metadata object (needs to be cast)
- */
-void* get_metadata(Buffer* buf, int frame_id);
-
-/**
- * @brief Returns the container for the metadata.
- *
- * This works exactly the same way as @p get_metadata() but returns a
- * @c metadataContainer which holds the reference count, locks, etc.
- *
- * @warning Only call this function for a @c frame_id for which you have
- * access via a call to @c wait_for_full_frame() and use this metadata before
- * calling @p mark_frame_empty(), because it could be dereferenced and returned
- * to the metadata pool after that call.
- * If you are adding a new metadata object, please *also* call
- * @c allocate_new_metadata_object() before asking for the metadata object.
- *
- * @param[in] buf The buffer object
- * @param[in] frame_id The frame to return the metadata for.
- * @returns A pointer to the metadata_container
- */
-metadataContainer* get_metadata_container(Buffer* buf, int frame_id);
 
 /**
  * @brief Transfers metadata from one buffer to another for a given frame.

@@ -101,7 +101,7 @@ void fullPacketDump::main_thread() {
     while (!stop_thread) {
 
         // This call is blocking!
-        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        frame = wait_for_full_frame(buf, unique_name, frame_id);
         if (frame == nullptr)
             break;
 

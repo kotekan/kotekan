@@ -44,12 +44,12 @@ void invalidateVDIFframes::main_thread() {
 
         lost_samples = 0;
 
-        uint8_t* data_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_frame_id);
+        uint8_t* data_frame = out_buf->wait_for_empty_frame(unique_name, out_buf_frame_id);
         if (data_frame == nullptr)
             break;
 
         uint8_t* flag_frame =
-            wait_for_full_frame(lost_samples_buf, unique_name.c_str(), lost_samples_buf_frame_id);
+            lost_samples_buf->wait_for_full_frame(unique_name, lost_samples_buf_frame_id);
         if (flag_frame == nullptr)
             break;
 
@@ -73,10 +73,10 @@ void invalidateVDIFframes::main_thread() {
         atomic_add_lost_timesamples(out_buf, out_buf_frame_id, lost_samples);
         lost_frame_total.inc(lost_samples);
 
-        mark_frame_empty(lost_samples_buf, unique_name.c_str(), lost_samples_buf_frame_id);
+        lost_samples_buf->mark_frame_empty(unique_name, lost_samples_buf_frame_id);
         lost_samples_buf_frame_id = (lost_samples_buf_frame_id + 1) % lost_samples_buf->num_frames;
 
-        mark_frame_full(out_buf, unique_name.c_str(), out_buf_frame_id);
+        out_buf->mark_frame_full(unique_name, out_buf_frame_id);
         out_buf_frame_id = (out_buf_frame_id + 1) % out_buf->num_frames;
     }
 }
