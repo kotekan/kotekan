@@ -94,7 +94,7 @@ gpuB:
     commands: &command_list2
     - name: cudaInputData
       in_buf: host_mid
-    - name: cudaSyncOutput
+    #- name: cudaSyncOutput
     - name: cudaOutputData
       #gpu_mem: in
       gpu_mem: chunk

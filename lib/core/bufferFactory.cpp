@@ -82,6 +82,8 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
     bool mlock_frames = config.get_default<bool>(location, "mlock_frames", true);
     bool zero_new_frames = config.get_default<bool>(location, "zero_new_frames", true);
 
+    std::string s_log_level = config.get<std::string>(location, "log_level");
+
     metadataPool* pool = nullptr;
     if (metadataPool_name != "none") {
         if (metadataPools.count(metadataPool_name) != 1) {
@@ -119,6 +121,8 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
                 type_name, name, num_frames, frame_size, metadataPool_name, numa_node);
     Buffer* buf = new Buffer(num_frames, frame_size, pool, name, type_name,
                              numa_node, use_hugepages, mlock_frames, zero_new_frames);
+    buf->set_log_level(s_log_level);
+    buf->set_log_prefix("Buffer \"" + name + "\"");
     return buf;
 }
 

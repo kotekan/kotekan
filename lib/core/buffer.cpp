@@ -39,39 +39,20 @@ struct zero_frames_thread_args {
     int ID;
 };
 
-//#define BUFFER_LOCK std::lock_guard<std::recursive_mutex> _lock(mutex)
 typedef std::lock_guard<std::recursive_mutex> buffer_lock;
-
-/*
-void* private_zero_frames(void* args);
-
-// Returns -1 if there is no producer with that name
-int private_get_producer_id(Buffer* buf, const char* name);
-
-// Marks the consumer named by `name` as done for the given ID
-void private_mark_consumer_done(Buffer* buf, const char* name, const int ID);
-
-// Marks the producer named by `name` as done for the given ID
-void private_mark_producer_done(Buffer* buf, const char* name, const int ID);
-*/
 
 GenericBuffer::GenericBuffer(const std::string& _buffer_name, const std::string& _buffer_type,
                              metadataPool* pool, int _num_frames) :
     num_frames(_num_frames),
+    shutdown_signal(false),
     buffer_name(_buffer_name),
     buffer_type(_buffer_type),
     metadata_pool(pool),
     metadata(num_frames, NULL) {
-    //CHECK_ERROR_F(pthread_mutex_init(&lock, nullptr));
-    //CHECK_ERROR_F(pthread_cond_init(&full_cond, nullptr));
-    //CHECK_ERROR_F(pthread_cond_init(&empty_cond, nullptr));
+    //set_log_prefix("Buffer \"" + _buffer_name + \"");
 }
 
 GenericBuffer::~GenericBuffer() {
-    // Free locks and cond vars
-    //CHECK_ERROR_F(pthread_mutex_destroy(&lock));
-    //CHECK_ERROR_F(pthread_cond_destroy(&full_cond));
-    //CHECK_ERROR_F(pthread_cond_destroy(&empty_cond));
 }
 
 RingBuffer::RingBuffer(metadataPool* pool, const std::string& _buffer_name, const std::string& _buffer_type) :
@@ -198,7 +179,7 @@ void Buffer::mark_frame_full(const std::string& name, const int ID) {
     }
 }
 
-//// DON't change this one
+//// Don't change this one
 void* private_zero_frames(void* args) {
     int ID = ((struct zero_frames_thread_args*)(args))->ID;
     Buffer* buf = ((struct zero_frames_thread_args*)(args))->buf;
@@ -314,7 +295,7 @@ uint8_t* Buffer::wait_for_empty_frame(const std::string& producer_name, const in
     (void)print_stat;
 
     if (shutdown_signal)
-        return NULL;
+        return nullptr;
     pro->last_frame_acquired = ID;
     return frames[ID];
 }
@@ -330,7 +311,6 @@ void GenericBuffer::register_consumer(const std::string& name) {
         assert(0); // Optional
         return;
     }
-    //registered_consumer(ins.second);
 }
 
 void GenericBuffer::unregister_consumer(const std::string& name) {
@@ -372,13 +352,7 @@ void GenericBuffer::register_producer(const std::string& name) {
         assert(0); // Optional
         return;
     }
-    //registered_producer(ins.first.second);
 }
-
-/*
-  void Buffer::registered_producer(StageInfo&) {
-  }
-*/
 
 void Buffer::private_reset_producers(const int ID) {
     for (auto& x : producers)
@@ -421,9 +395,7 @@ bool Buffer::private_producers_done(const int ID) {
 bool Buffer::is_frame_empty(const int ID) {
     assert(ID >= 0);
     assert(ID < num_frames);
-
     bool empty = true;
-
     buffer_lock lock(mutex);
     if (is_full[ID])
         empty = false;
@@ -431,35 +403,43 @@ bool Buffer::is_frame_empty(const int ID) {
 }
 
 uint8_t* Buffer::wait_for_full_frame(const std::string& name, const int ID) {
-    StageInfo* con;
     std::unique_lock<std::recursive_mutex> lock(mutex);
-    con = &consumers.at(name);
+    auto& con = consumers.at(name);
     // This loop exists when is_full == 1 (i.e. a full buffer) AND
     // when this producer hasn't already marked this buffer as
-    while ((!is_full[ID] || con->is_done[ID])
-           && !shutdown_signal)
-        full_cond.wait(lock);
+    //while ((!is_full[ID] || con.is_done[ID])
+    //       && !shutdown_signal)
+    //    full_cond.wait(lock);
+
+    while (true) {
+        INFO("wait_for_full_frame: frame {:d}, is full? {:s}  is consumer done? {:s}  shutdown? {:s}",
+             ID, is_full[ID] ?"T":"F", con.is_done[ID] ?"T":"F", shutdown_signal ?"T":"F");
+        if ((!is_full[ID] || con.is_done[ID])
+            && !shutdown_signal) {
+            INFO("Waiting on condition...");
+            full_cond.wait(lock);
+        } else
+            break;
+    }
     lock.unlock();
 
     if (shutdown_signal)
         return nullptr;
-    con->last_frame_acquired = ID;
+    con.last_frame_acquired = ID;
     return frames[ID];
 }
 
 int Buffer::wait_for_full_frame_timeout(const std::string& name, const int ID,
                                         const struct timespec timeout) {
     std::chrono::duration dur = std::chrono::seconds{timeout.tv_sec} + std::chrono::nanoseconds{timeout.tv_nsec};
-    StageInfo* con;
-    std::cv_status st;
+    std::cv_status st = std::cv_status::no_timeout;
     std::unique_lock<std::recursive_mutex> lock(mutex);
-    con = &consumers.at(name);
-    int err = 0;
+    auto& con = consumers.at(name);
 
     // This loop exists when is_full == 1 (i.e. a full buffer) AND
     // when this producer hasn't already marked this buffer as
-    while ((!is_full[ID] || con->is_done[ID])
-           && !shutdown_signal && err == 0)
+    while ((!is_full[ID] || con.is_done[ID])
+           && !shutdown_signal)
         st = full_cond.wait_for(lock, dur);
     lock.unlock();
 
@@ -469,7 +449,7 @@ int Buffer::wait_for_full_frame_timeout(const std::string& name, const int ID,
     if (st == std::cv_status::timeout)
         return 1;
 
-    con->last_frame_acquired = ID;
+    con.last_frame_acquired = ID;
     return 0;
 }
 
@@ -806,6 +786,7 @@ double Buffer::get_last_arrival_time() {
 }
 
 void GenericBuffer::send_shutdown_signal() {
+    DEBUG("Setting shutdown signal");
     {
         buffer_lock lock(mutex);
         shutdown_signal = true;
