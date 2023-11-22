@@ -20,11 +20,12 @@
 class cudaFRBBeamformer : public cudaCommand {
 public:
     cudaFRBBeamformer(kotekan::Config& config, const std::string& unique_name,
-                      kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+                      kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                      int inst);
     ~cudaFRBBeamformer();
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    virtual void finalize_frame(int gpu_frame_id) override;
+    virtual void finalize_frame() override;
 
 protected:
 private:
