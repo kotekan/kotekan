@@ -40,7 +40,8 @@ clPresumZero::~clPresumZero() {
 cl_event clPresumZero::execute(int gpu_frame_id, cl_event pre_event) {
     pre_execute(gpu_frame_id);
 
-    cl_mem gpu_memory_frame = device.get_gpu_memory_array("presum", gpu_frame_id, presum_len);
+    cl_mem gpu_memory_frame =
+        device.get_gpu_memory_array("presum", gpu_frame_id, _gpu_buffer_depth, presum_len);
 
     // Data transfer to GPU
     CHECK_CL_ERROR(clEnqueueWriteBuffer(device.getQueue(0), gpu_memory_frame, CL_FALSE,

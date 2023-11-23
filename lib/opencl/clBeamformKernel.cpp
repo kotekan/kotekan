@@ -104,13 +104,14 @@ cl_event clBeamformKernel::execute(int gpu_frame_id, cl_event pre_event) {
 
     uint32_t input_frame_len = _num_elements * num_local_freq * _samples_per_data_set;
 
-    cl_mem input_memory = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
-    cl_mem phase_memory =
-        device.get_gpu_memory_array("phases", bankID, _num_elements * sizeof(float));
+    cl_mem input_memory =
+        device.get_gpu_memory_array("input", gpu_frame_id, _gpu_buffer_depth, input_frame_len);
+    cl_mem phase_memory = device.get_gpu_memory_array("phases", bankID, _gpu_buffer_depth,
+                                                      _num_elements * sizeof(float));
 
     uint32_t output_len = _samples_per_data_set * _num_data_sets * num_local_freq * 2;
-    cl_mem output_memory_frame =
-        device.get_gpu_memory_array("beamform_output_buf", gpu_frame_id, output_len);
+    cl_mem output_memory_frame = device.get_gpu_memory_array("beamform_output_buf", gpu_frame_id,
+                                                             _gpu_buffer_depth, output_len);
 
     setKernelArg(0, input_memory);
     setKernelArg(1, output_memory_frame);

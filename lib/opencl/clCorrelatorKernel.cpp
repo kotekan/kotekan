@@ -85,8 +85,10 @@ cl_event clCorrelatorKernel::execute(int gpu_frame_id, cl_event pre_event) {
     uint32_t output_len = _num_local_freq * _num_blocks * (_block_size * _block_size) * 2
                           * _num_data_sets * sizeof(int32_t);
 
-    cl_mem input_memory = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
-    cl_mem output_memory_frame = device.get_gpu_memory_array("output", gpu_frame_id, output_len);
+    cl_mem input_memory =
+        device.get_gpu_memory_array("input", gpu_frame_id, _gpu_buffer_depth, input_frame_len);
+    cl_mem output_memory_frame =
+        device.get_gpu_memory_array("output", gpu_frame_id, _gpu_buffer_depth, output_len);
 
     setKernelArg(0, input_memory);
     setKernelArg(1, output_memory_frame);

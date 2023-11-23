@@ -28,7 +28,7 @@ int clOutputBeamformResult::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     // Wait for there to be data in the input (output) buffer.
     uint8_t* frame =
-        wait_for_empty_frame(output_buffer, unique_name.c_str(), output_buffer_precondition_id);
+        output_buffer->wait_for_empty_frame(unique_name, output_buffer_precondition_id);
     if (frame == nullptr)
         return -1;
 
@@ -40,8 +40,8 @@ cl_event clOutputBeamformResult::execute(int gpu_frame_id, cl_event pre_event) {
     pre_execute(gpu_frame_id);
 
     uint32_t output_len = _samples_per_data_set * _num_data_sets * _num_local_freq * 2;
-    cl_mem output_memory_frame =
-        device.get_gpu_memory_array("beamform_output_buf", gpu_frame_id, output_len);
+    cl_mem output_memory_frame = device.get_gpu_memory_array("beamform_output_buf", gpu_frame_id,
+                                                             _gpu_buffer_depth, output_len);
 
     void* host_output_frame = (void*)output_buffer->frames[output_buffer_execute_id];
 
@@ -63,6 +63,6 @@ void clOutputBeamformResult::finalize_frame(int frame_id) {
     //    mark_frame_empty(network_buffer, unique_name.c_str(), network_buffer_id);
     //    network_buffer_id = (network_buffer_id + 1) % network_buffer->num_frames;
 
-    mark_frame_full(output_buffer, unique_name.c_str(), output_buffer_id);
+    output_buffer->mark_frame_full(unique_name, output_buffer_id);
     output_buffer_id = (output_buffer_id + 1) % output_buffer->num_frames;
 }

@@ -14,7 +14,7 @@ clInputData::clInputData(Config& config, const std::string& unique_name,
     input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
 
     network_buf = host_buffers.get_buffer("network_buf");
-    register_consumer(network_buf, unique_name.c_str());
+    network_buf->register_consumer(unique_name);
     network_buffer_id = 0;
     network_buffer_precondition_id = 0;
     network_buffer_finalize_id = 0;
@@ -28,8 +28,7 @@ int clInputData::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
 
     // Wait for there to be data in the input (network) buffer.
-    uint8_t* frame =
-        wait_for_full_frame(network_buf, unique_name.c_str(), network_buffer_precondition_id);
+    uint8_t* frame = network_buf->wait_for_full_frame(unique_name, network_buffer_precondition_id);
     if (frame == nullptr)
         return -1;
     // INFO("Got full buffer {:s}[{:d}], gpu[{:d}][{:d}]", network_buf->buffer_name,
@@ -43,7 +42,8 @@ int clInputData::wait_on_precondition(int gpu_frame_id) {
 cl_event clInputData::execute(int gpu_frame_id, cl_event pre_event) {
     pre_execute(gpu_frame_id);
 
-    cl_mem gpu_memory_frame = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
+    cl_mem gpu_memory_frame =
+        device.get_gpu_memory_array("input", gpu_frame_id, _gpu_buffer_depth, input_frame_len);
     void* host_memory_frame = (void*)network_buf->frames[network_buffer_id];
 
     // Data transfer to GPU
@@ -59,6 +59,6 @@ cl_event clInputData::execute(int gpu_frame_id, cl_event pre_event) {
 
 void clInputData::finalize_frame(int frame_id) {
     clCommand::finalize_frame(frame_id);
-    mark_frame_empty(network_buf, unique_name.c_str(), network_buffer_finalize_id);
+    network_buf->mark_frame_empty(unique_name, network_buffer_finalize_id);
     network_buffer_finalize_id = (network_buffer_finalize_id + 1) % network_buf->num_frames;
 }

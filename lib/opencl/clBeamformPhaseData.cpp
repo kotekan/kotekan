@@ -57,12 +57,13 @@ cl_event clBeamformPhaseData::execute(int gpu_frame_id, cl_event pre_event) {
 
     // Update the phases only every "phase_update_period"
     //    uint32_t input_frame_len =  _num_elements * _num_local_freq * _samples_per_data_set;
-    //    cl_mem input_memory = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
+    //    cl_mem input_memory = device.get_gpu_memory_array("input", gpu_frame_id,
+    //    _gpu_buffer_depth, input_frame_len);
 
     current_seq = get_fpga_seq_num(network_buf, gpu_frame_id);
     int64_t bankID = (current_seq / phase_update_period) % 2;
-    cl_mem phase_memory =
-        device.get_gpu_memory_array("phases", bankID, _num_elements * sizeof(float));
+    cl_mem phase_memory = device.get_gpu_memory_array("phases", bankID, _gpu_buffer_depth,
+                                                      _num_elements * sizeof(float));
 
     if (bankID != last_bankID) {
 
