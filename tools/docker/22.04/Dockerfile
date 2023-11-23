@@ -198,5 +198,8 @@ ENV HDF5_PLUGIN_PATH /usr/local/lib/python3.10/dist-packages/hdf5plugin/plugins
 
 ENV KOTEKAN_BUILD_DIRNAME build-2204
 
+# Update Julia...
+RUN juliaup
+
 # Do nothing when the container launches
 CMD ["/bin/bash"]
