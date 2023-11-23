@@ -26,8 +26,8 @@ cudaEvent_t cudaOutputDataZero::execute(cudaPipelineState& pipestate,
     (void)pre_events;
     pre_execute(pipestate.gpu_frame_id);
 
-    void* gpu_memory_frame =
-        device.get_gpu_memory_array("output", pipestate.gpu_frame_id, _gpu_buffer_depth, output_len);
+    void* gpu_memory_frame = device.get_gpu_memory_array("output", pipestate.gpu_frame_id,
+                                                         _gpu_buffer_depth, output_len);
 
     record_start_event(pipestate.gpu_frame_id);
 

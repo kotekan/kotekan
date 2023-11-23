@@ -272,8 +272,7 @@ void visTestPattern::main_thread() {
                     // pass this bad frame to the output buffer:
 
                     // Wait for an empty frame in the output buffer
-                    if (out_buf->wait_for_empty_frame(unique_name, output_frame_id)
-                        == nullptr) {
+                    if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
                         break;
                     }
 

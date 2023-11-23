@@ -69,8 +69,7 @@ void simVdifData::main_thread() {
     start_time = e_time();
     //    for (int ct=0; ct<100; ct++) {
     while (!stop_thread) {
-        unsigned char* buf_ptr =
-            (unsigned char*)buf->wait_for_empty_frame(unique_name, frame_id);
+        unsigned char* buf_ptr = (unsigned char*)buf->wait_for_empty_frame(unique_name, frame_id);
         if (buf_ptr == nullptr)
             break;
         stop_time = e_time();

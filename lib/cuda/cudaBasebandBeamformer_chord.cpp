@@ -136,10 +136,14 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& pipestate,
                                                   const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute(pipestate.gpu_frame_id);
 
-    void* const A_memory = device.get_gpu_memory_array(A_memname, pipestate.gpu_frame_id, _gpu_buffer_depth, A_length);
-    void* const E_memory = device.get_gpu_memory_array(E_memname, pipestate.gpu_frame_id, _gpu_buffer_depth, E_length);
-    void* const s_memory = device.get_gpu_memory_array(s_memname, pipestate.gpu_frame_id, _gpu_buffer_depth, s_length);
-    void* const J_memory = device.get_gpu_memory_array(J_memname, pipestate.gpu_frame_id, _gpu_buffer_depth, J_length);
+    void* const A_memory =
+        device.get_gpu_memory_array(A_memname, pipestate.gpu_frame_id, _gpu_buffer_depth, A_length);
+    void* const E_memory =
+        device.get_gpu_memory_array(E_memname, pipestate.gpu_frame_id, _gpu_buffer_depth, E_length);
+    void* const s_memory =
+        device.get_gpu_memory_array(s_memname, pipestate.gpu_frame_id, _gpu_buffer_depth, s_length);
+    void* const J_memory =
+        device.get_gpu_memory_array(J_memname, pipestate.gpu_frame_id, _gpu_buffer_depth, J_length);
     host_info[pipestate.gpu_frame_id].resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 

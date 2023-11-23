@@ -401,8 +401,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
             out_buf_frame_ids[i] = (out_buf_frame_ids[i] + 1) % out_bufs[i]->num_frames;
         }
 
-        out_buf_frame[i] =
-            out_bufs[i]->wait_for_empty_frame(unique_name, out_buf_frame_ids[i]);
+        out_buf_frame[i] = out_bufs[i]->wait_for_empty_frame(unique_name, out_buf_frame_ids[i]);
         if (out_buf_frame[i] == nullptr)
             return false;
 
@@ -430,8 +429,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         lost_samples_buf->mark_frame_full(unique_name, lost_samples_frame_id);
         lost_samples_frame_id = (lost_samples_frame_id + 1) % lost_samples_buf->num_frames;
     }
-    lost_samples_frame =
-        lost_samples_buf->wait_for_empty_frame(unique_name, lost_samples_frame_id);
+    lost_samples_frame = lost_samples_buf->wait_for_empty_frame(unique_name, lost_samples_frame_id);
     if (lost_samples_frame == nullptr)
         return false;
 

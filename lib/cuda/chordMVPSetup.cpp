@@ -46,7 +46,8 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
               "\"upchan/frb-bf\")",
               real, fullsize, (char*)real + offset, viewsize, fullname, viewname, i);
     }
-    device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize, _gpu_buffer_depth);
+    device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize,
+                                        _gpu_buffer_depth);
 
     // We produce custom DOT output to connect the views, so we omit these (and all other) entries.
     // gpu_buffers_used.push_back(std::make_tuple(fullname, true, false, true));
@@ -66,7 +67,8 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
     for (int i = 0; i < _gpu_buffer_depth; i++)
         device.get_gpu_memory_array(fullname, i, _gpu_buffer_depth, fullsize);
     offset = 0;
-    device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize, _gpu_buffer_depth);
+    device.create_gpu_memory_array_view(fullname, fullsize, viewname, offset, viewsize,
+                                        _gpu_buffer_depth);
 }
 
 chordMVPSetup::~chordMVPSetup() {}

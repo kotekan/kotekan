@@ -272,9 +272,9 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
         for (int gpu_frame_id = 0; gpu_frame_id < _gpu_buffer_depth; gpu_frame_id++) {
             // GPU input & output memory buffers for this gpu frame #.
             float16_t* gpu_in_base = (float16_t*)device.get_gpu_memory_array(
-                                                                             _gpu_mem_beamgrid, gpu_frame_id, _gpu_buffer_depth, beamgrid_len);
+                _gpu_mem_beamgrid, gpu_frame_id, _gpu_buffer_depth, beamgrid_len);
             float16_t* gpu_out_base = (float16_t*)device.get_gpu_memory_array(
-                                                                              _gpu_mem_beamout, gpu_frame_id, _gpu_buffer_depth, beamout_len);
+                _gpu_mem_beamout, gpu_frame_id, _gpu_buffer_depth, beamout_len);
             // Compute the per-frequency matrix offsets.
             for (int f = 0; f < _num_local_freq; f++) {
                 host_in[gpu_frame_id * _num_local_freq + f] = gpu_in_base + (size_t)f * _Td * rho;
@@ -316,7 +316,7 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState& pipestate,
     pre_execute(pipestate.gpu_frame_id);
 
     float16_t* beamgrid_memory = (float16_t*)device.get_gpu_memory_array(
-                                                                         _gpu_mem_beamgrid, pipestate.gpu_frame_id, _gpu_buffer_depth, beamgrid_len);
+        _gpu_mem_beamgrid, pipestate.gpu_frame_id, _gpu_buffer_depth, beamgrid_len);
     float16_t* phase_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
     float16_t* beamout_memory = (float16_t*)device.get_gpu_memory_array(
         _gpu_mem_beamout, pipestate.gpu_frame_id, _gpu_buffer_depth, beamout_len);

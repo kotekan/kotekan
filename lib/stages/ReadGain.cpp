@@ -153,8 +153,7 @@ bool ReadGain::update_gains_tracking_callback(nlohmann::json& json, const uint8_
 }
 
 void ReadGain::read_gain_frb() {
-    float* out_frame_frb =
-        (float*)gain_frb_buf->wait_for_empty_frame(unique_name, gain_frb_buf_id);
+    float* out_frame_frb = (float*)gain_frb_buf->wait_for_empty_frame(unique_name, gain_frb_buf_id);
     if (out_frame_frb == nullptr) {
         return;
     }

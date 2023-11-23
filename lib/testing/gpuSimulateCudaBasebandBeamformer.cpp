@@ -174,12 +174,10 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
             (int4x2_t*)voltage_buf->wait_for_full_frame(unique_name, voltage_frame_id);
         if (voltage == nullptr)
             break;
-        int8_t* phase =
-            (int8_t*)phase_buf->wait_for_full_frame(unique_name, phase_frame_id);
+        int8_t* phase = (int8_t*)phase_buf->wait_for_full_frame(unique_name, phase_frame_id);
         if (phase == nullptr)
             break;
-        int32_t* shift =
-            (int32_t*)shift_buf->wait_for_full_frame(unique_name, shift_frame_id);
+        int32_t* shift = (int32_t*)shift_buf->wait_for_full_frame(unique_name, shift_frame_id);
         if (shift == nullptr)
             break;
         int4x2_t* output =

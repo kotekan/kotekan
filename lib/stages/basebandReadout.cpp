@@ -107,8 +107,7 @@ void basebandReadout::main_thread() {
     uint32_t freq_ids[_num_freq_per_stream];
     while (!stop_thread) {
 
-        if (in_buf->wait_for_full_frame(unique_name, frame_id % in_buf->num_frames)
-            == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, frame_id % in_buf->num_frames) == nullptr) {
             break;
         }
 

@@ -45,7 +45,8 @@ public:
      * NOTE: if accessing an existing named region then len must match the existing
      * length or the system will throw an assert.
      */
-    void* get_gpu_memory_array(const std::string& name, const uint32_t index, const uint32_t buffer_depth, const size_t len);
+    void* get_gpu_memory_array(const std::string& name, const uint32_t index,
+                               const uint32_t buffer_depth, const size_t len);
 
     /**
      * @brief Same as get_gpu_memory_array but gets just one gpu memory buffer

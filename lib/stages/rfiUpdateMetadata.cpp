@@ -55,8 +55,7 @@ void rfiUpdateMetadata::main_thread() {
     frameID gpu_correlation_frame_id(gpu_correlation_buf);
 
     while (!stop_thread) {
-        uint8_t* rfi_mask_frame =
-            rfi_mask_buf->wait_for_full_frame(unique_name, rfi_mask_frame_id);
+        uint8_t* rfi_mask_frame = rfi_mask_buf->wait_for_full_frame(unique_name, rfi_mask_frame_id);
         if (rfi_mask_frame == nullptr)
             break;
 
@@ -71,8 +70,8 @@ void rfiUpdateMetadata::main_thread() {
             // have a copy of the metadata at this point.  This is true only if hsaRfiMaskOutput
             // comes after hsaOutputData, this is not really ideal, but I cannot find an easy way
             // around it.
-            uint8_t* gpu_correlation_frame = gpu_correlation_buf->wait_for_empty_frame(
-                unique_name, gpu_correlation_frame_id);
+            uint8_t* gpu_correlation_frame =
+                gpu_correlation_buf->wait_for_empty_frame(unique_name, gpu_correlation_frame_id);
             if (gpu_correlation_frame == nullptr)
                 break;
 

@@ -97,8 +97,7 @@ void gpuSimulateCudaFRBBeamformer::main_thread() {
             (int4x2_t*)voltage_buf->wait_for_full_frame(unique_name, voltage_frame_id);
         if (voltage == nullptr)
             break;
-        float16_t* phase =
-            (float16_t*)phase_buf->wait_for_full_frame(unique_name, phase_frame_id);
+        float16_t* phase = (float16_t*)phase_buf->wait_for_full_frame(unique_name, phase_frame_id);
         if (phase == nullptr)
             break;
         float16_t* output =

@@ -64,14 +64,14 @@ void DPDKShuffleSimulate::main_thread() {
     while (!stop_thread) {
         double start_time = current_time();
 
-        lost_samples_frame = (uint8_t*)lost_samples_buf->wait_for_empty_frame(unique_name,
-                                                            lost_samples_frame_id);
+        lost_samples_frame =
+            (uint8_t*)lost_samples_buf->wait_for_empty_frame(unique_name, lost_samples_frame_id);
         if (lost_samples_frame == nullptr)
             break;
 
         for (uint32_t i = 0; i < shuffle_size; ++i) {
             voltage_data_frames[i] = (uint8_t*)voltage_data_buf[i]->wait_for_empty_frame(
-                    unique_name, voltage_data_frame_id[i]);
+                unique_name, voltage_data_frame_id[i]);
             if (voltage_data_frames[i] == nullptr)
                 break;
         }

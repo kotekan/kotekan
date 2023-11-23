@@ -10,13 +10,15 @@ using kotekan::Config;
 REGISTER_CUDA_COMMAND(cudaCopyFromRingbuffer);
 
 cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string& unique_name,
-                                               bufferContainer& host_buffers, cudaDeviceInterface& device) :
+                                               bufferContainer& host_buffers,
+                                               cudaDeviceInterface& device) :
     cudaCommand(config, unique_name, host_buffers, device, "cudaCopyFromRingbuffer", "") {
     _output_size = config.get<int>(unique_name, "output_size");
     _ring_buffer_size = config.get<int>(unique_name, "ring_buffer_size");
     _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
-    signal_buffer = dynamic_cast<RingBuffer*>(host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "host_signal")));
+    signal_buffer = dynamic_cast<RingBuffer*>(
+        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "host_signal")));
     signal_buffer->register_consumer(unique_name);
 
     input_cursor = 0;
@@ -41,8 +43,8 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
     (void)pre_events;
     pre_execute(pipestate.gpu_frame_id);
 
-    void* output_memory =
-        device.get_gpu_memory_array(_gpu_mem_output, pipestate.gpu_frame_id, _gpu_buffer_depth, _output_size);
+    void* output_memory = device.get_gpu_memory_array(_gpu_mem_output, pipestate.gpu_frame_id,
+                                                      _gpu_buffer_depth, _output_size);
 
     void* rb_memory = device.get_gpu_memory(_gpu_mem_input, _ring_buffer_size);
 
@@ -54,12 +56,13 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
     }
 
     record_start_event(pipestate.gpu_frame_id);
-    
+
     CHECK_CUDA_ERROR(cudaMemcpyAsync(output_memory, (char*)rb_memory + input_cursor, ncopy,
                                      cudaMemcpyDeviceToDevice, device.getStream(cuda_stream_id)));
     if (nwrap)
         CHECK_CUDA_ERROR(cudaMemcpyAsync((char*)output_memory + ncopy, rb_memory, nwrap,
-                                         cudaMemcpyDeviceToDevice, device.getStream(cuda_stream_id)));
+                                         cudaMemcpyDeviceToDevice,
+                                         device.getStream(cuda_stream_id)));
 
     input_cursor = (input_cursor + _output_size) % _ring_buffer_size;
     return record_end_event(pipestate.gpu_frame_id);

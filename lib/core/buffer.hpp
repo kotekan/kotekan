@@ -28,16 +28,15 @@
 #include "kotekanLogging.hpp"
 #include "metadata.h" // for metadataPool
 
+#include <condition_variable>
+#include <map>
+#include <mutex>
 #include <pthread.h> // for pthread_cond_t, pthread_mutex_t
 #include <stdbool.h> // for bool
 #include <stdint.h>  // for uint8_t
-#include <time.h>    // for size_t, timespec
-
-#include <map>
-#include <vector>
 #include <string>
-#include <mutex>
-#include <condition_variable>
+#include <time.h> // for size_t, timespec
+#include <vector>
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
@@ -55,18 +54,14 @@
 class StageInfo {
 public:
     StageInfo(const std::string& _name, int _num_frames) :
-        name(_name),
-        num_frames(_num_frames),
-        last_frame_acquired(-1),
-        last_frame_released(-1),
-        is_done(_num_frames) {
-    }
+        name(_name), num_frames(_num_frames), last_frame_acquired(-1), last_frame_released(-1),
+        is_done(_num_frames) {}
     // No copies or moves allowed
     StageInfo(StageInfo&&) = delete;
     StageInfo& operator=(StageInfo&&) = delete;
     StageInfo(const StageInfo&) = delete;
     StageInfo& operator=(const StageInfo&) = delete;
-    
+
     /// The name of the stage (consumer or producer)
     const std::string name;
 
@@ -83,14 +78,11 @@ public:
     std::vector<bool> is_done;
 };
 
-class GenericBuffer  : public kotekan::kotekanLogging {
+class GenericBuffer : public kotekan::kotekanLogging {
 public:
-    GenericBuffer(const std::string&,
-                  const std::string&,
-                  metadataPool* pool,
-                  int num_frames);
+    GenericBuffer(const std::string&, const std::string&, metadataPool* pool, int num_frames);
     virtual ~GenericBuffer();
-    virtual void print_full_status() {};
+    virtual void print_full_status(){};
 
     virtual bool is_basic() = 0;
 
@@ -166,7 +158,7 @@ public:
      * Returns true if successful, false if metadata was already set.
      */
     bool set_metadata(int frame_id, metadataContainer* meta);
-    
+
     /**
      * @brief Gets the raw metadata block for the given frame
      *
@@ -245,7 +237,9 @@ class RingBuffer : public GenericBuffer {
 public:
     RingBuffer(size_t, metadataPool*, const std::string&, const std::string&);
     ~RingBuffer() override {}
-    bool is_basic() override { return false; }
+    bool is_basic() override {
+        return false;
+    }
 
     void register_consumer(const std::string& name) override;
     void register_producer(const std::string& name) override;
@@ -261,8 +255,8 @@ public:
     size_t size;
     size_t elements;
     size_t claimed;
-    //size_t write_cursor;
-    //size_t read_cursor;
+    // size_t write_cursor;
+    // size_t read_cursor;
 };
 
 /**
@@ -325,8 +319,10 @@ public:
            bool zero_new_frames);
     ~Buffer() override;
 
-    bool is_basic() override { return true; }
-    
+    bool is_basic() override {
+        return true;
+    }
+
     /**
      * @brief Prints a summary the frames and state of the producers and consumers.
      *
@@ -418,7 +414,8 @@ public:
      * Returns 1 if the buffer is empty, and 0 if the frame is full.
      *
      * @param[in] frame_id The id of the frame to check.
-     * @warning This should not be used to gain access to an empty frame, use @c wait_for_empty_frame()
+     * @warning This should not be used to gain access to an empty frame, use @c
+     * wait_for_empty_frame()
      */
     bool is_frame_empty(const int frame_id);
 
@@ -463,8 +460,8 @@ public:
 
     // don't call this
     void _impl_zero_frame(const int ID);
-    
-    //protected:
+
+    // protected:
     /// The size of each frame in bytes.
     size_t frame_size;
 
@@ -515,7 +512,7 @@ protected:
      * @param id The id of the frame to mark as empty.
      * @return 1 if the frame was marked as empty, 0 if it is being zeroed.
      */
-     bool private_mark_frame_empty(const int ID);
+    bool private_mark_frame_empty(const int ID);
     // Resets the list of consumers for the given ID
     void private_reset_consumers(const int ID);
 };

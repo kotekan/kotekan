@@ -96,8 +96,7 @@ void bufferCopy::main_thread() {
 
             /// Wait for an output frame
             DEBUG2("Waiting for {:s}[{:d}]", out_buf->buffer_name, out_frame_id);
-            uint8_t* output_frame =
-                out_buf->wait_for_empty_frame(unique_name, out_frame_id);
+            uint8_t* output_frame = out_buf->wait_for_empty_frame(unique_name, out_frame_id);
             if (output_frame == nullptr)
                 goto exit_loop; // Shutdown condition
 

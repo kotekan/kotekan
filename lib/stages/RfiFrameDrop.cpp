@@ -99,10 +99,8 @@ void RfiFrameDrop::main_thread() {
 
     while (!stop_thread) {
         // Fetch the input buffers
-        uint8_t* frame_in_vis =
-            _buf_in_vis->wait_for_full_frame(unique_name, frame_id_in_vis);
-        float* frame_in_sk =
-            (float*)_buf_in_sk->wait_for_full_frame(unique_name, frame_id_in_sk);
+        uint8_t* frame_in_vis = _buf_in_vis->wait_for_full_frame(unique_name, frame_id_in_vis);
+        float* frame_in_sk = (float*)_buf_in_sk->wait_for_full_frame(unique_name, frame_id_in_sk);
 
         // Test to ensure we actually got valid buffers back
         if (frame_in_vis == nullptr || frame_in_sk == nullptr)

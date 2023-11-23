@@ -466,8 +466,7 @@ bool visAccumulate::initialise_output(visAccumulate::internalState& state, int i
 
     for (size_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
 
-        if (state.buf->wait_for_empty_frame(unique_name, state.frame_id + freq_ind)
-            == nullptr) {
+        if (state.buf->wait_for_empty_frame(unique_name, state.frame_id + freq_ind) == nullptr) {
             return true;
         }
 

@@ -72,7 +72,7 @@ void bufferFactory::build_from_tree(map<string, GenericBuffer*>& buffers, const 
 }
 
 GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& name,
-                                  const string& location) {
+                                         const string& location) {
 
     // DEBUG("Creating buffer of type: {:s}, at config tree path: {:s}", name, location);
     uint32_t num_frames = config.get<uint32_t>(location, "num_frames");
@@ -120,8 +120,8 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
     INFO_NON_OO("Creating {:s}Buffer named {:s} with {:d} frames, frame size of {:d} and "
                 "metadata pool {:s} on numa_node {:d}",
                 type_name, name, num_frames, frame_size, metadataPool_name, numa_node);
-    Buffer* buf = new Buffer(num_frames, frame_size, pool, name, type_name,
-                             numa_node, use_hugepages, mlock_frames, zero_new_frames);
+    Buffer* buf = new Buffer(num_frames, frame_size, pool, name, type_name, numa_node,
+                             use_hugepages, mlock_frames, zero_new_frames);
     buf->set_log_level(s_log_level);
     buf->set_log_prefix("Buffer \"" + name + "\"");
     return buf;

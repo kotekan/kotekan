@@ -139,8 +139,7 @@ void beamformingPostProcess::main_thread() {
             int gpu_id = _link_map[i];
 
             // This call is blocking!
-            in_frame[i] =
-                in_buf[gpu_id]->wait_for_full_frame(unique_name, in_buffer_ID[gpu_id]);
+            in_frame[i] = in_buf[gpu_id]->wait_for_full_frame(unique_name, in_buffer_ID[gpu_id]);
             if (in_frame[i] == nullptr)
                 goto end_loop;
 
@@ -197,8 +196,7 @@ void beamformingPostProcess::main_thread() {
 
                         // Get a new output buffer
                         out_buffer_ID = (out_buffer_ID + 1) % vdif_buf->num_frames;
-                        vdif_frame =
-                            vdif_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
+                        vdif_frame = vdif_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
                         if (vdif_frame == nullptr)
                             goto end_loop;
 

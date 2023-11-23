@@ -279,8 +279,7 @@ void pulsarPostProcess::main_thread() {
                         pulsar_buf->mark_frame_full(unique_name, out_buffer_ID);
                         // Get a new output buffer
                         out_buffer_ID = (out_buffer_ID + 1) % pulsar_buf->num_frames;
-                        out_frame =
-                            pulsar_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
+                        out_frame = pulsar_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
                         if (out_frame == nullptr)
                             goto end_loop;
                         // Fill the headers of the new buffer

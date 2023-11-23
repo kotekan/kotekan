@@ -204,8 +204,7 @@ void frbPostProcess::main_thread() {
                     INFO("Advance {} from {}", i, get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
                     in_buf[i]->mark_frame_empty(unique_name, in_buffer_ID[i]);
                     in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
-                    in_frame[i] =
-                        in_buf[i]->wait_for_full_frame(unique_name, in_buffer_ID[i]);
+                    in_frame[i] = in_buf[i]->wait_for_full_frame(unique_name, in_buffer_ID[i]);
                     if (in_frame[i] == nullptr)
                         return;
                 }

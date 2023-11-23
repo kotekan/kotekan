@@ -232,8 +232,7 @@ void FEngine::main_thread() {
         const std::uint64_t seq_num = std::uint64_t(1) * num_times * frame_index;
 
         const int A_frame_id = frame_index % A_buffer->num_frames;
-        std::uint8_t* const A_frame =
-            A_buffer->wait_for_empty_frame(unique_name, A_frame_id);
+        std::uint8_t* const A_frame = A_buffer->wait_for_empty_frame(unique_name, A_frame_id);
         if (!A_frame)
             break;
         if (!(std::ptrdiff_t(A_buffer->frame_size) == A_frame_size))
@@ -243,8 +242,7 @@ void FEngine::main_thread() {
         set_fpga_seq_num(A_buffer, A_frame_id, seq_num);
 
         const int E_frame_id = frame_index % E_buffer->num_frames;
-        std::uint8_t* const E_frame =
-            E_buffer->wait_for_empty_frame(unique_name, E_frame_id);
+        std::uint8_t* const E_frame = E_buffer->wait_for_empty_frame(unique_name, E_frame_id);
         if (!E_frame)
             break;
         if (!(std::ptrdiff_t(E_buffer->frame_size) == E_frame_size))
@@ -254,8 +252,7 @@ void FEngine::main_thread() {
         set_fpga_seq_num(E_buffer, E_frame_id, seq_num);
 
         const int J_frame_id = frame_index % J_buffer->num_frames;
-        std::uint8_t* const J_frame =
-            J_buffer->wait_for_empty_frame(unique_name, J_frame_id);
+        std::uint8_t* const J_frame = J_buffer->wait_for_empty_frame(unique_name, J_frame_id);
         if (!J_frame)
             break;
         if (!(std::ptrdiff_t(J_buffer->frame_size) == J_frame_size))
@@ -265,8 +262,7 @@ void FEngine::main_thread() {
         set_fpga_seq_num(J_buffer, J_frame_id, seq_num);
 
         const int S_frame_id = frame_index % S_buffer->num_frames;
-        std::uint8_t* const S_frame =
-            S_buffer->wait_for_empty_frame(unique_name, S_frame_id);
+        std::uint8_t* const S_frame = S_buffer->wait_for_empty_frame(unique_name, S_frame_id);
         if (!S_frame)
             break;
         if (!(std::ptrdiff_t(S_buffer->frame_size) == S_frame_size))
@@ -276,8 +272,7 @@ void FEngine::main_thread() {
         set_fpga_seq_num(S_buffer, S_frame_id, seq_num);
 
         const int G_frame_id = frame_index % G_buffer->num_frames;
-        std::uint8_t* const G_frame =
-            G_buffer->wait_for_empty_frame(unique_name, G_frame_id);
+        std::uint8_t* const G_frame = G_buffer->wait_for_empty_frame(unique_name, G_frame_id);
         if (!G_frame)
             break;
         if (!(std::ptrdiff_t(G_buffer->frame_size) == G_frame_size))
@@ -287,8 +282,7 @@ void FEngine::main_thread() {
         set_fpga_seq_num(G_buffer, G_frame_id, seq_num);
 
         const int W_frame_id = frame_index % W_buffer->num_frames;
-        std::uint8_t* const W_frame =
-            W_buffer->wait_for_empty_frame(unique_name, W_frame_id);
+        std::uint8_t* const W_frame = W_buffer->wait_for_empty_frame(unique_name, W_frame_id);
         if (!W_frame)
             break;
         if (!(std::ptrdiff_t(W_buffer->frame_size) == W_frame_size))

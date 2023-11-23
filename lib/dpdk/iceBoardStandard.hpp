@@ -191,8 +191,7 @@ inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
         return false;
 
     // Get new lost samples frame
-    lost_samples_frame =
-        lost_samples_buf->wait_for_empty_frame(unique_name, lost_samples_frame_id);
+    lost_samples_frame = lost_samples_buf->wait_for_empty_frame(unique_name, lost_samples_frame_id);
     if (lost_samples_frame == nullptr)
         return false;
 

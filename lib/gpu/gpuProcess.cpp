@@ -154,7 +154,8 @@ void gpuProcess::main_thread() {
         // Wait for all the required preconditions
         // This is things like waiting for the input buffer to have data
         // and for there to be free space in the output buffers.
-        DEBUG2("Waiting on preconditions for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_id, unique_name);
+        DEBUG2("Waiting on preconditions for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_id,
+               unique_name);
         for (auto& command : commands) {
             if (command->wait_on_precondition(gpu_frame_id) != 0) {
                 INFO("Received exit signal from GPU command precondition (Command '{:s}')",
@@ -166,7 +167,8 @@ void gpuProcess::main_thread() {
         DEBUG("Waiting for free slot for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_id, unique_name);
         // We make sure we aren't using a gpu frame that's currently in-flight.
         final_signals[gpu_frame_id]->wait_for_free_slot();
-        DEBUG("Waited for free slot for GPU[{:d}][{:d}] {:s}, queuing commands", gpu_id, gpu_frame_id, unique_name);
+        DEBUG("Waited for free slot for GPU[{:d}][{:d}] {:s}, queuing commands", gpu_id,
+              gpu_frame_id, unique_name);
         queue_commands(gpu_frame_id, gpu_frame_counter);
         if (first_run) {
             results_thread_handle = std::thread(&gpuProcess::results_thread, std::ref(*this));

@@ -98,14 +98,12 @@ void bufferMerge::main_thread() {
             /// Wait for an input frame
             if (_timeout < 0) {
                 DEBUG2("Waiting for {:s}[{:d}]", in_buf->buffer_name, in_frame_id);
-                uint8_t* input_frame =
-                    in_buf->wait_for_full_frame(unique_name, in_frame_id);
+                uint8_t* input_frame = in_buf->wait_for_full_frame(unique_name, in_frame_id);
                 if (input_frame == nullptr)
                     goto exit_loop; // Shutdown condition
             } else {
                 auto timeout = double_to_ts(current_time() + _timeout);
-                int status =
-                    in_buf->wait_for_full_frame_timeout(unique_name, in_frame_id, timeout);
+                int status = in_buf->wait_for_full_frame_timeout(unique_name, in_frame_id, timeout);
                 if (status == 1)
                     continue;
                 if (status == -1)
@@ -114,8 +112,7 @@ void bufferMerge::main_thread() {
 
             if (select_frame(internal_buffer_name, in_buf, in_frame_id)) {
 
-                uint8_t* output_frame =
-                    out_buf->wait_for_empty_frame(unique_name, out_frame_id);
+                uint8_t* output_frame = out_buf->wait_for_empty_frame(unique_name, out_frame_id);
                 if (output_frame == nullptr)
                     break;
 

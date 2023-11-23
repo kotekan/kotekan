@@ -28,7 +28,8 @@ public:
     /**
      * @brief Get/create a cudaDeviceInterface for the given gpu_id.
      */
-    static std::shared_ptr<cudaDeviceInterface> get(int32_t gpu_id, const std::string& name, kotekan::Config& config);
+    static std::shared_ptr<cudaDeviceInterface> get(int32_t gpu_id, const std::string& name,
+                                                    kotekan::Config& config);
 
     cudaDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id);
     ~cudaDeviceInterface();
@@ -84,7 +85,7 @@ protected:
     std::vector<cudaStream_t> streams;
 
     // Singleton dictionary
-    static std::map<int, std::shared_ptr<cudaDeviceInterface> > inst_map;
+    static std::map<int, std::shared_ptr<cudaDeviceInterface>> inst_map;
 };
 
 #endif // CUDA_DEVICE_INTERFACE_H

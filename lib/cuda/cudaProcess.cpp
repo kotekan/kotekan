@@ -20,8 +20,8 @@ REGISTER_KOTEKAN_STAGE(cudaProcess);
 cudaProcess::cudaProcess(Config& config_, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     gpuProcess(config_, unique_name, buffer_container) {
-    std::string device_name = config_.get_default<std::string>(unique_name, "device",
-                                                               "device_" + std::to_string(gpu_id));
+    std::string device_name =
+        config_.get_default<std::string>(unique_name, "device", "device_" + std::to_string(gpu_id));
     device = cudaDeviceInterface::get(gpu_id, device_name, config_);
     dev = device.get();
     // Tell the Cuda runtime to associate this gpu_id with this thread/Stage.

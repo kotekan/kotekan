@@ -47,7 +47,6 @@ private:
 
     // Host side signalling buffer
     RingBuffer* signal_buffer;
-    
 };
 
 #endif // KOTEKAN_CUDA_COPYFROMRINGBUFFER_HPP

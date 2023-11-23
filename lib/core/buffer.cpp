@@ -8,10 +8,11 @@
 #include "hsaBase.h" // for hsa_host_free, hsa_host_malloc
 #endif
 #include "kotekanLogging.hpp"
+
 #include "fmt.hpp" // for fmt, basic_string_view, make_format_args, FMT_STRING
 
-#include <stdexcept>
 #include <chrono>
+#include <stdexcept>
 
 // IWYU pragma: no_include <asm/mman-common.h>
 // IWYU pragma: no_include <asm/mman.h>
@@ -44,30 +45,20 @@ typedef std::lock_guard<std::recursive_mutex> buffer_lock;
 GenericBuffer::GenericBuffer(const std::string& _buffer_name, const std::string& _buffer_type,
                              metadataPool* pool, int _num_frames) :
     num_frames(_num_frames),
-    shutdown_signal(false),
-    buffer_name(_buffer_name),
-    buffer_type(_buffer_type),
-    metadata_pool(pool),
-    metadata(num_frames, NULL) {
-}
+    shutdown_signal(false), buffer_name(_buffer_name), buffer_type(_buffer_type),
+    metadata_pool(pool), metadata(num_frames, NULL) {}
 
-GenericBuffer::~GenericBuffer() {
-}
+GenericBuffer::~GenericBuffer() {}
 
 Buffer::Buffer(int num_frames, size_t len, metadataPool* pool, const std::string& _buffer_name,
-               const std::string& _buffer_type, int _numa_node, bool _use_hugepages, bool _mlock_frames,
-               bool zero_new_frames) :
+               const std::string& _buffer_type, int _numa_node, bool _use_hugepages,
+               bool _mlock_frames, bool zero_new_frames) :
     GenericBuffer(_buffer_name, _buffer_type, pool, num_frames),
     frame_size(len),
     // By default don't zero buffers at the end of their use.
-    _zero_frames(false),
-    frames(num_frames, nullptr),
-    is_full(num_frames, false),
-    last_arrival_time(0),
-    use_hugepages(_use_hugepages),
-    mlock_frames(_mlock_frames),
-    numa_node(_numa_node)
-{
+    _zero_frames(false), frames(num_frames, nullptr), is_full(num_frames, false),
+    last_arrival_time(0), use_hugepages(_use_hugepages), mlock_frames(_mlock_frames),
+    numa_node(_numa_node) {
     assert(num_frames > 0);
 
 #if defined(WITH_NUMA) && !defined(WITH_NO_MEMLOCK)
@@ -77,7 +68,8 @@ Buffer::Buffer(int num_frames, size_t len, metadataPool* pool, const std::string
     if (set_mempolicy(MPOL_BIND, node_mask ? node_mask->maskp : NULL,
                       node_mask ? node_mask->size + 1 : 0)
         < 0) {
-        throw std::runtime_error(fmt::format(fmt("Failed to set memory policy: %s (%d)"), strerror(errno), errno));
+        throw std::runtime_error(
+            fmt::format(fmt("Failed to set memory policy: %s (%d)"), strerror(errno), errno));
     }
     numa_bitmask_free(node_mask);
 #endif
@@ -93,10 +85,12 @@ Buffer::Buffer(int num_frames, size_t len, metadataPool* pool, const std::string
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
         if (len) {
-            frames[i] = buffer_malloc(aligned_frame_size, numa_node, use_hugepages,
-                                           mlock_frames, zero_new_frames);
+            frames[i] = buffer_malloc(aligned_frame_size, numa_node, use_hugepages, mlock_frames,
+                                      zero_new_frames);
             if (frames[i] == nullptr) {
-                throw std::runtime_error(fmt::format(fmt("Failed to allocate Buffer memory: %d bytes: %s (%d)"), aligned_frame_size, strerror(errno), errno));
+                throw std::runtime_error(
+                    fmt::format(fmt("Failed to allocate Buffer memory: %d bytes: %s (%d)"),
+                                aligned_frame_size, strerror(errno), errno));
             }
         } else {
             // Put in a pattern != NULL, because NULL is used for signalling, eg in
@@ -108,7 +102,8 @@ Buffer::Buffer(int num_frames, size_t len, metadataPool* pool, const std::string
 #if defined(WITH_NUMA) && !defined(WITH_NO_MEMLOCK)
     // Reset the memory policy so that we don't impact other parts of the
     if (set_mempolicy(MPOL_DEFAULT, nullptr, 0) < 0) {
-        throw std::runtime_error(fmt::format(fmt("Failed to reset memory policy to default: %s (%d)"), strerror(errno), errno));
+        throw std::runtime_error(fmt::format(
+            fmt("Failed to reset memory policy to default: %s (%d)"), strerror(errno), errno));
     }
 #endif
 }
@@ -168,7 +163,7 @@ void Buffer::mark_frame_full(const std::string& name, const int ID) {
 
     // Signal producer
     if (set_empty) {
-        //empty_cond.notify_all();
+        // empty_cond.notify_all();
     }
 }
 
@@ -273,8 +268,7 @@ uint8_t* Buffer::wait_for_empty_frame(const std::string& producer_name, const in
     // If the buffer isn't full, i.e. is_full[ID] == 0, then we never sleep on the cond var.
     // The second condition stops us from using a buffer we've already filled,
     // and forces a wait until that buffer has been marked as empty.
-    while ((is_full[ID] || pro->is_done[ID])
-           && !shutdown_signal) {
+    while ((is_full[ID] || pro->is_done[ID]) && !shutdown_signal) {
         DEBUG("wait_for_empty_frame: {:s} waiting for empty frame ID = {:d} in buffer {:s}",
               producer_name, ID, buffer_name);
         print_stat = true;
@@ -307,7 +301,7 @@ void GenericBuffer::register_consumer(const std::string& name) {
 }
 
 void GenericBuffer::unregister_consumer(const std::string& name) {
-    //int broadcast = 0;
+    // int broadcast = 0;
     {
         buffer_lock lock(mutex);
         DEBUG("Unregistering consumer {:s} for buffer {:s}", name, buffer_name);
@@ -329,7 +323,7 @@ void GenericBuffer::unregister_consumer(const std::string& name) {
     }
     // Signal producers if we found something could be empty after
     // removal of this consumer.
-    //if (broadcast == 1) {
+    // if (broadcast == 1) {
     empty_cond.notify_all();
     //}
 }
@@ -400,15 +394,16 @@ uint8_t* Buffer::wait_for_full_frame(const std::string& name, const int ID) {
     auto& con = consumers.at(name);
     // This loop exists when is_full == 1 (i.e. a full buffer) AND
     // when this producer hasn't already marked this buffer as
-    //while ((!is_full[ID] || con.is_done[ID])
+    // while ((!is_full[ID] || con.is_done[ID])
     //       && !shutdown_signal)
     //    full_cond.wait(lock);
 
     while (true) {
-        DEBUG("wait_for_full_frame: frame {:d}, is full? {:s}  is consumer done? {:s}  shutdown? {:s}",
-             ID, is_full[ID] ?"T":"F", con.is_done[ID] ?"T":"F", shutdown_signal ?"T":"F");
-        if ((!is_full[ID] || con.is_done[ID])
-            && !shutdown_signal) {
+        DEBUG("wait_for_full_frame: frame {:d}, is full? {:s}  is consumer done? {:s}  shutdown? "
+              "{:s}",
+              ID, is_full[ID] ? "T" : "F", con.is_done[ID] ? "T" : "F",
+              shutdown_signal ? "T" : "F");
+        if ((!is_full[ID] || con.is_done[ID]) && !shutdown_signal) {
             DEBUG("waiting on condition...");
             full_cond.wait(lock);
         } else
@@ -424,15 +419,15 @@ uint8_t* Buffer::wait_for_full_frame(const std::string& name, const int ID) {
 
 int Buffer::wait_for_full_frame_timeout(const std::string& name, const int ID,
                                         const struct timespec timeout) {
-    std::chrono::duration dur = std::chrono::seconds{timeout.tv_sec} + std::chrono::nanoseconds{timeout.tv_nsec};
+    std::chrono::duration dur =
+        std::chrono::seconds{timeout.tv_sec} + std::chrono::nanoseconds{timeout.tv_nsec};
     std::cv_status st = std::cv_status::no_timeout;
     std::unique_lock<std::recursive_mutex> lock(mutex);
     auto& con = consumers.at(name);
 
     // This loop exists when is_full == 1 (i.e. a full buffer) AND
     // when this producer hasn't already marked this buffer as
-    while ((!is_full[ID] || con.is_done[ID])
-           && !shutdown_signal)
+    while ((!is_full[ID] || con.is_done[ID]) && !shutdown_signal)
         st = full_cond.wait_for(lock, dur);
     lock.unlock();
 
@@ -509,8 +504,7 @@ void Buffer::print_full_status() {
                 status_string[i] = '+';
             else
                 status_string[i] = '_';
-            INFO_F("%-30s : %s (%d, %d)", x.name, status_string,
-                   x.last_frame_acquired,
+            INFO_F("%-30s : %s (%d, %d)", x.name, status_string, x.last_frame_acquired,
                    x.last_frame_released);
         }
 
@@ -523,8 +517,7 @@ void Buffer::print_full_status() {
                 status_string[i] = '=';
             else
                 status_string[i] = '_';
-            INFO_F("%-30s : %s (%d, %d)", x.name, status_string,
-                   x.last_frame_acquired,
+            INFO_F("%-30s : %s (%d, %d)", x.name, status_string, x.last_frame_acquired,
                    x.last_frame_released);
         }
 }
@@ -581,8 +574,7 @@ void GenericBuffer::allocate_new_metadata_object(int ID) {
     buffer_lock lock(mutex);
 
     if (metadata_pool == NULL) {
-        FATAL_ERROR_F("No metadata pool on %s but metadata was needed by a producer",
-                      buffer_name);
+        FATAL_ERROR_F("No metadata pool on %s but metadata was needed by a producer", buffer_name);
     }
 
     DEBUG2_F("Called allocate_new_metadata_object, buf %p, %d", this, ID);
@@ -790,13 +782,12 @@ void GenericBuffer::send_shutdown_signal() {
 
 /////////////// RING BUFFER
 
-RingBuffer::RingBuffer(size_t sz, metadataPool* pool, const std::string& _buffer_name, const std::string& _buffer_type) :
+RingBuffer::RingBuffer(size_t sz, metadataPool* pool, const std::string& _buffer_name,
+                       const std::string& _buffer_type) :
     GenericBuffer(_buffer_name, _buffer_type, pool, 1),
-    size(sz),
-    elements(0),
-    claimed(0)
-    //write_cursor(0),
-    //read_cursor(0)
+    size(sz), elements(0), claimed(0)
+// write_cursor(0),
+// read_cursor(0)
 {}
 
 void RingBuffer::register_producer(const std::string& name) {
@@ -814,15 +805,15 @@ int RingBuffer::wait_and_claim_readable(const std::string& consumer_name, size_t
     (void)consumer_name;
     std::unique_lock<std::recursive_mutex> lock(mutex);
     while (1) {
-        DEBUG("waiting for input: Want {:d}, Available: {:d} - Claimed: {:d}",
-              sz, elements, claimed);
+        DEBUG("waiting for input: Want {:d}, Available: {:d} - Claimed: {:d}", sz, elements,
+              claimed);
         if (elements - claimed >= sz)
             break;
         if (shutdown_signal)
             break;
         // FIXME???
-        //if (buf->consumers_done[ID][consumer_id] == 1)
-        //break;
+        // if (buf->consumers_done[ID][consumer_id] == 1)
+        // break;
         DEBUG("waiting on full condition variable");
         full_cond.wait(lock);
         DEBUG("finished waiting on full condition variable");
@@ -858,8 +849,7 @@ int RingBuffer::wait_for_writable(const std::string& producer_name, size_t sz) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
 
     while (1) {
-        DEBUG("waiting to write {:d} elements.  Current elements filled: {:d}",
-              sz, elements);
+        DEBUG("waiting to write {:d} elements.  Current elements filled: {:d}", sz, elements);
         if (elements + sz <= size)
             break;
         if (shutdown_signal)

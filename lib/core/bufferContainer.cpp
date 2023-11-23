@@ -26,7 +26,8 @@ void bufferContainer::add_buffer(const string& name, GenericBuffer* buf) {
 Buffer* bufferContainer::get_buffer(const string& name) {
     GenericBuffer* gb = get_generic_buffer(name);
     if (!gb->is_basic())
-        throw std::runtime_error(fmt::format(fmt("The buffer named {:s} is not a basic Buffer!"), name));
+        throw std::runtime_error(
+            fmt::format(fmt("The buffer named {:s} is not a basic Buffer!"), name));
     return dynamic_cast<Buffer*>(gb);
 }
 

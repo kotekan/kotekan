@@ -30,7 +30,7 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
             // only register the memory if it isn't already...
             if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, output_buffer->frames[i])) {
                 CHECK_CUDA_ERROR(
-                                 cudaHostRegister(output_buffer->frames[i], output_buffer->frame_size, 0));
+                    cudaHostRegister(output_buffer->frames[i], output_buffer->frame_size, 0));
             }
         }
 
@@ -92,12 +92,13 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState& pipestate,
     size_t output_len = output_buffer->frame_size;
 
     if (output_len) {
-        void* gpu_output_frame =
-            device.get_gpu_memory_array(_gpu_mem, pipestate.gpu_frame_id, _gpu_buffer_depth, output_len);
+        void* gpu_output_frame = device.get_gpu_memory_array(_gpu_mem, pipestate.gpu_frame_id,
+                                                             _gpu_buffer_depth, output_len);
         void* host_output_frame = (void*)output_buffer->frames[output_buffer_execute_id];
 
-        device.async_copy_gpu_to_host(host_output_frame, gpu_output_frame, output_len, cuda_stream_id,
-                                      pre_events[cuda_stream_id], start_events[pipestate.gpu_frame_id],
+        device.async_copy_gpu_to_host(host_output_frame, gpu_output_frame, output_len,
+                                      cuda_stream_id, pre_events[cuda_stream_id],
+                                      start_events[pipestate.gpu_frame_id],
                                       end_events[pipestate.gpu_frame_id]);
 
         if (!in_buffer) {

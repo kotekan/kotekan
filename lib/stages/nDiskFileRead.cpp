@@ -76,8 +76,7 @@ void nDiskFileRead::file_read_thread(int disk_id) {
     // Endless loop
     while (!stop_thread) {
 
-        unsigned char* buf_ptr =
-            (unsigned char*)buf->wait_for_empty_frame(unique_name, buf_id);
+        unsigned char* buf_ptr = (unsigned char*)buf->wait_for_empty_frame(unique_name, buf_id);
         if (buf_ptr == nullptr)
             break;
 

@@ -6,9 +6,10 @@
 
 using kotekan::Config;
 
-std::map<int, std::shared_ptr<cudaDeviceInterface> > cudaDeviceInterface::inst_map;
+std::map<int, std::shared_ptr<cudaDeviceInterface>> cudaDeviceInterface::inst_map;
 
-std::shared_ptr<cudaDeviceInterface> cudaDeviceInterface::get(int32_t gpu_id, const std::string& name, Config& config) {
+std::shared_ptr<cudaDeviceInterface>
+cudaDeviceInterface::get(int32_t gpu_id, const std::string& name, Config& config) {
     if (inst_map.count(gpu_id) == 0)
         inst_map[gpu_id] = std::make_shared<cudaDeviceInterface>(config, name, gpu_id);
     return inst_map[gpu_id];

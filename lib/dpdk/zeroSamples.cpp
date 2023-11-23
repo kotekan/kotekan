@@ -83,12 +83,11 @@ void zeroSamples::main_thread() {
         if (_duplicate_ls_buffer) {
             for (size_t i = 0; i < out_lost_sample_bufs.size(); i++) {
                 uint8_t* new_flag_frame = out_lost_sample_bufs[i]->wait_for_empty_frame(
-                       unique_name, lost_samples_buf_frame_id);
+                    unique_name, lost_samples_buf_frame_id);
                 if (new_flag_frame == nullptr)
                     break;
                 memcpy(new_flag_frame, flag_frame, lost_samples_buf->frame_size);
-                out_lost_sample_bufs[i]->mark_frame_full(unique_name,
-                                lost_samples_buf_frame_id);
+                out_lost_sample_bufs[i]->mark_frame_full(unique_name, lost_samples_buf_frame_id);
             }
         }
         atomic_add_lost_timesamples(out_buf, out_buf_frame_id, lost_samples);

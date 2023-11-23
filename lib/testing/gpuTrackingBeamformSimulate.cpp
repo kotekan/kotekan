@@ -230,8 +230,7 @@ void gpuTrackingBeamformSimulate::main_thread() {
             (unsigned char*)input_buf->wait_for_full_frame(unique_name, input_buf_id);
         if (input == nullptr)
             break;
-        float* output =
-            (float*)output_buf->wait_for_empty_frame(unique_name, output_buf_id);
+        float* output = (float*)output_buf->wait_for_empty_frame(unique_name, output_buf_id);
         if (output == nullptr)
             break;
 

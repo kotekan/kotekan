@@ -216,8 +216,8 @@ void hdf5FileWrite::main_thread() {
         if (space < 0)
             ERROR("Illegal HDF5 data space");
 
-        const hid_t dataset =
-            H5Dcreate(group, buf->buffer_name.c_str(), type, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+        const hid_t dataset = H5Dcreate(group, buf->buffer_name.c_str(), type, space, H5P_DEFAULT,
+                                        H5P_DEFAULT, H5P_DEFAULT);
         if (dataset < 0)
             ERROR("Could not create HDF5 dataset");
 

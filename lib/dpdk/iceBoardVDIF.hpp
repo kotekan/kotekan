@@ -233,8 +233,7 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
         lost_samples_buf->mark_frame_full(unique_name, lost_samples_frame_id);
         lost_samples_frame_id = (lost_samples_frame_id + 1) % lost_samples_buf->num_frames;
     }
-    lost_samples_frame =
-        lost_samples_buf->wait_for_empty_frame(unique_name, lost_samples_frame_id);
+    lost_samples_frame = lost_samples_buf->wait_for_empty_frame(unique_name, lost_samples_frame_id);
     if (lost_samples_frame == nullptr)
         return false;
 
