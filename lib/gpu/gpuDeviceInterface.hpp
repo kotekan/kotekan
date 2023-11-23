@@ -20,12 +20,6 @@ struct gpuMemoryBlock {
     size_t len;
     // if this is a view, the target of that view; used only for metadata
     std::string view_source;
-
-    // ring buffers only
-    //size_t write_cursor;
-    //size_t read_cursor;
-    //Buffer* ring_buffer_signal;
-
 };
 
 /**
@@ -38,8 +32,8 @@ struct gpuMemoryBlock {
 class gpuDeviceInterface : public kotekan::kotekanLogging {
 public:
     /// Constructor
-    gpuDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id,
-                       int gpu_buffer_depth);
+    gpuDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id);
+
     /// Destructor
     virtual ~gpuDeviceInterface();
 
@@ -51,7 +45,7 @@ public:
      * NOTE: if accessing an existing named region then len must match the existing
      * length or the system will throw an assert.
      */
-    void* get_gpu_memory_array(const std::string& name, const uint32_t index, const size_t len);
+    void* get_gpu_memory_array(const std::string& name, const uint32_t index, const uint32_t buffer_depth, const size_t len);
 
     /**
      * @brief Same as get_gpu_memory_array but gets just one gpu memory buffer
@@ -86,7 +80,7 @@ public:
      */
     void create_gpu_memory_array_view(const std::string& source_name, const size_t source_len,
                                       const std::string& view_name, const size_t view_offset,
-                                      const size_t view_len);
+                                      const size_t view_len, const uint32_t buffer_depth);
 
     /**
      * @brief Creates a chunk of GPU memory that is a view on another GPU
@@ -136,13 +130,6 @@ public:
      */
     void release_gpu_memory_array_metadata(const std::string& name, const uint32_t index);
 
-
-    //
-    //void set_ring_buffer(const std::string& name, Buffer* b);
-    //
-    //bool ring_buffer_can_write(const std::string& name, const size_t n);
-
-    
     // Can't do this in the destructor because only the derived classes know
     // how to free their memory. To be moved into distinct objects...
     void cleanup_memory();
@@ -156,11 +143,6 @@ public:
         return gpu_id;
     }
 
-    /// Returns the gpu buffer depth
-    int get_gpu_buffer_depth() {
-        return gpu_buffer_depth;
-    }
-
 protected:
     virtual void* alloc_gpu_memory(size_t len) = 0;
     virtual void free_gpu_memory(void*) = 0;
@@ -171,7 +153,6 @@ protected:
 
     // Config variables
     int gpu_id;
-    uint32_t gpu_buffer_depth;
 
 private:
     std::map<std::string, gpuMemoryBlock> gpu_memory;

@@ -26,13 +26,11 @@
 class cudaDeviceInterface final : public gpuDeviceInterface {
 public:
     /**
-     * @brief Get/create in a singleton dictionary of devices.
+     * @brief Get/create a cudaDeviceInterface for the given gpu_id.
      */
-    static std::shared_ptr<cudaDeviceInterface> get(const std::string& name, kotekan::Config& config,
-                                                    int32_t gpu_id, int gpu_buffer_depth);
+    static std::shared_ptr<cudaDeviceInterface> get(int32_t gpu_id, const std::string& name, kotekan::Config& config);
 
-    cudaDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id,
-                        int gpu_buffer_depth);
+    cudaDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id);
     ~cudaDeviceInterface();
 
     void prepareStreams(uint32_t num_streams);
@@ -82,12 +80,11 @@ protected:
     void* alloc_gpu_memory(size_t len) override;
     void free_gpu_memory(void*) override;
 
-    // Extra data
+    // Cuda Streams
     std::vector<cudaStream_t> streams;
 
     // Singleton dictionary
-    static std::map<std::string, std::shared_ptr<cudaDeviceInterface> > inst_map;
-private:
+    static std::map<int, std::shared_ptr<cudaDeviceInterface> > inst_map;
 };
 
 #endif // CUDA_DEVICE_INTERFACE_H

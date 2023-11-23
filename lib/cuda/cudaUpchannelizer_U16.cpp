@@ -139,10 +139,10 @@ cudaEvent_t cudaUpchannelizer_U16::execute(cudaPipelineState& pipestate,
 
     host_Tactual[pipestate.gpu_frame_id].resize(Tactual_length);
     void* const Tactual_memory = device.get_gpu_memory(Tactual_memname, Tactual_length);
-    void* const G_memory = device.get_gpu_memory_array(G_memname, pipestate.gpu_frame_id, G_length);
-    void* const E_memory = device.get_gpu_memory_array(E_memname, pipestate.gpu_frame_id, E_length);
+    void* const G_memory = device.get_gpu_memory_array(G_memname, pipestate.gpu_frame_id, _gpu_buffer_depth, G_length);
+    void* const E_memory = device.get_gpu_memory_array(E_memname, pipestate.gpu_frame_id, _gpu_buffer_depth, E_length);
     void* const Ebar_memory =
-        device.get_gpu_memory_array(Ebar_memname, pipestate.gpu_frame_id, Ebar_length);
+        device.get_gpu_memory_array(Ebar_memname, pipestate.gpu_frame_id, _gpu_buffer_depth, Ebar_length);
     host_info[pipestate.gpu_frame_id].resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 

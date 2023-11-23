@@ -22,8 +22,10 @@ cudaProcess::cudaProcess(Config& config_, const std::string& unique_name,
     gpuProcess(config_, unique_name, buffer_container) {
     std::string device_name = config_.get_default<std::string>(unique_name, "device",
                                                                "device_" + std::to_string(gpu_id));
-    device = cudaDeviceInterface::get(device_name, config_, gpu_id, _gpu_buffer_depth);
+    device = cudaDeviceInterface::get(gpu_id, device_name, config_);
     dev = device.get();
+    // Tell the Cuda runtime to associate this gpu_id with this thread/Stage.
+    device->set_thread_device();
 
     uint32_t num_streams = config.get_default<uint32_t>(unique_name, "num_cuda_streams", 3);
 

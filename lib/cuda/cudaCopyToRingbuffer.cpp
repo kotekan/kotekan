@@ -39,7 +39,7 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
     pre_execute(pipestate.gpu_frame_id);
 
     void* input_memory =
-        device.get_gpu_memory_array(_gpu_mem_input, pipestate.gpu_frame_id, _input_size);
+        device.get_gpu_memory_array(_gpu_mem_input, pipestate.gpu_frame_id, _gpu_buffer_depth, _input_size);
 
     void* rb_memory = device.get_gpu_memory(_gpu_mem_output, _ring_buffer_size);
 

@@ -9,9 +9,9 @@
 using kotekan::Config;
 
 gpuDeviceInterface::gpuDeviceInterface(Config& config, const std::string& unique_name,
-                                       int32_t gpu_id, int gpu_buffer_depth) :
+                                       int32_t gpu_id) :
     config(config),
-    unique_name(unique_name), gpu_id(gpu_id), gpu_buffer_depth(gpu_buffer_depth) {}
+    unique_name(unique_name), gpu_id(gpu_id) {}
 
 gpuDeviceInterface::~gpuDeviceInterface() {}
 
@@ -46,11 +46,11 @@ void* gpuDeviceInterface::get_gpu_memory(const std::string& name, const size_t l
 }
 
 void* gpuDeviceInterface::get_gpu_memory_array(const std::string& name, const uint32_t index,
-                                               const size_t len) {
+                                               const uint32_t buffer_depth, const size_t len) {
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     // Check if the memory isn't yet allocated
     if (gpu_memory.count(name) == 0) {
-        for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
+        for (uint32_t i = 0; i < buffer_depth; ++i) {
             void* ptr = alloc_gpu_memory(len);
             INFO("Allocating GPU[{:d}] memory: {:s}, len: {:d}, ptr: {:p}", gpu_id, name, len, ptr);
             gpu_memory[name].len = len;
@@ -69,7 +69,6 @@ void* gpuDeviceInterface::get_gpu_memory_array(const std::string& name, const ui
     assert(len == gpu_memory[name].len);
     // Make sure we aren't asking for an index past the end of the array.
     assert(index < gpu_memory[name].gpu_pointers.size());
-
     // Return the requested memory.
     return gpu_memory[name].gpu_pointers[index];
 }
@@ -101,7 +100,8 @@ void* gpuDeviceInterface::create_gpu_memory_view(const std::string& source_name,
 void gpuDeviceInterface::create_gpu_memory_array_view(const std::string& source_name,
                                                       const size_t source_len,
                                                       const std::string& dest_name,
-                                                      const size_t offset, const size_t dest_len) {
+                                                      const size_t offset, const size_t dest_len,
+                                                      const uint32_t buffer_depth) {
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     INFO("Creating GPU memory array view {:s} with length {:d}, view on {:s} + offset {:d}",
          dest_name, dest_len, source_name, offset);
@@ -111,9 +111,9 @@ void gpuDeviceInterface::create_gpu_memory_array_view(const std::string& source_
             "Tried to create_gpu_memory_array_view {:s} that already exists.", dest_name));
     assert(offset + dest_len <= source_len);
 
-    for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
+    for (uint32_t i = 0; i < buffer_depth; ++i) {
         // Get source
-        void* source = get_gpu_memory_array(source_name, i, source_len);
+        void* source = get_gpu_memory_array(source_name, i, buffer_depth, source_len);
         // Create dest entry
         gpu_memory[dest_name].len = dest_len;
         gpu_memory[dest_name].view_source = source_name;

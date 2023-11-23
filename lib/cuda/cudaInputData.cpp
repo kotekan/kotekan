@@ -67,7 +67,7 @@ cudaEvent_t cudaInputData::execute(cudaPipelineState& pipestate,
 
     if (input_frame_len) {
         void* gpu_memory_frame =
-            device.get_gpu_memory_array(_gpu_mem, pipestate.gpu_frame_id, input_frame_len);
+            device.get_gpu_memory_array(_gpu_mem, pipestate.gpu_frame_id, _gpu_buffer_depth, input_frame_len);
         void* host_memory_frame = (void*)in_buf->frames[in_buffer_id];
 
         device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame, input_frame_len,

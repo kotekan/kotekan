@@ -72,7 +72,7 @@ cudaEvent_t cudaShuffleAstron::execute(cudaPipelineState& pipestate, const std::
     pre_execute(pipestate.gpu_frame_id);
 
     size_t input_frame_len = (size_t)_num_elements * _num_local_freq * _samples_per_data_set;
-    void *input_memory = device.get_gpu_memory_array(_gpu_mem_voltage, pipestate.gpu_frame_id, input_frame_len);
+    void *input_memory = device.get_gpu_memory_array(_gpu_mem_voltage, pipestate.gpu_frame_id, _gpu_buffer_depth, input_frame_len);
     void *output_memory = device.get_gpu_memory(_gpu_mem_ordered_voltage, input_frame_len);
 
     if (pre_events[cuda_stream_id]) CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(cuda_stream_id),
