@@ -78,7 +78,7 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const std::string& unique_n
     // Figure out which frequency, is there a better way that doesn't involve reading in the whole
     // thing? Check later
     metadata_buf = host_buffers.get_buffer("network_buf");
-    register_consumer(metadata_buf, unique_name.c_str());
+    metadata_buf->register_consumer(unique_name);
     metadata_buffer_id = 0;
     metadata_buffer_precondition_id = 0;
     freq_idx = FREQ_ID_NOT_SET;

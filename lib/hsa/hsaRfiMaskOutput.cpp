@@ -17,10 +17,10 @@ hsaRfiMaskOutput::hsaRfiMaskOutput(Config& config, const std::string& unique_nam
     command_type = gpuCommandType::COPY_OUT;
     // Get buffers
     _network_buf = host_buffers.get_buffer("network_buf");
-    register_consumer(_network_buf, unique_name.c_str());
+    _network_buf->register_consumer(unique_name);
 
     _rfi_mask_output_buf = host_buffers.get_buffer("rfi_mask_output_buf");
-    register_producer(_rfi_mask_output_buf, unique_name.c_str());
+    _rfi_mask_output_buf->register_producer(unique_name);
 
     // Initialize ID's
     _network_buf_id = 0;
@@ -35,12 +35,12 @@ hsaRfiMaskOutput::~hsaRfiMaskOutput() {}
 int hsaRfiMaskOutput::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     // We want to make sure we have some space to put our results.
-    uint8_t* frame = wait_for_empty_frame(_rfi_mask_output_buf, unique_name.c_str(),
+    uint8_t* frame = _rfi_mask_output_buf->wait_for_empty_frame(unique_name,
                                           _rfi_mask_output_buf_precondition_id);
     if (frame == nullptr)
         return -1;
 
-    frame = wait_for_full_frame(_network_buf, unique_name.c_str(), _network_buf_precondition_id);
+    frame = _network_buf->wait_for_full_frame(unique_name, _network_buf_precondition_id);
     if (frame == nullptr)
         return -1;
 
@@ -53,7 +53,7 @@ int hsaRfiMaskOutput::wait_on_precondition(int gpu_frame_id) {
 
 hsa_signal_t hsaRfiMaskOutput::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
     // Get GPU memory
-    void* gpu_output_ptr = device.get_gpu_memory_array("rfi_mask_output", gpu_frame_id,
+    void* gpu_output_ptr = device.get_gpu_memory_array("rfi_mask_output", gpu_frame_id, _gpu_buffer_depth,
                                                        _rfi_mask_output_buf->frame_size);
     // Copy GPU memory to host
     void* host_output_ptr = (void*)_rfi_mask_output_buf->frames[_rfi_mask_output_buf_execute_id];
@@ -73,9 +73,9 @@ void hsaRfiMaskOutput::finalize_frame(int frame_id) {
     pass_metadata(_network_buf, _network_buf_id, _rfi_mask_output_buf, _rfi_mask_output_buf_id);
 
     // Mark the input buffer as "empty" so that it can be reused.
-    mark_frame_empty(_network_buf, unique_name.c_str(), _network_buf_id);
+    _network_buf->mark_frame_empty(unique_name, _network_buf_id);
     // Mark the lost samples buffer as empty
-    mark_frame_full(_rfi_mask_output_buf, unique_name.c_str(), _rfi_mask_output_buf_id);
+    _rfi_mask_output_buf->mark_frame_full(unique_name, _rfi_mask_output_buf_id);
     // Note this will change once we do accumulation in the GPU
     _network_buf_id = (_network_buf_id + 1) % _network_buf->num_frames;
     _rfi_mask_output_buf_id = (_rfi_mask_output_buf_id + 1) % _rfi_mask_output_buf->num_frames;

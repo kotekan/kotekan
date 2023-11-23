@@ -22,7 +22,7 @@ hsaAsyncCopyGain::hsaAsyncCopyGain(Config& config, const std::string& unique_nam
 
     gain_len = 2 * 2048 * sizeof(float);
     gain_buf = host_buffers.get_buffer("gain_frb_buf");
-    register_consumer(gain_buf, unique_name.c_str());
+    gain_buf->register_consumer(unique_name);
     gain_buf_id = 0;
     gain_buf_finalize_id = 0;
     gain_buf_precondition_id = 0;

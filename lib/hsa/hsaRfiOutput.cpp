@@ -16,9 +16,9 @@ hsaRfiOutput::hsaRfiOutput(Config& config, const std::string& unique_name,
     command_type = gpuCommandType::COPY_OUT;
     // Get buffers
     _network_buf = host_buffers.get_buffer("network_buf");
-    register_consumer(_network_buf, unique_name.c_str());
+    _network_buf->register_consumer(unique_name);
     _rfi_output_buf = host_buffers.get_buffer("rfi_output_buf");
-    register_producer(_rfi_output_buf, unique_name.c_str());
+    _rfi_output_buf->register_producer(unique_name);
     // Initialize ID's
     _network_buf_id = 0;
     _network_buf_precondition_id = 0;
