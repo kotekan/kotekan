@@ -15,8 +15,8 @@
 #include <visUtil.hpp>
 
 #if !KOTEKAN_FLOAT16
-#error "The F-Engine simulator requires float16 support"
-#endif
+#warning "The F-Engine simulator requires float16 support"
+#else
 
 class FEngine : public kotekan::Stage {
     const std::string unique_name;
@@ -521,3 +521,5 @@ void FEngine::main_thread() {
 
     INFO("Done.");
 }
+
+#endif
