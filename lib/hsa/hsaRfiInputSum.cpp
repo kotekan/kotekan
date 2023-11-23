@@ -64,8 +64,7 @@ hsaRfiInputSum::~hsaRfiInputSum() {}
 int hsaRfiInputSum::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
 
-    uint8_t* frame =
-        _network_buf->wait_for_full_frame(unique_name, _network_buf_precondition_id);
+    uint8_t* frame = _network_buf->wait_for_full_frame(unique_name, _network_buf_precondition_id);
     if (frame == nullptr)
         return -1;
 
@@ -101,17 +100,19 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
     memset(&args, 0, sizeof(args));
     // Set arguments
     args.input = device.get_gpu_memory("time_sum", input_frame_len);
-    args.output = device.get_gpu_memory_array("rfi_output", gpu_frame_id, _gpu_buffer_depth, output_frame_len);
+    args.output = device.get_gpu_memory_array("rfi_output", gpu_frame_id, _gpu_buffer_depth,
+                                              output_frame_len);
 
     args.input_var = device.get_gpu_memory("rfi_time_sum_var", input_var_frame_len);
-    args.output_var =
-        device.get_gpu_memory_array("rfi_output_var", gpu_frame_id, _gpu_buffer_depth, output_var_frame_len);
+    args.output_var = device.get_gpu_memory_array("rfi_output_var", gpu_frame_id, _gpu_buffer_depth,
+                                                  output_var_frame_len);
 
-    args.input_mask = device.get_gpu_memory_array("input_mask", gpu_frame_id, _gpu_buffer_depth, input_mask_len);
-    args.output_mask =
-        device.get_gpu_memory_array("rfi_mask_output", gpu_frame_id, _gpu_buffer_depth, output_mask_len);
-    args.lost_sample_correction = device.get_gpu_memory_array("rfi_compressed_lost_samples",
-                                                              gpu_frame_id, _gpu_buffer_depth, correction_frame_len);
+    args.input_mask =
+        device.get_gpu_memory_array("input_mask", gpu_frame_id, _gpu_buffer_depth, input_mask_len);
+    args.output_mask = device.get_gpu_memory_array("rfi_mask_output", gpu_frame_id,
+                                                   _gpu_buffer_depth, output_mask_len);
+    args.lost_sample_correction = device.get_gpu_memory_array(
+        "rfi_compressed_lost_samples", gpu_frame_id, _gpu_buffer_depth, correction_frame_len);
     args.num_elements = _num_elements;
     args.num_bad_inputs = num_bad_inputs;
     args.sk_step = _sk_step;

@@ -55,7 +55,8 @@ hsa_signal_t hsaBeamformUpchanHFB::execute(int gpu_frame_id, hsa_signal_t preced
     memset(&args, 0, sizeof(args));
 
     args.input_buffer = device.get_gpu_memory("transposed_output", input_frame_len);
-    args.output_buffer = device.get_gpu_memory_array("bf_output", gpu_frame_id, _gpu_buffer_depth, output_frame_len);
+    args.output_buffer =
+        device.get_gpu_memory_array("bf_output", gpu_frame_id, _gpu_buffer_depth, output_frame_len);
     args.output_hyperfine_beam_buffer = device.get_gpu_memory("hfb_output", output_hfb_frame_len);
 
     // Allocate the kernel argument buffer from the correct region.

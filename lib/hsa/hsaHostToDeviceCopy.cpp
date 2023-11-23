@@ -39,8 +39,8 @@ int hsaHostToDeviceCopy::wait_on_precondition(int gpu_frame_id) {
 
 hsa_signal_t hsaHostToDeviceCopy::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
     // Get the gpu and cpu memory pointers.
-    void* gpu_memory_frame =
-        device.get_gpu_memory_array(_gpu_memory_name, gpu_frame_id, _gpu_buffer_depth, in_buf->frame_size);
+    void* gpu_memory_frame = device.get_gpu_memory_array(_gpu_memory_name, gpu_frame_id,
+                                                         _gpu_buffer_depth, in_buf->frame_size);
     void* host_memory_frame = (void*)in_buf->frames[(int)in_buf_id];
 
     DEBUG2("Copy data to GPU frame name: {} from buffer: {}", _gpu_memory_name,

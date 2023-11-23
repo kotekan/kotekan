@@ -65,8 +65,7 @@ int hsaInputData::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
 
     // Wait for there to be data in the input (network) buffer.
-    uint8_t* frame =
-        network_buf->wait_for_full_frame(unique_name, network_buffer_precondition_id);
+    uint8_t* frame = network_buf->wait_for_full_frame(unique_name, network_buffer_precondition_id);
     if (frame == nullptr)
         return -1;
     // INFO("Got full buffer {:s}[{:d}], gpu[{:d}][{:d}]", network_buf->buffer_name,
@@ -98,7 +97,8 @@ int hsaInputData::wait_on_precondition(int gpu_frame_id) {
 hsa_signal_t hsaInputData::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
     // Get the gpu and cpu memory pointers.
-    void* gpu_memory_frame = device.get_gpu_memory_array("input", gpu_frame_id, _gpu_buffer_depth, input_frame_len);
+    void* gpu_memory_frame =
+        device.get_gpu_memory_array("input", gpu_frame_id, _gpu_buffer_depth, input_frame_len);
     void* host_memory_frame = (void*)network_buf->frames[network_buffer_id];
 
     // Do the input data copy.

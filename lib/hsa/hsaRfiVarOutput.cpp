@@ -32,8 +32,8 @@ hsaRfiVarOutput::~hsaRfiVarOutput() {}
 int hsaRfiVarOutput::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     // We want to make sure we have some space to put our results.
-    uint8_t* frame = _rfi_output_var_buf->wait_for_empty_frame(unique_name,
-                                          _rfi_output_var_buf_precondition_id);
+    uint8_t* frame =
+        _rfi_output_var_buf->wait_for_empty_frame(unique_name, _rfi_output_var_buf_precondition_id);
     if (frame == nullptr)
         return -1;
 
@@ -50,8 +50,8 @@ int hsaRfiVarOutput::wait_on_precondition(int gpu_frame_id) {
 
 hsa_signal_t hsaRfiVarOutput::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
     // Get GPU memory
-    void* gpu_output_ptr = device.get_gpu_memory_array("rfi_output_var", gpu_frame_id,
-                                                       _gpu_buffer_depth, _rfi_output_var_buf->frame_size);
+    void* gpu_output_ptr = device.get_gpu_memory_array(
+        "rfi_output_var", gpu_frame_id, _gpu_buffer_depth, _rfi_output_var_buf->frame_size);
     // Copy GPU memory to host
     void* host_output_ptr = (void*)_rfi_output_var_buf->frames[_rfi_output_var_buf_execute_id];
     device.async_copy_gpu_to_host(host_output_ptr, gpu_output_ptr, _rfi_output_var_buf->frame_size,

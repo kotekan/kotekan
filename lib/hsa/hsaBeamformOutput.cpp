@@ -39,8 +39,7 @@ int hsaBeamformOutputData::wait_on_precondition(int gpu_frame_id) {
         return -1;
     output_buffer_precondition_id = (output_buffer_precondition_id + 1) % output_buffer->num_frames;
 
-    frame =
-        network_buffer->wait_for_full_frame(unique_name, network_buffer_precondition_id);
+    frame = network_buffer->wait_for_full_frame(unique_name, network_buffer_precondition_id);
     if (frame == nullptr)
         return -1;
     network_buffer_precondition_id =
@@ -51,8 +50,8 @@ int hsaBeamformOutputData::wait_on_precondition(int gpu_frame_id) {
 
 hsa_signal_t hsaBeamformOutputData::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
-    void* gpu_output_ptr =
-        device.get_gpu_memory_array("bf_output", gpu_frame_id, _gpu_buffer_depth, output_buffer->frame_size);
+    void* gpu_output_ptr = device.get_gpu_memory_array("bf_output", gpu_frame_id, _gpu_buffer_depth,
+                                                       output_buffer->frame_size);
 
     void* host_output_ptr = (void*)output_buffer->frames[output_buffer_execute_id];
 

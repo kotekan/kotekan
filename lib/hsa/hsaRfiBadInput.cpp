@@ -58,7 +58,8 @@ hsa_signal_t hsaRfiBadInput::execute(int gpu_frame_id, hsa_signal_t precede_sign
     memset(&args, 0, sizeof(args));
     // Set argumnets to correct values
     args.input = device.get_gpu_memory("time_sum", input_frame_len);
-    args.output = device.get_gpu_memory_array("rfi_bad_input", gpu_frame_id, _gpu_buffer_depth, output_frame_len);
+    args.output = device.get_gpu_memory_array("rfi_bad_input", gpu_frame_id, _gpu_buffer_depth,
+                                              output_frame_len);
     args.M = _sk_step;
     args.num_sk = _samples_per_data_set / _sk_step;
     // Allocate the kernel argument buffer from the correct region.

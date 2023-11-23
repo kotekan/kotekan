@@ -54,15 +54,15 @@ hsaOutputData::~hsaOutputData() {}
 int hsaOutputData::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     // We want to make sure we have some space to put our results.
-    uint8_t* frame = output_buffer->wait_for_empty_frame(static_unique_name,
-                                          output_buffer_precondition_id);
+    uint8_t* frame =
+        output_buffer->wait_for_empty_frame(static_unique_name, output_buffer_precondition_id);
     if (frame == nullptr)
         return -1;
     output_buffer_precondition_id =
         (output_buffer_precondition_id + _num_sub_frames) % output_buffer->num_frames;
     if (_sub_frame_index == 0) {
-        frame = network_buffer->wait_for_full_frame(static_unique_name,
-                                    network_buffer_precondition_id);
+        frame =
+            network_buffer->wait_for_full_frame(static_unique_name, network_buffer_precondition_id);
         if (frame == nullptr)
             return -1;
         frame = lost_samples_buf->wait_for_full_frame(static_unique_name,
@@ -80,8 +80,9 @@ int hsaOutputData::wait_on_precondition(int gpu_frame_id) {
 
 hsa_signal_t hsaOutputData::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
-    void* gpu_output_ptr = device.get_gpu_memory_array(
-                                                       fmt::format(fmt("corr_{:d}"), _sub_frame_index), gpu_frame_id, _gpu_buffer_depth, output_buffer->frame_size);
+    void* gpu_output_ptr =
+        device.get_gpu_memory_array(fmt::format(fmt("corr_{:d}"), _sub_frame_index), gpu_frame_id,
+                                    _gpu_buffer_depth, output_buffer->frame_size);
 
     void* host_output_ptr = (void*)output_buffer->frames[output_buffer_excute_id];
 

@@ -92,8 +92,8 @@ int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
         }
         if (frames_to_update == 0 && !current_update_active) {
             auto timeout = double_to_ts(0);
-            int status = _in_buf->wait_for_full_frame_timeout(unique_name,
-                                                     _in_buf_precondition_id, timeout);
+            int status =
+                _in_buf->wait_for_full_frame_timeout(unique_name, _in_buf_precondition_id, timeout);
             DEBUG("status of bad inputs _in_buf_precondition_id[{:d}]={:d} (0=ready 1=not)",
                   _in_buf_precondition_id, status);
             if (status == 0)
@@ -119,7 +119,8 @@ hsa_signal_t hsaRfiUpdateBadInputs::execute(int gpu_frame_id, hsa_signal_t prece
         // Copy memory to GPU
         DEBUG("Copying bad input list to GPU[{:d}], frames to update: {:d}", device.get_gpu_id(),
               frames_to_update);
-        void* gpu_mem = device.get_gpu_memory_array("input_mask", gpu_frame_id, _gpu_buffer_depth, input_mask_len);
+        void* gpu_mem = device.get_gpu_memory_array("input_mask", gpu_frame_id, _gpu_buffer_depth,
+                                                    input_mask_len);
         device.async_copy_host_to_gpu(gpu_mem, (void*)host_mask, input_mask_len, precede_signal,
                                       signals[gpu_frame_id]);
 

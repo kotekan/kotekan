@@ -235,7 +235,8 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
     args.map_buffer = device.get_gpu_memory("beamform_map", map_len);
     args.coeff_buffer = device.get_gpu_memory("beamform_coeff_map", coeff_len);
     args.output_buffer = device.get_gpu_memory("beamform_output", output_frame_len);
-    args.gain_buffer = device.get_gpu_memory_array("beamform_gain", gpu_frame_id, _gpu_buffer_depth, gain_len);
+    args.gain_buffer =
+        device.get_gpu_memory_array("beamform_gain", gpu_frame_id, _gpu_buffer_depth, gain_len);
 
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));

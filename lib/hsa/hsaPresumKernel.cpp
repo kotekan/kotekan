@@ -32,7 +32,8 @@ hsaPresumKernel::hsaPresumKernel(Config& config, const std::string& unique_name,
 
     // pre-allocate GPU memory
     device.get_gpu_memory_array("input", 0, _gpu_buffer_depth, input_frame_len);
-    device.get_gpu_memory_array(fmt::format(fmt("presum_{:d}"), _sub_frame_index), 0, _gpu_buffer_depth, presum_len);
+    device.get_gpu_memory_array(fmt::format(fmt("presum_{:d}"), _sub_frame_index), 0,
+                                _gpu_buffer_depth, presum_len);
 }
 
 hsaPresumKernel::~hsaPresumKernel() {}
@@ -54,12 +55,14 @@ hsa_signal_t hsaPresumKernel::execute(int gpu_frame_id, hsa_signal_t precede_sig
 
     // Index past the start of the input for the required sub frame
     args.input_buffer =
-        (void*)((uint8_t*)device.get_gpu_memory_array("input", gpu_frame_id, _gpu_buffer_depth, input_frame_len)
+        (void*)((uint8_t*)device.get_gpu_memory_array("input", gpu_frame_id, _gpu_buffer_depth,
+                                                      input_frame_len)
                 + _num_elements * _num_local_freq * _sub_frame_samples * _sub_frame_index);
     args.mystery = nullptr;
     args.constant = _num_elements / 4; // global_x size
-    args.presum_buffer = device.get_gpu_memory_array(
-                                                     fmt::format(fmt("presum_{:d}"), _sub_frame_index), gpu_frame_id, _gpu_buffer_depth, presum_len);
+    args.presum_buffer =
+        device.get_gpu_memory_array(fmt::format(fmt("presum_{:d}"), _sub_frame_index), gpu_frame_id,
+                                    _gpu_buffer_depth, presum_len);
 
     // Copy kernel args into correct location for GPU
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));

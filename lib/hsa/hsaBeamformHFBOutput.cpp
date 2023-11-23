@@ -45,8 +45,8 @@ int hsaBeamformHFBOutputData::wait_on_precondition(int gpu_frame_id) {
 
 hsa_signal_t hsaBeamformHFBOutputData::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
-    void* gpu_output_ptr =
-        device.get_gpu_memory_array("hfb_sum_output", gpu_frame_id, _gpu_buffer_depth, output_buffer->frame_size);
+    void* gpu_output_ptr = device.get_gpu_memory_array(
+        "hfb_sum_output", gpu_frame_id, _gpu_buffer_depth, output_buffer->frame_size);
     void* host_output_ptr = (void*)output_buffer->frames[output_buffer_execute_id];
 
     device.async_copy_gpu_to_host(host_output_ptr, gpu_output_ptr, output_buffer->frame_size,

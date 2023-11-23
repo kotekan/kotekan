@@ -56,12 +56,12 @@ hsa_signal_t hsaTrackingBeamform::execute(int gpu_frame_id, hsa_signal_t precede
     } args;
     memset(&args, 0, sizeof(args));
     args.input_buffer = device.get_gpu_memory("input_reordered", input_frame_len);
-    args.phase_buffer = device.get_gpu_memory_array("beamform_phase", gpu_frame_id, _gpu_buffer_depth,
-                                                    phase_len + _num_beams * sizeof(float));
+    args.phase_buffer = device.get_gpu_memory_array(
+        "beamform_phase", gpu_frame_id, _gpu_buffer_depth, phase_len + _num_beams * sizeof(float));
     // The scaling buffer is stored at the end of the phase array.
     args.scaling_buffer = (void*)((uint8_t*)args.phase_buffer + phase_len);
-    args.output_buffer =
-        device.get_gpu_memory_array("bf_tracking_output", gpu_frame_id, _gpu_buffer_depth, output_frame_len);
+    args.output_buffer = device.get_gpu_memory_array("bf_tracking_output", gpu_frame_id,
+                                                     _gpu_buffer_depth, output_frame_len);
 
 
     // Allocate the kernel argument buffer from the correct region.

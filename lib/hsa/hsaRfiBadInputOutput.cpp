@@ -51,8 +51,8 @@ int hsaRfiBadInputOutput::wait_on_precondition(int gpu_frame_id) {
 
 hsa_signal_t hsaRfiBadInputOutput::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
     // Get GPU memory
-    void* gpu_output_ptr =
-        device.get_gpu_memory_array("rfi_bad_input", gpu_frame_id, _gpu_buffer_depth, _rfi_output_buf->frame_size);
+    void* gpu_output_ptr = device.get_gpu_memory_array(
+        "rfi_bad_input", gpu_frame_id, _gpu_buffer_depth, _rfi_output_buf->frame_size);
     // Copy GPU memory to host
     void* host_output_ptr = (void*)_rfi_output_buf->frames[_rfi_output_buf_execute_id];
     device.async_copy_gpu_to_host(host_output_ptr, gpu_output_ptr, _rfi_output_buf->frame_size,

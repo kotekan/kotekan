@@ -40,8 +40,7 @@ int hsaAsyncCopyGain::wait_on_precondition(int gpu_frame_id) {
 
     // Check for new gains
     if (first_pass) {
-        uint8_t* frame =
-            gain_buf->wait_for_full_frame(unique_name, gain_buf_precondition_id);
+        uint8_t* frame = gain_buf->wait_for_full_frame(unique_name, gain_buf_precondition_id);
         if (frame == nullptr)
             return -1;
         gain_buf_precondition_id = (gain_buf_precondition_id + 1) % gain_buf->num_frames;
@@ -59,7 +58,7 @@ int hsaAsyncCopyGain::wait_on_precondition(int gpu_frame_id) {
         if (frames_to_update == 0 && !current_update_active) {
             auto timeout = double_to_ts(0);
             int status = gain_buf->wait_for_full_frame_timeout(unique_name,
-                                                     gain_buf_precondition_id, timeout);
+                                                               gain_buf_precondition_id, timeout);
             DEBUG("status of gain_buf_precondition_id[{:d}]={:d} (0=ready 1=not)",
                   gain_buf_precondition_id, status);
             if (status == 0) {
@@ -80,7 +79,8 @@ hsa_signal_t hsaAsyncCopyGain::execute(int gpu_frame_id, hsa_signal_t precede_si
     if (frames_to_update > 0) {
         frame_copy_active.at(gpu_frame_id) = true;
         DEBUG("Going to async copy gain_buf_id={:d} gpu_frame_id={:d}", gain_buf_id, gpu_frame_id);
-        void* device_gain = device.get_gpu_memory_array("beamform_gain", gpu_frame_id, _gpu_buffer_depth, gain_len);
+        void* device_gain =
+            device.get_gpu_memory_array("beamform_gain", gpu_frame_id, _gpu_buffer_depth, gain_len);
         void* host_gain = (void*)gain_buf->frames[gain_buf_id];
         device.async_copy_host_to_gpu(device_gain, host_gain, gain_len, precede_signal,
                                       signals[gpu_frame_id]);

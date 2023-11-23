@@ -152,8 +152,7 @@ int hsaTrackingUpdatePhase::wait_on_precondition(int gpu_frame_id) {
         gain_buf_id = (gain_buf_id + 1) % gain_buf->num_frames;
     } else {
         auto timeout = double_to_ts(0);
-        int status =
-            gain_buf->wait_for_full_frame_timeout(unique_name, gain_buf_id, timeout);
+        int status = gain_buf->wait_for_full_frame_timeout(unique_name, gain_buf_id, timeout);
         if (status == 0) {
             DEBUG("Applying new host gains from {:s}[{:d}]", gain_buf->buffer_name, gain_buf_id);
             std::lock_guard<std::mutex> lock(_beam_lock);
@@ -308,8 +307,8 @@ hsa_signal_t hsaTrackingUpdatePhase::execute(int gpu_frame_id, hsa_signal_t prec
 
     // Get the gpu memory pointer. i will need multiple frame through the use of get_gpu_mem_array,
     // because while it has been sent away for async copy, the next update might be happening.
-    void* gpu_memory_frame = device.get_gpu_memory_array("beamform_phase", gpu_frame_id, _gpu_buffer_depth,
-                                                         phase_frame_len + scaling_frame_len);
+    void* gpu_memory_frame = device.get_gpu_memory_array(
+        "beamform_phase", gpu_frame_id, _gpu_buffer_depth, phase_frame_len + scaling_frame_len);
 
     if (bankID[gpu_frame_id] == 0) {
         device.async_copy_host_to_gpu(gpu_memory_frame, (void*)host_phase_0,
