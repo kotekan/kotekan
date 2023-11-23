@@ -166,7 +166,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
 
     {{#kernel_arguments}}
     {{#hasbuffer}}
-    void* const {{{name}}}_memory = device.get_gpu_memory_array({{{name}}}_memname, pipestate.gpu_frame_id, {{{name}}}_length);
+    void* const {{{name}}}_memory = device.get_gpu_memory_array({{{name}}}_memname, pipestate.gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length);
     {{/hasbuffer}}
     {{^hasbuffer}}
     host_{{{name}}}[pipestate.gpu_frame_id].resize({{{name}}}_length);
