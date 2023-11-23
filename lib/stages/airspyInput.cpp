@@ -268,7 +268,11 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
                 dump_adcstat=false;
             }
             short *fr = (short*)frame_ptr;
-            for (uint i=0; i<buf->frame_size/BYTES_PER_SAMPLE; i++) fr[i]-=2048;
+            for (uint i=0; i<buf->frame_size/BYTES_PER_SAMPLE; i+=2)
+            {
+                fr[i]  = fr[i]- 2048;
+                fr[i+1]= 2048 - fr[i+1];
+            }
 
             mark_frame_full(buf, unique_name.c_str(), frame_id);
             frame_id = (frame_id + 1) % buf->num_frames;
