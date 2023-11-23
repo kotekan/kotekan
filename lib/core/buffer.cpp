@@ -46,7 +46,7 @@ GenericBuffer::GenericBuffer(const std::string& _buffer_name, const std::string&
                              metadataPool* pool, int _num_frames) :
     num_frames(_num_frames),
     shutdown_signal(false), buffer_name(_buffer_name), buffer_type(_buffer_type),
-    metadata_pool(pool), metadata(num_frames, NULL) {}
+    metadata_pool(pool), metadata(num_frames, nullptr) {}
 
 GenericBuffer::~GenericBuffer() {}
 
@@ -147,9 +147,9 @@ void Buffer::mark_frame_full(const std::string& name, const int ID) {
                 DEBUG("No consumers are registered on {:s} dropping data in frame {:d}...",
                       buffer_name, ID);
                 is_full[ID] = false;
-                if (metadata[ID] != NULL) {
+                if (metadata[ID] != nullptr) {
                     decrement_metadata_ref_count(metadata[ID]);
-                    metadata[ID] = NULL;
+                    metadata[ID] = nullptr;
                 }
                 set_empty = true;
                 private_reset_consumers(ID);
@@ -248,9 +248,9 @@ bool Buffer::private_mark_frame_empty(const int ID) {
         private_reset_consumers(ID);
         broadcast = true;
     }
-    if (metadata[ID] != NULL) {
+    if (metadata[ID] != nullptr) {
         decrement_metadata_ref_count(metadata[ID]);
-        metadata[ID] = NULL;
+        metadata[ID] = nullptr;
     }
     return broadcast;
 }
@@ -525,7 +525,7 @@ void Buffer::print_full_status() {
 
 void pass_metadata(Buffer* from_buf, int from_ID, Buffer* to_buf, int to_ID) {
 
-    if (from_buf->metadata[from_ID] == NULL) {
+    if (from_buf->metadata[from_ID] == nullptr) {
         WARN_F("No metadata in source buffer %s[%d], was this intended?", from_buf->buffer_name,
                from_ID);
         return;
@@ -543,13 +543,13 @@ void copy_metadata(Buffer* from_buf, int from_ID, Buffer* to_buf, int to_ID) {
 
     std::scoped_lock lock(from_buf->mutex, to_buf->mutex);
 
-    if (from_buf->metadata[from_ID] == NULL) {
+    if (from_buf->metadata[from_ID] == nullptr) {
         WARN_F("No metadata in source buffer %s[%d], was this intended?", from_buf->buffer_name,
                from_ID);
         return;
     }
 
-    if (to_buf->metadata[to_ID] == NULL) {
+    if (to_buf->metadata[to_ID] == nullptr) {
         WARN_F("No metadata in dest buffer %s[%d], was this intended?", from_buf->buffer_name,
                from_ID);
         return;
@@ -573,13 +573,13 @@ void GenericBuffer::allocate_new_metadata_object(int ID) {
 
     buffer_lock lock(mutex);
 
-    if (metadata_pool == NULL) {
+    if (metadata_pool == nullptr) {
         FATAL_ERROR_F("No metadata pool on %s but metadata was needed by a producer", buffer_name);
     }
 
     DEBUG2_F("Called allocate_new_metadata_object, buf %p, %d", this, ID);
 
-    if (metadata[ID] == NULL)
+    if (metadata[ID] == nullptr)
         metadata[ID] = request_metadata_object(metadata_pool);
 
     // Make sure we got a metadata object.
@@ -602,8 +602,8 @@ uint8_t* Buffer::swap_external_frame(int frame_id, uint8_t* external_frame) {
 void swap_frames(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_frame_id) {
 
     assert(from_buf != to_buf);
-    assert(from_buf != NULL);
-    assert(to_buf != NULL);
+    assert(from_buf != nullptr);
+    assert(to_buf != nullptr);
     assert(from_frame_id >= 0);
     assert(from_frame_id < from_buf->num_frames);
     assert(to_frame_id >= 0);
@@ -625,8 +625,8 @@ void swap_frames(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_fra
 
 void safe_swap_frame(Buffer* src_buf, int src_frame_id, Buffer* dest_buf, int dest_frame_id) {
     assert(src_buf != dest_buf);
-    assert(src_buf != NULL);
-    assert(dest_buf != NULL);
+    assert(src_buf != nullptr);
+    assert(dest_buf != nullptr);
     assert(src_frame_id >= 0);
     assert(src_frame_id < src_buf->num_frames);
     assert(dest_frame_id >= 0);
@@ -660,13 +660,13 @@ void safe_swap_frame(Buffer* src_buf, int src_frame_id, Buffer* dest_buf, int de
 uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock_frames,
                        bool zero_new_frames) {
 
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
 
 #ifdef WITH_HSA // Support for legacy HSA support used in CHIME
     (void)use_hugepages;
     frame = (uint8_t*)hsa_host_malloc(len, numa_node);
-    if (frame == NULL) {
-        return NULL;
+    if (frame == nullptr) {
+        return nullptr;
     }
 #else
     if (use_hugepages) {
@@ -676,7 +676,7 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
         if (mapped_frame == MAP_FAILED) {
             ERROR_F("Error mapping huge pages, check available huge pages: %s (%d)",
                     strerror(errno), errno);
-            return NULL;
+            return nullptr;
         }
         // Strictly bind the memory to the required NUMA domain
 #ifdef WITH_NUMA
@@ -687,14 +687,14 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
             < 0) {
             ERROR_F("Failed to bind huge page frames to requested NUMA node: %s (%d)",
                     strerror(errno), errno);
-            return NULL;
+            return nullptr;
         }
         numa_bitmask_free(node_mask);
 #endif
         frame = (uint8_t*)mapped_frame;
 #else
         ERROR_F("Huge pages not supported in Mac OSX.");
-        return NULL;
+        return nullptr;
 #endif
     } else {
 #ifdef WITH_NUMA
@@ -706,7 +706,7 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
         int err = posix_memalign((void**)&(frame), PAGESIZE_MEM, len);
         if (err != 0) {
             ERROR_F("Error creating aligned memory: %d", err);
-            return NULL;
+            return nullptr;
         }
         CHECK_MEM_F(frame);
 #endif
@@ -719,7 +719,7 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
         if (mlock((void*)frame, len) != 0) {
             ERROR_F("Error locking memory: %d - check ulimit -a to check memlock limits", errno);
             buffer_free(frame, len, use_hugepages);
-            return NULL;
+            return nullptr;
         }
     }
 #else
@@ -755,7 +755,7 @@ void buffer_free(uint8_t* frame_pointer, size_t size, bool use_hugepages) {
 void* GenericBuffer::get_metadata(int ID) {
     assert(ID >= 0);
     assert(ID < num_frames);
-    assert(metadata[ID] != NULL);
+    assert(metadata[ID] != nullptr);
     return metadata[ID]->metadata;
 }
 
