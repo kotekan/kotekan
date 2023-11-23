@@ -33,11 +33,11 @@ int hsaRfiOutput::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     // We want to make sure we have some space to put our results.
     uint8_t* frame =
-        wait_for_empty_frame(_rfi_output_buf, unique_name.c_str(), _rfi_output_buf_precondition_id);
+        _rfi_output_buf->wait_for_empty_frame(unique_name, _rfi_output_buf_precondition_id);
     if (frame == nullptr)
         return -1;
 
-    frame = wait_for_full_frame(_network_buf, unique_name.c_str(), _network_buf_precondition_id);
+    frame = _network_buf->wait_for_full_frame(unique_name, _network_buf_precondition_id);
     if (frame == nullptr)
         return -1;
 
@@ -51,7 +51,7 @@ int hsaRfiOutput::wait_on_precondition(int gpu_frame_id) {
 hsa_signal_t hsaRfiOutput::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
     // Get GPU memory
     void* gpu_output_ptr =
-        device.get_gpu_memory_array("rfi_output", gpu_frame_id, _rfi_output_buf->frame_size);
+        device.get_gpu_memory_array("rfi_output", gpu_frame_id, _gpu_buffer_depth, _rfi_output_buf->frame_size);
     // Copy GPU memory to host
     void* host_output_ptr = (void*)_rfi_output_buf->frames[_rfi_output_buf_execute_id];
     device.async_copy_gpu_to_host(host_output_ptr, gpu_output_ptr, _rfi_output_buf->frame_size,
@@ -67,9 +67,9 @@ void hsaRfiOutput::finalize_frame(int frame_id) {
     // Copy the information contained in the input buffer
     pass_metadata(_network_buf, _network_buf_id, _rfi_output_buf, _rfi_output_buf_id);
     // Mark the input buffer as "empty" so that it can be reused.
-    mark_frame_empty(_network_buf, unique_name.c_str(), _network_buf_id);
+    _network_buf->mark_frame_empty(unique_name, _network_buf_id);
     // Mark the output buffer as full, so it can be processed.
-    mark_frame_full(_rfi_output_buf, unique_name.c_str(), _rfi_output_buf_id);
+    _rfi_output_buf->mark_frame_full(unique_name, _rfi_output_buf_id);
     // Note this will change once we do accumulation in the GPU
     _network_buf_id = (_network_buf_id + 1) % _network_buf->num_frames;
     _rfi_output_buf_id = (_rfi_output_buf_id + 1) % _rfi_output_buf->num_frames;

@@ -34,23 +34,23 @@ hsaRfiUpdateBadInputs::hsaRfiUpdateBadInputs(Config& config, const std::string& 
 
     // Get buffers (for metadata)
     _network_buf = host_buffers.get_buffer("network_buf");
-    register_consumer(_network_buf, unique_name.c_str());
+    _network_buf->register_consumer(unique_name);
 
     _network_buf_precondition_id = 0;
     _network_buf_execute_id = 0;
     _network_buf_finalize_id = 0;
 
     _in_buf = host_buffers.get_buffer("bad_inputs_buf");
-    register_consumer(_in_buf, unique_name.c_str());
+    _in_buf->register_consumer(unique_name);
     _in_buf_precondition_id = 0;
     first_pass = true;
     num_bad_inputs = 0;
 
     frames_to_update = 0;
-    frame_copy_active.insert(std::begin(frame_copy_active), device.get_gpu_buffer_depth(), false);
+    frame_copy_active.insert(std::begin(frame_copy_active), _gpu_buffer_depth, false);
 
     // Alloc memory on GPU
-    device.get_gpu_memory_array("input_mask", 0, input_mask_len);
+    device.get_gpu_memory_array("input_mask", 0, _gpu_buffer_depth, input_mask_len);
 }
 
 hsaRfiUpdateBadInputs::~hsaRfiUpdateBadInputs() {
@@ -60,12 +60,12 @@ hsaRfiUpdateBadInputs::~hsaRfiUpdateBadInputs() {
 inline void hsaRfiUpdateBadInputs::copy_frame(int gpu_frame_id) {
     (void)gpu_frame_id;
 
-    frames_to_update = device.get_gpu_buffer_depth();
+    frames_to_update = _gpu_buffer_depth;
     memcpy(host_mask, _in_buf->frames[_in_buf_precondition_id], input_mask_len);
     num_bad_inputs = get_rfi_num_bad_inputs(_in_buf, _in_buf_precondition_id);
     DEBUG("gpu_frame_id={:d} using _in_buf_precondition_id={:d}", gpu_frame_id,
           _in_buf_precondition_id);
-    mark_frame_empty(_in_buf, unique_name.c_str(), _in_buf_precondition_id);
+    _in_buf->mark_frame_empty(unique_name, _in_buf_precondition_id);
     _in_buf_precondition_id = (_in_buf_precondition_id + 1) % _in_buf->num_frames;
 }
 
@@ -75,7 +75,7 @@ int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
     // Check for bad input updates
     std::lock_guard<std::mutex> lock(update_mutex);
     if (first_pass) {
-        uint8_t* frame = wait_for_full_frame(_in_buf, unique_name.c_str(), _in_buf_precondition_id);
+        uint8_t* frame = _in_buf->wait_for_full_frame(unique_name, _in_buf_precondition_id);
         if (frame == nullptr)
             return -1;
         first_pass = false;
@@ -92,7 +92,7 @@ int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
         }
         if (frames_to_update == 0 && !current_update_active) {
             auto timeout = double_to_ts(0);
-            int status = wait_for_full_frame_timeout(_in_buf, unique_name.c_str(),
+            int status = _in_buf->wait_for_full_frame_timeout(unique_name,
                                                      _in_buf_precondition_id, timeout);
             DEBUG("status of bad inputs _in_buf_precondition_id[{:d}]={:d} (0=ready 1=not)",
                   _in_buf_precondition_id, status);
@@ -119,7 +119,7 @@ hsa_signal_t hsaRfiUpdateBadInputs::execute(int gpu_frame_id, hsa_signal_t prece
         // Copy memory to GPU
         DEBUG("Copying bad input list to GPU[{:d}], frames to update: {:d}", device.get_gpu_id(),
               frames_to_update);
-        void* gpu_mem = device.get_gpu_memory_array("input_mask", gpu_frame_id, input_mask_len);
+        void* gpu_mem = device.get_gpu_memory_array("input_mask", gpu_frame_id, _gpu_buffer_depth, input_mask_len);
         device.async_copy_host_to_gpu(gpu_mem, (void*)host_mask, input_mask_len, precede_signal,
                                       signals[gpu_frame_id]);
 
@@ -139,6 +139,6 @@ void hsaRfiUpdateBadInputs::finalize_frame(int frame_id) {
         hsaCommand::finalize_frame(frame_id);
     }
 
-    mark_frame_empty(_network_buf, unique_name.c_str(), _network_buf_finalize_id);
+    _network_buf->mark_frame_empty(unique_name, _network_buf_finalize_id);
     _network_buf_finalize_id = (_network_buf_finalize_id + 1) % _network_buf->num_frames;
 }

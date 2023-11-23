@@ -43,7 +43,7 @@ hsaOutputDataZero::~hsaOutputDataZero() {
 hsa_signal_t hsaOutputDataZero::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
     void* gpu_output_ptr = device.get_gpu_memory_array(
-        fmt::format(fmt("corr_{:d}"), _sub_frame_index), gpu_frame_id, output_len);
+                                                       fmt::format(fmt("corr_{:d}"), _sub_frame_index), gpu_frame_id, _gpu_buffer_depth, output_len);
 
     device.async_copy_host_to_gpu(gpu_output_ptr, output_zeros, output_len, precede_signal,
                                   signals[gpu_frame_id]);

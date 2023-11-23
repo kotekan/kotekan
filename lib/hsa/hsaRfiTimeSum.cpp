@@ -61,7 +61,7 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signa
     // Initialize arguments
     memset(&args, 0, sizeof(args));
     // Set argumnets to correct values
-    args.input = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
+    args.input = device.get_gpu_memory_array("input", gpu_frame_id, _gpu_buffer_depth, input_frame_len);
     args.output = device.get_gpu_memory("time_sum", output_frame_len);
     args.output_var = device.get_gpu_memory("rfi_time_sum_var", output_var_frame_len);
     args.sk_step = _sk_step;

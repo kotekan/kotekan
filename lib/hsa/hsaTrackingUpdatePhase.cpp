@@ -61,7 +61,7 @@ hsaTrackingUpdatePhase::hsaTrackingUpdatePhase(Config& config, const std::string
     metadata_buf = host_buffers.get_buffer("network_buf");
     metadata_buffer_id = 0;
     metadata_buffer_precondition_id = 0;
-    register_consumer(metadata_buf, unique_name.c_str());
+    metadata_buf->register_consumer(unique_name);
     freq_idx = FREQ_ID_NOT_SET;
     freq_MHz = -1;
 
@@ -74,7 +74,7 @@ hsaTrackingUpdatePhase::hsaTrackingUpdatePhase(Config& config, const std::string
         throw std::runtime_error("Could not allocate memory in hsaTrackingUpdatePhase");
 
     gain_buf = host_buffers.get_buffer("gain_tracking_buf");
-    register_consumer(gain_buf, unique_name.c_str());
+    gain_buf->register_consumer(unique_name);
     gain_buf_id = 0;
     if (gain_len != gain_buf->frame_size)
         throw std::runtime_error("The gain_len in does not match the buffer frame size");
@@ -102,7 +102,7 @@ hsaTrackingUpdatePhase::hsaTrackingUpdatePhase(Config& config, const std::string
         host_phase_0[index++] = 0;
     }
 
-    bankID = (uint*)hsa_host_malloc(device.get_gpu_buffer_depth(), device.get_gpu_numa_node());
+    bankID = (uint*)hsa_host_malloc(_gpu_buffer_depth, device.get_gpu_numa_node());
     if (bankID == nullptr)
         throw std::runtime_error("Could not allocate memory in hsaTrackingUpdatePhase");
     bank_use_0 = 0;
@@ -132,7 +132,7 @@ hsaTrackingUpdatePhase::~hsaTrackingUpdatePhase() {
 int hsaTrackingUpdatePhase::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     uint8_t* frame =
-        wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
+        metadata_buf->wait_for_full_frame(unique_name, metadata_buffer_precondition_id);
     if (frame == nullptr)
         return -1;
     metadata_buffer_precondition_id =
@@ -141,25 +141,25 @@ int hsaTrackingUpdatePhase::wait_on_precondition(int gpu_frame_id) {
 
     // Wait for new gain
     if (first_pass) {
-        uint8_t* frame = wait_for_full_frame(gain_buf, unique_name.c_str(), gain_buf_id);
+        uint8_t* frame = gain_buf->wait_for_full_frame(unique_name, gain_buf_id);
         if (frame == nullptr)
             return -1;
         DEBUG("Applying inital host gains from {:s}[{:d}]", gain_buf->buffer_name, gain_buf_id);
         std::lock_guard<std::mutex> lock(_beam_lock);
         memcpy(host_gain, (float*)gain_buf->frames[gain_buf_id], gain_len);
         update_phase = true;
-        mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_id);
+        gain_buf->mark_frame_empty(unique_name, gain_buf_id);
         gain_buf_id = (gain_buf_id + 1) % gain_buf->num_frames;
     } else {
         auto timeout = double_to_ts(0);
         int status =
-            wait_for_full_frame_timeout(gain_buf, unique_name.c_str(), gain_buf_id, timeout);
+            gain_buf->wait_for_full_frame_timeout(unique_name, gain_buf_id, timeout);
         if (status == 0) {
             DEBUG("Applying new host gains from {:s}[{:d}]", gain_buf->buffer_name, gain_buf_id);
             std::lock_guard<std::mutex> lock(_beam_lock);
             memcpy(host_gain, (float*)gain_buf->frames[gain_buf_id], gain_len);
             update_phase = true;
-            mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_id);
+            gain_buf->mark_frame_empty(unique_name, gain_buf_id);
             gain_buf_id = (gain_buf_id + 1) % gain_buf->num_frames;
         }
         if (status == -1)
@@ -299,7 +299,7 @@ hsa_signal_t hsaTrackingUpdatePhase::execute(int gpu_frame_id, hsa_signal_t prec
 
     bankID[gpu_frame_id] = bank_active; // update or not, read from the latest bank
     set_beam_coord(metadata_buf, metadata_buffer_id, beam_coord);
-    mark_frame_empty(metadata_buf, unique_name.c_str(), metadata_buffer_id);
+    metadata_buf->mark_frame_empty(unique_name, metadata_buffer_id);
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
 
     // Do the data copy. Now I am doing async everytime there is new data
@@ -308,7 +308,7 @@ hsa_signal_t hsaTrackingUpdatePhase::execute(int gpu_frame_id, hsa_signal_t prec
 
     // Get the gpu memory pointer. i will need multiple frame through the use of get_gpu_mem_array,
     // because while it has been sent away for async copy, the next update might be happening.
-    void* gpu_memory_frame = device.get_gpu_memory_array("beamform_phase", gpu_frame_id,
+    void* gpu_memory_frame = device.get_gpu_memory_array("beamform_phase", gpu_frame_id, _gpu_buffer_depth,
                                                          phase_frame_len + scaling_frame_len);
 
     if (bankID[gpu_frame_id] == 0) {

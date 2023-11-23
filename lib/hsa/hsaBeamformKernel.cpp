@@ -146,7 +146,7 @@ void hsaBeamformKernel::update_NS_beam_callback(connectionInstance& conn,
 int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     uint8_t* frame =
-        wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
+        metadata_buf->wait_for_full_frame(unique_name, metadata_buffer_precondition_id);
     if (frame == nullptr)
         return -1;
     metadata_buffer_precondition_id =
@@ -206,7 +206,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
         freq_idx = tel.to_freq_id(metadata_buf, metadata_buffer_id);
         freq_MHz = tel.to_freq(freq_idx);
     }
-    mark_frame_empty(metadata_buf, unique_name.c_str(), metadata_buffer_id);
+    metadata_buf->mark_frame_empty(unique_name, metadata_buffer_id);
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
 
     if (update_NS_beam) {
@@ -235,7 +235,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
     args.map_buffer = device.get_gpu_memory("beamform_map", map_len);
     args.coeff_buffer = device.get_gpu_memory("beamform_coeff_map", coeff_len);
     args.output_buffer = device.get_gpu_memory("beamform_output", output_frame_len);
-    args.gain_buffer = device.get_gpu_memory_array("beamform_gain", gpu_frame_id, gain_len);
+    args.gain_buffer = device.get_gpu_memory_array("beamform_gain", gpu_frame_id, _gpu_buffer_depth, gain_len);
 
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));

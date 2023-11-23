@@ -29,7 +29,7 @@ int hsaHostToDeviceCopy::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
 
     // Wait for there to be data in the input buffer.
-    uint8_t* frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_buf_precondition_id);
+    uint8_t* frame = in_buf->wait_for_full_frame(unique_name, in_buf_precondition_id);
     if (frame == nullptr)
         return -1;
     in_buf_precondition_id++;

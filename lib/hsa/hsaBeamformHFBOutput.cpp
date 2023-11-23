@@ -63,7 +63,7 @@ void hsaBeamformHFBOutputData::finalize_frame(int frame_id) {
     pass_metadata(network_buffer, network_buffer_id, output_buffer, output_buffer_id);
 
     network_buffer->mark_frame_empty(unique_name, network_buffer_id);
-    output_buffer->mark_frame_full(output_buffer, unique_name, output_buffer_id);
+    output_buffer->mark_frame_full(unique_name, output_buffer_id);
     network_buffer_id = (network_buffer_id + 1) % network_buffer->num_frames;
     output_buffer_id = (output_buffer_id + 1) % output_buffer->num_frames;
 }

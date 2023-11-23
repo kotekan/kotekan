@@ -100,7 +100,7 @@ void hsaOutputData::finalize_frame(int frame_id) {
 
     auto& tel = Telescope::instance();
 
-    allocate_new_metadata_object(output_buffer, output_buffer_id);
+    output_buffer->allocate_new_metadata_object(output_buffer_id);
 
     // We make a new copy of the metadata since there are now
     // _num_sub_frames output frames for each input frame.

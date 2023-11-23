@@ -55,9 +55,9 @@ hsa_signal_t hsaBeamformHFBSum::execute(int gpu_frame_id, hsa_signal_t precede_s
 
     args.input_buffer = device.get_gpu_memory("hfb_output", input_frame_len);
     args.output_buffer =
-        device.get_gpu_memory_array("hfb_sum_output", gpu_frame_id, output_frame_len);
+        device.get_gpu_memory_array("hfb_sum_output", gpu_frame_id, _gpu_buffer_depth, output_frame_len);
     args.compressed_lost_samples_buffer = device.get_gpu_memory_array(
-        "hfb_compressed_lost_samples", gpu_frame_id, compressed_lost_samples_frame_len);
+                                                                      "hfb_compressed_lost_samples", gpu_frame_id, _gpu_buffer_depth, compressed_lost_samples_frame_len);
     args.num_samples = _num_samples;
 
     // Allocate the kernel argument buffer from the correct region.

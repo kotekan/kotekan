@@ -54,7 +54,7 @@ hsa_signal_t hsaBeamformReorder::execute(int gpu_frame_id, hsa_signal_t precede_
         void* output_buffer;
     } args;
     memset(&args, 0, sizeof(args));
-    args.input_buffer = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
+    args.input_buffer = device.get_gpu_memory_array("input", gpu_frame_id, _gpu_buffer_depth, input_frame_len);
     args.map_buffer = device.get_gpu_memory("reorder_map", map_len);
     args.output_buffer = device.get_gpu_memory("input_reordered", output_frame_len);
 
