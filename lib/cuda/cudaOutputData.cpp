@@ -82,6 +82,8 @@ cudaEvent_t cudaOutputData::execute_base(cudaPipelineState& pipestate,
                                          const std::vector<cudaEvent_t>& pre_events) {
     bool should = should_execute(pipestate, pre_events);
     did_generate_output[pipestate.gpu_frame_id] = should;
+    if (!should)
+        return nullptr;
     return execute(pipestate, pre_events);
 }
 
