@@ -12,10 +12,12 @@ name: kotekan-ci-tests
 on:
   pull_request:
     branches:
+    - chord
     - develop
     - master
   push:
     branches:
+    - chord
     - develop
     - master
 
