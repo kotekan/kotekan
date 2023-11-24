@@ -218,14 +218,13 @@ void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
         if (buf.second->is_basic()) {
             Buffer* basicbuf = dynamic_cast<Buffer*>(buf.second);
             dot += fmt::format(
-                               "{:s}\"{:s}\" [label=<{:s}<BR/>{:d}/{:d} ({:.1f}%)> shape=ellipse, color=blue];\n",
-                               prefix, buf.first, buf.first, buf.second->get_num_full_frames(), buf.second->num_frames,
-                               (float)buf.second->get_num_full_frames() / buf.second->num_frames * 100);
+                "{:s}\"{:s}\" [label=<{:s}<BR/>{:d}/{:d} ({:.1f}%)> shape=ellipse, color=blue];\n",
+                prefix, buf.first, buf.first, basicbuf->get_num_full_frames(), basicbuf->num_frames,
+                (float)basicbuf->get_num_full_frames() / basicbuf->num_frames * 100);
         } else {
             // probably RingBuffer... could customize this text!
-            dot += fmt::format(
-                               "{:s}\"{:s}\" [label=<{:s}> shape=ellipse, color=blue];\n",
-                               prefix, buf.first, buf.first);
+            dot += fmt::format("{:s}\"{:s}\" [label=<{:s}> shape=ellipse, color=blue];\n", prefix,
+                               buf.first, buf.first);
         }
     }
 
