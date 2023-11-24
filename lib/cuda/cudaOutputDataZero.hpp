@@ -31,7 +31,8 @@
 class cudaOutputDataZero : public cudaCommand {
 public:
     cudaOutputDataZero(kotekan::Config& config, const std::string& unique_name,
-                       kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+                       kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                       int inst);
     ~cudaOutputDataZero();
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;

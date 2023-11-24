@@ -43,14 +43,14 @@ class cudaUpchannelize : public cudaCommand {
 public:
     cudaUpchannelize(
         kotekan::Config& config, const std::string& unique_name,
-        kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+        kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device, int inst,
         std::string name = "upchannelize", std::string kernel = "upchan.ptx", int nsamples = 32768,
         std::string kernel_symbol = "_Z17julia_upchan_376513CuDeviceArrayI9Float16x2Li1ELi1EES_"
                                     "I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE");
     ~cudaUpchannelize();
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    virtual void finalize_frame(int gpu_frame_id) override;
+    virtual void finalize_frame() override;
 
 protected:
 private:
