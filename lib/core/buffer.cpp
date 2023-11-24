@@ -69,7 +69,7 @@ Buffer::Buffer(int num_frames, size_t len, metadataPool* pool, const std::string
                       node_mask ? node_mask->size + 1 : 0)
         < 0) {
         throw std::runtime_error(
-            fmt::format(fmt("Failed to set memory policy: %s (%d)"), strerror(errno), errno));
+            fmt::format(fmt("Failed to set memory policy: {:s} {:d}"), strerror(errno), errno));
     }
     numa_bitmask_free(node_mask);
 #endif
@@ -418,17 +418,19 @@ uint8_t* Buffer::wait_for_full_frame(const std::string& name, const int ID) {
 }
 
 int Buffer::wait_for_full_frame_timeout(const std::string& name, const int ID,
-                                        const struct timespec timeout) {
+                                        const struct timespec timeout_time) {
     std::chrono::duration dur =
-        std::chrono::seconds{timeout.tv_sec} + std::chrono::nanoseconds{timeout.tv_nsec};
+        std::chrono::seconds{timeout_time.tv_sec} + std::chrono::nanoseconds{timeout_time.tv_nsec};
+    std::chrono::time_point<std::chrono::system_clock> deadline(dur);
     std::cv_status st = std::cv_status::no_timeout;
     std::unique_lock<std::recursive_mutex> lock(mutex);
     auto& con = consumers.at(name);
 
-    // This loop exists when is_full == 1 (i.e. a full buffer) AND
-    // when this producer hasn't already marked this buffer as
-    while ((!is_full[ID] || con.is_done[ID]) && !shutdown_signal)
-        st = full_cond.wait_for(lock, dur);
+    while ((!is_full[ID] || con.is_done[ID]) && !shutdown_signal) {
+        st = full_cond.wait_until(lock, deadline);
+        if (st == std::cv_status::timeout)
+            break;
+    }
     lock.unlock();
 
     if (shutdown_signal)
