@@ -161,7 +161,7 @@ void kotekanMode::stop_stages() {
 nlohmann::json kotekanMode::get_buffer_json() {
     nlohmann::json buffer_json = {};
     // FIXME -- uses get_basic_buffer_map -- make this a member function on GenericBuffer?
-    for (auto& buf : buffer_container.get_basic_buffer_map()) {
+    for (auto& buf : buffer_container.get_buffer_map()) {
         nlohmann::json buf_info = {};
         buf_info["consumers"];
         for (auto& cit : buf.second->consumers) {
@@ -185,17 +185,18 @@ nlohmann::json kotekanMode::get_buffer_json() {
                 buf_info["producers"][producer_name]["marked_frame_empty"].push_back(
                     p.is_done[f] ? 1 : 0);
         }
-        buf_info["frames"];
-        for (int i = 0; i < buf.second->num_frames; ++i) {
-            buf_info["frames"].push_back(buf.second->is_full[i] ? 1 : 0);
-        }
-
-        buf_info["num_full_frame"] = buf.second->get_num_full_frames();
         buf_info["num_frames"] = buf.second->num_frames;
-        buf_info["frame_size"] = buf.second->frame_size;
-        buf_info["last_frame_arrival_time"] = buf.second->last_arrival_time;
         buf_info["type"] = buf.second->buffer_type;
-
+        if (buf.second->is_basic()) {
+            Buffer* basicbuf = dynamic_cast<Buffer*>(buf.second);
+            buf_info["frames"];
+            for (int i = 0; i < basicbuf->num_frames; ++i) {
+                buf_info["frames"].push_back(basicbuf->is_full[i] ? 1 : 0);
+            }
+            buf_info["num_full_frame"] = basicbuf->get_num_full_frames();
+            buf_info["frame_size"] = basicbuf->frame_size;
+            buf_info["last_frame_arrival_time"] = basicbuf->last_arrival_time;
+        }
         buffer_json[buf.first] = buf_info;
     }
 
@@ -213,11 +214,19 @@ void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
     dot += "digraph pipeline {\n";
 
     // Setup buffer nodes
-    for (auto& buf : buffer_container.get_basic_buffer_map()) {
-        dot += fmt::format(
-            "{:s}\"{:s}\" [label=<{:s}<BR/>{:d}/{:d} ({:.1f}%)> shape=ellipse, color=blue];\n",
-            prefix, buf.first, buf.first, buf.second->get_num_full_frames(), buf.second->num_frames,
-            (float)buf.second->get_num_full_frames() / buf.second->num_frames * 100);
+    for (auto& buf : buffer_container.get_buffer_map()) {
+        if (buf.second->is_basic()) {
+            Buffer* basicbuf = dynamic_cast<Buffer*>(buf.second);
+            dot += fmt::format(
+                               "{:s}\"{:s}\" [label=<{:s}<BR/>{:d}/{:d} ({:.1f}%)> shape=ellipse, color=blue];\n",
+                               prefix, buf.first, buf.first, buf.second->get_num_full_frames(), buf.second->num_frames,
+                               (float)buf.second->get_num_full_frames() / buf.second->num_frames * 100);
+        } else {
+            // probably RingBuffer... could customize this text!
+            dot += fmt::format(
+                               "{:s}\"{:s}\" [label=<{:s}> shape=ellipse, color=blue];\n",
+                               prefix, buf.first, buf.first);
+        }
     }
 
     // Setup stage nodes
@@ -226,7 +235,7 @@ void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
     }
 
     // Generate graph edges (producer/consumer relations)
-    for (auto& buf : buffer_container.get_basic_buffer_map()) {
+    for (auto& buf : buffer_container.get_buffer_map()) {
         for (auto& cit : buf.second->consumers)
             dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\";\n", prefix, buf.first, cit.second.name);
         for (auto& pit : buf.second->producers)

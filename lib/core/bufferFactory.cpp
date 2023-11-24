@@ -29,17 +29,8 @@ bufferFactory::~bufferFactory() {}
 
 map<string, GenericBuffer*> bufferFactory::build_buffers() {
     map<string, GenericBuffer*> buffers;
-
     // Start parsing tree, put the buffers in the "buffers" map
     build_from_tree(buffers, config.get_full_config_json(), "");
-
-    /*
-    // ugh, upcast the map values
-    map<string, Buffer*> b;
-    for (auto it : buffers)
-    b[it.first] = dynamic_cast<Buffer*>(it.second);
-    return b;
-    */
     return buffers;
 }
 
