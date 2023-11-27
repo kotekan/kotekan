@@ -157,8 +157,6 @@ cudaTransposeKernel_chord::cudaTransposeKernel_chord(Config& config, const std::
         "--verbose",
     };
     build_ptx({kernel_symbol}, opts);
-
-    // Initialize extra variables (if necessary)
 }
 
 cudaTransposeKernel_chord::~cudaTransposeKernel_chord() {}

@@ -16,12 +16,37 @@
 #include <cudaDeviceInterface.hpp>
 #include <fmt.hpp>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+
+namespace {
+// Round down `x` to the next lower multiple of `y`
+template<typename T, typename U>
+auto round_down(T x, U y) {
+    assert(x >= 0);
+    assert(y > 0);
+    auto r = x / y * y;
+    assert(r % y == 0);
+    assert(0 <= r && r <= x && r + y > x);
+    return r;
+}
+
+// Calculate `x mod y`, returning `x` with `0 <= x < y`
+template<typename T, typename U>
+auto mod(T x, U y) {
+    assert(y > 0);
+    while (x < 0)
+        x += y;
+    auto r = x % y;
+    assert(0 <= r && r < y);
+    return r;
+}
+} // namespace
 
 /**
  * @class cudaUpchannelizer_U64
@@ -58,7 +83,9 @@ private:
     static constexpr int cuda_number_of_frequencies = 16;
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_taps = 4;
-    static constexpr int cuda_max_number_of_timesamples = 65536;
+    static constexpr int cuda_max_number_of_timesamples = 131072;
+    static constexpr int cuda_granularity_number_of_timesamples = 256;
+    static constexpr int cuda_algorithm_overlap = 192;
     static constexpr int cuda_upchannelization_factor = 64;
 
     // Kernel compile parameters:
@@ -73,24 +100,51 @@ private:
 
     // Kernel name:
     const char* const kernel_symbol =
-        "_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_"
-        "Li1ELi1EES_IS0_Li1ELi1EE";
+        "_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_"
+        "I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE";
 
     // Kernel arguments:
-    enum class args { Tactual, G, E, Ebar, info, count };
+    enum class args { Tmin, Tmax, Tbarmin, Tbarmax, G, E, Ebar, info, count };
 
-    // Tactual: Tactual
-    static constexpr chordDataType Tactual_type = int32;
-    enum Tactual_indices {
-        Tactual_rank,
+    // Tmin: Tmin
+    static constexpr chordDataType Tmin_type = int32;
+    enum Tmin_indices {
+        Tmin_rank,
     };
-    // static constexpr std::size_t Tactual_rank = 0
+    static constexpr std::array<const char*, Tmin_rank> Tmin_labels = {};
+    static constexpr std::array<std::size_t, Tmin_rank> Tmin_lengths = {};
+    static constexpr std::size_t Tmin_length = chord_datatype_bytes(Tmin_type);
+    static_assert(Tmin_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
-    // ;
-    static constexpr std::array<const char*, Tactual_rank> Tactual_labels = {};
-    static constexpr std::array<std::size_t, Tactual_rank> Tactual_lengths = {};
-    static constexpr std::size_t Tactual_length = chord_datatype_bytes(Tactual_type);
-    static_assert(Tactual_length <= std::size_t(std::numeric_limits<int>::max()));
+    // Tmax: Tmax
+    static constexpr chordDataType Tmax_type = int32;
+    enum Tmax_indices {
+        Tmax_rank,
+    };
+    static constexpr std::array<const char*, Tmax_rank> Tmax_labels = {};
+    static constexpr std::array<std::size_t, Tmax_rank> Tmax_lengths = {};
+    static constexpr std::size_t Tmax_length = chord_datatype_bytes(Tmax_type);
+    static_assert(Tmax_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    //
+    // Tbarmin: Tbarmin
+    static constexpr chordDataType Tbarmin_type = int32;
+    enum Tbarmin_indices {
+        Tbarmin_rank,
+    };
+    static constexpr std::array<const char*, Tbarmin_rank> Tbarmin_labels = {};
+    static constexpr std::array<std::size_t, Tbarmin_rank> Tbarmin_lengths = {};
+    static constexpr std::size_t Tbarmin_length = chord_datatype_bytes(Tbarmin_type);
+    static_assert(Tbarmin_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    //
+    // Tbarmax: Tbarmax
+    static constexpr chordDataType Tbarmax_type = int32;
+    enum Tbarmax_indices {
+        Tbarmax_rank,
+    };
+    static constexpr std::array<const char*, Tbarmax_rank> Tbarmax_labels = {};
+    static constexpr std::array<std::size_t, Tbarmax_rank> Tbarmax_lengths = {};
+    static constexpr std::size_t Tbarmax_length = chord_datatype_bytes(Tbarmax_type);
+    static_assert(Tbarmax_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
     // G: gpu_mem_gain
     static constexpr chordDataType G_type = float16;
@@ -98,11 +152,6 @@ private:
         G_index_Fbar,
         G_rank,
     };
-    // static constexpr std::size_t G_rank = 0
-    //
-    //         +1
-    //
-    // ;
     static constexpr std::array<const char*, G_rank> G_labels = {
         "Fbar",
     };
@@ -110,7 +159,7 @@ private:
         1024,
     };
     static constexpr std::size_t G_length = chord_datatype_bytes(G_type) * 1024;
-    static_assert(G_length <= std::size_t(std::numeric_limits<int>::max()));
+    static_assert(G_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
     // E: gpu_mem_input_voltage
     static constexpr chordDataType E_type = int4p4;
@@ -121,17 +170,6 @@ private:
         E_index_T,
         E_rank,
     };
-    // static constexpr std::size_t E_rank = 0
-    //
-    //         +1
-    //
-    //         +1
-    //
-    //         +1
-    //
-    //         +1
-    //
-    // ;
     static constexpr std::array<const char*, E_rank> E_labels = {
         "D",
         "P",
@@ -142,10 +180,10 @@ private:
         512,
         2,
         16,
-        65536,
+        131072,
     };
-    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 16 * 65536;
-    static_assert(E_length <= std::size_t(std::numeric_limits<int>::max()));
+    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 16 * 131072;
+    static_assert(E_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
     // Ebar: gpu_mem_output_voltage
     static constexpr chordDataType Ebar_type = int4p4;
@@ -156,17 +194,6 @@ private:
         Ebar_index_Tbar,
         Ebar_rank,
     };
-    // static constexpr std::size_t Ebar_rank = 0
-    //
-    //         +1
-    //
-    //         +1
-    //
-    //         +1
-    //
-    //         +1
-    //
-    // ;
     static constexpr std::array<const char*, Ebar_rank> Ebar_labels = {
         "D",
         "P",
@@ -177,11 +204,11 @@ private:
         512,
         2,
         1024,
-        1024,
+        2048,
     };
     static constexpr std::size_t Ebar_length =
-        chord_datatype_bytes(Ebar_type) * 512 * 2 * 1024 * 1024;
-    static_assert(Ebar_length <= std::size_t(std::numeric_limits<int>::max()));
+        chord_datatype_bytes(Ebar_type) * 512 * 2 * 1024 * 2048;
+    static_assert(Ebar_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
     static constexpr chordDataType info_type = int32;
@@ -191,15 +218,6 @@ private:
         info_index_block,
         info_rank,
     };
-    // static constexpr std::size_t info_rank = 0
-    //
-    //         +1
-    //
-    //         +1
-    //
-    //         +1
-    //
-    // ;
     static constexpr std::array<const char*, info_rank> info_labels = {
         "thread",
         "warp",
@@ -211,19 +229,34 @@ private:
         128,
     };
     static constexpr std::size_t info_length = chord_datatype_bytes(info_type) * 32 * 16 * 128;
-    static_assert(info_length <= std::size_t(std::numeric_limits<int>::max()));
+    static_assert(info_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
 
     // Kotekan buffer names
-    const std::string Tactual_memname;
+    const std::string Tmin_memname;
+    const std::string Tmax_memname;
+    const std::string Tbarmin_memname;
+    const std::string Tbarmax_memname;
     const std::string G_memname;
     const std::string E_memname;
     const std::string Ebar_memname;
     const std::string info_memname;
 
     // Host-side buffer arrays
-    std::vector<std::vector<std::uint8_t>> Tactual_host;
+    std::vector<std::vector<std::uint8_t>> Tmin_host;
+    std::vector<std::vector<std::uint8_t>> Tmax_host;
+    std::vector<std::vector<std::uint8_t>> Tbarmin_host;
+    std::vector<std::vector<std::uint8_t>> Tbarmax_host;
     std::vector<std::vector<std::uint8_t>> info_host;
+
+    // Loop-carried information
+
+    // How many time samples from the previous iteration still need to be processed (or processed
+    // again)?
+    std::int64_t unprocessed;
+    // How many time samples were not provided in the previous iteration and need to be provided in
+    // this iteration?
+    std::int64_t unprovided;
 };
 
 REGISTER_CUDA_COMMAND(cudaUpchannelizer_U64);
@@ -233,16 +266,20 @@ cudaUpchannelizer_U64::cudaUpchannelizer_U64(Config& config, const std::string& 
                                              cudaDeviceInterface& device) :
     cudaCommand(config, unique_name, host_buffers, device, "Upchannelizer_U64",
                 "Upchannelizer_U64.ptx"),
-    Tactual_memname(unique_name + "/Tactual"),
+    Tmin_memname(unique_name + "/Tmin"), Tmax_memname(unique_name + "/Tmax"),
+    Tbarmin_memname(unique_name + "/Tbarmin"), Tbarmax_memname(unique_name + "/Tbarmax"),
     G_memname(config.get<std::string>(unique_name, "gpu_mem_gain")),
     E_memname(config.get<std::string>(unique_name, "gpu_mem_input_voltage")),
     Ebar_memname(config.get<std::string>(unique_name, "gpu_mem_output_voltage")),
-    info_memname(unique_name + "/gpu_mem_info")
+    info_memname(unique_name + "/gpu_mem_info"),
 
-    ,
-    Tactual_host(_gpu_buffer_depth), info_host(_gpu_buffer_depth) {
+    Tmin_host(_gpu_buffer_depth), Tmax_host(_gpu_buffer_depth), Tbarmin_host(_gpu_buffer_depth),
+    Tbarmax_host(_gpu_buffer_depth), info_host(_gpu_buffer_depth), unprocessed(0), unprovided(0) {
     // Add Graphviz entries for the GPU buffers used by this kernel
-    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Tactual", false, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Tmin", false, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Tmax", false, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Tbarmin", false, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Tbarmax", false, true, true));
     gpu_buffers_used.push_back(std::make_tuple(G_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(Ebar_memname, true, true, false));
@@ -255,7 +292,13 @@ cudaUpchannelizer_U64::cudaUpchannelizer_U64(Config& config, const std::string& 
     };
     build_ptx({kernel_symbol}, opts);
 
-    // Initialize extra variables (if necessary)
+    // // Create a ring buffer. Create it only once.
+    // assert(E_length % _gpu_buffer_depth == 0);
+    // const std::ptrdiff_t E_buffer_size = E_length / _gpu_buffer_depth;
+    // const std::ptrdiff_t E_ringbuffer_size = E_length;
+    // // if (cuda_upchannelization_factor == 128)
+    //     device.create_gpu_memory_ringbuffer(E_memname + "_ringbuffer", E_ringbuffer_size,
+    //                                         E_memname, 0, E_buffer_size);
 }
 
 cudaUpchannelizer_U64::~cudaUpchannelizer_U64() {}
@@ -264,19 +307,28 @@ cudaEvent_t cudaUpchannelizer_U64::execute(cudaPipelineState& pipestate,
                                            const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute(pipestate.gpu_frame_id);
 
-    Tactual_host[pipestate.gpu_frame_id].resize(Tactual_length);
-    void* const Tactual_memory = device.get_gpu_memory(Tactual_memname, Tactual_length);
+    Tmin_host[pipestate.gpu_frame_id].resize(Tmin_length);
+    void* const Tmin_memory = device.get_gpu_memory(Tmin_memname, Tmin_length);
+    Tmax_host[pipestate.gpu_frame_id].resize(Tmax_length);
+    void* const Tmax_memory = device.get_gpu_memory(Tmax_memname, Tmax_length);
+    Tbarmin_host[pipestate.gpu_frame_id].resize(Tbarmin_length);
+    void* const Tbarmin_memory = device.get_gpu_memory(Tbarmin_memname, Tbarmin_length);
+    Tbarmax_host[pipestate.gpu_frame_id].resize(Tbarmax_length);
+    void* const Tbarmax_memory = device.get_gpu_memory(Tbarmax_memname, Tbarmax_length);
     void* const G_memory =
         args::G == args::E || args::G == args::Ebar
-            ? device.get_gpu_memory_array(G_memname, pipestate.gpu_frame_id, G_length / 2)
+            ? device.get_gpu_memory_array(G_memname, pipestate.gpu_frame_id,
+                                          G_length / _gpu_buffer_depth)
             : device.get_gpu_memory_array(G_memname, pipestate.gpu_frame_id, G_length);
     void* const E_memory =
         args::E == args::E || args::E == args::Ebar
-            ? device.get_gpu_memory_array(E_memname, pipestate.gpu_frame_id, E_length / 2)
+            ? device.get_gpu_memory_array(E_memname, pipestate.gpu_frame_id,
+                                          E_length / _gpu_buffer_depth)
             : device.get_gpu_memory_array(E_memname, pipestate.gpu_frame_id, E_length);
     void* const Ebar_memory =
         args::Ebar == args::E || args::Ebar == args::Ebar
-            ? device.get_gpu_memory_array(Ebar_memname, pipestate.gpu_frame_id, Ebar_length / 2)
+            ? device.get_gpu_memory_array(Ebar_memname, pipestate.gpu_frame_id,
+                                          Ebar_length / _gpu_buffer_depth)
             : device.get_gpu_memory_array(Ebar_memname, pipestate.gpu_frame_id, Ebar_length);
     info_host[pipestate.gpu_frame_id].resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
@@ -336,90 +388,172 @@ cudaEvent_t cudaUpchannelizer_U64::execute(cudaPipelineState& pipestate,
     record_start_event(pipestate.gpu_frame_id);
 
     const char* exc_arg = "exception";
-    kernel_arg Tactual_arg(Tactual_memory, Tactual_length);
+    kernel_arg Tmin_arg(Tmin_memory, Tmin_length);
+    kernel_arg Tmax_arg(Tmax_memory, Tmax_length);
+    kernel_arg Tbarmin_arg(Tbarmin_memory, Tbarmin_length);
+    kernel_arg Tbarmax_arg(Tbarmax_memory, Tbarmax_length);
     kernel_arg G_arg(G_memory, G_length);
     kernel_arg E_arg(E_memory, E_length);
     kernel_arg Ebar_arg(Ebar_memory, Ebar_length);
     kernel_arg info_arg(info_memory, info_length);
     void* args[] = {
-        &exc_arg, &Tactual_arg, &G_arg, &E_arg, &Ebar_arg, &info_arg,
+        &exc_arg, &Tmin_arg, &Tmax_arg, &Tbarmin_arg, &Tbarmax_arg,
+        &G_arg,   &E_arg,    &Ebar_arg, &info_arg,
     };
 
-    *(std::int32_t*)Tactual_host[pipestate.gpu_frame_id].data() = E_meta->dim[0];
+    // We need to (re-)process some time samples, from the previous
+    // iteration (`unprocessed`), and we still to provide some time
+    // samples that were not provided in the previous iteration
+    // (`unprovided`).
 
-    // Update input voltage data pointer:
-    //
-    // We need to re-process a small number of time samples, so we
-    // move the pointer backwards in time by a bit, wrapping around if
-    // necessary.
-    //
     // Although we told Kotekan in the last iteration that we wouldn't
     // need these inputs again, it's fine to look at them again
     // because they won't be overwritten yet, if the GPU buffer depth
     // is large enough.
 
-    const bool is_first_iteration = pipestate.get_int("gpu_frame_counter") == 0;
-    INFO("is_first_iteration: {}", is_first_iteration);
+    // We need an overlap of this many time samples, i.e. this many
+    // time samples will need to be re-processed in the next
+    // iteration. This also defines the number of time samples that
+    // will be missing from the output.
+    INFO("cuda_algorithm_overlap: {}", cuda_algorithm_overlap);
+    // The input is processed in batches of this size. This means that
+    // the input we provide must be a multiple of this number.
+    INFO("cuda_granularity_number_of_timesamples: {}", cuda_granularity_number_of_timesamples);
 
-    // We need an overlap of this many time samples
-    const int needed_overlap = (cuda_number_of_taps - 1) * cuda_upchannelization_factor;
-    INFO("needed_overlap: {}", needed_overlap);
+    INFO("gpu_frame_id: {}", pipestate.gpu_frame_id);
 
-    // The overlap for this iteration, because there is no overlap available in the first iteration
-    const int overlap = is_first_iteration ? 0 : needed_overlap;
-    INFO("overlap: {}", overlap);
-    // The respective offset in bytes
-    const std::ptrdiff_t offset =
-        std::ptrdiff_t(1) * E_lengths[0] * E_lengths[1] * E_lengths[2] * overlap;
-    INFO("offset: {}", offset);
-
-    // Calculate the total ringbuffer size
-    const int gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
-    INFO("gpu_buffer_depth: {}", gpu_buffer_depth);
-    const std::ptrdiff_t ringbuffer_size = gpu_buffer_depth * E_length;
-    INFO("ringbuffer_size: {}", ringbuffer_size);
-
-    // Beginning of the ringbuffer
-    void* const E_memory0 = device.get_gpu_memory_array(E_memname, 0, E_length / 2);
+    // Beginning of the input ringbuffer
+    void* const E_memory0 = device.get_gpu_memory_array(E_memname, 0, E_length / _gpu_buffer_depth);
     INFO("E_memory0: {}", E_memory0);
 
-    // New pointer
-    INFO("E_memory: {}", E_memory);
-    void* const new_E_memory =
-        (char*)E_memory0
-        + ((char*)E_memory - (char*)E_memory0 - offset + ringbuffer_size) % ringbuffer_size;
-    INFO("new_E_memory: {}", new_E_memory);
-    assert(new_E_memory >= E_memory0 && (char*)new_E_memory < (char*)E_memory0 + ringbuffer_size);
+    // Beginning of the output ringbuffer
+    void* const Ebar_memory0 =
+        device.get_gpu_memory_array(Ebar_memname, 0, Ebar_length / _gpu_buffer_depth);
+    INFO("Ebar_memory0: {}", Ebar_memory0);
 
-    // New number of input time samples
-    const int cuda_num_timesamples = E_meta->dim[0] + overlap;
-    INFO("cuda_num_timesamples: {}", cuda_num_timesamples);
-    assert(cuda_num_timesamples <= cuda_max_number_of_timesamples);
+    // Set E_memory to beginning of input ring buffer
+    E_arg = kernel_arg(E_memory0, E_length);
 
-    // Number of output time samples
-    assert((cuda_num_timesamples - needed_overlap) % cuda_upchannelization_factor == 0);
-    const int cuda_num_output_timesamples =
-        (cuda_num_timesamples - needed_overlap) / cuda_upchannelization_factor;
-    INFO("cuda_num_output_timesamples: {}", cuda_num_output_timesamples);
+    // Set Ebar_memory to beginning of output ring buffer
+    Ebar_arg = kernel_arg(Ebar_memory0, Ebar_length);
+
+    // Current nominal index into input ringuffer
+    const std::int64_t nominal_Tmin =
+        pipestate.gpu_frame_id * cuda_max_number_of_timesamples / _gpu_buffer_depth;
+    INFO("nominal Tmin: {}", nominal_Tmin);
+
+    // Current nominal index into output ringuffer
+    const std::int64_t nominal_Tbarmin = pipestate.gpu_frame_id * cuda_max_number_of_timesamples
+                                         / cuda_upchannelization_factor / _gpu_buffer_depth;
+    INFO("nominal Tbarmin: {}", nominal_Tbarmin);
+
+    // Current unprocessed time samples
+    INFO("unprocessed: {}", unprocessed);
+
+    // Current unprovided time samples
+    INFO("unprovided: {}", unprovided);
+
+    // Actual index into input ringbuffer
+    const std::int64_t Tmin = nominal_Tmin - unprocessed;
+    INFO("Tmin: {}", Tmin);
+
+    // Actual index into output ringbuffer
+    const std::int64_t Tbarmin = nominal_Tbarmin - unprovided;
+    INFO("Tbarmin: {}", Tbarmin);
+
+    // Nominal end of input time span (given by available data)
+    const std::int64_t nominal_Tmax = nominal_Tmin + E_meta->dim[0];
+    INFO("nominal Tmax: {}", nominal_Tmax);
+
+    // We cannot process all time samples because the input size needs
+    // to be a multiple of `cuda_granularity_number_of_timesamples`.
+    const std::int64_t nominal_Tlength = nominal_Tmax - Tmin;
+    INFO("nominal Tlength: {}", nominal_Tlength);
+    const std::int64_t Tlength =
+        round_down(nominal_Tlength, cuda_granularity_number_of_timesamples);
+    INFO("Tlength: {}", Tlength);
+
+    // End of input time span
+    const std::int64_t Tmax = Tmin + Tlength;
+    INFO("Tmax: {}", Tmax);
+
+    // Output time span (defined by input time span length)
+    assert(Tlength % cuda_upchannelization_factor == 0);
+    assert(cuda_algorithm_overlap % cuda_upchannelization_factor == 0);
+    assert(Tlength >= cuda_algorithm_overlap);
+    const std::int64_t Tbarlength =
+        (Tlength - cuda_algorithm_overlap) / cuda_upchannelization_factor;
+    INFO("Tbarlength: {}", Tbarlength);
+
+    // End of output time span
+    const std::int64_t Tbarmax = Tbarmin + Tbarlength;
+    INFO("Tbarmax: {}", Tbarmax);
+
+    // Wrap lower bounds into ringbuffer
+    const std::int64_t Tmin_wrapped = mod(Tmin, cuda_max_number_of_timesamples);
+    const std::int64_t Tmax_wrapped = Tmin_wrapped + Tmax - Tmin;
+    const std::int64_t Tbarmin_wrapped =
+        mod(Tbarmin, cuda_max_number_of_timesamples / cuda_upchannelization_factor);
+    const std::int64_t Tbarmax_wrapped = Tbarmin_wrapped + Tbarmax - Tbarmin;
+    INFO("Tmin_wrapped: {}", Tmin_wrapped);
+    INFO("Tmax_wrapped: {}", Tmax_wrapped);
+    INFO("Tbarmin_wrapped: {}", Tbarmin_wrapped);
+    INFO("Tbarmax_wrapped: {}", Tbarmax_wrapped);
+
+    assert(Tmin_wrapped >= 0 && Tmin_wrapped <= Tmax_wrapped
+           && Tmax_wrapped <= std::numeric_limits<int32_t>::max());
+    assert(Tbarmin_wrapped >= 0 && Tbarmin_wrapped <= Tbarmax_wrapped
+           && Tbarmax_wrapped <= std::numeric_limits<int32_t>::max());
+
+    // Pass time spans to kernel
+    // The kernel will wrap the upper bounds to make them fit into the ringbuffer
+    *(std::int32_t*)Tmin_host[pipestate.gpu_frame_id].data() = Tmin_wrapped;
+    *(std::int32_t*)Tmax_host[pipestate.gpu_frame_id].data() = Tmax_wrapped;
+    *(std::int32_t*)Tbarmin_host[pipestate.gpu_frame_id].data() = Tbarmin_wrapped;
+    *(std::int32_t*)Tbarmax_host[pipestate.gpu_frame_id].data() = Tbarmax_wrapped;
 
     // Update metadata
-    Ebar_meta->dim[0] = cuda_num_output_timesamples;
+    Ebar_meta->dim[0] = Tbarlength - unprovided;
     assert(Ebar_meta->dim[0] <= int(Ebar_lengths[3]));
 
-    // Update kernel arguments: new `E_memory` pointer and new total number of input time samples
-    E_arg = kernel_arg(new_E_memory, E_length);
-    *(std::int32_t*)Tactual_host[pipestate.gpu_frame_id].data() = cuda_num_timesamples;
+    // Calculate the number of  unprocessed time samples for the next iteration
+    unprocessed -=
+        Tlength - cuda_algorithm_overlap - cuda_max_number_of_timesamples / _gpu_buffer_depth;
+    unprovided -=
+        Tbarlength
+        - cuda_max_number_of_timesamples / cuda_upchannelization_factor / _gpu_buffer_depth;
+    INFO("new unprocessed: {}", unprocessed);
+    INFO("new unprovided: {}", unprovided);
+    assert(unprocessed >= 0 && unprocessed < cuda_max_number_of_timesamples / _gpu_buffer_depth);
+    assert(unprovided >= 0
+           && unprovided < cuda_max_number_of_timesamples / cuda_upchannelization_factor
+                               / _gpu_buffer_depth);
 
     // Copy inputs to device memory
     // TODO: Pass scalar kernel arguments more efficiently, i.e. without a separate `cudaMemcpy`
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tactual_memory, Tactual_host[pipestate.gpu_frame_id].data(),
-                                     Tactual_length, cudaMemcpyHostToDevice,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tmin_memory, Tmin_host[pipestate.gpu_frame_id].data(),
+                                     Tmin_length, cudaMemcpyHostToDevice,
+                                     device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tmax_memory, Tmax_host[pipestate.gpu_frame_id].data(),
+                                     Tmax_length, cudaMemcpyHostToDevice,
+                                     device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmin_memory, Tbarmin_host[pipestate.gpu_frame_id].data(),
+                                     Tbarmin_length, cudaMemcpyHostToDevice,
+                                     device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmax_memory, Tbarmax_host[pipestate.gpu_frame_id].data(),
+                                     Tbarmax_length, cudaMemcpyHostToDevice,
                                      device.getStream(cuda_stream_id)));
 
     // Initialize host-side buffer arrays
     // TODO: Skip this for performance
     CHECK_CUDA_ERROR(
         cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
+
+    // Initialize outputs
+    //     0x88 = (-8,-8), an unused value to detect uninitialized output
+    // TODO: Skip this for performance
+    CHECK_CUDA_ERROR(
+        cudaMemsetAsync(Ebar_memory, 0x88ff, Ebar_length, device.getStream(cuda_stream_id)));
 
     DEBUG("kernel_symbol: {}", kernel_symbol);
     DEBUG("runtime_kernels[kernel_symbol]: {}", static_cast<void*>(runtime_kernels[kernel_symbol]));
@@ -457,11 +591,15 @@ cudaEvent_t cudaUpchannelizer_U64::execute(cudaPipelineState& pipestate,
 }
 
 void cudaUpchannelizer_U64::finalize_frame(const int gpu_frame_id) {
-    cudaCommand::finalize_frame(gpu_frame_id);
+    device.release_gpu_memory_array_metadata(G_memname, gpu_frame_id);
+    device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
+    device.release_gpu_memory_array_metadata(Ebar_memname, gpu_frame_id);
 
     for (std::size_t i = 0; i < info_host[gpu_frame_id].size(); ++i)
         if (info_host[gpu_frame_id][i] != 0)
             ERROR("cudaUpchannelizer_U64 returned 'info' value {:d} at index {:d} (zero indicates "
                   "no error)",
                   info_host[gpu_frame_id][i], i);
+
+    cudaCommand::finalize_frame(gpu_frame_id);
 }

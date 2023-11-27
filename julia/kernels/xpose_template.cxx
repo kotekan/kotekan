@@ -153,9 +153,6 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         "--verbose",
     };
     build_ptx({kernel_symbol}, opts);
-
-    // Initialize extra variables (if necessary)
-    {{{init_extra_variables}}}
 }
 
 cuda{{{kernel_name}}}::~cuda{{{kernel_name}}}() {}

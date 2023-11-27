@@ -549,6 +549,12 @@ cudaEvent_t cudaUpchannelizer_U16::execute(cudaPipelineState& pipestate,
     CHECK_CUDA_ERROR(
         cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
 
+    // Initialize outputs
+    //     0x88 = (-8,-8), an unused value to detect uninitialized output
+    // TODO: Skip this for performance
+    CHECK_CUDA_ERROR(
+        cudaMemsetAsync(Ebar_memory, 0x88ff, Ebar_length, device.getStream(cuda_stream_id)));
+
     DEBUG("kernel_symbol: {}", kernel_symbol);
     DEBUG("runtime_kernels[kernel_symbol]: {}", static_cast<void*>(runtime_kernels[kernel_symbol]));
     CHECK_CU_ERROR(cuFuncSetAttribute(runtime_kernels[kernel_symbol],

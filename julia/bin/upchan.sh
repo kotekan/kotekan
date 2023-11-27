@@ -9,6 +9,10 @@ Ufactors='16 32 64 128'
 
 # Delete previous output (so that we don't accidentally re-use it)
 for U in $Ufactors; do
+    rm -f output-A40/upchan_U$U.cxx
+    rm -f output-A40/upchan_U$U.jl
+    rm -f output-A40/upchan_U$U.ptx
+    rm -f output-A40/upchan_U$U.yaml
     rm -f ../lib/cuda/cudaUpchannelizer_U$U.cpp
     rm -f ../lib/cuda/kernels/Upchannelizer_U$U.jl
     rm -f ../lib/cuda/kernels/Upchannelizer_U$U.ptx
@@ -20,6 +24,14 @@ for U in $Ufactors; do
     julia --project=@. --optimize kernels/upchan_U$U.jl 2>&1 | tee output-A40/upchan_U$U.out &
 done
 wait
+
+# Check whether kernels were generated
+for U in $Ufactors; do
+    test -f output-A40/upchan_U$U.cxx
+    test -f output-A40/upchan_U$U.jl
+    test -f output-A40/upchan_U$U.ptx
+    test -f output-A40/upchan_U$U.yaml
+done
 
 # Format generated C++ code
 for U in $Ufactors; do

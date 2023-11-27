@@ -122,7 +122,7 @@ public:
                 ASDF::make_constant_memoized(block), std::optional<ASDF::block_info_t>(),
                 ASDF::block_format_t::block, compression, compression_level, std::vector<bool>(),
                 std::make_shared<ASDF::datatype_t>(type), ASDF::host_byteorder(), dims);
-            group->emplace("buffer", std::make_shared<ASDF::ndarray_entry>(ndarray));
+            group->emplace(buffer->buffer_name, std::make_shared<ASDF::ndarray_entry>(ndarray));
 
             // Describe metadata
             auto dim_names = std::make_shared<ASDF::sequence>();

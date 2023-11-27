@@ -153,9 +153,6 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         "--verbose",
     };
     build_ptx({kernel_symbol}, opts);
-
-    // Initialize extra variables (if necessary)
-    {{{init_extra_variables}}}
 }
 
 cuda{{{kernel_name}}}::~cuda{{{kernel_name}}}() {}
@@ -299,16 +296,16 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
 }
 
 void cuda{{{kernel_name}}}::finalize_frame(const int gpu_frame_id) {
-    cudaCommand::finalize_frame(gpu_frame_id);
-
     {{#kernel_arguments}}
-    {{^hasbuffer}}
-    {{#isoutput}}
-    for (std::size_t i = 0; i < {{{name}}}_host[gpu_frame_id].size(); ++i)
-        if ({{{name}}}_host[gpu_frame_id][i] != 0)
-            ERROR("cuda{{{kernel_name}}} returned '{{{name}}}' value {:d} at index {:d} (zero indicates noerror)",
-                  {{{name}}}_host[gpu_frame_id][i], int(i));
-    {{/isoutput}}
-    {{/hasbuffer}}
+        {{#hasbuffer}}
+            device.release_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id);
+        {{/hasbuffer}}
     {{/kernel_arguments}}
+
+    for (std::size_t i = 0; i < info_host[gpu_frame_id].size(); ++i)
+        if (info_host[gpu_frame_id][i] != 0)
+            ERROR("cuda{{{kernel_name}}} returned 'info' value {:d} at index {:d} (zero indicates no error)",
+                info_host[gpu_frame_id][i], i);
+
+    cudaCommand::finalize_frame(gpu_frame_id);
 }

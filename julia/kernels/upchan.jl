@@ -56,7 +56,7 @@ end
 
 const sampling_time_μsec = 4096 / (2 * 1200)
 const C = 2
-const T = 65536   # 32768
+const T = 32768 * 4             # this assumes a GPU buffer depth of 4
 const D = 512
 const P = 2
 const F₀ = 16
@@ -149,7 +149,10 @@ const Repl = Index{Physics,ReplTag}
 
 # Global memory layouts
 
-const layout_Tactual = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
+const layout_Tmin = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
+const layout_Tmax = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
+const layout_T̄min = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
+const layout_T̄max = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
 
 const layout_G_memory = Layout([FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
                                 Freq(:freq, 1, 2) => SIMD(:simd, 16, 2),
@@ -559,9 +562,15 @@ function upchan!(emitter)
     apply!(emitter, :info => layout_info_registers, 1i32)
     store!(emitter, :info_memory => layout_info_memory, :info)
 
-    # Read parameter `Tactual`
-    load!(emitter, :Tactual => layout_Tactual, :Tactual_memory => layout_Tactual)
-    if!(emitter, :(!(0i32 ≤ Tactual ≤ $(Int32(T)) && Tactual % $(Int32(Touter)) == 0i32))) do emitter
+    # Read parameters `Tmin`, `Tmax`, `T̄min`, `T̄max`
+    load!(emitter, :Tmin => layout_Tmin, :Tmin_memory => layout_Tmin)
+    load!(emitter, :Tmax => layout_Tmax, :Tmax_memory => layout_Tmax)
+    load!(emitter, :T̄min => layout_T̄min, :T̄min_memory => layout_T̄min)
+    load!(emitter, :T̄max => layout_T̄max, :T̄max_memory => layout_T̄max)
+    if!(emitter,
+        :(!(0i32 ≤ Tmin ≤ Tmax ≤ $(Int32(2 * T)) && (Tmax - Tmin) % $(Int32(Touter)) == 0i32 &&
+            0i32 ≤ T̄min ≤ T̄max ≤ $(Int32(2 * idiv(T, U))) &&
+            (T̄max - T̄min + $(Int32(M - 1))) % $(Int32(idiv(Touter, U))) == 0i32))) do emitter
         apply!(emitter, :info => layout_info_registers, 2i32)
         store!(emitter, :info_memory => layout_info_memory, :info)
         trap!(emitter)
@@ -890,11 +899,21 @@ function upchan!(emitter)
 
     # Outermost loop over outer blocks
     loop!(emitter, Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter))) do emitter
+        push!(emitter.statements,
+              quote
+                  Tmin + t_outer ≥ Tmax && break
+              end)
 
         # Step1: Copy outer block from global memory to shared memory
 
         # Load E
-        load!(emitter, :E => layout_E_registers, :E_memory => layout_E_memory; align=16)
+        tstride = idiv(D, 4) * P * F
+        load!(emitter, :E => layout_E_registers, :E_memory => layout_E_memory; align=16,
+              postprocess=addr -> :(let
+                                        offset = $(Int32(tstride)) * Tmin
+                                        length = $(Int32(idiv(D, 4) * P * F * T))
+                                        mod($addr + offset, length)
+                                    end))
         # eqn. (136)
         # Swap Dish(8,2) and Time(8,2), i.e. Register(:dish,8,2) and Thread(8,2)
         permute!(emitter, :E1, :E, Dish(:dish, 8, 2), Time(:time, idiv(U, 2), 2))
@@ -1451,19 +1470,193 @@ function upchan!(emitter)
         # Swap Dish(8,2) and Freq(1,2), i.e. Register(:freq,1,2) and Thread(8,2)
         permute!(emitter, :Ē2, :Ē1, Dish(:dish, 8, 2), Freq(:freq, 1, 2))
         split!(emitter, [:Ē2lo, :Ē2hi], :Ē2, Register(:freq, 1, 2))
-        merge!(emitter, :Ē2, [:Ē2lo, :Ē2hi], Dish(:dish, 8, 2) => Register(:dish, 8, 2))
+        merge!(emitter, :Ē3, [:Ē2lo, :Ē2hi], Dish(:dish, 8, 2) => Register(:dish, 8, 2))
 
-        # Skip the first MTaps-1 outputs
-        # TODO: Preload the ring buffer instead of skipping
-        if!(emitter, :(t_outer ≥ $(Int32((M - 1) * U)))) do emitter
-            store!(emitter, :Ē_memory => layout_Ē_memory, :Ē2; align=16, offset=-Int32(idiv(D, 4) * (F * U) * P * (M - 1)))
-            return nothing
+        # Skip the first MTaps-1 outputs when writing to memory.
+        tbarstride = idiv(D, 4) * P * (F * U)
+        t_min = U * (M - 1)
+        layout_Ē3 = emitter.environment[:Ē3]
+        store!(emitter, :Ē_memory => layout_Ē_memory, :Ē3; align=16,
+               condition=state -> let
+                   if U == 16
+                       @assert layout_Ē3[Time(:time, 16, 4)] == Warp(:warp, 4, 4)
+                       @assert layout_Ē3[Time(:time, 64, 4)] == Register(:time, 64, 4)
+                       @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
+                       t_warp = :(16i32 * (IndexSpaces.cuda_warpidx() ÷ 4i32 % 4i32))
+                   elseif U == 32
+                       @assert layout_Ē3[Time(:time, 32, 4)] == Warp(:warp, 8, 4)
+                       @assert layout_Ē3[Time(:time, 128, 2)] == Register(:time, 128, 2)
+                       @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
+                       t_warp = :(32i32 * (IndexSpaces.cuda_warpidx() ÷ 8i32 % 4i32))
+                   elseif U == 64
+                       @assert layout_Ē3[Time(:time, 64, 4)] == Warp(:warp, 16, 4)
+                       @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
+                       t_warp = :(64i32 * (IndexSpaces.cuda_warpidx() ÷ 16i32 % 4i32))
+                   elseif U == 128
+                       @assert layout_Ē3[Time(:time, 128, 2)] == Warp(:warp, 16, 2)
+                       @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
+                       t_warp = :(128i32 * (IndexSpaces.cuda_warpidx() ÷ 16i32 % 2i32))
+                   else
+                       @show layout_Ē3
+                       @assert false
+                   end
+                   t_register = Int32(get(state.dict, :time, 0))
+                   t_loop = :(t_outer)
+                   t = :($t_loop + $t_register + $t_warp)
+                   :($t ≥ $(Int32(t_min)))
+               end,
+               postprocess=addr -> quote
+                   let
+                       offset = $(Int32(tbarstride)) * T̄min - $(Int32(tbarstride * (M - 1)))
+                       length = $(Int32(idiv(D, 4) * P * (F * U) * idiv(T, U)))
+                       mod($addr + offset, length)
+                   end
+               end)
+
+        if false
+
+            # This is not trivial since this involves not just `t_outer`.
+
+            layout_Ē3 = emitter.environment[:Ē3]
+
+            # We have this layout:
+            @show layout_Ē3
+            # if U == 16
+            #     CplxTag.cplx:1/2 => SIMDTag.simd:4/2
+            #     DishTag.dish:1/4 => SIMDTag.simd:8/4
+            #     DishTag.dish:4/4 => RegisterTag.dish:4/4
+            #     DishTag.dish:16/8 => ThreadTag.thread:1/8
+            #     DishTag.dish:128/4 => BlockTag.block:1/4
+            #     FreqTag.freq:1/4 => ThreadTag.thread:8/4
+            #     FreqTag.freq:4/4 => WarpTag.warp:1/4
+            #     FreqTag.freq:16/16 => BlockTag.block:8/16
+            #     IntValueTag.intvalue:1/4 => SIMDTag.simd:1/4
+            #     PolrTag.polr:1/2 => BlockTag.block:4/2
+            #     TimeTag.time:16/4 => WarpTag.warp:4/4
+            #     TimeTag.time:64/4 => RegisterTag.time:64/4
+            #     TimeTag.time:256/512 => LoopTag.t_outer:256/512
+            # elseif U == 32
+            #     Physics.CplxTag.cplx:1/2 => Machine.SIMDTag.simd:4/2
+            #     Physics.DishTag.dish:1/4 => Machine.SIMDTag.simd:8/4
+            #     Physics.DishTag.dish:4/4 => Machine.RegisterTag.dish:4/4
+            #     Physics.DishTag.dish:16/8 => Machine.ThreadTag.thread:1/8
+            #     Physics.DishTag.dish:128/4 => Machine.BlockTag.block:1/4
+            #     Physics.FreqTag.freq:1/4 => Machine.ThreadTag.thread:8/4
+            #     Physics.FreqTag.freq:4/8 => Machine.WarpTag.warp:1/8
+            #     Physics.FreqTag.freq:32/16 => Machine.BlockTag.block:8/16
+            #     Physics.IntValueTag.intvalue:1/4 => Machine.SIMDTag.simd:1/4
+            #     Physics.PolrTag.polr:1/2 => Machine.BlockTag.block:4/2
+            #     Physics.TimeTag.time:32/4 => Machine.WarpTag.warp:8/4
+            #     Physics.TimeTag.time:128/2 => Machine.RegisterTag.time:128/2
+            #     Physics.TimeTag.time:256/512 => Machine.LoopTag.t_outer:256/512
+            # elseif U == 64
+            # end
+            if U == 16
+                @assert Time(:time, 1, 2) ∉ layout_Ē3
+                @assert Time(:time, 2, 2) ∉ layout_Ē3
+                @assert Time(:time, 4, 2) ∉ layout_Ē3
+                @assert Time(:time, 8, 2) ∉ layout_Ē3
+                @assert layout_Ē3[Time(:time, 16, 4)] == Warp(:warp, 4, 4)
+                @assert layout_Ē3[Time(:time, 64, 4)] == Register(:time, 64, 4)
+                @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
+
+                split!(emitter, [:Ē301, :Ē323], :Ē3, Register(:time, 128, 2))
+                split!(emitter, [:Ē30, :Ē31], :Ē301, Register(:time, 64, 2))
+                split!(emitter, [:Ē32, :Ē33], :Ē323, Register(:time, 64, 2))
+            elseif U == 32
+                @assert Time(:time, 1, 2) ∉ layout_Ē3
+                @assert Time(:time, 2, 2) ∉ layout_Ē3
+                @assert Time(:time, 4, 2) ∉ layout_Ē3
+                @assert Time(:time, 8, 2) ∉ layout_Ē3
+                @assert Time(:time, 16, 2) ∉ layout_Ē3
+
+                split!(emitter, [:Ē30, :Ē31], :Ē3, Register(:time, 128, 2))
+            else
+                @assert false
+            end
+
+            tbar_min = M - 1
+            tbarstride = idiv(D, 4) * P * (F * U)
+            @assert M == 4
+            if U == 16
+                push!(emitter.statements,
+                      quote
+                          tbar = t_outer ÷ 16i32 + IndexSpaces.cuda_warpidx() ÷ 4i32 % 4i32
+                          tbar0 = tbar + 0i32
+                          tbar1 = tbar + 4i32
+                          tbar2 = tbar + 8i32
+                          tbar3 = tbar + 12i32
+                      end)
+            elseif U == 32
+                push!(emitter.statements,
+                      quote
+                          tbar = t_outer ÷ 32i32 + IndexSpaces.cuda_warpidx() ÷ 8i32 % 4i32
+                          tbar0 = tbar + 0i32
+                          tbar1 = tbar + 4i32
+                      end)
+            else
+                @assert false
+            end
+            if U == 16
+                if!(emitter, :(tbar0 ≥ $(Int32(tbar_min)))) do emitter
+                    store!(emitter, :Ē_memory => layout_Ē_memory, :Ē30; align=16,
+                           postprocess=addr -> :(let
+                                                     offset = $(Int32(tbarstride)) * T̄min + $(Int32(tbarstride * (0 - (M - 1))))
+                                                     length = $(Int32(idiv(D, 4) * P * (F * U) * idiv(T, U)))
+                                                     mod($addr + offset, length)
+                                                 end))
+                    return nothing
+                end
+                if!(emitter, :(tbar1 ≥ $(Int32(tbar_min)))) do emitter
+                    store!(emitter, :Ē_memory => layout_Ē_memory, :Ē31; align=16,
+                           postprocess=addr -> :(let
+                                                     offset = $(Int32(tbarstride)) * T̄min + $(Int32(tbarstride * (4 - (M - 1))))
+                                                     length = $(Int32(idiv(D, 4) * P * (F * U) * idiv(T, U)))
+                                                     mod($addr + offset, length)
+                                                 end))
+                    return nothing
+                end
+                if!(emitter, :(tbar2 ≥ $(Int32(tbar_min)))) do emitter
+                    store!(emitter, :Ē_memory => layout_Ē_memory, :Ē32; align=16,
+                           postprocess=addr -> :(let
+                                                     offset = $(Int32(tbarstride)) * T̄min + $(Int32(tbarstride * (8 - (M - 1))))
+                                                     length = $(Int32(idiv(D, 4) * P * (F * U) * idiv(T, U)))
+                                                     mod($addr + offset, length)
+                                                 end))
+                    return nothing
+                end
+                if!(emitter, :(tbar3 ≥ $(Int32(tbar_min)))) do emitter
+                    store!(emitter, :Ē_memory => layout_Ē_memory, :Ē33; align=16,
+                           postprocess=addr -> :(let
+                                                     offset = $(Int32(tbarstride)) * T̄min + $(Int32(tbarstride * (12 - (M - 1))))
+                                                     length = $(Int32(idiv(D, 4) * P * (F * U) * idiv(T, U)))
+                                                     mod($addr + offset, length)
+                                                 end))
+                    return nothing
+                end
+            elseif U == 32
+                if!(emitter, :(tbar0 ≥ $(Int32(tbar_min)))) do emitter
+                    store!(emitter, :Ē_memory => layout_Ē_memory, :Ē30; align=16,
+                           postprocess=addr -> :(let
+                                                     offset = $(Int32(tbarstride)) * T̄min + $(Int32(tbarstride * (0 - (M - 1))))
+                                                     length = $(Int32(idiv(D, 4) * P * (F * U) * idiv(T, U)))
+                                                     mod($addr + offset, length)
+                                                 end))
+                    return nothing
+                end
+                if!(emitter, :(tbar1 ≥ $(Int32(tbar_min)))) do emitter
+                    store!(emitter, :Ē_memory => layout_Ē_memory, :Ē31; align=16,
+                           postprocess=addr -> :(let
+                                                     offset = $(Int32(tbarstride)) * T̄min + $(Int32(tbarstride * (4 - (M - 1))))
+                                                     length = $(Int32(idiv(D, 4) * P * (F * U) * idiv(T, U)))
+                                                     mod($addr + offset, length)
+                                                 end))
+                    return nothing
+                end
+            else
+                @assert false
+            end
         end
-
-        push!(emitter.statements,
-              quote
-                  t_outer + $(Int32(Touter)) ≥ Tactual && break
-              end)
 
         return nothing
     end # loop!(Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)))
@@ -1500,7 +1693,7 @@ open("output-A40/upchan_U$U.jl", "w") do fh
     return println(fh, upchan_kernel)
 end
 
-@eval function upchan(Tactual_memory, G_memory, E_memory, Ē_memory, info_memory)
+@eval function upchan(Tmin_memory, Tmax_memory, T̄min_memory, T̄max_memory, G_memory, E_memory, Ē_memory, info_memory)
     shmem = @cuDynamicSharedMem(UInt8, shmem_bytes, 0)
     F_shared = reinterpret(Int4x8, shmem)
     F̄_shared = reinterpret(Int4x8, shmem)
@@ -1520,8 +1713,14 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     shmem_size = idiv(shmem_bytes, 4)
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 99 * 1024 # NVIDIA A10/A40 have 99 kB shared memory
-    Tactual_cuda = CuArray(Int32[T])
-    kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm upchan(Tactual_cuda,
+    kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm upchan(CUDA.zeros(Int32,
+                                                                                                                           0),
+                                                                                                                CUDA.zeros(Int32,
+                                                                                                                           0),
+                                                                                                                CUDA.zeros(Int32,
+                                                                                                                           0),
+                                                                                                                CUDA.zeros(Int32,
+                                                                                                                           0),
                                                                                                                 CUDA.zeros(Float16x2,
                                                                                                                            0),
                                                                                                                 CUDA.zeros(Int4x8,
@@ -1548,6 +1747,11 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
         G_memory[freq + 1] = 1
     end
 
+    @show Tmin = 0
+    @show Tmax = idiv(T, 4)
+    @show T̄min = 0
+    @show T̄max = idiv(Tmax, U) - (M - 1)
+
     amp = 7.5f0                 # amplitude
     bin = 0                     # frequency bin
     delta = 0.0f0               # frequency offset
@@ -1566,7 +1770,8 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     att = interp(attenuation_factors, delta)
 
     # map!(i -> zero(Int4x2), E_memory, E_memory)
-    for time in 0:(T - 1), freq in 0:(F - 1), polr in 0:(P - 1), dish in 0:(D - 1)
+    @assert Tmin == 0
+    for time in Tmin:(Tmax - 1), freq in 0:(F - 1), polr in 0:(P - 1), dish in 0:(D - 1)
         Eidx = dish + D * polr + D * P * freq + D * P * F * time
         if polr == 0 && dish == 0 && freq == 0
             E1 = amp * cispi((2 * time / Float32(U) * test_freq) % 2.0f0)
@@ -1578,7 +1783,8 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     end
 
     # map!(i -> zero(Int4x2), Ẽ_wanted, Ẽ_wanted)
-    for tbar in 0:(idiv(T, U) - 1), fbar in 0:(F * U - 1), polr in 0:(P - 1), dish in 0:(D - 1)
+    @assert T̄min == 0
+    for tbar in T̄min:(T̄max - 1), fbar in 0:(F * U - 1), polr in 0:(P - 1), dish in 0:(D - 1)
         Ēidx = dish + D * polr + D * P * fbar + D * P * (F * U) * tbar
         if polr == 0 && dish == 0 && fbar ÷ U == 0
             Ē1 = fbar == bin ? att * amp * cispi((2 * (tbar - (M - 1) + M / 2.0f0) * (0.5f0 + delta)) % 2.0f0) : 0
@@ -1594,6 +1800,10 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     E_memory = reinterpret(Int4x8, E_memory)
 
     !silent && println("Copying data from CPU to GPU...")
+    Tmin_cuda = CuArray(Int32[Tmin])
+    Tmax_cuda = CuArray(Int32[Tmax])
+    T̄min_cuda = CuArray(Int32[T̄min])
+    T̄max_cuda = CuArray(Int32[T̄max])
     G_cuda = CuArray(G_memory)
     E_cuda = CuArray(E_memory)
     Ē_cuda = CUDA.fill(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8), idiv(C, 2) * idiv(D, 4) * P * (F * U) * idiv(T, U))
@@ -1604,14 +1814,19 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     @assert sizeof(Ē_cuda) < 2^32
 
     !silent && println("Running kernel...")
-    kernel(Tactual_cuda, G_cuda, E_cuda, Ē_cuda, info_cuda; threads=(num_threads, num_warps), blocks=num_blocks, shmem=shmem_bytes)
+    kernel(Tmin_cuda, Tmax_cuda, T̄min_cuda, T̄max_cuda, G_cuda, E_cuda, Ē_cuda, info_cuda; threads=(num_threads, num_warps),
+           blocks=num_blocks,
+           shmem=shmem_bytes)
     synchronize()
 
     if nruns > 0
         !silent && println("Benchmarking...")
         stats = @timed begin
             for run in 1:nruns
-                kernel(Tactual_cuda,
+                kernel(Tmin_cuda,
+                       Tmax_cuda,
+                       T̄min_cuda,
+                       T̄max_cuda,
                        G_cuda,
                        E_cuda,
                        Ē_cuda,
@@ -1667,18 +1882,22 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
 
     if run_selftest
         println("Checking results...")
+        num_samples = 0
         num_errors = 0
         println("    Ē:")
         did_test_Ē_memory = falses(length(Ē_memory))
         # for tbar in 0:(idiv(T, U) - 1), fbar in 0:(F * U - 1), polr in 0:(P - 1), dish in 0:(D - 1)
-        for polr in 0:(P - 1), dish in 0:(D - 1), fbar in 0:(F * U - 1), tbar in 0:(idiv(T, U) - 1)
+        for polr in 0:(P - 1), dish in 0:(D - 1), fbar in 0:(F * U - 1), tbar in 0:(T̄max - 1)
             Ēidx = dish + D * polr + D * P * fbar + D * (F * U) * P * tbar
             @assert !did_test_Ē_memory[Ēidx + 1]
             did_test_Ē_memory[Ēidx + 1] = true
             have_value = Complex(convert(NTuple{2,Int32}, Ē_memory[Ēidx + 1])...)
             want_value = Ē_wanted[Ēidx + 1]
             err = have_value - want_value
+            unerr = have_value - (-8 - 8im)
+            num_samples += 1
             if abs(err) > 0.8f0
+                # if unerr == 0
                 num_errors += 1
                 if num_errors ≤ 100
                     println("        dish=$dish polr=$polr fbar=$fbar tbar=$tbar Ē=$have_value Ē₀=$want_value ΔĒ=$(abs(err))")
@@ -1687,8 +1906,9 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
                 end
             end
         end
-        @assert all(did_test_Ē_memory)
-        println("Found $num_errors errors")
+        @assert all(@view did_test_Ē_memory[1:(P * D * F * U * T̄max)])
+        @assert !any(@view did_test_Ē_memory[(P * D * F * U * T̄max + 1):end])
+        println("Found $num_errors errors in $num_samples samples")
         @assert num_errors == 0
     end
 
@@ -1728,7 +1948,25 @@ function fix_ptx_kernel()
                  shmem_bytes: $shmem_bytes
                kernel-symbol: "$kernel_symbol"
                kernel-arguments:
-                 - name: "Tactual"
+                 - name: "Tmin"
+                   intent: in
+                   type: Int32
+                   indices: []
+                   shape: []
+                   strides: []
+                 - name: "Tmax"
+                   intent: in
+                   type: Int32
+                   indices: []
+                   shape: []
+                   strides: []
+                 - name: "T̄min"
+                   intent: in
+                   type: Int32
+                   indices: []
+                   shape: []
+                   strides: []
+                 - name: "T̄max"
                    intent: in
                    type: Int32
                    indices: []
@@ -1776,7 +2014,12 @@ function fix_ptx_kernel()
                                                                    "value" => "$M"),
                                                               Dict("type" => "int", "name" => "cuda_max_number_of_timesamples",
                                                                    "value" => "$T"),
-                                                              # Dict("type" => "double", "name" => "cuda_sampling_time_usec", "value" => "$sampling_time_μsec"),
+                                                              Dict("type" => "int",
+                                                                   "name" => "cuda_granularity_number_of_timesamples",
+                                                                   "value" => "$Touter"),
+                                                              Dict("type" => "int",
+                                                                   "name" => "cuda_algorithm_overlap",
+                                                                   "value" => "$(U * (M - 1))"),
                                                               Dict("type" => "int", "name" => "cuda_upchannelization_factor",
                                                                    "value" => "$U")],
                                "minthreads" => num_threads * num_warps,
@@ -1786,8 +2029,26 @@ function fix_ptx_kernel()
                                "num_blocks" => num_blocks,
                                "shmem_bytes" => shmem_bytes,
                                "kernel_symbol" => kernel_symbol,
-                               "kernel_arguments" => [Dict("name" => "Tactual",
-                                                           "kotekan_name" => "Tactual",
+                               "kernel_arguments" => [Dict("name" => "Tmin",
+                                                           "kotekan_name" => "Tmin",
+                                                           "type" => "int32",
+                                                           "axes" => Dict[],
+                                                           "isoutput" => false,
+                                                           "hasbuffer" => false),
+                                                      Dict("name" => "Tmax",
+                                                           "kotekan_name" => "Tmax",
+                                                           "type" => "int32",
+                                                           "axes" => Dict[],
+                                                           "isoutput" => false,
+                                                           "hasbuffer" => false),
+                                                      Dict("name" => "Tbarmin",
+                                                           "kotekan_name" => "Tbarmin",
+                                                           "type" => "int32",
+                                                           "axes" => Dict[],
+                                                           "isoutput" => false,
+                                                           "hasbuffer" => false),
+                                                      Dict("name" => "Tbarmax",
+                                                           "kotekan_name" => "Tbarmax",
                                                            "type" => "int32",
                                                            "axes" => Dict[],
                                                            "isoutput" => false,

@@ -6,14 +6,14 @@
             0,
             32,
         )%32)%32+((IndexSpaces.assume_inrange(
-            IndexSpaces.cuda_warpidx(),
-            0,
-            16,
-        )%16)%16)*32+((IndexSpaces.assume_inrange(
             IndexSpaces.cuda_blockidx(),
             0,
             128,
-        )%128)%128)*512)+0+0x01] = info
+        )%128)%128)*512+((IndexSpaces.assume_inrange(
+            IndexSpaces.cuda_warpidx(),
+            0,
+            16,
+        )%16)%16)*32)+0+0x01] = info
         for loop = 0:1:255
             (Ein_register0, Ein_register1, Ein_register2, Ein_register3) =
                 IndexSpaces.unsafe_load4_global(
@@ -21,23 +21,7 @@
                     (
                         (
                             (
-                                IndexSpaces.assume_inrange(
-                                    IndexSpaces.cuda_blockidx(),
-                                    0,
-                                    128,
-                                ) % 128
-                            ) % 128
-                        ) * 512 +
-                        (
-                            (
                                 (
-                                    (
-                                        IndexSpaces.assume_inrange(
-                                            IndexSpaces.cuda_threadidx(),
-                                            0,
-                                            32,
-                                        ) % 2
-                                    ) * 16 +
                                     (
                                         (
                                             IndexSpaces.assume_inrange(
@@ -46,39 +30,17 @@
                                                 32,
                                             ) ÷ 16
                                         ) % 2
-                                    ) * 8
-                                ) ÷ 8
-                            ) % 8
-                        ) * 32 +
-                        (
-                            (
-                                (
-                                    IndexSpaces.assume_inrange(
-                                        IndexSpaces.cuda_threadidx(),
-                                        0,
-                                        32,
-                                    ) % 2
-                                ) * 16 +
-                                (
+                                    ) * 8 +
                                     (
                                         IndexSpaces.assume_inrange(
                                             IndexSpaces.cuda_threadidx(),
                                             0,
                                             32,
-                                        ) ÷ 16
-                                    ) % 2
-                                ) * 8
-                            ) ÷ 4
-                        ) % 2 +
-                        (
-                            (
-                                IndexSpaces.assume_inrange(
-                                    IndexSpaces.cuda_warpidx(),
-                                    0,
-                                    16,
-                                ) % 2
-                            ) % 2
-                        ) * 256 +
+                                        ) % 2
+                                    ) * 16
+                                ) ÷ 8
+                            ) % 8
+                        ) * 32 +
                         (
                             (
                                 (
@@ -106,6 +68,24 @@
                         ) * 2 +
                         (
                             (
+                                IndexSpaces.assume_inrange(
+                                    IndexSpaces.cuda_warpidx(),
+                                    0,
+                                    16,
+                                ) % 2
+                            ) % 2
+                        ) * 256 +
+                        (
+                            (
+                                IndexSpaces.assume_inrange(
+                                    IndexSpaces.cuda_blockidx(),
+                                    0,
+                                    128,
+                                ) % 128
+                            ) % 128
+                        ) * 512 +
+                        (
+                            (
                                 (
                                     (
                                         (
@@ -131,7 +111,27 @@
                                     16
                                 ) ÷ 16
                             ) % 2048
-                        ) * 65536
+                        ) * 65536 +
+                        (
+                            (
+                                (
+                                    (
+                                        IndexSpaces.assume_inrange(
+                                            IndexSpaces.cuda_threadidx(),
+                                            0,
+                                            32,
+                                        ) ÷ 16
+                                    ) % 2
+                                ) * 8 +
+                                (
+                                    IndexSpaces.assume_inrange(
+                                        IndexSpaces.cuda_threadidx(),
+                                        0,
+                                        32,
+                                    ) % 2
+                                ) * 16
+                            ) ÷ 4
+                        ) % 2
                     ) + 1i32,
                 )
             (Ein_register4, Ein_register5, Ein_register6, Ein_register7) =
@@ -140,24 +140,9 @@
                     (
                         (
                             (
-                                IndexSpaces.assume_inrange(
-                                    IndexSpaces.cuda_blockidx(),
-                                    0,
-                                    128,
-                                ) % 128
-                            ) % 128
-                        ) * 512 +
-                        (
-                            (
                                 (
                                     (
-                                        (
-                                            IndexSpaces.assume_inrange(
-                                                IndexSpaces.cuda_threadidx(),
-                                                0,
-                                                32,
-                                            ) % 2
-                                        ) * 16 +
+                                        32 +
                                         (
                                             (
                                                 IndexSpaces.assume_inrange(
@@ -167,41 +152,17 @@
                                                 ) ÷ 16
                                             ) % 2
                                         ) * 8
-                                    ) + 32
-                                ) ÷ 8
-                            ) % 8
-                        ) * 32 +
-                        (
-                            (
-                                (
+                                    ) +
                                     (
                                         IndexSpaces.assume_inrange(
                                             IndexSpaces.cuda_threadidx(),
                                             0,
                                             32,
                                         ) % 2
-                                    ) * 16 +
-                                    (
-                                        (
-                                            IndexSpaces.assume_inrange(
-                                                IndexSpaces.cuda_threadidx(),
-                                                0,
-                                                32,
-                                            ) ÷ 16
-                                        ) % 2
-                                    ) * 8
-                                ) + 32
-                            ) ÷ 4
-                        ) % 2 +
-                        (
-                            (
-                                IndexSpaces.assume_inrange(
-                                    IndexSpaces.cuda_warpidx(),
-                                    0,
-                                    16,
-                                ) % 2
-                            ) % 2
-                        ) * 256 +
+                                    ) * 16
+                                ) ÷ 8
+                            ) % 8
+                        ) * 32 +
                         (
                             (
                                 (
@@ -229,6 +190,24 @@
                         ) * 2 +
                         (
                             (
+                                IndexSpaces.assume_inrange(
+                                    IndexSpaces.cuda_warpidx(),
+                                    0,
+                                    16,
+                                ) % 2
+                            ) % 2
+                        ) * 256 +
+                        (
+                            (
+                                IndexSpaces.assume_inrange(
+                                    IndexSpaces.cuda_blockidx(),
+                                    0,
+                                    128,
+                                ) % 128
+                            ) % 128
+                        ) * 512 +
+                        (
+                            (
                                 (
                                     (
                                         (
@@ -254,7 +233,30 @@
                                     16
                                 ) ÷ 16
                             ) % 2048
-                        ) * 65536
+                        ) * 65536 +
+                        (
+                            (
+                                (
+                                    32 +
+                                    (
+                                        (
+                                            IndexSpaces.assume_inrange(
+                                                IndexSpaces.cuda_threadidx(),
+                                                0,
+                                                32,
+                                            ) ÷ 16
+                                        ) % 2
+                                    ) * 8
+                                ) +
+                                (
+                                    IndexSpaces.assume_inrange(
+                                        IndexSpaces.cuda_threadidx(),
+                                        0,
+                                        32,
+                                    ) % 2
+                                ) * 16
+                            ) ÷ 4
+                        ) % 2
                     ) + 1i32,
                 )
             is_lo_thread = IndexSpaces.cuda_threadidx() & 0x00000010 == 0x00
@@ -368,13 +370,10 @@
                 (
                     (
                         (
-                            IndexSpaces.assume_inrange(
-                                IndexSpaces.cuda_blockidx(),
-                                0,
-                                128,
-                            ) % 128
-                        ) % 128
-                    ) * 32 +
+                            IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) %
+                            2
+                        ) % 2
+                    ) * 16 +
                     (
                         (
                             (
@@ -386,6 +385,15 @@
                             ) * 16
                         ) ÷ 4
                     ) % 16 +
+                    (
+                        (
+                            IndexSpaces.assume_inrange(
+                                IndexSpaces.cuda_blockidx(),
+                                0,
+                                128,
+                            ) % 128
+                        ) % 128
+                    ) * 32 +
                     (
                         (
                             (
@@ -400,31 +408,26 @@
                                         ) % 8
                                     ) * 4096 +
                                     (
-                                        IndexSpaces.assume_inrange(
-                                            IndexSpaces.cuda_threadidx(),
-                                            0,
-                                            32,
-                                        ) ÷ 16
-                                    ) % 2
+                                        (
+                                            IndexSpaces.assume_inrange(
+                                                IndexSpaces.cuda_threadidx(),
+                                                0,
+                                                32,
+                                            ) ÷ 4
+                                        ) % 4
+                                    ) * 4
                                 ) +
-                                (
-                                    (
-                                        IndexSpaces.assume_inrange(
-                                            IndexSpaces.cuda_threadidx(),
-                                            0,
-                                            32,
-                                        ) ÷ 4
-                                    ) % 4
-                                ) * 4
-                            ) + (IndexSpaces.assume_inrange(loop, 0, 1, 256) % 256) * 16
+                                (IndexSpaces.assume_inrange(loop, 0, 1, 256) % 256) * 16
+                            ) +
+                            (
+                                IndexSpaces.assume_inrange(
+                                    IndexSpaces.cuda_threadidx(),
+                                    0,
+                                    32,
+                                ) ÷ 16
+                            ) % 2
                         ) % 32768
-                    ) * 4096 +
-                    (
-                        (
-                            IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) %
-                            2
-                        ) % 2
-                    ) * 16
+                    ) * 4096
                 ) +
                 0 +
                 0x01,
@@ -435,13 +438,10 @@
                 (
                     (
                         (
-                            IndexSpaces.assume_inrange(
-                                IndexSpaces.cuda_blockidx(),
-                                0,
-                                128,
-                            ) % 128
-                        ) % 128
-                    ) * 32 +
+                            IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) %
+                            2
+                        ) % 2
+                    ) * 16 +
                     (
                         (
                             (
@@ -455,9 +455,19 @@
                     ) % 16 +
                     (
                         (
+                            IndexSpaces.assume_inrange(
+                                IndexSpaces.cuda_blockidx(),
+                                0,
+                                128,
+                            ) % 128
+                        ) % 128
+                    ) * 32 +
+                    (
+                        (
                             (
                                 (
                                     (
+                                        2 +
                                         (
                                             (
                                                 IndexSpaces.assume_inrange(
@@ -466,14 +476,7 @@
                                                     16,
                                                 ) ÷ 2
                                             ) % 8
-                                        ) * 4096 +
-                                        (
-                                            IndexSpaces.assume_inrange(
-                                                IndexSpaces.cuda_threadidx(),
-                                                0,
-                                                32,
-                                            ) ÷ 16
-                                        ) % 2
+                                        ) * 4096
                                     ) +
                                     (
                                         (
@@ -484,16 +487,18 @@
                                             ) ÷ 4
                                         ) % 4
                                     ) * 4
-                                ) + 2
-                            ) + (IndexSpaces.assume_inrange(loop, 0, 1, 256) % 256) * 16
+                                ) +
+                                (IndexSpaces.assume_inrange(loop, 0, 1, 256) % 256) * 16
+                            ) +
+                            (
+                                IndexSpaces.assume_inrange(
+                                    IndexSpaces.cuda_threadidx(),
+                                    0,
+                                    32,
+                                ) ÷ 16
+                            ) % 2
                         ) % 32768
-                    ) * 4096 +
-                    (
-                        (
-                            IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) %
-                            2
-                        ) % 2
-                    ) * 16
+                    ) * 4096
                 ) +
                 0 +
                 0x01,
@@ -506,13 +511,13 @@
             0,
             32,
         )%32)%32+((IndexSpaces.assume_inrange(
-            IndexSpaces.cuda_warpidx(),
-            0,
-            16,
-        )%16)%16)*32+((IndexSpaces.assume_inrange(
             IndexSpaces.cuda_blockidx(),
             0,
             128,
-        )%128)%128)*512)+0+0x01] = info
+        )%128)%128)*512+((IndexSpaces.assume_inrange(
+            IndexSpaces.cuda_warpidx(),
+            0,
+            16,
+        )%16)%16)*32)+0+0x01] = info
     end
 )

@@ -196,8 +196,6 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
         "--verbose",
     };
     build_ptx({kernel_symbol}, opts);
-
-    // Initialize extra variables (if necessary)
 }
 
 cudaFRBBeamformer::~cudaFRBBeamformer() {}

@@ -1,4 +1,3 @@
-using BFloat16s
 using CUDASIMDTypes
 using CairoMakie
 using HDF5

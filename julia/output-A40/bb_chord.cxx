@@ -197,8 +197,6 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
         "--verbose",
     };
     build_ptx({kernel_symbol}, opts);
-
-    // Initialize extra variables (if necessary)
 }
 
 cudaBasebandBeamformer_chord::~cudaBasebandBeamformer_chord() {}
@@ -329,11 +327,16 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& pipestate,
 }
 
 void cudaBasebandBeamformer_chord::finalize_frame(const int gpu_frame_id) {
-    cudaCommand::finalize_frame(gpu_frame_id);
+    device.release_gpu_memory_array_metadata(A_memname, gpu_frame_id);
+    device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
+    device.release_gpu_memory_array_metadata(s_memname, gpu_frame_id);
+    device.release_gpu_memory_array_metadata(J_memname, gpu_frame_id);
 
     for (std::size_t i = 0; i < info_host[gpu_frame_id].size(); ++i)
         if (info_host[gpu_frame_id][i] != 0)
             ERROR("cudaBasebandBeamformer_chord returned 'info' value {:d} at index {:d} (zero "
-                  "indicates noerror)",
-                  info_host[gpu_frame_id][i], int(i));
+                  "indicates no error)",
+                  info_host[gpu_frame_id][i], i);
+
+    cudaCommand::finalize_frame(gpu_frame_id);
 }

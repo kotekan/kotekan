@@ -60,8 +60,9 @@ struct chordMetadata {
 
     int dims;
     int dim[CHORD_META_MAX_DIM];
-    // array strides / layouts?
     char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME]; // 'F', 'T', 'D', etc
+    int64_t strides[CHORD_META_MAX_DIM];
+    int64_t offset;
 
     // One-hot arrays?
     int n_one_hot;
