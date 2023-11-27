@@ -32,7 +32,7 @@ using kotekan::Config;
 class cuda{{{kernel_name}}} : public cudaCommand {
 public:
     cuda{{{kernel_name}}}(Config & config, const std::string& unique_name,
-                          bufferContainer& host_buffers, cudaDeviceInterface& device, int instance_num);
+                          bufferContainer& host_buffers, cudaDeviceInterface& device, int inst);
     virtual ~cuda{{{kernel_name}}}();
     
     // int wait_on_precondition(int gpu_frame_id) override;
@@ -121,8 +121,8 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
                                              const std::string& unique_name,
                                              bufferContainer& host_buffers,
                                              cudaDeviceInterface& device,
-                                             int instance_num) :
-    cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state, "{{{kernel_name}}}", "{{{kernel_name}}}.ptx")
+                                             int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state, "{{{kernel_name}}}", "{{{kernel_name}}}.ptx")
     {{#kernel_arguments}}
     {{#hasbuffer}}
     , {{{name}}}_memname(config.get<std::string>(unique_name, "{{{kotekan_name}}}"))
@@ -149,11 +149,14 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     {{/kernel_arguments}}
 
     set_command_type(gpuCommandType::KERNEL);
-    const std::vector<std::string> opts = {
-        "--gpu-name=sm_86",
-        "--verbose",
-    };
-    device.build_ptx("{{{kernel_name}}}.ptx", {kernel_symbol}, opts);
+
+    if (inst == 0) {
+        const std::vector<std::string> opts = {
+            "--gpu-name=sm_86",
+            "--verbose",
+        };
+        device.build_ptx("{{{kernel_name}}}.ptx", {kernel_symbol}, opts);
+    }
 
     // Initialize extra variables (if necessary)
     {{{init_extra_variables}}}

@@ -30,8 +30,7 @@ using kotekan::Config;
 class cudaUpchannelizer_U128 : public cudaCommand {
 public:
     cudaUpchannelizer_U128(Config& config, const std::string& unique_name,
-                           bufferContainer& host_buffers, cudaDeviceInterface& device,
-                           int instance_num);
+                           bufferContainer& host_buffers, cudaDeviceInterface& device, int inst);
     virtual ~cudaUpchannelizer_U128();
 
     // int wait_on_precondition(int gpu_frame_id) override;
@@ -168,8 +167,8 @@ REGISTER_CUDA_COMMAND(cudaUpchannelizer_U128);
 
 cudaUpchannelizer_U128::cudaUpchannelizer_U128(Config& config, const std::string& unique_name,
                                                bufferContainer& host_buffers,
-                                               cudaDeviceInterface& device, int instance_num) :
-    cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
+                                               cudaDeviceInterface& device, int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state,
                 "Upchannelizer_U128", "Upchannelizer_U128.ptx"),
     Tactual_memname(unique_name + "/Tactual"),
     G_memname(config.get<std::string>(unique_name, "gpu_mem_gain")),
@@ -187,11 +186,14 @@ cudaUpchannelizer_U128::cudaUpchannelizer_U128(Config& config, const std::string
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
-    const std::vector<std::string> opts = {
-        "--gpu-name=sm_86",
-        "--verbose",
-    };
-    device.build_ptx("Upchannelizer_U128.ptx", {kernel_symbol}, opts);
+
+    if (inst == 0) {
+        const std::vector<std::string> opts = {
+            "--gpu-name=sm_86",
+            "--verbose",
+        };
+        device.build_ptx("Upchannelizer_U128.ptx", {kernel_symbol}, opts);
+    }
 
     // Initialize extra variables (if necessary)
 }

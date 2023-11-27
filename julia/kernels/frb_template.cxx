@@ -149,11 +149,14 @@ cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_sta
     {{/kernel_arguments}}
 
     set_command_type(gpuCommandType::KERNEL);
-    const std::vector<std::string> opts = {
-        "--gpu-name=sm_86",
-        "--verbose",
-    };
-    device.build_ptx("{{{kernel_name}}}.ptx", {kernel_symbol}, opts);
+
+    if (inst == 0) {
+        const std::vector<std::string> opts = {
+            "--gpu-name=sm_86",
+            "--verbose",
+        };
+        device.build_ptx("{{{kernel_name}}}.ptx", {kernel_symbol}, opts);
+    }
 
     // Initialize extra variables (if necessary)
     {{{init_extra_variables}}}

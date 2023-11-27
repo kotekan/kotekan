@@ -193,11 +193,14 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
-    const std::vector<std::string> opts = {
-        "--gpu-name=sm_86",
-        "--verbose",
-    };
-    device.build_ptx("FRBBeamformer.ptx", {kernel_symbol}, opts);
+
+    if (inst == 0) {
+        const std::vector<std::string> opts = {
+            "--gpu-name=sm_86",
+            "--verbose",
+        };
+        device.build_ptx("FRBBeamformer.ptx", {kernel_symbol}, opts);
+    }
 
     // Initialize extra variables (if necessary)
 }

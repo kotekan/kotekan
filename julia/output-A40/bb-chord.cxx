@@ -193,11 +193,15 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
-    const std::vector<std::string> opts = {
-        "--gpu-name=sm_86",
-        "--verbose",
-    };
-    device.build_ptx("BasebandBeamformer_chord.ptx", {kernel_symbol}, opts);
+
+    // Only one of the instances of this pipeline stage need to build the kernel
+    if (inst == 0) {
+        const std::vector<std::string> opts = {
+            "--gpu-name=sm_86",
+            "--verbose",
+        };
+        device.build_ptx("BasebandBeamformer_chord.ptx", {kernel_symbol}, opts);
+    }
 
     // Initialize extra variables (if necessary)
 }
