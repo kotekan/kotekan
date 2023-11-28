@@ -380,6 +380,20 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
     assert(Tmin_wrapped >= 0 && Tmin_wrapped <= Tmax_wrapped && Tmax_wrapped <= std::numeric_limits<int32_t>::max());
     assert(Tbarmin_wrapped >= 0 && Tbarmin_wrapped <= Tbarmax_wrapped && Tbarmax_wrapped <= std::numeric_limits<int32_t>::max());
 
+    // // These are the conditions in the CUDA kernel
+    // const int T = 32768 * 4;
+    // const int Touter = 256;
+    // const int U = 16;
+    // const int M = 4;
+    // assert(0 <= Tmin);
+    // assert(Tmin <= Tmax);
+    // assert(Tmax <= 2 * T);
+    // assert((Tmax - Tmin) % Touter == 0);
+    // assert(0 <= Tbarmin);
+    // assert(Tbarmin <= Tbarmax);
+    // assert(Tbarmax <= 2 * (T / U));
+    // assert((Tbarmax - Tbarmin + (M - 1)) % (Touter / U) == 0);
+
     // Pass time spans to kernel
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
     *(std::int32_t*)Tmin_host[pipestate.gpu_frame_id].data() = Tmin_wrapped;
@@ -423,10 +437,10 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
         {{/hasbuffer}}
     {{/kernel_arguments}}
 
-    // Initialize outputs
-    //     0x88 = (-8,-8), an unused value to detect uninitialized output
-    // TODO: Skip this for performance
-    CHECK_CUDA_ERROR(cudaMemsetAsync(Ebar_memory, 0x88ff, Ebar_length, device.getStream(cuda_stream_id)));
+    // // Initialize outputs
+    // //     0x88 = (-8,-8), an unused value to detect uninitialized output
+    // // TODO: Skip this for performance
+    // CHECK_CUDA_ERROR(cudaMemsetAsync(Ebar_memory, 0x88, Ebar_length, device.getStream(cuda_stream_id)));
 
     DEBUG("kernel_symbol: {}", kernel_symbol);
     DEBUG("runtime_kernels[kernel_symbol]: {}", static_cast<void*>(runtime_kernels[kernel_symbol]));
