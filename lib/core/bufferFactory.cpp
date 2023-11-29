@@ -64,15 +64,9 @@ void bufferFactory::build_from_tree(map<string, GenericBuffer*>& buffers, const 
 
 GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& name,
                                          const string& location) {
-
     // DEBUG("Creating buffer of type: {:s}, at config tree path: {:s}", name, location);
-    uint32_t num_frames = config.get<uint32_t>(location, "num_frames");
     string metadataPool_name = config.get_default<std::string>(location, "metadata_pool", "none");
     int32_t numa_node = config.get_default<int32_t>(location, "numa_node", 0);
-    bool use_hugepages = config.get_default<bool>(location, "use_hugepages", false);
-    bool mlock_frames = config.get_default<bool>(location, "mlock_frames", true);
-    bool zero_new_frames = config.get_default<bool>(location, "zero_new_frames", true);
-
     std::string s_log_level = config.get<std::string>(location, "log_level");
 
     metadataPool* pool = nullptr;
@@ -108,6 +102,10 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
         throw std::runtime_error(fmt::format(fmt("No buffer type named: {:s}"), type_name));
     }
 
+    uint32_t num_frames = config.get<uint32_t>(location, "num_frames");
+    bool use_hugepages = config.get_default<bool>(location, "use_hugepages", false);
+    bool mlock_frames = config.get_default<bool>(location, "mlock_frames", true);
+    bool zero_new_frames = config.get_default<bool>(location, "zero_new_frames", true);
     INFO_NON_OO("Creating {:s}Buffer named {:s} with {:d} frames, frame size of {:d} and "
                 "metadata pool {:s} on numa_node {:d}",
                 type_name, name, num_frames, frame_size, metadataPool_name, numa_node);

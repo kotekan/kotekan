@@ -1,25 +1,13 @@
 /**
  * @file
- * @brief The core kotekan buffer object for data transfer between stages
- *  - buffer
+ * @brief The core kotekan buffer objects for data transfer between stages
+ *  - GenericBuffer
+ *  - Buffer
  *  - StageInfo
  *  - create_buffer
  *  - delete_buffer
- *  - zero_frames
- *  - register_consumer
- *  - register_producer
- *  - mark_frame_full
- *  - mark_frame_empty
- *  - wait_for_empty_frame
- *  - wait_for_full_frame
- *  - is_frame_empty
- *  - get_num_full_frames
- *  - print_buffer_status
- *  - allocate_new_metadata_object
- *  - get_metadata
- *  - get_metadata_container
  *  - pass_metadata
- *  - send_shutdown_signal
+ *  - copy_metadata
  */
 
 #ifndef BUFFER
@@ -49,7 +37,7 @@
 
 /**
  * @struct StageInfo
- * @brief Internal structure for tracking consumer and producer names.
+ * @brief Internal structure for tracking consumer and producer names and status.
  */
 class StageInfo {
 public:
@@ -78,10 +66,48 @@ public:
     std::vector<bool> is_done;
 };
 
+/**
+ * @brief Top-level generic (abstract) buffer type.  This has the concept
+ * of multiple producers and consumers, metadata, and signals to be
+ * used between producers and consumers.
+ *
+ * Buffers are the central method for passing data between kotekan stages
+ * in a pipeline.
+ *
+ * All the public functions here are thread safe, and if used correctly
+ * tested to be deadlock free.
+ *
+ * There can be more than one producer or consumer attached to each buffer, but
+ * each one must register with the buffer separately.
+ *
+ * Consumers must only read data from frames and not write anything back to them.
+ * More than one producer can write to a given frame in a multi-producer setup,
+ * but in that case they must coordinate their address space to not overwrite
+ * each others' values.  Because of this, multi-producers are somewhat rare.
+ * Producers also generally shouldn't read from frames, although there is
+ * nothing wrong with doing so, it just normally doesn't make sense to do so.
+ *
+ * Note that if no consumer is registered for on a buffer, then
+ * kotekan will drop the frames and log an INFO statement to notify
+ * the user that the data is being dropped.
+ */
 class GenericBuffer : public kotekan::kotekanLogging {
 public:
-    GenericBuffer(const std::string&, const std::string&, metadataPool* pool, int num_frames);
+
+    /**
+     * @brief Common-core buffer class.
+     *
+     * @param buffer_name Unique name for this buffer based on location in config file
+     * @param buffer_type Type name, eg "standard", "vis", "hfb", "ring"
+     * @param num_frames The buffer depth (for subclasses that have that concept)
+     * @param metadata_pool The name of the metadata pool to associate with the buffer
+     */
+    GenericBuffer(const std::string& buffer_name, const std::string& buffer_type, metadataPool* pool, int num_frames);
     virtual ~GenericBuffer();
+
+    /**
+     * @brief Prints a summary the frames and state of the producers and consumers.
+     */
     virtual void print_full_status(){};
 
     virtual bool is_basic() = 0;
@@ -150,12 +176,15 @@ public:
      *
      * The metadata type is based on the pool type associated with the buffer object
      *
-     * @param[in] frame_id The frame ID to assign a metadata object too.
+     * @param[in] frame_id The frame ID to assign a metadata object
+     * to. (Zero for subclasses that have no such concept)
      */
     void allocate_new_metadata_object(int frame_id);
 
     /**
-     * Returns true if successful, false if metadata was already set.
+     * @brief Sets the metadata object for the given frame index.
+     *
+     * @return @c true if successful, @c false if metadata was already set.
      */
     bool set_metadata(int frame_id, metadataContainer* meta);
 
@@ -198,20 +227,10 @@ public:
     /// The main lock for frame state management
     std::recursive_mutex mutex;
 
-    /// The condition variable for calls to @c wait_for_full_buffer
-    std::condition_variable_any full_cond;
-
-    /// The condition variable for calls to @c wait_for_empty_buffer
-    std::condition_variable_any empty_cond;
-
     /// The number of frames kept by this object
     int num_frames;
 
-    /**
-     * @brief Shutdown variable
-     * Set to 1 when the system should stop returning
-     * new frames for producers and consumers.
-     */
+    /// Should we shut down (stop returning new frames)?
     bool shutdown_signal;
 
     /// The list of consumer names registered to this buffer
@@ -231,12 +250,51 @@ public:
 
     /// Array of buffer info objects, for tracking information about each buffer.
     std::vector<metadataContainer*> metadata;
+
+protected:
+    /// The condition variable for calls to @c wait_for_full_buffer
+    std::condition_variable_any full_cond;
+
+    /// The condition variable for calls to @c wait_for_empty_buffer
+    std::condition_variable_any empty_cond;
 };
 
+/**
+ * @brief A buffer to manage the signalling between stages when those
+ * stages want to communicate data using a ring buffer.
+ *
+ * This class is a little strange in that it doesn't actually allocate
+ * any memory!  It was created to connect GPU pipelines that need to
+ * communicate via a ring buffer in GPU memory.  This class knows how
+ * big the buffer is and controls read and write access for the
+ * consumers and producers, but does not actually own the memory.
+ *
+ * Producers and consumers can produce or consume different numbers of
+ * elements, so this is a helpful way of connecting stages that
+ * operate at different cadences.
+ *
+ * In the yaml config file, one of these can be created by setting the
+ * @c kotekan_buffer value to @c "ring".
+ *
+ * @conf ring_buffer_size: the number of elements in the ring buffer
+ * @conf metadata_pool The name of the metadata pool to associate with the buffer
+ */
 class RingBuffer : public GenericBuffer {
 public:
-    RingBuffer(size_t, metadataPool*, const std::string&, const std::string&);
+    /**
+     * @brief Build a new RingBuffer for connecting kotekan stages
+     * that want to produce & consume data with different sizes or at
+     * different cadences.
+     *
+     * Currently, only a single producer and single consumer are supported!
+     *
+     * @param ring_size: the number of elements in the ring buffer to be managed
+     * @param buffer_name: unique name for this buffer, from the config file declaration
+     * @param buffer_type: "ring"
+     */
+    RingBuffer(size_t ring_size, metadataPool*, const std::string& buffer_name, const std::string& buffer_type);
     ~RingBuffer() override {}
+
     bool is_basic() override {
         return false;
     }
@@ -244,12 +302,35 @@ public:
     void register_consumer(const std::string& name) override;
     void register_producer(const std::string& name) override;
 
+    /**
+     * @brief Waits until the given number of elements are free to be written.
+     * Must be called by a producer before writing.
+     *
+     * @return 0 on success, -1 if shutting down.
+     */
     int wait_for_writable(const std::string& producer_name, size_t sz);
 
+    /**
+     * @brief Called by a producer after it has written the given number of
+     * elements.  Those elements will becomes available to consumers.
+     */
     void wrote(const std::string& producer_name, size_t sz);
 
+    /**
+     * @brief Called by a consumer before reading its next chunk of
+     * data.  Waits until the given number of elements have been
+     * produced, AND reserves those elements -- they will be treated as
+     * unavailable by subsequent @c wait_and_claim_readable calls.
+     *
+     * @return 0 on success, -1 if shutting down.
+     */
     int wait_and_claim_readable(const std::string& consumer_name, size_t sz);
 
+    /**
+     * @brief Called by a consumer after the given number of elements
+     * has been read.  This number of elements MUST match the number
+     * "reserved" by the @c wait_and_claim_readable() call.
+     */
     void read(const std::string& consumer_name, size_t sz);
 
     size_t size;

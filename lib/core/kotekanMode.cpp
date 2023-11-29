@@ -160,7 +160,6 @@ void kotekanMode::stop_stages() {
 
 nlohmann::json kotekanMode::get_buffer_json() {
     nlohmann::json buffer_json = {};
-    // FIXME -- uses get_basic_buffer_map -- make this a member function on GenericBuffer?
     for (auto& buf : buffer_container.get_buffer_map()) {
         nlohmann::json buf_info = {};
         buf_info["consumers"];
