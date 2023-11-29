@@ -498,7 +498,7 @@ public:
     /// The NUMA node the frames are allocated in
     int numa_node;
 
-protected:
+private:
     void private_mark_producer_done(const std::string& name, const int ID);
     // Returns true if all producers are done for the given ID.
     bool private_producers_done(const int ID);
