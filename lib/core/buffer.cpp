@@ -528,8 +528,7 @@ void Buffer::print_full_status() {
 void GenericBuffer::pass_metadata(int from_ID, GenericBuffer* to_buf, int to_ID) {
 
     if (metadata[from_ID] == nullptr) {
-        WARN("No metadata in source buffer {:s}[{:d}], was this intended?", buffer_name,
-               from_ID);
+        WARN("No metadata in source buffer {:s}[{:d}], was this intended?", buffer_name, from_ID);
         return;
     }
 

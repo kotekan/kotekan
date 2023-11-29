@@ -93,7 +93,6 @@ public:
  */
 class GenericBuffer : public kotekan::kotekanLogging {
 public:
-
     /**
      * @brief Common-core buffer class.
      *
@@ -102,7 +101,8 @@ public:
      * @param num_frames The buffer depth (for subclasses that have that concept)
      * @param metadata_pool The name of the metadata pool to associate with the buffer
      */
-    GenericBuffer(const std::string& buffer_name, const std::string& buffer_type, metadataPool* pool, int num_frames);
+    GenericBuffer(const std::string& buffer_name, const std::string& buffer_type,
+                  metadataPool* pool, int num_frames);
     virtual ~GenericBuffer();
 
     /**
@@ -314,7 +314,8 @@ public:
      * @param buffer_name: unique name for this buffer, from the config file declaration
      * @param buffer_type: "ring"
      */
-    RingBuffer(size_t ring_size, metadataPool*, const std::string& buffer_name, const std::string& buffer_type);
+    RingBuffer(size_t ring_size, metadataPool*, const std::string& buffer_name,
+               const std::string& buffer_type);
     ~RingBuffer() override {}
 
     bool is_basic() override {
@@ -558,7 +559,8 @@ public:
     /**
      * @brief Swaps frames between two buffers with identical size for the given frame_ids
      *
-     * This function does not swap metadata.  That should be passed with the @c pass_metadata function
+     * This function does not swap metadata.  That should be passed with the @c pass_metadata
+     * function
      *
      * @warning This function should only be used with a single consumer @c from_buf, and given to a
      *          single producer @c to_buf.
@@ -575,8 +577,8 @@ public:
      * @brief Swaps a frame or performs a deep copy depending on the number of consumers on the
      *        source buffer.
      *
-     * Like @c swap_frames(), but doesn't fail if there is more than one consumer on the source buffer.
-     * Does not pass or copy metadata.
+     * Like @c swap_frames(), but doesn't fail if there is more than one consumer on the source
+     * buffer. Does not pass or copy metadata.
      *
      * @param[in] src_frame_id The source frame ID
      * @param[in] dest_buf The destination buffer
