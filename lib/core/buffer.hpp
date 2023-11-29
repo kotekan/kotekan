@@ -258,9 +258,6 @@ public:
      */
     void copy_metadata(int from_frame_id, GenericBuffer* to_buf, int to_frame_id);
 
-    /// The main lock for frame state management
-    std::recursive_mutex mutex;
-
     /// The number of frames kept by this object
     int num_frames;
 
@@ -286,6 +283,9 @@ public:
     std::vector<metadataContainer*> metadata;
 
 protected:
+    /// The main lock for frame state management
+    std::recursive_mutex mutex;
+
     /// The condition variable for calls to @c wait_for_full_buffer
     std::condition_variable_any full_cond;
 
