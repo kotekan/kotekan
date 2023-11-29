@@ -66,7 +66,7 @@ hsa_signal_t hsaRfiBadInputOutput::execute(int gpu_frame_id, hsa_signal_t preced
 void hsaRfiBadInputOutput::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
     // Pass the information contained in the input buffer
-    pass_metadata(_network_buf, _network_buf_id, _rfi_output_buf, _rfi_output_buf_id);
+    _network_buf->pass_metadata(_network_buf_id, _rfi_output_buf, _rfi_output_buf_id);
     // Mark the output buffer as full, so it can be processed.
     _rfi_output_buf->mark_frame_full(unique_name, _rfi_output_buf_id);
     // Note we don't need to actually check if this frame is full active,

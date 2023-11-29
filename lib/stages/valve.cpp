@@ -97,7 +97,7 @@ void Valve::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int 
     // Copy or transfer the data part.
     if (num_consumers == 1) {
         // Transfer frame contents with directly...
-        swap_frames(buf_src, frame_id_src, buf_dest, frame_id_dest);
+        buf_src->swap_frames(frame_id_src, buf_dest, frame_id_dest);
     } else if (num_consumers > 1) {
         // Copy the frame data over, leaving the source intact
         std::memcpy(buf_dest->frames[frame_id_dest], buf_src->frames[frame_id_src],

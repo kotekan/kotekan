@@ -40,7 +40,7 @@ void BufferSplit::main_thread() {
             if (output == nullptr)
                 break;
 
-            safe_swap_frame(in_buf, input_frame_id, out_bufs.at(i), output_frame_ids.at(i));
+            in_buf->safe_swap_frame(input_frame_id, out_bufs.at(i), output_frame_ids.at(i));
 
             in_buf->pass_metadata(input_frame_id, out_bufs.at(i), output_frame_ids.at(i));
 

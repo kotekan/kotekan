@@ -601,62 +601,66 @@ uint8_t* Buffer::swap_external_frame(int frame_id, uint8_t* external_frame) {
     return temp_frame;
 }
 
-void swap_frames(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_frame_id) {
+void Buffer::swap_frames(int from_frame_id, Buffer* to_buf, int to_frame_id) {
 
-    assert(from_buf != to_buf);
-    assert(from_buf != nullptr);
+    assert(this != to_buf);
     assert(to_buf != nullptr);
     assert(from_frame_id >= 0);
-    assert(from_frame_id < from_buf->num_frames);
+    assert(from_frame_id < num_frames);
     assert(to_frame_id >= 0);
     assert(to_frame_id < to_buf->num_frames);
-    assert(from_buf->aligned_frame_size == to_buf->aligned_frame_size);
+    assert(aligned_frame_size == to_buf->aligned_frame_size);
 
-    int num_consumers = from_buf->get_num_consumers();
+    buffer_lock lock(mutex);
+
+    int num_consumers = get_num_consumers();
     assert(num_consumers == 1);
     (void)num_consumers;
     int num_producers = to_buf->get_num_producers();
     assert(num_producers == 1);
     (void)num_producers;
 
-    // Swap the frames
-    uint8_t* temp_frame = from_buf->frames[from_frame_id];
-    from_buf->frames[from_frame_id] = to_buf->frames[to_frame_id];
-    to_buf->frames[to_frame_id] = temp_frame;
+    // Swap the frame in -- the "to_buf" will lock its own mutex
+    uint8_t* temp_frame = to_buf->swap_external_frame(to_frame_id, frames[from_frame_id]);
+    frames[from_frame_id] = temp_frame;
 }
 
-void safe_swap_frame(Buffer* src_buf, int src_frame_id, Buffer* dest_buf, int dest_frame_id) {
-    assert(src_buf != dest_buf);
-    assert(src_buf != nullptr);
+void Buffer::safe_swap_frame(int src_frame_id, Buffer* dest_buf, int dest_frame_id) {
+    assert(this != dest_buf);
     assert(dest_buf != nullptr);
     assert(src_frame_id >= 0);
-    assert(src_frame_id < src_buf->num_frames);
+    assert(src_frame_id < num_frames);
     assert(dest_frame_id >= 0);
     assert(dest_frame_id < dest_buf->num_frames);
 
     // Buffer sizes must match exactly
-    if (src_buf->frame_size != dest_buf->frame_size) {
-        FATAL_ERROR_F("Buffer sizes must match for direct copy (%s.frame_size != %s.frame_size)",
-                      src_buf->buffer_name, dest_buf->buffer_name);
+    if (frame_size != dest_buf->frame_size) {
+        FATAL_ERROR("Buffer sizes must match for direct copy ({:s}.frame_size != {:s}.frame_size)",
+                    buffer_name, dest_buf->buffer_name);
     }
-
     if (dest_buf->get_num_producers() > 1) {
-        FATAL_ERROR_F("Cannot swap/copy frames into dest buffer %s with more than one producer",
-                      dest_buf->buffer_name);
+        FATAL_ERROR("Cannot swap/copy frames into dest buffer {:s} with more than one producer",
+                    dest_buf->buffer_name);
     }
 
-    int num_consumers = src_buf->get_num_consumers();
+    buffer_lock lock(mutex);
+
+    int num_consumers = get_num_consumers();
 
     // Copy or transfer the data part.
     if (num_consumers == 1) {
         // Swap the frames
-        uint8_t* temp_frame = src_buf->frames[src_frame_id];
-        src_buf->frames[src_frame_id] = dest_buf->frames[dest_frame_id];
-        dest_buf->frames[dest_frame_id] = temp_frame;
+        swap_frames(src_frame_id, dest_buf, dest_frame_id);
     } else if (num_consumers > 1) {
-        // Copy the frame data over, leaving the source intact
-        memcpy(dest_buf->frames[dest_frame_id], src_buf->frames[src_frame_id], src_buf->frame_size);
+        // Copy the frame data over, leaving the source intact.
+        // the dest will lock its mutex in this call
+        dest_buf->private_copy_frame(dest_frame_id, this, src_frame_id);
     }
+}
+
+void Buffer::private_copy_frame(int dest_frame_id, Buffer* src, int src_frame_id) {
+    buffer_lock lock(mutex);
+    memcpy(frames[dest_frame_id], src->frames[src_frame_id], src->frame_size);
 }
 
 uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock_frames,

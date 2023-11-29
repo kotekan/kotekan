@@ -70,7 +70,7 @@ void hsaRfiMaskOutput::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
 
     // Pass the information contained in the input buffer
-    pass_metadata(_network_buf, _network_buf_id, _rfi_mask_output_buf, _rfi_mask_output_buf_id);
+    _network_buf->pass_metadata(_network_buf_id, _rfi_mask_output_buf, _rfi_mask_output_buf_id);
 
     // Mark the input buffer as "empty" so that it can be reused.
     _network_buf->mark_frame_empty(unique_name, _network_buf_id);

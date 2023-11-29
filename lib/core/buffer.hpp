@@ -556,6 +556,35 @@ public:
     uint8_t* swap_external_frame(int frame_id, uint8_t* external_frame);
 
     /**
+     * @brief Swaps frames between two buffers with identical size for the given frame_ids
+     *
+     * This function does not swap metadata.  That should be passed with the @c pass_metadata function
+     *
+     * @warning This function should only be used with a single consumer @c from_buf, and given to a
+     *          single producer @c to_buf.
+     * @warning The buffer sizes must be identical.
+     * @warning Take care with this function!
+     *
+     * @param from_frame_id The frame ID to move to the @c to_buf
+     * @param to_buf The buffer to take the frame from @c from_buf
+     * @param to_frame_id The frame to replace with the frame from @c from_buf
+     */
+    void swap_frames(int from_frame_id, Buffer* to_buf, int to_frame_id);
+
+    /**
+     * @brief Swaps a frame or performs a deep copy depending on the number of consumers on the
+     *        source buffer.
+     *
+     * Like @c swap_frames(), but doesn't fail if there is more than one consumer on the source buffer.
+     * Does not pass or copy metadata.
+     *
+     * @param[in] src_frame_id The source frame ID
+     * @param[in] dest_buf The destination buffer
+     * @param[in] dest_frame_id The destination frame ID
+     */
+    void safe_swap_frame(int src_frame_id, Buffer* dest_buf, int dest_frame_id);
+
+    /**
      * @brief Returns the last time a frame was marked as full
      * @param buf The buffer to get the last arrival time for.
      * @return A double (with units: seconds) containing the unix time of the last frame arrival
@@ -624,24 +653,9 @@ private:
     bool private_mark_frame_empty(const int ID);
     // Resets the list of consumers for the given ID
     void private_reset_consumers(const int ID);
-};
 
-/**
- * @brief Swaps frames between two buffers with identical size for the given frame_ids
- *
- * This function does not swap metadata.  That should be passed with the @c pass_metadata function
- *
- * @warning This function should only be used with a single consumer @c from_buf, and given to a
- *          single producer @c to_buf.
- * @warning The buffer sizes must be identical.
- * @warning Take care with this function!
- *
- * @param from_buf The buffer to take the frame from, and swap with the @c to_buf frame.
- * @param from_frame_id The frame ID to move to the @c to_buf
- * @param to_buf The buffer to take the frame from @c from_buf
- * @param to_frame_id The frame to replace with the frame from @c from_buf
- */
-void swap_frames(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_frame_id);
+    void private_copy_frame(int dest_frame_id, Buffer* src, int src_frame_id);
+};
 
 /**
  * @brief Allocates a frame with the required malloc method
@@ -677,19 +691,5 @@ void buffer_free(uint8_t* frame_pointer, size_t size, bool use_huge_pages);
  * @param[in] to_frame_id The frame ID in the @c to_buf to copy the metadata into
  */
 void copy_metadata(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_frame_id);
-
-/**
- * @brief Swaps a frame or performs a deep copy depending on the number of consumers on the
- *        source buffer.
- *
- * Like @c swap_frames(), but doesn't fail if there is more than one consumer on the source buffer.
- * Does not pass or copy metadata.
- *
- * @param[in] src_buf The source buffer
- * @param[in] src_frame_id The source frame ID
- * @param[in] dest_buf The destination buffer
- * @param[in] dest_frame_id The destination frame ID
- */
-void safe_swap_frame(Buffer* src_buf, int src_frame_id, Buffer* dest_buf, int dest_frame_id);
 
 #endif

@@ -65,7 +65,7 @@ hsa_signal_t hsaRfiOutput::execute(int gpu_frame_id, hsa_signal_t precede_signal
 void hsaRfiOutput::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
     // Copy the information contained in the input buffer
-    pass_metadata(_network_buf, _network_buf_id, _rfi_output_buf, _rfi_output_buf_id);
+    _network_buf->pass_metadata(_network_buf_id, _rfi_output_buf, _rfi_output_buf_id);
     // Mark the input buffer as "empty" so that it can be reused.
     _network_buf->mark_frame_empty(unique_name, _network_buf_id);
     // Mark the output buffer as full, so it can be processed.

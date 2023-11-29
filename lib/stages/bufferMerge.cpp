@@ -123,7 +123,7 @@ void bufferMerge::main_thread() {
                 if (in_buf->get_num_consumers() > 1) {
                     std::memcpy(output_frame, in_buf->frames[in_frame_id], in_buf->frame_size);
                 } else {
-                    swap_frames(in_buf, in_frame_id, out_buf, out_frame_id);
+                    in_buf->swap_frames(in_frame_id, out_buf, out_frame_id);
                 }
 
                 out_buf->mark_frame_full(unique_name, out_frame_id);

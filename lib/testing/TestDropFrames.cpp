@@ -70,7 +70,7 @@ void TestDropFrames::main_thread() {
             // Copy or transfer the data part.
             if (num_consumers == 1) {
                 // Transfer frame contents with directly...
-                swap_frames(in_buf, in_buf_id, out_buf, out_buf_id);
+                in_buf->swap_frames(in_buf_id, out_buf, out_buf_id);
             } else if (num_consumers > 1) {
                 // Copy the frame data over, leaving the source intact
                 std::memcpy(output, input, in_buf->frame_size);

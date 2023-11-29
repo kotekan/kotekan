@@ -67,7 +67,7 @@ hsa_signal_t hsaRfiVarOutput::execute(int gpu_frame_id, hsa_signal_t precede_sig
 void hsaRfiVarOutput::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
 
-    pass_metadata(_network_buf, _network_buf_id, _rfi_output_var_buf, _rfi_output_var_buf_id);
+    _network_buf->pass_metadata(_network_buf_id, _rfi_output_var_buf, _rfi_output_var_buf_id);
     _rfi_output_var_buf->mark_frame_full(unique_name, _rfi_output_var_buf_id);
 
     _network_buf->mark_frame_empty(unique_name, _network_buf_id);
