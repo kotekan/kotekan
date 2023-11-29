@@ -42,7 +42,7 @@ void BufferSplit::main_thread() {
 
             safe_swap_frame(in_buf, input_frame_id, out_bufs.at(i), output_frame_ids.at(i));
 
-            pass_metadata(in_buf, input_frame_id, out_bufs.at(i), output_frame_ids.at(i));
+            in_buf->pass_metadata(input_frame_id, out_bufs.at(i), output_frame_ids.at(i));
 
             in_buf->mark_frame_empty(unique_name, input_frame_id++);
             out_bufs.at(i)->mark_frame_full(unique_name, output_frame_ids.at(i)++);

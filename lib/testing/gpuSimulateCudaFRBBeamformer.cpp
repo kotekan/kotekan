@@ -151,7 +151,7 @@ void gpuSimulateCudaFRBBeamformer::main_thread() {
               voltage_buf->buffer_name, voltage_frame_id, beamgrid_buf->buffer_name,
               beamgrid_frame_id);
 
-        pass_metadata(voltage_buf, voltage_frame_id, beamgrid_buf, beamgrid_frame_id);
+        voltage_buf->pass_metadata(voltage_frame_id, beamgrid_buf, beamgrid_frame_id);
         voltage_buf->mark_frame_empty(unique_name, voltage_frame_id);
         beamgrid_buf->mark_frame_full(unique_name, beamgrid_frame_id);
 

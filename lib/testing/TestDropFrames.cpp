@@ -76,7 +76,7 @@ void TestDropFrames::main_thread() {
                 std::memcpy(output, input, in_buf->frame_size);
             }
 
-            pass_metadata(in_buf, in_buf_id, out_buf, out_buf_id);
+            in_buf->pass_metadata(in_buf_id, out_buf, out_buf_id);
 
             out_buf->mark_frame_full(unique_name, out_buf_id);
             out_buf_id = (out_buf_id + 1) % out_buf->num_frames;

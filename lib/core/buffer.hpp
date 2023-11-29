@@ -224,6 +224,28 @@ public:
      */
     metadataContainer* get_metadata_container(int frame_id);
 
+    /**
+     * @brief Transfers metadata from one buffer to another for a given frame.
+     *
+     * This function is used by threads which are both consumers and producers
+     * and need to pass the metadata down the pipeline.
+     *
+     * It should be called only after acquiring both a full frame to read from
+     * and an empty frame to copy into. Using @c wait_for_full_frame and @c wait_for_empty_frame
+     *
+     * Note it doesn't actually copy the metadata, instead it just copies the pointer
+     * and uses reference counting to track which buffers (and frames) have registered
+     * access to this metadata object.  The stage releases the metadata implicitly
+     * when the @c mark_frame_empty() function is called, which decrements
+     * the reference counter. Once it reaches zero, the the metadata is returned to the
+     * pool.
+     *
+     * @param[in] from_frame_id The frame ID to copy the metadata from
+     * @param[in] to_buf The buffer to copy the metadata into
+     * @param[in] to_frame_id The frame ID in the @c to_buf to copy the metadata into
+     */
+    void pass_metadata(int from_ID, GenericBuffer* to_buf, int to_ID);
+
     /// The main lock for frame state management
     std::recursive_mutex mutex;
 
@@ -341,11 +363,7 @@ public:
 };
 
 /**
- * @struct Buffer
- * @brief Kotekan's core multi-producer, multi-consumer ring buffer with metadata
- *
- * This class is the central method for passing data between kotekan stages
- * in a pipeline.
+ * @brief Kotekan's core multi-producer, multi-consumer ring buffer with metadata.
  *
  * It provides a fixed size RING buffer which can have multiple producers and
  * consumers attached to it.   The idea is that individual stages do not need
@@ -395,6 +413,19 @@ public:
  */
 class Buffer : public GenericBuffer {
 public:
+    /**
+     * @brief Construct a Buffer
+     *
+     * @param num_frames - number of "frames" in this ring buffer
+     * @param len - length in bytes of each frame
+     * @param metadata_pool The name of the metadata pool to associate with the buffer
+     * @param buffer_name: unique name for this buffer, from the config file declaration
+     * @param buffer_type: "standard", "vis", "hfb"
+     * @param numa_node The NUMA domain to mbind the memory into
+     * @param use_hugepages Allocate 2MB huge pages for the frames
+     * @param mlock_frames Lock the frame pages with mlock
+     * @param zero_new_frames
+     */
     Buffer(int num_frames, size_t len, metadataPool* pool, const std::string& buffer_name,
            const std::string& buffer_type, int numa_node, bool use_hugepages, bool mlock_frames,
            bool zero_new_frames);
@@ -406,14 +437,11 @@ public:
 
     /**
      * @brief Prints a summary the frames and state of the producers and consumers.
-     *
-     * @param buf The buffer object
      */
     void print_full_status() override;
 
     /**
      * @brief Zero all frames after all consumers have marked them as empty
-     *
      */
     void zero_frames();
 
@@ -492,7 +520,7 @@ public:
     /**
      * @brief Checks if the requested buffer is empty.
      *
-     * Returns 1 if the buffer is empty, and 0 if the frame is full.
+     * Returns true if the buffer is empty, and false if the frame is full.
      *
      * @param[in] frame_id The id of the frame to check.
      * @warning This should not be used to gain access to an empty frame, use @c
@@ -563,7 +591,7 @@ public:
 
     /**
      * @brief Flag variables to say which frames are full
-     * A 0 at index I means the frame at index I is not full, one means it is full.
+     * A false at index I means the frame at index I is not full, true means it is full.
      */
     std::vector<bool> is_full;
 
@@ -591,43 +619,12 @@ private:
      * @brief Marks a frame as empty and if the buffer requires zeroing then it starts
      *        the zeroing thread and delays marking it as empty until the zeroing is done.
      * @param id The id of the frame to mark as empty.
-     * @return 1 if the frame was marked as empty, 0 if it is being zeroed.
+     * @return True if the frame was marked as empty, false if it is being zeroed.
      */
     bool private_mark_frame_empty(const int ID);
     // Resets the list of consumers for the given ID
     void private_reset_consumers(const int ID);
 };
-
-/**
- * @brief Creates a buffer object.
- *
- * Used to create a buffer object, normally invoked by the buffer factory
- * as a part of the pipeline generation from the config file, not intended
- * to be called directly.
- *
- * @param[in] num_frames The number of frames to create in the buffer ring.
- * @param[in] frame_size The length of each frame in bytes.
- * @param[in] pool The metadataPool, which may be shared between more than one buffer.
- * @param[in] buffer_name The unique name of this buffer.
- * @param[in] buffer_type The type of data this buffer contains.
- * @param[in] numa_node The CPU NUMA memory region to allocate memory in.+
- * @param[in] use_huge_pages Map huge pages with mmap
- * @param[in] mlock_frames If set, mlock the pages of the frame memory
- * @param[in] zero_new_frames In theory some memory allocators don't zero new allocations
- *                            so by default we zero new frames on startup, but this is expensive
- *                            and can be disabled by setting this to false.
- * @returns A buffer object.
- */
-Buffer* create_buffer(int num_frames, size_t frame_size, metadataPool* pool,
-                      const std::string& buffer_name, const std::string& buffer_type, int numa_node,
-                      bool use_huge_pages, bool mlock_frames, bool zero_new_frames);
-
-/**
- * @brief Deletes a buffer object and frees all frame memory
- *
- * @param[in] buf The buffer to delete.
- */
-void delete_buffer(Buffer* buf);
 
 /**
  * @brief Swaps frames between two buffers with identical size for the given frame_ids
@@ -667,29 +664,6 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_huge_pages, bool meml
  * @param use_huge_pages Toggles the type of "free" call used, must match @c buffer_malloc type
  */
 void buffer_free(uint8_t* frame_pointer, size_t size, bool use_huge_pages);
-
-/**
- * @brief Transfers metadata from one buffer to another for a given frame.
- *
- * This function is used by threads which are both consumers and producers
- * and need to pass the metadata down the pipeline.
- *
- * It should be called only after acquiring both a full frame to read from
- * and an empty frame to copy into. Using @c wait_for_full_frame and @c wait_for_empty_frame
- *
- * Note it doesn't actually copy the metadata, instead it just copies the pointer
- * and uses reference counting to track which buffers (and frames) have registered
- * access to this metadata object.  The stage releases the metadata implicitly
- * when the @c mark_frame_empty() function is called, which decrements
- * the reference counter. Once it reaches zero, the the metadata is returned to the
- * pool.
- *
- * @param[in] from_buf The buffer to copy the metadata from
- * @param[in] from_frame_id The frame ID to copy the metadata from
- * @param[in] to_buf The buffer to copy the metadata into
- * @param[in] to_frame_id The frame ID in the @c to_buf to copy the metadata into
- */
-void pass_metadata(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_frame_id);
 
 /**
  * @brief Makes a fully deep copy of the metadata from one object to another

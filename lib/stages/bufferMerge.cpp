@@ -117,7 +117,7 @@ void bufferMerge::main_thread() {
                     break;
 
                 // Move the metadata over to the new frame
-                pass_metadata(in_buf, in_frame_id, out_buf, out_frame_id);
+                in_buf->pass_metadata(in_frame_id, out_buf, out_frame_id);
 
                 // Copy or swap the frame.
                 if (in_buf->get_num_consumers() > 1) {

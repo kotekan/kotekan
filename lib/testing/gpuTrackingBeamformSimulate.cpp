@@ -316,7 +316,7 @@ void gpuTrackingBeamformSimulate::main_thread() {
             "]",
             input_buf->buffer_name, input_buf_id, output_buf->buffer_name, output_buf_id);
 
-        pass_metadata(input_buf, input_buf_id, output_buf, output_buf_id);
+        input_buf->pass_metadata(input_buf_id, output_buf, output_buf_id);
         input_buf->mark_frame_empty(unique_name, input_buf_id);
         output_buf->mark_frame_full(unique_name, output_buf_id);
 

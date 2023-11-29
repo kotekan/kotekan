@@ -82,7 +82,7 @@ void zeroLowerTriangle::main_thread() {
         INFO("Zeroing done for {:s}[{:d}] result is in {:s}[{:d}]", input_buf->buffer_name,
              input_frame_id, output_buf->buffer_name, output_frame_id);
 
-        pass_metadata(input_buf, input_frame_id, output_buf, output_frame_id);
+        input_buf->pass_metadata(input_frame_id, output_buf, output_frame_id);
         input_buf->mark_frame_empty(unique_name, input_frame_id);
         output_buf->mark_frame_full(unique_name, output_frame_id);
 

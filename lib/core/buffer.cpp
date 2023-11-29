@@ -525,15 +525,15 @@ void Buffer::print_full_status() {
 }
 
 
-void pass_metadata(Buffer* from_buf, int from_ID, Buffer* to_buf, int to_ID) {
+void GenericBuffer::pass_metadata(int from_ID, GenericBuffer* to_buf, int to_ID) {
 
-    if (from_buf->metadata[from_ID] == nullptr) {
-        WARN_F("No metadata in source buffer %s[%d], was this intended?", from_buf->buffer_name,
+    if (metadata[from_ID] == nullptr) {
+        WARN("No metadata in source buffer {:s}[{:d}], was this intended?", buffer_name,
                from_ID);
         return;
     }
 
-    metadataContainer* metadata_container = from_buf->metadata[from_ID];
+    metadataContainer* metadata_container = metadata[from_ID];
 
     bool set = to_buf->set_metadata(to_ID, metadata_container);
     assert(set);

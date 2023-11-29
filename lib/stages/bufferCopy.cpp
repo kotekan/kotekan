@@ -106,7 +106,7 @@ void bufferCopy::main_thread() {
                     out_buf->allocate_new_metadata_object(out_frame_id);
                     copy_metadata(in_buf, in_frame_id, out_buf, out_frame_id);
                 } else
-                    pass_metadata(in_buf, in_frame_id, out_buf, out_frame_id);
+                    in_buf->pass_metadata(in_frame_id, out_buf, out_frame_id);
             }
 
             // Copy the frame.

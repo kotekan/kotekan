@@ -277,7 +277,7 @@ void visTestPattern::main_thread() {
                     }
 
                     // Transfer metadata
-                    pass_metadata(in_buf, frame_id, out_buf, output_frame_id);
+                    in_buf->pass_metadata(frame_id, out_buf, output_frame_id);
 
                     // Copy the frame data here:
                     std::memcpy(out_buf->frames[output_frame_id], in_buf->frames[frame_id],

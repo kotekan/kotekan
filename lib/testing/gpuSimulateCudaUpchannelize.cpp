@@ -331,7 +331,7 @@ void gpuSimulateCudaUpchannelize::main_thread() {
               voltage_in_buf->buffer_name, voltage_frame_id, voltage_out_buf->buffer_name,
               output_frame_id);
 
-        pass_metadata(voltage_in_buf, voltage_frame_id, voltage_out_buf, output_frame_id);
+        voltage_in_buf->pass_metadata(voltage_frame_id, voltage_out_buf, output_frame_id);
         voltage_in_buf->mark_frame_empty(unique_name, voltage_frame_id);
         voltage_out_buf->mark_frame_full(unique_name, output_frame_id);
 

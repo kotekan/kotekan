@@ -249,7 +249,7 @@ void RfiFrameDrop::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_des
                     buf_src->frame_size);
     }
 
-    pass_metadata(buf_src, frame_id_src, buf_dest, frame_id_dest);
+    buf_src->pass_metadata(frame_id_src, buf_dest, frame_id_dest);
 }
 
 bool RfiFrameDrop::rest_enable_callback(nlohmann::json& update) {

@@ -130,7 +130,7 @@ void cudaOutputData::finalize_frame(int frame_id) {
             DEBUG("Passing metadata from input (host) buffer {:s}[{:d}] to {:s}[{:d}]",
                   in_buffer->buffer_name, in_buffer_id, output_buffer->buffer_name,
                   output_buffer_id);
-            pass_metadata(in_buffer, in_buffer_id, output_buffer, output_buffer_id);
+            in_buffer->pass_metadata(in_buffer_id, output_buffer, output_buffer_id);
         }
         in_buffer->mark_frame_empty(unique_name, in_buffer_id);
         in_buffer_id = (in_buffer_id + 1) % in_buffer->num_frames;

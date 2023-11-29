@@ -251,7 +251,7 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
         DEBUG("Simulated GPU processing done for {:s}[{:d}], result is in {:s}[{:d}]",
               voltage_buf->buffer_name, voltage_frame_id, output_buf->buffer_name, output_frame_id);
 
-        pass_metadata(voltage_buf, voltage_frame_id, output_buf, output_frame_id);
+        voltage_buf->pass_metadata(voltage_frame_id, output_buf, output_frame_id);
         voltage_buf->mark_frame_empty(unique_name, voltage_frame_id);
         output_buf->mark_frame_full(unique_name, output_frame_id);
 
