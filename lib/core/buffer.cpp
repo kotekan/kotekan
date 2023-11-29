@@ -538,32 +538,30 @@ void GenericBuffer::pass_metadata(int from_ID, GenericBuffer* to_buf, int to_ID)
     assert(set);
 }
 
-void copy_metadata(Buffer* from_buf, int from_ID, Buffer* to_buf, int to_ID) {
-    metadataContainer* from_metadata_container;
-    metadataContainer* to_metadata_container;
+void GenericBuffer::copy_metadata(int from_ID, GenericBuffer* to_buf, int to_ID) {
+    buffer_lock lock(mutex);
 
-    std::scoped_lock lock(from_buf->mutex, to_buf->mutex);
-
-    if (from_buf->metadata[from_ID] == nullptr) {
-        WARN_F("No metadata in source buffer %s[%d], was this intended?", from_buf->buffer_name,
-               from_ID);
+    if (metadata[from_ID] == nullptr) {
+        WARN("No metadata in source buffer {:s}[{:d}], was this intended?", buffer_name, from_ID);
         return;
     }
 
     if (to_buf->metadata[to_ID] == nullptr) {
-        WARN_F("No metadata in dest buffer %s[%d], was this intended?", from_buf->buffer_name,
-               from_ID);
+        WARN("No metadata in dest buffer {:s}[{:d}], was this intended?", to_buf->buffer_name,
+             to_ID);
         return;
     }
+    to_buf->private_copy_metadata(to_ID, this, from_ID);
+}
 
-    from_metadata_container = from_buf->metadata[from_ID];
-    to_metadata_container = to_buf->metadata[to_ID];
+void GenericBuffer::private_copy_metadata(int dest_frame_id, GenericBuffer* src, int src_frame_id) {
+    metadataContainer* from_metadata_container = src->metadata[src_frame_id];
+    metadataContainer* to_metadata_container = metadata[dest_frame_id];
 
     if (from_metadata_container->metadata_size != to_metadata_container->metadata_size) {
-        WARN_F("Metadata sizes don't match, cannot copy metadata!!");
+        WARN("Metadata sizes don't match, cannot copy metadata!!");
         return;
     }
-
     memcpy(to_metadata_container->metadata, from_metadata_container->metadata,
            from_metadata_container->metadata_size);
 }

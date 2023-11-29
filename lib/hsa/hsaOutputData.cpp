@@ -105,7 +105,7 @@ void hsaOutputData::finalize_frame(int frame_id) {
 
     // We make a new copy of the metadata since there are now
     // _num_sub_frames output frames for each input frame.
-    copy_metadata(network_buffer, network_buffer_id, output_buffer, output_buffer_id);
+    network_buffer->copy_metadata(network_buffer_id, output_buffer, output_buffer_id);
 
     // Adjust the time stamps
 

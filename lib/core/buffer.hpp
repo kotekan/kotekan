@@ -246,6 +246,18 @@ public:
      */
     void pass_metadata(int from_ID, GenericBuffer* to_buf, int to_ID);
 
+    /**
+     * @brief Makes a fully deep copy of the metadata from one object to another
+     *
+     * Unlike pass_metadata this doesn't remove the metadata from the @c from_buf
+     * and requires that the @c to_buf has a metadata object to be copied into.
+     *
+     * @param[in] from_frame_id The frame ID to copy the metadata from
+     * @param[in] to_buf The buffer to copy the metadata into
+     * @param[in] to_frame_id The frame ID in the @c to_buf to copy the metadata into
+     */
+    void copy_metadata(int from_frame_id, GenericBuffer* to_buf, int to_frame_id);
+
     /// The main lock for frame state management
     std::recursive_mutex mutex;
 
@@ -279,6 +291,8 @@ protected:
 
     /// The condition variable for calls to @c wait_for_empty_buffer
     std::condition_variable_any empty_cond;
+
+    void private_copy_metadata(int dest_frame_id, GenericBuffer* src, int src_frame_id);
 };
 
 /**
@@ -680,18 +694,5 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_huge_pages, bool meml
  * @param use_huge_pages Toggles the type of "free" call used, must match @c buffer_malloc type
  */
 void buffer_free(uint8_t* frame_pointer, size_t size, bool use_huge_pages);
-
-/**
- * @brief Makes a fully deep copy of the metadata from one object to another
- *
- * Unlike pass_metadata this doesn't remove the metadata from the @c from_buf
- * and requires that the @c to_buf has a metadata object to be copied into.
- *
- * @param[in] from_buf The buffer to copy the metadata from
- * @param[in] from_frame_id The frame ID to copy the metadata from
- * @param[in] to_buf The buffer to copy the metadata into
- * @param[in] to_frame_id The frame ID in the @c to_buf to copy the metadata into
- */
-void copy_metadata(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_frame_id);
 
 #endif
