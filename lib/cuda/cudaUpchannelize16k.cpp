@@ -13,10 +13,10 @@ const int sizeof_float16_t = 2;
 REGISTER_CUDA_COMMAND(cudaUpchannelize16k);
 
 cudaUpchannelize16k::cudaUpchannelize16k(Config& config, const std::string& unique_name,
-                                         bufferContainer& host_buffers,
-                                         cudaDeviceInterface& device) :
-    cudaUpchannelize(config, unique_name, host_buffers, device, "upchannelize16", "upchan-U16.ptx",
-                     16384,
+                                         bufferContainer& host_buffers, cudaDeviceInterface& device,
+                                         int inst) :
+    cudaUpchannelize(config, unique_name, host_buffers, device, inst, "upchannelize16",
+                     "upchan-U16.ptx", 16384,
                      "_Z17julia_upchan_404813CuDeviceArrayI9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_"
                      "IS1_Li1ELi1EES_I5Int32Li1ELi1EE") {}
 

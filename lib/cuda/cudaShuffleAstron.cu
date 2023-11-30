@@ -8,8 +8,10 @@ using kotekan::Config;
 REGISTER_CUDA_COMMAND(cudaShuffleAstron);
 
 cudaShuffleAstron::cudaShuffleAstron(Config& config, const std::string& unique_name,
-                                     bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "cudaShuffleRomein", "cudaShuffleRomein.cu") {
+                                     bufferContainer& host_buffers, cudaDeviceInterface& device, int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst,
+                no_cuda_command_state,
+                "cudaShuffleRomein", "cudaShuffleRomein.cu") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
@@ -69,7 +71,7 @@ __global__ void shuffle_astron(int *input, int *output, int ne, int nt, int nf) 
 }
 
 cudaEvent_t cudaShuffleAstron::execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) {
-    pre_execute(pipestate.gpu_frame_id);
+    pre_execute();
 
     size_t input_frame_len = (size_t)_num_elements * _num_local_freq * _samples_per_data_set;
     void *input_memory = device.get_gpu_memory_array(_gpu_mem_voltage, pipestate.gpu_frame_id, input_frame_len);
@@ -77,8 +79,7 @@ cudaEvent_t cudaShuffleAstron::execute(cudaPipelineState& pipestate, const std::
 
     if (pre_events[cuda_stream_id]) CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(cuda_stream_id),
                                              pre_events[cuda_stream_id], 0));
-    CHECK_CUDA_ERROR(cudaEventCreate(&start_events[pipestate.gpu_frame_id]));
-    CHECK_CUDA_ERROR(cudaEventRecord(start_events[pipestate.gpu_frame_id], device.getStream(cuda_stream_id)));
+    record_start_event();
 
     dim3 blk (8,8,1);
     dim3 grd (_num_elements/32,_samples_per_data_set/32,_num_local_freq);
@@ -87,8 +88,5 @@ cudaEvent_t cudaShuffleAstron::execute(cudaPipelineState& pipestate, const std::
 
     CHECK_CUDA_ERROR(cudaGetLastError());
 
-    CHECK_CUDA_ERROR(cudaEventCreate(&end_events[pipestate.gpu_frame_id]));
-    CHECK_CUDA_ERROR(cudaEventRecord(end_events[pipestate.gpu_frame_id], device.getStream(cuda_stream_id)));
-
-    return end_events[pipestate.gpu_frame_id];
+    return record_end_event();
 }

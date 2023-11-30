@@ -30,13 +30,14 @@ using kotekan::Config;
 class cudaBasebandBeamformer_pathfinder : public cudaCommand {
 public:
     cudaBasebandBeamformer_pathfinder(Config& config, const std::string& unique_name,
-                                      bufferContainer& host_buffers, cudaDeviceInterface& device);
+                                      bufferContainer& host_buffers, cudaDeviceInterface& device,
+                                      int inst);
     virtual ~cudaBasebandBeamformer_pathfinder();
 
     // int wait_on_precondition(int gpu_frame_id) override;
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    void finalize_frame(int gpu_frame_id) override;
+    void finalize_frame() override;
 
 private:
     // Julia's `CuDevArray` type
@@ -173,9 +174,10 @@ REGISTER_CUDA_COMMAND(cudaBasebandBeamformer_pathfinder);
 cudaBasebandBeamformer_pathfinder::cudaBasebandBeamformer_pathfinder(Config& config,
                                                                      const std::string& unique_name,
                                                                      bufferContainer& host_buffers,
-                                                                     cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "BasebandBeamformer_pathfinder",
-                "BasebandBeamformer_pathfinder.ptx"),
+                                                                     cudaDeviceInterface& device,
+                                                                     int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state,
+                "BasebandBeamformer_pathfinder", "BasebandBeamformer_pathfinder.ptx"),
     A_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
     E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
     s_memname(config.get<std::string>(unique_name, "gpu_mem_output_scaling")),
@@ -192,11 +194,15 @@ cudaBasebandBeamformer_pathfinder::cudaBasebandBeamformer_pathfinder(Config& con
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
-    const std::vector<std::string> opts = {
-        "--gpu-name=sm_86",
-        "--verbose",
-    };
-    build_ptx({kernel_symbol}, opts);
+
+    // Only one of the instances of this pipeline stage need to build the kernel
+    if (inst == 0) {
+        const std::vector<std::string> opts = {
+            "--gpu-name=sm_86",
+            "--verbose",
+        };
+        device.build_ptx("BasebandBeamformer_pathfinder.ptx", {kernel_symbol}, opts);
+    }
 
     // Initialize extra variables (if necessary)
 }
@@ -206,7 +212,7 @@ cudaBasebandBeamformer_pathfinder::~cudaBasebandBeamformer_pathfinder() {}
 cudaEvent_t
 cudaBasebandBeamformer_pathfinder::execute(cudaPipelineState& pipestate,
                                            const std::vector<cudaEvent_t>& /*pre_events*/) {
-    pre_execute(pipestate.gpu_frame_id);
+    pre_execute();
 
     void* const A_memory = device.get_gpu_memory_array(A_memname, pipestate.gpu_frame_id, A_length);
     void* const E_memory = device.get_gpu_memory_array(E_memname, pipestate.gpu_frame_id, E_length);
@@ -275,7 +281,7 @@ cudaBasebandBeamformer_pathfinder::execute(cudaPipelineState& pipestate,
     INFO("output J array: {:s} {:s}", meta_J->get_type_string(), meta_J->get_dimensions_string());
     //
 
-    record_start_event(pipestate.gpu_frame_id);
+    record_start_event();
 
     const char* exc_arg = "exception";
     kernel_arg A_arg(A_memory, A_length);
@@ -295,14 +301,15 @@ cudaBasebandBeamformer_pathfinder::execute(cudaPipelineState& pipestate,
         cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
 
     DEBUG("kernel_symbol: {}", kernel_symbol);
-    DEBUG("runtime_kernels[kernel_symbol]: {}", static_cast<void*>(runtime_kernels[kernel_symbol]));
-    CHECK_CU_ERROR(cuFuncSetAttribute(runtime_kernels[kernel_symbol],
+    DEBUG("runtime_kernels[kernel_symbol]: {}",
+          static_cast<void*>(device.runtime_kernels[kernel_symbol]));
+    CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[kernel_symbol],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
     DEBUG("Running CUDA BasebandBeamformer_pathfinder on GPU frame {:d}", pipestate.gpu_frame_id);
     const CUresult err =
-        cuLaunchKernel(runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
+        cuLaunchKernel(device.runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
 
     if (err != CUDA_SUCCESS) {
@@ -326,11 +333,11 @@ cudaBasebandBeamformer_pathfinder::execute(cudaPipelineState& pipestate,
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    return record_end_event(pipestate.gpu_frame_id);
+    return record_end_event();
 }
 
-void cudaBasebandBeamformer_pathfinder::finalize_frame(const int gpu_frame_id) {
-    cudaCommand::finalize_frame(gpu_frame_id);
+void cudaBasebandBeamformer_pathfinder::finalize_frame() {
+    cudaCommand::finalize_frame();
 
     for (std::size_t i = 0; i < host_info[gpu_frame_id].size(); ++i)
         if (host_info[gpu_frame_id][i] != 0)
