@@ -42,33 +42,46 @@ gpuEventContainer* cudaProcess::create_signal() {
     return new cudaEventContainer();
 }
 
-gpuCommand* cudaProcess::create_command(const std::string& cmd_name,
-                                        const std::string& unique_name) {
-    INFO("CudaProcess creating command: {:s}, {:s}", unique_name, cmd_name);
-
-    auto cmd = FACTORY(cudaCommand)::create_bare(cmd_name, config, unique_name,
-                                                 local_buffer_container, *device);
+std::vector<gpuCommand*> cudaProcess::create_command(const std::string& cmd_name,
+                                                     const std::string& unique_name) {
+    std::vector<gpuCommand*> cmds;
+    // Create the cudaCommandState object, if used, for this command class.
+    std::shared_ptr<cudaCommandState> st = FACTORY(cudaCommandState)::create_shared_if_exists(
+        cmd_name, config, unique_name, local_buffer_container, *device);
+    for (uint32_t i = 0; i < _gpu_buffer_depth; i++) {
+        gpuCommand* cmd;
+        if (st)
+            // Create the cudaCommand object (with state arg)
+            cmd = FACTORY_VARIANT(state, cudaCommand)::create_bare(
+                cmd_name, config, unique_name, local_buffer_container, *device, i, st);
+        else
+            // Create the cudaCommand object (without state arg)
+            cmd = FACTORY(cudaCommand)::create_bare(cmd_name, config, unique_name,
+                                                    local_buffer_container, *device, i);
+        cmds.push_back(cmd);
+    }
     DEBUG("Command added: {:s}", cmd_name.c_str());
-    return cmd;
+    return cmds;
 }
 
-void cudaProcess::queue_commands(int gpu_frame_id, int gpu_frame_counter) {
+void cudaProcess::queue_commands(int gpu_frame_counter) {
     std::vector<cudaEvent_t> events;
     events.resize(device->get_num_streams(), nullptr);
-
-    cudaPipelineState pipestate(gpu_frame_id);
-    pipestate.set_int("gpu_frame_counter", gpu_frame_counter);
     cudaEvent_t final_event = nullptr;
 
+    int icommand = gpu_frame_counter % _gpu_buffer_depth;
     {
         // Grab the lock for queuing GPU commands
         std::lock_guard<std::recursive_mutex> lock(device->gpu_command_mutex);
 
+        // Create the state object that will get passed through this pipeline
+        cudaPipelineState pipestate(gpu_frame_counter);
+
         for (auto& command : commands) {
             // Feed the last signal into the next operation
-            cudaEvent_t event = ((cudaCommand*)command)->execute_base(pipestate, events);
+            cudaEvent_t event = ((cudaCommand*)command[icommand])->execute_base(pipestate, events);
             if (event != nullptr) {
-                int32_t command_stream_id = ((cudaCommand*)command)->get_cuda_stream_id();
+                int32_t command_stream_id = ((cudaCommand*)command[icommand])->get_cuda_stream_id();
                 events[command_stream_id] = event;
                 final_event = event;
             }
@@ -76,7 +89,7 @@ void cudaProcess::queue_commands(int gpu_frame_id, int gpu_frame_counter) {
     }
     // Wait on the very last event from the last command.
     // TODO, this should wait on the last event from every stream!
-    final_signals[gpu_frame_id]->set_signal(final_event);
+    final_signals[icommand]->set_signal(final_event);
     DEBUG2("Commands executed.");
 }
 

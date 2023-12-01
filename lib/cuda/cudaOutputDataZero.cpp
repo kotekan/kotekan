@@ -6,8 +6,9 @@ using kotekan::Config;
 REGISTER_CUDA_COMMAND(cudaOutputDataZero);
 
 cudaOutputDataZero::cudaOutputDataZero(Config& config, const std::string& unique_name,
-                                       bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "", "") {
+                                       bufferContainer& host_buffers, cudaDeviceInterface& device,
+                                       int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst) {
 
     output_len = config.get<int>(unique_name, "data_length");
     output_zeros = malloc(output_len);
@@ -21,19 +22,16 @@ cudaOutputDataZero::~cudaOutputDataZero() {
     free(output_zeros);
 }
 
-cudaEvent_t cudaOutputDataZero::execute(cudaPipelineState& pipestate,
-                                        const std::vector<cudaEvent_t>& pre_events) {
-    (void)pre_events;
-    pre_execute(pipestate.gpu_frame_id);
+cudaEvent_t cudaOutputDataZero::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
+    pre_execute();
 
-    void* gpu_memory_frame = device.get_gpu_memory_array("output", pipestate.gpu_frame_id,
+    void* gpu_memory_frame = device.get_gpu_memory_array("output", gpu_frame_id,
                                                          _gpu_buffer_depth, output_len);
-
-    record_start_event(pipestate.gpu_frame_id);
+    record_start_event();
 
     // Data transfer to GPU
     CHECK_CUDA_ERROR(cudaMemcpyAsync(gpu_memory_frame, output_zeros, output_len,
                                      cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
 
-    return record_end_event(pipestate.gpu_frame_id);
+    return record_end_event();
 }

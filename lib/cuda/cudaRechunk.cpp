@@ -7,11 +7,12 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 
-REGISTER_CUDA_COMMAND(cudaRechunk);
+REGISTER_CUDA_COMMAND_WITH_STATE(cudaRechunk, cudaRechunkState);
 
 cudaRechunk::cudaRechunk(Config& config, const std::string& unique_name,
-                         bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "cudaRechunk", "") {
+                         bufferContainer& host_buffers, cudaDeviceInterface& device, int inst,
+                         std::shared_ptr<cudaCommandState> state) :
+    cudaCommand(config, unique_name, host_buffers, device, inst, state) {
     _cols_input = config.get<int>(unique_name, "cols_input");
     _cols_output = config.get<int>(unique_name, "cols_output");
     _rows = config.get<int>(unique_name, "rows");
@@ -22,7 +23,7 @@ cudaRechunk::cudaRechunk(Config& config, const std::string& unique_name,
     _output_async = config.get_default<bool>(unique_name, "output_async", false);
     output_id = 0;
     set_command_type(gpuCommandType::KERNEL);
-    cols_accumulated = 0;
+    set_name("cudaRechunk");
 
     gpu_mem_accum = unique_name + "/accum";
 
@@ -37,13 +38,15 @@ cudaRechunk::cudaRechunk(Config& config, const std::string& unique_name,
 
 cudaRechunk::~cudaRechunk() {}
 
-cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
-                                 const std::vector<cudaEvent_t>& pre_events) {
-    (void)pre_events;
-    pre_execute(pipestate.gpu_frame_id);
+cudaRechunkState* cudaRechunk::get_state() {
+    return static_cast<cudaRechunkState*>(command_state.get());
+}
+
+cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>&) {
+    pre_execute();
 
     size_t input_frame_len = _cols_input * _rows;
-    void* input_memory = device.get_gpu_memory_array(_gpu_mem_input, pipestate.gpu_frame_id,
+    void* input_memory = device.get_gpu_memory_array(_gpu_mem_input, gpu_frame_id,
                                                      _gpu_buffer_depth, input_frame_len);
 
     size_t output_len = _cols_output * _rows;
@@ -59,13 +62,16 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
 
     size_t cols_to_copy = cols_input;
     size_t cols_leftover = 0;
+
+    size_t cols_accumulated = get_state()->cols_accumulated;
+
     if (cols_accumulated + cols_to_copy > _cols_output) {
         cols_to_copy = _cols_output - cols_accumulated;
         // Copy the remainder into the leftover_memory.
         cols_leftover = cols_input - cols_to_copy;
     }
 
-    record_start_event(pipestate.gpu_frame_id);
+    record_start_event();
 
     CHECK_CUDA_ERROR(cudaMemcpy2DAsync((void*)((char*)accum_memory + cols_accumulated),
                                        _cols_output, input_memory, cols_input, cols_to_copy, _rows,
@@ -104,5 +110,8 @@ cudaEvent_t cudaRechunk::execute(cudaPipelineState& pipestate,
         DEBUG("cudaRechunk: accumulated {:d} columns, output columns {:d} -- NOT producing output!",
               cols_accumulated, _cols_output);
     }
-    return record_end_event(pipestate.gpu_frame_id);
+
+    get_state()->cols_accumulated = cols_accumulated;
+
+    return record_end_event();
 }

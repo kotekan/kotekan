@@ -11,6 +11,8 @@
 #include "cuda_runtime_api.h"
 #include "gpuDeviceInterface.hpp"
 
+#include <cuda.h>
+
 /**
  * @class cudaDeviceInterface
  * @brief Class to handle CUDA interactions with GPU hardware.
@@ -73,6 +75,23 @@ public:
     void async_copy_gpu_to_host(void* dst, void* src, size_t len, uint32_t cuda_stream_id,
                                 cudaEvent_t pre_event, cudaEvent_t& copy_start_event,
                                 cudaEvent_t& copy_end_event);
+
+    /**
+     * @brief Builds a list of kernels from the file with name: @c kernel_file_name
+     *
+     * @param kernel_names Vector list of kernel names in the kernel file
+     * @param opts         List of options to pass to nvrtc
+     **/
+    virtual void build(const std::string& kernel_filename,
+                       const std::vector<std::string>& kernel_names,
+                       const std::vector<std::string>& opts);
+
+    virtual void build_ptx(const std::string& kernel_filename,
+                           const std::vector<std::string>& kernel_names,
+                           const std::vector<std::string>& opts);
+
+    // Map containing the runtime kernels built with nvrtc from the kernel file (if needed)
+    std::map<std::string, CUfunction> runtime_kernels;
 
     // Mutex for queuing GPU commands
     std::recursive_mutex gpu_command_mutex;

@@ -6,9 +6,16 @@ using kotekan::Config;
 REGISTER_CUDA_COMMAND(chordMVPSetup);
 
 chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
-                             bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "chordMVPSetup", "") {
+                             bufferContainer& host_buffers, cudaDeviceInterface& device, int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst) {
     set_command_type(gpuCommandType::COPY_IN);
+    set_name("chordMVPSetup");
+
+    // The GPU memory view setup below is "global", so need only do it once.
+    if (instance_num != 0)
+        return;
+
+    // Set up GPU memory views
 
     // Upchan to FRB-Beamformer:
     size_t num_dishes = config.get<int>(unique_name, "num_dishes");
@@ -73,12 +80,10 @@ chordMVPSetup::chordMVPSetup(Config& config, const std::string& unique_name,
 
 chordMVPSetup::~chordMVPSetup() {}
 
-cudaEvent_t chordMVPSetup::execute(cudaPipelineState& pipestate,
-                                   const std::vector<cudaEvent_t>& pre_events) {
-    (void)pre_events;
-    pre_execute(pipestate.gpu_frame_id);
-    record_start_event(pipestate.gpu_frame_id);
-    return record_end_event(pipestate.gpu_frame_id);
+cudaEvent_t chordMVPSetup::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
+    pre_execute();
+    record_start_event();
+    return record_end_event();
 }
 
 std::string chordMVPSetup::get_extra_dot(const std::string& prefix) const {

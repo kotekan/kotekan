@@ -4,6 +4,15 @@
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
 
+class cudaRechunkState : public cudaCommandState {
+public:
+    cudaRechunkState(kotekan::Config& config, const std::string& unique_name,
+                     kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device) :
+        cudaCommandState(config, unique_name, host_buffers, device),
+        cols_accumulated(0) {}
+    int cols_accumulated;
+};
+
 /**
  * @class cudaRechunk
  * @brief cudaCommand for combining GPU frames before further processing.
@@ -59,12 +68,15 @@
 class cudaRechunk : public cudaCommand {
 public:
     cudaRechunk(kotekan::Config& config, const std::string& unique_name,
-                kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+                kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device, int inst,
+                std::shared_ptr<cudaCommandState>);
     ~cudaRechunk();
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
 
 protected:
+    cudaRechunkState* get_state();
+
 private:
     bool _output_async;
     int output_id;
@@ -72,9 +84,6 @@ private:
     size_t _cols_input;
     size_t _cols_output;
     size_t _rows;
-
-    size_t cols_accumulated;
-    size_t cols_leftover;
 
     std::string _set_flag;
 

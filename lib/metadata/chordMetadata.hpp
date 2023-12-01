@@ -12,6 +12,8 @@
 #include <sys/time.h>
 #include <vector>
 
+// One of the warning-silencing pragmas below only applied for gcc >= 8
+#define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
 #pragma pack()
 
 enum chordDataType { int4p4, int8, int16, int32, int64, float16, float32, float64 };
@@ -122,7 +124,14 @@ struct chordMetadata {
     void set_array_dimension(int dim, int size, const std::string& name) {
         assert(dim < CHORD_META_MAX_DIM);
         this->dim[dim] = size;
+        // GCC helpfully tries to warn us that the destination string may end up not
+        // null-terminated, which we know.
+#pragma GCC diagnostic push
+#if GCC_VERSION > 80000
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
+#endif
         strncpy(this->dim_name[dim], name.c_str(), CHORD_META_MAX_DIMNAME);
+#pragma GCC diagnostic pop
     }
 
     void set_onehot_dimension(int dim, int i, const std::string& name) {

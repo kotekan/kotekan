@@ -25,11 +25,12 @@
 class cudaFRBBeamReformer : public cudaCommand {
 public:
     cudaFRBBeamReformer(kotekan::Config& config, const std::string& unique_name,
-                        kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+                        kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                        int inst);
     ~cudaFRBBeamReformer();
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    void finalize_frame(int frame_id) override;
+    void finalize_frame() override;
 
 protected:
 private:
@@ -46,7 +47,7 @@ private:
 
     /// CUDA compute streams to use
     std::vector<int> _cuda_streams;
-    std::vector<std::vector<cudaEvent_t>> sync_events;
+    std::vector<cudaEvent_t> sync_events;
 
     // Computed values
     int32_t rho;
@@ -68,10 +69,9 @@ private:
     bool _batched;
 
     // cublasHgemmBatched -- pre-computed GPU memory locations.
-    // [gpu_frame_id] [freq batch = stream] = [per-freq pointers]
-    std::vector<std::vector<__half**>> _gpu_in_pointers;
-    std::vector<std::vector<__half**>> _gpu_out_pointers;
     // [freq batch = stream] = [per-freq pointers]
+    std::vector<__half**> _gpu_in_pointers;
+    std::vector<__half**> _gpu_out_pointers;
     std::vector<__half**> _gpu_phase_pointers;
 };
 

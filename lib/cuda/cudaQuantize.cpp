@@ -13,8 +13,8 @@ using kotekan::Config;
 REGISTER_CUDA_COMMAND(cudaQuantize);
 
 cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
-                           bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "cudaQuantize", "") {
+                           bufferContainer& host_buffers, cudaDeviceInterface& device, int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst) {
     _num_chunks = config.get<int>(unique_name, "num_chunks");
     _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
@@ -24,6 +24,7 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
     std::string _gpu_mem_index = unique_name + "/index";
 
     set_command_type(gpuCommandType::KERNEL);
+    set_name("cudaQuantize");
 
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, true, false, true));
@@ -56,35 +57,33 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
 
 cudaQuantize::~cudaQuantize() {}
 
-cudaEvent_t cudaQuantize::execute(cudaPipelineState& pipestate,
-                                  const std::vector<cudaEvent_t>& pre_events) {
-    (void)pre_events;
-    pre_execute(pipestate.gpu_frame_id);
+cudaEvent_t cudaQuantize::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
+    pre_execute();
 
     size_t input_frame_len = (size_t)_num_chunks * CHUNK_SIZE * sizeof(float16_t);
-    void* input_memory = device.get_gpu_memory_array(_gpu_mem_input, pipestate.gpu_frame_id,
+    void* input_memory = device.get_gpu_memory_array(_gpu_mem_input, gpu_frame_id,
                                                      _gpu_buffer_depth, input_frame_len);
     INFO("Input frame length: {:d} x {:d} x 2 = {:d}", _num_chunks, CHUNK_SIZE, input_frame_len);
     //  divide by 2 because of packed int4 outputs
     size_t output_frame_len = (size_t)_num_chunks * CHUNK_SIZE / 2;
     INFO("Output frame length: {:d} x {:d} / 2 = {:d}", _num_chunks, CHUNK_SIZE, output_frame_len);
     int32_t* output_memory = (int32_t*)device.get_gpu_memory_array(
-        _gpu_mem_output, pipestate.gpu_frame_id, _gpu_buffer_depth, output_frame_len);
+        _gpu_mem_output, gpu_frame_id, _gpu_buffer_depth, output_frame_len);
 
     size_t meanstd_frame_len = (size_t)_num_chunks * 2 * sizeof(float16_t);
-    void* meanstd_memory = device.get_gpu_memory_array(_gpu_mem_meanstd, pipestate.gpu_frame_id,
+    void* meanstd_memory = device.get_gpu_memory_array(_gpu_mem_meanstd, gpu_frame_id,
                                                        _gpu_buffer_depth, meanstd_frame_len);
 
     std::string _gpu_mem_index = unique_name + "/index";
     size_t index_array_len = (size_t)_num_chunks * 2 * sizeof(int32_t);
     int32_t* index_array_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_index, index_array_len);
 
-    record_start_event(pipestate.gpu_frame_id);
+    record_start_event();
 
     launch_quantize_kernel(device.getStream(cuda_stream_id), _num_chunks / FRAME_SIZE,
                            (const __half2*)input_memory, (__half2*)meanstd_memory,
                            (unsigned int*)output_memory, index_array_memory);
     CHECK_CUDA_ERROR(cudaGetLastError());
 
-    return record_end_event(pipestate.gpu_frame_id);
+    return record_end_event();
 }
