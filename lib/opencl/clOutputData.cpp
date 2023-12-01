@@ -59,5 +59,5 @@ void clOutputData::finalize_frame() {
     int out_index = gpu_frame_id % output_buffer->num_frames;
     network_buffer->pass_metadata(net_index, output_buffer, out_index);
     network_buffer->mark_frame_empty(unique_name, net_index);
-    output_buffer->mark_frame_full(unique_name, out_idex);
+    output_buffer->mark_frame_full(unique_name, out_index);
 }
