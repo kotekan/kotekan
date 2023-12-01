@@ -28,13 +28,14 @@
 class cudaCopyToRingbuffer : public cudaCommand {
 public:
     cudaCopyToRingbuffer(kotekan::Config& config, const std::string& unique_name,
-                         kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+                         kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                         int instance_num);
 
-    int wait_on_precondition(int gpu_frame_id) override;
+    int wait_on_precondition() override;
 
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    void finalize_frame(int gpu_frame_id) override;
+    void finalize_frame() override;
 
 protected:
 private:

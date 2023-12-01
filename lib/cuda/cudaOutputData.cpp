@@ -30,9 +30,10 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
     if (output_buffer->frame_size) {
         uint flags;
         // only register the memory if it isn't already...
-        if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, output_buffer->frames[instance_num])) {
-            CHECK_CUDA_ERROR(
-                             cudaHostRegister(output_buffer->frames[instance_num], output_buffer->frame_size, 0));
+        if (cudaErrorInvalidValue
+            == cudaHostGetFlags(&flags, output_buffer->frames[instance_num])) {
+            CHECK_CUDA_ERROR(cudaHostRegister(output_buffer->frames[instance_num],
+                                              output_buffer->frame_size, 0));
         }
     }
 
@@ -51,7 +52,8 @@ cudaOutputData::~cudaOutputData() {
     if (output_buffer->frame_size) {
         uint flags;
         // only register the memory if it isn't already...
-        if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, output_buffer->frames[instance_num])) {
+        if (cudaErrorInvalidValue
+            == cudaHostGetFlags(&flags, output_buffer->frames[instance_num])) {
             CHECK_CUDA_ERROR(cudaHostUnregister(output_buffer->frames[instance_num]));
         }
     }
@@ -85,19 +87,18 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState&,
     size_t output_len = output_buffer->frame_size;
 
     if (output_len) {
-        void* gpu_output_frame = device.get_gpu_memory_array(_gpu_mem, gpu_frame_id,
-                                                             _gpu_buffer_depth, output_len);
+        void* gpu_output_frame =
+            device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, _gpu_buffer_depth, output_len);
         int out_id = gpu_frame_id % output_buffer->num_frames;
         void* host_output_frame = (void*)output_buffer->frames[out_id];
 
         device.async_copy_gpu_to_host(host_output_frame, gpu_output_frame, output_len,
-                                      cuda_stream_id, pre_events[cuda_stream_id],
-                                      start_event, end_event);
+                                      cuda_stream_id, pre_events[cuda_stream_id], start_event,
+                                      end_event);
 
         if (!in_buffer) {
             // Check for metadata attached to the GPU frame
-            metadataContainer* meta =
-                device.get_gpu_memory_array_metadata(_gpu_mem, gpu_frame_id);
+            metadataContainer* meta = device.get_gpu_memory_array_metadata(_gpu_mem, gpu_frame_id);
             if (meta) {
                 // Attach the metadata to the host buffer frame
                 bool passed = output_buffer->set_metadata(out_id, meta);

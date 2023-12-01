@@ -173,7 +173,8 @@ void gpuProcess::main_thread() {
             }
         }
 
-        DEBUG("Waiting for free slot for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_counter, unique_name);
+        DEBUG("Waiting for free slot for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_counter,
+              unique_name);
         // We make sure we aren't using a gpu frame that's currently in-flight.
         int ic = gpu_frame_counter % final_signals.size();
         final_signals[ic]->wait_for_free_slot();

@@ -23,7 +23,8 @@ clInputData::~clInputData() {}
 
 int clInputData::wait_on_precondition() {
     // Wait for there to be data in the input (network) buffer.
-    uint8_t* frame = network_buf->wait_for_full_frame(unique_name, gpu_frame_id % network_buf->num_frames);
+    uint8_t* frame =
+        network_buf->wait_for_full_frame(unique_name, gpu_frame_id % network_buf->num_frames);
     if (frame == nullptr)
         return -1;
     return 0;

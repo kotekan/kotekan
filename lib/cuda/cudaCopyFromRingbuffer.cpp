@@ -11,8 +11,9 @@ REGISTER_CUDA_COMMAND(cudaCopyFromRingbuffer);
 
 cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string& unique_name,
                                                bufferContainer& host_buffers,
-                                               cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "cudaCopyFromRingbuffer", "") {
+                                               cudaDeviceInterface& device, int instance_num) :
+    cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
+                "cudaCopyFromRingbuffer", "") {
     _output_size = config.get<int>(unique_name, "output_size");
     _ring_buffer_size = config.get<int>(unique_name, "ring_buffer_size");
     _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
@@ -28,11 +29,11 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, true, false, true));
 }
 
-int cudaCopyFromRingbuffer::wait_on_precondition(int frame_id) {
+int cudaCopyFromRingbuffer::wait_on_precondition() {
     // Wait for there to be data in the input (network) buffer.
-    DEBUG("Waiting for data frame {:d}...", frame_id);
+    DEBUG("Waiting for data frame {:d}...", gpu_frame_id);
     int offset = signal_buffer->wait_and_claim_readable(unique_name, _output_size);
-    DEBUG("Finished waiting for data frame {:d}.", frame_id);
+    DEBUG("Finished waiting for data frame {:d}.", gpu_frame_id);
     if (offset == -1)
         return -1;
     return 0;
@@ -41,10 +42,10 @@ int cudaCopyFromRingbuffer::wait_on_precondition(int frame_id) {
 cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
                                             const std::vector<cudaEvent_t>& pre_events) {
     (void)pre_events;
-    pre_execute(pipestate.gpu_frame_id);
+    pre_execute();
 
-    void* output_memory = device.get_gpu_memory_array(_gpu_mem_output, pipestate.gpu_frame_id,
-                                                      _gpu_buffer_depth, _output_size);
+    void* output_memory =
+        device.get_gpu_memory_array(_gpu_mem_output, gpu_frame_id, _gpu_buffer_depth, _output_size);
 
     void* rb_memory = device.get_gpu_memory(_gpu_mem_input, _ring_buffer_size);
 
@@ -55,7 +56,7 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
         nwrap = _output_size - ncopy;
     }
 
-    record_start_event(pipestate.gpu_frame_id);
+    record_start_event();
 
     CHECK_CUDA_ERROR(cudaMemcpyAsync(output_memory, (char*)rb_memory + input_cursor, ncopy,
                                      cudaMemcpyDeviceToDevice, device.getStream(cuda_stream_id)));
@@ -65,10 +66,10 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
                                          device.getStream(cuda_stream_id)));
 
     input_cursor = (input_cursor + _output_size) % _ring_buffer_size;
-    return record_end_event(pipestate.gpu_frame_id);
+    return record_end_event();
 }
 
-void cudaCopyFromRingbuffer::finalize_frame(int frame_id) {
-    cudaCommand::finalize_frame(frame_id);
+void cudaCopyFromRingbuffer::finalize_frame() {
+    cudaCommand::finalize_frame();
     signal_buffer->read(unique_name, _output_size);
 }

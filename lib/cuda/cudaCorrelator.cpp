@@ -43,8 +43,8 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     uint32_t num_subintegrations = _samples_per_data_set / _sub_integration_ntime;
     uint32_t output_array_len =
         num_subintegrations * _num_local_freq * _num_elements * _num_elements * 2 * sizeof(int32_t);
-    void* output_memory = device.get_gpu_memory_array(
-        _gpu_mem_correlation_triangle, gpu_frame_id, _gpu_buffer_depth, output_array_len);
+    void* output_memory = device.get_gpu_memory_array(_gpu_mem_correlation_triangle, gpu_frame_id,
+                                                      _gpu_buffer_depth, output_array_len);
 
     record_start_event();
 
