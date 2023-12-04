@@ -10,6 +10,7 @@
 
 #include "kotekanLogging.hpp"
 #include "metadata.h" // for metadataPool
+#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
 
 #include <condition_variable>
 #include <map>
@@ -252,6 +253,13 @@ public:
      * @param[in] to_frame_id The frame ID in the @c to_buf to copy the metadata into
      */
     void copy_metadata(int from_frame_id, GenericBuffer* to_buf, int to_frame_id);
+
+    /**
+     * @brief Populates a JSON description of this buffer.
+     *
+     * @param buf_json The JSON object to populate.
+     */
+    virtual void json_description(nlohmann::json& buf_json);
 
     /// The number of frames kept by this object
     int num_frames;
@@ -532,7 +540,9 @@ public:
      */
     void print_buffer_status();
 
-    // don't call this
+    void json_description(nlohmann::json& buf_json) override;
+
+    // don't call this, it's for internal use only
     void _impl_zero_frame(const int ID);
 
     // protected:

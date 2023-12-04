@@ -162,40 +162,7 @@ nlohmann::json kotekanMode::get_buffer_json() {
     nlohmann::json buffer_json = {};
     for (auto& buf : buffer_container.get_buffer_map()) {
         nlohmann::json buf_info = {};
-        buf_info["consumers"];
-        for (auto& cit : buf.second->consumers) {
-            auto& c = cit.second;
-            std::string consumer_name = c.name;
-            buf_info["consumers"][consumer_name] = {};
-            buf_info["consumers"][consumer_name]["last_frame_acquired"] = c.last_frame_acquired;
-            buf_info["consumers"][consumer_name]["last_frame_released"] = c.last_frame_released;
-            for (int f = 0; f < buf.second->num_frames; ++f)
-                buf_info["consumers"][consumer_name]["marked_frame_empty"].push_back(
-                    c.is_done[f] ? 1 : 0);
-        }
-        buf_info["producers"];
-        for (auto& pit : buf.second->producers) {
-            auto& p = pit.second;
-            std::string producer_name = p.name;
-            buf_info["producers"][producer_name] = {};
-            buf_info["producers"][producer_name]["last_frame_acquired"] = p.last_frame_acquired;
-            buf_info["producers"][producer_name]["last_frame_released"] = p.last_frame_released;
-            for (int f = 0; f < buf.second->num_frames; ++f)
-                buf_info["producers"][producer_name]["marked_frame_empty"].push_back(
-                    p.is_done[f] ? 1 : 0);
-        }
-        buf_info["num_frames"] = buf.second->num_frames;
-        buf_info["type"] = buf.second->buffer_type;
-        if (buf.second->is_basic()) {
-            Buffer* basicbuf = dynamic_cast<Buffer*>(buf.second);
-            buf_info["frames"];
-            for (int i = 0; i < basicbuf->num_frames; ++i) {
-                buf_info["frames"].push_back(basicbuf->is_full[i] ? 1 : 0);
-            }
-            buf_info["num_full_frame"] = basicbuf->get_num_full_frames();
-            buf_info["frame_size"] = basicbuf->frame_size;
-            buf_info["last_frame_arrival_time"] = basicbuf->last_arrival_time;
-        }
+        buf.second->json_description(buf_info);
         buffer_json[buf.first] = buf_info;
     }
 

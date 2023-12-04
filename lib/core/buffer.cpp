@@ -190,6 +190,31 @@ void GenericBuffer::send_shutdown_signal() {
     full_cond.notify_all();
 }
 
+void GenericBuffer::json_description(nlohmann::json& buf_json) {
+    buf_json["consumers"];
+    for (auto& cit : consumers) {
+        auto& c = cit.second;
+        std::string consumer_name = c.name;
+        buf_json["consumers"][consumer_name] = {};
+        buf_json["consumers"][consumer_name]["last_frame_acquired"] = c.last_frame_acquired;
+        buf_json["consumers"][consumer_name]["last_frame_released"] = c.last_frame_released;
+        for (int f = 0; f < num_frames; ++f)
+            buf_json["consumers"][consumer_name]["marked_frame_empty"].push_back(c.is_done[f] ? 1 : 0);
+    }
+    buf_json["producers"];
+    for (auto& pit : producers) {
+        auto& p = pit.second;
+        std::string producer_name = p.name;
+        buf_json["producers"][producer_name] = {};
+        buf_json["producers"][producer_name]["last_frame_acquired"] = p.last_frame_acquired;
+        buf_json["producers"][producer_name]["last_frame_released"] = p.last_frame_released;
+        for (int f = 0; f < num_frames; ++f)
+            buf_json["producers"][producer_name]["marked_frame_empty"].push_back(p.is_done[f] ? 1 : 0);
+    }
+    buf_json["num_frames"] = num_frames;
+    buf_json["type"] = buffer_type;
+}
+
 Buffer::Buffer(int num_frames, size_t len, metadataPool* pool, const std::string& _buffer_name,
                const std::string& _buffer_type, int _numa_node, bool _use_hugepages,
                bool _mlock_frames, bool zero_new_frames) :
@@ -368,6 +393,16 @@ int Buffer::get_num_full_frames() {
         if (is_full[i])
             numFull++;
     return numFull;
+}
+
+void Buffer::json_description(nlohmann::json& buf_json) {
+    GenericBuffer::json_description(buf_json);
+    buf_json["frames"];
+    for (int i = 0; i < num_frames; ++i)
+        buf_json["frames"].push_back(is_full[i] ? 1 : 0);
+    buf_json["num_full_frame"] = get_num_full_frames();
+    buf_json["frame_size"] = frame_size;
+    buf_json["last_frame_arrival_time"] = last_arrival_time;
 }
 
 void Buffer::print_buffer_status() {
