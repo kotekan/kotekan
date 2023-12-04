@@ -145,8 +145,10 @@ void gpuProcess::main_thread() {
     dev->set_thread_device();
 
     restServer& rest_server = restServer::instance();
+    // unique_name starts with "/", so this path becomes something like
+    // "/gpu_profile/gpuB/gpu_0" for pipeline B running on GPU 0.
     rest_server.register_get_callback(
-        fmt::format(fmt("/gpu_profile/{:s}"), unique_name),
+        fmt::format(fmt("/gpu_profile{:s}"), unique_name),
         std::bind(&gpuProcess::profile_callback, this, std::placeholders::_1));
 
     // Start with the first GPU frame;
