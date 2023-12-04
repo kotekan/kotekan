@@ -16,7 +16,6 @@
 #include <cudaDeviceInterface.hpp>
 #include <fmt.hpp>
 #include <limits>
-#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -55,13 +54,14 @@ auto mod(T x, U y) {
 class cudaUpchannelizer_U32 : public cudaCommand {
 public:
     cudaUpchannelizer_U32(Config& config, const std::string& unique_name,
-                          bufferContainer& host_buffers, cudaDeviceInterface& device);
+                          bufferContainer& host_buffers, cudaDeviceInterface& device,
+                          const int inst);
     virtual ~cudaUpchannelizer_U32();
 
     // int wait_on_precondition(int gpu_frame_id) override;
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    void finalize_frame(int gpu_frame_id) override;
+    void finalize_frame() override;
 
 private:
     // Julia's `CuDevArray` type
@@ -263,9 +263,9 @@ REGISTER_CUDA_COMMAND(cudaUpchannelizer_U32);
 
 cudaUpchannelizer_U32::cudaUpchannelizer_U32(Config& config, const std::string& unique_name,
                                              bufferContainer& host_buffers,
-                                             cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "Upchannelizer_U32",
-                "Upchannelizer_U32.ptx"),
+                                             cudaDeviceInterface& device, const int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state,
+                "Upchannelizer_U32", "Upchannelizer_U32.ptx"),
     Tmin_memname(unique_name + "/Tmin"), Tmax_memname(unique_name + "/Tmax"),
     Tbarmin_memname(unique_name + "/Tbarmin"), Tbarmax_memname(unique_name + "/Tbarmax"),
     G_memname(config.get<std::string>(unique_name, "gpu_mem_gain")),
@@ -286,11 +286,15 @@ cudaUpchannelizer_U32::cudaUpchannelizer_U32(Config& config, const std::string& 
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
-    const std::vector<std::string> opts = {
-        "--gpu-name=sm_86",
-        "--verbose",
-    };
-    build_ptx({kernel_symbol}, opts);
+
+    // Only one of the instances of this pipeline stage need to build the kernel
+    if (inst == 0) {
+        const std::vector<std::string> opts = {
+            "--gpu-name=sm_86",
+            "--verbose",
+        };
+        device.build_ptx("Upchannelizer_U32.ptx", {kernel_symbol}, opts);
+    }
 
     // // Create a ring buffer. Create it only once.
     // assert(E_length % _gpu_buffer_depth == 0);
@@ -305,7 +309,7 @@ cudaUpchannelizer_U32::~cudaUpchannelizer_U32() {}
 
 cudaEvent_t cudaUpchannelizer_U32::execute(cudaPipelineState& pipestate,
                                            const std::vector<cudaEvent_t>& /*pre_events*/) {
-    pre_execute(pipestate.gpu_frame_id);
+    pre_execute();
 
     Tmin_host[pipestate.gpu_frame_id].resize(Tmin_length);
     void* const Tmin_memory = device.get_gpu_memory(Tmin_memname, Tmin_length);
@@ -385,7 +389,7 @@ cudaEvent_t cudaUpchannelizer_U32::execute(cudaPipelineState& pipestate,
          Ebar_meta->get_dimensions_string());
     //
 
-    record_start_event(pipestate.gpu_frame_id);
+    record_start_event();
 
     const char* exc_arg = "exception";
     kernel_arg Tmin_arg(Tmin_memory, Tmin_length);
@@ -570,14 +574,15 @@ cudaEvent_t cudaUpchannelizer_U32::execute(cudaPipelineState& pipestate,
     // device.getStream(cuda_stream_id)));
 
     DEBUG("kernel_symbol: {}", kernel_symbol);
-    DEBUG("runtime_kernels[kernel_symbol]: {}", static_cast<void*>(runtime_kernels[kernel_symbol]));
-    CHECK_CU_ERROR(cuFuncSetAttribute(runtime_kernels[kernel_symbol],
+    DEBUG("runtime_kernels[kernel_symbol]: {}",
+          static_cast<void*>(device.runtime_kernels[kernel_symbol]));
+    CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[kernel_symbol],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
     DEBUG("Running CUDA Upchannelizer_U32 on GPU frame {:d}", pipestate.gpu_frame_id);
     const CUresult err =
-        cuLaunchKernel(runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
+        cuLaunchKernel(device.runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
 
     if (err != CUDA_SUCCESS) {
@@ -601,19 +606,19 @@ cudaEvent_t cudaUpchannelizer_U32::execute(cudaPipelineState& pipestate,
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    return record_end_event(pipestate.gpu_frame_id);
-}
-
-void cudaUpchannelizer_U32::finalize_frame(const int gpu_frame_id) {
     device.release_gpu_memory_array_metadata(G_memname, gpu_frame_id);
     device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
     device.release_gpu_memory_array_metadata(Ebar_memname, gpu_frame_id);
 
+    return record_end_event();
+}
+
+void cudaUpchannelizer_U32::finalize_frame() {
     for (std::size_t i = 0; i < info_host[gpu_frame_id].size(); ++i)
         if (info_host[gpu_frame_id][i] != 0)
             ERROR("cudaUpchannelizer_U32 returned 'info' value {:d} at index {:d} (zero indicates "
                   "no error)",
                   info_host[gpu_frame_id][i], i);
 
-    cudaCommand::finalize_frame(gpu_frame_id);
+    cudaCommand::finalize_frame();
 }

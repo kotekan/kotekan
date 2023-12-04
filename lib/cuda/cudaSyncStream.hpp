@@ -19,12 +19,10 @@
 class cudaSyncStream : public cudaCommand {
 public:
     cudaSyncStream(kotekan::Config& config, const std::string& unique_name,
-                   kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+                   kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device, int inst);
     ~cudaSyncStream();
-    int wait_on_precondition(int gpu_frame_id) override;
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    void finalize_frame(int frame_id) override;
 
     std::string get_performance_metric_string() override;
 
@@ -34,7 +32,7 @@ protected:
     /// source_cuda_stream to set the streams to be waited on, nor does it read @c cuda_stream or
     /// set the default stream; the subclasser must do these things.
     cudaSyncStream(kotekan::Config& config, const std::string& unique_name,
-                   kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                   kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device, int inst,
                    bool called_by_subclasser);
 
     /// Sets the list of streams on which this object should synchronize.

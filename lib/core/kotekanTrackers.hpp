@@ -92,7 +92,7 @@ public:
     void trackers_current_callback(connectionInstance& conn);
 
     /**
-     * @brief Adds a new tracker
+     * @brief Adds a new tracker, or retrieves the existing tracker with the same name.
      *
      * @param stage_name The name of the stage.
      * @param tracker_name The name of the tracker.
@@ -101,7 +101,7 @@ public:
      * @param is_optimized The switch of min/max methods of the tracker(see statTracker for
      * details).
      * @return a shared pointer to the newly created tracker
-     * @throw std::runtime_error if the tracker with that name is already registered.
+     * @throw std::runtime_error if the stage or tracker names are empty.
      */
     std::shared_ptr<StatTracker> add_tracker(std::string stage_name, std::string tracker_name,
                                              std::string unit, size_t size = 100,

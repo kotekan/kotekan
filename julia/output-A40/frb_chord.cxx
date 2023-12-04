@@ -30,13 +30,13 @@ using kotekan::Config;
 class cudaFRBBeamformer : public cudaCommand {
 public:
     cudaFRBBeamformer(Config& config, const std::string& unique_name, bufferContainer& host_buffers,
-                      cudaDeviceInterface& device);
+                      cudaDeviceInterface& device, const int inst);
     virtual ~cudaFRBBeamformer();
 
     // int wait_on_precondition(int gpu_frame_id) override;
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    void finalize_frame(int gpu_frame_id) override;
+    void finalize_frame() override;
 
 private:
     // Julia's `CuDevArray` type
@@ -173,8 +173,10 @@ private:
 REGISTER_CUDA_COMMAND(cudaFRBBeamformer);
 
 cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_name,
-                                     bufferContainer& host_buffers, cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "FRBBeamformer", "FRBBeamformer.ptx"),
+                                     bufferContainer& host_buffers, cudaDeviceInterface& device,
+                                     const int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state,
+                "FRBBeamformer", "FRBBeamformer.ptx"),
     S_memname(config.get<std::string>(unique_name, "gpu_mem_dishlayout")),
     W_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
     E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
@@ -191,18 +193,22 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
-    const std::vector<std::string> opts = {
-        "--gpu-name=sm_86",
-        "--verbose",
-    };
-    build_ptx({kernel_symbol}, opts);
+
+    // Only one of the instances of this pipeline stage need to build the kernel
+    if (inst == 0) {
+        const std::vector<std::string> opts = {
+            "--gpu-name=sm_86",
+            "--verbose",
+        };
+        device.build_ptx("FRBBeamformer.ptx", {kernel_symbol}, opts);
+    }
 }
 
 cudaFRBBeamformer::~cudaFRBBeamformer() {}
 
 cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate,
                                        const std::vector<cudaEvent_t>& /*pre_events*/) {
-    pre_execute(pipestate.gpu_frame_id);
+    pre_execute();
 
     void* const S_memory = device.get_gpu_memory_array(S_memname, pipestate.gpu_frame_id, S_length);
     void* const W_memory = device.get_gpu_memory_array(W_memname, pipestate.gpu_frame_id, W_length);
@@ -271,7 +277,7 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate,
     INFO("output I array: {:s} {:s}", I_meta->get_type_string(), I_meta->get_dimensions_string());
     //
 
-    record_start_event(pipestate.gpu_frame_id);
+    record_start_event();
 
     const char* exc_arg = "exception";
     kernel_arg S_arg(S_memory, S_length);
@@ -291,14 +297,15 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate,
         cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
 
     DEBUG("kernel_symbol: {}", kernel_symbol);
-    DEBUG("runtime_kernels[kernel_symbol]: {}", static_cast<void*>(runtime_kernels[kernel_symbol]));
-    CHECK_CU_ERROR(cuFuncSetAttribute(runtime_kernels[kernel_symbol],
+    DEBUG("runtime_kernels[kernel_symbol]: {}",
+          static_cast<void*>(device.runtime_kernels[kernel_symbol]));
+    CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[kernel_symbol],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
     DEBUG("Running CUDA FRBBeamformer on GPU frame {:d}", pipestate.gpu_frame_id);
     const CUresult err =
-        cuLaunchKernel(runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
+        cuLaunchKernel(device.runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
 
     if (err != CUDA_SUCCESS) {
@@ -322,15 +329,20 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& pipestate,
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    return record_end_event(pipestate.gpu_frame_id);
+    device.release_gpu_memory_array_metadata(S_memname, gpu_frame_id);
+    device.release_gpu_memory_array_metadata(W_memname, gpu_frame_id);
+    device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
+    device.release_gpu_memory_array_metadata(I_memname, gpu_frame_id);
+
+    return record_end_event();
 }
 
-void cudaFRBBeamformer::finalize_frame(const int gpu_frame_id) {
-    cudaCommand::finalize_frame(gpu_frame_id);
-
+void cudaFRBBeamformer::finalize_frame() {
     for (std::size_t i = 0; i < info_host[gpu_frame_id].size(); ++i)
         if (info_host[gpu_frame_id][i] != 0)
-            ERROR("cudaFRBBeamformer returned 'info' value {:d} at index {:d} (zero indicates "
-                  "noerror)",
-                  info_host[gpu_frame_id][i], int(i));
+            ERROR("cudaFRBBeamformer returned 'info' value {:d} at index {:d} (zero indicates no "
+                  "error)",
+                  info_host[gpu_frame_id][i], i);
+
+    cudaCommand::finalize_frame();
 }

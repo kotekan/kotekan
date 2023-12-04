@@ -30,13 +30,14 @@ using kotekan::Config;
 class cudaBasebandBeamformer_chord : public cudaCommand {
 public:
     cudaBasebandBeamformer_chord(Config& config, const std::string& unique_name,
-                                 bufferContainer& host_buffers, cudaDeviceInterface& device);
+                                 bufferContainer& host_buffers, cudaDeviceInterface& device,
+                                 const int inst);
     virtual ~cudaBasebandBeamformer_chord();
 
     // int wait_on_precondition(int gpu_frame_id) override;
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    void finalize_frame(int gpu_frame_id) override;
+    void finalize_frame() override;
 
 private:
     // Julia's `CuDevArray` type
@@ -158,10 +159,15 @@ private:
     //
 
     // Kotekan buffer names
+
     const std::string A_memname;
+
     const std::string E_memname;
+
     const std::string s_memname;
+
     const std::string J_memname;
+
     const std::string info_memname;
 
     // Host-side buffer arrays
@@ -173,9 +179,10 @@ REGISTER_CUDA_COMMAND(cudaBasebandBeamformer_chord);
 cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
                                                            const std::string& unique_name,
                                                            bufferContainer& host_buffers,
-                                                           cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "BasebandBeamformer_chord",
-                "BasebandBeamformer_chord.ptx"),
+                                                           cudaDeviceInterface& device,
+                                                           const int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state,
+                "BasebandBeamformer_chord", "BasebandBeamformer_chord.ptx"),
     A_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
     E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
     s_memname(config.get<std::string>(unique_name, "gpu_mem_output_scaling")),
@@ -192,18 +199,22 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
-    const std::vector<std::string> opts = {
-        "--gpu-name=sm_86",
-        "--verbose",
-    };
-    build_ptx({kernel_symbol}, opts);
+
+    // Only one of the instances of this pipeline stage need to build the kernel
+    if (inst == 0) {
+        const std::vector<std::string> opts = {
+            "--gpu-name=sm_86",
+            "--verbose",
+        };
+        device.build_ptx("BasebandBeamformer_chord.ptx", {kernel_symbol}, opts);
+    }
 }
 
 cudaBasebandBeamformer_chord::~cudaBasebandBeamformer_chord() {}
 
 cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& pipestate,
                                                   const std::vector<cudaEvent_t>& /*pre_events*/) {
-    pre_execute(pipestate.gpu_frame_id);
+    pre_execute();
 
     void* const A_memory = device.get_gpu_memory_array(A_memname, pipestate.gpu_frame_id, A_length);
     void* const E_memory = device.get_gpu_memory_array(E_memname, pipestate.gpu_frame_id, E_length);
@@ -272,7 +283,7 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& pipestate,
     INFO("output J array: {:s} {:s}", J_meta->get_type_string(), J_meta->get_dimensions_string());
     //
 
-    record_start_event(pipestate.gpu_frame_id);
+    record_start_event();
 
     const char* exc_arg = "exception";
     kernel_arg A_arg(A_memory, A_length);
@@ -292,14 +303,15 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& pipestate,
         cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
 
     DEBUG("kernel_symbol: {}", kernel_symbol);
-    DEBUG("runtime_kernels[kernel_symbol]: {}", static_cast<void*>(runtime_kernels[kernel_symbol]));
-    CHECK_CU_ERROR(cuFuncSetAttribute(runtime_kernels[kernel_symbol],
+    DEBUG("runtime_kernels[kernel_symbol]: {}",
+          static_cast<void*>(device.runtime_kernels[kernel_symbol]));
+    CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[kernel_symbol],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
     DEBUG("Running CUDA BasebandBeamformer_chord on GPU frame {:d}", pipestate.gpu_frame_id);
     const CUresult err =
-        cuLaunchKernel(runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
+        cuLaunchKernel(device.runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
 
     if (err != CUDA_SUCCESS) {
@@ -323,20 +335,20 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& pipestate,
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    return record_end_event(pipestate.gpu_frame_id);
-}
-
-void cudaBasebandBeamformer_chord::finalize_frame(const int gpu_frame_id) {
     device.release_gpu_memory_array_metadata(A_memname, gpu_frame_id);
     device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
     device.release_gpu_memory_array_metadata(s_memname, gpu_frame_id);
     device.release_gpu_memory_array_metadata(J_memname, gpu_frame_id);
 
+    return record_end_event();
+}
+
+void cudaBasebandBeamformer_chord::finalize_frame() {
     for (std::size_t i = 0; i < info_host[gpu_frame_id].size(); ++i)
         if (info_host[gpu_frame_id][i] != 0)
             ERROR("cudaBasebandBeamformer_chord returned 'info' value {:d} at index {:d} (zero "
                   "indicates no error)",
                   info_host[gpu_frame_id][i], i);
 
-    cudaCommand::finalize_frame(gpu_frame_id);
+    cudaCommand::finalize_frame();
 }

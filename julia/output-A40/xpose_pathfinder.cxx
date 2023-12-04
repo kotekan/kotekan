@@ -30,13 +30,14 @@ using kotekan::Config;
 class cudaTransposeKernel_pathfinder : public cudaCommand {
 public:
     cudaTransposeKernel_pathfinder(Config& config, const std::string& unique_name,
-                                   bufferContainer& host_buffers, cudaDeviceInterface& device);
+                                   bufferContainer& host_buffers, cudaDeviceInterface& device,
+                                   const int inst);
     virtual ~cudaTransposeKernel_pathfinder();
 
     // int wait_on_precondition(int gpu_frame_id) override;
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    void finalize_frame(int gpu_frame_id) override;
+    void finalize_frame() override;
 
 private:
     // Julia's `CuDevArray` type
@@ -138,9 +139,10 @@ REGISTER_CUDA_COMMAND(cudaTransposeKernel_pathfinder);
 cudaTransposeKernel_pathfinder::cudaTransposeKernel_pathfinder(Config& config,
                                                                const std::string& unique_name,
                                                                bufferContainer& host_buffers,
-                                                               cudaDeviceInterface& device) :
-    cudaCommand(config, unique_name, host_buffers, device, "TransposeKernel_pathfinder",
-                "TransposeKernel_pathfinder.ptx"),
+                                                               cudaDeviceInterface& device,
+                                                               const int inst) :
+    cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state,
+                "TransposeKernel_pathfinder", "TransposeKernel_pathfinder.ptx"),
     Ein_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
     E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
     info_memname(unique_name + "/gpu_mem_info")
@@ -153,11 +155,15 @@ cudaTransposeKernel_pathfinder::cudaTransposeKernel_pathfinder(Config& config,
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
-    const std::vector<std::string> opts = {
-        "--gpu-name=sm_86",
-        "--verbose",
-    };
-    build_ptx({kernel_symbol}, opts);
+
+    // Only one of the instances of this pipeline stage need to build the kernel
+    if (inst == 0) {
+        const std::vector<std::string> opts = {
+            "--gpu-name=sm_86",
+            "--verbose",
+        };
+        device.build_ptx("TransposeKernel_pathfinder.ptx", {kernel_symbol}, opts);
+    }
 }
 
 cudaTransposeKernel_pathfinder::~cudaTransposeKernel_pathfinder() {}
@@ -165,7 +171,7 @@ cudaTransposeKernel_pathfinder::~cudaTransposeKernel_pathfinder() {}
 cudaEvent_t
 cudaTransposeKernel_pathfinder::execute(cudaPipelineState& pipestate,
                                         const std::vector<cudaEvent_t>& /*pre_events*/) {
-    pre_execute(pipestate.gpu_frame_id);
+    pre_execute();
 
     void* const Ein_memory =
         device.get_gpu_memory_array(Ein_memname, pipestate.gpu_frame_id, Ein_length);
@@ -204,7 +210,7 @@ cudaTransposeKernel_pathfinder::execute(cudaPipelineState& pipestate,
     INFO("output E array: {:s} {:s}", E_meta->get_type_string(), E_meta->get_dimensions_string());
     //
 
-    record_start_event(pipestate.gpu_frame_id);
+    record_start_event();
 
     const char* exc_arg = "exception";
     kernel_arg Ein_arg(Ein_memory, Ein_length);
@@ -225,14 +231,15 @@ cudaTransposeKernel_pathfinder::execute(cudaPipelineState& pipestate,
         cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
 
     DEBUG("kernel_symbol: {}", kernel_symbol);
-    DEBUG("runtime_kernels[kernel_symbol]: {}", static_cast<void*>(runtime_kernels[kernel_symbol]));
-    CHECK_CU_ERROR(cuFuncSetAttribute(runtime_kernels[kernel_symbol],
+    DEBUG("runtime_kernels[kernel_symbol]: {}",
+          static_cast<void*>(device.runtime_kernels[kernel_symbol]));
+    CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[kernel_symbol],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
     DEBUG("Running CUDA TransposeKernel_pathfinder on GPU frame {:d}", pipestate.gpu_frame_id);
     const CUresult err =
-        cuLaunchKernel(runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
+        cuLaunchKernel(device.runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
 
     if (err != CUDA_SUCCESS) {
@@ -256,15 +263,18 @@ cudaTransposeKernel_pathfinder::execute(cudaPipelineState& pipestate,
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    return record_end_event(pipestate.gpu_frame_id);
+    device.release_gpu_memory_array_metadata(Ein_memname, gpu_frame_id);
+    device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
+
+    return record_end_event();
 }
 
-void cudaTransposeKernel_pathfinder::finalize_frame(const int gpu_frame_id) {
-    cudaCommand::finalize_frame(gpu_frame_id);
-
+void cudaTransposeKernel_pathfinder::finalize_frame() {
     for (std::size_t i = 0; i < info_host[gpu_frame_id].size(); ++i)
         if (info_host[gpu_frame_id][i] != 0)
             ERROR("cudaTransposeKernel_pathfinder returned 'info' value {:d} at index {:d} (zero "
-                  "indicates noerror)",
-                  info_host[gpu_frame_id][i], int(i));
+                  "indicates no error)",
+                  info_host[gpu_frame_id][i], i);
+
+    cudaCommand::finalize_frame();
 }

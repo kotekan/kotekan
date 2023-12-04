@@ -12,6 +12,11 @@
 #include <juliaManager.hpp>
 #include <string>
 #include <vector>
+#include <visUtil.hpp>
+
+#if !KOTEKAN_FLOAT16
+#warning "The F-Engine simulator requires float16 support"
+#else
 
 class FEngine : public kotekan::Stage {
     const std::string unique_name;
@@ -132,8 +137,8 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
                  * num_frequencies),
     J_frame_size(std::int64_t(1) * num_times * num_polarizations * num_frequencies * bb_num_beams),
     S_frame_size(std::int64_t(1) * sizeof(short) * 2 * num_dish_locations),
-    G_frame_size(std::int64_t(1) * sizeof(_Float16) * num_frequencies * upchannelization_factor),
-    W_frame_size(std::int64_t(1) * sizeof(_Float16) * num_components * num_dish_locations_M
+    G_frame_size(std::int64_t(1) * sizeof(float16_t) * num_frequencies * upchannelization_factor),
+    W_frame_size(std::int64_t(1) * sizeof(float16_t) * num_components * num_dish_locations_M
                  * num_dish_locations_N * num_polarizations * num_frequencies),
     // Buffers
     E_buffer(get_buffer("E_buffer")), A_buffer(get_buffer("A_buffer")),
@@ -161,7 +166,13 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     if (!skip_julia) {
         INFO("Defining Julia code...");
         {
-            std::ifstream file("lib/stages/FEngine.jl");
+            const auto julia_source_filename = "lib/stages/FEngine.jl";
+            std::ifstream file(julia_source_filename);
+            if (!file.is_open())
+                FATAL_ERROR(
+                    "Could not open the file \"{:s}\" with the Julia source code for the F-Engine "
+                    "simulator",
+                    julia_source_filename);
             file.seekg(0, std::ios_base::end);
             const auto julia_source_length = file.tellg();
             file.seekg(0);
@@ -530,3 +541,5 @@ void FEngine::main_thread() {
 
     INFO("Done.");
 }
+
+#endif

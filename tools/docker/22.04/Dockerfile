@@ -29,8 +29,8 @@ RUN apt-get -y update && \
                        coreutils \
                        ccache \
                        pkg-config \
-                       gcc \
-                       g++ \
+                       gcc-12 \
+                       g++-12 \
                        make \
                        file \
                        gdb \
@@ -166,10 +166,9 @@ RUN python3 -m pip install --no-cache-dir breathe==4.35.* \
 
 
 # Julia
-RUN wget https://julialang-s3.julialang.org/bin/linux/x64/1.9/julia-1.9.3-linux-x86_64.tar.gz \
-    && tar xvzf julia-1.9.3-linux-x86_64.tar.gz \
-    && ln -s $(pwd)/julia-1.9.3/bin/julia /usr/local/bin/
-
+RUN apt-get update && apt-get install -y curl \
+    && curl -fsSL https://install.julialang.org | sh -s -- -y
+ENV PATH="$PATH:/root/.juliaup/bin"
 
 # Uncomment this to check what version got installed
 # RUN python3 -m pip show <package>
@@ -188,11 +187,19 @@ ENV CCACHE_MAXSIZE 1G
 # We need the `python` command to point to python3
 RUN ln -s /bin/python3 /bin/python
 
+# Use G++12 as the default
+RUN rm /usr/bin/gcc /usr/bin/g++ && \
+    ln -s g++-12 /usr/bin/g++ && \
+    ln -s gcc-12 /usr/bin/gcc
+
 # Set the plugin path so kotekan can find bitshuffle
 # Ideally this would be determined dynamically, but for now...
 ENV HDF5_PLUGIN_PATH /usr/local/lib/python3.10/dist-packages/hdf5plugin/plugins
 
 ENV KOTEKAN_BUILD_DIRNAME build-2204
+
+# Update Julia...
+RUN juliaup update
 
 # Do nothing when the container launches
 CMD ["/bin/bash"]

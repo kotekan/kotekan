@@ -37,10 +37,10 @@ public:
     virtual std::string dot_string(const std::string& prefix) const override;
 
 protected:
-    virtual gpuCommand* create_command(const std::string& cmd_name,
-                                       const std::string& unique_name) = 0;
+    virtual std::vector<gpuCommand*> create_command(const std::string& cmd_name,
+                                                    const std::string& unique_name) = 0;
     virtual gpuEventContainer* create_signal() = 0;
-    virtual void queue_commands(int gpu_frame_id, int gpu_frame_counter) = 0;
+    virtual void queue_commands(int gpu_frame_counter) = 0;
     virtual void register_host_memory(Buffer* host_buffer) = 0;
     void results_thread();
     void init(void);
@@ -54,7 +54,7 @@ protected:
 
     std::thread results_thread_handle;
     gpuDeviceInterface* dev;
-    std::vector<gpuCommand*> commands;
+    std::vector<std::vector<gpuCommand*>> commands;
 
     // Config variables
     uint32_t _gpu_buffer_depth;
