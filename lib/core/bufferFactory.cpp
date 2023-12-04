@@ -3,10 +3,10 @@
 #include "Config.hpp"         // for Config
 #include "HFBFrameView.hpp"   // for HFBFrameView
 #include "buffer.hpp"         // for create_buffer
-#include "ringbuffer.hpp"
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.h"         // for metadataPool // IWYU pragma: keep
-#include "visBuffer.hpp"      // for VisFrameView
+#include "ringbuffer.hpp"
+#include "visBuffer.hpp" // for VisFrameView
 
 #include "fmt.hpp" // for format, fmt
 
@@ -98,8 +98,8 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
         INFO_NON_OO("Creating {:s}Buffer named {:s} with {:d} frames, frame size of {:d} and "
                     "metadata pool {:s} on numa_node {:d}",
                     type_name, name, num_frames, frame_size, metadataPool_name, numa_node);
-        buf = new Buffer(num_frames, frame_size, pool, name, type_name, numa_node,
-                         use_hugepages, mlock_frames, zero_new_frames);
+        buf = new Buffer(num_frames, frame_size, pool, name, type_name, numa_node, use_hugepages,
+                         mlock_frames, zero_new_frames);
 
     } else if (type_name == "ring") {
         size_t ringbuf_size = config.get<size_t>(location, "ring_buffer_size");

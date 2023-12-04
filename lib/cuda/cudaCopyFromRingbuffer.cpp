@@ -72,5 +72,5 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
 
 void cudaCopyFromRingbuffer::finalize_frame() {
     cudaCommand::finalize_frame();
-    signal_buffer->read(unique_name, _output_size);
+    signal_buffer->finish_read(unique_name, _output_size);
 }

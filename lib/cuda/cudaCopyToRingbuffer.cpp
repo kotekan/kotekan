@@ -77,5 +77,5 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
 void cudaCopyToRingbuffer::finalize_frame() {
     cudaCommand::finalize_frame();
     // At this point we know the Cuda copy completed, but do we *really* need that to be the case??
-    signal_buffer->wrote(unique_name, _input_size);
+    signal_buffer->finish_write(unique_name, _input_size);
 }

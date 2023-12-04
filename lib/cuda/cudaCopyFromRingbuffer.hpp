@@ -7,7 +7,8 @@
 
 /**
  * @class cudaCopyFromRingbuffer
- * @brief cudaCommand for copying GPU frames from a RingBuffer into a (vanilla) Buffer (frame-based buffer).
+ * @brief cudaCommand for copying GPU frames from a RingBuffer into a (vanilla) Buffer (frame-based
+ * buffer).
  *
  * @author Dustin Lang
  *

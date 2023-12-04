@@ -1,6 +1,7 @@
 /**
  * @file
- * @brief A core kotekan buffer subclass that synchronizes stages that communicate via a ring buffer.
+ * @brief A core kotekan buffer subclass that synchronizes stages that communicate via a ring
+ * buffer.
  *  - RingBuffer
  */
 #ifndef RINGBUFFER_H
@@ -66,7 +67,7 @@ public:
      * @brief Called by a producer after it has written the given number of
      * elements.  Those elements will becomes available to consumers.
      */
-    void wrote(const std::string& producer_name, size_t sz);
+    void finish_write(const std::string& producer_name, size_t sz);
 
     /**
      * @brief Called by a consumer before reading its next chunk of
@@ -83,7 +84,7 @@ public:
      * has been read.  This number of elements MUST match the number
      * "reserved" by the @c wait_and_claim_readable() call.
      */
-    void read(const std::string& consumer_name, size_t sz);
+    void finish_read(const std::string& consumer_name, size_t sz);
 
     size_t size;
     size_t elements;

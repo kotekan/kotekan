@@ -12,11 +12,19 @@ RingBuffer::RingBuffer(size_t sz, metadataPool* pool, const std::string& _buffer
 
 void RingBuffer::register_producer(const std::string& name) {
     assert(producers.size() == 0);
+    if (producers.size() > 0)
+        throw std::runtime_error(fmt::format(fmt("RingBuffer: cannot register producer \"{:s}\" - "
+                                                 "a producer has already been registered."),
+                                             name));
     GenericBuffer::register_producer(name);
 }
 
 void RingBuffer::register_consumer(const std::string& name) {
     assert(consumers.size() == 0);
+    if (consumers.size() > 0)
+        throw std::runtime_error(fmt::format(fmt("RingBuffer: cannot register consumer \"{:s}\" - "
+                                                 "a consumer has already been registered."),
+                                             name));
     GenericBuffer::register_consumer(name);
 }
 
@@ -48,7 +56,7 @@ int RingBuffer::wait_and_claim_readable(const std::string& consumer_name, size_t
     return 0;
 }
 
-void RingBuffer::read(const std::string& consumer_name, size_t sz) {
+void RingBuffer::finish_read(const std::string& consumer_name, size_t sz) {
     // assert this is our unique consumer?
     (void)consumer_name;
     {
@@ -84,7 +92,7 @@ int RingBuffer::wait_for_writable(const std::string& producer_name, size_t sz) {
     return 0;
 }
 
-void RingBuffer::wrote(const std::string& producer_name, size_t sz) {
+void RingBuffer::finish_write(const std::string& producer_name, size_t sz) {
     // assert this is our unique producer?
     (void)producer_name;
     {
