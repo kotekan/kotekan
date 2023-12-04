@@ -3,6 +3,7 @@
 
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
+#include "ringbuffer.hpp"
 
 /**
  * @class cudaCopyToRingbuffer

@@ -41,6 +41,7 @@ int cudaCopyToRingbuffer::wait_on_precondition() {
 cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
                                           const std::vector<cudaEvent_t>& pre_events) {
     (void)pre_events;
+    (void)pipestate;
     pre_execute();
 
     void* input_memory =

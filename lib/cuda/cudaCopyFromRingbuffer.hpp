@@ -3,10 +3,11 @@
 
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
+#include "ringbuffer.hpp"
 
 /**
  * @class cudaCopyFromRingbuffer
- * @brief cudaCommand for copying GPU frames from a ringbuffer.
+ * @brief cudaCommand for copying GPU frames from a RingBuffer into a (vanilla) Buffer (frame-based buffer).
  *
  * @author Dustin Lang
  *
@@ -18,7 +19,8 @@
  *   @gpu_mem_type   staging
  *   @gpu_mem_format Array of raw bytes
  *
- * xxxxx @conf input_size - Int
+ * @conf ring_buffer_size - Int - size of the ring buffer
+ * @conf output_size - Int - size of the destination frames
  *
  */
 class cudaCopyFromRingbuffer : public cudaCommand {
