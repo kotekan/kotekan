@@ -87,33 +87,33 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
         frame_size = VisFrameView::calculate_frame_size(config, location);
     } else if (type_name == "hfb") {
         frame_size = HFBFrameView::calculate_frame_size(config, location);
-    } else if (type_name == "ring") {
+    }
 
+    GenericBuffer* buf;
+    if (frame_size != 0) {
+        uint32_t num_frames = config.get<uint32_t>(location, "num_frames");
+        bool use_hugepages = config.get_default<bool>(location, "use_hugepages", false);
+        bool mlock_frames = config.get_default<bool>(location, "mlock_frames", true);
+        bool zero_new_frames = config.get_default<bool>(location, "zero_new_frames", true);
+        INFO_NON_OO("Creating {:s}Buffer named {:s} with {:d} frames, frame size of {:d} and "
+                    "metadata pool {:s} on numa_node {:d}",
+                    type_name, name, num_frames, frame_size, metadataPool_name, numa_node);
+        buf = new Buffer(num_frames, frame_size, pool, name, type_name, numa_node,
+                         use_hugepages, mlock_frames, zero_new_frames);
+
+    } else if (type_name == "ring") {
         size_t ringbuf_size = config.get<size_t>(location, "ring_buffer_size");
         INFO_NON_OO("Creating {:s}Buffer named {:s} with ring buffer size of {:d} and "
                     "metadata pool {:s} on numa_node {:d}",
                     type_name, name, ringbuf_size, metadataPool_name, numa_node);
-        RingBuffer* buf = new RingBuffer(ringbuf_size, pool, name, type_name);
-        buf->set_log_level(s_log_level);
-        buf->set_log_prefix("RingBuffer \"" + name + "\"");
-        return buf;
+        buf = new RingBuffer(ringbuf_size, pool, name, type_name);
 
     } else {
         // Unknown buffer type
         throw std::runtime_error(fmt::format(fmt("No buffer type named: {:s}"), type_name));
     }
 
-    uint32_t num_frames = config.get<uint32_t>(location, "num_frames");
-    bool use_hugepages = config.get_default<bool>(location, "use_hugepages", false);
-    bool mlock_frames = config.get_default<bool>(location, "mlock_frames", true);
-    bool zero_new_frames = config.get_default<bool>(location, "zero_new_frames", true);
-    INFO_NON_OO("Creating {:s}Buffer named {:s} with {:d} frames, frame size of {:d} and "
-                "metadata pool {:s} on numa_node {:d}",
-                type_name, name, num_frames, frame_size, metadataPool_name, numa_node);
-    Buffer* buf = new Buffer(num_frames, frame_size, pool, name, type_name, numa_node,
-                             use_hugepages, mlock_frames, zero_new_frames);
     buf->set_log_level(s_log_level);
-    buf->set_log_prefix("Buffer \"" + name + "\"");
     return buf;
 }
 

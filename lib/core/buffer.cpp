@@ -46,7 +46,9 @@ GenericBuffer::GenericBuffer(const std::string& _buffer_name, const std::string&
                              metadataPool* pool, int _num_frames) :
     num_frames(_num_frames),
     shutdown_signal(false), buffer_name(_buffer_name), buffer_type(_buffer_type),
-    metadata_pool(pool), metadata(num_frames, nullptr) {}
+    metadata_pool(pool), metadata(num_frames, nullptr) {
+    set_log_prefix(_buffer_type + "Buffer \"" + _buffer_name + "\"");
+}
 
 GenericBuffer::~GenericBuffer() {}
 
