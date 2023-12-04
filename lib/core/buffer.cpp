@@ -215,6 +215,10 @@ void GenericBuffer::json_description(nlohmann::json& buf_json) {
     buf_json["type"] = buffer_type;
 }
 
+std::string GenericBuffer::get_dot_node_label() {
+    return buffer_name;
+}
+
 Buffer::Buffer(int num_frames, size_t len, metadataPool* pool, const std::string& _buffer_name,
                const std::string& _buffer_type, int _numa_node, bool _use_hugepages,
                bool _mlock_frames, bool zero_new_frames) :
@@ -403,6 +407,10 @@ void Buffer::json_description(nlohmann::json& buf_json) {
     buf_json["num_full_frame"] = get_num_full_frames();
     buf_json["frame_size"] = frame_size;
     buf_json["last_frame_arrival_time"] = last_arrival_time;
+}
+
+std::string Buffer::get_dot_node_label() {
+    return fmt::format(fmt("{:s}<BR/>{:d}/{:d} ({:.1f}%)"), buffer_name, get_num_full_frames(), num_frames, (float)get_num_full_frames() / num_frames * 100);
 }
 
 void Buffer::print_buffer_status() {
