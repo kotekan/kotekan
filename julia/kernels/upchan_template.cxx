@@ -59,7 +59,6 @@ public:
                           bufferContainer& host_buffers, cudaDeviceInterface& device, const int inst);
     virtual ~cuda{{{kernel_name}}}();
     
-    // int wait_on_precondition(int gpu_frame_id) override;
     cudaEvent_t execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) override;
     void finalize_frame() override;
 
@@ -198,7 +197,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx("{{{kernel_name}}}.ptx", {kernel_symbol}, opts);
+        device.build_ptx(kernel_file_name, {kernel_symbol}, opts);
     }
 
     // // Create a ring buffer. Create it only once.
@@ -212,19 +211,20 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
 
 cuda{{{kernel_name}}}::~cuda{{{kernel_name}}}() {}
 
-cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
-                                           const std::vector<cudaEvent_t>& /*pre_events*/) {
+cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, const std::vector<cudaEvent_t>& /*pre_events*/) {
+    const int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
+
     pre_execute();
 
     {{#kernel_arguments}}
         {{#hasbuffer}}
             void* const {{{name}}}_memory =
                 args::{{{name}}} == args::E || args::{{{name}}} == args::Ebar
-                ? device.get_gpu_memory_array({{{name}}}_memname, pipestate.gpu_frame_id, {{{name}}}_length / _gpu_buffer_depth)
-                : device.get_gpu_memory_array({{{name}}}_memname, pipestate.gpu_frame_id, {{{name}}}_length);
+                ? device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, {{{name}}}_length / _gpu_buffer_depth)
+                : device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, {{{name}}}_length);
         {{/hasbuffer}}
         {{^hasbuffer}}
-            {{{name}}}_host[pipestate.gpu_frame_id].resize({{{name}}}_length);
+            {{{name}}}_host.at(gpu_frame_index).resize({{{name}}}_length);
             void* const {{{name}}}_memory = device.get_gpu_memory({{{name}}}_memname, {{{name}}}_length);
         {{/hasbuffer}}
     {{/kernel_arguments}}
@@ -234,7 +234,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
             {{^isoutput}}
                 /// {{{name}}} is an input buffer: check metadata
                 const metadataContainer* const {{{name}}}_mc =
-                    device.get_gpu_memory_array_metadata({{{name}}}_memname, pipestate.gpu_frame_id);
+                    device.get_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id);
                 assert({{{name}}}_mc && metadata_container_is_chord({{{name}}}_mc));
                 const chordMetadata* const {{{name}}}_meta = get_chord_metadata({{{name}}}_mc);
                 INFO("input {{{name}}} array: {:s} {:s}",
@@ -256,7 +256,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
             {{#isoutput}}
                 /// {{{name}}} is an output buffer: set metadata
                 metadataContainer* const {{{name}}}_mc =
-                    device.create_gpu_memory_array_metadata({{{name}}}_memname, pipestate.gpu_frame_id, E_mc->parent_pool);
+                    device.create_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id, E_mc->parent_pool);
                 chordMetadata* const {{{name}}}_meta = get_chord_metadata({{{name}}}_mc);
                 chord_metadata_copy({{{name}}}_meta, E_meta);
                 {{{name}}}_meta->type = {{{name}}}_type;
@@ -307,7 +307,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
     // the input we provide must be a multiple of this number.
     INFO("cuda_granularity_number_of_timesamples: {}", cuda_granularity_number_of_timesamples);
 
-    INFO("gpu_frame_id: {}", pipestate.gpu_frame_id);
+    INFO("gpu_frame_id: {}", gpu_frame_id);
 
     // Beginning of the input ringbuffer
     void* const E_memory0 = device.get_gpu_memory_array(E_memname, 0, E_length / _gpu_buffer_depth);
@@ -324,12 +324,12 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
     Ebar_arg = kernel_arg(Ebar_memory0, Ebar_length);
 
     // Current nominal index into input ringuffer
-    const std::int64_t nominal_Tmin = pipestate.gpu_frame_id * cuda_max_number_of_timesamples / _gpu_buffer_depth;
+    const std::int64_t nominal_Tmin = gpu_frame_id * cuda_max_number_of_timesamples / _gpu_buffer_depth;
     INFO("nominal Tmin: {}", nominal_Tmin);
 
     // Current nominal index into output ringuffer
     const std::int64_t nominal_Tbarmin =
-        pipestate.gpu_frame_id * cuda_max_number_of_timesamples / cuda_upchannelization_factor / _gpu_buffer_depth;
+        gpu_frame_id * cuda_max_number_of_timesamples / cuda_upchannelization_factor / _gpu_buffer_depth;
     INFO("nominal Tbarmin: {}", nominal_Tbarmin);
 
     // Current unprocessed time samples
@@ -401,10 +401,10 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
 
     // Pass time spans to kernel
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
-    *(std::int32_t*)Tmin_host[pipestate.gpu_frame_id].data() = Tmin_wrapped;
-    *(std::int32_t*)Tmax_host[pipestate.gpu_frame_id].data() = Tmax_wrapped;
-    *(std::int32_t*)Tbarmin_host[pipestate.gpu_frame_id].data() = Tbarmin_wrapped;
-    *(std::int32_t*)Tbarmax_host[pipestate.gpu_frame_id].data() = Tbarmax_wrapped;
+    *(std::int32_t*)Tmin_host.at(gpu_frame_index).data() = Tmin_wrapped;
+    *(std::int32_t*)Tmax_host.at(gpu_frame_index).data() = Tmax_wrapped;
+    *(std::int32_t*)Tbarmin_host.at(gpu_frame_index).data() = Tbarmin_wrapped;
+    *(std::int32_t*)Tbarmax_host.at(gpu_frame_index).data() = Tbarmax_wrapped;
 
     // Update metadata
     Ebar_meta->dim[0] = Tbarlength - unprovided;
@@ -424,7 +424,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
     {{^hasbuffer}}
         {{^isoutput}}
             CHECK_CUDA_ERROR(cudaMemcpyAsync({{{name}}}_memory,
-                                             {{{name}}}_host[pipestate.gpu_frame_id].data(),
+                                             {{{name}}}_host.at(gpu_frame_index).data(),
                                              {{{name}}}_length,
                                              cudaMemcpyHostToDevice,
                                              device.getStream(cuda_stream_id)));
@@ -453,7 +453,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
-    DEBUG("Running CUDA {{{kernel_name}}} on GPU frame {:d}", pipestate.gpu_frame_id);
+    DEBUG("Running CUDA {{{kernel_name}}} on GPU frame {:d}", gpu_frame_id);
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[kernel_symbol],
                        blocks, 1, 1, threads_x, threads_y, 1,
@@ -472,7 +472,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
     {{#kernel_arguments}}
         {{^hasbuffer}}
             {{#isoutput}}
-                CHECK_CUDA_ERROR(cudaMemcpyAsync({{{name}}}_host[pipestate.gpu_frame_id].data(),
+                CHECK_CUDA_ERROR(cudaMemcpyAsync({{{name}}}_host.at(gpu_frame_index).data(),
                                                  {{{name}}}_memory,
                                                  {{{name}}}_length,
                                                  cudaMemcpyDeviceToHost,
@@ -484,25 +484,25 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& pipestate,
     // Check error codes
     // TODO: Skip this for performance
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host[pipestate.gpu_frame_id].begin(),
-                                                      (const std::int32_t*)&*info_host[pipestate.gpu_frame_id].end());
+    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.at(gpu_frame_index).begin(),
+                                                      (const std::int32_t*)&*info_host.at(gpu_frame_index).end());
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    {{#kernel_arguments}}
-        {{#hasbuffer}}
-            device.release_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id);
-        {{/hasbuffer}}
-    {{/kernel_arguments}}
+    for (std::size_t i = 0; i < info_host.at(gpu_frame_index).size(); ++i)
+        if (info_host.at(gpu_frame_index)[i] != 0)
+            ERROR("cuda{{{kernel_name}}} returned 'info' value {:d} at index {:d} (zero indicates no error)",
+                info_host.at(gpu_frame_index)[i], i);
 
     return record_end_event();
 }
 
 void cuda{{{kernel_name}}}::finalize_frame() {
-    for (std::size_t i = 0; i < info_host[gpu_frame_id].size(); ++i)
-        if (info_host[gpu_frame_id][i] != 0)
-            ERROR("cuda{{{kernel_name}}} returned 'info' value {:d} at index {:d} (zero indicates no error)",
-                info_host[gpu_frame_id][i], i);
+    {{#kernel_arguments}}
+        {{#hasbuffer}}
+            device.release_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id);
+        {{/hasbuffer}}
+    {{/kernel_arguments}}
 
     cudaCommand::finalize_frame();
 }
