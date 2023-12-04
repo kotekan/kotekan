@@ -48,10 +48,6 @@ public:
                const std::string& buffer_type);
     ~RingBuffer() override {}
 
-    bool is_basic() override {
-        return false;
-    }
-
     void register_consumer(const std::string& name) override;
     void register_producer(const std::string& name) override;
 

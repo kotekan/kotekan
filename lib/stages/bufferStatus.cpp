@@ -29,7 +29,7 @@ REGISTER_KOTEKAN_STAGE(bufferStatus);
 bufferStatus::bufferStatus(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferStatus::main_thread, this)) {
-    buffers = buffer_container.get_basic_buffer_map();
+    buffers = buffer_container.get_buffer_map();
 
     // Apply config.
     time_delay = config.get_default<int>(unique_name, "time_delay", 1000000);
@@ -55,10 +55,13 @@ void bufferStatus::main_thread() {
         double now = current_time();
 
         for (auto& buf_entry : buffers) {
-            uint32_t num_full_frames = buf_entry.second->get_num_full_frames();
+            if (!is_frame_buffer(buf_entry.second))
+                continue;
+            Buffer* buf = dynamic_cast<Buffer*>(buf_entry.second);
+            uint32_t num_full_frames = buf->get_num_full_frames();
             std::string buffer_name = buf_entry.first;
             full_frames_counter.labels({buffer_name}).set(num_full_frames);
-            frames_counter.labels({buffer_name}).set(buf_entry.second->num_frames);
+            frames_counter.labels({buffer_name}).set(buf->num_frames);
         }
 
         if (print_status && (now - last_print_time) > ((double)time_delay / 1000000.0)) {

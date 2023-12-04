@@ -104,9 +104,12 @@ public:
     /**
      * @brief Prints a summary the frames and state of the producers and consumers.
      */
-    virtual void print_full_status(){};
+    virtual void print_full_status(){}
 
-    virtual bool is_basic() = 0;
+    /**
+     * @brief Prints a picture of this buffer.
+     */
+    virtual void print_buffer_status() {}
 
     /**
      * @brief Tells the buffers to stop returning full/empty frames to consumers/producers
@@ -372,10 +375,6 @@ public:
            bool zero_new_frames);
     ~Buffer() override;
 
-    bool is_basic() override {
-        return true;
-    }
-
     /**
      * @brief Unregisters the named consumer from this buffer.
      * Signals producers if this causes the buffer to become free for
@@ -543,7 +542,7 @@ public:
     /**
      * @brief Prints a picture of the frames which are currently full.
      */
-    void print_buffer_status();
+    void print_buffer_status() override;
 
     void json_description(nlohmann::json& buf_json) override;
 
@@ -609,6 +608,11 @@ private:
 
     void private_copy_frame(int dest_frame_id, Buffer* src, int src_frame_id);
 };
+
+/**
+ * @brief Returns true if the given GenericBuffer is a Buffer.
+ */
+bool is_frame_buffer(GenericBuffer* buf);
 
 /**
  * @brief Allocates a frame with the required malloc method

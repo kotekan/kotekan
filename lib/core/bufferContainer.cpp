@@ -22,10 +22,9 @@ void bufferContainer::add_buffer(const string& name, GenericBuffer* buf) {
     buffers[name] = buf;
 }
 
-
 Buffer* bufferContainer::get_buffer(const string& name) {
     GenericBuffer* gb = get_generic_buffer(name);
-    if (!gb->is_basic())
+    if (!is_frame_buffer(gb))
         throw std::runtime_error(
             fmt::format(fmt("The buffer named {:s} is not a basic Buffer!"), name));
     return dynamic_cast<Buffer*>(gb);
@@ -40,14 +39,6 @@ GenericBuffer* bufferContainer::get_generic_buffer(const string& name) {
 
 map<string, GenericBuffer*>& bufferContainer::get_buffer_map() {
     return buffers;
-}
-
-map<string, Buffer*> bufferContainer::get_basic_buffer_map() {
-    map<string, Buffer*> b;
-    for (auto v : buffers)
-        if (v.second->is_basic())
-            b[v.first] = dynamic_cast<Buffer*>(v.second);
-    return b;
 }
 
 void bufferContainer::set_buffer_map(map<string, GenericBuffer*>& buffer_map) {

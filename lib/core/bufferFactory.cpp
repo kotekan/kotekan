@@ -80,7 +80,8 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
         pool = metadataPools[metadataPool_name];
     }
 
-    size_t frame_size = 0;
+    // See also buffer::is_frame_buffer(), which looks for these three strings ("standard", "vis", "hfb")
+   size_t frame_size = 0;
     if (type_name == "standard") {
         frame_size = config.get<size_t>(location, "frame_size");
     } else if (type_name == "vis") {

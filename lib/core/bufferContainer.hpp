@@ -23,8 +23,6 @@ public:
     std::map<std::string, GenericBuffer*>& get_buffer_map();
     void set_buffer_map(std::map<std::string, GenericBuffer*>& buffer_map);
 
-    std::map<std::string, Buffer*> get_basic_buffer_map();
-
 protected:
     std::map<std::string, GenericBuffer*> buffers;
 };

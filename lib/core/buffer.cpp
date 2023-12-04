@@ -449,7 +449,6 @@ void Buffer::print_full_status() {
     INFO_F("Full Frames (X)                : %s", status_string);
 
     INFO_F("---- Producers ----");
-
     for (auto& xit : producers)
         for (int i = 0; i < num_frames; ++i) {
             auto& x = xit.second;
@@ -462,7 +461,6 @@ void Buffer::print_full_status() {
         }
 
     INFO_F("---- Consumers ----");
-
     for (auto& xit : consumers)
         for (int i = 0; i < num_frames; ++i) {
             auto& x = xit.second;
@@ -735,6 +733,11 @@ void Buffer::private_copy_frame(int dest_frame_id, Buffer* src, int src_frame_id
     memcpy(frames[dest_frame_id], src->frames[src_frame_id], src->frame_size);
 }
 
+bool is_frame_buffer(GenericBuffer* buf) {
+    // See also bufferFactor::new_buffer()
+    return (buf->buffer_type == "standard") || (buf->buffer_type == "vis") || (buf->buffer_type == "hfb");
+}
+
 uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock_frames,
                        bool zero_new_frames) {
 
@@ -828,3 +831,4 @@ void buffer_free(uint8_t* frame_pointer, size_t size, bool use_hugepages) {
     }
 #endif
 }
+

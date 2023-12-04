@@ -91,8 +91,9 @@ void gpuProcess::init() {
         commands.push_back(create_command(command_name, unique_path));
     }
 
-    for (auto& buf : local_buffer_container.get_basic_buffer_map()) {
-        register_host_memory(buf.second);
+    for (auto& buf : local_buffer_container.get_buffer_map()) {
+        if (is_frame_buffer(buf.second))
+            register_host_memory(dynamic_cast<Buffer*>(buf.second));
     }
 }
 
