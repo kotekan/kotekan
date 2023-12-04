@@ -30,7 +30,8 @@ class cudaCopyToRingbuffer : public cudaCommand {
 public:
     cudaCopyToRingbuffer(kotekan::Config& config, const std::string& unique_name,
                          kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
-                         int instance_num);
+                         int instance_num,
+                         const std::shared_ptr<cudaCommandState>& state);
 
     int wait_on_precondition() override;
 
@@ -40,10 +41,7 @@ public:
 
 protected:
 private:
-    int output_id;
-
     size_t _input_size;
-    size_t _output_size;
     size_t _ring_buffer_size;
 
     size_t output_cursor;

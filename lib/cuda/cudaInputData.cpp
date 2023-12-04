@@ -11,7 +11,6 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
     cudaCommand(config, unique_name, host_buffers, device, instance_num) {
 
     in_buf = host_buffers.get_buffer(config.get<std::string>(unique_name, "in_buf"));
-    in_buf->register_consumer(unique_name);
 
     if (instance_num == 0)
         in_buf->register_consumer(unique_name);
@@ -78,7 +77,7 @@ void cudaInputData::finalize_frame() {
         device.release_gpu_memory_array_metadata(_gpu_mem, gpu_frame_id);
 
     cudaCommand::finalize_frame();
-    in_buf->mark_frame_empty(unique_name, gpu_frame_id);
+    in_buf->mark_frame_empty(unique_name, gpu_frame_id % in_buf->num_frames);
 }
 
 std::string cudaInputData::get_performance_metric_string() {

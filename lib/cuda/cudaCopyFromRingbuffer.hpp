@@ -28,7 +28,8 @@ class cudaCopyFromRingbuffer : public cudaCommand {
 public:
     cudaCopyFromRingbuffer(kotekan::Config& config, const std::string& unique_name,
                            kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
-                           int instance_num);
+                           int instance_num,
+                           const std::shared_ptr<cudaCommandState>& state);
 
     int wait_on_precondition() override;
 
@@ -41,8 +42,6 @@ protected:
 private:
     size_t _output_size;
     size_t _ring_buffer_size;
-
-    size_t input_cursor;
 
     /// GPU side memory name for the time-stream input
     std::string _gpu_mem_input;
