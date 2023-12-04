@@ -364,6 +364,13 @@ public:
     }
 
     /**
+     * @brief Unregisters the named consumer from this buffer.
+     * Signals producers if this causes the buffer to become free for
+     * writing.
+     */
+    void unregister_consumer(const std::string& name) override;
+
+    /**
      * @brief Prints a summary the frames and state of the producers and consumers.
      */
     void print_full_status() override;

@@ -50,6 +50,144 @@ GenericBuffer::GenericBuffer(const std::string& _buffer_name, const std::string&
 
 GenericBuffer::~GenericBuffer() {}
 
+bool GenericBuffer::set_metadata(int ID, metadataContainer* meta) {
+    assert(ID >= 0);
+    assert(ID < num_frames);
+    buffer_lock lock(mutex);
+    if (metadata[ID] != nullptr)
+        return false;
+    metadata[ID] = meta;
+    increment_metadata_ref_count(meta);
+    return true;
+}
+
+void GenericBuffer::register_consumer(const std::string& name) {
+    buffer_lock lock(mutex);
+
+    DEBUG("Registering consumer {:s} for buffer {:s}", name, buffer_name);
+
+    auto const& ins = consumers.try_emplace(name, name, num_frames);
+    if (!ins.second) {
+        ERROR("You cannot register two consumers with the same name (\"{:s}\")!", name);
+        assert(0); // Optional
+        return;
+    }
+}
+
+void GenericBuffer::unregister_consumer(const std::string& name) {
+    {
+        buffer_lock lock(mutex);
+        DEBUG("Unregistering consumer {:s} for buffer {:s}", name, buffer_name);
+        size_t nrem = consumers.erase(name);
+        if (nrem == 0) {
+            ERROR("The consumer {:s} hasn't been registered, cannot unregister!", name);
+            return;
+        }
+    }
+    // Signal producers in case removing this consumer causes a buffer to become writable
+    empty_cond.notify_all();
+}
+
+void GenericBuffer::register_producer(const std::string& name) {
+    buffer_lock lock(mutex);
+    DEBUG("Buffer: {:s} Registering producer: {:s}", buffer_name, name);
+
+    auto const& ins = producers.try_emplace(name, name, num_frames);
+    if (!ins.second) {
+        ERROR("You cannot register two producers with the same name (\"{:s}\")!", name);
+        assert(0); // Optional
+        return;
+    }
+}
+
+int GenericBuffer::get_num_consumers() {
+    buffer_lock lock(mutex);
+    return consumers.size();
+}
+
+int GenericBuffer::get_num_producers() {
+    buffer_lock lock(mutex);
+    return producers.size();
+}
+
+void GenericBuffer::pass_metadata(int from_ID, GenericBuffer* to_buf, int to_ID) {
+    buffer_lock lock(mutex);
+    if (metadata[from_ID] == nullptr) {
+        WARN("No metadata in source buffer {:s}[{:d}], was this intended?", buffer_name, from_ID);
+        return;
+    }
+    metadataContainer* metadata_container = metadata[from_ID];
+    bool set = to_buf->set_metadata(to_ID, metadata_container);
+    assert(set);
+}
+
+void GenericBuffer::copy_metadata(int from_ID, GenericBuffer* to_buf, int to_ID) {
+    buffer_lock lock(mutex);
+    if (metadata[from_ID] == nullptr) {
+        WARN("No metadata in source buffer {:s}[{:d}], was this intended?", buffer_name, from_ID);
+        return;
+    }
+    if (to_buf->metadata[to_ID] == nullptr) {
+        WARN("No metadata in dest buffer {:s}[{:d}], was this intended?", to_buf->buffer_name,
+             to_ID);
+        return;
+    }
+    to_buf->private_copy_metadata(to_ID, this, from_ID);
+}
+
+void GenericBuffer::private_copy_metadata(int dest_frame_id, GenericBuffer* src, int src_frame_id) {
+    metadataContainer* from_metadata_container = src->metadata[src_frame_id];
+    metadataContainer* to_metadata_container = metadata[dest_frame_id];
+    if (from_metadata_container->metadata_size != to_metadata_container->metadata_size) {
+        WARN("Metadata sizes don't match, cannot copy metadata!!");
+        return;
+    }
+    memcpy(to_metadata_container->metadata, from_metadata_container->metadata,
+           from_metadata_container->metadata_size);
+}
+
+void GenericBuffer::allocate_new_metadata_object(int ID) {
+    assert(ID >= 0);
+    assert(ID < num_frames);
+
+    buffer_lock lock(mutex);
+    if (metadata_pool == nullptr) {
+        FATAL_ERROR_F("No metadata pool on %s but metadata was needed by a producer", buffer_name);
+    }
+    DEBUG2_F("Called allocate_new_metadata_object, buf %p, %d", this, ID);
+
+    if (metadata[ID] == nullptr)
+        metadata[ID] = request_metadata_object(metadata_pool);
+
+    // Make sure we got a metadata object.
+    CHECK_MEM_F(metadata[ID]);
+}
+
+// Do not call if there is no metadata
+void* GenericBuffer::get_metadata(int ID) {
+    assert(ID >= 0);
+    assert(ID < num_frames);
+    assert(metadata[ID] != nullptr);
+    return metadata[ID]->metadata;
+}
+
+// Might return NULLL
+metadataContainer* GenericBuffer::get_metadata_container(int ID) {
+    assert(ID >= 0);
+    assert(ID < num_frames);
+    return metadata[ID];
+}
+
+void GenericBuffer::send_shutdown_signal() {
+    DEBUG("Setting shutdown signal");
+    {
+        buffer_lock lock(mutex);
+        shutdown_signal = true;
+    }
+    empty_cond.notify_all();
+    full_cond.notify_all();
+}
+
 Buffer::Buffer(int num_frames, size_t len, metadataPool* pool, const std::string& _buffer_name,
                const std::string& _buffer_type, int _numa_node, bool _use_hugepages,
                bool _mlock_frames, bool zero_new_frames) :
@@ -113,15 +251,183 @@ Buffer::~Buffer() {
         buffer_free(frames[i], aligned_frame_size, use_hugepages);
 }
 
-bool GenericBuffer::set_metadata(int ID, metadataContainer* meta) {
+double Buffer::get_last_arrival_time() {
+    return last_arrival_time;
+}
+
+void Buffer::private_reset_producers(const int ID) {
+    for (auto& x : producers)
+        x.second.is_done[ID] = false;
+}
+
+void Buffer::private_reset_consumers(const int ID) {
+    for (auto& x : consumers)
+        x.second.is_done[ID] = false;
+}
+
+/*
+void Buffer::private_mark_consumer_done(const std::string& name, const int ID) {
+    auto& con = consumers.at(name);
+    assert(con.is_done[ID] == false);
+    con.last_frame_released = ID;
+    con.is_done[ID] = true;
+}
+*/
+
+void Buffer::private_mark_producer_done(const std::string& name, const int ID) {
+    auto& pro = producers.at(name);
+    assert(pro.is_done[ID] == false);
+    pro.last_frame_released = ID;
+    pro.is_done[ID] = true;
+}
+
+bool Buffer::private_consumers_done(const int ID) {
+    for (auto& c : consumers)
+        if (!c.second.is_done[ID])
+            return false;
+    return true;
+}
+
+bool Buffer::private_producers_done(const int ID) {
+    for (auto& x : producers)
+        if (!x.second.is_done[ID])
+            return false;
+    return true;
+}
+
+bool Buffer::is_frame_empty(const int ID) {
     assert(ID >= 0);
     assert(ID < num_frames);
+    bool empty = true;
     buffer_lock lock(mutex);
-    if (metadata[ID] != nullptr)
-        return false;
-    metadata[ID] = meta;
-    increment_metadata_ref_count(meta);
-    return true;
+    if (is_full[ID])
+        empty = false;
+    return empty;
+}
+
+uint8_t* Buffer::wait_for_full_frame(const std::string& name, const int ID) {
+    std::unique_lock<std::recursive_mutex> lock(mutex);
+    auto& con = consumers.at(name);
+    // This loop exists when is_full == 1 (i.e. a full buffer) AND
+    // when this producer hasn't already marked this buffer as
+    // while ((!is_full[ID] || con.is_done[ID])
+    //       && !shutdown_signal)
+    //    full_cond.wait(lock);
+
+    while (true) {
+        DEBUG("wait_for_full_frame: frame {:d}, is full? {:s}  is consumer done? {:s}  shutdown? "
+              "{:s}",
+              ID, is_full[ID] ? "T" : "F", con.is_done[ID] ? "T" : "F",
+              shutdown_signal ? "T" : "F");
+        if ((!is_full[ID] || con.is_done[ID]) && !shutdown_signal) {
+            DEBUG("waiting on condition...");
+            full_cond.wait(lock);
+        } else
+            break;
+    }
+    lock.unlock();
+
+    if (shutdown_signal)
+        return nullptr;
+    con.last_frame_acquired = ID;
+    return frames[ID];
+}
+
+int Buffer::wait_for_full_frame_timeout(const std::string& name, const int ID,
+                                        const struct timespec timeout_time) {
+    std::chrono::duration dur =
+        std::chrono::seconds{timeout_time.tv_sec} + std::chrono::nanoseconds{timeout_time.tv_nsec};
+    std::chrono::time_point<std::chrono::system_clock> deadline(dur);
+    std::cv_status st = std::cv_status::no_timeout;
+    std::unique_lock<std::recursive_mutex> lock(mutex);
+    auto& con = consumers.at(name);
+
+    while ((!is_full[ID] || con.is_done[ID]) && !shutdown_signal) {
+        st = full_cond.wait_until(lock, deadline);
+        if (st == std::cv_status::timeout)
+            break;
+    }
+    lock.unlock();
+
+    if (shutdown_signal)
+        return -1;
+
+    if (st == std::cv_status::timeout)
+        return 1;
+
+    con.last_frame_acquired = ID;
+    return 0;
+}
+
+int Buffer::get_num_full_frames() {
+    buffer_lock lock(mutex);
+    int numFull = 0;
+    for (int i = 0; i < num_frames; ++i)
+        if (is_full[i])
+            numFull++;
+    return numFull;
+}
+
+void Buffer::print_buffer_status() {
+    std::vector<bool> local_is_full;
+    {
+        buffer_lock lock(mutex);
+        local_is_full = is_full;
+    }
+    char status_string[num_frames + 1];
+    for (int i = 0; i < num_frames; ++i) {
+        if (local_is_full[i])
+            status_string[i] = 'X';
+        else
+            status_string[i] = '_';
+    }
+    status_string[num_frames] = '\0';
+    INFO("Buffer {:s}, status: {:s}", buffer_name, std::string(status_string));
+}
+
+void Buffer::print_full_status() {
+
+    buffer_lock lock(mutex);
+
+    char status_string[num_frames + 1];
+    status_string[num_frames] = '\0';
+
+    INFO_F("--------------------- %s ---------------------", buffer_name);
+
+    for (int i = 0; i < num_frames; ++i) {
+        if (is_full[i])
+            status_string[i] = 'X';
+        else
+            status_string[i] = '_';
+    }
+
+    INFO_F("Full Frames (X)                : %s", status_string);
+
+    INFO_F("---- Producers ----");
+
+    for (auto& xit : producers)
+        for (int i = 0; i < num_frames; ++i) {
+            auto& x = xit.second;
+            if (x.is_done[i])
+                status_string[i] = '+';
+            else
+                status_string[i] = '_';
+            INFO_F("%-30s : %s (%d, %d)", x.name, status_string, x.last_frame_acquired,
+                   x.last_frame_released);
+        }
+
+    INFO_F("---- Consumers ----");
+
+    for (auto& xit : consumers)
+        for (int i = 0; i < num_frames; ++i) {
+            auto& x = xit.second;
+            if (x.is_done[i])
+                status_string[i] = '=';
+            else
+                status_string[i] = '_';
+            INFO_F("%-30s : %s (%d, %d)", x.name, status_string, x.last_frame_acquired,
+                   x.last_frame_released);
+        }
 }
 
 void Buffer::mark_frame_full(const std::string& name, const int ID) {
@@ -287,302 +593,26 @@ uint8_t* Buffer::wait_for_empty_frame(const std::string& producer_name, const in
     return frames[ID];
 }
 
-void GenericBuffer::register_consumer(const std::string& name) {
-    buffer_lock lock(mutex);
-
-    DEBUG("Registering consumer {:s} for buffer {:s}", name, buffer_name);
-
-    auto const& ins = consumers.try_emplace(name, name, num_frames);
-    if (!ins.second) {
-        ERROR("You cannot register two consumers with the same name (\"{:s}\")!", name);
-        assert(0); // Optional
-        return;
-    }
-}
-
-void GenericBuffer::unregister_consumer(const std::string& name) {
-    // int broadcast = 0;
+void Buffer::unregister_consumer(const std::string& name) {
+    int broadcast = 0;
     {
         buffer_lock lock(mutex);
         DEBUG("Unregistering consumer {:s} for buffer {:s}", name, buffer_name);
-
         size_t nrem = consumers.erase(name);
         if (nrem == 0) {
             ERROR("The consumer {:s} hasn't been registered, cannot unregister!", name);
+            return;
         }
-
-        /*
         // Check if removing this consumer would cause any of the frames
         // which are currently full to become empty.
-        for (int id = 0; id < buf->num_frames; ++id) {
-            if (private_consumers_done(buf, id) == 1) {
-                broadcast |= private_mark_frame_empty(buf, id);
-            }
-        }
-        */
+        for (int id = 0; id < num_frames; ++id)
+            if (private_consumers_done(id))
+                broadcast |= private_mark_frame_empty(id);
     }
     // Signal producers if we found something could be empty after
     // removal of this consumer.
-    // if (broadcast == 1) {
-    empty_cond.notify_all();
-    //}
-}
-
-
-void GenericBuffer::register_producer(const std::string& name) {
-    buffer_lock lock(mutex);
-    DEBUG("Buffer: {:s} Registering producer: {:s}", buffer_name, name);
-
-    auto const& ins = producers.try_emplace(name, name, num_frames);
-    if (!ins.second) {
-        ERROR("You cannot register two producers with the same name (\"{:s}\")!", name);
-        assert(0); // Optional
-        return;
-    }
-}
-
-void Buffer::private_reset_producers(const int ID) {
-    for (auto& x : producers)
-        x.second.is_done[ID] = false;
-}
-
-void Buffer::private_reset_consumers(const int ID) {
-    for (auto& x : consumers)
-        x.second.is_done[ID] = false;
-}
-
-void private_mark_consumer_done(Buffer* buf, const std::string& name, const int ID) {
-    auto& con = buf->consumers.at(name);
-    assert(con.is_done[ID] == false);
-    con.last_frame_released = ID;
-    con.is_done[ID] = true;
-}
-
-void Buffer::private_mark_producer_done(const std::string& name, const int ID) {
-    auto& pro = producers.at(name);
-    assert(pro.is_done[ID] == false);
-    pro.last_frame_released = ID;
-    pro.is_done[ID] = true;
-}
-
-bool Buffer::private_consumers_done(const int ID) {
-    for (auto& c : consumers)
-        if (!c.second.is_done[ID])
-            return false;
-    return true;
-}
-
-bool Buffer::private_producers_done(const int ID) {
-    for (auto& x : producers)
-        if (!x.second.is_done[ID])
-            return false;
-    return true;
-}
-
-bool Buffer::is_frame_empty(const int ID) {
-    assert(ID >= 0);
-    assert(ID < num_frames);
-    bool empty = true;
-    buffer_lock lock(mutex);
-    if (is_full[ID])
-        empty = false;
-    return empty;
-}
-
-uint8_t* Buffer::wait_for_full_frame(const std::string& name, const int ID) {
-    std::unique_lock<std::recursive_mutex> lock(mutex);
-    auto& con = consumers.at(name);
-    // This loop exists when is_full == 1 (i.e. a full buffer) AND
-    // when this producer hasn't already marked this buffer as
-    // while ((!is_full[ID] || con.is_done[ID])
-    //       && !shutdown_signal)
-    //    full_cond.wait(lock);
-
-    while (true) {
-        DEBUG("wait_for_full_frame: frame {:d}, is full? {:s}  is consumer done? {:s}  shutdown? "
-              "{:s}",
-              ID, is_full[ID] ? "T" : "F", con.is_done[ID] ? "T" : "F",
-              shutdown_signal ? "T" : "F");
-        if ((!is_full[ID] || con.is_done[ID]) && !shutdown_signal) {
-            DEBUG("waiting on condition...");
-            full_cond.wait(lock);
-        } else
-            break;
-    }
-    lock.unlock();
-
-    if (shutdown_signal)
-        return nullptr;
-    con.last_frame_acquired = ID;
-    return frames[ID];
-}
-
-int Buffer::wait_for_full_frame_timeout(const std::string& name, const int ID,
-                                        const struct timespec timeout_time) {
-    std::chrono::duration dur =
-        std::chrono::seconds{timeout_time.tv_sec} + std::chrono::nanoseconds{timeout_time.tv_nsec};
-    std::chrono::time_point<std::chrono::system_clock> deadline(dur);
-    std::cv_status st = std::cv_status::no_timeout;
-    std::unique_lock<std::recursive_mutex> lock(mutex);
-    auto& con = consumers.at(name);
-
-    while ((!is_full[ID] || con.is_done[ID]) && !shutdown_signal) {
-        st = full_cond.wait_until(lock, deadline);
-        if (st == std::cv_status::timeout)
-            break;
-    }
-    lock.unlock();
-
-    if (shutdown_signal)
-        return -1;
-
-    if (st == std::cv_status::timeout)
-        return 1;
-
-    con.last_frame_acquired = ID;
-    return 0;
-}
-
-int Buffer::get_num_full_frames() {
-    buffer_lock lock(mutex);
-    int numFull = 0;
-    for (int i = 0; i < num_frames; ++i)
-        if (is_full[i])
-            numFull++;
-    return numFull;
-}
-
-int GenericBuffer::get_num_consumers() {
-    buffer_lock lock(mutex);
-    return consumers.size();
-}
-
-int GenericBuffer::get_num_producers() {
-    buffer_lock lock(mutex);
-    return producers.size();
-}
-
-void Buffer::print_buffer_status() {
-    std::vector<bool> local_is_full;
-    {
-        buffer_lock lock(mutex);
-        local_is_full = is_full;
-    }
-    char status_string[num_frames + 1];
-    for (int i = 0; i < num_frames; ++i) {
-        if (local_is_full[i])
-            status_string[i] = 'X';
-        else
-            status_string[i] = '_';
-    }
-    status_string[num_frames] = '\0';
-    INFO("Buffer {:s}, status: {:s}", buffer_name, std::string(status_string));
-}
-
-void Buffer::print_full_status() {
-
-    buffer_lock lock(mutex);
-
-    char status_string[num_frames + 1];
-    status_string[num_frames] = '\0';
-
-    INFO_F("--------------------- %s ---------------------", buffer_name);
-
-    for (int i = 0; i < num_frames; ++i) {
-        if (is_full[i])
-            status_string[i] = 'X';
-        else
-            status_string[i] = '_';
-    }
-
-    INFO_F("Full Frames (X)                : %s", status_string);
-
-    INFO_F("---- Producers ----");
-
-    for (auto& xit : producers)
-        for (int i = 0; i < num_frames; ++i) {
-            auto& x = xit.second;
-            if (x.is_done[i])
-                status_string[i] = '+';
-            else
-                status_string[i] = '_';
-            INFO_F("%-30s : %s (%d, %d)", x.name, status_string, x.last_frame_acquired,
-                   x.last_frame_released);
-        }
-
-    INFO_F("---- Consumers ----");
-
-    for (auto& xit : consumers)
-        for (int i = 0; i < num_frames; ++i) {
-            auto& x = xit.second;
-            if (x.is_done[i])
-                status_string[i] = '=';
-            else
-                status_string[i] = '_';
-            INFO_F("%-30s : %s (%d, %d)", x.name, status_string, x.last_frame_acquired,
-                   x.last_frame_released);
-        }
-}
-
-
-void GenericBuffer::pass_metadata(int from_ID, GenericBuffer* to_buf, int to_ID) {
-
-    if (metadata[from_ID] == nullptr) {
-        WARN("No metadata in source buffer {:s}[{:d}], was this intended?", buffer_name, from_ID);
-        return;
-    }
-
-    metadataContainer* metadata_container = metadata[from_ID];
-
-    bool set = to_buf->set_metadata(to_ID, metadata_container);
-    assert(set);
-}
-
-void GenericBuffer::copy_metadata(int from_ID, GenericBuffer* to_buf, int to_ID) {
-    buffer_lock lock(mutex);
-
-    if (metadata[from_ID] == nullptr) {
-        WARN("No metadata in source buffer {:s}[{:d}], was this intended?", buffer_name, from_ID);
-        return;
-    }
-
-    if (to_buf->metadata[to_ID] == nullptr) {
-        WARN("No metadata in dest buffer {:s}[{:d}], was this intended?", to_buf->buffer_name,
-             to_ID);
-        return;
-    }
-    to_buf->private_copy_metadata(to_ID, this, from_ID);
-}
-
-void GenericBuffer::private_copy_metadata(int dest_frame_id, GenericBuffer* src, int src_frame_id) {
-    metadataContainer* from_metadata_container = src->metadata[src_frame_id];
-    metadataContainer* to_metadata_container = metadata[dest_frame_id];
-
-    if (from_metadata_container->metadata_size != to_metadata_container->metadata_size) {
-        WARN("Metadata sizes don't match, cannot copy metadata!!");
-        return;
-    }
-    memcpy(to_metadata_container->metadata, from_metadata_container->metadata,
-           from_metadata_container->metadata_size);
-}
-
-void GenericBuffer::allocate_new_metadata_object(int ID) {
-    assert(ID >= 0);
-    assert(ID < num_frames);
-
-    buffer_lock lock(mutex);
-
-    if (metadata_pool == nullptr) {
-        FATAL_ERROR_F("No metadata pool on %s but metadata was needed by a producer", buffer_name);
-    }
-
-    DEBUG2_F("Called allocate_new_metadata_object, buf %p, %d", this, ID);
-
-    if (metadata[ID] == nullptr)
-        metadata[ID] = request_metadata_object(metadata_pool);
-
-    // Make sure we got a metadata object.
-    CHECK_MEM_F(metadata[ID]);
+    if (broadcast)
+        empty_cond.notify_all();
 }
 
 uint8_t* Buffer::swap_external_frame(int frame_id, uint8_t* external_frame) {
@@ -752,33 +782,4 @@ void buffer_free(uint8_t* frame_pointer, size_t size, bool use_hugepages) {
 #endif
     }
 #endif
-}
-
-// Do not call if there is no metadata
-void* GenericBuffer::get_metadata(int ID) {
-    assert(ID >= 0);
-    assert(ID < num_frames);
-    assert(metadata[ID] != nullptr);
-    return metadata[ID]->metadata;
-}
-
-// Might return NULLL
-metadataContainer* GenericBuffer::get_metadata_container(int ID) {
-    assert(ID >= 0);
-    assert(ID < num_frames);
-    return metadata[ID];
-}
-
-double Buffer::get_last_arrival_time() {
-    return last_arrival_time;
-}
-
-void GenericBuffer::send_shutdown_signal() {
-    DEBUG("Setting shutdown signal");
-    {
-        buffer_lock lock(mutex);
-        shutdown_signal = true;
-    }
-    empty_cond.notify_all();
-    full_cond.notify_all();
 }
