@@ -61,19 +61,32 @@ const D = 512
 const P = 2
 const F₀ = 16
 const F = 16
-# const F = idiv(84, idiv(D, 128))
-# const U = 16
-# const U = 32
 U::Integer
 const M = 4
 const K = 4
 
 # Derived constants
 
-const W = 16
-const B = 2
-const Touter = 256
 const Packed = true
+if U == 8
+    const W = 8
+    const B = 4
+elseif U == 16
+    const W = 16
+    const B = 2
+elseif U == 32
+    const W = 16
+    const B = 2
+elseif U == 64
+    const W = 16
+    const B = 2
+elseif U == 128
+    const W = 16
+    const B = 2
+else
+    @assert false
+end
+const Touter = 256              # 512 uses too much shared memory
 
 @assert W ≤ U
 @assert Touter % U == 0
@@ -383,10 +396,12 @@ end
 # eqns. (104), (106)
 const (Ut, Ur) = U ≤ 32 ? (idiv(U, 2), 1) : (32, idiv(U, 64))
 const (Dt, Dr) = U ≤ 32 ? (idiv(64, U), idiv(U, W)) : (1, idiv(64, W))
-# @assert Ut * Dr == idiv(U, 2)
-# @assert W * Dt * Dr == 64
 @assert Ut * Ur == idiv(U, 2)
-@assert Dt * Dr == idiv(D, 128)
+@assert W * Dt * Dr == 64
+const Urbits = trailing_zeros(Ur)
+const Utbits = trailing_zeros(Ut)
+const Drbits = trailing_zeros(Dr)
+const Dtbits = trailing_zeros(Dt)
 
 @assert Packed
 const layout_F_registers = if U ≤ 64
@@ -395,9 +410,10 @@ const layout_F_registers = if U ≤ 64
             IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
             Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
             Dish(:dish, 1, 2) => SIMD(:simd, 8, 2),
-            Dish(:dish, 2, 16) => Warp(:warp, 1, W),
-            [Dish(:dish, 1 << (bit + 2), 2) => Register(:dish, 1 << (bit + 2), 2) for bit in 3:(Ubits - 2)]...,
-            [Dish(:dish, 1 << (bit + 2), 2) => Thread(:thread, 1 << [1, 0, 2, 4, 3][bit + 1], 2) for bit in (Ubits - 1):4]...,
+            Dish(:dish, 2, W) => Warp(:warp, 1, W),
+            [Dish(:dish, (2 * W) << bit, 2) => Register(:dish, (2 * W) << bit, 2) for bit in 0:(Drbits - 1)]...,
+            [Dish(:dish, (2 * W * Dr) << bit, 2) => Thread(:thread, 1 << [1, 0, 2, 4, 3][(Ubits - 1) + bit + 1], 2)
+             for bit in 0:(Dtbits - 1)]...,
             Time(:time, idiv(U, 2), 2) => SIMD(:simd, 16, 2),
             # eqn. (111)
             #Unpacked FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
@@ -409,9 +425,9 @@ const layout_F_registers = if U ≤ 64
             Time(:time, U, idiv(Touter, U)) => Loop(:t_inner, U, idiv(Touter, U)),
             Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
             # sect. 5.2
-            Dish(:dish, 128, idiv(D, 128)) => Block(:block, 1, idiv(D, 128)),
-            Polr(:polr, 1, P) => Block(:block, idiv(D, 128), P),
-            Freq(:freq, U, F) => Block(:block, idiv(D, 128) * P, F)])
+            Dish(:dish, 2 * W * Dt * Dr, idiv(D, 2 * W * Dt * Dr)) => Block(:block, 1, idiv(D, 2 * W * Dt * Dr)),
+            Polr(:polr, 1, P) => Block(:block, idiv(D, 2 * W * Dt * Dr), P),
+            Freq(:freq, U, F) => Block(:block, idiv(D, 2 * W * Dt * Dr) * P, F)])
 else
     Layout([
             # eqn. (110)
@@ -1478,32 +1494,55 @@ function upchan!(emitter)
         layout_Ē3 = emitter.environment[:Ē3]
         store!(emitter, :Ē_memory => layout_Ē_memory, :Ē3; align=16,
                condition=state -> let
-                   if U == 16
-                       @assert layout_Ē3[Time(:time, 16, 4)] == Warp(:warp, 4, 4)
-                       @assert layout_Ē3[Time(:time, 64, 4)] == Register(:time, 64, 4)
-                       @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
-                       t_warp = :(16i32 * (IndexSpaces.cuda_warpidx() ÷ 4i32 % 4i32))
-                   elseif U == 32
-                       @assert layout_Ē3[Time(:time, 32, 4)] == Warp(:warp, 8, 4)
-                       @assert layout_Ē3[Time(:time, 128, 2)] == Register(:time, 128, 2)
-                       @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
-                       t_warp = :(32i32 * (IndexSpaces.cuda_warpidx() ÷ 8i32 % 4i32))
-                   elseif U == 64
-                       @assert layout_Ē3[Time(:time, 64, 4)] == Warp(:warp, 16, 4)
-                       @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
-                       t_warp = :(64i32 * (IndexSpaces.cuda_warpidx() ÷ 16i32 % 4i32))
-                   elseif U == 128
-                       @assert layout_Ē3[Time(:time, 128, 2)] == Warp(:warp, 16, 2)
-                       @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
-                       t_warp = :(128i32 * (IndexSpaces.cuda_warpidx() ÷ 16i32 % 2i32))
-                   else
-                       @show layout_Ē3
-                       @assert false
+                   # if U == 16
+                   #     @assert layout_Ē3[Time(:time, 16, 4)] == Warp(:warp, 4, 4)
+                   #     @assert layout_Ē3[Time(:time, 64, 4)] == Register(:time, 64, 4)
+                   #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
+                   #     t_warp = :(16i32 * (IndexSpaces.cuda_warpidx() ÷ 4i32 % 4i32))
+                   # elseif U == 32
+                   #     @assert layout_Ē3[Time(:time, 32, 4)] == Warp(:warp, 8, 4)
+                   #     @assert layout_Ē3[Time(:time, 128, 2)] == Register(:time, 128, 2)
+                   #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
+                   #     t_warp = :(32i32 * (IndexSpaces.cuda_warpidx() ÷ 8i32 % 4i32))
+                   # elseif U == 64
+                   #     @assert layout_Ē3[Time(:time, 64, 4)] == Warp(:warp, 16, 4)
+                   #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
+                   #     t_warp = :(64i32 * (IndexSpaces.cuda_warpidx() ÷ 16i32 % 4i32))
+                   # elseif U == 128
+                   #     @assert layout_Ē3[Time(:time, 128, 2)] == Warp(:warp, 16, 2)
+                   #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
+                   #     t_warp = :(128i32 * (IndexSpaces.cuda_warpidx() ÷ 16i32 % 2i32))
+                   # else
+                   #     @show layout_Ē3
+                   #     @assert false
+                   # end
+                   # t_register = Int32(get(state.dict, :time, 0))
+                   # t_loop = :(t_outer)
+                   # t = :($t_loop + $t_register + $t_warp)
+                   # Look at the time bits from `U` to `nextpow(2, t_min)`
+                   tbit_min = Int(log(2, U))
+                   tbit_max = ceil(Int, log(2, t_min))
+                   warp_val = :(IndexSpaces.cuda_warpidx())
+                   register_val = Int32(get(state.dict, :time, 0))
+                   loop_val = :(t_outer)
+                   t_expr = 0i32
+                   for tbit in tbit_min:tbit_max
+                       mach = layout_Ē3[Time(:time, 1 << tbit, 2)]
+                       @assert mach.length == 2
+                       if mach isa Warp
+                           t_expr = :($t_expr + $warp_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
+                           # @show tbit t_expr
+                       elseif mach isa Register
+                           t_expr = :($t_expr + $register_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
+                           # @show tbit t_expr
+                       elseif mach isa Loop
+                           t_expr = :($t_expr + $loop_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
+                           # @show tbit t_expr
+                       else
+                           @assert false
+                       end
                    end
-                   t_register = Int32(get(state.dict, :time, 0))
-                   t_loop = :(t_outer)
-                   t = :($t_loop + $t_register + $t_warp)
-                   :($t ≥ $(Int32(t_min)))
+                   :($t_expr ≥ $(Int32(t_min)))
                end,
                postprocess=addr -> quote
                    let
