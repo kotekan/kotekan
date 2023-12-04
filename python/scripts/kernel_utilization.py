@@ -36,20 +36,17 @@ host_name = args.host_name
 api_base = "http://" + host_name + ":12048"
 
 endpoints = requests.get(api_base + "/endpoints")
-endpoints = endpoints.json()['GET']
-print('Endpoints:', endpoints)
-endpoints = [e for e in endpoints if e.startswith('/gpu_profile/')]
-print('Endpoints:', endpoints)
+endpoints = endpoints.json()["GET"]
+endpoints = [e for e in endpoints if e.startswith("/gpu_profile/")]
 
 pipelines = []
 for i, gpu_id in enumerate(gpu_ids):
     for e in endpoints:
-        if not e.endswith('/gpu_%i' % gpu_id):
+        if not e.endswith("/gpu_%i" % gpu_id):
             continue
-        pipeline_id = e.replace('/gpu_profile/', '').replace('/gpu_%i' % gpu_id, '')
+        pipeline_id = e.replace("/gpu_profile/", "").replace("/gpu_%i" % gpu_id, "")
         try:
             R = requests.get(api_base + e)
-            #print(R.json())
         except requests.exceptions.RequestException as err:
             print("Error getting data: ", err)
             exit(-1)
