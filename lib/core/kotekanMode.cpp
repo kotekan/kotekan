@@ -182,8 +182,8 @@ void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
     // Setup buffer nodes
     for (auto& buf : buffer_container.get_buffer_map()) {
         std::string label = buf.second->get_dot_node_label();
-        dot += fmt::format("{:s}\"{:s}\" [label=<{:s}> shape=ellipse, color=blue];\n",
-                           prefix, buf.first, label);
+        dot += fmt::format("{:s}\"{:s}\" [label=<{:s}> shape=ellipse, color=blue];\n", prefix,
+                           buf.first, label);
     }
 
     // Setup stage nodes

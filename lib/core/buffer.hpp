@@ -10,6 +10,7 @@
 
 #include "kotekanLogging.hpp"
 #include "metadata.h" // for metadataPool
+
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
 
 #include <condition_variable>
@@ -104,7 +105,7 @@ public:
     /**
      * @brief Prints a summary the frames and state of the producers and consumers.
      */
-    virtual void print_full_status(){}
+    virtual void print_full_status() {}
 
     /**
      * @brief Prints a picture of this buffer.
@@ -265,7 +266,8 @@ public:
     virtual void json_description(nlohmann::json& buf_json);
 
     /**
-     * @brief Returns a text description of this buffer for use in the automatic Dot pipeline graphs.
+     * @brief Returns a text description of this buffer for use in the automatic Dot pipeline
+     * graphs.
      */
     virtual std::string get_dot_node_label();
 

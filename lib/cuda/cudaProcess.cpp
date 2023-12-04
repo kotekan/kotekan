@@ -48,7 +48,8 @@ std::vector<gpuCommand*> cudaProcess::create_command(const std::string& cmd_name
     // Create the cudaCommandState object, if used, for this command class.
     std::shared_ptr<cudaCommandState> st;
     if (FACTORY(cudaCommandState)::exists(cmd_name))
-        st = FACTORY(cudaCommandState)::create_shared(cmd_name, config, unique_name, local_buffer_container, *device);
+        st = FACTORY(cudaCommandState)::create_shared(cmd_name, config, unique_name,
+                                                      local_buffer_container, *device);
     for (uint32_t i = 0; i < _gpu_buffer_depth; i++) {
         gpuCommand* cmd;
         if (st)

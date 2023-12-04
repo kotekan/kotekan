@@ -43,7 +43,6 @@ public:
     void main_thread() override;
 
 private:
-    //std::map<std::string, Buffer*> buffers;
     std::map<std::string, GenericBuffer*> buffers;
 
     /// The time in microseconds between print updates,

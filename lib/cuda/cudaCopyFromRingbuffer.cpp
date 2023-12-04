@@ -9,7 +9,8 @@ using kotekan::Config;
 
 class cudaCopyFromRingbufferState : public cudaCommandState {
 public:
-    cudaCopyFromRingbufferState(kotekan::Config& config, const std::string& unique_name, kotekan::bufferContainer& buffers, cudaDeviceInterface& dev) :
+    cudaCopyFromRingbufferState(kotekan::Config& config, const std::string& unique_name,
+                                kotekan::bufferContainer& buffers, cudaDeviceInterface& dev) :
         cudaCommandState(config, unique_name, buffers, dev),
         cursor(0) {}
     int cursor;

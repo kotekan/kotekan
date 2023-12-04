@@ -9,7 +9,8 @@ using kotekan::Config;
 
 class cudaCopyToRingbufferState : public cudaCommandState {
 public:
-    cudaCopyToRingbufferState(kotekan::Config& config, const std::string& unique_name, kotekan::bufferContainer& buffers, cudaDeviceInterface& dev) :
+    cudaCopyToRingbufferState(kotekan::Config& config, const std::string& unique_name,
+                              kotekan::bufferContainer& buffers, cudaDeviceInterface& dev) :
         cudaCommandState(config, unique_name, buffers, dev),
         cursor(0) {}
     int cursor;
@@ -41,7 +42,7 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
 
     set_command_type(gpuCommandType::KERNEL);
 
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input,  true,  true,  false));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, false, false, true));
 }
 

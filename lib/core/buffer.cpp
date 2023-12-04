@@ -199,7 +199,8 @@ void GenericBuffer::json_description(nlohmann::json& buf_json) {
         buf_json["consumers"][consumer_name]["last_frame_acquired"] = c.last_frame_acquired;
         buf_json["consumers"][consumer_name]["last_frame_released"] = c.last_frame_released;
         for (int f = 0; f < num_frames; ++f)
-            buf_json["consumers"][consumer_name]["marked_frame_empty"].push_back(c.is_done[f] ? 1 : 0);
+            buf_json["consumers"][consumer_name]["marked_frame_empty"].push_back(c.is_done[f] ? 1
+                                                                                              : 0);
     }
     buf_json["producers"];
     for (auto& pit : producers) {
@@ -209,7 +210,8 @@ void GenericBuffer::json_description(nlohmann::json& buf_json) {
         buf_json["producers"][producer_name]["last_frame_acquired"] = p.last_frame_acquired;
         buf_json["producers"][producer_name]["last_frame_released"] = p.last_frame_released;
         for (int f = 0; f < num_frames; ++f)
-            buf_json["producers"][producer_name]["marked_frame_empty"].push_back(p.is_done[f] ? 1 : 0);
+            buf_json["producers"][producer_name]["marked_frame_empty"].push_back(p.is_done[f] ? 1
+                                                                                              : 0);
     }
     buf_json["num_frames"] = num_frames;
     buf_json["type"] = buffer_type;
@@ -410,7 +412,8 @@ void Buffer::json_description(nlohmann::json& buf_json) {
 }
 
 std::string Buffer::get_dot_node_label() {
-    return fmt::format(fmt("{:s}<BR/>{:d}/{:d} ({:.1f}%)"), buffer_name, get_num_full_frames(), num_frames, (float)get_num_full_frames() / num_frames * 100);
+    return fmt::format(fmt("{:s}<BR/>{:d}/{:d} ({:.1f}%)"), buffer_name, get_num_full_frames(),
+                       num_frames, (float)get_num_full_frames() / num_frames * 100);
 }
 
 void Buffer::print_buffer_status() {
@@ -735,7 +738,8 @@ void Buffer::private_copy_frame(int dest_frame_id, Buffer* src, int src_frame_id
 
 bool is_frame_buffer(GenericBuffer* buf) {
     // See also bufferFactor::new_buffer()
-    return (buf->buffer_type == "standard") || (buf->buffer_type == "vis") || (buf->buffer_type == "hfb");
+    return (buf->buffer_type == "standard") || (buf->buffer_type == "vis")
+           || (buf->buffer_type == "hfb");
 }
 
 uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock_frames,
@@ -831,4 +835,3 @@ void buffer_free(uint8_t* frame_pointer, size_t size, bool use_hugepages) {
     }
 #endif
 }
-
