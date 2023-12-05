@@ -13,6 +13,7 @@
 #include <prometheusMetrics.hpp>
 #include <sstream>
 #include <string>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -150,6 +151,12 @@ public:
             const auto group0 = std::make_shared<ASDF::group>();
             group0->emplace(iteration, group);
             const auto project = ASDF::asdf({}, group0);
+            int ierr = mkdir(base_dir.c_str(), 0777);
+            if (ierr && ierr != EEXIST && ierr != EISDIR) {
+                char msg[1000];
+                strerror_r(ierr, msg, sizeof msg);
+                FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(), msg);
+            }
             project.write(full_path);
 
             // Stop timer
