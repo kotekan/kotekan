@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief CUDA Upchannelizer_U128 kernel
+ * @brief CUDA Upchannelizer_U8 kernel
  *
  * This file has been generated automatically.
  * Do not modify this C++ file, your changes will be lost.
@@ -48,15 +48,15 @@ auto mod(T x, U y) {
 } // namespace
 
 /**
- * @class cudaUpchannelizer_U128
- * @brief cudaCommand for Upchannelizer_U128
+ * @class cudaUpchannelizer_U8
+ * @brief cudaCommand for Upchannelizer_U8
  */
-class cudaUpchannelizer_U128 : public cudaCommand {
+class cudaUpchannelizer_U8 : public cudaCommand {
 public:
-    cudaUpchannelizer_U128(Config& config, const std::string& unique_name,
-                           bufferContainer& host_buffers, cudaDeviceInterface& device,
-                           const int inst);
-    virtual ~cudaUpchannelizer_U128();
+    cudaUpchannelizer_U8(Config& config, const std::string& unique_name,
+                         bufferContainer& host_buffers, cudaDeviceInterface& device,
+                         const int inst);
+    virtual ~cudaUpchannelizer_U8();
 
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
@@ -84,18 +84,18 @@ private:
     static constexpr int cuda_number_of_taps = 4;
     static constexpr int cuda_max_number_of_timesamples = 131072;
     static constexpr int cuda_granularity_number_of_timesamples = 256;
-    static constexpr int cuda_algorithm_overlap = 384;
-    static constexpr int cuda_upchannelization_factor = 128;
+    static constexpr int cuda_algorithm_overlap = 24;
+    static constexpr int cuda_upchannelization_factor = 8;
 
     // Kernel compile parameters:
-    static constexpr int minthreads = 512;
-    static constexpr int blocks_per_sm = 2;
+    static constexpr int minthreads = 256;
+    static constexpr int blocks_per_sm = 4;
 
     // Kernel call parameters:
     static constexpr int threads_x = 32;
-    static constexpr int threads_y = 16;
+    static constexpr int threads_y = 8;
     static constexpr int blocks = 128;
-    static constexpr int shmem_bytes = 66816;
+    static constexpr int shmem_bytes = 73984;
 
     // Kernel name:
     const char* const kernel_symbol =
@@ -155,9 +155,9 @@ private:
         "Fbar",
     };
     static constexpr std::array<std::size_t, G_rank> G_lengths = {
-        2048,
+        128,
     };
-    static constexpr std::size_t G_length = chord_datatype_bytes(G_type) * 2048;
+    static constexpr std::size_t G_length = chord_datatype_bytes(G_type) * 128;
     static_assert(G_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
     // E: gpu_mem_input_voltage
@@ -202,11 +202,11 @@ private:
     static constexpr std::array<std::size_t, Ebar_rank> Ebar_lengths = {
         512,
         2,
-        2048,
-        1024,
+        128,
+        16384,
     };
     static constexpr std::size_t Ebar_length =
-        chord_datatype_bytes(Ebar_type) * 512 * 2 * 2048 * 1024;
+        chord_datatype_bytes(Ebar_type) * 512 * 2 * 128 * 16384;
     static_assert(Ebar_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
@@ -224,10 +224,10 @@ private:
     };
     static constexpr std::array<std::size_t, info_rank> info_lengths = {
         32,
-        16,
+        8,
         128,
     };
-    static constexpr std::size_t info_length = chord_datatype_bytes(info_type) * 32 * 16 * 128;
+    static constexpr std::size_t info_length = chord_datatype_bytes(info_type) * 32 * 8 * 128;
     static_assert(info_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
 
@@ -258,13 +258,13 @@ private:
     std::int64_t unprovided;
 };
 
-REGISTER_CUDA_COMMAND(cudaUpchannelizer_U128);
+REGISTER_CUDA_COMMAND(cudaUpchannelizer_U8);
 
-cudaUpchannelizer_U128::cudaUpchannelizer_U128(Config& config, const std::string& unique_name,
-                                               bufferContainer& host_buffers,
-                                               cudaDeviceInterface& device, const int inst) :
+cudaUpchannelizer_U8::cudaUpchannelizer_U8(Config& config, const std::string& unique_name,
+                                           bufferContainer& host_buffers,
+                                           cudaDeviceInterface& device, const int inst) :
     cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state,
-                "Upchannelizer_U128", "Upchannelizer_U128.ptx"),
+                "Upchannelizer_U8", "Upchannelizer_U8.ptx"),
     Tmin_memname(unique_name + "/Tmin"), Tmax_memname(unique_name + "/Tmax"),
     Tbarmin_memname(unique_name + "/Tbarmin"), Tbarmax_memname(unique_name + "/Tbarmax"),
     G_memname(config.get<std::string>(unique_name, "gpu_mem_gain")),
@@ -304,10 +304,10 @@ cudaUpchannelizer_U128::cudaUpchannelizer_U128(Config& config, const std::string
     //                                         E_memname, 0, E_buffer_size);
 }
 
-cudaUpchannelizer_U128::~cudaUpchannelizer_U128() {}
+cudaUpchannelizer_U8::~cudaUpchannelizer_U8() {}
 
-cudaEvent_t cudaUpchannelizer_U128::execute(cudaPipelineState& /*pipestate*/,
-                                            const std::vector<cudaEvent_t>& /*pre_events*/) {
+cudaEvent_t cudaUpchannelizer_U8::execute(cudaPipelineState& /*pipestate*/,
+                                          const std::vector<cudaEvent_t>& /*pre_events*/) {
     const int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
 
     pre_execute();
@@ -577,7 +577,7 @@ cudaEvent_t cudaUpchannelizer_U128::execute(cudaPipelineState& /*pipestate*/,
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
-    DEBUG("Running CUDA Upchannelizer_U128 on GPU frame {:d}", gpu_frame_id);
+    DEBUG("Running CUDA Upchannelizer_U8 on GPU frame {:d}", gpu_frame_id);
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
@@ -604,14 +604,14 @@ cudaEvent_t cudaUpchannelizer_U128::execute(cudaPipelineState& /*pipestate*/,
 
     for (std::size_t i = 0; i < info_host.at(gpu_frame_index).size(); ++i)
         if (info_host.at(gpu_frame_index)[i] != 0)
-            ERROR("cudaUpchannelizer_U128 returned 'info' value {:d} at index {:d} (zero indicates "
+            ERROR("cudaUpchannelizer_U8 returned 'info' value {:d} at index {:d} (zero indicates "
                   "no error)",
                   info_host.at(gpu_frame_index)[i], i);
 
     return record_end_event();
 }
 
-void cudaUpchannelizer_U128::finalize_frame() {
+void cudaUpchannelizer_U8::finalize_frame() {
     device.release_gpu_memory_array_metadata(G_memname, gpu_frame_id);
     device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
     device.release_gpu_memory_array_metadata(Ebar_memname, gpu_frame_id);

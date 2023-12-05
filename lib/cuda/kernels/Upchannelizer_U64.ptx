@@ -9,7 +9,7 @@
 .address_size 64
 
 	// .globl	_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE // -- Begin function _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE
-.func julia_AssertionError_9600
+.func julia_AssertionError_9615
 ()
 .noreturn
 {
@@ -23,16 +23,6 @@
 {
 	trap;
 }
-.func  (.param .b64 func_retval0) julia_power_by_squaring_9611
-(
-	.param .align 8 .b8 julia_power_by_squaring_9611_param_0[16],
-	.param .b64 julia_power_by_squaring_9611_param_1,
-	.param .b64 julia_power_by_squaring_9611_param_2
-)
-.noreturn
-{
-	trap;
-}
 .func gpu_signal_exception
 (
 	.param .align 8 .b8 gpu_signal_exception_param_0[16]
@@ -41,8 +31,18 @@
 {
 	trap;
 }
+.func  (.param .b64 func_retval0) julia_power_by_squaring_9626
+(
+	.param .align 8 .b8 julia_power_by_squaring_9626_param_0[16],
+	.param .b64 julia_power_by_squaring_9626_param_1,
+	.param .b64 julia_power_by_squaring_9626_param_2
+)
+.noreturn
+{
+	trap;
+}
 .extern .shared .align 32 .b8 shmem[];
-.global .align 1 .b8 exception2329[6] = {101, 114, 114, 111, 114, 0};
+.global .align 1 .b8 exception2333[6] = {101, 114, 114, 111, 114, 0};
 .global .align 1 .b8 exception1[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
                                         // @_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE
 .visible .entry _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE(
@@ -61,7 +61,7 @@
 {
 	.reg .pred 	%p<239>;
 	.reg .b16 	%rs<1185>;
-	.reg .b32 	%r<7828>;
+	.reg .b32 	%r<7829>;
 	.reg .f32 	%f<922>;
 	.reg .b64 	%rd<110>;
 
@@ -248,11 +248,11 @@ LBB0_24:                                // %L877
 LBB0_32:
 	mov.b32 	%r35, %f892;
 	and.b32  	%r260, %r35, 8388607;
-	or.b32  	%r7786, %r260, 1065353216;
-	mov.b32 	%f891, %r7786;
+	or.b32  	%r7787, %r260, 1065353216;
+	mov.b32 	%f891, %r7787;
 	add.s32 	%r261, %r35, -1073741824;
-	and.b32  	%r7787, %r261, -8388608;
-	setp.eq.s32 	%p68, %r7787, 0;
+	and.b32  	%r7788, %r261, -8388608;
+	setp.eq.s32 	%p68, %r7788, 0;
 	@%p68 bra 	LBB0_35;
 // %bb.33:                              // %__nv_fmaf_rn.exit4.i.i.i.preheader
 	mov.f32 	%f473, 0f3F800000;
@@ -261,8 +261,8 @@ LBB0_32:
 	// end inline asm
 LBB0_34:                                // %__nv_fmaf_rn.exit4.i.i.i
                                         // =>This Inner Loop Header: Depth=1
-	min.u32 	%r262, %r7787, 192937984;
-	add.s32 	%r263, %r262, %r7786;
+	min.u32 	%r262, %r7788, 192937984;
+	add.s32 	%r263, %r262, %r7787;
 	mov.b32 	%f474, %r263;
 	mul.f32 	%f475, %f472, %f474;
 	sub.f32 	%f476, %f474, %f475;
@@ -271,10 +271,10 @@ LBB0_34:                                // %__nv_fmaf_rn.exit4.i.i.i
 	fma.rz.f32 	%f479, %f478, %f472, %f477;
 	cvt.rzi.f32.f32 	%f480, %f479;
 	sub.f32 	%f891, %f474, %f480;
-	sub.s32 	%r7787, %r7787, %r262;
-	mov.b32 	%r7786, %f891;
-	setp.ne.s32 	%p69, %r7787, 0;
-	setp.ne.s32 	%p70, %r7786, 0;
+	sub.s32 	%r7788, %r7788, %r262;
+	mov.b32 	%r7787, %f891;
+	setp.ne.s32 	%p69, %r7788, 0;
+	setp.ne.s32 	%p70, %r7787, 0;
 	and.pred  	%p71, %p69, %p70;
 	@%p71 bra 	LBB0_34;
 LBB0_35:                                // %__internal_fmodf_slowpath_mod.exit.i.i
@@ -338,11 +338,11 @@ LBB0_38:                                // %__nv_fmodf.exit
 LBB0_46:
 	mov.b32 	%r43, %f896;
 	and.b32  	%r277, %r43, 8388607;
-	or.b32  	%r7788, %r277, 1065353216;
-	mov.b32 	%f895, %r7788;
+	or.b32  	%r7789, %r277, 1065353216;
+	mov.b32 	%f895, %r7789;
 	add.s32 	%r278, %r43, -1073741824;
-	and.b32  	%r7789, %r278, -8388608;
-	setp.eq.s32 	%p88, %r7789, 0;
+	and.b32  	%r7790, %r278, -8388608;
+	setp.eq.s32 	%p88, %r7790, 0;
 	@%p88 bra 	LBB0_49;
 // %bb.47:                              // %__nv_fmaf_rn.exit4.i.i.i1163.preheader
 	mov.f32 	%f525, 0f3F800000;
@@ -351,8 +351,8 @@ LBB0_46:
 	// end inline asm
 LBB0_48:                                // %__nv_fmaf_rn.exit4.i.i.i1163
                                         // =>This Inner Loop Header: Depth=1
-	min.u32 	%r279, %r7789, 192937984;
-	add.s32 	%r280, %r279, %r7788;
+	min.u32 	%r279, %r7790, 192937984;
+	add.s32 	%r280, %r279, %r7789;
 	mov.b32 	%f526, %r280;
 	mul.f32 	%f527, %f524, %f526;
 	sub.f32 	%f528, %f526, %f527;
@@ -361,10 +361,10 @@ LBB0_48:                                // %__nv_fmaf_rn.exit4.i.i.i1163
 	fma.rz.f32 	%f531, %f530, %f524, %f529;
 	cvt.rzi.f32.f32 	%f532, %f531;
 	sub.f32 	%f895, %f526, %f532;
-	sub.s32 	%r7789, %r7789, %r279;
-	mov.b32 	%r7788, %f895;
-	setp.ne.s32 	%p89, %r7789, 0;
-	setp.ne.s32 	%p90, %r7788, 0;
+	sub.s32 	%r7790, %r7790, %r279;
+	mov.b32 	%r7789, %f895;
+	setp.ne.s32 	%p89, %r7790, 0;
+	setp.ne.s32 	%p90, %r7789, 0;
 	and.pred  	%p91, %p89, %p90;
 	@%p91 bra 	LBB0_48;
 LBB0_49:                                // %__internal_fmodf_slowpath_mod.exit.i.i1165
@@ -427,7 +427,7 @@ LBB0_52:                                // %__nv_fmodf.exit1170
 	st.param.b64 	[param2+0], %rd49;
 	.param .b64 retval0;
 	call.uni (retval0), 
-	julia_power_by_squaring_9611, 
+	julia_power_by_squaring_9626, 
 	(
 	param0, 
 	param1, 
@@ -456,11 +456,11 @@ LBB0_52:                                // %__nv_fmodf.exit1170
 LBB0_61:
 	mov.b32 	%r55, %f900;
 	and.b32  	%r301, %r55, 8388607;
-	or.b32  	%r7790, %r301, 1065353216;
-	mov.b32 	%f899, %r7790;
+	or.b32  	%r7791, %r301, 1065353216;
+	mov.b32 	%f899, %r7791;
 	add.s32 	%r302, %r55, -1073741824;
-	and.b32  	%r7791, %r302, -8388608;
-	setp.eq.s32 	%p109, %r7791, 0;
+	and.b32  	%r7792, %r302, -8388608;
+	setp.eq.s32 	%p109, %r7792, 0;
 	@%p109 bra 	LBB0_64;
 // %bb.62:                              // %__nv_fmaf_rn.exit4.i.i.i1209.preheader
 	mov.f32 	%f578, 0f3F800000;
@@ -469,8 +469,8 @@ LBB0_61:
 	// end inline asm
 LBB0_63:                                // %__nv_fmaf_rn.exit4.i.i.i1209
                                         // =>This Inner Loop Header: Depth=1
-	min.u32 	%r303, %r7791, 192937984;
-	add.s32 	%r304, %r303, %r7790;
+	min.u32 	%r303, %r7792, 192937984;
+	add.s32 	%r304, %r303, %r7791;
 	mov.b32 	%f579, %r304;
 	mul.f32 	%f580, %f577, %f579;
 	sub.f32 	%f581, %f579, %f580;
@@ -479,10 +479,10 @@ LBB0_63:                                // %__nv_fmaf_rn.exit4.i.i.i1209
 	fma.rz.f32 	%f584, %f583, %f577, %f582;
 	cvt.rzi.f32.f32 	%f585, %f584;
 	sub.f32 	%f899, %f579, %f585;
-	sub.s32 	%r7791, %r7791, %r303;
-	mov.b32 	%r7790, %f899;
-	setp.ne.s32 	%p110, %r7791, 0;
-	setp.ne.s32 	%p111, %r7790, 0;
+	sub.s32 	%r7792, %r7792, %r303;
+	mov.b32 	%r7791, %f899;
+	setp.ne.s32 	%p110, %r7792, 0;
+	setp.ne.s32 	%p111, %r7791, 0;
 	and.pred  	%p112, %p110, %p111;
 	@%p112 bra 	LBB0_63;
 LBB0_64:                                // %__internal_fmodf_slowpath_mod.exit.i.i1211
@@ -544,11 +544,11 @@ LBB0_67:                                // %__nv_fmodf.exit1216
 LBB0_75:
 	mov.b32 	%r63, %f904;
 	and.b32  	%r319, %r63, 8388607;
-	or.b32  	%r7792, %r319, 1065353216;
-	mov.b32 	%f903, %r7792;
+	or.b32  	%r7793, %r319, 1065353216;
+	mov.b32 	%f903, %r7793;
 	add.s32 	%r320, %r63, -1073741824;
-	and.b32  	%r7793, %r320, -8388608;
-	setp.eq.s32 	%p129, %r7793, 0;
+	and.b32  	%r7794, %r320, -8388608;
+	setp.eq.s32 	%p129, %r7794, 0;
 	@%p129 bra 	LBB0_78;
 // %bb.76:                              // %__nv_fmaf_rn.exit4.i.i.i1255.preheader
 	mov.f32 	%f629, 0f3F800000;
@@ -557,8 +557,8 @@ LBB0_75:
 	// end inline asm
 LBB0_77:                                // %__nv_fmaf_rn.exit4.i.i.i1255
                                         // =>This Inner Loop Header: Depth=1
-	min.u32 	%r321, %r7793, 192937984;
-	add.s32 	%r322, %r321, %r7792;
+	min.u32 	%r321, %r7794, 192937984;
+	add.s32 	%r322, %r321, %r7793;
 	mov.b32 	%f630, %r322;
 	mul.f32 	%f631, %f628, %f630;
 	sub.f32 	%f632, %f630, %f631;
@@ -567,10 +567,10 @@ LBB0_77:                                // %__nv_fmaf_rn.exit4.i.i.i1255
 	fma.rz.f32 	%f635, %f634, %f628, %f633;
 	cvt.rzi.f32.f32 	%f636, %f635;
 	sub.f32 	%f903, %f630, %f636;
-	sub.s32 	%r7793, %r7793, %r321;
-	mov.b32 	%r7792, %f903;
-	setp.ne.s32 	%p130, %r7793, 0;
-	setp.ne.s32 	%p131, %r7792, 0;
+	sub.s32 	%r7794, %r7794, %r321;
+	mov.b32 	%r7793, %f903;
+	setp.ne.s32 	%p130, %r7794, 0;
+	setp.ne.s32 	%p131, %r7793, 0;
 	and.pred  	%p132, %p130, %p131;
 	@%p132 bra 	LBB0_77;
 LBB0_78:                                // %__internal_fmodf_slowpath_mod.exit.i.i1257
@@ -629,7 +629,7 @@ LBB0_81:                                // %__nv_fmodf.exit1262
 	st.param.b64 	[param2+0], %rd49;
 	.param .b64 retval0;
 	call.uni (retval0), 
-	julia_power_by_squaring_9611, 
+	julia_power_by_squaring_9626, 
 	(
 	param0, 
 	param1, 
@@ -651,7 +651,7 @@ LBB0_81:                                // %__nv_fmodf.exit1262
 	st.param.b64 	[param2+0], %rd49;
 	.param .b64 retval0;
 	call.uni (retval0), 
-	julia_power_by_squaring_9611, 
+	julia_power_by_squaring_9626, 
 	(
 	param0, 
 	param1, 
@@ -671,11 +671,11 @@ LBB0_81:                                // %__nv_fmodf.exit1262
 LBB0_128:
 	mov.b32 	%r143, %f916;
 	and.b32  	%r347, %r143, 8388607;
-	or.b32  	%r7824, %r347, 1065353216;
-	mov.b32 	%f915, %r7824;
+	or.b32  	%r7825, %r347, 1065353216;
+	mov.b32 	%f915, %r7825;
 	add.s32 	%r348, %r143, -1073741824;
-	and.b32  	%r7825, %r348, -8388608;
-	setp.eq.s32 	%p150, %r7825, 0;
+	and.b32  	%r7826, %r348, -8388608;
+	setp.eq.s32 	%p150, %r7826, 0;
 	@%p150 bra 	LBB0_131;
 // %bb.129:                             // %__nv_fmaf_rn.exit4.i.i.i1393.preheader
 	mov.f32 	%f682, 0f3F800000;
@@ -684,8 +684,8 @@ LBB0_128:
 	// end inline asm
 LBB0_130:                               // %__nv_fmaf_rn.exit4.i.i.i1393
                                         // =>This Inner Loop Header: Depth=1
-	min.u32 	%r349, %r7825, 192937984;
-	add.s32 	%r350, %r349, %r7824;
+	min.u32 	%r349, %r7826, 192937984;
+	add.s32 	%r350, %r349, %r7825;
 	mov.b32 	%f683, %r350;
 	mul.f32 	%f684, %f681, %f683;
 	sub.f32 	%f685, %f683, %f684;
@@ -694,10 +694,10 @@ LBB0_130:                               // %__nv_fmaf_rn.exit4.i.i.i1393
 	fma.rz.f32 	%f688, %f687, %f681, %f686;
 	cvt.rzi.f32.f32 	%f689, %f688;
 	sub.f32 	%f915, %f683, %f689;
-	sub.s32 	%r7825, %r7825, %r349;
-	mov.b32 	%r7824, %f915;
-	setp.ne.s32 	%p151, %r7825, 0;
-	setp.ne.s32 	%p152, %r7824, 0;
+	sub.s32 	%r7826, %r7826, %r349;
+	mov.b32 	%r7825, %f915;
+	setp.ne.s32 	%p151, %r7826, 0;
+	setp.ne.s32 	%p152, %r7825, 0;
 	and.pred  	%p153, %p151, %p152;
 	@%p153 bra 	LBB0_130;
 LBB0_131:                               // %__internal_fmodf_slowpath_mod.exit.i.i1395
@@ -756,7 +756,7 @@ LBB0_134:                               // %__nv_fmodf.exit1400
 	st.param.b64 	[param2+0], %rd49;
 	.param .b64 retval0;
 	call.uni (retval0), 
-	julia_power_by_squaring_9611, 
+	julia_power_by_squaring_9626, 
 	(
 	param0, 
 	param1, 
@@ -776,11 +776,11 @@ LBB0_134:                               // %__nv_fmodf.exit1400
 LBB0_142:
 	mov.b32 	%r151, %f920;
 	and.b32  	%r363, %r151, 8388607;
-	or.b32  	%r7826, %r363, 1065353216;
-	mov.b32 	%f919, %r7826;
+	or.b32  	%r7827, %r363, 1065353216;
+	mov.b32 	%f919, %r7827;
 	add.s32 	%r364, %r151, -1073741824;
-	and.b32  	%r7827, %r364, -8388608;
-	setp.eq.s32 	%p170, %r7827, 0;
+	and.b32  	%r7828, %r364, -8388608;
+	setp.eq.s32 	%p170, %r7828, 0;
 	@%p170 bra 	LBB0_145;
 // %bb.143:                             // %__nv_fmaf_rn.exit4.i.i.i1439.preheader
 	mov.f32 	%f733, 0f3F800000;
@@ -789,8 +789,8 @@ LBB0_142:
 	// end inline asm
 LBB0_144:                               // %__nv_fmaf_rn.exit4.i.i.i1439
                                         // =>This Inner Loop Header: Depth=1
-	min.u32 	%r365, %r7827, 192937984;
-	add.s32 	%r366, %r365, %r7826;
+	min.u32 	%r365, %r7828, 192937984;
+	add.s32 	%r366, %r365, %r7827;
 	mov.b32 	%f734, %r366;
 	mul.f32 	%f735, %f732, %f734;
 	sub.f32 	%f736, %f734, %f735;
@@ -799,10 +799,10 @@ LBB0_144:                               // %__nv_fmaf_rn.exit4.i.i.i1439
 	fma.rz.f32 	%f739, %f738, %f732, %f737;
 	cvt.rzi.f32.f32 	%f740, %f739;
 	sub.f32 	%f919, %f734, %f740;
-	sub.s32 	%r7827, %r7827, %r365;
-	mov.b32 	%r7826, %f919;
-	setp.ne.s32 	%p171, %r7827, 0;
-	setp.ne.s32 	%p172, %r7826, 0;
+	sub.s32 	%r7828, %r7828, %r365;
+	mov.b32 	%r7827, %f919;
+	setp.ne.s32 	%p171, %r7828, 0;
+	setp.ne.s32 	%p172, %r7827, 0;
 	and.pred  	%p173, %p171, %p172;
 	@%p173 bra 	LBB0_144;
 LBB0_145:                               // %__internal_fmodf_slowpath_mod.exit.i.i1441
@@ -861,7 +861,7 @@ LBB0_148:                               // %__nv_fmodf.exit1446
 	st.param.b64 	[param2+0], %rd49;
 	.param .b64 retval0;
 	call.uni (retval0), 
-	julia_power_by_squaring_9611, 
+	julia_power_by_squaring_9626, 
 	(
 	param0, 
 	param1, 
@@ -872,7 +872,7 @@ LBB0_148:                               // %__nv_fmodf.exit1446
 	setp.eq.s64 	%p183, %rd70, 64;
 	@%p183 bra 	LBB0_87;
 	bra.uni 	LBB0_149;
-LBB0_87:                                // %L1195
+LBB0_87:                                // %L1196
 	shr.u32 	%r16, %r3, 1;
 	shr.u32 	%r22, %r3, 3;
 	and.b32  	%r385, %r22, 2;
@@ -892,11 +892,11 @@ LBB0_87:                                // %L1195
 LBB0_95:
 	mov.b32 	%r77, %f908;
 	and.b32  	%r388, %r77, 8388607;
-	or.b32  	%r7794, %r388, 1065353216;
-	mov.b32 	%f907, %r7794;
+	or.b32  	%r7795, %r388, 1065353216;
+	mov.b32 	%f907, %r7795;
 	add.s32 	%r389, %r77, -1073741824;
-	and.b32  	%r7795, %r389, -8388608;
-	setp.eq.s32 	%p191, %r7795, 0;
+	and.b32  	%r7796, %r389, -8388608;
+	setp.eq.s32 	%p191, %r7796, 0;
 	@%p191 bra 	LBB0_98;
 // %bb.96:                              // %__nv_fmaf_rn.exit4.i.i.i1301.preheader
 	mov.f32 	%f787, 0f3F800000;
@@ -905,8 +905,8 @@ LBB0_95:
 	// end inline asm
 LBB0_97:                                // %__nv_fmaf_rn.exit4.i.i.i1301
                                         // =>This Inner Loop Header: Depth=1
-	min.u32 	%r390, %r7795, 192937984;
-	add.s32 	%r391, %r390, %r7794;
+	min.u32 	%r390, %r7796, 192937984;
+	add.s32 	%r391, %r390, %r7795;
 	mov.b32 	%f788, %r391;
 	mul.f32 	%f789, %f786, %f788;
 	sub.f32 	%f790, %f788, %f789;
@@ -915,10 +915,10 @@ LBB0_97:                                // %__nv_fmaf_rn.exit4.i.i.i1301
 	fma.rz.f32 	%f793, %f792, %f786, %f791;
 	cvt.rzi.f32.f32 	%f794, %f793;
 	sub.f32 	%f907, %f788, %f794;
-	sub.s32 	%r7795, %r7795, %r390;
-	mov.b32 	%r7794, %f907;
-	setp.ne.s32 	%p192, %r7795, 0;
-	setp.ne.s32 	%p193, %r7794, 0;
+	sub.s32 	%r7796, %r7796, %r390;
+	mov.b32 	%r7795, %f907;
+	setp.ne.s32 	%p192, %r7796, 0;
+	setp.ne.s32 	%p193, %r7795, 0;
 	and.pred  	%p194, %p192, %p193;
 	@%p194 bra 	LBB0_97;
 LBB0_98:                                // %__internal_fmodf_slowpath_mod.exit.i.i1303
@@ -980,11 +980,11 @@ LBB0_101:                               // %__nv_fmodf.exit1308
 LBB0_109:
 	mov.b32 	%r85, %f912;
 	and.b32  	%r406, %r85, 8388607;
-	or.b32  	%r7796, %r406, 1065353216;
-	mov.b32 	%f911, %r7796;
+	or.b32  	%r7797, %r406, 1065353216;
+	mov.b32 	%f911, %r7797;
 	add.s32 	%r407, %r85, -1073741824;
-	and.b32  	%r7797, %r407, -8388608;
-	setp.eq.s32 	%p211, %r7797, 0;
+	and.b32  	%r7798, %r407, -8388608;
+	setp.eq.s32 	%p211, %r7798, 0;
 	@%p211 bra 	LBB0_112;
 // %bb.110:                             // %__nv_fmaf_rn.exit4.i.i.i1347.preheader
 	mov.f32 	%f839, 0f3F800000;
@@ -993,8 +993,8 @@ LBB0_109:
 	// end inline asm
 LBB0_111:                               // %__nv_fmaf_rn.exit4.i.i.i1347
                                         // =>This Inner Loop Header: Depth=1
-	min.u32 	%r408, %r7797, 192937984;
-	add.s32 	%r409, %r408, %r7796;
+	min.u32 	%r408, %r7798, 192937984;
+	add.s32 	%r409, %r408, %r7797;
 	mov.b32 	%f840, %r409;
 	mul.f32 	%f841, %f838, %f840;
 	sub.f32 	%f842, %f840, %f841;
@@ -1003,10 +1003,10 @@ LBB0_111:                               // %__nv_fmaf_rn.exit4.i.i.i1347
 	fma.rz.f32 	%f845, %f844, %f838, %f843;
 	cvt.rzi.f32.f32 	%f846, %f845;
 	sub.f32 	%f911, %f840, %f846;
-	sub.s32 	%r7797, %r7797, %r408;
-	mov.b32 	%r7796, %f911;
-	setp.ne.s32 	%p212, %r7797, 0;
-	setp.ne.s32 	%p213, %r7796, 0;
+	sub.s32 	%r7798, %r7798, %r408;
+	mov.b32 	%r7797, %f911;
+	setp.ne.s32 	%p212, %r7798, 0;
+	setp.ne.s32 	%p213, %r7797, 0;
 	and.pred  	%p214, %p212, %p213;
 	@%p214 bra 	LBB0_111;
 LBB0_112:                               // %__internal_fmodf_slowpath_mod.exit.i.i1349
@@ -1055,9 +1055,9 @@ LBB0_113:                               // %__internal_fmodf_kernel.exit.i1353
 	mov.b32 	%f912, %r413;
 LBB0_115:                               // %__nv_fmodf.exit1354
 	setp.le.s32 	%p224, %r6, %r5;
-	mov.u32 	%r7785, 0;
+	mov.u32 	%r7786, 0;
 	@%p224 bra 	LBB0_122;
-// %bb.116:                             // %L1363.lr.ph
+// %bb.116:                             // %L1366.lr.ph
 	mov.f32 	%f189, 0f43808000;
 	div.approx.f32 	%f190, %f188, %f189;
 	div.approx.f32 	%f224, %f222, %f189;
@@ -1951,33 +1951,33 @@ LBB0_115:                               // %__nv_fmodf.exit1354
 	mov.u16 	%rs1072, 21504;
 	mov.u16 	%rs1184, 18432;
 	mov.u16 	%rs1142, -14592;
-	mov.u32 	%r7798, %r7785;
-	mov.u32 	%r7823, %r7785;
-	mov.u32 	%r7822, %r7785;
-	mov.u32 	%r7821, %r7785;
-	mov.u32 	%r7820, %r7785;
-	mov.u32 	%r7819, %r7785;
-	mov.u32 	%r7818, %r7785;
-	mov.u32 	%r7817, %r7785;
-	mov.u32 	%r7816, %r7785;
-	mov.u32 	%r7815, %r7785;
-	mov.u32 	%r7814, %r7785;
-	mov.u32 	%r7813, %r7785;
-	mov.u32 	%r7812, %r7785;
+	mov.u32 	%r7799, %r7786;
+	mov.u32 	%r7824, %r7786;
+	mov.u32 	%r7823, %r7786;
+	mov.u32 	%r7822, %r7786;
+	mov.u32 	%r7821, %r7786;
+	mov.u32 	%r7820, %r7786;
+	mov.u32 	%r7819, %r7786;
+	mov.u32 	%r7818, %r7786;
+	mov.u32 	%r7817, %r7786;
+	mov.u32 	%r7816, %r7786;
+	mov.u32 	%r7815, %r7786;
+	mov.u32 	%r7814, %r7786;
+	mov.u32 	%r7813, %r7786;
 	bra.uni 	LBB0_117;
-LBB0_121:                               // %L29522
+LBB0_121:                               // %L29540
                                         //   in Loop: Header=BB0_117 Depth=1
-	setp.ne.s32 	%p236, %r7798, 130816;
-	add.s32 	%r7798, %r7798, 256;
-	add.s32 	%r7782, %r7798, %r5;
-	setp.gt.s32 	%p237, %r6, %r7782;
+	setp.ne.s32 	%p236, %r7799, 130816;
+	add.s32 	%r7799, %r7799, 256;
+	add.s32 	%r7783, %r7799, %r5;
+	setp.gt.s32 	%p237, %r6, %r7783;
 	and.pred  	%p238, %p236, %p237;
 	@%p238 bra 	LBB0_117;
 	bra.uni 	LBB0_122;
-LBB0_117:                               // %L1363
+LBB0_117:                               // %L1366
                                         // =>This Loop Header: Depth=1
                                         //     Child Loop BB0_118 Depth 2
-	or.b32  	%r532, %r96, %r7798;
+	or.b32  	%r532, %r96, %r7799;
 	shl.b32 	%r533, %r532, 12;
 	add.s32 	%r534, %r99, %r533;
 	shr.s32 	%r535, %r534, 31;
@@ -2022,9 +2022,9 @@ LBB0_117:                               // %L1363
 	st.shared.u32 	[%rd7], %r523;
 	st.shared.u32 	[%rd8], %r527;
 	bar.sync 	0;
-	mov.u32 	%r7811, 256;
+	mov.u32 	%r7812, 256;
 	mov.u64 	%rd109, %rd75;
-LBB0_118:                               // %L4497
+LBB0_118:                               // %L4500
                                         //   Parent Loop BB0_117 Depth=1
                                         // =>  This Inner Loop Header: Depth=2
 	add.s64 	%rd87, %rd109, %rd19;
@@ -2363,7 +2363,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r832, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r820, %r7812, -2004318072;
+	xor.b32  	%r820, %r7813, -2004318072;
 	// begin inline asm
 	lop3.b32 %r818, %r555, %r820, %r821, 202;
 	// end inline asm
@@ -2419,7 +2419,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r878, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r866, %r7813, -2004318072;
+	xor.b32  	%r866, %r7814, -2004318072;
 	// begin inline asm
 	lop3.b32 %r864, %r555, %r866, %r867, 202;
 	// end inline asm
@@ -2475,7 +2475,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r924, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r912, %r7814, -2004318072;
+	xor.b32  	%r912, %r7815, -2004318072;
 	// begin inline asm
 	lop3.b32 %r910, %r555, %r912, %r913, 202;
 	// end inline asm
@@ -2531,7 +2531,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r970, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r958, %r7815, -2004318072;
+	xor.b32  	%r958, %r7816, -2004318072;
 	// begin inline asm
 	lop3.b32 %r956, %r555, %r958, %r959, 202;
 	// end inline asm
@@ -2635,7 +2635,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r1080, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r1068, %r7816, -2004318072;
+	xor.b32  	%r1068, %r7817, -2004318072;
 	// begin inline asm
 	lop3.b32 %r1066, %r555, %r1068, %r1069, 202;
 	// end inline asm
@@ -2691,7 +2691,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r1126, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r1114, %r7817, -2004318072;
+	xor.b32  	%r1114, %r7818, -2004318072;
 	// begin inline asm
 	lop3.b32 %r1112, %r555, %r1114, %r1115, 202;
 	// end inline asm
@@ -2747,7 +2747,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r1172, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r1160, %r7818, -2004318072;
+	xor.b32  	%r1160, %r7819, -2004318072;
 	// begin inline asm
 	lop3.b32 %r1158, %r555, %r1160, %r1161, 202;
 	// end inline asm
@@ -2803,7 +2803,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r1218, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r1206, %r7819, -2004318072;
+	xor.b32  	%r1206, %r7820, -2004318072;
 	// begin inline asm
 	lop3.b32 %r1204, %r555, %r1206, %r1207, 202;
 	// end inline asm
@@ -2955,7 +2955,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r1360, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r1348, %r7820, -2004318072;
+	xor.b32  	%r1348, %r7821, -2004318072;
 	// begin inline asm
 	lop3.b32 %r1346, %r555, %r1348, %r1349, 202;
 	// end inline asm
@@ -3011,7 +3011,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r1406, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r1394, %r7821, -2004318072;
+	xor.b32  	%r1394, %r7822, -2004318072;
 	// begin inline asm
 	lop3.b32 %r1392, %r555, %r1394, %r1395, 202;
 	// end inline asm
@@ -3067,7 +3067,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r1452, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r1440, %r7822, -2004318072;
+	xor.b32  	%r1440, %r7823, -2004318072;
 	// begin inline asm
 	lop3.b32 %r1438, %r555, %r1440, %r1441, 202;
 	// end inline asm
@@ -3123,7 +3123,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r1498, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r1486, %r7823, -2004318072;
+	xor.b32  	%r1486, %r7824, -2004318072;
 	// begin inline asm
 	lop3.b32 %r1484, %r555, %r1486, %r1487, 202;
 	// end inline asm
@@ -3961,17 +3961,17 @@ LBB0_118:                               // %L4497
 	st.shared.u32 	[%rd93], %r7742;
 	add.s64 	%rd94, %rd109, %rd12;
 	st.shared.u32 	[%rd94], %r7743;
-	ld.shared.u32 	%r7812, [%rd87];
-	ld.shared.u32 	%r7813, [%rd88];
-	ld.shared.u32 	%r7814, [%rd89];
-	ld.shared.u32 	%r7815, [%rd90];
+	ld.shared.u32 	%r7813, [%rd87];
+	ld.shared.u32 	%r7814, [%rd88];
+	ld.shared.u32 	%r7815, [%rd89];
+	ld.shared.u32 	%r7816, [%rd90];
 	// begin inline asm
 	mov.b32 %r2353, {%rs1176, %rs1176};
 	// end inline asm
 	// begin inline asm
 	mov.b32 %r2364, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r2352, %r7812, -2004318072;
+	xor.b32  	%r2352, %r7813, -2004318072;
 	// begin inline asm
 	lop3.b32 %r2350, %r555, %r2352, %r2353, 202;
 	// end inline asm
@@ -4027,7 +4027,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r2410, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r2398, %r7813, -2004318072;
+	xor.b32  	%r2398, %r7814, -2004318072;
 	// begin inline asm
 	lop3.b32 %r2396, %r555, %r2398, %r2399, 202;
 	// end inline asm
@@ -4083,7 +4083,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r2456, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r2444, %r7814, -2004318072;
+	xor.b32  	%r2444, %r7815, -2004318072;
 	// begin inline asm
 	lop3.b32 %r2442, %r555, %r2444, %r2445, 202;
 	// end inline asm
@@ -4139,7 +4139,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r2502, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r2490, %r7815, -2004318072;
+	xor.b32  	%r2490, %r7816, -2004318072;
 	// begin inline asm
 	lop3.b32 %r2488, %r555, %r2490, %r2491, 202;
 	// end inline asm
@@ -5857,17 +5857,17 @@ LBB0_118:                               // %L4497
 	st.shared.u32 	[%rd92], %r7745;
 	st.shared.u32 	[%rd93], %r7746;
 	st.shared.u32 	[%rd94], %r7747;
-	ld.shared.u32 	%r7816, [%rd87];
-	ld.shared.u32 	%r7817, [%rd88];
-	ld.shared.u32 	%r7818, [%rd89];
-	ld.shared.u32 	%r7819, [%rd90];
+	ld.shared.u32 	%r7817, [%rd87];
+	ld.shared.u32 	%r7818, [%rd88];
+	ld.shared.u32 	%r7819, [%rd89];
+	ld.shared.u32 	%r7820, [%rd90];
 	// begin inline asm
 	mov.b32 %r4149, {%rs1176, %rs1176};
 	// end inline asm
 	// begin inline asm
 	mov.b32 %r4160, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r4148, %r7816, -2004318072;
+	xor.b32  	%r4148, %r7817, -2004318072;
 	// begin inline asm
 	lop3.b32 %r4146, %r555, %r4148, %r4149, 202;
 	// end inline asm
@@ -5923,7 +5923,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r4206, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r4194, %r7817, -2004318072;
+	xor.b32  	%r4194, %r7818, -2004318072;
 	// begin inline asm
 	lop3.b32 %r4192, %r555, %r4194, %r4195, 202;
 	// end inline asm
@@ -5979,7 +5979,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r4252, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r4240, %r7818, -2004318072;
+	xor.b32  	%r4240, %r7819, -2004318072;
 	// begin inline asm
 	lop3.b32 %r4238, %r555, %r4240, %r4241, 202;
 	// end inline asm
@@ -6035,7 +6035,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r4298, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r4286, %r7819, -2004318072;
+	xor.b32  	%r4286, %r7820, -2004318072;
 	// begin inline asm
 	lop3.b32 %r4284, %r555, %r4286, %r4287, 202;
 	// end inline asm
@@ -7753,17 +7753,17 @@ LBB0_118:                               // %L4497
 	st.shared.u32 	[%rd92], %r7749;
 	st.shared.u32 	[%rd93], %r7750;
 	st.shared.u32 	[%rd94], %r7751;
-	ld.shared.u32 	%r7820, [%rd87];
-	ld.shared.u32 	%r7821, [%rd88];
-	ld.shared.u32 	%r7822, [%rd89];
-	ld.shared.u32 	%r7823, [%rd90];
+	ld.shared.u32 	%r7821, [%rd87];
+	ld.shared.u32 	%r7822, [%rd88];
+	ld.shared.u32 	%r7823, [%rd89];
+	ld.shared.u32 	%r7824, [%rd90];
 	// begin inline asm
 	mov.b32 %r5945, {%rs1176, %rs1176};
 	// end inline asm
 	// begin inline asm
 	mov.b32 %r5956, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r5944, %r7820, -2004318072;
+	xor.b32  	%r5944, %r7821, -2004318072;
 	// begin inline asm
 	lop3.b32 %r5942, %r555, %r5944, %r5945, 202;
 	// end inline asm
@@ -7819,7 +7819,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r6002, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r5990, %r7821, -2004318072;
+	xor.b32  	%r5990, %r7822, -2004318072;
 	// begin inline asm
 	lop3.b32 %r5988, %r555, %r5990, %r5991, 202;
 	// end inline asm
@@ -7875,7 +7875,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r6048, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r6036, %r7822, -2004318072;
+	xor.b32  	%r6036, %r7823, -2004318072;
 	// begin inline asm
 	lop3.b32 %r6034, %r555, %r6036, %r6037, 202;
 	// end inline asm
@@ -7931,7 +7931,7 @@ LBB0_118:                               // %L4497
 	// begin inline asm
 	mov.b32 %r6094, {%rs1072, %rs1072};
 	// end inline asm
-	xor.b32  	%r6082, %r7823, -2004318072;
+	xor.b32  	%r6082, %r7824, -2004318072;
 	// begin inline asm
 	lop3.b32 %r6080, %r555, %r6082, %r6083, 202;
 	// end inline asm
@@ -9649,12 +9649,12 @@ LBB0_118:                               // %L4497
 	st.shared.u32 	[%rd92], %r7753;
 	st.shared.u32 	[%rd93], %r7754;
 	st.shared.u32 	[%rd94], %r7755;
-	add.s32 	%r7811, %r7811, -64;
+	add.s32 	%r7812, %r7812, -64;
 	add.s64 	%rd109, %rd109, 8324;
-	setp.eq.s32 	%p229, %r7811, 0;
+	setp.eq.s32 	%p229, %r7812, 0;
 	@%p229 bra 	LBB0_119;
 	bra.uni 	LBB0_118;
-LBB0_119:                               // %guard_pass10531
+LBB0_119:                               // %guard_pass10545
                                         //   in Loop: Header=BB0_117 Depth=1
 	bar.sync 	0;
 	ld.shared.u32 	%r7761, [%rd9];
@@ -9677,19 +9677,20 @@ LBB0_119:                               // %guard_pass10531
 	shfl.sync.bfly.b32	%r164, %r7772, 8, 31, -1;
 	selp.b32 	%r7773, %r7768, %r7764, %p225;
 	shfl.sync.bfly.b32	%r165, %r7773, 8, 31, -1;
-	setp.eq.s32 	%p231, %r7798, 0;
+	and.b32  	%r7774, %r7799, 256;
+	setp.eq.s32 	%p231, %r7774, 0;
 	@%p231 bra 	LBB0_121;
-// %bb.120:                             // %L29303
+// %bb.120:                             // %L29321
                                         //   in Loop: Header=BB0_117 Depth=1
-	selp.b32 	%r7774, %r165, %r7768, %p225;
-	selp.b32 	%r7775, %r7764, %r165, %p225;
-	selp.b32 	%r7776, %r164, %r7760, %p225;
-	selp.b32 	%r7777, %r7756, %r164, %p225;
-	shl.b32 	%r7778, %r7798, 12;
-	or.b32  	%r7779, %r7778, %r101;
-	or.b32  	%r7780, %r7779, %r97;
-	or.b32  	%r7781, %r7780, %r98;
-	cvt.s64.s32 	%rd95, %r7781;
+	selp.b32 	%r7775, %r165, %r7768, %p225;
+	selp.b32 	%r7776, %r7764, %r165, %p225;
+	selp.b32 	%r7777, %r164, %r7760, %p225;
+	selp.b32 	%r7778, %r7756, %r164, %p225;
+	shl.b32 	%r7779, %r7799, 12;
+	or.b32  	%r7780, %r7779, %r101;
+	or.b32  	%r7781, %r7780, %r97;
+	or.b32  	%r7782, %r7781, %r98;
+	cvt.s64.s32 	%rd95, %r7782;
 	add.s64 	%rd96, %rd95, %rd11;
 	shr.u64 	%rd97, %rd96, 35;
 	add.s64 	%rd98, %rd96, %rd97;
@@ -9704,15 +9705,15 @@ LBB0_119:                               // %guard_pass10531
 	add.s64 	%rd104, %rd103, %rd96;
 	shl.b64 	%rd105, %rd104, 2;
 	add.s64 	%rd106, %rd3, %rd105;
-	st.global.v4.u32 	[%rd106], {%r7777, %r7775, %r7776, %r7774};
+	st.global.v4.u32 	[%rd106], {%r7778, %r7776, %r7777, %r7775};
 	bra.uni 	LBB0_121;
-LBB0_122:                               // %L29533
-	st.global.u32 	[%rd4], %r7785;
+LBB0_122:                               // %L29551
+	st.global.u32 	[%rd4], %r7786;
 	ret;
 LBB0_7:                                 // %L247
-	mov.u32 	%r7784, 2;
-	st.global.u32 	[%rd4], %r7784;
-	mov.u64 	%rd107, exception2329;
+	mov.u32 	%r7785, 2;
+	st.global.u32 	[%rd4], %r7785;
+	mov.u64 	%rd107, exception2333;
 	cvta.global.u64 	%rd108, %rd107;
 	{ // callseq 16, 0
 	.reg .b32 temp_param_reg;
@@ -9769,11 +9770,11 @@ LBB0_1:                                 // %L8
 	// begin inline asm
 	exit;
 	// end inline asm
-LBB0_124:                               // %L29633
+LBB0_124:                               // %L29651
 	{ // callseq 3, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_9600, 
+	julia_AssertionError_9615, 
 	(
 	);
 	} // callseq 3
@@ -9805,11 +9806,11 @@ LBB0_124:                               // %L29633
 	// begin inline asm
 	exit;
 	// end inline asm
-LBB0_123:                               // %L29630
+LBB0_123:                               // %L29648
 	{ // callseq 7, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_9600, 
+	julia_AssertionError_9615, 
 	(
 	);
 	} // callseq 7
@@ -9841,11 +9842,11 @@ LBB0_123:                               // %L29630
 	// begin inline asm
 	exit;
 	// end inline asm
-LBB0_149:                               // %L29627
+LBB0_149:                               // %L29645
 	{ // callseq 13, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_9600, 
+	julia_AssertionError_9615, 
 	(
 	);
 	} // callseq 13

@@ -182,7 +182,7 @@ gpu:
           out_buf: host_upchan_voltage
 
 write_data:
-    base_dir: /tmp
+    base_dir: /tmp/f_engine_upchan
     exit_after_n_frames: 10
     exit_with_n_writers: 3
     write_voltage:

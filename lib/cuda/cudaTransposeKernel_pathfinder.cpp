@@ -34,7 +34,6 @@ public:
                                    const int inst);
     virtual ~cudaTransposeKernel_pathfinder();
 
-    // int wait_on_precondition(int gpu_frame_id) override;
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
     void finalize_frame() override;
@@ -162,26 +161,27 @@ cudaTransposeKernel_pathfinder::cudaTransposeKernel_pathfinder(Config& config,
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx("TransposeKernel_pathfinder.ptx", {kernel_symbol}, opts);
+        device.build_ptx(kernel_file_name, {kernel_symbol}, opts);
     }
 }
 
 cudaTransposeKernel_pathfinder::~cudaTransposeKernel_pathfinder() {}
 
 cudaEvent_t
-cudaTransposeKernel_pathfinder::execute(cudaPipelineState& pipestate,
+cudaTransposeKernel_pathfinder::execute(cudaPipelineState& /*pipestate*/,
                                         const std::vector<cudaEvent_t>& /*pre_events*/) {
+    const int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
+
     pre_execute();
 
-    void* const Ein_memory =
-        device.get_gpu_memory_array(Ein_memname, pipestate.gpu_frame_id, Ein_length);
-    void* const E_memory = device.get_gpu_memory_array(E_memname, pipestate.gpu_frame_id, E_length);
-    info_host[pipestate.gpu_frame_id].resize(info_length);
+    void* const Ein_memory = device.get_gpu_memory_array(Ein_memname, gpu_frame_id, Ein_length);
+    void* const E_memory = device.get_gpu_memory_array(E_memname, gpu_frame_id, E_length);
+    info_host.at(gpu_frame_index).resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
     /// Ein is an input buffer: check metadata
     const metadataContainer* const Ein_mc =
-        device.get_gpu_memory_array_metadata(Ein_memname, pipestate.gpu_frame_id);
+        device.get_gpu_memory_array_metadata(Ein_memname, gpu_frame_id);
     assert(Ein_mc && metadata_container_is_chord(Ein_mc));
     const chordMetadata* const Ein_meta = get_chord_metadata(Ein_mc);
     INFO("input Ein array: {:s} {:s}", Ein_meta->get_type_string(),
@@ -196,8 +196,8 @@ cudaTransposeKernel_pathfinder::execute(cudaPipelineState& pipestate,
     }
     //
     /// E is an output buffer: set metadata
-    metadataContainer* const E_mc = device.create_gpu_memory_array_metadata(
-        E_memname, pipestate.gpu_frame_id, Ein_mc->parent_pool);
+    metadataContainer* const E_mc =
+        device.create_gpu_memory_array_metadata(E_memname, gpu_frame_id, Ein_mc->parent_pool);
     chordMetadata* const E_meta = get_chord_metadata(E_mc);
     chord_metadata_copy(E_meta, E_meta);
     E_meta->type = E_type;
@@ -237,7 +237,7 @@ cudaTransposeKernel_pathfinder::execute(cudaPipelineState& pipestate,
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
-    DEBUG("Running CUDA TransposeKernel_pathfinder on GPU frame {:d}", pipestate.gpu_frame_id);
+    DEBUG("Running CUDA TransposeKernel_pathfinder on GPU frame {:d}", gpu_frame_id);
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
@@ -250,31 +250,30 @@ cudaTransposeKernel_pathfinder::execute(cudaPipelineState& pipestate,
 
     // Copy results back to host memory
     // TODO: Skip this for performance
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host[pipestate.gpu_frame_id].data(), info_memory,
-                                     info_length, cudaMemcpyDeviceToHost,
-                                     device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.at(gpu_frame_index).data(), info_memory, info_length,
+                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     // Check error codes
     // TODO: Skip this for performance
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
     const std::int32_t error_code =
-        *std::max_element((const std::int32_t*)&*info_host[pipestate.gpu_frame_id].begin(),
-                          (const std::int32_t*)&*info_host[pipestate.gpu_frame_id].end());
+        *std::max_element((const std::int32_t*)&*info_host.at(gpu_frame_index).begin(),
+                          (const std::int32_t*)&*info_host.at(gpu_frame_index).end());
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    device.release_gpu_memory_array_metadata(Ein_memname, gpu_frame_id);
-    device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
+    for (std::size_t i = 0; i < info_host.at(gpu_frame_index).size(); ++i)
+        if (info_host.at(gpu_frame_index)[i] != 0)
+            ERROR("cudaTransposeKernel_pathfinder returned 'info' value {:d} at index {:d} (zero "
+                  "indicates no error)",
+                  info_host.at(gpu_frame_index)[i], i);
 
     return record_end_event();
 }
 
 void cudaTransposeKernel_pathfinder::finalize_frame() {
-    for (std::size_t i = 0; i < info_host[gpu_frame_id].size(); ++i)
-        if (info_host[gpu_frame_id][i] != 0)
-            ERROR("cudaTransposeKernel_pathfinder returned 'info' value {:d} at index {:d} (zero "
-                  "indicates no error)",
-                  info_host[gpu_frame_id][i], i);
+    device.release_gpu_memory_array_metadata(Ein_memname, gpu_frame_id);
+    device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
 
     cudaCommand::finalize_frame();
 }

@@ -1,5 +1,5 @@
 @fastmath @inbounds(
-    begin #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:1679 =#
+    begin #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:1830 =#
         info = 1
         if true
             info_memory[((((IndexSpaces.assume_inrange(
@@ -139,11 +139,11 @@
         X_cplx1 = Xim
         (Γ¹0, Γ¹1) = let
             k = Ubits
-            @assert U == 2^k                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:674 =#
+            @assert U == 2^k                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:692 =#
             m = 3
             n = k - m
-            @assert 0 ≤ m                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:677 =#
-            @assert 0 ≤ n                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:678 =#
+            @assert 0 ≤ m                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:695 =#
+            @assert 0 ≤ n                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:696 =#
             thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32)
             thread0 = (thread ÷ (1i32)) % (2i32)
             thread1 = (thread ÷ (2i32)) % (2i32)
@@ -173,18 +173,21 @@
         Γ¹_cplx1_cplx_in1 = Γ¹im_cplx_in1
         (Γ²0, Γ²1) = let
             k = Ubits
-            @assert U == 2^k                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:727 =#
+            @assert U == 2^k                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:747 =#
             m = 3
             n = k - m
-            @assert 0 ≤ m                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:730 =#
-            @assert 0 ≤ n                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:731 =#
+            @assert 0 ≤ m                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:750 =#
+            @assert 0 ≤ n                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:751 =#
             thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32)
             thread0 = (thread ÷ (1i32)) % (2i32)
             thread1 = (thread ÷ (2i32)) % (2i32)
             thread2 = (thread ÷ (4i32)) % (2i32)
             thread3 = (thread ÷ (8i32)) % (2i32)
             thread4 = (thread ÷ (16i32)) % (2i32)
-            if U == 16
+            if U == 8
+                timelo0 = 0i32
+                timelo1 = timelo0
+            elseif U == 16
                 timelo0 = 0i32
                 timelo1 = timelo0 + 1i32
             elseif U == 32
@@ -197,7 +200,7 @@
                 timelo0 = (4i32) * thread1 + (2i32) * thread0
                 timelo1 = timelo0 + 4i32
             else
-                @assert false                        #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:751 =#
+                @assert false                        #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:774 =#
             end
             freqlo = (1i32) * thread2 + (2i32) * thread3 + (4i32) * thread4
             (Γ²0, Γ²1) = (
@@ -212,18 +215,21 @@
         Γ²_cplx1 = Γ²im
         (Γ³0, Γ³1) = let
             k = Ubits
-            @assert U == 2^k                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:794 =#
+            @assert U == 2^k                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:820 =#
             m = 3
             n = k - m
-            @assert 0 ≤ m                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:797 =#
-            @assert 0 ≤ n                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:798 =#
+            @assert 0 ≤ m                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:823 =#
+            @assert 0 ≤ n                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:824 =#
             thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32)
             thread0 = (thread ÷ (1i32)) % (2i32)
             thread1 = (thread ÷ (2i32)) % (2i32)
             thread2 = (thread ÷ (4i32)) % (2i32)
             thread3 = (thread ÷ (8i32)) % (2i32)
             thread4 = (thread ÷ (16i32)) % (2i32)
-            if U == 16
+            if U == 8
+                timelo0 = 0i32
+                timelo1 = timelo0
+            elseif U == 16
                 timelo0 = 0i32
                 timelo1 = timelo0 + 1i32
             elseif U == 32
@@ -236,9 +242,13 @@
                 timelo0 = (4i32) * thread1 + (2i32) * thread0
                 timelo1 = timelo0 + 4i32
             else
-                @assert false                        #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:818 =#
+                @assert false                        #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:847 =#
             end
-            if U == 16
+            if U == 8
+                freqhi = 0i32
+                dish_in = (1i32) * thread1 + (2i32) * thread0 + (4i32) * thread2
+                dish = (1i32) * thread2 + (2i32) * thread4 + (4i32) * thread3
+            elseif U == 16
                 freqhi = (1i32) * thread2
                 dish_in = (1i32) * thread1 + (2i32) * thread0
                 dish = (1i32) * thread4 + (2i32) * thread3
@@ -255,7 +265,7 @@
                 dish_in = 0i32
                 dish = 0i32
             else
-                @assert false                        #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:837 =#
+                @assert false                        #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:870 =#
             end
             delta = dish == dish_in
             (Γ³0, Γ³1) = (
@@ -7310,8 +7320,10 @@
             Ē3_dish8 = Ē2hi_dish0
             Ē3_dish4 = Ē2lo_dish4
             Ē3_dish12 = Ē2hi_dish4
-            if t_outer + 0 + (64i32) * ((IndexSpaces.cuda_warpidx() ÷ (16i32)) % (4i32)) ≥
-               192
+            if (
+                (0 + ((IndexSpaces.cuda_warpidx() ÷ 16) % (2i32)) * 64) +
+                ((IndexSpaces.cuda_warpidx() ÷ 32) % (2i32)) * 128
+            ) + ((t_outer ÷ 256) % (2i32)) * 256 ≥ 192
                 IndexSpaces.unsafe_store4_global!(
                     Ē_memory,
                     let

@@ -58,7 +58,6 @@ public:
                            const int inst);
     virtual ~cudaUpchannelizer_U128();
 
-    // int wait_on_precondition(int gpu_frame_id) override;
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
     void finalize_frame() override;
@@ -293,7 +292,7 @@ cudaUpchannelizer_U128::cudaUpchannelizer_U128(Config& config, const std::string
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx("Upchannelizer_U128.ptx", {kernel_symbol}, opts);
+        device.build_ptx(kernel_file_name, {kernel_symbol}, opts);
     }
 
     // // Create a ring buffer. Create it only once.
@@ -307,39 +306,39 @@ cudaUpchannelizer_U128::cudaUpchannelizer_U128(Config& config, const std::string
 
 cudaUpchannelizer_U128::~cudaUpchannelizer_U128() {}
 
-cudaEvent_t cudaUpchannelizer_U128::execute(cudaPipelineState& pipestate,
+cudaEvent_t cudaUpchannelizer_U128::execute(cudaPipelineState& /*pipestate*/,
                                             const std::vector<cudaEvent_t>& /*pre_events*/) {
+    const int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
+
     pre_execute();
 
-    Tmin_host[pipestate.gpu_frame_id].resize(Tmin_length);
+    Tmin_host.at(gpu_frame_index).resize(Tmin_length);
     void* const Tmin_memory = device.get_gpu_memory(Tmin_memname, Tmin_length);
-    Tmax_host[pipestate.gpu_frame_id].resize(Tmax_length);
+    Tmax_host.at(gpu_frame_index).resize(Tmax_length);
     void* const Tmax_memory = device.get_gpu_memory(Tmax_memname, Tmax_length);
-    Tbarmin_host[pipestate.gpu_frame_id].resize(Tbarmin_length);
+    Tbarmin_host.at(gpu_frame_index).resize(Tbarmin_length);
     void* const Tbarmin_memory = device.get_gpu_memory(Tbarmin_memname, Tbarmin_length);
-    Tbarmax_host[pipestate.gpu_frame_id].resize(Tbarmax_length);
+    Tbarmax_host.at(gpu_frame_index).resize(Tbarmax_length);
     void* const Tbarmax_memory = device.get_gpu_memory(Tbarmax_memname, Tbarmax_length);
     void* const G_memory =
         args::G == args::E || args::G == args::Ebar
-            ? device.get_gpu_memory_array(G_memname, pipestate.gpu_frame_id,
-                                          G_length / _gpu_buffer_depth)
-            : device.get_gpu_memory_array(G_memname, pipestate.gpu_frame_id, G_length);
+            ? device.get_gpu_memory_array(G_memname, gpu_frame_id, G_length / _gpu_buffer_depth)
+            : device.get_gpu_memory_array(G_memname, gpu_frame_id, G_length);
     void* const E_memory =
         args::E == args::E || args::E == args::Ebar
-            ? device.get_gpu_memory_array(E_memname, pipestate.gpu_frame_id,
-                                          E_length / _gpu_buffer_depth)
-            : device.get_gpu_memory_array(E_memname, pipestate.gpu_frame_id, E_length);
+            ? device.get_gpu_memory_array(E_memname, gpu_frame_id, E_length / _gpu_buffer_depth)
+            : device.get_gpu_memory_array(E_memname, gpu_frame_id, E_length);
     void* const Ebar_memory =
         args::Ebar == args::E || args::Ebar == args::Ebar
-            ? device.get_gpu_memory_array(Ebar_memname, pipestate.gpu_frame_id,
+            ? device.get_gpu_memory_array(Ebar_memname, gpu_frame_id,
                                           Ebar_length / _gpu_buffer_depth)
-            : device.get_gpu_memory_array(Ebar_memname, pipestate.gpu_frame_id, Ebar_length);
-    info_host[pipestate.gpu_frame_id].resize(info_length);
+            : device.get_gpu_memory_array(Ebar_memname, gpu_frame_id, Ebar_length);
+    info_host.at(gpu_frame_index).resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
     /// G is an input buffer: check metadata
     const metadataContainer* const G_mc =
-        device.get_gpu_memory_array_metadata(G_memname, pipestate.gpu_frame_id);
+        device.get_gpu_memory_array_metadata(G_memname, gpu_frame_id);
     assert(G_mc && metadata_container_is_chord(G_mc));
     const chordMetadata* const G_meta = get_chord_metadata(G_mc);
     INFO("input G array: {:s} {:s}", G_meta->get_type_string(), G_meta->get_dimensions_string());
@@ -357,7 +356,7 @@ cudaEvent_t cudaUpchannelizer_U128::execute(cudaPipelineState& pipestate,
     //
     /// E is an input buffer: check metadata
     const metadataContainer* const E_mc =
-        device.get_gpu_memory_array_metadata(E_memname, pipestate.gpu_frame_id);
+        device.get_gpu_memory_array_metadata(E_memname, gpu_frame_id);
     assert(E_mc && metadata_container_is_chord(E_mc));
     const chordMetadata* const E_meta = get_chord_metadata(E_mc);
     INFO("input E array: {:s} {:s}", E_meta->get_type_string(), E_meta->get_dimensions_string());
@@ -374,8 +373,8 @@ cudaEvent_t cudaUpchannelizer_U128::execute(cudaPipelineState& pipestate,
     }
     //
     /// Ebar is an output buffer: set metadata
-    metadataContainer* const Ebar_mc = device.create_gpu_memory_array_metadata(
-        Ebar_memname, pipestate.gpu_frame_id, E_mc->parent_pool);
+    metadataContainer* const Ebar_mc =
+        device.create_gpu_memory_array_metadata(Ebar_memname, gpu_frame_id, E_mc->parent_pool);
     chordMetadata* const Ebar_meta = get_chord_metadata(Ebar_mc);
     chord_metadata_copy(Ebar_meta, E_meta);
     Ebar_meta->type = Ebar_type;
@@ -424,7 +423,7 @@ cudaEvent_t cudaUpchannelizer_U128::execute(cudaPipelineState& pipestate,
     // the input we provide must be a multiple of this number.
     INFO("cuda_granularity_number_of_timesamples: {}", cuda_granularity_number_of_timesamples);
 
-    INFO("gpu_frame_id: {}", pipestate.gpu_frame_id);
+    INFO("gpu_frame_id: {}", gpu_frame_id);
 
     // Beginning of the input ringbuffer
     void* const E_memory0 = device.get_gpu_memory_array(E_memname, 0, E_length / _gpu_buffer_depth);
@@ -443,11 +442,11 @@ cudaEvent_t cudaUpchannelizer_U128::execute(cudaPipelineState& pipestate,
 
     // Current nominal index into input ringuffer
     const std::int64_t nominal_Tmin =
-        pipestate.gpu_frame_id * cuda_max_number_of_timesamples / _gpu_buffer_depth;
+        gpu_frame_id * cuda_max_number_of_timesamples / _gpu_buffer_depth;
     INFO("nominal Tmin: {}", nominal_Tmin);
 
     // Current nominal index into output ringuffer
-    const std::int64_t nominal_Tbarmin = pipestate.gpu_frame_id * cuda_max_number_of_timesamples
+    const std::int64_t nominal_Tbarmin = gpu_frame_id * cuda_max_number_of_timesamples
                                          / cuda_upchannelization_factor / _gpu_buffer_depth;
     INFO("nominal Tbarmin: {}", nominal_Tbarmin);
 
@@ -525,10 +524,10 @@ cudaEvent_t cudaUpchannelizer_U128::execute(cudaPipelineState& pipestate,
 
     // Pass time spans to kernel
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
-    *(std::int32_t*)Tmin_host[pipestate.gpu_frame_id].data() = Tmin_wrapped;
-    *(std::int32_t*)Tmax_host[pipestate.gpu_frame_id].data() = Tmax_wrapped;
-    *(std::int32_t*)Tbarmin_host[pipestate.gpu_frame_id].data() = Tbarmin_wrapped;
-    *(std::int32_t*)Tbarmax_host[pipestate.gpu_frame_id].data() = Tbarmax_wrapped;
+    *(std::int32_t*)Tmin_host.at(gpu_frame_index).data() = Tmin_wrapped;
+    *(std::int32_t*)Tmax_host.at(gpu_frame_index).data() = Tmax_wrapped;
+    *(std::int32_t*)Tbarmin_host.at(gpu_frame_index).data() = Tbarmin_wrapped;
+    *(std::int32_t*)Tbarmax_host.at(gpu_frame_index).data() = Tbarmax_wrapped;
 
     // Update metadata
     Ebar_meta->dim[0] = Tbarlength - unprovided;
@@ -549,16 +548,14 @@ cudaEvent_t cudaUpchannelizer_U128::execute(cudaPipelineState& pipestate,
 
     // Copy inputs to device memory
     // TODO: Pass scalar kernel arguments more efficiently, i.e. without a separate `cudaMemcpy`
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tmin_memory, Tmin_host[pipestate.gpu_frame_id].data(),
-                                     Tmin_length, cudaMemcpyHostToDevice,
-                                     device.getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tmax_memory, Tmax_host[pipestate.gpu_frame_id].data(),
-                                     Tmax_length, cudaMemcpyHostToDevice,
-                                     device.getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmin_memory, Tbarmin_host[pipestate.gpu_frame_id].data(),
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tmin_memory, Tmin_host.at(gpu_frame_index).data(), Tmin_length,
+                                     cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tmax_memory, Tmax_host.at(gpu_frame_index).data(), Tmax_length,
+                                     cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmin_memory, Tbarmin_host.at(gpu_frame_index).data(),
                                      Tbarmin_length, cudaMemcpyHostToDevice,
                                      device.getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmax_memory, Tbarmax_host[pipestate.gpu_frame_id].data(),
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmax_memory, Tbarmax_host.at(gpu_frame_index).data(),
                                      Tbarmax_length, cudaMemcpyHostToDevice,
                                      device.getStream(cuda_stream_id)));
 
@@ -580,7 +577,7 @@ cudaEvent_t cudaUpchannelizer_U128::execute(cudaPipelineState& pipestate,
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
-    DEBUG("Running CUDA Upchannelizer_U128 on GPU frame {:d}", pipestate.gpu_frame_id);
+    DEBUG("Running CUDA Upchannelizer_U128 on GPU frame {:d}", gpu_frame_id);
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
@@ -593,32 +590,31 @@ cudaEvent_t cudaUpchannelizer_U128::execute(cudaPipelineState& pipestate,
 
     // Copy results back to host memory
     // TODO: Skip this for performance
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host[pipestate.gpu_frame_id].data(), info_memory,
-                                     info_length, cudaMemcpyDeviceToHost,
-                                     device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.at(gpu_frame_index).data(), info_memory, info_length,
+                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     // Check error codes
     // TODO: Skip this for performance
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
     const std::int32_t error_code =
-        *std::max_element((const std::int32_t*)&*info_host[pipestate.gpu_frame_id].begin(),
-                          (const std::int32_t*)&*info_host[pipestate.gpu_frame_id].end());
+        *std::max_element((const std::int32_t*)&*info_host.at(gpu_frame_index).begin(),
+                          (const std::int32_t*)&*info_host.at(gpu_frame_index).end());
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    device.release_gpu_memory_array_metadata(G_memname, gpu_frame_id);
-    device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
-    device.release_gpu_memory_array_metadata(Ebar_memname, gpu_frame_id);
+    for (std::size_t i = 0; i < info_host.at(gpu_frame_index).size(); ++i)
+        if (info_host.at(gpu_frame_index)[i] != 0)
+            ERROR("cudaUpchannelizer_U128 returned 'info' value {:d} at index {:d} (zero indicates "
+                  "no error)",
+                  info_host.at(gpu_frame_index)[i], i);
 
     return record_end_event();
 }
 
 void cudaUpchannelizer_U128::finalize_frame() {
-    for (std::size_t i = 0; i < info_host[gpu_frame_id].size(); ++i)
-        if (info_host[gpu_frame_id][i] != 0)
-            ERROR("cudaUpchannelizer_U128 returned 'info' value {:d} at index {:d} (zero indicates "
-                  "no error)",
-                  info_host[gpu_frame_id][i], i);
+    device.release_gpu_memory_array_metadata(G_memname, gpu_frame_id);
+    device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
+    device.release_gpu_memory_array_metadata(Ebar_memname, gpu_frame_id);
 
     cudaCommand::finalize_frame();
 }

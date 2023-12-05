@@ -196,7 +196,7 @@ gpu:
           out_buf: host_bb_beams
 
 write_data:
-    base_dir: /tmp
+    base_dir: /tmp/f_engine_chord_bb
     exit_after_n_frames: 10
     exit_with_n_writers: 4
     write_voltage:
