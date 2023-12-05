@@ -110,6 +110,8 @@ updatable_config:
   frb_gain:
     kotekan_update_endpoint: json
     frb_gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_FRB
+  UT1_UTC_offset:
+    UT1_UTC_val: 0.00
   tracking_gain:
     0:
       kotekan_update_endpoint: json
@@ -1017,6 +1019,7 @@ read_gain:
   updatable_config:
     gain_frb: /updatable_config/frb_gain
     gain_tracking: /updatable_config/tracking_gain
+    UT1_UTC: /updatable_config/UT1_UTC_offset
   read_gain0:
     kotekan_stage: ReadGain
     in_buf: network_buffer_0
