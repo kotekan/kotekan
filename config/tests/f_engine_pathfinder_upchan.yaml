@@ -31,7 +31,7 @@ num_dish_locations_N: 24
 num_dish_locations: num_dish_locations_M * num_dish_locations_N
 dish_separation_x: 6.3          # [m] east-west
 dish_separation_y: 8.5          # [m] north-south
-num_dishes: 512
+num_dishes: 64
 
 # 24^2 = 576 dish locations. Dishes 0..511 are real dishes, dishes
 # 512..575 are dummy dishes where the E-field is set to zero
@@ -68,14 +68,14 @@ num_samples_per_frame: 2048
 
 # F-Engine simulator: FT (PFB)
 num_taps: 4
-num_frequencies: 16             # how many frequencies to keep
+num_frequencies: 128            # how many frequencies to keep
 num_times: 32768
 
 # Baseband beamformer setup
-bb_num_dishes_M: 32
-bb_num_dishes_N: 16
-bb_num_beams_P: 12
-bb_num_beams_Q: 8
+bb_num_dishes_M: 8
+bb_num_dishes_N: 8
+bb_num_beams_P: 4
+bb_num_beams_Q: 4
 bb_beam_separation_x: 0.015        # east-west
 bb_beam_separation_y: 0.015        # north-south
 bb_num_beams: bb_num_beams_P * bb_num_beams_Q
@@ -172,7 +172,7 @@ gpu:
           in_buf: host_upchan_gain
           gpu_mem: upchan_gain
         - name: cudaSyncInput
-        - name: cudaUpchannelizer_chord_U16
+        - name: cudaUpchannelizer_pathfinder_U16
           gpu_mem_input_voltage: voltage
           gpu_mem_gain: upchan_gain
           gpu_mem_output_voltage: upchan_voltage
@@ -182,7 +182,7 @@ gpu:
           out_buf: host_upchan_voltage
 
 write_data:
-    base_dir: /tmp/f_engine_chord_upchan
+    base_dir: /tmp/f_engine_pathfinder_upchan
     exit_after_n_frames: 10
     exit_with_n_writers: 3
     write_voltage:
