@@ -1759,7 +1759,7 @@ function fix_ptx_kernel()
     cxx = Mustache.render(
         cxx,
         Dict(
-            "kernel_name" => "FRBBeamformer",
+            "kernel_name" => "FRBBeamformer_$setup",
             "kernel_design_parameters" => [
                 Dict("type" => "int", "name" => "cuda_beam_layout_M", "value" => "$(2*M)"),
                 Dict("type" => "int", "name" => "cuda_beam_layout_N", "value" => "$(2*N)"),

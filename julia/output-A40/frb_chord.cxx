@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief CUDA FRBBeamformer kernel
+ * @brief CUDA FRBBeamformer_chord kernel
  *
  * This file has been generated automatically.
  * Do not modify this C++ file, your changes will be lost.
@@ -24,14 +24,15 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 
 /**
- * @class cudaFRBBeamformer
- * @brief cudaCommand for FRBBeamformer
+ * @class cudaFRBBeamformer_chord
+ * @brief cudaCommand for FRBBeamformer_chord
  */
-class cudaFRBBeamformer : public cudaCommand {
+class cudaFRBBeamformer_chord : public cudaCommand {
 public:
-    cudaFRBBeamformer(Config& config, const std::string& unique_name, bufferContainer& host_buffers,
-                      cudaDeviceInterface& device, const int inst);
-    virtual ~cudaFRBBeamformer();
+    cudaFRBBeamformer_chord(Config& config, const std::string& unique_name,
+                            bufferContainer& host_buffers, cudaDeviceInterface& device,
+                            const int inst);
+    virtual ~cudaFRBBeamformer_chord();
 
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
@@ -169,13 +170,13 @@ private:
     std::vector<std::vector<std::uint8_t>> info_host;
 };
 
-REGISTER_CUDA_COMMAND(cudaFRBBeamformer);
+REGISTER_CUDA_COMMAND(cudaFRBBeamformer_chord);
 
-cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_name,
-                                     bufferContainer& host_buffers, cudaDeviceInterface& device,
-                                     const int inst) :
+cudaFRBBeamformer_chord::cudaFRBBeamformer_chord(Config& config, const std::string& unique_name,
+                                                 bufferContainer& host_buffers,
+                                                 cudaDeviceInterface& device, const int inst) :
     cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state,
-                "FRBBeamformer", "FRBBeamformer.ptx"),
+                "FRBBeamformer_chord", "FRBBeamformer_chord.ptx"),
     S_memname(config.get<std::string>(unique_name, "gpu_mem_dishlayout")),
     W_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
     E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
@@ -203,10 +204,10 @@ cudaFRBBeamformer::cudaFRBBeamformer(Config& config, const std::string& unique_n
     }
 }
 
-cudaFRBBeamformer::~cudaFRBBeamformer() {}
+cudaFRBBeamformer_chord::~cudaFRBBeamformer_chord() {}
 
-cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& /*pipestate*/,
-                                       const std::vector<cudaEvent_t>& /*pre_events*/) {
+cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
+                                             const std::vector<cudaEvent_t>& /*pre_events*/) {
     const int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
 
     pre_execute();
@@ -304,7 +305,7 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& /*pipestate*/,
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
-    DEBUG("Running CUDA FRBBeamformer on GPU frame {:d}", gpu_frame_id);
+    DEBUG("Running CUDA FRBBeamformer_chord on GPU frame {:d}", gpu_frame_id);
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
@@ -331,14 +332,14 @@ cudaEvent_t cudaFRBBeamformer::execute(cudaPipelineState& /*pipestate*/,
 
     for (std::size_t i = 0; i < info_host.at(gpu_frame_index).size(); ++i)
         if (info_host.at(gpu_frame_index)[i] != 0)
-            ERROR("cudaFRBBeamformer returned 'info' value {:d} at index {:d} (zero indicates no "
-                  "error)",
+            ERROR("cudaFRBBeamformer_chord returned 'info' value {:d} at index {:d} (zero "
+                  "indicates no error)",
                   info_host.at(gpu_frame_index)[i], i);
 
     return record_end_event();
 }
 
-void cudaFRBBeamformer::finalize_frame() {
+void cudaFRBBeamformer_chord::finalize_frame() {
     device.release_gpu_memory_array_metadata(S_memname, gpu_frame_id);
     device.release_gpu_memory_array_metadata(W_memname, gpu_frame_id);
     device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);

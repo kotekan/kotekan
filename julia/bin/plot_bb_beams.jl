@@ -3,7 +3,7 @@ using CairoMakie
 using HDF5
 using SixelTerm
 
-dir = "/tmp"
+dir = "/tmp/f_engine_pathfinder_bb"
 prefix = "blue_"
 iter = "0000000"
 

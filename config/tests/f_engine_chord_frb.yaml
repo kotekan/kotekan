@@ -176,7 +176,7 @@ gpu:
           in_buf: host_frb_phase
           gpu_mem: frb_phase
         - name: cudaSyncInput
-        - name: cudaFRBBeamformer
+        - name: cudaFRBBeamformer_chord
           gpu_mem_voltage: voltage
           gpu_mem_dishlayout: dish_locations
           gpu_mem_phase: frb_phase
@@ -187,19 +187,19 @@ gpu:
           out_buf: host_frb_intensity
 
 write_data:
-  base_dir: /tmp
+  base_dir: /tmp/f_engine_chord_frb
   exit_after_n_frames: 1
   exit_with_n_writers: 3
   write_voltage:
-    kotekan_stage: hdf5FileWrite
+    kotekan_stage: asdfFileWrite
     in_buf: host_voltage_buffer
     file_name: upchan_voltage
   write_frb_phase:
-    kotekan_stage: hdf5FileWrite
+    kotekan_stage: asdfFileWrite
     in_buf: host_frb_phase_buffer
     file_name: frb_phase
   write_frb_intensity:
-    kotekan_stage: hdf5FileWrite
+    kotekan_stage: asdfFileWrite
     in_buf: host_frb_intensity_buffer
     file_name: frb_intensity
 ...

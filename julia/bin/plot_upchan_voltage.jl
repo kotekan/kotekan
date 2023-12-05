@@ -3,7 +3,7 @@ using CUDASIMDTypes
 using CairoMakie
 using SixelTerm
 
-dir = "/tmp"
+dir = "/tmp/f_engine_chord_upchan"
 prefix = "blue_"
 iter = "00000000"
 
@@ -16,9 +16,9 @@ U = 16
 
 quantity_E = "voltage"
 file_E = ASDF2.load_file("$(dir)/$(prefix)$(quantity_E).$iter.asdf")
-dataset_E = file_E.metadata[parse(Int, iter)] # ["host_$(quantity_E)_buffer"]
+dataset_E = file_E.metadata[parse(Int, iter)]
 @assert dataset_E["dim_names"] == ["T", "F", "P", "D"]
-array_E = dataset_E["buffer"][]
+array_E = dataset_E["host_$(quantity_E)_buffer"][]
 array_E::AbstractArray{UInt8,4}
 array_E = reinterpret(Int4x2, array_E)
 array_E::AbstractArray{Int4x2,4}
@@ -26,9 +26,9 @@ ndishs, npolrs, nfreqs, ntimes = size(array_E)
 
 quantity_G = "upchan_gain"
 file_G = ASDF2.load_file("$(dir)/$(prefix)$(quantity_G).$iter.asdf")
-dataset_G = file_G.metadata[parse(Int, iter)] # ["host_$(quantity_G)_buffer"]
+dataset_G = file_G.metadata[parse(Int, iter)]
 @assert dataset_G["dim_names"] == ["Fbar"]
-array_G = dataset_G["buffer"][]
+array_G = dataset_G["host_$(quantity_G)_buffer"][]
 # array_G::AbstractArray{UInt16,1}
 # array_G = reinterpret(Float16, array_G)
 array_G::AbstractArray{Float16,1}
@@ -38,9 +38,9 @@ ngains, = size(array_G)
 
 quantity_Ebar = "upchan_voltage"
 file_Ebar = ASDF2.load_file("$(dir)/$(prefix)$(quantity_Ebar).$iter.asdf")
-dataset_Ebar = file_Ebar.metadata[parse(Int, iter)]   # ["host_$(quantity_Ebar)_buffer"]
+dataset_Ebar = file_Ebar.metadata[parse(Int, iter)]
 @assert dataset_Ebar["dim_names"] == ["Tbar", "Fbar", "P", "D"]
-array_Ebar = dataset_Ebar["buffer"][]
+array_Ebar = dataset_Ebar["host_$(quantity_Ebar)_buffer"][]
 array_Ebar::AbstractArray{UInt8,4}
 array_Ebar = reinterpret(Int4x2, array_Ebar)
 array_Ebar::AbstractArray{Int4x2,4}
