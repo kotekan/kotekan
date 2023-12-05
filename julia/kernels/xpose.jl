@@ -93,9 +93,11 @@ function expand_indices(indices::AbstractVector{<:Index})
     return new_indices
 end
 
-function match_indices(physics_indices::AbstractVector{<:Index{Tag1}},
-                       machine_indices::AbstractVector{<:Index{Tag2}},
-                       dict::Dict{Index{Tag1},Index{Tag2}}=Dict{Index{Tag1},Index{Tag2}}()) where {Tag1,Tag2}
+function match_indices(
+    physics_indices::AbstractVector{<:Index{Tag1}},
+    machine_indices::AbstractVector{<:Index{Tag2}},
+    dict::Dict{Index{Tag1},Index{Tag2}}=Dict{Index{Tag1},Index{Tag2}}(),
+) where {Tag1,Tag2}
     physics_indices = expand_indices(physics_indices)
     machine_indices = expand_indices(machine_indices)
     @assert length(physics_indices) <= length(machine_indices)
@@ -107,80 +109,91 @@ function match_indices(physics_indices::AbstractVector{<:Index{Tag1}},
 end
 
 const layout_Ein_memory = let
-    physics_indices = Index{Physics}[IntValue(:intvalue, 1, 4),
-                                     Cplx(:cplx, 1, C),
-                                     Dish(:dish, 1, Dshort),
-                                     Time(:time, 1, Tshort),
-                                     Dish(:dish, Dshort, idiv(D, Dshort)),
-                                     Polr(:polr, 1, P),
-                                     Freq(:freq, 1, F),
-                                     Time(:time, Tshort, idiv(T, Tshort))]
-    machine_indices = Index{Machine}[SIMD(:simd, 1, num_simd_bits),
-                                     Memory(:memory, 1, 2^55)]
+    physics_indices = Index{Physics}[
+        IntValue(:intvalue, 1, 4),
+        Cplx(:cplx, 1, C),
+        Dish(:dish, 1, Dshort),
+        Time(:time, 1, Tshort),
+        Dish(:dish, Dshort, idiv(D, Dshort)),
+        Polr(:polr, 1, P),
+        Freq(:freq, 1, F),
+        Time(:time, Tshort, idiv(T, Tshort)),
+    ]
+    machine_indices = Index{Machine}[SIMD(:simd, 1, num_simd_bits), Memory(:memory, 1, 2^55)]
     match_indices(physics_indices, machine_indices)
 end
 
 const layout_Eout_memory = let
-    physics_indices = Index{Physics}[IntValue(:intvalue, 1, 4),
-                                     Cplx(:cplx, 1, C),
-                                     Dish(:dish, 1, D),
-                                     Polr(:polr, 1, P),
-                                     Freq(:freq, 1, F),
-                                     Time(:time, 1, T)]
-    machine_indices = Index{Machine}[SIMD(:simd, 1, num_simd_bits),
-                                     Memory(:memory, 1, 2^55)]
+    physics_indices = Index{Physics}[
+        IntValue(:intvalue, 1, 4), Cplx(:cplx, 1, C), Dish(:dish, 1, D), Polr(:polr, 1, P), Freq(:freq, 1, F), Time(:time, 1, T)
+    ]
+    machine_indices = Index{Machine}[SIMD(:simd, 1, num_simd_bits), Memory(:memory, 1, 2^55)]
     match_indices(physics_indices, machine_indices)
 end
 
 const layout_Ein_registers = let
-    physics_indices = Index{Physics}[IntValue(:intvalue, 1, 4),
-                                     Cplx(:cplx, 1, C),
-                                     Dish(:dish, 1, Dshort),
-                                     Time(:time, 1, Tshort),
-                                     Dish(:dish, Dshort, idiv(D, Dshort)),
-                                     Time(:time, Tshort, idiv(idiv(idiv(T, Wt), Lt), Tshort))]
-    machine_indices = Index{Machine}[SIMD(:simd, 1, num_simd_bits),
-                                     Register(:register, 1, 4),
-                                     Thread(:thread, 2, idiv(num_threads, 2)),
-                                     Thread(:thread, 1, 2),
-                                     Register(:register, 4, Tshort)]
-    dict = Dict{Index{Physics},Index{Machine}}(Polr(:polr, 1, P) => Warp(:warp, 1, Wp),
-                                               Time(:Time, idiv(idiv(T, Wt), Lt), Lt) => Loop(:loop, 1, Lt),
-                                               Time(:Time, idiv(T, Wt), Wt) => Warp(:warp, Wp, Wt),
-                                               Freq(:freq, 1, F) => Block(:block, 1, B))
+    physics_indices = Index{Physics}[
+        IntValue(:intvalue, 1, 4),
+        Cplx(:cplx, 1, C),
+        Dish(:dish, 1, Dshort),
+        Time(:time, 1, Tshort),
+        Dish(:dish, Dshort, idiv(D, Dshort)),
+        Time(:time, Tshort, idiv(idiv(idiv(T, Wt), Lt), Tshort)),
+    ]
+    machine_indices = Index{Machine}[
+        SIMD(:simd, 1, num_simd_bits),
+        Register(:register, 1, 4),
+        Thread(:thread, 2, idiv(num_threads, 2)),
+        Thread(:thread, 1, 2),
+        Register(:register, 4, Tshort),
+    ]
+    dict = Dict{Index{Physics},Index{Machine}}(
+        Polr(:polr, 1, P) => Warp(:warp, 1, Wp),
+        Time(:Time, idiv(idiv(T, Wt), Lt), Lt) => Loop(:loop, 1, Lt),
+        Time(:Time, idiv(T, Wt), Wt) => Warp(:warp, Wp, Wt),
+        Freq(:freq, 1, F) => Block(:block, 1, B),
+    )
     match_indices(physics_indices, machine_indices, dict)
 end
 
 const layout_Eout_registers = let
-    physics_indices = Index{Physics}[IntValue(:intvalue, 1, 4),
-                                     Cplx(:cplx, 1, C),
-                                     Dish(:dish, 1, D),
-                                     Time(:time, 1, idiv(idiv(T, Wt), Lt))]
-    machine_indices = Index{Machine}[SIMD(:simd, 1, num_simd_bits),
-                                     Register(:register, 1, 4),
-                                     Thread(:thread, 1, num_threads),
-                                     Register(:register, 4, Tshort)]
-    dict = Dict{Index{Physics},Index{Machine}}(Polr(:polr, 1, P) => Warp(:warp, 1, Wp),
-                                               Time(:Time, idiv(idiv(T, Wt), Lt), Lt) => Loop(:loop, 1, Lt),
-                                               Time(:Time, idiv(T, Wt), Wt) => Warp(:warp, Wp, Wt),
-                                               Freq(:freq, 1, F) => Block(:block, 1, B))
+    physics_indices = Index{Physics}[
+        IntValue(:intvalue, 1, 4), Cplx(:cplx, 1, C), Dish(:dish, 1, D), Time(:time, 1, idiv(idiv(T, Wt), Lt))
+    ]
+    machine_indices = Index{Machine}[
+        SIMD(:simd, 1, num_simd_bits),
+        Register(:register, 1, 4),
+        Thread(:thread, 1, num_threads),
+        Register(:register, 4, Tshort),
+    ]
+    dict = Dict{Index{Physics},Index{Machine}}(
+        Polr(:polr, 1, P) => Warp(:warp, 1, Wp),
+        Time(:Time, idiv(idiv(T, Wt), Lt), Lt) => Loop(:loop, 1, Lt),
+        Time(:Time, idiv(T, Wt), Wt) => Warp(:warp, Wp, Wt),
+        Freq(:freq, 1, F) => Block(:block, 1, B),
+    )
     match_indices(physics_indices, machine_indices, dict)
 end
 
 const layout_info_memory = let
-    physics_indices = Index{Physics}[IntValue(:intvalue, 1, 32),
-                                     Index{Physics,ThreadTag}(:thread, 1, num_threads),
-                                     Index{Physics,WarpTag}(:warp, 1, num_warps),
-                                     Index{Physics,BlockTag}(:block, 1, num_blocks)]
-    machine_indices = Index{Machine}[SIMD(:simd, 1, 32),
-                                     Memory(:memory, 1, 2^55)]
+    physics_indices = Index{Physics}[
+        IntValue(:intvalue, 1, 32),
+        Index{Physics,ThreadTag}(:thread, 1, num_threads),
+        Index{Physics,WarpTag}(:warp, 1, num_warps),
+        Index{Physics,BlockTag}(:block, 1, num_blocks),
+    ]
+    machine_indices = Index{Machine}[SIMD(:simd, 1, 32), Memory(:memory, 1, 2^55)]
     match_indices(physics_indices, machine_indices)
 end
 
-const layout_info_registers = Layout(Dict(IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32),
-                                          Index{Physics,ThreadTag}(:thread, 1, num_threads) => Thread(:thread, 1, num_threads),
-                                          Index{Physics,WarpTag}(:warp, 1, num_warps) => Warp(:warp, 1, num_warps),
-                                          Index{Physics,BlockTag}(:block, 1, num_blocks) => Block(:block, 1, num_blocks)))
+const layout_info_registers = Layout(
+    Dict(
+        IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32),
+        Index{Physics,ThreadTag}(:thread, 1, num_threads) => Thread(:thread, 1, num_threads),
+        Index{Physics,WarpTag}(:warp, 1, num_warps) => Warp(:warp, 1, num_warps),
+        Index{Physics,BlockTag}(:block, 1, num_blocks) => Block(:block, 1, num_blocks),
+    ),
+)
 
 function make_xpose_kernel()
     # Prepare code generator
@@ -259,12 +272,14 @@ function make_xpose_kernel()
     store!(emitter, :info_memory => layout_info_memory, :info)
 
     # Emit code
-    stmts = clean_code(quote
-                           @fastmath @inbounds begin
-                               $(emitter.init_statements...)
-                               $(emitter.statements...)
-                           end
-                       end)
+    stmts = clean_code(
+        quote
+            @fastmath @inbounds begin
+                $(emitter.init_statements...)
+                $(emitter.statements...)
+            end
+        end,
+    )
 
     return stmts
 end
@@ -300,12 +315,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     shmem_bytes = kernel_setup.shmem_bytes
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 99 * 1024 # NVIDIA A10/A40 have 99 kB shared memory
-    kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm xpose_kernel(CUDA.zeros(Int4x8,
-                                                                                                                                 0),
-                                                                                                                      CUDA.zeros(Int4x8,
-                                                                                                                                 0),
-                                                                                                                      CUDA.zeros(Int32,
-                                                                                                                                 0))
+    kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm xpose_kernel(
+        CUDA.zeros(Int4x8, 0), CUDA.zeros(Int4x8, 0), CUDA.zeros(Int32, 0)
+    )
     attributes(kernel.fun)[CUDA.CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES] = shmem_bytes
 
     if compile_only
@@ -320,104 +332,117 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
         end
         kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
         open("output-$card/xpose_$setup.yaml", "w") do fh
-            return print(fh,
-                         """
-                 --- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
-                 kernel-description:
-                   name: "xpose"
-                   description: "transpose kernel"
-                   design-parameters:
-                     inner-number-of-dishes: $Dshort
-                     inner-number-of-timesamples: $Tshort
-                     number-of-complex-components: $C
-                     number-of-dishes: $D
-                     number-of-frequencies: $F
-                     number-of-polarizations: $P
-                     number-of-timesamples: $T
-                   compile-parameters:
-                     minthreads: $(num_threads * num_warps)
-                     blocks_per_sm: $num_blocks_per_sm
-                   call-parameters:
-                     threads: [$num_threads, $num_warps]
-                     blocks: [$num_blocks]
-                     shmem_bytes: $shmem_bytes
-                   kernel-symbol: "$kernel_symbol"
-                   kernel-arguments:
-                     - name: "Ein"
-                       intent: in
-                       type: Int4
-                       indices: [C, Dshort, Tshort, D, P, F, T]
-                       shape: [$C, $Dshort, $Tshort, $(idiv(D, Dshort)), $P, $F, $(idiv(T, Tshort))]
-                       strides: [1, $C, $(C * Dshort), $(C * Dshort * Tshort), $(C * Dshort * Tshort * idiv(D, Dshort)), $(C * Dshort * Tshort * idiv(D, Dshort) * P), $(C * Dshort * Tshort * idiv(D, Dshort) * P * F)]
-                     - name: "E"
-                       intent: in
-                       type: Int4
-                       indices: [C, D, P, F, T]
-                       shape: [$C, $D, $P, $F, $T]
-                       strides: [1, $C, $(C*D), $(C*D*P), $(C*D*P*F)]
-                     - name: "info"
-                       intent: out
-                       type: Int32
-                       indices: [thread, warp, block]
-                       shapes: [$num_threads, $num_warps, $num_blocks]
-                       strides: [1, $num_threads, $(num_threads*num_warps)]
-                 ...
-                 """)
+            return print(
+                fh,
+                """
+        --- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
+        kernel-description:
+          name: "xpose"
+          description: "transpose kernel"
+          design-parameters:
+            inner-number-of-dishes: $Dshort
+            inner-number-of-timesamples: $Tshort
+            number-of-complex-components: $C
+            number-of-dishes: $D
+            number-of-frequencies: $F
+            number-of-polarizations: $P
+            number-of-timesamples: $T
+          compile-parameters:
+            minthreads: $(num_threads * num_warps)
+            blocks_per_sm: $num_blocks_per_sm
+          call-parameters:
+            threads: [$num_threads, $num_warps]
+            blocks: [$num_blocks]
+            shmem_bytes: $shmem_bytes
+          kernel-symbol: "$kernel_symbol"
+          kernel-arguments:
+            - name: "Ein"
+              intent: in
+              type: Int4
+              indices: [C, Dshort, Tshort, D, P, F, T]
+              shape: [$C, $Dshort, $Tshort, $(idiv(D, Dshort)), $P, $F, $(idiv(T, Tshort))]
+              strides: [1, $C, $(C * Dshort), $(C * Dshort * Tshort), $(C * Dshort * Tshort * idiv(D, Dshort)), $(C * Dshort * Tshort * idiv(D, Dshort) * P), $(C * Dshort * Tshort * idiv(D, Dshort) * P * F)]
+            - name: "E"
+              intent: in
+              type: Int4
+              indices: [C, D, P, F, T]
+              shape: [$C, $D, $P, $F, $T]
+              strides: [1, $C, $(C*D), $(C*D*P), $(C*D*P*F)]
+            - name: "info"
+              intent: out
+              type: Int32
+              indices: [thread, warp, block]
+              shapes: [$num_threads, $num_warps, $num_blocks]
+              strides: [1, $num_threads, $(num_threads*num_warps)]
+        ...
+        """,
+            )
         end
         cxx = read("kernels/xpose_template.cxx", String)
-        cxx = Mustache.render(cxx,
-                              Dict("kernel_name" => "TransposeKernel_$setup",
-                                   "kernel_design_parameters" => [Dict("type" => "int",
-                                                                       "name" => "cuda_number_of_complex_components",
-                                                                       "value" => "$C"),
-                                                                  Dict("type" => "int", "name" => "cuda_number_of_dishes",
-                                                                       "value" => "$D"),
-                                                                  Dict("type" => "int", "name" => "cuda_number_of_frequencies",
-                                                                       "value" => "$F"),
-                                                                  Dict("type" => "int", "name" => "cuda_number_of_polarizations",
-                                                                       "value" => "$P"),
-                                                                  Dict("type" => "int", "name" => "cuda_number_of_timesamples",
-                                                                       "value" => "$T"),
-                                                                  Dict("type" => "int", "name" => "cuda_inner_number_of_dishes",
-                                                                       "value" => "$Dshort"),
-                                                                  Dict("type" => "int",
-                                                                       "name" => "cuda_inner_number_of_timesamples",
-                                                                       "value" => "$Tshort")],
-                                   "minthreads" => num_threads * num_warps,
-                                   "num_blocks_per_sm" => num_blocks_per_sm,
-                                   "num_threads" => num_threads,
-                                   "num_warps" => num_warps,
-                                   "num_blocks" => num_blocks,
-                                   "shmem_bytes" => shmem_bytes,
-                                   "kernel_symbol" => kernel_symbol,
-                                   "kernel_arguments" => [Dict("name" => "Ein",
-                                                               "kotekan_name" => "gpu_mem_voltage",
-                                                               "type" => "int4p4",
-                                                               "axes" => [Dict("label" => "Dshort", "length" => Dshort),
-                                                                          Dict("label" => "Tshort", "length" => Tshort),
-                                                                          Dict("label" => "D", "length" => idiv(D, Dshort)),
-                                                                          Dict("label" => "P", "length" => P),
-                                                                          Dict("label" => "F", "length" => F),
-                                                                          Dict("label" => "T", "length" => idiv(T, Tshort))],
-                                                               "isoutput" => false,
-                                                               "hasbuffer" => true),
-                                                          Dict("name" => "E",
-                                                               "kotekan_name" => "gpu_mem_voltage",
-                                                               "type" => "int4p4",
-                                                               "axes" => [Dict("label" => "D", "length" => D),
-                                                                          Dict("label" => "P", "length" => P),
-                                                                          Dict("label" => "F", "length" => F),
-                                                                          Dict("label" => "T", "length" => T)],
-                                                               "isoutput" => true,
-                                                               "hasbuffer" => true),
-                                                          Dict("name" => "info",
-                                                               "kotekan_name" => "gpu_mem_info",
-                                                               "type" => "int32",
-                                                               "axes" => [Dict("label" => "thread", "length" => num_threads),
-                                                                          Dict("label" => "warp", "length" => num_warps),
-                                                                          Dict("label" => "block", "length" => num_blocks)],
-                                                               "isoutput" => true,
-                                                               "hasbuffer" => false)]))
+        cxx = Mustache.render(
+            cxx,
+            Dict(
+                "kernel_name" => "TransposeKernel_$setup",
+                "kernel_design_parameters" => [
+                    Dict("type" => "int", "name" => "cuda_number_of_complex_components", "value" => "$C"),
+                    Dict("type" => "int", "name" => "cuda_number_of_dishes", "value" => "$D"),
+                    Dict("type" => "int", "name" => "cuda_number_of_frequencies", "value" => "$F"),
+                    Dict("type" => "int", "name" => "cuda_number_of_polarizations", "value" => "$P"),
+                    Dict("type" => "int", "name" => "cuda_number_of_timesamples", "value" => "$T"),
+                    Dict("type" => "int", "name" => "cuda_inner_number_of_dishes", "value" => "$Dshort"),
+                    Dict("type" => "int", "name" => "cuda_inner_number_of_timesamples", "value" => "$Tshort"),
+                ],
+                "minthreads" => num_threads * num_warps,
+                "num_blocks_per_sm" => num_blocks_per_sm,
+                "num_threads" => num_threads,
+                "num_warps" => num_warps,
+                "num_blocks" => num_blocks,
+                "shmem_bytes" => shmem_bytes,
+                "kernel_symbol" => kernel_symbol,
+                "kernel_arguments" => [
+                    Dict(
+                        "name" => "Ein",
+                        "kotekan_name" => "gpu_mem_voltage",
+                        "type" => "int4p4",
+                        "axes" => [
+                            Dict("label" => "Dshort", "length" => Dshort),
+                            Dict("label" => "Tshort", "length" => Tshort),
+                            Dict("label" => "D", "length" => idiv(D, Dshort)),
+                            Dict("label" => "P", "length" => P),
+                            Dict("label" => "F", "length" => F),
+                            Dict("label" => "T", "length" => idiv(T, Tshort)),
+                        ],
+                        "isoutput" => false,
+                        "hasbuffer" => true,
+                    ),
+                    Dict(
+                        "name" => "E",
+                        "kotekan_name" => "gpu_mem_voltage",
+                        "type" => "int4p4",
+                        "axes" => [
+                            Dict("label" => "D", "length" => D),
+                            Dict("label" => "P", "length" => P),
+                            Dict("label" => "F", "length" => F),
+                            Dict("label" => "T", "length" => T),
+                        ],
+                        "isoutput" => true,
+                        "hasbuffer" => true,
+                    ),
+                    Dict(
+                        "name" => "info",
+                        "kotekan_name" => "gpu_mem_info",
+                        "type" => "int32",
+                        "axes" => [
+                            Dict("label" => "thread", "length" => num_threads),
+                            Dict("label" => "warp", "length" => num_warps),
+                            Dict("label" => "block", "length" => num_blocks),
+                        ],
+                        "isoutput" => true,
+                        "hasbuffer" => false,
+                    ),
+                ],
+            ),
+        )
         write("output-$card/xpose_$setup.cxx", cxx)
     end
 

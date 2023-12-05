@@ -78,9 +78,11 @@ freq = 3
 freqbar = 1:nfreqbars
 # freqbar = 3 * U
 
-data = Float32[sqrt(sum(abs2(real(Complex{Float32}(i2c(j)))) for j in view(array_E, dish, :, freq, :)) /
-                    length(view(array_E, dish, :, freq, :)))
-               for dish in 1:ndishs]
+data = Float32[
+    sqrt(
+        sum(abs2(real(Complex{Float32}(i2c(j)))) for j in view(array_E, dish, :, freq, :)) / length(view(array_E, dish, :, freq, :))
+    ) for dish in 1:ndishs
+]
 fig = Figure(; resolution=(1280, 960))
 ax = Axis(fig[1, 1]; title="F-engine electric field", xlabel="x", ylabel="y")
 xlims!(ax, dishs_xlim)
@@ -90,9 +92,12 @@ Colorbar(fig[1, 2], obj; label="|dish|₂")
 rowsize!(fig.layout, 1, Aspect(1, dishs_ysize / dishs_xsize))
 display(fig)
 
-data = Float32[sqrt(sum(abs2(real(Complex{Float32}(i2c(j)))) for j in view(array_Ebar, dish, :, freqbar, :)) /
-                    length(view(array_Ebar, dish, :, freqbar, :)))
-               for dish in 1:ndishs]
+data = Float32[
+    sqrt(
+        sum(abs2(real(Complex{Float32}(i2c(j)))) for j in view(array_Ebar, dish, :, freqbar, :)) /
+        length(view(array_Ebar, dish, :, freqbar, :)),
+    ) for dish in 1:ndishs
+]
 fig = Figure(; resolution=(1280, 960))
 ax = Axis(fig[1, 1]; title="F-engine upchannelized electric field (U=$U)", xlabel="x", ylabel="y")
 xlims!(ax, dishs_xlim)

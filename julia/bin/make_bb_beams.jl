@@ -15,18 +15,20 @@ ntaps = 4
 nfreq = 16
 ntimes = 32768
 
-FEngine.setup(source_amplitude,
-              source_frequency,
-              source_position_sinx,
-              source_position_siny,
-              dish_separation_x,
-              dish_separation_y,
-              ndishes_i,
-              ndishes_j,
-              adc_frequency,
-              ntaps,
-              nfreq,
-              ntimes)
+FEngine.setup(
+    source_amplitude,
+    source_frequency,
+    source_position_sinx,
+    source_position_siny,
+    dish_separation_x,
+    dish_separation_y,
+    ndishes_i,
+    ndishes_j,
+    adc_frequency,
+    ntaps,
+    nfreq,
+    ntimes,
+)
 
 sz = 536870912
 ndishes = 512
@@ -36,10 +38,4 @@ npolrs = 2
 frame_index = 1
 E = zeros(UInt8, sz);
 
-FEngine.set_E(pointer(E),
-              sz,
-              ndishes,
-              nfreqs,
-              npolrs,
-              ntimes,
-              frame_index)
+FEngine.set_E(pointer(E), sz, ndishes, nfreqs, npolrs, ntimes, frame_index)

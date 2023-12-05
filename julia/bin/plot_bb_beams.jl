@@ -99,9 +99,11 @@ end
 # freq = 1:nfreqs
 freq = 3
 
-data = Float32[sqrt(sum(abs2(real(Complex{Float32}(i2c(j)))) for j in view(array_E, dish, :, freq, :)) /
-                    length(view(array_E, dish, :, freq, :)))
-               for dish in 1:ndishs]
+data = Float32[
+    sqrt(
+        sum(abs2(real(Complex{Float32}(i2c(j)))) for j in view(array_E, dish, :, freq, :)) / length(view(array_E, dish, :, freq, :))
+    ) for dish in 1:ndishs
+]
 fig = Figure(; resolution=(1280, 960))
 ax = Axis(fig[1, 1]; title="F-engine electric field", xlabel="x", ylabel="y")
 xlims!(ax, dishs_xlim)
@@ -111,9 +113,10 @@ Colorbar(fig[1, 2], obj; label="|dish|₂")
 rowsize!(fig.layout, 1, Aspect(1, dishs_ysize / dishs_xsize))
 display(fig)
 
-data = Float32[sqrt(sum(abs2(Complex{Float32}(i2c(j))) for j in view(array_J0, :, :, freq, beam)) /
-                    length(view(array_J0, :, :, freq, beam)))
-               for beam in 1:nbeams]
+data = Float32[
+    sqrt(sum(abs2(Complex{Float32}(i2c(j))) for j in view(array_J0, :, :, freq, beam)) / length(view(array_J0, :, :, freq, beam)))
+    for beam in 1:nbeams
+]
 fig = Figure(; resolution=(1280, 960))
 ax = Axis(fig[1, 1]; title="expected baseband beams", xlabel="sky θx", ylabel="sky θy")
 xlims!(ax, beams_xlim)
@@ -123,9 +126,10 @@ Colorbar(fig[1, 2], obj; label="|baseband beam|₂")
 rowsize!(fig.layout, 1, Aspect(1, beams_ysize / beams_xsize))
 display(fig)
 
-data = Float32[sqrt(sum(abs2(Complex{Float32}(i2c(j))) for j in view(array_J, :, :, freq, beam)) /
-                    length(view(array_J, :, 1, freq, beam)))
-               for beam in 1:nbeams]
+data = Float32[
+    sqrt(sum(abs2(Complex{Float32}(i2c(j))) for j in view(array_J, :, :, freq, beam)) / length(view(array_J, :, 1, freq, beam))) for
+    beam in 1:nbeams
+]
 fig = Figure(; resolution=(1280, 960))
 ax = Axis(fig[1, 1]; title="X-engine baseband beams", xlabel="sky θx", ylabel="sky θy")
 xlims!(ax, beams_xlim)
