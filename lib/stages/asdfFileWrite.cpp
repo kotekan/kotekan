@@ -5,6 +5,7 @@
 #include <cassert>
 #include <chordMetadata.hpp>
 #include <cstdint>
+#include <errno.h>
 #include <fstream>
 #include <iomanip>
 #include <map>
@@ -152,10 +153,13 @@ public:
             group0->emplace(iteration, group);
             const auto project = ASDF::asdf({}, group0);
             int ierr = mkdir(base_dir.c_str(), 0777);
-            if (ierr && ierr != EEXIST && ierr != EISDIR) {
-                char msg[1000];
-                strerror_r(ierr, msg, sizeof msg);
-                FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(), msg);
+            if (ierr) {
+                if (errno != EEXIST && errno != EISDIR) {
+                    char msg[1000];
+                    strerror_r(errno, msg, sizeof msg);
+                    FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(),
+                                msg);
+                }
             }
             project.write(full_path);
 
