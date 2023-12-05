@@ -1539,9 +1539,8 @@ rfi_stage2:
     out_buf: rfi_vis_buffer_3
 
 vis_accumulate:
-  integration_time: 5.0  # Integrate to roughly 5s cadence
-  # This (12288) is for num_sub_frames = 4, there is currently a config bug that
-  # prevents referencing the higher level samples_per_data_set and dividing it
+  # This sets a ~5s cadence which should exactly sync up with what the absorber acquisition is doing
+  num_gpu_frames: 160
   samples_per_data_set: 12288
   updatable_config:
     psr0: "/updatable_config/gating/psr0_config"
