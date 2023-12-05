@@ -122,20 +122,20 @@ LBB0_8:                                 // %L341
 	mov.f32 	%f749, 0f3F800000;
 	mov.f32 	%f742, %f749;
 	@%p18 bra 	LBB0_10;
-// %bb.9:                               // %L482
+// %bb.9:                               // %L483
 	sin.approx.f32 	%f179, %f3;
 	div.approx.f32 	%f742, %f179, %f3;
-LBB0_10:                                // %L485
+LBB0_10:                                // %L486
 	cvt.rn.f32.s32 	%f182, %r17;
 	sub.f32 	%f183, %f182, %f1;
 	div.approx.f32 	%f8, %f183, %f178;
 	setp.eq.f32 	%p24, %f8, 0f00000000;
 	mov.f32 	%f743, %f749;
 	@%p24 bra 	LBB0_12;
-// %bb.11:                              // %L502
+// %bb.11:                              // %L503
 	sin.approx.f32 	%f213, %f8;
 	div.approx.f32 	%f743, %f213, %f8;
-LBB0_12:                                // %L505
+LBB0_12:                                // %L506
 	or.b32  	%r166, %r16, 8;
 	or.b32  	%r19, %r16, 12;
 	cvt.rn.f32.s32 	%f217, %r166;
@@ -144,20 +144,20 @@ LBB0_12:                                // %L505
 	setp.eq.f32 	%p30, %f12, 0f00000000;
 	mov.f32 	%f744, %f749;
 	@%p30 bra 	LBB0_14;
-// %bb.13:                              // %L583
+// %bb.13:                              // %L585
 	sin.approx.f32 	%f248, %f12;
 	div.approx.f32 	%f744, %f248, %f12;
-LBB0_14:                                // %L586
+LBB0_14:                                // %L588
 	cvt.rn.f32.s32 	%f251, %r19;
 	sub.f32 	%f252, %f251, %f1;
 	div.approx.f32 	%f17, %f252, %f178;
 	setp.eq.f32 	%p36, %f17, 0f00000000;
 	mov.f32 	%f745, %f749;
 	@%p36 bra 	LBB0_16;
-// %bb.15:                              // %L603
+// %bb.15:                              // %L605
 	sin.approx.f32 	%f282, %f17;
 	div.approx.f32 	%f745, %f282, %f17;
-LBB0_16:                                // %L606
+LBB0_16:                                // %L608
 	or.b32  	%r184, %r16, 16;
 	or.b32  	%r21, %r16, 20;
 	cvt.rn.f32.s32 	%f286, %r184;
@@ -166,20 +166,20 @@ LBB0_16:                                // %L606
 	setp.eq.f32 	%p42, %f21, 0f00000000;
 	mov.f32 	%f746, %f749;
 	@%p42 bra 	LBB0_18;
-// %bb.17:                              // %L684
+// %bb.17:                              // %L687
 	sin.approx.f32 	%f317, %f21;
 	div.approx.f32 	%f746, %f317, %f21;
-LBB0_18:                                // %L687
+LBB0_18:                                // %L690
 	cvt.rn.f32.s32 	%f320, %r21;
 	sub.f32 	%f321, %f320, %f1;
 	div.approx.f32 	%f26, %f321, %f178;
 	setp.eq.f32 	%p48, %f26, 0f00000000;
 	mov.f32 	%f747, %f749;
 	@%p48 bra 	LBB0_20;
-// %bb.19:                              // %L704
+// %bb.19:                              // %L707
 	sin.approx.f32 	%f351, %f26;
 	div.approx.f32 	%f747, %f351, %f26;
-LBB0_20:                                // %L707
+LBB0_20:                                // %L710
 	or.b32  	%r202, %r16, 24;
 	or.b32  	%r23, %r16, 28;
 	cvt.rn.f32.s32 	%f355, %r202;
@@ -188,19 +188,19 @@ LBB0_20:                                // %L707
 	setp.eq.f32 	%p54, %f30, 0f00000000;
 	mov.f32 	%f748, %f749;
 	@%p54 bra 	LBB0_22;
-// %bb.21:                              // %L785
+// %bb.21:                              // %L789
 	sin.approx.f32 	%f386, %f30;
 	div.approx.f32 	%f748, %f386, %f30;
-LBB0_22:                                // %L788
+LBB0_22:                                // %L792
 	cvt.rn.f32.s32 	%f389, %r23;
 	sub.f32 	%f390, %f389, %f1;
 	div.approx.f32 	%f35, %f390, %f178;
 	setp.eq.f32 	%p60, %f35, 0f00000000;
 	@%p60 bra 	LBB0_24;
-// %bb.23:                              // %L805
+// %bb.23:                              // %L809
 	sin.approx.f32 	%f420, %f35;
 	div.approx.f32 	%f749, %f420, %f35;
-LBB0_24:                                // %L808
+LBB0_24:                                // %L812
 	mul.lo.s32 	%r25, %r16, 7;
 	cvt.rn.f32.s32 	%f423, %r25;
 	div.approx.f32 	%f38, %f423, %f178;
@@ -722,7 +722,7 @@ LBB0_114:                               // %__nv_fmodf.exit1068
 	setp.le.s32 	%p182, %r7, %r6;
 	mov.u32 	%r1082, 0;
 	@%p182 bra 	LBB0_90;
-// %bb.115:                             // %L1191.lr.ph
+// %bb.115:                             // %L1195.lr.ph
 	mov.f32 	%f150, 0f42040000;
 	div.approx.f32 	%f151, %f149, %f150;
 	div.approx.f32 	%f185, %f183, %f150;
@@ -1596,7 +1596,7 @@ LBB0_114:                               // %__nv_fmodf.exit1068
 	mov.u32 	%r1093, %r1082;
 	mov.u32 	%r1094, %r1082;
 	bra.uni 	LBB0_85;
-LBB0_89:                                // %L16132
+LBB0_89:                                // %L16136
                                         //   in Loop: Header=BB0_85 Depth=1
 	setp.ne.s32 	%p212, %r1091, 130816;
 	add.s32 	%r1091, %r1091, 256;
@@ -1605,7 +1605,7 @@ LBB0_89:                                // %L16132
 	and.pred  	%p214, %p212, %p213;
 	@%p214 bra 	LBB0_85;
 	bra.uni 	LBB0_90;
-LBB0_85:                                // %L1191
+LBB0_85:                                // %L1195
                                         // =>This Loop Header: Depth=1
                                         //     Child Loop BB0_86 Depth 2
 	or.b32  	%r491, %r104, %r1091;
@@ -1778,7 +1778,7 @@ LBB0_85:                                // %L1191
 	mov.u64 	%rd161, %rd28;
 	mov.u32 	%r1096, %r1094;
 	mov.u32 	%r1097, %r1093;
-LBB0_86:                                // %L9311
+LBB0_86:                                // %L9315
                                         //   Parent Loop BB0_85 Depth=1
                                         // =>  This Inner Loop Header: Depth=2
 	mov.u32 	%r1093, %r1098;
@@ -2331,7 +2331,7 @@ LBB0_87:                                // %guard_pass6326
 	selp.b32 	%r1054, %r1043, %r1039, %p183;
 	shfl.sync.bfly.b32	%r137, %r1054, 8, 31, -1;
 	@%p197 bra 	LBB0_89;
-// %bb.88:                              // %L15139
+// %bb.88:                              // %L15143
                                         //   in Loop: Header=BB0_85 Depth=1
 	selp.b32 	%r1055, %r137, %r1043, %p183;
 	selp.b32 	%r1056, %r1039, %r137, %p183;
@@ -2422,7 +2422,7 @@ LBB0_87:                                // %guard_pass6326
 	add.s64 	%rd157, %rd3, %rd156;
 	st.global.v4.u32 	[%rd157], {%r1058, %r1056, %r1057, %r1055};
 	bra.uni 	LBB0_89;
-LBB0_90:                                // %L16143
+LBB0_90:                                // %L16147
 	st.global.u32 	[%rd4], %r1082;
 	ret;
 LBB0_7:                                 // %L247

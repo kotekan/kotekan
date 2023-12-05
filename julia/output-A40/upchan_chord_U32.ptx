@@ -9,7 +9,7 @@
 .address_size 64
 
 	// .globl	_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE // -- Begin function _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE
-.func julia_AssertionError_6583
+.func julia_AssertionError_7178
 ()
 .noreturn
 {
@@ -155,10 +155,10 @@ LBB0_8:                                 // %L341
 	mov.f32 	%f896, 0f3F800000;
 	mov.f32 	%f889, %f896;
 	@%p18 bra 	LBB0_10;
-// %bb.9:                               // %L528
+// %bb.9:                               // %L529
 	sin.approx.f32 	%f217, %f3;
 	div.approx.f32 	%f889, %f217, %f3;
-LBB0_10:                                // %L531
+LBB0_10:                                // %L532
 	cvt.rzi.s32.f32 	%r163, %f200;
 	fma.rn.f32 	%f203, %f202, 0fBF17ACC9, 0f40233590;
 	fma.rn.f32 	%f204, %f202, 0f3E684E12, 0fBFAAD2E0;
@@ -191,10 +191,10 @@ LBB0_10:                                // %L531
 	setp.eq.f32 	%p24, %f8, 0f00000000;
 	mov.f32 	%f890, %f896;
 	@%p24 bra 	LBB0_12;
-// %bb.11:                              // %L548
+// %bb.11:                              // %L549
 	sin.approx.f32 	%f251, %f8;
 	div.approx.f32 	%f890, %f251, %f8;
-LBB0_12:                                // %L551
+LBB0_12:                                // %L552
 	add.s32 	%r164, %r163, 1;
 	fma.rn.f32 	%f205, %f203, %f202, 0fC0A55DF6;
 	fma.rn.f32 	%f206, %f204, %f202, 0f4081E0CF;
@@ -238,10 +238,10 @@ LBB0_12:                                // %L551
 	setp.eq.f32 	%p30, %f12, 0f00000000;
 	mov.f32 	%f891, %f896;
 	@%p30 bra 	LBB0_14;
-// %bb.13:                              // %L629
+// %bb.13:                              // %L631
 	sin.approx.f32 	%f286, %f12;
 	div.approx.f32 	%f891, %f286, %f12;
-LBB0_14:                                // %L632
+LBB0_14:                                // %L634
 	fma.rn.f32 	%f208, %f206, %f202, 0fC09DE9E6;
 	fma.rn.f32 	%f209, %f205, %f207, 0f00000000;
 	and.b32  	%r165, %r164, 1;
@@ -287,10 +287,10 @@ LBB0_14:                                // %L632
 	setp.eq.f32 	%p36, %f17, 0f00000000;
 	mov.f32 	%f892, %f896;
 	@%p36 bra 	LBB0_16;
-// %bb.15:                              // %L649
+// %bb.15:                              // %L651
 	sin.approx.f32 	%f320, %f17;
 	div.approx.f32 	%f892, %f320, %f17;
-LBB0_16:                                // %L652
+LBB0_16:                                // %L654
 	fma.rn.f32 	%f210, %f208, %f202, 0f3F800000;
 	fma.rn.f32 	%f211, %f201, 0f40490FDB, %f209;
 	setp.eq.b32 	%p16, %r165, 1;
@@ -344,10 +344,10 @@ LBB0_16:                                // %L652
 	setp.eq.f32 	%p42, %f21, 0f00000000;
 	mov.f32 	%f893, %f896;
 	@%p42 bra 	LBB0_18;
-// %bb.17:                              // %L730
+// %bb.17:                              // %L733
 	sin.approx.f32 	%f355, %f21;
 	div.approx.f32 	%f893, %f355, %f21;
-LBB0_18:                                // %L733
+LBB0_18:                                // %L736
 	shl.b32 	%r9, %r3, 2;
 	selp.f32 	%f212, %f210, %f211, %p16;
 	and.b32  	%r166, %r164, 2;
@@ -401,10 +401,10 @@ LBB0_18:                                // %L733
 	setp.eq.f32 	%p48, %f26, 0f00000000;
 	mov.f32 	%f894, %f896;
 	@%p48 bra 	LBB0_20;
-// %bb.19:                              // %L750
+// %bb.19:                              // %L753
 	sin.approx.f32 	%f389, %f26;
 	div.approx.f32 	%f894, %f389, %f26;
-LBB0_20:                                // %L753
+LBB0_20:                                // %L756
 	and.b32  	%r10, %r9, 4;
 	shl.b32 	%r11, %r3, 1;
 	and.b32  	%r13, %r3, 18;
@@ -465,10 +465,10 @@ LBB0_20:                                // %L753
 	setp.eq.f32 	%p54, %f30, 0f00000000;
 	mov.f32 	%f895, %f896;
 	@%p54 bra 	LBB0_22;
-// %bb.21:                              // %L831
+// %bb.21:                              // %L835
 	sin.approx.f32 	%f424, %f30;
 	div.approx.f32 	%f895, %f424, %f30;
-LBB0_22:                                // %L834
+LBB0_22:                                // %L838
 	and.b32  	%r12, %r11, 8;
 	or.b32  	%r152, %r13, %r10;
 	selp.f32 	%f215, %f212, %f214, %p17;
@@ -521,10 +521,10 @@ LBB0_22:                                // %L834
 	div.approx.f32 	%f35, %f428, %f216;
 	setp.eq.f32 	%p60, %f35, 0f00000000;
 	@%p60 bra 	LBB0_24;
-// %bb.23:                              // %L851
+// %bb.23:                              // %L855
 	sin.approx.f32 	%f458, %f35;
 	div.approx.f32 	%f896, %f458, %f35;
-LBB0_24:                                // %L854
+LBB0_24:                                // %L858
 	or.b32  	%r153, %r152, %r12;
 	mul.f32 	%f2, %f215, %f215;
 	mul.f32 	%f7, %f249, %f249;
@@ -857,18 +857,18 @@ LBB0_52:                                // %__nv_fmodf.exit900
 	// end inline asm
 	mov.u64 	%rd139, 2;
 	mov.u64 	%rd140, %rd139;
-LBB0_53:                                // %L966.prol
+LBB0_53:                                // %L970.prol
                                         // =>This Inner Loop Header: Depth=1
 	.pragma "nounroll";
 	mul.lo.s64 	%rd140, %rd140, %rd140;
 	add.s64 	%rd139, %rd139, -1;
 	setp.ne.s64 	%p101, %rd139, 0;
 	@%p101 bra 	LBB0_53;
-// %bb.54:                              // %L968
+// %bb.54:                              // %L972
 	and.b64  	%rd81, %rd140, 9223372036854775807;
 	setp.ne.s64 	%p102, %rd81, 16;
 	@%p102 bra 	LBB0_132;
-// %bb.55:                              // %L975
+// %bb.55:                              // %L979
 	and.b32  	%r270, %r3, 3;
 	mul.lo.s32 	%r271, %r270, %r18;
 	shl.b32 	%r272, %r271, 1;
@@ -1160,30 +1160,30 @@ LBB0_83:                                // %__nv_fmodf.exit992
 	// end inline asm
 	mov.u64 	%rd141, 2;
 	mov.u64 	%rd142, %rd141;
-LBB0_84:                                // %L1128.prol
+LBB0_84:                                // %L1132.prol
                                         // =>This Inner Loop Header: Depth=1
 	.pragma "nounroll";
 	mul.lo.s64 	%rd142, %rd142, %rd142;
 	add.s64 	%rd141, %rd141, -1;
 	setp.ne.s64 	%p143, %rd141, 0;
 	@%p143 bra 	LBB0_84;
-// %bb.85:                              // %L1130
+// %bb.85:                              // %L1134
 	and.b64  	%rd85, %rd142, 9223372036854775807;
 	setp.ne.s64 	%p144, %rd85, 16;
 	@%p144 bra 	LBB0_131;
-// %bb.86:                              // %L1137
+// %bb.86:                              // %L1141
 	shl.b32 	%r319, %r16, 1;
 	neg.s32 	%r70, %r319;
 	mov.u64 	%rd143, 2;
 	mov.u64 	%rd144, %rd143;
-LBB0_87:                                // %L1197.prol
+LBB0_87:                                // %L1201.prol
                                         // =>This Inner Loop Header: Depth=1
 	.pragma "nounroll";
 	mul.lo.s64 	%rd144, %rd144, %rd144;
 	add.s64 	%rd143, %rd143, -1;
 	setp.ne.s64 	%p145, %rd143, 0;
 	@%p145 bra 	LBB0_87;
-// %bb.88:                              // %L1199
+// %bb.88:                              // %L1203
 	mul.lo.s32 	%r71, %r70, %r18;
 	cvt.rn.f32.s32 	%f673, %r71;
 	shl.b64 	%rd89, %rd144, 1;
@@ -1321,14 +1321,14 @@ LBB0_102:                               // %__nv_fmodf.exit1038
 	selp.f32 	%f128, %f724, %f720, %p165;
 	mov.u64 	%rd145, 2;
 	mov.u64 	%rd146, %rd145;
-LBB0_103:                               // %L1238.prol
+LBB0_103:                               // %L1242.prol
                                         // =>This Inner Loop Header: Depth=1
 	.pragma "nounroll";
 	mul.lo.s64 	%rd146, %rd146, %rd146;
 	add.s64 	%rd145, %rd145, -1;
 	setp.ne.s64 	%p166, %rd145, 0;
 	@%p166 bra 	LBB0_103;
-// %bb.104:                             // %L1240
+// %bb.104:                             // %L1244
 	shl.b32 	%r336, %r18, 2;
 	sub.s32 	%r337, %r71, %r336;
 	cvt.rn.f32.s32 	%f725, %r337;
@@ -1477,18 +1477,18 @@ LBB0_118:                               // %__nv_fmodf.exit1084
 	// end inline asm
 	mov.u64 	%rd147, 2;
 	mov.u64 	%rd148, %rd147;
-LBB0_119:                               // %L1281.prol
+LBB0_119:                               // %L1285.prol
                                         // =>This Inner Loop Header: Depth=1
 	.pragma "nounroll";
 	mul.lo.s64 	%rd148, %rd148, %rd148;
 	add.s64 	%rd147, %rd147, -1;
 	setp.ne.s64 	%p187, %rd147, 0;
 	@%p187 bra 	LBB0_119;
-// %bb.120:                             // %L1283
+// %bb.120:                             // %L1287
 	and.b64  	%rd93, %rd148, 9223372036854775807;
 	setp.ne.s64 	%p188, %rd93, 16;
 	@%p188 bra 	LBB0_130;
-// %bb.121:                             // %L1290
+// %bb.121:                             // %L1294
 	shr.u32 	%r90, %r3, 3;
 	and.b32  	%r360, %r90, 2;
 	or.b32  	%r91, %r19, %r360;
@@ -1671,7 +1671,7 @@ LBB0_156:                               // %__nv_fmodf.exit1176
 	setp.le.s32 	%p230, %r6, %r5;
 	mov.u32 	%r2433, 0;
 	@%p230 bra 	LBB0_129;
-// %bb.157:                             // %L1399.lr.ph
+// %bb.157:                             // %L1403.lr.ph
 	add.f32 	%f801, %f923, %f923;
 	mov.b32 	%r369, %f801;
 	and.b32  	%r370, %r369, -2147483648;
@@ -1952,7 +1952,7 @@ LBB0_156:                               // %__nv_fmodf.exit1176
 	mov.u32 	%r2456, %r2433;
 	mov.u32 	%r2455, %r2433;
 	mov.u32 	%r2454, %r2433;
-LBB0_126:                               // %L1399
+LBB0_126:                               // %L1403
                                         // =>This Loop Header: Depth=1
                                         //     Child Loop BB0_127 Depth 2
 	or.b32  	%r543, %r134, %r2446;
@@ -2048,7 +2048,7 @@ LBB0_126:                               // %L1399
 	mov.u64 	%rd150, %rd52;
 	mov.u64 	%rd151, %rd51;
 	mov.u64 	%rd152, %rd50;
-LBB0_127:                               // %L6939
+LBB0_127:                               // %L6943
                                         //   Parent Loop BB0_126 Depth=1
                                         // =>  This Inner Loop Header: Depth=2
 	mov.u32 	%r107, %r2459;
@@ -4054,7 +4054,7 @@ LBB0_128:                               // %guard_pass5830
 	mov.u32 	%r2455, %r107;
 	mov.u32 	%r2454, %r106;
 	@%p245 bra 	LBB0_126;
-LBB0_129:                               // %L15484
+LBB0_129:                               // %L15488
 	st.global.u32 	[%rd4], %r2433;
 	ret;
 LBB0_7:                                 // %L247
@@ -4117,11 +4117,11 @@ LBB0_1:                                 // %L8
 	// begin inline asm
 	exit;
 	// end inline asm
-LBB0_132:                               // %L15584
+LBB0_132:                               // %L15588
 	{ // callseq 2, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_6583, 
+	julia_AssertionError_7178, 
 	(
 	);
 	} // callseq 2
@@ -4153,11 +4153,11 @@ LBB0_132:                               // %L15584
 	// begin inline asm
 	exit;
 	// end inline asm
-LBB0_131:                               // %L15581
+LBB0_131:                               // %L15585
 	{ // callseq 5, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_6583, 
+	julia_AssertionError_7178, 
 	(
 	);
 	} // callseq 5
@@ -4189,11 +4189,11 @@ LBB0_131:                               // %L15581
 	// begin inline asm
 	exit;
 	// end inline asm
-LBB0_130:                               // %L15578
+LBB0_130:                               // %L15582
 	{ // callseq 8, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_6583, 
+	julia_AssertionError_7178, 
 	(
 	);
 	} // callseq 8
