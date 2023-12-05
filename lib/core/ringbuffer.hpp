@@ -83,10 +83,12 @@ public:
     void finish_read(const std::string& consumer_name, size_t sz);
 
     size_t size;
-    size_t elements;
-    size_t claimed;
-    // size_t write_cursor;
-    // size_t read_cursor;
+
+    size_t write_head;
+    size_t write_tail; // == min(read_tails)
+
+    std::map<std::string, size_t> read_tails;
+    std::map<std::string, size_t> read_heads;
 };
 
 #endif
