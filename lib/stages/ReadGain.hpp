@@ -76,6 +76,9 @@ public:
     /// Endpoint for providing new directory path for FRB gain updates
     bool update_gains_frb_callback(nlohmann::json& json);
 
+    /// Endpoint for providing new UT1-UTC offset
+    bool update_UT1_UTC_offset(nlohmann::json& json);
+
     /// Endpoint for providing new directory path for <span class="x x-first x-last">tracking
     /// beamformer</span> gain updates
     bool update_gains_tracking_callback(nlohmann::json& json, const uint8_t beam_id);
@@ -97,6 +100,8 @@ private:
 
     /// Directory path where gain files are
     std::string _gain_dir_frb;
+    /// UT1-UTC value
+    std::float _UT1_UTC_val;
     queue<std::pair<uint8_t, std::string>> _gain_dir_tracking;
     /// Default gain values if gain file is missing for this freq, currently set to 1+1j
     vector<float> default_gains;
