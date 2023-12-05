@@ -33,11 +33,11 @@ add_library(
     cudaRechunk.cpp
     cudaTransposeKernel_chord.cpp
     cudaTransposeKernel_pathfinder.cpp
-    cudaUpchannelizer_U8.cpp
-    cudaUpchannelizer_U16.cpp
-    cudaUpchannelizer_U32.cpp
-    cudaUpchannelizer_U64.cpp
-    cudaUpchannelizer_U128.cpp
+    cudaUpchannelizer_chord_U8.cpp
+    cudaUpchannelizer_chord_U16.cpp
+    cudaUpchannelizer_chord_U32.cpp
+    cudaUpchannelizer_chord_U64.cpp
+    cudaUpchannelizer_chord_U128.cpp
     chordMVPSetup.cpp)
 
 # C++17

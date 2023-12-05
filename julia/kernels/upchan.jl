@@ -8,6 +8,9 @@ using CUDASIMDTypes
 using IndexSpaces
 using Mustache
 
+# const card = "A30"
+const card = "A40"
+
 bitsign(b::Bool) = b ? -1 : +1
 bitsign(i::Integer) = bitsign(isodd(i))
 
@@ -54,13 +57,29 @@ end
 
 # Compile-time constants
 
-const sampling_time_μsec = 4096 / (2 * 1200)
-const C = 2
-const T = 32768 * 4             # this assumes a GPU buffer depth of 4
-const D = 512
-const P = 2
-const F₀ = 16
-const F = 16
+setup::Symbol
+@static if setup ≡ :chord
+    # CHORD Setup
+    const sampling_time_μsec = 4096 / (2 * 1200)
+    const C = 2
+    const T = 32768 * 4             # this assumes a GPU buffer depth of 4
+    const D = 512
+    const P = 2
+    const F₀ = 16
+    const F = 16
+elseif setup ≡ :pathfinder
+    # Pathfinder Setup
+    const sampling_time_μsec = 4096 / (2 * 1200)
+    const C = 2
+    const T = 32768 * 4             # this assumes a GPU buffer depth of 4
+    const D = 64
+    const P = 2
+    const F₀ = 128
+    const F = 128
+else
+    @assert false
+end
+
 U::Integer
 const M = 4
 const K = 4
@@ -1840,7 +1859,7 @@ println("[Creating upchan kernel...]")
 const upchan_kernel = make_upchan_kernel()
 println("[Done creating upchan kernel]")
 
-open("output-A40/upchan_U$U.jl", "w") do fh
+open("output-$(card)/upchan_$(setup)_U$(U).jl", "w") do fh
     return println(fh, upchan_kernel)
 end
 
@@ -2068,13 +2087,13 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
 end
 
 function fix_ptx_kernel()
-    ptx = read("output-A40/upchan_U$U.ptx", String)
+    ptx = read("output-$(card)/upchan_$(setup)_U$(U).ptx", String)
     ptx = replace(ptx, r".extern .func ([^;]*);"s => s".func \1.noreturn\n{\n\ttrap;\n}")
-    open("output-A40/upchan_U$U.ptx", "w") do fh
+    open("output-$(card)/upchan_$(setup)_U$(U).ptx", "w") do fh
         return write(fh, ptx)
     end
     kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
-    open("output-A40/upchan_U$U.yaml", "w") do fh
+    open("output-$(card)/upchan_$(setup)_U$(U).yaml", "w") do fh
         return print(fh,
                      """
              --- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
@@ -2152,7 +2171,7 @@ function fix_ptx_kernel()
     end
     cxx = read("kernels/upchan_template.cxx", String)
     cxx = Mustache.render(cxx,
-                          Dict("kernel_name" => "Upchannelizer_U$U",
+                          Dict("kernel_name" => "Upchannelizer_$(setup)_U$(U)",
                                "kernel_design_parameters" => [Dict("type" => "int", "name" => "cuda_number_of_complex_components",
                                                                    "value" => "$C"),
                                                               Dict("type" => "int", "name" => "cuda_number_of_dishes",
@@ -2236,21 +2255,21 @@ function fix_ptx_kernel()
                                                                       Dict("label" => "block", "length" => num_blocks)],
                                                            "isoutput" => true,
                                                            "hasbuffer" => false)]))
-    write("output-A40/upchan_U$U.cxx", cxx)
+    write("output-$(card)/upchan_$(setup)_U$(U).cxx", cxx)
     return nothing
 end
 
 if CUDA.functional()
     # Output kernel
     println("Writing PTX code...")
-    open("output-A40/upchan_U$U.ptx", "w") do fh
+    open("output-$(card)/upchan_$(setup)_U$(U).ptx", "w") do fh
         redirect_stdout(fh) do
             @device_code_ptx main(; compile_only=true, silent=true)
         end
     end
     fix_ptx_kernel()
     println("Writing SASS code...")
-    open("output-A40/upchan_U$U.sass", "w") do fh
+    open("output-A40/upchan_$(setup)_U$(U).sass", "w") do fh
         redirect_stdout(fh) do
             @device_code_sass main(; compile_only=true, silent=true)
         end
