@@ -188,6 +188,8 @@ const dish_polr_in = [
     [Dish(:dish_in, 1 << bit, 2) for bit in 0:(ilog2(D) - 1)]..., [Polr(:polr_in, 1 << bit, 2) for bit in 0:(ilog2(P) - 1)]...
 ]
 
+make_register_pair(index::Index{Physics}) = index => Register(index.name, index.offset, index.length)
+
 # Comine 1 SIMD bit and 5 thread bits. This is useful for tensor core
 # multiplications.
 const simd_threads = [SIMD(:simd, 1 << 4, 2), [Thread(:thread, 1 << [1, 0, 2, 4, 3][bit], 2) for bit in 1:5]...]
@@ -441,7 +443,7 @@ const layout_F_registers = Layout([
     Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
     Dish(:dish, 1, 2) => SIMD(:simd, 8, 2),
     Dish(:dish, 2, W) => Warp(:warp, 1, W),
-    Dish(:dish, 2 * W, Dr) => Register(:dish, 2 * W, Dr),
+    [make_register_pair(dish_polr[ilog2(2 * W) + bit + 1]) for bit in 0:(Drbits - 1)]...,
     [dish_polr[ilog2(2 * W * Dr) + bit + 1] => simd_threads[Ubits + bit + 1] for bit in 0:(Dtbits - 1)]...,
     # eqn. (111)
     #Unpacked FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
@@ -467,7 +469,7 @@ const layout_F̄_registers = Layout([
     Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
     Dish(:dish, 1, 2) => SIMD(:simd, 8, 2),
     Dish(:dish, 2, W) => Warp(:warp, 1, W),
-    Dish(:dish, 2 * W, Dr) => Register(:dish, 2 * W, Dr),
+    [make_register_pair(dish_polr[ilog2(2 * W) + bit + 1]) for bit in 0:(Drbits - 1)]...,
     [dish_polr[ilog2(2 * W * Dr) + bit + 1] => simd_threads[Ubits + bit + 1] for bit in 0:(Dtbits - 1)]...,
     # eqn. (111)
     #Unpacked FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
@@ -490,7 +492,7 @@ const layout_F_ringbuf_registers = Layout([
     Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
     Dish(:dish, 1, 2) => SIMD(:simd, 8, 2),
     Dish(:dish, 2, W) => Warp(:warp, 1, W),
-    Dish(:dish, 2 * W, Dr) => Register(:dish, 2 * W, Dr),
+    [make_register_pair(dish_polr[ilog2(2 * W) + bit + 1]) for bit in 0:(Drbits - 1)]...,
     [dish_polr[ilog2(2 * W * Dr) + bit + 1] => simd_threads[Ubits + bit + 1] for bit in 0:(Dtbits - 1)]...,
     # eqn. (111)
     #Unpacked FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
@@ -833,7 +835,7 @@ function upchan!(emitter)
     # Why do we need this? `mma_row_col_m16n8k16_f16!` should skip this tag if not present.
     merge!(emitter, :Γ³, [:Γ³, :Γ³], Dish(:dish, 1, 2) => Register(:dish, 1, 2))
     for bit in 5:Ubits
-        merge!(emitter, :Γ³, [:Γ³, :Γ³], dish_polr[bit + 1] => Register(:dish, 1 << bit, 2))
+        merge!(emitter, :Γ³, [:Γ³, :Γ³], make_register_pair(dish_polr[bit + 1]))
     end
     if U ≥ 128
         merge!(emitter, :Γ³, [:Γ³, :Γ³], Time(:time, 1, 2) => Register(:time, 1, 2))
@@ -1034,7 +1036,7 @@ function upchan!(emitter)
                             Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
                             Dish(:dish, 1, 2) => Register(:dish, 1, 2),
                             Dish(:dish, 2, W) => Warp(:warp, 1, W),
-                            [dish_polr[bit + 1] => Register(:dish, 1 << bit, 2) for bit in 5:Ubits]...,
+                            [make_register_pair(dish_polr[bit + 1]) for bit in 5:Ubits]...,
                             # sect. 5.2
                             [dish_polr[7 + bit + 1] => Block(:block, 1 << bit, 2) for bit in 0:(ilog2(idiv(D * P, 128)) - 1)]...,
                             Freq(:freq, U, F) => Block(:block, idiv(D * P, 128), F),
@@ -1113,7 +1115,7 @@ function upchan!(emitter)
                             Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
                             Dish(:dish, 2, W) => Warp(:warp, 1, W),
                             Dish(:dish, 1, 2) => Register(:dish, 1, 2),
-                            [dish_polr[bit + 1] => Register(:dish, 1 << bit, 2) for bit in 5:Ubits]...,
+                            [make_register_pair(dish_polr[bit + 1]) for bit in 5:Ubits]...,
                             # sect. 5.2
                             [dish_polr[7 + bit + 1] => Block(:block, 1 << bit, 2) for bit in 0:(ilog2(idiv(D * P, 128)) - 1)]...,
                             Freq(:freq, U, F) => Block(:block, idiv(D * P, 128), F),

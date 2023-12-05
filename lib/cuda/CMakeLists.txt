@@ -41,6 +41,7 @@ add_library(
     cudaUpchannelizer_pathfinder_U8.cpp
     cudaUpchannelizer_pathfinder_U16.cpp
     cudaUpchannelizer_pathfinder_U32.cpp
+    cudaUpchannelizer_pathfinder_U64.cpp
     chordMVPSetup.cpp)
 
 # C++17
