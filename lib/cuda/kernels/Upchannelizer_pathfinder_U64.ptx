@@ -9,7 +9,7 @@
 .address_size 64
 
 	// .globl	_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE // -- Begin function _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE
-.func julia_AssertionError_9840
+.func julia_AssertionError_9852
 ()
 .noreturn
 {
@@ -23,19 +23,19 @@
 {
 	trap;
 }
-.func gpu_signal_exception
+.func  (.param .b64 func_retval0) julia_power_by_squaring_9863
 (
-	.param .align 8 .b8 gpu_signal_exception_param_0[16]
+	.param .align 8 .b8 julia_power_by_squaring_9863_param_0[16],
+	.param .b64 julia_power_by_squaring_9863_param_1,
+	.param .b64 julia_power_by_squaring_9863_param_2
 )
 .noreturn
 {
 	trap;
 }
-.func  (.param .b64 func_retval0) julia_power_by_squaring_9851
+.func gpu_signal_exception
 (
-	.param .align 8 .b8 julia_power_by_squaring_9851_param_0[16],
-	.param .b64 julia_power_by_squaring_9851_param_1,
-	.param .b64 julia_power_by_squaring_9851_param_2
+	.param .align 8 .b8 gpu_signal_exception_param_0[16]
 )
 .noreturn
 {
@@ -427,7 +427,7 @@ LBB0_52:                                // %__nv_fmodf.exit1170
 	st.param.b64 	[param2+0], %rd49;
 	.param .b64 retval0;
 	call.uni (retval0), 
-	julia_power_by_squaring_9851, 
+	julia_power_by_squaring_9863, 
 	(
 	param0, 
 	param1, 
@@ -629,7 +629,7 @@ LBB0_81:                                // %__nv_fmodf.exit1262
 	st.param.b64 	[param2+0], %rd49;
 	.param .b64 retval0;
 	call.uni (retval0), 
-	julia_power_by_squaring_9851, 
+	julia_power_by_squaring_9863, 
 	(
 	param0, 
 	param1, 
@@ -651,7 +651,7 @@ LBB0_81:                                // %__nv_fmodf.exit1262
 	st.param.b64 	[param2+0], %rd49;
 	.param .b64 retval0;
 	call.uni (retval0), 
-	julia_power_by_squaring_9851, 
+	julia_power_by_squaring_9863, 
 	(
 	param0, 
 	param1, 
@@ -756,7 +756,7 @@ LBB0_134:                               // %__nv_fmodf.exit1400
 	st.param.b64 	[param2+0], %rd49;
 	.param .b64 retval0;
 	call.uni (retval0), 
-	julia_power_by_squaring_9851, 
+	julia_power_by_squaring_9863, 
 	(
 	param0, 
 	param1, 
@@ -861,7 +861,7 @@ LBB0_148:                               // %__nv_fmodf.exit1446
 	st.param.b64 	[param2+0], %rd49;
 	.param .b64 retval0;
 	call.uni (retval0), 
-	julia_power_by_squaring_9851, 
+	julia_power_by_squaring_9863, 
 	(
 	param0, 
 	param1, 
@@ -9780,7 +9780,7 @@ LBB0_124:                               // %L28037
 	{ // callseq 3, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_9840, 
+	julia_AssertionError_9852, 
 	(
 	);
 	} // callseq 3
@@ -9816,7 +9816,7 @@ LBB0_123:                               // %L28034
 	{ // callseq 7, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_9840, 
+	julia_AssertionError_9852, 
 	(
 	);
 	} // callseq 7
@@ -9852,7 +9852,7 @@ LBB0_149:                               // %L28031
 	{ // callseq 13, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_9840, 
+	julia_AssertionError_9852, 
 	(
 	);
 	} // callseq 13

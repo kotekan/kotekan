@@ -9,7 +9,7 @@
 .address_size 64
 
 	// .globl	_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE // -- Begin function _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE
-.func julia_AssertionError_10147
+.func julia_AssertionError_10159
 ()
 .noreturn
 {
@@ -23,6 +23,16 @@
 {
 	trap;
 }
+.func  (.param .b64 func_retval0) julia_power_by_squaring_10170
+(
+	.param .align 8 .b8 julia_power_by_squaring_10170_param_0[16],
+	.param .b64 julia_power_by_squaring_10170_param_1,
+	.param .b64 julia_power_by_squaring_10170_param_2
+)
+.noreturn
+{
+	trap;
+}
 .func gpu_signal_exception
 (
 	.param .align 8 .b8 gpu_signal_exception_param_0[16]
@@ -31,19 +41,9 @@
 {
 	trap;
 }
-.func  (.param .b64 func_retval0) julia_power_by_squaring_10158
-(
-	.param .align 8 .b8 julia_power_by_squaring_10158_param_0[16],
-	.param .b64 julia_power_by_squaring_10158_param_1,
-	.param .b64 julia_power_by_squaring_10158_param_2
-)
-.noreturn
-{
-	trap;
-}
 .extern .shared .align 32 .b8 shmem[];
 .global .align 1 .b8 exception2333[6] = {101, 114, 114, 111, 114, 0};
-.global .align 1 .b8 exception12354[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
+.global .align 1 .b8 exception1[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
                                         // @_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE
 .visible .entry _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE(
 	.param .align 8 .b8 _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE_param_0[16],
@@ -427,7 +427,7 @@ LBB0_52:                                // %__nv_fmodf.exit1170
 	st.param.b64 	[param2+0], %rd49;
 	.param .b64 retval0;
 	call.uni (retval0), 
-	julia_power_by_squaring_10158, 
+	julia_power_by_squaring_10170, 
 	(
 	param0, 
 	param1, 
@@ -629,7 +629,7 @@ LBB0_81:                                // %__nv_fmodf.exit1262
 	st.param.b64 	[param2+0], %rd49;
 	.param .b64 retval0;
 	call.uni (retval0), 
-	julia_power_by_squaring_10158, 
+	julia_power_by_squaring_10170, 
 	(
 	param0, 
 	param1, 
@@ -651,7 +651,7 @@ LBB0_81:                                // %__nv_fmodf.exit1262
 	st.param.b64 	[param2+0], %rd49;
 	.param .b64 retval0;
 	call.uni (retval0), 
-	julia_power_by_squaring_10158, 
+	julia_power_by_squaring_10170, 
 	(
 	param0, 
 	param1, 
@@ -756,7 +756,7 @@ LBB0_134:                               // %__nv_fmodf.exit1400
 	st.param.b64 	[param2+0], %rd49;
 	.param .b64 retval0;
 	call.uni (retval0), 
-	julia_power_by_squaring_10158, 
+	julia_power_by_squaring_10170, 
 	(
 	param0, 
 	param1, 
@@ -861,7 +861,7 @@ LBB0_148:                               // %__nv_fmodf.exit1446
 	st.param.b64 	[param2+0], %rd49;
 	.param .b64 retval0;
 	call.uni (retval0), 
-	julia_power_by_squaring_10158, 
+	julia_power_by_squaring_10170, 
 	(
 	param0, 
 	param1, 
@@ -9738,7 +9738,7 @@ LBB0_7:                                 // %L247
 	exit;
 	// end inline asm
 LBB0_1:                                 // %L8
-	mov.u64 	%rd43, exception12354;
+	mov.u64 	%rd43, exception1;
 	cvta.global.u64 	%rd44, %rd43;
 	{ // callseq 0, 0
 	.reg .b32 temp_param_reg;
@@ -9770,11 +9770,11 @@ LBB0_124:                               // %L29655
 	{ // callseq 3, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_10147, 
+	julia_AssertionError_10159, 
 	(
 	);
 	} // callseq 3
-	mov.u64 	%rd52, exception12354;
+	mov.u64 	%rd52, exception1;
 	cvta.global.u64 	%rd53, %rd52;
 	{ // callseq 4, 0
 	.reg .b32 temp_param_reg;
@@ -9806,11 +9806,11 @@ LBB0_123:                               // %L29652
 	{ // callseq 7, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_10147, 
+	julia_AssertionError_10159, 
 	(
 	);
 	} // callseq 7
-	mov.u64 	%rd58, exception12354;
+	mov.u64 	%rd58, exception1;
 	cvta.global.u64 	%rd59, %rd58;
 	{ // callseq 8, 0
 	.reg .b32 temp_param_reg;
@@ -9842,11 +9842,11 @@ LBB0_149:                               // %L29649
 	{ // callseq 13, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_10147, 
+	julia_AssertionError_10159, 
 	(
 	);
 	} // callseq 13
-	mov.u64 	%rd72, exception12354;
+	mov.u64 	%rd72, exception1;
 	cvta.global.u64 	%rd73, %rd72;
 	{ // callseq 14, 0
 	.reg .b32 temp_param_reg;

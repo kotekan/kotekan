@@ -9,7 +9,7 @@
 .address_size 64
 
 	// .globl	_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE // -- Begin function _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE
-.func julia_AssertionError_6949
+.func julia_AssertionError_6961
 ()
 .noreturn
 {
@@ -4125,7 +4125,7 @@ LBB0_132:                               // %L14636
 	{ // callseq 2, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_6949, 
+	julia_AssertionError_6961, 
 	(
 	);
 	} // callseq 2
@@ -4161,7 +4161,7 @@ LBB0_131:                               // %L14633
 	{ // callseq 5, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_6949, 
+	julia_AssertionError_6961, 
 	(
 	);
 	} // callseq 5
@@ -4197,7 +4197,7 @@ LBB0_130:                               // %L14630
 	{ // callseq 8, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_6949, 
+	julia_AssertionError_6961, 
 	(
 	);
 	} // callseq 8
