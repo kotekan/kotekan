@@ -33,6 +33,10 @@ target_link_libraries(test_dataset_manager_rest PRIVATE libexternal kotekan_core
 add_executable(test_dataset_manager test_dataset_manager.cpp)
 target_link_libraries(test_dataset_manager PRIVATE libexternal kotekan_utils kotekan_core)
 
+# test_ringbuffer
+add_executable(test_ringbuffer test_ringbuffer.cpp)
+target_link_libraries(test_ringbuffer PRIVATE libexternal kotekan_core kotekan_utils)
+
 # test_restclient needs fmt
 add_executable(test_restclient test_restclient.cpp)
 target_link_libraries(test_restclient PRIVATE libexternal kotekan_core kotekan_utils)

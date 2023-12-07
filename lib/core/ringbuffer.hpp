@@ -53,6 +53,8 @@ public:
     void register_consumer(const std::string& name) override;
     void register_producer(const std::string& name) override;
 
+    void print_full_status() override;
+
     /**
      * @brief Waits until the given number of elements are free to be written.
      * Must be called by a producer before writing.
@@ -93,11 +95,16 @@ public:
     // The size of the ring buffer (maximum number of elements in the buffer).
     size_t size;
 
-    // "write_head" is the index of the next element to be written,
+    // The "write_head" for a producer is the index of the next element to be written,
     // also 1 greater than the index of the last valid element that can be read by consumers.
     // The "wait_for_writable()" will return the "write_head" when enough space is available.
     // The "write_head" advances when "finish_write()" is called.
+    std::map<std::string, size_t> write_heads;
+
+    // The overall "write_head" is the min(write_heads), ie, 1 more than the last element that
+    // has been written by all producers (and therefore is available to be consumed).
     size_t write_head;
+
     // "write_tail" is the index of the first valid element that can be read by consumers.
     // The "write_tail" may be updated in "finish_read()" when the last consumer has finished
     // reading a chunk of data.  "write_tail = min(read_tails)".
@@ -107,6 +114,7 @@ public:
     // (ie, what the next call to wait_and_claim_readable() will return)
     // (ie, 1 greater than the largest index it is *currently* allowed to read)
     std::map<std::string, size_t> read_heads;
+
     // The "read_tail" for a consumer is the index of the first item
     // that it has requested to read, but not called "finish_read" on.
     // Elements between the "read_tail" and "read_head" are available to be read.
