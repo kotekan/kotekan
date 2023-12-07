@@ -11,6 +11,8 @@
 #include "kotekanLogging.hpp"
 #include "metadata.h" // for metadataPool
 
+#include <optional>
+
 /**
  * @brief A buffer to manage the signalling between stages when those
  * stages want to communicate data using a ring buffer.
@@ -55,9 +57,12 @@ public:
      * @brief Waits until the given number of elements are free to be written.
      * Must be called by a producer before writing.
      *
-     * @return 0 on success, -1 if shutting down.
+     * @return A std::optional<size_t>, where there is a value on
+     *   success, and no value if the pipeline is shutting down.  The
+     *   value is the write cursor: the offset in the array where the
+     *   producer should start writing.
      */
-    int wait_for_writable(const std::string& producer_name, size_t sz);
+    std::optional<size_t> wait_for_writable(const std::string& producer_name, size_t sz);
 
     /**
      * @brief Called by a producer after it has written the given number of
@@ -71,9 +76,12 @@ public:
      * produced, AND reserves those elements -- they will be treated as
      * unavailable by subsequent @c wait_and_claim_readable calls.
      *
-     * @return 0 on success, -1 if shutting down.
+     * @return A value on success, no value if the pipeline is
+     * shutting down.  On success, the returned value is the read
+     * cursor: the offset in the ring buffer where the consumer should
+     * start reading.
      */
-    int wait_and_claim_readable(const std::string& consumer_name, size_t sz);
+    std::optional<size_t> wait_and_claim_readable(const std::string& consumer_name, size_t sz);
 
     /**
      * @brief Called by a consumer after the given number of elements
@@ -82,13 +90,28 @@ public:
      */
     void finish_read(const std::string& consumer_name, size_t sz);
 
+    // The size of the ring buffer (maximum number of elements in the buffer).
     size_t size;
 
+    // "write_head" is the index of the next element to be written,
+    // also 1 greater than the index of the last valid element that can be read by consumers.
+    // The "wait_for_writable()" will return the "write_head" when enough space is available.
+    // The "write_head" advances when "finish_write()" is called.
     size_t write_head;
-    size_t write_tail; // == min(read_tails)
+    // "write_tail" is the index of the first valid element that can be read by consumers.
+    // The "write_tail" may be updated in "finish_read()" when the last consumer has finished
+    // reading a chunk of data.  "write_tail = min(read_tails)".
+    size_t write_tail;
 
-    std::map<std::string, size_t> read_tails;
+    // The *current* "read_head" for a consumer is the next index that client will be told to read.
+    // (ie, what the next call to wait_and_claim_readable() will return)
+    // (ie, 1 greater than the largest index it is *currently* allowed to read)
     std::map<std::string, size_t> read_heads;
+    // The "read_tail" for a consumer is the index of the first item
+    // that it has requested to read, but not called "finish_read" on.
+    // Elements between the "read_tail" and "read_head" are available to be read.
+    // The "read_tail" is advanced when "finish_read()" is called.
+    std::map<std::string, size_t> read_tails;
 };
 
 #endif

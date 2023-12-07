@@ -42,6 +42,8 @@ private:
     size_t _output_size;
     size_t _ring_buffer_size;
 
+    size_t input_cursor;
+
     /// GPU side memory name for the time-stream input
     std::string _gpu_mem_input;
     /// GPU side memory name for the time-stream output

@@ -46,10 +46,11 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
 int cudaCopyFromRingbuffer::wait_on_precondition() {
     // Wait for there to be data in the input (network) buffer.
     DEBUG("Waiting for data frame {:d}...", gpu_frame_id);
-    int offset = signal_buffer->wait_and_claim_readable(unique_name, _output_size);
+    std::optional<size_t> val = signal_buffer->wait_and_claim_readable(unique_name, _output_size);
     DEBUG("Finished waiting for data frame {:d}.", gpu_frame_id);
-    if (offset == -1)
+    if (!val.has_value())
         return -1;
+    input_cursor = val.value();
     return 0;
 }
 
@@ -65,6 +66,7 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
     void* rb_memory = device.get_gpu_memory(_gpu_mem_input, _ring_buffer_size);
 
     size_t input_cursor = get_state(command_state)->cursor;
+    assert(input_cursor == this->input_cursor);
 
     size_t ncopy = _output_size;
     size_t nwrap = 0;

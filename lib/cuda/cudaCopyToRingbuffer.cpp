@@ -47,7 +47,11 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
 }
 
 int cudaCopyToRingbuffer::wait_on_precondition() {
-    return signal_buffer->wait_for_writable(unique_name, _input_size);
+    std::optional<size_t> val = signal_buffer->wait_for_writable(unique_name, _input_size);
+    if (!val.has_value())
+        return -1;
+    output_cursor = val.value();
+    return 0;
 }
 
 cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
@@ -62,6 +66,7 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
     void* rb_memory = device.get_gpu_memory(_gpu_mem_output, _ring_buffer_size);
 
     size_t output_cursor = get_state(command_state)->cursor;
+    assert(output_cursor == this->output_cursor);
 
     size_t ncopy = _input_size;
     size_t nwrap = 0;

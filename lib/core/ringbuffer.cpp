@@ -28,9 +28,8 @@ void RingBuffer::register_consumer(const std::string& name) {
     GenericBuffer::register_consumer(name);
 }
 
-int RingBuffer::wait_and_claim_readable(const std::string& name, size_t sz) {
+std::optional<size_t> RingBuffer::wait_and_claim_readable(const std::string& name, size_t sz) {
     // Wait until we can advance the read_head for this consumer!
-    // assert this is our unique consumer?
     std::unique_lock<std::recursive_mutex> lock(mutex);
     size_t head = read_heads[name];
     while (1) {
@@ -45,17 +44,15 @@ int RingBuffer::wait_and_claim_readable(const std::string& name, size_t sz) {
         DEBUG("finished waiting on full condition variable");
     }
     read_heads[name] += sz;
-    lock.unlock();
-
     if (shutdown_signal)
-        return -1;
-    return 0;
+        return std::optional<size_t>();
+    // return the former read_head - that's where the consumer should start reading from.
+    return std::optional<size_t>(head % size);
 }
 
 void RingBuffer::finish_read(const std::string& name, size_t sz) {
     // Advance the read_tail for this consumer!
-    // assert this is our unique consumer?
-    {
+     {
         buffer_lock lock(mutex);
         size_t tail = read_tails[name];
         size_t head = read_heads[name];
@@ -76,7 +73,7 @@ void RingBuffer::finish_read(const std::string& name, size_t sz) {
     empty_cond.notify_all();
 }
 
-int RingBuffer::wait_for_writable(const std::string& producer_name, size_t sz) {
+std::optional<size_t> RingBuffer::wait_for_writable(const std::string& producer_name, size_t sz) {
     // assert this is our unique producer?
     (void)producer_name;
     std::unique_lock<std::recursive_mutex> lock(mutex);
@@ -92,10 +89,9 @@ int RingBuffer::wait_for_writable(const std::string& producer_name, size_t sz) {
         empty_cond.wait(lock);
         DEBUG("done waiting for empty condition");
     }
-    lock.unlock();
     if (shutdown_signal)
-        return -1;
-    return 0;
+        return std::optional<size_t>();
+    return std::optional<size_t>(write_head % size);
 }
 
 void RingBuffer::finish_write(const std::string& producer_name, size_t sz) {
