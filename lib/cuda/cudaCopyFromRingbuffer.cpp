@@ -7,27 +7,14 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 
-class cudaCopyFromRingbufferState : public cudaCommandState {
-public:
-    cudaCopyFromRingbufferState(kotekan::Config& config, const std::string& unique_name,
-                                kotekan::bufferContainer& buffers, cudaDeviceInterface& dev) :
-        cudaCommandState(config, unique_name, buffers, dev),
-        cursor(0) {}
-    int cursor;
-};
-
-static cudaCopyFromRingbufferState* get_state(std::shared_ptr<gpuCommandState> state) {
-    return static_cast<cudaCopyFromRingbufferState*>(state.get());
-}
-
-REGISTER_CUDA_COMMAND_WITH_STATE(cudaCopyFromRingbuffer, cudaCopyFromRingbufferState);
+REGISTER_CUDA_COMMAND(cudaCopyFromRingbuffer);
 
 cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string& unique_name,
                                                bufferContainer& host_buffers,
-                                               cudaDeviceInterface& device, int instance_num,
-                                               const std::shared_ptr<cudaCommandState>& state) :
-    cudaCommand(config, unique_name, host_buffers, device, instance_num, state,
-                "cudaCopyFromRingbuffer", "") {
+                                               cudaDeviceInterface& device, int instance_num) :
+    cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
+                "cudaCopyFromRingbuffer", ""),
+    input_cursor(0) {
     _output_size = config.get<int>(unique_name, "output_size");
     _ring_buffer_size = config.get<int>(unique_name, "ring_buffer_size");
     _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
@@ -65,9 +52,6 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
 
     void* rb_memory = device.get_gpu_memory(_gpu_mem_input, _ring_buffer_size);
 
-    size_t input_cursor = get_state(command_state)->cursor;
-    assert(input_cursor == this->input_cursor);
-
     size_t ncopy = _output_size;
     size_t nwrap = 0;
     if (input_cursor + _output_size > _ring_buffer_size) {
@@ -84,8 +68,6 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
                                          cudaMemcpyDeviceToDevice,
                                          device.getStream(cuda_stream_id)));
 
-    input_cursor = (input_cursor + _output_size) % _ring_buffer_size;
-    get_state(command_state)->cursor = input_cursor;
     return record_end_event();
 }
 

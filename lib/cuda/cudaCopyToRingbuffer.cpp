@@ -7,27 +7,14 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 
-class cudaCopyToRingbufferState : public cudaCommandState {
-public:
-    cudaCopyToRingbufferState(kotekan::Config& config, const std::string& unique_name,
-                              kotekan::bufferContainer& buffers, cudaDeviceInterface& dev) :
-        cudaCommandState(config, unique_name, buffers, dev),
-        cursor(0) {}
-    int cursor;
-};
-
-static cudaCopyToRingbufferState* get_state(std::shared_ptr<gpuCommandState> state) {
-    return static_cast<cudaCopyToRingbufferState*>(state.get());
-}
-
-REGISTER_CUDA_COMMAND_WITH_STATE(cudaCopyToRingbuffer, cudaCopyToRingbufferState);
+REGISTER_CUDA_COMMAND(cudaCopyToRingbuffer);
 
 cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& unique_name,
                                            bufferContainer& host_buffers,
-                                           cudaDeviceInterface& device, int instance_num,
-                                           const std::shared_ptr<cudaCommandState>& state) :
-    cudaCommand(config, unique_name, host_buffers, device, instance_num, state,
-                "cudaCopyToRingbuffer", "") {
+                                           cudaDeviceInterface& device, int instance_num) :
+    cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
+                "cudaCopyToRingbuffer", ""),
+    output_cursor(0) {
     _input_size = config.get<int>(unique_name, "input_size");
     _ring_buffer_size = config.get<int>(unique_name, "ring_buffer_size");
     _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
@@ -65,9 +52,6 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
 
     void* rb_memory = device.get_gpu_memory(_gpu_mem_output, _ring_buffer_size);
 
-    size_t output_cursor = get_state(command_state)->cursor;
-    assert(output_cursor == this->output_cursor);
-
     size_t ncopy = _input_size;
     size_t nwrap = 0;
     if (output_cursor + _input_size > _ring_buffer_size) {
@@ -84,8 +68,6 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
                                          cudaMemcpyDeviceToDevice,
                                          device.getStream(cuda_stream_id)));
 
-    output_cursor = (output_cursor + _input_size) % _ring_buffer_size;
-    get_state(command_state)->cursor = output_cursor;
     // FIXME -- signal *now*, when we have *queued* the cuda work?  Or in finalize_frame, when it
     // has finished?? if we do it here, probably need a syncInput after the cudaInput that is
     // waiting on this buffer.
