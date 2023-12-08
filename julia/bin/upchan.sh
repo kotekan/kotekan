@@ -5,7 +5,7 @@ set -euxo pipefail
 scriptdir=$(dirname "$0")
 cd "$scriptdir/.."
 
-setups='chord_U8 chord_U16 chord_U32 chord_U64 chord_U128 pathfinder_U8 pathfinder_U16 pathfinder_U32 pathfinder_U64'
+setups='chord_U8 chord_U16 chord_U32 chord_U64 chord_U128 pathfinder_U4 pathfinder_U8 pathfinder_U16 pathfinder_U32 pathfinder_U64'
 
 # Delete previous output (so that we don't accidentally re-use it)
 for setup in ${setups}; do

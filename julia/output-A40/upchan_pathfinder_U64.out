@@ -1,4 +1,68 @@
 [Creating upchan kernel...]
+emitter.environment[:ZZ] = Layout{Physics,Machine}:
+    Physics.CplxTag.cplx_in:1/2 => Machine.RegisterTag.cplx_in:1/2
+    Physics.DishTag.dish:1/2 => Machine.RegisterTag.dish:1/2
+    Physics.DishTag.dish:2/16 => Machine.WarpTag.warp:1/16
+    Physics.DishTag.dish:32/2 => Machine.RegisterTag.dish:32/2
+    Physics.FloatValueTag.floatvalue:1/16 => Machine.SIMDTag.simd:1/16
+    Physics.FreqTag.freq:1/2 => Machine.ThreadTag.thread:4/2
+    Physics.FreqTag.freq:2/2 => Machine.ThreadTag.thread:16/2
+    Physics.FreqTag.freq:4/2 => Machine.ThreadTag.thread:8/2
+    Physics.FreqTag.freq:64/128 => Machine.BlockTag.block:1/128
+    Physics.PolrTag.polr:1/2 => Machine.RegisterTag.polr:1/2
+    Physics.TimeTag.time:1/4 => Machine.ThreadTag.thread:1/4
+    Physics.TimeTag.time:4/2 => Machine.SIMDTag.simd:16/2
+    Physics.TimeTag.time:64/4 => Machine.LoopTag.t_inner:64/4
+    Physics.TimeTag.time:256/512 => Machine.LoopTag.t_outer:256/512
+
+emitter.environment[:ZZ] = Layout{Physics,Machine}:
+    Physics.CplxTag.cplx_in:1/2 => Machine.RegisterTag.cplx_in:1/2
+    Physics.DishTag.dish:1/2 => Machine.RegisterTag.dish:1/2
+    Physics.DishTag.dish:2/16 => Machine.WarpTag.warp:1/16
+    Physics.DishTag.dish:32/2 => Machine.RegisterTag.dish:32/2
+    Physics.FloatValueTag.floatvalue:1/16 => Machine.SIMDTag.simd:1/16
+    Physics.FreqTag.freq:1/2 => Machine.ThreadTag.thread:4/2
+    Physics.FreqTag.freq:2/2 => Machine.ThreadTag.thread:16/2
+    Physics.FreqTag.freq:4/2 => Machine.ThreadTag.thread:8/2
+    Physics.FreqTag.freq:64/128 => Machine.BlockTag.block:1/128
+    Physics.PolrTag.polr:1/2 => Machine.RegisterTag.polr:1/2
+    Physics.TimeTag.time:1/4 => Machine.ThreadTag.thread:1/4
+    Physics.TimeTag.time:4/2 => Machine.SIMDTag.simd:16/2
+    Physics.TimeTag.time:64/4 => Machine.LoopTag.t_inner:64/4
+    Physics.TimeTag.time:256/512 => Machine.LoopTag.t_outer:256/512
+
+emitter.environment[:ZZ] = Layout{Physics,Machine}:
+    Physics.CplxTag.cplx_in:1/2 => Machine.RegisterTag.cplx_in:1/2
+    Physics.DishTag.dish:1/2 => Machine.RegisterTag.dish:1/2
+    Physics.DishTag.dish:2/16 => Machine.WarpTag.warp:1/16
+    Physics.DishTag.dish:32/2 => Machine.RegisterTag.dish:32/2
+    Physics.FloatValueTag.floatvalue:1/16 => Machine.SIMDTag.simd:1/16
+    Physics.FreqTag.freq:1/2 => Machine.ThreadTag.thread:4/2
+    Physics.FreqTag.freq:2/2 => Machine.ThreadTag.thread:16/2
+    Physics.FreqTag.freq:4/2 => Machine.ThreadTag.thread:8/2
+    Physics.FreqTag.freq:64/128 => Machine.BlockTag.block:1/128
+    Physics.PolrTag.polr:1/2 => Machine.RegisterTag.polr:1/2
+    Physics.TimeTag.time:1/4 => Machine.ThreadTag.thread:1/4
+    Physics.TimeTag.time:4/2 => Machine.SIMDTag.simd:16/2
+    Physics.TimeTag.time:64/4 => Machine.LoopTag.t_inner:64/4
+    Physics.TimeTag.time:256/512 => Machine.LoopTag.t_outer:256/512
+
+emitter.environment[:ZZ] = Layout{Physics,Machine}:
+    Physics.CplxTag.cplx_in:1/2 => Machine.RegisterTag.cplx_in:1/2
+    Physics.DishTag.dish:1/2 => Machine.RegisterTag.dish:1/2
+    Physics.DishTag.dish:2/16 => Machine.WarpTag.warp:1/16
+    Physics.DishTag.dish:32/2 => Machine.RegisterTag.dish:32/2
+    Physics.FloatValueTag.floatvalue:1/16 => Machine.SIMDTag.simd:1/16
+    Physics.FreqTag.freq:1/2 => Machine.ThreadTag.thread:4/2
+    Physics.FreqTag.freq:2/2 => Machine.ThreadTag.thread:16/2
+    Physics.FreqTag.freq:4/2 => Machine.ThreadTag.thread:8/2
+    Physics.FreqTag.freq:64/128 => Machine.BlockTag.block:1/128
+    Physics.PolrTag.polr:1/2 => Machine.RegisterTag.polr:1/2
+    Physics.TimeTag.time:1/4 => Machine.ThreadTag.thread:1/4
+    Physics.TimeTag.time:4/2 => Machine.SIMDTag.simd:16/2
+    Physics.TimeTag.time:64/4 => Machine.LoopTag.t_inner:64/4
+    Physics.TimeTag.time:256/512 => Machine.LoopTag.t_outer:256/512
+
 [Done creating upchan kernel]
 Writing PTX code...
 Writing SASS code...

@@ -1,5 +1,5 @@
 @fastmath @inbounds(
-    begin #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:1316 =#
+    begin #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:1380 =#
         info = 1
         if true
             info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 16) % 16) * 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 128) % 128) % 128) * 512 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32) + 0) + 0x01] =
@@ -89,24 +89,53 @@
         X_cplx0 = Xre
         X_cplx1 = Xim
         (Γ¹0, Γ¹1) = let
-            k = Ubits
-            @assert U == 2^k                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:642 =#
+            k = 4
+            @assert 16 == 2^k                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:646 =#
             m = 3
             n = k - m
-            @assert 0 ≤ m                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:645 =#
-            @assert 0 ≤ n                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:646 =#
+            @assert 0 ≤ m                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:649 =#
+            @assert 0 ≤ n                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:650 =#
             thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32)
             thread0 = (thread ÷ (1i32)) % (2i32)
             thread1 = (thread ÷ (2i32)) % (2i32)
             thread2 = (thread ÷ (4i32)) % (2i32)
             thread3 = (thread ÷ (8i32)) % (2i32)
             thread4 = (thread ÷ (16i32)) % (2i32)
-            timehi0 = (1i32) * thread0 + (2i32) * thread1
-            timehi1 = timehi0 + 4i32
-            freqlo = (1i32) * thread2 + (2i32) * thread3 + (4i32) * thread4
+            if false
+                timehi0 = (4i32) * (0i32)
+                timehi1 = (4i32) * (1i32)
+                dish_in0 = (1i32) * thread1 + (2i32) * thread0
+                dish_in1 = (1i32) * thread1 + (2i32) * thread0
+            elseif false
+                timehi0 = (4i32) * (0i32) + (2i32) * thread1
+                timehi1 = (4i32) * (1i32) + (2i32) * thread1
+                dish_in0 = (1i32) * thread0
+                dish_in1 = (1i32) * thread0
+            elseif true
+                timehi0 = (4i32) * (0i32) + (2i32) * thread1 + (1i32) * thread0
+                timehi1 = (4i32) * (1i32) + (2i32) * thread1 + (1i32) * thread0
+                dish_in0 = 0i32
+                dish_in1 = 0i32
+            else
+                @assert false                        #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:673 =#
+            end
+            if false
+                freqlo = (1i32) * thread2
+                dish = (1i32) * thread4 + (2i32) * thread3
+            elseif false
+                freqlo = (1i32) * thread2 + (2i32) * thread4
+                dish = (1i32) * thread3
+            elseif true
+                freqlo = (1i32) * thread2 + (2i32) * thread4 + (4i32) * thread3
+                dish = 0i32
+            else
+                @assert false                        #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:685 =#
+            end
+            delta0 = dish == dish_in0
+            delta1 = dish == dish_in1
             (Γ¹0, Γ¹1) = (
-                cispi((((-2i32) * timehi0 * freqlo) / Float32(2^m)) % 2.0f0),
-                cispi((((-2i32) * timehi1 * freqlo) / Float32(2^m)) % 2.0f0),
+                delta0 * cispi((((-2i32) * timehi0 * freqlo) / Float32(2^m)) % 2.0f0),
+                delta1 * cispi((((-2i32) * timehi1 * freqlo) / Float32(2^m)) % 2.0f0),
             )
             (Γ¹0, Γ¹1)
         end
@@ -123,37 +152,40 @@
         Γ¹_cplx0_cplx_in1 = Γ¹re_cplx_in1
         Γ¹_cplx1_cplx_in1 = Γ¹im_cplx_in1
         (Γ²0, Γ²1) = let
-            k = Ubits
-            @assert U == 2^k                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:705 =#
+            k = 4
+            @assert 16 == 2^k                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:724 =#
             m = 3
             n = k - m
-            @assert 0 ≤ m                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:708 =#
-            @assert 0 ≤ n                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:709 =#
+            @assert 0 ≤ m                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:727 =#
+            @assert 0 ≤ n                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:728 =#
             thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32)
             thread0 = (thread ÷ (1i32)) % (2i32)
             thread1 = (thread ÷ (2i32)) % (2i32)
             thread2 = (thread ÷ (4i32)) % (2i32)
             thread3 = (thread ÷ (8i32)) % (2i32)
             thread4 = (thread ÷ (16i32)) % (2i32)
-            if U == 8
+            if false
                 timelo0 = 0i32
-                timelo1 = timelo0
-            elseif U == 16
+                timelo1 = 0i32
+            elseif false
                 timelo0 = 0i32
-                timelo1 = timelo0 + 1i32
-            elseif U == 32
-                timelo0 = (1i32) * thread1
-                timelo1 = timelo0 + 2i32
-            elseif U == 64
-                timelo0 = (2i32) * thread1 + (1i32) * thread0
-                timelo1 = timelo0 + 4i32
-            elseif U == 128
-                timelo0 = (4i32) * thread1 + (2i32) * thread0
-                timelo1 = timelo0 + 4i32
+                timelo1 = 0i32
+            elseif true
+                timelo0 = (1i32) * (0i32)
+                timelo1 = (1i32) * (1i32)
+            elseif false
+                timelo0 = (2i32) * (0i32) + (1i32) * thread1
+                timelo1 = (2i32) * (1i32) + (1i32) * thread1
+            elseif false
+                timelo0 = (4i32) * (0i32) + (2i32) * thread1 + (1i32) * thread0
+                timelo1 = (4i32) * (1i32) + (2i32) * thread1 + (1i32) * thread0
+            elseif false
+                timelo0 = (8i32) * (0i32) + (4i32) * thread1 + (2i32) * thread0
+                timelo1 = (8i32) * (1i32) + (4i32) * thread1 + (2i32) * thread0
             else
-                @assert false                        #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:732 =#
+                @assert false                        #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:754 =#
             end
-            freqlo = (1i32) * thread2 + (2i32) * thread3 + (4i32) * thread4
+            freqlo = (1i32) * thread2 + (2i32) * thread4 + (4i32) * thread3
             (Γ²0, Γ²1) = (
                 cispi((((-2i32) * timelo0 * freqlo) / Float32(2^(m + n))) % 2.0f0),
                 cispi((((-2i32) * timelo1 * freqlo) / Float32(2^(m + n))) % 2.0f0),
@@ -165,63 +197,77 @@
         Γ²_cplx0 = Γ²re
         Γ²_cplx1 = Γ²im
         (Γ³0, Γ³1) = let
-            k = Ubits
-            @assert U == 2^k                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:766 =#
+            k = 4
+            @assert 16 == 2^k                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:789 =#
             m = 3
             n = k - m
-            @assert 0 ≤ m                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:769 =#
-            @assert 0 ≤ n                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:770 =#
+            @assert 0 ≤ m                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:792 =#
+            @assert 0 ≤ n                    #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:793 =#
             thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32)
             thread0 = (thread ÷ (1i32)) % (2i32)
             thread1 = (thread ÷ (2i32)) % (2i32)
             thread2 = (thread ÷ (4i32)) % (2i32)
             thread3 = (thread ÷ (8i32)) % (2i32)
             thread4 = (thread ÷ (16i32)) % (2i32)
-            if U == 8
+            if false
                 timelo0 = 0i32
-                timelo1 = timelo0
-            elseif U == 16
+                timelo1 = 0i32
+                dish_in0 = (1i32) * (0i32) + (2i32) * thread1 + (4i32) * thread0
+                dish_in1 = (1i32) * (1i32) + (2i32) * thread1 + (4i32) * thread0
+            elseif false
                 timelo0 = 0i32
-                timelo1 = timelo0 + 1i32
-            elseif U == 32
-                timelo0 = (1i32) * thread1
-                timelo1 = timelo0 + 2i32
-            elseif U == 64
-                timelo0 = (2i32) * thread1 + (1i32) * thread0
-                timelo1 = timelo0 + 4i32
-            elseif U == 128
-                timelo0 = (4i32) * thread1 + (2i32) * thread0
-                timelo1 = timelo0 + 4i32
+                timelo1 = 0i32
+                dish_in0 = (1i32) * (0i32) + (2i32) * thread1 + (4i32) * thread0
+                dish_in1 = (1i32) * (1i32) + (2i32) * thread1 + (4i32) * thread0
+            elseif true
+                timelo0 = (1i32) * (0i32)
+                timelo1 = (1i32) * (1i32)
+                dish_in0 = (1i32) * thread1 + (2i32) * thread0
+                dish_in1 = (1i32) * thread1 + (2i32) * thread0
+            elseif false
+                timelo0 = (2i32) * (0i32) + (1i32) * thread1
+                timelo1 = (2i32) * (1i32) + (1i32) * thread1
+                dish_in0 = (1i32) * thread0
+                dish_in1 = (1i32) * thread0
+            elseif false
+                timelo0 = (4i32) * (0i32) + (2i32) * thread1 + (1i32) * thread0
+                timelo1 = (4i32) * (1i32) + (2i32) * thread1 + (1i32) * thread0
+                dish_in0 = 0i32
+                dish_in1 = 0i32
+            elseif false
+                timelo0 = (8i32) * (0i32) + (4i32) * thread1 + (2i32) * thread0
+                timelo1 = (8i32) * (1i32) + (4i32) * thread1 + (2i32) * thread0
+                dish_in0 = 0i32
+                dish_in1 = 0i32
             else
-                @assert false                        #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:793 =#
+                @assert false                        #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:831 =#
             end
-            if U == 8
+            if false
                 freqhi = 0i32
-                dish_in = (1i32) * thread1 + (2i32) * thread0 + (4i32) * thread2
                 dish = (1i32) * thread2 + (2i32) * thread4 + (4i32) * thread3
-            elseif U == 16
+            elseif false
+                freqhi = 0i32
+                dish = (1i32) * thread2 + (2i32) * thread4 + (4i32) * thread3
+            elseif true
                 freqhi = (1i32) * thread2
-                dish_in = (1i32) * thread1 + (2i32) * thread0
                 dish = (1i32) * thread4 + (2i32) * thread3
-            elseif U == 32
+            elseif false
                 freqhi = (1i32) * thread2 + (2i32) * thread4
-                dish_in = (1i32) * thread0
                 dish = (1i32) * thread3
-            elseif U == 64
+            elseif false
                 freqhi = (1i32) * thread2 + (2i32) * thread4 + (4i32) * thread3
-                dish_in = 0i32
                 dish = 0i32
-            elseif U == 128
+            elseif false
                 freqhi = (1i32) * thread2 + (2i32) * thread4 + (4i32) * thread3
-                dish_in = 0i32
                 dish = 0i32
             else
-                @assert false                        #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:816 =#
+                @assert false                        #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:852 =#
             end
-            delta = dish == dish_in
+            delta0 = dish == dish_in0
+            delta1 = dish == dish_in1
             (Γ³0, Γ³1) = (
-                delta * cispi((((-2i32) * timelo0 * freqhi) / Float32(2^n)) % 2.0f0),
-                delta * cispi((((-2i32) * timelo1 * freqhi) / Float32(2^n)) % 2.0f0),
+                delta0 * cispi((((-2i32) * timelo0 * freqhi) / Float32(2^n)) % 2.0f0),
+                delta1 * cispi((((-2i32) * timelo1 * freqhi) / Float32(2^n)) % 2.0f0),
             )
             (Γ³0, Γ³1)
         end
