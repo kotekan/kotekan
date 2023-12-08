@@ -198,9 +198,9 @@ metadataContainer* gpuDeviceInterface::create_gpu_memory_array_metadata(const st
 }
 
 bool gpuDeviceInterface::is_view_of_same_size(const std::string& name) {
-    return gpu_memory[name].view_source.size() &&
-        (gpu_memory[gpu_memory[name].view_source].metadata_pointers.size() ==
-         gpu_memory[name].metadata_pointers.size());
+    return gpu_memory[name].view_source.size()
+           && (gpu_memory[gpu_memory[name].view_source].metadata_pointers.size()
+               == gpu_memory[name].metadata_pointers.size());
 }
 
 void gpuDeviceInterface::claim_gpu_memory_array_metadata(const std::string& name,
