@@ -367,6 +367,7 @@ const layout_G_registers = Layout([
     FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
     [Freq(:freq, 1 << bit, 2) => simd_threads[bit + 1] for bit in 0:min(5, Ubits - 1)]...,
     [Freq(:freq, 1 << bit, 2) => Register(:freq, 1 << bit, 2) for bit in 6:(Ubits - 1)]...,
+    Freq(:freq, U, F) => Block(:block, idiv(D * P, 128), F),
 ])
 
 # eqn. (133)
@@ -374,25 +375,29 @@ const layout_G_registers = Layout([
 const layout_E_registers = let
     # One input tile: 128 dishes, 4 times
     # Assign input tiles to warps and registers
-    (Tlo_n, Thi_n) = (idiv(U, 4), idiv(Touter, U))
+    @assert Touter % (4 * W) == 0
+    (Tlo_n, Thi_n) = U == 2 ? (1, idiv(Touter, 4)) : (idiv(U, 4), idiv(Touter, U))
+    @assert Tlo_n * Thi_n == idiv(Touter, 4)
     Tlo_w = min(Tlo_n, W)
     Tlo_r = idiv(Tlo_n, Tlo_w)
     @assert Tlo_w * Tlo_r == Tlo_n
-    Thi_w = idiv(Thi_n, idiv(W, Tlo_w))
+    Thi_w = idiv(W, Tlo_w)
+    @assert Thi_n % Thi_w == 0
     Thi_r = idiv(Thi_n, Thi_w)
     @assert Thi_w * Thi_r == Thi_n
+    @assert Tlo_w * Thi_w == W
     Layout([
         IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
         Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
         Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
         Dish(:dish, 4, 4) => Register(:dish, 4, 4),
         [dish_polr[4 + bit + 1] => Thread(:thread, 1 << bit, 2) for bit in 0:2]...,
-        (Tlo_w == 1 ? [] : [Time(:time, 1, Tlo_w) => Warp(:warp, 1, Tlo_w)])...,
-        (Tlo_r == 1 ? [] : [Time(:time, 1 * Tlo_w, Tlo_r) => Register(:time, 1 * Tlo_w, Tlo_r)])...,
+        Time(:time, 1, Tlo_w) => Warp(:warp, 1, Tlo_w),
+        Time(:time, 1 * Tlo_w, Tlo_r) => Register(:time, 1 * Tlo_w, Tlo_r),
         Time(:time, idiv(U, 2), 2) => Thread(:thread, 8, 2),
-        Time(:time, idiv(U, 4), 2) => Thread(:thread, 16, 2),
-        (Thi_w == 1 ? [] : [Time(:time, U, Thi_w) => Warp(:warp, Tlo_w, Thi_w)])...,
-        (Thi_r == 1 ? [] : [Time(:time, U * Thi_w, Thi_r) => Register(:time, U * Thi_w, Thi_r)])...,
+        Time(:time, (U == 2 ? U : idiv(U, 4)), 2) => Thread(:thread, 16, 2),
+        Time(:time, (U == 2 ? 4 : U), Thi_w) => Warp(:warp, Tlo_w, Thi_w),
+        Time(:time, (U == 2 ? 4 : U) * Thi_w, Thi_r) => Register(:time, (U == 2 ? 4 : U) * Thi_w, Thi_r),
         Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
         # sect. 5.2
         [dish_polr[7 + bit + 1] => Block(:block, 1 << bit, 2) for bit in 0:(ilog2(idiv(D * P, 128)) - 1)]...,
@@ -401,17 +406,20 @@ const layout_E_registers = let
 end
 
 # eqn. (142)
-@assert U ≥ 4
+@assert U ≥ 2
 # One output tile: 128 dishes, 4 frequencies
 # Assign output tiles to warps and registers
 const layout_Ē_registers = let
-    (Flo_n, Thi_n) = (idiv(U, 4), idiv(Touter, U))
+    (Flo_n, Thi_n) = U == 2 ? (1, idiv(Touter, 4)) : (idiv(U, 4), idiv(Touter, U))
+    @assert Flo_n * Thi_n == idiv(Touter, 4)
     Flo_w = min(Flo_n, W)
     Flo_r = idiv(Flo_n, Flo_w)
     @assert Flo_w * Flo_r == Flo_n
-    Thi_w = idiv(Thi_n, idiv(W, Flo_w))
+    Thi_w = idiv(W, Flo_w)
+    @assert Thi_n % Thi_w == 0
     Thi_r = idiv(Thi_n, Thi_w)
     @assert Thi_w * Thi_r == Thi_n
+    @assert Flo_w * Thi_w == W
     Layout([
         IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
         Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
@@ -420,11 +428,11 @@ const layout_Ē_registers = let
         Dish(:dish, 8, 2) => Thread(:thread, 8, 2),
         [dish_polr[4 + bit + 1] => Thread(:thread, 1 << bit, 2) for bit in 0:2]...,
         Freq(:freq, 1, 2) => SIMD(:simd, 16, 2),
-        Freq(:freq, 2, 2) => Thread(:thread, 16, 2),
-        (Flo_w == 1 ? [] : [Freq(:freq, 4, Flo_w) => Warp(:warp, 1, Flo_w)])...,
-        (Flo_r == 1 ? [] : [Freq(:freq, 4 * Flo_w, Flo_r) => Register(:freq, 4 * Flo_w, Flo_r)])...,
-        (Thi_w == 1 ? [] : [Time(:time, U, Thi_w) => Warp(:warp, Flo_w, Thi_w)])...,
-        (Thi_r == 1 ? [] : [Time(:time, U * Thi_w, Thi_r) => Register(:time, U * Thi_w, Thi_r)])...,
+        (U == 2 ? Time(:time, U, 2) : Freq(:freq, 2, 2)) => Thread(:thread, 16, 2),
+        Freq(:freq, 4, Flo_w) => Warp(:warp, 1, Flo_w),
+        Freq(:freq, 4 * Flo_w, Flo_r) => Register(:freq, 4 * Flo_w, Flo_r),
+        Time(:time, (U == 2 ? 4 : U), Thi_w) => Warp(:warp, Flo_w, Thi_w),
+        Time(:time, (U == 2 ? 4 : U) * Thi_w, Thi_r) => Register(:time, (U == 2 ? 4 : U) * Thi_w, Thi_r),
         Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
         # sect. 5.2
         [dish_polr[7 + bit + 1] => Block(:block, 1 << bit, 2) for bit in 0:(ilog2(idiv(D * P, 128)) - 1)]...,
@@ -629,7 +637,7 @@ function upchan!(emitter)
     merge!(emitter, :X, [:Xre, :Xim], Cplx(:cplx, 1, C) => Register(:cplx, 1, C))
 
     # Calculate FFT coefficients
-    @assert 4 ≤ U ≤ 128
+    @assert 2 ≤ U ≤ 128
     layout_Γ¹reim_registers = Layout([
         FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
         [Time(:time, 1 << (Ubits - 1 - bit), 2) => simd_threads[bit + 1] for bit in 0:min(2, Ubits - 1)]...,
@@ -707,8 +715,8 @@ function upchan!(emitter)
         merge!(emitter, :Γ¹, [:Γ¹, :Γ¹], Time(:time, 1, 2) => Register(:time, 1, 2))
     end
 
-    if U ∉ [4, 8]
-        # For U = 4 and U = 8 this step is a multiplication by one, and we thus skip it
+    if U ∉ [2, 4, 8]
+        # For U in [2, 4, 8] this step is a multiplication by one, and we thus skip it
         @assert 4 ≤ U ≤ 128
         layout_Γ²reim_registers = Layout([
             FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
@@ -771,8 +779,8 @@ function upchan!(emitter)
         end
     end # if U ∉ [4, 8]
 
-    # For U = 4 this step is a multiplication by one, but we need to perform it anyway to permute the values in the registers
-    @assert 4 ≤ U ≤ 128
+    # For U in [2, 4] step is a multiplication by one, but we need to perform it anyway to permute the values in the registers
+    @assert 2 ≤ U ≤ 128
     layout_Γ³reim_registers = Layout([
         FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
         [Time(:time, 1 << (Ubits - 1 - (3 + bit)), 2) => simd_threads[bit + 1] for bit in 0:min(2, Ubits - 4)]...,
@@ -1044,7 +1052,7 @@ function upchan!(emitter)
                 # Step 6: Compute E4 by FFTing E3
                 apply!(emitter, :XX, [:E3], (E3,) -> :($E3))
 
-                if U in [4, 8, 16, 32, 64, 128]
+                if U in [2, 4, 8, 16, 32, 64, 128]
 
                     # Step 6.1: Length 8 FFT: W = exp(...) X
                     begin
@@ -1106,8 +1114,8 @@ function upchan!(emitter)
                     end
 
                     # Step 6.2: Z = exp(...) W
-                    if U in [4, 8]
-                        # Skip this multiplication for U = 4 and U = 8 because Γ² = 1 there
+                    if U in [2, 4, 8]
+                        # Skip this multiplication for U in [2, 4, 8] because Γ² = 1 there
                         apply!(emitter, :ZZ, [:WW], (WW,) -> :($WW))
                     else
                         split!(emitter, [:Γ²re, :Γ²im], :Γ², Cplx(:cplx, 1, C))
@@ -1139,11 +1147,11 @@ function upchan!(emitter)
                         # input indices
                         time_dish_polr_in = [
                             [Time(:time, 1 << (Ubits - 4 - bit), 2) for bit in 0:min(2, Ubits - 4)]...,
-                            [dish_polr_in[4 + bit + 1] for bit in max(0,Ubits - 3):2]...,
+                            [dish_polr_in[4 + bit + 1] for bit in max(0, Ubits - 3):2]...,
                         ]
                         mma_js = [time_dish_polr_in[1], time_dish_polr_in[3], time_dish_polr_in[2], Cplx(:cplx_in, 1, 2)]
                         # spectator indices
-                         freq_dish_polr_spec = [
+                        freq_dish_polr_spec = [
                             [Freq(:freq, 1 << bit, 2) for bit in 0:min(2, Ubits - 1)]...,
                             [dish_polr[1 + bit + 1] for bit in Ubits:2]...,
                         ]
@@ -1324,6 +1332,7 @@ function upchan!(emitter)
                 tbit_min = Int(log(2, U))
                 tbit_max = ceil(Int, log(2, t_min))
                 warp_val = :(IndexSpaces.cuda_warpidx())
+                thread_val = :(IndexSpaces.cuda_threadidx())
                 register_val = Int32(get(state.dict, :time, 0))
                 loop_val = :(t_outer)
                 t_expr = 0i32
@@ -1332,6 +1341,9 @@ function upchan!(emitter)
                     @assert mach.length == 2
                     if mach isa Warp
                         t_expr = :($t_expr + $warp_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
+                        # @show tbit t_expr
+                    elseif mach isa Thread
+                        t_expr = :($t_expr + $thread_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
                         # @show tbit t_expr
                     elseif mach isa Register
                         t_expr = :($t_expr + $register_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))

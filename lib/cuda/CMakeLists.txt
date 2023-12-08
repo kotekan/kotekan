@@ -38,6 +38,7 @@ add_library(
     cudaUpchannelizer_chord_U32.cpp
     cudaUpchannelizer_chord_U64.cpp
     cudaUpchannelizer_chord_U128.cpp
+    cudaUpchannelizer_pathfinder_U2.cpp
     cudaUpchannelizer_pathfinder_U4.cpp
     cudaUpchannelizer_pathfinder_U8.cpp
     cudaUpchannelizer_pathfinder_U16.cpp
