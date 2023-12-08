@@ -12,6 +12,7 @@
 #include "metadata.h" // for metadataPool
 
 #include <optional>
+#include <utility>
 
 /**
  * @brief A buffer to manage the signalling between stages when those
@@ -67,6 +68,15 @@ public:
     std::optional<size_t> wait_for_writable(const std::string& producer_name, size_t sz);
 
     /**
+     * @brief Checks many elements are free to be written.
+     *
+     * @return A std::optional<std::pair<size_t, size_t> >, where there
+     * is no value if the pipeline is shutting down, and otherwise, a pair
+     * giving the write cursor and number of elements that are writable.
+     */
+    std::optional<std::pair<size_t, size_t> > get_writable(const std::string& producer_name);
+
+    /**
      * @brief Called by a producer after it has written the given number of
      * elements.  Those elements will becomes available to consumers.
      */
@@ -84,6 +94,16 @@ public:
      * start reading.
      */
     std::optional<size_t> wait_and_claim_readable(const std::string& consumer_name, size_t sz);
+
+    /**
+     * @brief Checks many elements are free to be read, BUT does not
+     * advance the read head.
+     *
+     * @return A std::optional<std::pair<size_t, size_t> >, where there
+     * is no value if the pipeline is shutting down, and otherwise, a pair
+     * giving the read cursor and number of elements that are readable.
+     */
+    std::optional<std::pair<size_t, size_t> > peek_readable(const std::string& consumer_name);
 
     /**
      * @brief Called by a consumer after the given number of elements

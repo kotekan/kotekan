@@ -34,7 +34,7 @@ BOOST_AUTO_TEST_CASE(test1) {
     __enable_syslog = 0;
     _global_log_level = 4;
 
-    RingBuffer rb(100, pool, "rb1", "ring");
+    RingBuffer rb(20, pool, "rb1", "ring");
     rb.set_log_level("debug");
     rb.print_full_status();
 
@@ -83,5 +83,51 @@ BOOST_AUTO_TEST_CASE(test1) {
     
     BOOST_CHECK(oc.value_or(99) == 1);
     BOOST_CHECK(od.value_or(99) == 5);
+
+    rb.finish_read("C", 1);
+    rb.finish_read("D", 5);
+
+    auto owa = rb.get_writable("A");
+    auto owb = rb.get_writable("B");
+    auto orc = rb.peek_readable("C");
+    auto ord = rb.peek_readable("D");
+
+    BOOST_CHECK(owa.has_value());
+    BOOST_CHECK(owb.has_value());
+    BOOST_CHECK(orc.has_value());
+    BOOST_CHECK(ord.has_value());
+
+    auto wa = owa.value();
+    auto wb = owb.value();
+    auto rc = orc.value();
+    auto rd = ord.value();
+
+    INFO_NON_OO("A: writable: offset {:d}, n {:d}", wa.first, wa.second);
+    INFO_NON_OO("B: writable: offset {:d}, n {:d}", wb.first, wb.second);
+    INFO_NON_OO("C: readable: offset {:d}, n {:d}", rc.first, rc.second);
+    INFO_NON_OO("D: readable: offset {:d}, n {:d}", rd.first, rd.second);
+
+    BOOST_CHECK(wa.first == 10);
+    BOOST_CHECK(wa.second == 12);
+    BOOST_CHECK(wb.first == 0); // wrapped
+    BOOST_CHECK(wb.second == 2);
+    BOOST_CHECK(rc.first == 2);
+    BOOST_CHECK(rc.second == 8);
+    BOOST_CHECK(rd.first == 10);
+    BOOST_CHECK(rd.second == 0);
+
+    oc = rb.wait_and_claim_readable("C", 1);
+    oc = rb.wait_and_claim_readable("C", 1);
+    oc = rb.wait_and_claim_readable("C", 1);
+    BOOST_CHECK(oc.value_or(99) == 4);
+
+    rb.finish_read("C", 1);
+    rb.finish_read("C", 1);
+    rb.finish_read("C", 1);
+
+    owa = rb.get_writable("A");
+    wa = owa.value();
+    BOOST_CHECK(wa.first == 10);
+    BOOST_CHECK(wa.second == 15);
 
 }

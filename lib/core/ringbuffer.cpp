@@ -51,6 +51,14 @@ std::optional<size_t> RingBuffer::wait_and_claim_readable(const std::string& nam
     return std::optional<size_t>(head % size);
 }
 
+std::optional<std::pair<size_t, size_t> > RingBuffer::peek_readable(const std::string& name) {
+    std::unique_lock<std::recursive_mutex> lock(mutex);
+    if (shutdown_signal)
+        return std::optional<std::pair<size_t, size_t> >();
+    size_t head = read_heads[name];
+    return std::optional<std::pair<size_t, size_t> >(std::make_pair(head % size, write_head - head));
+}
+
 void RingBuffer::finish_read(const std::string& name, size_t sz) {
     // Advance the read_tail for this consumer!
      {
@@ -90,6 +98,14 @@ std::optional<size_t> RingBuffer::wait_for_writable(const std::string& name, siz
     if (shutdown_signal)
         return std::optional<size_t>();
     return std::optional<size_t>(write_heads[name] % size);
+}
+
+std::optional<std::pair<size_t, size_t> > RingBuffer::get_writable(const std::string& name) {
+    std::unique_lock<std::recursive_mutex> lock(mutex);
+    if (shutdown_signal)
+        return std::optional<std::pair<size_t, size_t> >();
+    size_t n = size - (write_heads[name] - write_tail);
+    return std::optional<std::pair<size_t, size_t> >(std::make_pair(write_heads[name] % size, n));
 }
 
 void RingBuffer::finish_write(const std::string& name, size_t sz) {
