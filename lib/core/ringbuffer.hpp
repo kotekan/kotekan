@@ -74,7 +74,7 @@ public:
      * is no value if the pipeline is shutting down, and otherwise, a pair
      * giving the write cursor and number of elements that are writable.
      */
-    std::optional<std::pair<size_t, size_t> > get_writable(const std::string& producer_name);
+    std::optional<std::pair<size_t, size_t>> get_writable(const std::string& producer_name);
 
     /**
      * @brief Called by a producer after it has written the given number of
@@ -103,7 +103,7 @@ public:
      * is no value if the pipeline is shutting down, and otherwise, a pair
      * giving the read cursor and number of elements that are readable.
      */
-    std::optional<std::pair<size_t, size_t> > peek_readable(const std::string& consumer_name);
+    std::optional<std::pair<size_t, size_t>> peek_readable(const std::string& consumer_name);
 
     /**
      * @brief Called by a consumer after the given number of elements

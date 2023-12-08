@@ -1,8 +1,8 @@
 #define BOOST_TEST_MODULE "test_ringbuffer"
 
 #include "Config.hpp" // for Config
-#include "ringbuffer.hpp"
 #include "metadataFactory.hpp"
+#include "ringbuffer.hpp"
 
 #include <memory>
 
@@ -55,7 +55,7 @@ BOOST_AUTO_TEST_CASE(test1) {
 
     std::optional<size_t> oc = rb.wait_and_claim_readable("C", 1);
     std::optional<size_t> od = rb.wait_and_claim_readable("D", 5);
-    
+
     BOOST_CHECK(oc.value_or(99) == 0);
     BOOST_CHECK(od.value_or(99) == 0);
 
@@ -80,7 +80,7 @@ BOOST_AUTO_TEST_CASE(test1) {
 
     oc = rb.wait_and_claim_readable("C", 1);
     od = rb.wait_and_claim_readable("D", 5);
-    
+
     BOOST_CHECK(oc.value_or(99) == 1);
     BOOST_CHECK(od.value_or(99) == 5);
 
@@ -129,5 +129,4 @@ BOOST_AUTO_TEST_CASE(test1) {
     wa = owa.value();
     BOOST_CHECK(wa.first == 10);
     BOOST_CHECK(wa.second == 15);
-
 }
