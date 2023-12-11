@@ -4,7 +4,7 @@ authors = ["Erik Schnetter <schnetter@gmail.com>"]
 version = "0.1.0"
 
 [deps]
-BFloat16s = "ab4f0b2a-ad5b-11e8-123f-65d77653426b"
+ASDF = "686f71d1-807d-59a4-a860-28280ea06d7b"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 CUDASIMDTypes = "ba1ee33b-8807-41fd-9812-6d5f2ce04139"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
@@ -14,5 +14,15 @@ JuliaFormatter = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
 Mustache = "ffc61752-8dc7-55ee-8c37-f3e9cdd09e70"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SixelTerm = "65edfddc-f399-4499-8369-a1bd38eee2ea"
-StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
+
+[compat]
+CUDA = "5.0.0"
+CUDASIMDTypes = "1.5.2"
+CairoMakie = "0.10.12"
+HDF5 = "0.17.1"
+IndexSpaces = "1.1.0"
+JuliaFormatter = "1.0.42"
+Mustache = "1.0.18"
+SixelTerm = "1.2.0"
+YAML = "0.4.9"
