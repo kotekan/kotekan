@@ -33,7 +33,7 @@ dish_separation_x: 6.3          # [m] east-west
 dish_separation_y: 8.5          # [m] north-south
 num_dishes: 512
 
-# 24^2 = 576 dish locations. Dishes 0..511 ar real dishes, dishes
+# 24^2 = 576 dish locations. Dishes 0..511 are real dishes, dishes
 # 512..575 are dummy dishes where the E-field is set to zero
 dish_locations: [
     0, 0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0, 9, 0, 10, 0, 11, 0, 12, 0, 13, 0, 14, 0, 15, 0, 16, 0, 17, 0, 18, 0, 19, 0, 20, 0, 21, 0, 22, 0, 23,
@@ -146,7 +146,7 @@ host_bb_beams_buffer:
 # Stages
 gen_voltage:
     kotekan_stage: FEngine
-    num_frames: 1
+    num_frames: 10
     E_buffer: host_voltage_buffer
     A_buffer: host_bb_phase_buffer
     J_buffer: host_expected_bb_beams_buffer
@@ -196,24 +196,23 @@ gpu:
           out_buf: host_bb_beams
 
 write_data:
-    base_dir: /tmp
-    file_ext: data
-    exit_after_n_frames: 1
+    base_dir: /tmp/f_engine_chord_bb
+    exit_after_n_frames: 10
     exit_with_n_writers: 4
     write_voltage:
-        kotekan_stage: hdf5FileWrite
+        kotekan_stage: asdfFileWrite
         in_buf: host_voltage_buffer
         file_name: chord_voltage
     write_bb_phase:
-        kotekan_stage: hdf5FileWrite
+        kotekan_stage: asdfFileWrite
         in_buf: host_bb_phase_buffer
         file_name: chord_bb_phase
     write_expected_bb_beams:
-        kotekan_stage: hdf5FileWrite
+        kotekan_stage: asdfFileWrite
         in_buf: host_expected_bb_beams_buffer
         file_name: chord_expected_bb_beams
     write_bb_beams:
-        kotekan_stage: hdf5FileWrite
+        kotekan_stage: asdfFileWrite
         in_buf: host_bb_beams_buffer
         file_name: chord_bb_beams
 ...

@@ -269,7 +269,7 @@ void hdf5FileWrite::main_thread() {
         if (herr < 0)
             ERROR("Could not flush HDF5 file");
 
-        INFO("Data file write done for {:s}", full_path.c_str());
+        INFO("Data file write done for {:s} {:d}", full_path.c_str(), frame_ctr);
 
         ++frame_ctr;
 

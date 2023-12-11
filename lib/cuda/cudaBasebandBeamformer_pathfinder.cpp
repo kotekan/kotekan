@@ -31,10 +31,9 @@ class cudaBasebandBeamformer_pathfinder : public cudaCommand {
 public:
     cudaBasebandBeamformer_pathfinder(Config& config, const std::string& unique_name,
                                       bufferContainer& host_buffers, cudaDeviceInterface& device,
-                                      int inst);
+                                      const int inst);
     virtual ~cudaBasebandBeamformer_pathfinder();
 
-    // int wait_on_precondition(int gpu_frame_id) override;
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
     void finalize_frame() override;
@@ -159,14 +158,19 @@ private:
     //
 
     // Kotekan buffer names
+
     const std::string A_memname;
+
     const std::string E_memname;
+
     const std::string s_memname;
+
     const std::string J_memname;
+
     const std::string info_memname;
 
     // Host-side buffer arrays
-    std::vector<std::vector<std::uint8_t>> host_info;
+    std::vector<std::vector<std::uint8_t>> info_host;
 };
 
 REGISTER_CUDA_COMMAND(cudaBasebandBeamformer_pathfinder);
@@ -175,7 +179,7 @@ cudaBasebandBeamformer_pathfinder::cudaBasebandBeamformer_pathfinder(Config& con
                                                                      const std::string& unique_name,
                                                                      bufferContainer& host_buffers,
                                                                      cudaDeviceInterface& device,
-                                                                     int inst) :
+                                                                     const int inst) :
     cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state,
                 "BasebandBeamformer_pathfinder", "BasebandBeamformer_pathfinder.ptx"),
     A_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
@@ -185,7 +189,7 @@ cudaBasebandBeamformer_pathfinder::cudaBasebandBeamformer_pathfinder(Config& con
     info_memname(unique_name + "/gpu_mem_info")
 
     ,
-    host_info(_gpu_buffer_depth) {
+    info_host(_gpu_buffer_depth) {
     // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(std::make_tuple(A_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
@@ -201,17 +205,17 @@ cudaBasebandBeamformer_pathfinder::cudaBasebandBeamformer_pathfinder(Config& con
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx("BasebandBeamformer_pathfinder.ptx", {kernel_symbol}, opts);
+        device.build_ptx(kernel_file_name, {kernel_symbol}, opts);
     }
-
-    // Initialize extra variables (if necessary)
 }
 
 cudaBasebandBeamformer_pathfinder::~cudaBasebandBeamformer_pathfinder() {}
 
 cudaEvent_t
-cudaBasebandBeamformer_pathfinder::execute(cudaPipelineState& pipestate,
+cudaBasebandBeamformer_pathfinder::execute(cudaPipelineState& /*pipestate*/,
                                            const std::vector<cudaEvent_t>& /*pre_events*/) {
+    const int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
+
     pre_execute();
 
     void* const A_memory =
@@ -222,67 +226,67 @@ cudaBasebandBeamformer_pathfinder::execute(cudaPipelineState& pipestate,
         device.get_gpu_memory_array(s_memname, pipestate.gpu_frame_id, _gpu_buffer_depth, s_length);
     void* const J_memory =
         device.get_gpu_memory_array(J_memname, pipestate.gpu_frame_id, _gpu_buffer_depth, J_length);
-    host_info[pipestate.gpu_frame_id].resize(info_length);
+    info_host.at(gpu_frame_index).resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
     /// A is an input buffer: check metadata
-    const metadataContainer* const mc_A =
-        device.get_gpu_memory_array_metadata(A_memname, pipestate.gpu_frame_id);
-    assert(mc_A && metadata_container_is_chord(mc_A));
-    const chordMetadata* const meta_A = get_chord_metadata(mc_A);
-    INFO("input A array: {:s} {:s}", meta_A->get_type_string(), meta_A->get_dimensions_string());
-    assert(meta_A->type == A_type);
-    assert(meta_A->dims == A_rank);
+    const metadataContainer* const A_mc =
+        device.get_gpu_memory_array_metadata(A_memname, gpu_frame_id);
+    assert(A_mc && metadata_container_is_chord(A_mc));
+    const chordMetadata* const A_meta = get_chord_metadata(A_mc);
+    INFO("input A array: {:s} {:s}", A_meta->get_type_string(), A_meta->get_dimensions_string());
+    assert(A_meta->type == A_type);
+    assert(A_meta->dims == A_rank);
     for (std::size_t dim = 0; dim < A_rank; ++dim) {
-        assert(std::strncmp(meta_A->dim_name[dim], A_labels[A_rank - 1 - dim],
-                            sizeof meta_A->dim_name[dim])
+        assert(std::strncmp(A_meta->dim_name[dim], A_labels[A_rank - 1 - dim],
+                            sizeof A_meta->dim_name[dim])
                == 0);
-        assert(meta_A->dim[dim] == int(A_lengths[A_rank - 1 - dim]));
+        assert(A_meta->dim[dim] == int(A_lengths[A_rank - 1 - dim]));
     }
     //
     /// E is an input buffer: check metadata
-    const metadataContainer* const mc_E =
-        device.get_gpu_memory_array_metadata(E_memname, pipestate.gpu_frame_id);
-    assert(mc_E && metadata_container_is_chord(mc_E));
-    const chordMetadata* const meta_E = get_chord_metadata(mc_E);
-    INFO("input E array: {:s} {:s}", meta_E->get_type_string(), meta_E->get_dimensions_string());
-    assert(meta_E->type == E_type);
-    assert(meta_E->dims == E_rank);
+    const metadataContainer* const E_mc =
+        device.get_gpu_memory_array_metadata(E_memname, gpu_frame_id);
+    assert(E_mc && metadata_container_is_chord(E_mc));
+    const chordMetadata* const E_meta = get_chord_metadata(E_mc);
+    INFO("input E array: {:s} {:s}", E_meta->get_type_string(), E_meta->get_dimensions_string());
+    assert(E_meta->type == E_type);
+    assert(E_meta->dims == E_rank);
     for (std::size_t dim = 0; dim < E_rank; ++dim) {
-        assert(std::strncmp(meta_E->dim_name[dim], E_labels[E_rank - 1 - dim],
-                            sizeof meta_E->dim_name[dim])
+        assert(std::strncmp(E_meta->dim_name[dim], E_labels[E_rank - 1 - dim],
+                            sizeof E_meta->dim_name[dim])
                == 0);
-        assert(meta_E->dim[dim] == int(E_lengths[E_rank - 1 - dim]));
+        assert(E_meta->dim[dim] == int(E_lengths[E_rank - 1 - dim]));
     }
     //
     /// s is an input buffer: check metadata
-    const metadataContainer* const mc_s =
-        device.get_gpu_memory_array_metadata(s_memname, pipestate.gpu_frame_id);
-    assert(mc_s && metadata_container_is_chord(mc_s));
-    const chordMetadata* const meta_s = get_chord_metadata(mc_s);
-    INFO("input s array: {:s} {:s}", meta_s->get_type_string(), meta_s->get_dimensions_string());
-    assert(meta_s->type == s_type);
-    assert(meta_s->dims == s_rank);
+    const metadataContainer* const s_mc =
+        device.get_gpu_memory_array_metadata(s_memname, gpu_frame_id);
+    assert(s_mc && metadata_container_is_chord(s_mc));
+    const chordMetadata* const s_meta = get_chord_metadata(s_mc);
+    INFO("input s array: {:s} {:s}", s_meta->get_type_string(), s_meta->get_dimensions_string());
+    assert(s_meta->type == s_type);
+    assert(s_meta->dims == s_rank);
     for (std::size_t dim = 0; dim < s_rank; ++dim) {
-        assert(std::strncmp(meta_s->dim_name[dim], s_labels[s_rank - 1 - dim],
-                            sizeof meta_s->dim_name[dim])
+        assert(std::strncmp(s_meta->dim_name[dim], s_labels[s_rank - 1 - dim],
+                            sizeof s_meta->dim_name[dim])
                == 0);
-        assert(meta_s->dim[dim] == int(s_lengths[s_rank - 1 - dim]));
+        assert(s_meta->dim[dim] == int(s_lengths[s_rank - 1 - dim]));
     }
     //
     /// J is an output buffer: set metadata
-    metadataContainer* const mc_J = device.create_gpu_memory_array_metadata(
-        J_memname, pipestate.gpu_frame_id, mc_E->parent_pool);
-    chordMetadata* const meta_J = get_chord_metadata(mc_J);
-    chord_metadata_copy(meta_J, meta_E);
-    meta_J->type = J_type;
-    meta_J->dims = J_rank;
+    metadataContainer* const J_mc =
+        device.create_gpu_memory_array_metadata(J_memname, gpu_frame_id, E_mc->parent_pool);
+    chordMetadata* const J_meta = get_chord_metadata(J_mc);
+    chord_metadata_copy(J_meta, E_meta);
+    J_meta->type = J_type;
+    J_meta->dims = J_rank;
     for (std::size_t dim = 0; dim < J_rank; ++dim) {
-        std::strncpy(meta_J->dim_name[dim], J_labels[J_rank - 1 - dim],
-                     sizeof meta_J->dim_name[dim]);
-        meta_J->dim[dim] = J_lengths[J_rank - 1 - dim];
+        std::strncpy(J_meta->dim_name[dim], J_labels[J_rank - 1 - dim],
+                     sizeof J_meta->dim_name[dim]);
+        J_meta->dim[dim] = J_lengths[J_rank - 1 - dim];
     }
-    INFO("output J array: {:s} {:s}", meta_J->get_type_string(), meta_J->get_dimensions_string());
+    INFO("output J array: {:s} {:s}", J_meta->get_type_string(), J_meta->get_dimensions_string());
     //
 
     record_start_event();
@@ -311,7 +315,7 @@ cudaBasebandBeamformer_pathfinder::execute(cudaPipelineState& pipestate,
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
-    DEBUG("Running CUDA BasebandBeamformer_pathfinder on GPU frame {:d}", pipestate.gpu_frame_id);
+    DEBUG("Running CUDA BasebandBeamformer_pathfinder on GPU frame {:d}", gpu_frame_id);
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
@@ -324,28 +328,32 @@ cudaBasebandBeamformer_pathfinder::execute(cudaPipelineState& pipestate,
 
     // Copy results back to host memory
     // TODO: Skip this for performance
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_info[pipestate.gpu_frame_id].data(), info_memory,
-                                     info_length, cudaMemcpyDeviceToHost,
-                                     device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.at(gpu_frame_index).data(), info_memory, info_length,
+                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     // Check error codes
     // TODO: Skip this for performance
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
     const std::int32_t error_code =
-        *std::max_element((const std::int32_t*)&*host_info[pipestate.gpu_frame_id].begin(),
-                          (const std::int32_t*)&*host_info[pipestate.gpu_frame_id].end());
+        *std::max_element((const std::int32_t*)&*info_host.at(gpu_frame_index).begin(),
+                          (const std::int32_t*)&*info_host.at(gpu_frame_index).end());
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
+
+    for (std::size_t i = 0; i < info_host.at(gpu_frame_index).size(); ++i)
+        if (info_host.at(gpu_frame_index)[i] != 0)
+            ERROR("cudaBasebandBeamformer_pathfinder returned 'info' value {:d} at index {:d} "
+                  "(zero indicates no error)",
+                  info_host.at(gpu_frame_index)[i], i);
 
     return record_end_event();
 }
 
 void cudaBasebandBeamformer_pathfinder::finalize_frame() {
-    cudaCommand::finalize_frame();
+    device.release_gpu_memory_array_metadata(A_memname, gpu_frame_id);
+    device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
+    device.release_gpu_memory_array_metadata(s_memname, gpu_frame_id);
+    device.release_gpu_memory_array_metadata(J_memname, gpu_frame_id);
 
-    for (std::size_t i = 0; i < host_info[gpu_frame_id].size(); ++i)
-        if (host_info[gpu_frame_id][i] != 0)
-            ERROR("cudaBasebandBeamformer_pathfinder returned 'info' value {:d} at index {:d} "
-                  "(zero indicates noerror)",
-                  host_info[gpu_frame_id][i], int(i));
+    cudaCommand::finalize_frame();
 }
