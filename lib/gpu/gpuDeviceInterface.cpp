@@ -53,9 +53,9 @@ void* gpuDeviceInterface::get_gpu_memory_array(const std::string& name, const ui
     // Check if the memory isn't yet allocated
     if (gpu_memory.count(name) == 0) {
         // Allocate arrays contiguously so that they can be used as ring buffer
-        void* base_ptr = alloc_gpu_memory(gpu_buffer_depth * len);
+        void* base_ptr = alloc_gpu_memory(buffer_depth * len);
         gpu_memory[name].gpu_pointers_to_free.push_back(base_ptr);
-        for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
+        for (uint32_t i = 0; i < buffer_depth; ++i) {
             // void* ptr = alloc_gpu_memory(len);
             void* ptr = (unsigned char*)base_ptr + i * len;
             INFO("Allocating GPU[{:d}] memory: {:s}, len: {:d}, ptr: {:p}", gpu_id, name, len, ptr);
@@ -131,7 +131,8 @@ void gpuDeviceInterface::create_gpu_memory_array_view(const std::string& source_
 void gpuDeviceInterface::create_gpu_memory_ringbuffer(const std::string& source_name,
                                                       const size_t source_len,
                                                       const std::string& dest_name,
-                                                      const size_t offset, const size_t dest_len) {
+                                                      const size_t offset, const size_t dest_len,
+                                                      const uint32_t buffer_depth) {
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     INFO("Creating GPU memory ringbuffer view {:s} with length {:d}, view on {:s} + offset {:d}",
          dest_name, dest_len, source_name, offset);
@@ -139,7 +140,7 @@ void gpuDeviceInterface::create_gpu_memory_ringbuffer(const std::string& source_
     if (gpu_memory.count(dest_name) > 0)
         throw std::runtime_error(fmt::format(
             "Tried to create_gpu_memory_ringbuffer {:s} that already exists.", dest_name));
-    assert(offset + dest_len * gpu_buffer_depth <= source_len);
+    assert(offset + dest_len * buffer_depth <= source_len);
 
     // Get/create the full buffer ("source")
     void* source = get_gpu_memory(source_name, source_len);
@@ -147,7 +148,7 @@ void gpuDeviceInterface::create_gpu_memory_ringbuffer(const std::string& source_
     // Create "dest" entries (views)
     gpu_memory[dest_name].len = dest_len;
     gpu_memory[dest_name].view_source = source_name;
-    for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
+    for (uint32_t i = 0; i < buffer_depth; ++i) {
         gpu_memory[dest_name].gpu_pointers.push_back((unsigned char*)source + offset
                                                      + i * dest_len);
         gpu_memory[dest_name].gpu_pointers_to_free.push_back(nullptr);

@@ -115,7 +115,7 @@ public:
      */
     void create_gpu_memory_ringbuffer(const std::string& source_name, const size_t source_len,
                                       const std::string& view_name, const size_t view_offset,
-                                      const size_t view_len);
+                                      const size_t view_len, const uint32_t buffer_depth);
 
     /**
      * @brief Fetches the metadata (if any) attached to the given GPU

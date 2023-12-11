@@ -310,11 +310,11 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     INFO("gpu_frame_id: {}", gpu_frame_id);
 
     // Beginning of the input ringbuffer
-    void* const E_memory0 = device.get_gpu_memory_array(E_memname, 0, E_length / _gpu_buffer_depth);
+    void* const E_memory0 = device.get_gpu_memory_array(E_memname, 0, _gpu_buffer_depth, E_length / _gpu_buffer_depth);
     INFO("E_memory0: {}", E_memory0);
 
     // Beginning of the output ringbuffer
-    void* const Ebar_memory0 = device.get_gpu_memory_array(Ebar_memname, 0, Ebar_length / _gpu_buffer_depth);
+    void* const Ebar_memory0 = device.get_gpu_memory_array(Ebar_memname, 0, _gpu_buffer_depth, Ebar_length / _gpu_buffer_depth);
     INFO("Ebar_memory0: {}", Ebar_memory0);
 
     // Set E_memory to beginning of input ring buffer
