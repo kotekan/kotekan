@@ -16,7 +16,7 @@
 #define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
 #pragma pack()
 
-enum chordDataType { int4p4, int8, int16, int32, int64, float16, float32, float64 };
+enum chordDataType { unknown_type, int4p4, int8, int16, int32, int64, float16, float32, float64 };
 
 constexpr std::size_t chord_datatype_bytes(chordDataType type) {
     switch (type) {
@@ -36,8 +36,10 @@ constexpr std::size_t chord_datatype_bytes(chordDataType type) {
             return 4;
         case float64:
             return 8;
+        case unknown_type:
+        default:
+            return -1;
     }
-    return -1;
 }
 
 const char* chord_datatype_string(chordDataType type);
@@ -60,8 +62,9 @@ struct chordMetadata {
 
     int dims;
     int dim[CHORD_META_MAX_DIM];
-    // array strides / layouts?
     char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME]; // 'F', 'T', 'D', etc
+    int64_t strides[CHORD_META_MAX_DIM];
+    int64_t offset;
 
     // One-hot arrays?
     int n_one_hot;
@@ -88,6 +91,8 @@ struct chordMetadata {
     // by which the time samples have been downsampled relative to
     // FPGA samples.
     int time_downsampling_fpga[CHORD_META_MAX_FREQ];
+
+    chordMetadata();
 
     std::string get_dimension_name(size_t i) const {
         return std::string(dim_name[i], strnlen(dim_name[i], CHORD_META_MAX_DIMNAME));
