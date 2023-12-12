@@ -36,6 +36,7 @@ void* gpuDeviceInterface::get_gpu_memory(const std::string& name, const size_t l
         gpu_memory[name].view_source = "";
         gpu_memory[name].gpu_pointers.push_back(ptr);
         gpu_memory[name].gpu_pointers_to_free.push_back(ptr);
+        gpu_memory[name].metadata_pointers.push_back(nullptr);
     }
     // The size must match what has already been allocated.
     assert(len == gpu_memory[name].len);

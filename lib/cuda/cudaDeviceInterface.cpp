@@ -73,31 +73,39 @@ void cudaDeviceInterface::prepareStreams(uint32_t num_streams) {
 }
 void cudaDeviceInterface::async_copy_host_to_gpu(void* dst, void* src, size_t len,
                                                  uint32_t cuda_stream_id, cudaEvent_t pre_event,
-                                                 cudaEvent_t& copy_start_event,
-                                                 cudaEvent_t& copy_end_event) {
+                                                 cudaEvent_t* copy_start_event,
+                                                 cudaEvent_t* copy_end_event) {
     if (pre_event)
         CHECK_CUDA_ERROR(cudaStreamWaitEvent(getStream(cuda_stream_id), pre_event, 0));
+    if (copy_start_event) {
+        CHECK_CUDA_ERROR(cudaEventCreate(copy_start_event));
+        CHECK_CUDA_ERROR(cudaEventRecord(*copy_start_event, getStream(cuda_stream_id)));
+    }
     // Data transfer to GPU
-    CHECK_CUDA_ERROR(cudaEventCreate(&copy_start_event));
-    CHECK_CUDA_ERROR(cudaEventRecord(copy_start_event, getStream(cuda_stream_id)));
     CHECK_CUDA_ERROR(
         cudaMemcpyAsync(dst, src, len, cudaMemcpyHostToDevice, getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaEventCreate(&copy_end_event));
-    CHECK_CUDA_ERROR(cudaEventRecord(copy_end_event, getStream(cuda_stream_id)));
+    if (copy_end_event) {
+        CHECK_CUDA_ERROR(cudaEventCreate(copy_end_event));
+        CHECK_CUDA_ERROR(cudaEventRecord(*copy_end_event, getStream(cuda_stream_id)));
+    }
 }
 void cudaDeviceInterface::async_copy_gpu_to_host(void* dst, void* src, size_t len,
                                                  uint32_t cuda_stream_id, cudaEvent_t pre_event,
-                                                 cudaEvent_t& copy_start_event,
-                                                 cudaEvent_t& copy_end_event) {
+                                                 cudaEvent_t* copy_start_event,
+                                                 cudaEvent_t* copy_end_event) {
     if (pre_event)
         CHECK_CUDA_ERROR(cudaStreamWaitEvent(getStream(cuda_stream_id), pre_event, 0));
-    // Data transfer to GPU
-    CHECK_CUDA_ERROR(cudaEventCreate(&copy_start_event));
-    CHECK_CUDA_ERROR(cudaEventRecord(copy_start_event, getStream(cuda_stream_id)));
+    if (copy_start_event) {
+        CHECK_CUDA_ERROR(cudaEventCreate(copy_start_event));
+        CHECK_CUDA_ERROR(cudaEventRecord(*copy_start_event, getStream(cuda_stream_id)));
+    }
+    // Data transfer from GPU
     CHECK_CUDA_ERROR(
         cudaMemcpyAsync(dst, src, len, cudaMemcpyDeviceToHost, getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaEventCreate(&copy_end_event));
-    CHECK_CUDA_ERROR(cudaEventRecord(copy_end_event, getStream(cuda_stream_id)));
+    if (copy_end_event) {
+        CHECK_CUDA_ERROR(cudaEventCreate(copy_end_event));
+        CHECK_CUDA_ERROR(cudaEventRecord(*copy_end_event, getStream(cuda_stream_id)));
+    }
 }
 
 void cudaDeviceInterface::build(const std::string& kernel_filename,
