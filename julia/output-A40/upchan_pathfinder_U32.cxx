@@ -242,11 +242,11 @@ private:
     const std::string info_memname;
 
     // Host-side buffer arrays
-    std::vector<std::vector<std::uint8_t>> Tmin_host;
-    std::vector<std::vector<std::uint8_t>> Tmax_host;
-    std::vector<std::vector<std::uint8_t>> Tbarmin_host;
-    std::vector<std::vector<std::uint8_t>> Tbarmax_host;
-    std::vector<std::vector<std::uint8_t>> info_host;
+    std::vector<std::uint8_t> Tmin_host;
+    std::vector<std::uint8_t> Tmax_host;
+    std::vector<std::uint8_t> Tbarmin_host;
+    std::vector<std::uint8_t> Tbarmax_host;
+    std::vector<std::uint8_t> info_host;
 
     // Loop-carried information
 
@@ -274,8 +274,8 @@ cudaUpchannelizer_pathfinder_U32::cudaUpchannelizer_pathfinder_U32(Config& confi
     Ebar_memname(config.get<std::string>(unique_name, "gpu_mem_output_voltage")),
     info_memname(unique_name + "/gpu_mem_info"),
 
-    Tmin_host(_gpu_buffer_depth), Tmax_host(_gpu_buffer_depth), Tbarmin_host(_gpu_buffer_depth),
-    Tbarmax_host(_gpu_buffer_depth), info_host(_gpu_buffer_depth), unprocessed(0), unprovided(0) {
+    Tmin_host(Tmin_length), Tmax_host(Tmax_length), Tbarmin_host(Tbarmin_length),
+    Tbarmax_host(Tbarmax_length), info_host(info_length), unprocessed(0), unprovided(0) {
     // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Tmin", false, true, true));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Tmax", false, true, true));
@@ -311,17 +311,11 @@ cudaUpchannelizer_pathfinder_U32::~cudaUpchannelizer_pathfinder_U32() {}
 cudaEvent_t
 cudaUpchannelizer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
                                           const std::vector<cudaEvent_t>& /*pre_events*/) {
-    const int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
-
     pre_execute();
 
-    Tmin_host.at(gpu_frame_index).resize(Tmin_length);
     void* const Tmin_memory = device.get_gpu_memory(Tmin_memname, Tmin_length);
-    Tmax_host.at(gpu_frame_index).resize(Tmax_length);
     void* const Tmax_memory = device.get_gpu_memory(Tmax_memname, Tmax_length);
-    Tbarmin_host.at(gpu_frame_index).resize(Tbarmin_length);
     void* const Tbarmin_memory = device.get_gpu_memory(Tbarmin_memname, Tbarmin_length);
-    Tbarmax_host.at(gpu_frame_index).resize(Tbarmax_length);
     void* const Tbarmax_memory = device.get_gpu_memory(Tbarmax_memname, Tbarmax_length);
     void* const G_memory =
         args::G == args::E || args::G == args::Ebar
@@ -339,7 +333,6 @@ cudaUpchannelizer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
                                           Ebar_length / _gpu_buffer_depth)
             : device.get_gpu_memory_array(Ebar_memname, gpu_frame_id, _gpu_buffer_depth,
                                           Ebar_length);
-    info_host.at(gpu_frame_index).resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
     /// G is an input buffer: check metadata
@@ -531,10 +524,10 @@ cudaUpchannelizer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
 
     // Pass time spans to kernel
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
-    *(std::int32_t*)Tmin_host.at(gpu_frame_index).data() = Tmin_wrapped;
-    *(std::int32_t*)Tmax_host.at(gpu_frame_index).data() = Tmax_wrapped;
-    *(std::int32_t*)Tbarmin_host.at(gpu_frame_index).data() = Tbarmin_wrapped;
-    *(std::int32_t*)Tbarmax_host.at(gpu_frame_index).data() = Tbarmax_wrapped;
+    *(std::int32_t*)Tmin_host.data() = Tmin_wrapped;
+    *(std::int32_t*)Tmax_host.data() = Tmax_wrapped;
+    *(std::int32_t*)Tbarmin_host.data() = Tbarmin_wrapped;
+    *(std::int32_t*)Tbarmax_host.data() = Tbarmax_wrapped;
 
     // Update metadata
     Ebar_meta->dim[0] = Tbarlength - unprovided;
@@ -555,16 +548,14 @@ cudaUpchannelizer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
 
     // Copy inputs to device memory
     // TODO: Pass scalar kernel arguments more efficiently, i.e. without a separate `cudaMemcpy`
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tmin_memory, Tmin_host.at(gpu_frame_index).data(), Tmin_length,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tmin_memory, Tmin_host.data(), Tmin_length,
                                      cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tmax_memory, Tmax_host.at(gpu_frame_index).data(), Tmax_length,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tmax_memory, Tmax_host.data(), Tmax_length,
                                      cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmin_memory, Tbarmin_host.at(gpu_frame_index).data(),
-                                     Tbarmin_length, cudaMemcpyHostToDevice,
-                                     device.getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmax_memory, Tbarmax_host.at(gpu_frame_index).data(),
-                                     Tbarmax_length, cudaMemcpyHostToDevice,
-                                     device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmin_memory, Tbarmin_host.data(), Tbarmin_length,
+                                     cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmax_memory, Tbarmax_host.data(), Tbarmax_length,
+                                     cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
 
     // Initialize host-side buffer arrays
     // TODO: Skip this for performance
@@ -597,23 +588,22 @@ cudaUpchannelizer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
 
     // Copy results back to host memory
     // TODO: Skip this for performance
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.at(gpu_frame_index).data(), info_memory, info_length,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.data(), info_memory, info_length,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     // Check error codes
     // TODO: Skip this for performance
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-    const std::int32_t error_code =
-        *std::max_element((const std::int32_t*)&*info_host.at(gpu_frame_index).begin(),
-                          (const std::int32_t*)&*info_host.at(gpu_frame_index).end());
+    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
+                                                      (const std::int32_t*)&*info_host.end());
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.at(gpu_frame_index).size(); ++i)
-        if (info_host.at(gpu_frame_index)[i] != 0)
+    for (std::size_t i = 0; i < info_host.size(); ++i)
+        if (info_host[i] != 0)
             ERROR("cudaUpchannelizer_pathfinder_U32 returned 'info' value {:d} at index {:d} (zero "
                   "indicates no error)",
-                  info_host.at(gpu_frame_index)[i], i);
+                  info_host[i], i);
 
     return record_end_event();
 }

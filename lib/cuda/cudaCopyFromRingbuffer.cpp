@@ -31,8 +31,8 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
 }
 
 int cudaCopyFromRingbuffer::wait_on_precondition() {
-    // Wait for there to be data in the input (network) buffer.
-    DEBUG("Waiting for data frame {:d}...", gpu_frame_id);
+    // Wait for there to be data available in the ringbuffer.
+    DEBUG("Waiting for ringbuffer data for frame {:d}...", gpu_frame_id);
     std::optional<size_t> val = signal_buffer->wait_and_claim_readable(unique_name, _output_size);
     DEBUG("Finished waiting for data frame {:d}.", gpu_frame_id);
     if (!val.has_value())

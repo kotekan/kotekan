@@ -170,7 +170,7 @@ private:
     const std::string info_memname;
 
     // Host-side buffer arrays
-    std::vector<std::vector<std::uint8_t>> info_host;
+    std::vector<std::uint8_t> info_host;
 };
 
 REGISTER_CUDA_COMMAND(cudaBasebandBeamformer_chord);
@@ -189,7 +189,7 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
     info_memname(unique_name + "/gpu_mem_info")
 
     ,
-    info_host(_gpu_buffer_depth) {
+    info_host(info_length) {
     // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(std::make_tuple(A_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
@@ -225,7 +225,6 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
         device.get_gpu_memory_array(s_memname, gpu_frame_id, _gpu_buffer_depth, s_length);
     void* const J_memory =
         device.get_gpu_memory_array(J_memname, gpu_frame_id, _gpu_buffer_depth, J_length);
-    info_host.at(gpu_frame_index).resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
     /// A is an input buffer: check metadata
@@ -327,23 +326,22 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
 
     // Copy results back to host memory
     // TODO: Skip this for performance
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.at(gpu_frame_index).data(), info_memory, info_length,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.data(), info_memory, info_length,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     // Check error codes
     // TODO: Skip this for performance
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-    const std::int32_t error_code =
-        *std::max_element((const std::int32_t*)&*info_host.at(gpu_frame_index).begin(),
-                          (const std::int32_t*)&*info_host.at(gpu_frame_index).end());
+    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
+                                                      (const std::int32_t*)&*info_host.end());
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.at(gpu_frame_index).size(); ++i)
-        if (info_host.at(gpu_frame_index)[i] != 0)
+    for (std::size_t i = 0; i < info_host.size(); ++i)
+        if (info_host[i] != 0)
             ERROR("cudaBasebandBeamformer_chord returned 'info' value {:d} at index {:d} (zero "
                   "indicates no error)",
-                  info_host.at(gpu_frame_index)[i], i);
+                  info_host[i], i);
 
     return record_end_event();
 }

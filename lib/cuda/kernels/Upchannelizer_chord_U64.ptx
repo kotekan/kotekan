@@ -17,19 +17,19 @@
 {
 	trap;
 }
-.func  (.param .b64 func_retval0) julia_power_by_squaring_13807
+.func gpu_signal_exception
 (
-	.param .align 8 .b8 julia_power_by_squaring_13807_param_0[16],
-	.param .b64 julia_power_by_squaring_13807_param_1,
-	.param .b64 julia_power_by_squaring_13807_param_2
+	.param .align 8 .b8 gpu_signal_exception_param_0[16]
 )
 .noreturn
 {
 	trap;
 }
-.func gpu_signal_exception
+.func  (.param .b64 func_retval0) julia_power_by_squaring_13807
 (
-	.param .align 8 .b8 gpu_signal_exception_param_0[16]
+	.param .align 8 .b8 julia_power_by_squaring_13807_param_0[16],
+	.param .b64 julia_power_by_squaring_13807_param_1,
+	.param .b64 julia_power_by_squaring_13807_param_2
 )
 .noreturn
 {
