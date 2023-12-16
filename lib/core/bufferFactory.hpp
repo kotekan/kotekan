@@ -19,13 +19,14 @@ public:
     bufferFactory(Config& config, std::map<std::string, metadataPool*>& metadataPools);
     ~bufferFactory();
 
-    std::map<std::string, Buffer*> build_buffers();
+    std::map<std::string, GenericBuffer*> build_buffers();
+    // std::map<std::string, RingBuffer*> build_ringbuffers();
 
 private:
-    void build_from_tree(std::map<std::string, Buffer*>& buffers, const nlohmann::json& config_tree,
-                         const std::string& path);
-    Buffer* new_buffer(const std::string& type_name, const std::string& name,
-                       const std::string& location);
+    void build_from_tree(std::map<std::string, GenericBuffer*>& buffers,
+                         const nlohmann::json& config_tree, const std::string& path);
+    GenericBuffer* new_buffer(const std::string& type_name, const std::string& name,
+                              const std::string& location);
 
     Config& config;
     std::map<std::string, metadataPool*>& metadataPools;

@@ -324,17 +324,20 @@ cudaEvent_t cudaUpchannelizer_chord_U64::execute(cudaPipelineState& /*pipestate*
     void* const Tbarmax_memory = device.get_gpu_memory(Tbarmax_memname, Tbarmax_length);
     void* const G_memory =
         args::G == args::E || args::G == args::Ebar
-            ? device.get_gpu_memory_array(G_memname, gpu_frame_id, G_length / _gpu_buffer_depth)
-            : device.get_gpu_memory_array(G_memname, gpu_frame_id, G_length);
+            ? device.get_gpu_memory_array(G_memname, gpu_frame_id, _gpu_buffer_depth,
+                                          G_length / _gpu_buffer_depth)
+            : device.get_gpu_memory_array(G_memname, gpu_frame_id, _gpu_buffer_depth, G_length);
     void* const E_memory =
         args::E == args::E || args::E == args::Ebar
-            ? device.get_gpu_memory_array(E_memname, gpu_frame_id, E_length / _gpu_buffer_depth)
-            : device.get_gpu_memory_array(E_memname, gpu_frame_id, E_length);
+            ? device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth,
+                                          E_length / _gpu_buffer_depth)
+            : device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
     void* const Ebar_memory =
         args::Ebar == args::E || args::Ebar == args::Ebar
-            ? device.get_gpu_memory_array(Ebar_memname, gpu_frame_id,
+            ? device.get_gpu_memory_array(Ebar_memname, gpu_frame_id, _gpu_buffer_depth,
                                           Ebar_length / _gpu_buffer_depth)
-            : device.get_gpu_memory_array(Ebar_memname, gpu_frame_id, Ebar_length);
+            : device.get_gpu_memory_array(Ebar_memname, gpu_frame_id, _gpu_buffer_depth,
+                                          Ebar_length);
     info_host.at(gpu_frame_index).resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
@@ -428,12 +431,13 @@ cudaEvent_t cudaUpchannelizer_chord_U64::execute(cudaPipelineState& /*pipestate*
     INFO("gpu_frame_id: {}", gpu_frame_id);
 
     // Beginning of the input ringbuffer
-    void* const E_memory0 = device.get_gpu_memory_array(E_memname, 0, E_length / _gpu_buffer_depth);
+    void* const E_memory0 =
+        device.get_gpu_memory_array(E_memname, 0, _gpu_buffer_depth, E_length / _gpu_buffer_depth);
     INFO("E_memory0: {}", E_memory0);
 
     // Beginning of the output ringbuffer
-    void* const Ebar_memory0 =
-        device.get_gpu_memory_array(Ebar_memname, 0, Ebar_length / _gpu_buffer_depth);
+    void* const Ebar_memory0 = device.get_gpu_memory_array(Ebar_memname, 0, _gpu_buffer_depth,
+                                                           Ebar_length / _gpu_buffer_depth);
     INFO("Ebar_memory0: {}", Ebar_memory0);
 
     // Set E_memory to beginning of input ring buffer

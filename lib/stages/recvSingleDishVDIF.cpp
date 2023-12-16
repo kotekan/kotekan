@@ -26,7 +26,7 @@ recvSingleDishVDIF::recvSingleDishVDIF(Config& config, const std::string& unique
           std::bind(&recvSingleDishVDIF::main_thread, this)) {
 
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Apply config.
     num_freq = config.get<int>(unique_name, "num_freq");
@@ -50,7 +50,7 @@ void recvSingleDishVDIF::main_thread() {
 
     while (!stop_thread) {
         // Get an empty buffer to write into
-        frame = wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
+        frame = out_buf->wait_for_empty_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
@@ -76,7 +76,7 @@ void recvSingleDishVDIF::main_thread() {
 
         INFO("recvSingleDishVDIF: marking buffer {:s}[{:d}] as full", out_buf->buffer_name,
              frame_id);
-        mark_frame_full(out_buf, unique_name.c_str(), frame_id);
+        out_buf->mark_frame_full(unique_name, frame_id);
 
         file_num++;
         frame_id = (frame_id + 1) % out_buf->num_frames;

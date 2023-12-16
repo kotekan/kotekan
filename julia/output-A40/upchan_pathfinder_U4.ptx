@@ -9,12 +9,6 @@
 .address_size 64
 
 	// .globl	_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE // -- Begin function _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE
-.func julia_AssertionError_4735
-()
-.noreturn
-{
-	trap;
-}
 .func gpu_report_exception
 (
 	.param .b64 gpu_report_exception_param_0
@@ -49,8 +43,8 @@
 .minnctapersm 8
 {
 	.reg .pred 	%p<94>;
-	.reg .b32 	%r<150>;
 	.reg .f32 	%f<424>;
+	.reg .b32 	%r<150>;
 	.reg .b64 	%rd<30>;
 
 // %bb.0:                               // %conversion
@@ -62,16 +56,16 @@
 	setp.gt.u32 	%p1, %r30, 82431;
 	@%p1 bra 	LBB0_2;
 	bra.uni 	LBB0_1;
-LBB0_2:                                 // %L15
+LBB0_2:                                 // %L17
 	ld.param.u64 	%rd19, [_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE_param_8];
 	ld.param.u64 	%rd3, [_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE_param_1];
-	mov.u32 	%r31, %tid.y;
-	shl.b32 	%r32, %r31, 5;
-	mov.u32 	%r33, %ctaid.x;
-	shl.b32 	%r34, %r33, 7;
+	mov.u32 	%r31, %ctaid.x;
+	shl.b32 	%r32, %r31, 7;
+	mov.u32 	%r33, %tid.y;
+	shl.b32 	%r34, %r33, 5;
 	mov.u32 	%r1, %tid.x;
-	or.b32  	%r35, %r34, %r1;
-	or.b32  	%r36, %r35, %r32;
+	or.b32  	%r35, %r34, %r32;
+	or.b32  	%r36, %r35, %r1;
 	mul.wide.u32 	%rd25, %r36, 4;
 	add.s64 	%rd1, %rd19, %rd25;
 	mov.u32 	%r37, 1;
@@ -79,14 +73,14 @@ LBB0_2:                                 // %L15
 	ld.global.u32 	%r2, [%rd3];
 	setp.lt.s32 	%p2, %r2, 0;
 	@%p2 bra 	LBB0_7;
-// %bb.3:                               // %L198
+// %bb.3:                               // %L223
 	ld.param.u64 	%rd7, [_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE_param_2];
 	ld.global.u32 	%r3, [%rd7];
 	setp.lt.s32 	%p3, %r3, %r2;
 	setp.gt.s32 	%p4, %r3, 262144;
 	or.pred  	%p5, %p3, %p4;
 	@%p5 bra 	LBB0_7;
-// %bb.4:                               // %L208
+// %bb.4:                               // %L233
 	ld.param.u64 	%rd11, [_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE_param_3];
 	ld.global.u32 	%r4, [%rd11];
 	sub.s32 	%r38, %r3, %r2;
@@ -95,25 +89,25 @@ LBB0_2:                                 // %L15
 	setp.lt.s32 	%p7, %r4, 0;
 	or.pred  	%p8, %p6, %p7;
 	@%p8 bra 	LBB0_7;
-// %bb.5:                               // %L214
+// %bb.5:                               // %L239
 	ld.param.u64 	%rd15, [_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE_param_4];
 	ld.global.u32 	%r5, [%rd15];
 	setp.lt.s32 	%p9, %r5, %r4;
 	setp.gt.s32 	%p10, %r5, 65536;
 	or.pred  	%p11, %p9, %p10;
 	@%p11 bra 	LBB0_7;
-// %bb.6:                               // %L224
+// %bb.6:                               // %L249
 	sub.s32 	%r40, %r5, %r4;
 	add.s32 	%r41, %r40, 3;
 	and.b32  	%r42, %r41, 63;
 	setp.eq.s32 	%p12, %r42, 0;
 	@%p12 bra 	LBB0_8;
-LBB0_7:                                 // %L240
+LBB0_7:                                 // %L283
 	mov.u32 	%r145, 2;
 	st.global.u32 	[%rd1], %r145;
 	mov.u64 	%rd28, exception24;
 	cvta.global.u64 	%rd29, %rd28;
-	{ // callseq 5, 0
+	{ // callseq 4, 0
 	.reg .b32 temp_param_reg;
 	.param .b64 param0;
 	st.param.b64 	[param0+0], %rd29;
@@ -122,8 +116,8 @@ LBB0_7:                                 // %L240
 	(
 	param0
 	);
-	} // callseq 5
-	{ // callseq 6, 0
+	} // callseq 4
+	{ // callseq 5, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
 	st.param.b64 	[param0+0], %rd2;
@@ -133,13 +127,13 @@ LBB0_7:                                 // %L240
 	(
 	param0
 	);
-	} // callseq 6
+	} // callseq 5
 	trap;
 	trap;
 	// begin inline asm
 	exit;
 	// end inline asm
-LBB0_1:                                 // %L8
+LBB0_1:                                 // %L9
 	mov.u64 	%rd23, exception1;
 	cvta.global.u64 	%rd24, %rd23;
 	{ // callseq 0, 0
@@ -168,7 +162,7 @@ LBB0_1:                                 // %L8
 	// begin inline asm
 	exit;
 	// end inline asm
-LBB0_8:                                 // %L334
+LBB0_8:                                 // %L388
 	bfe.u32 	%r7, %r1, 1, 1;
 	or.b32  	%r8, %r7, 2;
 	mov.f32 	%f75, 0f40000000;
@@ -233,12 +227,12 @@ LBB0_16:
 	and.b32  	%r147, %r115, -8388608;
 	setp.eq.s32 	%p68, %r147, 0;
 	@%p68 bra 	LBB0_19;
-// %bb.17:                              // %__nv_fmaf_rn.exit4.i.i.i.preheader
+// %bb.17:                              // %.lr.ph740.preheader
 	mov.f32 	%f355, 0f3F800000;
 	// begin inline asm
 	rcp.approx.ftz.f32 %f354,%f355;
 	// end inline asm
-LBB0_18:                                // %__nv_fmaf_rn.exit4.i.i.i
+LBB0_18:                                // %.lr.ph740
                                         // =>This Inner Loop Header: Depth=1
 	min.u32 	%r116, %r147, 192937984;
 	add.s32 	%r117, %r116, %r146;
@@ -264,30 +258,31 @@ LBB0_19:                                // %__internal_fmodf_slowpath_mod.exit.i
 	bra.uni 	LBB0_20;
 LBB0_10:                                // %__nv_fast_fdividef.exit.i.i.i
 	div.approx.f32 	%f347, %f420, %f75;
-	cvt.rzi.f32.f32 	%f418, %f347;
-	fma.rn.f32 	%f41, %f418, 0fC0000000, %f420;
+	cvt.rzi.f32.f32 	%f40, %f347;
+	fma.rn.f32 	%f41, %f40, 0fC0000000, %f420;
 	mov.b32 	%r13, %f41;
 	setp.lt.u32 	%p63, %r13, 1073741824;
+	mov.f32 	%f418, %f40;
 	@%p63 bra 	LBB0_15;
 // %bb.11:
 	setp.lt.u32 	%p64, %r13, -2147483647;
 	@%p64 bra 	LBB0_13;
 // %bb.12:
-	add.f32 	%f352, %f418, 0fBF800000;
+	add.f32 	%f352, %f40, 0fBF800000;
 	setp.lt.f32 	%p67, %f41, 0fC0000000;
-	add.f32 	%f353, %f352, 0fBF800000;
-	selp.f32 	%f418, %f353, %f352, %p67;
+	selp.f32 	%f353, %f352, %f40, %p67;
+	add.f32 	%f418, %f353, 0fBF800000;
 	bra.uni 	LBB0_15;
 LBB0_13:
-	add.f32 	%f418, %f418, 0f3F800000;
+	add.f32 	%f418, %f40, 0f3F800000;
 	setp.ltu.f32 	%p65, %f41, 0f40800000;
 	@%p65 bra 	LBB0_15;
 // %bb.14:                              // %__nv_fmaf_rn.exit.i.i.i
-	add.f32 	%f348, %f418, 0f3F800000;
-	fma.rn.f32 	%f350, %f75, 0fC0400000, %f41;
-	setp.ge.f32 	%p66, %f350, 0f00000000;
-	add.f32 	%f351, %f348, 0f3F800000;
-	selp.f32 	%f418, %f351, %f348, %p66;
+	fma.rn.f32 	%f349, %f75, 0fC0400000, %f41;
+	setp.ge.f32 	%p66, %f349, 0f00000000;
+	selp.f32 	%f350, %f418, %f40, %p66;
+	add.f32 	%f351, %f350, 0f3F800000;
+	add.f32 	%f418, %f351, 0f3F800000;
 LBB0_15:                                // %__internal_fmodf_fastpath_quot.exit.i.i
 	fma.rn.f32 	%f420, %f418, 0fC0000000, %f420;
 LBB0_20:                                // %__internal_fmodf_kernel.exit.i
@@ -312,12 +307,12 @@ LBB0_28:
 	and.b32  	%r149, %r132, -8388608;
 	setp.eq.s32 	%p88, %r149, 0;
 	@%p88 bra 	LBB0_31;
-// %bb.29:                              // %__nv_fmaf_rn.exit4.i.i.i597.preheader
+// %bb.29:                              // %.lr.ph.preheader
 	mov.f32 	%f407, 0f3F800000;
 	// begin inline asm
 	rcp.approx.ftz.f32 %f406,%f407;
 	// end inline asm
-LBB0_30:                                // %__nv_fmaf_rn.exit4.i.i.i597
+LBB0_30:                                // %.lr.ph
                                         // =>This Inner Loop Header: Depth=1
 	min.u32 	%r133, %r149, 192937984;
 	add.s32 	%r134, %r133, %r148;
@@ -335,53 +330,47 @@ LBB0_30:                                // %__nv_fmaf_rn.exit4.i.i.i597
 	setp.ne.s32 	%p90, %r148, 0;
 	and.pred  	%p91, %p89, %p90;
 	@%p91 bra 	LBB0_30;
-LBB0_31:                                // %__internal_fmodf_slowpath_mod.exit.i.i599
+LBB0_31:                                // %__internal_fmodf_slowpath_mod.exit.i.i646
 	setp.gt.u32 	%p92, %r22, 2139095039;
 	selp.f32 	%f415, 0f7FFFFFFF, 0f4B800000, %p92;
 	mul.f32 	%f416, %f422, 0f34000000;
 	mul.f32 	%f423, %f415, %f416;
 	bra.uni 	LBB0_32;
-LBB0_22:                                // %__nv_fast_fdividef.exit.i.i.i569
+LBB0_22:                                // %__nv_fast_fdividef.exit.i.i.i612
 	div.approx.f32 	%f399, %f423, %f75;
-	cvt.rzi.f32.f32 	%f421, %f399;
-	fma.rn.f32 	%f60, %f421, 0fC0000000, %f423;
+	cvt.rzi.f32.f32 	%f59, %f399;
+	fma.rn.f32 	%f60, %f59, 0fC0000000, %f423;
 	mov.b32 	%r21, %f60;
 	setp.lt.u32 	%p83, %r21, 1073741824;
+	mov.f32 	%f421, %f59;
 	@%p83 bra 	LBB0_27;
 // %bb.23:
 	setp.lt.u32 	%p84, %r21, -2147483647;
 	@%p84 bra 	LBB0_25;
 // %bb.24:
-	add.f32 	%f404, %f421, 0fBF800000;
+	add.f32 	%f404, %f59, 0fBF800000;
 	setp.lt.f32 	%p87, %f60, 0fC0000000;
-	add.f32 	%f405, %f404, 0fBF800000;
-	selp.f32 	%f421, %f405, %f404, %p87;
+	selp.f32 	%f405, %f404, %f59, %p87;
+	add.f32 	%f421, %f405, 0fBF800000;
 	bra.uni 	LBB0_27;
 LBB0_25:
-	add.f32 	%f421, %f421, 0f3F800000;
+	add.f32 	%f421, %f59, 0f3F800000;
 	setp.ltu.f32 	%p85, %f60, 0f40800000;
 	@%p85 bra 	LBB0_27;
-// %bb.26:                              // %__nv_fmaf_rn.exit.i.i.i574
-	add.f32 	%f400, %f421, 0f3F800000;
-	fma.rn.f32 	%f402, %f75, 0fC0400000, %f60;
-	setp.ge.f32 	%p86, %f402, 0f00000000;
-	add.f32 	%f403, %f400, 0f3F800000;
-	selp.f32 	%f421, %f403, %f400, %p86;
-LBB0_27:                                // %__internal_fmodf_fastpath_quot.exit.i.i578
+// %bb.26:                              // %__nv_fmaf_rn.exit.i.i.i617
+	fma.rn.f32 	%f401, %f75, 0fC0400000, %f60;
+	setp.ge.f32 	%p86, %f401, 0f00000000;
+	selp.f32 	%f402, %f421, %f59, %p86;
+	add.f32 	%f403, %f402, 0f3F800000;
+	add.f32 	%f421, %f403, 0f3F800000;
+LBB0_27:                                // %__internal_fmodf_fastpath_quot.exit.i.i620
 	fma.rn.f32 	%f423, %f421, 0fC0000000, %f423;
-LBB0_32:                                // %__internal_fmodf_kernel.exit.i603
+LBB0_32:                                // %__internal_fmodf_kernel.exit.i649
 	abs.f32 	%f417, %f423;
 	setp.gtu.f32 	%p93, %f417, 0f7F800000;
-	{ // callseq 2, 0
-	.reg .b32 temp_param_reg;
-	call.uni 
-	julia_AssertionError_4735, 
-	(
-	);
-	} // callseq 2
 	mov.u64 	%rd26, exception1;
 	cvta.global.u64 	%rd27, %rd26;
-	{ // callseq 3, 0
+	{ // callseq 2, 0
 	.reg .b32 temp_param_reg;
 	.param .b64 param0;
 	st.param.b64 	[param0+0], %rd27;
@@ -390,8 +379,8 @@ LBB0_32:                                // %__internal_fmodf_kernel.exit.i603
 	(
 	param0
 	);
-	} // callseq 3
-	{ // callseq 4, 0
+	} // callseq 2
+	{ // callseq 3, 0
 	.reg .b32 temp_param_reg;
 	.param .align 8 .b8 param0[16];
 	st.param.b64 	[param0+0], %rd2;
@@ -401,7 +390,7 @@ LBB0_32:                                // %__internal_fmodf_kernel.exit.i603
 	(
 	param0
 	);
-	} // callseq 4
+	} // callseq 3
 	trap;
 	trap;
 	// begin inline asm

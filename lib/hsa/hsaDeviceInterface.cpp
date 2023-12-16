@@ -20,9 +20,8 @@ void error_callback(hsa_status_t status, hsa_queue_t* queue, void* data) {
 }
 
 hsaDeviceInterface::hsaDeviceInterface(Config& config_, const std::string& unique_name,
-                                       int32_t gpu_id_, int gpu_buffer_depth_,
-                                       uint32_t numa_node_) :
-    gpuDeviceInterface(config_, unique_name, gpu_id_, gpu_buffer_depth_) {
+                                       int32_t gpu_id_, uint32_t numa_node_) :
+    gpuDeviceInterface(config_, unique_name, gpu_id_) {
 
     numa_node = numa_node_;
 

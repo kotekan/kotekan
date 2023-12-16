@@ -36,7 +36,7 @@ rfiRecord::rfiRecord(Config& config, const std::string& unique_name,
     // Get buffer from framework
     rfi_buf = get_buffer("rfi_in");
     // Register stage as consumer
-    register_consumer(rfi_buf, unique_name.c_str());
+    rfi_buf->register_consumer(unique_name);
 
     // General config parameters
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
@@ -88,7 +88,7 @@ void rfiRecord::main_thread() {
     // Endless Loop
     while (!stop_thread) {
         // Get Frame
-        frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
+        frame = rfi_buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
         // Lock mutex
@@ -160,7 +160,7 @@ void rfiRecord::main_thread() {
         }
 
         // Mark Frame Empty
-        mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
+        rfi_buf->mark_frame_empty(unique_name, frame_id);
         // Move forward one frame/link/file
         frame_id = (frame_id + 1) % rfi_buf->num_frames;
     }

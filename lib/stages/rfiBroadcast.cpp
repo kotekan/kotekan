@@ -59,9 +59,9 @@ rfiBroadcast::rfiBroadcast(Config& config, const std::string& unique_name,
     // Get buffer from framework
     rfi_mask_buf = get_buffer("rfi_mask");
     // Register stage as consumer
-    register_consumer(rfi_buf, unique_name.c_str());
+    rfi_buf->register_consumer(unique_name);
     // Register stage as consumer
-    register_consumer(rfi_mask_buf, unique_name.c_str());
+    rfi_mask_buf->register_consumer(unique_name);
 
     // Intialize internal config
     _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
@@ -179,11 +179,11 @@ void rfiBroadcast::main_thread() {
             // Loop through all frames that should be averages together
             for (f = 0; f < _frames_per_packet * total_links; f++) {
                 // Get Frame of Mask
-                frame_mask = wait_for_full_frame(rfi_mask_buf, unique_name.c_str(), frame_mask_id);
+                frame_mask = rfi_mask_buf->wait_for_full_frame(unique_name, frame_mask_id);
                 if (frame_mask == nullptr)
                     break;
                 // Get Frame
-                frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
+                frame = rfi_buf->wait_for_full_frame(unique_name, frame_id);
                 if (frame == nullptr)
                     break;
                 // Copy frame data to array
@@ -214,8 +214,8 @@ void rfiBroadcast::main_thread() {
                     }
                 }
                 // Mark Frame Empty
-                mark_frame_empty(rfi_mask_buf, unique_name.c_str(), frame_mask_id);
-                mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
+                rfi_mask_buf->mark_frame_empty(unique_name, frame_mask_id);
+                rfi_buf->mark_frame_empty(unique_name, frame_id);
                 frame_mask_id = (frame_mask_id + 1) % rfi_mask_buf->num_frames;
                 frame_id = (frame_id + 1) % rfi_buf->num_frames;
                 link_id = (link_id + 1) % total_links;

@@ -37,9 +37,9 @@ InputSubset::InputSubset(Config& config, const std::string& unique_name,
 
     // Get buffers
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 }
 
 void InputSubset::change_dataset_state(dset_id_t ds_id) {
@@ -135,7 +135,7 @@ void InputSubset::main_thread() {
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
 
@@ -148,7 +148,7 @@ void InputSubset::main_thread() {
         }
 
         // Wait for the output buffer frame to be free
-        if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
+        if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
             break;
         }
 
@@ -184,7 +184,7 @@ void InputSubset::main_thread() {
                                              VisField::flags, VisField::evec});
 
         // Mark the buffers and move on
-        mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
-        mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id++);
+        out_buf->mark_frame_full(unique_name, output_frame_id++);
+        in_buf->mark_frame_empty(unique_name, input_frame_id++);
     }
 }
