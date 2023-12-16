@@ -41,7 +41,12 @@ public:
      * that want to produce & consume data with different sizes or at
      * different cadences.
      *
-     * Currently, only a single producer and single consumer are supported!
+     * Multiple consumers and multiple producers are supported.  For
+     * multiple producers, the assumptions is that every producer has
+     * to finish writing to a region before it is "done"; the idea is
+     * that each producer is writing a subset of the data for each
+     * time sample.  For multiple consumers, each consumer gets a copy
+     * of the data stream.
      *
      * @param ring_size: the number of elements in the ring buffer to be managed
      * @param buffer_name: unique name for this buffer, from the config file declaration
