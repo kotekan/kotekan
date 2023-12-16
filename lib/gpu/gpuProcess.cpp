@@ -49,7 +49,7 @@ gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
     for (json::iterator it = in_bufs.begin(); it != in_bufs.end(); ++it) {
         std::string internal_name = it.key();
         std::string global_buffer_name = it.value();
-        Buffer* buf = buffer_container.get_buffer(global_buffer_name);
+        GenericBuffer* buf = buffer_container.get_generic_buffer(global_buffer_name);
         local_buffer_container.add_buffer(internal_name, buf);
     }
 
@@ -57,21 +57,19 @@ gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
     for (json::iterator it = out_bufs.begin(); it != out_bufs.end(); ++it) {
         std::string internal_name = it.key();
         std::string global_buffer_name = it.value();
-        Buffer* buf = buffer_container.get_buffer(global_buffer_name);
+        GenericBuffer* buf = buffer_container.get_generic_buffer(global_buffer_name);
         local_buffer_container.add_buffer(internal_name, buf);
     }
     INFO("GPU Process Starting...");
 }
 
 gpuProcess::~gpuProcess() {
-    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile/{:d}"), gpu_id));
+    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile/{:s}"), unique_name));
     for (auto& command : commands)
         for (auto& c : command)
             delete c;
     for (auto& event : final_signals)
         delete event;
-
-    delete dev;
 }
 
 void gpuProcess::init() {
@@ -94,7 +92,8 @@ void gpuProcess::init() {
     }
 
     for (auto& buf : local_buffer_container.get_buffer_map()) {
-        register_host_memory(buf.second);
+        if (is_frame_buffer(buf.second))
+            register_host_memory(dynamic_cast<Buffer*>(buf.second));
     }
 }
 
@@ -146,8 +145,10 @@ void gpuProcess::main_thread() {
     dev->set_thread_device();
 
     restServer& rest_server = restServer::instance();
+    // unique_name starts with "/", so this path becomes something like
+    // "/gpu_profile/gpuB/gpu_0" for pipeline B running on GPU 0.
     rest_server.register_get_callback(
-        fmt::format(fmt("/gpu_profile/{:d}"), gpu_id),
+        fmt::format(fmt("/gpu_profile{:s}"), unique_name),
         std::bind(&gpuProcess::profile_callback, this, std::placeholders::_1));
 
     // Start with the first GPU frame;
@@ -164,7 +165,8 @@ void gpuProcess::main_thread() {
         // Wait for all the required preconditions
         // This is things like waiting for the input buffer to have data
         // and for there to be free space in the output buffers.
-        // INFO("Waiting on preconditions for GPU[{:d}][{:d}]", gpu_id, gpu_frame_id);
+        DEBUG2("Waiting on preconditions for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_counter,
+               unique_name);
         for (auto& command : commands) {
             int ic = gpu_frame_counter % command.size();
             if (command[ic]->wait_on_precondition() != 0) {
@@ -174,10 +176,13 @@ void gpuProcess::main_thread() {
             }
         }
 
-        DEBUG("Waiting for free slot for GPU[{:d}] frame {:d}", gpu_id, gpu_frame_counter);
+        DEBUG("Waiting for free slot for GPU[{:d}][{:d}] {:s}", gpu_id, gpu_frame_counter,
+              unique_name);
         // We make sure we aren't using a gpu frame that's currently in-flight.
         int ic = gpu_frame_counter % final_signals.size();
         final_signals[ic]->wait_for_free_slot();
+        DEBUG("Waited for free slot for GPU[{:d}][{:d}] {:s}, queuing commands", gpu_id,
+              gpu_frame_counter, unique_name);
         queue_commands(gpu_frame_counter);
         if (first_run) {
             results_thread_handle = std::thread(&gpuProcess::results_thread, std::ref(*this));
@@ -250,6 +255,7 @@ void gpuProcess::results_thread() {
             INFO("GPU[{:d}] frame {:d} Profiling: \n{:s}", gpu_id, gpu_frame_counter, output);
         }
 
+        DEBUG2("Resetting signal for gpu[{:d}][{:d}]", gpu_id, gpu_frame_counter);
         ic = gpu_frame_counter % final_signals.size();
         final_signals[ic]->reset();
         gpu_frame_counter++;

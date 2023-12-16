@@ -85,12 +85,12 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     assert(S_buffer);
     assert(G_buffer);
     assert(W_buffer);
-    register_producer(E_buffer, unique_name.c_str());
-    register_producer(A_buffer, unique_name.c_str());
-    register_producer(J_buffer, unique_name.c_str());
-    register_producer(S_buffer, unique_name.c_str());
-    register_producer(G_buffer, unique_name.c_str());
-    register_producer(W_buffer, unique_name.c_str());
+    E_buffer->register_producer(unique_name);
+    A_buffer->register_producer(unique_name);
+    J_buffer->register_producer(unique_name);
+    S_buffer->register_producer(unique_name);
+    G_buffer->register_producer(unique_name);
+    W_buffer->register_producer(unique_name);
 
     INFO("Starting Julia...");
     kotekan::juliaStartup();
@@ -173,69 +173,63 @@ void FEngine::main_thread() {
         const std::uint64_t seq_num = std::uint64_t(1) * num_times * frame_index;
 
         const int A_frame_id = frame_index % A_buffer->num_frames;
-        std::uint8_t* const A_frame =
-            wait_for_empty_frame(A_buffer, unique_name.c_str(), A_frame_id);
+        std::uint8_t* const A_frame = A_buffer->wait_for_empty_frame(unique_name, A_frame_id);
         if (!A_frame)
             break;
         if (!(std::ptrdiff_t(A_buffer->frame_size) == A_frame_size))
             ERROR("A_buffer->frame_size={:d} A_frame_size={:d}", A_buffer->frame_size,
                   A_frame_size);
-        allocate_new_metadata_object(A_buffer, A_frame_id);
+        A_buffer->allocate_new_metadata_object(A_frame_id);
         set_fpga_seq_num(A_buffer, A_frame_id, seq_num);
 
         const int E_frame_id = frame_index % E_buffer->num_frames;
-        std::uint8_t* const E_frame =
-            wait_for_empty_frame(E_buffer, unique_name.c_str(), E_frame_id);
+        std::uint8_t* const E_frame = E_buffer->wait_for_empty_frame(unique_name, E_frame_id);
         if (!E_frame)
             break;
         if (!(std::ptrdiff_t(E_buffer->frame_size) == E_frame_size))
             ERROR("E_buffer->frame_size={:d} E_frame_size={:d}", E_buffer->frame_size,
                   E_frame_size);
-        allocate_new_metadata_object(E_buffer, E_frame_id);
+        E_buffer->allocate_new_metadata_object(E_frame_id);
         set_fpga_seq_num(E_buffer, E_frame_id, seq_num);
 
         const int J_frame_id = frame_index % J_buffer->num_frames;
-        std::uint8_t* const J_frame =
-            wait_for_empty_frame(J_buffer, unique_name.c_str(), J_frame_id);
+        std::uint8_t* const J_frame = J_buffer->wait_for_empty_frame(unique_name, J_frame_id);
         if (!J_frame)
             break;
         if (!(std::ptrdiff_t(J_buffer->frame_size) == J_frame_size))
             ERROR("J_buffer->frame_size={:d} J_frame_size={:d}", J_buffer->frame_size,
                   J_frame_size);
-        allocate_new_metadata_object(J_buffer, J_frame_id);
+        J_buffer->allocate_new_metadata_object(J_frame_id);
         set_fpga_seq_num(J_buffer, J_frame_id, seq_num);
 
         const int S_frame_id = frame_index % S_buffer->num_frames;
-        std::uint8_t* const S_frame =
-            wait_for_empty_frame(S_buffer, unique_name.c_str(), S_frame_id);
+        std::uint8_t* const S_frame = S_buffer->wait_for_empty_frame(unique_name, S_frame_id);
         if (!S_frame)
             break;
         if (!(std::ptrdiff_t(S_buffer->frame_size) == S_frame_size))
             ERROR("S_buffer->frame_size={:d} S_frame_size={:d}", S_buffer->frame_size,
                   S_frame_size);
-        allocate_new_metadata_object(S_buffer, S_frame_id);
+        S_buffer->allocate_new_metadata_object(S_frame_id);
         set_fpga_seq_num(S_buffer, S_frame_id, seq_num);
 
         const int G_frame_id = frame_index % G_buffer->num_frames;
-        std::uint8_t* const G_frame =
-            wait_for_empty_frame(G_buffer, unique_name.c_str(), G_frame_id);
+        std::uint8_t* const G_frame = G_buffer->wait_for_empty_frame(unique_name, G_frame_id);
         if (!G_frame)
             break;
         if (!(std::ptrdiff_t(G_buffer->frame_size) == G_frame_size))
             ERROR("G_buffer->frame_size={:d} G_frame_size={:d}", G_buffer->frame_size,
                   G_frame_size);
-        allocate_new_metadata_object(G_buffer, G_frame_id);
+        G_buffer->allocate_new_metadata_object(G_frame_id);
         set_fpga_seq_num(G_buffer, G_frame_id, seq_num);
 
         const int W_frame_id = frame_index % W_buffer->num_frames;
-        std::uint8_t* const W_frame =
-            wait_for_empty_frame(W_buffer, unique_name.c_str(), W_frame_id);
+        std::uint8_t* const W_frame = W_buffer->wait_for_empty_frame(unique_name, W_frame_id);
         if (!W_frame)
             break;
         if (!(std::ptrdiff_t(W_buffer->frame_size) == W_frame_size))
             ERROR("W_buffer->frame_size={:d} W_frame_size={:d}", W_buffer->frame_size,
                   W_frame_size);
-        allocate_new_metadata_object(W_buffer, W_frame_id);
+        W_buffer->allocate_new_metadata_object(W_frame_id);
         set_fpga_seq_num(W_buffer, W_frame_id, seq_num);
 
         if (!skip_julia) {
@@ -463,12 +457,12 @@ void FEngine::main_thread() {
         W_metadata->n_one_hot = -1;
         W_metadata->nfreq = num_frequencies;
 
-        mark_frame_full(E_buffer, unique_name.c_str(), E_frame_id);
-        mark_frame_full(A_buffer, unique_name.c_str(), A_frame_id);
-        mark_frame_full(J_buffer, unique_name.c_str(), J_frame_id);
-        mark_frame_full(S_buffer, unique_name.c_str(), S_frame_id);
-        mark_frame_full(G_buffer, unique_name.c_str(), G_frame_id);
-        mark_frame_full(W_buffer, unique_name.c_str(), W_frame_id);
+        E_buffer->mark_frame_full(unique_name, E_frame_id);
+        A_buffer->mark_frame_full(unique_name, A_frame_id);
+        J_buffer->mark_frame_full(unique_name, J_frame_id);
+        S_buffer->mark_frame_full(unique_name, S_frame_id);
+        G_buffer->mark_frame_full(unique_name, G_frame_id);
+        W_buffer->mark_frame_full(unique_name, W_frame_id);
     }
 
     INFO("Done.");

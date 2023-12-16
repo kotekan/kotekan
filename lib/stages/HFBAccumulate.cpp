@@ -47,9 +47,9 @@ HFBAccumulate::HFBAccumulate(Config& config_, const std::string& unique_name,
     _samples_per_data_set(config.get<uint32_t>(unique_name, "samples_per_data_set")),
     _good_samples_threshold(config.get<float>(unique_name, "good_samples_threshold")) {
 
-    register_consumer(in_buf, unique_name.c_str());
-    register_consumer(cls_buf, unique_name.c_str());
-    register_producer(out_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
+    cls_buf->register_consumer(unique_name);
+    out_buf->register_producer(unique_name);
 
     hfb1.resize(_num_frb_total_beams * _factor_upchan, 0.0);
     hfb2.resize(_num_frb_total_beams * _factor_upchan, 0.0);
@@ -152,15 +152,15 @@ void HFBAccumulate::main_thread() {
     fpga_seq_num_end = (_num_frames_to_integrate - 1) * _samples_per_data_set;
     frame = 0;
 
-    if (wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id) == nullptr)
+    if (out_buf->wait_for_empty_frame(unique_name, out_frame_id) == nullptr)
         return;
 
     while (!stop_thread) {
         // Get an input buffer. This call is blocking!
-        uint8_t* in_frame_ptr = wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
+        uint8_t* in_frame_ptr = in_buf->wait_for_full_frame(unique_name, in_frame_id);
         if (in_frame_ptr == nullptr)
             return;
-        if (wait_for_full_frame(cls_buf, unique_name.c_str(), cls_frame_id) == nullptr)
+        if (cls_buf->wait_for_full_frame(unique_name, cls_frame_id) == nullptr)
             return;
 
         // Check if dataset ID changed
@@ -187,21 +187,21 @@ void HFBAccumulate::main_thread() {
             DEBUG("Dropping incoming HFB frame to sync up. HFB frame: {}; Compressed Lost Samples "
                   "frame: {}, diff {}",
                   hfb_seq_num, cls_seq_num, hfb_seq_num - cls_seq_num);
-            mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id++);
+            in_buf->mark_frame_empty(unique_name, in_frame_id++);
             continue;
         }
         if (cls_seq_num < hfb_seq_num) {
             DEBUG("Dropping incoming Compressed Lost Samples frame to sync up. HFB frame: {}; "
                   "Compressed Lost Samples frame: {}, diff {}",
                   hfb_seq_num, cls_seq_num, hfb_seq_num - cls_seq_num);
-            mark_frame_empty(cls_buf, unique_name.c_str(), cls_frame_id++);
+            cls_buf->mark_frame_empty(unique_name, cls_frame_id++);
             continue;
         }
         DEBUG2("Frames are synced. HFB frame: {}; Compressed Lost Samples frame: {}, diff {}",
                hfb_seq_num, cls_seq_num, hfb_seq_num - cls_seq_num);
 
         // Create new metadata for output frame
-        allocate_new_metadata_object(out_buf, out_frame_id);
+        out_buf->allocate_new_metadata_object(out_frame_id);
         HFBFrameView::set_metadata(out_buf, out_frame_id, _num_frb_total_beams, _factor_upchan);
 
         auto out_frame = HFBFrameView(out_buf, out_frame_id);
@@ -324,14 +324,14 @@ void HFBAccumulate::main_thread() {
                       out_frame.weight[_num_frb_total_beams * _factor_upchan / 2],
                       out_frame.weight[_num_frb_total_beams * _factor_upchan - 1]);
 
-                mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
+                out_buf->mark_frame_full(unique_name, out_frame_id++);
 
                 // Get a new output buffer
-                if (wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id) == nullptr)
+                if (out_buf->wait_for_empty_frame(unique_name, out_frame_id) == nullptr)
                     return;
 
                 // Create new metadata for new output frame
-                allocate_new_metadata_object(out_buf, out_frame_id);
+                out_buf->allocate_new_metadata_object(out_frame_id);
                 HFBFrameView::set_metadata(out_buf, out_frame_id, _num_frb_total_beams,
                                            _factor_upchan);
 
@@ -362,8 +362,8 @@ void HFBAccumulate::main_thread() {
         fpga_seq_num_end_old = fpga_seq_num_end;
 
         // Release the input buffers
-        mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id++);
-        mark_frame_empty(cls_buf, unique_name.c_str(), cls_frame_id++);
+        in_buf->mark_frame_empty(unique_name, in_frame_id++);
+        cls_buf->mark_frame_empty(unique_name, cls_frame_id++);
 
     } // end stop thread
 }

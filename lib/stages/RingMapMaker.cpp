@@ -53,7 +53,7 @@ RingMapMaker::RingMapMaker(Config& config, const std::string& unique_name,
         "ringmap", std::bind(&RingMapMaker::rest_callback_get, this, std::placeholders::_1));
 
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // config parameters
     feed_sep = config.get_default<float>(unique_name, "feed_sep", 0.3048);
@@ -91,7 +91,7 @@ void RingMapMaker::main_thread() {
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, in_frame_id) == nullptr) {
             break;
         }
 
@@ -183,7 +183,7 @@ void RingMapMaker::main_thread() {
             mtx.unlock();
         }
         // Move to next frame
-        mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id++);
+        in_buf->mark_frame_empty(unique_name, in_frame_id++);
     }
 }
 
@@ -288,7 +288,7 @@ void RingMapMaker::change_dataset_state(dset_id_t ds_id) {
 bool RingMapMaker::setup(size_t frame_id) {
 
     // Wait for the input buffer to be filled with data
-    if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
+    if (in_buf->wait_for_full_frame(unique_name, frame_id) == nullptr) {
         return false;
     }
 
@@ -441,9 +441,9 @@ RedundantStack::RedundantStack(Config& config, const std::string& unique_name,
 
     // Get buffers from config
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 }
 
 void RedundantStack::change_dataset_state(dset_id_t ds_id) {
@@ -502,7 +502,7 @@ void RedundantStack::main_thread() {
     frameID output_frame_id(out_buf);
 
     // Wait for the input buffer to be filled with data
-    if (wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id) == nullptr) {
+    if (in_buf->wait_for_full_frame(unique_name, in_frame_id) == nullptr) {
         return;
     }
 
@@ -513,7 +513,7 @@ void RedundantStack::main_thread() {
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, in_frame_id) == nullptr) {
             break;
         }
 
@@ -536,7 +536,7 @@ void RedundantStack::main_thread() {
         std::vector<float> stack_v2(num_stack, 0.0);
 
         // Wait for the output buffer frame to be free
-        if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
+        if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
             break;
         }
 
@@ -613,8 +613,8 @@ void RedundantStack::main_thread() {
         }
 
         // Mark the buffers and move on
-        mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
-        mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id++);
+        out_buf->mark_frame_full(unique_name, output_frame_id++);
+        in_buf->mark_frame_empty(unique_name, in_frame_id++);
     }
 }
 

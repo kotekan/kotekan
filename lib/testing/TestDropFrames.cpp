@@ -32,9 +32,9 @@ TestDropFrames::TestDropFrames(Config& config, const std::string& unique_name,
     INFO("Stage will drop {:d} / {:.2}% frames.", _missing_frames.size(), _drop_frame_chance * 100);
 
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 }
 
 void TestDropFrames::main_thread() {
@@ -51,7 +51,7 @@ void TestDropFrames::main_thread() {
         std::unordered_set<uint32_t>(_missing_frames.cbegin(), _missing_frames.cend());
 
     while (!stop_thread) {
-        uint8_t* input = wait_for_full_frame(in_buf, unique_name.c_str(), in_buf_id);
+        uint8_t* input = in_buf->wait_for_full_frame(unique_name, in_buf_id);
         if (input == nullptr)
             break;
 
@@ -61,28 +61,28 @@ void TestDropFrames::main_thread() {
         } else if (_drop_frame_chance && draw_frame_drop(gen)) {
             INFO("Drop frame {} because it drew the short straw.", frame_count);
         } else {
-            uint8_t* output = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_id);
+            uint8_t* output = out_buf->wait_for_empty_frame(unique_name, out_buf_id);
             if (output == nullptr)
                 break;
 
-            int num_consumers = get_num_consumers(in_buf);
+            int num_consumers = in_buf->get_num_consumers();
 
             // Copy or transfer the data part.
             if (num_consumers == 1) {
                 // Transfer frame contents with directly...
-                swap_frames(in_buf, in_buf_id, out_buf, out_buf_id);
+                in_buf->swap_frames(in_buf_id, out_buf, out_buf_id);
             } else if (num_consumers > 1) {
                 // Copy the frame data over, leaving the source intact
                 std::memcpy(output, input, in_buf->frame_size);
             }
 
-            pass_metadata(in_buf, in_buf_id, out_buf, out_buf_id);
+            in_buf->pass_metadata(in_buf_id, out_buf, out_buf_id);
 
-            mark_frame_full(out_buf, unique_name.c_str(), out_buf_id);
+            out_buf->mark_frame_full(unique_name, out_buf_id);
             out_buf_id = (out_buf_id + 1) % out_buf->num_frames;
         }
 
-        mark_frame_empty(in_buf, unique_name.c_str(), in_buf_id);
+        in_buf->mark_frame_empty(unique_name, in_buf_id);
         frame_count++;
         in_buf_id = frame_count % in_buf->num_frames;
 

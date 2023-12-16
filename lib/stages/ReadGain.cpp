@@ -62,7 +62,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
 
     metadata_buf = get_buffer("in_buf");
-    register_consumer(metadata_buf, unique_name.c_str());
+    metadata_buf->register_consumer(unique_name);
     metadata_buffer_id = 0;
     metadata_buffer_precondition_id = 0;
     freq_idx = FREQ_ID_NOT_SET;
@@ -71,13 +71,13 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     // Gain for FRB
     gain_frb_buf = get_buffer("gain_frb_buf");
     gain_frb_buf_id = 0;
-    register_producer(gain_frb_buf, unique_name.c_str());
+    gain_frb_buf->register_producer(unique_name);
     update_gains_frb = false;
 
     // Gain for Tracking Beamformer
     gain_tracking_buf = get_buffer("gain_tracking_buf");
     gain_tracking_buf_id = 0;
-    register_producer(gain_tracking_buf, unique_name.c_str());
+    gain_tracking_buf->register_producer(unique_name);
     update_gains_tracking = false;
 
     // Create a space to store gains for all the tracking beams
@@ -153,8 +153,7 @@ bool ReadGain::update_gains_tracking_callback(nlohmann::json& json, const uint8_
 }
 
 void ReadGain::read_gain_frb() {
-    float* out_frame_frb =
-        (float*)wait_for_empty_frame(gain_frb_buf, unique_name.c_str(), gain_frb_buf_id);
+    float* out_frame_frb = (float*)gain_frb_buf->wait_for_empty_frame(unique_name, gain_frb_buf_id);
     if (out_frame_frb == nullptr) {
         return;
     }
@@ -192,7 +191,7 @@ void ReadGain::read_gain_frb() {
         }
     }
     gains_last_update_timestamp_metric.labels({"frb", ""}).set(start_time);
-    mark_frame_full(gain_frb_buf, unique_name.c_str(), gain_frb_buf_id);
+    gain_frb_buf->mark_frame_full(unique_name, gain_frb_buf_id);
     DEBUG("Maked gain_frb_buf frame {:d} full", gain_frb_buf_id);
     INFO("Time required to load FRB gains: {:f}", current_time() - start_time);
     DEBUG("Gain_frb_buf: {:.2f} {:.2f} {:.2f} ", out_frame_frb[0], out_frame_frb[1],
@@ -202,7 +201,7 @@ void ReadGain::read_gain_frb() {
 
 void ReadGain::read_gain_tracking() {
     float* out_frame_tracking =
-        (float*)wait_for_empty_frame(gain_tracking_buf, unique_name.c_str(), gain_tracking_buf_id);
+        (float*)gain_tracking_buf->wait_for_empty_frame(unique_name, gain_tracking_buf_id);
     if (out_frame_tracking == nullptr) {
         return;
     }
@@ -259,7 +258,7 @@ void ReadGain::read_gain_tracking() {
               out_frame_tracking[beam_id * _num_elements * 2 + 1]);
 #endif
 
-    mark_frame_full(gain_tracking_buf, unique_name.c_str(), gain_tracking_buf_id);
+    gain_tracking_buf->mark_frame_full(unique_name, gain_tracking_buf_id);
     DEBUG("Maked gain_tracking_buf frame {:d} full", gain_tracking_buf_id);
     INFO("Time required to load tracking beamformer gains: {:f}", current_time() - start_time);
     gain_tracking_buf_id = (gain_tracking_buf_id + 1) % gain_tracking_buf->num_frames;
@@ -268,7 +267,7 @@ void ReadGain::read_gain_tracking() {
 void ReadGain::main_thread() {
 
     uint8_t* frame =
-        wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
+        metadata_buf->wait_for_full_frame(unique_name, metadata_buffer_precondition_id);
     if (frame == nullptr)
         return;
 
@@ -278,9 +277,9 @@ void ReadGain::main_thread() {
     metadata_buffer_precondition_id =
         (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;
 
-    mark_frame_empty(metadata_buf, unique_name.c_str(), metadata_buffer_id);
+    metadata_buf->mark_frame_empty(unique_name, metadata_buffer_id);
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
-    unregister_consumer(metadata_buf, unique_name.c_str());
+    metadata_buf->unregister_consumer(unique_name);
 
     while (!stop_thread) {
         {

@@ -33,25 +33,37 @@ json_data = []
 gpu_ids = args.gpu_ids
 host_name = args.host_name
 
+api_base = "http://" + host_name + ":12048"
+
+endpoints = requests.get(api_base + "/endpoints")
+endpoints = endpoints.json()["GET"]
+endpoints = [e for e in endpoints if e.startswith("/gpu_profile/")]
+
+pipelines = []
 for i, gpu_id in enumerate(gpu_ids):
-    try:
-        r.append(
-            requests.get("http://" + host_name + ":12048/gpu_profile/" + str(gpu_id))
-        )
-    except requests.exceptions.RequestException as err:
-        print("Error getting data: ", err)
-        exit(-1)
-    json_data.append(r[i].json())
+    for e in endpoints:
+        if not e.endswith("/gpu_%i" % gpu_id):
+            continue
+        pipeline_id = e.replace("/gpu_profile/", "").replace("/gpu_%i" % gpu_id, "")
+        try:
+            R = requests.get(api_base + e)
+        except requests.exceptions.RequestException as err:
+            print("Error getting data: ", err)
+            exit(-1)
+        pipelines.append((gpu_id, pipeline_id, R.json()))
 
-kernels = []
-copy_ins = []
-copy_outs = []
+kernels = {}
+copy_ins = {}
+copy_outs = {}
 
-for gpu_id in range(0, len(gpu_ids)):
-    kernels.append([])
+for gpu_id, pipeline_id, json in pipelines:
+    if not gpu_id in kernels:
+        kernels[gpu_id] = []
+        copy_ins[gpu_id] = []
+        copy_outs[gpu_id] = []
     # Kernel tables
     try:
-        for kernel in json_data[gpu_id]["kernel"]:
+        for kernel in json["kernel"]:
             ktime = kernel["time"]
             if ktime is None:
                 ktime = 0.0
@@ -68,14 +80,13 @@ for gpu_id in range(0, len(gpu_ids)):
         exit(-1)
     kernels[gpu_id].append(
         [
-            "Total:",
-            "%.6f" % (json_data[gpu_id]["kernel_total_time"] or 0.0),
-            "%.4f" % ((json_data[gpu_id]["kernel_utilization"] or 0.0) * 100) + "%",
+            "Total for " + pipeline_id,
+            "%.6f" % (json["kernel_total_time"] or 0.0),
+            "%.4f" % ((json["kernel_utilization"] or 0.0) * 100) + "%",
         ]
     )
 
-    copy_ins.append([])
-    for copy_in in json_data[gpu_id]["copy_in"]:
+    for copy_in in json["copy_in"]:
         copy_ins[gpu_id].append(
             [
                 copy_in["name"],
@@ -85,14 +96,13 @@ for gpu_id in range(0, len(gpu_ids)):
         )
     copy_ins[gpu_id].append(
         [
-            "Total:",
-            "%.6f" % json_data[gpu_id]["copy_in_total_time"],
-            "%.4f" % (json_data[gpu_id]["copy_in_utilization"] * 100) + "%",
+            "Total for " + pipeline_id,
+            "%.6f" % json["copy_in_total_time"],
+            "%.4f" % (json["copy_in_utilization"] * 100) + "%",
         ]
     )
 
-    copy_outs.append([])
-    for copy_out in json_data[gpu_id]["copy_out"]:
+    for copy_out in json["copy_out"]:
         copy_outs[gpu_id].append(
             [
                 copy_out["name"],
@@ -102,13 +112,15 @@ for gpu_id in range(0, len(gpu_ids)):
         )
     copy_outs[gpu_id].append(
         [
-            "Total:",
-            "%.6f" % (json_data[gpu_id]["copy_out_total_time"] or 0.0),
-            "%.4f" % ((json_data[gpu_id]["copy_out_utilization"] or 0.0) * 100) + "%",
+            "Total for " + pipeline_id,
+            "%.6f" % (json["copy_out_total_time"] or 0.0),
+            "%.4f" % ((json["copy_out_utilization"] or 0.0) * 100) + "%",
         ]
     )
 
 for gpu_id in range(0, len(gpu_ids)):
+    if not gpu_id in kernels:
+        continue
     print("| -------- GPU[" + str(gpu_ids[gpu_id]) + "] Kernel timing --------")
     print(
         tabulate(
