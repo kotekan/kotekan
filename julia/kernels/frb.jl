@@ -1481,7 +1481,12 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
     if output_kernel
         open("output-$card/frb_$setup.jl", "w") do fh
-            return println(fh, frb_kernel)
+            println(fh, "# Julia source code for CUDA frb beamformer")
+            println(fh, "# This file has been generated automatically by `frb.jl`.")
+            println(fh, "# Do not modify this file, your changes will be lost.")
+            println(fh)
+            println(fh, frb_kernel)
+            return nothing
         end
     end
 
@@ -1690,11 +1695,29 @@ function fix_ptx_kernel()
     ptx = read("output-$card/frb_$setup.ptx", String)
     ptx = replace(ptx, r".extern .func ([^;]*);"s => s".func \1.noreturn\n{\n\ttrap;\n}")
     open("output-$card/frb_$setup.ptx", "w") do fh
-        return write(fh, ptx)
+        println(fh, "# PTX kernel code for CUDA frb beamformer")
+        println(fh, "# This file has been generated automatically by `frb.jl`.")
+        println(fh, "# Do not modify this file, your changes will be lost.")
+        println(fh)
+        write(fh, ptx)
+        return nothing
+    end
+    sass = read("output-$card/frb_$setup.sass", String)
+    open("output-$card/frb_$setup.sass", "w") do fh
+        println(fh, "# SASS kernel code for CUDA frb beamformer")
+        println(fh, "# This file has been generated automatically by `frb.jl`.")
+        println(fh, "# Do not modify this file, your changes will be lost.")
+        println(fh)
+        write(fh, sass)
+        return nothing
     end
     kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
     open("output-$card/frb_$setup.yaml", "w") do fh
-        return print(
+        println(fh, "# Metadata code for CUDA frb beamformer")
+        println(fh, "# This file has been generated automatically by `frb.jl`.")
+        println(fh, "# Do not modify this file, your changes will be lost.")
+        println(fh)
+        print(
             fh,
             """
     --- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
@@ -1754,6 +1777,7 @@ function fix_ptx_kernel()
     ...
     """,
         )
+        return nothing
     end
     cxx = read("kernels/frb_template.cxx", String)
     cxx = Mustache.render(
@@ -1856,12 +1880,12 @@ if CUDA.functional()
             @device_code_ptx main(; compile_only=true, silent=true)
         end
     end
-    fix_ptx_kernel()
     open("output-$card/frb_$setup.sass", "w") do fh
         redirect_stdout(fh) do
             @device_code_sass main(; compile_only=true, silent=true)
         end
     end
+    fix_ptx_kernel()
 
     # # Run test
     # main(; run_selftest=true)

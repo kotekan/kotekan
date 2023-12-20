@@ -850,7 +850,12 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
     if output_kernel
         open("output-$card/bb_$setup.jl", "w") do fh
-            return println(fh, bb_kernel)
+            println(fh, "# Julia source code for CUDA baseband beamformer")
+            println(fh, "# This file has been generated automatically by `bb.jl`.")
+            println(fh, "# Do not modify this file, your changes will be lost.")
+            println(fh)
+            println(fh, bb_kernel)
+            return nothing
         end
     end
 
@@ -878,11 +883,29 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         ptx = read("output-$card/bb_$setup.ptx", String)
         ptx = replace(ptx, r".extern .func ([^;]*);"s => s".func \1.noreturn\n{\n\ttrap;\n}")
         open("output-$card/bb_$setup.ptx", "w") do fh
-            return write(fh, ptx)
+            println(fh, "// PTX kernel code for CUDA baseband beamformer")
+            println(fh, "// This file has been generated automatically by `bb.jl`.")
+            println(fh, "// Do not modify this file, your changes will be lost.")
+            println(fh)
+            write(fh, ptx)
+            return nothing
+        end
+        sass = read("output-$card/bb_$setup.sass", String)
+        open("output-$card/bb_$setup.sass", "w") do fh
+            println(fh, "// SASS kernel code for CUDA baseband beamformer")
+            println(fh, "// This file has been generated automatically by `bb.jl`.")
+            println(fh, "// Do not modify this file, your changes will be lost.")
+            println(fh)
+            write(fh, sass)
+            return nothing
         end
         kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
         open("output-$card/bb_$setup.yaml", "w") do fh
-            return print(
+            println(fh, "# Metadata for the CUDA baseband beamformer")
+            println(fh, "# This file has been generated automatically by `bb.jl`.")
+            println(fh, "# Do not modify this file, your changes will be lost.")
+            println(fh)
+            print(
                 fh,
                 """
         --- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
@@ -940,6 +963,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         ...
         """,
             )
+            return nothing
         end
         cxx = read("kernels/bb_template.cxx", String)
         cxx = Mustache.render(
