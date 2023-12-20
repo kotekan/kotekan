@@ -1,3 +1,4 @@
+# Base docker image for building kotekan on an arm64 platform
 FROM --platform=linux/arm64 ubuntu:22.04
 
 # So tzdata package doesn't ask for user interaction
