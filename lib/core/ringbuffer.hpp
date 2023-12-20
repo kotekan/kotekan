@@ -9,7 +9,7 @@
 
 #include "buffer.hpp"
 #include "kotekanLogging.hpp"
-#include "metadata.h" // for metadataPool
+#include "metadata.hpp" // for metadataPool
 
 #include <optional>
 #include <utility>

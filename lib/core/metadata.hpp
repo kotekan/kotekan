@@ -18,18 +18,14 @@
  * -- return_metadata_to_pool
  */
 
-#ifndef METADATA_H
-#define METADATA_H
+#ifndef METADATA_HPP
+#define METADATA_HPP
 
 #include <pthread.h> // for pthread_mutex_t
 #include <stdint.h>  // for uint32_t
 #include <stdio.h>   // for size_t
 
 struct metadataPool;
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 // *** Metadata object section ***
 
@@ -203,9 +199,5 @@ struct metadataContainer* request_metadata_object(struct metadataPool* pool);
  * @param[in] container The container to return to the pool.
  */
 void return_metadata_to_pool(struct metadataPool* pool, struct metadataContainer* container);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

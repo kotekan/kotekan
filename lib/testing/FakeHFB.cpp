@@ -11,7 +11,7 @@
 #include "datasetState.hpp"    // for beamState, freqState, metadataState, subfreqState
 #include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
-#include "metadata.h"          // for metadataContainer
+#include "metadata.hpp"        // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
 #include "visUtil.hpp"         // for double_to_ts, current_time, freq_ctype, cfloat
 

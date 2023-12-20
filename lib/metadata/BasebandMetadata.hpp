@@ -4,7 +4,7 @@
 #include "Telescope.hpp"
 #include "buffer.hpp"
 #include "chimeMetadata.hpp"
-#include "metadata.h"
+#include "metadata.hpp"
 
 struct BasebandMetadata {
     /// event and frequency ID

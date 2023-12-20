@@ -4,7 +4,7 @@
 #include "Telescope.hpp"
 #include "buffer.hpp"
 #include "dataset.hpp" // for dset_id_t
-#include "metadata.h"
+#include "metadata.hpp"
 
 #include <sys/time.h>
 

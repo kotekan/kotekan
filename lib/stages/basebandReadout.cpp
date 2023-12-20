@@ -8,7 +8,7 @@
 #include "buffer.hpp"             // for Buffer, mark_frame_full, allocate_new_metadata_object
 #include "chimeMetadata.hpp"      // for chimeMetadata
 #include "kotekanLogging.hpp"     // for INFO, DEBUG, WARN
-#include "metadata.h"             // for metadataContainer
+#include "metadata.hpp"           // for metadataContainer
 #include "prometheusMetrics.hpp"  // for Counter, Gauge, MetricFamily, Metrics
 #include "visUtil.hpp"            // for input_ctype, frameID, ts_to_double, modulo, parse_reor...
 

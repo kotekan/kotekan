@@ -1,6 +1,6 @@
 #include "FrameView.hpp"
 
-#include "metadata.h" // for metadataContainer
+#include "metadata.hpp" // for metadataContainer
 
 #include "fmt.hpp" // for format, fmt
 

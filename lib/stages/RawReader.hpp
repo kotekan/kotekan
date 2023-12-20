@@ -16,7 +16,7 @@
 #include "datasetState.hpp"   // for freqState, timeState, metadataState
 #include "errors.h"           // for exit_kotekan, CLEAN_EXIT, ReturnCode
 #include "kotekanLogging.hpp" // for INFO, FATAL_ERROR, DEBUG, WARN, ERROR
-#include "metadata.h"         // for metadataContainer
+#include "metadata.hpp"       // for metadataContainer
 #include "version.h"          // for get_git_commit_hash
 #include "visUtil.hpp"        // for freq_ctype (ptr only), input_ctype, prod_ctype, rstack_ctype
 

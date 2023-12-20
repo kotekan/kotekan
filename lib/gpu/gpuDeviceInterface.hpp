@@ -3,7 +3,7 @@
 
 #include "Config.hpp"
 #include "kotekanLogging.hpp" // for kotekanLogging
-#include "metadata.h"
+#include "metadata.hpp"
 
 #include <map> // for map
 #include <mutex>

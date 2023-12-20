@@ -2,7 +2,7 @@
 
 #include "FrameView.hpp" // for bind_span, FrameView
 #include "buffer.hpp"    // for Buffer, allocate_new_metadata_object
-#include "metadata.h"    // for metadataContainer
+#include "metadata.hpp"  // for metadataContainer
 #include "visUtil.hpp"   // for struct_alignment
 
 #include "fmt.hpp" // for format, fmt

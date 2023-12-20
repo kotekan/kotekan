@@ -5,7 +5,7 @@
 #include "buffer.hpp"
 #include "chimeMetadata.hpp"
 #include "dataset.hpp" // for dset_id_t
-#include "metadata.h"
+#include "metadata.hpp"
 
 struct BeamMetadata {
     /// The ICEBoard sequence number

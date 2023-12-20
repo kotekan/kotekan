@@ -5,7 +5,7 @@
 #include "buffer.hpp"
 #include "chimeMetadata.hpp"
 #include "datasetManager.hpp"
-#include "metadata.h"
+#include "metadata.hpp"
 
 #include <sstream>
 #include <string>

@@ -9,7 +9,7 @@
 #define BUFFER
 
 #include "kotekanLogging.hpp"
-#include "metadata.h" // for metadataPool
+#include "metadata.hpp" // for metadataPool
 
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
 

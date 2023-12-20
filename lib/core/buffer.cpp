@@ -1,9 +1,9 @@
 #include "buffer.hpp"
 
-#include "errors.h"    // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, INFO_F, DEBUG_F, WARN_F
-#include "metadata.h"  // for metadataContainer, decrement_metadata_ref_count, increment_...
-#include "nt_memset.h" // for nt_memset
-#include "util.h"      // for e_time
+#include "errors.h"     // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, INFO_F, DEBUG_F, WARN_F
+#include "metadata.hpp" // for metadataContainer, decrement_metadata_ref_count, increment_...
+#include "nt_memset.h"  // for nt_memset
+#include "util.h"       // for e_time
 #ifdef WITH_HSA
 #include "hsaBase.h" // for hsa_host_free, hsa_host_malloc
 #endif

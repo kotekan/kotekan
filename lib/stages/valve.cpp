@@ -6,7 +6,7 @@
 #include "buffer.hpp"       // for Buffer, allocate_new_metadata_object, get_num_consumers
 #include "bufferContainer.hpp"
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, WARN
-#include "metadata.h"            // for metadataContainer
+#include "metadata.hpp"          // for metadataContainer
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 #include "visUtil.hpp"           // for frameID, modulo
 

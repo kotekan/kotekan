@@ -9,7 +9,7 @@
 #include "factory.hpp"        // for FACTORY
 #include "fakeGpuPattern.hpp" // for FakeGpuPattern, _factory_aliasFakeGpuPattern
 #include "kotekanLogging.hpp" // for DEBUG, ERROR, INFO
-#include "metadata.h"         // for metadataContainer
+#include "metadata.hpp"       // for metadataContainer
 #include "visUtil.hpp"        // for frameID, gpu_N2_size, modulo, operator+
 
 #include "gsl-lite.hpp" // for span

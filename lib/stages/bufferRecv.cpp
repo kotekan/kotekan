@@ -5,7 +5,7 @@
 #include "buffer.hpp"            // for Buffer, allocate_new_metadata_object, buffer_free, buff...
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "bufferSend.hpp"        // for bufferFrameHeader
-#include "metadata.h"            // for metadataPool
+#include "metadata.hpp"          // for metadataPool
 #include "prometheusMetrics.hpp" // for Gauge, Metrics, Counter, MetricFamily
 #include "util.h"                // for string_tail
 #include "visUtil.hpp"           // for current_time

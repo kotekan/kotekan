@@ -8,7 +8,7 @@
 #include "chordMetadata.hpp"   // for chordMetadata
 #include "errors.h"
 #include "kotekanLogging.hpp"    // for ERROR, INFO
-#include "metadata.h"            // for metadataContainer
+#include "metadata.hpp"          // for metadataContainer
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "visUtil.hpp"           // for current_time
 

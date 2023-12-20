@@ -1,4 +1,4 @@
-#include "metadata.h"
+#include "metadata.hpp"
 
 #include "errors.h" // for CHECK_ERROR_F, CHECK_MEM_F
 
@@ -11,7 +11,7 @@
 struct metadataContainer* create_metadata(size_t object_size, struct metadataPool* parent_pool) {
 
     struct metadataContainer* metadata_container;
-    metadata_container = malloc(sizeof(struct metadataContainer));
+    metadata_container = (metadataContainer*)malloc(sizeof(struct metadataContainer));
     CHECK_MEM_F(metadata_container);
 
     metadata_container->metadata = malloc(object_size);
@@ -79,7 +79,7 @@ void decrement_metadata_ref_count(struct metadataContainer* container) {
 struct metadataPool* create_metadata_pool(int num_metadata_objects, size_t object_size,
                                           const char* unique_name, const char* type_name) {
     struct metadataPool* pool;
-    pool = malloc(sizeof(struct metadataPool));
+    pool = (metadataPool*)malloc(sizeof(struct metadataPool));
     CHECK_MEM_F(pool);
 
     pool->pool_size = num_metadata_objects;
@@ -92,9 +92,10 @@ struct metadataPool* create_metadata_pool(int num_metadata_objects, size_t objec
     pool->type_name = strdup(type_name);
     CHECK_MEM_F(pool->type_name);
 
-    pool->in_use = malloc(pool->pool_size * sizeof(int));
+    pool->in_use = (int*)malloc(pool->pool_size * sizeof(int));
     CHECK_MEM_F(pool->in_use);
-    pool->metadata_objects = malloc(pool->pool_size * sizeof(struct metadataContainer*));
+    pool->metadata_objects =
+        (metadataContainer**)malloc(pool->pool_size * sizeof(struct metadataContainer*));
     CHECK_MEM_F(pool->metadata_objects);
 
     for (unsigned int i = 0; i < pool->pool_size; ++i) {

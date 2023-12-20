@@ -7,7 +7,7 @@
 #include "chimeMetadata.hpp"    // for chimeMetadata
 #include "chordMetadata.hpp"
 #include "kotekanLogging.hpp" // for INFO_NON_OO
-#include "metadata.h"         // for create_metadata_pool
+#include "metadata.hpp"       // for create_metadata_pool
 #include "oneHotMetadata.hpp"
 #include "visBuffer.hpp"
 

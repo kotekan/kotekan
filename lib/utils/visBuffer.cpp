@@ -4,7 +4,7 @@
 #include "Telescope.hpp"     // for Telescope
 #include "buffer.hpp"        // for Buffer, allocate_new_metadata_object
 #include "chimeMetadata.hpp" // for chimeMetadata, get_stream_id_from_metadata
-#include "metadata.h"        // for metadataContainer
+#include "metadata.hpp"      // for metadataContainer
 
 #include "fmt.hpp" // for format, fmt
 

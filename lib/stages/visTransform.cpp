@@ -9,7 +9,7 @@
 #include "datasetManager.hpp"  // for state_id_t, datasetManager, dset_id_t
 #include "datasetState.hpp"    // for freqState, inputState, metadataState, prodState
 #include "kotekanLogging.hpp"  // for INFO
-#include "metadata.h"          // for metadataContainer
+#include "metadata.hpp"        // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
 #include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for prod_ctype, input_ctype, freq_ctype, copy_vis_triangle

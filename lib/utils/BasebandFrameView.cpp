@@ -1,6 +1,6 @@
 #include "BasebandFrameView.hpp"
 
-#include "metadata.h" // for metadataContainer
+#include "metadata.hpp" // for metadataContainer
 
 #include <string.h> // for memset
 

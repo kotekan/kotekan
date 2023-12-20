@@ -4,7 +4,7 @@
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
-#include "metadata.h"          // for metadataPool  // IWYU pragma: keep
+#include "metadata.hpp"        // for metadataPool  // IWYU pragma: keep
 #include "restServer.hpp"      // for connectionInstance
 #if !defined(MAC_OSX)
 #include "cpuMonitor.hpp"

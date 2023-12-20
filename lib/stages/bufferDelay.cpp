@@ -3,7 +3,7 @@
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"         // for Buffer, allocate_new_metadata_object, copy_metadata, get_n...
 #include "kotekanLogging.hpp" // for DEBUG
-#include "metadata.h"         // for metadataContainer
+#include "metadata.hpp"       // for metadataContainer
 #include "visUtil.hpp"        // for frameID, modulo
 
 #include "fmt.hpp"  // for format, fmt

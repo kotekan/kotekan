@@ -5,7 +5,7 @@
 #include "buffer.hpp"          // for Buffer, allocate_new_metadata_object, get_metadata_container
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for ERROR, INFO, FATAL_ERROR
-#include "metadata.h"          // for metadataContainer
+#include "metadata.hpp"        // for metadataContainer
 
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
