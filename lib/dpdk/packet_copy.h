@@ -2,7 +2,9 @@
 #define PACKET_COPY_H
 
 #include <assert.h>
+#ifdef __AVX2__
 #include <emmintrin.h>
+#endif
 #include <inttypes.h>
 #include <rte_cycles.h>
 #include <rte_eal.h>
@@ -18,6 +20,8 @@ extern "C" {
 #endif
 
 #include "errors.h"
+
+#ifdef __AVX2__
 
 // Copy 8 bytes from one location to another,
 // locations should not overlap.
@@ -244,6 +248,19 @@ static inline void copy_block(struct rte_mbuf** pkt, uint8_t* dest, int len, int
     *offset = local_offset;
     // assert(len == 0);
 }
+
+#else // Non-AVX
+
+static inline void copy_block(struct rte_mbuf** pkt, uint8_t* dest, int len, int* offset) {
+    (void)pkt;
+    (void)dest;
+    (void)len;
+    (void)offset;
+    ERROR_NON_OO("copy_block not implemented for systems without AVX2");
+}
+
+#endif
+
 
 #ifdef __cplusplus
 }
