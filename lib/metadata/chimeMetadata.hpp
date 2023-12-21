@@ -18,7 +18,6 @@ struct beamCoord {
     uint32_t scaling[MAX_NUM_BEAMS];
 };
 
-
 class chimeMetadata : public metadataObject {
 public:
     /// The ICEBoard sequence number
@@ -29,13 +28,13 @@ public:
     struct timespec gps_time;
     /// The total lost time samples for lost/corrupt packets and RFI zeroing.
     /// This value only include RFI losses if RFI zeroing was used.
-    int32_t lost_timesamples;
+    std::atomic_int32_t lost_timesamples;
     /// The number of FPGA frames flagged as containing RFI.
     /// NOTE: This value might contain overlap with lost samples, so it can count
     /// missing samples as samples with RFI.  For renormalization this value
     /// should NOT be used, use @c lost_timesamples instead.
     /// This value will be filled even if RFI zeroing is disabled.
-    int32_t rfi_flagged_samples;
+    std::atomic_int32_t rfi_flagged_samples;
     /// This value is set to 1 if the RFI containing samples were zeroed
     /// in the correlation, and 0 otherwise.
     uint32_t rfi_zeroed;
@@ -50,6 +49,9 @@ public:
     dset_id_t dataset_id;
     /// The coordinates of the tracking beam (if applicable)
     struct beamCoord beam_coord;
+
+    // assignment operator needed to handle std::atomics
+    chimeMetadata& operator=(const chimeMetadata& other);
 };
 
 inline bool metadata_is_chime(const std::shared_ptr<metadataObject> mc) {
@@ -141,10 +143,8 @@ inline dset_id_t get_dataset_id(const Buffer* buf, int ID) {
 }
 
 inline void atomic_add_lost_timesamples(Buffer* buf, int ID, int64_t num_lost_samples) {
-    std::shared_ptr<metadataObject> mc = buf->metadata[ID];
-    std::lock_guard<std::mutex> lock(mc->mutex.mutex);
-    chimeMetadata* chime_metadata = (chimeMetadata*)mc.get();
-    chime_metadata->lost_timesamples += num_lost_samples;
+    auto meta = std::static_pointer_cast<chimeMetadata>(buf->metadata[ID]);
+    meta->lost_timesamples += num_lost_samples;
 }
 
 /**
@@ -155,10 +155,8 @@ inline void atomic_add_lost_timesamples(Buffer* buf, int ID, int64_t num_lost_sa
  * @param num_flagged_samples The number of flagged samples to add
  */
 inline void atomic_add_rfi_flagged_samples(Buffer* buf, int ID, int64_t num_flagged_samples) {
-    std::shared_ptr<metadataObject> mc = buf->metadata[ID];
-    std::lock_guard<std::mutex> lock(mc->mutex.mutex);
-    chimeMetadata* chime_metadata = (chimeMetadata*)mc.get();
-    chime_metadata->rfi_flagged_samples += num_flagged_samples;
+    auto meta = std::static_pointer_cast<chimeMetadata>(buf->metadata[ID]);
+    meta->rfi_flagged_samples += num_flagged_samples;
 }
 
 // Setting functions

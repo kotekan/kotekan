@@ -32,18 +32,6 @@
 
 class metadataPool;
 
-// Per https://godbolt.org/z/Y86jscd6K, a wrapper on mutex so that we can include a mutex
-// in a simple (struct-like) class like metadataObject, and get default copy constructors etc,
-// but copies get their own mutexes.
-struct mutex_holder {
-    std::mutex mutex;
-    mutex_holder() : mutex() {}
-    mutex_holder(mutex_holder const& /*other*/) : mutex() {}
-    mutex_holder& operator=(const mutex_holder& /*other*/) {
-        return *this;
-    }
-};
-
 // *** Metadata object section ***
 
 class metadataObject : public kotekan::kotekanLogging {
@@ -54,11 +42,6 @@ public:
 
     /// Reference to metadataPool that this object belongs to.
     std::weak_ptr<metadataPool> parent_pool;
-
-    /**
-     * @brief Mutex for variables in this object.
-     */
-    mutex_holder mutex;
 
     /// Returns the size of objects of this type, according to my metadataPool.
     size_t get_object_size();
