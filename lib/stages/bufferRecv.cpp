@@ -338,7 +338,9 @@ connInstance::connInstance(const std::string& producer_name, Buffer* buf, buffer
                                 buf->mlock_frames, false);
     CHECK_MEM(frame_space);
 
-    metadata_space = (uint8_t*)malloc(buf->metadata_pool->metadata_object_size);
+    auto meta = buf->metadata_pool->request_metadata_object();
+    metadata_size = meta->get_serialized_size();
+    metadata_space = (uint8_t*)malloc(metadata_size);
     CHECK_MEM(metadata_space);
 }
 
@@ -420,7 +422,7 @@ void connInstance::internal_read_callback() {
                         close_instance();
                         return;
                     }
-                    if (buf->metadata_pool->metadata_object_size
+                    if (metadata_size
                         != buf_frame_header.metadata_size) {
                         ERROR("Metadata size does not match between server and client!");
                         decrement_ref_count();
@@ -490,8 +492,7 @@ void connInstance::internal_read_callback() {
                 // but this is more complex, and mucher lower overhead to just memcpy here.
                 std::shared_ptr<metadataObject> metadata = buf->get_metadata(frame_id);
                 if (metadata)
-                    // FIXME metadata serialization
-                    memcpy(metadata.get(), metadata_space, buf_frame_header.metadata_size);
+                    metadata->set_from_bytes((char*)metadata_space, metadata_size);
 
                 buf->mark_frame_full(producer_name, frame_id);
 
