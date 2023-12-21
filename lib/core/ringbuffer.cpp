@@ -35,8 +35,9 @@ std::optional<size_t> RingBuffer::wait_and_claim_readable(const std::string& nam
     std::unique_lock<std::recursive_mutex> lock(mutex);
     size_t head = read_heads[name];
     while (1) {
-        DEBUG("Waiting for input: Want {:d}, Currently at {:d} => total {:d}, vs Written: {:d}", sz,
-              head, head + sz, write_head);
+        DEBUG("Waiting for input: Want {:d}, Have {:d}.  (Current read head: {:d}, after this read "
+              "would be {:d}, current write head: {:d})",
+              sz, write_head - head, head, head + sz, write_head);
         if (head + sz <= write_head)
             break;
         if (shutdown_signal)

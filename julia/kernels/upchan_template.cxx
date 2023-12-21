@@ -248,7 +248,10 @@ int cuda{{{kernel_name}}}::wait_on_precondition() {
     DEBUG("Input ring-buffer byte offset {:d} -> time sample offset {:d}", input_cursor, Tmin);
     assert(mod(input_cursor, T_sample_bytes) == 0);
 
-    size_t nominal_Tlength = input_bytes;
+    DEBUG("Input length: {:d} bytes, bytes per input sample: {:d}, input samples: {:d}",
+          input_bytes, T_sample_bytes, input_bytes / T_sample_bytes);
+    size_t nominal_Tlength = input_bytes / T_sample_bytes;
+    assert(mod(input_bytes, T_sample_bytes) == 0);
     size_t Tlength = round_down(nominal_Tlength, cuda_granularity_number_of_timesamples);
 
     Tmax = Tmin + Tlength;
@@ -260,7 +263,7 @@ int cuda{{{kernel_name}}}::wait_on_precondition() {
 
     // to bytes
     size_t output_bytes = Tbarlength * Tbar_sample_bytes;
-    DEBUG("Will produce {:d} output time samples -> {:d} bytes", Tbarlength, output_bytes);
+    DEBUG("Will produce {:d} output time samples, sample size {:d}, total {:d} bytes", Tbarlength, Tbar_sample_bytes, output_bytes);
 
     // Wait for space to be available in our output ringbuffer...
     DEBUG("Waiting for output ringbuffer space for frame {:d}: {:d} bytes ...", gpu_frame_id, output_bytes);
@@ -284,10 +287,16 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
     {{#kernel_arguments}}
         {{#hasbuffer}}
-            void* const {{{name}}}_memory =
-                args::{{{name}}} == args::E || args::{{{name}}} == args::Ebar
-                    ? device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length / _gpu_buffer_depth)
-                    : device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length);
+        void* const {{{name}}}_memory =
+                                  (args::{{{name}}} == args::E)
+                                  ? device.get_gpu_memory({{{name}}}_memname, input_ringbuf_signal->size)
+                                  : ((args::{{{name}}} == args::Ebar)
+                                     ? device.get_gpu_memory({{{name}}}_memname, output_ringbuf_signal->size)
+                                     : device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length)
+                                     );
+            //args::{{{name}}} == args::E || args::{{{name}}} == args::Ebar
+            //? device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length / _gpu_buffer_depth)
+            //: device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length);
         {{/hasbuffer}}
         {{^hasbuffer}}
             void* const {{{name}}}_memory = device.get_gpu_memory({{{name}}}_memname, {{{name}}}_length);
