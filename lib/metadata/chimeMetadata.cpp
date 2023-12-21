@@ -1,8 +1,9 @@
 #include "chimeMetadata.hpp"
-#include "factory.hpp"
-#include "metadata.hpp"
+
 #include "BasebandMetadata.hpp"
 #include "HFBMetadata.hpp"
+#include "factory.hpp"
+#include "metadata.hpp"
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, chimeMetadata);
 
@@ -44,8 +45,8 @@ size_t chimeMetadata::get_serialized_size() {
 size_t chimeMetadata::set_from_bytes(const char* bytes, size_t length) {
     size_t sz = get_serialized_size();
     assert(length >= sz);
-    //chimeMetadataFormat fmt;
-    //memcpy(&fmt, bytes, sz);
+    // chimeMetadataFormat fmt;
+    // memcpy(&fmt, bytes, sz);
     const chimeMetadataFormat* fmt = reinterpret_cast<const chimeMetadataFormat*>(bytes);
     fpga_seq_num = fmt->fpga_seq_num;
     first_packet_recv_time = fmt->first_packet_recv_time;

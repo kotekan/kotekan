@@ -76,8 +76,8 @@ int32_t BasebandFileRaw::write_frame(const BasebandFrameView& frame) {
         char metabuf[sz];
         meta->serialize(metabuf);
 
-        nbytes = TEMP_FAILURE_RETRY(
-        pwrite(fd, (void*)metabuf, metadata_size, write_index * frame_size));
+        nbytes =
+            TEMP_FAILURE_RETRY(pwrite(fd, (void*)metabuf, metadata_size, write_index * frame_size));
         if (nbytes < 0) {
             ERROR("Write error attempting to write metadata {:d} bytes into file {:s}: {:s}",
                   metadata_size, name, strerror(errno));

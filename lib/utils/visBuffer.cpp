@@ -8,7 +8,7 @@
 
 #include "fmt.hpp" // for format, fmt
 
-#include <algorithm>   // for copy
+#include <algorithm> // for copy
 #include <assert.h>
 #include <complex>     // for complex
 #include <cstdint>     // for uint64_t // IWYU pragma: keep

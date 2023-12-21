@@ -58,4 +58,3 @@ size_t BasebandMetadata::serialize(char* bytes) {
     fmt->num_elements = num_elements;
     return sz;
 }
-

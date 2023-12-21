@@ -453,7 +453,8 @@ void RawReader<T>::main_thread() {
             // Copy the metadata from the file
             auto meta = out_buf->get_metadata(frame_id);
             assert(meta->get_serialized_size() == metadata_size);
-            size_t sz = meta->set_from_bytes((const char*)(mapped_file + file_ind * file_frame_size + 1), metadata_size);
+            size_t sz = meta->set_from_bytes(
+                (const char*)(mapped_file + file_ind * file_frame_size + 1), metadata_size);
             assert(sz == metadata_size);
 
             // Copy the data from the file

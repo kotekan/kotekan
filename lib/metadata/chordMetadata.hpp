@@ -7,11 +7,11 @@
 #include "datasetManager.hpp"
 #include "metadata.hpp"
 
+#include <assert.h>
 #include <sstream>
 #include <string>
 #include <sys/time.h>
 #include <vector>
-#include <assert.h>
 
 // One of the warning-silencing pragmas below only applied for gcc >= 8
 #define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)

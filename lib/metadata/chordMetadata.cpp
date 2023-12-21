@@ -50,7 +50,7 @@ struct chordMetadataFormat {
 
     int32_t frame_counter;
 
-    //chordDataType type;
+    // chordDataType type;
     int32_t type;
 
     int32_t dims;
@@ -105,9 +105,9 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
     assert(CHORD_META_MAX_FREQ == fmt->max_freq);
     dims = fmt->dims;
     assert(dims < CHORD_META_MAX_DIM);
-    for (int i=0; i<dims; i++) {
+    for (int i = 0; i < dims; i++) {
         dim[i] = fmt->dim[i];
-        for (int j=0; j<CHORD_META_MAX_DIMNAME; j++) {
+        for (int j = 0; j < CHORD_META_MAX_DIMNAME; j++) {
             dim_name[i][j] = fmt->dim_name[i][j];
             onehot_name[i][j] = fmt->onehot_name[i][j];
         }
@@ -118,7 +118,7 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
     n_one_hot = fmt->n_one_hot;
     nfreq = fmt->nfreq;
     assert(nfreq < CHORD_META_MAX_FREQ);
-    for (int i=0; i<nfreq; i++) {
+    for (int i = 0; i < nfreq; i++) {
         coarse_freq[i] = fmt->coarse_freq[i];
         freq_upchan_factor[i] = fmt->freq_upchan_factor[i];
         half_fpga_sample0[i] = fmt->half_fpga_sample0[i];
@@ -141,9 +141,9 @@ size_t chordMetadata::serialize(char* bytes) {
     fmt->frame_counter = frame_counter;
     fmt->type = (int32_t)fmt->type;
     fmt->dims = dims;
-    for (int i=0; i<dims; i++) {
+    for (int i = 0; i < dims; i++) {
         fmt->dim[i] = dim[i];
-        for (int j=0; j<CHORD_META_MAX_DIMNAME; j++) {
+        for (int j = 0; j < CHORD_META_MAX_DIMNAME; j++) {
             fmt->dim_name[i][j] = dim_name[i][j];
             fmt->onehot_name[i][j] = onehot_name[i][j];
         }
@@ -154,7 +154,7 @@ size_t chordMetadata::serialize(char* bytes) {
     fmt->n_one_hot = n_one_hot;
     fmt->nfreq = nfreq;
     assert(nfreq < CHORD_META_MAX_FREQ);
-    for (int i=0; i<nfreq; i++) {
+    for (int i = 0; i < nfreq; i++) {
         fmt->coarse_freq[i] = coarse_freq[i];
         fmt->freq_upchan_factor[i] = freq_upchan_factor[i];
         fmt->half_fpga_sample0[i] = half_fpga_sample0[i];

@@ -47,15 +47,21 @@ public:
     size_t get_object_size();
 
     /// Returns the size of objects of this type when serialized into bytes.
-    virtual size_t get_serialized_size() { return 0; }
+    virtual size_t get_serialized_size() {
+        return 0;
+    }
 
     /// Sets this metadata object's values from the given byte array
     /// of the given length.  Returns the number of bytes consumed.
-    virtual size_t set_from_bytes(const char* /*bytes*/, size_t /*length*/) { return 0; }
+    virtual size_t set_from_bytes(const char* /*bytes*/, size_t /*length*/) {
+        return 0;
+    }
 
     /// Serializes this metadata object into the given byte array,
     /// expected to be of length (at least) get_serialized_size().
-    virtual size_t serialize(char* /*bytes*/) { return 0; }
+    virtual size_t serialize(char* /*bytes*/) {
+        return 0;
+    }
 };
 
 CREATE_FACTORY(metadataObject);
