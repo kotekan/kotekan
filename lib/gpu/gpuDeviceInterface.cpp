@@ -157,8 +157,8 @@ void gpuDeviceInterface::create_gpu_memory_ringbuffer(const std::string& source_
     }
 }
 
-std::shared_ptr<metadataObject> gpuDeviceInterface::get_gpu_memory_array_metadata(const std::string& name,
-                                                                     const uint32_t index_) {
+std::shared_ptr<metadataObject>
+gpuDeviceInterface::get_gpu_memory_array_metadata(const std::string& name, const uint32_t index_) {
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     // Memory array must be allocated already
     if (gpu_memory.count(name) == 0) {
@@ -176,13 +176,14 @@ std::shared_ptr<metadataObject> gpuDeviceInterface::get_gpu_memory_array_metadat
     return mem;
 }
 
-std::shared_ptr<metadataObject> gpuDeviceInterface::create_gpu_memory_array_metadata(const std::string& name,
-                                                                                     const uint32_t index_,
-                                                                                     std::weak_ptr<metadataPool> pool) {
+std::shared_ptr<metadataObject>
+gpuDeviceInterface::create_gpu_memory_array_metadata(const std::string& name, const uint32_t index_,
+                                                     std::weak_ptr<metadataPool> pool) {
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     // Memory array must be allocated already
     if (gpu_memory.count(name) == 0) {
-        FATAL_ERROR("create_gpu_memory_array_metadata for name \"{:s}\": does not exist yet.", name);
+        FATAL_ERROR("create_gpu_memory_array_metadata for name \"{:s}\": does not exist yet.",
+                    name);
     }
     // mod the index by the array size (buffer depth)
     uint32_t depth = gpu_memory[name].metadata_pointers.size();
@@ -195,7 +196,8 @@ std::shared_ptr<metadataObject> gpuDeviceInterface::create_gpu_memory_array_meta
     // Allocate new metadata obj
     std::shared_ptr<metadataPool> realpool = pool.lock();
     if (!realpool)
-        FATAL_ERROR("create_gpu_memory_array_metadata for name \"{:s}\": metadata pool is null.", name);
+        FATAL_ERROR("create_gpu_memory_array_metadata for name \"{:s}\": metadata pool is null.",
+                    name);
     std::shared_ptr<metadataObject> mc = realpool->request_metadata_object();
     assert(mc);
     // Plug it in!

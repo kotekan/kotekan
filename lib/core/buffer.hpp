@@ -275,7 +275,7 @@ public:
     std::shared_ptr<metadataPool> metadata_pool;
 
     /// Array of buffer info objects, for tracking information about each buffer.
-    std::vector<std::shared_ptr<metadataObject> > metadata;
+    std::vector<std::shared_ptr<metadataObject>> metadata;
 
 protected:
     /// The main lock for frame state management
@@ -354,9 +354,9 @@ public:
      * @param mlock_frames Lock the frame pages with mlock
      * @param zero_new_frames
      */
-    Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool, const std::string& buffer_name,
-           const std::string& buffer_type, int numa_node, bool use_hugepages, bool mlock_frames,
-           bool zero_new_frames);
+    Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
+           const std::string& buffer_name, const std::string& buffer_type, int numa_node,
+           bool use_hugepages, bool mlock_frames, bool zero_new_frames);
     ~Buffer() override;
 
     /**

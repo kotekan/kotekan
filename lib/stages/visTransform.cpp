@@ -145,8 +145,8 @@ void visTransform::main_thread() {
 
             // TODO: multifrequency support
             // Copy over the metadata
-            output_frame.fill_chime_metadata(
-                                             (const chimeMetadata*)buf->metadata[frame_id].get(), 0);
+            output_frame.fill_chime_metadata((const chimeMetadata*)buf->metadata[frame_id].get(),
+                                             0);
 
             // Copy the visibility data into a proper triangle and write into
             // the file

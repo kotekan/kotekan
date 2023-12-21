@@ -123,7 +123,8 @@ public:
      * @param name  the name of the GPU buffer whose metadata you want
      * @param index the GPU buffer array index
      */
-    std::shared_ptr<metadataObject> get_gpu_memory_array_metadata(const std::string& name, const uint32_t index);
+    std::shared_ptr<metadataObject> get_gpu_memory_array_metadata(const std::string& name,
+                                                                  const uint32_t index);
 
     /**
      * @brief Allocates a new metadata object (from the given pool)
@@ -132,12 +133,13 @@ public:
      * @param index the GPU buffer array index
      * @param pool  the pool that will be used to create the metadata object
      */
-    std::shared_ptr<metadataObject> create_gpu_memory_array_metadata(const std::string& name,
-                                                                     const uint32_t index, std::weak_ptr<metadataPool> pool);
+    std::shared_ptr<metadataObject>
+    create_gpu_memory_array_metadata(const std::string& name, const uint32_t index,
+                                     std::weak_ptr<metadataPool> pool);
 
     /**
      * @brief Attaches the given metadata to this GPU array element,
-     * 
+     *
      * @param name  the name of the GPU buffer whose metadata you want to create
      * @param index the GPU buffer array index
      * @param mc    the metadata

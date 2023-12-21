@@ -26,7 +26,7 @@
 	trap;
 }
 .extern .shared .align 32 .b8 shmem[];
-.global .align 1 .b8 exception1[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
+.global .align 1 .b8 exception12929[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
                                         // @_Z3frb13CuDeviceArrayI7Int16x2Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE
 .visible .entry _Z3frb13CuDeviceArrayI7Int16x2Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE(
 	.param .align 8 .b8 _Z3frb13CuDeviceArrayI7Int16x2Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE_param_0[16],
@@ -4161,7 +4161,7 @@ LBB0_93:                                // %L35500
 LBB0_1:                                 // %L9
 	ld.param.u32 	%r308, [_Z3frb13CuDeviceArrayI7Int16x2Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE_param_0+8];
 	ld.param.u64 	%rd13, [_Z3frb13CuDeviceArrayI7Int16x2Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE_param_0];
-	mov.u64 	%rd18, exception1;
+	mov.u64 	%rd18, exception12929;
 	cvta.global.u64 	%rd19, %rd18;
 	{ // callseq 4, 0
 	.reg .b32 temp_param_reg;

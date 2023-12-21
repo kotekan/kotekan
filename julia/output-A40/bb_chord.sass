@@ -28,9 +28,9 @@ _Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_
 ; Location /home/dstn/.julia/packages/CUDA/YIj5X/src/device/intrinsics/shared_memory.jl:51
     @P0 BRA `(.L_x_2) ;
 ; Location /home/dstn/.julia/packages/CUDA/YIj5X/src/device/intrinsics/shared_memory.jl:52
-        UMOV UR4, 32@lo(exception1931) ;
+        UMOV UR4, 32@lo(exception1) ;
         MOV R18, 0xc0 ;
-        UMOV UR5, 32@hi(exception1931) ;
+        UMOV UR5, 32@hi(exception1) ;
         IMAD.U32 R8, RZ, RZ, UR4 ;
         IMAD.U32 R9, RZ, RZ, UR5 ;
         CALL.REL.NOINC `($_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_report_exception) ;
@@ -45,9 +45,9 @@ _Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_
 ; Location /home/dstn/.julia/packages/CUDA/YIj5X/src/device/intrinsics/shared_memory.jl:51
     @P0 BRA `(.L_x_3) ;
 ; Location /home/dstn/.julia/packages/CUDA/YIj5X/src/device/intrinsics/shared_memory.jl:52
-        UMOV UR4, 32@lo(exception1931) ;
+        UMOV UR4, 32@lo(exception1) ;
         MOV R18, 0x180 ;
-        UMOV UR5, 32@hi(exception1931) ;
+        UMOV UR5, 32@hi(exception1) ;
         IMAD.U32 R8, RZ, RZ, UR4 ;
         IMAD.U32 R9, RZ, RZ, UR5 ;
         CALL.REL.NOINC `($_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_report_exception) ;

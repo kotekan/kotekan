@@ -53,11 +53,11 @@ const int CHORD_META_MAX_DIM = 10;
 // Maximum length of dimension names for arrays
 const int CHORD_META_MAX_DIMNAME = 16;
 
-class chordMetadata : public chimeMetadata { //metadataObject {
+class chordMetadata : public chimeMetadata { // metadataObject {
 public:
     chordMetadata();
 
-    //chimeMetadata chime;
+    // chimeMetadata chime;
     int frame_counter;
 
     // cudaDataType_t type;
@@ -148,10 +148,11 @@ public:
 };
 
 inline void chord_metadata_init(std::shared_ptr<chordMetadata>) {
-    //bzero(c, sizeof(chordMetadata));
+    // bzero(c, sizeof(chordMetadata));
 }
 
-inline void chord_metadata_copy(std::shared_ptr<chordMetadata> out, const std::shared_ptr<chordMetadata> in) {
+inline void chord_metadata_copy(std::shared_ptr<chordMetadata> out,
+                                const std::shared_ptr<chordMetadata> in) {
     *out = *in; // ???
 }
 
@@ -178,10 +179,8 @@ inline std::shared_ptr<chordMetadata> get_chord_metadata(Buffer* buf, int frame_
 }
 
 /*
-inline const std::shared_ptr<chordMetadata> get_chord_metadata(const std::shared_ptr<metadataObject> mc) {
-    if (!mc)
-        return std::shared_ptr<chordMetadata>();
-    if (!metadata_is_chord(mc)) {
+inline const std::shared_ptr<chordMetadata> get_chord_metadata(const std::shared_ptr<metadataObject>
+mc) { if (!mc) return std::shared_ptr<chordMetadata>(); if (!metadata_is_chord(mc)) {
         std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
         WARN_NON_OO("Expected metadata to be type \"chordMetadata\", got \"{:s}\".",
                     pool->type_name);

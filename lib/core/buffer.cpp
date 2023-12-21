@@ -206,9 +206,9 @@ std::string GenericBuffer::get_dot_node_label() {
     return buffer_name;
 }
 
-Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool, const std::string& _buffer_name,
-               const std::string& _buffer_type, int _numa_node, bool _use_hugepages,
-               bool _mlock_frames, bool zero_new_frames) :
+Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
+               const std::string& _buffer_name, const std::string& _buffer_type, int _numa_node,
+               bool _use_hugepages, bool _mlock_frames, bool zero_new_frames) :
     GenericBuffer(_buffer_name, _buffer_type, pool, num_frames),
     frame_size(len),
     // By default don't zero buffers at the end of their use.

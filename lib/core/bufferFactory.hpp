@@ -16,7 +16,8 @@ class bufferFactory {
 
 public:
     // One bufferFactory should be created for each set of config and buffer_container
-    bufferFactory(Config& config, std::map<std::string, std::shared_ptr<metadataPool> >& metadataPools);
+    bufferFactory(Config& config,
+                  std::map<std::string, std::shared_ptr<metadataPool>>& metadataPools);
     ~bufferFactory();
 
     std::map<std::string, GenericBuffer*> build_buffers();
@@ -28,7 +29,7 @@ private:
                               const std::string& location);
 
     Config& config;
-    std::map<std::string, std::shared_ptr<metadataPool> >& metadataPools;
+    std::map<std::string, std::shared_ptr<metadataPool>>& metadataPools;
 };
 
 } // namespace kotekan

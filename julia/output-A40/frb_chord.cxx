@@ -222,10 +222,10 @@ cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
     /// S is an input buffer: check metadata
-    const metadataContainer* const S_mc =
+    const std::shared_ptr<metadataObject> S_mc =
         device.get_gpu_memory_array_metadata(S_memname, gpu_frame_id);
-    assert(S_mc && metadata_container_is_chord(S_mc));
-    const chordMetadata* const S_meta = get_chord_metadata(S_mc);
+    assert(S_mc && metadata_is_chord(S_mc));
+    const std::shared_ptr<chordMetadata> S_meta = get_chord_metadata(S_mc);
     INFO("input S array: {:s} {:s}", S_meta->get_type_string(), S_meta->get_dimensions_string());
     assert(S_meta->type == S_type);
     assert(S_meta->dims == S_rank);
@@ -237,10 +237,10 @@ cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
     }
     //
     /// W is an input buffer: check metadata
-    const metadataContainer* const W_mc =
+    const std::shared_ptr<metadataObject> W_mc =
         device.get_gpu_memory_array_metadata(W_memname, gpu_frame_id);
-    assert(W_mc && metadata_container_is_chord(W_mc));
-    const chordMetadata* const W_meta = get_chord_metadata(W_mc);
+    assert(W_mc && metadata_is_chord(W_mc));
+    const std::shared_ptr<chordMetadata> W_meta = get_chord_metadata(W_mc);
     INFO("input W array: {:s} {:s}", W_meta->get_type_string(), W_meta->get_dimensions_string());
     assert(W_meta->type == W_type);
     assert(W_meta->dims == W_rank);
@@ -252,10 +252,10 @@ cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
     }
     //
     /// E is an input buffer: check metadata
-    const metadataContainer* const E_mc =
+    const std::shared_ptr<metadataObject> E_mc =
         device.get_gpu_memory_array_metadata(E_memname, gpu_frame_id);
-    assert(E_mc && metadata_container_is_chord(E_mc));
-    const chordMetadata* const E_meta = get_chord_metadata(E_mc);
+    assert(E_mc && metadata_is_chord(E_mc));
+    const std::shared_ptr<chordMetadata> E_meta = get_chord_metadata(E_mc);
     INFO("input E array: {:s} {:s}", E_meta->get_type_string(), E_meta->get_dimensions_string());
     assert(E_meta->type == E_type);
     assert(E_meta->dims == E_rank);
@@ -267,9 +267,9 @@ cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
     }
     //
     /// I is an output buffer: set metadata
-    metadataContainer* const I_mc =
+    std::shared_ptr<metadataObject> const I_mc =
         device.create_gpu_memory_array_metadata(I_memname, gpu_frame_id, E_mc->parent_pool);
-    chordMetadata* const I_meta = get_chord_metadata(I_mc);
+    std::shared_ptr<chordMetadata> const I_meta = get_chord_metadata(I_mc);
     chord_metadata_copy(I_meta, E_meta);
     I_meta->type = I_type;
     I_meta->dims = I_rank;
@@ -341,10 +341,10 @@ cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
 }
 
 void cudaFRBBeamformer_chord::finalize_frame() {
-    device.release_gpu_memory_array_metadata(S_memname, gpu_frame_id);
-    device.release_gpu_memory_array_metadata(W_memname, gpu_frame_id);
-    device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
-    device.release_gpu_memory_array_metadata(I_memname, gpu_frame_id);
+    // device.release_gpu_memory_array_metadata(S_memname, gpu_frame_id);
+    // device.release_gpu_memory_array_metadata(W_memname, gpu_frame_id);
+    // device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
+    // device.release_gpu_memory_array_metadata(I_memname, gpu_frame_id);
 
     cudaCommand::finalize_frame();
 }

@@ -2,8 +2,8 @@
 
 typedef std::lock_guard<std::recursive_mutex> buffer_lock;
 
-RingBuffer::RingBuffer(size_t sz, std::shared_ptr<metadataPool> pool, const std::string& _buffer_name,
-                       const std::string& _buffer_type) :
+RingBuffer::RingBuffer(size_t sz, std::shared_ptr<metadataPool> pool,
+                       const std::string& _buffer_name, const std::string& _buffer_type) :
     GenericBuffer(_buffer_name, _buffer_type, pool, 1),
     size(sz), write_head(0), write_tail(0) {}
 

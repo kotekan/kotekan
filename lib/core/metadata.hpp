@@ -21,14 +21,14 @@
 #ifndef KOTEKAN_METADATA_HPP
 #define KOTEKAN_METADATA_HPP
 
-#include "kotekanLogging.hpp"
 #include "factory.hpp"
+#include "kotekanLogging.hpp"
+
 #include <memory>
 #include <mutex>
+#include <stdint.h> // for uint32_t
+#include <stdio.h>  // for size_t
 #include <vector>
-
-#include <stdint.h>  // for uint32_t
-#include <stdio.h>   // for size_t
 
 class metadataPool;
 
@@ -38,8 +38,10 @@ class metadataPool;
 struct mutex_holder {
     std::mutex mutex;
     mutex_holder() : mutex() {}
-    mutex_holder(mutex_holder const &/*other*/) : mutex() {}
-    mutex_holder& operator=(const mutex_holder&/*other*/) { return *this; }
+    mutex_holder(mutex_holder const& /*other*/) : mutex() {}
+    mutex_holder& operator=(const mutex_holder& /*other*/) {
+        return *this;
+    }
 };
 
 // *** Metadata object section ***
@@ -79,9 +81,11 @@ CREATE_FACTORY(metadataObject);
  *
  * @author Andre Renard
  */
-class metadataPool : public kotekan::kotekanLogging, public std::enable_shared_from_this<metadataPool> {
+class metadataPool : public kotekan::kotekanLogging,
+                     public std::enable_shared_from_this<metadataPool> {
     // see "Best" example in https://en.cppreference.com/w/cpp/memory/enable_shared_from_this
-    struct Private{};
+    struct Private {};
+
 public:
     // Constructor is only usable by this class
     metadataPool(Private, int num_metadata_objects, size_t object_size,
@@ -90,14 +94,20 @@ public:
     // Everyone else has to use this factory function
     // Hence all metadataPool objects are managed by shared_ptrs
     static std::shared_ptr<metadataPool> create(int num_metadata_objects, size_t object_size,
-                                                const std::string& unique_name, const std::string& type_name);
+                                                const std::string& unique_name,
+                                                const std::string& type_name);
 
-    std::shared_ptr<metadataPool> get_shared() { return shared_from_this(); }
-    std::weak_ptr<metadataPool> get_weak() { return weak_from_this(); }
+    std::shared_ptr<metadataPool> get_shared() {
+        return shared_from_this();
+    }
+    std::weak_ptr<metadataPool> get_weak() {
+        return weak_from_this();
+    }
 
     std::shared_ptr<metadataObject> request_metadata_object();
 
-    //void return_metadata_to_pool(struct metadataPool* pool, std::shared_ptr<metadataObject> container);
+    // void return_metadata_to_pool(struct metadataPool* pool, std::shared_ptr<metadataObject>
+    // container);
 
     /// Name of the metadata pool
     std::string unique_name;

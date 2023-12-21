@@ -155,7 +155,7 @@ void cudaCopyToRingbuffer::finalize_frame() {
     // Release reference to metadata, if we grabbed it
     DEBUG("finalize_frame() for frame {:d}, releasing metadata on GPU output buffer {:s}",
           gpu_frame_id, _gpu_mem_output);
-    //device.release_gpu_memory_array_metadata(_gpu_mem_output, 0);
+    // device.release_gpu_memory_array_metadata(_gpu_mem_output, 0);
     if (in_buffer)
         in_buffer->mark_frame_empty(unique_name, gpu_frame_id % in_buffer->num_frames);
     // At this point we know the Cuda copy completed, but do we *really* need that to be the case??

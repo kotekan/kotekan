@@ -315,7 +315,7 @@ void visAccumulate::main_thread() {
         } else {
             // If GPS time is not set, fall back to system time.
             TIMEVAL_TO_TIMESPEC(
-                                &((chimeMetadata*)in_buf->metadata[in_frame_id].get())->first_packet_recv_time,
+                &((chimeMetadata*)in_buf->metadata[in_frame_id].get())->first_packet_recv_time,
                 &t_s);
         }
         timespec t_e = add_nsec(t_s, samples_per_data_set * tel.seq_length_nsec());

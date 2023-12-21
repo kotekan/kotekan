@@ -170,8 +170,6 @@ cudaTransposeKernel_pathfinder::~cudaTransposeKernel_pathfinder() {}
 cudaEvent_t
 cudaTransposeKernel_pathfinder::execute(cudaPipelineState& /*pipestate*/,
                                         const std::vector<cudaEvent_t>& /*pre_events*/) {
-    const int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
-
     pre_execute();
 
     void* const Ein_memory =
@@ -181,10 +179,10 @@ cudaTransposeKernel_pathfinder::execute(cudaPipelineState& /*pipestate*/,
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
     /// Ein is an input buffer: check metadata
-    const metadataContainer* const Ein_mc =
+    std::shared_ptr<metadataObject> const Ein_mc =
         device.get_gpu_memory_array_metadata(Ein_memname, gpu_frame_id);
-    assert(Ein_mc && metadata_container_is_chord(Ein_mc));
-    const chordMetadata* const Ein_meta = get_chord_metadata(Ein_mc);
+    assert(Ein_mc && metadata_is_chord(Ein_mc));
+    const std::shared_ptr<chordMetadata> Ein_meta = get_chord_metadata(Ein_mc);
     INFO("input Ein array: {:s} {:s}", Ein_meta->get_type_string(),
          Ein_meta->get_dimensions_string());
     assert(Ein_meta->type == Ein_type);
@@ -197,9 +195,9 @@ cudaTransposeKernel_pathfinder::execute(cudaPipelineState& /*pipestate*/,
     }
     //
     /// E is an output buffer: set metadata
-    metadataContainer* const E_mc =
+    std::shared_ptr<metadataObject> const E_mc =
         device.create_gpu_memory_array_metadata(E_memname, gpu_frame_id, Ein_mc->parent_pool);
-    chordMetadata* const E_meta = get_chord_metadata(E_mc);
+    std::shared_ptr<chordMetadata> const E_meta = get_chord_metadata(E_mc);
     chord_metadata_copy(E_meta, E_meta);
     E_meta->type = E_type;
     E_meta->dims = E_rank;
@@ -272,8 +270,8 @@ cudaTransposeKernel_pathfinder::execute(cudaPipelineState& /*pipestate*/,
 }
 
 void cudaTransposeKernel_pathfinder::finalize_frame() {
-    device.release_gpu_memory_array_metadata(Ein_memname, gpu_frame_id);
-    device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
+    // device.release_gpu_memory_array_metadata(Ein_memname, gpu_frame_id);
+    // device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
 
     cudaCommand::finalize_frame();
 }

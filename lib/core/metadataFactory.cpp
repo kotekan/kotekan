@@ -29,8 +29,8 @@ metadataFactory::metadataFactory(Config& config) : config(config) {}
 
 metadataFactory::~metadataFactory() {}
 
-    map<std::string, std::shared_ptr<metadataPool> > metadataFactory::build_pools() {
-        map<std::string, std::shared_ptr<metadataPool> > pools;
+map<std::string, std::shared_ptr<metadataPool>> metadataFactory::build_pools() {
+    map<std::string, std::shared_ptr<metadataPool>> pools;
 
     // Start parsing tree, put the metadata_pool's in the "pools" vector
     build_from_tree(pools, config.get_full_config_json(), "");
@@ -38,7 +38,7 @@ metadataFactory::~metadataFactory() {}
     return pools;
 }
 
-    void metadataFactory::build_from_tree(map<std::string, std::shared_ptr<metadataPool> >& pools,
+void metadataFactory::build_from_tree(map<std::string, std::shared_ptr<metadataPool>>& pools,
                                       const json& config_tree, const std::string& path) {
 
     for (json::const_iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
@@ -66,7 +66,8 @@ metadataFactory::~metadataFactory() {}
     }
 }
 
-    std::shared_ptr<metadataPool> metadataFactory::new_pool(const std::string& pool_type, const std::string& location) {
+std::shared_ptr<metadataPool> metadataFactory::new_pool(const std::string& pool_type,
+                                                        const std::string& location) {
 
     INFO_NON_OO("Creating metadata pool of type: {:s}, at config tree path: {:s}", pool_type,
                 location);
@@ -91,13 +92,11 @@ metadataFactory::~metadataFactory() {}
     }
 
     if (pool_type == "VisMetadata") {
-        return metadataPool::create(num_metadata_objects, sizeof(VisMetadata), location,
-                                    pool_type);
+        return metadataPool::create(num_metadata_objects, sizeof(VisMetadata), location, pool_type);
     }
 
     if (pool_type == "HFBMetadata") {
-        return metadataPool::create(num_metadata_objects, sizeof(HFBMetadata), location,
-                                    pool_type);
+        return metadataPool::create(num_metadata_objects, sizeof(HFBMetadata), location, pool_type);
     }
 
     if (pool_type == "BeamMetadata") {
@@ -106,8 +105,8 @@ metadataFactory::~metadataFactory() {}
     }
 
     if (pool_type == "BasebandMetadata") {
-        return metadataPool::create(num_metadata_objects, sizeof(BasebandMetadata),
-                                    location, pool_type);
+        return metadataPool::create(num_metadata_objects, sizeof(BasebandMetadata), location,
+                                    pool_type);
     }
     // No metadata found
     throw std::runtime_error(fmt::format(fmt("No metadata object named: {:s}"), pool_type));
