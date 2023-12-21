@@ -27,7 +27,7 @@
 }
 .extern .shared .align 32 .b8 shmem[];
 .global .align 1 .b8 exception2039[6] = {101, 114, 114, 111, 114, 0};
-.global .align 1 .b8 exception12059[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
+.global .align 1 .b8 exception1[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
                                         // @_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE
 .visible .entry _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE(
 	.param .align 8 .b8 _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE_param_0[16],
@@ -4425,7 +4425,7 @@ LBB0_7:                                 // %L273
 	exit;
 	// end inline asm
 LBB0_1:                                 // %L9
-	mov.u64 	%rd95, exception12059;
+	mov.u64 	%rd95, exception1;
 	cvta.global.u64 	%rd96, %rd95;
 	{ // callseq 0, 0
 	.reg .b32 temp_param_reg;
@@ -4454,7 +4454,7 @@ LBB0_1:                                 // %L9
 	exit;
 	// end inline asm
 LBB0_132:                               // %L25439
-	mov.u64 	%rd103, exception12059;
+	mov.u64 	%rd103, exception1;
 	cvta.global.u64 	%rd104, %rd103;
 	{ // callseq 2, 0
 	.reg .b32 temp_param_reg;
@@ -4483,7 +4483,7 @@ LBB0_132:                               // %L25439
 	exit;
 	// end inline asm
 LBB0_131:                               // %L25436
-	mov.u64 	%rd108, exception12059;
+	mov.u64 	%rd108, exception1;
 	cvta.global.u64 	%rd109, %rd108;
 	{ // callseq 4, 0
 	.reg .b32 temp_param_reg;
@@ -4512,7 +4512,7 @@ LBB0_131:                               // %L25436
 	exit;
 	// end inline asm
 LBB0_130:                               // %L25433
-	mov.u64 	%rd119, exception12059;
+	mov.u64 	%rd119, exception1;
 	cvta.global.u64 	%rd120, %rd119;
 	{ // callseq 6, 0
 	.reg .b32 temp_param_reg;

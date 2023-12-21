@@ -287,7 +287,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
     {{#kernel_arguments}}
         {{#hasbuffer}}
-        void* const {{{name}}}_memory =
+
+            void* const {{{name}}}_memory =
                                   (args::{{{name}}} == args::E)
                                   ? device.get_gpu_memory({{{name}}}_memname, input_ringbuf_signal->size)
                                   : ((args::{{{name}}} == args::Ebar)

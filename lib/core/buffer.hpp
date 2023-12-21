@@ -100,6 +100,7 @@ public:
      */
     GenericBuffer(const std::string& buffer_name, const std::string& buffer_type,
                   std::shared_ptr<metadataPool> pool, int num_frames);
+
     virtual ~GenericBuffer();
 
     /**

@@ -26,9 +26,9 @@ _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1E
 ; Location /home/dstn/.julia/packages/CUDA/YIj5X/src/device/intrinsics/shared_memory.jl:51
     @P0 BRA `(.L_x_3) ;
 ; Location /home/dstn/.julia/packages/CUDA/YIj5X/src/device/intrinsics/shared_memory.jl:52
-        UMOV UR4, 32@lo(exception1) ;
+        UMOV UR4, 32@lo(exception13410) ;
         MOV R55, 0xc0 ;
-        UMOV UR5, 32@hi(exception1) ;
+        UMOV UR5, 32@hi(exception13410) ;
         IMAD.U32 R0, RZ, RZ, UR4 ;
         MOV R3, UR5 ;
         CALL.REL.NOINC `($_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE$gpu_report_exception) ;
@@ -894,9 +894,9 @@ _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1E
         ISETP.NE.AND.EX P0, PT, R3, RZ, PT, P0 ;
 ; Location /home/dstn/kotekan/julia/kernels/upchan.jl:1410
    @!P0 BRA `(.L_x_56) ;
-        UMOV UR4, 32@lo(exception1) ;
+        UMOV UR4, 32@lo(exception13410) ;
         MOV R55, 0x2720 ;
-        UMOV UR5, 32@hi(exception1) ;
+        UMOV UR5, 32@hi(exception13410) ;
         IMAD.U32 R0, RZ, RZ, UR4 ;
         MOV R3, UR5 ;
         CALL.REL.NOINC `($_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE$gpu_report_exception) ;
@@ -4350,9 +4350,9 @@ _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1E
 
 .L_x_39:
 ; Location /home/dstn/kotekan/julia/kernels/upchan.jl:1410
-        UMOV UR4, 32@lo(exception1) ;
+        UMOV UR4, 32@lo(exception13410) ;
         MOV R55, 0xd8c0 ;
-        UMOV UR5, 32@hi(exception1) ;
+        UMOV UR5, 32@hi(exception13410) ;
         IMAD.U32 R0, RZ, RZ, UR4 ;
         IMAD.U32 R3, RZ, RZ, UR5 ;
         CALL.REL.NOINC `($_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE$gpu_report_exception) ;
@@ -4363,9 +4363,9 @@ _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1E
         BPT.TRAP 0x1 ;
 
 .L_x_22:
-        UMOV UR4, 32@lo(exception1) ;
+        UMOV UR4, 32@lo(exception13410) ;
         MOV R55, 0xd970 ;
-        UMOV UR5, 32@hi(exception1) ;
+        UMOV UR5, 32@hi(exception13410) ;
         IMAD.U32 R0, RZ, RZ, UR4 ;
         IMAD.U32 R3, RZ, RZ, UR5 ;
         CALL.REL.NOINC `($_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE$gpu_report_exception) ;
@@ -4455,9 +4455,9 @@ $_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1
 
 .L_x_2:
 ; Location /home/dstn/.julia/packages/CUDA/YIj5X/src/device/quirks.jl:4
-        UMOV UR4, 32@lo(exception1) ;
+        UMOV UR4, 32@lo(exception13410) ;
         MOV R55, 0xdd70 ;
-        UMOV UR5, 32@hi(exception1) ;
+        UMOV UR5, 32@hi(exception13410) ;
         IMAD.U32 R0, RZ, RZ, UR4 ;
         IMAD.U32 R3, RZ, RZ, UR5 ;
         CALL.REL.NOINC `($_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE$gpu_report_exception) ;

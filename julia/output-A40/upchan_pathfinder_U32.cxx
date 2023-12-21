@@ -398,6 +398,7 @@ cudaUpchannelizer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
     void* const Tmax_memory = device.get_gpu_memory(Tmax_memname, Tmax_length);
     void* const Tbarmin_memory = device.get_gpu_memory(Tbarmin_memname, Tbarmin_length);
     void* const Tbarmax_memory = device.get_gpu_memory(Tbarmax_memname, Tbarmax_length);
+
     void* const G_memory =
         (args::G == args::E) ? device.get_gpu_memory(G_memname, input_ringbuf_signal->size)
                              : ((args::G == args::Ebar)
@@ -408,6 +409,7 @@ cudaUpchannelizer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
     //? device.get_gpu_memory_array(G_memname, gpu_frame_id, _gpu_buffer_depth, G_length /
     //_gpu_buffer_depth)
     //: device.get_gpu_memory_array(G_memname, gpu_frame_id, _gpu_buffer_depth, G_length);
+
     void* const E_memory =
         (args::E == args::E) ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
                              : ((args::E == args::Ebar)
@@ -418,6 +420,7 @@ cudaUpchannelizer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
     //? device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length /
     //_gpu_buffer_depth)
     //: device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
+
     void* const Ebar_memory =
         (args::Ebar == args::E)
             ? device.get_gpu_memory(Ebar_memname, input_ringbuf_signal->size)

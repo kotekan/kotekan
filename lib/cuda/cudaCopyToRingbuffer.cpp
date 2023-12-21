@@ -105,6 +105,7 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
     }
 
     record_start_event();
+
     std::shared_ptr<metadataObject> meta;
     if (!in_buffer) {
         void* input_memory = device.get_gpu_memory_array(_gpu_mem_input, gpu_frame_id,
