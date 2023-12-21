@@ -488,9 +488,10 @@ void connInstance::internal_read_callback() {
 
                 // We could also swap the metadata,
                 // but this is more complex, and mucher lower overhead to just memcpy here.
-                void* metadata = buf->get_metadata(frame_id);
-                if (metadata != nullptr)
-                    memcpy(metadata, metadata_space, buf_frame_header.metadata_size);
+                std::shared_ptr<metadataObject> metadata = buf->get_metadata(frame_id);
+                if (metadata)
+                    // FIXME metadata serialization
+                    memcpy(metadata.get(), metadata_space, buf_frame_header.metadata_size);
 
                 buf->mark_frame_full(producer_name, frame_id);
 

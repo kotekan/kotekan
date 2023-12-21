@@ -53,8 +53,11 @@ const int CHORD_META_MAX_DIM = 10;
 // Maximum length of dimension names for arrays
 const int CHORD_META_MAX_DIMNAME = 16;
 
-struct chordMetadata {
-    chimeMetadata chime;
+class chordMetadata : public chimeMetadata { //metadataObject {
+public:
+    chordMetadata();
+
+    //chimeMetadata chime;
     int frame_counter;
 
     // cudaDataType_t type;
@@ -91,8 +94,6 @@ struct chordMetadata {
     // by which the time samples have been downsampled relative to
     // FPGA samples.
     int time_downsampling_fpga[CHORD_META_MAX_FREQ];
-
-    chordMetadata();
 
     std::string get_dimension_name(size_t i) const {
         return std::string(dim_name[i], strnlen(dim_name[i], CHORD_META_MAX_DIMNAME));
@@ -146,50 +147,60 @@ struct chordMetadata {
     }
 };
 
-inline void chord_metadata_init(chordMetadata* c) {
-    bzero(c, sizeof(chordMetadata));
+inline void chord_metadata_init(std::shared_ptr<chordMetadata>) {
+    //bzero(c, sizeof(chordMetadata));
 }
 
-inline void chord_metadata_copy(chordMetadata* out, const chordMetadata* in) {
-    memcpy(out, in, sizeof(chordMetadata));
+inline void chord_metadata_copy(std::shared_ptr<chordMetadata> out, const std::shared_ptr<chordMetadata> in) {
+    *out = *in; // ???
 }
 
 inline bool metadata_is_chord(Buffer* buf, int) {
-    return strcmp(buf->metadata_pool->type_name, "chordMetadata") == 0;
+    return (buf->metadata_pool->type_name == "chordMetadata");
 }
 
-inline bool metadata_container_is_chord(const metadataContainer* mc) {
-    return strcmp(mc->parent_pool->type_name, "chordMetadata") == 0;
+inline bool metadata_is_chord(const std::shared_ptr<metadataObject> mc) {
+    std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
+    assert(pool);
+    return (pool->type_name == "chordMetadata");
 }
 
-inline const chordMetadata* get_chord_metadata(const Buffer* buf, int frame_id) {
-    return (const chordMetadata*)buf->metadata[frame_id]->metadata;
+/*
+inline const std::shared_ptr<chordMetadata> get_chord_metadata(const Buffer* buf, int frame_id) {
+    std::shared_ptr<metadataObject> meta = buf->metadata[frame_id];
+    return std::static_pointer_cast<chordMetadata>(meta);
+}
+*/
+
+inline std::shared_ptr<chordMetadata> get_chord_metadata(Buffer* buf, int frame_id) {
+    std::shared_ptr<metadataObject> meta = buf->metadata[frame_id];
+    return std::static_pointer_cast<chordMetadata>(meta);
 }
 
-inline chordMetadata* get_chord_metadata(Buffer* buf, int frame_id) {
-    return (chordMetadata*)buf->metadata[frame_id]->metadata;
-}
-
-inline const chordMetadata* get_chord_metadata(const metadataContainer* mc) {
+/*
+inline const std::shared_ptr<chordMetadata> get_chord_metadata(const std::shared_ptr<metadataObject> mc) {
     if (!mc)
-        return nullptr;
-    if (strcmp(mc->parent_pool->type_name, "chordMetadata")) {
+        return std::shared_ptr<chordMetadata>();
+    if (!metadata_is_chord(mc)) {
+        std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
         WARN_NON_OO("Expected metadata to be type \"chordMetadata\", got \"{:s}\".",
-                    mc->parent_pool->type_name);
-        return nullptr;
+                    pool->type_name);
+        return std::shared_ptr<chordMetadata>();
     }
-    return static_cast<const chordMetadata*>(mc->metadata);
+    return std::static_pointer_cast<chordMetadata>(mc);
 }
+*/
 
-inline chordMetadata* get_chord_metadata(metadataContainer* mc) {
+inline std::shared_ptr<chordMetadata> get_chord_metadata(std::shared_ptr<metadataObject> mc) {
     if (!mc)
-        return nullptr;
-    if (strcmp(mc->parent_pool->type_name, "chordMetadata")) {
+        return std::shared_ptr<chordMetadata>();
+    if (!metadata_is_chord(mc)) {
+        std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
         WARN_NON_OO("Expected metadata to be type \"chordMetadata\", got \"{:s}\".",
-                    mc->parent_pool->type_name);
-        return nullptr;
+                    pool->type_name);
+        return std::shared_ptr<chordMetadata>();
     }
-    return static_cast<chordMetadata*>(mc->metadata);
+    return std::static_pointer_cast<chordMetadata>(mc);
 }
 
 #endif

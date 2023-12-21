@@ -18,12 +18,12 @@ public:
     metadataFactory(Config& config);
     ~metadataFactory();
 
-    std::map<std::string, metadataPool*> build_pools();
+    std::map<std::string, std::shared_ptr<metadataPool> > build_pools();
 
 private:
-    void build_from_tree(std::map<std::string, metadataPool*>& pools,
+    void build_from_tree(std::map<std::string, std::shared_ptr<metadataPool> >& pools,
                          const nlohmann::json& config_tree, const std::string& path);
-    metadataPool* new_pool(const std::string& pool_type, const std::string& location);
+    std::shared_ptr<metadataPool> new_pool(const std::string& pool_type, const std::string& location);
 
     Config& config;
 };

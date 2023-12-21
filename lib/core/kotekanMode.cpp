@@ -70,12 +70,7 @@ kotekanMode::~kotekanMode() {
         }
     }
 
-    for (auto const& metadata_pool : metadata_pools) {
-        if (metadata_pool.second != nullptr) {
-            delete_metadata_pool(metadata_pool.second);
-            free(metadata_pool.second);
-        }
-    }
+    metadata_pools.clear();
 }
 
 void kotekanMode::initalize_stages() {

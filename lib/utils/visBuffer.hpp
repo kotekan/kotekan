@@ -39,7 +39,7 @@ enum class VisField { vis, weight, flags, eval, evec, erms, gain };
  *
  * @author Richard Shaw
  **/
-struct VisMetadata {
+struct VisMetadata : public metadataObject {
 
     /// The FPGA sequence number of the integration frame
     uint64_t fpga_seq_start;
@@ -253,13 +253,13 @@ public:
      * @brief Read only access to the metadata.
      * @returns The metadata.
      **/
-    const VisMetadata* metadata() const {
+    const std::shared_ptr<VisMetadata> metadata() const {
         return _metadata;
     }
 
 private:
     // References to the metadata we are viewing
-    VisMetadata* const _metadata;
+    std::shared_ptr<VisMetadata> const _metadata;
 
     // The calculated layout of the buffer
     struct_layout<VisField> buffer_layout;

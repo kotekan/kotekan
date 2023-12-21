@@ -101,7 +101,7 @@ void bufferCopy::main_thread() {
                 goto exit_loop; // Shutdown condition
 
             // Either make a deep copy or pass the metadata depending if the flag is set
-            if (in_buf->get_metadata_container(in_frame_id) != nullptr) {
+            if (in_buf->get_metadata(in_frame_id)) {
                 if (_copy_metadata) {
                     out_buf->allocate_new_metadata_object(out_frame_id);
                     in_buf->copy_metadata(in_frame_id, out_buf, out_frame_id);

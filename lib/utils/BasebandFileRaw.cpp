@@ -66,8 +66,9 @@ int32_t BasebandFileRaw::write_frame(const BasebandFrameView& frame) {
 #endif
 
     // Write in a retry macro loop incase the write was interrupted by a signal
+    // FIXME metadata serialization
     ssize_t nbytes = TEMP_FAILURE_RETRY(
-        pwrite(fd, (void*)frame.metadata(), metadata_size, write_index * frame_size));
+                                        pwrite(fd, (void*)frame.metadata().get(), metadata_size, write_index * frame_size));
 
     if (nbytes < 0) {
         ERROR("Write error attempting to write metadata {:d} bytes into file {:s}: {:s}",

@@ -6,7 +6,7 @@
 #include "chimeMetadata.hpp"
 #include "metadata.hpp"
 
-struct BasebandMetadata {
+struct BasebandMetadata : public metadataObject {
     /// event and frequency ID
     uint64_t event_id;
     uint64_t freq_id;

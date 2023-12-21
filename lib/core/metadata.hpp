@@ -18,112 +18,51 @@
  * -- return_metadata_to_pool
  */
 
-#ifndef METADATA_HPP
-#define METADATA_HPP
+#ifndef KOTEKAN_METADATA_HPP
+#define KOTEKAN_METADATA_HPP
 
-#include <pthread.h> // for pthread_mutex_t
+#include "kotekanLogging.hpp"
+#include "factory.hpp"
+#include <memory>
+#include <mutex>
+#include <vector>
+
 #include <stdint.h>  // for uint32_t
 #include <stdio.h>   // for size_t
 
-struct metadataPool;
+class metadataPool;
+
+// Per https://godbolt.org/z/Y86jscd6K, a wrapper on mutex so that we can include a mutex
+// in a simple (struct-like) class like metadataObject, and get default copy constructors etc,
+// but copies get their own mutexes.
+struct mutex_holder {
+    std::mutex mutex;
+    mutex_holder() : mutex() {}
+    mutex_holder(mutex_holder const &/*other*/) : mutex() {}
+    mutex_holder& operator=(const mutex_holder&/*other*/) { return *this; }
+};
 
 // *** Metadata object section ***
 
-/**
- * @struct metadataContainer
- * @brief Container which holds the pointer to the actual metadata values
- *
- * The struct is used mostly to hold the reference count and lock variables,
- * as well as the pointer to the actual metadata memory and it's expected size.
- *
- * This container always belongs to a pool of metadata containers,
- * see @c metadataPool for more informaiton
- *
- * @author Andre Renard
- */
-struct metadataContainer {
+class metadataObject : public kotekan::kotekanLogging {
 
-    /// Pointer to the memory where the actual metadata is stored
-    void* metadata;
-    /// The size of the metadata in bytes
-    size_t metadata_size;
+public:
+    metadataObject();
+    virtual ~metadataObject() {}
+
+    /// Reference to metadataPool that this object belongs to.
+    std::weak_ptr<metadataPool> parent_pool;
 
     /**
-     * @brief Pointer reference count.
-     * Tracks references to this object,
-     * and returns the object to the associated @c metadataPool, once
-     * the counter reaches zero.
+     * @brief Mutex for variables in this object.
      */
-    uint32_t ref_count;
+    mutex_holder mutex;
 
-    /**
-     * @brief Lock for variables in this object.
-     * Can also be used to lock access to metadata values.
-     */
-    pthread_mutex_t metadata_lock;
-
-    /// Reference to metadataPool that this object belongs too.
-    struct metadataPool* parent_pool;
+    /// Returns the size of objects of this type, according to my metadataPool.
+    size_t get_object_size();
 };
 
-/**
- * @brief Creates a metadata container with a metadata memory block of the requested size.
- *
- * This function is normally just used by the @c create_metadata_pool to create
- * the container for a given metadata type
- *
- * Note there isn't an explicit type here, just the size of the struct used
- * to contain whatever type of metadata the user wants.
- *
- * @param[in] object_size The size of the metadata struct to be stored in this container
- * @param[in] parent_pool The pool this container will belong too.
- * @return A @c metadataContainer object with the @c metadata memory allocated
- */
-struct metadataContainer* create_metadata(size_t object_size, struct metadataPool* parent_pool);
-
-/**
- * @brief Frees the memory associated with a metadataContainer
- * @param[in] container The @c metadataContainer to free
- */
-void delete_metadata(struct metadataContainer* container);
-
-/**
- * @brief Zeros the metadata memory region.
- *
- * Used to make sure the metadata starts out as zero when a new container is requested.
- *
- * @param container The container to zero memory for.
- */
-void reset_metadata_object(struct metadataContainer* container);
-
-/**
- * @brief Increments the metadata ref counter
- * @param[in] container The container to increment the reference counter for.
- */
-void increment_metadata_ref_count(struct metadataContainer* container);
-
-/**
- * @brief Decrements the metadata ref counter
- * @param[in] container The container to decrement the reference counter for.
- */
-void decrement_metadata_ref_count(struct metadataContainer* container);
-
-/**
- * @brief Request the lock on the metadata container
- *
- * Used for example when changing the reference counter
- *
- * @param[in] container The container to request the lock for
- */
-void lock_metadata(struct metadataContainer* container);
-
-/**
- * @brief Unlocks the lock associated with the metadata container
- * @param[in] container The container to unlock
- */
-void unlock_metadata(struct metadataContainer* container);
-
-// *** Metadata pool section ***
+CREATE_FACTORY(metadataObject);
 
 /**
  * @brief A memory pool for preallocated metadata containers.
@@ -140,64 +79,50 @@ void unlock_metadata(struct metadataContainer* container);
  *
  * @author Andre Renard
  */
-struct metadataPool {
-    /// The array of pointer to the metadata container objects.
-    struct metadataContainer** metadata_objects;
+class metadataPool : public kotekan::kotekanLogging, public std::enable_shared_from_this<metadataPool> {
+    // see "Best" example in https://en.cppreference.com/w/cpp/memory/enable_shared_from_this
+    struct Private{};
+public:
+    // Constructor is only usable by this class
+    metadataPool(Private, int num_metadata_objects, size_t object_size,
+                 const std::string& unique_name, const std::string& type_name);
+    ~metadataPool();
+    // Everyone else has to use this factory function
+    // Hence all metadataPool objects are managed by shared_ptrs
+    static std::shared_ptr<metadataPool> create(int num_metadata_objects, size_t object_size,
+                                                const std::string& unique_name, const std::string& type_name);
+
+    std::shared_ptr<metadataPool> get_shared() { return shared_from_this(); }
+    std::weak_ptr<metadataPool> get_weak() { return weak_from_this(); }
+
+    std::shared_ptr<metadataObject> request_metadata_object();
+
+    //void return_metadata_to_pool(struct metadataPool* pool, std::shared_ptr<metadataObject> container);
+
+    /// Name of the metadata pool
+    std::string unique_name;
+
+    /// Data type of the metadata objects in this pool
+    std::string type_name;
+
+    /// The size of the object stored in this pool
+    size_t metadata_object_size;
+
+protected:
+    /// The underlying block af data that we allocate objects out of
+    void* data_block;
 
     /**
      * @brief An array to indicate the use state of each pointer in the @c metadata_objects array
      * A value of 1 indicates the pointer is in use and should have a reference count > 0
      */
-    int* in_use;
+    std::vector<bool> in_use;
 
     /// The size of the @c metadataContainer array.
     unsigned int pool_size;
 
-    /// The size of the object stored by the metadata containers
-    size_t metadata_object_size;
-
     /// Locks requests for metadata to avoid race conditions.
-    pthread_mutex_t pool_lock;
-
-    /// Name of the metadata pool
-    char* unique_name;
-
-    /// Data type of the metadata objects in this pool
-    char* type_name;
+    std::mutex pool_mutex;
 };
-
-/**
- * @brief Creates a new metadata pool with a fixed number of metadata containers.
- * @param[in] num_metadata_objects The number of containers to store in the pool.
- * @param[in] object_size The size of the actual metadata contained in each container.
- * @param[in] unique_name The name of the pool generated from the config path.
- * @param[in] type_name The data type name of the pool.
- * @return A metadata pool which can then be associated to one or more buffers.
- */
-struct metadataPool* create_metadata_pool(int num_metadata_objects, size_t object_size,
-                                          const char* unique_name, const char* type_name);
-
-/**
- * @brief Deletes a memdata pool and frees all memory associated with its containers.
- * @param pool The pool to delete
- * @warning This should only be called once all metadata containers have been
- *          returned to the pool.  After the pipeline has shutdown.
- */
-void delete_metadata_pool(struct metadataPool* pool);
-
-/**
- * @brief Returns a metadata container with a reference count of 1.
- * @param[in] pool The pool to get the metadata object from.
- * @return A metadata container, or NULL if no containers are available.
- * @todo For now this asserts when unable to return a container, that should be fixed.
- */
-struct metadataContainer* request_metadata_object(struct metadataPool* pool);
-
-/**
- * @brief Returns a metadata container with a reference count of zero to its pool
- * @param[in] pool The pool to return the container too.
- * @param[in] container The container to return to the pool.
- */
-void return_metadata_to_pool(struct metadataPool* pool, struct metadataContainer* container);
 
 #endif

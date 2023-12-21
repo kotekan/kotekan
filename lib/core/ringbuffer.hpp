@@ -47,7 +47,7 @@ public:
      * @param buffer_name: unique name for this buffer, from the config file declaration
      * @param buffer_type: "ring"
      */
-    RingBuffer(size_t ring_size, metadataPool*, const std::string& buffer_name,
+    RingBuffer(size_t ring_size, std::shared_ptr<metadataPool>, const std::string& buffer_name,
                const std::string& buffer_type);
     ~RingBuffer() override {}
 

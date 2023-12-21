@@ -98,7 +98,7 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState&,
 
         if (!in_buffer) {
             // Check for metadata attached to the GPU frame
-            metadataContainer* meta = device.get_gpu_memory_array_metadata(_gpu_mem, gpu_frame_id);
+            std::shared_ptr<metadataObject> meta = device.get_gpu_memory_array_metadata(_gpu_mem, gpu_frame_id);
             if (meta) {
                 // Attach the metadata to the host buffer frame
                 bool passed = output_buffer->set_metadata(out_id, meta);

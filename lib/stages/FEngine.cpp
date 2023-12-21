@@ -430,9 +430,9 @@ void FEngine::main_thread() {
         } // if !skip_julia
 
         // Set metadata
-        chordMetadata* const E_metadata = get_chord_metadata(E_buffer, E_frame_id);
+        std::shared_ptr<chordMetadata> const E_metadata = get_chord_metadata(E_buffer, E_frame_id);
         chord_metadata_init(E_metadata);
-        E_metadata->chime.fpga_seq_num = frame_index;
+        E_metadata->fpga_seq_num = frame_index;
         E_metadata->frame_counter = frame_index;
         E_metadata->type = int4p4;
         E_metadata->dims = 4;
@@ -447,9 +447,9 @@ void FEngine::main_thread() {
         E_metadata->n_one_hot = -1;
         E_metadata->nfreq = num_frequencies;
 
-        chordMetadata* const A_metadata = get_chord_metadata(A_buffer, A_frame_id);
+        std::shared_ptr<chordMetadata> const A_metadata = get_chord_metadata(A_buffer, A_frame_id);
         chord_metadata_init(A_metadata);
-        A_metadata->chime.fpga_seq_num = frame_index;
+        A_metadata->fpga_seq_num = frame_index;
         A_metadata->frame_counter = frame_index;
         A_metadata->type = int8;
         A_metadata->dims = 5;
@@ -466,9 +466,9 @@ void FEngine::main_thread() {
         A_metadata->n_one_hot = -1;
         A_metadata->nfreq = num_frequencies;
 
-        chordMetadata* const J_metadata = get_chord_metadata(J_buffer, J_frame_id);
+        std::shared_ptr<chordMetadata> const J_metadata = get_chord_metadata(J_buffer, J_frame_id);
         chord_metadata_init(J_metadata);
-        J_metadata->chime.fpga_seq_num = frame_index;
+        J_metadata->fpga_seq_num = frame_index;
         J_metadata->frame_counter = frame_index;
         J_metadata->type = int4p4;
         J_metadata->dims = 4;
@@ -483,9 +483,9 @@ void FEngine::main_thread() {
         J_metadata->n_one_hot = -1;
         J_metadata->nfreq = num_frequencies;
 
-        chordMetadata* const S_metadata = get_chord_metadata(S_buffer, S_frame_id);
+        std::shared_ptr<chordMetadata> const S_metadata = get_chord_metadata(S_buffer, S_frame_id);
         chord_metadata_init(S_metadata);
-        S_metadata->chime.fpga_seq_num = frame_index;
+        S_metadata->fpga_seq_num = frame_index;
         S_metadata->frame_counter = frame_index;
         S_metadata->type = int16;
         S_metadata->dims = 2;
@@ -496,9 +496,9 @@ void FEngine::main_thread() {
         S_metadata->n_one_hot = -1;
         S_metadata->nfreq = -1;
 
-        chordMetadata* const G_metadata = get_chord_metadata(G_buffer, G_frame_id);
+        std::shared_ptr<chordMetadata> const G_metadata = get_chord_metadata(G_buffer, G_frame_id);
         chord_metadata_init(G_metadata);
-        G_metadata->chime.fpga_seq_num = frame_index;
+        G_metadata->fpga_seq_num = frame_index;
         G_metadata->frame_counter = frame_index;
         G_metadata->type = float16;
         G_metadata->dims = 1;
@@ -507,9 +507,9 @@ void FEngine::main_thread() {
         G_metadata->n_one_hot = -1;
         G_metadata->nfreq = num_frequencies * upchannelization_factor;
 
-        chordMetadata* const W_metadata = get_chord_metadata(W_buffer, W_frame_id);
+        std::shared_ptr<chordMetadata> const W_metadata = get_chord_metadata(W_buffer, W_frame_id);
         chord_metadata_init(W_metadata);
-        W_metadata->chime.fpga_seq_num = frame_index;
+        W_metadata->fpga_seq_num = frame_index;
         W_metadata->frame_counter = frame_index;
         W_metadata->type = float16;
         W_metadata->dims = 5;

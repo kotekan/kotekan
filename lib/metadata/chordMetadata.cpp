@@ -1,5 +1,7 @@
 #include "chordMetadata.hpp"
 
+REGISTER_TYPE_WITH_FACTORY(metadataObject, chordMetadata);
+
 const char* chord_datatype_string(chordDataType type) {
     switch (type) {
         case int4p4:
@@ -25,7 +27,7 @@ const char* chord_datatype_string(chordDataType type) {
 }
 
 chordMetadata::chordMetadata() :
-    chime(), frame_counter(-1), type(unknown_type), dims(-1), offset(0), n_one_hot(-1), nfreq(-1) {
+    frame_counter(-1), type(unknown_type), dims(-1), offset(0), n_one_hot(-1), nfreq(-1) {
     for (int d = 0; d < CHORD_META_MAX_DIM; ++d) {
         dim[d] = -1;
         dim_name[d][0] = '\0';

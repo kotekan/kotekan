@@ -109,13 +109,11 @@ void hdf5FileWrite::main_thread() {
         }
 
         // Write the metadata to file
-        struct metadataContainer* mc = buf->get_metadata_container(frame_id);
-        if (mc != nullptr) {
-            const uint32_t metadata_size = mc->metadata_size;
-
+        std::shared_ptr<metadataObject> mc = buf->get_metadata(frame_id);
+        if (mc) {
             // There should be a metadata tag, or this should be a proper C++ class hierarchy.
-            if (metadata_size == sizeof(chimeMetadata)) {
-                const chimeMetadata* const md = (const chimeMetadata*)mc->metadata;
+            if (metadata_is_chime(mc)) {
+                std::shared_ptr<chimeMetadata> md = get_chime_metadata(mc);
                 {
                     const hid_t space = H5Screate(H5S_SCALAR);
                     if (space < 0)
@@ -144,11 +142,11 @@ void hdf5FileWrite::main_thread() {
         std::size_t type_size = 0;
         hid_t space = -1;
 
-        if (metadata_container_is_chord(mc)) {
+        if (metadata_is_chord(mc)) {
             // We have proper CHORD metadata and know the buffer type and shape
-            const chordMetadata& metadata = *static_cast<const chordMetadata*>(mc->metadata);
+            const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
 
-            switch (metadata.type) {
+            switch (metadata->type) {
                 case int4p4:
                     type = H5T_NATIVE_UINT8;
                     type_size = 1;
@@ -186,12 +184,12 @@ void hdf5FileWrite::main_thread() {
                     ERROR("Unsupported metadata type");
             }
 
-            const int rank = metadata.dims;
+            const int rank = metadata->dims;
             if (rank < 0)
                 ERROR("Negative number of metadata dimensions");
             hsize_t dims[CHORD_META_MAX_DIM];
             for (int d = 0; d < rank; ++d) {
-                dims[d] = metadata.dim[d];
+                dims[d] = metadata->dim[d];
             }
             hsize_t np = 1;
             for (int d = 0; d < rank; ++d) {
@@ -221,14 +219,14 @@ void hdf5FileWrite::main_thread() {
         if (dataset < 0)
             ERROR("Could not create HDF5 dataset");
 
-        if (metadata_container_is_chord(mc)) {
+        if (metadata_is_chord(mc)) {
             // Write dimension names
-            const chordMetadata& metadata = *static_cast<const chordMetadata*>(mc->metadata);
+            const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
 
             hid_t dim_name_type = H5Tcreate(H5T_STRING, CHORD_META_MAX_DIMNAME);
             if (dim_name_type < 0)
                 ERROR("Could not create HDF5 datatype for dim_name");
-            const hsize_t dim_name_dims[1]{static_cast<hsize_t>(metadata.dims)};
+            const hsize_t dim_name_dims[1]{static_cast<hsize_t>(metadata->dims)};
             hid_t dim_name_space = H5Screate_simple(1, dim_name_dims, nullptr);
             if (dim_name_space < 0)
                 ERROR("Could not create HDF5 dataspace for dim_name");
@@ -236,7 +234,7 @@ void hdf5FileWrite::main_thread() {
                                              H5P_DEFAULT, H5P_DEFAULT);
             if (dim_name_attr < 0)
                 ERROR("Could not create HDF5 attribute for dim_name");
-            herr_t herr = H5Awrite(dim_name_attr, dim_name_type, metadata.dim_name);
+            herr_t herr = H5Awrite(dim_name_attr, dim_name_type, metadata->dim_name);
             if (herr < 0)
                 ERROR("Could not write HDF5 attribute for dim_name");
             herr = H5Aclose(dim_name_attr);

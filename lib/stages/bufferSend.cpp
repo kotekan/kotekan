@@ -100,7 +100,7 @@ void bufferSend::main_thread() {
             int32_t n_sent = 0;
 
             header.frame_size = buf->frame_size;
-            header.metadata_size = buf->metadata[frame_id]->metadata_size;
+            header.metadata_size = buf->metadata[frame_id]->get_object_size();
 
             DEBUG2("frame_size: {:d}, metadata_size: {:d}", header.frame_size,
                    header.metadata_size);
@@ -124,7 +124,8 @@ void bufferSend::main_thread() {
             // Send metadata
             DEBUG2("Sending metadata");
             n_sent = 0;
-            while ((n = send(socket_fd, &((uint8_t*)buf->metadata[frame_id]->metadata)[n_sent],
+            // FIXME -- need proper metadata serialization!!
+            while ((n = send(socket_fd, &((uint8_t*)buf->metadata[frame_id].get())[n_sent],
                              header.metadata_size - n_sent, MSG_NOSIGNAL))
                    > 0) {
                 n_sent += n;

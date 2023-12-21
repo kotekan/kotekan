@@ -92,7 +92,7 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
     }
 
     record_start_event();
-    metadataContainer* meta = nullptr;
+    std::shared_ptr<metadataObject> meta;
     if (!in_buffer) {
         void* input_memory =
             device.get_gpu_memory_array(_gpu_mem_input, gpu_frame_id, _gpu_buffer_depth, _input_size);
@@ -130,7 +130,7 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
 void cudaCopyToRingbuffer::finalize_frame() {
     cudaCommand::finalize_frame();
     // Release reference to metadata, if we grabbed it
-    device.release_gpu_memory_array_metadata(_gpu_mem_output, gpu_frame_id);
+    //device.release_gpu_memory_array_metadata(_gpu_mem_output, 0);
     if (in_buffer)
         in_buffer->mark_frame_empty(unique_name, gpu_frame_id % in_buffer->num_frames);
     // At this point we know the Cuda copy completed, but do we *really* need that to be the case??

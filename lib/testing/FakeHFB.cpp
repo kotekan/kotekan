@@ -138,7 +138,7 @@ void FakeHFB::main_thread() {
 
             // Allocate metadata and get frame
             out_buf->allocate_new_metadata_object(output_frame_id);
-            HFBFrameView::set_metadata((HFBMetadata*)out_buf->metadata[output_frame_id]->metadata,
+            HFBFrameView::set_metadata((HFBMetadata*)out_buf->metadata[output_frame_id].get(),
                                        num_beams, num_subfreq);
 
             auto output_frame = HFBFrameView(out_buf, output_frame_id);

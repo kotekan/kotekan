@@ -216,6 +216,7 @@ void hfbFileRaw::write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameV
     off_t offset = (time_ind * nfreq + freq_ind) * frame_size;
 
     write_raw(offset, 1, &ONE);
-    write_raw(offset + 1, metadata_size, frame.metadata());
+    // FIXME metadata serialization
+    write_raw(offset + 1, metadata_size, frame.metadata().get());
     write_raw(offset + 1 + metadata_size, data_size, frame.data());
 }

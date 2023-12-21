@@ -214,8 +214,6 @@ cudaBasebandBeamformer_pathfinder::~cudaBasebandBeamformer_pathfinder() {}
 cudaEvent_t
 cudaBasebandBeamformer_pathfinder::execute(cudaPipelineState& /*pipestate*/,
                                            const std::vector<cudaEvent_t>& /*pre_events*/) {
-    const int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
-
     pre_execute();
 
     void* const A_memory =

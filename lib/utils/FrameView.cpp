@@ -25,12 +25,12 @@ void FrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, 
     }
 
     // Metadata sizes must match exactly
-    if (buf_src->metadata[frame_id_src]->metadata_size
-        != buf_dest->metadata[frame_id_dest]->metadata_size) {
+    if (buf_src->metadata[frame_id_src]->get_object_size()
+        != buf_dest->metadata[frame_id_dest]->get_object_size()) {
         std::string msg =
             fmt::format(fmt("Metadata sizes must match for direct copy (src {:d} != dest {:d})."),
-                        buf_src->metadata[frame_id_src]->metadata_size,
-                        buf_dest->metadata[frame_id_dest]->metadata_size);
+                        buf_src->metadata[frame_id_src]->get_object_size(),
+                        buf_dest->metadata[frame_id_dest]->get_object_size());
         throw std::runtime_error(msg);
     }
 
@@ -48,7 +48,5 @@ void FrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, 
     }
 
     // Copy over the metadata
-    std::memcpy(buf_dest->metadata[frame_id_dest]->metadata,
-                buf_src->metadata[frame_id_src]->metadata,
-                buf_src->metadata[frame_id_src]->metadata_size);
+    *buf_dest->metadata[frame_id_dest] = *buf_src->metadata[frame_id_src];
 }

@@ -298,10 +298,10 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{#hasbuffer}}
             {{^isoutput}}
                 /// {{{name}}} is an input buffer: check metadata
-                const metadataContainer* const {{{name}}}_mc =
+                const std::shared_ptr<metadataObject> {{{name}}}_mc =
                     device.get_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id);
-                assert({{{name}}}_mc && metadata_container_is_chord({{{name}}}_mc));
-                const chordMetadata* const {{{name}}}_meta = get_chord_metadata({{{name}}}_mc);
+                assert({{{name}}}_mc && metadata_is_chord({{{name}}}_mc));
+                const std::shared_ptr<chordMetadata> {{{name}}}_meta = get_chord_metadata({{{name}}}_mc);
                 INFO("input {{{name}}} array: {:s} {:s}",
                     {{{name}}}_meta->get_type_string(),
                     {{{name}}}_meta->get_dimensions_string());
@@ -320,9 +320,9 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
             {{/isoutput}}
             {{#isoutput}}
                 /// {{{name}}} is an output buffer: set metadata
-                metadataContainer* const {{{name}}}_mc =
+                std::shared_ptr<metadataObject> const {{{name}}}_mc =
                     device.create_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id, E_mc->parent_pool);
-                chordMetadata* const {{{name}}}_meta = get_chord_metadata({{{name}}}_mc);
+                std::shared_ptr<chordMetadata> const {{{name}}}_meta = get_chord_metadata({{{name}}}_mc);
                 chord_metadata_copy({{{name}}}_meta, E_meta);
                 {{{name}}}_meta->type = {{{name}}}_type;
                 {{{name}}}_meta->dims = {{{name}}}_rank;
@@ -590,7 +590,7 @@ void cuda{{{kernel_name}}}::finalize_frame() {
 
     {{#kernel_arguments}}
         {{#hasbuffer}}
-            device.release_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id);
+            //device.release_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id);
         {{/hasbuffer}}
     {{/kernel_arguments}}
 

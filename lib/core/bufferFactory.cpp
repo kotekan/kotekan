@@ -23,7 +23,7 @@ using std::string;
 
 namespace kotekan {
 
-bufferFactory::bufferFactory(Config& _config, map<string, metadataPool*>& _metadataPools) :
+    bufferFactory::bufferFactory(Config& _config, map<string, std::shared_ptr<metadataPool> >& _metadataPools) :
     config(_config), metadataPools(_metadataPools) {}
 
 bufferFactory::~bufferFactory() {}
@@ -70,7 +70,7 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
     int32_t numa_node = config.get_default<int32_t>(location, "numa_node", 0);
     std::string s_log_level = config.get<std::string>(location, "log_level");
 
-    metadataPool* pool = nullptr;
+    std::shared_ptr<metadataPool> pool;
     if (metadataPool_name != "none") {
         if (metadataPools.count(metadataPool_name) != 1) {
             throw std::runtime_error(fmt::format(

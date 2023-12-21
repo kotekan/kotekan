@@ -204,7 +204,7 @@ void testDataGen::main_thread() {
             n_to_set /= sizeof(int8_t);
             frame8 = (int8_t*)frame;
             if (metadata_is_chord(buf, frame_id)) {
-                chordMetadata* chordmeta = get_chord_metadata(buf, frame_id);
+                std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
                 chord_metadata_init(chordmeta);
                 chordmeta->type = chordDataType::int4p4;
                 chordmeta->dims = (int)_array_shape.size();
@@ -218,7 +218,7 @@ void testDataGen::main_thread() {
             n_to_set /= sizeof(int8_t);
             frame8 = (int8_t*)frame;
             if (metadata_is_chord(buf, frame_id)) {
-                chordMetadata* chordmeta = get_chord_metadata(buf, frame_id);
+                std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
                 chord_metadata_init(chordmeta);
                 chordmeta->type = chordDataType::int8;
                 chordmeta->dims = (int)_array_shape.size();
@@ -232,7 +232,7 @@ void testDataGen::main_thread() {
             n_to_set /= sizeof(int16_t);
             frame16 = (int16_t*)frame;
             if (metadata_is_chord(buf, frame_id)) {
-                chordMetadata* chordmeta = get_chord_metadata(buf, frame_id);
+                std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
                 chord_metadata_init(chordmeta);
                 chordmeta->type = chordDataType::int16;
                 chordmeta->dims = (int)_array_shape.size();
@@ -246,7 +246,7 @@ void testDataGen::main_thread() {
             n_to_set /= sizeof(int32_t);
             frame32 = (int32_t*)frame;
             if (metadata_is_chord(buf, frame_id)) {
-                chordMetadata* chordmeta = get_chord_metadata(buf, frame_id);
+                std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
                 chord_metadata_init(chordmeta);
                 chordmeta->type = chordDataType::int32;
                 chordmeta->dims = (int)_array_shape.size();
@@ -261,7 +261,7 @@ void testDataGen::main_thread() {
             n_to_set /= sizeof(float16_t);
             framef16 = (float16_t*)frame;
             if (metadata_is_chord(buf, frame_id)) {
-                chordMetadata* chordmeta = get_chord_metadata(buf, frame_id);
+                std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
                 chord_metadata_init(chordmeta);
                 chordmeta->type = chordDataType::float16;
                 chordmeta->dims = (int)_array_shape.size();
@@ -302,7 +302,7 @@ void testDataGen::main_thread() {
                          frame_id_abs);
                 } else if (metadata_is_chord(buf, frame_id)) {
                     DEBUG("CHORD metadata; setting array sizes and one-hot indices");
-                    struct chordMetadata* chordmeta = get_chord_metadata(buf, frame_id);
+                    std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
                     chord_metadata_init(chordmeta);
                     int nfreq = 0;
                     int ntime = 0;

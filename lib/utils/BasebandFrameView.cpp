@@ -5,10 +5,10 @@
 #include <string.h> // for memset
 
 BasebandFrameView::BasebandFrameView(Buffer* buf, int frame_id) :
-    FrameView(buf, frame_id), _metadata((BasebandMetadata*)buf->metadata[id]->metadata) {}
+    FrameView(buf, frame_id), _metadata(std::static_pointer_cast<BasebandMetadata>(buf->metadata[id])) {}
 
 
-const BasebandMetadata* BasebandFrameView::metadata() const {
+const std::shared_ptr<BasebandMetadata> BasebandFrameView::metadata() const {
     return _metadata;
 }
 

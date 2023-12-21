@@ -277,7 +277,8 @@ void VisSharedMemWriter::write_to_memory(const VisFrameView& frame, uint32_t tim
     // first write the metadata, then the data, then the valid byte
     // add valid_size amount of padding
     *buf_write_pos = valid;
-    memcpy(buf_write_pos + valid_size, frame.metadata(), rbs.metadata_size);
+    // FIXME -- proper metadata serialization
+    memcpy(buf_write_pos + valid_size, frame.metadata().get(), rbs.metadata_size);
     memcpy(buf_write_pos + rbs.metadata_size + valid_size, frame.data(), rbs.data_size);
 
     // Document the fpga sequence counter for that frame in the access record

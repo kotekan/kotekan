@@ -23,7 +23,7 @@
 #include <vector>      // for vector
 
 VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
-    FrameView(buf, frame_id), _metadata((VisMetadata*)buf->metadata[id]->metadata),
+    FrameView(buf, frame_id), _metadata(std::static_pointer_cast<VisMetadata>(buf->metadata[id])),
 
     // Calculate the internal buffer layout from the given structure params
     buffer_layout(
@@ -227,7 +227,7 @@ void VisFrameView::set_metadata(VisMetadata* metadata, const uint32_t num_elemen
 
 void VisFrameView::set_metadata(Buffer* buf, const uint32_t index, const uint32_t num_elements,
                                 const uint32_t num_prod, const uint32_t num_ev) {
-    VisMetadata* metadata = (VisMetadata*)buf->metadata[index]->metadata;
+    VisMetadata* metadata = (VisMetadata*)buf->metadata[index].get();
     metadata->num_elements = num_elements;
     metadata->num_prod = num_prod;
     metadata->num_ev = num_ev;

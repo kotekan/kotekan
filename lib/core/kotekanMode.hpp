@@ -14,7 +14,7 @@
 
 #include <map>    // for map
 #include <string> // for string
-
+#include <memory>
 
 // doxygen wants the namespace to be documented somewhere
 /*!
@@ -65,7 +65,7 @@ private:
 #endif
 
     std::map<std::string, Stage*> stages;
-    std::map<std::string, metadataPool*> metadata_pools;
+    std::map<std::string, std::shared_ptr<metadataPool> > metadata_pools;
 
     std::map<std::string, GenericBuffer*> buffers;
 };

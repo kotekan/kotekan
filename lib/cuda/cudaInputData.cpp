@@ -64,7 +64,7 @@ cudaEvent_t cudaInputData::execute(cudaPipelineState&, const std::vector<cudaEve
                                       &end_event);
 
         // Copy (reference to) metadata also
-        metadataContainer* meta = in_buf->metadata[buf_index];
+        std::shared_ptr<metadataObject> meta = in_buf->metadata[buf_index];
         if (meta)
             device.claim_gpu_memory_array_metadata(_gpu_mem, gpu_frame_id, meta);
     }
@@ -72,9 +72,9 @@ cudaEvent_t cudaInputData::execute(cudaPipelineState&, const std::vector<cudaEve
 }
 
 void cudaInputData::finalize_frame() {
-    if (in_buf->frame_size)
-        // Release reference to metadata, if we grabbed it
-        device.release_gpu_memory_array_metadata(_gpu_mem, gpu_frame_id);
+    //if (in_buf->frame_size)
+    //// Release reference to metadata, if we grabbed it
+    //device.release_gpu_memory_array_metadata(_gpu_mem, gpu_frame_id);
 
     cudaCommand::finalize_frame();
     in_buf->mark_frame_empty(unique_name, gpu_frame_id % in_buf->num_frames);

@@ -43,7 +43,7 @@ struct zero_frames_thread_args {
 typedef std::lock_guard<std::recursive_mutex> buffer_lock;
 
 GenericBuffer::GenericBuffer(const std::string& _buffer_name, const std::string& _buffer_type,
-                             metadataPool* pool, int _num_frames) :
+                             std::shared_ptr<metadataPool> pool, int _num_frames) :
     num_frames(_num_frames),
     shutdown_signal(false), buffer_name(_buffer_name), buffer_type(_buffer_type),
     metadata_pool(pool), metadata(num_frames, nullptr) {
@@ -52,14 +52,11 @@ GenericBuffer::GenericBuffer(const std::string& _buffer_name, const std::string&
 
 GenericBuffer::~GenericBuffer() {}
 
-bool GenericBuffer::set_metadata(int ID, metadataContainer* meta) {
+bool GenericBuffer::set_metadata(int ID, std::shared_ptr<metadataObject> meta) {
     assert(ID >= 0);
     assert(ID < num_frames);
     buffer_lock lock(mutex);
-    if (metadata[ID] != nullptr)
-        return false;
     metadata[ID] = meta;
-    increment_metadata_ref_count(meta);
     return true;
 }
 
@@ -118,18 +115,18 @@ void GenericBuffer::pass_metadata(int from_ID, GenericBuffer* to_buf, int to_ID)
         WARN("No metadata in source buffer {:s}[{:d}], was this intended?", buffer_name, from_ID);
         return;
     }
-    metadataContainer* metadata_container = metadata[from_ID];
+    std::shared_ptr<metadataObject> metadata_container = metadata[from_ID];
     bool set = to_buf->set_metadata(to_ID, metadata_container);
     assert(set);
 }
 
 void GenericBuffer::copy_metadata(int from_ID, GenericBuffer* to_buf, int to_ID) {
     buffer_lock lock(mutex);
-    if (metadata[from_ID] == nullptr) {
+    if (!metadata[from_ID]) {
         WARN("No metadata in source buffer {:s}[{:d}], was this intended?", buffer_name, from_ID);
         return;
     }
-    if (to_buf->metadata[to_ID] == nullptr) {
+    if (!to_buf->metadata[to_ID]) {
         WARN("No metadata in dest buffer {:s}[{:d}], was this intended?", to_buf->buffer_name,
              to_ID);
         return;
@@ -138,14 +135,13 @@ void GenericBuffer::copy_metadata(int from_ID, GenericBuffer* to_buf, int to_ID)
 }
 
 void GenericBuffer::private_copy_metadata(int dest_frame_id, GenericBuffer* src, int src_frame_id) {
-    metadataContainer* from_metadata_container = src->metadata[src_frame_id];
-    metadataContainer* to_metadata_container = metadata[dest_frame_id];
-    if (from_metadata_container->metadata_size != to_metadata_container->metadata_size) {
+    std::shared_ptr<metadataObject> from_metadata_container = src->metadata[src_frame_id];
+    std::shared_ptr<metadataObject> to_metadata_container = metadata[dest_frame_id];
+    if (from_metadata_container->get_object_size() != to_metadata_container->get_object_size()) {
         WARN("Metadata sizes don't match, cannot copy metadata!!");
         return;
     }
-    memcpy(to_metadata_container->metadata, from_metadata_container->metadata,
-           from_metadata_container->metadata_size);
+    *to_metadata_container = *from_metadata_container;
 }
 
 void GenericBuffer::allocate_new_metadata_object(int ID) {
@@ -158,23 +154,12 @@ void GenericBuffer::allocate_new_metadata_object(int ID) {
     }
     DEBUG2_F("Called allocate_new_metadata_object, buf %p, %d", this, ID);
 
-    if (metadata[ID] == nullptr)
-        metadata[ID] = request_metadata_object(metadata_pool);
-
-    // Make sure we got a metadata object.
-    CHECK_MEM_F(metadata[ID]);
+    if (!metadata[ID])
+        metadata[ID] = metadata_pool->request_metadata_object();
 }
 
-// Do not call if there is no metadata
-void* GenericBuffer::get_metadata(int ID) {
-    assert(ID >= 0);
-    assert(ID < num_frames);
-    assert(metadata[ID] != nullptr);
-    return metadata[ID]->metadata;
-}
-
-// Might return NULLL
-metadataContainer* GenericBuffer::get_metadata_container(int ID) {
+// Might return empty (null)
+std::shared_ptr<metadataObject> GenericBuffer::get_metadata(int ID) {
     assert(ID >= 0);
     assert(ID < num_frames);
     return metadata[ID];
@@ -221,7 +206,7 @@ std::string GenericBuffer::get_dot_node_label() {
     return buffer_name;
 }
 
-Buffer::Buffer(int num_frames, size_t len, metadataPool* pool, const std::string& _buffer_name,
+Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool, const std::string& _buffer_name,
                const std::string& _buffer_type, int _numa_node, bool _use_hugepages,
                bool _mlock_frames, bool zero_new_frames) :
     GenericBuffer(_buffer_name, _buffer_type, pool, num_frames),
@@ -499,10 +484,7 @@ void Buffer::mark_frame_full(const std::string& name, const int ID) {
                 DEBUG("No consumers are registered on {:s} dropping data in frame {:d}...",
                       buffer_name, ID);
                 is_full[ID] = false;
-                if (metadata[ID] != nullptr) {
-                    decrement_metadata_ref_count(metadata[ID]);
-                    metadata[ID] = nullptr;
-                }
+                metadata[ID].reset();
                 set_empty = true;
                 private_reset_consumers(ID);
             }
@@ -600,10 +582,8 @@ bool Buffer::private_mark_frame_empty(const int ID) {
         private_reset_consumers(ID);
         broadcast = true;
     }
-    if (metadata[ID] != nullptr) {
-        decrement_metadata_ref_count(metadata[ID]);
-        metadata[ID] = nullptr;
-    }
+    if (metadata[ID])
+        metadata[ID].reset();
     return broadcast;
 }
 

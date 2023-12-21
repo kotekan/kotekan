@@ -22,26 +22,26 @@ struct oneHotMetadata {
 inline bool metadata_is_onehot(Buffer* buf, int frame_id) {
     // avoid gcc warning about being unused.
     (void)frame_id;
-    return strcmp(buf->metadata_pool->type_name, "oneHotMetadata") == 0;
+    return (buf->metadata_pool->type_name == "oneHotMetadata");
 }
 
 inline void set_onehot_frame_counter(Buffer* buf, int frame_id, int counter) {
-    oneHotMetadata* m = (oneHotMetadata*)buf->metadata[frame_id]->metadata;
+    oneHotMetadata* m = (oneHotMetadata*)buf->metadata[frame_id].get();
     m->frame_counter = counter;
 }
 
 inline int get_onehot_frame_counter(Buffer* buf, int frame_id) {
-    oneHotMetadata* m = (oneHotMetadata*)buf->metadata[frame_id]->metadata;
+    oneHotMetadata* m = (oneHotMetadata*)buf->metadata[frame_id].get();
     return m->frame_counter;
 }
 
 inline void set_onehot_indices(Buffer* buf, int frame_id, std::vector<int> indices) {
-    oneHotMetadata* m = (oneHotMetadata*)buf->metadata[frame_id]->metadata;
+    oneHotMetadata* m = (oneHotMetadata*)buf->metadata[frame_id].get();
     m->hotIndices = indices;
 }
 
 inline std::vector<int> get_onehot_indices(Buffer* buf, int frame_id) {
-    oneHotMetadata* m = (oneHotMetadata*)buf->metadata[frame_id]->metadata;
+    oneHotMetadata* m = (oneHotMetadata*)buf->metadata[frame_id].get();
     return m->hotIndices;
 }
 

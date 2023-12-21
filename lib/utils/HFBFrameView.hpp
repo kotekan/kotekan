@@ -188,13 +188,13 @@ public:
      * @brief Read only access to the metadata.
      * @returns The metadata.
      **/
-    const HFBMetadata* metadata() const {
+    const std::shared_ptr<HFBMetadata> metadata() const {
         return _metadata;
     }
 
 private:
     // References to the metadata we are viewing
-    HFBMetadata* const _metadata;
+    std::shared_ptr<HFBMetadata> _metadata;
 
     // The calculated layout of the buffer
     struct_layout<HFBField> buffer_layout;
