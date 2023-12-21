@@ -26,7 +26,7 @@ BOOST_AUTO_TEST_CASE(test1) {
     conf2.update_config(json_config);
     metadataFactory mfac(conf2);
     auto facs = mfac.build_pools();
-    struct metadataPool* pool = facs["main_pool"];
+    std::shared_ptr<metadataPool> pool = facs["main_pool"];
     BOOST_CHECK(pool != nullptr);
 
     std::cout << "Hello world" << std::endl;
