@@ -22,6 +22,8 @@
 #include <type_traits> // for __decay_and_strip<>::__type
 #include <vector>      // for vector
 
+REGISTER_TYPE_WITH_FACTORY(metadataObject, VisMetadata);
+
 VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
     FrameView(buf, frame_id), _metadata(std::static_pointer_cast<VisMetadata>(buf->metadata[id])),
 

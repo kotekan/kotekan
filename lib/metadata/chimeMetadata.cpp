@@ -1,9 +1,14 @@
 #include "chimeMetadata.hpp"
-
 #include "factory.hpp"
 #include "metadata.hpp"
+#include "BasebandMetadata.hpp"
+#include "HFBMetadata.hpp"
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, chimeMetadata);
+
+// and since we don't have anywhere else to do this...
+REGISTER_TYPE_WITH_FACTORY(metadataObject, BasebandMetadata);
+REGISTER_TYPE_WITH_FACTORY(metadataObject, HFBMetadata);
 
 chimeMetadata& chimeMetadata::operator=(const chimeMetadata& other) {
     // boil them plates
