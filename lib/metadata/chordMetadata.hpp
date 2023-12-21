@@ -11,6 +11,7 @@
 #include <string>
 #include <sys/time.h>
 #include <vector>
+#include <assert.h>
 
 // One of the warning-silencing pragmas below only applied for gcc >= 8
 #define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
@@ -53,14 +54,23 @@ const int CHORD_META_MAX_DIM = 10;
 // Maximum length of dimension names for arrays
 const int CHORD_META_MAX_DIMNAME = 16;
 
-class chordMetadata : public chimeMetadata { // metadataObject {
+class chordMetadata : public chimeMetadata {
 public:
     chordMetadata();
 
-    // chimeMetadata chime;
+    /// Returns the size of objects of this type when serialized into bytes.
+    size_t get_serialized_size() override;
+
+    /// Sets this metadata object's values from the given byte array
+    /// of the given length.  Returns the number of bytes consumed.
+    size_t set_from_bytes(const char* bytes, size_t length) override;
+
+    /// Serializes this metadata object into the given byte array,
+    /// expected to be of length (at least) get_serialized_size().
+    size_t serialize(char* bytes) override;
+
     int frame_counter;
 
-    // cudaDataType_t type;
     chordDataType type;
 
     int dims;
@@ -147,8 +157,9 @@ public:
     }
 };
 
-inline void chord_metadata_init(std::shared_ptr<chordMetadata>) {
-    // bzero(c, sizeof(chordMetadata));
+inline void chord_metadata_init(std::shared_ptr<chordMetadata> meta) {
+    // ??
+    *meta = chordMetadata();
 }
 
 inline void chord_metadata_copy(std::shared_ptr<chordMetadata> out,
@@ -166,29 +177,10 @@ inline bool metadata_is_chord(const std::shared_ptr<metadataObject> mc) {
     return (pool->type_name == "chordMetadata");
 }
 
-/*
-inline const std::shared_ptr<chordMetadata> get_chord_metadata(const Buffer* buf, int frame_id) {
-    std::shared_ptr<metadataObject> meta = buf->metadata[frame_id];
-    return std::static_pointer_cast<chordMetadata>(meta);
-}
-*/
-
 inline std::shared_ptr<chordMetadata> get_chord_metadata(Buffer* buf, int frame_id) {
     std::shared_ptr<metadataObject> meta = buf->metadata[frame_id];
     return std::static_pointer_cast<chordMetadata>(meta);
 }
-
-/*
-inline const std::shared_ptr<chordMetadata> get_chord_metadata(const std::shared_ptr<metadataObject>
-mc) { if (!mc) return std::shared_ptr<chordMetadata>(); if (!metadata_is_chord(mc)) {
-        std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
-        WARN_NON_OO("Expected metadata to be type \"chordMetadata\", got \"{:s}\".",
-                    pool->type_name);
-        return std::shared_ptr<chordMetadata>();
-    }
-    return std::static_pointer_cast<chordMetadata>(mc);
-}
-*/
 
 inline std::shared_ptr<chordMetadata> get_chord_metadata(std::shared_ptr<metadataObject> mc) {
     if (!mc)

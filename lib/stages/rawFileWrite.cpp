@@ -97,9 +97,8 @@ void rawFileWrite::main_thread() {
         // Write the meta data to disk
         uint32_t metadata_size = 0;
         std::shared_ptr<metadataObject> mc = buf->get_metadata(frame_id);
-        if (mc) {
-            metadata_size = mc->get_object_size();
-        }
+        if (mc)
+            metadata_size = mc->get_serialized_size();
         // Write metadata size to disk, if there is no metadata in the frame, then
         // just save 0 to the first word.
         if (write(fd, (void*)&metadata_size, sizeof(metadata_size))
@@ -108,9 +107,10 @@ void rawFileWrite::main_thread() {
             exit(-1);
         }
         if (mc) {
-            // FIXME -- need proper metadata serialization!!
-            if (write(fd, mc.get(), mc->get_object_size()) != (int32_t)mc->get_object_size()) {
-                ERROR("Failed to write metadata_size to disk for file {:s}", full_path);
+            char metabuf[metadata_size];
+            mc->serialize(metabuf);
+            if (write(fd, metabuf, metadata_size) != (int32_t)metadata_size) {
+                ERROR("Failed to write metadata to disk for file {:s}", full_path);
                 exit(-1);
             }
         }

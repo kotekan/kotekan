@@ -52,6 +52,18 @@ public:
 
     // assignment operator needed to handle std::atomics
     chimeMetadata& operator=(const chimeMetadata& other);
+
+    /// Returns the size of objects of this type when serialized into bytes.
+    size_t get_serialized_size() override;
+
+    /// Sets this metadata object's values from the given byte array
+    /// of the given length.  Returns the number of bytes consumed.
+    size_t set_from_bytes(const char* bytes, size_t length) override;
+
+    /// Serializes this metadata object into the given byte array,
+    /// expected to be of length (at least) get_serialized_size().
+    /// Returns the number of bytes written.
+    size_t serialize(char* bytearray) override;
 };
 
 inline bool metadata_is_chime(const std::shared_ptr<metadataObject> mc) {

@@ -75,7 +75,7 @@ hfbFileRaw::hfbFileRaw(const std::string& name, const kotekan::logLevel log_leve
     // Calculate the file structure
     data_size = HFBFrameView::calculate_frame_size(num_beams, num_subfreq);
 
-    metadata_size = sizeof(HFBMetadata);
+    metadata_size = HFBMetadata().get_serialized_size();
     frame_size = _member_alignment(data_size + metadata_size + 1, alignment * 1024);
 
     // Write the structure into the file for decoding
@@ -216,7 +216,10 @@ void hfbFileRaw::write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameV
     off_t offset = (time_ind * nfreq + freq_ind) * frame_size;
 
     write_raw(offset, 1, &ONE);
-    // FIXME metadata serialization
-    write_raw(offset + 1, metadata_size, frame.metadata().get());
+    char metabuf[metadata_size];
+    auto meta = frame.metadata();
+    assert(meta->get_serialized_size() == metadata_size);
+    meta->serialize(metabuf);
+    write_raw(offset + 1, metadata_size, metabuf);
     write_raw(offset + 1 + metadata_size, data_size, frame.data());
 }

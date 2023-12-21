@@ -9,6 +9,7 @@
 #include "fmt.hpp" // for format, fmt
 
 #include <algorithm>   // for copy
+#include <assert.h>
 #include <complex>     // for complex
 #include <cstdint>     // for uint64_t // IWYU pragma: keep
 #include <ctime>       // for gmtime
@@ -23,6 +24,56 @@
 #include <vector>      // for vector
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, VisMetadata);
+
+struct VisMetadataFormat {
+    uint64_t fpga_seq_start;
+    timespec ctime;
+    uint64_t fpga_seq_length;
+    uint64_t fpga_seq_total;
+    uint64_t rfi_total;
+    freq_id_t freq_id;
+    dset_id_t dataset_id;
+    uint32_t num_elements;
+    uint32_t num_prod;
+    uint32_t num_ev;
+};
+
+size_t VisMetadata::get_serialized_size() {
+    return sizeof(VisMetadataFormat);
+}
+
+size_t VisMetadata::set_from_bytes(const char* bytes, size_t length) {
+    size_t sz = get_serialized_size();
+    assert(length >= sz);
+    const VisMetadataFormat* fmt = reinterpret_cast<const VisMetadataFormat*>(bytes);
+    fpga_seq_start = fmt->fpga_seq_start;
+    ctime = fmt->ctime;
+    fpga_seq_length = fmt->fpga_seq_length;
+    fpga_seq_total = fmt->fpga_seq_total;
+    rfi_total = fmt->rfi_total;
+    freq_id = fmt->freq_id;
+    dataset_id = fmt->dataset_id;
+    num_elements = fmt->num_elements;
+    num_prod = fmt->num_prod;
+    num_ev = fmt->num_ev;
+    return sz;
+}
+
+size_t VisMetadata::serialize(char* bytes) {
+    size_t sz = get_serialized_size();
+    VisMetadataFormat* fmt = reinterpret_cast<VisMetadataFormat*>(bytes);
+    fmt->fpga_seq_start = fpga_seq_start;
+    fmt->ctime = ctime;
+    fmt->fpga_seq_length = fpga_seq_length;
+    fmt->fpga_seq_total = fpga_seq_total;
+    fmt->rfi_total = rfi_total;
+    fmt->freq_id = freq_id;
+    fmt->dataset_id = dataset_id;
+    fmt->num_elements = num_elements;
+    fmt->num_prod = num_prod;
+    fmt->num_ev = num_ev;
+    return sz;
+}
 
 VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
     FrameView(buf, frame_id), _metadata(std::static_pointer_cast<VisMetadata>(buf->metadata[id])),

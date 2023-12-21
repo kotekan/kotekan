@@ -39,7 +39,16 @@ enum class VisField { vis, weight, flags, eval, evec, erms, gain };
  *
  * @author Richard Shaw
  **/
-struct VisMetadata : public metadataObject {
+class VisMetadata : public metadataObject {
+public:
+    /// Returns the size of objects of this type when serialized into bytes.
+    size_t get_serialized_size() override;
+    /// Sets this metadata object's values from the given byte array
+    /// of the given length.  Returns the number of bytes consumed.
+    size_t set_from_bytes(const char* bytes, size_t length) override;
+    /// Serializes this metadata object into the given byte array,
+    /// expected to be of length (at least) get_serialized_size().
+    size_t serialize(char* bytes) override;
 
     /// The FPGA sequence number of the integration frame
     uint64_t fpga_seq_start;

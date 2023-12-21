@@ -451,9 +451,10 @@ void RawReader<T>::main_thread() {
         // Check first byte indicating empty frame
         if (*(mapped_file + file_ind * file_frame_size) != 0) {
             // Copy the metadata from the file
-            // FIXME -- need proper metadata serialization!!
-            std::memcpy(out_buf->metadata[frame_id].get(),
-                        mapped_file + file_ind * file_frame_size + 1, metadata_size);
+            auto meta = out_buf->get_metadata(frame_id);
+            assert(meta->get_serialized_size() == metadata_size);
+            size_t sz = meta->set_from_bytes((const char*)(mapped_file + file_ind * file_frame_size + 1), metadata_size);
+            assert(sz == metadata_size);
 
             // Copy the data from the file
             std::memcpy(frame, mapped_file + file_ind * file_frame_size + metadata_size + 1,
