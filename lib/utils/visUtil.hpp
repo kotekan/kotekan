@@ -172,6 +172,10 @@ inline bool operator>(const time_ctype& a, const time_ctype& b) {
     return (a.fpga_count > b.fpga_count);
 }
 
+// JSON <--> timespec
+void to_json(nlohmann::json& j, const timespec& t);
+void from_json(const nlohmann::json& j, timespec& t);
+
 // Conversions of the index types to json
 void to_json(nlohmann::json& j, const freq_ctype& f);
 void to_json(nlohmann::json& j, const input_ctype& f);

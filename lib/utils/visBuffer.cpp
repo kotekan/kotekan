@@ -25,6 +25,11 @@
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, VisMetadata);
 
+void VisMetadata::deepCopy(std::shared_ptr<metadataObject> other) {
+    std::shared_ptr<VisMetadata> o = std::dynamic_pointer_cast<VisMetadata>(other);
+    *this = *o;
+}
+
 struct VisMetadataFormat {
     uint64_t fpga_seq_start;
     timespec ctime;
@@ -73,6 +78,38 @@ size_t VisMetadata::serialize(char* bytes) {
     fmt->num_prod = num_prod;
     fmt->num_ev = num_ev;
     return sz;
+}
+
+nlohmann::json VisMetadata::to_json() {
+    nlohmann::json rtn = {};
+    ::to_json(rtn, *this);
+    return rtn;
+}
+
+void to_json(nlohmann::json& j, const VisMetadata& m) {
+    j["fpga_seq_start"] = m.fpga_seq_start;
+    j["ctime"] = m.ctime;
+    j["fpga_seq_length"] = m.fpga_seq_length;
+    j["fpga_seq_total"] = m.fpga_seq_total;
+    j["rfi_total"] = m.rfi_total;
+    j["freq_id"] = m.freq_id;
+    j["dataset_id"] = m.dataset_id;
+    j["num_elements"] = m.num_elements;
+    j["num_prod"] = m.num_prod;
+    j["num_ev"] = m.num_ev;
+}
+
+void from_json(const nlohmann::json& j, VisMetadata& m) {
+    m.fpga_seq_start = j["fpga_seq_start"];
+    m.ctime = j["ctime"];
+    m.fpga_seq_length = j["fpga_seq_length"];
+    m.fpga_seq_total = j["fpga_seq_total"];
+    m.rfi_total = j["rfi_total"];
+    m.freq_id = j["freq_id"];
+    m.dataset_id = j["dataset_id"];
+    m.num_elements = j["num_elements"];
+    m.num_prod = j["num_prod"];
+    m.num_ev = j["num_ev"];
 }
 
 VisFrameView::VisFrameView(Buffer* buf, int frame_id) :

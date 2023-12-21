@@ -23,6 +23,7 @@
 
 #include "factory.hpp"
 #include "kotekanLogging.hpp"
+#include "json.hpp" // for json
 
 #include <memory>
 #include <mutex>
@@ -39,6 +40,8 @@ class metadataObject : public kotekan::kotekanLogging {
 public:
     metadataObject();
     virtual ~metadataObject() {}
+
+    virtual void deepCopy(std::shared_ptr<metadataObject> other);
 
     /// Reference to metadataPool that this object belongs to.
     std::weak_ptr<metadataPool> parent_pool;
@@ -62,7 +65,12 @@ public:
     virtual size_t serialize(char* /*bytes*/) {
         return 0;
     }
+
+    virtual nlohmann::json to_json();
 };
+
+void to_json(nlohmann::json& j, const metadataObject& m);
+void from_json(const nlohmann::json& j, metadataObject& m);
 
 CREATE_FACTORY(metadataObject);
 

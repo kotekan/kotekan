@@ -30,6 +30,15 @@ bool operator!=(const rstack_ctype& lhs, const rstack_ctype& rhs) {
 }
 
 // JSON converters
+void to_json(nlohmann::json& j, const timespec& t) {
+    j["tv_sec"] = (int64_t)t.tv_sec;
+    j["tv_nsec"] = t.tv_nsec;
+}
+void from_json(const nlohmann::json& j, timespec& t) {
+    t.tv_sec = (time_t)(j["tv_sec"]);
+    t.tv_nsec = j["tv_nsec"];
+}
+
 void to_json(json& j, const freq_ctype& f) {
     j = json{{"centre", f.centre}, {"width", f.width}};
 }

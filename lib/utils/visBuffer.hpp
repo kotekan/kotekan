@@ -41,6 +41,9 @@ enum class VisField { vis, weight, flags, eval, evec, erms, gain };
  **/
 class VisMetadata : public metadataObject {
 public:
+    // ASSUMES the "other" is my type!
+    void deepCopy(std::shared_ptr<metadataObject> other) override;
+
     /// Returns the size of objects of this type when serialized into bytes.
     size_t get_serialized_size() override;
     /// Sets this metadata object's values from the given byte array
@@ -49,6 +52,8 @@ public:
     /// Serializes this metadata object into the given byte array,
     /// expected to be of length (at least) get_serialized_size().
     size_t serialize(char* bytes) override;
+
+    nlohmann::json to_json() override;
 
     /// The FPGA sequence number of the integration frame
     uint64_t fpga_seq_start;
@@ -77,6 +82,8 @@ public:
     uint32_t num_ev;
 };
 
+void to_json(nlohmann::json& j, const VisMetadata& m);
+void from_json(const nlohmann::json& j, VisMetadata& m);
 
 /**
  * @class VisFrameView

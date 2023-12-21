@@ -105,5 +105,5 @@ void Valve::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int 
     }
 
     // Copy over the metadata
-    *buf_dest->metadata[frame_id_dest] = *buf_src->metadata[frame_id_src];
+    buf_dest->metadata[frame_id_dest]->deepCopy(buf_src->metadata[frame_id_src]);
 }
