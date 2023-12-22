@@ -21,6 +21,8 @@ public:
     /// expected to be of length (at least) get_serialized_size().
     size_t serialize(char* bytes) override;
 
+    nlohmann::json to_json() override;
+
     /// The ICEBoard sequence number
     int64_t fpga_seq_start;
     /// The GPS time of @c fpga_seq_start.
@@ -38,6 +40,9 @@ public:
     /// ID of the dataset
     dset_id_t dataset_id;
 };
+
+void to_json(nlohmann::json& j, const HFBMetadata& m);
+void from_json(const nlohmann::json& j, HFBMetadata& m);
 
 // Helper functions to save lots of pointer work
 

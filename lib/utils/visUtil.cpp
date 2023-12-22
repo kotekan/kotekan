@@ -39,6 +39,13 @@ void from_json(const nlohmann::json& j, timespec& t) {
     t.tv_nsec = j["tv_nsec"];
 }
 
+void to_json(nlohmann::json& j, const stream_t& t) {
+    j = t.id;
+}
+void from_json(const nlohmann::json& j, stream_t& t) {
+    t.id = j;
+}
+
 void to_json(json& j, const freq_ctype& f) {
     j = json{{"centre", f.centre}, {"width", f.width}};
 }

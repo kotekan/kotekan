@@ -1,5 +1,7 @@
 #include "HFBMetadata.hpp"
 
+#include "visUtil.hpp"
+
 #include <assert.h>
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, HFBMetadata);
@@ -46,4 +48,32 @@ size_t HFBMetadata::serialize(char* bytes) {
     fmt->num_subfreq = num_subfreq;
     fmt->dataset_id = dataset_id;
     return sz;
+}
+
+nlohmann::json HFBMetadata::to_json() {
+    nlohmann::json rtn = {};
+    ::to_json(rtn, *this);
+    return rtn;
+}
+
+void to_json(nlohmann::json& j, const HFBMetadata& m) {
+    j["fpga_seq_start"] = m.fpga_seq_start;
+    j["ctime"] = m.ctime;
+    j["freq_id"] = m.freq_id;
+    j["fpga_seq_length"] = m.fpga_seq_length;
+    j["fpga_seq_total"] = m.fpga_seq_total;
+    j["num_beams"] = m.num_beams;
+    j["num_subfreq"] = m.num_subfreq;
+    j["dataset_id"] = m.dataset_id;
+}
+
+void from_json(const nlohmann::json& j, HFBMetadata& m) {
+    m.fpga_seq_start = j["fpga_seq_start"];
+    m.ctime = j["ctime"];
+    m.freq_id = j["freq_id"];
+    m.fpga_seq_length = j["fpga_seq_length"];
+    m.fpga_seq_total = j["fpga_seq_total"];
+    m.num_beams = j["num_beams"];
+    m.num_subfreq = j["num_subfreq"];
+    m.dataset_id = j["dataset_id"];
 }
