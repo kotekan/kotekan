@@ -41,10 +41,11 @@ VisRawReader::VisRawReader(Config& config, const std::string& unique_name,
     }
 
     // Check metadata is the correct size
-    if (sizeof(VisMetadata) != metadata_size) {
+    size_t vis_metadata_size = VisMetadata().get_serialized_size();
+    if (vis_metadata_size != metadata_size) {
         std::string msg = fmt::format(fmt("Metadata in file {:s} is larger ({:d} bytes) than "
                                           "VisMetadata ({:d} bytes)."),
-                                      filename, metadata_size, sizeof(VisMetadata));
+                                      filename, metadata_size, vis_metadata_size);
         throw std::runtime_error(msg);
     }
 
