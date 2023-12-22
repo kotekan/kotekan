@@ -23,6 +23,7 @@
 
 #include "factory.hpp"
 #include "kotekanLogging.hpp"
+
 #include "json.hpp" // for json
 
 #include <memory>

@@ -422,8 +422,7 @@ void connInstance::internal_read_callback() {
                         close_instance();
                         return;
                     }
-                    if (metadata_size
-                        != buf_frame_header.metadata_size) {
+                    if (metadata_size != buf_frame_header.metadata_size) {
                         ERROR("Metadata size does not match between server and client!");
                         decrement_ref_count();
                         close_instance();
