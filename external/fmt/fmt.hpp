@@ -12,10 +12,11 @@
 #endif
 
 // Enable the fmt() macro for compile time string format checking
-#define FMT_STRING_ALIAS 1
+#define fmt(s) FMT_STRING(s)
 
 #include <fmt/format.h>
 #include <fmt/chrono.h>
 #include <fmt/printf.h>
+#include <fmt/ostream.h>
 
 #endif // _FMT_HPP_
