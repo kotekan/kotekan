@@ -247,7 +247,7 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
     nv_res = nvPTXCompilerCreate(&compiler, program_size, program_buffer);
     if (nv_res != NVPTXCOMPILE_SUCCESS) {
         // TODO Report ENUM names.
-        FATAL_ERROR("Could not create PTX compiler, error code: {:d}", nv_res);
+        FATAL_ERROR("Could not create PTX compiler, error code: {:d}", (int)nv_res);
         return;
     }
 
@@ -265,7 +265,7 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
         char* error_log = nullptr;
         nv_res = nvPTXCompilerGetErrorLogSize(compiler, &error_size);
         if (nv_res != NVPTXCOMPILE_SUCCESS) {
-            FATAL_ERROR("Could not get error log size, error code: {:d}", nv_res);
+            FATAL_ERROR("Could not get error log size, error code: {:d}", (int)nv_res);
             return;
         }
         if (error_size != 0) {
@@ -273,7 +273,7 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
             assert(error_log != nullptr);
             nv_res = nvPTXCompilerGetErrorLog(compiler, error_log);
             if (nv_res != NVPTXCOMPILE_SUCCESS) {
-                FATAL_ERROR("Could not get error log, error code: {:d}", nv_res);
+                FATAL_ERROR("Could not get error log, error code: {:d}", (int)nv_res);
                 free(error_log);
                 return;
             }
@@ -285,7 +285,7 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
 
     nv_res = nvPTXCompilerGetCompiledProgramSize(compiler, &elf_size);
     if (nv_res != NVPTXCOMPILE_SUCCESS) {
-        FATAL_ERROR("Could not get compiled PTX elf size, error code: {:d}", nv_res);
+        FATAL_ERROR("Could not get compiled PTX elf size, error code: {:d}", (int)nv_res);
         return;
     }
 
@@ -293,7 +293,7 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
     assert(elf != nullptr);
     nv_res = nvPTXCompilerGetCompiledProgram(compiler, (void*)elf);
     if (nv_res != NVPTXCOMPILE_SUCCESS) {
-        FATAL_ERROR("Could not get compiled PTX elf data, error code: {:d}", nv_res);
+        FATAL_ERROR("Could not get compiled PTX elf data, error code: {:d}", (int)nv_res);
         return;
     }
 
@@ -301,7 +301,7 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
     size_t info_size;
     nv_res = nvPTXCompilerGetInfoLogSize(compiler, &info_size);
     if (nv_res != NVPTXCOMPILE_SUCCESS) {
-        FATAL_ERROR("Could not get info log size, error code: {:d}", nv_res);
+        FATAL_ERROR("Could not get info log size, error code: {:d}", (int)nv_res);
         return;
     }
 
@@ -309,7 +309,7 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
         char* info_Log = (char*)malloc(info_size + 1);
         nv_res = nvPTXCompilerGetInfoLog(compiler, info_Log);
         if (nv_res != NVPTXCOMPILE_SUCCESS) {
-            FATAL_ERROR("Could not get PTX compiler logs, error code: {:d}", nv_res);
+            FATAL_ERROR("Could not get PTX compiler logs, error code: {:d}", (int)nv_res);
             free(info_Log);
             return;
         }
@@ -320,7 +320,7 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
     // Cleanup compiler
     nv_res = nvPTXCompilerDestroy(&compiler);
     if (nv_res != NVPTXCOMPILE_SUCCESS) {
-        FATAL_ERROR("Could not destroy compiler, error code: {:d}", nv_res);
+        FATAL_ERROR("Could not destroy compiler, error code: {:d}", (int)nv_res);
         return;
     }
 
