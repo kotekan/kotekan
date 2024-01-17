@@ -96,13 +96,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
         configUpdater::instance().subscribe(
             gainfrb, std::bind(&ReadGain::update_gains_frb_callback, this, _1));
 
-    // listen for UT1_UTC offset
-    std::string UT1_UTC =
-        config.get_default<std::string>(unique_name, "updatable_config/UT1_UTC", "");
-    if (UT1_UTC.length() > 0)
-        configUpdater::instance().subscribe(
-            UT1_UTC, std::bind(&ReadGain::update_UT1_UTC_offset, this, _1));
-
+  
     // Listen for gain updates Tracking Beamformer
     using namespace std::placeholders;
     for (int beam_id = 0; beam_id < _num_beams; beam_id++) {
@@ -140,25 +134,6 @@ bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
     return true;
 }
 
-bool ReadGain::update_UT1_UTC_offset(nlohmann::json& json) {
-    //if (update_gains_frb) {
-    //    WARN("[FRB] cannot handle two back-to-back gain updates, rejecting the latter");
-    //    return true;
-    //}
-    try {
-        _UT1_UTC_val = json.at("UT1_UTC_val");
-    } catch (std::exception& e) {
-        WARN("[FRB] Fail to read UT1_UTC offset {:s}", e.what());
-        return false;
-    }
-    //{
-    //    std::lock_guard<std::mutex> lock(mux);
-    //    update_gains_frb = true;
-    //}
-    cond_var.notify_all();
-
-    return true;
-}
 
 bool ReadGain::update_gains_tracking_callback(nlohmann::json& json, const uint8_t beam_id) {
     {
