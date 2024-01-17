@@ -1,3 +1,7 @@
+// PTX kernel code for the CUDA upchannelizer
+// This file has been generated automatically by `upchan.jl`.
+// Do not modify this file, your changes will be lost.
+
 // PTX CompilerJob of MethodInstance for upchan(::CuDeviceVector{Int32, 1}, ::CuDeviceVector{Int32, 1}, ::CuDeviceVector{Int32, 1}, ::CuDeviceVector{Int32, 1}, ::CuDeviceVector{Float16x2, 1}, ::CuDeviceVector{Int4x8, 1}, ::CuDeviceVector{Int4x8, 1}, ::CuDeviceVector{Int32, 1}) for sm_86, minthreads=128, blocks_per_sm=8
 
 //

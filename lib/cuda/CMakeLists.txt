@@ -25,8 +25,10 @@ add_library(
     cudaCorrelatorAstron.cpp
     cudaShuffleAstron.cu
     cudaBasebandBeamformer_chord.cpp
+    cudaBasebandBeamformer_hirax.cpp
     cudaBasebandBeamformer_pathfinder.cpp
     cudaFRBBeamformer_chord.cpp
+    cudaFRBBeamformer_pathfinder.cpp
     cudaFRBBeamReformer.cpp
     quantize_kernel_wrapper.cu
     cudaQuantize.cpp

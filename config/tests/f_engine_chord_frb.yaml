@@ -68,7 +68,7 @@ num_samples_per_frame: 2048
 
 # F-Engine simulator: FT (PFB)
 num_taps: 4
-num_frequencies: 256            # how many frequencies to keep
+num_frequencies: 16 * upchannelization_factor # how many frequencies to keep
 num_times: 2064
 
 # Baseband beamformer setup
@@ -188,12 +188,12 @@ gpu:
 
 write_data:
   base_dir: /tmp/f_engine_chord_frb
-  exit_after_n_frames: 1
+  exit_after_n_frames: 10
   exit_with_n_writers: 3
   write_voltage:
     kotekan_stage: asdfFileWrite
     in_buf: host_voltage_buffer
-    file_name: upchan_voltage
+    file_name: voltage
   write_frb_phase:
     kotekan_stage: asdfFileWrite
     in_buf: host_frb_phase_buffer

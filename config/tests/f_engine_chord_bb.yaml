@@ -202,17 +202,17 @@ write_data:
     write_voltage:
         kotekan_stage: asdfFileWrite
         in_buf: host_voltage_buffer
-        file_name: chord_voltage
+        file_name: voltage
     write_bb_phase:
         kotekan_stage: asdfFileWrite
         in_buf: host_bb_phase_buffer
-        file_name: chord_bb_phase
+        file_name: bb_phase
     write_expected_bb_beams:
         kotekan_stage: asdfFileWrite
         in_buf: host_expected_bb_beams_buffer
-        file_name: chord_expected_bb_beams
+        file_name: expected_bb_beams
     write_bb_beams:
         kotekan_stage: asdfFileWrite
         in_buf: host_bb_beams_buffer
-        file_name: chord_bb_beams
+        file_name: bb_beams
 ...

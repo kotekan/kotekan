@@ -60,6 +60,25 @@ setup::Symbol
     const Wd = 4
     const Wp = 1
 
+elseif setup ≡ :hirax
+
+    # HIRAX:
+    const sampling_time_μsec = 2.56
+    const C = 2
+    const T = 32768
+    const D = 256
+    const B = 16                # 8...32
+    const P = 2
+    const F₀ = 64
+    const F = 64                # 84 * 8
+
+    const T1_stride = 128
+    const T2_stride = 32
+
+    const Wb = idiv(B, 8)
+    const Wd = 2
+    const Wp = 1
+
 elseif setup ≡ :pathfinder
 
     # CHORD pathfinder
@@ -78,16 +97,6 @@ elseif setup ≡ :pathfinder
     const Wb = idiv(B, 8)
     const Wd = 1
     const Wp = 2
-
-elseif setup ≡ :hirax
-
-    # HIRAX:
-    const sampling_time_μsec = 2.56μsec
-    const T = 32768
-    #     B = 8...32
-    const D = 256
-    const F₀ = 64
-    const F = 64
 
 else
     @assert false
@@ -268,6 +277,7 @@ function make_bb_kernel()
     dish5 = Dish(:dish, 32, 2)
     dish56 = Dish(:dish, 32, 4)
     dish6 = Dish(:dish, 64, 2)
+    dish7 = Dish(:dish, 128, 2)
     dish78 = Dish(:dish, 128, 4)
 
     beam0 = Beam(:beam, 1, 2)
@@ -278,6 +288,7 @@ function make_bb_kernel()
     beam2 = Beam(:beam, 4, 2)
     beam2etc = Beam(:beam, 4, idiv(B, 4))
     beam3 = Beam(:beam, 8, 2)
+    beam3etc = Beam(:beam, 8, idiv(B, 8))
     beam4etc = Beam(:beam, 16, idiv(B, 16))
 
     time0 = Time(:time, 1, 2)
@@ -424,6 +435,31 @@ function make_bb_kernel()
                 dish23 => Register(:dish, 4, 4),
                 dish456 => Thread(:thread, 1, 8),
                 dish78 => Warp(:warp, 1, Wd),
+                time01 => Thread(:thread, 8, 4),
+                Time(:time, 4, num_time_warps_for_Ecopy) => Warp(:warp, Wd, num_time_warps_for_Ecopy),
+                Time(:time, 4 * num_time_warps_for_Ecopy, num_time_registers_for_Ecopy) =>
+                    Register(:time, 4 * num_time_warps_for_Ecopy, num_time_registers_for_Ecopy),
+                time56 => loopT2,
+                time7etc => loopT1,
+                Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
+                Polr(:polr, 1, P) => Block(:block, Bt, Bp),
+                freq => Block(:block, Bt * Bp, F),
+            ),
+        )
+    elseif D == 256
+        num_time_warps_for_Ecopy = prevpow(2, Wb)
+        num_time_registers_for_Ecopy = idiv(8, num_time_warps_for_Ecopy)
+        num_warps_for_Ecopy = Wd * num_time_warps_for_Ecopy
+        @assert 4 * num_time_warps_for_Ecopy * num_time_registers_for_Ecopy == 32
+        @assert 1 ≤ num_warps_for_Ecopy ≤ 32
+        layout_E_registers = Layout(
+            Dict(
+                int4value => SIMD(:simd, 1, 4),
+                cplx => SIMD(:simd, 4, C),
+                dish01 => SIMD(:simd, 4 * C, 4),
+                dish23 => Register(:dish, 4, 4),
+                dish456 => Thread(:thread, 1, 8),
+                dish7 => Warp(:warp, 1, Wd),
                 time01 => Thread(:thread, 8, 4),
                 Time(:time, 4, num_time_warps_for_Ecopy) => Warp(:warp, Wd, num_time_warps_for_Ecopy),
                 Time(:time, 4 * num_time_warps_for_Ecopy, num_time_registers_for_Ecopy) =>
@@ -604,6 +640,32 @@ function make_bb_kernel()
         permute!(emitter, :A, :A, Register(:cplx, 1, C), SIMD(:simd, 8, 2))
         permute!(emitter, :A, :A, Register(:dish, 8, 2), Thread(:thread, 2, 2))
         permute!(emitter, :A, :A, Register(:dish, 16, 2), Thread(:thread, 4, 2))
+    elseif D == 256
+        layout_A0_registers = Layout(
+            Dict(
+                int8value => SIMD(:simd, 1, 8),
+                cplx => SIMD(:simd, 8, 2),       # want register
+                dish0 => SIMD(:simd, 16, 2),     # want simd3
+                dish1 => Register(:cplx, 1, C),  # want simd4
+                dish2 => Register(:dish, 4, 2),  # final
+                dish34 => Thread(:thread, 2, 4), # want register
+                dish5 => Thread(:thread, 1, 2),  # final
+                dish6 => Register(:dish, 8, 2),  # want thread2
+                dish7 => Warp(:warp, 1, Wd),     # final
+                beam0 => Register(:dish, 16, 2), # want thread4
+                beam12 => Thread(:thread, 8, 4), # final
+                beam3etc => Warp(:warp, Wd, Wb),
+                Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
+                Polr(:polr, Bp, Wp) => Warp(:warp, Wd * Wb, Wp),
+                freq => Block(:block, Bt * P, F),
+            ),
+        )
+
+        load!(emitter, :A => layout_A0_registers, :A_memory => layout_A_memory; align=16)
+        permute!(emitter, :A, :A, Register(:cplx, 1, C), SIMD(:simd, 16, 2))
+        permute!(emitter, :A, :A, Register(:cplx, 1, C), SIMD(:simd, 8, 2))
+        permute!(emitter, :A, :A, Register(:dish, 8, 2), Thread(:thread, 2, 2))
+        permute!(emitter, :A, :A, Register(:dish, 16, 2), Thread(:thread, 4, 2))
     elseif D == 64
         @assert Wd == 1
         layout_A0_registers = Layout(
@@ -774,6 +836,10 @@ function make_bb_kernel()
                 # TODO use add_sat
                 apply!(emitter, :Ju, [:Julo, :Juhi], (Julo, Juhi) -> :($Julo + $Juhi))
                 split!(emitter, [:Julo, :Juhi], :Ju, Dish(:dish, 256, 2))
+                # TODO use add_sat
+                apply!(emitter, :J, [:Julo, :Juhi], (Julo, Juhi) -> :($Julo + $Juhi))
+            elseif D == 256
+                split!(emitter, [:Julo, :Juhi], :Ju, Dish(:dish, 128, 2))
                 # TODO use add_sat
                 apply!(emitter, :J, [:Julo, :Juhi], (Julo, Juhi) -> :($Julo + $Juhi))
             elseif D == 64

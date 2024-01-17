@@ -5,7 +5,7 @@ set -euxo pipefail
 scriptdir=$(dirname "$0")
 cd "$scriptdir/.."
 
-setups='pathfinder chord'
+setups='chord hirax pathfinder'
 
 # Delete previous output (so that we don't accidentally re-use it)
 for setup in $setups; do

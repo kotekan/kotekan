@@ -1,3 +1,7 @@
+# Julia source code for the CUDA upchannelizer
+# This file has been generated automatically by `upchan.jl`.
+# Do not modify this file, your changes will be lost.
+
 @fastmath @inbounds(
     begin #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:1388 =#
         info = 1
