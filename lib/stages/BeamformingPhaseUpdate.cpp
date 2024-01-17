@@ -39,6 +39,13 @@ STAGE_CONSTRUCTOR(BeamformingPhaseUpdate) {
     feed_locations =
         config.get<std::vector<std::pair<double, double>>>(unique_name, "feed_positions");
 
+    // listen for UT1_UTC offset
+    std::string UT1_UTC =
+        config.get_default<std::string>(unique_name, "updatable_config/UT1_UTC", "");
+    if (UT1_UTC.length() > 0)
+        kotekan::configUpdater::instance().subscribe(
+            UT1_UTC, std::bind(&BeamformingPhaseUpdate::update_UT1_UTC_offset, this, _1));
+
     // Register function to listen for new beam, and update ra and dec
     using namespace std::placeholders;
     for (int beam_id = 0; beam_id < _num_beams; beam_id++) {
@@ -78,6 +85,20 @@ bool BeamformingPhaseUpdate::tracking_update_callback(nlohmann::json& json, cons
         INFO("[tracking] Updated Beam={:d} RA={:.2f} Dec={:.2f} Scl={:d}", beam_id,
              _beam_coord.ra[beam_id], _beam_coord.dec[beam_id], _beam_coord.scaling[beam_id]);
     }
+    return true;
+}
+
+bool BeamformingPhaseUpdate::update_UT1_UTC_offset(nlohmann::json& json) {
+    
+    try {
+        _beam_coord.UT1_UTC = json.at("UT1_UTC_val").get<float>();
+    } catch (std::exception& e) {
+        WARN("[FRB] Fail to read UT1_UTC offset {:s}", e.what());
+        return false;
+    }
+    
+    cond_var.notify_all();
+
     return true;
 }
 
