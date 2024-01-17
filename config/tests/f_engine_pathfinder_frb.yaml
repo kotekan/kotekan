@@ -130,7 +130,7 @@ host_frb_intensity_buffer:
 # Stages
 gen_voltage:
     kotekan_stage: FEngine
-    num_frames: 1
+    num_frames: 10
     E_buffer: host_voltage_buffer
     A_buffer: host_bb_phase_buffer
     J_buffer: host_expected_bb_beams_buffer
