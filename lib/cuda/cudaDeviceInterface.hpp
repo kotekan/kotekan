@@ -27,8 +27,13 @@
  */
 class cudaDeviceInterface final : public gpuDeviceInterface {
 public:
-    cudaDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id,
-                        int gpu_buffer_depth);
+    /**
+     * @brief Get/create a cudaDeviceInterface for the given gpu_id.
+     */
+    static std::shared_ptr<cudaDeviceInterface> get(int32_t gpu_id, const std::string& name,
+                                                    kotekan::Config& config);
+
+    cudaDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id);
     ~cudaDeviceInterface();
 
     void prepareStreams(uint32_t num_streams);
@@ -88,14 +93,18 @@ public:
     // Map containing the runtime kernels built with nvrtc from the kernel file (if needed)
     std::map<std::string, CUfunction> runtime_kernels;
 
+    // Mutex for queuing GPU commands
+    std::recursive_mutex gpu_command_mutex;
+
 protected:
     void* alloc_gpu_memory(size_t len) override;
     void free_gpu_memory(void*) override;
 
-    // Extra data
+    // Cuda Streams
     std::vector<cudaStream_t> streams;
 
-private:
+    // Singleton dictionary
+    static std::map<int, std::shared_ptr<cudaDeviceInterface>> inst_map;
 };
 
 #endif // CUDA_DEVICE_INTERFACE_H

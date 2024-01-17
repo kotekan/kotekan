@@ -53,7 +53,7 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
         Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name)),
     bytes_written_metric(
         Metrics::instance().add_counter("kotekan_writer_bytes_total", unique_name)) {
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 }
 
 
@@ -66,7 +66,7 @@ void BasebandWriter::main_thread() {
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, frame_id) == nullptr) {
             break;
         }
 
@@ -102,7 +102,7 @@ void BasebandWriter::main_thread() {
         }
 
         // Mark the buffer and move on
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+        in_buf->mark_frame_empty(unique_name, frame_id++);
     }
 
     stop_closing.notify_one();

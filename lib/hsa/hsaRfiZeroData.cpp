@@ -76,8 +76,10 @@ hsa_signal_t hsaRfiZeroData::execute(int gpu_frame_id, hsa_signal_t precede_sign
     // Initialize arguments
     memset(&args, 0, sizeof(args));
     // Set argumnets to correct values
-    args.input = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
-    args.mask = device.get_gpu_memory_array("rfi_mask_output", gpu_frame_id, mask_len);
+    args.input =
+        device.get_gpu_memory_array("input", gpu_frame_id, _gpu_buffer_depth, input_frame_len);
+    args.mask =
+        device.get_gpu_memory_array("rfi_mask_output", gpu_frame_id, _gpu_buffer_depth, mask_len);
     args.sk_step = _sk_step;
     args.rfi_zero_flag = (uint32_t)_rfi_zeroing;
     // Allocate the kernel argument buffer from the correct region.

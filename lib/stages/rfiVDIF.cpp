@@ -32,8 +32,8 @@ rfiVDIF::rfiVDIF(Config& config, const std::string& unique_name,
     buf_in = get_buffer("vdif_in");
     buf_out = get_buffer("rfi_out");
     // Register stage as consumer and producer
-    register_consumer(buf_in, unique_name.c_str());
-    register_producer(buf_out, unique_name.c_str());
+    buf_in->register_consumer(unique_name);
+    buf_out->register_producer(unique_name);
 
     // General data paramters
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
@@ -81,7 +81,7 @@ void rfiVDIF::main_thread() {
     // Endless Loop
     while (!stop_thread) {
         // Get a new frame
-        in_frame = wait_for_full_frame(buf_in, unique_name.c_str(), frame_in_id);
+        in_frame = buf_in->wait_for_full_frame(unique_name, frame_in_id);
         if (in_frame == nullptr)
             break;
         // Start timer
@@ -166,14 +166,14 @@ void rfiVDIF::main_thread() {
             }
         }
         // Wait for output frame
-        out_frame = wait_for_empty_frame(buf_out, unique_name.c_str(), frame_out_id);
+        out_frame = buf_out->wait_for_empty_frame(unique_name, frame_out_id);
         if (out_frame == nullptr)
             break;
         // Copy results to output frame
         memcpy(out_frame, RFI_Buffer, RFI_Buffer_Size * sizeof(float));
         // Mark output frame full and input frame empty
-        mark_frame_full(buf_out, unique_name.c_str(), frame_out_id);
-        mark_frame_empty(buf_in, unique_name.c_str(), frame_in_id);
+        buf_out->mark_frame_full(unique_name, frame_out_id);
+        buf_in->mark_frame_empty(unique_name, frame_in_id);
         // Move forward one frame
         frame_out_id = (frame_out_id + 1) % buf_out->num_frames;
         frame_in_id = (frame_in_id + 1) % buf_in->num_frames;

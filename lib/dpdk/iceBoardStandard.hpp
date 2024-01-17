@@ -97,13 +97,13 @@ iceBoardStandard::iceBoardStandard(kotekan::Config& config, const std::string& u
     DEBUG("iceBoardStandard: {:s}", unique_name);
 
     out_buf = buffer_container.get_buffer(config.get<std::string>(unique_name, "out_buf"));
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     lost_samples_buf =
         buffer_container.get_buffer(config.get<std::string>(unique_name, "lost_samples_buf"));
-    register_producer(lost_samples_buf, unique_name.c_str());
+    lost_samples_buf->register_producer(unique_name);
     // We want to make sure the flag buffers are zeroed between uses.
-    zero_frames(lost_samples_buf);
+    lost_samples_buf->zero_frames();
 
     fpga_dataset = config.get_default<dset_id_t>("/fpga_dataset", "id", dset_id_t::null);
 
@@ -171,11 +171,11 @@ inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
 
     // Advance the frame
     if (!first_time) {
-        mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
+        out_buf->mark_frame_full(unique_name, out_frame_id);
         out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
 
         // Advance the lost samples frame
-        mark_frame_full(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
+        lost_samples_buf->mark_frame_full(unique_name, lost_samples_frame_id);
         lost_samples_frame_id = (lost_samples_frame_id + 1) % lost_samples_buf->num_frames;
     }
 
@@ -186,18 +186,17 @@ inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
     }
 
     // Get new output frame
-    out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+    out_frame = out_buf->wait_for_empty_frame(unique_name, out_frame_id);
     if (out_frame == nullptr)
         return false;
 
     // Get new lost samples frame
-    lost_samples_frame =
-        wait_for_empty_frame(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
+    lost_samples_frame = lost_samples_buf->wait_for_empty_frame(unique_name, lost_samples_frame_id);
     if (lost_samples_frame == nullptr)
         return false;
 
     // Set metadata values.
-    allocate_new_metadata_object(out_buf, out_frame_id);
+    out_buf->allocate_new_metadata_object(out_frame_id);
 
     set_first_packet_recv_time(out_buf, out_frame_id, now);
 

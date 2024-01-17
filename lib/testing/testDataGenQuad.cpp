@@ -32,7 +32,7 @@ testDataGenQuad::testDataGenQuad(Config& config, const std::string& unique_name,
     buf[2] = get_buffer("out_buf2");
     buf[3] = get_buffer("out_buf3");
     for (int i = 0; i < 4; i++)
-        register_producer(buf[i], unique_name.c_str());
+        buf[i]->register_producer(unique_name);
 
     type = config.get<std::string>(unique_name, "type");
     if (type == "const")
@@ -56,11 +56,11 @@ void testDataGenQuad::main_thread() {
         for (int f = 0; f < buf[0]->num_frames; f++) {
             uint8_t v = value[f % value.size()];
 
-            frame[b] = wait_for_empty_frame(buf[b], unique_name.c_str(), f);
+            frame[b] = buf[b]->wait_for_empty_frame(unique_name, f);
             if (frame[b] == nullptr)
                 break;
 
-            allocate_new_metadata_object(buf[b], f);
+            buf[b]->allocate_new_metadata_object(f);
             set_fpga_seq_num(buf[b], f, seq_num);
             // TODO This should be dynamic/config controlled.
             set_stream_id(buf[b], f, {0});
@@ -73,7 +73,7 @@ void testDataGenQuad::main_thread() {
 
     // mark the first one full to kick things off
     for (int b = 0; b < 4; b++)
-        mark_frame_full(buf[b], unique_name.c_str(), 0);
+        buf[b]->mark_frame_full(unique_name, 0);
     INFO("Seeded!");
 
 
@@ -81,14 +81,14 @@ void testDataGenQuad::main_thread() {
         INFO("Next seed!");
 
         for (int i = 0; i < 4; i++) {
-            frame[i] = wait_for_empty_frame(buf[i], unique_name.c_str(), frame_id);
+            frame[i] = buf[i]->wait_for_empty_frame(unique_name, frame_id);
             if (frame[i] == nullptr)
                 break;
         }
 
         gettimeofday(&now, nullptr);
         for (int i = 0; i < 4; i++) {
-            allocate_new_metadata_object(buf[i], frame_id);
+            buf[i]->allocate_new_metadata_object(frame_id);
             set_fpga_seq_num(buf[i], frame_id, seq_num);
             // TODO This should be dynamic/config controlled.
             set_stream_id(buf[i], frame_id, {0});
@@ -101,7 +101,7 @@ void testDataGenQuad::main_thread() {
 
         for (int i = 0; i < 4; i++) {
             INFO("Skipped a {:s} test data set in {:s}[{:d}]", type, buf[i]->buffer_name, frame_id);
-            mark_frame_full(buf[i], unique_name.c_str(), frame_id);
+            buf[i]->mark_frame_full(unique_name, frame_id);
         }
 
         frame_id = (frame_id + 1) % buf[0]->num_frames;

@@ -33,9 +33,9 @@ hsaOutputData::hsaOutputData(Config& config, const std::string& unique_name,
     static_unique_name = fmt::format(fmt("hsa_output_static_{:d}"), device.get_gpu_id());
 
     if (_sub_frame_index == 0) {
-        register_consumer(network_buffer, static_unique_name.c_str());
-        register_producer(output_buffer, static_unique_name.c_str());
-        register_consumer(lost_samples_buf, static_unique_name.c_str());
+        network_buffer->register_consumer(static_unique_name);
+        output_buffer->register_producer(static_unique_name);
+        lost_samples_buf->register_consumer(static_unique_name);
     }
 
     network_buffer_id = 0;
@@ -54,19 +54,19 @@ hsaOutputData::~hsaOutputData() {}
 int hsaOutputData::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     // We want to make sure we have some space to put our results.
-    uint8_t* frame = wait_for_empty_frame(output_buffer, static_unique_name.c_str(),
-                                          output_buffer_precondition_id);
+    uint8_t* frame =
+        output_buffer->wait_for_empty_frame(static_unique_name, output_buffer_precondition_id);
     if (frame == nullptr)
         return -1;
     output_buffer_precondition_id =
         (output_buffer_precondition_id + _num_sub_frames) % output_buffer->num_frames;
     if (_sub_frame_index == 0) {
-        frame = wait_for_full_frame(network_buffer, static_unique_name.c_str(),
-                                    network_buffer_precondition_id);
+        frame =
+            network_buffer->wait_for_full_frame(static_unique_name, network_buffer_precondition_id);
         if (frame == nullptr)
             return -1;
-        frame = wait_for_full_frame(lost_samples_buf, static_unique_name.c_str(),
-                                    lost_samples_buf_precondition_id);
+        frame = lost_samples_buf->wait_for_full_frame(static_unique_name,
+                                                      lost_samples_buf_precondition_id);
         if (frame == nullptr)
             return -1;
         network_buffer_precondition_id =
@@ -80,8 +80,9 @@ int hsaOutputData::wait_on_precondition(int gpu_frame_id) {
 
 hsa_signal_t hsaOutputData::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
-    void* gpu_output_ptr = device.get_gpu_memory_array(
-        fmt::format(fmt("corr_{:d}"), _sub_frame_index), gpu_frame_id, output_buffer->frame_size);
+    void* gpu_output_ptr =
+        device.get_gpu_memory_array(fmt::format(fmt("corr_{:d}"), _sub_frame_index), gpu_frame_id,
+                                    _gpu_buffer_depth, output_buffer->frame_size);
 
     void* host_output_ptr = (void*)output_buffer->frames[output_buffer_excute_id];
 
@@ -100,11 +101,11 @@ void hsaOutputData::finalize_frame(int frame_id) {
 
     auto& tel = Telescope::instance();
 
-    allocate_new_metadata_object(output_buffer, output_buffer_id);
+    output_buffer->allocate_new_metadata_object(output_buffer_id);
 
     // We make a new copy of the metadata since there are now
     // _num_sub_frames output frames for each input frame.
-    copy_metadata(network_buffer, network_buffer_id, output_buffer, output_buffer_id);
+    network_buffer->copy_metadata(network_buffer_id, output_buffer, output_buffer_id);
 
     // Adjust the time stamps
 
@@ -138,12 +139,12 @@ void hsaOutputData::finalize_frame(int frame_id) {
     atomic_add_lost_timesamples(output_buffer, output_buffer_id, num_sum_frame_lost_samples);
 
     // Mark the output buffer as full, so it can be processed.
-    mark_frame_full(output_buffer, static_unique_name.c_str(), output_buffer_id);
+    output_buffer->mark_frame_full(static_unique_name, output_buffer_id);
 
     if ((_sub_frame_index + 1) == _num_sub_frames) {
         // Mark the input buffer as "empty" so that it can be reused.
-        mark_frame_empty(network_buffer, static_unique_name.c_str(), network_buffer_id);
-        mark_frame_empty(lost_samples_buf, static_unique_name.c_str(), lost_samples_buf_id);
+        network_buffer->mark_frame_empty(static_unique_name, network_buffer_id);
+        lost_samples_buf->mark_frame_empty(static_unique_name, lost_samples_buf_id);
     }
 
     network_buffer_id = (network_buffer_id + 1) % network_buffer->num_frames;

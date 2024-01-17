@@ -2,20 +2,31 @@
     begin #= /home/eschnett/src/kotekan/julia/kernels/xpose.jl:277 =#
         info = 1
         if true
-            info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 16) % 16) * 32 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 128) % 128) % 128) * 512) + 0) + 0x01] =
+            info_memory[(((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 16) % 16) * 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 128) % 128) % 128) * 512) + 0) + 0x01] =
                 info
         end
         for loop in 0:1:255
             (Ein_register0, Ein_register1, Ein_register2, Ein_register3) = IndexSpaces.unsafe_load4_global(
                 Ein_memory,
                 (
-                    ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 128) % 128) % 128) * 512 +
                     (
                         (
-                            (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 2) * 16 +
-                            ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 16) % 2) * 8
+                            (
+                                (
+                                    ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 2) % 8) * 2 +
+                                    ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) ÷ 2) % 8) * 4096
+                                ) + (IndexSpaces.assume_inrange(loop, 0, 1, 256) % 256) * 16
+                            ) ÷ 16
+                        ) % 2048
+                    ) * 65536 +
+                    (
+                        (
+                            ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 16) % 2) * 8 +
+                            (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 2) * 16
                         ) ÷ 4
                     ) % 2 +
+                    ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 2) % 2) * 256 +
+                    ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 128) % 128) % 128) * 512 +
                     (
                         (
                             (
@@ -27,19 +38,8 @@
                     (
                         (
                             (
-                                (
-                                    ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 2) % 8) * 2 +
-                                    ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) ÷ 2) % 8) * 4096
-                                ) + (IndexSpaces.assume_inrange(loop, 0, 1, 256) % 256) * 16
-                            ) ÷ 16
-                        ) % 2048
-                    ) * 65536 +
-                    ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 2) % 2) * 256 +
-                    (
-                        (
-                            (
-                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 2) * 16 +
-                                ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 16) % 2) * 8
+                                ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 16) % 2) * 8 +
+                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 2) * 16
                             ) ÷ 8
                         ) % 8
                     ) * 32
@@ -48,15 +48,24 @@
             (Ein_register4, Ein_register5, Ein_register6, Ein_register7) = IndexSpaces.unsafe_load4_global(
                 Ein_memory,
                 (
-                    ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 128) % 128) % 128) * 512 +
                     (
                         (
                             (
-                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 2) * 16 +
-                                ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 16) % 2) * 8
-                            ) + 32
+                                (
+                                    ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 2) % 8) * 2 +
+                                    ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) ÷ 2) % 8) * 4096
+                                ) + (IndexSpaces.assume_inrange(loop, 0, 1, 256) % 256) * 16
+                            ) ÷ 16
+                        ) % 2048
+                    ) * 65536 +
+                    (
+                        (
+                            (32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 16) % 2) * 8) +
+                            (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 2) * 16
                         ) ÷ 4
                     ) % 2 +
+                    ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 2) % 2) * 256 +
+                    ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 128) % 128) % 128) * 512 +
                     (
                         (
                             (
@@ -68,21 +77,8 @@
                     (
                         (
                             (
-                                (
-                                    ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 2) % 8) * 2 +
-                                    ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) ÷ 2) % 8) * 4096
-                                ) + (IndexSpaces.assume_inrange(loop, 0, 1, 256) % 256) * 16
-                            ) ÷ 16
-                        ) % 2048
-                    ) * 65536 +
-                    ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 2) % 2) * 256 +
-                    (
-                        (
-                            (
-                                (
-                                    (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 2) * 16 +
-                                    ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 16) % 2) * 8
-                                ) + 32
+                                (32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 16) % 2) * 8) +
+                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 2) * 16
                             ) ÷ 8
                         ) % 8
                     ) * 32
@@ -199,19 +195,19 @@
                     Eout_memory,
                     (
                         (
-                            ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 128) % 128) % 128) * 32 +
-                            (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 4) * 16) ÷ 4) % 16 +
-                            ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 2) % 2) * 16 +
                             (
                                 (
                                     (
                                         (
-                                            ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) ÷ 2) % 8) * 4096 +
-                                            (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 16) % 2
-                                        ) + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 4) % 4) * 4
-                                    ) + (IndexSpaces.assume_inrange(loop, 0, 1, 256) % 256) * 16
+                                            ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 4) % 4) * 4 +
+                                            ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) ÷ 2) % 8) * 4096
+                                        ) + (IndexSpaces.assume_inrange(loop, 0, 1, 256) % 256) * 16
+                                    ) + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 16) % 2
                                 ) % 32768
-                            ) * 4096
+                            ) * 4096 +
+                            (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 4) * 16) ÷ 4) % 16 +
+                            ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 2) % 2) * 16 +
+                            ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 128) % 128) % 128) * 32
                         ) + 0
                     ) + 0x01,
                     (Eout_register0, Eout_register1, Eout_register2, Eout_register3),
@@ -222,21 +218,21 @@
                     Eout_memory,
                     (
                         (
-                            ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 128) % 128) % 128) * 32 +
-                            (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 4) * 16) ÷ 4) % 16 +
-                            ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 2) % 2) * 16 +
                             (
                                 (
                                     (
                                         (
                                             (
-                                                ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) ÷ 2) % 8) * 4096 +
-                                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 16) % 2
-                                            ) + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 4) % 4) * 4
-                                        ) + 2
-                                    ) + (IndexSpaces.assume_inrange(loop, 0, 1, 256) % 256) * 16
+                                                ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 4) % 4) * 4 +
+                                                ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) ÷ 2) % 8) * 4096
+                                            ) + 2
+                                        ) + (IndexSpaces.assume_inrange(loop, 0, 1, 256) % 256) * 16
+                                    ) + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 16) % 2
                                 ) % 32768
-                            ) * 4096
+                            ) * 4096 +
+                            (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 4) * 16) ÷ 4) % 16 +
+                            ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 2) % 2) * 16 +
+                            ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 128) % 128) % 128) * 32
                         ) + 0
                     ) + 0x01,
                     (Eout_register4, Eout_register5, Eout_register6, Eout_register7),
@@ -245,7 +241,7 @@
         end
         info = 0
         if true
-            info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 16) % 16) * 32 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 128) % 128) % 128) * 512) + 0) + 0x01] =
+            info_memory[(((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 16) % 16) * 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 128) % 128) % 128) * 512) + 0) + 0x01] =
                 info
         end
     end

@@ -73,7 +73,7 @@ inline captureHandler::captureHandler(kotekan::Config& config, const std::string
     dpdkRXhandler(config, unique_name, buffer_container, port) {
 
     out_buf = buffer_container.get_buffer(config.get<std::string>(unique_name, "out_buf"));
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     packet_size = config.get<uint32_t>(unique_name, "packet_size");
 
@@ -96,7 +96,7 @@ inline int captureHandler::handle_packet(struct rte_mbuf* mbuf) {
 
     // Get the first frame.
     if (first_run) {
-        out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+        out_frame = out_buf->wait_for_empty_frame(unique_name, out_frame_id);
         if (out_frame == nullptr)
             return -1;
         first_run = false;
@@ -134,10 +134,10 @@ inline int captureHandler::handle_packet(struct rte_mbuf* mbuf) {
     packet_location++;
 
     if (packet_location * packet_size == (uint32_t)out_buf->frame_size) {
-        mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
+        out_buf->mark_frame_full(unique_name, out_frame_id);
         out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
 
-        out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+        out_frame = out_buf->wait_for_empty_frame(unique_name, out_frame_id);
         if (out_frame == nullptr)
             return -1;
 

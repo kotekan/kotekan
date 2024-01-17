@@ -212,10 +212,14 @@ cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
 
     pre_execute();
 
-    void* const S_memory = device.get_gpu_memory_array(S_memname, gpu_frame_id, S_length);
-    void* const W_memory = device.get_gpu_memory_array(W_memname, gpu_frame_id, W_length);
-    void* const E_memory = device.get_gpu_memory_array(E_memname, gpu_frame_id, E_length);
-    void* const I_memory = device.get_gpu_memory_array(I_memname, gpu_frame_id, I_length);
+    void* const S_memory =
+        device.get_gpu_memory_array(S_memname, gpu_frame_id, _gpu_buffer_depth, S_length);
+    void* const W_memory =
+        device.get_gpu_memory_array(W_memname, gpu_frame_id, _gpu_buffer_depth, W_length);
+    void* const E_memory =
+        device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
+    void* const I_memory =
+        device.get_gpu_memory_array(I_memname, gpu_frame_id, _gpu_buffer_depth, I_length);
     info_host.at(gpu_frame_index).resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 

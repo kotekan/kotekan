@@ -55,9 +55,9 @@ ensureOrdered::ensureOrdered(Config& config, const std::string& unique_name,
 
     // Get the list of buffers that this stage should connect to
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 }
 
 bool ensureOrdered::get_dataset_state(dset_id_t ds_id) {
@@ -110,7 +110,7 @@ void ensureOrdered::main_thread() {
     uint32_t first_ind = 0;
     while (true) {
         // Wait for a frame in the input buffer in order to get the dataset ID
-        if ((wait_for_full_frame(in_buf, unique_name.c_str(), first_ind)) == nullptr) {
+        if ((in_buf->wait_for_full_frame(unique_name, first_ind)) == nullptr) {
             return;
         }
         auto frame = VisFrameView(in_buf, first_ind);
@@ -135,7 +135,7 @@ void ensureOrdered::main_thread() {
     // main loop:
     while (!stop_thread) {
         // Wait for a full frame in the input buffer
-        if ((wait_for_full_frame(in_buf, unique_name.c_str(), frame_id)) == nullptr) {
+        if ((in_buf->wait_for_full_frame(unique_name, frame_id)) == nullptr) {
             break;
         }
         auto frame = VisFrameView(in_buf, frame_id);
@@ -149,15 +149,15 @@ void ensureOrdered::main_thread() {
         // Check if this is the index we are ready to send
         if (ordered_ind == output_ind) {
             // copy frame into output buffer
-            if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
+            if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
                 return;
             }
             auto output_frame =
                 VisFrameView::copy_frame(in_buf, frame_id, out_buf, output_frame_id);
-            mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
+            out_buf->mark_frame_full(unique_name, output_frame_id++);
 
             // release input frame
-            mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+            in_buf->mark_frame_empty(unique_name, frame_id++);
 
             // increment output index
             output_ind++;
@@ -181,14 +181,14 @@ void ensureOrdered::main_thread() {
             INFO("Frame {:d} is ready to be sent. Releasing buffer.", output_ind);
             // copy frame into output buffer
             auto past_frame = VisFrameView(in_buf, waiting_id);
-            if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
+            if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
                 return;
             }
             auto output_frame =
                 VisFrameView::copy_frame(in_buf, waiting_id, out_buf, output_frame_id);
-            mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
+            out_buf->mark_frame_full(unique_name, output_frame_id++);
 
-            mark_frame_empty(in_buf, unique_name.c_str(), waiting_id);
+            in_buf->mark_frame_empty(unique_name, waiting_id);
             output_ind++;
 
             ready = waiting.find(output_ind);
