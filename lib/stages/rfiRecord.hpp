@@ -50,7 +50,7 @@ public:
 
 private:
     /// Kotekan buffer containing kurtosis estimates
-    struct Buffer* rfi_buf;
+    Buffer* rfi_buf;
     /// Number of samples in each input frame.
     uint32_t _samples_per_data_set;
     /// How many frames to write into the file befor starting a newone.

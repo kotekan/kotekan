@@ -43,7 +43,7 @@ public:
 
 private:
     /// Input kotekanBuffer.
-    struct Buffer* in_buf;
+    Buffer* in_buf;
 };
 
 #endif

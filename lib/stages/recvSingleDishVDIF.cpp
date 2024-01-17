@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, mark_frame_full, register_producer, wait_for_empt...
+#include "buffer.hpp"          // for Buffer, mark_frame_full, register_producer, wait_for_empt...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for INFO
 
@@ -10,6 +10,7 @@
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <regex>      // for match_results<>::_Base_type
+#include <stddef.h>   // for size_t
 #include <vector>     // for vector
 
 
@@ -55,7 +56,7 @@ void recvSingleDishVDIF::main_thread() {
 
         // Send data to remote server.
         // TODO rate limit this output
-        for (int i = 0; i < out_buf->frame_size / packet_size; ++i) {
+        for (size_t i = 0; i < out_buf->frame_size / packet_size; ++i) {
             /*
                         int bytes_recvd = sendto(socket_fd,
                                          (void *)&frame[packet_size*i],

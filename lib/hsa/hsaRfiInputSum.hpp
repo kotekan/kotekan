@@ -7,7 +7,7 @@
 #define HSA_RFI_INPUT_SUM_H
 
 #include "Config.hpp"             // for Config
-#include "buffer.h"               // for Buffer
+#include "buffer.hpp"             // for Buffer
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "hsa/hsa.h"              // for hsa_signal_t
 #include "hsaCommand.hpp"         // for hsaCommand
@@ -89,20 +89,20 @@ private:
     int32_t _network_buf_precondition_id;
 
     /// Length of the input frame, should be sizeof_float x n_elem x n_freq x nsamp / sk_step
-    uint32_t input_frame_len;
+    size_t input_frame_len;
     /// Length of the output frame, should be sizeof_float x n_freq x nsamp / sk_step
-    uint32_t output_frame_len;
+    size_t output_frame_len;
     /// Length of the input variance frame, should be sizeof_float x n_elem x n_freq x nsamp /
     /// sk_step
-    uint32_t input_var_frame_len;
+    size_t input_var_frame_len;
     /// Length of the output frame, should be sizeof_float x n_freq x nsamp / sk_step
-    uint32_t output_var_frame_len;
+    size_t output_var_frame_len;
     /// Length of the input mask, should be sizeof_uchar x n_elem
-    uint32_t input_mask_len;
+    size_t input_mask_len;
     /// Length of the output mask, should be sizeof_uchar x n_freq x nsamp / sk_step
-    uint32_t output_mask_len;
+    size_t output_mask_len;
     /// Length of lost sample correction frame
-    uint32_t correction_frame_len;
+    size_t correction_frame_len;
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;
     /// Number of frequencies per GPU (1 for CHIME or 8 for Pathfinder)

@@ -19,9 +19,10 @@ void error_callback(hsa_status_t status, hsa_queue_t* queue, void* data) {
                 message);
 }
 
-hsaDeviceInterface::hsaDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_buffer_depth_,
+hsaDeviceInterface::hsaDeviceInterface(Config& config_, const std::string& unique_name,
+                                       int32_t gpu_id_, int gpu_buffer_depth_,
                                        uint32_t numa_node_) :
-    gpuDeviceInterface(config_, gpu_id_, gpu_buffer_depth_) {
+    gpuDeviceInterface(config_, unique_name, gpu_id_, gpu_buffer_depth_) {
 
     numa_node = numa_node_;
 
@@ -86,7 +87,7 @@ hsaDeviceInterface::~hsaDeviceInterface() {
     HSA_CHECK(hsa_status);
 }
 
-void* hsaDeviceInterface::alloc_gpu_memory(int len) {
+void* hsaDeviceInterface::alloc_gpu_memory(size_t len) {
     void* ptr;
     hsa_status_t hsa_status = hsa_amd_memory_pool_allocate(global_region, len, 0, &ptr);
     HSA_CHECK(hsa_status);

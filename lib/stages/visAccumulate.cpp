@@ -4,7 +4,7 @@
 #include "Hash.hpp"              // for operator!=
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"         // for Telescope
-#include "buffer.h"              // for register_producer, Buffer, allocate_new_metadata_object
+#include "buffer.hpp"            // for register_producer, Buffer, allocate_new_metadata_object
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chimeMetadata.hpp"     // for chimeMetadata, get_dataset_id, get_fpga_seq_num, get_lo...
 #include "configUpdater.hpp"     // for configUpdater
@@ -633,8 +633,4 @@ bool visAccumulate::reset_state(visAccumulate::internalState& state, timespec t)
 visAccumulate::internalState::internalState(Buffer* out_buf, std::unique_ptr<gateSpec> gate_spec,
                                             size_t nprod) :
     buf(out_buf),
-    frame_id(buf),
-    spec(std::move(gate_spec)),
-    changed(true),
-    vis1(2 * nprod),
-    vis2(nprod) {}
+    frame_id(buf), spec(std::move(gate_spec)), changed(true), vis1(2 * nprod), vis2(nprod) {}

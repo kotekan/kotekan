@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "buffer.hpp"          // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for CHECK_MEM, WARN
 #include "restServer.hpp"      // for restServer, connectionInstance
@@ -42,7 +42,7 @@ restInspectFrame::restInspectFrame(Config& config, const std::string& unique_nam
 
     if (len == 0) {
         len = in_buf->frame_size;
-    } else if (len > in_buf->frame_size) {
+    } else if ((size_t)len > in_buf->frame_size) {
         WARN("Requested len ({:d}) is greater than the frame_size ({:d}).", len,
              in_buf->frame_size);
         len = in_buf->frame_size;

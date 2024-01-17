@@ -3,7 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"         // for Telescope
-#include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "buffer.hpp"            // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chimeMetadata.hpp"     // for stream_t, get_fpga_seq_num, get_stream_id
 #include "kotekanLogging.hpp"    // for ERROR, DEBUG, INFO

@@ -3,7 +3,7 @@
 #include "Config.hpp"       // for Config
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"
-#include "buffer.h"            // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "buffer.hpp"          // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for ERROR, INFO
 
@@ -405,7 +405,7 @@ void gpuBeamformSimulate::main_thread() {
 
         // Unpack and pad the input data
         int dest_idx = 0;
-        for (int i = 0; i < input_buf->frame_size; ++i) {
+        for (size_t i = 0; i < input_buf->frame_size; ++i) {
             input_unpacked[dest_idx++] = HI_NIBBLE(input[i]) - 8;
             input_unpacked[dest_idx++] = LO_NIBBLE(input[i]) - 8;
         }

@@ -3,7 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"         // for Telescope
-#include "buffer.h"              // for Buffer, mark_frame_empty, wait_for_full_frame, register...
+#include "buffer.hpp"            // for Buffer, mark_frame_empty, wait_for_full_frame, register...
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chimeMetadata.hpp"     // for get_fpga_seq_num
 #include "kotekanLogging.hpp"    // for DEBUG, INFO
@@ -64,7 +64,7 @@ frbPostProcess::frbPostProcess(Config& config_, const std::string& unique_name,
     udp_packet_size =
         _nbeams * _num_gpus * _factor_upchan_out * _timesamples_per_frb_packet + udp_header_size;
 
-    in_buf = (struct Buffer**)malloc(_num_gpus * sizeof(struct Buffer*));
+    in_buf = (Buffer**)malloc(_num_gpus * sizeof(Buffer*));
     for (int i = 0; i < _num_gpus; ++i) {
         in_buf[i] = get_buffer(fmt::format(fmt("in_buf_{:d}"), i));
         register_consumer(in_buf[i], unique_name.c_str());

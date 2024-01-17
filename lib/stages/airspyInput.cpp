@@ -56,7 +56,7 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
     pthread_mutex_lock(&recv_busy);
 
     void* in = transfer->samples;
-    int bt = transfer->sample_count * BYTES_PER_SAMPLE;
+    size_t bt = transfer->sample_count * BYTES_PER_SAMPLE;
     while (bt > 0) {
         if (frame_loc == 0) {
             DEBUG("Airspy waiting for frame_id {:d}", frame_id);
@@ -65,7 +65,7 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
                 break;
         }
 
-        int copy_length = bt < buf->frame_size ? bt : buf->frame_size;
+        size_t copy_length = bt < buf->frame_size ? bt : buf->frame_size;
         DEBUG("Filling Buffer {:d} With {:d} Data Samples", frame_id, copy_length / 2 / 2);
         // FILL THE BUFFER
         memcpy(frame_ptr + frame_loc, in, copy_length);

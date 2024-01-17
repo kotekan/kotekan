@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "buffer.hpp"          // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for ERROR, INFO
 #include "restServer.hpp"      // for connectionInstance, restServer, HTTP_RESPONSE, HTTP_RESPO...
@@ -135,7 +135,7 @@ void fullPacketDump::main_thread() {
 
             ssize_t bytes_writen = write(fd, frame, buf->frame_size);
 
-            if (bytes_writen != buf->frame_size) {
+            if ((size_t)bytes_writen != buf->frame_size) {
                 ERROR("Failed to write buffer to disk!!!  Abort, Panic, etc.");
                 exit(-1);
             }

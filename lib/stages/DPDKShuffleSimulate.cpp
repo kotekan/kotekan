@@ -4,7 +4,7 @@
 #include "ICETelescope.hpp"    // for ice_stream_id_t, ice_encode_stream_id
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"       // for Telescope
-#include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "buffer.hpp"          // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
 #include "kotekanLogging.hpp"  // for DEBUG, INFO
@@ -17,6 +17,7 @@
 #include <cstdint>    // for int32_t
 #include <exception>  // for exception
 #include <regex>      // for match_results<>::_Base_type
+#include <stddef.h>   // for size_t
 #include <sys/time.h> // for gettimeofday, timeval
 #include <unistd.h>   // for sleep, usleep
 #include <vector>     // for vector
@@ -77,7 +78,7 @@ void DPDKShuffleSimulate::main_thread() {
 
         // Set contents for lost samples buffer
         for (uint32_t sample = 0; sample < _num_samples_per_dataset; ++sample) {
-            assert(_num_samples_per_dataset == lost_samples_buf->frame_size);
+            assert((size_t)_num_samples_per_dataset == lost_samples_buf->frame_size);
             // TODO add option to have some data lost
             lost_samples_frame[sample] = 0;
         }

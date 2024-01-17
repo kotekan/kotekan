@@ -10,7 +10,7 @@
 #include "Hash.hpp"      // for Hash, operator<, operator==
 #include "Stage.hpp"     // for Stage
 #include "Telescope.hpp" // for Telescope
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp" // for dset_id_t
 #include "datasetState.hpp"   // for freqState, timeState, metadataState
@@ -355,7 +355,7 @@ RawReader<T>::RawReader(Config& config, const std::string& unique_name,
     }
 
     // Check that buffer is large enough
-    if ((unsigned int)(out_buf->frame_size) < data_size || out_buf->frame_size < 0) {
+    if (out_buf->frame_size < data_size) {
         std::string msg =
             fmt::format(fmt("Data in file {:s} is larger ({:d} bytes) than buffer size "
                             "({:d} bytes)."),

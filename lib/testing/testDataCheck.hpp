@@ -3,19 +3,23 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
-#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "buffer.hpp"          // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "errors.h"            // for TEST_PASSED
 #include "kotekanLogging.hpp"  // for DEBUG, INFO, ERROR, FATAL_ERROR
+#include "visUtil.hpp"         // for KOTEKAN_FLOAT16
 
+#include "fmt.hpp"
+
+#include <algorithm>   // for max
 #include <assert.h>    // for assert
 #include <cstdint>     // for int32_t, uint8_t, uint32_t
 #include <exception>   // for exception
 #include <functional>  // for bind
 #include <limits>      // for numeric_limits
+#include <math.h>      // for abs
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error
-#include <stdlib.h>    // for abs
 #include <string>      // for string, allocator
 #include <type_traits> // for is_same, enable_if
 #include <vector>      // for vector
@@ -30,8 +34,8 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer* first_buf;
-    struct Buffer* second_buf;
+    Buffer* first_buf;
+    Buffer* second_buf;
     int num_frames_to_test;
     int max_num_errors;
     double epsilon;
@@ -50,7 +54,7 @@ testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const std::string&
     num_frames_to_test = config.get_default<int32_t>(unique_name, "num_frames_to_test", 0);
     max_num_errors = config.get_default<int32_t>(unique_name, "max_num_errors", 100);
     epsilon = config.get_default<double>(unique_name, "epsilon",
-                                         std::numeric_limits<A_Type>::epsilon() * 5);
+                                         std::numeric_limits<A_Type>::epsilon() * (A_Type)5.0);
 }
 
 template<typename A_Type>
@@ -88,17 +92,37 @@ void testDataCheck<A_Type>::main_thread() {
         bool error = false;
         num_errors = 0;
 
+        uint32_t num_elements = first_buf->frame_size / sizeof(A_Type);
+        double abs_diff = 0.0;
+        double rel_diff = 0.0;
+        uint32_t num_nonzero = 0;
+
+        bool use_almost_equal = (epsilon != 0.0)
+                                && ((std::is_same<A_Type, float>::value)
+#if KOTEKAN_FLOAT16
+                                    || (std::is_same<A_Type, float16_t>::value)
+#endif
+                                );
+
         INFO(
             "Checking that the buffers {:s}[{:d}] and {:s}[{:d}] match, this could take a while...",
             first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id);
 
-        for (uint32_t i = 0; i < first_buf->frame_size / sizeof(A_Type); ++i) {
+        for (uint32_t i = 0; i < num_elements; ++i) {
             A_Type first_value = *((A_Type*)&(first_frame[i * sizeof(A_Type)]));
             A_Type second_value = *((A_Type*)&(second_frame[i * sizeof(A_Type)]));
 
-            if ((std::is_same<A_Type, float>::value)
-                or (std::is_same<A_Type, unsigned char>::value)) {
-                if (!almost_equal((double)first_value, (double)second_value, epsilon)) {
+            if (use_almost_equal) {
+                double v1 = (double)first_value;
+                double v2 = (double)second_value;
+                abs_diff += std::abs(v1 - v2);
+                double absum = (std::abs(v1) + std::abs(v2));
+                if (absum != 0.0) {
+                    rel_diff += std::abs(v1 - v2) / absum;
+                    num_nonzero++;
+                }
+
+                if (!almost_equal(v1, v2, epsilon)) {
                     error = true;
                     num_errors += 1;
                     if (num_errors < max_num_errors) {
@@ -106,19 +130,19 @@ void testDataCheck<A_Type>::main_thread() {
                                     "epsilon: {:f}, "
                                     "abs(x-y): {:f}, epsilon * abs(x+y): {:f}",
                                     first_buf->buffer_name, first_buf_id, i,
-                                    second_buf->buffer_name, second_buf_id, i, (double)first_value,
-                                    (double)second_value, epsilon,
-                                    std::abs(first_value - second_value),
-                                    epsilon * std::abs(first_value + second_value));
+                                    second_buf->buffer_name, second_buf_id, i, v1, v2, epsilon,
+                                    std::abs((float)(first_value - second_value)),
+                                    epsilon * std::abs((float)(first_value + second_value)));
                     }
                 }
             } else { // N2 numbers are int
                 // INFO("Checking non float numbers-----------");
                 if (first_value != second_value) {
                     if (num_errors++ < max_num_errors)
-                        ERROR("{:s}[{:d}][{:d}] != {:s}[{:d}][{:d}]; values: ({:f}, {:f})",
+                        ERROR("{:s}[{:d}][{:d}] != {:s}[{:d}][{:d}]; values: ({:}, {:})",
                               first_buf->buffer_name, first_buf_id, i, second_buf->buffer_name,
-                              second_buf_id, i, (double)first_value, (double)second_value);
+                              second_buf_id, i, format_nice_string(first_value),
+                              format_nice_string(second_value));
                     error = true;
                 }
             }
@@ -127,6 +151,15 @@ void testDataCheck<A_Type>::main_thread() {
         if (!error) {
             INFO("The buffers {:s}[{:d}] and {:s}[{:d}] are equal", first_buf->buffer_name,
                  first_buf_id, second_buf->buffer_name, second_buf_id);
+            if (use_almost_equal) {
+                INFO("Compared {:d} elements.  Average absolute difference: {:g}.  Average "
+                     "relative difference: {:g}",
+                     num_elements, abs_diff / num_elements, rel_diff / num_elements);
+                INFO("Nonzero elements: {:d}.  Average absolute difference: {:g}.  Average "
+                     "relative difference: {:g}",
+                     num_nonzero, abs_diff / std::max((uint32_t)1, num_nonzero),
+                     rel_diff / std::max((uint32_t)1, num_nonzero));
+            }
         }
 
         mark_frame_empty(first_buf, unique_name.c_str(), first_buf_id);
@@ -136,8 +169,10 @@ void testDataCheck<A_Type>::main_thread() {
         second_buf_id = (second_buf_id + 1) % second_buf->num_frames;
         frames++;
 
-        if (num_frames_to_test == frames)
+        if (num_frames_to_test == frames) {
+            INFO("Test passed, exiting!");
             TEST_PASSED();
+        }
     }
 }
 

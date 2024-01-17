@@ -20,9 +20,9 @@ public:
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
 private:
-    int32_t input_frame_len;
-    int32_t output_len;
-    int32_t mean_len;
+    size_t input_frame_len;
+    size_t output_len;
+    size_t mean_len;
 
     float* Mean_Array;
 

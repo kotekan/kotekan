@@ -25,16 +25,12 @@
 #ifndef BUFFER
 #define BUFFER
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include "metadata.h" // for metadataPool
 
-#include <pthread.h>   // for pthread_cond_t, pthread_mutex_t
-#include <stdint.h>    // for uint8_t
-#include <sys/types.h> // for ssize_t
-#include <time.h>      // for size_t, timespec
+#include <pthread.h> // for pthread_cond_t, pthread_mutex_t
+#include <stdbool.h> // for bool
+#include <stdint.h>  // for uint8_t
+#include <time.h>    // for size_t, timespec
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
@@ -94,28 +90,31 @@ struct StageInfo {
  * There can be more than one producer or consumer attached to each buffer, but
  * each one must register with the buffer separately.
  *
- * Consumers must only read data from frames and not write anything back too them.
- * More than one producer can write to a given frame in a multi producer setup,
+ * Consumers must only read data from frames and not write anything back to them.
+ * More than one producer can write to a given frame in a multi-producer setup,
  * but in that case they must coordinate their address space to not overwrite
- * each others values.  Because of this multi-producers are somewhat rare.
+ * each others' values.  Because of this, multi-producers are somewhat rare.
  * Producers also generally shouldn't read from frames, although there is
  * nothing wrong with doing so, it just normally doesn't make sense to do so.
  *
  * Unless the function @c zero_frames() is called on the buffer object, the
  * default behaviour is not to zero the memory of the frames between uses.
- * Therefore it is normally upto the producer(s) to ensure all memory
+ * Therefore it is normally up to the producer(s) to ensure all memory
  * values are either given new data, or zeroed.
  *
  * In the config file a buffer is created with a <tt>kotekan_buffer: standard</tt>
  * named block.   The buffer name becomes the path name of that config block.
  *
- * Note if no consumer is registered for on a buffer, then it will drop
+ * Note that if no consumer is registered for on a buffer, then it will drop
  * the frames and log an INFO statement to notify the user that the data
  * is being dropped.
  *
  * @conf frame_size The size of the individual ring frames in bytes
  * @conf num_frames The buffer depth of size of the ring
  * @conf metadata_pool The name of the metadata pool to associate with the buffer
+ * @conf numa_node The NUMA domain to mbind the memory into.  Default: 1
+ * @conf use_hugepages Allocate 2MB huge pages for the frames. Default: false
+ * @conf mlock_frames Lock the frame pages with mlock Default: true
  *
  * See metadata.h for more information on metadata pools
  *
@@ -143,7 +142,7 @@ struct Buffer {
     int num_frames;
 
     /// The size of each frame in bytes.
-    int frame_size;
+    size_t frame_size;
 
     /**
      * @brief The padded frame size.
@@ -152,7 +151,7 @@ struct Buffer {
      * you can use this size instead, but data shouldn't
      * be placed past the end of frame_size.  This is just for padding.
      */
-    int aligned_frame_size;
+    size_t aligned_frame_size;
 
     /**
      * @brief Array of producers which are done (marked frame as full).
@@ -190,16 +189,25 @@ struct Buffer {
     double last_arrival_time;
 
     /// Array of buffer info objects, for tracking information about each buffer.
-    struct metadataContainer** metadata;
+    metadataContainer** metadata;
 
     /// The pool of info objects
-    struct metadataPool* metadata_pool;
+    metadataPool* metadata_pool;
 
     /// The name of the buffer for use in debug messages.
     char* buffer_name;
 
     /// The type of the buffer for use in writing data.
     char* buffer_type;
+
+    /// This buffer use huge pages for its frames if the following is true
+    bool use_hugepages;
+
+    /// The buffer has page locked memory frames
+    bool mlock_frames;
+
+    /// The NUMA node the frames are allocated in
+    int numa_node;
 };
 
 /**
@@ -214,25 +222,31 @@ struct Buffer {
  * @param[in] pool The metadataPool, which may be shared between more than one buffer.
  * @param[in] buffer_name The unique name of this buffer.
  * @param[in] buffer_type The type of data this buffer contains.
- * @param[in] numa_node The CPU NUMA memory region to allocate memory in.
+ * @param[in] numa_node The CPU NUMA memory region to allocate memory in.+
+ * @param[in] use_huge_pages Map huge pages with mmap
+ * @param[in] mlock_frames If set, mlock the pages of the frame memory
+ * @param[in] zero_new_frames In theory some memory allocators don't zero new allocations
+ *                            so by default we zero new frames on startup, but this is expensive
+ *                            and can be disabled by setting this to false.
  * @returns A buffer object.
  */
-struct Buffer* create_buffer(int num_frames, int frame_size, struct metadataPool* pool,
-                             const char* buffer_name, const char* buffer_type, int numa_node);
+Buffer* create_buffer(int num_frames, size_t frame_size, metadataPool* pool,
+                      const char* buffer_name, const char* buffer_type, int numa_node,
+                      bool use_huge_pages, bool mlock_frames, bool zero_new_frames);
 
 /**
  * @brief Deletes a buffer object and frees all frame memory
  *
  * @param[in] buf The buffer to delete.
  */
-void delete_buffer(struct Buffer* buf);
+void delete_buffer(Buffer* buf);
 
 /**
  * @brief Zero all frames after all consumers have marked them as empty
  *
  * @param[in] buf The buffer object which will be set to automatically zero all frames
  */
-void zero_frames(struct Buffer* buf);
+void zero_frames(Buffer* buf);
 
 /**
  * @brief Register a consumer with a given name.
@@ -243,7 +257,7 @@ void zero_frames(struct Buffer* buf);
  * @param[in] buf The buffer to register on
  * @param[in] name The name of the consumer.
  */
-void register_consumer(struct Buffer* buf, const char* name);
+void register_consumer(Buffer* buf, const char* name);
 
 /**
  * @brief Removes the consumer with the given name
@@ -256,7 +270,7 @@ void register_consumer(struct Buffer* buf, const char* name);
  * @param buf The buffer to unregister from
  * @param name The name of the consumer to unregister
  */
-void unregister_consumer(struct Buffer* buf, const char* name);
+void unregister_consumer(Buffer* buf, const char* name);
 
 /**
  * @brief Register a producer with a given name.
@@ -267,7 +281,7 @@ void unregister_consumer(struct Buffer* buf, const char* name);
  * @param[in] buf The buffer to register on
  * @param[in] name The name of the producer.
  */
-void register_producer(struct Buffer* buf, const char* name);
+void register_producer(Buffer* buf, const char* name);
 
 /**
  * @brief Marks a buffer frame as full.
@@ -279,7 +293,7 @@ void register_producer(struct Buffer* buf, const char* name);
  * @param[in] producer_name The name of the producer registered with @c register_producer()
  * @param[in] frame_id The frame ID to be marked as full
  */
-void mark_frame_full(struct Buffer* buf, const char* producer_name, const int frame_id);
+void mark_frame_full(Buffer* buf, const char* producer_name, const int frame_id);
 
 /**
  * @brief Marks a buffer frame as empty
@@ -290,7 +304,7 @@ void mark_frame_full(struct Buffer* buf, const char* producer_name, const int fr
  * @param[in] consumer_name The name of the consumer registered with @c register_consumer()
  * @param[in] frame_id The frame ID to be marked as empty
  */
-void mark_frame_empty(struct Buffer* buf, const char* consumer_name, const int frame_id);
+void mark_frame_empty(Buffer* buf, const char* consumer_name, const int frame_id);
 
 /**
  * @brief Blocks until the frame requested by frame_id is empty.
@@ -308,7 +322,7 @@ void mark_frame_empty(struct Buffer* buf, const char* consumer_name, const int f
  *          should not be called again on that frame_id until after
  *          a call to @c mark_frame_full() with that producer and frame_id
  */
-uint8_t* wait_for_empty_frame(struct Buffer* buf, const char* producer_name, const int frame_id);
+uint8_t* wait_for_empty_frame(Buffer* buf, const char* producer_name, const int frame_id);
 
 /**
  * @brief Blocks until the frame requested by frame_id is full.
@@ -326,7 +340,7 @@ uint8_t* wait_for_empty_frame(struct Buffer* buf, const char* producer_name, con
  *          should not be called again on that frame_id until after
  *          a call to @c mark_frame_empty() with that consumer and frame_id
  */
-uint8_t* wait_for_full_frame(struct Buffer* buf, const char* consumer_name, const int frame_id);
+uint8_t* wait_for_full_frame(Buffer* buf, const char* consumer_name, const int frame_id);
 
 
 /**
@@ -344,7 +358,7 @@ uint8_t* wait_for_full_frame(struct Buffer* buf, const char* consumer_name, cons
  *   - `1`: Failure! We timed out waiting.
  *   - `-1`: Failure! We received the thread exit signal.
  **/
-int wait_for_full_frame_timeout(struct Buffer* buf, const char* name, const int ID,
+int wait_for_full_frame_timeout(Buffer* buf, const char* name, const int ID,
                                 const struct timespec timeout);
 
 /**
@@ -356,7 +370,7 @@ int wait_for_full_frame_timeout(struct Buffer* buf, const char* name, const int 
  * @param[in] frame_id The id of the frame to check.
  * @warning This should not be used to gain access to an empty frame, use @c wait_for_empty_frame()
  */
-int is_frame_empty(struct Buffer* buf, const int frame_id);
+int is_frame_empty(Buffer* buf, const int frame_id);
 
 /**
  * @brief Returns the number of currently full frames.
@@ -364,7 +378,7 @@ int is_frame_empty(struct Buffer* buf, const int frame_id);
  * @param[in] buf The buffer object
  * @returns The number of currently full frames in the buffer
  */
-int get_num_full_frames(struct Buffer* buf);
+int get_num_full_frames(Buffer* buf);
 
 /**
  * @brief Get the number of consumers on this buffer
@@ -372,7 +386,7 @@ int get_num_full_frames(struct Buffer* buf);
  * @param buf The buffer
  * @return int The number of consumers on the buffer
  */
-int get_num_consumers(struct Buffer* buf);
+int get_num_consumers(Buffer* buf);
 
 /**
  * @brief Get the number of producers for this buffer
@@ -380,28 +394,28 @@ int get_num_consumers(struct Buffer* buf);
  * @param buf The buffer
  * @return int The number of producers on this buffer
  */
-int get_num_producers(struct Buffer* buf);
+int get_num_producers(Buffer* buf);
 
 /**
  * @brief Returns the last time a frame was marked as full
  * @param buf The buffer to get the last arrival time for.
  * @return A double (with units: seconds) containing the unix time of the last frame arrival
  */
-double get_last_arrival_time(struct Buffer* buf);
+double get_last_arrival_time(Buffer* buf);
 
 /**
  * @brief Prints a picture of the frames which are currently full.
  *
  * @param[in] buf The buffer object
  */
-void print_buffer_status(struct Buffer* buf);
+void print_buffer_status(Buffer* buf);
 
 /**
  * @brief Prints a summary the frames and state of the producers and consumers.
  *
  * @param buf The buffer object
  */
-void print_full_status(struct Buffer* buf);
+void print_full_status(Buffer* buf);
 
 /**
  * @brief Allocates a new metadata object from the associated pool
@@ -415,7 +429,7 @@ void print_full_status(struct Buffer* buf);
  * @param[in] buf The buffer object
  * @param[in] frame_id The frame ID to assign a metadata object too.
  */
-void allocate_new_metadata_object(struct Buffer* buf, int frame_id);
+void allocate_new_metadata_object(Buffer* buf, int frame_id);
 
 /**
  * @brief Swaps the provided frame of memory with the internal frame
@@ -436,7 +450,7 @@ void allocate_new_metadata_object(struct Buffer* buf, int frame_id);
  * @param external_frame The extra frame to use in place of the existing internal frame.
  * @return The internal frame
  */
-uint8_t* swap_external_frame(struct Buffer* buf, int frame_id, uint8_t* external_frame);
+uint8_t* swap_external_frame(Buffer* buf, int frame_id, uint8_t* external_frame);
 
 /**
  * @brief Swaps frames between two buffers with identical size for the given frame_ids
@@ -453,25 +467,29 @@ uint8_t* swap_external_frame(struct Buffer* buf, int frame_id, uint8_t* external
  * @param to_buf The buffer to take the frame from @c from_buf
  * @param to_frame_id The frame to replace with the frame from @c from_buf
  */
-void swap_frames(struct Buffer* from_buf, int from_frame_id, struct Buffer* to_buf,
-                 int to_frame_id);
+void swap_frames(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_frame_id);
 
 /**
  * @brief Allocates a frame with the required malloc method
  *
  * @param len The size of the frame to allocate in bytes.
  * @param numa_node The CPU NUMA region to allocate the memory in.
+ * @param use_huge_pages Use mmap to allocate huge pages for frames
+ * @param memlock_frames Use mlock to lock frame pages
+ * @param zero_new_frames If true, new frames are zeroed with memset
  * @return A pointer to the new memory, or @c NULL if allocation failed.
  */
-uint8_t* buffer_malloc(ssize_t len, int numa_node);
+uint8_t* buffer_malloc(size_t len, int numa_node, bool use_huge_pages, bool memlock_frames,
+                       bool zero_new_frames);
 
 /**
  * @brief Deallocate a frame of memory with the required free method.
  *
  * @param frame_pointer The pointer to the memory to free.
  * @param size The size of the memory space to free (needed for NUMA)
+ * @param use_huge_pages Toggles the type of "free" call used, must match @c buffer_malloc type
  */
-void buffer_free(uint8_t* frame_pointer, size_t size);
+void buffer_free(uint8_t* frame_pointer, size_t size, bool use_huge_pages);
 
 /**
  * @brief Gets the raw metadata block for the given frame
@@ -490,7 +508,7 @@ void buffer_free(uint8_t* frame_pointer, size_t size);
  * @param[in] frame_id The frame to return the metadata for.
  * @returns A pointer to the metadata object (needs to be cast)
  */
-void* get_metadata(struct Buffer* buf, int frame_id);
+void* get_metadata(Buffer* buf, int frame_id);
 
 /**
  * @brief Returns the container for the metadata.
@@ -509,7 +527,7 @@ void* get_metadata(struct Buffer* buf, int frame_id);
  * @param[in] frame_id The frame to return the metadata for.
  * @returns A pointer to the metadata_container
  */
-struct metadataContainer* get_metadata_container(struct Buffer* buf, int frame_id);
+metadataContainer* get_metadata_container(Buffer* buf, int frame_id);
 
 /**
  * @brief Transfers metadata from one buffer to another for a given frame.
@@ -532,8 +550,7 @@ struct metadataContainer* get_metadata_container(struct Buffer* buf, int frame_i
  * @param[in] to_buf The buffer to copy the metadata into
  * @param[in] to_frame_id The frame ID in the @c to_buf to copy the metadata into
  */
-void pass_metadata(struct Buffer* from_buf, int from_frame_id, struct Buffer* to_buf,
-                   int to_frame_id);
+void pass_metadata(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_frame_id);
 
 
 /**
@@ -547,8 +564,7 @@ void pass_metadata(struct Buffer* from_buf, int from_frame_id, struct Buffer* to
  * @param[in] to_buf The buffer to copy the metadata into
  * @param[in] to_frame_id The frame ID in the @c to_buf to copy the metadata into
  */
-void copy_metadata(struct Buffer* from_buf, int from_frame_id, struct Buffer* to_buf,
-                   int to_frame_id);
+void copy_metadata(Buffer* from_buf, int from_frame_id, Buffer* to_buf, int to_frame_id);
 
 /**
  * @brief Swaps a frame or performs a deep copy depending on the number of consumers on the
@@ -562,8 +578,7 @@ void copy_metadata(struct Buffer* from_buf, int from_frame_id, struct Buffer* to
  * @param[in] dest_buf The destination buffer
  * @param[in] dest_frame_id The destination frame ID
  */
-void safe_swap_frame(struct Buffer* src_buf, int src_frame_id, struct Buffer* dest_buf,
-                     int dest_frame_id);
+void safe_swap_frame(Buffer* src_buf, int src_frame_id, Buffer* dest_buf, int dest_frame_id);
 
 /**
  * @brief Tells the buffers to stop returning full/empty frames to consumers/producers
@@ -574,10 +589,6 @@ void safe_swap_frame(struct Buffer* src_buf, int src_frame_id, struct Buffer* de
  *
  * @param[in] buf The buffer to shutdown
  */
-void send_shutdown_signal(struct Buffer* buf);
-
-#ifdef __cplusplus
-}
-#endif
+void send_shutdown_signal(Buffer* buf);
 
 #endif

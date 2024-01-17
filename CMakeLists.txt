@@ -36,7 +36,7 @@ option(USE_CLOC "Use the CL offline compiler" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_CUDA "Build CUDA GPU Framework" OFF)
 option(USE_HIP "Build HIP GPU Framework" OFF)
-option(USE_DPDK "Enable DPDK Framework" OFF)
+option(USE_OLD_DPDK "Enable old versions of DPDK (<19.11)" OFF)
 option(USE_HDF5 "Build HDF5 output stages" OFF)
 option(USE_OMP "Enable OpenMP" OFF)
 option(USE_OLD_ROCM "Build for ROCm versions 2.3 or older" OFF)
@@ -44,7 +44,8 @@ option(NO_MEMLOCK "Do not lock buffer memory (useful when running in Docker)" OF
 option(SUPERDEBUG "Enable extra debugging with no optimisation" OFF)
 option(SANITIZE "Enable clang sanitizers for testing" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
-option(WITH_TESTS "Compile testing library and boost C++ unit tests" OFF)
+option(WITH_TESTS "Compile testing library" OFF)
+option(WITH_BOOST_TESTS "Compile boost C++ unit tests" OFF)
 option(IWYU "Enable include-what-you-use and print suggestions to stderr" OFF)
 option(CCACHE "Use ccache to speed up the build" OFF)
 option(WERROR "Warnings are errors" OFF)
@@ -239,10 +240,6 @@ endif()
 message("GPU Modules Included: " ${GPU_MODULES})
 
 set(INPUT_MODULES "")
-if(${USE_DPDK})
-    set(INPUT_MODULES ${INPUT_MODULES} "DPDK ")
-    find_package(DPDK REQUIRED)
-endif()
 if(${USE_AIRSPY})
     add_definitions(-DWITH_AIRSPY)
     set(INPUT_MODULES ${INPUT_MODULES} "AIRSPY ")
@@ -319,8 +316,9 @@ if(${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)
 endif()
 
-# Turn off memlocking of buffers. This is useful when running in restricted environments e.g. Docker
-# containers
+# Prevent memory locking and setting any memory policies. This is useful when running in restricted
+# environments, e.g. Docker containers.  Note this can also be done with the configuration file for
+# systems which do support memory locking, but where some memory shouldn't be memory locked.
 if(${NO_MEMLOCK})
     message("Do not lock buffer memory.")
     add_definitions(-DWITH_NO_MEMLOCK)
@@ -333,7 +331,7 @@ add_subdirectory(external)
 add_subdirectory(config)
 
 # Testing with boost
-if(${WITH_TESTS})
+if(${WITH_BOOST_TESTS})
     set(_BOOST_TESTS_DIR
         tests/boost/
         CACHE INTERNAL "Path to boost test sources")

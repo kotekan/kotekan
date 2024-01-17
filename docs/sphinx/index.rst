@@ -34,7 +34,11 @@ Welcome to Kotekan's documentation!
    dev/dev_dataset_states
    dev/dev_dataset_broker
    dev/dev_style_guide
+   dev/dev_versioning_guide
    dev/dev_unittests
    dev/dev_gate_specs
+   dev/dev_stage_tutorial
+   dev/dev_unit_tests
+   dev/dev_actions
 
-You can also peruse the full `doxygen docs <doxygen/>`_.
+You can also peruse the full `doxygen docs <html/>`_.

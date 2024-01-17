@@ -9,8 +9,9 @@
 
 using kotekan::Config;
 
-clDeviceInterface::clDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_buffer_depth_) :
-    gpuDeviceInterface(config_, gpu_id_, gpu_buffer_depth_) {
+clDeviceInterface::clDeviceInterface(Config& config_, const std::string& unique_name,
+                                     int32_t gpu_id_, int gpu_buffer_depth_) :
+    gpuDeviceInterface(config_, unique_name, gpu_id_, gpu_buffer_depth_) {
 
     // Get a platform.
     CHECK_CL_ERROR(clGetPlatformIDs(1, &platform_id, nullptr));
@@ -40,7 +41,7 @@ clDeviceInterface::~clDeviceInterface() {
     cleanup_memory();
 }
 
-void* clDeviceInterface::alloc_gpu_memory(int len) {
+void* clDeviceInterface::alloc_gpu_memory(size_t len) {
     cl_int err;
     cl_mem ptr = clCreateBuffer(context, CL_MEM_READ_WRITE, len, nullptr, &err);
     CHECK_CL_ERROR(err);
@@ -51,11 +52,11 @@ void clDeviceInterface::free_gpu_memory(void* ptr) {
 }
 
 
-cl_mem clDeviceInterface::get_gpu_memory(const std::string& name, const uint32_t len) {
+cl_mem clDeviceInterface::get_gpu_memory(const std::string& name, const size_t len) {
     return (cl_mem)gpuDeviceInterface::get_gpu_memory(name, len);
 }
 cl_mem clDeviceInterface::get_gpu_memory_array(const std::string& name, const uint32_t index,
-                                               const uint32_t len) {
+                                               const size_t len) {
     return (cl_mem)gpuDeviceInterface::get_gpu_memory_array(name, index, len);
 }
 cl_context& clDeviceInterface::get_context() {

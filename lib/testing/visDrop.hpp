@@ -8,7 +8,7 @@
 
 #include "Config.hpp"
 #include "Stage.hpp" // for Stage
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp"
 
 #include <stdint.h> // for uint32_t

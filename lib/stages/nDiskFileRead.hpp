@@ -100,7 +100,7 @@ public:
 
 private:
     /// The kotekan buffer object the stage is producing for
-    struct Buffer* buf;
+    Buffer* buf;
     /// Vector to hold the thread handles
     std::vector<std::thread> file_thread_handles;
     /// A holder for the config parameter num_disks
