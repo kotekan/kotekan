@@ -12,4 +12,5 @@ dependencies:
   - sphinx=6.2.1
   - sphinx_rtd_theme=1.2.2
   - breathe=4.35.0
-  - sphinxcontrib-plantuml=0.25
+  - sphinxcontrib-plantuml=0.27
+  - readthedocs-sphinx-search=0.3.2
