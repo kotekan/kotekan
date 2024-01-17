@@ -35,9 +35,12 @@ std::optional<size_t> RingBuffer::wait_and_claim_readable(const std::string& nam
     std::unique_lock<std::recursive_mutex> lock(mutex);
     size_t head = read_heads[name];
     while (1) {
-        DEBUG("Waiting for input: Want {:d}, Have {:d}.  (Current read head: {:d}, after this read "
-              "would be {:d}, current write head: {:d})",
-              sz, write_head - head, head, head + sz, write_head);
+        std::string d = fmt::format(
+            std::locale("en_US.UTF-8"),
+            "Waiting for input: Want {:L}, Have {:L}.  (Current read head: {:L}, after this read "
+            "would be {:L}, current write head: {:L})",
+            sz, write_head - head, head, head + sz, write_head);
+        DEBUG("{:s}", d);
         if (head + sz <= write_head)
             break;
         if (shutdown_signal)
@@ -46,6 +49,7 @@ std::optional<size_t> RingBuffer::wait_and_claim_readable(const std::string& nam
         full_cond.wait(lock);
         DEBUG("finished waiting on full condition variable");
     }
+    INFO("wait_and_claim_readable {:s} {:L} -> {:L} {:L}", name, sz, head, head % size);
     read_heads[name] += sz;
     if (shutdown_signal)
         return std::optional<size_t>();
@@ -70,28 +74,29 @@ void RingBuffer::finish_read(const std::string& name, size_t sz) {
         assert(tail + sz <= head);
         // Are we (one of) the reader(s) holding on to the oldest data?
         bool old = (tail == write_tail);
-        DEBUG("finish_read for \"{:s}\": advancing tail from {:d} by {:d} to {:d}.  old? {:s}",
+        DEBUG("finish_read for \"{:s}\": advancing tail from {:L} by {:L} to {:L}.  old? {:s}",
               name, tail, sz, tail + sz, old ? "yes" : "no");
         read_tails[name] += sz;
         if (old) {
             size_t oldest = tail + sz;
             for (auto& it : read_tails)
                 oldest = std::min(oldest, it.second);
-            DEBUG("new write_tail: {:d}", oldest);
+            DEBUG("new write_tail: {:L}", oldest);
             write_tail = oldest;
         }
     }
+    INFO("finish_read {:s} {:L} write_tail now {:L}", name, sz, write_tail);
     empty_cond.notify_all();
 }
 
 std::optional<size_t> RingBuffer::wait_for_writable(const std::string& name, size_t sz) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
     while (1) {
-        DEBUG("Waiting to write {:d} elements.  Current write head {:d} and tail {:d} (diff {:d}), "
-              "space available to write: {:d}",
-              sz, write_heads[name], write_tail, write_heads[name] - write_tail,
-              size - (write_heads[name] - write_tail));
-        if (write_heads[name] - write_tail + sz <= size)
+        DEBUG("Waiting to write {:L} elements.  Current write_next {:L} write_head {:L} and "
+              "write_tail {:L} (next - tail diff {:L}), space available to write: {:L}",
+              sz, write_next[name], write_heads[name], write_tail, write_next[name] - write_tail,
+              size - (write_next[name] - write_tail));
+        if (write_next[name] - write_tail + sz <= size)
             break;
         if (shutdown_signal)
             break;
@@ -101,25 +106,30 @@ std::optional<size_t> RingBuffer::wait_for_writable(const std::string& name, siz
     }
     if (shutdown_signal)
         return std::optional<size_t>();
-    return std::optional<size_t>(write_heads[name] % size);
+    write_next[name] += sz;
+    DEBUG("wait_for_writable {:s} {:L} -> {:L} {:L}", name, sz, write_next[name],
+          write_next[name] % size);
+    return std::optional<size_t>(write_next[name] % size);
 }
 
 std::optional<std::pair<size_t, size_t>> RingBuffer::get_writable(const std::string& name) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
     if (shutdown_signal)
         return std::optional<std::pair<size_t, size_t>>();
-    size_t n = size - (write_heads[name] - write_tail);
-    return std::optional<std::pair<size_t, size_t>>(std::make_pair(write_heads[name] % size, n));
+    size_t n = size - (write_next[name] - write_tail);
+    return std::optional<std::pair<size_t, size_t>>(std::make_pair(write_next[name] % size, n));
 }
 
 void RingBuffer::finish_write(const std::string& name, size_t sz) {
+    DEBUG("finish_write {:s} {:L}", name, sz);
     {
         buffer_lock lock(mutex);
+        print_full_status();
         assert(write_heads[name] + sz - write_tail <= size);
         bool old = (write_heads[name] == write_head);
         write_heads[name] += sz;
-        DEBUG("Wrote {:d}.  Now write head {:d}, tail {:d}, free space: {:d}", sz,
-              write_heads[name], write_tail, size - (write_heads[name] - write_tail));
+        DEBUG("Wrote {:L}.  Now write head {:L}, tail {:L}, free space: {:L}", sz,
+              write_heads[name], write_tail, size - (write_next[name] - write_tail));
         if (old) {
             // possibly update write_head with the min(write_heads)
             size_t oldest = write_heads[name];
@@ -129,6 +139,7 @@ void RingBuffer::finish_write(const std::string& name, size_t sz) {
             write_head = oldest;
         }
     }
+    // DEBUG("finish_write {:s} {:L} write_head now {:L}", name, sz, write_head);
     full_cond.notify_all();
 }
 
@@ -140,8 +151,9 @@ void RingBuffer::print_full_status() {
          write_head - write_tail);
     for (auto& it : producers) {
         std::string name = it.second.name;
-        INFO("  producer \"{:s}\": write_head {:d} ({:d})", name, write_heads[name],
-             write_heads[name] % size);
+        INFO("  producer \"{:s}\": write_head {:d} ({:d}), write_next {:d} ({:d})", name,
+             write_heads[name], write_heads[name] % size, write_next[name],
+             write_next[name] % size);
     }
     for (auto& it : consumers) {
         std::string name = it.second.name;

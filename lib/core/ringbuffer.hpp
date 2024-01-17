@@ -73,7 +73,7 @@ public:
     std::optional<size_t> wait_for_writable(const std::string& producer_name, size_t sz);
 
     /**
-     * @brief Checks many elements are free to be written.
+     * @brief Checks how many elements are free to be written.
      *
      * @return A std::optional<std::pair<size_t, size_t> >, where there
      * is no value if the pipeline is shutting down, and otherwise, a pair
@@ -120,17 +120,23 @@ public:
     // The size of the ring buffer (maximum number of elements in the buffer).
     size_t size;
 
-    // The "write_head" for a producer is the index of the next element to be written,
-    // also 1 greater than the index of the last valid element that can be read by consumers.
-    // The "wait_for_writable()" will return the "write_head" when enough space is available.
+    // The "write_head" for a producer is one past the index of the
+    // last element that has been written by that producer.
     // The "write_head" advances when "finish_write()" is called.
     std::map<std::string, size_t> write_heads;
+
+    // The next element that will be reserved for writing by a wait_for_writable() call.
+    // The wait_for_writable() call advances this index, so subsequent calls will reserve a new
+    // region of the ringbuffer.
+    std::map<std::string, size_t> write_next;
 
     // The overall "write_head" is the min(write_heads), ie, 1 more than the last element that
     // has been written by all producers (and therefore is available to be consumed).
     size_t write_head;
 
     // "write_tail" is the index of the first valid element that can be read by consumers.
+    // (This is the first element that has not been read by all consumers, because as soon as
+    // all consumers have finished reading an element, this counter is advanced.)
     // The "write_tail" may be updated in "finish_read()" when the last consumer has finished
     // reading a chunk of data.  "write_tail = min(read_tails)".
     size_t write_tail;
