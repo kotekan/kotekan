@@ -76,9 +76,6 @@ public:
     /// Endpoint for providing new directory path for FRB gain updates
     bool update_gains_frb_callback(nlohmann::json& json);
 
-    /// Endpoint for providing new UT1-UTC offset
-    bool update_UT1_UTC_offset(nlohmann::json& json);
-
     /// Endpoint for providing new directory path for <span class="x x-first x-last">tracking
     /// beamformer</span> gain updates
     bool update_gains_tracking_callback(nlohmann::json& json, const uint8_t beam_id);
