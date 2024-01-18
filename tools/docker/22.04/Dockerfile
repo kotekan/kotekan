@@ -161,7 +161,7 @@ RUN apt-get update && \
     apt-get clean && apt-get autoclean
 RUN python3 -m pip install --no-cache-dir breathe==4.35.* \
                                           sphinx==6.2.* \
-                                          sphinx_rtd_theme==1.2.* \
+                                          sphinx_rtd_theme==2.0.* \
                                           sphinxcontrib-plantuml==0.25
 
 
