@@ -17,7 +17,7 @@ num_threads = 10
 data_dir = sys.argv[1]  # this is the input root
 if not os.path.exists(data_dir):
     print("ERROR!!! path not found. Enter a full path as an argument:")
-    print("eg. /data/baseband_raw/baseband_raw_20211020160923")
+    print("eg. /tank/baseband_raw/baseband_raw_20211020160923")
 files = glob.glob(os.path.join(data_dir, "baseband_*.data"))
 files = [os.path.join(data_dir, f) for f in files]
 t_global = time.time()

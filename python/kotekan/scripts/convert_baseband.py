@@ -236,7 +236,7 @@ def convert_data(e, num_threads, sqlite, conn, conv_backend):
             print(exists, missing)
             if exists:
                 # UPDATE local DB with state FINISHED
-                print("Conversion done. Should remove {raw_folder}.")
+                print(f"Conversion done. Removing {raw_folder}.")
                 # COMMENTING THIS OUT FOR PCO commissioning os.system(f"rm -rf " + raw_folder)
                 if sqlite is not None and conn is not None:
                     print("Updating state in sqlite DB")
@@ -339,7 +339,7 @@ def events_from_filepath(raw_filepath, archiver_mount):
     """If we are not using the L4-db to get the event to be converted, we need to return an adequate list of events. Do this by comparing the raw and converted directory trees.
 
     raw_filepath : str
-        Path to a folder which has sub-folders of the form baseband_raw_[event_id], as seen relative to the conversion node e.g. "/data/baseband_raw" on cfdn9.
+        Path to a folder which has sub-folders of the form baseband_raw_[event_id], as seen relative to the conversion node e.g. "/tank/baseband_raw" on cfdn9.
 
     archiver_mount : str
         Path to a folder which has sub-folders of the form YYYY/MM/DD as seen relative to the conversion node e.g. "/data/chime/baseband/raw" on cfdn9.
@@ -362,6 +362,8 @@ def events_from_filepath(raw_filepath, archiver_mount):
     started.sort()
     unfinished = []
     finished = []
+    #import IPython;IPython.embed()
+    
     for event_id in started: # sort the started events into finished and unfinished 
         num_raw = len(glob(os.path.join(raw_path_from_event_id(event_id, raw_filepath), "*.data")))
         num_h5 = len(glob(os.path.join(h5_path_from_event_id(event_id, archiver_mount), "*.h5")))
@@ -371,8 +373,13 @@ def events_from_filepath(raw_filepath, archiver_mount):
             finished.append(event_id)
 
     finished.sort()
-    last_event_id = finished[-1]
-    todo = unfinished + list(unstarted)
+    if len(finished) == 0: 
+        last_event_id = h5_event_ids[-1]
+        todo = list(unstarted)
+        
+    else: 
+        last_event_id = finished[-1]
+        todo = unfinished + list(unstarted)
     todo.sort()
 
     events = []
@@ -415,19 +422,22 @@ def main():
     )
     inventory = Gauge(
         "baseband_conversion_raw_data_inventory",
-        "Inventory of the raw data on /data/baseband_raw.",
+        "Inventory of the raw data on /tank/baseband_raw.",
         registry=registry,
     )
     conv_backend = get_backend("kko")  # TODO: test with CHIME backend as well. Change this for other outriggers!
     assert os.path.exists(
         conv_backend["ARCHIVER_MOUNT"]
     ), f"{conv_backend['ARCHIVER_MOUNT']} is not mounted, it is required for this process. Exiting!!!"
+    print(conv_backend["ARCHIVER_MOUNT"])
 
     while True:
         # set last_active, inventory, and bcle.
         last_active.set(time.time())
         inv = check_inventory(conv_backend["RAW_PATH"])
         inventory.set(inv)
+        #import IPython;IPython.embed()
+
         if conv_backend["USE_L4_DB"]:
             # use db to keep track of conversion to do list
             events, last_event = events_from_db()
@@ -469,6 +479,7 @@ def main():
                 convert_data(
                     e, NUM_THREADS, sqlite, conn, conv_backend
                 )  # if sqlite or conn are None, will look for events using filepaths.
+                
                 print("Total time to convert all files: ", time.time() - t_global)
         sys.stdout.flush()
         time.sleep(300)

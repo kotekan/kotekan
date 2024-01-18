@@ -25,9 +25,9 @@ def get_backend(name):
     kko_backend = {
         "ARCHIVER_MOUNT": "/data/kko/baseband/raw",
         "NUM_THREADS": 5,
-        "KOTEKAN_CONFIG": "/home/calvin/baseband_commissioning/kotekan/config/chime_kko_baseband_recv.j2",
+        "KOTEKAN_CONFIG": "/home/calvin/baseband_commissioning/kotekan/config/chime_kko_baseband_recv.j2", # POINT TO MOUNTED FILE
         "USE_L4_DB": False,
-        "RAW_PATH": "/data/baseband_raw/",
+        "RAW_PATH": "/tank/baseband_raw",
         "PROMETHEUS_GW": "aux:9091",
         "COCO_URL": "http://aux:54323/baseband-status",
     }  # a conv_backend for prometheus integration without L4DB integration (is this needed for outriggers?) or datatrails integration.
