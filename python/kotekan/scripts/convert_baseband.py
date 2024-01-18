@@ -11,9 +11,40 @@ import baseband_archiver
 import multiprocessing
 from glob import glob
 from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
-from kotekan.conv_backends import get_backend
 
 NUM_THREADS = 5
+
+
+"""
+Parameters to be set from environmental variables:
+
+    ARCHIVER_MOUNT : The directory hosting a YYYY/MM/DD/astro_EVENTID/baseband_EVENTID_FREQID.h5 filetree.
+    NUM_THREADS : The number of threads to use in multiprocessing.
+    KOTEKAN_CONFIG : A path to the kotekan config for the baseband receiver. This tells us the size of the kotekan buffer frames to use.
+    USE_L4_DB : Whether to use L4 DB to check whether the events are done converting. If False, we will look for the last modified timestamp to determine whether .data files are ready to convert to .h5
+    RAW_PATH : Path holding filetree of the format baseband_raw_EVENTID/baseband_EVENTID_FREQID.data
+    PROMETHEUS_GW : The local hostname and port at which Prometheus is receiving metrics.
+    COCO_URL : The HTTP endpoint which reports baseband status (i.e. where is coco running?)
+"""
+
+
+# Default backend parameters
+conv_backend = {
+    "ARCHIVER_MOUNT": "/data/chime/baseband/raw",
+    "NUM_THREADS": 5,
+    "KOTEKAN_CONFIG": "../../../config/baseband_commissioning/kotekan/config/chime_science_run_recv_baseband.yaml",
+    "USE_L4_DB": True,
+    "RAW_PATH": "/data/baseband_raw/",
+    "PROMETHEUS_GW": "frb-vsop.chime:9091",
+    "COCO_URL": "http://csBfs:54323/baseband-status",
+}
+
+# If defined in environment, use those
+for k in conv_backend.keys():
+    val = os.environ.get(k, None)
+    if val is not None:
+        val = val.lower() == 'true' if k == "USE_L4_DB" else val
+        conv_backend[k] = val
 
 
 def convert(file_name, config_file, converted_filenames, backend):
@@ -362,9 +393,7 @@ def events_from_filepath(raw_filepath, archiver_mount):
     started.sort()
     unfinished = []
     finished = []
-    #import IPython;IPython.embed()
-    
-    for event_id in started: # sort the started events into finished and unfinished 
+    for event_id in started: # sort the started events into finished and unfinished
         num_raw = len(glob(os.path.join(raw_path_from_event_id(event_id, raw_filepath), "*.data")))
         num_h5 = len(glob(os.path.join(h5_path_from_event_id(event_id, archiver_mount), "*.h5")))
         if num_raw > num_h5:
@@ -425,7 +454,6 @@ def main():
         "Inventory of the raw data on /tank/baseband_raw.",
         registry=registry,
     )
-    conv_backend = get_backend("kko")  # TODO: test with CHIME backend as well. Change this for other outriggers!
     assert os.path.exists(
         conv_backend["ARCHIVER_MOUNT"]
     ), f"{conv_backend['ARCHIVER_MOUNT']} is not mounted, it is required for this process. Exiting!!!"
@@ -436,7 +464,6 @@ def main():
         last_active.set(time.time())
         inv = check_inventory(conv_backend["RAW_PATH"])
         inventory.set(inv)
-        #import IPython;IPython.embed()
 
         if conv_backend["USE_L4_DB"]:
             # use db to keep track of conversion to do list
@@ -479,7 +506,6 @@ def main():
                 convert_data(
                     e, NUM_THREADS, sqlite, conn, conv_backend
                 )  # if sqlite or conn are None, will look for events using filepaths.
-                
                 print("Total time to convert all files: ", time.time() - t_global)
         sys.stdout.flush()
         time.sleep(300)
