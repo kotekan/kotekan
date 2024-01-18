@@ -164,6 +164,13 @@ RUN python3 -m pip install --no-cache-dir breathe==4.35.* \
                                           sphinx_rtd_theme==1.2.* \
                                           sphinxcontrib-plantuml==0.25
 
+# Install ASDF
+RUN wget https://github.com/eschnett/asdf-cxx/archive/refs/tags/version/7.3.2.tar.gz && \
+    tar xzf 7.3.2.tar.gz && \
+    cd asdf-cxx-version-7.3.2 && \
+    cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    cmake --build build && \
+    cmake --install build
 
 # Julia
 RUN apt-get update && apt-get install -y curl \
