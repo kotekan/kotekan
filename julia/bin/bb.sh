@@ -42,7 +42,7 @@ done
 julia --project=@. --eval 'using JuliaFormatter; JuliaFormatter.format_file("output-A40")' &
 wait
 
-# Copy kernel into Kotekan
+# Copy kernels into Kotekan
 for setup in $setups; do
     cp output-A40/bb_$setup.cxx ../lib/cuda/cudaBasebandBeamformer_$setup.cpp
     cp output-A40/bb_$setup.jl ../lib/cuda/kernels/BasebandBeamformer_$setup.jl

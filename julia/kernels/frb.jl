@@ -64,12 +64,11 @@ elseif setup ≡ :hirax
     const F₀ = 64
     const F = 64
 
-    @assert false
-    const Touter = 48           #???
-    const Tinner = 4            #???
+    const Touter = 64
+    const Tinner = 8
 
-    const W = 24                # number of warps   #???
-    const B = 1                 # number of blocks per SM   #???
+    const W = 16                # number of warps
+    const B = 1                 # number of blocks per SM
 
 elseif setup ≡ :pathfinder
 
@@ -93,7 +92,7 @@ end
 
 const sampling_time_μsec = 16 * 4096 / (2 * 1200)
 const C = 2
-const T = 2064
+const T = cld(32768 ÷ 16, Touter) * Touter
 
 const Tds = 40                  # downsampling factor
 const output_gain = 1 / (8 * Tds)
@@ -416,7 +415,7 @@ const kernel_setup = KernelSetup(num_threads, num_warps, num_blocks, num_blocks_
 
 # Copying global memory to shared memory (Fsh1) (section 4.6)
 function copy_global_memory_to_Fsh1!(emitter)
-    if setup === :chord
+    if setup === :chord || setup === :hirax
 
         # Eqn. (88)
         @assert D % 256 == 0
@@ -432,8 +431,10 @@ function copy_global_memory_to_Fsh1!(emitter)
             Dish(:dish, 256, idiv(D, 256)) => Register(:dish, 256, idiv(D, 256)),
             Freq(:freq, 1, F) => Block(:block, 1, F),
             Polr(:polr, 1, P) => Thread(:thread, 16, 2),
-            Time(:time, 1, idiv(Touter, 2)) => Warp(:warp, 1, W),
-            Time(:time, idiv(Touter, 2), 2) => Register(:time, idiv(Touter, 2), 2),
+            # Time(:time, 1, idiv(Touter, 2)) => Warp(:warp, 1, W),
+            # Time(:time, idiv(Touter, 2), 2) => Register(:time, idiv(Touter, 2), 2),
+            Time(:time, 1, W) => Warp(:warp, 1, W),
+            Time(:time, W, idiv(Touter, W)) => Register(:time, W, idiv(Touter, W)),
             Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
         ])
         load!(emitter, :E => layout_E_registers, :E_memory => layout_E_memory; align=16)
@@ -856,7 +857,7 @@ function do_first_fft!(emitter)
             DishNHi(:dishNHi, 1, 4) => Thread(:thread, 1, 4),
             Polr(:polr, 1, P) => Register(:polr, 1, P),
             Freq(:freq, 1, F) => Block(:block, 1, F),
-            Time(:time, 1, Tw) => Warp(:warp, idiv(M, 4 * Mt) * Mw, Tw),
+            Time(:time, 1, Tw) => Warp(:warp, Mw, Tw),
             Time(:time, Tw, idiv(Tinner, Tw)) => Register(:time, Tw, idiv(Tinner, Tw)),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
             Time(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2),
@@ -921,7 +922,8 @@ function do_first_fft!(emitter)
     # Section 3 `W` is called `V` here
     split!(emitter, [:aΓ²re, :aΓ²im], :aΓ², Register(:cplx, 1, 2))
     split!(emitter, [:Zre, :Zim], :Z, Register(:cplx, 1, 2))
-    if trailing_zeros(Npad) == 5
+    # TODO: Find a better set of conditions
+    if trailing_zeros(Npad) == 5 || setup === :hirax
         apply!(emitter, :Vre, [:Zre, :Zim, :aΓ²re, :aΓ²im], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zre, -$aΓ²im * $Zim)))
         apply!(emitter, :Vim, [:Zre, :Zim, :aΓ²re, :aΓ²im], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zim, +$aΓ²im * $Zre)))
     elseif trailing_zeros(Npad) == 4
@@ -970,7 +972,7 @@ function do_first_fft!(emitter)
                 DishM(:dishM, Mt * Mw, Mr) => Register(:dishM, Mt * Mw, Mr),
                 Polr(:polr, 1, P) => Register(:polr, 1, P),
                 Freq(:freq, 1, F) => Block(:block, 1, F),
-                Time(:time, 1, Tw) => Warp(:warp, idiv(M, 4 * Mt) * Mw, Tw),
+                Time(:time, 1, Tw) => Warp(:warp, Mw, Tw),
                 Time(:time, Tw, idiv(Tinner, Tw)) => Register(:time, Tw, idiv(Tinner, Tw)),
                 Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
                 Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
@@ -1047,15 +1049,23 @@ function do_first_fft!(emitter)
             # dense mma
             mma_row_col_m16n8k16_f16!(emitter, :Y, :aΓ³ => (mma_is, mma_js), :V => (mma_js, mma_ks), :Y => (mma_is, mma_ks))
         else
-            # We can't handle partial index ranges in symbols. If there is
-            # a `dishM` spectator index then the whole `dishM` index range
-            # needs to be present. This should be corrected in
-            # `IndexSpaces.apply!`.
-            merge!(emitter, :aΓ³M, [:aΓ³, :aΓ³], DishM(:dishM, 4, 2) => Register(:dishM, 4, 2))
-            # sparse mma
-            mma_sp_row_col_m16n8k16_f16!(
-                emitter, :Y, :aΓ³M => (mma_is, mma_js), :V => (mma_js, mma_ks), :Y => (mma_is, mma_ks), spectator
-            )
+            # TODO: Find a better set of conditions
+            if setup === :pathfinder
+                # We can't handle partial index ranges in symbols. If there is
+                # a `dishM` spectator index then the whole `dishM` index range
+                # needs to be present. This should be corrected in
+                # `IndexSpaces.apply!`.
+                merge!(emitter, :aΓ³M, [:aΓ³, :aΓ³], DishM(:dishM, 4, 2) => Register(:dishM, 4, 2))
+                # sparse mma
+                mma_sp_row_col_m16n8k16_f16!(
+                    emitter, :Y, :aΓ³M => (mma_is, mma_js), :V => (mma_js, mma_ks), :Y => (mma_is, mma_ks), spectator
+                )
+            else
+                # sparse mma
+                mma_sp_row_col_m16n8k16_f16!(
+                    emitter, :Y, :aΓ³ => (mma_is, mma_js), :V => (mma_js, mma_ks), :Y => (mma_is, mma_ks), spectator
+                )
+            end
         end
     end
 
@@ -1115,7 +1125,7 @@ function do_second_fft!(emitter)
             DishMHi(:dishMHi, 1, 4) => Thread(:thread, 1, 4),
             DishMLo(:dishMLo, 1, 2) => Thread(:thread, 4, 2),
             BeamQ(:beamQ, 1, 2) => Thread(:thread, 8, 2),
-            DishMLo(:dishMLo, 2, 4) => Thread(:thread, 16, 2),
+            DishMLo(:dishMLo, 2, 2) => Thread(:thread, 16, 2),
             # Is this an efficient warp layout (with reversed warp bits)?
             # This simplifies shared memory addressing; see `layout_Gsh_fft2_shared`.
             # TODO: Re-introduce this.
@@ -1131,7 +1141,7 @@ function do_second_fft!(emitter)
             Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner),
             # Time(:time, Tinner, idiv(Touter, Tinner)) => Loop(:t_inner, Tinner, idiv(Touter, Tinner)),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
-            Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
+            Time(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2),
             Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
         ])
     elseif trailing_zeros(Mpad) == 3
@@ -1325,8 +1335,8 @@ function do_second_fft!(emitter)
                 BeamP(:beamP, 1, 2) => SIMD(:simd, 16, 2),
                 BeamP(:beamP, 2, 4) => Thread(:thread, 1, 4),
                 BeamP(:beamP, 8, 8) => Thread(:thread, 4, 8),
-                BeamQ(:beamQ, 1, N) => Warp(:warp, 1, N),
-                BeamQ(:beamQ, N, 2) => Register(:beamQ, N, 2),
+                BeamQ(:beamQ, 1, W) => Warp(:warp, 1, W),
+                BeamQ(:beamQ, W, idiv(2N, W)) => Register(:beamQ, W, idiv(2N, W)),
                 Freq(:freq, 1, F) => Block(:block, 1, F),
                 Polr(:polr, 1, P) => Register(:polr, 1, P),
                 Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner),
@@ -1342,8 +1352,8 @@ function do_second_fft!(emitter)
                 BeamP(:beamP, 2, 4) => Thread(:thread, 1, 4),
                 BeamP(:beamP, 8, 4) => Thread(:thread, 4, 4),
                 BeamQ(:beamQ, 1, 2) => Thread(:thread, 16, 2),
-                BeamQ(:beamQ, 2, idiv(N, 2)) => Warp(:warp, 1, idiv(N, 2)),
-                BeamQ(:beamQ, N, 2) => Register(:beamQ, N, 2),
+                BeamQ(:beamQ, 2, W) => Warp(:warp, 1, W),
+                BeamQ(:beamQ, 2W, idiv(2N, 2W)) => Register(:beamQ, 2W, idiv(2N, 2W)),
                 Freq(:freq, 1, F) => Block(:block, 1, F),
                 Polr(:polr, 1, P) => Register(:polr, 1, P),
                 Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner),
@@ -1359,8 +1369,8 @@ function do_second_fft!(emitter)
                 BeamP(:beamP, 2, 4) => Thread(:thread, 1, 4),
                 BeamP(:beamP, 8, 2) => Thread(:thread, 4, 2),
                 BeamQ(:beamQ, 1, 4) => Thread(:thread, 8, 4),
-                BeamQ(:beamQ, 4, idiv(N, 2)) => Warp(:warp, 1, idiv(N, 2)),
-                # BeamQ(:beamQ, N, 1) => Register(:beamQ, N, 1),
+                BeamQ(:beamQ, 4, W) => Warp(:warp, 1, W),
+                BeamQ(:beamQ, 4W, idiv(2N, 4W)) => Register(:beamQ, 4W, idiv(2N, 4W)),
                 Freq(:freq, 1, F) => Block(:block, 1, F),
                 Polr(:polr, 1, P) => Register(:polr, 1, P),
                 Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner),

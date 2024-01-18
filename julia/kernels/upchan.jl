@@ -69,6 +69,15 @@ setup::Symbol
     const P = 2
     const F₀ = 16
     const F = 16
+elseif setup ≡ :hirax
+    # HIRAX Setup
+    const sampling_time_μsec = 2.56
+    const C = 2
+    const T = 32768 * 4             # this assumes a GPU buffer depth of 4
+    const D = 256
+    const P = 2
+    const F₀ = 16
+    const F = 16
 elseif setup ≡ :pathfinder
     # Pathfinder Setup
     const sampling_time_μsec = 4096 / (2 * 1200)

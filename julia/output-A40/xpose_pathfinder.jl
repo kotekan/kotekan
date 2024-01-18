@@ -1,5 +1,5 @@
 @fastmath @inbounds(
-    begin #= /home/eschnett/src/kotekan/julia/kernels/xpose.jl:277 =#
+    begin #= /home/eschnett/src/kotekan/julia/kernels/xpose.jl:319 =#
         info = 1
         if true
             info_memory[(((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 16) % 16) * 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 128) % 128) % 128) * 512) + 0) + 0x01] =
