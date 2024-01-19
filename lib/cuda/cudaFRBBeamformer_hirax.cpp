@@ -57,10 +57,10 @@ private:
     static constexpr int cuda_beam_layout_N = 32;
     static constexpr int cuda_dish_layout_M = 16;
     static constexpr int cuda_dish_layout_N = 16;
-    static constexpr int cuda_downsampling_factor = 40;
+    static constexpr int cuda_downsampling_factor = 25;
     static constexpr int cuda_number_of_complex_components = 2;
     static constexpr int cuda_number_of_dishes = 256;
-    static constexpr int cuda_number_of_frequencies = 64;
+    static constexpr int cuda_number_of_frequencies = 1024;
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_timesamples = 2048;
 
@@ -71,7 +71,7 @@ private:
     // Kernel call parameters:
     static constexpr int threads_x = 32;
     static constexpr int threads_y = 16;
-    static constexpr int blocks = 64;
+    static constexpr int blocks = 1024;
     static constexpr int shmem_bytes = 34944;
 
     // Kernel name:
@@ -101,9 +101,9 @@ private:
         "C", "dishM", "dishN", "P", "F",
     };
     static constexpr std::array<std::size_t, W_rank> W_lengths = {
-        2, 16, 16, 2, 64,
+        2, 16, 16, 2, 1024,
     };
-    static constexpr std::size_t W_length = chord_datatype_bytes(W_type) * 2 * 16 * 16 * 2 * 64;
+    static constexpr std::size_t W_length = chord_datatype_bytes(W_type) * 2 * 16 * 16 * 2 * 1024;
     static_assert(W_length <= std::size_t(std::numeric_limits<int>::max()));
     //
     // E: gpu_mem_voltage
@@ -118,10 +118,10 @@ private:
     static constexpr std::array<std::size_t, E_rank> E_lengths = {
         256,
         2,
-        64,
+        1024,
         2048,
     };
-    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 256 * 2 * 64 * 2048;
+    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 256 * 2 * 1024 * 2048;
     static_assert(E_length <= std::size_t(std::numeric_limits<int>::max()));
     //
     // I: gpu_mem_beamgrid
@@ -136,10 +136,10 @@ private:
     static constexpr std::array<std::size_t, I_rank> I_lengths = {
         32,
         32,
-        51,
-        64,
+        81,
+        1024,
     };
-    static constexpr std::size_t I_length = chord_datatype_bytes(I_type) * 32 * 32 * 51 * 64;
+    static constexpr std::size_t I_length = chord_datatype_bytes(I_type) * 32 * 32 * 81 * 1024;
     static_assert(I_length <= std::size_t(std::numeric_limits<int>::max()));
     //
     // info: gpu_mem_info
@@ -153,9 +153,9 @@ private:
     static constexpr std::array<std::size_t, info_rank> info_lengths = {
         32,
         16,
-        64,
+        1024,
     };
-    static constexpr std::size_t info_length = chord_datatype_bytes(info_type) * 32 * 16 * 64;
+    static constexpr std::size_t info_length = chord_datatype_bytes(info_type) * 32 * 16 * 1024;
     static_assert(info_length <= std::size_t(std::numeric_limits<int>::max()));
     //
 

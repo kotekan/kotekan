@@ -48,6 +48,8 @@ setup::Symbol
     const Touter = 48
     const Tinner = 4
 
+    const Tds = 40              # downsampling factor
+
     const W = 24                # number of warps
     const B = 1                 # number of blocks per SM
 
@@ -61,11 +63,13 @@ elseif setup ≡ :hirax
     const M = 16
     const N = 16
     const P = 2
-    const F₀ = 64
-    const F = 64
+    const F₀ = 64 * 16
+    const F = 64 * 16
 
     const Touter = 64
     const Tinner = 8
+
+    const Tds = 25              # downsampling factor
 
     const W = 16                # number of warps
     const B = 1                 # number of blocks per SM
@@ -83,6 +87,8 @@ elseif setup ≡ :pathfinder
     const Touter = 48
     const Tinner = 6
 
+    const Tds = 40              # downsampling factor
+
     const W = 6                 # number of warps
     const B = 4                 # number of blocks per SM (TODO: check!)
 
@@ -94,7 +100,6 @@ const sampling_time_μsec = 16 * 4096 / (2 * 1200)
 const C = 2
 const T = cld(32768 ÷ 16, Touter) * Touter
 
-const Tds = 40                  # downsampling factor
 const output_gain = 1 / (8 * Tds)
 
 # Derived compile-time parameters (section 4.4)

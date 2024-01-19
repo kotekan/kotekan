@@ -3,7 +3,9 @@ using CUDASIMDTypes
 using CairoMakie
 using SixelTerm
 
-dir = "/tmp/f_engine_pathfinder_bb"
+setup = :hirax
+
+dir = "/tmp/f_engine_$(setup)_bb"
 prefix = "blue_"
 iter = "00000000"
 
@@ -51,14 +53,24 @@ ntimes′, npolrs′, nfreqs′, nbeams′ = size(array_J)
 @assert (ntimes′, npolrs′, nfreqs′, nbeams′) == (ntimes, npolrs, nfreqs, nbeams)
 
 # TODO: Read this from metadata
-# Full CHORD
-# ndishs_i = 32
-# ndishs_j = 16
-# CHORD pathfinder
-ndishs_i = 8
-ndishs_j = 8
-dishsΔx = 6.3f0
-dishsΔy = 8.5f0
+if setup === :chord
+    ndishs_i = 32
+    ndishs_j = 16
+    dishsΔx = 6.3f0
+    dishsΔy = 8.5f0
+elseif setup === :pathfinder
+    ndishs_i = 8
+    ndishs_j = 8
+    dishsΔx = 6.3f0
+    dishsΔy = 8.5f0
+elseif setup === :hirax
+    ndishs_i = 16
+    ndishs_j = 16
+    dishsΔx = 6.5f0
+    dishsΔy = 8.5f0
+else
+    @assert false
+end
 
 dishsi₀ = (ndishs_i - 1) / 2.0f0
 dishsj₀ = (ndishs_j - 1) / 2.0f0
@@ -77,12 +89,18 @@ for dish in 1:ndishs
 end
 
 # TODO: Read this from metadata
-# Full CHORD
-# nbeams_i = 12
-# nbeams_j = 8
-# CHORD pathfinder
-nbeams_i = 4
-nbeams_j = 4
+if setup === :chord
+    nbeams_i = 12
+    nbeams_j = 8
+elseif setup === :pathfinder
+    nbeams_i = 4
+    nbeams_j = 4
+elseif setup === :hirax
+    nbeams_i = 4
+    nbeams_j = 4
+else
+    @assert false
+end
 beamsΔx = 0.015f0
 beamsΔy = 0.015f0
 
@@ -105,10 +123,15 @@ end
 # Most of the power is in frequency 3
 # (TODO: Read this from metadata)
 # freq = 1:nfreqs
-# Full CHORD
-# freq = 3
-# CHORD pathfinder
-freq = 26
+if setup === :chord
+    freq = 3
+elseif setup === :pathfinder
+    freq = 26
+elseif setup === :hirax
+    freq = 24
+else
+    @assert false
+end
 
 data = Float32[
     sqrt(
