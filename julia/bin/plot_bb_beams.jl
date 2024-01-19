@@ -139,7 +139,7 @@ data = Float32[
     ) for dish in 1:ndishs
 ]
 fig = Figure(; size=(1280, 960))
-ax = Axis(fig[1, 1]; title="F-engine electric field", xlabel="x", ylabel="y")
+ax = Axis(fig[1, 1]; title="$setup F-engine electric field", xlabel="x", ylabel="y")
 xlims!(ax, dishs_xlim)
 ylims!(ax, dishs_ylim)
 obj = scatter!(ax, dishsx, dishsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
@@ -153,7 +153,7 @@ data = Float32[
     for beam in 1:nbeams
 ]
 fig = Figure(; size=(1280, 960))
-ax = Axis(fig[1, 1]; title="expected baseband beams", xlabel="sky θx", ylabel="sky θy")
+ax = Axis(fig[1, 1]; title="$setup expected baseband beams", xlabel="sky θx", ylabel="sky θy")
 xlims!(ax, beams_xlim)
 ylims!(ax, beams_ylim)
 obj = scatter!(ax, beamsx, beamsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
@@ -167,11 +167,11 @@ data = Float32[
     beam in 1:nbeams
 ]
 fig = Figure(; size=(1280, 960))
-ax = Axis(fig[1, 1]; title="X-engine baseband beams", xlabel="sky θx", ylabel="sky θy")
+ax = Axis(fig[1, 1]; title="$setup X-engine baseband beams", xlabel="sky θx", ylabel="sky θy")
 xlims!(ax, beams_xlim)
 ylims!(ax, beams_ylim)
 obj = scatter!(ax, beamsx, beamsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
-Colorbar(fig[1, 2], obj; label="|baseband beam|₂")
+Colorbar(fig[1, 2], obj; label="baseband beam intensity")
 # rowsize!(fig.layout, 1, Aspect(1, beams_ysize / beams_xsize))
 colsize!(fig.layout, 1, Aspect(1, beams_xsize / beams_ysize))
 display(fig)

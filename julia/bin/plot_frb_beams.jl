@@ -3,7 +3,9 @@ using CUDASIMDTypes
 using CairoMakie
 using SixelTerm
 
-dir = "/tmp/f_engine_pathfinder_frb"
+setup = :hirax
+
+dir = "/tmp/f_engine_$(setup)_frb"
 prefix = "blue_"
 iter = "00000000"
 
@@ -46,7 +48,7 @@ nbeamps, nbeamqs, ntimebars, nfreqs′ = size(array_I)
 array_I = map(x -> x == Inf ? prevfloat(typemax(x)) : x, array_I)
 
 # TODO: Read this from metadata
-if false
+if setup === :chord
     # CHORD
     num_dish_locations_M = 24
     num_dish_locations_N = 24
@@ -78,204 +80,48 @@ if false
         23,0,23,1,23,2,23,3,23,4,23,5,23,6,23,7,23,8,23,9,23,10,23,11,23,12,23,13,23,14,23,15,23,16,23,17,23,18,23,19,23,20,23,21,23,22,23,23,
     ]
     #! format: on
-else
+elseif setup === :pathfinder
     # Pathfinder
     num_dish_locations_M = 8
     num_dish_locations_N = 12
+    #! format: off
     dish_locations = Int[
-        0,
-        0,
-        0,
-        1,
-        0,
-        2,
-        0,
-        3,
-        0,
-        4,
-        0,
-        5,
-        0,
-        6,
-        0,
-        7,
-        0,
-        8,
-        0,
-        9,
-        0,
-        10,
-        0,
-        11,
-        1,
-        0,
-        1,
-        1,
-        1,
-        2,
-        1,
-        3,
-        1,
-        4,
-        1,
-        5,
-        1,
-        6,
-        1,
-        7,
-        1,
-        8,
-        1,
-        9,
-        1,
-        10,
-        1,
-        11,
-        2,
-        0,
-        2,
-        1,
-        2,
-        2,
-        2,
-        3,
-        2,
-        4,
-        2,
-        5,
-        2,
-        6,
-        2,
-        7,
-        2,
-        8,
-        2,
-        9,
-        2,
-        10,
-        2,
-        11,
-        3,
-        0,
-        3,
-        1,
-        3,
-        2,
-        3,
-        3,
-        3,
-        4,
-        3,
-        5,
-        3,
-        6,
-        3,
-        7,
-        3,
-        8,
-        3,
-        9,
-        3,
-        10,
-        3,
-        11,
-        4,
-        0,
-        4,
-        1,
-        4,
-        2,
-        4,
-        3,
-        4,
-        4,
-        4,
-        5,
-        4,
-        6,
-        4,
-        7,
-        4,
-        8,
-        4,
-        9,
-        4,
-        10,
-        4,
-        11,
-        5,
-        0,
-        5,
-        1,
-        5,
-        2,
-        5,
-        3,
-        5,
-        4,
-        5,
-        5,
-        5,
-        6,
-        5,
-        7,
-        5,
-        8,
-        5,
-        9,
-        5,
-        10,
-        5,
-        11,
-        6,
-        0,
-        6,
-        1,
-        6,
-        2,
-        6,
-        3,
-        6,
-        4,
-        6,
-        5,
-        6,
-        6,
-        6,
-        7,
-        6,
-        8,
-        6,
-        9,
-        6,
-        10,
-        6,
-        11,
-        7,
-        0,
-        7,
-        1,
-        7,
-        2,
-        7,
-        3,
-        7,
-        4,
-        7,
-        5,
-        7,
-        6,
-        7,
-        7,
-        7,
-        8,
-        7,
-        9,
-        7,
-        10,
-        7,
-        11,
+        0,0,0,1,0,2,0,3,0,4,0,5,0,6,0,7,0,8,0,9,0,10,0,11,
+        1,0,1,1,1,2,1,3,1,4,1,5,1,6,1,7,1,8,1,9,1,10,1,11,
+        2,0,2,1,2,2,2,3,2,4,2,5,2,6,2,7,2,8,2,9,2,10,2,11,
+        3,0,3,1,3,2,3,3,3,4,3,5,3,6,3,7,3,8,3,9,3,10,3,11,
+        4,0,4,1,4,2,4,3,4,4,4,5,4,6,4,7,4,8,4,9,4,10,4,11,
+        5,0,5,1,5,2,5,3,5,4,5,5,5,6,5,7,5,8,5,9,5,10,5,11,
+        6,0,6,1,6,2,6,3,6,4,6,5,6,6,6,7,6,8,6,9,6,10,6,11,
+        7,0,7,1,7,2,7,3,7,4,7,5,7,6,7,7,7,8,7,9,7,10,7,11,
     ]
+    #! format: on
+elseif setup === :hirax
+    # HIRAX
+    num_dish_locations_M = 16
+    num_dish_locations_N = 16
+    #! format: off
+    dish_locations = Int[
+        0, 0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0, 9, 0, 10, 0, 11, 0, 12, 0, 13, 0, 14, 0, 15,
+        1, 0, 1, 1, 1, 2, 1, 3, 1, 4, 1, 5, 1, 6, 1, 7, 1, 8, 1, 9, 1, 10, 1, 11, 1, 12, 1, 13, 1, 14, 1, 15,
+        2, 0, 2, 1, 2, 2, 2, 3, 2, 4, 2, 5, 2, 6, 2, 7, 2, 8, 2, 9, 2, 10, 2, 11, 2, 12, 2, 13, 2, 14, 2, 15,
+        3, 0, 3, 1, 3, 2, 3, 3, 3, 4, 3, 5, 3, 6, 3, 7, 3, 8, 3, 9, 3, 10, 3, 11, 3, 12, 3, 13, 3, 14, 3, 15,
+        4, 0, 4, 1, 4, 2, 4, 3, 4, 4, 4, 5, 4, 6, 4, 7, 4, 8, 4, 9, 4, 10, 4, 11, 4, 12, 4, 13, 4, 14, 4, 15,
+        5, 0, 5, 1, 5, 2, 5, 3, 5, 4, 5, 5, 5, 6, 5, 7, 5, 8, 5, 9, 5, 10, 5, 11, 5, 12, 5, 13, 5, 14, 5, 15,
+        6, 0, 6, 1, 6, 2, 6, 3, 6, 4, 6, 5, 6, 6, 6, 7, 6, 8, 6, 9, 6, 10, 6, 11, 6, 12, 6, 13, 6, 14, 6, 15,
+        7, 0, 7, 1, 7, 2, 7, 3, 7, 4, 7, 5, 7, 6, 7, 7, 7, 8, 7, 9, 7, 10, 7, 11, 7, 12, 7, 13, 7, 14, 7, 15,
+        8, 0, 8, 1, 8, 2, 8, 3, 8, 4, 8, 5, 8, 6, 8, 7, 8, 8, 8, 9, 8, 10, 8, 11, 8, 12, 8, 13, 8, 14, 8, 15,
+        9, 0, 9, 1, 9, 2, 9, 3, 9, 4, 9, 5, 9, 6, 9, 7, 9, 8, 9, 9, 9, 10, 9, 11, 9, 12, 9, 13, 9, 14, 9, 15,
+        10, 0, 10, 1, 10, 2, 10, 3, 10, 4, 10, 5, 10, 6, 10, 7, 10, 8, 10, 9, 10, 10, 10, 11, 10, 12, 10, 13, 10, 14, 10, 15,
+        11, 0, 11, 1, 11, 2, 11, 3, 11, 4, 11, 5, 11, 6, 11, 7, 11, 8, 11, 9, 11, 10, 11, 11, 11, 12, 11, 13, 11, 14, 11, 15,
+        12, 0, 12, 1, 12, 2, 12, 3, 12, 4, 12, 5, 12, 6, 12, 7, 12, 8, 12, 9, 12, 10, 12, 11, 12, 12, 12, 13, 12, 14, 12, 15,
+        13, 0, 13, 1, 13, 2, 13, 3, 13, 4, 13, 5, 13, 6, 13, 7, 13, 8, 13, 9, 13, 10, 13, 11, 13, 12, 13, 13, 13, 14, 13, 15,
+        14, 0, 14, 1, 14, 2, 14, 3, 14, 4, 14, 5, 14, 6, 14, 7, 14, 8, 14, 9, 14, 10, 14, 11, 14, 12, 14, 13, 14, 14, 14, 15,
+        15, 0, 15, 1, 15, 2, 15, 3, 15, 4, 15, 5, 15, 6, 15, 7, 15, 8, 15, 9, 15, 10, 15, 11, 15, 12, 15, 13, 15, 14, 15, 15,
+    ]
+    #! format: on
+else
+    @assert false
 end
 
 # Check length
@@ -283,8 +129,15 @@ end
 # Convert element type to tuples
 dish_locations = reinterpret(NTuple{2,Int}, dish_locations)
 # Drop dummy dishes
-# num_dishes = 512
-num_dishes = 64
+if setup === :chord
+    num_dishes = 512
+elseif setup === :pathfinder
+    num_dishes = 64
+elseif setup === :hirax
+    num_dishes = 256
+else
+    @assert false
+end
 @assert ndishs == num_dishes
 dish_locations = dish_locations[1:num_dishes]
 dishsΔx = 6.3f0
@@ -335,10 +188,15 @@ end
 # Most of the power is in frequency 89 (???)
 # (TODO: Read this from metadata)
 # freq = 1:nfreqs
-# Full CHORD
-# freq = 48
-# CHORD pathfinder
-freq = 408
+if setup === :chord
+    freq = 48
+elseif setup === :pathfinder
+    freq = 408
+elseif setup === :hirax
+    freq = 384
+else
+    @assert false
+end
 
 data = Float32[
     sqrt(
@@ -346,7 +204,7 @@ data = Float32[
     ) for dish in 1:ndishs
 ]
 fig = Figure(; size=(1280, 960))
-ax = Axis(fig[1, 1]; title="F-engine electric field", xlabel="x", ylabel="y")
+ax = Axis(fig[1, 1]; title="$setup F-engine electric field", xlabel="x", ylabel="y")
 xlims!(ax, dishs_xlim)
 ylims!(ax, dishs_ylim)
 obj = scatter!(ax, dishsx, dishsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
@@ -360,11 +218,11 @@ data = Float32[
     beamq in 1:nbeamqs for beamp in 1:nbeamps
 ]
 fig = Figure(; size=(1280, 960))
-ax = Axis(fig[1, 1]; title="X-engine frb beams", xlabel="sky θx", ylabel="sky θy")
+ax = Axis(fig[1, 1]; title="$setup X-engine frb beams", xlabel="sky θx", ylabel="sky θy")
 xlims!(ax, beams_xlim)
 ylims!(ax, beams_ylim)
 obj = scatter!(ax, beamsx, beamsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
-Colorbar(fig[1, 2], obj; label="|baseband beam|₂")
+Colorbar(fig[1, 2], obj; label="frb beam intensity")
 # rowsize!(fig.layout, 1, Aspect(1, beams_ysize / beams_xsize))
 colsize!(fig.layout, 1, Aspect(1, beams_xsize / beams_ysize))
 display(fig)
