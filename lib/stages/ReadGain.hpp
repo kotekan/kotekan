@@ -97,8 +97,6 @@ private:
 
     /// Directory path where gain files are
     std::string _gain_dir_frb;
-    /// UT1-UTC value
-    std::float _UT1_UTC_val;
     queue<std::pair<uint8_t, std::string>> _gain_dir_tracking;
     /// Default gain values if gain file is missing for this freq, currently set to 1+1j
     vector<float> default_gains;
