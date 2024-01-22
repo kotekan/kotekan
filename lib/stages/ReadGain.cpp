@@ -96,6 +96,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
         configUpdater::instance().subscribe(
             gainfrb, std::bind(&ReadGain::update_gains_frb_callback, this, _1));
 
+  
     // Listen for gain updates Tracking Beamformer
     using namespace std::placeholders;
     for (int beam_id = 0; beam_id < _num_beams; beam_id++) {
@@ -132,6 +133,7 @@ bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
 
     return true;
 }
+
 
 bool ReadGain::update_gains_tracking_callback(nlohmann::json& json, const uint8_t beam_id) {
     {
