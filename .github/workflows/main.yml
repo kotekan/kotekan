@@ -42,7 +42,7 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Check for file changes
-      uses: tj-actions/changed-files@v37
+      uses: tj-actions/changed-files@v41
       id: changed-files
 
     - name: Login to GitHub Container Registry
@@ -420,7 +420,7 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Check for file changes
-      uses: tj-actions/changed-files@v37
+      uses: tj-actions/changed-files@v41
       id: changed-files
 
     - name: Login to GitHub Container Registry

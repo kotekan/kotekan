@@ -9,7 +9,7 @@ dependencies:
   - pip
   - cmake
   - doxygen
-  - sphinx=5.0.2
-  - sphinx_rtd_theme=1.2.2
+  - sphinx=6.2.1
+  - sphinx_rtd_theme=2.0.0
   - breathe=4.35.0
   - sphinxcontrib-plantuml=0.25
