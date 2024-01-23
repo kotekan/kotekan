@@ -51,6 +51,9 @@ add_library(
     bufferDelay.cpp
     BufferSplit.cpp
     InputSubset.cpp
+    BeamformingPhaseUpdate.cpp
+    FloatPhaseUpdate.cpp
+    TCPhaseUpdate.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp
