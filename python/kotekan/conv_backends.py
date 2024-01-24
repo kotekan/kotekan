@@ -14,9 +14,9 @@
 def get_backend(name):
     chime_backend = {
         "ARCHIVER_MOUNT": "/data/chime/baseband/raw",
-        "NUM_THREADS": 5,
-        "KOTEKAN_CONFIG": "../../../config/baseband_commissioning/kotekan/config/chime_science_run_recv_baseband.yaml",
-        "USE_L4_DB": True,
+        "NUM_THREADS": 20,
+        "KOTEKAN_CONFIG": "/home/calvin/kotekan/config/chime_science_run_recv_baseband.yaml",
+        "USE_L4_DB": False,
         "RAW_PATH": "/data/baseband_raw/",
         "PROMETHEUS_GW": "frb-vsop.chime:9091",
         "COCO_URL": "http://csBfs:54323/baseband-status",
