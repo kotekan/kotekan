@@ -1,7 +1,6 @@
 #!/bin/bash
 
-source /home/chitrang/.bashrc
-
-cd /home/chitrang/kotekan/python/kotekan/scripts 
-
-python convert_baseband.py 
+source /home/calvin/.bashrc
+source /home/calvin/bb_converter_env/bin/activate
+cd /home/calvin/kotekan/python/kotekan/scripts 
+python3 convert_baseband.py 
