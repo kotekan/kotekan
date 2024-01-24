@@ -49,6 +49,9 @@ public:
     /// Main thread/loop
     void main_thread() override;
 
+    /// Endpoint for providing new UT1-UTC offset
+    bool update_UT1_UTC_offset(nlohmann::json& json);
+
     /// Endpoint for providing new tracking target (RA, Dec, beam_id)
     bool tracking_update_callback(nlohmann::json& json, const uint8_t beamID);
 
