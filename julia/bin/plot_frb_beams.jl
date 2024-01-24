@@ -3,7 +3,7 @@ using CUDASIMDTypes
 using CairoMakie
 using SixelTerm
 
-setup = :hirax
+setup = :pathfinder
 
 dir = "/tmp/f_engine_$(setup)_frb"
 prefix = "blue_"
@@ -34,7 +34,18 @@ array_W = reinterpret(Complex{Float16}, array_W)
 array_W = reshape(array_W, size(array_W)[2:end])
 array_W::AbstractArray{Complex{Float16},4}
 
-quantity_I = "frb_intensity"
+quantity_I0 = "expected_frb_beams"
+file_I0 = ASDF2.load_file("$(dir)/$(prefix)$(quantity_I0).$(iter).asdf")
+dataset_I0 = file_I0.metadata[parse(Int, iter)]
+@assert dataset_I0["dim_names"] == ["F", "Tbar", "beamQ", "beamP"]
+array_I0 = dataset_I0["host_$(quantity_I0)_buffer"][]
+array_I0::AbstractArray{Float16,4}
+array_I0 = reinterpret(Float16, array_I0)
+array_I0::AbstractArray{Float16,4}
+nbeamps, nbeamqs, ntimebars, nfreqs′ = size(array_I0)
+@assert nfreqs′ == nfreqs
+
+quantity_I = "frb_beams"
 file_I = ASDF2.load_file("$(dir)/$(prefix)$(quantity_I).$(iter).asdf")
 dataset_I = file_I.metadata[parse(Int, iter)]
 @assert dataset_I["dim_names"] == ["F", "Tbar", "beamQ", "beamP"]
@@ -211,6 +222,20 @@ obj = scatter!(ax, dishsx, dishsy; color=data, colormap=:plasma, markersize=960 
 Colorbar(fig[1, 2], obj; label="|dish|₂")
 # rowsize!(fig.layout, 1, Aspect(1, dishs_ysize / dishs_xsize))
 colsize!(fig.layout, 1, Aspect(1, dishs_xsize / dishs_ysize))
+display(fig)
+
+data = Float32[
+    sum(Float32(i) for i in view(array_I0, beamp, beamq, :, freq)) / length(view(array_I0, beamp, beamq, :, freq)) for
+    beamq in 1:nbeamqs for beamp in 1:nbeamps
+]
+fig = Figure(; size=(1280, 960))
+ax = Axis(fig[1, 1]; title="$setup expected X-engine frb beams", xlabel="sky θx", ylabel="sky θy")
+xlims!(ax, beams_xlim)
+ylims!(ax, beams_ylim)
+obj = scatter!(ax, beamsx, beamsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
+Colorbar(fig[1, 2], obj; label="frb beam intensity")
+# rowsize!(fig.layout, 1, Aspect(1, beams_ysize / beams_xsize))
+colsize!(fig.layout, 1, Aspect(1, beams_xsize / beams_ysize))
 display(fig)
 
 data = Float32[

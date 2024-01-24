@@ -157,7 +157,7 @@ ax = Axis(fig[1, 1]; title="$setup expected baseband beams", xlabel="sky θx", y
 xlims!(ax, beams_xlim)
 ylims!(ax, beams_ylim)
 obj = scatter!(ax, beamsx, beamsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
-Colorbar(fig[1, 2], obj; label="|baseband beam|₂")
+Colorbar(fig[1, 2], obj; label="baseband beam intensity")
 # rowsize!(fig.layout, 1, Aspect(1, beams_ysize / beams_xsize))
 colsize!(fig.layout, 1, Aspect(1, beams_xsize / beams_ysize))
 display(fig)

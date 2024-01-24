@@ -34,14 +34,24 @@ dish_separation_y: 8.5          # [m] north-south
 num_dishes: 64
 
 # 8*12 = 96 dish locations. Dishes 0..63 are real dishes, dishes
-# 64..95 are dummy dishes where the E-field is set to zero
+# 64..95 are dummy dishes where the E-field is set to zero.
+# The actual dishes live on an 11x6 grid.
 dish_locations: [
-    0, 0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0, 9, 0, 10, 0, 11,
-    1, 0, 1, 1, 1, 2, 1, 3, 1, 4, 1, 5, 1, 6, 1, 7, 1, 8, 1, 9, 1, 10, 1, 11,
-    2, 0, 2, 1, 2, 2, 2, 3, 2, 4, 2, 5, 2, 6, 2, 7, 2, 8, 2, 9, 2, 10, 2, 11,
-    3, 0, 3, 1, 3, 2, 3, 3, 3, 4, 3, 5, 3, 6, 3, 7, 3, 8, 3, 9, 3, 10, 3, 11,
-    4, 0, 4, 1, 4, 2, 4, 3, 4, 4, 4, 5, 4, 6, 4, 7, 4, 8, 4, 9, 4, 10, 4, 11,
-    5, 0, 5, 1, 5, 2, 5, 3, 5, 4, 5, 5, 5, 6, 5, 7, 5, 8, 5, 9, 5, 10, 5, 11,
+    # actual dishes
+                0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0, 9, 0, 10,
+    1, 0, 1, 1, 1, 2, 1, 3, 1, 4, 1, 5, 1, 6, 1, 7, 1, 8, 1, 9, 1, 10,
+    2, 0, 2, 1, 2, 2, 2, 3, 2, 4, 2, 5, 2, 6, 2, 7, 2, 8, 2, 9, 2, 10,
+    3, 0, 3, 1, 3, 2, 3, 3, 3, 4, 3, 5, 3, 6, 3, 7, 3, 8, 3, 9, 3, 10,
+    4, 0, 4, 1, 4, 2, 4, 3, 4, 4, 4, 5, 4, 6, 4, 7, 4, 8, 4, 9, 4, 10,
+    5, 0, 5, 1, 5, 2, 5, 3, 5, 4, 5, 5, 5, 6, 5, 7, 5, 8, 5, 9, 5, 10,
+    # dummy dishes
+    0, 0, 0, 1,
+                                                                       0, 11,
+                                                                       1, 11,
+                                                                       2, 11,
+                                                                       3, 11,
+                                                                       4, 11,
+                                                                       5, 11,
     6, 0, 6, 1, 6, 2, 6, 3, 6, 4, 6, 5, 6, 6, 6, 7, 6, 8, 6, 9, 6, 10, 6, 11,
     7, 0, 7, 1, 7, 2, 7, 3, 7, 4, 7, 5, 7, 6, 7, 7, 7, 8, 7, 9, 7, 10, 7, 11,
 ]
@@ -121,7 +131,13 @@ host_expected_bb_beams_buffer:
     frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
     metadata_pool: main_pool
 
-host_frb_intensity_buffer:
+host_expected_frb_beams_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * frb_num_output_times * num_frequencies
+    metadata_pool: main_pool
+
+host_frb_beams_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
     frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * frb_num_output_times * num_frequencies
@@ -137,6 +153,7 @@ gen_voltage:
     S_buffer: host_dish_locations_buffer
     G_buffer: host_upchan_gain_buffer
     W_buffer: host_frb_phase_buffer
+    I_buffer: host_expected_frb_beams_buffer
 
 gpu:
     kernel_path: "lib/cuda/kernels"
@@ -148,7 +165,7 @@ gpu:
             host_dish_locations: host_dish_locations_buffer
             host_frb_phase: host_frb_phase_buffer
         out_buffers:
-            host_frb_intensity: host_frb_intensity_buffer
+            host_frb_beams: host_frb_beams_buffer
         commands:
         - name: cudaInputData
           in_buf: host_voltage
@@ -164,16 +181,16 @@ gpu:
           gpu_mem_voltage: voltage
           gpu_mem_dishlayout: dish_locations
           gpu_mem_phase: frb_phase
-          gpu_mem_beamgrid: frb_intensity
+          gpu_mem_beamgrid: frb_beams
         - name: cudaSyncOutput
         - name: cudaOutputData
-          gpu_mem: frb_intensity
-          out_buf: host_frb_intensity
+          gpu_mem: frb_beams
+          out_buf: host_frb_beams
 
 write_data:
   base_dir: /tmp/f_engine_pathfinder_frb
   exit_after_n_frames: 10
-  exit_with_n_writers: 3
+  exit_with_n_writers: 4
   write_voltage:
     kotekan_stage: asdfFileWrite
     in_buf: host_voltage_buffer
@@ -182,8 +199,12 @@ write_data:
     kotekan_stage: asdfFileWrite
     in_buf: host_frb_phase_buffer
     file_name: frb_phase
-  write_frb_intensity:
+  write_expected_frb_beams:
     kotekan_stage: asdfFileWrite
-    in_buf: host_frb_intensity_buffer
-    file_name: frb_intensity
+    in_buf: host_expected_frb_beams_buffer
+    file_name: expected_frb_beams
+  write_frb_beams:
+    kotekan_stage: asdfFileWrite
+    in_buf: host_frb_beams_buffer
+    file_name: frb_beams
 ...
