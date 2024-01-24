@@ -16,7 +16,8 @@ struct beamCoord {
     float ra[MAX_NUM_BEAMS];
     float dec[MAX_NUM_BEAMS];
     uint32_t scaling[MAX_NUM_BEAMS];
-    float UT1_UTC;
+    // TODO We may want to add `float DUT1` in at some point, 
+    // but it will require updates to backends.
 };
 
 

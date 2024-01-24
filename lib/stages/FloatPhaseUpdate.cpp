@@ -2,6 +2,11 @@
 
 #include "StageFactory.hpp"
 
+#define PI 3.14159265
+#define one_over_c 0.0033356
+#define D2R PI / 180.
+#define TAU 2 * PI
+
 REGISTER_KOTEKAN_STAGE(FloatPhaseUpdate);
 
 FloatPhaseUpdate::FloatPhaseUpdate(kotekan::Config& config, const std::string& unique_name,
@@ -27,7 +32,7 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame, const timespec& gps_ti
     float JD = 2 - int(year / 100.) + int(int(year / 100.) / 4.) + int(365.25 * year) //See this conversion for Skyfield
                + int(30.6001 * (month + 1)) + day + 1720994.5; 
     double UT = (hour) + (utc_time->tm_min / 60.)
-               + (utc_time->tm_sec + _beam_coord.UT1_UTC + gps_time.tv_nsec / 1.e9) / 3600.;                //TO DO:UT1_UTC should be a double value in struct _beam_coord containing UT1-UTC in seconds
+               + (utc_time->tm_sec + _DUT1 + gps_time.tv_nsec / 1.e9) / 3600.;                //TO DO:UT1_UTC should be a double value in struct _beam_coord containing UT1-UTC in seconds
     double JD_UT1 = JD + UT / 24.;
 
 
@@ -67,9 +72,9 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame, const timespec& gps_ti
 
 
         //Looping over all frequencies in the frame
-        for(int i = 0; i < _num_local_freq; i++){
+        for(uint32_t i = 0; i < _num_local_freq; i++){
             //Looping over the feeds
-            for(int j = 0; j < feed_locations.size(); j++){
+            for(size_t j = 0; j < feed_locations.size(); j++){
                 double dist_x = feed_locations[j].first;                                                      //TO DO: Feed location vector should store the x and y distance of each antenna from the phase center
                 double dist_y = feed_locations[j].second;
                 if (dist_x == 0 && dist_y == 0) {

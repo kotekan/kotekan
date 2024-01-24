@@ -89,6 +89,8 @@ protected:
     /// mutex lock prevent beam_coord to be read while it is being updated.
     std::mutex beam_lock;
 
+    double _DUT1;
+
     /**
      * @brief Pure virtual function for computing the phases of the beamformer.
      *

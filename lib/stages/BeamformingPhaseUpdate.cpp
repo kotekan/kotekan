@@ -44,7 +44,7 @@ STAGE_CONSTRUCTOR(BeamformingPhaseUpdate) {
         config.get_default<std::string>(unique_name, "updatable_config/UT1_UTC", "");
     if (UT1_UTC.length() > 0)
         kotekan::configUpdater::instance().subscribe(
-            UT1_UTC, std::bind(&BeamformingPhaseUpdate::update_UT1_UTC_offset, this, _1));
+            UT1_UTC, std::bind(&BeamformingPhaseUpdate::update_UT1_UTC_offset, this, std::placeholders::_1));
 
     // Register function to listen for new beam, and update ra and dec
     using namespace std::placeholders;
@@ -89,15 +89,13 @@ bool BeamformingPhaseUpdate::tracking_update_callback(nlohmann::json& json, cons
 }
 
 bool BeamformingPhaseUpdate::update_UT1_UTC_offset(nlohmann::json& json) {
-    
+    std::lock_guard<std::mutex> lock(beam_lock);
     try {
-        _beam_coord.UT1_UTC = json.at("UT1_UTC_val").get<float>();
+        _DUT1 = json.at("UT1_UTC_val").get<double>();
     } catch (std::exception& e) {
         WARN("[FRB] Fail to read UT1_UTC offset {:s}", e.what());
         return false;
     }
-    
-    cond_var.notify_all();
 
     return true;
 }
@@ -152,7 +150,7 @@ void BeamformingPhaseUpdate::main_thread() {
             // Get frequency in MHz with Telescope::instance().to_freq(frequencies_in_frame[i])
         }
 
-        // Lock gain and metadata setting
+        // Lock gain and metadata setting from updating while phase is set and generated
         {
             std::lock_guard<std::mutex> lock(beam_lock);
             // Set the metadata in the input frame to match what pointings we are
