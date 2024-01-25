@@ -1,4 +1,5 @@
 // CHORD upchannelization kernel
+// See ../docs/CHORD_GPU_upchannelization.pdf in this repository.
 
 #include <algorithm>
 #include <array>

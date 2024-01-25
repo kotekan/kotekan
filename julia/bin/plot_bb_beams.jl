@@ -1,8 +1,12 @@
+# This script reads HDF5 files produced by the config/tests/f_engine_chord_bb.yaml
+# and makes amazing plots.
 using CUDASIMDTypes
 using CairoMakie
 using HDF5
 using SixelTerm
 
+# These should match settings in the YAML config file:
+# - stage hdf5FileWrite's base_dir
 dir = "/tmp/f_engine_pathfinder_bb"
 prefix = "blue_"
 iter = "0000000"
