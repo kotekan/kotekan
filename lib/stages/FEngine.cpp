@@ -1,3 +1,4 @@
+#include <FEngine.hpp>
 #include <Config.hpp>
 #include <Stage.hpp>
 #include <StageFactory.hpp>
@@ -17,73 +18,6 @@
 #if !KOTEKAN_FLOAT16
 #warning "The F-Engine simulator requires float16 support"
 #else
-
-class FEngine : public kotekan::Stage {
-    const std::string unique_name;
-
-    // Basic constants
-    const int num_components;
-    const int num_polarizations;
-
-    // Sky
-    const float source_amplitude;
-    const float source_frequency;
-    const float source_position_x;
-    const float source_position_y;
-
-    // Dishes
-    const int num_dish_locations_M;
-    const int num_dish_locations_N;
-    const int num_dish_locations;
-    const float dish_separation_x;
-    const float dish_separation_y;
-    const int num_dishes;
-    const std::vector<int> dish_locations;
-
-    // ADC
-    const float adc_frequency;
-    const int num_taps;
-    const int num_frequencies;
-    const int num_times;
-
-    // Baseband beamformer setup
-    const int bb_num_dishes_M;
-    const int bb_num_dishes_N;
-    const int bb_num_beams_P;
-    const int bb_num_beams_Q;
-    const float bb_beam_separation_x;
-    const float bb_beam_separation_y;
-    const int bb_num_beams;
-
-    // Upchannelizer setup
-    const int upchannelization_factor;
-
-    // FRB beamformer setup
-
-    // Pipeline
-    const int num_frames;
-
-    // Kotekan
-    const std::int64_t E_frame_size;
-    const std::int64_t A_frame_size;
-    const std::int64_t J_frame_size;
-    const std::int64_t S_frame_size;
-    const std::int64_t G_frame_size;
-    const std::int64_t W_frame_size;
-
-    Buffer* const E_buffer;
-    Buffer* const A_buffer;
-    Buffer* const J_buffer;
-    Buffer* const S_buffer;
-    Buffer* const G_buffer;
-    Buffer* const W_buffer;
-
-public:
-    FEngine(kotekan::Config& config, const std::string& unique_name,
-            kotekan::bufferContainer& buffer_conainer);
-    virtual ~FEngine();
-    void main_thread() override;
-};
 
 REGISTER_KOTEKAN_STAGE(FEngine);
 
