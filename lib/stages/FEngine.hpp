@@ -8,7 +8,7 @@
 
 /**
  * @class FEngine
- * @brief A stage that simulates the CHORD F-engine hardware and a simple scene (eg, a 
+ * @brief A stage that simulates the CHORD F-engine hardware and a simple scene (eg, a
  * single radio source), producing data useful for end-to-end testing of our kernels.
  * (The actual computational core is implemented in Julia, in FEngine.jl)
  *
@@ -23,7 +23,8 @@
  * @conf dish_separation_x  Float east-west dish separation (in meters)
  * @conf dish_separation_y  Float north-south dish separation (in meters)
  * @conf num_dishes         Int   number of dishes
- * @conf dish_locations     vector of Int  A pair of integers for each dish, giving its position in the M,N grid.
+ * @conf dish_locations     vector of Int  A pair of integers for each dish, giving its position in
+ * the M,N grid.
  * @conf adc_frequency      Float  how many samples per second does the ADC perform?
  * @conf num_taps           Int    how many taps in the F-engine's polyphase filter bank?
  * @conf num_frequencies    Int    how many frequencies are produced by the F-engine?

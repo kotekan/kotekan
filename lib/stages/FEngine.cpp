@@ -1,5 +1,5 @@
-#include <FEngine.hpp>
 #include <Config.hpp>
+#include <FEngine.hpp>
 #include <Stage.hpp>
 #include <StageFactory.hpp>
 #include <cassert>
