@@ -129,14 +129,25 @@ RUN apt-get update && \
     cmake -DCMAKE_INSTALL_PREFIX=/usr/local/ && make install && cd ..
 
 # Install ASDF
+# RUN mkdir src && \
+#     ( \
+#         cd src && \
+#         wget https://github.com/eschnett/asdf-cxx/archive/refs/tags/version/7.3.1.tar.gz && \
+#         tar xzf 7.3.1.tar.gz && \
+#         cd asdf-cxx-version-7.3.1 && \
+#         cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
+#         cmake --build build && \
+#         cmake --install build && \
+#     true) && \
+#     rm -rf src
 RUN mkdir src && \
     ( \
         cd src && \
-        wget https://github.com/eschnett/asdf-cxx/archive/refs/tags/version/7.2.2.tar.gz && \
-        tar xzf 7.2.2.tar.gz && \
-        cd asdf-cxx-version-7.2.2 && \
+        git clone -n https://github.com/eschnett/asdf-cxx && \
+        cd asdf-cxx && \
+        git checkout 205182f47ad3fe13ec163105dd76c5f3ea72e51c && \
         cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
-        cmake --build build && \
+        cmake --build build --parallel $(nproc) && \
         cmake --install build && \
     true) && \
     rm -rf src
