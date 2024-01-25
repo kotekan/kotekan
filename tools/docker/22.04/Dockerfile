@@ -128,7 +128,26 @@ RUN apt-get update && \
     cd blaze && git checkout v3.4 && \
     cmake -DCMAKE_INSTALL_PREFIX=/usr/local/ && make install && cd ..
 
-# Install ASDF
+# Install Blosc2 (a prerequisite for ASDF)
+RUN mkdir src && \
+    (cd src && \
+    wget https://github.com/Blosc/c-blosc2/archive/refs/tags/v2.13.1.tar.gz && \
+    tar xzf v2.13.1.tar.gz && \
+    cd c-blosc2-2.13.1 && \
+    cmake -B build -S . \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DBUILD_BENCHMARKS=OFF \
+        -DBUILD_EXAMPLES=OFF \
+        -DBUILD_FUZZERS=OFF \
+        -DBUILD_TESTS=OFF \
+        && \
+    cmake --build build --parallel $(nproc) && \
+    cmake --install build && \
+    true) && \
+    rm -rf src
+
+# Install ASDF (depends on Blosc2)
 # RUN mkdir src && \
 #     ( \
 #         cd src && \
@@ -175,13 +194,14 @@ RUN python3 -m pip install --no-cache-dir breathe==4.35.* \
                                           sphinx_rtd_theme==1.2.* \
                                           sphinxcontrib-plantuml==0.25
 
-# Install ASDF
-RUN wget https://github.com/eschnett/asdf-cxx/archive/refs/tags/version/7.3.2.tar.gz && \
-    tar xzf 7.3.2.tar.gz && \
-    cd asdf-cxx-version-7.3.2 && \
-    cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=/usr/local && \
-    cmake --build build && \
-    cmake --install build
+RUN echo ASDFASDFASDFASDFASDFASDFASDFASDFASDFASDF
+RUN find /usr/local -name asdf.hxx
+RUN find /usr/local -name 'libasdf-cxx.*'
+RUN ls -ld /usr/local || true
+RUN ls -ld /usr/local/include || true
+RUN ls -ld /usr/local/include/asdf || true
+RUN ls -ld /usr/local/lib || true
+RUN echo ASDFASDFASDFASDFASDFASDFASDFASDFASDFASDF
 
 # Julia
 RUN apt-get update && apt-get install -y curl \
