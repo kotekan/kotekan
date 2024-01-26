@@ -93,6 +93,30 @@ public:
                                  const size_t view_len);
 
     /**
+     * @brief Creates a large GPU memory chunk, and then multiple
+     * views into that memory chunk that look like a GPU memory array.
+     * This method should be called once during setup.  After this has
+     * been called, *get_gpu_memory* for the "source" name will return
+     * the full memory chunk, and *get_gpu_memory_array* for the
+     * "view" name will return a view into the full memory chunk,
+     * where adjacent array indices are contiguous.
+     *
+     * The "source" singleton and "dest" array each have their own
+     * metadata objects.
+     *
+     * @param source_name like the "name" of get_gpu_memory, the
+     *   name of the "real" GPU memory array.
+     * @param source_len  the size in bytes of the "real" GPU memory array.
+     * @param view_name   the name of the view onto the "real" GPU memory array.
+     * @param view_offset the offset in bytes of the views.
+     * @param view_len the length in bytes of the views.  *view_offset*
+     *   + *view_len* * gpu_buffer_depth must be <= *source_len*.
+     */
+    void create_gpu_memory_ringbuffer(const std::string& source_name, const size_t source_len,
+                                      const std::string& view_name, const size_t view_offset,
+                                      const size_t view_len);
+
+    /**
      * @brief Fetches the metadata (if any) attached to the given GPU
      * memory array element.  Return NULL if no metadata.
      * @param name  the name of the GPU buffer whose metadata you want
@@ -151,6 +175,13 @@ public:
 protected:
     virtual void* alloc_gpu_memory(size_t len) = 0;
     virtual void free_gpu_memory(void*) = 0;
+
+    // Internal function to check whether the memory array "name" is a
+    // view onto another memory array with the same number of
+    // elements; the "create_gpu_memory_ringbuffer" method creates an
+    // array of views onto a monolithic chunk of memory, and we need
+    // to treat that case differently.
+    bool is_view_of_same_size(const std::string& name);
 
     // Extra data
     kotekan::Config& config;
