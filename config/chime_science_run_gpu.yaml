@@ -111,6 +111,7 @@ updatable_config:
     kotekan_update_endpoint: json
     frb_gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_FRB
   UT1_UTC_offset:
+    kotekan_update_endpoint: json
     UT1_UTC_val: 0.006
   tracking_gain:
     0:
@@ -1062,25 +1063,26 @@ read_gain:
 tracking_phases:
   updatable_config:
     UT1_UTC: /updatable_config/UT1_UTC_offset
+    tracking_pt: /updatable_config/tracking_pointing
   tracking_phases_0:
     kotekan_stage: FloatPhaseUpdate
     in_buf: network_buffer_0
-    gain_buf: gain_tracking_buffer_0
+    gains_buf: gain_tracking_buffer_0
     out_buf: tracking_phase_0
   tracking_phases_1:
     kotekan_stage: FloatPhaseUpdate
     in_buf: network_buffer_1
-    gain_buf: gain_tracking_buffer_1
+    gains_buf: gain_tracking_buffer_1
     out_buf: tracking_phase_1
   tracking_phases_2:
     kotekan_stage: FloatPhaseUpdate
     in_buf: network_buffer_2
-    gain_buf: gain_tracking_buffer_2
+    gains_buf: gain_tracking_buffer_2
     out_buf: tracking_phase_2
   tracking_phases_3:
     kotekan_stage: FloatPhaseUpdate
     in_buf: network_buffer_3
-    gain_buf: gain_tracking_buffer_3
+    gains_buf: gain_tracking_buffer_3
     out_buf: tracking_phase_3
 
 #### FRB GPU Post processing and Tx ####
@@ -4012,7 +4014,7 @@ input_reorder:
   - [1951, 2047, FCC070903]
 
 feed_positions: 
-[[-33.04813181029521, -38.82107710831004],
+  [-33.04813181029521, -38.82107710831004],
  [-33.04775410717911, -38.51627734233186],
  [-33.04737640406301, -38.21147757635368],
  [-33.04699870094691, -37.90667781037549],

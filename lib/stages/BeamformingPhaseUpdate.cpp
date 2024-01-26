@@ -102,6 +102,21 @@ bool BeamformingPhaseUpdate::update_UT1_UTC_offset(nlohmann::json& json) {
 
 BeamformingPhaseUpdate::~BeamformingPhaseUpdate() {}
 
+void BeamformingPhaseUpdate::copy_scaling(const beamCoord& beam_coord, float* scaling) {
+    for (int i = 0; i < _num_beams; ++i) {
+        // In the case that we set scaling to one, we don't want to add the extra factor of
+        // 0.5 to the scaling factor, since in the case of scaling == 1, we want no scaling at all.
+        if (beam_coord.scaling[i] == 1) {
+            scaling[i] = 1;
+        } else {
+            // @todo Adding 0.5 to the scaling here is hiding the effect from the API
+            //       ideally we should just expose the value as a float, and require the user to
+            //       apply this extra 0.5 correction directly to their required scaling.
+            scaling[i] = beam_coord.scaling[i] + 0.5;
+        }
+    }
+}
+
 void BeamformingPhaseUpdate::main_thread() {
 
     frameID in_frame_id(in_buf);
@@ -119,10 +134,12 @@ void BeamformingPhaseUpdate::main_thread() {
         if (out_frame == nullptr)
             break;
 
+        float* scaling_frame = (float*)out_frame + _num_elements * _num_beams * 2;
+
         // If we have a gains buffer we check for new gains
         if (gains_buf != nullptr) {
             if (first_time) {
-                gains_frame = wait_for_full_frame(gains_buf, unique_name.c_str(), gains_frame_id);
+                gains_frame = wait_for_full_frame(gains_buf, unique_name.c_str(), gains_frame_id++);
                 if (gains_frame == nullptr)
                     break;
                 first_time = false;
@@ -146,7 +163,7 @@ void BeamformingPhaseUpdate::main_thread() {
 
         // Get frequencies
         for (uint32_t i = 0; i < _num_local_freq; ++i) {
-            frequencies_in_frame[i] = Telescope::instance().to_freq_id(in_buf, i);
+            frequencies_in_frame[i] = Telescope::instance().to_freq_id(in_buf, in_frame_id, i);
             // Get frequency in MHz with Telescope::instance().to_freq(frequencies_in_frame[i])
         }
 
@@ -157,9 +174,13 @@ void BeamformingPhaseUpdate::main_thread() {
             // using at the time the phases are generated
             set_beam_coord(in_buf, in_frame_id, _beam_coord);
             compute_phases(out_frame, gps_time, frequencies_in_frame, gains_frame);
+            copy_scaling(_beam_coord, scaling_frame);
+	    //for (int i = 0; i < out_buf->frame_size/sizeof(float); i += 1) {
+                //INFO("phases[{:d} = {:f}", i, ((float*)out_frame)[i]);
+	    //}
         }
 
-        mark_frame_full(in_buf, unique_name.c_str(), in_frame_id++);
-        mark_frame_empty(out_buf, unique_name.c_str(), out_frame_id++);
+        mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id++);
+        mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
     }
 }

@@ -56,6 +56,9 @@ public:
     bool tracking_update_callback(nlohmann::json& json, const uint8_t beamID);
 
 protected:
+    /// Save the beam scaling values to one of the scaling arrays
+    void copy_scaling(const beamCoord& beam_coord, float* scaling);
+
     /// The baseband buffer which will provide the time and frequency data
     struct Buffer* in_buf = nullptr;
     /// The phase buffer used by the GPU kernel to generate the beams

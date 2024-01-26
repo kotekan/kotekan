@@ -13,9 +13,13 @@ FloatPhaseUpdate::FloatPhaseUpdate(kotekan::Config& config, const std::string& u
                                    kotekan::bufferContainer& buffer_container) :
     BeamformingPhaseUpdate(config, unique_name, buffer_container) {}
 
-void FloatPhaseUpdate::compute_phases(uint8_t* out_frame, const timespec& gps_time,
+void FloatPhaseUpdate::compute_phases(uint8_t* out_frame2, const timespec& gps_time,
                                       const std::vector<freq_id_t>& frequencies_in_frame,
-                                      uint8_t* gains_frame) {
+                                      uint8_t* gains_frame2) {
+    
+    float* out_frame = (float*)out_frame2;
+    float* gains_frame = (float*)gains_frame2;
+
     //Getting UTC time in ISO format from the GPS time in Unix format
     struct tm* utc_time;
     utc_time = gmtime(&gps_time.tv_sec);                                                                      //DOUBT: Confirm if it should be &gps_time.tv_sec since gps_time is passed by reference
