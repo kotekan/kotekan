@@ -81,7 +81,7 @@ protected:
     uint32_t _num_local_freq;
 
     /// List of frequencies in the current frame
-    std::vector<freq_id_t> frequencies_in_frame;
+    std::vector<float> frequencies_in_frame;
 
     /// The feed locations [feed][x,y] in meters from phase center
     std::vector<std::pair<double, double>> feed_locations;
@@ -113,7 +113,7 @@ protected:
      *                               this will be set to nullptr
      */
     virtual void compute_phases(uint8_t* out_frame, const timespec& gps_time,
-                                const std::vector<freq_id_t>& frequencies_in_frame,
+                                const std::vector<float>& frequencies_in_frame,
                                 uint8_t* gains_frame) = 0;
 };
 

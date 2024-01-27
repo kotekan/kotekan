@@ -163,8 +163,8 @@ void BeamformingPhaseUpdate::main_thread() {
 
         // Get frequencies
         for (uint32_t i = 0; i < _num_local_freq; ++i) {
-            frequencies_in_frame[i] = Telescope::instance().to_freq_id(in_buf, in_frame_id, i);
-            // Get frequency in MHz with Telescope::instance().to_freq(frequencies_in_frame[i])
+            freq_id_t freq_bin = Telescope::instance().to_freq_id(in_buf, in_frame_id, i);
+            frequencies_in_frame[i] = Telescope::instance().to_freq(freq_bin);
         }
 
         // Lock gain and metadata setting from updating while phase is set and generated
@@ -175,8 +175,9 @@ void BeamformingPhaseUpdate::main_thread() {
             set_beam_coord(in_buf, in_frame_id, _beam_coord);
             compute_phases(out_frame, gps_time, frequencies_in_frame, gains_frame);
             copy_scaling(_beam_coord, scaling_frame);
-	    //for (int i = 0; i < out_buf->frame_size/sizeof(float); i += 1) {
-                //INFO("phases[{:d} = {:f}", i, ((float*)out_frame)[i]);
+	    //for (int i = 0; i < out_buf->frame_size/100; i += 2) {
+            //   INFO("phases[{:d}] = [{:f}, {:f}]", i/2, ((float*)out_frame)[i], ((float*)out_frame)[i+1]);
+	    //   INFO("gains[{:d}] = [{:f}, {:f}]", i/2, ((float*)gains_frame)[i], ((float*)gains_frame)[i+1]);
 	    //}
         }
 

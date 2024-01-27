@@ -11,7 +11,7 @@ public:
 
 protected:
     virtual void compute_phases(uint8_t* out_frame, const timespec& gps_time,
-                                const std::vector<freq_id_t>& frequencies_in_frame,
+                                const std::vector<float>& frequencies_in_frame,
                                 uint8_t* gains_frame) override;
 };
 

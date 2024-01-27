@@ -14,13 +14,13 @@ FloatPhaseUpdate::FloatPhaseUpdate(kotekan::Config& config, const std::string& u
     BeamformingPhaseUpdate(config, unique_name, buffer_container) {}
 
 void FloatPhaseUpdate::compute_phases(uint8_t* out_frame2, const timespec& gps_time,
-                                      const std::vector<freq_id_t>& frequencies_in_frame,
+                                      const std::vector<float>& frequencies_in_frame,
                                       uint8_t* gains_frame2) {
     
     float* out_frame = (float*)out_frame2;
     float* gains_frame = (float*)gains_frame2;
 
-    //Getting UTC time in ISO format from the GPS time in Unix format
+    // Getting UTC time in ISO format from the GPS time in Unix format
     struct tm* utc_time;
     utc_time = gmtime(&gps_time.tv_sec);                                                                      //DOUBT: Confirm if it should be &gps_time.tv_sec since gps_time is passed by reference
 
@@ -52,10 +52,12 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame2, const timespec& gps_t
         LSA = fmod(LSA, 360);
     }
 
+    //INFO("GPS Time: {:.9f}, Frequency {}", ts_to_double(gps_time), frequencies_in_frame[0]);
 
     //Calculating the hour angle and phases for all frequencies in a frame for each pointing 
     for (int b = 0; b < _num_beams; b++) {                                                                   //DOUBT: Does the datatype of b have to be int16_t?
-        if (_beam_coord.scaling[b] == 1) {                                                                   //DOUBT: If scaling=1, does output=gains for all frequencies in the frame for that particular beam?   
+        // Special case for forming a beam at the telescope zenith, e.g. only apply gains, no phases.  
+	if (_beam_coord.scaling[b] == 1) {   
             for (uint32_t i = 0; i < _num_elements * _num_local_freq * 2; ++i) {                             
                 out_frame[b * _num_elements * _num_local_freq * 2 + i] = gains_frame[b * _num_elements * _num_local_freq * 2 + i];
             }
@@ -69,17 +71,18 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame2, const timespec& gps_t
                     / (cos(alt) * cos(_inst_lat * D2R));
         az = acos(std::clamp(az, -1.0, 1.0));
         if (sin(hour_angle * D2R) >= 0) {
-            az = TAU - az;                                                                                   //TO DO:Define constants in the base code: TAU = 2*pi, one_over_c, c, etc.                                                 
+            az = TAU - az;                                                 
         }
         double projection_angle, effective_angle, offset_distance;
         int zero_feeds;
 
+	//INFO("Beam: {} (Ra: {}, Dec {}), LSA: {}, ERA: {}, JD_UT1: {}, hour_angle {}, alt: {}, az: {}", b, _beam_coord.ra[b], _beam_coord.dec[b], LSA, ERA, JD_UT1, hour_angle, alt, az);
 
         //Looping over all frequencies in the frame
         for(uint32_t i = 0; i < _num_local_freq; i++){
             //Looping over the feeds
             for(size_t j = 0; j < feed_locations.size(); j++){
-                double dist_x = feed_locations[j].first;                                                      //TO DO: Feed location vector should store the x and y distance of each antenna from the phase center
+                double dist_x = feed_locations[j].first;
                 double dist_y = feed_locations[j].second;
                 if (dist_x == 0 && dist_y == 0) {
                   projection_angle = 0;
@@ -95,18 +98,21 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame2, const timespec& gps_t
                                        * frequencies_in_frame[i] * one_over_c);
                 double delay_imag = -sin(TAU * cos(effective_angle) * cos(-alt) * offset_distance            //DOUBT: Why is imag delay -sin(phase)? Has it something to do with the way gains are applied?
                                         * frequencies_in_frame[i] * one_over_c);
-                //Looping over 2 polarisations
+                //if (j == 0) {
+                //   INFO("feed: 0, dist_x: {}, dist_y: {}, projection_angle: {}, delay_real: {}, delay_imag: {}", dist_x, dist_y, projection_angle, delay_real, delay_imag);
+		//}
+		//Looping over 2 polarisations
                 for (int p = 0; p < 2; p++) {                                                                //TO DO: Make sure that the gains are in accordance with the feed locations and frequencies
                     uint elem_id = p * _num_elements / 2 + j;
-                    uint offset = b * _num_local_freq * _num_elements + i * _num_elements;                   //TO DO: Make sure that the _num_elements is (number of antennas)*2, that is, 2048 for CHIME
+                    uint offset = b * _num_local_freq * _num_elements + i * _num_elements;
                     // Not scrembled, assume reordering kernel has been run
                     if (zero_feeds == 1) {
                       out_frame[(offset + elem_id) * 2] = 0;
                       out_frame[(offset + elem_id) * 2 + 1] = 0;
                       }
                     else {
-                      out_frame[(offset + elem_id) * 2] =                                                      //DOUBT: The computed phases have double data type, but the out_frame is of type uint_8                                        
-                          delay_real * gains_frame[(offset + elem_id) * 2]                                     //DOUBT: Similar as above, won't the instrument gains have double datatype?
+                      out_frame[(offset + elem_id) * 2] =                                        
+                          delay_real * gains_frame[(offset + elem_id) * 2]
                           - delay_imag * gains_frame[(offset + elem_id) * 2 + 1];
                       out_frame[(offset + elem_id) * 2 + 1] =
                           delay_real * gains_frame[(offset + elem_id) * 2 + 1]
@@ -115,6 +121,7 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame2, const timespec& gps_t
                   }
             }
         }
+        //INFO("LST: {}, ERA: {}, JD_UT1: {}, hour_angle {}", LST, ERA, JD_UT1, hour_angle);
     }
 }
 
