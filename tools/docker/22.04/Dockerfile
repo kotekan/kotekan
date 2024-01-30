@@ -128,45 +128,15 @@ RUN apt-get update && \
     cd blaze && git checkout v3.4 && \
     cmake -DCMAKE_INSTALL_PREFIX=/usr/local/ && make install && cd ..
 
-# Install Blosc2 (a prerequisite for ASDF)
-RUN mkdir src && \
-    (cd src && \
-    wget https://github.com/Blosc/c-blosc2/archive/refs/tags/v2.13.1.tar.gz && \
-    tar xzf v2.13.1.tar.gz && \
-    cd c-blosc2-2.13.1 && \
-    cmake -B build -S . \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/usr/local \
-        -DBUILD_BENCHMARKS=OFF \
-        -DBUILD_EXAMPLES=OFF \
-        -DBUILD_FUZZERS=OFF \
-        -DBUILD_TESTS=OFF \
-        && \
-    cmake --build build --parallel $(nproc) && \
-    cmake --install build && \
-    true) && \
-    rm -rf src
-
-# Install ASDF (depends on Blosc2)
-# RUN mkdir src && \
-#     ( \
-#         cd src && \
-#         wget https://github.com/eschnett/asdf-cxx/archive/refs/tags/version/7.3.1.tar.gz && \
-#         tar xzf 7.3.1.tar.gz && \
-#         cd asdf-cxx-version-7.3.1 && \
-#         cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
-#         cmake --build build && \
-#         cmake --install build && \
-#     true) && \
-#     rm -rf src
+# Install ASDF
 RUN mkdir src && \
     ( \
         cd src && \
-        git clone -n https://github.com/eschnett/asdf-cxx && \
-        cd asdf-cxx && \
-        git checkout 205182f47ad3fe13ec163105dd76c5f3ea72e51c && \
+        wget https://github.com/eschnett/asdf-cxx/archive/refs/tags/version/7.2.2.tar.gz && \
+        tar xzf 7.2.2.tar.gz && \
+        cd asdf-cxx-version-7.2.2 && \
         cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
-        cmake --build build --parallel $(nproc) && \
+        cmake --build build && \
         cmake --install build && \
     true) && \
     rm -rf src
@@ -193,6 +163,7 @@ RUN python3 -m pip install --no-cache-dir breathe==4.35.* \
                                           sphinx==6.2.* \
                                           sphinx_rtd_theme==1.2.* \
                                           sphinxcontrib-plantuml==0.25
+
 
 # Julia
 RUN apt-get update && apt-get install -y curl \
