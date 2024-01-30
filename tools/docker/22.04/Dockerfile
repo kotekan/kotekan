@@ -194,15 +194,6 @@ RUN python3 -m pip install --no-cache-dir breathe==4.35.* \
                                           sphinx_rtd_theme==1.2.* \
                                           sphinxcontrib-plantuml==0.25
 
-RUN echo ASDFASDFASDFASDFASDFASDFASDFASDFASDFASDF
-RUN find /usr/local -name asdf.hxx
-RUN find /usr/local -name 'libasdf-cxx.*'
-RUN ls -ld /usr/local || true
-RUN ls -ld /usr/local/include || true
-RUN ls -ld /usr/local/include/asdf || true
-RUN ls -ld /usr/local/lib || true
-RUN echo ASDFASDFASDFASDFASDFASDFASDFASDFASDFASDF
-
 # Julia
 RUN apt-get update && apt-get install -y curl \
     && curl -fsSL https://install.julialang.org | sh -s -- -y
