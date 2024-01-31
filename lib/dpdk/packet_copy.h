@@ -2,8 +2,8 @@
 #define PACKET_COPY_H
 
 #include <assert.h>
-#ifdef __AVX2__
-#include <emmintrin.h>
+#ifdef __AVX__
+#include <immintrin.h>
 #endif
 #include <inttypes.h>
 #include <rte_cycles.h>
@@ -21,7 +21,7 @@ extern "C" {
 
 #include "errors.h"
 
-#ifdef __AVX2__
+#ifdef __AVX__
 
 // Copy 8 bytes from one location to another,
 // locations should not overlap.

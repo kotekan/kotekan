@@ -406,6 +406,6 @@ void frbPostProcess::main_thread() {
 }
 #else
 void frbPostProcess::main_thread() {
-    ERROR("No AVX2 intrinsics present on this node")
+    ERROR("AVX2 support is not enabled in this build")
 }
 #endif
