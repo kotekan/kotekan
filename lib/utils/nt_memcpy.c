@@ -1,10 +1,16 @@
 #include "nt_memcpy.h"
 
-#include <assert.h>    // for assert
+#include <assert.h> // for assert
+#ifdef __AVX__
 #include <emmintrin.h> // for __m128i, _mm_stream_si128, _mm_load_si128, _mm_loadu_si128
-#include <stdint.h>    // for uintptr_t
-#include <stdlib.h>    // for size_t
+#else
+#include <memory.h>
+#endif
+#include <stdint.h> // for uintptr_t
+#include <stdlib.h> // for size_t
+#ifdef __AVX__
 #include <xmmintrin.h> // for _MM_HINT_NTA, _mm_prefetch
+#endif
 
 #ifdef __AVX__
 // Assumes that the dest pointer is 16 byte alligned.

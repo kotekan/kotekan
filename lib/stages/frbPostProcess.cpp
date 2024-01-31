@@ -11,21 +11,24 @@
 
 #include "fmt.hpp" // for format, fmt
 
-#include <algorithm>   // for find, max, min
-#include <atomic>      // for atomic_bool
-#include <cstdint>     // for int32_t
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <algorithm>  // for find, max, min
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#ifdef __AVX2__
 #include <immintrin.h> // for _mm256_broadcast_ss, __m256, _mm256_load_ps, _mm256_min_ps
 #include <mm_malloc.h> // for posix_memalign
+#endif
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error
 #include <stdlib.h>    // for free, calloc, malloc
 #include <string.h>    // for memcpy, memset
 #include <sys/types.h> // for uint
 #include <time.h>      // for timespec
+#ifdef __AVX2__
 #include <xmmintrin.h> // for _mm_max_ps, _mm_min_ps, _mm_store_ss, __m128, _mm_shuff...
-
+#endif
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -403,6 +406,6 @@ void frbPostProcess::main_thread() {
 }
 #else
 void frbPostProcess::main_thread() {
-    ERROR("No AVX2 intrinsics present on this node")
+    ERROR("AVX2 support is not enabled in this build")
 }
 #endif

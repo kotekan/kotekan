@@ -53,6 +53,6 @@ find_package(LIBEVENT REQUIRED)
 target_link_libraries(
     kotekan_core
     PRIVATE libexternal ${CMAKE_THREAD_LIBS_INIT} kotekan_libs
-    PUBLIC ${LIBEVENT_BASE} ${LIBEVENT_CORE} ${LIBEVENT_PTHREADS} ${LIBEVENT_EXTRA} event)
+    PUBLIC ${LIBEVENT_BASE} ${LIBEVENT_CORE} ${LIBEVENT_PTHREADS} ${LIBEVENT_EXTRA})
 
 target_include_directories(kotekan_core INTERFACE ${LIBEVENT_INCLUDE_DIR})
