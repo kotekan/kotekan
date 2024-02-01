@@ -48,12 +48,24 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     buf = get_buffer("out_buf");
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
-    assert(type == "const" || type == "const32" || type == "constf16" || type == "random"
-           || type == "random_signed" || type == "ramp" || type == "tpluse" || type == "tpluseplusf"
-           || type == "tpluseplusfprime" || type == "square" || type == "onehot");
+    assert(type == "const" || type == "const8" || type == "const16" || type == "const32"
+           || type == "constf16" || type == "random" || type == "random_signed" || type == "ramp"
+           || type == "tpluse" || type == "tpluseplusf" || type == "tpluseplusfprime"
+           || type == "square" || type == "onehot");
     assert(!((type == "constf16") && (KOTEKAN_FLOAT16 == 0)));
-    if (type == "const" || type == "const32" || type == "random" || type == "random_signed"
-        || type == "ramp" || type == "onehot") {
+    int type_size = 1; // default
+    if (type == "const")
+        type_size = 1;
+    if (type == "const8")
+        type_size = 1;
+    if (type == "const16")
+        type_size = 2;
+    if (type == "const32")
+        type_size = 4;
+    if (type == "constf16")
+        type_size = 2;
+    if (type == "const" || type == "const8" || type == "const16" || type == "const32"
+        || type == "random" || type == "random_signed" || type == "ramp" || type == "onehot") {
         value = config.get_default<int>(unique_name, "value", -1999);
         _value_array =
             config.get_default<std::vector<int>>(unique_name, "values", std::vector<int>());
@@ -68,7 +80,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     _array_shape =
         config.get_default<std::vector<int>>(unique_name, "array_shape", std::vector<int>());
     if (_array_shape.size()) {
-        size_t sz = 1;
+        size_t sz = type_size;
         for (int s : _array_shape)
             sz *= s;
         if (sz != buf->frame_size)
@@ -148,9 +160,11 @@ void testDataGen::main_thread() {
     int frame_id = 0;
     int frame_id_abs = 0;
     uint8_t* frame = nullptr;
+    int8_t* frame8 = nullptr;
+    int16_t* frame16 = nullptr;
     int32_t* frame32 = nullptr;
     uint64_t seq_num = samples_per_data_set * _first_frame_index;
-    bool finished_seeding_consant = false;
+    bool finished_seeding_constant = false;
     static struct timeval now;
 #if KOTEKAN_FLOAT16
     float16_t* framef16 = nullptr;
@@ -186,13 +200,77 @@ void testDataGen::main_thread() {
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
         uint n_to_set = buf->frame_size / sizeof(uint8_t);
-        if (type == "const32") {
+        if (type == "const") {
+            n_to_set /= sizeof(int8_t);
+            frame8 = (int8_t*)frame;
+            if (metadata_is_chord(buf, frame_id)) {
+                chordMetadata* chordmeta = get_chord_metadata(buf, frame_id);
+                chord_metadata_init(chordmeta);
+                chordmeta->type = chordDataType::int4p4;
+                chordmeta->dims = (int)_array_shape.size();
+                for (int d = 0; d < chordmeta->dims; ++d)
+                    chordmeta->dim[d] = _array_shape[d];
+                for (int d = 0; d < chordmeta->dims; ++d)
+                    std::strncpy(chordmeta->dim_name[d], _dim_name[d].c_str(),
+                                 sizeof chordmeta->dim_name[d]);
+            }
+        } else if (type == "const8") {
+            n_to_set /= sizeof(int8_t);
+            frame8 = (int8_t*)frame;
+            if (metadata_is_chord(buf, frame_id)) {
+                chordMetadata* chordmeta = get_chord_metadata(buf, frame_id);
+                chord_metadata_init(chordmeta);
+                chordmeta->type = chordDataType::int8;
+                chordmeta->dims = (int)_array_shape.size();
+                for (int d = 0; d < chordmeta->dims; ++d)
+                    chordmeta->dim[d] = _array_shape[d];
+                for (int d = 0; d < chordmeta->dims; ++d)
+                    std::strncpy(chordmeta->dim_name[d], _dim_name[d].c_str(),
+                                 sizeof chordmeta->dim_name[d]);
+            }
+        } else if (type == "const16") {
+            n_to_set /= sizeof(int16_t);
+            frame16 = (int16_t*)frame;
+            if (metadata_is_chord(buf, frame_id)) {
+                chordMetadata* chordmeta = get_chord_metadata(buf, frame_id);
+                chord_metadata_init(chordmeta);
+                chordmeta->type = chordDataType::int16;
+                chordmeta->dims = (int)_array_shape.size();
+                for (int d = 0; d < chordmeta->dims; ++d)
+                    chordmeta->dim[d] = _array_shape[d];
+                for (int d = 0; d < chordmeta->dims; ++d)
+                    std::strncpy(chordmeta->dim_name[d], _dim_name[d].c_str(),
+                                 sizeof chordmeta->dim_name[d]);
+            }
+        } else if (type == "const32") {
             n_to_set /= sizeof(int32_t);
             frame32 = (int32_t*)frame;
+            if (metadata_is_chord(buf, frame_id)) {
+                chordMetadata* chordmeta = get_chord_metadata(buf, frame_id);
+                chord_metadata_init(chordmeta);
+                chordmeta->type = chordDataType::int32;
+                chordmeta->dims = (int)_array_shape.size();
+                for (int d = 0; d < chordmeta->dims; ++d)
+                    chordmeta->dim[d] = _array_shape[d];
+                for (int d = 0; d < chordmeta->dims; ++d)
+                    std::strncpy(chordmeta->dim_name[d], _dim_name[d].c_str(),
+                                 sizeof chordmeta->dim_name[d]);
+            }
 #if KOTEKAN_FLOAT16
         } else if (type == "constf16") {
             n_to_set /= sizeof(float16_t);
             framef16 = (float16_t*)frame;
+            if (metadata_is_chord(buf, frame_id)) {
+                chordMetadata* chordmeta = get_chord_metadata(buf, frame_id);
+                chord_metadata_init(chordmeta);
+                chordmeta->type = chordDataType::float16;
+                chordmeta->dims = (int)_array_shape.size();
+                for (int d = 0; d < chordmeta->dims; ++d)
+                    chordmeta->dim[d] = _array_shape[d];
+                for (int d = 0; d < chordmeta->dims; ++d)
+                    std::strncpy(chordmeta->dim_name[d], _dim_name[d].c_str(),
+                                 sizeof chordmeta->dim_name[d]);
+            }
 #endif
         }
         if (type == "onehot") {
@@ -280,16 +358,24 @@ void testDataGen::main_thread() {
         }
         for (uint j = 0; j < n_to_set; ++j) {
             if (type == "const") {
-                if (finished_seeding_consant)
+                if (finished_seeding_constant)
                     break;
                 frame[j] = value;
+            } else if (type == "const8") {
+                if (finished_seeding_constant)
+                    break;
+                frame8[j] = value;
+            } else if (type == "const16") {
+                if (finished_seeding_constant)
+                    break;
+                frame16[j] = value;
             } else if (type == "const32") {
-                if (finished_seeding_consant)
+                if (finished_seeding_constant)
                     break;
                 frame32[j] = value;
 #if KOTEKAN_FLOAT16
             } else if (type == "constf16") {
-                if (finished_seeding_consant)
+                if (finished_seeding_constant)
                     break;
                 framef16[j] = fvalue;
 #endif
@@ -299,7 +385,7 @@ void testDataGen::main_thread() {
             } else if (type == "random") {
                 char new_real;
                 char new_imaginary;
-                if (_reuse_random && finished_seeding_consant)
+                if (_reuse_random && finished_seeding_constant)
                     break;
                 new_real = (rand() % 15) + 1;      // Limit to [-7, 7]
                 new_imaginary = (rand() % 15) + 1; // Limit to [-7, 7]
@@ -308,7 +394,7 @@ void testDataGen::main_thread() {
             } else if (type == "random_signed") {
                 char new_real;
                 char new_imaginary;
-                if (_reuse_random && finished_seeding_consant)
+                if (_reuse_random && finished_seeding_constant)
                     break;
                 int r = rand();
                 new_real = (r % 15) + 1; // Limit to [-7, 7]
@@ -363,7 +449,7 @@ void testDataGen::main_thread() {
         };
         frame_id = frame_id_abs % buf->num_frames;
 
-        if (_pathfinder_test_mode == true) {
+        if (_pathfinder_test_mode) {
             // Test PF seq_num increment.
             if (link_id == 7) {
                 link_id = 0;
@@ -375,7 +461,7 @@ void testDataGen::main_thread() {
             seq_num += samples_per_data_set;
         }
         if (frame_id == 0)
-            finished_seeding_consant = true;
+            finished_seeding_constant = true;
 
         if (wait) {
             double time = current_time();

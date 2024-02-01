@@ -194,7 +194,9 @@ void upchan_simple_cxx(const float16_t* __restrict__ const W, const float16_t* _
     const int tbar0 = t0 / U;
     const int tbar1 = (t == -1 ? T / U : (tbar0 + 1));
 
+#ifdef _OPENMP
 #pragma omp parallel for collapse(5)
+#endif
     for (int f = f0; f < f1; ++f) {
         for (int p = p0; p < p1; ++p) {
             for (int d = d0; d < d1; ++d) {
@@ -254,7 +256,7 @@ void gpuSimulateCudaUpchannelize::upchan_simple_sub(std::string tag,
                   * sinc((s - (M * U - 1) / 2.0f) / U);
         sumW += (float)W.at(s);
     }
-    float16_t sumW16;
+    float16_t sumW16 = (float16_t)sumW;
     // Normalize the window function
     for (int s = 0; s < M * U; ++s)
         // W.at(s) /= (float16_t)sumW;

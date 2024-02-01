@@ -19,3 +19,4 @@ build-1804/*
 build-2204/*
 docs/sphinx/html/*
 .ccache/*
+Manifest.toml
