@@ -16,8 +16,6 @@
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
-
-#include <immintrin.h>
 #endif
 
 namespace kotekan {

@@ -11,25 +11,25 @@
 #include "util.h" // for e_time
 #endif
 
-#include <atomic>      // for atomic_bool
-#include <cstdint>     // for uint32_t
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for uint32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#ifdef __AVX2__
 #include <immintrin.h> // for __m256i, _mm256_loadu_si256, _mm256_add_epi32, _mm256_mul...
-#include <pthread.h>   // for pthread_setaffinity_np
-#include <regex>       // for match_results<>::_Base_type
-#include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdexcept>   // for runtime_error
-#include <stdlib.h>    // for srand
-#include <string.h>    // for memset
-#include <thread>      // for thread
-#include <time.h>      // for time
-#include <vector>      // for vector
+#endif
+#include <pthread.h> // for pthread_setaffinity_np
+#include <regex>     // for match_results<>::_Base_type
+#include <sched.h>   // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept> // for runtime_error
+#include <stdlib.h>  // for srand
+#include <string.h>  // for memset
+#include <thread>    // for thread
+#include <time.h>    // for time
+#include <vector>    // for vector
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
-
-#include <immintrin.h> // for __m256i, _mm256_loadu_si256, _mm256_add_epi32, _mm256_mul...
 #endif
 
 #define PACKET_LEN (_num_local_freq + VDIF_HEADER_LEN)

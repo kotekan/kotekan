@@ -34,8 +34,6 @@
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
-
-#include <immintrin.h>
 #endif
 
 /// The system page size, this might become more dynamic someday
