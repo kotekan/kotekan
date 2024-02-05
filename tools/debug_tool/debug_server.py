@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, send_file, abort
+from werkzeug.utils import safe_join
 from flask_cors import CORS
 from requests import get
 import os
@@ -18,7 +19,7 @@ def dir_listing(req_path):
 
     # Joining the base and the requested path
     req_path = req_path.replace("dump_dir", DUMP_DIR)
-    abs_path = os.path.join(BASE_DIR, req_path)
+    abs_path = safe_join(BASE_DIR, req_path)
 
     # Return 404 if path doesn't exist
     if not os.path.exists(abs_path):
