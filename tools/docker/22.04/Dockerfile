@@ -133,7 +133,7 @@ RUN mkdir src && \
     (cd src && \
     wget https://github.com/Blosc/c-blosc2/archive/refs/tags/v2.13.1.tar.gz && \
     tar xzf v2.13.1.tar.gz && \
-    cd c-blosc2-2.13.1 && \
+    cd C-Blosc2-2.13.1 && \
     cmake -B build -S . \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr/local \
