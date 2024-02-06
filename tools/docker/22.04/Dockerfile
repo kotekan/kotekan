@@ -207,9 +207,8 @@ ENV CCACHE_MAXSIZE 1G
 RUN ln -s /bin/python3 /bin/python
 
 # Use G++12 as the default
-RUN rm /usr/bin/gcc /usr/bin/g++ && \
-    ln -s g++-12 /usr/bin/g++ && \
-    ln -s gcc-12 /usr/bin/gcc
+RUN update-alternatives --set gcc "/usr/bin/gcc-12" && \
+    update-alternatives --set g++ "/usr/bin/g++-12"
 
 # Set the plugin path so kotekan can find bitshuffle
 # Ideally this would be determined dynamically, but for now...
