@@ -100,8 +100,8 @@ RUN apt-get update && \
 # CUDA / GPU tools
 RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.0-1_all.deb
 RUN dpkg -i cuda-keyring_1.0-1_all.deb
-RUN apt -y update
-RUN apt install -y --no-install-recommends cuda && apt clean
+RUN apt-get -y update
+RUN apt-get install -y --no-install-recommends cuda && apt-get clean
 
 ENV PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin
 
@@ -113,7 +113,7 @@ RUN git clone https://github.com/kmsmith137/n2k.git \
   && cd n2k \
   && make install
 
-RUN apt install -y --no-install-recommends \
+RUN apt-get install -y --no-install-recommends \
   libopencl-clang-dev opencl-headers ocl-icd-opencl-dev
 
 
@@ -207,8 +207,10 @@ ENV CCACHE_MAXSIZE 1G
 RUN ln -s /bin/python3 /bin/python
 
 # Use G++12 as the default
-RUN update-alternatives --set gcc "/usr/bin/gcc-12" && \
-    update-alternatives --set g++ "/usr/bin/g++-12"
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100 && \
+    gcc --version && \
+    g++ --version
 
 # Set the plugin path so kotekan can find bitshuffle
 # Ideally this would be determined dynamically, but for now...
