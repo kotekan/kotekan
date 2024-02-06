@@ -200,9 +200,9 @@ jobs:
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2204/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" ccache -s
-        docker run "${OPTS[@]}" ls -l /usr/bin/gcc* \
-        docker run "${OPTS[@]}" which gcc \
-        docker run "${OPTS[@]}" which gcc-12 \
+        docker run "${OPTS[@]}" ls -l /usr/bin/gcc*
+        docker run "${OPTS[@]}" which gcc
+        docker run "${OPTS[@]}" which gcc-12
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
             -DWERROR=ON \
             -DCMAKE_LINK_WHAT_YOU_USE=ON \
