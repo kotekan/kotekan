@@ -98,7 +98,7 @@ void networkInputPowerStream::main_thread() {
                     uint32_t len =
                         recvfrom(socket_fd, local_buf, packet_length, 0, nullptr, nullptr);
                     if (len != packet_length) {
-                        ERROR("BAD UDP PACKET! {:d} {:d}", len, errno)
+                        ERROR("BAD UDP PACKET! {:d} {:d}", len, errno);
                     } else {
                         memcpy(frame + t * elems * (freqs + 1) * sizeof(uint)
                                    + e * (freqs + 1) * sizeof(uint),
