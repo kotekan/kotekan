@@ -320,12 +320,6 @@ jobs:
       run: |
         OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2204/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" ccache -s
-        docker run "${OPTS[@]}" find /usr/local -name asdf.hxx
-        docker run "${OPTS[@]}" find /usr/local -name 'libasdf-cxx.*'
-        docker run "${OPTS[@]}" ls -ld /usr/local || true
-        docker run "${OPTS[@]}" ls -ld /usr/local/include || true
-        docker run "${OPTS[@]}" ls -ld /usr/local/include/asdf || true
-        docker run "${OPTS[@]}" ls -ld /usr/local/lib || true
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
             -DWERROR=ON \
