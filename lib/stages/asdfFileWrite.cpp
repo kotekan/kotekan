@@ -155,9 +155,13 @@ public:
             if (ierr) {
                 if (errno != EEXIST && errno != EISDIR) {
                     char msg[1000];
-                    strerror_r(errno, msg, sizeof msg);
-                    FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(),
-                                msg);
+                    char* p = strerror_r(errno, msg, sizeof msg);
+                    if (!p)
+                        FATAL_ERROR("Could not create directory \"{:s}\":\nerrno={:d}",
+                                    base_dir.c_str(), errno);
+                    else
+                        FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(),
+                                    msg);
                 }
             }
             project.write(full_path);
