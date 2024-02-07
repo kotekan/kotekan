@@ -330,7 +330,7 @@ jobs:
             -DUSE_CUDA=OFF \
             -DUSE_OPENCL=ON \
             -DCCACHE=ON ..
-        docker run "${OPTS[@]}" make -j$(nproc)
+        docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" rm -r lib
         docker run "${OPTS[@]}" ccache -s
         df -h
