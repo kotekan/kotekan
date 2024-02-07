@@ -322,7 +322,6 @@ jobs:
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
             -DWERROR=ON \
             -DCMAKE_BUILD_TYPE=Test \
-            -DUSE_ASDF=ON \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
