@@ -58,7 +58,7 @@ void clCommand::build() {
     cl_int err;
 
     if (kernel_command != "") {
-        DEBUG2("Building! {:s}", kernel_command)
+        DEBUG2("Building! {:s}", kernel_command);
         fp = fopen(kernel_file_name.c_str(), "r");
         if (fp == nullptr) {
             FATAL_ERROR("error loading file: {:s}", kernel_file_name);
