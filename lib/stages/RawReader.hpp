@@ -250,7 +250,7 @@ RawReader<T>::RawReader(Config& config, const std::string& unique_name,
     use_comet = config.get_default<bool>(DS_UNIQUE_NAME, "use_dataset_broker", true);
     local_dm = config.get_default<bool>(unique_name, "use_local_dataset_man", false);
     if (local_dm && use_comet)
-        FATAL_ERROR("Cannot use local dataset manager and dataset broker together.")
+        FATAL_ERROR("Cannot use local dataset manager and dataset broker together.");
 
     chunked = config.exists(unique_name, "chunk_size");
     if (chunked) {

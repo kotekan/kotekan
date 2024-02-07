@@ -65,7 +65,7 @@ void set_error_message_f(const char* format, ...);
 #define CHECK_MEM_F(pointer)                                                                       \
     do {                                                                                           \
         if (pointer == NULL) {                                                                     \
-            internal_logging_f(LOG_ERR, "Error at %s:%d; Null pointer! ", __FILE__, __LINE__);     \
+            internal_logging_f(LOG_ERR, "Error at %s:%d; Null pointer!", __FILE__, __LINE__);      \
             exit(-1);                                                                              \
         }                                                                                          \
     } while (0)

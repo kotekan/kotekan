@@ -72,7 +72,7 @@ void nDiskFileRead::file_read_thread(int disk_id) {
     unsigned int buf_id = disk_id;
     // Starting File index
     unsigned int file_index = disk_id + starting_index;
-    INFO("{:s}{:s}/{:d}/{:s}/{:07d}.vdif", disk_base, disk_set, disk_id, capture, file_index)
+    INFO("{:s}{:s}/{:d}/{:s}/{:07d}.vdif", disk_base, disk_set, disk_id, capture, file_index);
     // Endless loop
     while (!stop_thread) {
 
