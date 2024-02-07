@@ -80,7 +80,7 @@ void clCommand::build() {
 
         program_size = 0;
         free(program_buffer);
-        DEBUG2("Built! {:s}", kernel_command)
+        DEBUG2("Built! {:s}", kernel_command);
     }
 }
 
