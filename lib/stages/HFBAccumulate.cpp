@@ -172,7 +172,7 @@ void HFBAccumulate::main_thread() {
             // ds_id_in will be dset_id_t::null and thus cause a root dataset to
             // be registered.
             base_dataset_id = dm.add_dataset(base_dataset_states, ds_id_in);
-            DEBUG("Registered base dataset: {}", base_dataset_id)
+            DEBUG("Registered base dataset: {}", base_dataset_id);
         }
 
         float* input = (float*)in_frame_ptr;

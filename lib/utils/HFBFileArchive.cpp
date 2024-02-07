@@ -60,7 +60,7 @@ HFBFileArchive::HFBFileArchive(
     // Different bound check for stacked data
     if (chunk[1] > (int)stack.size()) {
         chunk[1] = stack.size();
-        INFO("HFBFileArchive: Chunk stack dimension greater than axes. Will use a smaller chunk.")
+        INFO("HFBFileArchive: Chunk stack dimension greater than axes. Will use a smaller chunk.");
     }
 
     // Make datasets, for stacked data
@@ -98,21 +98,21 @@ void HFBFileArchive::setup_file(const std::string& name,
         INFO("HFBFileArchive: Chunk frequency ({}) dimension greater than axes ({}). Will use a "
              "smaller "
              "chunk.",
-             chunk[0], freqs.size())
+             chunk[0], freqs.size());
         chunk[0] = freqs.size();
     }
     if (chunk[2] > (int)times.size()) {
 
         INFO("HFBFileArchive: Chunk time ({}) dimension greater than axes({}). Will use a smaller "
              "chunk.",
-             chunk[2], times.size())
+             chunk[2], times.size());
         chunk[2] = times.size();
     }
     if (chunk[3] > (int)beams.size()) {
 
         INFO("HFBFileArchive: Chunk beam ({}) dimension greater than axes ({}). Will use a smaller "
              "chunk.",
-             chunk[3], beams.size())
+             chunk[3], beams.size());
         chunk[3] = beams.size();
     }
     if (chunk[4] > (int)subfreqs.size()) {
@@ -120,7 +120,7 @@ void HFBFileArchive::setup_file(const std::string& name,
         INFO("HFBFileArchive: Chunk sub-frequency ({}) dimension greater than axes ({}). Will use "
              "a smaller "
              "chunk.",
-             chunk[4], subfreqs.size())
+             chunk[4], subfreqs.size());
         chunk[4] = subfreqs.size();
     }
 

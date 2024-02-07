@@ -297,7 +297,7 @@ void visAccumulate::main_thread() {
             // ds_id_in will be dset_id_t::null and thus cause a root dataset to
             // be registered.
             base_dataset_id = dm.add_dataset(base_dataset_states, *ds_id_in);
-            DEBUG("Registered base dataset: {}", base_dataset_id)
+            DEBUG("Registered base dataset: {}", base_dataset_id);
 
             // Set the output dataset ID for all datasets
             for (auto& state : gated_datasets) {
