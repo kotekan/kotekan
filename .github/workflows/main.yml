@@ -253,6 +253,7 @@ jobs:
             -DWERROR=ON \
             -DCMAKE_LINK_WHAT_YOU_USE=ON \
             -DCMAKE_BUILD_TYPE=Test \
+            -DUSE_ASDF=ON \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DARCH=haswell \
@@ -315,7 +316,7 @@ jobs:
     - name: Build kotekan
       shell: bash
       run: |
-        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2204/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
+        OPTS=(--pull=always --rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2204/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
@@ -329,7 +330,7 @@ jobs:
             -DUSE_CUDA=OFF \
             -DUSE_OPENCL=ON \
             -DCCACHE=ON ..
-        docker run "${OPTS[@]}" make -j
+        docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" rm -r lib
         docker run "${OPTS[@]}" ccache -s
         df -h
@@ -394,6 +395,7 @@ jobs:
         -DCMAKE_LINK_WHAT_YOU_USE=ON \
         -DUSE_OLD_DPDK=ON \
         -DCMAKE_BUILD_TYPE=Test \
+        -DUSE_ASDF=ON \
         -DUSE_HDF5=ON \
         -DHIGHFIVE_PATH=/code/build/HighFive \
         -DUSE_LAPACK=ON \

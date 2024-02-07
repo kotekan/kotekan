@@ -462,7 +462,7 @@ function make_baseband_beams(nbeamsi::Int, nbeamsj::Int, Δθi::T, Δθj::T) whe
     return sinxys::Vector{NTuple{2,T}}
 end
 
-struct BBeams{T}
+struct BBBeams{T}
     t₀::Float
     Δt::Float
     f₀::Float
@@ -472,7 +472,7 @@ struct BBeams{T}
     data::Array{Complex{T},4}   # [time, polr, freq, beam]
 end
 
-# function plot(beams::BBeams{T}) where{T<:Real }
+# function plot(beams::BBBeams{T}) where{T<:Real }
 #     data = sum(abs2, beams.data; dims = 4)::AbstractArray{T, 4 }
 #     data = reshape(data, size(data, 1) * size(data, 2), :)::AbstractArray{T, 2 }
 #     data = PermutedDimsArray(data, (2, 1))
@@ -486,7 +486,7 @@ end
 #     return fig
 # end
 
-function plot(beams::BBeams{T}) where {T<:Real}
+function plot(beams::BBBeams{T}) where {T<:Real}
     data = (sum(abs2, beams.data; dims=(1, 2, 3)) / prod(size(beams.data)[1:3]))::AbstractArray{T,4}
     data = reshape(data, size(data, 4))::AbstractArray{T,1}
     beamsx = map(xy -> asin(xy[1]), beams.sinxys)
@@ -519,7 +519,7 @@ function bb(::Type{T}, xframes::AbstractVector{<:XFrame}, dishes::Dishes, sinxys
         end for dish in 1:ndishes, beam in 1:nbeams, polr in 1:npolrs, freq in 1:nfreqs
     ]
 
-    beamss = BBeams{T}[]
+    beamss = BBBeams{T}[]
     for xframe in xframes
         # E: [dish, polr, freq, time]
         E = xframe.data
@@ -528,13 +528,13 @@ function bb(::Type{T}, xframes::AbstractVector{<:XFrame}, dishes::Dishes, sinxys
         # A: [dish, beam, polr, freq]
         phases = A
         data = J
-        beams = BBeams(xframe.t₀, xframe.Δt, xframe.f₀, xframe.Δf, sinxys, phases, data)
+        beams = BBBeams(xframe.t₀, xframe.Δt, xframe.f₀, xframe.Δf, sinxys, phases, data)
         push!(beamss, beams)
     end
-    return beamss::AbstractVector{BBeams{T}}
+    return beamss::AbstractVector{BBBeams{T}}
 end
 
-function quantize(::Type{I}, inbeams::AbstractVector{<:BBeams}) where {I<:Integer}
+function quantize(::Type{I}, inbeams::AbstractVector{<:BBBeams}) where {I<:Integer}
     # TODO: add noise, then set the gain according to the variance
 
     # Quantize phases
@@ -557,13 +557,128 @@ function quantize(::Type{I}, inbeams::AbstractVector{<:BBeams}) where {I<:Intege
     quantize1_beams(x::Real) = I(clamp(round(Int, scale_beams * x), (-outrange_beams):(+outrange_beams)))
     quantize_beams(x::Complex) = Complex(quantize1_beams(real(x)), quantize1_beams(imag(x)))
 
-    outbeams = BBeams{I}[
-        BBeams(
+    outbeams = BBBeams{I}[
+        BBBeams(
             inbeam.t₀, inbeam.Δt, inbeam.f₀, inbeam.Δf, inbeam.sinxys, quantize_phases.(inbeam.phases), quantize_beams.(inbeam.data)
         ) for inbeam in inbeams
     ]
 
-    return outbeams::AbstractVector{BBeams{I}}
+    return outbeams::AbstractVector{BBBeams{I}}
+end
+
+################################################################################
+# frb beamformer
+
+function frb(
+    ::Type{T}, S::AbstractArray{<:Integer,2}, W::AbstractArray{<:Complex,4}, E::AbstractArray{<:Complex,4}, Tds::Integer
+) where {T<:Real}
+    # S: [MN, dish]
+    # W: [dishM, dishN, polr, freq]
+    # E: [dish, polr, freq, time]
+    # I: [beamP, beamQ, time-bar, freq]
+    mn, ndishes = size(S)
+    ndishesM, ndishesN, npolrs, nfreqs = size(W)
+    ndishes, npolrs′, nfreqs′, ntimes = size(E)
+    @assert mn == 2
+    @assert ndishes <= ndishesM * ndishesN
+    @assert npolrs′ == npolrs
+    @assert nfreqs′ == nfreqs
+    nbeamsP = 2 * ndishesM
+    nbeamsQ = 2 * ndishesN
+    # @assert ntimes % Tds == 0
+    ntimes_ds = ntimes ÷ Tds
+    # Pre-calculate phase factors
+    # eqn (4), probably needs more phase factors
+    # TODO: Transpose `HPM`, `HQN`
+    HPM = [cispi(2 * dishM * beamP / T(nbeamsP)) for beamP in 0:(nbeamsP - 1), dishM in 0:(ndishesM - 1)]
+    HQN = [cispi(2 * dishN * beamQ / T(nbeamsQ)) for beamQ in 0:(nbeamsQ - 1), dishN in 0:(ndishesN - 1)]
+    I = zeros(T, nbeamsP, nbeamsQ, ntimes_ds, nfreqs)
+    Fs = Array{Complex{T}}(undef, ndishesM, ndishesN, Threads.threadpoolsize())
+    Xs = Array{Complex{T}}(undef, nbeamsP, ndishesN, Threads.threadpoolsize())
+    # Gs = Array{Complex{T}}(undef, nbeamsP, nbeamsQ, Threads.threadpoolsize())
+    @threads for freq in 0:(nfreqs - 1)
+        tid = threadid()
+        F = @view Fs[:, :, tid]
+        X = @view Xs[:, :, tid]
+        # G = @view Gs[:, :, tid]
+        for time_ds in 0:(ntimes_ds - 1)
+            for time in (time_ds * Tds):((time_ds + 1) * Tds - 1)
+                for polr in 0:1
+                    # 1. Dish gridding
+                    F .= 0
+                    for dish in 0:(ndishes - 1)
+                        dishM, dishN = @view S[1:2, dish + 1]
+                        F[dishM + 1, dishN + 1] =
+                            W[dishM + 1, dishN + 1, polr + 1, freq + 1] * E[dish + 1, polr + 1, freq + 1, time + 1]
+                    end
+                    # 2. 2D FFT and accumulate
+                    # TODO: Rewrite via `mul!`
+                    for dishN in 0:(ndishesN - 1)
+                        for beamP in 0:(nbeamsP - 1)
+                            X1 = zero(Complex{T})
+                            for dishM in 0:(ndishesM - 1)
+                                X1 += HPM[beamP + 1, dishM + 1] * F[dishM + 1, dishN + 1]
+                            end
+                            X[beamP + 1, dishN + 1] = X1
+                        end
+                    end
+                    for beamP in 0:(nbeamsP - 1)
+                        for beamQ in 0:(nbeamsQ - 1)
+                            G1 = zero(Complex{T})
+                            for dishN in 0:(ndishesN - 1)
+                                G1 += HQN[beamQ + 1, dishN + 1] * X[beamP + 1, dishN + 1]
+                            end
+                            # G[beamP,beamQ] = G1
+                            I[beamP + 1, beamQ + 1, time_ds + 1, freq + 1] += abs2(G1)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return I::AbstractArray{T,4}
+end
+
+struct FRBBeams{T}
+    t₀::Float
+    Δt::Float
+    f₀::Float
+    Δf::Float
+    phases::Array{Complex{T},4} # [dishM, dishN, polr, freq]
+    data::Array{T,4}            # [beamP, beamQ, time_ds, freq]
+end
+
+function frb(
+    ::Type{T},
+    xframes::AbstractVector{<:XFrame},
+    S::AbstractArray{<:Integer,2},
+    num_dish_locations_M::Integer,
+    num_dish_locations_N::Integer,
+    Tds::Integer,
+) where {T<:Real}
+    ndishes, npolrs, nfreqs, ntimes = size(xframes[begin].data)
+    @assert size(S) == (2, num_dish_locations_M * num_dish_locations_N)
+
+    W = zeros(Complex{T}, num_dish_locations_M, num_dish_locations_N, npolrs, nfreqs)
+    for dish in 0:(ndishes - 1)
+        m, n = @view S[1:2, dish + 1]
+        W[m + 1, n + 1, :, :] .= 1 / T(16)
+    end
+
+    beamss = FRBBeams{T}[]
+    for xframe in xframes
+        # E: [dish, polr, freq, time]
+        E = xframe.data
+        # I: [beamP, beamQ, time_ds, freq]
+        I = frb(T, S, W, E, Tds)
+        @assert size(I, 3) == size(E, 4) ÷ Tds
+        # @assert size(I, 3) * Tds == size(E, 4)
+        phases = W
+        data = I
+        beams = FRBBeams(xframe.t₀ * Tds, xframe.Δt * Tds, xframe.f₀, xframe.Δf, phases, data)
+        push!(beamss, beams)
+    end
+    return beamss::AbstractVector{FRBBeams{T}}
 end
 
 ################################################################################
@@ -574,8 +689,12 @@ function run(
     source_frequency::Float,
     source_position_x::Float,
     source_position_y::Float,
+    num_dish_locations_M::Int64,
+    num_dish_locations_N::Int64,
+    dish_locations_ptr::Ptr{Cvoid},
     dish_separation_x::Float,
     dish_separation_y::Float,
+    num_dishes::Int64,
     adc_frequency::Float,
     ntaps::Int64,
     nfreq::Int64,
@@ -594,6 +713,14 @@ function run(
         siny = sin(source_position_y) # north-south
         Source(make_monochromatic_source(A, f₀), sinx, siny)
     end
+
+    num_dish_locations = num_dish_locations_M * num_dish_locations_N
+    dish_locations = if dish_locations_ptr != Ptr{Cvoid}()
+        Int64[unsafe_load(Ptr{Cint}(dish_locations_ptr), mn + 2 * i + 1) for mn in 0:1, i in 0:(num_dish_locations - 1)]
+    else
+        reshape(reinterpret(Int64, [(m, n) for m in 0:(num_dish_locations_M - 1) for n in 0:(num_dish_locations_M - 1)]), 2, :)
+    end
+    dish_locations::AbstractArray{Int64,2}
 
     dishes = make_dishes(dish_separation_x, dish_separation_y, ndishes_i, ndishes_j)
 
@@ -645,23 +772,36 @@ function run(
     beamΔΘi = Float(0.015)
     beamΔΘj = Float(0.015)
     sinxys = make_baseband_beams(nbeams_i, nbeams_j, beamΔΘi, beamΔΘj)
-    beams = bb(Float, xframes, dishes, sinxys)
+    bbbeams = bb(Float, xframes, dishes, sinxys)
     println(
-        "Baseband beams: $(length(beams)) frames of size (ntimes, npolrs, nfreqs, nbeams)=$(size(beams[begin].data)) t₀=$(beams[begin].t₀) Δt=$(beams[begin].Δt) f₀=$(beams[begin].f₀) Δf=$(beams[begin].Δf)",
+        "Baseband beams: $(length(bbbeams)) frames of size (ntimes, npolrs, nfreqs, nbbbeams)=$(size(bbbeams[begin].data)) t₀=$(bbbeams[begin].t₀) Δt=$(bbbeams[begin].Δt) f₀=$(bbbeams[begin].f₀) Δf=$(bbbeams[begin].Δf)",
     )
     if do_plot
-        fig = plot(beams[begin])
+        fig = plot(bbbeams[begin])
         display(fig)
     end
 
-    qbeams = quantize(Int8, beams)
-    global stored_beamss = qbeams
+    qbbbeams = quantize(Int8, bbbeams)
+    global stored_bbbeamss = qbbbeams
+
+    Tds = 40
+    frbbeams = frb(Float, xframes, dish_locations, num_dish_locations_M, num_dish_locations_N, Tds)
+    println(
+        "FRB beams: $(length(frbbeams)) frames of size (ntimes, nfrbbeamsP, nfrbbeamsQ, npolrs, nfreqs)=$(size(frbbeams[begin].data)) t₀=$(frbbeams[begin].t₀) Δt=$(frbbeams[begin].Δt) f₀=$(frbbeams[begin].f₀) Δf=$(frbbeams[begin].Δf)",
+    )
+    if do_plot
+        fig = plot(frbbeams[begin])
+        display(fig)
+    end
+
+    global stored_frbbeamss = frbbeams
 
     return nothing
 end
 
 function fill_buffer_Int4!(ptr::Ptr{UInt8}, sz::Int64, data::AbstractArray{Complex{Int8}})
-    @threads for i in 1:sz
+    @assert sz == length(data)  # sizeof(Complex{Int4}) should be 1
+    @threads for i in 1:length(data)
         val = data[i]
         re, im = real(val), imag(val)
         re4 = (re % UInt8) & 0x0f
@@ -671,21 +811,25 @@ function fill_buffer_Int4!(ptr::Ptr{UInt8}, sz::Int64, data::AbstractArray{Compl
     end
 end
 
-function fill_buffer!(ptr::Ptr{Complex{Int8}}, sz::Int64, data::AbstractArray{Complex{Int8}})
-    @threads for i in 1:sz
+function fill_buffer!(ptr::Ptr, sz::Int64, data::AbstractArray)
+    @assert sz == length(data) * sizeof(eltype(ptr))
+    @threads for i in 1:length(data)
         unsafe_store!(ptr, data[i], i)
     end
-    return flush(stdout)
 end
 
 function setup(
-    source_amplitude=Float(1.0),
-    source_frequency=Float(0.3e+9),
-    source_position_x=Float(0.02),
-    source_position_y=Float(0.03),
-    dish_separation_x=Float(6.3),
-    dish_separation_y=Float(8.5),
-    adc_frequency=Float(3.0e+9),
+    source_amplitude=1.0,
+    source_frequency=0.3e+9,
+    source_position_x=0.02,
+    source_position_y=0.03,
+    num_dish_locations_M=8,
+    num_dish_locations_N=8,
+    dish_locations_ptr=Ptr{Cvoid}(), # [(m,n) for m in 0:M-1, n in 0:N-1],
+    dish_separation_x=6.3,
+    dish_separation_y=8.5,
+    num_dishes=num_dish_locations_M * num_dish_locations_N,
+    adc_frequency=3.0e+9,
     ntaps=4,
     nfreq=64,
     ntimes=64,
@@ -700,8 +844,12 @@ function setup(
         Float(source_frequency),
         Float(source_position_x),
         Float(source_position_y),
+        Int64(num_dish_locations_M),
+        Int64(num_dish_locations_N),
+        Ptr{Cvoid}(dish_locations_ptr),
         Float(dish_separation_x),
         Float(dish_separation_y),
+        Int64(num_dishes),
         Float(adc_frequency),
         Int64(ntaps),
         Int64(nfreq),
@@ -717,7 +865,6 @@ end
 
 stored_xframes = nothing
 function set_E(ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64, npolrs::Int64, nfreqs::Int64, ntimes::Int64, frame_index::Int64)
-    @show set_E ptr sz ndishes npolrs nfreqs ntimes frame_index
     xframes = stored_xframes::AbstractVector{<:XFrame}
     if frame_index ∉ axes(xframes)[1]
         println("Frame index $frame_index does not exist in E field")
@@ -729,36 +876,82 @@ function set_E(ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64, npolrs::Int64, nfreqs
     return nothing
 end
 
-stored_beamss = nothing
-function set_A(ptr::Ptr{UInt8}, sz::Int64, ndishs::Int64, nbeams::Int64, npolrs::Int64, nfreqs::Int64, frame_index::Int64)
-    @show set_A ptr sz ndishs nbeams npolrs nfreqs frame_index
-    beamss = stored_beamss::AbstractVector{<:BBeams}
-    if frame_index ∉ axes(beamss)[1]
+stored_bbbeamss = nothing
+function set_A(ptr::Ptr{UInt8}, sz::Int64, ndishs::Int64, nbbbeams::Int64, npolrs::Int64, nfreqs::Int64, frame_index::Int64)
+    bbbeamss = stored_bbbeamss::AbstractVector{<:BBBeams{Int8}}
+    if frame_index ∉ axes(bbbeamss)[1]
         println("Frame index $frame_index does not exist in A field")
     end
-    beams = beamss[frame_index]::BBeams
-    if !(length(beams.phases) * sizeof(Complex{Int8}) == sz)
-        @show length(beams.phases) * sizeof(Complex{Int8}) sz
+    bbbeams = bbbeamss[frame_index]::BBBeams{Int8}
+    if !(length(bbbeams.phases) * sizeof(Complex{Int8}) == sz)
+        @show length(bbbeams.phases) sizeof(Complex{Int8}) sz
     end
-    if !(size(beams.phases) == (ndishs, nbeams, npolrs, nfreqs))
-        @show size(beams.phases) (ndishs, nbeams, npolrs, nfreqs)
+    if !(size(bbbeams.phases) == (ndishs, nbbbeams, npolrs, nfreqs))
+        @show size(bbbeams.phases) (ndishs, nbbbeams, npolrs, nfreqs)
     end
-    @assert length(beams.phases) * sizeof(Complex{Int8}) == sz
-    @assert size(beams.phases) == (ndishs, nbeams, npolrs, nfreqs)
-    fill_buffer!(Ptr{Complex{Int8}}(ptr), sz ÷ sizeof(Complex{Int8}), beams.phases)
+    @assert length(bbbeams.phases) * sizeof(Complex{Int8}) == sz
+    @assert size(bbbeams.phases) == (ndishs, nbbbeams, npolrs, nfreqs)
+    fill_buffer!(Ptr{Complex{Int8}}(ptr), sz, bbbeams.phases)
     return nothing
 end
 
-function set_J(ptr::Ptr{UInt8}, sz::Int64, ntimes::Int64, npolrs::Int64, nfreqs::Int64, nbeams::Int64, frame_index::Int64)
-    @show set_J ptr, sz ntimes npolrs nfreqs nbeams frame_index
-    beamss = stored_beamss::AbstractVector{<:BBeams}
-    if frame_index ∉ axes(beamss)[1]
+function set_J(ptr::Ptr{UInt8}, sz::Int64, ntimes::Int64, npolrs::Int64, nfreqs::Int64, nbbbeams::Int64, frame_index::Int64)
+    @show set_J ptr sz ntimes npolrs nfreqs nbbbeams frame_index
+    bbbeamss = stored_bbbeamss::AbstractVector{<:BBBeams{Int8}}
+    if frame_index ∉ axes(bbbeamss)[1]
         println("Frame index $frame_index does not exist in J field")
     end
-    beams = beamss[frame_index]::BBeams
-    @assert length(beams.data) == sz
-    @assert size(beams.data) == (ntimes, npolrs, nfreqs, nbeams)
-    fill_buffer_Int4!(ptr, sz, beams.data)
+    bbbeams = bbbeamss[frame_index]::BBBeams{Int8}
+    @assert length(bbbeams.data) * sizeof(Int8) == sz
+    @assert size(bbbeams.data) == (ntimes, npolrs, nfreqs, nbbbeams)
+    fill_buffer_Int4!(ptr, sz, bbbeams.data)
+    return nothing
+end
+
+stored_frbbeamss = nothing
+function set_W(ptr::Ptr{UInt8}, sz::Int64, ndishsM::Int64, ndishsN::Int64, npolrs::Int64, nfreqs::Int64, frame_index::Int64)
+    @show set_W ptr sz ndishsM ndishsN npolrs nfreqs frame_index
+    frbbeamss = stored_frbbeamss::AbstractVector{<:FRBBeams{Float32}}
+    if frame_index ∉ axes(frbbeamss)[1]
+        println("Frame index $frame_index does not exist in W field")
+    end
+    frbbeams = frbbeamss[frame_index]::FRBBeams{Float32}
+    if !(length(frbbeams.phases) * sizeof(Complex{Float16}) == sz)
+        @show length(frbbeams.phases) sizeof(Complex{Float16}) sz
+    end
+    if !(size(frbbeams.phases) == (ndishsM, ndishsN, npolrs, nfreqs))
+        @show size(frbbeams.phases) (ndishsM, ndishsN, npolrs, nfreqs)
+    end
+    @assert length(frbbeams.phases) * sizeof(Complex{Float16}) == sz
+    @assert size(frbbeams.phases) == (ndishsM, ndishsN, npolrs, nfreqs)
+    fill_buffer!(Ptr{Complex{Float16}}(ptr), sz, frbbeams.phases)
+    return nothing
+end
+
+function set_I(
+    ptr::Ptr{UInt8},
+    sz::Int64,
+    nfrbbeams_i::Int64,
+    nfrbbeams_j::Int64,
+    ntimes_ds::Int64,
+    nfreqs::Int64,
+    frame_index::Int64,
+)
+    @show set_I ptr sz nfrbbeams_i nfrbbeams_j ntimes_ds nfreqs frame_index
+    frbbeamss = stored_frbbeamss::AbstractVector{<:FRBBeams{Float32}}
+    if frame_index ∉ axes(frbbeamss)[1]
+        println("Frame index $frame_index does not exist in I field")
+    end
+    frbbeams = frbbeamss[frame_index]::FRBBeams{Float32}
+    if !(length(frbbeams.data) * sizeof(Float16) == sz)
+        @show length(frbbeams.data) sizeof(Float16) sz
+    end
+    if !(size(frbbeams.data) == (nfrbbeams_i, nfrbbeams_j, ntimes_ds, nfreqs))
+        @show size(frbbeams.data) (nfrbbeams_i, nfrbbeams_j, ntimes_ds, nfreqs)
+    end
+    @assert length(frbbeams.data) * sizeof(Float16) == sz
+    @assert size(frbbeams.data) == (nfrbbeams_i, nfrbbeams_j, ntimes_ds, nfreqs)
+    fill_buffer!(Ptr{Float16}(ptr), sz, frbbeams.data)
     return nothing
 end
 

@@ -68,7 +68,7 @@ public:
         exit_after_n_frames(config.get<std::uint32_t>(unique_name, "exit_after_n_frames")),
         exit_with_n_writers(config.get<std::uint32_t>(unique_name, "exit_with_n_writers")),
         buffer(get_buffer("in_buf")) {
-        register_consumer(buffer, unique_name.c_str());
+        buffer->register_consumer(unique_name);
     }
 
     virtual ~asdfFileWrite() {}
@@ -85,8 +85,7 @@ public:
                 break;
 
             // Wait for the next frame
-            const std::uint8_t* const frame =
-                wait_for_full_frame(buffer, unique_name.c_str(), frame_id);
+            const std::uint8_t* const frame = buffer->wait_for_full_frame(unique_name, frame_id);
             if (frame == nullptr)
                 break;
 
@@ -94,7 +93,7 @@ public:
             const double t0 = current_time();
 
             // Fetch metadata
-            const metadataContainer* const mc = get_metadata_container(buffer, frame_id);
+            const metadataContainer* const mc = buffer->get_metadata_container(frame_id);
             assert(mc != nullptr);
             assert(metadata_container_is_chord(mc));
             const chordMetadata* const meta = static_cast<const chordMetadata*>(mc->metadata);
@@ -156,9 +155,13 @@ public:
             if (ierr) {
                 if (errno != EEXIST && errno != EISDIR) {
                     char msg[1000];
-                    strerror_r(errno, msg, sizeof msg);
-                    FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(),
-                                msg);
+                    char* p = strerror_r(errno, msg, sizeof msg);
+                    if (!p)
+                        FATAL_ERROR("Could not create directory \"{:s}\":\nerrno={:d}",
+                                    base_dir.c_str(), errno);
+                    else
+                        FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(),
+                                    msg);
                 }
             }
             project.write(full_path);
@@ -169,7 +172,7 @@ public:
             write_time_metric.set(elapsed);
 
             // Mark frame as done
-            mark_frame_empty(buffer, unique_name.c_str(), frame_id);
+            buffer->mark_frame_empty(unique_name, frame_id);
         } // for
 
         if (exit_with_n_writers > 0 && ++n_finished >= exit_with_n_writers)

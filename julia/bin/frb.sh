@@ -5,8 +5,7 @@ set -euxo pipefail
 scriptdir=$(dirname "$0")
 cd "$scriptdir/.."
 
-# setups='pathfinder chord'
-setups='chord'
+setups='chord hirax pathfinder'
 
 # Delete previous output (so that we don't accidentally re-use it)
 for setup in $setups; do
@@ -43,7 +42,7 @@ done
 julia --project=@. --eval 'using JuliaFormatter; JuliaFormatter.format_file("output-A40")' &
 wait
 
-# Copy kernel into Kotekan
+# Copy kernels into Kotekan
 for setup in $setups; do
     cp output-A40/frb_$setup.cxx ../lib/cuda/cudaFRBBeamformer_$setup.cpp
     cp output-A40/frb_$setup.jl ../lib/cuda/kernels/FRBBeamformer_$setup.jl

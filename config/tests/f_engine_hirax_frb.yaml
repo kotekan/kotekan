@@ -1,0 +1,197 @@
+##########################################
+#
+# F-Engine Data Generator
+#
+##########################################
+---
+type: config
+log_level: debug   # info
+cpu_affinity: [0,1,2,3,4,5,6,7]
+buffer_depth: 4
+
+frame_arrival_period: 2.56e-6 * upchannelization_factor * num_times
+
+sizeof_int16: 2
+sizeof_int32: 4
+sizeof_float16: 2
+
+# Basic constants
+num_components: 2
+num_polarizations: 2
+
+# F-Engine simulator: Sky
+source_amplitude: 1.0
+source_frequency: 0.3e+9        # [Hz]
+source_position_x: 0.02         # east-west
+source_position_y: 0.03         # north-south
+
+# F-Engine simulator: Dishes
+num_dish_locations_M: 16
+num_dish_locations_N: 16
+num_dish_locations: num_dish_locations_M * num_dish_locations_N
+dish_separation_x: 6.5          # [m] east-west
+dish_separation_y: 8.5          # [m] north-south
+num_dishes: 256
+
+# 16^2 = 256 dish locations. Dishes 0..511 are real dishes, dishes
+# 256..255 are dummy dishes where the E-field is set to zero
+dish_locations: [
+    0, 0, 0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0, 9, 0, 10, 0, 11, 0, 12, 0, 13, 0, 14, 0, 15,
+    1, 0, 1, 1, 1, 2, 1, 3, 1, 4, 1, 5, 1, 6, 1, 7, 1, 8, 1, 9, 1, 10, 1, 11, 1, 12, 1, 13, 1, 14, 1, 15,
+    2, 0, 2, 1, 2, 2, 2, 3, 2, 4, 2, 5, 2, 6, 2, 7, 2, 8, 2, 9, 2, 10, 2, 11, 2, 12, 2, 13, 2, 14, 2, 15,
+    3, 0, 3, 1, 3, 2, 3, 3, 3, 4, 3, 5, 3, 6, 3, 7, 3, 8, 3, 9, 3, 10, 3, 11, 3, 12, 3, 13, 3, 14, 3, 15,
+    4, 0, 4, 1, 4, 2, 4, 3, 4, 4, 4, 5, 4, 6, 4, 7, 4, 8, 4, 9, 4, 10, 4, 11, 4, 12, 4, 13, 4, 14, 4, 15,
+    5, 0, 5, 1, 5, 2, 5, 3, 5, 4, 5, 5, 5, 6, 5, 7, 5, 8, 5, 9, 5, 10, 5, 11, 5, 12, 5, 13, 5, 14, 5, 15,
+    6, 0, 6, 1, 6, 2, 6, 3, 6, 4, 6, 5, 6, 6, 6, 7, 6, 8, 6, 9, 6, 10, 6, 11, 6, 12, 6, 13, 6, 14, 6, 15,
+    7, 0, 7, 1, 7, 2, 7, 3, 7, 4, 7, 5, 7, 6, 7, 7, 7, 8, 7, 9, 7, 10, 7, 11, 7, 12, 7, 13, 7, 14, 7, 15,
+    8, 0, 8, 1, 8, 2, 8, 3, 8, 4, 8, 5, 8, 6, 8, 7, 8, 8, 8, 9, 8, 10, 8, 11, 8, 12, 8, 13, 8, 14, 8, 15,
+    9, 0, 9, 1, 9, 2, 9, 3, 9, 4, 9, 5, 9, 6, 9, 7, 9, 8, 9, 9, 9, 10, 9, 11, 9, 12, 9, 13, 9, 14, 9, 15,
+    10, 0, 10, 1, 10, 2, 10, 3, 10, 4, 10, 5, 10, 6, 10, 7, 10, 8, 10, 9, 10, 10, 10, 11, 10, 12, 10, 13, 10, 14, 10, 15,
+    11, 0, 11, 1, 11, 2, 11, 3, 11, 4, 11, 5, 11, 6, 11, 7, 11, 8, 11, 9, 11, 10, 11, 11, 11, 12, 11, 13, 11, 14, 11, 15,
+    12, 0, 12, 1, 12, 2, 12, 3, 12, 4, 12, 5, 12, 6, 12, 7, 12, 8, 12, 9, 12, 10, 12, 11, 12, 12, 12, 13, 12, 14, 12, 15,
+    13, 0, 13, 1, 13, 2, 13, 3, 13, 4, 13, 5, 13, 6, 13, 7, 13, 8, 13, 9, 13, 10, 13, 11, 13, 12, 13, 13, 13, 14, 13, 15,
+    14, 0, 14, 1, 14, 2, 14, 3, 14, 4, 14, 5, 14, 6, 14, 7, 14, 8, 14, 9, 14, 10, 14, 11, 14, 12, 14, 13, 14, 14, 14, 15,
+    15, 0, 15, 1, 15, 2, 15, 3, 15, 4, 15, 5, 15, 6, 15, 7, 15, 8, 15, 9, 15, 10, 15, 11, 15, 12, 15, 13, 15, 14, 15, 15,
+]
+
+# F-Engine simulator: ADC
+adc_frequency: 1.6e+9           # [Hz]
+num_samples_per_frame: 2048
+
+# F-Engine simulator: FT (PFB)
+num_taps: 4
+num_frequencies: 64 * upchannelization_factor # how many frequencies to keep
+num_times: 2048
+
+# Baseband beamformer setup
+bb_num_dishes_M: 16
+bb_num_dishes_N: 16
+bb_num_beams_P: 4
+bb_num_beams_Q: 4
+bb_beam_separation_x: 0.015        # east-west
+bb_beam_separation_y: 0.015        # north-south
+bb_num_beams: bb_num_beams_P * bb_num_beams_Q
+
+# Upchannelizer setup
+upchannelization_factor: 16
+
+# FRB beamformer setup
+frb_downsampling_factor: 25
+frb_num_output_times: 81 # num_times / frb_downsampling_factor # rounding down
+frb_num_beams_P: 2 * num_dish_locations_M
+frb_num_beams_Q: 2 * num_dish_locations_N
+
+# Pool:
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 10 * buffer_depth
+
+# Buffers
+host_dish_locations_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_int16 * 2 * num_dish_locations
+    metadata_pool: main_pool
+
+host_bb_phase_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_components * num_dishes * bb_num_beams * num_polarizations * num_frequencies
+    metadata_pool: main_pool
+
+host_bb_shift_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_int32 * bb_num_beams * num_polarizations * num_frequencies
+    metadata_pool: main_pool
+
+host_upchan_gain_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_float16 * num_frequencies * upchannelization_factor
+    metadata_pool: main_pool
+
+host_frb_phase_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_float16 * num_components * num_dish_locations_M * num_dish_locations_N * num_frequencies * num_polarizations
+    metadata_pool: main_pool
+
+host_voltage_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_dishes * num_polarizations * num_frequencies * num_times
+    metadata_pool: main_pool
+
+host_expected_bb_beams_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
+    metadata_pool: main_pool
+
+host_frb_intensity_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * frb_num_output_times * num_frequencies
+    metadata_pool: main_pool
+
+# Stages
+gen_voltage:
+    kotekan_stage: FEngine
+    num_frames: 10
+    E_buffer: host_voltage_buffer
+    A_buffer: host_bb_phase_buffer
+    J_buffer: host_expected_bb_beams_buffer
+    S_buffer: host_dish_locations_buffer
+    G_buffer: host_upchan_gain_buffer
+    W_buffer: host_frb_phase_buffer
+
+gpu:
+    kernel_path: "lib/cuda/kernels"
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage: host_voltage_buffer
+            host_dish_locations: host_dish_locations_buffer
+            host_frb_phase: host_frb_phase_buffer
+        out_buffers:
+            host_frb_intensity: host_frb_intensity_buffer
+        commands:
+        - name: cudaInputData
+          in_buf: host_voltage
+          gpu_mem: voltage
+        - name: cudaInputData
+          in_buf: host_dish_locations
+          gpu_mem: dish_locations
+        - name: cudaInputData
+          in_buf: host_frb_phase
+          gpu_mem: frb_phase
+        - name: cudaSyncInput
+        - name: cudaFRBBeamformer_hirax
+          gpu_mem_voltage: voltage
+          gpu_mem_dishlayout: dish_locations
+          gpu_mem_phase: frb_phase
+          gpu_mem_beamgrid: frb_intensity
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: frb_intensity
+          out_buf: host_frb_intensity
+
+write_data:
+  base_dir: /tmp/f_engine_hirax_frb
+  exit_after_n_frames: 10
+  exit_with_n_writers: 3
+  write_voltage:
+    kotekan_stage: asdfFileWrite
+    in_buf: host_voltage_buffer
+    file_name: voltage
+  write_frb_phase:
+    kotekan_stage: asdfFileWrite
+    in_buf: host_frb_phase_buffer
+    file_name: frb_phase
+  write_frb_intensity:
+    kotekan_stage: asdfFileWrite
+    in_buf: host_frb_intensity_buffer
+    file_name: frb_intensity
+...

@@ -1,3 +1,7 @@
+# Metadata code for CUDA frb beamformer
+# This file has been generated automatically by `frb.jl`.
+# Do not modify this file, your changes will be lost.
+
 --- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
 kernel-description:
   name: "frb"

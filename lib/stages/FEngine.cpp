@@ -61,6 +61,10 @@ class FEngine : public kotekan::Stage {
     const int upchannelization_factor;
 
     // FRB beamformer setup
+    const int frb_num_beams_P;
+    const int frb_num_beams_Q;
+    const int Tds = 40;
+    const int frb_num_times;
 
     // Pipeline
     const int num_frames;
@@ -72,6 +76,7 @@ class FEngine : public kotekan::Stage {
     const std::int64_t S_frame_size;
     const std::int64_t G_frame_size;
     const std::int64_t W_frame_size;
+    const std::int64_t I_frame_size;
 
     Buffer* const E_buffer;
     Buffer* const A_buffer;
@@ -79,6 +84,7 @@ class FEngine : public kotekan::Stage {
     Buffer* const S_buffer;
     Buffer* const G_buffer;
     Buffer* const W_buffer;
+    Buffer* const I_buffer;
 
 public:
     FEngine(kotekan::Config& config, const std::string& unique_name,
@@ -129,6 +135,8 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     // Upchannelizer setup
     upchannelization_factor(config.get<int>(unique_name, "upchannelization_factor")),
     // FRB beamformer setup
+    frb_num_beams_P(2 * num_dish_locations_M), frb_num_beams_Q(2 * num_dish_locations_N),
+    frb_num_times(num_times / Tds),
     // Pipeline
     num_frames(config.get<int>(unique_name, "num_frames")),
     // Frame sizes
@@ -140,10 +148,13 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     G_frame_size(std::int64_t(1) * sizeof(float16_t) * num_frequencies * upchannelization_factor),
     W_frame_size(std::int64_t(1) * sizeof(float16_t) * num_components * num_dish_locations_M
                  * num_dish_locations_N * num_polarizations * num_frequencies),
+    I_frame_size(std::int64_t(1) * sizeof(float16_t) * frb_num_beams_P * frb_num_beams_Q
+                 * frb_num_times * num_frequencies),
     // Buffers
     E_buffer(get_buffer("E_buffer")), A_buffer(get_buffer("A_buffer")),
     J_buffer(get_buffer("J_buffer")), S_buffer(get_buffer("S_buffer")),
-    G_buffer(get_buffer("G_buffer")), W_buffer(get_buffer("W_buffer")) {
+    G_buffer(get_buffer("G_buffer")), W_buffer(get_buffer("W_buffer")),
+    I_buffer(get_buffer("I_buffer")) {
     assert(num_dishes <= num_dish_locations);
     assert(std::ptrdiff_t(dish_locations.size()) == 2 * num_dish_locations);
 
@@ -153,12 +164,14 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     assert(S_buffer);
     assert(G_buffer);
     assert(W_buffer);
+    assert(I_buffer);
     E_buffer->register_producer(unique_name);
     A_buffer->register_producer(unique_name);
     J_buffer->register_producer(unique_name);
     S_buffer->register_producer(unique_name);
     G_buffer->register_producer(unique_name);
     W_buffer->register_producer(unique_name);
+    I_buffer->register_producer(unique_name);
 
     INFO("Starting Julia...");
     kotekan::juliaStartup();
@@ -206,25 +219,31 @@ void FEngine::main_thread() {
             assert(f_engine_module);
             jl_function_t* const setup = jl_get_function(f_engine_module, "setup");
             assert(setup);
-            const int nargs = 15;
+            const int nargs = 19;
             jl_value_t** args;
             JL_GC_PUSHARGS(args, nargs);
-            args[0] = jl_box_float32(source_amplitude);
-            args[1] = jl_box_float32(source_frequency);
-            args[2] = jl_box_float32(source_position_x);
-            args[3] = jl_box_float32(source_position_y);
-            args[4] = jl_box_float32(dish_separation_x);
-            args[5] = jl_box_float32(dish_separation_y);
-            // #warning "TODO: need to pass dish locations"
-            args[6] = jl_box_float32(adc_frequency);
-            args[7] = jl_box_int64(num_taps);
-            args[8] = jl_box_int64(num_frequencies);
-            args[9] = jl_box_int64(num_times);
-            args[10] = jl_box_int64(bb_num_dishes_M);
-            args[11] = jl_box_int64(bb_num_dishes_N);
-            args[12] = jl_box_int64(bb_num_beams_P);
-            args[13] = jl_box_int64(bb_num_beams_Q);
-            args[14] = jl_box_int64(num_frames);
+            int iargc = 0;
+            args[iargc++] = jl_box_float32(source_amplitude);
+            args[iargc++] = jl_box_float32(source_frequency);
+            args[iargc++] = jl_box_float32(source_position_x);
+            args[iargc++] = jl_box_float32(source_position_y);
+            args[iargc++] = jl_box_int64(num_dish_locations_M);
+            args[iargc++] = jl_box_int64(num_dish_locations_N);
+            args[iargc++] = jl_box_voidpointer(const_cast<int*>(dish_locations.data()));
+            args[iargc++] = jl_box_float32(dish_separation_x);
+            args[iargc++] = jl_box_float32(dish_separation_y);
+            args[iargc++] = jl_box_int64(num_dishes);
+            args[iargc++] = jl_box_float32(adc_frequency);
+            args[iargc++] = jl_box_int64(num_taps);
+            args[iargc++] = jl_box_int64(num_frequencies);
+            args[iargc++] = jl_box_int64(num_times);
+            args[iargc++] = jl_box_int64(bb_num_dishes_M);
+            args[iargc++] = jl_box_int64(bb_num_dishes_N);
+            args[iargc++] = jl_box_int64(bb_num_beams_P);
+            args[iargc++] = jl_box_int64(bb_num_beams_Q);
+            args[iargc++] = jl_box_int64(num_frames);
+            // args[iargc++] = jl_box_bool(false);
+            assert(iargc == nargs);
             jl_value_t* const res = jl_call(setup, args, nargs);
             assert(res);
             JL_GC_POP();
@@ -299,6 +318,16 @@ void FEngine::main_thread() {
                   W_frame_size);
         W_buffer->allocate_new_metadata_object(W_frame_id);
         set_fpga_seq_num(W_buffer, W_frame_id, seq_num);
+
+        const int I_frame_id = frame_index % I_buffer->num_frames;
+        std::uint8_t* const I_frame = I_buffer->wait_for_empty_frame(unique_name, I_frame_id);
+        if (!I_frame)
+            break;
+        if (!(std::ptrdiff_t(I_buffer->frame_size) == I_frame_size))
+            ERROR("I_buffer->frame_size={:d} I_frame_size={:d}", I_buffer->frame_size,
+                  I_frame_size);
+        I_buffer->allocate_new_metadata_object(I_frame_id);
+        set_fpga_seq_num(I_buffer, I_frame_id, seq_num);
 
         if (!skip_julia) {
             INFO("[{:d}] Filling E buffer...", frame_index);
@@ -394,39 +423,50 @@ void FEngine::main_thread() {
             INFO("[{:d}] Done filling G buffer.", frame_index);
 
             INFO("[{:d}] Filling W buffer...", frame_index);
-            {
-                std::complex<_Float16>* __restrict__ const W = (std::complex<_Float16>*)W_frame;
-                for (int freq = 0; freq < num_frequencies; ++freq) {
-                    for (int polr = 0; polr < num_polarizations; ++polr) {
-                        for (int dishN = 0; dishN < num_dish_locations_N; ++dishN) {
-                            for (int dishM = 0; dishM < num_dish_locations_M; ++dishM) {
-                                const std::size_t ind =
-                                    dishM
-                                    + num_dish_locations_M
-                                          * (dishN
-                                             + num_dish_locations_N
-                                                   * (polr
-                                                      + num_polarizations
-                                                            * (freq + std::size_t(0))));
-                                W[ind] = 0;
-                            }
-                        }
-                        for (int dish = 0; dish < num_dishes; ++dish) {
-                            const int dishM = dish_locations[2 * dish + 0];
-                            const int dishN = dish_locations[2 * dish + 1];
-                            const std::size_t ind =
-                                dishM
-                                + num_dish_locations_M
-                                      * (dishN
-                                         + num_dish_locations_N
-                                               * (polr
-                                                  + num_polarizations * (freq + std::size_t(0))));
-                            W[ind] = 1 / 16.0;
-                        }
-                    }
-                }
-            }
+            kotekan::juliaCall([&]() {
+                jl_module_t* const f_engine_module =
+                    (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
+                assert(f_engine_module);
+                jl_function_t* const set_W = jl_get_function(f_engine_module, "set_W");
+                assert(set_W);
+                const int nargs = 7;
+                jl_value_t** args;
+                JL_GC_PUSHARGS(args, nargs);
+                args[0] = jl_box_uint8pointer(W_frame);
+                args[1] = jl_box_int64(W_frame_size);
+                args[2] = jl_box_int64(num_dish_locations_M);
+                args[3] = jl_box_int64(num_dish_locations_N);
+                args[4] = jl_box_int64(num_polarizations);
+                args[5] = jl_box_int64(num_frequencies);
+                args[6] = jl_box_int64(frame_index + 1);
+                jl_value_t* const res = jl_call(set_W, args, nargs);
+                assert(res);
+                JL_GC_POP();
+            });
             INFO("[{:d}] Done filling W buffer.", frame_index);
+
+            INFO("[{:d}] Filling I buffer...", frame_index);
+            kotekan::juliaCall([&]() {
+                jl_module_t* const f_engine_module =
+                    (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
+                assert(f_engine_module);
+                jl_function_t* const set_I = jl_get_function(f_engine_module, "set_I");
+                assert(set_I);
+                const int nargs = 7;
+                jl_value_t** args;
+                JL_GC_PUSHARGS(args, nargs);
+                args[0] = jl_box_uint8pointer(I_frame);
+                args[1] = jl_box_int64(I_frame_size);
+                args[2] = jl_box_int64(frb_num_beams_P);
+                args[3] = jl_box_int64(frb_num_beams_Q);
+                args[4] = jl_box_int64(frb_num_times);
+                args[5] = jl_box_int64(num_frequencies);
+                args[6] = jl_box_int64(frame_index + 1);
+                jl_value_t* const res = jl_call(set_I, args, nargs);
+                assert(res);
+                JL_GC_POP();
+            });
+            INFO("[{:d}] Done filling I buffer.", frame_index);
         } // if !skip_julia
 
         // Set metadata
@@ -526,12 +566,30 @@ void FEngine::main_thread() {
         W_metadata->n_one_hot = -1;
         W_metadata->nfreq = num_frequencies;
 
+        chordMetadata* const I_metadata = get_chord_metadata(I_buffer, I_frame_id);
+        chord_metadata_init(I_metadata);
+        I_metadata->chime.fpga_seq_num = frame_index;
+        I_metadata->frame_counter = frame_index;
+        I_metadata->type = float16;
+        I_metadata->dims = 4;
+        std::strncpy(I_metadata->dim_name[0], "F", sizeof I_metadata->dim_name[0]);
+        std::strncpy(I_metadata->dim_name[1], "Tbar", sizeof I_metadata->dim_name[1]);
+        std::strncpy(I_metadata->dim_name[2], "beamQ", sizeof I_metadata->dim_name[2]);
+        std::strncpy(I_metadata->dim_name[3], "beamP", sizeof I_metadata->dim_name[3]);
+        I_metadata->dim[0] = num_frequencies;
+        I_metadata->dim[1] = frb_num_times;
+        I_metadata->dim[2] = frb_num_beams_Q;
+        I_metadata->dim[3] = frb_num_beams_P;
+        I_metadata->n_one_hot = -1;
+        I_metadata->nfreq = num_frequencies;
+
         E_buffer->mark_frame_full(unique_name, E_frame_id);
         A_buffer->mark_frame_full(unique_name, A_frame_id);
         J_buffer->mark_frame_full(unique_name, J_frame_id);
         S_buffer->mark_frame_full(unique_name, S_frame_id);
         G_buffer->mark_frame_full(unique_name, G_frame_id);
         W_buffer->mark_frame_full(unique_name, W_frame_id);
+        I_buffer->mark_frame_full(unique_name, I_frame_id);
     }
 
     INFO("Done.");

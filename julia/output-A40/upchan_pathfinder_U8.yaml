@@ -1,3 +1,7 @@
+# Metadata for the CUDA upchannelizer
+# This file has been generated automatically by `upchan.jl`.
+# Do not modify this file, your changes will be lost.
+
 --- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
 kernel-description:
   name: "upchan"
