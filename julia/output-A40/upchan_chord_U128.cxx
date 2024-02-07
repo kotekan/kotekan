@@ -266,6 +266,10 @@ private:
     RingBuffer* input_ringbuf_signal;
     RingBuffer* output_ringbuf_signal;
 
+    // How many bytes of data are available at the start of the buffer (overlap from last frame).
+    // Initially zero for the first frame, then cuda_algorithm_overlap thereafter.
+    size_t Tleftover;
+
     size_t Tmin;
     size_t Tmax;
     size_t Tbarmin;
@@ -338,19 +342,33 @@ cudaUpchannelizer_chord_U128::~cudaUpchannelizer_chord_U128() {}
 int cudaUpchannelizer_chord_U128::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer...
     size_t input_bytes = E_length / _gpu_buffer_depth;
-    DEBUG("Waiting for input ringbuffer data for frame {:d}: {:d} bytes ...", gpu_frame_id,
-          input_bytes);
+    // If we have leftovers from last frame, we can request fewer input bytes.
+    size_t req_input_bytes = input_bytes - Tleftover * T_sample_bytes;
+    DEBUG("Waiting for input ringbuffer data for frame {:d}: {:d} bytes total, {:d} leftovers + "
+          "{:d} new = {:d} time samples total, {:d} leftover + {:d} new...",
+          gpu_frame_id, input_bytes, Tleftover * T_sample_bytes, req_input_bytes,
+          input_bytes / T_sample_bytes, Tleftover, req_input_bytes / T_sample_bytes);
     std::optional<size_t> val =
-        input_ringbuf_signal->wait_and_claim_readable(unique_name, input_bytes);
+        input_ringbuf_signal->wait_and_claim_readable(unique_name, req_input_bytes);
     DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
     if (!val.has_value())
         return -1;
     // Where we should read from in the ring buffer, in *bytes*
     size_t input_cursor = val.value();
-    // Convert from byte offset to time sample offset
-    Tmin = input_cursor / T_sample_bytes;
+    // (that's the pointer to the 'new' part of the data -- we also have leftovers at the beginning
+    // of the ring buffer -- we adjust for that below.)
     DEBUG("Input ring-buffer byte offset {:d} -> time sample offset {:d}", input_cursor, Tmin);
     assert(mod(input_cursor, T_sample_bytes) == 0);
+
+    // Convert from byte offset to time sample offset
+    Tmin = input_cursor / T_sample_bytes;
+
+    // Subtract Tleftover samples, avoiding underflow
+    size_t Tringbuf = input_ringbuf_signal->size / T_sample_bytes;
+    Tmin = (Tmin + (Tringbuf - Tleftover)) % Tringbuf;
+
+    DEBUG("After adjusting for leftover samples, input ring-buffer time sample offset is {:d}",
+          input_cursor, Tmin);
 
     DEBUG("Input length: {:d} bytes, bytes per input sample: {:d}, input samples: {:d}",
           input_bytes, T_sample_bytes, input_bytes / T_sample_bytes);
@@ -689,7 +707,7 @@ cudaEvent_t cudaUpchannelizer_chord_U128::execute(cudaPipelineState& /*pipestate
     if (err != CUDA_SUCCESS) {
         const char* errStr;
         cuGetErrorString(err, &errStr);
-        ERROR("cuLaunchKernel: Error number: {}: {}", err, errStr);
+        ERROR("cuLaunchKernel: Error number: {}: {}", (int)err, errStr);
     }
 
     // Copy results back to host memory
@@ -717,6 +735,7 @@ cudaEvent_t cudaUpchannelizer_chord_U128::execute(cudaPipelineState& /*pipestate
 void cudaUpchannelizer_chord_U128::finalize_frame() {
     // Advance the input ringbuffer
     size_t t_read = ((Tmax - Tmin) - cuda_algorithm_overlap);
+    Tleftover = cuda_algorithm_overlap;
     DEBUG("Advancing input ringbuffer: read {:d} samples, {:d} bytes", t_read,
           t_read * T_sample_bytes);
     input_ringbuf_signal->finish_read(unique_name, t_read * T_sample_bytes);

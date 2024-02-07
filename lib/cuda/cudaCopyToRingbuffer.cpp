@@ -131,8 +131,7 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
                                       cuda_stream_id, pre_events[cuda_stream_id], nullptr, nullptr);
         if (nwrap)
             device.async_copy_host_to_gpu(rb_memory, (char*)host_memory_frame + ncopy, nwrap,
-                                          cuda_stream_id, pre_events[cuda_stream_id], nullptr,
-                                          nullptr);
+                                          cuda_stream_id, nullptr, nullptr, nullptr);
 
         // Copy (reference to) metadata also
         meta = in_buffer->metadata[buf_index];
@@ -146,7 +145,7 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
     // FIXME -- signal *now*, when we have *queued* the cuda work?  Or in finalize_frame, when it
     // has finished?? if we do it here, probably need a syncInput after the cudaInput that is
     // waiting on this buffer.
-    // signal_buffer->wrote(unique_name, _input_size);
+    // signal_buffer->finish_write(unique_name, _input_size);
 
     return record_end_event();
 }

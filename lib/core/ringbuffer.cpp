@@ -106,10 +106,11 @@ std::optional<size_t> RingBuffer::wait_for_writable(const std::string& name, siz
     }
     if (shutdown_signal)
         return std::optional<size_t>();
-    write_next[name] += sz;
+    size_t rtn = write_next[name] % size;
     DEBUG("wait_for_writable {:s} {:L} -> {:L} {:L}", name, sz, write_next[name],
-          write_next[name] % size);
-    return std::optional<size_t>(write_next[name] % size);
+          rtn);
+    write_next[name] += sz;
+    return std::optional<size_t>(rtn);
 }
 
 std::optional<std::pair<size_t, size_t>> RingBuffer::get_writable(const std::string& name) {

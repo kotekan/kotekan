@@ -168,10 +168,11 @@ inline void chord_metadata_copy(std::shared_ptr<chordMetadata> out,
 }
 
 inline bool metadata_is_chord(Buffer* buf, int) {
-    return (buf->metadata_pool->type_name == "chordMetadata");
+    return buf && buf->metadata_pool && (buf->metadata_pool->type_name == "chordMetadata");
 }
 
 inline bool metadata_is_chord(const std::shared_ptr<metadataObject> mc) {
+    if (!mc) return false;
     std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
     assert(pool);
     return (pool->type_name == "chordMetadata");

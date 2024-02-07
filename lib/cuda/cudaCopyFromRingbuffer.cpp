@@ -15,8 +15,8 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "cudaCopyFromRingbuffer", ""),
     input_cursor(0) {
-    _output_size = config.get<int>(unique_name, "output_size");
-    _ring_buffer_size = config.get<int>(unique_name, "ring_buffer_size");
+    _output_size = config.get<size_t>(unique_name, "output_size");
+    _ring_buffer_size = config.get<size_t>(unique_name, "ring_buffer_size");
     _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
     signal_buffer = dynamic_cast<RingBuffer*>(
@@ -24,7 +24,7 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
     if (instance_num == 0)
         signal_buffer->register_consumer(unique_name);
 
-    set_command_type(gpuCommandType::KERNEL);
+    set_command_type(gpuCommandType::COPY_IN);
 
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, true, false, true));
@@ -33,10 +33,14 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
 int cudaCopyFromRingbuffer::wait_on_precondition() {
     // Wait for there to be data available in the ringbuffer.
     DEBUG("Waiting for ringbuffer data for frame {:d}...", gpu_frame_id);
+    signal_buffer->print_full_status();
     std::optional<size_t> val = signal_buffer->wait_and_claim_readable(unique_name, _output_size);
     DEBUG("Finished waiting for data frame {:d}.", gpu_frame_id);
-    if (!val.has_value())
+    signal_buffer->print_full_status();
+    if (!val.has_value()) {
+        DEBUG("Got no value when waiting for ringbuffer data; quitting");
         return -1;
+    }
     input_cursor = val.value();
     return 0;
 }
@@ -73,5 +77,9 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
 
 void cudaCopyFromRingbuffer::finalize_frame() {
     cudaCommand::finalize_frame();
+    DEBUG("About to finalize frame {:d}", gpu_frame_id);
+    signal_buffer->print_full_status();
     signal_buffer->finish_read(unique_name, _output_size);
+    DEBUG("After finalizing frame {:d}", gpu_frame_id);
+    signal_buffer->print_full_status();
 }

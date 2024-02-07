@@ -191,8 +191,6 @@ gpuDeviceInterface::create_gpu_memory_array_metadata(const std::string& name, co
     // If view, recurse
     if (is_view_of_same_size(name))
         return create_gpu_memory_array_metadata(gpu_memory[name].view_source, index, pool);
-    // Make sure the slot isn't occupied.
-    assert(gpu_memory[name].metadata_pointers[index] == nullptr);
     // Allocate new metadata obj
     std::shared_ptr<metadataPool> realpool = pool.lock();
     if (!realpool)
@@ -226,10 +224,5 @@ void gpuDeviceInterface::claim_gpu_memory_array_metadata(const std::string& name
     // (in "ringbuffer" views, the source is a singleton)
     if (is_view_of_same_size(name))
         return claim_gpu_memory_array_metadata(gpu_memory[name].view_source, index, mc);
-    // Make sure the slot is empty
-    if (gpu_memory[name].metadata_pointers[index]) {
-        FATAL_ERROR("claim_gpu_memory_array_metadata for name \"{:s}\"[:d]: slot is not empty.",
-                    name, index);
-    }
     gpu_memory[name].metadata_pointers[index] = mc;
 }
