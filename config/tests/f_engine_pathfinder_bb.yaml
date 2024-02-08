@@ -66,7 +66,7 @@ num_samples_per_frame: 2048
 # F-Engine simulator: FT (PFB)
 num_taps: 4
 num_frequencies: 128            # how many frequencies to keep
-num_times: 32768
+num_times: 2048   #TODO 32768
 
 # Baseband beamformer setup
 # TODO: use proper dish locations

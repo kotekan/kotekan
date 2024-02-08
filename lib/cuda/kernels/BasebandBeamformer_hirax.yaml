@@ -12,7 +12,7 @@ kernel-description:
     number-of-dishes: 256
     number-of-frequencies: 64
     number-of-polarizations: 2
-    number-of-timesamples: 32768
+    number-of-timesamples: 2048
     sampling-time-μsec: 2.56
     shift-parameter-σ: 3
   compile-parameters:
@@ -34,7 +34,7 @@ kernel-description:
       intent: in
       type: Int4
       indices: [C, D, P, F, T]
-      shape: [2, 256, 2, 64, 32768]
+      shape: [2, 256, 2, 64, 2048]
       strides: [1, 2, 512, 1024, 65536]
     - name: "s"
       intent: in
@@ -46,8 +46,8 @@ kernel-description:
       intent: out
       type: Int4
       indices: [C, T, P, F, B]
-      shape: [2, 32768, 2, 64, 16]
-      strides: [1, 2, 65536, 131072, 8388608]
+      shape: [2, 2048, 2, 64, 16]
+      strides: [1, 2, 4096, 8192, 524288]
     - name: "info"
       intent: out
       type: Int32

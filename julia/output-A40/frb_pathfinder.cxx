@@ -62,7 +62,7 @@ private:
     static constexpr int cuda_number_of_dishes = 64;
     static constexpr int cuda_number_of_frequencies = 2048;
     static constexpr int cuda_number_of_polarizations = 2;
-    static constexpr int cuda_number_of_timesamples = 2064;
+    static constexpr int cuda_number_of_timesamples = 144;
 
     // Kernel compile parameters:
     static constexpr int minthreads = 192;
@@ -119,9 +119,9 @@ private:
         64,
         2,
         2048,
-        2064,
+        144,
     };
-    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 64 * 2 * 2048 * 2064;
+    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 64 * 2 * 2048 * 144;
     static_assert(E_length <= std::size_t(std::numeric_limits<int>::max()));
     //
     // I: gpu_mem_beamgrid
@@ -136,10 +136,10 @@ private:
     static constexpr std::array<std::size_t, I_rank> I_lengths = {
         16,
         24,
-        51,
+        3,
         2048,
     };
-    static constexpr std::size_t I_length = chord_datatype_bytes(I_type) * 16 * 24 * 51 * 2048;
+    static constexpr std::size_t I_length = chord_datatype_bytes(I_type) * 16 * 24 * 3 * 2048;
     static_assert(I_length <= std::size_t(std::numeric_limits<int>::max()));
     //
     // info: gpu_mem_info

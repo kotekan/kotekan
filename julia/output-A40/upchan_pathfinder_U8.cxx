@@ -82,7 +82,7 @@ private:
     static constexpr int cuda_number_of_frequencies = 128;
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_taps = 4;
-    static constexpr int cuda_max_number_of_timesamples = 131072;
+    static constexpr int cuda_max_number_of_timesamples = 8192;
     static constexpr int cuda_granularity_number_of_timesamples = 256;
     static constexpr int cuda_algorithm_overlap = 24;
     static constexpr int cuda_upchannelization_factor = 8;
@@ -179,9 +179,9 @@ private:
         64,
         2,
         128,
-        131072,
+        8192,
     };
-    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 64 * 2 * 128 * 131072;
+    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 64 * 2 * 128 * 8192;
     static_assert(E_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
     // Ebar: gpu_mem_output_voltage
@@ -203,10 +203,10 @@ private:
         64,
         2,
         1024,
-        16384,
+        1024,
     };
     static constexpr std::size_t Ebar_length =
-        chord_datatype_bytes(Ebar_type) * 64 * 2 * 1024 * 16384;
+        chord_datatype_bytes(Ebar_type) * 64 * 2 * 1024 * 1024;
     static_assert(Ebar_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info

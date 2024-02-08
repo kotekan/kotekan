@@ -57,7 +57,7 @@ private:
     static constexpr int cuda_number_of_dishes = 512;
     static constexpr int cuda_number_of_frequencies = 16;
     static constexpr int cuda_number_of_polarizations = 2;
-    static constexpr int cuda_number_of_timesamples = 32768;
+    static constexpr int cuda_number_of_timesamples = 2048;
     static constexpr int cuda_inner_number_of_dishes = 8;
     static constexpr int cuda_inner_number_of_timesamples = 16;
 
@@ -83,10 +83,10 @@ private:
         "Dshort", "Tshort", "D", "P", "F", "T",
     };
     static constexpr std::array<std::size_t, Ein_rank> Ein_lengths = {
-        8, 16, 64, 2, 16, 2048,
+        8, 16, 64, 2, 16, 128,
     };
     static constexpr std::size_t Ein_length =
-        chord_datatype_bytes(Ein_type) * 8 * 16 * 64 * 2 * 16 * 2048;
+        chord_datatype_bytes(Ein_type) * 8 * 16 * 64 * 2 * 16 * 128;
     static_assert(Ein_length <= std::size_t(std::numeric_limits<int>::max()));
     //
     // E: gpu_mem_voltage
@@ -102,9 +102,9 @@ private:
         512,
         2,
         16,
-        32768,
+        2048,
     };
-    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 16 * 32768;
+    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 16 * 2048;
     static_assert(E_length <= std::size_t(std::numeric_limits<int>::max()));
     //
     // info: gpu_mem_info

@@ -63,7 +63,7 @@ num_samples_per_frame: 2048
 # F-Engine simulator: FT (PFB)
 num_taps: 4
 num_frequencies: 128 * upchannelization_factor # how many frequencies to keep
-num_times: 2064
+num_times: 144   # cld(2048 / 16, 48) * 48   # 2064
 
 # Baseband beamformer setup
 bb_num_dishes_M: 8
