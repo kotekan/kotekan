@@ -45,7 +45,7 @@ setup::Symbol
     # Full CHORD
     const sampling_time_μsec = 4096 / (2 * 1200)
     const C = 2
-    const T = 32768
+    const T = 2048   #TODO 32768
     const D = 512
     const B = 96
     const P = 2
@@ -65,7 +65,7 @@ elseif setup ≡ :hirax
     # HIRAX:
     const sampling_time_μsec = 2.56
     const C = 2
-    const T = 32768
+    const T = 2048   #TODO 32768
     const D = 256
     const B = 16                # 8...32
     const P = 2
@@ -84,7 +84,7 @@ elseif setup ≡ :pathfinder
     # CHORD pathfinder
     const sampling_time_μsec = 1.7
     const C = 2
-    const T = 32768
+    const T = 2048   #TODO 32768
     const D = 64
     const B = 16
     const P = 2

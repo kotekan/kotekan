@@ -13,7 +13,7 @@
 .address_size 64
 
 	// .globl	_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE // -- Begin function _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE
-.func julia_AssertionError_4623
+.func julia_AssertionError_4636
 ()
 .noreturn
 {
@@ -87,7 +87,7 @@ $L__BB0_2:                              // %L15
 	ld.param.u64 	%rd7, [_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE_param_2];
 	ld.global.u32 	%r2, [%rd7];
 	setp.lt.s32 	%p3, %r2, %r1;
-	setp.gt.s32 	%p4, %r2, 262144;
+	setp.gt.s32 	%p4, %r2, 16384;
 	or.pred  	%p5, %p3, %p4;
 	@%p5 bra 	$L__BB0_7;
 // %bb.4:                               // %L207
@@ -103,7 +103,7 @@ $L__BB0_2:                              // %L15
 	ld.param.u64 	%rd15, [_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE_param_4];
 	ld.global.u32 	%r4, [%rd15];
 	setp.lt.s32 	%p9, %r4, %r3;
-	setp.gt.s32 	%p10, %r4, 131072;
+	setp.gt.s32 	%p10, %r4, 8192;
 	or.pred  	%p11, %p9, %p10;
 	@%p11 bra 	$L__BB0_7;
 // %bb.6:                               // %L223
@@ -361,7 +361,7 @@ $L__BB0_32:                             // %__internal_fmodf_kernel.exit.i414
 	{ // callseq 2, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_4623, 
+	julia_AssertionError_4636, 
 	(
 	);
 	} // callseq 2

@@ -33,7 +33,7 @@ setup::Symbol
 
     # Full CHORD
     const C = 2
-    const T = 32768
+    const T = 2048   #TODO 32768
     const D = 512
     const P = 2
     const F = 16
@@ -42,7 +42,7 @@ elseif setup ≡ :hirax
 
     # Full CHORD
     const C = 2
-    const T = 32768
+    const T = 2048   #TODO 32768
     const D = 256
     const P = 2
     const F = 16
@@ -51,7 +51,7 @@ elseif setup ≡ :pathfinder
 
     # CHORD pathfinder
     const C = 2
-    const T = 32768
+    const T = 2048   #TODO 32768
     const D = 64
     const P = 2
     const F = 128

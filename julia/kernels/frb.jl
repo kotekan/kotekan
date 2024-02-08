@@ -98,7 +98,8 @@ end
 
 const sampling_time_μsec = 16 * 4096 / (2 * 1200)
 const C = 2
-const T = cld(32768 ÷ 16, Touter) * Touter
+#TODO  const T = cld(32768 ÷ 16, Touter) * Touter
+const T = cld(2048 ÷ 16, Touter) * Touter
 
 const output_gain = 1 / (8 * Tds)
 

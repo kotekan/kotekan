@@ -14,7 +14,7 @@ kernel-description:
     number-of-dishes: 64
     number-of-frequencies: 2048
     number-of-polarizations: 2
-    number-of-timesamples: 2064
+    number-of-timesamples: 144
     output-gain: 0.003125
     sampling-time-μsec: 27.30666666666667
   compile-parameters:
@@ -42,14 +42,14 @@ kernel-description:
       intent: in
       type: Int4
       indices: [C, D, P, F, T]
-      shape: [2, 64, 2, 2048, 2064]
+      shape: [2, 64, 2, 2048, 144]
       strides: [1, 2, 128, 256, 524288]
     - name: "I"
       intent: out
       type: Float16
       indices: [beamP, beamQ, Tbar, F]
-      shape: [16, 24, 51, 2048]
-      strides: [1, 16, 384, 19968]
+      shape: [16, 24, 3, 2048]
+      strides: [1, 16, 384, 1536]
     - name: "info"
       intent: out
       type: Int32
