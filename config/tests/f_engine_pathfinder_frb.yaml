@@ -22,38 +22,27 @@ num_polarizations: 2
 # F-Engine simulator: Sky
 source_amplitude: 1.0
 source_frequency: 0.3e+9        # [Hz]
-source_position_x: 0.02         # east-west
-source_position_y: 0.03         # north-south
+source_position_ew: 0.02        # east-west
+source_position_ns: 0.03        # north-south
 
 # F-Engine simulator: Dishes
-num_dish_locations_M: 8         # north-south
-num_dish_locations_N: 12        # east-west
-num_dish_locations: num_dish_locations_M * num_dish_locations_N
-dish_separation_x: 6.3          # [m] east-west
-dish_separation_y: 8.5          # [m] north-south
+num_dish_locations_ew: 12       # east-west
+num_dish_locations_ns: 8        # north-south
+num_dish_locations: num_dish_locations_ns * num_dish_locations_ew
+dish_separation_ew: 6.3         # [m] east-west
+dish_separation_ns: 8.5         # [m] north-south
 num_dishes: 64
 
-# 8*12 = 96 dish locations. Dishes 0..63 are real dishes, dishes
-# 64..95 are dummy dishes where the E-field is set to zero.
 # The actual dishes live on an 11x6 grid.
-dish_locations: [
-    # actual dishes
-                0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0, 9, 0, 10,
-    1, 0, 1, 1, 1, 2, 1, 3, 1, 4, 1, 5, 1, 6, 1, 7, 1, 8, 1, 9, 1, 10,
-    2, 0, 2, 1, 2, 2, 2, 3, 2, 4, 2, 5, 2, 6, 2, 7, 2, 8, 2, 9, 2, 10,
-    3, 0, 3, 1, 3, 2, 3, 3, 3, 4, 3, 5, 3, 6, 3, 7, 3, 8, 3, 9, 3, 10,
-    4, 0, 4, 1, 4, 2, 4, 3, 4, 4, 4, 5, 4, 6, 4, 7, 4, 8, 4, 9, 4, 10,
-    5, 0, 5, 1, 5, 2, 5, 3, 5, 4, 5, 5, 5, 6, 5, 7, 5, 8, 5, 9, 5, 10,
-    # dummy dishes
-    0, 0, 0, 1,
-                                                                       0, 11,
-                                                                       1, 11,
-                                                                       2, 11,
-                                                                       3, 11,
-                                                                       4, 11,
-                                                                       5, 11,
-    6, 0, 6, 1, 6, 2, 6, 3, 6, 4, 6, 5, 6, 6, 6, 7, 6, 8, 6, 9, 6, 10, 6, 11,
-    7, 0, 7, 1, 7, 2, 7, 3, 7, 4, 7, 5, 7, 6, 7, 7, 7, 8, 7, 9, 7, 10, 7, 11,
+dish_indices: [
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1, 0, 1, 2, 3, 4, 5, 6, 7, 8,
+    -1, 9,10,11,12,13,14,15,16,17,18,19,
+    -1,20,21,22,23,24,25,26,27,28,29,30,
+    -1,31,32,33,34,35,36,37,38,39,40,41,
+    -1,42,43,44,45,46,47,48,49,50,51,52,
+    -1,53,54,55,56,57,58,59,60,61,62,63,
 ]
 
 # F-Engine simulator: ADC
@@ -80,8 +69,8 @@ upchannelization_factor: 16
 # FRB beamformer setup
 frb_downsampling_factor: 40
 frb_num_output_times: num_times / frb_downsampling_factor # rounding down
-frb_num_beams_P: 2 * num_dish_locations_M
-frb_num_beams_Q: 2 * num_dish_locations_N
+frb_num_beams_P: 2 * num_dish_locations_ns
+frb_num_beams_Q: 2 * num_dish_locations_ew
 
 # Pool:
 main_pool:
@@ -89,11 +78,11 @@ main_pool:
     num_metadata_objects: 10 * buffer_depth
 
 # Buffers
-host_dish_locations_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: sizeof_int16 * 2 * num_dish_locations
-    metadata_pool: main_pool
+# host_dish_locations_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     frame_size: sizeof_int16 * 2 * num_dish_locations
+#     metadata_pool: main_pool
 
 host_bb_phase_buffer:
     kotekan_buffer: standard
@@ -116,7 +105,7 @@ host_upchan_gain_buffer:
 host_frb_phase_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: sizeof_float16 * num_components * num_dish_locations_M * num_dish_locations_N * num_frequencies * num_polarizations
+    frame_size: sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * num_frequencies * num_polarizations
     metadata_pool: main_pool
 
 host_voltage_buffer:
@@ -150,7 +139,7 @@ gen_voltage:
     E_buffer: host_voltage_buffer
     A_buffer: host_bb_phase_buffer
     J_buffer: host_expected_bb_beams_buffer
-    S_buffer: host_dish_locations_buffer
+    # S_buffer: host_dish_locations_buffer
     G_buffer: host_upchan_gain_buffer
     W_buffer: host_frb_phase_buffer
     I_buffer: host_expected_frb_beams_buffer
@@ -162,7 +151,7 @@ gpu:
         gpu_id: 0
         in_buffers:
             host_voltage: host_voltage_buffer
-            host_dish_locations: host_dish_locations_buffer
+            # host_dish_locations: host_dish_locations_buffer
             host_frb_phase: host_frb_phase_buffer
         out_buffers:
             host_frb_beams: host_frb_beams_buffer
@@ -170,16 +159,16 @@ gpu:
         - name: cudaInputData
           in_buf: host_voltage
           gpu_mem: voltage
-        - name: cudaInputData
-          in_buf: host_dish_locations
-          gpu_mem: dish_locations
+        # - name: cudaInputData
+        #   in_buf: host_dish_locations
+        #   gpu_mem: dish_locations
         - name: cudaInputData
           in_buf: host_frb_phase
           gpu_mem: frb_phase
         - name: cudaSyncInput
         - name: cudaFRBBeamformer_pathfinder
           gpu_mem_voltage: voltage
-          gpu_mem_dishlayout: dish_locations
+          # gpu_mem_dishlayout: dish_locations
           gpu_mem_phase: frb_phase
           gpu_mem_beamgrid: frb_beams
         - name: cudaSyncOutput

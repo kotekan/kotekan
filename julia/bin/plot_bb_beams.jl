@@ -2,8 +2,9 @@ using ASDF2
 using CUDASIMDTypes
 using CairoMakie
 using SixelTerm
+using Statistics
 
-setup = :hirax
+setup = :pathfinder
 
 dir = "/tmp/f_engine_$(setup)_bb"
 prefix = "blue_"
@@ -126,32 +127,48 @@ end
 if setup === :chord
     freq = 3
 elseif setup === :pathfinder
-    freq = 26
+    freq = 25
 elseif setup === :hirax
     freq = 24
 else
     @assert false
 end
 
-data = Float32[
-    sqrt(
-        sum(abs2(real(Complex{Float32}(i2c(j)))) for j in view(array_E, dish, :, freq, :)) / length(view(array_E, dish, :, freq, :))
-    ) for dish in 1:ndishs
-]
+function aspect!(fig::Figure, row::Integer, col::Integer, ratio_x_over_y)
+    if ratio_x_over_y > 4 / 3
+        rowsize!(fig.layout, row, Aspect(1, inv(ratio_x_over_y)))
+    else
+        colsize!(fig.layout, col, Aspect(1, ratio_x_over_y))
+    end
+    return nothing
+end
+
+data = Float32[mean(abs2(real(Complex{Float32}(i2c(j)))) for j in view(array_E, dish, :, freq, :)) for dish in 1:ndishs]
 fig = Figure(; size=(1280, 960))
-ax = Axis(fig[1, 1]; title="$setup F-engine electric field", xlabel="x", ylabel="y")
+ax = Axis(fig[1, 1]; title="$setup F-engine electric field", xlabel="x [m]", ylabel="y [m]")
 xlims!(ax, dishs_xlim)
 ylims!(ax, dishs_ylim)
 obj = scatter!(ax, dishsx, dishsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
 Colorbar(fig[1, 2], obj; label="|dish|₂")
 # rowsize!(fig.layout, 1, Aspect(1, dishs_ysize / dishs_xsize))
-colsize!(fig.layout, 1, Aspect(1, dishs_xsize / dishs_ysize))
+# colsize!(fig.layout, 1, Aspect(1, dishs_xsize / dishs_ysize))
+aspect!(fig, 1, 1, dishs_xsize / dishs_ysize)
 display(fig)
 
 data = Float32[
-    sqrt(sum(abs2(Complex{Float32}(i2c(j))) for j in view(array_J0, :, :, freq, beam)) / length(view(array_J0, :, :, freq, beam)))
-    for beam in 1:nbeams
+    mean(abs2(Complex{Float32}(i2c(j))) for j in view(array_J, :, polr, freq, beam)) for freq in 1:nfreqs, beam in 1:nbeams,
+    polr in 1:npolrs
 ]
+data = reshape(data, nfreqs, nbeams * npolrs)
+fig = Figure(; size=(1280, 960))
+ax = Axis(fig[1, 1]; title="$setup baseband beam spectra", xlabel="beam, polarization", ylabel="frequency channel")
+xlims!(ax, (0 - 1 / 2, 2 * nbeams - 1 / 2))
+ylims!(ax, (0 - 1 / 2, nfreqs - 1 / 2))
+obj = heatmap!(ax, 0:(2 * nbeams - 1), 0:(nfreqs - 1), data'; color=data, colormap=:plasma)
+Colorbar(fig[1, 2], obj; label="baseband beam spectral intensity")
+display(fig)
+
+data = Float32[mean(abs2(Complex{Float32}(i2c(j))) for j in view(array_J0, :, :, freq, beam)) for beam in 1:nbeams]
 fig = Figure(; size=(1280, 960))
 ax = Axis(fig[1, 1]; title="$setup expected baseband beams", xlabel="sky θx", ylabel="sky θy")
 xlims!(ax, beams_xlim)
@@ -159,13 +176,11 @@ ylims!(ax, beams_ylim)
 obj = scatter!(ax, beamsx, beamsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
 Colorbar(fig[1, 2], obj; label="baseband beam intensity")
 # rowsize!(fig.layout, 1, Aspect(1, beams_ysize / beams_xsize))
-colsize!(fig.layout, 1, Aspect(1, beams_xsize / beams_ysize))
+# colsize!(fig.layout, 1, Aspect(1, beams_xsize / beams_ysize))
+aspect!(fig, 1, 1, beams_xsize / beams_ysize)
 display(fig)
 
-data = Float32[
-    sqrt(sum(abs2(Complex{Float32}(i2c(j))) for j in view(array_J, :, :, freq, beam)) / length(view(array_J, :, 1, freq, beam))) for
-    beam in 1:nbeams
-]
+data = Float32[mean(abs2(Complex{Float32}(i2c(j))) for j in view(array_J, :, :, freq, beam)) for beam in 1:nbeams]
 fig = Figure(; size=(1280, 960))
 ax = Axis(fig[1, 1]; title="$setup X-engine baseband beams", xlabel="sky θx", ylabel="sky θy")
 xlims!(ax, beams_xlim)
@@ -173,7 +188,8 @@ ylims!(ax, beams_ylim)
 obj = scatter!(ax, beamsx, beamsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
 Colorbar(fig[1, 2], obj; label="baseband beam intensity")
 # rowsize!(fig.layout, 1, Aspect(1, beams_ysize / beams_xsize))
-colsize!(fig.layout, 1, Aspect(1, beams_xsize / beams_ysize))
+# colsize!(fig.layout, 1, Aspect(1, beams_xsize / beams_ysize))
+aspect!(fig, 1, 1, beams_xsize / beams_ysize)
 display(fig)
 
 nothing

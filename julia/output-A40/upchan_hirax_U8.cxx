@@ -79,7 +79,7 @@ private:
     // Kernel design parameters:
     static constexpr int cuda_number_of_complex_components = 2;
     static constexpr int cuda_number_of_dishes = 256;
-    static constexpr int cuda_number_of_frequencies = 16;
+    static constexpr int cuda_number_of_frequencies = 64;
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_taps = 4;
     static constexpr int cuda_max_number_of_timesamples = 8192;
@@ -94,7 +94,7 @@ private:
     // Kernel call parameters:
     static constexpr int threads_x = 32;
     static constexpr int threads_y = 8;
-    static constexpr int blocks = 64;
+    static constexpr int blocks = 256;
     static constexpr int shmem_bytes = 73984;
 
     // Kernel name:
@@ -155,9 +155,9 @@ private:
         "Fbar",
     };
     static constexpr std::array<std::size_t, G_rank> G_lengths = {
-        128,
+        512,
     };
-    static constexpr std::size_t G_length = chord_datatype_bytes(G_type) * 128;
+    static constexpr std::size_t G_length = chord_datatype_bytes(G_type) * 512;
     static_assert(G_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
     // E: gpu_mem_input_voltage
@@ -178,10 +178,10 @@ private:
     static constexpr std::array<std::size_t, E_rank> E_lengths = {
         256,
         2,
-        16,
+        64,
         8192,
     };
-    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 256 * 2 * 16 * 8192;
+    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 256 * 2 * 64 * 8192;
     static_assert(E_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
     // Ebar: gpu_mem_output_voltage
@@ -202,11 +202,11 @@ private:
     static constexpr std::array<std::size_t, Ebar_rank> Ebar_lengths = {
         256,
         2,
-        128,
+        512,
         1024,
     };
     static constexpr std::size_t Ebar_length =
-        chord_datatype_bytes(Ebar_type) * 256 * 2 * 128 * 1024;
+        chord_datatype_bytes(Ebar_type) * 256 * 2 * 512 * 1024;
     static_assert(Ebar_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
@@ -225,9 +225,9 @@ private:
     static constexpr std::array<std::size_t, info_rank> info_lengths = {
         32,
         8,
-        64,
+        256,
     };
-    static constexpr std::size_t info_length = chord_datatype_bytes(info_type) * 32 * 8 * 64;
+    static constexpr std::size_t info_length = chord_datatype_bytes(info_type) * 32 * 8 * 256;
     static_assert(info_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
 
@@ -341,7 +341,7 @@ cudaEvent_t cudaUpchannelizer_hirax_U8::execute(cudaPipelineState& /*pipestate*/
     info_host.at(gpu_frame_index).resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
-    /// G is an input buffer: check metadata
+    // G is an input buffer: check metadata
     const metadataContainer* const G_mc =
         device.get_gpu_memory_array_metadata(G_memname, gpu_frame_id);
     assert(G_mc && metadata_container_is_chord(G_mc));
@@ -359,7 +359,7 @@ cudaEvent_t cudaUpchannelizer_hirax_U8::execute(cudaPipelineState& /*pipestate*/
             assert(G_meta->dim[dim] == int(G_lengths[G_rank - 1 - dim]));
     }
     //
-    /// E is an input buffer: check metadata
+    // E is an input buffer: check metadata
     const metadataContainer* const E_mc =
         device.get_gpu_memory_array_metadata(E_memname, gpu_frame_id);
     assert(E_mc && metadata_container_is_chord(E_mc));
@@ -377,7 +377,7 @@ cudaEvent_t cudaUpchannelizer_hirax_U8::execute(cudaPipelineState& /*pipestate*/
             assert(E_meta->dim[dim] == int(E_lengths[E_rank - 1 - dim]));
     }
     //
-    /// Ebar is an output buffer: set metadata
+    // Ebar is an output buffer: set metadata
     metadataContainer* const Ebar_mc =
         device.create_gpu_memory_array_metadata(Ebar_memname, gpu_frame_id, E_mc->parent_pool);
     chordMetadata* const Ebar_meta = get_chord_metadata(Ebar_mc);

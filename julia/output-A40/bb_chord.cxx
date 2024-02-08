@@ -228,7 +228,7 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     info_host.at(gpu_frame_index).resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
-    /// A is an input buffer: check metadata
+    // A is an input buffer: check metadata
     const metadataContainer* const A_mc =
         device.get_gpu_memory_array_metadata(A_memname, gpu_frame_id);
     assert(A_mc && metadata_container_is_chord(A_mc));
@@ -243,7 +243,7 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
         assert(A_meta->dim[dim] == int(A_lengths[A_rank - 1 - dim]));
     }
     //
-    /// E is an input buffer: check metadata
+    // E is an input buffer: check metadata
     const metadataContainer* const E_mc =
         device.get_gpu_memory_array_metadata(E_memname, gpu_frame_id);
     assert(E_mc && metadata_container_is_chord(E_mc));
@@ -258,7 +258,7 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
         assert(E_meta->dim[dim] == int(E_lengths[E_rank - 1 - dim]));
     }
     //
-    /// s is an input buffer: check metadata
+    // s is an input buffer: check metadata
     const metadataContainer* const s_mc =
         device.get_gpu_memory_array_metadata(s_memname, gpu_frame_id);
     assert(s_mc && metadata_container_is_chord(s_mc));
@@ -273,7 +273,7 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
         assert(s_meta->dim[dim] == int(s_lengths[s_rank - 1 - dim]));
     }
     //
-    /// J is an output buffer: set metadata
+    // J is an output buffer: set metadata
     metadataContainer* const J_mc =
         device.create_gpu_memory_array_metadata(J_memname, gpu_frame_id, E_mc->parent_pool);
     chordMetadata* const J_meta = get_chord_metadata(J_mc);

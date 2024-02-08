@@ -9,7 +9,7 @@ kernel-description:
   design-parameters:
     number-of-complex-components: 2
     number-of-dishes: 256
-    number-of-frequencies: 16
+    number-of-frequencies: 64
     number-of-polarizations: 2
     number-of-taps: 4
     number-of-timesamples: 8192
@@ -20,7 +20,7 @@ kernel-description:
     blocks_per_sm: 2
   call-parameters:
     threads: [32, 16]
-    blocks: [64]
+    blocks: [256]
     shmem_bytes: 69888
   kernel-symbol: "_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE"
   kernel-arguments:
@@ -52,24 +52,24 @@ kernel-description:
       intent: in
       type: Float16
       indices: [F̄]
-      shape: [256]
+      shape: [1024]
       strides: [1]
     - name: "E"
       intent: in
       type: Int4
       indices: [C, D, P, F, T]
-      shape: [2, 256, 2, 16, 8192]
-      strides: [1, 2, 512, 1024, 16384]
+      shape: [2, 256, 2, 64, 8192]
+      strides: [1, 2, 512, 1024, 65536]
     - name: "Ē"
       intent: out
       type: Int4
       indices: [C, D, P, F̄, T̄]
-      shape: [2, 256, 2, 256, 512]
-      strides: [1, 2, 512, 1024, 262144]
+      shape: [2, 256, 2, 1024, 512]
+      strides: [1, 2, 512, 1024, 1048576]
     - name: "info"
       intent: out
       type: Int32
       indices: [thread, warp, block]
-      shapes: [32, 16, 64]
+      shapes: [32, 16, 256]
       strides: [1, 32, 512]
 ...
