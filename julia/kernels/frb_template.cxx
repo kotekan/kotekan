@@ -181,16 +181,17 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         // S maps dishes to locations.
         // The first `ndishes` dishes are real dishes,
         // the remaining dishes are not real and exist only to label the unoccupied dish locations.
-        const metadataContainer* const E_mc =
+        const std::shared_ptr<metadataObject> E_mc =
             device.get_gpu_memory_array_metadata(E_memname, gpu_frame_id);
-        assert(E_mc && metadata_container_is_chord(E_mc));
-        const chordMetadata* const E_meta = get_chord_metadata(E_mc);
+        assert(E_mc && metadata_is_chord(E_mc));
+        const std::shared_ptr<chordMetadata> E_meta = get_chord_metadata(E_mc);
         assert(E_meta->ndishes == cuda_number_of_dishes);
         assert(E_meta->n_dish_locations_ew == cuda_dish_layout_N);
         assert(E_meta->n_dish_locations_ns == cuda_dish_layout_M);
         assert(E_meta->dish_index);
         std::int16_t* __restrict__ const S =
-            static_cast<std::int16_t*>(static_cast<void*>(S_host.at(gpu_frame_index).data()));
+            //static_cast<std::int16_t*>(static_cast<void*>(S_host.at(gpu_frame_index).data()));
+            static_cast<std::int16_t*>(static_cast<void*>(S_host.data()));
         int surplus_dish_index = cuda_number_of_dishes;
         for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
             for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
