@@ -44,7 +44,8 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
     } else {
         out_buffer = nullptr;
         gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, true, false, true));
-        DEBUG("Initializing cudaCopyFromRingbuffer: from GPU ringbuffer memory \"{:s}\" to GPU memory \"{:s}\", "
+        DEBUG("Initializing cudaCopyFromRingbuffer: from GPU ringbuffer memory \"{:s}\" to GPU "
+              "memory \"{:s}\", "
               "chunk size {:d}, ring buffer size {:d}",
               _gpu_mem_input, _gpu_mem_output, _output_size, _ring_buffer_size);
     }
@@ -62,8 +63,7 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
 cudaCopyFromRingbuffer::~cudaCopyFromRingbuffer() {
     if (out_buffer && out_buffer->frame_size) {
         uint flags;
-        if (cudaErrorInvalidValue
-            == cudaHostGetFlags(&flags, out_buffer->frames[instance_num])) {
+        if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, out_buffer->frames[instance_num])) {
             CHECK_CUDA_ERROR(cudaHostUnregister(out_buffer->frames[instance_num]));
         }
     }
@@ -104,8 +104,8 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
     void* rb_memory = device.get_gpu_memory(_gpu_mem_input, _ring_buffer_size);
 
     auto meta = signal_buffer->get_metadata(0);
-    //if (meta)
-    // FIXME -- make a copy, alter the array size??
+    // if (meta)
+    //  FIXME -- make a copy, alter the array size??
 
     size_t ncopy = _output_size;
     size_t nwrap = 0;
@@ -130,19 +130,20 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
             out_buffer->set_metadata(out_id, meta);
 
     } else {
-        void* output_memory =
-            device.get_gpu_memory_array(_gpu_mem_output, gpu_frame_id, _gpu_buffer_depth, _output_size);
+        void* output_memory = device.get_gpu_memory_array(_gpu_mem_output, gpu_frame_id,
+                                                          _gpu_buffer_depth, _output_size);
 
         CHECK_CUDA_ERROR(cudaMemcpyAsync(output_memory, (char*)rb_memory + input_cursor, ncopy,
-                                         cudaMemcpyDeviceToDevice, device.getStream(cuda_stream_id)));
+                                         cudaMemcpyDeviceToDevice,
+                                         device.getStream(cuda_stream_id)));
         if (nwrap)
             CHECK_CUDA_ERROR(cudaMemcpyAsync((char*)output_memory + ncopy, rb_memory, nwrap,
                                              cudaMemcpyDeviceToDevice,
                                              device.getStream(cuda_stream_id)));
 
         if (meta)
-            device.claim_gpu_memory_array_metadata(_gpu_mem_output, gpu_frame_id % _gpu_buffer_depth, meta);
-
+            device.claim_gpu_memory_array_metadata(_gpu_mem_output,
+                                                   gpu_frame_id % _gpu_buffer_depth, meta);
     }
     return record_end_event();
 }

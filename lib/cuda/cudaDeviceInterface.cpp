@@ -334,7 +334,8 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
 
     for (auto& kernel_name : kernel_names) {
         runtime_kernels.emplace(kernel_name_prefix + kernel_name, nullptr);
-        cu_res = cuModuleGetFunction(&runtime_kernels[kernel_name_prefix + kernel_name], module, kernel_name.c_str());
+        cu_res = cuModuleGetFunction(&runtime_kernels[kernel_name_prefix + kernel_name], module,
+                                     kernel_name.c_str());
         if (cu_res != CUDA_SUCCESS) {
             const char* errStr;
             cuGetErrorString(cu_res, &errStr);

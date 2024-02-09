@@ -578,9 +578,8 @@ void FEngine::main_thread() {
         J_metadata->n_dish_locations_ns = num_dish_locations_ns;
         J_metadata->dish_index = dish_indices_ptr;
 
-        // std::shared_ptr<chordMetadata> const S_metadata = get_chord_metadata(S_buffer, S_frame_id);
-        // chord_metadata_init(S_metadata);
-        // S_metadata->fpga_seq_num = frame_index;
+        // std::shared_ptr<chordMetadata> const S_metadata = get_chord_metadata(S_buffer,
+        // S_frame_id); chord_metadata_init(S_metadata); S_metadata->fpga_seq_num = frame_index;
         // S_metadata->frame_counter = frame_index;
         // S_metadata->type = int16;
         // S_metadata->dims = 2;

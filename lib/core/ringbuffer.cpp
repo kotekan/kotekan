@@ -19,8 +19,12 @@ static void print_py_status(RingBuffer* rb) {
     for (const auto& [key, value] : rb->read_tails)
         read_tails += "\"" + key + "\": " + std::to_string(value) + ", ";
     read_tails += "}";
-    DEBUG_NON_OO("PY_RB rb_state(\"{:s}\", size={:d}, write_heads={:s}, write_next={:s}, write_head={:d}, write_tail={:d}, read_heads={:s}, read_tails={:s})", rb->buffer_name, rb->size, write_heads, write_next, rb->write_head, rb->write_tail, read_heads, read_tails);
-    //DEBUG_NON_OO("PY_RB rb_state(\"{:s}\", size={:d}, write_heads={:s})", rb->buffer_name, rb->size, write_heads);
+    DEBUG_NON_OO("PY_RB rb_state(\"{:s}\", size={:d}, write_heads={:s}, write_next={:s}, "
+                 "write_head={:d}, write_tail={:d}, read_heads={:s}, read_tails={:s})",
+                 rb->buffer_name, rb->size, write_heads, write_next, rb->write_head, rb->write_tail,
+                 read_heads, read_tails);
+    // DEBUG_NON_OO("PY_RB rb_state(\"{:s}\", size={:d}, write_heads={:s})", rb->buffer_name,
+    // rb->size, write_heads);
 }
 
 RingBuffer::RingBuffer(size_t sz, std::shared_ptr<metadataPool> pool,
@@ -130,8 +134,7 @@ std::optional<size_t> RingBuffer::wait_for_writable(const std::string& name, siz
     if (shutdown_signal)
         return std::optional<size_t>();
     size_t rtn = write_next[name] % size;
-    DEBUG("wait_for_writable {:s} {:L} -> {:L} {:L}", name, sz, write_next[name],
-          rtn);
+    DEBUG("wait_for_writable {:s} {:L} -> {:L} {:L}", name, sz, write_next[name], rtn);
     write_next[name] += sz;
     print_py_status(this);
     return std::optional<size_t>(rtn);

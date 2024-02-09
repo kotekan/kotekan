@@ -89,7 +89,7 @@ public:
     virtual void build_ptx(const std::string& kernel_filename,
                            const std::vector<std::string>& kernel_names,
                            const std::vector<std::string>& opts,
-                           const std::string& kernel_name_prefix="");
+                           const std::string& kernel_name_prefix = "");
 
     // Map containing the runtime kernels built with nvrtc from the kernel file (if needed)
     std::map<std::string, CUfunction> runtime_kernels;
