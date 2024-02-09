@@ -36,7 +36,7 @@ public:
     virtual ~cuda{{{kernel_name}}}();
     
     cudaEvent_t execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) override;
-    void finalize_frame() override;
+    //void finalize_frame() override;
 
 private:
 
@@ -305,12 +305,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     return record_end_event();
 }
 
+/*
 void cuda{{{kernel_name}}}::finalize_frame() {
-    {{#kernel_arguments}}
-        {{#hasbuffer}}
-        //device.release_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id);
-        {{/hasbuffer}}
-    {{/kernel_arguments}}
-
     cudaCommand::finalize_frame();
 }
+*/

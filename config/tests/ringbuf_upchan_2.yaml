@@ -1,3 +1,7 @@
+########################################################################
+# Test of connecting GPU ring-buffers to multiple upchannelizer kernels
+# (with different upchannelization factors)
+########################################################################
 ---
 type: config
 log_level: debug2   # info

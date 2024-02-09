@@ -508,11 +508,5 @@ void cuda{{{kernel_name}}}::finalize_frame() {
     DEBUG("Advancing output ringbuffer: wrote {:d} samples, {:d} bytes", t_written, t_written * Tbar_sample_bytes);
     output_ringbuf_signal->finish_write(unique_name, t_written * Tbar_sample_bytes);
 
-    {{#kernel_arguments}}
-        {{#hasbuffer}}
-            //device.release_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id);
-        {{/hasbuffer}}
-    {{/kernel_arguments}}
-
     cudaCommand::finalize_frame();
 }
