@@ -170,7 +170,7 @@ private:
     const std::string info_memname;
 
     // Host-side buffer arrays
-    std::vector<std::vector<std::uint8_t>> info_host;
+    std::vector<std::uint8_t> info_host;
 };
 
 REGISTER_CUDA_COMMAND(cudaBasebandBeamformer_chord);
@@ -189,7 +189,7 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
     info_memname(unique_name + "/gpu_mem_info")
 
     ,
-    info_host(_gpu_buffer_depth) {
+    info_host(info_length) {
     // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(std::make_tuple(A_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
@@ -213,8 +213,6 @@ cudaBasebandBeamformer_chord::~cudaBasebandBeamformer_chord() {}
 
 cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
                                                   const std::vector<cudaEvent_t>& /*pre_events*/) {
-    const int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
-
     pre_execute();
 
     void* const A_memory =
@@ -225,14 +223,13 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
         device.get_gpu_memory_array(s_memname, gpu_frame_id, _gpu_buffer_depth, s_length);
     void* const J_memory =
         device.get_gpu_memory_array(J_memname, gpu_frame_id, _gpu_buffer_depth, J_length);
-    info_host.at(gpu_frame_index).resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
     // A is an input buffer: check metadata
-    const metadataContainer* const A_mc =
+    const std::shared_ptr<metadataObject> A_mc =
         device.get_gpu_memory_array_metadata(A_memname, gpu_frame_id);
-    assert(A_mc && metadata_container_is_chord(A_mc));
-    const chordMetadata* const A_meta = get_chord_metadata(A_mc);
+    assert(A_mc && metadata_is_chord(A_mc));
+    const std::shared_ptr<chordMetadata> A_meta = get_chord_metadata(A_mc);
     INFO("input A array: {:s} {:s}", A_meta->get_type_string(), A_meta->get_dimensions_string());
     assert(A_meta->type == A_type);
     assert(A_meta->dims == A_rank);
@@ -244,10 +241,10 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     }
     //
     // E is an input buffer: check metadata
-    const metadataContainer* const E_mc =
+    const std::shared_ptr<metadataObject> E_mc =
         device.get_gpu_memory_array_metadata(E_memname, gpu_frame_id);
-    assert(E_mc && metadata_container_is_chord(E_mc));
-    const chordMetadata* const E_meta = get_chord_metadata(E_mc);
+    assert(E_mc && metadata_is_chord(E_mc));
+    const std::shared_ptr<chordMetadata> E_meta = get_chord_metadata(E_mc);
     INFO("input E array: {:s} {:s}", E_meta->get_type_string(), E_meta->get_dimensions_string());
     assert(E_meta->type == E_type);
     assert(E_meta->dims == E_rank);
@@ -259,10 +256,10 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     }
     //
     // s is an input buffer: check metadata
-    const metadataContainer* const s_mc =
+    const std::shared_ptr<metadataObject> s_mc =
         device.get_gpu_memory_array_metadata(s_memname, gpu_frame_id);
-    assert(s_mc && metadata_container_is_chord(s_mc));
-    const chordMetadata* const s_meta = get_chord_metadata(s_mc);
+    assert(s_mc && metadata_is_chord(s_mc));
+    const std::shared_ptr<chordMetadata> s_meta = get_chord_metadata(s_mc);
     INFO("input s array: {:s} {:s}", s_meta->get_type_string(), s_meta->get_dimensions_string());
     assert(s_meta->type == s_type);
     assert(s_meta->dims == s_rank);
@@ -274,9 +271,9 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     }
     //
     // J is an output buffer: set metadata
-    metadataContainer* const J_mc =
+    std::shared_ptr<metadataObject> const J_mc =
         device.create_gpu_memory_array_metadata(J_memname, gpu_frame_id, E_mc->parent_pool);
-    chordMetadata* const J_meta = get_chord_metadata(J_mc);
+    std::shared_ptr<chordMetadata> const J_meta = get_chord_metadata(J_mc);
     chord_metadata_copy(J_meta, E_meta);
     J_meta->type = J_type;
     J_meta->dims = J_rank;
@@ -322,37 +319,36 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     if (err != CUDA_SUCCESS) {
         const char* errStr;
         cuGetErrorString(err, &errStr);
-        ERROR("cuLaunchKernel: Error number: {}: {}", err, errStr);
+        ERROR("cuLaunchKernel: Error number: {}: {}", (int)err, errStr);
     }
 
     // Copy results back to host memory
     // TODO: Skip this for performance
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.at(gpu_frame_index).data(), info_memory, info_length,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.data(), info_memory, info_length,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     // Check error codes
     // TODO: Skip this for performance
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-    const std::int32_t error_code =
-        *std::max_element((const std::int32_t*)&*info_host.at(gpu_frame_index).begin(),
-                          (const std::int32_t*)&*info_host.at(gpu_frame_index).end());
+    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
+                                                      (const std::int32_t*)&*info_host.end());
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.at(gpu_frame_index).size(); ++i)
-        if (info_host.at(gpu_frame_index)[i] != 0)
+    for (std::size_t i = 0; i < info_host.size(); ++i)
+        if (info_host[i] != 0)
             ERROR("cudaBasebandBeamformer_chord returned 'info' value {:d} at index {:d} (zero "
                   "indicates no error)",
-                  info_host.at(gpu_frame_index)[i], i);
+                  info_host[i], i);
 
     return record_end_event();
 }
 
 void cudaBasebandBeamformer_chord::finalize_frame() {
-    device.release_gpu_memory_array_metadata(A_memname, gpu_frame_id);
-    device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
-    device.release_gpu_memory_array_metadata(s_memname, gpu_frame_id);
-    device.release_gpu_memory_array_metadata(J_memname, gpu_frame_id);
+    // device.release_gpu_memory_array_metadata(A_memname, gpu_frame_id);
+    // device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
+    // device.release_gpu_memory_array_metadata(s_memname, gpu_frame_id);
+    // device.release_gpu_memory_array_metadata(J_memname, gpu_frame_id);
 
     cudaCommand::finalize_frame();
 }
