@@ -128,7 +128,8 @@ gen_data:
     # Opposite order from the way Erik writes it!
     #array_shape: [ 64, 2, 128, 32768 ]
     #dim_name: ["D", "P", "F", "T"]
-    array_shape: [ 32768, 128, 2, 64 ]
+    #array_shape: [ 32768, 128, 2, 64 ]
+    array_shape: [ 2048, 128, 2, 64 ]
     dim_name: ["T", "F", "P", "D" ]
     out_buf: host_voltage_buffer
 
