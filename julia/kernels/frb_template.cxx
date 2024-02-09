@@ -176,10 +176,44 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{/hasbuffer}}
     {{/kernel_arguments}}
 
+    // TODO: Initialize (and copy to the GPU) S only once at the beginning
+    {
+        // S maps dishes to locations.
+        // The first `ndishes` dishes are real dishes,
+        // the remaining dishes are not real and exist only to label the unoccupied dish locations.
+        const metadataContainer* const E_mc =
+            device.get_gpu_memory_array_metadata(E_memname, gpu_frame_id);
+        assert(E_mc && metadata_container_is_chord(E_mc));
+        const chordMetadata* const E_meta = get_chord_metadata(E_mc);
+        assert(E_meta->ndishes == cuda_number_of_dishes);
+        assert(E_meta->n_dish_locations_ew == cuda_dish_layout_N);
+        assert(E_meta->n_dish_locations_ns == cuda_dish_layout_M);
+        assert(E_meta->dish_index);
+        std::int16_t* __restrict__ const S =
+            static_cast<std::int16_t*>(static_cast<void*>(S_host.at(gpu_frame_index).data()));
+        int surplus_dish_index = cuda_number_of_dishes;
+        for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
+            for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
+                int dish_index = E_meta->get_dish_index(locN, locM);
+                if (dish_index >= 0) {
+                    // This location holds a real dish, record its location
+                    S[2 * dish_index + 0] = locM;
+                    S[2 * dish_index + 1] = locN;
+                } else {
+                    // This location is empty, assign it a surplus dish index
+                    S[2 * surplus_dish_index + 0] = locM;
+                    S[2 * surplus_dish_index + 1] = locN;
+                    ++surplus_dish_index;
+                }
+            }
+        }
+	assert(surplus_dish_index == cuda_dish_layout_M * cuda_dish_layout_N);
+    }
+
     {{#kernel_arguments}}
         {{#hasbuffer}}
             {{^isoutput}}
-                /// {{{name}}} is an input buffer: check metadata
+                // {{{name}}} is an input buffer: check metadata
                 const std::shared_ptr<metadataObject> {{{name}}}_mc =
                     device.get_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id);
                 assert({{{name}}}_mc && metadata_is_chord({{{name}}}_mc));
@@ -198,7 +232,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                 //
             {{/isoutput}}
             {{#isoutput}}
-                /// {{{name}}} is an output buffer: set metadata
+                // {{{name}}} is an output buffer: set metadata
                 std::shared_ptr<metadataObject> const {{{name}}}_mc =
                     device.create_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id, E_mc->parent_pool);
                 std::shared_ptr<chordMetadata> const {{{name}}}_meta = get_chord_metadata({{{name}}}_mc);

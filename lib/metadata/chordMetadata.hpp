@@ -46,7 +46,7 @@ constexpr std::size_t chord_datatype_bytes(chordDataType type) {
 const char* chord_datatype_string(chordDataType type);
 
 // Maximum number of frequencies in metadata array
-const int CHORD_META_MAX_FREQ = 16;
+const int CHORD_META_MAX_FREQ = 2048;
 
 // Maximum number of dimensions for arrays
 const int CHORD_META_MAX_DIM = 10;
@@ -85,12 +85,19 @@ public:
     int onehot_index[CHORD_META_MAX_DIM];
 
     // Per-frequency arrays
+
+    // Number of coarse frequency channels. in this frame. The actual
+    // number of frequencies will be larger after
+    // upchannelization. This field continues to track the original
+    // number of coarse frequency channels.
     int nfreq;
 
     // frequencies -- integer (0-2047) identifier for FPGA coarse frequencies
+    // This is the FPGA frequency channel index, indexed by the local coarse frequency channel.
     int coarse_freq[CHORD_META_MAX_FREQ];
 
     // the upchannelization factor that each frequency has gone through (1 for = FPGA)
+    // Also indexed by the local coarse frequency channel.
     int freq_upchan_factor[CHORD_META_MAX_FREQ];
 
     // Time sampling -- for each coarse frequency channel, 2x the FPGA
@@ -104,6 +111,18 @@ public:
     // by which the time samples have been downsampled relative to
     // FPGA samples.
     int time_downsampling_fpga[CHORD_META_MAX_FREQ];
+
+    // Dish layout
+    int ndishes;                                  // number of dishes
+    int n_dish_locations_ew, n_dish_locations_ns; // number of possible dish locations
+    int* dish_index; // [non-owning pointer] dish index for a possible dish location, or -1
+    int get_dish_index(int dish_loc_ew, int dish_loc_ns) const {
+        // The east-west dish index runs faster because this is the
+        // convenient way to specify dish indices in a YAML file
+        assert(dish_loc_ew >= 0 && dish_loc_ew < n_dish_locations_ew);
+        assert(dish_loc_ns >= 0 && dish_loc_ns < n_dish_locations_ns);
+        return dish_index[dish_loc_ew + n_dish_locations_ew * dish_loc_ns];
+    }
 
     std::string get_dimension_name(size_t i) const {
         return std::string(dim_name[i], strnlen(dim_name[i], CHORD_META_MAX_DIMNAME));

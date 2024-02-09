@@ -1,0 +1,75 @@
+# Metadata for the CUDA upchannelizer
+# This file has been generated automatically by `upchan.jl`.
+# Do not modify this file, your changes will be lost.
+
+--- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
+kernel-description:
+  name: "upchan"
+  description: "Upchannelizer"
+  design-parameters:
+    number-of-complex-components: 2
+    number-of-dishes: 256
+    number-of-frequencies: 64
+    number-of-polarizations: 2
+    number-of-taps: 4
+    number-of-timesamples: 8192
+    sampling-time-μsec: 2.56
+    upchannelization-factor: 32
+  compile-parameters:
+    minthreads: 512
+    blocks_per_sm: 2
+  call-parameters:
+    threads: [32, 16]
+    blocks: [256]
+    shmem_bytes: 67840
+  kernel-symbol: "_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE"
+  kernel-arguments:
+    - name: "Tmin"
+      intent: in
+      type: Int32
+      indices: []
+      shape: []
+      strides: []
+    - name: "Tmax"
+      intent: in
+      type: Int32
+      indices: []
+      shape: []
+      strides: []
+    - name: "T̄min"
+      intent: in
+      type: Int32
+      indices: []
+      shape: []
+      strides: []
+    - name: "T̄max"
+      intent: in
+      type: Int32
+      indices: []
+      shape: []
+      strides: []
+    - name: "G"
+      intent: in
+      type: Float16
+      indices: [F̄]
+      shape: [2048]
+      strides: [1]
+    - name: "E"
+      intent: in
+      type: Int4
+      indices: [C, D, P, F, T]
+      shape: [2, 256, 2, 64, 8192]
+      strides: [1, 2, 512, 1024, 65536]
+    - name: "Ē"
+      intent: out
+      type: Int4
+      indices: [C, D, P, F̄, T̄]
+      shape: [2, 256, 2, 2048, 256]
+      strides: [1, 2, 512, 1024, 2097152]
+    - name: "info"
+      intent: out
+      type: Int32
+      indices: [thread, warp, block]
+      shapes: [32, 16, 256]
+      strides: [1, 32, 512]
+...

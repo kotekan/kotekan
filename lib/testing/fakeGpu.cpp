@@ -117,7 +117,7 @@ void FakeGpu::main_thread() {
         // Test if this will be dropped or not, and only fill out the buffer
         // (and advance) if it won't
         if (drop(gen) < drop_probability) {
-            DEBUG("Dropping frame.")
+            DEBUG("Dropping frame.");
 
         } else {
 

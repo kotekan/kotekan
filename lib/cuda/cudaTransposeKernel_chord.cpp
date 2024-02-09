@@ -57,7 +57,7 @@ private:
     static constexpr int cuda_number_of_dishes = 512;
     static constexpr int cuda_number_of_frequencies = 16;
     static constexpr int cuda_number_of_polarizations = 2;
-    static constexpr int cuda_number_of_timesamples = 32768;
+    static constexpr int cuda_number_of_timesamples = 2048;
     static constexpr int cuda_inner_number_of_dishes = 8;
     static constexpr int cuda_inner_number_of_timesamples = 16;
 
@@ -83,10 +83,10 @@ private:
         "Dshort", "Tshort", "D", "P", "F", "T",
     };
     static constexpr std::array<std::size_t, Ein_rank> Ein_lengths = {
-        8, 16, 64, 2, 16, 2048,
+        8, 16, 64, 2, 16, 128,
     };
     static constexpr std::size_t Ein_length =
-        chord_datatype_bytes(Ein_type) * 8 * 16 * 64 * 2 * 16 * 2048;
+        chord_datatype_bytes(Ein_type) * 8 * 16 * 64 * 2 * 16 * 128;
     static_assert(Ein_length <= std::size_t(std::numeric_limits<int>::max()));
     //
     // E: gpu_mem_voltage
@@ -102,9 +102,9 @@ private:
         512,
         2,
         16,
-        32768,
+        2048,
     };
-    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 16 * 32768;
+    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 16 * 2048;
     static_assert(E_length <= std::size_t(std::numeric_limits<int>::max()));
     //
     // info: gpu_mem_info
@@ -130,7 +130,7 @@ private:
     const std::string info_memname;
 
     // Host-side buffer arrays
-    std::vector<std::uint8_t> info_host;
+    std::vector<std::vector<std::uint8_t>> info_host;
 };
 
 REGISTER_CUDA_COMMAND(cudaTransposeKernel_chord);
@@ -145,7 +145,7 @@ cudaTransposeKernel_chord::cudaTransposeKernel_chord(Config& config, const std::
     info_memname(unique_name + "/gpu_mem_info")
 
     ,
-    info_host(info_length) {
+    info_host(_gpu_buffer_depth) {
     // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(std::make_tuple(Ein_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
@@ -167,19 +167,22 @@ cudaTransposeKernel_chord::~cudaTransposeKernel_chord() {}
 
 cudaEvent_t cudaTransposeKernel_chord::execute(cudaPipelineState& /*pipestate*/,
                                                const std::vector<cudaEvent_t>& /*pre_events*/) {
+    const int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
+
     pre_execute();
 
     void* const Ein_memory =
         device.get_gpu_memory_array(Ein_memname, gpu_frame_id, _gpu_buffer_depth, Ein_length);
     void* const E_memory =
         device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
+    info_host.at(gpu_frame_index).resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
-    /// Ein is an input buffer: check metadata
-    std::shared_ptr<metadataObject> const Ein_mc =
+    // Ein is an input buffer: check metadata
+    const metadataContainer* const Ein_mc =
         device.get_gpu_memory_array_metadata(Ein_memname, gpu_frame_id);
-    assert(Ein_mc && metadata_is_chord(Ein_mc));
-    const std::shared_ptr<chordMetadata> Ein_meta = get_chord_metadata(Ein_mc);
+    assert(Ein_mc && metadata_container_is_chord(Ein_mc));
+    const chordMetadata* const Ein_meta = get_chord_metadata(Ein_mc);
     INFO("input Ein array: {:s} {:s}", Ein_meta->get_type_string(),
          Ein_meta->get_dimensions_string());
     assert(Ein_meta->type == Ein_type);
@@ -191,10 +194,10 @@ cudaEvent_t cudaTransposeKernel_chord::execute(cudaPipelineState& /*pipestate*/,
         assert(Ein_meta->dim[dim] == int(Ein_lengths[Ein_rank - 1 - dim]));
     }
     //
-    /// E is an output buffer: set metadata
-    std::shared_ptr<metadataObject> const E_mc =
+    // E is an output buffer: set metadata
+    metadataContainer* const E_mc =
         device.create_gpu_memory_array_metadata(E_memname, gpu_frame_id, Ein_mc->parent_pool);
-    std::shared_ptr<chordMetadata> const E_meta = get_chord_metadata(E_mc);
+    chordMetadata* const E_meta = get_chord_metadata(E_mc);
     chord_metadata_copy(E_meta, E_meta);
     E_meta->type = E_type;
     E_meta->dims = E_rank;
@@ -241,34 +244,35 @@ cudaEvent_t cudaTransposeKernel_chord::execute(cudaPipelineState& /*pipestate*/,
     if (err != CUDA_SUCCESS) {
         const char* errStr;
         cuGetErrorString(err, &errStr);
-        ERROR("cuLaunchKernel: Error number: {}: {}", (int)err, errStr);
+        ERROR("cuLaunchKernel: Error number: {}: {}", err, errStr);
     }
 
     // Copy results back to host memory
     // TODO: Skip this for performance
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.data(), info_memory, info_length,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.at(gpu_frame_index).data(), info_memory, info_length,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     // Check error codes
     // TODO: Skip this for performance
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
-                                                      (const std::int32_t*)&*info_host.end());
+    const std::int32_t error_code =
+        *std::max_element((const std::int32_t*)&*info_host.at(gpu_frame_index).begin(),
+                          (const std::int32_t*)&*info_host.at(gpu_frame_index).end());
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.size(); ++i)
-        if (info_host[i] != 0)
+    for (std::size_t i = 0; i < info_host.at(gpu_frame_index).size(); ++i)
+        if (info_host.at(gpu_frame_index)[i] != 0)
             ERROR("cudaTransposeKernel_chord returned 'info' value {:d} at index {:d} (zero "
                   "indicates no error)",
-                  info_host[i], i);
+                  info_host.at(gpu_frame_index)[i], i);
 
     return record_end_event();
 }
 
 void cudaTransposeKernel_chord::finalize_frame() {
-    // device.release_gpu_memory_array_metadata(Ein_memname, gpu_frame_id);
-    // device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
+    device.release_gpu_memory_array_metadata(Ein_memname, gpu_frame_id);
+    device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
 
     cudaCommand::finalize_frame();
 }

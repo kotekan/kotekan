@@ -15,7 +15,7 @@ i2c(x::Int4x2) = t2c(i2t(x))
 U = 16
 
 quantity_E = "voltage"
-file_E = ASDF2.load_file("$(dir)/$(prefix)$(quantity_E).$iter.asdf")
+file_E = ASDF2.load_file("$(dir)/$(prefix)$(quantity_E).$(iter).asdf")
 dataset_E = file_E.metadata[parse(Int, iter)]
 @assert dataset_E["dim_names"] == ["T", "F", "P", "D"]
 array_E = dataset_E["host_$(quantity_E)_buffer"][]
@@ -25,7 +25,7 @@ array_E::AbstractArray{Int4x2,4}
 ndishs, npolrs, nfreqs, ntimes = size(array_E)
 
 quantity_G = "upchan_gain"
-file_G = ASDF2.load_file("$(dir)/$(prefix)$(quantity_G).$iter.asdf")
+file_G = ASDF2.load_file("$(dir)/$(prefix)$(quantity_G).$(iter).asdf")
 dataset_G = file_G.metadata[parse(Int, iter)]
 @assert dataset_G["dim_names"] == ["Fbar"]
 array_G = dataset_G["host_$(quantity_G)_buffer"][]
@@ -37,7 +37,7 @@ ngains, = size(array_G)
 @assert ngains == nfreqs * U
 
 quantity_Ebar = "upchan_voltage"
-file_Ebar = ASDF2.load_file("$(dir)/$(prefix)$(quantity_Ebar).$iter.asdf")
+file_Ebar = ASDF2.load_file("$(dir)/$(prefix)$(quantity_Ebar).$(iter).asdf")
 dataset_Ebar = file_Ebar.metadata[parse(Int, iter)]
 @assert dataset_Ebar["dim_names"] == ["Tbar", "Fbar", "P", "D"]
 array_Ebar = dataset_Ebar["host_$(quantity_Ebar)_buffer"][]
@@ -83,7 +83,7 @@ data = Float32[
         sum(abs2(real(Complex{Float32}(i2c(j)))) for j in view(array_E, dish, :, freq, :)) / length(view(array_E, dish, :, freq, :))
     ) for dish in 1:ndishs
 ]
-fig = Figure(; resolution=(1280, 960))
+fig = Figure(; size=(1280, 960))
 ax = Axis(fig[1, 1]; title="F-engine electric field", xlabel="x", ylabel="y")
 xlims!(ax, dishs_xlim)
 ylims!(ax, dishs_ylim)
@@ -98,7 +98,7 @@ data = Float32[
         length(view(array_Ebar, dish, :, freqbar, :)),
     ) for dish in 1:ndishs
 ]
-fig = Figure(; resolution=(1280, 960))
+fig = Figure(; size=(1280, 960))
 ax = Axis(fig[1, 1]; title="F-engine upchannelized electric field (U=$U)", xlabel="x", ylabel="y")
 xlims!(ax, dishs_xlim)
 ylims!(ax, dishs_ylim)

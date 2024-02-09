@@ -1,0 +1,1792 @@
+// SASS kernel code for CUDA baseband beamformer
+// This file has been generated automatically by `bb.jl`.
+// Do not modify this file, your changes will be lost.
+
+// PTX CompilerJob of MethodInstance for bb(::CuDeviceVector{Int8x4, 1}, ::CuDeviceVector{Int4x8, 1}, ::CuDeviceVector{Int32, 1}, ::CuDeviceVector{Int4x8, 1}, ::CuDeviceVector{Int32, 1}) for sm_86, minthreads=128, blocks_per_sm=8
+
+	.headerflags	@"EF_CUDA_TEXMODE_UNIFIED EF_CUDA_64BIT_ADDRESS EF_CUDA_SM86 EF_CUDA_VIRTUAL_SM(EF_CUDA_SM86)"
+	.elftype	@"ET_EXEC"
+
+
+//--------------------- .text._Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE --------------------------
+	.section	.text._Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE,"ax",@progbits
+	.sectionflags	@"SHF_BARRIERS=1"
+	.sectioninfo	@"SHI_REGISTERS=64"
+	.align	128
+        .global         _Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE
+        .type           _Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE,@function
+        .size           _Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE,(.L_x_13 - _Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE)
+        .other          _Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE,@"STO_CUDA_ENTRY STV_DEFAULT"
+_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE:
+
+.text._Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE:
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:904
+        IMAD.MOV.U32 R1, RZ, RZ, c[0x0][0x28] ;
+; Location ./int.jl:513
+        IMAD.MOV.U32 R16, RZ, RZ, c[0x0][0x2c] ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/shared_memory.jl:52
+        ULDC.64 UR36, c[0x0][0x160] ;
+        IADD3 R1, R1, -0x8, RZ ;
+; Location ./int.jl:513
+        ISETP.GT.U32.AND P0, PT, R16, 0x207f, PT ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/shared_memory.jl:51
+    @P0 BRA `(.L_x_2) ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/shared_memory.jl:52
+        UMOV UR4, 32@lo(exception1) ;
+        MOV R25, 0xc0 ;
+        UMOV UR5, 32@hi(exception1) ;
+        IMAD.U32 R0, RZ, RZ, UR4 ;
+        IMAD.U32 R5, RZ, RZ, UR5 ;
+        CALL.REL.NOINC `($_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_report_exception) ;
+        MOV R25, 0xe0 ;
+        CALL.REL.NOINC `($_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_signal_exception) ;
+        BPT.TRAP 0x1 ;
+
+.L_x_2:
+; Location ./int.jl:513
+        ISETP.GT.U32.AND P0, PT, R16, 0x347f, PT ;
+        ULDC.64 UR38, c[0x0][0x118] ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/shared_memory.jl:51
+    @P0 BRA `(.L_x_3) ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/shared_memory.jl:52
+        UMOV UR4, 32@lo(exception1) ;
+        MOV R25, 0x180 ;
+        UMOV UR5, 32@hi(exception1) ;
+        IMAD.U32 R0, RZ, RZ, UR4 ;
+        IMAD.U32 R5, RZ, RZ, UR5 ;
+        CALL.REL.NOINC `($_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_report_exception) ;
+        MOV R25, 0x1a0 ;
+        CALL.REL.NOINC `($_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_signal_exception) ;
+        BPT.TRAP 0x1 ;
+
+.L_x_3:
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        S2R R61, SR_TID.Y ;
+        IMAD.MOV.U32 R24, RZ, RZ, 0x4 ;
+        IMAD.MOV.U32 R5, RZ, RZ, 0x1 ;
+        S2R R60, SR_TID.X ;
+        S2R R0, SR_CTAID.X ;
+; Location ./int.jl:88
+        IMAD.SHL.U32 R18, R61, 0x4, RZ ;
+        IMAD.SHL.U32 R19, R61, 0x20, RZ ;
+; Location ./int.jl:295
+        SHF.R.U32.HI R23, RZ, 0x3, R60 ;
+; Location ./int.jl:88
+        IMAD.SHL.U32 R16, R0, 0x80, RZ ;
+; Location ./int.jl:87
+        LOP3.LUT R17, R18, R23, RZ, 0xfc, !PT ;
+        LOP3.LUT R3, R19, R16, R60, 0xfe, !PT ;
+        LOP3.LUT R29, R17, 0x7f0, R0, 0xf8, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        IMAD.WIDE.U32 R2, R3, R24, c[0x0][0x1f0] ;
+        IMAD.WIDE.U32 R28, R29, R24, c[0x0][0x1b0] ;
+        STG.E [R2.64], R5 ;
+        LDG.E R28, [R28.64] ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        IADD3 R22, R28, -0x4, RZ ;
+        ISETP.GE.U32.AND P0, PT, R22, 0x1f, PT ;
+   @!P0 BRA `(.L_x_4) ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        IMAD.MOV.U32 R7, RZ, RZ, 0x2 ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:855
+        UMOV UR4, 32@lo(exception632) ;
+        MOV R25, 0x360 ;
+        UMOV UR5, 32@hi(exception632) ;
+        IMAD.U32 R0, RZ, RZ, UR4 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        STG.E [R2.64], R7 ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:855
+        IMAD.U32 R5, RZ, RZ, UR5 ;
+        CALL.REL.NOINC `($_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_report_exception) ;
+        MOV R25, 0x380 ;
+        CALL.REL.NOINC `($_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_signal_exception) ;
+        BPT.TRAP 0x1 ;
+
+.L_x_4:
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        S2R R5, SR_CTAID.X ;
+; Location ./int.jl:88
+        IMAD.SHL.U32 R0, R60, 0x40, RZ ;
+        LOP3.LUT R2, R18, 0x8, RZ, 0xc0, !PT ;
+        IMAD.SHL.U32 R20, R60.reuse, 0x8, RZ ;
+        SHF.R.U32.HI R57, RZ, 0x2, R60 ;
+        IMAD.SHL.U32 R4, R60, 0x10, RZ ;
+        LOP3.LUT R3, R0, 0x40, RZ, 0xc0, !PT ;
+        IMAD.SHL.U32 R0, R61, 0x100, RZ ;
+; Location ./int.jl:87
+        LOP3.LUT R2, R2, 0x6, R57, 0xf8, !PT ;
+; Location ./int.jl:88
+        IMAD.SHL.U32 R45, R60, 0x2, RZ ;
+; Location ./int.jl:87
+        LOP3.LUT R3, R3, 0x30, R20, 0xf8, !PT ;
+; Location ./int.jl:88
+        IMAD.SHL.U32 R7, R61, 0x40, RZ ;
+        LOP3.LUT R4, R4, 0x10, RZ, 0xc0, !PT ;
+; Location ./int.jl:296
+        LOP3.LUT R0, R3, 0x100, R0, 0xf8, !PT ;
+; Location ./int.jl:87
+        LOP3.LUT R4, R4, 0xc, R45, 0xf8, !PT ;
+        LOP3.LUT R36, R57, 0x8, R18, 0xf8, !PT ;
+        LOP3.LUT R6, R16, 0x3f800, RZ, 0xc0, !PT ;
+; Location ./int.jl:88
+        IMAD.SHL.U32 R13, R36, 0x80, RZ ;
+; Location ./int.jl:87
+        LOP3.LUT R6, R6, R4, R7, 0xfe, !PT ;
+; Location ./int.jl:88
+        IMAD.SHL.U32 R3, R5, 0x200, RZ ;
+; Location ./int.jl:87
+        LOP3.LUT R6, R6, R13, RZ, 0xfc, !PT ;
+        LOP3.LUT R5, R0, 0x2000, R3, 0xf8, !PT ;
+; Location ./int.jl:88
+        LOP3.LUT R3, R3, 0xfc000, RZ, 0xc0, !PT ;
+; Location ./int.jl:87
+        IMAD R0, R2, 0x200, R5 ;
+; Location ./int.jl:296
+        LOP3.LUT R5, R4.reuse, 0x40, R7, 0xf8, !PT ;
+        LOP3.LUT R7, R4, R7, RZ, 0xfc, !PT ;
+; Location ./int.jl:87
+        IMAD.IADD R0, R3, 0x1, R0 ;
+        LOP3.LUT R5, R5, 0x800, R16.reuse, 0xf8, !PT ;
+        LOP3.LUT R11, R7, 0x800, R16, 0xf8, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IADD3 R4, P0, R0, c[0x0][0x170], RZ ;
+; Location ./int.jl:87
+        IMAD R3, R2, 0x80, R5 ;
+; Location ./int.jl:88
+        LOP3.LUT R0, R16, 0x3f000, RZ, 0xc0, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.X R5, RZ, RZ, c[0x0][0x174], P0 ;
+; Location ./int.jl:86
+        IADD3 R3, R3, 0x20, R0 ;
+; Location ./int.jl:88
+        IMAD.SHL.U32 R0, R6, 0x4, RZ ;
+; Location ./int.jl:87
+        LOP3.LUT R2, R11, 0x3f000, R16, 0xf8, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE.U32 R8, R3, R24, c[0x0][0x170] ;
+; Location ./int.jl:88
+        LOP3.LUT R0, R0, 0x200, RZ, 0xfc, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
+        LDG.E.128 R4, [R4.64] ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IADD3 R12, P0, R0, c[0x0][0x170], RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
+        LDG.E.128 R8, [R8.64] ;
+; Location ./int.jl:87
+        LOP3.LUT R2, R2, 0xa0, R13, 0xfe, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.X R13, RZ, RZ, c[0x0][0x174], P0 ;
+; Location ./int.jl:87
+        IADD3 R25, R2, 0x1, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
+        LDG.E.128 R12, [R12.64] ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE.U32 R24, R25, R24, c[0x0][0x170] ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
+        LDG.E.128 R24, [R24.64+-0x4] ;
+; Location ./promotion.jl:521
+        LOP3.LUT P0, RZ, R60, 0x2, RZ, 0xc0, !PT ;
+; Location ./int.jl:86
+        IADD3 R37, R28, -0x3, RZ ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        PRMT R3, R4.reuse, 0x5410, R5.reuse ;
+        PRMT R0, R4, 0x7632, R5 ;
+        PRMT R5, R6.reuse, 0x5410, R7.reuse ;
+        PRMT R6, R6, 0x7632, R7 ;
+        PRMT R7, R8.reuse, 0x5410, R9.reuse ;
+        PRMT R8, R8, 0x7632, R9 ;
+        PRMT R4, R3.reuse, 0x6240, R0.reuse ;
+        PRMT R3, R3, 0x7351, R0 ;
+        PRMT R2, R5.reuse, 0x6240, R6.reuse ;
+        PRMT R0, R5, 0x7351, R6 ;
+        PRMT R5, R10.reuse, 0x5410, R11.reuse ;
+        PRMT R9, R7.reuse, 0x6240, R8.reuse ;
+        PRMT R6, R7, 0x7351, R8 ;
+        PRMT R10, R10, 0x7632, R11 ;
+        PRMT R8, R12.reuse, 0x5410, R13.reuse ;
+        PRMT R13, R12, 0x7632, R13 ;
+        PRMT R12, R14.reuse, 0x5410, R15.reuse ;
+        PRMT R15, R14, 0x7632, R15 ;
+        PRMT R11, R5.reuse, 0x6240, R10.reuse ;
+        PRMT R5, R5, 0x7351, R10 ;
+        PRMT R7, R8.reuse, 0x6240, R13.reuse ;
+        PRMT R10, R8, 0x7351, R13 ;
+        PRMT R8, R12.reuse, 0x6240, R15.reuse ;
+        PRMT R14, R12, 0x7351, R15 ;
+        PRMT R12, R24, 0x5410, R25 ;
+        PRMT R21, R26, 0x5410, R27 ;
+        PRMT R25, R24, 0x7632, R25 ;
+        PRMT R26, R26, 0x7632, R27 ;
+        PRMT R24, R12.reuse, 0x6240, R25.reuse ;
+        PRMT R15, R21.reuse, 0x6240, R26.reuse ;
+        PRMT R25, R12, 0x7351, R25 ;
+        PRMT R21, R21, 0x7351, R26 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R34, R9, R4, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        BRA.DIV ~URZ, `(.L_x_5) ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R12, R6, R3, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R34, R34, 0x2, 0x1f ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R29, R11, R2, !P0 ;
+        SEL R13, R24, R7, !P0 ;
+        SEL R26, R25, R10, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R12, R12, 0x2, 0x1f ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R30, R15, R8, !P0 ;
+        SEL R31, R5, R0, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R29, R29, 0x2, 0x1f ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R32, R21, R14, !P0 ;
+; Location ./promotion.jl:521
+        LOP3.LUT P2, RZ, R60, 0x4, RZ, 0xc0, !PT ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R13, R13, 0x2, 0x1f ;
+; Location ./promotion.jl:521
+        PLOP3.LUT P1, PT, P2, PT, PT, 0x8, 0x0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R26, R26, 0x2, 0x1f ;
+        SHFL.BFLY PT, R30, R30, 0x2, 0x1f ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R4, R4, R34, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R31, R31, 0x2, 0x1f ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R9, R34, R9, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R32, R32, 0x2, 0x1f ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R3, R3, R12, !P0 ;
+        SEL R12, R12, R6, !P0 ;
+        SEL R6, R2, R29, !P0 ;
+        SEL R29, R29, R11, !P0 ;
+        SEL R11, R7, R13, !P0 ;
+        SEL R24, R13, R24, !P0 ;
+        SEL R10, R10, R26, !P0 ;
+        SEL R25, R26, R25, !P0 ;
+        SEL R13, R8, R30, !P0 ;
+        SEL R30, R30, R15, !P0 ;
+        SEL R7, R0, R31, !P0 ;
+        SEL R0, R11, R4, !P2 ;
+        SEL R8, R14, R32, !P0 ;
+        SEL R14, R10, R3, !P2 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R2, R0, 0x4, 0x1f ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R15, R13, R6, !P2 ;
+        SEL R28, R25, R12, !P2 ;
+        SEL R26, R8, R7, !P2 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R14, R14, 0x4, 0x1f ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R27, R24, R9, !P2 ;
+        SEL R33, R30, R29, !P2 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R15, R15, 0x4, 0x1f ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R31, R31, R5, !P0 ;
+        SEL R32, R32, R21, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R28, R28, 0x4, 0x1f ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R21, R32, R31, !P2 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R26, R26, 0x4, 0x1f ;
+        SHFL.BFLY PT, R27, R27, 0x4, 0x1f ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R0, R4, R2, !P2 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R33, R33, 0x4, 0x1f ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R2, R2, R11, !P2 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R21, R21, 0x4, 0x1f ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R4, R14, R10, !P2 ;
+        SEL R3, R3, R14, !P2 ;
+        SEL R5, R6, R15, !P2 ;
+        SEL R6, R15, R13, !P2 ;
+        SEL R11, R12, R28, !P2 ;
+        SEL R28, R28, R25, !P2 ;
+        SEL R7, R7, R26, !P2 ;
+        SEL R8, R26, R8, !P2 ;
+        SEL R9, R9, R27, !P2 ;
+        SEL R10, R27, R24, !P2 ;
+        SEL R29, R29, R33, !P2 ;
+        SEL R30, R33, R30, !P2 ;
+
+.L_x_8:
+        IMAD.SHL.U32 R12, R60.reuse, 0x4, RZ ;
+        LOP3.LUT R14, R60, 0x7, RZ, 0xc0, !PT ;
+        IMAD.MOV.U32 R33, RZ, RZ, 0x1 ;
+        LOP3.LUT R23, R18, 0x280, R23, 0xfe, !PT ;
+        CS2R R38, SRZ ;
+        LOP3.LUT R12, R12, 0x1c, RZ, 0xc0, !PT ;
+        IMAD R56, R14.reuse, 0x14, R17 ;
+        LOP3.LUT R13, R61, 0x1, RZ, 0xc0, !PT ;
+        IMAD R52, R14, 0x14, R23 ;
+        LOP3.LUT R35, R12, 0x20, R19, 0xf8, !PT ;
+        IMAD R12, R14, 0x14, RZ ;
+        LOP3.LUT R18, R60, 0x18, RZ, 0xfc, !PT ;
+        IMAD.MOV R13, RZ, RZ, -R13 ;
+        LOP3.LUT R34, R20, 0x18, RZ, 0xc0, !PT ;
+        IMAD.MOV.U32 R44, RZ, RZ, RZ ;
+        IADD3 R14, R12, 0xa0, RZ ;
+        IMAD R47, R18, 0x14, R17 ;
+        IADD3 R12, R12, 0x140, RZ ;
+        IMAD R46, R18, 0x14, R23 ;
+        LOP3.LUT R36, R36, 0x280, R13, 0xf8, !PT ;
+        IMAD.MOV.U32 R13, RZ, RZ, 0x4 ;
+        SEL R31, R31, R21, P1 ;
+        IMAD.IADD R51, R17, 0x1, R14.reuse ;
+        SEL R32, R21, R32, P1 ;
+        IMAD.IADD R50, R23, 0x1, R14 ;
+        SHF.L.U32 R33, R33, R22, RZ ;
+        IMAD.IADD R49, R17, 0x1, R12.reuse ;
+        LOP3.LUT R34, R34, 0x20, R19, 0xf8, !PT ;
+        IMAD.IADD R48, R23, 0x1, R12 ;
+        LOP3.LUT R58, R16, 0x780, RZ, 0xc0, !PT ;
+        IMAD R56, R56, R13.reuse, c[0x2][0x0] ;
+        LOP3.LUT R45, R45, 0x6, RZ, 0xc0, !PT ;
+        IMAD R52, R52, R13.reuse, c[0x2][0x0] ;
+        IMNMX.U32 R37, R37, 0x1f, PT ;
+        IMAD R47, R47, R13.reuse, c[0x2][0x0] ;
+        CS2R R42, SRZ ;
+        IMAD R46, R46, R13.reuse, c[0x2][0x0] ;
+        CS2R R40, SRZ ;
+        IMAD R51, R51, R13, c[0x2][0x0] ;
+        IMAD R50, R50, R13.reuse, c[0x2][0x0] ;
+        IMAD R49, R49, R13.reuse, c[0x2][0x0] ;
+        IMAD R48, R48, R13, c[0x2][0x0] ;
+
+.L_x_7:
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        S2R R13, SR_CTAID.X ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        IMAD.SHL.U32 R17, R61, 0x2, RZ ;
+; Location ./int.jl:295
+        SHF.R.U32.HI R12, RZ, 0x3, R60 ;
+        ULDC.64 UR4, c[0x0][0x118] ;
+; Location ./int.jl:87
+        LOP3.LUT R17, R38, 0x4, R17, 0xf8, !PT ;
+        LOP3.LUT R17, R17, R12, RZ, 0xfc, !PT ;
+        IMAD.IADD R16, R58, 0x1, R17 ;
+; Location ./int.jl:88
+        IMAD.SHL.U32 R12, R16, 0x2000, RZ ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        IMAD.SHL.U32 R20, R13, 0x4, RZ ;
+        LOP3.LUT R21, R35, 0x40, R20, 0xf8, !PT ;
+; Location ./int.jl:87
+        LOP3.LUT R13, R21, 0xfce000, R12, 0xf8, !PT ;
+        LOP3.LUT R13, R13, 0x1f80, R20, 0xf8, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        LEA R12, P2, R13, c[0x0][0x190], 0x2 ;
+        IMAD.X R13, RZ, RZ, c[0x0][0x194], P2 ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
+        LDG.E.128 R12, [R12.64] ;
+; Location ./int.jl:87
+        LOP3.LUT R53, R17.reuse, 0x8, RZ, 0xfc, !PT ;
+; Location ./int.jl:296
+        LOP3.LUT R54, R16, 0x7, RZ, 0xc0, !PT ;
+; Location ./int.jl:87
+        LOP3.LUT R55, R17, 0x10, RZ, 0xfc, !PT ;
+        IMAD.IADD R53, R58, 0x1, R53 ;
+; Location ./int.jl:88
+        IMAD R54, R54, 0x41, RZ ;
+        IMAD.SHL.U32 R16, R53, 0x2000, RZ ;
+; Location ./int.jl:87
+        IMAD.IADD R18, R35, 0x1, R54 ;
+        IMAD.IADD R55, R58, 0x1, R55 ;
+        LOP3.LUT R19, R21, 0xfde000, R16, 0xf8, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        IMAD.SHL.U32 R25, R18, 0x4, RZ ;
+; Location ./int.jl:88
+        IMAD.SHL.U32 R18, R55, 0x2000, RZ ;
+; Location ./int.jl:87
+        LOP3.LUT R19, R19, 0x1f80, R20, 0xf8, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        LEA R16, P2, R19, c[0x0][0x190], 0x2 ;
+; Location ./int.jl:87
+        LOP3.LUT R19, R17, 0x18, RZ, 0xfc, !PT ;
+        LOP3.LUT R23, R21, 0xfee000, R18, 0xf8, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.X R17, RZ, RZ, c[0x0][0x194], P2 ;
+; Location ./int.jl:87
+        LOP3.LUT R23, R23, 0x1f80, R20, 0xf8, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        STS [R25], R12 ;
+; Location ./int.jl:87
+        IMAD.IADD R12, R58, 0x1, R19 ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
+        LDG.E.128 R16, [R16.64] ;
+; Location ./int.jl:88
+        IMAD.SHL.U32 R22, R12, 0x2000, RZ ;
+; Location ./int.jl:87
+        LOP3.LUT R21, R21, 0xffe000, R22, 0xf8, !PT ;
+        LOP3.LUT R24, R21, 0x1f80, R20, 0xf8, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        LEA R20, P2, R23, c[0x0][0x190], 0x2 ;
+        IMAD.X R21, RZ, RZ, c[0x0][0x194], P2 ;
+        LEA R24, P2, R24, c[0x0][0x190], 0x2 ;
+        IMAD.X R25, RZ, RZ, c[0x0][0x194], P2 ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
+        LDG.E.128 R20, [R20.64] ;
+        LDG.E.128 R24, [R24.64] ;
+; Location ./int.jl:296
+        LOP3.LUT R53, R53, 0xf, RZ, 0xc0, !PT ;
+; Location ./int.jl:86
+        IMAD.IADD R59, R35, 0x1, R54 ;
+; Location ./int.jl:296
+        LOP3.LUT R55, R55, 0x17, RZ, 0xc0, !PT ;
+; Location ./int.jl:88
+        IMAD R54, R53, 0x41, RZ ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        STS [R59.X4+0x4], R13 ;
+; Location ./int.jl:87
+        IMAD.IADD R53, R35.reuse, 0x1, R54.reuse ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        STS [R59.X4+0x8], R14 ;
+        STS [R59.X4+0xc], R15 ;
+; Location ./int.jl:296
+        LOP3.LUT R13, R12, 0x1f, RZ, 0xc0, !PT ;
+; Location ./int.jl:86
+        IMAD.IADD R59, R35, 0x1, R54 ;
+; Location ./int.jl:88
+        IMAD R54, R55, 0x41, RZ ;
+        IMAD R14, R13, 0x41, RZ ;
+; Location ./int.jl:87
+        IMAD.IADD R12, R35, 0x1, R54 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        IMAD.SHL.U32 R53, R53, 0x4, RZ ;
+        IMAD.SHL.U32 R13, R12, 0x4, RZ ;
+; Location ./int.jl:87
+        IMAD.IADD R12, R35, 0x1, R14 ;
+; Location ./int.jl:86
+        IMAD.IADD R54, R35, 0x1, R54 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        IMAD.SHL.U32 R15, R12, 0x4, RZ ;
+; Location ./int.jl:87
+        IMAD R12, R57, 0x41, R34 ;
+; Location ./int.jl:86
+        IMAD.IADD R14, R35, 0x1, R14 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/synchronization.jl:16
+        WARPSYNC 0xffffffff ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        STS [R53], R16 ;
+        STS [R59.X4+0x4], R17 ;
+        STS [R59.X4+0x8], R18 ;
+        STS [R59.X4+0xc], R19 ;
+        STS [R13], R20 ;
+        STS [R54.X4+0x4], R21 ;
+        STS [R54.X4+0x8], R22 ;
+        IMAD.SHL.U32 R13, R12, 0x4, RZ ;
+        STS [R54.X4+0xc], R23 ;
+        STS [R15], R24 ;
+        STS [R14.X4+0x4], R25 ;
+        STS [R14.X4+0x8], R26 ;
+        STS [R14.X4+0xc], R27 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/synchronization.jl:16
+        BAR.SYNC 0x0 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R19, [R13] ;
+        LDS R21, [R13+0x4] ;
+        IMAD.MOV.U32 R12, RZ, RZ, 0xf0f0f0f ;
+        LDS R26, [R13+0x10] ;
+        LDS R25, [R13+0x14] ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R17, RZ, 0x4, R19 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R17, R17, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R17, R17, 0x78787878, RZ ;
+; Location ./int.jl:373
+        LOP3.LUT R18, R17, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R17, [R13+0x8] ;
+        LOP3.LUT R19, R19, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R0.ROW, R18.COL, RZ ;
+; Location ./int.jl:87
+        IADD3 R16, R19, 0x78787878, RZ ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R19, RZ, 0x4, R21 ;
+; Location ./int.jl:373
+        LOP3.LUT R16, R16, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R19, R19, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R19, R19, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R3.ROW, R16.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R24, R19, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R19, [R13+0xc] ;
+        LOP3.LUT R21, R21, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R21, R21, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R5.ROW, R24.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R22, R21, 0x80808080, RZ, 0x3c, !PT ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R21, RZ, 0x4, R17 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R21, R21, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R7.ROW, R22.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R21, R21, 0x78787878, RZ ;
+; Location ./int.jl:373
+        LOP3.LUT R23, R21, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R17, R17, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R20, R17, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R9.ROW, R23.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R20, R20, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R0.ROW, R16.COL, RZ ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R21, RZ, 0x4, R19 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R21, R21, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R11.ROW, R20.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R21, R21, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R5.ROW, R22.COL, R16 ;
+; Location ./int.jl:373
+        LOP3.LUT R22, R21, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R19, R19, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R19, R19, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R29.ROW, R22.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R27, R19, 0x80808080, RZ, 0x3c, !PT ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R19, RZ, 0x4, R26 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R19, R19, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R19, R19, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R31.ROW, R27.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R21, R19, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R3.ROW, R18.COL, RZ ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R26, R26, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R9.ROW, R20.COL, R16 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R20, [R13+0x18] ;
+; Location ./int.jl:87
+        IADD3 R26, R26, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R2.ROW, R21.COL, R14 ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R53, RZ, 0x4, R25 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R13, [R13+0x1c] ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R7.ROW, R24.COL, R18 ;
+; Location ./int.jl:373
+        LOP3.LUT R24, R26, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R53, R53, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R4.ROW, R24.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R53, R53, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R11.ROW, R23.COL, R18 ;
+; Location ./int.jl:373
+        LOP3.LUT R23, R53, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R25, R25, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R6.ROW, R23.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R25, R25, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R29.ROW, R27.COL, R16 ;
+; Location ./int.jl:373
+        LOP3.LUT R25, R25, 0x80808080, RZ, 0x3c, !PT ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R27, RZ, 0x4, R20 ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R31.ROW, R22.COL, R18 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R27, R27, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R8.ROW, R25.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R22, R27, 0x78787878, RZ ;
+; Location ./int.jl:373
+        LOP3.LUT R22, R22, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R20, R20, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R2.ROW, R24.COL, R16 ;
+        IMMA.8816.S8.S8.SAT R18, R4.ROW, R21.COL, R18 ;
+; Location ./int.jl:87
+        IADD3 R20, R20, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R10.ROW, R22.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R27, R20, 0x80808080, RZ, 0x3c, !PT ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R21, RZ, 0x4, R13 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R21, R21, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R6.ROW, R25.COL, R16 ;
+        IMMA.8816.S8.S8.SAT R18, R8.ROW, R23.COL, R18 ;
+; Location ./int.jl:87
+        IADD3 R21, R21, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R28.ROW, R27.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R21, R21, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R13, R13, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R10.ROW, R27.COL, R16 ;
+; Location ./int.jl:87
+        IADD3 R13, R13, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R28.ROW, R22.COL, R18 ;
+        IMMA.8816.S8.S8.SAT R14, R30.ROW, R21.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R13, R13, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R30.ROW, R13.COL, R16 ;
+        IMMA.8816.S8.S8.SAT R18, R32.reuse.ROW, R21.COL, R18 ;
+        IMMA.8816.S8.S8.SAT R14, R32.ROW, R13.COL, R14 ;
+; Location ./int.jl:296
+        LOP3.LUT R13, R57, 0x8, RZ, 0xfc, !PT ;
+; Location ./int.jl:87
+        IMAD R21, R13, 0x41, R34 ;
+        IADD3 R16, R16, 0x4, -R18 ;
+        IADD3 R17, R17, 0x4, -R19 ;
+        IADD3 R14, R14, 0x4, RZ ;
+        IADD3 R15, R15, 0x4, RZ ;
+        IMAD R18, R45, 0x14, R36 ;
+; Location ./int.jl:527
+        SHF.R.S32.HI R13, RZ, 0x3, R14 ;
+        SHF.R.S32.HI R16, RZ, 0x3, R16 ;
+        SHF.R.S32.HI R17, RZ, 0x3, R17 ;
+        SHF.R.S32.HI R14, RZ, 0x3, R15 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        IMAD.SHL.U32 R20, R18, 0x4, RZ ;
+        I2IP.S16.S32.SAT R16, R13, R16, RZ ;
+        IMAD.SHL.U32 R13, R21, 0x4, RZ ;
+        I2IP.S16.S32.SAT R19, R14, R17, RZ ;
+        STS [R20+0x2080], R16 ;
+        STS [R20+0x20d0], R19 ;
+        LDS R15, [R13] ;
+        LDS R21, [R13+0x4] ;
+        LDS R26, [R13+0x10] ;
+        LDS R25, [R13+0x14] ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R17, RZ, 0x4, R15 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R17, R17, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R17, R17, 0x78787878, RZ ;
+; Location ./int.jl:373
+        LOP3.LUT R18, R17, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R17, [R13+0x8] ;
+        LOP3.LUT R22, R15, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R0.ROW, R18.COL, RZ ;
+; Location ./int.jl:87
+        IADD3 R16, R22, 0x78787878, RZ ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R19, RZ, 0x4, R21 ;
+; Location ./int.jl:373
+        LOP3.LUT R16, R16, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R19, R19, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R19, R19, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R3.ROW, R16.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R24, R19, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R19, [R13+0xc] ;
+        LOP3.LUT R21, R21, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R21, R21, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R5.ROW, R24.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R22, R21, 0x80808080, RZ, 0x3c, !PT ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R21, RZ, 0x4, R17 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R21, R21, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R7.ROW, R22.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R21, R21, 0x78787878, RZ ;
+; Location ./int.jl:373
+        LOP3.LUT R23, R21, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R17, R17, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R20, R17, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R9.ROW, R23.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R20, R20, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R0.ROW, R16.COL, RZ ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R21, RZ, 0x4, R19 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R21, R21, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R11.ROW, R20.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R21, R21, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R5.ROW, R22.COL, R16 ;
+; Location ./int.jl:373
+        LOP3.LUT R22, R21, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R19, R19, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R19, R19, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R29.ROW, R22.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R27, R19, 0x80808080, RZ, 0x3c, !PT ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R19, RZ, 0x4, R26 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R19, R19, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R19, R19, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R31.ROW, R27.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R21, R19, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R3.ROW, R18.COL, RZ ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R26, R26, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R9.ROW, R20.COL, R16 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R20, [R13+0x18] ;
+; Location ./int.jl:87
+        IADD3 R26, R26, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R2.ROW, R21.COL, R14 ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R53, RZ, 0x4, R25 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R13, [R13+0x1c] ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R7.ROW, R24.COL, R18 ;
+; Location ./int.jl:373
+        LOP3.LUT R24, R26, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R53, R53, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R4.ROW, R24.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R53, R53, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R11.ROW, R23.COL, R18 ;
+; Location ./int.jl:373
+        LOP3.LUT R23, R53, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R25, R25, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R6.ROW, R23.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R25, R25, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R29.ROW, R27.COL, R16 ;
+; Location ./int.jl:373
+        LOP3.LUT R25, R25, 0x80808080, RZ, 0x3c, !PT ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R27, RZ, 0x4, R20 ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R31.ROW, R22.COL, R18 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R27, R27, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R8.ROW, R25.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R22, R27, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R2.ROW, R24.COL, R16 ;
+; Location ./int.jl:373
+        LOP3.LUT R22, R22, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R20, R20, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R4.ROW, R21.COL, R18 ;
+        IMMA.8816.S8.S8.SAT R14, R10.ROW, R22.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R20, R20, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R6.ROW, R25.COL, R16 ;
+; Location ./int.jl:373
+        LOP3.LUT R21, R20, 0x80808080, RZ, 0x3c, !PT ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R25, RZ, 0x4, R13 ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R8.ROW, R23.COL, R18 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R25, R25, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R28.ROW, R21.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R25, R25, 0x78787878, RZ ;
+; Location ./int.jl:373
+        LOP3.LUT R25, R25, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R13, R13, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R10.ROW, R21.COL, R16 ;
+        IMMA.8816.S8.S8.SAT R18, R28.ROW, R22.COL, R18 ;
+; Location ./int.jl:87
+        IADD3 R13, R13, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R30.ROW, R25.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R13, R13, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R30.ROW, R13.COL, R16 ;
+        IMMA.8816.S8.S8.SAT R18, R32.reuse.ROW, R25.COL, R18 ;
+        IMMA.8816.S8.S8.SAT R14, R32.ROW, R13.COL, R14 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R13, R45, 0x8, RZ, 0xfc, !PT ;
+; Location ./int.jl:296
+        LOP3.LUT R21, R57, 0x10, RZ, 0xfc, !PT ;
+; Location ./int.jl:87
+        IADD3 R16, R16, 0x4, -R18 ;
+        IADD3 R17, R17, 0x4, -R19 ;
+        IADD3 R14, R14, 0x4, RZ ;
+        IADD3 R15, R15, 0x4, RZ ;
+        IMAD R18, R13, 0x14, R36 ;
+; Location ./int.jl:527
+        SHF.R.S32.HI R13, RZ, 0x3, R14 ;
+; Location ./int.jl:87
+        IMAD R21, R21, 0x41, R34 ;
+; Location ./int.jl:527
+        SHF.R.S32.HI R16, RZ, 0x3, R16 ;
+        SHF.R.S32.HI R17, RZ, 0x3, R17 ;
+        SHF.R.S32.HI R14, RZ, 0x3, R15 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        IMAD.SHL.U32 R20, R18, 0x4, RZ ;
+        I2IP.S16.S32.SAT R16, R13, R16, RZ ;
+        IMAD.SHL.U32 R13, R21, 0x4, RZ ;
+        I2IP.S16.S32.SAT R19, R14, R17, RZ ;
+        STS [R20+0x2080], R16 ;
+        STS [R20+0x20d0], R19 ;
+        LDS R15, [R13] ;
+        LDS R21, [R13+0x4] ;
+        LDS R26, [R13+0x10] ;
+        LDS R25, [R13+0x14] ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R17, RZ, 0x4, R15 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R17, R17, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R17, R17, 0x78787878, RZ ;
+; Location ./int.jl:373
+        LOP3.LUT R18, R17, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R17, [R13+0x8] ;
+        LOP3.LUT R22, R15, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R0.ROW, R18.COL, RZ ;
+; Location ./int.jl:87
+        IADD3 R16, R22, 0x78787878, RZ ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R19, RZ, 0x4, R21 ;
+; Location ./int.jl:373
+        LOP3.LUT R16, R16, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R19, R19, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R19, R19, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R3.ROW, R16.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R24, R19, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R19, [R13+0xc] ;
+        LOP3.LUT R21, R21, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R21, R21, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R5.ROW, R24.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R22, R21, 0x80808080, RZ, 0x3c, !PT ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R21, RZ, 0x4, R17 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R21, R21, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R7.ROW, R22.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R21, R21, 0x78787878, RZ ;
+; Location ./int.jl:373
+        LOP3.LUT R23, R21, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R17, R17, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R20, R17, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R9.ROW, R23.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R20, R20, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R0.ROW, R16.COL, RZ ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R21, RZ, 0x4, R19 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R21, R21, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R11.ROW, R20.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R21, R21, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R5.ROW, R22.COL, R16 ;
+; Location ./int.jl:373
+        LOP3.LUT R22, R21, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R19, R19, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R19, R19, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R29.ROW, R22.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R27, R19, 0x80808080, RZ, 0x3c, !PT ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R19, RZ, 0x4, R26 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R19, R19, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R19, R19, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R31.ROW, R27.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R21, R19, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R3.ROW, R18.COL, RZ ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R26, R26, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R9.ROW, R20.COL, R16 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R20, [R13+0x18] ;
+; Location ./int.jl:87
+        IADD3 R26, R26, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R2.ROW, R21.COL, R14 ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R53, RZ, 0x4, R25 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R13, [R13+0x1c] ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R7.ROW, R24.COL, R18 ;
+; Location ./int.jl:373
+        LOP3.LUT R24, R26, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R53, R53, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R4.ROW, R24.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R53, R53, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R11.ROW, R23.COL, R18 ;
+; Location ./int.jl:373
+        LOP3.LUT R23, R53, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R25, R25, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R6.ROW, R23.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R25, R25, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R29.ROW, R27.COL, R16 ;
+; Location ./int.jl:373
+        LOP3.LUT R25, R25, 0x80808080, RZ, 0x3c, !PT ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R27, RZ, 0x4, R20 ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R31.ROW, R22.COL, R18 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R27, R27, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R8.ROW, R25.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R22, R27, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R2.ROW, R24.COL, R16 ;
+; Location ./int.jl:373
+        LOP3.LUT R22, R22, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R20, R20, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R4.ROW, R21.COL, R18 ;
+        IMMA.8816.S8.S8.SAT R14, R10.ROW, R22.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R20, R20, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R6.ROW, R25.COL, R16 ;
+; Location ./int.jl:373
+        LOP3.LUT R21, R20, 0x80808080, RZ, 0x3c, !PT ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R25, RZ, 0x4, R13 ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R8.ROW, R23.COL, R18 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R25, R25, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R28.ROW, R21.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R25, R25, 0x78787878, RZ ;
+; Location ./int.jl:373
+        LOP3.LUT R25, R25, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R10.ROW, R21.COL, R16 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R13, R13, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R28.ROW, R22.COL, R18 ;
+; Location ./int.jl:87
+        IADD3 R13, R13, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R30.ROW, R25.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R13, R13, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R30.ROW, R13.COL, R16 ;
+        IMMA.8816.S8.S8.SAT R18, R32.reuse.ROW, R25.COL, R18 ;
+        IMMA.8816.S8.S8.SAT R14, R32.ROW, R13.COL, R14 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R21, R45, 0x10, RZ, 0xfc, !PT ;
+; Location ./int.jl:296
+        LOP3.LUT R13, R57, 0x18, RZ, 0xfc, !PT ;
+; Location ./int.jl:87
+        IADD3 R16, R16, 0x4, -R18 ;
+        IADD3 R17, R17, 0x4, -R19 ;
+        IADD3 R14, R14, 0x4, RZ ;
+        IADD3 R18, R15, 0x4, RZ ;
+        IMAD R19, R21, 0x14, R36 ;
+; Location ./int.jl:527
+        SHF.R.S32.HI R16, RZ, 0x3, R16 ;
+; Location ./int.jl:87
+        IMAD R13, R13, 0x41, R34 ;
+; Location ./int.jl:527
+        SHF.R.S32.HI R15, RZ, 0x3, R14 ;
+        SHF.R.S32.HI R17, RZ, 0x3, R17 ;
+        SHF.R.S32.HI R18, RZ, 0x3, R18 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        IMAD.SHL.U32 R22, R19, 0x4, RZ ;
+        I2IP.S16.S32.SAT R21, R15, R16, RZ ;
+        IMAD.SHL.U32 R13, R13, 0x4, RZ ;
+        I2IP.S16.S32.SAT R18, R18, R17, RZ ;
+        STS [R22+0x2080], R21 ;
+        STS [R22+0x20d0], R18 ;
+        LDS R15, [R13] ;
+        LDS R19, [R13+0x4] ;
+        LDS R26, [R13+0x10] ;
+        LDS R25, [R13+0x14] ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R17, RZ, 0x4, R15 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R17, R17, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R17, R17, 0x78787878, RZ ;
+; Location ./int.jl:373
+        LOP3.LUT R20, R17, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R17, [R13+0x8] ;
+        LOP3.LUT R16, R15, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R0.ROW, R20.COL, RZ ;
+; Location ./int.jl:87
+        IADD3 R16, R16, 0x78787878, RZ ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R21, RZ, 0x4, R19 ;
+; Location ./int.jl:373
+        LOP3.LUT R16, R16, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R21, R21, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R21, R21, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R3.ROW, R16.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R24, R21, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R21, [R13+0xc] ;
+        LOP3.LUT R19, R19, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R19, R19, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R5.ROW, R24.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R22, R19, 0x80808080, RZ, 0x3c, !PT ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R19, RZ, 0x4, R17 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R19, R19, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R7.ROW, R22.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R19, R19, 0x78787878, RZ ;
+; Location ./int.jl:373
+        LOP3.LUT R23, R19, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R17, R17, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R9.ROW, R23.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R14, R17, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R0.ROW, R16.COL, RZ ;
+; Location ./int.jl:373
+        LOP3.LUT R14, R14, 0x80808080, RZ, 0x3c, !PT ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R15, RZ, 0x4, R21 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R15, R15, 0x8080808, R12.reuse, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R11.ROW, R14.COL, R18 ;
+; Location ./int.jl:87
+        IADD3 R15, R15, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R5.ROW, R22.COL, R16 ;
+; Location ./int.jl:373
+        LOP3.LUT R22, R15, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R21, R21, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R29.ROW, R22.COL, R18 ;
+; Location ./int.jl:87
+        IADD3 R21, R21, 0x78787878, RZ ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R15, RZ, 0x4, R26 ;
+; Location ./int.jl:373
+        LOP3.LUT R27, R21, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R15, R15, 0x8080808, R12, 0x28, !PT ;
+; Location ./int.jl:87
+        IADD3 R15, R15, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R31.ROW, R27.COL, R18 ;
+; Location ./int.jl:373
+        LOP3.LUT R21, R15, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R9.ROW, R14.COL, R16 ;
+        IMMA.8816.S8.S8.SAT R14, R3.ROW, R20.COL, RZ ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R20, [R13+0x18] ;
+        LOP3.LUT R26, R26, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R2.ROW, R21.COL, R18 ;
+; Location ./int.jl:87
+        IADD3 R26, R26, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R13, [R13+0x1c] ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R53, RZ, 0x4, R25 ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R7.ROW, R24.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R24, R26, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R53, R53, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R4.ROW, R24.COL, R18 ;
+; Location ./int.jl:87
+        IADD3 R53, R53, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R11.ROW, R23.COL, R14 ;
+; Location ./int.jl:373
+        LOP3.LUT R23, R53, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R25, R25, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R6.ROW, R23.COL, R18 ;
+; Location ./int.jl:87
+        IADD3 R25, R25, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R29.ROW, R27.COL, R16 ;
+; Location ./int.jl:373
+        LOP3.LUT R25, R25, 0x80808080, RZ, 0x3c, !PT ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R27, RZ, 0x4, R20 ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R31.ROW, R22.COL, R14 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R27, R27, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R8.ROW, R25.COL, R18 ;
+; Location ./int.jl:87
+        IADD3 R22, R27, 0x78787878, RZ ;
+; Location ./int.jl:373
+        LOP3.LUT R22, R22, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R2.ROW, R24.COL, R16 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R20, R20, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R4.ROW, R21.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R20, R20, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R10.ROW, R22.COL, R18 ;
+; Location ./int.jl:373
+        LOP3.LUT R27, R20, 0x80808080, RZ, 0x3c, !PT ;
+; Location ./int.jl:530
+        SHF.R.U32.HI R21, RZ, 0x4, R13 ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R6.ROW, R25.COL, R16 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R21, R21, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R8.ROW, R23.COL, R14 ;
+; Location ./int.jl:87
+        IADD3 R21, R21, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R18, R28.ROW, R27.COL, R18 ;
+; Location ./int.jl:373
+        LOP3.LUT R21, R21, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R12, R13, 0x8080808, R12, 0x28, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R10.ROW, R27.COL, R16 ;
+; Location ./int.jl:87
+        IADD3 R12, R12, 0x78787878, RZ ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R14, R28.ROW, R22.COL, R14 ;
+        IMMA.8816.S8.S8.SAT R18, R30.ROW, R21.COL, R18 ;
+; Location ./int.jl:373
+        LOP3.LUT R13, R12, 0x80808080, RZ, 0x3c, !PT ;
+; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:1926
+        IMMA.8816.S8.S8.SAT R16, R30.ROW, R13.COL, R16 ;
+        IMMA.8816.S8.S8.SAT R14, R32.reuse.ROW, R21.COL, R14 ;
+        IMMA.8816.S8.S8.SAT R18, R32.ROW, R13.COL, R18 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LOP3.LUT R13, R45, 0x18, RZ, 0xfc, !PT ;
+; Location ./int.jl:87
+        IADD3 R14, R16, 0x4, -R14 ;
+        IADD3 R15, R17, 0x4, -R15 ;
+        IADD3 R18, R18, 0x4, RZ ;
+        IADD3 R19, R19, 0x4, RZ ;
+        IMAD R16, R13, 0x14, R36 ;
+; Location ./int.jl:527
+        SHF.R.S32.HI R14, RZ, 0x3, R14 ;
+        SHF.R.S32.HI R13, RZ, 0x3, R18 ;
+        SHF.R.S32.HI R15, RZ, 0x3, R15 ;
+        SHF.R.S32.HI R12, RZ, 0x3, R19 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        IMAD.SHL.U32 R16, R16, 0x4, RZ ;
+        I2IP.S16.S32.SAT R14, R13, R14, RZ ;
+        I2IP.S16.S32.SAT R15, R12, R15, RZ ;
+        STS [R16+0x2080], R14 ;
+        STS [R16+0x20d0], R15 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/synchronization.jl:16
+        BAR.SYNC 0x0 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        LDS R18, [R49] ;
+        LDS R24, [R47] ;
+        LDS R17, [R48] ;
+        LDS R19, [R46] ;
+        LDS R22, [R56] ;
+        LDS R13, [R52] ;
+        LDS R20, [R51] ;
+        LDS R12, [R50] ;
+; Location ./int.jl:87
+        LEA.HI.SX32 R14, R18, R33, 0x10 ;
+        LEA.HI.SX32 R16, R24, R33, 0x10 ;
+        LEA.HI.SX32 R14, R17, R14, 0x10 ;
+        LEA.HI.SX32 R16, R19, R16, 0x10 ;
+; Location ./int.jl:549
+        PRMT R18, R18, 0x9910, RZ ;
+        PRMT R21, R17, 0x9910, RZ ;
+        PRMT R24, R24, 0x9910, RZ ;
+        PRMT R23, R19, 0x9910, RZ ;
+; Location ./int.jl:527
+        SHF.R.S32.HI R15, RZ, R37.reuse, R14 ;
+        SHF.R.S32.HI R17, RZ, R37, R16 ;
+; Location ./int.jl:549
+        IMAD.MOV.U32 R16, RZ, RZ, R18 ;
+; Location ./essentials.jl:642
+        IMNMX R19, R15, -0x7, !PT ;
+; Location ./int.jl:549
+        IMAD.MOV.U32 R18, RZ, RZ, R24 ;
+; Location ./essentials.jl:642
+        IMNMX R17, R17, -0x7, !PT ;
+; Location ./int.jl:549
+        IMAD.MOV.U32 R15, RZ, RZ, R23 ;
+        IMAD.MOV.U32 R14, RZ, RZ, R21 ;
+; Location ./essentials.jl:642
+        IMNMX R19, R19, 0x7, PT ;
+        IMNMX R24, R17, 0x7, PT ;
+; Location ./int.jl:87
+        IADD3 R18, R15, R18, R33.reuse ;
+        IADD3 R16, R14, R16, R33 ;
+; Location ./int.jl:549
+        PRMT R15, R22, 0x9910, RZ ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        I2IP.S8.S32.SAT R14, R24, R19, RZ ;
+; Location ./int.jl:549
+        PRMT R17, R13, 0x9910, RZ ;
+; Location ./int.jl:87
+        LEA.HI.SX32 R24, R22, R33.reuse, 0x10 ;
+        LEA.HI.SX32 R19, R20, R33, 0x10 ;
+; Location ./int.jl:549
+        PRMT R21, R12, 0x9910, RZ ;
+        PRMT R22, R20, 0x9910, RZ ;
+        IMAD.MOV.U32 R20, RZ, RZ, R15 ;
+; Location ./int.jl:87
+        LEA.HI.SX32 R24, R13, R24, 0x10 ;
+; Location ./int.jl:549
+        IMAD.MOV.U32 R15, RZ, RZ, R17 ;
+; Location ./int.jl:87
+        LEA.HI.SX32 R12, R12, R19, 0x10 ;
+; Location ./int.jl:549
+        IMAD.MOV.U32 R17, RZ, RZ, R21 ;
+; Location ./int.jl:527
+        SHF.R.S32.HI R24, RZ, R37, R24 ;
+        SHF.R.S32.HI R12, RZ, R37.reuse, R12 ;
+        SHF.R.S32.HI R16, RZ, R37.reuse, R16 ;
+        SHF.R.S32.HI R18, RZ, R37, R18 ;
+; Location ./int.jl:87
+        IADD3 R20, R15, R20, R33.reuse ;
+        IADD3 R22, R17, R22, R33 ;
+; Location ./essentials.jl:642
+        IMNMX R24, R24, -0x7, !PT ;
+        IMNMX R12, R12, -0x7, !PT ;
+        IMNMX R16, R16, -0x7, !PT ;
+        IMNMX R18, R18, -0x7, !PT ;
+; Location ./int.jl:527
+        SHF.R.S32.HI R20, RZ, R37.reuse, R20 ;
+        SHF.R.S32.HI R22, RZ, R37, R22 ;
+; Location ./promotion.jl:521
+        ISETP.NE.AND P2, PT, R38, RZ, PT ;
+        ISETP.NE.AND P3, PT, R38.reuse, 0x20, PT ;
+        ISETP.NE.AND P4, PT, R38.reuse, 0x40, PT ;
+; Location ./range.jl:901
+        IADD3 R38, R38, 0x20, RZ ;
+; Location ./essentials.jl:642
+        IMNMX R13, R24, 0x7, PT ;
+        IMNMX R12, R12, 0x7, PT ;
+        IMNMX R16, R16, 0x7, PT ;
+        IMNMX R15, R18, 0x7, PT ;
+        IMNMX R20, R20, -0x7, !PT ;
+        IMNMX R22, R22, -0x7, !PT ;
+; Location ./promotion.jl:521
+        ISETP.NE.AND P5, PT, R38, 0x80, PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        I2IP.S8.S32.SAT R12, R12, R13, R14 ;
+        I2IP.S8.S32.SAT R16, R15, R16, RZ ;
+; Location ./essentials.jl:642
+        IMNMX R20, R20, 0x7, PT ;
+        IMNMX R15, R22, 0x7, PT ;
+; Location ./int.jl:529
+        IMAD.SHL.U32 R12, R12, 0x10, RZ ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        I2IP.S8.S32.SAT R15, R15, R20, R16 ;
+        LOP3.LUT R12, R15, 0xf0f0f0f, R12, 0xe2, !PT ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R41, R12.reuse, R41, !P2 ;
+        SEL R42, R12.reuse, R42, !P2 ;
+        SEL R44, R12.reuse, R44, !P3 ;
+        SEL R43, R12.reuse, R43, !P3 ;
+        SEL R39, R12.reuse, R39, !P4 ;
+        SEL R40, R12, R40, !P4 ;
+   @!P5 CALL.REL.NOINC `(.L_x_6) ;
+        BRA `(.L_x_7) ;
+
+.L_x_6:
+; Location ./promotion.jl:521
+        LOP3.LUT R0, R60.reuse, 0x1, RZ, 0xc0, !PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        S2R R8, SR_TID.X ;
+        PRMT R39, R39, 0x6240, R12 ;
+; Location ./int.jl:88
+        IMAD.SHL.U32 R60, R60, 0x2000, RZ ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        PRMT R41, R41, 0x6240, R44 ;
+        S2R R55, SR_CTAID.X ;
+        PRMT R42, R42, 0x7351, R43 ;
+        IMAD.MOV.U32 R14, RZ, RZ, 0x4 ;
+; Location ./promotion.jl:521
+        ISETP.NE.U32.AND P2, PT, R0, 0x1, PT ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        S2R R11, SR_TID.Y ;
+        PRMT R12, R40, 0x7351, R12 ;
+        ULDC.64 UR4, c[0x0][0x118] ;
+; Location ./range.jl:901
+        SEL R0, R41, R42, !P2 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R2, R39, R12, !P2 ;
+; Location ./int.jl:88
+        LOP3.LUT R60, R60, 0x30000, RZ, 0xc0, !PT ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R0, R0, 0x1, 0x1f ;
+        SHFL.BFLY PT, R2, R2, 0x1, 0x1f ;
+; Location ./int.jl:88
+        IMAD.SHL.U32 R10, R8.reuse, 0x8, RZ ;
+        IMAD.SHL.U32 R9, R8, 0x2, RZ ;
+        IMAD.SHL.U32 R11, R11, 0x20, RZ ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R41, R0, R41, !P2 ;
+        SEL R42, R42, R0, !P2 ;
+        SEL R39, R2, R39, !P2 ;
+        SEL R12, R12, R2, !P2 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        PRMT R3, R41, 0x6240, R42 ;
+        PRMT R4, R39, 0x6240, R12 ;
+        PRMT R41, R41, 0x7351, R42 ;
+        PRMT R12, R39, 0x7351, R12 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R5, R4, R3, !P0 ;
+        SEL R0, R12, R41, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R5, R5, 0x2, 0x1f ;
+        SHFL.BFLY PT, R0, R0, 0x2, 0x1f ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R3, R3, R5, !P0 ;
+        SEL R4, R5, R4, !P0 ;
+        SEL R41, R41, R0, !P0 ;
+        SEL R12, R0, R12, !P0 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        PRMT R2, R3, 0x5410, R4 ;
+        PRMT R7, R41, 0x5410, R12 ;
+        PRMT R3, R3, 0x7632, R4 ;
+        PRMT R12, R41, 0x7632, R12 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R4, R7, R2, P1 ;
+        SEL R5, R12, R3, P1 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R4, R4, 0x4, 0x1f ;
+        SHFL.BFLY PT, R5, R5, 0x4, 0x1f ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R2, R2, R4, P1 ;
+        SEL R7, R4, R7, P1 ;
+        SEL R3, R3, R5, P1 ;
+        SEL R12, R5, R12, P1 ;
+        IMAD.SHL.U32 R5, R8, 0x4, RZ ;
+        SEL R0, R2, R3, !P2 ;
+        SEL R6, R7, R12, !P2 ;
+; Location ./int.jl:88
+        LOP3.LUT R4, R10, 0x10, RZ, 0xc0, !PT ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R0, R0, 0x1, 0x1f ;
+; Location ./int.jl:88
+        LOP3.LUT R5, R5, 0x4, RZ, 0xc0, !PT ;
+; Location ./int.jl:296
+        IMAD R61, R61, 0x40000, R4 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R6, R6, 0x1, 0x1f ;
+; Location ./int.jl:88
+        LOP3.LUT R4, R9, 0x8, RZ, 0xc0, !PT ;
+        IMAD.SHL.U32 R9, R55, 0x80, RZ ;
+        IADD3 R5, R5, R61, R4 ;
+        IMAD.SHL.U32 R4, R55, 0x20, RZ ;
+; Location ./int.jl:87
+        LOP3.LUT R13, R11, R9, R8, 0xfe, !PT ;
+        IMAD.IADD R5, R60, 0x1, R5 ;
+        LOP3.LUT R4, R5, R4, RZ, 0xfc, !PT ;
+        IMAD.MOV.U32 R5, RZ, RZ, 0x4 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R10, R3, R0, !P2 ;
+        SEL R8, R0, R2, !P2 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE.U32 R2, R4, R5, c[0x0][0x1d0] ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R11, R12, R6, !P2 ;
+        SEL R9, R6, R7, !P2 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        IMAD.WIDE.U32 R4, R13, R14, c[0x0][0x1f0] ;
+        STG.E.128 [R2.64], R8 ;
+        STG.E [R4.64], RZ ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:908
+        EXIT ;
+
+.L_x_5:
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        IMAD.MOV.U32 R33, RZ, RZ, 0x2 ;
+        MOV R12, 0x3a60 ;
+        IMAD.MOV.U32 R27, RZ, RZ, 0x1f ;
+        IMAD.MOV.U32 R26, RZ, RZ, -0x1 ;
+        CALL.REL.NOINC `($__internal_0_$__cuda_sm70_shflsync_bfly) ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R4, R4, R33, !P0 ;
+        SEL R38, R33, R9, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        IMAD.MOV.U32 R33, RZ, RZ, 0x2 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R34, R6, R3, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        MOV R12, 0x3ac0 ;
+        CALL.REL.NOINC `($__internal_0_$__cuda_sm70_shflsync_bfly) ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R40, R3, R33, !P0 ;
+        SEL R28, R33, R6, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        IMAD.MOV.U32 R33, RZ, RZ, 0x2 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R34, R11, R2, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        MOV R12, 0x3b20 ;
+        CALL.REL.NOINC `($__internal_0_$__cuda_sm70_shflsync_bfly) ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R6, R2, R33, !P0 ;
+        SEL R30, R33, R11, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        IMAD.MOV.U32 R33, RZ, RZ, 0x2 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R34, R5, R0, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        MOV R12, 0x3b80 ;
+        CALL.REL.NOINC `($__internal_0_$__cuda_sm70_shflsync_bfly) ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R42, R0, R33, !P0 ;
+        SEL R31, R33, R5, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        IMAD.MOV.U32 R33, RZ, RZ, 0x2 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R34, R24, R7, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        MOV R12, 0x3be0 ;
+        CALL.REL.NOINC `($__internal_0_$__cuda_sm70_shflsync_bfly) ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R2, R7, R33, !P0 ;
+        SEL R24, R33, R24, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        IMAD.MOV.U32 R33, RZ, RZ, 0x2 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R34, R25, R10, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        MOV R12, 0x3c40 ;
+        CALL.REL.NOINC `($__internal_0_$__cuda_sm70_shflsync_bfly) ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R10, R10, R33, !P0 ;
+        SEL R25, R33, R25, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        IMAD.MOV.U32 R33, RZ, RZ, 0x2 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R34, R15, R8, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        MOV R12, 0x3ca0 ;
+        CALL.REL.NOINC `($__internal_0_$__cuda_sm70_shflsync_bfly) ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R8, R8, R33, !P0 ;
+        SEL R15, R33, R15, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        IMAD.MOV.U32 R33, RZ, RZ, 0x2 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R34, R21, R14, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        MOV R12, 0x3d00 ;
+        CALL.REL.NOINC `($__internal_0_$__cuda_sm70_shflsync_bfly) ;
+; Location ./promotion.jl:521
+        LOP3.LUT P2, RZ, R60, 0x4, RZ, 0xc0, !PT ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R14, R14, R33, !P0 ;
+        SEL R32, R33, R21, !P0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        IMAD.MOV.U32 R33, RZ, RZ, 0x4 ;
+; Location ./promotion.jl:521
+        PLOP3.LUT P1, PT, P2, PT, PT, 0x8, 0x0 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R34, R2, R4, !P2 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        MOV R12, 0x3d80 ;
+        CALL.REL.NOINC `($__internal_0_$__cuda_sm70_shflsync_bfly) ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R0, R4, R33, P1 ;
+        SEL R2, R33, R2, P1 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        IMAD.MOV.U32 R33, RZ, RZ, 0x4 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R34, R10, R40, P1 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        MOV R12, 0x3de0 ;
+        CALL.REL.NOINC `($__internal_0_$__cuda_sm70_shflsync_bfly) ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R3, R40, R33, P1 ;
+        SEL R4, R33, R10, P1 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        IMAD.MOV.U32 R33, RZ, RZ, 0x4 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R34, R8, R6, P1 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        MOV R12, 0x3e40 ;
+        CALL.REL.NOINC `($__internal_0_$__cuda_sm70_shflsync_bfly) ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R5, R6, R33, P1 ;
+        SEL R6, R33, R8, P1 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        IMAD.MOV.U32 R33, RZ, RZ, 0x4 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R34, R14, R42, P1 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        MOV R12, 0x3ea0 ;
+        CALL.REL.NOINC `($__internal_0_$__cuda_sm70_shflsync_bfly) ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R7, R42, R33, P1 ;
+        SEL R8, R33, R14, P1 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        IMAD.MOV.U32 R33, RZ, RZ, 0x4 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R34, R24, R38, P1 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        MOV R12, 0x3f00 ;
+        CALL.REL.NOINC `($__internal_0_$__cuda_sm70_shflsync_bfly) ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R9, R38, R33, P1 ;
+        SEL R10, R33, R24, P1 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        IMAD.MOV.U32 R33, RZ, RZ, 0x4 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R34, R25, R28, P1 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        MOV R12, 0x3f60 ;
+        CALL.REL.NOINC `($__internal_0_$__cuda_sm70_shflsync_bfly) ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R11, R28, R33, P1 ;
+        SEL R28, R33, R25, P1 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        IMAD.MOV.U32 R33, RZ, RZ, 0x4 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R34, R15, R30, P1 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        MOV R12, 0x3fc0 ;
+        CALL.REL.NOINC `($__internal_0_$__cuda_sm70_shflsync_bfly) ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R29, R30, R33, P1 ;
+        SEL R30, R33, R15, P1 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        IMAD.MOV.U32 R33, RZ, RZ, 0x4 ;
+; Location /home/eschnett/src/kotekan/julia/kernels/bb.jl:907
+        SEL R34, R32, R31, P1 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        MOV R12, 0x4020 ;
+        CALL.REL.NOINC `($__internal_0_$__cuda_sm70_shflsync_bfly) ;
+        IMAD.MOV.U32 R21, RZ, RZ, R33 ;
+        BRA `(.L_x_8) ;
+        .weak           $__internal_0_$__cuda_sm70_shflsync_bfly
+        .type           $__internal_0_$__cuda_sm70_shflsync_bfly,@function
+        .size           $__internal_0_$__cuda_sm70_shflsync_bfly,($_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_report_exception - $__internal_0_$__cuda_sm70_shflsync_bfly)
+$__internal_0_$__cuda_sm70_shflsync_bfly:
+        IMAD.MOV.U32 R13, RZ, RZ, 0x0 ;
+        WARPSYNC R26 ;
+        SHFL.BFLY PT, R33, R34, R33, R27 ;
+        RET.REL.NODEC R12 `(_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE) ;
+        .type           $_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_report_exception,@function
+        .size           $_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_report_exception,($_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_signal_exception - $_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_report_exception)
+$_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_report_exception:
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/runtime.jl:54
+        IMAD.MOV.U32 R2, RZ, RZ, R0 ;
+        IADD3 R6, P0, R1, c[0x0][0x20], RZ ;
+        IMAD.MOV.U32 R3, RZ, RZ, R5 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        UMOV UR4, 32@lo(__unnamed_1) ;
+        MOV R20, 32@lo((_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE + .L_x_0@srel)) ;
+        UMOV UR5, 32@hi(__unnamed_1) ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/runtime.jl:54
+        IMAD.X R7, RZ, RZ, c[0x0][0x24], P0 ;
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        STL.64 [R1], R2 ;
+        IMAD.U32 R4, RZ, RZ, UR4 ;
+        MOV R21, 32@hi((_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE + .L_x_0@srel)) ;
+        IMAD.U32 R5, RZ, RZ, UR5 ;
+        CALL.ABS.NOINC `(vprintf) ;
+
+.L_x_0:
+        IMAD.MOV.U32 R2, RZ, RZ, R25 ;
+        IMAD.MOV.U32 R3, RZ, RZ, 0x0 ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/runtime.jl:59
+        RET.REL.NODEC R2 `(_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE) ;
+        .type           $_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_signal_exception,@function
+        .size           $_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_signal_exception,(.L_x_13 - $_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_signal_exception)
+$_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE$gpu_signal_exception:
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/runtime.jl:41
+        ISETP.NE.U32.AND P0, PT, RZ, UR36, PT ;
+        ISETP.NE.AND.EX P0, PT, RZ, UR37, PT, P0 ;
+   @!P0 BRA `(.L_x_9) ;
+        IMAD.MOV.U32 R0, RZ, RZ, 0x1 ;
+        ULDC.64 UR4, c[0x0][0x118] ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/runtime.jl:39
+        IMAD.U32 R2, RZ, RZ, UR36 ;
+        IMAD.U32 R3, RZ, RZ, UR37 ;
+; Location ./pointer.jl:146
+        ST.E.U8 [R2.64], R0 ;
+        ST.E.U8 [R2.64+0x7], RZ ;
+        ST.E.U8 [R2.64+0x6], RZ ;
+        ST.E.U8 [R2.64+0x5], RZ ;
+        ST.E.U8 [R2.64+0x4], RZ ;
+        ST.E.U8 [R2.64+0x3], RZ ;
+        ST.E.U8 [R2.64+0x2], RZ ;
+        ST.E.U8 [R2.64+0x1], RZ ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/synchronization.jl:109
+   @!PT LDS RZ, [RZ] ;
+   @!PT LDS RZ, [RZ] ;
+   @!PT LDS RZ, [RZ] ;
+   @!PT LDS RZ, [RZ] ;
+        MEMBAR.SC.SYS ;
+        ERRBAR;
+        CCTL.IVALL ;
+; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/runtime.jl:43
+        EXIT ;
+
+.L_x_9:
+; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        UMOV UR4, 32@lo(__unnamed_2) ;
+        CS2R R6, SRZ ;
+        UMOV UR5, 32@hi(__unnamed_2) ;
+        IMAD.U32 R4, RZ, RZ, UR4 ;
+        MOV R20, 32@lo((_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE + .L_x_1@srel)) ;
+        IMAD.U32 R5, RZ, RZ, UR5 ;
+        MOV R21, 32@hi((_Z2bb13CuDeviceArrayI6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_I5Int32Li1ELi1EES_IS1_Li1ELi1EES_IS2_Li1ELi1EE + .L_x_1@srel)) ;
+        CALL.ABS.NOINC `(vprintf) ;
+
+.L_x_1:
+        EXIT ;
+
+.L_x_10:
+        BRA `(.L_x_10);
+        NOP;
+        NOP;
+        NOP;
+        NOP;
+        NOP;
+        NOP;
+        NOP;
+        NOP;
+
+.L_x_13:
+
+
+//--------------------- SYMBOLS --------------------------
+
+	.type		vprintf,@function

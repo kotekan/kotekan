@@ -326,7 +326,6 @@ void testDataGen::main_thread() {
                     chordmeta->dims = (int)_array_shape.size();
                     chordmeta->n_one_hot = chordmeta->dims;
                     chordmeta->type = chordDataType::int4p4;
-                    chordmeta->frame_counter = frame_id_abs;
                     // DEBUG("one-hot: nfreq = {:d}, ntime = {:d}", nfreq, ntime);
                     if (nfreq) {
                         assert(nfreq <= CHORD_META_MAX_FREQ);

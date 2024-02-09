@@ -9,7 +9,7 @@ kernel-description:
     number-of-dishes: 64
     number-of-frequencies: 128
     number-of-polarizations: 2
-    number-of-timesamples: 32768
+    number-of-timesamples: 2048
   compile-parameters:
     minthreads: 512
     blocks_per_sm: 1
@@ -23,13 +23,13 @@ kernel-description:
       intent: in
       type: Int4
       indices: [C, Dshort, Tshort, D, P, F, T]
-      shape: [2, 8, 16, 8, 2, 128, 2048]
+      shape: [2, 8, 16, 8, 2, 128, 128]
       strides: [1, 2, 16, 256, 2048, 4096, 524288]
     - name: "E"
       intent: in
       type: Int4
       indices: [C, D, P, F, T]
-      shape: [2, 64, 2, 128, 32768]
+      shape: [2, 64, 2, 128, 2048]
       strides: [1, 2, 128, 256, 32768]
     - name: "info"
       intent: out
