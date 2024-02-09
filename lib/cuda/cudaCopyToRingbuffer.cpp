@@ -20,6 +20,7 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
     _gpu_mem_input = config.get_default<std::string>(unique_name, "gpu_mem_input", "");
     if (_gpu_mem_input.size() == 0) {
+        // We're reading from host memory into GPU ringbuffer
         std::string bufname = config.get<std::string>(unique_name, "in_buf");
         in_buffer = host_buffers.get_buffer(bufname);
         if (!in_buffer)

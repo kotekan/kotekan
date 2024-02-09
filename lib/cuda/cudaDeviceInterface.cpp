@@ -210,7 +210,8 @@ void cudaDeviceInterface::build(const std::string& kernel_filename,
 
 void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
                                     const std::vector<std::string>& kernel_names,
-                                    const std::vector<std::string>& opts) {
+                                    const std::vector<std::string>& opts,
+                                    const std::string& kernel_name_prefix) {
     size_t program_size;
     FILE* fp;
     char* program_buffer;
@@ -222,9 +223,9 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
     CUmodule module;
 
     for (auto& kernel_name : kernel_names)
-        if (runtime_kernels.count(kernel_name))
+        if (runtime_kernels.count(kernel_name_prefix + kernel_name))
             FATAL_ERROR("Building CUDA kernels in file {:s}: kernel \"{:s}\" already exists.",
-                        kernel_filename, kernel_name);
+                        kernel_filename, kernel_name_prefix + kernel_name);
     // DEBUG("Building! {:s}", kernel_command)
 
     // Load the kernel file contents into `program_buffer`
@@ -332,8 +333,8 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
     }
 
     for (auto& kernel_name : kernel_names) {
-        runtime_kernels.emplace(kernel_name, nullptr);
-        cu_res = cuModuleGetFunction(&runtime_kernels[kernel_name], module, kernel_name.c_str());
+        runtime_kernels.emplace(kernel_name_prefix + kernel_name, nullptr);
+        cu_res = cuModuleGetFunction(&runtime_kernels[kernel_name_prefix + kernel_name], module, kernel_name.c_str());
         if (cu_res != CUDA_SUCCESS) {
             const char* errStr;
             cuGetErrorString(cu_res, &errStr);

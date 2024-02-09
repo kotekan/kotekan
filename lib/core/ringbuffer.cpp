@@ -2,6 +2,27 @@
 
 typedef std::lock_guard<std::recursive_mutex> buffer_lock;
 
+static void print_py_status(RingBuffer* rb) {
+    std::string write_heads = "{";
+    for (const auto& [key, value] : rb->write_heads)
+        write_heads += "\"" + key + "\": " + std::to_string(value) + ", ";
+    write_heads += "}";
+    std::string write_next = "{";
+    for (const auto& [key, value] : rb->write_next)
+        write_next += "\"" + key + "\": " + std::to_string(value) + ", ";
+    write_next += "}";
+    std::string read_heads = "{";
+    for (const auto& [key, value] : rb->read_heads)
+        read_heads += "\"" + key + "\": " + std::to_string(value) + ", ";
+    read_heads += "}";
+    std::string read_tails = "{";
+    for (const auto& [key, value] : rb->read_tails)
+        read_tails += "\"" + key + "\": " + std::to_string(value) + ", ";
+    read_tails += "}";
+    DEBUG_NON_OO("PY_RB rb_state(\"{:s}\", size={:d}, write_heads={:s}, write_next={:s}, write_head={:d}, write_tail={:d}, read_heads={:s}, read_tails={:s})", rb->buffer_name, rb->size, write_heads, write_next, rb->write_head, rb->write_tail, read_heads, read_tails);
+    //DEBUG_NON_OO("PY_RB rb_state(\"{:s}\", size={:d}, write_heads={:s})", rb->buffer_name, rb->size, write_heads);
+}
+
 RingBuffer::RingBuffer(size_t sz, std::shared_ptr<metadataPool> pool,
                        const std::string& _buffer_name, const std::string& _buffer_type) :
     GenericBuffer(_buffer_name, _buffer_type, pool, 1),
@@ -53,6 +74,7 @@ std::optional<size_t> RingBuffer::wait_and_claim_readable(const std::string& nam
     read_heads[name] += sz;
     if (shutdown_signal)
         return std::optional<size_t>();
+    print_py_status(this);
     // return the former read_head - that's where the consumer should start reading from.
     return std::optional<size_t>(head % size);
 }
@@ -85,6 +107,7 @@ void RingBuffer::finish_read(const std::string& name, size_t sz) {
             write_tail = oldest;
         }
     }
+    print_py_status(this);
     INFO("finish_read {:s} {:L} write_tail now {:L}", name, sz, write_tail);
     empty_cond.notify_all();
 }
@@ -110,6 +133,7 @@ std::optional<size_t> RingBuffer::wait_for_writable(const std::string& name, siz
     DEBUG("wait_for_writable {:s} {:L} -> {:L} {:L}", name, sz, write_next[name],
           rtn);
     write_next[name] += sz;
+    print_py_status(this);
     return std::optional<size_t>(rtn);
 }
 
@@ -140,6 +164,7 @@ void RingBuffer::finish_write(const std::string& name, size_t sz) {
             write_head = oldest;
         }
     }
+    print_py_status(this);
     // DEBUG("finish_write {:s} {:L} write_head now {:L}", name, sz, write_head);
     full_cond.notify_all();
 }

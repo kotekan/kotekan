@@ -202,7 +202,7 @@ Tmin(0), Tmax(0), Tbarmin(0), Tbarmax(0)
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx(kernel_file_name, {kernel_symbol}, opts);
+        device.build_ptx(kernel_file_name, {kernel_symbol}, opts, "{{{kernel_name}}}_");
     }
 
     // Find input and output buffers used for signalling ring-buffer state
@@ -242,7 +242,7 @@ int cuda{{{kernel_name}}}::wait_on_precondition() {
 
     // Subtract T_leftover samples, avoiding underflow
     size_t Tringbuf = input_ringbuf_signal->size / T_sample_bytes;
-    Tmin = (Tmin + (Tringbuf - T_leftover)) % Tringbuf
+    Tmin = (Tmin + (Tringbuf - T_leftover)) % Tringbuf;
 
     DEBUG("After adjusting for leftover samples, input ring-buffer time sample offset is {:d}", Tmin);
 
@@ -446,15 +446,16 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     // // TODO: Skip this for performance
     // CHECK_CUDA_ERROR(cudaMemsetAsync(Ebar_memory, 0x88, Ebar_length, device.getStream(cuda_stream_id)));
 
-    DEBUG("kernel_symbol: {}", kernel_symbol);
-    DEBUG("runtime_kernels[kernel_symbol]: {}", static_cast<void*>(device.runtime_kernels[kernel_symbol]));
-    CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[kernel_symbol],
+    std::string symname = "{{{kernel_name}}}_" + std::string(kernel_symbol);
+    DEBUG("kernel_symbol: {}", symname);
+    DEBUG("runtime_kernels[kernel_symbol]: {}", static_cast<void*>(device.runtime_kernels[symname]));
+    CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[symname],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
     DEBUG("Running CUDA {{{kernel_name}}} on GPU frame {:d}", gpu_frame_id);
     const CUresult err =
-        cuLaunchKernel(device.runtime_kernels[kernel_symbol],
+        cuLaunchKernel(device.runtime_kernels[symname],
                        blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes,
                        device.getStream(cuda_stream_id),
