@@ -126,11 +126,52 @@ public:
             group->emplace(buffer->buffer_name, std::make_shared<ASDF::ndarray_entry>(ndarray));
 
             // Describe metadata
+
+            group->emplace("nfreq", std::make_shared<ASDF::int_entry>(meta->nfreq));
+
+            auto coarse_freq = std::make_shared<ASDF::sequence>();
+            for (int freq = 0; freq < meta->nfreq; ++freq)
+                coarse_freq->push_back(std::make_shared<ASDF::int_entry>(meta->coarse_freq[freq]));
+            group->emplace("coarse_freq", coarse_freq);
+
+            auto freq_upchan_factor = std::make_shared<ASDF::sequence>();
+            for (int freq = 0; freq < meta->nfreq; ++freq)
+                freq_upchan_factor->push_back(
+                    std::make_shared<ASDF::int_entry>(meta->freq_upchan_factor[freq]));
+            group->emplace("freq_upchan_factor", freq_upchan_factor);
+
+            auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
+            for (int freq = 0; freq < meta->nfreq; ++freq)
+                half_fpga_sample0->push_back(
+                    std::make_shared<ASDF::int_entry>(meta->half_fpga_sample0[freq]));
+            group->emplace("half_fpga_sample0", half_fpga_sample0);
+
+            auto time_downsampling_fpga = std::make_shared<ASDF::sequence>();
+            for (int freq = 0; freq < meta->nfreq; ++freq)
+                time_downsampling_fpga->push_back(
+                    std::make_shared<ASDF::int_entry>(meta->time_downsampling_fpga[freq]));
+            group->emplace("time_downsampling_fpga", time_downsampling_fpga);
+
             auto dim_names = std::make_shared<ASDF::sequence>();
             for (int d = 0; d < ndims; ++d)
                 dim_names->push_back(
                     std::make_shared<ASDF::string_entry>(meta->get_dimension_name(d)));
             group->emplace("dim_names", dim_names);
+
+            if (meta->ndishes >= 0)
+                group->emplace("ndishes", std::make_shared<ASDF::int_entry>(meta->ndishes));
+
+            if (meta->dish_index) {
+                auto dish_index = std::make_shared<ASDF::ndarray>(
+                    std::vector<int>(meta->dish_index,
+                                     meta->dish_index
+                                         + meta->n_dish_locations_ew * meta->n_dish_locations_ns),
+                    ASDF::block_format_t::inline_array, ASDF::compression_t::none, -1,
+                    std::vector<bool>(),
+                    std::vector<int64_t>{meta->n_dish_locations_ns, meta->n_dish_locations_ew});
+                auto dish_index_entry = std::make_shared<ASDF::ndarray_entry>(dish_index);
+                group->emplace("dish_index", dish_index_entry);
+            }
 
             // Define file name
             std::ostringstream ibuf;

@@ -167,6 +167,7 @@ private:
     const std::string info_memname;
 
     // Host-side buffer arrays
+    std::vector<std::vector<std::uint8_t>> S_host;
     std::vector<std::vector<std::uint8_t>> info_host;
 };
 
@@ -177,16 +178,17 @@ cudaFRBBeamformer_hirax::cudaFRBBeamformer_hirax(Config& config, const std::stri
                                                  cudaDeviceInterface& device, const int inst) :
     cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state,
                 "FRBBeamformer_hirax", "FRBBeamformer_hirax.ptx"),
-    S_memname(config.get<std::string>(unique_name, "gpu_mem_dishlayout")),
+    S_memname(unique_name + "/gpu_mem_dishlayout"),
     W_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
     E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
     I_memname(config.get<std::string>(unique_name, "gpu_mem_beamgrid")),
     info_memname(unique_name + "/gpu_mem_info")
 
     ,
-    info_host(_gpu_buffer_depth) {
+    S_host(_gpu_buffer_depth), info_host(_gpu_buffer_depth) {
     // Add Graphviz entries for the GPU buffers used by this kernel
-    gpu_buffers_used.push_back(std::make_tuple(S_memname, true, true, false));
+    gpu_buffers_used.push_back(
+        std::make_tuple(get_name() + "_gpu_mem_dishlayout", false, true, true));
     gpu_buffers_used.push_back(std::make_tuple(W_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(I_memname, true, true, false));
@@ -212,8 +214,8 @@ cudaEvent_t cudaFRBBeamformer_hirax::execute(cudaPipelineState& /*pipestate*/,
 
     pre_execute();
 
-    void* const S_memory =
-        device.get_gpu_memory_array(S_memname, gpu_frame_id, _gpu_buffer_depth, S_length);
+    S_host.at(gpu_frame_index).resize(S_length);
+    void* const S_memory = device.get_gpu_memory(S_memname, S_length);
     void* const W_memory =
         device.get_gpu_memory_array(W_memname, gpu_frame_id, _gpu_buffer_depth, W_length);
     void* const E_memory =
@@ -223,22 +225,41 @@ cudaEvent_t cudaFRBBeamformer_hirax::execute(cudaPipelineState& /*pipestate*/,
     info_host.at(gpu_frame_index).resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
-    /// S is an input buffer: check metadata
-    const metadataContainer* const S_mc =
-        device.get_gpu_memory_array_metadata(S_memname, gpu_frame_id);
-    assert(S_mc && metadata_container_is_chord(S_mc));
-    const chordMetadata* const S_meta = get_chord_metadata(S_mc);
-    INFO("input S array: {:s} {:s}", S_meta->get_type_string(), S_meta->get_dimensions_string());
-    assert(S_meta->type == S_type);
-    assert(S_meta->dims == S_rank);
-    for (std::size_t dim = 0; dim < S_rank; ++dim) {
-        assert(std::strncmp(S_meta->dim_name[dim], S_labels[S_rank - 1 - dim],
-                            sizeof S_meta->dim_name[dim])
-               == 0);
-        assert(S_meta->dim[dim] == int(S_lengths[S_rank - 1 - dim]));
+    // TODO: Initialize (and copy to the GPU) S only once at the beginning
+    {
+        // S maps dishes to locations.
+        // The first `ndishes` dishes are real dishes,
+        // the remaining dishes are not real and exist only to label the unoccupied dish locations.
+        const metadataContainer* const E_mc =
+            device.get_gpu_memory_array_metadata(E_memname, gpu_frame_id);
+        assert(E_mc && metadata_container_is_chord(E_mc));
+        const chordMetadata* const E_meta = get_chord_metadata(E_mc);
+        assert(E_meta->ndishes == cuda_number_of_dishes);
+        assert(E_meta->n_dish_locations_ew == cuda_dish_layout_N);
+        assert(E_meta->n_dish_locations_ns == cuda_dish_layout_M);
+        assert(E_meta->dish_index);
+        std::int16_t* __restrict__ const S =
+            static_cast<std::int16_t*>(static_cast<void*>(S_host.at(gpu_frame_index).data()));
+        int surplus_dish_index = cuda_number_of_dishes;
+        for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
+            for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
+                int dish_index = E_meta->get_dish_index(locN, locM);
+                if (dish_index >= 0) {
+                    // This location holds a real dish, record its location
+                    S[2 * dish_index + 0] = locM;
+                    S[2 * dish_index + 1] = locN;
+                } else {
+                    // This location is empty, assign it a surplus dish index
+                    S[2 * surplus_dish_index + 0] = locM;
+                    S[2 * surplus_dish_index + 1] = locN;
+                    ++surplus_dish_index;
+                }
+            }
+        }
+        assert(surplus_dish_index == cuda_dish_layout_M * cuda_dish_layout_N);
     }
-    //
-    /// W is an input buffer: check metadata
+
+    // W is an input buffer: check metadata
     const metadataContainer* const W_mc =
         device.get_gpu_memory_array_metadata(W_memname, gpu_frame_id);
     assert(W_mc && metadata_container_is_chord(W_mc));
@@ -253,7 +274,7 @@ cudaEvent_t cudaFRBBeamformer_hirax::execute(cudaPipelineState& /*pipestate*/,
         assert(W_meta->dim[dim] == int(W_lengths[W_rank - 1 - dim]));
     }
     //
-    /// E is an input buffer: check metadata
+    // E is an input buffer: check metadata
     const metadataContainer* const E_mc =
         device.get_gpu_memory_array_metadata(E_memname, gpu_frame_id);
     assert(E_mc && metadata_container_is_chord(E_mc));
@@ -268,7 +289,7 @@ cudaEvent_t cudaFRBBeamformer_hirax::execute(cudaPipelineState& /*pipestate*/,
         assert(E_meta->dim[dim] == int(E_lengths[E_rank - 1 - dim]));
     }
     //
-    /// I is an output buffer: set metadata
+    // I is an output buffer: set metadata
     metadataContainer* const I_mc =
         device.create_gpu_memory_array_metadata(I_memname, gpu_frame_id, E_mc->parent_pool);
     chordMetadata* const I_meta = get_chord_metadata(I_mc);
@@ -296,6 +317,8 @@ cudaEvent_t cudaFRBBeamformer_hirax::execute(cudaPipelineState& /*pipestate*/,
     };
 
     // Copy inputs to device memory
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, S_host.at(gpu_frame_index).data(), S_length,
+                                     cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
 
     // Initialize host-side buffer arrays
     // TODO: Skip this for performance
@@ -344,7 +367,6 @@ cudaEvent_t cudaFRBBeamformer_hirax::execute(cudaPipelineState& /*pipestate*/,
 }
 
 void cudaFRBBeamformer_hirax::finalize_frame() {
-    device.release_gpu_memory_array_metadata(S_memname, gpu_frame_id);
     device.release_gpu_memory_array_metadata(W_memname, gpu_frame_id);
     device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
     device.release_gpu_memory_array_metadata(I_memname, gpu_frame_id);

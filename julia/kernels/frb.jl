@@ -2063,7 +2063,7 @@ function fix_ptx_kernel()
                     "type" => "int16",
                     "axes" => [Dict("label" => "MN", "length" => 2), Dict("label" => "D", "length" => M * N)],
                     "isoutput" => false,
-                    "hasbuffer" => true,
+                    "hasbuffer" => false,
                 ),
                 Dict(
                     "name" => "W",

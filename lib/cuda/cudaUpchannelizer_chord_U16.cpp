@@ -341,7 +341,7 @@ cudaEvent_t cudaUpchannelizer_chord_U16::execute(cudaPipelineState& /*pipestate*
     info_host.at(gpu_frame_index).resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
-    /// G is an input buffer: check metadata
+    // G is an input buffer: check metadata
     const metadataContainer* const G_mc =
         device.get_gpu_memory_array_metadata(G_memname, gpu_frame_id);
     assert(G_mc && metadata_container_is_chord(G_mc));
@@ -359,7 +359,7 @@ cudaEvent_t cudaUpchannelizer_chord_U16::execute(cudaPipelineState& /*pipestate*
             assert(G_meta->dim[dim] == int(G_lengths[G_rank - 1 - dim]));
     }
     //
-    /// E is an input buffer: check metadata
+    // E is an input buffer: check metadata
     const metadataContainer* const E_mc =
         device.get_gpu_memory_array_metadata(E_memname, gpu_frame_id);
     assert(E_mc && metadata_container_is_chord(E_mc));
@@ -377,7 +377,7 @@ cudaEvent_t cudaUpchannelizer_chord_U16::execute(cudaPipelineState& /*pipestate*
             assert(E_meta->dim[dim] == int(E_lengths[E_rank - 1 - dim]));
     }
     //
-    /// Ebar is an output buffer: set metadata
+    // Ebar is an output buffer: set metadata
     metadataContainer* const Ebar_mc =
         device.create_gpu_memory_array_metadata(Ebar_memname, gpu_frame_id, E_mc->parent_pool);
     chordMetadata* const Ebar_meta = get_chord_metadata(Ebar_mc);

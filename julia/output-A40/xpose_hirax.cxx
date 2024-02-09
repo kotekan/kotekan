@@ -178,7 +178,7 @@ cudaEvent_t cudaTransposeKernel_hirax::execute(cudaPipelineState& /*pipestate*/,
     info_host.at(gpu_frame_index).resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
-    /// Ein is an input buffer: check metadata
+    // Ein is an input buffer: check metadata
     const metadataContainer* const Ein_mc =
         device.get_gpu_memory_array_metadata(Ein_memname, gpu_frame_id);
     assert(Ein_mc && metadata_container_is_chord(Ein_mc));
@@ -194,7 +194,7 @@ cudaEvent_t cudaTransposeKernel_hirax::execute(cudaPipelineState& /*pipestate*/,
         assert(Ein_meta->dim[dim] == int(Ein_lengths[Ein_rank - 1 - dim]));
     }
     //
-    /// E is an output buffer: set metadata
+    // E is an output buffer: set metadata
     metadataContainer* const E_mc =
         device.create_gpu_memory_array_metadata(E_memname, gpu_frame_id, Ein_mc->parent_pool);
     chordMetadata* const E_meta = get_chord_metadata(E_mc);

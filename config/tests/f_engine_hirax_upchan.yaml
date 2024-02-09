@@ -133,10 +133,10 @@ host_expected_frb_beams_buffer:
     frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * frb_num_output_times * num_frequencies
     metadata_pool: main_pool
 
-host_bb_beams_buffer:
+host_upchan_voltage_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
+    frame_size: num_dishes * num_polarizations * (num_frequencies * upchannelization_factor) * (num_times / upchannelization_factor)
     metadata_pool: main_pool
 
 # Stages
@@ -151,15 +151,6 @@ gen_voltage:
     W_buffer: host_frb_phase_buffer
     I_buffer: host_expected_frb_beams_buffer
 
-gen_shift:
-    kotekan_stage: testDataGen
-    type: const32
-    dim_name: ["F", "P", "B"]
-    # array_shape: [num_frequencies, num_polarizations, bb_num_beams]
-    array_shape: [64, 2, 16]
-    value: 13
-    out_buf: host_bb_shift_buffer
-
 gpu:
     kernel_path: "lib/cuda/kernels"
     gpu_0:
@@ -167,49 +158,40 @@ gpu:
         gpu_id: 0
         in_buffers:
             host_voltage: host_voltage_buffer
-            host_bb_phase: host_bb_phase_buffer
-            host_bb_shift: host_bb_shift_buffer
+            host_upchan_gain: host_upchan_gain_buffer
         out_buffers:
-            host_bb_beams: host_bb_beams_buffer
+            host_upchan_voltage: host_upchan_voltage_buffer
         commands:
         - name: cudaInputData
           in_buf: host_voltage
           gpu_mem: voltage
         - name: cudaInputData
-          in_buf: host_bb_phase
-          gpu_mem: bb_phase
-        - name: cudaInputData
-          in_buf: host_bb_shift
-          gpu_mem: bb_shift
+          in_buf: host_upchan_gain
+          gpu_mem: upchan_gain
         - name: cudaSyncInput
-        - name: cudaBasebandBeamformer_hirax
-          gpu_mem_voltage: voltage
-          gpu_mem_phase: bb_phase
-          gpu_mem_output_scaling: bb_shift
-          gpu_mem_formed_beams: bb_beams
+        - name: cudaUpchannelizer_hirax_U16
+          gpu_mem_input_voltage: voltage
+          gpu_mem_gain: upchan_gain
+          gpu_mem_output_voltage: upchan_voltage
         - name: cudaSyncOutput
         - name: cudaOutputData
-          gpu_mem: bb_beams
-          out_buf: host_bb_beams
+          gpu_mem: upchan_voltage
+          out_buf: host_upchan_voltage
 
 write_data:
-    base_dir: /tmp/f_engine_hirax_bb
+    base_dir: /tmp/f_engine_hirax_upchan
     exit_after_n_frames: 10
-    exit_with_n_writers: 4
+    exit_with_n_writers: 3
     write_voltage:
         kotekan_stage: asdfFileWrite
         in_buf: host_voltage_buffer
         file_name: voltage
-    write_bb_phase:
+    write_gain:
         kotekan_stage: asdfFileWrite
-        in_buf: host_bb_phase_buffer
-        file_name: bb_phase
-    write_expected_bb_beams:
+        in_buf: host_upchan_gain_buffer
+        file_name: upchan_gain
+    write_upchan_voltage:
         kotekan_stage: asdfFileWrite
-        in_buf: host_expected_bb_beams_buffer
-        file_name: expected_bb_beams
-    write_bb_beams:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_bb_beams_buffer
-        file_name: bb_beams
+        in_buf: host_upchan_voltage_buffer
+        file_name: upchan_voltage
 ...

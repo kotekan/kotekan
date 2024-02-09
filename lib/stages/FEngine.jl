@@ -200,17 +200,24 @@ struct Dishes
     locations::Vector{NTuple{2,Float}}
 end
 
-function make_dishes(dish_separation_x::Float, dish_separation_y::Float, ndishes_i::Int, ndishes_j::Int)
-    # dish_separation_x = Float(6.3)  #  east-west
-    # dish_separation_y = Float(8.5)  #  north-south
-    i₀ = (1 + ndishes_i) / Float(2) #  centre
-    j₀ = (1 + ndishes_j) / Float(2)
-    # TODO: Use realistic dish layout
-    locations = NTuple{2,Float}[let
-        x = dish_separation_x * (i - i₀)
-        y = dish_separation_y * (j - j₀)
-        (x, y)
-    end for j in 1:ndishes_j for i in 1:ndishes_i]
+function make_dishes(
+    dish_separation_ew::Float,
+    dish_separation_ns::Float,
+    num_dish_locations_ew::Int,
+    num_dish_locations_ns::Int,
+    dish_locations::AbstractVector{NTuple{2,Int}},
+)
+    # dish_separation_ew = Float(6.3)  #  east-west
+    # dish_separation_ns = Float(8.5)  #  north-south
+    i_ew₀ = (num_dish_locations_ew - 1) / Float(2) #  centre
+    i_ns₀ = (num_dish_locations_ns - 1) / Float(2)
+    locations = NTuple{2,Float}[
+        let
+            x_ew = dish_separation_ew * (i_ew - i_ew₀)
+            x_ns = dish_separation_ns * (i_ns - i_ns₀)
+            (x_ns, x_ew)
+        end for (i_ns, i_ew) in dish_locations
+    ]
     return Dishes(locations)
 end
 
@@ -570,16 +577,15 @@ end
 # frb beamformer
 
 function frb(
-    ::Type{T}, S::AbstractArray{<:Integer,2}, W::AbstractArray{<:Complex,4}, E::AbstractArray{<:Complex,4}, Tds::Integer
+    ::Type{T}, S::AbstractVector{<:NTuple{2,<:Integer}}, W::AbstractArray{<:Complex,4}, E::AbstractArray{<:Complex,4}, Tds::Integer
 ) where {T<:Real}
-    # S: [MN, dish]
+    # S: [dish]
     # W: [dishM, dishN, polr, freq]
     # E: [dish, polr, freq, time]
     # I: [beamP, beamQ, time-bar, freq]
-    mn, ndishes = size(S)
+    ndishes, = size(S)
     ndishesM, ndishesN, npolrs, nfreqs = size(W)
     ndishes, npolrs′, nfreqs′, ntimes = size(E)
-    @assert mn == 2
     @assert ndishes <= ndishesM * ndishesN
     @assert npolrs′ == npolrs
     @assert nfreqs′ == nfreqs
@@ -590,45 +596,41 @@ function frb(
     # Pre-calculate phase factors
     # eqn (4), probably needs more phase factors
     # TODO: Transpose `HPM`, `HQN`
-    HPM = [cispi(2 * dishM * beamP / T(nbeamsP)) for beamP in 0:(nbeamsP - 1), dishM in 0:(ndishesM - 1)]
-    HQN = [cispi(2 * dishN * beamQ / T(nbeamsQ)) for beamQ in 0:(nbeamsQ - 1), dishN in 0:(ndishesN - 1)]
+    HPM = [cispi(2 * dishM * beamP / T(nbeamsP)) for dishM in 0:(ndishesM - 1), beamP in 0:(nbeamsP - 1)]
+    HQN = [cispi(2 * dishN * beamQ / T(nbeamsQ)) for dishN in 0:(ndishesN - 1), beamQ in 0:(nbeamsQ - 1)]
     I = zeros(T, nbeamsP, nbeamsQ, ntimes_ds, nfreqs)
-    Fs = Array{Complex{T}}(undef, ndishesM, ndishesN, Threads.threadpoolsize())
-    Xs = Array{Complex{T}}(undef, nbeamsP, ndishesN, Threads.threadpoolsize())
-    # Gs = Array{Complex{T}}(undef, nbeamsP, nbeamsQ, Threads.threadpoolsize())
+    Fs = Array{Complex{T},2}[Array{Complex{T},2}(undef, ndishesM, ndishesN) for tid in 1:Threads.threadpoolsize()]
+    Xs = Array{Complex{T},2}[Array{Complex{T},2}(undef, ndishesN, nbeamsP) for tid in 1:Threads.threadpoolsize()]
     @threads for freq in 0:(nfreqs - 1)
         tid = threadid()
-        F = @view Fs[:, :, tid]
-        X = @view Xs[:, :, tid]
-        # G = @view Gs[:, :, tid]
+        F = Fs[tid]
+        X = Xs[tid]
+        F .= 0
         for time_ds in 0:(ntimes_ds - 1)
             for time in (time_ds * Tds):((time_ds + 1) * Tds - 1)
                 for polr in 0:1
                     # 1. Dish gridding
-                    F .= 0
                     for dish in 0:(ndishes - 1)
-                        dishM, dishN = @view S[1:2, dish + 1]
+                        dishM, dishN = S[dish + 1]
                         F[dishM + 1, dishN + 1] =
                             W[dishM + 1, dishN + 1, polr + 1, freq + 1] * E[dish + 1, polr + 1, freq + 1, time + 1]
                     end
                     # 2. 2D FFT and accumulate
-                    # TODO: Rewrite via `mul!`
                     for dishN in 0:(ndishesN - 1)
                         for beamP in 0:(nbeamsP - 1)
                             X1 = zero(Complex{T})
                             for dishM in 0:(ndishesM - 1)
-                                X1 += HPM[beamP + 1, dishM + 1] * F[dishM + 1, dishN + 1]
+                                X1 += HPM[dishM + 1, beamP + 1] * F[dishM + 1, dishN + 1]
                             end
-                            X[beamP + 1, dishN + 1] = X1
+                            X[dishN + 1, beamP + 1] = X1
                         end
                     end
                     for beamP in 0:(nbeamsP - 1)
                         for beamQ in 0:(nbeamsQ - 1)
                             G1 = zero(Complex{T})
                             for dishN in 0:(ndishesN - 1)
-                                G1 += HQN[beamQ + 1, dishN + 1] * X[beamP + 1, dishN + 1]
+                                G1 += HQN[dishN + 1, beamQ + 1] * X[dishN + 1, beamP + 1]
                             end
-                            # G[beamP,beamQ] = G1
                             I[beamP + 1, beamQ + 1, time_ds + 1, freq + 1] += abs2(G1)
                         end
                     end
@@ -651,17 +653,17 @@ end
 function frb(
     ::Type{T},
     xframes::AbstractVector{<:XFrame},
-    S::AbstractArray{<:Integer,2},
+    S::AbstractVector{<:NTuple{2,<:Integer}},
     num_dish_locations_M::Integer,
     num_dish_locations_N::Integer,
     Tds::Integer,
 ) where {T<:Real}
     ndishes, npolrs, nfreqs, ntimes = size(xframes[begin].data)
-    @assert size(S) == (2, num_dish_locations_M * num_dish_locations_N)
+    @assert size(S) == (ndishes,)
 
     W = zeros(Complex{T}, num_dish_locations_M, num_dish_locations_N, npolrs, nfreqs)
     for dish in 0:(ndishes - 1)
-        m, n = @view S[1:2, dish + 1]
+        m, n = S[dish + 1]
         W[m + 1, n + 1, :, :] .= 1 / T(16)
     end
 
@@ -687,13 +689,13 @@ end
 function run(
     source_amplitude::Float,
     source_frequency::Float,
-    source_position_x::Float,
-    source_position_y::Float,
-    num_dish_locations_M::Int64,
-    num_dish_locations_N::Int64,
-    dish_locations_ptr::Ptr{Cvoid},
-    dish_separation_x::Float,
-    dish_separation_y::Float,
+    source_position_ew::Float,
+    source_position_ns::Float,
+    num_dish_locations_ew::Int64,
+    num_dish_locations_ns::Int64,
+    dish_indices::Array{Int64,2},
+    dish_separation_ew::Float,
+    dish_separation_ns::Float,
     num_dishes::Int64,
     adc_frequency::Float,
     ntaps::Int64,
@@ -708,21 +710,28 @@ function run(
 )
     source = let
         A = Complex{Float}(source_amplitude)
-        f₀ = source_frequency         # Hz
-        sinx = sin(source_position_x) # east-west
-        siny = sin(source_position_y) # north-south
-        Source(make_monochromatic_source(A, f₀), sinx, siny)
+        f₀ = source_frequency            # Hz
+        sin_ew = sin(source_position_ew) # east-west
+        sin_ns = sin(source_position_ns) # north-south
+        Source(make_monochromatic_source(A, f₀), sin_ew, sin_ns)
     end
 
-    num_dish_locations = num_dish_locations_M * num_dish_locations_N
-    dish_locations = if dish_locations_ptr != Ptr{Cvoid}()
-        Int64[unsafe_load(Ptr{Cint}(dish_locations_ptr), mn + 2 * i + 1) for mn in 0:1, i in 0:(num_dish_locations - 1)]
-    else
-        reshape(reinterpret(Int64, [(m, n) for m in 0:(num_dish_locations_M - 1) for n in 0:(num_dish_locations_M - 1)]), 2, :)
+    num_dish_locations = num_dish_locations_ew * num_dish_locations_ns
+    dish_locations = fill((-1, -1), num_dishes)
+    num_dishes_seen = 0
+    @assert size(dish_indices) == (num_dish_locations_ew, num_dish_locations_ns)
+    for loc_ns in 0:(num_dish_locations_ns - 1), loc_ew in 0:(num_dish_locations_ew - 1)
+        dish = dish_indices[loc_ew + 1, loc_ns + 1]
+        @assert dish == -1 || 0 <= dish < num_dishes
+        if dish >= 0
+            num_dishes_seen += 1
+            @assert dish_locations[dish + 1] == (-1, -1)
+            dish_locations[dish + 1] = (loc_ns, loc_ew)
+        end
     end
-    dish_locations::AbstractArray{Int64,2}
+    @assert num_dishes_seen == num_dishes
 
-    dishes = make_dishes(dish_separation_x, dish_separation_y, ndishes_i, ndishes_j)
+    dishes = make_dishes(dish_separation_ew, dish_separation_ns, num_dish_locations_ew, num_dish_locations_ns, dish_locations)
 
     adc = let
         Δt = 1 / adc_frequency
@@ -785,7 +794,7 @@ function run(
     global stored_bbbeamss = qbbbeams
 
     Tds = 40
-    frbbeams = frb(Float, xframes, dish_locations, num_dish_locations_M, num_dish_locations_N, Tds)
+    frbbeams = frb(Float, xframes, dish_locations, num_dish_locations_ns, num_dish_locations_ew, Tds)
     println(
         "FRB beams: $(length(frbbeams)) frames of size (ntimes, nfrbbeamsP, nfrbbeamsQ, npolrs, nfreqs)=$(size(frbbeams[begin].data)) t₀=$(frbbeams[begin].t₀) Δt=$(frbbeams[begin].Δt) f₀=$(frbbeams[begin].f₀) Δf=$(frbbeams[begin].Δf)",
     )
@@ -821,14 +830,14 @@ end
 function setup(
     source_amplitude=1.0,
     source_frequency=0.3e+9,
-    source_position_x=0.02,
-    source_position_y=0.03,
-    num_dish_locations_M=8,
-    num_dish_locations_N=8,
-    dish_locations_ptr=Ptr{Cvoid}(), # [(m,n) for m in 0:M-1, n in 0:N-1],
-    dish_separation_x=6.3,
-    dish_separation_y=8.5,
-    num_dishes=num_dish_locations_M * num_dish_locations_N,
+    source_position_ew=0.02,
+    source_position_ns=0.03,
+    num_dish_locations_ew=8,
+    num_dish_locations_ns=8,
+    dish_indices_ptr=Ptr{Cvoid}(), # [(m,n) for m in 0:M-1, n in 0:N-1],
+    dish_separation_ew=6.3,
+    dish_separation_ns=8.5,
+    num_dishes=num_dish_locations_ew * num_dish_locations_ns,
     adc_frequency=3.0e+9,
     ntaps=4,
     nfreq=64,
@@ -839,16 +848,48 @@ function setup(
     nbeams_j=8,
     nframes=1,
 )
+    @show :setup
+    @show source_amplitude
+    @show source_frequency
+    @show source_position_ew
+    @show source_position_ns
+    @show num_dish_locations_ew
+    @show num_dish_locations_ns
+    @show dish_indices_ptr
+    @show dish_separation_ew
+    @show dish_separation_ns
+    @show num_dishes
+    @show adc_frequency
+    @show ntaps
+    @show nfreq
+    @show ntimes
+    @show ndishes_i
+    @show ndishes_j
+    @show nbeams_i
+    @show nbeams_j
+    @show nframes
+
+    dish_indices = if dish_indices_ptr != Ptr{Cvoid}()
+        Int64[
+            unsafe_load(Ptr{Cint}(dish_indices_ptr), loc_ew + num_dish_locations_ew * loc_ns + 1) for
+            loc_ew in 0:(num_dish_locations_ew - 1), loc_ns in 0:(num_dish_locations_ns - 1)
+        ]
+    else
+        reshape(Int64.(0:(num_dish_locations_ew * num_dish_locations_ns - 1)), num_dish_locations_ew, num_dish_locations_ns)
+    end
+    dish_indices::Array{Int64,2}
+    @assert size(dish_indices) == (num_dish_locations_ew, num_dish_locations_ns)
+
     return run(
         Float(source_amplitude),
         Float(source_frequency),
-        Float(source_position_x),
-        Float(source_position_y),
-        Int64(num_dish_locations_M),
-        Int64(num_dish_locations_N),
-        Ptr{Cvoid}(dish_locations_ptr),
-        Float(dish_separation_x),
-        Float(dish_separation_y),
+        Float(source_position_ew),
+        Float(source_position_ns),
+        Int64(num_dish_locations_ew),
+        Int64(num_dish_locations_ns),
+        dish_indices,
+        Float(dish_separation_ew),
+        Float(dish_separation_ns),
         Int64(num_dishes),
         Float(adc_frequency),
         Int64(ntaps),
@@ -929,13 +970,7 @@ function set_W(ptr::Ptr{UInt8}, sz::Int64, ndishsM::Int64, ndishsN::Int64, npolr
 end
 
 function set_I(
-    ptr::Ptr{UInt8},
-    sz::Int64,
-    nfrbbeams_i::Int64,
-    nfrbbeams_j::Int64,
-    ntimes_ds::Int64,
-    nfreqs::Int64,
-    frame_index::Int64,
+    ptr::Ptr{UInt8}, sz::Int64, nfrbbeams_i::Int64, nfrbbeams_j::Int64, ntimes_ds::Int64, nfreqs::Int64, frame_index::Int64
 )
     @show set_I ptr sz nfrbbeams_i nfrbbeams_j ntimes_ds nfreqs frame_index
     frbbeamss = stored_frbbeamss::AbstractVector{<:FRBBeams{Float32}}
@@ -956,3 +991,4 @@ function set_I(
 end
 
 end
+nothing
