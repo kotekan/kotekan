@@ -39,7 +39,7 @@ target_link_libraries(test_ringbuffer PRIVATE libexternal kotekan_core kotekan_u
 
 # test_fmt
 add_executable(test_fmt test_fmt.cpp)
-#target_link_libraries(test_fmt PRIVATE libexternal kotekan_utils)
+# target_link_libraries(test_fmt PRIVATE libexternal kotekan_utils)
 target_link_libraries(test_fmt PRIVATE kotekan_utils)
 
 # test_restclient needs fmt
