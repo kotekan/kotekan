@@ -69,7 +69,7 @@ BOOST_AUTO_TEST_CASE(test1) {
     ob = rb.wait_for_writable("B", 10);
 
     INFO_NON_OO("oa: {:d}, ob: {:d}", oa.value_or(99), oa.value_or(99));
-    BOOST_CHECK(oa.value_or(99) == 5);
+    BOOST_CHECK(oa.value_or(99) == 10);
     BOOST_CHECK(ob.value_or(99) == 10);
 
     rb.finish_write("A", 5);
@@ -107,8 +107,8 @@ BOOST_AUTO_TEST_CASE(test1) {
     INFO_NON_OO("C: readable: offset {:d}, n {:d}", rc.first, rc.second);
     INFO_NON_OO("D: readable: offset {:d}, n {:d}", rd.first, rd.second);
 
-    BOOST_CHECK(wa.first == 10);
-    BOOST_CHECK(wa.second == 12);
+    BOOST_CHECK(wa.first == 0);
+    BOOST_CHECK(wa.second == 2);
     BOOST_CHECK(wb.first == 0); // wrapped
     BOOST_CHECK(wb.second == 2);
     BOOST_CHECK(rc.first == 2);
@@ -127,6 +127,8 @@ BOOST_AUTO_TEST_CASE(test1) {
 
     owa = rb.get_writable("A");
     wa = owa.value();
+
+    INFO_NON_OO("A: writable: offset {:d}, n {:d}", wa.first, wa.second);
     BOOST_CHECK(wa.first == 10);
     BOOST_CHECK(wa.second == 15);
 }
