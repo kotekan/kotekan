@@ -1,4 +1,4 @@
-# If a pull request to the development branch was closed and merged,
+# If a pull request to the development (or chord) branch was closed and merged,
 # then rebuild the Docker image if there were changes to it
 
 name: kotekan-docker-image-merge-build
@@ -6,6 +6,9 @@ on:
   pull_request:
     types:
       - closed
+    branches:
+    - chord
+    - develop
 
 env:
   REGISTRY: docker.pkg.github.com
@@ -69,7 +72,7 @@ jobs:
       if: steps.docker_img.outputs.docker_build
       run: |
         echo "Building and pushing ${{ steps.docker_img.outputs.img_name }}"
-        docker build --cache-from=${IMG_2204}:develop --cache-from=${{ steps.docker_img.outputs.img_name }} -t "${{ steps.docker_img.outputs.img_name }}" - < tools/docker/22.04/Dockerfile
+        docker build --cache-from=${IMG_2204}:${GITHUB_BASE_REF} --cache-from=${{ steps.docker_img.outputs.img_name }} -t "${{ steps.docker_img.outputs.img_name }}" - < tools/docker/22.04/Dockerfile
         docker push "${{ steps.docker_img.outputs.img_name }}"
 
 
@@ -129,5 +132,5 @@ jobs:
       if: steps.docker_img.outputs.docker_build
       run: |
         echo "Building and pushing ${{ steps.docker_img.outputs.img_name }}"
-        docker build --cache-from=${IMG_1804}:develop --cache-from=${{ steps.docker_img.outputs.img_name }} -t "${{ steps.docker_img.outputs.img_name }}" - < tools/docker/18.04/Dockerfile
+        docker build --cache-from=${IMG_1804}:${GITHUB_BASE_REF} --cache-from=${{ steps.docker_img.outputs.img_name }} -t "${{ steps.docker_img.outputs.img_name }}" - < tools/docker/18.04/Dockerfile
         docker push "${{ steps.docker_img.outputs.img_name }}"
