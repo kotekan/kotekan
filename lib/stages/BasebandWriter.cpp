@@ -62,7 +62,7 @@ void BasebandWriter::main_thread() {
     frameID frame_id(in_buf);
     std::thread closing_thread(&BasebandWriter::close_old_events, this);
 
-    std::chrono::time_point<std::chrono::steady_clock> period_start;
+    auto period_start = std::chrono::steady_clock::now();
     unsigned int frames_in_period = 0;
 
     while (!stop_thread) {
@@ -77,7 +77,7 @@ void BasebandWriter::main_thread() {
         const auto now = std::chrono::steady_clock::now();
         const std::chrono::duration<double> diff = now - period_start;
         if (diff > std::chrono::seconds(1)) {
-            DEBUG("Restart step count ({:.3f} s)", diff);
+            DEBUG("Restart step count ({:.3f} s)", diff.count());
             period_start = now;
             frames_in_period = 1;
         } else {

@@ -121,7 +121,7 @@ class KotekanRunner(object):
         config_dict = fix_strings(config_dict)
 
         with tempfile.NamedTemporaryFile(
-            mode="w"
+                mode="w" #, delete=False
         ) as fh, tempfile.NamedTemporaryFile() as f_out:
 
             yaml.safe_dump(config_dict, fh)
@@ -142,6 +142,8 @@ class KotekanRunner(object):
                 print(cmd)
                 p = subprocess.run(cmd, stdout=f_out, stderr=f_out, shell=True)
             else:
+                import sys
+                print('Config file %s', fh.name, file=sys.stderr)
                 cmd = "%s -b %s -c %s" % (self.kotekan_binary(), rest_addr, fh.name)
                 print(cmd)
                 p = subprocess.Popen(cmd.split(), stdout=f_out, stderr=f_out)
