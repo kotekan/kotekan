@@ -201,5 +201,9 @@ ENV KOTEKAN_BUILD_DIRNAME build-2204
 # Update Julia...
 RUN juliaup update && echo 2
 
+RUN apt-get update && apt install -y locales \
+ && locale-gen en_US.UTF-8 \
+ && update-locale LANG=en_US.UTF-8
+
 # Do nothing when the container launches
 CMD ["/bin/bash"]

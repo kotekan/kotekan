@@ -166,5 +166,9 @@ ENV HDF5_PLUGIN_PATH /usr/local/hdf5/lib/plugin
 
 ENV KOTEKAN_BUILD_DIRNAME build-1804
 
+RUN apt-get update && apt install -y locales \
+ && locale-gen en_US.UTF-8 \
+ && update-locale LANG=en_US.UTF-8
+
 # Do nothing when the container launches
 CMD ["/bin/bash"]
