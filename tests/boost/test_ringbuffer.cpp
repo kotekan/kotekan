@@ -129,6 +129,6 @@ BOOST_AUTO_TEST_CASE(test1) {
     wa = owa.value();
 
     INFO_NON_OO("A: writable: offset {:d}, n {:d}", wa.first, wa.second);
-    BOOST_CHECK(wa.first == 10);
-    BOOST_CHECK(wa.second == 15);
+    BOOST_CHECK(wa.first == 0);
+    BOOST_CHECK(wa.second == 5);
 }
