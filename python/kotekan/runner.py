@@ -1,5 +1,6 @@
 """Use Python to run a kotekan instance, particularly for testing.
 """
+
 # === Start Python 2/3 compatibility
 from __future__ import absolute_import, division, print_function, unicode_literals
 from future.builtins import *  # noqa  pylint: disable=W0401, W0614
@@ -121,7 +122,7 @@ class KotekanRunner(object):
         config_dict = fix_strings(config_dict)
 
         with tempfile.NamedTemporaryFile(
-                mode="w" #, delete=False
+            mode="w"  # , delete=False
         ) as fh, tempfile.NamedTemporaryFile() as f_out:
 
             yaml.safe_dump(config_dict, fh)
@@ -143,7 +144,8 @@ class KotekanRunner(object):
                 p = subprocess.run(cmd, stdout=f_out, stderr=f_out, shell=True)
             else:
                 import sys
-                print('Config file %s', fh.name, file=sys.stderr)
+
+                print("Config file %s", fh.name, file=sys.stderr)
                 cmd = "%s -b %s -c %s" % (self.kotekan_binary(), rest_addr, fh.name)
                 print(cmd)
                 p = subprocess.Popen(cmd.split(), stdout=f_out, stderr=f_out)
