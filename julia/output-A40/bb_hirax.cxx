@@ -36,7 +36,7 @@ public:
 
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    void finalize_frame() override;
+    // void finalize_frame() override;
 
 private:
     // Julia's `CuDevArray` type
@@ -274,7 +274,7 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
     std::shared_ptr<metadataObject> const J_mc =
         device.create_gpu_memory_array_metadata(J_memname, gpu_frame_id, E_mc->parent_pool);
     std::shared_ptr<chordMetadata> const J_meta = get_chord_metadata(J_mc);
-    chord_metadata_copy(J_meta, E_meta);
+    *J_meta = *E_meta;
     J_meta->type = J_type;
     J_meta->dims = J_rank;
     for (std::size_t dim = 0; dim < J_rank; ++dim) {
@@ -344,11 +344,8 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
     return record_end_event();
 }
 
+/*
 void cudaBasebandBeamformer_hirax::finalize_frame() {
-    // device.release_gpu_memory_array_metadata(A_memname, gpu_frame_id);
-    // device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
-    // device.release_gpu_memory_array_metadata(s_memname, gpu_frame_id);
-    // device.release_gpu_memory_array_metadata(J_memname, gpu_frame_id);
-
     cudaCommand::finalize_frame();
 }
+*/

@@ -458,7 +458,7 @@ cudaEvent_t cudaUpchannelizer_chord_U8::execute(cudaPipelineState& /*pipestate*/
     std::shared_ptr<metadataObject> const Ebar_mc =
         device.create_gpu_memory_array_metadata(Ebar_memname, gpu_frame_id, E_mc->parent_pool);
     std::shared_ptr<chordMetadata> const Ebar_meta = get_chord_metadata(Ebar_mc);
-    chord_metadata_copy(Ebar_meta, E_meta);
+    *Ebar_meta = *E_meta;
     Ebar_meta->type = Ebar_type;
     Ebar_meta->dims = Ebar_rank;
     for (std::size_t dim = 0; dim < Ebar_rank; ++dim) {
@@ -622,10 +622,6 @@ void cudaUpchannelizer_chord_U8::finalize_frame() {
     DEBUG("Advancing output ringbuffer: wrote {:d} samples, {:d} bytes", t_written,
           t_written * Tbar_sample_bytes);
     output_ringbuf_signal->finish_write(unique_name, t_written * Tbar_sample_bytes);
-
-    // device.release_gpu_memory_array_metadata(G_memname, gpu_frame_id);
-    // device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
-    // device.release_gpu_memory_array_metadata(Ebar_memname, gpu_frame_id);
 
     cudaCommand::finalize_frame();
 }

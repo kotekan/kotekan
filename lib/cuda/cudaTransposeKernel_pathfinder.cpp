@@ -36,7 +36,7 @@ public:
 
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    void finalize_frame() override;
+    // void finalize_frame() override;
 
 private:
     // Julia's `CuDevArray` type
@@ -198,7 +198,7 @@ cudaTransposeKernel_pathfinder::execute(cudaPipelineState& /*pipestate*/,
     std::shared_ptr<metadataObject> const E_mc =
         device.create_gpu_memory_array_metadata(E_memname, gpu_frame_id, Ein_mc->parent_pool);
     std::shared_ptr<chordMetadata> const E_meta = get_chord_metadata(E_mc);
-    chord_metadata_copy(E_meta, E_meta);
+    *E_meta = *E_meta;
     E_meta->type = E_type;
     E_meta->dims = E_rank;
     for (std::size_t dim = 0; dim < E_rank; ++dim) {
@@ -269,9 +269,8 @@ cudaTransposeKernel_pathfinder::execute(cudaPipelineState& /*pipestate*/,
     return record_end_event();
 }
 
+/*
 void cudaTransposeKernel_pathfinder::finalize_frame() {
-    // device.release_gpu_memory_array_metadata(Ein_memname, gpu_frame_id);
-    // device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
-
     cudaCommand::finalize_frame();
 }
+*/

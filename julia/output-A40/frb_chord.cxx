@@ -36,7 +36,7 @@ public:
 
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    void finalize_frame() override;
+    // void finalize_frame() override;
 
 private:
     // Julia's `CuDevArray` type
@@ -236,9 +236,7 @@ cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
         assert(E_meta->n_dish_locations_ew == cuda_dish_layout_N);
         assert(E_meta->n_dish_locations_ns == cuda_dish_layout_M);
         assert(E_meta->dish_index);
-        const int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
         std::int16_t* __restrict__ const S =
-            // static_cast<std::int16_t*>(static_cast<void*>(S_host.at(gpu_frame_index).data()));
             static_cast<std::int16_t*>(static_cast<void*>(S_host.data()));
         int surplus_dish_index = cuda_number_of_dishes;
         for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
@@ -293,7 +291,7 @@ cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
     std::shared_ptr<metadataObject> const I_mc =
         device.create_gpu_memory_array_metadata(I_memname, gpu_frame_id, E_mc->parent_pool);
     std::shared_ptr<chordMetadata> const I_meta = get_chord_metadata(I_mc);
-    chord_metadata_copy(I_meta, E_meta);
+    *I_meta = *E_meta;
     I_meta->type = I_type;
     I_meta->dims = I_rank;
     for (std::size_t dim = 0; dim < I_rank; ++dim) {
@@ -365,10 +363,8 @@ cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
     return record_end_event();
 }
 
+/*
 void cudaFRBBeamformer_chord::finalize_frame() {
-    // device.release_gpu_memory_array_metadata(W_memname, gpu_frame_id);
-    // device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
-    // device.release_gpu_memory_array_metadata(I_memname, gpu_frame_id);
-
     cudaCommand::finalize_frame();
 }
+*/
