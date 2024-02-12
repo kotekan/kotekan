@@ -67,8 +67,8 @@ jobs:
           fi
           echo "docker_build=1" >> $GITHUB_OUTPUT;
         else
-          echo "Dockerfile was not modified. Using develop branch image."
-          IMAGE_NAME="${IMG_2204}:develop"
+          echo "Dockerfile was not modified. Using image from branch ${GITHUB_BASE_REF}."
+          IMAGE_NAME="${IMG_2204}:${GITHUB_BASE_REF}"
         fi
 
         if docker manifest inspect ${IMAGE_NAME} >/dev/null; then
@@ -92,6 +92,7 @@ jobs:
         echo "GitHub event name: $GITHUB_EVENT_NAME"
         echo "GitHub Ref: $GITHUB_REF"
         echo "GitHub Head Ref: $GITHUB_HEAD_REF"
+        echo "GitHub Base Ref: $GITHUB_BASE_REF"
         echo "GitHub Ref Name: $GITHUB_REF_NAME"
         echo "Docker 1804 image: $IMG_1804"
         echo "Docker 2204 image: $IMG_2204"

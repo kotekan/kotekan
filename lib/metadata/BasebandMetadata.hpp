@@ -4,9 +4,21 @@
 #include "Telescope.hpp"
 #include "buffer.hpp"
 #include "chimeMetadata.hpp"
-#include "metadata.h"
+#include "metadata.hpp"
 
-struct BasebandMetadata {
+class BasebandMetadata : public metadataObject {
+public:
+    /// Returns the size of objects of this type when serialized into bytes.
+    size_t get_serialized_size() override;
+
+    /// Sets this metadata object's values from the given byte array
+    /// of the given length.  Returns the number of bytes consumed.
+    size_t set_from_bytes(const char* bytes, size_t length) override;
+
+    /// Serializes this metadata object into the given byte array,
+    /// expected to be of length (at least) get_serialized_size().
+    size_t serialize(char* bytes) override;
+
     /// event and frequency ID
     uint64_t event_id;
     uint64_t freq_id;

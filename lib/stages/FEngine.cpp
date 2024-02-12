@@ -491,9 +491,8 @@ void FEngine::main_thread() {
         } // if !skip_julia
 
         // Set metadata
-        chordMetadata* const E_metadata = get_chord_metadata(E_buffer, E_frame_id);
-        chord_metadata_init(E_metadata);
-        E_metadata->chime.fpga_seq_num = frame_index;
+        std::shared_ptr<chordMetadata> const E_metadata = get_chord_metadata(E_buffer, E_frame_id);
+        E_metadata->frame_counter = frame_index;
         E_metadata->type = int4p4;
         E_metadata->dims = 4;
         assert(E_metadata->dims <= CHORD_META_MAX_DIM);
@@ -518,9 +517,8 @@ void FEngine::main_thread() {
         E_metadata->n_dish_locations_ns = num_dish_locations_ns;
         E_metadata->dish_index = dish_indices_ptr;
 
-        chordMetadata* const A_metadata = get_chord_metadata(A_buffer, A_frame_id);
-        chord_metadata_init(A_metadata);
-        A_metadata->chime.fpga_seq_num = frame_index;
+        std::shared_ptr<chordMetadata> const A_metadata = get_chord_metadata(A_buffer, A_frame_id);
+        A_metadata->frame_counter = frame_index;
         A_metadata->type = int8;
         A_metadata->dims = 5;
         assert(A_metadata->dims <= CHORD_META_MAX_DIM);
@@ -547,9 +545,8 @@ void FEngine::main_thread() {
         A_metadata->n_dish_locations_ns = num_dish_locations_ns;
         A_metadata->dish_index = dish_indices_ptr;
 
-        chordMetadata* const J_metadata = get_chord_metadata(J_buffer, J_frame_id);
-        chord_metadata_init(J_metadata);
-        J_metadata->chime.fpga_seq_num = frame_index;
+        std::shared_ptr<chordMetadata> const J_metadata = get_chord_metadata(J_buffer, J_frame_id);
+        J_metadata->frame_counter = frame_index;
         J_metadata->type = int4p4;
         J_metadata->dims = 4;
         assert(J_metadata->dims <= CHORD_META_MAX_DIM);
@@ -574,21 +571,20 @@ void FEngine::main_thread() {
         J_metadata->n_dish_locations_ns = num_dish_locations_ns;
         J_metadata->dish_index = dish_indices_ptr;
 
-        // chordMetadata* const S_metadata = get_chord_metadata(S_buffer, S_frame_id);
-        // chord_metadata_init(S_metadata);
-        // S_metadata->chime.fpga_seq_num = frame_index;
+        // std::shared_ptr<chordMetadata> const S_metadata = get_chord_metadata(S_buffer,
+        // S_frame_id);
+        // S_metadata->frame_counter = frame_index;
         // S_metadata->type = int16;
         // S_metadata->dims = 2;
-        // assert(S_metadata->dims <= CHORD_META_MAX_DIM);
         // std::strncpy(S_metadata->dim_name[0], "D", sizeof S_metadata->dim_name[0]);
         // std::strncpy(S_metadata->dim_name[1], "MN", sizeof S_metadata->dim_name[1]);
         // S_metadata->dim[0] = num_dish_locations;
         // S_metadata->dim[1] = 2;
+        // S_metadata->n_one_hot = -1;
         // S_metadata->nfreq = -1;
 
-        chordMetadata* const G_metadata = get_chord_metadata(G_buffer, G_frame_id);
-        chord_metadata_init(G_metadata);
-        G_metadata->chime.fpga_seq_num = frame_index;
+        std::shared_ptr<chordMetadata> const G_metadata = get_chord_metadata(G_buffer, G_frame_id);
+        G_metadata->frame_counter = frame_index;
         G_metadata->type = float16;
         G_metadata->dims = 1;
         assert(G_metadata->dims <= CHORD_META_MAX_DIM);
@@ -607,9 +603,8 @@ void FEngine::main_thread() {
         G_metadata->n_dish_locations_ns = num_dish_locations_ns;
         G_metadata->dish_index = dish_indices_ptr;
 
-        chordMetadata* const W_metadata = get_chord_metadata(W_buffer, W_frame_id);
-        chord_metadata_init(W_metadata);
-        W_metadata->chime.fpga_seq_num = frame_index;
+        std::shared_ptr<chordMetadata> const W_metadata = get_chord_metadata(W_buffer, W_frame_id);
+        W_metadata->frame_counter = frame_index;
         W_metadata->type = float16;
         W_metadata->dims = 5;
         assert(W_metadata->dims <= CHORD_META_MAX_DIM);
@@ -636,9 +631,8 @@ void FEngine::main_thread() {
         W_metadata->n_dish_locations_ns = num_dish_locations_ns;
         W_metadata->dish_index = dish_indices_ptr;
 
-        chordMetadata* const I_metadata = get_chord_metadata(I_buffer, I_frame_id);
-        chord_metadata_init(I_metadata);
-        I_metadata->chime.fpga_seq_num = frame_index;
+        std::shared_ptr<chordMetadata> const I_metadata = get_chord_metadata(I_buffer, I_frame_id);
+        I_metadata->frame_counter = frame_index;
         I_metadata->type = float16;
         I_metadata->dims = 4;
         assert(I_metadata->dims <= CHORD_META_MAX_DIM);

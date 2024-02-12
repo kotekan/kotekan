@@ -13,6 +13,7 @@
 
 
 #include "Config.hpp" // for Config
+#include "Telescope.hpp"
 #include "buffer.hpp" // for Buffer
 
 #include "fmt.hpp"      // for format_context, formatter
@@ -171,6 +172,14 @@ inline bool operator<(const time_ctype& a, const time_ctype& b) {
 inline bool operator>(const time_ctype& a, const time_ctype& b) {
     return (a.fpga_count > b.fpga_count);
 }
+
+// JSON <--> timespec
+void to_json(nlohmann::json& j, const timespec& t);
+void from_json(const nlohmann::json& j, timespec& t);
+
+// JSON <--> stream_t
+void to_json(nlohmann::json& j, const stream_t& t);
+void from_json(const nlohmann::json& j, stream_t& t);
 
 // Conversions of the index types to json
 void to_json(nlohmann::json& j, const freq_ctype& f);

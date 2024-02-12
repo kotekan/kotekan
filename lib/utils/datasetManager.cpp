@@ -354,7 +354,7 @@ std::string datasetManager::summary() {
         try {
             datasetState* dt = _states.at(t.second.state()).get();
 
-            out += fmt::format(fmt("{:>30} : {}\n"), *dt, t.second.base_dset());
+            out += fmt::format(fmt("{:>30} : {}\n"), dt->type(), t.second.base_dset());
             id++;
         } catch (std::out_of_range& e) {
             WARN_NON_OO("datasetManager::summary(): This datasetManager instance "

@@ -93,10 +93,10 @@ public:
             const double t0 = current_time();
 
             // Fetch metadata
-            const metadataContainer* const mc = buffer->get_metadata_container(frame_id);
-            assert(mc != nullptr);
-            assert(metadata_container_is_chord(mc));
-            const chordMetadata* const meta = static_cast<const chordMetadata*>(mc->metadata);
+            const std::shared_ptr<metadataObject> mc = buffer->get_metadata(frame_id);
+            assert(mc);
+            assert(metadata_is_chord(mc));
+            const std::shared_ptr<chordMetadata> meta = get_chord_metadata(mc);
 
             // Create ASDF project
             auto group = std::make_shared<ASDF::group>();

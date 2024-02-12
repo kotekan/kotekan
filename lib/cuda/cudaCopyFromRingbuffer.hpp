@@ -29,6 +29,7 @@ public:
     cudaCopyFromRingbuffer(kotekan::Config& config, const std::string& unique_name,
                            kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
                            int instance_num);
+    ~cudaCopyFromRingbuffer() override;
 
     int wait_on_precondition() override;
 
@@ -48,6 +49,9 @@ private:
     std::string _gpu_mem_input;
     /// GPU side memory name for the time-stream output
     std::string _gpu_mem_output;
+
+    /// Host side buffer for the frame-based output, if we're doing that
+    Buffer* out_buffer;
 
     // Host side signalling buffer
     RingBuffer* signal_buffer;

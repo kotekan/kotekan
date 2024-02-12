@@ -6,7 +6,7 @@
 
 //--------------------- .text._Z12xpose_kernel13CuDeviceArrayI6Int4x8Li1ELi1EES_IS0_Li1ELi1EES_I5Int32Li1ELi1EE --------------------------
 	.section	.text._Z12xpose_kernel13CuDeviceArrayI6Int4x8Li1ELi1EES_IS0_Li1ELi1EES_I5Int32Li1ELi1EE,"ax",@progbits
-	.sectioninfo	@"SHI_REGISTERS=128"
+	.sectioninfo	@"SHI_REGISTERS=124"
 	.align	128
         .global         _Z12xpose_kernel13CuDeviceArrayI6Int4x8Li1ELi1EES_IS0_Li1ELi1EES_I5Int32Li1ELi1EE
         .type           _Z12xpose_kernel13CuDeviceArrayI6Int4x8Li1ELi1EES_IS0_Li1ELi1EES_I5Int32Li1ELi1EE,@function
@@ -15,1161 +15,989 @@
 _Z12xpose_kernel13CuDeviceArrayI6Int4x8Li1ELi1EES_IS0_Li1ELi1EES_I5Int32Li1ELi1EE:
 
 .text._Z12xpose_kernel13CuDeviceArrayI6Int4x8Li1ELi1EES_IS0_Li1ELi1EES_I5Int32Li1ELi1EE:
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:333
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:333
         IMAD.MOV.U32 R1, RZ, RZ, c[0x0][0x28] ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        S2R R9, SR_TID.Y ;
-        IMAD.MOV.U32 R11, RZ, RZ, 0x1 ;
-        ULDC.64 UR4, c[0x0][0x118] ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        IMAD.MOV.U32 R85, RZ, RZ, RZ ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        S2R R5, SR_CTAID.X ;
-        S2R R10, SR_TID.X ;
-        IMAD.SHL.U32 R2, R9.reuse, 0x800, RZ ;
-        IMAD.SHL.U32 R4, R9, 0x80, RZ ;
-; Location ./int.jl:88
-        IMAD.SHL.U32 R0, R5, 0x200, RZ ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        LOP3.LUT R2, R2, 0x800, RZ, 0xc0, !PT ;
-; Location ./int.jl:88
-        IMAD.SHL.U32 R3, R9, 0x20, RZ ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        LOP3.LUT R4, R4, 0x80, RZ, 0xc0, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        LOP3.LUT P0, RZ, R10.reuse, 0x8, RZ, 0xc0, !PT ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        IMAD R7, R5.reuse, 0x1000, R2 ;
-        LOP3.LUT R2, R10.reuse, 0xe, RZ, 0xc0, !PT ;
-        IMAD R8, R5, 0x100, R4 ;
-        SHF.R.U32.HI R4, RZ, 0x4, R10.reuse ;
-        IMAD.SHL.U32 R5, R10, 0x2, RZ ;
-; Location ./int.jl:87
-        LOP3.LUT R3, R3, R0, R10, 0xfe, !PT ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        IMAD.SHL.U32 R6, R2, 0x2, RZ ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        LOP3.LUT P1, RZ, R10, 0x4, RZ, 0xc0, !PT ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        S2UR UR4, SR_CTAID.X ;
+        S2R R12, SR_TID.Y ;
         IMAD.MOV.U32 R0, RZ, RZ, 0x4 ;
-        LOP3.LUT R4, R4, 0x2, R5, 0xf8, !PT ;
-        LOP3.LUT R5, R5, 0x20, RZ, 0xc0, !PT ;
-        IMAD.WIDE.U32 R86, R3, R0, c[0x0][0x1b0] ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        LOP3.LUT P2, RZ, R10.reuse, 0x2, RZ, 0xc0, !PT ;
-        ISETP.GE.U32.AND P3, PT, R10.reuse, 0x10, PT ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        IMAD R2, R10, 0x40, R5 ;
-        STG.E [R86.64], R11 ;
-        IMAD.SHL.U32 R4, R4, 0x20, RZ ;
-        IMAD.SHL.U32 R5, R10, 0x4, RZ ;
-        LOP3.LUT R2, R6, R2, R7, 0xfe, !PT ;
-        LOP3.LUT R3, R6, R7, R4, 0xfe, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        IMAD.SHL.U32 R7, R9, 0x80000, RZ ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        LOP3.LUT R4, R8, R5, RZ, 0xfc, !PT ;
-        LOP3.LUT R8, R3, 0x700, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        LOP3.LUT R6, R7.reuse, 0x1ff00000, RZ, 0xc0, !PT ;
-        LOP3.LUT R7, R7, 0x700000, RZ, 0xc0, !PT ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        LOP3.LUT R28, R3, 0x680, RZ, 0xfc, !PT ;
-        LOP3.LUT R10, R3.reuse, 0x600, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        IMAD.IADD R8, R8, 0x1, R7.reuse ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        LOP3.LUT R26, R3.reuse, 0x580, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        IMAD.IADD R9, R28, 0x1, R7.reuse ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        LOP3.LUT R12, R3.reuse, 0x500, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        IMAD.IADD R10, R10, 0x1, R7.reuse ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        LOP3.LUT R24, R3.reuse, 0x480, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        IMAD.IADD R11, R26, 0x1, R7.reuse ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        LOP3.LUT R14, R3.reuse, 0x400, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        IMAD.IADD R12, R12, 0x1, R7.reuse ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        LOP3.LUT R22, R3.reuse, 0x380, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        IMAD.IADD R13, R24, 0x1, R7.reuse ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        LOP3.LUT R80, R3.reuse, 0x300, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        IMAD.IADD R14, R14, 0x1, R7.reuse ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        LOP3.LUT R20, R3.reuse, 0x280, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        IMAD.IADD R15, R22, 0x1, R7.reuse ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        LOP3.LUT R82, R3.reuse, 0x200, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        IMAD.IADD R80, R80, 0x1, R7.reuse ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        LOP3.LUT R18, R3.reuse, 0x180, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        IMAD.IADD R81, R20, 0x1, R7.reuse ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        LOP3.LUT R84, R3.reuse, 0x100, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        IMAD.IADD R82, R82, 0x1, R7.reuse ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        LOP3.LUT R16, R3, 0x80, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        IMAD.IADD R83, R18, 0x1, R7 ;
-        IMAD.IADD R84, R84, 0x1, R7.reuse ;
-        IMAD.IADD R5, R16, 0x1, R7 ;
+        ULDC.64 UR8, c[0x0][0x118] ;
+        IMAD.MOV.U32 R5, RZ, RZ, 0x1 ;
+        S2R R7, SR_TID.X ;
+        IMAD.MOV.U32 R3, RZ, RZ, RZ ;
+        IMAD.MOV.U32 R4, RZ, RZ, RZ ;
+        IMAD.MOV.U32 R15, RZ, RZ, RZ ;
+; Location ./int.jl:88
+        USHF.L.U32 UR5, UR4, 0x9, URZ ;
+        IMAD.SHL.U32 R2, R12.reuse, 0x20, RZ ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        USHF.L.U32 UR6, UR4, 0xa, URZ ;
+        IMAD.SHL.U32 R8, R12, 0x8, RZ ;
+        IMAD.SHL.U32 R14, R7, 0x2, RZ ;
+; Location ./int.jl:87
+        LOP3.LUT R81, R2, UR5, R7.reuse, 0xfe, !PT ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        IMAD.SHL.U32 R9, R12.reuse, 0x800, RZ ;
+        SHF.R.U32.HI R13, RZ, 0x4, R7 ;
+        IMAD.SHL.U32 R10, R12, 0x200000, RZ ;
+        LOP3.LUT R6, R14, 0x20, RZ, 0xc0, !PT ;
+        IMAD.WIDE.U32 R80, R81, R0, c[0x0][0x1b0] ;
+        LOP3.LUT R2, R13.reuse, 0x2, R14, 0xf8, !PT ;
+        USHF.L.U32 UR5, UR4, 0xc, URZ ;
+        ISETP.NE.AND P3, PT, R13, 0x1, PT ;
+        IMAD R6, R7.reuse, 0x40, R6 ;
+        STG.E [R80.64], R5 ;
+        LOP3.LUT P0, RZ, R7.reuse, 0x8, RZ, 0xc0, !PT ;
+        IMAD.SHL.U32 R11, R12.reuse, 0x200, RZ ;
+        LOP3.LUT P1, RZ, R7.reuse, 0x4, RZ, 0xc0, !PT ;
+        IMAD.SHL.U32 R13, R12.reuse, 0x80000, RZ ;
+        LOP3.LUT P2, RZ, R7.reuse, 0x2, RZ, 0xc0, !PT ;
+        IMAD.SHL.U32 R12, R12, 0x80, RZ ;
+        LOP3.LUT R14, R14, 0x1c, RZ, 0xc0, !PT ;
+        IMAD.SHL.U32 R2, R2, 0x20, RZ ;
+        USHF.L.U32 UR4, UR4, 0x8, URZ ;
+        IMAD.SHL.U32 R5, R7, 0x10, RZ ;
+        IMAD.SHL.U32 R7, R7, 0x4, RZ ;
 
 .L_x_1:
 ; Location ./int.jl:87
-        IMAD.IADD R64, R7, 0x1, R85.reuse ;
-; Location ./int.jl:86
-        IMAD.IADD R17, R5, 0x1, R85 ;
+        LOP3.LUT R16, R15, 0x70, R8, 0xf8, !PT ;
+; Location ./int.jl:88
+        IMAD.U32 R17, R16, 0x10000, RZ ;
 ; Location ./int.jl:87
-        LOP3.LUT R21, R3, R64, RZ, 0xfc, !PT ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE R16, R17, R0, c[0x0][0x170] ;
-        IMAD.WIDE.U32 R20, R21, R0.reuse, c[0x0][0x170] ;
-; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
+        LOP3.LUT R16, R14, UR5, R17, 0xfe, !PT ;
+        LOP3.LUT R65, R16, 0x800, R9, 0xf8, !PT ;
+        LOP3.LUT R67, R65, R2, RZ, 0xfc, !PT ;
+        LOP3.LUT R21, R67.reuse, 0x80, RZ, 0xfc, !PT ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE R16, R67, R0, c[0x0][0x170] ;
+        IMAD.WIDE R20, R21, R0, c[0x0][0x170] ;
+; Location /home/dstn/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
         LDG.E.128 R16, [R16.64] ;
         LDG.E.128 R20, [R20.64] ;
-; Location ./int.jl:86
-        IMAD.IADD R25, R84, 0x1, R85.reuse ;
-        IMAD.IADD R29, R83, 0x1, R85 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+; Location ./int.jl:87
+        LOP3.LUT R25, R67.reuse, 0x100, RZ, 0xfc, !PT ;
+        LOP3.LUT R29, R67, 0x180, RZ, 0xfc, !PT ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
         IMAD.WIDE R24, R25, R0, c[0x0][0x170] ;
         IMAD.WIDE R28, R29, R0.reuse, c[0x0][0x170] ;
-; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
+; Location /home/dstn/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
         LDG.E.128 R24, [R24.64] ;
         LDG.E.128 R28, [R28.64] ;
-; Location ./int.jl:86
-        IMAD.IADD R37, R81, 0x1, R85.reuse ;
-        IMAD.IADD R33, R82, 0x1, R85 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE R36, R37, R0, c[0x0][0x170] ;
-        IMAD.WIDE R32, R33, R0.reuse, c[0x0][0x170] ;
-; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
-        LDG.E.128 R36, [R36.64] ;
-; Location ./int.jl:86
-        IMAD.IADD R41, R80, 0x1, R85.reuse ;
-; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
+; Location ./int.jl:87
+        LOP3.LUT R33, R67.reuse, 0x200, RZ, 0xfc, !PT ;
+        LOP3.LUT R37, R67.reuse, 0x280, RZ, 0xfc, !PT ;
+        LOP3.LUT R41, R67, 0x300, RZ, 0xfc, !PT ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE R32, R33, R0, c[0x0][0x170] ;
+; Location ./int.jl:87
+        LOP3.LUT R45, R67, 0x380, RZ, 0xfc, !PT ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE R36, R37, R0.reuse, c[0x0][0x170] ;
+; Location /home/dstn/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
         LDG.E.128 R32, [R32.64] ;
-; Location ./int.jl:86
-        IMAD.IADD R45, R15, 0x1, R85 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE R40, R41, R0, c[0x0][0x170] ;
-        IMAD.WIDE R44, R45, R0.reuse, c[0x0][0x170] ;
-; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE R40, R41, R0.reuse, c[0x0][0x170] ;
+; Location /home/dstn/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
+        LDG.E.128 R36, [R36.64] ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE R44, R45, R0, c[0x0][0x170] ;
+; Location /home/dstn/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
         LDG.E.128 R40, [R40.64] ;
         LDG.E.128 R44, [R44.64] ;
-; Location ./int.jl:86
-        IMAD.IADD R53, R13, 0x1, R85.reuse ;
-        IMAD.IADD R49, R14, 0x1, R85 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE R52, R53, R0, c[0x0][0x170] ;
+; Location ./int.jl:87
+        LOP3.LUT R49, R67, 0x400, RZ, 0xfc, !PT ;
+        LOP3.LUT R53, R67, 0x480, RZ, 0xfc, !PT ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
         IMAD.WIDE R48, R49, R0, c[0x0][0x170] ;
-; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
-        LDG.E.128 R52, [R52.64] ;
+        IMAD.WIDE R52, R53, R0, c[0x0][0x170] ;
+; Location /home/dstn/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
         LDG.E.128 R48, [R48.64] ;
-; Location ./int.jl:86
-        IMAD.IADD R57, R12, 0x1, R85 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        LDG.E.128 R52, [R52.64] ;
+; Location ./int.jl:87
+        LOP3.LUT R57, R67, 0x500, RZ, 0xfc, !PT ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
         IMAD.WIDE R56, R57, R0, c[0x0][0x170] ;
-; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
+; Location /home/dstn/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
         LDG.E.128 R56, [R56.64] ;
-; Location ./int.jl:86
-        IMAD.IADD R61, R11, 0x1, R85 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+; Location ./int.jl:87
+        LOP3.LUT R61, R67, 0x580, RZ, 0xfc, !PT ;
+        LOP3.LUT R65, R65, 0x780, R6, 0xfe, !PT ;
+        LOP3.LUT R69, R67, 0x600, RZ, 0xfc, !PT ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
         IMAD.WIDE R60, R61, R0, c[0x0][0x170] ;
-; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
+; Location ./int.jl:87
+        LOP3.LUT R73, R67, 0x680, RZ, 0xfc, !PT ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE R64, R65, R0.reuse, c[0x0][0x170] ;
+; Location /home/dstn/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
         LDG.E.128 R60, [R60.64] ;
-; Location ./int.jl:86
-        IMAD.IADD R65, R10, 0x1, R85.reuse ;
-; Location ./int.jl:87
-        LOP3.LUT R77, R64, 0x780, R2, 0xfe, !PT ;
-; Location ./int.jl:86
-        IMAD.IADD R69, R9, 0x1, R85 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE R64, R65, R0, c[0x0][0x170] ;
-; Location ./int.jl:86
-        IMAD.IADD R73, R8, 0x1, R85 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
         IMAD.WIDE R68, R69, R0, c[0x0][0x170] ;
-        IMAD.WIDE R76, R77, R0, c[0x0][0x170] ;
+; Location ./int.jl:87
+        LOP3.LUT R77, R67, 0x700, RZ, 0xfc, !PT ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
         IMAD.WIDE R72, R73, R0, c[0x0][0x170] ;
-; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
+        IMAD.WIDE R76, R77, R0, c[0x0][0x170] ;
+; Location /home/dstn/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
         LDG.E.128 R76, [R76.64] ;
-        LDG.E.128 R72, [R72.64] ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R66, R22, R20, !P3 ;
-        SEL R67, R23, R21, !P3 ;
-        SEL R70, R18, R16, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R89, R66, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R71, R19, R17, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R88, R67, 0x10, 0x1f ;
-        SHFL.BFLY PT, R91, R70, 0x10, 0x1f ;
-; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R66, R16, R18, !P3 ;
+        SEL R70, R17, R19, !P3 ;
+        SEL R71, R20, R22, !P3 ;
+        SEL R74, R21, R23, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R83, R66, 0x10, 0x1f ;
+        SHFL.BFLY PT, R85, R71, 0x10, 0x1f ;
+        SHFL.BFLY PT, R86, R70, 0x10, 0x1f ;
+; Location /home/dstn/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
         LDG.E.128 R64, [R64.64] ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R90, R71, 0x10, 0x1f ;
-; Location /home/eschnett/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R82, R74, 0x10, 0x1f ;
+; Location /home/dstn/.julia/packages/IndexSpaces/SkQyK/src/IndexSpaces.jl:872
         LDG.E.128 R68, [R68.64] ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R20, R20, R89, !P3 ;
-        SEL R94, R30, R28, !P3 ;
-        SEL R93, R16, R91, !P3 ;
-        SEL R16, R21, R88, !P3 ;
-        SEL R21, R93, R20, !P2 ;
-        SEL R95, R17, R90, !P3 ;
-        SEL R17, R26, R24, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R98, R21, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R92, R27, R25, !P3 ;
-        SEL R96, R31, R29, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R97, R17, 0x10, 0x1f ;
-        SHFL.BFLY PT, R99, R94, 0x10, 0x1f ;
+        LDG.E.128 R72, [R72.64] ;
+        SEL R16, R83, R16, !P3 ;
+        SEL R87, R85, R20, !P3 ;
+        SEL R20, R86, R17, !P3 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R17, R87, R16, !P2 ;
+        SEL R21, R82, R21, !P3 ;
+        SEL R88, R24, R26, !P3 ;
+        SEL R93, R21, R20, !P2 ;
+        SEL R90, R25, R27, !P3 ;
+        SEL R91, R28, R30, !P3 ;
+        SEL R92, R29, R31, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R17, R17, 0x2, 0x1f ;
+        SHFL.BFLY PT, R93, R93, 0x2, 0x1f ;
+        SHFL.BFLY PT, R89, R88, 0x10, 0x1f ;
+        SHFL.BFLY PT, R90, R90, 0x10, 0x1f ;
+        SHFL.BFLY PT, R91, R91, 0x10, 0x1f ;
         SHFL.BFLY PT, R92, R92, 0x10, 0x1f ;
-        SHFL.BFLY PT, R96, R96, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R100, R95, R16, !P2 ;
-        SEL R23, R88, R23, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R100, R100, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R17, R98, R93, !P2 ;
-        SEL R88, R24, R97, !P3 ;
-        SEL R93, R28, R99, !P3 ;
-        SEL R30, R99, R30, !P3 ;
-        SEL R99, R93, R88, !P2 ;
-        SEL R22, R89, R22, !P3 ;
-        SEL R91, R91, R18, !P3 ;
-        SEL R18, R90, R19, !P3 ;
-        SEL R89, R97, R26, !P3 ;
-        SEL R25, R25, R92, !P3 ;
-        SEL R90, R29, R96, !P3 ;
-        SEL R26, R38, R36, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R104, R99, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R94, R91, R22, !P2 ;
-        SEL R105, R90, R25, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R97, R26, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R28, R96, R31, !P3 ;
-        SEL R24, R35, R33, !P3 ;
-        SEL R31, R39, R37, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R102, R94, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R29, R18, R23, !P2 ;
-        SEL R19, R34, R32, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R105, R105, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R21, R20, R98, !P2 ;
-        SEL R20, R16, R100, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R96, R24, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R16, R100, R95, !P2 ;
-        SEL R27, R92, R27, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R98, R31, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R92, R42, R40, !P3 ;
-        SEL R100, R43, R41, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R103, R29, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R101, R46, R44, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R95, R19, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R29, R30, R89, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R99, R92, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R106, R28, R27, !P2 ;
-        SEL R94, R47, R45, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R100, R100, 0x10, 0x1f ;
-        SHFL.BFLY PT, R29, R29, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R92, R88, R104, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R101, R101, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R88, R104, R93, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R31, R106, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R93, R36, R97, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R94, R94, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R36, R92, R21, !P1 ;
-        SEL R19, R102, R91, !P2 ;
-        SEL R26, R22, R102, !P2 ;
-        SEL R91, R25, R105, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R102, R36, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R25, R97, R38, !P3 ;
-        SEL R33, R33, R96, !P3 ;
-        SEL R38, R37, R98, !P3 ;
-        SEL R24, R23, R103, !P2 ;
-        SEL R23, R105, R90, !P2 ;
-        SEL R90, R32, R95, !P3 ;
-        SEL R37, R91, R20, !P1 ;
-        SEL R32, R38, R33, !P2 ;
-        SEL R34, R95, R34, !P3 ;
-        SEL R22, R98, R39, !P3 ;
-        SEL R18, R103, R18, !P2 ;
-        SEL R95, R40, R99, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R103, R37, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R39, R99, R42, !P3 ;
-        SEL R42, R41, R100, !P3 ;
-        SEL R40, R100, R43, !P3 ;
-        SEL R97, R89, R29, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R100, R32, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R44, R44, R101, !P3 ;
-        SEL R46, R101, R46, !P3 ;
-        SEL R99, R27, R31, !P2 ;
-        SEL R101, R97, R26, !P1 ;
-        SEL R35, R96, R35, !P3 ;
-        SEL R45, R45, R94, !P3 ;
-        SEL R47, R94, R47, !P3 ;
-        SEL R106, R88, R17, !P1 ;
-        SEL R96, R44, R95, !P2 ;
-        SEL R27, R93, R90, !P2 ;
-        SEL R41, R25, R34, !P2 ;
-        SEL R94, R46, R39, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R104, R101, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R105, R99, R24, !P1 ;
-        SEL R89, R22, R35, !P2 ;
-        SEL R43, R45, R42, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R106, R106, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R101, R47, R40, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R98, R27, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R37, R31, R28, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R96, R96, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R28, R102, R92, !P1 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R41, R41, 0x2, 0x1f ;
+        SEL R23, R23, R82, !P3 ;
+        SEL R84, R18, R83, !P3 ;
+        SEL R82, R16, R17, !P2 ;
+        SEL R86, R19, R86, !P3 ;
+        SEL R83, R22, R85, !P3 ;
+        SEL R17, R17, R87, !P2 ;
+        SEL R18, R20, R93, !P2 ;
+        SEL R16, R93, R21, !P2 ;
+        SEL R85, R89, R24, !P3 ;
+        SEL R87, R26, R89, !P3 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R19, R32, R34, !P3 ;
+        SEL R25, R90, R25, !P3 ;
+        SEL R24, R27, R90, !P3 ;
+        SEL R28, R91, R28, !P3 ;
+        SEL R20, R33, R35, !P3 ;
+        SEL R21, R36, R38, !P3 ;
+        SEL R26, R92, R29, !P3 ;
+        SEL R31, R31, R92, !P3 ;
+        SEL R30, R30, R91, !P3 ;
+        SEL R22, R37, R39, !P3 ;
+        SEL R27, R40, R42, !P3 ;
+        SEL R89, R41, R43, !P3 ;
+        SEL R90, R44, R46, !P3 ;
+        SEL R92, R23, R86, !P2 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R19, R19, 0x10, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R91, R45, R47, !P3 ;
+        SEL R94, R83, R84, !P2 ;
+        SEL R88, R28, R85, !P2 ;
+        SEL R93, R26, R25, !P2 ;
+        SEL R99, R31, R24, !P2 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R20, R20, 0x10, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R97, R30, R87, !P2 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R21, R21, 0x10, 0x1f ;
+        SHFL.BFLY PT, R96, R22, 0x10, 0x1f ;
+        SHFL.BFLY PT, R29, R27, 0x10, 0x1f ;
+        SHFL.BFLY PT, R98, R89, 0x10, 0x1f ;
+        SHFL.BFLY PT, R95, R90, 0x10, 0x1f ;
+        SHFL.BFLY PT, R100, R91, 0x10, 0x1f ;
+        SHFL.BFLY PT, R92, R92, 0x2, 0x1f ;
+        SHFL.BFLY PT, R90, R93, 0x2, 0x1f ;
+        SHFL.BFLY PT, R89, R99, 0x2, 0x1f ;
         SHFL.BFLY PT, R94, R94, 0x2, 0x1f ;
-        SHFL.BFLY PT, R105, R105, 0x4, 0x1f ;
-        SHFL.BFLY PT, R89, R89, 0x2, 0x1f ;
-        SHFL.BFLY PT, R92, R101, 0x2, 0x1f ;
-        SHFL.BFLY PT, R43, R43, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R36, R29, R30, !P2 ;
-        SEL R29, R103, R91, !P1 ;
-        SEL R91, R33, R100, !P2 ;
-        SEL R33, R23, R16, !P1 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R33, R33, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R30, R104, R97, !P1 ;
-        SEL R32, R106, R88, !P1 ;
-        SEL R90, R90, R98, !P2 ;
-        SEL R95, R95, R96, !P2 ;
-        SEL R27, R21, R102, !P1 ;
-        SEL R88, R34, R41, !P2 ;
-        SEL R97, R39, R94, !P2 ;
-        SEL R21, R20, R103, !P1 ;
-        SEL R31, R105, R99, !P1 ;
-        SEL R20, R100, R38, !P2 ;
-        SEL R99, R35, R89, !P2 ;
-        SEL R40, R40, R92, !P2 ;
-        SEL R42, R42, R43, !P2 ;
-        SEL R100, R95, R90, !P1 ;
-        SEL R35, R37, R18, !P1 ;
-        SEL R38, R97, R88, !P1 ;
-        SEL R93, R98, R93, !P2 ;
-        SEL R34, R36, R19, !P1 ;
-        SEL R44, R96, R44, !P2 ;
-        SEL R39, R40, R99, !P1 ;
-        SEL R98, R42, R91, !P1 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R100, R100, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R101, R43, R45, !P2 ;
-        SEL R41, R41, R25, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R96, R38, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R45, R44, R93, !P1 ;
-        SEL R94, R94, R46, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R35, R35, 0x4, 0x1f ;
-        SHFL.BFLY PT, R34, R34, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R102, R94, R41, !P1 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R43, R39, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R22, R89, R22, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R98, R98, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R47, R92, R47, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R46, R45, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R25, R16, R33, !P1 ;
-        SEL R16, R47, R22, !P1 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R102, R102, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R89, R101, R20, !P1 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R16, R16, 0x4, 0x1f ;
-        SHFL.BFLY PT, R89, R89, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R33, R33, R23, !P1 ;
-        SEL R26, R26, R104, !P1 ;
-        SEL R92, R90, R100, !P1 ;
-        SEL R23, R88, R96, !P1 ;
-        SEL R39, R18, R35, !P1 ;
-        SEL R24, R24, R105, !P1 ;
-        SEL R38, R19, R34, !P1 ;
-        SEL R35, R35, R37, !P1 ;
-        SEL R99, R99, R43, !P1 ;
-        SEL R34, R34, R36, !P1 ;
-        SEL R37, R100, R95, !P1 ;
-        SEL R19, R92, R27, !P0 ;
-        SEL R100, R23, R26, !P0 ;
-        SEL R36, R98, R42, !P1 ;
-        SEL R42, R93, R46, !P1 ;
-        SEL R17, R17, R106, !P1 ;
-        SEL R90, R91, R98, !P1 ;
-        SEL R93, R99, R24, !P0 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R95, R19, 0x8, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R45, R96, R97, !P1 ;
-        SEL R18, R43, R40, !P1 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R100, R100, 0x8, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R88, R90, R21, !P0 ;
-        SEL R43, R46, R44, !P1 ;
-        SEL R96, R42, R17, !P0 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R44, R93, 0x8, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R41, R41, R102, !P1 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R91, R88, 0x8, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R97, R41, R38, !P0 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R96, R96, 0x8, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R40, R20, R89, !P1 ;
-        SEL R88, R22, R16, !P1 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R97, R97, 0x8, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R16, R16, R47, !P1 ;
-        SEL R47, R88, R39, !P0 ;
-        SEL R46, R89, R101, !P1 ;
-        SEL R89, R40, R25, !P0 ;
-        SEL R103, R45, R30, !P0 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R101, R47, 0x8, 0x1f ;
-        SHFL.BFLY PT, R89, R89, 0x8, 0x1f ;
-        SHFL.BFLY PT, R103, R103, 0x8, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R20, R27, R95, !P0 ;
-        SEL R95, R95, R92, !P0 ;
-        SEL R93, R100, R23, !P0 ;
-        SEL R98, R36, R29, !P0 ;
-        SEL R23, R24, R44, !P0 ;
-        SEL R92, R44, R99, !P0 ;
-        SEL R47, R54, R52, !P3 ;
-        SEL R44, R50, R48, !P3 ;
-        SEL R27, R37, R28, !P0 ;
-        SEL R19, R102, R94, !P1 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R47, R47, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R21, R21, R91, !P0 ;
-        SEL R94, R91, R90, !P0 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R102, R98, 0x8, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R24, R17, R96, !P0 ;
-        SEL R91, R96, R42, !P0 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R17, R44, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R22, R26, R100, !P0 ;
-        SEL R96, R51, R49, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R100, R27, 0x8, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R98, R55, R53, !P3 ;
-        SEL R26, R38, R97, !P0 ;
-        SEL R38, R18, R31, !P0 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R96, R96, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R88, R101, R88, !P0 ;
-        SEL R27, R39, R101, !P0 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R98, R98, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R25, R25, R89, !P0 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R101, R38, 0x8, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R90, R89, R40, !P0 ;
-        SEL R89, R97, R41, !P0 ;
-        SEL R39, R103, R45, !P0 ;
-        SEL R97, R58, R56, !P3 ;
-        SEL R45, R19, R34, !P0 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R97, R97, 0x10, 0x1f ;
-        SHFL.BFLY PT, R104, R45, 0x8, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R41, R102, R36, !P0 ;
-        SEL R36, R48, R17, !P3 ;
-        SEL R99, R52, R47, !P3 ;
-        SEL R40, R43, R32, !P0 ;
-        SEL R28, R28, R100, !P0 ;
-        SEL R44, R100, R37, !P0 ;
-        SEL R100, R46, R33, !P0 ;
-        SEL R42, R99, R36, !P2 ;
-        SEL R29, R29, R102, !P0 ;
-        SEL R37, R62, R60, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R102, R40, 0x8, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R30, R30, R103, !P0 ;
-        SEL R52, R59, R57, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R103, R100, 0x8, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R38, R63, R61, !P3 ;
-        SEL R53, R53, R98, !P3 ;
-        SEL R40, R49, R96, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R100, R42, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R31, R31, R101, !P0 ;
-        SEL R48, R101, R18, !P0 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R101, R37, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R45, R47, R54, !P3 ;
-        SEL R42, R17, R50, !P3 ;
-        SEL R18, R53, R40, !P2 ;
-        SEL R50, R98, R55, !P3 ;
-        SEL R37, R96, R51, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R52, R52, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R105, R16, R35, !P0 ;
-        SEL R17, R45, R42, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R38, R38, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R54, R50, R37, !P2 ;
-        SEL R49, R104, R19, !P0 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R18, R18, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R56, R56, R97, !P3 ;
-        SEL R58, R97, R58, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R105, R105, 0x8, 0x1f ;
-        SHFL.BFLY PT, R19, R17, 0x2, 0x1f ;
-        SHFL.BFLY PT, R97, R54, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R55, R60, R101, !P3 ;
-        SEL R51, R101, R62, !P3 ;
-        SEL R57, R57, R52, !P3 ;
-        SEL R60, R61, R38, !P3 ;
-        SEL R54, R67, R65, !P3 ;
-        SEL R61, R55, R56, !P2 ;
-        SEL R33, R33, R103, !P0 ;
-        SEL R46, R103, R46, !P0 ;
-        SEL R34, R34, R104, !P0 ;
-        SEL R17, R18, R53, !P2 ;
-        SEL R103, R60, R57, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R62, R54, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R40, R40, R18, !P2 ;
-        SEL R104, R51, R58, !P2 ;
-        SEL R53, R66, R64, !P3 ;
-        SEL R32, R32, R102, !P0 ;
-        SEL R43, R102, R43, !P0 ;
-        SEL R47, R105, R16, !P0 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R102, R61, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R96, R70, R68, !P3 ;
-        SEL R42, R42, R19, !P2 ;
-        SEL R18, R19, R45, !P2 ;
-        SEL R36, R36, R100, !P2 ;
-        SEL R16, R100, R99, !P2 ;
-        SEL R98, R71, R69, !P3 ;
-        SEL R37, R37, R97, !P2 ;
-        SEL R19, R97, R50, !P2 ;
-        SEL R54, R79, R77, !P3 ;
-        SEL R61, R74, R72, !P3 ;
-        SEL R100, R75, R73, !P3 ;
-        SEL R97, R78, R76, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R103, R103, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R59, R52, R59, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R99, R53, 0x10, 0x1f ;
-        SHFL.BFLY PT, R104, R104, 0x2, 0x1f ;
-        SHFL.BFLY PT, R101, R96, 0x10, 0x1f ;
-        SHFL.BFLY PT, R98, R98, 0x10, 0x1f ;
-        SHFL.BFLY PT, R52, R100, 0x10, 0x1f ;
-        SHFL.BFLY PT, R54, R54, 0x10, 0x1f ;
-        SHFL.BFLY PT, R61, R61, 0x10, 0x1f ;
-        SHFL.BFLY PT, R97, R97, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R53, R56, R102, !P2 ;
-        SEL R45, R102, R55, !P2 ;
-        SEL R50, R38, R63, !P3 ;
-        SEL R55, R57, R103, !P2 ;
-        SEL R64, R64, R99, !P3 ;
-        SEL R66, R99, R66, !P3 ;
-        SEL R57, R58, R104, !P2 ;
-        SEL R99, R68, R101, !P3 ;
-        SEL R38, R103, R60, !P2 ;
-        SEL R65, R65, R62, !P3 ;
-        SEL R67, R62, R67, !P3 ;
-        SEL R68, R53, R36, !P1 ;
-        SEL R62, R69, R98, !P3 ;
-        SEL R60, R73, R52, !P3 ;
-        SEL R77, R77, R54, !P3 ;
-        SEL R51, R104, R51, !P2 ;
-        SEL R56, R50, R59, !P2 ;
-        SEL R69, R72, R61, !P3 ;
-        SEL R76, R76, R97, !P3 ;
-        SEL R104, R57, R42, !P1 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R102, R68, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R58, R98, R71, !P3 ;
-        SEL R61, R61, R74, !P3 ;
-        SEL R71, R99, R64, !P2 ;
-        SEL R74, R77, R60, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R96, R56, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R72, R62, R65, !P2 ;
-        SEL R68, R76, R69, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R104, R104, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R63, R101, R70, !P3 ;
-        SEL R70, R58, R67, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R98, R71, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R73, R63, R66, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R100, R72, 0x2, 0x1f ;
-        SHFL.BFLY PT, R74, R74, 0x2, 0x1f ;
-        SHFL.BFLY PT, R68, R68, 0x2, 0x1f ;
-        SHFL.BFLY PT, R70, R70, 0x2, 0x1f ;
-        SHFL.BFLY PT, R101, R73, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R78, R97, R78, !P3 ;
-        SEL R75, R52, R75, !P3 ;
-        SEL R72, R54, R79, !P3 ;
-        SEL R56, R59, R96, !P2 ;
-        SEL R59, R78, R61, !P2 ;
-        SEL R116, R36, R102, !P1 ;
-        SEL R97, R72, R75, !P2 ;
-        SEL R71, R104, R57, !P1 ;
-        SEL R103, R55, R40, !P1 ;
-        SEL R36, R102, R53, !P1 ;
-        SEL R57, R64, R98, !P2 ;
-        SEL R79, R65, R100, !P2 ;
-        SEL R53, R100, R62, !P2 ;
-        SEL R64, R60, R74, !P2 ;
-        SEL R50, R96, R50, !P2 ;
-        SEL R62, R69, R68, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R96, R59, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R67, R67, R70, !P2 ;
-        SEL R58, R70, R58, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R97, R97, 0x2, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R70, R62, R57, !P1 ;
-        SEL R59, R68, R76, !P2 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R88, R88, 0x2, 0x1f ;
+        SHFL.BFLY PT, R91, R97, 0x2, 0x1f ;
+        SEL R32, R19, R32, !P3 ;
+        SEL R34, R34, R19, !P3 ;
+        SEL R33, R20, R33, !P3 ;
+        SEL R22, R35, R20, !P3 ;
+        SEL R27, R21, R36, !P3 ;
+        SEL R19, R38, R21, !P3 ;
+        SEL R20, R96, R37, !P3 ;
+        SEL R21, R39, R96, !P3 ;
+        SEL R93, R29, R40, !P3 ;
+        SEL R96, R95, R44, !P3 ;
+        SEL R46, R46, R95, !P3 ;
+        SEL R29, R42, R29, !P3 ;
+        SEL R86, R86, R92, !P2 ;
+        SEL R39, R25, R90, !P2 ;
+        SEL R95, R24, R89, !P2 ;
+        SEL R42, R98, R41, !P3 ;
+        SEL R45, R100, R45, !P3 ;
+        SEL R38, R84, R94, !P2 ;
+        SEL R37, R85, R88, !P2 ;
+        SEL R87, R87, R91, !P2 ;
+        SEL R40, R43, R98, !P3 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R24, R39, R18, !P1 ;
+        SEL R103, R95, R86, !P1 ;
+        SEL R43, R37, R82, !P1 ;
+        SEL R84, R19, R34, !P2 ;
+        SEL R102, R87, R38, !P1 ;
+        SEL R41, R45, R42, !P2 ;
+        SEL R36, R20, R33, !P2 ;
+        SEL R99, R46, R29, !P2 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R101, R24, 0x4, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R35, R27, R32, !P2 ;
+        SEL R47, R47, R100, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R103, R103, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R76, R64, R79, !P1 ;
-        SEL R54, R101, R63, !P2 ;
-        SEL R63, R56, R37, !P1 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R70, R70, 0x4, 0x1f ;
-        SHFL.BFLY PT, R76, R76, 0x4, 0x1f ;
-        SHFL.BFLY PT, R63, R63, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R60, R74, R77, !P2 ;
-        SEL R77, R50, R19, !P1 ;
-        SEL R74, R75, R97, !P2 ;
-        SEL R52, R98, R99, !P2 ;
-        SEL R68, R61, R96, !P2 ;
-        SEL R73, R103, R55, !P1 ;
-        SEL R55, R66, R101, !P2 ;
-        SEL R75, R97, R72, !P2 ;
-        SEL R66, R45, R16, !P1 ;
-        SEL R65, R96, R78, !P2 ;
-        SEL R69, R51, R18, !P1 ;
-        SEL R61, R38, R17, !P1 ;
-        SEL R99, R74, R67, !P1 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R96, R77, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R40, R40, R103, !P1 ;
-        SEL R97, R68, R55, !P1 ;
-        SEL R100, R59, R52, !P1 ;
-        SEL R102, R75, R58, !P1 ;
-        SEL R79, R79, R76, !P1 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R78, R69, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R101, R60, R53, !P1 ;
-        SEL R72, R65, R54, !P1 ;
-        SEL R77, R57, R70, !P1 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R66, R66, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R69, R63, R56, !P1 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R61, R61, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R56, R79, R40, !P0 ;
-        SEL R103, R77, R116, !P0 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R99, R99, 0x4, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R42, R42, R104, !P1 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R98, R97, 0x4, 0x1f ;
-        SHFL.BFLY PT, R100, R100, 0x4, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R25, R96, R93, !P2 ;
+        SEL R44, R21, R22, !P2 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R100, R43, 0x4, 0x1f ;
+        SEL R24, R94, R83, !P2 ;
         SHFL.BFLY PT, R102, R102, 0x4, 0x1f ;
-        SHFL.BFLY PT, R101, R101, 0x4, 0x1f ;
-        SHFL.BFLY PT, R72, R72, 0x4, 0x1f ;
-        SHFL.BFLY PT, R104, R56, 0x8, 0x1f ;
-        SHFL.BFLY PT, R103, R103, 0x8, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R37, R37, R63, !P1 ;
-        SEL R16, R16, R66, !P1 ;
-        SEL R57, R96, R50, !P1 ;
-        SEL R66, R66, R45, !P1 ;
-        SEL R17, R17, R61, !P1 ;
-        SEL R63, R61, R38, !P1 ;
-        SEL R50, R67, R99, !P1 ;
-        SEL R61, R78, R51, !P1 ;
-        SEL R45, R55, R98, !P1 ;
-        SEL R38, R98, R68, !P1 ;
-        SEL R19, R19, R96, !P1 ;
-        SEL R97, R70, R62, !P1 ;
-        SEL R51, R52, R100, !P1 ;
-        SEL R68, R58, R102, !P1 ;
-        SEL R18, R18, R78, !P1 ;
-        SEL R64, R76, R64, !P1 ;
-        SEL R74, R99, R74, !P1 ;
-        SEL R62, R53, R101, !P1 ;
-        SEL R67, R54, R72, !P1 ;
-        SEL R59, R100, R59, !P1 ;
-        SEL R72, R72, R65, !P1 ;
-        SEL R58, R102, R75, !P1 ;
-        SEL R53, R50, R37, !P0 ;
-        SEL R60, R101, R60, !P1 ;
-        SEL R52, R45, R42, !P0 ;
-        SEL R113, R40, R104, !P0 ;
-        SEL R55, R104, R79, !P0 ;
-        SEL R40, R51, R16, !P0 ;
-        SEL R76, R68, R19, !P0 ;
-        SEL R35, R35, R105, !P0 ;
-        SEL R116, R116, R103, !P0 ;
-        SEL R56, R103, R77, !P0 ;
-        SEL R54, R62, R17, !P0 ;
-        SEL R65, R67, R18, !P0 ;
-        SEL R79, R64, R73, !P0 ;
-        SEL R99, R74, R69, !P0 ;
-        SEL R77, R97, R36, !P0 ;
-        SEL R96, R38, R71, !P0 ;
-        SEL R100, R59, R66, !P0 ;
-        SEL R103, R72, R61, !P0 ;
-        SEL R105, R58, R57, !P0 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R53, R53, 0x8, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R102, R60, R63, !P0 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R52, R52, 0x8, 0x1f ;
-        SHFL.BFLY PT, R40, R40, 0x8, 0x1f ;
-        SHFL.BFLY PT, R70, R54, 0x8, 0x1f ;
-        SHFL.BFLY PT, R75, R65, 0x8, 0x1f ;
-        SHFL.BFLY PT, R76, R76, 0x8, 0x1f ;
-        SHFL.BFLY PT, R78, R77, 0x8, 0x1f ;
-        SHFL.BFLY PT, R79, R79, 0x8, 0x1f ;
-        SHFL.BFLY PT, R98, R96, 0x8, 0x1f ;
+        SHFL.BFLY PT, R85, R36, 0x2, 0x1f ;
+        SHFL.BFLY PT, R84, R84, 0x2, 0x1f ;
+        SHFL.BFLY PT, R41, R41, 0x2, 0x1f ;
+        SHFL.BFLY PT, R83, R99, 0x2, 0x1f ;
+        SHFL.BFLY PT, R97, R35, 0x2, 0x1f ;
+        SHFL.BFLY PT, R98, R25, 0x2, 0x1f ;
+        SHFL.BFLY PT, R44, R44, 0x2, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R43, R47, R40, !P2 ;
+        SEL R88, R88, R28, !P2 ;
+        SEL R25, R90, R26, !P2 ;
+        SEL R26, R89, R31, !P2 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R43, R43, 0x2, 0x1f ;
+        SEL R35, R91, R30, !P2 ;
+        SEL R28, R82, R100, !P1 ;
+        SEL R31, R86, R103, !P1 ;
+        SEL R30, R38, R102, !P1 ;
+        SEL R86, R33, R85, !P2 ;
+        SEL R82, R34, R84, !P2 ;
+        SEL R42, R42, R41, !P2 ;
+        SEL R29, R29, R83, !P2 ;
+        SEL R38, R102, R87, !P1 ;
+        SEL R87, R97, R27, !P2 ;
+        SEL R32, R32, R97, !P2 ;
+        SEL R27, R93, R98, !P2 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R33, R42, R86, !P1 ;
+        SEL R34, R29, R82, !P1 ;
+        SEL R96, R98, R96, !P2 ;
+        SEL R89, R22, R44, !P2 ;
+        SEL R90, R88, R17, !P1 ;
+        SEL R22, R27, R32, !P1 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R33, R33, 0x4, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R93, R96, R87, !P1 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R34, R34, 0x4, 0x1f ;
+        SEL R19, R84, R19, !P2 ;
+        SHFL.BFLY PT, R90, R90, 0x4, 0x1f ;
+        SHFL.BFLY PT, R22, R22, 0x4, 0x1f ;
+        SHFL.BFLY PT, R84, R93, 0x4, 0x1f ;
+        SEL R40, R40, R43, !P2 ;
+        SEL R23, R92, R23, !P2 ;
+        SEL R20, R85, R20, !P2 ;
+        SEL R45, R41, R45, !P2 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R92, R40, R89, !P1 ;
+        SEL R46, R83, R46, !P2 ;
+        SEL R91, R25, R16, !P1 ;
+        SEL R41, R35, R24, !P1 ;
+        SEL R94, R45, R20, !P1 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R85, R92, 0x4, 0x1f ;
+        SEL R21, R44, R21, !P2 ;
+        SEL R44, R43, R47, !P2 ;
+        SEL R36, R100, R37, !P1 ;
+        SHFL.BFLY PT, R47, R41, 0x4, 0x1f ;
+        SEL R18, R18, R101, !P1 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R92, R46, R19, !P1 ;
+        SEL R97, R86, R33, !P1 ;
+        SEL R43, R82, R34, !P1 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R91, R91, 0x4, 0x1f ;
+        SEL R37, R101, R39, !P1 ;
+        SEL R39, R103, R95, !P1 ;
+        SHFL.BFLY PT, R94, R94, 0x4, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R83, R26, R23, !P1 ;
+        SEL R98, R44, R21, !P1 ;
+        SEL R17, R17, R90, !P1 ;
+        SEL R93, R90, R88, !P1 ;
+        SEL R95, R32, R22, !P1 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R92, R92, 0x4, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R86, R97, R18, !P0 ;
+        SEL R88, R87, R84, !P1 ;
+        SEL R90, R43, R30, !P0 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R83, R83, 0x4, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R32, R95, R28, !P0 ;
+        SEL R102, R88, R17, !P0 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R98, R98, 0x4, 0x1f ;
+        SHFL.BFLY PT, R99, R86, 0x8, 0x1f ;
+        SHFL.BFLY PT, R100, R90, 0x8, 0x1f ;
+        SHFL.BFLY PT, R32, R32, 0x8, 0x1f ;
+        SHFL.BFLY PT, R102, R102, 0x8, 0x1f ;
+        SEL R82, R89, R85, !P1 ;
+        SEL R89, R47, R35, !P1 ;
+        SEL R16, R16, R91, !P1 ;
+        SEL R35, R20, R94, !P1 ;
+        SEL R90, R19, R92, !P1 ;
+        SEL R41, R24, R47, !P1 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R19, R35, R16, !P0 ;
+        SEL R91, R91, R25, !P1 ;
+        SEL R20, R92, R46, !P1 ;
+        SEL R23, R23, R83, !P1 ;
+        SEL R27, R22, R27, !P1 ;
+        SEL R25, R34, R29, !P1 ;
+        SEL R96, R84, R96, !P1 ;
+        SEL R46, R21, R98, !P1 ;
+        SEL R22, R94, R45, !P1 ;
+        SEL R29, R18, R99, !P0 ;
+        SEL R84, R100, R43, !P0 ;
+        SEL R18, R90, R41, !P0 ;
+        SEL R45, R48, R50, !P3 ;
+        SEL R43, R52, R54, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R19, R19, 0x8, 0x1f ;
+        SEL R87, R83, R26, !P1 ;
+        SEL R42, R33, R42, !P1 ;
+        SEL R24, R85, R40, !P1 ;
+        SEL R26, R98, R44, !P1 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R21, R46, R23, !P0 ;
+        SEL R28, R28, R32, !P0 ;
+        SEL R86, R32, R95, !P0 ;
+        SEL R40, R49, R51, !P3 ;
+        SEL R44, R53, R55, !P3 ;
+        SEL R32, R17, R102, !P0 ;
+        SEL R34, R27, R36, !P0 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R17, R18, 0x8, 0x1f ;
+        SEL R83, R102, R88, !P0 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R88, R42, R37, !P0 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R45, R45, 0x10, 0x1f ;
+        SHFL.BFLY PT, R43, R43, 0x10, 0x1f ;
+        SHFL.BFLY PT, R21, R21, 0x8, 0x1f ;
+        SHFL.BFLY PT, R47, R34, 0x8, 0x1f ;
+        SHFL.BFLY PT, R40, R40, 0x10, 0x1f ;
+        SHFL.BFLY PT, R44, R44, 0x10, 0x1f ;
+        SHFL.BFLY PT, R88, R88, 0x8, 0x1f ;
+        SEL R33, R16, R19, !P0 ;
+        SEL R18, R19, R35, !P0 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R19, R96, R93, !P0 ;
+        SEL R34, R41, R17, !P0 ;
+        SEL R48, R45, R48, !P3 ;
+        SEL R41, R43, R52, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R95, R19, 0x8, 0x1f ;
+        SEL R16, R21, R46, !P0 ;
+        SEL R49, R40, R49, !P3 ;
+        SEL R19, R47, R27, !P0 ;
+        SEL R46, R44, R53, !P3 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R27, R41, R48, !P2 ;
+        SEL R85, R99, R97, !P0 ;
+        SEL R98, R20, R89, !P0 ;
+        SEL R52, R88, R42, !P0 ;
+        SEL R99, R26, R87, !P0 ;
+        SEL R42, R46, R49, !P2 ;
+        SEL R45, R50, R45, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R27, R27, 0x2, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R50, R57, R59, !P3 ;
+        SEL R97, R22, R91, !P0 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R98, R98, 0x8, 0x1f ;
+        SEL R37, R37, R88, !P0 ;
+        SHFL.BFLY PT, R88, R42, 0x2, 0x1f ;
         SHFL.BFLY PT, R99, R99, 0x8, 0x1f ;
-        SHFL.BFLY PT, R100, R100, 0x8, 0x1f ;
-        SHFL.BFLY PT, R65, R102, 0x8, 0x1f ;
-        SHFL.BFLY PT, R103, R103, 0x8, 0x1f ;
-        SHFL.BFLY PT, R105, R105, 0x8, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R107, R37, R53, !P0 ;
-        SEL R110, R42, R52, !P0 ;
-        SEL R53, R53, R50, !P0 ;
-        SEL R104, R16, R40, !P0 ;
-        SEL R101, R17, R70, !P0 ;
-        SEL R96, R18, R75, !P0 ;
-        SEL R50, R75, R67, !P0 ;
-        SEL R77, R19, R76, !P0 ;
-        SEL R75, R36, R78, !P0 ;
-        SEL R73, R73, R79, !P0 ;
-        SEL R71, R71, R98, !P0 ;
-        SEL R69, R69, R99, !P0 ;
-        SEL R54, R52, R45, !P0 ;
-        SEL R66, R66, R100, !P0 ;
-        SEL R63, R63, R65, !P0 ;
-        SEL R61, R61, R103, !P0 ;
-        SEL R57, R57, R105, !P0 ;
-        SEL R52, R40, R51, !P0 ;
-        SEL R42, R78, R97, !P0 ;
-        SEL R19, R99, R74, !P0 ;
-        SEL R18, R103, R72, !P0 ;
-        SEL R115, R116, R20, !P3 ;
-        SEL R112, R113, R21, !P3 ;
-        SEL R109, R110, R22, !P3 ;
-        SEL R106, R107, R23, !P3 ;
-        SEL R51, R70, R62, !P0 ;
-        SEL R45, R76, R68, !P0 ;
-        SEL R103, R104, R24, !P3 ;
-        SEL R99, R101, R25, !P3 ;
-        SEL R97, R96, R26, !P3 ;
-        SEL R78, R77, R27, !P3 ;
-        SEL R40, R79, R64, !P0 ;
-        SEL R37, R65, R60, !P0 ;
-        SEL R17, R105, R58, !P0 ;
-        SEL R76, R75, R28, !P3 ;
-        SEL R74, R73, R29, !P3 ;
-        SEL R72, R71, R30, !P3 ;
-        SEL R70, R69, R31, !P3 ;
-        SEL R67, R66, R32, !P3 ;
-        SEL R64, R63, R33, !P3 ;
-        SEL R60, R61, R34, !P3 ;
-        SEL R58, R57, R35, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R115, R115, 0x10, 0x1f ;
-        SHFL.BFLY PT, R112, R112, 0x10, 0x1f ;
-        SHFL.BFLY PT, R109, R109, 0x10, 0x1f ;
-        SHFL.BFLY PT, R106, R106, 0x10, 0x1f ;
-        SHFL.BFLY PT, R103, R103, 0x10, 0x1f ;
-        SHFL.BFLY PT, R99, R99, 0x10, 0x1f ;
-        SHFL.BFLY PT, R97, R97, 0x10, 0x1f ;
-        SHFL.BFLY PT, R78, R78, 0x10, 0x1f ;
-        SHFL.BFLY PT, R76, R76, 0x10, 0x1f ;
-        SHFL.BFLY PT, R74, R74, 0x10, 0x1f ;
-        SHFL.BFLY PT, R72, R72, 0x10, 0x1f ;
-        SHFL.BFLY PT, R70, R70, 0x10, 0x1f ;
-        SHFL.BFLY PT, R67, R67, 0x10, 0x1f ;
-        SHFL.BFLY PT, R64, R64, 0x10, 0x1f ;
-        SHFL.BFLY PT, R60, R60, 0x10, 0x1f ;
-        SHFL.BFLY PT, R58, R58, 0x10, 0x1f ;
-; Location ./int.jl:87
-        IMAD.IADD R16, R6, 0x1, R85 ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R36, R100, R59, !P0 ;
-; Location ./int.jl:87
-        IADD3 R65, R16.reuse, 0x2000, RZ ;
-        IADD3 R79, R16.reuse, 0x4000, RZ ;
-        IADD3 R59, R16, 0x6000, RZ ;
-        LOP3.LUT R125, R4.reuse, R16, RZ, 0xfc, !PT ;
-        LOP3.LUT R65, R4.reuse, R65, RZ, 0xfc, !PT ;
-        LOP3.LUT R79, R4, R79, RZ, 0xfc, !PT ;
-        LOP3.LUT R119, R4, R59, RZ, 0xfc, !PT ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE.U32 R124, R125, R0, c[0x0][0x190] ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R20, R20, R115, !P3 ;
-        SEL R21, R21, R112, !P3 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE.U32 R122, R65, R0, c[0x0][0x190] ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R22, R22, R109, !P3 ;
-        SEL R23, R23, R106, !P3 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE.U32 R120, R79, R0, c[0x0][0x190] ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R24, R24, R103, !P3 ;
-        SEL R25, R25, R99, !P3 ;
-        SEL R26, R26, R97, !P3 ;
-        SEL R27, R27, R78, !P3 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE.U32 R118, R119, R0, c[0x0][0x190] ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R28, R28, R76, !P3 ;
-        SEL R29, R29, R74, !P3 ;
-        SEL R30, R30, R72, !P3 ;
-        SEL R31, R31, R70, !P3 ;
-        SEL R32, R32, R67, !P3 ;
-        SEL R33, R33, R64, !P3 ;
-        SEL R34, R34, R60, !P3 ;
-        SEL R35, R35, R58, !P3 ;
-; Location ./int.jl:87
-        STG.E.128 [R124.64], R20 ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R38, R98, R38, !P0 ;
-        SEL R114, R56, R95, !P3 ;
-; Location ./int.jl:87
-        STG.E.128 [R122.64], R24 ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R111, R55, R94, !P3 ;
-        SEL R108, R54, R93, !P3 ;
-; Location ./int.jl:87
-        STG.E.128 [R120.64], R28 ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R105, R53, R92, !P3 ;
-; Location ./int.jl:87
-        IADD3 R59, R16, 0x8000, RZ ;
-        STG.E.128 [R118.64], R32 ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R102, R52, R91, !P3 ;
-; Location ./int.jl:87
-        LOP3.LUT R59, R4, R59, RZ, 0xfc, !PT ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R114, R114, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R100, R51, R90, !P3 ;
-        SEL R98, R50, R89, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R111, R111, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R79, R45, R88, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R108, R108, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R34, R38, R39, !P3 ;
-        SEL R33, R40, R41, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R105, R105, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R32, R42, R44, !P3 ;
-        SEL R35, R19, R48, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R34, R34, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R68, R36, R43, !P3 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE.U32 R24, R59, R0, c[0x0][0x190] ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R33, R33, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R65, R37, R46, !P3 ;
-        SEL R62, R18, R49, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R102, R102, 0x10, 0x1f ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R59, R17, R47, !P3 ;
-; Location /home/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R100, R100, 0x10, 0x1f ;
+        SHFL.BFLY PT, R50, R50, 0x10, 0x1f ;
+        SHFL.BFLY PT, R97, R97, 0x8, 0x1f ;
+        SEL R36, R36, R47, !P0 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R94, R24, R39, !P0 ;
+        SEL R47, R56, R58, !P3 ;
+        SEL R92, R25, R38, !P0 ;
+        SEL R53, R60, R62, !P3 ;
+        SEL R51, R51, R40, !P3 ;
+        SEL R35, R23, R21, !P0 ;
+        SEL R40, R54, R43, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R94, R94, 0x8, 0x1f ;
+        SEL R93, R93, R95, !P0 ;
+        SEL R23, R95, R96, !P0 ;
+        SHFL.BFLY PT, R47, R47, 0x10, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R43, R61, R63, !P3 ;
+        SEL R42, R48, R27, !P2 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R95, R53, 0x10, 0x1f ;
+        SEL R27, R27, R41, !P2 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R96, R64, R66, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R92, R92, 0x8, 0x1f ;
+        SEL R21, R98, R20, !P0 ;
+        SEL R111, R49, R88, !P2 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R41, R68, R70, !P3 ;
+        SEL R17, R17, R90, !P0 ;
+        SEL R20, R99, R26, !P0 ;
+        SEL R49, R72, R74, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R54, R43, 0x10, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R101, R82, R31, !P0 ;
+        SEL R90, R40, R45, !P2 ;
+        SEL R26, R88, R46, !P2 ;
+        SEL R46, R50, R57, !P3 ;
+        SEL R44, R55, R44, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R57, R96, 0x10, 0x1f ;
+        SEL R91, R91, R97, !P0 ;
+        SEL R22, R97, R22, !P0 ;
+        SHFL.BFLY PT, R55, R41, 0x10, 0x1f ;
+        SEL R30, R30, R100, !P0 ;
+        SHFL.BFLY PT, R97, R49, 0x10, 0x1f ;
+        SHFL.BFLY PT, R100, R90, 0x2, 0x1f ;
+        SHFL.BFLY PT, R101, R101, 0x8, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R48, R69, R71, !P3 ;
+        SEL R39, R39, R94, !P0 ;
+        SEL R24, R94, R24, !P0 ;
+        SEL R89, R89, R98, !P0 ;
+        SEL R43, R47, R56, !P3 ;
+        SEL R60, R95, R60, !P3 ;
+        SEL R38, R38, R92, !P0 ;
+        SEL R25, R92, R25, !P0 ;
+        SEL R94, R77, R79, !P3 ;
+        SEL R98, R65, R67, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R88, R48, 0x10, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R53, R73, R75, !P3 ;
+        SEL R92, R76, R78, !P3 ;
+        SEL R58, R58, R47, !P3 ;
+        SEL R49, R62, R95, !P3 ;
+        SEL R56, R60, R43, !P2 ;
+        SEL R48, R63, R54, !P3 ;
+        SEL R63, R57, R64, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R90, R53, 0x10, 0x1f ;
+        SEL R87, R87, R99, !P0 ;
+        SEL R61, R54, R61, !P3 ;
+        SHFL.BFLY PT, R99, R92, 0x10, 0x1f ;
+        SEL R68, R55, R68, !P3 ;
+        SEL R70, R70, R55, !P3 ;
+        SHFL.BFLY PT, R94, R94, 0x10, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R64, R49, R58, !P2 ;
+        SEL R55, R97, R72, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R98, R98, 0x10, 0x1f ;
+        SEL R41, R45, R100, !P2 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R72, R44, R51, !P2 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R45, R56, 0x2, 0x1f ;
+        SEL R31, R31, R101, !P0 ;
+        SEL R82, R101, R82, !P0 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R101, R61, R46, !P2 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R64, R64, 0x2, 0x1f ;
+        SHFL.BFLY PT, R72, R72, 0x2, 0x1f ;
+        SHFL.BFLY PT, R53, R101, 0x2, 0x1f ;
+        SEL R59, R59, R50, !P3 ;
+        SEL R69, R88, R69, !P3 ;
+        SEL R56, R90, R73, !P3 ;
+        SEL R76, R99, R76, !P3 ;
+        SEL R54, R94, R77, !P3 ;
+        SEL R65, R98, R65, !P3 ;
+        SEL R47, R74, R97, !P3 ;
+        SEL R78, R78, R99, !P3 ;
+        SEL R57, R66, R57, !P3 ;
+        SEL R77, R43, R45, !P2 ;
+        SEL R71, R71, R88, !P3 ;
+        SEL R50, R75, R90, !P3 ;
+        SEL R62, R67, R98, !P3 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R43, R48, R59, !P2 ;
+        SEL R79, R79, R94, !P3 ;
+        SEL R67, R56, R69, !P2 ;
+        SEL R88, R63, R76, !P2 ;
+        SEL R90, R65, R54, !P2 ;
+        SEL R58, R58, R64, !P2 ;
+        SEL R73, R47, R70, !P2 ;
+        SEL R92, R57, R78, !P2 ;
+        SEL R94, R77, R42, !P1 ;
+        SEL R75, R50, R71, !P2 ;
+        SEL R51, R51, R72, !P2 ;
+        SEL R44, R72, R44, !P2 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R43, R43, 0x2, 0x1f ;
+        SEL R74, R46, R53, !P2 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R72, R62, R79, !P2 ;
+        SEL R49, R64, R49, !P2 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R67, R67, 0x2, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R46, R55, R68, !P2 ;
+        SEL R64, R58, R41, !P1 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R88, R88, 0x2, 0x1f ;
+        SEL R53, R53, R61, !P2 ;
+        SHFL.BFLY PT, R90, R90, 0x2, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R95, R74, R111, !P1 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R73, R73, 0x2, 0x1f ;
+        SHFL.BFLY PT, R92, R92, 0x2, 0x1f ;
+        SHFL.BFLY PT, R94, R94, 0x4, 0x1f ;
+        SHFL.BFLY PT, R75, R75, 0x2, 0x1f ;
+        SHFL.BFLY PT, R61, R72, 0x2, 0x1f ;
+        SHFL.BFLY PT, R66, R46, 0x2, 0x1f ;
+        SHFL.BFLY PT, R64, R64, 0x4, 0x1f ;
+        SHFL.BFLY PT, R95, R95, 0x4, 0x1f ;
+        SEL R46, R59, R43, !P2 ;
+        SEL R56, R67, R56, !P2 ;
+        SEL R76, R76, R88, !P2 ;
+        SEL R72, R88, R63, !P2 ;
+        SEL R65, R90, R65, !P2 ;
+        SEL R40, R100, R40, !P2 ;
+        SEL R88, R54, R90, !P2 ;
+        SEL R60, R45, R60, !P2 ;
+        SEL R47, R73, R47, !P2 ;
+        SEL R54, R92, R57, !P2 ;
+        SEL R43, R43, R48, !P2 ;
+        SEL R42, R42, R94, !P1 ;
+        SEL R77, R94, R77, !P1 ;
+        SEL R50, R75, R50, !P2 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R63, R46, R51, !P1 ;
+        SEL R79, R79, R61, !P2 ;
+        SEL R57, R61, R62, !P2 ;
+        SEL R55, R66, R55, !P2 ;
+        SEL R48, R71, R75, !P2 ;
+        SEL R61, R53, R26, !P1 ;
+        SEL R94, R65, R56, !P1 ;
+        SEL R45, R68, R66, !P2 ;
+        SEL R62, R49, R40, !P1 ;
+        SEL R71, R64, R58, !P1 ;
+        SEL R70, R70, R73, !P2 ;
+        SEL R59, R78, R92, !P2 ;
+        SEL R66, R60, R27, !P1 ;
+        SEL R58, R54, R47, !P1 ;
+        SEL R96, R57, R50, !P1 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R63, R63, 0x4, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R92, R72, R55, !P1 ;
+        SEL R68, R76, R45, !P1 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R61, R61, 0x4, 0x1f ;
+        SEL R111, R111, R95, !P1 ;
+        SEL R74, R95, R74, !P1 ;
+        SHFL.BFLY PT, R94, R94, 0x4, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R78, R59, R70, !P1 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R62, R62, 0x4, 0x1f ;
+        SEL R69, R69, R67, !P2 ;
+        SHFL.BFLY PT, R95, R58, 0x4, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R67, R43, R44, !P1 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R66, R66, 0x4, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R90, R79, R48, !P1 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R96, R96, 0x4, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R75, R88, R69, !P1 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R73, R68, 0x4, 0x1f ;
+        SHFL.BFLY PT, R92, R92, 0x4, 0x1f ;
+        SHFL.BFLY PT, R78, R78, 0x4, 0x1f ;
+        SHFL.BFLY PT, R67, R67, 0x4, 0x1f ;
+        SHFL.BFLY PT, R90, R90, 0x4, 0x1f ;
+        SHFL.BFLY PT, R75, R75, 0x4, 0x1f ;
+        SEL R51, R51, R63, !P1 ;
+        SEL R68, R63, R46, !P1 ;
+        SEL R26, R26, R61, !P1 ;
+        SEL R63, R56, R94, !P1 ;
+        SEL R40, R40, R62, !P1 ;
+        SEL R47, R47, R95, !P1 ;
+        SEL R41, R41, R64, !P1 ;
+        SEL R103, R27, R66, !P1 ;
+        SEL R64, R61, R53, !P1 ;
+        SEL R62, R62, R49, !P1 ;
+        SEL R27, R96, R57, !P1 ;
+        SEL R49, R45, R73, !P1 ;
+        SEL R61, R92, R72, !P1 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R57, R63, R26, !P0 ;
+        SEL R72, R47, R40, !P0 ;
+        SEL R70, R70, R78, !P1 ;
+        SEL R53, R49, R42, !P0 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R57, R57, 0x8, 0x1f ;
+        SEL R66, R66, R60, !P1 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R56, R70, R41, !P0 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R72, R72, 0x8, 0x1f ;
+        SEL R44, R44, R67, !P1 ;
+        SEL R60, R67, R43, !P1 ;
+        SEL R46, R73, R76, !P1 ;
+        SEL R58, R78, R59, !P1 ;
+        SEL R48, R48, R90, !P1 ;
+        SEL R67, R50, R96, !P1 ;
+        SHFL.BFLY PT, R53, R53, 0x8, 0x1f ;
+        SEL R76, R69, R75, !P1 ;
+        SEL R78, R55, R92, !P1 ;
+        SEL R45, R75, R88, !P1 ;
+        SEL R43, R90, R79, !P1 ;
+        SHFL.BFLY PT, R56, R56, 0x8, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R50, R48, R51, !P0 ;
+        SEL R73, R67, R44, !P0 ;
+        SEL R55, R76, R111, !P0 ;
+        SEL R69, R78, R103, !P0 ;
+        SEL R88, R58, R71, !P0 ;
+        SEL R75, R46, R77, !P0 ;
+        SEL R79, R45, R74, !P0 ;
+        SEL R90, R43, R68, !P0 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R50, R50, 0x8, 0x1f ;
+        SEL R59, R95, R54, !P1 ;
+        SHFL.BFLY PT, R54, R55, 0x8, 0x1f ;
+        SHFL.BFLY PT, R73, R73, 0x8, 0x1f ;
+        SHFL.BFLY PT, R69, R69, 0x8, 0x1f ;
+        SHFL.BFLY PT, R88, R88, 0x8, 0x1f ;
+        SHFL.BFLY PT, R75, R75, 0x8, 0x1f ;
+        SHFL.BFLY PT, R79, R79, 0x8, 0x1f ;
+        SHFL.BFLY PT, R90, R90, 0x8, 0x1f ;
+        SEL R99, R26, R57, !P0 ;
+        SEL R92, R40, R72, !P0 ;
+; Location ./int.jl:87
+        LOP3.LUT R26, R3, 0x1c00000, R10, 0xf8, !PT ;
+        LOP3.LUT R40, R4, 0x700000, R13, 0xf8, !PT ;
+        SEL R55, R53, R49, !P0 ;
+        SEL R65, R94, R65, !P1 ;
+        SEL R114, R42, R53, !P0 ;
+        SEL R49, R57, R63, !P0 ;
+        LOP3.LUT R26, R26, UR6, RZ, 0xfc, !PT ;
+        SEL R108, R41, R56, !P0 ;
+        SEL R53, R56, R70, !P0 ;
+        LOP3.LUT R57, R40, UR4, RZ, 0xfc, !PT ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R56, R27, R60, !P0 ;
+        SEL R42, R61, R66, !P0 ;
+        SEL R41, R65, R64, !P0 ;
+; Location ./int.jl:87
+        LOP3.LUT R40, R26, 0x200, R11, 0xf8, !PT ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R26, R59, R62, !P0 ;
+; Location ./int.jl:87
+        LOP3.LUT R70, R57, 0x80, R12, 0xf8, !PT ;
+        SEL R111, R111, R54, !P0 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R57, R56, 0x8, 0x1f ;
+        SEL R105, R51, R50, !P0 ;
+        SEL R95, R44, R73, !P0 ;
+        SEL R103, R103, R69, !P0 ;
+        SEL R44, R88, R58, !P0 ;
+        SHFL.BFLY PT, R42, R42, 0x8, 0x1f ;
+        SEL R77, R77, R75, !P0 ;
+        SEL R74, R74, R79, !P0 ;
+        SHFL.BFLY PT, R41, R41, 0x8, 0x1f ;
+        SEL R71, R71, R88, !P0 ;
+        SEL R68, R68, R90, !P0 ;
+; Location ./int.jl:87
+        LOP3.LUT R58, R40, R5, RZ, 0xfc, !PT ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R40, R26, 0x8, 0x1f ;
+        SEL R51, R50, R48, !P0 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R113, R28, R114, !P3 ;
+        SEL R110, R29, R111, !P3 ;
+        SEL R107, R30, R108, !P3 ;
+        SEL R104, R31, R105, !P3 ;
+        SEL R50, R69, R78, !P0 ;
+        SEL R48, R72, R47, !P0 ;
+        SEL R46, R75, R46, !P0 ;
+        SEL R100, R32, R103, !P3 ;
+        SEL R96, R33, R99, !P3 ;
+        SEL R97, R34, R92, !P3 ;
+        SEL R88, R35, R95, !P3 ;
+        SEL R78, R36, R77, !P3 ;
+        SEL R75, R37, R74, !P3 ;
+        SEL R72, R38, R71, !P3 ;
+        SEL R69, R39, R68, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R113, R113, 0x10, 0x1f ;
+        SHFL.BFLY PT, R110, R110, 0x10, 0x1f ;
+        SHFL.BFLY PT, R107, R107, 0x10, 0x1f ;
+        SHFL.BFLY PT, R104, R104, 0x10, 0x1f ;
+        SHFL.BFLY PT, R100, R100, 0x10, 0x1f ;
+        SHFL.BFLY PT, R96, R96, 0x10, 0x1f ;
+        SHFL.BFLY PT, R97, R97, 0x10, 0x1f ;
+        SHFL.BFLY PT, R88, R88, 0x10, 0x1f ;
+        SHFL.BFLY PT, R78, R78, 0x10, 0x1f ;
+        SHFL.BFLY PT, R75, R75, 0x10, 0x1f ;
+        SHFL.BFLY PT, R72, R72, 0x10, 0x1f ;
+        SHFL.BFLY PT, R69, R69, 0x10, 0x1f ;
+        SEL R60, R60, R57, !P0 ;
+; Location ./int.jl:87
+        LOP3.LUT R26, R70, R7, RZ, 0xfc, !PT ;
+        SEL R66, R66, R42, !P0 ;
+        SEL R64, R64, R41, !P0 ;
+        SEL R62, R62, R40, !P0 ;
+        SEL R54, R54, R76, !P0 ;
+        SEL R47, R73, R67, !P0 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R102, R87, R60, !P3 ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IADD3 R56, P4, R58, c[0x0][0x190], RZ ;
+        SEL R45, R79, R45, !P0 ;
+        SEL R43, R90, R43, !P0 ;
+        SEL R40, R40, R59, !P0 ;
+; Location ./int.jl:87
+        LOP3.LUT R121, R26, 0x2000, RZ, 0xfc, !PT ;
+        LOP3.LUT R59, R26, 0x4000, RZ, 0xfc, !PT ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R112, R93, R66, !P3 ;
+        SEL R109, R91, R64, !P3 ;
+        SEL R106, R89, R62, !P3 ;
+        SEL R101, R86, R55, !P3 ;
+        SEL R98, R85, R54, !P3 ;
+        SEL R94, R84, R53, !P3 ;
+        SEL R90, R82, R51, !P3 ;
+        SEL R70, R16, R47, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R102, R102, 0x10, 0x1f ;
+        SEL R42, R42, R61, !P0 ;
+        SEL R41, R41, R65, !P0 ;
+        SEL R27, R57, R27, !P0 ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.X R57, RZ, RZ, c[0x0][0x194], P4 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R79, R83, R50, !P3 ;
+        SEL R76, R18, R49, !P3 ;
+        SEL R73, R17, R48, !P3 ;
+        SEL R67, R19, R46, !P3 ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE R120, R121, R0, c[0x0][0x190] ;
+        SEL R28, R113, R28, !P3 ;
+        SEL R29, R110, R29, !P3 ;
+        SEL R30, R107, R30, !P3 ;
+        SEL R31, R104, R31, !P3 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R65, R52, R45, !P3 ;
+        SEL R63, R25, R44, !P3 ;
+        SEL R61, R24, R43, !P3 ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE R58, R59, R0, c[0x0][0x190] ;
+        SEL R32, R100, R32, !P3 ;
+        SEL R33, R96, R33, !P3 ;
+        SEL R34, R97, R34, !P3 ;
+        SEL R35, R88, R35, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R112, R112, 0x10, 0x1f ;
+        SEL R36, R78, R36, !P3 ;
+        SEL R37, R75, R37, !P3 ;
+        SHFL.BFLY PT, R109, R109, 0x10, 0x1f ;
+        SEL R38, R72, R38, !P3 ;
+        SEL R39, R69, R39, !P3 ;
+        SHFL.BFLY PT, R106, R106, 0x10, 0x1f ;
+        SHFL.BFLY PT, R101, R101, 0x10, 0x1f ;
+        SHFL.BFLY PT, R98, R98, 0x10, 0x1f ;
+        SHFL.BFLY PT, R94, R94, 0x10, 0x1f ;
+        SHFL.BFLY PT, R90, R90, 0x10, 0x1f ;
+        SHFL.BFLY PT, R70, R70, 0x10, 0x1f ;
+; Location ./int.jl:87
+        STG.E.128 [R56.64], R28 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R79, R79, 0x10, 0x1f ;
-        SHFL.BFLY PT, R32, R32, 0x10, 0x1f ;
-        SHFL.BFLY PT, R35, R35, 0x10, 0x1f ;
-        SHFL.BFLY PT, R68, R68, 0x10, 0x1f ;
+        SHFL.BFLY PT, R76, R76, 0x10, 0x1f ;
+        SHFL.BFLY PT, R73, R73, 0x10, 0x1f ;
+        SHFL.BFLY PT, R67, R67, 0x10, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R56, R23, R42, !P3 ;
+; Location ./int.jl:87
+        STG.E.128 [R120.64], R32 ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R57, R22, R41, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R65, R65, 0x10, 0x1f ;
-        SHFL.BFLY PT, R62, R62, 0x10, 0x1f ;
+        SHFL.BFLY PT, R63, R63, 0x10, 0x1f ;
+        SHFL.BFLY PT, R61, R61, 0x10, 0x1f ;
+; Location ./int.jl:87
+        STG.E.128 [R58.64], R36 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R56, R56, 0x10, 0x1f ;
+        SHFL.BFLY PT, R57, R57, 0x10, 0x1f ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
+        SEL R58, R21, R40, !P3 ;
+        SEL R59, R20, R27, !P3 ;
+; Location /home/dstn/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R58, R58, 0x10, 0x1f ;
         SHFL.BFLY PT, R59, R59, 0x10, 0x1f ;
 ; Location ./int.jl:87
-        IADD3 R29, R16, 0xc000, RZ ;
-        IADD3 R117, R16, 0xa000, RZ ;
-        LOP3.LUT R29, R4, R29, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R20, R95, R114, !P3 ;
-        SEL R21, R94, R111, !P3 ;
-        SEL R22, R93, R108, !P3 ;
-        SEL R23, R92, R105, !P3 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE.U32 R94, R29, R0, c[0x0][0x190] ;
+        LOP3.LUT R119, R26.reuse, 0x6000, RZ, 0xfc, !PT ;
+        LOP3.LUT R117, R26, 0x8000, RZ, 0xfc, !PT ;
+        SEL R31, R102, R87, !P3 ;
+        LOP3.LUT R121, R26, 0xa000, RZ, 0xfc, !PT ;
+        LOP3.LUT R87, R26, 0xc000, RZ, 0xfc, !PT ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE R118, R119, R0.reuse, c[0x0][0x190] ;
+        SEL R28, R112, R93, !P3 ;
+        SEL R29, R109, R91, !P3 ;
+        IMAD.WIDE R116, R117, R0, c[0x0][0x190] ;
+        SEL R30, R106, R89, !P3 ;
+        SEL R32, R101, R86, !P3 ;
+        IMAD.WIDE R120, R121, R0, c[0x0][0x190] ;
+        SEL R33, R98, R85, !P3 ;
+        SEL R34, R94, R84, !P3 ;
+        SEL R35, R90, R82, !P3 ;
+        SEL R39, R70, R16, !P3 ;
+        IMAD.WIDE R86, R87, R0, c[0x0][0x190] ;
+        SEL R36, R79, R83, !P3 ;
+        SEL R37, R76, R18, !P3 ;
+        SEL R38, R73, R17, !P3 ;
+        SEL R16, R67, R19, !P3 ;
+        SEL R17, R65, R52, !P3 ;
+        SEL R18, R63, R25, !P3 ;
+        SEL R19, R61, R24, !P3 ;
 ; Location ./int.jl:87
-        IADD3 R27, R16, 0xe000, RZ ;
-        LOP3.LUT R117, R4, R117, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R30, R39, R34, !P3 ;
-        SEL R29, R41, R33, !P3 ;
+        STG.E.128 [R118.64], R28 ;
+        LOP3.LUT R85, R26, 0xe000, RZ, 0xfc, !PT ;
+        STG.E.128 [R116.64], R32 ;
+        LOP3.LUT R25, R26, 0x1000, RZ, 0xfc, !PT ;
+        STG.E.128 [R120.64], R36 ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE R84, R85, R0, c[0x0][0x190] ;
 ; Location ./int.jl:87
-        IADD3 R39, R16.reuse, 0x1000, RZ ;
-        STG.E.128 [R24.64], R20 ;
-        IADD3 R41, R16, 0x3000, RZ ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE.U32 R118, R117, R0, c[0x0][0x190] ;
+        STG.E.128 [R86.64], R16 ;
+        SEL R28, R56, R23, !P3 ;
+        SEL R29, R57, R22, !P3 ;
+        SEL R30, R58, R21, !P3 ;
+        SEL R31, R59, R20, !P3 ;
+        SEL R20, R114, R113, !P3 ;
+        LOP3.LUT R19, R26, 0x3000, RZ, 0xfc, !PT ;
+        SEL R17, R74, R75, !P3 ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE R74, R25, R0, c[0x0][0x190] ;
+        SEL R21, R111, R110, !P3 ;
+        SEL R22, R108, R107, !P3 ;
+        IMAD.WIDE R24, R19, R0, c[0x0][0x190] ;
+        SEL R23, R105, R104, !P3 ;
+        SEL R32, R103, R100, !P3 ;
+        SEL R33, R99, R96, !P3 ;
+        SEL R34, R92, R97, !P3 ;
+        SEL R35, R95, R88, !P3 ;
 ; Location ./int.jl:87
-        LOP3.LUT R27, R4, R27, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R28, R44, R32, !P3 ;
-        SEL R31, R48, R35, !P3 ;
+        STG.E.128 [R84.64], R28 ;
+; Location ./range.jl:883
+        IADD3 R15, R15, 0x1, RZ ;
 ; Location ./int.jl:87
-        LOP3.LUT R39, R4.reuse, R39, RZ, 0xfc, !PT ;
-        LOP3.LUT R41, R4, R41, RZ, 0xfc, !PT ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE.U32 R92, R27, R0, c[0x0][0x190] ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R26, R49, R62, !P3 ;
-        SEL R20, R91, R102, !P3 ;
-        SEL R21, R90, R100, !P3 ;
-        SEL R22, R89, R98, !P3 ;
-        SEL R23, R88, R79, !P3 ;
-        SEL R24, R43, R68, !P3 ;
+        STG.E.128 [R74.64], R20 ;
+        SEL R59, R27, R59, !P3 ;
+        STG.E.128 [R24.64], R32 ;
+        SEL R19, R68, R69, !P3 ;
+        LOP3.LUT R27, R26.reuse, 0x9000, RZ, 0xfc, !PT ;
+        SEL R16, R77, R78, !P3 ;
+        LOP3.LUT R29, R26.reuse, 0x5000, RZ, 0xfc, !PT ;
+        SEL R18, R71, R72, !P3 ;
+; Location ./promotion.jl:477
+        ISETP.NE.AND P4, PT, R15, 0x10, PT ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE R68, R29, R0, c[0x0][0x190] ;
 ; Location ./int.jl:87
-        IADD3 R43, R16, 0x5000, RZ ;
-        STG.E.128 [R118.64], R20 ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R25, R46, R65, !P3 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE R48, R39, R0.reuse, c[0x0][0x190] ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R27, R47, R59, !P3 ;
+        LOP3.LUT R25, R26, 0x7000, RZ, 0xfc, !PT ;
+        LOP3.LUT R33, R26.reuse, 0xb000, RZ, 0xfc, !PT ;
+        SEL R57, R41, R57, !P3 ;
+        LOP3.LUT R35, R26.reuse, 0xd000, RZ, 0xfc, !PT ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE R24, R25, R0, c[0x0][0x190] ;
 ; Location ./int.jl:87
-        STG.E.128 [R94.64], R28 ;
-        LOP3.LUT R43, R4, R43, RZ, 0xfc, !PT ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE.U32 R46, R41, R0, c[0x0][0x190] ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R39, R59, R17, !P3 ;
+        LOP3.LUT R41, R26, 0xf000, RZ, 0xfc, !PT ;
+        SEL R28, R66, R112, !P3 ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE R26, R27, R0, c[0x0][0x190] ;
+        SEL R29, R64, R109, !P3 ;
+        SEL R30, R62, R106, !P3 ;
+        SEL R31, R60, R102, !P3 ;
 ; Location ./int.jl:87
-        STG.E.128 [R92.64], R24 ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R35, R35, R19, !P3 ;
+        STG.E.128 [R68.64], R16 ;
+        SEL R36, R55, R101, !P3 ;
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
+        IMAD.WIDE R32, R33, R0, c[0x0][0x190] ;
+        SEL R37, R54, R98, !P3 ;
+        SEL R38, R53, R94, !P3 ;
+        SEL R39, R51, R90, !P3 ;
+        IMAD.WIDE R34, R35, R0, c[0x0][0x190] ;
+        SEL R20, R50, R79, !P3 ;
+        SEL R21, R49, R76, !P3 ;
+        SEL R22, R48, R73, !P3 ;
+        SEL R23, R47, R70, !P3 ;
+        SEL R58, R40, R58, !P3 ;
+        IMAD.WIDE R40, R41, R0, c[0x0][0x190] ;
+        SEL R16, R46, R67, !P3 ;
+        SEL R17, R45, R65, !P3 ;
+        SEL R18, R44, R63, !P3 ;
+        SEL R19, R43, R61, !P3 ;
 ; Location ./int.jl:87
-        IADD3 R17, R16.reuse, 0x7000, RZ ;
-        IADD3 R19, R16, 0x9000, RZ ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R20, R115, R116, !P3 ;
-        SEL R21, R112, R113, !P3 ;
-        SEL R22, R109, R110, !P3 ;
-        SEL R23, R106, R107, !P3 ;
-        SEL R28, R103, R104, !P3 ;
-        SEL R29, R99, R101, !P3 ;
-        SEL R30, R97, R96, !P3 ;
-        SEL R31, R78, R77, !P3 ;
-; Location ./int.jl:87
-        STG.E.128 [R48.64], R20 ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R26, R72, R71, !P3 ;
-        SEL R27, R70, R69, !P3 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE.U32 R70, R43, R0, c[0x0][0x190] ;
-; Location ./int.jl:87
-        STG.E.128 [R46.64], R28 ;
-        IADD3 R41, R16, 0xb000, RZ ;
-; Location ./promotion.jl:521
-        IADD3 R85, R85, 0x10000, RZ ;
-; Location ./int.jl:87
-        IADD3 R43, R16, 0xd000, RZ ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R24, R76, R75, !P3 ;
-        SEL R25, R74, R73, !P3 ;
-; Location ./int.jl:87
-        LOP3.LUT R17, R4.reuse, R17, RZ, 0xfc, !PT ;
-        LOP3.LUT R19, R4, R19, RZ, 0xfc, !PT ;
-        LOP3.LUT R41, R4, R41, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R31, R79, R45, !P3 ;
-; Location ./int.jl:87
-        IADD3 R45, R16, 0xf000, RZ ;
-; Location ./promotion.jl:521
-        ISETP.NE.AND P4, PT, R85, 0x100000, PT ;
-; Location ./int.jl:87
-        LOP3.LUT R43, R4, R43, RZ, 0xfc, !PT ;
-        STG.E.128 [R70.64], R24 ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R34, R34, R38, !P3 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE.U32 R16, R17, R0, c[0x0][0x190] ;
-; Location ./int.jl:87
-        LOP3.LUT R45, R4, R45, RZ, 0xfc, !PT ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R20, R67, R66, !P3 ;
-        SEL R21, R64, R63, !P3 ;
-        SEL R22, R60, R61, !P3 ;
-        SEL R23, R58, R57, !P3 ;
-        SEL R38, R62, R18, !P3 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE.U32 R18, R19, R0, c[0x0][0x190] ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R33, R33, R40, !P3 ;
-        SEL R28, R102, R52, !P3 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE.U32 R40, R41, R0, c[0x0][0x190] ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R24, R114, R56, !P3 ;
-        SEL R25, R111, R55, !P3 ;
-        SEL R26, R108, R54, !P3 ;
-        SEL R27, R105, R53, !P3 ;
-        SEL R29, R100, R51, !P3 ;
-        SEL R30, R98, R50, !P3 ;
-        SEL R32, R32, R42, !P3 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE.U32 R42, R43, R0, c[0x0][0x190] ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R36, R68, R36, !P3 ;
-; Location ./int.jl:87
-        STG.E.128 [R16.64], R20 ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
-        SEL R37, R65, R37, !P3 ;
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/pointer.jl:114
-        IMAD.WIDE.U32 R44, R45, R0, c[0x0][0x190] ;
-; Location ./int.jl:87
-        STG.E.128 [R18.64], R24 ;
-        STG.E.128 [R40.64], R28 ;
-        STG.E.128 [R42.64], R32 ;
-; Location ./promotion.jl:521
-        STG.E.128 [R44.64], R36 ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:334
+        STG.E.128 [R24.64], R28 ;
+        SEL R56, R42, R56, !P3 ;
+        STG.E.128 [R26.64], R36 ;
+        STG.E.128 [R32.64], R20 ;
+        STG.E.128 [R34.64], R16 ;
+; Location ./promotion.jl:477
+        IADD3 R4, R4, 0x10000, RZ ;
+; Location ./range.jl:883
+        STG.E.128 [R40.64], R56 ;
+; Location ./promotion.jl:477
+        IADD3 R3, R3, 0x40000, RZ ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:334
    @!P4 CALL.REL.NOINC `(.L_x_0) ;
         BRA `(.L_x_1) ;
 
 .L_x_0:
-; Location /home/eschnett/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
-        STG.E [R86.64], RZ ;
-; Location /home/eschnett/src/kotekan/julia/kernels/xpose.jl:335
+; Location /home/dstn/.julia/packages/LLVM/OLMpi/src/interop/base.jl:38
+        STG.E [R80.64], RZ ;
+; Location /home/dstn/kotekan/julia/kernels/xpose.jl:335
         EXIT ;
 
 .L_x_2:

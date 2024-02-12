@@ -39,7 +39,21 @@ enum class VisField { vis, weight, flags, eval, evec, erms, gain };
  *
  * @author Richard Shaw
  **/
-struct VisMetadata {
+class VisMetadata : public metadataObject {
+public:
+    // ASSUMES the "other" is my type!
+    void deepCopy(std::shared_ptr<metadataObject> other) override;
+
+    /// Returns the size of objects of this type when serialized into bytes.
+    size_t get_serialized_size() override;
+    /// Sets this metadata object's values from the given byte array
+    /// of the given length.  Returns the number of bytes consumed.
+    size_t set_from_bytes(const char* bytes, size_t length) override;
+    /// Serializes this metadata object into the given byte array,
+    /// expected to be of length (at least) get_serialized_size().
+    size_t serialize(char* bytes) override;
+
+    nlohmann::json to_json() override;
 
     /// The FPGA sequence number of the integration frame
     uint64_t fpga_seq_start;
@@ -68,6 +82,8 @@ struct VisMetadata {
     uint32_t num_ev;
 };
 
+void to_json(nlohmann::json& j, const VisMetadata& m);
+void from_json(const nlohmann::json& j, VisMetadata& m);
 
 /**
  * @class VisFrameView
@@ -253,13 +269,13 @@ public:
      * @brief Read only access to the metadata.
      * @returns The metadata.
      **/
-    const VisMetadata* metadata() const {
+    const std::shared_ptr<VisMetadata> metadata() const {
         return _metadata;
     }
 
 private:
     // References to the metadata we are viewing
-    VisMetadata* const _metadata;
+    std::shared_ptr<VisMetadata> const _metadata;
 
     // The calculated layout of the buffer
     struct_layout<VisField> buffer_layout;

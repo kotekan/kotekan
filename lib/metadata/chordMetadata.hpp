@@ -5,8 +5,9 @@
 #include "buffer.hpp"
 #include "chimeMetadata.hpp"
 #include "datasetManager.hpp"
-#include "metadata.h"
+#include "metadata.hpp"
 
+#include <assert.h>
 #include <sstream>
 #include <string>
 #include <sys/time.h>
@@ -53,10 +54,23 @@ const int CHORD_META_MAX_DIM = 10;
 // Maximum length of dimension names for arrays
 const int CHORD_META_MAX_DIMNAME = 16;
 
-struct chordMetadata {
-    chimeMetadata chime;
+class chordMetadata : public chimeMetadata {
+public:
+    chordMetadata();
 
-    // cudaDataType_t type;
+    /// Returns the size of objects of this type when serialized into bytes.
+    size_t get_serialized_size() override;
+
+    /// Sets this metadata object's values from the given byte array
+    /// of the given length.  Returns the number of bytes consumed.
+    size_t set_from_bytes(const char* bytes, size_t length) override;
+
+    /// Serializes this metadata object into the given byte array,
+    /// expected to be of length (at least) get_serialized_size().
+    size_t serialize(char* bytes) override;
+
+    int frame_counter;
+
     chordDataType type;
 
     int dims;
@@ -110,8 +124,6 @@ struct chordMetadata {
         return dish_index[dish_loc_ew + n_dish_locations_ew * dish_loc_ns];
     }
 
-    chordMetadata();
-
     std::string get_dimension_name(size_t i) const {
         return std::string(dim_name[i], strnlen(dim_name[i], CHORD_META_MAX_DIMNAME));
     }
@@ -164,50 +176,35 @@ struct chordMetadata {
     }
 };
 
-inline void chord_metadata_init(chordMetadata* c) {
-    bzero(c, sizeof(chordMetadata));
-}
-
-inline void chord_metadata_copy(chordMetadata* out, const chordMetadata* in) {
-    memcpy(out, in, sizeof(chordMetadata));
-}
-
 inline bool metadata_is_chord(Buffer* buf, int) {
-    return strcmp(buf->metadata_pool->type_name, "chordMetadata") == 0;
+    return buf && buf->metadata_pool && (buf->metadata_pool->type_name == "chordMetadata");
 }
 
-inline bool metadata_container_is_chord(const metadataContainer* mc) {
-    return strcmp(mc->parent_pool->type_name, "chordMetadata") == 0;
-}
-
-inline const chordMetadata* get_chord_metadata(const Buffer* buf, int frame_id) {
-    return (const chordMetadata*)buf->metadata[frame_id]->metadata;
-}
-
-inline chordMetadata* get_chord_metadata(Buffer* buf, int frame_id) {
-    return (chordMetadata*)buf->metadata[frame_id]->metadata;
-}
-
-inline const chordMetadata* get_chord_metadata(const metadataContainer* mc) {
+inline bool metadata_is_chord(const std::shared_ptr<metadataObject> mc) {
     if (!mc)
-        return nullptr;
-    if (strcmp(mc->parent_pool->type_name, "chordMetadata")) {
-        WARN_NON_OO("Expected metadata to be type \"chordMetadata\", got \"{:s}\".",
-                    mc->parent_pool->type_name);
-        return nullptr;
-    }
-    return static_cast<const chordMetadata*>(mc->metadata);
+        return false;
+    std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
+    assert(pool);
+    return (pool->type_name == "chordMetadata");
 }
 
-inline chordMetadata* get_chord_metadata(metadataContainer* mc) {
+inline std::shared_ptr<chordMetadata> get_chord_metadata(std::shared_ptr<metadataObject> mc) {
     if (!mc)
-        return nullptr;
-    if (strcmp(mc->parent_pool->type_name, "chordMetadata")) {
+        return std::shared_ptr<chordMetadata>();
+    if (!metadata_is_chord(mc)) {
+        std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
         WARN_NON_OO("Expected metadata to be type \"chordMetadata\", got \"{:s}\".",
-                    mc->parent_pool->type_name);
-        return nullptr;
+                    pool->type_name);
+        return std::shared_ptr<chordMetadata>();
     }
-    return static_cast<chordMetadata*>(mc->metadata);
+    return std::static_pointer_cast<chordMetadata>(mc);
+}
+
+inline std::shared_ptr<chordMetadata> get_chord_metadata(Buffer* buf, int frame_id) {
+    if (!buf || frame_id < 0 || frame_id >= (int)buf->metadata.size())
+        return std::shared_ptr<chordMetadata>();
+    std::shared_ptr<metadataObject> meta = buf->metadata[frame_id];
+    return get_chord_metadata(meta);
 }
 
 #endif

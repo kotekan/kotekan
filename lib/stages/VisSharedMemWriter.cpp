@@ -277,7 +277,12 @@ void VisSharedMemWriter::write_to_memory(const VisFrameView& frame, uint32_t tim
     // first write the metadata, then the data, then the valid byte
     // add valid_size amount of padding
     *buf_write_pos = valid;
-    memcpy(buf_write_pos + valid_size, frame.metadata(), rbs.metadata_size);
+    // Serialize metadata
+    auto meta = frame.metadata();
+    size_t sz = meta->get_serialized_size();
+    assert(sz == rbs.metadata_size);
+    meta->serialize((char*)(buf_write_pos + valid_size));
+    // Serialize data
     memcpy(buf_write_pos + rbs.metadata_size + valid_size, frame.data(), rbs.data_size);
 
     // Document the fpga sequence counter for that frame in the access record
@@ -356,7 +361,8 @@ void VisSharedMemWriter::main_thread() {
     // Calculate the ring buffer structure
 
     rbs.data_size = frame.data_size();
-    rbs.metadata_size = sizeof(VisMetadata);
+    auto meta = frame.metadata();
+    rbs.metadata_size = meta->get_serialized_size();
     // Aligns the frame along page size
     rbs.frame_size = _member_alignment(rbs.data_size + rbs.metadata_size + valid_size, alignment);
 

@@ -81,8 +81,8 @@ void BeamExtract::main_thread() {
         // Copy over the relevant metadata
         out_buf->allocate_new_metadata_object(out_frame_id);
 
-        chimeMetadata* in_metadata = (chimeMetadata*)in_buf->get_metadata(in_frame_id);
-        BeamMetadata* out_metadata = (BeamMetadata*)out_buf->get_metadata(out_frame_id);
+        chimeMetadata* in_metadata = (chimeMetadata*)(in_buf->get_metadata(in_frame_id).get());
+        BeamMetadata* out_metadata = (BeamMetadata*)(out_buf->get_metadata(out_frame_id).get());
 
         out_metadata->ctime = in_metadata->gps_time;
         out_metadata->fpga_seq_start = in_metadata->fpga_seq_num;

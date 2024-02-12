@@ -2,7 +2,7 @@
 
 #include "FrameView.hpp" // for bind_span, FrameView
 #include "buffer.hpp"    // for Buffer, allocate_new_metadata_object
-#include "metadata.h"    // for metadataContainer
+#include "metadata.hpp"  // for metadataContainer
 #include "visUtil.hpp"   // for struct_alignment
 
 #include "fmt.hpp" // for format, fmt
@@ -21,7 +21,7 @@
 #include <vector>    // for vector
 
 HFBFrameView::HFBFrameView(Buffer* buf, int frame_id) :
-    FrameView(buf, frame_id), _metadata((HFBMetadata*)buf->metadata[id]->metadata),
+    FrameView(buf, frame_id), _metadata(std::static_pointer_cast<HFBMetadata>(buf->metadata[id])),
 
     // Calculate the internal buffer layout from the given structure params
     buffer_layout(calculate_buffer_layout(_metadata->num_beams, _metadata->num_subfreq)),
@@ -148,7 +148,7 @@ void HFBFrameView::set_metadata(HFBMetadata* metadata, const uint32_t num_beams,
 
 void HFBFrameView::set_metadata(Buffer* buf, const uint32_t index, const uint32_t num_beams,
                                 const uint32_t num_subfreq) {
-    HFBMetadata* metadata = (HFBMetadata*)buf->metadata[index]->metadata;
+    HFBMetadata* metadata = (HFBMetadata*)buf->metadata[index].get();
     metadata->num_beams = num_beams;
     metadata->num_subfreq = num_subfreq;
 }

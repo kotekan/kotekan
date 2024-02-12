@@ -16,6 +16,7 @@
 #include <cudaDeviceInterface.hpp>
 #include <fmt.hpp>
 #include <limits>
+#include <ringbuffer.hpp>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -58,6 +59,7 @@ public:
                                 const int inst);
     virtual ~cudaUpchannelizer_chord_U32();
 
+    int wait_on_precondition() override;
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
     void finalize_frame() override;
@@ -242,20 +244,25 @@ private:
     const std::string info_memname;
 
     // Host-side buffer arrays
-    std::vector<std::vector<std::uint8_t>> Tmin_host;
-    std::vector<std::vector<std::uint8_t>> Tmax_host;
-    std::vector<std::vector<std::uint8_t>> Tbarmin_host;
-    std::vector<std::vector<std::uint8_t>> Tbarmax_host;
-    std::vector<std::vector<std::uint8_t>> info_host;
+    std::vector<std::uint8_t> Tmin_host;
+    std::vector<std::uint8_t> Tmax_host;
+    std::vector<std::uint8_t> Tbarmin_host;
+    std::vector<std::uint8_t> Tbarmax_host;
+    std::vector<std::uint8_t> info_host;
 
-    // Loop-carried information
+    static constexpr size_t T_sample_bytes = E_lengths[E_index_D] * E_lengths[E_index_P]
+                                             * E_lengths[E_index_F] * chord_datatype_bytes(E_type);
+    static constexpr size_t Tbar_sample_bytes =
+        Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P] * Ebar_lengths[Ebar_index_Fbar]
+        * chord_datatype_bytes(Ebar_type);
 
-    // How many time samples from the previous iteration still need to be processed (or processed
-    // again)?
-    std::int64_t unprocessed;
-    // How many time samples were not provided in the previous iteration and need to be provided in
-    // this iteration?
-    std::int64_t unprovided;
+    RingBuffer* input_ringbuf_signal;
+    RingBuffer* output_ringbuf_signal;
+
+    size_t Tmin;
+    size_t Tmax;
+    size_t Tbarmin;
+    size_t Tbarmax;
 };
 
 REGISTER_CUDA_COMMAND(cudaUpchannelizer_chord_U32);
@@ -274,8 +281,8 @@ cudaUpchannelizer_chord_U32::cudaUpchannelizer_chord_U32(Config& config,
     Ebar_memname(config.get<std::string>(unique_name, "gpu_mem_output_voltage")),
     info_memname(unique_name + "/gpu_mem_info"),
 
-    Tmin_host(_gpu_buffer_depth), Tmax_host(_gpu_buffer_depth), Tbarmin_host(_gpu_buffer_depth),
-    Tbarmax_host(_gpu_buffer_depth), info_host(_gpu_buffer_depth), unprocessed(0), unprovided(0) {
+    Tmin_host(Tmin_length), Tmax_host(Tmax_length), Tbarmin_host(Tbarmin_length),
+    Tbarmax_host(Tbarmax_length), info_host(info_length), Tmin(0), Tmax(0), Tbarmin(0), Tbarmax(0) {
     // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Tmin", false, true, true));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Tmax", false, true, true));
@@ -294,58 +301,128 @@ cudaUpchannelizer_chord_U32::cudaUpchannelizer_chord_U32(Config& config,
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx(kernel_file_name, {kernel_symbol}, opts);
+        device.build_ptx(kernel_file_name, {kernel_symbol}, opts, "Upchannelizer_chord_U32_");
     }
 
-    // // Create a ring buffer. Create it only once.
-    // assert(E_length % _gpu_buffer_depth == 0);
-    // const std::ptrdiff_t E_buffer_size = E_length / _gpu_buffer_depth;
-    // const std::ptrdiff_t E_ringbuffer_size = E_length;
-    // // if (cuda_upchannelization_factor == 128)
-    //     device.create_gpu_memory_ringbuffer(E_memname + "_ringbuffer", E_ringbuffer_size,
-    //                                         E_memname, 0, E_buffer_size);
+    // Find input and output buffers used for signalling ring-buffer state
+    input_ringbuf_signal = dynamic_cast<RingBuffer*>(
+        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")));
+    output_ringbuf_signal = dynamic_cast<RingBuffer*>(
+        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "out_signal")));
+    if (inst == 0) {
+        input_ringbuf_signal->register_consumer(unique_name);
+        output_ringbuf_signal->register_producer(unique_name);
+    }
 }
 
 cudaUpchannelizer_chord_U32::~cudaUpchannelizer_chord_U32() {}
 
+int cudaUpchannelizer_chord_U32::wait_on_precondition() {
+    // Wait for data to be available in input ringbuffer...
+    size_t input_bytes = E_length / _gpu_buffer_depth;
+    // If we have leftovers from last frame, we can request fewer input bytes.
+    size_t T_leftover = (gpu_frame_id == 0 ? 0 : cuda_algorithm_overlap);
+    size_t req_input_bytes = input_bytes - T_leftover * T_sample_bytes;
+    DEBUG("Waiting for input ringbuffer data for frame {:d}: {:d} bytes total, {:d} leftovers + "
+          "{:d} new = {:d} time samples total, {:d} leftover + {:d} new...",
+          gpu_frame_id, input_bytes, T_leftover * T_sample_bytes, req_input_bytes,
+          input_bytes / T_sample_bytes, T_leftover, req_input_bytes / T_sample_bytes);
+    std::optional<size_t> val =
+        input_ringbuf_signal->wait_and_claim_readable(unique_name, req_input_bytes);
+    DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
+    if (!val.has_value())
+        return -1;
+    // Where we should read from in the ring buffer, in *bytes*
+    size_t input_cursor = val.value();
+    // (that's the pointer to the 'new' part of the data -- we also have leftovers at the beginning
+    // of the ring buffer -- we adjust for that below.)
+    assert(mod(input_cursor, T_sample_bytes) == 0);
+
+    // Convert from byte offset to time sample offset
+    Tmin = input_cursor / T_sample_bytes;
+    DEBUG("Input ring-buffer byte offset {:d} -> time sample offset {:d}", input_cursor, Tmin);
+
+    // Subtract T_leftover samples, avoiding underflow
+    size_t Tringbuf = input_ringbuf_signal->size / T_sample_bytes;
+    Tmin = (Tmin + (Tringbuf - T_leftover)) % Tringbuf;
+
+    DEBUG("After adjusting for leftover samples, input ring-buffer time sample offset is {:d}",
+          Tmin);
+
+    DEBUG("Input length: {:d} bytes, bytes per input sample: {:d}, input samples: {:d}",
+          input_bytes, T_sample_bytes, input_bytes / T_sample_bytes);
+    size_t nominal_Tlength = input_bytes / T_sample_bytes;
+    assert(mod(input_bytes, T_sample_bytes) == 0);
+    size_t Tlength = round_down(nominal_Tlength, cuda_granularity_number_of_timesamples);
+
+    Tmax = Tmin + Tlength;
+    assert(Tmax <= std::numeric_limits<int32_t>::max());
+
+    // How many outputs will we produce?
+    assert(Tlength > cuda_algorithm_overlap);
+    size_t Tbarlength = (Tlength - cuda_algorithm_overlap) / cuda_upchannelization_factor;
+
+    // to bytes
+    size_t output_bytes = Tbarlength * Tbar_sample_bytes;
+    DEBUG("Will produce {:d} output time samples, sample size {:d}, total {:d} bytes", Tbarlength,
+          Tbar_sample_bytes, output_bytes);
+
+    // Wait for space to be available in our output ringbuffer...
+    DEBUG("Waiting for output ringbuffer space for frame {:d}: {:d} bytes ...", gpu_frame_id,
+          output_bytes);
+    val = output_ringbuf_signal->wait_for_writable(unique_name, output_bytes);
+    DEBUG("Finished waiting for output for data frame {:d}.", gpu_frame_id);
+    if (!val.has_value())
+        return -1;
+    size_t output_cursor = val.value();
+    assert(mod(output_cursor, Tbar_sample_bytes) == 0);
+    Tbarmin = output_cursor / Tbar_sample_bytes;
+    DEBUG("Output ring-buffer byte offset {:d} -> tbar time sample offset {:d}", output_cursor,
+          Tbarmin);
+
+    Tbarmax = Tbarmin + Tbarlength;
+    assert(Tbarmax <= std::numeric_limits<int32_t>::max());
+
+    return 0;
+}
+
 cudaEvent_t cudaUpchannelizer_chord_U32::execute(cudaPipelineState& /*pipestate*/,
                                                  const std::vector<cudaEvent_t>& /*pre_events*/) {
-    const int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
-
     pre_execute();
 
-    Tmin_host.at(gpu_frame_index).resize(Tmin_length);
     void* const Tmin_memory = device.get_gpu_memory(Tmin_memname, Tmin_length);
-    Tmax_host.at(gpu_frame_index).resize(Tmax_length);
     void* const Tmax_memory = device.get_gpu_memory(Tmax_memname, Tmax_length);
-    Tbarmin_host.at(gpu_frame_index).resize(Tbarmin_length);
     void* const Tbarmin_memory = device.get_gpu_memory(Tbarmin_memname, Tbarmin_length);
-    Tbarmax_host.at(gpu_frame_index).resize(Tbarmax_length);
     void* const Tbarmax_memory = device.get_gpu_memory(Tbarmax_memname, Tbarmax_length);
+
     void* const G_memory =
-        args::G == args::E || args::G == args::Ebar
-            ? device.get_gpu_memory_array(G_memname, gpu_frame_id, _gpu_buffer_depth,
-                                          G_length / _gpu_buffer_depth)
-            : device.get_gpu_memory_array(G_memname, gpu_frame_id, _gpu_buffer_depth, G_length);
+        (args::G == args::E) ? device.get_gpu_memory(G_memname, input_ringbuf_signal->size)
+                             : ((args::G == args::Ebar)
+                                    ? device.get_gpu_memory(G_memname, output_ringbuf_signal->size)
+                                    : device.get_gpu_memory_array(G_memname, gpu_frame_id,
+                                                                  _gpu_buffer_depth, G_length));
+
     void* const E_memory =
-        args::E == args::E || args::E == args::Ebar
-            ? device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth,
-                                          E_length / _gpu_buffer_depth)
-            : device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
+        (args::E == args::E) ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
+                             : ((args::E == args::Ebar)
+                                    ? device.get_gpu_memory(E_memname, output_ringbuf_signal->size)
+                                    : device.get_gpu_memory_array(E_memname, gpu_frame_id,
+                                                                  _gpu_buffer_depth, E_length));
+
     void* const Ebar_memory =
-        args::Ebar == args::E || args::Ebar == args::Ebar
-            ? device.get_gpu_memory_array(Ebar_memname, gpu_frame_id, _gpu_buffer_depth,
-                                          Ebar_length / _gpu_buffer_depth)
-            : device.get_gpu_memory_array(Ebar_memname, gpu_frame_id, _gpu_buffer_depth,
-                                          Ebar_length);
-    info_host.at(gpu_frame_index).resize(info_length);
+        (args::Ebar == args::E)
+            ? device.get_gpu_memory(Ebar_memname, input_ringbuf_signal->size)
+            : ((args::Ebar == args::Ebar)
+                   ? device.get_gpu_memory(Ebar_memname, output_ringbuf_signal->size)
+                   : device.get_gpu_memory_array(Ebar_memname, gpu_frame_id, _gpu_buffer_depth,
+                                                 Ebar_length));
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
     // G is an input buffer: check metadata
-    const metadataContainer* const G_mc =
+    const std::shared_ptr<metadataObject> G_mc =
         device.get_gpu_memory_array_metadata(G_memname, gpu_frame_id);
-    assert(G_mc && metadata_container_is_chord(G_mc));
-    const chordMetadata* const G_meta = get_chord_metadata(G_mc);
+    assert(G_mc && metadata_is_chord(G_mc));
+    const std::shared_ptr<chordMetadata> G_meta = get_chord_metadata(G_mc);
     INFO("input G array: {:s} {:s}", G_meta->get_type_string(), G_meta->get_dimensions_string());
     assert(G_meta->type == G_type);
     assert(G_meta->dims == G_rank);
@@ -360,10 +437,10 @@ cudaEvent_t cudaUpchannelizer_chord_U32::execute(cudaPipelineState& /*pipestate*
     }
     //
     // E is an input buffer: check metadata
-    const metadataContainer* const E_mc =
+    const std::shared_ptr<metadataObject> E_mc =
         device.get_gpu_memory_array_metadata(E_memname, gpu_frame_id);
-    assert(E_mc && metadata_container_is_chord(E_mc));
-    const chordMetadata* const E_meta = get_chord_metadata(E_mc);
+    assert(E_mc && metadata_is_chord(E_mc));
+    const std::shared_ptr<chordMetadata> E_meta = get_chord_metadata(E_mc);
     INFO("input E array: {:s} {:s}", E_meta->get_type_string(), E_meta->get_dimensions_string());
     assert(E_meta->type == E_type);
     assert(E_meta->dims == E_rank);
@@ -377,11 +454,11 @@ cudaEvent_t cudaUpchannelizer_chord_U32::execute(cudaPipelineState& /*pipestate*
             assert(E_meta->dim[dim] == int(E_lengths[E_rank - 1 - dim]));
     }
     //
-    // Ebar is an output buffer: set metadata
-    metadataContainer* const Ebar_mc =
+    /// Ebar is an output buffer: set metadata
+    std::shared_ptr<metadataObject> const Ebar_mc =
         device.create_gpu_memory_array_metadata(Ebar_memname, gpu_frame_id, E_mc->parent_pool);
-    chordMetadata* const Ebar_meta = get_chord_metadata(Ebar_mc);
-    chord_metadata_copy(Ebar_meta, E_meta);
+    std::shared_ptr<chordMetadata> const Ebar_meta = get_chord_metadata(Ebar_mc);
+    *Ebar_meta = *E_meta;
     Ebar_meta->type = Ebar_type;
     Ebar_meta->dims = Ebar_rank;
     for (std::size_t dim = 0; dim < Ebar_rank; ++dim) {
@@ -392,6 +469,8 @@ cudaEvent_t cudaUpchannelizer_chord_U32::execute(cudaPipelineState& /*pipestate*
     INFO("output Ebar array: {:s} {:s}", Ebar_meta->get_type_string(),
          Ebar_meta->get_dimensions_string());
     //
+
+    // TODO -- we need to tweak the metadata we get from the input ringbuffer!
 
     record_start_event();
 
@@ -409,16 +488,6 @@ cudaEvent_t cudaUpchannelizer_chord_U32::execute(cudaPipelineState& /*pipestate*
         &G_arg,   &E_arg,    &Ebar_arg, &info_arg,
     };
 
-    // We need to (re-)process some time samples, from the previous
-    // iteration (`unprocessed`), and we still to provide some time
-    // samples that were not provided in the previous iteration
-    // (`unprovided`).
-
-    // Although we told Kotekan in the last iteration that we wouldn't
-    // need these inputs again, it's fine to look at them again
-    // because they won't be overwritten yet, if the GPU buffer depth
-    // is large enough.
-
     // We need an overlap of this many time samples, i.e. this many
     // time samples will need to be re-processed in the next
     // iteration. This also defines the number of time samples that
@@ -430,80 +499,18 @@ cudaEvent_t cudaUpchannelizer_chord_U32::execute(cudaPipelineState& /*pipestate*
 
     INFO("gpu_frame_id: {}", gpu_frame_id);
 
-    // Beginning of the input ringbuffer
-    void* const E_memory0 =
-        device.get_gpu_memory_array(E_memname, 0, _gpu_buffer_depth, E_length / _gpu_buffer_depth);
-    INFO("E_memory0: {}", E_memory0);
-
-    // Beginning of the output ringbuffer
-    void* const Ebar_memory0 = device.get_gpu_memory_array(Ebar_memname, 0, _gpu_buffer_depth,
-                                                           Ebar_length / _gpu_buffer_depth);
-    INFO("Ebar_memory0: {}", Ebar_memory0);
-
     // Set E_memory to beginning of input ring buffer
-    E_arg = kernel_arg(E_memory0, E_length);
+    E_arg = kernel_arg(E_memory, E_length);
 
     // Set Ebar_memory to beginning of output ring buffer
-    Ebar_arg = kernel_arg(Ebar_memory0, Ebar_length);
+    Ebar_arg = kernel_arg(Ebar_memory, Ebar_length);
 
-    // Current nominal index into input ringuffer
-    const std::int64_t nominal_Tmin =
-        gpu_frame_id * cuda_max_number_of_timesamples / _gpu_buffer_depth;
-    INFO("nominal Tmin: {}", nominal_Tmin);
+    const std::int64_t Tmin_wrapped = Tmin;
+    const std::int64_t Tmax_wrapped = Tmax;
+    const std::int64_t Tbarmin_wrapped = Tbarmin;
+    const std::int64_t Tbarmax_wrapped = Tbarmax;
+    const std::int64_t Tbarlength = (Tbarmax - Tbarmin);
 
-    // Current nominal index into output ringuffer
-    const std::int64_t nominal_Tbarmin = gpu_frame_id * cuda_max_number_of_timesamples
-                                         / cuda_upchannelization_factor / _gpu_buffer_depth;
-    INFO("nominal Tbarmin: {}", nominal_Tbarmin);
-
-    // Current unprocessed time samples
-    INFO("unprocessed: {}", unprocessed);
-
-    // Current unprovided time samples
-    INFO("unprovided: {}", unprovided);
-
-    // Actual index into input ringbuffer
-    const std::int64_t Tmin = nominal_Tmin - unprocessed;
-    INFO("Tmin: {}", Tmin);
-
-    // Actual index into output ringbuffer
-    const std::int64_t Tbarmin = nominal_Tbarmin - unprovided;
-    INFO("Tbarmin: {}", Tbarmin);
-
-    // Nominal end of input time span (given by available data)
-    const std::int64_t nominal_Tmax = nominal_Tmin + E_meta->dim[0];
-    INFO("nominal Tmax: {}", nominal_Tmax);
-
-    // We cannot process all time samples because the input size needs
-    // to be a multiple of `cuda_granularity_number_of_timesamples`.
-    const std::int64_t nominal_Tlength = nominal_Tmax - Tmin;
-    INFO("nominal Tlength: {}", nominal_Tlength);
-    const std::int64_t Tlength =
-        round_down(nominal_Tlength, cuda_granularity_number_of_timesamples);
-    INFO("Tlength: {}", Tlength);
-
-    // End of input time span
-    const std::int64_t Tmax = Tmin + Tlength;
-    INFO("Tmax: {}", Tmax);
-
-    // Output time span (defined by input time span length)
-    assert(Tlength % cuda_upchannelization_factor == 0);
-    assert(cuda_algorithm_overlap % cuda_upchannelization_factor == 0);
-    assert(Tlength >= cuda_algorithm_overlap);
-    const std::int64_t Tbarlength =
-        (Tlength - cuda_algorithm_overlap) / cuda_upchannelization_factor;
-    INFO("Tbarlength: {}", Tbarlength);
-
-    // End of output time span
-    const std::int64_t Tbarmax = Tbarmin + Tbarlength;
-    INFO("Tbarmax: {}", Tbarmax);
-
-    // Wrap lower bounds into ringbuffer
-    const std::int64_t Tmin_wrapped = mod(Tmin, cuda_max_number_of_timesamples);
-    const std::int64_t Tmax_wrapped = Tmin_wrapped + Tmax - Tmin;
-    const std::int64_t Tbarmin_wrapped =
-        mod(Tbarmin, cuda_max_number_of_timesamples / cuda_upchannelization_factor);
-    const std::int64_t Tbarmax_wrapped = Tbarmin_wrapped + Tbarmax - Tbarmin;
     INFO("Tmin_wrapped: {}", Tmin_wrapped);
     INFO("Tmax_wrapped: {}", Tmax_wrapped);
     INFO("Tbarmin_wrapped: {}", Tbarmin_wrapped);
@@ -530,40 +537,26 @@ cudaEvent_t cudaUpchannelizer_chord_U32::execute(cudaPipelineState& /*pipestate*
 
     // Pass time spans to kernel
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
-    *(std::int32_t*)Tmin_host.at(gpu_frame_index).data() = Tmin_wrapped;
-    *(std::int32_t*)Tmax_host.at(gpu_frame_index).data() = Tmax_wrapped;
-    *(std::int32_t*)Tbarmin_host.at(gpu_frame_index).data() = Tbarmin_wrapped;
-    *(std::int32_t*)Tbarmax_host.at(gpu_frame_index).data() = Tbarmax_wrapped;
+    *(std::int32_t*)Tmin_host.data() = Tmin_wrapped;
+    *(std::int32_t*)Tmax_host.data() = Tmax_wrapped;
+    *(std::int32_t*)Tbarmin_host.data() = Tbarmin_wrapped;
+    *(std::int32_t*)Tbarmax_host.data() = Tbarmax_wrapped;
 
     // Update metadata
-    Ebar_meta->dim[0] = Tbarlength - unprovided;
+    // TODO -- check this!!
+    Ebar_meta->dim[0] = Tbarlength;
     assert(Ebar_meta->dim[0] <= int(Ebar_lengths[3]));
-
-    // Calculate the number of  unprocessed time samples for the next iteration
-    unprocessed -=
-        Tlength - cuda_algorithm_overlap - cuda_max_number_of_timesamples / _gpu_buffer_depth;
-    unprovided -=
-        Tbarlength
-        - cuda_max_number_of_timesamples / cuda_upchannelization_factor / _gpu_buffer_depth;
-    INFO("new unprocessed: {}", unprocessed);
-    INFO("new unprovided: {}", unprovided);
-    assert(unprocessed >= 0 && unprocessed < cuda_max_number_of_timesamples / _gpu_buffer_depth);
-    assert(unprovided >= 0
-           && unprovided < cuda_max_number_of_timesamples / cuda_upchannelization_factor
-                               / _gpu_buffer_depth);
 
     // Copy inputs to device memory
     // TODO: Pass scalar kernel arguments more efficiently, i.e. without a separate `cudaMemcpy`
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tmin_memory, Tmin_host.at(gpu_frame_index).data(), Tmin_length,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tmin_memory, Tmin_host.data(), Tmin_length,
                                      cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tmax_memory, Tmax_host.at(gpu_frame_index).data(), Tmax_length,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tmax_memory, Tmax_host.data(), Tmax_length,
                                      cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmin_memory, Tbarmin_host.at(gpu_frame_index).data(),
-                                     Tbarmin_length, cudaMemcpyHostToDevice,
-                                     device.getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmax_memory, Tbarmax_host.at(gpu_frame_index).data(),
-                                     Tbarmax_length, cudaMemcpyHostToDevice,
-                                     device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmin_memory, Tbarmin_host.data(), Tbarmin_length,
+                                     cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmax_memory, Tbarmax_host.data(), Tbarmax_length,
+                                     cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
 
     // Initialize host-side buffer arrays
     // TODO: Skip this for performance
@@ -576,51 +569,59 @@ cudaEvent_t cudaUpchannelizer_chord_U32::execute(cudaPipelineState& /*pipestate*
     // CHECK_CUDA_ERROR(cudaMemsetAsync(Ebar_memory, 0x88, Ebar_length,
     // device.getStream(cuda_stream_id)));
 
-    DEBUG("kernel_symbol: {}", kernel_symbol);
+    std::string symname = "Upchannelizer_chord_U32_" + std::string(kernel_symbol);
+    DEBUG("kernel_symbol: {}", symname);
     DEBUG("runtime_kernels[kernel_symbol]: {}",
-          static_cast<void*>(device.runtime_kernels[kernel_symbol]));
-    CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[kernel_symbol],
+          static_cast<void*>(device.runtime_kernels[symname]));
+    CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[symname],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
     DEBUG("Running CUDA Upchannelizer_chord_U32 on GPU frame {:d}", gpu_frame_id);
     const CUresult err =
-        cuLaunchKernel(device.runtime_kernels[kernel_symbol], blocks, 1, 1, threads_x, threads_y, 1,
+        cuLaunchKernel(device.runtime_kernels[symname], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
 
     if (err != CUDA_SUCCESS) {
         const char* errStr;
         cuGetErrorString(err, &errStr);
-        ERROR("cuLaunchKernel: Error number: {}: {}", err, errStr);
+        ERROR("cuLaunchKernel: Error number: {}: {}", (int)err, errStr);
     }
 
     // Copy results back to host memory
     // TODO: Skip this for performance
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.at(gpu_frame_index).data(), info_memory, info_length,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.data(), info_memory, info_length,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     // Check error codes
     // TODO: Skip this for performance
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-    const std::int32_t error_code =
-        *std::max_element((const std::int32_t*)&*info_host.at(gpu_frame_index).begin(),
-                          (const std::int32_t*)&*info_host.at(gpu_frame_index).end());
+    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
+                                                      (const std::int32_t*)&*info_host.end());
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.at(gpu_frame_index).size(); ++i)
-        if (info_host.at(gpu_frame_index)[i] != 0)
+    for (std::size_t i = 0; i < info_host.size(); ++i)
+        if (info_host[i] != 0)
             ERROR("cudaUpchannelizer_chord_U32 returned 'info' value {:d} at index {:d} (zero "
                   "indicates no error)",
-                  info_host.at(gpu_frame_index)[i], i);
+                  info_host[i], i);
 
     return record_end_event();
 }
 
 void cudaUpchannelizer_chord_U32::finalize_frame() {
-    device.release_gpu_memory_array_metadata(G_memname, gpu_frame_id);
-    device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
-    device.release_gpu_memory_array_metadata(Ebar_memname, gpu_frame_id);
+    // Advance the input ringbuffer
+    size_t t_read = ((Tmax - Tmin) - cuda_algorithm_overlap);
+    DEBUG("Advancing input ringbuffer: read {:d} samples, {:d} bytes", t_read,
+          t_read * T_sample_bytes);
+    input_ringbuf_signal->finish_read(unique_name, t_read * T_sample_bytes);
+
+    // Advance the output ringbuffer
+    size_t t_written = (Tbarmax - Tbarmin);
+    DEBUG("Advancing output ringbuffer: wrote {:d} samples, {:d} bytes", t_written,
+          t_written * Tbar_sample_bytes);
+    output_ringbuf_signal->finish_write(unique_name, t_written * Tbar_sample_bytes);
 
     cudaCommand::finalize_frame();
 }

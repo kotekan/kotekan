@@ -58,8 +58,8 @@ public:
      * @param copy_end_event The event at the end of the copy.
      */
     void async_copy_host_to_gpu(void* dst, void* src, size_t len, uint32_t cuda_stream_id,
-                                cudaEvent_t pre_event, cudaEvent_t& copy_start_event,
-                                cudaEvent_t& copy_end_event);
+                                cudaEvent_t pre_event, cudaEvent_t* copy_start_event,
+                                cudaEvent_t* copy_end_event);
 
     /**
      * @brief Asynchronous Copies memory from the device GPU (global memory) to host (CPU RAM).
@@ -73,8 +73,8 @@ public:
      * @param copy_end_event The event at the end of the copy.
      */
     void async_copy_gpu_to_host(void* dst, void* src, size_t len, uint32_t cuda_stream_id,
-                                cudaEvent_t pre_event, cudaEvent_t& copy_start_event,
-                                cudaEvent_t& copy_end_event);
+                                cudaEvent_t pre_event, cudaEvent_t* copy_start_event,
+                                cudaEvent_t* copy_end_event);
 
     /**
      * @brief Builds a list of kernels from the file with name: @c kernel_file_name
@@ -88,7 +88,8 @@ public:
 
     virtual void build_ptx(const std::string& kernel_filename,
                            const std::vector<std::string>& kernel_names,
-                           const std::vector<std::string>& opts);
+                           const std::vector<std::string>& opts,
+                           const std::string& kernel_name_prefix = "");
 
     // Map containing the runtime kernels built with nvrtc from the kernel file (if needed)
     std::map<std::string, CUfunction> runtime_kernels;

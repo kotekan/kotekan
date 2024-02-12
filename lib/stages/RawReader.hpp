@@ -16,7 +16,7 @@
 #include "datasetState.hpp"   // for freqState, timeState, metadataState
 #include "errors.h"           // for exit_kotekan, CLEAN_EXIT, ReturnCode
 #include "kotekanLogging.hpp" // for INFO, FATAL_ERROR, DEBUG, WARN, ERROR
-#include "metadata.h"         // for metadataContainer
+#include "metadata.hpp"       // for metadataContainer
 #include "version.h"          // for get_git_commit_hash
 #include "visUtil.hpp"        // for freq_ctype (ptr only), input_ctype, prod_ctype, rstack_ctype
 
@@ -451,8 +451,11 @@ void RawReader<T>::main_thread() {
         // Check first byte indicating empty frame
         if (*(mapped_file + file_ind * file_frame_size) != 0) {
             // Copy the metadata from the file
-            std::memcpy(out_buf->metadata[frame_id]->metadata,
-                        mapped_file + file_ind * file_frame_size + 1, metadata_size);
+            auto meta = out_buf->get_metadata(frame_id);
+            assert(meta->get_serialized_size() == metadata_size);
+            size_t sz = meta->set_from_bytes(
+                (const char*)(mapped_file + file_ind * file_frame_size + 1), metadata_size);
+            assert(sz == metadata_size);
 
             // Copy the data from the file
             std::memcpy(frame, mapped_file + file_ind * file_frame_size + metadata_size + 1,

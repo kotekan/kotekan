@@ -36,7 +36,7 @@ public:
 
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
-    void finalize_frame() override;
+    // void finalize_frame() override;
 
 private:
     // Julia's `CuDevArray` type
@@ -167,8 +167,8 @@ private:
     const std::string info_memname;
 
     // Host-side buffer arrays
-    std::vector<std::vector<std::uint8_t>> S_host;
-    std::vector<std::vector<std::uint8_t>> info_host;
+    std::vector<std::uint8_t> S_host;
+    std::vector<std::uint8_t> info_host;
 };
 
 REGISTER_CUDA_COMMAND(cudaFRBBeamformer_pathfinder);
@@ -187,7 +187,7 @@ cudaFRBBeamformer_pathfinder::cudaFRBBeamformer_pathfinder(Config& config,
     info_memname(unique_name + "/gpu_mem_info")
 
     ,
-    S_host(_gpu_buffer_depth), info_host(_gpu_buffer_depth) {
+    S_host(S_length), info_host(info_length) {
     // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(
         std::make_tuple(get_name() + "_gpu_mem_dishlayout", false, true, true));
@@ -212,11 +212,9 @@ cudaFRBBeamformer_pathfinder::~cudaFRBBeamformer_pathfinder() {}
 
 cudaEvent_t cudaFRBBeamformer_pathfinder::execute(cudaPipelineState& /*pipestate*/,
                                                   const std::vector<cudaEvent_t>& /*pre_events*/) {
-    const int gpu_frame_index = gpu_frame_id % _gpu_buffer_depth;
-
     pre_execute();
 
-    S_host.at(gpu_frame_index).resize(S_length);
+    S_host.resize(S_length);
     void* const S_memory = device.get_gpu_memory(S_memname, S_length);
     void* const W_memory =
         device.get_gpu_memory_array(W_memname, gpu_frame_id, _gpu_buffer_depth, W_length);
@@ -224,7 +222,7 @@ cudaEvent_t cudaFRBBeamformer_pathfinder::execute(cudaPipelineState& /*pipestate
         device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
     void* const I_memory =
         device.get_gpu_memory_array(I_memname, gpu_frame_id, _gpu_buffer_depth, I_length);
-    info_host.at(gpu_frame_index).resize(info_length);
+    info_host.resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
     // TODO: Initialize (and copy to the GPU) S only once at the beginning
@@ -232,16 +230,16 @@ cudaEvent_t cudaFRBBeamformer_pathfinder::execute(cudaPipelineState& /*pipestate
         // S maps dishes to locations.
         // The first `ndishes` dishes are real dishes,
         // the remaining dishes are not real and exist only to label the unoccupied dish locations.
-        const metadataContainer* const E_mc =
+        const std::shared_ptr<metadataObject> E_mc =
             device.get_gpu_memory_array_metadata(E_memname, gpu_frame_id);
-        assert(E_mc && metadata_container_is_chord(E_mc));
-        const chordMetadata* const E_meta = get_chord_metadata(E_mc);
+        assert(E_mc && metadata_is_chord(E_mc));
+        const std::shared_ptr<chordMetadata> E_meta = get_chord_metadata(E_mc);
         assert(E_meta->ndishes == cuda_number_of_dishes);
         assert(E_meta->n_dish_locations_ew == cuda_dish_layout_N);
         assert(E_meta->n_dish_locations_ns == cuda_dish_layout_M);
         assert(E_meta->dish_index);
         std::int16_t* __restrict__ const S =
-            static_cast<std::int16_t*>(static_cast<void*>(S_host.at(gpu_frame_index).data()));
+            static_cast<std::int16_t*>(static_cast<void*>(S_host.data()));
         int surplus_dish_index = cuda_number_of_dishes;
         for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
             for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
@@ -262,10 +260,10 @@ cudaEvent_t cudaFRBBeamformer_pathfinder::execute(cudaPipelineState& /*pipestate
     }
 
     // W is an input buffer: check metadata
-    const metadataContainer* const W_mc =
+    const std::shared_ptr<metadataObject> W_mc =
         device.get_gpu_memory_array_metadata(W_memname, gpu_frame_id);
-    assert(W_mc && metadata_container_is_chord(W_mc));
-    const chordMetadata* const W_meta = get_chord_metadata(W_mc);
+    assert(W_mc && metadata_is_chord(W_mc));
+    const std::shared_ptr<chordMetadata> W_meta = get_chord_metadata(W_mc);
     INFO("input W array: {:s} {:s}", W_meta->get_type_string(), W_meta->get_dimensions_string());
     assert(W_meta->type == W_type);
     assert(W_meta->dims == W_rank);
@@ -277,10 +275,10 @@ cudaEvent_t cudaFRBBeamformer_pathfinder::execute(cudaPipelineState& /*pipestate
     }
     //
     // E is an input buffer: check metadata
-    const metadataContainer* const E_mc =
+    const std::shared_ptr<metadataObject> E_mc =
         device.get_gpu_memory_array_metadata(E_memname, gpu_frame_id);
-    assert(E_mc && metadata_container_is_chord(E_mc));
-    const chordMetadata* const E_meta = get_chord_metadata(E_mc);
+    assert(E_mc && metadata_is_chord(E_mc));
+    const std::shared_ptr<chordMetadata> E_meta = get_chord_metadata(E_mc);
     INFO("input E array: {:s} {:s}", E_meta->get_type_string(), E_meta->get_dimensions_string());
     assert(E_meta->type == E_type);
     assert(E_meta->dims == E_rank);
@@ -292,10 +290,10 @@ cudaEvent_t cudaFRBBeamformer_pathfinder::execute(cudaPipelineState& /*pipestate
     }
     //
     // I is an output buffer: set metadata
-    metadataContainer* const I_mc =
+    std::shared_ptr<metadataObject> const I_mc =
         device.create_gpu_memory_array_metadata(I_memname, gpu_frame_id, E_mc->parent_pool);
-    chordMetadata* const I_meta = get_chord_metadata(I_mc);
-    chord_metadata_copy(I_meta, E_meta);
+    std::shared_ptr<chordMetadata> const I_meta = get_chord_metadata(I_mc);
+    *I_meta = *E_meta;
     I_meta->type = I_type;
     I_meta->dims = I_rank;
     for (std::size_t dim = 0; dim < I_rank; ++dim) {
@@ -319,8 +317,8 @@ cudaEvent_t cudaFRBBeamformer_pathfinder::execute(cudaPipelineState& /*pipestate
     };
 
     // Copy inputs to device memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, S_host.at(gpu_frame_index).data(), S_length,
-                                     cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, S_host.data(), S_length, cudaMemcpyHostToDevice,
+                                     device.getStream(cuda_stream_id)));
 
     // Initialize host-side buffer arrays
     // TODO: Skip this for performance
@@ -342,36 +340,33 @@ cudaEvent_t cudaFRBBeamformer_pathfinder::execute(cudaPipelineState& /*pipestate
     if (err != CUDA_SUCCESS) {
         const char* errStr;
         cuGetErrorString(err, &errStr);
-        ERROR("cuLaunchKernel: Error number: {}: {}", err, errStr);
+        ERROR("cuLaunchKernel: Error number: {}: {}", (int)err, errStr);
     }
 
     // Copy results back to host memory
     // TODO: Skip this for performance
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.at(gpu_frame_index).data(), info_memory, info_length,
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.data(), info_memory, info_length,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     // Check error codes
     // TODO: Skip this for performance
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-    const std::int32_t error_code =
-        *std::max_element((const std::int32_t*)&*info_host.at(gpu_frame_index).begin(),
-                          (const std::int32_t*)&*info_host.at(gpu_frame_index).end());
+    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
+                                                      (const std::int32_t*)&*info_host.end());
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.at(gpu_frame_index).size(); ++i)
-        if (info_host.at(gpu_frame_index)[i] != 0)
+    for (std::size_t i = 0; i < info_host.size(); ++i)
+        if (info_host[i] != 0)
             ERROR("cudaFRBBeamformer_pathfinder returned 'info' value {:d} at index {:d} (zero "
                   "indicates no error)",
-                  info_host.at(gpu_frame_index)[i], i);
+                  info_host[i], i);
 
     return record_end_event();
 }
 
+/*
 void cudaFRBBeamformer_pathfinder::finalize_frame() {
-    device.release_gpu_memory_array_metadata(W_memname, gpu_frame_id);
-    device.release_gpu_memory_array_metadata(E_memname, gpu_frame_id);
-    device.release_gpu_memory_array_metadata(I_memname, gpu_frame_id);
-
     cudaCommand::finalize_frame();
 }
+*/
