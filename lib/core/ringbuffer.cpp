@@ -25,8 +25,8 @@ static void print_py_status(RingBuffer* rb) {
     read_tails << "}";
     DEBUG_NON_OO("PY_RB rb_state(\"{:s}\", size={:d}, write_heads={:s}, write_next={:s}, "
                  "write_head={:d}, write_tail={:d}, read_heads={:s}, read_tails={:s})",
-                 rb->buffer_name, rb->size, write_heads.str(), write_next.str(), rb->write_head, rb->write_tail,
-                 read_heads.str(), read_tails.str());
+                 rb->buffer_name, rb->size, write_heads.str(), write_next.str(), rb->write_head,
+                 rb->write_tail, read_heads.str(), read_tails.str());
 }
 
 RingBuffer::RingBuffer(size_t sz, std::shared_ptr<metadataPool> pool,

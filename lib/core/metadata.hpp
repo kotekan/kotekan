@@ -26,9 +26,9 @@
 
 #include "json.hpp" // for json
 
+#include <cstdint> // for uint32_t
 #include <memory>
 #include <mutex>
-#include <cstdint> // for uint32_t
 #include <vector>
 
 class metadataPool;
