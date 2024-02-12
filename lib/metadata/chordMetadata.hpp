@@ -176,16 +176,6 @@ public:
     }
 };
 
-inline void chord_metadata_init(std::shared_ptr<chordMetadata> meta) {
-    // ??
-    *meta = chordMetadata();
-}
-
-inline void chord_metadata_copy(std::shared_ptr<chordMetadata> out,
-                                const std::shared_ptr<chordMetadata> in) {
-    *out = *in; // ???
-}
-
 inline bool metadata_is_chord(Buffer* buf, int) {
     return buf && buf->metadata_pool && (buf->metadata_pool->type_name == "chordMetadata");
 }
@@ -198,11 +188,6 @@ inline bool metadata_is_chord(const std::shared_ptr<metadataObject> mc) {
     return (pool->type_name == "chordMetadata");
 }
 
-inline std::shared_ptr<chordMetadata> get_chord_metadata(Buffer* buf, int frame_id) {
-    std::shared_ptr<metadataObject> meta = buf->metadata[frame_id];
-    return std::static_pointer_cast<chordMetadata>(meta);
-}
-
 inline std::shared_ptr<chordMetadata> get_chord_metadata(std::shared_ptr<metadataObject> mc) {
     if (!mc)
         return std::shared_ptr<chordMetadata>();
@@ -213,6 +198,13 @@ inline std::shared_ptr<chordMetadata> get_chord_metadata(std::shared_ptr<metadat
         return std::shared_ptr<chordMetadata>();
     }
     return std::static_pointer_cast<chordMetadata>(mc);
+}
+
+inline std::shared_ptr<chordMetadata> get_chord_metadata(Buffer* buf, int frame_id) {
+    if (!buf || frame_id < 0 || frame_id >= (int)buf->metadata.size())
+        return std::shared_ptr<chordMetadata>();
+    std::shared_ptr<metadataObject> meta = buf->metadata[frame_id];
+    return get_chord_metadata(meta);
 }
 
 #endif

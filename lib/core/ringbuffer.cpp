@@ -1,30 +1,32 @@
 #include "ringbuffer.hpp"
 
+#include <sstream>
+
 typedef std::lock_guard<std::recursive_mutex> buffer_lock;
 
+// This prints out a Python literal used for making plots in post-processing, for debugging
+// and illustration purposes.
 static void print_py_status(RingBuffer* rb) {
-    std::string write_heads = "{";
+    std::ostringstream write_heads("{");
     for (const auto& [key, value] : rb->write_heads)
-        write_heads += "\"" + key + "\": " + std::to_string(value) + ", ";
-    write_heads += "}";
-    std::string write_next = "{";
+        write_heads << "\"" << key << "\": " << value << ", ";
+    write_heads << "}";
+    std::ostringstream write_next("{");
     for (const auto& [key, value] : rb->write_next)
-        write_next += "\"" + key + "\": " + std::to_string(value) + ", ";
-    write_next += "}";
-    std::string read_heads = "{";
+        write_next << "\"" << key << "\": " << value << ", ";
+    write_next << "}";
+    std::ostringstream read_heads("{");
     for (const auto& [key, value] : rb->read_heads)
-        read_heads += "\"" + key + "\": " + std::to_string(value) + ", ";
-    read_heads += "}";
-    std::string read_tails = "{";
+        read_heads << "\"" << key << "\": " << value << ", ";
+    read_heads << "}";
+    std::ostringstream read_tails("{");
     for (const auto& [key, value] : rb->read_tails)
-        read_tails += "\"" + key + "\": " + std::to_string(value) + ", ";
-    read_tails += "}";
+        read_tails << "\"" << key << "\": " << value << ", ";
+    read_tails << "}";
     DEBUG_NON_OO("PY_RB rb_state(\"{:s}\", size={:d}, write_heads={:s}, write_next={:s}, "
                  "write_head={:d}, write_tail={:d}, read_heads={:s}, read_tails={:s})",
-                 rb->buffer_name, rb->size, write_heads, write_next, rb->write_head, rb->write_tail,
-                 read_heads, read_tails);
-    // DEBUG_NON_OO("PY_RB rb_state(\"{:s}\", size={:d}, write_heads={:s})", rb->buffer_name,
-    // rb->size, write_heads);
+                 rb->buffer_name, rb->size, write_heads.str(), write_next.str(), rb->write_head, rb->write_tail,
+                 read_heads.str(), read_tails.str());
 }
 
 RingBuffer::RingBuffer(size_t sz, std::shared_ptr<metadataPool> pool,

@@ -62,11 +62,9 @@ public:
     void print_full_status() override;
 
     /**
-     * @brief Waits until the given number of elements are free to be written.
-     * Must be called by a producer before writing.
-     *
-     * MUST be matched by a finish_write() of the same size!
-     * (Or multiple finish_write() calls totalling the same size)
+     * @brief Waits until the given number of elements are free to be
+     * written.  Must be called by a producer before writing.  Returns
+     * the index where the writer should begin writing.
      *
      * @return A std::optional<size_t>, where there is a value on
      *   success, and no value if the pipeline is shutting down.  The

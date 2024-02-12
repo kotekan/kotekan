@@ -326,17 +326,13 @@ bool Buffer::is_frame_empty(const int ID) {
 uint8_t* Buffer::wait_for_full_frame(const std::string& name, const int ID) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
     auto& con = consumers.at(name);
-    // This loop exists when is_full == 1 (i.e. a full buffer) AND
-    // when this producer hasn't already marked this buffer as
-    // while ((!is_full[ID] || con.is_done[ID])
-    //       && !shutdown_signal)
-    //    full_cond.wait(lock);
-
     while (true) {
         DEBUG("wait_for_full_frame: frame {:d}, is full? {:s}  is consumer done? {:s}  shutdown? "
               "{:s}",
               ID, is_full[ID] ? "T" : "F", con.is_done[ID] ? "T" : "F",
               shutdown_signal ? "T" : "F");
+        // This loop exits when is_full == 1 (i.e. a full buffer) AND
+        // when this producer hasn't already marked this buffer as done
         if ((!is_full[ID] || con.is_done[ID]) && !shutdown_signal) {
             DEBUG("waiting on condition...");
             full_cond.wait(lock);

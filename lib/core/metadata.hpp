@@ -28,8 +28,7 @@
 
 #include <memory>
 #include <mutex>
-#include <stdint.h> // for uint32_t
-#include <stdio.h>  // for size_t
+#include <cstdint> // for uint32_t
 #include <vector>
 
 class metadataPool;
@@ -130,12 +129,6 @@ public:
 protected:
     /// The underlying block af data that we allocate objects out of
     void* data_block;
-
-    /**
-     * @brief An array to indicate the use state of each pointer in the @c metadata_objects array
-     * A value of 1 indicates the pointer is in use and should have a reference count > 0
-     */
-    std::vector<bool> in_use;
 
     /// The size of the @c metadataContainer array.
     unsigned int pool_size;

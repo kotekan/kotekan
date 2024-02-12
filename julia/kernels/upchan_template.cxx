@@ -328,7 +328,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                 std::shared_ptr<metadataObject> const {{{name}}}_mc =
                     device.create_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id, E_mc->parent_pool);
                 std::shared_ptr<chordMetadata> const {{{name}}}_meta = get_chord_metadata({{{name}}}_mc);
-                chord_metadata_copy({{{name}}}_meta, E_meta);
+                *{{{name}}}_meta = *E_meta;
                 {{{name}}}_meta->type = {{{name}}}_type;
                 {{{name}}}_meta->dims = {{{name}}}_rank;
                 for (std::size_t dim = 0; dim < {{{name}}}_rank; ++dim) {

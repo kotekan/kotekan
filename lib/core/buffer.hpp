@@ -16,7 +16,6 @@
 #include <condition_variable>
 #include <map>
 #include <mutex>
-#include <pthread.h> // for pthread_cond_t, pthread_mutex_t
 #include <stdbool.h> // for bool
 #include <stdint.h>  // for uint8_t
 #include <string>

@@ -190,7 +190,6 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         assert(E_meta->n_dish_locations_ns == cuda_dish_layout_M);
         assert(E_meta->dish_index);
         std::int16_t* __restrict__ const S =
-            //static_cast<std::int16_t*>(static_cast<void*>(S_host.at(gpu_frame_index).data()));
             static_cast<std::int16_t*>(static_cast<void*>(S_host.data()));
         int surplus_dish_index = cuda_number_of_dishes;
         for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
@@ -237,7 +236,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                 std::shared_ptr<metadataObject> const {{{name}}}_mc =
                     device.create_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id, E_mc->parent_pool);
                 std::shared_ptr<chordMetadata> const {{{name}}}_meta = get_chord_metadata({{{name}}}_mc);
-                chord_metadata_copy({{{name}}}_meta, E_meta);
+                *{{{name}}}_meta = *E_meta;
                 {{{name}}}_meta->type = {{{name}}}_type;
                 {{{name}}}_meta->dims = {{{name}}}_rank;
                 for (std::size_t dim = 0; dim < {{{name}}}_rank; ++dim) {

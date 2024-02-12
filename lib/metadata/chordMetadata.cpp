@@ -92,11 +92,12 @@ size_t chordMetadata::get_serialized_size() {
 }
 
 size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
+    assert(length >= get_serialized_size());
     size_t offset = chimeMetadata::set_from_bytes(bytes, length);
     bytes += offset;
     length -= offset;
+    assert(length >= sizeof(chordMetadataFormat));
 
-    assert(length >= get_serialized_size());
     const chordMetadataFormat* fmt = reinterpret_cast<const chordMetadataFormat*>(bytes);
 
     frame_counter = fmt->frame_counter;
