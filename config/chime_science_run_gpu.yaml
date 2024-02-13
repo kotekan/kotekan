@@ -705,7 +705,7 @@ baseband_merge:
 
 # Transmit baseband data to the baseband receiver
 baseband_send:
-  server_ip: 10.6.213.19 # cfDn9
+  server_ip: 10.1.50.51 # outrigger-buffer.chime 
   reconnect_time: 60
   send_timeout: 600 # 10 minutes
   log_level: warn
