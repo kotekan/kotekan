@@ -13,12 +13,12 @@ FloatPhaseUpdate::FloatPhaseUpdate(kotekan::Config& config, const std::string& u
                                    kotekan::bufferContainer& buffer_container) :
     BeamformingPhaseUpdate(config, unique_name, buffer_container) {}
 
-void FloatPhaseUpdate::compute_phases(uint8_t* out_frame2, const timespec& gps_time,
+void FloatPhaseUpdate::compute_phases(uint8_t* out_frame, const timespec& gps_time,
                                       const std::vector<float>& frequencies_in_frame,
-                                      uint8_t* gains_frame2) {
+                                      uint32_t beam_offset, uint8_t* gains_frame) {
     
-    float* out_frame = (float*)out_frame2;
-    float* gains_frame = (float*)gains_frame2;
+    float* out_frame = (float*)out_frame;
+    float* gains_frame = (float*)gains_frame;
 
     // Getting UTC time in ISO format from the GPS time in Unix format
     struct tm* utc_time;
@@ -55,7 +55,7 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame2, const timespec& gps_t
     //INFO("GPS Time: {:.9f}, Frequency {}", ts_to_double(gps_time), frequencies_in_frame[0]);
 
     //Calculating the hour angle and phases for all frequencies in a frame for each pointing 
-    for (int b = 0; b < _num_beams; b++) {                                                                   //DOUBT: Does the datatype of b have to be int16_t?
+    for (uint32_t b = _beam_offset; b < _num_beams; b++) {                                                                   //DOUBT: Does the datatype of b have to be int16_t?
         // Special case for forming a beam at the telescope zenith, e.g. only apply gains, no phases.  
 	if (_beam_coord.scaling[b] == 1) {   
             for (uint32_t i = 0; i < _num_elements * _num_local_freq * 2; ++i) {                             

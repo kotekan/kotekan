@@ -10,11 +10,12 @@ TCPhaseUpdate::TCPhaseUpdate(kotekan::Config& config, const std::string& unique_
 
 void TCPhaseUpdate::compute_phases(uint8_t* out_frame, const timespec& gps_time,
                                    const std::vector<float>& frequencies_in_frame,
-                                   uint8_t* gains_frame) {
+                                   uint32_t beam_offset, uint8_t* gains_frame) {
     // These lines are just to suppress warnings, remove once function uses them
     (void)out_frame;
     (void)gps_time;
     (void)frequencies_in_frame;
+    (void)beam_offset;
     // Keep this one, since it isn't used for the TC version
     (void)gains_frame;
 

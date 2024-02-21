@@ -25,8 +25,13 @@ STAGE_CONSTRUCTOR(BeamformingPhaseUpdate) {
         register_consumer(gains_buf, unique_name.c_str());
     }
 
-    _num_elements = config.get<int32_t>(unique_name, "num_elements");
-    _num_beams = config.get<int16_t>(unique_name, "num_beams");
+    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
+    _num_beams = config.get<uint32_t>(unique_name, "num_beams");
+    _beam_offset = config.get_default<uint32_t>(unique_name, "beam_offset", 0);
+
+    if (_beam_offset >= _num_beams) {
+        throw std::runtime_error("The offset is larger than the number of beams");
+    }
 
     _inst_lat = config.get<double>(unique_name, "inst_lat");
     _inst_long = config.get<double>(unique_name, "inst_long");

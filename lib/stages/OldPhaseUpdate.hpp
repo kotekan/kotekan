@@ -1,13 +1,13 @@
-#ifndef FLOAT_PHASE_UPDATE_HPP
-#define FLOAT_PHASE_UPDATE_HPP
+#ifndef OLD_PHASE_UPDATE_HPP
+#define OLD_PHASE_UPDATE_HPP
 
 #include "BeamformingPhaseUpdate.hpp"
 
-class FloatPhaseUpdate : public BeamformingPhaseUpdate {
+class OldPhaseUpdate : public BeamformingPhaseUpdate {
 public:
-    FloatPhaseUpdate(kotekan::Config& config, const std::string& unique_name,
+    OldPhaseUpdate(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& buffer_container);
-    ~FloatPhaseUpdate() = default;
+    ~OldPhaseUpdate() = default;
 
 protected:
     virtual void compute_phases(uint8_t* out_frame, const timespec& gps_time,
@@ -16,4 +16,4 @@ protected:
 };
 
 
-#endif // FLOAT_PHASE_UPDATE_HPP
+#endif // OLD_PHASE_UPDATE_HPP

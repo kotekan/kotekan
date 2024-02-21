@@ -30,6 +30,8 @@
  *
  * @conf   num_elements             Int. Number of elements (2 * num_feeds)
  * @conf   num_beams                Int. Number of beams
+ * @conf   beam_offset              Int. Offset in the phase buffer frame 
+ *                                  N.B. The (offset + num_beams)*beam_size must be <= out_buf.frame_size
  * @conf   inst_lat                 Double. The Instrument latitude
  * @conf   inst_long                Double. The Instrument longitude
  * @conf   num_local_freq           Int. Number of local frequencies
@@ -69,7 +71,9 @@ protected:
     /// Number of elements
     uint32_t _num_elements;
     /// Number of beams
-    int16_t _num_beams;
+    uint32_t _num_beams;
+    /// Beam offset in output phase frame
+    uint32_t _beam_offset;
 
     // Coordinates of the phase center.
     /// The instrument latitude
@@ -92,6 +96,7 @@ protected:
     /// mutex lock prevent beam_coord to be read while it is being updated.
     std::mutex beam_lock;
 
+    /// Offset between UTC and UT1
     double _DUT1;
 
     /**
@@ -108,13 +113,14 @@ protected:
      *                  frame which will be assoicated with these gains
      * @param frequencies_in_frame An array of all the frequency ids needed for the
      *                             given out_frame
+     * @param beam_offset Offset the beam from the start of the phase array
      * @param gains_frame (Optional) The gains frame, used if we have combined gains
      *                               phases.   For arrays with seperated gains/phases
      *                               this will be set to nullptr
      */
     virtual void compute_phases(uint8_t* out_frame, const timespec& gps_time,
                                 const std::vector<float>& frequencies_in_frame,
-                                uint8_t* gains_frame) = 0;
+                                uint32_t beam_offset, uint8_t* gains_frame) = 0;
 };
 
 

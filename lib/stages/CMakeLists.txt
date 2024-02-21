@@ -53,6 +53,7 @@ add_library(
     BeamformingPhaseUpdate.cpp
     FloatPhaseUpdate.cpp
     TCPhaseUpdate.cpp
+    OldPhaseUpdate.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp
