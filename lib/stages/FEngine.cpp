@@ -83,7 +83,6 @@ class FEngine : public kotekan::Stage {
     Buffer* const E_buffer;
     Buffer* const A_buffer;
     Buffer* const J_buffer;
-    // Buffer* const S_buffer;
     Buffer* const G_buffer;
     Buffer* const W_buffer;
     Buffer* const I_buffer;
@@ -156,10 +155,8 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
                  * frb_num_times * num_frequencies),
     // Buffers
     E_buffer(get_buffer("E_buffer")), A_buffer(get_buffer("A_buffer")),
-    J_buffer(get_buffer("J_buffer")),
-    // S_buffer(get_buffer("S_buffer")),
-    G_buffer(get_buffer("G_buffer")), W_buffer(get_buffer("W_buffer")),
-    I_buffer(get_buffer("I_buffer")) {
+    J_buffer(get_buffer("J_buffer")), G_buffer(get_buffer("G_buffer")),
+    W_buffer(get_buffer("W_buffer")), I_buffer(get_buffer("I_buffer")) {
     assert(num_dishes >= 0 && num_dishes <= num_dish_locations);
     assert(std::ptrdiff_t(dish_indices.size()) == num_dish_locations_ew * num_dish_locations_ns);
     int num_dishes_seen = 0;
@@ -183,14 +180,12 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     assert(E_buffer);
     assert(A_buffer);
     assert(J_buffer);
-    // assert(S_buffer);
     assert(G_buffer);
     assert(W_buffer);
     assert(I_buffer);
     E_buffer->register_producer(unique_name);
     A_buffer->register_producer(unique_name);
     J_buffer->register_producer(unique_name);
-    // S_buffer->register_producer(unique_name);
     G_buffer->register_producer(unique_name);
     W_buffer->register_producer(unique_name);
     I_buffer->register_producer(unique_name);
@@ -309,16 +304,6 @@ void FEngine::main_thread() {
                   J_frame_size);
         J_buffer->allocate_new_metadata_object(J_frame_id);
         set_fpga_seq_num(J_buffer, J_frame_id, seq_num);
-
-        // const int S_frame_id = frame_index % S_buffer->num_frames;
-        // std::uint8_t* const S_frame = S_buffer->wait_for_empty_frame(unique_name, S_frame_id);
-        // if (!S_frame)
-        //     break;
-        // if (!(std::ptrdiff_t(S_buffer->frame_size) == S_frame_size))
-        //     ERROR("S_buffer->frame_size={:d} S_frame_size={:d}", S_buffer->frame_size,
-        //           S_frame_size);
-        // S_buffer->allocate_new_metadata_object(S_frame_id);
-        // set_fpga_seq_num(S_buffer, S_frame_id, seq_num);
 
         const int G_frame_id = frame_index % G_buffer->num_frames;
         std::uint8_t* const G_frame = G_buffer->wait_for_empty_frame(unique_name, G_frame_id);
@@ -504,12 +489,15 @@ void FEngine::main_thread() {
         E_metadata->dim[1] = num_frequencies;
         E_metadata->dim[2] = num_polarizations;
         E_metadata->dim[3] = num_dishes;
+        E_metadata->sample0_offset = seq_num;
+        E_metadata->sample_bytes = E_metadata->dim[1] * E_metadata->dim[2] * E_metadata->dim[3]
+                                   * chord_datatype_bytes(E_metadata->type);
         E_metadata->nfreq = num_frequencies;
         assert(E_metadata->nfreq <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
             E_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
             E_metadata->freq_upchan_factor[freq] = 1;
-            E_metadata->half_fpga_sample0[freq] = 2 * seq_num;
+            E_metadata->half_fpga_sample0[freq] = 0;
             E_metadata->time_downsampling_fpga[freq] = 1;
         }
         E_metadata->ndishes = num_dishes;
@@ -532,6 +520,7 @@ void FEngine::main_thread() {
         A_metadata->dim[2] = bb_num_beams;
         A_metadata->dim[3] = num_dishes;
         A_metadata->dim[4] = num_components;
+        A_metadata->sample0_offset = -1; // undefined
         A_metadata->nfreq = num_frequencies;
         assert(A_metadata->nfreq <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
@@ -558,30 +547,21 @@ void FEngine::main_thread() {
         J_metadata->dim[1] = num_frequencies;
         J_metadata->dim[2] = num_polarizations;
         J_metadata->dim[3] = num_times;
+        J_metadata->sample0_offset = seq_num;
+        J_metadata->sample_bytes = J_metadata->dim[1] * J_metadata->dim[2] * J_metadata->dim[3]
+                                   * chord_datatype_bytes(J_metadata->type);
         J_metadata->nfreq = num_frequencies;
         assert(J_metadata->nfreq <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
             J_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
             J_metadata->freq_upchan_factor[freq] = 1;
-            J_metadata->half_fpga_sample0[freq] = 2 * seq_num;
+            J_metadata->half_fpga_sample0[freq] = 0;
             J_metadata->time_downsampling_fpga[freq] = 1;
         }
         J_metadata->ndishes = num_dishes;
         J_metadata->n_dish_locations_ew = num_dish_locations_ew;
         J_metadata->n_dish_locations_ns = num_dish_locations_ns;
         J_metadata->dish_index = dish_indices_ptr;
-
-        // std::shared_ptr<chordMetadata> const S_metadata = get_chord_metadata(S_buffer,
-        // S_frame_id);
-        // S_metadata->frame_counter = frame_index;
-        // S_metadata->type = int16;
-        // S_metadata->dims = 2;
-        // std::strncpy(S_metadata->dim_name[0], "D", sizeof S_metadata->dim_name[0]);
-        // std::strncpy(S_metadata->dim_name[1], "MN", sizeof S_metadata->dim_name[1]);
-        // S_metadata->dim[0] = num_dish_locations;
-        // S_metadata->dim[1] = 2;
-        // S_metadata->n_one_hot = -1;
-        // S_metadata->nfreq = -1;
 
         std::shared_ptr<chordMetadata> const G_metadata = get_chord_metadata(G_buffer, G_frame_id);
         G_metadata->frame_counter = frame_index;
@@ -590,6 +570,7 @@ void FEngine::main_thread() {
         assert(G_metadata->dims <= CHORD_META_MAX_DIM);
         std::strncpy(G_metadata->dim_name[0], "Fbar", sizeof G_metadata->dim_name[0]);
         G_metadata->dim[0] = num_frequencies * upchannelization_factor;
+        G_metadata->sample0_offset = -1; // undefined
         G_metadata->nfreq = num_frequencies;
         assert(G_metadata->nfreq <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
@@ -618,6 +599,7 @@ void FEngine::main_thread() {
         W_metadata->dim[2] = num_dish_locations_ew;
         W_metadata->dim[3] = num_dish_locations_ns;
         W_metadata->dim[4] = num_components;
+        W_metadata->sample0_offset = -1; // undefined
         W_metadata->nfreq = num_frequencies;
         assert(W_metadata->nfreq <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
@@ -644,12 +626,16 @@ void FEngine::main_thread() {
         I_metadata->dim[1] = frb_num_times;
         I_metadata->dim[2] = frb_num_beams_Q;
         I_metadata->dim[3] = frb_num_beams_P;
+        I_metadata->sample0_offset = seq_num;
+        I_metadata->sample_bytes = I_metadata->dim[1] * I_metadata->dim[2] * I_metadata->dim[3]
+                                   * chord_datatype_bytes(I_metadata->type);
         I_metadata->nfreq = num_frequencies;
         assert(I_metadata->nfreq <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
             I_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
             I_metadata->freq_upchan_factor[freq] = upchannelization_factor;
-            I_metadata->half_fpga_sample0[freq] = 2 * seq_num - Tds;
+            I_metadata->half_fpga_sample0[freq] = 2 * Tds - 1;
+            // TODO I_metadata->time_downsampling_fpga[freq] = upchannelization_factor * Tds;
             I_metadata->time_downsampling_fpga[freq] = Tds;
         }
         I_metadata->ndishes = num_dishes;
@@ -660,7 +646,6 @@ void FEngine::main_thread() {
         E_buffer->mark_frame_full(unique_name, E_frame_id);
         A_buffer->mark_frame_full(unique_name, A_frame_id);
         J_buffer->mark_frame_full(unique_name, J_frame_id);
-        // S_buffer->mark_frame_full(unique_name, S_frame_id);
         G_buffer->mark_frame_full(unique_name, G_frame_id);
         W_buffer->mark_frame_full(unique_name, W_frame_id);
         I_buffer->mark_frame_full(unique_name, I_frame_id);

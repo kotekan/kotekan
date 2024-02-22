@@ -60,6 +60,12 @@ private:
         static constexpr {{{type}}} {{{name}}} = {{{value}}};
     {{/kernel_design_parameters}}
 
+    // Kernel input and output sizes
+    std::int64_t num_consumed_elements(std::int64_t num_available_elements) const;
+    std::int64_t num_produced_elements(std::int64_t num_available_elements) const;
+
+    std::int64_t num_processed_elements(std::int64_t num_available_elements) const;
+
     // Kernel compile parameters:
     static constexpr int minthreads = {{{minthreads}}};
     static constexpr int blocks_per_sm = {{{num_blocks_per_sm}}};
@@ -121,7 +127,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
                                              const std::string& unique_name,
                                              bufferContainer& host_buffers,
                                              cudaDeviceInterface& device,
-                                             const int inst) :
+                                             const int inst):
     cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state,
                 "{{{kernel_name}}}", "{{{kernel_name}}}.ptx")
     {{#kernel_arguments}}
@@ -151,7 +157,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Only one of the instances of this pipeline stage need to build the kernel
+    // Only one of the instances of this pipeline stage needs to build the kernel
     if (inst == 0) {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
@@ -162,6 +168,17 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
 }
 
 cuda{{{kernel_name}}}::~cuda{{{kernel_name}}}() {}
+
+std::int64_t cuda{{{kernel_name}}}::num_consumed_elements(std::int64_t num_available_elements) const {
+    return num_available_elements >= cuda_number_of_timesamples ? cuda_number_of_timesamples : 0;
+}
+std::int64_t cuda{{{kernel_name}}}::num_produced_elements(std::int64_t num_available_elements) const {
+    return num_available_elements >= cuda_number_of_timesamples ? cuda_number_of_timesamples : 0;
+}
+
+std::int64_t cuda{{{kernel_name}}}::num_processed_elements(std::int64_t num_available_elements) const {
+    return num_available_elements >= cuda_number_of_timesamples ? cuda_number_of_timesamples : 0;
+}
 
 cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();

@@ -27,8 +27,10 @@ const char* chord_datatype_string(chordDataType type) {
 }
 
 chordMetadata::chordMetadata() :
-    chimeMetadata(), frame_counter(-1), type(unknown_type), dims(-1), offset(0), n_one_hot(-1),
-    nfreq(-1), ndishes(-1), n_dish_locations_ew(-1), n_dish_locations_ns(-1), dish_index(nullptr) {
+    // chimeMetadata(),
+    frame_counter(-1), type(unknown_type), dims(-1), offset(0), n_one_hot(-1), sample0_offset(-1),
+    sample_bytes(-1), nfreq(-1), ndishes(-1), n_dish_locations_ew(-1), n_dish_locations_ns(-1),
+    dish_index(nullptr) {
     for (int d = 0; d < CHORD_META_MAX_DIM; ++d) {
         dim[d] = -1;
         dim_name[d][0] = '\0';
@@ -65,6 +67,18 @@ struct chordMetadataFormat {
     char onehot_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME];
     int32_t onehot_index[CHORD_META_MAX_DIM];
 
+    // All time samples in this buffer (or the whole buffer, if the
+    // buffer does not have a time sample index) have `sample_offset`
+    // added to the buffer's time sample index. (This allows quickly
+    // shifting metadata in time to re-use metadata objects.)
+    //
+    // The actual (possibly fractional) time sample index is calculated as follows:
+    //     T_actual = (sample0_offset + T + half_fpga_sample0[F]) / time_downsampling_fpga[F]
+    // where `T` is the time sample index and `F` is the coarse frequency index.
+    int64_t sample0_offset;
+    // Number of bytes per time sample
+    size_t sample_bytes;
+
     // Per-frequency arrays
     int32_t nfreq;
 
@@ -88,12 +102,14 @@ struct chordMetadataFormat {
 };
 
 size_t chordMetadata::get_serialized_size() {
-    return chimeMetadata::get_serialized_size() + sizeof(chordMetadataFormat);
+    return // chimeMetadata::get_serialized_size() +
+        sizeof(chordMetadataFormat);
 }
 
 size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
     assert(length >= get_serialized_size());
-    size_t offset = chimeMetadata::set_from_bytes(bytes, length);
+    size_t offset = // chimeMetadata::set_from_bytes(bytes, length)
+        0;
     bytes += offset;
     length -= offset;
     assert(length >= sizeof(chordMetadataFormat));
@@ -118,6 +134,8 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
     }
     offset = fmt->offset;
     n_one_hot = fmt->n_one_hot;
+    sample0_offset = fmt->sample0_offset;
+    sample_bytes = fmt->sample_bytes;
     nfreq = fmt->nfreq;
     assert(nfreq < CHORD_META_MAX_FREQ);
     for (int i = 0; i < nfreq; i++) {
@@ -130,7 +148,8 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
 }
 
 size_t chordMetadata::serialize(char* bytes) {
-    size_t offset = chimeMetadata::serialize(bytes);
+    size_t offset = // chimeMetadata::serialize(bytes)
+        0;
     bytes += offset;
 
     chordMetadataFormat* fmt = reinterpret_cast<chordMetadataFormat*>(bytes);
@@ -154,6 +173,8 @@ size_t chordMetadata::serialize(char* bytes) {
     }
     fmt->offset = offset;
     fmt->n_one_hot = n_one_hot;
+    fmt->sample0_offset = sample0_offset;
+    fmt->sample_bytes = sample_bytes;
     fmt->nfreq = nfreq;
     assert(nfreq < CHORD_META_MAX_FREQ);
     for (int i = 0; i < nfreq; i++) {

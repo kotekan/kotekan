@@ -94,7 +94,13 @@ public:
 
             // Fetch metadata
             const std::shared_ptr<metadataObject> mc = buffer->get_metadata(frame_id);
+            if (!mc)
+                FATAL_ERROR("Buffer \"{:s}\" frame {:d} does not have metadata",
+                            buffer->buffer_name, frame_id);
             assert(mc);
+            if (!metadata_is_chord(mc))
+                FATAL_ERROR("Metadata of buffer \"{:s}\" frame {:d} is not of type CHORD",
+                            buffer->buffer_name, frame_id);
             assert(metadata_is_chord(mc));
             const std::shared_ptr<chordMetadata> meta = get_chord_metadata(mc);
 
@@ -127,7 +133,7 @@ public:
 
             // Describe metadata
 
-            group->emplace("nfreq", std::make_shared<ASDF::int_entry>(meta->nfreq));
+            // group->emplace("nfreq", std::make_shared<ASDF::int_entry>(meta->nfreq));
 
             auto coarse_freq = std::make_shared<ASDF::sequence>();
             for (int freq = 0; freq < meta->nfreq; ++freq)
@@ -139,6 +145,9 @@ public:
                 freq_upchan_factor->push_back(
                     std::make_shared<ASDF::int_entry>(meta->freq_upchan_factor[freq]));
             group->emplace("freq_upchan_factor", freq_upchan_factor);
+
+            group->emplace("sample0_offset",
+                           std::make_shared<ASDF::int_entry>(meta->sample0_offset));
 
             auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
             for (int freq = 0; freq < meta->nfreq; ++freq)

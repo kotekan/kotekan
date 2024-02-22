@@ -57,7 +57,39 @@ void RingBuffer::register_consumer(const std::string& name) {
     GenericBuffer::register_consumer(name);
 }
 
+std::optional<size_t> RingBuffer::wait_without_claiming(const std::string& name) {
+    // Wait until we can advance the read_head for this consumer!
+    std::unique_lock<std::recursive_mutex> lock(mutex);
+    size_t head = read_heads[name];
+    size_t old_write_head = write_head;
+    while (1) {
+        std::string d = fmt::format(
+            std::locale("en_US.UTF-8"),
+            "Waiting for input: Want {:L}, Have {:L}.  (Current read head: {:L}, after this read "
+            "would be {:L}, current write head: {:L})",
+            old_write_head - head + 1, write_head - head, head, head + 1, write_head);
+        DEBUG("{:s}", d);
+        if (write_head > old_write_head)
+            break;
+        if (shutdown_signal)
+            break;
+        DEBUG("waiting on full condition variable");
+        full_cond.wait(lock);
+        DEBUG("finished waiting on full condition variable");
+    }
+    size_t sz = write_head - head;
+    assert(write_head >= head);
+    assert(sz < (size_t(-1) >> 1));
+    INFO("wait_without_claiming {:s} {:L}", name, sz);
+    assert(sz > 0);
+    if (shutdown_signal)
+        return std::optional<size_t>();
+    print_py_status(this);
+    return std::optional<size_t>(sz);
+}
+
 std::optional<size_t> RingBuffer::wait_and_claim_readable(const std::string& name, size_t sz) {
+    assert(sz < (size_t(-1) >> 1));
     // Wait until we can advance the read_head for this consumer!
     std::unique_lock<std::recursive_mutex> lock(mutex);
     size_t head = read_heads[name];
@@ -82,7 +114,42 @@ std::optional<size_t> RingBuffer::wait_and_claim_readable(const std::string& nam
         return std::optional<size_t>();
     print_py_status(this);
     // return the former read_head - that's where the consumer should start reading from.
-    return std::optional<size_t>(head % size);
+    // return std::optional<size_t>(head % size);
+    return std::optional<size_t>(head);
+}
+
+std::optional<std::pair<size_t, size_t>>
+RingBuffer::wait_and_claim_all_readable(const std::string& name) {
+    // Wait until we can advance the read_head for this consumer!
+    std::unique_lock<std::recursive_mutex> lock(mutex);
+    size_t head = read_heads[name];
+    while (1) {
+        std::string d = fmt::format(
+            std::locale("en_US.UTF-8"),
+            "Waiting for input: Want {:L}, Have {:L}.  (Current read head: {:L}, after this read "
+            "would be {:L}, current write head: {:L})",
+            1, write_head - head, head, head + 1, write_head);
+        DEBUG("{:s}", d);
+        if (head + 1 <= write_head)
+            break;
+        if (shutdown_signal)
+            break;
+        DEBUG("waiting on full condition variable");
+        full_cond.wait(lock);
+        DEBUG("finished waiting on full condition variable");
+    }
+    size_t sz = write_head - head;
+    assert(write_head >= head);
+    assert(sz < (size_t(-1) >> 1));
+    INFO("wait_and_claim_all_readable {:s} {:L} -> {:L} {:L}", name, sz, head, head % size);
+    assert(sz > 0);
+    read_heads[name] += sz;
+    if (shutdown_signal)
+        return std::optional<std::pair<size_t, size_t>>();
+    print_py_status(this);
+    // return the former read_head - that's where the consumer should start reading from.
+    // return std::optional<std::pair<size_t, size_t>>(std::make_pair(head % size, sz));
+    return std::optional<std::pair<size_t, size_t>>(std::make_pair(head, sz));
 }
 
 std::optional<std::pair<size_t, size_t>> RingBuffer::peek_readable(const std::string& name) {
@@ -90,10 +157,13 @@ std::optional<std::pair<size_t, size_t>> RingBuffer::peek_readable(const std::st
     if (shutdown_signal)
         return std::optional<std::pair<size_t, size_t>>();
     size_t head = read_heads[name];
-    return std::optional<std::pair<size_t, size_t>>(std::make_pair(head % size, write_head - head));
+    // return std::optional<std::pair<size_t, size_t>>(std::make_pair(head % size, write_head -
+    // head));
+    return std::optional<std::pair<size_t, size_t>>(std::make_pair(head, write_head - head));
 }
 
 void RingBuffer::finish_read(const std::string& name, size_t sz) {
+    assert(sz < (size_t(-1) >> 1));
     // Advance the read_tail for this consumer!
     {
         buffer_lock lock(mutex);
@@ -119,12 +189,14 @@ void RingBuffer::finish_read(const std::string& name, size_t sz) {
 }
 
 std::optional<size_t> RingBuffer::wait_for_writable(const std::string& name, size_t sz) {
+    assert(sz < (size_t(-1) >> 1));
     std::unique_lock<std::recursive_mutex> lock(mutex);
     while (1) {
         DEBUG("Waiting to write {:L} elements.  Current write_next {:L} write_head {:L} and "
               "write_tail {:L} (next - tail diff {:L}), space available to write: {:L}",
               sz, write_next[name], write_heads[name], write_tail, write_next[name] - write_tail,
               size - (write_next[name] - write_tail));
+        assert(write_next[name] >= write_tail);
         if (write_next[name] - write_tail + sz <= size)
             break;
         if (shutdown_signal)
@@ -135,7 +207,8 @@ std::optional<size_t> RingBuffer::wait_for_writable(const std::string& name, siz
     }
     if (shutdown_signal)
         return std::optional<size_t>();
-    size_t rtn = write_next[name] % size;
+    // size_t rtn = write_next[name] % size;
+    size_t rtn = write_next[name];
     DEBUG("wait_for_writable {:s} {:L} -> {:L} {:L}", name, sz, write_next[name], rtn);
     write_next[name] += sz;
     print_py_status(this);
@@ -147,14 +220,18 @@ std::optional<std::pair<size_t, size_t>> RingBuffer::get_writable(const std::str
     if (shutdown_signal)
         return std::optional<std::pair<size_t, size_t>>();
     size_t n = size - (write_next[name] - write_tail);
-    return std::optional<std::pair<size_t, size_t>>(std::make_pair(write_next[name] % size, n));
+    assert(n < (size_t(-1) >> 1));
+    // return std::optional<std::pair<size_t, size_t>>(std::make_pair(write_next[name] % size, n));
+    return std::optional<std::pair<size_t, size_t>>(std::make_pair(write_next[name], n));
 }
 
 void RingBuffer::finish_write(const std::string& name, size_t sz) {
+    assert(sz < (size_t(-1) >> 1));
     DEBUG("finish_write {:s} {:L}", name, sz);
     {
         buffer_lock lock(mutex);
         print_full_status();
+        assert(write_heads[name] >= write_tail);
         assert(write_heads[name] + sz - write_tail <= size);
         bool old = (write_heads[name] == write_head);
         write_heads[name] += sz;

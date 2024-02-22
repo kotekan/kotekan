@@ -89,6 +89,18 @@ public:
     void finish_write(const std::string& producer_name, size_t sz);
 
     /**
+     * @brief Called by a consumer.  Waits until some elements have
+     * been produced, but DOES NOT reserve those elements -- they will
+     * remain available by subsequent @c wait_and_claim_readable
+     * calls.
+     *
+     * @return A value on success, no value if the pipeline is
+     * shutting down.  On success, the returned value is the number of
+     * bytes available to be claimed.
+     */
+    std::optional<size_t> wait_without_claiming(const std::string& consumer_name);
+
+    /**
      * @brief Called by a consumer before reading its next chunk of
      * data.  Waits until the given number of elements have been
      * produced, AND reserves those elements -- they will be treated as
@@ -100,6 +112,19 @@ public:
      * start reading.
      */
     std::optional<size_t> wait_and_claim_readable(const std::string& consumer_name, size_t sz);
+
+    /**
+     * @brief Called by a consumer before reading its next chunk of
+     * data.  Waits until some elements have been produced, AND
+     * reserves all available elements -- they will be treated as
+     * unavailable by subsequent @c wait_and_claim_all_readable calls.
+     *
+     * @return A std::optional<std::pair<size_t, size_t> >, where
+     * there is no value if the pipeline is shutting down, and
+     * otherwise, a pair giving the read cursor and number of elements
+     * that have been claimed.
+     */
+    std::optional<std::pair<size_t, size_t>> wait_and_claim_all_readable(const std::string& consumer_name);
 
     /**
      * @brief Checks many elements are free to be read, BUT does not

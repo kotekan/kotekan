@@ -50,7 +50,9 @@ public:
     /// The coordinates of the tracking beam (if applicable)
     struct beamCoord beam_coord;
 
-    // assignment operator needed to handle std::atomics
+    // constructor, copy constructor, and assignment operator needed to handle std::atomics
+    // chimeMetadata();
+    // chimeMetadata(const chimeMetadata& other);
     chimeMetadata& operator=(const chimeMetadata& other);
 
     /// Returns the size of objects of this type when serialized into bytes.

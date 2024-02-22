@@ -85,12 +85,6 @@ main_pool:
     num_metadata_objects: 10 * buffer_depth
 
 # Buffers
-# host_dish_locations_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: sizeof_int16 * 2 * num_dish_locations
-#     metadata_pool: main_pool
-
 host_bb_phase_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
@@ -146,7 +140,6 @@ gen_voltage:
     E_buffer: host_voltage_buffer
     A_buffer: host_bb_phase_buffer
     J_buffer: host_expected_bb_beams_buffer
-    # S_buffer: host_dish_locations_buffer
     G_buffer: host_upchan_gain_buffer
     W_buffer: host_frb_phase_buffer
     I_buffer: host_expected_frb_beams_buffer
@@ -158,7 +151,6 @@ gpu:
         gpu_id: 0
         in_buffers:
             host_voltage: host_voltage_buffer
-            # host_dish_locations: host_dish_locations_buffer
             host_frb_phase: host_frb_phase_buffer
         out_buffers:
             host_frb_beams: host_frb_beams_buffer
@@ -166,9 +158,6 @@ gpu:
         - name: cudaInputData
           in_buf: host_voltage
           gpu_mem: voltage
-        # - name: cudaInputData
-        #   in_buf: host_dish_locations
-        #   gpu_mem: dish_locations
         - name: cudaInputData
           in_buf: host_frb_phase
           gpu_mem: frb_phase

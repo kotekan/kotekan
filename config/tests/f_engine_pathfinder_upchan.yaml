@@ -78,12 +78,6 @@ main_pool:
     num_metadata_objects: 10 * buffer_depth
 
 # Buffers
-# host_dish_locations_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: sizeof_int16 * 2 * num_dish_locations
-#     metadata_pool: main_pool
-
 host_bb_phase_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
@@ -113,6 +107,10 @@ host_voltage_buffer:
     num_frames: buffer_depth
     frame_size: num_dishes * num_polarizations * num_frequencies * num_times
     metadata_pool: main_pool
+host_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_dishes * num_polarizations * num_frequencies * num_times
+    metadata_pool: main_pool
 
 host_expected_bb_beams_buffer:
     kotekan_buffer: standard
@@ -131,6 +129,10 @@ host_upchan_voltage_buffer:
     num_frames: buffer_depth
     frame_size: num_dishes * num_polarizations * (num_frequencies * upchannelization_factor) * (num_times / upchannelization_factor)
     metadata_pool: main_pool
+host_upchan_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (num_frequencies * upchannelization_factor) * (num_times / upchannelization_factor)
+    metadata_pool: main_pool
 
 # Stages
 gen_voltage:
@@ -139,41 +141,71 @@ gen_voltage:
     E_buffer: host_voltage_buffer
     A_buffer: host_bb_phase_buffer
     J_buffer: host_expected_bb_beams_buffer
-    # S_buffer: host_dish_locations_buffer
     G_buffer: host_upchan_gain_buffer
     W_buffer: host_frb_phase_buffer
     I_buffer: host_expected_frb_beams_buffer
 
-gpu:
+gpu0:
     kernel_path: "lib/cuda/kernels"
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_voltage: host_voltage_buffer
-            host_upchan_gain: host_upchan_gain_buffer
+            host_voltage_buffer_in: host_voltage_buffer
         out_buffers:
-            host_upchan_voltage: host_upchan_voltage_buffer
+            host_voltage_ringbuffer_out: host_voltage_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_dishes * num_polarizations * num_frequencies * num_times
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_voltage_buffer_in
+          signal_buf: host_voltage_ringbuffer_out
+          gpu_mem_output: voltage_buffer
+        - name: cudaSyncInput
+
+gpu1:
+    kernel_path: "lib/cuda/kernels"
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_ringbuffer_in: host_voltage_ringbuffer
+            host_upchan_gain_buffer_in: host_upchan_gain_buffer
+        out_buffers:
+            host_upchan_voltage_ringbuffer_out: host_upchan_voltage_ringbuffer
         commands:
         - name: cudaInputData
-          in_buf: host_voltage
-          gpu_mem: voltage
-        - name: cudaInputData
-          in_buf: host_upchan_gain
-          gpu_mem: upchan_gain
+          in_buf: host_upchan_gain_buffer_in
+          gpu_mem: upchan_gain_buffer
         - name: cudaSyncInput
         - name: cudaUpchannelizer_pathfinder_U16
-          gpu_mem_input_voltage: voltage
-          gpu_mem_gain: upchan_gain
-          gpu_mem_output_voltage: upchan_voltage
+          in_signal: host_voltage_ringbuffer_in
+          out_signal: host_upchan_voltage_ringbuffer_out
+          gpu_mem_input_voltage: voltage_buffer
+          gpu_mem_gain: upchan_gain_buffer
+          gpu_mem_output_voltage: upchan_voltage_buffer
         - name: cudaSyncOutput
-        - name: cudaOutputData
-          gpu_mem: upchan_voltage
-          out_buf: host_upchan_voltage
+
+gpu2:
+    kernel_path: "lib/cuda/kernels"
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_upchan_voltage_ringbuffer_in: host_upchan_voltage_ringbuffer
+        out_buffers:
+            host_upchan_voltage_buffer_out: host_upchan_voltage_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_upchan_voltage_ringbuffer_in
+          gpu_mem_input: upchan_voltage_buffer
+          output_size: num_dishes * num_polarizations * (num_frequencies * upchannelization_factor) * (num_times / upchannelization_factor)
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_upchan_voltage_buffer_out
 
 write_data:
     base_dir: /tmp/f_engine_pathfinder_upchan
-    exit_after_n_frames: 10
+    exit_after_n_frames: 9   #TODO 10
     exit_with_n_writers: 3
     write_voltage:
         kotekan_stage: asdfFileWrite

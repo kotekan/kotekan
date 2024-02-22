@@ -333,11 +333,11 @@ uint8_t* Buffer::wait_for_full_frame(const std::string& name, const int ID) {
               shutdown_signal ? "T" : "F");
         // This loop exits when is_full == 1 (i.e. a full buffer) AND
         // when this producer hasn't already marked this buffer as done
-        if ((!is_full[ID] || con.is_done[ID]) && !shutdown_signal) {
-            DEBUG("waiting on condition...");
-            full_cond.wait(lock);
-        } else
+        if ((is_full[ID] && !con.is_done[ID]) || shutdown_signal) {
             break;
+        }
+        DEBUG("waiting on condition...");
+        full_cond.wait(lock);
     }
     lock.unlock();
 
