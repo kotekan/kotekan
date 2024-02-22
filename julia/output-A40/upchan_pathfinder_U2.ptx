@@ -36,7 +36,7 @@
 	trap;
 }
 .global .align 1 .b8 exception26[6] = {101, 114, 114, 111, 114, 0};
-.global .align 1 .b8 exception141[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
+.global .align 1 .b8 exception1[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
                                         // @_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE
 .visible .entry _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE(
 	.param .align 8 .b8 _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE_param_0[16],
@@ -144,7 +144,7 @@ $L__BB0_7:                              // %L239
 	exit;
 	// end inline asm
 $L__BB0_1:                              // %L8
-	mov.u64 	%rd23, exception141;
+	mov.u64 	%rd23, exception1;
 	cvta.global.u64 	%rd24, %rd23;
 	{ // callseq 0, 0
 	.reg .b32 temp_param_reg;
@@ -365,7 +365,7 @@ $L__BB0_32:                             // %__internal_fmodf_kernel.exit.i414
 	(
 	);
 	} // callseq 2
-	mov.u64 	%rd26, exception141;
+	mov.u64 	%rd26, exception1;
 	cvta.global.u64 	%rd27, %rd26;
 	{ // callseq 3, 0
 	.reg .b32 temp_param_reg;

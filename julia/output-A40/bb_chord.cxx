@@ -61,6 +61,12 @@ private:
     static constexpr int cuda_number_of_timesamples = 2048;
     static constexpr int cuda_shift_parameter_sigma = 3;
 
+    // Kernel input and output sizes
+    std::int64_t num_consumed_elements(std::int64_t num_available_elements) const;
+    std::int64_t num_produced_elements(std::int64_t num_available_elements) const;
+
+    std::int64_t num_processed_elements(std::int64_t num_available_elements) const;
+
     // Kernel compile parameters:
     static constexpr int minthreads = 768;
     static constexpr int blocks_per_sm = 1;
@@ -199,7 +205,7 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Only one of the instances of this pipeline stage need to build the kernel
+    // Only one of the instances of this pipeline stage needs to build the kernel
     if (inst == 0) {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
@@ -210,6 +216,20 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
 }
 
 cudaBasebandBeamformer_chord::~cudaBasebandBeamformer_chord() {}
+
+std::int64_t
+cudaBasebandBeamformer_chord::num_consumed_elements(std::int64_t num_available_elements) const {
+    return num_available_elements >= cuda_number_of_timesamples ? cuda_number_of_timesamples : 0;
+}
+std::int64_t
+cudaBasebandBeamformer_chord::num_produced_elements(std::int64_t num_available_elements) const {
+    return num_available_elements >= cuda_number_of_timesamples ? cuda_number_of_timesamples : 0;
+}
+
+std::int64_t
+cudaBasebandBeamformer_chord::num_processed_elements(std::int64_t num_available_elements) const {
+    return num_available_elements >= cuda_number_of_timesamples ? cuda_number_of_timesamples : 0;
+}
 
 cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
                                                   const std::vector<cudaEvent_t>& /*pre_events*/) {
