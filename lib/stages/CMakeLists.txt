@@ -32,6 +32,7 @@ add_library(
     prodSubset.cpp
     countCheck.cpp
     visAccumulate.cpp
+    N2kAccumulate.cpp
     visCompression.cpp
     timeDownsample.cpp
     frbPostProcess.cpp

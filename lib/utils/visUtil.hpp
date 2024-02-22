@@ -275,6 +275,15 @@ inline double ts_to_double(const timespec& ts) {
     return (ts.tv_sec + 1e-9 * ts.tv_nsec);
 }
 
+/**
+ * @brief Convert timespec type into total nanoseconds as an uint64.
+ * @param  ts Time as timespec.
+ * @return    Time as an uint64.
+ */
+inline uint64_t ts_to_uint64(const timespec& ts) {
+    return 1000000000L * (uint64_t) ts.tv_sec + (uint64_t) ts.tv_nsec;
+}
+
 
 /**
  * @brief Convert a UNIX time as double into a timespec.
