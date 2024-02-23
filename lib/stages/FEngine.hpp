@@ -42,6 +42,8 @@
 class FEngine : public kotekan::Stage {
     const std::string unique_name;
 
+    const bool skip_julia;
+
     // Basic constants
     const int num_components;
     const int num_polarizations;
