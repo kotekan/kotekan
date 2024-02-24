@@ -26,10 +26,6 @@ const char* chord_datatype_string(chordDataType type) {
 
 chordMetadata::chordMetadata() :
     chime(), frame_counter(-1), type(unknown_type), dims(-1), offset(0), n_one_hot(-1), nfreq(-1) {
-    for (int v = 0; v < CHORD_META_MAX_VIS_SAMPLES; ++v) {
-        lost_timesamples[v] = 0;
-        rfi_flagged_samples[v] = 0;
-    }
     for (int d = 0; d < CHORD_META_MAX_DIM; ++d) {
         dim[d] = -1;
         dim_name[d][0] = '\0';
@@ -42,5 +38,9 @@ chordMetadata::chordMetadata() :
         freq_upchan_factor[f] = -1;
         half_fpga_sample0[f] = -1;
         time_downsampling_fpga[f] = -1;
+        for (int v = 0; v < CHORD_META_MAX_VIS_SAMPLES; ++v) {
+            lost_fpga_samples[f][v] = 0;
+            rfi_flagged_samples[f][v] = 0;
+        }
     }
 }

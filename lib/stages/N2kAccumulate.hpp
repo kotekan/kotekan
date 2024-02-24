@@ -48,6 +48,8 @@ public:
     ~N2kAccumulate() = default;
     void main_thread() override;
 
+    bool output_and_reset(frameID &out_frame_id);
+
 private:
     // Buffers to read/write
     Buffer* in_buf; // Buffer containing input frames
@@ -57,6 +59,7 @@ private:
     size_t _num_freq_in_frame;
     size_t _n_fpga_samples_per_N2k_frame;
     size_t _n_fpga_samples_N2k_integrates_for;
+    size_t _n_fpga_samples_per_vis_sample;
     size_t _n_vis_samples_per_N2k_output_frame;
     size_t _n_vis_samples_per_in_frame;
     
@@ -64,7 +67,18 @@ private:
     uint64_t _in_frame_duration_nsec;
     uint64_t _in_frame_vis_duration_nsec;
     
+    size_t _num_elements;
     size_t _num_vis_products;
+
+    // The below vectors are initialized in the constructor after _num_vis_products
+    // and _num_freq_in_frame are known.
+    std::vector<int32_t> _vis;
+    std::vector<int32_t> _vis_even;
+    std::vector<int32_t> _weights;
+    // number of fpga samples, per frequency, in frame
+    std::vector<int32_t> _n_valid_fpga_samples_in_vis;
+    std::vector<int32_t> _n_valid_fpga_samples_in_vis_even;
+    std::vector<int32_t> _n_valid_sample_diff_sq_sum;
 
     // Reference to the prometheus metric that we will use for counting skipped
     // frames

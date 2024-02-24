@@ -64,9 +64,9 @@ struct chordMetadata {
     chordDataType type;
 
     /// Track the number of lost fpga samples in each gpu sub-integration
-    int lost_timesamples[CHORD_META_MAX_VIS_SAMPLES];
-    /// Track the number of flagged samples in each gpu sub-integration
-    int rfi_flagged_samples[CHORD_META_MAX_VIS_SAMPLES];
+    int lost_fpga_samples[CHORD_META_MAX_FREQ][CHORD_META_MAX_VIS_SAMPLES];
+    /// Track the number of rfi-flagged samples in each gpu sub-integration
+    int rfi_flagged_samples[CHORD_META_MAX_FREQ][CHORD_META_MAX_VIS_SAMPLES];
 
     int dims;
     int dim[CHORD_META_MAX_DIM];
