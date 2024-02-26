@@ -147,7 +147,7 @@ void FEngine::main_thread() {
             args[3] = jl_box_float32(source_position_y);
             args[4] = jl_box_float32(dish_separation_x);
             args[5] = jl_box_float32(dish_separation_y);
-#warning "TODO: need to pass dish locations"
+            // TODO: need to pass dish locations
             args[6] = jl_box_float32(adc_frequency);
             args[7] = jl_box_int64(num_taps);
             args[8] = jl_box_int64(num_frequencies);
@@ -312,7 +312,7 @@ void FEngine::main_thread() {
             {
                 std::int16_t* __restrict__ const S = (std::int16_t*)S_frame;
                 for (int loc = 0; loc < num_dish_locations; ++loc) {
-#warning "TODO: Check dish locations for consistency: in range and no overlap"
+                    // TODO: Check dish locations for consistency: in range and no overlap
                     S[2 * loc + 0] = dish_locations[2 * loc + 0];
                     S[2 * loc + 1] = dish_locations[2 * loc + 1];
                 }
