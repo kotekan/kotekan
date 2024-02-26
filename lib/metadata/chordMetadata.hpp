@@ -3,7 +3,6 @@
 
 #include "Telescope.hpp"
 #include "buffer.hpp"
-// #include "chimeMetadata.hpp"
 #include "datasetManager.hpp"
 #include "metadata.hpp"
 
@@ -54,8 +53,7 @@ const int CHORD_META_MAX_DIM = 10;
 // Maximum length of dimension names for arrays
 const int CHORD_META_MAX_DIMNAME = 16;
 
-class chordMetadata : // public chimeMetadata,
-                      public metadataObject {
+class chordMetadata : public metadataObject {
 public:
     chordMetadata();
 

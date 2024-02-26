@@ -124,7 +124,8 @@ public:
      * otherwise, a pair giving the read cursor and number of elements
      * that have been claimed.
      */
-    std::optional<std::pair<size_t, size_t>> wait_and_claim_all_readable(const std::string& consumer_name);
+    std::optional<std::pair<size_t, size_t>>
+    wait_and_claim_all_readable(const std::string& consumer_name);
 
     /**
      * @brief Checks many elements are free to be read, BUT does not

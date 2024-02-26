@@ -73,10 +73,10 @@ cudaCopyFromRingbuffer::~cudaCopyFromRingbuffer() {
 int cudaCopyFromRingbuffer::wait_on_precondition() {
     // Wait for there to be data available in the ringbuffer.
     DEBUG("Waiting for ringbuffer data for frame {:d}...", gpu_frame_id);
-    signal_buffer->print_full_status();
+    // signal_buffer->print_full_status();
     std::optional<size_t> val = signal_buffer->wait_and_claim_readable(unique_name, _output_size);
     DEBUG("Finished waiting for data frame {:d}.", gpu_frame_id);
-    signal_buffer->print_full_status();
+    // signal_buffer->print_full_status();
     if (!val.has_value()) {
         DEBUG("Got no value when waiting for ringbuffer data; quitting");
         return -1;
@@ -156,10 +156,10 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
 void cudaCopyFromRingbuffer::finalize_frame() {
     cudaCommand::finalize_frame();
     DEBUG("About to finalize frame {:d}", gpu_frame_id);
-    signal_buffer->print_full_status();
+    // signal_buffer->print_full_status();
     signal_buffer->finish_read(unique_name, _output_size);
     DEBUG("After finalizing frame {:d}", gpu_frame_id);
-    signal_buffer->print_full_status();
+    // signal_buffer->print_full_status();
     if (out_buffer) {
         int out_id = gpu_frame_id % out_buffer->num_frames;
         out_buffer->mark_frame_full(unique_name, out_id);

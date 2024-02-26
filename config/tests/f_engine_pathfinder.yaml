@@ -8,6 +8,7 @@ type: config
 log_level: debug   # info
 cpu_affinity: [0,1,2,3,4,5,6,7]
 buffer_depth: 4
+kernel_path: "lib/cuda/kernels"
 
 frame_arrival_period: 2.56e-6 * num_times
 
@@ -68,7 +69,7 @@ upchannelization_factor: 16
 
 # FRB beamformer setup
 frb_downsampling_factor: 40
-frb_num_output_times: num_times / frb_downsampling_factor # rounding down
+frb_num_output_times: num_times / upchannelization_factor / frb_downsampling_factor # rounding down
 frb_num_beams_P: 2 * num_dish_locations_ns
 frb_num_beams_Q: 2 * num_dish_locations_ew
 
@@ -99,7 +100,7 @@ host_upchan_gain_buffer:
 host_frb_phase_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * num_frequencies * num_polarizations
+    frame_size: sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * num_frequencies * upchannelization_factor * num_polarizations
     metadata_pool: main_pool
 
 host_voltage_buffer:
@@ -121,7 +122,13 @@ host_expected_bb_beams_buffer:
 host_expected_frb_beams_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * frb_num_output_times * num_frequencies
+    frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * num_frequencies * upchannelization_factor * frb_num_output_times
+    metadata_pool: main_pool
+
+host_bb_beams_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
     metadata_pool: main_pool
 
 host_upchan_voltage_buffer:
@@ -134,8 +141,19 @@ host_upchan_voltage_ringbuffer:
     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (num_frequencies * upchannelization_factor) * (num_times / upchannelization_factor)
     metadata_pool: main_pool
 
+host_frb_beams_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * num_frequencies * upchannelization_factor * frb_num_output_times
+    metadata_pool: main_pool
+host_frb_beams_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * num_frequencies * upchannelization_factor * frb_num_output_times
+    metadata_pool: main_pool
+
 # Stages
-gen_voltage:
+run_fengine:
     kotekan_stage: FEngine
     num_frames: 10
     E_buffer: host_voltage_buffer
@@ -145,8 +163,16 @@ gen_voltage:
     W_buffer: host_frb_phase_buffer
     I_buffer: host_expected_frb_beams_buffer
 
-gpu0:
-    kernel_path: "lib/cuda/kernels"
+run_gen_shift:
+    kotekan_stage: testDataGen
+    type: const32
+    dim_name: ["F", "P", "B"]
+    # array_shape: [num_frequencies, num_polarizations, bb_num_beams]
+    array_shape: [128, 2, 16]
+    value: 13
+    out_buf: host_bb_shift_buffer
+
+run_send_voltage:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
@@ -163,8 +189,36 @@ gpu0:
           gpu_mem_output: voltage_buffer
         - name: cudaSyncInput
 
-gpu1:
-    kernel_path: "lib/cuda/kernels"
+run_bb:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_ringbuffer_in: host_voltage_ringbuffer
+            host_bb_phase_in: host_bb_phase_buffer
+            host_bb_shift_in: host_bb_shift_buffer
+        out_buffers:
+            host_bb_beams_out: host_bb_beams_buffer
+        commands:
+        - name: cudaInputData
+          in_buf: host_bb_phase_in
+          gpu_mem: bb_phase_buffer
+        - name: cudaInputData
+          in_buf: host_bb_shift_in
+          gpu_mem: bb_shift_buffer
+        - name: cudaSyncInput
+        - name: cudaBasebandBeamformer_pathfinder
+          in_signal: host_voltage_ringbuffer_in
+          gpu_mem_voltage: voltage_buffer
+          gpu_mem_phase: bb_phase_buffer
+          gpu_mem_output_scaling: bb_shift_buffer
+          gpu_mem_formed_beams: bb_beams_buffer
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: bb_beams_buffer
+          out_buf: host_bb_beams_out
+
+run_upchan:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
@@ -186,8 +240,7 @@ gpu1:
           gpu_mem_output_voltage: upchan_voltage_buffer
         - name: cudaSyncOutput
 
-gpu2:
-    kernel_path: "lib/cuda/kernels"
+run_recv_upchan_voltage:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
@@ -203,20 +256,82 @@ gpu2:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_upchan_voltage_buffer_out
 
+run_frb:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_upchan_voltage_ringbuffer_in: host_upchan_voltage_ringbuffer
+            host_frb_phase_buffer_in: host_frb_phase_buffer
+        out_buffers:
+            host_frb_beams_ringbuffer_out: host_frb_beams_ringbuffer
+        commands:
+        - name: cudaInputData
+          in_buf: host_frb_phase_buffer_in
+          gpu_mem: frb_phase_buffer
+        - name: cudaSyncInput
+        - name: cudaFRBBeamformer_pathfinder
+          in_signal: host_upchan_voltage_ringbuffer_in
+          out_signal: host_frb_beams_ringbuffer_out
+          gpu_mem_voltage: upchan_voltage_buffer
+          gpu_mem_phase: frb_phase_buffer
+          gpu_mem_beamgrid: frb_beams_buffer
+        - name: cudaSyncOutput
+
+run_recv_frb_beams:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_frb_beams_ringbuffer_in: host_frb_beams_ringbuffer
+        out_buffers:
+            host_frb_beams_buffer_out: host_frb_beams_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_frb_beams_ringbuffer_in
+          gpu_mem_input: frb_beams_buffer
+          output_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * (num_frequencies * upchannelization_factor) * frb_num_output_times
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_frb_beams_buffer_out
+
 write_data:
-    base_dir: /tmp/f_engine_pathfinder_upchan
-    exit_after_n_frames: 9
-    exit_with_n_writers: 3
+    base_dir: /tmp/f_engine_pathfinder
+    # exit_after_n_frames: 9
+    # exit_with_n_writers: 9
     write_voltage:
         kotekan_stage: asdfFileWrite
         in_buf: host_voltage_buffer
         file_name: voltage
-    write_gain:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_upchan_gain_buffer
-        file_name: upchan_gain
-    write_upchan_voltage:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_upchan_voltage_buffer
-        file_name: upchan_voltage
+    #TODO write_bb_phase:
+    #TODO     kotekan_stage: asdfFileWrite
+    #TODO     in_buf: host_bb_phase_buffer
+    #TODO     file_name: bb_phase
+    #TODO write_expected_bb_beams:
+    #TODO     kotekan_stage: asdfFileWrite
+    #TODO     in_buf: host_expected_bb_beams_buffer
+    #TODO     file_name: expected_bb_beams
+    #TODO write_bb_beams:
+    #TODO     kotekan_stage: asdfFileWrite
+    #TODO     in_buf: host_bb_beams_buffer
+    #TODO     file_name: bb_beams
+    #TODO write_gain:
+    #TODO     kotekan_stage: asdfFileWrite
+    #TODO     in_buf: host_upchan_gain_buffer
+    #TODO     file_name: upchan_gain
+    #TODO write_upchan_voltage:
+    #TODO     kotekan_stage: asdfFileWrite
+    #TODO     in_buf: host_upchan_voltage_buffer
+    #TODO     file_name: upchan_voltage
+    #TODO write_frb_phase:
+    #TODO     kotekan_stage: asdfFileWrite
+    #TODO     in_buf: host_frb_phase_buffer
+    #TODO     file_name: frb_phase
+    #TODO write_expected_frb_beams:
+    #TODO     kotekan_stage: asdfFileWrite
+    #TODO     in_buf: host_expected_frb_beams_buffer
+    #TODO     file_name: expected_frb_beams
+    #TODO write_frb_beams:
+    #TODO     kotekan_stage: asdfFileWrite
+    #TODO     in_buf: host_frb_beams_buffer
+    #TODO     file_name: frb_beams
 ...

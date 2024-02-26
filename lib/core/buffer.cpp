@@ -218,7 +218,7 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
     assert(num_frames > 0);
 
 #if defined(WITH_NUMA) && !defined(WITH_NO_MEMLOCK)
-    // Allocate all memory for a buffer on the NUMA domain it's frames are located.
+    // Allocate all memory for a buffer on the NUMA domain its frames are located.
     struct bitmask* node_mask = numa_allocate_nodemask();
     numa_bitmask_setbit(node_mask, numa_node);
     if (set_mempolicy(MPOL_BIND, node_mask ? node_mask->maskp : NULL,
@@ -336,7 +336,6 @@ uint8_t* Buffer::wait_for_full_frame(const std::string& name, const int ID) {
         if ((is_full[ID] && !con.is_done[ID]) || shutdown_signal) {
             break;
         }
-        DEBUG("waiting on condition...");
         full_cond.wait(lock);
     }
     lock.unlock();

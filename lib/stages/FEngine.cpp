@@ -75,7 +75,6 @@ class FEngine : public kotekan::Stage {
     const std::int64_t E_frame_size;
     const std::int64_t A_frame_size;
     const std::int64_t J_frame_size;
-    // const std::int64_t S_frame_size;
     const std::int64_t G_frame_size;
     const std::int64_t W_frame_size;
     const std::int64_t I_frame_size;
@@ -139,7 +138,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     upchannelization_factor(config.get<int>(unique_name, "upchannelization_factor")),
     // FRB beamformer setup
     frb_num_beams_P(2 * num_dish_locations_ns), frb_num_beams_Q(2 * num_dish_locations_ew),
-    frb_num_times(num_times / Tds),
+    frb_num_times(num_times / upchannelization_factor / Tds),
     // Pipeline
     num_frames(config.get<int>(unique_name, "num_frames")),
     // Frame sizes
@@ -147,12 +146,12 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     A_frame_size(std::int64_t(1) * num_components * num_dishes * bb_num_beams * num_polarizations
                  * num_frequencies),
     J_frame_size(std::int64_t(1) * num_times * num_polarizations * num_frequencies * bb_num_beams),
-    // S_frame_size(std::int64_t(1) * sizeof(short) * 2 * num_dish_locations),
     G_frame_size(std::int64_t(1) * sizeof(float16_t) * num_frequencies * upchannelization_factor),
     W_frame_size(std::int64_t(1) * sizeof(float16_t) * num_components * num_dish_locations_ns
-                 * num_dish_locations_ew * num_polarizations * num_frequencies),
+                 * num_dish_locations_ew * num_polarizations
+                 * (num_frequencies * upchannelization_factor)),
     I_frame_size(std::int64_t(1) * sizeof(float16_t) * frb_num_beams_P * frb_num_beams_Q
-                 * frb_num_times * num_frequencies),
+                 * (num_frequencies * upchannelization_factor) * frb_num_times),
     // Buffers
     E_buffer(get_buffer("E_buffer")), A_buffer(get_buffer("A_buffer")),
     J_buffer(get_buffer("J_buffer")), G_buffer(get_buffer("G_buffer")),
@@ -280,8 +279,9 @@ void FEngine::main_thread() {
         if (!A_frame)
             break;
         if (!(std::ptrdiff_t(A_buffer->frame_size) == A_frame_size))
-            ERROR("A_buffer->frame_size={:d} A_frame_size={:d}", A_buffer->frame_size,
-                  A_frame_size);
+            FATAL_ERROR("A_buffer->frame_size={:d} A_frame_size={:d}", A_buffer->frame_size,
+                        A_frame_size);
+        assert(std::ptrdiff_t(A_buffer->frame_size) == A_frame_size);
         A_buffer->allocate_new_metadata_object(A_frame_id);
         set_fpga_seq_num(A_buffer, A_frame_id, seq_num);
 
@@ -290,8 +290,9 @@ void FEngine::main_thread() {
         if (!E_frame)
             break;
         if (!(std::ptrdiff_t(E_buffer->frame_size) == E_frame_size))
-            ERROR("E_buffer->frame_size={:d} E_frame_size={:d}", E_buffer->frame_size,
-                  E_frame_size);
+            FATAL_ERROR("E_buffer->frame_size={:d} E_frame_size={:d}", E_buffer->frame_size,
+                        E_frame_size);
+        assert(std::ptrdiff_t(E_buffer->frame_size) == E_frame_size);
         E_buffer->allocate_new_metadata_object(E_frame_id);
         set_fpga_seq_num(E_buffer, E_frame_id, seq_num);
 
@@ -300,8 +301,9 @@ void FEngine::main_thread() {
         if (!J_frame)
             break;
         if (!(std::ptrdiff_t(J_buffer->frame_size) == J_frame_size))
-            ERROR("J_buffer->frame_size={:d} J_frame_size={:d}", J_buffer->frame_size,
-                  J_frame_size);
+            FATAL_ERROR("J_buffer->frame_size={:d} J_frame_size={:d}", J_buffer->frame_size,
+                        J_frame_size);
+        assert(std::ptrdiff_t(J_buffer->frame_size) == J_frame_size);
         J_buffer->allocate_new_metadata_object(J_frame_id);
         set_fpga_seq_num(J_buffer, J_frame_id, seq_num);
 
@@ -310,8 +312,9 @@ void FEngine::main_thread() {
         if (!G_frame)
             break;
         if (!(std::ptrdiff_t(G_buffer->frame_size) == G_frame_size))
-            ERROR("G_buffer->frame_size={:d} G_frame_size={:d}", G_buffer->frame_size,
-                  G_frame_size);
+            FATAL_ERROR("G_buffer->frame_size={:d} G_frame_size={:d}", G_buffer->frame_size,
+                        G_frame_size);
+        assert(std::ptrdiff_t(G_buffer->frame_size) == G_frame_size);
         G_buffer->allocate_new_metadata_object(G_frame_id);
         set_fpga_seq_num(G_buffer, G_frame_id, seq_num);
 
@@ -320,8 +323,9 @@ void FEngine::main_thread() {
         if (!W_frame)
             break;
         if (!(std::ptrdiff_t(W_buffer->frame_size) == W_frame_size))
-            ERROR("W_buffer->frame_size={:d} W_frame_size={:d}", W_buffer->frame_size,
-                  W_frame_size);
+            FATAL_ERROR("W_buffer->frame_size={:d} W_frame_size={:d}", W_buffer->frame_size,
+                        W_frame_size);
+        assert(std::ptrdiff_t(W_buffer->frame_size) == W_frame_size);
         W_buffer->allocate_new_metadata_object(W_frame_id);
         set_fpga_seq_num(W_buffer, W_frame_id, seq_num);
 
@@ -330,8 +334,9 @@ void FEngine::main_thread() {
         if (!I_frame)
             break;
         if (!(std::ptrdiff_t(I_buffer->frame_size) == I_frame_size))
-            ERROR("I_buffer->frame_size={:d} I_frame_size={:d}", I_buffer->frame_size,
-                  I_frame_size);
+            FATAL_ERROR("I_buffer->frame_size={:d} I_frame_size={:d}", I_buffer->frame_size,
+                        I_frame_size);
+        assert(std::ptrdiff_t(I_buffer->frame_size) == I_frame_size);
         I_buffer->allocate_new_metadata_object(I_frame_id);
         set_fpga_seq_num(I_buffer, I_frame_id, seq_num);
 
@@ -405,18 +410,6 @@ void FEngine::main_thread() {
             });
             INFO("[{:d}] Done filling J buffer.", frame_index);
 
-            // INFO("[{:d}] Filling S buffer...", frame_index);
-            // {
-            //     std::int16_t* __restrict__ const S = (std::int16_t*)S_frame;
-            //     for (int loc = 0; loc < num_dish_locations; ++loc) {
-            //         // #warning "TODO: Check dish locations for consistency: in range and no
-            //         // overlap"
-            //         S[2 * loc + 0] = dish_locations[2 * loc + 0];
-            //         S[2 * loc + 1] = dish_locations[2 * loc + 1];
-            //     }
-            // }
-            // INFO("[{:d}] Done filling S buffer.", frame_index);
-
             INFO("[{:d}] Filling G buffer...", frame_index);
             {
                 _Float16* __restrict__ const G = (_Float16*)G_frame;
@@ -428,6 +421,8 @@ void FEngine::main_thread() {
             }
             INFO("[{:d}] Done filling G buffer.", frame_index);
 
+#if 0
+	    // Disable these because the F-Engine simulator doesn't upchannelize yet
             INFO("[{:d}] Filling W buffer...", frame_index);
             kotekan::juliaCall([&]() {
                 jl_module_t* const f_engine_module =
@@ -443,7 +438,7 @@ void FEngine::main_thread() {
                 args[2] = jl_box_int64(num_dish_locations_ns);
                 args[3] = jl_box_int64(num_dish_locations_ew);
                 args[4] = jl_box_int64(num_polarizations);
-                args[5] = jl_box_int64(num_frequencies);
+                args[5] = jl_box_int64(num_frequencies * upchannelization_factor);
                 args[6] = jl_box_int64(frame_index + 1);
                 jl_value_t* const res = jl_call(set_W, args, nargs);
                 assert(res);
@@ -466,13 +461,23 @@ void FEngine::main_thread() {
                 args[2] = jl_box_int64(frb_num_beams_P);
                 args[3] = jl_box_int64(frb_num_beams_Q);
                 args[4] = jl_box_int64(frb_num_times);
-                args[5] = jl_box_int64(num_frequencies);
+                args[5] = jl_box_int64(num_frequencies * upchannelization_factor);
                 args[6] = jl_box_int64(frame_index + 1);
                 jl_value_t* const res = jl_call(set_I, args, nargs);
                 assert(res);
                 JL_GC_POP();
             });
             INFO("[{:d}] Done filling I buffer.", frame_index);
+#else
+
+            INFO("[{:d}] Filling W buffer...", frame_index);
+            std::memset(W_frame, 0, W_frame_size);
+            INFO("[{:d}] Done filling W buffer.", frame_index);
+
+            INFO("[{:d}] Filling I buffer...", frame_index);
+            std::memset(I_frame, 0, I_frame_size);
+            INFO("[{:d}] Done filling I buffer.", frame_index);
+#endif
         } // if !skip_julia
 
         // Set metadata
@@ -594,7 +599,7 @@ void FEngine::main_thread() {
         std::strncpy(W_metadata->dim_name[2], "dishN", sizeof W_metadata->dim_name[2]);
         std::strncpy(W_metadata->dim_name[3], "dishM", sizeof W_metadata->dim_name[3]);
         std::strncpy(W_metadata->dim_name[4], "C", sizeof W_metadata->dim_name[4]);
-        W_metadata->dim[0] = num_frequencies;
+        W_metadata->dim[0] = num_frequencies * upchannelization_factor;
         W_metadata->dim[1] = num_polarizations;
         W_metadata->dim[2] = num_dish_locations_ew;
         W_metadata->dim[3] = num_dish_locations_ns;
@@ -618,12 +623,12 @@ void FEngine::main_thread() {
         I_metadata->type = float16;
         I_metadata->dims = 4;
         assert(I_metadata->dims <= CHORD_META_MAX_DIM);
-        std::strncpy(I_metadata->dim_name[0], "F", sizeof I_metadata->dim_name[0]);
-        std::strncpy(I_metadata->dim_name[1], "Tbar", sizeof I_metadata->dim_name[1]);
+        std::strncpy(I_metadata->dim_name[0], "Tbar", sizeof I_metadata->dim_name[0]);
+        std::strncpy(I_metadata->dim_name[1], "F", sizeof I_metadata->dim_name[1]);
         std::strncpy(I_metadata->dim_name[2], "beamQ", sizeof I_metadata->dim_name[2]);
         std::strncpy(I_metadata->dim_name[3], "beamP", sizeof I_metadata->dim_name[3]);
-        I_metadata->dim[0] = num_frequencies;
-        I_metadata->dim[1] = frb_num_times;
+        I_metadata->dim[0] = frb_num_times;
+        I_metadata->dim[1] = num_frequencies * upchannelization_factor;
         I_metadata->dim[2] = frb_num_beams_Q;
         I_metadata->dim[3] = frb_num_beams_P;
         I_metadata->sample0_offset = seq_num;
@@ -635,8 +640,7 @@ void FEngine::main_thread() {
             I_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
             I_metadata->freq_upchan_factor[freq] = upchannelization_factor;
             I_metadata->half_fpga_sample0[freq] = 2 * Tds - 1;
-            // TODO I_metadata->time_downsampling_fpga[freq] = upchannelization_factor * Tds;
-            I_metadata->time_downsampling_fpga[freq] = Tds;
+            I_metadata->time_downsampling_fpga[freq] = upchannelization_factor * Tds;
         }
         I_metadata->ndishes = num_dishes;
         I_metadata->n_dish_locations_ew = num_dish_locations_ew;

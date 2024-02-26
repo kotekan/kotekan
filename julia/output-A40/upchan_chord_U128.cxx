@@ -14,6 +14,7 @@
 #include <cstring>
 #include <cudaCommand.hpp>
 #include <cudaDeviceInterface.hpp>
+#include <div.hpp>
 #include <fmt.hpp>
 #include <limits>
 #include <ringbuffer.hpp>
@@ -23,40 +24,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-
-namespace {
-// Round down `x` to the next lower multiple of `y`
-template<typename T, typename U>
-auto round_down(T x, U y) {
-    assert(x >= 0);
-    assert(y > 0);
-    auto r = x / y * y;
-    assert(r % y == 0);
-    assert(0 <= r && r <= x && r + y > x);
-    return r;
-}
-
-// Calculate `x div y`
-template<typename T, typename U>
-auto div_noremainder(T x, U y) {
-    assert(x >= 0);
-    assert(y > 0);
-    assert(x % y == 0);
-    auto r = x / y;
-    return r;
-}
-
-// Calculate `x mod y`, returning `x` with `0 <= x < y`
-template<typename T, typename U>
-auto mod(T x, U y) {
-    assert(y > 0);
-    while (x < 0)
-        x += y;
-    auto r = x % y;
-    assert(0 <= r && r < y);
-    return r;
-}
-} // namespace
+using kotekan::round_down, kotekan::div_noremainder, kotekan::div, kotekan::mod;
 
 /**
  * @class cudaUpchannelizer_chord_U128
@@ -266,12 +234,12 @@ private:
     std::vector<std::uint8_t> Tbarmax_host;
     std::vector<std::uint8_t> info_host;
 
-    static constexpr std::size_t T_sample_bytes = E_lengths[E_index_D] * E_lengths[E_index_P]
-                                                  * E_lengths[E_index_F]
-                                                  * chord_datatype_bytes(E_type);
-    static constexpr std::size_t Tbar_sample_bytes =
-        Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P] * Ebar_lengths[Ebar_index_Fbar]
-        * chord_datatype_bytes(Ebar_type);
+    static constexpr std::size_t E_T_sample_bytes = chord_datatype_bytes(E_type)
+                                                    * E_lengths[E_index_D] * E_lengths[E_index_P]
+                                                    * E_lengths[E_index_F];
+    static constexpr std::size_t Ebar_Tbar_sample_bytes =
+        chord_datatype_bytes(Ebar_type) * Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P]
+        * Ebar_lengths[Ebar_index_Fbar];
 
     RingBuffer* input_ringbuf_signal;
     RingBuffer* output_ringbuf_signal;
@@ -340,10 +308,7 @@ cudaUpchannelizer_chord_U128::~cudaUpchannelizer_chord_U128() {}
 
 std::int64_t
 cudaUpchannelizer_chord_U128::num_consumed_elements(std::int64_t num_available_elements) const {
-    std::int64_t res = round_down(num_available_elements, cuda_granularity_number_of_timesamples)
-                       - cuda_algorithm_overlap;
-    assert(res >= 0);
-    return res;
+    return num_processed_elements(num_available_elements) - cuda_algorithm_overlap;
 }
 std::int64_t
 cudaUpchannelizer_chord_U128::num_produced_elements(std::int64_t num_available_elements) const {
@@ -368,7 +333,7 @@ int cudaUpchannelizer_chord_U128::wait_on_precondition() {
     DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
 
     // How many inputs samples are available?
-    const std::size_t T_available = div_noremainder(input_bytes, T_sample_bytes);
+    const std::size_t T_available = div_noremainder(input_bytes, E_T_sample_bytes);
     DEBUG("Available samples:      T_available: {:d}", T_available);
 
     // How many outputs will we process and consume?
@@ -376,17 +341,18 @@ int cudaUpchannelizer_chord_U128::wait_on_precondition() {
     const std::size_t T_consumed = num_consumed_elements(T_available);
     DEBUG("Will process (samples): T_processed: {:d}", T_processed);
     DEBUG("Will consume (samples): T_consumed:  {:d}", T_consumed);
+    assert(T_processed > 0);
     assert(T_consumed <= T_processed);
     const std::size_t T_consumed2 = num_consumed_elements(T_processed);
     assert(T_consumed2 == T_consumed);
 
     const std::optional<std::size_t> val_in2 =
-        input_ringbuf_signal->wait_and_claim_readable(unique_name, T_consumed * T_sample_bytes);
+        input_ringbuf_signal->wait_and_claim_readable(unique_name, T_consumed * E_T_sample_bytes);
     if (!val_in2.has_value())
         return -1;
     const std::size_t input_cursor = val_in2.value();
     DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
-    Tmin = div_noremainder(input_cursor, T_sample_bytes);
+    Tmin = div_noremainder(input_cursor, E_T_sample_bytes);
     Tmax = Tmin + T_processed;
     const std::size_t Tlength = Tmax - Tmin;
     DEBUG("Input samples:");
@@ -400,7 +366,7 @@ int cudaUpchannelizer_chord_U128::wait_on_precondition() {
     const std::size_t Tbarlength = Tbar_produced;
 
     // to bytes
-    const std::size_t output_bytes = Tbarlength * Tbar_sample_bytes;
+    const std::size_t output_bytes = Tbarlength * Ebar_Tbar_sample_bytes;
     DEBUG("Will produce {:d} output bytes", output_bytes);
 
     // Wait for space to be available in our output ringbuffer...
@@ -413,8 +379,8 @@ int cudaUpchannelizer_chord_U128::wait_on_precondition() {
     const std::size_t output_cursor = val_out.value();
     DEBUG("Output ring-buffer byte offset {:d}", output_cursor);
 
-    assert(mod(output_cursor, Tbar_sample_bytes) == 0);
-    Tbarmin = output_cursor / Tbar_sample_bytes;
+    assert(mod(output_cursor, Ebar_Tbar_sample_bytes) == 0);
+    Tbarmin = output_cursor / Ebar_Tbar_sample_bytes;
     Tbarmax = Tbarmin + Tbarlength;
     DEBUG("Output samples:");
     DEBUG("    Tbarmin:    {:d}", Tbarmin);
@@ -464,7 +430,7 @@ cudaEvent_t cudaUpchannelizer_chord_U128::execute(cudaPipelineState& /*pipestate
         assert(std::strncmp(G_meta->dim_name[dim], G_labels[G_rank - 1 - dim],
                             sizeof G_meta->dim_name[dim])
                == 0);
-        if (args::G == args::E)
+        if (args::G == args::E && dim == 0)
             assert(G_meta->dim[dim] <= int(G_lengths[G_rank - 1 - dim]));
         else
             assert(G_meta->dim[dim] == int(G_lengths[G_rank - 1 - dim]));
@@ -484,7 +450,7 @@ cudaEvent_t cudaUpchannelizer_chord_U128::execute(cudaPipelineState& /*pipestate
         assert(std::strncmp(E_meta->dim_name[dim], E_labels[E_rank - 1 - dim],
                             sizeof E_meta->dim_name[dim])
                == 0);
-        if (args::E == args::E)
+        if (args::E == args::E && dim == 0)
             assert(E_meta->dim[dim] <= int(E_lengths[E_rank - 1 - dim]));
         else
             assert(E_meta->dim[dim] == int(E_lengths[E_rank - 1 - dim]));
@@ -492,9 +458,7 @@ cudaEvent_t cudaUpchannelizer_chord_U128::execute(cudaPipelineState& /*pipestate
     //
     // Ebar is an output buffer: set metadata
     std::shared_ptr<metadataObject> const Ebar_mc =
-        args::Ebar == args::Ebar ?
-                                 // output_ringbuf_signal->allocate_new_metadata_object(0)
-            output_ringbuf_signal->get_metadata(0)
+        args::Ebar == args::Ebar ? output_ringbuf_signal->get_metadata(0)
                                  : device.create_gpu_memory_array_metadata(
                                      Ebar_memname, gpu_frame_id, E_mc->parent_pool);
     std::shared_ptr<chordMetadata> const Ebar_meta = get_chord_metadata(Ebar_mc);
@@ -509,8 +473,6 @@ cudaEvent_t cudaUpchannelizer_chord_U128::execute(cudaPipelineState& /*pipestate
     INFO("output Ebar array: {:s} {:s}", Ebar_meta->get_type_string(),
          Ebar_meta->get_dimensions_string());
     //
-
-    // TODO -- we need to tweak the metadata we get from the input ringbuffer!
 
     record_start_event();
 
@@ -537,8 +499,8 @@ cudaEvent_t cudaUpchannelizer_chord_U128::execute(cudaPipelineState& /*pipestate
     Ebar_arg = kernel_arg(Ebar_memory, Ebar_length);
 
     // Ringbuffer size
-    const std::size_t T_ringbuf = input_ringbuf_signal->size / T_sample_bytes;
-    const std::size_t Tbar_ringbuf = output_ringbuf_signal->size / Tbar_sample_bytes;
+    const std::size_t T_ringbuf = input_ringbuf_signal->size / E_T_sample_bytes;
+    const std::size_t Tbar_ringbuf = output_ringbuf_signal->size / Ebar_Tbar_sample_bytes;
     DEBUG("Input ringbuffer size (samples):  {:d}", T_ringbuf);
     DEBUG("Output ringbuffer size (samples): {:d}", Tbar_ringbuf);
 
@@ -599,10 +561,7 @@ cudaEvent_t cudaUpchannelizer_chord_U128::execute(cudaPipelineState& /*pipestate
     // CHECK_CUDA_ERROR(cudaMemsetAsync(Ebar_memory, 0x88, Ebar_length,
     // device.getStream(cuda_stream_id)));
 
-    std::string symname = "Upchannelizer_chord_U128_" + std::string(kernel_symbol);
-    DEBUG("kernel_symbol: {}", symname);
-    DEBUG("runtime_kernels[kernel_symbol]: {}",
-          static_cast<void*>(device.runtime_kernels[symname]));
+    const std::string symname = "Upchannelizer_chord_U128_" + std::string(kernel_symbol);
     CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[symname],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
@@ -648,15 +607,15 @@ void cudaUpchannelizer_chord_U128::finalize_frame() {
     const std::size_t T_consumed = num_consumed_elements(Tlength);
     DEBUG("Advancing input ringbuffer:");
     DEBUG("    Consumed samples: {:d}", T_consumed);
-    DEBUG("    Consumed bytes:   {:d}", T_consumed * T_sample_bytes);
-    input_ringbuf_signal->finish_read(unique_name, T_consumed * T_sample_bytes);
+    DEBUG("    Consumed bytes:   {:d}", T_consumed * E_T_sample_bytes);
+    input_ringbuf_signal->finish_read(unique_name, T_consumed * E_T_sample_bytes);
 
     // Advance the output ringbuffer
     const std::size_t Tbar_produced = Tbarlength;
     DEBUG("Advancing output ringbuffer:");
     DEBUG("    Produced samples: {:d}", Tbar_produced);
-    DEBUG("    Produced bytes:   {:d}", Tbar_produced * Tbar_sample_bytes);
-    output_ringbuf_signal->finish_write(unique_name, Tbar_produced * Tbar_sample_bytes);
+    DEBUG("    Produced bytes:   {:d}", Tbar_produced * Ebar_Tbar_sample_bytes);
+    output_ringbuf_signal->finish_write(unique_name, Tbar_produced * Ebar_Tbar_sample_bytes);
 
     cudaCommand::finalize_frame();
 }

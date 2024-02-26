@@ -27,6 +27,14 @@
 {
 	trap;
 }
+.func gpu_signal_exception
+(
+	.param .align 8 .b8 gpu_signal_exception_param_0[16]
+)
+.noreturn
+{
+	trap;
+}
 .func  (.param .b64 func_retval0) julia_power_by_squaring_11668
 (
 	.param .align 8 .b8 julia_power_by_squaring_11668_param_0[16],
@@ -37,17 +45,9 @@
 {
 	trap;
 }
-.func gpu_signal_exception
-(
-	.param .align 8 .b8 gpu_signal_exception_param_0[16]
-)
-.noreturn
-{
-	trap;
-}
 .extern .shared .align 32 .b8 shmem[];
 .global .align 1 .b8 exception3406[6] = {101, 114, 114, 111, 114, 0};
-.global .align 1 .b8 exception1[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
+.global .align 1 .b8 exception13427[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
                                         // @_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE
 .visible .entry _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE(
 	.param .align 8 .b8 _Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE_param_0[16],
@@ -10057,7 +10057,7 @@ $L__BB0_7:                              // %L246
 	exit;
 	// end inline asm
 $L__BB0_1:                              // %L8
-	mov.u64 	%rd57, exception1;
+	mov.u64 	%rd57, exception13427;
 	cvta.global.u64 	%rd58, %rd57;
 	{ // callseq 0, 0
 	.reg .b32 temp_param_reg;
@@ -10093,7 +10093,7 @@ $L__BB0_53:                             // %L40612
 	(
 	);
 	} // callseq 3
-	mov.u64 	%rd66, exception1;
+	mov.u64 	%rd66, exception13427;
 	cvta.global.u64 	%rd67, %rd66;
 	{ // callseq 4, 0
 	.reg .b32 temp_param_reg;
@@ -10129,7 +10129,7 @@ $L__BB0_83:                             // %L40609
 	(
 	);
 	} // callseq 7
-	mov.u64 	%rd72, exception1;
+	mov.u64 	%rd72, exception13427;
 	cvta.global.u64 	%rd73, %rd72;
 	{ // callseq 8, 0
 	.reg .b32 temp_param_reg;
@@ -10165,7 +10165,7 @@ $L__BB0_98:                             // %L40606
 	(
 	);
 	} // callseq 13
-	mov.u64 	%rd86, exception1;
+	mov.u64 	%rd86, exception13427;
 	cvta.global.u64 	%rd87, %rd86;
 	{ // callseq 14, 0
 	.reg .b32 temp_param_reg;

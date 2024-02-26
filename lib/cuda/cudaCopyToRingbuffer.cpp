@@ -146,8 +146,6 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
         // Copy metadata (because we modify it)
         meta = std::make_shared<chordMetadata>(*meta);
         assert(output_cursor % meta->sample_bytes == 0);
-	DEBUG("*** meta sample offset:   {}", meta->sample0_offset);
-	DEBUG("*** buffer sample offset: {}", output_cursor / meta->sample_bytes);
         meta->sample0_offset -= output_cursor / meta->sample_bytes;
         assert(meta->sample0_offset == 0);
         signal_buffer->set_metadata(0, meta);

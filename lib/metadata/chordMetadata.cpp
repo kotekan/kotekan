@@ -27,7 +27,6 @@ const char* chord_datatype_string(chordDataType type) {
 }
 
 chordMetadata::chordMetadata() :
-    // chimeMetadata(),
     frame_counter(-1), type(unknown_type), dims(-1), offset(0), n_one_hot(-1), sample0_offset(-1),
     sample_bytes(-1), nfreq(-1), ndishes(-1), n_dish_locations_ew(-1), n_dish_locations_ns(-1),
     dish_index(nullptr) {
@@ -102,16 +101,11 @@ struct chordMetadataFormat {
 };
 
 size_t chordMetadata::get_serialized_size() {
-    return // chimeMetadata::get_serialized_size() +
-        sizeof(chordMetadataFormat);
+    return sizeof(chordMetadataFormat);
 }
 
 size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
     assert(length >= get_serialized_size());
-    size_t offset = // chimeMetadata::set_from_bytes(bytes, length)
-        0;
-    bytes += offset;
-    length -= offset;
     assert(length >= sizeof(chordMetadataFormat));
 
     const chordMetadataFormat* fmt = reinterpret_cast<const chordMetadataFormat*>(bytes);
@@ -144,14 +138,10 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
         half_fpga_sample0[i] = fmt->half_fpga_sample0[i];
         time_downsampling_fpga[i] = fmt->time_downsampling_fpga[i];
     }
-    return offset + sizeof(chordMetadataFormat);
+    return sizeof(chordMetadataFormat);
 }
 
 size_t chordMetadata::serialize(char* bytes) {
-    size_t offset = // chimeMetadata::serialize(bytes)
-        0;
-    bytes += offset;
-
     chordMetadataFormat* fmt = reinterpret_cast<chordMetadataFormat*>(bytes);
     memset(fmt, 0, sizeof(chordMetadataFormat));
 
@@ -183,5 +173,5 @@ size_t chordMetadata::serialize(char* bytes) {
         fmt->half_fpga_sample0[i] = half_fpga_sample0[i];
         fmt->time_downsampling_fpga[i] = time_downsampling_fpga[i];
     }
-    return offset + sizeof(chordMetadataFormat);
+    return sizeof(chordMetadataFormat);
 }
