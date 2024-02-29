@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# This script generates the Julia-based Cuda kernels for the upchannelization kernel.
+# Run it from the kotekan base directory like ./julia/bin/upchan.sh
+
 set -euxo pipefail
 
 scriptdir=$(dirname "$0")

@@ -55,13 +55,11 @@ void* gpuDeviceInterface::get_gpu_memory_array(const std::string& name, const ui
         void* base_ptr = alloc_gpu_memory(gpu_buffer_depth * len);
         gpu_memory[name].gpu_pointers_to_free.push_back(base_ptr);
         for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
-            // void* ptr = alloc_gpu_memory(len);
             void* ptr = (unsigned char*)base_ptr + i * len;
             INFO("Allocating GPU[{:d}] memory: {:s}, len: {:d}, ptr: {:p}", gpu_id, name, len, ptr);
             gpu_memory[name].len = len;
             gpu_memory[name].view_source = "";
             gpu_memory[name].gpu_pointers.push_back(ptr);
-            // gpu_memory[name].gpu_pointers_to_free.push_back(ptr);
             gpu_memory[name].metadata_pointers.push_back(nullptr);
         }
     }

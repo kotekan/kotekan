@@ -45,6 +45,28 @@ ASDF::scalar_type_id_t chord2asdf(const chordDataType type) {
 }
 } // namespace
 
+/**
+ * @class asdfFileWrite
+ * @brief Stream a buffer to disk.
+ *
+ * @par Buffers:
+ * @buffer in_buf Buffer to write to disk.
+ *     @buffer_format Any
+ *     @buffer_metadata Any
+ *
+ * @conf base_dir  String. Directory to write into.
+ * @conf file_name String. Base filename to write.
+ * @conf exit_after_n_frames  Int. Stop writing after this many frames, Default 0 = unlimited
+ *       frames.
+ * @conf exit_with_n_writers  Int. Exit after this many ASDF writers finished writing, Default 0 =
+ *       unlimited writers.
+ *
+ * @par Metrics
+ * @metric kotekan_asdffilewrite_write_time_seconds
+ *         The write time to write out the last frame.
+ *
+ * @author Erik Schnetter
+ **/
 class asdfFileWrite : public kotekan::Stage {
 
     const std::string base_dir = config.get<std::string>(unique_name, "base_dir");
