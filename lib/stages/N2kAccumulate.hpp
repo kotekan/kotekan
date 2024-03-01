@@ -10,21 +10,14 @@
 #include "Stage.hpp"             // for Stage
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "datasetManager.hpp"    // for dset_id_t
-#include "gateSpec.hpp"          // for gateSpec
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily
 #include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for frameID, freq_ctype, input_ctype, prod_ctype
 
 #include <cstdint>    // for uint32_t, int32_t
-#include <deque>      // for deque
-#include <functional> // for function
-#include <map>        // for map
-#include <memory>     // for unique_ptr
 #include <mutex>      // for mutex
 #include <string>     // for string
 #include <time.h>     // for size_t, timespec
-#include <utility>    // for pair
 #include <vector>     // for vector
 
 
@@ -46,14 +39,30 @@ public:
     N2kAccumulate(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& buffer_container);
     ~N2kAccumulate() = default;
+
+    /**
+     * @brief The main thread function for N2kAccumulate.
+     * 
+     * This function is responsible for the main logic of the N2kAccumulate class.
+     */
     void main_thread() override;
 
-    bool output_and_reset(frameID &out_frame_id);
+    /**
+     * @brief Copy accumulated visibility matrix and weights to the output buffer,
+     * reset the visibility and weights matrices.
+     * 
+     * Helper function to keep code a bit more readable.
+     *
+     * @param in_frame_id The input frame ID.
+     * @param out_frame_id The output frame ID.
+     * @return bool True if successful, false otherwise.
+     */
+    bool output_and_reset(frameID &in_frame_id, frameID &out_frame_id);
 
 private:
     // Buffers to read/write
-    Buffer* in_buf; // Buffer containing input frames
-    Buffer* out_buf; // Output for the main vis dataset only
+    Buffer* in_buf; /// Buffer containing input frames
+    Buffer* out_buf; /// Output for the main vis dataset only
 
     // Parameters saved from the config files
     size_t _num_freq_in_frame;
@@ -69,6 +78,7 @@ private:
     
     size_t _num_elements;
     size_t _num_vis_products;
+    size_t _num_in_frame_products;
 
     // The below vectors are initialized in the constructor after _num_vis_products
     // and _num_freq_in_frame are known.

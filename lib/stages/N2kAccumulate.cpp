@@ -16,7 +16,6 @@
 
 #include <algorithm>  // for copy, max, fill, copy_backward, equal, transform
 #include <assert.h>   // for assert
-#include <atomic>     // for atomic_bool
 #include <cmath>      // for pow
 #include <complex>    // for operator*, complex
 #include <sys/time.h> // for TIMEVAL_TO_TIMESPEC
@@ -60,16 +59,17 @@ N2kAccumulate::N2kAccumulate(Config& config, const std::string& unique_name,
 
     // Number of products sent by the GPU
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
-    _num_vis_products = _num_freq_in_frame*_num_elements*_num_elements; // right now, N2k sends over a full matrix
+    _num_vis_products = _num_elements*_num_elements; // right now, N2k sends over a full matrix
+    _num_in_frame_products = _num_freq_in_frame * _num_vis_products;
     // TODO: Only loop through half of blocked matrix
     // size_t vis_block_size = config.get<size_t>(unique_name, "block_size");
     // size_t n_vis_blocks = num_elements / vis_block_size;
     // _num_out_vis_products = _num_freq_in_frame * n_vis_blocks * (n_vis_blocks + 1) * block_size * block_size / 2;
 
-    // Initializing these here using the computed _num_vis_products
-    _vis = std::vector<int32_t>(2 * _num_vis_products, 0); // vis with complex as 2 ints
-    _vis_even = std::vector<int32_t>(2 * _num_vis_products, 0); // store even vis matrix for differencing
-    _weights = std::vector<int32_t>(_num_vis_products, 0); // real-valued weights
+    // Initializing these here using the computed _num_in_frame_products
+    _vis = std::vector<int32_t>(2 * _num_in_frame_products, 0); // vis with complex as 2 ints
+    _vis_even = std::vector<int32_t>(2 * _num_in_frame_products, 0); // store even vis matrix for differencing
+    _weights = std::vector<int32_t>(_num_in_frame_products, 0); // real-valued weights
     // number of fpga samples, per frequency, in frame
     _n_valid_fpga_samples_in_vis = std::vector<int32_t>(_num_freq_in_frame, 0);
     _n_valid_fpga_samples_in_vis_even = std::vector<int32_t>(_num_freq_in_frame, 0);
@@ -89,6 +89,7 @@ void N2kAccumulate::main_thread() {
     frameID in_frame_id(in_buf);
     frameID out_frame_id(out_buf);
 
+    // Start time of an output frame (initialize to now)
     timespec output_ts;
     timespec_get(&output_ts, TIME_UTC);
     uint64_t t_output = ts_to_uint64(output_ts);
@@ -120,7 +121,7 @@ void N2kAccumulate::main_thread() {
         }
         // uint64_t t_frame_e = t_frame_s + _in_frame_duration_nsec;
 
-        // Accumulation
+        // Accumulate each visibility sample in the in_frame
         for (size_t vis_samp_n = 0; vis_samp_n < _n_vis_samples_per_in_frame; ++vis_samp_n) {
 
             // Start and end times of the visibility matrix sample
@@ -143,42 +144,45 @@ void N2kAccumulate::main_thread() {
 
                 DEBUG("Finishing N2kAccumulate output frame. Accumulated {:d} visibility samples.",
                     vis_samples_in_out_frame);
-                output_and_reset( out_frame_id );
+                output_and_reset( in_frame_id, out_frame_id );
 
                 t_output += 1000000000L; // TODO: Make this a config parameter
                 vis_samples_in_out_frame = 0;
             }
 
             // Actual accumulation
-            // TODO: optimize looping?
+            for (size_t d = 0; d < 2*_num_in_frame_products; ++d) {
+                _vis[d] += input[d];
+            } // d
+
+            // If we're working on an even sample, store it for differencing
+            // with an odd sample. If odd, add to the _weights matrix.
+            // Potential optimization: copying vis_even is only really
+            // necessary if we've started accumulating a new frame
+            if (vis_sample_num_abs % 2 == 0) {
+                std::copy(input, input + 2*_num_in_frame_products, _vis_even.begin());
+            } else {
+                for (size_t d = 0; d < _num_in_frame_products; ++d) {
+                    int32_t dr = _vis[2*d + 0] - _vis_even[2*d + 0];
+                    int32_t di = _vis[2*d + 1] - _vis_even[2*d + 1];
+                    _weights[d] += (dr * dr + di * di);
+                } // d
+            } // if even/odd
+
+            // Track (frequency-dependent) lost samples
             for (size_t f = 0; f < _num_freq_in_frame; ++f) {
 
-                for (size_t d = 0; d < 2*_num_vis_products; ++d) {
-                    _vis[d] += input[d];
-                } // d
-
-                int32_t lost_in_vis_sample = frame_metadata->lost_fpga_samples[f][vis_samp_n];
-                int32_t valid_fpga_samples = _n_fpga_samples_per_vis_sample - lost_in_vis_sample;
+                int32_t lost_fpga_samples = frame_metadata->lost_fpga_samples[f][vis_samp_n];
+                int32_t valid_fpga_samples = _n_fpga_samples_per_vis_sample - lost_fpga_samples;
                 _n_valid_fpga_samples_in_vis[f] += valid_fpga_samples;
 
-                // If we're working on an even sample, store it for differencing with an
-                // odd sample. Potential optimization: copying vis_even is only really
-                // necessary if we've started accumulating a new frame
+                // Track the lost samples needed for the weights too.
                 if (vis_sample_num_abs % 2 == 0) {
-                    // copy input buffer vis matrix to vis_even
-                    std::copy(input, input + 2*_num_vis_products, _vis_even.begin());
                     _n_valid_fpga_samples_in_vis_even[f] = valid_fpga_samples;
                 } else {
-                    for (size_t d = 0; d < _num_vis_products; ++d) {
-                        int32_t dr = _vis[2*d + 0] - _vis_even[2*d + 0];
-                        int32_t di = _vis[2*d + 1] - _vis_even[2*d + 1];
-                        _weights[d] += (dr * dr + di * di);
-                    } // d
-
                     float samples_diff = valid_fpga_samples - _n_valid_fpga_samples_in_vis_even[f];
                     _n_valid_sample_diff_sq_sum[f] += samples_diff*samples_diff;
-                } // if even
-
+                } // if even/odd
             } // f
             vis_samples_in_out_frame++;
 
@@ -189,8 +193,7 @@ void N2kAccumulate::main_thread() {
     }
 }
 
-
-bool N2kAccumulate::output_and_reset( frameID &out_frame_id )
+bool N2kAccumulate::output_and_reset( frameID &in_frame_id, frameID &out_frame_id )
 {
     // Different frame for each frequency
 
@@ -203,21 +206,25 @@ bool N2kAccumulate::output_and_reset( frameID &out_frame_id )
 
         auto out_frame = VisFrameView::create_frame_view(out_buf, out_frame_id,
             _num_elements, _num_vis_products, 0, true);
-        // Any need to adjust metadata?
+        // TODO: any need to adjust metadata? CHORD will look a bit different.
+        auto metadata = (const chimeMetadata*)in_buf->metadata[in_frame_id]->metadata;
+        out_frame.set_metadata(out_buf, out_frame_id, _num_elements, _num_vis_products, 0);
+        out_frame.fill_chime_metadata(metadata, 0);
 
+        // Sample numbers for normalizing weights
         float ns = _n_valid_fpga_samples_in_vis[f]; // ns = "number of samples"
         float ins = (ns != 0.0) ? (1.0 / ns) : 0.0;
 
         // Copy data into buffer
-        // TODO: For now just copy over. Eventually this should change to (possibly) restructure
-        // the visibility matrix.
+        // TODO: For now just copy over. Eventually this should change to
+        // (possibly) restructure the visibility matrix.
         for (size_t d = 0; d < _num_vis_products; ++d) {
             // Populate the visibility matrix
-            cfloat v = {(float)_vis[2*d+1], (float)_vis[2*d+0]}; // TODO: conjugate or no? What does downstream expect?
+            cfloat v = {(float)_vis[f*_num_vis_products + 2*d+1], (float)_vis[f*_num_vis_products + 2*d+0]}; // TODO: conjugate or no? What does downstream expect?
             out_frame.vis[d] = ins * v;
             // de-bias and populate the weights matrix (with the inverse variance)
-            _weights[d] -= std::norm(v) * _n_valid_sample_diff_sq_sum[f] / ns / ns;
-            out_frame.weight[d] = ns*ns / _weights[d];
+            _weights[f*_num_vis_products + d] -= std::norm(v) * _n_valid_sample_diff_sq_sum[f] / ns / ns;
+            out_frame.weight[d] = ns*ns / _weights[f*_num_vis_products + d];
         }
 
         out_buf->mark_frame_full(unique_name, out_frame_id++);

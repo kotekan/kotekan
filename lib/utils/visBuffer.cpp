@@ -45,7 +45,6 @@ VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
     evec(bind_span<cfloat>(_frame, buffer_layout.second[VisField::evec])),
     erms(bind_scalar<float>(_frame, buffer_layout.second[VisField::erms])),
     gain(bind_span<cfloat>(_frame, buffer_layout.second[VisField::gain]))
-
 {
     // Check that the actual buffer size is big enough to contain the calculated
     // view
@@ -54,9 +53,9 @@ VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
     if (required_size > (uint32_t)buffer->frame_size) {
 
         std::string s =
-            fmt::format(fmt("Visibility buffer [{:s}] too small. Must be a minimum of {:d} bytes "
+            fmt::format(fmt("Visibility buffer [{:s}] frames are too small with {:d} bytes. Must be a minimum of {:d} bytes "
                             "for elements={:d}, products={:d}, ev={:d}"),
-                        buffer->buffer_name, required_size, num_elements, num_prod, num_ev);
+                        buffer->buffer_name, (uint32_t)buffer->frame_size, required_size, num_elements, num_prod, num_ev);
 
         throw std::runtime_error(s);
     }
@@ -187,7 +186,8 @@ size_t VisFrameView::calculate_frame_size(kotekan::Config& config, const std::st
     int num_prod = config.get_default<int>(unique_name, "num_prod", -1);
 
     if (num_prod < 0) {
-        num_prod = num_elements * (num_elements + 1) / 2;
+        // num_prod = num_elements * (num_elements + 1) / 2;
+        num_prod = 2 * num_elements * num_elements;
     }
 
     return calculate_buffer_layout(num_elements, num_prod, num_ev).first;
