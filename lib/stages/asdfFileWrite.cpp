@@ -45,6 +45,28 @@ ASDF::scalar_type_id_t chord2asdf(const chordDataType type) {
 }
 } // namespace
 
+/**
+ * @class asdfFileWrite
+ * @brief Stream a buffer to disk.
+ *
+ * @par Buffers:
+ * @buffer in_buf Buffer to write to disk.
+ *     @buffer_format Any
+ *     @buffer_metadata Any
+ *
+ * @conf base_dir  String. Directory to write into.
+ * @conf file_name String. Base filename to write.
+ * @conf exit_after_n_frames  Int. Stop writing after this many frames, Default 0 = unlimited
+ *       frames.
+ * @conf exit_with_n_writers  Int. Exit after this many ASDF writers finished writing, Default 0 =
+ *       unlimited writers.
+ *
+ * @par Metrics
+ * @metric kotekan_asdffilewrite_write_time_seconds
+ *         The write time to write out the last frame.
+ *
+ * @author Erik Schnetter
+ **/
 class asdfFileWrite : public kotekan::Stage {
 
     const std::string base_dir = config.get<std::string>(unique_name, "base_dir");
@@ -68,7 +90,7 @@ public:
         exit_after_n_frames(config.get<std::uint32_t>(unique_name, "exit_after_n_frames")),
         exit_with_n_writers(config.get<std::uint32_t>(unique_name, "exit_with_n_writers")),
         buffer(get_buffer("in_buf")) {
-        register_consumer(buffer, unique_name.c_str());
+        buffer->register_consumer(unique_name);
     }
 
     virtual ~asdfFileWrite() {}
@@ -85,8 +107,7 @@ public:
                 break;
 
             // Wait for the next frame
-            const std::uint8_t* const frame =
-                wait_for_full_frame(buffer, unique_name.c_str(), frame_id);
+            const std::uint8_t* const frame = buffer->wait_for_full_frame(unique_name, frame_id);
             if (frame == nullptr)
                 break;
 
@@ -94,10 +115,10 @@ public:
             const double t0 = current_time();
 
             // Fetch metadata
-            const metadataContainer* const mc = get_metadata_container(buffer, frame_id);
-            assert(mc != nullptr);
-            assert(metadata_container_is_chord(mc));
-            const chordMetadata* const meta = static_cast<const chordMetadata*>(mc->metadata);
+            const std::shared_ptr<metadataObject> mc = buffer->get_metadata(frame_id);
+            assert(mc);
+            assert(metadata_is_chord(mc));
+            const std::shared_ptr<chordMetadata> meta = get_chord_metadata(mc);
 
             // Create ASDF project
             auto group = std::make_shared<ASDF::group>();
@@ -127,11 +148,52 @@ public:
             group->emplace(buffer->buffer_name, std::make_shared<ASDF::ndarray_entry>(ndarray));
 
             // Describe metadata
+
+            group->emplace("nfreq", std::make_shared<ASDF::int_entry>(meta->nfreq));
+
+            auto coarse_freq = std::make_shared<ASDF::sequence>();
+            for (int freq = 0; freq < meta->nfreq; ++freq)
+                coarse_freq->push_back(std::make_shared<ASDF::int_entry>(meta->coarse_freq[freq]));
+            group->emplace("coarse_freq", coarse_freq);
+
+            auto freq_upchan_factor = std::make_shared<ASDF::sequence>();
+            for (int freq = 0; freq < meta->nfreq; ++freq)
+                freq_upchan_factor->push_back(
+                    std::make_shared<ASDF::int_entry>(meta->freq_upchan_factor[freq]));
+            group->emplace("freq_upchan_factor", freq_upchan_factor);
+
+            auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
+            for (int freq = 0; freq < meta->nfreq; ++freq)
+                half_fpga_sample0->push_back(
+                    std::make_shared<ASDF::int_entry>(meta->half_fpga_sample0[freq]));
+            group->emplace("half_fpga_sample0", half_fpga_sample0);
+
+            auto time_downsampling_fpga = std::make_shared<ASDF::sequence>();
+            for (int freq = 0; freq < meta->nfreq; ++freq)
+                time_downsampling_fpga->push_back(
+                    std::make_shared<ASDF::int_entry>(meta->time_downsampling_fpga[freq]));
+            group->emplace("time_downsampling_fpga", time_downsampling_fpga);
+
             auto dim_names = std::make_shared<ASDF::sequence>();
             for (int d = 0; d < ndims; ++d)
                 dim_names->push_back(
                     std::make_shared<ASDF::string_entry>(meta->get_dimension_name(d)));
             group->emplace("dim_names", dim_names);
+
+            if (meta->ndishes >= 0)
+                group->emplace("ndishes", std::make_shared<ASDF::int_entry>(meta->ndishes));
+
+            if (meta->dish_index) {
+                auto dish_index = std::make_shared<ASDF::ndarray>(
+                    std::vector<int>(meta->dish_index,
+                                     meta->dish_index
+                                         + meta->n_dish_locations_ew * meta->n_dish_locations_ns),
+                    ASDF::block_format_t::inline_array, ASDF::compression_t::none, -1,
+                    std::vector<bool>(),
+                    std::vector<int64_t>{meta->n_dish_locations_ns, meta->n_dish_locations_ew});
+                auto dish_index_entry = std::make_shared<ASDF::ndarray_entry>(dish_index);
+                group->emplace("dish_index", dish_index_entry);
+            }
 
             // Define file name
             std::ostringstream ibuf;
@@ -156,9 +218,13 @@ public:
             if (ierr) {
                 if (errno != EEXIST && errno != EISDIR) {
                     char msg[1000];
-                    strerror_r(errno, msg, sizeof msg);
-                    FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(),
-                                msg);
+                    char* p = strerror_r(errno, msg, sizeof msg);
+                    if (!p)
+                        FATAL_ERROR("Could not create directory \"{:s}\":\nerrno={:d}",
+                                    base_dir.c_str(), errno);
+                    else
+                        FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(),
+                                    msg);
                 }
             }
             project.write(full_path);
@@ -169,7 +235,7 @@ public:
             write_time_metric.set(elapsed);
 
             // Mark frame as done
-            mark_frame_empty(buffer, unique_name.c_str(), frame_id);
+            buffer->mark_frame_empty(unique_name, frame_id);
         } // for
 
         if (exit_with_n_writers > 0 && ++n_finished >= exit_with_n_writers)

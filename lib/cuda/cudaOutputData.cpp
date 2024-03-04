@@ -75,6 +75,7 @@ cudaEvent_t cudaOutputData::execute_base(cudaPipelineState& pipestate,
                                          const std::vector<cudaEvent_t>& pre_events) {
     bool should = should_execute(pipestate, pre_events);
     did_generate_output = should;
+    DEBUG("gpu_frame_id {:d}: should_execute? {:s}", gpu_frame_id, (should ? "True" : "False"));
     if (!should)
         return nullptr;
     return execute(pipestate, pre_events);
@@ -85,7 +86,7 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState&,
     pre_execute();
 
     size_t output_len = output_buffer->frame_size;
-
+    DEBUG("execute [{:d}]: output_len {:d}", gpu_frame_id, output_len);
     if (output_len) {
         void* gpu_output_frame =
             device.get_gpu_memory_array(_gpu_mem, gpu_frame_id, _gpu_buffer_depth, output_len);
@@ -93,12 +94,13 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState&,
         void* host_output_frame = (void*)output_buffer->frames[out_id];
 
         device.async_copy_gpu_to_host(host_output_frame, gpu_output_frame, output_len,
-                                      cuda_stream_id, pre_events[cuda_stream_id], start_event,
-                                      end_event);
+                                      cuda_stream_id, pre_events[cuda_stream_id], &start_event,
+                                      &end_event);
 
         if (!in_buffer) {
             // Check for metadata attached to the GPU frame
-            metadataContainer* meta = device.get_gpu_memory_array_metadata(_gpu_mem, gpu_frame_id);
+            std::shared_ptr<metadataObject> meta =
+                device.get_gpu_memory_array_metadata(_gpu_mem, gpu_frame_id);
             if (meta) {
                 // Attach the metadata to the host buffer frame
                 bool passed = output_buffer->set_metadata(out_id, meta);
@@ -113,7 +115,7 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState&,
 
 void cudaOutputData::finalize_frame() {
     cudaCommand::finalize_frame();
-
+    DEBUG("finalize_frame for gpu_frame_id {:d}", gpu_frame_id);
     int out_id = gpu_frame_id % output_buffer->num_frames;
     if (in_buffer) {
         int in_id = gpu_frame_id % in_buffer->num_frames;

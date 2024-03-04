@@ -16,7 +16,7 @@
 #include "datasetState.hpp"   // for freqState, timeState, metadataState
 #include "errors.h"           // for exit_kotekan, CLEAN_EXIT, ReturnCode
 #include "kotekanLogging.hpp" // for INFO, FATAL_ERROR, DEBUG, WARN, ERROR
-#include "metadata.h"         // for metadataContainer
+#include "metadata.hpp"       // for metadataContainer
 #include "version.h"          // for get_git_commit_hash
 #include "visUtil.hpp"        // for freq_ctype (ptr only), input_ctype, prod_ctype, rstack_ctype
 
@@ -250,7 +250,7 @@ RawReader<T>::RawReader(Config& config, const std::string& unique_name,
     use_comet = config.get_default<bool>(DS_UNIQUE_NAME, "use_dataset_broker", true);
     local_dm = config.get_default<bool>(unique_name, "use_local_dataset_man", false);
     if (local_dm && use_comet)
-        FATAL_ERROR("Cannot use local dataset manager and dataset broker together.")
+        FATAL_ERROR("Cannot use local dataset manager and dataset broker together.");
 
     chunked = config.exists(unique_name, "chunk_size");
     if (chunked) {
@@ -451,8 +451,11 @@ void RawReader<T>::main_thread() {
         // Check first byte indicating empty frame
         if (*(mapped_file + file_ind * file_frame_size) != 0) {
             // Copy the metadata from the file
-            std::memcpy(out_buf->metadata[frame_id]->metadata,
-                        mapped_file + file_ind * file_frame_size + 1, metadata_size);
+            auto meta = out_buf->get_metadata(frame_id);
+            assert(meta->get_serialized_size() == metadata_size);
+            size_t sz = meta->set_from_bytes(
+                (const char*)(mapped_file + file_ind * file_frame_size + 1), metadata_size);
+            assert(sz == metadata_size);
 
             // Copy the data from the file
             std::memcpy(frame, mapped_file + file_ind * file_frame_size + metadata_size + 1,

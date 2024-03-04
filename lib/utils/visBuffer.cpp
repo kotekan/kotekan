@@ -4,11 +4,12 @@
 #include "Telescope.hpp"     // for Telescope
 #include "buffer.hpp"        // for Buffer, allocate_new_metadata_object
 #include "chimeMetadata.hpp" // for chimeMetadata, get_stream_id_from_metadata
-#include "metadata.h"        // for metadataContainer
+#include "metadata.hpp"      // for metadataContainer
 
 #include "fmt.hpp" // for format, fmt
 
-#include <algorithm>   // for copy
+#include <algorithm> // for copy
+#include <assert.h>
 #include <complex>     // for complex
 #include <cstdint>     // for uint64_t // IWYU pragma: keep
 #include <ctime>       // for gmtime
@@ -22,8 +23,97 @@
 #include <type_traits> // for __decay_and_strip<>::__type
 #include <vector>      // for vector
 
+REGISTER_TYPE_WITH_FACTORY(metadataObject, VisMetadata);
+
+void VisMetadata::deepCopy(std::shared_ptr<metadataObject> other) {
+    std::shared_ptr<VisMetadata> o = std::dynamic_pointer_cast<VisMetadata>(other);
+    *this = *o;
+}
+
+struct VisMetadataFormat {
+    uint64_t fpga_seq_start;
+    timespec ctime;
+    uint64_t fpga_seq_length;
+    uint64_t fpga_seq_total;
+    uint64_t rfi_total;
+    freq_id_t freq_id;
+    dset_id_t dataset_id;
+    uint32_t num_elements;
+    uint32_t num_prod;
+    uint32_t num_ev;
+};
+
+size_t VisMetadata::get_serialized_size() {
+    return sizeof(VisMetadataFormat);
+}
+
+size_t VisMetadata::set_from_bytes(const char* bytes, size_t length) {
+    size_t sz = get_serialized_size();
+    assert(length >= sz);
+    const VisMetadataFormat* fmt = reinterpret_cast<const VisMetadataFormat*>(bytes);
+    fpga_seq_start = fmt->fpga_seq_start;
+    ctime = fmt->ctime;
+    fpga_seq_length = fmt->fpga_seq_length;
+    fpga_seq_total = fmt->fpga_seq_total;
+    rfi_total = fmt->rfi_total;
+    freq_id = fmt->freq_id;
+    dataset_id = fmt->dataset_id;
+    num_elements = fmt->num_elements;
+    num_prod = fmt->num_prod;
+    num_ev = fmt->num_ev;
+    return sz;
+}
+
+size_t VisMetadata::serialize(char* bytes) {
+    size_t sz = get_serialized_size();
+    VisMetadataFormat* fmt = reinterpret_cast<VisMetadataFormat*>(bytes);
+    fmt->fpga_seq_start = fpga_seq_start;
+    fmt->ctime = ctime;
+    fmt->fpga_seq_length = fpga_seq_length;
+    fmt->fpga_seq_total = fpga_seq_total;
+    fmt->rfi_total = rfi_total;
+    fmt->freq_id = freq_id;
+    fmt->dataset_id = dataset_id;
+    fmt->num_elements = num_elements;
+    fmt->num_prod = num_prod;
+    fmt->num_ev = num_ev;
+    return sz;
+}
+
+nlohmann::json VisMetadata::to_json() {
+    nlohmann::json rtn = {};
+    ::to_json(rtn, *this);
+    return rtn;
+}
+
+void to_json(nlohmann::json& j, const VisMetadata& m) {
+    j["fpga_seq_start"] = m.fpga_seq_start;
+    j["ctime"] = m.ctime;
+    j["fpga_seq_length"] = m.fpga_seq_length;
+    j["fpga_seq_total"] = m.fpga_seq_total;
+    j["rfi_total"] = m.rfi_total;
+    j["freq_id"] = m.freq_id;
+    j["dataset_id"] = m.dataset_id;
+    j["num_elements"] = m.num_elements;
+    j["num_prod"] = m.num_prod;
+    j["num_ev"] = m.num_ev;
+}
+
+void from_json(const nlohmann::json& j, VisMetadata& m) {
+    m.fpga_seq_start = j["fpga_seq_start"];
+    m.ctime = j["ctime"];
+    m.fpga_seq_length = j["fpga_seq_length"];
+    m.fpga_seq_total = j["fpga_seq_total"];
+    m.rfi_total = j["rfi_total"];
+    m.freq_id = j["freq_id"];
+    m.dataset_id = j["dataset_id"];
+    m.num_elements = j["num_elements"];
+    m.num_prod = j["num_prod"];
+    m.num_ev = j["num_ev"];
+}
+
 VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
-    FrameView(buf, frame_id), _metadata((VisMetadata*)buf->metadata[id]->metadata),
+    FrameView(buf, frame_id), _metadata(std::static_pointer_cast<VisMetadata>(buf->metadata[id])),
 
     // Calculate the internal buffer layout from the given structure params
     buffer_layout(
@@ -227,7 +317,7 @@ void VisFrameView::set_metadata(VisMetadata* metadata, const uint32_t num_elemen
 
 void VisFrameView::set_metadata(Buffer* buf, const uint32_t index, const uint32_t num_elements,
                                 const uint32_t num_prod, const uint32_t num_ev) {
-    VisMetadata* metadata = (VisMetadata*)buf->metadata[index]->metadata;
+    VisMetadata* metadata = (VisMetadata*)buf->metadata[index].get();
     metadata->num_elements = num_elements;
     metadata->num_prod = num_prod;
     metadata->num_ev = num_ev;

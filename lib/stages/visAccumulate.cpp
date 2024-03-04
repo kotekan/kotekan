@@ -12,7 +12,7 @@
 #include "datasetState.hpp"      // for eigenvalueState, freqState, gatingState, inputState
 #include "factory.hpp"           // for FACTORY
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, INFO, logLevel, DEBUG
-#include "metadata.h"            // for metadataContainer
+#include "metadata.hpp"          // for metadataContainer
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
 #include "version.h"             // for get_git_commit_hash
 #include "visBuffer.hpp"         // for VisFrameView
@@ -297,7 +297,7 @@ void visAccumulate::main_thread() {
             // ds_id_in will be dset_id_t::null and thus cause a root dataset to
             // be registered.
             base_dataset_id = dm.add_dataset(base_dataset_states, *ds_id_in);
-            DEBUG("Registered base dataset: {}", base_dataset_id)
+            DEBUG("Registered base dataset: {}", base_dataset_id);
 
             // Set the output dataset ID for all datasets
             for (auto& state : gated_datasets) {
@@ -311,11 +311,11 @@ void visAccumulate::main_thread() {
         // Start and end times of this frame
         timespec t_s;
         if (gps_time_enabled) {
-            t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
+            t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id].get())->gps_time;
         } else {
             // If GPS time is not set, fall back to system time.
             TIMEVAL_TO_TIMESPEC(
-                &((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->first_packet_recv_time,
+                &((chimeMetadata*)in_buf->metadata[in_frame_id].get())->first_packet_recv_time,
                 &t_s);
         }
         timespec t_e = add_nsec(t_s, samples_per_data_set * tel.seq_length_nsec());
@@ -462,7 +462,7 @@ void visAccumulate::main_thread() {
 
 bool visAccumulate::initialise_output(visAccumulate::internalState& state, int in_frame_id) {
 
-    auto metadata = (const chimeMetadata*)in_buf->metadata[in_frame_id]->metadata;
+    auto metadata = (const chimeMetadata*)in_buf->metadata[in_frame_id].get();
 
     for (size_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
 

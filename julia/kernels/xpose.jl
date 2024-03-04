@@ -33,8 +33,17 @@ setup::Symbol
 
     # Full CHORD
     const C = 2
-    const T = 32768
+    const T = 2048   #TODO 32768
     const D = 512
+    const P = 2
+    const F = 16
+
+elseif setup ≡ :hirax
+
+    # Full CHORD
+    const C = 2
+    const T = 2048   #TODO 32768
+    const D = 256
     const P = 2
     const F = 16
 
@@ -42,7 +51,7 @@ elseif setup ≡ :pathfinder
 
     # CHORD pathfinder
     const C = 2
-    const T = 32768
+    const T = 2048   #TODO 32768
     const D = 64
     const P = 2
     const F = 128
@@ -208,6 +217,7 @@ function make_xpose_kernel()
 
         if setup === :chord
 
+            # Input layout:
             # dish:4/2   => register:1/2
             # dish:8/2   => thread:16/2
             # dish:16/2  => thread:1/2
@@ -215,7 +225,7 @@ function make_xpose_kernel()
             # time:1/2   => register:2/2
             # time:2/8   => thread:2/8
 
-            # dish:4/2 is already correct.
+            # dish:4/2  is already correct.
             # dish:16/2 is already correct.
 
             # Move dish:8/2 to register:2/2
@@ -230,12 +240,43 @@ function make_xpose_kernel()
             permute!(emitter, :E5, :E4, Dish(:dish, 128, 2), Thread(:thread, 8, 2))
             permute!(emitter, :Eout, :E5, Dish(:dish, 256, 2), Thread(:thread, 16, 2))
 
+            # Output layout:
             # dish:4/4   => register:1/4
             # dish:16/32 => thread:1/32
             # time:1/16  => register:4/16
 
+        elseif setup === :hirax
+
+            # Input layout:
+            # dish:4/2  => register:1/2
+            # dish:8/2  => thread:16/2
+            # dish:16/2 => thread:1/2
+            # dish:32/8 => register:4/8
+            # time:1/2  => register:2/2
+            # time:2/8  => thread:2/8
+
+            # dish:4/2  is already correct.
+            # dish:16/2 is already correct.
+
+            # Move dish:8/2 to register:2/2
+            permute!(emitter, :E2, :Ein, Dish(:dish, 8, 2), Register(:register, 2, 2))
+
+            # Move dish:32/2 to thread:2/2
+            # Move dish:64/2 to thread:4/2
+            # Move dish:128/2 to thread:8/2
+            permute!(emitter, :E3, :E2, Dish(:dish, 32, 2), Thread(:thread, 2, 2))
+            permute!(emitter, :E4, :E3, Dish(:dish, 64, 2), Thread(:thread, 4, 2))
+            permute!(emitter, :Eout, :E4, Dish(:dish, 128, 2), Thread(:thread, 8, 2))
+
+            # Output layout:
+            # dish:4/4   => register:1/4
+            # dish:16/16 => thread:1/16
+            # time:1/2   => thread:16/2
+            # time:2/8   => register:4/8
+
         elseif setup === :pathfinder
 
+            # Input layout:
             # dish:4/2  => Machine.RegisterTag.register:1/2
             # dish:8/2  => Machine.ThreadTag.thread:16/2
             # dish:16/2 => Machine.ThreadTag.thread:1/2
@@ -243,7 +284,7 @@ function make_xpose_kernel()
             # time:1/2  => Machine.RegisterTag.register:2/2
             # time:2/8  => Machine.ThreadTag.thread:2/8
 
-            # dish:4/2 is already correct.
+            # dish:4/2  is already correct.
             # dish:16/2 is already correct.
 
             # Move dish:8/2 to register:2/2
@@ -253,6 +294,7 @@ function make_xpose_kernel()
             # Move dish:64/2 to thread:4/2
             permute!(emitter, :Eout, :E2, Dish(:dish, 32, 2), Thread(:thread, 2, 2))
 
+            # Output layout:
             # dish:4/4  => Machine.RegisterTag.register:1/4
             # dish:16/4 => Machine.ThreadTag.thread:1/4
             # time:1/8  => Machine.ThreadTag.thread:4/8

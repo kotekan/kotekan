@@ -128,15 +128,34 @@ RUN apt-get update && \
     cd blaze && git checkout v3.4 && \
     cmake -DCMAKE_INSTALL_PREFIX=/usr/local/ && make install && cd ..
 
-# Install ASDF
+# Install Blosc2 (a prerequisite for ASDF)
+RUN mkdir src && \
+    (cd src && \
+    wget https://github.com/Blosc/c-blosc2/archive/refs/tags/v2.13.1.tar.gz && \
+    tar xzf v2.13.1.tar.gz && \
+    cd c-blosc2-2.13.1 && \
+    cmake -B build -S . \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DBUILD_BENCHMARKS=OFF \
+        -DBUILD_EXAMPLES=OFF \
+        -DBUILD_FUZZERS=OFF \
+        -DBUILD_TESTS=OFF \
+        && \
+    cmake --build build --parallel $(nproc) && \
+    cmake --install build && \
+    true) && \
+    rm -rf src
+
+# Install ASDF (depends on Blosc2)
 RUN mkdir src && \
     ( \
         cd src && \
-        wget https://github.com/eschnett/asdf-cxx/archive/refs/tags/version/7.2.2.tar.gz && \
-        tar xzf 7.2.2.tar.gz && \
-        cd asdf-cxx-version-7.2.2 && \
+        git clone -n https://github.com/eschnett/asdf-cxx && \
+        cd asdf-cxx && \
+        git checkout 205182f47ad3fe13ec163105dd76c5f3ea72e51c && \
         cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
-        cmake --build build && \
+        cmake --build build --parallel $(nproc) && \
         cmake --install build && \
     true) && \
     rm -rf src
@@ -200,6 +219,10 @@ ENV KOTEKAN_BUILD_DIRNAME build-2204
 
 # Update Julia...
 RUN juliaup update && echo 2
+
+RUN apt-get update && apt install -y locales \
+ && locale-gen en_US.UTF-8 \
+ && update-locale LANG=en_US.UTF-8
 
 # Do nothing when the container launches
 CMD ["/bin/bash"]

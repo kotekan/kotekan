@@ -9,7 +9,7 @@
 #include "datasetManager.hpp"  // for state_id_t, datasetManager, dset_id_t
 #include "datasetState.hpp"    // for freqState, inputState, metadataState, prodState
 #include "kotekanLogging.hpp"  // for INFO
-#include "metadata.h"          // for metadataContainer
+#include "metadata.hpp"        // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
 #include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for prod_ctype, input_ctype, freq_ctype, copy_vis_triangle
@@ -145,8 +145,8 @@ void visTransform::main_thread() {
 
             // TODO: multifrequency support
             // Copy over the metadata
-            output_frame.fill_chime_metadata(
-                (const chimeMetadata*)buf->metadata[frame_id]->metadata, 0);
+            output_frame.fill_chime_metadata((const chimeMetadata*)buf->metadata[frame_id].get(),
+                                             0);
 
             // Copy the visibility data into a proper triangle and write into
             // the file

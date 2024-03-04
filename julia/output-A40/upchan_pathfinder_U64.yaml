@@ -1,3 +1,7 @@
+# Metadata for the CUDA upchannelizer
+# This file has been generated automatically by `upchan.jl`.
+# Do not modify this file, your changes will be lost.
+
 --- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
 kernel-description:
   name: "upchan"
@@ -8,7 +12,7 @@ kernel-description:
     number-of-frequencies: 128
     number-of-polarizations: 2
     number-of-taps: 4
-    number-of-timesamples: 131072
+    number-of-timesamples: 8192
     sampling-time-μsec: 1.7066666666666668
     upchannelization-factor: 64
   compile-parameters:
@@ -54,13 +58,13 @@ kernel-description:
       intent: in
       type: Int4
       indices: [C, D, P, F, T]
-      shape: [2, 64, 2, 128, 131072]
+      shape: [2, 64, 2, 128, 8192]
       strides: [1, 2, 128, 256, 32768]
     - name: "Ē"
       intent: out
       type: Int4
       indices: [C, D, P, F̄, T̄]
-      shape: [2, 64, 2, 8192, 2048]
+      shape: [2, 64, 2, 8192, 128]
       strides: [1, 2, 128, 256, 2097152]
     - name: "info"
       intent: out

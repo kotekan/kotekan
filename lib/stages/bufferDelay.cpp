@@ -3,7 +3,7 @@
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"         // for Buffer, allocate_new_metadata_object, copy_metadata, get_n...
 #include "kotekanLogging.hpp" // for DEBUG
-#include "metadata.h"         // for metadataContainer
+#include "metadata.hpp"       // for metadataContainer
 #include "visUtil.hpp"        // for frameID, modulo
 
 #include "fmt.hpp"  // for format, fmt
@@ -83,12 +83,12 @@ void bufferDelay::main_thread() {
             if (_copy_frame || in_buf->get_num_consumers() > 1) {
                 out_buf->allocate_new_metadata_object(out_frame_id);
                 // Metadata sizes must match exactly
-                if (in_buf->metadata[in_frame_release_id]->metadata_size
-                    != out_buf->metadata[out_frame_id]->metadata_size) {
+                if (in_buf->metadata[in_frame_release_id]->get_object_size()
+                    != out_buf->metadata[out_frame_id]->get_object_size()) {
                     throw std::runtime_error(fmt::format(
                         fmt("Metadata sizes must match for direct copy (src {:d} != dest {:d})."),
-                        in_buf->metadata[in_frame_release_id]->metadata_size,
-                        out_buf->metadata[out_frame_id]->metadata_size));
+                        in_buf->metadata[in_frame_release_id]->get_object_size(),
+                        out_buf->metadata[out_frame_id]->get_object_size()));
                 }
                 in_buf->copy_metadata(in_frame_release_id, out_buf, out_frame_id);
                 std::memcpy(output_frame, in_buf->frames[in_frame_release_id], in_buf->frame_size);

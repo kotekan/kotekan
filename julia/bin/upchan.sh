@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# This script generates the Julia-based Cuda kernels for the upchannelization kernel.
+# Run it from the kotekan base directory like ./julia/bin/upchan.sh
+
 set -euxo pipefail
 
 scriptdir=$(dirname "$0")
@@ -7,6 +10,7 @@ cd "$scriptdir/.."
 
 setups='
     chord_U8 chord_U16 chord_U32 chord_U64 chord_U128
+    hirax_U8 hirax_U16 hirax_U32 hirax_U64 hirax_U128
     pathfinder_U2 pathfinder_U4 pathfinder_U8 pathfinder_U16 pathfinder_U32 pathfinder_U64
 '
 
@@ -45,7 +49,7 @@ done
 julia --project=@. --eval 'using JuliaFormatter; JuliaFormatter.format_file("output-A40")' &
 wait
 
-# Copy kernel into Kotekan
+# Copy kernels into Kotekan
 for setup in ${setups}; do
     cp output-A40/upchan_${setup}.cxx ../lib/cuda/cudaUpchannelizer_${setup}.cpp
     cp output-A40/upchan_${setup}.jl ../lib/cuda/kernels/Upchannelizer_${setup}.jl

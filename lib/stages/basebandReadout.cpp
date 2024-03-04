@@ -8,7 +8,7 @@
 #include "buffer.hpp"             // for Buffer, mark_frame_full, allocate_new_metadata_object
 #include "chimeMetadata.hpp"      // for chimeMetadata
 #include "kotekanLogging.hpp"     // for INFO, DEBUG, WARN
-#include "metadata.h"             // for metadataContainer
+#include "metadata.hpp"           // for metadataContainer
 #include "prometheusMetrics.hpp"  // for Counter, Gauge, MetricFamily, Metrics
 #include "visUtil.hpp"            // for input_ctype, frameID, ts_to_double, modulo, parse_reor...
 
@@ -310,7 +310,7 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
 
         for (int frame_index = dump_start_frame; frame_index < next_frame; frame_index++) {
             int in_buf_frame = frame_index % in_buf->num_frames;
-            auto metadata = (chimeMetadata*)in_buf->metadata[in_buf_frame]->metadata;
+            auto metadata = (chimeMetadata*)in_buf->metadata[in_buf_frame].get();
             frame_fpga_seq = metadata->fpga_seq_num;
 
             // if the request specified -1 for the start time, use the earliest
@@ -383,7 +383,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     const uint64_t event_id = data.event_id;
 
     int in_buf_frame = data.dump_start_frame % in_buf->num_frames;
-    auto first_meta = (chimeMetadata*)in_buf->metadata[in_buf_frame]->metadata;
+    auto first_meta = (chimeMetadata*)in_buf->metadata[in_buf_frame].get();
 
     const uint32_t stream_freq_idx = data.stream_freq_idx;
     const uint32_t freq_id = data.freq_id;
@@ -436,7 +436,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
         }
 
         in_buf_frame = frame_index % in_buf->num_frames;
-        auto metadata = (chimeMetadata*)in_buf->metadata[in_buf_frame]->metadata;
+        auto metadata = (chimeMetadata*)in_buf->metadata[in_buf_frame].get();
         uint8_t* in_buf_data = in_buf->frames[in_buf_frame];
         int64_t frame_fpga_seq = metadata->fpga_seq_num;
         int64_t in_start = std::max(data_start_fpga - frame_fpga_seq, (int64_t)0);
@@ -469,7 +469,7 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                 out_remaining = out_frame_samples;
 
                 out_buf->allocate_new_metadata_object(out_frame_id);
-                out_metadata = (BasebandMetadata*)out_buf->get_metadata(out_frame_id);
+                out_metadata = (BasebandMetadata*)(out_buf->get_metadata(out_frame_id).get());
 
                 out_metadata->event_id = event_id;
                 out_metadata->freq_id = freq_id;

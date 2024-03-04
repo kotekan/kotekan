@@ -66,9 +66,10 @@ gpuA:
       #input_size: input_size
       #output_size: output_size
       #ring_buffer_size: 30
-      host_signal: host_sig
+      signal_buf: host_sig
       gpu_mem_input: in
       gpu_mem_output: ringbuf
+    - name: cudaSyncInput
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0

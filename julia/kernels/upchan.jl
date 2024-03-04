@@ -64,16 +64,28 @@ setup::Symbol
     # CHORD Setup
     const sampling_time_μsec = 4096 / (2 * 1200)
     const C = 2
-    const T = 32768 * 4             # this assumes a GPU buffer depth of 4
+    # const T = 32768 * 4             # this assumes a GPU buffer depth of 4
+    const T = 2048 * 4             # this assumes a GPU buffer depth of 4
     const D = 512
     const P = 2
     const F₀ = 16
     const F = 16
+elseif setup ≡ :hirax
+    # HIRAX Setup
+    const sampling_time_μsec = 2.56
+    const C = 2
+    # const T = 32768 * 4             # this assumes a GPU buffer depth of 4
+    const T = 2048 * 4             # this assumes a GPU buffer depth of 4
+    const D = 256
+    const P = 2
+    const F₀ = 64
+    const F = 64
 elseif setup ≡ :pathfinder
     # Pathfinder Setup
     const sampling_time_μsec = 4096 / (2 * 1200)
     const C = 2
-    const T = 32768 * 4             # this assumes a GPU buffer depth of 4
+    # const T = 32768 * 4             # this assumes a GPU buffer depth of 4
+    const T = 2048 * 4             # this assumes a GPU buffer depth of 4
     const D = 64
     const P = 2
     const F₀ = 128
@@ -1400,7 +1412,12 @@ const upchan_kernel = make_upchan_kernel()
 println("[Done creating upchan kernel]")
 
 open("output-$(card)/upchan_$(setup)_U$(U).jl", "w") do fh
-    return println(fh, upchan_kernel)
+    println(fh, "# Julia source code for the CUDA upchannelizer")
+    println(fh, "# This file has been generated automatically by `upchan.jl`.")
+    println(fh, "# Do not modify this file, your changes will be lost.")
+    println(fh)
+    println(fh, upchan_kernel)
+    return nothing
 end
 
 @eval function upchan(Tmin_memory, Tmax_memory, T̄min_memory, T̄max_memory, G_memory, E_memory, Ē_memory, info_memory)
@@ -1638,11 +1655,29 @@ function fix_ptx_kernel()
     ptx = read("output-$(card)/upchan_$(setup)_U$(U).ptx", String)
     ptx = replace(ptx, r".extern .func ([^;]*);"s => s".func \1.noreturn\n{\n\ttrap;\n}")
     open("output-$(card)/upchan_$(setup)_U$(U).ptx", "w") do fh
-        return write(fh, ptx)
+        println(fh, "// PTX kernel code for the CUDA upchannelizer")
+        println(fh, "// This file has been generated automatically by `upchan.jl`.")
+        println(fh, "// Do not modify this file, your changes will be lost.")
+        println(fh)
+        write(fh, ptx)
+        return nothing
+    end
+    sass = read("output-$(card)/upchan_$(setup)_U$(U).sass", String)
+    open("output-$(card)/upchan_$(setup)_U$(U).sass", "w") do fh
+        println(fh, "// SASS kernel code for the CUDA upchannelizer")
+        println(fh, "// This file has been generated automatically by `upchan.jl`.")
+        println(fh, "// Do not modify this file, your changes will be lost.")
+        println(fh)
+        write(fh, sass)
+        return nothing
     end
     kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
     open("output-$(card)/upchan_$(setup)_U$(U).yaml", "w") do fh
-        return print(
+        println(fh, "# Metadata for the CUDA upchannelizer")
+        println(fh, "# This file has been generated automatically by `upchan.jl`.")
+        println(fh, "# Do not modify this file, your changes will be lost.")
+        println(fh)
+        print(
             fh,
             """
     --- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
@@ -1718,6 +1753,7 @@ function fix_ptx_kernel()
     ...
     """,
         )
+        return nothing
     end
     cxx = read("kernels/upchan_template.cxx", String)
     cxx = Mustache.render(
@@ -1836,13 +1872,13 @@ if CUDA.functional()
             @device_code_ptx main(; compile_only=true, silent=true)
         end
     end
-    fix_ptx_kernel()
     println("Writing SASS code...")
     open("output-A40/upchan_$(setup)_U$(U).sass", "w") do fh
         redirect_stdout(fh) do
             @device_code_sass main(; compile_only=true, silent=true)
         end
     end
+    fix_ptx_kernel()
 
     # # Run test
     # main(; run_selftest=true)

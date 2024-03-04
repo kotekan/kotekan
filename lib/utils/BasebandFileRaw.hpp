@@ -47,7 +47,7 @@ private:
     std::string lock_filename;
 
     uint64_t write_index;
-    const uint32_t metadata_size = sizeof(BasebandMetadata);
+    uint32_t metadata_size;
 };
 
 #endif // BASEBAND_FILE_RAW_HPP

@@ -57,7 +57,7 @@ void InputSubset::change_dataset_state(dset_id_t ds_id) {
         // inputs from this
         auto stack_ptr = dm.dataset_state<stackState>(ds_id);
         if (stack_ptr != nullptr) {
-            FATAL_ERROR("Can not apply InputSubset data to stacked data.")
+            FATAL_ERROR("Can not apply InputSubset data to stacked data.");
             return;
         }
 
@@ -65,7 +65,7 @@ void InputSubset::change_dataset_state(dset_id_t ds_id) {
         auto input_ptr = dm.dataset_state<inputState>(ds_id);
         auto prod_ptr = dm.dataset_state<prodState>(ds_id);
         if (input_ptr == nullptr || prod_ptr == nullptr) {
-            FATAL_ERROR("Both inputState and prodState are required to subset the inputs.")
+            FATAL_ERROR("Both inputState and prodState are required to subset the inputs.");
             return;
         }
 

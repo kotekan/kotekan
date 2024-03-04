@@ -15,7 +15,7 @@ add_library(
     kotekanLogging.cpp
     kotekanMode.cpp
     kotekanTrackers.cpp
-    metadata.c
+    metadata.cpp
     metadataFactory.cpp
     prometheusMetrics.cpp
     restServer.cpp

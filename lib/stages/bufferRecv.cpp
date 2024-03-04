@@ -5,7 +5,7 @@
 #include "buffer.hpp"            // for Buffer, allocate_new_metadata_object, buffer_free, buff...
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "bufferSend.hpp"        // for bufferFrameHeader
-#include "metadata.h"            // for metadataPool
+#include "metadata.hpp"          // for metadataPool
 #include "prometheusMetrics.hpp" // for Gauge, Metrics, Counter, MetricFamily
 #include "util.h"                // for string_tail
 #include "visUtil.hpp"           // for current_time
@@ -338,7 +338,9 @@ connInstance::connInstance(const std::string& producer_name, Buffer* buf, buffer
                                 buf->mlock_frames, false);
     CHECK_MEM(frame_space);
 
-    metadata_space = (uint8_t*)malloc(buf->metadata_pool->metadata_object_size);
+    auto meta = buf->metadata_pool->request_metadata_object();
+    metadata_size = meta->get_serialized_size();
+    metadata_space = (uint8_t*)malloc(metadata_size);
     CHECK_MEM(metadata_space);
 }
 
@@ -420,8 +422,7 @@ void connInstance::internal_read_callback() {
                         close_instance();
                         return;
                     }
-                    if (buf->metadata_pool->metadata_object_size
-                        != buf_frame_header.metadata_size) {
+                    if (metadata_size != buf_frame_header.metadata_size) {
                         ERROR("Metadata size does not match between server and client!");
                         decrement_ref_count();
                         close_instance();
@@ -488,9 +489,9 @@ void connInstance::internal_read_callback() {
 
                 // We could also swap the metadata,
                 // but this is more complex, and mucher lower overhead to just memcpy here.
-                void* metadata = buf->get_metadata(frame_id);
-                if (metadata != nullptr)
-                    memcpy(metadata, metadata_space, buf_frame_header.metadata_size);
+                std::shared_ptr<metadataObject> metadata = buf->get_metadata(frame_id);
+                if (metadata)
+                    metadata->set_from_bytes((char*)metadata_space, metadata_size);
 
                 buf->mark_frame_full(producer_name, frame_id);
 
