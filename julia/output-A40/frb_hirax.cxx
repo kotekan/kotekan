@@ -313,9 +313,6 @@ cudaFRBBeamformer_hirax::cudaFRBBeamformer_hirax(Config& config, const std::stri
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "out_signal")))) {
     // Check ringbuffer sizes
     assert(input_ringbuf_signal->size == Ebar_length);
-    if (!(output_ringbuf_signal->size == I_length))
-        FATAL_ERROR("output_ringbuf_signal->size={}, I_length={}", output_ringbuf_signal->size,
-                    I_length);
     assert(output_ringbuf_signal->size == I_length);
 
     // Add Graphviz entries for the GPU buffers used by this kernel
@@ -478,15 +475,13 @@ cudaEvent_t cudaFRBBeamformer_hirax::execute(cudaPipelineState& /*pipestate*/,
     assert(W_meta->type == W_type);
     assert(W_meta->dims == W_rank);
     for (std::size_t dim = 0; dim < W_rank; ++dim) {
-        assert(std::strncmp(W_meta->dim_name[dim], W_labels[W_rank - 1 - dim],
-                            sizeof W_meta->dim_name[dim])
+        assert(std::strncmp(W_meta->dim_name[W_rank - 1 - dim], W_labels[dim],
+                            sizeof W_meta->dim_name[W_rank - 1 - dim])
                == 0);
-        if (args::W == args::Ebar && dim == 0) {
-            ERROR("dim={} meta->dim[]={} lengths[]={}", dim, W_meta->dim[dim],
-                  int(W_lengths[W_rank - 1 - dim]));
-            assert(W_meta->dim[dim] <= int(W_lengths[W_rank - 1 - dim]));
-        } else
-            assert(W_meta->dim[dim] == int(W_lengths[W_rank - 1 - dim]));
+        if (args::W == args::Ebar && dim == Ebar_index_Tbar)
+            assert(W_meta->dim[W_rank - 1 - dim] <= int(W_lengths[dim]));
+        else
+            assert(W_meta->dim[W_rank - 1 - dim] == int(W_lengths[dim]));
     }
     //
     // Ebar is an input buffer: check metadata
@@ -502,15 +497,13 @@ cudaEvent_t cudaFRBBeamformer_hirax::execute(cudaPipelineState& /*pipestate*/,
     assert(Ebar_meta->type == Ebar_type);
     assert(Ebar_meta->dims == Ebar_rank);
     for (std::size_t dim = 0; dim < Ebar_rank; ++dim) {
-        assert(std::strncmp(Ebar_meta->dim_name[dim], Ebar_labels[Ebar_rank - 1 - dim],
-                            sizeof Ebar_meta->dim_name[dim])
+        assert(std::strncmp(Ebar_meta->dim_name[Ebar_rank - 1 - dim], Ebar_labels[dim],
+                            sizeof Ebar_meta->dim_name[Ebar_rank - 1 - dim])
                == 0);
-        if (args::Ebar == args::Ebar && dim == 0) {
-            ERROR("dim={} meta->dim[]={} lengths[]={}", dim, Ebar_meta->dim[dim],
-                  int(Ebar_lengths[Ebar_rank - 1 - dim]));
-            assert(Ebar_meta->dim[dim] <= int(Ebar_lengths[Ebar_rank - 1 - dim]));
-        } else
-            assert(Ebar_meta->dim[dim] == int(Ebar_lengths[Ebar_rank - 1 - dim]));
+        if (args::Ebar == args::Ebar && dim == Ebar_index_Tbar)
+            assert(Ebar_meta->dim[Ebar_rank - 1 - dim] <= int(Ebar_lengths[dim]));
+        else
+            assert(Ebar_meta->dim[Ebar_rank - 1 - dim] == int(Ebar_lengths[dim]));
     }
     //
     // I is an output buffer: set metadata
@@ -524,9 +517,9 @@ cudaEvent_t cudaFRBBeamformer_hirax::execute(cudaPipelineState& /*pipestate*/,
     I_meta->type = I_type;
     I_meta->dims = I_rank;
     for (std::size_t dim = 0; dim < I_rank; ++dim) {
-        std::strncpy(I_meta->dim_name[dim], I_labels[I_rank - 1 - dim],
-                     sizeof I_meta->dim_name[dim]);
-        I_meta->dim[dim] = I_lengths[I_rank - 1 - dim];
+        std::strncpy(I_meta->dim_name[I_rank - 1 - dim], I_labels[dim],
+                     sizeof I_meta->dim_name[I_rank - 1 - dim]);
+        I_meta->dim[I_rank - 1 - dim] = I_lengths[dim];
     }
     INFO("output I array: {:s} {:s}", I_meta->get_type_string(), I_meta->get_dimensions_string());
     //
@@ -611,9 +604,8 @@ cudaEvent_t cudaFRBBeamformer_hirax::execute(cudaPipelineState& /*pipestate*/,
     *(std::int32_t*)Ttildemax_host.data() = mod(Ttildemin, Ttilde_ringbuf) + Ttildelength;
 
     // Update metadata
-    I_meta->dim[0] = Ttildelength;
-    assert(I_meta->dim[0] <= int(I_lengths[3]));
-
+    I_meta->dim[I_rank - 1 - I_index_Ttilde] = Ttildelength;
+    assert(I_meta->dim[I_rank - 1 - I_index_Ttilde] <= int(I_lengths[I_index_Ttilde]));
     // Since we use a ring buffer we do not need to update `meta->sample0_offset`
 
     assert(I_meta->nfreq >= 0);
@@ -621,11 +613,13 @@ cudaEvent_t cudaFRBBeamformer_hirax::execute(cudaPipelineState& /*pipestate*/,
     for (int freq = 0; freq < I_meta->nfreq; ++freq) {
         I_meta->freq_upchan_factor[freq] =
             cuda_downsampling_factor * Ebar_meta->freq_upchan_factor[freq];
+        // I_meta->half_fpga_sample0[freq] = Evar_meta->half_fpga_sample0[freq];
         I_meta->time_downsampling_fpga[freq] =
             cuda_downsampling_factor * Ebar_meta->time_downsampling_fpga[freq];
     }
 
     // Copy inputs to device memory
+    // TODO: Pass scalar kernel arguments more efficiently, i.e. without a separate `cudaMemcpy`
     CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmin_memory, Tbarmin_host.data(), Tbarmin_length,
                                      cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
     CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmax_memory, Tbarmax_host.data(), Tbarmax_length,

@@ -178,8 +178,6 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
 {
     // Check ringbuffer sizes
     assert(input_ringbuf_signal->size == Ebar_length);
-    if (!(output_ringbuf_signal->size == I_length))
-        FATAL_ERROR("output_ringbuf_signal->size={}, I_length={}", output_ringbuf_signal->size, I_length);
     assert(output_ringbuf_signal->size == I_length);
 
     // Add Graphviz entries for the GPU buffers used by this kernel
@@ -329,19 +327,13 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                 assert({{{name}}}_meta->type == {{{name}}}_type);
                 assert({{{name}}}_meta->dims == {{{name}}}_rank);
                 for (std::size_t dim = 0; dim < {{{name}}}_rank; ++dim) {
-                    assert(std::strncmp({{{name}}}_meta->dim_name[dim],
-                                        {{{name}}}_labels[{{{name}}}_rank - 1 - dim],
-                                        sizeof {{{name}}}_meta->dim_name[dim]) == 0);
-                    if (args::{{{name}}} == args::Ebar && dim == 0)
-		    {
-  		        ERROR("dim={} meta->dim[]={} lengths[]={}", dim,
-			    {{{name}}}_meta->dim[dim],
-			    int({{{name}}}_lengths[{{{name}}}_rank - 1 - dim])
-			      );
-                        assert({{{name}}}_meta->dim[dim] <= int({{{name}}}_lengths[{{{name}}}_rank - 1 - dim]));
-		    }
+                    assert(std::strncmp({{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim],
+                                        {{{name}}}_labels[dim],
+                                        sizeof {{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim]) == 0);
+                    if (args::{{{name}}} == args::Ebar && dim == Ebar_index_Tbar)
+                        assert({{{name}}}_meta->dim[{{{name}}}_rank - 1 - dim] <= int({{{name}}}_lengths[dim]));
                     else
-                        assert({{{name}}}_meta->dim[dim] == int({{{name}}}_lengths[{{{name}}}_rank - 1 - dim]));
+                        assert({{{name}}}_meta->dim[{{{name}}}_rank - 1 - dim] == int({{{name}}}_lengths[dim]));
                 }
                 //
             {{/isoutput}}
@@ -357,10 +349,10 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                 {{{name}}}_meta->type = {{{name}}}_type;
                 {{{name}}}_meta->dims = {{{name}}}_rank;
                 for (std::size_t dim = 0; dim < {{{name}}}_rank; ++dim) {
-                    std::strncpy({{{name}}}_meta->dim_name[dim],
-                                 {{{name}}}_labels[{{{name}}}_rank - 1 - dim],
-                                 sizeof {{{name}}}_meta->dim_name[dim]);
-                    {{{name}}}_meta->dim[dim] = {{{name}}}_lengths[{{{name}}}_rank - 1 - dim];
+                    std::strncpy({{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim],
+                                 {{{name}}}_labels[dim],
+                                 sizeof {{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim]);
+                    {{{name}}}_meta->dim[{{{name}}}_rank - 1 - dim] = {{{name}}}_lengths[dim];
                 }
                 INFO("output {{{name}}} array: {:s} {:s}",
                     {{{name}}}_meta->get_type_string(),
@@ -446,19 +438,20 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     *(std::int32_t*)Ttildemax_host.data() = mod(Ttildemin, Ttilde_ringbuf) + Ttildelength;
 
     // Update metadata
-    I_meta->dim[0] = Ttildelength;
-    assert(I_meta->dim[0] <= int(I_lengths[3]));
-
+    I_meta->dim[I_rank - 1 - I_index_Ttilde] = Ttildelength;
+    assert(I_meta->dim[I_rank - 1 - I_index_Ttilde] <= int(I_lengths[I_index_Ttilde]));
     // Since we use a ring buffer we do not need to update `meta->sample0_offset`
 
     assert(I_meta->nfreq >= 0);
     assert(I_meta->nfreq == Ebar_meta->nfreq);
     for (int freq = 0; freq < I_meta->nfreq; ++freq) {
         I_meta->freq_upchan_factor[freq] = cuda_downsampling_factor * Ebar_meta->freq_upchan_factor[freq];
+        // I_meta->half_fpga_sample0[freq] = Evar_meta->half_fpga_sample0[freq];
 	I_meta->time_downsampling_fpga[freq] = cuda_downsampling_factor * Ebar_meta->time_downsampling_fpga[freq];
     }
 
     // Copy inputs to device memory
+    // TODO: Pass scalar kernel arguments more efficiently, i.e. without a separate `cudaMemcpy`
     {{#kernel_arguments}}
         {{^hasbuffer}}
             {{^isoutput}}
