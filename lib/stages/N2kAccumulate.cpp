@@ -9,7 +9,6 @@
 #include "configUpdater.hpp"     // for configUpdater
 #include "factory.hpp"           // for FACTORY
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, INFO, logLevel, DEBUG
-#include "metadata.h"            // for metadataContainer
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
 #include "version.h"             // for get_git_commit_hash
 #include "visUtil.hpp"           // for prod_ctype, frameID, modulo, input_ctype, operator+
@@ -45,7 +44,7 @@ N2kAccumulate::N2kAccumulate(Config& config, const std::string& unique_name,
     // Fetch configuration
 
     // number of frequencies in frame
-    _num_freq_in_frame = config.get<int32_t>(unique_name, "num_local_freq");
+    _num_freq_in_frame = config.get<int32_t>(unique_name, "num_freq_in_frame");
 
     // sampling information
     _n_fpga_samples_per_N2k_frame = config.get<int32_t>(unique_name, "samples_per_data_set"); // same as in output frame, just coarsened
@@ -84,10 +83,11 @@ N2kAccumulate::N2kAccumulate(Config& config, const std::string& unique_name,
 
 void N2kAccumulate::main_thread() {
 
-    DEBUG("Starting N2kAccumulate with ...");
+    int in_frame_id = 0;
+    int out_frame_id = 0;
 
-    frameID in_frame_id(in_buf);
-    frameID out_frame_id(out_buf);
+    INFO("Accumulating GPU output for {:s}[{:d}] putting result in {:s}[{:d}]",
+            in_buf->buffer_name, in_frame_id, out_buf->buffer_name, out_frame_id);
 
     // Start time of an output frame (initialize to now)
     timespec output_ts;
@@ -193,23 +193,20 @@ void N2kAccumulate::main_thread() {
     }
 }
 
-bool N2kAccumulate::output_and_reset( frameID &in_frame_id, frameID &out_frame_id )
+bool N2kAccumulate::output_and_reset( int &in_frame_id, int &out_frame_id )
 {
     // Different frame for each frequency
 
     // Loop over frequency
     for (size_t f = 0; f < _num_freq_in_frame; ++f) {
 
-        if (out_buf->wait_for_empty_frame(unique_name, out_frame_id) == nullptr) {
-            return false;
-        }
-
-        auto out_frame = VisFrameView::create_frame_view(out_buf, out_frame_id,
-            _num_elements, _num_vis_products, 0, true);
+        float* out_vis = (float*) out_buf->wait_for_empty_frame(unique_name, out_frame_id);
+        float* out_weights = out_vis + 2*_num_vis_products;
+        // if (output == nullptr) {
+        //     return false;
+        // }
         // TODO: any need to adjust metadata? CHORD will look a bit different.
-        auto metadata = (const chimeMetadata*)in_buf->metadata[in_frame_id]->metadata;
-        out_frame.set_metadata(out_buf, out_frame_id, _num_elements, _num_vis_products, 0);
-        out_frame.fill_chime_metadata(metadata, 0);
+        in_buf->pass_metadata(in_frame_id, out_buf, out_frame_id);
 
         // Sample numbers for normalizing weights
         float ns = _n_valid_fpga_samples_in_vis[f]; // ns = "number of samples"
@@ -221,10 +218,11 @@ bool N2kAccumulate::output_and_reset( frameID &in_frame_id, frameID &out_frame_i
         for (size_t d = 0; d < _num_vis_products; ++d) {
             // Populate the visibility matrix
             cfloat v = {(float)_vis[f*_num_vis_products + 2*d+1], (float)_vis[f*_num_vis_products + 2*d+0]}; // TODO: conjugate or no? What does downstream expect?
-            out_frame.vis[d] = ins * v;
+            out_vis[2*d+0] = ins*std::real(v);
+            out_vis[2*d+1] = ins*std::imag(v);
             // de-bias and populate the weights matrix (with the inverse variance)
             _weights[f*_num_vis_products + d] -= std::norm(v) * _n_valid_sample_diff_sq_sum[f] / ns / ns;
-            out_frame.weight[d] = ns*ns / _weights[f*_num_vis_products + d];
+            out_weights[d] = ns*ns / _weights[f*_num_vis_products + d];
         }
 
         out_buf->mark_frame_full(unique_name, out_frame_id++);
