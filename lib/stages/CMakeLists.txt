@@ -17,6 +17,7 @@ add_library(
     pyPlotN2.cpp
     rawFileRead.cpp
     rawFileWrite.cpp
+    $<$<BOOL:${USE_ASDF}>:asdfFileWrite.cpp>
     $<$<BOOL:${USE_HDF5}>:hdf5FileWrite.cpp>
     vdifStream.cpp
     recvSingleDishVDIF.cpp
@@ -96,6 +97,12 @@ endif()
 if(${USE_FFTW})
     target_sources(kotekan_stages PRIVATE fftwEngine.cpp)
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
+endif()
+
+if(${USE_ASDF})
+    target_include_directories(kotekan_stages PRIVATE ${ASDF_CXX_INCLUDE_DIRS})
+    target_link_options(kotekan_stages PUBLIC ${ASDF_CXX_LDFLAGS})
+    target_link_libraries(kotekan_stages PUBLIC ${ASDF_CXX_LIBRARIES})
 endif()
 
 if(${USE_HDF5})
