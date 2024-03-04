@@ -164,6 +164,9 @@ protected:
     virtual void* alloc_gpu_memory(size_t len) = 0;
     virtual void free_gpu_memory(void*) = 0;
 
+    // This is used internally - when a GPU array is actually a view on another array,
+    // then we forward metadata requests, but only if the view is the same size as the
+    // original -- so that array-size metadata are still correct.
     bool is_view_of_same_size(const std::string& name);
 
     // Extra data
