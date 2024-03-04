@@ -34,7 +34,7 @@ class cudaBasebandBeamformer_chord : public cudaCommand {
 public:
     cudaBasebandBeamformer_chord(Config& config, const std::string& unique_name,
                                  bufferContainer& host_buffers, cudaDeviceInterface& device,
-                                 const int inst);
+                                 const int instance_num);
     virtual ~cudaBasebandBeamformer_chord();
 
     int wait_on_precondition() override;
@@ -50,7 +50,7 @@ private:
         std::int64_t maxsize; // bytes
         std::int64_t dims[N]; // elements
         std::int64_t len;     // elements
-        CuDeviceArray(void* const ptr, const std::size_t bytes) :
+        CuDeviceArray(void* const ptr, const std::ptrdiff_t bytes) :
             ptr(static_cast<T*>(ptr)), maxsize(bytes), dims{std::int64_t(maxsize / sizeof(T))},
             len(maxsize / sizeof(T)) {}
     };
@@ -91,26 +91,29 @@ private:
     enum class args { Tmin, Tmax, A, E, s, J, info, count };
 
     // Tmin: Tmin
+    static constexpr const char* Tmin_name = "Tmin";
     static constexpr chordDataType Tmin_type = int32;
     enum Tmin_indices {
         Tmin_rank,
     };
     static constexpr std::array<const char*, Tmin_rank> Tmin_labels = {};
-    static constexpr std::array<std::size_t, Tmin_rank> Tmin_lengths = {};
-    static constexpr std::size_t Tmin_length = chord_datatype_bytes(Tmin_type);
-    static_assert(Tmin_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::array<std::ptrdiff_t, Tmin_rank> Tmin_lengths = {};
+    static constexpr std::ptrdiff_t Tmin_length = chord_datatype_bytes(Tmin_type);
+    static_assert(Tmin_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // Tmax: Tmax
+    static constexpr const char* Tmax_name = "Tmax";
     static constexpr chordDataType Tmax_type = int32;
     enum Tmax_indices {
         Tmax_rank,
     };
     static constexpr std::array<const char*, Tmax_rank> Tmax_labels = {};
-    static constexpr std::array<std::size_t, Tmax_rank> Tmax_lengths = {};
-    static constexpr std::size_t Tmax_length = chord_datatype_bytes(Tmax_type);
-    static_assert(Tmax_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::array<std::ptrdiff_t, Tmax_rank> Tmax_lengths = {};
+    static constexpr std::ptrdiff_t Tmax_length = chord_datatype_bytes(Tmax_type);
+    static_assert(Tmax_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // A: gpu_mem_phase
+    static constexpr const char* A_name = "A";
     static constexpr chordDataType A_type = int8;
     enum A_indices {
         A_index_C,
@@ -123,13 +126,14 @@ private:
     static constexpr std::array<const char*, A_rank> A_labels = {
         "C", "D", "B", "P", "F",
     };
-    static constexpr std::array<std::size_t, A_rank> A_lengths = {
+    static constexpr std::array<std::ptrdiff_t, A_rank> A_lengths = {
         2, 512, 96, 2, 16,
     };
-    static constexpr std::size_t A_length = chord_datatype_bytes(A_type) * 2 * 512 * 96 * 2 * 16;
-    static_assert(A_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t A_length = chord_datatype_bytes(A_type) * 2 * 512 * 96 * 2 * 16;
+    static_assert(A_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // E: gpu_mem_voltage
+    static constexpr const char* E_name = "E";
     static constexpr chordDataType E_type = int4p4;
     enum E_indices {
         E_index_D,
@@ -144,16 +148,17 @@ private:
         "F",
         "T",
     };
-    static constexpr std::array<std::size_t, E_rank> E_lengths = {
+    static constexpr std::array<std::ptrdiff_t, E_rank> E_lengths = {
         512,
         2,
         16,
         8192,
     };
-    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 16 * 8192;
-    static_assert(E_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 16 * 8192;
+    static_assert(E_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // s: gpu_mem_output_scaling
+    static constexpr const char* s_name = "s";
     static constexpr chordDataType s_type = int32;
     enum s_indices {
         s_index_B,
@@ -166,39 +171,41 @@ private:
         "P",
         "F",
     };
-    static constexpr std::array<std::size_t, s_rank> s_lengths = {
+    static constexpr std::array<std::ptrdiff_t, s_rank> s_lengths = {
         96,
         2,
         16,
     };
-    static constexpr std::size_t s_length = chord_datatype_bytes(s_type) * 96 * 2 * 16;
-    static_assert(s_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t s_length = chord_datatype_bytes(s_type) * 96 * 2 * 16;
+    static_assert(s_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // J: gpu_mem_formed_beams
+    static constexpr const char* J_name = "J";
     static constexpr chordDataType J_type = int4p4;
     enum J_indices {
-        J_index_Tout,
+        J_index_T,
         J_index_P,
         J_index_F,
         J_index_B,
         J_rank,
     };
     static constexpr std::array<const char*, J_rank> J_labels = {
-        "Tout",
+        "T",
         "P",
         "F",
         "B",
     };
-    static constexpr std::array<std::size_t, J_rank> J_lengths = {
+    static constexpr std::array<std::ptrdiff_t, J_rank> J_lengths = {
         2048,
         2,
         16,
         96,
     };
-    static constexpr std::size_t J_length = chord_datatype_bytes(J_type) * 2048 * 2 * 16 * 96;
-    static_assert(J_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t J_length = chord_datatype_bytes(J_type) * 2048 * 2 * 16 * 96;
+    static_assert(J_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
+    static constexpr const char* info_name = "info";
     static constexpr chordDataType info_type = int32;
     enum info_indices {
         info_index_thread,
@@ -211,13 +218,13 @@ private:
         "warp",
         "block",
     };
-    static constexpr std::array<std::size_t, info_rank> info_lengths = {
+    static constexpr std::array<std::ptrdiff_t, info_rank> info_lengths = {
         32,
         24,
         512,
     };
-    static constexpr std::size_t info_length = chord_datatype_bytes(info_type) * 32 * 24 * 512;
-    static_assert(info_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 24 * 512;
+    static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
     // Kotekan buffer names
@@ -234,15 +241,15 @@ private:
     std::vector<std::uint8_t> Tmax_host;
     std::vector<std::uint8_t> info_host;
 
-    static constexpr std::size_t E_T_sample_bytes = chord_datatype_bytes(E_type)
-                                                    * E_lengths[E_index_D] * E_lengths[E_index_P]
-                                                    * E_lengths[E_index_F];
+    static constexpr std::ptrdiff_t E_T_sample_bytes = chord_datatype_bytes(E_type)
+                                                       * E_lengths[E_index_D] * E_lengths[E_index_P]
+                                                       * E_lengths[E_index_F];
 
     RingBuffer* input_ringbuf_signal;
 
     // How many samples we will process from the input ringbuffer
     // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
-    std::size_t Tmin, Tmax;
+    std::ptrdiff_t Tmin, Tmax;
 };
 
 REGISTER_CUDA_COMMAND(cudaBasebandBeamformer_chord);
@@ -251,8 +258,8 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
                                                            const std::string& unique_name,
                                                            bufferContainer& host_buffers,
                                                            cudaDeviceInterface& device,
-                                                           const int inst) :
-    cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state,
+                                                           const int instance_num) :
+    cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "BasebandBeamformer_chord", "BasebandBeamformer_chord.ptx"),
     Tmin_memname(unique_name + "/Tmin"), Tmax_memname(unique_name + "/Tmax"),
     A_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
@@ -265,6 +272,9 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
     // Find input buffer used for signalling ring-buffer state
     input_ringbuf_signal(dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")))) {
+    // Check ringbuffer size
+    assert(input_ringbuf_signal->size == E_length);
+
     // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Tmin", false, true, true));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Tmax", false, true, true));
@@ -277,7 +287,7 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
     set_command_type(gpuCommandType::KERNEL);
 
     // Only one of the instances of this pipeline stage needs to build the kernel
-    if (inst == 0) {
+    if (instance_num == 0) {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
             "--verbose",
@@ -285,7 +295,7 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
         device.build_ptx(kernel_file_name, {kernel_symbol}, opts, "BasebandBeamformer_chord_");
     }
 
-    if (inst == 0) {
+    if (instance_num == 0) {
         input_ringbuf_signal->register_consumer(unique_name);
     }
 }
@@ -303,40 +313,40 @@ cudaBasebandBeamformer_chord::num_produced_elements(std::int64_t num_available_e
 
 std::int64_t
 cudaBasebandBeamformer_chord::num_processed_elements(std::int64_t num_available_elements) const {
-    assert(num_available_elements >= cuda_number_of_timesamples);
-    return cuda_number_of_timesamples;
+    assert(num_available_elements >= cuda_granularity_number_of_timesamples);
+    return cuda_granularity_number_of_timesamples;
 }
 
 int cudaBasebandBeamformer_chord::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer
-    const std::size_t input_bytes = cuda_number_of_timesamples * E_T_sample_bytes;
+    const std::ptrdiff_t input_bytes = cuda_granularity_number_of_timesamples * E_T_sample_bytes;
     DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
     DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const std::optional<std::size_t> val_in =
-        input_ringbuf_signal->wait_and_claim_readable(unique_name, input_bytes);
+    const std::optional<std::ptrdiff_t> val_in =
+        input_ringbuf_signal->wait_and_claim_readable(unique_name, instance_num, input_bytes);
     DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
     if (!val_in.has_value())
         return -1;
-    const std::size_t input_cursor = val_in.value();
+    const std::ptrdiff_t input_cursor = val_in.value();
     DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
 
     // How many inputs samples are available?
-    const std::size_t T_available = div_noremainder(input_bytes, E_T_sample_bytes);
+    const std::ptrdiff_t T_available = div_noremainder(input_bytes, E_T_sample_bytes);
     DEBUG("Available samples:      T_available: {:d}", T_available);
 
     // How many outputs will we process and consume?
-    const std::size_t T_processed = num_processed_elements(T_available);
-    const std::size_t T_consumed = num_consumed_elements(T_available);
+    const std::ptrdiff_t T_processed = num_processed_elements(T_available);
+    const std::ptrdiff_t T_consumed = num_consumed_elements(T_available);
     DEBUG("Will process (samples): T_processed: {:d}", T_processed);
     DEBUG("Will consume (samples): T_consumed:  {:d}", T_consumed);
     assert(T_processed > 0);
     assert(T_consumed <= T_processed);
-    const std::size_t T_consumed2 = num_consumed_elements(T_processed);
+    const std::ptrdiff_t T_consumed2 = num_consumed_elements(T_processed);
     assert(T_consumed2 == T_consumed);
 
     Tmin = div_noremainder(input_cursor, E_T_sample_bytes);
     Tmax = Tmin + T_processed;
-    const std::size_t Tlength = Tmax - Tmin;
+    const std::ptrdiff_t Tlength = Tmax - Tmin;
     DEBUG("Input samples:");
     DEBUG("    Tmin:    {:d}", Tmin);
     DEBUG("    Tmax:    {:d}", Tmax);
@@ -377,16 +387,17 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     assert(metadata_is_chord(A_mc));
     const std::shared_ptr<chordMetadata> A_meta = get_chord_metadata(A_mc);
     INFO("input A array: {:s} {:s}", A_meta->get_type_string(), A_meta->get_dimensions_string());
+    assert(std::strncmp(A_meta->name, A_name, sizeof A_meta->name) == 0);
     assert(A_meta->type == A_type);
     assert(A_meta->dims == A_rank);
-    for (std::size_t dim = 0; dim < A_rank; ++dim) {
-        assert(std::strncmp(A_meta->dim_name[dim], A_labels[A_rank - 1 - dim],
-                            sizeof A_meta->dim_name[dim])
+    for (std::ptrdiff_t dim = 0; dim < A_rank; ++dim) {
+        assert(std::strncmp(A_meta->dim_name[A_rank - 1 - dim], A_labels[dim],
+                            sizeof A_meta->dim_name[A_rank - 1 - dim])
                == 0);
         if (args::A == args::E)
-            assert(A_meta->dim[dim] <= int(A_lengths[A_rank - 1 - dim]));
+            assert(A_meta->dim[A_rank - 1 - dim] <= int(A_lengths[dim]));
         else
-            assert(A_meta->dim[dim] == int(A_lengths[A_rank - 1 - dim]));
+            assert(A_meta->dim[A_rank - 1 - dim] == int(A_lengths[dim]));
     }
     //
     // E is an input buffer: check metadata
@@ -397,16 +408,17 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     assert(metadata_is_chord(E_mc));
     const std::shared_ptr<chordMetadata> E_meta = get_chord_metadata(E_mc);
     INFO("input E array: {:s} {:s}", E_meta->get_type_string(), E_meta->get_dimensions_string());
+    assert(std::strncmp(E_meta->name, E_name, sizeof E_meta->name) == 0);
     assert(E_meta->type == E_type);
     assert(E_meta->dims == E_rank);
-    for (std::size_t dim = 0; dim < E_rank; ++dim) {
-        assert(std::strncmp(E_meta->dim_name[dim], E_labels[E_rank - 1 - dim],
-                            sizeof E_meta->dim_name[dim])
+    for (std::ptrdiff_t dim = 0; dim < E_rank; ++dim) {
+        assert(std::strncmp(E_meta->dim_name[E_rank - 1 - dim], E_labels[dim],
+                            sizeof E_meta->dim_name[E_rank - 1 - dim])
                == 0);
         if (args::E == args::E)
-            assert(E_meta->dim[dim] <= int(E_lengths[E_rank - 1 - dim]));
+            assert(E_meta->dim[E_rank - 1 - dim] <= int(E_lengths[dim]));
         else
-            assert(E_meta->dim[dim] == int(E_lengths[E_rank - 1 - dim]));
+            assert(E_meta->dim[E_rank - 1 - dim] == int(E_lengths[dim]));
     }
     //
     // s is an input buffer: check metadata
@@ -417,16 +429,17 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     assert(metadata_is_chord(s_mc));
     const std::shared_ptr<chordMetadata> s_meta = get_chord_metadata(s_mc);
     INFO("input s array: {:s} {:s}", s_meta->get_type_string(), s_meta->get_dimensions_string());
+    assert(std::strncmp(s_meta->name, s_name, sizeof s_meta->name) == 0);
     assert(s_meta->type == s_type);
     assert(s_meta->dims == s_rank);
-    for (std::size_t dim = 0; dim < s_rank; ++dim) {
-        assert(std::strncmp(s_meta->dim_name[dim], s_labels[s_rank - 1 - dim],
-                            sizeof s_meta->dim_name[dim])
+    for (std::ptrdiff_t dim = 0; dim < s_rank; ++dim) {
+        assert(std::strncmp(s_meta->dim_name[s_rank - 1 - dim], s_labels[dim],
+                            sizeof s_meta->dim_name[s_rank - 1 - dim])
                == 0);
         if (args::s == args::E)
-            assert(s_meta->dim[dim] <= int(s_lengths[s_rank - 1 - dim]));
+            assert(s_meta->dim[s_rank - 1 - dim] <= int(s_lengths[dim]));
         else
-            assert(s_meta->dim[dim] == int(s_lengths[s_rank - 1 - dim]));
+            assert(s_meta->dim[s_rank - 1 - dim] == int(s_lengths[dim]));
     }
     //
     // J is an output buffer: set metadata
@@ -434,12 +447,13 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
         device.create_gpu_memory_array_metadata(J_memname, gpu_frame_id, E_mc->parent_pool);
     std::shared_ptr<chordMetadata> const J_meta = get_chord_metadata(J_mc);
     *J_meta = *E_meta;
+    std::strncpy(J_meta->name, J_name, sizeof J_meta->name);
     J_meta->type = J_type;
     J_meta->dims = J_rank;
-    for (std::size_t dim = 0; dim < J_rank; ++dim) {
-        std::strncpy(J_meta->dim_name[dim], J_labels[J_rank - 1 - dim],
-                     sizeof J_meta->dim_name[dim]);
-        J_meta->dim[dim] = J_lengths[J_rank - 1 - dim];
+    for (std::ptrdiff_t dim = 0; dim < J_rank; ++dim) {
+        std::strncpy(J_meta->dim_name[J_rank - 1 - dim], J_labels[dim],
+                     sizeof J_meta->dim_name[J_rank - 1 - dim]);
+        J_meta->dim[J_rank - 1 - dim] = J_lengths[dim];
     }
     INFO("output J array: {:s} {:s}", J_meta->get_type_string(), J_meta->get_dimensions_string());
     //
@@ -464,10 +478,10 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     E_arg = kernel_arg(E_memory, E_length);
 
     // Ringbuffer size
-    const std::size_t T_ringbuf = input_ringbuf_signal->size / E_T_sample_bytes;
+    const std::ptrdiff_t T_ringbuf = input_ringbuf_signal->size / E_T_sample_bytes;
     DEBUG("Input ringbuffer size (samples):  {:d}", T_ringbuf);
 
-    const std::size_t Tlength = Tmax - Tmin;
+    const std::ptrdiff_t Tlength = Tmax - Tmin;
     DEBUG("Processed input samples: {:d}", Tlength);
 
     DEBUG("Kernel arguments:");
@@ -478,6 +492,20 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
     *(std::int32_t*)Tmin_host.data() = mod(Tmin, T_ringbuf);
     *(std::int32_t*)Tmax_host.data() = mod(Tmin, T_ringbuf) + Tlength;
+
+    // Update metadata
+    assert(J_meta->dim[J_rank - 1 - J_index_T] == int(Tlength));
+    assert(J_meta->dim[J_rank - 1 - J_index_T] == int(J_lengths[J_index_T]));
+
+    // Since we do not use a ring buffer we need to set `meta->sample0_offset`
+    J_meta->sample0_offset = Tmin;
+
+    assert(J_meta->nfreq >= 0);
+    assert(J_meta->nfreq == J_meta->nfreq);
+    for (int freq = 0; freq < J_meta->nfreq; ++freq) {
+        J_meta->freq_upchan_factor[freq] = J_meta->freq_upchan_factor[freq];
+        J_meta->time_downsampling_fpga[freq] = J_meta->time_downsampling_fpga[freq];
+    }
 
     // Copy inputs to device memory
     CHECK_CUDA_ERROR(cudaMemcpyAsync(Tmin_memory, Tmin_host.data(), Tmin_length,
@@ -529,14 +557,14 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
 }
 
 void cudaBasebandBeamformer_chord::finalize_frame() {
-    const std::size_t Tlength = Tmax - Tmin;
+    const std::ptrdiff_t Tlength = Tmax - Tmin;
 
     // Advance the input ringbuffer
-    const std::size_t T_consumed = num_consumed_elements(Tlength);
+    const std::ptrdiff_t T_consumed = num_consumed_elements(Tlength);
     DEBUG("Advancing input ringbuffer:");
     DEBUG("    Consumed samples: {:d}", T_consumed);
     DEBUG("    Consumed bytes:   {:d}", T_consumed * E_T_sample_bytes);
-    input_ringbuf_signal->finish_read(unique_name, T_consumed * E_T_sample_bytes);
+    input_ringbuf_signal->finish_read(unique_name, instance_num, T_consumed * E_T_sample_bytes);
 
     cudaCommand::finalize_frame();
 }

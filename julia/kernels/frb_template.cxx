@@ -33,7 +33,7 @@ using kotekan::round_down, kotekan::div_noremainder, kotekan::div, kotekan::mod;
 class cuda{{{kernel_name}}} : public cudaCommand {
 public:
     cuda{{{kernel_name}}}(Config & config, const std::string& unique_name,
-                          bufferContainer& host_buffers, cudaDeviceInterface& device, const int inst);
+                          bufferContainer& host_buffers, cudaDeviceInterface& device, const int instance_num);
     virtual ~cuda{{{kernel_name}}}();
     
     int wait_on_precondition() override;
@@ -79,7 +79,7 @@ private:
     static constexpr int shmem_bytes = {{{shmem_bytes}}};
 
     // Kernel name:
-    const char* const kernel_symbol = "{{{kernel_symbol}}}";
+    static constexpr const char* kernel_symbol = "{{{kernel_symbol}}}";
 
     // Kernel arguments:
     enum class args {
@@ -91,6 +91,7 @@ private:
 
     {{#kernel_arguments}}
         // {{{name}}}: {{{kotekan_name}}}
+        static constexpr const char *{{{name}}}_name = "{{{name}}}";
         static constexpr chordDataType {{{name}}}_type = {{{type}}};
         enum {{{name}}}_indices {
             {{#axes}}
@@ -129,21 +130,21 @@ private:
         {{/hasbuffer}}
     {{/kernel_arguments}}
 
-    static constexpr std::size_t E_T_sample_bytes =
-         chord_datatype_bytes(E_type) * E_lengths[E_index_D] * E_lengths[E_index_P] * E_lengths[E_index_F];
-    static constexpr std::size_t I_Tbar_sample_bytes =
-         chord_datatype_bytes(I_type) * I_lengths[I_index_beamP] * I_lengths[I_index_beamQ] * I_lengths[I_index_F];
+    static constexpr std::size_t Ebar_Tbar_sample_bytes =
+         chord_datatype_bytes(Ebar_type) * Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P] * Ebar_lengths[Ebar_index_Fbar];
+    static constexpr std::size_t I_Ttilde_sample_bytes =
+         chord_datatype_bytes(I_type) * I_lengths[I_index_beamP] * I_lengths[I_index_beamQ] * I_lengths[I_index_Fbar];
 
-    RingBuffer* input_ringbuf_signal;
-    RingBuffer* output_ringbuf_signal;
+    RingBuffer* const input_ringbuf_signal;
+    RingBuffer* const output_ringbuf_signal;
 
     // How many samples we will process from the input ringbuffer
     // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
-    std::size_t Tmin, Tmax;
+    std::size_t Tbarmin, Tbarmax;
 
     // How many samples we will produce in the output ringbuffer
     // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
-    std::size_t Tbarmin, Tbarmax;
+    std::size_t Ttildemin, Ttildemax;
 };
 
 REGISTER_CUDA_COMMAND(cuda{{{kernel_name}}});
@@ -152,8 +153,8 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
                                              const std::string& unique_name,
                                              bufferContainer& host_buffers,
                                              cudaDeviceInterface& device,
-                                             const int inst) :
-    cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state,
+                                             const int instance_num) :
+    cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
         "{{{kernel_name}}}", "{{{kernel_name}}}.ptx"),
     {{#kernel_arguments}}
         {{#hasbuffer}}
@@ -175,6 +176,12 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     output_ringbuf_signal(dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "out_signal"))))
 {
+    // Check ringbuffer sizes
+    assert(input_ringbuf_signal->size == Ebar_length);
+    if (!(output_ringbuf_signal->size == I_length))
+        FATAL_ERROR("output_ringbuf_signal->size={}, I_length={}", output_ringbuf_signal->size, I_length);
+    assert(output_ringbuf_signal->size == I_length);
+
     // Add Graphviz entries for the GPU buffers used by this kernel
     {{#kernel_arguments}}
         {{#hasbuffer}}
@@ -188,7 +195,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     set_command_type(gpuCommandType::KERNEL);
 
     // Only one of the instances of this pipeline stage need to build the kernel
-    if (inst == 0) {
+    if (instance_num == 0) {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
             "--verbose",
@@ -196,7 +203,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         device.build_ptx(kernel_file_name, {kernel_symbol}, opts, "{{{kernel_name}}}_");
     }
 
-    if (inst == 0) {
+    if (instance_num == 0) {
         input_ringbuf_signal->register_consumer(unique_name);
         output_ringbuf_signal->register_producer(unique_name);
 	output_ringbuf_signal->allocate_new_metadata_object(0);
@@ -213,71 +220,75 @@ std::int64_t cuda{{{kernel_name}}}::num_produced_elements(std::int64_t num_avail
 }
 
 std::int64_t cuda{{{kernel_name}}}::num_processed_elements(std::int64_t num_available_elements) const {
-    assert(num_available_elements >= cuda_number_of_timesamples);
-    return cuda_number_of_timesamples;
+    assert(num_available_elements >= cuda_granularity_number_of_timesamples);
+    return round_down(num_available_elements, cuda_granularity_number_of_timesamples);
 }
 
 int cuda{{{kernel_name}}}::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer
-    const std::size_t input_bytes = cuda_number_of_timesamples * E_T_sample_bytes;
-    DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
     DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const std::optional<std::size_t> val_in =
-        input_ringbuf_signal->wait_and_claim_readable(unique_name, input_bytes);
+    const std::optional<std::size_t> val_in1 =
+        input_ringbuf_signal->wait_without_claiming(unique_name, instance_num);
     DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
-    if (!val_in.has_value())
+    if (!val_in1.has_value())
         return -1;
-    const std::size_t input_cursor = val_in.value();
-    DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
+    const std::size_t input_bytes = val_in1.value();
+    DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
 
     // How many inputs samples are available?
-    const std::size_t T_available = div_noremainder(input_bytes, E_T_sample_bytes);
-    DEBUG("Available samples:      T_available: {:d}", T_available);
+    const std::size_t Tbar_available = div_noremainder(input_bytes, Ebar_Tbar_sample_bytes);
+    DEBUG("Available samples:      Tbar_available: {:d}", Tbar_available);
 
     // How many outputs will we process and consume?
-    const std::size_t T_processed = num_processed_elements(T_available);
-    const std::size_t T_consumed = num_consumed_elements(T_available);
-    DEBUG("Will process (samples): T_processed: {:d}", T_processed);
-    DEBUG("Will consume (samples): T_consumed:  {:d}", T_consumed);
-    assert(T_processed > 0);
-    assert(T_consumed <= T_processed);
-    const std::size_t T_consumed2 = num_consumed_elements(T_processed);
-    assert(T_consumed2 == T_consumed);
+    const std::size_t Tbar_processed = num_processed_elements(Tbar_available);
+    const std::size_t Tbar_consumed = num_consumed_elements(Tbar_available);
+    DEBUG("Will process (samples): Tbar_processed: {:d}", Tbar_processed);
+    DEBUG("Will consume (samples): Tbar_consumed:  {:d}", Tbar_consumed);
+    assert(Tbar_processed > 0);
+    assert(Tbar_consumed <= Tbar_processed);
+    const std::size_t Tbar_consumed2 = num_consumed_elements(Tbar_processed);
+    assert(Tbar_consumed2 == Tbar_consumed);
 
-    Tmin = div_noremainder(input_cursor, E_T_sample_bytes);
-    Tmax = Tmin + T_processed;
-    const std::size_t Tlength = Tmax - Tmin;
+    const std::optional<std::size_t> val_in2 =
+        input_ringbuf_signal->wait_and_claim_readable(unique_name, instance_num, Tbar_consumed * Ebar_Tbar_sample_bytes);
+    if (!val_in2.has_value())
+        return -1;
+    const std::size_t input_cursor = val_in2.value();
+    DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
+    Tbarmin = div_noremainder(input_cursor, Ebar_Tbar_sample_bytes);
+    Tbarmax = Tbarmin + Tbar_processed;
+    const std::size_t Tbarlength = Tbarmax - Tbarmin;
     DEBUG("Input samples:");
-    DEBUG("    Tmin:    {:d}", Tmin);
-    DEBUG("    Tmax:    {:d}", Tmax);
-    DEBUG("    Tlength: {:d}", Tlength);
+    DEBUG("    Tbarmin:    {:d}", Tbarmin);
+    DEBUG("    Tbarmax:    {:d}", Tbarmax);
+    DEBUG("    Tbarlength: {:d}", Tbarlength);
 
     // How many outputs will we produce?
-    const std::size_t Tbar_produced = num_produced_elements(T_available);
-    DEBUG("Will produce (samples): Tbar_produced: {:d}", Tbar_produced);
-    const std::size_t Tbarlength = Tbar_produced;
+    const std::size_t Ttilde_produced = num_produced_elements(Tbar_available);
+    DEBUG("Will produce (samples): Ttilde_produced: {:d}", Ttilde_produced);
+    const std::size_t Ttildelength = Ttilde_produced;
 
     // to bytes
-    const std::size_t output_bytes = Tbarlength * I_Tbar_sample_bytes;
+    const std::size_t output_bytes = Ttildelength * I_Ttilde_sample_bytes;
     DEBUG("Will produce {:d} output bytes", output_bytes);
 
     // Wait for space to be available in our output ringbuffer...
     DEBUG("Waiting for output ringbuffer space for frame {:d}...", gpu_frame_id);
     const std::optional<std::size_t> val_out =
-        output_ringbuf_signal->wait_for_writable(unique_name, output_bytes);
+        output_ringbuf_signal->wait_for_writable(unique_name, instance_num, output_bytes);
     DEBUG("Finished waiting for output for data frame {:d}.", gpu_frame_id);
     if (!val_out.has_value())
         return -1;
     const std::size_t output_cursor = val_out.value();
     DEBUG("Output ring-buffer byte offset {:d}", output_cursor);
 
-    assert(mod(output_cursor, I_Tbar_sample_bytes) == 0);
-    Tbarmin = output_cursor / I_Tbar_sample_bytes;
-    Tbarmax = Tbarmin + Tbarlength;
+    assert(mod(output_cursor, I_Ttilde_sample_bytes) == 0);
+    Ttildemin = output_cursor / I_Ttilde_sample_bytes;
+    Ttildemax = Ttildemin + Ttildelength;
     DEBUG("Output samples:");
-    DEBUG("    Tbarmin:    {:d}", Tbarmin);
-    DEBUG("    Tbarmax:    {:d}", Tbarmax);
-    DEBUG("    Tbarlength: {:d}", Tbarlength);
+    DEBUG("    Ttildemin:    {:d}", Ttildemin);
+    DEBUG("    Ttildemax:    {:d}", Ttildemax);
+    DEBUG("    Ttildelength: {:d}", Ttildelength);
 
     return 0;
 }
@@ -288,7 +299,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {{#kernel_arguments}}
         {{#hasbuffer}}
             void* const {{{name}}}_memory =
-                args::{{{name}}} == args::E ?
+                args::{{{name}}} == args::Ebar ?
                     device.get_gpu_memory({{{name}}}_memname, input_ringbuf_signal->size) :
                 args::{{{name}}} == args::I ?
                     device.get_gpu_memory({{{name}}}_memname, output_ringbuf_signal->size) :
@@ -305,7 +316,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
             {{^isoutput}}
                 // {{{name}}} is an input buffer: check metadata
                 const std::shared_ptr<metadataObject> {{{name}}}_mc =
-                    args::{{{name}}} == args::E ?
+                    args::{{{name}}} == args::Ebar ?
                         input_ringbuf_signal->get_metadata(0) :
                         device.get_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id);
                 assert({{{name}}}_mc);
@@ -314,13 +325,14 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                 INFO("input {{{name}}} array: {:s} {:s}",
                     {{{name}}}_meta->get_type_string(),
                     {{{name}}}_meta->get_dimensions_string());
+                assert(std::strncmp({{{name}}}_meta->name, {{{name}}}_name, sizeof {{{name}}}_meta->name) == 0);
                 assert({{{name}}}_meta->type == {{{name}}}_type);
                 assert({{{name}}}_meta->dims == {{{name}}}_rank);
                 for (std::size_t dim = 0; dim < {{{name}}}_rank; ++dim) {
                     assert(std::strncmp({{{name}}}_meta->dim_name[dim],
                                         {{{name}}}_labels[{{{name}}}_rank - 1 - dim],
                                         sizeof {{{name}}}_meta->dim_name[dim]) == 0);
-                    if (args::{{{name}}} == args::E && dim == 0)
+                    if (args::{{{name}}} == args::Ebar && dim == 0)
 		    {
   		        ERROR("dim={} meta->dim[]={} lengths[]={}", dim,
 			    {{{name}}}_meta->dim[dim],
@@ -338,9 +350,10 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                 std::shared_ptr<metadataObject> const {{{name}}}_mc =
                     args::{{{name}}} == args::I ?
                         output_ringbuf_signal->get_metadata(0) :
-                        device.create_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id, E_mc->parent_pool);
+                        device.create_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id, Ebar_mc->parent_pool);
                 std::shared_ptr<chordMetadata> const {{{name}}}_meta = get_chord_metadata({{{name}}}_mc);
-                *{{{name}}}_meta = *E_meta;
+                *{{{name}}}_meta = *Ebar_meta;
+                std::strncpy({{{name}}}_meta->name, {{{name}}}_name, sizeof {{{name}}}_meta->name);
                 {{{name}}}_meta->type = {{{name}}}_type;
                 {{{name}}}_meta->dims = {{{name}}}_rank;
                 for (std::size_t dim = 0; dim < {{{name}}}_rank; ++dim) {
@@ -362,16 +375,16 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         // S maps dishes to locations.
         // The first `ndishes` dishes are real dishes,
         // the remaining dishes are not real and exist only to label the unoccupied dish locations.
-        assert(E_meta->ndishes == cuda_number_of_dishes);
-        assert(E_meta->n_dish_locations_ew == cuda_dish_layout_N);
-        assert(E_meta->n_dish_locations_ns == cuda_dish_layout_M);
-        assert(E_meta->dish_index);
+        assert(Ebar_meta->ndishes == cuda_number_of_dishes);
+        assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_N);
+        assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_M);
+        assert(Ebar_meta->dish_index);
         std::int16_t* __restrict__ const S =
             static_cast<std::int16_t*>(static_cast<void*>(S_host.data()));
         int surplus_dish_index = cuda_number_of_dishes;
         for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
             for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
-                int dish_index = E_meta->get_dish_index(locN, locM);
+                int dish_index = Ebar_meta->get_dish_index(locN, locM);
                 if (dish_index >= 0) {
                     // This location holds a real dish, record its location
                     S[2 * dish_index + 0] = locM;
@@ -402,47 +415,47 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
     INFO("gpu_frame_id: {}", gpu_frame_id);
 
-    // Set E_memory to beginning of input ring buffer
-    E_arg = kernel_arg(E_memory, E_length);
+    // Set Ebar_memory to beginning of input ring buffer
+    Ebar_arg = kernel_arg(Ebar_memory, Ebar_length);
 
     // Set I_memory to beginning of output ring buffer
     I_arg = kernel_arg(I_memory, I_length);
 
     // Ringbuffer size
-    const std::size_t T_ringbuf = input_ringbuf_signal->size / E_T_sample_bytes;
-    const std::size_t Tbar_ringbuf = output_ringbuf_signal->size / I_Tbar_sample_bytes;
-    DEBUG("Input ringbuffer size (samples):  {:d}", T_ringbuf);
-    DEBUG("Output ringbuffer size (samples): {:d}", Tbar_ringbuf);
+    const std::size_t Tbar_ringbuf = input_ringbuf_signal->size / Ebar_Tbar_sample_bytes;
+    const std::size_t Ttilde_ringbuf = output_ringbuf_signal->size / I_Ttilde_sample_bytes;
+    DEBUG("Input ringbuffer size (samples):  {:d}", Tbar_ringbuf);
+    DEBUG("Output ringbuffer size (samples): {:d}", Ttilde_ringbuf);
 
-    const std::size_t Tlength = Tmax - Tmin;
     const std::size_t Tbarlength = Tbarmax - Tbarmin;
-    DEBUG("Processed input samples: {:d}", Tlength);
-    DEBUG("Produced output samples: {:d}", Tbarlength);
+    const std::size_t Ttildelength = Ttildemax - Ttildemin;
+    DEBUG("Processed input samples: {:d}", Tbarlength);
+    DEBUG("Produced output samples: {:d}", Ttildelength);
 
     DEBUG("Kernel arguments:");
-    DEBUG("    Tmin: {:d}", Tmin);
-    DEBUG("    Tmax: {:d}", Tmax);
-    DEBUG("    Tbarmin:  {:d}", Tbarmin);
-    DEBUG("    Tbarmax:  {:d}", Tbarmax);
+    DEBUG("    Tbarmin:   {:d}", Tbarmin);
+    DEBUG("    Tbarmax:   {:d}", Tbarmax);
+    DEBUG("    Ttildemin: {:d}", Ttildemin);
+    DEBUG("    Ttildemax: {:d}", Ttildemax);
 
     // Pass time spans to kernel
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
-    *(std::int32_t*)Tmin_host.data() = mod(Tmin, T_ringbuf);
-    *(std::int32_t*)Tmax_host.data() = mod(Tmin, T_ringbuf) + Tlength;
     *(std::int32_t*)Tbarmin_host.data() = mod(Tbarmin, Tbar_ringbuf);
     *(std::int32_t*)Tbarmax_host.data() = mod(Tbarmin, Tbar_ringbuf) + Tbarlength;
+    *(std::int32_t*)Ttildemin_host.data() = mod(Ttildemin, Ttilde_ringbuf);
+    *(std::int32_t*)Ttildemax_host.data() = mod(Ttildemin, Ttilde_ringbuf) + Ttildelength;
 
     // Update metadata
-    I_meta->dim[0] = Tbarlength;
+    I_meta->dim[0] = Ttildelength;
     assert(I_meta->dim[0] <= int(I_lengths[3]));
 
     // Since we use a ring buffer we do not need to update `meta->sample0_offset`
 
     assert(I_meta->nfreq >= 0);
-    assert(I_meta->nfreq == E_meta->nfreq);
+    assert(I_meta->nfreq == Ebar_meta->nfreq);
     for (int freq = 0; freq < I_meta->nfreq; ++freq) {
-        I_meta->freq_upchan_factor[freq] = cuda_downsampling_factor * E_meta->freq_upchan_factor[freq];
-	I_meta->time_downsampling_fpga[freq] = cuda_downsampling_factor * E_meta->time_downsampling_fpga[freq];
+        I_meta->freq_upchan_factor[freq] = cuda_downsampling_factor * Ebar_meta->freq_upchan_factor[freq];
+	I_meta->time_downsampling_fpga[freq] = cuda_downsampling_factor * Ebar_meta->time_downsampling_fpga[freq];
     }
 
     // Copy inputs to device memory
@@ -518,22 +531,22 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 }
 
 void cuda{{{kernel_name}}}::finalize_frame() {
-    const std::size_t Tlength = Tmax - Tmin;
     const std::size_t Tbarlength = Tbarmax - Tbarmin;
+    const std::size_t Ttildelength = Ttildemax - Ttildemin;
 
     // Advance the input ringbuffer
-    const std::size_t T_consumed = num_consumed_elements(Tlength);
+    const std::size_t Tbar_consumed = num_consumed_elements(Tbarlength);
     DEBUG("Advancing input ringbuffer:");
-    DEBUG("    Consumed samples: {:d}", T_consumed);
-    DEBUG("    Consumed bytes:   {:d}", T_consumed * E_T_sample_bytes);
-    input_ringbuf_signal->finish_read(unique_name, T_consumed * E_T_sample_bytes);
+    DEBUG("    Consumed samples: {:d}", Tbar_consumed);
+    DEBUG("    Consumed bytes:   {:d}", Tbar_consumed * Ebar_Tbar_sample_bytes);
+    input_ringbuf_signal->finish_read(unique_name, instance_num, Tbar_consumed * Ebar_Tbar_sample_bytes);
 
     // Advance the output ringbuffer
-    const std::size_t Tbar_produced = Tbarlength;
+    const std::size_t Ttilde_produced = Ttildelength;
     DEBUG("Advancing output ringbuffer:");
-    DEBUG("    Produced samples: {:d}", Tbar_produced);
-    DEBUG("    Produced bytes:   {:d}", Tbar_produced * I_Tbar_sample_bytes);
-    output_ringbuf_signal->finish_write(unique_name, Tbar_produced * I_Tbar_sample_bytes);
+    DEBUG("    Produced samples: {:d}", Ttilde_produced);
+    DEBUG("    Produced bytes:   {:d}", Ttilde_produced * I_Ttilde_sample_bytes);
+    output_ringbuf_signal->finish_write(unique_name, instance_num, Ttilde_produced * I_Ttilde_sample_bytes);
 
     cudaCommand::finalize_frame();
 }

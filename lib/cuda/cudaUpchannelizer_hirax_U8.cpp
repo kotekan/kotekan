@@ -34,7 +34,7 @@ class cudaUpchannelizer_hirax_U8 : public cudaCommand {
 public:
     cudaUpchannelizer_hirax_U8(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, cudaDeviceInterface& device,
-                               const int inst);
+                               const int instance_num);
     virtual ~cudaUpchannelizer_hirax_U8();
 
     int wait_on_precondition() override;
@@ -50,7 +50,7 @@ private:
         std::int64_t maxsize; // bytes
         std::int64_t dims[N]; // elements
         std::int64_t len;     // elements
-        CuDeviceArray(void* const ptr, const std::size_t bytes) :
+        CuDeviceArray(void* const ptr, const std::ptrdiff_t bytes) :
             ptr(static_cast<T*>(ptr)), maxsize(bytes), dims{std::int64_t(maxsize / sizeof(T))},
             len(maxsize / sizeof(T)) {}
     };
@@ -92,46 +92,51 @@ private:
     enum class args { Tmin, Tmax, Tbarmin, Tbarmax, G, E, Ebar, info, count };
 
     // Tmin: Tmin
+    static constexpr const char* Tmin_name = "Tmin";
     static constexpr chordDataType Tmin_type = int32;
     enum Tmin_indices {
         Tmin_rank,
     };
     static constexpr std::array<const char*, Tmin_rank> Tmin_labels = {};
-    static constexpr std::array<std::size_t, Tmin_rank> Tmin_lengths = {};
-    static constexpr std::size_t Tmin_length = chord_datatype_bytes(Tmin_type);
-    static_assert(Tmin_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::array<std::ptrdiff_t, Tmin_rank> Tmin_lengths = {};
+    static constexpr std::ptrdiff_t Tmin_length = chord_datatype_bytes(Tmin_type);
+    static_assert(Tmin_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // Tmax: Tmax
+    static constexpr const char* Tmax_name = "Tmax";
     static constexpr chordDataType Tmax_type = int32;
     enum Tmax_indices {
         Tmax_rank,
     };
     static constexpr std::array<const char*, Tmax_rank> Tmax_labels = {};
-    static constexpr std::array<std::size_t, Tmax_rank> Tmax_lengths = {};
-    static constexpr std::size_t Tmax_length = chord_datatype_bytes(Tmax_type);
-    static_assert(Tmax_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::array<std::ptrdiff_t, Tmax_rank> Tmax_lengths = {};
+    static constexpr std::ptrdiff_t Tmax_length = chord_datatype_bytes(Tmax_type);
+    static_assert(Tmax_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // Tbarmin: Tbarmin
+    static constexpr const char* Tbarmin_name = "Tbarmin";
     static constexpr chordDataType Tbarmin_type = int32;
     enum Tbarmin_indices {
         Tbarmin_rank,
     };
     static constexpr std::array<const char*, Tbarmin_rank> Tbarmin_labels = {};
-    static constexpr std::array<std::size_t, Tbarmin_rank> Tbarmin_lengths = {};
-    static constexpr std::size_t Tbarmin_length = chord_datatype_bytes(Tbarmin_type);
-    static_assert(Tbarmin_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::array<std::ptrdiff_t, Tbarmin_rank> Tbarmin_lengths = {};
+    static constexpr std::ptrdiff_t Tbarmin_length = chord_datatype_bytes(Tbarmin_type);
+    static_assert(Tbarmin_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // Tbarmax: Tbarmax
+    static constexpr const char* Tbarmax_name = "Tbarmax";
     static constexpr chordDataType Tbarmax_type = int32;
     enum Tbarmax_indices {
         Tbarmax_rank,
     };
     static constexpr std::array<const char*, Tbarmax_rank> Tbarmax_labels = {};
-    static constexpr std::array<std::size_t, Tbarmax_rank> Tbarmax_lengths = {};
-    static constexpr std::size_t Tbarmax_length = chord_datatype_bytes(Tbarmax_type);
-    static_assert(Tbarmax_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::array<std::ptrdiff_t, Tbarmax_rank> Tbarmax_lengths = {};
+    static constexpr std::ptrdiff_t Tbarmax_length = chord_datatype_bytes(Tbarmax_type);
+    static_assert(Tbarmax_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // G: gpu_mem_gain
+    static constexpr const char* G_name = "G";
     static constexpr chordDataType G_type = float16;
     enum G_indices {
         G_index_Fbar,
@@ -140,13 +145,14 @@ private:
     static constexpr std::array<const char*, G_rank> G_labels = {
         "Fbar",
     };
-    static constexpr std::array<std::size_t, G_rank> G_lengths = {
+    static constexpr std::array<std::ptrdiff_t, G_rank> G_lengths = {
         512,
     };
-    static constexpr std::size_t G_length = chord_datatype_bytes(G_type) * 512;
-    static_assert(G_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t G_length = chord_datatype_bytes(G_type) * 512;
+    static_assert(G_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // E: gpu_mem_input_voltage
+    static constexpr const char* E_name = "E";
     static constexpr chordDataType E_type = int4p4;
     enum E_indices {
         E_index_D,
@@ -161,16 +167,17 @@ private:
         "F",
         "T",
     };
-    static constexpr std::array<std::size_t, E_rank> E_lengths = {
+    static constexpr std::array<std::ptrdiff_t, E_rank> E_lengths = {
         256,
         2,
         64,
         8192,
     };
-    static constexpr std::size_t E_length = chord_datatype_bytes(E_type) * 256 * 2 * 64 * 8192;
-    static_assert(E_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 256 * 2 * 64 * 8192;
+    static_assert(E_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // Ebar: gpu_mem_output_voltage
+    static constexpr const char* Ebar_name = "Ebar";
     static constexpr chordDataType Ebar_type = int4p4;
     enum Ebar_indices {
         Ebar_index_D,
@@ -185,17 +192,18 @@ private:
         "Fbar",
         "Tbar",
     };
-    static constexpr std::array<std::size_t, Ebar_rank> Ebar_lengths = {
+    static constexpr std::array<std::ptrdiff_t, Ebar_rank> Ebar_lengths = {
         256,
         2,
         512,
         1024,
     };
-    static constexpr std::size_t Ebar_length =
+    static constexpr std::ptrdiff_t Ebar_length =
         chord_datatype_bytes(Ebar_type) * 256 * 2 * 512 * 1024;
-    static_assert(Ebar_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static_assert(Ebar_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
+    static constexpr const char* info_name = "info";
     static constexpr chordDataType info_type = int32;
     enum info_indices {
         info_index_thread,
@@ -208,13 +216,13 @@ private:
         "warp",
         "block",
     };
-    static constexpr std::array<std::size_t, info_rank> info_lengths = {
+    static constexpr std::array<std::ptrdiff_t, info_rank> info_lengths = {
         32,
         8,
         256,
     };
-    static constexpr std::size_t info_length = chord_datatype_bytes(info_type) * 32 * 8 * 256;
-    static_assert(info_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 8 * 256;
+    static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
     // Kotekan buffer names
@@ -234,10 +242,10 @@ private:
     std::vector<std::uint8_t> Tbarmax_host;
     std::vector<std::uint8_t> info_host;
 
-    static constexpr std::size_t E_T_sample_bytes = chord_datatype_bytes(E_type)
-                                                    * E_lengths[E_index_D] * E_lengths[E_index_P]
-                                                    * E_lengths[E_index_F];
-    static constexpr std::size_t Ebar_Tbar_sample_bytes =
+    static constexpr std::ptrdiff_t E_T_sample_bytes = chord_datatype_bytes(E_type)
+                                                       * E_lengths[E_index_D] * E_lengths[E_index_P]
+                                                       * E_lengths[E_index_F];
+    static constexpr std::ptrdiff_t Ebar_Tbar_sample_bytes =
         chord_datatype_bytes(Ebar_type) * Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P]
         * Ebar_lengths[Ebar_index_Fbar];
 
@@ -246,11 +254,11 @@ private:
 
     // How many samples we will process from the input ringbuffer
     // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
-    std::size_t Tmin, Tmax;
+    std::ptrdiff_t Tmin, Tmax;
 
     // How many samples we will produce in the output ringbuffer
     // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
-    std::size_t Tbarmin, Tbarmax;
+    std::ptrdiff_t Tbarmin, Tbarmax;
 };
 
 REGISTER_CUDA_COMMAND(cudaUpchannelizer_hirax_U8);
@@ -259,8 +267,8 @@ cudaUpchannelizer_hirax_U8::cudaUpchannelizer_hirax_U8(Config& config,
                                                        const std::string& unique_name,
                                                        bufferContainer& host_buffers,
                                                        cudaDeviceInterface& device,
-                                                       const int inst) :
-    cudaCommand(config, unique_name, host_buffers, device, inst, no_cuda_command_state,
+                                                       const int instance_num) :
+    cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "Upchannelizer_hirax_U8", "Upchannelizer_hirax_U8.ptx"),
     Tmin_memname(unique_name + "/Tmin"), Tmax_memname(unique_name + "/Tmax"),
     Tbarmin_memname(unique_name + "/Tbarmin"), Tbarmax_memname(unique_name + "/Tbarmax"),
@@ -276,6 +284,10 @@ cudaUpchannelizer_hirax_U8::cudaUpchannelizer_hirax_U8(Config& config,
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")))),
     output_ringbuf_signal(dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "out_signal")))) {
+    // Check ringbuffer sizes
+    assert(input_ringbuf_signal->size == E_length);
+    assert(output_ringbuf_signal->size == Ebar_length);
+
     // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Tmin", false, true, true));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Tmax", false, true, true));
@@ -289,7 +301,7 @@ cudaUpchannelizer_hirax_U8::cudaUpchannelizer_hirax_U8(Config& config,
     set_command_type(gpuCommandType::KERNEL);
 
     // Only one of the instances of this pipeline stage needs to build the kernel
-    if (inst == 0) {
+    if (instance_num == 0) {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
             "--verbose",
@@ -297,7 +309,7 @@ cudaUpchannelizer_hirax_U8::cudaUpchannelizer_hirax_U8(Config& config,
         device.build_ptx(kernel_file_name, {kernel_symbol}, opts, "Upchannelizer_hirax_U8_");
     }
 
-    if (inst == 0) {
+    if (instance_num == 0) {
         input_ringbuf_signal->register_consumer(unique_name);
         output_ringbuf_signal->register_producer(unique_name);
         output_ringbuf_signal->allocate_new_metadata_object(0);
@@ -324,59 +336,59 @@ cudaUpchannelizer_hirax_U8::num_processed_elements(std::int64_t num_available_el
 int cudaUpchannelizer_hirax_U8::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer
     DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const std::optional<std::size_t> val_in1 =
-        input_ringbuf_signal->wait_without_claiming(unique_name);
+    const std::optional<std::ptrdiff_t> val_in1 =
+        input_ringbuf_signal->wait_without_claiming(unique_name, instance_num);
     DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
     if (!val_in1.has_value())
         return -1;
-    const std::size_t input_bytes = val_in1.value();
+    const std::ptrdiff_t input_bytes = val_in1.value();
     DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
 
     // How many inputs samples are available?
-    const std::size_t T_available = div_noremainder(input_bytes, E_T_sample_bytes);
+    const std::ptrdiff_t T_available = div_noremainder(input_bytes, E_T_sample_bytes);
     DEBUG("Available samples:      T_available: {:d}", T_available);
 
     // How many outputs will we process and consume?
-    const std::size_t T_processed = num_processed_elements(T_available);
-    const std::size_t T_consumed = num_consumed_elements(T_available);
+    const std::ptrdiff_t T_processed = num_processed_elements(T_available);
+    const std::ptrdiff_t T_consumed = num_consumed_elements(T_available);
     DEBUG("Will process (samples): T_processed: {:d}", T_processed);
     DEBUG("Will consume (samples): T_consumed:  {:d}", T_consumed);
     assert(T_processed > 0);
     assert(T_consumed <= T_processed);
-    const std::size_t T_consumed2 = num_consumed_elements(T_processed);
+    const std::ptrdiff_t T_consumed2 = num_consumed_elements(T_processed);
     assert(T_consumed2 == T_consumed);
 
-    const std::optional<std::size_t> val_in2 =
-        input_ringbuf_signal->wait_and_claim_readable(unique_name, T_consumed * E_T_sample_bytes);
+    const std::optional<std::ptrdiff_t> val_in2 = input_ringbuf_signal->wait_and_claim_readable(
+        unique_name, instance_num, T_consumed * E_T_sample_bytes);
     if (!val_in2.has_value())
         return -1;
-    const std::size_t input_cursor = val_in2.value();
+    const std::ptrdiff_t input_cursor = val_in2.value();
     DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
     Tmin = div_noremainder(input_cursor, E_T_sample_bytes);
     Tmax = Tmin + T_processed;
-    const std::size_t Tlength = Tmax - Tmin;
+    const std::ptrdiff_t Tlength = Tmax - Tmin;
     DEBUG("Input samples:");
     DEBUG("    Tmin:    {:d}", Tmin);
     DEBUG("    Tmax:    {:d}", Tmax);
     DEBUG("    Tlength: {:d}", Tlength);
 
     // How many outputs will we produce?
-    const std::size_t Tbar_produced = num_produced_elements(T_available);
+    const std::ptrdiff_t Tbar_produced = num_produced_elements(T_available);
     DEBUG("Will produce (samples): Tbar_produced: {:d}", Tbar_produced);
-    const std::size_t Tbarlength = Tbar_produced;
+    const std::ptrdiff_t Tbarlength = Tbar_produced;
 
     // to bytes
-    const std::size_t output_bytes = Tbarlength * Ebar_Tbar_sample_bytes;
+    const std::ptrdiff_t output_bytes = Tbarlength * Ebar_Tbar_sample_bytes;
     DEBUG("Will produce {:d} output bytes", output_bytes);
 
     // Wait for space to be available in our output ringbuffer...
     DEBUG("Waiting for output ringbuffer space for frame {:d}...", gpu_frame_id);
-    const std::optional<std::size_t> val_out =
-        output_ringbuf_signal->wait_for_writable(unique_name, output_bytes);
+    const std::optional<std::ptrdiff_t> val_out =
+        output_ringbuf_signal->wait_for_writable(unique_name, instance_num, output_bytes);
     DEBUG("Finished waiting for output for data frame {:d}.", gpu_frame_id);
     if (!val_out.has_value())
         return -1;
-    const std::size_t output_cursor = val_out.value();
+    const std::ptrdiff_t output_cursor = val_out.value();
     DEBUG("Output ring-buffer byte offset {:d}", output_cursor);
 
     assert(mod(output_cursor, Ebar_Tbar_sample_bytes) == 0);
@@ -424,16 +436,17 @@ cudaEvent_t cudaUpchannelizer_hirax_U8::execute(cudaPipelineState& /*pipestate*/
     assert(metadata_is_chord(G_mc));
     const std::shared_ptr<chordMetadata> G_meta = get_chord_metadata(G_mc);
     INFO("input G array: {:s} {:s}", G_meta->get_type_string(), G_meta->get_dimensions_string());
+    assert(std::strncmp(G_meta->name, G_name, sizeof G_meta->name) == 0);
     assert(G_meta->type == G_type);
     assert(G_meta->dims == G_rank);
-    for (std::size_t dim = 0; dim < G_rank; ++dim) {
-        assert(std::strncmp(G_meta->dim_name[dim], G_labels[G_rank - 1 - dim],
-                            sizeof G_meta->dim_name[dim])
+    for (std::ptrdiff_t dim = 0; dim < G_rank; ++dim) {
+        assert(std::strncmp(G_meta->dim_name[G_rank - 1 - dim], G_labels[dim],
+                            sizeof G_meta->dim_name[G_rank - 1 - dim])
                == 0);
-        if (args::G == args::E && dim == 0)
-            assert(G_meta->dim[dim] <= int(G_lengths[G_rank - 1 - dim]));
+        if (args::G == args::E && dim == E_index_T)
+            assert(G_meta->dim[G_rank - 1 - dim] <= int(G_lengths[dim]));
         else
-            assert(G_meta->dim[dim] == int(G_lengths[G_rank - 1 - dim]));
+            assert(G_meta->dim[G_rank - 1 - dim] == int(G_lengths[dim]));
     }
     //
     // E is an input buffer: check metadata
@@ -444,16 +457,17 @@ cudaEvent_t cudaUpchannelizer_hirax_U8::execute(cudaPipelineState& /*pipestate*/
     assert(metadata_is_chord(E_mc));
     const std::shared_ptr<chordMetadata> E_meta = get_chord_metadata(E_mc);
     INFO("input E array: {:s} {:s}", E_meta->get_type_string(), E_meta->get_dimensions_string());
+    assert(std::strncmp(E_meta->name, E_name, sizeof E_meta->name) == 0);
     assert(E_meta->type == E_type);
     assert(E_meta->dims == E_rank);
-    for (std::size_t dim = 0; dim < E_rank; ++dim) {
-        assert(std::strncmp(E_meta->dim_name[dim], E_labels[E_rank - 1 - dim],
-                            sizeof E_meta->dim_name[dim])
+    for (std::ptrdiff_t dim = 0; dim < E_rank; ++dim) {
+        assert(std::strncmp(E_meta->dim_name[E_rank - 1 - dim], E_labels[dim],
+                            sizeof E_meta->dim_name[E_rank - 1 - dim])
                == 0);
-        if (args::E == args::E && dim == 0)
-            assert(E_meta->dim[dim] <= int(E_lengths[E_rank - 1 - dim]));
+        if (args::E == args::E && dim == E_index_T)
+            assert(E_meta->dim[E_rank - 1 - dim] <= int(E_lengths[dim]));
         else
-            assert(E_meta->dim[dim] == int(E_lengths[E_rank - 1 - dim]));
+            assert(E_meta->dim[E_rank - 1 - dim] == int(E_lengths[dim]));
     }
     //
     // Ebar is an output buffer: set metadata
@@ -463,12 +477,13 @@ cudaEvent_t cudaUpchannelizer_hirax_U8::execute(cudaPipelineState& /*pipestate*/
                                      Ebar_memname, gpu_frame_id, E_mc->parent_pool);
     std::shared_ptr<chordMetadata> const Ebar_meta = get_chord_metadata(Ebar_mc);
     *Ebar_meta = *E_meta;
+    std::strncpy(Ebar_meta->name, Ebar_name, sizeof Ebar_meta->name);
     Ebar_meta->type = Ebar_type;
     Ebar_meta->dims = Ebar_rank;
-    for (std::size_t dim = 0; dim < Ebar_rank; ++dim) {
-        std::strncpy(Ebar_meta->dim_name[dim], Ebar_labels[Ebar_rank - 1 - dim],
-                     sizeof Ebar_meta->dim_name[dim]);
-        Ebar_meta->dim[dim] = Ebar_lengths[Ebar_rank - 1 - dim];
+    for (std::ptrdiff_t dim = 0; dim < Ebar_rank; ++dim) {
+        std::strncpy(Ebar_meta->dim_name[Ebar_rank - 1 - dim], Ebar_labels[dim],
+                     sizeof Ebar_meta->dim_name[Ebar_rank - 1 - dim]);
+        Ebar_meta->dim[Ebar_rank - 1 - dim] = Ebar_lengths[dim];
     }
     INFO("output Ebar array: {:s} {:s}", Ebar_meta->get_type_string(),
          Ebar_meta->get_dimensions_string());
@@ -499,13 +514,13 @@ cudaEvent_t cudaUpchannelizer_hirax_U8::execute(cudaPipelineState& /*pipestate*/
     Ebar_arg = kernel_arg(Ebar_memory, Ebar_length);
 
     // Ringbuffer size
-    const std::size_t T_ringbuf = input_ringbuf_signal->size / E_T_sample_bytes;
-    const std::size_t Tbar_ringbuf = output_ringbuf_signal->size / Ebar_Tbar_sample_bytes;
+    const std::ptrdiff_t T_ringbuf = input_ringbuf_signal->size / E_T_sample_bytes;
+    const std::ptrdiff_t Tbar_ringbuf = output_ringbuf_signal->size / Ebar_Tbar_sample_bytes;
     DEBUG("Input ringbuffer size (samples):  {:d}", T_ringbuf);
     DEBUG("Output ringbuffer size (samples): {:d}", Tbar_ringbuf);
 
-    const std::size_t Tlength = Tmax - Tmin;
-    const std::size_t Tbarlength = Tbarmax - Tbarmin;
+    const std::ptrdiff_t Tlength = Tmax - Tmin;
+    const std::ptrdiff_t Tbarlength = Tbarmax - Tbarmin;
     DEBUG("Processed input samples: {:d}", Tlength);
     DEBUG("Produced output samples: {:d}", Tbarlength);
 
@@ -523,9 +538,8 @@ cudaEvent_t cudaUpchannelizer_hirax_U8::execute(cudaPipelineState& /*pipestate*/
     *(std::int32_t*)Tbarmax_host.data() = mod(Tbarmin, Tbar_ringbuf) + Tbarlength;
 
     // Update metadata
-    Ebar_meta->dim[0] = Tbarlength;
-    assert(Ebar_meta->dim[0] <= int(Ebar_lengths[3]));
-
+    Ebar_meta->dim[Ebar_rank - 1 - Ebar_index_Tbar] = Tbarlength;
+    assert(Ebar_meta->dim[Ebar_rank - 1 - Ebar_index_Tbar] <= int(Ebar_lengths[Ebar_index_Tbar]));
     // Since we use a ring buffer we do not need to update `meta->sample0_offset`
 
     assert(Ebar_meta->nfreq >= 0);
@@ -600,22 +614,23 @@ cudaEvent_t cudaUpchannelizer_hirax_U8::execute(cudaPipelineState& /*pipestate*/
 }
 
 void cudaUpchannelizer_hirax_U8::finalize_frame() {
-    const std::size_t Tlength = Tmax - Tmin;
-    const std::size_t Tbarlength = Tbarmax - Tbarmin;
+    const std::ptrdiff_t Tlength = Tmax - Tmin;
+    const std::ptrdiff_t Tbarlength = Tbarmax - Tbarmin;
 
     // Advance the input ringbuffer
-    const std::size_t T_consumed = num_consumed_elements(Tlength);
+    const std::ptrdiff_t T_consumed = num_consumed_elements(Tlength);
     DEBUG("Advancing input ringbuffer:");
     DEBUG("    Consumed samples: {:d}", T_consumed);
     DEBUG("    Consumed bytes:   {:d}", T_consumed * E_T_sample_bytes);
-    input_ringbuf_signal->finish_read(unique_name, T_consumed * E_T_sample_bytes);
+    input_ringbuf_signal->finish_read(unique_name, instance_num, T_consumed * E_T_sample_bytes);
 
     // Advance the output ringbuffer
-    const std::size_t Tbar_produced = Tbarlength;
+    const std::ptrdiff_t Tbar_produced = Tbarlength;
     DEBUG("Advancing output ringbuffer:");
     DEBUG("    Produced samples: {:d}", Tbar_produced);
     DEBUG("    Produced bytes:   {:d}", Tbar_produced * Ebar_Tbar_sample_bytes);
-    output_ringbuf_signal->finish_write(unique_name, Tbar_produced * Ebar_Tbar_sample_bytes);
+    output_ringbuf_signal->finish_write(unique_name, instance_num,
+                                        Tbar_produced * Ebar_Tbar_sample_bytes);
 
     cudaCommand::finalize_frame();
 }

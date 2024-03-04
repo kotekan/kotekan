@@ -1183,7 +1183,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "type" => "int4p4",
                         "kotekan_name" => "gpu_mem_formed_beams",
                         "axes" => [
-                            Dict("label" => "Tout", "length" => Tout),
+                            Dict("label" => "T", "length" => Tout),
                             Dict("label" => "P", "length" => P),
                             Dict("label" => "F", "length" => F),
                             Dict("label" => "B", "length" => B),

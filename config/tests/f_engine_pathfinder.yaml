@@ -69,7 +69,8 @@ upchannelization_factor: 16
 
 # FRB beamformer setup
 frb_downsampling_factor: 40
-frb_num_output_times: num_times / upchannelization_factor / frb_downsampling_factor # rounding down
+# frb_num_output_times: num_times / upchannelization_factor / frb_downsampling_factor   # rounding up to next power of 2
+frb_num_output_times: 4
 frb_num_beams_P: 2 * num_dish_locations_ns
 frb_num_beams_Q: 2 * num_dish_locations_ew
 
@@ -155,22 +156,14 @@ host_frb_beams_ringbuffer:
 # Stages
 run_fengine:
     kotekan_stage: FEngine
-    num_frames: 10
+    num_frames: 20
     E_buffer: host_voltage_buffer
     A_buffer: host_bb_phase_buffer
+    s_buffer: host_bb_shift_buffer
     J_buffer: host_expected_bb_beams_buffer
     G_buffer: host_upchan_gain_buffer
     W_buffer: host_frb_phase_buffer
     I_buffer: host_expected_frb_beams_buffer
-
-run_gen_shift:
-    kotekan_stage: testDataGen
-    type: const32
-    dim_name: ["F", "P", "B"]
-    # array_shape: [num_frequencies, num_polarizations, bb_num_beams]
-    array_shape: [128, 2, 16]
-    value: 13
-    out_buf: host_bb_shift_buffer
 
 run_send_voltage:
     gpu_0:
@@ -187,7 +180,6 @@ run_send_voltage:
           in_buf: host_voltage_buffer_in
           signal_buf: host_voltage_ringbuffer_out
           gpu_mem_output: voltage_buffer
-        - name: cudaSyncInput
 
 run_bb:
     gpu_0:
@@ -201,9 +193,11 @@ run_bb:
             host_bb_beams_out: host_bb_beams_buffer
         commands:
         - name: cudaInputData
+          do_once: true
           in_buf: host_bb_phase_in
           gpu_mem: bb_phase_buffer
         - name: cudaInputData
+          do_once: true
           in_buf: host_bb_shift_in
           gpu_mem: bb_shift_buffer
         - name: cudaSyncInput
@@ -229,6 +223,7 @@ run_upchan:
             host_upchan_voltage_ringbuffer_out: host_upchan_voltage_ringbuffer
         commands:
         - name: cudaInputData
+          do_once: true
           in_buf: host_upchan_gain_buffer_in
           gpu_mem: upchan_gain_buffer
         - name: cudaSyncInput
@@ -238,7 +233,6 @@ run_upchan:
           gpu_mem_input_voltage: voltage_buffer
           gpu_mem_gain: upchan_gain_buffer
           gpu_mem_output_voltage: upchan_voltage_buffer
-        - name: cudaSyncOutput
 
 run_recv_upchan_voltage:
     gpu_0:
@@ -256,80 +250,82 @@ run_recv_upchan_voltage:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_upchan_voltage_buffer_out
 
-run_frb:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_upchan_voltage_ringbuffer_in: host_upchan_voltage_ringbuffer
-            host_frb_phase_buffer_in: host_frb_phase_buffer
-        out_buffers:
-            host_frb_beams_ringbuffer_out: host_frb_beams_ringbuffer
-        commands:
-        - name: cudaInputData
-          in_buf: host_frb_phase_buffer_in
-          gpu_mem: frb_phase_buffer
-        - name: cudaSyncInput
-        - name: cudaFRBBeamformer_pathfinder
-          in_signal: host_upchan_voltage_ringbuffer_in
-          out_signal: host_frb_beams_ringbuffer_out
-          gpu_mem_voltage: upchan_voltage_buffer
-          gpu_mem_phase: frb_phase_buffer
-          gpu_mem_beamgrid: frb_beams_buffer
-        - name: cudaSyncOutput
-
-run_recv_frb_beams:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_frb_beams_ringbuffer_in: host_frb_beams_ringbuffer
-        out_buffers:
-            host_frb_beams_buffer_out: host_frb_beams_buffer
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_frb_beams_ringbuffer_in
-          gpu_mem_input: frb_beams_buffer
-          output_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * (num_frequencies * upchannelization_factor) * frb_num_output_times
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_frb_beams_buffer_out
+#TODO run_frb:
+#TODO     gpu_0:
+#TODO         kotekan_stage: cudaProcess
+#TODO         gpu_id: 0
+#TODO         in_buffers:
+#TODO             host_upchan_voltage_ringbuffer_in: host_upchan_voltage_ringbuffer
+#TODO             host_frb_phase_buffer_in: host_frb_phase_buffer
+#TODO         out_buffers:
+#TODO             host_frb_beams_ringbuffer_out: host_frb_beams_ringbuffer
+#TODO         commands:
+#TODO         - name: cudaInputData
+#TODO           in_buf: host_frb_phase_buffer_in
+#TODO           gpu_mem: frb_phase_buffer
+#TODO         - name: cudaSyncInput
+#TODO         - name: cudaFRBBeamformer_pathfinder
+#TODO           in_signal: host_upchan_voltage_ringbuffer_in
+#TODO           out_signal: host_frb_beams_ringbuffer_out
+#TODO           gpu_mem_voltage: upchan_voltage_buffer
+#TODO           gpu_mem_phase: frb_phase_buffer
+#TODO           gpu_mem_beamgrid: frb_beams_buffer
+#TODO         # - name: cudaSyncOutput
+#TODO 
+#TODO run_recv_frb_beams:
+#TODO     gpu_0:
+#TODO         kotekan_stage: cudaProcess
+#TODO         gpu_id: 0
+#TODO         in_buffers:
+#TODO             host_frb_beams_ringbuffer_in: host_frb_beams_ringbuffer
+#TODO         out_buffers:
+#TODO             host_frb_beams_buffer_out: host_frb_beams_buffer
+#TODO         commands:
+#TODO         - name: cudaCopyFromRingbuffer
+#TODO           host_signal: host_frb_beams_ringbuffer_in
+#TODO           gpu_mem_input: frb_beams_buffer
+#TODO           output_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * (num_frequencies * upchannelization_factor) * frb_num_output_times
+#TODO           ring_buffer_size: buffer_depth * output_size
+#TODO           out_buf: host_frb_beams_buffer_out
 
 write_data:
     base_dir: /tmp/f_engine_pathfinder
-    # exit_after_n_frames: 9
-    # exit_with_n_writers: 9
     write_voltage:
         kotekan_stage: asdfFileWrite
         in_buf: host_voltage_buffer
         file_name: voltage
-    #TODO write_bb_phase:
-    #TODO     kotekan_stage: asdfFileWrite
-    #TODO     in_buf: host_bb_phase_buffer
-    #TODO     file_name: bb_phase
-    #TODO write_expected_bb_beams:
-    #TODO     kotekan_stage: asdfFileWrite
-    #TODO     in_buf: host_expected_bb_beams_buffer
-    #TODO     file_name: expected_bb_beams
-    #TODO write_bb_beams:
-    #TODO     kotekan_stage: asdfFileWrite
-    #TODO     in_buf: host_bb_beams_buffer
-    #TODO     file_name: bb_beams
-    #TODO write_gain:
-    #TODO     kotekan_stage: asdfFileWrite
-    #TODO     in_buf: host_upchan_gain_buffer
-    #TODO     file_name: upchan_gain
-    #TODO write_upchan_voltage:
-    #TODO     kotekan_stage: asdfFileWrite
-    #TODO     in_buf: host_upchan_voltage_buffer
-    #TODO     file_name: upchan_voltage
+    write_bb_phase:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_bb_phase_buffer
+        file_name: bb_phase
+    write_bb_shift:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_bb_shift_buffer
+        file_name: bb_shift
+    # write_expected_bb_beams:
+    #     kotekan_stage: asdfFileWrite
+    #     in_buf: host_expected_bb_beams_buffer
+    #     file_name: expected_bb_beams
+    write_bb_beams:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_bb_beams_buffer
+        file_name: bb_beams
+    write_gain:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_upchan_gain_buffer
+        file_name: upchan_gain
+    write_upchan_voltage:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_upchan_voltage_buffer
+        file_name: upchan_voltage
     #TODO write_frb_phase:
     #TODO     kotekan_stage: asdfFileWrite
     #TODO     in_buf: host_frb_phase_buffer
     #TODO     file_name: frb_phase
-    #TODO write_expected_frb_beams:
-    #TODO     kotekan_stage: asdfFileWrite
-    #TODO     in_buf: host_expected_frb_beams_buffer
-    #TODO     file_name: expected_frb_beams
+    #TODO # write_expected_frb_beams:
+    #TODO #     kotekan_stage: asdfFileWrite
+    #TODO #     in_buf: host_expected_frb_beams_buffer
+    #TODO #     file_name: expected_frb_beams
     #TODO write_frb_beams:
     #TODO     kotekan_stage: asdfFileWrite
     #TODO     in_buf: host_frb_beams_buffer

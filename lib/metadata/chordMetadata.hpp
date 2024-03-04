@@ -70,6 +70,7 @@ public:
 
     int frame_counter;
 
+    char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
     chordDataType type;
 
     int dims;
@@ -93,7 +94,17 @@ public:
     // where `T` is the time sample index and `F` is the coarse frequency index.
     int64_t sample0_offset;
     // Number of bytes per time sample
-    size_t sample_bytes;
+    size_t sample_bytes() const {
+        size_t bytes = chord_datatype_bytes(type);
+        assert(dims >= 0);
+        // Skip the first dimension. The number of bytes per sample is the number of bytes needed to
+        // store one array slice.
+        for (int d = 1; d < dims; ++d) {
+            assert(dim[d] >= 0);
+            bytes *= dim[d];
+        }
+        return bytes;
+    }
 
     // Per-frequency arrays
 

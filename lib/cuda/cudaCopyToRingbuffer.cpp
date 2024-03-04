@@ -74,7 +74,8 @@ cudaCopyToRingbuffer::~cudaCopyToRingbuffer() {
 
 int cudaCopyToRingbuffer::wait_on_precondition() {
     DEBUG("Waiting for ringbuffer space for writing to become available ({:d} bytes)", _input_size);
-    std::optional<size_t> val = signal_buffer->wait_for_writable(unique_name, _input_size);
+    std::optional<size_t> val =
+        signal_buffer->wait_for_writable(unique_name, instance_num, _input_size);
     DEBUG("Ringbuffer space for writing is now available");
     if (!val.has_value())
         return -1;
@@ -145,9 +146,12 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
         DEBUG("Copying metadata for frame {:d} to GPU array {:s}", gpu_frame_id, _gpu_mem_output);
         // Copy metadata (because we modify it)
         meta = std::make_shared<chordMetadata>(*meta);
-        assert(output_cursor % meta->sample_bytes == 0);
-        meta->sample0_offset -= output_cursor / meta->sample_bytes;
+        assert(output_cursor % meta->sample_bytes() == 0);
+        meta->sample0_offset -= output_cursor / meta->sample_bytes();
         assert(meta->sample0_offset == 0);
+        assert(meta->dims > 0);
+        assert(in_buffer->frame_size % meta->sample_bytes() == 0);
+        assert(meta->dim[0] == in_buffer->frame_size / meta->sample_bytes());
         signal_buffer->set_metadata(0, meta);
     }
 
@@ -168,5 +172,5 @@ void cudaCopyToRingbuffer::finalize_frame() {
     if (in_buffer)
         in_buffer->mark_frame_empty(unique_name, gpu_frame_id % in_buffer->num_frames);
     // At this point we know the Cuda copy completed, but do we *really* need that to be the case??
-    signal_buffer->finish_write(unique_name, _input_size);
+    signal_buffer->finish_write(unique_name, instance_num, _input_size);
 }

@@ -150,7 +150,8 @@ void GenericBuffer::allocate_new_metadata_object(int ID) {
 
     buffer_lock lock(mutex);
     if (metadata_pool == nullptr) {
-        FATAL_ERROR_F("No metadata pool on %s but metadata was needed by a producer", buffer_name);
+        FATAL_ERROR_F("No metadata pool on %s but metadata was needed by a producer",
+                      buffer_name.c_str());
     }
     DEBUG2_F("Called allocate_new_metadata_object, buf %p, %d", this, ID);
 
@@ -350,7 +351,7 @@ int Buffer::wait_for_full_frame_timeout(const std::string& name, const int ID,
                                         const struct timespec timeout_time) {
     std::chrono::duration dur =
         std::chrono::seconds{timeout_time.tv_sec} + std::chrono::nanoseconds{timeout_time.tv_nsec};
-    std::chrono::time_point<std::chrono::system_clock> deadline(dur);
+    std::chrono::time_point<std::chrono::system_clock, decltype(dur)> deadline(dur);
     std::cv_status st = std::cv_status::no_timeout;
     std::unique_lock<std::recursive_mutex> lock(mutex);
     auto& con = consumers.at(name);
@@ -420,7 +421,7 @@ void Buffer::print_full_status() {
     char status_string[num_frames + 1];
     status_string[num_frames] = '\0';
 
-    INFO_F("--------------------- %s ---------------------", buffer_name);
+    INFO_F("--------------------- %s ---------------------", buffer_name.c_str());
 
     for (int i = 0; i < num_frames; ++i) {
         if (is_full[i])
@@ -439,7 +440,7 @@ void Buffer::print_full_status() {
                 status_string[i] = '+';
             else
                 status_string[i] = '_';
-            INFO_F("%-30s : %s (%d, %d)", x.name, status_string, x.last_frame_acquired,
+            INFO_F("%-30s : %s (%d, %d)", x.name.c_str(), status_string, x.last_frame_acquired,
                    x.last_frame_released);
         }
 
@@ -451,7 +452,7 @@ void Buffer::print_full_status() {
                 status_string[i] = '=';
             else
                 status_string[i] = '_';
-            INFO_F("%-30s : %s (%d, %d)", x.name, status_string, x.last_frame_acquired,
+            INFO_F("%-30s : %s (%d, %d)", x.name.c_str(), status_string, x.last_frame_acquired,
                    x.last_frame_released);
         }
 }
