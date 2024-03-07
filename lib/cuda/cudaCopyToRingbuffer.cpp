@@ -151,7 +151,7 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
         assert(meta->sample0_offset == 0);
         assert(meta->dims > 0);
         assert(in_buffer->frame_size % meta->sample_bytes() == 0);
-        assert(meta->dim[0] == in_buffer->frame_size / meta->sample_bytes());
+        assert(meta->dim[0] == std::ptrdiff_t(in_buffer->frame_size / meta->sample_bytes()));
         signal_buffer->set_metadata(0, meta);
     }
 

@@ -5,8 +5,8 @@ using SixelTerm
 
 setup = :pathfinder
 
-dir = "/tmp/f_engine_$(setup)_upchan"
-prefix = "blue_"
+dir = "/tmp/f_engine_$(setup)"
+prefix = "indigo_"
 iter = "00000000"
 
 t2c(x::NTuple{2}) = Complex(x...)
