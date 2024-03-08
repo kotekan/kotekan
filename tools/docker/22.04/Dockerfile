@@ -131,9 +131,9 @@ RUN apt-get update && \
 # Install Blosc2 (a prerequisite for ASDF)
 RUN mkdir src && \
     (cd src && \
-    wget https://github.com/Blosc/c-blosc2/archive/refs/tags/v2.13.1.tar.gz && \
-    tar xzf v2.13.1.tar.gz && \
-    cd c-blosc2-2.13.1 && \
+    wget https://github.com/Blosc/c-blosc2/archive/refs/tags/v2.13.2.tar.gz && \
+    tar xzf v2.13.2.tar.gz && \
+    cd c-blosc2-2.13.2 && \
     cmake -B build -S . \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr/local \
@@ -153,7 +153,7 @@ RUN mkdir src && \
         cd src && \
         git clone -n https://github.com/eschnett/asdf-cxx && \
         cd asdf-cxx && \
-        git checkout 205182f47ad3fe13ec163105dd76c5f3ea72e51c && \
+        git checkout 8a2e1a9f6513ef17bbe201c3afd5b43032a574f1 && \
         cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
         cmake --build build --parallel $(nproc) && \
         cmake --install build && \
