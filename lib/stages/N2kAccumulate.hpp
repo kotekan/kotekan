@@ -15,7 +15,6 @@
 #include "visUtil.hpp"           // for frameID, freq_ctype, input_ctype, prod_ctype
 
 #include <cstdint>    // for uint32_t, int32_t
-#include <mutex>      // for mutex
 #include <string>     // for string
 #include <time.h>     // for size_t, timespec
 #include <vector>     // for vector
@@ -57,7 +56,7 @@ public:
      * @param out_frame_id The output frame ID.
      * @return bool True if successful, false otherwise.
      */
-    bool output_and_reset(int &in_frame_id, int &out_frame_id);
+    bool output_and_reset(frameID &in_frame_id, frameID &out_frame_id);
 
 private:
     // Buffers to read/write
@@ -76,10 +75,11 @@ private:
     uint64_t _in_frame_duration_nsec;
     uint64_t _in_frame_vis_duration_nsec;
     
-    size_t _num_elements;
-    size_t _num_vis_products;
-    size_t _num_in_frame_products;
-
+    size_t _num_elements; ///< Number of telescope elements
+    size_t _num_N2k_products; ///< Number of products produced by the N2k correlator
+    size_t _num_N2k_products_freqs; ///< Number of N2k products x frequencies
+    size_t _num_accum_products; ///< Number of visibility products in accumulate output
+ 
     // The below vectors are initialized in the constructor after _num_vis_products
     // and _num_freq_in_frame are known.
     std::vector<int32_t> _vis;

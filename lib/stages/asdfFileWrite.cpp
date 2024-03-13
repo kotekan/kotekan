@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cassert>
 #include <chordMetadata.hpp>
+#include <visBuffer.hpp>
 #include <cstdint>
 #include <errno.h>
 #include <fstream>
@@ -106,6 +107,8 @@ public:
             if (stop_thread)
                 break;
 
+            DEBUG("Writing frame {:d} of {:d}.", frame_counter, exit_after_n_frames);
+
             // Wait for the next frame
             const std::uint8_t* const frame = buffer->wait_for_full_frame(unique_name, frame_id);
             if (frame == nullptr)
@@ -114,86 +117,116 @@ public:
             // Start timer
             const double t0 = current_time();
 
+
             // Fetch metadata
             const std::shared_ptr<metadataObject> mc = buffer->get_metadata(frame_id);
             assert(mc);
-            assert(metadata_is_chord(mc));
-            const std::shared_ptr<chordMetadata> meta = get_chord_metadata(mc);
+            assert(metadata_is_chord(mc) || metadata_is_vis(mc));
 
             // Create ASDF project
             auto group = std::make_shared<ASDF::group>();
 
-            // Create ASDF ndarray
-            const ASDF::scalar_type_id_t type = chord2asdf(meta->type);
-            const std::size_t typesize = chord_datatype_bytes(meta->type);
-
-            const int ndims = meta->dims;
-            std::vector<std::int64_t> dims(ndims);
-            for (int d = 0; d < ndims; ++d)
-                dims.at(d) = meta->dim[d];
-            std::int64_t size = 1;
-            for (int d = 0; d < ndims; ++d)
-                size *= dims.at(d);
-
-            const std::shared_ptr<ASDF::block_t> block = std::make_shared<ASDF::ptr_block_t>(
-                const_cast<std::uint8_t*>(frame), size * typesize);
-
             const auto compression = ASDF::compression_t::blosc;
             const int compression_level = 9;
 
-            const auto ndarray = std::make_shared<ASDF::ndarray>(
-                ASDF::make_constant_memoized(block), std::optional<ASDF::block_info_t>(),
-                ASDF::block_format_t::block, compression, compression_level, std::vector<bool>(),
-                std::make_shared<ASDF::datatype_t>(type), ASDF::host_byteorder(), dims);
-            group->emplace(buffer->buffer_name, std::make_shared<ASDF::ndarray_entry>(ndarray));
+            if(metadata_is_chord(mc)) {
 
-            // Describe metadata
+                const std::shared_ptr<chordMetadata> meta = get_chord_metadata(mc);
 
-            group->emplace("nfreq", std::make_shared<ASDF::int_entry>(meta->nfreq));
+                // Create ASDF ndarray
+                const ASDF::scalar_type_id_t type = chord2asdf(meta->type);
+                const std::size_t typesize = chord_datatype_bytes(meta->type);
 
-            auto coarse_freq = std::make_shared<ASDF::sequence>();
-            for (int freq = 0; freq < meta->nfreq; ++freq)
-                coarse_freq->push_back(std::make_shared<ASDF::int_entry>(meta->coarse_freq[freq]));
-            group->emplace("coarse_freq", coarse_freq);
+                const int ndims = meta->dims;
+                std::vector<std::int64_t> dims(ndims);
+                for (int d = 0; d < ndims; ++d)
+                    dims.at(d) = meta->dim[d];
+                std::int64_t size = 1;
+                for (int d = 0; d < ndims; ++d)
+                    size *= dims.at(d);
 
-            auto freq_upchan_factor = std::make_shared<ASDF::sequence>();
-            for (int freq = 0; freq < meta->nfreq; ++freq)
-                freq_upchan_factor->push_back(
-                    std::make_shared<ASDF::int_entry>(meta->freq_upchan_factor[freq]));
-            group->emplace("freq_upchan_factor", freq_upchan_factor);
+                const std::shared_ptr<ASDF::block_t> block = std::make_shared<ASDF::ptr_block_t>(
+                    const_cast<std::uint8_t*>(frame), size * typesize);
 
-            auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
-            for (int freq = 0; freq < meta->nfreq; ++freq)
-                half_fpga_sample0->push_back(
-                    std::make_shared<ASDF::int_entry>(meta->half_fpga_sample0[freq]));
-            group->emplace("half_fpga_sample0", half_fpga_sample0);
+                const auto ndarray = std::make_shared<ASDF::ndarray>(
+                    ASDF::make_constant_memoized(block), std::optional<ASDF::block_info_t>(),
+                    ASDF::block_format_t::block, compression, compression_level, std::vector<bool>(),
+                    std::make_shared<ASDF::datatype_t>(type), ASDF::host_byteorder(), dims);
+                group->emplace(buffer->buffer_name, std::make_shared<ASDF::ndarray_entry>(ndarray));
 
-            auto time_downsampling_fpga = std::make_shared<ASDF::sequence>();
-            for (int freq = 0; freq < meta->nfreq; ++freq)
-                time_downsampling_fpga->push_back(
-                    std::make_shared<ASDF::int_entry>(meta->time_downsampling_fpga[freq]));
-            group->emplace("time_downsampling_fpga", time_downsampling_fpga);
+                // Describe metadata
 
-            auto dim_names = std::make_shared<ASDF::sequence>();
-            for (int d = 0; d < ndims; ++d)
-                dim_names->push_back(
-                    std::make_shared<ASDF::string_entry>(meta->get_dimension_name(d)));
-            group->emplace("dim_names", dim_names);
+                group->emplace("nfreq", std::make_shared<ASDF::int_entry>(meta->nfreq));
 
-            if (meta->ndishes >= 0)
-                group->emplace("ndishes", std::make_shared<ASDF::int_entry>(meta->ndishes));
+                auto coarse_freq = std::make_shared<ASDF::sequence>();
+                for (int freq = 0; freq < meta->nfreq; ++freq)
+                    coarse_freq->push_back(std::make_shared<ASDF::int_entry>(meta->coarse_freq[freq]));
+                group->emplace("coarse_freq", coarse_freq);
 
-            if (meta->dish_index) {
-                auto dish_index = std::make_shared<ASDF::ndarray>(
-                    std::vector<int>(meta->dish_index,
-                                     meta->dish_index
-                                         + meta->n_dish_locations_ew * meta->n_dish_locations_ns),
-                    ASDF::block_format_t::inline_array, ASDF::compression_t::none, -1,
-                    std::vector<bool>(),
-                    std::vector<int64_t>{meta->n_dish_locations_ns, meta->n_dish_locations_ew});
-                auto dish_index_entry = std::make_shared<ASDF::ndarray_entry>(dish_index);
-                group->emplace("dish_index", dish_index_entry);
+                auto freq_upchan_factor = std::make_shared<ASDF::sequence>();
+                for (int freq = 0; freq < meta->nfreq; ++freq)
+                    freq_upchan_factor->push_back(
+                        std::make_shared<ASDF::int_entry>(meta->freq_upchan_factor[freq]));
+                group->emplace("freq_upchan_factor", freq_upchan_factor);
+
+                auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
+                for (int freq = 0; freq < meta->nfreq; ++freq)
+                    half_fpga_sample0->push_back(
+                        std::make_shared<ASDF::int_entry>(meta->half_fpga_sample0[freq]));
+                group->emplace("half_fpga_sample0", half_fpga_sample0);
+
+                auto time_downsampling_fpga = std::make_shared<ASDF::sequence>();
+                for (int freq = 0; freq < meta->nfreq; ++freq)
+                    time_downsampling_fpga->push_back(
+                        std::make_shared<ASDF::int_entry>(meta->time_downsampling_fpga[freq]));
+                group->emplace("time_downsampling_fpga", time_downsampling_fpga);
+
+                auto dim_names = std::make_shared<ASDF::sequence>();
+                for (int d = 0; d < ndims; ++d)
+                    dim_names->push_back(
+                        std::make_shared<ASDF::string_entry>(meta->get_dimension_name(d)));
+                group->emplace("dim_names", dim_names);
+
+                if (meta->ndishes >= 0)
+                    group->emplace("ndishes", std::make_shared<ASDF::int_entry>(meta->ndishes));
+
+                if (meta->dish_index) {
+                    auto dish_index = std::make_shared<ASDF::ndarray>(
+                        std::vector<int>(meta->dish_index,
+                                        meta->dish_index
+                                            + meta->n_dish_locations_ew * meta->n_dish_locations_ns),
+                        ASDF::block_format_t::inline_array, ASDF::compression_t::none, -1,
+                        std::vector<bool>(),
+                        std::vector<int64_t>{meta->n_dish_locations_ns, meta->n_dish_locations_ew});
+                    auto dish_index_entry = std::make_shared<ASDF::ndarray_entry>(dish_index);
+                    group->emplace("dish_index", dish_index_entry);
+                }
+
+            } else if(metadata_is_vis(mc)) {
+                
+
+                const std::shared_ptr<VisMetadata> meta = std::static_pointer_cast<VisMetadata>(mc);
+
+                auto frame_view = VisFrameView(buffer, frame_id);
+
+                std::vector<ASDF::complex64_t> vis_view( frame_view.vis.begin(), frame_view.vis.end() );
+                auto vis_array = std::make_shared<ASDF::ndarray>(
+                    vis_view, ASDF::block_format_t::inline_array, compression, compression_level,
+                    std::vector<bool>(), std::vector<int64_t>{frame_view.num_prod});
+                group->emplace("vis", vis_array);
+
+                std::vector<ASDF::float32_t> weights_view( frame_view.weight.begin(), frame_view.weight.end() );
+                auto weights_array = std::make_shared<ASDF::ndarray>(
+                    weights_view, ASDF::block_format_t::inline_array, compression, compression_level,
+                    std::vector<bool>(), std::vector<int64_t>{frame_view.num_prod});
+                group->emplace("weights", weights_array);
+
+                group->emplace("num_elements", std::make_shared<ASDF::int_entry>(meta->num_elements));
+                group->emplace("num_prod", std::make_shared<ASDF::int_entry>(meta->num_prod));
+                group->emplace("freq_id", std::make_shared<ASDF::int_entry>(meta->freq_id));
+
             }
+
 
             // Define file name
             std::ostringstream ibuf;
@@ -236,8 +269,10 @@ public:
 
             // Mark frame as done
             buffer->mark_frame_empty(unique_name, frame_id);
+
         } // for
 
+        DEBUG("Done writing.");
         if (exit_with_n_writers > 0 && ++n_finished >= exit_with_n_writers)
             exit_kotekan(ReturnCode::CLEAN_EXIT);
     }

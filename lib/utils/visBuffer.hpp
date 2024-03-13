@@ -12,6 +12,7 @@
 #include "Telescope.hpp"      // for freq_id_t
 #include "buffer.hpp"         // for Buffer
 #include "chimeMetadata.hpp"  // for chimeMetadata
+#include "chordMetadata.hpp"  // for chordMetadata
 #include "datasetManager.hpp" // for dset_id_t
 #include "visUtil.hpp"        // for cfloat
 
@@ -80,7 +81,22 @@ public:
     uint32_t num_prod;
     /// Number of eigenvectors and values calculated
     uint32_t num_ev;
+
+    // Upstream CHORD metadata
+    chordMetadata chord_meta;
 };
+
+/**
+ * @brief Check if the metadata is of type visMetadata.
+ */
+inline bool metadata_is_vis(const std::shared_ptr<metadataObject> mc) {
+    if (!mc)
+        return false;
+    std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
+    assert(pool);
+    return (pool->type_name == "VisMetadata");
+    return false;
+}
 
 void to_json(nlohmann::json& j, const VisMetadata& m);
 void from_json(const nlohmann::json& j, VisMetadata& m);
@@ -223,7 +239,22 @@ public:
      *                       if not multifrequency)
      *
      **/
-    void fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t ind);
+    void fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t f_ind);
+
+    /**
+     * @brief Fill the VisMetadata from a chimeMetadata struct.
+     *
+     * The time field is filled with the GPS time if it is set (checked via
+     * `Telescope.gps_time_enabled`), otherwise the `first_packet_recv_time` is
+     * used. Also note, there is no dataset information in chimeMetadata so the
+     * `dataset_id` is set to zero.
+     *
+     * @param chord_metadata Metadata to fill from.
+     * @param ind            Frequency index
+     *
+     **/
+    void fill_chord_metadata(const std::shared_ptr<chordMetadata> chord_metadata,
+                             uint32_t f_ind);
 
     /**
      * @brief Populate metadata.

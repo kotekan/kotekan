@@ -3,7 +3,8 @@
 #include "FrameView.hpp"     // for bind_span, bind_scalar, FrameView
 #include "Telescope.hpp"     // for Telescope
 #include "buffer.hpp"        // for Buffer, allocate_new_metadata_object
-#include "chimeMetadata.hpp" // for chimeMetadata, get_stream_id_from_metadata
+#include "chordMetadata.hpp" // for chordMetadata
+#include "chimedMetadata.hpp" // for chimedMetadata, get_stream_id_from_metadata
 #include "metadata.hpp"      // for metadataContainer
 
 #include "fmt.hpp" // for format, fmt
@@ -276,14 +277,13 @@ size_t VisFrameView::calculate_frame_size(kotekan::Config& config, const std::st
     int num_prod = config.get_default<int>(unique_name, "num_prod", -1);
 
     if (num_prod < 0) {
-        // num_prod = num_elements * (num_elements + 1) / 2;
-        num_prod = 2 * num_elements * num_elements;
+        num_prod = num_elements * (num_elements + 1) / 2;
     }
 
     return calculate_buffer_layout(num_elements, num_prod, num_ev).first;
 }
 
-void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t ind) {
+void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t f_ind) {
 
     auto& tel = Telescope::instance();
 
@@ -291,7 +291,7 @@ void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata, uint
     dataset_id = dset_id_t::null;
 
     // Set the frequency index from the stream id of the metadata
-    freq_id = tel.to_freq_id(get_stream_id_from_metadata(chime_metadata), ind);
+    freq_id = tel.to_freq_id(get_stream_id_from_metadata(chime_metadata), f_ind);
 
     // Set the time
     uint64_t fpga_seq = chime_metadata->fpga_seq_num;
@@ -303,6 +303,31 @@ void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata, uint
         ts = chime_metadata->gps_time;
     } else {
         TIMEVAL_TO_TIMESPEC(&(chime_metadata->first_packet_recv_time), &ts);
+    }
+
+    time = std::make_tuple(fpga_seq, ts);
+}
+
+void VisFrameView::fill_chord_metadata(const std::shared_ptr<chordMetadata> chord_metadata, uint32_t f_ind) {
+
+    auto& tel = Telescope::instance();
+
+    // Set to zero as there's no information in chimeMetadata about it.
+    dataset_id = dset_id_t::null;
+
+    // Set the frequency index from the stream id of the metadata
+    freq_id = tel.to_freq_id({(uint64_t)chord_metadata->stream_ID}, f_ind);
+
+    // Set the time
+    uint64_t fpga_seq = chord_metadata->fpga_seq_num;
+
+    timespec ts;
+
+    // Use the GPS time if appropriate.
+    if (tel.gps_time_enabled()) {
+        ts = chord_metadata->gps_time;
+    } else {
+        TIMEVAL_TO_TIMESPEC(&(chord_metadata->first_packet_recv_time), &ts);
     }
 
     time = std::make_tuple(fpga_seq, ts);

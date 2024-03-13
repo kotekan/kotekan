@@ -58,17 +58,15 @@ N2kAccumulate::N2kAccumulate(Config& config, const std::string& unique_name,
 
     // Number of products sent by the GPU
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
-    _num_vis_products = _num_elements*_num_elements; // right now, N2k sends over a full matrix
-    _num_in_frame_products = _num_freq_in_frame * _num_vis_products;
-    // TODO: Only loop through half of blocked matrix
-    // size_t vis_block_size = config.get<size_t>(unique_name, "block_size");
-    // size_t n_vis_blocks = num_elements / vis_block_size;
-    // _num_out_vis_products = _num_freq_in_frame * n_vis_blocks * (n_vis_blocks + 1) * block_size * block_size / 2;
-
-    // Initializing these here using the computed _num_in_frame_products
-    _vis = std::vector<int32_t>(2 * _num_in_frame_products, 0); // vis with complex as 2 ints
-    _vis_even = std::vector<int32_t>(2 * _num_in_frame_products, 0); // store even vis matrix for differencing
-    _weights = std::vector<int32_t>(_num_in_frame_products, 0); // real-valued weights
+    _num_N2k_products = _num_elements*_num_elements; // TODO: Eventually, a blocked matrix might be sent by the gpu
+    _num_N2k_products_freqs = _num_N2k_products * _num_freq_in_frame;
+    // N2kAccumulate will only work with the lower triangle
+    _num_accum_products = _num_elements*(_num_elements+1)/2; // Only store the triangle
+    
+    // Initializing these here using the computed _num_N2k_products_freqs (accumulate the full, blocked matrix x frequencies from the GPU)
+    _vis = std::vector<int32_t>(2 * _num_N2k_products_freqs, 0); // vis with complex as 2 ints
+    _vis_even = std::vector<int32_t>(2 * _num_N2k_products_freqs, 0); // store even vis matrix for differencing
+    _weights = std::vector<int32_t>(_num_N2k_products_freqs, 0); // real-valued weights
     // number of fpga samples, per frequency, in frame
     _n_valid_fpga_samples_in_vis = std::vector<int32_t>(_num_freq_in_frame, 0);
     _n_valid_fpga_samples_in_vis_even = std::vector<int32_t>(_num_freq_in_frame, 0);
@@ -79,12 +77,14 @@ N2kAccumulate::N2kAccumulate(Config& config, const std::string& unique_name,
 
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
+    // TODO...
+    // Make sure output buffer has enough frames (>= # frequencies) and are sized correctly
 }
 
 void N2kAccumulate::main_thread() {
 
-    int in_frame_id = 0;
-    int out_frame_id = 0;
+    frameID in_frame_id(in_buf);
+    frameID out_frame_id(out_buf);
 
     INFO("Accumulating GPU output for {:s}[{:d}] putting result in {:s}[{:d}]",
             in_buf->buffer_name, in_frame_id, out_buf->buffer_name, out_frame_id);
@@ -99,23 +99,24 @@ void N2kAccumulate::main_thread() {
     while (!stop_thread) {
 
         // Fetch a new frame and get its sequence id
+        DEBUG("Waiting for new input frame {:s}[{:d}].", in_buf->buffer_name, in_frame_id);
         uint8_t* in_frame = in_buf->wait_for_full_frame(unique_name, in_frame_id);
         if (in_frame == nullptr)
             break;
         int32_t* input = (int32_t*)in_frame;
         size_t in_frame_num = get_fpga_seq_num(in_buf, in_frame_id) / _n_fpga_samples_per_N2k_frame;
-        chordMetadata* frame_metadata = (chordMetadata*) in_buf->get_metadata(in_frame_id);
+        std::shared_ptr<chordMetadata> frame_metadata = get_chord_metadata(in_buf, in_frame_id);
 
         // Start and end times of this frame
         bool gps_time_enabled = false;
         // Here we'll just use raw nanoseconds
         uint64_t t_frame_s;
         if (gps_time_enabled) {
-            t_frame_s = ts_to_uint64(frame_metadata->chime.gps_time);
+            t_frame_s = ts_to_uint64(frame_metadata->gps_time);
         } else {
             // If GPS time is not set, fall back to system time.
             timespec ts;
-            TIMEVAL_TO_TIMESPEC( &frame_metadata->chime.first_packet_recv_time,
+            TIMEVAL_TO_TIMESPEC( &frame_metadata->first_packet_recv_time,
                 &ts );
             t_frame_s = ts_to_uint64(ts);
         }
@@ -140,18 +141,18 @@ void N2kAccumulate::main_thread() {
             // Finalize accumulation if the visibility elements are past the output time...
             //  end on an odd frame too so we accumulate weights.
             if(t_vis_s > t_output
-                and vis_sample_num_abs % 2 == 1) {
+                && vis_sample_num_abs % 2 == 1) {
 
-                DEBUG("Finishing N2kAccumulate output frame. Accumulated {:d} visibility samples.",
+                INFO("Finishing N2kAccumulate output frame. Accumulated {:d} visibility samples.",
                     vis_samples_in_out_frame);
                 output_and_reset( in_frame_id, out_frame_id );
 
-                t_output += 1000000000L; // TODO: Make this a config parameter
+                t_output += 1000000000L; // TODO: Make this a config parameter. Is there a library for LST?
                 vis_samples_in_out_frame = 0;
             }
 
-            // Actual accumulation
-            for (size_t d = 0; d < 2*_num_in_frame_products; ++d) {
+            // Actual accumulation over
+            for (size_t d = 0; d < 2*_num_N2k_products_freqs; ++d) {
                 _vis[d] += input[d];
             } // d
 
@@ -160,9 +161,9 @@ void N2kAccumulate::main_thread() {
             // Potential optimization: copying vis_even is only really
             // necessary if we've started accumulating a new frame
             if (vis_sample_num_abs % 2 == 0) {
-                std::copy(input, input + 2*_num_in_frame_products, _vis_even.begin());
+                std::copy(input, input + 2*_num_N2k_products_freqs, _vis_even.begin());
             } else {
-                for (size_t d = 0; d < _num_in_frame_products; ++d) {
+                for (size_t d = 0; d < _num_N2k_products_freqs; ++d) {
                     int32_t dr = _vis[2*d + 0] - _vis_even[2*d + 0];
                     int32_t di = _vis[2*d + 1] - _vis_even[2*d + 1];
                     _weights[d] += (dr * dr + di * di);
@@ -193,51 +194,55 @@ void N2kAccumulate::main_thread() {
     }
 }
 
-bool N2kAccumulate::output_and_reset( int &in_frame_id, int &out_frame_id )
+bool N2kAccumulate::output_and_reset( frameID &in_frame_id, frameID &out_frame_id )
 {
     // Different frame for each frequency
 
     // Loop over frequency
     for (size_t f = 0; f < _num_freq_in_frame; ++f) {
 
-        float* out_vis = (float*) out_buf->wait_for_empty_frame(unique_name, out_frame_id);
-        float* out_weights = out_vis + 2*_num_vis_products;
-        // if (output == nullptr) {
-        //     return false;
-        // }
-        // TODO: any need to adjust metadata? CHORD will look a bit different.
-        in_buf->pass_metadata(in_frame_id, out_buf, out_frame_id);
+        if (out_buf->wait_for_empty_frame(unique_name, out_frame_id) == nullptr) {
+            return false;
+        }
+        // TODO: Make sure this is behaving correctly...
+        auto out_vis = VisFrameView::create_frame_view(out_buf, out_frame_id, _num_elements,
+                                                    _num_accum_products, true);
 
         // Sample numbers for normalizing weights
         float ns = _n_valid_fpga_samples_in_vis[f]; // ns = "number of samples"
         float ins = (ns != 0.0) ? (1.0 / ns) : 0.0;
 
-        // Copy data into buffer
-        // TODO: For now just copy over. Eventually this should change to
-        // (possibly) restructure the visibility matrix.
-        for (size_t d = 0; d < _num_vis_products; ++d) {
-            // Populate the visibility matrix
-            cfloat v = {(float)_vis[f*_num_vis_products + 2*d+1], (float)_vis[f*_num_vis_products + 2*d+0]}; // TODO: conjugate or no? What does downstream expect?
-            out_vis[2*d+0] = ins*std::real(v);
-            out_vis[2*d+1] = ins*std::imag(v);
-            // de-bias and populate the weights matrix (with the inverse variance)
-            _weights[f*_num_vis_products + d] -= std::norm(v) * _n_valid_sample_diff_sq_sum[f] / ns / ns;
-            out_weights[d] = ns*ns / _weights[f*_num_vis_products + d];
+        // TODO: any need to adjust metadata? CHORD will look a bit different.
+        std::shared_ptr<chordMetadata> frame_metadata = get_chord_metadata(in_buf, in_frame_id);
+        out_vis.fill_chord_metadata(frame_metadata, f);
+
+        // Copy data into buffer.
+        // This requires changing from the GPU's blocked format to the triangular format visBuffer expects.
+        for (size_t i = 0; i < _num_elements; ++i) {
+            for (size_t j = i; j < _num_elements; ++j) {
+                size_t d_N2k = i*(_num_elements) + j; // index in the input N2k/GPU matrix
+                size_t d_accum = cmap(i, j, _num_elements); // index in the output vis matrix
+
+                // Populate the visibility matrix
+                cfloat v = {(float)_vis[f*2*_num_N2k_products + 2*d_N2k + 1], (float)_vis[f*2*_num_N2k_products + 2*d_N2k + 0]}; // TODO: conjugate or no? What does downstream expect?
+                out_vis.vis[d_accum] = ins*v;
+
+                // de-bias and populate the weights matrix (with the inverse variance)
+                _weights[f*_num_N2k_products + d_N2k] -= std::norm(v) * _n_valid_sample_diff_sq_sum[f] / ns / ns;
+                out_vis.weight[d_accum] = ns*ns / _weights[f*_num_N2k_products + d_accum];
+            }
         }
 
         out_buf->mark_frame_full(unique_name, out_frame_id++);
-
-        std::fill(_vis.begin(), _vis.end(), 0);
-        std::fill(_weights.begin(), _weights.end(), 0);
-        std::fill(_n_valid_fpga_samples_in_vis.begin(), _n_valid_fpga_samples_in_vis.end(), 0);
-        std::fill(_n_valid_sample_diff_sq_sum.begin(), _n_valid_sample_diff_sq_sum.end(), 0);
-
     }
+
+    DEBUG("Wrapping up accumulation buffer output copy.");
+
+    std::fill(_vis.begin(), _vis.end(), 0);
+    std::fill(_weights.begin(), _weights.end(), 0);
+    std::fill(_n_valid_fpga_samples_in_vis.begin(), _n_valid_fpga_samples_in_vis.end(), 0);
+    std::fill(_n_valid_sample_diff_sq_sum.begin(), _n_valid_sample_diff_sq_sum.end(), 0);
 
     return true;
 }
-
-
-// Checks to do...
-// Make sure output buffer has enough frames (>= # frequencies) and are sized correctly?
 

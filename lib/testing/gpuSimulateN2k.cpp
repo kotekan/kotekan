@@ -62,13 +62,13 @@ void gpuSimulateN2k::main_thread() {
 
         for (int tout = 0; tout < nt_outer; ++tout) {
             for (int f = 0; f < _num_local_freq; ++f) {
-                for (int y = 0; y < _num_elements; ++y) {
-                    for (int x = 0; x < _num_elements; ++x) {
+                for (int x = 0; x < _num_elements; ++x) {
+                    for (int y = 0; y < _num_elements; ++y) {
 
                         int real = 0;
                         int imag = 0;
 
-                        if (x <= y)
+                        if (y >= x)
                             for (int tin = 0; tin < nt_inner; ++tin) {
 
                                 int t = tout * nt_inner + tin;
@@ -90,14 +90,14 @@ void gpuSimulateN2k::main_thread() {
                                 * _num_elements + y) * 2 + 1] = +imag;
                         // clang-format on
                     }
+
+                    DEBUG("Element 0,1 is ({:d}, {:d})", output[0], output[1]);
+                    DEBUG("Element 6,7 is ({:d}, {:d})", output[6], output[7]);
                 }
                 DEBUG("Done t_outer {:d} of {:d} (freq {:d} of {:d})...", tout, nt_outer, f,
                       _num_local_freq);
             }
         }
-
-        INFO("Simulating GPU processing done for {:s}[{:d}] result is in {:s}[{:d}]",
-             input_buf->buffer_name, input_frame_id, output_buf->buffer_name, output_frame_id);
 
         input_buf->pass_metadata(input_frame_id, output_buf, output_frame_id);
         input_buf->mark_frame_empty(unique_name, input_frame_id);
@@ -107,6 +107,9 @@ void gpuSimulateN2k::main_thread() {
         // chord_metadata->lost_timesamples[0] = 1;
 
         output_buf->mark_frame_full(unique_name, output_frame_id);
+
+        INFO("Simulating GPU processing done for {:s}[{:d}] result is in {:s}[{:d}]",
+             input_buf->buffer_name, input_frame_id, output_buf->buffer_name, output_frame_id);
 
         input_frame_id = (input_frame_id + 1) % input_buf->num_frames;
         output_frame_id = (output_frame_id + 1) % output_buf->num_frames;

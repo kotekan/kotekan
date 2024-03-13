@@ -41,9 +41,6 @@
 #include <utility>     // for pair
 #include <vector>      // for vector
 
-/// Define an alias for the single precision complex type
-using cfloat = typename std::complex<float>;
-
 #if defined(WITH_CUDA)
 #include <cuda_fp16.h>
 using float16_t = __half;
@@ -57,6 +54,9 @@ using float16_t = _Float16;
 #define KOTEKAN_FLOAT16 0
 #endif
 #endif
+
+/// Define an alias for the single precision complex type
+using cfloat = typename std::complex<float>;
 
 /// Aliased type for storing the layout of members in a struct
 /// The first element of the pair is the total struct size, the second is a map
