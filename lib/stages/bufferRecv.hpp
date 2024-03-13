@@ -39,7 +39,7 @@ class connInstance;
  *
  * This stage takes frames from one more more sources and places them into the
  * @c buf for use by other local consumer stages. There is no guarantee regarding
- * the order the frames will arrvive in.  However all frames will be valid, which is to
+ * the order the frames will arrive in.  However all frames will be valid, which is to
  * say they will contain the full set of data sent by the client, or they will not be
  * added to the output buffer.
  *
@@ -111,7 +111,7 @@ private:
     bool get_worker_stop_thread();
 
     /// The output buffer
-    struct Buffer* buf;
+    Buffer* buf;
 
     /// The port to listen for new connections on
     uint32_t listen_port;
@@ -208,7 +208,7 @@ struct acceptArgs {
     struct event_base* base;
 
     /// The output buffer to attach to
-    struct Buffer* buf;
+    Buffer* buf;
 
     /// The main buffer recv object needs to be called to manage
     /// the frame ID to use (corrdinate between workers)
@@ -233,9 +233,8 @@ struct acceptArgs {
 class connInstance : public kotekan::kotekanLogging {
 public:
     /// Constructor
-    connInstance(const std::string& producer_name, struct Buffer* buf, bufferRecv* buffer_recv,
-                 const std::string& client_ip, int port, struct timeval read_timeout,
-                 bool drop_frames);
+    connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
+                 const std::string& client_ip, int port, struct timeval read_timeout);
 
     /// Destructor
     ~connInstance();
@@ -273,7 +272,7 @@ public:
     std::string producer_name;
 
     /// The kotekan buffer to transfer data into
-    struct Buffer* buf;
+    Buffer* buf;
 
     /// Pointer to the parient kotekan_stage which owns this instance
     bufferRecv* buffer_recv;
@@ -287,13 +286,10 @@ public:
     /// The event/read timeout
     struct timeval read_timeout;
 
-    /// Whether to drop frames or block if buffer is full
-    bool drop_frames;
-
     /// The libevent event which gets triggered on a read
     struct event* event_read;
 
-    /// The socket assoicated with this instance
+    /// The socket associated with this instance
     evutil_socket_t fd;
 
     /// Tracks how many bytes have been read from the socket for the current read
@@ -302,7 +298,7 @@ public:
     /// The start time of a new frame read
     double start_time;
 
-    /// The buffer tranfer header
+    /// The buffer transfer header
     struct bufferFrameHeader buf_frame_header;
 
     /// Pointer to the local memory space which matching the size of the incoming frame.
@@ -325,7 +321,7 @@ public:
     /// the connection attached to this instance.
     bool close_flag = false;
 
-    /// The state of the transer, starts with the header state
+    /// The state of the transfer, starts with the header state
     connState state = connState::header;
 
     /**
@@ -341,7 +337,7 @@ public:
         if ((err_num == 35 || err_num == 11) && bytes_read != 0) {
             DEBUG2("Got resource unavailable error, {:d}, read return {:d}", err_num, bytes_read);
             decrement_ref_count();
-            // Add the event back to the libevent queue so we are notifed
+            // Add the event back to the libevent queue, so we are notified
             // when more data becomes available.
             event_add(event_read, &read_timeout);
             return;

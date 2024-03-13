@@ -7,11 +7,12 @@
 class clInputData : public clCommand {
 public:
     clInputData(kotekan::Config& config, const std::string& unique_name,
-                kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
+                kotekan::bufferContainer& host_buffers, clDeviceInterface& device,
+                int instance_num);
     ~clInputData();
-    int wait_on_precondition(int gpu_frame_id) override;
-    cl_event execute(int gpu_frame_id, cl_event pre_event) override;
-    void finalize_frame(int frame_id) override;
+    int wait_on_precondition() override;
+    cl_event execute(cl_event pre_event) override;
+    void finalize_frame() override;
 
 protected:
     /// Helper class to manage the buffers

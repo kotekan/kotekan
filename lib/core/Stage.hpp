@@ -16,8 +16,6 @@
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
-
-#include <immintrin.h>
 #endif
 
 namespace kotekan {
@@ -89,7 +87,7 @@ protected:
      * @param name The config tag with the buffer name
      * @return A pointer to the buffer
      */
-    struct Buffer* get_buffer(const std::string& name);
+    Buffer* get_buffer(const std::string& name);
 
     /**
      * @brief Gets an array of buffer pointers linked to the @c name in the config.
@@ -97,7 +95,7 @@ protected:
      * @param name The name of the array in the config.
      * @return A vector of pointers to the buffers requested
      */
-    std::vector<struct Buffer*> get_buffer_array(const std::string& name);
+    std::vector<Buffer*> get_buffer_array(const std::string& name);
 
     bufferContainer& buffer_container;
 

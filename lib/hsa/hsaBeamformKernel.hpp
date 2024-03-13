@@ -9,7 +9,7 @@
 
 #include "Config.hpp" // for Config
 #include "Telescope.hpp"
-#include "buffer.h"               // for Buffer
+#include "buffer.hpp"             // for Buffer
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "hsa/hsa.h"              // for hsa_signal_t
 #include "hsaCommand.hpp"         // for hsaCommand
@@ -135,15 +135,15 @@ private:
     void calculate_ew_phase(float freq_now, float* host_coeff, float* _ew_spacing_c);
 
     /// Input length, should be nsamp x n_elem x 2 for complex / 2 since we pack two 4-bit in one
-    int32_t input_frame_len;
+    size_t input_frame_len;
     /// Output length, should be nsamp x 2 pol x 1024 beams x 2 for complex
-    int32_t output_frame_len;
+    size_t output_frame_len;
     /// map of clamping index, should be of size of 256
-    int32_t map_len;
+    size_t map_len;
     /// 4 cylinder x 4 beams x 2 for complex; size of 32
-    int32_t coeff_len;
+    size_t coeff_len;
     /// 2048 elements x 2 for complex
-    int32_t gain_len;
+    size_t gain_len;
 
     /// Buffer for accessing metadata
     Buffer* metadata_buf;

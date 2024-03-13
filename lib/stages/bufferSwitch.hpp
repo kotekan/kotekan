@@ -2,7 +2,7 @@
 #define BUFFER_SWITCH_HPP
 
 #include "Config.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "bufferMerge.hpp" // for bufferMerge
 

@@ -49,7 +49,7 @@ public:
 private:
     /// Kotekan buffer which this stage consumes from.
     /// Data should be packed into VDIF frames, see e.g. @c vdif_function.h.
-    struct Buffer* in_buf;
+    Buffer* in_buf;
 
     /// Port of the listening receiver.
     uint32_t dest_port;

@@ -62,7 +62,7 @@ visFileArchive::visFileArchive(
     // Different bound check for stacked data
     if (chunk[1] > (int)stack.size()) {
         chunk[1] = stack.size();
-        INFO("visFileArchive: Chunk stack dimension greater than axes. Will use a smaller chunk.")
+        INFO("visFileArchive: Chunk stack dimension greater than axes. Will use a smaller chunk.");
     }
 
     // Make datasets, for stacked data
@@ -101,15 +101,16 @@ void visFileArchive::setup_file(const std::string& name,
     if (chunk[0] > (int)freqs.size()) {
         chunk[0] = freqs.size();
         INFO("visFileArchive: Chunk frequency dimension greater than axes. Will use a smaller "
-             "chunk.")
+             "chunk.");
     }
     if (chunk[1] > (int)prods.size()) {
         chunk[1] = prods.size();
-        INFO("visFileArchive: Chunk product dimension greater than axes. Will use a smaller chunk.")
+        INFO(
+            "visFileArchive: Chunk product dimension greater than axes. Will use a smaller chunk.");
     }
     if (chunk[2] > (int)times.size()) {
         chunk[2] = times.size();
-        INFO("visFileArchive: Chunk time dimension greater than axes. Will use a smaller chunk.")
+        INFO("visFileArchive: Chunk time dimension greater than axes. Will use a smaller chunk.");
     }
 
     INFO("Creating new archive file {:s}", name);

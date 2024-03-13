@@ -33,8 +33,8 @@ int clOutputData::wait_on_precondition(int gpu_frame_id) {
 }
 
 
-cl_event clOutputData::execute(int gpu_frame_id, cl_event pre_event) {
-    pre_execute(gpu_frame_id);
+cl_event clOutputData::execute(cl_event pre_event) {
+    pre_execute();
 
     in_bufs.get_next_frame_execute();
     NextFrameCollection out_frame_collection = out_bufs.get_next_frame_execute();

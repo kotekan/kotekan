@@ -37,7 +37,7 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer* buf;
+    Buffer* buf;
     std::string _base_dir;
     std::string _file_name;
     std::string _file_ext;

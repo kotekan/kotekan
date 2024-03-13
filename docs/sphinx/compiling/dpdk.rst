@@ -7,13 +7,24 @@ Configuring DPDK
 Install
 ^^^^^^^
 
+To install DPDK on Ubuntu 22.04 install run
+
+.. code:: bash
+
+     sudo apt install dpdk dpdk-dev dpdk-kmods-dkms
+
+Then CMake will automatically include it. Note that DPDK
+is not compatible with BOOST tests, so will be disabled if
+the ``-DWITH_BOOST_TESTS`` option is enabled.
+
 To install DPDK on ubuntu 18.04 simply run:
 
 .. code:: bash
 
      sudo apt install dpdk dpdk-dev dpdk-igb-uio-dkms
 
-Then include ``-DUSE_DPDK=ON`` in the cmake options.
+Then include ``-DUSE_OLD_DPDK=ON`` in the cmake options.
+
 
 Setup
 ^^^^^
@@ -60,7 +71,7 @@ Unpack it in ``/opt/`` and run:
 
 It will give a warning about install path being missing, just ingore it.
 
-When running CMAKE include the following options ``-DUSE_DPDK=ON -DRTE_SDK=/opt/dpdk-stable-16.11.10/ -DRTE_TARGET=x86_64-native-linuxapp-gcc``
+When running CMAKE include the following options ``-DUSE_OLD_DPDK=ON -DRTE_SDK=/opt/dpdk-stable-16.11.10/ -DRTE_TARGET=x86_64-native-linuxapp-gcc``
 
 Startup scripts source install
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

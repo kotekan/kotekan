@@ -18,7 +18,7 @@ REGISTER_KOTEKAN_STAGE(clProcess);
 clProcess::clProcess(Config& config_, const std::string& unique_name,
                      bufferContainer& buffer_container) :
     gpuProcess(config_, unique_name, buffer_container) {
-    device = new clDeviceInterface(config_, gpu_id, _gpu_buffer_depth);
+    device = new clDeviceInterface(config_, unique_name, gpu_id, _gpu_buffer_depth);
     dev = device;
     device->prepareCommandQueue(true); // yes profiling
     init();
@@ -39,22 +39,42 @@ gpuEventContainer* clProcess::create_signal() {
     return new clEventContainer();
 }
 
-gpuCommand* clProcess::create_command(const std::string& cmd_name, const std::string& unique_name) {
-    auto cmd = FACTORY(clCommand)::create_bare(cmd_name, config, unique_name,
-                                               local_buffer_container, *device);
-    // TODO Why is this not in the constructor?
-    cmd->build();
-    DEBUG("Command added: {:s}", cmd_name);
-    return cmd;
+std::vector<gpuCommand*> clProcess::create_command(const std::string& cmd_name,
+                                                   const std::string& unique_name) {
+    std::vector<gpuCommand*> cmds;
+    // Create the clCommandState object, if used, for this command class.
+    std::shared_ptr<clCommandState> st = FACTORY(clCommandState)::create_shared_if_exists(
+        cmd_name, config, unique_name, local_buffer_container, *device);
+    for (uint32_t i = 0; i < _gpu_buffer_depth; i++) {
+        clCommand* cmd;
+        if (st)
+            // Create the clCommand object (with state arg)
+            cmd = FACTORY_VARIANT(state, clCommand)::create_bare(
+                cmd_name, config, unique_name, local_buffer_container, *device, i, st);
+        else
+            // Create the clCommand object (without state arg)
+            cmd = FACTORY(clCommand)::create_bare(cmd_name, config, unique_name,
+                                                  local_buffer_container, *device, i);
+        // TODO Why is this not in the constructor?
+        cmd->build();
+        cmds.push_back(cmd);
+    }
+    DEBUG("Command added: {:s}", cmd_name.c_str());
+    return cmds;
 }
 
-void clProcess::queue_commands(int gpu_frame_id) {
+void clProcess::queue_commands(int gpu_frame_counter) {
     cl_event signal = nullptr;
+
+    int icommand = gpu_frame_counter % _gpu_buffer_depth;
     for (auto& command : commands) {
         // Feed the last signal into the next operation
-        signal = ((clCommand*)command)->execute(gpu_frame_id, signal);
+        cl_event event = ((clCommand*)command[icommand])->execute(signal);
+        if (event != nullptr)
+            signal = event;
     }
-    final_signals[gpu_frame_id]->set_signal(signal);
+    // Wait on the very last event from the last command.
+    final_signals[icommand]->set_signal(signal);
     DEBUG("Commands executed.");
 }
 

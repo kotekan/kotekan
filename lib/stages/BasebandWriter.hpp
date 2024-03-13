@@ -9,7 +9,7 @@
 #include "BasebandFileRaw.hpp"   // for BasebandFileRaw
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
-#include "buffer.h"              // for Buffer
+#include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "prometheusMetrics.hpp" // for Gauge, Counter
 #include "visUtil.hpp"           // for movingAverage
@@ -81,7 +81,7 @@ private:
     uint32_t _frame_size;
 
     /// Input buffer to read from
-    struct Buffer* in_buf;
+    Buffer* in_buf;
 
     // Convenience class just so we can have a pair of raw file and time with a single "string"
     // constructor that can be used from `map::emplace`

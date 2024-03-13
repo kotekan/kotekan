@@ -3,7 +3,7 @@
 
 #include "Config.hpp" // for Config
 #include "Stage.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp" // for bufferContainer
 #include "visUtil.hpp"
 
@@ -47,7 +47,7 @@ public:
 
 protected:
     /// The input buffer to copy frames from
-    struct Buffer* in_buf;
+    Buffer* in_buf;
 
     /// Config variables
     /// Flag to copy metadata or not

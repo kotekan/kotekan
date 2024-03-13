@@ -8,17 +8,18 @@ using kotekan::Config;
 using std::string;
 using std::to_string;
 
+// default-constructed global so that people don't have to write
+// "std::shared_ptr<clCommandState>()" in a bunch of places.  Basically a custom NULL.
+std::shared_ptr<clCommandState> no_cl_command_state;
+
 clCommand::clCommand(Config& config_, const std::string& unique_name_,
-                     bufferContainer& host_buffers_, clDeviceInterface& device_,
+                     bufferContainer& host_buffers_, clDeviceInterface& device_, int instance_num,
+                     std::shared_ptr<gpuCommandState> command_state,
                      const std::string& default_kernel_command,
                      const std::string& default_kernel_file_name) :
-    gpuCommand(config_, unique_name_, host_buffers_, device_, default_kernel_command,
-               default_kernel_file_name),
-    device(device_) {
-    post_events = (cl_event*)malloc(_gpu_buffer_depth * sizeof(cl_event));
-    for (int j = 0; j < _gpu_buffer_depth; ++j)
-        post_events[j] = nullptr;
-}
+    gpuCommand(config_, unique_name_, host_buffers_, device_, instance_num, command_state,
+               default_kernel_command, default_kernel_file_name),
+    post_event(nullptr), device(device_) {}
 
 clCommand::~clCommand() {
     if (kernel_file_name != "") {
@@ -27,27 +28,23 @@ clCommand::~clCommand() {
         CHECK_CL_ERROR(clReleaseProgram(program));
         DEBUG("program Freed");
     }
-    free(post_events);
-    DEBUG("post_events Freed: {:s}", unique_name);
 }
 
-void clCommand::finalize_frame(int gpu_frame_id) {
-    if (post_events[gpu_frame_id] != nullptr) {
+void clCommand::finalize_frame() {
+    if (post_event != nullptr) {
         if (profiling) {
             cl_ulong start_time, stop_time;
-            CHECK_CL_ERROR(clGetEventProfilingInfo(post_events[gpu_frame_id],
-                                                   CL_PROFILING_COMMAND_START, sizeof(start_time),
-                                                   &start_time, nullptr));
-            CHECK_CL_ERROR(clGetEventProfilingInfo(post_events[gpu_frame_id],
-                                                   CL_PROFILING_COMMAND_END, sizeof(stop_time),
-                                                   &stop_time, nullptr));
+            CHECK_CL_ERROR(clGetEventProfilingInfo(post_event, CL_PROFILING_COMMAND_START,
+                                                   sizeof(start_time), &start_time, nullptr));
+            CHECK_CL_ERROR(clGetEventProfilingInfo(post_event, CL_PROFILING_COMMAND_END,
+                                                   sizeof(stop_time), &stop_time, nullptr));
             double active_time = (double)(stop_time - start_time) * 1e-9;
             excute_time->add_sample(active_time);
             utilization->add_sample(active_time / frame_arrival_period);
         }
 
-        CHECK_CL_ERROR(clReleaseEvent(post_events[gpu_frame_id]));
-        post_events[gpu_frame_id] = nullptr;
+        CHECK_CL_ERROR(clReleaseEvent(post_event));
+        post_event = nullptr;
     } else
         FATAL_ERROR("Null OpenCL event!");
 }
@@ -83,7 +80,7 @@ void clCommand::build() {
 
         program_size = 0;
         free(program_buffer);
-        DEBUG2("Built! {:s}", kernel_command)
+        DEBUG2("Built! {:s}", kernel_command);
     }
 }
 

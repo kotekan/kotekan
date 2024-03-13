@@ -9,7 +9,7 @@
 
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
-#include "buffer.h"              // for Buffer
+#include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for fingerprint_t, dset_id_t
 #include "prometheusMetrics.hpp" // for Gauge, MetricFamily

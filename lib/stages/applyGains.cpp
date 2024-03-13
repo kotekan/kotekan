@@ -4,7 +4,7 @@
 #include "H5Support.hpp"         // IWYU pragma: keep
 #include "Hash.hpp"              // for operator<
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"              // for mark_frame_empty, wait_for_full_frame, allocate_new...
+#include "buffer.hpp"            // for mark_frame_empty, wait_for_full_frame, allocate_new...
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
@@ -61,12 +61,9 @@ REGISTER_KOTEKAN_STAGE(applyGains);
 applyGains::applyGains(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&applyGains::main_thread, this)),
-    in_buf(get_buffer("in_buf")),
-    out_buf(get_buffer("out_buf")),
-    frame_id_in(in_buf),
-    frame_id_out(out_buf),
-    update_age_metric(
-        Metrics::instance().add_gauge("kotekan_applygains_update_age_seconds", unique_name)),
+    in_buf(get_buffer("in_buf")), out_buf(get_buffer("out_buf")), frame_id_in(in_buf),
+    frame_id_out(out_buf), update_age_metric(Metrics::instance().add_gauge(
+                               "kotekan_applygains_update_age_seconds", unique_name)),
     late_update_counter(
         Metrics::instance().add_counter("kotekan_applygains_late_update_count", unique_name)),
     late_frames_counter(
@@ -423,7 +420,7 @@ std::optional<applyGains::GainData> applyGains::read_gain_file(std::string updat
         // Try a different extension
         gains_path = fmt::format(fmt("{:s}/{:s}.hdf5"), gains_dir, update_id);
         if (!fexists(gains_path)) {
-            WARN("Could not update gains. File not found: {:s}", gains_path)
+            WARN("Could not update gains. File not found: {:s}", gains_path);
             return std::nullopt;
         }
     }
@@ -470,7 +467,7 @@ std::pair<std::vector<T>, std::vector<uint32_t>> json_base64_to_array(const json
     std::vector<char> decoded_data(modp_b64_decode_len(enc_size));
     auto dec_len = modp_b64_decode(decoded_data.data(), string_data.c_str(), string_data.size());
 
-    if (dec_len < 0) {
+    if (dec_len == MODP_B64_ERROR) {
         throw std::runtime_error("Could not base64 decode the array data.");
     }
 

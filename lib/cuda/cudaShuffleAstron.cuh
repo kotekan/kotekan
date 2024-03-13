@@ -16,9 +16,9 @@
 class cudaShuffleAstron : public cudaCommand {
 public:
     cudaShuffleAstron(kotekan::Config& config, const std::string& unique_name,
-                      kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+                      kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device, int inst);
     ~cudaShuffleAstron();
-    cudaEvent_t execute(int gpu_frame_id, cudaEvent_t pre_event) override;
+    cudaEvent_t execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>& pre_events) override;
 
 protected:
 private:

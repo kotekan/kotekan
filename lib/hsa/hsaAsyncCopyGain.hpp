@@ -26,8 +26,8 @@ public:
     void finalize_frame(int frame_id) override;
 
 private:
-    struct Buffer* gain_buf;
-    int32_t gain_len;
+    Buffer* gain_buf;
+    size_t gain_len;
     int32_t gain_buf_id;
     int32_t gain_buf_finalize_id;
     int32_t gain_buf_precondition_id;

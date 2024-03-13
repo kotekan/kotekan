@@ -4,7 +4,7 @@
 #include "Hash.hpp"           // for operator!=
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"      // for Telescope
-#include "buffer.h"           // for mark_frame_empty, register_consumer, wait_for_empty_frame
+#include "buffer.hpp"         // for mark_frame_empty, register_consumer, wait_for_empty_frame
 #include "chimeMetadata.hpp"  // for get_fpga_seq_num, get_lost_timesamples
 #include "datasetManager.hpp" // for state_id_t, dset_id_t, datasetManager
 #include "datasetState.hpp"   // for beamState, freqState, metadataState, subfreqState
@@ -39,11 +39,9 @@ REGISTER_KOTEKAN_STAGE(HFBAccumulate);
 HFBAccumulate::HFBAccumulate(Config& config_, const std::string& unique_name,
                              bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&HFBAccumulate::main_thread, this)),
-    in_buf(get_buffer("hfb_input_buf")),
-    cls_buf(get_buffer("compressed_lost_samples_buf")),
-    out_buf(get_buffer("hfb_output_buf")),
-    _num_frames_to_integrate(
-        config.get_default<uint32_t>(unique_name, "num_frames_to_integrate", 80)),
+    in_buf(get_buffer("hfb_input_buf")), cls_buf(get_buffer("compressed_lost_samples_buf")),
+    out_buf(get_buffer("hfb_output_buf")), _num_frames_to_integrate(config.get_default<uint32_t>(
+                                               unique_name, "num_frames_to_integrate", 80)),
     _num_frb_total_beams(config.get<uint32_t>(unique_name, "num_frb_total_beams")),
     _factor_upchan(config.get<uint32_t>(unique_name, "factor_upchan")),
     _samples_per_data_set(config.get<uint32_t>(unique_name, "samples_per_data_set")),
@@ -174,7 +172,7 @@ void HFBAccumulate::main_thread() {
             // ds_id_in will be dset_id_t::null and thus cause a root dataset to
             // be registered.
             base_dataset_id = dm.add_dataset(base_dataset_states, ds_id_in);
-            DEBUG("Registered base dataset: {}", base_dataset_id)
+            DEBUG("Registered base dataset: {}", base_dataset_id);
         }
 
         float* input = (float*)in_frame_ptr;

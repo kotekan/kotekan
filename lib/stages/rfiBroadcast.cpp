@@ -3,7 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"         // for Telescope
-#include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "buffer.hpp"            // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chimeMetadata.hpp"     // for stream_t, get_fpga_seq_num, get_stream_id
 #include "kotekanLogging.hpp"    // for ERROR, DEBUG, INFO
@@ -96,7 +96,7 @@ rfiBroadcast::~rfiBroadcast() {
 
 void rfiBroadcast::rest_callback(connectionInstance& conn, nlohmann::json& json_request) {
     // Notify that request was received
-    INFO("RFI Callback Received... Changing Parameters")
+    INFO("RFI Callback Received... Changing Parameters");
     // Lock mutex
     rest_callback_mutex.lock();
     // Adjust parameters
@@ -111,7 +111,7 @@ void rfiBroadcast::rest_callback(connectionInstance& conn, nlohmann::json& json_
 void rfiBroadcast::rest_zero(connectionInstance& conn) {
     std::lock_guard<std::mutex> lock(rest_zero_callback_mutex);
     // Notify that request was received
-    INFO("RFI Broadcast: Current Zeroing Percentage Sent")
+    INFO("RFI Broadcast: Current Zeroing Percentage Sent");
     nlohmann::json reply;
     reply["percentage_zeroed"] = perc_zeroed.average();
     conn.send_json_reply(reply);

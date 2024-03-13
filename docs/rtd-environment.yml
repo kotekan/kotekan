@@ -1,0 +1,15 @@
+name: readthedocs
+
+channels:
+  - conda-forge
+  - default
+
+dependencies:
+  - python=3.11
+  - pip
+  - cmake
+  - doxygen
+  - sphinx=6.2.1
+  - sphinx_rtd_theme=2.0.0
+  - breathe=4.35.0
+  - sphinxcontrib-plantuml=0.25

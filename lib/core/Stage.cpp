@@ -1,7 +1,7 @@
 #include "Stage.hpp"
 
 #include "Config.hpp"          // for Config
-#include "buffer.h"            // for Buffer
+#include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "util.h"              // for string_tail
 
@@ -28,10 +28,7 @@ namespace kotekan {
 Stage::Stage(Config& config, const std::string& unique_name, bufferContainer& buffer_container_,
              std::function<void(const Stage&)> main_thread_ref) :
     stop_thread(false),
-    config(config),
-    unique_name(unique_name),
-    this_thread(),
-    buffer_container(buffer_container_),
+    config(config), unique_name(unique_name), this_thread(), buffer_container(buffer_container_),
     main_thread_fn(main_thread_ref) {
 
     set_cpu_affinity(config.get<std::vector<int>>(unique_name, "cpu_affinity"));
@@ -45,15 +42,15 @@ Stage::Stage(Config& config, const std::string& unique_name, bufferContainer& bu
     join_timeout = config.get_default<uint32_t>(unique_name, "join_timeout", 60);
 }
 
-struct Buffer* Stage::get_buffer(const std::string& name) {
+Buffer* Stage::get_buffer(const std::string& name) {
     // NOTE: Maybe require that the buffer be given in the stage, not
     // just somewhere in the path to the stage.
     std::string buf_name = config.get<std::string>(unique_name, name);
     return buffer_container.get_buffer(buf_name);
 }
 
-std::vector<struct Buffer*> Stage::get_buffer_array(const std::string& name) {
-    std::vector<struct Buffer*> bufs;
+std::vector<Buffer*> Stage::get_buffer_array(const std::string& name) {
+    std::vector<Buffer*> bufs;
 
     std::vector<std::string> buf_names = config.get<std::vector<std::string>>(unique_name, name);
     for (auto& buf_name : buf_names) {

@@ -10,14 +10,12 @@
 #include <exception>  // for exception
 #include <fstream>    // for ofstream, ostream
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
-#include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error
 #include <stdio.h>    // for sprintf
 #include <stdlib.h>   // for exit
 #include <time.h>     // for tm, localtime, time_t
 #include <unistd.h>   // for gethostname
 #include <utility>    // for pair
-#include <vector>     // for vector
 
 namespace kotekan {
 
@@ -100,16 +98,18 @@ std::shared_ptr<StatTracker> KotekanTrackers::add_tracker(std::string stage_name
         throw std::runtime_error("Empty tracker name.");
     }
 
-    std::shared_ptr<StatTracker> tracker_ptr =
-        std::make_shared<StatTracker>(tracker_name, unit, size, is_optimized);
-
     std::lock_guard<std::mutex> lock(trackers_lock);
 
-    if (trackers.count(stage_name) && trackers[stage_name].count(tracker_name)) {
-        ERROR_NON_OO("Duplicate tracker name: {:s}:{:s}. Exiting.", stage_name, tracker_name);
-        throw std::runtime_error(
-            fmt::format(fmt("Duplicate tracker name: {:s}:{:s}"), stage_name, tracker_name));
+    auto val1 = trackers.find(stage_name);
+    if (val1 != trackers.end()) {
+        auto val2 = val1->second.find(tracker_name);
+        if (val2 != val1->second.end())
+            // Exists, return existing tracker.
+            return val2->second;
     }
+    // Does not exist, create and store new one
+    std::shared_ptr<StatTracker> tracker_ptr =
+        std::make_shared<StatTracker>(tracker_name, unit, size, is_optimized);
     trackers[stage_name][tracker_name] = tracker_ptr;
 
     return tracker_ptr;

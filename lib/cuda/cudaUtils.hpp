@@ -17,8 +17,19 @@
 // can be wrapped around any runtime API call. No-op in release builds.
 #define CHECK_CUDA_ERROR(result)                                                                   \
     if (result != cudaSuccess) {                                                                   \
+        internal_logging(LOG_ERR, __log_prefix, "Error at {:s}:{:d}; Error type: {:s} ({:d})",     \
+                         __FILE__, __LINE__, cudaGetErrorString(result), int(result));             \
+        std::abort();                                                                              \
+    }
+
+// Similar to CHECK_CUDA_ERROR, but for cu API functions (starting with "cu", vs starting with
+// "cuda").
+#define CHECK_CU_ERROR(result)                                                                     \
+    if (result != CUDA_SUCCESS) {                                                                  \
+        const char* errstr = NULL;                                                                 \
+        cuGetErrorString(result, &errstr);                                                         \
         internal_logging(LOG_ERR, __log_prefix, "Error at {:s}:{:d}; Error type: {:s}", __FILE__,  \
-                         __LINE__, cudaGetErrorString(result));                                    \
+                         __LINE__, errstr);                                                        \
         std::abort();                                                                              \
     }
 

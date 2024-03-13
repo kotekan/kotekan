@@ -11,8 +11,9 @@ using kotekan::Config;
 REGISTER_CL_COMMAND(clKVCorr);
 
 clKVCorr::clKVCorr(Config& config, const std::string& unique_name, bufferContainer& host_buffers,
-                   clDeviceInterface& device) :
-    clCommand(config, unique_name, host_buffers, device, "corr", "kv_corr.cl") {
+                   clDeviceInterface& device, int inst) :
+    clCommand(config, unique_name, host_buffers, device, inst, no_cl_command_state, "corr",
+              "kv_corr.cl") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _block_size = config.get<int>(unique_name, "block_size");
@@ -140,8 +141,8 @@ void clKVCorr::build() {
                                                                             // buffers
 }
 
-cl_event clKVCorr::execute(int gpu_frame_id, cl_event pre_event) {
-    pre_execute(gpu_frame_id);
+cl_event clKVCorr::execute(cl_event pre_event) {
+    pre_execute();
 
     uint32_t input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
     uint32_t output_len = _num_local_freq * _num_blocks * (_block_size * _block_size) * 2
@@ -157,9 +158,9 @@ cl_event clKVCorr::execute(int gpu_frame_id, cl_event pre_event) {
     setKernelArg(2, output_memory_frame);
 
     CHECK_CL_ERROR(clEnqueueNDRangeKernel(device.getQueue(1), kernel, 3, nullptr, gws, lws, 1,
-                                          &pre_event, &post_events[gpu_frame_id]));
+                                          &pre_event, &post_event));
 
-    return post_events[gpu_frame_id];
+    return post_event;
 }
 
 void clKVCorr::defineOutputDataMap() {

@@ -26,15 +26,14 @@ clOutputDataZero::~clOutputDataZero() {
     free(output_zeros);
 }
 
-cl_event clOutputDataZero::execute(int gpu_frame_id, cl_event pre_event) {
-    pre_execute(gpu_frame_id);
+cl_event clOutputDataZero::execute(cl_event pre_event) {
+    pre_execute();
 
     cl_mem gpu_memory_frame = device.get_gpu_memory_array("output", gpu_frame_id, output_len);
 
     // Data transfer to GPU
     CHECK_CL_ERROR(clEnqueueWriteBuffer(device.getQueue(0), gpu_memory_frame, CL_FALSE,
                                         0, // offset
-                                        output_len, output_zeros, 1, &pre_event,
-                                        &post_events[gpu_frame_id]));
-    return post_events[gpu_frame_id];
+                                        output_len, output_zeros, 1, &pre_event, &post_event));
+    return post_event;
 }

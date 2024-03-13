@@ -8,7 +8,7 @@
 
 #include "BasebandMetadata.hpp" // for BasebandMetadata
 #include "FrameView.hpp"        // for FrameView
-#include "buffer.h"             // for Buffer
+#include "buffer.hpp"           // for Buffer
 
 #include <cstddef> // for size_t
 
