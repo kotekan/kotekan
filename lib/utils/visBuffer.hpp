@@ -81,9 +81,6 @@ public:
     uint32_t num_prod;
     /// Number of eigenvectors and values calculated
     uint32_t num_ev;
-
-    // Upstream CHORD metadata
-    chordMetadata chord_meta;
 };
 
 /**

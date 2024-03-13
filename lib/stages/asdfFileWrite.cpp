@@ -204,7 +204,6 @@ public:
 
             } else if(metadata_is_vis(mc)) {
                 
-
                 const std::shared_ptr<VisMetadata> meta = std::static_pointer_cast<VisMetadata>(mc);
 
                 auto frame_view = VisFrameView(buffer, frame_id);
