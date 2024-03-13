@@ -224,7 +224,7 @@ RUN juliaup self update && juliaup update
 # Install Xtensor (for Zarr file format)
 RUN apt-get update && \
     apt-get -y install libxtensor-dev xtensor-dev && \
-    apt-get clean && apt-get autoclean && \
+    apt-get clean && apt-get autoclean
 
 # Do nothing when the container launches
 CMD ["/bin/bash"]
