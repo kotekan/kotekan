@@ -90,9 +90,6 @@ void gpuSimulateN2k::main_thread() {
                                 * _num_elements + y) * 2 + 1] = +imag;
                         // clang-format on
                     }
-
-                    DEBUG("Element 0,1 is ({:d}, {:d})", output[0], output[1]);
-                    DEBUG("Element 6,7 is ({:d}, {:d})", output[6], output[7]);
                 }
                 DEBUG("Done t_outer {:d} of {:d} (freq {:d} of {:d})...", tout, nt_outer, f,
                       _num_local_freq);
