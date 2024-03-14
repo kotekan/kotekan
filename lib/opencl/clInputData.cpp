@@ -45,7 +45,7 @@ cl_event clInputData::execute(cl_event pre_event) {
     return post_event;
 }
 
-void clInputData::finalize_frame(int frame_id) {
+void clInputData::finalize_frame() {
     clCommand::finalize_frame();
     in_bufs.release_frame_finalize();
 }

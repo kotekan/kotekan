@@ -6,7 +6,8 @@ using kotekan::Config;
 REGISTER_CL_COMMAND(clOutputDataZero);
 
 clOutputDataZero::clOutputDataZero(Config& config, const std::string& unique_name,
-                                   bufferContainer& host_buffers, clDeviceInterface& device) :
+                                   bufferContainer& host_buffers, clDeviceInterface& device,
+                                   int instance_num) :
     clCommand(config, unique_name, host_buffers, device, "clOutputDataZero", "") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
