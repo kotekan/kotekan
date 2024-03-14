@@ -23,7 +23,7 @@ gpuBufferHandler::gpuBufferHandler(kotekan::Config& config, const std::string& u
     std::string buffer_name;
 
     // We should never have a frame size of 0, so set the value if it's 0.
-    int frame_size = 0;
+    size_t frame_size = 0;
 
     for (json buffer : buffer_list) {
         if (buffer.is_string()) {

@@ -5,7 +5,7 @@
 #define KOTEKAN_GPU_BUFFER_HANDLER_HPP
 
 #include "Config.hpp"
-#include "buffer.h"
+#include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "visUtil.hpp"
 
