@@ -17,8 +17,7 @@ clInputData::clInputData(Config& config, const std::string& unique_name,
 
 clInputData::~clInputData() {}
 
-int clInputData::wait_on_precondition(int gpu_frame_id) {
-    (void)gpu_frame_id;
+int clInputData::wait_on_precondition() {
 
     NextFrameCollection in_frame_collection = in_bufs.get_next_frame_precondition();
     if (in_frame_collection.frame == nullptr)
@@ -41,12 +40,12 @@ cl_event clInputData::execute(cl_event pre_event) {
                                         in_frame_collection.buf->aligned_frame_size,
                                         host_memory_frame, (pre_event == nullptr) ? 0 : 1,
                                         (pre_event == nullptr) ? nullptr : &pre_event,
-                                        &post_events[gpu_frame_id]));
+                                        &post_event));
 
-    return post_events[gpu_frame_id];
+    return post_event;
 }
 
 void clInputData::finalize_frame(int frame_id) {
-    clCommand::finalize_frame(frame_id);
+    clCommand::finalize_frame();
     in_bufs.release_frame_finalize();
 }

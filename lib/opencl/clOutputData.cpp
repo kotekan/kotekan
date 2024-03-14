@@ -18,9 +18,7 @@ clOutputData::clOutputData(Config& config, const std::string& unique_name,
 
 clOutputData::~clOutputData() {}
 
-int clOutputData::wait_on_precondition(int gpu_frame_id) {
-    (void)gpu_frame_id;
-
+int clOutputData::wait_on_precondition() {
     NextFrameCollection in_frame_collection = in_bufs.get_next_frame_precondition();
     if (in_frame_collection.frame == nullptr)
         return -1;
@@ -47,13 +45,13 @@ cl_event clOutputData::execute(cl_event pre_event) {
     CHECK_CL_ERROR(clEnqueueReadBuffer(device.getQueue(2), gpu_output_frame, CL_FALSE, 0,
                                        out_frame_collection.buf->aligned_frame_size,
                                        host_output_frame, 1, &pre_event,
-                                       &post_events[gpu_frame_id]));
+                                       &post_event));
 
-    return post_events[gpu_frame_id];
+    return post_event;
 }
 
-void clOutputData::finalize_frame(int frame_id) {
-    clCommand::finalize_frame(frame_id);
+void clOutputData::finalize_frame() {
+    clCommand::finalize_frame();
 
     NextFrameCollection in_frame_collection = in_bufs.get_next_frame_finalize();
     NextFrameCollection out_frame_collection = out_bufs.get_next_frame_finalize();
