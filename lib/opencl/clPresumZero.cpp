@@ -23,7 +23,6 @@ clPresumZero::clPresumZero(Config& config, const std::string& unique_name,
     }
 
     // Ask that all pages be kept in memory
-    // TODO: DO WITH STANDARD BUFFERS?
     err = mlock((void*)presum_zeros, presum_len);
     if (err == -1) {
         ERROR("Error locking memory - check ulimit -a to check memlock limits");
@@ -31,10 +30,26 @@ clPresumZero::clPresumZero(Config& config, const std::string& unique_name,
     }
     memset(presum_zeros, 0, presum_len);
 
+    cl_mem_prt =
+        clCreateBuffer(device->get_context(), CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR,
+                        presum_zeros, presum_len, &err);
+    CHECK_CL_ERROR(err);
+    void* pinned_ptr =
+        clEnqueueMapBuffer(device->getQueue(0), cl_mem_prt, CL_TRUE, CL_MAP_READ, 0,
+                            presum_len, 0, nullptr, nullptr, &err);
+    CHECK_CL_ERROR(err);
+    assert(pinned_ptr == presum_zeros);
+
     command_type = gpuCommandType::COPY_IN;
 }
 
 clPresumZero::~clPresumZero() {
+    cl_event wait_event;
+    clEnqueueUnmapMemObject(device->getQueue(0), cl_mem_prt,
+                            presum_len, 0, nullptr, &wait_event);
+    // Block here to make sure the memory actually gets unmapped.
+    clWaitForEvents(1, &wait_event);
+
     free(presum_zeros);
 }
 
