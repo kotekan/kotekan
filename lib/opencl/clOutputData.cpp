@@ -8,7 +8,7 @@ REGISTER_CL_COMMAND(clOutputData);
 clOutputData::clOutputData(Config& config, const std::string& unique_name,
                            bufferContainer& host_buffers, clDeviceInterface& device,
                            int instance_num) :
-    clCommand(config, unique_name, host_buffers, device, instance_num, "clOutputData", ""),
+    clCommand(config, unique_name, host_buffers, device, instance_num, no_cl_command_state, "clOutputData", ""),
     in_bufs(config, unique_name, host_buffers, "in_bufs", false),
     out_bufs(config, unique_name, host_buffers, "out_bufs", true) {
 
