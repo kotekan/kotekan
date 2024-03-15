@@ -6,8 +6,9 @@ using kotekan::Config;
 REGISTER_CL_COMMAND(clPresumZero);
 
 clPresumZero::clPresumZero(Config& config, const std::string& unique_name,
-                           bufferContainer& host_buffers, clDeviceInterface& device) :
-    clCommand(config, unique_name, host_buffers, device, "clPresumZero", "") {
+                           bufferContainer& host_buffers, clDeviceInterface& device,
+                           int instance_num) :
+    clCommand(config, unique_name, host_buffers, device, instance_num, no_cl_command_state, "clPresumZero", "") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     presum_len = _num_elements * _num_local_freq * 2 * sizeof(int32_t);
