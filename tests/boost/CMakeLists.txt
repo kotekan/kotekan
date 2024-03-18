@@ -27,7 +27,7 @@ target_link_libraries(test_updatequeue PRIVATE libexternal kotekan_libs kotekan_
 
 # test_dataset_manager_rest needs fmt
 add_executable(test_dataset_manager_rest test_dataset_manager_rest.cpp)
-target_link_libraries(test_dataset_manager_rest PRIVATE libexternal_libs kotekan_core kotekan_utils)
+target_link_libraries(test_dataset_manager_rest PRIVATE libexternal kotekan_libs kotekan_core kotekan_utils)
 
 # test_dataset_manager needs fmt
 add_executable(test_dataset_manager test_dataset_manager.cpp)
