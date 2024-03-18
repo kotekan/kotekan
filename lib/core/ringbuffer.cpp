@@ -63,7 +63,6 @@ std::optional<size_t> RingBuffer::wait_and_claim_readable(const std::string& nam
     size_t head = read_heads[name];
     while (1) {
         std::string d = fmt::format(
-            std::locale("en_US.UTF-8"),
             "Waiting for input: Want {:L}, Have {:L}.  (Current read head: {:L}, after this read "
             "would be {:L}, current write head: {:L})",
             sz, write_head - head, head, head + sz, write_head);
