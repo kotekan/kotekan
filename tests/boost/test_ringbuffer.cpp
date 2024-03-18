@@ -6,6 +6,7 @@
 #include "test_utils.hpp"
 
 #include <memory>
+#include <locale>
 
 #undef WITH_CUDA
 
@@ -19,11 +20,9 @@ using json = nlohmann::json;
 using namespace kotekan;
 using namespace std;
 
-<<<<<<< HEAD
-=======
+
 BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
 
->>>>>>> 41ba727b (move boost::test global fixture for setting the locale into test_utils)
 BOOST_AUTO_TEST_CASE(test1) {
     // Create metadata pool
     json json_config = json::parse(
