@@ -50,17 +50,19 @@ class FEngine : public kotekan::Stage {
     // Sky
     const float source_amplitude;
     const float source_frequency;
-    const float source_position_x;
-    const float source_position_y;
+    const float source_position_ew;
+    const float source_position_ns;
 
     // Dishes
-    const int num_dish_locations_M;
-    const int num_dish_locations_N;
+    const int num_dish_locations_ew;
+    const int num_dish_locations_ns;
     const int num_dish_locations;
-    const float dish_separation_x;
-    const float dish_separation_y;
+    const float dish_separation_ew;
+    const float dish_separation_ns;
     const int num_dishes;
-    const std::vector<int> dish_locations;
+    const std::vector<int> dish_indices;
+    std::vector<int> dish_locations;
+    int* dish_indices_ptr;
 
     // ADC
     const float adc_frequency;
@@ -81,6 +83,10 @@ class FEngine : public kotekan::Stage {
     const int upchannelization_factor;
 
     // FRB beamformer setup
+    const int frb_num_beams_P;
+    const int frb_num_beams_Q;
+    const int Tds = 40;
+    const int frb_num_times;
 
     // Pipeline
     const int num_frames;
@@ -89,16 +95,18 @@ class FEngine : public kotekan::Stage {
     const std::int64_t E_frame_size;
     const std::int64_t A_frame_size;
     const std::int64_t J_frame_size;
-    const std::int64_t S_frame_size;
+    //const std::int64_t S_frame_size;
     const std::int64_t G_frame_size;
     const std::int64_t W_frame_size;
+    const std::int64_t I_frame_size;
 
     Buffer* const E_buffer;
     Buffer* const A_buffer;
     Buffer* const J_buffer;
-    Buffer* const S_buffer;
+    //Buffer* const S_buffer;
     Buffer* const G_buffer;
     Buffer* const W_buffer;
+    Buffer* const I_buffer;
 
 public:
     FEngine(kotekan::Config& config, const std::string& unique_name,

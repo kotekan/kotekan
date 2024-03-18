@@ -6,7 +6,7 @@
 #include "buffer.hpp"       // for Buffer, allocate_new_metadata_object, get_num_consumers
 #include "bufferContainer.hpp"
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, WARN
-#include "metadata.h"            // for metadataContainer
+#include "metadata.hpp"          // for metadataContainer
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 #include "visUtil.hpp"           // for frameID, modulo
 
@@ -84,12 +84,12 @@ void Valve::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int 
     }
 
     // Metadata sizes must match exactly
-    if (buf_src->metadata[frame_id_src]->metadata_size
-        != buf_dest->metadata[frame_id_dest]->metadata_size) {
+    if (buf_src->metadata[frame_id_src]->get_object_size()
+        != buf_dest->metadata[frame_id_dest]->get_object_size()) {
         throw std::runtime_error(
             fmt::format(fmt("Metadata sizes must match for direct copy (src {:d} != dest {:d})."),
-                        buf_src->metadata[frame_id_src]->metadata_size,
-                        buf_dest->metadata[frame_id_dest]->metadata_size));
+                        buf_src->metadata[frame_id_src]->get_object_size(),
+                        buf_dest->metadata[frame_id_dest]->get_object_size()));
     }
 
     int num_consumers = buf_src->get_num_consumers();
@@ -105,7 +105,5 @@ void Valve::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int 
     }
 
     // Copy over the metadata
-    std::memcpy(buf_dest->metadata[frame_id_dest]->metadata,
-                buf_src->metadata[frame_id_src]->metadata,
-                buf_src->metadata[frame_id_src]->metadata_size);
+    buf_dest->metadata[frame_id_dest]->deepCopy(buf_src->metadata[frame_id_src]);
 }

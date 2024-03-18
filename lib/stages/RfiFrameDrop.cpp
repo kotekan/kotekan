@@ -106,8 +106,8 @@ void RfiFrameDrop::main_thread() {
         if (frame_in_vis == nullptr || frame_in_sk == nullptr)
             break;
 
-        auto* metadata_vis = (chimeMetadata*)_buf_in_vis->get_metadata(frame_id_in_vis);
-        auto* metadata_sk = (chimeMetadata*)_buf_in_sk->get_metadata(frame_id_in_sk);
+        auto* metadata_vis = (chimeMetadata*)(_buf_in_vis->get_metadata(frame_id_in_vis).get());
+        auto* metadata_sk = (chimeMetadata*)(_buf_in_sk->get_metadata(frame_id_in_sk).get());
 
         // Set the frequency index from the stream id of the metadata
         uint32_t freq_id = tel.to_freq_id(_buf_in_vis, frame_id_in_vis);

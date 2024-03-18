@@ -1,3 +1,7 @@
+# Metadata for the CUDA baseband beamformer
+# This file has been generated automatically by `bb.jl`.
+# Do not modify this file, your changes will be lost.
+
 --- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
 kernel-description:
   name: "bb"
@@ -8,7 +12,7 @@ kernel-description:
     number-of-dishes: 64
     number-of-frequencies: 128
     number-of-polarizations: 2
-    number-of-timesamples: 32768
+    number-of-timesamples: 2048
     sampling-time-μsec: 1.7
     shift-parameter-σ: 2
   compile-parameters:
@@ -30,7 +34,7 @@ kernel-description:
       intent: in
       type: Int4
       indices: [C, D, P, F, T]
-      shape: [2, 64, 2, 128, 32768]
+      shape: [2, 64, 2, 128, 2048]
       strides: [1, 2, 128, 256, 32768]
     - name: "s"
       intent: in
@@ -42,8 +46,8 @@ kernel-description:
       intent: out
       type: Int4
       indices: [C, T, P, F, B]
-      shape: [2, 32768, 2, 128, 16]
-      strides: [1, 2, 65536, 131072, 16777216]
+      shape: [2, 2048, 2, 128, 16]
+      strides: [1, 2, 4096, 8192, 1048576]
     - name: "info"
       intent: out
       type: Int32

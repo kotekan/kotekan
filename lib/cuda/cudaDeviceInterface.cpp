@@ -73,31 +73,39 @@ void cudaDeviceInterface::prepareStreams(uint32_t num_streams) {
 }
 void cudaDeviceInterface::async_copy_host_to_gpu(void* dst, void* src, size_t len,
                                                  uint32_t cuda_stream_id, cudaEvent_t pre_event,
-                                                 cudaEvent_t& copy_start_event,
-                                                 cudaEvent_t& copy_end_event) {
+                                                 cudaEvent_t* copy_start_event,
+                                                 cudaEvent_t* copy_end_event) {
     if (pre_event)
         CHECK_CUDA_ERROR(cudaStreamWaitEvent(getStream(cuda_stream_id), pre_event, 0));
+    if (copy_start_event) {
+        CHECK_CUDA_ERROR(cudaEventCreate(copy_start_event));
+        CHECK_CUDA_ERROR(cudaEventRecord(*copy_start_event, getStream(cuda_stream_id)));
+    }
     // Data transfer to GPU
-    CHECK_CUDA_ERROR(cudaEventCreate(&copy_start_event));
-    CHECK_CUDA_ERROR(cudaEventRecord(copy_start_event, getStream(cuda_stream_id)));
     CHECK_CUDA_ERROR(
         cudaMemcpyAsync(dst, src, len, cudaMemcpyHostToDevice, getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaEventCreate(&copy_end_event));
-    CHECK_CUDA_ERROR(cudaEventRecord(copy_end_event, getStream(cuda_stream_id)));
+    if (copy_end_event) {
+        CHECK_CUDA_ERROR(cudaEventCreate(copy_end_event));
+        CHECK_CUDA_ERROR(cudaEventRecord(*copy_end_event, getStream(cuda_stream_id)));
+    }
 }
 void cudaDeviceInterface::async_copy_gpu_to_host(void* dst, void* src, size_t len,
                                                  uint32_t cuda_stream_id, cudaEvent_t pre_event,
-                                                 cudaEvent_t& copy_start_event,
-                                                 cudaEvent_t& copy_end_event) {
+                                                 cudaEvent_t* copy_start_event,
+                                                 cudaEvent_t* copy_end_event) {
     if (pre_event)
         CHECK_CUDA_ERROR(cudaStreamWaitEvent(getStream(cuda_stream_id), pre_event, 0));
-    // Data transfer to GPU
-    CHECK_CUDA_ERROR(cudaEventCreate(&copy_start_event));
-    CHECK_CUDA_ERROR(cudaEventRecord(copy_start_event, getStream(cuda_stream_id)));
+    if (copy_start_event) {
+        CHECK_CUDA_ERROR(cudaEventCreate(copy_start_event));
+        CHECK_CUDA_ERROR(cudaEventRecord(*copy_start_event, getStream(cuda_stream_id)));
+    }
+    // Data transfer from GPU
     CHECK_CUDA_ERROR(
         cudaMemcpyAsync(dst, src, len, cudaMemcpyDeviceToHost, getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaEventCreate(&copy_end_event));
-    CHECK_CUDA_ERROR(cudaEventRecord(copy_end_event, getStream(cuda_stream_id)));
+    if (copy_end_event) {
+        CHECK_CUDA_ERROR(cudaEventCreate(copy_end_event));
+        CHECK_CUDA_ERROR(cudaEventRecord(*copy_end_event, getStream(cuda_stream_id)));
+    }
 }
 
 void cudaDeviceInterface::build(const std::string& kernel_filename,
@@ -202,7 +210,8 @@ void cudaDeviceInterface::build(const std::string& kernel_filename,
 
 void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
                                     const std::vector<std::string>& kernel_names,
-                                    const std::vector<std::string>& opts) {
+                                    const std::vector<std::string>& opts,
+                                    const std::string& kernel_name_prefix) {
     size_t program_size;
     FILE* fp;
     char* program_buffer;
@@ -214,9 +223,9 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
     CUmodule module;
 
     for (auto& kernel_name : kernel_names)
-        if (runtime_kernels.count(kernel_name))
+        if (runtime_kernels.count(kernel_name_prefix + kernel_name))
             FATAL_ERROR("Building CUDA kernels in file {:s}: kernel \"{:s}\" already exists.",
-                        kernel_filename, kernel_name);
+                        kernel_filename, kernel_name_prefix + kernel_name);
     // DEBUG("Building! {:s}", kernel_command)
 
     // Load the kernel file contents into `program_buffer`
@@ -239,7 +248,7 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
     nv_res = nvPTXCompilerCreate(&compiler, program_size, program_buffer);
     if (nv_res != NVPTXCOMPILE_SUCCESS) {
         // TODO Report ENUM names.
-        FATAL_ERROR("Could not create PTX compiler, error code: {:d}", nv_res);
+        FATAL_ERROR("Could not create PTX compiler, error code: {:d}", (int)nv_res);
         return;
     }
 
@@ -257,7 +266,7 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
         char* error_log = nullptr;
         nv_res = nvPTXCompilerGetErrorLogSize(compiler, &error_size);
         if (nv_res != NVPTXCOMPILE_SUCCESS) {
-            FATAL_ERROR("Could not get error log size, error code: {:d}", nv_res);
+            FATAL_ERROR("Could not get error log size, error code: {:d}", (int)nv_res);
             return;
         }
         if (error_size != 0) {
@@ -265,7 +274,7 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
             assert(error_log != nullptr);
             nv_res = nvPTXCompilerGetErrorLog(compiler, error_log);
             if (nv_res != NVPTXCOMPILE_SUCCESS) {
-                FATAL_ERROR("Could not get error log, error code: {:d}", nv_res);
+                FATAL_ERROR("Could not get error log, error code: {:d}", (int)nv_res);
                 free(error_log);
                 return;
             }
@@ -277,7 +286,7 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
 
     nv_res = nvPTXCompilerGetCompiledProgramSize(compiler, &elf_size);
     if (nv_res != NVPTXCOMPILE_SUCCESS) {
-        FATAL_ERROR("Could not get compiled PTX elf size, error code: {:d}", nv_res);
+        FATAL_ERROR("Could not get compiled PTX elf size, error code: {:d}", (int)nv_res);
         return;
     }
 
@@ -285,7 +294,7 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
     assert(elf != nullptr);
     nv_res = nvPTXCompilerGetCompiledProgram(compiler, (void*)elf);
     if (nv_res != NVPTXCOMPILE_SUCCESS) {
-        FATAL_ERROR("Could not get compiled PTX elf data, error code: {:d}", nv_res);
+        FATAL_ERROR("Could not get compiled PTX elf data, error code: {:d}", (int)nv_res);
         return;
     }
 
@@ -293,7 +302,7 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
     size_t info_size;
     nv_res = nvPTXCompilerGetInfoLogSize(compiler, &info_size);
     if (nv_res != NVPTXCOMPILE_SUCCESS) {
-        FATAL_ERROR("Could not get info log size, error code: {:d}", nv_res);
+        FATAL_ERROR("Could not get info log size, error code: {:d}", (int)nv_res);
         return;
     }
 
@@ -301,7 +310,7 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
         char* info_Log = (char*)malloc(info_size + 1);
         nv_res = nvPTXCompilerGetInfoLog(compiler, info_Log);
         if (nv_res != NVPTXCOMPILE_SUCCESS) {
-            FATAL_ERROR("Could not get PTX compiler logs, error code: {:d}", nv_res);
+            FATAL_ERROR("Could not get PTX compiler logs, error code: {:d}", (int)nv_res);
             free(info_Log);
             return;
         }
@@ -312,7 +321,7 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
     // Cleanup compiler
     nv_res = nvPTXCompilerDestroy(&compiler);
     if (nv_res != NVPTXCOMPILE_SUCCESS) {
-        FATAL_ERROR("Could not destroy compiler, error code: {:d}", nv_res);
+        FATAL_ERROR("Could not destroy compiler, error code: {:d}", (int)nv_res);
         return;
     }
 
@@ -324,8 +333,9 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
     }
 
     for (auto& kernel_name : kernel_names) {
-        runtime_kernels.emplace(kernel_name, nullptr);
-        cu_res = cuModuleGetFunction(&runtime_kernels[kernel_name], module, kernel_name.c_str());
+        runtime_kernels.emplace(kernel_name_prefix + kernel_name, nullptr);
+        cu_res = cuModuleGetFunction(&runtime_kernels[kernel_name_prefix + kernel_name], module,
+                                     kernel_name.c_str());
         if (cu_res != CUDA_SUCCESS) {
             const char* errStr;
             cuGetErrorString(cu_res, &errStr);

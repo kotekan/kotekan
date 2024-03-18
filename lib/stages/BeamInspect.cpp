@@ -36,7 +36,7 @@ void BeamInspect::main_thread() {
         if (frame == nullptr)
             break;
 
-        BeamMetadata* metadata = (BeamMetadata*)in_buf->get_metadata(frame_id);
+        BeamMetadata* metadata = (BeamMetadata*)(in_buf->get_metadata(frame_id).get());
         const uint32_t num_freq_per_stream = Telescope::instance().num_freq_per_stream();
 
         std::string frequency_bins = "";

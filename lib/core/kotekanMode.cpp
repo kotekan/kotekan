@@ -10,7 +10,7 @@
 #include "datasetManager.hpp"    // for datasetManager
 #include "kotekanLogging.hpp"    // for INFO_NON_OO
 #include "kotekanTrackers.hpp"   // for KotekanTrackers
-#include "metadata.h"            // for delete_metadata_pool
+#include "metadata.hpp"          // for delete_metadata_pool
 #include "metadataFactory.hpp"   // for metadataFactory
 #include "prometheusMetrics.hpp" // for Metrics
 #include "restServer.hpp"        // for restServer, connectionInstance
@@ -70,12 +70,7 @@ kotekanMode::~kotekanMode() {
         }
     }
 
-    for (auto const& metadata_pool : metadata_pools) {
-        if (metadata_pool.second != nullptr) {
-            delete_metadata_pool(metadata_pool.second);
-            free(metadata_pool.second);
-        }
-    }
+    metadata_pools.clear();
 }
 
 void kotekanMode::initalize_stages() {

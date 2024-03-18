@@ -5,18 +5,17 @@
  *  - Buffer
  *  - StageInfo (producers/consumers)
  */
-#ifndef BUFFER
-#define BUFFER
+#ifndef KOTEKAN_BUFFER_HPP
+#define KOTEKAN_BUFFER_HPP
 
 #include "kotekanLogging.hpp"
-#include "metadata.h" // for metadataPool
+#include "metadata.hpp" // for metadataPool
 
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
 
 #include <condition_variable>
 #include <map>
 #include <mutex>
-#include <pthread.h> // for pthread_cond_t, pthread_mutex_t
 #include <stdbool.h> // for bool
 #include <stdint.h>  // for uint8_t
 #include <string>
@@ -99,7 +98,8 @@ public:
      * @param metadata_pool The name of the metadata pool to associate with the buffer
      */
     GenericBuffer(const std::string& buffer_name, const std::string& buffer_type,
-                  metadataPool* pool, int num_frames);
+                  std::shared_ptr<metadataPool> pool, int num_frames);
+
     virtual ~GenericBuffer();
 
     /**
@@ -186,12 +186,12 @@ public:
      *
      * @return @c true if successful, @c false if metadata was already set.
      */
-    bool set_metadata(int frame_id, metadataContainer* meta);
+    bool set_metadata(int frame_id, std::shared_ptr<metadataObject> meta);
 
     /**
-     * @brief Gets the raw metadata block for the given frame
+     * @brief Gets the metadata block for the given frame
      *
-     * Returns a raw <tt>void *</tt> pointer which can then be cast as the
+     * Returns a shared_ptr to metadataObject which can then be cast as the
      * the metadata type associated with the buffer.
      *
      * @warning Only call this function for a @c frame_id for which you have
@@ -202,27 +202,9 @@ public:
      * @c allocate_new_metadata_object() before asking for the metadata object.
      *
      * @param[in] frame_id The frame to return the metadata for.
-     * @returns A pointer to the metadata object (needs to be cast)
+     * @returns A pointer to the metadata object
      */
-    void* get_metadata(int frame_id);
-
-    /**
-     * @brief Returns the container for the metadata.
-     *
-     * This works exactly the same way as @p get_metadata() but returns a
-     * @c metadataContainer which holds the reference count, locks, etc.
-     *
-     * @warning Only call this function for a @c frame_id for which you have
-     * access via a call to @c wait_for_full_frame() and use this metadata before
-     * calling @p mark_frame_empty(), because it could be dereferenced and returned
-     * to the metadata pool after that call.
-     * If you are adding a new metadata object, please *also* call
-     * @c allocate_new_metadata_object() before asking for the metadata object.
-     *
-     * @param[in] frame_id The frame to return the metadata for.
-     * @returns A pointer to the metadata_container
-     */
-    metadataContainer* get_metadata_container(int frame_id);
+    std::shared_ptr<metadataObject> get_metadata(int frame_id);
 
     /**
      * @brief Transfers metadata from one buffer to another for a given frame.
@@ -290,10 +272,10 @@ public:
     std::string buffer_type;
 
     /// The pool of info objects
-    metadataPool* metadata_pool;
+    std::shared_ptr<metadataPool> metadata_pool;
 
     /// Array of buffer info objects, for tracking information about each buffer.
-    std::vector<metadataContainer*> metadata;
+    std::vector<std::shared_ptr<metadataObject>> metadata;
 
 protected:
     /// The main lock for frame state management
@@ -372,9 +354,9 @@ public:
      * @param mlock_frames Lock the frame pages with mlock
      * @param zero_new_frames
      */
-    Buffer(int num_frames, size_t len, metadataPool* pool, const std::string& buffer_name,
-           const std::string& buffer_type, int numa_node, bool use_hugepages, bool mlock_frames,
-           bool zero_new_frames);
+    Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
+           const std::string& buffer_name, const std::string& buffer_type, int numa_node,
+           bool use_hugepages, bool mlock_frames, bool zero_new_frames);
     ~Buffer() override;
 
     /**

@@ -1,11 +1,14 @@
 #!/bin/bash
 
+# This script generates the Julia-based Cuda kernels for the transpose kernel.
+# Run it from the kotekan base directory like ./julia/bin/xpose.sh
+
 set -euxo pipefail
 
 scriptdir=$(dirname "$0")
 cd "$scriptdir/.."
 
-setups='pathfinder chord'
+setups='chord hirax pathfinder'
 
 # Delete previous output (so that we don't accidentally re-use it)
 for setup in $setups; do
@@ -42,7 +45,7 @@ done
 julia --project=@. --eval 'using JuliaFormatter; JuliaFormatter.format_file("output-A40")' &
 wait
 
-# Copy kernel into Kotekan
+# Copy kernels into Kotekan
 for setup in $setups; do
     cp output-A40/xpose_$setup.cxx ../lib/cuda/cudaTransposeKernel_$setup.cpp
     cp output-A40/xpose_$setup.jl ../lib/cuda/kernels/TransposeKernel_$setup.jl

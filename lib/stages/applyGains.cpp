@@ -420,7 +420,7 @@ std::optional<applyGains::GainData> applyGains::read_gain_file(std::string updat
         // Try a different extension
         gains_path = fmt::format(fmt("{:s}/{:s}.hdf5"), gains_dir, update_id);
         if (!fexists(gains_path)) {
-            WARN("Could not update gains. File not found: {:s}", gains_path)
+            WARN("Could not update gains. File not found: {:s}", gains_path);
             return std::nullopt;
         }
     }

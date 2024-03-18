@@ -5,7 +5,7 @@
 #include "buffer.hpp"            // for Buffer, get_num_full_frames, mark_frame_empty, register...
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "kotekanLogging.hpp"    // for DEBUG2, ERROR, DEBUG, WARN, INFO
-#include "metadata.h"            // for metadataContainer
+#include "metadata.hpp"          // for metadataContainer
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 
 #include "fmt.hpp" // for format, fmt
@@ -99,8 +99,10 @@ void bufferSend::main_thread() {
             int32_t n = 0;
             int32_t n_sent = 0;
 
+            auto meta = buf->get_metadata(frame_id);
+
             header.frame_size = buf->frame_size;
-            header.metadata_size = buf->metadata[frame_id]->metadata_size;
+            header.metadata_size = meta->get_serialized_size();
 
             DEBUG2("frame_size: {:d}, metadata_size: {:d}", header.frame_size,
                    header.metadata_size);
@@ -124,10 +126,14 @@ void bufferSend::main_thread() {
             // Send metadata
             DEBUG2("Sending metadata");
             n_sent = 0;
-            while ((n = send(socket_fd, &((uint8_t*)buf->metadata[frame_id]->metadata)[n_sent],
-                             header.metadata_size - n_sent, MSG_NOSIGNAL))
-                   > 0) {
-                n_sent += n;
+            {
+                char metabuf[header.metadata_size];
+                meta->serialize(metabuf);
+                while ((n = send(socket_fd, &metabuf + n_sent, header.metadata_size - n_sent,
+                                 MSG_NOSIGNAL))
+                       > 0) {
+                    n_sent += n;
+                }
             }
             if (n < 0) {
                 ERROR("Error {:s}, failed to metadata to {:s}:{:d}", strerror(errno), server_ip,

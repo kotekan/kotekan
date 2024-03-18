@@ -5,7 +5,7 @@
 #include "buffer.hpp"          // for Buffer, allocate_new_metadata_object, get_metadata_container
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for ERROR, INFO, FATAL_ERROR
-#include "metadata.h"          // for metadataContainer
+#include "metadata.hpp"        // for metadataContainer
 
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
@@ -112,13 +112,15 @@ void rawFileRead::main_thread() {
             // If metadata exists then lets read it in.
             if (metadata_size != 0) {
                 buf->allocate_new_metadata_object(frame_id);
-                metadataContainer* mc = buf->get_metadata_container(frame_id);
-                assert(metadata_size == mc->metadata_size);
-                if (fread(mc->metadata, metadata_size, 1, fp) != 1) {
+                auto meta = buf->get_metadata(frame_id);
+                assert(metadata_size == meta->get_serialized_size());
+                char meta_buf[metadata_size];
+                if (fread(meta_buf, metadata_size, 1, fp) != 1) {
                     ERROR("rawFileRead: Failed to read file {:s} metadata,", full_path);
                     break;
                 }
                 INFO("rawFileRead: Read in metadata from file {:s}", full_path);
+                meta->set_from_bytes(meta_buf, metadata_size);
             }
 
             size_t bytes_read = fread((void*)frame, sizeof(char), buf->frame_size, fp);

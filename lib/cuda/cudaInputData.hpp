@@ -31,8 +31,6 @@ public:
     std::string get_performance_metric_string() override;
 
 protected:
-    cudaEvent_t* data_staged_event;
-
     /// Name of the GPU side memory to transfer data into.
     std::string _gpu_mem;
 

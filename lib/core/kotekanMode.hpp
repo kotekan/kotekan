@@ -4,7 +4,7 @@
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
-#include "metadata.h"          // for metadataPool  // IWYU pragma: keep
+#include "metadata.hpp"        // for metadataPool  // IWYU pragma: keep
 #include "restServer.hpp"      // for connectionInstance
 #if !defined(MAC_OSX)
 #include "cpuMonitor.hpp"
@@ -12,9 +12,9 @@
 
 #include "json.hpp" // for json
 
-#include <map>    // for map
+#include <map> // for map
+#include <memory>
 #include <string> // for string
-
 
 // doxygen wants the namespace to be documented somewhere
 /*!
@@ -65,7 +65,7 @@ private:
 #endif
 
     std::map<std::string, Stage*> stages;
-    std::map<std::string, metadataPool*> metadata_pools;
+    std::map<std::string, std::shared_ptr<metadataPool>> metadata_pools;
 
     std::map<std::string, GenericBuffer*> buffers;
 };
