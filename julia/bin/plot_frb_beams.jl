@@ -6,28 +6,28 @@ using Statistics
 
 setup = :pathfinder
 
-dir = "/tmp/f_engine_$(setup)_frb"
-prefix = "blue_"
+dir = "/tmp/f_engine_$(setup)"
+prefix = "indigo_"
 iter = "00000000"
 
 t2c(x::NTuple{2}) = Complex(x...)
 i2t(x::Int4x2) = convert(NTuple{2,Int8}, x)
 i2c(x::Int4x2) = t2c(i2t(x))
 
-quantity_E = "voltage"
-file_E = ASDF2.load_file("$(dir)/$(prefix)$(quantity_E).$(iter).asdf")
-dataset_E = file_E.metadata[parse(Int, iter)]
-@assert dataset_E["dim_names"] == ["T", "F", "P", "D"]
-array_E = dataset_E["host_$(quantity_E)_buffer"][]
-array_E::AbstractArray{UInt8,4}
-array_E = reinterpret(Int4x2, array_E)
-array_E::AbstractArray{Int4x2,4}
-ndishs, npolrs, nfreqs, ntimes = size(array_E)
+quantity_Ebar = "upchan_voltage"
+file_Ebar = ASDF2.load_file("$(dir)/$(prefix)$(quantity_Ebar).$(iter).asdf")
+dataset_Ebar = file_Ebar.metadata[parse(Int, iter)]
+@assert dataset_Ebar["dim_names"] == ["Tbar", "Fbar", "P", "D"]
+array_Ebar = dataset_Ebar["host_$(quantity_Ebar)_buffer"][]
+array_Ebar::AbstractArray{UInt8,4}
+array_Ebar = reinterpret(Int4x2, array_Ebar)
+array_Ebar::AbstractArray{Int4x2,4}
+ndishs, npolrs, nfreqs, ntimes = size(array_Ebar)
 
 quantity_W = "frb_phase"
 file_W = ASDF2.load_file("$(dir)/$(prefix)$(quantity_W).$(iter).asdf")
 dataset_W = file_W.metadata[parse(Int, iter)]
-@assert dataset_W["dim_names"] == ["F", "P", "dishN", "dishM", "C"]
+@assert dataset_W["dim_names"] == ["Fbar", "P", "dishN", "dishM", "C"]
 array_W = dataset_W["host_$(quantity_W)_buffer"][]
 array_W::AbstractArray{Float16,5}
 array_W = reinterpret(Complex{Float16}, array_W)
@@ -35,29 +35,29 @@ array_W = reinterpret(Complex{Float16}, array_W)
 array_W = reshape(array_W, size(array_W)[2:end])
 array_W::AbstractArray{Complex{Float16},4}
 
-quantity_I0 = "expected_frb_beams"
-file_I0 = ASDF2.load_file("$(dir)/$(prefix)$(quantity_I0).$(iter).asdf")
-dataset_I0 = file_I0.metadata[parse(Int, iter)]
-@assert dataset_I0["dim_names"] == ["F", "Tbar", "beamQ", "beamP"]
-array_I0 = dataset_I0["host_$(quantity_I0)_buffer"][]
-array_I0::AbstractArray{Float16,4}
-nbeamps, nbeamqs, ntimebars, nfreqs′ = size(array_I0)
-@assert nfreqs′ == nfreqs
+# quantity_I0 = "expected_frb_beams"
+# file_I0 = ASDF2.load_file("$(dir)/$(prefix)$(quantity_I0).$(iter).asdf")
+# dataset_I0 = file_I0.metadata[parse(Int, iter)]
+# @assert dataset_I0["dim_names"] == ["Ttilde", "Fbar", "beamQ", "beamP"]
+# array_I0 = dataset_I0["host_$(quantity_I0)_buffer"][]
+# array_I0::AbstractArray{Float16,4}
+# nbeamps, nbeamqs, ntimebars, nfreqs′ = size(array_I0)
+# @assert nfreqs′ == nfreqs
 
 quantity_I = "frb_beams"
 file_I = ASDF2.load_file("$(dir)/$(prefix)$(quantity_I).$(iter).asdf")
 dataset_I = file_I.metadata[parse(Int, iter)]
-@assert dataset_I["dim_names"] == ["F", "Tbar", "beamQ", "beamP"]
+@assert dataset_I["dim_names"] == ["Ttilde", "Fbar", "beamQ", "beamP"]
 array_I = dataset_I["host_$(quantity_I)_buffer"][]
 array_I::AbstractArray{Float16,4}
-nbeamps, nbeamqs, ntimebars, nfreqs′ = size(array_I)
-@assert nfreqs′ == nfreqs
+nbeamps, nbeamqs, ntimebars, nfreqs = size(array_I)
+@assert nfreqs == nfreqs
 
 array_I = map(x -> x == Inf ? prevfloat(typemax(x)) : x, array_I)
 
-@assert dataset_E["ndishes"] == ndishs
+@assert dataset_Ebar["ndishes"] == ndishs
 
-dish_index = dataset_E["dish_index"][]
+dish_index = dataset_Ebar["dish_index"][]
 dish_index::AbstractArray{<:Integer,2}
 num_dish_locations_N, num_dish_locations_M = size(dish_index)
 
@@ -137,7 +137,7 @@ function aspect!(fig::Figure, row::Integer, col::Integer, ratio_x_over_y)
     return nothing
 end
 
-data = Float32[mean(abs2(real(Complex{Float32}(i2c(j)))) for j in view(array_E, dish, :, freq, :)) for dish in 1:ndishs]
+data = Float32[mean(abs2(real(Complex{Float32}(i2c(j)))) for j in view(array_Ebar, dish, :, freq, :)) for dish in 1:ndishs]
 fig = Figure(; size=(1280, 960))
 ax = Axis(fig[1, 1]; title="$setup F-engine electric field", xlabel="x [m]", ylabel="y [m]")
 xlims!(ax, dishs_xlim)
@@ -164,17 +164,17 @@ obj = heatmap!(ax, 0:(nbeamps * nbeamqs - 1), 0:freq_step:(nfreqs - 1), data; co
 Colorbar(fig[1, 2], obj; label="frb beam spectral intensity")
 display(fig)
 
-data = Float32[mean(Float32(i) for i in view(array_I0, beamp, beamq, :, freq)) for beamq in 1:nbeamqs for beamp in 1:nbeamps]
-fig = Figure(; size=(1280, 960))
-ax = Axis(fig[1, 1]; title="$setup expected X-engine frb beams", xlabel="sky θx", ylabel="sky θy")
-xlims!(ax, beams_xlim)
-ylims!(ax, beams_ylim)
-obj = scatter!(ax, beamsx, beamsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
-Colorbar(fig[1, 2], obj; label="frb beam intensity")
-# rowsize!(fig.layout, 1, Aspect(1, beams_ysize / beams_xsize))
-# colsize!(fig.layout, 1, Aspect(1, beams_xsize / beams_ysize))
-aspect!(fig, 1, 1, beams_xsize / beams_ysize)
-display(fig)
+# data = Float32[mean(Float32(i) for i in view(array_I0, beamp, beamq, :, freq)) for beamq in 1:nbeamqs for beamp in 1:nbeamps]
+# fig = Figure(; size=(1280, 960))
+# ax = Axis(fig[1, 1]; title="$setup expected X-engine frb beams", xlabel="sky θx", ylabel="sky θy")
+# xlims!(ax, beams_xlim)
+# ylims!(ax, beams_ylim)
+# obj = scatter!(ax, beamsx, beamsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
+# Colorbar(fig[1, 2], obj; label="frb beam intensity")
+# # rowsize!(fig.layout, 1, Aspect(1, beams_ysize / beams_xsize))
+# # colsize!(fig.layout, 1, Aspect(1, beams_xsize / beams_ysize))
+# aspect!(fig, 1, 1, beams_xsize / beams_ysize)
+# display(fig)
 
 data = Float32[mean(Float32(i) for i in view(array_I, beamp, beamq, :, freq)) for beamq in 1:nbeamqs for beamp in 1:nbeamps]
 fig = Figure(; size=(1280, 960))

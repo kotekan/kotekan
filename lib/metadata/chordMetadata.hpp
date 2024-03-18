@@ -3,7 +3,6 @@
 
 #include "Telescope.hpp"
 #include "buffer.hpp"
-#include "chimeMetadata.hpp"
 #include "datasetManager.hpp"
 #include "metadata.hpp"
 
@@ -54,7 +53,7 @@ const int CHORD_META_MAX_DIM = 10;
 // Maximum length of dimension names for arrays
 const int CHORD_META_MAX_DIMNAME = 16;
 
-class chordMetadata : public chimeMetadata {
+class chordMetadata : public metadataObject {
 public:
     chordMetadata();
 
@@ -71,6 +70,7 @@ public:
 
     int frame_counter;
 
+    char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
     chordDataType type;
 
     int dims;
@@ -83,6 +83,28 @@ public:
     int n_one_hot;
     char onehot_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME];
     int onehot_index[CHORD_META_MAX_DIM];
+
+    // All time samples in this buffer (or the whole buffer, if the
+    // buffer does not have a time sample index) have `sample_offset`
+    // added to the buffer's time sample index. (This allows quickly
+    // shifting metadata in time to re-use metadata objects.)
+    //
+    // The actual (possibly fractional) time sample index is calculated as follows:
+    //     T_actual = (sample0_offset + T + half_fpga_sample0[F] / 2) / time_downsampling_fpga[F]
+    // where `T` is the time sample index and `F` is the coarse frequency index.
+    int64_t sample0_offset;
+    // Number of bytes per time sample
+    size_t sample_bytes() const {
+        size_t bytes = chord_datatype_bytes(type);
+        assert(dims >= 0);
+        // Skip the first dimension. The number of bytes per sample is the number of bytes needed to
+        // store one array slice.
+        for (int d = 1; d < dims; ++d) {
+            assert(dim[d] >= 0);
+            bytes *= dim[d];
+        }
+        return bytes;
+    }
 
     // Per-frequency arrays
 

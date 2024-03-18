@@ -35,6 +35,12 @@ protected:
     std::string _gpu_mem;
 
     Buffer* in_buf;
+
+    // Whether to copy the data only once (at the first iteration).
+    // This condition should be generalized to allow periodic updates.
+    bool do_once;
+    // Whether we already copied the data
+    bool did_once;
 };
 
 #endif // CUDA_INPUT_DATA_H
