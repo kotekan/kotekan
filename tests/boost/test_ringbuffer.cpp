@@ -34,7 +34,7 @@ BOOST_AUTO_TEST_CASE(test1) {
     __enable_syslog = 0;
     _global_log_level = 4;
 
-    const int inst = 0;		// instance (only used for debug messages)
+    const int inst = 0; // instance (only used for debug messages)
     RingBuffer rb(20, pool, "rb1", "ring");
     rb.set_log_level("debug");
     rb.print_full_status();
