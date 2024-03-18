@@ -4,8 +4,8 @@
 #include "metadataFactory.hpp"
 #include "ringbuffer.hpp"
 
-#include <memory>
 #include <locale>
+#include <memory>
 
 #undef WITH_CUDA
 
