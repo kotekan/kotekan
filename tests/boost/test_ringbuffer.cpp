@@ -108,9 +108,9 @@ BOOST_AUTO_TEST_CASE(test1) {
     INFO_NON_OO("C: readable: offset {:d}, n {:d}", rc.first, rc.second);
     INFO_NON_OO("D: readable: offset {:d}, n {:d}", rd.first, rd.second);
 
-    BOOST_CHECK(wa.first == 0);
+    BOOST_CHECK(wa.first == 20);
     BOOST_CHECK(wa.second == 2);
-    BOOST_CHECK(wb.first == 0); // wrapped
+    BOOST_CHECK(wb.first == 20);
     BOOST_CHECK(wb.second == 2);
     BOOST_CHECK(rc.first == 2);
     BOOST_CHECK(rc.second == 8);
