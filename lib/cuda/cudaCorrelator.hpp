@@ -53,17 +53,19 @@ public:
 protected:
 private:
     // Common configuration values (which do not change in a run)
-    /// Number of elements on the telescope (e.g. 2048 - CHIME, 256 - Pathfinder).
-    // ( = dishes x polarizations )
+    /// Number of elements on the telescope (aka analog inputs)
+    // CHIME            = 2048 (1024 antennas x 2 polarizations),
+    // CHORD pathfinder =  128 ( 64  dishes   x 2 polarizations)
+    // CHORD pathfinder = 1024 (512  dishes   x 2 polarizations)
     int32_t _num_elements;
     /// Number of frequencies per data stream sent to each node.
     int32_t _num_local_freq;
-    /// Total samples in each dataset. Must be a value that is a power of 2.
+    /// Total time samples in each dataset. Must be a power of 2.
     int32_t _samples_per_data_set;
     // Number of time samples into each of the output correlation
     // triangles.  The number of output correlation triangles is the
     // length of the input frame divided by this value.
-    // must be a factor of 256.
+    // Must be a multiple of 256.
     int32_t _sub_integration_ntime;
 
     /// GPU side memory name for the voltage input
