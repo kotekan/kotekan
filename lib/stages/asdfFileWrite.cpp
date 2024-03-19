@@ -1,7 +1,6 @@
 #include <Stage.hpp>
 #include <StageFactory.hpp>
 #include <asdf/asdf.hxx>
-#include <atomic>
 #include <cassert>
 #include <chordMetadata.hpp>
 #include <cstdint>
@@ -68,17 +67,11 @@ ASDF::scalar_type_id_t chord2asdf(const chordDataType type) {
  * @author Erik Schnetter
  **/
 class asdfFileWrite : public kotekan::Stage {
-
     const std::string base_dir = config.get<std::string>(unique_name, "base_dir");
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
 
-    const std::uint32_t exit_after_n_frames;
-    const std::uint32_t exit_with_n_writers;
-
     Buffer* const buffer;
-
-    static std::atomic<std::uint32_t> n_finished;
 
 public:
     asdfFileWrite(kotekan::Config& config, const std::string& unique_name,
@@ -87,9 +80,9 @@ public:
               [](const kotekan::Stage& stage) {
                   return const_cast<kotekan::Stage&>(stage).main_thread();
               }),
-        exit_after_n_frames(config.get<std::uint32_t>(unique_name, "exit_after_n_frames")),
-        exit_with_n_writers(config.get<std::uint32_t>(unique_name, "exit_with_n_writers")),
         buffer(get_buffer("in_buf")) {
+        ASDF_CHECK_VERSION();
+
         buffer->register_consumer(unique_name);
     }
 
@@ -99,24 +92,31 @@ public:
         auto& write_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
             "kotekan_asdffilewrite_write_time_seconds", unique_name);
 
-        for (std::uint32_t frame_counter = 0;
-             exit_after_n_frames == 0 || frame_counter < exit_after_n_frames; ++frame_counter) {
+        for (std::uint32_t frame_counter = 0;; ++frame_counter) {
             const std::uint32_t frame_id = frame_counter % buffer->num_frames;
 
             if (stop_thread)
                 break;
 
             // Wait for the next frame
+            DEBUG("wait_for_full_frame: frame_id={}", frame_id);
             const std::uint8_t* const frame = buffer->wait_for_full_frame(unique_name, frame_id);
-            if (frame == nullptr)
+            if (!frame)
                 break;
+            DEBUG("got frame: frame_id={}", frame_id);
 
             // Start timer
             const double t0 = current_time();
 
             // Fetch metadata
             const std::shared_ptr<metadataObject> mc = buffer->get_metadata(frame_id);
+            if (!mc)
+                FATAL_ERROR("Buffer \"{:s}\" frame {:d} does not have metadata",
+                            buffer->buffer_name, frame_id);
             assert(mc);
+            if (!metadata_is_chord(mc))
+                FATAL_ERROR("Metadata of buffer \"{:s}\" frame {:d} is not of type CHORD",
+                            buffer->buffer_name, frame_id);
             assert(metadata_is_chord(mc));
             const std::shared_ptr<chordMetadata> meta = get_chord_metadata(mc);
 
@@ -149,8 +149,6 @@ public:
 
             // Describe metadata
 
-            group->emplace("nfreq", std::make_shared<ASDF::int_entry>(meta->nfreq));
-
             auto coarse_freq = std::make_shared<ASDF::sequence>();
             for (int freq = 0; freq < meta->nfreq; ++freq)
                 coarse_freq->push_back(std::make_shared<ASDF::int_entry>(meta->coarse_freq[freq]));
@@ -161,6 +159,9 @@ public:
                 freq_upchan_factor->push_back(
                     std::make_shared<ASDF::int_entry>(meta->freq_upchan_factor[freq]));
             group->emplace("freq_upchan_factor", freq_upchan_factor);
+
+            group->emplace("sample0_offset",
+                           std::make_shared<ASDF::int_entry>(meta->sample0_offset));
 
             auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
             for (int freq = 0; freq < meta->nfreq; ++freq)
@@ -217,14 +218,9 @@ public:
             int ierr = mkdir(base_dir.c_str(), 0777);
             if (ierr) {
                 if (errno != EEXIST && errno != EISDIR) {
-                    char msg[1000];
-                    char* p = strerror_r(errno, msg, sizeof msg);
-                    if (!p)
-                        FATAL_ERROR("Could not create directory \"{:s}\":\nerrno={:d}",
-                                    base_dir.c_str(), errno);
-                    else
-                        FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(),
-                                    msg);
+                    const char* const msg = strerror(errno);
+                    FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(),
+                                msg);
                 }
             }
             project.write(full_path);
@@ -235,14 +231,12 @@ public:
             write_time_metric.set(elapsed);
 
             // Mark frame as done
+            DEBUG("mark_frame_empty: frame_id={}", frame_id);
             buffer->mark_frame_empty(unique_name, frame_id);
         } // for
 
-        if (exit_with_n_writers > 0 && ++n_finished >= exit_with_n_writers)
-            exit_kotekan(ReturnCode::CLEAN_EXIT);
+        DEBUG("exiting");
     }
 };
 
 REGISTER_KOTEKAN_STAGE(asdfFileWrite);
-
-std::atomic<std::uint32_t> asdfFileWrite::n_finished{0};

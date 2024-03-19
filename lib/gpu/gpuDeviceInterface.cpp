@@ -39,6 +39,10 @@ void* gpuDeviceInterface::get_gpu_memory(const std::string& name, const size_t l
         gpu_memory[name].metadata_pointers.push_back(nullptr);
     }
     // The size must match what has already been allocated.
+    if (len != gpu_memory[name].len) {
+        ERROR("GPU[{:d}] memory: {:s}, requested len: {:d}, have len: {:d}", gpu_id, name, len,
+              gpu_memory[name].len);
+    }
     assert(len == gpu_memory[name].len);
     assert(gpu_memory[name].gpu_pointers.size() == 1);
 
@@ -56,7 +60,7 @@ void* gpuDeviceInterface::get_gpu_memory_array(const std::string& name, const ui
         // Allocate arrays contiguously so that they can be used as ring buffer
         void* base_ptr = alloc_gpu_memory(buffer_depth * len);
         gpu_memory[name].gpu_pointers_to_free.push_back(base_ptr);
-        for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
+        for (uint32_t i = 0; i < buffer_depth; ++i) {
             void* ptr = (unsigned char*)base_ptr + i * len;
             INFO("Allocating GPU[{:d}] memory: {:s}, len: {:d}, ptr: {:p}", gpu_id, name, len, ptr);
             gpu_memory[name].len = len;

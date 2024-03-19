@@ -1,5 +1,6 @@
 #include "cudaCopyToRingbuffer.hpp"
 
+#include "chordMetadata.hpp"
 #include "cudaUtils.hpp"
 #include "math.h"
 #include "mma.h"
@@ -73,7 +74,8 @@ cudaCopyToRingbuffer::~cudaCopyToRingbuffer() {
 
 int cudaCopyToRingbuffer::wait_on_precondition() {
     DEBUG("Waiting for ringbuffer space for writing to become available ({:d} bytes)", _input_size);
-    std::optional<size_t> val = signal_buffer->wait_for_writable(unique_name, _input_size);
+    std::optional<size_t> val =
+        signal_buffer->wait_for_writable(unique_name, instance_num, _input_size);
     DEBUG("Ringbuffer space for writing is now available");
     if (!val.has_value())
         return -1;
@@ -98,22 +100,23 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
 
     void* rb_memory = device.get_gpu_memory(_gpu_mem_output, _ring_buffer_size);
 
+    size_t start = output_cursor % _ring_buffer_size;
     size_t ncopy = _input_size;
     size_t nwrap = 0;
-    if (output_cursor + _input_size > _ring_buffer_size) {
-        ncopy = _ring_buffer_size - output_cursor;
+    if (start + _input_size > _ring_buffer_size) {
+        ncopy = _ring_buffer_size - start;
         nwrap = _input_size - ncopy;
     }
 
     record_start_event();
 
-    std::shared_ptr<metadataObject> meta;
+    std::shared_ptr<chordMetadata> meta;
     if (!in_buffer) {
         void* input_memory = device.get_gpu_memory_array(_gpu_mem_input, gpu_frame_id,
                                                          _gpu_buffer_depth, _input_size);
         DEBUG("Copying from GPU frame array into ringbuffer: {:d} to copy + {:d} wrapping around",
               ncopy, nwrap);
-        CHECK_CUDA_ERROR(cudaMemcpyAsync((char*)rb_memory + output_cursor, input_memory, ncopy,
+        CHECK_CUDA_ERROR(cudaMemcpyAsync((char*)rb_memory + start, input_memory, ncopy,
                                          cudaMemcpyDeviceToDevice,
                                          device.getStream(cuda_stream_id)));
         if (nwrap)
@@ -121,26 +124,35 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
                                              cudaMemcpyDeviceToDevice,
                                              device.getStream(cuda_stream_id)));
         // Copy (reference to) metadata also
-        meta = device.get_gpu_memory_array_metadata(_gpu_mem_input, gpu_frame_id);
+        meta = std::dynamic_pointer_cast<chordMetadata>(
+            device.get_gpu_memory_array_metadata(_gpu_mem_input, gpu_frame_id));
     } else {
         int buf_index = gpu_frame_id % in_buffer->num_frames;
         void* host_memory_frame = (void*)in_buffer->frames[buf_index];
 
         DEBUG("Copying from host memory into ringbuffer: {:d} to copy + {:d} wrapping around",
               ncopy, nwrap);
-        device.async_copy_host_to_gpu((char*)rb_memory + output_cursor, host_memory_frame, ncopy,
+        device.async_copy_host_to_gpu((char*)rb_memory + start, host_memory_frame, ncopy,
                                       cuda_stream_id, pre_events[cuda_stream_id], nullptr, nullptr);
         if (nwrap)
             device.async_copy_host_to_gpu(rb_memory, (char*)host_memory_frame + ncopy, nwrap,
                                           cuda_stream_id, nullptr, nullptr, nullptr);
 
         // Copy (reference to) metadata also
-        meta = in_buffer->metadata[buf_index];
+        meta = std::dynamic_pointer_cast<chordMetadata>(in_buffer->metadata[buf_index]);
         DEBUG("Metadata from input buffer frame: {:p}", static_cast<void*>(meta.get()));
     }
     if (meta) {
         DEBUG("Copying metadata for frame {:d} to GPU array {:s}", gpu_frame_id, _gpu_mem_output);
-        device.claim_gpu_memory_array_metadata(_gpu_mem_output, 0, meta);
+        // Copy metadata (because we modify it)
+        meta = std::make_shared<chordMetadata>(*meta);
+        assert(output_cursor % meta->sample_bytes() == 0);
+        meta->sample0_offset -= output_cursor / meta->sample_bytes();
+        assert(meta->sample0_offset == 0);
+        assert(meta->dims > 0);
+        assert(in_buffer->frame_size % meta->sample_bytes() == 0);
+        assert(meta->dim[0] == std::ptrdiff_t(in_buffer->frame_size / meta->sample_bytes()));
+        signal_buffer->set_metadata(0, meta);
     }
 
     // FIXME -- signal *now*, when we have *queued* the cuda work?  Or in finalize_frame, when it
@@ -160,5 +172,5 @@ void cudaCopyToRingbuffer::finalize_frame() {
     if (in_buffer)
         in_buffer->mark_frame_empty(unique_name, gpu_frame_id % in_buffer->num_frames);
     // At this point we know the Cuda copy completed, but do we *really* need that to be the case??
-    signal_buffer->finish_write(unique_name, _input_size);
+    signal_buffer->finish_write(unique_name, instance_num, _input_size);
 }
