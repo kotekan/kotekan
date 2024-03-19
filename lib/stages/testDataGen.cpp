@@ -202,10 +202,7 @@ void testDataGen::main_thread() {
             chordmeta = get_chord_metadata(buf, frame_id);
             chordmeta->dims = (int)_array_shape.size();
             for (int d = 0; d < chordmeta->dims; ++d)
-                chordmeta->dim[d] = _array_shape[d];
-            for (int d = 0; d < chordmeta->dims; ++d)
-                std::strncpy(chordmeta->dim_name[d], _dim_name[d].c_str(),
-                             sizeof chordmeta->dim_name[d]);
+                chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
         }
 
         unsigned char temp_output;
