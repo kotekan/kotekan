@@ -22,6 +22,7 @@
 #include <getopt.h>    // for no_argument, getopt_long, required_argument, option
 #include <iostream>    // for endl, basic_ostream, cout, ostream
 #include <iterator>    // for reverse_iterator
+#include <locale>
 #include <map>         // for map
 #include <memory>      // for allocator_traits<>::value_type
 #include <mutex>       // for mutex, lock_guard
@@ -410,6 +411,12 @@ int main(int argc, char** argv) {
 
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
+
+    try {
+        std::locale::global(std::locale("en_US.UTF-8"));
+    } catch (const std::exception& ex) {
+        std::cout << "Exception setting locale:" << ex << std::endl;
+    }
 
     char* config_file_name = (char*)"none";
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
