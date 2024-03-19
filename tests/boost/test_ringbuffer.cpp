@@ -3,6 +3,7 @@
 #include "Config.hpp" // for Config
 #include "metadataFactory.hpp"
 #include "ringbuffer.hpp"
+#include "test_utils.hpp"
 
 #include <locale>
 #include <memory>
@@ -19,21 +20,6 @@ using json = nlohmann::json;
 using namespace kotekan;
 using namespace std;
 
-// Use a boost::test "Global Fixture" to set the locale for fmt...
-// https://www.boost.org/doc/libs/1_75_0/libs/test/doc/html/boost_test/tests_organization/fixtures/global.html
-struct GlobalFixture_Locale {
-    GlobalFixture_Locale() {
-        std::cout << "Setting locale (stdout)..." << std::endl;
-        BOOST_TEST_MESSAGE("Setting locale...");
-        try {
-            std::locale::global(std::locale("en_US.UTF-8"));
-        } catch (const std::exception& ex) {
-            std::cout << "Exception setting locale (stdout)..." << std::endl;
-            BOOST_TEST_MESSAGE("Exception setting locale");
-        }
-    }
-    ~GlobalFixture_Locale() {}
-};
 BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
 
 BOOST_AUTO_TEST_CASE(test1) {
