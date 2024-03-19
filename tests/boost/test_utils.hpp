@@ -5,6 +5,7 @@
 
 #include <boost/test/included/unit_test.hpp>
 #include <vector>
+#include <locale>
 
 // Use a boost::test "Global Fixture" to set the locale for fmt...
 // https://www.boost.org/doc/libs/1_75_0/libs/test/doc/html/boost_test/tests_organization/fixtures/global.html
