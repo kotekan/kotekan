@@ -1,8 +1,9 @@
-#ifndef KOTEKAN_CUDA_CORRELATOR_CUH
-#define KOTEKAN_CUDA_CORRELATOR_CUH
+#ifndef KOTEKAN_CUDA_CORRELATOR_H
+#define KOTEKAN_CUDA_CORRELATOR_H
 
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
+#include "ringbuffer.hpp"
 #include "n2k.hpp"
 
 /**
@@ -41,13 +42,16 @@ public:
     cudaCorrelator(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device, int inst);
     ~cudaCorrelator();
+    int wait_on_precondition() override;
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
+    void finalize_frame() override;
 
 protected:
 private:
     // Common configuration values (which do not change in a run)
     /// Number of elements on the telescope (e.g. 2048 - CHIME, 256 - Pathfinder).
+    // ( = dishes x polarizations )
     int32_t _num_elements;
     /// Number of frequencies per data stream sent to each node.
     int32_t _num_local_freq;
@@ -56,6 +60,7 @@ private:
     // Number of time samples into each of the output correlation
     // triangles.  The number of output correlation triangles is the
     // length of the input frame divided by this value.
+    // must be a factor of 256.
     int32_t _sub_integration_ntime;
 
     /// GPU side memory name for the voltage input
@@ -63,8 +68,14 @@ private:
     /// GPU side memory name for correlator output
     std::string _gpu_mem_correlation_triangle;
 
+    // Signalling ring buffer for the input (voltage) data
+    RingBuffer* input_ringbuf_signal;
+
+    // Byte offset in the ring buffer to read from
+    std::ptrdiff_t input_cursor;
+
     // Cuda kernel wrapper object
     n2k::Correlator n2correlator;
 };
 
-#endif // KOTEKAN_CUDA_CORRELATOR_CUH
+#endif // KOTEKAN_CUDA_CORRELATOR_H
