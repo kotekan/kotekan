@@ -27,6 +27,9 @@
  *   @gpu_mem_type   staging
  *   @gpu_mem_format Array of @c int32
  *
+ * We assume the input data are stored in a ring buffer, so the signalling buffer must also be
+ * specified via the @c in_signal input parameter.
+ *
  * @conf   num_elements          Int.  Number of feeds.
  * @conf   num_local_freq        Int.  Number of frequencies.
  * @conf   samples_per_data_set  Int.  Number of time samples per Kotekan block.
