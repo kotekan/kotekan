@@ -528,7 +528,8 @@ datasetManager::add_state(std::unique_ptr<T>&& state,
     } else {
         // insert the new state
         std::lock_guard<std::mutex> slock(_lock_states);
-        if (!_states.insert(std::pair<state_id_t, std::unique_ptr<T>>(hash, move(state))).second) {
+        if (!_states.insert(std::pair<state_id_t, std::unique_ptr<T>>(hash, std::move(state)))
+                 .second) {
             DEBUG_NON_OO("datasetManager: a state with hash {} is already registered locally.",
                          hash);
         }
@@ -590,8 +591,8 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
 
         // register the received state
         std::unique_lock<std::mutex> slck(_lock_states);
-        auto new_state =
-            _states.insert(std::pair<state_id_t, std::unique_ptr<datasetState>>(s_id, move(state)));
+        auto new_state = _states.insert(
+            std::pair<state_id_t, std::unique_ptr<datasetState>>(s_id, std::move(state)));
         slck.unlock();
 
         // signal other waiting state requests, that we received this state

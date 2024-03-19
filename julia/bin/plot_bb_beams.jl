@@ -10,8 +10,8 @@ using Statistics
 # - stage hdf5FileWrite's base_dir
 setup = :pathfinder
 
-dir = "/tmp/f_engine_$(setup)_bb"
-prefix = "blue_"
+dir = "/tmp/f_engine_$(setup)"
+prefix = "indigo_"
 iter = "00000000"
 
 t2c(x::NTuple{2}) = Complex(x...)
@@ -35,16 +35,16 @@ dataset_A = file_A.metadata[parse(Int, iter)]
 array_A = dataset_A["host_$(quantity_A)_buffer"][]
 array_A::AbstractArray{Int8,5}
 
-quantity_J0 = "expected_bb_beams"
-file_J0 = ASDF2.load_file("$(dir)/$(prefix)$(quantity_J0).$(iter).asdf")
-dataset_J0 = file_J0.metadata[parse(Int, iter)]
-@assert dataset_J0["dim_names"] == ["B", "F", "P", "T"]
-array_J0 = dataset_J0["host_$(quantity_J0)_buffer"][]
-array_J0::AbstractArray{UInt8,4}
-array_J0 = reinterpret(Int4x2, array_J0)
-array_J0::AbstractArray{Int4x2,4}
-ntimes′, npolrs′, nfreqs′, nbeams = size(array_J0)
-@assert (ntimes′, npolrs′, nfreqs′) == (ntimes, npolrs, nfreqs)
+# quantity_J0 = "expected_bb_beams"
+# file_J0 = ASDF2.load_file("$(dir)/$(prefix)$(quantity_J0).$(iter).asdf")
+# dataset_J0 = file_J0.metadata[parse(Int, iter)]
+# @assert dataset_J0["dim_names"] == ["B", "F", "P", "T"]
+# array_J0 = dataset_J0["host_$(quantity_J0)_buffer"][]
+# array_J0::AbstractArray{UInt8,4}
+# array_J0 = reinterpret(Int4x2, array_J0)
+# array_J0::AbstractArray{Int4x2,4}
+# ntimes′, npolrs′, nfreqs′, nbeams = size(array_J0)
+# @assert (ntimes′, npolrs′, nfreqs′) == (ntimes, npolrs, nfreqs)
 
 quantity_J = "bb_beams"
 file_J = ASDF2.load_file("$(dir)/$(prefix)$(quantity_J).$(iter).asdf")
@@ -54,8 +54,8 @@ array_J = dataset_J["host_$(quantity_J)_buffer"][]
 array_J::AbstractArray{UInt8,4}
 array_J = reinterpret(Int4x2, array_J)
 array_J::AbstractArray{Int4x2,4}
-ntimes′, npolrs′, nfreqs′, nbeams′ = size(array_J)
-@assert (ntimes′, npolrs′, nfreqs′, nbeams′) == (ntimes, npolrs, nfreqs, nbeams)
+ntimes′, npolrs′, nfreqs′, nbeams = size(array_J)
+@assert (ntimes′, npolrs′, nfreqs′, nbeams) == (ntimes, npolrs, nfreqs, nbeams)
 
 # TODO: Read this from metadata
 if setup === :chord
@@ -172,17 +172,17 @@ obj = heatmap!(ax, 0:(2 * nbeams - 1), 0:(nfreqs - 1), data'; color=data, colorm
 Colorbar(fig[1, 2], obj; label="baseband beam spectral intensity")
 display(fig)
 
-data = Float32[mean(abs2(Complex{Float32}(i2c(j))) for j in view(array_J0, :, :, freq, beam)) for beam in 1:nbeams]
-fig = Figure(; size=(1280, 960))
-ax = Axis(fig[1, 1]; title="$setup expected baseband beams", xlabel="sky θx", ylabel="sky θy")
-xlims!(ax, beams_xlim)
-ylims!(ax, beams_ylim)
-obj = scatter!(ax, beamsx, beamsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
-Colorbar(fig[1, 2], obj; label="baseband beam intensity")
-# rowsize!(fig.layout, 1, Aspect(1, beams_ysize / beams_xsize))
-# colsize!(fig.layout, 1, Aspect(1, beams_xsize / beams_ysize))
-aspect!(fig, 1, 1, beams_xsize / beams_ysize)
-display(fig)
+# data = Float32[mean(abs2(Complex{Float32}(i2c(j))) for j in view(array_J0, :, :, freq, beam)) for beam in 1:nbeams]
+# fig = Figure(; size=(1280, 960))
+# ax = Axis(fig[1, 1]; title="$setup expected baseband beams", xlabel="sky θx", ylabel="sky θy")
+# xlims!(ax, beams_xlim)
+# ylims!(ax, beams_ylim)
+# obj = scatter!(ax, beamsx, beamsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
+# Colorbar(fig[1, 2], obj; label="baseband beam intensity")
+# # rowsize!(fig.layout, 1, Aspect(1, beams_ysize / beams_xsize))
+# # colsize!(fig.layout, 1, Aspect(1, beams_xsize / beams_ysize))
+# aspect!(fig, 1, 1, beams_xsize / beams_ysize)
+# display(fig)
 
 data = Float32[mean(abs2(Complex{Float32}(i2c(j))) for j in view(array_J, :, :, freq, beam)) for beam in 1:nbeams]
 fig = Figure(; size=(1280, 960))

@@ -95,16 +95,16 @@ class FEngine : public kotekan::Stage {
     // Kotekan
     const std::int64_t E_frame_size;
     const std::int64_t A_frame_size;
+    const std::int64_t s_frame_size;
     const std::int64_t J_frame_size;
-    // const std::int64_t S_frame_size;
     const std::int64_t G_frame_size;
     const std::int64_t W_frame_size;
     const std::int64_t I_frame_size;
 
     Buffer* const E_buffer;
     Buffer* const A_buffer;
+    Buffer* const s_buffer;
     Buffer* const J_buffer;
-    // Buffer* const S_buffer;
     Buffer* const G_buffer;
     Buffer* const W_buffer;
     Buffer* const I_buffer;

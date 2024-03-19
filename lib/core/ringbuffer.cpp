@@ -1,12 +1,14 @@
 #include "ringbuffer.hpp"
 
+#include <cassert>
 #include <sstream>
 
 typedef std::lock_guard<std::recursive_mutex> buffer_lock;
 
 // This prints out a Python literal used for making plots in post-processing, for debugging
 // and illustration purposes.
-static void print_py_status(RingBuffer* rb) {
+static void print_py_status(const RingBuffer* const rb) {
+    return;
     std::ostringstream write_heads("{");
     for (const auto& [key, value] : rb->write_heads)
         write_heads << "\"" << key << "\": " << value << ", ";
@@ -23,171 +25,293 @@ static void print_py_status(RingBuffer* rb) {
     for (const auto& [key, value] : rb->read_tails)
         read_tails << "\"" << key << "\": " << value << ", ";
     read_tails << "}";
-    DEBUG_NON_OO("PY_RB rb_state(\"{:s}\", size={:d}, write_heads={:s}, write_next={:s}, "
-                 "write_head={:d}, write_tail={:d}, read_heads={:s}, read_tails={:s})",
-                 rb->buffer_name, rb->size, write_heads.str(), write_next.str(), rb->write_head,
-                 rb->write_tail, read_heads.str(), read_tails.str());
+    DEBUG_NON_OO("PY_RB rb_state(\"{:s}\", size={:L}, write_heads={:s}, write_next={:s}, "
+                 "first_write_head={:L}, read_heads={:s}, read_tails={:s}, last_read_tail={:L})",
+                 rb->buffer_name, rb->size, write_heads.str(), write_next.str(),
+                 rb->first_write_head, read_heads.str(), read_tails.str(), rb->last_read_tail);
 }
 
-RingBuffer::RingBuffer(size_t sz, std::shared_ptr<metadataPool> pool,
+RingBuffer::RingBuffer(std::ptrdiff_t sz, std::shared_ptr<metadataPool> pool,
                        const std::string& _buffer_name, const std::string& _buffer_type) :
     GenericBuffer(_buffer_name, _buffer_type, pool, 1),
-    size(sz), write_head(0), write_tail(0) {}
+    size(sz), first_write_head(0), last_read_tail(0) {
+    assert(sz > 0);
+}
 
 void RingBuffer::register_producer(const std::string& name) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
     if (write_heads.find(name) != write_heads.end())
-        throw std::runtime_error(fmt::format(fmt("RingBuffer: cannot register producer \"{:s}\" - "
-                                                 "has already been registered!"),
+        throw std::runtime_error(fmt::format(std::locale("en_US.UTF-8"),
+                                             "RingBuffer: cannot register producer \"{:s}\" - "
+                                             "has already been registered!",
                                              name));
     // Start just after the first element that all other producers have already written.
-    write_heads[name] = write_head;
+    write_heads[name] = first_write_head;
     GenericBuffer::register_producer(name);
 }
 
 void RingBuffer::register_consumer(const std::string& name) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
     if (read_tails.find(name) != read_tails.end())
-        throw std::runtime_error(fmt::format(fmt("RingBuffer: cannot register consumer \"{:s}\" - "
-                                                 "has already been registered!"),
+        throw std::runtime_error(fmt::format(std::locale("en_US.UTF-8"),
+                                             "RingBuffer: cannot register consumer \"{:s}\" - "
+                                             "has already been registered!",
                                              name));
     // Start at the oldest valid data in the ringbuffer
-    read_tails[name] = write_tail;
-    read_heads[name] = write_tail;
+    read_tails[name] = last_read_tail;
+    read_heads[name] = last_read_tail;
     GenericBuffer::register_consumer(name);
 }
 
-std::optional<size_t> RingBuffer::wait_and_claim_readable(const std::string& name, size_t sz) {
-    // Wait until we can advance the read_head for this consumer!
+std::optional<std::ptrdiff_t> RingBuffer::wait_without_claiming(const std::string& name,
+                                                                const int inst) {
+    // Wait until we can advance the read_head for this consumer
     std::unique_lock<std::recursive_mutex> lock(mutex);
-    size_t head = read_heads[name];
+    const std::ptrdiff_t old_first_write_head = first_write_head;
+    const std::ptrdiff_t read_head = read_heads[name];
+    DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                              "wait_without_claiming {:s}[{:d}]: initial bytes available: {:L}",
+                              name, inst, first_write_head - read_head));
     while (1) {
-        std::string d = fmt::format(
-            "Waiting for input: Want {:L}, Have {:L}.  (Current read head: {:L}, after this read "
-            "would be {:L}, current write head: {:L})",
-            sz, write_head - head, head, head + sz, write_head);
-        DEBUG("{:s}", d);
-        if (head + sz <= write_head)
+        if (shutdown_signal) {
+            DEBUG("{:s}",
+                  fmt::format(std::locale("en_US.UTF-8"),
+                              "wait_without_claiming {:s}[{:d}]: shutting down.", name, inst));
+            return std::optional<std::ptrdiff_t>();
+        }
+        if (first_write_head > old_first_write_head)
             break;
-        if (shutdown_signal)
-            break;
-        DEBUG("waiting on full condition variable");
+        DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                                  "wait_without_claiming {:s}[{:d}]: waiting...", name, inst));
         full_cond.wait(lock);
-        DEBUG("finished waiting on full condition variable");
+        DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                                  "wait_without_claiming {:s}[{:d}]: waiting done.", name, inst));
     }
-    INFO("wait_and_claim_readable {:s} {:L} -> {:L} {:L}", name, sz, head, head % size);
-    read_heads[name] += sz;
-    if (shutdown_signal)
-        return std::optional<size_t>();
+    const std::ptrdiff_t sz = first_write_head - read_head;
+    DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                              "wait_without_claiming {:s}[{:d}]: final bytes available: {:L}", name,
+                              inst, sz));
+    assert(sz > 0);
     print_py_status(this);
-    // return the former read_head - that's where the consumer should start reading from.
-    return std::optional<size_t>(head % size);
+    print_full_status();
+    return std::optional<std::ptrdiff_t>(sz);
 }
 
-std::optional<std::pair<size_t, size_t>> RingBuffer::peek_readable(const std::string& name) {
+std::optional<std::ptrdiff_t> RingBuffer::wait_and_claim_readable(const std::string& name,
+                                                                  const int inst,
+                                                                  const std::ptrdiff_t sz) {
+    assert(sz > 0);
+    // Wait until we can advance the read_head for this consumer
     std::unique_lock<std::recursive_mutex> lock(mutex);
-    if (shutdown_signal)
-        return std::optional<std::pair<size_t, size_t>>();
-    size_t head = read_heads[name];
-    return std::optional<std::pair<size_t, size_t>>(std::make_pair(head % size, write_head - head));
+    const std::ptrdiff_t read_head = read_heads[name];
+    DEBUG("{:s}",
+          fmt::format(std::locale("en_US.UTF-8"),
+                      "wait_and_claim_readable {:s}[{:d}]: requested bytes: {:L}, initial bytes "
+                      "available: {:L}",
+                      name, inst, sz, first_write_head - read_head));
+    while (1) {
+        if (shutdown_signal) {
+            DEBUG("{:s}",
+                  fmt::format(std::locale("en_US.UTF-8"),
+                              "wait_and_claim_readable {:s}[{:d}]: shutting down.", name, inst));
+            return std::optional<std::ptrdiff_t>();
+        }
+        if (first_write_head - read_head >= sz)
+            break;
+        DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                                  "wait_and_claim_readable {:s}[{:d}]: waiting...", name, inst));
+        full_cond.wait(lock);
+        DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                                  "wait_and_claim_readable {:s}[{:d}]: waiting done.", name, inst));
+    }
+    DEBUG(
+        "{:s}",
+        fmt::format(
+            std::locale("en_US.UTF-8"),
+            "wait_and_claim_readable {:s}[{:d}]: old read position: {:L}, new read position: {:L}",
+            name, inst, read_head, read_head + sz));
+    read_heads[name] += sz;
+    print_py_status(this);
+    print_full_status();
+    // return the former read_head - that's where the consumer should start reading from.
+    return std::optional<std::ptrdiff_t>(read_head);
 }
 
-void RingBuffer::finish_read(const std::string& name, size_t sz) {
-    // Advance the read_tail for this consumer!
+std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>
+RingBuffer::wait_and_claim_all_readable(const std::string& name, const int inst) {
+    // Wait until we can advance the read_head for this consumer
+    std::unique_lock<std::recursive_mutex> lock(mutex);
+    const std::ptrdiff_t read_head = read_heads[name];
+    DEBUG("{:s}",
+          fmt::format(std::locale("en_US.UTF-8"),
+                      "wait_and_claim_all_readable {:s}[{:d}]: initial bytes available: {:L}", name,
+                      inst, first_write_head - read_head));
+    while (1) {
+        if (shutdown_signal) {
+            DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                                      "wait_and_claim_all_readable {:s}[{:d}]: shutting down.",
+                                      name, inst));
+            return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>();
+        }
+        if (first_write_head - read_head > 0)
+            break;
+        DEBUG("{:s}",
+              fmt::format(std::locale("en_US.UTF-8"),
+                          "wait_and_claim_all_readable {:s}[{:d}]: waiting...", name, inst));
+        full_cond.wait(lock);
+        DEBUG("{:s}",
+              fmt::format(std::locale("en_US.UTF-8"),
+                          "wait_and_claim_all_readable {:s}[{:d}]: waiting done.", name, inst));
+    }
+    const std::ptrdiff_t sz = first_write_head - read_head;
+    DEBUG("{:s}",
+          fmt::format(std::locale("en_US.UTF-8"),
+                      "wait_and_claim_all_readable {:s}[{:d}]: final bytes available {:L}, old "
+                      "read position: {:L}, new read position: {:L}",
+                      name, inst, sz, read_head, read_head + sz));
+    assert(sz > 0);
+    read_heads[name] += sz;
+    print_py_status(this);
+    print_full_status();
+    // return the former read_head - that's where the consumer should start reading from.
+    return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>(std::make_pair(read_head, sz));
+}
+
+std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>
+RingBuffer::peek_readable(const std::string& name, const int inst) {
+    std::unique_lock<std::recursive_mutex> lock(mutex);
+    if (shutdown_signal) {
+        DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                                  "peek_readable {:s}[{:d}]: shutting down.", name, inst));
+        return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>();
+    }
+    const std::ptrdiff_t read_head = read_heads[name];
+    const std::ptrdiff_t sz = first_write_head - read_head;
+    return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>(std::make_pair(read_head, sz));
+}
+
+void RingBuffer::finish_read(const std::string& name, const int inst, const std::ptrdiff_t sz) {
+    DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                              "finish_read {:s}[{:d}]: consumed bytes: {:L}", name, inst, sz));
+    assert(sz > 0);
+    // Advance the last_read_tail for this consumer
     {
         buffer_lock lock(mutex);
-        size_t tail = read_tails[name];
-        size_t head = read_heads[name];
-        assert(tail + sz <= head);
+        const std::ptrdiff_t read_tail = read_tails[name];
+        const std::ptrdiff_t read_head = read_heads[name];
+        assert(read_tail + sz <= read_head);
         // Are we (one of) the reader(s) holding on to the oldest data?
-        bool old = (tail == write_tail);
-        DEBUG("finish_read for \"{:s}\": advancing tail from {:L} by {:L} to {:L}.  old? {:s}",
-              name, tail, sz, tail + sz, old ? "yes" : "no");
+        const bool old = (read_tail == last_read_tail);
         read_tails[name] += sz;
         if (old) {
-            size_t oldest = tail + sz;
+            std::ptrdiff_t oldest = read_tail + sz;
             for (auto& it : read_tails)
                 oldest = std::min(oldest, it.second);
-            DEBUG("new write_tail: {:L}", oldest);
-            write_tail = oldest;
+            last_read_tail = oldest;
         }
     }
+    DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                              "finish_read {:s}[{:d}]: new last_read_tail: {:L}", name, inst,
+                              last_read_tail));
     print_py_status(this);
-    INFO("finish_read {:s} {:L} write_tail now {:L}", name, sz, write_tail);
+    print_full_status();
     empty_cond.notify_all();
 }
 
-std::optional<size_t> RingBuffer::wait_for_writable(const std::string& name, size_t sz) {
+std::optional<std::ptrdiff_t> RingBuffer::wait_for_writable(const std::string& name, const int inst,
+                                                            const std::ptrdiff_t sz) {
+    assert(sz > 0);
     std::unique_lock<std::recursive_mutex> lock(mutex);
+    DEBUG("{:s}",
+          fmt::format(
+              std::locale("en_US.UTF-8"),
+              "wait_for_writable {:s}[{:d}]: requested bytes: {:L}, initial bytes available: {:L}",
+              name, inst, sz, size - (write_next[name] - last_read_tail)));
     while (1) {
-        DEBUG("Waiting to write {:L} elements.  Current write_next {:L} write_head {:L} and "
-              "write_tail {:L} (next - tail diff {:L}), space available to write: {:L}",
-              sz, write_next[name], write_heads[name], write_tail, write_next[name] - write_tail,
-              size - (write_next[name] - write_tail));
-        if (write_next[name] - write_tail + sz <= size)
+        assert(write_next[name] >= last_read_tail);
+        if (shutdown_signal) {
+            DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                                      "wait_for_writable {:s}[{:d}]: shutting down.", name, inst));
+            return std::optional<std::ptrdiff_t>();
+        }
+        if (write_next[name] - last_read_tail + sz <= size)
             break;
-        if (shutdown_signal)
-            break;
-        DEBUG("waiting for empty condition...");
+        DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                                  "wait_for_writable {:s}[{:d}]: waiting...", name, inst));
         empty_cond.wait(lock);
-        DEBUG("done waiting for empty condition");
+        DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                                  "wait_for_writable {:s}[{:d}]: waiting done.", name, inst));
     }
-    if (shutdown_signal)
-        return std::optional<size_t>();
-    size_t rtn = write_next[name] % size;
-    DEBUG("wait_for_writable {:s} {:L} -> {:L} {:L}", name, sz, write_next[name], rtn);
+    const std::ptrdiff_t res = write_next[name];
+    DEBUG("{:s}",
+          fmt::format(std::locale("en_US.UTF-8"),
+                      "wait_for_writable {:s}[{:d}]: final bytes available: {:L}, old write "
+                      "position: {:L}, new write position: {:L}",
+                      name, inst, sz, res, res + sz));
     write_next[name] += sz;
     print_py_status(this);
-    return std::optional<size_t>(rtn);
+    print_full_status();
+    return std::optional<std::ptrdiff_t>(res);
 }
 
-std::optional<std::pair<size_t, size_t>> RingBuffer::get_writable(const std::string& name) {
+std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>
+RingBuffer::get_writable(const std::string& name, const int inst) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
-    if (shutdown_signal)
-        return std::optional<std::pair<size_t, size_t>>();
-    size_t n = size - (write_next[name] - write_tail);
-    return std::optional<std::pair<size_t, size_t>>(std::make_pair(write_next[name] % size, n));
+    if (shutdown_signal) {
+        DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                                  "get_writable {:s}[{:d}]: shutting down.", name, inst));
+        return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>();
+    }
+    const std::ptrdiff_t n = size - (write_next[name] - last_read_tail);
+    assert(n >= 0);
+    return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>(
+        std::make_pair(write_next[name], n));
 }
 
-void RingBuffer::finish_write(const std::string& name, size_t sz) {
-    DEBUG("finish_write {:s} {:L}", name, sz);
+void RingBuffer::finish_write(const std::string& name, const int inst, const std::ptrdiff_t sz) {
+    assert(sz > 0);
+    DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                              "finish_write {:s}[{:d}]: produced bytes: {:L}", name, inst, sz));
     {
         buffer_lock lock(mutex);
-        print_full_status();
-        assert(write_heads[name] + sz - write_tail <= size);
-        bool old = (write_heads[name] == write_head);
+        // print_full_status();
+        assert(write_heads[name] >= last_read_tail);
+        assert(write_heads[name] + sz - last_read_tail <= size);
+        const bool old = (write_heads[name] == first_write_head);
         write_heads[name] += sz;
-        DEBUG("Wrote {:L}.  Now write head {:L}, tail {:L}, free space: {:L}", sz,
-              write_heads[name], write_tail, size - (write_next[name] - write_tail));
         if (old) {
-            // possibly update write_head with the min(write_heads)
-            size_t oldest = write_heads[name];
+            // possibly update first_write_head with the min(write_heads)
+            std::ptrdiff_t oldest = write_heads[name];
             for (auto& it : write_heads)
                 oldest = std::min(oldest, it.second);
-            DEBUG("new write_head: {:d}", oldest);
-            write_head = oldest;
+            first_write_head = oldest;
         }
     }
+    DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                              "finish_write {:s}[{:d}]: new first_write_head: {:L}", name, inst,
+                              first_write_head));
     print_py_status(this);
-    // DEBUG("finish_write {:s} {:L} write_head now {:L}", name, sz, write_head);
+    print_full_status();
     full_cond.notify_all();
 }
 
 void RingBuffer::print_full_status() {
     buffer_lock lock(mutex);
-    INFO("Status:  size {:d}, write_tail {:d} ({:d}), write_head {:d} ({:d}), available to be "
-         "read: {:d}",
-         size, write_tail, write_tail % size, write_head, write_head % size,
-         write_head - write_tail);
+    INFO("{:s}",
+         fmt::format(std::locale("en_US.UTF-8"),
+                     "  status: size {:L}, last_read_tail {:L}, first_write_head {:L}, "
+                     "available to read: {:L}",
+                     size, last_read_tail, first_write_head, first_write_head - last_read_tail));
     for (auto& it : producers) {
-        std::string name = it.second.name;
-        INFO("  producer \"{:s}\": write_head {:d} ({:d}), write_next {:d} ({:d})", name,
-             write_heads[name], write_heads[name] % size, write_next[name],
-             write_next[name] % size);
+        const auto& name = it.second.name;
+        INFO("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                                 "    producer {:s}: first_write_head {:L}, write_next {:L}", name,
+                                 write_heads[name], write_next[name]));
     }
     for (auto& it : consumers) {
-        std::string name = it.second.name;
-        INFO("  consumer \"{:s}\": read_tail {:d} ({:d}), read_head {:d} ({:d})", name,
-             read_tails[name], read_tails[name] % size, read_heads[name], read_heads[name] % size);
+        const auto& name = it.second.name;
+        INFO("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                                 "    consumer {:s}: last_read_tail {:L}, read_head {:L}", name,
+                                 read_tails[name], read_heads[name]));
     }
 }

@@ -99,7 +99,9 @@ end
 const sampling_time_μsec = 16 * 4096 / (2 * 1200)
 const C = 2
 #TODO  const T = cld(32768 ÷ 16, Touter) * Touter
-const T = cld(2048 ÷ 16, Touter) * Touter
+# const T = cld(2048 ÷ 16, Touter) * Touter
+const T = 2048 ÷ 16 * 4
+const T̄ = nextpow(2, fld(T, Tds))
 
 const output_gain = 1 / (8 * Tds)
 
@@ -248,6 +250,11 @@ const DSTime = Index{Physics,DSTimeTag}
 
 # Layouts
 
+const layout_Tmin = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
+const layout_Tmax = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
+const layout_T̄min = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
+const layout_T̄max = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
+
 const layout_E_memory = Layout([
     IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
     Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
@@ -285,8 +292,8 @@ const layout_I_memory = Layout([
     BeamP(:beamP, 1, 2) => SIMD(:simd, 16, 2),
     BeamP(:beamP, 2, M) => Memory(:memory, 1, M),
     BeamQ(:beamQ, 1, 2 * N) => Memory(:memory, M, 2 * N),
-    DSTime(:dstime, 1, fld(T, Tds)) => Memory(:memory, M * 2 * N, fld(T, Tds)),
-    Freq(:freq, 1, F) => Memory(:memory, M * 2 * N * fld(T, Tds), F),
+    Freq(:freq, 1, F) => Memory(:memory, M * 2 * N, F),
+    DSTime(:dstime, 1, T̄) => Memory(:memory, M * 2 * N * F, T̄),
 ])
 
 # info layout
@@ -308,7 +315,7 @@ const layout_Fsh1_shared = Layout([
     Polr(:polr, 1, P) => SIMD(:simd, 4, 2),
     Time(:time, 1, idiv(Touter, 2)) => Shared(:shared, 1, idiv(Touter, 2)),
     Time(:time, idiv(Touter, 2), 2) => SIMD(:simd, 8, 2),
-    Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+    Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
 ])
 
 # This `Fsh2` layout is used for writing.
@@ -320,7 +327,7 @@ const layout_Fsh2_gridding_shared = Layout([
     Polr(:polr, 1, P) => SIMD(:simd, 4, 2),
     Time(:time, 1, idiv(Touter, 2)) => Shared(:shared, 1, idiv(Touter, 2)),
     Time(:time, idiv(Touter, 2), 2) => SIMD(:simd, 8, 2),
-    Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+    Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
 ])
 
 # Section 4.5, eqns. (67)+
@@ -338,7 +345,7 @@ const layout_Fsh2_shared = Layout([
     Polr(:polr, 1, P) => SIMD(:simd, 4, 2),
     Time(:time, 1, idiv(Touter, 2)) => Shared(:shared, 1, idiv(Touter, 2)),
     Time(:time, idiv(Touter, 2), 2) => SIMD(:simd, 8, 2),
-    Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+    Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
 ])
 
 # Section 4.10, eqn. (76)
@@ -382,7 +389,7 @@ const layout_Gsh_fft1_shared = Layout([
     # Time(:time, Tinner, idiv(Touter, Tinner)) => Loop(:t_inner, Tinner, idiv(Touter, Tinner)),
     Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
     Time(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2),
-    Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+    Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
 ])
 # This layout is used for reading `G`
 const layout_Gsh_fft2_shared = let
@@ -441,9 +448,21 @@ function copy_global_memory_to_Fsh1!(emitter)
             # Time(:time, idiv(Touter, 2), 2) => Register(:time, idiv(Touter, 2), 2),
             Time(:time, 1, W) => Warp(:warp, 1, W),
             Time(:time, W, idiv(Touter, W)) => Register(:time, W, idiv(Touter, W)),
-            Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
         ])
-        load!(emitter, :E => layout_E_registers, :E_memory => layout_E_memory; align=16)
+        load!(
+            emitter,
+            :E => layout_E_registers,
+            :E_memory => layout_E_memory;
+            align=16,
+            postprocess=addr -> :(
+                let
+                    offset = $(Int32(idiv(D, 4) * P * F)) * Tmin
+                    length = $(Int32(idiv(D, 4) * P * F * T))
+                    mod($addr + offset, length)
+                end
+            ),
+        )
         # Swap polr0, dish3
         permute!(emitter, :E, :E, Polr(:polr, 1, P), Dish(:dish, 8, 2))
         # E -> F shuffle
@@ -473,9 +492,21 @@ function copy_global_memory_to_Fsh1!(emitter)
             Time(:time, 1, 4) => Thread(:thread, 8, 4),
             Time(:time, 4, idiv(Touter, 8)) => Warp(:warp, 1, W),
             Time(:time, idiv(Touter, 2), 2) => Register(:time, idiv(Touter, 2), 2),
-            Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
         ])
-        load!(emitter, :E => layout_E_registers, :E_memory => layout_E_memory; align=16)
+        load!(
+            emitter,
+            :E => layout_E_registers,
+            :E_memory => layout_E_memory;
+            align=16,
+            postprocess=addr -> :(
+                let
+                    offset = $(Int32(idiv(D, 4) * P * F)) * Tmin
+                    length = $(Int32(idiv(D, 4) * P * F * T))
+                    mod($addr + offset, length)
+                end
+            ),
+        )
         # Swap polr0, dish3
         permute!(emitter, :E, :E, Polr(:polr, 1, P), Dish(:dish, 8, 2))
         # E -> F shuffle
@@ -505,7 +536,7 @@ function read_Fsh1!(emitter)
         Polr(:polr, 1, 2) => SIMD(:simd, 4, 2),
         Time(:time, 1, idiv(Touter, 2)) => Thread(:thread, 1, idiv(Touter, 2)),
         Time(:time, idiv(Touter, 2), 2) => SIMD(:simd, 8, 2),
-        Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+        Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
     ])
     # This loads garbage for threadidx ≥ idiv(Touter, 2)
     load!(emitter, :Freg1 => layout_Freg1_registers, :Fsh1_shared => layout_Fsh1_shared)
@@ -572,7 +603,7 @@ function read_Fsh2!(emitter)
         Time(:time, 1, Tw) => Warp(:warp, Mw, Tw),
         Time(:time, Tw, idiv(Touter, 2 * Tw)) => Register(:time, Tw, Tr),
         Time(:time, idiv(Touter, 2), 2) => SIMD(:simd, 8, 2),
-        Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+        Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
     ])
     # This loads garbage for nlo ≥ idiv(N, 4)
     apply!(emitter, :Freg2 => layout_Freg2_registers, :(zero(Int4x8)))
@@ -867,7 +898,7 @@ function do_first_fft!(emitter)
             Time(:time, Tw, idiv(Tinner, Tw)) => Register(:time, Tw, idiv(Tinner, Tw)),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
             Time(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2),
-            Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
         ])
         @assert emitter.environment[:X] == layout_X_registers
 
@@ -895,7 +926,7 @@ function do_first_fft!(emitter)
             # Time(:time, Tinner, idiv(Touter, Tinner)) => Loop(:t_inner, Tinner, idiv(Touter, Tinner)),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
             Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
-            Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
         ])
         apply!(emitter, :Z => layout_Z_registers, :(zero(Float16x2)))
 
@@ -964,7 +995,7 @@ function do_first_fft!(emitter)
                 Time(:time, Tw, idiv(Tinner, Tw)) => Register(:time, Tw, idiv(Tinner, Tw)),
                 Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
                 Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
-                Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+                Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
             ])
         elseif trailing_zeros(Npad) == 4
             layout_V_registers = Layout([
@@ -982,7 +1013,7 @@ function do_first_fft!(emitter)
                 Time(:time, Tw, idiv(Tinner, Tw)) => Register(:time, Tw, idiv(Tinner, Tw)),
                 Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
                 Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
-                Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+                Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
             ])
         else
             @assert false
@@ -1013,7 +1044,7 @@ function do_first_fft!(emitter)
             # Time(:time, Tinner, idiv(Touter, Tinner)) => Loop(:t_inner, Tinner, idiv(Touter, Tinner)),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
             Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
-            Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
         ])
         apply!(emitter, :Y => layout_Y_registers, :(zero(Float16x2)))
 
@@ -1122,7 +1153,7 @@ function do_second_fft!(emitter)
             # Time(:time, Tinner, idiv(Touter, Tinner)) => Loop(:t_inner, Tinner, idiv(Touter, Tinner)),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
             Time(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2),
-            Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
         ])
     elseif trailing_zeros(Mpad) == 4
         layout_G_registers = Layout([
@@ -1148,7 +1179,7 @@ function do_second_fft!(emitter)
             # Time(:time, Tinner, idiv(Touter, Tinner)) => Loop(:t_inner, Tinner, idiv(Touter, Tinner)),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
             Time(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2),
-            Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
         ])
     elseif trailing_zeros(Mpad) == 3
         layout_G_registers = Layout([
@@ -1173,7 +1204,7 @@ function do_second_fft!(emitter)
             # Time(:time, Tinner, idiv(Touter, Tinner)) => Loop(:t_inner, Tinner, idiv(Touter, Tinner)),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
             Time(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2),
-            Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
         ])
     else
         @assert false
@@ -1267,7 +1298,7 @@ function do_second_fft!(emitter)
             Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
             Time(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2),
-            Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
         ])
         @assert emitter.environment[:X] == layout_X_registers
 
@@ -1289,7 +1320,7 @@ function do_second_fft!(emitter)
             # Time(:time, Tinner, idiv(Touter, Tinner)) => Loop(:t_inner, Tinner, idiv(Touter, Tinner)),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
             Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
-            Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
         ])
         apply!(emitter, :Z => layout_Z_registers, :(zero(Float16x2)))
 
@@ -1348,7 +1379,7 @@ function do_second_fft!(emitter)
                 Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner),
                 Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
                 Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
-                Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+                Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
             ])
         elseif trailing_zeros(Mpad) == 4
             layout_Y_registers = Layout([
@@ -1365,7 +1396,7 @@ function do_second_fft!(emitter)
                 Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner),
                 Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
                 Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
-                Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+                Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
             ])
         elseif trailing_zeros(Mpad) == 3
             layout_Y_registers = Layout([
@@ -1382,7 +1413,7 @@ function do_second_fft!(emitter)
                 Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner),
                 Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
                 Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
-                Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
+                Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
             ])
         else
             @assert false
@@ -1464,6 +1495,28 @@ function make_frb_kernel()
 
     apply!(emitter, :info => layout_info_registers, 1i32)
     store!(emitter, :info_memory => layout_info_memory, :info)
+
+    # Read parameters `Tmin`, `Tmax`, `T̄min`, `T̄max`
+    load!(emitter, :Tmin => layout_Tmin, :Tmin_memory => layout_Tmin)
+    load!(emitter, :Tmax => layout_Tmax, :Tmax_memory => layout_Tmax)
+    load!(emitter, :T̄min => layout_T̄min, :T̄min_memory => layout_T̄min)
+    load!(emitter, :T̄max => layout_T̄max, :T̄max_memory => layout_T̄max)
+    if!(
+        emitter,
+        :(
+            !(
+                0i32 ≤ Tmin ≤ Tmax ≤ $(Int32(2 * T)) &&
+                (Tmax - Tmin) % $(Int32(Touter)) == 0i32 &&
+                0i32 ≤ T̄min ≤ T̄max ≤ $(Int32(2 * T̄)) &&
+                T̄max - T̄min == (Tmax - Tmin) ÷ $(Int32(Tds))
+            )
+        ),
+    ) do emitter
+        apply!(emitter, :info => layout_info_registers, 2i32)
+        store!(emitter, :info_memory => layout_info_memory, :info)
+        trap!(emitter)
+        return nothing
+    end
 
     setup_fft_coefficients!(
         emitter,
@@ -1572,14 +1625,21 @@ function make_frb_kernel()
             BeamQ(:beamQ, Qt, Qw) => Warp(:warp, 1, W),
             BeamQ(:beamQ, Qt * Qw, Qr) => Register(:beamQ, Qt * Qw, Qr),
             Freq(:freq, 1, F) => Block(:block, 1, F),
-            DSTime(:dstime, 1, fld(T, Tds)) => Loop(:dstime, 1, fld(T, Tds)),
+            DSTime(:dstime, 1, T̄) => Loop(:dstime, 1, T̄),
         ])
         apply!(emitter, :I => layout_I_registers, :(zero(Float16x2)))
         push!(emitter.statements, :(dstime = $(0i32)))
         push!(emitter.statements, :(t_running = $(0i32)))
     end
 
-    loop!(emitter, Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter))) do emitter
+    loop!(emitter, Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter))) do emitter
+        push!(
+            emitter.statements,
+            quote
+                Tmin + t_outer ≥ Tmax && break
+            end,
+        )
+
         block!(emitter) do emitter
             copy_global_memory_to_Fsh1!(emitter)
             sync_threads!(emitter)
@@ -1652,7 +1712,18 @@ function make_frb_kernel()
                                         end
                                     ),
                                 ) do emitter
-                                    store!(emitter, :I_memory => layout_I_memory, :I)
+                                    store!(
+                                        emitter,
+                                        :I_memory => layout_I_memory,
+                                        :I;
+                                        postprocess=addr -> quote
+                                            let
+                                                offset = $(Int32(M * 2 * N * F)) * T̄min
+                                                length = $(Int32(M * 2 * N * F * T̄))
+                                                mod($addr + offset, length)
+                                            end
+                                        end,
+                                    )
                                     return nothing
                                 end
                                 apply!(emitter, :I, [:I], (I,) -> :(zero(Float16x2)))
@@ -1717,7 +1788,7 @@ println("[Creating frb kernel...]")
 const frb_kernel = make_frb_kernel()
 println("[Done creating frb kernel]")
 
-@eval function frb(Smn_memory, W_memory, E_memory, I_memory, info_memory)
+@eval function frb(Tmin_memory, Tmax_memory, T̄min_memory, T̄max_memory, Smn_memory, W_memory, E_memory, I_memory, info_memory)
     shmem = @cuDynamicSharedMem(UInt8, shmem_bytes, 0)
     Fsh1_shared = reinterpret(Int4x8, shmem)
     Fsh2_shared = reinterpret(Int4x8, shmem)
@@ -1750,7 +1821,15 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 99 * 1024 # NVIDIA A10/A40 have 99 kB shared memory
     kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm frb(
-        CUDA.zeros(Int16x2, 0), CUDA.zeros(Float16x2, 0), CUDA.zeros(Int4x8, 0), CUDA.zeros(Float16x2, 0), CUDA.zeros(Int32, 0)
+        CUDA.zeros(Int32, 0),
+        CUDA.zeros(Int32, 0),
+        CUDA.zeros(Int32, 0),
+        CUDA.zeros(Int32, 0),
+        CUDA.zeros(Int16x2, 0),
+        CUDA.zeros(Float16x2, 0),
+        CUDA.zeros(Int4x8, 0),
+        CUDA.zeros(Float16x2, 0),
+        CUDA.zeros(Int32, 0),
     )
     attributes(kernel.fun)[CUDA.CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES] = shmem_bytes
 
@@ -1764,7 +1843,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     Smn_memory = Array{Int16x2}(undef, M * N)
     W_memory = Array{Float16x2}(undef, M * N * F * P)
     E_memory = Array{Int4x8}(undef, idiv(D, 4) * P * F * T)
-    I_wanted = Array{Float16x2}(undef, M * 2 * N * fld(T, Tds) * F)
+    I_wanted = Array{Float16x2}(undef, M * 2 * N * T̄ * F)
     info_wanted = Array{Int32}(undef, num_threads * num_warps * num_blocks)
 
     Random.seed!(0)
@@ -1781,6 +1860,11 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         map!(i -> zero(Int4x8), E_memory, E_memory)
         map!(i -> zero(Float16x2), I_wanted, I_wanted)
         map!(i -> zero(Int32), info_wanted, info_wanted)
+
+        @show Tmin = 0
+        @show Tmax = fld(idiv(T, 4), Touter) * Touter
+        @show T̄min = 0
+        @show T̄max = T̄min + fld(Tmax - Tmin, Tds)
 
         input = :random
         if input ≡ :zero
@@ -1829,7 +1913,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             dstime = time ÷ Tds
             @show dstime
             for beamq in 0:(2 * N - 1), beamp in 0:(2 * M - 1)
-                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * dstime + M * 2 * N * fld(T, Tds) * freq
+                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * dstime + M * 2 * N * T̄ * freq
                 dishm, dishn = dish_grid[dish + 1]
                 # Eqn. (4)
                 Ẽvalue = cispi((2 * dishm * beamp / Float32(2 * M) + 2 * dishn * beamq / Float32(2 * N)) % 2.0f0) * Wvalue * Evalue
@@ -1841,6 +1925,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         end
 
         println("Copying data from CPU to GPU...")
+        Tmin_cuda = CuArray(Int32[Tmin])
+        Tmax_cuda = CuArray(Int32[Tmax])
+        T̄min_cuda = CuArray(Int32[T̄min])
+        T̄max_cuda = CuArray(Int32[T̄max])
         Smn_cuda = CuArray(Smn_memory)
         W_cuda = CuArray(W_memory)
         E_cuda = CuArray(E_memory)
@@ -1848,13 +1936,30 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         info_cuda = CUDA.fill(-1i32, length(info_wanted))
 
         println("Running kernel...")
-        kernel(Smn_cuda, W_cuda, E_cuda, I_cuda, info_cuda; threads=(num_threads, num_warps), blocks=num_blocks, shmem=shmem_bytes)
+        kernel(
+            Tmin_cuda,
+            Tmax_cuda,
+            T̄min_cuda,
+            T̄max_cuda,
+            Smn_cuda,
+            W_cuda,
+            E_cuda,
+            I_cuda,
+            info_cuda;
+            threads=(num_threads, num_warps),
+            blocks=num_blocks,
+            shmem=shmem_bytes,
+        )
         synchronize()
 
         if nruns > 0
             stats = @timed begin
                 for run in 1:nruns
                     kernel(
+                        Tmin_cuda,
+                        Tmax_cuda,
+                        T̄min_cuda,
+                        T̄max_cuda,
                         Smn_cuda,
                         W_cuda,
                         E_cuda,
@@ -1914,8 +2019,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
             println("    I:")
             did_test_I_memory = falses(length(I_memory))
-            for freq in 0:(F - 1), dstime in 0:(fld(T, Tds) - 1), beamq in 0:(2 * N - 1), beamp in 0:(2 * M - 1)
-                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * dstime + M * 2 * N * fld(T, Tds) * freq
+            for freq in 0:(F - 1), dstime in 0:(T̄ - 1), beamq in 0:(2 * N - 1), beamp in 0:(2 * M - 1)
+                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * dstime + M * 2 * N * T̄ * freq
                 if beamp % 2 == 0
                     @assert !did_test_I_memory[Iidx + 1]
                     did_test_I_memory[Iidx + 1] = true
@@ -1996,6 +2101,30 @@ function fix_ptx_kernel()
         shmem_bytes: $shmem_bytes
       kernel-symbol: "$kernel_symbol"
       kernel-arguments:
+        - name: "Tmin"
+          intent: in
+          type: Int32
+          indices: []
+          shape: []
+          strides: []
+        - name: "Tmax"
+          intent: in
+          type: Int32
+          indices: []
+          shape: []
+          strides: []
+        - name: "T̄min"
+          intent: in
+          type: Int32
+          indices: []
+          shape: []
+          strides: []
+        - name: "T̄max"
+          intent: in
+          type: Int32
+          indices: []
+          shape: []
+          strides: []
         - name: "S"
           intent: in
           type: Int16
@@ -2017,9 +2146,9 @@ function fix_ptx_kernel()
         - name: "I"
           intent: out
           type: Float16
-          indices: [beamP, beamQ, Tbar, F]
-          shape: [$(2*M), $(2*N), $(fld(T, Tds)), $F]
-          strides: [1, $(2*M), $(2*M*2*N), $(2*M*2*N*cld(T,Tds))]
+          indices: [beamP, beamQ, F, Tbar]
+          shape: [$(2*M), $(2*N), $F, $(T̄)]
+          strides: [1, $(2*M), $(2*M*2*N), $(2*M*2*N*F)]
         - name: "info"
           intent: out
           type: Int32
@@ -2047,7 +2176,7 @@ function fix_ptx_kernel()
                 Dict("type" => "int", "name" => "cuda_number_of_frequencies", "value" => "$F"),
                 Dict("type" => "int", "name" => "cuda_number_of_polarizations", "value" => "$P"),
                 Dict("type" => "int", "name" => "cuda_number_of_timesamples", "value" => "$T"),
-                # Dict("type" => "double", "name" => "cuda_sampling_time_usec", "value" => "$sampling_time_μsec"),
+                Dict("type" => "int", "name" => "cuda_granularity_number_of_timesamples", "value" => "$Touter"),
             ],
             "minthreads" => num_threads * num_warps,
             "num_blocks_per_sm" => num_blocks_per_sm,
@@ -2057,6 +2186,38 @@ function fix_ptx_kernel()
             "shmem_bytes" => shmem_bytes,
             "kernel_symbol" => kernel_symbol,
             "kernel_arguments" => [
+                Dict(
+                    "name" => "Tbarmin",
+                    "kotekan_name" => "Tbarmin",
+                    "type" => "int32",
+                    "axes" => Dict[],
+                    "isoutput" => false,
+                    "hasbuffer" => false,
+                ),
+                Dict(
+                    "name" => "Tbarmax",
+                    "kotekan_name" => "Tbarmax",
+                    "type" => "int32",
+                    "axes" => Dict[],
+                    "isoutput" => false,
+                    "hasbuffer" => false,
+                ),
+                Dict(
+                    "name" => "Ttildemin",
+                    "kotekan_name" => "Ttildemin",
+                    "type" => "int32",
+                    "axes" => Dict[],
+                    "isoutput" => false,
+                    "hasbuffer" => false,
+                ),
+                Dict(
+                    "name" => "Ttildemax",
+                    "kotekan_name" => "Ttildemax",
+                    "type" => "int32",
+                    "axes" => Dict[],
+                    "isoutput" => false,
+                    "hasbuffer" => false,
+                ),
                 Dict(
                     "name" => "S",
                     "kotekan_name" => "gpu_mem_dishlayout",
@@ -2074,20 +2235,20 @@ function fix_ptx_kernel()
                         Dict("label" => "dishM", "length" => M),
                         Dict("label" => "dishN", "length" => N),
                         Dict("label" => "P", "length" => P),
-                        Dict("label" => "F", "length" => F),
+                        Dict("label" => "Fbar", "length" => F),
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
                 ),
                 Dict(
-                    "name" => "E",
+                    "name" => "Ebar",
                     "kotekan_name" => "gpu_mem_voltage",
                     "type" => "int4p4",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),
-                        Dict("label" => "F", "length" => F),
-                        Dict("label" => "T", "length" => T),
+                        Dict("label" => "Fbar", "length" => F),
+                        Dict("label" => "Tbar", "length" => T),
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
@@ -2099,8 +2260,8 @@ function fix_ptx_kernel()
                     "axes" => [
                         Dict("label" => "beamP", "length" => 2 * M),
                         Dict("label" => "beamQ", "length" => 2 * N),
-                        Dict("label" => "Tbar", "length" => fld(T, Tds)),
-                        Dict("label" => "F", "length" => F),
+                        Dict("label" => "Fbar", "length" => F),
+                        Dict("label" => "Ttilde", "length" => T̄),
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,
