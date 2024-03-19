@@ -1,4 +1,5 @@
 #include "cudaCorrelator.hpp"
+#include "chordMetadata.hpp"
 #include "div.hpp"
 
 #include "math.h"
@@ -81,6 +82,32 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
 
     CHECK_CUDA_ERROR(cudaGetLastError());
 
+    const std::shared_ptr<metadataObject> in_mc = input_ringbuf_signal->get_metadata(0);
+    if (metadata_is_chord(in_mc)) {
+        const std::shared_ptr<chordMetadata> in_meta = get_chord_metadata(in_mc);
+        // Set metadata on output buffer (correlation matrix)
+        std::shared_ptr<metadataObject> const out_mc =
+            device.create_gpu_memory_array_metadata(_gpu_mem_correlation_triangle, gpu_frame_id,
+                                                    in_mc->parent_pool);
+        std::shared_ptr<chordMetadata> const out_meta = get_chord_metadata(out_mc);
+        *out_meta = *in_meta;
+        // Output shape is
+        // (nt_outer = samples_per_data_set / sub_integration_ntimes x
+        //  num_freq x
+        //  num_elements x
+        //  num_elements x
+        //  2 complex components)
+        // In int32 format.
+        out_meta->type = chordDataType::int32;
+        out_meta->dims = 5;
+        out_meta->set_array_dimension(0, num_subintegrations, "Tc");
+        out_meta->set_array_dimension(1, _num_local_freq, "F");
+        out_meta->set_array_dimension(2, _num_elements, "E");
+        out_meta->set_array_dimension(3, _num_elements, "E");
+        out_meta->set_array_dimension(4, 2, "C");
+        DEBUG("Set output metadata: array shape {:s}, array type {:s}",
+              out_meta->get_dimensions_string(), out_meta->get_type_string());
+    }
     return record_end_event();
 }
 

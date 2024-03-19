@@ -23,7 +23,7 @@
  *   @gpu_mem_type   staging
  *   @gpu_mem_format Array of @c 4+4-bit complex
  * @gpu_mem  gpu_mem_correlation_triangle  Output complex correlation values of size per frame:
- * (samples_per_data_set / sub_integration_ntimes) * num_elements^2 * 2 * sizeof(int32)
+ * (samples_per_data_set / sub_integration_ntimes) * num_freq * num_elements^2 * 2 * sizeof(int32)
  *   @gpu_mem_type   staging
  *   @gpu_mem_format Array of @c int32
  *

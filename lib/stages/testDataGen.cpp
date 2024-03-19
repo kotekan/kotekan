@@ -197,25 +197,25 @@ void testDataGen::main_thread() {
         gettimeofday(&now, nullptr);
         set_first_packet_recv_time(buf, frame_id, now);
 
-	std::shared_ptr<chordMetadata> chordmeta;
-	if (metadata_is_chord(buf, frame_id)) {
-	    chordmeta = get_chord_metadata(buf, frame_id);
-	    chordmeta->dims = (int)_array_shape.size();
-	    for (int d = 0; d < chordmeta->dims; ++d)
-	        chordmeta->dim[d] = _array_shape[d];
-	    for (int d = 0; d < chordmeta->dims; ++d)
-	        std::strncpy(chordmeta->dim_name[d], _dim_name[d].c_str(),
-			     sizeof chordmeta->dim_name[d]);
-	}
+        std::shared_ptr<chordMetadata> chordmeta;
+        if (metadata_is_chord(buf, frame_id)) {
+            chordmeta = get_chord_metadata(buf, frame_id);
+            chordmeta->dims = (int)_array_shape.size();
+            for (int d = 0; d < chordmeta->dims; ++d)
+                chordmeta->dim[d] = _array_shape[d];
+            for (int d = 0; d < chordmeta->dims; ++d)
+                std::strncpy(chordmeta->dim_name[d], _dim_name[d].c_str(),
+                             sizeof chordmeta->dim_name[d]);
+        }
 
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
         uint n_to_set = buf->frame_size / sizeof(uint8_t);
 
-	if (chordmeta)
-	  chordmeta->sample0_offset = frame_id_abs * samples_per_data_set;
+        if (chordmeta)
+            chordmeta->sample0_offset = frame_id_abs * samples_per_data_set;
 
-	if (type == "const") {
+        if (type == "const") {
             n_to_set /= sizeof(int8_t);
             frame8 = (int8_t*)frame;
             if (chordmeta)
