@@ -10,7 +10,7 @@ type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: info
+log_level: debug
 #num_links: 4
 #freq_array: [4,7,10,16]
 #timesamples_per_packet: 2
@@ -27,12 +27,13 @@ sizeof_int: 4
 # For faster CHORD testing, we're using...
 sub_integration_ntime: 1024
 samples_per_data_set: 2048
+num_elements: 1024
+num_local_freq: 16
 
 #sub_integration_ntime: 16384
 #samples_per_data_set: 32768
-
-num_elements: 1024
-num_local_freq: 16
+#num_elements: 1024
+#num_local_freq: 16
 
 # Pool
 main_pool:
@@ -75,6 +76,8 @@ gen_data:
     value: 1532
     kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
+    array_shape: [ 2048, 16, 2, 512 ]
+    dim_name: ["T", "F", "P", "D" ]
 
 run_send_voltage:
     gpu_0:
@@ -86,7 +89,7 @@ run_send_voltage:
             host_voltage_ringbuffer_out: host_voltage_ringbuffer
         commands:
         - name: cudaCopyToRingbuffer
-          input_size: num_dishes * num_polarizations * num_frequencies * num_times
+          input_size: samples_per_data_set * num_elements * num_local_freq
           ring_buffer_size: buffer_depth * input_size
           in_buf: host_voltage_buffer_in
           signal_buf: host_voltage_ringbuffer_out
