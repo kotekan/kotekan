@@ -3,8 +3,8 @@
 
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
-#include "ringbuffer.hpp"
 #include "n2k.hpp"
+#include "ringbuffer.hpp"
 
 /**
  * @class cudaCorrelator

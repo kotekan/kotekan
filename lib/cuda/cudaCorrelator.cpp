@@ -1,7 +1,7 @@
 #include "cudaCorrelator.hpp"
+
 #include "chordMetadata.hpp"
 #include "div.hpp"
-
 #include "math.h"
 #include "mma.h"
 
@@ -27,7 +27,8 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
         throw std::runtime_error(
             "The sub_integration_ntime parameter must evenly divide samples_per_data_set");
     // Find input buffer used for signalling ring-buffer state
-    input_ringbuf_signal = dynamic_cast<RingBuffer*>(host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")));
+    input_ringbuf_signal = dynamic_cast<RingBuffer*>(
+        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")));
     if (inst == 0)
         input_ringbuf_signal->register_consumer(unique_name);
 
@@ -86,9 +87,8 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     if (metadata_is_chord(in_mc)) {
         const std::shared_ptr<chordMetadata> in_meta = get_chord_metadata(in_mc);
         // Set metadata on output buffer (correlation matrix)
-        std::shared_ptr<metadataObject> const out_mc =
-            device.create_gpu_memory_array_metadata(_gpu_mem_correlation_triangle, gpu_frame_id,
-                                                    in_mc->parent_pool);
+        std::shared_ptr<metadataObject> const out_mc = device.create_gpu_memory_array_metadata(
+            _gpu_mem_correlation_triangle, gpu_frame_id, in_mc->parent_pool);
         std::shared_ptr<chordMetadata> const out_meta = get_chord_metadata(out_mc);
         *out_meta = *in_meta;
         // Output shape is
