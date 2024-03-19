@@ -46,7 +46,7 @@ rfiBadInputFinder::rfiBadInputFinder(Config& config, const std::string& unique_n
     // Get buffer from framework
     rfi_buf = get_buffer("rfi_in");
     // Register stage as consumer
-    register_consumer(rfi_buf, unique_name.c_str());
+    rfi_buf->register_consumer(unique_name);
 
     // Intialize internal config
     _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
@@ -176,7 +176,7 @@ void rfiBadInputFinder::main_thread() {
     // Main while loop
     while (!stop_thread) {
         // Get a frame
-        frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
+        frame = rfi_buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 #ifdef DEBUGGING
@@ -202,7 +202,7 @@ void rfiBadInputFinder::main_thread() {
             }
         }
         // Move to next frame
-        mark_frame_empty(rfi_buf, unique_name.c_str(), frame_id);
+        rfi_buf->mark_frame_empty(unique_name, frame_id);
         frame_id = (frame_id + 1) % rfi_buf->num_frames;
         // Adjust frame counter
         frame_counter++;

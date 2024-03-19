@@ -73,7 +73,6 @@
 template<typename T, typename... Args>
 class Factory {
 public:
-
     /**
      * Create a new instance of the type.
      *

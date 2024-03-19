@@ -97,6 +97,9 @@ public:
     virtual cudaEvent_t execute_base(cudaPipelineState& pipestate,
                                      const std::vector<cudaEvent_t>& pre_events);
 
+    virtual bool should_execute(cudaPipelineState& pipestate,
+                                const std::vector<cudaEvent_t>& pre_events);
+
     /**
      * @brief Execute a kernel, copy, etc.
      * @param pipestate     Pipeline state for this GPU frame.

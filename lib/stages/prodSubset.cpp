@@ -40,11 +40,11 @@ prodSubset::prodSubset(Config& config, const std::string& unique_name,
 
     // Get buffers
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
     // TODO: Size of buffer is not adjusted for baseline subset.
     //       ~ 3/4 of buffer will be unused.
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     auto subset_list = parse_prod_subset(config, unique_name);
     _base_prod_ind = std::get<0>(subset_list);
@@ -118,7 +118,7 @@ void prodSubset::main_thread() {
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
 
@@ -132,12 +132,12 @@ void prodSubset::main_thread() {
         }
 
         // Wait for the output buffer frame to be free
-        if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
+        if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
             break;
         }
 
         // Allocate metadata and get output frame
-        allocate_new_metadata_object(out_buf, output_frame_id);
+        out_buf->allocate_new_metadata_object(output_frame_id);
 
         if (change_dset_fut.valid())
             change_dset_fut.wait();
@@ -165,8 +165,8 @@ void prodSubset::main_thread() {
         output_frame.copy_data(input_frame, {VisField::vis, VisField::weight});
 
         // Mark the buffers and move on
-        mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
-        mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id++);
+        out_buf->mark_frame_full(unique_name, output_frame_id++);
+        in_buf->mark_frame_empty(unique_name, input_frame_id++);
     }
 }
 

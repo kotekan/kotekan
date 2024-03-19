@@ -245,6 +245,7 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
         float16_t* phase_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
 
         int freqs_per_stream = _num_local_freq / nstreams;
+
         // loop over streams and save the final GPU memory pointers (which we haven't yet
         // filled with data!)
         int bufindex = inst;
@@ -266,9 +267,9 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
             for (int gpu_frame_id = 0; gpu_frame_id < _gpu_buffer_depth; gpu_frame_id++) {
                 // GPU input & output memory buffers for this gpu frame #.
                 float16_t* gpu_in_base = (float16_t*)device.get_gpu_memory_array(
-                    _gpu_mem_beamgrid, gpu_frame_id, beamgrid_len);
+                    _gpu_mem_beamgrid, gpu_frame_id, _gpu_buffer_depth, beamgrid_len);
                 float16_t* gpu_out_base = (float16_t*)device.get_gpu_memory_array(
-                    _gpu_mem_beamout, gpu_frame_id, beamout_len);
+                    _gpu_mem_beamout, gpu_frame_id, _gpu_buffer_depth, beamout_len);
                 // Compute the per-frequency matrix offsets.
                 for (int f = 0; f < _num_local_freq; f++) {
                     host_in[gpu_frame_id * _num_local_freq + f] =
@@ -306,11 +307,11 @@ cudaFRBBeamReformer::~cudaFRBBeamReformer() {
 cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
     pre_execute();
 
-    float16_t* beamgrid_memory =
-        (float16_t*)device.get_gpu_memory_array(_gpu_mem_beamgrid, gpu_frame_id, beamgrid_len);
+    float16_t* beamgrid_memory = (float16_t*)device.get_gpu_memory_array(
+        _gpu_mem_beamgrid, gpu_frame_id, _gpu_buffer_depth, beamgrid_len);
     float16_t* phase_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
-    float16_t* beamout_memory =
-        (float16_t*)device.get_gpu_memory_array(_gpu_mem_beamout, gpu_frame_id, beamout_len);
+    float16_t* beamout_memory = (float16_t*)device.get_gpu_memory_array(
+        _gpu_mem_beamout, gpu_frame_id, _gpu_buffer_depth, beamout_len);
 
     record_start_event();
 

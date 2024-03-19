@@ -43,7 +43,7 @@ public:
 
     void register_host_memory(struct Buffer* host_buffer) override;
 
-    cudaDeviceInterface* device;
+    std::shared_ptr<cudaDeviceInterface> device;
 };
 
 #endif // CUDA_PROCESS_H

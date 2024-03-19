@@ -31,7 +31,7 @@ countCheck::countCheck(Config& config, const std::string& unique_name,
 
     // Setup the input buffer
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // Fetch tolerance from config.
     start_time_tolerance = config.get_default<int>(unique_name, "start_time_tolerance", 3);
@@ -48,7 +48,7 @@ void countCheck::main_thread() {
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
 
@@ -73,7 +73,7 @@ void countCheck::main_thread() {
         }
 
         // Mark the buffers and move on
-        mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
+        in_buf->mark_frame_empty(unique_name, input_frame_id);
 
         // Advance the current frame ids
         input_frame_id = (input_frame_id + 1) % in_buf->num_frames;

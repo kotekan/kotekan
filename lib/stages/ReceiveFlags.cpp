@@ -49,8 +49,8 @@ ReceiveFlags::ReceiveFlags(Config& config, const std::string& unique_name,
     // Setup the buffers
     buf_in = get_buffer("in_buf");
     buf_out = get_buffer("out_buf");
-    register_consumer(buf_in, unique_name.c_str());
-    register_producer(buf_out, unique_name.c_str());
+    buf_in->register_consumer(unique_name);
+    buf_out->register_producer(unique_name);
 
     // Apply kotekan config
     int num = config.get<int>(unique_name, "num_elements");
@@ -149,11 +149,11 @@ void ReceiveFlags::main_thread() {
     while (!stop_thread) {
 
         // Wait for an input frame
-        if (wait_for_full_frame(buf_in, unique_name.c_str(), frame_id_in) == nullptr) {
+        if (buf_in->wait_for_full_frame(unique_name, frame_id_in) == nullptr) {
             break;
         }
         // wait for an empty output frame
-        if (wait_for_empty_frame(buf_out, unique_name.c_str(), frame_id_out) == nullptr) {
+        if (buf_out->wait_for_empty_frame(unique_name, frame_id_out) == nullptr) {
             break;
         }
 
@@ -167,11 +167,11 @@ void ReceiveFlags::main_thread() {
         bool success = copy_flags_into_frame(frame_out);
 
         // Mark input frame empty
-        mark_frame_empty(buf_in, unique_name.c_str(), frame_id_in++);
+        buf_in->mark_frame_empty(unique_name, frame_id_in++);
 
         // Mark output frame full if we had valid flags. Otherwise drop it.
         if (success)
-            mark_frame_full(buf_out, unique_name.c_str(), frame_id_out++);
+            buf_out->mark_frame_full(unique_name, frame_id_out++);
     }
 }
 

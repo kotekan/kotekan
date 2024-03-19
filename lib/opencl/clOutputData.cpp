@@ -14,12 +14,11 @@ clOutputData::clOutputData(Config& config, const std::string& unique_name,
     _num_data_sets = config.get<int>(unique_name, "num_data_sets");
     _num_blocks = config.get<int>(unique_name, "num_blocks");
 
+    network_buffer = host_buffers.get_buffer("network_buf");
+    output_buffer = host_buffers.get_buffer("output_buf");
     if (inst == 0) {
-        network_buffer = host_buffers.get_buffer("network_buf");
-        register_consumer(network_buffer, unique_name.c_str());
-
-        output_buffer = host_buffers.get_buffer("output_buf");
-        register_producer(output_buffer, unique_name.c_str());
+        network_buffer->register_consumer(unique_name);
+        output_buffer->register_producer(unique_name);
     }
 
     command_type = gpuCommandType::COPY_OUT;
@@ -30,7 +29,7 @@ clOutputData::~clOutputData() {}
 int clOutputData::wait_on_precondition() {
     // Wait for there to be data in the input (output) buffer.
     int buf_index = gpu_frame_id % output_buffer->num_frames;
-    uint8_t* frame = wait_for_empty_frame(output_buffer, unique_name.c_str(), buf_index);
+    uint8_t* frame = output_buffer->wait_for_empty_frame(unique_name, buf_index);
     if (frame == nullptr)
         return -1;
     return 0;
@@ -44,7 +43,8 @@ cl_event clOutputData::execute(cl_event pre_event) {
     uint32_t output_len = _num_local_freq * _num_blocks * (_block_size * _block_size) * 2
                           * _num_data_sets * sizeof(int32_t);
 
-    cl_mem gpu_output_frame = device.get_gpu_memory_array("output", gpu_frame_id, output_len);
+    cl_mem gpu_output_frame =
+        device.get_gpu_memory_array("output", gpu_frame_id, _gpu_buffer_depth, output_len);
     void* host_output_frame = (void*)output_buffer->frames[buf_index];
 
     // Read the results
@@ -57,7 +57,7 @@ void clOutputData::finalize_frame() {
     clCommand::finalize_frame();
     int net_index = gpu_frame_id % network_buffer->num_frames;
     int out_index = gpu_frame_id % output_buffer->num_frames;
-    pass_metadata(network_buffer, net_index, output_buffer, out_index);
-    mark_frame_empty(network_buffer, unique_name.c_str(), net_index);
-    mark_frame_full(output_buffer, unique_name.c_str(), out_index);
+    network_buffer->pass_metadata(net_index, output_buffer, out_index);
+    network_buffer->mark_frame_empty(unique_name, net_index);
+    output_buffer->mark_frame_full(unique_name, out_index);
 }

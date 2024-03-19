@@ -30,7 +30,8 @@ clOutputDataZero::~clOutputDataZero() {
 cl_event clOutputDataZero::execute(cl_event pre_event) {
     pre_execute();
 
-    cl_mem gpu_memory_frame = device.get_gpu_memory_array("output", gpu_frame_id, output_len);
+    cl_mem gpu_memory_frame =
+        device.get_gpu_memory_array("output", gpu_frame_id, _gpu_buffer_depth, output_len);
 
     // Data transfer to GPU
     CHECK_CL_ERROR(clEnqueueWriteBuffer(device.getQueue(0), gpu_memory_frame, CL_FALSE,

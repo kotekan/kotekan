@@ -56,7 +56,7 @@ printSparse<A_Type>::printSparse(kotekan::Config& config, const std::string& uni
     kotekan::Stage(config, unique_name, buffer_container,
                    std::bind(&printSparse::main_thread, this)) {
     buf = get_buffer("input_buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
 
     _max = config.get_default<int>(unique_name, "max_to_print", 0);
     _array_shape =
@@ -81,7 +81,7 @@ void printSparse<A_Type>::main_thread() {
     while (!stop_thread) {
 
         // Get frame
-        const A_Type* frame = (A_Type*)wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        const A_Type* frame = (A_Type*)buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
         INFO("printSparse: checking {:s}[{:d}]", buf->buffer_name, frame_id);
@@ -101,7 +101,7 @@ void printSparse<A_Type>::main_thread() {
             if (!frame[i])
                 continue;
             nset++;
-            if ((_max > 0) && (nset >= _max))
+            if ((_max > 0) && (nset > _max))
                 continue;
             if (_array_shape.size()) {
                 uint32_t j = i;
@@ -130,7 +130,7 @@ void printSparse<A_Type>::main_thread() {
             INFO("PY sparse[\"{:s}\"][{:d}] = (None, 0)", buf->buffer_name, frame_counter);
         }
 
-        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_empty(unique_name, frame_id);
         frame_id++;
     }
 }

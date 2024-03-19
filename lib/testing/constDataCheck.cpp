@@ -22,7 +22,7 @@ constDataCheck::constDataCheck(kotekan::Config& config, const std::string& uniqu
                    std::bind(&constDataCheck::main_thread, this)) {
 
     buf = get_buffer("in_buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
     ref_real = config.get<std::vector<int32_t>>(unique_name, "real");
     ref_imag = config.get<std::vector<int32_t>>(unique_name, "imag");
     num_frames_to_test = config.get_default<int32_t>(unique_name, "num_frames_to_test", 0);
@@ -40,7 +40,7 @@ void constDataCheck::main_thread() {
 
     while (!stop_thread) {
 
-        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        frame = buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
@@ -69,7 +69,7 @@ void constDataCheck::main_thread() {
                  buf->buffer_name, frame_id, rfr, rfi);
         //                    ref_real, ref_imag);
 
-        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_empty(unique_name, frame_id);
         frame_id = (frame_id + 1) % buf->num_frames;
         framect++;
 

@@ -72,12 +72,12 @@ gpuSimulateCudaFRBBeamformer::gpuSimulateCudaFRBBeamformer(Config& config,
 
     voltage_buf = get_buffer("voltage_in_buf");
     phase_buf = get_buffer("phase_in_buf");
-    register_consumer(voltage_buf, unique_name.c_str());
-    register_consumer(phase_buf, unique_name.c_str());
+    voltage_buf->register_consumer(unique_name);
+    phase_buf->register_consumer(unique_name);
     beamgrid_buf = get_buffer("beams_out_buf");
-    register_producer(beamgrid_buf, unique_name.c_str());
+    beamgrid_buf->register_producer(unique_name);
     if (zero_output)
-        zero_frames(beamgrid_buf);
+        beamgrid_buf->zero_frames();
 }
 
 gpuSimulateCudaFRBBeamformer::~gpuSimulateCudaFRBBeamformer() {}
@@ -94,15 +94,14 @@ void gpuSimulateCudaFRBBeamformer::main_thread() {
 
     while (!stop_thread) {
         int4x2_t* voltage =
-            (int4x2_t*)wait_for_full_frame(voltage_buf, unique_name.c_str(), voltage_frame_id);
+            (int4x2_t*)voltage_buf->wait_for_full_frame(unique_name, voltage_frame_id);
         if (voltage == nullptr)
             break;
-        float16_t* phase =
-            (float16_t*)wait_for_full_frame(phase_buf, unique_name.c_str(), phase_frame_id);
+        float16_t* phase = (float16_t*)phase_buf->wait_for_full_frame(unique_name, phase_frame_id);
         if (phase == nullptr)
             break;
         float16_t* output =
-            (float16_t*)wait_for_empty_frame(beamgrid_buf, unique_name.c_str(), beamgrid_frame_id);
+            (float16_t*)beamgrid_buf->wait_for_empty_frame(unique_name, beamgrid_frame_id);
         if (output == nullptr)
             break;
 
@@ -152,17 +151,17 @@ void gpuSimulateCudaFRBBeamformer::main_thread() {
               voltage_buf->buffer_name, voltage_frame_id, beamgrid_buf->buffer_name,
               beamgrid_frame_id);
 
-        pass_metadata(voltage_buf, voltage_frame_id, beamgrid_buf, beamgrid_frame_id);
-        mark_frame_empty(voltage_buf, unique_name.c_str(), voltage_frame_id);
-        mark_frame_full(beamgrid_buf, unique_name.c_str(), beamgrid_frame_id);
+        voltage_buf->pass_metadata(voltage_frame_id, beamgrid_buf, beamgrid_frame_id);
+        voltage_buf->mark_frame_empty(unique_name, voltage_frame_id);
+        beamgrid_buf->mark_frame_full(unique_name, beamgrid_frame_id);
 
         voltage_frame_id = (voltage_frame_id + 1) % voltage_buf->num_frames;
         beamgrid_frame_id = (beamgrid_frame_id + 1) % beamgrid_buf->num_frames;
 
         // Check for available phase & shift frames and advance if they're ready!
         int next_frame = (phase_frame_id + 1) % phase_buf->num_frames;
-        if (is_frame_empty(phase_buf, next_frame) == 0) {
-            mark_frame_empty(phase_buf, unique_name.c_str(), phase_frame_id);
+        if (phase_buf->is_frame_empty(next_frame) == 0) {
+            phase_buf->mark_frame_empty(unique_name, phase_frame_id);
             phase_frame_id = next_frame;
         }
     }

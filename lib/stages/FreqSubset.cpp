@@ -43,11 +43,11 @@ FreqSubset<T>::FreqSubset(Config& config, const std::string& unique_name,
 
     // Setup the input buffer
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // Setup the output buffer
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 }
 
 template<typename T>
@@ -101,7 +101,7 @@ void FreqSubset<T>::main_thread() {
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
 
@@ -122,7 +122,7 @@ void FreqSubset<T>::main_thread() {
         if (std::find(_subset_list.begin(), _subset_list.end(), freq) != _subset_list.end()) {
 
             // Wait for the output buffer to be empty of data
-            if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
+            if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
                 break;
             }
 
@@ -136,9 +136,9 @@ void FreqSubset<T>::main_thread() {
             output_frame.dataset_id = dset_id_map.at(input_frame.dataset_id);
 
             // Mark the output buffer and move on
-            mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
+            out_buf->mark_frame_full(unique_name, output_frame_id++);
         }
         // Mark the input buffer and move on
-        mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id++);
+        in_buf->mark_frame_empty(unique_name, input_frame_id++);
     }
 }

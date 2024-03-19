@@ -73,9 +73,9 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const std::string& uniq
                                  sizeof(corr_kernel_config_t));
 
     // pre-allocate GPU memory
-    device.get_gpu_memory_array("input", 0, input_frame_len);
-    device.get_gpu_memory_array("presum", 0, presum_len);
-    device.get_gpu_memory_array("corr", 0, corr_frame_len);
+    device.get_gpu_memory_array("input", 0, _gpu_buffer_depth, input_frame_len);
+    device.get_gpu_memory_array("presum", 0, _gpu_buffer_depth, presum_len);
+    device.get_gpu_memory_array("corr", 0, _gpu_buffer_depth, corr_frame_len);
     device.get_gpu_memory("block_map", block_map_len);
     device.get_gpu_memory("corr_kernel_config", sizeof(corr_kernel_config_t));
 }
@@ -100,12 +100,14 @@ hsa_signal_t hsaCorrelatorKernel::execute(int gpu_frame_id, hsa_signal_t precede
     memset(&args, 0, sizeof(args));
     // Index into the sub frame.
     args.input_buffer =
-        (void*)((uint8_t*)device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len)
+        (void*)((uint8_t*)device.get_gpu_memory_array("input", gpu_frame_id, _gpu_buffer_depth,
+                                                      input_frame_len)
                 + _num_elements * _num_local_freq * _sub_frame_samples * _sub_frame_index);
-    args.presum_buffer = device.get_gpu_memory_array(
-        fmt::format(fmt("presum_{:d}"), _sub_frame_index), gpu_frame_id, presum_len);
+    args.presum_buffer =
+        device.get_gpu_memory_array(fmt::format(fmt("presum_{:d}"), _sub_frame_index), gpu_frame_id,
+                                    _gpu_buffer_depth, presum_len);
     args.corr_buffer = device.get_gpu_memory_array(fmt::format(fmt("corr_{:d}"), _sub_frame_index),
-                                                   gpu_frame_id, corr_frame_len);
+                                                   gpu_frame_id, _gpu_buffer_depth, corr_frame_len);
     args.blk_map = device.get_gpu_memory("block_map", block_map_len);
     args.config = device.get_gpu_memory("corr_kernel_config", sizeof(corr_kernel_config_t));
     // Allocate the kernel argument buffer from the correct region.

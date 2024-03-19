@@ -31,6 +31,8 @@ add_library(
     quantize_kernel_wrapper.cu
     cudaQuantize.cpp
     cudaRechunk.cpp
+    cudaCopyFromRingbuffer.cpp
+    cudaCopyToRingbuffer.cpp
     cudaTransposeKernel_chord.cpp
     cudaTransposeKernel_pathfinder.cpp
     cudaUpchannelizer_chord_U8.cpp

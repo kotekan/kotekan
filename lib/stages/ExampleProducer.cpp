@@ -26,7 +26,7 @@ ExampleProducer::ExampleProducer(Config& config, const std::string& unique_name,
 
     // Register as producer of out_buf
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Load options that can be set in config
     // The arguments to config.get_default are the:
@@ -50,7 +50,7 @@ void ExampleProducer::main_thread() {
     while (!stop_thread) {
 
         // Acquire frame
-        uint8_t* frame = wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
+        uint8_t* frame = out_buf->wait_for_empty_frame(unique_name, frame_id);
         // A null frame is returned on shutdown
         if (frame == nullptr)
             break;
@@ -65,7 +65,7 @@ void ExampleProducer::main_thread() {
              frame_id, data[0], data[frame_length / 2], data[frame_length - 1]);
 
         // Release frame
-        mark_frame_full(out_buf, unique_name.c_str(), frame_id);
+        out_buf->mark_frame_full(unique_name, frame_id);
 
         // Increase the ring pointer
         frame_id++;

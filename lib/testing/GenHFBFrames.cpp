@@ -38,10 +38,10 @@ GenHFBFrames::GenHFBFrames(Config& config, const std::string& unique_name,
     _num_samples = _samples_per_data_set / _factor_upchan / _downsample_time;
 
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     cls_out_buf = get_buffer("cls_out_buf");
-    register_producer(cls_out_buf, unique_name.c_str());
+    cls_out_buf->register_producer(unique_name);
 
     dataset_id = config.get_default<dset_id_t>(
         unique_name, "dataset_id", dset_id_t::from_string("f65bec4949ca616fbeea62660351edcb"));
@@ -61,11 +61,11 @@ void GenHFBFrames::main_thread() {
     INFO("num_lost_samples: {}, lost_frac: {:e}", num_lost_samples, lost_frac);
 
     while (!stop_thread) {
-        uint8_t* frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+        uint8_t* frame = out_buf->wait_for_empty_frame(unique_name, out_frame_id);
         if (frame == nullptr)
             break;
 
-        uint8_t* cls_frame = wait_for_empty_frame(cls_out_buf, unique_name.c_str(), cls_frame_id);
+        uint8_t* cls_frame = cls_out_buf->wait_for_empty_frame(unique_name, cls_frame_id);
         if (cls_frame == nullptr)
             break;
 
@@ -101,19 +101,19 @@ void GenHFBFrames::main_thread() {
               data[131072 - 1], total_lost_samples);
 
         // Create metadata
-        allocate_new_metadata_object(out_buf, out_frame_id);
+        out_buf->allocate_new_metadata_object(out_frame_id);
         set_fpga_seq_num(out_buf, out_frame_id, seq_num);
         set_dataset_id(out_buf, out_frame_id, dataset_id);
         set_stream_id(out_buf, out_frame_id, stream_id);
 
-        allocate_new_metadata_object(cls_out_buf, cls_frame_id);
+        cls_out_buf->allocate_new_metadata_object(cls_frame_id);
         set_fpga_seq_num(cls_out_buf, cls_frame_id, seq_num);
         zero_lost_samples(cls_out_buf, cls_frame_id);
         atomic_add_lost_timesamples(cls_out_buf, cls_frame_id, total_lost_samples);
 
         seq_num += _samples_per_data_set;
-        mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
-        mark_frame_full(cls_out_buf, unique_name.c_str(), cls_frame_id++);
+        out_buf->mark_frame_full(unique_name, out_frame_id++);
+        cls_out_buf->mark_frame_full(unique_name, cls_frame_id++);
 
     } // end stop thread
 }

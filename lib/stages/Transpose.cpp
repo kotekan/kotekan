@@ -39,7 +39,7 @@ Transpose::Transpose(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&Transpose::main_thread, this)),
     in_buf(get_buffer("in_buf")), frame_id(in_buf) {
 
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // Get file path to write to
     filename = config.get<std::string>(unique_name, "outfile");
@@ -79,7 +79,7 @@ void Transpose::main_thread() {
     uint32_t num_empty_skip = 0;
     while (true) {
         // Wait for a frame in the input buffer in order to get the dataset ID
-        if ((wait_for_full_frame(in_buf, unique_name.c_str(), frame_id)) == nullptr) {
+        if ((in_buf->wait_for_full_frame(unique_name, frame_id)) == nullptr) {
             return;
         }
 
@@ -91,7 +91,7 @@ void Transpose::main_thread() {
         // If the frame is empty, release the buffer and continue
         if (fpga_seq_total == 0 && frame_ds_id == dset_id_t::null) {
             DEBUG("Got empty frame ({:d}).", frame_id);
-            mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+            in_buf->mark_frame_empty(unique_name, frame_id++);
             num_empty_skip++;
         } else {
             ds_id = frame_ds_id;
@@ -129,7 +129,7 @@ void Transpose::main_thread() {
             num_empty_skip--;
         } else {
             // Wait for a full frame in the input buffer
-            if ((wait_for_full_frame(in_buf, unique_name.c_str(), frame_id)) == nullptr) {
+            if ((in_buf->wait_for_full_frame(unique_name, frame_id)) == nullptr) {
                 break;
             }
 
@@ -172,7 +172,7 @@ void Transpose::main_thread() {
             copy_flags(ti);
 
             // move to next frame
-            mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+            in_buf->mark_frame_empty(unique_name, frame_id++);
         }
 
         // Increment within read chunk

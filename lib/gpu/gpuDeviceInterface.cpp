@@ -9,9 +9,9 @@
 using kotekan::Config;
 
 gpuDeviceInterface::gpuDeviceInterface(Config& config, const std::string& unique_name,
-                                       int32_t gpu_id, int gpu_buffer_depth) :
+                                       int32_t gpu_id) :
     config(config),
-    unique_name(unique_name), gpu_id(gpu_id), gpu_buffer_depth(gpu_buffer_depth) {}
+    unique_name(unique_name), gpu_id(gpu_id) {}
 
 gpuDeviceInterface::~gpuDeviceInterface() {}
 
@@ -46,15 +46,16 @@ void* gpuDeviceInterface::get_gpu_memory(const std::string& name, const size_t l
 }
 
 void* gpuDeviceInterface::get_gpu_memory_array(const std::string& name, const uint32_t index_,
-                                               const size_t len) {
-    uint32_t index = index_ % gpu_buffer_depth;
+                                               const uint32_t buffer_depth, const size_t len) {
+    uint32_t index = index_ % buffer_depth;
+
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     // Check if the memory isn't yet allocated
     if (gpu_memory.count(name) == 0) {
         // Allocate arrays contiguously so that they can be used as ring buffer
-        void* base_ptr = alloc_gpu_memory(gpu_buffer_depth * len);
+        void* base_ptr = alloc_gpu_memory(buffer_depth * len);
         gpu_memory[name].gpu_pointers_to_free.push_back(base_ptr);
-        for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
+        for (uint32_t i = 0; i < buffer_depth; ++i) {
             void* ptr = (unsigned char*)base_ptr + i * len;
             INFO("Allocating GPU[{:d}] memory: {:s}, len: {:d}, ptr: {:p}", gpu_id, name, len, ptr);
             gpu_memory[name].len = len;
@@ -72,7 +73,6 @@ void* gpuDeviceInterface::get_gpu_memory_array(const std::string& name, const ui
     assert(len == gpu_memory[name].len);
     // Make sure we aren't asking for an index past the end of the array.
     assert(index < gpu_memory[name].gpu_pointers.size());
-
     // Return the requested memory.
     return gpu_memory[name].gpu_pointers[index];
 }
@@ -104,7 +104,8 @@ void* gpuDeviceInterface::create_gpu_memory_view(const std::string& source_name,
 void gpuDeviceInterface::create_gpu_memory_array_view(const std::string& source_name,
                                                       const size_t source_len,
                                                       const std::string& dest_name,
-                                                      const size_t offset, const size_t dest_len) {
+                                                      const size_t offset, const size_t dest_len,
+                                                      const uint32_t buffer_depth) {
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     INFO("Creating GPU memory array view {:s} with length {:d}, view on {:s} + offset {:d}",
          dest_name, dest_len, source_name, offset);
@@ -114,9 +115,9 @@ void gpuDeviceInterface::create_gpu_memory_array_view(const std::string& source_
             "Tried to create_gpu_memory_array_view {:s} that already exists.", dest_name));
     assert(offset + dest_len <= source_len);
 
-    for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
+    for (uint32_t i = 0; i < buffer_depth; ++i) {
         // Get source
-        void* source = get_gpu_memory_array(source_name, i, source_len);
+        void* source = get_gpu_memory_array(source_name, i, buffer_depth, source_len);
         // Create dest entry
         gpu_memory[dest_name].len = dest_len;
         gpu_memory[dest_name].view_source = source_name;
@@ -129,7 +130,8 @@ void gpuDeviceInterface::create_gpu_memory_array_view(const std::string& source_
 void gpuDeviceInterface::create_gpu_memory_ringbuffer(const std::string& source_name,
                                                       const size_t source_len,
                                                       const std::string& dest_name,
-                                                      const size_t offset, const size_t dest_len) {
+                                                      const size_t offset, const size_t dest_len,
+                                                      const uint32_t buffer_depth) {
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     INFO("Creating GPU memory ringbuffer view {:s} with length {:d}, view on {:s} + offset {:d}",
          dest_name, dest_len, source_name, offset);
@@ -137,7 +139,7 @@ void gpuDeviceInterface::create_gpu_memory_ringbuffer(const std::string& source_
     if (gpu_memory.count(dest_name) > 0)
         throw std::runtime_error(fmt::format(
             "Tried to create_gpu_memory_ringbuffer {:s} that already exists.", dest_name));
-    assert(offset + dest_len * gpu_buffer_depth <= source_len);
+    assert(offset + dest_len * buffer_depth <= source_len);
 
     // Get/create the full buffer ("source")
     void* source = get_gpu_memory(source_name, source_len);
@@ -145,7 +147,7 @@ void gpuDeviceInterface::create_gpu_memory_ringbuffer(const std::string& source_
     // Create "dest" entries (views)
     gpu_memory[dest_name].len = dest_len;
     gpu_memory[dest_name].view_source = source_name;
-    for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
+    for (uint32_t i = 0; i < buffer_depth; ++i) {
         gpu_memory[dest_name].gpu_pointers.push_back((unsigned char*)source + offset
                                                      + i * dest_len);
         gpu_memory[dest_name].gpu_pointers_to_free.push_back(nullptr);
@@ -155,14 +157,15 @@ void gpuDeviceInterface::create_gpu_memory_ringbuffer(const std::string& source_
 
 metadataContainer* gpuDeviceInterface::get_gpu_memory_array_metadata(const std::string& name,
                                                                      const uint32_t index_) {
-    uint32_t index = index_ % gpu_buffer_depth;
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     // Memory array must be allocated already
     if (gpu_memory.count(name) == 0) {
         FATAL_ERROR("get_gpu_memory_array_metadata for name \"{:s}\": does not exist yet.", name);
     }
-    // Make sure we aren't asking for an index past the end of the array.
-    assert(index < gpu_memory[name].metadata_pointers.size());
+    // mod the index by the array size (buffer depth)
+    uint32_t depth = gpu_memory[name].metadata_pointers.size();
+    assert(depth > 0);
+    uint32_t index = index_ % depth;
     // If view, recurse
     if (is_view_of_same_size(name))
         return get_gpu_memory_array_metadata(gpu_memory[name].view_source, index);
@@ -174,14 +177,14 @@ metadataContainer* gpuDeviceInterface::get_gpu_memory_array_metadata(const std::
 metadataContainer* gpuDeviceInterface::create_gpu_memory_array_metadata(const std::string& name,
                                                                         const uint32_t index_,
                                                                         metadataPool* pool) {
-    uint32_t index = index_ % gpu_buffer_depth;
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     // Memory array must be allocated already
     if (gpu_memory.count(name) == 0) {
         FATAL_ERROR("get_gpu_memory_array_metadata for name \"{:s}\": does not exist yet.", name);
     }
-    // Make sure we aren't asking for an index past the end of the array.
-    assert(index < gpu_memory[name].metadata_pointers.size());
+    // mod the index by the array size (buffer depth)
+    uint32_t depth = gpu_memory[name].metadata_pointers.size();
+    uint32_t index = index_ % depth;
     // If view, recurse
     if (is_view_of_same_size(name))
         return create_gpu_memory_array_metadata(gpu_memory[name].view_source, index, pool);
@@ -204,14 +207,14 @@ bool gpuDeviceInterface::is_view_of_same_size(const std::string& name) {
 void gpuDeviceInterface::claim_gpu_memory_array_metadata(const std::string& name,
                                                          const uint32_t index_,
                                                          metadataContainer* mc) {
-    uint32_t index = index_ % gpu_buffer_depth;
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     // Memory array must be allocated already
     if (gpu_memory.count(name) == 0) {
         FATAL_ERROR("claim_gpu_memory_array_metadata for name \"{:s}\": does not exist yet.", name);
     }
-    // Make sure we aren't asking for an index past the end of the array.
-    assert(index < gpu_memory[name].metadata_pointers.size());
+    // mod the index by the array size (buffer depth)
+    uint32_t depth = gpu_memory[name].metadata_pointers.size();
+    uint32_t index = index_ % depth;
     // If view of an array of the same size, recurse
     // (in "ringbuffer" views, the source is a singleton)
     if (is_view_of_same_size(name))
@@ -227,15 +230,15 @@ void gpuDeviceInterface::claim_gpu_memory_array_metadata(const std::string& name
 
 void gpuDeviceInterface::release_gpu_memory_array_metadata(const std::string& name,
                                                            const uint32_t index_) {
-    uint32_t index = index_ % gpu_buffer_depth;
     std::lock_guard<std::recursive_mutex> lock(gpu_memory_mutex);
     // Memory array must be allocated already
     if (gpu_memory.count(name) == 0) {
         FATAL_ERROR("release_gpu_memory_array_metadata for name \"{:s}\": does not exist yet.",
                     name);
     }
-    // Make sure we aren't asking for an index past the end of the array.
-    assert(index < gpu_memory[name].metadata_pointers.size());
+    // mod the index by the array size (buffer depth)
+    uint32_t depth = gpu_memory[name].metadata_pointers.size();
+    uint32_t index = index_ % depth;
     // If view, recurse
     if (is_view_of_same_size(name))
         return release_gpu_memory_array_metadata(gpu_memory[name].view_source, index);

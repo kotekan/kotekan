@@ -32,8 +32,8 @@ struct gpuMemoryBlock {
 class gpuDeviceInterface : public kotekan::kotekanLogging {
 public:
     /// Constructor
-    gpuDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id,
-                       int gpu_buffer_depth);
+    gpuDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id);
+
     /// Destructor
     virtual ~gpuDeviceInterface();
 
@@ -45,7 +45,8 @@ public:
      * NOTE: if accessing an existing named region then len must match the existing
      * length or the system will throw an assert.
      */
-    void* get_gpu_memory_array(const std::string& name, const uint32_t index, const size_t len);
+    void* get_gpu_memory_array(const std::string& name, const uint32_t index,
+                               const uint32_t buffer_depth, const size_t len);
 
     /**
      * @brief Same as get_gpu_memory_array but gets just one gpu memory buffer
@@ -80,7 +81,7 @@ public:
      */
     void create_gpu_memory_array_view(const std::string& source_name, const size_t source_len,
                                       const std::string& view_name, const size_t view_offset,
-                                      const size_t view_len);
+                                      const size_t view_len, const uint32_t buffer_depth);
 
     /**
      * @brief Creates a chunk of GPU memory that is a view on another GPU
@@ -114,7 +115,7 @@ public:
      */
     void create_gpu_memory_ringbuffer(const std::string& source_name, const size_t source_len,
                                       const std::string& view_name, const size_t view_offset,
-                                      const size_t view_len);
+                                      const size_t view_len, const uint32_t buffer_depth);
 
     /**
      * @brief Fetches the metadata (if any) attached to the given GPU
@@ -167,11 +168,6 @@ public:
         return gpu_id;
     }
 
-    /// Returns the gpu buffer depth
-    int get_gpu_buffer_depth() {
-        return gpu_buffer_depth;
-    }
-
 protected:
     virtual void* alloc_gpu_memory(size_t len) = 0;
     virtual void free_gpu_memory(void*) = 0;
@@ -187,7 +183,6 @@ protected:
 
     // Config variables
     int gpu_id;
-    uint32_t gpu_buffer_depth;
 
 private:
     std::map<std::string, gpuMemoryBlock> gpu_memory;

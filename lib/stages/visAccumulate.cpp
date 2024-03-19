@@ -137,10 +137,10 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
     register_base_dataset_states(instrument_name, freqs, inputs, prods);
 
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Because we reserve `num_freq_in_frame` output frames for each input frame, the output
     // buffer must have at least `num_freq_in_frame` frames allocated.
@@ -207,7 +207,7 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
 
         // Fetch and register the buffer
         auto buf = buffer_container.get_buffer(buffer_name);
-        register_producer(buf, unique_name.c_str());
+        buf->register_producer(unique_name);
 
         // Create the gated datasets and register the update callback
         gated_datasets.emplace_back(
@@ -284,7 +284,7 @@ void visAccumulate::main_thread() {
     while (!stop_thread) {
 
         // Fetch a new frame and get its sequence id
-        uint8_t* in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
+        uint8_t* in_frame = in_buf->wait_for_full_frame(unique_name, in_frame_id);
         if (in_frame == nullptr)
             break;
 
@@ -453,7 +453,7 @@ void visAccumulate::main_thread() {
         }
 
         // Move the input buffer on one step
-        mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id++);
+        in_buf->mark_frame_empty(unique_name, in_frame_id++);
         last_frame_count = frame_count;
         frames_in_this_cycle++;
     }
@@ -466,12 +466,11 @@ bool visAccumulate::initialise_output(visAccumulate::internalState& state, int i
 
     for (size_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
 
-        if (wait_for_empty_frame(state.buf, unique_name.c_str(), state.frame_id + freq_ind)
-            == nullptr) {
+        if (state.buf->wait_for_empty_frame(unique_name, state.frame_id + freq_ind) == nullptr) {
             return true;
         }
 
-        allocate_new_metadata_object(state.buf, state.frame_id + freq_ind);
+        state.buf->allocate_new_metadata_object(state.frame_id + freq_ind);
         VisFrameView::set_metadata(state.buf, state.frame_id + freq_ind, num_elements,
                                    num_elements * (num_elements + 1) / 2, 0);
 
@@ -586,7 +585,7 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
                              output_frame.weight[pi] = w * w / t;
                          });
 
-        mark_frame_full(state.buf, unique_name.c_str(), state.frame_id++);
+        state.buf->mark_frame_full(unique_name, state.frame_id++);
     }
 }
 

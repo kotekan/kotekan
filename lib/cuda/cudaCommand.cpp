@@ -97,11 +97,17 @@ cudaCommand::~cudaCommand() {
 
 cudaEvent_t cudaCommand::execute_base(cudaPipelineState& pipestate,
                                       const std::vector<cudaEvent_t>& pre_events) {
+    if (!should_execute(pipestate, pre_events))
+        return nullptr;
+    return execute(pipestate, pre_events);
+}
+
+bool cudaCommand::should_execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>&) {
     if (_required_flag.size() && !pipestate.flag_is_set(_required_flag)) {
         DEBUG("Required flag \"{:s}\" is not set; skipping stage", _required_flag);
-        return nullptr;
+        return false;
     }
-    return execute(pipestate, pre_events);
+    return true;
 }
 
 void cudaCommand::finalize_frame() {

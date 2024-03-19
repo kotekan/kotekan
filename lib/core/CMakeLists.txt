@@ -5,6 +5,7 @@ add_library(
     basebandReadoutManager.cpp
     basebandApiManager.cpp
     buffer.cpp
+    ringbuffer.cpp
     bufferContainer.cpp
     bufferFactory.cpp
     Config.cpp

@@ -39,7 +39,7 @@ nDiskFileWrite::nDiskFileWrite(Config& config, const string& unique_name,
                                bufferContainer& buffer_containter) :
     Stage(config, unique_name, buffer_containter, std::bind(&nDiskFileWrite::main_thread, this)) {
     buf = get_buffer("in_buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
 
     // Apply config.
     disk_base = config.get<std::string>(unique_name, "disk_base");
@@ -174,7 +174,7 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
     while (!stop_thread) {
 
         // This call is blocking.
-        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        frame = buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
@@ -230,7 +230,7 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
         }
 
         // TODO make release_info_object work for nConsumers.
-        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_empty(unique_name, frame_id);
 
         frame_id = (frame_id + num_disks) % buf->num_frames;
         file_num += num_disks;

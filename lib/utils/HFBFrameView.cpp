@@ -158,7 +158,7 @@ HFBFrameView HFBFrameView::create_frame_view(Buffer* buf, const uint32_t index,
                                              bool alloc_metadata /*= true*/) {
 
     if (alloc_metadata) {
-        allocate_new_metadata_object(buf, index);
+        buf->allocate_new_metadata_object(index);
     }
 
     set_metadata(buf, index, num_beams, num_subfreq);

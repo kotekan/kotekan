@@ -55,7 +55,7 @@ FakeHFB::FakeHFB(Config& config, const std::string& unique_name,
 
     // Fetch the buffer, register it
     out_buf = buffer_container.get_buffer(buffer_name);
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     // Get frequency IDs from config
     freq = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
@@ -132,12 +132,12 @@ void FakeHFB::main_thread() {
             DEBUG("Making fake hfbBuffer for freq={:d}, fpga_seq={:d}", f, fpga_seq);
 
             // Wait for the buffer frame to be free
-            if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
+            if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
                 break;
             }
 
             // Allocate metadata and get frame
-            allocate_new_metadata_object(out_buf, output_frame_id);
+            out_buf->allocate_new_metadata_object(output_frame_id);
             HFBFrameView::set_metadata((HFBMetadata*)out_buf->metadata[output_frame_id]->metadata,
                                        num_beams, num_subfreq);
 
@@ -164,7 +164,7 @@ void FakeHFB::main_thread() {
 
 
             // Mark the buffers and move on
-            mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
+            out_buf->mark_frame_full(unique_name, output_frame_id);
 
             // Advance the current frame ids
             output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
@@ -204,11 +204,11 @@ ReplaceHFB::ReplaceHFB(Config& config, const std::string& unique_name,
 
     // Setup the input buffer
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // Setup the output buffer
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 }
 
 void ReplaceHFB::main_thread() {
@@ -219,12 +219,12 @@ void ReplaceHFB::main_thread() {
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
 
         // Wait for the output buffer to be empty of data
-        if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
+        if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
             break;
         }
         // Create view to input frame
@@ -242,10 +242,10 @@ void ReplaceHFB::main_thread() {
         }
 
         // Mark the output buffer and move on
-        mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
+        out_buf->mark_frame_full(unique_name, output_frame_id);
 
         // Mark the input buffer and move on
-        mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
+        in_buf->mark_frame_empty(unique_name, input_frame_id);
 
         // Advance the current frame ids
         output_frame_id = (output_frame_id + 1) % out_buf->num_frames;

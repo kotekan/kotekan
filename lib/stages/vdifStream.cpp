@@ -33,7 +33,7 @@ vdifStream::vdifStream(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&vdifStream::main_thread, this)) {
 
     buf = get_buffer("vdif_in_buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
 }
 vdifStream::~vdifStream() {}
 
@@ -77,7 +77,7 @@ void vdifStream::main_thread() {
         //             _vdif_port);
 
         // Wait for a full buffer.
-        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        frame = buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
         // IT - commented out to test performance without INFO calls.
@@ -117,7 +117,7 @@ void vdifStream::main_thread() {
         }
 
         // Mark buffer as empty.
-        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_empty(unique_name, frame_id);
         frame_id = (frame_id + 1) % buf->num_frames;
     }
 }

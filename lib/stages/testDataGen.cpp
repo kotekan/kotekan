@@ -46,7 +46,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&testDataGen::main_thread, this)) {
 
     buf = get_buffer("out_buf");
-    register_producer(buf, unique_name.c_str());
+    buf->register_producer(unique_name);
     type = config.get<std::string>(unique_name, "type");
     assert(type == "const" || type == "const8" || type == "const16" || type == "const32"
            || type == "constf16" || type == "random" || type == "random_signed" || type == "ramp"
@@ -186,11 +186,11 @@ void testDataGen::main_thread() {
             continue;
         }
 
-        frame = (uint8_t*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+        frame = (uint8_t*)buf->wait_for_empty_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
-        allocate_new_metadata_object(buf, frame_id);
+        buf->allocate_new_metadata_object(frame_id);
         set_fpga_seq_num(buf, frame_id, seq_num);
         set_stream_id(buf, frame_id, stream_id);
 
@@ -356,6 +356,11 @@ void testDataGen::main_thread() {
             }
             n_to_set = 0;
         }
+        if (_value_array.size()
+            && ((type == "const") || (type == "const8") || (type == "const16")
+                || (type == "const32")))
+            // Cycle through "values" array, if given
+            value = _value_array[frame_id_abs % _value_array.size()];
         for (uint j = 0; j < n_to_set; ++j) {
             if (type == "const") {
                 if (finished_seeding_constant)
@@ -440,7 +445,7 @@ void testDataGen::main_thread() {
         }
         DEBUG("Generated a {:s} test data set in {:s}[{:d}]", type, buf->buffer_name, frame_id);
 
-        mark_frame_full(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_full(unique_name, frame_id);
 
         frame_id_abs += 1;
         if (num_frames >= 0 && frame_id_abs >= num_frames) {
@@ -460,8 +465,12 @@ void testDataGen::main_thread() {
         } else {
             seq_num += samples_per_data_set;
         }
-        if (frame_id == 0)
-            finished_seeding_constant = true;
+        if (frame_id == 0) {
+            if (_value_array.size() && (_value_array.size() != (size_t)buf->num_frames)) {
+                // this "finished_seeding" business does not work
+            } else
+                finished_seeding_constant = true;
+        }
 
         if (wait) {
             double time = current_time();

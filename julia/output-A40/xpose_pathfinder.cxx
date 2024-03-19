@@ -174,8 +174,10 @@ cudaTransposeKernel_pathfinder::execute(cudaPipelineState& /*pipestate*/,
 
     pre_execute();
 
-    void* const Ein_memory = device.get_gpu_memory_array(Ein_memname, gpu_frame_id, Ein_length);
-    void* const E_memory = device.get_gpu_memory_array(E_memname, gpu_frame_id, E_length);
+    void* const Ein_memory =
+        device.get_gpu_memory_array(Ein_memname, gpu_frame_id, _gpu_buffer_depth, Ein_length);
+    void* const E_memory =
+        device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
     info_host.at(gpu_frame_index).resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 

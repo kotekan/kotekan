@@ -220,8 +220,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{#hasbuffer}}
             void* const {{{name}}}_memory =
                 args::{{{name}}} == args::E || args::{{{name}}} == args::Ebar
-                ? device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, {{{name}}}_length / _gpu_buffer_depth)
-                : device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, {{{name}}}_length);
+                    ? device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length / _gpu_buffer_depth)
+                    : device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length);
         {{/hasbuffer}}
         {{^hasbuffer}}
             {{{name}}}_host.at(gpu_frame_index).resize({{{name}}}_length);
@@ -310,11 +310,11 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     INFO("gpu_frame_id: {}", gpu_frame_id);
 
     // Beginning of the input ringbuffer
-    void* const E_memory0 = device.get_gpu_memory_array(E_memname, 0, E_length / _gpu_buffer_depth);
+    void* const E_memory0 = device.get_gpu_memory_array(E_memname, 0, _gpu_buffer_depth, E_length / _gpu_buffer_depth);
     INFO("E_memory0: {}", E_memory0);
 
     // Beginning of the output ringbuffer
-    void* const Ebar_memory0 = device.get_gpu_memory_array(Ebar_memname, 0, Ebar_length / _gpu_buffer_depth);
+    void* const Ebar_memory0 = device.get_gpu_memory_array(Ebar_memname, 0, _gpu_buffer_depth, Ebar_length / _gpu_buffer_depth);
     INFO("Ebar_memory0: {}", Ebar_memory0);
 
     // Set E_memory to beginning of input ring buffer

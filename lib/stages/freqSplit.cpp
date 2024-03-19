@@ -42,12 +42,12 @@ freqSplit::freqSplit(Config& config, const std::string& unique_name,
 
     // Setup the input buffer
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
 
     // Fetch the output buffers, register them, and store them in our buffer vector
     for (auto name : output_buffer_names) {
         auto buf = buffer_container.get_buffer(name);
-        register_producer(buf, unique_name.c_str());
+        buf->register_producer(unique_name);
         out_bufs.push_back({buf, 0});
     }
 
@@ -99,7 +99,7 @@ void freqSplit::main_thread() {
     std::array<dset_id_t, 2> output_dset_id = {{dset_id_t::null, dset_id_t::null}};
 
     // Wait for a frame in the input buffer in order to get the dataset ID
-    if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
+    if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
         return;
     }
     input_dset_id = VisFrameView(in_buf, input_frame_id).dataset_id;
@@ -108,7 +108,7 @@ void freqSplit::main_thread() {
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
 
@@ -137,7 +137,7 @@ void freqSplit::main_thread() {
         INFO("Buffer {:d} has frame_id={:d}", buf_ind, frame_id);
 
         // Wait for the output buffer to be empty of data
-        if (wait_for_empty_frame(buf, unique_name.c_str(), frame_id) == nullptr) {
+        if (buf->wait_for_empty_frame(unique_name, frame_id) == nullptr) {
             break;
         }
 
@@ -152,8 +152,8 @@ void freqSplit::main_thread() {
         frame.dataset_id = output_dset_id.at(buf_ind);
 
         // Mark the buffers and move on
-        mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
-        mark_frame_full(buf, unique_name.c_str(), frame_id);
+        in_buf->mark_frame_empty(unique_name, input_frame_id);
+        buf->mark_frame_full(unique_name, frame_id);
 
         // Advance the current frame ids
         std::get<1>(buffer_pair) = (frame_id + 1) % buf->num_frames;

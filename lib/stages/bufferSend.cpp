@@ -44,7 +44,7 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
         Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count", unique_name)) {
 
     buf = get_buffer("buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
 
     connected = false;
     server_ip = config.get<std::string>(unique_name, "server_ip");
@@ -75,11 +75,11 @@ void bufferSend::main_thread() {
 
     while (!stop_thread) {
 
-        uint8_t* frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        uint8_t* frame = buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
-        uint32_t num_full_frames = get_num_full_frames(buf);
+        uint32_t num_full_frames = buf->get_num_full_frames();
 
         if (drop_frames && (float)num_full_frames / (float)buf->num_frames > drop_threshold) {
             // If the number of full frames is high, then we drop some frames,
@@ -165,7 +165,7 @@ void bufferSend::main_thread() {
             continue;
         }
 
-        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_empty(unique_name, frame_id);
         frame_id = (frame_id + 1) % buf->num_frames;
     }
 

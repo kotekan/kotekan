@@ -33,7 +33,7 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
     input_remap = std::get<0>(input_reorder);
 
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     out_buffer_ID = 0;
 }
@@ -45,7 +45,7 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     DEBUG("update_bad_inputs_callback(): Update to bad inputs list.");
 
     // Get the first output buffer which will always be id = 0 to start.
-    uint8_t* host_mask = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
+    uint8_t* host_mask = out_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
 
     try {
         bad_inputs_cylinder = json["bad_inputs"].get<std::vector<int>>();
@@ -75,12 +75,12 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     }
 
     // Create new metadata
-    allocate_new_metadata_object(out_buf, out_buffer_ID);
+    out_buf->allocate_new_metadata_object(out_buffer_ID);
 
     // Set no. of bad inputs in the metadata
     set_rfi_num_bad_inputs(out_buf, out_buffer_ID, bad_inputs_correlator.size());
 
-    mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
+    out_buf->mark_frame_full(unique_name, out_buffer_ID);
 
     DEBUG("update_bad_inputs_callback(): Bad inputs reordered and buffered.");
 

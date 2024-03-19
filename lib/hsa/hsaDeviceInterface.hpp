@@ -25,7 +25,7 @@ struct gpu_mem_config_t {
 class hsaDeviceInterface : public gpuDeviceInterface {
 public:
     hsaDeviceInterface(kotekan::Config& config, const std::string& unique_name, int32_t gpu_id,
-                       int gpu_buffer_depth, uint32_t numa_node);
+                       uint32_t numa_node);
     virtual ~hsaDeviceInterface();
 
     // Note, if precede_signal is 0, then we don't wait on any signal.

@@ -55,9 +55,9 @@ visTestPattern::visTestPattern(Config& config, const std::string& unique_name,
 
     // Setup the buffers
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
 
     _tolerance = config.get_default<double>(unique_name, "tolerance", 1e-6);
     _report_freq = config.get_default<uint64_t>(unique_name, "report_freq", 1000);
@@ -129,7 +129,7 @@ void visTestPattern::main_thread() {
     uint64_t i_frame = 0;
 
     // Wait for the first frame
-    if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
+    if (in_buf->wait_for_full_frame(unique_name, frame_id) == nullptr) {
         INFO("No frames in input buffer on start.");
         if (outfile.is_open())
             outfile.close();
@@ -156,7 +156,7 @@ void visTestPattern::main_thread() {
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
+        if (in_buf->wait_for_full_frame(unique_name, frame_id) == nullptr) {
             break;
         }
 
@@ -272,20 +272,19 @@ void visTestPattern::main_thread() {
                     // pass this bad frame to the output buffer:
 
                     // Wait for an empty frame in the output buffer
-                    if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id)
-                        == nullptr) {
+                    if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
                         break;
                     }
 
                     // Transfer metadata
-                    pass_metadata(in_buf, frame_id, out_buf, output_frame_id);
+                    in_buf->pass_metadata(frame_id, out_buf, output_frame_id);
 
                     // Copy the frame data here:
                     std::memcpy(out_buf->frames[output_frame_id], in_buf->frames[frame_id],
                                 in_buf->frame_size);
 
 
-                    mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
+                    out_buf->mark_frame_full(unique_name, output_frame_id);
 
                     // Advance output frame id
                     output_frame_id++;
@@ -337,7 +336,7 @@ void visTestPattern::main_thread() {
             }
         }
 
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+        in_buf->mark_frame_empty(unique_name, frame_id);
 
         // Advance input frame id
         frame_id++;

@@ -70,8 +70,10 @@ cl_event clPreseedKernel::execute(cl_event pre_event) {
     uint32_t output_len = _num_local_freq * _num_blocks * (_block_size * _block_size) * 2
                           * _num_data_sets * sizeof(int32_t);
 
-    cl_mem output_memory_frame = device.get_gpu_memory_array("output", gpu_frame_id, output_len);
-    cl_mem presum_memory = device.get_gpu_memory_array("presum", gpu_frame_id, presum_len);
+    cl_mem output_memory_frame =
+        device.get_gpu_memory_array("output", gpu_frame_id, _gpu_buffer_depth, output_len);
+    cl_mem presum_memory =
+        device.get_gpu_memory_array("presum", gpu_frame_id, _gpu_buffer_depth, presum_len);
 
     setKernelArg(0, presum_memory);
     setKernelArg(1, output_memory_frame);

@@ -83,9 +83,10 @@ hsa_signal_t hsaRfiVdif::execute(int gpu_frame_id, hsa_signal_t precede_signal) 
     } args;
 
     memset(&args, 0, sizeof(args)); // Intialize
-    args.input =
-        device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len); // Grab GPU memory
-    args.output = device.get_gpu_memory_array("rfi_output", gpu_frame_id, input_frame_len);
+    args.input = device.get_gpu_memory_array("input", gpu_frame_id, _gpu_buffer_depth,
+                                             input_frame_len); // Grab GPU memory
+    args.output =
+        device.get_gpu_memory_array("rfi_output", gpu_frame_id, _gpu_buffer_depth, input_frame_len);
     args.in_means = device.get_gpu_memory("in_means", mean_len);
     args.sqrtM = sqrt(_num_elements * _sk_step);
     args.sensitivity = rfi_sensitivity;
