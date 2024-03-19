@@ -5,8 +5,8 @@
 #include "ringbuffer.hpp"
 #include "test_utils.hpp"
 
-#include <memory>
 #include <locale>
+#include <memory>
 
 #undef WITH_CUDA
 

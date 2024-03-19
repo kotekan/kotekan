@@ -14,14 +14,14 @@
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
 
-#include <algorithm>   // for max
-#include <array>       // for array
-#include <assert.h>    // for assert
-#include <csignal>     // for signal, SIGINT, SIGTERM, sig_atomic_t
-#include <exception>   // for exception
-#include <getopt.h>    // for no_argument, getopt_long, required_argument, option
-#include <iostream>    // for endl, basic_ostream, cout, ostream
-#include <iterator>    // for reverse_iterator
+#include <algorithm> // for max
+#include <array>     // for array
+#include <assert.h>  // for assert
+#include <csignal>   // for signal, SIGINT, SIGTERM, sig_atomic_t
+#include <exception> // for exception
+#include <getopt.h>  // for no_argument, getopt_long, required_argument, option
+#include <iostream>  // for endl, basic_ostream, cout, ostream
+#include <iterator>  // for reverse_iterator
 #include <locale>
 #include <map>         // for map
 #include <memory>      // for allocator_traits<>::value_type
