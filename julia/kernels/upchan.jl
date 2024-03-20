@@ -60,12 +60,12 @@ end
 # Compile-time constants
 
 setup::Symbol
+T::Integer
+
 @static if setup ≡ :chord
     # CHORD Setup
     const sampling_time_μsec = 4096 / (2 * 1200)
     const C = 2
-    # const T = 32768 * 4
-    const T = 2048 * 4
     const D = 512
     const P = 2
     const F₀ = 16
@@ -74,8 +74,6 @@ elseif setup ≡ :hirax
     # HIRAX Setup
     const sampling_time_μsec = 2.56
     const C = 2
-    # const T = 32768 * 4
-    const T = 2048 * 4
     const D = 256
     const P = 2
     const F₀ = 64
@@ -84,8 +82,6 @@ elseif setup ≡ :pathfinder
     # Pathfinder Setup
     const sampling_time_μsec = 4096 / (2 * 1200)
     const C = 2
-    # const T = 32768 * 4
-    const T = 2048 * 4
     const D = 64
     const P = 2
     const F₀ = 128
@@ -215,11 +211,6 @@ const simd_threads = [SIMD(:simd, 1 << 4, 2), [Thread(:thread, 1 << [1, 0, 2, 4,
 # Layouts
 
 # Global memory layouts
-
-const layout_Tmin = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
-const layout_Tmax = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
-const layout_T̄min = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
-const layout_T̄max = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
 
 const layout_G_memory = Layout([
     FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
@@ -558,11 +549,7 @@ function upchan!(emitter)
     apply!(emitter, :info => layout_info_registers, 1i32)
     store!(emitter, :info_memory => layout_info_memory, :info)
 
-    # Read parameters `Tmin`, `Tmax`, `T̄min`, `T̄max`
-    load!(emitter, :Tmin => layout_Tmin, :Tmin_memory => layout_Tmin)
-    load!(emitter, :Tmax => layout_Tmax, :Tmax_memory => layout_Tmax)
-    load!(emitter, :T̄min => layout_T̄min, :T̄min_memory => layout_T̄min)
-    load!(emitter, :T̄max => layout_T̄max, :T̄max_memory => layout_T̄max)
+    # Check parameters `Tmin`, `Tmax`, `T̄min`, `T̄max`
     if!(
         emitter,
         :(
@@ -1420,7 +1407,7 @@ open("output-$(card)/upchan_$(setup)_U$(U).jl", "w") do fh
     return nothing
 end
 
-@eval function upchan(Tmin_memory, Tmax_memory, T̄min_memory, T̄max_memory, G_memory, E_memory, Ē_memory, info_memory)
+@eval function upchan(Tmin::Int32, Tmax::Int32, T̄min::Int32, T̄max::Int32, G_memory, E_memory, Ē_memory, info_memory)
     shmem = @cuDynamicSharedMem(UInt8, shmem_bytes, 0)
     F_shared = reinterpret(Int4x8, shmem)
     F̄_shared = reinterpret(Int4x8, shmem)
@@ -1441,10 +1428,10 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 99 * 1024 # NVIDIA A10/A40 have 99 kB shared memory
     kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm upchan(
-        CUDA.zeros(Int32, 0),
-        CUDA.zeros(Int32, 0),
-        CUDA.zeros(Int32, 0),
-        CUDA.zeros(Int32, 0),
+        Int32(0),
+        Int32(0),
+        Int32(0),
+        Int32(0),
         CUDA.zeros(Float16x2, 0),
         CUDA.zeros(Int4x8, 0),
         CUDA.zeros(Int4x8, 0),
@@ -1468,10 +1455,10 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
         G_memory[freq + 1] = 1
     end
 
-    @show Tmin = 0
-    @show Tmax = idiv(T, 4)
-    @show T̄min = 0
-    @show T̄max = idiv(Tmax, U) - (M - 1)
+    @show Tmin = Int32(0)
+    @show Tmax = Int32(idiv(T, 4))
+    @show T̄min = Int32(0)
+    @show T̄max = Int32(idiv(Tmax, U) - (M - 1))
 
     amp = 7.5f0                 # amplitude
     bin = 0                     # frequency bin
@@ -1523,10 +1510,6 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     E_memory = reinterpret(Int4x8, E_memory)
 
     !silent && println("Copying data from CPU to GPU...")
-    Tmin_cuda = CuArray(Int32[Tmin])
-    Tmax_cuda = CuArray(Int32[Tmax])
-    T̄min_cuda = CuArray(Int32[T̄min])
-    T̄max_cuda = CuArray(Int32[T̄max])
     G_cuda = CuArray(G_memory)
     E_cuda = CuArray(E_memory)
     Ē_cuda = CUDA.fill(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8), idiv(C, 2) * idiv(D, 4) * P * (F * U) * idiv(T, U))
@@ -1538,10 +1521,10 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
 
     !silent && println("Running kernel...")
     kernel(
-        Tmin_cuda,
-        Tmax_cuda,
-        T̄min_cuda,
-        T̄max_cuda,
+        Tmin,
+        Tmax,
+        T̄min,
+        T̄max,
         G_cuda,
         E_cuda,
         Ē_cuda,
@@ -1557,10 +1540,10 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
         stats = @timed begin
             for run in 1:nruns
                 kernel(
-                    Tmin_cuda,
-                    Tmax_cuda,
-                    T̄min_cuda,
-                    T̄max_cuda,
+                    Tmin,
+                    Tmax,
+                    T̄min,
+                    T̄max,
                     G_cuda,
                     E_cuda,
                     Ē_cuda,
@@ -1705,27 +1688,15 @@ function fix_ptx_kernel()
         - name: "Tmin"
           intent: in
           type: Int32
-          indices: []
-          shape: []
-          strides: []
         - name: "Tmax"
           intent: in
           type: Int32
-          indices: []
-          shape: []
-          strides: []
         - name: "T̄min"
           intent: in
           type: Int32
-          indices: []
-          shape: []
-          strides: []
         - name: "T̄max"
           intent: in
           type: Int32
-          indices: []
-          shape: []
-          strides: []
         - name: "G"
           intent: in
           type: Float16
@@ -1783,33 +1754,33 @@ function fix_ptx_kernel()
                     "name" => "Tmin",
                     "kotekan_name" => "Tmin",
                     "type" => "int32",
-                    "axes" => Dict[],
                     "isoutput" => false,
                     "hasbuffer" => false,
+                    "isscalar" => true,
                 ),
                 Dict(
                     "name" => "Tmax",
                     "kotekan_name" => "Tmax",
                     "type" => "int32",
-                    "axes" => Dict[],
                     "isoutput" => false,
                     "hasbuffer" => false,
+                    "isscalar" => true,
                 ),
                 Dict(
                     "name" => "Tbarmin",
                     "kotekan_name" => "Tbarmin",
                     "type" => "int32",
-                    "axes" => Dict[],
                     "isoutput" => false,
                     "hasbuffer" => false,
+                    "isscalar" => true,
                 ),
                 Dict(
                     "name" => "Tbarmax",
                     "kotekan_name" => "Tbarmax",
                     "type" => "int32",
-                    "axes" => Dict[],
                     "isoutput" => false,
                     "hasbuffer" => false,
+                    "isscalar" => true,
                 ),
                 Dict(
                     "name" => "G",
@@ -1818,6 +1789,7 @@ function fix_ptx_kernel()
                     "axes" => [Dict("label" => "Fbar", "length" => F * U)],
                     "isoutput" => false,
                     "hasbuffer" => true,
+                    "isscalar" => false,
                 ),
                 Dict(
                     "name" => "E",
@@ -1831,6 +1803,7 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
+                    "isscalar" => false,
                 ),
                 Dict(
                     "name" => "Ebar",
@@ -1844,6 +1817,7 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,
+                    "isscalar" => false,
                 ),
                 Dict(
                     "name" => "info",
@@ -1856,6 +1830,7 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => true,
                     "hasbuffer" => false,
+                    "isscalar" => false,
                 ),
             ],
         ),

@@ -12,7 +12,7 @@ kernel-description:
     number-of-frequencies: 64
     number-of-polarizations: 2
     number-of-taps: 4
-    number-of-timesamples: 8192
+    number-of-timesamples: 65536
     sampling-time-μsec: 2.56
     upchannelization-factor: 16
   compile-parameters:
@@ -22,32 +22,20 @@ kernel-description:
     threads: [32, 16]
     blocks: [256]
     shmem_bytes: 69888
-  kernel-symbol: "_Z6upchan13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE"
+  kernel-symbol: "_Z6upchan5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE"
   kernel-arguments:
     - name: "Tmin"
       intent: in
       type: Int32
-      indices: []
-      shape: []
-      strides: []
     - name: "Tmax"
       intent: in
       type: Int32
-      indices: []
-      shape: []
-      strides: []
     - name: "T̄min"
       intent: in
       type: Int32
-      indices: []
-      shape: []
-      strides: []
     - name: "T̄max"
       intent: in
       type: Int32
-      indices: []
-      shape: []
-      strides: []
     - name: "G"
       intent: in
       type: Float16
@@ -58,13 +46,13 @@ kernel-description:
       intent: in
       type: Int4
       indices: [C, D, P, F, T]
-      shape: [2, 256, 2, 64, 8192]
+      shape: [2, 256, 2, 64, 65536]
       strides: [1, 2, 512, 1024, 65536]
     - name: "Ē"
       intent: out
       type: Int4
       indices: [C, D, P, F̄, T̄]
-      shape: [2, 256, 2, 1024, 512]
+      shape: [2, 256, 2, 1024, 4096]
       strides: [1, 2, 512, 1024, 1048576]
     - name: "info"
       intent: out

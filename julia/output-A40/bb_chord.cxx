@@ -54,7 +54,7 @@ private:
             ptr(static_cast<T*>(ptr)), maxsize(bytes), dims{std::int64_t(maxsize / sizeof(T))},
             len(maxsize / sizeof(T)) {}
     };
-    using kernel_arg = CuDeviceArray<int32_t, 1>;
+    using array_desc = CuDeviceArray<int32_t, 1>;
 
     // Kernel design parameters:
     static constexpr int cuda_number_of_beams = 96;
@@ -62,8 +62,8 @@ private:
     static constexpr int cuda_number_of_dishes = 512;
     static constexpr int cuda_number_of_frequencies = 16;
     static constexpr int cuda_number_of_polarizations = 2;
-    static constexpr int cuda_number_of_timesamples = 8192;
-    static constexpr int cuda_granularity_number_of_timesamples = 2048;
+    static constexpr int cuda_number_of_timesamples = 131072;
+    static constexpr int cuda_granularity_number_of_timesamples = 32768;
     static constexpr int cuda_shift_parameter_sigma = 3;
 
     // Kernel input and output sizes
@@ -84,8 +84,8 @@ private:
 
     // Kernel name:
     const char* const kernel_symbol =
-        "_Z2bb13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_I6Int8x4Li1ELi1EES_"
-        "I6Int4x8Li1ELi1EES_IS0_Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE";
+        "_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES0_IS2_"
+        "Li1ELi1EES0_IS_Li1ELi1EE";
 
     // Kernel arguments:
     enum class args { Tmin, Tmax, A, E, s, J, info, count };
@@ -93,24 +93,10 @@ private:
     // Tmin: Tmin
     static constexpr const char* Tmin_name = "Tmin";
     static constexpr chordDataType Tmin_type = int32;
-    enum Tmin_indices {
-        Tmin_rank,
-    };
-    static constexpr std::array<const char*, Tmin_rank> Tmin_labels = {};
-    static constexpr std::array<std::ptrdiff_t, Tmin_rank> Tmin_lengths = {};
-    static constexpr std::ptrdiff_t Tmin_length = chord_datatype_bytes(Tmin_type);
-    static_assert(Tmin_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // Tmax: Tmax
     static constexpr const char* Tmax_name = "Tmax";
     static constexpr chordDataType Tmax_type = int32;
-    enum Tmax_indices {
-        Tmax_rank,
-    };
-    static constexpr std::array<const char*, Tmax_rank> Tmax_labels = {};
-    static constexpr std::array<std::ptrdiff_t, Tmax_rank> Tmax_lengths = {};
-    static constexpr std::ptrdiff_t Tmax_length = chord_datatype_bytes(Tmax_type);
-    static_assert(Tmax_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // A: gpu_mem_phase
     static constexpr const char* A_name = "A";
@@ -152,9 +138,9 @@ private:
         512,
         2,
         16,
-        8192,
+        131072,
     };
-    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 16 * 8192;
+    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 16 * 131072;
     static_assert(E_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // s: gpu_mem_output_scaling
@@ -196,12 +182,12 @@ private:
         "B",
     };
     static constexpr std::array<std::ptrdiff_t, J_rank> J_lengths = {
-        2048,
+        32768,
         2,
         16,
         96,
     };
-    static constexpr std::ptrdiff_t J_length = chord_datatype_bytes(J_type) * 2048 * 2 * 16 * 96;
+    static constexpr std::ptrdiff_t J_length = chord_datatype_bytes(J_type) * 32768 * 2 * 16 * 96;
     static_assert(J_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
@@ -228,8 +214,6 @@ private:
     //
 
     // Kotekan buffer names
-    const std::string Tmin_memname;
-    const std::string Tmax_memname;
     const std::string A_memname;
     const std::string E_memname;
     const std::string s_memname;
@@ -237,8 +221,6 @@ private:
     const std::string info_memname;
 
     // Host-side buffer arrays
-    std::vector<std::uint8_t> Tmin_host;
-    std::vector<std::uint8_t> Tmax_host;
     std::vector<std::uint8_t> info_host;
 
     static constexpr std::ptrdiff_t E_T_sample_bytes = chord_datatype_bytes(E_type)
@@ -261,23 +243,26 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
                                                            const int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "BasebandBeamformer_chord", "BasebandBeamformer_chord.ptx"),
-    Tmin_memname(unique_name + "/Tmin"), Tmax_memname(unique_name + "/Tmax"),
     A_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
     E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
     s_memname(config.get<std::string>(unique_name, "gpu_mem_output_scaling")),
     J_memname(config.get<std::string>(unique_name, "gpu_mem_formed_beams")),
     info_memname(unique_name + "/gpu_mem_info"),
 
-    Tmin_host(Tmin_length), Tmax_host(Tmax_length), info_host(info_length),
+    info_host(info_length),
     // Find input buffer used for signalling ring-buffer state
     input_ringbuf_signal(dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")))) {
     // Check ringbuffer size
     assert(input_ringbuf_signal->size == E_length);
 
+    // Register host memory
+    {
+        const cudaError_t ierr = cudaHostRegister(info_host.data(), info_host.size(), 0);
+        assert(ierr == cudaSuccess);
+    }
+
     // Add Graphviz entries for the GPU buffers used by this kernel
-    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Tmin", false, true, true));
-    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Tmax", false, true, true));
     gpu_buffers_used.push_back(std::make_tuple(A_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(s_memname, true, true, false));
@@ -359,8 +344,6 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
                                                   const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
 
-    void* const Tmin_memory = device.get_gpu_memory(Tmin_memname, Tmin_length);
-    void* const Tmax_memory = device.get_gpu_memory(Tmax_memname, Tmax_length);
     void* const A_memory =
         args::A == args::E
             ? device.get_gpu_memory(A_memname, input_ringbuf_signal->size)
@@ -386,7 +369,7 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     assert(A_mc);
     assert(metadata_is_chord(A_mc));
     const std::shared_ptr<chordMetadata> A_meta = get_chord_metadata(A_mc);
-    INFO("input A array: {:s} {:s}", A_meta->get_type_string(), A_meta->get_dimensions_string());
+    DEBUG("input A array: {:s} {:s}", A_meta->get_type_string(), A_meta->get_dimensions_string());
     assert(std::strncmp(A_meta->name, A_name, sizeof A_meta->name) == 0);
     assert(A_meta->type == A_type);
     assert(A_meta->dims == A_rank);
@@ -407,7 +390,7 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     assert(E_mc);
     assert(metadata_is_chord(E_mc));
     const std::shared_ptr<chordMetadata> E_meta = get_chord_metadata(E_mc);
-    INFO("input E array: {:s} {:s}", E_meta->get_type_string(), E_meta->get_dimensions_string());
+    DEBUG("input E array: {:s} {:s}", E_meta->get_type_string(), E_meta->get_dimensions_string());
     assert(std::strncmp(E_meta->name, E_name, sizeof E_meta->name) == 0);
     assert(E_meta->type == E_type);
     assert(E_meta->dims == E_rank);
@@ -428,7 +411,7 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     assert(s_mc);
     assert(metadata_is_chord(s_mc));
     const std::shared_ptr<chordMetadata> s_meta = get_chord_metadata(s_mc);
-    INFO("input s array: {:s} {:s}", s_meta->get_type_string(), s_meta->get_dimensions_string());
+    DEBUG("input s array: {:s} {:s}", s_meta->get_type_string(), s_meta->get_dimensions_string());
     assert(std::strncmp(s_meta->name, s_name, sizeof s_meta->name) == 0);
     assert(s_meta->type == s_type);
     assert(s_meta->dims == s_rank);
@@ -455,27 +438,27 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
                      sizeof J_meta->dim_name[J_rank - 1 - dim]);
         J_meta->dim[J_rank - 1 - dim] = J_lengths[dim];
     }
-    INFO("output J array: {:s} {:s}", J_meta->get_type_string(), J_meta->get_dimensions_string());
+    DEBUG("output J array: {:s} {:s}", J_meta->get_type_string(), J_meta->get_dimensions_string());
     //
 
     record_start_event();
 
+    DEBUG("gpu_frame_id: {}", gpu_frame_id);
+
     const char* exc_arg = "exception";
-    kernel_arg Tmin_arg(Tmin_memory, Tmin_length);
-    kernel_arg Tmax_arg(Tmax_memory, Tmax_length);
-    kernel_arg A_arg(A_memory, A_length);
-    kernel_arg E_arg(E_memory, E_length);
-    kernel_arg s_arg(s_memory, s_length);
-    kernel_arg J_arg(J_memory, J_length);
-    kernel_arg info_arg(info_memory, info_length);
+    std::int32_t Tmin_arg;
+    std::int32_t Tmax_arg;
+    array_desc A_arg(A_memory, A_length);
+    array_desc E_arg(E_memory, E_length);
+    array_desc s_arg(s_memory, s_length);
+    array_desc J_arg(J_memory, J_length);
+    array_desc info_arg(info_memory, info_length);
     void* args[] = {
         &exc_arg, &Tmin_arg, &Tmax_arg, &A_arg, &E_arg, &s_arg, &J_arg, &info_arg,
     };
 
-    INFO("gpu_frame_id: {}", gpu_frame_id);
-
     // Set E_memory to beginning of input ring buffer
-    E_arg = kernel_arg(E_memory, E_length);
+    E_arg = array_desc(E_memory, E_length);
 
     // Ringbuffer size
     const std::ptrdiff_t T_ringbuf = input_ringbuf_signal->size / E_T_sample_bytes;
@@ -490,8 +473,8 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
 
     // Pass time spans to kernel
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
-    *(std::int32_t*)Tmin_host.data() = mod(Tmin, T_ringbuf);
-    *(std::int32_t*)Tmax_host.data() = mod(Tmin, T_ringbuf) + Tlength;
+    Tmin_arg = mod(Tmin, T_ringbuf);
+    Tmax_arg = mod(Tmin, T_ringbuf) + Tlength;
 
     // Update metadata
     assert(J_meta->dim[J_rank - 1 - J_index_T] == int(Tlength));
@@ -508,15 +491,12 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     }
 
     // Copy inputs to device memory
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tmin_memory, Tmin_host.data(), Tmin_length,
-                                     cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tmax_memory, Tmax_host.data(), Tmax_length,
-                                     cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
 
+#ifdef DEBUGGING
     // Initialize host-side buffer arrays
-    // TODO: Skip this for performance
     CHECK_CUDA_ERROR(
         cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
+#endif
 
     const std::string symname = "BasebandBeamformer_chord_" + std::string(kernel_symbol);
     CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[symname],
@@ -534,13 +514,12 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
         ERROR("cuLaunchKernel: Error number: {}: {}", (int)err, errStr);
     }
 
+#ifdef DEBUGGING
     // Copy results back to host memory
-    // TODO: Skip this for performance
     CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.data(), info_memory, info_length,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     // Check error codes
-    // TODO: Skip this for performance
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
     const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
                                                       (const std::int32_t*)&*info_host.end());
@@ -552,6 +531,7 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
             ERROR("cudaBasebandBeamformer_chord returned 'info' value {:d} at index {:d} (zero "
                   "indicates no error)",
                   info_host[i], i);
+#endif
 
     return record_end_event();
 }
