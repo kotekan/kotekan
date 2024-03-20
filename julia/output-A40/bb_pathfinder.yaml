@@ -12,7 +12,7 @@ kernel-description:
     number-of-dishes: 64
     number-of-frequencies: 128
     number-of-polarizations: 2
-    number-of-timesamples: 8192
+    number-of-timesamples: 65536
     sampling-time-μsec: 1.7
     shift-parameter-σ: 2
   compile-parameters:
@@ -22,20 +22,14 @@ kernel-description:
     threads: [32, 4]
     blocks: [2048]
     shmem_bytes: 9472
-  kernel-symbol: "_Z2bb13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_I6Int8x4Li1ELi1EES_I6Int4x8Li1ELi1EES_IS0_Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE"
+  kernel-symbol: "_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE"
   kernel-arguments:
     - name: "Tmin"
       intent: in
       type: Int32
-      indices: []
-      shape: []
-      strides: []
     - name: "Tmax"
       intent: in
       type: Int32
-      indices: []
-      shape: []
-      strides: []
     - name: "A"
       intent: in
       type: Int8
@@ -46,7 +40,7 @@ kernel-description:
       intent: in
       type: Int4
       indices: [C, D, P, F, T]
-      shape: [2, 64, 2, 128, 8192]
+      shape: [2, 64, 2, 128, 65536]
       strides: [1, 2, 128, 256, 32768]
     - name: "s"
       intent: in
@@ -58,8 +52,8 @@ kernel-description:
       intent: out
       type: Int4
       indices: [C, T, P, F, B]
-      shape: [2, 2048, 2, 128, 16]
-      strides: [1, 2, 4096, 8192, 1048576]
+      shape: [2, 16384, 2, 128, 16]
+      strides: [1, 2, 32768, 65536, 8388608]
     - name: "info"
       intent: out
       type: Int32
