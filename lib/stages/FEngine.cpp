@@ -22,12 +22,12 @@
 #warning "The F-Engine simulator requires float16 support"
 #else
 
-static void profile_mark(const char* mark_name) {
+static void profile_mark([[maybe_unused]] const char* mark_name) {
 #ifdef WITH_CUDA
     nvtxMarkA(mark_name);
 #endif
 }
-static void profile_range_push(const char* range_name) {
+static void profile_range_push([[maybe_unused]] const char* range_name) {
 #ifdef WITH_CUDA
     nvtxRangePushA(range_name);
 #endif
