@@ -33,8 +33,8 @@ static void print_py_status(const RingBuffer* const rb) {
 
 RingBuffer::RingBuffer(std::ptrdiff_t sz, std::shared_ptr<metadataPool> pool,
                        const std::string& _buffer_name, const std::string& _buffer_type) :
-    GenericBuffer(_buffer_name, _buffer_type, pool, 1), size(sz), first_write_head(0),
-    last_read_tail(0) {
+    GenericBuffer(_buffer_name, _buffer_type, pool, 1),
+    size(sz), first_write_head(0), last_read_tail(0) {
     assert(sz > 0);
 }
 
