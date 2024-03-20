@@ -1,8 +1,10 @@
 #include "cudaQuantize.hpp"
 
 #include "cudaUtils.hpp"
-#include "math.h"
 #include "mma.h"
+
+#include <cmath>
+#include <vector>
 
 void launch_quantize_kernel(cudaStream_t stream, int nframes, const __half2* in_base,
                             __half2* outf_base, unsigned int* outi_base, const int* index_array);
@@ -34,10 +36,8 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
     size_t index_array_len = (size_t)_num_chunks * 2 * sizeof(int32_t);
     int32_t* index_array_memory = (int32_t*)device.get_gpu_memory(_gpu_mem_index, index_array_len);
 
-    int32_t* index_array_host = (int32_t*)malloc(index_array_len);
-    assert(index_array_host);
+    std::vector<int32_t> index_array_host(index_array_len / sizeof(int32_t), 0);
 
-    memset(index_array_host, 0, index_array_len);
     for (int f = 0; f < _num_chunks / FRAME_SIZE; f++) {
         for (int i = 0; i < FRAME_SIZE; i++) {
             // offset of the start of the chunk in the input array, for each chunk.
@@ -50,9 +50,8 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
         index_array_host[f * FRAME_SIZE * 2 + FRAME_SIZE + 1] = f * FRAME_SIZE * (CHUNK_SIZE / 8);
     }
 
-    CHECK_CUDA_ERROR(
-        cudaMemcpy(index_array_memory, index_array_host, index_array_len, cudaMemcpyHostToDevice));
-    free(index_array_host);
+    CHECK_CUDA_ERROR(cudaMemcpy(index_array_memory, index_array_host.data(), index_array_len,
+                                cudaMemcpyHostToDevice));
 }
 
 cudaQuantize::~cudaQuantize() {}
