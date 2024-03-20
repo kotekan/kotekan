@@ -1,6 +1,0 @@
-[Creating upchan kernel...]
-[Done creating upchan kernel]
-Writing PTX code...
-
-[126175] signal (2): Interrupt
-in expression starting at /nfs/home/eschnetter/src/kotekan/julia/kernels/upchan.jl:1863
