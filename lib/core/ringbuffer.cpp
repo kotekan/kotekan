@@ -33,8 +33,8 @@ static void print_py_status(const RingBuffer* const rb) {
 
 RingBuffer::RingBuffer(std::ptrdiff_t sz, std::shared_ptr<metadataPool> pool,
                        const std::string& _buffer_name, const std::string& _buffer_type) :
-    GenericBuffer(_buffer_name, _buffer_type, pool, 1),
-    size(sz), first_write_head(0), last_read_tail(0) {
+    GenericBuffer(_buffer_name, _buffer_type, pool, 1), size(sz), first_write_head(0),
+    last_read_tail(0) {
     assert(sz > 0);
 }
 
@@ -297,21 +297,21 @@ void RingBuffer::finish_write(const std::string& name, const int inst, const std
 
 void RingBuffer::print_full_status() {
     buffer_lock lock(mutex);
-    INFO("{:s}",
-         fmt::format(std::locale("en_US.UTF-8"),
-                     "  status: size {:L}, last_read_tail {:L}, first_write_head {:L}, "
-                     "available to read: {:L}",
-                     size, last_read_tail, first_write_head, first_write_head - last_read_tail));
+    DEBUG("{:s}",
+          fmt::format(std::locale("en_US.UTF-8"),
+                      "  status: size {:L}, last_read_tail {:L}, first_write_head {:L}, "
+                      "available to read: {:L}",
+                      size, last_read_tail, first_write_head, first_write_head - last_read_tail));
     for (auto& it : producers) {
         const auto& name = it.second.name;
-        INFO("{:s}", fmt::format(std::locale("en_US.UTF-8"),
-                                 "    producer {:s}: first_write_head {:L}, write_next {:L}", name,
-                                 write_heads[name], write_next[name]));
+        DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                                  "    producer {:s}: first_write_head {:L}, write_next {:L}", name,
+                                  write_heads[name], write_next[name]));
     }
     for (auto& it : consumers) {
         const auto& name = it.second.name;
-        INFO("{:s}", fmt::format(std::locale("en_US.UTF-8"),
-                                 "    consumer {:s}: last_read_tail {:L}, read_head {:L}", name,
-                                 read_tails[name], read_heads[name]));
+        DEBUG("{:s}", fmt::format(std::locale("en_US.UTF-8"),
+                                  "    consumer {:s}: last_read_tail {:L}, read_head {:L}", name,
+                                  read_tails[name], read_heads[name]));
     }
 }
