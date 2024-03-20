@@ -11,8 +11,6 @@
 #include "FrameView.hpp"      // for FrameView
 #include "Telescope.hpp"      // for freq_id_t
 #include "buffer.hpp"         // for Buffer
-#include "chimeMetadata.hpp"  // for chimeMetadata
-#include "chordMetadata.hpp"  // for chordMetadata
 #include "datasetManager.hpp" // for dset_id_t
 #include "visUtil.hpp"        // for cfloat
 
@@ -224,34 +222,43 @@ public:
     void copy_data(VisFrameView frame_to_copy, const std::set<VisField>& skip_members);
 
     /**
-     * @brief Fill the VisMetadata from a chimeMetadata struct.
+     * @brief Fill the VisMetadata from a chordMetadata or chimeMetadata object.
      *
      * The time field is filled with the GPS time if it is set (checked via
      * `Telescope.gps_time_enabled`), otherwise the `first_packet_recv_time` is
-     * used. Also note, there is no dataset information in chimeMetadata so the
-     * `dataset_id` is set to zero.
+     * used. Also note, there is no dataset information in the chime/chord metadata so
+     * the `dataset_id` is set to zero.
      *
      * @param chime_metadata Metadata to fill from.
      * @param ind            Frequency ind for multifrequency buffers (use zero
      *                       if not multifrequency)
      *
      **/
-    void fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t f_ind);
+    template <typename CH_Metadata>
+    void fill_metadata(const std::shared_ptr<CH_Metadata> metadata, uint32_t f_ind) {
 
-    /**
-     * @brief Fill the VisMetadata from a chimeMetadata struct.
-     *
-     * The time field is filled with the GPS time if it is set (checked via
-     * `Telescope.gps_time_enabled`), otherwise the `first_packet_recv_time` is
-     * used. Also note, there is no dataset information in chimeMetadata so the
-     * `dataset_id` is set to zero.
-     *
-     * @param chord_metadata Metadata to fill from.
-     * @param ind            Frequency index
-     *
-     **/
-    void fill_chord_metadata(const std::shared_ptr<chordMetadata> chord_metadata,
-                             uint32_t f_ind);
+        auto& tel = Telescope::instance();
+
+        // Set to zero as there's no information about it.
+        dataset_id = dset_id_t::null;
+
+        // Set the frequency index from the stream id of the metadata
+        freq_id = tel.to_freq_id(get_stream_id_from_metadata(metadata), f_ind);
+
+        // Set the time
+        uint64_t fpga_seq = metadata->fpga_seq_num;
+
+        timespec ts;
+
+        // Use the GPS time if appropriate.
+        if (tel.gps_time_enabled()) {
+            ts = metadata->gps_time;
+        } else {
+            TIMEVAL_TO_TIMESPEC(&(metadata->first_packet_recv_time), &ts);
+        }
+
+        time = std::make_tuple(fpga_seq, ts);
+    }
 
     /**
      * @brief Populate metadata.

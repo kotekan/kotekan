@@ -169,7 +169,6 @@ VisFrameView VisFrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer*
     return VisFrameView(buf_dest, frame_id_dest);
 }
 
-
 // Copy the non-const parts of the metadata
 void VisFrameView::copy_metadata(VisFrameView frame_to_copy) {
     _metadata->fpga_seq_start = frame_to_copy.metadata()->fpga_seq_start;
@@ -281,56 +280,6 @@ size_t VisFrameView::calculate_frame_size(kotekan::Config& config, const std::st
     }
 
     return calculate_buffer_layout(num_elements, num_prod, num_ev).first;
-}
-
-void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t f_ind) {
-
-    auto& tel = Telescope::instance();
-
-    // Set to zero as there's no information in chimeMetadata about it.
-    dataset_id = dset_id_t::null;
-
-    // Set the frequency index from the stream id of the metadata
-    freq_id = tel.to_freq_id(get_stream_id_from_metadata(chime_metadata), f_ind);
-
-    // Set the time
-    uint64_t fpga_seq = chime_metadata->fpga_seq_num;
-
-    timespec ts;
-
-    // Use the GPS time if appropriate.
-    if (tel.gps_time_enabled()) {
-        ts = chime_metadata->gps_time;
-    } else {
-        TIMEVAL_TO_TIMESPEC(&(chime_metadata->first_packet_recv_time), &ts);
-    }
-
-    time = std::make_tuple(fpga_seq, ts);
-}
-
-void VisFrameView::fill_chord_metadata(const std::shared_ptr<chordMetadata> chord_metadata, uint32_t f_ind) {
-
-    auto& tel = Telescope::instance();
-
-    // Set to zero as there's no information in chimeMetadata about it.
-    dataset_id = dset_id_t::null;
-
-    // Set the frequency index from the stream id of the metadata
-    freq_id = tel.to_freq_id({(uint64_t)chord_metadata->stream_ID}, f_ind);
-
-    // Set the time
-    uint64_t fpga_seq = chord_metadata->fpga_seq_num;
-
-    timespec ts;
-
-    // Use the GPS time if appropriate.
-    if (tel.gps_time_enabled()) {
-        ts = chord_metadata->gps_time;
-    } else {
-        TIMEVAL_TO_TIMESPEC(&(chord_metadata->first_packet_recv_time), &ts);
-    }
-
-    time = std::make_tuple(fpga_seq, ts);
 }
 
 void VisFrameView::set_metadata(VisMetadata* metadata, const uint32_t num_elements,

@@ -132,7 +132,7 @@ void N2kAccumulate::main_thread() {
             // "absolute" vis sample number
             size_t vis_sample_num_abs = in_frame_num*_n_vis_samples_per_in_frame + vis_samp_n;
             
-            DEBUG("Acumulating new visibility sample ({:d} of {:d} in frame).",
+            DEBUG("Accumulating new visibility sample ({:d} of {:d} in frame).",
                 vis_samp_n, _n_vis_samples_per_in_frame );
             // DEBUG("   Times are [start, end, out, num] = [{:d}, {:d}, {:d}, {:d}]",
             //     t_vis_s, t_vis_e, t_output, vis_sample_num_abs );
@@ -197,6 +197,9 @@ void N2kAccumulate::main_thread() {
 bool N2kAccumulate::output_and_reset( frameID &in_frame_id, frameID &out_frame_id )
 {
     // Different frame for each frequency
+    // But, same metadata
+    std::shared_ptr<chordMetadata> chord_frame_metadata = get_chord_metadata(in_buf, in_frame_id);
+    const int num_ev = config.get<int>(unique_name, "num_ev");
 
     // Loop over frequency
     for (size_t f = 0; f < _num_freq_in_frame; ++f) {
@@ -204,17 +207,16 @@ bool N2kAccumulate::output_and_reset( frameID &in_frame_id, frameID &out_frame_i
         if (out_buf->wait_for_empty_frame(unique_name, out_frame_id) == nullptr) {
             return false;
         }
-        // TODO: Make sure this is behaving correctly...
+
         auto out_vis = VisFrameView::create_frame_view(out_buf, out_frame_id, _num_elements,
-                                                    _num_accum_products, true);
+                                                    _num_accum_products, num_ev, true);
 
         // Sample numbers for normalizing weights
         float ns = _n_valid_fpga_samples_in_vis[f]; // ns = "number of samples"
         float ins = (ns != 0.0) ? (1.0 / ns) : 0.0;
 
         // TODO: any need to adjust metadata? CHORD will look a bit different.
-        std::shared_ptr<chordMetadata> frame_metadata = get_chord_metadata(in_buf, in_frame_id);
-        out_vis.fill_chord_metadata(frame_metadata, f);
+        out_vis.fill_metadata<chordMetadata>(chord_frame_metadata, f);
 
         // Copy data into buffer.
         // This requires changing from the GPU's blocked format to the triangular format visBuffer expects.

@@ -64,7 +64,6 @@ add_library(
     ReceiveFlags.cpp
     valve.cpp
     visTransform.cpp
-    visTestPattern.cpp
     visDebug.cpp
     removeEv.cpp
     HFBAccumulate.cpp
