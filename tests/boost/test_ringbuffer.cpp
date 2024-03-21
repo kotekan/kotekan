@@ -19,8 +19,6 @@ using json = nlohmann::json;
 using namespace kotekan;
 using namespace std;
 
-BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
-
 BOOST_AUTO_TEST_CASE(test1) {
     // Create metadata pool
     json json_config = json::parse(
