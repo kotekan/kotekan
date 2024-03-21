@@ -67,8 +67,14 @@ jobs:
           fi
           echo "docker_build=1" >> $GITHUB_OUTPUT;
         else
-          echo "Dockerfile was not modified. Using image from branch ${GITHUB_BASE_REF}."
-          IMAGE_NAME="${IMG_2204}:${GITHUB_BASE_REF}"
+          if [ "${GITHUB_BASE_REF}" == "" ]; then
+            # This can happen when we're merging a chord branch back to chord, eg
+            echo "Dockerfile was not modified. Using image from branch ${GITHUB_REF_NAME}."
+            IMAGE_NAME="${IMG_2204}:${GITHUB_REF_NAME}"
+          else
+            echo "Dockerfile was not modified. Using image from branch ${GITHUB_BASE_REF}."
+            IMAGE_NAME="${IMG_2204}:${GITHUB_BASE_REF}"
+          fi
         fi
 
         if docker manifest inspect ${IMAGE_NAME} >/dev/null; then
