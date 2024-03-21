@@ -479,6 +479,7 @@ int main(int argc, char** argv) {
                 return 0;
                 break;
             case 'j':
+                std::cout.imbue(std::locale::classic());
                 print_json_version();
                 return 0;
                 break;
