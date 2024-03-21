@@ -88,6 +88,8 @@ protected:
 
     /// Maximum number of frames to capture (used for burst captures), 0 = unlimited
     uint64_t capture_n_frames;
+
+    int32_t cylinder;
 };
 
 iceBoardStandard::iceBoardStandard(kotekan::Config& config, const std::string& unique_name,
@@ -97,11 +99,11 @@ iceBoardStandard::iceBoardStandard(kotekan::Config& config, const std::string& u
     DEBUG("iceBoardStandard: {:s}", unique_name);
 
     out_buf = buffer_container.get_buffer(config.get<std::string>(unique_name, "out_buf"));
-    register_producer(out_buf, unique_name.c_str());
+    //register_producer(out_buf, unique_name.c_str());
 
     lost_samples_buf =
         buffer_container.get_buffer(config.get<std::string>(unique_name, "lost_samples_buf"));
-    register_producer(lost_samples_buf, unique_name.c_str());
+    //register_producer(lost_samples_buf, unique_name.c_str());
     // We want to make sure the flag buffers are zeroed between uses.
     zero_frames(lost_samples_buf);
 
@@ -109,6 +111,8 @@ iceBoardStandard::iceBoardStandard(kotekan::Config& config, const std::string& u
 
     // Number of frames to capture before stopping, 0 = unlimited
     capture_n_frames = config.get_default<uint64_t>(unique_name, "capture_n_frames", 0);
+
+    cylinder = config.get_default<int32_t>(unique_name, "cylinder", -1);
 
     // TODO Some parts of this function are common to the various ICEboard
     // handlers, and could likely be factored out.
@@ -129,6 +133,23 @@ inline int iceBoardStandard::handle_packet(struct rte_mbuf* mbuf) {
     if (unlikely(!got_first_packet)) {
         if (likely(!iceBoardHandler::align_first_packet(mbuf)))
             return 0; // Not the first packet.
+        
+        // Got the first packet see if we should be recording this stream
+        if (cylinder != -1) {
+            if (port_stream_id.crate_id / 2 == cylinder) {
+                INFO("Capturing packets from cylinder {}, crate_id {}", cylinder, port_stream_id.crate_id);
+                register_producer(out_buf, unique_name.c_str());
+                register_producer(lost_samples_buf, unique_name.c_str());
+            } else {
+                // Not going to record packets from this stream
+                return -1;
+            }
+        } else {
+            // Default case
+            register_producer(out_buf, unique_name.c_str());
+            register_producer(lost_samples_buf, unique_name.c_str());
+        }
+
 
         // Setup the first buffer frame for copying data into
         if (!iceBoardStandard::advance_frame(last_seq, true))

@@ -20,22 +20,21 @@ log_level: INFO
 # Note that for ADC mode the "samples" variable
 # doesn't really make sense here.  Since there are
 # 2048 ADC samples in the 2.56 us the other modes consider to be a "sample"
-samples_per_data_set: 65536
+samples_per_data_set: 8*65536
 sample_block_size: 2048
 
 # Set this value to the maximum allowed by the system RAM.
-# Each frame is ~135 MB, and stores about 168ms of data.
-buffer_depth: 105
-cpu_affinity: [2,3]
-instrument_name: mcgill_lab_test
+buffer_depth: 115
+cpu_affinity: [2,3,8,9]
+instrument_name: chime_baseband_1cylinder
 
 # Telescope
 telescope:
   name: ICETelescope
-  require_gps: false
+  require_gps: true
   query_gps: true # If fpga_master provides GPS time set to true
-  gps_host: 127.0.0.1 # Set this to the fpga_master host
-  num_local_freq: 1 # This value doesn't apply to ADC capture
+  gps_host: 10.1.13.1 # Set this to the fpga_master host
+  num_local_freq: 4
 
 # Pool
 main_pool:
@@ -43,7 +42,7 @@ main_pool:
   num_metadata_objects: 2 * buffer_depth + 10
 
 # Buffers
-adc_buffer:
+network_buffer:
   kotekan_buffer: standard
   num_frames: buffer_depth
   frame_size: samples_per_data_set * sample_block_size
@@ -55,53 +54,55 @@ lost_samples_buffer:
   frame_size: samples_per_data_set
   metadata_pool: main_pool
 
-# Stages
 
-# The core mapping here is setup for a 6 core CPU with 12 threads (vcores)
-# and setup to use the first 4 real cores (8 vcores)
+
 dpdk:
   kotekan_stage: dpdkCore
   # Format is index = lcore, value = cpu core
-  lcore_cpu_map: [0]
-  master_lcore_cpu: 1
-  fpga_packet_size: 4160
-  samples_per_packet: 2
+  lcore_cpu_map: [0,1,6,7]
+  master_lcore_cpu: 2
+  status_cadence: 60
   capture_n_frames: buffer_depth
-  alignment: samples_per_data_set * 100
+  alignment: samples_per_data_set * 500 # About 10 minutes
+  cylinder: 0
   # Format is index = lcore, value = array of port IDs
   # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
   # and lcore 1 to service ports 2 and 3.
   lcore_port_map:
     - [0]
-  # One handler must be given per port on the system.
+    - [1]
+    - [2]
+    - [3]
+  # One handler must be given per port.
   handlers:
     - dpdk_handler: iceBoardStandard
-      out_buf: adc_buffer
+      out_buf: network_buffer
       lost_samples_buf: lost_samples_buffer
-    # Uncomment if you have more than one uio port active
-    #- dpdk_handler: none
-    #- dpdk_handler: none
-    #- dpdk_handler: none
-    #- dpdk_handler: none
-    #- dpdk_handler: none
-    #- dpdk_handler: none
-    #- dpdk_handler: none
+    - dpdk_handler: iceBoardStandard
+      out_buf: network_buffer
+      lost_samples_buf: lost_samples_buffer 
+    - dpdk_handler: iceBoardStandard
+      out_buf: network_buffer
+      lost_samples_buf: lost_samples_buffer
+    - dpdk_handler: iceBoardStandard
+      out_buf: network_buffer
+      lost_samples_buf: lost_samples_buffer
 
 zero_samples:
   kotekan_stage: zeroSamples
-  out_buf: adc_buffer
+  out_buf: network_buffer
   lost_samples_buf: lost_samples_buffer
-  zero_value: 0 # Should be set to 255?
 
-metadata_dump:
-  kotekan_stage: chimeMetadataDump
-  in_buf: adc_buffer
+#metadata_dump:
+  #kotekan_stage: chimeMetadataDump
+  #in_buf: network_buffer
 
 raw_file_write:
-  kotekan_stage: rawFileWrite
-  in_buf: adc_buffer
+        #kotekan_stage: rawFileWrite
+  in_buf: network_buffer
   # *** Change this value for each run ***
-  base_dir: /data
-  file_name: adc_data
+  base_dir: /mnt/gong/cylinder_baseband/test01/
+  file_name: baseband_data
   file_ext: raw
   exit_after_n_files: buffer_depth
+
