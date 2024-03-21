@@ -77,7 +77,6 @@ class KotekanRunner(object):
         """Get kotekan's build config."""
         cmd = "%s --version-json" % cls.kotekan_binary()
         version_string = subprocess.check_output(cmd.split()).decode()
-        print('Parsing kotekan version string as JSON: """\n%s\n"""' % version_string, file=sys.stderr)
         return json.loads(version_string)
 
     def __init__(
