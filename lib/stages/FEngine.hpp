@@ -6,6 +6,10 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
+#ifdef WITH_CUDA
+#include <nvToolsExt.h>
+#endif
+
 /**
  * @class FEngine
  * @brief A stage that simulates the CHORD F-engine hardware and a simple scene (eg, a
