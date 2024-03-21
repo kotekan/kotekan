@@ -3,7 +3,6 @@
 #include "Config.hpp" // for Config
 #include "metadataFactory.hpp"
 #include "ringbuffer.hpp"
-#include "test_utils.hpp"
 
 #include <memory>
 
