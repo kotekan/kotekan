@@ -54,7 +54,7 @@ private:
             ptr(static_cast<T*>(ptr)), maxsize(bytes), dims{std::int64_t(maxsize / sizeof(T))},
             len(maxsize / sizeof(T)) {}
     };
-    using kernel_arg = CuDeviceArray<int32_t, 1>;
+    using array_desc = CuDeviceArray<int32_t, 1>;
 
     // Kernel design parameters:
     static constexpr int cuda_beam_layout_M = 48;
@@ -66,7 +66,7 @@ private:
     static constexpr int cuda_number_of_dishes = 512;
     static constexpr int cuda_number_of_frequencies = 256;
     static constexpr int cuda_number_of_polarizations = 2;
-    static constexpr int cuda_number_of_timesamples = 512;
+    static constexpr int cuda_number_of_timesamples = 8192;
     static constexpr int cuda_granularity_number_of_timesamples = 48;
 
     // Kernel input and output sizes
@@ -87,8 +87,8 @@ private:
 
     // Kernel name:
     static constexpr const char* kernel_symbol =
-        "_Z3frb13CuDeviceArrayI5Int32Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_IS0_Li1ELi1EES_"
-        "I7Int16x2Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS2_Li1ELi1EES_IS0_Li1ELi1EE";
+        "_Z3frb5Int32S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_"
+        "I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE";
 
     // Kernel arguments:
     enum class args { Tbarmin, Tbarmax, Ttildemin, Ttildemax, S, W, Ebar, I, info, count };
@@ -96,46 +96,18 @@ private:
     // Tbarmin: Tbarmin
     static constexpr const char* Tbarmin_name = "Tbarmin";
     static constexpr chordDataType Tbarmin_type = int32;
-    enum Tbarmin_indices {
-        Tbarmin_rank,
-    };
-    static constexpr std::array<const char*, Tbarmin_rank> Tbarmin_labels = {};
-    static constexpr std::array<std::size_t, Tbarmin_rank> Tbarmin_lengths = {};
-    static constexpr std::size_t Tbarmin_length = chord_datatype_bytes(Tbarmin_type);
-    static_assert(Tbarmin_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
     // Tbarmax: Tbarmax
     static constexpr const char* Tbarmax_name = "Tbarmax";
     static constexpr chordDataType Tbarmax_type = int32;
-    enum Tbarmax_indices {
-        Tbarmax_rank,
-    };
-    static constexpr std::array<const char*, Tbarmax_rank> Tbarmax_labels = {};
-    static constexpr std::array<std::size_t, Tbarmax_rank> Tbarmax_lengths = {};
-    static constexpr std::size_t Tbarmax_length = chord_datatype_bytes(Tbarmax_type);
-    static_assert(Tbarmax_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
     // Ttildemin: Ttildemin
     static constexpr const char* Ttildemin_name = "Ttildemin";
     static constexpr chordDataType Ttildemin_type = int32;
-    enum Ttildemin_indices {
-        Ttildemin_rank,
-    };
-    static constexpr std::array<const char*, Ttildemin_rank> Ttildemin_labels = {};
-    static constexpr std::array<std::size_t, Ttildemin_rank> Ttildemin_lengths = {};
-    static constexpr std::size_t Ttildemin_length = chord_datatype_bytes(Ttildemin_type);
-    static_assert(Ttildemin_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
     // Ttildemax: Ttildemax
     static constexpr const char* Ttildemax_name = "Ttildemax";
     static constexpr chordDataType Ttildemax_type = int32;
-    enum Ttildemax_indices {
-        Ttildemax_rank,
-    };
-    static constexpr std::array<const char*, Ttildemax_rank> Ttildemax_labels = {};
-    static constexpr std::array<std::size_t, Ttildemax_rank> Ttildemax_lengths = {};
-    static constexpr std::size_t Ttildemax_length = chord_datatype_bytes(Ttildemax_type);
-    static_assert(Ttildemax_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
     // S: gpu_mem_dishlayout
     static constexpr const char* S_name = "S";
@@ -196,10 +168,10 @@ private:
         512,
         2,
         256,
-        512,
+        8192,
     };
     static constexpr std::size_t Ebar_length =
-        chord_datatype_bytes(Ebar_type) * 512 * 2 * 256 * 512;
+        chord_datatype_bytes(Ebar_type) * 512 * 2 * 256 * 8192;
     static_assert(Ebar_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
     // I: gpu_mem_beamgrid
@@ -222,9 +194,9 @@ private:
         48,
         48,
         256,
-        16,
+        256,
     };
-    static constexpr std::size_t I_length = chord_datatype_bytes(I_type) * 48 * 48 * 256 * 16;
+    static constexpr std::size_t I_length = chord_datatype_bytes(I_type) * 48 * 48 * 256 * 256;
     static_assert(I_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
@@ -251,10 +223,6 @@ private:
     //
 
     // Kotekan buffer names
-    const std::string Tbarmin_memname;
-    const std::string Tbarmax_memname;
-    const std::string Ttildemin_memname;
-    const std::string Ttildemax_memname;
     const std::string S_memname;
     const std::string W_memname;
     const std::string Ebar_memname;
@@ -262,10 +230,6 @@ private:
     const std::string info_memname;
 
     // Host-side buffer arrays
-    std::vector<std::uint8_t> Tbarmin_host;
-    std::vector<std::uint8_t> Tbarmax_host;
-    std::vector<std::uint8_t> Ttildemin_host;
-    std::vector<std::uint8_t> Ttildemax_host;
     std::vector<std::uint8_t> S_host;
     std::vector<std::uint8_t> info_host;
 
@@ -278,6 +242,8 @@ private:
 
     RingBuffer* const input_ringbuf_signal;
     RingBuffer* const output_ringbuf_signal;
+
+    bool did_init_S_host;
 
     // How many samples we will process from the input ringbuffer
     // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
@@ -296,30 +262,34 @@ cudaFRBBeamformer_chord::cudaFRBBeamformer_chord(Config& config, const std::stri
                                                  const int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "FRBBeamformer_chord", "FRBBeamformer_chord.ptx"),
-    Tbarmin_memname(unique_name + "/Tbarmin"), Tbarmax_memname(unique_name + "/Tbarmax"),
-    Ttildemin_memname(unique_name + "/Ttildemin"), Ttildemax_memname(unique_name + "/Ttildemax"),
     S_memname(unique_name + "/gpu_mem_dishlayout"),
     W_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
     Ebar_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
     I_memname(config.get<std::string>(unique_name, "gpu_mem_beamgrid")),
     info_memname(unique_name + "/gpu_mem_info"),
 
-    Tbarmin_host(Tbarmin_length), Tbarmax_host(Tbarmax_length), Ttildemin_host(Ttildemin_length),
-    Ttildemax_host(Ttildemax_length), S_host(S_length), info_host(info_length),
+    S_host(S_length), info_host(info_length),
     // Find input and output buffers used for signalling ring-buffer state
     input_ringbuf_signal(dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")))),
     output_ringbuf_signal(dynamic_cast<RingBuffer*>(
-        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "out_signal")))) {
+        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "out_signal")))),
+    did_init_S_host(false) {
     // Check ringbuffer sizes
     assert(input_ringbuf_signal->size == Ebar_length);
     assert(output_ringbuf_signal->size == I_length);
 
+    // Register host memory
+    {
+        const cudaError_t ierr = cudaHostRegister(S_host.data(), S_host.size(), 0);
+        assert(ierr == cudaSuccess);
+    }
+    {
+        const cudaError_t ierr = cudaHostRegister(info_host.data(), info_host.size(), 0);
+        assert(ierr == cudaSuccess);
+    }
+
     // Add Graphviz entries for the GPU buffers used by this kernel
-    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Tbarmin", false, true, true));
-    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Tbarmax", false, true, true));
-    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Ttildemin", false, true, true));
-    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_Ttildemax", false, true, true));
     gpu_buffers_used.push_back(
         std::make_tuple(get_name() + "_gpu_mem_dishlayout", false, true, true));
     gpu_buffers_used.push_back(std::make_tuple(W_memname, true, true, false));
@@ -435,14 +405,6 @@ cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
                                              const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
 
-    Tbarmin_host.resize(Tbarmin_length);
-    void* const Tbarmin_memory = device.get_gpu_memory(Tbarmin_memname, Tbarmin_length);
-    Tbarmax_host.resize(Tbarmax_length);
-    void* const Tbarmax_memory = device.get_gpu_memory(Tbarmax_memname, Tbarmax_length);
-    Ttildemin_host.resize(Ttildemin_length);
-    void* const Ttildemin_memory = device.get_gpu_memory(Ttildemin_memname, Ttildemin_length);
-    Ttildemax_host.resize(Ttildemax_length);
-    void* const Ttildemax_memory = device.get_gpu_memory(Ttildemax_memname, Ttildemax_length);
     S_host.resize(S_length);
     void* const S_memory = device.get_gpu_memory(S_memname, S_length);
     void* const W_memory =
@@ -470,7 +432,7 @@ cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
     assert(W_mc);
     assert(metadata_is_chord(W_mc));
     const std::shared_ptr<chordMetadata> W_meta = get_chord_metadata(W_mc);
-    INFO("input W array: {:s} {:s}", W_meta->get_type_string(), W_meta->get_dimensions_string());
+    DEBUG("input W array: {:s} {:s}", W_meta->get_type_string(), W_meta->get_dimensions_string());
     assert(std::strncmp(W_meta->name, W_name, sizeof W_meta->name) == 0);
     assert(W_meta->type == W_type);
     assert(W_meta->dims == W_rank);
@@ -491,8 +453,8 @@ cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
     assert(Ebar_mc);
     assert(metadata_is_chord(Ebar_mc));
     const std::shared_ptr<chordMetadata> Ebar_meta = get_chord_metadata(Ebar_mc);
-    INFO("input Ebar array: {:s} {:s}", Ebar_meta->get_type_string(),
-         Ebar_meta->get_dimensions_string());
+    DEBUG("input Ebar array: {:s} {:s}", Ebar_meta->get_type_string(),
+          Ebar_meta->get_dimensions_string());
     assert(std::strncmp(Ebar_meta->name, Ebar_name, sizeof Ebar_meta->name) == 0);
     assert(Ebar_meta->type == Ebar_type);
     assert(Ebar_meta->dims == Ebar_rank);
@@ -521,63 +483,38 @@ cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
                      sizeof I_meta->dim_name[I_rank - 1 - dim]);
         I_meta->dim[I_rank - 1 - dim] = I_lengths[dim];
     }
-    INFO("output I array: {:s} {:s}", I_meta->get_type_string(), I_meta->get_dimensions_string());
+    DEBUG("output I array: {:s} {:s}", I_meta->get_type_string(), I_meta->get_dimensions_string());
     //
 
-    // TODO: Initialize (and copy to the GPU) S only once at the beginning
-    {
-        // S maps dishes to locations.
-        // The first `ndishes` dishes are real dishes,
-        // the remaining dishes are not real and exist only to label the unoccupied dish locations.
-        assert(Ebar_meta->ndishes == cuda_number_of_dishes);
-        assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_N);
-        assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_M);
-        assert(Ebar_meta->dish_index);
-        std::int16_t* __restrict__ const S =
-            static_cast<std::int16_t*>(static_cast<void*>(S_host.data()));
-        int surplus_dish_index = cuda_number_of_dishes;
-        for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
-            for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
-                int dish_index = Ebar_meta->get_dish_index(locN, locM);
-                if (dish_index >= 0) {
-                    // This location holds a real dish, record its location
-                    S[2 * dish_index + 0] = locM;
-                    S[2 * dish_index + 1] = locN;
-                } else {
-                    // This location is empty, assign it a surplus dish index
-                    S[2 * surplus_dish_index + 0] = locM;
-                    S[2 * surplus_dish_index + 1] = locN;
-                    ++surplus_dish_index;
-                }
-            }
-        }
-        assert(surplus_dish_index == cuda_dish_layout_M * cuda_dish_layout_N);
-    }
+    assert(Ebar_meta->ndishes == cuda_number_of_dishes);
+    assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_N);
+    assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_M);
+    assert(Ebar_meta->dish_index);
 
     record_start_event();
 
+    DEBUG("gpu_frame_id: {}", gpu_frame_id);
+
     const char* exc_arg = "exception";
-    kernel_arg Tbarmin_arg(Tbarmin_memory, Tbarmin_length);
-    kernel_arg Tbarmax_arg(Tbarmax_memory, Tbarmax_length);
-    kernel_arg Ttildemin_arg(Ttildemin_memory, Ttildemin_length);
-    kernel_arg Ttildemax_arg(Ttildemax_memory, Ttildemax_length);
-    kernel_arg S_arg(S_memory, S_length);
-    kernel_arg W_arg(W_memory, W_length);
-    kernel_arg Ebar_arg(Ebar_memory, Ebar_length);
-    kernel_arg I_arg(I_memory, I_length);
-    kernel_arg info_arg(info_memory, info_length);
+    std::int32_t Tbarmin_arg;
+    std::int32_t Tbarmax_arg;
+    std::int32_t Ttildemin_arg;
+    std::int32_t Ttildemax_arg;
+    array_desc S_arg(S_memory, S_length);
+    array_desc W_arg(W_memory, W_length);
+    array_desc Ebar_arg(Ebar_memory, Ebar_length);
+    array_desc I_arg(I_memory, I_length);
+    array_desc info_arg(info_memory, info_length);
     void* args[] = {
         &exc_arg, &Tbarmin_arg, &Tbarmax_arg, &Ttildemin_arg, &Ttildemax_arg,
         &S_arg,   &W_arg,       &Ebar_arg,    &I_arg,         &info_arg,
     };
 
-    INFO("gpu_frame_id: {}", gpu_frame_id);
-
     // Set Ebar_memory to beginning of input ring buffer
-    Ebar_arg = kernel_arg(Ebar_memory, Ebar_length);
+    Ebar_arg = array_desc(Ebar_memory, Ebar_length);
 
     // Set I_memory to beginning of output ring buffer
-    I_arg = kernel_arg(I_memory, I_length);
+    I_arg = array_desc(I_memory, I_length);
 
     // Ringbuffer size
     const std::size_t Tbar_ringbuf = input_ringbuf_signal->size / Ebar_Tbar_sample_bytes;
@@ -598,10 +535,10 @@ cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
 
     // Pass time spans to kernel
     // The kernel will wrap the upper bounds to make them fit into the ringbuffer
-    *(std::int32_t*)Tbarmin_host.data() = mod(Tbarmin, Tbar_ringbuf);
-    *(std::int32_t*)Tbarmax_host.data() = mod(Tbarmin, Tbar_ringbuf) + Tbarlength;
-    *(std::int32_t*)Ttildemin_host.data() = mod(Ttildemin, Ttilde_ringbuf);
-    *(std::int32_t*)Ttildemax_host.data() = mod(Ttildemin, Ttilde_ringbuf) + Ttildelength;
+    Tbarmin_arg = mod(Tbarmin, Tbar_ringbuf);
+    Tbarmax_arg = mod(Tbarmin, Tbar_ringbuf) + Tbarlength;
+    Ttildemin_arg = mod(Ttildemin, Ttilde_ringbuf);
+    Ttildemax_arg = mod(Ttildemin, Ttilde_ringbuf) + Ttildelength;
 
     // Update metadata
     I_meta->dim[I_rank - 1 - I_index_Ttilde] = Ttildelength;
@@ -618,23 +555,47 @@ cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
             cuda_downsampling_factor * Ebar_meta->time_downsampling_fpga[freq];
     }
 
-    // Copy inputs to device memory
-    // TODO: Pass scalar kernel arguments more efficiently, i.e. without a separate `cudaMemcpy`
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmin_memory, Tbarmin_host.data(), Tbarmin_length,
-                                     cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Tbarmax_memory, Tbarmax_host.data(), Tbarmax_length,
-                                     cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Ttildemin_memory, Ttildemin_host.data(), Ttildemin_length,
-                                     cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(Ttildemax_memory, Ttildemax_host.data(), Ttildemax_length,
-                                     cudaMemcpyHostToDevice, device.getStream(cuda_stream_id)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, S_host.data(), S_length, cudaMemcpyHostToDevice,
-                                     device.getStream(cuda_stream_id)));
+    // Initialize `S` and copy it to the GPU
+    if (!did_init_S_host) {
+        // S maps dishes to locations.
+        // The first `ndishes` dishes are real dishes,
+        // the remaining dishes are not real and exist only to label the unoccupied dish locations.
+        std::int16_t* __restrict__ const S =
+            static_cast<std::int16_t*>(static_cast<void*>(S_host.data()));
+        int surplus_dish_index = cuda_number_of_dishes;
+        for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
+            for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
+                int dish_index = Ebar_meta->get_dish_index(locN, locM);
+                if (dish_index >= 0) {
+                    // This location holds a real dish, record its location
+                    S[2 * dish_index + 0] = locM;
+                    S[2 * dish_index + 1] = locN;
+                } else {
+                    // This location is empty, assign it a surplus dish index
+                    S[2 * surplus_dish_index + 0] = locM;
+                    S[2 * surplus_dish_index + 1] = locN;
+                    ++surplus_dish_index;
+                }
+            }
+        }
+        assert(surplus_dish_index == cuda_dish_layout_M * cuda_dish_layout_N);
 
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, S_host.data(), S_length, cudaMemcpyHostToDevice,
+                                         device.getStream(cuda_stream_id)));
+
+        did_init_S_host = true;
+    }
+
+    // Copy inputs to device memory
+    if constexpr (args::S != args::S)
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, S_host.data(), S_length, cudaMemcpyHostToDevice,
+                                         device.getStream(cuda_stream_id)));
+
+#ifdef DEBUGGING
     // Initialize host-side buffer arrays
-    // TODO: Skip this for performance
     CHECK_CUDA_ERROR(
         cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
+#endif
 
     const std::string symname = "FRBBeamformer_chord_" + std::string(kernel_symbol);
     CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[symname],
@@ -652,13 +613,12 @@ cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
         ERROR("cuLaunchKernel: Error number: {}: {}", (int)err, errStr);
     }
 
+#ifdef DEBUGGING
     // Copy results back to host memory
-    // TODO: Skip this for performance
     CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.data(), info_memory, info_length,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     // Check error codes
-    // TODO: Skip this for performance
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
     const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
                                                       (const std::int32_t*)&*info_host.end());
@@ -670,6 +630,7 @@ cudaEvent_t cudaFRBBeamformer_chord::execute(cudaPipelineState& /*pipestate*/,
             ERROR("cudaFRBBeamformer_chord returned 'info' value {:d} at index {:d} (zero "
                   "indicates no error)",
                   info_host[i], i);
+#endif
 
     return record_end_event();
 }

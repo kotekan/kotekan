@@ -28,8 +28,8 @@ ilog2(i::Integer) = (@assert i == nextpow(2, i); trailing_zeros(i))
 
 # Setup
 
-# const setup = :chord
 setup::Symbol
+T::Integer
 
 @static if setup ≡ :chord
 
@@ -96,11 +96,8 @@ else
     @assert false
 end
 
-const sampling_time_μsec = 16 * 4096 / (2 * 1200)
+const sampling_time_μsec = U * 4096 / (2 * 1200)
 const C = 2
-#TODO  const T = cld(32768 ÷ 16, Touter) * Touter
-# const T = cld(2048 ÷ 16, Touter) * Touter
-const T = 2048 ÷ 16 * 4
 const T̄ = nextpow(2, fld(T, Tds))
 
 const output_gain = 1 / (8 * Tds)
@@ -249,11 +246,6 @@ const DSTime = Index{Physics,DSTimeTag}
 # const float16value = FloatValue(:floatvalue, 1, 16)
 
 # Layouts
-
-const layout_Tmin = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
-const layout_Tmax = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
-const layout_T̄min = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
-const layout_T̄max = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
 
 const layout_E_memory = Layout([
     IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
@@ -1496,11 +1488,7 @@ function make_frb_kernel()
     apply!(emitter, :info => layout_info_registers, 1i32)
     store!(emitter, :info_memory => layout_info_memory, :info)
 
-    # Read parameters `Tmin`, `Tmax`, `T̄min`, `T̄max`
-    load!(emitter, :Tmin => layout_Tmin, :Tmin_memory => layout_Tmin)
-    load!(emitter, :Tmax => layout_Tmax, :Tmax_memory => layout_Tmax)
-    load!(emitter, :T̄min => layout_T̄min, :T̄min_memory => layout_T̄min)
-    load!(emitter, :T̄max => layout_T̄max, :T̄max_memory => layout_T̄max)
+    # Check parameters `Tmin`, `Tmax`, `T̄min`, `T̄max`
     if!(
         emitter,
         :(
@@ -1788,7 +1776,7 @@ println("[Creating frb kernel...]")
 const frb_kernel = make_frb_kernel()
 println("[Done creating frb kernel]")
 
-@eval function frb(Tmin_memory, Tmax_memory, T̄min_memory, T̄max_memory, Smn_memory, W_memory, E_memory, I_memory, info_memory)
+@eval function frb(Tmin::Int32, Tmax::Int32, T̄min::Int32, T̄max::Int32, Smn_memory, W_memory, E_memory, I_memory, info_memory)
     shmem = @cuDynamicSharedMem(UInt8, shmem_bytes, 0)
     Fsh1_shared = reinterpret(Int4x8, shmem)
     Fsh2_shared = reinterpret(Int4x8, shmem)
@@ -1821,10 +1809,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 99 * 1024 # NVIDIA A10/A40 have 99 kB shared memory
     kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm frb(
-        CUDA.zeros(Int32, 0),
-        CUDA.zeros(Int32, 0),
-        CUDA.zeros(Int32, 0),
-        CUDA.zeros(Int32, 0),
+        Int32(0),
+        Int32(0),
+        Int32(0),
+        Int32(0),
         CUDA.zeros(Int16x2, 0),
         CUDA.zeros(Float16x2, 0),
         CUDA.zeros(Int4x8, 0),
@@ -1861,10 +1849,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         map!(i -> zero(Float16x2), I_wanted, I_wanted)
         map!(i -> zero(Int32), info_wanted, info_wanted)
 
-        @show Tmin = 0
-        @show Tmax = fld(idiv(T, 4), Touter) * Touter
-        @show T̄min = 0
-        @show T̄max = T̄min + fld(Tmax - Tmin, Tds)
+        Tmin = Int32(0)
+        Tmax = Int32(fld(idiv(T, 4), Touter) * Touter)
+        T̄min = Int32(0)
+        T̄max = Int32(T̄min + fld(Tmax - Tmin, Tds))
 
         input = :random
         if input ≡ :zero
@@ -1925,10 +1913,6 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         end
 
         println("Copying data from CPU to GPU...")
-        Tmin_cuda = CuArray(Int32[Tmin])
-        Tmax_cuda = CuArray(Int32[Tmax])
-        T̄min_cuda = CuArray(Int32[T̄min])
-        T̄max_cuda = CuArray(Int32[T̄max])
         Smn_cuda = CuArray(Smn_memory)
         W_cuda = CuArray(W_memory)
         E_cuda = CuArray(E_memory)
@@ -1937,10 +1921,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
         println("Running kernel...")
         kernel(
-            Tmin_cuda,
-            Tmax_cuda,
-            T̄min_cuda,
-            T̄max_cuda,
+            Tmin,
+            Tmax,
+            T̄min,
+            T̄max,
             Smn_cuda,
             W_cuda,
             E_cuda,
@@ -1956,10 +1940,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             stats = @timed begin
                 for run in 1:nruns
                     kernel(
-                        Tmin_cuda,
-                        Tmax_cuda,
-                        T̄min_cuda,
-                        T̄max_cuda,
+                        Tmin,
+                        Tmax,
+                        T̄min,
+                        T̄max,
                         Smn_cuda,
                         W_cuda,
                         E_cuda,
@@ -2104,27 +2088,15 @@ function fix_ptx_kernel()
         - name: "Tmin"
           intent: in
           type: Int32
-          indices: []
-          shape: []
-          strides: []
         - name: "Tmax"
           intent: in
           type: Int32
-          indices: []
-          shape: []
-          strides: []
         - name: "T̄min"
           intent: in
           type: Int32
-          indices: []
-          shape: []
-          strides: []
         - name: "T̄max"
           intent: in
           type: Int32
-          indices: []
-          shape: []
-          strides: []
         - name: "S"
           intent: in
           type: Int16
@@ -2190,33 +2162,33 @@ function fix_ptx_kernel()
                     "name" => "Tbarmin",
                     "kotekan_name" => "Tbarmin",
                     "type" => "int32",
-                    "axes" => Dict[],
                     "isoutput" => false,
                     "hasbuffer" => false,
+                    "isscalar" => true,
                 ),
                 Dict(
                     "name" => "Tbarmax",
                     "kotekan_name" => "Tbarmax",
                     "type" => "int32",
-                    "axes" => Dict[],
                     "isoutput" => false,
                     "hasbuffer" => false,
+                    "isscalar" => true,
                 ),
                 Dict(
                     "name" => "Ttildemin",
                     "kotekan_name" => "Ttildemin",
                     "type" => "int32",
-                    "axes" => Dict[],
                     "isoutput" => false,
                     "hasbuffer" => false,
+                    "isscalar" => true,
                 ),
                 Dict(
                     "name" => "Ttildemax",
                     "kotekan_name" => "Ttildemax",
                     "type" => "int32",
-                    "axes" => Dict[],
                     "isoutput" => false,
                     "hasbuffer" => false,
+                    "isscalar" => true,
                 ),
                 Dict(
                     "name" => "S",
@@ -2225,6 +2197,7 @@ function fix_ptx_kernel()
                     "axes" => [Dict("label" => "MN", "length" => 2), Dict("label" => "D", "length" => M * N)],
                     "isoutput" => false,
                     "hasbuffer" => false,
+                    "isscalar" => false,
                 ),
                 Dict(
                     "name" => "W",
@@ -2239,6 +2212,7 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
+                    "isscalar" => false,
                 ),
                 Dict(
                     "name" => "Ebar",
@@ -2252,6 +2226,7 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
+                    "isscalar" => false,
                 ),
                 Dict(
                     "name" => "I",
@@ -2265,6 +2240,7 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,
+                    "isscalar" => false,
                 ),
                 Dict(
                     "name" => "info",
@@ -2277,6 +2253,7 @@ function fix_ptx_kernel()
                     ],
                     "isoutput" => true,
                     "hasbuffer" => false,
+                    "isscalar" => false,
                 ),
             ],
         ),

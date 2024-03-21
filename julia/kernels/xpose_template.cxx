@@ -183,9 +183,9 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                     device.get_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id);
                 assert({{{name}}}_mc && metadata_is_chord({{{name}}}_mc));
                 const std::shared_ptr<chordMetadata> {{{name}}}_meta = get_chord_metadata({{{name}}}_mc);
-                INFO("input {{{name}}} array: {:s} {:s}",
-                    {{{name}}}_meta->get_type_string(),
-                    {{{name}}}_meta->get_dimensions_string());
+                DEBUG("input {{{name}}} array: {:s} {:s}",
+                      {{{name}}}_meta->get_type_string(),
+                      {{{name}}}_meta->get_dimensions_string());
                 assert({{{name}}}_meta->type == {{{name}}}_type);
                 assert({{{name}}}_meta->dims == {{{name}}}_rank);
                 for (std::size_t dim = 0; dim < {{{name}}}_rank; ++dim) {
@@ -210,9 +210,9 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                                  sizeof {{{name}}}_meta->dim_name[dim]);
                     {{{name}}}_meta->dim[dim] = {{{name}}}_lengths[{{{name}}}_rank - 1 - dim];
                 }
-                INFO("output {{{name}}} array: {:s} {:s}",
-                    {{{name}}}_meta->get_type_string(),
-                    {{{name}}}_meta->get_dimensions_string());
+                DEBUG("output {{{name}}} array: {:s} {:s}",
+                      {{{name}}}_meta->get_type_string(),
+                      {{{name}}}_meta->get_dimensions_string());
                 //
             {{/isoutput}}
         {{/hasbuffer}}
