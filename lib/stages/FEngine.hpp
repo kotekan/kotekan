@@ -38,7 +38,6 @@
  * @conf upchannelization_factor Int Upchan
  * @conf num_frames              Int how many frames of data to produce
  */
-
 class FEngine : public kotekan::Stage {
     const std::string unique_name;
 
@@ -91,6 +90,7 @@ class FEngine : public kotekan::Stage {
 
     // Pipeline
     const int num_frames;
+    const int repeat_count;
 
     // Kotekan
     const std::int64_t E_frame_size;
@@ -115,5 +115,21 @@ public:
     virtual ~FEngine();
     void main_thread() override;
 };
+
+static void profile_mark([[maybe_unused]] const char* mark_name) {
+#ifdef WITH_CUDA
+    nvtxMarkA(mark_name);
+#endif
+}
+static void profile_range_push([[maybe_unused]] const char* range_name) {
+#ifdef WITH_CUDA
+    nvtxRangePushA(range_name);
+#endif
+}
+static void profile_range_pop() {
+#ifdef WITH_CUDA
+    nvtxRangePop();
+#endif
+}
 
 #endif
