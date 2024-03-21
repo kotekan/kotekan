@@ -24,7 +24,7 @@ samples_per_data_set: 8*65536
 sample_block_size: 2048
 
 # Set this value to the maximum allowed by the system RAM.
-buffer_depth: 115
+buffer_depth: 112
 cpu_affinity: [2,3,8,9]
 instrument_name: chime_baseband_1cylinder
 
