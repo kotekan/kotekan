@@ -1,4 +1,5 @@
 #include <Config.hpp>
+#include <FEngine.hpp>
 #include <Stage.hpp>
 #include <StageFactory.hpp>
 #include <cassert>
@@ -21,100 +22,6 @@
 #if !KOTEKAN_FLOAT16
 #warning "The F-Engine simulator requires float16 support"
 #else
-
-static void profile_mark([[maybe_unused]] const char* mark_name) {
-#ifdef WITH_CUDA
-    nvtxMarkA(mark_name);
-#endif
-}
-static void profile_range_push([[maybe_unused]] const char* range_name) {
-#ifdef WITH_CUDA
-    nvtxRangePushA(range_name);
-#endif
-}
-static void profile_range_pop() {
-#ifdef WITH_CUDA
-    nvtxRangePop();
-#endif
-}
-
-class FEngine : public kotekan::Stage {
-    const std::string unique_name;
-
-    const bool skip_julia;
-
-    // Basic constants
-    const int num_components;
-    const int num_polarizations;
-
-    // Sky
-    const float source_amplitude;
-    const float source_frequency;
-    const float source_position_ew;
-    const float source_position_ns;
-
-    // Dishes
-    const int num_dish_locations_ew;
-    const int num_dish_locations_ns;
-    const int num_dish_locations;
-    const float dish_separation_ew;
-    const float dish_separation_ns;
-    const int num_dishes;
-    const std::vector<int> dish_indices;
-    std::vector<int> dish_locations;
-    int* dish_indices_ptr;
-
-    // ADC
-    const float adc_frequency;
-    const int num_taps;
-    const int num_frequencies;
-    const int num_times;
-
-    // Baseband beamformer setup
-    const int bb_num_dishes_M;
-    const int bb_num_dishes_N;
-    const int bb_num_beams_P;
-    const int bb_num_beams_Q;
-    const float bb_beam_separation_x;
-    const float bb_beam_separation_y;
-    const int bb_num_beams;
-
-    // Upchannelizer setup
-    const int upchannelization_factor;
-
-    // FRB beamformer setup
-    const int frb_num_beams_P;
-    const int frb_num_beams_Q;
-    const int Tds = 40;
-    const int frb_num_times;
-
-    // Pipeline
-    const int num_frames;
-    const int repeat_count;
-
-    // Kotekan
-    const std::int64_t E_frame_size;
-    const std::int64_t A_frame_size;
-    const std::int64_t s_frame_size;
-    const std::int64_t J_frame_size;
-    const std::int64_t G_frame_size;
-    const std::int64_t W_frame_size;
-    const std::int64_t I_frame_size;
-
-    Buffer* const E_buffer;
-    Buffer* const A_buffer;
-    Buffer* const s_buffer;
-    Buffer* const J_buffer;
-    Buffer* const G_buffer;
-    Buffer* const W_buffer;
-    Buffer* const I_buffer;
-
-public:
-    FEngine(kotekan::Config& config, const std::string& unique_name,
-            kotekan::bufferContainer& buffer_conainer);
-    virtual ~FEngine();
-    void main_thread() override;
-};
 
 REGISTER_KOTEKAN_STAGE(FEngine);
 
