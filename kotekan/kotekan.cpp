@@ -413,9 +413,9 @@ int main(int argc, char** argv) {
     std::signal(SIGTERM, signal_handler);
 
     try {
-        std::locale::global(std::locale("en_US.UTF-8"));
+        std::locale::global(std::locale::classic());
     } catch (const std::exception& ex) {
-        std::cout << "Exception setting locale: " << ex.what() << std::endl;
+        std::cerr << "Exception setting locale: " << ex.what() << std::endl;
     }
 
     char* config_file_name = (char*)"none";

@@ -238,6 +238,7 @@ void visTestPattern::main_thread() {
                     avg_err /= (float)num_bad;
 
                     // write frame report to outfile
+                    outfile.imbue(std::locale::classic());
                     outfile << fpga_count << ",";
                     outfile << time.tv_sec << "." << time.tv_nsec << ",";
                     outfile << freq_id << ",";

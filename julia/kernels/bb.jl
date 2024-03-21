@@ -35,8 +35,8 @@ const Time = Index{Physics,TimeTag}
 
 # Setup
 
-# const setup = :chord
 setup::Symbol
+T::Integer
 
 # ADC sampling time: 1 / (2 * 1200 MHz) ≈ 0.4166667 ns
 
@@ -45,8 +45,6 @@ setup::Symbol
     # Full CHORD
     const sampling_time_μsec = 4096 / (2 * 1200)
     const C = 2
-    # const Tout = 32768
-    const Tout = 2048
     const D = 512
     const B = 96
     const P = 2
@@ -66,8 +64,6 @@ elseif setup ≡ :hirax
     # HIRAX:
     const sampling_time_μsec = 2.56
     const C = 2
-    # const Tout = 32768
-    const Tout = 2048
     const D = 256
     const B = 16                # 8...32
     const P = 2
@@ -86,8 +82,6 @@ elseif setup ≡ :pathfinder
     # CHORD pathfinder
     const sampling_time_μsec = 1.7
     const C = 2
-    # const Tout = 32768
-    const Tout = 2048
     const D = 64
     const B = 16
     const P = 2
@@ -105,7 +99,7 @@ else
     @assert false
 end
 
-const T = Tout * 4
+const Tout = idiv(T, 4)         # always process 1/4 of the ringbuffer at a time
 
 const Bt = 16                   # distribute time samples over that many blocks
 
@@ -317,9 +311,6 @@ function make_bb_kernel()
     # J = Quantity(:J, [cplx, beam, freq, polr, time, int4value])
 
     # Memory layouts
-
-    layout_Tmin = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
-    layout_Tmax = Layout([IntValue(:intvalue, 1, 32) => SIMD(:simd, 1, 32)])
 
     # E-matrix layout
 
@@ -614,8 +605,6 @@ function make_bb_kernel()
     store!(emitter, :info_memory => layout_info_memory, :info)
 
     # Read parameters `Tmin`, `Tmax`
-    load!(emitter, :Tmin => layout_Tmin, :Tmin_memory => layout_Tmin)
-    load!(emitter, :Tmax => layout_Tmax, :Tmax_memory => layout_Tmax)
     if!(emitter, :(!(0i32 ≤ Tmin ≤ Tmax ≤ $(Int32(2 * T)) && (Tmax - Tmin) % $(Int32(T1_stride)) == 0i32))) do emitter
         apply!(emitter, :info => layout_info_registers, 2i32)
         store!(emitter, :info_memory => layout_info_memory, :info)
@@ -951,7 +940,7 @@ println("[Creating bb kernel...]")
 const bb_kernel = make_bb_kernel()
 println("[Done creating bb kernel]")
 
-@eval function bb(Tmin_memory, Tmax_memory, A_memory, E_memory, s_memory, J_memory, info_memory)
+@eval function bb(Tmin::Int32, Tmax::Int32, A_memory, E_memory, s_memory, J_memory, info_memory)
     E_shared = @cuDynamicSharedMem($E_shared_type, $E_shared_length, $(sizeof(UInt32) * E_shared_offset))
     Ju_shared = @cuDynamicSharedMem($Ju_shared_type, $Ju_shared_length, $(sizeof(UInt32) * Ju_shared_offset))
     $bb_kernel
@@ -987,8 +976,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 99 * 1024 # NVIDIA A10/A40 have 99 kB shared memory
     kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm bb(
-        CUDA.zeros(Int32, 0),
-        CUDA.zeros(Int32, 0),
+        Int32(0),
+        Int32(0),
         CUDA.zeros(Int8x4, 0),
         CUDA.zeros(Int4x8, 0),
         CUDA.zeros(Int32, 0),
@@ -1055,15 +1044,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             - name: "Tmin"
               intent: in
               type: Int32
-              indices: []
-              shape: []
-              strides: []
             - name: "Tmax"
               intent: in
               type: Int32
-              indices: []
-              shape: []
-              strides: []
             - name: "A"
               intent: in
               type: Int8
@@ -1127,17 +1110,17 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "name" => "Tmin",
                         "kotekan_name" => "Tmin",
                         "type" => "int32",
-                        "axes" => Dict[],
                         "isoutput" => false,
                         "hasbuffer" => false,
+                        "isscalar" => true,
                     ),
                     Dict(
                         "name" => "Tmax",
                         "kotekan_name" => "Tmax",
                         "type" => "int32",
-                        "axes" => Dict[],
                         "isoutput" => false,
                         "hasbuffer" => false,
+                        "isscalar" => true,
                     ),
                     Dict(
                         "name" => "A",
@@ -1152,6 +1135,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         ],
                         "isoutput" => false,
                         "hasbuffer" => true,
+                        "isscalar" => false,
                     ),
                     Dict(
                         "name" => "E",
@@ -1165,6 +1149,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         ],
                         "isoutput" => false,
                         "hasbuffer" => true,
+                        "isscalar" => false,
                     ),
                     Dict(
                         "name" => "s",
@@ -1190,6 +1175,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         ],
                         "isoutput" => true,
                         "hasbuffer" => true,
+                        "isscalar" => false,
                     ),
                     Dict(
                         "name" => "info",
@@ -1202,6 +1188,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         ],
                         "isoutput" => true,
                         "hasbuffer" => false,
+                        "isscalar" => false,
                     ),
                 ],
             ),
@@ -1228,8 +1215,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     # map!(i -> rand(Int4x8), E_memory, E_memory)
     # map!(i -> rand(Int32(1):Int32(10)), s_memory, s_memory)
 
-    @show Tmin = 0
-    @show Tmax = Tout
+    Tmin = Int32(0)
+    Tmax = Int32(Tout)
 
     input = :random
     if input ≡ :zero
@@ -1324,8 +1311,6 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     end
 
     println("Copying data from CPU to GPU...")
-    Tmin_cuda = CuArray(Int32[Tmin])
-    Tmax_cuda = CuArray(Int32[Tmax])
     A_cuda = CuArray(A_memory)
     E_cuda = CuArray(E_memory)
     s_cuda = CuArray(s_memory)
@@ -1334,8 +1319,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
     println("Running kernel...")
     kernel(
-        Tmin_cuda,
-        Tmax_cuda,
+        Tmin,
+        Tmax,
         A_cuda,
         E_cuda,
         s_cuda,
@@ -1352,8 +1337,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         stats = @timed begin
             for run in 1:nruns
                 kernel(
-                    Tmin_cuda,
-                    Tmax_cuda,
+                    Tmin,
+                    Tmax,
                     A_cuda,
                     E_cuda,
                     s_cuda,

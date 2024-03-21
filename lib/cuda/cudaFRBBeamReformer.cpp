@@ -1,11 +1,11 @@
 #include "cudaFRBBeamReformer.hpp"
 
 #include "cudaUtils.hpp"
-#include "math.h"
 #include "visUtil.hpp"
 
 #include "fmt.hpp"
 
+#include <cmath>
 #include <vector>
 
 using kotekan::bufferContainer;
@@ -17,17 +17,19 @@ REGISTER_CUDA_COMMAND(cudaFRBBeamReformer);
 static float Ufunc(int p, int M, float theta) {
     float acc = 0;
     for (int s = 0; s <= M; s++) {
-        float A = 1.;
+        float A = 1;
         if (s == 0 || s == M)
-            A = 0.5;
-        acc += A * cosf(((float)M_PI * (2.0f * theta - p) * s) / M);
+            A = 0.5f;
+        acc += A * cosf((float(M_PI) * (2 * theta - p) * s) / M);
     }
     return acc;
 }
-static void compute_beam_reformer_phase(int M, int N, float16_t* host_phase, int _num_local_freq,
-                                        int _num_beams, float* beam_dra, float* beam_ddec,
-                                        float* freqs, float dish_spacing_ew, float dish_spacing_ns,
-                                        float bore_zd) {
+static void compute_beam_reformer_phase(int M, int N, float16_t* __restrict__ host_phase,
+                                        int _num_local_freq, int _num_beams,
+                                        const float* __restrict__ beam_dra,
+                                        const float* __restrict__ beam_ddec,
+                                        const float* __restrict__ freqs, float dish_spacing_ew,
+                                        float dish_spacing_ns, float bore_zd) {
     const float c = 3.0e8;
     const int B = _num_beams;
     const int Q = 2 * N;
@@ -71,8 +73,7 @@ static void compute_beam_reformer_phase(int M, int N, float16_t* host_phase, int
 
             for (int p = 0; p < 2 * M; p++) {
                 for (int q = 0; q < 2 * N; q++) {
-                    host_phase[(size_t)fi * (B * PQ) + bi * PQ + p * Q + q] =
-                        (float16_t)(Up[p] * Uq[q]);
+                    host_phase[fi * (B * PQ) + bi * PQ + p * Q + q] = Up[p] * Uq[q];
                 }
             }
         }
@@ -131,12 +132,9 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
         // hard-code the FRB beamformer beam locations on the sky.  In
         // turn, this requires knowing the actual frequencies we're
         // processing!
-        float* beam_dra = (float*)malloc(_num_beams * sizeof(float));
-        assert(beam_dra);
-        float* beam_ddec = (float*)malloc(_num_beams * sizeof(float));
-        assert(beam_ddec);
-        float* freqs = (float*)malloc(_num_local_freq * sizeof(float));
-        assert(freqs);
+        std::vector<float> beam_dra(_num_beams);
+        std::vector<float> beam_ddec(_num_beams);
+        std::vector<float> freqs(_num_local_freq);
 
         // TODO -- in the real thing this should be an updatable config
         // or somesuch.  Tracking beams would update single elements of
@@ -173,8 +171,7 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
         // the meridian.
         float bore_zd = 30.;
 
-        float16_t* host_phase = (float16_t*)malloc(phase_len);
-        assert(host_phase);
+        std::vector<float16_t> host_phase(phase_len / sizeof(float16_t));
 
         const char* beamphase_cache_fn = "beamphase-cache.bin";
         FILE* f = fopen(beamphase_cache_fn, "r");
@@ -182,7 +179,7 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
         if (f) {
             INFO("Trying to read beamformer phase matrix from {:s}...", beamphase_cache_fn);
             double t0 = gettime();
-            size_t nr = fread(host_phase, 1, phase_len, f);
+            size_t nr = fread(host_phase.data(), 1, phase_len, f);
             if (nr != phase_len) {
                 INFO("Reading file {:s}: got {:d} bytes, but expected {:d}", beamphase_cache_fn, nr,
                      phase_len);
@@ -197,14 +194,14 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
             int N = M;
             INFO("Computing beam-reformer phase matrix...");
             double t0 = gettime();
-            compute_beam_reformer_phase(M, N, host_phase, _num_local_freq, _num_beams, beam_dra,
-                                        beam_ddec, freqs, dish_spacing_ew, dish_spacing_ns,
-                                        bore_zd);
+            compute_beam_reformer_phase(M, N, host_phase.data(), _num_local_freq, _num_beams,
+                                        beam_dra.data(), beam_ddec.data(), freqs.data(),
+                                        dish_spacing_ew, dish_spacing_ns, bore_zd);
             INFO("That took {:g} sec", gettime() - t0);
             INFO("Computed beam-reformer phase matrix");
             f = fopen(beamphase_cache_fn, "w+");
             if (f) {
-                size_t nw = fwrite(host_phase, 1, phase_len, f);
+                size_t nw = fwrite(host_phase.data(), 1, phase_len, f);
                 if (nw != phase_len) {
                     INFO("Failed to write beamformer phase matrix to {:s}: {:s}",
                          beamphase_cache_fn, strerror(errno));
@@ -223,12 +220,8 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
         }
 
         float16_t* phase_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
-        CHECK_CUDA_ERROR(cudaMemcpy(phase_memory, host_phase, phase_len, cudaMemcpyHostToDevice));
-
-        free(host_phase);
-        free(beam_dra);
-        free(beam_ddec);
-        free(freqs);
+        CHECK_CUDA_ERROR(
+            cudaMemcpy(phase_memory, host_phase.data(), phase_len, cudaMemcpyHostToDevice));
     }
 
     // for cublas_hgemmBatched, pre-compute the GPU array pointers.

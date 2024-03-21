@@ -5,6 +5,7 @@
 #include <chordMetadata.hpp>
 #include <cstdint>
 #include <errno.h>
+#include <errors.h>
 #include <fstream>
 #include <iomanip>
 #include <map>
@@ -71,6 +72,9 @@ class asdfFileWrite : public kotekan::Stage {
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
 
+    const int max_frames = config.get_default<int>(unique_name, "max_frames", -1);
+    const bool skip_writing = config.get_default<bool>(unique_name, "skip_writing", false);
+
     Buffer* const buffer;
 
 public:
@@ -92,8 +96,13 @@ public:
         auto& write_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
             "kotekan_asdffilewrite_write_time_seconds", unique_name);
 
-        for (std::uint32_t frame_counter = 0;; ++frame_counter) {
+        for (std::int64_t frame_counter = 0;; ++frame_counter) {
             const std::uint32_t frame_id = frame_counter % buffer->num_frames;
+
+            if (max_frames >= 0 && frame_counter >= max_frames) {
+                INFO("Processed {} frames, shutting down Kotekan", frame_counter);
+                exit_kotekan(CLEAN_EXIT);
+            }
 
             if (stop_thread)
                 break;
@@ -120,110 +129,115 @@ public:
             assert(metadata_is_chord(mc));
             const std::shared_ptr<chordMetadata> meta = get_chord_metadata(mc);
 
-            // Create ASDF project
-            auto group = std::make_shared<ASDF::group>();
+            if (!skip_writing) {
 
-            // Create ASDF ndarray
-            const ASDF::scalar_type_id_t type = chord2asdf(meta->type);
-            const std::size_t typesize = chord_datatype_bytes(meta->type);
+                // Create ASDF project
+                auto group = std::make_shared<ASDF::group>();
 
-            const int ndims = meta->dims;
-            std::vector<std::int64_t> dims(ndims);
-            for (int d = 0; d < ndims; ++d)
-                dims.at(d) = meta->dim[d];
-            std::int64_t size = 1;
-            for (int d = 0; d < ndims; ++d)
-                size *= dims.at(d);
+                // Create ASDF ndarray
+                const ASDF::scalar_type_id_t type = chord2asdf(meta->type);
+                const std::size_t typesize = chord_datatype_bytes(meta->type);
 
-            const std::shared_ptr<ASDF::block_t> block = std::make_shared<ASDF::ptr_block_t>(
-                const_cast<std::uint8_t*>(frame), size * typesize);
+                const int ndims = meta->dims;
+                std::vector<std::int64_t> dims(ndims);
+                for (int d = 0; d < ndims; ++d)
+                    dims.at(d) = meta->dim[d];
+                std::int64_t size = 1;
+                for (int d = 0; d < ndims; ++d)
+                    size *= dims.at(d);
 
-            const auto compression = ASDF::compression_t::blosc;
-            const int compression_level = 9;
+                const std::shared_ptr<ASDF::block_t> block = std::make_shared<ASDF::ptr_block_t>(
+                    const_cast<std::uint8_t*>(frame), size * typesize);
 
-            const auto ndarray = std::make_shared<ASDF::ndarray>(
-                ASDF::make_constant_memoized(block), std::optional<ASDF::block_info_t>(),
-                ASDF::block_format_t::block, compression, compression_level, std::vector<bool>(),
-                std::make_shared<ASDF::datatype_t>(type), ASDF::host_byteorder(), dims);
-            group->emplace(buffer->buffer_name, std::make_shared<ASDF::ndarray_entry>(ndarray));
+                const auto compression = ASDF::compression_t::blosc;
+                const int compression_level = 9;
 
-            // Describe metadata
+                const auto ndarray = std::make_shared<ASDF::ndarray>(
+                    ASDF::make_constant_memoized(block), std::optional<ASDF::block_info_t>(),
+                    ASDF::block_format_t::block, compression, compression_level,
+                    std::vector<bool>(), std::make_shared<ASDF::datatype_t>(type),
+                    ASDF::host_byteorder(), dims);
+                group->emplace(buffer->buffer_name, std::make_shared<ASDF::ndarray_entry>(ndarray));
 
-            auto coarse_freq = std::make_shared<ASDF::sequence>();
-            for (int freq = 0; freq < meta->nfreq; ++freq)
-                coarse_freq->push_back(std::make_shared<ASDF::int_entry>(meta->coarse_freq[freq]));
-            group->emplace("coarse_freq", coarse_freq);
+                // Describe metadata
 
-            auto freq_upchan_factor = std::make_shared<ASDF::sequence>();
-            for (int freq = 0; freq < meta->nfreq; ++freq)
-                freq_upchan_factor->push_back(
-                    std::make_shared<ASDF::int_entry>(meta->freq_upchan_factor[freq]));
-            group->emplace("freq_upchan_factor", freq_upchan_factor);
+                auto coarse_freq = std::make_shared<ASDF::sequence>();
+                for (int freq = 0; freq < meta->nfreq; ++freq)
+                    coarse_freq->push_back(
+                        std::make_shared<ASDF::int_entry>(meta->coarse_freq[freq]));
+                group->emplace("coarse_freq", coarse_freq);
 
-            group->emplace("sample0_offset",
-                           std::make_shared<ASDF::int_entry>(meta->sample0_offset));
+                auto freq_upchan_factor = std::make_shared<ASDF::sequence>();
+                for (int freq = 0; freq < meta->nfreq; ++freq)
+                    freq_upchan_factor->push_back(
+                        std::make_shared<ASDF::int_entry>(meta->freq_upchan_factor[freq]));
+                group->emplace("freq_upchan_factor", freq_upchan_factor);
 
-            auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
-            for (int freq = 0; freq < meta->nfreq; ++freq)
-                half_fpga_sample0->push_back(
-                    std::make_shared<ASDF::int_entry>(meta->half_fpga_sample0[freq]));
-            group->emplace("half_fpga_sample0", half_fpga_sample0);
+                group->emplace("sample0_offset",
+                               std::make_shared<ASDF::int_entry>(meta->sample0_offset));
 
-            auto time_downsampling_fpga = std::make_shared<ASDF::sequence>();
-            for (int freq = 0; freq < meta->nfreq; ++freq)
-                time_downsampling_fpga->push_back(
-                    std::make_shared<ASDF::int_entry>(meta->time_downsampling_fpga[freq]));
-            group->emplace("time_downsampling_fpga", time_downsampling_fpga);
+                auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
+                for (int freq = 0; freq < meta->nfreq; ++freq)
+                    half_fpga_sample0->push_back(
+                        std::make_shared<ASDF::int_entry>(meta->half_fpga_sample0[freq]));
+                group->emplace("half_fpga_sample0", half_fpga_sample0);
 
-            auto dim_names = std::make_shared<ASDF::sequence>();
-            for (int d = 0; d < ndims; ++d)
-                dim_names->push_back(
-                    std::make_shared<ASDF::string_entry>(meta->get_dimension_name(d)));
-            group->emplace("dim_names", dim_names);
+                auto time_downsampling_fpga = std::make_shared<ASDF::sequence>();
+                for (int freq = 0; freq < meta->nfreq; ++freq)
+                    time_downsampling_fpga->push_back(
+                        std::make_shared<ASDF::int_entry>(meta->time_downsampling_fpga[freq]));
+                group->emplace("time_downsampling_fpga", time_downsampling_fpga);
 
-            if (meta->ndishes >= 0)
-                group->emplace("ndishes", std::make_shared<ASDF::int_entry>(meta->ndishes));
+                auto dim_names = std::make_shared<ASDF::sequence>();
+                for (int d = 0; d < ndims; ++d)
+                    dim_names->push_back(
+                        std::make_shared<ASDF::string_entry>(meta->get_dimension_name(d)));
+                group->emplace("dim_names", dim_names);
 
-            if (meta->dish_index) {
-                auto dish_index = std::make_shared<ASDF::ndarray>(
-                    std::vector<int>(meta->dish_index,
-                                     meta->dish_index
-                                         + meta->n_dish_locations_ew * meta->n_dish_locations_ns),
-                    ASDF::block_format_t::inline_array, ASDF::compression_t::none, -1,
-                    std::vector<bool>(),
-                    std::vector<int64_t>{meta->n_dish_locations_ns, meta->n_dish_locations_ew});
-                auto dish_index_entry = std::make_shared<ASDF::ndarray_entry>(dish_index);
-                group->emplace("dish_index", dish_index_entry);
-            }
+                if (meta->ndishes >= 0)
+                    group->emplace("ndishes", std::make_shared<ASDF::int_entry>(meta->ndishes));
 
-            // Define file name
-            std::ostringstream ibuf;
-            ibuf << std::setw(8) << std::setfill('0') << frame_counter;
-            const std::string iteration = ibuf.str();
-            std::ostringstream buf;
-            buf << base_dir << "/";
-            if (prefix_hostname) {
-                char hostname[256];
-                gethostname(hostname, sizeof hostname);
-                buf << hostname << "_";
-            }
-            buf << file_name << "." << std::setw(8) << std::setfill('0') << frame_counter
-                << ".asdf";
-            const std::string full_path = buf.str();
-
-            // Write project to file
-            const auto group0 = std::make_shared<ASDF::group>();
-            group0->emplace(iteration, group);
-            const auto project = ASDF::asdf({}, group0);
-            int ierr = mkdir(base_dir.c_str(), 0777);
-            if (ierr) {
-                if (errno != EEXIST && errno != EISDIR) {
-                    const char* const msg = strerror(errno);
-                    FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(),
-                                msg);
+                if (meta->dish_index) {
+                    auto dish_index = std::make_shared<ASDF::ndarray>(
+                        std::vector<int>(meta->dish_index, meta->dish_index
+                                                               + meta->n_dish_locations_ew
+                                                                     * meta->n_dish_locations_ns),
+                        ASDF::block_format_t::inline_array, ASDF::compression_t::none, -1,
+                        std::vector<bool>(),
+                        std::vector<int64_t>{meta->n_dish_locations_ns, meta->n_dish_locations_ew});
+                    auto dish_index_entry = std::make_shared<ASDF::ndarray_entry>(dish_index);
+                    group->emplace("dish_index", dish_index_entry);
                 }
-            }
-            project.write(full_path);
+
+                // Define file name
+                std::ostringstream ibuf;
+                ibuf << std::setw(8) << std::setfill('0') << frame_counter;
+                const std::string iteration = ibuf.str();
+                std::ostringstream buf;
+                buf << base_dir << "/";
+                if (prefix_hostname) {
+                    char hostname[256];
+                    gethostname(hostname, sizeof hostname);
+                    buf << hostname << "_";
+                }
+                buf << file_name << "." << std::setw(8) << std::setfill('0') << frame_counter
+                    << ".asdf";
+                const std::string full_path = buf.str();
+
+                // Write project to file
+                const auto group0 = std::make_shared<ASDF::group>();
+                group0->emplace(iteration, group);
+                const auto project = ASDF::asdf({}, group0);
+                int ierr = mkdir(base_dir.c_str(), 0777);
+                if (ierr) {
+                    if (errno != EEXIST && errno != EISDIR) {
+                        const char* const msg = strerror(errno);
+                        FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(),
+                                    msg);
+                    }
+                }
+                project.write(full_path);
+            } // if !skip_writing
 
             // Stop timer
             const double t1 = current_time();

@@ -1,4 +1,5 @@
 // CHORD FRB beamformer
+// See ../docs/CHORD_FRB_beamformer.pdf in this repository.
 
 #include <array>
 #include <cassert>

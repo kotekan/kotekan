@@ -6,17 +6,13 @@ CHORD FRB beamformer
 Compiling kernel...
 Allocating input data...
 Setting up input data...
-Tmin = 0 = 0
-Tmax = fld(idiv(T, 4), Touter) * Touter = 128
-T̄min = 0 = 0
-T̄max = T̄min + fld(Tmax - Tmin, Tds) = 5
 dish = 250
 freq = 237
 polr = 1
-time = 74
+time = 597
 Wvalue = -0.07517732f0 + 0.36116815f0im
 Evalue = 4 - 5im
-dstime = 2
+dstime = 23
 Copying data from CPU to GPU...
 Running kernel...
 Copying data back from GPU to CPU...

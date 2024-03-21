@@ -1,4 +1,5 @@
 #include <Config.hpp>
+#include <FEngine.hpp>
 #include <Stage.hpp>
 #include <StageFactory.hpp>
 #include <cassert>
@@ -14,86 +15,13 @@
 #include <vector>
 #include <visUtil.hpp>
 
+#ifdef WITH_CUDA
+#include <nvToolsExt.h>
+#endif
+
 #if !KOTEKAN_FLOAT16
 #warning "The F-Engine simulator requires float16 support"
 #else
-
-class FEngine : public kotekan::Stage {
-    const std::string unique_name;
-
-    const bool skip_julia;
-
-    // Basic constants
-    const int num_components;
-    const int num_polarizations;
-
-    // Sky
-    const float source_amplitude;
-    const float source_frequency;
-    const float source_position_ew;
-    const float source_position_ns;
-
-    // Dishes
-    const int num_dish_locations_ew;
-    const int num_dish_locations_ns;
-    const int num_dish_locations;
-    const float dish_separation_ew;
-    const float dish_separation_ns;
-    const int num_dishes;
-    const std::vector<int> dish_indices;
-    std::vector<int> dish_locations;
-    int* dish_indices_ptr;
-
-    // ADC
-    const float adc_frequency;
-    const int num_taps;
-    const int num_frequencies;
-    const int num_times;
-
-    // Baseband beamformer setup
-    const int bb_num_dishes_M;
-    const int bb_num_dishes_N;
-    const int bb_num_beams_P;
-    const int bb_num_beams_Q;
-    const float bb_beam_separation_x;
-    const float bb_beam_separation_y;
-    const int bb_num_beams;
-
-    // Upchannelizer setup
-    const int upchannelization_factor;
-
-    // FRB beamformer setup
-    const int frb_num_beams_P;
-    const int frb_num_beams_Q;
-    const int Tds = 40;
-    const int frb_num_times;
-
-    // Pipeline
-    const int num_frames;
-
-    // Kotekan
-    const std::int64_t E_frame_size;
-    const std::int64_t A_frame_size;
-    const std::int64_t s_frame_size;
-    const std::int64_t J_frame_size;
-    const std::int64_t G_frame_size;
-    const std::int64_t W_frame_size;
-    const std::int64_t I_frame_size;
-
-    Buffer* const E_buffer;
-    Buffer* const A_buffer;
-    Buffer* const s_buffer;
-    Buffer* const J_buffer;
-    Buffer* const G_buffer;
-    Buffer* const W_buffer;
-    Buffer* const I_buffer;
-
-public:
-    FEngine(kotekan::Config& config, const std::string& unique_name,
-            kotekan::bufferContainer& buffer_conainer);
-    virtual ~FEngine();
-    void main_thread() override;
-};
 
 REGISTER_KOTEKAN_STAGE(FEngine);
 
@@ -143,18 +71,17 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     frb_num_times(num_times / upchannelization_factor / Tds),
     // Pipeline
     num_frames(config.get<int>(unique_name, "num_frames")),
+    repeat_count(config.get_default<int>(unique_name, "repeat_count", 1)),
     // Frame sizes
-    E_frame_size(std::int64_t(1) * num_dishes * num_polarizations * num_frequencies * num_times),
-    A_frame_size(std::int64_t(1) * num_components * num_dishes * bb_num_beams * num_polarizations
+    E_frame_size(sizeof(uint8_t) * num_dishes * num_polarizations * num_frequencies * num_times),
+    A_frame_size(sizeof(int8_t) * num_components * num_dishes * bb_num_beams * num_polarizations
                  * num_frequencies),
-    s_frame_size(std::int64_t(1) * sizeof(int32_t) * bb_num_beams * num_polarizations
-                 * num_frequencies),
-    J_frame_size(std::int64_t(1) * num_times * num_polarizations * num_frequencies * bb_num_beams),
-    G_frame_size(std::int64_t(1) * sizeof(float16_t) * num_frequencies * upchannelization_factor),
-    W_frame_size(std::int64_t(1) * sizeof(float16_t) * num_components * num_dish_locations_ns
-                 * num_dish_locations_ew * num_polarizations
-                 * (num_frequencies * upchannelization_factor)),
-    I_frame_size(std::int64_t(1) * sizeof(float16_t) * frb_num_beams_P * frb_num_beams_Q
+    s_frame_size(sizeof(int32_t) * bb_num_beams * num_polarizations * num_frequencies),
+    J_frame_size(num_times * num_polarizations * num_frequencies * bb_num_beams),
+    G_frame_size(sizeof(float16_t) * num_frequencies * upchannelization_factor),
+    W_frame_size(sizeof(float16_t) * num_components * num_dish_locations_ns * num_dish_locations_ew
+                 * num_polarizations * (num_frequencies * upchannelization_factor)),
+    I_frame_size(sizeof(float16_t) * frb_num_beams_P * frb_num_beams_Q
                  * (num_frequencies * upchannelization_factor) * frb_num_times),
     // Buffers
     E_buffer(get_buffer("E_buffer")), A_buffer(get_buffer("A_buffer")),
@@ -289,8 +216,8 @@ void FEngine::main_thread() {
         set_fpga_seq_num(A_buffer, A_frame_id, -1);
 
         // Fill buffer
+        DEBUG("[{:d}] Filling A buffer...", A_frame_index);
         if (!skip_julia) {
-            INFO("[{:d}] Filling A buffer...", A_frame_index);
             kotekan::juliaCall([&]() {
                 jl_module_t* const f_engine_module =
                     (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
@@ -311,8 +238,13 @@ void FEngine::main_thread() {
                 assert(res);
                 JL_GC_POP();
             });
-            INFO("[{:d}] Done filling A buffer.", A_frame_index);
+        } else {
+            for (int n = 0; n < num_components * num_dishes * bb_num_beams * num_polarizations
+                                    * num_frequencies;
+                 ++n)
+                ((int8_t*)A_frame)[n] = 4;
         }
+        DEBUG("[{:d}] Done filling A buffer.", A_frame_index);
 
         // Set metadata
         std::shared_ptr<chordMetadata> const A_metadata = get_chord_metadata(A_buffer, A_frame_id);
@@ -365,12 +297,10 @@ void FEngine::main_thread() {
         set_fpga_seq_num(s_buffer, s_frame_id, -1);
 
         // Fill buffer
-        if (!skip_julia) {
-            INFO("[{:d}] Filling s buffer...", s_frame_index);
-            for (int n = 0; n < bb_num_beams * num_polarizations * num_frequencies; ++n)
-                ((int32_t*)s_frame)[n] = 13;
-            INFO("[{:d}] Done filling s buffer.", s_frame_index);
-        }
+        DEBUG("[{:d}] Filling s buffer...", s_frame_index);
+        for (int n = 0; n < bb_num_beams * num_polarizations * num_frequencies; ++n)
+            ((int32_t*)s_frame)[n] = 13;
+        DEBUG("[{:d}] Done filling s buffer.", s_frame_index);
 
         // Set metadata
         std::shared_ptr<chordMetadata> const s_metadata = get_chord_metadata(s_buffer, s_frame_id);
@@ -418,6 +348,11 @@ void FEngine::main_thread() {
         G_buffer->allocate_new_metadata_object(G_frame_id);
         set_fpga_seq_num(G_buffer, G_frame_id, -1);
 
+        DEBUG("[{:d}] Filling G buffer...", G_frame_index);
+        for (int n = 0; n < num_frequencies * upchannelization_factor; ++n)
+            ((float16_t*)G_frame)[n] = 1;
+        DEBUG("[{:d}] Done filling G buffer.", G_frame_index);
+
         // Set metadata
         std::shared_ptr<chordMetadata> const G_metadata = get_chord_metadata(G_buffer, G_frame_id);
         G_metadata->frame_counter = G_frame_index;
@@ -441,16 +376,6 @@ void FEngine::main_thread() {
         G_metadata->n_dish_locations_ns = num_dish_locations_ns;
         G_metadata->dish_index = dish_indices_ptr;
 
-        if (!skip_julia) {
-            INFO("[{:d}] Filling G buffer...", G_frame_index);
-            _Float16* __restrict__ const G = (_Float16*)G_frame;
-            for (int freqbar = 0; freqbar < num_frequencies * upchannelization_factor; ++freqbar) {
-                const std::size_t ind = freqbar + std::size_t(0);
-                G[ind] = 1;
-            }
-            INFO("[{:d}] Done filling G buffer.", G_frame_index);
-        }
-
         // Mark buffer as full
         G_buffer->mark_frame_full(unique_name, G_frame_id);
     }
@@ -470,35 +395,36 @@ void FEngine::main_thread() {
         W_buffer->allocate_new_metadata_object(W_frame_id);
         set_fpga_seq_num(W_buffer, W_frame_id, -1);
 
-        if (!skip_julia) {
-            INFO("[{:d}] Filling W buffer...", W_frame_index);
-#if 0
-                    // Disable this because the F-Engine simulator doesn't upchannelize yet
-                    kotekan::juliaCall([&]() {
-                        jl_module_t* const f_engine_module =
-                            (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
-                        assert(f_engine_module);
-                        jl_function_t* const set_W = jl_get_function(f_engine_module, "set_W");
-                        assert(set_W);
-                        const int nargs = 7;
-                        jl_value_t** args;
-                        JL_GC_PUSHARGS(args, nargs);
-                        args[0] = jl_box_uint8pointer(W_frame);
-                        args[1] = jl_box_int64(W_frame_size);
-                        args[2] = jl_box_int64(num_dish_locations_ns);
-                        args[3] = jl_box_int64(num_dish_locations_ew);
-                        args[4] = jl_box_int64(num_polarizations);
-                        args[5] = jl_box_int64(num_frequencies * upchannelization_factor);
-                        args[6] = jl_box_int64(W_frame_index + 1);
-                        jl_value_t* const res = jl_call(set_W, args, nargs);
-                        assert(res);
-                        JL_GC_POP();
-                    });
-#else
-            std::memset(W_frame, 0, W_frame_size);
-#endif
-            INFO("[{:d}] Done filling W buffer.", W_frame_index);
+        DEBUG("[{:d}] Filling W buffer...", W_frame_index);
+        // Disable this because the F-Engine simulator doesn't upchannelize yet
+        if (false && !skip_julia) {
+            kotekan::juliaCall([&]() {
+                jl_module_t* const f_engine_module =
+                    (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
+                assert(f_engine_module);
+                jl_function_t* const set_W = jl_get_function(f_engine_module, "set_W");
+                assert(set_W);
+                const int nargs = 7;
+                jl_value_t** args;
+                JL_GC_PUSHARGS(args, nargs);
+                args[0] = jl_box_uint8pointer(W_frame);
+                args[1] = jl_box_int64(W_frame_size);
+                args[2] = jl_box_int64(num_dish_locations_ns);
+                args[3] = jl_box_int64(num_dish_locations_ew);
+                args[4] = jl_box_int64(num_polarizations);
+                args[5] = jl_box_int64(num_frequencies * upchannelization_factor);
+                args[6] = jl_box_int64(W_frame_index + 1);
+                jl_value_t* const res = jl_call(set_W, args, nargs);
+                assert(res);
+                JL_GC_POP();
+            });
+        } else {
+            for (int n = 0; n < num_components * num_dish_locations_ns * num_dish_locations_ew
+                                    * num_polarizations * num_frequencies * upchannelization_factor;
+                 ++n)
+                ((float16_t*)W_frame)[n] = 1;
         }
+        DEBUG("[{:d}] Done filling W buffer.", W_frame_index);
 
         // Set metadata
         std::shared_ptr<chordMetadata> const W_metadata = get_chord_metadata(W_buffer, W_frame_id);
@@ -535,8 +461,7 @@ void FEngine::main_thread() {
         W_buffer->mark_frame_full(unique_name, W_frame_id);
     }
 
-
-    for (int E_frame_index = 0; E_frame_index < num_frames; ++E_frame_index) {
+    for (int E_frame_index = 0; E_frame_index < num_frames * repeat_count; ++E_frame_index) {
         const std::uint64_t seq_num = std::uint64_t(1) * num_times * E_frame_index;
         if (stop_thread)
             break;
@@ -546,7 +471,9 @@ void FEngine::main_thread() {
             const int E_frame_id = E_frame_index % E_buffer->num_frames;
 
             // Wait for buffer
+            profile_range_push("E_frame::wait_for_empty_frame");
             std::uint8_t* const E_frame = E_buffer->wait_for_empty_frame(unique_name, E_frame_id);
+            profile_range_pop();
             if (!E_frame)
                 break;
             if (!(std::ptrdiff_t(E_buffer->frame_size) == E_frame_size))
@@ -556,8 +483,9 @@ void FEngine::main_thread() {
             E_buffer->allocate_new_metadata_object(E_frame_id);
             set_fpga_seq_num(E_buffer, E_frame_id, seq_num);
 
+            DEBUG("[{:d}] Filling E buffer...", E_frame_index);
+            profile_range_push("E_frame::fill");
             if (!skip_julia) {
-                INFO("[{:d}] Filling E buffer...", E_frame_index);
                 kotekan::juliaCall([&]() {
                     jl_module_t* const f_engine_module =
                         (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
@@ -573,13 +501,19 @@ void FEngine::main_thread() {
                     args[3] = jl_box_int64(num_polarizations);
                     args[4] = jl_box_int64(num_frequencies);
                     args[5] = jl_box_int64(num_times);
-                    args[6] = jl_box_int64(E_frame_index + 1);
+                    args[6] = jl_box_int64(E_frame_index % num_frames + 1);
                     jl_value_t* const res = jl_call(set_E, args, nargs);
                     assert(res);
                     JL_GC_POP();
                 });
-                INFO("[{:d}] Done filling E buffer.", E_frame_index);
+            } else {
+                // for (int n = 0; n < num_dishes * num_polarizations * num_frequencies * num_times;
+                //      ++n)
+                //     ((uint8_t*)E_frame)[n] = 0x44;
+                memset(E_frame, 0x44, num_dishes * num_polarizations * num_frequencies * num_times);
             }
+            profile_range_pop();
+            DEBUG("[{:d}] Done filling E buffer.", E_frame_index);
 
             // Set metadata
             std::shared_ptr<chordMetadata> const E_metadata =
@@ -612,6 +546,7 @@ void FEngine::main_thread() {
             E_metadata->dish_index = dish_indices_ptr;
 
             // Mark buffer as full
+            profile_mark("E_frame::mark_frame_full");
             E_buffer->mark_frame_full(unique_name, E_frame_id);
         }
 
@@ -635,7 +570,7 @@ void FEngine::main_thread() {
 
             // Fill buffer
             if (!skip_julia) {
-                INFO("[{:d}] Filling J buffer...", J_frame_index);
+                DEBUG("[{:d}] Filling J buffer...", J_frame_index);
                 kotekan::juliaCall([&]() {
                     jl_module_t* const f_engine_module =
                         (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
@@ -656,7 +591,7 @@ void FEngine::main_thread() {
                     assert(res);
                     JL_GC_POP();
                 });
-                INFO("[{:d}] Done filling J buffer.", J_frame_index);
+                DEBUG("[{:d}] Done filling J buffer.", J_frame_index);
             }
 
             // Set metadata
@@ -710,7 +645,7 @@ void FEngine::main_thread() {
             set_fpga_seq_num(I_buffer, I_frame_id, seq_num);
 
             if (!skip_julia) {
-                INFO("[{:d}] Filling I buffer...", I_frame_index);
+                DEBUG("[{:d}] Filling I buffer...", I_frame_index);
 #if 0
                     // Disable this because the F-Engine simulator doesn't upchannelize yet
                     kotekan::juliaCall([&]() {
@@ -736,7 +671,7 @@ void FEngine::main_thread() {
 #else
                 std::memset(I_frame, 0, I_frame_size);
 #endif
-                INFO("[{:d}] Done filling I buffer.", I_frame_index);
+                DEBUG("[{:d}] Done filling I buffer.", I_frame_index);
             }
 
             std::shared_ptr<chordMetadata> const I_metadata =
