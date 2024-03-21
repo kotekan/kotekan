@@ -38,6 +38,18 @@
 #endif
 }
 
+[[maybe_unused]] static void write_memory_rep_stosq(void* buffer, std::uint8_t value,
+                                                    std::size_t size) {
+    assert(size % 8 == 0);
+    std::uint16_t value2 = std::uint16_t(value) | (std::uint16_t(value) << 8);
+    std::uint32_t value4 = std::uint32_t(value2) | (std::uint32_t(value2) << 16);
+    std::uint64_t value8 = std::uint64_t(value4) | (std::uint64_t(value4) << 32);
+    asm("cld\n"
+        "rep stosq"
+        :
+        : "D"(buffer), "c"(size / 8), "a"(value8));
+}
+
 class FEngine : public kotekan::Stage {
     const std::string unique_name;
 
@@ -603,7 +615,23 @@ void FEngine::main_thread() {
                 // for (int n = 0; n < num_dishes * num_polarizations * num_frequencies * num_times;
                 //      ++n)
                 //     ((uint8_t*)E_frame)[n] = 0x44;
-                memset(E_frame, 0x44, num_dishes * num_polarizations * num_frequencies * num_times);
+                // std::memset(E_frame, 0x44,
+                //        num_dishes * num_polarizations * num_frequencies * num_times);
+                if (E_frame_index < E_buffer->num_frames)
+                    std::memset(E_frame, 0x44,
+                                num_dishes * num_polarizations * num_frequencies * num_times);
+                // write_memory_rep_stosq(
+                //     E_frame, 0x44, num_dishes * num_polarizations * num_frequencies * num_times);
+                // #pragma omp parallel num_threads(4)
+                //                 {
+                //                     const int thread = omp_get_thread_num();
+                //                     const std::size_t nbytes =
+                //                         num_dishes * num_polarizations * num_frequencies *
+                //                         num_times;
+                //                     const std::size_t thread_nbytes = nbytes / 4;
+                //                     const std::size_t thread_start = thread * thread_nbytes;
+                //                     std::memset(E_frame + thread_start, 0x44, thread_nbytes);
+                //                 }
             }
             profile_range_pop();
             DEBUG("[{:d}] Done filling E buffer.", E_frame_index);
