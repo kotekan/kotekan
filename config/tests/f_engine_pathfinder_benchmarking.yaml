@@ -6,7 +6,11 @@
 ---
 type: config
 log_level: debug   # info
+
 cpu_affinity: [0,1,2,3,4,5,6,7]
+numa_node: 0
+use_hugepages: true
+
 buffer_depth: 4
 kernel_path: "lib/cuda/kernels"
 
