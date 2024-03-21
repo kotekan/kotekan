@@ -70,8 +70,8 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_without_claiming(const std::strin
     std::unique_lock<std::recursive_mutex> lock(mutex);
     const std::ptrdiff_t old_first_write_head = first_write_head;
     const std::ptrdiff_t read_head = read_heads[name];
-    DEBUG("wait_without_claiming {:s}[{:d}]: initial bytes available: {}", name,
-                              inst, group_digits(first_write_head - read_head));
+    DEBUG("wait_without_claiming {:s}[{:d}]: initial bytes available: {}", name, inst,
+          group_digits(first_write_head - read_head));
     while (1) {
         if (shutdown_signal) {
             DEBUG("wait_without_claiming {:s}[{:d}]: shutting down.", name, inst);
@@ -84,8 +84,8 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_without_claiming(const std::strin
         DEBUG("wait_without_claiming {:s}[{:d}]: waiting done.", name, inst);
     }
     const std::ptrdiff_t sz = first_write_head - read_head;
-    DEBUG("wait_without_claiming {:s}[{:d}]: final bytes available: {}", name,
-                              inst, group_digits(sz));
+    DEBUG("wait_without_claiming {:s}[{:d}]: final bytes available: {}", name, inst,
+          group_digits(sz));
     assert(sz > 0);
     print_py_status(this);
     print_full_status();
@@ -100,8 +100,8 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_and_claim_readable(const std::str
     std::unique_lock<std::recursive_mutex> lock(mutex);
     const std::ptrdiff_t read_head = read_heads[name];
     DEBUG("wait_and_claim_readable {:s}[{:d}]: requested bytes: {}, initial bytes "
-                      "available: {}",
-                      name, inst, group_digits(sz), group_digits(first_write_head - read_head));
+          "available: {}",
+          name, inst, group_digits(sz), group_digits(first_write_head - read_head));
     while (1) {
         if (shutdown_signal) {
             DEBUG("wait_and_claim_readable {:s}[{:d}]: shutting down.", name, inst);
@@ -113,8 +113,8 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_and_claim_readable(const std::str
         full_cond.wait(lock);
         DEBUG("wait_and_claim_readable {:s}[{:d}]: waiting done.", name, inst);
     }
-    DEBUG("wait_and_claim_readable {:s}[{:d}]: old read position: {}, new read position: {}",
-          name, inst, group_digits(read_head), group_digits(read_head + sz));
+    DEBUG("wait_and_claim_readable {:s}[{:d}]: old read position: {}, new read position: {}", name,
+          inst, group_digits(read_head), group_digits(read_head + sz));
     read_heads[name] += sz;
     print_py_status(this);
     print_full_status();
@@ -127,12 +127,11 @@ RingBuffer::wait_and_claim_all_readable(const std::string& name, const int inst)
     // Wait until we can advance the read_head for this consumer
     std::unique_lock<std::recursive_mutex> lock(mutex);
     const std::ptrdiff_t read_head = read_heads[name];
-    DEBUG("wait_and_claim_all_readable {:s}[{:d}]: initial bytes available: {}",
-                              name, inst, group_digits(first_write_head - read_head));
+    DEBUG("wait_and_claim_all_readable {:s}[{:d}]: initial bytes available: {}", name, inst,
+          group_digits(first_write_head - read_head));
     while (1) {
         if (shutdown_signal) {
-            DEBUG("wait_and_claim_all_readable {:s}[{:d}]: shutting down.",
-                                      name, inst);
+            DEBUG("wait_and_claim_all_readable {:s}[{:d}]: shutting down.", name, inst);
             return std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>>();
         }
         if (first_write_head - read_head > 0)
@@ -143,9 +142,8 @@ RingBuffer::wait_and_claim_all_readable(const std::string& name, const int inst)
     }
     const std::ptrdiff_t sz = first_write_head - read_head;
     DEBUG("wait_and_claim_all_readable {:s}[{:d}]: final bytes available {}, old "
-                      "read position: {}, new read position: {}",
-                      name, inst, group_digits(sz), group_digits(read_head),
-                      group_digits(read_head + sz));
+          "read position: {}, new read position: {}",
+          name, inst, group_digits(sz), group_digits(read_head), group_digits(read_head + sz));
     assert(sz > 0);
     read_heads[name] += sz;
     print_py_status(this);
@@ -186,7 +184,7 @@ void RingBuffer::finish_read(const std::string& name, const int inst, const std:
         }
     }
     DEBUG("finish_read {:s}[{:d}]: new last_read_tail: {}", name, inst,
-                              group_digits(last_read_tail));
+          group_digits(last_read_tail));
     print_py_status(this);
     print_full_status();
     empty_cond.notify_all();
@@ -196,9 +194,8 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_for_writable(const std::string& n
                                                             const std::ptrdiff_t sz) {
     assert(sz > 0);
     std::unique_lock<std::recursive_mutex> lock(mutex);
-    DEBUG("wait_for_writable {:s}[{:d}]: requested bytes: {}, initial bytes available: {}",
-              name, inst, group_digits(sz),
-              group_digits(size - (write_next[name] - last_read_tail)));
+    DEBUG("wait_for_writable {:s}[{:d}]: requested bytes: {}, initial bytes available: {}", name,
+          inst, group_digits(sz), group_digits(size - (write_next[name] - last_read_tail)));
     while (1) {
         assert(write_next[name] >= last_read_tail);
         if (shutdown_signal) {
@@ -213,8 +210,8 @@ std::optional<std::ptrdiff_t> RingBuffer::wait_for_writable(const std::string& n
     }
     const std::ptrdiff_t res = write_next[name];
     DEBUG("wait_for_writable {:s}[{:d}]: final bytes available: {}, old write "
-                      "position: {}, new write position: {}",
-                      name, inst, group_digits(sz), group_digits(res), group_digits(res + sz));
+          "position: {}, new write position: {}",
+          name, inst, group_digits(sz), group_digits(res), group_digits(res + sz));
     write_next[name] += sz;
     print_py_status(this);
     print_full_status();
@@ -253,7 +250,7 @@ void RingBuffer::finish_write(const std::string& name, const int inst, const std
         }
     }
     DEBUG("finish_write {:s}[{:d}]: new first_write_head: {}", name, inst,
-                              group_digits(first_write_head));
+          group_digits(first_write_head));
     print_py_status(this);
     print_full_status();
     full_cond.notify_all();
@@ -262,14 +259,13 @@ void RingBuffer::finish_write(const std::string& name, const int inst, const std
 void RingBuffer::print_full_status() {
     buffer_lock lock(mutex);
     INFO("  status: size {}, last_read_tail {}, first_write_head {}, "
-                             "available to read: {}",
-                             group_digits(size), group_digits(last_read_tail),
-                             group_digits(first_write_head),
-                             group_digits(first_write_head - last_read_tail));
+         "available to read: {}",
+         group_digits(size), group_digits(last_read_tail), group_digits(first_write_head),
+         group_digits(first_write_head - last_read_tail));
     for (auto& it : producers) {
         const auto& name = it.second.name;
         INFO("    producer {:s}: first_write_head {}, write_next {}", name,
-                                 group_digits(write_heads[name]), group_digits(write_next[name]));
+             group_digits(write_heads[name]), group_digits(write_next[name]));
     }
     for (auto& it : consumers) {
         const auto& name = it.second.name;
