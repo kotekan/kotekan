@@ -32,6 +32,7 @@ add_library(
     prodSubset.cpp
     countCheck.cpp
     visAccumulate.cpp
+    N2kAccumulate.cpp
     visCompression.cpp
     timeDownsample.cpp
     frbPostProcess.cpp
@@ -63,7 +64,6 @@ add_library(
     ReceiveFlags.cpp
     valve.cpp
     visTransform.cpp
-    visTestPattern.cpp
     visDebug.cpp
     removeEv.cpp
     HFBAccumulate.cpp

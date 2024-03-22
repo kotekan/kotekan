@@ -1,4 +1,3 @@
-
 /*****************************************
 @file
 @brief Accumulation and gating of visibility data.

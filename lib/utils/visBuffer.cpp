@@ -3,7 +3,8 @@
 #include "FrameView.hpp"     // for bind_span, bind_scalar, FrameView
 #include "Telescope.hpp"     // for Telescope
 #include "buffer.hpp"        // for Buffer, allocate_new_metadata_object
-#include "chimeMetadata.hpp" // for chimeMetadata, get_stream_id_from_metadata
+#include "chordMetadata.hpp" // for chordMetadata
+#include "chimeMetadata.hpp" // for chimedMetadata, get_stream_id_from_metadata
 #include "metadata.hpp"      // for metadataContainer
 
 #include "fmt.hpp" // for format, fmt
@@ -135,7 +136,6 @@ VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
     evec(bind_span<cfloat>(_frame, buffer_layout.second[VisField::evec])),
     erms(bind_scalar<float>(_frame, buffer_layout.second[VisField::erms])),
     gain(bind_span<cfloat>(_frame, buffer_layout.second[VisField::gain]))
-
 {
     // Check that the actual buffer size is big enough to contain the calculated
     // view
@@ -144,9 +144,9 @@ VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
     if (required_size > (uint32_t)buffer->frame_size) {
 
         std::string s =
-            fmt::format(fmt("Visibility buffer [{:s}] too small. Must be a minimum of {:d} bytes "
+            fmt::format(fmt("Visibility buffer [{:s}] frames are too small with {:d} bytes. Must be a minimum of {:d} bytes "
                             "for elements={:d}, products={:d}, ev={:d}"),
-                        buffer->buffer_name, required_size, num_elements, num_prod, num_ev);
+                        buffer->buffer_name, (uint32_t)buffer->frame_size, required_size, num_elements, num_prod, num_ev);
 
         throw std::runtime_error(s);
     }
@@ -168,7 +168,6 @@ VisFrameView VisFrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer*
     FrameView::copy_frame(buf_src, frame_id_src, buf_dest, frame_id_dest);
     return VisFrameView(buf_dest, frame_id_dest);
 }
-
 
 // Copy the non-const parts of the metadata
 void VisFrameView::copy_metadata(VisFrameView frame_to_copy) {
@@ -281,31 +280,6 @@ size_t VisFrameView::calculate_frame_size(kotekan::Config& config, const std::st
     }
 
     return calculate_buffer_layout(num_elements, num_prod, num_ev).first;
-}
-
-void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t ind) {
-
-    auto& tel = Telescope::instance();
-
-    // Set to zero as there's no information in chimeMetadata about it.
-    dataset_id = dset_id_t::null;
-
-    // Set the frequency index from the stream id of the metadata
-    freq_id = tel.to_freq_id(get_stream_id_from_metadata(chime_metadata), ind);
-
-    // Set the time
-    uint64_t fpga_seq = chime_metadata->fpga_seq_num;
-
-    timespec ts;
-
-    // Use the GPS time if appropriate.
-    if (tel.gps_time_enabled()) {
-        ts = chime_metadata->gps_time;
-    } else {
-        TIMEVAL_TO_TIMESPEC(&(chime_metadata->first_packet_recv_time), &ts);
-    }
-
-    time = std::make_tuple(fpga_seq, ts);
 }
 
 void VisFrameView::set_metadata(VisMetadata* metadata, const uint32_t num_elements,

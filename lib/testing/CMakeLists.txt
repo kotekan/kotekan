@@ -26,7 +26,8 @@ add_library(
     pulsarSimProcess.cpp
     visNoise.cpp
     visDrop.cpp
-    zeroLowerTriangle.cpp)
+    zeroLowerTriangle.cpp
+    visTestPattern.cpp)
 
 target_include_directories(kotekan_testing PUBLIC .)
 
