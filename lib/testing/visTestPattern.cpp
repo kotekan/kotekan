@@ -238,8 +238,7 @@ void visTestPattern::main_thread() {
                     avg_err /= (float)num_bad;
 
                     // write frame report to outfile
-                    std::locale defaultLocale = std::locale();
-                    std::cout.imbue(std::locale::classic());
+                    outfile.imbue(std::locale::classic());
                     outfile << fpga_count << ",";
                     outfile << time.tv_sec << "." << time.tv_nsec << ",";
                     outfile << freq_id << ",";
@@ -247,7 +246,6 @@ void visTestPattern::main_thread() {
                     outfile << avg_err << ",";
                     outfile << min_err << ",";
                     outfile << max_err << std::endl;
-                    std::cout.imbue(defaultLocale);
 
                     // report errors in this frame
                     DEBUG("{:d} bad elements", num_bad);

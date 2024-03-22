@@ -35,8 +35,8 @@ const Time = Index{Physics,TimeTag}
 
 # Setup
 
-# const setup = :chord
 setup::Symbol
+T::Integer
 
 # ADC sampling time: 1 / (2 * 1200 MHz) ≈ 0.4166667 ns
 
@@ -45,7 +45,6 @@ setup::Symbol
     # Full CHORD
     const sampling_time_μsec = 4096 / (2 * 1200)
     const C = 2
-    const T = 2048   #TODO 32768
     const D = 512
     const B = 96
     const P = 2
@@ -65,7 +64,6 @@ elseif setup ≡ :hirax
     # HIRAX:
     const sampling_time_μsec = 2.56
     const C = 2
-    const T = 2048   #TODO 32768
     const D = 256
     const B = 16                # 8...32
     const P = 2
@@ -84,7 +82,6 @@ elseif setup ≡ :pathfinder
     # CHORD pathfinder
     const sampling_time_μsec = 1.7
     const C = 2
-    const T = 2048   #TODO 32768
     const D = 64
     const B = 16
     const P = 2
@@ -101,6 +98,8 @@ elseif setup ≡ :pathfinder
 else
     @assert false
 end
+
+const Tout = idiv(T, 4)         # always process 1/4 of the ringbuffer at a time
 
 const Bt = 16                   # distribute time samples over that many blocks
 
@@ -359,10 +358,23 @@ function make_bb_kernel()
             int4value => SIMD(:simd, 1, 4),
             cplx => SIMD(:simd, 4, 2),
             time01 => SIMD(:simd, 8, 4),
-            time2etc => Memory(:memory, 1, idiv(T, 4)),
-            polr => Memory(:memory, idiv(T, 4), P),
-            freq => Memory(:memory, idiv(T, 4) * P, F),
-            beam => Memory(:memory, idiv(T, 4) * P * F, B),
+
+            # time2etc => Memory(:memory, 1, idiv(T, 4)),
+            # polr => Memory(:memory, idiv(T, 4), P),
+            # freq => Memory(:memory, idiv(T, 4) * P, F),
+            # beam => Memory(:memory, idiv(T, 4) * P * F, B),
+
+            Time(:time, 4, idiv(Tout, 4)) => Memory(:memory, 1, idiv(Tout, 4)),
+            polr => Memory(:memory, idiv(Tout, 4), P),
+            freq => Memory(:memory, idiv(Tout, 4) * P, F),
+            beam => Memory(:memory, idiv(Tout, 4) * P * F, B),
+
+            # # We could use a larger chunk size than `T1_stride`
+            # Time(:time, 4, idiv(T1_stride, 4)) => Memory(:memory, 1, idiv(T1_stride, 4)),
+            # polr => Memory(:memory, idiv(T1_stride, 4), P),
+            # freq => Memory(:memory, idiv(T1_stride, 4) * P, F),
+            # beam => Memory(:memory, idiv(T1_stride, 4) * P * F, B),
+            # Time(:time, T1_stride, idiv(T, T1_stride)) => Memory(:memory, idiv(T1_stride, 4) * P * F * B, idiv(T, T1_stride)),
         ),
     )
 
@@ -592,6 +604,14 @@ function make_bb_kernel()
     apply!(emitter, :info => layout_info_registers, 1i32)
     store!(emitter, :info_memory => layout_info_memory, :info)
 
+    # Read parameters `Tmin`, `Tmax`
+    if!(emitter, :(!(0i32 ≤ Tmin ≤ Tmax ≤ $(Int32(2 * T)) && (Tmax - Tmin) % $(Int32(T1_stride)) == 0i32))) do emitter
+        apply!(emitter, :info => layout_info_registers, 2i32)
+        store!(emitter, :info_memory => layout_info_memory, :info)
+        trap!(emitter)
+        return nothing
+    end
+
     load!(emitter, :s => layout_s_registers, :s_memory => layout_s_global)
     apply!(emitter, :s, [:s], (s,) -> :($s - $σ))
 
@@ -696,11 +716,30 @@ function make_bb_kernel()
     @assert emitter.environment[:A] == layout_A_registers
 
     loop!(emitter, Time(:time, loopT1.offset, loopT1.length) => loopT1) do emitter
+        push!(
+            emitter.statements,
+            quote
+                Tmin + T1 ≥ Tmax && break
+            end,
+        )
+
         loop!(emitter, Time(:time, loopT2.offset, loopT2.length) => loopT2) do emitter
 
             # Step 1: transferring global memory to shared memory
             if!(emitter, :(IndexSpaces.cuda_warpidx() < $(Int32(num_warps_for_Ecopy)))) do emitter
-                load!(emitter, :E => layout_E_registers, :E_memory => layout_E_memory; align=16)
+                load!(
+                    emitter,
+                    :E => layout_E_registers,
+                    :E_memory => layout_E_memory;
+                    align=16,
+                    postprocess=addr -> :(
+                        let
+                            offset = $(Int32(idiv(D, 4) * P * F)) * Tmin
+                            length = $(Int32(idiv(D, 4) * P * F * T))
+                            mod($addr + offset, length)
+                        end
+                    ),
+                )
                 store!(emitter, :E_shared => layout_E_shared, :E)
                 return nothing
             end
@@ -901,7 +940,7 @@ println("[Creating bb kernel...]")
 const bb_kernel = make_bb_kernel()
 println("[Done creating bb kernel]")
 
-@eval function bb(A_memory, E_memory, s_memory, J_memory, info_memory)
+@eval function bb(Tmin::Int32, Tmax::Int32, A_memory, E_memory, s_memory, J_memory, info_memory)
     E_shared = @cuDynamicSharedMem($E_shared_type, $E_shared_length, $(sizeof(UInt32) * E_shared_offset))
     Ju_shared = @cuDynamicSharedMem($Ju_shared_type, $Ju_shared_length, $(sizeof(UInt32) * Ju_shared_offset))
     $bb_kernel
@@ -937,7 +976,13 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 99 * 1024 # NVIDIA A10/A40 have 99 kB shared memory
     kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm bb(
-        CUDA.zeros(Int8x4, 0), CUDA.zeros(Int4x8, 0), CUDA.zeros(Int32, 0), CUDA.zeros(Int4x8, 0), CUDA.zeros(Int32, 0)
+        Int32(0),
+        Int32(0),
+        CUDA.zeros(Int8x4, 0),
+        CUDA.zeros(Int4x8, 0),
+        CUDA.zeros(Int32, 0),
+        CUDA.zeros(Int4x8, 0),
+        CUDA.zeros(Int32, 0),
     )
     attributes(kernel.fun)[CUDA.CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES] = shmem_bytes
 
@@ -996,6 +1041,12 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             shmem_bytes: $shmem_bytes
           kernel-symbol: "$kernel_symbol"
           kernel-arguments:
+            - name: "Tmin"
+              intent: in
+              type: Int32
+            - name: "Tmax"
+              intent: in
+              type: Int32
             - name: "A"
               intent: in
               type: Int8
@@ -1018,8 +1069,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
               intent: out
               type: Int4
               indices: [C, T, P, F, B]
-              shape: [$C, $T, $P, $F, $B]
-              strides: [1, $C, $(C*T), $(C*T*P), $(C*T*P*F)]
+              shape: [$C, $Tout, $P, $F, $B]
+              strides: [1, $C, $(C*Tout), $(C*Tout*P), $(C*Tout*P*F)]
             - name: "info"
               intent: out
               type: Int32
@@ -1043,7 +1094,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                     Dict("type" => "int", "name" => "cuda_number_of_frequencies", "value" => "$F"),
                     Dict("type" => "int", "name" => "cuda_number_of_polarizations", "value" => "$P"),
                     Dict("type" => "int", "name" => "cuda_number_of_timesamples", "value" => "$T"),
-                    # Dict("type" => "double", "name" => "cuda_sampling_time_usec", "value" => "$sampling_time_μsec"),
+                    # Dict("type" => "int", "name" => "cuda_granularity_number_of_timesamples", "value" => "$T1_stride"),
+                    Dict("type" => "int", "name" => "cuda_granularity_number_of_timesamples", "value" => "$Tout"),
                     Dict("type" => "int", "name" => "cuda_shift_parameter_sigma", "value" => "$σ"),
                 ],
                 "minthreads" => num_threads * num_warps,
@@ -1054,6 +1106,22 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 "shmem_bytes" => shmem_bytes,
                 "kernel_symbol" => kernel_symbol,
                 "kernel_arguments" => [
+                    Dict(
+                        "name" => "Tmin",
+                        "kotekan_name" => "Tmin",
+                        "type" => "int32",
+                        "isoutput" => false,
+                        "hasbuffer" => false,
+                        "isscalar" => true,
+                    ),
+                    Dict(
+                        "name" => "Tmax",
+                        "kotekan_name" => "Tmax",
+                        "type" => "int32",
+                        "isoutput" => false,
+                        "hasbuffer" => false,
+                        "isscalar" => true,
+                    ),
                     Dict(
                         "name" => "A",
                         "kotekan_name" => "gpu_mem_phase",
@@ -1067,6 +1135,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         ],
                         "isoutput" => false,
                         "hasbuffer" => true,
+                        "isscalar" => false,
                     ),
                     Dict(
                         "name" => "E",
@@ -1080,6 +1149,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         ],
                         "isoutput" => false,
                         "hasbuffer" => true,
+                        "isscalar" => false,
                     ),
                     Dict(
                         "name" => "s",
@@ -1098,13 +1168,14 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "type" => "int4p4",
                         "kotekan_name" => "gpu_mem_formed_beams",
                         "axes" => [
-                            Dict("label" => "T", "length" => T),
+                            Dict("label" => "T", "length" => Tout),
                             Dict("label" => "P", "length" => P),
                             Dict("label" => "F", "length" => F),
                             Dict("label" => "B", "length" => B),
                         ],
                         "isoutput" => true,
                         "hasbuffer" => true,
+                        "isscalar" => false,
                     ),
                     Dict(
                         "name" => "info",
@@ -1117,6 +1188,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         ],
                         "isoutput" => true,
                         "hasbuffer" => false,
+                        "isscalar" => false,
                     ),
                 ],
             ),
@@ -1130,7 +1202,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     A_memory = Array{Int8x4}(undef, idiv(D, 2) * B * P * F)
     E_memory = Array{Int4x8}(undef, idiv(D, 4) * P * F * T)
     s_memory = Array{Int32}(undef, B * P * F)
-    J_wanted = Array{Int4x8}(undef, idiv(T, 4) * P * F * B)
+    J_wanted = Array{Int4x8}(undef, idiv(Tout, 4) * P * F * B)
     info_wanted = Array{Int32}(undef, num_threads * num_warps * num_blocks)
 
     println("Setting up input data...")
@@ -1142,6 +1214,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     # map!(i -> rand(Int8x4), A_memory, A_memory)
     # map!(i -> rand(Int4x8), E_memory, E_memory)
     # map!(i -> rand(Int32(1):Int32(10)), s_memory, s_memory)
+
+    Tmin = Int32(0)
+    Tmax = Int32(Tout)
 
     input = :random
     if input ≡ :zero
@@ -1216,7 +1291,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     if run_selftest
         println("Evaluating kernel on CPU...")
         Threads.@threads for b in 0:(B - 1)
-            for f in 0:(F - 1), p in 0:(P - 1), t in 0:(T - 1)
+            for f in 0:(F - 1), p in 0:(P - 1), t in 0:(Tout - 1)
                 s = s_memory[(f * P + p) * B + b + 1]
                 Ju = 0 + 0im
                 for d in 0:(D - 1)
@@ -1239,11 +1314,22 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     A_cuda = CuArray(A_memory)
     E_cuda = CuArray(E_memory)
     s_cuda = CuArray(s_memory)
-    J_cuda = CUDA.fill(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8), idiv(T, 4) * P * F * B)
+    J_cuda = CUDA.fill(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8), idiv(Tout, 4) * P * F * B)
     info_cuda = CUDA.fill(-1i32, num_threads * num_warps * num_blocks)
 
     println("Running kernel...")
-    kernel(A_cuda, E_cuda, s_cuda, J_cuda, info_cuda; threads=(num_threads, num_warps), blocks=num_blocks, shmem=shmem_bytes)
+    kernel(
+        Tmin,
+        Tmax,
+        A_cuda,
+        E_cuda,
+        s_cuda,
+        J_cuda,
+        info_cuda;
+        threads=(num_threads, num_warps),
+        blocks=num_blocks,
+        shmem=shmem_bytes,
+    )
     synchronize()
 
     if nruns > 0
@@ -1251,6 +1337,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         stats = @timed begin
             for run in 1:nruns
                 kernel(
+                    Tmin,
+                    Tmax,
                     A_cuda,
                     E_cuda,
                     s_cuda,
@@ -1308,12 +1396,12 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     if run_selftest
         println("Checking results...")
         error_count = 0
-        checked_J = falses(B, T, P, F)
-        for f in 0:(F - 1), p in 0:(P - 1), t in 0:4:(T - 1), b in 0:(B - 1)
+        checked_J = falses(B, Tout, P, F)
+        for f in 0:(F - 1), p in 0:(P - 1), t in 0:4:(Tout - 1), b in 0:(B - 1)
             @assert !any(checked_J[b + 1, (t + 1):(t + 4), p + 1, f + 1])
             checked_J[b + 1, (t + 1):(t + 4), p + 1, f + 1] .= true
-            J = J_memory[idiv(((b * F + f) * P + p) * T + t, 4) + 1]
-            Jwant = J_wanted[idiv(((b * F + f) * P + p) * T + t, 4) + 1]
+            J = J_memory[idiv(((b * F + f) * P + p) * Tout + t, 4) + 1]
+            Jwant = J_wanted[idiv(((b * F + f) * P + p) * Tout + t, 4) + 1]
             if J ≠ Jwant
                 if error_count ≤ 100
                     println("    ERROR: freq=$f polr=$p time=$t beam=$b J=$J Jwant=$Jwant")

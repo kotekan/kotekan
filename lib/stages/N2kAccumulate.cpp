@@ -104,8 +104,9 @@ void N2kAccumulate::main_thread() {
         if (in_frame == nullptr)
             break;
         int32_t* input = (int32_t*)in_frame;
-        size_t in_frame_num = get_fpga_seq_num(in_buf, in_frame_id) / _n_fpga_samples_per_N2k_frame;
+        
         std::shared_ptr<chordMetadata> frame_metadata = get_chord_metadata(in_buf, in_frame_id);
+        size_t in_frame_num = frame_metadata->fpga_seq_num / _n_fpga_samples_per_N2k_frame;
 
         // Start and end times of this frame
         bool gps_time_enabled = false;

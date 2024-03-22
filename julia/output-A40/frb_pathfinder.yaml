@@ -14,7 +14,7 @@ kernel-description:
     number-of-dishes: 64
     number-of-frequencies: 2048
     number-of-polarizations: 2
-    number-of-timesamples: 144
+    number-of-timesamples: 4096
     output-gain: 0.003125
     sampling-time-μsec: 27.30666666666667
   compile-parameters:
@@ -24,8 +24,20 @@ kernel-description:
     threads: [32, 6]
     blocks: [2048]
     shmem_bytes: 13920
-  kernel-symbol: "_Z3frb13CuDeviceArrayI7Int16x2Li1ELi1EES_I9Float16x2Li1ELi1EES_I6Int4x8Li1ELi1EES_IS1_Li1ELi1EES_I5Int32Li1ELi1EE"
+  kernel-symbol: "_Z3frb5Int32S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE"
   kernel-arguments:
+    - name: "Tmin"
+      intent: in
+      type: Int32
+    - name: "Tmax"
+      intent: in
+      type: Int32
+    - name: "T̄min"
+      intent: in
+      type: Int32
+    - name: "T̄max"
+      intent: in
+      type: Int32
     - name: "S"
       intent: in
       type: Int16
@@ -42,14 +54,14 @@ kernel-description:
       intent: in
       type: Int4
       indices: [C, D, P, F, T]
-      shape: [2, 64, 2, 2048, 144]
+      shape: [2, 64, 2, 2048, 4096]
       strides: [1, 2, 128, 256, 524288]
     - name: "I"
       intent: out
       type: Float16
-      indices: [beamP, beamQ, Tbar, F]
-      shape: [16, 24, 3, 2048]
-      strides: [1, 16, 384, 1536]
+      indices: [beamP, beamQ, F, Tbar]
+      shape: [16, 24, 2048, 128]
+      strides: [1, 16, 384, 786432]
     - name: "info"
       intent: out
       type: Int32

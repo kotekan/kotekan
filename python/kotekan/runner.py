@@ -12,6 +12,7 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 import itertools
 import json
 import os
+import sys
 import shutil
 import subprocess
 import tempfile
@@ -76,7 +77,6 @@ class KotekanRunner(object):
         """Get kotekan's build config."""
         cmd = "%s --version-json" % cls.kotekan_binary()
         version_string = subprocess.check_output(cmd.split()).decode()
-
         return json.loads(version_string)
 
     def __init__(
@@ -143,8 +143,6 @@ class KotekanRunner(object):
                 print(cmd)
                 p = subprocess.run(cmd, stdout=f_out, stderr=f_out, shell=True)
             else:
-                import sys
-
                 print("Config file %s", fh.name, file=sys.stderr)
                 cmd = "%s -b %s -c %s" % (self.kotekan_binary(), rest_addr, fh.name)
                 print(cmd)

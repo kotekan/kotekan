@@ -243,7 +243,7 @@ public:
         dataset_id = dset_id_t::null;
 
         // Set the frequency index from the stream id of the metadata
-        freq_id = tel.to_freq_id(get_stream_id_from_metadata(metadata), f_ind);
+        freq_id = tel.to_freq_id({(uint64_t)metadata->stream_ID}, f_ind);
 
         // Set the time
         uint64_t fpga_seq = metadata->fpga_seq_num;

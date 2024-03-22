@@ -27,8 +27,9 @@ const char* chord_datatype_string(chordDataType type) {
 }
 
 chordMetadata::chordMetadata() :
-    chimeMetadata(), frame_counter(-1), type(unknown_type), dims(-1), offset(0), n_one_hot(-1),
+    frame_counter(-1), type(unknown_type), dims(-1), offset(0), n_one_hot(-1), sample0_offset(-1),
     nfreq(-1), ndishes(-1), n_dish_locations_ew(-1), n_dish_locations_ns(-1), dish_index(nullptr) {
+    name[0] = '\0';
     for (int d = 0; d < CHORD_META_MAX_DIM; ++d) {
         dim[d] = -1;
         dim_name[d][0] = '\0';
@@ -55,6 +56,7 @@ struct chordMetadataFormat {
 
     int32_t frame_counter;
 
+    char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
     // chordDataType type;
     int32_t type;
 
@@ -68,6 +70,16 @@ struct chordMetadataFormat {
     int32_t n_one_hot;
     char onehot_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME];
     int32_t onehot_index[CHORD_META_MAX_DIM];
+
+    // All time samples in this buffer (or the whole buffer, if the
+    // buffer does not have a time sample index) have `sample_offset`
+    // added to the buffer's time sample index. (This allows quickly
+    // shifting metadata in time to re-use metadata objects.)
+    //
+    // The actual (possibly fractional) time sample index is calculated as follows:
+    //     T_actual = (sample0_offset + T + half_fpga_sample0[F]) / time_downsampling_fpga[F]
+    // where `T` is the time sample index and `F` is the coarse frequency index.
+    int64_t sample0_offset;
 
     // Per-frequency arrays
     int32_t nfreq;
@@ -92,19 +104,19 @@ struct chordMetadataFormat {
 };
 
 size_t chordMetadata::get_serialized_size() {
-    return chimeMetadata::get_serialized_size() + sizeof(chordMetadataFormat);
+    return sizeof(chordMetadataFormat);
 }
 
 size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
     assert(length >= get_serialized_size());
-    size_t offset = chimeMetadata::set_from_bytes(bytes, length);
-    bytes += offset;
-    length -= offset;
     assert(length >= sizeof(chordMetadataFormat));
 
     const chordMetadataFormat* fmt = reinterpret_cast<const chordMetadataFormat*>(bytes);
 
     frame_counter = fmt->frame_counter;
+    for (int i = 0; i < CHORD_META_MAX_DIMNAME; i++) {
+        name[i] = fmt->name[i];
+    }
     type = (chordDataType)fmt->type;
     assert(CHORD_META_MAX_DIM == fmt->max_dim);
     assert(CHORD_META_MAX_DIMNAME == fmt->max_dimname);
@@ -122,6 +134,7 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
     }
     offset = fmt->offset;
     n_one_hot = fmt->n_one_hot;
+    sample0_offset = fmt->sample0_offset;
     nfreq = fmt->nfreq;
     assert(nfreq < CHORD_META_MAX_FREQ);
     for (int i = 0; i < nfreq; i++) {
@@ -130,13 +143,10 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
         half_fpga_sample0[i] = fmt->half_fpga_sample0[i];
         time_downsampling_fpga[i] = fmt->time_downsampling_fpga[i];
     }
-    return offset + sizeof(chordMetadataFormat);
+    return sizeof(chordMetadataFormat);
 }
 
 size_t chordMetadata::serialize(char* bytes) {
-    size_t offset = chimeMetadata::serialize(bytes);
-    bytes += offset;
-
     chordMetadataFormat* fmt = reinterpret_cast<chordMetadataFormat*>(bytes);
     memset(fmt, 0, sizeof(chordMetadataFormat));
 
@@ -145,7 +155,10 @@ size_t chordMetadata::serialize(char* bytes) {
     fmt->max_freq = CHORD_META_MAX_FREQ;
 
     fmt->frame_counter = frame_counter;
-    fmt->type = (int32_t)fmt->type;
+    for (int i = 0; i < CHORD_META_MAX_DIMNAME; i++) {
+        fmt->name[i] = name[i];
+    }
+    fmt->type = (int32_t)type;
     fmt->dims = dims;
     for (int i = 0; i < dims; i++) {
         fmt->dim[i] = dim[i];
@@ -158,6 +171,7 @@ size_t chordMetadata::serialize(char* bytes) {
     }
     fmt->offset = offset;
     fmt->n_one_hot = n_one_hot;
+    fmt->sample0_offset = sample0_offset;
     fmt->nfreq = nfreq;
     assert(nfreq < CHORD_META_MAX_FREQ);
     for (int i = 0; i < nfreq; i++) {
@@ -166,5 +180,5 @@ size_t chordMetadata::serialize(char* bytes) {
         fmt->half_fpga_sample0[i] = half_fpga_sample0[i];
         fmt->time_downsampling_fpga[i] = time_downsampling_fpga[i];
     }
-    return offset + sizeof(chordMetadataFormat);
+    return sizeof(chordMetadataFormat);
 }

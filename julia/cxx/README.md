@@ -7,3 +7,7 @@ kernels here can also produce output that is more-or-less similar to
 the output that should be produced by the Julia-generated CUDA
 kernels, usually up to floating-point round-off or quantization
 differences.
+
+TODO -- there are testing Kotekan stages, eg
+  lib/testing/gpuSimulateCudaBasebandBeamformer.cpp
+that should either be adapted to include this code, OR be auto-generated.

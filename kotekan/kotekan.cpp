@@ -14,14 +14,15 @@
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
 
-#include <algorithm>   // for max
-#include <array>       // for array
-#include <assert.h>    // for assert
-#include <csignal>     // for signal, SIGINT, SIGTERM, sig_atomic_t
-#include <exception>   // for exception
-#include <getopt.h>    // for no_argument, getopt_long, required_argument, option
-#include <iostream>    // for endl, basic_ostream, cout, ostream
-#include <iterator>    // for reverse_iterator
+#include <algorithm> // for max
+#include <array>     // for array
+#include <assert.h>  // for assert
+#include <csignal>   // for signal, SIGINT, SIGTERM, sig_atomic_t
+#include <exception> // for exception
+#include <getopt.h>  // for no_argument, getopt_long, required_argument, option
+#include <iostream>  // for endl, basic_ostream, cout, ostream
+#include <iterator>  // for reverse_iterator
+#include <locale>
 #include <map>         // for map
 #include <memory>      // for allocator_traits<>::value_type
 #include <mutex>       // for mutex, lock_guard
@@ -411,6 +412,12 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
+    try {
+        std::locale::global(std::locale::classic());
+    } catch (const std::exception& ex) {
+        std::cerr << "Exception setting locale: " << ex.what() << std::endl;
+    }
+
     char* config_file_name = (char*)"none";
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
     bool enable_stderr = true;
@@ -524,7 +531,7 @@ int main(int argc, char** argv) {
 
         // Create the command line, adding the yaml dump, and extra vars if needed
         std::vector<std::string> exec_command;
-        exec_command.push_back("python");
+        exec_command.push_back("python3");
         exec_command.push_back("-c");
         exec_command.push_back(yaml_to_json);
 

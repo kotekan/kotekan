@@ -848,26 +848,26 @@ function setup(
     nbeams_j=8,
     nframes=1,
 )
-    @show :setup
-    @show source_amplitude
-    @show source_frequency
-    @show source_position_ew
-    @show source_position_ns
-    @show num_dish_locations_ew
-    @show num_dish_locations_ns
-    @show dish_indices_ptr
-    @show dish_separation_ew
-    @show dish_separation_ns
-    @show num_dishes
-    @show adc_frequency
-    @show ntaps
-    @show nfreq
-    @show ntimes
-    @show ndishes_i
-    @show ndishes_j
-    @show nbeams_i
-    @show nbeams_j
-    @show nframes
+    # @show :setup
+    # @show source_amplitude
+    # @show source_frequency
+    # @show source_position_ew
+    # @show source_position_ns
+    # @show num_dish_locations_ew
+    # @show num_dish_locations_ns
+    # @show dish_indices_ptr
+    # @show dish_separation_ew
+    # @show dish_separation_ns
+    # @show num_dishes
+    # @show adc_frequency
+    # @show ntaps
+    # @show nfreq
+    # @show ntimes
+    # @show ndishes_i
+    # @show ndishes_j
+    # @show nbeams_i
+    # @show nbeams_j
+    # @show nframes
 
     dish_indices = if dish_indices_ptr != Ptr{Cvoid}()
         Int64[
@@ -937,7 +937,7 @@ function set_A(ptr::Ptr{UInt8}, sz::Int64, ndishs::Int64, nbbbeams::Int64, npolr
 end
 
 function set_J(ptr::Ptr{UInt8}, sz::Int64, ntimes::Int64, npolrs::Int64, nfreqs::Int64, nbbbeams::Int64, frame_index::Int64)
-    @show set_J ptr sz ntimes npolrs nfreqs nbbbeams frame_index
+    # @show set_J ptr sz ntimes npolrs nfreqs nbbbeams frame_index
     bbbeamss = stored_bbbeamss::AbstractVector{<:BBBeams{Int8}}
     if frame_index ∉ axes(bbbeamss)[1]
         println("Frame index $frame_index does not exist in J field")
@@ -951,7 +951,7 @@ end
 
 stored_frbbeamss = nothing
 function set_W(ptr::Ptr{UInt8}, sz::Int64, ndishsM::Int64, ndishsN::Int64, npolrs::Int64, nfreqs::Int64, frame_index::Int64)
-    @show set_W ptr sz ndishsM ndishsN npolrs nfreqs frame_index
+    # @show set_W ptr sz ndishsM ndishsN npolrs nfreqs frame_index
     frbbeamss = stored_frbbeamss::AbstractVector{<:FRBBeams{Float32}}
     if frame_index ∉ axes(frbbeamss)[1]
         println("Frame index $frame_index does not exist in W field")
@@ -972,7 +972,7 @@ end
 function set_I(
     ptr::Ptr{UInt8}, sz::Int64, nfrbbeams_i::Int64, nfrbbeams_j::Int64, ntimes_ds::Int64, nfreqs::Int64, frame_index::Int64
 )
-    @show set_I ptr sz nfrbbeams_i nfrbbeams_j ntimes_ds nfreqs frame_index
+    # @show set_I ptr sz nfrbbeams_i nfrbbeams_j ntimes_ds nfreqs frame_index
     frbbeamss = stored_frbbeamss::AbstractVector{<:FRBBeams{Float32}}
     if frame_index ∉ axes(frbbeamss)[1]
         println("Frame index $frame_index does not exist in I field")

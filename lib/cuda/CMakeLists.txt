@@ -81,7 +81,7 @@ endif()
 target_link_libraries(
     kotekan_cuda
     PRIVATE libexternal kotekan_libs -lstdc++
-    INTERFACE ${CUDA_LIBRARIES} cublas cuda nvrtc nvptxcompiler_static)
+    INTERFACE ${CUDA_LIBRARIES} cublas cuda nvrtc nvptxcompiler_static nvToolsExt)
 
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --forward-unknown-to-host-compiler")
 
