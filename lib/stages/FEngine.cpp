@@ -510,7 +510,11 @@ void FEngine::main_thread() {
                 // for (int n = 0; n < num_dishes * num_polarizations * num_frequencies * num_times;
                 //      ++n)
                 //     ((uint8_t*)E_frame)[n] = 0x44;
-                memset(E_frame, 0x44, num_dishes * num_polarizations * num_frequencies * num_times);
+                // std::memset(E_frame, 0x44,
+                //        num_dishes * num_polarizations * num_frequencies * num_times);
+                if (E_frame_index < E_buffer->num_frames)
+                    std::memset(E_frame, 0x44,
+                                num_dishes * num_polarizations * num_frequencies * num_times);
             }
             profile_range_pop();
             DEBUG("[{:d}] Done filling E buffer.", E_frame_index);
