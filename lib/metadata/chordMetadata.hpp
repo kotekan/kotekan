@@ -191,6 +191,21 @@ public:
 #pragma GCC diagnostic pop
     }
 
+    void set_name(const std::string& name) {
+        // GCC helpfully tries to warn us that the destination string may end up not
+        // null-terminated, which we know.
+#pragma GCC diagnostic push
+#if GCC_VERSION > 80000
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
+#endif
+        strncpy(this->name, name.c_str(), CHORD_META_MAX_DIMNAME);
+#pragma GCC diagnostic pop
+    }
+
+    std::string get_name() const {
+        return std::string(name, strnlen(name, CHORD_META_MAX_DIMNAME));
+    }
+
     void set_onehot_dimension(int dim, int i, const std::string& name) {
         assert(dim < CHORD_META_MAX_DIM);
         this->onehot_index[dim] = i;
