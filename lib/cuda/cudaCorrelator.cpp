@@ -91,8 +91,7 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
               in_meta->get_type_string());
         // Assert T x F x P x D
         assert(in_meta->dims == 4);
-        // ringbuffer -- is this true??
-        assert(in_meta->dim[0] == _samples_per_data_set);
+        // in_meta->dim[0] is in the ringbuffer
         assert(in_meta->dim[1] == _num_local_freq);
         assert(in_meta->dim[2] == 2);
         assert(in_meta->dim[3] == _num_elements / 2);
@@ -118,7 +117,14 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
         out_meta->set_array_dimension(4, 2, "P");
         out_meta->set_array_dimension(5, _num_elements / 2, "D");
         out_meta->set_array_dimension(6, 2, "C");
-        // FIXME -- timestamp, sample0_offset?
+
+        for (int freq = 0; freq < out_meta->nfreq; ++freq) {
+            out_meta->time_downsampling_fpga[freq] =
+                _sub_integration_ntime * in_meta->time_downsampling_fpga[freq];
+            out_meta->half_fpga_sample0[freq] =
+                in_meta->half_fpga_sample0[freq] + out_meta->time_downsampling_fpga[freq];
+        }
+
         DEBUG("Set output metadata: array shape {:s}, array type {:s}",
               out_meta->get_dimensions_string(), out_meta->get_type_string());
     }
