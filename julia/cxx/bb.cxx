@@ -1,5 +1,6 @@
 // CHORD 8-bit baseband beamformer
-// See <https://www.overleaf.com/project/6228adae742a3a2da1afe437>
+// See ../docs/CHORD_8_bit_baseband_beamformer.pdf in this repository
+// or <https://www.overleaf.com/project/6228adae742a3a2da1afe437>
 
 #include <array>
 #include <cassert>
