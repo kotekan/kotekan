@@ -12,9 +12,13 @@ kernel_path: "lib/cuda/kernels"
 
 frame_arrival_period: 2.56e-6 * num_times
 
+sizeof_int8: 1
 sizeof_int16: 2
 sizeof_int32: 4
+sizeof_int64: 8
 sizeof_float16: 2
+sizeof_float32: 4
+sizeof_float64: 8
 
 # Basic constants
 num_components: 2
@@ -68,6 +72,10 @@ bb_num_beams: bb_num_beams_P * bb_num_beams_Q
 # Upchannelizer setup
 upchannelization_factor: 16
 
+# Correlator setup
+n2k_sub_integration_ntime: 1024 # 16384
+n2k_samples_per_data_set: 2048  # 32768
+
 # FRB beamformer setup
 frb_downsampling_factor: 40
 # frb_num_output_times: num_times / upchannelization_factor / frb_downsampling_factor   # rounding up to next power of 2
@@ -100,7 +108,13 @@ host_upchan_gain_buffer:
     frame_size: sizeof_float16 * num_frequencies * upchannelization_factor
     metadata_pool: main_pool
 
-host_frb_phase_buffer:
+host_n2k_correlation_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: sizeof_int32 * num_components * num_dishes * num_polarizations * num_dishes * num_polarizations * (num_frequencies * upchannelization_factor) * (n2k_samples_per_data_set / n2k_sub_integration_ntime)
+    metadata_pool: main_pool
+
+host_frb1_phase_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
     frame_size: sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * num_frequencies * upchannelization_factor * num_polarizations
@@ -236,6 +250,33 @@ run_upchan:
           gpu_mem_gain: upchan_gain_buffer
           gpu_mem_output_voltage: upchan_voltage_buffer
 
+# n2k: supported (nstations,nfreq):
+#     nstations=128 (pathfinder):
+#         nfreq in (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048)
+#     nstations=1024 (chord):
+#         nfreq in (1, 2, 4, 8, 16, 32, 64, 128)
+run_n2k:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_upchan_voltage_ringbuffer_in: host_upchan_voltage_ringbuffer
+        out_buffers:
+            host_n2k_correlation_buffer_in: host_n2k_correlation_buffer
+        commands:
+        - name: cudaCorrelator
+          num_elements: num_dishes * num_polarizations
+          num_local_freq: num_frequencies * upchannelization_factor
+          samples_per_data_set: n2k_samples_per_data_set
+          sub_integration_ntime: n2k_sub_integration_ntime
+          in_signal: host_upchan_voltage_ringbuffer_in
+          gpu_mem_voltage: upchan_voltage_buffer
+          gpu_mem_correlation_triangle: n2k_correlation_matrix_buffer
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: n2k_correlation_matrix_buffer
+          out_buf: host_n2k_correlation_buffer_in
+
 run_recv_upchan_voltage:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -321,6 +362,10 @@ write_data:
         in_buf: host_upchan_voltage_buffer
         file_name: upchan_voltage
     write_frb_phase:
+    write_n2k_correlation:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_n2k_correlation_buffer
+        file_name: n2k_correlation
         kotekan_stage: asdfFileWrite
         in_buf: host_frb_phase_buffer
         file_name: frb_phase
