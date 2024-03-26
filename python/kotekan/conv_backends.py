@@ -30,7 +30,7 @@ def get_backend(name):
         "USE_L4_DB": False,
         "RAW_PATH": "/tank/baseband_raw",
         "PROMETHEUS_GW": "aux:9091",
-        "AUTO_DELETE": False,
+        "AUTO_DELETE": True,
         "COCO_URL": "http://aux:54323/baseband-status",
     }  # a conv_backend for prometheus integration without L4DB integration (is this needed for outriggers?) or datatrails integration.
 
