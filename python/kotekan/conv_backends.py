@@ -19,20 +19,23 @@ def get_backend(name):
         "USE_L4_DB": True,
         "RAW_PATH": "/data/baseband_raw/",
         "PROMETHEUS_GW": "frb-vsop.chime:9091",
+        "AUTO_DELETE": False, 
         "COCO_URL": "http://csBfs:54323/baseband-status",
     }
 
     kko_backend = {
-        "ARCHIVER_MOUNT": "/data/kko/baseband/raw",
+        "ARCHIVER_MOUNT": "/tank/data/kko/baseband/raw",
         "NUM_THREADS": 5,
         "KOTEKAN_CONFIG": "/home/calvin/baseband_commissioning/kotekan/config/chime_kko_baseband_recv.j2", # POINT TO MOUNTED FILE
         "USE_L4_DB": False,
         "RAW_PATH": "/tank/baseband_raw",
         "PROMETHEUS_GW": "aux:9091",
+        "AUTO_DELETE": False,
         "COCO_URL": "http://aux:54323/baseband-status",
     }  # a conv_backend for prometheus integration without L4DB integration (is this needed for outriggers?) or datatrails integration.
 
     if name == "chime":
+        print('We should not use this at CHIME anymore')
         return chime_backend
     if name == "kko":
         return kko_backend

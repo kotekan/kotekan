@@ -30,20 +30,21 @@ Parameters to be set from environmental variables:
 
 # Default backend parameters
 conv_backend = {
-    "ARCHIVER_MOUNT": "/data/chime/baseband/raw",
+    "ARCHIVER_MOUNT": "/data/kko/baseband/raw",
     "NUM_THREADS": 5,
     "KOTEKAN_CONFIG": "../../../config/baseband_commissioning/kotekan/config/chime_science_run_recv_baseband.yaml",
     "USE_L4_DB": True,
     "RAW_PATH": "/data/baseband_raw/",
     "PROMETHEUS_GW": "frb-vsop.chime:9091",
     "COCO_URL": "http://csBfs:54323/baseband-status",
+    "AUTO_DELETE": False,
 }
 
 # If defined in environment, use those
 for k in conv_backend.keys():
     val = os.environ.get(k, None)
     if val is not None:
-        val = val.lower() == 'true' if k == "USE_L4_DB" else val
+        val = val.lower() == 'true' if k in ["USE_L4_DB","AUTO_DELETE"] else val
         conv_backend[k] = val
 
 
@@ -59,7 +60,10 @@ def convert(file_name, config_file, converted_filenames, backend):
     if os.path.exists(converted_file):
         print(
             f"Converted {file_name} -> {converted_file}; will remove .data when we validate this"
-        )  # os.system(f"rm -f {file_name}")
+        )
+        if backend['AUTO_DELETE']:
+            print(f'Auto-delete enabled; removing {file_name}')
+            os.system(f"rm -f {file_name}")
 
 
 def connect_db():
@@ -268,7 +272,9 @@ def convert_data(e, num_threads, sqlite, conn, conv_backend):
             if exists:
                 # UPDATE local DB with state FINISHED
                 print(f"Conversion done. Removing {raw_folder}.")
-                # COMMENTING THIS OUT FOR PCO commissioning os.system(f"rm -rf " + raw_folder)
+                if conv_backend['AUTO_DELETE']:
+                    print(f'Auto-delete is enabled; removing {raw_folder}')
+                    os.system(f"rm -rf " + raw_folder)
                 if sqlite is not None and conn is not None:
                     print("Updating state in sqlite DB")
                     sqlite.execute(
