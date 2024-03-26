@@ -213,8 +213,8 @@ def process_raw_file(
             baseband = np.zeros(shape=(event_fpga_len, num_elements), dtype=np.uint8)
         else:
             # Data validity check: all frames in the file should be for the same event and frequency
-            assert event_id == frame_metadata.event_id
-            assert freq_id == frame_metadata.freq_id
+            assert event_id == frame_metadata.event_id, f"Fatal error: event_id should be {event_id}, is actually {frame_metadata.event_id}"
+            assert freq_id == frame_metadata.freq_id, f"Fatal error: freq_id should be {freq_id}, is actually {frame_metadata.freq_id}"
 
             assert event_fpga_start == frame_metadata.time0_fpga
             assert event_fpga_end == frame_metadata.event_end_seq

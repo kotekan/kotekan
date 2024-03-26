@@ -9,6 +9,7 @@ import requests
 import sys
 import baseband_archiver
 import multiprocessing
+from kotekan import conv_backends
 from glob import glob
 from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 
@@ -27,7 +28,6 @@ Parameters to be set from environmental variables:
     COCO_URL : The HTTP endpoint which reports baseband status (i.e. where is coco running?)
 """
 
-
 # Default backend parameters
 conv_backend = {
     "ARCHIVER_MOUNT": "/data/kko/baseband/raw",
@@ -39,6 +39,7 @@ conv_backend = {
     "COCO_URL": "http://csBfs:54323/baseband-status",
     "AUTO_DELETE": False,
 }
+conv_backend = conv_backends.get_backend('kko') # kko by default, since this code is deprecated at CHIME
 
 # If defined in environment, use those
 for k in conv_backend.keys():
@@ -107,11 +108,12 @@ def is_ready(event, coco_url):
         The coco url to query: it should end in the "baseband-status" endpoint.
     """
     ready = False
+    print(event[0])
     response = requests.get(
         f"{coco_url}?event_id={event[0]}",
         headers={"Content-Type": "application/json"},
         data='{"coco_report_type": "FULL"}',
-        timeout=3,
+        timeout=10, # seconds
     )
     try:
         response.raise_for_status()
