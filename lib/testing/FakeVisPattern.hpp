@@ -21,6 +21,7 @@
 #include "visBuffer.hpp"      // for VisFrameView
 #include "visUtil.hpp"        // for cfloat
 
+#include <random>   // for mt19937, normal_distribution, random_device
 #include <deque>      // for deque
 #include <functional> // for function
 #include <optional>   // for optional
@@ -219,6 +220,26 @@ public:
 
 private:
     std::vector<cfloat> test_pattern_value;
+};
+
+
+/**
+ * @brief Fill with a pattern with Gaussian noise.
+ *
+ * The underlying inputs are uncorrelated with variance of 1.
+ **/
+class NoiseVisPattern : public FakeVisPattern {
+public:
+    /// @sa FakeGpuPattern::FakeVisPattern
+    NoiseVisPattern(kotekan::Config& config, const std::string& path);
+
+    /// @sa FakeVisPattern::fill
+    void fill(VisFrameView& frame) override;
+
+private:
+    std::random_device rd;
+    std::mt19937 gen;
+    std::normal_distribution<float> gaussian;
 };
 
 

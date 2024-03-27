@@ -1126,6 +1126,7 @@ class KotekanStageTester(KotekanRunner):
         parallel_stage_type=None,
         parallel_stage_config={},
         rest_commands=None,
+        rest_port=0,
         noise=False,
         expect_failure=False,
         gdb=False,
@@ -1202,6 +1203,7 @@ class KotekanStageTester(KotekanRunner):
             stage_block,
             global_config,
             rest_commands,
+            rest_port=rest_port,
             expect_failure=expect_failure,
             gdb=gdb,
         )

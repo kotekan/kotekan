@@ -117,6 +117,9 @@ public:
 
 private:
     uint32_t _num_local_freq;
+    uint64_t time0_ns = 0;
+    uint64_t dt_ns;
+
 };
 
 

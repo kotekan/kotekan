@@ -33,6 +33,7 @@ REGISTER_FAKE_VIS_PATTERN(TestPatternSimpleVisPattern, "test_pattern_simple");
 REGISTER_FAKE_VIS_PATTERN(TestPatternFreqVisPattern, "test_pattern_freq");
 REGISTER_FAKE_VIS_PATTERN(TestPatternInputVisPattern, "test_pattern_inputs");
 REGISTER_FAKE_VIS_PATTERN(ChangeStatePattern, "change_state");
+REGISTER_FAKE_VIS_PATTERN(NoiseVisPattern, "noise");
 
 
 FakeVisPattern::FakeVisPattern(kotekan::Config& config, const std::string& path) {
@@ -65,6 +66,25 @@ void DefaultVisPattern::fill(VisFrameView& frame) {
         // out_vis[3] = {(float) output_frame_id, 0.};
     }
 }
+
+
+NoiseVisPattern::NoiseVisPattern(kotekan::Config& config, const std::string& path) :
+    FakeVisPattern(config, path),
+    rd(),
+    gen(rd()),
+    gaussian(0, 1) {}
+
+void NoiseVisPattern::fill(VisFrameView& frame) {
+    auto out_vis = frame.vis;
+
+    for (size_t i = 0; i < frame.num_elements; i++) {
+        for (size_t j = i; j < frame.num_elements; j++) {
+            uint32_t pi = cmap(i, j, frame.num_elements);
+            out_vis[pi] = {gaussian(gen), gaussian(gen)};
+        }
+    }
+}
+
 
 FillIJVisPattern::FillIJVisPattern(kotekan::Config& config, const std::string& path) :
     FakeVisPattern(config, path) {}
