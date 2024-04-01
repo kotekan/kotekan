@@ -35,6 +35,7 @@ class VisMetadata(ctypes.Structure):
 # The number of pulsar beams currently being used
 NBEAM = 20
 
+
 class BeamCoord(ctypes.Structure):
     """Struct repr of BeamCoord field in ChimeMetadata."""
 
