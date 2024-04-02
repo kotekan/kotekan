@@ -246,7 +246,7 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
                                       zero_new_frames);
             if (frames[i] == nullptr) {
                 throw std::runtime_error(
-                    fmt::format(fmt("Failed to allocate Buffer memory: %d bytes: %s (%d)"),
+                    fmt::format(fmt("Failed to allocate Buffer memory: {} bytes: {} ({})"),
                                 aligned_frame_size, strerror(errno), errno));
             }
         } else {
