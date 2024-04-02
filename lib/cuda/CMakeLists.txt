@@ -47,7 +47,7 @@ add_library(
     cudaFRBBeamformer_pathfinder_U32.cpp
     cudaFRBBeamformer_pathfinder_U64.cpp
     cudaFRBBeamReformer.cpp
-    quantize_kernel_wrapper.cu
+    cudaQuantizeKernel.cu
     cudaQuantize.cpp
     cudaRechunk.cpp
     cudaCopyFromRingbuffer.cpp
