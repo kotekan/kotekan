@@ -23,6 +23,16 @@
 namespace {
 ASDF::scalar_type_id_t chord2asdf(const chordDataType type) {
     switch (type) {
+        case uint4p4:
+            return ASDF::id_uint8; // TODO: Define ASDF uint4+4 type
+        case uint8:
+            return ASDF::id_uint8;
+        case uint16:
+            return ASDF::id_uint16;
+        case uint32:
+            return ASDF::id_uint32;
+        case uint64:
+            return ASDF::id_uint64;
         case int4p4:
             return ASDF::id_uint8; // TODO: Define ASDF int4+4 type
         case int8:
@@ -96,13 +106,10 @@ public:
         auto& write_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
             "kotekan_asdffilewrite_write_time_seconds", unique_name);
 
+        const double start_time = current_time();
+
         for (std::int64_t frame_counter = 0;; ++frame_counter) {
             const std::uint32_t frame_id = frame_counter % buffer->num_frames;
-
-            if (max_frames >= 0 && frame_counter >= max_frames) {
-                INFO("Processed {} frames, shutting down Kotekan", frame_counter);
-                exit_kotekan(CLEAN_EXIT);
-            }
 
             if (stop_thread)
                 break;
@@ -118,7 +125,7 @@ public:
             const double t0 = current_time();
 
             // Fetch metadata
-            const std::shared_ptr<metadataObject> mc = buffer->get_metadata(frame_id);
+            const std::shared_ptr<const metadataObject> mc = buffer->get_metadata(frame_id);
             if (!mc)
                 FATAL_ERROR("Buffer \"{:s}\" frame {:d} does not have metadata",
                             buffer->buffer_name, frame_id);
@@ -127,7 +134,15 @@ public:
                 FATAL_ERROR("Metadata of buffer \"{:s}\" frame {:d} is not of type CHORD",
                             buffer->buffer_name, frame_id);
             assert(metadata_is_chord(mc));
-            const std::shared_ptr<chordMetadata> meta = get_chord_metadata(mc);
+            const std::shared_ptr<const chordMetadata> meta = get_chord_metadata(mc);
+
+            const double this_time = current_time();
+            const double elapsed_time = this_time - start_time;
+
+            // This is not a warning, but it should be displayed even
+            // when regular INFO messages are not
+            WARN("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
+                 frame_counter, meta->sample0_offset, elapsed_time);
 
             if (!skip_writing) {
 
@@ -247,6 +262,11 @@ public:
             // Mark frame as done
             DEBUG("mark_frame_empty: frame_id={}", frame_id);
             buffer->mark_frame_empty(unique_name, frame_id);
+
+            if (max_frames >= 0 && frame_counter >= max_frames) {
+                WARN("Processed {} frames, shutting down Kotekan", frame_counter);
+                exit_kotekan(CLEAN_EXIT);
+            }
         } // for
 
         DEBUG("exiting");
