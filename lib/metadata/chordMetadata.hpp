@@ -16,10 +16,35 @@
 #define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
 #pragma pack()
 
-enum chordDataType { unknown_type, int4p4, int8, int16, int32, int64, float16, float32, float64 };
+enum chordDataType {
+    unknown_type,
+    uint4p4,
+    uint8,
+    uint16,
+    uint32,
+    uint64,
+    int4p4,
+    int8,
+    int16,
+    int32,
+    int64,
+    float16,
+    float32,
+    float64
+};
 
 constexpr std::size_t chord_datatype_bytes(chordDataType type) {
     switch (type) {
+        case uint4p4:
+            return 1;
+        case uint8:
+            return 1;
+        case uint16:
+            return 2;
+        case uint32:
+            return 4;
+        case uint64:
+            return 8;
         case int4p4:
             return 1;
         case int8:
@@ -45,7 +70,7 @@ constexpr std::size_t chord_datatype_bytes(chordDataType type) {
 const char* chord_datatype_string(chordDataType type);
 
 // Maximum number of frequencies in metadata array
-const int CHORD_META_MAX_FREQ = 2048;
+const int CHORD_META_MAX_FREQ = 384;
 
 // Maximum number of dimensions for arrays
 const int CHORD_META_MAX_DIM = 10;
@@ -217,7 +242,7 @@ inline bool metadata_is_chord(Buffer* buf, int) {
     return buf && buf->metadata_pool && (buf->metadata_pool->type_name == "chordMetadata");
 }
 
-inline bool metadata_is_chord(const std::shared_ptr<metadataObject> mc) {
+inline bool metadata_is_chord(const std::shared_ptr<metadataObject>& mc) {
     if (!mc)
         return false;
     std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
@@ -225,7 +250,16 @@ inline bool metadata_is_chord(const std::shared_ptr<metadataObject> mc) {
     return (pool->type_name == "chordMetadata");
 }
 
-inline std::shared_ptr<chordMetadata> get_chord_metadata(std::shared_ptr<metadataObject> mc) {
+inline bool metadata_is_chord(const std::shared_ptr<const metadataObject>& mc) {
+    if (!mc)
+        return false;
+    std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
+    assert(pool);
+    return (pool->type_name == "chordMetadata");
+}
+
+inline std::shared_ptr<chordMetadata>
+get_chord_metadata(const std::shared_ptr<metadataObject>& mc) {
     if (!mc)
         return std::shared_ptr<chordMetadata>();
     if (!metadata_is_chord(mc)) {
@@ -235,6 +269,19 @@ inline std::shared_ptr<chordMetadata> get_chord_metadata(std::shared_ptr<metadat
         return std::shared_ptr<chordMetadata>();
     }
     return std::static_pointer_cast<chordMetadata>(mc);
+}
+
+inline std::shared_ptr<const chordMetadata>
+get_chord_metadata(const std::shared_ptr<const metadataObject>& mc) {
+    if (!mc)
+        return std::shared_ptr<const chordMetadata>();
+    if (!metadata_is_chord(mc)) {
+        std::shared_ptr<const metadataPool> pool = mc->parent_pool.lock();
+        WARN_NON_OO("Expected metadata to be type \"chordMetadata\", got \"{:s}\".",
+                    pool->type_name);
+        return std::shared_ptr<const chordMetadata>();
+    }
+    return std::static_pointer_cast<const chordMetadata>(mc);
 }
 
 inline std::shared_ptr<chordMetadata> get_chord_metadata(Buffer* buf, int frame_id) {

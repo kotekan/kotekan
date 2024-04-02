@@ -4,6 +4,16 @@ REGISTER_TYPE_WITH_FACTORY(metadataObject, chordMetadata);
 
 const char* chord_datatype_string(chordDataType type) {
     switch (type) {
+        case uint4p4:
+            return "uint4p4";
+        case uint8:
+            return "uint8";
+        case uint16:
+            return "uint16";
+        case uint32:
+            return "uint32";
+        case uint64:
+            return "uint64";
         case int4p4:
             return "int4p4";
         case int8:
