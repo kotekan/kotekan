@@ -23,20 +23,40 @@ namespace kotekan {
 // everywhere used.
 template float Config::get(const std::string& base_path, const std::string& name) const;
 template double Config::get(const std::string& base_path, const std::string& name) const;
-template uint32_t Config::get(const std::string& base_path, const std::string& name) const;
-template uint64_t Config::get(const std::string& base_path, const std::string& name) const;
-template int32_t Config::get(const std::string& base_path, const std::string& name) const;
-template int16_t Config::get(const std::string& base_path, const std::string& name) const;
-template uint16_t Config::get(const std::string& base_path, const std::string& name) const;
+template unsigned char Config::get(const std::string& base_path, const std::string& name) const;
+template unsigned short Config::get(const std::string& base_path, const std::string& name) const;
+template unsigned int Config::get(const std::string& base_path, const std::string& name) const;
+template unsigned long Config::get(const std::string& base_path, const std::string& name) const;
+template unsigned long long Config::get(const std::string& base_path,
+                                        const std::string& name) const;
+template char Config::get(const std::string& base_path, const std::string& name) const;
+template short Config::get(const std::string& base_path, const std::string& name) const;
+template int Config::get(const std::string& base_path, const std::string& name) const;
+template long Config::get(const std::string& base_path, const std::string& name) const;
+template long long Config::get(const std::string& base_path, const std::string& name) const;
 template bool Config::get(const std::string& base_path, const std::string& name) const;
 template std::string Config::get(const std::string& base_path, const std::string& name) const;
-template vector<int32_t> Config::get(const std::string& base_path, const std::string& name) const;
-template vector<uint32_t> Config::get(const std::string& base_path, const std::string& name) const;
-template vector<float> Config::get(const std::string& base_path, const std::string& name) const;
-template vector<std::string> Config::get(const std::string& base_path,
-                                         const std::string& name) const;
-template vector<nlohmann::json> Config::get(const std::string& base_path,
+template std::vector<unsigned char> Config::get(const std::string& base_path,
+                                                const std::string& name) const;
+template std::vector<unsigned short> Config::get(const std::string& base_path,
+                                                 const std::string& name) const;
+template std::vector<unsigned int> Config::get(const std::string& base_path,
+                                               const std::string& name) const;
+template std::vector<unsigned long> Config::get(const std::string& base_path,
+                                                const std::string& name) const;
+template std::vector<unsigned long long> Config::get(const std::string& base_path,
+                                                     const std::string& name) const;
+template std::vector<char> Config::get(const std::string& base_path, const std::string& name) const;
+template std::vector<short> Config::get(const std::string& base_path,
+                                        const std::string& name) const;
+template std::vector<int> Config::get(const std::string& base_path, const std::string& name) const;
+template std::vector<long> Config::get(const std::string& base_path, const std::string& name) const;
+template std::vector<long long> Config::get(const std::string& base_path,
                                             const std::string& name) const;
+template std::vector<std::string> Config::get(const std::string& base_path,
+                                              const std::string& name) const;
+template std::vector<nlohmann::json> Config::get(const std::string& base_path,
+                                                 const std::string& name) const;
 
 Config::Config() {}
 

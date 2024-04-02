@@ -449,20 +449,44 @@ Type Config::configEval<Type>::factor() {
 // (would add >60MB to the binary).
 extern template float Config::get(const std::string& base_path, const std::string& name) const;
 extern template double Config::get(const std::string& base_path, const std::string& name) const;
-extern template uint32_t Config::get(const std::string& base_path, const std::string& name) const;
-extern template uint64_t Config::get(const std::string& base_path, const std::string& name) const;
-extern template int32_t Config::get(const std::string& base_path, const std::string& name) const;
-extern template int16_t Config::get(const std::string& base_path, const std::string& name) const;
-extern template uint16_t Config::get(const std::string& base_path, const std::string& name) const;
+extern template unsigned char Config::get(const std::string& base_path,
+                                          const std::string& name) const;
+extern template unsigned short Config::get(const std::string& base_path,
+                                           const std::string& name) const;
+extern template unsigned int Config::get(const std::string& base_path,
+                                         const std::string& name) const;
+extern template unsigned long Config::get(const std::string& base_path,
+                                          const std::string& name) const;
+extern template unsigned long long Config::get(const std::string& base_path,
+                                               const std::string& name) const;
+extern template char Config::get(const std::string& base_path, const std::string& name) const;
+extern template short Config::get(const std::string& base_path, const std::string& name) const;
+extern template int Config::get(const std::string& base_path, const std::string& name) const;
+extern template long Config::get(const std::string& base_path, const std::string& name) const;
+extern template long long Config::get(const std::string& base_path, const std::string& name) const;
 extern template bool Config::get(const std::string& base_path, const std::string& name) const;
 extern template std::string Config::get(const std::string& base_path,
                                         const std::string& name) const;
-extern template std::vector<int32_t> Config::get(const std::string& base_path,
-                                                 const std::string& name) const;
-extern template std::vector<uint32_t> Config::get(const std::string& base_path,
-                                                  const std::string& name) const;
-extern template std::vector<float> Config::get(const std::string& base_path,
+extern template std::vector<unsigned char> Config::get(const std::string& base_path,
+                                                       const std::string& name) const;
+extern template std::vector<unsigned short> Config::get(const std::string& base_path,
+                                                        const std::string& name) const;
+extern template std::vector<unsigned int> Config::get(const std::string& base_path,
+                                                      const std::string& name) const;
+extern template std::vector<unsigned long> Config::get(const std::string& base_path,
+                                                       const std::string& name) const;
+extern template std::vector<unsigned long long> Config::get(const std::string& base_path,
+                                                            const std::string& name) const;
+extern template std::vector<char> Config::get(const std::string& base_path,
+                                              const std::string& name) const;
+extern template std::vector<short> Config::get(const std::string& base_path,
                                                const std::string& name) const;
+extern template std::vector<int> Config::get(const std::string& base_path,
+                                             const std::string& name) const;
+extern template std::vector<long> Config::get(const std::string& base_path,
+                                              const std::string& name) const;
+extern template std::vector<long long> Config::get(const std::string& base_path,
+                                                   const std::string& name) const;
 extern template std::vector<std::string> Config::get(const std::string& base_path,
                                                      const std::string& name) const;
 extern template std::vector<nlohmann::json> Config::get(const std::string& base_path,
