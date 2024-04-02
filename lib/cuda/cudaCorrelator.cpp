@@ -7,6 +7,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using kotekan::div_noremainder;
 using kotekan::mod;
 
 REGISTER_CUDA_COMMAND(cudaCorrelator);
@@ -32,6 +33,7 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     if (inst == 0)
         input_ringbuf_signal->register_consumer(unique_name);
 
+    // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_voltage, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_correlation_triangle, true, false, true));
 
@@ -51,10 +53,10 @@ int cudaCorrelator::wait_on_precondition() {
     DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
     if (!val_in.has_value())
         return -1;
-    input_cursor = val_in.value();
+    unmodded_input_cursor = val_in.value();
     DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
     // Mod input cursor by the ringbuffer size
-    input_cursor = mod(input_cursor, input_ringbuf_signal->size);
+    input_cursor = mod(unmodded_input_cursor, input_ringbuf_signal->size);
     // Assert that we don't wrap around!
     assert(input_cursor + input_bytes <= input_ringbuf_signal->size);
     DEBUG("Modded input ring-buffer byte offset: {:d}", input_cursor);
@@ -117,6 +119,10 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
         out_meta->set_array_dimension(4, 2, "P");
         out_meta->set_array_dimension(5, _num_elements / 2, "D");
         out_meta->set_array_dimension(6, 2, "C");
+
+        // Since we do not use a ring buffer we need to set `meta->sample0_offset`
+        assert(input_cursor % in_meta->sample_bytes() == 0);
+        out_meta->sample0_offset = div_noremainder(unmodded_input_cursor, in_meta->sample_bytes());
 
         for (int freq = 0; freq < out_meta->nfreq; ++freq) {
             out_meta->time_downsampling_fpga[freq] =
