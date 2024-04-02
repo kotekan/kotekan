@@ -329,6 +329,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                         device.get_gpu_memory({{{name}}}_memname, input_ringbuf_signal->size) :
                     args::{{{name}}} == args::I ?
                         device.get_gpu_memory({{{name}}}_memname, output_ringbuf_signal->size) :
+                    args::{{{name}}} == args::W ?
+                        device.get_gpu_memory({{{name}}}_memname, {{{name}}}_length) :
                         device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length);
             {{/hasbuffer}}
             {{^hasbuffer}}

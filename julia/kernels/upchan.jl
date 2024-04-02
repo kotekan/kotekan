@@ -40,11 +40,11 @@ function interp(table, x)
 end
 let
     table = [1.0f0 => +1.0f0, 2.0f0 => -1.0f0, 3.0f0 => +3.0f0]
-    @assert(interp(table, 1.0f0) == +1.0f0)
-    @assert(interp(table, 1.5f0) == +0.0f0)
-    @assert(interp(table, 2.0f0) == -1.0f0)
-    @assert(interp(table, 2.5f0) == +1.0f0)
-    @assert(interp(table, 3.0f0) == +3.0f0)
+    @assert interp(table, 1.0f0) == +1.0f0
+    @assert interp(table, 1.5f0) == +0.0f0
+    @assert interp(table, 2.0f0) == -1.0f0
+    @assert interp(table, 2.5f0) == +1.0f0
+    @assert interp(table, 3.0f0) == +3.0f0
 end
 
 # Un-normalized `sinc` function, without `π`
@@ -60,7 +60,6 @@ end
 # Compile-time constants
 
 setup::Symbol
-T::Integer
 
 @static if setup ≡ :chord
     # CHORD Setup
@@ -68,24 +67,28 @@ T::Integer
     const C = 2
     const D = 512
     const P = 2
-    const F₀ = 16
+    # const F₀ = 16
     const F = 16
+    const T = 4 * 32768
 elseif setup ≡ :hirax
     # HIRAX Setup
     const sampling_time_μsec = 2.56
     const C = 2
     const D = 256
     const P = 2
-    const F₀ = 64
+    # const F₀ = 64
     const F = 64
+    const T = 4 * 8192
 elseif setup ≡ :pathfinder
     # Pathfinder Setup
     const sampling_time_μsec = 4096 / (2 * 1200)
     const C = 2
     const D = 64
     const P = 2
-    const F₀ = 128
-    const F = 128
+    # const F₀ = 128
+    # const F = 128
+    const F = 384
+    const T = 4 * 8192
 else
     @assert false
 end
@@ -624,8 +627,10 @@ function upchan!(emitter)
                 thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
                 time0 = thread2time(thread)
                 time1 = time0 + $(Int32(idiv(U, 2)))
-                X0 = cispi((time0 * $(Int32(U - 1)) / Float32(U)) % 2.0f0)
-                X1 = cispi((time1 * $(Int32(U - 1)) / Float32(U)) % 2.0f0)
+                # X0 = cispi((time0 * $(Int32(U - 1)) / Float32(U)) % 2.0f0)
+                # X1 = cispi((time1 * $(Int32(U - 1)) / Float32(U)) % 2.0f0)
+                X0 = cispi((time0 * Int32(U - 1) % Int32(2 * U)) / Float32(U))
+                X1 = cispi((time1 * Int32(U - 1) % Int32(2 * U)) / Float32(U))
                 (X0, X1)
             end
         end,
@@ -647,58 +652,77 @@ function upchan!(emitter)
     # eqn. (60)
     push!(
         emitter.statements,
-        quote
-            (Γ¹0, Γ¹1) = let
-                k = $Ubits
-                @assert $U == 2^k
-                m = 3
-                n = k - m
-                @assert 0 ≤ m
-                @assert 0 ≤ n
-                thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
-                thread0 = (thread ÷ 1i32) % 2i32
-                thread1 = (thread ÷ 2i32) % 2i32
-                thread2 = (thread ÷ 4i32) % 2i32
-                thread3 = (thread ÷ 8i32) % 2i32
-                thread4 = (thread ÷ 16i32) % 2i32
-                if $(U == 2)
-                    timehi0 = 4i32 * 0i32
-                    timehi1 = 4i32 * 1i32
-                    dish_in0 = 1i32 * thread1 + 2i32 * thread0
-                    dish_in1 = 1i32 * thread1 + 2i32 * thread0
-                elseif $(U == 4)
-                    timehi0 = 4i32 * 0i32 + 2i32 * thread1
-                    timehi1 = 4i32 * 1i32 + 2i32 * thread1
-                    dish_in0 = 1i32 * thread0
-                    dish_in1 = 1i32 * thread0
-                elseif $(U ≥ 8)
-                    timehi0 = 4i32 * 0i32 + 2i32 * thread1 + 1i32 * thread0
-                    timehi1 = 4i32 * 1i32 + 2i32 * thread1 + 1i32 * thread0
-                    dish_in0 = 0i32
-                    dish_in1 = 0i32
-                else
-                    @assert false
+        let
+            k = Ubits
+            @assert U == 2^k
+            m = min(k, 3)
+            n = min(k - m, 3)
+            @assert 0 ≤ m ≤ 3
+            @assert 0 ≤ n ≤ 3
+            @assert m + n == min(6, k)
+            quote
+                (Γ¹0, Γ¹1) = let
+                    thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
+                    thread0 = (thread ÷ 1i32) % 2i32
+                    thread1 = (thread ÷ 2i32) % 2i32
+                    thread2 = (thread ÷ 4i32) % 2i32
+                    thread3 = (thread ÷ 8i32) % 2i32
+                    thread4 = (thread ÷ 16i32) % 2i32
+                    $(
+                        if U == 2
+                            quote
+                                timehi0 = 4i32 * 0i32
+                                timehi1 = 4i32 * 1i32
+                                dish_in0 = 1i32 * thread1 + 2i32 * thread0
+                                dish_in1 = 1i32 * thread1 + 2i32 * thread0
+                            end
+                        elseif U == 4
+                            quote
+                                timehi0 = 4i32 * 0i32 + 2i32 * thread1
+                                timehi1 = 4i32 * 1i32 + 2i32 * thread1
+                                dish_in0 = 1i32 * thread0
+                                dish_in1 = 1i32 * thread0
+                            end
+                        elseif U ≥ 8
+                            quote
+                                timehi0 = 4i32 * 0i32 + 2i32 * thread1 + 1i32 * thread0
+                                timehi1 = 4i32 * 1i32 + 2i32 * thread1 + 1i32 * thread0
+                                dish_in0 = 0i32
+                                dish_in1 = 0i32
+                            end
+                        else
+                            @assert false
+                        end
+                    )
+                    $(
+                        if U == 2
+                            quote
+                                freqlo = 1i32 * thread2
+                                dish = 1i32 * thread4 + 2i32 * thread3
+                            end
+                        elseif U == 4
+                            quote
+                                freqlo = 1i32 * thread2 + 2i32 * thread4
+                                dish = 1i32 * thread3
+                            end
+                        elseif U ≥ 8
+                            quote
+                                freqlo = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
+                                dish = 0i32
+                            end
+                        else
+                            @assert false
+                        end
+                    )
+                    # Sparsity pattern, a Kronecker δ in the spectator indices
+                    delta0 = dish == dish_in0
+                    delta1 = dish == dish_in1
+                    Γ¹0, Γ¹1 = (
+                        delta0 * cispi((-2i32 * timehi0 * freqlo / Float32(2^$m)) % 2.0f0),
+                        delta1 * cispi((-2i32 * timehi1 * freqlo / Float32(2^$m)) % 2.0f0),
+                    )
+                    (Γ¹0, Γ¹1)
                 end
-                if $(U == 2)
-                    freqlo = 1i32 * thread2
-                    dish = 1i32 * thread4 + 2i32 * thread3
-                elseif $(U == 4)
-                    freqlo = 1i32 * thread2 + 2i32 * thread4
-                    dish = 1i32 * thread3
-                elseif $(U ≥ 8)
-                    freqlo = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
-                    dish = 0i32
-                else
-                    @assert false
-                end
-                # Sparsity pattern, a Kronecker δ in the spectator indices
-                delta0 = dish == dish_in0
-                delta1 = dish == dish_in1
-                Γ¹0, Γ¹1 = (
-                    delta0 * cispi((-2i32 * timehi0 * freqlo / Float32(2^m)) % 2.0f0),
-                    delta1 * cispi((-2i32 * timehi1 * freqlo / Float32(2^m)) % 2.0f0),
-                )
-                (Γ¹0, Γ¹1)
             end
         end,
     )
@@ -710,11 +734,14 @@ function upchan!(emitter)
     merge!(emitter, :Γ¹im, [:Γ¹imre, :Γ¹imim], Cplx(:cplx_in, 1, C) => Register(:cplx_in, 1, C))
     merge!(emitter, :Γ¹, [:Γ¹re, :Γ¹im], Cplx(:cplx, 1, C) => Register(:cplx, 1, C))
     # Why do we need this? `mma_row_col_m16n8k16_f16!` should skip this tag if not present.
+    if U < 8
+        merge!(emitter, :Γ¹, [:Γ¹, :Γ¹], make_register_pair(dish_polr[1]))
+    end
     if U ≥ 128
         merge!(emitter, :Γ¹, [:Γ¹, :Γ¹], Time(:time, 1, 2) => Register(:time, 1, 2))
     end
 
-    if U ∉ [2, 4, 8]
+    if U > 8
         # For U in [2, 4, 8] this step is a multiplication by one, and we thus skip it
         @assert 4 ≤ U ≤ 128
         layout_Γ²reim_registers = Layout([
@@ -725,47 +752,59 @@ function upchan!(emitter)
         # eqn. (61)
         push!(
             emitter.statements,
-            quote
-                (Γ²0, Γ²1) = let
-                    k = $Ubits
-                    @assert $U == 2^k
-                    m = 3
-                    n = k - m
-                    @assert 0 ≤ m
-                    @assert 0 ≤ n
-                    thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
-                    thread0 = (thread ÷ 1i32) % 2i32
-                    thread1 = (thread ÷ 2i32) % 2i32
-                    thread2 = (thread ÷ 4i32) % 2i32
-                    thread3 = (thread ÷ 8i32) % 2i32
-                    thread4 = (thread ÷ 16i32) % 2i32
-                    if $(U == 4)
-                        timelo0 = 0i32
-                        timelo1 = 0i32
-                    elseif $(U == 8)
-                        timelo0 = 0i32
-                        timelo1 = 0i32
-                    elseif $(U == 16)
-                        timelo0 = 1i32 * 0i32
-                        timelo1 = 1i32 * 1i32
-                    elseif $(U == 32)
-                        timelo0 = 2i32 * 0i32 + 1i32 * thread1
-                        timelo1 = 2i32 * 1i32 + 1i32 * thread1
-                    elseif $(U == 64)
-                        timelo0 = 4i32 * 0i32 + 2i32 * thread1 + 1i32 * thread0
-                        timelo1 = 4i32 * 1i32 + 2i32 * thread1 + 1i32 * thread0
-                    elseif $(U == 128)
-                        timelo0 = 8i32 * 0i32 + 4i32 * thread1 + 2i32 * thread0
-                        timelo1 = 8i32 * 1i32 + 4i32 * thread1 + 2i32 * thread0
-                    else
-                        @assert false
+            let
+                k = Ubits
+                @assert U == 2^k
+                m = min(k, 3)
+                n = min(k - m, 3)
+                @assert 0 ≤ m ≤ 3
+                @assert 0 ≤ n ≤ 3
+                @assert m + n == min(6, k)
+                quote
+                    (Γ²0, Γ²1) = let
+                        thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
+                        thread0 = (thread ÷ 1i32) % 2i32
+                        thread1 = (thread ÷ 2i32) % 2i32
+                        thread2 = (thread ÷ 4i32) % 2i32
+                        thread3 = (thread ÷ 8i32) % 2i32
+                        thread4 = (thread ÷ 16i32) % 2i32
+                        $(
+                            if U ≤ 8
+                                quote
+                                    timelo0 = 0i32
+                                    timelo1 = 0i32
+                                end
+                            elseif U == 16
+                                quote
+                                    timelo0 = 1i32 * 0i32
+                                    timelo1 = 1i32 * 1i32
+                                end
+                            elseif U == 32
+                                quote
+                                    timelo0 = 2i32 * 0i32 + 1i32 * thread1
+                                    timelo1 = 2i32 * 1i32 + 1i32 * thread1
+                                end
+                            elseif U == 64
+                                quote
+                                    timelo0 = 4i32 * 0i32 + 2i32 * thread1 + 1i32 * thread0
+                                    timelo1 = 4i32 * 1i32 + 2i32 * thread1 + 1i32 * thread0
+                                end
+                            elseif U == 128
+                                quote
+                                    timelo0 = 8i32 * 0i32 + 4i32 * thread1 + 2i32 * thread0
+                                    timelo1 = 8i32 * 1i32 + 4i32 * thread1 + 2i32 * thread0
+                                end
+                            else
+                                @assert false
+                            end
+                        )
+                        freqlo = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
+                        (Γ²0, Γ²1) = (
+                            cispi((-2i32 * timelo0 * freqlo / Float32(2^$(m + n))) % 2.0f0),
+                            cispi((-2i32 * timelo1 * freqlo / Float32(2^$(m + n))) % 2.0f0),
+                        )
+                        (Γ²0, Γ²1)
                     end
-                    freqlo = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
-                    (Γ²0, Γ²1) = (
-                        cispi((-2i32 * timelo0 * freqlo / Float32(2^(m + n))) % 2.0f0),
-                        cispi((-2i32 * timelo1 * freqlo / Float32(2^(m + n))) % 2.0f0),
-                    )
-                    (Γ²0, Γ²1)
                 end
             end,
         )
@@ -776,9 +815,9 @@ function upchan!(emitter)
         if U ≥ 128
             merge!(emitter, :Γ², [:Γ², :Γ²], Time(:time, 1, 2) => Register(:time, 1, 2))
         end
-    end # if U ∉ [4, 8]
+    end # if U > 8
 
-    # For U in [2, 4] step is a multiplication by one, but we need to perform it anyway to permute the values in the registers
+    # For U ≤ 8 this step is a multiplication by one, but we need to perform it anyway to permute the values in the registers
     @assert 2 ≤ U ≤ 128
     layout_Γ³reim_registers = Layout([
         FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
@@ -790,82 +829,96 @@ function upchan!(emitter)
     # eqn. (62)
     push!(
         emitter.statements,
-        quote
-            (Γ³0, Γ³1) = let
-                k = $Ubits
-                @assert $U == 2^k
-                m = 3
-                n = k - m
-                @assert 0 ≤ m
-                @assert 0 ≤ n
-                thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
-                thread0 = (thread ÷ 1i32) % 2i32
-                thread1 = (thread ÷ 2i32) % 2i32
-                thread2 = (thread ÷ 4i32) % 2i32
-                thread3 = (thread ÷ 8i32) % 2i32
-                thread4 = (thread ÷ 16i32) % 2i32
-                if $(U == 4)
-                    timelo0 = 0i32
-                    timelo1 = 0i32
-                    dish_in0 = 1i32 * 0i32 + 2i32 * thread1 + 4i32 * thread0
-                    dish_in1 = 1i32 * 1i32 + 2i32 * thread1 + 4i32 * thread0
-                elseif $(U == 8)
-                    timelo0 = 0i32
-                    timelo1 = 0i32
-                    dish_in0 = 1i32 * 0i32 + 2i32 * thread1 + 4i32 * thread0
-                    dish_in1 = 1i32 * 1i32 + 2i32 * thread1 + 4i32 * thread0
-                elseif $(U == 16)
-                    timelo0 = 1i32 * 0i32
-                    timelo1 = 1i32 * 1i32
-                    dish_in0 = 1i32 * thread1 + 2i32 * thread0
-                    dish_in1 = 1i32 * thread1 + 2i32 * thread0
-                elseif $(U == 32)
-                    timelo0 = 2i32 * 0i32 + 1i32 * thread1
-                    timelo1 = 2i32 * 1i32 + 1i32 * thread1
-                    dish_in0 = 1i32 * thread0
-                    dish_in1 = 1i32 * thread0
-                elseif $(U == 64)
-                    timelo0 = 4i32 * 0i32 + 2i32 * thread1 + 1i32 * thread0
-                    timelo1 = 4i32 * 1i32 + 2i32 * thread1 + 1i32 * thread0
-                    dish_in0 = 0i32
-                    dish_in1 = 0i32
-                elseif $(U == 128)
-                    timelo0 = 8i32 * 0i32 + 4i32 * thread1 + 2i32 * thread0
-                    timelo1 = 8i32 * 1i32 + 4i32 * thread1 + 2i32 * thread0
-                    dish_in0 = 0i32
-                    dish_in1 = 0i32
-                else
-                    @assert false
+        let
+            k = Ubits
+            @assert U == 2^k
+            m = min(k, 3)
+            n = min(k - m, 3)
+            @assert 0 ≤ m ≤ 3
+            @assert 0 ≤ n ≤ 3
+            @assert m + n == min(6, k)
+            quote
+                (Γ³0, Γ³1) = let
+                    thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
+                    thread0 = (thread ÷ 1i32) % 2i32
+                    thread1 = (thread ÷ 2i32) % 2i32
+                    thread2 = (thread ÷ 4i32) % 2i32
+                    thread3 = (thread ÷ 8i32) % 2i32
+                    thread4 = (thread ÷ 16i32) % 2i32
+                    $(
+                        if U ≤ 8
+                            quote
+                                timelo0 = 0i32
+                                timelo1 = 0i32
+                                dish_in0 = 1i32 * 0i32 + 2i32 * thread1 + 4i32 * thread0
+                                dish_in1 = 1i32 * 1i32 + 2i32 * thread1 + 4i32 * thread0
+                            end
+                        elseif U == 16
+                            quote
+                                timelo0 = 1i32 * 0i32
+                                timelo1 = 1i32 * 1i32
+                                dish_in0 = 1i32 * thread1 + 2i32 * thread0
+                                dish_in1 = 1i32 * thread1 + 2i32 * thread0
+                            end
+                        elseif U == 32
+                            quote
+                                timelo0 = 2i32 * 0i32 + 1i32 * thread1
+                                timelo1 = 2i32 * 1i32 + 1i32 * thread1
+                                dish_in0 = 1i32 * thread0
+                                dish_in1 = 1i32 * thread0
+                            end
+                        elseif U == 64
+                            quote
+                                timelo0 = 4i32 * 0i32 + 2i32 * thread1 + 1i32 * thread0
+                                timelo1 = 4i32 * 1i32 + 2i32 * thread1 + 1i32 * thread0
+                                dish_in0 = 0i32
+                                dish_in1 = 0i32
+                            end
+                        elseif U == 128
+                            quote
+                                timelo0 = 8i32 * 0i32 + 4i32 * thread1 + 2i32 * thread0
+                                timelo1 = 8i32 * 1i32 + 4i32 * thread1 + 2i32 * thread0
+                                dish_in0 = 0i32
+                                dish_in1 = 0i32
+                            end
+                        else
+                            @assert false
+                        end
+                    )
+                    $(
+                        if U ≤ 8
+                            quote
+                                freqhi = 0i32
+                                dish = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
+                            end
+                        elseif U == 16
+                            quote
+                                freqhi = 1i32 * thread2
+                                dish = 1i32 * thread4 + 2i32 * thread3
+                            end
+                        elseif U == 32
+                            quote
+                                freqhi = 1i32 * thread2 + 2i32 * thread4
+                                dish = 1i32 * thread3
+                            end
+                        elseif U ≥ 64
+                            quote
+                                freqhi = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
+                                dish = 0i32
+                            end
+                        else
+                            @assert false
+                        end
+                    )
+                    # Sparsity pattern, a Kronecker δ in the spectator indices
+                    delta0 = dish == dish_in0
+                    delta1 = dish == dish_in1
+                    Γ³0, Γ³1 = (
+                        delta0 * cispi((-2i32 * timelo0 * freqhi / Float32(2^$n)) % 2.0f0),
+                        delta1 * cispi((-2i32 * timelo1 * freqhi / Float32(2^$n)) % 2.0f0),
+                    )
+                    (Γ³0, Γ³1)
                 end
-                if $(U == 4)
-                    freqhi = 0i32
-                    dish = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
-                elseif $(U == 8)
-                    freqhi = 0i32
-                    dish = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
-                elseif $(U == 16)
-                    freqhi = 1i32 * thread2
-                    dish = 1i32 * thread4 + 2i32 * thread3
-                elseif $(U == 32)
-                    freqhi = 1i32 * thread2 + 2i32 * thread4
-                    dish = 1i32 * thread3
-                elseif $(U == 64)
-                    freqhi = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
-                    dish = 0i32
-                elseif $(U == 128)
-                    freqhi = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
-                    dish = 0i32
-                else
-                    @assert false
-                end
-                # Sparsity pattern, a Kronecker δ in the spectator indices
-                delta0 = dish == dish_in0
-                delta1 = dish == dish_in1
-                Γ³0, Γ³1 = (
-                    delta0 * cispi((-2i32 * timelo0 * freqhi / Float32(2^n)) % 2.0f0),
-                    delta1 * cispi((-2i32 * timelo1 * freqhi / Float32(2^n)) % 2.0f0),
-                )
-                (Γ³0, Γ³1)
             end
         end,
     )
@@ -891,33 +944,36 @@ function upchan!(emitter)
             [Freq(:freq, 1 << bit, 2) => simd_threads[bit + 1] for bit in 0:5]...,
         ])
         # eqn. (61)
+        # TODO: shouldn't this be eqn. (78)?
         push!(
             emitter.statements,
-            quote
-                (Γ⁴0, Γ⁴1) = let
-                    k = Ubits
-                    @assert U == 2^k
-                    m = 6
-                    n = k - m
-                    @assert 0 ≤ m
-                    @assert 0 ≤ n
-                    thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
-                    thread0 = (thread ÷ 1i32) % 2i32
-                    thread1 = (thread ÷ 2i32) % 2i32
-                    thread2 = (thread ÷ 4i32) % 2i32
-                    thread3 = (thread ÷ 8i32) % 2i32
-                    thread4 = (thread ÷ 16i32) % 2i32
-                    # We only calculate the coefficient for `timelo = 1` since the coefficient for `timelo = 0` is trivial
-                    timelo = 1i32
-                    freqlo0 =
-                        1i32 * 0i32 + 2i32 * thread1 + 4i32 * thread0 + 8i32 * thread2 + 16i32 * thread4 + 32i32 * thread3
-                    freqlo1 =
-                        1i32 * 1i32 + 2i32 * thread1 + 4i32 * thread0 + 8i32 * thread2 + 16i32 * thread4 + 32i32 * thread3
-                    (Γ⁴0, Γ⁴1) = (
-                        cispi((-2i32 * timelo * freqlo0 / Float32(2^(m + n))) % 2.0f0),
-                        cispi((-2i32 * timelo * freqlo1 / Float32(2^(m + n))) % 2.0f0),
-                    )
-                    (Γ⁴0, Γ⁴1)
+            let
+                k = Ubits
+                @assert U == 2^k
+                m = 6
+                n = k - m
+                @assert 0 ≤ m
+                @assert 0 ≤ n
+                quote
+                    (Γ⁴0, Γ⁴1) = let
+                        thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
+                        thread0 = (thread ÷ 1i32) % 2i32
+                        thread1 = (thread ÷ 2i32) % 2i32
+                        thread2 = (thread ÷ 4i32) % 2i32
+                        thread3 = (thread ÷ 8i32) % 2i32
+                        thread4 = (thread ÷ 16i32) % 2i32
+                        # We only calculate the coefficient for `timelo = 1` since the coefficient for `timelo = 0` is trivial
+                        timelo = 1i32
+                        freqlo0 =
+                            1i32 * 0i32 + 2i32 * thread1 + 4i32 * thread0 + 8i32 * thread2 + 16i32 * thread4 + 32i32 * thread3
+                        freqlo1 =
+                            1i32 * 1i32 + 2i32 * thread1 + 4i32 * thread0 + 8i32 * thread2 + 16i32 * thread4 + 32i32 * thread3
+                        (Γ⁴0, Γ⁴1) = (
+                            cispi((-2i32 * timelo * freqlo0 / Float32(2^$(m + n))) % 2.0f0),
+                            cispi((-2i32 * timelo * freqlo1 / Float32(2^$(m + n))) % 2.0f0),
+                        )
+                        (Γ⁴0, Γ⁴1)
+                    end
                 end
             end,
         )
@@ -938,7 +994,6 @@ function upchan!(emitter)
         # Step1: Copy outer block from global memory to shared memory
 
         # Load E
-        tstride = idiv(D, 4) * P * F
         load!(
             emitter,
             :E => layout_E_registers,
@@ -946,7 +1001,7 @@ function upchan!(emitter)
             align=16,
             postprocess=addr -> :(
                 let
-                    offset = $(Int32(tstride)) * Tmin
+                    offset = $(Int32(idiv(D, 4) * P * F)) * Tmin
                     length = $(Int32(idiv(D, 4) * P * F * T))
                     mod($addr + offset, length)
                 end
@@ -1051,7 +1106,6 @@ function upchan!(emitter)
                 # Step 6: Compute E4 by FFTing E3
                 apply!(emitter, :XX, [:E3], (E3,) -> :($E3))
 
-                if U in [2, 4, 8, 16, 32, 64, 128]
 
                     # Step 6.1: Length 8 FFT: W = exp(...) X
                     begin
@@ -1113,7 +1167,7 @@ function upchan!(emitter)
                     end
 
                     # Step 6.2: Z = exp(...) W
-                    if U in [2, 4, 8]
+                    if U ≤ 8
                         # Skip this multiplication for U in [2, 4, 8] because Γ² = 1 there
                         apply!(emitter, :ZZ, [:WW], (WW,) -> :($WW))
                     else
@@ -1195,9 +1249,10 @@ function upchan!(emitter)
                     end
 
                     if U < 128
+
                         apply!(emitter, :E4, [:YY], (YY,) -> :($YY))
 
-                    else
+                    elseif U == 128
 
                         # Step 6.4 (equivalent to 6.2): Z = exp(...) W
                         apply!(emitter, :WWW, [:YY], (YY,) -> :($YY))
@@ -1228,11 +1283,11 @@ function upchan!(emitter)
                         merge!(emitter, :YYY, [:YYY_u0, :YYY_u1], Freq(:freq, idiv(U, 2), 2) => Register(:freq, idiv(U, 2), 2))
 
                         apply!(emitter, :E4, [:YYY], (YYY,) -> :($YYY))
+
+                    else
+                        @assert false
                     end
 
-                else
-                    @assert false
-                end
 
                 # Step 7: Compute E5 by applying gains to E4
                 # TODO: Combine gains and last FFT step
@@ -1301,68 +1356,87 @@ function upchan!(emitter)
             :Ē_memory => layout_Ē_memory,
             :Ē3;
             align=16,
-            condition=state -> let
-                # if U == 16
-                #     @assert layout_Ē3[Time(:time, 16, 4)] == Warp(:warp, 4, 4)
-                #     @assert layout_Ē3[Time(:time, 64, 4)] == Register(:time, 64, 4)
-                #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
-                #     t_warp = :(16i32 * (IndexSpaces.cuda_warpidx() ÷ 4i32 % 4i32))
-                # elseif U == 32
-                #     @assert layout_Ē3[Time(:time, 32, 4)] == Warp(:warp, 8, 4)
-                #     @assert layout_Ē3[Time(:time, 128, 2)] == Register(:time, 128, 2)
-                #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
-                #     t_warp = :(32i32 * (IndexSpaces.cuda_warpidx() ÷ 8i32 % 4i32))
-                # elseif U == 64
-                #     @assert layout_Ē3[Time(:time, 64, 4)] == Warp(:warp, 16, 4)
-                #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
-                #     t_warp = :(64i32 * (IndexSpaces.cuda_warpidx() ÷ 16i32 % 4i32))
-                # elseif U == 128
-                #     @assert layout_Ē3[Time(:time, 128, 2)] == Warp(:warp, 16, 2)
-                #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
-                #     t_warp = :(128i32 * (IndexSpaces.cuda_warpidx() ÷ 16i32 % 2i32))
-                # else
-                #     @show layout_Ē3
-                #     @assert false
-                # end
-                # t_register = Int32(get(state.dict, :time, 0))
-                # t_loop = :(t_outer)
-                # t = :($t_loop + $t_register + $t_warp)
-                # Look at the time bits from `U` to `nextpow(2, t_min)`
-                tbit_min = Int(log(2, U))
-                tbit_max = ceil(Int, log(2, t_min))
-                warp_val = :(IndexSpaces.cuda_warpidx())
-                thread_val = :(IndexSpaces.cuda_threadidx())
-                register_val = Int32(get(state.dict, :time, 0))
-                loop_val = :(t_outer)
-                t_expr = 0i32
-                for tbit in tbit_min:tbit_max
-                    mach = layout_Ē3[Time(:time, 1 << tbit, 2)]
-                    @assert mach.length == 2
-                    if mach isa Warp
-                        t_expr = :($t_expr + $warp_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
-                        # @show tbit t_expr
-                    elseif mach isa Thread
-                        t_expr = :($t_expr + $thread_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
-                        # @show tbit t_expr
-                    elseif mach isa Register
-                        t_expr = :($t_expr + $register_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
-                        # @show tbit t_expr
-                    elseif mach isa Loop
-                        t_expr = :($t_expr + $loop_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
-                        # @show tbit t_expr
-                    else
-                        @assert false
-                    end
-                end
-                :($t_expr ≥ $(Int32(t_min)))
-            end,
-            postprocess=addr -> quote
-                let
-                    offset = $(Int32(tbarstride)) * T̄min - $(Int32(tbarstride * (M - 1)))
-                    length = $(Int32(idiv(D, 4) * P * (F * U) * idiv(T, U)))
-                    mod($addr + offset, length)
-                end
-            end,
+             condition=state -> let
+                 # if U == 16
+                 #     @assert layout_Ē3[Time(:time, 16, 4)] == Warp(:warp, 4, 4)
+                 #     @assert layout_Ē3[Time(:time, 64, 4)] == Register(:time, 64, 4)
+                 #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
+                 #     t_warp = :(16i32 * (IndexSpaces.cuda_warpidx() ÷ 4i32 % 4i32))
+                 # elseif U == 32
+                 #     @assert layout_Ē3[Time(:time, 32, 4)] == Warp(:warp, 8, 4)
+                 #     @assert layout_Ē3[Time(:time, 128, 2)] == Register(:time, 128, 2)
+                 #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
+                 #     t_warp = :(32i32 * (IndexSpaces.cuda_warpidx() ÷ 8i32 % 4i32))
+                 # elseif U == 64
+                 #     @assert layout_Ē3[Time(:time, 64, 4)] == Warp(:warp, 16, 4)
+                 #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
+                 #     t_warp = :(64i32 * (IndexSpaces.cuda_warpidx() ÷ 16i32 % 4i32))
+                 # elseif U == 128
+                 #     @assert layout_Ē3[Time(:time, 128, 2)] == Warp(:warp, 16, 2)
+                 #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
+                 #     t_warp = :(128i32 * (IndexSpaces.cuda_warpidx() ÷ 16i32 % 2i32))
+                 # else
+                 #     @show layout_Ē3
+                 #     @assert false
+                 # end
+                 # t_register = Int32(get(state.dict, :time, 0))
+                 # t_loop = :(t_outer)
+                 # t = :($t_loop + $t_register + $t_warp)
+                 # Look at the time bits from `U` to `nextpow(2, t_min)`
+                 tbit_min = Int(log(2, U))
+                 tbit_max = ceil(Int, log(2, t_min))
+                 # warp_val = :(IndexSpaces.cuda_warpidx())
+                 # thread_val = :(IndexSpaces.cuda_threadidx())
+                 # register_val = Int32(get(state.dict, :time, 0))
+                 # loop_val = :(t_outer)
+                 # warp_val = indexvalue(state, Warp(:warp))
+                 # thread_val = indexvalue(state, Thread(:thread))
+                 # register_val = indexvalue(state, Register(:time))
+                 # loop_val = indexvalue(state, Loop(:t_outer))
+                 # t_expr = 0i32
+                 t_exprs = []
+                 for tbit in tbit_min:tbit_max
+                     mach = layout_Ē3[Time(:time, 1 << tbit, 2)]
+                     @assert mach.length == 2
+                     # if mach isa Warp
+                     #     t_expr = :($t_expr + $warp_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
+                     #     # @show tbit t_expr
+                     # elseif mach isa Thread
+                     #     t_expr = :($t_expr + $thread_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
+                     #     # @show tbit t_expr
+                     # elseif mach isa Register
+                     #     t_expr = :($t_expr + $register_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
+                     #     # @show tbit t_expr
+                     # elseif mach isa Loop
+                     #     t_expr = :($t_expr + $loop_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
+                     #     # @show tbit t_expr
+                     # else
+                     #     @assert false
+                     # end
+                     # if mach isa Warp
+                     #     value_expr = :warp_val
+                     # elseif mach isa Thread
+                     #     value_expr = :thread_val
+                     # elseif mach isa Register
+                     #     value_expr = :register_val
+                     # elseif mach isa Loop
+                     #     value_expr = :loop_val
+                     # else
+                     #     @assert false
+                     # end
+                     # t_expr = :($t_expr + $(IndexSpaces.indexvalue(state, mach)) ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
+                     push!(t_exprs, :($(IndexSpaces.indexvalue(state, mach)) ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit)))
+                 end
+                 t_expr = isempty(t_exprs) ? 0i32 : :(+($(t_exprs...)))
+                 :($t_expr ≥ $(Int32(t_min)))
+             end,
+             postprocess=addr -> quote
+                 let
+                     offset = $(Int32(tbarstride)) * T̄min - $(Int32(tbarstride * (M - 1)))
+                     length = $(Int32(tbarstride * idiv(T, U)))
+                     mod($addr + offset, length)
+                 end
+             end,
         )
 
         return nothing

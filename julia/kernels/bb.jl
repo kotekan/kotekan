@@ -36,7 +36,6 @@ const Time = Index{Physics,TimeTag}
 # Setup
 
 setup::Symbol
-T::Integer
 
 # ADC sampling time: 1 / (2 * 1200 MHz) ≈ 0.4166667 ns
 
@@ -51,6 +50,7 @@ T::Integer
     const F₀ = 16
     const F = 16
     # const F = idiv(84, 2)       # benchmarking A30: 56; A40: 84
+    const T = 4 * 32768
 
     const T1_stride = 128
     const T2_stride = 32
@@ -69,6 +69,7 @@ elseif setup ≡ :hirax
     const P = 2
     const F₀ = 64
     const F = 64                # 84 * 8
+    const T = 4 * 16384
 
     const T1_stride = 128
     const T2_stride = 32
@@ -86,7 +87,8 @@ elseif setup ≡ :pathfinder
     const B = 16
     const P = 2
     const F₀ = 128
-    const F = 128               # 84 * 8
+    const F = 384               # 84 * 8
+    const T = 4 * 8192
 
     const T1_stride = 128
     const T2_stride = 32

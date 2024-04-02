@@ -8,7 +8,11 @@ set -euxo pipefail
 scriptdir=$(dirname "$0")
 cd "$scriptdir/.."
 
-setups='chord hirax pathfinder'
+setups='
+    chord_U1 chord_U8 chord_U16 chord_U32 chord_U64 chord_U128
+    hirax_U1 hirax_U8 hirax_U16 hirax_U32 hirax_U64 hirax_U128
+    pathfinder_U1 pathfinder_U2 pathfinder_U4 pathfinder_U8 pathfinder_U16 pathfinder_U32 pathfinder_U64
+'
 
 # Delete previous output (so that we don't accidentally re-use it)
 for setup in $setups; do
@@ -23,10 +27,15 @@ for setup in $setups; do
 done
 
 # Generate kernel
-for setup in $setups; do
-    julia --project=@. --optimize kernels/frb_$setup.jl 2>&1 | tee output-A40/frb_$setup.out &
-done
-wait
+# for setup in $setups; do
+#     julia --project=@. --optimize kernels/frb_$setup.jl 2>&1 | tee output-A40/frb_$setup.out &
+# done
+# wait
+# for setup in $setups; do
+#     julia --project=@. --optimize kernels/frb_$setup.jl 2>&1 | tee output-A40/frb_$setup.out
+# done
+for setup in $setups; do echo $setup; done |
+    xargs -I'$setup' -n 1 -P 8 bash -c 'julia --project=@. --optimize kernels/frb_$setup.jl 2>&1 | tee output-A40/frb_$setup.out'
 
 # Check whether kernels were generated
 for setup in $setups; do

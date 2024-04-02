@@ -29,7 +29,7 @@ ilog2(i::Integer) = (@assert i == nextpow(2, i); trailing_zeros(i))
 # Setup
 
 setup::Symbol
-T::Integer
+U::Integer
 
 @static if setup ≡ :chord
 
@@ -42,8 +42,10 @@ T::Integer
     const M = 24
     const N = 24
     const P = 2
-    const F₀ = 16 * 16
-    const F = 16 * 16           # benchmarking A30: 56; A40: 84
+    # const F₀ = 16 * 16
+    # const F = 16 * 16           # benchmarking A30: 56; A40: 84
+    const F = 16 * U
+    const T = 4 * 32768 ÷ U
 
     const Touter = 48
     const Tinner = 4
@@ -63,8 +65,10 @@ elseif setup ≡ :hirax
     const M = 16
     const N = 16
     const P = 2
-    const F₀ = 64 * 16
-    const F = 64 * 16
+    # const F₀ = 64 * 16
+    # const F = 64 * 16
+    const F = 64 * U
+    const T = 4 * 8192 ÷ U
 
     const Touter = 64
     const Tinner = 8
@@ -81,13 +85,15 @@ elseif setup ≡ :pathfinder
     const M = 8
     const N = 12
     const P = 2
-    const F₀ = 16 * 128
-    const F = 16 * 128
+    # const F₀ = 16 * 128
+    # const F = 16 * 128
+    const F = 384 * U
+    const T = 4 * 8192 ÷ U
 
     const Touter = 48
     const Tinner = 6
 
-    const Tds = 40              # downsampling factor
+    const Tds = 256 ÷ U         # downsampling factor
 
     const W = 6                 # number of warps
     const B = 4                 # number of blocks per SM (TODO: check!)
@@ -96,9 +102,10 @@ else
     @assert false
 end
 
+# TODO: This is now wrong
 const sampling_time_μsec = U * 4096 / (2 * 1200)
 const C = 2
-const T̄ = nextpow(2, fld(T, Tds))
+const T̄ = 4 * 1024 ÷ U
 
 const output_gain = 1 / (8 * Tds)
 
@@ -1789,7 +1796,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     !silent && println("CHORD FRB beamformer")
 
     if output_kernel
-        open("output-$card/frb_$setup.jl", "w") do fh
+        open("output-$card/frb_$(setup)_U$(U).jl", "w") do fh
             println(fh, "# Julia source code for CUDA frb beamformer")
             println(fh, "# This file has been generated automatically by `frb.jl`.")
             println(fh, "# Do not modify this file, your changes will be lost.")
@@ -2033,9 +2040,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 end
 
 function fix_ptx_kernel()
-    ptx = read("output-$card/frb_$setup.ptx", String)
+    ptx = read("output-$card/frb_$(setup)_U$(U).ptx", String)
     ptx = replace(ptx, r".extern .func ([^;]*);"s => s".func \1.noreturn\n{\n\ttrap;\n}")
-    open("output-$card/frb_$setup.ptx", "w") do fh
+    open("output-$card/frb_$(setup)_U$(U).ptx", "w") do fh
         println(fh, "// PTX kernel code for CUDA frb beamformer")
         println(fh, "// This file has been generated automatically by `frb.jl`.")
         println(fh, "// Do not modify this file, your changes will be lost.")
@@ -2043,8 +2050,8 @@ function fix_ptx_kernel()
         write(fh, ptx)
         return nothing
     end
-    sass = read("output-$card/frb_$setup.sass", String)
-    open("output-$card/frb_$setup.sass", "w") do fh
+    sass = read("output-$card/frb_$(setup)_U$(U).sass", String)
+    open("output-$card/frb_$(setup)_U$(U).sass", "w") do fh
         println(fh, "// SASS kernel code for CUDA frb beamformer")
         println(fh, "// This file has been generated automatically by `frb.jl`.")
         println(fh, "// Do not modify this file, your changes will be lost.")
@@ -2053,7 +2060,7 @@ function fix_ptx_kernel()
         return nothing
     end
     kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
-    open("output-$card/frb_$setup.yaml", "w") do fh
+    open("output-$card/frb_$(setup)_U$(U).yaml", "w") do fh
         println(fh, "# Metadata code for CUDA frb beamformer")
         println(fh, "# This file has been generated automatically by `frb.jl`.")
         println(fh, "# Do not modify this file, your changes will be lost.")
@@ -2076,6 +2083,7 @@ function fix_ptx_kernel()
         number-of-timesamples: $T
         output-gain: $output_gain
         sampling-time-μsec: $sampling_time_μsec
+        upchannelization-factor: $U
       compile-parameters:
         minthreads: $(num_threads * num_warps)
         blocks_per_sm: $num_blocks_per_sm
@@ -2136,7 +2144,7 @@ function fix_ptx_kernel()
     cxx = Mustache.render(
         cxx,
         Dict(
-            "kernel_name" => "FRBBeamformer_$setup",
+            "kernel_name" => "FRBBeamformer_$(setup)_U$(U)",
             "kernel_design_parameters" => [
                 Dict("type" => "int", "name" => "cuda_beam_layout_M", "value" => "$(2*M)"),
                 Dict("type" => "int", "name" => "cuda_beam_layout_N", "value" => "$(2*N)"),
@@ -2258,19 +2266,19 @@ function fix_ptx_kernel()
             ],
         ),
     )
-    write("output-$card/frb_$setup.cxx", cxx)
+    write("output-$card/frb_$(setup)_U$(U).cxx", cxx)
     return nothing
 end
 
 if CUDA.functional()
     # Output kernel
     main(; output_kernel=true)
-    open("output-$card/frb_$setup.ptx", "w") do fh
+    open("output-$card/frb_$(setup)_U$(U).ptx", "w") do fh
         redirect_stdout(fh) do
             @device_code_ptx main(; compile_only=true, silent=true)
         end
     end
-    open("output-$card/frb_$setup.sass", "w") do fh
+    open("output-$card/frb_$(setup)_U$(U).sass", "w") do fh
         redirect_stdout(fh) do
             @device_code_sass main(; compile_only=true, silent=true)
         end
