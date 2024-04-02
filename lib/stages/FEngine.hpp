@@ -70,8 +70,10 @@ class FEngine : public kotekan::Stage {
 
     // ADC
     const float adc_frequency;
+    const int num_samples_per_frame;
     const int num_taps;
     const int num_frequencies;
+    const std::vector<int> frequency_channels;
     const int num_times;
 
     // Baseband beamformer setup
@@ -87,8 +89,13 @@ class FEngine : public kotekan::Stage {
     const int upchannelization_factor;
 
     // FRB beamformer setup
-    const int frb_num_beams_P;
-    const int frb_num_beams_Q;
+    const int frb1_num_beams_P;
+    const int frb1_num_beams_Q;
+    const int frb2_num_beams_ns;
+    const int frb2_num_beams_ew;
+    const float frb2_bore_z;
+    const float frb2_opening_angle_ns;
+    const float frb2_opening_angle_ew;
     const int Tds = 40;
     const int frb_num_times;
 
@@ -102,16 +109,18 @@ class FEngine : public kotekan::Stage {
     const std::int64_t s_frame_size;
     const std::int64_t J_frame_size;
     const std::int64_t G_frame_size;
-    const std::int64_t W_frame_size;
-    const std::int64_t I_frame_size;
+    const std::int64_t W1_frame_size;
+    const std::int64_t W2_frame_size;
+    const std::int64_t I1_frame_size;
 
     Buffer* const E_buffer;
     Buffer* const A_buffer;
     Buffer* const s_buffer;
     Buffer* const J_buffer;
     Buffer* const G_buffer;
-    Buffer* const W_buffer;
-    Buffer* const I_buffer;
+    Buffer* const W1_buffer;
+    Buffer* const W2_buffer;
+    Buffer* const I1_buffer;
 
 public:
     FEngine(kotekan::Config& config, const std::string& unique_name,
