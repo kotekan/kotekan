@@ -345,20 +345,24 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     pre_execute();
 
     void* const A_memory =
-        args::A == args::E
-            ? device.get_gpu_memory(A_memname, input_ringbuf_signal->size)
+        args::A == args::E ? device.get_gpu_memory(A_memname, input_ringbuf_signal->size)
+        : args::A == args::A || args::A == args::s
+            ? device.get_gpu_memory(A_memname, A_length)
             : device.get_gpu_memory_array(A_memname, gpu_frame_id, _gpu_buffer_depth, A_length);
     void* const E_memory =
-        args::E == args::E
-            ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
+        args::E == args::E ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
+        : args::E == args::A || args::E == args::s
+            ? device.get_gpu_memory(E_memname, E_length)
             : device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
     void* const s_memory =
-        args::s == args::E
-            ? device.get_gpu_memory(s_memname, input_ringbuf_signal->size)
+        args::s == args::E ? device.get_gpu_memory(s_memname, input_ringbuf_signal->size)
+        : args::s == args::A || args::s == args::s
+            ? device.get_gpu_memory(s_memname, s_length)
             : device.get_gpu_memory_array(s_memname, gpu_frame_id, _gpu_buffer_depth, s_length);
     void* const J_memory =
-        args::J == args::E
-            ? device.get_gpu_memory(J_memname, input_ringbuf_signal->size)
+        args::J == args::E ? device.get_gpu_memory(J_memname, input_ringbuf_signal->size)
+        : args::J == args::A || args::J == args::s
+            ? device.get_gpu_memory(J_memname, J_length)
             : device.get_gpu_memory_array(J_memname, gpu_frame_id, _gpu_buffer_depth, J_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 

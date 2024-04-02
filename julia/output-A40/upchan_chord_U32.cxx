@@ -369,21 +369,24 @@ cudaEvent_t cudaUpchannelizer_chord_U32::execute(cudaPipelineState& /*pipestate*
     pre_execute();
 
     void* const G_memory =
-        args::G == args::E ? device.get_gpu_memory(G_memname, input_ringbuf_signal->size)
-        : args::G == args::Ebar
-            ? device.get_gpu_memory(G_memname, output_ringbuf_signal->size)
+        args::G == args::E      ? device.get_gpu_memory(G_memname, input_ringbuf_signal->size)
+        : args::G == args::Ebar ? device.get_gpu_memory(G_memname, output_ringbuf_signal->size)
+        : args::G == args::G
+            ? device.get_gpu_memory(G_memname, G_length)
             : device.get_gpu_memory_array(G_memname, gpu_frame_id, _gpu_buffer_depth, G_length);
     void* const E_memory =
-        args::E == args::E ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
-        : args::E == args::Ebar
-            ? device.get_gpu_memory(E_memname, output_ringbuf_signal->size)
+        args::E == args::E      ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
+        : args::E == args::Ebar ? device.get_gpu_memory(E_memname, output_ringbuf_signal->size)
+        : args::E == args::G
+            ? device.get_gpu_memory(E_memname, E_length)
             : device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
-    void* const Ebar_memory = args::Ebar == args::E
-                                  ? device.get_gpu_memory(Ebar_memname, input_ringbuf_signal->size)
-                              : args::Ebar == args::Ebar
-                                  ? device.get_gpu_memory(Ebar_memname, output_ringbuf_signal->size)
-                                  : device.get_gpu_memory_array(Ebar_memname, gpu_frame_id,
-                                                                _gpu_buffer_depth, Ebar_length);
+    void* const Ebar_memory =
+        args::Ebar == args::E ? device.get_gpu_memory(Ebar_memname, input_ringbuf_signal->size)
+        : args::Ebar == args::Ebar
+            ? device.get_gpu_memory(Ebar_memname, output_ringbuf_signal->size)
+        : args::Ebar == args::G ? device.get_gpu_memory(Ebar_memname, Ebar_length)
+                                : device.get_gpu_memory_array(Ebar_memname, gpu_frame_id,
+                                                              _gpu_buffer_depth, Ebar_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
     // G is an input buffer: check metadata

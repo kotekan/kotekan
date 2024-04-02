@@ -1,0 +1,19 @@
+[Choosing CUDA device...]
+NVIDIA A40
+[Creating frb kernel...]
+[Done creating frb kernel]
+CHORD FRB beamformer
+Compiling kernel...
+Allocating input data...
+Setting up input data...
+dish = 249
+freq = 8
+polr = 0
+time = 67840
+Wvalue = 0.36607796f0 - 0.7806393f0im
+Evalue = 2 + 7im
+dstime = 1696
+Copying data from CPU to GPU...
+Running kernel...
+Copying data back from GPU to CPU...
+Done.

@@ -12,7 +12,7 @@ kernel-description:
     number-of-frequencies: 64
     number-of-polarizations: 2
     number-of-taps: 4
-    number-of-timesamples: 65536
+    number-of-timesamples: 32768
     sampling-time-μsec: 2.56
     upchannelization-factor: 64
   compile-parameters:
@@ -46,13 +46,13 @@ kernel-description:
       intent: in
       type: Int4
       indices: [C, D, P, F, T]
-      shape: [2, 256, 2, 64, 65536]
+      shape: [2, 256, 2, 64, 32768]
       strides: [1, 2, 512, 1024, 65536]
     - name: "Ē"
       intent: out
       type: Int4
       indices: [C, D, P, F̄, T̄]
-      shape: [2, 256, 2, 4096, 1024]
+      shape: [2, 256, 2, 4096, 512]
       strides: [1, 2, 512, 1024, 4194304]
     - name: "info"
       intent: out

@@ -1,0 +1,72 @@
+# Metadata code for CUDA frb beamformer
+# This file has been generated automatically by `frb.jl`.
+# Do not modify this file, your changes will be lost.
+
+--- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
+kernel-description:
+  name: "frb"
+  description: "FRB beamformer"
+  design-parameters:
+    beam-layout: [16, 24]
+    dish-layout: [8, 12]
+    downsampling-factor: 32
+    number-of-complex-components: 2
+    number-of-dishes: 64
+    number-of-frequencies: 3072
+    number-of-polarizations: 2
+    number-of-timesamples: 4096
+    output-gain: 0.00390625
+    sampling-time-μsec: 13.653333333333334
+    upchannelization-factor: 8
+  compile-parameters:
+    minthreads: 192
+    blocks_per_sm: 4
+  call-parameters:
+    threads: [32, 6]
+    blocks: [3072]
+    shmem_bytes: 13920
+  kernel-symbol: "_Z3frb5Int32S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE"
+  kernel-arguments:
+    - name: "Tmin"
+      intent: in
+      type: Int32
+    - name: "Tmax"
+      intent: in
+      type: Int32
+    - name: "T̄min"
+      intent: in
+      type: Int32
+    - name: "T̄max"
+      intent: in
+      type: Int32
+    - name: "S"
+      intent: in
+      type: Int16
+      indices: [MN, D]
+      shape: [2, 96]
+      strides: [1, 2]
+    - name: "W"
+      intent: in
+      type: Float16
+      indices: [C, dishM, dishN, P, F]
+      shape: [2, 8, 12, 2, 3072]
+      strides: [1, 2, 16, 192, 384, 1179648]
+    - name: "E"
+      intent: in
+      type: Int4
+      indices: [C, D, P, F, T]
+      shape: [2, 64, 2, 3072, 4096]
+      strides: [1, 2, 128, 256, 786432]
+    - name: "I"
+      intent: out
+      type: Float16
+      indices: [beamP, beamQ, F, Tbar]
+      shape: [16, 24, 3072, 512]
+      strides: [1, 16, 384, 1179648]
+    - name: "info"
+      intent: out
+      type: Int32
+      indices: [thread, warp, block]
+      shapes: [32, 6, 3072]
+      strides: [1, 32, 192]
+...

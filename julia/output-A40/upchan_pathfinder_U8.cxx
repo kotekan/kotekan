@@ -59,10 +59,10 @@ private:
     // Kernel design parameters:
     static constexpr int cuda_number_of_complex_components = 2;
     static constexpr int cuda_number_of_dishes = 64;
-    static constexpr int cuda_number_of_frequencies = 128;
+    static constexpr int cuda_number_of_frequencies = 384;
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_taps = 4;
-    static constexpr int cuda_max_number_of_timesamples = 65536;
+    static constexpr int cuda_max_number_of_timesamples = 32768;
     static constexpr int cuda_granularity_number_of_timesamples = 256;
     static constexpr int cuda_algorithm_overlap = 24;
     static constexpr int cuda_upchannelization_factor = 8;
@@ -80,7 +80,7 @@ private:
     // Kernel call parameters:
     static constexpr int threads_x = 32;
     static constexpr int threads_y = 8;
-    static constexpr int blocks = 128;
+    static constexpr int blocks = 384;
     static constexpr int shmem_bytes = 73984;
 
     // Kernel name:
@@ -117,9 +117,9 @@ private:
         "Fbar",
     };
     static constexpr std::array<std::ptrdiff_t, G_rank> G_lengths = {
-        1024,
+        3072,
     };
-    static constexpr std::ptrdiff_t G_length = chord_datatype_bytes(G_type) * 1024;
+    static constexpr std::ptrdiff_t G_length = chord_datatype_bytes(G_type) * 3072;
     static_assert(G_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // E: gpu_mem_input_voltage
@@ -141,10 +141,10 @@ private:
     static constexpr std::array<std::ptrdiff_t, E_rank> E_lengths = {
         64,
         2,
-        128,
-        65536,
+        384,
+        32768,
     };
-    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 64 * 2 * 128 * 65536;
+    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 64 * 2 * 384 * 32768;
     static_assert(E_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // Ebar: gpu_mem_output_voltage
@@ -166,11 +166,11 @@ private:
     static constexpr std::array<std::ptrdiff_t, Ebar_rank> Ebar_lengths = {
         64,
         2,
-        1024,
-        8192,
+        3072,
+        4096,
     };
     static constexpr std::ptrdiff_t Ebar_length =
-        chord_datatype_bytes(Ebar_type) * 64 * 2 * 1024 * 8192;
+        chord_datatype_bytes(Ebar_type) * 64 * 2 * 3072 * 4096;
     static_assert(Ebar_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
@@ -190,9 +190,9 @@ private:
     static constexpr std::array<std::ptrdiff_t, info_rank> info_lengths = {
         32,
         8,
-        128,
+        384,
     };
-    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 8 * 128;
+    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 8 * 384;
     static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
@@ -370,21 +370,24 @@ cudaUpchannelizer_pathfinder_U8::execute(cudaPipelineState& /*pipestate*/,
     pre_execute();
 
     void* const G_memory =
-        args::G == args::E ? device.get_gpu_memory(G_memname, input_ringbuf_signal->size)
-        : args::G == args::Ebar
-            ? device.get_gpu_memory(G_memname, output_ringbuf_signal->size)
+        args::G == args::E      ? device.get_gpu_memory(G_memname, input_ringbuf_signal->size)
+        : args::G == args::Ebar ? device.get_gpu_memory(G_memname, output_ringbuf_signal->size)
+        : args::G == args::G
+            ? device.get_gpu_memory(G_memname, G_length)
             : device.get_gpu_memory_array(G_memname, gpu_frame_id, _gpu_buffer_depth, G_length);
     void* const E_memory =
-        args::E == args::E ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
-        : args::E == args::Ebar
-            ? device.get_gpu_memory(E_memname, output_ringbuf_signal->size)
+        args::E == args::E      ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
+        : args::E == args::Ebar ? device.get_gpu_memory(E_memname, output_ringbuf_signal->size)
+        : args::E == args::G
+            ? device.get_gpu_memory(E_memname, E_length)
             : device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
-    void* const Ebar_memory = args::Ebar == args::E
-                                  ? device.get_gpu_memory(Ebar_memname, input_ringbuf_signal->size)
-                              : args::Ebar == args::Ebar
-                                  ? device.get_gpu_memory(Ebar_memname, output_ringbuf_signal->size)
-                                  : device.get_gpu_memory_array(Ebar_memname, gpu_frame_id,
-                                                                _gpu_buffer_depth, Ebar_length);
+    void* const Ebar_memory =
+        args::Ebar == args::E ? device.get_gpu_memory(Ebar_memname, input_ringbuf_signal->size)
+        : args::Ebar == args::Ebar
+            ? device.get_gpu_memory(Ebar_memname, output_ringbuf_signal->size)
+        : args::Ebar == args::G ? device.get_gpu_memory(Ebar_memname, Ebar_length)
+                                : device.get_gpu_memory_array(Ebar_memname, gpu_frame_id,
+                                                              _gpu_buffer_depth, Ebar_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
     // G is an input buffer: check metadata

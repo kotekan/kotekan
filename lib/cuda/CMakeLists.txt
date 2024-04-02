@@ -27,9 +27,25 @@ add_library(
     cudaBasebandBeamformer_chord.cpp
     cudaBasebandBeamformer_hirax.cpp
     cudaBasebandBeamformer_pathfinder.cpp
-    cudaFRBBeamformer_chord.cpp
-    cudaFRBBeamformer_hirax.cpp
-    cudaFRBBeamformer_pathfinder.cpp
+    cudaFRBBeamformer_chord_U1.cpp
+    cudaFRBBeamformer_chord_U8.cpp
+    cudaFRBBeamformer_chord_U16.cpp
+    cudaFRBBeamformer_chord_U32.cpp
+    cudaFRBBeamformer_chord_U64.cpp
+    cudaFRBBeamformer_chord_U128.cpp
+    cudaFRBBeamformer_hirax_U1.cpp
+    cudaFRBBeamformer_hirax_U8.cpp
+    cudaFRBBeamformer_hirax_U16.cpp
+    cudaFRBBeamformer_hirax_U32.cpp
+    cudaFRBBeamformer_hirax_U64.cpp
+    cudaFRBBeamformer_hirax_U128.cpp
+    cudaFRBBeamformer_pathfinder_U1.cpp
+    cudaFRBBeamformer_pathfinder_U2.cpp
+    cudaFRBBeamformer_pathfinder_U4.cpp
+    cudaFRBBeamformer_pathfinder_U8.cpp
+    cudaFRBBeamformer_pathfinder_U16.cpp
+    cudaFRBBeamformer_pathfinder_U32.cpp
+    cudaFRBBeamformer_pathfinder_U64.cpp
     cudaFRBBeamReformer.cpp
     quantize_kernel_wrapper.cu
     cudaQuantize.cpp

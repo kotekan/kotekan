@@ -60,10 +60,10 @@ private:
     static constexpr int cuda_number_of_beams = 16;
     static constexpr int cuda_number_of_complex_components = 2;
     static constexpr int cuda_number_of_dishes = 64;
-    static constexpr int cuda_number_of_frequencies = 128;
+    static constexpr int cuda_number_of_frequencies = 384;
     static constexpr int cuda_number_of_polarizations = 2;
-    static constexpr int cuda_number_of_timesamples = 65536;
-    static constexpr int cuda_granularity_number_of_timesamples = 16384;
+    static constexpr int cuda_number_of_timesamples = 32768;
+    static constexpr int cuda_granularity_number_of_timesamples = 8192;
     static constexpr int cuda_shift_parameter_sigma = 2;
 
     // Kernel input and output sizes
@@ -79,7 +79,7 @@ private:
     // Kernel call parameters:
     static constexpr int threads_x = 32;
     static constexpr int threads_y = 4;
-    static constexpr int blocks = 2048;
+    static constexpr int blocks = 6144;
     static constexpr int shmem_bytes = 9472;
 
     // Kernel name:
@@ -113,9 +113,9 @@ private:
         "C", "D", "B", "P", "F",
     };
     static constexpr std::array<std::ptrdiff_t, A_rank> A_lengths = {
-        2, 64, 16, 2, 128,
+        2, 64, 16, 2, 384,
     };
-    static constexpr std::ptrdiff_t A_length = chord_datatype_bytes(A_type) * 2 * 64 * 16 * 2 * 128;
+    static constexpr std::ptrdiff_t A_length = chord_datatype_bytes(A_type) * 2 * 64 * 16 * 2 * 384;
     static_assert(A_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // E: gpu_mem_voltage
@@ -137,10 +137,10 @@ private:
     static constexpr std::array<std::ptrdiff_t, E_rank> E_lengths = {
         64,
         2,
-        128,
-        65536,
+        384,
+        32768,
     };
-    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 64 * 2 * 128 * 65536;
+    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 64 * 2 * 384 * 32768;
     static_assert(E_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // s: gpu_mem_output_scaling
@@ -160,9 +160,9 @@ private:
     static constexpr std::array<std::ptrdiff_t, s_rank> s_lengths = {
         16,
         2,
-        128,
+        384,
     };
-    static constexpr std::ptrdiff_t s_length = chord_datatype_bytes(s_type) * 16 * 2 * 128;
+    static constexpr std::ptrdiff_t s_length = chord_datatype_bytes(s_type) * 16 * 2 * 384;
     static_assert(s_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // J: gpu_mem_formed_beams
@@ -182,12 +182,12 @@ private:
         "B",
     };
     static constexpr std::array<std::ptrdiff_t, J_rank> J_lengths = {
-        16384,
+        8192,
         2,
-        128,
+        384,
         16,
     };
-    static constexpr std::ptrdiff_t J_length = chord_datatype_bytes(J_type) * 16384 * 2 * 128 * 16;
+    static constexpr std::ptrdiff_t J_length = chord_datatype_bytes(J_type) * 8192 * 2 * 384 * 16;
     static_assert(J_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
@@ -207,9 +207,9 @@ private:
     static constexpr std::array<std::ptrdiff_t, info_rank> info_lengths = {
         32,
         4,
-        2048,
+        6144,
     };
-    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 4 * 2048;
+    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 4 * 6144;
     static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
@@ -346,20 +346,24 @@ cudaBasebandBeamformer_pathfinder::execute(cudaPipelineState& /*pipestate*/,
     pre_execute();
 
     void* const A_memory =
-        args::A == args::E
-            ? device.get_gpu_memory(A_memname, input_ringbuf_signal->size)
+        args::A == args::E ? device.get_gpu_memory(A_memname, input_ringbuf_signal->size)
+        : args::A == args::A || args::A == args::s
+            ? device.get_gpu_memory(A_memname, A_length)
             : device.get_gpu_memory_array(A_memname, gpu_frame_id, _gpu_buffer_depth, A_length);
     void* const E_memory =
-        args::E == args::E
-            ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
+        args::E == args::E ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
+        : args::E == args::A || args::E == args::s
+            ? device.get_gpu_memory(E_memname, E_length)
             : device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
     void* const s_memory =
-        args::s == args::E
-            ? device.get_gpu_memory(s_memname, input_ringbuf_signal->size)
+        args::s == args::E ? device.get_gpu_memory(s_memname, input_ringbuf_signal->size)
+        : args::s == args::A || args::s == args::s
+            ? device.get_gpu_memory(s_memname, s_length)
             : device.get_gpu_memory_array(s_memname, gpu_frame_id, _gpu_buffer_depth, s_length);
     void* const J_memory =
-        args::J == args::E
-            ? device.get_gpu_memory(J_memname, input_ringbuf_signal->size)
+        args::J == args::E ? device.get_gpu_memory(J_memname, input_ringbuf_signal->size)
+        : args::J == args::A || args::J == args::s
+            ? device.get_gpu_memory(J_memname, J_length)
             : device.get_gpu_memory_array(J_memname, gpu_frame_id, _gpu_buffer_depth, J_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
