@@ -10,8 +10,7 @@ using kotekan::Config;
 
 gpuDeviceInterface::gpuDeviceInterface(Config& config, const std::string& unique_name,
                                        int32_t gpu_id) :
-    config(config),
-    unique_name(unique_name), gpu_id(gpu_id) {}
+    config(config), unique_name(unique_name), gpu_id(gpu_id) {}
 
 gpuDeviceInterface::~gpuDeviceInterface() {}
 
@@ -44,6 +43,10 @@ void* gpuDeviceInterface::get_gpu_memory(const std::string& name, const size_t l
               gpu_memory[name].len);
     }
     assert(len == gpu_memory[name].len);
+    if (gpu_memory[name].gpu_pointers.size() != 1) {
+        ERROR("GPU[{:d}] memory: {:s}, implicitly requested 1 frame, have {:d}", gpu_id, name,
+              gpu_memory[name].gpu_pointers.size());
+    }
     assert(gpu_memory[name].gpu_pointers.size() == 1);
 
     // Return the requested memory.
