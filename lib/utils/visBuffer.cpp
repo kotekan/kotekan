@@ -39,6 +39,7 @@ struct VisMetadataFormat {
     uint64_t rfi_total;
     freq_id_t freq_id;
     dset_id_t dataset_id;
+    uint64_t n_valid_fpga_samples;
     uint32_t num_elements;
     uint32_t num_prod;
     uint32_t num_ev;
@@ -60,6 +61,7 @@ size_t VisMetadata::set_from_bytes(const char* bytes, size_t length) {
     freq_id = fmt->freq_id;
     dataset_id = fmt->dataset_id;
     num_elements = fmt->num_elements;
+    n_valid_fpga_samples = fmt->n_valid_fpga_samples;
     num_prod = fmt->num_prod;
     num_ev = fmt->num_ev;
     return sz;
@@ -75,6 +77,7 @@ size_t VisMetadata::serialize(char* bytes) {
     fmt->rfi_total = rfi_total;
     fmt->freq_id = freq_id;
     fmt->dataset_id = dataset_id;
+    fmt->n_valid_fpga_samples = n_valid_fpga_samples;
     fmt->num_elements = num_elements;
     fmt->num_prod = num_prod;
     fmt->num_ev = num_ev;
@@ -95,6 +98,7 @@ void to_json(nlohmann::json& j, const VisMetadata& m) {
     j["rfi_total"] = m.rfi_total;
     j["freq_id"] = m.freq_id;
     j["dataset_id"] = m.dataset_id;
+    j["n_valid_fpga_samples"] = m.n_valid_fpga_samples;
     j["num_elements"] = m.num_elements;
     j["num_prod"] = m.num_prod;
     j["num_ev"] = m.num_ev;
@@ -108,6 +112,7 @@ void from_json(const nlohmann::json& j, VisMetadata& m) {
     m.rfi_total = j["rfi_total"];
     m.freq_id = j["freq_id"];
     m.dataset_id = j["dataset_id"];
+    m.n_valid_fpga_samples = j["n_valid_fpga_samples"];
     m.num_elements = j["num_elements"];
     m.num_prod = j["num_prod"];
     m.num_ev = j["num_ev"];
@@ -127,6 +132,7 @@ VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
     time(std::tie(_metadata->fpga_seq_start, _metadata->ctime)),
     fpga_seq_length(_metadata->fpga_seq_length), fpga_seq_total(_metadata->fpga_seq_total),
     rfi_total(_metadata->rfi_total), freq_id(_metadata->freq_id), dataset_id(_metadata->dataset_id),
+    n_valid_fpga_samples(_metadata->n_valid_fpga_samples),
 
     // Bind the regions of the buffer to spans and references on the view
     vis(bind_span<cfloat>(_frame, buffer_layout.second[VisField::vis])),
@@ -178,6 +184,7 @@ void VisFrameView::copy_metadata(VisFrameView frame_to_copy) {
     _metadata->ctime = frame_to_copy.metadata()->ctime;
     _metadata->freq_id = frame_to_copy.metadata()->freq_id;
     _metadata->dataset_id = frame_to_copy.metadata()->dataset_id;
+    _metadata->n_valid_fpga_samples = frame_to_copy.metadata()->n_valid_fpga_samples;
 }
 
 // Copy the non-visibility parts of the buffer
@@ -324,6 +331,7 @@ void VisFrameView::zero_frame() {
     freq_id = 0;
     dataset_id = dset_id_t::null;
     time = std::make_tuple(0, timespec{0, 0});
+    n_valid_fpga_samples = 0;
 
     // mark frame as empty by ensuring this is 0
     fpga_seq_length = 0;

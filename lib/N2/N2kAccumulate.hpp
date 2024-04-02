@@ -11,8 +11,7 @@
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily
-#include "visBuffer.hpp"         // for VisFrameView
-#include "visUtil.hpp"           // for frameID, freq_ctype, input_ctype, prod_ctype
+#include "N2Util.hpp"            // for frameID
 
 #include <cstdint>    // for uint32_t, int32_t
 #include <string>     // for string
@@ -92,6 +91,7 @@ private:
 
     // Reference to the prometheus metric that we will use for counting skipped
     // frames
+    // TODO ...
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& skipped_frame_counter;
 };
 

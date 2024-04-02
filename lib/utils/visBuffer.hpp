@@ -73,6 +73,9 @@ public:
     /// ID of the dataset
     dset_id_t dataset_id;
 
+    /// Sample information
+    uint64_t n_valid_fpga_samples;
+
     /// Number of elements for data in buffer
     uint32_t num_elements;
     /// Number of products for data in buffer
@@ -339,6 +342,9 @@ public:
     uint32_t& freq_id;
     /// A reference to the dataset ID.
     dset_id_t& dataset_id;
+
+    /// Sample information
+    uint64_t& n_valid_fpga_samples;
 
     /// View of the visibility data.
     const gsl::span<cfloat> vis;

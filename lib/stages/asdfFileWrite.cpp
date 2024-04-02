@@ -232,6 +232,7 @@ public:
                         std::vector<bool>(), std::vector<int64_t>{frame_view.num_prod});
                     group->emplace("weights", weights_array);
 
+                    group->emplace("n_valid_fpga_samples", std::make_shared<ASDF::int_entry>(meta->n_valid_fpga_samples));
                     group->emplace("num_elements", std::make_shared<ASDF::int_entry>(meta->num_elements));
                     group->emplace("num_prod", std::make_shared<ASDF::int_entry>(meta->num_prod));
                     group->emplace("freq_id", std::make_shared<ASDF::int_entry>(meta->freq_id));

@@ -6,27 +6,22 @@
 #include "buffer.hpp"            // for register_producer, Buffer, allocate_new_metadata_object
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chordMetadata.hpp"     // for chordMetadata, get_fpga_seq_num
-#include "configUpdater.hpp"     // for configUpdater
-#include "factory.hpp"           // for FACTORY
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, INFO, logLevel, DEBUG
-#include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
-#include "version.h"             // for get_git_commit_hash
-#include "visUtil.hpp"           // for prod_ctype, frameID, modulo, input_ctype, operator+
+#include "N2Util.hpp"            // for frameID
+#include "N2FrameView.hpp"       // for N2FrameView
 
 #include <algorithm>  // for copy, max, fill, copy_backward, equal, transform
 #include <assert.h>   // for assert
-#include <cmath>      // for pow
 #include <complex>    // for operator*, complex
 #include <sys/time.h> // for TIMEVAL_TO_TIMESPEC
 #include <time.h>     // for size_t, timespec
-#include <vector>     // for vector, vector<>::iterator, __alloc_traits<>::value_type
+#include <vector>     // for vector
 
 
 using namespace std::placeholders;
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::configUpdater;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
 
@@ -79,6 +74,7 @@ N2kAccumulate::N2kAccumulate(Config& config, const std::string& unique_name,
     out_buf->register_producer(unique_name);
     // TODO...
     // Make sure output buffer has enough frames (>= # frequencies) and are sized correctly
+    // Add other assert()s 
 }
 
 void N2kAccumulate::main_thread() {
@@ -208,16 +204,16 @@ bool N2kAccumulate::output_and_reset( frameID &in_frame_id, frameID &out_frame_i
         if (out_buf->wait_for_empty_frame(unique_name, out_frame_id) == nullptr) {
             return false;
         }
-
-        auto out_vis = VisFrameView::create_frame_view(out_buf, out_frame_id, _num_elements,
-                                                    _num_accum_products, num_ev, true);
+        DEBUG("Allocating metadata.");
+        out_buf->allocate_new_metadata_object(out_frame_id);
+        DEBUG("Creating N2FrameView.");
+        N2FrameView out_vis(out_buf, out_frame_id);
+        // out_vis.set_metadata(chord_frame_metadata);
 
         // Sample numbers for normalizing weights
+        DEBUG("Computing normalization.");
         float ns = _n_valid_fpga_samples_in_vis[f]; // ns = "number of samples"
         float ins = (ns != 0.0) ? (1.0 / ns) : 0.0;
-
-        // TODO: any need to adjust metadata? CHORD will look a bit different.
-        out_vis.fill_metadata<chordMetadata>(chord_frame_metadata, f);
 
         // Copy data into buffer.
         // This requires changing from the GPU's blocked format to the triangular format visBuffer expects.
