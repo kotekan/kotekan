@@ -34,12 +34,11 @@ public:
                         const std::vector<cudaEvent_t>& pre_events) override;
 
     // These are the exact array sizes supported by the Cuda code
-    const int CHUNK_SIZE = 256;
-    const int FRAME_SIZE = 32;
+    static constexpr int CHUNK_SIZE = 256;
+    static constexpr int FRAME_SIZE = 32;
 
-protected:
 private:
-    int32_t _num_chunks;
+    int64_t _num_chunks;
 
     /// GPU side memory name for the time-stream input
     std::string _gpu_mem_input;
