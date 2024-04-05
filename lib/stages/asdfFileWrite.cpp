@@ -3,7 +3,8 @@
 #include <asdf/asdf.hxx>
 #include <cassert>
 #include <chordMetadata.hpp>
-#include <visBuffer.hpp>
+#include <N2Metadata.hpp>
+#include <N2FrameView.hpp>
 #include <cstdint>
 #include <errno.h>
 #include <errors.h>
@@ -19,7 +20,7 @@
 #include <unistd.h>
 #include <utility>
 #include <vector>
-#include <visUtil.hpp>
+#include <visUtil.hpp>  // for current_time
 
 namespace {
 ASDF::scalar_type_id_t chord2asdf(const chordDataType type) {
@@ -127,10 +128,10 @@ public:
                 FATAL_ERROR("Buffer \"{:s}\" frame {:d} does not have metadata",
                             buffer->buffer_name, frame_id);
             assert(mc);
-            if (!metadata_is_chord(mc) && !metadata_is_vis(mc))
-                FATAL_ERROR("Metadata of buffer \"{:s}\" frame {:d} is not of type CHORD or VIS",
+            if (!metadata_is_chord(mc) && !metadata_is_N2(mc))
+                FATAL_ERROR("Metadata of buffer \"{:s}\" frame {:d} is not of type CHORD or N2",
                             buffer->buffer_name, frame_id);
-            assert(metadata_is_chord(mc) || metadata_is_vis(mc));
+            assert(metadata_is_chord(mc) || metadata_is_N2(mc));
             const std::shared_ptr<chordMetadata> meta = get_chord_metadata(mc);
 
             if (!skip_writing) {
@@ -214,25 +215,24 @@ public:
                         group->emplace("dish_index", dish_index_entry);
                     }
 
-                } else if(metadata_is_vis(mc)) {
+                } else if(metadata_is_N2(mc)) {
                     
-                    const std::shared_ptr<VisMetadata> meta = std::static_pointer_cast<VisMetadata>(mc);
-
-                    auto frame_view = VisFrameView(buffer, frame_id);
+                    const std::shared_ptr<N2Metadata> meta = std::static_pointer_cast<N2Metadata>(mc);
+                    N2FrameView frame_view (buffer, frame_id);
 
                     std::vector<ASDF::complex64_t> vis_view( frame_view.vis.begin(), frame_view.vis.end() );
                     auto vis_array = std::make_shared<ASDF::ndarray>(
                         vis_view, ASDF::block_format_t::inline_array, compression, compression_level,
-                        std::vector<bool>(), std::vector<int64_t>{frame_view.num_prod});
+                        std::vector<bool>(), std::vector<int64_t>{meta->num_prod});
                     group->emplace("vis", vis_array);
 
                     std::vector<ASDF::float32_t> weights_view( frame_view.weight.begin(), frame_view.weight.end() );
                     auto weights_array = std::make_shared<ASDF::ndarray>(
                         weights_view, ASDF::block_format_t::inline_array, compression, compression_level,
-                        std::vector<bool>(), std::vector<int64_t>{frame_view.num_prod});
+                        std::vector<bool>(), std::vector<int64_t>{meta->num_prod});
                     group->emplace("weights", weights_array);
 
-                    group->emplace("n_valid_fpga_samples", std::make_shared<ASDF::int_entry>(meta->n_valid_fpga_samples));
+                    group->emplace("n_valid_fpga_ticks_in_frame", std::make_shared<ASDF::int_entry>(meta->n_valid_fpga_ticks_in_frame));
                     group->emplace("num_elements", std::make_shared<ASDF::int_entry>(meta->num_elements));
                     group->emplace("num_prod", std::make_shared<ASDF::int_entry>(meta->num_prod));
                     group->emplace("freq_id", std::make_shared<ASDF::int_entry>(meta->freq_id));

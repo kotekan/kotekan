@@ -26,9 +26,6 @@ target_link_libraries(kotekan_libs INTERFACE kotekan_stages)
 add_subdirectory(version)
 target_link_libraries(kotekan_libs INTERFACE kotekan_version)
 
-add_subdirectory(N2)
-target_link_libraries(kotekan_libs INTERFACE kotekan_N2)
-
 target_link_libraries(kotekan_libs INTERFACE libexternal)
 
 if(${WITH_TESTS} OR ${WITH_BOOST_TESTS})

@@ -1,7 +1,7 @@
 #include "N2FrameView.hpp"
 
 size_t N2FrameView::data_size() const {
-    return 0;
+    return calculate_frame_size(_metadata->num_elements, _metadata->num_ev);
 }
 
 void N2FrameView::zero_frame() {

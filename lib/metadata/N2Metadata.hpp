@@ -2,8 +2,14 @@
 #define N2_METADATA
 
 #include "N2Metadata.hpp"
-#include "buffer.hpp"
-#include "metadata.hpp"
+#include "metadata.hpp"     // for metadataObject, metadataPool
+#include "chordMetadata.hpp"// for chordMetadata
+#include "N2Util.hpp"       // for frameID
+#include "buffer.hpp"       // for Buffer
+#include "Config.hpp"       // for Config
+#include "N2Util.hpp"       // for get_num_prod
+
+using kotekan::Config;
 
 #include <assert.h>
 
@@ -12,10 +18,10 @@ struct N2MetadataFormat {
 
     /// Number of elements for data in buffer
     uint32_t num_elements;
-    /// Number of products for data in buffer
-    uint32_t num_prod;
     /// Number of eigenvectors and values calculated
     uint32_t num_ev;
+    /// Number of products in the data
+    uint32_t num_prod;
 
     /// ID of the frequency bin
     int freq_id; // this is an int in chordMetadata, maybe change later
@@ -52,7 +58,6 @@ public:
     size_t serialize(char* bytes) override;
 };
 
-
 inline bool metadata_is_N2(Buffer* buf, int) {
     return buf && buf->metadata_pool && (buf->metadata_pool->type_name == "N2Metadata");
 }
@@ -83,6 +88,30 @@ inline std::shared_ptr<N2Metadata> get_N2_metadata(Buffer* buf, int frame_id) {
         return std::shared_ptr<N2Metadata>();
     std::shared_ptr<metadataObject> meta = buf->metadata[frame_id];
     return get_N2_metadata(meta);
+}
+
+inline std::shared_ptr<N2Metadata> alloc_N2_from_chord_metadata(Buffer* chord_buf, size_t chord_frame_id,
+    Buffer* N2_buf, N2::frameID N2_frame_id, Config& config, const std::string& unique_name, int f) {
+    
+    assert(f >= 0 && f < CHORD_META_MAX_FREQ);
+    
+    N2_buf->allocate_new_metadata_object(N2_frame_id);
+
+    std::shared_ptr<chordMetadata> chord_meta = get_chord_metadata(chord_buf, chord_frame_id);
+    std::shared_ptr<N2Metadata> N2_meta = get_N2_metadata(N2_buf, N2_frame_id);
+
+    N2_meta->num_elements = config.get<int32_t>(unique_name, "num_elements");
+    N2_meta->num_prod = N2::get_num_prod(N2_meta->num_elements);
+    N2_meta->num_ev = config.get<int32_t>(unique_name, "num_ev");
+
+    N2_meta->freq_id = chord_meta->coarse_freq[f];
+    N2_meta->fpga_start_tick = 0;
+    N2_meta->frame_start_ctime = {0, 0};
+    N2_meta->frame_length_fpga_ticks = 0;
+    N2_meta->n_valid_fpga_ticks_in_frame = 0;
+    N2_meta->n_rfi_fpga_ticks = 0;
+
+    return N2_meta;
 }
 
 #endif

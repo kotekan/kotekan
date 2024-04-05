@@ -81,6 +81,7 @@ add_library(
     ExampleProducer.cpp
     ExampleConsumer.cpp
     ExampleDotProduct.cpp
+    N2Accumulate.cpp
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 

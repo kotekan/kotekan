@@ -7,13 +7,21 @@
 
 #include <complex>     // for complex, imag, real
 #include <cstdint>     // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
-#include <cstdlib>     // for size_t, (anonymous), div
+#include <cstdlib>     // for size_t
 #include <time.h>      // for timespec, clock_gettime
-#include <vector>      // for vector
 
+namespace N2
+{
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;
+
+/**
+ * @brief Get the number of products for a given number of elements.
+ */
+inline size_t get_num_prod(size_t num_elements) {
+    return num_elements * (num_elements + 1) / 2;
+}
 
 /**
  * @brief Index into a flattened upper matrix triangle.
@@ -219,18 +227,6 @@ public:
 };
 
 /**
- * @brief FMT formatter that casts frameIDs to int so that `format("{:d}", frame_id)` works.
- */
-namespace fmt {
-template<>
-struct formatter<frameID> : formatter<int> {
-    auto format(const frameID id, format_context& ctx) {
-        return formatter<int>::format((int)id, ctx);
-    }
-};
-} // namespace fmt
-
-/**
  * @brief Return the next aligned location for a given type size
  * @param  offset Start offset.
  * @param  size   Item size.
@@ -239,5 +235,20 @@ struct formatter<frameID> : formatter<int> {
 inline size_t member_alignment(size_t offset, size_t size) {
     return (((size - (offset % size)) % size) + offset);
 }
+
+} // N2
+
+/**
+ * @brief FMT formatter that casts frameIDs to int so that `format("{:d}", frame_id)` works.
+ */
+namespace fmt {
+template<>
+struct formatter<N2::frameID> : formatter<int> {
+    auto format(const N2::frameID id, format_context& ctx) {
+        return formatter<int>::format((int)id, ctx);
+    }
+};
+} // namespace fmt
+
 
 #endif

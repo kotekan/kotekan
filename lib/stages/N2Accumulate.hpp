@@ -1,10 +1,10 @@
 /*****************************************
 @file
 @brief Accumulation and gating of visibility data.
-- N2kAccumulate : public kotekan::Stage
+- N2Accumulate : public kotekan::Stage
 *****************************************/
-#ifndef N2K_ACCUMULATE_HPP
-#define N2K_ACCUMULATE_HPP
+#ifndef N2_ACCUMULATE_HPP
+#define N2_ACCUMULATE_HPP
 
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
@@ -20,7 +20,7 @@
 
 
 /**
- * @class N2kAccumulate
+ * @class N2Accumulate
  * @brief Accumulate the high rate GPU output into integrated VisBuffers.
  *
  *
@@ -32,16 +32,16 @@
  *         @buffer_format VisBuffer structured.
  *         @buffer_metadata VisMetadata
  */
-class N2kAccumulate : public kotekan::Stage {
+class N2Accumulate : public kotekan::Stage {
 public:
-    N2kAccumulate(kotekan::Config& config, const std::string& unique_name,
+    N2Accumulate(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& buffer_container);
-    ~N2kAccumulate() = default;
+    ~N2Accumulate() = default;
 
     /**
-     * @brief The main thread function for N2kAccumulate.
+     * @brief The main thread function for N2Accumulate.
      * 
-     * This function is responsible for the main logic of the N2kAccumulate class.
+     * This function is responsible for the main logic of the N2Accumulate class.
      */
     void main_thread() override;
 
@@ -55,7 +55,7 @@ public:
      * @param out_frame_id The output frame ID.
      * @return bool True if successful, false otherwise.
      */
-    bool output_and_reset(frameID &in_frame_id, frameID &out_frame_id);
+    bool output_and_reset(N2::frameID &in_frame_id, N2::frameID &out_frame_id);
 
 private:
     // Buffers to read/write
@@ -64,10 +64,10 @@ private:
 
     // Parameters saved from the config files
     size_t _num_freq_in_frame;
-    size_t _n_fpga_samples_per_N2k_frame;
-    size_t _n_fpga_samples_N2k_integrates_for;
+    size_t _n_fpga_samples_per_N2_frame;
+    size_t _n_fpga_samples_N2_integrates_for;
     size_t _n_fpga_samples_per_vis_sample;
-    size_t _n_vis_samples_per_N2k_output_frame;
+    size_t _n_vis_samples_per_N2_output_frame;
     size_t _n_vis_samples_per_in_frame;
     
     // Frame and vis sample durations in nanoseconds
@@ -75,10 +75,10 @@ private:
     uint64_t _in_frame_vis_duration_nsec;
     
     size_t _num_elements; ///< Number of telescope elements
-    size_t _num_N2k_products; ///< Number of products produced by the N2k correlator
-    size_t _num_N2k_products_freqs; ///< Number of N2k products x frequencies
+    size_t _num_N2_products; ///< Number of products produced by the N2 correlator
+    size_t _num_N2_products_freqs; ///< Number of N2 products x frequencies
     size_t _num_accum_products; ///< Number of visibility products in accumulate output
- 
+
     // The below vectors are initialized in the constructor after _num_vis_products
     // and _num_freq_in_frame are known.
     std::vector<int32_t> _vis;
