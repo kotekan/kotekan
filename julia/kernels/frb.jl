@@ -44,8 +44,8 @@ U::Integer
     const P = 2
     # const F₀ = 16 * 16
     # const F = 16 * 16           # benchmarking A30: 56; A40: 84
-    const F = 16 * U
-    const T = 4 * 32768 ÷ U
+    const F = 48 * U
+    const T = 4 * 8192 ÷ U
 
     const Touter = 48
     const Tinner = 4
@@ -105,7 +105,19 @@ end
 # TODO: This is now wrong
 const sampling_time_μsec = U * 4096 / (2 * 1200)
 const C = 2
-const T̄ = 4 * 1024 ÷ U
+# We want 256, but high upchannelization factors produce too many frequencies
+# const T̄ = 4 * 256
+@static if setup ≡ :chord
+    const T̄ = 4 * 256 * 8 ÷ U
+elseif setup ≡ :hirax
+    const T̄ = 4 * 256 * 4 ÷ U
+elseif setup ≡ :pathfinder
+    @static if U ≤ 4
+        const T̄ = 4 * 256
+    else
+        const T̄ = 4 * 256 * 4 ÷ U
+    end
+end
 
 const output_gain = 1 / (8 * Tds)
 
@@ -2111,19 +2123,19 @@ function fix_ptx_kernel()
           indices: [MN, D]
           shape: [2, $(M*N)]
           strides: [1, 2]
-        - name: "W"
+        - name: "W$U"
           intent: in
           type: Float16
           indices: [C, dishM, dishN, P, F]
           shape: [$C, $M, $N, $P, $F]
           strides: [1, $C, $(C*M), $(C*M*N), $(C*M*N*P), $(C*M*N*P*F)]
-        - name: "E"
+        - name: "Ē$U"
           intent: in
           type: Int4
           indices: [C, D, P, F, T]
           shape: [$C, $D, $P, $F, $T]
           strides: [1, $C, $(C*D), $(C*D*P), $(C*D*P*F)]
-        - name: "I"
+        - name: "I$U"
           intent: out
           type: Float16
           indices: [beamP, beamQ, F, Tbar]
@@ -2145,6 +2157,7 @@ function fix_ptx_kernel()
         cxx,
         Dict(
             "kernel_name" => "FRBBeamformer_$(setup)_U$(U)",
+            "upchannelization_factor" => "$U",
             "kernel_design_parameters" => [
                 Dict("type" => "int", "name" => "cuda_beam_layout_M", "value" => "$(2*M)"),
                 Dict("type" => "int", "name" => "cuda_beam_layout_N", "value" => "$(2*N)"),
@@ -2208,7 +2221,7 @@ function fix_ptx_kernel()
                     "isscalar" => false,
                 ),
                 Dict(
-                    "name" => "W",
+                    "name" => "W$U",
                     "kotekan_name" => "gpu_mem_phase",
                     "type" => "float16",
                     "axes" => [
@@ -2223,7 +2236,7 @@ function fix_ptx_kernel()
                     "isscalar" => false,
                 ),
                 Dict(
-                    "name" => "Ebar",
+                    "name" => "Ebar$U",
                     "kotekan_name" => "gpu_mem_voltage",
                     "type" => "int4p4",
                     "axes" => [
@@ -2237,7 +2250,7 @@ function fix_ptx_kernel()
                     "isscalar" => false,
                 ),
                 Dict(
-                    "name" => "I",
+                    "name" => "I$U",
                     "kotekan_name" => "gpu_mem_beamgrid",
                     "type" => "float16",
                     "axes" => [
