@@ -139,7 +139,7 @@ public:
     // number of coarse frequency channels.
     int nfreq;
 
-    // frequencies -- integer (0-2047) identifier for FPGA coarse frequencies
+    // frequencies -- integer (0-8192) identifier for FPGA coarse frequencies
     // This is the FPGA frequency channel index, indexed by the local coarse frequency channel.
     int coarse_freq[CHORD_META_MAX_FREQ];
 
