@@ -108,19 +108,35 @@ class FEngine : public kotekan::Stage {
     const std::int64_t A_frame_size;
     const std::int64_t s_frame_size;
     const std::int64_t J_frame_size;
-    const std::int64_t G_frame_size;
-    const std::int64_t W1_frame_size;
+    const std::int64_t G2_frame_size;
+    const std::int64_t G4_frame_size;
+    const std::int64_t G8_frame_size;
+    const std::int64_t W11_frame_size;
+    const std::int64_t W12_frame_size;
+    const std::int64_t W14_frame_size;
+    const std::int64_t W18_frame_size;
     const std::int64_t W2_frame_size;
-    const std::int64_t I1_frame_size;
+    const std::int64_t I11_frame_size;
+    const std::int64_t I12_frame_size;
+    const std::int64_t I14_frame_size;
+    const std::int64_t I18_frame_size;
 
     Buffer* const E_buffer;
     Buffer* const A_buffer;
     Buffer* const s_buffer;
     Buffer* const J_buffer;
-    Buffer* const G_buffer;
-    Buffer* const W1_buffer;
+    Buffer* const G2_buffer;
+    Buffer* const G4_buffer;
+    Buffer* const G8_buffer;
+    Buffer* const W11_buffer;
+    Buffer* const W12_buffer;
+    Buffer* const W14_buffer;
+    Buffer* const W18_buffer;
     Buffer* const W2_buffer;
-    Buffer* const I1_buffer;
+    Buffer* const I11_buffer;
+    Buffer* const I12_buffer;
+    Buffer* const I14_buffer;
+    Buffer* const I18_buffer;
 
 public:
     FEngine(kotekan::Config& config, const std::string& unique_name,

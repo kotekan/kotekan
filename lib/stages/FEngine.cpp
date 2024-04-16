@@ -86,19 +86,37 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
                  * num_frequencies),
     s_frame_size(sizeof(int32_t) * bb_num_beams * num_polarizations * num_frequencies),
     J_frame_size(num_times * num_polarizations * num_frequencies * bb_num_beams),
-    G_frame_size(sizeof(float16_t) * num_frequencies * upchannelization_factor),
-    W1_frame_size(sizeof(float16_t) * num_components * num_dish_locations_ns * num_dish_locations_ew
-                  * num_polarizations * (num_frequencies * upchannelization_factor)),
+    G2_frame_size(sizeof(float16_t) * num_frequencies * 2),
+    G4_frame_size(sizeof(float16_t) * num_frequencies * 4),
+    G8_frame_size(sizeof(float16_t) * num_frequencies * 8),
+    W11_frame_size(sizeof(float16_t) * num_components * num_dish_locations_ns
+                   * num_dish_locations_ew * num_polarizations * (num_frequencies * 1)),
+    W12_frame_size(sizeof(float16_t) * num_components * num_dish_locations_ns
+                   * num_dish_locations_ew * num_polarizations * (num_frequencies * 2)),
+    W14_frame_size(sizeof(float16_t) * num_components * num_dish_locations_ns
+                   * num_dish_locations_ew * num_polarizations * (num_frequencies * 4)),
+    W18_frame_size(sizeof(float16_t) * num_components * num_dish_locations_ns
+                   * num_dish_locations_ew * num_polarizations * (num_frequencies * 8)),
     W2_frame_size(sizeof(float16_t) * (frb1_num_beams_P * frb1_num_beams_Q)
                   * (frb2_num_beams_ns * frb2_num_beams_ew)
                   * (num_frequencies * upchannelization_factor)),
-    I1_frame_size(sizeof(float16_t) * frb1_num_beams_P * frb1_num_beams_Q
-                  * (num_frequencies * upchannelization_factor) * frb_num_times),
+    I11_frame_size(sizeof(float16_t) * frb1_num_beams_P * frb1_num_beams_Q * (num_frequencies * 1)
+                   * frb_num_times),
+    I12_frame_size(sizeof(float16_t) * frb1_num_beams_P * frb1_num_beams_Q * (num_frequencies * 2)
+                   * frb_num_times),
+    I14_frame_size(sizeof(float16_t) * frb1_num_beams_P * frb1_num_beams_Q * (num_frequencies * 4)
+                   * frb_num_times),
+    I18_frame_size(sizeof(float16_t) * frb1_num_beams_P * frb1_num_beams_Q * (num_frequencies * 8)
+                   * frb_num_times),
     // Buffers
     E_buffer(get_buffer("E_buffer")), A_buffer(get_buffer("A_buffer")),
     s_buffer(get_buffer("s_buffer")), J_buffer(get_buffer("J_buffer")),
-    G_buffer(get_buffer("G_buffer")), W1_buffer(get_buffer("W1_buffer")),
-    W2_buffer(get_buffer("W2_buffer")), I1_buffer(get_buffer("I1_buffer")) {
+    G2_buffer(get_buffer("G2_buffer")), G4_buffer(get_buffer("G4_buffer")),
+    G8_buffer(get_buffer("G8_buffer")), W11_buffer(get_buffer("W11_buffer")),
+    W12_buffer(get_buffer("W12_buffer")), W14_buffer(get_buffer("W14_buffer")),
+    W18_buffer(get_buffer("W18_buffer")), W2_buffer(get_buffer("W2_buffer")),
+    I11_buffer(get_buffer("I11_buffer")), I12_buffer(get_buffer("I12_buffer")),
+    I14_buffer(get_buffer("I14_buffer")), I18_buffer(get_buffer("I18_buffer")) {
     assert(num_dishes >= 0 && num_dishes <= num_dish_locations);
     assert(std::ptrdiff_t(dish_indices.size()) == num_dish_locations_ew * num_dish_locations_ns);
     int num_dishes_seen = 0;
@@ -126,18 +144,34 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     assert(A_buffer);
     assert(s_buffer);
     assert(J_buffer);
-    assert(G_buffer);
-    assert(W1_buffer);
+    assert(G2_buffer);
+    assert(G4_buffer);
+    assert(G8_buffer);
+    assert(W11_buffer);
+    assert(W12_buffer);
+    assert(W14_buffer);
+    assert(W18_buffer);
     assert(W2_buffer);
-    assert(I1_buffer);
+    assert(I11_buffer);
+    assert(I12_buffer);
+    assert(I14_buffer);
+    assert(I18_buffer);
     E_buffer->register_producer(unique_name);
     A_buffer->register_producer(unique_name);
     s_buffer->register_producer(unique_name);
     J_buffer->register_producer(unique_name);
-    G_buffer->register_producer(unique_name);
-    W1_buffer->register_producer(unique_name);
+    G2_buffer->register_producer(unique_name);
+    G4_buffer->register_producer(unique_name);
+    G8_buffer->register_producer(unique_name);
+    W11_buffer->register_producer(unique_name);
+    W12_buffer->register_producer(unique_name);
+    W14_buffer->register_producer(unique_name);
+    W18_buffer->register_producer(unique_name);
     W2_buffer->register_producer(unique_name);
-    I1_buffer->register_producer(unique_name);
+    I11_buffer->register_producer(unique_name);
+    I12_buffer->register_producer(unique_name);
+    I14_buffer->register_producer(unique_name);
+    I18_buffer->register_producer(unique_name);
 
     INFO("Starting Julia...");
     kotekan::juliaStartup();
@@ -349,133 +383,483 @@ void FEngine::main_thread() {
         s_buffer->mark_frame_full(unique_name, s_frame_id);
     }
 
-    // Produce upchannelization gains
-    for (int G_frame_index = 0; G_frame_index < G_buffer->num_frames; ++G_frame_index) {
-        const int G_frame_id = G_frame_index % G_buffer->num_frames;
+    // Produce upchannelization-2 gains
+    for (int G2_frame_index = 0; G2_frame_index < G2_buffer->num_frames; ++G2_frame_index) {
+        const int U = 2;
+        const int G2_frame_id = G2_frame_index % G2_buffer->num_frames;
 
         // Wait for buffer
-        std::uint8_t* const G_frame = G_buffer->wait_for_empty_frame(unique_name, G_frame_id);
-        if (!G_frame)
+        std::uint8_t* const G2_frame = G2_buffer->wait_for_empty_frame(unique_name, G2_frame_id);
+        if (!G2_frame)
             return;
-        if (!(std::ptrdiff_t(G_buffer->frame_size) == G_frame_size))
-            FATAL_ERROR("G_buffer->frame_size={:d} G_frame_size={:d}", G_buffer->frame_size,
-                        G_frame_size);
-        assert(std::ptrdiff_t(G_buffer->frame_size) == G_frame_size);
-        G_buffer->allocate_new_metadata_object(G_frame_id);
-        set_fpga_seq_num(G_buffer, G_frame_id, -1);
+        if (!(std::ptrdiff_t(G2_buffer->frame_size) == G2_frame_size))
+            FATAL_ERROR("G2_buffer->frame_size={:d} G2_frame_size={:d}", G2_buffer->frame_size,
+                        G2_frame_size);
+        assert(std::ptrdiff_t(G2_buffer->frame_size) == G2_frame_size);
+        G2_buffer->allocate_new_metadata_object(G2_frame_id);
+        set_fpga_seq_num(G2_buffer, G2_frame_id, -1);
 
-        DEBUG("[{:d}] Filling G buffer...", G_frame_index);
-        for (int n = 0; n < num_frequencies * upchannelization_factor; ++n)
-            ((float16_t*)G_frame)[n] = 1;
-        DEBUG("[{:d}] Done filling G buffer.", G_frame_index);
+        DEBUG("[{:d}] Filling G buffer...", G2_frame_index);
+        for (int n = 0; n < num_frequencies * U; ++n)
+            ((float16_t*)G2_frame)[n] = 1;
+        DEBUG("[{:d}] Done filling G buffer.", G2_frame_index);
 
         // Set metadata
-        std::shared_ptr<chordMetadata> const G_metadata = get_chord_metadata(G_buffer, G_frame_id);
-        G_metadata->frame_counter = G_frame_index;
-        std::strncpy(G_metadata->name, "G", sizeof G_metadata->name);
-        G_metadata->type = float16;
-        G_metadata->dims = 1;
-        assert(G_metadata->dims <= CHORD_META_MAX_DIM);
-        std::strncpy(G_metadata->dim_name[0], "Fbar", sizeof G_metadata->dim_name[0]);
-        G_metadata->dim[0] = num_frequencies * upchannelization_factor;
-        G_metadata->sample0_offset = -1; // undefined
-        G_metadata->nfreq = num_frequencies;
-        assert(G_metadata->nfreq <= CHORD_META_MAX_FREQ);
+        std::shared_ptr<chordMetadata> const G2_metadata =
+            get_chord_metadata(G2_buffer, G2_frame_id);
+        G2_metadata->frame_counter = G2_frame_index;
+        std::strncpy(G2_metadata->name, "G2", sizeof G2_metadata->name);
+        G2_metadata->type = float16;
+        G2_metadata->dims = 1;
+        assert(G2_metadata->dims <= CHORD_META_MAX_DIM);
+        std::strncpy(G2_metadata->dim_name[0], "Fbar", sizeof G2_metadata->dim_name[0]);
+        G2_metadata->dim[0] = num_frequencies * U;
+        G2_metadata->sample0_offset = -1; // undefined
+        G2_metadata->nfreq = num_frequencies;
+        assert(G2_metadata->nfreq <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
-            G_metadata->coarse_freq[freq] = freq + 1;      // See `FEngine.f_engine`
-            G_metadata->freq_upchan_factor[freq] = 1;      // upchannelization_factor;
-            G_metadata->half_fpga_sample0[freq] = -1;      // undefined
-            G_metadata->time_downsampling_fpga[freq] = -1; // undefined
+            G2_metadata->coarse_freq[freq] = freq + 1;      // See `FEngine.f_engine`
+            G2_metadata->freq_upchan_factor[freq] = 1;      // upchannelization_factor;
+            G2_metadata->half_fpga_sample0[freq] = -1;      // undefined
+            G2_metadata->time_downsampling_fpga[freq] = -1; // undefined
         }
-        G_metadata->ndishes = num_dishes;
-        G_metadata->n_dish_locations_ew = num_dish_locations_ew;
-        G_metadata->n_dish_locations_ns = num_dish_locations_ns;
-        G_metadata->dish_index = dish_indices_ptr;
+        G2_metadata->ndishes = num_dishes;
+        G2_metadata->n_dish_locations_ew = num_dish_locations_ew;
+        G2_metadata->n_dish_locations_ns = num_dish_locations_ns;
+        G2_metadata->dish_index = dish_indices_ptr;
 
         // Mark buffer as full
-        G_buffer->mark_frame_full(unique_name, G_frame_id);
+        G2_buffer->mark_frame_full(unique_name, G2_frame_id);
     }
 
-    // Produce FRB1 phases
-    for (int W1_frame_index = 0; W1_frame_index < W1_buffer->num_frames; ++W1_frame_index) {
-        const int W1_frame_id = W1_frame_index % W1_buffer->num_frames;
+    // Produce upchannelization-4 gains
+    for (int G4_frame_index = 0; G4_frame_index < G4_buffer->num_frames; ++G4_frame_index) {
+        const int U = 4;
+        const int G4_frame_id = G4_frame_index % G4_buffer->num_frames;
 
         // Wait for buffer
-        std::uint8_t* const W1_frame = W1_buffer->wait_for_empty_frame(unique_name, W1_frame_id);
-        if (!W1_frame)
+        std::uint8_t* const G4_frame = G4_buffer->wait_for_empty_frame(unique_name, G4_frame_id);
+        if (!G4_frame)
             return;
-        if (!(std::ptrdiff_t(W1_buffer->frame_size) == W1_frame_size))
-            FATAL_ERROR("W1_buffer->frame_size={:d} W1_frame_size={:d}", W1_buffer->frame_size,
-                        W1_frame_size);
-        assert(std::ptrdiff_t(W1_buffer->frame_size) == W1_frame_size);
-        W1_buffer->allocate_new_metadata_object(W1_frame_id);
-        set_fpga_seq_num(W1_buffer, W1_frame_id, -1);
+        if (!(std::ptrdiff_t(G4_buffer->frame_size) == G4_frame_size))
+            FATAL_ERROR("G4_buffer->frame_size={:d} G4_frame_size={:d}", G4_buffer->frame_size,
+                        G4_frame_size);
+        assert(std::ptrdiff_t(G4_buffer->frame_size) == G4_frame_size);
+        G4_buffer->allocate_new_metadata_object(G4_frame_id);
+        set_fpga_seq_num(G4_buffer, G4_frame_id, -1);
 
-        DEBUG("[{:d}] Filling W1 buffer...", W1_frame_index);
+        DEBUG("[{:d}] Filling G buffer...", G4_frame_index);
+        for (int n = 0; n < num_frequencies * U; ++n)
+            ((float16_t*)G4_frame)[n] = 1;
+        DEBUG("[{:d}] Done filling G buffer.", G4_frame_index);
+
+        // Set metadata
+        std::shared_ptr<chordMetadata> const G4_metadata =
+            get_chord_metadata(G4_buffer, G4_frame_id);
+        G4_metadata->frame_counter = G4_frame_index;
+        std::strncpy(G4_metadata->name, "G4", sizeof G4_metadata->name);
+        G4_metadata->type = float16;
+        G4_metadata->dims = 1;
+        assert(G4_metadata->dims <= CHORD_META_MAX_DIM);
+        std::strncpy(G4_metadata->dim_name[0], "Fbar", sizeof G4_metadata->dim_name[0]);
+        G4_metadata->dim[0] = num_frequencies * U;
+        G4_metadata->sample0_offset = -1; // undefined
+        G4_metadata->nfreq = num_frequencies;
+        assert(G4_metadata->nfreq <= CHORD_META_MAX_FREQ);
+        for (int freq = 0; freq < num_frequencies; ++freq) {
+            G4_metadata->coarse_freq[freq] = freq + 1;      // See `FEngine.f_engine`
+            G4_metadata->freq_upchan_factor[freq] = 1;      // upchannelization_factor;
+            G4_metadata->half_fpga_sample0[freq] = -1;      // undefined
+            G4_metadata->time_downsampling_fpga[freq] = -1; // undefined
+        }
+        G4_metadata->ndishes = num_dishes;
+        G4_metadata->n_dish_locations_ew = num_dish_locations_ew;
+        G4_metadata->n_dish_locations_ns = num_dish_locations_ns;
+        G4_metadata->dish_index = dish_indices_ptr;
+
+        // Mark buffer as full
+        G4_buffer->mark_frame_full(unique_name, G4_frame_id);
+    }
+
+    // Produce upchannelization-8 gains
+    for (int G8_frame_index = 0; G8_frame_index < G8_buffer->num_frames; ++G8_frame_index) {
+        const int U = 8;
+        const int G8_frame_id = G8_frame_index % G8_buffer->num_frames;
+
+        // Wait for buffer
+        std::uint8_t* const G8_frame = G8_buffer->wait_for_empty_frame(unique_name, G8_frame_id);
+        if (!G8_frame)
+            return;
+        if (!(std::ptrdiff_t(G8_buffer->frame_size) == G8_frame_size))
+            FATAL_ERROR("G8_buffer->frame_size={:d} G8_frame_size={:d}", G8_buffer->frame_size,
+                        G8_frame_size);
+        assert(std::ptrdiff_t(G8_buffer->frame_size) == G8_frame_size);
+        G8_buffer->allocate_new_metadata_object(G8_frame_id);
+        set_fpga_seq_num(G8_buffer, G8_frame_id, -1);
+
+        DEBUG("[{:d}] Filling G buffer...", G8_frame_index);
+        for (int n = 0; n < num_frequencies * U; ++n)
+            ((float16_t*)G8_frame)[n] = 1;
+        DEBUG("[{:d}] Done filling G buffer.", G8_frame_index);
+
+        // Set metadata
+        std::shared_ptr<chordMetadata> const G8_metadata =
+            get_chord_metadata(G8_buffer, G8_frame_id);
+        G8_metadata->frame_counter = G8_frame_index;
+        std::strncpy(G8_metadata->name, "G8", sizeof G8_metadata->name);
+        G8_metadata->type = float16;
+        G8_metadata->dims = 1;
+        assert(G8_metadata->dims <= CHORD_META_MAX_DIM);
+        std::strncpy(G8_metadata->dim_name[0], "Fbar", sizeof G8_metadata->dim_name[0]);
+        G8_metadata->dim[0] = num_frequencies * U;
+        G8_metadata->sample0_offset = -1; // undefined
+        G8_metadata->nfreq = num_frequencies;
+        assert(G8_metadata->nfreq <= CHORD_META_MAX_FREQ);
+        for (int freq = 0; freq < num_frequencies; ++freq) {
+            G8_metadata->coarse_freq[freq] = freq + 1;      // See `FEngine.f_engine`
+            G8_metadata->freq_upchan_factor[freq] = 1;      // upchannelization_factor;
+            G8_metadata->half_fpga_sample0[freq] = -1;      // undefined
+            G8_metadata->time_downsampling_fpga[freq] = -1; // undefined
+        }
+        G8_metadata->ndishes = num_dishes;
+        G8_metadata->n_dish_locations_ew = num_dish_locations_ew;
+        G8_metadata->n_dish_locations_ns = num_dish_locations_ns;
+        G8_metadata->dish_index = dish_indices_ptr;
+
+        // Mark buffer as full
+        G8_buffer->mark_frame_full(unique_name, G8_frame_id);
+    }
+
+    // Produce FRB1 upchannelization-1 phases
+    for (int W11_frame_index = 0; W11_frame_index < W11_buffer->num_frames; ++W11_frame_index) {
+        const int U = 1;
+        const int W11_frame_id = W11_frame_index % W11_buffer->num_frames;
+
+        // Wait for buffer
+        std::uint8_t* const W11_frame = W11_buffer->wait_for_empty_frame(unique_name, W11_frame_id);
+        if (!W11_frame)
+            return;
+        if (!(std::ptrdiff_t(W11_buffer->frame_size) == W11_frame_size))
+            FATAL_ERROR("W11_buffer->frame_size={:d} W11_frame_size={:d}", W11_buffer->frame_size,
+                        W11_frame_size);
+        assert(std::ptrdiff_t(W11_buffer->frame_size) == W11_frame_size);
+        W11_buffer->allocate_new_metadata_object(W11_frame_id);
+        set_fpga_seq_num(W11_buffer, W11_frame_id, -1);
+
+        DEBUG("[{:d}] Filling W11 buffer...", W11_frame_index);
         // Disable this because the F-Engine simulator doesn't upchannelize yet
         if (false && !skip_julia) {
             kotekan::juliaCall([&]() {
                 jl_module_t* const f_engine_module =
                     (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
                 assert(f_engine_module);
-                jl_function_t* const set_W1 = jl_get_function(f_engine_module, "set_W");
-                assert(set_W1);
+                jl_function_t* const set_W11 = jl_get_function(f_engine_module, "set_W");
+                assert(set_W11);
                 const int nargs = 7;
                 jl_value_t** args;
                 JL_GC_PUSHARGS(args, nargs);
-                args[0] = jl_box_uint8pointer(W1_frame);
-                args[1] = jl_box_int64(W1_frame_size);
+                args[0] = jl_box_uint8pointer(W11_frame);
+                args[1] = jl_box_int64(W11_frame_size);
                 args[2] = jl_box_int64(num_dish_locations_ns);
                 args[3] = jl_box_int64(num_dish_locations_ew);
                 args[4] = jl_box_int64(num_polarizations);
-                args[5] = jl_box_int64(num_frequencies * upchannelization_factor);
-                args[6] = jl_box_int64(W1_frame_index + 1);
-                jl_value_t* const res = jl_call(set_W1, args, nargs);
+                args[5] = jl_box_int64(num_frequencies * U);
+                args[6] = jl_box_int64(W11_frame_index + 1);
+                jl_value_t* const res = jl_call(set_W11, args, nargs);
                 assert(res);
                 JL_GC_POP();
             });
         } else {
             for (int n = 0; n < num_components * num_dish_locations_ns * num_dish_locations_ew
-                                    * num_polarizations * num_frequencies * upchannelization_factor;
+                                    * num_polarizations * num_frequencies * U;
                  ++n)
-                ((float16_t*)W1_frame)[n] = 1;
+                ((float16_t*)W11_frame)[n] = 1;
         }
-        DEBUG("[{:d}] Done filling W1 buffer.", W1_frame_index);
+        DEBUG("[{:d}] Done filling W11 buffer.", W11_frame_index);
 
         // Set metadata
-        std::shared_ptr<chordMetadata> const W1_metadata =
-            get_chord_metadata(W1_buffer, W1_frame_id);
-        W1_metadata->frame_counter = W1_frame_index;
-        std::strncpy(W1_metadata->name, "W", sizeof W1_metadata->name);
-        W1_metadata->type = float16;
-        W1_metadata->dims = 5;
-        assert(W1_metadata->dims <= CHORD_META_MAX_DIM);
-        std::strncpy(W1_metadata->dim_name[0], "Fbar", sizeof W1_metadata->dim_name[0]);
-        std::strncpy(W1_metadata->dim_name[1], "P", sizeof W1_metadata->dim_name[1]);
-        std::strncpy(W1_metadata->dim_name[2], "dishN", sizeof W1_metadata->dim_name[2]);
-        std::strncpy(W1_metadata->dim_name[3], "dishM", sizeof W1_metadata->dim_name[3]);
-        std::strncpy(W1_metadata->dim_name[4], "C", sizeof W1_metadata->dim_name[4]);
-        W1_metadata->dim[0] = num_frequencies * upchannelization_factor;
-        W1_metadata->dim[1] = num_polarizations;
-        W1_metadata->dim[2] = num_dish_locations_ew;
-        W1_metadata->dim[3] = num_dish_locations_ns;
-        W1_metadata->dim[4] = num_components;
-        W1_metadata->sample0_offset = -1; // undefined
-        W1_metadata->nfreq = num_frequencies;
-        assert(W1_metadata->nfreq <= CHORD_META_MAX_FREQ);
+        std::shared_ptr<chordMetadata> const W11_metadata =
+            get_chord_metadata(W11_buffer, W11_frame_id);
+        W11_metadata->frame_counter = W11_frame_index;
+        std::strncpy(W11_metadata->name, "W1", sizeof W11_metadata->name);
+        W11_metadata->type = float16;
+        W11_metadata->dims = 5;
+        assert(W11_metadata->dims <= CHORD_META_MAX_DIM);
+        std::strncpy(W11_metadata->dim_name[0], "Fbar", sizeof W11_metadata->dim_name[0]);
+        std::strncpy(W11_metadata->dim_name[1], "P", sizeof W11_metadata->dim_name[1]);
+        std::strncpy(W11_metadata->dim_name[2], "dishN", sizeof W11_metadata->dim_name[2]);
+        std::strncpy(W11_metadata->dim_name[3], "dishM", sizeof W11_metadata->dim_name[3]);
+        std::strncpy(W11_metadata->dim_name[4], "C", sizeof W11_metadata->dim_name[4]);
+        W11_metadata->dim[0] = num_frequencies * U;
+        W11_metadata->dim[1] = num_polarizations;
+        W11_metadata->dim[2] = num_dish_locations_ew;
+        W11_metadata->dim[3] = num_dish_locations_ns;
+        W11_metadata->dim[4] = num_components;
+        W11_metadata->sample0_offset = -1; // undefined
+        W11_metadata->nfreq = num_frequencies;
+        assert(W11_metadata->nfreq <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
-            W1_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
-            W1_metadata->freq_upchan_factor[freq] = upchannelization_factor;
-            W1_metadata->half_fpga_sample0[freq] = -1;      // undefined
-            W1_metadata->time_downsampling_fpga[freq] = -1; // undefined
+            W11_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
+            W11_metadata->freq_upchan_factor[freq] = U;
+            W11_metadata->half_fpga_sample0[freq] = -1;      // undefined
+            W11_metadata->time_downsampling_fpga[freq] = -1; // undefined
         }
-        W1_metadata->ndishes = num_dishes;
-        W1_metadata->n_dish_locations_ew = num_dish_locations_ew;
-        W1_metadata->n_dish_locations_ns = num_dish_locations_ns;
-        W1_metadata->dish_index = dish_indices_ptr;
+        W11_metadata->ndishes = num_dishes;
+        W11_metadata->n_dish_locations_ew = num_dish_locations_ew;
+        W11_metadata->n_dish_locations_ns = num_dish_locations_ns;
+        W11_metadata->dish_index = dish_indices_ptr;
 
         // Mark buffer as full
-        W1_buffer->mark_frame_full(unique_name, W1_frame_id);
+        W11_buffer->mark_frame_full(unique_name, W11_frame_id);
+    }
+
+    // Produce FRB1 upchannelization-2 phases
+    for (int W12_frame_index = 0; W12_frame_index < W12_buffer->num_frames; ++W12_frame_index) {
+        const int U = 2;
+        const int W12_frame_id = W12_frame_index % W12_buffer->num_frames;
+
+        // Wait for buffer
+        std::uint8_t* const W12_frame = W12_buffer->wait_for_empty_frame(unique_name, W12_frame_id);
+        if (!W12_frame)
+            return;
+        if (!(std::ptrdiff_t(W12_buffer->frame_size) == W12_frame_size))
+            FATAL_ERROR("W12_buffer->frame_size={:d} W12_frame_size={:d}", W12_buffer->frame_size,
+                        W12_frame_size);
+        assert(std::ptrdiff_t(W12_buffer->frame_size) == W12_frame_size);
+        W12_buffer->allocate_new_metadata_object(W12_frame_id);
+        set_fpga_seq_num(W12_buffer, W12_frame_id, -1);
+
+        DEBUG("[{:d}] Filling W12 buffer...", W12_frame_index);
+        // Disable this because the F-Engine simulator doesn't upchannelize yet
+        if (false && !skip_julia) {
+            kotekan::juliaCall([&]() {
+                jl_module_t* const f_engine_module =
+                    (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
+                assert(f_engine_module);
+                jl_function_t* const set_W12 = jl_get_function(f_engine_module, "set_W");
+                assert(set_W12);
+                const int nargs = 7;
+                jl_value_t** args;
+                JL_GC_PUSHARGS(args, nargs);
+                args[0] = jl_box_uint8pointer(W12_frame);
+                args[1] = jl_box_int64(W12_frame_size);
+                args[2] = jl_box_int64(num_dish_locations_ns);
+                args[3] = jl_box_int64(num_dish_locations_ew);
+                args[4] = jl_box_int64(num_polarizations);
+                args[5] = jl_box_int64(num_frequencies * U);
+                args[6] = jl_box_int64(W12_frame_index + 1);
+                jl_value_t* const res = jl_call(set_W12, args, nargs);
+                assert(res);
+                JL_GC_POP();
+            });
+        } else {
+            for (int n = 0; n < num_components * num_dish_locations_ns * num_dish_locations_ew
+                                    * num_polarizations * num_frequencies * U;
+                 ++n)
+                ((float16_t*)W12_frame)[n] = 1;
+        }
+        DEBUG("[{:d}] Done filling W12 buffer.", W12_frame_index);
+
+        // Set metadata
+        std::shared_ptr<chordMetadata> const W12_metadata =
+            get_chord_metadata(W12_buffer, W12_frame_id);
+        W12_metadata->frame_counter = W12_frame_index;
+        std::strncpy(W12_metadata->name, "W2", sizeof W12_metadata->name);
+        W12_metadata->type = float16;
+        W12_metadata->dims = 5;
+        assert(W12_metadata->dims <= CHORD_META_MAX_DIM);
+        std::strncpy(W12_metadata->dim_name[0], "Fbar", sizeof W12_metadata->dim_name[0]);
+        std::strncpy(W12_metadata->dim_name[1], "P", sizeof W12_metadata->dim_name[1]);
+        std::strncpy(W12_metadata->dim_name[2], "dishN", sizeof W12_metadata->dim_name[2]);
+        std::strncpy(W12_metadata->dim_name[3], "dishM", sizeof W12_metadata->dim_name[3]);
+        std::strncpy(W12_metadata->dim_name[4], "C", sizeof W12_metadata->dim_name[4]);
+        W12_metadata->dim[0] = num_frequencies * U;
+        W12_metadata->dim[1] = num_polarizations;
+        W12_metadata->dim[2] = num_dish_locations_ew;
+        W12_metadata->dim[3] = num_dish_locations_ns;
+        W12_metadata->dim[4] = num_components;
+        W12_metadata->sample0_offset = -1; // undefined
+        W12_metadata->nfreq = num_frequencies;
+        assert(W12_metadata->nfreq <= CHORD_META_MAX_FREQ);
+        for (int freq = 0; freq < num_frequencies; ++freq) {
+            W12_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
+            W12_metadata->freq_upchan_factor[freq] = U;
+            W12_metadata->half_fpga_sample0[freq] = -1;      // undefined
+            W12_metadata->time_downsampling_fpga[freq] = -1; // undefined
+        }
+        W12_metadata->ndishes = num_dishes;
+        W12_metadata->n_dish_locations_ew = num_dish_locations_ew;
+        W12_metadata->n_dish_locations_ns = num_dish_locations_ns;
+        W12_metadata->dish_index = dish_indices_ptr;
+
+        // Mark buffer as full
+        W12_buffer->mark_frame_full(unique_name, W12_frame_id);
+    }
+
+    // Produce FRB1 upchannelization-4 phases
+    for (int W14_frame_index = 0; W14_frame_index < W14_buffer->num_frames; ++W14_frame_index) {
+        const int U = 4;
+        const int W14_frame_id = W14_frame_index % W14_buffer->num_frames;
+
+        // Wait for buffer
+        std::uint8_t* const W14_frame = W14_buffer->wait_for_empty_frame(unique_name, W14_frame_id);
+        if (!W14_frame)
+            return;
+        if (!(std::ptrdiff_t(W14_buffer->frame_size) == W14_frame_size))
+            FATAL_ERROR("W14_buffer->frame_size={:d} W14_frame_size={:d}", W14_buffer->frame_size,
+                        W14_frame_size);
+        assert(std::ptrdiff_t(W14_buffer->frame_size) == W14_frame_size);
+        W14_buffer->allocate_new_metadata_object(W14_frame_id);
+        set_fpga_seq_num(W14_buffer, W14_frame_id, -1);
+
+        DEBUG("[{:d}] Filling W14 buffer...", W14_frame_index);
+        // Disable this because the F-Engine simulator doesn't upchannelize yet
+        if (false && !skip_julia) {
+            kotekan::juliaCall([&]() {
+                jl_module_t* const f_engine_module =
+                    (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
+                assert(f_engine_module);
+                jl_function_t* const set_W14 = jl_get_function(f_engine_module, "set_W");
+                assert(set_W14);
+                const int nargs = 7;
+                jl_value_t** args;
+                JL_GC_PUSHARGS(args, nargs);
+                args[0] = jl_box_uint8pointer(W14_frame);
+                args[1] = jl_box_int64(W14_frame_size);
+                args[2] = jl_box_int64(num_dish_locations_ns);
+                args[3] = jl_box_int64(num_dish_locations_ew);
+                args[4] = jl_box_int64(num_polarizations);
+                args[5] = jl_box_int64(num_frequencies * U);
+                args[6] = jl_box_int64(W14_frame_index + 1);
+                jl_value_t* const res = jl_call(set_W14, args, nargs);
+                assert(res);
+                JL_GC_POP();
+            });
+        } else {
+            for (int n = 0; n < num_components * num_dish_locations_ns * num_dish_locations_ew
+                                    * num_polarizations * num_frequencies * U;
+                 ++n)
+                ((float16_t*)W14_frame)[n] = 1;
+        }
+        DEBUG("[{:d}] Done filling W14 buffer.", W14_frame_index);
+
+        // Set metadata
+        std::shared_ptr<chordMetadata> const W14_metadata =
+            get_chord_metadata(W14_buffer, W14_frame_id);
+        W14_metadata->frame_counter = W14_frame_index;
+        std::strncpy(W14_metadata->name, "W4", sizeof W14_metadata->name);
+        W14_metadata->type = float16;
+        W14_metadata->dims = 5;
+        assert(W14_metadata->dims <= CHORD_META_MAX_DIM);
+        std::strncpy(W14_metadata->dim_name[0], "Fbar", sizeof W14_metadata->dim_name[0]);
+        std::strncpy(W14_metadata->dim_name[1], "P", sizeof W14_metadata->dim_name[1]);
+        std::strncpy(W14_metadata->dim_name[2], "dishN", sizeof W14_metadata->dim_name[2]);
+        std::strncpy(W14_metadata->dim_name[3], "dishM", sizeof W14_metadata->dim_name[3]);
+        std::strncpy(W14_metadata->dim_name[4], "C", sizeof W14_metadata->dim_name[4]);
+        W14_metadata->dim[0] = num_frequencies * U;
+        W14_metadata->dim[1] = num_polarizations;
+        W14_metadata->dim[2] = num_dish_locations_ew;
+        W14_metadata->dim[3] = num_dish_locations_ns;
+        W14_metadata->dim[4] = num_components;
+        W14_metadata->sample0_offset = -1; // undefined
+        W14_metadata->nfreq = num_frequencies;
+        assert(W14_metadata->nfreq <= CHORD_META_MAX_FREQ);
+        for (int freq = 0; freq < num_frequencies; ++freq) {
+            W14_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
+            W14_metadata->freq_upchan_factor[freq] = U;
+            W14_metadata->half_fpga_sample0[freq] = -1;      // undefined
+            W14_metadata->time_downsampling_fpga[freq] = -1; // undefined
+        }
+        W14_metadata->ndishes = num_dishes;
+        W14_metadata->n_dish_locations_ew = num_dish_locations_ew;
+        W14_metadata->n_dish_locations_ns = num_dish_locations_ns;
+        W14_metadata->dish_index = dish_indices_ptr;
+
+        // Mark buffer as full
+        W14_buffer->mark_frame_full(unique_name, W14_frame_id);
+    }
+
+    // Produce FRB1 upchannelization-8 phases
+    for (int W18_frame_index = 0; W18_frame_index < W18_buffer->num_frames; ++W18_frame_index) {
+        const int U = 8;
+        const int W18_frame_id = W18_frame_index % W18_buffer->num_frames;
+
+        // Wait for buffer
+        std::uint8_t* const W18_frame = W18_buffer->wait_for_empty_frame(unique_name, W18_frame_id);
+        if (!W18_frame)
+            return;
+        if (!(std::ptrdiff_t(W18_buffer->frame_size) == W18_frame_size))
+            FATAL_ERROR("W18_buffer->frame_size={:d} W18_frame_size={:d}", W18_buffer->frame_size,
+                        W18_frame_size);
+        assert(std::ptrdiff_t(W18_buffer->frame_size) == W18_frame_size);
+        W18_buffer->allocate_new_metadata_object(W18_frame_id);
+        set_fpga_seq_num(W18_buffer, W18_frame_id, -1);
+
+        DEBUG("[{:d}] Filling W18 buffer...", W18_frame_index);
+        // Disable this because the F-Engine simulator doesn't upchannelize yet
+        if (false && !skip_julia) {
+            kotekan::juliaCall([&]() {
+                jl_module_t* const f_engine_module =
+                    (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
+                assert(f_engine_module);
+                jl_function_t* const set_W18 = jl_get_function(f_engine_module, "set_W");
+                assert(set_W18);
+                const int nargs = 7;
+                jl_value_t** args;
+                JL_GC_PUSHARGS(args, nargs);
+                args[0] = jl_box_uint8pointer(W18_frame);
+                args[1] = jl_box_int64(W18_frame_size);
+                args[2] = jl_box_int64(num_dish_locations_ns);
+                args[3] = jl_box_int64(num_dish_locations_ew);
+                args[4] = jl_box_int64(num_polarizations);
+                args[5] = jl_box_int64(num_frequencies * U);
+                args[6] = jl_box_int64(W18_frame_index + 1);
+                jl_value_t* const res = jl_call(set_W18, args, nargs);
+                assert(res);
+                JL_GC_POP();
+            });
+        } else {
+            for (int n = 0; n < num_components * num_dish_locations_ns * num_dish_locations_ew
+                                    * num_polarizations * num_frequencies * U;
+                 ++n)
+                ((float16_t*)W18_frame)[n] = 1;
+        }
+        DEBUG("[{:d}] Done filling W18 buffer.", W18_frame_index);
+
+        // Set metadata
+        std::shared_ptr<chordMetadata> const W18_metadata =
+            get_chord_metadata(W18_buffer, W18_frame_id);
+        W18_metadata->frame_counter = W18_frame_index;
+        std::strncpy(W18_metadata->name, "W8", sizeof W18_metadata->name);
+        W18_metadata->type = float16;
+        W18_metadata->dims = 5;
+        assert(W18_metadata->dims <= CHORD_META_MAX_DIM);
+        std::strncpy(W18_metadata->dim_name[0], "Fbar", sizeof W18_metadata->dim_name[0]);
+        std::strncpy(W18_metadata->dim_name[1], "P", sizeof W18_metadata->dim_name[1]);
+        std::strncpy(W18_metadata->dim_name[2], "dishN", sizeof W18_metadata->dim_name[2]);
+        std::strncpy(W18_metadata->dim_name[3], "dishM", sizeof W18_metadata->dim_name[3]);
+        std::strncpy(W18_metadata->dim_name[4], "C", sizeof W18_metadata->dim_name[4]);
+        W18_metadata->dim[0] = num_frequencies * U;
+        W18_metadata->dim[1] = num_polarizations;
+        W18_metadata->dim[2] = num_dish_locations_ew;
+        W18_metadata->dim[3] = num_dish_locations_ns;
+        W18_metadata->dim[4] = num_components;
+        W18_metadata->sample0_offset = -1; // undefined
+        W18_metadata->nfreq = num_frequencies;
+        assert(W18_metadata->nfreq <= CHORD_META_MAX_FREQ);
+        for (int freq = 0; freq < num_frequencies; ++freq) {
+            W18_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
+            W18_metadata->freq_upchan_factor[freq] = U;
+            W18_metadata->half_fpga_sample0[freq] = -1;      // undefined
+            W18_metadata->time_downsampling_fpga[freq] = -1; // undefined
+        }
+        W18_metadata->ndishes = num_dishes;
+        W18_metadata->n_dish_locations_ew = num_dish_locations_ew;
+        W18_metadata->n_dish_locations_ns = num_dish_locations_ns;
+        W18_metadata->dish_index = dish_indices_ptr;
+
+        // Mark buffer as full
+        W18_buffer->mark_frame_full(unique_name, W18_frame_id);
     }
 
     // Produce FRB2 phases
@@ -704,7 +1088,7 @@ void FEngine::main_thread() {
             E_metadata->nfreq = num_frequencies;
             assert(E_metadata->nfreq <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
-                E_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
+                E_metadata->coarse_freq[freq] = frequency_channels.at(freq);
                 E_metadata->freq_upchan_factor[freq] = 1;
                 E_metadata->half_fpga_sample0[freq] = 0;
                 E_metadata->time_downsampling_fpga[freq] = 1;
@@ -798,82 +1182,323 @@ void FEngine::main_thread() {
         }
 
         {
-            // Produce expected FRB beams
-            const int I1_frame_index = 0;
-            const int I1_frame_id = I1_frame_index % I1_buffer->num_frames;
+            // Produce expected FRB upchannelization-1 beams
+            const int U = 1;
+            const int I11_frame_index = 0;
+            const int I11_frame_id = I11_frame_index % I11_buffer->num_frames;
 
             // Wait for buffer
-            std::uint8_t* const I1_frame = I1_buffer->wait_for_empty_frame(unique_name, I1_frame_id);
-            if (!I1_frame)
+            std::uint8_t* const I11_frame = I11_buffer->wait_for_empty_frame(unique_name, I11_frame_id);
+            if (!I11_frame)
                 break;
-            if (!(std::ptrdiff_t(I1_buffer->frame_size) == I1_frame_size))
-                FATAL_ERROR("I1_buffer->frame_size={:d} I1_frame_size={:d}", I1_buffer->frame_size,
-                            I1_frame_size);
-            assert(std::ptrdiff_t(I1_buffer->frame_size) == I1_frame_size);
-            I1_buffer->allocate_new_metadata_object(I1_frame_id);
-            set_fpga_seq_num(I1_buffer, I1_frame_id, seq_num);
+            if (!(std::ptrdiff_t(I11_buffer->frame_size) == I11_frame_size))
+                FATAL_ERROR("I11_buffer->frame_size={:d} I11_frame_size={:d}", I11_buffer->frame_size,
+                            I11_frame_size);
+            assert(std::ptrdiff_t(I11_buffer->frame_size) == I11_frame_size);
+            I11_buffer->allocate_new_metadata_object(I11_frame_id);
+            set_fpga_seq_num(I11_buffer, I11_frame_id, seq_num);
 
             if (!skip_julia) {
-                DEBUG("[{:d}] Filling I1 buffer...", I1_frame_index);
+                DEBUG("[{:d}] Filling I11 buffer...", I11_frame_index);
 #if 0
                     // Disable this because the F-Engine simulator doesn't upchannelize yet
                     kotekan::juliaCall([&]() {
                         jl_module_t* const f_engine_module =
                             (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
                         assert(f_engine_module);
-                        jl_function_t* const set_I1 = jl_get_function(f_engine_module, "set_I");
-                        assert(set_I1);
+                        jl_function_t* const set_I11 = jl_get_function(f_engine_module, "set_I");
+                        assert(set_I11);
                         const int nargs = 7;
                         jl_value_t** args;
                         JL_GC_PUSHARGS(args, nargs);
-                        args[0] = jl_box_uint8pointer(I1_frame);
-                        args[1] = jl_box_int64(I1_frame_size);
+                        args[0] = jl_box_uint8pointer(I11_frame);
+                        args[1] = jl_box_int64(I11_frame_size);
                         args[2] = jl_box_int64(frb_num_beams_P);
                         args[3] = jl_box_int64(frb_num_beams_Q);
                         args[4] = jl_box_int64(frb_num_times);
-                        args[5] = jl_box_int64(num_frequencies * upchannelization_factor);
-                        args[6] = jl_box_int64(I1_frame_index + 1);
+                        args[5] = jl_box_int64(num_frequencies * U);
+                        args[6] = jl_box_int64(I11_frame_index + 1);
                         jl_value_t* const res = jl_call(set_I, args, nargs);
                         assert(res);
                         JL_GC_POP();
                     });
 #else
-                std::memset(I1_frame, 0, I1_frame_size);
+                std::memset(I11_frame, 0, I11_frame_size);
 #endif
-                DEBUG("[{:d}] Done filling I1 buffer.", I1_frame_index);
+                DEBUG("[{:d}] Done filling I11 buffer.", I11_frame_index);
             }
 
-            std::shared_ptr<chordMetadata> const I1_metadata =
-                get_chord_metadata(I1_buffer, I1_frame_id);
-            I1_metadata->frame_counter = I1_frame_index;
-	    std::strncpy(I1_metadata->name, "I1", sizeof I1_metadata->name);
-            I1_metadata->type = float16;
-            I1_metadata->dims = 4;
-            assert(I1_metadata->dims <= CHORD_META_MAX_DIM);
-            std::strncpy(I1_metadata->dim_name[0], "Ttilde", sizeof I1_metadata->dim_name[0]);
-            std::strncpy(I1_metadata->dim_name[1], "Fbar", sizeof I1_metadata->dim_name[1]);
-            std::strncpy(I1_metadata->dim_name[2], "beamQ", sizeof I1_metadata->dim_name[2]);
-            std::strncpy(I1_metadata->dim_name[3], "beamP", sizeof I1_metadata->dim_name[3]);
-            I1_metadata->dim[0] = frb_num_times;
-            I1_metadata->dim[1] = num_frequencies * upchannelization_factor;
-            I1_metadata->dim[2] = frb_num_beams_Q;
-            I1_metadata->dim[3] = frb_num_beams_P;
-            I1_metadata->sample0_offset = seq_num;
-            I1_metadata->nfreq = num_frequencies;
-            assert(I1_metadata->nfreq <= CHORD_META_MAX_FREQ);
+            std::shared_ptr<chordMetadata> const I11_metadata =
+                get_chord_metadata(I11_buffer, I11_frame_id);
+            I11_metadata->frame_counter = I11_frame_index;
+	    std::strncpy(I11_metadata->name, "I11", sizeof I11_metadata->name);
+            I11_metadata->type = float16;
+            I11_metadata->dims = 4;
+            assert(I11_metadata->dims <= CHORD_META_MAX_DIM);
+            std::strncpy(I11_metadata->dim_name[0], "Ttilde", sizeof I11_metadata->dim_name[0]);
+            std::strncpy(I11_metadata->dim_name[1], "Fbar", sizeof I11_metadata->dim_name[1]);
+            std::strncpy(I11_metadata->dim_name[2], "beamQ", sizeof I11_metadata->dim_name[2]);
+            std::strncpy(I11_metadata->dim_name[3], "beamP", sizeof I11_metadata->dim_name[3]);
+            I11_metadata->dim[0] = frb_num_times;
+            I11_metadata->dim[1] = num_frequencies * U;
+            I11_metadata->dim[2] = frb_num_beams_Q;
+            I11_metadata->dim[3] = frb_num_beams_P;
+            I11_metadata->sample0_offset = seq_num;
+            I11_metadata->nfreq = num_frequencies;
+            assert(I11_metadata->nfreq <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
-                I1_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
-                I1_metadata->freq_upchan_factor[freq] = upchannelization_factor;
-                I1_metadata->half_fpga_sample0[freq] = 2 * Tds - 1;
-                I1_metadata->time_downsampling_fpga[freq] = upchannelization_factor * Tds;
+                I11_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
+                I11_metadata->freq_upchan_factor[freq] = U;
+                I11_metadata->half_fpga_sample0[freq] = 2 * Tds - 1;
+                I11_metadata->time_downsampling_fpga[freq] = U * Tds;
             }
-            I1_metadata->ndishes = num_dishes;
-            I1_metadata->n_dish_locations_ew = num_dish_locations_ew;
-            I1_metadata->n_dish_locations_ns = num_dish_locations_ns;
-            I1_metadata->dish_index = dish_indices_ptr;
+            I11_metadata->ndishes = num_dishes;
+            I11_metadata->n_dish_locations_ew = num_dish_locations_ew;
+            I11_metadata->n_dish_locations_ns = num_dish_locations_ns;
+            I11_metadata->dish_index = dish_indices_ptr;
 
             // Mark buffer as full
-            I1_buffer->mark_frame_full(unique_name, I1_frame_id);
+            I11_buffer->mark_frame_full(unique_name, I11_frame_id);
+        }
+
+        {
+            // Produce expected FRB upchannelization-2 beams
+            const int U = 2;
+            const int I12_frame_index = 0;
+            const int I12_frame_id = I12_frame_index % I12_buffer->num_frames;
+
+            // Wait for buffer
+            std::uint8_t* const I12_frame = I12_buffer->wait_for_empty_frame(unique_name, I12_frame_id);
+            if (!I12_frame)
+                break;
+            if (!(std::ptrdiff_t(I12_buffer->frame_size) == I12_frame_size))
+                FATAL_ERROR("I12_buffer->frame_size={:d} I12_frame_size={:d}", I12_buffer->frame_size,
+                            I12_frame_size);
+            assert(std::ptrdiff_t(I12_buffer->frame_size) == I12_frame_size);
+            I12_buffer->allocate_new_metadata_object(I12_frame_id);
+            set_fpga_seq_num(I12_buffer, I12_frame_id, seq_num);
+
+            if (!skip_julia) {
+                DEBUG("[{:d}] Filling I12 buffer...", I12_frame_index);
+#if 0
+                    // Disable this because the F-Engine simulator doesn't upchannelize yet
+                    kotekan::juliaCall([&]() {
+                        jl_module_t* const f_engine_module =
+                            (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
+                        assert(f_engine_module);
+                        jl_function_t* const set_I12 = jl_get_function(f_engine_module, "set_I");
+                        assert(set_I12);
+                        const int nargs = 7;
+                        jl_value_t** args;
+                        JL_GC_PUSHARGS(args, nargs);
+                        args[0] = jl_box_uint8pointer(I12_frame);
+                        args[1] = jl_box_int64(I12_frame_size);
+                        args[2] = jl_box_int64(frb_num_beams_P);
+                        args[3] = jl_box_int64(frb_num_beams_Q);
+                        args[4] = jl_box_int64(frb_num_times);
+                        args[5] = jl_box_int64(num_frequencies * U);
+                        args[6] = jl_box_int64(I12_frame_index + 1);
+                        jl_value_t* const res = jl_call(set_I, args, nargs);
+                        assert(res);
+                        JL_GC_POP();
+                    });
+#else
+                std::memset(I12_frame, 0, I12_frame_size);
+#endif
+                DEBUG("[{:d}] Done filling I12 buffer.", I12_frame_index);
+            }
+
+            std::shared_ptr<chordMetadata> const I12_metadata =
+                get_chord_metadata(I12_buffer, I12_frame_id);
+            I12_metadata->frame_counter = I12_frame_index;
+	    std::strncpy(I12_metadata->name, "I12", sizeof I12_metadata->name);
+            I12_metadata->type = float16;
+            I12_metadata->dims = 4;
+            assert(I12_metadata->dims <= CHORD_META_MAX_DIM);
+            std::strncpy(I12_metadata->dim_name[0], "Ttilde", sizeof I12_metadata->dim_name[0]);
+            std::strncpy(I12_metadata->dim_name[1], "Fbar", sizeof I12_metadata->dim_name[1]);
+            std::strncpy(I12_metadata->dim_name[2], "beamQ", sizeof I12_metadata->dim_name[2]);
+            std::strncpy(I12_metadata->dim_name[3], "beamP", sizeof I12_metadata->dim_name[3]);
+            I12_metadata->dim[0] = frb_num_times;
+            I12_metadata->dim[1] = num_frequencies * U;
+            I12_metadata->dim[2] = frb_num_beams_Q;
+            I12_metadata->dim[3] = frb_num_beams_P;
+            I12_metadata->sample0_offset = seq_num;
+            I12_metadata->nfreq = num_frequencies;
+            assert(I12_metadata->nfreq <= CHORD_META_MAX_FREQ);
+            for (int freq = 0; freq < num_frequencies; ++freq) {
+                I12_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
+                I12_metadata->freq_upchan_factor[freq] = U;
+                I12_metadata->half_fpga_sample0[freq] = 2 * Tds - 1;
+                I12_metadata->time_downsampling_fpga[freq] = U * Tds;
+            }
+            I12_metadata->ndishes = num_dishes;
+            I12_metadata->n_dish_locations_ew = num_dish_locations_ew;
+            I12_metadata->n_dish_locations_ns = num_dish_locations_ns;
+            I12_metadata->dish_index = dish_indices_ptr;
+
+            // Mark buffer as full
+            I12_buffer->mark_frame_full(unique_name, I12_frame_id);
+        }
+
+        {
+            // Produce expected FRB upchannelization-4 beams
+            const int U = 4;
+            const int I14_frame_index = 0;
+            const int I14_frame_id = I14_frame_index % I14_buffer->num_frames;
+
+            // Wait for buffer
+            std::uint8_t* const I14_frame = I14_buffer->wait_for_empty_frame(unique_name, I14_frame_id);
+            if (!I14_frame)
+                break;
+            if (!(std::ptrdiff_t(I14_buffer->frame_size) == I14_frame_size))
+                FATAL_ERROR("I14_buffer->frame_size={:d} I14_frame_size={:d}", I14_buffer->frame_size,
+                            I14_frame_size);
+            assert(std::ptrdiff_t(I14_buffer->frame_size) == I14_frame_size);
+            I14_buffer->allocate_new_metadata_object(I14_frame_id);
+            set_fpga_seq_num(I14_buffer, I14_frame_id, seq_num);
+
+            if (!skip_julia) {
+                DEBUG("[{:d}] Filling I14 buffer...", I14_frame_index);
+#if 0
+                    // Disable this because the F-Engine simulator doesn't upchannelize yet
+                    kotekan::juliaCall([&]() {
+                        jl_module_t* const f_engine_module =
+                            (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
+                        assert(f_engine_module);
+                        jl_function_t* const set_I14 = jl_get_function(f_engine_module, "set_I");
+                        assert(set_I14);
+                        const int nargs = 7;
+                        jl_value_t** args;
+                        JL_GC_PUSHARGS(args, nargs);
+                        args[0] = jl_box_uint8pointer(I14_frame);
+                        args[1] = jl_box_int64(I14_frame_size);
+                        args[2] = jl_box_int64(frb_num_beams_P);
+                        args[3] = jl_box_int64(frb_num_beams_Q);
+                        args[4] = jl_box_int64(frb_num_times);
+                        args[5] = jl_box_int64(num_frequencies * U);
+                        args[6] = jl_box_int64(I14_frame_index + 1);
+                        jl_value_t* const res = jl_call(set_I, args, nargs);
+                        assert(res);
+                        JL_GC_POP();
+                    });
+#else
+                std::memset(I14_frame, 0, I14_frame_size);
+#endif
+                DEBUG("[{:d}] Done filling I14 buffer.", I14_frame_index);
+            }
+
+            std::shared_ptr<chordMetadata> const I14_metadata =
+                get_chord_metadata(I14_buffer, I14_frame_id);
+            I14_metadata->frame_counter = I14_frame_index;
+	    std::strncpy(I14_metadata->name, "I14", sizeof I14_metadata->name);
+            I14_metadata->type = float16;
+            I14_metadata->dims = 4;
+            assert(I14_metadata->dims <= CHORD_META_MAX_DIM);
+            std::strncpy(I14_metadata->dim_name[0], "Ttilde", sizeof I14_metadata->dim_name[0]);
+            std::strncpy(I14_metadata->dim_name[1], "Fbar", sizeof I14_metadata->dim_name[1]);
+            std::strncpy(I14_metadata->dim_name[2], "beamQ", sizeof I14_metadata->dim_name[2]);
+            std::strncpy(I14_metadata->dim_name[3], "beamP", sizeof I14_metadata->dim_name[3]);
+            I14_metadata->dim[0] = frb_num_times;
+            I14_metadata->dim[1] = num_frequencies * U;
+            I14_metadata->dim[2] = frb_num_beams_Q;
+            I14_metadata->dim[3] = frb_num_beams_P;
+            I14_metadata->sample0_offset = seq_num;
+            I14_metadata->nfreq = num_frequencies;
+            assert(I14_metadata->nfreq <= CHORD_META_MAX_FREQ);
+            for (int freq = 0; freq < num_frequencies; ++freq) {
+                I14_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
+                I14_metadata->freq_upchan_factor[freq] = U;
+                I14_metadata->half_fpga_sample0[freq] = 2 * Tds - 1;
+                I14_metadata->time_downsampling_fpga[freq] = U * Tds;
+            }
+            I14_metadata->ndishes = num_dishes;
+            I14_metadata->n_dish_locations_ew = num_dish_locations_ew;
+            I14_metadata->n_dish_locations_ns = num_dish_locations_ns;
+            I14_metadata->dish_index = dish_indices_ptr;
+
+            // Mark buffer as full
+            I14_buffer->mark_frame_full(unique_name, I14_frame_id);
+        }
+
+        {
+            // Produce expected FRB upchannelization-8 beams
+            const int U = 8;
+            const int I18_frame_index = 0;
+            const int I18_frame_id = I18_frame_index % I18_buffer->num_frames;
+
+            // Wait for buffer
+            std::uint8_t* const I18_frame = I18_buffer->wait_for_empty_frame(unique_name, I18_frame_id);
+            if (!I18_frame)
+                break;
+            if (!(std::ptrdiff_t(I18_buffer->frame_size) == I18_frame_size))
+                FATAL_ERROR("I18_buffer->frame_size={:d} I18_frame_size={:d}", I18_buffer->frame_size,
+                            I18_frame_size);
+            assert(std::ptrdiff_t(I18_buffer->frame_size) == I18_frame_size);
+            I18_buffer->allocate_new_metadata_object(I18_frame_id);
+            set_fpga_seq_num(I18_buffer, I18_frame_id, seq_num);
+
+            if (!skip_julia) {
+                DEBUG("[{:d}] Filling I18 buffer...", I18_frame_index);
+#if 0
+                    // Disable this because the F-Engine simulator doesn't upchannelize yet
+                    kotekan::juliaCall([&]() {
+                        jl_module_t* const f_engine_module =
+                            (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
+                        assert(f_engine_module);
+                        jl_function_t* const set_I18 = jl_get_function(f_engine_module, "set_I");
+                        assert(set_I18);
+                        const int nargs = 7;
+                        jl_value_t** args;
+                        JL_GC_PUSHARGS(args, nargs);
+                        args[0] = jl_box_uint8pointer(I18_frame);
+                        args[1] = jl_box_int64(I18_frame_size);
+                        args[2] = jl_box_int64(frb_num_beams_P);
+                        args[3] = jl_box_int64(frb_num_beams_Q);
+                        args[4] = jl_box_int64(frb_num_times);
+                        args[5] = jl_box_int64(num_frequencies * U);
+                        args[6] = jl_box_int64(I18_frame_index + 1);
+                        jl_value_t* const res = jl_call(set_I, args, nargs);
+                        assert(res);
+                        JL_GC_POP();
+                    });
+#else
+                std::memset(I18_frame, 0, I18_frame_size);
+#endif
+                DEBUG("[{:d}] Done filling I18 buffer.", I18_frame_index);
+            }
+
+            std::shared_ptr<chordMetadata> const I18_metadata =
+                get_chord_metadata(I18_buffer, I18_frame_id);
+            I18_metadata->frame_counter = I18_frame_index;
+	    std::strncpy(I18_metadata->name, "I18", sizeof I18_metadata->name);
+            I18_metadata->type = float16;
+            I18_metadata->dims = 4;
+            assert(I18_metadata->dims <= CHORD_META_MAX_DIM);
+            std::strncpy(I18_metadata->dim_name[0], "Ttilde", sizeof I18_metadata->dim_name[0]);
+            std::strncpy(I18_metadata->dim_name[1], "Fbar", sizeof I18_metadata->dim_name[1]);
+            std::strncpy(I18_metadata->dim_name[2], "beamQ", sizeof I18_metadata->dim_name[2]);
+            std::strncpy(I18_metadata->dim_name[3], "beamP", sizeof I18_metadata->dim_name[3]);
+            I18_metadata->dim[0] = frb_num_times;
+            I18_metadata->dim[1] = num_frequencies * U;
+            I18_metadata->dim[2] = frb_num_beams_Q;
+            I18_metadata->dim[3] = frb_num_beams_P;
+            I18_metadata->sample0_offset = seq_num;
+            I18_metadata->nfreq = num_frequencies;
+            assert(I18_metadata->nfreq <= CHORD_META_MAX_FREQ);
+            for (int freq = 0; freq < num_frequencies; ++freq) {
+                I18_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
+                I18_metadata->freq_upchan_factor[freq] = U;
+                I18_metadata->half_fpga_sample0[freq] = 2 * Tds - 1;
+                I18_metadata->time_downsampling_fpga[freq] = U * Tds;
+            }
+            I18_metadata->ndishes = num_dishes;
+            I18_metadata->n_dish_locations_ew = num_dish_locations_ew;
+            I18_metadata->n_dish_locations_ns = num_dish_locations_ns;
+            I18_metadata->dish_index = dish_indices_ptr;
+
+            // Mark buffer as full
+            I18_buffer->mark_frame_full(unique_name, I18_frame_id);
         }
 #endif
 
