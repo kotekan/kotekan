@@ -36,7 +36,7 @@ kernel-description:
     - name: "T̄max"
       intent: in
       type: Int32
-    - name: "G"
+    - name: "G8"
       intent: in
       type: Float16
       indices: [F̄]
@@ -48,7 +48,7 @@ kernel-description:
       indices: [C, D, P, F, T]
       shape: [2, 256, 2, 64, 32768]
       strides: [1, 2, 512, 1024, 65536]
-    - name: "Ē"
+    - name: "Ē8"
       intent: out
       type: Int4
       indices: [C, D, P, F̄, T̄]

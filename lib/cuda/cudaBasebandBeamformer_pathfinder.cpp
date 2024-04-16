@@ -79,7 +79,7 @@ private:
     // Kernel call parameters:
     static constexpr int threads_x = 32;
     static constexpr int threads_y = 4;
-    static constexpr int blocks = 6144;
+    static constexpr int blocks = 384;
     static constexpr int shmem_bytes = 9472;
 
     // Kernel name:
@@ -207,9 +207,9 @@ private:
     static constexpr std::array<std::ptrdiff_t, info_rank> info_lengths = {
         32,
         4,
-        6144,
+        384,
     };
-    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 4 * 6144;
+    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 4 * 384;
     static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 

@@ -10,9 +10,9 @@ kernel-description:
     number-of-beams: 96
     number-of-complex-components: 2
     number-of-dishes: 512
-    number-of-frequencies: 16
+    number-of-frequencies: 48
     number-of-polarizations: 2
-    number-of-timesamples: 131072
+    number-of-timesamples: 32768
     sampling-time-μsec: 1.7066666666666668
     shift-parameter-σ: 3
   compile-parameters:
@@ -20,7 +20,7 @@ kernel-description:
     blocks_per_sm: 1
   call-parameters:
     threads: [32, 24]
-    blocks: [512]
+    blocks: [96]
     shmem_bytes: 67712
   kernel-symbol: "_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE"
   kernel-arguments:
@@ -34,30 +34,30 @@ kernel-description:
       intent: in
       type: Int8
       indices: [C, D, B, P, F]
-      shape: [2, 512, 96, 2, 16]
+      shape: [2, 512, 96, 2, 48]
       strides: [1, 2, 1024, 98304, 196608]
     - name: "E"
       intent: in
       type: Int4
       indices: [C, D, P, F, T]
-      shape: [2, 512, 2, 16, 131072]
-      strides: [1, 2, 1024, 2048, 32768]
+      shape: [2, 512, 2, 48, 32768]
+      strides: [1, 2, 1024, 2048, 98304]
     - name: "s"
       intent: in
       type: Int32
       indices: [B, P, F]
-      shape: [96, 2, 16]
+      shape: [96, 2, 48]
       strides: [1, 96, 192]
     - name: "J"
       intent: out
       type: Int4
       indices: [C, T, P, F, B]
-      shape: [2, 32768, 2, 16, 96]
-      strides: [1, 2, 65536, 131072, 2097152]
+      shape: [2, 8192, 2, 48, 96]
+      strides: [1, 2, 16384, 32768, 1572864]
     - name: "info"
       intent: out
       type: Int32
       indices: [thread, warp, block]
-      shapes: [32, 24, 512]
+      shapes: [32, 24, 96]
       strides: [1, 32, 768]
 ...

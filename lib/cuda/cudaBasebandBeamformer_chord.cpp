@@ -60,10 +60,10 @@ private:
     static constexpr int cuda_number_of_beams = 96;
     static constexpr int cuda_number_of_complex_components = 2;
     static constexpr int cuda_number_of_dishes = 512;
-    static constexpr int cuda_number_of_frequencies = 16;
+    static constexpr int cuda_number_of_frequencies = 48;
     static constexpr int cuda_number_of_polarizations = 2;
-    static constexpr int cuda_number_of_timesamples = 131072;
-    static constexpr int cuda_granularity_number_of_timesamples = 32768;
+    static constexpr int cuda_number_of_timesamples = 32768;
+    static constexpr int cuda_granularity_number_of_timesamples = 8192;
     static constexpr int cuda_shift_parameter_sigma = 3;
 
     // Kernel input and output sizes
@@ -79,7 +79,7 @@ private:
     // Kernel call parameters:
     static constexpr int threads_x = 32;
     static constexpr int threads_y = 24;
-    static constexpr int blocks = 512;
+    static constexpr int blocks = 96;
     static constexpr int shmem_bytes = 67712;
 
     // Kernel name:
@@ -113,9 +113,9 @@ private:
         "C", "D", "B", "P", "F",
     };
     static constexpr std::array<std::ptrdiff_t, A_rank> A_lengths = {
-        2, 512, 96, 2, 16,
+        2, 512, 96, 2, 48,
     };
-    static constexpr std::ptrdiff_t A_length = chord_datatype_bytes(A_type) * 2 * 512 * 96 * 2 * 16;
+    static constexpr std::ptrdiff_t A_length = chord_datatype_bytes(A_type) * 2 * 512 * 96 * 2 * 48;
     static_assert(A_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // E: gpu_mem_voltage
@@ -137,10 +137,10 @@ private:
     static constexpr std::array<std::ptrdiff_t, E_rank> E_lengths = {
         512,
         2,
-        16,
-        131072,
+        48,
+        32768,
     };
-    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 16 * 131072;
+    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 48 * 32768;
     static_assert(E_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // s: gpu_mem_output_scaling
@@ -160,9 +160,9 @@ private:
     static constexpr std::array<std::ptrdiff_t, s_rank> s_lengths = {
         96,
         2,
-        16,
+        48,
     };
-    static constexpr std::ptrdiff_t s_length = chord_datatype_bytes(s_type) * 96 * 2 * 16;
+    static constexpr std::ptrdiff_t s_length = chord_datatype_bytes(s_type) * 96 * 2 * 48;
     static_assert(s_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // J: gpu_mem_formed_beams
@@ -182,12 +182,12 @@ private:
         "B",
     };
     static constexpr std::array<std::ptrdiff_t, J_rank> J_lengths = {
-        32768,
+        8192,
         2,
-        16,
+        48,
         96,
     };
-    static constexpr std::ptrdiff_t J_length = chord_datatype_bytes(J_type) * 32768 * 2 * 16 * 96;
+    static constexpr std::ptrdiff_t J_length = chord_datatype_bytes(J_type) * 8192 * 2 * 48 * 96;
     static_assert(J_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
@@ -207,9 +207,9 @@ private:
     static constexpr std::array<std::ptrdiff_t, info_rank> info_lengths = {
         32,
         24,
-        512,
+        96,
     };
-    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 24 * 512;
+    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 24 * 96;
     static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
