@@ -7,7 +7,11 @@
 type: config
 log_level: debug
 
-cpu_affinity: [0,1,2,3,4,5,6,7]
+# This is for Indigo with 16 cores per numa node and 2 PUs per core
+cpu_affinity: [0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30]
+numa_node: 0
+# NEED MORE HUGE PAGES
+#TODO use_hugepages: true
 
 buffer_depth: 4
 kernel_path: "lib/cuda/kernels"
@@ -91,7 +95,6 @@ frequency_channels: [
 ]
 
 num_times: 8192
-# num_times: 32768   # buffers too large
 
 # Correlator setup
 n2k_sub_integration_ntime: 8192
@@ -219,31 +222,15 @@ host_bb_beams_buffer:
     frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
     metadata_pool: main_pool
 
-host_upchan_voltage_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: num_dishes * num_polarizations * (num_frequencies * upchannelization_factor) * (num_times / upchannelization_factor)
-    metadata_pool: main_pool
 host_upchan_voltage_ringbuffer:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (num_frequencies * upchannelization_factor) * (num_times / upchannelization_factor)
     metadata_pool: main_pool
 
-host_frb1_beams_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * num_frequencies * upchannelization_factor * frb_num_output_times
-    metadata_pool: main_pool
 host_frb1_beams_ringbuffer:
     kotekan_buffer: ring
     num_frames: buffer_depth
     ring_buffer_size: buffer_depth * sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * num_frequencies * upchannelization_factor * frb_num_output_times
-    metadata_pool: main_pool
-
-host_frb2_beams_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: sizeof_float16 * frb_num_beams * num_frequencies * upchannelization_factor * frb_num_output_times
     metadata_pool: main_pool
 
 host_frb3_beams_buffer:
@@ -265,7 +252,7 @@ run_fengine:
     kotekan_stage: FEngine
     num_frames: 10
     repeat_count: 10
-    # skip_julia: true
+    skip_julia: true
     E_buffer: host_voltage_buffer
     A_buffer: host_bb_phase_buffer
     s_buffer: host_bb_shift_buffer
@@ -366,49 +353,6 @@ run_upchan:
           gpu_mem_gain: upchan_gain_buffer
           gpu_mem_output_voltage: upchan_voltage_buffer
 
-# # n2k: supported (nstations,nfreq):
-# #     nstations=128 (chord):
-# #         nfreq in (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048)
-# #     nstations=1024 (chord):
-# #         nfreq in (1, 2, 4, 8, 16, 32, 64, 128)
-# run_n2k:
-#     gpu_0:
-#         kotekan_stage: cudaProcess
-#         gpu_id: 0
-#         in_buffers:
-#             host_upchan_voltage_ringbuffer_in: host_upchan_voltage_ringbuffer
-#         out_buffers:
-#             host_n2k_correlation_buffer_in: host_n2k_correlation_buffer
-#         commands:
-#         - name: cudaCorrelator
-#           num_elements: num_dishes * num_polarizations
-#           num_local_freq: num_frequencies * upchannelization_factor
-#           samples_per_data_set: n2k_samples_per_data_set
-#           sub_integration_ntime: n2k_sub_integration_ntime
-#           in_signal: host_upchan_voltage_ringbuffer_in
-#           gpu_mem_voltage: upchan_voltage_buffer
-#           gpu_mem_correlation_triangle: n2k_correlation_matrix_buffer
-#         - name: cudaSyncOutput
-#         - name: cudaOutputData
-#           gpu_mem: n2k_correlation_matrix_buffer
-#           out_buf: host_n2k_correlation_buffer_in
-
-run_recv_upchan_voltage:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_upchan_voltage_ringbuffer_in: host_upchan_voltage_ringbuffer
-        out_buffers:
-            host_upchan_voltage_buffer_out: host_upchan_voltage_buffer
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_upchan_voltage_ringbuffer_in
-          gpu_mem_input: upchan_voltage_buffer
-          output_size: num_dishes * num_polarizations * (num_frequencies * upchannelization_factor) * (num_times / upchannelization_factor)
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_upchan_voltage_buffer_out
-
 run_frb1:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -431,22 +375,6 @@ run_frb1:
           gpu_mem_phase: frb1_phase_buffer
           gpu_mem_beamgrid: frb1_beams_buffer
 
-run_recv_frb1_beams:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_frb1_beams_ringbuffer_in: host_frb1_beams_ringbuffer
-        out_buffers:
-            host_frb1_beams_buffer_out: host_frb1_beams_buffer
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_frb1_beams_ringbuffer_in
-          gpu_mem_input: frb1_beams_buffer
-          output_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * (num_frequencies * upchannelization_factor) * frb_num_output_times
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_frb1_beams_buffer_out
-
 run_frb23:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -455,7 +383,6 @@ run_frb23:
             host_frb1_beams_ringbuffer_in: host_frb1_beams_ringbuffer
             host_frb2_phase_in: host_frb2_phase_buffer
         out_buffers:
-            host_frb2_beams_out: host_frb2_beams_buffer
             host_frb3_beams_out: host_frb3_beams_buffer
             host_frb3_beams_meanstd_out: host_frb3_beams_meanstd_buffer
         commands:
@@ -483,9 +410,6 @@ run_frb23:
           gpu_mem_meanstd: frb3_beams_meanstd_buffer
         - name: cudaSyncOutput
         - name: cudaOutputData
-          gpu_mem: frb2_beams_buffer
-          out_buf: host_frb2_beams_out
-        - name: cudaOutputData
           gpu_mem: frb3_beams_buffer
           out_buf: host_frb3_beams_out
         - name: cudaOutputData
@@ -494,58 +418,15 @@ run_frb23:
 
 write_data:
     base_dir: /tmp/f_engine_chord
-    write_voltage:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_voltage_buffer
-        file_name: voltage
+    skip_writing: true
     write_n2k_correlation:
         kotekan_stage: asdfFileWrite
         in_buf: host_n2k_correlation_buffer
         file_name: n2k_correlation
-    write_bb_phase:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_bb_phase_buffer
-        file_name: bb_phase
-    write_bb_shift:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_bb_shift_buffer
-        file_name: bb_shift
-    # write_expected_bb_beams:
-    #     kotekan_stage: asdfFileWrite
-    #     in_buf: host_expected_bb_beams_buffer
-    #     file_name: expected_bb_beams
     write_bb_beams:
         kotekan_stage: asdfFileWrite
         in_buf: host_bb_beams_buffer
         file_name: bb_beams
-    write_upchan_gain:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_upchan_gain_buffer
-        file_name: upchan_gain
-    write_upchan_voltage:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_upchan_voltage_buffer
-        file_name: upchan_voltage
-    write_frb1_phase:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_frb1_phase_buffer
-        file_name: frb1_phase
-    write_frb2_phase:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_frb2_phase_buffer
-        file_name: frb2_phase
-    # write_expected_frb1_beams:
-    #     kotekan_stage: asdfFileWrite
-    #     in_buf: host_expected_frb1_beams_buffer
-    #     file_name: expected_frb1_beams
-    write_frb1_beams:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_frb1_beams_buffer
-        file_name: frb1_beams
-    write_frb2_beams:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_frb2_beams_buffer
-        file_name: frb2_beams
     write_frb3_beams:
         kotekan_stage: asdfFileWrite
         in_buf: host_frb3_beams_buffer
@@ -554,4 +435,5 @@ write_data:
         kotekan_stage: asdfFileWrite
         in_buf: host_frb3_beams_meanstd_buffer
         file_name: frb3_beams_meanstd
+        max_frames: 8
 ...
