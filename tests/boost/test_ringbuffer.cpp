@@ -3,7 +3,9 @@
 #include "Config.hpp" // for Config
 #include "metadataFactory.hpp"
 #include "ringbuffer.hpp"
+#include "test_utils.hpp"
 
+#include <locale>
 #include <memory>
 
 #undef WITH_CUDA
@@ -17,6 +19,9 @@ using kotekan::Config;
 using json = nlohmann::json;
 using namespace kotekan;
 using namespace std;
+
+
+BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
 
 BOOST_AUTO_TEST_CASE(test1) {
     // Create metadata pool

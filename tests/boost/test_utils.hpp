@@ -5,7 +5,6 @@
 
 #include <boost/test/included/unit_test.hpp>
 #include <locale>
-#include <vector>
 
 // Use a boost::test "Global Fixture" to set the locale...
 // https://www.boost.org/doc/libs/1_75_0/libs/test/doc/html/boost_test/tests_organization/fixtures/global.html
@@ -18,7 +17,7 @@ struct GlobalFixture_Locale {
         try {
             std::locale::global(std::locale::classic());
         } catch (const std::exception& ex) {
-            std::cout << "Exception setting locale (stdout)..." << ex.what() << std::endl;
+            std::cerr << "Exception setting locale (stdout)..." << ex.what() << std::endl;
             BOOST_TEST_MESSAGE("Exception setting locale");
         }
     }

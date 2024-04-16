@@ -197,76 +197,51 @@ void testDataGen::main_thread() {
         gettimeofday(&now, nullptr);
         set_first_packet_recv_time(buf, frame_id, now);
 
+        std::shared_ptr<chordMetadata> chordmeta;
+        if (metadata_is_chord(buf, frame_id)) {
+            chordmeta = get_chord_metadata(buf, frame_id);
+            chordmeta->dims = (int)_array_shape.size();
+            for (int d = 0; d < chordmeta->dims; ++d)
+                chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
+        }
+
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
         uint n_to_set = buf->frame_size / sizeof(uint8_t);
+
+        if (chordmeta)
+            chordmeta->sample0_offset = frame_id_abs * samples_per_data_set;
+
         if (type == "const") {
             n_to_set /= sizeof(int8_t);
             frame8 = (int8_t*)frame;
-            if (metadata_is_chord(buf, frame_id)) {
-                std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
+            if (chordmeta)
                 chordmeta->type = chordDataType::int4p4;
-                chordmeta->dims = (int)_array_shape.size();
-                for (int d = 0; d < chordmeta->dims; ++d)
-                    chordmeta->dim[d] = _array_shape[d];
-                for (int d = 0; d < chordmeta->dims; ++d)
-                    std::strncpy(chordmeta->dim_name[d], _dim_name[d].c_str(),
-                                 sizeof chordmeta->dim_name[d]);
-            }
         } else if (type == "const8") {
             n_to_set /= sizeof(int8_t);
             frame8 = (int8_t*)frame;
-            if (metadata_is_chord(buf, frame_id)) {
-                std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
+            if (chordmeta)
                 chordmeta->type = chordDataType::int8;
-                chordmeta->dims = (int)_array_shape.size();
-                for (int d = 0; d < chordmeta->dims; ++d)
-                    chordmeta->dim[d] = _array_shape[d];
-                for (int d = 0; d < chordmeta->dims; ++d)
-                    std::strncpy(chordmeta->dim_name[d], _dim_name[d].c_str(),
-                                 sizeof chordmeta->dim_name[d]);
-            }
         } else if (type == "const16") {
             n_to_set /= sizeof(int16_t);
             frame16 = (int16_t*)frame;
-            if (metadata_is_chord(buf, frame_id)) {
-                std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
+            if (chordmeta)
                 chordmeta->type = chordDataType::int16;
-                chordmeta->dims = (int)_array_shape.size();
-                for (int d = 0; d < chordmeta->dims; ++d)
-                    chordmeta->dim[d] = _array_shape[d];
-                for (int d = 0; d < chordmeta->dims; ++d)
-                    std::strncpy(chordmeta->dim_name[d], _dim_name[d].c_str(),
-                                 sizeof chordmeta->dim_name[d]);
-            }
         } else if (type == "const32") {
             n_to_set /= sizeof(int32_t);
             frame32 = (int32_t*)frame;
-            if (metadata_is_chord(buf, frame_id)) {
-                std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
+            if (chordmeta)
                 chordmeta->type = chordDataType::int32;
-                chordmeta->dims = (int)_array_shape.size();
-                for (int d = 0; d < chordmeta->dims; ++d)
-                    chordmeta->dim[d] = _array_shape[d];
-                for (int d = 0; d < chordmeta->dims; ++d)
-                    std::strncpy(chordmeta->dim_name[d], _dim_name[d].c_str(),
-                                 sizeof chordmeta->dim_name[d]);
-            }
 #if KOTEKAN_FLOAT16
         } else if (type == "constf16") {
             n_to_set /= sizeof(float16_t);
             framef16 = (float16_t*)frame;
-            if (metadata_is_chord(buf, frame_id)) {
-                std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
+            if (chordmeta)
                 chordmeta->type = chordDataType::float16;
-                chordmeta->dims = (int)_array_shape.size();
-                for (int d = 0; d < chordmeta->dims; ++d)
-                    chordmeta->dim[d] = _array_shape[d];
-                for (int d = 0; d < chordmeta->dims; ++d)
-                    std::strncpy(chordmeta->dim_name[d], _dim_name[d].c_str(),
-                                 sizeof chordmeta->dim_name[d]);
-            }
 #endif
+        } else if (type == "random_signed") {
+            if (chordmeta)
+                chordmeta->type = chordDataType::int4p4;
         }
         if (type == "onehot") {
             int val = value;
@@ -295,9 +270,8 @@ void testDataGen::main_thread() {
                     set_onehot_frame_counter(buf, frame_id, frame_id_abs);
                     INFO("Set {:s}[{:d}] frame counter {:d}", buf->buffer_name, frame_id,
                          frame_id_abs);
-                } else if (metadata_is_chord(buf, frame_id)) {
+                } else if (chordmeta) {
                     DEBUG("CHORD metadata; setting array sizes and one-hot indices");
-                    std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
                     int nfreq = 0;
                     int ntime = 0;
                     for (size_t i = 0; i < _array_shape.size(); i++) {
