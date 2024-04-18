@@ -173,8 +173,9 @@ void KotekanTrackers::dump_trackers() {
     }
 
     char time_c[50];
-    sprintf(time_c, "%d-%d-%d_%d:%d:%d", local_tm.tm_year + 1900, local_tm.tm_mon + 1,
-            local_tm.tm_mday, local_tm.tm_hour, local_tm.tm_min, local_tm.tm_sec);
+    std::snprintf(time_c, sizeof time_c, "%d-%d-%d_%d:%d:%d", local_tm.tm_year + 1900,
+                  local_tm.tm_mon + 1, local_tm.tm_mday, local_tm.tm_hour, local_tm.tm_min,
+                  local_tm.tm_sec);
     std::string time_s = time_c;
 
     std::ofstream dump_file(dump_path + "/" + std::string(host_name) + "_crash_stats_" + time_s
