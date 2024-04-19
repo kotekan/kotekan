@@ -29,7 +29,9 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
     _beam_grid_size_ew = config.get<int>(unique_name, "beam_grid_size_ew");
     num_input_beams = _beam_grid_size_ew * _beam_grid_size_ns;
     // Number of frequencies
+    _max_num_local_freq = config.get<int>(unique_name, "max_num_local_freq");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
+    assert(_num_local_freq <= _max_num_local_freq);
     // Number of time samples
     _Td = config.get<int>(unique_name, "samples_per_data_set");
 
@@ -62,7 +64,7 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& uniq
     sync_events.resize(_cuda_streams.size(), nullptr);
 
     // Calculate buffer sizes (in bytes)
-    beamgrid_len = sizeof(float16_t) * num_input_beams * _num_local_freq * _Td;
+    beamgrid_len = sizeof(float16_t) * num_input_beams * _max_num_local_freq * _Td;
     phase_len = sizeof(float16_t) * num_input_beams * _num_beams * _num_local_freq;
     beamout_len = sizeof(float16_t) * _num_beams * _num_local_freq * _Td;
 
@@ -151,7 +153,7 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
     const float16_t beta = 0;
 
     // Calculate
-    //     Iout[T,F,Bout] = Iin[Bin,F,T] * W[Bin,Bout,F]
+    //     Iout[T,F,Bout] = Iin[Bin,F0,T] * W[Bin,Bout,F]
     //     C = A^T * B
     //
     //     C[m,n] = A^T[k,m] B[k,n]
@@ -160,7 +162,7 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
     //     m       = T
     //     n       = Bout
     //     k       = Bin
-    //     lda     = Bin * F
+    //     lda     = Bin * F0
     //     ldb     = Bin
     //     ldc     = T * F
     //     strideA = Bin
@@ -179,7 +181,7 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
     const int n = _num_beams;
     const int k = num_input_beams;
 
-    const int lda = _num_local_freq * num_input_beams;
+    const int lda = _max_num_local_freq * num_input_beams;
     const int ldb = num_input_beams;
     const int ldc = _Td * _num_local_freq;
 
@@ -250,12 +252,22 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
         // Assert Ttilde x Fbar x beamQ x beamP
         assert(in_meta->dims == 4);
         // in_meta->dim[0] is in the ringbuffer
-        if (!(in_meta->dim[1] == _num_local_freq))
-            ERROR("in dim=[{},{},{},{}] num_local_freq={}", in_meta->dim[0], in_meta->dim[1],
-                  in_meta->dim[2], in_meta->dim[3], _num_local_freq);
-        assert(in_meta->dim[1] == _num_local_freq);
+        // in_meta->dim[1] is set wrong
+        // if (!(in_meta->dim[1] == _num_local_freq))
+        //     ERROR("in dim=[{},{},{},{}] num_local_freq={}", in_meta->dim[0], in_meta->dim[1],
+        //           in_meta->dim[2], in_meta->dim[3], _num_local_freq);
+        // assert(in_meta->dim[1] == _num_local_freq);
+        if (!(in_meta->dim[1] == _max_num_local_freq))
+            ERROR("in dim=[{},{},{},{}] max_num_local_freq={}", in_meta->dim[0], in_meta->dim[1],
+                  in_meta->dim[2], in_meta->dim[3], _max_num_local_freq);
+        assert(in_meta->dim[1] == _max_num_local_freq);
         assert(in_meta->dim[2] == _beam_grid_size_ew);
         assert(in_meta->dim[3] == _beam_grid_size_ns);
+        for (int d = in_meta->dims - 1; d >= 0; --d)
+            if (d == in_meta->dims - 1)
+                assert(in_meta->stride[d] == 1);
+            else
+                assert(in_meta->stride[d] == in_meta->stride[d + 1] * in_meta->dim[d + 1]);
         // Set metadata on output buffer
         std::shared_ptr<metadataObject> const out_mc = device.create_gpu_memory_array_metadata(
             _gpu_mem_beamout, gpu_frame_id, in_mc->parent_pool);

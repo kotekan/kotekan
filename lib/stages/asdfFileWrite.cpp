@@ -193,8 +193,8 @@ public:
                         for (int d = 0; d < 4; ++d)
                             ERROR("dim[{}]={} stride[{}]={}", d, meta->dim[d], d, meta->stride[d]);
                     assert(meta->stride[meta->dims - 1] == 1);
-                    const std::uint8_t* const __restrict__ input_ptr = frame;
-                    std::uint8_t* const __restrict__ output_ptr = frame_copy.data();
+                    const std::uint8_t* __restrict__ const input_ptr = frame;
+                    std::uint8_t* __restrict__ const output_ptr = frame_copy.data();
                     const std::ptrdiff_t lastdim = meta->dim[meta->dims - 1];
                     assert(meta->dims < 20);
                     std::ptrdiff_t output_stride[20];
@@ -205,7 +205,7 @@ public:
                             output_stride[d] = output_stride[d + 1] * meta->dim[d + 1];
                     assert(meta->dims <= 4);
                     switch (meta->dims) {
-                        case 3: {
+                        case 3:
                             for (int j = 0; j < meta->dim[0]; ++j) {
                                 for (int k = 0; k < meta->dim[1]; ++k) {
                                     std::ptrdiff_t input_offset =
@@ -218,8 +218,7 @@ public:
                                 }
                             }
                             break;
-                        }
-                        case 4: {
+                        case 4:
                             for (int j = 0; j < meta->dim[0]; ++j) {
                                 for (int k = 0; k < meta->dim[1]; ++k) {
                                     for (int l = 0; l < meta->dim[2]; ++l) {
@@ -236,7 +235,6 @@ public:
                                 }
                             }
                             break;
-                        }
                         default:
                             ERROR("meta->dims={}", meta->dims);
                             assert(0);

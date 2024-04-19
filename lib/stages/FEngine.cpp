@@ -159,22 +159,9 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     },
     W2_frame_size(sizeof(float16_t) * (frb1_num_beams_P * frb1_num_beams_Q)
                   * (frb2_num_beams_ns * frb2_num_beams_ew)
-                  // TODO: Fix this once the frequencies are recombined
-                  * (upchan_max_num_channelss[U4] * 4)),
-    I1_frame_sizes{
-        std::int64_t(sizeof(float16_t)) * frb1_num_beams_P * frb1_num_beams_Q
-            * (upchan_max_num_channelss[U1] * upchan_factor(U1)) * frb_num_times,
-        std::int64_t(sizeof(float16_t)) * frb1_num_beams_P * frb1_num_beams_Q
-            * (upchan_max_num_channelss[U2] * upchan_factor(U2)) * frb_num_times,
-        std::int64_t(sizeof(float16_t)) * frb1_num_beams_P * frb1_num_beams_Q
-            * (upchan_max_num_channelss[U4] * upchan_factor(U4)) * frb_num_times,
-        std::int64_t(sizeof(float16_t)) * frb1_num_beams_P * frb1_num_beams_Q
-            * (upchan_max_num_channelss[U8] * upchan_factor(U8)) * frb_num_times,
-        std::int64_t(sizeof(float16_t)) * frb1_num_beams_P * frb1_num_beams_Q
-            * (upchan_max_num_channelss[U16] * upchan_factor(U32)) * frb_num_times,
-        std::int64_t(sizeof(float16_t)) * frb1_num_beams_P * frb1_num_beams_Q
-            * (upchan_max_num_channelss[U32] * upchan_factor(U64)) * frb_num_times,
-    },
+                  * (upchan_all_max_output_channel - upchan_all_min_output_channel)),
+    I1_frame_size(std::int64_t(sizeof(float16_t)) * frb1_num_beams_P * frb1_num_beams_Q
+                  * upchan_all_max_num_output_channels * frb_num_times),
 
     // Buffers
     E_buffer(get_buffer("E_buffer")), A_buffer(get_buffer("A_buffer")),
@@ -193,12 +180,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         get_buffer("W1_U8_buffer"),  get_buffer("W1_U16_buffer"), get_buffer("W1_U32_buffer"),
         get_buffer("W1_U64_buffer"),
     },
-    W2_buffer(get_buffer("W2_buffer")),
-    I1_buffers{
-        get_buffer("I1_U1_buffer"),  get_buffer("I1_U2_buffer"),  get_buffer("I1_U4_buffer"),
-        get_buffer("I1_U8_buffer"),  get_buffer("I1_U16_buffer"), get_buffer("I1_U32_buffer"),
-        get_buffer("I1_U64_buffer"),
-    }
+    W2_buffer(get_buffer("W2_buffer")), I1_buffer(get_buffer("I1_buffer"))
 
 {
     assert(num_dishes >= 0 && num_dishes <= num_dish_locations);
@@ -256,8 +238,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     for (auto W1_buffer : W1_buffers)
         assert(W1_buffer);
     assert(W2_buffer);
-    for (auto I1_buffer : I1_buffers)
-        assert(I1_buffer);
+    assert(I1_buffer);
     E_buffer->register_producer(unique_name);
     A_buffer->register_producer(unique_name);
     s_buffer->register_producer(unique_name);
@@ -268,8 +249,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     for (auto W1_buffer : W1_buffers)
         W1_buffer->register_producer(unique_name);
     W2_buffer->register_producer(unique_name);
-    for (auto I1_buffer : I1_buffers)
-        I1_buffer->register_producer(unique_name);
+    I1_buffer->register_producer(unique_name);
 
     INFO("Starting Julia...");
     kotekan::juliaStartup();
@@ -529,7 +509,7 @@ void FEngine::main_thread() {
             G_metadata->type = float16;
             G_metadata->dims = 1;
             assert(G_metadata->dims <= CHORD_META_MAX_DIM);
-            std::snprintf(G_metadata->dim_name[0], sizeof G_metadata->dim_name[0], "Fbar_U%d", U);
+            std::strncpy(G_metadata->dim_name[0], "Fbar", sizeof G_metadata->dim_name[0]);
             G_metadata->dim[0] = upchan_max_num_channelss[Ufactor] * U;
             for (int d = G_metadata->dims - 1; d >= 0; --d)
                 if (d == G_metadata->dims - 1)
@@ -575,7 +555,7 @@ void FEngine::main_thread() {
             W1_buffers[Ufactor]->allocate_new_metadata_object(W1_frame_id);
             set_fpga_seq_num(W1_buffers[Ufactor], W1_frame_id, -1);
 
-            DEBUG("[{:d}] Filling W1_U{:d} buffer...", W1_frame_index, U);
+            DEBUG("[{:d}] Filling W1 buffer for U={:d}...", W1_frame_index, U);
             const int num_local_channels =
                 upchan_max_channels[Ufactor] - upchan_min_channels[Ufactor];
             // Disable this because the F-Engine simulator doesn't upchannelize yet
@@ -606,17 +586,17 @@ void FEngine::main_thread() {
                      ++n)
                     ((float16_t*)W1_frame)[n] = 1;
             }
-            DEBUG("[{:d}] Done filling W1_U{:d} buffer.", W1_frame_index, U);
+            DEBUG("[{:d}] Done filling W1 buffer for U={:d}.", W1_frame_index, U);
 
             // Set metadata
             std::shared_ptr<chordMetadata> const W1_metadata =
                 get_chord_metadata(W1_buffers[Ufactor], W1_frame_id);
             W1_metadata->frame_counter = W1_frame_index;
-            std::snprintf(W1_metadata->name, sizeof W1_metadata->name, "W_U%d", U);
+            std::strncpy(W1_metadata->name, "W", sizeof W1_metadata->name);
             W1_metadata->type = float16;
             W1_metadata->dims = 5;
             assert(W1_metadata->dims <= CHORD_META_MAX_DIM);
-            std::snprintf(W1_metadata->dim_name[0], sizeof W1_metadata->dim_name[0], "Fbar_U%d", U);
+            std::strncpy(W1_metadata->dim_name[0], "F", sizeof W1_metadata->dim_name[0]);
             std::strncpy(W1_metadata->dim_name[1], "P", sizeof W1_metadata->dim_name[1]);
             std::strncpy(W1_metadata->dim_name[2], "dishN", sizeof W1_metadata->dim_name[2]);
             std::strncpy(W1_metadata->dim_name[3], "dishM", sizeof W1_metadata->dim_name[3]);
@@ -672,10 +652,8 @@ void FEngine::main_thread() {
         const std::ptrdiff_t beamOut_ns_stride = beamIn_ew_stride * 2 * num_dish_locations_ew;
         const std::ptrdiff_t beamOut_ew_stride = beamOut_ns_stride * frb2_num_beams_ns;
         const std::ptrdiff_t freq_stride = beamOut_ew_stride * frb2_num_beams_ew;
-        // TODO: Fix this once the frequencies are recombined
-        // const std::ptrdiff_t tmp_num_frequencies = num_frequencies * upchannelization_factor;
-        const std::ptrdiff_t tmp_num_frequencies = upchan_max_num_channelss[U4] * 4;
-        const std::ptrdiff_t npoints = freq_stride * tmp_num_frequencies;
+        const std::ptrdiff_t npoints =
+            freq_stride * (upchan_all_max_output_channel - upchan_all_min_output_channel);
         assert(std::ptrdiff_t(sizeof(float16_t)) * npoints == W2_frame_size);
 
         {
@@ -715,7 +693,10 @@ void FEngine::main_thread() {
             std::vector<float> Up(2 * num_dish_locations_ew);
             std::vector<float> Uq(2 * num_dish_locations_ns);
 
-            for (int freq0 = 0; freq0 < tmp_num_frequencies / 4; ++freq0) {
+            // TODO: correct this, frequencies don't work that way
+            for (int freq0 = 0;
+                 freq0 < (upchan_all_max_output_channel - upchan_all_min_output_channel) / 4;
+                 ++freq0) {
                 for (int freq1 = 0; freq1 < upchannelization_factor; ++freq1) {
                     const int freq = freq1 + upchannelization_factor * freq0;
 
@@ -723,7 +704,7 @@ void FEngine::main_thread() {
                     const float dfreq = adc_frequency / num_samples_per_frame;
                     const float afreq =
                         dfreq
-                        * (frequency_channels.at(freq0)
+                        * (frequency_channels.at(freq0 % frequency_channels.size())
                            + ((freq1 + 0.5f) / float(upchannelization_factor) - 0.5f));
                     const float c = 299792458; // speed of light
                     const float wavelength = c / afreq;
@@ -779,7 +760,7 @@ void FEngine::main_thread() {
         std::strncpy(W2_metadata->dim_name[2], "R", sizeof W2_metadata->dim_name[1]);
         std::strncpy(W2_metadata->dim_name[3], "beamQ", sizeof W2_metadata->dim_name[2]);
         std::strncpy(W2_metadata->dim_name[4], "beamP", sizeof W2_metadata->dim_name[3]);
-        W2_metadata->dim[0] = tmp_num_frequencies;
+        W2_metadata->dim[0] = upchan_all_max_output_channel - upchan_all_min_output_channel;
         W2_metadata->dim[1] = frb2_num_beams_ns * frb2_num_beams_ew;
         W2_metadata->dim[2] = 2 * num_dish_locations_ew;
         W2_metadata->dim[3] = 2 * num_dish_locations_ns;
@@ -789,9 +770,11 @@ void FEngine::main_thread() {
             else
                 W2_metadata->stride[d] = W2_metadata->stride[d + 1] * W2_metadata->dim[d + 1];
         W2_metadata->sample0_offset = -1; // undefined
-        W2_metadata->nfreq = tmp_num_frequencies / 4;
+        // TODO: correct this
+        // W2_metadata->nfreq = (upchan_all_max_output_channel - upchan_all_min_output_channel) / 4;
+        W2_metadata->nfreq = CHORD_META_MAX_FREQ;
         assert(W2_metadata->nfreq <= CHORD_META_MAX_FREQ);
-        for (int freq = 0; freq < tmp_num_frequencies / 4; ++freq) {
+        for (int freq = 0; freq < W2_metadata->nfreq; ++freq) {
             W2_metadata->coarse_freq[freq] = freq + 1; // See `FEngine.f_engine`
             W2_metadata->freq_upchan_factor[freq] = upchannelization_factor;
             W2_metadata->half_fpga_sample0[freq] = -1;      // undefined

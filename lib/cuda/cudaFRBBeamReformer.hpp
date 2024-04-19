@@ -43,7 +43,9 @@ private:
     int32_t _num_beams;
     /// Beam-grid size produced by cudaFRBBeamformer
     int32_t _beam_grid_size_ns, _beam_grid_size_ew;
-    /// Number of frequencies per data stream sent to each node.
+    /// Maximum number of frequencies per data stream sent to each node (determines the buffer size).
+    int32_t _max_num_local_freq;
+    /// Number of frequencies per data stream sent to each node (determines which part of the buffer is used).
     int32_t _num_local_freq;
     /// Total samples in each dataset
     int32_t _Td;

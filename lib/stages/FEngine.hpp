@@ -121,7 +121,7 @@ class FEngine : public kotekan::Stage {
     const std::array<std::int64_t, Usize> G_frame_sizes;
     const std::array<std::int64_t, Usize> W1_frame_sizes;
     const std::int64_t W2_frame_size;
-    const std::array<std::int64_t, Usize> I1_frame_sizes;
+    const std::int64_t I1_frame_size;
 
     Buffer* const E_buffer;
     Buffer* const A_buffer;
@@ -130,7 +130,7 @@ class FEngine : public kotekan::Stage {
     std::array<Buffer*, Usize> const G_buffers;
     std::array<Buffer*, Usize> const W1_buffers;
     Buffer* const W2_buffer;
-    std::array<Buffer*, Usize> const I1_buffers;
+    Buffer* const I1_buffer;
 
 public:
     FEngine(kotekan::Config& config, const std::string& unique_name,
