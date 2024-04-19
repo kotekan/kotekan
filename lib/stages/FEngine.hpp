@@ -6,6 +6,8 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
+#include <array>
+
 #ifdef WITH_CUDA
 #include <nvToolsExt.h>
 #endif
@@ -88,6 +90,14 @@ class FEngine : public kotekan::Stage {
     // Upchannelizer setup
     const int upchannelization_factor;
 
+    enum upchan_factor_t { U1, U2, U4, U8, U16, U32, U64, Usize };
+    constexpr int upchan_factor(upchan_factor_t U) {
+        return std::array<int, Usize>{1, 2, 4, 8, 16, 32, 64}[U];
+    }
+    const std::array<int, Usize> upchan_max_num_channelss, upchan_min_channels, upchan_max_channels;
+    const int upchan_all_max_num_output_channels, upchan_all_min_output_channel,
+        upchan_all_max_output_channel;
+
     // FRB beamformer setup
     const int frb1_num_beams_P;
     const int frb1_num_beams_Q;
@@ -108,35 +118,19 @@ class FEngine : public kotekan::Stage {
     const std::int64_t A_frame_size;
     const std::int64_t s_frame_size;
     const std::int64_t J_frame_size;
-    const std::int64_t G2_frame_size;
-    const std::int64_t G4_frame_size;
-    const std::int64_t G8_frame_size;
-    const std::int64_t W11_frame_size;
-    const std::int64_t W12_frame_size;
-    const std::int64_t W14_frame_size;
-    const std::int64_t W18_frame_size;
+    const std::array<std::int64_t, Usize> G_frame_sizes;
+    const std::array<std::int64_t, Usize> W1_frame_sizes;
     const std::int64_t W2_frame_size;
-    const std::int64_t I11_frame_size;
-    const std::int64_t I12_frame_size;
-    const std::int64_t I14_frame_size;
-    const std::int64_t I18_frame_size;
+    const std::array<std::int64_t, Usize> I1_frame_sizes;
 
     Buffer* const E_buffer;
     Buffer* const A_buffer;
     Buffer* const s_buffer;
     Buffer* const J_buffer;
-    Buffer* const G2_buffer;
-    Buffer* const G4_buffer;
-    Buffer* const G8_buffer;
-    Buffer* const W11_buffer;
-    Buffer* const W12_buffer;
-    Buffer* const W14_buffer;
-    Buffer* const W18_buffer;
+    std::array<Buffer*, Usize> const G_buffers;
+    std::array<Buffer*, Usize> const W1_buffers;
     Buffer* const W2_buffer;
-    Buffer* const I11_buffer;
-    Buffer* const I12_buffer;
-    Buffer* const I14_buffer;
-    Buffer* const I18_buffer;
+    std::array<Buffer*, Usize> const I1_buffers;
 
 public:
     FEngine(kotekan::Config& config, const std::string& unique_name,
