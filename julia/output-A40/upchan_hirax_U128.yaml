@@ -54,7 +54,7 @@ kernel-description:
       indices: [C, D, P, F, T]
       shape: [2, 256, 2, 64, 32768]
       strides: [1, 2, 512, 1024, 65536]
-    - name: "Ē_U128"
+    - name: "Ē"
       intent: out
       type: Int4
       indices: [C, D, P, F̄, T̄]

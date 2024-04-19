@@ -57,19 +57,19 @@ kernel-description:
       indices: [MN, D]
       shape: [2, 256]
       strides: [1, 2]
-    - name: "W64"
+    - name: "W"
       intent: in
       type: Float16
       indices: [C, dishM, dishN, P, F]
       shape: [2, 16, 16, 2, 4096]
       strides: [1, 2, 32, 512, 1024, 4194304]
-    - name: "Ē64"
+    - name: "Ē"
       intent: in
       type: Int4
       indices: [C, D, P, F, T]
       shape: [2, 256, 2, 4096, 512]
       strides: [1, 2, 512, 1024, 4194304]
-    - name: "I64"
+    - name: "I"
       intent: out
       type: Float16
       indices: [beamP, beamQ, F, Tbar]

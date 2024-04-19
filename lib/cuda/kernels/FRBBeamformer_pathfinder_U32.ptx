@@ -108,13 +108,13 @@ $L__BB0_2:                              // %L20
 	mad.lo.s32 	%r294, %r6, -1431655765, 715827872;
 	shf.r.wrap.b32 	%r295, %r294, %r294, 4;
 	setp.gt.u32 	%p9, %r295, 89478484;
-	setp.gt.u32 	%p10, %r283, 1023;
+	setp.gt.u32 	%p10, %r283, 511;
 	or.pred  	%p11, %p9, %p10;
 	@%p11 bra 	$L__BB0_6;
 // %bb.5:                               // %L138
 	ld.param.u32 	%r284, [_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE_param_4];
 	setp.ge.s32 	%p12, %r284, %r283;
-	setp.lt.s32 	%p13, %r284, 2048;
+	setp.lt.s32 	%p13, %r284, 1024;
 	and.pred  	%p14, %p12, %p13;
 	@%p14 bra 	$L__BB0_7;
 	bra.uni 	$L__BB0_6;
@@ -148,7 +148,7 @@ $L__BB0_8:                              // %L261
 // %bb.11:                              // %L279
 	ld.param.u32 	%r288, [_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE_param_8];
 	setp.lt.s32 	%p23, %r288, %r287;
-	setp.gt.s32 	%p24, %r288, 2048;
+	setp.gt.s32 	%p24, %r288, 4096;
 	or.pred  	%p25, %p23, %p24;
 	@%p25 bra 	$L__BB0_13;
 // %bb.12:                              // %L289
@@ -157,9 +157,9 @@ $L__BB0_8:                              // %L261
 	setp.eq.s32 	%p26, %r303, 0;
 	setp.eq.s32 	%p27, %r302, %r7;
 	and.pred  	%p28, %p26, %p27;
-	@%p28 bra 	$L__BB0_185;
+	@%p28 bra 	$L__BB0_191;
 	bra.uni 	$L__BB0_13;
-$L__BB0_185:                            // %pass149
+$L__BB0_191:                            // %pass149
 	and.b32  	%r149, %r290, 3;
 	shr.u32 	%r150, %r290, 2;
 	mul.lo.s32 	%r304, %r149, %r150;
@@ -171,11 +171,11 @@ $L__BB0_185:                            // %pass149
 	setp.lt.f32 	%p29, %f788, 0f40000000;
 	setp.gtu.f32 	%p322, %f788, 0f4B800000;
 	mov.f32 	%f784, %f788;
-	@%p29 bra 	$L__BB0_197;
-// %bb.186:
-	@%p322 bra 	$L__BB0_193;
-	bra.uni 	$L__BB0_187;
-$L__BB0_193:
+	@%p29 bra 	$L__BB0_203;
+// %bb.192:
+	@%p322 bra 	$L__BB0_199;
+	bra.uni 	$L__BB0_193;
+$L__BB0_199:
 	mov.b32 	%r152, %f788;
 	and.b32  	%r306, %r152, 8388607;
 	or.b32  	%r3035, %r306, 1065353216;
@@ -183,13 +183,13 @@ $L__BB0_193:
 	add.s32 	%r307, %r152, -1073741824;
 	and.b32  	%r3036, %r307, -8388608;
 	setp.eq.s32 	%p36, %r3036, 0;
-	@%p36 bra 	$L__BB0_196;
-// %bb.194:                             // %__nv_fmaf_rn.exit4.i.i.i.preheader
+	@%p36 bra 	$L__BB0_202;
+// %bb.200:                             // %__nv_fmaf_rn.exit4.i.i.i.preheader
 	mov.f32 	%f216, 0f3F800000;
 	// begin inline asm
 	rcp.approx.ftz.f32 %f215,%f216;
 	// end inline asm
-$L__BB0_195:                            // %__nv_fmaf_rn.exit4.i.i.i
+$L__BB0_201:                            // %__nv_fmaf_rn.exit4.i.i.i
                                         // =>This Inner Loop Header: Depth=1
 	min.u32 	%r308, %r3036, 192937984;
 	add.s32 	%r309, %r3035, %r308;
@@ -206,53 +206,53 @@ $L__BB0_195:                            // %__nv_fmaf_rn.exit4.i.i.i
 	setp.ne.s32 	%p37, %r3036, 0;
 	setp.ne.s32 	%p38, %r3035, 0;
 	and.pred  	%p39, %p37, %p38;
-	@%p39 bra 	$L__BB0_195;
-$L__BB0_196:                            // %__internal_fmodf_slowpath_mod.exit.i.i
+	@%p39 bra 	$L__BB0_201;
+$L__BB0_202:                            // %__internal_fmodf_slowpath_mod.exit.i.i
 	setp.gt.u32 	%p40, %r152, 2139095039;
 	selp.f32 	%f224, 0f7FFFFFFF, 0f4B800000, %p40;
 	mul.f32 	%f225, %f783, 0f34000000;
 	mul.f32 	%f784, %f224, %f225;
-	bra.uni 	$L__BB0_197;
-$L__BB0_187:                            // %__nv_fast_fdividef.exit.i.i.i
+	bra.uni 	$L__BB0_203;
+$L__BB0_193:                            // %__nv_fast_fdividef.exit.i.i.i
 	mov.f32 	%f207, 0f40000000;
 	div.approx.f32 	%f208, %f788, %f207;
 	cvt.rzi.f32.f32 	%f782, %f208;
 	fma.rn.f32 	%f172, %f782, 0fC0000000, %f788;
 	mov.b32 	%r151, %f172;
 	setp.lt.u32 	%p31, %r151, 1073741824;
-	@%p31 bra 	$L__BB0_192;
-// %bb.188:
+	@%p31 bra 	$L__BB0_198;
+// %bb.194:
 	setp.lt.u32 	%p32, %r151, -2147483647;
-	@%p32 bra 	$L__BB0_190;
-// %bb.189:
+	@%p32 bra 	$L__BB0_196;
+// %bb.195:
 	add.f32 	%f213, %f782, 0fBF800000;
 	setp.lt.f32 	%p35, %f172, 0fC0000000;
 	add.f32 	%f214, %f213, 0fBF800000;
 	selp.f32 	%f782, %f214, %f213, %p35;
-	bra.uni 	$L__BB0_192;
-$L__BB0_190:
+	bra.uni 	$L__BB0_198;
+$L__BB0_196:
 	add.f32 	%f782, %f782, 0f3F800000;
 	setp.ltu.f32 	%p33, %f172, 0f40800000;
-	@%p33 bra 	$L__BB0_192;
-// %bb.191:                             // %__nv_fmaf_rn.exit.i.i.i
+	@%p33 bra 	$L__BB0_198;
+// %bb.197:                             // %__nv_fmaf_rn.exit.i.i.i
 	add.f32 	%f209, %f782, 0f3F800000;
 	fma.rn.f32 	%f211, %f207, 0fC0400000, %f172;
 	setp.ge.f32 	%p34, %f211, 0f00000000;
 	add.f32 	%f212, %f209, 0f3F800000;
 	selp.f32 	%f782, %f212, %f209, %p34;
-$L__BB0_192:                            // %__internal_fmodf_fastpath_quot.exit.i.i
+$L__BB0_198:                            // %__internal_fmodf_fastpath_quot.exit.i.i
 	fma.rn.f32 	%f784, %f782, 0fC0000000, %f788;
-$L__BB0_197:                            // %__internal_fmodf_kernel.exit.i
+$L__BB0_203:                            // %__internal_fmodf_kernel.exit.i
 	abs.f32 	%f226, %f784;
 	setp.gtu.f32 	%p41, %f226, 0f7F800000;
 	mov.b32 	%r310, %f169;
 	and.b32  	%r159, %r310, -2147483648;
-	@%p41 bra 	$L__BB0_199;
-// %bb.198:
+	@%p41 bra 	$L__BB0_205;
+// %bb.204:
 	mov.b32 	%r311, %f784;
 	or.b32  	%r312, %r159, %r311;
 	mov.b32 	%f784, %r312;
-$L__BB0_199:                            // %__nv_fmodf.exit
+$L__BB0_205:                            // %__nv_fmodf.exit
 	shl.b32 	%r162, %r290, 1;
 	and.b32  	%r163, %r162, 2;
 	mul.lo.s32 	%r327, %r163, %r150;
@@ -796,11 +796,11 @@ $L__BB0_75:                             // %L679
 	mov.f32 	%f755, %f746;
 	mov.f32 	%f757, %f752;
 $L__BB0_77:                             // %L690
-	@%p29 bra 	$L__BB0_207;
+	@%p29 bra 	$L__BB0_213;
 // %bb.78:
-	@%p322 bra 	$L__BB0_203;
+	@%p322 bra 	$L__BB0_209;
 	bra.uni 	$L__BB0_79;
-$L__BB0_203:
+$L__BB0_209:
 	mov.b32 	%r166, %f788;
 	and.b32  	%r415, %r166, 8388607;
 	or.b32  	%r3037, %r415, 1065353216;
@@ -808,13 +808,13 @@ $L__BB0_203:
 	add.s32 	%r416, %r166, -1073741824;
 	and.b32  	%r3038, %r416, -8388608;
 	setp.eq.s32 	%p142, %r3038, 0;
-	@%p142 bra 	$L__BB0_206;
-// %bb.204:                             // %__nv_fmaf_rn.exit4.i.i.i2112.preheader
+	@%p142 bra 	$L__BB0_212;
+// %bb.210:                             // %__nv_fmaf_rn.exit4.i.i.i2112.preheader
 	mov.f32 	%f478, 0f3F800000;
 	// begin inline asm
 	rcp.approx.ftz.f32 %f477,%f478;
 	// end inline asm
-$L__BB0_205:                            // %__nv_fmaf_rn.exit4.i.i.i2112
+$L__BB0_211:                            // %__nv_fmaf_rn.exit4.i.i.i2112
                                         // =>This Inner Loop Header: Depth=1
 	min.u32 	%r417, %r3038, 192937984;
 	add.s32 	%r418, %r3037, %r417;
@@ -831,13 +831,13 @@ $L__BB0_205:                            // %__nv_fmaf_rn.exit4.i.i.i2112
 	setp.ne.s32 	%p143, %r3038, 0;
 	setp.ne.s32 	%p144, %r3037, 0;
 	and.pred  	%p145, %p143, %p144;
-	@%p145 bra 	$L__BB0_205;
-$L__BB0_206:                            // %__internal_fmodf_slowpath_mod.exit.i.i2114
+	@%p145 bra 	$L__BB0_211;
+$L__BB0_212:                            // %__internal_fmodf_slowpath_mod.exit.i.i2114
 	setp.gt.u32 	%p146, %r166, 2139095039;
 	selp.f32 	%f486, 0f7FFFFFFF, 0f4B800000, %p146;
 	mul.f32 	%f487, %f787, 0f34000000;
 	mul.f32 	%f788, %f486, %f487;
-	bra.uni 	$L__BB0_207;
+	bra.uni 	$L__BB0_213;
 $L__BB0_79:                             // %__nv_fast_fdividef.exit.i.i.i2091
 	mov.f32 	%f469, 0f40000000;
 	div.approx.f32 	%f470, %f788, %f469;
@@ -845,37 +845,37 @@ $L__BB0_79:                             // %__nv_fast_fdividef.exit.i.i.i2091
 	fma.rn.f32 	%f189, %f786, 0fC0000000, %f788;
 	mov.b32 	%r165, %f189;
 	setp.lt.u32 	%p137, %r165, 1073741824;
-	@%p137 bra 	$L__BB0_202;
+	@%p137 bra 	$L__BB0_208;
 // %bb.80:
 	setp.lt.u32 	%p138, %r165, -2147483647;
-	@%p138 bra 	$L__BB0_200;
+	@%p138 bra 	$L__BB0_206;
 // %bb.81:
 	add.f32 	%f475, %f786, 0fBF800000;
 	setp.lt.f32 	%p141, %f189, 0fC0000000;
 	add.f32 	%f476, %f475, 0fBF800000;
 	selp.f32 	%f786, %f476, %f475, %p141;
-	bra.uni 	$L__BB0_202;
-$L__BB0_200:
+	bra.uni 	$L__BB0_208;
+$L__BB0_206:
 	add.f32 	%f786, %f786, 0f3F800000;
 	setp.ltu.f32 	%p139, %f189, 0f40800000;
-	@%p139 bra 	$L__BB0_202;
-// %bb.201:                             // %__nv_fmaf_rn.exit.i.i.i2095
+	@%p139 bra 	$L__BB0_208;
+// %bb.207:                             // %__nv_fmaf_rn.exit.i.i.i2095
 	add.f32 	%f471, %f786, 0f3F800000;
 	fma.rn.f32 	%f473, %f469, 0fC0400000, %f189;
 	setp.ge.f32 	%p140, %f473, 0f00000000;
 	add.f32 	%f474, %f471, 0f3F800000;
 	selp.f32 	%f786, %f474, %f471, %p140;
-$L__BB0_202:                            // %__internal_fmodf_fastpath_quot.exit.i.i2098
+$L__BB0_208:                            // %__internal_fmodf_fastpath_quot.exit.i.i2098
 	fma.rn.f32 	%f788, %f786, 0fC0000000, %f788;
-$L__BB0_207:                            // %__internal_fmodf_kernel.exit.i2117
+$L__BB0_213:                            // %__internal_fmodf_kernel.exit.i2117
 	abs.f32 	%f488, %f788;
 	setp.gtu.f32 	%p147, %f488, 0f7F800000;
-	@%p147 bra 	$L__BB0_209;
-// %bb.208:
+	@%p147 bra 	$L__BB0_215;
+// %bb.214:
 	mov.b32 	%r419, %f788;
 	or.b32  	%r420, %r159, %r419;
 	mov.b32 	%f788, %r420;
-$L__BB0_209:                            // %__nv_fmodf.exit2118
+$L__BB0_215:                            // %__nv_fmodf.exit2118
 	mov.f32 	%f512, 0f00000000;
 	mov.f32 	%f521, 0f41000000;
 	div.approx.f32 	%f203, %f512, %f521;
@@ -1343,7 +1343,7 @@ $L__BB0_141:                            // %L971
 $L__BB0_143:                            // %L982
 	setp.gt.u32 	%p238, %r290, 15;
 	mov.u32 	%r175, 999999999;
-	@%p238 bra 	$L__BB0_211;
+	@%p238 bra 	$L__BB0_217;
 // %bb.144:                             // %L1012
 	ld.param.u64 	%rd1, [_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE_param_9];
 	mad.lo.s32 	%r512, %r290, 6, %r1;
@@ -1365,12 +1365,12 @@ $L__BB0_143:                            // %L982
 	setp.lt.u32 	%p239, %r517, 589823;
 	setp.lt.u32 	%p240, %r515, 786432;
 	and.pred  	%p241, %p239, %p240;
-	@%p241 bra 	$L__BB0_210;
+	@%p241 bra 	$L__BB0_216;
 	bra.uni 	$L__BB0_145;
-$L__BB0_210:                            // %L1256
+$L__BB0_216:                            // %L1256
 	mul.lo.s32 	%r521, %r86, 290;
 	mad.lo.s32 	%r175, %r85, 33, %r521;
-$L__BB0_211:                            // %pass538
+$L__BB0_217:                            // %pass532
 	add.f32 	%f227, %f784, %f784;
 	mov.b32 	%r319, %f227;
 	add.f32 	%f489, %f788, %f788;
@@ -1662,14 +1662,14 @@ $L__BB0_211:                            // %pass538
 	// begin inline asm
 	cvt.rn.f16x2.f32 %r508, %r510, %r509;
 	// end inline asm
-	shl.b32 	%r523, %r1, 1;
-	and.b32  	%r524, %r523, 2;
-	shr.u32 	%r525, %r290, 3;
-	bfe.u32 	%r526, %r290, 3, 1;
+	shr.u32 	%r523, %r290, 3;
+	bfe.u32 	%r524, %r290, 3, 1;
+	shl.b32 	%r525, %r1, 1;
+	and.b32  	%r526, %r525, 2;
 	or.b32  	%r527, %r524, %r526;
 	mul.lo.s32 	%r528, %r149, 24;
-	and.b32  	%r529, %r525, 2;
-	or.b32  	%r176, %r529, %r64;
+	and.b32  	%r529, %r523, 2;
+	or.b32  	%r176, %r64, %r529;
 	cvt.u16.u32 	%rs23, %r176;
 	mul.lo.s16 	%rs24, %rs23, 171;
 	shr.u16 	%rs25, %rs24, 9;
@@ -1711,18 +1711,18 @@ $L__BB0_211:                            // %pass538
 	shl.b32 	%r537, %r281, 16;
 	shl.b32 	%r538, %r285, 5;
 	add.s32 	%r181, %r538, %r537;
-	shl.b32 	%r539, %r4, 5;
-	shl.b32 	%r540, %r1, 2;
-	or.b32  	%r182, %r525, %r540;
-	shl.b32 	%r541, %r290, 2;
-	and.b32  	%r542, %r541, 28;
-	or.b32  	%r183, %r542, %r539;
-	or.b32  	%r543, %r525, 24;
-	add.s32 	%r184, %r543, %r540;
+	shl.b32 	%r539, %r290, 2;
+	shl.b32 	%r540, %r4, 5;
+	shl.b32 	%r541, %r1, 2;
+	or.b32  	%r182, %r523, %r541;
+	and.b32  	%r542, %r539, 28;
+	or.b32  	%r183, %r542, %r540;
+	or.b32  	%r543, %r523, 24;
+	add.s32 	%r184, %r543, %r541;
 	and.b32  	%r185, %r290, 4;
-	shl.b32 	%r544, %r290, 4;
-	and.b32  	%r545, %r162, 8;
-	or.b32  	%r546, %r545, %r544;
+	and.b32  	%r544, %r162, 8;
+	shl.b32 	%r545, %r290, 4;
+	or.b32  	%r546, %r544, %r545;
 	bfe.u32 	%r547, %r546, 3, 3;
 	mul.lo.s32 	%r186, %r547, 260;
 	cvt.u16.u32 	%rs29, %r290;
@@ -1782,25 +1782,26 @@ $L__BB0_211:                            // %pass538
 	setp.eq.s32 	%p243, %r150, 1;
 	setp.eq.s32 	%p244, %r150, 4;
 	setp.eq.s32 	%p245, %r150, 5;
-	shr.u32 	%r575, %r1, 2;
-	mul.lo.s32 	%r576, %r66, 784;
-	and.b32  	%r577, %r1, 1;
-	neg.s32 	%r578, %r577;
-	and.b32  	%r579, %r578, 392;
-	and.b32  	%r580, %r162, 6;
-	bfe.s32 	%r581, %r290, 3, 1;
-	and.b32  	%r582, %r581, 1576;
-	bfe.s32 	%r583, %r1, 1, 1;
-	and.b32  	%r584, %r583, 196;
-	mad.lo.s32 	%r585, %r575, 98, %r576;
-	add.s32 	%r586, %r585, %r580;
+	mul.lo.s32 	%r575, %r66, 784;
+	and.b32  	%r576, %r1, 1;
+	neg.s32 	%r577, %r576;
+	and.b32  	%r578, %r577, 392;
+	bfe.s32 	%r579, %r1, 1, 1;
+	and.b32  	%r580, %r579, 196;
+	and.b32  	%r581, %r162, 6;
+	bfe.s32 	%r582, %r290, 3, 1;
+	and.b32  	%r583, %r582, 1576;
+	shr.u32 	%r584, %r1, 2;
+	or.b32  	%r585, %r581, %r575;
+	mad.lo.s32 	%r586, %r584, 98, %r585;
 	or.b32  	%r587, %r586, %r64;
-	add.s32 	%r588, %r587, %r579;
-	add.s32 	%r589, %r588, %r582;
-	add.s32 	%r201, %r589, %r584;
+	add.s32 	%r588, %r587, %r578;
+	add.s32 	%r589, %r588, %r580;
+	add.s32 	%r201, %r589, %r583;
 	add.s32 	%r202, %r201, 8;
-	mul.lo.s32 	%r590, %r283, 393216;
+	mul.lo.s32 	%r590, %r283, 786432;
 	mad.lo.s32 	%r591, %r287, 192, %r590;
+	and.b32  	%r592, %r290, 7;
 	cvt.u16.u32 	%rs41, %r182;
 	and.b16  	%rs42, %rs41, 255;
 	mul.lo.s16 	%rs43, %rs42, 171;
@@ -1808,11 +1809,10 @@ $L__BB0_211:                            // %pass538
 	and.b16  	%rs45, %rs44, 24;
 	add.s16 	%rs46, %rs41, %rs45;
 	shl.b16 	%rs47, %rs46, 3;
-	cvt.u32.u16 	%r592, %rs47;
-	and.b32  	%r593, %r592, 248;
-	and.b32  	%r594, %r290, 7;
-	or.b32  	%r595, %r594, %r5;
-	add.s32 	%r203, %r595, %r593;
+	cvt.u32.u16 	%r593, %rs47;
+	and.b32  	%r594, %r593, 248;
+	or.b32  	%r595, %r5, %r592;
+	add.s32 	%r203, %r595, %r594;
 	cvt.s64.s32 	%rd7, %r591;
 	add.s32 	%r596, %r199, %r198;
 	mul.wide.u32 	%rd49, %r596, 4;
@@ -1855,26 +1855,26 @@ $L__BB0_211:                            // %pass538
 	mov.u32 	%r108, %r88;
 	mov.u32 	%r109, %r88;
 	mov.u32 	%r110, %r88;
-	bra.uni 	$L__BB0_212;
-$L__BB0_183:                            // %L24398
-                                        //   in Loop: Header=BB0_212 Depth=1
+	bra.uni 	$L__BB0_218;
+$L__BB0_189:                            // %L24370
+                                        //   in Loop: Header=BB0_218 Depth=1
 	add.s32 	%r148, %r88, 48;
 	add.s16 	%rs2, %rs2, 48;
 	add.s16 	%rs1, %rs1, 48;
 	setp.ne.s32 	%p321, %r88, 960;
 	mov.u32 	%r88, %r148;
-	@%p321 bra 	$L__BB0_212;
-	bra.uni 	$L__BB0_184;
-$L__BB0_212:                            // %L1941
+	@%p321 bra 	$L__BB0_218;
+	bra.uni 	$L__BB0_190;
+$L__BB0_218:                            // %L1941
                                         // =>This Loop Header: Depth=1
                                         //     Child Loop BB0_163 Depth 2
-                                        //     Child Loop BB0_173 Depth 2
+                                        //     Child Loop BB0_176 Depth 2
 	add.s32 	%r600, %r88, %r281;
 	setp.lt.s32 	%p254, %r600, %r282;
-	@%p254 bra 	$L__BB0_213;
-	bra.uni 	$L__BB0_184;
-$L__BB0_213:                            // %oksrem868
-                                        //   in Loop: Header=BB0_212 Depth=1
+	@%p254 bra 	$L__BB0_219;
+	bra.uni 	$L__BB0_190;
+$L__BB0_219:                            // %oksrem882
+                                        //   in Loop: Header=BB0_218 Depth=1
 	setp.eq.s32 	%p255, %r185, 0;
 	mul.hi.u32 	%r697, %r88, -1431655765;
 	shr.u32 	%r698, %r697, 5;
@@ -2144,88 +2144,88 @@ $L__BB0_213:                            // %oksrem868
 	shfl.sync.idx.b32	%r235, %r175, 15, 31, -1;
 	setp.eq.s32 	%p262, %r220, 999999999;
 	@%p262 bra 	$L__BB0_146;
-// %bb.214:                             // %oksrem2265
-                                        //   in Loop: Header=BB0_212 Depth=1
+// %bb.220:                             // %oksrem2265
+                                        //   in Loop: Header=BB0_218 Depth=1
 	add.s32 	%r764, %r220, %r208;
 	mul.wide.s32 	%rd103, %r764, 4;
 	add.s64 	%rd105, %rd50, %rd103;
 	st.shared.u32 	[%rd105], %r209;
 	setp.eq.s32 	%p263, %r221, 999999999;
 	@%p263 bra 	$L__BB0_147;
-// %bb.215:                             // %oksrem2331
-                                        //   in Loop: Header=BB0_212 Depth=1
+// %bb.221:                             // %oksrem2331
+                                        //   in Loop: Header=BB0_218 Depth=1
 	add.s32 	%r765, %r221, %r208;
 	mul.wide.s32 	%rd106, %r765, 4;
 	add.s64 	%rd108, %rd50, %rd106;
 	st.shared.u32 	[%rd108], %r210;
 	setp.eq.s32 	%p264, %r222, 999999999;
 	@%p264 bra 	$L__BB0_148;
-// %bb.216:                             // %oksrem2397
-                                        //   in Loop: Header=BB0_212 Depth=1
+// %bb.222:                             // %oksrem2397
+                                        //   in Loop: Header=BB0_218 Depth=1
 	add.s32 	%r766, %r222, %r208;
 	mul.wide.s32 	%rd109, %r766, 4;
 	add.s64 	%rd111, %rd50, %rd109;
 	st.shared.u32 	[%rd111], %r211;
 	setp.eq.s32 	%p265, %r223, 999999999;
 	@%p265 bra 	$L__BB0_149;
-// %bb.217:                             // %oksrem2463
-                                        //   in Loop: Header=BB0_212 Depth=1
+// %bb.223:                             // %oksrem2463
+                                        //   in Loop: Header=BB0_218 Depth=1
 	add.s32 	%r767, %r223, %r208;
 	mul.wide.s32 	%rd112, %r767, 4;
 	add.s64 	%rd114, %rd50, %rd112;
 	st.shared.u32 	[%rd114], %r212;
 	setp.eq.s32 	%p266, %r224, 999999999;
 	@%p266 bra 	$L__BB0_150;
-// %bb.218:                             // %oksrem2529
-                                        //   in Loop: Header=BB0_212 Depth=1
+// %bb.224:                             // %oksrem2529
+                                        //   in Loop: Header=BB0_218 Depth=1
 	add.s32 	%r768, %r224, %r208;
 	mul.wide.s32 	%rd115, %r768, 4;
 	add.s64 	%rd117, %rd50, %rd115;
 	st.shared.u32 	[%rd117], %r213;
 	setp.eq.s32 	%p267, %r225, 999999999;
 	@%p267 bra 	$L__BB0_151;
-// %bb.219:                             // %oksrem2595
-                                        //   in Loop: Header=BB0_212 Depth=1
+// %bb.225:                             // %oksrem2595
+                                        //   in Loop: Header=BB0_218 Depth=1
 	add.s32 	%r769, %r225, %r208;
 	mul.wide.s32 	%rd118, %r769, 4;
 	add.s64 	%rd120, %rd50, %rd118;
 	st.shared.u32 	[%rd120], %r214;
 	setp.eq.s32 	%p268, %r226, 999999999;
 	@%p268 bra 	$L__BB0_152;
-// %bb.220:                             // %oksrem2661
-                                        //   in Loop: Header=BB0_212 Depth=1
+// %bb.226:                             // %oksrem2661
+                                        //   in Loop: Header=BB0_218 Depth=1
 	add.s32 	%r770, %r226, %r208;
 	mul.wide.s32 	%rd121, %r770, 4;
 	add.s64 	%rd123, %rd50, %rd121;
 	st.shared.u32 	[%rd123], %r215;
 	setp.eq.s32 	%p269, %r227, 999999999;
 	@%p269 bra 	$L__BB0_153;
-// %bb.221:                             // %oksrem2727
-                                        //   in Loop: Header=BB0_212 Depth=1
+// %bb.227:                             // %oksrem2727
+                                        //   in Loop: Header=BB0_218 Depth=1
 	add.s32 	%r771, %r227, %r208;
 	mul.wide.s32 	%rd124, %r771, 4;
 	add.s64 	%rd126, %rd50, %rd124;
 	st.shared.u32 	[%rd126], %r216;
 	setp.eq.s32 	%p270, %r228, 999999999;
 	@%p270 bra 	$L__BB0_154;
-// %bb.222:                             // %oksrem2793
-                                        //   in Loop: Header=BB0_212 Depth=1
+// %bb.228:                             // %oksrem2793
+                                        //   in Loop: Header=BB0_218 Depth=1
 	add.s32 	%r772, %r228, %r208;
 	mul.wide.s32 	%rd127, %r772, 4;
 	add.s64 	%rd129, %rd50, %rd127;
 	st.shared.u32 	[%rd129], %r217;
 	setp.eq.s32 	%p271, %r229, 999999999;
 	@%p271 bra 	$L__BB0_155;
-// %bb.223:                             // %oksrem2859
-                                        //   in Loop: Header=BB0_212 Depth=1
+// %bb.229:                             // %oksrem2859
+                                        //   in Loop: Header=BB0_218 Depth=1
 	add.s32 	%r773, %r229, %r208;
 	mul.wide.s32 	%rd130, %r773, 4;
 	add.s64 	%rd132, %rd50, %rd130;
 	st.shared.u32 	[%rd132], %r218;
 	setp.eq.s32 	%p272, %r230, 999999999;
 	@%p272 bra 	$L__BB0_156;
-// %bb.224:                             // %oksrem2926
-                                        //   in Loop: Header=BB0_212 Depth=1
+// %bb.230:                             // %oksrem2926
+                                        //   in Loop: Header=BB0_218 Depth=1
 	setp.gt.u32 	%p273, %r1, 3;
 	selp.b32 	%r774, 0, %r219, %p273;
 	add.s32 	%r775, %r230, %r208;
@@ -2234,8 +2234,8 @@ $L__BB0_213:                            // %oksrem868
 	st.shared.u32 	[%rd135], %r774;
 	setp.eq.s32 	%p274, %r231, 999999999;
 	@%p274 bra 	$L__BB0_157;
-// %bb.225:                             // %oksrem2992
-                                        //   in Loop: Header=BB0_212 Depth=1
+// %bb.231:                             // %oksrem2992
+                                        //   in Loop: Header=BB0_218 Depth=1
 	add.s32 	%r776, %r231, %r208;
 	mul.wide.s32 	%rd136, %r776, 4;
 	add.s64 	%rd138, %rd50, %rd136;
@@ -2243,32 +2243,32 @@ $L__BB0_213:                            // %oksrem868
 	st.shared.u32 	[%rd138], %r777;
 	setp.eq.s32 	%p275, %r232, 999999999;
 	@%p275 bra 	$L__BB0_158;
-// %bb.226:                             // %oksrem3057
-                                        //   in Loop: Header=BB0_212 Depth=1
+// %bb.232:                             // %oksrem3057
+                                        //   in Loop: Header=BB0_218 Depth=1
 	add.s32 	%r778, %r232, %r208;
 	mul.wide.s32 	%rd139, %r778, 4;
 	add.s64 	%rd141, %rd50, %rd139;
 	st.shared.u32 	[%rd141], %r777;
 	setp.eq.s32 	%p276, %r233, 999999999;
 	@%p276 bra 	$L__BB0_159;
-// %bb.227:                             // %oksrem3122
-                                        //   in Loop: Header=BB0_212 Depth=1
+// %bb.233:                             // %oksrem3122
+                                        //   in Loop: Header=BB0_218 Depth=1
 	add.s32 	%r780, %r233, %r208;
 	mul.wide.s32 	%rd142, %r780, 4;
 	add.s64 	%rd144, %rd50, %rd142;
 	st.shared.u32 	[%rd144], %r777;
 	setp.eq.s32 	%p277, %r234, 999999999;
 	@%p277 bra 	$L__BB0_160;
-// %bb.228:                             // %oksrem3187
-                                        //   in Loop: Header=BB0_212 Depth=1
+// %bb.234:                             // %oksrem3187
+                                        //   in Loop: Header=BB0_218 Depth=1
 	add.s32 	%r782, %r234, %r208;
 	mul.wide.s32 	%rd145, %r782, 4;
 	add.s64 	%rd147, %rd50, %rd145;
 	st.shared.u32 	[%rd147], %r777;
 	setp.eq.s32 	%p278, %r235, 999999999;
 	@%p278 bra 	$L__BB0_161;
-// %bb.229:                             // %oksrem3252
-                                        //   in Loop: Header=BB0_212 Depth=1
+// %bb.235:                             // %oksrem3252
+                                        //   in Loop: Header=BB0_218 Depth=1
 	setp.eq.s32 	%p279, %r176, 3;
 	add.s32 	%r785, %r235, %r208;
 	mul.wide.s32 	%rd148, %r785, 4;
@@ -2292,8 +2292,8 @@ $L__BB0_213:                            // %oksrem868
 	mov.u32 	%r106, %r777;
 	mov.u32 	%r107, %r777;
 	@%p279 bra 	$L__BB0_162;
-// %bb.230:                             // %oksrem3324
-                                        //   in Loop: Header=BB0_212 Depth=1
+// %bb.236:                             // %oksrem3304
+                                        //   in Loop: Header=BB0_218 Depth=1
 	add.s32 	%r786, %r207, %r198;
 	ld.shared.u32 	%r92, [%rd8];
 	ld.shared.u32 	%r93, [%rd9];
@@ -2365,27 +2365,27 @@ $L__BB0_213:                            // %oksrem868
 	mul.wide.u32 	%rd166, %r802, 4;
 	add.s64 	%rd167, %rd50, %rd166;
 	ld.shared.u32 	%r107, [%rd167];
-$L__BB0_162:                            // %L10679
-                                        //   in Loop: Header=BB0_212 Depth=1
+$L__BB0_162:                            // %L10675
+                                        //   in Loop: Header=BB0_218 Depth=1
 	bar.sync 	0;
 	mov.u16 	%rs3, %rs2;
 	mov.u32 	%r111, %r777;
 	bra.uni 	$L__BB0_163;
-$L__BB0_170:                            // %L17528
+$L__BB0_173:                            // %L17512
                                         //   in Loop: Header=BB0_163 Depth=2
 	add.s32 	%r109, %r109, 1;
 	mov.u32 	%r108, 0;
 	mov.u32 	%r110, %r108;
-$L__BB0_171:                            // %L17529
+$L__BB0_174:                            // %L17513
                                         //   in Loop: Header=BB0_163 Depth=2
 	bar.sync 	0;
 	add.s32 	%r111, %r111, 6;
 	add.s16 	%rs3, %rs3, 6;
 	setp.ne.s32 	%p300, %r111, 24;
 	@%p300 bra 	$L__BB0_163;
-	bra.uni 	$L__BB0_172;
-$L__BB0_163:                            // %L10697
-                                        //   Parent Loop BB0_212 Depth=1
+	bra.uni 	$L__BB0_175;
+$L__BB0_163:                            // %L10693
+                                        //   Parent Loop BB0_218 Depth=1
                                         // =>  This Inner Loop Header: Depth=2
 	setp.eq.s32 	%p280, %r111, 0;
 	selp.b32 	%r1196, %r92, 0, %p280;
@@ -2672,9 +2672,9 @@ $L__BB0_163:                            // %L10697
 	// begin inline asm
 	mma.sync.aligned.m16n8k8.row.col.f16.f16.f16.f16 {%r1061, %r1062}, {%r313, %r316}, {%r1009}, {%r777, %r777};
 	// end inline asm
-	@%p1 bra 	$L__BB0_231;
+	@%p1 bra 	$L__BB0_237;
 	bra.uni 	$L__BB0_164;
-$L__BB0_231:                            // %pass4659
+$L__BB0_237:                            // %pass4659
                                         //   in Loop: Header=BB0_163 Depth=2
 	// begin inline asm
 	neg.f16x2 %r1068, %r368;
@@ -2842,9 +2842,9 @@ $L__BB0_231:                            // %pass4659
 	// begin inline asm
 	mma.sync.aligned.m16n8k8.row.col.f16.f16.f16.f16 {%r1355, %r1356}, {%r421, %r424}, {%r1359}, {%r1361, %r1361};
 	// end inline asm
-	@%p284 bra 	$L__BB0_234;
-	bra.uni 	$L__BB0_232;
-$L__BB0_234:                            // %pass5153
+	@%p284 bra 	$L__BB0_239;
+	bra.uni 	$L__BB0_238;
+$L__BB0_239:                            // %pass5153
                                         //   in Loop: Header=BB0_163 Depth=2
 	// begin inline asm
 	neg.f16x2 %r1362, %r462;
@@ -2973,15 +2973,14 @@ $L__BB0_234:                            // %pass5153
 	add.s32 	%r3040, %r108, 2;
 	setp.eq.s32 	%p285, %r3040, 8;
 	@%p285 bra 	$L__BB0_165;
-	bra.uni 	$L__BB0_235;
-$L__BB0_165:                            // %L13377
+	bra.uni 	$L__BB0_240;
+$L__BB0_165:                            // %L13369
                                         //   in Loop: Header=BB0_163 Depth=2
-	setp.lt.u32 	%p286, %r290, 8;
-	@%p286 bra 	$L__BB0_233;
-	bra.uni 	$L__BB0_166;
-$L__BB0_233:                            // %pass5605
+	setp.gt.u32 	%p286, %r290, 7;
+	@%p286 bra 	$L__BB0_167;
+// %bb.166:                             // %L13429
                                         //   in Loop: Header=BB0_163 Depth=2
-	mad.lo.s32 	%r1525, %r109, 393216, %r203;
+	mad.lo.s32 	%r1525, %r109, 786432, %r203;
 	cvt.u64.u32 	%rd182, %r1525;
 	add.s64 	%rd183, %rd182, %rd7;
 	mul.hi.s64 	%rd184, %rd183, 3074457345618258603;
@@ -2999,12 +2998,12 @@ $L__BB0_233:                            // %pass5605
 	shl.b64 	%rd193, %rd192, 2;
 	add.s64 	%rd194, %rd4, %rd193;
 	st.global.u32 	[%rd194], %r3042;
-$L__BB0_166:                            // %L13594
+$L__BB0_167:                            // %L13586
                                         //   in Loop: Header=BB0_163 Depth=2
 	add.s32 	%r109, %r109, 1;
 	mov.u32 	%r3040, 0;
 	mov.u32 	%r3042, %r3040;
-$L__BB0_235:                            // %oksrem5738
+$L__BB0_240:                            // %oksrem5658
                                         //   in Loop: Header=BB0_163 Depth=2
 	add.s32 	%r1693, %r257, 2;
 	mul.hi.u32 	%r1694, %r1693, -1431655765;
@@ -3150,16 +3149,15 @@ $L__BB0_235:                            // %oksrem5738
 	// end inline asm
 	add.s32 	%r3043, %r3040, 2;
 	setp.eq.s32 	%p290, %r3043, 8;
-	@%p290 bra 	$L__BB0_167;
-	bra.uni 	$L__BB0_236;
-$L__BB0_167:                            // %L15344
+	@%p290 bra 	$L__BB0_168;
+	bra.uni 	$L__BB0_241;
+$L__BB0_168:                            // %L15332
                                         //   in Loop: Header=BB0_163 Depth=2
-	setp.lt.u32 	%p291, %r290, 8;
-	@%p291 bra 	$L__BB0_241;
-	bra.uni 	$L__BB0_168;
-$L__BB0_241:                            // %pass6456
+	setp.gt.u32 	%p291, %r290, 7;
+	@%p291 bra 	$L__BB0_170;
+// %bb.169:                             // %L15392
                                         //   in Loop: Header=BB0_163 Depth=2
-	mad.lo.s32 	%r1709, %r109, 393216, %r203;
+	mad.lo.s32 	%r1709, %r109, 786432, %r203;
 	cvt.u64.u32 	%rd204, %r1709;
 	add.s64 	%rd205, %rd204, %rd7;
 	mul.hi.s64 	%rd206, %rd205, 3074457345618258603;
@@ -3177,12 +3175,12 @@ $L__BB0_241:                            // %pass6456
 	shl.b64 	%rd215, %rd214, 2;
 	add.s64 	%rd216, %rd4, %rd215;
 	st.global.u32 	[%rd216], %r3045;
-$L__BB0_168:                            // %L15561
+$L__BB0_170:                            // %L15549
                                         //   in Loop: Header=BB0_163 Depth=2
 	add.s32 	%r109, %r109, 1;
 	mov.u32 	%r3043, 0;
 	mov.u32 	%r3045, %r3043;
-$L__BB0_236:                            // %oksrem6589
+$L__BB0_241:                            // %oksrem6509
                                         //   in Loop: Header=BB0_163 Depth=2
 	add.s32 	%r1877, %r257, 4;
 	mul.hi.u32 	%r1878, %r1877, -1431655765;
@@ -3328,16 +3326,15 @@ $L__BB0_236:                            // %oksrem6589
 	// end inline asm
 	add.s32 	%r108, %r3043, 2;
 	setp.eq.s32 	%p295, %r108, 8;
-	@%p295 bra 	$L__BB0_169;
-	bra.uni 	$L__BB0_171;
-$L__BB0_169:                            // %L17311
+	@%p295 bra 	$L__BB0_171;
+	bra.uni 	$L__BB0_174;
+$L__BB0_171:                            // %L17295
                                         //   in Loop: Header=BB0_163 Depth=2
-	setp.lt.u32 	%p296, %r290, 8;
-	@%p296 bra 	$L__BB0_237;
-	bra.uni 	$L__BB0_170;
-$L__BB0_237:                            // %pass7307
+	setp.gt.u32 	%p296, %r290, 7;
+	@%p296 bra 	$L__BB0_173;
+// %bb.172:                             // %L17355
                                         //   in Loop: Header=BB0_163 Depth=2
-	mad.lo.s32 	%r1893, %r109, 393216, %r203;
+	mad.lo.s32 	%r1893, %r109, 786432, %r203;
 	cvt.u64.u32 	%rd226, %r1893;
 	add.s64 	%rd227, %rd226, %rd7;
 	mul.hi.s64 	%rd228, %rd227, 3074457345618258603;
@@ -3355,27 +3352,27 @@ $L__BB0_237:                            // %pass7307
 	shl.b64 	%rd237, %rd236, 2;
 	add.s64 	%rd238, %rd4, %rd237;
 	st.global.u32 	[%rd238], %r110;
-	bra.uni 	$L__BB0_170;
-$L__BB0_172:                            // %L17550.preheader
-                                        //   in Loop: Header=BB0_212 Depth=1
+	bra.uni 	$L__BB0_173;
+$L__BB0_175:                            // %L17534.preheader
+                                        //   in Loop: Header=BB0_218 Depth=1
 	mov.u16 	%rs234, %rs1;
 	mov.u32 	%r3031, %r1361;
-	bra.uni 	$L__BB0_173;
-$L__BB0_181:                            // %L24381
-                                        //   in Loop: Header=BB0_173 Depth=2
+	bra.uni 	$L__BB0_176;
+$L__BB0_187:                            // %L24353
+                                        //   in Loop: Header=BB0_176 Depth=2
 	add.s32 	%r109, %r109, 1;
 	mov.u32 	%r108, %r2763;
 	mov.u32 	%r110, %r2763;
-$L__BB0_182:                            // %L24382
-                                        //   in Loop: Header=BB0_173 Depth=2
+$L__BB0_188:                            // %L24354
+                                        //   in Loop: Header=BB0_176 Depth=2
 	bar.sync 	0;
 	add.s32 	%r3031, %r3031, 6;
 	add.s16 	%rs234, %rs234, 6;
 	setp.ne.s32 	%p320, %r3031, 24;
-	@%p320 bra 	$L__BB0_173;
-	bra.uni 	$L__BB0_183;
-$L__BB0_173:                            // %L17550
-                                        //   Parent Loop BB0_212 Depth=1
+	@%p320 bra 	$L__BB0_176;
+	bra.uni 	$L__BB0_189;
+$L__BB0_176:                            // %L17534
+                                        //   Parent Loop BB0_218 Depth=1
                                         // =>  This Inner Loop Header: Depth=2
 	setp.eq.s32 	%p301, %r3031, 0;
 	selp.b32 	%r2590, %r92, 0, %p301;
@@ -3952,15 +3949,14 @@ $L__BB0_173:                            // %L17550
 	// end inline asm
 	add.s32 	%r3046, %r108, 2;
 	setp.ne.s32 	%p305, %r3046, 8;
-	@%p305 bra 	$L__BB0_176;
-// %bb.174:                             // %L20230
-                                        //   in Loop: Header=BB0_173 Depth=2
-	setp.lt.u32 	%p306, %r290, 8;
-	@%p306 bra 	$L__BB0_238;
-	bra.uni 	$L__BB0_175;
-$L__BB0_238:                            // %pass8343
-                                        //   in Loop: Header=BB0_173 Depth=2
-	mad.lo.s32 	%r2616, %r109, 393216, %r203;
+	@%p305 bra 	$L__BB0_180;
+// %bb.177:                             // %L20210
+                                        //   in Loop: Header=BB0_176 Depth=2
+	setp.gt.u32 	%p306, %r290, 7;
+	@%p306 bra 	$L__BB0_179;
+// %bb.178:                             // %L20270
+                                        //   in Loop: Header=BB0_176 Depth=2
+	mad.lo.s32 	%r2616, %r109, 786432, %r203;
 	cvt.u64.u32 	%rd248, %r2616;
 	add.s64 	%rd249, %rd248, %rd7;
 	mul.hi.s64 	%rd250, %rd249, 3074457345618258603;
@@ -3978,13 +3974,13 @@ $L__BB0_238:                            // %pass8343
 	shl.b64 	%rd259, %rd258, 2;
 	add.s64 	%rd260, %rd4, %rd259;
 	st.global.u32 	[%rd260], %r3048;
-$L__BB0_175:                            // %L20447
-                                        //   in Loop: Header=BB0_173 Depth=2
+$L__BB0_179:                            // %L20427
+                                        //   in Loop: Header=BB0_176 Depth=2
 	add.s32 	%r109, %r109, 1;
 	mov.u32 	%r3046, 0;
 	mov.u32 	%r3048, %r3046;
-$L__BB0_176:                            // %oksrem8476
-                                        //   in Loop: Header=BB0_173 Depth=2
+$L__BB0_180:                            // %oksrem8396
+                                        //   in Loop: Header=BB0_176 Depth=2
 	add.s16 	%rs208, %rs234, -3;
 	mul.hi.s16 	%rs209, %rs208, 10923;
 	shr.u16 	%rs210, %rs209, 15;
@@ -4132,16 +4128,15 @@ $L__BB0_176:                            // %oksrem8476
 	// end inline asm
 	add.s32 	%r3049, %r3046, 2;
 	setp.eq.s32 	%p310, %r3049, 8;
-	@%p310 bra 	$L__BB0_177;
-	bra.uni 	$L__BB0_179;
-$L__BB0_177:                            // %L22197
-                                        //   in Loop: Header=BB0_173 Depth=2
-	setp.lt.u32 	%p311, %r290, 8;
-	@%p311 bra 	$L__BB0_239;
-	bra.uni 	$L__BB0_178;
-$L__BB0_239:                            // %pass9194
-                                        //   in Loop: Header=BB0_173 Depth=2
-	mad.lo.s32 	%r2790, %r109, 393216, %r203;
+	@%p310 bra 	$L__BB0_181;
+	bra.uni 	$L__BB0_184;
+$L__BB0_181:                            // %L22173
+                                        //   in Loop: Header=BB0_176 Depth=2
+	setp.gt.u32 	%p311, %r290, 7;
+	@%p311 bra 	$L__BB0_183;
+// %bb.182:                             // %L22233
+                                        //   in Loop: Header=BB0_176 Depth=2
+	mad.lo.s32 	%r2790, %r109, 786432, %r203;
 	cvt.u64.u32 	%rd270, %r2790;
 	add.s64 	%rd271, %rd270, %rd7;
 	mul.hi.s64 	%rd272, %rd271, 3074457345618258603;
@@ -4159,13 +4154,13 @@ $L__BB0_239:                            // %pass9194
 	shl.b64 	%rd281, %rd280, 2;
 	add.s64 	%rd282, %rd4, %rd281;
 	st.global.u32 	[%rd282], %r3051;
-$L__BB0_178:                            // %L22414
-                                        //   in Loop: Header=BB0_173 Depth=2
+$L__BB0_183:                            // %L22390
+                                        //   in Loop: Header=BB0_176 Depth=2
 	add.s32 	%r109, %r109, 1;
 	mov.u32 	%r3049, 0;
 	mov.u32 	%r3051, %r3049;
-$L__BB0_179:                            // %oksrem9327
-                                        //   in Loop: Header=BB0_173 Depth=2
+$L__BB0_184:                            // %oksrem9247
+                                        //   in Loop: Header=BB0_176 Depth=2
 	add.s16 	%rs220, %rs234, -1;
 	mul.hi.s16 	%rs221, %rs220, 10923;
 	shr.u16 	%rs222, %rs221, 15;
@@ -4311,16 +4306,15 @@ $L__BB0_179:                            // %oksrem9327
 	// end inline asm
 	add.s32 	%r108, %r3049, 2;
 	setp.eq.s32 	%p315, %r108, 8;
-	@%p315 bra 	$L__BB0_180;
-	bra.uni 	$L__BB0_182;
-$L__BB0_180:                            // %L24164
-                                        //   in Loop: Header=BB0_173 Depth=2
-	setp.lt.u32 	%p316, %r290, 8;
-	@%p316 bra 	$L__BB0_240;
-	bra.uni 	$L__BB0_181;
-$L__BB0_240:                            // %pass10045
-                                        //   in Loop: Header=BB0_173 Depth=2
-	mad.lo.s32 	%r2964, %r109, 393216, %r203;
+	@%p315 bra 	$L__BB0_185;
+	bra.uni 	$L__BB0_188;
+$L__BB0_185:                            // %L24136
+                                        //   in Loop: Header=BB0_176 Depth=2
+	setp.gt.u32 	%p316, %r290, 7;
+	@%p316 bra 	$L__BB0_187;
+// %bb.186:                             // %L24196
+                                        //   in Loop: Header=BB0_176 Depth=2
+	mad.lo.s32 	%r2964, %r109, 786432, %r203;
 	cvt.u64.u32 	%rd292, %r2964;
 	add.s64 	%rd293, %rd292, %rd7;
 	mul.hi.s64 	%rd294, %rd293, 3074457345618258603;
@@ -4338,8 +4332,8 @@ $L__BB0_240:                            // %pass10045
 	shl.b64 	%rd303, %rd302, 2;
 	add.s64 	%rd304, %rd4, %rd303;
 	st.global.u32 	[%rd304], %r110;
-	bra.uni 	$L__BB0_181;
-$L__BB0_184:                            // %L24413
+	bra.uni 	$L__BB0_187;
+$L__BB0_190:                            // %L24385
 	mov.u32 	%r2966, 0;
 	st.global.u32 	[%rd6], %r2966;
 	ret;
@@ -4372,7 +4366,7 @@ $L__BB0_164:                            // %post_box_union
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_232:                            // %post_box_union5148
+$L__BB0_238:                            // %post_box_union5148
 	mov.u64 	%rd175, exception1909;
 	cvta.global.u64 	%rd176, %rd175;
 	{ // callseq 54, 0
@@ -4401,7 +4395,7 @@ $L__BB0_232:                            // %post_box_union5148
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_146:                            // %L5147
+$L__BB0_146:                            // %L5143
 	mov.u32 	%r2982, 5;
 	st.global.u32 	[%rd6], %r2982;
 	mov.u64 	%rd335, exception1869;
@@ -4432,7 +4426,7 @@ $L__BB0_146:                            // %L5147
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_147:                            // %L5309
+$L__BB0_147:                            // %L5305
 	mov.u32 	%r2981, 5;
 	st.global.u32 	[%rd6], %r2981;
 	mov.u64 	%rd333, exception1869;
@@ -4463,7 +4457,7 @@ $L__BB0_147:                            // %L5309
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_148:                            // %L5471
+$L__BB0_148:                            // %L5467
 	mov.u32 	%r2980, 5;
 	st.global.u32 	[%rd6], %r2980;
 	mov.u64 	%rd331, exception1869;
@@ -4494,7 +4488,7 @@ $L__BB0_148:                            // %L5471
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_149:                            // %L5633
+$L__BB0_149:                            // %L5629
 	mov.u32 	%r2979, 5;
 	st.global.u32 	[%rd6], %r2979;
 	mov.u64 	%rd329, exception1869;
@@ -4525,7 +4519,7 @@ $L__BB0_149:                            // %L5633
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_150:                            // %L5795
+$L__BB0_150:                            // %L5791
 	mov.u32 	%r2978, 5;
 	st.global.u32 	[%rd6], %r2978;
 	mov.u64 	%rd327, exception1869;
@@ -4556,7 +4550,7 @@ $L__BB0_150:                            // %L5795
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_151:                            // %L5957
+$L__BB0_151:                            // %L5953
 	mov.u32 	%r2977, 5;
 	st.global.u32 	[%rd6], %r2977;
 	mov.u64 	%rd325, exception1869;
@@ -4587,7 +4581,7 @@ $L__BB0_151:                            // %L5957
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_152:                            // %L6119
+$L__BB0_152:                            // %L6115
 	mov.u32 	%r2976, 5;
 	st.global.u32 	[%rd6], %r2976;
 	mov.u64 	%rd323, exception1869;
@@ -4618,7 +4612,7 @@ $L__BB0_152:                            // %L6119
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_153:                            // %L6281
+$L__BB0_153:                            // %L6277
 	mov.u32 	%r2975, 5;
 	st.global.u32 	[%rd6], %r2975;
 	mov.u64 	%rd321, exception1869;
@@ -4649,7 +4643,7 @@ $L__BB0_153:                            // %L6281
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_154:                            // %L6443
+$L__BB0_154:                            // %L6439
 	mov.u32 	%r2974, 5;
 	st.global.u32 	[%rd6], %r2974;
 	mov.u64 	%rd319, exception1869;
@@ -4680,7 +4674,7 @@ $L__BB0_154:                            // %L6443
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_155:                            // %L6605
+$L__BB0_155:                            // %L6601
 	mov.u32 	%r2973, 5;
 	st.global.u32 	[%rd6], %r2973;
 	mov.u64 	%rd317, exception1869;
@@ -4711,7 +4705,7 @@ $L__BB0_155:                            // %L6605
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_156:                            // %L6793
+$L__BB0_156:                            // %L6789
 	mov.u32 	%r2972, 5;
 	st.global.u32 	[%rd6], %r2972;
 	mov.u64 	%rd315, exception1869;
@@ -4742,7 +4736,7 @@ $L__BB0_156:                            // %L6793
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_157:                            // %L6955
+$L__BB0_157:                            // %L6951
 	mov.u32 	%r2971, 5;
 	st.global.u32 	[%rd6], %r2971;
 	mov.u64 	%rd313, exception1869;
@@ -4773,7 +4767,7 @@ $L__BB0_157:                            // %L6955
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_158:                            // %L7117
+$L__BB0_158:                            // %L7113
 	mov.u32 	%r2970, 5;
 	st.global.u32 	[%rd6], %r2970;
 	mov.u64 	%rd311, exception1869;
@@ -4804,7 +4798,7 @@ $L__BB0_158:                            // %L7117
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_159:                            // %L7279
+$L__BB0_159:                            // %L7275
 	mov.u32 	%r2969, 5;
 	st.global.u32 	[%rd6], %r2969;
 	mov.u64 	%rd309, exception1869;
@@ -4835,7 +4829,7 @@ $L__BB0_159:                            // %L7279
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_160:                            // %L7441
+$L__BB0_160:                            // %L7437
 	mov.u32 	%r2968, 5;
 	st.global.u32 	[%rd6], %r2968;
 	mov.u64 	%rd307, exception1869;
@@ -4866,7 +4860,7 @@ $L__BB0_160:                            // %L7441
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_161:                            // %L7603
+$L__BB0_161:                            // %L7599
 	mov.u32 	%r2967, 5;
 	st.global.u32 	[%rd6], %r2967;
 	mov.u64 	%rd305, exception1869;
