@@ -45,6 +45,7 @@ extern const int __max_log_msg_len;
 void internal_logging_f(int log, const char* format, ...);
 void exit_kotekan(enum ReturnCode code);
 enum ReturnCode get_exit_code();
+const char* get_log_level_string(int log);
 char* get_exit_code_string(enum ReturnCode code);
 char* get_error_message();
 void set_error_message_f(const char* format, ...);
