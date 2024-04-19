@@ -64,7 +64,7 @@ private:
     static constexpr int cuda_downsampling_factor = 64;
     static constexpr int cuda_number_of_complex_components = 2;
     static constexpr int cuda_number_of_dishes = 64;
-    static constexpr int cuda_number_of_frequencies = 1536;
+    static constexpr int cuda_number_of_frequencies = 512;
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_timesamples = 8192;
     static constexpr int cuda_granularity_number_of_timesamples = 48;
@@ -82,16 +82,31 @@ private:
     // Kernel call parameters:
     static constexpr int threads_x = 32;
     static constexpr int threads_y = 6;
-    static constexpr int blocks = 1536;
+    static constexpr int max_blocks = 512;
     static constexpr int shmem_bytes = 13920;
 
     // Kernel name:
     static constexpr const char* kernel_symbol =
-        "_Z3frb5Int32S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_"
+        "_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_"
         "I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE";
 
     // Kernel arguments:
-    enum class args { Tbarmin, Tbarmax, Ttildemin, Ttildemax, S, W4, Ebar4, I4, info, count };
+    enum class args {
+        Tbarmin,
+        Tbarmax,
+        Ttildemin,
+        Ttildemax,
+        Fbarmin,
+        Fbarmax,
+        Ftildemin,
+        Ftildemax,
+        S,
+        W_U4,
+        Ebar_U4,
+        I_U4,
+        info,
+        count
+    };
 
     // Tbarmin: Tbarmin
     static constexpr const char* Tbarmin_name = "Tbarmin";
@@ -108,6 +123,22 @@ private:
     // Ttildemax: Ttildemax
     static constexpr const char* Ttildemax_name = "Ttildemax";
     static constexpr chordDataType Ttildemax_type = int32;
+    //
+    // Fbarmin: Fbarmin
+    static constexpr const char* Fbarmin_name = "Fbarmin";
+    static constexpr chordDataType Fbarmin_type = int32;
+    //
+    // Fbarmax: Fbarmax
+    static constexpr const char* Fbarmax_name = "Fbarmax";
+    static constexpr chordDataType Fbarmax_type = int32;
+    //
+    // Ftildemin: Ftildemin
+    static constexpr const char* Ftildemin_name = "Ftildemin";
+    static constexpr chordDataType Ftildemin_type = int32;
+    //
+    // Ftildemax: Ftildemax
+    static constexpr const char* Ftildemax_name = "Ftildemax";
+    static constexpr chordDataType Ftildemax_type = int32;
     //
     // S: gpu_mem_dishlayout
     static constexpr const char* S_name = "S";
@@ -127,77 +158,128 @@ private:
     };
     static constexpr std::size_t S_length = chord_datatype_bytes(S_type) * 2 * 96;
     static_assert(S_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto S_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= S_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, S_rank + 1> S_strides = {
+        S_calc_stride(S_index_MN),
+        S_calc_stride(S_index_D),
+        S_calc_stride(S_rank),
+    };
+    static_assert(S_length == chord_datatype_bytes(S_type) * S_strides[S_rank]);
     //
-    // W4: gpu_mem_phase
-    static constexpr const char* W4_name = "W4";
-    static constexpr chordDataType W4_type = float16;
-    enum W4_indices {
-        W4_index_C,
-        W4_index_dishM,
-        W4_index_dishN,
-        W4_index_P,
-        W4_index_Fbar,
-        W4_rank,
+    // W_U4: gpu_mem_phase
+    static constexpr const char* W_U4_name = "W_U4";
+    static constexpr chordDataType W_U4_type = float16;
+    enum W_U4_indices {
+        W_U4_index_C,
+        W_U4_index_dishM,
+        W_U4_index_dishN,
+        W_U4_index_P,
+        W_U4_index_Fbar_U4,
+        W_U4_rank,
     };
-    static constexpr std::array<const char*, W4_rank> W4_labels = {
-        "C", "dishM", "dishN", "P", "Fbar",
+    static constexpr std::array<const char*, W_U4_rank> W_U4_labels = {
+        "C", "dishM", "dishN", "P", "Fbar_U4",
     };
-    static constexpr std::array<std::size_t, W4_rank> W4_lengths = {
-        2, 8, 12, 2, 1536,
+    static constexpr std::array<std::size_t, W_U4_rank> W_U4_lengths = {
+        2, 8, 12, 2, 512,
     };
-    static constexpr std::size_t W4_length = chord_datatype_bytes(W4_type) * 2 * 8 * 12 * 2 * 1536;
-    static_assert(W4_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::size_t W_U4_length =
+        chord_datatype_bytes(W_U4_type) * 2 * 8 * 12 * 2 * 512;
+    static_assert(W_U4_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto W_U4_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= W_U4_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, W_U4_rank + 1> W_U4_strides = {
+        W_U4_calc_stride(W_U4_index_C),       W_U4_calc_stride(W_U4_index_dishM),
+        W_U4_calc_stride(W_U4_index_dishN),   W_U4_calc_stride(W_U4_index_P),
+        W_U4_calc_stride(W_U4_index_Fbar_U4), W_U4_calc_stride(W_U4_rank),
+    };
+    static_assert(W_U4_length == chord_datatype_bytes(W_U4_type) * W_U4_strides[W_U4_rank]);
     //
-    // Ebar4: gpu_mem_voltage
-    static constexpr const char* Ebar4_name = "Ebar4";
-    static constexpr chordDataType Ebar4_type = int4p4;
-    enum Ebar4_indices {
-        Ebar4_index_D,
-        Ebar4_index_P,
-        Ebar4_index_Fbar,
-        Ebar4_index_Tbar,
-        Ebar4_rank,
+    // Ebar_U4: gpu_mem_voltage
+    static constexpr const char* Ebar_U4_name = "Ebar_U4";
+    static constexpr chordDataType Ebar_U4_type = int4p4;
+    enum Ebar_U4_indices {
+        Ebar_U4_index_D,
+        Ebar_U4_index_P,
+        Ebar_U4_index_Fbar_U4,
+        Ebar_U4_index_Tbar_U4,
+        Ebar_U4_rank,
     };
-    static constexpr std::array<const char*, Ebar4_rank> Ebar4_labels = {
+    static constexpr std::array<const char*, Ebar_U4_rank> Ebar_U4_labels = {
         "D",
         "P",
-        "Fbar",
-        "Tbar",
+        "Fbar_U4",
+        "Tbar_U4",
     };
-    static constexpr std::array<std::size_t, Ebar4_rank> Ebar4_lengths = {
+    static constexpr std::array<std::size_t, Ebar_U4_rank> Ebar_U4_lengths = {
         64,
         2,
-        1536,
+        512,
         8192,
     };
-    static constexpr std::size_t Ebar4_length =
-        chord_datatype_bytes(Ebar4_type) * 64 * 2 * 1536 * 8192;
-    static_assert(Ebar4_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
-    //
-    // I4: gpu_mem_beamgrid
-    static constexpr const char* I4_name = "I4";
-    static constexpr chordDataType I4_type = float16;
-    enum I4_indices {
-        I4_index_beamP,
-        I4_index_beamQ,
-        I4_index_Fbar,
-        I4_index_Ttilde,
-        I4_rank,
+    static constexpr std::size_t Ebar_U4_length =
+        chord_datatype_bytes(Ebar_U4_type) * 64 * 2 * 512 * 8192;
+    static_assert(Ebar_U4_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto Ebar_U4_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= Ebar_U4_lengths[d];
+        return str;
     };
-    static constexpr std::array<const char*, I4_rank> I4_labels = {
+    static constexpr std::array<std::ptrdiff_t, Ebar_U4_rank + 1> Ebar_U4_strides = {
+        Ebar_U4_calc_stride(Ebar_U4_index_D),       Ebar_U4_calc_stride(Ebar_U4_index_P),
+        Ebar_U4_calc_stride(Ebar_U4_index_Fbar_U4), Ebar_U4_calc_stride(Ebar_U4_index_Tbar_U4),
+        Ebar_U4_calc_stride(Ebar_U4_rank),
+    };
+    static_assert(Ebar_U4_length
+                  == chord_datatype_bytes(Ebar_U4_type) * Ebar_U4_strides[Ebar_U4_rank]);
+    //
+    // I_U4: gpu_mem_beamgrid
+    static constexpr const char* I_U4_name = "I_U4";
+    static constexpr chordDataType I_U4_type = float16;
+    enum I_U4_indices {
+        I_U4_index_beamP,
+        I_U4_index_beamQ,
+        I_U4_index_Fbar_U4,
+        I_U4_index_Ttilde_U4_Tds64,
+        I_U4_rank,
+    };
+    static constexpr std::array<const char*, I_U4_rank> I_U4_labels = {
         "beamP",
         "beamQ",
-        "Fbar",
-        "Ttilde",
+        "Fbar_U4",
+        "Ttilde_U4_Tds64",
     };
-    static constexpr std::array<std::size_t, I4_rank> I4_lengths = {
+    static constexpr std::array<std::size_t, I_U4_rank> I_U4_lengths = {
         16,
         24,
-        1536,
+        512,
         1024,
     };
-    static constexpr std::size_t I4_length = chord_datatype_bytes(I4_type) * 16 * 24 * 1536 * 1024;
-    static_assert(I4_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::size_t I_U4_length =
+        chord_datatype_bytes(I_U4_type) * 16 * 24 * 512 * 1024;
+    static_assert(I_U4_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto I_U4_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= I_U4_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, I_U4_rank + 1> I_U4_strides = {
+        I_U4_calc_stride(I_U4_index_beamP),   I_U4_calc_stride(I_U4_index_beamQ),
+        I_U4_calc_stride(I_U4_index_Fbar_U4), I_U4_calc_stride(I_U4_index_Ttilde_U4_Tds64),
+        I_U4_calc_stride(I_U4_rank),
+    };
+    static_assert(I_U4_length == chord_datatype_bytes(I_U4_type) * I_U4_strides[I_U4_rank]);
     //
     // info: gpu_mem_info
     static constexpr const char* info_name = "info";
@@ -216,34 +298,53 @@ private:
     static constexpr std::array<std::size_t, info_rank> info_lengths = {
         32,
         6,
-        1536,
+        512,
     };
-    static constexpr std::size_t info_length = chord_datatype_bytes(info_type) * 32 * 6 * 1536;
+    static constexpr std::size_t info_length = chord_datatype_bytes(info_type) * 32 * 6 * 512;
     static_assert(info_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto info_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= info_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, info_rank + 1> info_strides = {
+        info_calc_stride(info_index_thread),
+        info_calc_stride(info_index_warp),
+        info_calc_stride(info_index_block),
+        info_calc_stride(info_rank),
+    };
+    static_assert(info_length == chord_datatype_bytes(info_type) * info_strides[info_rank]);
     //
 
     // Kotekan buffer names
     const std::string S_memname;
-    const std::string W4_memname;
-    const std::string Ebar4_memname;
-    const std::string I4_memname;
+    const std::string W_U4_memname;
+    const std::string Ebar_U4_memname;
+    const std::string I_U4_memname;
     const std::string info_memname;
 
     // Host-side buffer arrays
     std::vector<std::uint8_t> S_host;
     std::vector<std::uint8_t> info_host;
 
-    static constexpr std::size_t Ebar4_Tbar_sample_bytes =
-        chord_datatype_bytes(Ebar4_type) * Ebar4_lengths[Ebar4_index_D]
-        * Ebar4_lengths[Ebar4_index_P] * Ebar4_lengths[Ebar4_index_Fbar];
-    static constexpr std::size_t I4_Ttilde_sample_bytes =
-        chord_datatype_bytes(I4_type) * I4_lengths[I4_index_beamP] * I4_lengths[I4_index_beamQ]
-        * I4_lengths[I4_index_Fbar];
+    static constexpr std::size_t Ebar_U4_Tbar_U4_sample_bytes =
+        chord_datatype_bytes(Ebar_U4_type) * Ebar_U4_lengths[Ebar_U4_index_D]
+        * Ebar_U4_lengths[Ebar_U4_index_P] * Ebar_U4_lengths[Ebar_U4_index_Fbar_U4];
+    static constexpr std::size_t I_U4_Ttilde_U4_Tds64_sample_bytes =
+        chord_datatype_bytes(I_U4_type) * I_U4_lengths[I_U4_index_beamP]
+        * I_U4_lengths[I_U4_index_beamQ] * I_U4_lengths[I_U4_index_Fbar_U4];
 
     RingBuffer* const input_ringbuf_signal;
     RingBuffer* const output_ringbuf_signal;
 
     bool did_init_S_host;
+
+    // How many frequencies we will process
+    const int Fbarmin, Fbarmax;
+
+    // How many frequencies we will produce
+    const int Ftildemin, Ftildemax;
 
     // How many samples we will process from the input ringbuffer
     // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
@@ -264,9 +365,9 @@ cudaFRBBeamformer_pathfinder_U4::cudaFRBBeamformer_pathfinder_U4(Config& config,
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "FRBBeamformer_pathfinder_U4", "FRBBeamformer_pathfinder_U4.ptx"),
     S_memname(unique_name + "/gpu_mem_dishlayout"),
-    W4_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
-    Ebar4_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
-    I4_memname(config.get<std::string>(unique_name, "gpu_mem_beamgrid")),
+    W_U4_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
+    Ebar_U4_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
+    I_U4_memname(config.get<std::string>(unique_name, "gpu_mem_beamgrid")),
     info_memname(unique_name + "/gpu_mem_info"),
 
     S_host(S_length), info_host(info_length),
@@ -275,10 +376,13 @@ cudaFRBBeamformer_pathfinder_U4::cudaFRBBeamformer_pathfinder_U4(Config& config,
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")))),
     output_ringbuf_signal(dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "out_signal")))),
-    did_init_S_host(false) {
+    did_init_S_host(false), Fbarmin(config.get<int>(unique_name, "Fbarmin")),
+    Fbarmax(config.get<int>(unique_name, "Fbarmax")),
+    Ftildemin(config.get<int>(unique_name, "Ftildemin")),
+    Ftildemax(config.get<int>(unique_name, "Ftildemax")) {
     // Check ringbuffer sizes
-    assert(input_ringbuf_signal->size == Ebar4_length);
-    assert(output_ringbuf_signal->size == I4_length);
+    assert(input_ringbuf_signal->size == Ebar_U4_length);
+    assert(output_ringbuf_signal->size == I_U4_length);
 
     // Register host memory
     {
@@ -293,9 +397,9 @@ cudaFRBBeamformer_pathfinder_U4::cudaFRBBeamformer_pathfinder_U4(Config& config,
     // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(
         std::make_tuple(get_name() + "_gpu_mem_dishlayout", false, true, true));
-    gpu_buffers_used.push_back(std::make_tuple(W4_memname, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(Ebar4_memname, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(I4_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(W_U4_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(Ebar_U4_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(I_U4_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
@@ -345,7 +449,7 @@ int cudaFRBBeamformer_pathfinder_U4::wait_on_precondition() {
     DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
 
     // How many inputs samples are available?
-    const std::size_t Tbar_available = div_noremainder(input_bytes, Ebar4_Tbar_sample_bytes);
+    const std::size_t Tbar_available = div_noremainder(input_bytes, Ebar_U4_Tbar_U4_sample_bytes);
     DEBUG("Available samples:      Tbar_available: {:d}", Tbar_available);
 
     // How many outputs will we process and consume?
@@ -359,12 +463,12 @@ int cudaFRBBeamformer_pathfinder_U4::wait_on_precondition() {
     assert(Tbar_consumed2 == Tbar_consumed);
 
     const std::optional<std::size_t> val_in2 = input_ringbuf_signal->wait_and_claim_readable(
-        unique_name, instance_num, Tbar_consumed * Ebar4_Tbar_sample_bytes);
+        unique_name, instance_num, Tbar_consumed * Ebar_U4_Tbar_U4_sample_bytes);
     if (!val_in2.has_value())
         return -1;
     const std::size_t input_cursor = val_in2.value();
     DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
-    Tbarmin = div_noremainder(input_cursor, Ebar4_Tbar_sample_bytes);
+    Tbarmin = div_noremainder(input_cursor, Ebar_U4_Tbar_U4_sample_bytes);
     Tbarmax = Tbarmin + Tbar_processed;
     const std::size_t Tbarlength = Tbarmax - Tbarmin;
     DEBUG("Input samples:");
@@ -378,7 +482,7 @@ int cudaFRBBeamformer_pathfinder_U4::wait_on_precondition() {
     const std::size_t Ttildelength = Ttilde_produced;
 
     // to bytes
-    const std::size_t output_bytes = Ttildelength * I4_Ttilde_sample_bytes;
+    const std::size_t output_bytes = Ttildelength * I_U4_Ttilde_U4_Tds64_sample_bytes;
     DEBUG("Will produce {:d} output bytes", output_bytes);
 
     // Wait for space to be available in our output ringbuffer...
@@ -391,8 +495,8 @@ int cudaFRBBeamformer_pathfinder_U4::wait_on_precondition() {
     const std::size_t output_cursor = val_out.value();
     DEBUG("Output ring-buffer byte offset {:d}", output_cursor);
 
-    assert(mod(output_cursor, I4_Ttilde_sample_bytes) == 0);
-    Ttildemin = output_cursor / I4_Ttilde_sample_bytes;
+    assert(mod(output_cursor, I_U4_Ttilde_U4_Tds64_sample_bytes) == 0);
+    Ttildemin = output_cursor / I_U4_Ttilde_U4_Tds64_sample_bytes;
     Ttildemax = Ttildemin + Ttildelength;
     DEBUG("Output samples:");
     DEBUG("    Ttildemin:    {:d}", Ttildemin);
@@ -409,127 +513,188 @@ cudaFRBBeamformer_pathfinder_U4::execute(cudaPipelineState& /*pipestate*/,
 
     S_host.resize(S_length);
     void* const S_memory = device.get_gpu_memory(S_memname, S_length);
-    void* const W4_memory =
-        args::W4 == args::Ebar4 ? device.get_gpu_memory(W4_memname, input_ringbuf_signal->size)
-        : args::W4 == args::I4  ? device.get_gpu_memory(W4_memname, output_ringbuf_signal->size)
-        : args::W4 == args::W4
-            ? device.get_gpu_memory(W4_memname, W4_length)
-            : device.get_gpu_memory_array(W4_memname, gpu_frame_id, _gpu_buffer_depth, W4_length);
-    void* const Ebar4_memory =
-        args::Ebar4 == args::Ebar4
-            ? device.get_gpu_memory(Ebar4_memname, input_ringbuf_signal->size)
-        : args::Ebar4 == args::I4
-            ? device.get_gpu_memory(Ebar4_memname, output_ringbuf_signal->size)
-        : args::Ebar4 == args::W4 ? device.get_gpu_memory(Ebar4_memname, Ebar4_length)
-                                  : device.get_gpu_memory_array(Ebar4_memname, gpu_frame_id,
-                                                                _gpu_buffer_depth, Ebar4_length);
-    void* const I4_memory =
-        args::I4 == args::Ebar4 ? device.get_gpu_memory(I4_memname, input_ringbuf_signal->size)
-        : args::I4 == args::I4  ? device.get_gpu_memory(I4_memname, output_ringbuf_signal->size)
-        : args::I4 == args::W4
-            ? device.get_gpu_memory(I4_memname, I4_length)
-            : device.get_gpu_memory_array(I4_memname, gpu_frame_id, _gpu_buffer_depth, I4_length);
+    void* const W_U4_memory = args::W_U4 == args::Ebar_U4
+                                  ? device.get_gpu_memory(W_U4_memname, input_ringbuf_signal->size)
+                              : args::W_U4 == args::I_U4
+                                  ? device.get_gpu_memory(W_U4_memname, output_ringbuf_signal->size)
+                              : args::W_U4 == args::W_U4
+                                  ? device.get_gpu_memory(W_U4_memname, W_U4_length)
+                                  : device.get_gpu_memory_array(W_U4_memname, gpu_frame_id,
+                                                                _gpu_buffer_depth, W_U4_length);
+    void* const Ebar_U4_memory =
+        args::Ebar_U4 == args::Ebar_U4
+            ? device.get_gpu_memory(Ebar_U4_memname, input_ringbuf_signal->size)
+        : args::Ebar_U4 == args::I_U4
+            ? device.get_gpu_memory(Ebar_U4_memname, output_ringbuf_signal->size)
+        : args::Ebar_U4 == args::W_U4
+            ? device.get_gpu_memory(Ebar_U4_memname, Ebar_U4_length)
+            : device.get_gpu_memory_array(Ebar_U4_memname, gpu_frame_id, _gpu_buffer_depth,
+                                          Ebar_U4_length);
+    void* const I_U4_memory = args::I_U4 == args::Ebar_U4
+                                  ? device.get_gpu_memory(I_U4_memname, input_ringbuf_signal->size)
+                              : args::I_U4 == args::I_U4
+                                  ? device.get_gpu_memory(I_U4_memname, output_ringbuf_signal->size)
+                              : args::I_U4 == args::W_U4
+                                  ? device.get_gpu_memory(I_U4_memname, I_U4_length)
+                                  : device.get_gpu_memory_array(I_U4_memname, gpu_frame_id,
+                                                                _gpu_buffer_depth, I_U4_length);
     info_host.resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
-    // W4 is an input buffer: check metadata
-    const std::shared_ptr<metadataObject> W4_mc =
-        args::W4 == args::Ebar4 ? input_ringbuf_signal->get_metadata(0)
-                                : device.get_gpu_memory_array_metadata(W4_memname, gpu_frame_id);
-    assert(W4_mc);
-    assert(metadata_is_chord(W4_mc));
-    const std::shared_ptr<chordMetadata> W4_meta = get_chord_metadata(W4_mc);
-    DEBUG("input W4 array: {:s} {:s}", W4_meta->get_type_string(),
-          W4_meta->get_dimensions_string());
-    if (args::W4 == args::Ebar4 && 4 == 1) {
-        // Replace "Ebar1" with "E" etc. because we don't run the upchannelizer for U=1
-        assert(std::strncmp(W4_meta->name, "E", sizeof W4_meta->name) == 0);
-        assert(W4_meta->type == W4_type);
-        assert(W4_meta->dims == 4);
-        assert(std::strncmp(W4_meta->dim_name[3], "D", sizeof W4_meta->dim_name[3]) == 0);
-        assert(W4_meta->dim[3] == int(Ebar4_lengths[0]));
-        assert(std::strncmp(W4_meta->dim_name[2], "P", sizeof W4_meta->dim_name[2]) == 0);
-        assert(W4_meta->dim[2] == int(Ebar4_lengths[1]));
-        assert(std::strncmp(W4_meta->dim_name[1], "F", sizeof W4_meta->dim_name[1]) == 0);
-        assert(W4_meta->dim[1] == int(Ebar4_lengths[2]));
-        assert(std::strncmp(W4_meta->dim_name[0], "T", sizeof W4_meta->dim_name[0]) == 0);
-        assert(W4_meta->dim[0] <= int(Ebar4_lengths[3]));
-    } else {
-        assert(std::strncmp(W4_meta->name, W4_name, sizeof W4_meta->name) == 0);
-        assert(W4_meta->type == W4_type);
-        assert(W4_meta->dims == W4_rank);
-        for (std::size_t dim = 0; dim < W4_rank; ++dim) {
-            assert(std::strncmp(W4_meta->dim_name[W4_rank - 1 - dim], W4_labels[dim],
-                                sizeof W4_meta->dim_name[W4_rank - 1 - dim])
-                   == 0);
-            if (args::W4 == args::Ebar4 && dim == Ebar4_index_Tbar)
-                assert(W4_meta->dim[W4_rank - 1 - dim] <= int(W4_lengths[dim]));
-            else
-                assert(W4_meta->dim[W4_rank - 1 - dim] == int(W4_lengths[dim]));
-        }
-    }
-    //
-    // Ebar4 is an input buffer: check metadata
-    const std::shared_ptr<metadataObject> Ebar4_mc =
-        args::Ebar4 == args::Ebar4
+    // W_U4 is an input buffer: check metadata
+    const std::shared_ptr<metadataObject> W_U4_mc =
+        args::W_U4 == args::Ebar_U4
             ? input_ringbuf_signal->get_metadata(0)
-            : device.get_gpu_memory_array_metadata(Ebar4_memname, gpu_frame_id);
-    assert(Ebar4_mc);
-    assert(metadata_is_chord(Ebar4_mc));
-    const std::shared_ptr<chordMetadata> Ebar4_meta = get_chord_metadata(Ebar4_mc);
-    DEBUG("input Ebar4 array: {:s} {:s}", Ebar4_meta->get_type_string(),
-          Ebar4_meta->get_dimensions_string());
-    if (args::Ebar4 == args::Ebar4 && 4 == 1) {
-        // Replace "Ebar1" with "E" etc. because we don't run the upchannelizer for U=1
-        assert(std::strncmp(Ebar4_meta->name, "E", sizeof Ebar4_meta->name) == 0);
-        assert(Ebar4_meta->type == Ebar4_type);
-        assert(Ebar4_meta->dims == 4);
-        assert(std::strncmp(Ebar4_meta->dim_name[3], "D", sizeof Ebar4_meta->dim_name[3]) == 0);
-        assert(Ebar4_meta->dim[3] == int(Ebar4_lengths[0]));
-        assert(std::strncmp(Ebar4_meta->dim_name[2], "P", sizeof Ebar4_meta->dim_name[2]) == 0);
-        assert(Ebar4_meta->dim[2] == int(Ebar4_lengths[1]));
-        assert(std::strncmp(Ebar4_meta->dim_name[1], "F", sizeof Ebar4_meta->dim_name[1]) == 0);
-        assert(Ebar4_meta->dim[1] == int(Ebar4_lengths[2]));
-        assert(std::strncmp(Ebar4_meta->dim_name[0], "T", sizeof Ebar4_meta->dim_name[0]) == 0);
-        assert(Ebar4_meta->dim[0] <= int(Ebar4_lengths[3]));
+            : device.get_gpu_memory_array_metadata(W_U4_memname, gpu_frame_id);
+    assert(W_U4_mc);
+    assert(metadata_is_chord(W_U4_mc));
+    const std::shared_ptr<chordMetadata> W_U4_meta = get_chord_metadata(W_U4_mc);
+    DEBUG("input W_U4 array: {:s} {:s}", W_U4_meta->get_type_string(),
+          W_U4_meta->get_dimensions_string());
+    const auto output_meta_W_U4 = [&]() {
+        std::ostringstream buf;
+        buf << "    name: " << (W_U4_meta)->name << "\n"
+            << "    type: " << chord_datatype_string((W_U4_meta)->type) << "\n"
+            << "    dim: [";
+        for (int d = 0; d < (W_U4_meta)->dims; ++d)
+            buf << (W_U4_meta)->dim[d] << ", ";
+        buf << "]\n"
+            << "    stride: [";
+        for (int d = 0; d < (W_U4_meta)->dims; ++d)
+            buf << (W_U4_meta)->stride[d] << ", ";
+        buf << "]\n";
+        return buf.str();
+    };
+    if (args::W_U4 == args::Ebar_U4 && 4 == 1) {
+        // Replace "Ebar_U1" with "E" etc. because we don't run the upchannelizer for U=1
+        assert(std::strncmp(W_U4_meta->name, "E", sizeof W_U4_meta->name) == 0);
+        assert(W_U4_meta->type == W_U4_type);
+        assert(W_U4_meta->dims == 4);
+        assert(std::strncmp(W_U4_meta->dim_name[3], "D", sizeof W_U4_meta->dim_name[3]) == 0);
+        assert(W_U4_meta->dim[3] == int(Ebar_U4_lengths[0]));
+        assert(W_U4_meta->stride[3] == Ebar_U4_strides[0]);
+        assert(std::strncmp(W_U4_meta->dim_name[2], "P", sizeof W_U4_meta->dim_name[2]) == 0);
+        assert(W_U4_meta->dim[2] == int(Ebar_U4_lengths[1]));
+        assert(W_U4_meta->stride[2] == Ebar_U4_strides[1]);
+        assert(std::strncmp(W_U4_meta->dim_name[1], "F", sizeof W_U4_meta->dim_name[1]) == 0);
+        assert(W_U4_meta->dim[1] == int(Ebar_U4_lengths[2]));
+        assert(W_U4_meta->stride[1] == Ebar_U4_strides[2]);
+        assert(std::strncmp(W_U4_meta->dim_name[0], "T", sizeof W_U4_meta->dim_name[0]) == 0);
+        assert(W_U4_meta->dim[0] <= int(Ebar_U4_lengths[3]));
+        assert(W_U4_meta->stride[0] == Ebar_U4_strides[3]);
     } else {
-        assert(std::strncmp(Ebar4_meta->name, Ebar4_name, sizeof Ebar4_meta->name) == 0);
-        assert(Ebar4_meta->type == Ebar4_type);
-        assert(Ebar4_meta->dims == Ebar4_rank);
-        for (std::size_t dim = 0; dim < Ebar4_rank; ++dim) {
-            assert(std::strncmp(Ebar4_meta->dim_name[Ebar4_rank - 1 - dim], Ebar4_labels[dim],
-                                sizeof Ebar4_meta->dim_name[Ebar4_rank - 1 - dim])
+        assert(std::strncmp(W_U4_meta->name, W_U4_name, sizeof W_U4_meta->name) == 0);
+        assert(W_U4_meta->type == W_U4_type);
+        assert(W_U4_meta->dims == W_U4_rank);
+        for (std::size_t dim = 0; dim < W_U4_rank; ++dim) {
+            assert(std::strncmp(W_U4_meta->dim_name[W_U4_rank - 1 - dim], W_U4_labels[dim],
+                                sizeof W_U4_meta->dim_name[W_U4_rank - 1 - dim])
                    == 0);
-            if (args::Ebar4 == args::Ebar4 && dim == Ebar4_index_Tbar)
-                assert(Ebar4_meta->dim[Ebar4_rank - 1 - dim] <= int(Ebar4_lengths[dim]));
-            else
-                assert(Ebar4_meta->dim[Ebar4_rank - 1 - dim] == int(Ebar4_lengths[dim]));
+            if ((args::W_U4 == args::Ebar_U4 && dim == Ebar_U4_rank - 1)
+                || (args::W_U4 == args::W_U4 && dim == W_U4_rank - 1)) {
+                assert(W_U4_meta->dim[W_U4_rank - 1 - dim] <= int(W_U4_lengths[dim]));
+                assert(W_U4_meta->stride[W_U4_rank - 1 - dim] == W_U4_strides[dim]);
+            } else {
+                if (!(W_U4_meta->dim[W_U4_rank - 1 - dim] == int(W_U4_lengths[dim]))) {
+                    ERROR("Will encounter failing assert");
+                    ERROR("dim: {}", dim);
+                    ERROR("context:\n{}", output_meta_W_U4());
+                }
+                assert(W_U4_meta->dim[W_U4_rank - 1 - dim] == int(W_U4_lengths[dim]));
+                assert(W_U4_meta->stride[W_U4_rank - 1 - dim] == W_U4_strides[dim]);
+            }
         }
     }
     //
-    // I4 is an output buffer: set metadata
-    std::shared_ptr<metadataObject> const I4_mc =
-        args::I4 == args::I4 ? output_ringbuf_signal->get_metadata(0)
-                             : device.create_gpu_memory_array_metadata(I4_memname, gpu_frame_id,
-                                                                       Ebar4_mc->parent_pool);
-    std::shared_ptr<chordMetadata> const I4_meta = get_chord_metadata(I4_mc);
-    *I4_meta = *Ebar4_meta;
-    std::strncpy(I4_meta->name, I4_name, sizeof I4_meta->name);
-    I4_meta->type = I4_type;
-    I4_meta->dims = I4_rank;
-    for (std::size_t dim = 0; dim < I4_rank; ++dim) {
-        std::strncpy(I4_meta->dim_name[I4_rank - 1 - dim], I4_labels[dim],
-                     sizeof I4_meta->dim_name[I4_rank - 1 - dim]);
-        I4_meta->dim[I4_rank - 1 - dim] = I4_lengths[dim];
+    // Ebar_U4 is an input buffer: check metadata
+    const std::shared_ptr<metadataObject> Ebar_U4_mc =
+        args::Ebar_U4 == args::Ebar_U4
+            ? input_ringbuf_signal->get_metadata(0)
+            : device.get_gpu_memory_array_metadata(Ebar_U4_memname, gpu_frame_id);
+    assert(Ebar_U4_mc);
+    assert(metadata_is_chord(Ebar_U4_mc));
+    const std::shared_ptr<chordMetadata> Ebar_U4_meta = get_chord_metadata(Ebar_U4_mc);
+    DEBUG("input Ebar_U4 array: {:s} {:s}", Ebar_U4_meta->get_type_string(),
+          Ebar_U4_meta->get_dimensions_string());
+    const auto output_meta_Ebar_U4 = [&]() {
+        std::ostringstream buf;
+        buf << "    name: " << (Ebar_U4_meta)->name << "\n"
+            << "    type: " << chord_datatype_string((Ebar_U4_meta)->type) << "\n"
+            << "    dim: [";
+        for (int d = 0; d < (Ebar_U4_meta)->dims; ++d)
+            buf << (Ebar_U4_meta)->dim[d] << ", ";
+        buf << "]\n"
+            << "    stride: [";
+        for (int d = 0; d < (Ebar_U4_meta)->dims; ++d)
+            buf << (Ebar_U4_meta)->stride[d] << ", ";
+        buf << "]\n";
+        return buf.str();
+    };
+    if (args::Ebar_U4 == args::Ebar_U4 && 4 == 1) {
+        // Replace "Ebar_U1" with "E" etc. because we don't run the upchannelizer for U=1
+        assert(std::strncmp(Ebar_U4_meta->name, "E", sizeof Ebar_U4_meta->name) == 0);
+        assert(Ebar_U4_meta->type == Ebar_U4_type);
+        assert(Ebar_U4_meta->dims == 4);
+        assert(std::strncmp(Ebar_U4_meta->dim_name[3], "D", sizeof Ebar_U4_meta->dim_name[3]) == 0);
+        assert(Ebar_U4_meta->dim[3] == int(Ebar_U4_lengths[0]));
+        assert(Ebar_U4_meta->stride[3] == Ebar_U4_strides[0]);
+        assert(std::strncmp(Ebar_U4_meta->dim_name[2], "P", sizeof Ebar_U4_meta->dim_name[2]) == 0);
+        assert(Ebar_U4_meta->dim[2] == int(Ebar_U4_lengths[1]));
+        assert(Ebar_U4_meta->stride[2] == Ebar_U4_strides[1]);
+        assert(std::strncmp(Ebar_U4_meta->dim_name[1], "F", sizeof Ebar_U4_meta->dim_name[1]) == 0);
+        assert(Ebar_U4_meta->dim[1] == int(Ebar_U4_lengths[2]));
+        assert(Ebar_U4_meta->stride[1] == Ebar_U4_strides[2]);
+        assert(std::strncmp(Ebar_U4_meta->dim_name[0], "T", sizeof Ebar_U4_meta->dim_name[0]) == 0);
+        assert(Ebar_U4_meta->dim[0] <= int(Ebar_U4_lengths[3]));
+        assert(Ebar_U4_meta->stride[0] == Ebar_U4_strides[3]);
+    } else {
+        assert(std::strncmp(Ebar_U4_meta->name, Ebar_U4_name, sizeof Ebar_U4_meta->name) == 0);
+        assert(Ebar_U4_meta->type == Ebar_U4_type);
+        assert(Ebar_U4_meta->dims == Ebar_U4_rank);
+        for (std::size_t dim = 0; dim < Ebar_U4_rank; ++dim) {
+            assert(std::strncmp(Ebar_U4_meta->dim_name[Ebar_U4_rank - 1 - dim], Ebar_U4_labels[dim],
+                                sizeof Ebar_U4_meta->dim_name[Ebar_U4_rank - 1 - dim])
+                   == 0);
+            if ((args::Ebar_U4 == args::Ebar_U4 && dim == Ebar_U4_rank - 1)
+                || (args::Ebar_U4 == args::W_U4 && dim == W_U4_rank - 1)) {
+                assert(Ebar_U4_meta->dim[Ebar_U4_rank - 1 - dim] <= int(Ebar_U4_lengths[dim]));
+                assert(Ebar_U4_meta->stride[Ebar_U4_rank - 1 - dim] == Ebar_U4_strides[dim]);
+            } else {
+                if (!(Ebar_U4_meta->dim[Ebar_U4_rank - 1 - dim] == int(Ebar_U4_lengths[dim]))) {
+                    ERROR("Will encounter failing assert");
+                    ERROR("dim: {}", dim);
+                    ERROR("context:\n{}", output_meta_Ebar_U4());
+                }
+                assert(Ebar_U4_meta->dim[Ebar_U4_rank - 1 - dim] == int(Ebar_U4_lengths[dim]));
+                assert(Ebar_U4_meta->stride[Ebar_U4_rank - 1 - dim] == Ebar_U4_strides[dim]);
+            }
+        }
     }
-    DEBUG("output I4 array: {:s} {:s}", I4_meta->get_type_string(),
-          I4_meta->get_dimensions_string());
+    //
+    // I_U4 is an output buffer: set metadata
+    std::shared_ptr<metadataObject> const I_U4_mc =
+        args::I_U4 == args::I_U4 ? output_ringbuf_signal->get_metadata(0)
+                                 : device.create_gpu_memory_array_metadata(
+                                     I_U4_memname, gpu_frame_id, Ebar_U4_mc->parent_pool);
+    std::shared_ptr<chordMetadata> const I_U4_meta = get_chord_metadata(I_U4_mc);
+    *I_U4_meta = *Ebar_U4_meta;
+    std::strncpy(I_U4_meta->name, I_U4_name, sizeof I_U4_meta->name);
+    I_U4_meta->type = I_U4_type;
+    I_U4_meta->dims = I_U4_rank;
+    for (std::size_t dim = 0; dim < I_U4_rank; ++dim) {
+        std::strncpy(I_U4_meta->dim_name[I_U4_rank - 1 - dim], I_U4_labels[dim],
+                     sizeof I_U4_meta->dim_name[I_U4_rank - 1 - dim]);
+        I_U4_meta->dim[I_U4_rank - 1 - dim] = I_U4_lengths[dim];
+        I_U4_meta->stride[I_U4_rank - 1 - dim] = I_U4_strides[dim];
+    }
+    DEBUG("output I_U4 array: {:s} {:s}", I_U4_meta->get_type_string(),
+          I_U4_meta->get_dimensions_string());
     //
 
-    assert(Ebar4_meta->ndishes == cuda_number_of_dishes);
-    assert(Ebar4_meta->n_dish_locations_ew == cuda_dish_layout_N);
-    assert(Ebar4_meta->n_dish_locations_ns == cuda_dish_layout_M);
-    assert(Ebar4_meta->dish_index);
+    assert(Ebar_U4_meta->ndishes == cuda_number_of_dishes);
+    assert(Ebar_U4_meta->n_dish_locations_ew == cuda_dish_layout_N);
+    assert(Ebar_U4_meta->n_dish_locations_ns == cuda_dish_layout_M);
+    assert(Ebar_U4_meta->dish_index);
 
     record_start_event();
 
@@ -540,25 +705,31 @@ cudaFRBBeamformer_pathfinder_U4::execute(cudaPipelineState& /*pipestate*/,
     std::int32_t Tbarmax_arg;
     std::int32_t Ttildemin_arg;
     std::int32_t Ttildemax_arg;
+    std::int32_t Fbarmin_arg;
+    std::int32_t Fbarmax_arg;
+    std::int32_t Ftildemin_arg;
+    std::int32_t Ftildemax_arg;
     array_desc S_arg(S_memory, S_length);
-    array_desc W4_arg(W4_memory, W4_length);
-    array_desc Ebar4_arg(Ebar4_memory, Ebar4_length);
-    array_desc I4_arg(I4_memory, I4_length);
+    array_desc W_U4_arg(W_U4_memory, W_U4_length);
+    array_desc Ebar_U4_arg(Ebar_U4_memory, Ebar_U4_length);
+    array_desc I_U4_arg(I_U4_memory, I_U4_length);
     array_desc info_arg(info_memory, info_length);
     void* args[] = {
-        &exc_arg, &Tbarmin_arg, &Tbarmax_arg, &Ttildemin_arg, &Ttildemax_arg,
-        &S_arg,   &W4_arg,      &Ebar4_arg,   &I4_arg,        &info_arg,
+        &exc_arg,     &Tbarmin_arg, &Tbarmax_arg,   &Ttildemin_arg, &Ttildemax_arg,
+        &Fbarmin_arg, &Fbarmax_arg, &Ftildemin_arg, &Ftildemax_arg, &S_arg,
+        &W_U4_arg,    &Ebar_U4_arg, &I_U4_arg,      &info_arg,
     };
 
-    // Set Ebar4_memory to beginning of input ring buffer
-    Ebar4_arg = array_desc(Ebar4_memory, Ebar4_length);
+    // Set Ebar_memory to beginning of input ring buffer
+    Ebar_U4_arg = array_desc(Ebar_U4_memory, Ebar_U4_length);
 
     // Set I_memory to beginning of output ring buffer
-    I4_arg = array_desc(I4_memory, I4_length);
+    I_U4_arg = array_desc(I_U4_memory, I_U4_length);
 
     // Ringbuffer size
-    const std::size_t Tbar_ringbuf = input_ringbuf_signal->size / Ebar4_Tbar_sample_bytes;
-    const std::size_t Ttilde_ringbuf = output_ringbuf_signal->size / I4_Ttilde_sample_bytes;
+    const std::size_t Tbar_ringbuf = input_ringbuf_signal->size / Ebar_U4_Tbar_U4_sample_bytes;
+    const std::size_t Ttilde_ringbuf =
+        output_ringbuf_signal->size / I_U4_Ttilde_U4_Tds64_sample_bytes;
     DEBUG("Input ringbuffer size (samples):  {:d}", Tbar_ringbuf);
     DEBUG("Output ringbuffer size (samples): {:d}", Ttilde_ringbuf);
 
@@ -580,19 +751,26 @@ cudaFRBBeamformer_pathfinder_U4::execute(cudaPipelineState& /*pipestate*/,
     Ttildemin_arg = mod(Ttildemin, Ttilde_ringbuf);
     Ttildemax_arg = mod(Ttildemin, Ttilde_ringbuf) + Ttildelength;
 
+    // Pass frequency spans to kernel
+    Fbarmin_arg = Fbarmin;
+    Fbarmax_arg = Fbarmax;
+    Ftildemin_arg = Ftildemin;
+    Ftildemax_arg = Ftildemax;
+
     // Update metadata
-    I4_meta->dim[I4_rank - 1 - I4_index_Ttilde] = Ttildelength;
-    assert(I4_meta->dim[I4_rank - 1 - I4_index_Ttilde] <= int(I4_lengths[I4_index_Ttilde]));
+    I_U4_meta->dim[I_U4_rank - 1 - I_U4_index_Ttilde_U4_Tds64] = Ttildelength;
+    assert(I_U4_meta->dim[I_U4_rank - 1 - I_U4_index_Ttilde_U4_Tds64]
+           <= int(I_U4_lengths[I_U4_index_Ttilde_U4_Tds64]));
     // Since we use a ring buffer we do not need to update `meta->sample0_offset`
 
-    assert(I4_meta->nfreq >= 0);
-    assert(I4_meta->nfreq == Ebar4_meta->nfreq);
-    for (int freq = 0; freq < I4_meta->nfreq; ++freq) {
-        I4_meta->freq_upchan_factor[freq] =
-            cuda_downsampling_factor * Ebar4_meta->freq_upchan_factor[freq];
+    assert(I_U4_meta->nfreq >= 0);
+    assert(I_U4_meta->nfreq == Ebar_U4_meta->nfreq);
+    for (int freq = 0; freq < I_U4_meta->nfreq; ++freq) {
+        I_U4_meta->freq_upchan_factor[freq] =
+            cuda_downsampling_factor * Ebar_U4_meta->freq_upchan_factor[freq];
         // I_meta->half_fpga_sample0[freq] = Evar_meta->half_fpga_sample0[freq];
-        I4_meta->time_downsampling_fpga[freq] =
-            cuda_downsampling_factor * Ebar4_meta->time_downsampling_fpga[freq];
+        I_U4_meta->time_downsampling_fpga[freq] =
+            cuda_downsampling_factor * Ebar_U4_meta->time_downsampling_fpga[freq];
     }
 
     // Initialize `S` and copy it to the GPU
@@ -605,7 +783,7 @@ cudaFRBBeamformer_pathfinder_U4::execute(cudaPipelineState& /*pipestate*/,
         int surplus_dish_index = cuda_number_of_dishes;
         for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
             for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
-                int dish_index = Ebar4_meta->get_dish_index(locN, locM);
+                int dish_index = Ebar_U4_meta->get_dish_index(locN, locM);
                 if (dish_index >= 0) {
                     // This location holds a real dish, record its location
                     S[2 * dish_index + 0] = locM;
@@ -619,6 +797,9 @@ cudaFRBBeamformer_pathfinder_U4::execute(cudaPipelineState& /*pipestate*/,
             }
         }
         assert(surplus_dish_index == cuda_dish_layout_M * cuda_dish_layout_N);
+        INFO("M={} N={}", cuda_dish_layout_M, cuda_dish_layout_N);
+        for (int i = 0; i < int(S_host.size() / 2); i += 2)
+            INFO("    S[{}] = ({}, {})", i / 2, S[i], S[i + 1]);
 
         CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, S_host.data(), S_length, cudaMemcpyHostToDevice,
                                          device.getStream(cuda_stream_id)));
@@ -643,6 +824,12 @@ cudaFRBBeamformer_pathfinder_U4::execute(cudaPipelineState& /*pipestate*/,
                                       shmem_bytes));
 
     DEBUG("Running CUDA FRBBeamformer_pathfinder_U4 on GPU frame {:d}", gpu_frame_id);
+    assert(0 <= Fbarmin && Fbarmin <= Fbarmax);
+    assert(0 <= Ftildemin && Ftildemin <= Ftildemax);
+    assert(Ftildemax - Ftildemin == Fbarmax - Fbarmin);
+    const int blocks = Fbarmax - Fbarmin;
+    assert(0 <= blocks);
+    assert(blocks <= max_blocks);
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[symname], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
@@ -665,7 +852,7 @@ cudaFRBBeamformer_pathfinder_U4::execute(cudaPipelineState& /*pipestate*/,
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.size(); ++i)
+    for (std::size_t i = 0; i < info_host.size() * blocks / max_blocks; ++i)
         if (info_host[i] != 0)
             ERROR("cudaFRBBeamformer_pathfinder_U4 returned 'info' value {:d} at index {:d} (zero "
                   "indicates no error)",
@@ -683,17 +870,17 @@ void cudaFRBBeamformer_pathfinder_U4::finalize_frame() {
     const std::size_t Tbar_consumed = num_consumed_elements(Tbarlength);
     DEBUG("Advancing input ringbuffer:");
     DEBUG("    Consumed samples: {:d}", Tbar_consumed);
-    DEBUG("    Consumed bytes:   {:d}", Tbar_consumed * Ebar4_Tbar_sample_bytes);
+    DEBUG("    Consumed bytes:   {:d}", Tbar_consumed * Ebar_U4_Tbar_U4_sample_bytes);
     input_ringbuf_signal->finish_read(unique_name, instance_num,
-                                      Tbar_consumed * Ebar4_Tbar_sample_bytes);
+                                      Tbar_consumed * Ebar_U4_Tbar_U4_sample_bytes);
 
     // Advance the output ringbuffer
     const std::size_t Ttilde_produced = Ttildelength;
     DEBUG("Advancing output ringbuffer:");
     DEBUG("    Produced samples: {:d}", Ttilde_produced);
-    DEBUG("    Produced bytes:   {:d}", Ttilde_produced * I4_Ttilde_sample_bytes);
+    DEBUG("    Produced bytes:   {:d}", Ttilde_produced * I_U4_Ttilde_U4_Tds64_sample_bytes);
     output_ringbuf_signal->finish_write(unique_name, instance_num,
-                                        Ttilde_produced * I4_Ttilde_sample_bytes);
+                                        Ttilde_produced * I_U4_Ttilde_U4_Tds64_sample_bytes);
 
     cudaCommand::finalize_frame();
 }

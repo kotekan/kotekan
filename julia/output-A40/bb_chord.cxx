@@ -117,6 +117,17 @@ private:
     };
     static constexpr std::ptrdiff_t A_length = chord_datatype_bytes(A_type) * 2 * 512 * 96 * 2 * 48;
     static_assert(A_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto A_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= A_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, A_rank + 1> A_strides = {
+        A_calc_stride(A_index_C), A_calc_stride(A_index_D), A_calc_stride(A_index_B),
+        A_calc_stride(A_index_P), A_calc_stride(A_index_F), A_calc_stride(A_rank),
+    };
+    static_assert(A_length == chord_datatype_bytes(A_type) * A_strides[A_rank]);
     //
     // E: gpu_mem_voltage
     static constexpr const char* E_name = "E";
@@ -142,6 +153,17 @@ private:
     };
     static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 48 * 32768;
     static_assert(E_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto E_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= E_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, E_rank + 1> E_strides = {
+        E_calc_stride(E_index_D), E_calc_stride(E_index_P), E_calc_stride(E_index_F),
+        E_calc_stride(E_index_T), E_calc_stride(E_rank),
+    };
+    static_assert(E_length == chord_datatype_bytes(E_type) * E_strides[E_rank]);
     //
     // s: gpu_mem_output_scaling
     static constexpr const char* s_name = "s";
@@ -164,6 +186,19 @@ private:
     };
     static constexpr std::ptrdiff_t s_length = chord_datatype_bytes(s_type) * 96 * 2 * 48;
     static_assert(s_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto s_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= s_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, s_rank + 1> s_strides = {
+        s_calc_stride(s_index_B),
+        s_calc_stride(s_index_P),
+        s_calc_stride(s_index_F),
+        s_calc_stride(s_rank),
+    };
+    static_assert(s_length == chord_datatype_bytes(s_type) * s_strides[s_rank]);
     //
     // J: gpu_mem_formed_beams
     static constexpr const char* J_name = "J";
@@ -189,6 +224,17 @@ private:
     };
     static constexpr std::ptrdiff_t J_length = chord_datatype_bytes(J_type) * 8192 * 2 * 48 * 96;
     static_assert(J_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto J_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= J_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, J_rank + 1> J_strides = {
+        J_calc_stride(J_index_T), J_calc_stride(J_index_P), J_calc_stride(J_index_F),
+        J_calc_stride(J_index_B), J_calc_stride(J_rank),
+    };
+    static_assert(J_length == chord_datatype_bytes(J_type) * J_strides[J_rank]);
     //
     // info: gpu_mem_info
     static constexpr const char* info_name = "info";
@@ -211,6 +257,19 @@ private:
     };
     static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 24 * 96;
     static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto info_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= info_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, info_rank + 1> info_strides = {
+        info_calc_stride(info_index_thread),
+        info_calc_stride(info_index_warp),
+        info_calc_stride(info_index_block),
+        info_calc_stride(info_rank),
+    };
+    static_assert(info_length == chord_datatype_bytes(info_type) * info_strides[info_rank]);
     //
 
     // Kotekan buffer names
@@ -381,10 +440,13 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
         assert(std::strncmp(A_meta->dim_name[A_rank - 1 - dim], A_labels[dim],
                             sizeof A_meta->dim_name[A_rank - 1 - dim])
                == 0);
-        if (args::A == args::E)
+        if (args::A == args::E) {
             assert(A_meta->dim[A_rank - 1 - dim] <= int(A_lengths[dim]));
-        else
+            assert(A_meta->stride[A_rank - 1 - dim] == A_strides[dim]);
+        } else {
             assert(A_meta->dim[A_rank - 1 - dim] == int(A_lengths[dim]));
+            assert(A_meta->stride[A_rank - 1 - dim] == A_strides[dim]);
+        }
     }
     //
     // E is an input buffer: check metadata
@@ -402,10 +464,13 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
         assert(std::strncmp(E_meta->dim_name[E_rank - 1 - dim], E_labels[dim],
                             sizeof E_meta->dim_name[E_rank - 1 - dim])
                == 0);
-        if (args::E == args::E)
+        if (args::E == args::E) {
             assert(E_meta->dim[E_rank - 1 - dim] <= int(E_lengths[dim]));
-        else
+            assert(E_meta->stride[E_rank - 1 - dim] == E_strides[dim]);
+        } else {
             assert(E_meta->dim[E_rank - 1 - dim] == int(E_lengths[dim]));
+            assert(E_meta->stride[E_rank - 1 - dim] == E_strides[dim]);
+        }
     }
     //
     // s is an input buffer: check metadata
@@ -423,10 +488,13 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
         assert(std::strncmp(s_meta->dim_name[s_rank - 1 - dim], s_labels[dim],
                             sizeof s_meta->dim_name[s_rank - 1 - dim])
                == 0);
-        if (args::s == args::E)
+        if (args::s == args::E) {
             assert(s_meta->dim[s_rank - 1 - dim] <= int(s_lengths[dim]));
-        else
+            assert(s_meta->stride[s_rank - 1 - dim] == s_strides[dim]);
+        } else {
             assert(s_meta->dim[s_rank - 1 - dim] == int(s_lengths[dim]));
+            assert(s_meta->stride[s_rank - 1 - dim] == s_strides[dim]);
+        }
     }
     //
     // J is an output buffer: set metadata
@@ -441,6 +509,7 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
         std::strncpy(J_meta->dim_name[J_rank - 1 - dim], J_labels[dim],
                      sizeof J_meta->dim_name[J_rank - 1 - dim]);
         J_meta->dim[J_rank - 1 - dim] = J_lengths[dim];
+        J_meta->stride[J_rank - 1 - dim] = J_strides[dim];
     }
     DEBUG("output J array: {:s} {:s}", J_meta->get_type_string(), J_meta->get_dimensions_string());
     //

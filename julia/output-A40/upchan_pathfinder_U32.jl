@@ -3,17 +3,29 @@
 # Do not modify this file, your changes will be lost.
 
 @fastmath @inbounds(
-    begin #= /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1456 =#
+    begin #= /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1469 =#
         info = 1
         if true
             info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 384) % 384) % 384) * 512 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 16) % 16) * 32 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32) + 0) + 0x01] =
                 info
         end
         if !(
-            0i32 ≤ Tmin ≤ Tmax ≤ 65536 &&
-            ((Tmax - Tmin) % 256 == 0i32 && (0i32 ≤ T̄min ≤ T̄max ≤ 2048 && ((T̄max - T̄min) + 3) % 8 == 0i32))
+            0i32 ≤ Tmin < 32768 && (
+                Tmin ≤ Tmax < 65536 && (
+                    (Tmax - Tmin) % 256 == 0i32 &&
+                    (0i32 ≤ T̄min < 1024 && (T̄min ≤ T̄max < 2048 && ((T̄max - T̄min) + 3) % 8 == 0i32))
+                )
+            )
         )
             info = 2
+            if true
+                info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 384) % 384) % 384) * 512 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 16) % 16) * 32 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32) + 0) + 0x01] =
+                    info
+            end
+            IndexSpaces.cuda_trap()
+        end
+        if !(0i32 ≤ Fmin ≤ Fmax ≤ F)
+            info = 3
             if true
                 info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 384) % 384) % 384) * 512 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 16) % 16) * 32 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32) + 0) + 0x01] =
                     info
@@ -26,7 +38,7 @@
         F_ringbuf_dish32_mtaps1 = zero(Int4x8)
         F_ringbuf_dish0_mtaps2 = zero(Int4x8)
         F_ringbuf_dish32_mtaps2 = zero(Int4x8)
-        Gains = G_memory[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 384) % 384) * 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 4) % 2) * 8) + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 16) % 2) * 16) + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 2) * 4) + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 2) % 2) * 2) ÷ 2) % 6144 + 0x01]
+        Gains = G_memory[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 384) % 384) * 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 4) % 2) * 8) + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 16) % 2) * 16) + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 2) * 4) + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 2) % 2) * 2) ÷ 2) % 1024 + 0x01]
         (Wpfb0_m0, Wpfb1_m0) = let
             thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32)
             time0 = 0 + thread2time(thread)
@@ -107,8 +119,8 @@
             delta0 = dish == dish_in0
             delta1 = dish == dish_in1
             (Γ¹0, Γ¹1) = (
-                delta0 * cispi((((-2i32) * timehi0 * freqlo) / Float32(2^3)) % 2.0f0),
-                delta1 * cispi((((-2i32) * timehi1 * freqlo) / Float32(2^3)) % 2.0f0),
+                delta0 * cispi((((-2i32) * timehi0 * freqlo) / 8.0f0) % 2.0f0),
+                delta1 * cispi((((-2i32) * timehi1 * freqlo) / 8.0f0) % 2.0f0),
             )
             (Γ¹0, Γ¹1)
         end
@@ -135,8 +147,7 @@
             timelo1 = (2i32) * (1i32) + (1i32) * thread1
             freqlo = (1i32) * thread2 + (2i32) * thread4 + (4i32) * thread3
             (Γ²0, Γ²1) = (
-                cispi((((-2i32) * timelo0 * freqlo) / Float32(2^5)) % 2.0f0),
-                cispi((((-2i32) * timelo1 * freqlo) / Float32(2^5)) % 2.0f0),
+                cispi((((-2i32) * timelo0 * freqlo) / 32.0f0) % 2.0f0), cispi((((-2i32) * timelo1 * freqlo) / 32.0f0) % 2.0f0)
             )
             (Γ²0, Γ²1)
         end
@@ -160,8 +171,8 @@
             delta0 = dish == dish_in0
             delta1 = dish == dish_in1
             (Γ³0, Γ³1) = (
-                delta0 * cispi((((-2i32) * timelo0 * freqhi) / Float32(2^2)) % 2.0f0),
-                delta1 * cispi((((-2i32) * timelo1 * freqhi) / Float32(2^2)) % 2.0f0),
+                delta0 * cispi((((-2i32) * timelo0 * freqhi) / 4.0f0) % 2.0f0),
+                delta1 * cispi((((-2i32) * timelo1 * freqhi) / 4.0f0) % 2.0f0),
             )
             (Γ³0, Γ³1)
         end
@@ -206,7 +217,7 @@
             (E_dish0_time0, E_dish4_time0, E_dish8_time0, E_dish12_time0) = IndexSpaces.unsafe_load4_global(
                 E_memory,
                 let
-                    offset = 12288 * Tmin
+                    offset = 12288 * Tmin + 32 * Fmin
                     length = 402653184
                     mod(
                         (
@@ -233,7 +244,7 @@
             (E_dish0_time64, E_dish4_time64, E_dish8_time64, E_dish12_time64) = IndexSpaces.unsafe_load4_global(
                 E_memory,
                 let
-                    offset = 12288 * Tmin
+                    offset = 12288 * Tmin + 32 * Fmin
                     length = 402653184
                     mod(
                         (
@@ -264,7 +275,7 @@
             (E_dish0_time128, E_dish4_time128, E_dish8_time128, E_dish12_time128) = IndexSpaces.unsafe_load4_global(
                 E_memory,
                 let
-                    offset = 12288 * Tmin
+                    offset = 12288 * Tmin + 32 * Fmin
                     length = 402653184
                     mod(
                         (
@@ -295,7 +306,7 @@
             (E_dish0_time192, E_dish4_time192, E_dish8_time192, E_dish12_time192) = IndexSpaces.unsafe_load4_global(
                 E_memory,
                 let
-                    offset = 12288 * Tmin
+                    offset = 12288 * Tmin + 32 * Fmin
                     length = 402653184
                     mod(
                         (
@@ -1349,8 +1360,8 @@
                 IndexSpaces.unsafe_store4_global!(
                     Ē_memory,
                     let
-                        offset = 393216 * T̄min - 1179648
-                        length = 402653184
+                        offset = 65536 * T̄min - 196608
+                        length = 67108864
                         mod(
                             (
                                 (
@@ -1359,19 +1370,19 @@
                                     (
                                         (
                                             (
+                                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 384) % 384) * 32 +
+                                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 8) % 4
+                                            ) + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 8) * 4
+                                        ) % 2048
+                                    ) * 32 +
+                                    (
+                                        (
+                                            (
                                                 ((IndexSpaces.assume_inrange(t_outer, 0, 256, 32768) ÷ 256) % 128) * 256 +
                                                 ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) ÷ 8) % 2) * 32
                                             ) ÷ 32
                                         ) % 1024
-                                    ) * 393216 +
-                                    (
-                                        (
-                                            (
-                                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 384) % 384) * 32 +
-                                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 8) % 4
-                                            ) + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 8) * 4
-                                        ) % 12288
-                                    ) * 32
+                                    ) * 65536
                                 ) + 0
                             ) + offset,
                             length,
@@ -1386,8 +1397,8 @@
                 IndexSpaces.unsafe_store4_global!(
                     Ē_memory,
                     let
-                        offset = 393216 * T̄min - 1179648
-                        length = 402653184
+                        offset = 65536 * T̄min - 196608
+                        length = 67108864
                         mod(
                             (
                                 (
@@ -1396,19 +1407,19 @@
                                     (
                                         (
                                             (
+                                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 384) % 384) * 32 +
+                                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 8) % 4
+                                            ) + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 8) * 4
+                                        ) % 2048
+                                    ) * 32 +
+                                    (
+                                        (
+                                            (
                                                 (64 + ((IndexSpaces.assume_inrange(t_outer, 0, 256, 32768) ÷ 256) % 128) * 256) +
                                                 ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) ÷ 8) % 2) * 32
                                             ) ÷ 32
                                         ) % 1024
-                                    ) * 393216 +
-                                    (
-                                        (
-                                            (
-                                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 384) % 384) * 32 +
-                                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 8) % 4
-                                            ) + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 8) * 4
-                                        ) % 12288
-                                    ) * 32
+                                    ) * 65536
                                 ) + 0
                             ) + offset,
                             length,
@@ -1423,8 +1434,8 @@
                 IndexSpaces.unsafe_store4_global!(
                     Ē_memory,
                     let
-                        offset = 393216 * T̄min - 1179648
-                        length = 402653184
+                        offset = 65536 * T̄min - 196608
+                        length = 67108864
                         mod(
                             (
                                 (
@@ -1433,19 +1444,19 @@
                                     (
                                         (
                                             (
+                                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 384) % 384) * 32 +
+                                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 8) % 4
+                                            ) + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 8) * 4
+                                        ) % 2048
+                                    ) * 32 +
+                                    (
+                                        (
+                                            (
                                                 (128 + ((IndexSpaces.assume_inrange(t_outer, 0, 256, 32768) ÷ 256) % 128) * 256) +
                                                 ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) ÷ 8) % 2) * 32
                                             ) ÷ 32
                                         ) % 1024
-                                    ) * 393216 +
-                                    (
-                                        (
-                                            (
-                                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 384) % 384) * 32 +
-                                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 8) % 4
-                                            ) + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 8) * 4
-                                        ) % 12288
-                                    ) * 32
+                                    ) * 65536
                                 ) + 0
                             ) + offset,
                             length,
@@ -1460,8 +1471,8 @@
                 IndexSpaces.unsafe_store4_global!(
                     Ē_memory,
                     let
-                        offset = 393216 * T̄min - 1179648
-                        length = 402653184
+                        offset = 65536 * T̄min - 196608
+                        length = 67108864
                         mod(
                             (
                                 (
@@ -1470,19 +1481,19 @@
                                     (
                                         (
                                             (
+                                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 384) % 384) * 32 +
+                                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 8) % 4
+                                            ) + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 8) * 4
+                                        ) % 2048
+                                    ) * 32 +
+                                    (
+                                        (
+                                            (
                                                 (192 + ((IndexSpaces.assume_inrange(t_outer, 0, 256, 32768) ÷ 256) % 128) * 256) +
                                                 ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) ÷ 8) % 2) * 32
                                             ) ÷ 32
                                         ) % 1024
-                                    ) * 393216 +
-                                    (
-                                        (
-                                            (
-                                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 384) % 384) * 32 +
-                                                (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) ÷ 8) % 4
-                                            ) + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 16) % 8) * 4
-                                        ) % 12288
-                                    ) * 32
+                                    ) * 65536
                                 ) + 0
                             ) + offset,
                             length,

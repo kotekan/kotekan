@@ -80,15 +80,16 @@ private:
     // Kernel call parameters:
     static constexpr int threads_x = 32;
     static constexpr int threads_y = 16;
-    static constexpr int blocks = 256;
+    static constexpr int max_blocks = 256;
     static constexpr int shmem_bytes = 66816;
 
     // Kernel name:
-    const char* const kernel_symbol = "_Z6upchan5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_"
-                                      "I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE";
+    const char* const kernel_symbol =
+        "_Z6upchan5Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_"
+        "Li1ELi1EES0_IS_Li1ELi1EE";
 
     // Kernel arguments:
-    enum class args { Tmin, Tmax, Tbarmin, Tbarmax, G128, E, Ebar128, info, count };
+    enum class args { Tmin, Tmax, Tbarmin, Tbarmax, Fmin, Fmax, G_U128, E, Ebar_U128, info, count };
 
     // Tmin: Tmin
     static constexpr const char* Tmin_name = "Tmin";
@@ -106,21 +107,40 @@ private:
     static constexpr const char* Tbarmax_name = "Tbarmax";
     static constexpr chordDataType Tbarmax_type = int32;
     //
-    // G128: gpu_mem_gain
-    static constexpr const char* G128_name = "G128";
-    static constexpr chordDataType G128_type = float16;
-    enum G128_indices {
-        G128_index_Fbar,
-        G128_rank,
+    // Fmin: Fmin
+    static constexpr const char* Fmin_name = "Fmin";
+    static constexpr chordDataType Fmin_type = int32;
+    //
+    // Fmax: Fmax
+    static constexpr const char* Fmax_name = "Fmax";
+    static constexpr chordDataType Fmax_type = int32;
+    //
+    // G_U128: gpu_mem_gain
+    static constexpr const char* G_U128_name = "G_U128";
+    static constexpr chordDataType G_U128_type = float16;
+    enum G_U128_indices {
+        G_U128_index_Fbar_U128,
+        G_U128_rank,
     };
-    static constexpr std::array<const char*, G128_rank> G128_labels = {
-        "Fbar",
+    static constexpr std::array<const char*, G_U128_rank> G_U128_labels = {
+        "Fbar_U128",
     };
-    static constexpr std::array<std::ptrdiff_t, G128_rank> G128_lengths = {
+    static constexpr std::array<std::ptrdiff_t, G_U128_rank> G_U128_lengths = {
         8192,
     };
-    static constexpr std::ptrdiff_t G128_length = chord_datatype_bytes(G128_type) * 8192;
-    static_assert(G128_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t G_U128_length = chord_datatype_bytes(G_U128_type) * 8192;
+    static_assert(G_U128_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto G_U128_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= G_U128_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, G_U128_rank + 1> G_U128_strides = {
+        G_U128_calc_stride(G_U128_index_Fbar_U128),
+        G_U128_calc_stride(G_U128_rank),
+    };
+    static_assert(G_U128_length == chord_datatype_bytes(G_U128_type) * G_U128_strides[G_U128_rank]);
     //
     // E: gpu_mem_input_voltage
     static constexpr const char* E_name = "E";
@@ -146,32 +166,58 @@ private:
     };
     static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 256 * 2 * 64 * 32768;
     static_assert(E_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
-    //
-    // Ebar128: gpu_mem_output_voltage
-    static constexpr const char* Ebar128_name = "Ebar128";
-    static constexpr chordDataType Ebar128_type = int4p4;
-    enum Ebar128_indices {
-        Ebar128_index_D,
-        Ebar128_index_P,
-        Ebar128_index_Fbar,
-        Ebar128_index_Tbar,
-        Ebar128_rank,
+    static constexpr auto E_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= E_lengths[d];
+        return str;
     };
-    static constexpr std::array<const char*, Ebar128_rank> Ebar128_labels = {
+    static constexpr std::array<std::ptrdiff_t, E_rank + 1> E_strides = {
+        E_calc_stride(E_index_D), E_calc_stride(E_index_P), E_calc_stride(E_index_F),
+        E_calc_stride(E_index_T), E_calc_stride(E_rank),
+    };
+    static_assert(E_length == chord_datatype_bytes(E_type) * E_strides[E_rank]);
+    //
+    // Ebar_U128: gpu_mem_output_voltage
+    static constexpr const char* Ebar_U128_name = "Ebar_U128";
+    static constexpr chordDataType Ebar_U128_type = int4p4;
+    enum Ebar_U128_indices {
+        Ebar_U128_index_D,
+        Ebar_U128_index_P,
+        Ebar_U128_index_Fbar_U128,
+        Ebar_U128_index_Tbar_U128,
+        Ebar_U128_rank,
+    };
+    static constexpr std::array<const char*, Ebar_U128_rank> Ebar_U128_labels = {
         "D",
         "P",
-        "Fbar",
-        "Tbar",
+        "Fbar_U128",
+        "Tbar_U128",
     };
-    static constexpr std::array<std::ptrdiff_t, Ebar128_rank> Ebar128_lengths = {
+    static constexpr std::array<std::ptrdiff_t, Ebar_U128_rank> Ebar_U128_lengths = {
         256,
         2,
         8192,
         256,
     };
-    static constexpr std::ptrdiff_t Ebar128_length =
-        chord_datatype_bytes(Ebar128_type) * 256 * 2 * 8192 * 256;
-    static_assert(Ebar128_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t Ebar_U128_length =
+        chord_datatype_bytes(Ebar_U128_type) * 256 * 2 * 8192 * 256;
+    static_assert(Ebar_U128_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto Ebar_U128_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= Ebar_U128_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, Ebar_U128_rank + 1> Ebar_U128_strides = {
+        Ebar_U128_calc_stride(Ebar_U128_index_D),
+        Ebar_U128_calc_stride(Ebar_U128_index_P),
+        Ebar_U128_calc_stride(Ebar_U128_index_Fbar_U128),
+        Ebar_U128_calc_stride(Ebar_U128_index_Tbar_U128),
+        Ebar_U128_calc_stride(Ebar_U128_rank),
+    };
+    static_assert(Ebar_U128_length
+                  == chord_datatype_bytes(Ebar_U128_type) * Ebar_U128_strides[Ebar_U128_rank]);
     //
     // info: gpu_mem_info
     static constexpr const char* info_name = "info";
@@ -194,12 +240,25 @@ private:
     };
     static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 16 * 256;
     static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto info_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= info_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, info_rank + 1> info_strides = {
+        info_calc_stride(info_index_thread),
+        info_calc_stride(info_index_warp),
+        info_calc_stride(info_index_block),
+        info_calc_stride(info_rank),
+    };
+    static_assert(info_length == chord_datatype_bytes(info_type) * info_strides[info_rank]);
     //
 
     // Kotekan buffer names
-    const std::string G128_memname;
+    const std::string G_U128_memname;
     const std::string E_memname;
-    const std::string Ebar128_memname;
+    const std::string Ebar_U128_memname;
     const std::string info_memname;
 
     // Host-side buffer arrays
@@ -208,12 +267,15 @@ private:
     static constexpr std::ptrdiff_t E_T_sample_bytes = chord_datatype_bytes(E_type)
                                                        * E_lengths[E_index_D] * E_lengths[E_index_P]
                                                        * E_lengths[E_index_F];
-    static constexpr std::ptrdiff_t Ebar128_Tbar_sample_bytes =
-        chord_datatype_bytes(Ebar128_type) * Ebar128_lengths[Ebar128_index_D]
-        * Ebar128_lengths[Ebar128_index_P] * Ebar128_lengths[Ebar128_index_Fbar];
+    static constexpr std::ptrdiff_t Ebar_U128_Tbar_U128_sample_bytes =
+        chord_datatype_bytes(Ebar_U128_type) * Ebar_U128_lengths[Ebar_U128_index_D]
+        * Ebar_U128_lengths[Ebar_U128_index_P] * Ebar_U128_lengths[Ebar_U128_index_Fbar_U128];
 
     RingBuffer* input_ringbuf_signal;
     RingBuffer* output_ringbuf_signal;
+
+    // How many frequencies we will process
+    const int Fmin, Fmax;
 
     // How many samples we will process from the input ringbuffer
     // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
@@ -233,9 +295,9 @@ cudaUpchannelizer_hirax_U128::cudaUpchannelizer_hirax_U128(Config& config,
                                                            const int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "Upchannelizer_hirax_U128", "Upchannelizer_hirax_U128.ptx"),
-    G128_memname(config.get<std::string>(unique_name, "gpu_mem_gain")),
+    G_U128_memname(config.get<std::string>(unique_name, "gpu_mem_gain")),
     E_memname(config.get<std::string>(unique_name, "gpu_mem_input_voltage")),
-    Ebar128_memname(config.get<std::string>(unique_name, "gpu_mem_output_voltage")),
+    Ebar_U128_memname(config.get<std::string>(unique_name, "gpu_mem_output_voltage")),
     info_memname(unique_name + "/gpu_mem_info"),
 
     info_host(info_length),
@@ -243,10 +305,11 @@ cudaUpchannelizer_hirax_U128::cudaUpchannelizer_hirax_U128(Config& config,
     input_ringbuf_signal(dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")))),
     output_ringbuf_signal(dynamic_cast<RingBuffer*>(
-        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "out_signal")))) {
+        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "out_signal")))),
+    Fmin(config.get<int>(unique_name, "Fmin")), Fmax(config.get<int>(unique_name, "Fmax")) {
     // Check ringbuffer sizes
     assert(input_ringbuf_signal->size == E_length);
-    assert(output_ringbuf_signal->size == Ebar128_length);
+    assert(output_ringbuf_signal->size == Ebar_U128_length);
 
     // Register host memory
     {
@@ -255,9 +318,9 @@ cudaUpchannelizer_hirax_U128::cudaUpchannelizer_hirax_U128(Config& config,
     }
 
     // Add Graphviz entries for the GPU buffers used by this kernel
-    gpu_buffers_used.push_back(std::make_tuple(G128_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(G_U128_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(Ebar128_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(Ebar_U128_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
@@ -340,7 +403,7 @@ int cudaUpchannelizer_hirax_U128::wait_on_precondition() {
     const std::ptrdiff_t Tbarlength = Tbar_produced;
 
     // to bytes
-    const std::ptrdiff_t output_bytes = Tbarlength * Ebar128_Tbar_sample_bytes;
+    const std::ptrdiff_t output_bytes = Tbarlength * Ebar_U128_Tbar_U128_sample_bytes;
     DEBUG("Will produce {:d} output bytes", output_bytes);
 
     // Wait for space to be available in our output ringbuffer...
@@ -353,8 +416,8 @@ int cudaUpchannelizer_hirax_U128::wait_on_precondition() {
     const std::ptrdiff_t output_cursor = val_out.value();
     DEBUG("Output ring-buffer byte offset {:d}", output_cursor);
 
-    assert(mod(output_cursor, Ebar128_Tbar_sample_bytes) == 0);
-    Tbarmin = output_cursor / Ebar128_Tbar_sample_bytes;
+    assert(mod(output_cursor, Ebar_U128_Tbar_U128_sample_bytes) == 0);
+    Tbarmin = output_cursor / Ebar_U128_Tbar_U128_sample_bytes;
     Tbarmax = Tbarmin + Tbarlength;
     DEBUG("Output samples:");
     DEBUG("    Tbarmin:    {:d}", Tbarmin);
@@ -368,50 +431,55 @@ cudaEvent_t cudaUpchannelizer_hirax_U128::execute(cudaPipelineState& /*pipestate
                                                   const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
 
-    void* const G128_memory =
-        args::G128 == args::E ? device.get_gpu_memory(G128_memname, input_ringbuf_signal->size)
-        : args::G128 == args::Ebar128
-            ? device.get_gpu_memory(G128_memname, output_ringbuf_signal->size)
-        : args::G128 == args::G128 ? device.get_gpu_memory(G128_memname, G128_length)
-                                   : device.get_gpu_memory_array(G128_memname, gpu_frame_id,
-                                                                 _gpu_buffer_depth, G128_length);
+    void* const G_U128_memory =
+        args::G_U128 == args::E ? device.get_gpu_memory(G_U128_memname, input_ringbuf_signal->size)
+        : args::G_U128 == args::Ebar_U128
+            ? device.get_gpu_memory(G_U128_memname, output_ringbuf_signal->size)
+        : args::G_U128 == args::G_U128
+            ? device.get_gpu_memory(G_U128_memname, G_U128_length)
+            : device.get_gpu_memory_array(G_U128_memname, gpu_frame_id, _gpu_buffer_depth,
+                                          G_U128_length);
     void* const E_memory =
-        args::E == args::E         ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
-        : args::E == args::Ebar128 ? device.get_gpu_memory(E_memname, output_ringbuf_signal->size)
-        : args::E == args::G128
+        args::E == args::E           ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
+        : args::E == args::Ebar_U128 ? device.get_gpu_memory(E_memname, output_ringbuf_signal->size)
+        : args::E == args::G_U128
             ? device.get_gpu_memory(E_memname, E_length)
             : device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
-    void* const Ebar128_memory =
-        args::Ebar128 == args::E
-            ? device.get_gpu_memory(Ebar128_memname, input_ringbuf_signal->size)
-        : args::Ebar128 == args::Ebar128
-            ? device.get_gpu_memory(Ebar128_memname, output_ringbuf_signal->size)
-        : args::Ebar128 == args::G128
-            ? device.get_gpu_memory(Ebar128_memname, Ebar128_length)
-            : device.get_gpu_memory_array(Ebar128_memname, gpu_frame_id, _gpu_buffer_depth,
-                                          Ebar128_length);
+    void* const Ebar_U128_memory =
+        args::Ebar_U128 == args::E
+            ? device.get_gpu_memory(Ebar_U128_memname, input_ringbuf_signal->size)
+        : args::Ebar_U128 == args::Ebar_U128
+            ? device.get_gpu_memory(Ebar_U128_memname, output_ringbuf_signal->size)
+        : args::Ebar_U128 == args::G_U128
+            ? device.get_gpu_memory(Ebar_U128_memname, Ebar_U128_length)
+            : device.get_gpu_memory_array(Ebar_U128_memname, gpu_frame_id, _gpu_buffer_depth,
+                                          Ebar_U128_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
-    // G128 is an input buffer: check metadata
-    const std::shared_ptr<metadataObject> G128_mc =
-        args::G128 == args::E ? input_ringbuf_signal->get_metadata(0)
-                              : device.get_gpu_memory_array_metadata(G128_memname, gpu_frame_id);
-    assert(G128_mc);
-    assert(metadata_is_chord(G128_mc));
-    const std::shared_ptr<chordMetadata> G128_meta = get_chord_metadata(G128_mc);
-    DEBUG("input G128 array: {:s} {:s}", G128_meta->get_type_string(),
-          G128_meta->get_dimensions_string());
-    assert(std::strncmp(G128_meta->name, G128_name, sizeof G128_meta->name) == 0);
-    assert(G128_meta->type == G128_type);
-    assert(G128_meta->dims == G128_rank);
-    for (std::ptrdiff_t dim = 0; dim < G128_rank; ++dim) {
-        assert(std::strncmp(G128_meta->dim_name[G128_rank - 1 - dim], G128_labels[dim],
-                            sizeof G128_meta->dim_name[G128_rank - 1 - dim])
+    // G_U128 is an input buffer: check metadata
+    const std::shared_ptr<metadataObject> G_U128_mc =
+        args::G_U128 == args::E
+            ? input_ringbuf_signal->get_metadata(0)
+            : device.get_gpu_memory_array_metadata(G_U128_memname, gpu_frame_id);
+    assert(G_U128_mc);
+    assert(metadata_is_chord(G_U128_mc));
+    const std::shared_ptr<chordMetadata> G_U128_meta = get_chord_metadata(G_U128_mc);
+    DEBUG("input G_U128 array: {:s} {:s}", G_U128_meta->get_type_string(),
+          G_U128_meta->get_dimensions_string());
+    assert(std::strncmp(G_U128_meta->name, G_U128_name, sizeof G_U128_meta->name) == 0);
+    assert(G_U128_meta->type == G_U128_type);
+    assert(G_U128_meta->dims == G_U128_rank);
+    for (std::ptrdiff_t dim = 0; dim < G_U128_rank; ++dim) {
+        assert(std::strncmp(G_U128_meta->dim_name[G_U128_rank - 1 - dim], G_U128_labels[dim],
+                            sizeof G_U128_meta->dim_name[G_U128_rank - 1 - dim])
                == 0);
-        if (args::G128 == args::E && dim == E_index_T)
-            assert(G128_meta->dim[G128_rank - 1 - dim] <= int(G128_lengths[dim]));
-        else
-            assert(G128_meta->dim[G128_rank - 1 - dim] == int(G128_lengths[dim]));
+        if (args::G_U128 == args::E && dim == E_index_T) {
+            assert(G_U128_meta->dim[G_U128_rank - 1 - dim] <= int(G_U128_lengths[dim]));
+            assert(G_U128_meta->stride[G_U128_rank - 1 - dim] <= G_U128_strides[dim]);
+        } else {
+            assert(G_U128_meta->dim[G_U128_rank - 1 - dim] == int(G_U128_lengths[dim]));
+            assert(G_U128_meta->stride[G_U128_rank - 1 - dim] == G_U128_strides[dim]);
+        }
     }
     //
     // E is an input buffer: check metadata
@@ -429,29 +497,33 @@ cudaEvent_t cudaUpchannelizer_hirax_U128::execute(cudaPipelineState& /*pipestate
         assert(std::strncmp(E_meta->dim_name[E_rank - 1 - dim], E_labels[dim],
                             sizeof E_meta->dim_name[E_rank - 1 - dim])
                == 0);
-        if (args::E == args::E && dim == E_index_T)
+        if (args::E == args::E && dim == E_index_T) {
             assert(E_meta->dim[E_rank - 1 - dim] <= int(E_lengths[dim]));
-        else
+            assert(E_meta->stride[E_rank - 1 - dim] <= E_strides[dim]);
+        } else {
             assert(E_meta->dim[E_rank - 1 - dim] == int(E_lengths[dim]));
+            assert(E_meta->stride[E_rank - 1 - dim] == E_strides[dim]);
+        }
     }
     //
-    // Ebar128 is an output buffer: set metadata
-    std::shared_ptr<metadataObject> const Ebar128_mc =
-        args::Ebar128 == args::Ebar128 ? output_ringbuf_signal->get_metadata(0)
-                                       : device.create_gpu_memory_array_metadata(
-                                           Ebar128_memname, gpu_frame_id, E_mc->parent_pool);
-    std::shared_ptr<chordMetadata> const Ebar128_meta = get_chord_metadata(Ebar128_mc);
-    *Ebar128_meta = *E_meta;
-    std::strncpy(Ebar128_meta->name, Ebar128_name, sizeof Ebar128_meta->name);
-    Ebar128_meta->type = Ebar128_type;
-    Ebar128_meta->dims = Ebar128_rank;
-    for (std::ptrdiff_t dim = 0; dim < Ebar128_rank; ++dim) {
-        std::strncpy(Ebar128_meta->dim_name[Ebar128_rank - 1 - dim], Ebar128_labels[dim],
-                     sizeof Ebar128_meta->dim_name[Ebar128_rank - 1 - dim]);
-        Ebar128_meta->dim[Ebar128_rank - 1 - dim] = Ebar128_lengths[dim];
+    // Ebar_U128 is an output buffer: set metadata
+    std::shared_ptr<metadataObject> const Ebar_U128_mc =
+        args::Ebar_U128 == args::Ebar_U128 ? output_ringbuf_signal->get_metadata(0)
+                                           : device.create_gpu_memory_array_metadata(
+                                               Ebar_U128_memname, gpu_frame_id, E_mc->parent_pool);
+    std::shared_ptr<chordMetadata> const Ebar_U128_meta = get_chord_metadata(Ebar_U128_mc);
+    *Ebar_U128_meta = *E_meta;
+    std::strncpy(Ebar_U128_meta->name, Ebar_U128_name, sizeof Ebar_U128_meta->name);
+    Ebar_U128_meta->type = Ebar_U128_type;
+    Ebar_U128_meta->dims = Ebar_U128_rank;
+    for (std::ptrdiff_t dim = 0; dim < Ebar_U128_rank; ++dim) {
+        std::strncpy(Ebar_U128_meta->dim_name[Ebar_U128_rank - 1 - dim], Ebar_U128_labels[dim],
+                     sizeof Ebar_U128_meta->dim_name[Ebar_U128_rank - 1 - dim]);
+        Ebar_U128_meta->dim[Ebar_U128_rank - 1 - dim] = Ebar_U128_lengths[dim];
+        Ebar_U128_meta->stride[Ebar_U128_rank - 1 - dim] = Ebar_U128_strides[dim];
     }
-    DEBUG("output Ebar128 array: {:s} {:s}", Ebar128_meta->get_type_string(),
-          Ebar128_meta->get_dimensions_string());
+    DEBUG("output Ebar_U128 array: {:s} {:s}", Ebar_U128_meta->get_type_string(),
+          Ebar_U128_meta->get_dimensions_string());
     //
 
     record_start_event();
@@ -463,24 +535,27 @@ cudaEvent_t cudaUpchannelizer_hirax_U128::execute(cudaPipelineState& /*pipestate
     std::int32_t Tmax_arg;
     std::int32_t Tbarmin_arg;
     std::int32_t Tbarmax_arg;
-    array_desc G128_arg(G128_memory, G128_length);
+    std::int32_t Fmin_arg;
+    std::int32_t Fmax_arg;
+    array_desc G_U128_arg(G_U128_memory, G_U128_length);
     array_desc E_arg(E_memory, E_length);
-    array_desc Ebar128_arg(Ebar128_memory, Ebar128_length);
+    array_desc Ebar_U128_arg(Ebar_U128_memory, Ebar_U128_length);
     array_desc info_arg(info_memory, info_length);
     void* args[] = {
-        &exc_arg,  &Tmin_arg, &Tmax_arg,    &Tbarmin_arg, &Tbarmax_arg,
-        &G128_arg, &E_arg,    &Ebar128_arg, &info_arg,
+        &exc_arg,  &Tmin_arg,   &Tmax_arg, &Tbarmin_arg,   &Tbarmax_arg, &Fmin_arg,
+        &Fmax_arg, &G_U128_arg, &E_arg,    &Ebar_U128_arg, &info_arg,
     };
 
     // Set E_memory to beginning of input ring buffer
     E_arg = array_desc(E_memory, E_length);
 
     // Set Ebar_memory to beginning of output ring buffer
-    Ebar128_arg = array_desc(Ebar128_memory, Ebar128_length);
+    Ebar_U128_arg = array_desc(Ebar_U128_memory, Ebar_U128_length);
 
     // Ringbuffer size
     const std::ptrdiff_t T_ringbuf = input_ringbuf_signal->size / E_T_sample_bytes;
-    const std::ptrdiff_t Tbar_ringbuf = output_ringbuf_signal->size / Ebar128_Tbar_sample_bytes;
+    const std::ptrdiff_t Tbar_ringbuf =
+        output_ringbuf_signal->size / Ebar_U128_Tbar_U128_sample_bytes;
     DEBUG("Input ringbuffer size (samples):  {:d}", T_ringbuf);
     DEBUG("Output ringbuffer size (samples): {:d}", Tbar_ringbuf);
 
@@ -502,20 +577,24 @@ cudaEvent_t cudaUpchannelizer_hirax_U128::execute(cudaPipelineState& /*pipestate
     Tbarmin_arg = mod(Tbarmin, Tbar_ringbuf);
     Tbarmax_arg = mod(Tbarmin, Tbar_ringbuf) + Tbarlength;
 
+    // Pass frequency spans to kernel
+    Fmin_arg = Fmin;
+    Fmax_arg = Fmax;
+
     // Update metadata
-    Ebar128_meta->dim[Ebar128_rank - 1 - Ebar128_index_Tbar] = Tbarlength;
-    assert(Ebar128_meta->dim[Ebar128_rank - 1 - Ebar128_index_Tbar]
-           <= int(Ebar128_lengths[Ebar128_index_Tbar]));
+    Ebar_U128_meta->dim[Ebar_U128_rank - 1 - Ebar_U128_index_Tbar_U128] = Tbarlength;
+    assert(Ebar_U128_meta->dim[Ebar_U128_rank - 1 - Ebar_U128_index_Tbar_U128]
+           <= int(Ebar_U128_lengths[Ebar_U128_index_Tbar_U128]));
     // Since we use a ring buffer we do not need to update `meta->sample0_offset`
 
-    assert(Ebar128_meta->nfreq >= 0);
-    assert(Ebar128_meta->nfreq == E_meta->nfreq);
-    for (int freq = 0; freq < Ebar128_meta->nfreq; ++freq) {
-        Ebar128_meta->freq_upchan_factor[freq] =
+    assert(Ebar_U128_meta->nfreq >= 0);
+    assert(Ebar_U128_meta->nfreq == E_meta->nfreq);
+    for (int freq = 0; freq < Ebar_U128_meta->nfreq; ++freq) {
+        Ebar_U128_meta->freq_upchan_factor[freq] =
             cuda_upchannelization_factor * E_meta->freq_upchan_factor[freq];
-        Ebar128_meta->half_fpga_sample0[freq] =
+        Ebar_U128_meta->half_fpga_sample0[freq] =
             E_meta->half_fpga_sample0[freq] + cuda_number_of_taps - 1;
-        Ebar128_meta->time_downsampling_fpga[freq] =
+        Ebar_U128_meta->time_downsampling_fpga[freq] =
             cuda_upchannelization_factor * E_meta->time_downsampling_fpga[freq];
     }
 
@@ -533,6 +612,7 @@ cudaEvent_t cudaUpchannelizer_hirax_U128::execute(cudaPipelineState& /*pipestate
                                       shmem_bytes));
 
     DEBUG("Running CUDA Upchannelizer_hirax_U128 on GPU frame {:d}", gpu_frame_id);
+    const int blocks = Fmax - Fmin;
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[symname], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
@@ -555,7 +635,7 @@ cudaEvent_t cudaUpchannelizer_hirax_U128::execute(cudaPipelineState& /*pipestate
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.size(); ++i)
+    for (std::size_t i = 0; i < info_host.size() * blocks / max_blocks; ++i)
         if (info_host[i] != 0)
             ERROR("cudaUpchannelizer_hirax_U128 returned 'info' value {:d} at index {:d} (zero "
                   "indicates no error)",
@@ -580,9 +660,9 @@ void cudaUpchannelizer_hirax_U128::finalize_frame() {
     const std::ptrdiff_t Tbar_produced = Tbarlength;
     DEBUG("Advancing output ringbuffer:");
     DEBUG("    Produced samples: {:d}", Tbar_produced);
-    DEBUG("    Produced bytes:   {:d}", Tbar_produced * Ebar128_Tbar_sample_bytes);
+    DEBUG("    Produced bytes:   {:d}", Tbar_produced * Ebar_U128_Tbar_U128_sample_bytes);
     output_ringbuf_signal->finish_write(unique_name, instance_num,
-                                        Tbar_produced * Ebar128_Tbar_sample_bytes);
+                                        Tbar_produced * Ebar_U128_Tbar_U128_sample_bytes);
 
     cudaCommand::finalize_frame();
 }

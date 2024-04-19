@@ -25,7 +25,7 @@ kernel-description:
     threads: [32, 6]
     blocks: [384]
     shmem_bytes: 13920
-  kernel-symbol: "_Z3frb5Int32S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE"
+  kernel-symbol: "_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE"
   kernel-arguments:
     - name: "Tmin"
       intent: in
@@ -37,6 +37,18 @@ kernel-description:
       intent: in
       type: Int32
     - name: "T̄max"
+      intent: in
+      type: Int32
+    - name: "Fmin"
+      intent: in
+      type: Int32
+    - name: "Fmax"
+      intent: in
+      type: Int32
+    - name: "F̄min"
+      intent: in
+      type: Int32
+    - name: "F̄max"
       intent: in
       type: Int32
     - name: "S"
@@ -61,8 +73,8 @@ kernel-description:
       intent: out
       type: Float16
       indices: [beamP, beamQ, F, Tbar]
-      shape: [16, 24, 384, 1024]
-      strides: [1, 16, 384, 147456]
+      shape: [16, 24, 128, 1024]
+      strides: [1, 16, 384, 49152]
     - name: "info"
       intent: out
       type: Int32

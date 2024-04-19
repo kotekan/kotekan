@@ -12,7 +12,7 @@ kernel-description:
     downsampling-factor: 64
     number-of-complex-components: 2
     number-of-dishes: 64
-    number-of-frequencies: 1536
+    number-of-frequencies: 512
     number-of-polarizations: 2
     number-of-timesamples: 8192
     output-gain: 0.001953125
@@ -23,9 +23,9 @@ kernel-description:
     blocks_per_sm: 4
   call-parameters:
     threads: [32, 6]
-    blocks: [1536]
+    blocks: [512]
     shmem_bytes: 13920
-  kernel-symbol: "_Z3frb5Int32S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE"
+  kernel-symbol: "_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE"
   kernel-arguments:
     - name: "Tmin"
       intent: in
@@ -39,6 +39,18 @@ kernel-description:
     - name: "T̄max"
       intent: in
       type: Int32
+    - name: "Fmin"
+      intent: in
+      type: Int32
+    - name: "Fmax"
+      intent: in
+      type: Int32
+    - name: "F̄min"
+      intent: in
+      type: Int32
+    - name: "F̄max"
+      intent: in
+      type: Int32
     - name: "S"
       intent: in
       type: Int16
@@ -49,24 +61,24 @@ kernel-description:
       intent: in
       type: Float16
       indices: [C, dishM, dishN, P, F]
-      shape: [2, 8, 12, 2, 1536]
-      strides: [1, 2, 16, 192, 384, 589824]
+      shape: [2, 8, 12, 2, 512]
+      strides: [1, 2, 16, 192, 384, 196608]
     - name: "Ē4"
       intent: in
       type: Int4
       indices: [C, D, P, F, T]
-      shape: [2, 64, 2, 1536, 8192]
-      strides: [1, 2, 128, 256, 393216]
+      shape: [2, 64, 2, 512, 8192]
+      strides: [1, 2, 128, 256, 131072]
     - name: "I4"
       intent: out
       type: Float16
       indices: [beamP, beamQ, F, Tbar]
-      shape: [16, 24, 1536, 1024]
-      strides: [1, 16, 384, 589824]
+      shape: [16, 24, 512, 1024]
+      strides: [1, 16, 384, 196608]
     - name: "info"
       intent: out
       type: Int32
       indices: [thread, warp, block]
-      shapes: [32, 6, 1536]
+      shapes: [32, 6, 512]
       strides: [1, 32, 192]
 ...

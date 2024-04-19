@@ -82,16 +82,31 @@ private:
     // Kernel call parameters:
     static constexpr int threads_x = 32;
     static constexpr int threads_y = 24;
-    static constexpr int blocks = 768;
+    static constexpr int max_blocks = 768;
     static constexpr int shmem_bytes = 76896;
 
     // Kernel name:
     static constexpr const char* kernel_symbol =
-        "_Z3frb5Int32S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_"
+        "_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_"
         "I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE";
 
     // Kernel arguments:
-    enum class args { Tbarmin, Tbarmax, Ttildemin, Ttildemax, S, W16, Ebar16, I16, info, count };
+    enum class args {
+        Tbarmin,
+        Tbarmax,
+        Ttildemin,
+        Ttildemax,
+        Fbarmin,
+        Fbarmax,
+        Ftildemin,
+        Ftildemax,
+        S,
+        W_U16,
+        Ebar_U16,
+        I_U16,
+        info,
+        count
+    };
 
     // Tbarmin: Tbarmin
     static constexpr const char* Tbarmin_name = "Tbarmin";
@@ -108,6 +123,22 @@ private:
     // Ttildemax: Ttildemax
     static constexpr const char* Ttildemax_name = "Ttildemax";
     static constexpr chordDataType Ttildemax_type = int32;
+    //
+    // Fbarmin: Fbarmin
+    static constexpr const char* Fbarmin_name = "Fbarmin";
+    static constexpr chordDataType Fbarmin_type = int32;
+    //
+    // Fbarmax: Fbarmax
+    static constexpr const char* Fbarmax_name = "Fbarmax";
+    static constexpr chordDataType Fbarmax_type = int32;
+    //
+    // Ftildemin: Ftildemin
+    static constexpr const char* Ftildemin_name = "Ftildemin";
+    static constexpr chordDataType Ftildemin_type = int32;
+    //
+    // Ftildemax: Ftildemax
+    static constexpr const char* Ftildemax_name = "Ftildemax";
+    static constexpr chordDataType Ftildemax_type = int32;
     //
     // S: gpu_mem_dishlayout
     static constexpr const char* S_name = "S";
@@ -127,78 +158,130 @@ private:
     };
     static constexpr std::size_t S_length = chord_datatype_bytes(S_type) * 2 * 576;
     static_assert(S_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto S_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= S_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, S_rank + 1> S_strides = {
+        S_calc_stride(S_index_MN),
+        S_calc_stride(S_index_D),
+        S_calc_stride(S_rank),
+    };
+    static_assert(S_length == chord_datatype_bytes(S_type) * S_strides[S_rank]);
     //
-    // W16: gpu_mem_phase
-    static constexpr const char* W16_name = "W16";
-    static constexpr chordDataType W16_type = float16;
-    enum W16_indices {
-        W16_index_C,
-        W16_index_dishM,
-        W16_index_dishN,
-        W16_index_P,
-        W16_index_Fbar,
-        W16_rank,
+    // W_U16: gpu_mem_phase
+    static constexpr const char* W_U16_name = "W_U16";
+    static constexpr chordDataType W_U16_type = float16;
+    enum W_U16_indices {
+        W_U16_index_C,
+        W_U16_index_dishM,
+        W_U16_index_dishN,
+        W_U16_index_P,
+        W_U16_index_Fbar_U16,
+        W_U16_rank,
     };
-    static constexpr std::array<const char*, W16_rank> W16_labels = {
-        "C", "dishM", "dishN", "P", "Fbar",
+    static constexpr std::array<const char*, W_U16_rank> W_U16_labels = {
+        "C", "dishM", "dishN", "P", "Fbar_U16",
     };
-    static constexpr std::array<std::size_t, W16_rank> W16_lengths = {
+    static constexpr std::array<std::size_t, W_U16_rank> W_U16_lengths = {
         2, 24, 24, 2, 768,
     };
-    static constexpr std::size_t W16_length =
-        chord_datatype_bytes(W16_type) * 2 * 24 * 24 * 2 * 768;
-    static_assert(W16_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
-    //
-    // Ebar16: gpu_mem_voltage
-    static constexpr const char* Ebar16_name = "Ebar16";
-    static constexpr chordDataType Ebar16_type = int4p4;
-    enum Ebar16_indices {
-        Ebar16_index_D,
-        Ebar16_index_P,
-        Ebar16_index_Fbar,
-        Ebar16_index_Tbar,
-        Ebar16_rank,
+    static constexpr std::size_t W_U16_length =
+        chord_datatype_bytes(W_U16_type) * 2 * 24 * 24 * 2 * 768;
+    static_assert(W_U16_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto W_U16_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= W_U16_lengths[d];
+        return str;
     };
-    static constexpr std::array<const char*, Ebar16_rank> Ebar16_labels = {
+    static constexpr std::array<std::ptrdiff_t, W_U16_rank + 1> W_U16_strides = {
+        W_U16_calc_stride(W_U16_index_C),        W_U16_calc_stride(W_U16_index_dishM),
+        W_U16_calc_stride(W_U16_index_dishN),    W_U16_calc_stride(W_U16_index_P),
+        W_U16_calc_stride(W_U16_index_Fbar_U16), W_U16_calc_stride(W_U16_rank),
+    };
+    static_assert(W_U16_length == chord_datatype_bytes(W_U16_type) * W_U16_strides[W_U16_rank]);
+    //
+    // Ebar_U16: gpu_mem_voltage
+    static constexpr const char* Ebar_U16_name = "Ebar_U16";
+    static constexpr chordDataType Ebar_U16_type = int4p4;
+    enum Ebar_U16_indices {
+        Ebar_U16_index_D,
+        Ebar_U16_index_P,
+        Ebar_U16_index_Fbar_U16,
+        Ebar_U16_index_Tbar_U16,
+        Ebar_U16_rank,
+    };
+    static constexpr std::array<const char*, Ebar_U16_rank> Ebar_U16_labels = {
         "D",
         "P",
-        "Fbar",
-        "Tbar",
+        "Fbar_U16",
+        "Tbar_U16",
     };
-    static constexpr std::array<std::size_t, Ebar16_rank> Ebar16_lengths = {
+    static constexpr std::array<std::size_t, Ebar_U16_rank> Ebar_U16_lengths = {
         512,
         2,
         768,
         2048,
     };
-    static constexpr std::size_t Ebar16_length =
-        chord_datatype_bytes(Ebar16_type) * 512 * 2 * 768 * 2048;
-    static_assert(Ebar16_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
-    //
-    // I16: gpu_mem_beamgrid
-    static constexpr const char* I16_name = "I16";
-    static constexpr chordDataType I16_type = float16;
-    enum I16_indices {
-        I16_index_beamP,
-        I16_index_beamQ,
-        I16_index_Fbar,
-        I16_index_Ttilde,
-        I16_rank,
+    static constexpr std::size_t Ebar_U16_length =
+        chord_datatype_bytes(Ebar_U16_type) * 512 * 2 * 768 * 2048;
+    static_assert(Ebar_U16_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto Ebar_U16_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= Ebar_U16_lengths[d];
+        return str;
     };
-    static constexpr std::array<const char*, I16_rank> I16_labels = {
+    static constexpr std::array<std::ptrdiff_t, Ebar_U16_rank + 1> Ebar_U16_strides = {
+        Ebar_U16_calc_stride(Ebar_U16_index_D),
+        Ebar_U16_calc_stride(Ebar_U16_index_P),
+        Ebar_U16_calc_stride(Ebar_U16_index_Fbar_U16),
+        Ebar_U16_calc_stride(Ebar_U16_index_Tbar_U16),
+        Ebar_U16_calc_stride(Ebar_U16_rank),
+    };
+    static_assert(Ebar_U16_length
+                  == chord_datatype_bytes(Ebar_U16_type) * Ebar_U16_strides[Ebar_U16_rank]);
+    //
+    // I_U16: gpu_mem_beamgrid
+    static constexpr const char* I_U16_name = "I_U16";
+    static constexpr chordDataType I_U16_type = float16;
+    enum I_U16_indices {
+        I_U16_index_beamP,
+        I_U16_index_beamQ,
+        I_U16_index_Fbar_U16,
+        I_U16_index_Ttilde_U16_Tds40,
+        I_U16_rank,
+    };
+    static constexpr std::array<const char*, I_U16_rank> I_U16_labels = {
         "beamP",
         "beamQ",
-        "Fbar",
-        "Ttilde",
+        "Fbar_U16",
+        "Ttilde_U16_Tds40",
     };
-    static constexpr std::array<std::size_t, I16_rank> I16_lengths = {
+    static constexpr std::array<std::size_t, I_U16_rank> I_U16_lengths = {
         48,
         48,
         768,
         512,
     };
-    static constexpr std::size_t I16_length = chord_datatype_bytes(I16_type) * 48 * 48 * 768 * 512;
-    static_assert(I16_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::size_t I_U16_length =
+        chord_datatype_bytes(I_U16_type) * 48 * 48 * 768 * 512;
+    static_assert(I_U16_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto I_U16_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= I_U16_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, I_U16_rank + 1> I_U16_strides = {
+        I_U16_calc_stride(I_U16_index_beamP),    I_U16_calc_stride(I_U16_index_beamQ),
+        I_U16_calc_stride(I_U16_index_Fbar_U16), I_U16_calc_stride(I_U16_index_Ttilde_U16_Tds40),
+        I_U16_calc_stride(I_U16_rank),
+    };
+    static_assert(I_U16_length == chord_datatype_bytes(I_U16_type) * I_U16_strides[I_U16_rank]);
     //
     // info: gpu_mem_info
     static constexpr const char* info_name = "info";
@@ -221,30 +304,49 @@ private:
     };
     static constexpr std::size_t info_length = chord_datatype_bytes(info_type) * 32 * 24 * 768;
     static_assert(info_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto info_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= info_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, info_rank + 1> info_strides = {
+        info_calc_stride(info_index_thread),
+        info_calc_stride(info_index_warp),
+        info_calc_stride(info_index_block),
+        info_calc_stride(info_rank),
+    };
+    static_assert(info_length == chord_datatype_bytes(info_type) * info_strides[info_rank]);
     //
 
     // Kotekan buffer names
     const std::string S_memname;
-    const std::string W16_memname;
-    const std::string Ebar16_memname;
-    const std::string I16_memname;
+    const std::string W_U16_memname;
+    const std::string Ebar_U16_memname;
+    const std::string I_U16_memname;
     const std::string info_memname;
 
     // Host-side buffer arrays
     std::vector<std::uint8_t> S_host;
     std::vector<std::uint8_t> info_host;
 
-    static constexpr std::size_t Ebar16_Tbar_sample_bytes =
-        chord_datatype_bytes(Ebar16_type) * Ebar16_lengths[Ebar16_index_D]
-        * Ebar16_lengths[Ebar16_index_P] * Ebar16_lengths[Ebar16_index_Fbar];
-    static constexpr std::size_t I16_Ttilde_sample_bytes =
-        chord_datatype_bytes(I16_type) * I16_lengths[I16_index_beamP] * I16_lengths[I16_index_beamQ]
-        * I16_lengths[I16_index_Fbar];
+    static constexpr std::size_t Ebar_U16_Tbar_U16_sample_bytes =
+        chord_datatype_bytes(Ebar_U16_type) * Ebar_U16_lengths[Ebar_U16_index_D]
+        * Ebar_U16_lengths[Ebar_U16_index_P] * Ebar_U16_lengths[Ebar_U16_index_Fbar_U16];
+    static constexpr std::size_t I_U16_Ttilde_U16_Tds40_sample_bytes =
+        chord_datatype_bytes(I_U16_type) * I_U16_lengths[I_U16_index_beamP]
+        * I_U16_lengths[I_U16_index_beamQ] * I_U16_lengths[I_U16_index_Fbar_U16];
 
     RingBuffer* const input_ringbuf_signal;
     RingBuffer* const output_ringbuf_signal;
 
     bool did_init_S_host;
+
+    // How many frequencies we will process
+    const int Fbarmin, Fbarmax;
+
+    // How many frequencies we will produce
+    const int Ftildemin, Ftildemax;
 
     // How many samples we will process from the input ringbuffer
     // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
@@ -265,9 +367,9 @@ cudaFRBBeamformer_chord_U16::cudaFRBBeamformer_chord_U16(Config& config,
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "FRBBeamformer_chord_U16", "FRBBeamformer_chord_U16.ptx"),
     S_memname(unique_name + "/gpu_mem_dishlayout"),
-    W16_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
-    Ebar16_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
-    I16_memname(config.get<std::string>(unique_name, "gpu_mem_beamgrid")),
+    W_U16_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
+    Ebar_U16_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
+    I_U16_memname(config.get<std::string>(unique_name, "gpu_mem_beamgrid")),
     info_memname(unique_name + "/gpu_mem_info"),
 
     S_host(S_length), info_host(info_length),
@@ -276,10 +378,13 @@ cudaFRBBeamformer_chord_U16::cudaFRBBeamformer_chord_U16(Config& config,
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")))),
     output_ringbuf_signal(dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "out_signal")))),
-    did_init_S_host(false) {
+    did_init_S_host(false), Fbarmin(config.get<int>(unique_name, "Fbarmin")),
+    Fbarmax(config.get<int>(unique_name, "Fbarmax")),
+    Ftildemin(config.get<int>(unique_name, "Ftildemin")),
+    Ftildemax(config.get<int>(unique_name, "Ftildemax")) {
     // Check ringbuffer sizes
-    assert(input_ringbuf_signal->size == Ebar16_length);
-    assert(output_ringbuf_signal->size == I16_length);
+    assert(input_ringbuf_signal->size == Ebar_U16_length);
+    assert(output_ringbuf_signal->size == I_U16_length);
 
     // Register host memory
     {
@@ -294,9 +399,9 @@ cudaFRBBeamformer_chord_U16::cudaFRBBeamformer_chord_U16(Config& config,
     // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(
         std::make_tuple(get_name() + "_gpu_mem_dishlayout", false, true, true));
-    gpu_buffers_used.push_back(std::make_tuple(W16_memname, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(Ebar16_memname, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(I16_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(W_U16_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(Ebar_U16_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple(I_U16_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
@@ -346,7 +451,7 @@ int cudaFRBBeamformer_chord_U16::wait_on_precondition() {
     DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
 
     // How many inputs samples are available?
-    const std::size_t Tbar_available = div_noremainder(input_bytes, Ebar16_Tbar_sample_bytes);
+    const std::size_t Tbar_available = div_noremainder(input_bytes, Ebar_U16_Tbar_U16_sample_bytes);
     DEBUG("Available samples:      Tbar_available: {:d}", Tbar_available);
 
     // How many outputs will we process and consume?
@@ -360,12 +465,12 @@ int cudaFRBBeamformer_chord_U16::wait_on_precondition() {
     assert(Tbar_consumed2 == Tbar_consumed);
 
     const std::optional<std::size_t> val_in2 = input_ringbuf_signal->wait_and_claim_readable(
-        unique_name, instance_num, Tbar_consumed * Ebar16_Tbar_sample_bytes);
+        unique_name, instance_num, Tbar_consumed * Ebar_U16_Tbar_U16_sample_bytes);
     if (!val_in2.has_value())
         return -1;
     const std::size_t input_cursor = val_in2.value();
     DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
-    Tbarmin = div_noremainder(input_cursor, Ebar16_Tbar_sample_bytes);
+    Tbarmin = div_noremainder(input_cursor, Ebar_U16_Tbar_U16_sample_bytes);
     Tbarmax = Tbarmin + Tbar_processed;
     const std::size_t Tbarlength = Tbarmax - Tbarmin;
     DEBUG("Input samples:");
@@ -379,7 +484,7 @@ int cudaFRBBeamformer_chord_U16::wait_on_precondition() {
     const std::size_t Ttildelength = Ttilde_produced;
 
     // to bytes
-    const std::size_t output_bytes = Ttildelength * I16_Ttilde_sample_bytes;
+    const std::size_t output_bytes = Ttildelength * I_U16_Ttilde_U16_Tds40_sample_bytes;
     DEBUG("Will produce {:d} output bytes", output_bytes);
 
     // Wait for space to be available in our output ringbuffer...
@@ -392,8 +497,8 @@ int cudaFRBBeamformer_chord_U16::wait_on_precondition() {
     const std::size_t output_cursor = val_out.value();
     DEBUG("Output ring-buffer byte offset {:d}", output_cursor);
 
-    assert(mod(output_cursor, I16_Ttilde_sample_bytes) == 0);
-    Ttildemin = output_cursor / I16_Ttilde_sample_bytes;
+    assert(mod(output_cursor, I_U16_Ttilde_U16_Tds40_sample_bytes) == 0);
+    Ttildemin = output_cursor / I_U16_Ttilde_U16_Tds40_sample_bytes;
     Ttildemax = Ttildemin + Ttildelength;
     DEBUG("Output samples:");
     DEBUG("    Ttildemin:    {:d}", Ttildemin);
@@ -409,127 +514,193 @@ cudaEvent_t cudaFRBBeamformer_chord_U16::execute(cudaPipelineState& /*pipestate*
 
     S_host.resize(S_length);
     void* const S_memory = device.get_gpu_memory(S_memname, S_length);
-    void* const W16_memory =
-        args::W16 == args::Ebar16 ? device.get_gpu_memory(W16_memname, input_ringbuf_signal->size)
-        : args::W16 == args::I16  ? device.get_gpu_memory(W16_memname, output_ringbuf_signal->size)
-        : args::W16 == args::W16
-            ? device.get_gpu_memory(W16_memname, W16_length)
-            : device.get_gpu_memory_array(W16_memname, gpu_frame_id, _gpu_buffer_depth, W16_length);
-    void* const Ebar16_memory =
-        args::Ebar16 == args::Ebar16
-            ? device.get_gpu_memory(Ebar16_memname, input_ringbuf_signal->size)
-        : args::Ebar16 == args::I16
-            ? device.get_gpu_memory(Ebar16_memname, output_ringbuf_signal->size)
-        : args::Ebar16 == args::W16 ? device.get_gpu_memory(Ebar16_memname, Ebar16_length)
-                                    : device.get_gpu_memory_array(Ebar16_memname, gpu_frame_id,
-                                                                  _gpu_buffer_depth, Ebar16_length);
-    void* const I16_memory =
-        args::I16 == args::Ebar16 ? device.get_gpu_memory(I16_memname, input_ringbuf_signal->size)
-        : args::I16 == args::I16  ? device.get_gpu_memory(I16_memname, output_ringbuf_signal->size)
-        : args::I16 == args::W16
-            ? device.get_gpu_memory(I16_memname, I16_length)
-            : device.get_gpu_memory_array(I16_memname, gpu_frame_id, _gpu_buffer_depth, I16_length);
+    void* const W_U16_memory =
+        args::W_U16 == args::Ebar_U16
+            ? device.get_gpu_memory(W_U16_memname, input_ringbuf_signal->size)
+        : args::W_U16 == args::I_U16
+            ? device.get_gpu_memory(W_U16_memname, output_ringbuf_signal->size)
+        : args::W_U16 == args::W_U16 ? device.get_gpu_memory(W_U16_memname, W_U16_length)
+                                     : device.get_gpu_memory_array(W_U16_memname, gpu_frame_id,
+                                                                   _gpu_buffer_depth, W_U16_length);
+    void* const Ebar_U16_memory =
+        args::Ebar_U16 == args::Ebar_U16
+            ? device.get_gpu_memory(Ebar_U16_memname, input_ringbuf_signal->size)
+        : args::Ebar_U16 == args::I_U16
+            ? device.get_gpu_memory(Ebar_U16_memname, output_ringbuf_signal->size)
+        : args::Ebar_U16 == args::W_U16
+            ? device.get_gpu_memory(Ebar_U16_memname, Ebar_U16_length)
+            : device.get_gpu_memory_array(Ebar_U16_memname, gpu_frame_id, _gpu_buffer_depth,
+                                          Ebar_U16_length);
+    void* const I_U16_memory =
+        args::I_U16 == args::Ebar_U16
+            ? device.get_gpu_memory(I_U16_memname, input_ringbuf_signal->size)
+        : args::I_U16 == args::I_U16
+            ? device.get_gpu_memory(I_U16_memname, output_ringbuf_signal->size)
+        : args::I_U16 == args::W_U16 ? device.get_gpu_memory(I_U16_memname, I_U16_length)
+                                     : device.get_gpu_memory_array(I_U16_memname, gpu_frame_id,
+                                                                   _gpu_buffer_depth, I_U16_length);
     info_host.resize(info_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
 
-    // W16 is an input buffer: check metadata
-    const std::shared_ptr<metadataObject> W16_mc =
-        args::W16 == args::Ebar16 ? input_ringbuf_signal->get_metadata(0)
-                                  : device.get_gpu_memory_array_metadata(W16_memname, gpu_frame_id);
-    assert(W16_mc);
-    assert(metadata_is_chord(W16_mc));
-    const std::shared_ptr<chordMetadata> W16_meta = get_chord_metadata(W16_mc);
-    DEBUG("input W16 array: {:s} {:s}", W16_meta->get_type_string(),
-          W16_meta->get_dimensions_string());
-    if (args::W16 == args::Ebar16 && 16 == 1) {
-        // Replace "Ebar1" with "E" etc. because we don't run the upchannelizer for U=1
-        assert(std::strncmp(W16_meta->name, "E", sizeof W16_meta->name) == 0);
-        assert(W16_meta->type == W16_type);
-        assert(W16_meta->dims == 4);
-        assert(std::strncmp(W16_meta->dim_name[3], "D", sizeof W16_meta->dim_name[3]) == 0);
-        assert(W16_meta->dim[3] == int(Ebar16_lengths[0]));
-        assert(std::strncmp(W16_meta->dim_name[2], "P", sizeof W16_meta->dim_name[2]) == 0);
-        assert(W16_meta->dim[2] == int(Ebar16_lengths[1]));
-        assert(std::strncmp(W16_meta->dim_name[1], "F", sizeof W16_meta->dim_name[1]) == 0);
-        assert(W16_meta->dim[1] == int(Ebar16_lengths[2]));
-        assert(std::strncmp(W16_meta->dim_name[0], "T", sizeof W16_meta->dim_name[0]) == 0);
-        assert(W16_meta->dim[0] <= int(Ebar16_lengths[3]));
-    } else {
-        assert(std::strncmp(W16_meta->name, W16_name, sizeof W16_meta->name) == 0);
-        assert(W16_meta->type == W16_type);
-        assert(W16_meta->dims == W16_rank);
-        for (std::size_t dim = 0; dim < W16_rank; ++dim) {
-            assert(std::strncmp(W16_meta->dim_name[W16_rank - 1 - dim], W16_labels[dim],
-                                sizeof W16_meta->dim_name[W16_rank - 1 - dim])
-                   == 0);
-            if (args::W16 == args::Ebar16 && dim == Ebar16_index_Tbar)
-                assert(W16_meta->dim[W16_rank - 1 - dim] <= int(W16_lengths[dim]));
-            else
-                assert(W16_meta->dim[W16_rank - 1 - dim] == int(W16_lengths[dim]));
-        }
-    }
-    //
-    // Ebar16 is an input buffer: check metadata
-    const std::shared_ptr<metadataObject> Ebar16_mc =
-        args::Ebar16 == args::Ebar16
+    // W_U16 is an input buffer: check metadata
+    const std::shared_ptr<metadataObject> W_U16_mc =
+        args::W_U16 == args::Ebar_U16
             ? input_ringbuf_signal->get_metadata(0)
-            : device.get_gpu_memory_array_metadata(Ebar16_memname, gpu_frame_id);
-    assert(Ebar16_mc);
-    assert(metadata_is_chord(Ebar16_mc));
-    const std::shared_ptr<chordMetadata> Ebar16_meta = get_chord_metadata(Ebar16_mc);
-    DEBUG("input Ebar16 array: {:s} {:s}", Ebar16_meta->get_type_string(),
-          Ebar16_meta->get_dimensions_string());
-    if (args::Ebar16 == args::Ebar16 && 16 == 1) {
-        // Replace "Ebar1" with "E" etc. because we don't run the upchannelizer for U=1
-        assert(std::strncmp(Ebar16_meta->name, "E", sizeof Ebar16_meta->name) == 0);
-        assert(Ebar16_meta->type == Ebar16_type);
-        assert(Ebar16_meta->dims == 4);
-        assert(std::strncmp(Ebar16_meta->dim_name[3], "D", sizeof Ebar16_meta->dim_name[3]) == 0);
-        assert(Ebar16_meta->dim[3] == int(Ebar16_lengths[0]));
-        assert(std::strncmp(Ebar16_meta->dim_name[2], "P", sizeof Ebar16_meta->dim_name[2]) == 0);
-        assert(Ebar16_meta->dim[2] == int(Ebar16_lengths[1]));
-        assert(std::strncmp(Ebar16_meta->dim_name[1], "F", sizeof Ebar16_meta->dim_name[1]) == 0);
-        assert(Ebar16_meta->dim[1] == int(Ebar16_lengths[2]));
-        assert(std::strncmp(Ebar16_meta->dim_name[0], "T", sizeof Ebar16_meta->dim_name[0]) == 0);
-        assert(Ebar16_meta->dim[0] <= int(Ebar16_lengths[3]));
+            : device.get_gpu_memory_array_metadata(W_U16_memname, gpu_frame_id);
+    assert(W_U16_mc);
+    assert(metadata_is_chord(W_U16_mc));
+    const std::shared_ptr<chordMetadata> W_U16_meta = get_chord_metadata(W_U16_mc);
+    DEBUG("input W_U16 array: {:s} {:s}", W_U16_meta->get_type_string(),
+          W_U16_meta->get_dimensions_string());
+    const auto output_meta_W_U16 = [&]() {
+        std::ostringstream buf;
+        buf << "    name: " << (W_U16_meta)->name << "\n"
+            << "    type: " << chord_datatype_string((W_U16_meta)->type) << "\n"
+            << "    dim: [";
+        for (int d = 0; d < (W_U16_meta)->dims; ++d)
+            buf << (W_U16_meta)->dim[d] << ", ";
+        buf << "]\n"
+            << "    stride: [";
+        for (int d = 0; d < (W_U16_meta)->dims; ++d)
+            buf << (W_U16_meta)->stride[d] << ", ";
+        buf << "]\n";
+        return buf.str();
+    };
+    if (args::W_U16 == args::Ebar_U16 && 16 == 1) {
+        // Replace "Ebar_U1" with "E" etc. because we don't run the upchannelizer for U=1
+        assert(std::strncmp(W_U16_meta->name, "E", sizeof W_U16_meta->name) == 0);
+        assert(W_U16_meta->type == W_U16_type);
+        assert(W_U16_meta->dims == 4);
+        assert(std::strncmp(W_U16_meta->dim_name[3], "D", sizeof W_U16_meta->dim_name[3]) == 0);
+        assert(W_U16_meta->dim[3] == int(Ebar_U16_lengths[0]));
+        assert(W_U16_meta->stride[3] == Ebar_U16_strides[0]);
+        assert(std::strncmp(W_U16_meta->dim_name[2], "P", sizeof W_U16_meta->dim_name[2]) == 0);
+        assert(W_U16_meta->dim[2] == int(Ebar_U16_lengths[1]));
+        assert(W_U16_meta->stride[2] == Ebar_U16_strides[1]);
+        assert(std::strncmp(W_U16_meta->dim_name[1], "F", sizeof W_U16_meta->dim_name[1]) == 0);
+        assert(W_U16_meta->dim[1] == int(Ebar_U16_lengths[2]));
+        assert(W_U16_meta->stride[1] == Ebar_U16_strides[2]);
+        assert(std::strncmp(W_U16_meta->dim_name[0], "T", sizeof W_U16_meta->dim_name[0]) == 0);
+        assert(W_U16_meta->dim[0] <= int(Ebar_U16_lengths[3]));
+        assert(W_U16_meta->stride[0] == Ebar_U16_strides[3]);
     } else {
-        assert(std::strncmp(Ebar16_meta->name, Ebar16_name, sizeof Ebar16_meta->name) == 0);
-        assert(Ebar16_meta->type == Ebar16_type);
-        assert(Ebar16_meta->dims == Ebar16_rank);
-        for (std::size_t dim = 0; dim < Ebar16_rank; ++dim) {
-            assert(std::strncmp(Ebar16_meta->dim_name[Ebar16_rank - 1 - dim], Ebar16_labels[dim],
-                                sizeof Ebar16_meta->dim_name[Ebar16_rank - 1 - dim])
+        assert(std::strncmp(W_U16_meta->name, W_U16_name, sizeof W_U16_meta->name) == 0);
+        assert(W_U16_meta->type == W_U16_type);
+        assert(W_U16_meta->dims == W_U16_rank);
+        for (std::size_t dim = 0; dim < W_U16_rank; ++dim) {
+            assert(std::strncmp(W_U16_meta->dim_name[W_U16_rank - 1 - dim], W_U16_labels[dim],
+                                sizeof W_U16_meta->dim_name[W_U16_rank - 1 - dim])
                    == 0);
-            if (args::Ebar16 == args::Ebar16 && dim == Ebar16_index_Tbar)
-                assert(Ebar16_meta->dim[Ebar16_rank - 1 - dim] <= int(Ebar16_lengths[dim]));
-            else
-                assert(Ebar16_meta->dim[Ebar16_rank - 1 - dim] == int(Ebar16_lengths[dim]));
+            if ((args::W_U16 == args::Ebar_U16 && dim == Ebar_U16_rank - 1)
+                || (args::W_U16 == args::W_U16 && dim == W_U16_rank - 1)) {
+                assert(W_U16_meta->dim[W_U16_rank - 1 - dim] <= int(W_U16_lengths[dim]));
+                assert(W_U16_meta->stride[W_U16_rank - 1 - dim] == W_U16_strides[dim]);
+            } else {
+                if (!(W_U16_meta->dim[W_U16_rank - 1 - dim] == int(W_U16_lengths[dim]))) {
+                    ERROR("Will encounter failing assert");
+                    ERROR("dim: {}", dim);
+                    ERROR("context:\n{}", output_meta_W_U16());
+                }
+                assert(W_U16_meta->dim[W_U16_rank - 1 - dim] == int(W_U16_lengths[dim]));
+                assert(W_U16_meta->stride[W_U16_rank - 1 - dim] == W_U16_strides[dim]);
+            }
         }
     }
     //
-    // I16 is an output buffer: set metadata
-    std::shared_ptr<metadataObject> const I16_mc =
-        args::I16 == args::I16 ? output_ringbuf_signal->get_metadata(0)
-                               : device.create_gpu_memory_array_metadata(I16_memname, gpu_frame_id,
-                                                                         Ebar16_mc->parent_pool);
-    std::shared_ptr<chordMetadata> const I16_meta = get_chord_metadata(I16_mc);
-    *I16_meta = *Ebar16_meta;
-    std::strncpy(I16_meta->name, I16_name, sizeof I16_meta->name);
-    I16_meta->type = I16_type;
-    I16_meta->dims = I16_rank;
-    for (std::size_t dim = 0; dim < I16_rank; ++dim) {
-        std::strncpy(I16_meta->dim_name[I16_rank - 1 - dim], I16_labels[dim],
-                     sizeof I16_meta->dim_name[I16_rank - 1 - dim]);
-        I16_meta->dim[I16_rank - 1 - dim] = I16_lengths[dim];
+    // Ebar_U16 is an input buffer: check metadata
+    const std::shared_ptr<metadataObject> Ebar_U16_mc =
+        args::Ebar_U16 == args::Ebar_U16
+            ? input_ringbuf_signal->get_metadata(0)
+            : device.get_gpu_memory_array_metadata(Ebar_U16_memname, gpu_frame_id);
+    assert(Ebar_U16_mc);
+    assert(metadata_is_chord(Ebar_U16_mc));
+    const std::shared_ptr<chordMetadata> Ebar_U16_meta = get_chord_metadata(Ebar_U16_mc);
+    DEBUG("input Ebar_U16 array: {:s} {:s}", Ebar_U16_meta->get_type_string(),
+          Ebar_U16_meta->get_dimensions_string());
+    const auto output_meta_Ebar_U16 = [&]() {
+        std::ostringstream buf;
+        buf << "    name: " << (Ebar_U16_meta)->name << "\n"
+            << "    type: " << chord_datatype_string((Ebar_U16_meta)->type) << "\n"
+            << "    dim: [";
+        for (int d = 0; d < (Ebar_U16_meta)->dims; ++d)
+            buf << (Ebar_U16_meta)->dim[d] << ", ";
+        buf << "]\n"
+            << "    stride: [";
+        for (int d = 0; d < (Ebar_U16_meta)->dims; ++d)
+            buf << (Ebar_U16_meta)->stride[d] << ", ";
+        buf << "]\n";
+        return buf.str();
+    };
+    if (args::Ebar_U16 == args::Ebar_U16 && 16 == 1) {
+        // Replace "Ebar_U1" with "E" etc. because we don't run the upchannelizer for U=1
+        assert(std::strncmp(Ebar_U16_meta->name, "E", sizeof Ebar_U16_meta->name) == 0);
+        assert(Ebar_U16_meta->type == Ebar_U16_type);
+        assert(Ebar_U16_meta->dims == 4);
+        assert(std::strncmp(Ebar_U16_meta->dim_name[3], "D", sizeof Ebar_U16_meta->dim_name[3])
+               == 0);
+        assert(Ebar_U16_meta->dim[3] == int(Ebar_U16_lengths[0]));
+        assert(Ebar_U16_meta->stride[3] == Ebar_U16_strides[0]);
+        assert(std::strncmp(Ebar_U16_meta->dim_name[2], "P", sizeof Ebar_U16_meta->dim_name[2])
+               == 0);
+        assert(Ebar_U16_meta->dim[2] == int(Ebar_U16_lengths[1]));
+        assert(Ebar_U16_meta->stride[2] == Ebar_U16_strides[1]);
+        assert(std::strncmp(Ebar_U16_meta->dim_name[1], "F", sizeof Ebar_U16_meta->dim_name[1])
+               == 0);
+        assert(Ebar_U16_meta->dim[1] == int(Ebar_U16_lengths[2]));
+        assert(Ebar_U16_meta->stride[1] == Ebar_U16_strides[2]);
+        assert(std::strncmp(Ebar_U16_meta->dim_name[0], "T", sizeof Ebar_U16_meta->dim_name[0])
+               == 0);
+        assert(Ebar_U16_meta->dim[0] <= int(Ebar_U16_lengths[3]));
+        assert(Ebar_U16_meta->stride[0] == Ebar_U16_strides[3]);
+    } else {
+        assert(std::strncmp(Ebar_U16_meta->name, Ebar_U16_name, sizeof Ebar_U16_meta->name) == 0);
+        assert(Ebar_U16_meta->type == Ebar_U16_type);
+        assert(Ebar_U16_meta->dims == Ebar_U16_rank);
+        for (std::size_t dim = 0; dim < Ebar_U16_rank; ++dim) {
+            assert(std::strncmp(Ebar_U16_meta->dim_name[Ebar_U16_rank - 1 - dim],
+                                Ebar_U16_labels[dim],
+                                sizeof Ebar_U16_meta->dim_name[Ebar_U16_rank - 1 - dim])
+                   == 0);
+            if ((args::Ebar_U16 == args::Ebar_U16 && dim == Ebar_U16_rank - 1)
+                || (args::Ebar_U16 == args::W_U16 && dim == W_U16_rank - 1)) {
+                assert(Ebar_U16_meta->dim[Ebar_U16_rank - 1 - dim] <= int(Ebar_U16_lengths[dim]));
+                assert(Ebar_U16_meta->stride[Ebar_U16_rank - 1 - dim] == Ebar_U16_strides[dim]);
+            } else {
+                if (!(Ebar_U16_meta->dim[Ebar_U16_rank - 1 - dim] == int(Ebar_U16_lengths[dim]))) {
+                    ERROR("Will encounter failing assert");
+                    ERROR("dim: {}", dim);
+                    ERROR("context:\n{}", output_meta_Ebar_U16());
+                }
+                assert(Ebar_U16_meta->dim[Ebar_U16_rank - 1 - dim] == int(Ebar_U16_lengths[dim]));
+                assert(Ebar_U16_meta->stride[Ebar_U16_rank - 1 - dim] == Ebar_U16_strides[dim]);
+            }
+        }
     }
-    DEBUG("output I16 array: {:s} {:s}", I16_meta->get_type_string(),
-          I16_meta->get_dimensions_string());
+    //
+    // I_U16 is an output buffer: set metadata
+    std::shared_ptr<metadataObject> const I_U16_mc =
+        args::I_U16 == args::I_U16 ? output_ringbuf_signal->get_metadata(0)
+                                   : device.create_gpu_memory_array_metadata(
+                                       I_U16_memname, gpu_frame_id, Ebar_U16_mc->parent_pool);
+    std::shared_ptr<chordMetadata> const I_U16_meta = get_chord_metadata(I_U16_mc);
+    *I_U16_meta = *Ebar_U16_meta;
+    std::strncpy(I_U16_meta->name, I_U16_name, sizeof I_U16_meta->name);
+    I_U16_meta->type = I_U16_type;
+    I_U16_meta->dims = I_U16_rank;
+    for (std::size_t dim = 0; dim < I_U16_rank; ++dim) {
+        std::strncpy(I_U16_meta->dim_name[I_U16_rank - 1 - dim], I_U16_labels[dim],
+                     sizeof I_U16_meta->dim_name[I_U16_rank - 1 - dim]);
+        I_U16_meta->dim[I_U16_rank - 1 - dim] = I_U16_lengths[dim];
+        I_U16_meta->stride[I_U16_rank - 1 - dim] = I_U16_strides[dim];
+    }
+    DEBUG("output I_U16 array: {:s} {:s}", I_U16_meta->get_type_string(),
+          I_U16_meta->get_dimensions_string());
     //
 
-    assert(Ebar16_meta->ndishes == cuda_number_of_dishes);
-    assert(Ebar16_meta->n_dish_locations_ew == cuda_dish_layout_N);
-    assert(Ebar16_meta->n_dish_locations_ns == cuda_dish_layout_M);
-    assert(Ebar16_meta->dish_index);
+    assert(Ebar_U16_meta->ndishes == cuda_number_of_dishes);
+    assert(Ebar_U16_meta->n_dish_locations_ew == cuda_dish_layout_N);
+    assert(Ebar_U16_meta->n_dish_locations_ns == cuda_dish_layout_M);
+    assert(Ebar_U16_meta->dish_index);
 
     record_start_event();
 
@@ -540,25 +711,31 @@ cudaEvent_t cudaFRBBeamformer_chord_U16::execute(cudaPipelineState& /*pipestate*
     std::int32_t Tbarmax_arg;
     std::int32_t Ttildemin_arg;
     std::int32_t Ttildemax_arg;
+    std::int32_t Fbarmin_arg;
+    std::int32_t Fbarmax_arg;
+    std::int32_t Ftildemin_arg;
+    std::int32_t Ftildemax_arg;
     array_desc S_arg(S_memory, S_length);
-    array_desc W16_arg(W16_memory, W16_length);
-    array_desc Ebar16_arg(Ebar16_memory, Ebar16_length);
-    array_desc I16_arg(I16_memory, I16_length);
+    array_desc W_U16_arg(W_U16_memory, W_U16_length);
+    array_desc Ebar_U16_arg(Ebar_U16_memory, Ebar_U16_length);
+    array_desc I_U16_arg(I_U16_memory, I_U16_length);
     array_desc info_arg(info_memory, info_length);
     void* args[] = {
-        &exc_arg, &Tbarmin_arg, &Tbarmax_arg, &Ttildemin_arg, &Ttildemax_arg,
-        &S_arg,   &W16_arg,     &Ebar16_arg,  &I16_arg,       &info_arg,
+        &exc_arg,     &Tbarmin_arg,  &Tbarmax_arg,   &Ttildemin_arg, &Ttildemax_arg,
+        &Fbarmin_arg, &Fbarmax_arg,  &Ftildemin_arg, &Ftildemax_arg, &S_arg,
+        &W_U16_arg,   &Ebar_U16_arg, &I_U16_arg,     &info_arg,
     };
 
-    // Set Ebar16_memory to beginning of input ring buffer
-    Ebar16_arg = array_desc(Ebar16_memory, Ebar16_length);
+    // Set Ebar_memory to beginning of input ring buffer
+    Ebar_U16_arg = array_desc(Ebar_U16_memory, Ebar_U16_length);
 
     // Set I_memory to beginning of output ring buffer
-    I16_arg = array_desc(I16_memory, I16_length);
+    I_U16_arg = array_desc(I_U16_memory, I_U16_length);
 
     // Ringbuffer size
-    const std::size_t Tbar_ringbuf = input_ringbuf_signal->size / Ebar16_Tbar_sample_bytes;
-    const std::size_t Ttilde_ringbuf = output_ringbuf_signal->size / I16_Ttilde_sample_bytes;
+    const std::size_t Tbar_ringbuf = input_ringbuf_signal->size / Ebar_U16_Tbar_U16_sample_bytes;
+    const std::size_t Ttilde_ringbuf =
+        output_ringbuf_signal->size / I_U16_Ttilde_U16_Tds40_sample_bytes;
     DEBUG("Input ringbuffer size (samples):  {:d}", Tbar_ringbuf);
     DEBUG("Output ringbuffer size (samples): {:d}", Ttilde_ringbuf);
 
@@ -580,19 +757,26 @@ cudaEvent_t cudaFRBBeamformer_chord_U16::execute(cudaPipelineState& /*pipestate*
     Ttildemin_arg = mod(Ttildemin, Ttilde_ringbuf);
     Ttildemax_arg = mod(Ttildemin, Ttilde_ringbuf) + Ttildelength;
 
+    // Pass frequency spans to kernel
+    Fbarmin_arg = Fbarmin;
+    Fbarmax_arg = Fbarmax;
+    Ftildemin_arg = Ftildemin;
+    Ftildemax_arg = Ftildemax;
+
     // Update metadata
-    I16_meta->dim[I16_rank - 1 - I16_index_Ttilde] = Ttildelength;
-    assert(I16_meta->dim[I16_rank - 1 - I16_index_Ttilde] <= int(I16_lengths[I16_index_Ttilde]));
+    I_U16_meta->dim[I_U16_rank - 1 - I_U16_index_Ttilde_U16_Tds40] = Ttildelength;
+    assert(I_U16_meta->dim[I_U16_rank - 1 - I_U16_index_Ttilde_U16_Tds40]
+           <= int(I_U16_lengths[I_U16_index_Ttilde_U16_Tds40]));
     // Since we use a ring buffer we do not need to update `meta->sample0_offset`
 
-    assert(I16_meta->nfreq >= 0);
-    assert(I16_meta->nfreq == Ebar16_meta->nfreq);
-    for (int freq = 0; freq < I16_meta->nfreq; ++freq) {
-        I16_meta->freq_upchan_factor[freq] =
-            cuda_downsampling_factor * Ebar16_meta->freq_upchan_factor[freq];
+    assert(I_U16_meta->nfreq >= 0);
+    assert(I_U16_meta->nfreq == Ebar_U16_meta->nfreq);
+    for (int freq = 0; freq < I_U16_meta->nfreq; ++freq) {
+        I_U16_meta->freq_upchan_factor[freq] =
+            cuda_downsampling_factor * Ebar_U16_meta->freq_upchan_factor[freq];
         // I_meta->half_fpga_sample0[freq] = Evar_meta->half_fpga_sample0[freq];
-        I16_meta->time_downsampling_fpga[freq] =
-            cuda_downsampling_factor * Ebar16_meta->time_downsampling_fpga[freq];
+        I_U16_meta->time_downsampling_fpga[freq] =
+            cuda_downsampling_factor * Ebar_U16_meta->time_downsampling_fpga[freq];
     }
 
     // Initialize `S` and copy it to the GPU
@@ -605,7 +789,7 @@ cudaEvent_t cudaFRBBeamformer_chord_U16::execute(cudaPipelineState& /*pipestate*
         int surplus_dish_index = cuda_number_of_dishes;
         for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
             for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
-                int dish_index = Ebar16_meta->get_dish_index(locN, locM);
+                int dish_index = Ebar_U16_meta->get_dish_index(locN, locM);
                 if (dish_index >= 0) {
                     // This location holds a real dish, record its location
                     S[2 * dish_index + 0] = locM;
@@ -619,6 +803,9 @@ cudaEvent_t cudaFRBBeamformer_chord_U16::execute(cudaPipelineState& /*pipestate*
             }
         }
         assert(surplus_dish_index == cuda_dish_layout_M * cuda_dish_layout_N);
+        INFO("M={} N={}", cuda_dish_layout_M, cuda_dish_layout_N);
+        for (int i = 0; i < int(S_host.size() / 2); i += 2)
+            INFO("    S[{}] = ({}, {})", i / 2, S[i], S[i + 1]);
 
         CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, S_host.data(), S_length, cudaMemcpyHostToDevice,
                                          device.getStream(cuda_stream_id)));
@@ -643,6 +830,12 @@ cudaEvent_t cudaFRBBeamformer_chord_U16::execute(cudaPipelineState& /*pipestate*
                                       shmem_bytes));
 
     DEBUG("Running CUDA FRBBeamformer_chord_U16 on GPU frame {:d}", gpu_frame_id);
+    assert(0 <= Fbarmin && Fbarmin <= Fbarmax);
+    assert(0 <= Ftildemin && Ftildemin <= Ftildemax);
+    assert(Ftildemax - Ftildemin == Fbarmax - Fbarmin);
+    const int blocks = Fbarmax - Fbarmin;
+    assert(0 <= blocks);
+    assert(blocks <= max_blocks);
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[symname], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
@@ -665,7 +858,7 @@ cudaEvent_t cudaFRBBeamformer_chord_U16::execute(cudaPipelineState& /*pipestate*
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.size(); ++i)
+    for (std::size_t i = 0; i < info_host.size() * blocks / max_blocks; ++i)
         if (info_host[i] != 0)
             ERROR("cudaFRBBeamformer_chord_U16 returned 'info' value {:d} at index {:d} (zero "
                   "indicates no error)",
@@ -683,17 +876,17 @@ void cudaFRBBeamformer_chord_U16::finalize_frame() {
     const std::size_t Tbar_consumed = num_consumed_elements(Tbarlength);
     DEBUG("Advancing input ringbuffer:");
     DEBUG("    Consumed samples: {:d}", Tbar_consumed);
-    DEBUG("    Consumed bytes:   {:d}", Tbar_consumed * Ebar16_Tbar_sample_bytes);
+    DEBUG("    Consumed bytes:   {:d}", Tbar_consumed * Ebar_U16_Tbar_U16_sample_bytes);
     input_ringbuf_signal->finish_read(unique_name, instance_num,
-                                      Tbar_consumed * Ebar16_Tbar_sample_bytes);
+                                      Tbar_consumed * Ebar_U16_Tbar_U16_sample_bytes);
 
     // Advance the output ringbuffer
     const std::size_t Ttilde_produced = Ttildelength;
     DEBUG("Advancing output ringbuffer:");
     DEBUG("    Produced samples: {:d}", Ttilde_produced);
-    DEBUG("    Produced bytes:   {:d}", Ttilde_produced * I16_Ttilde_sample_bytes);
+    DEBUG("    Produced bytes:   {:d}", Ttilde_produced * I_U16_Ttilde_U16_Tds40_sample_bytes);
     output_ringbuf_signal->finish_write(unique_name, instance_num,
-                                        Ttilde_produced * I16_Ttilde_sample_bytes);
+                                        Ttilde_produced * I_U16_Ttilde_U16_Tds40_sample_bytes);
 
     cudaCommand::finalize_frame();
 }

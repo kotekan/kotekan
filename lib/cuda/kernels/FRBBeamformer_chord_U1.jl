@@ -3,17 +3,34 @@
 # Do not modify this file, your changes will be lost.
 
 @fastmath @inbounds(
-    begin #= /localhome/eschnett/src/kotekan/julia/kernels/frb.jl:1784 =#
+    begin #= /localhome/eschnett/src/kotekan/julia/kernels/frb.jl:1860 =#
         info = 1
         if true
             info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
                 info
         end
         if !(
-            0i32 ≤ Tmin ≤ Tmax ≤ 65536 &&
-            ((Tmax - Tmin) % 48 == 0i32 && (0i32 ≤ T̄min ≤ T̄max ≤ 16384 && T̄max - T̄min == (Tmax - Tmin) ÷ 40))
+            0i32 ≤ Tmin < 32768 && (
+                Tmin ≤ Tmax < 65536 && (
+                    (Tmax - Tmin) % 48 == 0i32 &&
+                    (0i32 ≤ T̄min < 8192 && (T̄min ≤ T̄max < 16384 && T̄max - T̄min == (Tmax - Tmin) ÷ 40))
+                )
+            )
         )
             info = 2
+            if true
+                info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                    info
+            end
+            IndexSpaces.cuda_trap()
+        end
+        if !(
+            0i32 ≤ Fmin ≤ Fmax ≤ 48 && (
+                (Fmax - Fmin) % 1 == 0i32 &&
+                (0i32 ≤ F̄min ≤ F̄max ≤ 48 && ((F̄max - F̄min) % 1 == 0i32 && F̄max - F̄min == Fmax - Fmin))
+            )
+        )
+            info = 3
             if true
                 info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
                     info
@@ -151,6 +168,17 @@
             (Smn_mn0, Smn_mn1) = convert(NTuple{2,Int32}, Smn)
             Sm = Smn_mn0
             Sn = Smn_mn1
+            if !(0i32 ≤ Sm < 24 && 0i32 ≤ Sn < 24)
+                CUDA.@cuprintf "thread=%d warp=%d block=%d Sm=%d Sn=%d\n" Cint((threadIdx()).x - 1) Cint((threadIdx()).y - 1) Cint(
+                    (blockIdx()).x - 1
+                ) Cint(Sm) Cint(Sn)                    #= /localhome/eschnett/src/kotekan/julia/kernels/frb.jl:1642 =#
+                info = 4
+                if true
+                    info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                        info
+                end
+                IndexSpaces.cuda_trap()
+            end
             S = (33i32) * Sm + 801 * Sn
         end
         W_polr0 = zero(Float16x2)
@@ -173,7 +201,7 @@
                 (E_dish0_time0, E_dish4_time0, E_dish8_time0, E_dish12_time0) = IndexSpaces.unsafe_load4_global(
                     E_memory,
                     let
-                        offset = 12288 * Tmin
+                        offset = 12288 * Tmin + 256 * Fmin
                         length = 402653184
                         mod(
                             (
@@ -194,7 +222,7 @@
                 (E_dish256_time0, E_dish260_time0, E_dish264_time0, E_dish268_time0) = IndexSpaces.unsafe_load4_global(
                     E_memory,
                     let
-                        offset = 12288 * Tmin
+                        offset = 12288 * Tmin + 256 * Fmin
                         length = 402653184
                         mod(
                             (
@@ -215,7 +243,7 @@
                 (E_dish0_time24, E_dish4_time24, E_dish8_time24, E_dish12_time24) = IndexSpaces.unsafe_load4_global(
                     E_memory,
                     let
-                        offset = 12288 * Tmin
+                        offset = 12288 * Tmin + 256 * Fmin
                         length = 402653184
                         mod(
                             (
@@ -236,7 +264,7 @@
                 (E_dish256_time24, E_dish260_time24, E_dish264_time24, E_dish268_time24) = IndexSpaces.unsafe_load4_global(
                     E_memory,
                     let
-                        offset = 12288 * Tmin
+                        offset = 12288 * Tmin + 256 * Fmin
                         length = 402653184
                         mod(
                             (
@@ -548,106 +576,274 @@
                 sd_sd22 = IndexSpaces.cuda_shfl_sync(0xffffffff, S, 22)
                 sd_sd23 = IndexSpaces.cuda_shfl_sync(0xffffffff, S, 23)
                 Freg1′ = Freg1_dish0
+                if sd_sd0 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd0) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish24
+                if sd_sd1 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd1) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish48
+                if sd_sd2 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd2) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish72
+                if sd_sd3 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd3) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish96
+                if sd_sd4 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd4) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish120
+                if sd_sd5 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd5) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish144
+                if sd_sd6 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd6) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish168
+                if sd_sd7 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd7) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish192
+                if sd_sd8 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd8) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish216
+                if sd_sd9 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd9) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish240
+                if sd_sd10 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd10) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish264
+                if sd_sd11 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd11) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish288
+                if sd_sd12 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd12) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish312
+                if sd_sd13 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd13) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish336
+                if sd_sd14 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd14) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish360
+                if sd_sd15 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd15) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish384
+                if sd_sd16 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd16) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish408
+                if sd_sd17 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd17) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish432
+                if sd_sd18 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd18) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish456
+                if sd_sd19 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd19) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Freg1_dish480
+                if sd_sd20 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd20) + 0x01] =
                         Freg1′
@@ -657,16 +853,40 @@
                 else
                     Int4x8(0, 0, 0, 0, 0, 0, 0, 0)
                 end
+                if sd_sd21 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd21) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Int4x8(0, 0, 0, 0, 0, 0, 0, 0)
+                if sd_sd22 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd22) + 0x01] =
                         Freg1′
                 end
                 Freg1′ = Int4x8(0, 0, 0, 0, 0, 0, 0, 0)
+                if sd_sd23 == 999999999i32
+                    info = 5
+                    if true
+                        info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 768 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24) * 32) + 0) + 0x01] =
+                            info
+                    end
+                    IndexSpaces.cuda_trap()
+                end
                 if true
                     Fsh2_shared[((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 24 + ((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48) % 24 + sd_sd23) + 0x01] =
                         Freg1′
@@ -1070,70 +1290,6 @@
                             IndexSpaces.get_lo16(G_cplx0_polr1_time3, G_cplx1_polr1_time3),
                             IndexSpaces.get_hi16(G_cplx0_polr1_time3, G_cplx1_polr1_time3),
                         )
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 4) % 2) * 2056 + (((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 8) % 2) * 1028 + 0) + 0) + 0x01] =
-                                G_cplx0_polr0_time0
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 4) % 2) * 2056 + (((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 8) % 2) * 1028 + 0) + 0) + 0x01] =
-                                G_cplx1_polr0_time0
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 4) % 2) * 2056 + (((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 8) % 2) * 1028 + 32) + 0) + 0x01] =
-                                G_cplx0_polr1_time0
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 4) % 2) * 2056 + (((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 8) % 2) * 1028 + 32) + 0) + 0x01] =
-                                G_cplx1_polr1_time0
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 1) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 8) % 2) * 1028 + 0) + 0) + 0x01] =
-                                G_cplx0_polr0_time1
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 1) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 8) % 2) * 1028 + 0) + 0) + 0x01] =
-                                G_cplx1_polr0_time1
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 1) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 8) % 2) * 1028 + 32) + 0) + 0x01] =
-                                G_cplx0_polr1_time1
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 1) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 8) % 2) * 1028 + 32) + 0) + 0x01] =
-                                G_cplx1_polr1_time1
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 2) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 8) % 2) * 1028 + 0) + 0) + 0x01] =
-                                G_cplx0_polr0_time2
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 2) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 8) % 2) * 1028 + 0) + 0) + 0x01] =
-                                G_cplx1_polr0_time2
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 2) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 8) % 2) * 1028 + 32) + 0) + 0x01] =
-                                G_cplx0_polr1_time2
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 2) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 8) % 2) * 1028 + 32) + 0) + 0x01] =
-                                G_cplx1_polr1_time2
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 3) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 8) % 2) * 1028 + 0) + 0) + 0x01] =
-                                G_cplx0_polr0_time3
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 3) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 8) % 2) * 1028 + 0) + 0) + 0x01] =
-                                G_cplx1_polr0_time3
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 3) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 8) % 2) * 1028 + 32) + 0) + 0x01] =
-                                G_cplx0_polr1_time3
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 3) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 8) % 2) * 1028 + 32) + 0) + 0x01] =
-                                G_cplx1_polr1_time3
-                        end
                         IndexSpaces.cuda_sync_threads()
                         let
                             t = 0
@@ -1307,14 +1463,14 @@
                                     end
                                         if true
                                             I_memory[let
-                                                offset = 55296 * T̄min
+                                                offset = 55296 * T̄min + 1152 * F̄min
                                                 length = 452984832
                                                 mod(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 24 + ((IndexSpaces.assume_inrange(dstime, 0, 1, 8192) % 8192) % 8192) * 55296 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 48) * 24) + 0) + offset, length)
                                             end + 0x01] = I_beamQ0
                                         end
                                         if true
                                             I_memory[let
-                                                offset = 55296 * T̄min
+                                                offset = 55296 * T̄min + 1152 * F̄min
                                                 length = 452984832
                                                 mod(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 24 + ((IndexSpaces.assume_inrange(dstime, 0, 1, 8192) % 8192) % 8192) * 55296 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24 + 24) % 48) * 24) + 0) + offset, length)
                                             end + 0x01] = I_beamQ24
@@ -1499,14 +1655,14 @@
                                     end
                                         if true
                                             I_memory[let
-                                                offset = 55296 * T̄min
+                                                offset = 55296 * T̄min + 1152 * F̄min
                                                 length = 452984832
                                                 mod(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 24 + ((IndexSpaces.assume_inrange(dstime, 0, 1, 8192) % 8192) % 8192) * 55296 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 48) * 24) + 0) + offset, length)
                                             end + 0x01] = I_beamQ0
                                         end
                                         if true
                                             I_memory[let
-                                                offset = 55296 * T̄min
+                                                offset = 55296 * T̄min + 1152 * F̄min
                                                 length = 452984832
                                                 mod(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 24 + ((IndexSpaces.assume_inrange(dstime, 0, 1, 8192) % 8192) % 8192) * 55296 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24 + 24) % 48) * 24) + 0) + offset, length)
                                             end + 0x01] = I_beamQ24
@@ -1691,14 +1847,14 @@
                                     end
                                         if true
                                             I_memory[let
-                                                offset = 55296 * T̄min
+                                                offset = 55296 * T̄min + 1152 * F̄min
                                                 length = 452984832
                                                 mod(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 24 + ((IndexSpaces.assume_inrange(dstime, 0, 1, 8192) % 8192) % 8192) * 55296 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 48) * 24) + 0) + offset, length)
                                             end + 0x01] = I_beamQ0
                                         end
                                         if true
                                             I_memory[let
-                                                offset = 55296 * T̄min
+                                                offset = 55296 * T̄min + 1152 * F̄min
                                                 length = 452984832
                                                 mod(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 24 + ((IndexSpaces.assume_inrange(dstime, 0, 1, 8192) % 8192) % 8192) * 55296 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24 + 24) % 48) * 24) + 0) + offset, length)
                                             end + 0x01] = I_beamQ24
@@ -1883,14 +2039,14 @@
                                     end
                                         if true
                                             I_memory[let
-                                                offset = 55296 * T̄min
+                                                offset = 55296 * T̄min + 1152 * F̄min
                                                 length = 452984832
                                                 mod(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 24 + ((IndexSpaces.assume_inrange(dstime, 0, 1, 8192) % 8192) % 8192) * 55296 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 48) * 24) + 0) + offset, length)
                                             end + 0x01] = I_beamQ0
                                         end
                                         if true
                                             I_memory[let
-                                                offset = 55296 * T̄min
+                                                offset = 55296 * T̄min + 1152 * F̄min
                                                 length = 452984832
                                                 mod(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 24 + ((IndexSpaces.assume_inrange(dstime, 0, 1, 8192) % 8192) % 8192) * 55296 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24 + 24) % 48) * 24) + 0) + offset, length)
                                             end + 0x01] = I_beamQ24
@@ -2247,70 +2403,6 @@
                             IndexSpaces.get_lo16(G_cplx0_polr1_time3, G_cplx1_polr1_time3),
                             IndexSpaces.get_hi16(G_cplx0_polr1_time3, G_cplx1_polr1_time3),
                         )
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 4) % 2) * 2056 + (((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 8) % 2) * 1028 + 0) + 0) + 0x01] =
-                                G_cplx0_polr0_time0
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 4) % 2) * 2056 + (((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 8) % 2) * 1028 + 0) + 0) + 0x01] =
-                                G_cplx1_polr0_time0
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 4) % 2) * 2056 + (((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 8) % 2) * 1028 + 32) + 0) + 0x01] =
-                                G_cplx0_polr1_time0
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 4) % 2) * 2056 + (((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 8) % 2) * 1028 + 32) + 0) + 0x01] =
-                                G_cplx1_polr1_time0
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 1) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 8) % 2) * 1028 + 0) + 0) + 0x01] =
-                                G_cplx0_polr0_time1
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 1) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 8) % 2) * 1028 + 0) + 0) + 0x01] =
-                                G_cplx1_polr0_time1
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 1) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 8) % 2) * 1028 + 32) + 0) + 0x01] =
-                                G_cplx0_polr1_time1
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 1) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 8) % 2) * 1028 + 32) + 0) + 0x01] =
-                                G_cplx1_polr1_time1
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 2) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 8) % 2) * 1028 + 0) + 0) + 0x01] =
-                                G_cplx0_polr0_time2
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 2) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 8) % 2) * 1028 + 0) + 0) + 0x01] =
-                                G_cplx1_polr0_time2
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 2) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 8) % 2) * 1028 + 32) + 0) + 0x01] =
-                                G_cplx0_polr1_time2
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 2) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 8) % 2) * 1028 + 32) + 0) + 0x01] =
-                                G_cplx1_polr1_time2
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 3) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 8) % 2) * 1028 + 0) + 0) + 0x01] =
-                                G_cplx0_polr0_time3
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 3) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 8) % 2) * 1028 + 0) + 0) + 0x01] =
-                                G_cplx1_polr0_time3
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 3) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 8) % 2) * 1028 + 32) + 0) + 0x01] =
-                                G_cplx0_polr1_time3
-                        end
-                        if true
-                            Gsh_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 16) % 2) * 514 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 2) % 2) * 4112 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 4) % 2) * 2056 + ((((((IndexSpaces.assume_inrange(t_outer, 0, 48, 32736) ÷ 48) % 682) * 48 + ((IndexSpaces.assume_inrange(t_inner_hi, 0, 24, 48) ÷ 24) % 2) * 24) + 3) + ((IndexSpaces.assume_inrange(t_inner_lo, 0, 4, 24) ÷ 4) % 6) * 4) % 4) * 64 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 24 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) % 2) * 8256 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 32) % 2) * 257 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2 + 1) ÷ 8) % 2) * 1028 + 32) + 0) + 0x01] =
-                                G_cplx1_polr1_time3
-                        end
                         IndexSpaces.cuda_sync_threads()
                         let
                             t = 0
@@ -2484,14 +2576,14 @@
                                     end
                                         if true
                                             I_memory[let
-                                                offset = 55296 * T̄min
+                                                offset = 55296 * T̄min + 1152 * F̄min
                                                 length = 452984832
                                                 mod(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 24 + ((IndexSpaces.assume_inrange(dstime, 0, 1, 8192) % 8192) % 8192) * 55296 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 48) * 24) + 0) + offset, length)
                                             end + 0x01] = I_beamQ0
                                         end
                                         if true
                                             I_memory[let
-                                                offset = 55296 * T̄min
+                                                offset = 55296 * T̄min + 1152 * F̄min
                                                 length = 452984832
                                                 mod(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 24 + ((IndexSpaces.assume_inrange(dstime, 0, 1, 8192) % 8192) % 8192) * 55296 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24 + 24) % 48) * 24) + 0) + offset, length)
                                             end + 0x01] = I_beamQ24
@@ -2676,14 +2768,14 @@
                                     end
                                         if true
                                             I_memory[let
-                                                offset = 55296 * T̄min
+                                                offset = 55296 * T̄min + 1152 * F̄min
                                                 length = 452984832
                                                 mod(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 24 + ((IndexSpaces.assume_inrange(dstime, 0, 1, 8192) % 8192) % 8192) * 55296 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 48) * 24) + 0) + offset, length)
                                             end + 0x01] = I_beamQ0
                                         end
                                         if true
                                             I_memory[let
-                                                offset = 55296 * T̄min
+                                                offset = 55296 * T̄min + 1152 * F̄min
                                                 length = 452984832
                                                 mod(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 24 + ((IndexSpaces.assume_inrange(dstime, 0, 1, 8192) % 8192) % 8192) * 55296 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24 + 24) % 48) * 24) + 0) + offset, length)
                                             end + 0x01] = I_beamQ24
@@ -2868,14 +2960,14 @@
                                     end
                                         if true
                                             I_memory[let
-                                                offset = 55296 * T̄min
+                                                offset = 55296 * T̄min + 1152 * F̄min
                                                 length = 452984832
                                                 mod(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 24 + ((IndexSpaces.assume_inrange(dstime, 0, 1, 8192) % 8192) % 8192) * 55296 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 48) * 24) + 0) + offset, length)
                                             end + 0x01] = I_beamQ0
                                         end
                                         if true
                                             I_memory[let
-                                                offset = 55296 * T̄min
+                                                offset = 55296 * T̄min + 1152 * F̄min
                                                 length = 452984832
                                                 mod(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 24 + ((IndexSpaces.assume_inrange(dstime, 0, 1, 8192) % 8192) % 8192) * 55296 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24 + 24) % 48) * 24) + 0) + offset, length)
                                             end + 0x01] = I_beamQ24
@@ -3060,14 +3152,14 @@
                                     end
                                         if true
                                             I_memory[let
-                                                offset = 55296 * T̄min
+                                                offset = 55296 * T̄min + 1152 * F̄min
                                                 length = 452984832
                                                 mod(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 24 + ((IndexSpaces.assume_inrange(dstime, 0, 1, 8192) % 8192) % 8192) * 55296 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24) % 48) * 24) + 0) + offset, length)
                                             end + 0x01] = I_beamQ0
                                         end
                                         if true
                                             I_memory[let
-                                                offset = 55296 * T̄min
+                                                offset = 55296 * T̄min + 1152 * F̄min
                                                 length = 452984832
                                                 mod(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx(), 0, 48) % 48) % 48) * 1152 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, 32) % 32) * 2) ÷ 2) % 24 + ((IndexSpaces.assume_inrange(dstime, 0, 1, 8192) % 8192) % 8192) * 55296 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, 24) % 24 + 24) % 48) * 24) + 0) + offset, length)
                                             end + 0x01] = I_beamQ24

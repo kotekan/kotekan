@@ -119,6 +119,11 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
         out_meta->set_array_dimension(4, 2, "P");
         out_meta->set_array_dimension(5, _num_elements / 2, "D");
         out_meta->set_array_dimension(6, 2, "C");
+        for (int d = out_meta->dims - 1; d >= 0; --d)
+            if (d == out_meta->dims - 1)
+                out_meta->stride[d] = 1;
+            else
+                out_meta->stride[d] = out_meta->stride[d + 1] * out_meta->dim[d + 1];
 
         // Since we do not use a ring buffer we need to set `meta->sample0_offset`
         assert(input_cursor % in_meta->sample_bytes() == 0);
