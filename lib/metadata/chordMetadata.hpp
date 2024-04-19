@@ -100,8 +100,10 @@ public:
 
     int dims;
     int dim[CHORD_META_MAX_DIM];
-    char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME]; // 'F', 'T', 'D', etc
-    int64_t strides[CHORD_META_MAX_DIM];
+    char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME]; // "F", "T", "D", etc
+    // The stride counts elements, not bytes
+    int64_t stride[CHORD_META_MAX_DIM];
+    // The offset counts elements, not bytes
     int64_t offset;
 
     // One-hot arrays?
@@ -118,17 +120,11 @@ public:
     //     T_actual = (sample0_offset + T + half_fpga_sample0[F] / 2) / time_downsampling_fpga[F]
     // where `T` is the time sample index and `F` is the coarse frequency index.
     int64_t sample0_offset;
+
     // Number of bytes per time sample
     size_t sample_bytes() const {
-        size_t bytes = chord_datatype_bytes(type);
-        assert(dims >= 0);
-        // Skip the first dimension. The number of bytes per sample is the number of bytes needed to
-        // store one array slice.
-        for (int d = 1; d < dims; ++d) {
-            assert(dim[d] >= 0);
-            bytes *= dim[d];
-        }
-        return bytes;
+        // The number of bytes per sample is the number of bytes needed to store one array slice.
+        return chord_datatype_bytes(type) * stride[0];
     }
 
     // Per-frequency arrays

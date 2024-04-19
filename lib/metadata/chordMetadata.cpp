@@ -43,7 +43,7 @@ chordMetadata::chordMetadata() :
     for (int d = 0; d < CHORD_META_MAX_DIM; ++d) {
         dim[d] = -1;
         dim_name[d][0] = '\0';
-        strides[d] = -1;
+        stride[d] = -1;
         onehot_name[d][0] = '\0';
         onehot_index[d] = -1;
     }
@@ -69,7 +69,7 @@ struct chordMetadataFormat {
     int32_t dims;
     int32_t dim[CHORD_META_MAX_DIM];
     char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME]; // "F", "Tbar", "D", etc
-    int64_t strides[CHORD_META_MAX_DIM];
+    int64_t stride[CHORD_META_MAX_DIM];
     int64_t offset;
 
     // One-hot arrays?
@@ -135,7 +135,7 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
             dim_name[i][j] = fmt->dim_name[i][j];
             onehot_name[i][j] = fmt->onehot_name[i][j];
         }
-        strides[i] = fmt->strides[i];
+        stride[i] = fmt->stride[i];
         onehot_index[i] = fmt->onehot_index[i];
     }
     offset = fmt->offset;
@@ -172,7 +172,7 @@ size_t chordMetadata::serialize(char* bytes) {
             fmt->dim_name[i][j] = dim_name[i][j];
             fmt->onehot_name[i][j] = onehot_name[i][j];
         }
-        fmt->strides[i] = strides[i];
+        fmt->stride[i] = stride[i];
         fmt->onehot_index[i] = onehot_index[i];
     }
     fmt->offset = offset;
