@@ -75,7 +75,7 @@ private:
     // Kernel call parameters:
     static constexpr int threads_x = {{{num_threads}}};
     static constexpr int threads_y = {{{num_warps}}};
-    static constexpr int blocks = {{{num_blocks}}};
+    static constexpr int max_blocks = {{{num_blocks}}};
     static constexpr int shmem_bytes = {{{shmem_bytes}}};
 
     // Kernel name:
@@ -116,6 +116,19 @@ private:
                 {{/axes}}
                 ;
             static_assert({{{name}}}_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+            static constexpr auto {{{name}}}_calc_stride = [](int dim) {
+                std::ptrdiff_t str = 1;
+                for (int d = 0; d < dim; ++d)
+                    str *= {{{name}}}_lengths[d];
+                return str;
+            };
+            static constexpr std::array<std::ptrdiff_t, {{{name}}}_rank + 1> {{{name}}}_strides = {
+                {{#axes}}
+                    {{{name}}}_calc_stride({{{name}}}_index_{{{label}}}),
+                {{/axes}}
+                {{{name}}}_calc_stride({{{name}}}_rank),
+            };
+            static_assert({{{name}}}_length == chord_datatype_bytes({{{name}}}_type) * {{{name}}}_strides[{{{name}}}_rank]);
         {{/isscalar}}
         //
     {{/kernel_arguments}}
@@ -138,14 +151,17 @@ private:
 
     static constexpr std::ptrdiff_t E_T_sample_bytes =
         chord_datatype_bytes(E_type) * E_lengths[E_index_D] * E_lengths[E_index_P] * E_lengths[E_index_F];
-    static constexpr std::ptrdiff_t Ebar{{{upchannelization_factor}}}_Tbar_sample_bytes =
-        chord_datatype_bytes(Ebar{{{upchannelization_factor}}}_type) *
-        Ebar{{{upchannelization_factor}}}_lengths[Ebar{{{upchannelization_factor}}}_index_D] *
-        Ebar{{{upchannelization_factor}}}_lengths[Ebar{{{upchannelization_factor}}}_index_P] *
-        Ebar{{{upchannelization_factor}}}_lengths[Ebar{{{upchannelization_factor}}}_index_Fbar];
+    static constexpr std::ptrdiff_t Ebar_U{{{upchannelization_factor}}}_Tbar_U{{{upchannelization_factor}}}_sample_bytes =
+        chord_datatype_bytes(Ebar_U{{{upchannelization_factor}}}_type) *
+        Ebar_U{{{upchannelization_factor}}}_lengths[Ebar_U{{{upchannelization_factor}}}_index_D] *
+        Ebar_U{{{upchannelization_factor}}}_lengths[Ebar_U{{{upchannelization_factor}}}_index_P] *
+        Ebar_U{{{upchannelization_factor}}}_lengths[Ebar_U{{{upchannelization_factor}}}_index_Fbar_U{{{upchannelization_factor}}}];
 
     RingBuffer* input_ringbuf_signal;
     RingBuffer* output_ringbuf_signal;
+
+    // How many frequencies we will process
+    const int Fmin, Fmax;
 
     // How many samples we will process from the input ringbuffer
     // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
@@ -187,11 +203,13 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     input_ringbuf_signal(dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")))),
     output_ringbuf_signal(dynamic_cast<RingBuffer*>(
-        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "out_signal"))))
+        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "out_signal")))),
+    Fmin(config.get<int>(unique_name, "Fmin")),
+    Fmax(config.get<int>(unique_name, "Fmax"))
 {
     // Check ringbuffer sizes
     assert(input_ringbuf_signal->size == E_length);
-    assert(output_ringbuf_signal->size == Ebar{{{upchannelization_factor}}}_length);
+    assert(output_ringbuf_signal->size == Ebar_U{{{upchannelization_factor}}}_length);
 
     // Register host memory
     {{#kernel_arguments}}
@@ -294,7 +312,8 @@ int cuda{{{kernel_name}}}::wait_on_precondition() {
     const std::ptrdiff_t Tbarlength = Tbar_produced;
 
     // to bytes
-    const std::ptrdiff_t output_bytes = Tbarlength * Ebar{{{upchannelization_factor}}}_Tbar_sample_bytes;
+    const std::ptrdiff_t output_bytes =
+        Tbarlength * Ebar_U{{{upchannelization_factor}}}_Tbar_U{{{upchannelization_factor}}}_sample_bytes;
     DEBUG("Will produce {:d} output bytes", output_bytes);
 
     // Wait for space to be available in our output ringbuffer...
@@ -307,8 +326,8 @@ int cuda{{{kernel_name}}}::wait_on_precondition() {
     const std::ptrdiff_t output_cursor = val_out.value();
     DEBUG("Output ring-buffer byte offset {:d}", output_cursor);
 
-    assert(mod(output_cursor, Ebar{{{upchannelization_factor}}}_Tbar_sample_bytes) == 0);
-    Tbarmin = output_cursor / Ebar{{{upchannelization_factor}}}_Tbar_sample_bytes;
+    assert(mod(output_cursor, Ebar_U{{{upchannelization_factor}}}_Tbar_U{{{upchannelization_factor}}}_sample_bytes) == 0);
+    Tbarmin = output_cursor / Ebar_U{{{upchannelization_factor}}}_Tbar_U{{{upchannelization_factor}}}_sample_bytes;
     Tbarmax = Tbarmin + Tbarlength;
     DEBUG("Output samples:");
     DEBUG("    Tbarmin:    {:d}", Tbarmin);
@@ -327,9 +346,9 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                 void* const {{{name}}}_memory =
                     args::{{{name}}} == args::E ?
                         device.get_gpu_memory({{{name}}}_memname, input_ringbuf_signal->size) :
-                    args::{{{name}}} == args::Ebar{{{upchannelization_factor}}} ?
+                    args::{{{name}}} == args::Ebar_U{{{upchannelization_factor}}} ?
                         device.get_gpu_memory({{{name}}}_memname, output_ringbuf_signal->size) :
-                    args::{{{name}}} == args::G{{{upchannelization_factor}}} ?
+                    args::{{{name}}} == args::G_U{{{upchannelization_factor}}} ?
                         device.get_gpu_memory({{{name}}}_memname, {{{name}}}_length) :
                         device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length);
             {{/hasbuffer}}
@@ -361,17 +380,20 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                         assert(std::strncmp({{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim],
                                             {{{name}}}_labels[dim],
                                             sizeof {{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim]) == 0);
-                        if (args::{{{name}}} == args::E && dim == E_index_T)
+                        if (args::{{{name}}} == args::E && dim == E_index_T) {
                             assert({{{name}}}_meta->dim[{{{name}}}_rank - 1 - dim] <= int({{{name}}}_lengths[dim]));
-                        else
+                            assert({{{name}}}_meta->stride[{{{name}}}_rank - 1 - dim] <= {{{name}}}_strides[dim]);
+                        } else {
                             assert({{{name}}}_meta->dim[{{{name}}}_rank - 1 - dim] == int({{{name}}}_lengths[dim]));
+                            assert({{{name}}}_meta->stride[{{{name}}}_rank - 1 - dim] == {{{name}}}_strides[dim]);
+                        }
                     }
                     //
                 {{/isoutput}}
                 {{#isoutput}}
                     // {{{name}}} is an output buffer: set metadata
                     std::shared_ptr<metadataObject> const {{{name}}}_mc =
-                        args::{{{name}}} == args::Ebar{{{upchannelization_factor}}} ?
+                        args::{{{name}}} == args::Ebar_U{{{upchannelization_factor}}} ?
                             output_ringbuf_signal->get_metadata(0) :
                             device.create_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id, E_mc->parent_pool);
                     std::shared_ptr<chordMetadata> const {{{name}}}_meta = get_chord_metadata({{{name}}}_mc);
@@ -384,6 +406,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                                      {{{name}}}_labels[dim],
                                      sizeof {{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim]);
                         {{{name}}}_meta->dim[{{{name}}}_rank - 1 - dim] = {{{name}}}_lengths[dim];
+                        {{{name}}}_meta->stride[{{{name}}}_rank - 1 - dim] = {{{name}}}_strides[dim];
                     }
                     DEBUG("output {{{name}}} array: {:s} {:s}",
                           {{{name}}}_meta->get_type_string(),
@@ -418,12 +441,13 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     E_arg = array_desc(E_memory, E_length);
 
     // Set Ebar_memory to beginning of output ring buffer
-    Ebar{{{upchannelization_factor}}}_arg =
-        array_desc(Ebar{{{upchannelization_factor}}}_memory, Ebar{{{upchannelization_factor}}}_length);
+    Ebar_U{{{upchannelization_factor}}}_arg =
+        array_desc(Ebar_U{{{upchannelization_factor}}}_memory, Ebar_U{{{upchannelization_factor}}}_length);
 
     // Ringbuffer size
     const std::ptrdiff_t T_ringbuf = input_ringbuf_signal->size / E_T_sample_bytes;
-    const std::ptrdiff_t Tbar_ringbuf = output_ringbuf_signal->size / Ebar{{{upchannelization_factor}}}_Tbar_sample_bytes;
+    const std::ptrdiff_t Tbar_ringbuf =
+        output_ringbuf_signal->size / Ebar_U{{{upchannelization_factor}}}_Tbar_U{{{upchannelization_factor}}}_sample_bytes;
     DEBUG("Input ringbuffer size (samples):  {:d}", T_ringbuf);
     DEBUG("Output ringbuffer size (samples): {:d}", Tbar_ringbuf);
 
@@ -445,21 +469,29 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     Tbarmin_arg = mod(Tbarmin, Tbar_ringbuf);
     Tbarmax_arg = mod(Tbarmin, Tbar_ringbuf) + Tbarlength;
 
+    // Pass frequency spans to kernel
+    Fmin_arg = Fmin;
+    Fmax_arg = Fmax;
+
     // Update metadata
-    Ebar{{{upchannelization_factor}}}_meta->dim
-        [Ebar{{{upchannelization_factor}}}_rank - 1 - Ebar{{{upchannelization_factor}}}_index_Tbar] = Tbarlength;
-    assert(Ebar{{{upchannelization_factor}}}_meta->dim
-               [Ebar{{{upchannelization_factor}}}_rank - 1 - Ebar{{{upchannelization_factor}}}_index_Tbar] <=
-           int(Ebar{{{upchannelization_factor}}}_lengths[Ebar{{{upchannelization_factor}}}_index_Tbar]));
+    Ebar_U{{{upchannelization_factor}}}_meta->dim
+        [Ebar_U{{{upchannelization_factor}}}_rank - 1 -
+         Ebar_U{{{upchannelization_factor}}}_index_Tbar_U{{{upchannelization_factor}}}] = Tbarlength;
+    assert(Ebar_U{{{upchannelization_factor}}}_meta->dim
+               [Ebar_U{{{upchannelization_factor}}}_rank - 1 -
+                Ebar_U{{{upchannelization_factor}}}_index_Tbar_U{{{upchannelization_factor}}}] <=
+           int(Ebar_U{{{upchannelization_factor}}}_lengths
+                   [Ebar_U{{{upchannelization_factor}}}_index_Tbar_U{{{upchannelization_factor}}}]));
     // Since we use a ring buffer we do not need to update `meta->sample0_offset`
 
-    assert(Ebar{{{upchannelization_factor}}}_meta->nfreq >= 0);
-    assert(Ebar{{{upchannelization_factor}}}_meta->nfreq == E_meta->nfreq);
-    for (int freq = 0; freq < Ebar{{{upchannelization_factor}}}_meta->nfreq; ++freq) {
-        Ebar{{{upchannelization_factor}}}_meta->freq_upchan_factor[freq] =
+    assert(Ebar_U{{{upchannelization_factor}}}_meta->nfreq >= 0);
+    assert(Ebar_U{{{upchannelization_factor}}}_meta->nfreq == E_meta->nfreq);
+    for (int freq = 0; freq < Ebar_U{{{upchannelization_factor}}}_meta->nfreq; ++freq) {
+        Ebar_U{{{upchannelization_factor}}}_meta->freq_upchan_factor[freq] =
             cuda_upchannelization_factor * E_meta->freq_upchan_factor[freq];
-        Ebar{{{upchannelization_factor}}}_meta->half_fpga_sample0[freq] = E_meta->half_fpga_sample0[freq] + cuda_number_of_taps - 1;
-        Ebar{{{upchannelization_factor}}}_meta->time_downsampling_fpga[freq] =
+        Ebar_U{{{upchannelization_factor}}}_meta->half_fpga_sample0[freq] =
+            E_meta->half_fpga_sample0[freq] + cuda_number_of_taps - 1;
+        Ebar_U{{{upchannelization_factor}}}_meta->time_downsampling_fpga[freq] =
             cuda_upchannelization_factor * E_meta->time_downsampling_fpga[freq];
     }
 
@@ -497,6 +529,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                                       shmem_bytes));
 
     DEBUG("Running CUDA {{{kernel_name}}} on GPU frame {:d}", gpu_frame_id);
+    const int blocks = Fmax - Fmin;
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[symname],
                        blocks, 1, 1, threads_x, threads_y, 1,
@@ -533,7 +566,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     if (error_code != 0)
         ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.size(); ++i)
+    for (std::size_t i = 0; i < info_host.size() * blocks / max_blocks; ++i)
         if (info_host[i] != 0)
             ERROR("cuda{{{kernel_name}}} returned 'info' value {:d} at index {:d} (zero indicates no error)",
                 info_host[i], i);
@@ -557,9 +590,12 @@ void cuda{{{kernel_name}}}::finalize_frame() {
     const std::ptrdiff_t Tbar_produced = Tbarlength;
     DEBUG("Advancing output ringbuffer:");
     DEBUG("    Produced samples: {:d}", Tbar_produced);
-    DEBUG("    Produced bytes:   {:d}", Tbar_produced * Ebar{{{upchannelization_factor}}}_Tbar_sample_bytes);
+    DEBUG("    Produced bytes:   {:d}",
+          Tbar_produced * Ebar_U{{{upchannelization_factor}}}_Tbar_U{{{upchannelization_factor}}}_sample_bytes);
     output_ringbuf_signal->finish_write
-        (unique_name, instance_num, Tbar_produced * Ebar{{{upchannelization_factor}}}_Tbar_sample_bytes);
+        (unique_name,
+         instance_num,
+         Tbar_produced * Ebar_U{{{upchannelization_factor}}}_Tbar_U{{{upchannelization_factor}}}_sample_bytes);
 
     cudaCommand::finalize_frame();
 }

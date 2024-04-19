@@ -621,7 +621,9 @@ function make_bb_kernel()
     store!(emitter, :info_memory => layout_info_memory, :info)
 
     # Read parameters `Tmin`, `Tmax`
-    if!(emitter, :(!(0i32 ≤ Tmin ≤ Tmax ≤ $(Int32(2 * T)) && (Tmax - Tmin) % $(Int32(T1_stride)) == 0i32))) do emitter
+    if!(
+        emitter, :(!(0i32 ≤ Tmin < $(Int32(T)) && Tmin ≤ Tmax < $(Int32(2 * T)) && (Tmax - Tmin) % $(Int32(T1_stride)) == 0i32))
+    ) do emitter
         apply!(emitter, :info => layout_info_registers, 2i32)
         store!(emitter, :info_memory => layout_info_memory, :info)
         trap!(emitter)
@@ -1023,7 +1025,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
     if output_kernel
         ptx = read("output-$card/bb_$setup.ptx", String)
-        ptx = replace(ptx, r".extern .func ([^;]*);"s => s".func \1.noreturn\n{\n\ttrap;\n}")
+        ptx = replace(ptx, r".extern .func gpu_([^;]*);"s => s".func gpu_\1.noreturn\n{\n\ttrap;\n}")
         open("output-$card/bb_$setup.ptx", "w") do fh
             println(fh, "// PTX kernel code for CUDA baseband beamformer")
             println(fh, "// This file has been generated automatically by `bb.jl`.")

@@ -45,6 +45,8 @@ U::Integer
     # const F₀ = 16 * 16
     # const F = 16 * 16           # benchmarking A30: 56; A40: 84
     const F = 48 * U
+    const Fout = F
+    const F̄ = F
     const T = 4 * 8192 ÷ U
 
     const Touter = 48
@@ -68,6 +70,8 @@ elseif setup ≡ :hirax
     # const F₀ = 64 * 16
     # const F = 64 * 16
     const F = 64 * U
+    const Fout = F
+    const F̄ = F
     const T = 4 * 8192 ÷ U
 
     const Touter = 64
@@ -87,7 +91,9 @@ elseif setup ≡ :pathfinder
     const P = 2
     # const F₀ = 16 * 128
     # const F = 16 * 128
-    const F = 384 * U
+    const Fout = Dict(1 => 128, 2 => 128, 4 => 128, 8 => 64, 16 => 64, 32 => 64, 64 => 32)[U] * U
+    const F = U == 1 ? 384 : Fout
+    const F̄ = 4096
     const T = 4 * 8192 ÷ U
 
     const Touter = 48
@@ -105,18 +111,13 @@ end
 # TODO: This is now wrong
 const sampling_time_μsec = U * 4096 / (2 * 1200)
 const C = 2
-# We want 256, but high upchannelization factors produce too many frequencies
 # const T̄ = 4 * 256
 @static if setup ≡ :chord
     const T̄ = 4 * 256 * 8 ÷ U
 elseif setup ≡ :hirax
     const T̄ = 4 * 256 * 4 ÷ U
 elseif setup ≡ :pathfinder
-    @static if U ≤ 4
-        const T̄ = 4 * 256
-    else
-        const T̄ = 4 * 256 * 4 ÷ U
-    end
+    const T̄ = 4 * 256
 end
 
 const output_gain = 1 / (8 * Tds)
@@ -303,8 +304,8 @@ const layout_I_memory = Layout([
     BeamP(:beamP, 1, 2) => SIMD(:simd, 16, 2),
     BeamP(:beamP, 2, M) => Memory(:memory, 1, M),
     BeamQ(:beamQ, 1, 2 * N) => Memory(:memory, M, 2 * N),
-    Freq(:freq, 1, F) => Memory(:memory, M * 2 * N, F),
-    DSTime(:dstime, 1, T̄) => Memory(:memory, M * 2 * N * F, T̄),
+    Freq(:freq, 1, Fout) => Memory(:memory, M * 2 * N, Fout),
+    DSTime(:dstime, 1, T̄) => Memory(:memory, M * 2 * N * Fout, T̄),
 ])
 
 # info layout
@@ -328,6 +329,7 @@ const layout_Fsh1_shared = Layout([
     Time(:time, idiv(Touter, 2), 2) => SIMD(:simd, 8, 2),
     Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
 ])
+@assert max(32 * 8, ΣF1 * idiv(D, 8), 1 * idiv(Touter, 2)) == Fsh1_shmem_size
 
 # This `Fsh2` layout is used for writing.
 # The dish locations are handled manually.
@@ -340,6 +342,8 @@ const layout_Fsh2_gridding_shared = Layout([
     Time(:time, idiv(Touter, 2), 2) => SIMD(:simd, 8, 2),
     Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
 ])
+@assert 1 * idiv(Touter, 2) + 33 * (M - 1) + ΣF2 * (N - 1) ≤ Fsh2_shmem_size
+@assert max(1 * idiv(Touter, 2), 33 * M, ΣF2 * N) == Fsh2_shmem_size
 
 # Section 4.5, eqns. (67)+
 # This `Fsh2` layout is used for reading
@@ -358,6 +362,7 @@ const layout_Fsh2_shared = Layout([
     Time(:time, idiv(Touter, 2), 2) => SIMD(:simd, 8, 2),
     Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
 ])
+@assert max(33 * M, ΣF2 * idiv(N, 4), ΣF2 * idiv(N, 4) * 4, 1 * idiv(Touter, 2)) == Fsh2_shmem_size
 
 # Section 4.10, eqn. (76)
 # This layout is used for writing `G`
@@ -402,6 +407,18 @@ const layout_Gsh_fft1_shared = Layout([
     Time(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2),
     Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
 ])
+@assert max(1 * M, ΣG0 * 2, (
+    if Npad == 32
+        ΣG1 * 16 * 2
+    elseif Npad == 16
+        ΣG1 * 8 * 2
+    elseif Npad == 8
+        ΣG1 * 4 * 2
+    else
+        @assert false
+    end
+), Mpad * 2, Mpad * 2 * Tinner) == Gsh_shmem_size
+
 # This layout is used for reading `G`
 const layout_Gsh_fft2_shared = let
     layout = copy(layout_Gsh_fft1_shared)
@@ -411,6 +428,17 @@ const layout_Gsh_fft2_shared = let
     layout[DishMHi(:dishMHi, 1, 4)] = Shared(:shared, idiv(M, 4), 4)
     layout
 end
+@assert max(1 * idiv(M, 4), idiv(M, 4) * 4, ΣG0 * 2, (
+    if Npad == 32
+        ΣG1 * 16 * 2
+    elseif Npad == 16
+        ΣG1 * 8 * 2
+    elseif Npad == 8
+        ΣG1 * 4 * 2
+    else
+        @assert false
+    end
+), Mpad * 2, Mpad * 2 * Tinner) == Gsh_shmem_size
 
 # info layout
 
@@ -468,7 +496,7 @@ function copy_global_memory_to_Fsh1!(emitter)
             align=16,
             postprocess=addr -> :(
                 let
-                    offset = $(Int32(idiv(D, 4) * P * F)) * Tmin
+                    offset = $(Int32(idiv(D, 4) * P * F)) * Tmin + $(Int32(idiv(D, 4) * P)) * Fmin
                     length = $(Int32(idiv(D, 4) * P * F * T))
                     mod($addr + offset, length)
                 end
@@ -512,7 +540,7 @@ function copy_global_memory_to_Fsh1!(emitter)
             align=16,
             postprocess=addr -> :(
                 let
-                    offset = $(Int32(idiv(D, 4) * P * F)) * Tmin
+                    offset = $(Int32(idiv(D, 4) * P * F)) * Tmin + $(Int32(idiv(D, 4) * P)) * Fmin
                     length = $(Int32(idiv(D, 4) * P * F * T))
                     mod($addr + offset, length)
                 end
@@ -582,6 +610,13 @@ function write_Fsh2!(emitter)
         end
         push!(emitter.statements, :(Freg1′ = $dish_value))
         # push!(emitter.statements, :(@assert $(Symbol(:sd_sd, "$i")) ≠ 999999999i32))
+        # TODO: Disable this check
+        if!(emitter, :($(Symbol(:sd_sd, "$i")) == 999999999i32)) do emitter
+            apply!(emitter, :info => layout_info_registers, 5i32)
+            store!(emitter, :info_memory => layout_info_memory, :info)
+            trap!(emitter)
+            return nothing
+        end
         store!(emitter, :Fsh2_shared => layout_Fsh2_gridding_shared, :Freg1′; offset=Symbol(:sd_sd, "$i"))
     end
 
@@ -1121,8 +1156,8 @@ function do_first_fft!(emitter)
 
     # Write G to shared memory
     permute!(emitter, :G, :G, Register(:cplx, 1, 2), SIMD(:simd, 16, 2))
-    # This writes superfluous data for 2*N ≤ beamQ < 2*Npad
-    store!(emitter, :Gsh_shared => layout_Gsh_fft1_shared, :G)
+    # # This writes superfluous data for 2*N ≤ beamQ < 2*Npad
+    # store!(emitter, :Gsh_shared => layout_Gsh_fft1_shared, :G)
     # if!(emitter, :(
     #     let
     #         thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
@@ -1512,14 +1547,38 @@ function make_frb_kernel()
         emitter,
         :(
             !(
-                0i32 ≤ Tmin ≤ Tmax ≤ $(Int32(2 * T)) &&
+                0i32 ≤ Tmin < $(Int32(T)) &&
+                Tmin ≤ Tmax < $(Int32(2 * T)) &&
                 (Tmax - Tmin) % $(Int32(Touter)) == 0i32 &&
-                0i32 ≤ T̄min ≤ T̄max ≤ $(Int32(2 * T̄)) &&
+                0i32 ≤ T̄min < $(Int32(T̄)) &&
+                T̄min ≤ T̄max < $(Int32(2 * T̄)) &&
                 T̄max - T̄min == (Tmax - Tmin) ÷ $(Int32(Tds))
             )
         ),
     ) do emitter
         apply!(emitter, :info => layout_info_registers, 2i32)
+        store!(emitter, :info_memory => layout_info_memory, :info)
+        trap!(emitter)
+        return nothing
+    end
+
+    # Check parameters `Fmin`, `Fmax`, `F̄min`, `F̄max`
+    @assert Fout % U == 0
+    @assert F % U == 0
+    @assert 0 ≤ Fout ≤ F
+    if!(
+        emitter,
+        :(
+            !(
+                0i32 ≤ Fmin ≤ Fmax ≤ $(Int32(F)) &&
+                (Fmax - Fmin) % $(Int32(U)) == 0i32 &&
+                0i32 ≤ F̄min ≤ F̄max ≤ $(Int32(Fout)) &&
+                (F̄max - F̄min) % $(Int32(U)) == 0i32 &&
+                F̄max - F̄min == Fmax - Fmin
+            )
+        ),
+    ) do emitter
+        apply!(emitter, :info => layout_info_registers, 3i32)
         store!(emitter, :info_memory => layout_info_memory, :info)
         trap!(emitter)
         return nothing
@@ -1577,6 +1636,23 @@ function make_frb_kernel()
             load!(emitter, :Smn => layout_Smn_registers, :Smn_memory => layout_Smn_memory)
             widen!(emitter, :Smn, :Smn, SIMD(:simd, 16, 2) => Register(:mn, 1, 2))
             split!(emitter, [:Sm, :Sn], :Smn, Register(:mn, 1, 2))
+            if!(emitter, :(!(0i32 ≤ Sm < $(Int32(M)) && 0i32 ≤ Sn < $(Int32(N))))) do emitter
+                push!(
+                    emitter.statements,
+                    :(CUDA.@cuprintf(
+                        "thread=%d warp=%d block=%d Sm=%d Sn=%d\n",
+                        Cint(threadIdx().x - 1),
+                        Cint(threadIdx().y - 1),
+                        Cint(blockIdx().x - 1),
+                        Cint(Sm),
+                        Cint(Sn),
+                    )),
+                )
+                apply!(emitter, :info => layout_info_registers, 4i32)
+                store!(emitter, :info_memory => layout_info_memory, :info)
+                trap!(emitter)
+                return nothing
+            end
             apply!(emitter, :S, [:Sm, :Sn], (Sm, Sn) -> :(33i32 * Sm + $(Int32(ΣF2)) * Sn))
             return nothing
         end
@@ -1611,7 +1687,7 @@ function make_frb_kernel()
                 nlo < $(Int32(idiv(N, 4)))
             end
         )) do emitter
-            load!(emitter, :W => layout_W_registers, :W_memory => layout_W_memory)
+            load!(emitter, :W => layout_W_registers, :W_memory => layout_W_memory;)
             return nothing
         end
     end
@@ -1725,8 +1801,8 @@ function make_frb_kernel()
                                         :I;
                                         postprocess=addr -> quote
                                             let
-                                                offset = $(Int32(M * 2 * N * F)) * T̄min
-                                                length = $(Int32(M * 2 * N * F * T̄))
+                                                offset = $(Int32(M * 2 * N * Fout)) * T̄min + $(Int32(M * 2 * N)) * F̄min
+                                                length = $(Int32(M * 2 * N * Fout * T̄))
                                                 mod($addr + offset, length)
                                             end
                                         end,
@@ -1795,7 +1871,21 @@ println("[Creating frb kernel...]")
 const frb_kernel = make_frb_kernel()
 println("[Done creating frb kernel]")
 
-@eval function frb(Tmin::Int32, Tmax::Int32, T̄min::Int32, T̄max::Int32, Smn_memory, W_memory, E_memory, I_memory, info_memory)
+@eval function frb(
+    Tmin::Int32,
+    Tmax::Int32,
+    T̄min::Int32,
+    T̄max::Int32,
+    Fmin::Int32,
+    Fmax::Int32,
+    F̄min::Int32,
+    F̄max::Int32,
+    Smn_memory,
+    W_memory,
+    E_memory,
+    I_memory,
+    info_memory,
+)
     shmem = @cuDynamicSharedMem(UInt8, shmem_bytes, 0)
     Fsh1_shared = reinterpret(Int4x8, shmem)
     Fsh2_shared = reinterpret(Int4x8, shmem)
@@ -1828,6 +1918,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 99 * 1024 # NVIDIA A10/A40 have 99 kB shared memory
     kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm frb(
+        Int32(0),
+        Int32(0),
+        Int32(0),
+        Int32(0),
         Int32(0),
         Int32(0),
         Int32(0),
@@ -1872,6 +1966,11 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         Tmax = Int32(fld(idiv(T, 4), Touter) * Touter)
         T̄min = Int32(0)
         T̄max = Int32(T̄min + fld(Tmax - Tmin, Tds))
+
+        Fmin = Int32(0)
+        Fmax = Int32(Fout)
+        F̄min = Int32(0)
+        F̄max = Int32(Fout)
 
         input = :random
         if input ≡ :zero
@@ -1944,6 +2043,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             Tmax,
             T̄min,
             T̄max,
+            Fmin,
+            Fmax,
+            F̄min,
+            F̄max,
             Smn_cuda,
             W_cuda,
             E_cuda,
@@ -1963,6 +2066,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         Tmax,
                         T̄min,
                         T̄max,
+                        Fmin,
+                        Fmax,
+                        F̄min,
+                        F̄max,
                         Smn_cuda,
                         W_cuda,
                         E_cuda,
@@ -2053,7 +2160,7 @@ end
 
 function fix_ptx_kernel()
     ptx = read("output-$card/frb_$(setup)_U$(U).ptx", String)
-    ptx = replace(ptx, r".extern .func ([^;]*);"s => s".func \1.noreturn\n{\n\ttrap;\n}")
+    ptx = replace(ptx, r".extern .func gpu_([^;]*);"s => s".func gpu_\1.noreturn\n{\n\ttrap;\n}")
     open("output-$card/frb_$(setup)_U$(U).ptx", "w") do fh
         println(fh, "// PTX kernel code for CUDA frb beamformer")
         println(fh, "// This file has been generated automatically by `frb.jl`.")
@@ -2117,6 +2224,18 @@ function fix_ptx_kernel()
         - name: "T̄max"
           intent: in
           type: Int32
+        - name: "Fmin"
+          intent: in
+          type: Int32
+        - name: "Fmax"
+          intent: in
+          type: Int32
+        - name: "F̄min"
+          intent: in
+          type: Int32
+        - name: "F̄max"
+          intent: in
+          type: Int32
         - name: "S"
           intent: in
           type: Int16
@@ -2139,8 +2258,8 @@ function fix_ptx_kernel()
           intent: out
           type: Float16
           indices: [beamP, beamQ, F, Tbar]
-          shape: [$(2*M), $(2*N), $F, $(T̄)]
-          strides: [1, $(2*M), $(2*M*2*N), $(2*M*2*N*F)]
+          shape: [$(2*M), $(2*N), $Fout, $(T̄)]
+          strides: [1, $(2*M), $(2*M*2*N), $(2*M*2*N*Fout)]
         - name: "info"
           intent: out
           type: Int32
@@ -2158,6 +2277,7 @@ function fix_ptx_kernel()
         Dict(
             "kernel_name" => "FRBBeamformer_$(setup)_U$(U)",
             "upchannelization_factor" => "$U",
+            "downsampling_factor" => "$Tds",
             "kernel_design_parameters" => [
                 Dict("type" => "int", "name" => "cuda_beam_layout_M", "value" => "$(2*M)"),
                 Dict("type" => "int", "name" => "cuda_beam_layout_N", "value" => "$(2*N)"),
@@ -2212,6 +2332,38 @@ function fix_ptx_kernel()
                     "isscalar" => true,
                 ),
                 Dict(
+                    "name" => "Fbarmin",
+                    "kotekan_name" => "Fbarmin",
+                    "type" => "int32",
+                    "isoutput" => false,
+                    "hasbuffer" => false,
+                    "isscalar" => true,
+                ),
+                Dict(
+                    "name" => "Fbarmax",
+                    "kotekan_name" => "Fbarmax",
+                    "type" => "int32",
+                    "isoutput" => false,
+                    "hasbuffer" => false,
+                    "isscalar" => true,
+                ),
+                Dict(
+                    "name" => "Ftildemin",
+                    "kotekan_name" => "Ftildemin",
+                    "type" => "int32",
+                    "isoutput" => false,
+                    "hasbuffer" => false,
+                    "isscalar" => true,
+                ),
+                Dict(
+                    "name" => "Ftildemax",
+                    "kotekan_name" => "Ftildemax",
+                    "type" => "int32",
+                    "isoutput" => false,
+                    "hasbuffer" => false,
+                    "isscalar" => true,
+                ),
+                Dict(
                     "name" => "S",
                     "kotekan_name" => "gpu_mem_dishlayout",
                     "type" => "int16",
@@ -2221,7 +2373,7 @@ function fix_ptx_kernel()
                     "isscalar" => false,
                 ),
                 Dict(
-                    "name" => "W$U",
+                    "name" => "W_U$(U)",
                     "kotekan_name" => "gpu_mem_phase",
                     "type" => "float16",
                     "axes" => [
@@ -2229,35 +2381,35 @@ function fix_ptx_kernel()
                         Dict("label" => "dishM", "length" => M),
                         Dict("label" => "dishN", "length" => N),
                         Dict("label" => "P", "length" => P),
-                        Dict("label" => "Fbar", "length" => F),
+                        Dict("label" => "Fbar_U$(U)", "length" => Fout),
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
                     "isscalar" => false,
                 ),
                 Dict(
-                    "name" => "Ebar$U",
+                    "name" => "Ebar_U$(U)",
                     "kotekan_name" => "gpu_mem_voltage",
                     "type" => "int4p4",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),
-                        Dict("label" => "Fbar", "length" => F),
-                        Dict("label" => "Tbar", "length" => T),
+                        Dict("label" => "Fbar_U$(U)", "length" => F),
+                        Dict("label" => "Tbar_U$(U)", "length" => T),
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
                     "isscalar" => false,
                 ),
                 Dict(
-                    "name" => "I$U",
+                    "name" => "I_U$(U)",
                     "kotekan_name" => "gpu_mem_beamgrid",
                     "type" => "float16",
                     "axes" => [
                         Dict("label" => "beamP", "length" => 2 * M),
                         Dict("label" => "beamQ", "length" => 2 * N),
-                        Dict("label" => "Fbar", "length" => F),
-                        Dict("label" => "Ttilde", "length" => T̄),
+                        Dict("label" => "Fbar_U$(U)", "length" => Fout),
+                        Dict("label" => "Ttilde_U$(U)_Tds$(Tds)", "length" => T̄),
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,

@@ -368,7 +368,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
 
     if output_kernel
         ptx = read("output-$card/xpose_$setup.ptx", String)
-        ptx = replace(ptx, r".extern .func ([^;]*);"s => s".func \1.noreturn\n{\n\ttrap;\n}")
+        ptx = replace(ptx, r".extern .func gpu_([^;]*);"s => s".func gpu_\1.noreturn\n{\n\ttrap;\n}")
         open("output-$card/xpose_$setup.ptx", "w") do fh
             return write(fh, ptx)
         end

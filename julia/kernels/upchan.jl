@@ -69,6 +69,7 @@ setup::Symbol
     const P = 2
     # const F₀ = 16
     const F = 48
+    const F̄ = F * U
     const T = 4 * 8192
 elseif setup ≡ :hirax
     # HIRAX Setup
@@ -78,6 +79,7 @@ elseif setup ≡ :hirax
     const P = 2
     # const F₀ = 64
     const F = 64
+    const F̄ = F * U
     const T = 4 * 8192
 elseif setup ≡ :pathfinder
     # Pathfinder Setup
@@ -88,6 +90,7 @@ elseif setup ≡ :pathfinder
     # const F₀ = 128
     # const F = 128
     const F = 384
+    const F̄ = Dict(1 => 128, 2 => 128, 4 => 128, 8 => 64, 16 => 64, 32 => 64, 64 => 32)[U] * U
     const T = 4 * 8192
 else
     @assert false
@@ -218,7 +221,7 @@ const simd_threads = [SIMD(:simd, 1 << 4, 2), [Thread(:thread, 1 << [1, 0, 2, 4,
 const layout_G_memory = Layout([
     FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
     Freq(:freq, 1, 2) => SIMD(:simd, 16, 2),
-    Freq(:freq, 2, idiv(F * U, 2)) => Memory(:memory, 1, idiv(F * U, 2)),
+    Freq(:freq, 2, idiv(F̄, 2)) => Memory(:memory, 1, idiv(F̄, 2)),
 ])
 
 const layout_E_memory = Layout([
@@ -237,8 +240,8 @@ const layout_Ē_memory = Layout([
     Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
     Dish(:dish, 4, idiv(D, 4)) => Memory(:memory, 1, idiv(D, 4)),
     Polr(:polr, 1, P) => Memory(:memory, idiv(D, 4), P),
-    Freq(:freq, 1, F * U) => Memory(:memory, idiv(D, 4) * P, F * U),
-    Time(:time, U, idiv(T, U)) => Memory(:memory, idiv(D, 4) * P * (F * U), idiv(T, U)),
+    Freq(:freq, 1, F̄) => Memory(:memory, idiv(D, 4) * P, F̄),
+    Time(:time, U, idiv(T, U)) => Memory(:memory, idiv(D, 4) * P * F̄, idiv(T, U)),
 ])
 
 const layout_info_memory = Layout([
@@ -557,14 +560,24 @@ function upchan!(emitter)
         emitter,
         :(
             !(
-                0i32 ≤ Tmin ≤ Tmax ≤ $(Int32(2 * T)) &&
+                0i32 ≤ Tmin < $(Int32(T)) &&
+                Tmin ≤ Tmax < $(Int32(2 * T)) &&
                 (Tmax - Tmin) % $(Int32(Touter)) == 0i32 &&
-                0i32 ≤ T̄min ≤ T̄max ≤ $(Int32(2 * idiv(T, U))) &&
+                0i32 ≤ T̄min < $(Int32(idiv(T, U))) &&
+                T̄min ≤ T̄max < $(Int32(2 * idiv(T, U))) &&
                 (T̄max - T̄min + $(Int32(M - 1))) % $(Int32(idiv(Touter, U))) == 0i32
             )
         ),
     ) do emitter
         apply!(emitter, :info => layout_info_registers, 2i32)
+        store!(emitter, :info_memory => layout_info_memory, :info)
+        trap!(emitter)
+        return nothing
+    end
+
+    # Check parameters `Fmin`, `Fmax`
+    if!(emitter, :(!(0i32 ≤ Fmin ≤ Fmax ≤ F))) do emitter
+        apply!(emitter, :info => layout_info_registers, 3i32)
         store!(emitter, :info_memory => layout_info_memory, :info)
         trap!(emitter)
         return nothing
@@ -718,8 +731,8 @@ function upchan!(emitter)
                     delta0 = dish == dish_in0
                     delta1 = dish == dish_in1
                     Γ¹0, Γ¹1 = (
-                        delta0 * cispi((-2i32 * timehi0 * freqlo / Float32(2^$m)) % 2.0f0),
-                        delta1 * cispi((-2i32 * timehi1 * freqlo / Float32(2^$m)) % 2.0f0),
+                        delta0 * cispi((-2i32 * timehi0 * freqlo / $(Float32(2^m))) % 2.0f0),
+                        delta1 * cispi((-2i32 * timehi1 * freqlo / $(Float32(2^m))) % 2.0f0),
                     )
                     (Γ¹0, Γ¹1)
                 end
@@ -800,8 +813,8 @@ function upchan!(emitter)
                         )
                         freqlo = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
                         (Γ²0, Γ²1) = (
-                            cispi((-2i32 * timelo0 * freqlo / Float32(2^$(m + n))) % 2.0f0),
-                            cispi((-2i32 * timelo1 * freqlo / Float32(2^$(m + n))) % 2.0f0),
+                            cispi((-2i32 * timelo0 * freqlo / $(Float32(2^(m + n)))) % 2.0f0),
+                            cispi((-2i32 * timelo1 * freqlo / $(Float32(2^(m + n)))) % 2.0f0),
                         )
                         (Γ²0, Γ²1)
                     end
@@ -914,8 +927,8 @@ function upchan!(emitter)
                     delta0 = dish == dish_in0
                     delta1 = dish == dish_in1
                     Γ³0, Γ³1 = (
-                        delta0 * cispi((-2i32 * timelo0 * freqhi / Float32(2^$n)) % 2.0f0),
-                        delta1 * cispi((-2i32 * timelo1 * freqhi / Float32(2^$n)) % 2.0f0),
+                        delta0 * cispi((-2i32 * timelo0 * freqhi / $(Float32(2^n))) % 2.0f0),
+                        delta1 * cispi((-2i32 * timelo1 * freqhi / $(Float32(2^n))) % 2.0f0),
                     )
                     (Γ³0, Γ³1)
                 end
@@ -969,8 +982,8 @@ function upchan!(emitter)
                         freqlo1 =
                             1i32 * 1i32 + 2i32 * thread1 + 4i32 * thread0 + 8i32 * thread2 + 16i32 * thread4 + 32i32 * thread3
                         (Γ⁴0, Γ⁴1) = (
-                            cispi((-2i32 * timelo * freqlo0 / Float32(2^$(m + n))) % 2.0f0),
-                            cispi((-2i32 * timelo * freqlo1 / Float32(2^$(m + n))) % 2.0f0),
+                            cispi((-2i32 * timelo * freqlo0 / $(Float32(2^(m + n)))) % 2.0f0),
+                            cispi((-2i32 * timelo * freqlo1 / $(Float32(2^(m + n)))) % 2.0f0),
                         )
                         (Γ⁴0, Γ⁴1)
                     end
@@ -1001,7 +1014,7 @@ function upchan!(emitter)
             align=16,
             postprocess=addr -> :(
                 let
-                    offset = $(Int32(idiv(D, 4) * P * F)) * Tmin
+                    offset = $(Int32(idiv(D, 4) * P * F)) * Tmin + $(Int32(idiv(D, 4) * P)) * Fmin
                     length = $(Int32(idiv(D, 4) * P * F * T))
                     mod($addr + offset, length)
                 end
@@ -1343,7 +1356,7 @@ function upchan!(emitter)
         merge!(emitter, :Ē3, [:Ē2lo, :Ē2hi], Dish(:dish, 8, 2) => Register(:dish, 8, 2))
 
         # Skip the first MTaps-1 outputs when writing to memory.
-        tbarstride = idiv(D, 4) * P * (F * U)
+        tbarstride = idiv(D, 4) * P * (F̄)
         t_min = U * (M - 1)
         layout_Ē3 = emitter.environment[:Ē3]
         store!(
@@ -1476,7 +1489,9 @@ open("output-$(card)/upchan_$(setup)_U$(U).jl", "w") do fh
     return nothing
 end
 
-@eval function upchan(Tmin::Int32, Tmax::Int32, T̄min::Int32, T̄max::Int32, G_memory, E_memory, Ē_memory, info_memory)
+@eval function upchan(
+    Tmin::Int32, Tmax::Int32, T̄min::Int32, T̄max::Int32, Fmin::Int32, Fmax::Int32, G_memory, E_memory, Ē_memory, info_memory
+)
     shmem = @cuDynamicSharedMem(UInt8, shmem_bytes, 0)
     F_shared = reinterpret(Int4x8, shmem)
     F̄_shared = reinterpret(Int4x8, shmem)
@@ -1501,6 +1516,8 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
         Int32(0),
         Int32(0),
         Int32(0),
+        Int32(0),
+        Int32(0),
         CUDA.zeros(Float16x2, 0),
         CUDA.zeros(Int4x8, 0),
         CUDA.zeros(Int4x8, 0),
@@ -1513,14 +1530,14 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     end
 
     !silent && println("Allocating input data...")
-    G_memory = Array{Float16}(undef, F * U)
+    G_memory = Array{Float16}(undef, F̄)
     E_memory = Array{Int4x2}(undef, D * P * F * T)
-    Ē_wanted = Array{Complex{Float32}}(undef, D * P * (F * U) * idiv(T, U))
+    Ē_wanted = Array{Complex{Float32}}(undef, D * P * (F̄) * idiv(T, U))
     info_wanted = Array{Int32}(undef, num_threads * num_warps * num_blocks)
 
     !silent && println("Setting up input data...")
 
-    for freq in 0:(F * U - 1)
+    for freq in 0:(F̄ - 1)
         G_memory[freq + 1] = 1
     end
 
@@ -1528,6 +1545,8 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     @show Tmax = Int32(idiv(T, 4))
     @show T̄min = Int32(0)
     @show T̄max = Int32(idiv(Tmax, U) - (M - 1))
+    @show Fmin = Int32(0)
+    @show Fmax = Int32(F)
 
     amp = 7.5f0                 # amplitude
     bin = 0                     # frequency bin
@@ -1563,8 +1582,8 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
 
     # map!(i -> zero(Int4x2), Ẽ_wanted, Ẽ_wanted)
     @assert T̄min == 0
-    for tbar in T̄min:(T̄max - 1), fbar in 0:(F * U - 1), polr in 0:(P - 1), dish in 0:(D - 1)
-        Ēidx = dish + D * polr + D * P * fbar + D * P * (F * U) * tbar
+    for tbar in T̄min:(T̄max - 1), fbar in 0:(F̄ - 1), polr in 0:(P - 1), dish in 0:(D - 1)
+        Ēidx = dish + D * polr + D * P * fbar + D * P * (F̄) * tbar
         if polr == 0 && dish == 0 && fbar ÷ U == 0
             Ē1 = fbar == bin ? att * amp * cispi((2 * (tbar - (M - 1) + M / 2.0f0) * (0.5f0 + delta)) % 2.0f0) : 0
         else
@@ -1581,7 +1600,7 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     !silent && println("Copying data from CPU to GPU...")
     G_cuda = CuArray(G_memory)
     E_cuda = CuArray(E_memory)
-    Ē_cuda = CUDA.fill(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8), idiv(C, 2) * idiv(D, 4) * P * (F * U) * idiv(T, U))
+    Ē_cuda = CUDA.fill(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8), idiv(C, 2) * idiv(D, 4) * P * (F̄) * idiv(T, U))
     info_cuda = CUDA.fill(-1i32, length(info_wanted))
 
     @assert sizeof(G_cuda) < 2^32
@@ -1594,6 +1613,8 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
         Tmax,
         T̄min,
         T̄max,
+        Fmin,
+        Fmax,
         G_cuda,
         E_cuda,
         Ē_cuda,
@@ -1613,6 +1634,8 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
                     Tmax,
                     T̄min,
                     T̄max,
+                    Fmin,
+                    Fmax,
                     G_cuda,
                     E_cuda,
                     Ē_cuda,
@@ -1673,9 +1696,9 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
         num_errors = 0
         println("    Ē:")
         did_test_Ē_memory = falses(length(Ē_memory))
-        # for tbar in 0:(idiv(T, U) - 1), fbar in 0:(F * U - 1), polr in 0:(P - 1), dish in 0:(D - 1)
-        for polr in 0:(P - 1), dish in 0:(D - 1), fbar in 0:(F * U - 1), tbar in 0:(T̄max - 1)
-            Ēidx = dish + D * polr + D * P * fbar + D * (F * U) * P * tbar
+        # for tbar in 0:(idiv(T, U) - 1), fbar in 0:(F̄ - 1), polr in 0:(P - 1), dish in 0:(D - 1)
+        for polr in 0:(P - 1), dish in 0:(D - 1), fbar in 0:(F̄ - 1), tbar in 0:(T̄max - 1)
+            Ēidx = dish + D * polr + D * P * fbar + D * (F̄) * P * tbar
             @assert !did_test_Ē_memory[Ēidx + 1]
             did_test_Ē_memory[Ēidx + 1] = true
             have_value = Complex(convert(NTuple{2,Int32}, Ē_memory[Ēidx + 1])...)
@@ -1693,8 +1716,8 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
                 end
             end
         end
-        @assert all(@view did_test_Ē_memory[1:(P * D * F * U * T̄max)])
-        @assert !any(@view did_test_Ē_memory[(P * D * F * U * T̄max + 1):end])
+        @assert all(@view did_test_Ē_memory[1:(P * D * F̄ * T̄max)])
+        @assert !any(@view did_test_Ē_memory[(P * D * F̄ * T̄max + 1):end])
         println("Found $num_errors errors in $num_samples samples")
         @assert num_errors == 0
     end
@@ -1705,7 +1728,7 @@ end
 
 function fix_ptx_kernel()
     ptx = read("output-$(card)/upchan_$(setup)_U$(U).ptx", String)
-    ptx = replace(ptx, r".extern .func ([^;]*);"s => s".func \1.noreturn\n{\n\ttrap;\n}")
+    ptx = replace(ptx, r".extern .func gpu_([^;]*);"s => s".func gpu_\1.noreturn\n{\n\ttrap;\n}")
     open("output-$(card)/upchan_$(setup)_U$(U).ptx", "w") do fh
         println(fh, "// PTX kernel code for the CUDA upchannelizer")
         println(fh, "// This file has been generated automatically by `upchan.jl`.")
@@ -1766,7 +1789,13 @@ function fix_ptx_kernel()
         - name: "T̄max"
           intent: in
           type: Int32
-        - name: "G$U"
+        - name: "Fmin"
+          intent: in
+          type: Int32
+        - name: "Fmax"
+          intent: in
+          type: Int32
+        - name: "G_U$U"
           intent: in
           type: Float16
           indices: [F̄]
@@ -1778,7 +1807,7 @@ function fix_ptx_kernel()
           indices: [C, D, P, F, T]
           shape: [$C, $D, $P, $F, $T]
           strides: [1, $C, $(C*D), $(C*D*P), $(C*D*P*F)]
-        - name: "Ē$U"
+        - name: "Ē_U$U"
           intent: out
           type: Int4
           indices: [C, D, P, F̄, T̄]
@@ -1853,10 +1882,26 @@ function fix_ptx_kernel()
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "G$U",
+                    "name" => "Fmin",
+                    "kotekan_name" => "Fmin",
+                    "type" => "int32",
+                    "isoutput" => false,
+                    "hasbuffer" => false,
+                    "isscalar" => true,
+                ),
+                Dict(
+                    "name" => "Fmax",
+                    "kotekan_name" => "Fmax",
+                    "type" => "int32",
+                    "isoutput" => false,
+                    "hasbuffer" => false,
+                    "isscalar" => true,
+                ),
+                Dict(
+                    "name" => "G_U$(U)",
                     "kotekan_name" => "gpu_mem_gain",
                     "type" => "float16",
-                    "axes" => [Dict("label" => "Fbar", "length" => F * U)],
+                    "axes" => [Dict("label" => "Fbar_U$(U)", "length" => F̄)],
                     "isoutput" => false,
                     "hasbuffer" => true,
                     "isscalar" => false,
@@ -1876,14 +1921,14 @@ function fix_ptx_kernel()
                     "isscalar" => false,
                 ),
                 Dict(
-                    "name" => "Ebar$U",
+                    "name" => "Ebar_U$(U)",
                     "kotekan_name" => "gpu_mem_output_voltage",
                     "type" => "int4p4",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),
-                        Dict("label" => "Fbar", "length" => F * U),
-                        Dict("label" => "Tbar", "length" => idiv(T, U)),
+                        Dict("label" => "Fbar_U$(U)", "length" => F̄),
+                        Dict("label" => "Tbar_U$(U)", "length" => idiv(T, U)),
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,
