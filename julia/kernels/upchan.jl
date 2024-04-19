@@ -1807,7 +1807,7 @@ function fix_ptx_kernel()
           indices: [C, D, P, F, T]
           shape: [$C, $D, $P, $F, $T]
           strides: [1, $C, $(C*D), $(C*D*P), $(C*D*P*F)]
-        - name: "Ē_U$U"
+        - name: "Ē"
           intent: out
           type: Int4
           indices: [C, D, P, F̄, T̄]
@@ -1901,7 +1901,7 @@ function fix_ptx_kernel()
                     "name" => "G_U$(U)",
                     "kotekan_name" => "gpu_mem_gain",
                     "type" => "float16",
-                    "axes" => [Dict("label" => "Fbar_U$(U)", "length" => F̄)],
+                    "axes" => [Dict("label" => "Fbar", "length" => F̄)],
                     "isoutput" => false,
                     "hasbuffer" => true,
                     "isscalar" => false,
@@ -1921,14 +1921,14 @@ function fix_ptx_kernel()
                     "isscalar" => false,
                 ),
                 Dict(
-                    "name" => "Ebar_U$(U)",
+                    "name" => "Ebar",
                     "kotekan_name" => "gpu_mem_output_voltage",
                     "type" => "int4p4",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),
-                        Dict("label" => "Fbar_U$(U)", "length" => F̄),
-                        Dict("label" => "Tbar_U$(U)", "length" => idiv(T, U)),
+                        Dict("label" => "Fbar", "length" => F̄),
+                        Dict("label" => "Tbar", "length" => idiv(T, U)),
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,

@@ -45,7 +45,7 @@ U::Integer
     # const F₀ = 16 * 16
     # const F = 16 * 16           # benchmarking A30: 56; A40: 84
     const F = 48 * U
-    const Fout = F
+    const Fin = F
     const F̄ = F
     const T = 4 * 8192 ÷ U
 
@@ -70,7 +70,7 @@ elseif setup ≡ :hirax
     # const F₀ = 64 * 16
     # const F = 64 * 16
     const F = 64 * U
-    const Fout = F
+    const Fin = F
     const F̄ = F
     const T = 4 * 8192 ÷ U
 
@@ -91,8 +91,8 @@ elseif setup ≡ :pathfinder
     const P = 2
     # const F₀ = 16 * 128
     # const F = 16 * 128
-    const Fout = Dict(1 => 128, 2 => 128, 4 => 128, 8 => 64, 16 => 64, 32 => 64, 64 => 32)[U] * U
-    const F = U == 1 ? 384 : Fout
+    const Fin = Dict(1 => 128, 2 => 128, 4 => 128, 8 => 64, 16 => 64, 32 => 64, 64 => 32)[U] * U
+    const F = U == 1 ? 384 : Fin
     const F̄ = 4096
     const T = 4 * 8192 ÷ U
 
@@ -117,7 +117,9 @@ const C = 2
 elseif setup ≡ :hirax
     const T̄ = 4 * 256 * 4 ÷ U
 elseif setup ≡ :pathfinder
-    const T̄ = 4 * 256
+    # const T̄ = 4 * 256
+    # Reduce output buffer depth by 2 to stay below 2 GByte
+    const T̄ = 4 * 256 ÷ 2
 end
 
 const output_gain = 1 / (8 * Tds)
@@ -304,8 +306,8 @@ const layout_I_memory = Layout([
     BeamP(:beamP, 1, 2) => SIMD(:simd, 16, 2),
     BeamP(:beamP, 2, M) => Memory(:memory, 1, M),
     BeamQ(:beamQ, 1, 2 * N) => Memory(:memory, M, 2 * N),
-    Freq(:freq, 1, Fout) => Memory(:memory, M * 2 * N, Fout),
-    DSTime(:dstime, 1, T̄) => Memory(:memory, M * 2 * N * Fout, T̄),
+    Freq(:freq, 1, F̄) => Memory(:memory, M * 2 * N, F̄),
+    DSTime(:dstime, 1, T̄) => Memory(:memory, M * 2 * N * F̄, T̄),
 ])
 
 # info layout
@@ -1563,16 +1565,15 @@ function make_frb_kernel()
     end
 
     # Check parameters `Fmin`, `Fmax`, `F̄min`, `F̄max`
-    @assert Fout % U == 0
     @assert F % U == 0
-    @assert 0 ≤ Fout ≤ F
+    @assert F̄ % U == 0
     if!(
         emitter,
         :(
             !(
                 0i32 ≤ Fmin ≤ Fmax ≤ $(Int32(F)) &&
                 (Fmax - Fmin) % $(Int32(U)) == 0i32 &&
-                0i32 ≤ F̄min ≤ F̄max ≤ $(Int32(Fout)) &&
+                0i32 ≤ F̄min ≤ F̄max ≤ $(Int32(F̄)) &&
                 (F̄max - F̄min) % $(Int32(U)) == 0i32 &&
                 F̄max - F̄min == Fmax - Fmin
             )
@@ -1801,8 +1802,8 @@ function make_frb_kernel()
                                         :I;
                                         postprocess=addr -> quote
                                             let
-                                                offset = $(Int32(M * 2 * N * Fout)) * T̄min + $(Int32(M * 2 * N)) * F̄min
-                                                length = $(Int32(M * 2 * N * Fout * T̄))
+                                                offset = $(Int32(M * 2 * N * F̄)) * T̄min + $(Int32(M * 2 * N)) * F̄min
+                                                length = $(Int32(M * 2 * N * F̄ * T̄))
                                                 mod($addr + offset, length)
                                             end
                                         end,
@@ -1968,9 +1969,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         T̄max = Int32(T̄min + fld(Tmax - Tmin, Tds))
 
         Fmin = Int32(0)
-        Fmax = Int32(Fout)
+        Fmax = Int32(F)
         F̄min = Int32(0)
-        F̄max = Int32(Fout)
+        F̄max = Int32(F)
 
         input = :random
         if input ≡ :zero
@@ -2242,24 +2243,24 @@ function fix_ptx_kernel()
           indices: [MN, D]
           shape: [2, $(M*N)]
           strides: [1, 2]
-        - name: "W$U"
+        - name: "W"
           intent: in
           type: Float16
           indices: [C, dishM, dishN, P, F]
-          shape: [$C, $M, $N, $P, $F]
-          strides: [1, $C, $(C*M), $(C*M*N), $(C*M*N*P), $(C*M*N*P*F)]
-        - name: "Ē$U"
+          shape: [$C, $M, $N, $P, $Fin]
+          strides: [1, $C, $(C*M), $(C*M*N), $(C*M*N*P), $(C*M*N*P*Fin)]
+        - name: "Ē"
           intent: in
           type: Int4
           indices: [C, D, P, F, T]
           shape: [$C, $D, $P, $F, $T]
           strides: [1, $C, $(C*D), $(C*D*P), $(C*D*P*F)]
-        - name: "I$U"
+        - name: "I"
           intent: out
           type: Float16
           indices: [beamP, beamQ, F, Tbar]
-          shape: [$(2*M), $(2*N), $Fout, $(T̄)]
-          strides: [1, $(2*M), $(2*M*2*N), $(2*M*2*N*Fout)]
+          shape: [$(2*M), $(2*N), $F̄, $T̄]
+          strides: [1, $(2*M), $(2*M*2*N), $(2*M*2*N*F̄)]
         - name: "info"
           intent: out
           type: Int32
@@ -2373,7 +2374,7 @@ function fix_ptx_kernel()
                     "isscalar" => false,
                 ),
                 Dict(
-                    "name" => "W_U$(U)",
+                    "name" => "W",
                     "kotekan_name" => "gpu_mem_phase",
                     "type" => "float16",
                     "axes" => [
@@ -2381,35 +2382,35 @@ function fix_ptx_kernel()
                         Dict("label" => "dishM", "length" => M),
                         Dict("label" => "dishN", "length" => N),
                         Dict("label" => "P", "length" => P),
-                        Dict("label" => "Fbar_U$(U)", "length" => Fout),
+                        Dict("label" => "F", "length" => Fin),
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
                     "isscalar" => false,
                 ),
                 Dict(
-                    "name" => "Ebar_U$(U)",
+                    "name" => "Ebar",
                     "kotekan_name" => "gpu_mem_voltage",
                     "type" => "int4p4",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),
-                        Dict("label" => "Fbar_U$(U)", "length" => F),
-                        Dict("label" => "Tbar_U$(U)", "length" => T),
+                        Dict("label" => "Fbar", "length" => F),
+                        Dict("label" => "Tbar", "length" => T),
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
                     "isscalar" => false,
                 ),
                 Dict(
-                    "name" => "I_U$(U)",
+                    "name" => "I",
                     "kotekan_name" => "gpu_mem_beamgrid",
                     "type" => "float16",
                     "axes" => [
                         Dict("label" => "beamP", "length" => 2 * M),
                         Dict("label" => "beamQ", "length" => 2 * N),
-                        Dict("label" => "Fbar_U$(U)", "length" => Fout),
-                        Dict("label" => "Ttilde_U$(U)_Tds$(Tds)", "length" => T̄),
+                        Dict("label" => "Fbar", "length" => F̄),
+                        Dict("label" => "Ttilde", "length" => T̄),
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,
