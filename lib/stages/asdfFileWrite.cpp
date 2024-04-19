@@ -161,8 +161,89 @@ public:
                 for (int d = 0; d < ndims; ++d)
                     size *= dims.at(d);
 
-                const std::shared_ptr<ASDF::block_t> block = std::make_shared<ASDF::ptr_block_t>(
-                    const_cast<std::uint8_t*>(frame), size * typesize);
+                // "simple" strides have a layout that does not require copying the array
+                bool strides_are_simple;
+                {
+                    strides_are_simple = true;
+                    std::int64_t str = 1;
+                    for (int d = ndims - 1; d >= 0; --d) {
+                        if (str != meta->stride[d])
+                            ERROR("buffer {} d {} dim {} stride (found) {} str (expected) {}",
+                                  unique_name, d, meta->dim[d], meta->stride[d], str);
+                        strides_are_simple &= str == meta->stride[d];
+                        str *= meta->dim[d];
+                    }
+                    strides_are_simple &= str == size;
+                }
+
+                std::vector<std::uint8_t> frame_copy;
+                std::shared_ptr<ASDF::block_t> block;
+                if (strides_are_simple) {
+                    // Create a block that just points to the frame
+                    block = std::make_shared<ASDF::ptr_block_t>(const_cast<std::uint8_t*>(frame),
+                                                                size * typesize);
+                } else {
+                    // We need to copy the frame
+                    frame_copy.resize(size * typesize);
+                    if (!(meta->stride[meta->dims - 1] == 1))
+                        ERROR("name={} type={} dims={} laststride={}", meta->name,
+                              chord_datatype_string(meta->type), meta->dims,
+                              meta->stride[meta->dims - 1]);
+                    if (!(meta->stride[meta->dims - 1] == 1) && meta->dims == 4)
+                        for (int d = 0; d < 4; ++d)
+                            ERROR("dim[{}]={} stride[{}]={}", d, meta->dim[d], d, meta->stride[d]);
+                    assert(meta->stride[meta->dims - 1] == 1);
+                    const std::uint8_t* const __restrict__ input_ptr = frame;
+                    std::uint8_t* const __restrict__ output_ptr = frame_copy.data();
+                    const std::ptrdiff_t lastdim = meta->dim[meta->dims - 1];
+                    assert(meta->dims < 20);
+                    std::ptrdiff_t output_stride[20];
+                    for (int d = meta->dims - 1; d >= 0; --d)
+                        if (d == meta->dims - 1)
+                            output_stride[d] = 1;
+                        else
+                            output_stride[d] = output_stride[d + 1] * meta->dim[d + 1];
+                    assert(meta->dims <= 4);
+                    switch (meta->dims) {
+                        case 3: {
+                            for (int j = 0; j < meta->dim[0]; ++j) {
+                                for (int k = 0; k < meta->dim[1]; ++k) {
+                                    std::ptrdiff_t input_offset =
+                                        j * meta->stride[0] + k * meta->stride[1];
+                                    std::ptrdiff_t output_offset =
+                                        j * output_stride[0] + k * output_stride[1];
+                                    std::memcpy(output_ptr + typesize * output_offset,
+                                                input_ptr + typesize * input_offset,
+                                                typesize * lastdim);
+                                }
+                            }
+                            break;
+                        }
+                        case 4: {
+                            for (int j = 0; j < meta->dim[0]; ++j) {
+                                for (int k = 0; k < meta->dim[1]; ++k) {
+                                    for (int l = 0; l < meta->dim[2]; ++l) {
+                                        std::ptrdiff_t input_offset = j * meta->stride[0]
+                                                                      + k * meta->stride[1]
+                                                                      + l * meta->stride[2];
+                                        std::ptrdiff_t output_offset = j * output_stride[0]
+                                                                       + k * output_stride[1]
+                                                                       + l * output_stride[2];
+                                        std::memcpy(output_ptr + typesize * output_offset,
+                                                    input_ptr + typesize * input_offset,
+                                                    typesize * lastdim);
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                        default:
+                            ERROR("meta->dims={}", meta->dims);
+                            assert(0);
+                            break;
+                    }
+                    block = std::make_shared<ASDF::ptr_block_t>(frame_copy.data(), size * typesize);
+                }
 
                 const auto compression = ASDF::compression_t::blosc;
                 const int compression_level = 9;
