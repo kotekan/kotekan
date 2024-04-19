@@ -115,6 +115,11 @@ cudaEvent_t cudaQuantize::execute(cudaPipelineState&, const std::vector<cudaEven
     out_meta_beam->set_array_dimension(0, in_meta->dim[0], "R");
     out_meta_beam->set_array_dimension(1, in_meta->dim[1], "Fbar");
     out_meta_beam->set_array_dimension(2, in_meta->dim[2], "Ttilde");
+    for (int d = out_meta_beam->dims - 1; d >= 0; --d)
+        if (d == out_meta_beam->dims - 1)
+            out_meta_beam->stride[d] = 1;
+        else
+            out_meta_beam->stride[d] = out_meta_beam->stride[d + 1] * out_meta_beam->dim[d + 1];
 
     const std::shared_ptr<metadataObject> out_mc_meanstd =
         device.create_gpu_memory_array_metadata(_gpu_mem_meanstd, gpu_frame_id, in_mc->parent_pool);
@@ -127,6 +132,12 @@ cudaEvent_t cudaQuantize::execute(cudaPipelineState&, const std::vector<cudaEven
     assert(in_meta->dim[2] % CHUNK_SIZE == 0);
     static_assert(CHUNK_SIZE == 256);
     out_meta_meanstd->set_array_dimension(2, in_meta->dim[2] / CHUNK_SIZE, "Ttilde256");
+    for (int d = out_meta_meanstd->dims - 1; d >= 0; --d)
+        if (d == out_meta_meanstd->dims - 1)
+            out_meta_meanstd->stride[d] = 1;
+        else
+            out_meta_meanstd->stride[d] =
+                out_meta_meanstd->stride[d + 1] * out_meta_meanstd->dim[d + 1];
 
     return record_end_event();
 }

@@ -250,6 +250,9 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
         // Assert Ttilde x Fbar x beamQ x beamP
         assert(in_meta->dims == 4);
         // in_meta->dim[0] is in the ringbuffer
+        if (!(in_meta->dim[1] == _num_local_freq))
+            ERROR("in dim=[{},{},{},{}] num_local_freq={}", in_meta->dim[0], in_meta->dim[1],
+                  in_meta->dim[2], in_meta->dim[3], _num_local_freq);
         assert(in_meta->dim[1] == _num_local_freq);
         assert(in_meta->dim[2] == _beam_grid_size_ew);
         assert(in_meta->dim[3] == _beam_grid_size_ns);
@@ -265,6 +268,11 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
         out_meta->set_array_dimension(0, _num_beams, "R");
         out_meta->set_array_dimension(1, _num_local_freq, "Fbar");
         out_meta->set_array_dimension(2, _Td, "Ttilde");
+        for (int d = out_meta->dims - 1; d >= 0; --d)
+            if (d == out_meta->dims - 1)
+                out_meta->stride[d] = 1;
+            else
+                out_meta->stride[d] = out_meta->stride[d + 1] * out_meta->dim[d + 1];
         DEBUG("Set output metadata: array shape {:s}, array type {:s}",
               out_meta->get_dimensions_string(), out_meta->get_type_string());
 
