@@ -19,9 +19,8 @@
 #include "Stage.hpp"             // for Stage
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "datasetManager.hpp"    // for dset_id_t, state_id_t
 #include "prometheusMetrics.hpp" // for Gauge, MetricFamily
-#include "visUtil.hpp"           // for movingAverage, cfloat
+#include "N2Util.hpp"           // for movingAverage, cfloat
 
 
 /**
@@ -88,11 +87,8 @@ public:
     void main_thread() override;
 
 private:
-    // Update the dataset ID when we receive a new input dataset
-    dset_id_t change_dataset_state(dset_id_t input_dset_id) const;
-
     // Update the prometheus metrics
-    void update_metrics(uint32_t freq_id, dset_id_t dset_id, double elapsed_time,
+    void update_metrics(int freq_id, u_int64_t elapsed_time,
                         const eig_t<cfloat>& eigpair, const EigConvergenceStats& stats);
 
     // Calculate the mask to apply from the object parameters
@@ -116,11 +112,8 @@ private:
     uint32_t _block_fill_size;
     std::vector<std::pair<int32_t, int32_t>> _bands_filled;
 
-    /// Keep track of the average write time, per frequency and dataset ID
-    std::map<std::pair<uint32_t, dset_id_t>, movingAverage> calc_time_map;
-
-    state_id_t ev_state_id;
-    dset_id_t input_dset_id = dset_id_t::null;
+    /// Keep track of the average write time, per frequency
+    std::map<int, N2::movingAverage> calc_time_map;
 
     kotekan::prometheus::Gauge& comp_time_seconds_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& eigenvalue_metric;

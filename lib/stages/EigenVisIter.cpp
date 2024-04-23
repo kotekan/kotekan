@@ -5,11 +5,10 @@
 #include "LinearAlgebra.hpp"     // for EigConvergenceStats, eigen_masked_subspace, to_blaze_herm
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"            // for allocate_new_metadata_object, mark_frame_empty, mark_fr...
-#include "datasetState.hpp"      // for datasetState, eigenvalueState, state_uptr
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Gauge, Metrics, MetricFamily
-#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::erms, VisField::eval
-#include "visUtil.hpp"           // for cfloat, frameID, current_time, modulo, movingAverage
+#include "N2FrameView.hpp"       // for N2FrameView
+#include "N2Util.hpp"            // for cfloat, frameID
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
@@ -70,25 +69,12 @@ EigenVisIter::EigenVisIter(Config& config, const std::string& unique_name,
     _max_iterations = config.get_default<uint32_t>(unique_name, "max_iterations", 15);
     _krylov = config.get_default<uint32_t>(unique_name, "krylov", 2);
     _subspace = config.get_default<uint32_t>(unique_name, "subspace", 3);
-
-    // Create the state describing the eigenvalues
-    auto& dm = datasetManager::instance();
-    // TODO: add a state parameter describing the method used
-    state_uptr ev_state = std::make_unique<eigenvalueState>(_num_eigenvectors);
-    ev_state_id = dm.add_state(std::move(ev_state)).first;
-}
-
-dset_id_t EigenVisIter::change_dataset_state(dset_id_t input_dset_id) const {
-    auto& dm = datasetManager::instance();
-    return dm.add_dataset(ev_state_id, input_dset_id);
 }
 
 void EigenVisIter::main_thread() {
 
     frameID input_frame_id(in_buf);
     frameID output_frame_id(out_buf);
-
-    dset_id_t _output_dset_id = dset_id_t::null;
 
     DynamicHermitian<float> mask;
     uint32_t num_elements = 0;
@@ -106,13 +92,7 @@ void EigenVisIter::main_thread() {
         if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
-        auto input_frame = VisFrameView(in_buf, input_frame_id);
-
-        // check if the input dataset has changed
-        if (input_dset_id != input_frame.dataset_id) {
-            input_dset_id = input_frame.dataset_id;
-            _output_dset_id = change_dataset_state(input_dset_id);
-        }
+        N2FrameView input_frame(in_buf, input_frame_id);
 
         // Check that we have the full triangle
         uint32_t num_prod_full = input_frame.num_elements * (input_frame.num_elements + 1) / 2;
@@ -122,7 +102,7 @@ void EigenVisIter::main_thread() {
         }
 
         // Start the calculation clock.
-        double start_time = current_time();
+        uint64_t start_time = current_time();
 
         // Initialise the mask
         if (!initialized) {
@@ -143,7 +123,7 @@ void EigenVisIter::main_thread() {
 
         // Stop the calculation clock. This doesn't include time to copy stuff into
         // the buffers, but that has to wait for one to be available.
-        double elapsed_time = current_time() - start_time;
+        uint64_t elapsed_time = current_time() - start_time;
 
         // Report all eigenvalues to stdout.
         std::string str_evals = "";
@@ -155,7 +135,7 @@ void EigenVisIter::main_thread() {
               str_evals, stats.rms, elapsed_time, stats.iterations, _max_iterations);
 
         // Update Prometheus metrics
-        update_metrics(input_frame.freq_id, input_frame.dataset_id, elapsed_time, eigpair, stats);
+        update_metrics(input_frame.freq_id, elapsed_time, eigpair, stats);
 
         /* Write out new frame */
         // Get output buffer for visibilities. Essentially identical to input buffers.
@@ -164,15 +144,10 @@ void EigenVisIter::main_thread() {
         }
 
         // Create view to output frame
-        auto output_frame =
-            VisFrameView::create_frame_view(out_buf, output_frame_id, input_frame.num_elements,
-                                            input_frame.num_prod, _num_eigenvectors);
-
-        // Copy over metadata and data, but skip all ev members which may not be
-        // defined
-        output_frame.copy_metadata(input_frame);
-        output_frame.dataset_id = _output_dset_id;
-        output_frame.copy_data(input_frame, {VisField::eval, VisField::evec, VisField::erms});
+        in_buf->pass_metadata(input_frame_id, out_buf, output_frame_id);
+        N2FrameView output_frame(out_buf, output_frame_id);
+        // Copy over data, but skip all ev members which may not be defined
+        output_frame.copy_data(input_frame, {N2Field::eval, N2Field::evec, N2Field::erms});
 
         // Copy in eigenvectors and eigenvalues.
         for (uint32_t i = 0; i < _num_eigenvectors; i++) {
@@ -194,11 +169,10 @@ void EigenVisIter::main_thread() {
 }
 
 
-void EigenVisIter::update_metrics(uint32_t freq_id, dset_id_t dset_id, double elapsed_time,
+void EigenVisIter::update_metrics(int freq_id, u_int64_t elapsed_time,
                                   const eig_t<cfloat>& eigpair, const EigConvergenceStats& stats) {
     // Update average write time in prometheus
-    auto key = std::make_pair(freq_id, dset_id);
-    auto& calc_time = calc_time_map[key];
+    auto& calc_time = calc_time_map[freq_id];
     calc_time.add_sample(elapsed_time);
     comp_time_seconds_metric.set(calc_time.average());
 

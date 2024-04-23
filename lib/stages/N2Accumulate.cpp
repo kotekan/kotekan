@@ -9,6 +9,7 @@
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, INFO, logLevel, DEBUG
 #include "N2Util.hpp"            // for frameID
 #include "N2FrameView.hpp"       // for N2FrameView
+#include "prometheusMetrics.hpp" // for Metrics
 
 #include <algorithm>  // for copy, max, fill, copy_backward, equal, transform
 #include <assert.h>   // for assert
@@ -55,8 +56,8 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
     _num_N2_products = _num_elements*_num_elements; // TODO: Eventually, a blocked matrix might be sent by the gpu
     _num_N2_products_freqs = _num_N2_products * _num_freq_in_frame;
-    // N2Accumulate will only work with the lower triangle
-    _num_accum_products = _num_elements*(_num_elements+1)/2; // Only store the triangle
+    // Number of products to accumulate
+    _num_accum_products = N2::get_num_prod(_num_elements);
     
     // Initializing these here using the computed _num_N2_products_freqs (accumulate the full, blocked matrix x frequencies from the GPU)
     _vis = std::vector<int32_t>(2 * _num_N2_products_freqs, 0); // vis with complex as 2 ints
@@ -74,10 +75,15 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     out_buf->register_producer(unique_name);
     // TODO...
     // Make sure output buffer has enough frames (>= # frequencies) and are sized correctly
-    // Add other assert()s
+    // Add other assert()s/checks back
 }
 
 void N2Accumulate::main_thread() {
+
+    auto& comp_time_seconds_metric =
+        Metrics::instance().add_gauge("kotekan_N2_accum_time", unique_name);
+    auto& samples_in_out_frame =
+        Metrics::instance().add_gauge("kotekan_samples_in_accumulated_out_frame", unique_name);
 
     N2::frameID in_frame_id(in_buf);
     N2::frameID out_frame_id(out_buf);
@@ -118,6 +124,7 @@ void N2Accumulate::main_thread() {
             t_frame_s = N2::ts_to_uint64(ts);
         }
         // uint64_t t_frame_e = t_frame_s + _in_frame_duration_nsec;
+        comp_time_seconds_metric.set(t_frame_s / 1e9);
 
         // Accumulate each visibility sample in the in_frame
         for (size_t vis_samp_n = 0; vis_samp_n < _n_vis_samples_per_in_frame; ++vis_samp_n) {
@@ -142,6 +149,7 @@ void N2Accumulate::main_thread() {
 
                 INFO("Finishing N2Accumulate output frame. Accumulated {:d} visibility samples.",
                     vis_samples_in_out_frame);
+                samples_in_out_frame.set(vis_samples_in_out_frame);
                 output_and_reset( in_frame_id, out_frame_id );
 
                 t_output += 1000000000L; // TODO: Make this a config parameter. Is there a library for LST?
@@ -196,7 +204,6 @@ bool N2Accumulate::output_and_reset( N2::frameID &in_frame_id, N2::frameID &out_
     // Different frame for each frequency
     // But, same metadata
     std::shared_ptr<chordMetadata> chord_frame_metadata = get_chord_metadata(in_buf, in_frame_id);
-    const int num_ev = config.get<int>(unique_name, "num_ev");
 
     // Loop over frequency
     for (size_t f = 0; f < _num_freq_in_frame; ++f) {

@@ -236,7 +236,76 @@ inline size_t member_alignment(size_t offset, size_t size) {
     return (((size - (offset % size)) % size) + offset);
 }
 
-} // N2
+/**
+ * @class movingAverage
+ * @brief Calculate an exponentially weighted moving average of a time series.
+ *
+ * @author Richard Shaw
+ **/
+class movingAverage {
+
+public:
+    /**
+     * @brief Create a moving average calculation.
+     *
+     * @param  length  The length scale to average over. This is defined as
+     *                 the lag at which all newer samples carry the same weight as all earlier
+     *                 samples. Or equivalently the distance at which the weight per sample has
+     *                 decreased by a factor of two.
+     **/
+    movingAverage(double length = 4.0) {
+        // Calculate the coefficient for the moving average as a halving of the weight
+        alpha = 1.0 - pow(2, -1.0 / length);
+    }
+
+    /**
+     * @brief Add a new sample in the time series.
+     *
+     * @param  value  The sample to add.
+     **/
+    void add_sample(uint64_t value) {
+
+        // Special case for the first sample.
+        if (!initialised) {
+            current_value = value;
+            initialised = true;
+        } else {
+            current_value = alpha * value + (1 - alpha) * current_value;
+        }
+    }
+
+    /**
+     * @brief Return the moving average of the current set of samples.
+     *
+     * @returns  The current moving average.
+     **/
+    double average() {
+        if (!initialised) {
+            return NAN;
+        }
+        return current_value;
+    }
+
+private:
+    double current_value;
+    double alpha;
+
+    bool initialised = false;
+};
+
+/**
+ * @brief Get the current time in nanoseconds.
+ *
+ * @returns  The current time in nanoseconds.
+ **/
+inline uint64_t current_time()
+{
+    timespec output_ts;
+    timespec_get(&output_ts, TIME_UTC);
+    return N2::ts_to_uint64(output_ts);
+}
+
+} // namespace N2
 
 /**
  * @brief FMT formatter that casts frameIDs to int so that `format("{:d}", frame_id)` works.
@@ -249,6 +318,5 @@ struct formatter<N2::frameID> : formatter<int> {
     }
 };
 } // namespace fmt
-
 
 #endif
