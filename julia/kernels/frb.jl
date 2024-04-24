@@ -44,15 +44,15 @@ U::Integer
     const P = 2
     # const F₀ = 16 * 16
     # const F = 16 * 16           # benchmarking A30: 56; A40: 84
-    const F = 48 * U
-    const Fin = F
-    const F̄ = F
+    const Fin = Dict(1 => 16, 2 => 16, 4 => 16, 8 => 8, 16 => 8, 32 => 8, 64 => 4, 128 => 1)[U] * U
+    const F = U == 1 ? 48 : Fin
+    const F̄ = 512
     const T = 4 * 8192 ÷ U
 
     const Touter = 48
     const Tinner = 4
 
-    const Tds = 40              # downsampling factor
+    const Tds = 256 ÷ U         # downsampling factor
 
     const W = 24                # number of warps
     const B = 1                 # number of blocks per SM
@@ -113,7 +113,9 @@ const sampling_time_μsec = U * 4096 / (2 * 1200)
 const C = 2
 # const T̄ = 4 * 256
 @static if setup ≡ :chord
-    const T̄ = 4 * 256 * 8 ÷ U
+    # const T̄ = 4 * 256
+    # Reduce output buffer depth by 2 to stay below 2 GByte
+    const T̄ = 4 * 256 ÷ 2
 elseif setup ≡ :hirax
     const T̄ = 4 * 256 * 4 ÷ U
 elseif setup ≡ :pathfinder
@@ -1784,32 +1786,60 @@ function make_frb_kernel()
                         # (This condition will be evaluated at compile time)
                         if!(emitter, :((t_inner_hi + t + 1i32) % $(Int32(gcd(Tinner, Tds))) == 0i32)) do emitter
                             if!(emitter, :(t_running == $(Int32(Tds)))) do emitter
-                                if!(
+                                # if!(
+                                #     emitter,
+                                #     :(
+                                #         let
+                                #             thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
+                                #             warp = IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, $num_warps)
+                                #             p = 2i32 * thread
+                                #             q = 2i32 * warp
+                                #             0i32 ≤ p < $(Int32(2 * M)) && 0i32 ≤ q < $(Int32(2 * N))
+                                #         end
+                                #     ),
+                                # ) do emitter
+                                store!(
                                     emitter,
-                                    :(
-                                        let
-                                            thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
-                                            warp = IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, $num_warps)
-                                            p = 2i32 * thread
-                                            q = 2i32 * warp
-                                            0i32 ≤ p < $(Int32(2 * M)) && 0i32 ≤ q < $(Int32(2 * N))
-                                        end
-                                    ),
-                                ) do emitter
-                                    store!(
-                                        emitter,
-                                        :I_memory => layout_I_memory,
-                                        :I;
-                                        postprocess=addr -> quote
-                                            let
-                                                offset = $(Int32(M * 2 * N * F̄)) * T̄min + $(Int32(M * 2 * N)) * F̄min
-                                                length = $(Int32(M * 2 * N * F̄ * T̄))
-                                                mod($addr + offset, length)
+                                    :I_memory => layout_I_memory,
+                                    :I;
+                                    condition=state -> let
+                                        p_exprs = []
+                                        q_exprs = []
+                                        for (phys, mach) in emitter.environment[:I].dict
+                                            mach isa SIMD && continue
+                                            if phys isa BeamP
+                                                machval = :(
+                                                    $(IndexSpaces.indexvalue(state, mach)) ÷ $(Int32(mach.offset)) %
+                                                    $(Int32(mach.length))
+                                                )
+                                                physval = :($machval * $(Int32(phys.offset)))
+                                                p_expr = physval
+                                                push!(p_exprs, p_expr)
                                             end
-                                        end,
-                                    )
-                                    return nothing
-                                end
+                                            if phys isa BeamQ
+                                                machval = :(
+                                                    $(IndexSpaces.indexvalue(state, mach)) ÷ $(Int32(mach.offset)) %
+                                                    $(Int32(mach.length))
+                                                )
+                                                physval = :($machval * $(Int32(phys.offset)))
+                                                q_expr = physval
+                                                push!(q_exprs, q_expr)
+                                            end
+                                        end
+                                        p_expr = :(+($(p_exprs...)))
+                                        q_expr = :(+($(q_exprs...)))
+                                        :(0i32 ≤ $p_expr < $(Int32(2 * M)) && 0i32 ≤ $q_expr < $(Int32(2 * N)))
+                                    end,
+                                    postprocess=addr -> quote
+                                        let
+                                            offset = $(Int32(M * 2 * N * F̄)) * T̄min + $(Int32(M * 2 * N)) * F̄min
+                                            length = $(Int32(M * 2 * N * F̄ * T̄))
+                                            mod($addr + offset, length)
+                                        end
+                                    end,
+                                )
+                                #     return nothing
+                                # end
                                 apply!(emitter, :I, [:I], (I,) -> :(zero(Float16x2)))
                                 push!(emitter.statements, :(t_running = $(0i32)))
                                 push!(emitter.statements, :(dstime += $(1i32)))

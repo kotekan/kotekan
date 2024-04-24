@@ -69,7 +69,7 @@ setup::Symbol
     const P = 2
     # const F₀ = 16
     const F = 48
-    const F̄ = F * U
+    const F̄ = Dict(1 => 16, 2 => 16, 4 => 16, 8 => 8, 16 => 8, 32 => 8, 64 => 4, 128 => 1)[U] * U
     const T = 4 * 8192
 elseif setup ≡ :hirax
     # HIRAX Setup
@@ -1356,7 +1356,7 @@ function upchan!(emitter)
         merge!(emitter, :Ē3, [:Ē2lo, :Ē2hi], Dish(:dish, 8, 2) => Register(:dish, 8, 2))
 
         # Skip the first MTaps-1 outputs when writing to memory.
-        tbarstride = idiv(D, 4) * P * (F̄)
+        tbarstride = idiv(D, 4) * P * F̄
         t_min = U * (M - 1)
         layout_Ē3 = emitter.environment[:Ē3]
         store!(
@@ -1365,77 +1365,17 @@ function upchan!(emitter)
             :Ē3;
             align=16,
             condition=state -> let
-                # if U == 16
-                #     @assert layout_Ē3[Time(:time, 16, 4)] == Warp(:warp, 4, 4)
-                #     @assert layout_Ē3[Time(:time, 64, 4)] == Register(:time, 64, 4)
-                #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
-                #     t_warp = :(16i32 * (IndexSpaces.cuda_warpidx() ÷ 4i32 % 4i32))
-                # elseif U == 32
-                #     @assert layout_Ē3[Time(:time, 32, 4)] == Warp(:warp, 8, 4)
-                #     @assert layout_Ē3[Time(:time, 128, 2)] == Register(:time, 128, 2)
-                #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
-                #     t_warp = :(32i32 * (IndexSpaces.cuda_warpidx() ÷ 8i32 % 4i32))
-                # elseif U == 64
-                #     @assert layout_Ē3[Time(:time, 64, 4)] == Warp(:warp, 16, 4)
-                #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
-                #     t_warp = :(64i32 * (IndexSpaces.cuda_warpidx() ÷ 16i32 % 4i32))
-                # elseif U == 128
-                #     @assert layout_Ē3[Time(:time, 128, 2)] == Warp(:warp, 16, 2)
-                #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
-                #     t_warp = :(128i32 * (IndexSpaces.cuda_warpidx() ÷ 16i32 % 2i32))
-                # else
-                #     @show layout_Ē3
-                #     @assert false
-                # end
-                # t_register = Int32(get(state.dict, :time, 0))
-                # t_loop = :(t_outer)
-                # t = :($t_loop + $t_register + $t_warp)
-                # Look at the time bits from `U` to `nextpow(2, t_min)`
-                tbit_min = Int(log(2, U))
-                tbit_max = ceil(Int, log(2, t_min))
-                # warp_val = :(IndexSpaces.cuda_warpidx())
-                # thread_val = :(IndexSpaces.cuda_threadidx())
-                # register_val = Int32(get(state.dict, :time, 0))
-                # loop_val = :(t_outer)
-                # warp_val = indexvalue(state, Warp(:warp))
-                # thread_val = indexvalue(state, Thread(:thread))
-                # register_val = indexvalue(state, Register(:time))
-                # loop_val = indexvalue(state, Loop(:t_outer))
-                # t_expr = 0i32
                 t_exprs = []
-                for tbit in tbit_min:tbit_max
-                    mach = layout_Ē3[Time(:time, 1 << tbit, 2)]
-                    @assert mach.length == 2
-                    # if mach isa Warp
-                    #     t_expr = :($t_expr + $warp_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
-                    #     # @show tbit t_expr
-                    # elseif mach isa Thread
-                    #     t_expr = :($t_expr + $thread_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
-                    #     # @show tbit t_expr
-                    # elseif mach isa Register
-                    #     t_expr = :($t_expr + $register_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
-                    #     # @show tbit t_expr
-                    # elseif mach isa Loop
-                    #     t_expr = :($t_expr + $loop_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
-                    #     # @show tbit t_expr
-                    # else
-                    #     @assert false
-                    # end
-                    # if mach isa Warp
-                    #     value_expr = :warp_val
-                    # elseif mach isa Thread
-                    #     value_expr = :thread_val
-                    # elseif mach isa Register
-                    #     value_expr = :register_val
-                    # elseif mach isa Loop
-                    #     value_expr = :loop_val
-                    # else
-                    #     @assert false
-                    # end
-                    # t_expr = :($t_expr + $(IndexSpaces.indexvalue(state, mach)) ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
-                    push!(t_exprs, :($(IndexSpaces.indexvalue(state, mach)) ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit)))
+                for (phys, mach) in layout_Ē3.dict
+                    mach isa SIMD && continue
+                    if phys isa Time
+                        machval = :($(IndexSpaces.indexvalue(state, mach)) ÷ $(Int32(mach.offset)) % $(Int32(mach.length)))
+                        physval = :($machval * $(Int32(phys.offset)))
+                        t_expr = physval
+                        push!(t_exprs, t_expr)
+                    end
                 end
-                t_expr = isempty(t_exprs) ? 0i32 : :(+($(t_exprs...)))
+                t_expr = :(+($(t_exprs...)))
                 :($t_expr ≥ $(Int32(t_min)))
             end,
             postprocess=addr -> quote
