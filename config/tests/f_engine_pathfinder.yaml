@@ -118,39 +118,41 @@ bb_beam_separation_y: 0.015        # north-south
 bb_num_beams: bb_num_beams_P * bb_num_beams_Q
 
 # Upchannelizer setup
+# TODO: Remove this
 upchannelization_factor: 4
 
 # This mapping was suggested by Seth Siegel's `ice_rfsoc_comparison_dm_2000_tint_1_gamma_0_tsys_30K_tsky.yaml`.
 # (This is the "worst case" mapping.)
 upchannelization_factor_mapping:
-    # - 0.0e6: 64
-    # - 341.65e6: 32
-    # - 442.01e6: 16
-    # - 568.66e6: 8
-    # - 714.99e6: 4
-    # - 907.41e6: 2
-    # - 1168.77e6: 1
-    -    0: 64                  # Fmin=0
-    - 1750: 32                  # Fmin=14
-    - 2264: 16                  # Fmin=46
-    - 2912:  8                  # Fmin=86
-    - 3661:  4                  # Fmin=133
-    - 4646:  2                  # Fmin=195
-    - 5985:  1                  # Fmin=279
+    # - 0: 64
+    # - 341.65: 32
+    # - 442.01: 16
+    # - 568.66: 8
+    # - 714.99: 4
+    # - 907.41: 2
+    # - 1168.77: 1
+    -    0: 64                  # Fmin = 0
+    - 1750: 32                  # Fmin = 14
+    - 2264: 16                  # Fmin = 46
+    - 2912:  8                  # Fmin = 86
+    - 3661:  4                  # Fmin = 133
+    - 4646:  2                  # Fmin = 195
+    - 5985:  1                  # Fmin = 279
 
 # # This mapping was suggested by Seth Siegel's `ice_rfsoc_comparison_dm_750_tint_1_gamma_0_tsys_30K_tsky.yaml`.
 # # (This is the "default" mapping.)
 # upchannelization_factor_mapping:
-# #     - 0.0e6: 8
-# #     - 607.9e6: 4
-# #     - 790.57e6: 2
-# #     - 1032.16e6: 1
+# #     - 0: 8
+# #     - 607.9: 4
+# #     - 790.57: 2
+# #     - 1032.16: 1
 #     -    0: 8
 #     - 3113: 4
 #     - 4048: 2
 #     - 5285: 1
 
 # The above mappings are for CHORD. The mappings below are for the CHORD pathfinder.
+# TODO: Use them
 # dm_2000_tint_1.0_gamma_0.0:
 #   fbound:
 #   - 1405.03
@@ -224,8 +226,8 @@ frb_num_output_times: 256
 frb_num_beams_P: 2 * num_dish_locations_ns
 frb_num_beams_Q: 2 * num_dish_locations_ew
 
-frb_num_beams_ns: 32   #TODO 40
-frb_num_beams_ew: 32   #TODO 25
+frb_num_beams_ns: 32
+frb_num_beams_ew: 32
 frb_num_beams: frb_num_beams_ns * frb_num_beams_ew
 # Opening angle is specified in radians (here 2 degrees)
 frb_bore_z: 49.3208 * 3.141592653589793 / 180
@@ -473,7 +475,7 @@ run_fengine:
     kotekan_stage: FEngine
     num_frames: 10
     repeat_count: 10
-    skip_julia: true
+    # skip_julia: true
     E_buffer: host_voltage_buffer
     A_buffer: host_bb_phase_buffer
     s_buffer: host_bb_shift_buffer
