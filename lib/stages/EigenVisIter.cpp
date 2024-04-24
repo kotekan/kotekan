@@ -161,6 +161,7 @@ void EigenVisIter::main_thread() {
         // HACK: return the convergence state in the RMS field (negative == not
         // converged)
         output_frame.erms = stats.converged ? stats.rms : -stats.eps_eval;
+        output_frame.emethod = N2EigenMethod::iterative;
 
         // Finish up interation.
         in_buf->mark_frame_empty(unique_name, input_frame_id++);

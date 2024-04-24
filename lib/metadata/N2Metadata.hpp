@@ -18,10 +18,10 @@ struct N2MetadataFormat {
 
     /// Number of elements for data in buffer
     uint32_t num_elements;
-    /// Number of eigenvectors and values calculated
-    uint32_t num_ev;
     /// Number of products in the data
     uint32_t num_prod;
+    /// Number of eigenvectors and values calculated
+    uint32_t num_ev;
 
     /// ID of the frequency bin
     int freq_id; // this is an int in chordMetadata, maybe change later

@@ -232,6 +232,33 @@ public:
                         std::vector<bool>(), std::vector<int64_t>{meta->num_prod});
                     group->emplace("weights", weights_array);
 
+                    std::vector<ASDF::float32_t> flags_view( frame_view.flags.begin(), frame_view.flags.end() );
+                    auto flags_array = std::make_shared<ASDF::ndarray>(
+                        flags_view, ASDF::block_format_t::inline_array, compression, compression_level,
+                        std::vector<bool>(), std::vector<int64_t>{meta->num_elements});
+                    group->emplace("flags", flags_array);
+
+                    std::vector<ASDF::float32_t> eval_view( frame_view.eval.begin(), frame_view.eval.end() );
+                    auto eval_array = std::make_shared<ASDF::ndarray>(
+                        eval_view, ASDF::block_format_t::inline_array, compression, compression_level,
+                        std::vector<bool>(), std::vector<int64_t>{meta->num_ev});
+                    group->emplace("eval", eval_array);
+
+                    std::vector<ASDF::complex64_t> evec_view( frame_view.evec.begin(), frame_view.evec.end() );
+                    auto evec_array = std::make_shared<ASDF::ndarray>(
+                        evec_view, ASDF::block_format_t::inline_array, compression, compression_level,
+                        std::vector<bool>(), std::vector<int64_t>{meta->num_ev * meta->num_elements});
+                    group->emplace("evec", evec_array);
+
+                    group->emplace("emethod", std::make_shared<ASDF::int_entry>((int) frame_view.emethod));
+                    group->emplace("erms", std::make_shared<ASDF::int_entry>((int) frame_view.erms));
+
+                    std::vector<ASDF::complex64_t> gain_view( frame_view.gain.begin(), frame_view.gain.end() );
+                    auto gain_array = std::make_shared<ASDF::ndarray>(
+                        gain_view, ASDF::block_format_t::inline_array, compression, compression_level,
+                        std::vector<bool>(), std::vector<int64_t>{meta->num_elements});
+                    group->emplace("gain", evec_array);
+
                     group->emplace("n_valid_fpga_ticks_in_frame", std::make_shared<ASDF::int_entry>(meta->n_valid_fpga_ticks_in_frame));
                     group->emplace("num_elements", std::make_shared<ASDF::int_entry>(meta->num_elements));
                     group->emplace("num_prod", std::make_shared<ASDF::int_entry>(meta->num_prod));

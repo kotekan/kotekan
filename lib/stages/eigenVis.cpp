@@ -252,6 +252,7 @@ void eigenVis::main_thread() {
                 output_frame.evec[i * num_elements + j] = evecs[indr * num_elements + j];
             }
         }
+        output_frame.emethod = N2EigenMethod::cheevr;
         output_frame.erms = rms;
 
         // Finish up interation.
