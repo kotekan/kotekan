@@ -28,12 +28,16 @@ add_library(
     cudaBasebandBeamformer_hirax.cpp
     cudaBasebandBeamformer_pathfinder.cpp
     cudaFRBBeamformer_chord_U1.cpp
+    cudaFRBBeamformer_chord_U2.cpp
+    cudaFRBBeamformer_chord_U4.cpp
     cudaFRBBeamformer_chord_U8.cpp
     cudaFRBBeamformer_chord_U16.cpp
     cudaFRBBeamformer_chord_U32.cpp
     cudaFRBBeamformer_chord_U64.cpp
     cudaFRBBeamformer_chord_U128.cpp
     cudaFRBBeamformer_hirax_U1.cpp
+    cudaFRBBeamformer_hirax_U2.cpp
+    cudaFRBBeamformer_hirax_U4.cpp
     cudaFRBBeamformer_hirax_U8.cpp
     cudaFRBBeamformer_hirax_U16.cpp
     cudaFRBBeamformer_hirax_U32.cpp

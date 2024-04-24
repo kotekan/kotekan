@@ -126,9 +126,9 @@ private:
         "Fbar",
     };
     static constexpr std::array<std::ptrdiff_t, G_U8_rank> G_U8_lengths = {
-        384,
+        64,
     };
-    static constexpr std::ptrdiff_t G_U8_length = chord_datatype_bytes(G_U8_type) * 384;
+    static constexpr std::ptrdiff_t G_U8_length = chord_datatype_bytes(G_U8_type) * 64;
     static_assert(G_U8_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto G_U8_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -197,11 +197,11 @@ private:
     static constexpr std::array<std::ptrdiff_t, Ebar_rank> Ebar_lengths = {
         512,
         2,
-        384,
+        64,
         4096,
     };
     static constexpr std::ptrdiff_t Ebar_length =
-        chord_datatype_bytes(Ebar_type) * 512 * 2 * 384 * 4096;
+        chord_datatype_bytes(Ebar_type) * 512 * 2 * 64 * 4096;
     static_assert(Ebar_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -597,6 +597,31 @@ cudaEvent_t cudaUpchannelizer_chord_U8::execute(cudaPipelineState& /*pipestate*/
         cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
 #endif
 
+#ifdef DEBUGGING
+    // Poison outputs
+    {
+        DEBUG("begin poisoning");
+        const int num_chunks = Tbarmax_arg <= Tbar_ringbuf ? 1 : 2;
+        for (int chunk = 0; chunk < num_chunks; ++chunk) {
+            DEBUG("poisoning chunk={}/{}", chunk, num_chunks);
+            const std::ptrdiff_t Tbarstride = Ebar_meta->stride[0];
+            const std::ptrdiff_t Tbaroffset = chunk == 0 ? Tbarmin_arg : 0;
+            const std::ptrdiff_t Tbarlength = (num_chunks == 1 ? Tbarmax_arg - Tbarmin_arg
+                                               : chunk == 0    ? Tbar_ringbuf - Tbarmin_arg
+                                                               : Tbarmax_arg - Tbar_ringbuf);
+            const std::ptrdiff_t Fbarstride = Ebar_meta->stride[1];
+            const std::ptrdiff_t Fbaroffset = 0;
+            const std::ptrdiff_t Fbarlength = cuda_upchannelization_factor * (Fmax - Fmin);
+            DEBUG("before cudaMemset2DAsync.Ebar");
+            CHECK_CUDA_ERROR(cudaMemset2DAsync((std::uint8_t*)Ebar_memory + Tbaroffset * Tbarstride
+                                                   + Fbaroffset * Fbarstride,
+                                               Tbarstride, 0x88, Fbarlength * Fbarstride,
+                                               Tbarlength, device.getStream(cuda_stream_id)));
+        } // for chunk
+        DEBUG("poisoning done.");
+    }
+#endif
+
     const std::string symname = "Upchannelizer_chord_U8_" + std::string(kernel_symbol);
     CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[symname],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
@@ -619,8 +644,10 @@ cudaEvent_t cudaUpchannelizer_chord_U8::execute(cudaPipelineState& /*pipestate*/
     CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.data(), info_memory, info_length,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
-    // Check error codes
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+    DEBUG("Finished CUDA Upchannelizer_chord_U8 on GPU frame {:d}", gpu_frame_id);
+
+    // Check error codes
     const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
                                                       (const std::int32_t*)&*info_host.end());
     if (error_code != 0)
@@ -631,6 +658,78 @@ cudaEvent_t cudaUpchannelizer_chord_U8::execute(cudaPipelineState& /*pipestate*/
             ERROR("cudaUpchannelizer_chord_U8 returned 'info' value {:d} at index {:d} (zero "
                   "indicates no error)",
                   info_host[i], i);
+#endif
+
+#ifdef DEBUGGING
+    // Check outputs for poison
+    {
+        DEBUG("begin poison check");
+        DEBUG("    E_dims={}", E_meta->dims);
+        DEBUG("    E_dim[0]={}", E_meta->dim[0]);
+        DEBUG("    E_dim[1]={}", E_meta->dim[1]);
+        DEBUG("    E_dim[2]={}", E_meta->dim[2]);
+        DEBUG("    E_dim[3]={}", E_meta->dim[3]);
+        DEBUG("    E_stride[0]={}", E_meta->stride[0]);
+        DEBUG("    E_stride[1]={}", E_meta->stride[1]);
+        DEBUG("    E_stride[2]={}", E_meta->stride[2]);
+        DEBUG("    E_stride[3]={}", E_meta->stride[3]);
+        DEBUG("    Ebar_dims={}", Ebar_meta->dims);
+        DEBUG("    Ebar_dim[0]={}", Ebar_meta->dim[0]);
+        DEBUG("    Ebar_dim[1]={}", Ebar_meta->dim[1]);
+        DEBUG("    Ebar_dim[2]={}", Ebar_meta->dim[2]);
+        DEBUG("    Ebar_dim[3]={}", Ebar_meta->dim[3]);
+        DEBUG("    Ebar_stride[0]={}", Ebar_meta->stride[0]);
+        DEBUG("    Ebar_stride[1]={}", Ebar_meta->stride[1]);
+        DEBUG("    Ebar_stride[2]={}", Ebar_meta->stride[2]);
+        DEBUG("    Ebar_stride[3]={}", Ebar_meta->stride[3]);
+        const int num_chunks = Tbarmax_arg <= Tbar_ringbuf ? 1 : 2;
+        for (int chunk = 0; chunk < num_chunks; ++chunk) {
+            DEBUG("poisoning chunk={}/{}", chunk, num_chunks);
+            const std::ptrdiff_t Tbarstride = Ebar_meta->stride[0];
+            const std::ptrdiff_t Tbaroffset = chunk == 0 ? Tbarmin_arg : 0;
+            const std::ptrdiff_t Tbarlength = (num_chunks == 1 ? Tbarmax_arg - Tbarmin_arg
+                                               : chunk == 0    ? Tbar_ringbuf - Tbarmin_arg
+                                                               : Tbarmax_arg - Tbar_ringbuf);
+            const std::ptrdiff_t Fbarstride = Ebar_meta->stride[1];
+            const std::ptrdiff_t Fbaroffset = 0;
+            const std::ptrdiff_t Fbarlength = cuda_upchannelization_factor * (Fmax - Fmin);
+            DEBUG("    Tbarstride={}", Tbarstride);
+            DEBUG("    Tbaroffset={}", Tbaroffset);
+            DEBUG("    Tbarlength={}", Tbarlength);
+            DEBUG("    Fbarstride={}", Fbarstride);
+            DEBUG("    Fbaroffset={}", Fbaroffset);
+            DEBUG("    Fbarlength={}", Fbarlength);
+            std::vector<std::uint8_t> Ebar_buffer(Tbarlength * Fbarlength * Fbarstride, 0x11);
+            DEBUG("    Ebar_buffer.size={}", Ebar_buffer.size());
+            DEBUG("before cudaMemcpy2D.Ebar");
+            CHECK_CUDA_ERROR(cudaMemcpy2D(Ebar_buffer.data(), Fbarlength * Fbarstride,
+                                          (const std::uint8_t*)Ebar_memory + Tbaroffset * Tbarstride
+                                              + Fbaroffset * Fbarstride,
+                                          Tbarstride, Fbarlength * Fbarstride, Tbarlength,
+                                          cudaMemcpyDeviceToHost));
+
+            DEBUG("before memchr");
+            const bool Ebar_found_error = std::memchr(Ebar_buffer.data(), 0x88, Ebar_buffer.size());
+            if (Ebar_found_error) {
+                for (std::ptrdiff_t tbar = 0; tbar < Tbarlength; ++tbar) {
+                    for (std::ptrdiff_t fbar = 0; fbar < Fbarlength; ++fbar) {
+                        bool any_error = false;
+                        for (std::ptrdiff_t n = 0; n < Fbarstride; ++n) {
+                            const auto val = Ebar_buffer.at(tbar * (Fbarlength * Fbarstride)
+                                                            + fbar * Fbarstride + n);
+                            any_error |= val == 0x88;
+                        }
+                        if (any_error) {
+                            DEBUG("    U={} [{},{}]={:#02x}", cuda_upchannelization_factor, tbar,
+                                  fbar, 0x88);
+                        }
+                    }
+                }
+            }
+            assert(!Ebar_found_error);
+        } // for chunk
+        DEBUG("poison check done.");
+    }
 #endif
 
     return record_end_event();

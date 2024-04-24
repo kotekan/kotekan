@@ -61,10 +61,10 @@ private:
     static constexpr int cuda_beam_layout_N = 48;
     static constexpr int cuda_dish_layout_M = 24;
     static constexpr int cuda_dish_layout_N = 24;
-    static constexpr int cuda_downsampling_factor = 40;
+    static constexpr int cuda_downsampling_factor = 4;
     static constexpr int cuda_number_of_complex_components = 2;
     static constexpr int cuda_number_of_dishes = 512;
-    static constexpr int cuda_number_of_frequencies = 3072;
+    static constexpr int cuda_number_of_frequencies = 256;
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_timesamples = 512;
     static constexpr int cuda_granularity_number_of_timesamples = 48;
@@ -82,7 +82,7 @@ private:
     // Kernel call parameters:
     static constexpr int threads_x = 32;
     static constexpr int threads_y = 24;
-    static constexpr int max_blocks = 3072;
+    static constexpr int max_blocks = 256;
     static constexpr int shmem_bytes = 76896;
 
     // Kernel name:
@@ -152,12 +152,12 @@ private:
         "MN",
         "D",
     };
-    static constexpr std::array<std::size_t, S_rank> S_lengths = {
+    static constexpr std::array<std::ptrdiff_t, S_rank> S_lengths = {
         2,
         576,
     };
-    static constexpr std::size_t S_length = chord_datatype_bytes(S_type) * 2 * 576;
-    static_assert(S_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t S_length = chord_datatype_bytes(S_type) * 2 * 576;
+    static_assert(S_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto S_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -185,11 +185,11 @@ private:
     static constexpr std::array<const char*, W_rank> W_labels = {
         "C", "dishM", "dishN", "P", "F",
     };
-    static constexpr std::array<std::size_t, W_rank> W_lengths = {
-        2, 24, 24, 2, 3072,
+    static constexpr std::array<std::ptrdiff_t, W_rank> W_lengths = {
+        2, 24, 24, 2, 256,
     };
-    static constexpr std::size_t W_length = chord_datatype_bytes(W_type) * 2 * 24 * 24 * 2 * 3072;
-    static_assert(W_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t W_length = chord_datatype_bytes(W_type) * 2 * 24 * 24 * 2 * 256;
+    static_assert(W_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto W_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -218,15 +218,15 @@ private:
         "Fbar",
         "Tbar",
     };
-    static constexpr std::array<std::size_t, Ebar_rank> Ebar_lengths = {
+    static constexpr std::array<std::ptrdiff_t, Ebar_rank> Ebar_lengths = {
         512,
         2,
-        3072,
+        256,
         512,
     };
-    static constexpr std::size_t Ebar_length =
-        chord_datatype_bytes(Ebar_type) * 512 * 2 * 3072 * 512;
-    static_assert(Ebar_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t Ebar_length =
+        chord_datatype_bytes(Ebar_type) * 512 * 2 * 256 * 512;
+    static_assert(Ebar_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -256,14 +256,14 @@ private:
         "Fbar",
         "Ttilde",
     };
-    static constexpr std::array<std::size_t, I_rank> I_lengths = {
+    static constexpr std::array<std::ptrdiff_t, I_rank> I_lengths = {
         48,
         48,
-        3072,
-        128,
+        512,
+        512,
     };
-    static constexpr std::size_t I_length = chord_datatype_bytes(I_type) * 48 * 48 * 3072 * 128;
-    static_assert(I_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t I_length = chord_datatype_bytes(I_type) * 48 * 48 * 512 * 512;
+    static_assert(I_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto I_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -290,13 +290,13 @@ private:
         "warp",
         "block",
     };
-    static constexpr std::array<std::size_t, info_rank> info_lengths = {
+    static constexpr std::array<std::ptrdiff_t, info_rank> info_lengths = {
         32,
         24,
-        3072,
+        256,
     };
-    static constexpr std::size_t info_length = chord_datatype_bytes(info_type) * 32 * 24 * 3072;
-    static_assert(info_length <= std::size_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 24 * 256;
+    static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -323,10 +323,10 @@ private:
     std::vector<std::uint8_t> S_host;
     std::vector<std::uint8_t> info_host;
 
-    static constexpr std::size_t Ebar_Tbar_sample_bytes =
+    static constexpr std::ptrdiff_t Ebar_Tbar_sample_bytes =
         chord_datatype_bytes(Ebar_type) * Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P]
         * Ebar_lengths[Ebar_index_Fbar];
-    static constexpr std::size_t I_Ttilde_sample_bytes =
+    static constexpr std::ptrdiff_t I_Ttilde_sample_bytes =
         chord_datatype_bytes(I_type) * I_lengths[I_index_beamP] * I_lengths[I_index_beamQ]
         * I_lengths[I_index_Fbar];
 
@@ -343,11 +343,11 @@ private:
 
     // How many samples we will process from the input ringbuffer
     // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
-    std::size_t Tbarmin, Tbarmax;
+    std::ptrdiff_t Tbarmin, Tbarmax;
 
     // How many samples we will produce in the output ringbuffer
     // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
-    std::size_t Ttildemin, Ttildemax;
+    std::ptrdiff_t Ttildemin, Ttildemax;
 };
 
 REGISTER_CUDA_COMMAND(cudaFRBBeamformer_chord_U64);
@@ -435,59 +435,59 @@ cudaFRBBeamformer_chord_U64::num_processed_elements(std::int64_t num_available_e
 int cudaFRBBeamformer_chord_U64::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer
     DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const std::optional<std::size_t> val_in1 =
+    const std::optional<std::ptrdiff_t> val_in1 =
         input_ringbuf_signal->wait_without_claiming(unique_name, instance_num);
     DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
     if (!val_in1.has_value())
         return -1;
-    const std::size_t input_bytes = val_in1.value();
+    const std::ptrdiff_t input_bytes = val_in1.value();
     DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
 
     // How many inputs samples are available?
-    const std::size_t Tbar_available = div_noremainder(input_bytes, Ebar_Tbar_sample_bytes);
+    const std::ptrdiff_t Tbar_available = div_noremainder(input_bytes, Ebar_Tbar_sample_bytes);
     DEBUG("Available samples:      Tbar_available: {:d}", Tbar_available);
 
     // How many outputs will we process and consume?
-    const std::size_t Tbar_processed = num_processed_elements(Tbar_available);
-    const std::size_t Tbar_consumed = num_consumed_elements(Tbar_available);
+    const std::ptrdiff_t Tbar_processed = num_processed_elements(Tbar_available);
+    const std::ptrdiff_t Tbar_consumed = num_consumed_elements(Tbar_available);
     DEBUG("Will process (samples): Tbar_processed: {:d}", Tbar_processed);
     DEBUG("Will consume (samples): Tbar_consumed:  {:d}", Tbar_consumed);
     assert(Tbar_processed > 0);
     assert(Tbar_consumed <= Tbar_processed);
-    const std::size_t Tbar_consumed2 = num_consumed_elements(Tbar_processed);
+    const std::ptrdiff_t Tbar_consumed2 = num_consumed_elements(Tbar_processed);
     assert(Tbar_consumed2 == Tbar_consumed);
 
-    const std::optional<std::size_t> val_in2 = input_ringbuf_signal->wait_and_claim_readable(
+    const std::optional<std::ptrdiff_t> val_in2 = input_ringbuf_signal->wait_and_claim_readable(
         unique_name, instance_num, Tbar_consumed * Ebar_Tbar_sample_bytes);
     if (!val_in2.has_value())
         return -1;
-    const std::size_t input_cursor = val_in2.value();
+    const std::ptrdiff_t input_cursor = val_in2.value();
     DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
     Tbarmin = div_noremainder(input_cursor, Ebar_Tbar_sample_bytes);
     Tbarmax = Tbarmin + Tbar_processed;
-    const std::size_t Tbarlength = Tbarmax - Tbarmin;
+    const std::ptrdiff_t Tbarlength = Tbarmax - Tbarmin;
     DEBUG("Input samples:");
     DEBUG("    Tbarmin:    {:d}", Tbarmin);
     DEBUG("    Tbarmax:    {:d}", Tbarmax);
     DEBUG("    Tbarlength: {:d}", Tbarlength);
 
     // How many outputs will we produce?
-    const std::size_t Ttilde_produced = num_produced_elements(Tbar_available);
+    const std::ptrdiff_t Ttilde_produced = num_produced_elements(Tbar_available);
     DEBUG("Will produce (samples): Ttilde_produced: {:d}", Ttilde_produced);
-    const std::size_t Ttildelength = Ttilde_produced;
+    const std::ptrdiff_t Ttildelength = Ttilde_produced;
 
     // to bytes
-    const std::size_t output_bytes = Ttildelength * I_Ttilde_sample_bytes;
+    const std::ptrdiff_t output_bytes = Ttildelength * I_Ttilde_sample_bytes;
     DEBUG("Will produce {:d} output bytes", output_bytes);
 
     // Wait for space to be available in our output ringbuffer...
     DEBUG("Waiting for output ringbuffer space for frame {:d}...", gpu_frame_id);
-    const std::optional<std::size_t> val_out =
+    const std::optional<std::ptrdiff_t> val_out =
         output_ringbuf_signal->wait_for_writable(unique_name, instance_num, output_bytes);
     DEBUG("Finished waiting for output for data frame {:d}.", gpu_frame_id);
     if (!val_out.has_value())
         return -1;
-    const std::size_t output_cursor = val_out.value();
+    const std::ptrdiff_t output_cursor = val_out.value();
     DEBUG("Output ring-buffer byte offset {:d}", output_cursor);
 
     assert(mod(output_cursor, I_Ttilde_sample_bytes) == 0);
@@ -571,7 +571,7 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
         assert(std::strncmp(W_meta->name, W_name, sizeof W_meta->name) == 0);
         assert(W_meta->type == W_type);
         assert(W_meta->dims == W_rank);
-        for (std::size_t dim = 0; dim < W_rank; ++dim) {
+        for (std::ptrdiff_t dim = 0; dim < W_rank; ++dim) {
             assert(std::strncmp(W_meta->dim_name[W_rank - 1 - dim], W_labels[dim],
                                 sizeof W_meta->dim_name[W_rank - 1 - dim])
                    == 0);
@@ -630,7 +630,7 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
         assert(std::strncmp(Ebar_meta->name, Ebar_name, sizeof Ebar_meta->name) == 0);
         assert(Ebar_meta->type == Ebar_type);
         assert(Ebar_meta->dims == Ebar_rank);
-        for (std::size_t dim = 0; dim < Ebar_rank; ++dim) {
+        for (std::ptrdiff_t dim = 0; dim < Ebar_rank; ++dim) {
             assert(std::strncmp(Ebar_meta->dim_name[Ebar_rank - 1 - dim], Ebar_labels[dim],
                                 sizeof Ebar_meta->dim_name[Ebar_rank - 1 - dim])
                    == 0);
@@ -655,7 +655,7 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
     std::strncpy(I_meta->name, I_name, sizeof I_meta->name);
     I_meta->type = I_type;
     I_meta->dims = I_rank;
-    for (std::size_t dim = 0; dim < I_rank; ++dim) {
+    for (std::ptrdiff_t dim = 0; dim < I_rank; ++dim) {
         std::strncpy(I_meta->dim_name[I_rank - 1 - dim], I_labels[dim],
                      sizeof I_meta->dim_name[I_rank - 1 - dim]);
         I_meta->dim[I_rank - 1 - dim] = I_lengths[dim];
@@ -700,13 +700,13 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
     I_arg = array_desc(I_memory, I_length);
 
     // Ringbuffer size
-    const std::size_t Tbar_ringbuf = input_ringbuf_signal->size / Ebar_Tbar_sample_bytes;
-    const std::size_t Ttilde_ringbuf = output_ringbuf_signal->size / I_Ttilde_sample_bytes;
+    const std::ptrdiff_t Tbar_ringbuf = input_ringbuf_signal->size / Ebar_Tbar_sample_bytes;
+    const std::ptrdiff_t Ttilde_ringbuf = output_ringbuf_signal->size / I_Ttilde_sample_bytes;
     DEBUG("Input ringbuffer size (samples):  {:d}", Tbar_ringbuf);
     DEBUG("Output ringbuffer size (samples): {:d}", Ttilde_ringbuf);
 
-    const std::size_t Tbarlength = Tbarmax - Tbarmin;
-    const std::size_t Ttildelength = Ttildemax - Ttildemin;
+    const std::ptrdiff_t Tbarlength = Tbarmax - Tbarmin;
+    const std::ptrdiff_t Ttildelength = Ttildemax - Ttildemin;
     DEBUG("Processed input samples: {:d}", Tbarlength);
     DEBUG("Produced output samples: {:d}", Ttildelength);
 
@@ -768,9 +768,9 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
             }
         }
         assert(surplus_dish_index == cuda_dish_layout_M * cuda_dish_layout_N);
-        INFO("M={} N={}", cuda_dish_layout_M, cuda_dish_layout_N);
-        for (int i = 0; i < int(S_host.size() / 2); i += 2)
-            INFO("    S[{}] = ({}, {})", i / 2, S[i], S[i + 1]);
+        // INFO("M={} N={}", cuda_dish_layout_M, cuda_dish_layout_N);
+        // for (int i = 0; i < int(S_host.size() / 2); i += 2)
+        //     INFO("    S[{}] = ({}, {})", i / 2, S[i], S[i+1]);
 
         CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, S_host.data(), S_length, cudaMemcpyHostToDevice,
                                          device.getStream(cuda_stream_id)));
@@ -787,6 +787,32 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
     // Initialize host-side buffer arrays
     CHECK_CUDA_ERROR(
         cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
+#endif
+
+#ifdef DEBUGGING
+    // Poison outputs
+    {
+        DEBUG("begin poisoning");
+        const int num_chunks = Ttildemax_arg <= Ttilde_ringbuf ? 1 : 2;
+        for (int chunk = 0; chunk < num_chunks; ++chunk) {
+            DEBUG("poisoning chunk={}/{}", chunk, num_chunks);
+            const std::ptrdiff_t Ttildestride = I_meta->stride[0];
+            const std::ptrdiff_t Ttildeoffset = chunk == 0 ? Ttildemin_arg : 0;
+            const std::ptrdiff_t Ttildelength = (num_chunks == 1 ? Ttildemax_arg - Ttildemin_arg
+                                                 : chunk == 0    ? Ttilde_ringbuf - Ttildemin_arg
+                                                                 : Ttildemax_arg - Ttilde_ringbuf);
+            const std::ptrdiff_t Ftildestride = I_meta->stride[1];
+            const std::ptrdiff_t Ftildeoffset = Ftildemin;
+            const std::ptrdiff_t Ftildelength = Ftildemax - Ftildemin;
+            DEBUG("before cudaMemset2DAsync.I");
+            CHECK_CUDA_ERROR(
+                cudaMemset2DAsync((std::uint8_t*)I_memory + 2 * Ttildeoffset * Ttildestride
+                                      + 2 * Ftildeoffset * Ftildestride,
+                                  2 * Ttildestride, 0x88, 2 * Ftildelength * Ftildestride,
+                                  Ttildelength, device.getStream(cuda_stream_id)));
+        } // for chunk
+        DEBUG("poisoning done.");
+    }
 #endif
 
     const std::string symname = "FRBBeamformer_chord_U64_" + std::string(kernel_symbol);
@@ -816,8 +842,10 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
     CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.data(), info_memory, info_length,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
-    // Check error codes
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+    DEBUG("Finished CUDA FRBBeamformer_chord_U64 on GPU frame {:d}", gpu_frame_id);
+
+    // Check error codes
     const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
                                                       (const std::int32_t*)&*info_host.end());
     if (error_code != 0)
@@ -830,15 +858,94 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
                   info_host[i], i);
 #endif
 
+#ifdef DEBUGGING
+    // Check outputs for poison
+    {
+        DEBUG("begin poison check");
+        DEBUG("    Ebar_dims={}", Ebar_meta->dims);
+        DEBUG("    Ebar_dim[0]={}", Ebar_meta->dim[0]);
+        DEBUG("    Ebar_dim[1]={}", Ebar_meta->dim[1]);
+        DEBUG("    Ebar_dim[2]={}", Ebar_meta->dim[2]);
+        DEBUG("    Ebar_dim[3]={}", Ebar_meta->dim[3]);
+        DEBUG("    Ebar_stride[0]={}", Ebar_meta->stride[0]);
+        DEBUG("    Ebar_stride[1]={}", Ebar_meta->stride[1]);
+        DEBUG("    Ebar_stride[2]={}", Ebar_meta->stride[2]);
+        DEBUG("    Ebar_stride[3]={}", Ebar_meta->stride[3]);
+        DEBUG("    I_dims={}", I_meta->dims);
+        DEBUG("    I_dim[0]={}", I_meta->dim[0]);
+        DEBUG("    I_dim[1]={}", I_meta->dim[1]);
+        DEBUG("    I_dim[2]={}", I_meta->dim[2]);
+        DEBUG("    I_dim[3]={}", I_meta->dim[3]);
+        DEBUG("    I_stride[0]={}", I_meta->stride[0]);
+        DEBUG("    I_stride[1]={}", I_meta->stride[1]);
+        DEBUG("    I_stride[2]={}", I_meta->stride[2]);
+        DEBUG("    I_stride[3]={}", I_meta->stride[3]);
+        const int num_chunks = Ttildemax_arg <= Ttilde_ringbuf ? 1 : 2;
+        for (int chunk = 0; chunk < num_chunks; ++chunk) {
+            DEBUG("poisoning chunk={}/{}", chunk, num_chunks);
+            const std::ptrdiff_t Ttildestride = I_meta->stride[0];
+            const std::ptrdiff_t Ttildeoffset = chunk == 0 ? Ttildemin_arg : 0;
+            const std::ptrdiff_t Ttildelength = (num_chunks == 1 ? Ttildemax_arg - Ttildemin_arg
+                                                 : chunk == 0    ? Ttilde_ringbuf - Ttildemin_arg
+                                                                 : Ttildemax_arg - Ttilde_ringbuf);
+            const std::ptrdiff_t Ftildestride = I_meta->stride[1];
+            const std::ptrdiff_t Ftildeoffset = Ftildemin;
+            const std::ptrdiff_t Ftildelength = Ftildemax - Ftildemin;
+            DEBUG("    Ttildestride={}", Ttildestride);
+            DEBUG("    Ttildeoffset={}", Ttildeoffset);
+            DEBUG("    Ttildelength={}", Ttildelength);
+            DEBUG("    Ftildestride={}", Ftildestride);
+            DEBUG("    Ftildeoffset={}", Ftildeoffset);
+            DEBUG("    Ftildelength={}", Ftildelength);
+            std::vector<std::uint16_t> I_buffer(Ttildelength * Ftildelength * Ftildestride, 0x1111);
+            DEBUG("    I_buffer.size={}", I_buffer.size());
+            DEBUG("before cudaMemcpy2D.I");
+            CHECK_CUDA_ERROR(cudaMemcpy2D(I_buffer.data(), 2 * Ftildelength * Ftildestride,
+                                          (const std::uint8_t*)I_memory
+                                              + 2 * Ttildeoffset * Ttildestride
+                                              + 2 * Ftildeoffset * Ftildestride,
+                                          2 * Ttildestride, 2 * Ftildelength * Ftildestride,
+                                          Ttildelength, cudaMemcpyDeviceToHost));
+
+            DEBUG("before memchr");
+            bool I_found_error = false;
+            for (std::ptrdiff_t ttilde = 0; ttilde < Ttildelength; ++ttilde) {
+                for (std::ptrdiff_t ftilde = 0; ftilde < Ftildelength; ++ftilde) {
+                    // for (std::ptrdiff_t n=0; n<Ftildestride; ++n) {
+                    //     const auto val = I_buffer.at(ttilde * (Ftildelength * Ftildestride) +
+                    //     ftilde * Ftildestride + n); if (val == 0x88) {
+                    //         DEBUG("    U=64 [{},{},{}]={:#02x}", ttilde, ftilde, n, 0x88);
+                    //     }
+                    // }
+                    bool any_error = false, all_error = true;
+                    for (std::ptrdiff_t n = 0; n < Ftildestride; ++n) {
+                        const auto val = I_buffer.at(ttilde * (Ftildelength * Ftildestride)
+                                                     + ftilde * Ftildestride + n);
+                        any_error |= val == 0x8888;
+                        all_error &= val == 0x8888;
+                    }
+                    if (any_error) {
+                        DEBUG("    U=64 [{},{}]=(any={},all={})", ttilde, ftilde, any_error,
+                              all_error);
+                    }
+                    I_found_error |= any_error;
+                }
+            }
+            assert(!I_found_error);
+        } // for chunk
+        DEBUG("poison check done.");
+    }
+#endif
+
     return record_end_event();
 }
 
 void cudaFRBBeamformer_chord_U64::finalize_frame() {
-    const std::size_t Tbarlength = Tbarmax - Tbarmin;
-    const std::size_t Ttildelength = Ttildemax - Ttildemin;
+    const std::ptrdiff_t Tbarlength = Tbarmax - Tbarmin;
+    const std::ptrdiff_t Ttildelength = Ttildemax - Ttildemin;
 
     // Advance the input ringbuffer
-    const std::size_t Tbar_consumed = num_consumed_elements(Tbarlength);
+    const std::ptrdiff_t Tbar_consumed = num_consumed_elements(Tbarlength);
     DEBUG("Advancing input ringbuffer:");
     DEBUG("    Consumed samples: {:d}", Tbar_consumed);
     DEBUG("    Consumed bytes:   {:d}", Tbar_consumed * Ebar_Tbar_sample_bytes);
@@ -846,7 +953,7 @@ void cudaFRBBeamformer_chord_U64::finalize_frame() {
                                       Tbar_consumed * Ebar_Tbar_sample_bytes);
 
     // Advance the output ringbuffer
-    const std::size_t Ttilde_produced = Ttildelength;
+    const std::ptrdiff_t Ttilde_produced = Ttildelength;
     DEBUG("Advancing output ringbuffer:");
     DEBUG("    Produced samples: {:d}", Ttilde_produced);
     DEBUG("    Produced bytes:   {:d}", Ttilde_produced * I_Ttilde_sample_bytes);

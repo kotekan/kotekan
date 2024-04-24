@@ -572,6 +572,11 @@ cudaBasebandBeamformer_pathfinder::execute(cudaPipelineState& /*pipestate*/,
         cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
 #endif
 
+#ifdef DEBUGGING
+    // Poison outputs
+    CHECK_CUDA_ERROR(cudaMemsetAsync(J_memory, 0x88, J_length, device.getStream(cuda_stream_id)));
+#endif
+
     const std::string symname = "BasebandBeamformer_pathfinder_" + std::string(kernel_symbol);
     CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[symname],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
@@ -593,8 +598,10 @@ cudaBasebandBeamformer_pathfinder::execute(cudaPipelineState& /*pipestate*/,
     CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.data(), info_memory, info_length,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
-    // Check error codes
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+    DEBUG("Finished CUDA BasebandBeamformer_pathfinder on GPU frame {:d}", gpu_frame_id);
+
+    // Check error codes
     const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
                                                       (const std::int32_t*)&*info_host.end());
     if (error_code != 0)
@@ -605,6 +612,15 @@ cudaBasebandBeamformer_pathfinder::execute(cudaPipelineState& /*pipestate*/,
             ERROR("cudaBasebandBeamformer_pathfinder returned 'info' value {:d} at index {:d} "
                   "(zero indicates no error)",
                   info_host[i], i);
+#endif
+
+#ifdef DEBUGGING
+    // Check outputs for poison
+    std::vector<std::uint8_t> J_buffer(J_length);
+    CHECK_CUDA_ERROR(cudaMemcpy(J_buffer.data(), J_memory, J_length, cudaMemcpyDeviceToHost));
+
+    const bool J_found_error = std::memchr(J_buffer.data(), 0x88, J_buffer.size());
+    assert(!J_found_error);
 #endif
 
     return record_end_event();
