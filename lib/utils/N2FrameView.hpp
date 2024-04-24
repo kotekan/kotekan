@@ -19,14 +19,20 @@
 #include <set>              // for set
 #include <map>              // for map
 #include <utility>          // for pair
-#include <iostream>         // for cout
 
 /**
  * @brief The fields within the N2FrameView.
  *
  * Use this enum to refer to the fields.
  **/
-enum class N2Field { vis, weight, flags, eval, evec, erms, gain };
+enum class N2Field { vis, weight, flags, eval, evec, emethod, erms, gain };
+
+/**
+ * @brief Eigenvalue and Eigenvector calculation method
+ *
+ * Use this enum to refer to the method used to compute Eigenvalues and Eigenvectors.
+ **/
+enum class N2EigenMethod { cheevr, iterative };
 
 /**
  * @class N2FrameView
@@ -63,6 +69,8 @@ public:
     const gsl::span<float> eval;
     /// View of the eigenvectors (packed as ev,feed).
     const gsl::span<N2::cfloat> evec;
+    /// Method used to compute Eigenvalues and Eigenvectors
+    N2EigenMethod & emethod;
     /// The RMS of residual visibilities
     float& erms;
     /// View of the applied gains
@@ -81,6 +89,7 @@ public:
         field_sizes.push_back( { N2Field::flags,    sizeof(float) * num_elements_in} );
         field_sizes.push_back( { N2Field::eval,     sizeof(float) * num_ev_in} );
         field_sizes.push_back( { N2Field::evec,     sizeof(N2::cfloat) * num_ev_in * num_elements_in} );
+        field_sizes.push_back( { N2Field::emethod,  sizeof(N2EigenMethod) * 1} );
         field_sizes.push_back( { N2Field::erms,     sizeof(float) * 1} );
         field_sizes.push_back( { N2Field::gain,     sizeof(N2::cfloat) * num_elements_in} );
 
@@ -101,7 +110,8 @@ public:
         size_t offset = 0;
         for (const std::pair<N2Field, size_t> & field : field_sizes) {
             frame_layout[field.first] = std::make_pair(offset, offset + field.second);
-            std::cout << " -- Frame " << (int) field.first << ": {"  << frame_layout[field.first].first <<  ", " << (int) frame_layout[field.first].second << " }" << std::endl;
+            DEBUG_NON_OO(" -- Frame element {:d} at: ({:d}, {:d})", (int) field.first,
+                (int) frame_layout[field.first].first, (int) frame_layout[field.first].second);
             offset += field.second;
         }
 
@@ -119,7 +129,7 @@ public:
     static size_t calculate_frame_size(kotekan::Config& config, const std::string& unique_name) {
 
         const int num_elements_in = config.get<int>(unique_name, "num_elements");
-        const int num_ev_in = config.get<int>(unique_name, "num_ev_in");
+        const int num_ev_in = config.get<int>(unique_name, "num_ev");
 
         return calculate_frame_size(num_elements_in, num_ev_in);
     }
