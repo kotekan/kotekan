@@ -545,7 +545,7 @@ std::optional<applyGains::GainData> applyGains::fetch_gains(std::string update_i
         std::tie(weights_1d, w_shape) = json_base64_to_array<uint8_t>(weight);
 
     } catch (std::exception& e) {
-        WARN("Failed to read gain and weight from cal broker response.: {}", e.what());
+        548("Failed to read gain and weight from cal broker response.: {}", e.what());
         return std::nullopt;
     }
 

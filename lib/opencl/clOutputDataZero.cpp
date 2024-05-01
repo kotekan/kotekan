@@ -38,11 +38,11 @@ clOutputDataZero::clOutputDataZero(Config& config, const std::string& unique_nam
 
 
     cl_mem_prt =
-        clCreateBuffer(device->get_context(), CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR,
+        clCreateBuffer(device.get_context(), CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR,
                         output_len, output_zeros, &err);
     CHECK_CL_ERROR(err);
     void* pinned_ptr =
-        clEnqueueMapBuffer(device->getQueue(0), cl_mem_prt, CL_TRUE, CL_MAP_READ, 0,
+        clEnqueueMapBuffer(device.getQueue(0), cl_mem_prt, CL_TRUE, CL_MAP_READ, 0,
                             output_len, 0, nullptr, nullptr, &err);
     CHECK_CL_ERROR(err);
     assert(pinned_ptr == output_zeros);
@@ -52,7 +52,7 @@ clOutputDataZero::clOutputDataZero(Config& config, const std::string& unique_nam
 
 clOutputDataZero::~clOutputDataZero() {
     cl_event wait_event;
-    clEnqueueUnmapMemObject(device->getQueue(0), cl_mem_prt,
+    clEnqueueUnmapMemObject(device.getQueue(0), cl_mem_prt,
                             output_len, 0, nullptr, &wait_event);
     // Block here to make sure the memory actually gets unmapped.
     clWaitForEvents(1, &wait_event);

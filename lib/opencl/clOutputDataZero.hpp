@@ -18,6 +18,8 @@ private:
     void* output_zeros;
     cl_mem cl_mem_prt;
 
+    
+
     // Common configuration values (which do not change in a run)
     /// Number of elements on the telescope (e.g. 2048 - CHIME, 256 - Pathfinder).
     int32_t _num_elements;

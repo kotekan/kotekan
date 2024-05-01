@@ -16,7 +16,13 @@ public:
 
 protected:
     /// Helper class to manage the buffers
-    gpuBufferHandler in_bufs;
+
+    class clBufferHandlerState : public clCommandState {
+        clBufferHandlerState(kotekan::Config&, const std::string&, kotekan::bufferContainer&,
+                   clDeviceInterface&);
+        public:
+        gpuBufferHandler in_bufs;
+    }
 
     cl_event* data_staged_event;
 
