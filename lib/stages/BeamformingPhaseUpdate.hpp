@@ -74,6 +74,8 @@ protected:
     uint32_t _num_beams;
     /// Beam offset in output phase frame
     uint32_t _beam_offset;
+    /// Number of beams processed by this stage
+    uint32_t _num_local_beams;
 
     // Coordinates of the phase center.
     /// The instrument latitude

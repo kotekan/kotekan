@@ -112,7 +112,7 @@ updatable_config:
     frb_gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_FRB
   UT1_UTC_offset:
     kotekan_update_endpoint: json
-    UT1_UTC_val: 0.0067816719 
+    UT1_UTC_val: -0.01771538093532198585 
   tracking_gain:
     0:
       kotekan_update_endpoint: json
@@ -203,16 +203,13 @@ updatable_config:
       scaling: 48
     10:
       kotekan_update_endpoint: json
-      #ra: 293.9075392441443
-      #dec: 16.328648148056317 
-      # B0329
-      ra: 53.40006533132708
-      dec: 54.66356583551795
+      ra: 53.71261079670630067540
+      dec: 54.65931004949801774728
       scaling: 48
     11:
       kotekan_update_endpoint: json
-      ra: 53.6197236741
-      dec: 54.6433973569
+      ra: 53.38904552521465518566
+      dec: 54.66076280189512459629
       scaling: 48
   bad_inputs:
     kotekan_update_endpoint: json
@@ -1064,11 +1061,13 @@ read_gain:
     gain_tracking_buf: gain_tracking_buffer_3
 
 #### Generate tracking beamformer phases ####
-tracking_phases:
+tracking_phases_new:
   updatable_config:
     UT1_UTC: /updatable_config/UT1_UTC_offset
     tracking_pt: /updatable_config/tracking_pointing
   log_level: WARN
+  num_local_beams: 1
+  beam_offset: 11
   tracking_phases_0:
     kotekan_stage: FloatPhaseUpdate
     log_level: INFO
@@ -1087,6 +1086,35 @@ tracking_phases:
     out_buf: tracking_phase_2
   tracking_phases_3:
     kotekan_stage: FloatPhaseUpdate
+    in_buf: network_buffer_3
+    gains_buf: gain_tracking_buffer_3
+    out_buf: tracking_phase_3
+
+tracking_phases_old:
+  updatable_config:
+    UT1_UTC: /updatable_config/UT1_UTC_offset
+    tracking_pt: /updatable_config/tracking_pointing
+  log_level: WARN
+  num_local_beams: 11
+  beam_offset: 0
+  tracking_phases_0:
+    kotekan_stage: OldPhaseUpdate
+    log_level: INFO
+    in_buf: network_buffer_0
+    gains_buf: gain_tracking_buffer_0
+    out_buf: tracking_phase_0
+  tracking_phases_1:
+    kotekan_stage: OldPhaseUpdate
+    in_buf: network_buffer_1
+    gains_buf: gain_tracking_buffer_1
+    out_buf: tracking_phase_1
+  tracking_phases_2:
+    kotekan_stage: OldPhaseUpdate
+    in_buf: network_buffer_2
+    gains_buf: gain_tracking_buffer_2
+    out_buf: tracking_phase_2
+  tracking_phases_3:
+    kotekan_stage: OldPhaseUpdate
     in_buf: network_buffer_3
     gains_buf: gain_tracking_buffer_3
     out_buf: tracking_phase_3
@@ -1561,9 +1589,9 @@ extra_tracking_beams:
       buf: beam_buffer_10_merged
       # outrigger-gating
       server_ip: 10.1.50.52
-      server_port: 11035
+      server_port: 11030
       log_level: error
-      reconnect_time: 20
+      reconnect_time: 10
   beam_extract_11:
     extract_beam: 11
     beam_extract_11_0:
@@ -1592,13 +1620,13 @@ extra_tracking_beams:
         - beam_buffer_11_3
       out_buf: beam_buffer_11_merged
     beam_send_11:
-      #kotekan_stage: bufferSend
+      kotekan_stage: bufferSend
       buf: beam_buffer_11_merged
       # outrigger-gating
-      server_ip: 10.1.50.10
-      server_port: 11030
+      server_ip: 10.1.50.52
+      server_port: 11035
       log_level: error
-      reconnect_time: 20
+      reconnect_time: 10
 
 #### N2 GPU Post processing ####
 valve:

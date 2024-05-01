@@ -13,16 +13,22 @@ REGISTER_KOTEKAN_STAGE(OldPhaseUpdate);
 
 OldPhaseUpdate::OldPhaseUpdate(kotekan::Config& config, const std::string& unique_name,
                                    kotekan::bufferContainer& buffer_container) :
-    BeamformingPhaseUpdate(config, unique_name, buffer_container) {}
+    BeamformingPhaseUpdate(config, unique_name, buffer_container) {
+
+    _feed_sep_NS = config.get<float>(unique_name, "feed_sep_NS");
+    _feed_sep_EW = config.get<float>(unique_name, "feed_sep_EW");
+}
 
 void OldPhaseUpdate::compute_phases(uint8_t* out_frame, const timespec& gps_time,
                                       const std::vector<float>& frequencies_in_frame,
                                       uint32_t beam_offset, uint8_t* gains_frame) {
     
-    float* out_frame = (float*)out_frame;
-    float* gains_frame = (float*)gains_frame;
+    float* output = (float*)out_frame;
+    float* gains = (float*)gains_frame;
 
-    float FREQ = freq_now;
+    // This code only works with one frequency per frame.
+    assert(frequencies_in_frame.size() == 1);
+    float FREQ = frequencies_in_frame.at(0);
     struct tm* timeinfo;
     timeinfo = localtime(&gps_time.tv_sec);
     uint year = timeinfo->tm_year + 1900;
@@ -38,25 +44,25 @@ void OldPhaseUpdate::compute_phases(uint8_t* out_frame, const timespec& gps_time
                / 36525.0; // Works if time after year 2000, otherwise T is -ve and might break
     double T0 = fmod((6.697374558 + (2400.051336 * T) + (0.000025862 * T * T)), 24.);
     double UT = (timeinfo->tm_hour) + (timeinfo->tm_min / 60.)
-                + (timeinfo->tm_sec + time_now.tv_nsec / 1.e9) / 3600.;
+                + (timeinfo->tm_sec + gps_time.tv_nsec / 1.e9) / 3600.;
     double GST = fmod((T0 + UT * 1.002737909), 24.);
     double LST = GST + _inst_long / 15.;
     while (LST < 0) {
         LST = LST + 24;
     }
     LST = fmod(LST, 24);
-    for (uint32_t b = _beam_offset; b < _num_beams; b++) {
-        if (beam_coord.scaling[b] == 1) {
+    for (uint32_t b = beam_offset; b < (_num_local_beams + beam_offset); b++) {
+        if (_beam_coord.scaling[b] == 1) {
             for (uint32_t i = 0; i < _num_elements * 2; ++i) {
                 output[b * _num_elements * 2 + i] = gains[b * _num_elements * 2 + i];
             }
             continue;
         }
-        double hour_angle = LST * 15. - beam_coord.ra[b];
-        double alt = sin(beam_coord.dec[b] * D2R) * sin(_inst_lat * D2R)
-                     + cos(beam_coord.dec[b] * D2R) * cos(_inst_lat * D2R) * cos(hour_angle * D2R);
+        double hour_angle = LST * 15. - _beam_coord.ra[b];
+        double alt = sin(_beam_coord.dec[b] * D2R) * sin(_inst_lat * D2R)
+                     + cos(_beam_coord.dec[b] * D2R) * cos(_inst_lat * D2R) * cos(hour_angle * D2R);
         alt = asin(std::clamp(alt, -1.0, 1.0));
-        double az = (sin(beam_coord.dec[b] * D2R) - sin(alt) * sin(_inst_lat * D2R))
+        double az = (sin(_beam_coord.dec[b] * D2R) - sin(alt) * sin(_inst_lat * D2R))
                     / (cos(alt) * cos(_inst_lat * D2R));
         az = acos(std::clamp(az, -1.0, 1.0));
         if (sin(hour_angle * D2R) >= 0) {

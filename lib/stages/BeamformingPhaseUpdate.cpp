@@ -28,9 +28,10 @@ STAGE_CONSTRUCTOR(BeamformingPhaseUpdate) {
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
     _num_beams = config.get<uint32_t>(unique_name, "num_beams");
     _beam_offset = config.get_default<uint32_t>(unique_name, "beam_offset", 0);
+    _num_local_beams = config.get_default<uint32_t>(unique_name, "num_local_beams", _num_beams);
 
-    if (_beam_offset >= _num_beams) {
-        throw std::runtime_error("The offset is larger than the number of beams");
+    if (_beam_offset + _num_local_beams > _num_beams) {
+        throw std::runtime_error("The offset + num_local_beams is larger than the total number of beams");
     }
 
     _inst_lat = config.get<double>(unique_name, "inst_lat");
@@ -53,7 +54,7 @@ STAGE_CONSTRUCTOR(BeamformingPhaseUpdate) {
 
     // Register function to listen for new beam, and update ra and dec
     using namespace std::placeholders;
-    for (int beam_id = 0; beam_id < _num_beams; beam_id++) {
+    for (uint32_t beam_id = 0; beam_id < _num_beams; beam_id++) {
         kotekan::configUpdater::instance().subscribe(
             config.get<std::string>(unique_name, "updatable_config/tracking_pt") + "/"
                 + std::to_string(beam_id),
@@ -108,7 +109,7 @@ bool BeamformingPhaseUpdate::update_UT1_UTC_offset(nlohmann::json& json) {
 BeamformingPhaseUpdate::~BeamformingPhaseUpdate() {}
 
 void BeamformingPhaseUpdate::copy_scaling(const beamCoord& beam_coord, float* scaling) {
-    for (int i = 0; i < _num_beams; ++i) {
+    for (uint32_t i = 0; i < _num_beams; ++i) {
         // In the case that we set scaling to one, we don't want to add the extra factor of
         // 0.5 to the scaling factor, since in the case of scaling == 1, we want no scaling at all.
         if (beam_coord.scaling[i] == 1) {
@@ -177,9 +178,11 @@ void BeamformingPhaseUpdate::main_thread() {
             std::lock_guard<std::mutex> lock(beam_lock);
             // Set the metadata in the input frame to match what pointings we are
             // using at the time the phases are generated
-            set_beam_coord(in_buf, in_frame_id, _beam_coord);
-            compute_phases(out_frame, gps_time, frequencies_in_frame, gains_frame);
-            copy_scaling(_beam_coord, scaling_frame);
+	    if (_beam_offset == 0) // Only update the metadata from one thread
+                set_beam_coord(in_buf, in_frame_id, _beam_coord);
+            compute_phases(out_frame, gps_time, frequencies_in_frame, _beam_offset, gains_frame);
+            if (_beam_offset == 0) // Only update the scaling from one thread
+	        copy_scaling(_beam_coord, scaling_frame);
 	    //for (int i = 0; i < out_buf->frame_size/100; i += 2) {
             //   INFO("phases[{:d}] = [{:f}, {:f}]", i/2, ((float*)out_frame)[i], ((float*)out_frame)[i+1]);
 	    //   INFO("gains[{:d}] = [{:f}, {:f}]", i/2, ((float*)gains_frame)[i], ((float*)gains_frame)[i+1]);
