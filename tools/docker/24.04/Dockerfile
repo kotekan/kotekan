@@ -45,7 +45,8 @@ RUN apt update && \
                    libevent-dev \
                    libnuma-dev \
                    libssl-dev \
-                   libyaml-cpp-dev && \
+                   libyaml-cpp-dev \
+                   libsystemd-dev && \
     apt install -y python3 \
                    python3-dev && \
     apt clean && apt autoclean
