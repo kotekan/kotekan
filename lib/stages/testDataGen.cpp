@@ -349,7 +349,7 @@ void testDataGen::main_thread() {
             } else if (type == "constf16") {
                 if (finished_seeding_constant)
                     break;
-                framef16[j] = (float16_t) fvalue;
+                framef16[j] = (float16_t)fvalue;
 #endif
             } else if (type == "ramp") {
                 frame[j] = fmod(j * value, 256 * value);
