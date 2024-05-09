@@ -110,8 +110,6 @@ public:
         size_t offset = 0;
         for (const std::pair<N2Field, size_t> & field : field_sizes) {
             frame_layout[field.first] = std::make_pair(offset, offset + field.second);
-            DEBUG_NON_OO(" -- Frame element {:d} at: ({:d}, {:d})", (int) field.first,
-                (int) frame_layout[field.first].first, (int) frame_layout[field.first].second);
             offset += field.second;
         }
 

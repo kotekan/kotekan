@@ -22,7 +22,9 @@
 /**
  * @class N2Accumulate
  * @brief Accumulate the high rate GPU output into integrated VisBuffers.
- *
+ * 
+ * This stage accumulates output from the N2k GPU correlator into integrated
+ * visibility buffers.
  *
  * @par Buffers
  * @buffer in_buf

@@ -13,9 +13,8 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for dset_id_t
-#include "visBuffer.hpp"       // for VisFrameView
-#include "visUtil.hpp"         // for cfloat
+#include "N2FrameView.hpp"     // for N2FrameView
+#include "N2Util.hpp"          // for cfloat
 
 #include <memory>   // for unique_ptr
 #include <stddef.h> // for size_t
@@ -24,16 +23,16 @@
 #include <vector>   // for vector
 
 /**
- * @brief Generate fake visibility data into a ``VisBuffer``.
+ * @brief Generate fake visibility data into a ``N2FrameView``.
  *
  * This stage produces fake visibility data that can be used to feed
  * downstream kotekan stages for testing. It fills its buffer with frames in
- * the ``VisBuffer`` format. Frames are generated for a set of frequencies
+ * the ``N2FrameView`` format. Frames are generated for a set of frequencies
  * and a cadence specified in the config.
  *
  * @par Buffers
  * @buffer out_buf The kotekan buffer which will be fed, can be any size.
- *     @buffer_format VisBuffer structured
+ *     @buffer_format N2FrameView structured
  *     @buffer_metadata VisMetadata
  *
  * @conf  num_elements  Int. The number of elements (i.e. inputs) in the
@@ -58,9 +57,6 @@
  *                      Default is False.
  * @conf  frequencies   Array of UInt32. Definition of frequency IDs for
  *                      mode 'test_pattern_freq'.
- * @conf  dataset_id    Int. Use a fixed dataset ID and don't register
- *                      states. If not set, the dataset manager will create
- *                      the dataset ID.
  * @conf  sleep_before  Float. Sleep for this number of seconds before
  *                      starting. Useful for allowing other processes
  *                      to send REST commands. Default is 0s.
@@ -123,10 +119,6 @@ private:
 
     /// Fill non vis components. A helper for the fill_mode functions.
     void fill_non_vis(VisFrameView& frame);
-
-    // Use a fixed (configured) dataset ID in the output frames
-    bool _fixed_dset_id;
-    dset_id_t _dset_id;
 };
 
 

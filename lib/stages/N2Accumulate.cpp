@@ -227,11 +227,11 @@ bool N2Accumulate::output_and_reset( N2::frameID &in_frame_id, N2::frameID &out_
         // This requires changing from the GPU's blocked format to the triangular format visBuffer expects.
         for (size_t i = 0; i < _num_elements; ++i) {
             for (size_t j = i; j < _num_elements; ++j) {
-                size_t d_N2 = i*(_num_elements) + j; // index in the input N2/GPU matrix
-                size_t d_accum = N2::cmap(i, j, _num_elements); // index in the output vis matrix
+                size_t d_N2 = i*(_num_elements) + j; // index in the input N2/GPU matrix (blocked lower triangular format)
+                size_t d_accum = N2::cmap(i, j, _num_elements); // index in the output vis matrix (upper triangular format)
 
                 // Populate the visibility matrix
-                N2::cfloat v = {(float)_vis[f*2*_num_N2_products + 2*d_N2 + 1], (float)_vis[f*2*_num_N2_products + 2*d_N2 + 0]}; // TODO: conjugate or no? What does downstream expect?
+                N2::cfloat v = {(float)_vis[f*2*_num_N2_products + 2*d_N2 + 0], -(float)_vis[f*2*_num_N2_products + 2*d_N2 + 1]}; // conjugate
                 out_vis.vis[d_accum] = ins*v;
 
                 // de-bias and populate the weights matrix (with the inverse variance)
