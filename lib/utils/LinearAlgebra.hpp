@@ -246,7 +246,7 @@ eigen_masked_subspace(const DynamicHermitian<MT>& A,
                       const DynamicHermitian<float>& W, // Should this be symmetric
                       size_t k, float tol_eval, float tol_evec, size_t maxiter, size_t k_conv = 0,
                       size_t p = 2, size_t q = 3) {
-    blaze::DynamicVector<real_t<MT>> evals, evalsp;
+    blaze::DynamicVector<real_t<MT>> evals, evalsp, etols;
     blaze::DynamicMatrix<MT, blaze::columnMajor> V, Vp;
 
     // Mask out
@@ -269,9 +269,10 @@ eigen_masked_subspace(const DynamicHermitian<MT>& A,
     Vp = V;
     evalsp.resize(k);
     evalsp = 0.0;
+    etols.resize(k);
+    etols = tol_evec;
 
     EigConvergenceStats stats;
-
     for (stats.iterations = 0; !stats.converged && stats.iterations < maxiter; stats.iterations++) {
 
         // Perform the subspace iteration steps
@@ -301,8 +302,8 @@ eigen_masked_subspace(const DynamicHermitian<MT>& A,
                          / (k_conv * k_conv);
 
         // Calculate the eigenvalue convergence (Summed fractional change in eigenvalues)
-        stats.eps_eval =
-            rms(blaze::evaluate(blaze::subvector((evalsp - evals) / evals, k - k_conv, k_conv)));
+        stats.eps_eval = rms(blaze::evaluate(blaze::subvector((evalsp - evals)
+                                                              / (blaze::abs(evals) + etols), k - k_conv, k_conv)));
 
         evalsp = evals;
         Vp = V;

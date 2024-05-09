@@ -63,12 +63,18 @@ EigenVisIter::EigenVisIter(Config& config, const std::string& unique_name,
     _exclude_inputs = config.get_default<std::vector<uint32_t>>(unique_name, "exclude_inputs", {});
 
     // Convergence params
-    _num_ev_conv = config.get<uint32_t>(unique_name, "num_ev_conv");
+    _num_ev_conv = config.get_default<uint32_t>(unique_name, "num_ev_conv", 0);
     _tol_eval = config.get_default<double>(unique_name, "tol_eval", 1e-6);
     _tol_evec = config.get_default<double>(unique_name, "tol_evec", 1e-5);
     _max_iterations = config.get_default<uint32_t>(unique_name, "max_iterations", 15);
     _krylov = config.get_default<uint32_t>(unique_name, "krylov", 2);
     _subspace = config.get_default<uint32_t>(unique_name, "subspace", 3);
+
+    assert("The `num_ev` config parameter must be greater than zero to use EigenVisIter stage." && _num_eigenvectors > 0);
+    assert("The `num_ev_conv` config parameter must be less than or equal to `num_ev`." && _num_ev_conv <= _num_eigenvectors);
+    assert("The `tol_eval` config parameter must be greater than zero." && _tol_eval > 0);
+    assert("The `tol_evec` config parameter must be greater than zero." && _tol_evec > 0);
+    assert("The `max_iterations` config parameter must be greater than zero." && _max_iterations > 0);
 }
 
 void EigenVisIter::main_thread() {
@@ -97,8 +103,8 @@ void EigenVisIter::main_thread() {
         // Check that we have the full triangle
         uint32_t num_prod_full = input_frame.num_elements * (input_frame.num_elements + 1) / 2;
         if (input_frame.num_prod != num_prod_full) {
-            throw std::runtime_error("Eigenvectors require full correlation"
-                                     " triangle");
+            FATAL_ERROR("Eigenvectors require full correlation triangle. Sizes {:d} and {:d} don't match.",
+                input_frame.num_prod, num_prod_full);
         }
 
         // Start the calculation clock.
@@ -130,7 +136,7 @@ void EigenVisIter::main_thread() {
         for (uint32_t i = 0; i < _num_eigenvectors; i++) {
             str_evals = fmt::format(fmt("{:s} {}"), str_evals, evals[i]);
         }
-        DEBUG("Found eigenvalues: {:s}, with RMS residuals: {:e}, in {:4.2f} s. Took {:d}/{:d} "
+        DEBUG("Found eigenvalues: {:s}, with RMS residuals: {:e}, in {:d} s. Took {:d}/{:d} "
               "iterations.",
               str_evals, stats.rms, elapsed_time, stats.iterations, _max_iterations);
 
