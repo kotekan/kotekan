@@ -138,18 +138,18 @@ RUN mkdir src && \
     true) && \
     rm -rf src
 
-# # Install ASDF (depends on Blosc2)
-# RUN mkdir src && \
-#     ( \
-#         cd src && \
-#         git clone -n https://github.com/eschnett/asdf-cxx && \
-#         cd asdf-cxx && \
-#         git checkout 8a2e1a9f6513ef17bbe201c3afd5b43032a574f1 && \
-#         cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
-#         cmake --build build --parallel $(nproc) && \
-#         cmake --install build && \
-#     true) && \
-#     rm -rf src
+# Install ASDF (depends on Blosc2)
+RUN mkdir src && \
+    ( \
+        cd src && \
+        git clone -n https://github.com/eschnett/asdf-cxx && \
+        cd asdf-cxx && \
+        git checkout 64399d9b93c5e163c395a4a4440ef16d415fd4f6 && \
+        cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
+        cmake --build build --parallel $(nproc) && \
+        cmake --install build && \
+    true) && \
+    rm -rf src
 
 # Clone HighFive
 RUN git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git && \
