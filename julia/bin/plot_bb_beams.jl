@@ -3,6 +3,7 @@
 using ASDF2
 using CUDASIMDTypes
 using CairoMakie
+# using ITerm2Images
 using SixelTerm
 using Statistics
 
@@ -125,18 +126,10 @@ for beam in 1:nbeams
     push!(beamsy, beamsΔy * (beamj - beamsj₀))
 end
 
-# Most of the power is in frequency 3
+# Most of the power is in frequency 1
 # (TODO: Read this from metadata)
 # freq = 1:nfreqs
-if setup === :chord
-    freq = 3
-elseif setup === :pathfinder
-    freq = 25
-elseif setup === :hirax
-    freq = 24
-else
-    @assert false
-end
+freq = 1
 
 function aspect!(fig::Figure, row::Integer, col::Integer, ratio_x_over_y)
     if ratio_x_over_y > 4 / 3
@@ -147,12 +140,23 @@ function aspect!(fig::Figure, row::Integer, col::Integer, ratio_x_over_y)
     return nothing
 end
 
+# dataE = [abs2(Complex{Float32}(i2c(j))) for j in array_E];
+# @show typeof(dataE)
+# @show size(dataE)
+# @show maximum.([@view dataE[:, :, f, :] for f in 1:nfreqs]);
+# 
+# dataJ = [abs2(Complex{Float32}(i2c(j))) for j in array_J];
+# @show typeof(dataJ)
+# @show size(dataJ)
+# @show maximum.([@view dataJ[:, :, f, :] for f in 1:nfreqs]);
+
 data = Float32[mean(abs2(real(Complex{Float32}(i2c(j)))) for j in view(array_E, dish, :, freq, :)) for dish in 1:ndishs]
-fig = Figure(; size=(1280, 960))
+# fig = Figure(; size=(1280, 960))
+fig = Figure(; size=(640, 480))
 ax = Axis(fig[1, 1]; title="$setup F-engine electric field", xlabel="x [m]", ylabel="y [m]")
 xlims!(ax, dishs_xlim)
 ylims!(ax, dishs_ylim)
-obj = scatter!(ax, dishsx, dishsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
+obj = scatter!(ax, dishsx, dishsy; color=data, colormap=:plasma, markersize=480 / sqrt(2 * length(data)))
 Colorbar(fig[1, 2], obj; label="|dish|₂")
 # rowsize!(fig.layout, 1, Aspect(1, dishs_ysize / dishs_xsize))
 # colsize!(fig.layout, 1, Aspect(1, dishs_xsize / dishs_ysize))
@@ -164,11 +168,12 @@ data = Float32[
     polr in 1:npolrs
 ]
 data = reshape(data, nfreqs, nbeams * npolrs)
-fig = Figure(; size=(1280, 960))
+# fig = Figure(; size=(1280, 960))
+fig = Figure(; size=(640, 480))
 ax = Axis(fig[1, 1]; title="$setup baseband beam spectra", xlabel="beam, polarization", ylabel="frequency channel")
-xlims!(ax, (0 - 1 / 2, 2 * nbeams - 1 / 2))
+xlims!(ax, (0 - 1 / 2, nbeams * npolrs - 1 / 2))
 ylims!(ax, (0 - 1 / 2, nfreqs - 1 / 2))
-obj = heatmap!(ax, 0:(2 * nbeams - 1), 0:(nfreqs - 1), data'; color=data, colormap=:plasma)
+obj = heatmap!(ax, 0:(nbeams * npolrs - 1), 0:(nfreqs - 1), data'; colormap=:plasma)
 Colorbar(fig[1, 2], obj; label="baseband beam spectral intensity")
 display(fig)
 
@@ -185,11 +190,12 @@ display(fig)
 # display(fig)
 
 data = Float32[mean(abs2(Complex{Float32}(i2c(j))) for j in view(array_J, :, :, freq, beam)) for beam in 1:nbeams]
-fig = Figure(; size=(1280, 960))
+# fig = Figure(; size=(1280, 960))
+fig = Figure(; size=(640, 480))
 ax = Axis(fig[1, 1]; title="$setup X-engine baseband beams", xlabel="sky θx", ylabel="sky θy")
 xlims!(ax, beams_xlim)
 ylims!(ax, beams_ylim)
-obj = scatter!(ax, beamsx, beamsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
+obj = scatter!(ax, beamsx, beamsy; color=data, colormap=:plasma, markersize=480 / sqrt(2 * length(data)))
 Colorbar(fig[1, 2], obj; label="baseband beam intensity")
 # rowsize!(fig.layout, 1, Aspect(1, beams_ysize / beams_xsize))
 # colsize!(fig.layout, 1, Aspect(1, beams_xsize / beams_ysize))

@@ -70,7 +70,7 @@ constexpr std::size_t chord_datatype_bytes(chordDataType type) {
 const char* chord_datatype_string(chordDataType type);
 
 // Maximum number of frequencies in metadata array
-const int CHORD_META_MAX_FREQ = 384;
+const int CHORD_META_MAX_FREQ = 1024;
 
 // Maximum number of dimensions for arrays
 const int CHORD_META_MAX_DIM = 10;

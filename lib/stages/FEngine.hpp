@@ -79,8 +79,8 @@ class FEngine : public kotekan::Stage {
     const int num_times;
 
     // Baseband beamformer setup
-    const int bb_num_dishes_M;
-    const int bb_num_dishes_N;
+    // const int bb_num_dishes_M;
+    // const int bb_num_dishes_N;
     const int bb_num_beams_P;
     const int bb_num_beams_Q;
     const float bb_beam_separation_x;

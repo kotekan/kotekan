@@ -18,6 +18,7 @@ kernel-description:
   compile-parameters:
     minthreads: 64
     blocks_per_sm: 16
+    blocks_per_frequency: 1
   call-parameters:
     threads: [32, 2]
     blocks: [384]

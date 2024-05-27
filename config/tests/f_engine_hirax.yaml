@@ -74,6 +74,35 @@ bb_num_beams: bb_num_beams_P * bb_num_beams_Q
 # Upchannelizer setup
 upchannelization_factor: 16
 
+# dm_750_tint_1.0_gamma_0.0:
+#   fbound:
+#   - 800.00
+#   - 800.00
+#   - 741.61
+#   - 574.77
+#   - 404.19
+#   nbeam: 1963
+#   tsample: 1.11
+# 
+# dm_2000_tint_1.0_gamma_0.0:
+#   fbound:
+#   - 800.00
+#   - 800.00
+#   - 800.00
+#   - 739.42
+#   - 557.05
+#   nbeam: 1545
+#   tsample: 1.67
+# 
+# population_chimefrb_gamma_0.0:
+#   fbound:
+#   - 800.00
+#   - 800.00
+#   - 687.23
+#   - 478.79
+#   nbeam: 2359
+#   tsample: 1.02
+
 # FRB beamformer setup
 frb_downsampling_factor: 25
 # frb_num_output_times: num_times / upchannelization_factor / frb_downsampling_factor   # rounding up to next power of 2

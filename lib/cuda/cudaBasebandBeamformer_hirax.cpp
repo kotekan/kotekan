@@ -85,10 +85,10 @@ private:
     // Kernel name:
     const char* const kernel_symbol =
         "_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES0_IS2_"
-        "Li1ELi1EES0_IS_Li1ELi1EE";
+        "Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE";
 
     // Kernel arguments:
-    enum class args { Tmin, Tmax, A, E, s, J, info, count };
+    enum class args { Tmin, Tmax, A, E, s, J, info, log, count };
 
     // Tmin: Tmin
     static constexpr const char* Tmin_name = "Tmin";
@@ -271,6 +271,33 @@ private:
     };
     static_assert(info_length == chord_datatype_bytes(info_type) * info_strides[info_rank]);
     //
+    // log: gpu_mem_log
+    static constexpr const char* log_name = "log";
+    static constexpr chordDataType log_type = int32;
+    enum log_indices {
+        log_index_block,
+        log_rank,
+    };
+    static constexpr std::array<const char*, log_rank> log_labels = {
+        "block",
+    };
+    static constexpr std::array<std::ptrdiff_t, log_rank> log_lengths = {
+        128,
+    };
+    static constexpr std::ptrdiff_t log_length = chord_datatype_bytes(log_type) * 128;
+    static_assert(log_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto log_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= log_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, log_rank + 1> log_strides = {
+        log_calc_stride(log_index_block),
+        log_calc_stride(log_rank),
+    };
+    static_assert(log_length == chord_datatype_bytes(log_type) * log_strides[log_rank]);
+    //
 
     // Kotekan buffer names
     const std::string A_memname;
@@ -278,9 +305,11 @@ private:
     const std::string s_memname;
     const std::string J_memname;
     const std::string info_memname;
+    const std::string log_memname;
 
     // Host-side buffer arrays
     std::vector<std::uint8_t> info_host;
+    std::vector<std::uint8_t> log_host;
 
     static constexpr std::ptrdiff_t E_T_sample_bytes = chord_datatype_bytes(E_type)
                                                        * E_lengths[E_index_D] * E_lengths[E_index_P]
@@ -306,9 +335,9 @@ cudaBasebandBeamformer_hirax::cudaBasebandBeamformer_hirax(Config& config,
     E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
     s_memname(config.get<std::string>(unique_name, "gpu_mem_output_scaling")),
     J_memname(config.get<std::string>(unique_name, "gpu_mem_formed_beams")),
-    info_memname(unique_name + "/gpu_mem_info"),
+    info_memname(unique_name + "/gpu_mem_info"), log_memname(unique_name + "/gpu_mem_log"),
 
-    info_host(info_length),
+    info_host(info_length), log_host(log_length),
     // Find input buffer used for signalling ring-buffer state
     input_ringbuf_signal(dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")))) {
@@ -320,6 +349,10 @@ cudaBasebandBeamformer_hirax::cudaBasebandBeamformer_hirax(Config& config,
         const cudaError_t ierr = cudaHostRegister(info_host.data(), info_host.size(), 0);
         assert(ierr == cudaSuccess);
     }
+    {
+        const cudaError_t ierr = cudaHostRegister(log_host.data(), log_host.size(), 0);
+        assert(ierr == cudaSuccess);
+    }
 
     // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(std::make_tuple(A_memname, true, true, false));
@@ -327,6 +360,7 @@ cudaBasebandBeamformer_hirax::cudaBasebandBeamformer_hirax(Config& config,
     gpu_buffers_used.push_back(std::make_tuple(s_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(J_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_log", false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
 
@@ -424,6 +458,7 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
             ? device.get_gpu_memory(J_memname, J_length)
             : device.get_gpu_memory_array(J_memname, gpu_frame_id, _gpu_buffer_depth, J_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
+    void* const log_memory = device.get_gpu_memory(log_memname, log_length);
 
     // A is an input buffer: check metadata
     const std::shared_ptr<metadataObject> A_mc =
@@ -526,8 +561,9 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
     array_desc s_arg(s_memory, s_length);
     array_desc J_arg(J_memory, J_length);
     array_desc info_arg(info_memory, info_length);
+    array_desc log_arg(log_memory, log_length);
     void* args[] = {
-        &exc_arg, &Tmin_arg, &Tmax_arg, &A_arg, &E_arg, &s_arg, &J_arg, &info_arg,
+        &exc_arg, &Tmin_arg, &Tmax_arg, &A_arg, &E_arg, &s_arg, &J_arg, &info_arg, &log_arg,
     };
 
     // Set E_memory to beginning of input ring buffer
@@ -569,6 +605,8 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
     // Initialize host-side buffer arrays
     CHECK_CUDA_ERROR(
         cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(
+        cudaMemsetAsync(log_memory, 0xff, log_length, device.getStream(cuda_stream_id)));
 #endif
 
 #ifdef DEBUGGING
@@ -596,6 +634,8 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
     // Copy results back to host memory
     CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.data(), info_memory, info_length,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(log_host.data(), log_memory, log_length,
+                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
     DEBUG("Finished CUDA BasebandBeamformer_hirax on GPU frame {:d}", gpu_frame_id);
@@ -611,6 +651,18 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
             ERROR("cudaBasebandBeamformer_hirax returned 'info' value {:d} at index {:d} (zero "
                   "indicates no error)",
                   info_host[i], i);
+
+    // Check log codes
+    const std::int32_t log_code = *std::max_element((const std::int32_t*)&*log_host.begin(),
+                                                    (const std::int32_t*)&*log_host.end());
+    if (log_code != 0)
+        ERROR("CUDA kernel returned log code cuLaunchKernel: {}", log_code);
+
+    for (std::size_t i = 0; i < log_host.size(); ++i)
+        if (log_host[i] != 0)
+            ERROR("cudaBasebandBeamformer_hirax returned 'log' value {:d} at index {:d} (zero "
+                  "indicates success)",
+                  log_host[i], i);
 #endif
 
 #ifdef DEBUGGING

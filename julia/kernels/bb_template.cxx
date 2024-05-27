@@ -495,6 +495,17 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         if (info_host[i] != 0)
             ERROR("cuda{{{kernel_name}}} returned 'info' value {:d} at index {:d} (zero indicates no error)",
                 info_host[i], i);
+
+    // Check log codes
+    const std::int32_t log_code = *std::max_element((const std::int32_t*)&*log_host.begin(),
+                                                      (const std::int32_t*)&*log_host.end());
+    if (log_code != 0)
+        ERROR("CUDA kernel returned log code cuLaunchKernel: {}", log_code);
+
+    for (std::size_t i = 0; i < log_host.size(); ++i)
+        if (log_host[i] != 0)
+            ERROR("cuda{{{kernel_name}}} returned 'log' value {:d} at index {:d} (zero indicates success)",
+                  log_host[i], i);
 #endif
 
 #ifdef DEBUGGING

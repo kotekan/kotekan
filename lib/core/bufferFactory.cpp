@@ -25,8 +25,7 @@ namespace kotekan {
 
 bufferFactory::bufferFactory(Config& _config,
                              map<string, std::shared_ptr<metadataPool>>& _metadataPools) :
-    config(_config),
-    metadataPools(_metadataPools) {}
+    config(_config), metadataPools(_metadataPools) {}
 
 bufferFactory::~bufferFactory() {}
 
@@ -114,7 +113,8 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
 
     } else {
         // Unknown buffer type
-        throw std::runtime_error(fmt::format(fmt("No buffer type named: {:s}"), type_name));
+        throw std::runtime_error(
+            fmt::format(fmt("No buffer type named {:s} or buffer size is 0"), type_name));
     }
 
     buf->set_log_level(s_log_level);

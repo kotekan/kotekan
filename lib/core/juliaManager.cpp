@@ -40,19 +40,25 @@ void runJulia() {
     using namespace std::chrono_literals;
 
     INFO_F("[JM] Starting Julia run-time system");
-    // Required: setup the Julia context.
-    jl_init();
+    {
+        // Taking this lock isn't necessary and doesn't help...
+        std::unique_lock lk(julia_task_queue_mutex);
 
-    atexit([]() {
-        // Strongly recommended: notify Julia that the program is about to terminate. This
-        // allows Julia time to cleanup pending write requests and run all finalizers.
-        jl_atexit_hook(0);
-    });
+        // Required: setup the Julia context.
+        jl_init();
+
+        atexit([]() {
+            // Strongly recommended: notify Julia that the program is about to terminate. This
+            // allows Julia time to cleanup pending write requests and run all finalizers.
+            jl_atexit_hook(0);
+        });
+    }
 
     INFO_F("[JM] Julia run-time system is running");
     while (true) {
         std::function<void()> task;
-        while (!task) {
+        // while (!task) {
+        {
             std::unique_lock lk(julia_task_queue_mutex);
             if (!julia_task_queue.empty()) {
                 // INFO_F("[JM] Found new task");
@@ -111,6 +117,9 @@ void juliaShutdown() {
 
 std::any juliaCallAny(const std::function<std::any()>& fun) {
     // INFO_F("juliaManager: Sending Julia task...");
+
+    // Check whether the Julia run-time is actually running
+    assert(julia_thread.joinable());
 
     // We set up a promise and send it together with the function `fun`
     // that runs in the Julia thread. `fun` will fulful the promise with

@@ -108,24 +108,86 @@ bb_beam_separation_y: 0.015        # north-south
 bb_num_beams: bb_num_beams_P * bb_num_beams_Q
 
 # Upchannelizer setup
+# TODO: Remove this
 upchannelization_factor: 8
+
 # This mapping was suggested by Seth Siegel's `ice_rfsoc_comparison_dm_2000_tint_1_gamma_0_tsys_30K_tsky.yaml`.
 # (This is the "worst case" mapping.)
 upchannelization_factor_mapping:
-    - 0.0e6: 64
-    - 341.65e6: 32
-    - 442.01e6: 16
-    - 568.66e6: 8
-    - 714.99e6: 4
-    - 907.41e6: 2
-    - 1168.77e6: 1
+    # - 0: 64
+    # - 341.65: 32
+    # - 442.01: 16
+    # - 568.66: 8
+    # - 714.99: 4
+    # - 907.41: 2
+    # - 1168.77: 1
+    -    0: 64                  # Fmin = 0
+    - 1750: 32                  # Fmin = 2
+    - 2264: 16                  # Fmin = 6
+    - 2912:  8                  # Fmin = 11
+    - 3661:  4                  # Fmin = 17
+    - 4646:  2                  # Fmin = 23
+    - 5985:  1                  # Fmin = 35
+
 # # This mapping was suggested by Seth Siegel's `ice_rfsoc_comparison_dm_750_tint_1_gamma_0_tsys_30K_tsky.yaml`.
 # # (This is the "default" mapping.)
 # upchannelization_factor_mapping:
-#     - 0.0e6: 8
-#     - 607.9e6: 4
-#     - 790.57e6: 2
-#     - 1032.16e6: 1
+# #     - 0: 8
+# #     - 607.9: 4
+# #     - 790.57: 2
+# #     - 1032.16: 1
+#     -    0: 8
+#     - 3113: 4
+#     - 4048: 2
+#     - 5285: 1
+
+# The GPU-local (not global) channel index range for each upchannelization factor
+# actual = 2, scaled = 128
+upchan_U64_max_num_channels: 4
+upchan_U64_min_channel: 0
+upchan_U64_max_channel: 2
+upchan_U64_min_output_channel: upchan_all_min_output_channel
+upchan_U64_max_output_channel: upchan_U64_min_output_channel + (upchan_U64_max_channel - upchan_U64_min_channel) * 64
+# actual = 4, scaled = 128
+upchan_U32_max_num_channels: 8
+upchan_U32_min_channel: 2
+upchan_U32_max_channel: 6
+upchan_U32_min_output_channel: upchan_U64_max_output_channel
+upchan_U32_max_output_channel: upchan_U32_min_output_channel + (upchan_U32_max_channel - upchan_U32_min_channel) * 32
+# actual = 5, scaled = 80
+upchan_U16_max_num_channels: 8
+upchan_U16_min_channel: 6
+upchan_U16_max_channel: 11
+upchan_U16_min_output_channel: upchan_U32_max_output_channel
+upchan_U16_max_output_channel: upchan_U16_min_output_channel + (upchan_U16_max_channel - upchan_U16_min_channel) * 16
+# actual = 6, scaled = 48
+upchan_U8_max_num_channels: 8
+upchan_U8_min_channel: 11
+upchan_U8_max_channel: 17
+upchan_U8_min_output_channel: upchan_U16_max_output_channel
+upchan_U8_max_output_channel: upchan_U8_min_output_channel + (upchan_U8_max_channel - upchan_U8_min_channel) * 8
+# actual = 6, scaled = 24
+upchan_U4_max_num_channels: 16
+upchan_U4_min_channel: 17
+upchan_U4_max_channel: 23
+upchan_U4_min_output_channel: upchan_U8_max_output_channel
+upchan_U4_max_output_channel: upchan_U4_min_output_channel + (upchan_U4_max_channel - upchan_U4_min_channel) * 4
+# actual = 12, scaled = 24
+upchan_U2_max_num_channels: 16
+upchan_U2_min_channel: 23
+upchan_U2_max_channel: 35
+upchan_U2_min_output_channel: upchan_U4_max_output_channel
+upchan_U2_max_output_channel: upchan_U2_min_output_channel + (upchan_U2_max_channel - upchan_U2_min_channel) * 2
+# actual = 13, scaled = 13
+upchan_U1_max_num_channels: 16
+upchan_U1_min_channel: 35
+upchan_U1_max_channel: 48
+upchan_U1_min_output_channel: upchan_U2_max_output_channel
+upchan_U1_max_output_channel: upchan_U1_min_output_channel + (upchan_U1_max_channel - upchan_U1_min_channel) * 1
+
+upchan_all_max_num_output_channels: 512
+upchan_all_min_output_channel: 0
+upchan_all_max_output_channel: upchan_U1_max_output_channel
 
 # FRB beamformer setup
 frb_downsampling_factor: 256 / upchannelization_factor
@@ -135,13 +197,15 @@ frb_num_output_times: 256
 frb_num_beams_P: 2 * num_dish_locations_ns
 frb_num_beams_Q: 2 * num_dish_locations_ew
 
-frb_num_beams_ns: 100
-frb_num_beams_ew: 50
+frb_num_beams_ns: 80
+frb_num_beams_ew: 64
 frb_num_beams: frb_num_beams_ns * frb_num_beams_ew
 # Opening angle is specified in radians (here 2 degrees)
 frb_bore_z: 49.3208 * 3.141592653589793 / 180
 frb_opening_angle_ns: 2.0 * 3.141592653589793 / 180
 frb_opening_angle_ew: 2.0 * 3.141592653589793 / 180
+
+CONTINUE HERE TO UPDATE FROM PATHFINDER CONFIG
 
 # Pool:
 main_pool:

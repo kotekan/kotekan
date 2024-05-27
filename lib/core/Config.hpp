@@ -12,19 +12,44 @@
 #include "json.hpp" // for json
 
 #include <complex>     // for complex  // IWYU pragma: keep
+#include <cstdint>     // for int32_t
 #include <cxxabi.h>    // for __cxa_demangle
 #include <exception>   // for exception
+#include <limits>      // for numeric_limits
 #include <list>        // for list
 #include <regex>       // for regex, cmatch, regex_match, sregex_token_iterator
 #include <stdexcept>   // for runtime_error
-#include <stdint.h>    // for int32_t
 #include <string>      // for string, operator==, allocator, stod
-#include <type_traits> // for is_arithmetic, enable_if, is_same
+#include <type_traits> // for is_arithmetic, enable_if, is_same, is_integral, is_unsigned, conditional
 #include <typeinfo>    // for type_info
 #include <vector>      // for vector
 
 
 namespace kotekan {
+
+// Define a "large" type for every arithmetic type
+template<typename Type>
+using LargeType = typename std::conditional<
+    std::is_integral<Type>::value,
+    typename std::conditional<std::is_unsigned<Type>::value, unsigned long long, long long>::type,
+    double>::type;
+
+// Convert types, with checking for overflows
+template<typename Ret, typename Type>
+Ret checked_conversion(const Type& value) {
+    if (std::is_integral<Ret>::value) {
+        if (std::is_unsigned<Ret>::value) {
+            assert(value <= std::numeric_limits<Ret>::max());
+        } else {
+            assert(value >= std::numeric_limits<Ret>::min()
+                   && value <= std::numeric_limits<Ret>::max());
+        }
+    } else {
+        assert(std::isinf(value) || std::isnan(value)
+               || std::fabs(value) <= std::numeric_limits<Ret>::max());
+    }
+    return value;
+}
 
 /**
  * @class Config
@@ -73,13 +98,14 @@ public:
                                     json_value.get<std::string>(), ex.what(), name, base_path));
                 }
             } else {
-                value = json_value.get<T>();
+                value = checked_conversion<T>(json_value.get<LargeType<T>>());
             }
         } catch (std::exception const& ex) {
             int status;
             throw std::runtime_error(fmt::format(
-                fmt("The value {:s} in path {:s} is not of type '{:s}' or doesn't exist."), name,
-                base_path, abi::__cxa_demangle(typeid(T).name(), nullptr, nullptr, &status)));
+                fmt("The value {:s} in path {:s} is not of type '{:s}' or doesn't exist: {:s}"),
+                name, base_path, abi::__cxa_demangle(typeid(T).name(), nullptr, nullptr, &status),
+                ex.what()));
         }
 
         return value;
@@ -305,8 +331,7 @@ T Config::get_default(const std::string& base_path, const std::string& name,
 template<class Type>
 Config::configEval<Type>::configEval(const Config& _config, const std::string& base_path,
                                      const std::string& name) :
-    config(_config),
-    unique_name(base_path) {
+    config(_config), unique_name(base_path) {
 
     nlohmann::json value = config.get_value(base_path, name);
 
@@ -379,14 +404,14 @@ void Config::configEval<Type>::expect(const std::string& symbol) {
 
 template<class Type>
 Type Config::configEval<Type>::exp() {
-    Type ret = 0;
+    Type ret;
     if (current_token == "+" || current_token == "-") {
-        if (current_token == "-") {
+        if (current_token == "+") {
             next();
-            ret = -term();
+            ret = checked_conversion<Type>(+LargeType<Type>(term()));
         } else {
             next();
-            ret = term();
+            ret = checked_conversion<Type>(-LargeType<Type>(term()));
         }
     } else {
         ret = term();
@@ -394,12 +419,13 @@ Type Config::configEval<Type>::exp() {
     while (current_token == "+" || current_token == "-") {
         if (current_token == "+") {
             next();
-            ret += term();
+            ret = checked_conversion<Type>(LargeType<Type>(ret) + LargeType<Type>(term()));
         } else {
             next();
-            ret -= term();
+            ret = checked_conversion<Type>(LargeType<Type>(ret) - LargeType<Type>(term()));
         }
     }
+    // DEBUG_NON_OO("exp={}", ret);
     return ret;
 }
 
@@ -409,14 +435,16 @@ Type Config::configEval<Type>::term() {
     while (current_token == "*" || current_token == "/") {
         if (current_token == "*") {
             next();
-            ret *= factor();
-        }
-        if (current_token == "/") {
-            // TODO Check for divide by zero.
+            ret = checked_conversion<Type>(LargeType<Type>(ret) * LargeType<Type>(factor()));
+        } else {
             next();
-            ret /= factor();
+            const auto value = factor();
+            if (std::is_integral<Type>::value)
+                assert(value != 0);
+            ret = checked_conversion<Type>(LargeType<Type>(ret) / LargeType<Type>(value));
         }
     }
+    // DEBUG_NON_OO("  term={}", ret);
     return ret;
 }
 
@@ -441,6 +469,7 @@ Type Config::configEval<Type>::factor() {
         ERROR_NON_OO("Unexpected symbol '{:s}'", current_token);
         throw std::runtime_error("Unexpected symbol");
     }
+    // DEBUG_NON_OO("    factor={}", ret);
     return ret;
 }
 

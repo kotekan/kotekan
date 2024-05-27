@@ -459,7 +459,7 @@ const layout_info_registers = Layout([
 # const thread = Thread(:thread, 1, num_threads)
 # const warp = Warp(:warp, 1, num_warps)
 # const block = Block(:block, 1, num_blocks)
-# const shared = Shared(:shared, 1, 99 * 1024)
+# const shared = Shared(:shared, 1, 128 * 1024)
 # const memory = Memory(:memory, 1, 2^32)
 
 const shmem_size = max(Fsh1_shmem_size, Fsh2_shmem_size, Gsh_shmem_size)
@@ -1786,18 +1786,6 @@ function make_frb_kernel()
                         # (This condition will be evaluated at compile time)
                         if!(emitter, :((t_inner_hi + t + 1i32) % $(Int32(gcd(Tinner, Tds))) == 0i32)) do emitter
                             if!(emitter, :(t_running == $(Int32(Tds)))) do emitter
-                                # if!(
-                                #     emitter,
-                                #     :(
-                                #         let
-                                #             thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
-                                #             warp = IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx(), 0, $num_warps)
-                                #             p = 2i32 * thread
-                                #             q = 2i32 * warp
-                                #             0i32 ≤ p < $(Int32(2 * M)) && 0i32 ≤ q < $(Int32(2 * N))
-                                #         end
-                                #     ),
-                                # ) do emitter
                                 store!(
                                     emitter,
                                     :I_memory => layout_I_memory,
@@ -1838,8 +1826,6 @@ function make_frb_kernel()
                                         end
                                     end,
                                 )
-                                #     return nothing
-                                # end
                                 apply!(emitter, :I, [:I], (I,) -> :(zero(Float16x2)))
                                 push!(emitter.statements, :(t_running = $(0i32)))
                                 push!(emitter.statements, :(dstime += $(1i32)))
@@ -1947,7 +1933,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     shmem_bytes = kernel_setup.shmem_bytes
     shmem_size = idiv(shmem_bytes, 4)
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
-    @assert shmem_bytes ≤ 99 * 1024 # NVIDIA A10/A40 have 99 kB shared memory
+    @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
     kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm frb(
         Int32(0),
         Int32(0),

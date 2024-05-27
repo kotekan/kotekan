@@ -24,6 +24,7 @@ add_library(
     # Kernels
     cudaCorrelatorAstron.cpp
     cudaShuffleAstron.cu
+    cudaBasebandBeamformer_chime.cpp
     cudaBasebandBeamformer_chord.cpp
     cudaBasebandBeamformer_hirax.cpp
     cudaBasebandBeamformer_pathfinder.cpp
@@ -58,6 +59,14 @@ add_library(
     cudaCopyToRingbuffer.cpp
     cudaTransposeKernel_chord.cpp
     cudaTransposeKernel_pathfinder.cpp
+    cudaUpchannelizer_chime_U2.cpp
+    cudaUpchannelizer_chime_U4.cpp
+    cudaUpchannelizer_chime_U8.cpp
+    cudaUpchannelizer_chime_U16.cpp
+    cudaUpchannelizer_chime_U32.cpp
+    cudaUpchannelizer_chime_U64.cpp
+    cudaUpchannelizer_chord_U2.cpp
+    cudaUpchannelizer_chord_U4.cpp
     cudaUpchannelizer_chord_U8.cpp
     cudaUpchannelizer_chord_U16.cpp
     cudaUpchannelizer_chord_U32.cpp

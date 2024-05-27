@@ -76,6 +76,7 @@ private:
     // Kernel compile parameters:
     static constexpr int minthreads = 64;
     static constexpr int blocks_per_sm = 16;
+    static constexpr int blocks_per_frequency = 1;
 
     // Kernel call parameters:
     static constexpr int threads_x = 32;
@@ -629,7 +630,7 @@ cudaUpchannelizer_pathfinder_U2::execute(cudaPipelineState& /*pipestate*/,
                                       shmem_bytes));
 
     DEBUG("Running CUDA Upchannelizer_pathfinder_U2 on GPU frame {:d}", gpu_frame_id);
-    const int blocks = Fmax - Fmin;
+    const int blocks = blocks_per_frequency * (Fmax - Fmin);
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[symname], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
@@ -720,10 +721,9 @@ cudaUpchannelizer_pathfinder_U2::execute(cudaPipelineState& /*pipestate*/,
                                                             + fbar * Fbarstride + n);
                             any_error |= val == 0x88;
                         }
-                        if (any_error) {
+                        if (any_error)
                             DEBUG("    U={} [{},{}]={:#02x}", cuda_upchannelization_factor, tbar,
                                   fbar, 0x88);
-                        }
                     }
                 }
             }

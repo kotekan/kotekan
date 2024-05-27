@@ -9,12 +9,13 @@ using Random
 
 # const card = "A30"
 const card = "A40"
+# const card = "GeForce_RTX_4090"
 
 if CUDA.functional()
     println("[Choosing CUDA device...]")
     CUDA.device!(0)
     println(name(device()))
-    @assert name(device()) == "NVIDIA $card"
+    @assert replace(name(device()), ' ' => '_') == "NVIDIA_$card"
 end
 
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
@@ -105,14 +106,14 @@ elseif setup ≡ :chime
     const B = 16
     const P = 2
     const F₀ = 128
-    const F = 32
-    const T = 4 * 8192
+    const F = 16
+    const T = 4 * 2048
 
     const T1_stride = 128
     const T2_stride = 32
 
     const Wb = idiv(B, 16)
-    const Wd = 8
+    const Wd = 4
     const Wp = 1
 
 else
@@ -290,6 +291,7 @@ function make_bb_kernel()
     dish2 = Dish(:dish, 4, 2)
     dish23 = Dish(:dish, 4, 4)
     dish234 = Dish(:dish, 4, 8)
+    dish2345 = Dish(:dish, 4, 16)
     dish2etc = Dish(:dish, 4, idiv(D, 4))
     dish3 = Dish(:dish, 8, 2)
     dish34 = Dish(:dish, 8, 4)
@@ -298,9 +300,12 @@ function make_bb_kernel()
     dish5 = Dish(:dish, 32, 2)
     dish56 = Dish(:dish, 32, 4)
     dish6 = Dish(:dish, 64, 2)
+    dish67 = Dish(:dish, 64, 4)
     dish7 = Dish(:dish, 128, 2)
     dish78 = Dish(:dish, 128, 4)
     dish789 = Dish(:dish, 128, 8)
+    dish89 = Dish(:dish, 256, 4)
+    dish9 = Dish(:dish, 512, 2)
 
     beam0 = Beam(:beam, 1, 2)
     beam01 = Beam(:beam, 1, 4)
@@ -402,6 +407,12 @@ function make_bb_kernel()
         Index{Physics,BlockTag}(:block, 1, num_blocks) => Memory(:memory, num_threads * num_warps, num_blocks),
     ])
 
+    # log layout
+
+    layout_log_memory = Layout([
+        int32value => SIMD(:simd, 1, 32), Index{Physics,BlockTag}(:block, 1, num_blocks) => Memory(:memory, 1, num_blocks)
+    ])
+
     # Shared memory layouts
 
     # E-matrix layout
@@ -454,7 +465,8 @@ function make_bb_kernel()
             dish01 => SIMD(:simd, 4 * C, 4),
             dish23 => Register(:dish, 4, 4),
             dish456 => Thread(:thread, 1, 8),
-            dish789 => Warp(:warp, 1, Wd),
+            dish78 => Warp(:warp, 1, Wd),
+            dish9 => Register(:dish, 512, 2),
             time01 => Thread(:thread, 8, 4),
             Time(:time, 4, num_time_warps_for_Ecopy) => Warp(:warp, Wd, num_time_warps_for_Ecopy),
             Time(:time, 4 * num_time_warps_for_Ecopy, num_time_registers_for_Ecopy) =>
@@ -613,6 +625,12 @@ function make_bb_kernel()
         Index{Physics,BlockTag}(:block, 1, num_blocks) => Block(:block, 1, num_blocks),
     ])
 
+    # log layout
+
+    layout_log_registers = Layout([
+        int32value => SIMD(:simd, 1, 32), Index{Physics,BlockTag}(:block, 1, num_blocks) => Block(:block, 1, num_blocks)
+    ])
+
     # Generate code
 
     emitter = Emitter(kernel_setup)
@@ -635,14 +653,14 @@ function make_bb_kernel()
 
     if Wp == 1
         if!(emitter, :(!(0i32 < s < 32i32))) do emitter
-            apply!(emitter, :info => layout_info_registers, 2i32)
+            apply!(emitter, :info => layout_info_registers, 3i32)
             store!(emitter, :info_memory => layout_info_memory, :info)
             trap!(emitter)
             return nothing
         end
     elseif Wp == 2
         if!(emitter, :(!(0i32 < s_polr0 < 32i32 && 0i32 < s_polr1 < 32i32))) do emitter
-            apply!(emitter, :info => layout_info_registers, 2i32)
+            apply!(emitter, :info => layout_info_registers, 3i32)
             store!(emitter, :info_memory => layout_info_memory, :info)
             trap!(emitter)
             return nothing
@@ -651,31 +669,49 @@ function make_bb_kernel()
         @assert false
     end
 
+    if!(
+        emitter,
+        quote
+            let
+                thread = IndexSpaces.cuda_threadidx()
+                warp = IndexSpaces.cuda_warpidx()
+                thread == 0i32 && warp == 0i32
+            end
+        end,
+    ) do emitter
+        apply!(emitter, :logval => layout_log_registers, 0i32)
+        store!(emitter, :log_memory => layout_log_memory, :logval)
+        return nothing
+    end
+    sync_threads!(emitter)
+
+    push!(
+        emitter.statements,
+        quote
+            hasoverflow = false
+        end,
+    )
+
     if D == 1024
         layout_A0_registers = Layout([
             int8value => SIMD(:simd, 1, 8),
-            cplx => SIMD(:simd, 8, 2),       # want register
-            dish0 => SIMD(:simd, 16, 2),     # want simd3
-            dish1 => Register(:cplx, 1, C),  # want simd4
-            dish2 => Register(:dish, 4, 2),  # final
-            dish34 => Thread(:thread, 2, 4), # want register
-            dish5 => Thread(:thread, 1, 2),  # final
-            dish6 => Register(:dish, 8, 2),  # want thread2
-            dish789 => Warp(:warp, 1, Wd),   # ??? final
-            beam0 => Register(:dish, 16, 2), # want thread4
-            beam12 => Thread(:thread, 8, 4), # final
-            beam3 => Register(:beam, 8, 2),  # final
-            beam4etc => Warp(:warp, Wd, Wb),
+            cplx => SIMD(:simd, 8, 2),          # want register
+            dish0 => SIMD(:simd, 16, 2),        # want simd3
+            dish1 => Register(:cplx, 1, C),     # want simd4
+            dish2345 => Register(:dish, 4, 16), # final
+            dish67 => Thread(:thread, 1, 4),    # final
+            dish89 => Warp(:warp, 1, Wd),       # final
+            beam012 => Thread(:thread, 4, 8),   # final
+            beam3 => Register(:beam, 8, 2),     # final
+            beam4etc => Warp(:warp, Wd, Wb),    # final
             Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
             Polr(:polr, Bp, Wp) => Warp(:warp, Wd, Wp),
             freq => Block(:block, Bt * P, F),
         ])
 
-        load!(emitter, :A => layout_A0_registers, :A_memory => layout_A_memory; align=16)
+        load!(emitter, :A => layout_A0_registers, :A_memory => layout_A_memory)
         permute!(emitter, :A, :A, Register(:cplx, 1, C), SIMD(:simd, 16, 2))
         permute!(emitter, :A, :A, Register(:cplx, 1, C), SIMD(:simd, 8, 2))
-        permute!(emitter, :A, :A, Register(:dish, 8, 2), Thread(:thread, 2, 2))
-        permute!(emitter, :A, :A, Register(:dish, 16, 2), Thread(:thread, 4, 2))
     elseif D == 512
         layout_A0_registers = Layout([
             int8value => SIMD(:simd, 1, 8),
@@ -903,7 +939,14 @@ function make_bb_kernel()
             load!(emitter, :Ju => layout_Ju_registers, :Ju_shared => layout_Ju_shared)
             widen!(emitter, :Ju, :Ju, SIMD(:simd, 16, 2) => Register(:cplx, 1, C))
 
-            if D == 512
+            if D == 1024
+                split!(emitter, [:Julo, :Juhi], :Ju, Dish(:dish, 256, 2))
+                # TODO use add_sat
+                apply!(emitter, :Ju, [:Julo, :Juhi], (Julo, Juhi) -> :($Julo + $Juhi))
+                split!(emitter, [:Julo, :Juhi], :Ju, Dish(:dish, 512, 2))
+                # TODO use add_sat
+                apply!(emitter, :J, [:Julo, :Juhi], (Julo, Juhi) -> :($Julo + $Juhi))
+            elseif D == 512
                 split!(emitter, [:Julo, :Juhi], :Ju, Dish(:dish, 128, 2))
                 # TODO use add_sat
                 apply!(emitter, :Ju, [:Julo, :Juhi], (Julo, Juhi) -> :($Julo + $Juhi))
@@ -926,7 +969,14 @@ function make_bb_kernel()
 
             # TODO: Try this: Shift values left by 4, rely on saturation when converting, then shift right and mask (doesn't work)
             # TODO: Try this: Pack to Int16, the clamp, then pack to Int8 (doesn't work, no efficient 16-bit clamp)
-            apply!(emitter, :J, [:J], J -> :(clamp($J, ($(-Int32(0x7))):($(+Int32(0x7))))))
+            # apply!(emitter, :J, [:J], J -> :(clamp($J, ($(-Int32(0x7))):($(+Int32(0x7))))))
+            apply!(emitter, :J, [:J], J -> quote
+                let
+                    Jnew = clamp($J, ($(-Int32(0x7))):($(+Int32(0x7))))
+                    hasoverflow |= Jnew != $J
+                    Jnew
+                end
+            end)
             narrow3!(
                 emitter,
                 :J,
@@ -954,6 +1004,28 @@ function make_bb_kernel()
         return nothing
     end
 
+    push!(
+        emitter.statements,
+        quote
+            any_hasoverflow = sync_threads_or(hasoverflow)
+        end,
+    )
+    if!(emitter, :any_hasoverflow) do emitter
+        if!(
+            emitter,
+            quote
+                let
+                    thread = IndexSpaces.cuda_threadidx()
+                    warp = IndexSpaces.cuda_warpidx()
+                    thread == 0i32 && warp == 0i32
+                end
+            end,
+        ) do emitter
+            apply!(emitter, :logval => layout_log_registers, 1i32)
+            store!(emitter, :log_memory => layout_log_memory, :logval)
+        end
+    end
+
     apply!(emitter, :info => layout_info_registers, 0i32)
     store!(emitter, :info_memory => layout_info_memory, :info)
 
@@ -973,7 +1045,7 @@ println("[Creating bb kernel...]")
 const bb_kernel = make_bb_kernel()
 println("[Done creating bb kernel]")
 
-@eval function bb(Tmin::Int32, Tmax::Int32, A_memory, E_memory, s_memory, J_memory, info_memory)
+@eval function bb(Tmin::Int32, Tmax::Int32, A_memory, E_memory, s_memory, J_memory, info_memory, log_memory)
     E_shared = @cuDynamicSharedMem($E_shared_type, $E_shared_length, $(sizeof(UInt32) * E_shared_offset))
     Ju_shared = @cuDynamicSharedMem($Ju_shared_type, $Ju_shared_length, $(sizeof(UInt32) * Ju_shared_offset))
     $bb_kernel
@@ -1007,7 +1079,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     num_blocks_per_sm = kernel_setup.num_blocks_per_sm
     shmem_bytes = kernel_setup.shmem_bytes
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
-    @assert shmem_bytes ≤ 99 * 1024 # NVIDIA A10/A40 have 99 kB shared memory
+    @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
     kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm bb(
         Int32(0),
         Int32(0),
@@ -1015,6 +1087,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         CUDA.zeros(Int4x8, 0),
         CUDA.zeros(Int32, 0),
         CUDA.zeros(Int4x8, 0),
+        CUDA.zeros(Int32, 0),
         CUDA.zeros(Int32, 0),
     )
     attributes(kernel.fun)[CUDA.CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES] = shmem_bytes
@@ -1110,6 +1183,12 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
               indices: [thread, warp, block]
               shapes: [$num_threads, $num_warps, $num_blocks]
               strides: [1, $num_threads, $(num_threads*num_warps)]
+            - name: "log"
+              intent: inout
+              type: Int32
+              indices: [block]
+              shapes: [$num_blocks]
+              strides: [1]
         ...
         """,
             )
@@ -1223,6 +1302,15 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "hasbuffer" => false,
                         "isscalar" => false,
                     ),
+                    Dict(
+                        "name" => "log",
+                        "kotekan_name" => "gpu_mem_log",
+                        "type" => "int32",
+                        "axes" => [Dict("label" => "block", "length" => num_blocks)],
+                        "isoutput" => true,
+                        "hasbuffer" => false,
+                        "isscalar" => false,
+                    ),
                 ],
             ),
         )
@@ -1237,6 +1325,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     s_memory = Array{Int32}(undef, B * P * F)
     J_wanted = Array{Int4x8}(undef, idiv(Tout, 4) * P * F * B)
     info_wanted = Array{Int32}(undef, num_threads * num_warps * num_blocks)
+    log_wanted = Array{Int32}(undef, num_blocks)
 
     println("Setting up input data...")
     map!(i -> zero(Int8x4), A_memory, A_memory)
@@ -1244,6 +1333,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     map!(i -> Int32(σ + 1), s_memory, s_memory)
     map!(i -> zero(Int4x8), J_wanted, J_wanted)
     map!(i -> zero(Int32), info_wanted, info_wanted)
+    map!(i -> zero(Int32), log_wanted, log_wanted)
     # map!(i -> rand(Int8x4), A_memory, A_memory)
     # map!(i -> rand(Int4x8), E_memory, E_memory)
     # map!(i -> rand(Int32(1):Int32(10)), s_memory, s_memory)
@@ -1349,6 +1439,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     s_cuda = CuArray(s_memory)
     J_cuda = CUDA.fill(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8), idiv(Tout, 4) * P * F * B)
     info_cuda = CUDA.fill(-1i32, num_threads * num_warps * num_blocks)
+    log_cuda = CUDA.fill(0i32, num_blocks)
 
     println("Running kernel...")
     kernel(
@@ -1358,7 +1449,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         E_cuda,
         s_cuda,
         J_cuda,
-        info_cuda;
+        info_cuda,
+        log_cuda;
         threads=(num_threads, num_warps),
         blocks=num_blocks,
         shmem=shmem_bytes,
@@ -1376,7 +1468,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                     E_cuda,
                     s_cuda,
                     J_cuda,
-                    info_cuda;
+                    info_cuda,
+                    log_cuda;
                     threads=(num_threads, num_warps),
                     blocks=num_blocks,
                     shmem=shmem_bytes,
@@ -1424,7 +1517,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     println("Copying data back from GPU to CPU...")
     J_memory = Array(J_cuda)
     info_memory = Array(info_cuda)
+    log_memory = Array(log_cuda)
     @assert all(info_memory .== 0)
+    #TODO @assert all(log_memory .== 0)
 
     if run_selftest
         println("Checking results...")

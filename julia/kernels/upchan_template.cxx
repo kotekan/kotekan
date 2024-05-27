@@ -71,6 +71,7 @@ private:
     // Kernel compile parameters:
     static constexpr int minthreads = {{{minthreads}}};
     static constexpr int blocks_per_sm = {{{num_blocks_per_sm}}};
+    static constexpr int blocks_per_frequency = {{{num_blocks_per_frequency}}};
 
     // Kernel call parameters:
     static constexpr int threads_x = {{{num_threads}}};
@@ -541,7 +542,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                                       shmem_bytes));
 
     DEBUG("Running CUDA {{{kernel_name}}} on GPU frame {:d}", gpu_frame_id);
-    const int blocks = Fmax - Fmin;
+    const int blocks = blocks_per_frequency * (Fmax - Fmin);
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[symname],
                        blocks, 1, 1, threads_x, threads_y, 1,
@@ -646,9 +647,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                             const auto val = Ebar_buffer.at(tbar * (Fbarlength * Fbarstride) + fbar * Fbarstride + n); 
                             any_error |= val == 0x88;
                         }
-                        if (any_error) {
+                        if (any_error)
                             DEBUG("    U={} [{},{}]={:#02x}", cuda_upchannelization_factor, tbar, fbar, 0x88);
-                        }
                     }
                 }
             }

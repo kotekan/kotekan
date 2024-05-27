@@ -2,9 +2,11 @@
 #include <FEngine.hpp>
 #include <Stage.hpp>
 #include <StageFactory.hpp>
+#include <algorithm>
 #include <cassert>
 #include <chimeMetadata.hpp>
 #include <chordMetadata.hpp>
+#include <cmath>
 #include <complex>
 #include <cstdint>
 #include <cstring>
@@ -64,8 +66,8 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     num_times(config.get<int>(unique_name, "num_times")),
 
     // Baseband beamformer setup
-    bb_num_dishes_M(config.get<int>(unique_name, "bb_num_dishes_M")),
-    bb_num_dishes_N(config.get<int>(unique_name, "bb_num_dishes_N")),
+    // bb_num_dishes_M(config.get<int>(unique_name, "bb_num_dishes_M")),
+    // bb_num_dishes_N(config.get<int>(unique_name, "bb_num_dishes_N")),
     bb_num_beams_P(config.get<int>(unique_name, "bb_num_beams_P")),
     bb_num_beams_Q(config.get<int>(unique_name, "bb_num_beams_Q")),
     bb_beam_separation_x(config.get<float>(unique_name, "bb_beam_separation_x")),
@@ -313,17 +315,20 @@ void FEngine::main_thread() {
             args[iargc++] = jl_box_int64(num_dishes);
             args[iargc++] = jl_box_float32(adc_frequency);
             args[iargc++] = jl_box_int64(num_taps);
+            args[iargc++] = jl_box_int64(num_samples_per_frame / 2);
             args[iargc++] = jl_box_int64(num_frequencies);
+            args[iargc++] = jl_box_voidpointer(
+                const_cast<void*>(static_cast<const void*>(frequency_channels.data())));
             args[iargc++] = jl_box_int64(num_times);
-            args[iargc++] = jl_box_int64(bb_num_dishes_M);
-            args[iargc++] = jl_box_int64(bb_num_dishes_N);
+            // args[iargc++] = jl_box_int64(bb_num_dishes_M);
+            // args[iargc++] = jl_box_int64(bb_num_dishes_N);
             args[iargc++] = jl_box_int64(bb_num_beams_P);
             args[iargc++] = jl_box_int64(bb_num_beams_Q);
             args[iargc++] = jl_box_int64(num_frames);
             assert(iargc == nargs);
             jl_value_t* const res = jl_call(setup, args, nargs);
-            assert(res);
             JL_GC_POP();
+            assert(res);
         });
         INFO("Done initializing world.");
     } // if !skip_julia
@@ -431,8 +436,10 @@ void FEngine::main_thread() {
 
         // Fill buffer
         DEBUG("[{:d}] Filling s buffer...", s_frame_index);
+        using std::log2, std::lrint;
+        const int scale = lrint(log2(num_dishes)) + 4;
         for (int n = 0; n < bb_num_beams * num_polarizations * num_frequencies; ++n)
-            ((int32_t*)s_frame)[n] = 13;
+            ((int32_t*)s_frame)[n] = scale;
         DEBUG("[{:d}] Done filling s buffer.", s_frame_index);
 
         // Set metadata
@@ -487,18 +494,24 @@ void FEngine::main_thread() {
                 G_buffers[Ufactor]->wait_for_empty_frame(unique_name, G_frame_id);
             if (!G_frame)
                 return;
-            if (!(std::ptrdiff_t(G_buffers[Ufactor]->frame_size) == G_frame_sizes[Ufactor]))
+            // We can't have zero-length buffers
+            using std::max;
+            const std::ptrdiff_t wanted_frame_size = max(std::ptrdiff_t(1), G_frame_sizes[Ufactor]);
+            if (std::ptrdiff_t(G_buffers[Ufactor]->frame_size) != wanted_frame_size)
                 FATAL_ERROR("G_buffers[U{:d}]->frame_size={:d} G_frame_sizes[U{:d}]={:d}", U,
                             G_buffers[Ufactor]->frame_size, U, G_frame_sizes[Ufactor]);
-            assert(std::ptrdiff_t(G_buffers[Ufactor]->frame_size) == G_frame_sizes[Ufactor]);
+            assert(std::ptrdiff_t(G_buffers[Ufactor]->frame_size) == wanted_frame_size);
             G_buffers[Ufactor]->allocate_new_metadata_object(G_frame_id);
             set_fpga_seq_num(G_buffers[Ufactor], G_frame_id, -1);
 
             DEBUG("[{:d}] Filling G_U{:d} buffer...", G_frame_index, U);
             const int num_local_channels =
                 upchan_max_channels[Ufactor] - upchan_min_channels[Ufactor];
-            for (int n = 0; n < num_local_channels * U; ++n)
-                ((float16_t*)G_frame)[n] = 1;
+            for (int n = 0; n < upchan_max_num_channelss[Ufactor] * U; ++n)
+                if (n < num_local_channels * U)
+                    ((float16_t*)G_frame)[n] = 1;
+                else
+                    ((float16_t*)G_frame)[n] = 0; // unused
             DEBUG("[{:d}] Done filling G_U{:d} buffer.", G_frame_index, U);
 
             // Set metadata
@@ -510,18 +523,17 @@ void FEngine::main_thread() {
             G_metadata->dims = 1;
             assert(G_metadata->dims <= CHORD_META_MAX_DIM);
             std::strncpy(G_metadata->dim_name[0], "Fbar", sizeof G_metadata->dim_name[0]);
+            // TODO: Set the correct length (and update all kernels which read this)
+            // G_metadata->dim[0] = num_local_channels * U;
             G_metadata->dim[0] = upchan_max_num_channelss[Ufactor] * U;
-            for (int d = G_metadata->dims - 1; d >= 0; --d)
-                if (d == G_metadata->dims - 1)
-                    G_metadata->stride[d] = 1;
-                else
-                    G_metadata->stride[d] = G_metadata->stride[d + 1] * G_metadata->dim[d + 1];
+            G_metadata->stride[0] = 1;
             G_metadata->sample0_offset = -1; // undefined
-            G_metadata->nfreq = num_frequencies;
+            G_metadata->nfreq = U * num_local_channels;
             assert(G_metadata->nfreq <= CHORD_META_MAX_FREQ);
-            for (int freq = 0; freq < num_frequencies; ++freq) {
-                G_metadata->coarse_freq[freq] = freq + 1;      // See `FEngine.f_engine`
-                G_metadata->freq_upchan_factor[freq] = 1;      // upchannelization_factor;
+            for (int freq = 0; freq < U * num_local_channels; ++freq) {
+                G_metadata->coarse_freq[freq] =
+                    frequency_channels.at(upchan_min_channels[Ufactor] + freq / U);
+                G_metadata->freq_upchan_factor[freq] = U;
                 G_metadata->half_fpga_sample0[freq] = -1;      // undefined
                 G_metadata->time_downsampling_fpga[freq] = -1; // undefined
             }
@@ -548,10 +560,14 @@ void FEngine::main_thread() {
                 W1_buffers[Ufactor]->wait_for_empty_frame(unique_name, W1_frame_id);
             if (!W1_frame)
                 return;
-            if (!(std::ptrdiff_t(W1_buffers[Ufactor]->frame_size) == W1_frame_sizes[Ufactor]))
+            // We can't have zero-length buffers
+            using std::max;
+            const std::ptrdiff_t wanted_frame_size =
+                max(std::ptrdiff_t(1), W1_frame_sizes[Ufactor]);
+            if (std::ptrdiff_t(W1_buffers[Ufactor]->frame_size) != wanted_frame_size)
                 FATAL_ERROR("W1_buffers[U{:d}]->frame_size={:d} W1_frame_sizes[U{:d}]={:d}", U,
                             W1_buffers[Ufactor]->frame_size, U, W1_frame_sizes[Ufactor]);
-            assert(std::ptrdiff_t(W1_buffers[Ufactor]->frame_size) == W1_frame_sizes[Ufactor]);
+            assert(std::ptrdiff_t(W1_buffers[Ufactor]->frame_size) == wanted_frame_size);
             W1_buffers[Ufactor]->allocate_new_metadata_object(W1_frame_id);
             set_fpga_seq_num(W1_buffers[Ufactor], W1_frame_id, -1);
 
@@ -638,7 +654,7 @@ void FEngine::main_thread() {
         std::uint8_t* const W2_frame = W2_buffer->wait_for_empty_frame(unique_name, W2_frame_id);
         if (!W2_frame)
             return;
-        if (!(std::ptrdiff_t(W2_buffer->frame_size) == W2_frame_size))
+        if (std::ptrdiff_t(W2_buffer->frame_size) != W2_frame_size)
             FATAL_ERROR("W2_buffer->frame_size={:d} W2_frame_size={:d}", W2_buffer->frame_size,
                         W2_frame_size);
         assert(std::ptrdiff_t(W2_buffer->frame_size) == W2_frame_size);
@@ -690,55 +706,64 @@ void FEngine::main_thread() {
                 }
                 return acc;
             };
-            std::vector<float> Up(2 * num_dish_locations_ew);
-            std::vector<float> Uq(2 * num_dish_locations_ns);
 
-            // TODO: correct this, frequencies don't work that way
-            for (int freq0 = 0;
-                 freq0 < (upchan_all_max_output_channel - upchan_all_min_output_channel) / 4;
-                 ++freq0) {
-                for (int freq1 = 0; freq1 < upchannelization_factor; ++freq1) {
-                    const int freq = freq1 + upchannelization_factor * freq0;
+#pragma omp parallel
+            {
+                std::vector<float> Up(2 * num_dish_locations_ew);
+                std::vector<float> Uq(2 * num_dish_locations_ns);
 
-                    // Calculate physical frequency from channel index
-                    const float dfreq = adc_frequency / num_samples_per_frame;
-                    const float afreq =
-                        dfreq
-                        * (frequency_channels.at(freq0 % frequency_channels.size())
-                           + ((freq1 + 0.5f) / float(upchannelization_factor) - 0.5f));
-                    const float c = 299792458; // speed of light
-                    const float wavelength = c / afreq;
+                // TODO: correct this, frequencies don't work that way
+#pragma omp for
+                for (int freq0 = 0;
+                     freq0 < (upchan_all_max_output_channel - upchan_all_min_output_channel)
+                                 / upchannelization_factor;
+                     ++freq0) {
+                    for (int freq1 = 0; freq1 < upchannelization_factor; ++freq1) {
+                        const int freq = freq1 + upchannelization_factor * freq0;
 
-                    for (int beamOut_ew = 0; beamOut_ew < frb2_num_beams_ew; ++beamOut_ew) {
-                        for (int beamOut_ns = 0; beamOut_ns < frb2_num_beams_ns; ++beamOut_ns) {
+                        // Calculate physical frequency from channel index
+                        const float dfreq = adc_frequency / num_samples_per_frame;
+                        const float afreq =
+                            dfreq
+                            * (frequency_channels.at(freq0 % frequency_channels.size())
+                               + ((freq1 + 0.5f) / float(upchannelization_factor) - 0.5f));
+                        const float c = 299792458; // speed of light
+                        const float wavelength = c / afreq;
 
-                            const float beam_dec = frb2_opening_angle_ns
-                                                   * (beamOut_ns / (frb2_num_beams_ns - 1) - 0.5f);
-                            const float beam_ra = frb2_opening_angle_ew
-                                                  * (beamOut_ew / (frb2_num_beams_ew - 1) - 0.5f);
+                        for (int beamOut_ew = 0; beamOut_ew < frb2_num_beams_ew; ++beamOut_ew) {
+                            for (int beamOut_ns = 0; beamOut_ns < frb2_num_beams_ns; ++beamOut_ns) {
 
-                            const float theta_ns = cos(frb2_bore_z - beam_dec) * cos(beam_ra)
-                                                   * num_dish_locations_ns * dish_separation_ns
-                                                   / wavelength;
-                            const float theta_ew = cos(frb2_bore_z - beam_dec) * sin(beam_ra)
-                                                   * num_dish_locations_ew * dish_separation_ew
-                                                   / wavelength;
+                                const float beam_dec =
+                                    frb2_opening_angle_ns
+                                    * (beamOut_ns / (frb2_num_beams_ns - 1) - 0.5f);
+                                const float beam_ra =
+                                    frb2_opening_angle_ew
+                                    * (beamOut_ew / (frb2_num_beams_ew - 1) - 0.5f);
 
-                            for (int i = 0; i < 2 * num_dish_locations_ns; i++)
-                                Uq[i] = Ufunc(i, num_dish_locations_ns, theta_ns);
-                            for (int i = 0; i < 2 * num_dish_locations_ew; i++)
-                                Up[i] = Ufunc(i, num_dish_locations_ew, theta_ew);
+                                const float theta_ns = cos(frb2_bore_z - beam_dec) * cos(beam_ra)
+                                                       * num_dish_locations_ns * dish_separation_ns
+                                                       / wavelength;
+                                const float theta_ew = cos(frb2_bore_z - beam_dec) * sin(beam_ra)
+                                                       * num_dish_locations_ew * dish_separation_ew
+                                                       / wavelength;
 
-                            for (int beamIn_ew = 0; beamIn_ew < 2 * num_dish_locations_ew;
-                                 ++beamIn_ew) {
-                                for (int beamIn_ns = 0; beamIn_ns < 2 * num_dish_locations_ns;
-                                     ++beamIn_ns) {
-                                    const std::ptrdiff_t n =
-                                        beamIn_ns * beamIn_ns_stride + beamIn_ew * beamIn_ew_stride
-                                        + beamOut_ns * beamOut_ns_stride
-                                        + beamOut_ew * beamOut_ew_stride + freq * freq_stride;
+                                for (int i = 0; i < 2 * num_dish_locations_ns; i++)
+                                    Uq[i] = Ufunc(i, num_dish_locations_ns, theta_ns);
+                                for (int i = 0; i < 2 * num_dish_locations_ew; i++)
+                                    Up[i] = Ufunc(i, num_dish_locations_ew, theta_ew);
 
-                                    W2[n] = Up[beamIn_ew] * Uq[beamIn_ns];
+                                for (int beamIn_ew = 0; beamIn_ew < 2 * num_dish_locations_ew;
+                                     ++beamIn_ew) {
+                                    for (int beamIn_ns = 0; beamIn_ns < 2 * num_dish_locations_ns;
+                                         ++beamIn_ns) {
+                                        const std::ptrdiff_t n = beamIn_ns * beamIn_ns_stride
+                                                                 + beamIn_ew * beamIn_ew_stride
+                                                                 + beamOut_ns * beamOut_ns_stride
+                                                                 + beamOut_ew * beamOut_ew_stride
+                                                                 + freq * freq_stride;
+
+                                        W2[n] = Up[beamIn_ew] * Uq[beamIn_ns];
+                                    }
                                 }
                             }
                         }

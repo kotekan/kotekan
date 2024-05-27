@@ -1,7 +1,7 @@
 using ASDF2
 using CUDASIMDTypes
 using CairoMakie
-using SixelTerm
+using ITerm2Images
 
 setup = :pathfinder
 
@@ -26,7 +26,7 @@ array_E = reinterpret(Int4x2, array_E)
 array_E::AbstractArray{Int4x2,4}
 ndishs, npolrs, nfreqs, ntimes = size(array_E)
 
-quantity_G = "upchan_gain"
+quantity_G = "upchan_U$(U)_gain"
 file_G = ASDF2.load_file("$(dir)/$(prefix)$(quantity_G).$(iter).asdf")
 dataset_G = file_G.metadata[parse(Int, iter)]
 @assert dataset_G["dim_names"] == ["Fbar"]
@@ -36,9 +36,9 @@ array_G = dataset_G["host_$(quantity_G)_buffer"][]
 array_G::AbstractArray{Float16,1}
 ngains, = size(array_G)
 
-@assert ngains == nfreqs * U
+@assert 0 <= ngains <= nfreqs * U
 
-quantity_Ebar = "upchan_voltage"
+quantity_Ebar = "upchan_U$(U)_voltage"
 file_Ebar = ASDF2.load_file("$(dir)/$(prefix)$(quantity_Ebar).$(iter).asdf")
 dataset_Ebar = file_Ebar.metadata[parse(Int, iter)]
 @assert dataset_Ebar["dim_names"] == ["Tbar", "Fbar", "P", "D"]
@@ -48,7 +48,8 @@ array_Ebar = reinterpret(Int4x2, array_Ebar)
 array_Ebar::AbstractArray{Int4x2,4}
 ndishs′, npolrs′, nfreqbars, ntimebars = size(array_Ebar)
 
-@assert (ndishs′, npolrs′, nfreqbars) == (ndishs, npolrs, nfreqs * U)
+@assert (ndishs′, npolrs′) == (ndishs, npolrs)
+@assert 0 <= nfreqbars <= nfreqs * U
 @assert ntimebars <= ntimes ÷ U
 
 @assert dataset_E["ndishes"] == ndishs
@@ -90,7 +91,7 @@ end
 # Most of the power is in frequency 3
 # (TODO: Read this from metadata)
 # freq = 1:nfreqs
-freq = 3
+freq = 1
 freqbar = 1:nfreqbars
 # freqbar = 3 * U
 

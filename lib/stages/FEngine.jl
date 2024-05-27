@@ -1,3 +1,5 @@
+@show :FEngine0
+
 module FEngine
 
 # Simulate the dishes and the F-engine to generate inputs for the X-engine
@@ -8,11 +10,11 @@ module FEngine
 
 using Base.Threads
 using CUDASIMDTypes
-using CairoMakie
+#TODO using CairoMakie
 using FFTW
 using LinearAlgebra
 using MappedArrays
-using SixelTerm
+#TODO using SixelTerm
 
 ################################################################################
 # Constants
@@ -207,9 +209,9 @@ function make_dishes(
     num_dish_locations_ns::Int,
     dish_locations::AbstractVector{NTuple{2,Int}},
 )
-    # dish_separation_ew = Float(6.3)  #  east-west
-    # dish_separation_ns = Float(8.5)  #  north-south
-    i_ew₀ = (num_dish_locations_ew - 1) / Float(2) #  centre
+    # dish_separation_ew = Float(6.3)  # east-west
+    # dish_separation_ns = Float(8.5)  # north-south
+    i_ew₀ = (num_dish_locations_ew - 1) / Float(2) # centre
     i_ns₀ = (num_dish_locations_ns - 1) / Float(2)
     locations = NTuple{2,Float}[
         let
@@ -218,6 +220,7 @@ function make_dishes(
             (x_ns, x_ew)
         end for (i_ns, i_ew) in dish_locations
     ]
+    @show locations
     return Dishes(locations)
 end
 
@@ -242,7 +245,7 @@ function sample_sources(::Type{T}, source::Source, dishes::Dishes, t₀::Float, 
 end
 
 ################################################################################
-# F - engine
+# F-engine
 
 struct ADC
     Δt::Float
@@ -281,17 +284,19 @@ end
 struct FFrame{T}
     t₀::Float
     Δt::Float
-    f₀::Float
     Δf::Float
-    data::Array{Complex{T},3} # [freq, dish, polr]
+    frequency_channels::Vector{Int}
+    data::Array{Complex{T},3} # [dish, polr, freq]
 end
 
 function plot(frame::FFrame{T}) where {T<:Real}
+    @assert false
+    # TODO: The following lines assume data[freq, dish, polr], but the index order changed
     data = reshape(frame.data, size(frame.data, 1), :)
     data = PermutedDimsArray(data, (2, 1))
     data = mappedarray(real, data)
     dishes = axes(data, 1)
-    freqs = frame.f₀ .+ (axes(data, 2) .- 1) * frame.Δf
+    freqs = frequency_channels[axes(data, 2)] * frame.Δf
 
     fig = Figure(; resolution=(1280, 960))
     ax = Axis(fig[1, 1]; title="F-engine frame", xlabel="dish, polr", ylabel="freq")
@@ -300,7 +305,7 @@ function plot(frame::FFrame{T}) where {T<:Real}
     return fig
 end
 
-function f_engine(inframes::AbstractVector{ADCFrame{T}}, ntaps::Int) where {T<:Real}
+function f_engine(inframes::AbstractVector{ADCFrame{T}}, ntaps::Int, frequency_channels::AbstractVector{<:Integer}) where {T<:Real}
     @assert all(size(frame.data) == size(inframes[begin].data) for frame in inframes)
     @assert all(frame.Δt == inframes[begin].Δt for frame in inframes)
 
@@ -336,24 +341,22 @@ function f_engine(inframes::AbstractVector{ADCFrame{T}}, ntaps::Int) where {T<:R
     Δt′ = Δt * ntimes
     t₀′ = t₀ - Δt / 2 + Δt′ * ntaps / 2
     Δf′ = 1 / (ntimes * Δt)
-    f₀′ = T(0)
-
-    # Drop base frequency
-    # TODO: Select interesting frequencies
-    f₀′ += Δf′
 
     println("f_engine: reshape #1...")
     indata = [reshape(frame.data, size(frame.data, 1), :) for frame in inframes]::AbstractVector{<:AbstractArray{T,2}}
+    channels = frequency_channels .+ 1
     println("f_engine: pfb...")
     outdata = pfb(indata; ntaps)
     println("f_engine: reshape #2...")
     nframes′ = length(outdata)
     outframes = Vector{FFrame{T}}(undef, nframes′)
     @threads for n in 1:nframes′
-        # Drop base frequency
-        outframes[n] = FFrame(
-            t₀′ + (n - 1) * Δt′, Δt′, f₀′, Δf′, reshape(outdata[n], size(outdata[n], 1), ndishes, npolrs)[(begin + 1):end, :, :]
-        )
+        # Select frequencies
+        outframes[n] = let
+            tmp = reshape(outdata[n], size(outdata[n], 1), ndishes, npolrs)
+            data = Complex{T}[tmp[chan, dish, polr] for dish in 1:ndishes, polr in 1:npolrs, chan in channels]
+            FFrame(t₀′ + (n - 1) * Δt′, Δt′, Δf′, frequency_channels, data)
+        end
     end
     println("f_engine: done.")
 
@@ -372,7 +375,9 @@ function quantize(::Type{I}, inframes::AbstractVector{<:FFrame}) where {I<:Integ
     quantize1(x::Real) = clamp(round(I, scale * x), (-I(outrange)):(+I(outrange)))
     quantize(x::Complex) = Complex(quantize1(real(x)), quantize1(imag(x)))
 
-    outframes = FFrame{I}[FFrame(inframe.t₀, inframe.Δt, inframe.f₀, inframe.Δf, quantize.(inframe.data)) for inframe in inframes]
+    outframes = FFrame{I}[
+        FFrame(inframe.t₀, inframe.Δt, inframe.Δf, inframe.frequency_channels, quantize.(inframe.data)) for inframe in inframes
+    ]
 
     numvals = zeros(Int, 2 * outrange + 1)
     @threads for val in (-outrange):(+outrange)
@@ -391,8 +396,8 @@ end
 struct XFrame{T}
     t₀::Float
     Δt::Float
-    f₀::Float
     Δf::Float
+    frequency_channels::Vector{Int}
     data::Array{Complex{T},4} # [dish, polr, freq, time]
 end
 
@@ -405,7 +410,7 @@ function plot(frame::XFrame{T}) where {T<:Real}
     fig = Figure(; resolution=(1280, 960))
     ax = Axis(fig[1, 1]; title="X-engine frame", xlabel="time", ylabel="dish, polr")
     obj = heatmap!(ax, times, dishes, data; colormap=:plasma)
-    Colorbar(fig[1, 2], obj; label="E-field (real part, freq=$(frame.f₀ + (freq-1) * frame.Δf))")
+    Colorbar(fig[1, 2], obj; label="E-field (real part, freq=$(frame.frequency_channels[freq] * frame.Δf))")
     return fig
 end
 
@@ -415,20 +420,20 @@ function corner_turn(inframes::AbstractVector{FFrame{T}}, ntimes::Int) where {T<
     inframes′ = reshape(inframes, ntimes, :)
     nframes = size(inframes′, 2)
 
-    nfreqs, ndishes, npolrs = size(inframes′[begin, begin].data)
+    ndishes, npolrs, nfreqs = size(inframes′[begin, begin].data)
 
     outframes = Vector{XFrame{T}}(undef, nframes)
     @threads for n in 1:nframes
         outframes[n] = let
             t₀ = inframes′[begin, n].t₀
             Δt = inframes′[begin, n].Δt
-            f₀ = inframes′[begin, n].f₀
             Δf = inframes′[begin, n].Δf
+            frequency_channels = inframes′[begin, n].frequency_channels
             data = Complex{T}[
-                inframes′[time, n].data[freq, dish, polr] for dish in 1:ndishes, polr in 1:npolrs, freq in 1:nfreqs,
+                inframes′[time, n].data[dish, polr, freq] for dish in 1:ndishes, polr in 1:npolrs, freq in 1:nfreqs,
                 time in 1:ntimes
             ]
-            XFrame{T}(t₀, Δt, f₀, Δf, data)
+            XFrame{T}(t₀, Δt, Δf, frequency_channels, data)
         end
     end
 
@@ -461,19 +466,21 @@ function bb(::Type{T}, A::AbstractArray{<:Complex,4}, E::AbstractArray{<:Complex
 end
 
 function make_baseband_beams(nbeamsi::Int, nbeamsj::Int, Δθi::T, Δθj::T) where {T<:Real}
+    nbeamsi₀ = (nbeamsi - 1) / T(2) # centre
+    nbeamsj₀ = (nbeamsj - 1) / T(2)
     sinxys = NTuple{2,T}[let
-        θi = Δθi * (beami - (1 + nbeamsi) / T(2))
-        θj = Δθj * (beamj - (1 + nbeamsj) / T(2))
+        θi = Δθi * (beami - nbeamsi₀)
+        θj = Δθj * (beamj - nbeamsj₀)
         (sin(θi), sin(θj))
-    end for beamj in 1:nbeamsj for beami in 1:nbeamsi]
+    end for beamj in 0:(nbeamsj - 1) for beami in 0:(nbeamsi - 1)]
     return sinxys::Vector{NTuple{2,T}}
 end
 
 struct BBBeams{T}
     t₀::Float
     Δt::Float
-    f₀::Float
     Δf::Float
+    frequency_channels::Vector{Int}
     sinxys::Vector{NTuple{2,Float}}
     phases::Array{Complex{T},4} # [dish, beam, polr, freq]
     data::Array{Complex{T},4}   # [time, polr, freq, beam]
@@ -512,8 +519,8 @@ function bb(::Type{T}, xframes::AbstractVector{<:XFrame}, dishes::Dishes, sinxys
     @assert ndishes == length(dishes.locations)
     nbeams = length(sinxys)
 
-    f₀ = xframes[begin].f₀
     Δf = xframes[begin].Δf
+    frequency_channels = xframes[begin].frequency_channels
 
     # We choose `A` independent of polarization
     A = Complex{T}[
@@ -521,7 +528,7 @@ function bb(::Type{T}, xframes::AbstractVector{<:XFrame}, dishes::Dishes, sinxys
             dishx, dishy = dishes.locations[dish]
             sinx, siny = sinxys[beam]
             Δt = sinx * dishx / c₀ + siny * dishy / c₀
-            f = f₀ + (freq - 1) * Δf
+            f = frequency_channels[freq] * Δf
             cispi(-2 * f * Δt)
         end for dish in 1:ndishes, beam in 1:nbeams, polr in 1:npolrs, freq in 1:nfreqs
     ]
@@ -535,7 +542,7 @@ function bb(::Type{T}, xframes::AbstractVector{<:XFrame}, dishes::Dishes, sinxys
         # A: [dish, beam, polr, freq]
         phases = A
         data = J
-        beams = BBBeams(xframe.t₀, xframe.Δt, xframe.f₀, xframe.Δf, sinxys, phases, data)
+        beams = BBBeams(xframe.t₀, xframe.Δt, xframe.Δf, xframe.frequency_channels, sinxys, phases, data)
         push!(beamss, beams)
     end
     return beamss::AbstractVector{BBBeams{T}}
@@ -566,7 +573,13 @@ function quantize(::Type{I}, inbeams::AbstractVector{<:BBBeams}) where {I<:Integ
 
     outbeams = BBBeams{I}[
         BBBeams(
-            inbeam.t₀, inbeam.Δt, inbeam.f₀, inbeam.Δf, inbeam.sinxys, quantize_phases.(inbeam.phases), quantize_beams.(inbeam.data)
+            inbeam.t₀,
+            inbeam.Δt,
+            inbeam.Δf,
+            inbeam.frequency_channels,
+            inbeam.sinxys,
+            quantize_phases.(inbeam.phases),
+            quantize_beams.(inbeam.data),
         ) for inbeam in inbeams
     ]
 
@@ -644,8 +657,8 @@ end
 struct FRBBeams{T}
     t₀::Float
     Δt::Float
-    f₀::Float
     Δf::Float
+    frequency_channels::Vector{Int}
     phases::Array{Complex{T},4} # [dishM, dishN, polr, freq]
     data::Array{T,4}            # [beamP, beamQ, time_ds, freq]
 end
@@ -677,7 +690,7 @@ function frb(
         # @assert size(I, 3) * Tds == size(E, 4)
         phases = W
         data = I
-        beams = FRBBeams(xframe.t₀ * Tds, xframe.Δt * Tds, xframe.f₀, xframe.Δf, phases, data)
+        beams = FRBBeams(xframe.t₀ * Tds, xframe.Δt * Tds, xframe.Δf, xframe.frequency_channels, phases, data)
         push!(beamss, beams)
     end
     return beamss::AbstractVector{FRBBeams{T}}
@@ -700,9 +713,11 @@ function run(
     adc_frequency::Float,
     ntaps::Int64,
     nfreq::Int64,
+    nchan::Int64,
+    frequency_channels::Vector{Int64},
     ntimes::Int64,
-    ndishes_i::Int64,
-    ndishes_j::Int64,
+    # ndishes_i::Int64,
+    # ndishes_j::Int64,
     nbeams_i::Int64,
     nbeams_j::Int64,
     nframes::Int64,
@@ -757,9 +772,9 @@ function run(
         display(fig)
     end
 
-    fframes = f_engine(aframes, ntaps)
+    fframes = f_engine(aframes, ntaps, frequency_channels)
     println(
-        "F-engine output: $(length(fframes)) frames of size (nfreqs, ndishes, npolrs)=$(size(fframes[begin].data)) t₀=$(fframes[begin].t₀) Δt=$(fframes[begin].Δt) f₀=$(fframes[begin].f₀) Δf=$(fframes[begin].Δf)",
+        "F-engine output: $(length(fframes)) frames of size (nchan, ndishes, npolrs)=$(size(fframes[begin].data)) t₀=$(fframes[begin].t₀) Δt=$(fframes[begin].Δt) Δf=$(fframes[begin].Δf)",
     )
     if do_plot
         fig = plot(fframes[begin])
@@ -771,7 +786,7 @@ function run(
     xframes = corner_turn(qframes, ntimes)
     global stored_xframes = xframes
     println(
-        "Corner turn output: $(length(xframes)) frames of size (ndishes, npolrs, nfreqs, ntimes)=$(size(xframes[begin].data)) t₀=$(xframes[begin].t₀) Δt=$(xframes[begin].Δt) f₀=$(xframes[begin].f₀) Δf=$(xframes[begin].Δf)",
+        "Corner turn output: $(length(xframes)) frames of size (ndishes, npolrs, nchan, ntimes)=$(size(xframes[begin].data)) t₀=$(xframes[begin].t₀) Δt=$(xframes[begin].Δt) Δf=$(xframes[begin].Δf)",
     )
     if do_plot
         fig = plot(xframes[begin])
@@ -783,7 +798,7 @@ function run(
     sinxys = make_baseband_beams(nbeams_i, nbeams_j, beamΔΘi, beamΔΘj)
     bbbeams = bb(Float, xframes, dishes, sinxys)
     println(
-        "Baseband beams: $(length(bbbeams)) frames of size (ntimes, npolrs, nfreqs, nbbbeams)=$(size(bbbeams[begin].data)) t₀=$(bbbeams[begin].t₀) Δt=$(bbbeams[begin].Δt) f₀=$(bbbeams[begin].f₀) Δf=$(bbbeams[begin].Δf)",
+        "Baseband beams: $(length(bbbeams)) frames of size (ntimes, npolrs, nchans, nbbbeams)=$(size(bbbeams[begin].data)) t₀=$(bbbeams[begin].t₀) Δt=$(bbbeams[begin].Δt) Δf=$(bbbeams[begin].Δf)",
     )
     if do_plot
         fig = plot(bbbeams[begin])
@@ -796,7 +811,7 @@ function run(
     Tds = 40
     frbbeams = frb(Float, xframes, dish_locations, num_dish_locations_ns, num_dish_locations_ew, Tds)
     println(
-        "FRB beams: $(length(frbbeams)) frames of size (ntimes, nfrbbeamsP, nfrbbeamsQ, npolrs, nfreqs)=$(size(frbbeams[begin].data)) t₀=$(frbbeams[begin].t₀) Δt=$(frbbeams[begin].Δt) f₀=$(frbbeams[begin].f₀) Δf=$(frbbeams[begin].Δf)",
+        "FRB beams: $(length(frbbeams)) frames of size (ntimes, nfrbbeamsP, nfrbbeamsQ, npolrs, nchans)=$(size(frbbeams[begin].data)) t₀=$(frbbeams[begin].t₀) Δt=$(frbbeams[begin].Δt) Δf=$(frbbeams[begin].Δf)",
     )
     if do_plot
         fig = plot(frbbeams[begin])
@@ -841,33 +856,37 @@ function setup(
     adc_frequency=3.0e+9,
     ntaps=4,
     nfreq=64,
+    nchan=64,
+    frequency_channels_ptr=Ptr{Cvoid}(),
     ntimes=64,
-    ndishes_i=8,
-    ndishes_j=8,
+    # ndishes_i=8,
+    # ndishes_j=8,
     nbeams_i=12,
     nbeams_j=8,
     nframes=1,
 )
-    # @show :setup
-    # @show source_amplitude
-    # @show source_frequency
-    # @show source_position_ew
-    # @show source_position_ns
-    # @show num_dish_locations_ew
-    # @show num_dish_locations_ns
-    # @show dish_indices_ptr
-    # @show dish_separation_ew
-    # @show dish_separation_ns
-    # @show num_dishes
-    # @show adc_frequency
-    # @show ntaps
-    # @show nfreq
-    # @show ntimes
-    # @show ndishes_i
-    # @show ndishes_j
-    # @show nbeams_i
-    # @show nbeams_j
-    # @show nframes
+    println("Julia F-Engine setup:")
+    println("    - source_amplitude:       $source_amplitude")
+    println("    - source_frequency:       $source_frequency")
+    println("    - source_position_ew:     $source_position_ew")
+    println("    - source_position_ns:     $source_position_ns")
+    println("    - num_dish_locations_ew:  $num_dish_locations_ew")
+    println("    - num_dish_locations_ns:  $num_dish_locations_ns")
+    println("    - dish_indices_ptr:       $dish_indices_ptr")
+    println("    - dish_separation_ew:     $dish_separation_ew")
+    println("    - dish_separation_ns:     $dish_separation_ns")
+    println("    - num_dishes:             $num_dishes")
+    println("    - adc_frequency:          $adc_frequency")
+    println("    - ntaps:                  $ntaps")
+    println("    - nfreq:                  $nfreq")
+    println("    - nchan:                  $nchan")
+    println("    - frequency_channels_ptr: $frequency_channels_ptr")
+    println("    - ntimes:                 $ntimes")
+    # println("    - ndishes_i:              $ndishes_i")
+    # println("    - ndishes_j:              $ndishes_j")
+    println("    - nbeams_i:               $nbeams_i")
+    println("    - nbeams_j:               $nbeams_j")
+    println("    - nframes:                $nframes")
 
     dish_indices = if dish_indices_ptr != Ptr{Cvoid}()
         Int64[
@@ -879,6 +898,12 @@ function setup(
     end
     dish_indices::Array{Int64,2}
     @assert size(dish_indices) == (num_dish_locations_ew, num_dish_locations_ns)
+
+    frequency_channels = if frequency_channels_ptr != Ptr{Cvoid}()
+        Int64[unsafe_load(Ptr{Cint}(frequency_channels_ptr), n) for n in 1:nchan]
+    else
+        Int64[n for n in 1:nchan]
+    end
 
     return run(
         Float(source_amplitude),
@@ -894,9 +919,11 @@ function setup(
         Float(adc_frequency),
         Int64(ntaps),
         Int64(nfreq),
+        Int64(nchan),
+        frequency_channels,
         Int64(ntimes),
-        Int64(ndishes_i),
-        Int64(ndishes_j),
+        # Int64(ndishes_i),
+        # Int64(ndishes_j),
         Int64(nbeams_i),
         Int64(nbeams_j),
         Int64(nframes),
@@ -991,4 +1018,7 @@ function set_I(
 end
 
 end
+
+@show :FEngine9
+
 nothing

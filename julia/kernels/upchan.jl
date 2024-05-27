@@ -92,6 +92,16 @@ elseif setup ≡ :pathfinder
     const F = 384
     const F̄ = Dict(1 => 128, 2 => 128, 4 => 128, 8 => 64, 16 => 64, 32 => 64, 64 => 32)[U] * U
     const T = 4 * 8192
+elseif setup ≡ :chime
+    # CHIME Setup
+    const sampling_time_μsec = 4096 / (2 * 1200)
+    const C = 2
+    const D = 1024
+    const P = 2
+    # const F₀ = 16
+    const F = 16
+    const F̄ = Dict(1 => 1, 2 => 1, 4 => 1, 8 => 1, 16 => 16, 32 => 1, 64 => 1, 128 => 1)[U] * U
+    const T = 4 * 2048
 else
     @assert false
 end
@@ -143,7 +153,8 @@ const Wbits = trailing_zeros(W) # l
 const num_simd_bits = 32
 const num_threads = 32
 const num_warps = W
-const num_blocks = idiv(D * P, 128) * F
+const num_blocks_per_frequency = idiv(D * P, 128)
+const num_blocks = num_blocks_per_frequency * F
 const num_blocks_per_sm = B
 
 # Benchmark results:
@@ -1450,7 +1461,7 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     shmem_bytes = kernel_setup.shmem_bytes
     shmem_size = idiv(shmem_bytes, 4)
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
-    @assert shmem_bytes ≤ 99 * 1024 # NVIDIA A10/A40 have 99 kB shared memory
+    @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
     kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm upchan(
         Int32(0),
         Int32(0),
@@ -1610,6 +1621,7 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
           compile-parameters:
             minthreads: $(num_threads * num_warps)
             blocks_per_sm: $num_blocks_per_sm
+            blocks_per_frequency: $num_blocks_per_frequency
           call-parameters:
             threads: [$num_threads, $num_warps]
             blocks: [$num_blocks]
@@ -1711,6 +1723,7 @@ function fix_ptx_kernel()
       compile-parameters:
         minthreads: $(num_threads * num_warps)
         blocks_per_sm: $num_blocks_per_sm
+        blocks_per_frequency: $num_blocks_per_frequency
       call-parameters:
         threads: [$num_threads, $num_warps]
         blocks: [$num_blocks]
@@ -1783,6 +1796,7 @@ function fix_ptx_kernel()
             ],
             "minthreads" => num_threads * num_warps,
             "num_blocks_per_sm" => num_blocks_per_sm,
+            "num_blocks_per_frequency" => num_blocks_per_frequency,
             "num_threads" => num_threads,
             "num_warps" => num_warps,
             "num_blocks" => num_blocks,

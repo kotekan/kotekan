@@ -14,11 +14,14 @@ setups='
     pathfinder_U1 pathfinder_U2 pathfinder_U4 pathfinder_U8 pathfinder_U16 pathfinder_U32 pathfinder_U64
 '
 
+mkdir -p output-A40
+
 # Delete previous output (so that we don't accidentally re-use it)
 for setup in $setups; do
     rm -f output-A40/frb_$setup.cxx
     rm -f output-A40/frb_$setup.jl
     rm -f output-A40/frb_$setup.ptx
+    rm -f output-A40/frb_$setup.sass
     rm -f output-A40/frb_$setup.yaml
     rm -f ../lib/cuda/cudaFRBBeamformer_$setup.cpp
     rm -f ../lib/cuda/kernels/FRBBeamformer_$setup.jl
@@ -42,6 +45,7 @@ for setup in $setups; do
     test -f output-A40/frb_$setup.cxx
     test -f output-A40/frb_$setup.jl
     test -f output-A40/frb_$setup.ptx
+    test -f output-A40/frb_$setup.sass
     test -f output-A40/frb_$setup.yaml
 done
 

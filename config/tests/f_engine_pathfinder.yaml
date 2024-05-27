@@ -32,9 +32,15 @@ num_polarizations: 2
 
 # F-Engine simulator: Sky
 source_amplitude: 1.0
-source_frequency: 0.3e+9        # [Hz]
-source_position_ew: 0.02        # east-west
-source_position_ns: 0.03        # north-south
+# source_frequency: 300.0e6 + n * 0.1953125e6 # [Hz]
+# n=0: all zero
+# n=1: works
+# n=2: all zero
+# n=3: works
+# n=4: works
+source_frequency: 300.0e6 + 0 * 0.1953125e6 # [Hz]
+source_position_ew: 0.02                    # east-west
+source_position_ns: 0.03                    # north-south
 
 # F-Engine simulator: Dishes
 num_dish_locations_ew: 12        # east-west
@@ -67,6 +73,7 @@ num_frequencies: 384       # 8192 frequencies / 16 gpus * 75% coverage
 #     A channel's frequency is   freq = channel * adc_frequency / num_samples_per_frame
 #     Note that   channel = freq = 0   is the DC channel.
 #     Channel 1536 has 300 MHz for CHORD, channel 7680 has 1500 MHz.
+#     There are 5.12 channels per MHz, with a channel width of 195312.5 Hz.
 # (These particular channels were chosen with a fixed step size between these channel boundaries.)
 frequency_channels: [
     1536, 1552, 1568, 1584, 1600, 1616, 1632, 1648, 1664, 1680, 1696, 1712, 1728, 1744, 1760, 1776,
@@ -107,14 +114,14 @@ n2k_samples_per_data_set: 8192
 
 # Baseband beamformer setup
 # TODO: use `dish_indices` instead
-bb_num_dishes_M: 8
-bb_num_dishes_N: 8
+# bb_num_dishes_M: 8
+# bb_num_dishes_N: 8
 # TODO: rename `P`, `Q` to `ew`, `ns`
 bb_num_beams_P: 4
 bb_num_beams_Q: 4
 # TODO: rename `x`, `y` to `ew`, `ns`
-bb_beam_separation_x: 0.015        # east-west
-bb_beam_separation_y: 0.015        # north-south
+bb_beam_separation_x: 0.015     # east-west
+bb_beam_separation_y: 0.015     # north-south
 bb_num_beams: bb_num_beams_P * bb_num_beams_Q
 
 # Upchannelizer setup
@@ -473,7 +480,7 @@ host_frb3_beams_meanstd_buffer:
 # Stages
 run_fengine:
     kotekan_stage: FEngine
-    num_frames: 10
+    num_frames: 1   #TODO 10
     repeat_count: 10
     # skip_julia: true
     E_buffer: host_voltage_buffer
@@ -1095,10 +1102,10 @@ write_data:
         kotekan_stage: asdfFileWrite
         in_buf: host_bb_shift_buffer
         file_name: bb_shift
-    # write_expected_bb_beams:
-    #     kotekan_stage: asdfFileWrite
-    #     in_buf: host_expected_bb_beams_buffer
-    #     file_name: expected_bb_beams
+    write_expected_bb_beams:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_expected_bb_beams_buffer
+        file_name: expected_bb_beams
     write_bb_beams:
         kotekan_stage: asdfFileWrite
         in_buf: host_bb_beams_buffer
