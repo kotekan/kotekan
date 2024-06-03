@@ -10,3 +10,10 @@ target_link_libraries(libexternal INTERFACE MurmurHash3)
 
 add_subdirectory(modp_b64)
 target_link_libraries(libexternal INTERFACE modp_b64)
+
+if(${USE_CUDA})
+	add_subdirectory(gputils)
+	target_link_libraries(libexternal INTERFACE gputils)
+	add_subdirectory(n2k)
+	target_link_libraries(libexternal INTERFACE n2k)
+endif()

@@ -105,14 +105,6 @@ RUN apt-get install -y --no-install-recommends cuda && apt-get clean
 
 ENV PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin
 
-RUN git clone https://github.com/kmsmith137/gputils.git \
-    && cd gputils \
-    && make install
-
-RUN git clone https://github.com/kmsmith137/n2k.git \
-  && cd n2k \
-  && make install
-
 RUN apt-get install -y --no-install-recommends \
   libopencl-clang-dev opencl-headers ocl-icd-opencl-dev
 
