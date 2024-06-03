@@ -70,11 +70,17 @@ EigenVisIter::EigenVisIter(Config& config, const std::string& unique_name,
     _krylov = config.get_default<uint32_t>(unique_name, "krylov", 2);
     _subspace = config.get_default<uint32_t>(unique_name, "subspace", 3);
 
-    assert("The `num_ev` config parameter must be greater than zero to use EigenVisIter stage." && _num_eigenvectors > 0);
-    assert("The `num_ev_conv` config parameter must be less than or equal to `num_ev`." && _num_ev_conv <= _num_eigenvectors);
-    assert("The `tol_eval` config parameter must be greater than zero." && _tol_eval > 0);
-    assert("The `tol_evec` config parameter must be greater than zero." && _tol_evec > 0);
-    assert("The `max_iterations` config parameter must be greater than zero." && _max_iterations > 0);
+    if(_num_ev_conv > _num_eigenvectors)
+        FATAL_ERROR("The `num_ev_conv` config parameter ({:d}) must be less than or equal to `num_ev` ({:d}).",
+                        _num_ev_conv, _num_eigenvectors);
+    if(_num_eigenvectors <= 0)
+        FATAL_ERROR("The `num_ev` config parameter must be greater than zero.");
+    if(_tol_eval <= 0)
+        FATAL_ERROR("The `tol_eval` config parameter must be greater than zero.");
+    if(_tol_evec <= 0)
+        FATAL_ERROR("The `tol_evec` config parameter must be greater than zero.");
+    if(_max_iterations <= 0)
+        FATAL_ERROR("The `max_iterations` config parameter must be greater than zero.");
 }
 
 void EigenVisIter::main_thread() {

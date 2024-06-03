@@ -335,7 +335,7 @@ class FakeNetworkBuffer(InputBuffer):
 
 
 class FakeGPUBuffer(InputBuffer):
-    """Create an input GPU format buffer and fill it using `fakeGPUBuffer`.
+    """Create an input GPU format buffer and fill it using `FakeGPU`.
 
     Parameters
     ----------
@@ -377,6 +377,48 @@ class FakeGPUBuffer(InputBuffer):
         self.stage_block = {stage_name: stage_config}
         self.global_block = {"telescope": {"name": "fake"}}
 
+class FakeN2Buffer(InputBuffer):
+    """Create an input N2 format buffer and fill it using `fakeGPUBuffer`.
+
+    Parameters
+    ----------
+    **kwargs : dict
+        Parameters fed straight into the stage config. `pattern` must be
+        supplied.
+    """
+
+    _buf_ind = 0
+
+    def __init__(self, **kwargs):
+
+        self.name = "fakegpu_buf%i" % self._buf_ind
+        stage_name = "fakegpu%i" % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.buffer_block = {
+            self.name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "main_pool",
+                "num_frames": "buffer_depth",
+                "sizeof_int": 4,
+                "frame_size": (
+                    "sizeof_int * num_freq_in_frame * ((num_elements *"
+                    " num_elements) + (num_elements * block_size))"
+                ),
+            }
+        }
+
+        stage_config = {
+            "kotekan_stage": "FakeGpu",
+            "out_buf": self.name,
+            "freq": 0,
+            "pre_accumulate": True,
+            "wait": False,
+        }
+        stage_config.update(kwargs)
+
+        self.stage_block = {stage_name: stage_config}
+        self.global_block = {"telescope": {"name": "fake"}}
 
 class FakeVisBuffer(InputBuffer):
     """Create an input visBuffer format buffer and fill it using `FakeVis`.

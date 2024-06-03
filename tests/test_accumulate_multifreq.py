@@ -13,16 +13,13 @@ from kotekan import runner
 
 accumulate_params = {
     "num_elements": 4,
-    "num_ev": 0,
     "samples_per_data_set": 32768,
     "int_frames": 64,
     "total_frames": 257,  # One extra sample to ensure we actually get 256
     "block_size": 2,
     "freq": 777,
     "num_freq_in_frame": 4,
-    "dataset_manager": {"use_dataset_broker": False},
 }
-
 
 @pytest.fixture(scope="module")
 def accumulate_data(tmpdir_factory):
@@ -32,7 +29,7 @@ def accumulate_data(tmpdir_factory):
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     test = runner.KotekanStageTester(
-        "visAccumulate",
+        "N2Accumulate",
         {},
         runner.FakeGPUBuffer(
             pattern="multifreq",
