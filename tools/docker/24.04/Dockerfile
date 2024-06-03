@@ -88,12 +88,12 @@ RUN python3 -m pip install msgpack \
                            posix_ipc
 
 # CUDA / GPU tools
-#RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.0-1_all.deb
-#RUN dpkg -i cuda-keyring_1.0-1_all.deb
-#RUN apt-get -y update
+RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+RUN dpkg -i cuda-keyring_1.1-1_all.deb
+RUN apt-get -y update
 #RUN apt-get install -y --no-install-recommends cuda && apt-get clean
 
-#ENV PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin
+ENV PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin
 #
 #RUN apt-get install -y --no-install-recommends \
 #  libopencl-clang-dev opencl-headers ocl-icd-opencl-dev
@@ -142,9 +142,9 @@ RUN mkdir src && \
 RUN mkdir src && \
     ( \
         cd src && \
-        git clone -n https://github.com/eschnett/asdf-cxx && \
+        git clone -n https://github.com/jbmertens/asdf-cxx && \
         cd asdf-cxx && \
-        git checkout 64399d9b93c5e163c395a4a4440ef16d415fd4f6 && \
+        git checkout 13a7112 && \
         cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
         cmake --build build --parallel $(nproc) && \
         cmake --install build && \
