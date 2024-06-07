@@ -63,5 +63,5 @@ set_property(TARGET gputils PROPERTY CUDA_STANDARD 17)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -m64 -O3 --compiler-options -Wall,-fPIC --forward-unknown-to-host-compiler")
 
 # Include directories
-target_include_directories(gputils INTERFACE include/.)
-target_include_directories(gputils INTERFACE .)
+target_include_directories(gputils PUBLIC include/.)
+target_include_directories(gputils PUBLIC .)

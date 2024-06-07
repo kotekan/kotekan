@@ -35,10 +35,10 @@ struct CorrelatorParams
     const int emat_fstride;
     const int emat_tstride;
 
-    // Visibility matrix strides (int32, not bytes!!)
-    static constexpr int vmat_kstride = 2;
-    const int vmat_istride;
-    const int vmat_fstride;
+    // Visibililty matrix strides are in int32 (not int32+32)
+    const int vmat_ntiles;   // M*(M+1)/2   where M = nstations/16
+    const int vmat_fstride;  // vmat_ntiles * 16 * 16 * 2
+    const int vmat_tstride;  // nfreq * vmat_fstride
     
     // Tiling of visibility matrix by threadblocks.
     const int ntiles_1d;
@@ -103,14 +103,36 @@ public:
     //    a lot of work to change. On the other hand, it would be easy to swap the ordering
     //    of the time/frequency axes, or to allow non-contiguous strides for these axes.
     //
-    //  - Currently the visibility matrix 'vis_out' is stored as
+    //  - The 'vis_out' array is the visibility matrix V_{t,f,i,j}, but the memory layout
+    //    needs some explanation. We split the matrix into 16-by-16 "tiles", and store only
+    //    tiles in the lower triangle.
     //
-    //      int32[nt_outer][nfreq][nstations][nstations][2]     (**)
+    //    To write this out formally, we split indices i,j into upper and lower parts:
     //
-    //    where the last axis is Re/Im, all axes are contiguous, and only visibilities (i,j) 
-    //    with (i < j) are computed. That is, we only compute the upper triangle of the visibility
-    //    matrix. This is okay since the visibility matrix is Hermitian. However, note that the storage
-    //    scheme (**) uses twice as much memory as necessary. This is something that I'll improve soon.
+    //        i = 16*ihi + ilo        0 <= ihi < (nstations/16)     0 <= ilo < 16
+    //        j = 16*jhi + jlo        0 <= jhi < (nstations/16)     0 <= jlo < 16
+    //
+    //    Then we store only entries of the visibility matrix with ihi >= jhi (i.e. tiles in
+    //    the lower triangle). The memory offset of visibility matrix (t,f,i,j) is:
+    //
+    //        Memory offset in multiples of sizeof(int32)
+    //           =   (t * nfreq * tstride)
+    //             + (f * fstride)
+    //             + 512 * (ihi*(ihi+1)/2 + jhi)
+    //             + 32*ilo + 2*jlo
+    //
+    //    where fstride = 512 * (nstations/16) * (nstations/16+1) / 2
+    //                  = nstations * (nstations+16)
+    //
+    //
+    //  - The 'rfimask' array is a boolean array indexed by (freq, time), represented as:
+    //
+    //       int32 rfimask[nfreq][(nt_outer*nt_inner)/32] with axes contiguous.
+    //
+    //    Formally, the RFI mask bit corresponding to indices (f,t) is given by the following code:
+    //
+    //       int i = f*nt_outer*nt_inner + t;
+    //       bool unmasked = rfimask[i/32] & (1 << (i % 32));   // where rfimask is a (uint *)
     //
     //  - 'nt_inner' must be a multiple of 256.
     //
@@ -132,24 +154,29 @@ public:
     //    If you run the 'time-correlator' program, you can see the first few calls take longer, but
     //    the timing quickly settles down.
 
-    void launch(int *vis_out, const int8_t *e_in, int nt_outer, int nt_inner,
-		cudaStream_t stream=nullptr, bool sync=false) const;
+    void launch(int *vis_out, const int8_t *e_in, const uint *rfimask,
+		int nt_outer, int nt_inner, cudaStream_t stream=nullptr, bool sync=false) const;
 
     // This version of launch() uses gputils::Array objects instead of bare pointers.
     // Both arrays must be allocated on the GPU.
     //
-    // The 'vis_out' array must have shape (nt_outer, nfreq, nstations, nstations, 2).
-    // If nt_outer==1, then shape (nfreq, nstations, nstations, 2) is also okay.
+    // The 'vis_out' array must have shape (nt_outer, nfreq, nvtiles, 16, 16, 2).
+    // If nt_outer==1, then shape (nfreq, nvtiles, 16, 16, 2) is also okay.
+    // Here, nvtiles = (nstations/16) * (nstations/16+1) / 2.
     //
     // The 'e_in' array must have shape (nt_outer * nt_inner, nfreq, nstations).
+    //
+    // The 'rfimask' array must have shape (nfreq, nt_outer * nt_inner / 32).
+    // (See previous long comment for indexing logic.)
     
-    void launch(gputils::Array<int> &vis_out, const gputils::Array<int8_t> &e_in,
+    void launch(gputils::Array<int> &vis_out, const gputils::Array<int8_t> &e_in, const gputils::Array<uint> &rfimask,
 		int nt_outer, int nt_inner, cudaStream_t stream=nullptr, bool sync=false) const;
     
     // Initialized by constructor.
     const CorrelatorParams params;
-    
-    using kernel_t = void (*)(int *, const int8_t *, const int *, int);
+
+    // Kernel args are (dst, src, rfimask, ptable, nt_inner).
+    using kernel_t = void (*)(int *, const int8_t *, const uint *, const int *, int);
 
 protected:
     // This small (currently 27 KB) array will persist in GPU memory for the lifetime of the Correlator object.
@@ -167,7 +194,10 @@ extern Correlator::kernel_t get_kernel(int nstations, int nfreq);
 // Used internally to "promote" compile-time argument to runtime argument.
 extern void register_kernel(int nstations, int nfreq, Correlator::kernel_t kernel);
 
-    
+// For testing -- returns allowed (nstations, nfreq) pairs
+extern std::vector<std::pair<int,int>> get_all_kernel_params();
+
+
 }  // namespace n2k
 
 

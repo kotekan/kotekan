@@ -75,4 +75,16 @@ void register_kernel(int nstations, int nfreq, Correlator::kernel_t kernel)
 }
 
 
+vector<pair<int,int>> get_all_kernel_params()
+{
+    vector<pair<int,int>> ret;
+    unique_lock<mutex> ul(kernel_table_lock);
+    
+    for (const auto &k: kernel_table)
+	ret.push_back({k.nstations, k.nfreq});
+
+    return ret;
+}
+
+
 }  // namespace n2k

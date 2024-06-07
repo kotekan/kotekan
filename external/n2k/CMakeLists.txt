@@ -62,6 +62,10 @@ endforeach()
 add_library(n2k ${HFILES} ${CUFILES})
 target_link_libraries(n2k gputils)
 
+# Include directories
+target_include_directories(n2k PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(n2k PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+
 # Set architecture flags
 set_target_properties(n2k PROPERTIES CUDA_ARCHITECTURES "80;86;89;90")
 
@@ -69,11 +73,6 @@ set_target_properties(n2k PROPERTIES CUDA_ARCHITECTURES "80;86;89;90")
 set_target_properties(n2k PROPERTIES LANGUAGE CUDA)
 set_target_properties(n2k PROPERTIES LINKER_LANGUAGE CUDA)
 
-# Include directories
-target_include_directories(n2k INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include/.")
-target_include_directories(n2k INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/.")
-
 # Compiler options
 set_property(TARGET n2k PROPERTY CUDA_STANDARD 17)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -m64 -O3 --compiler-options -Wall,-fPIC --forward-unknown-to-host-compiler")
-

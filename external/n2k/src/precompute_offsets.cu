@@ -13,6 +13,9 @@ namespace n2k {
 
 
 // -------------------------------------------------------------------------------------------------
+//
+// FIXME currently ptable data is per-thread. I'd like to make it per-warp instead.
+// (Then we could get a speedup by moving the ptable data to constant memory.)
 
 
 struct PointerOffsets {
@@ -30,8 +33,9 @@ struct PointerOffsets {
     int bp = -1;
     int gp = -1;
     int sp = -1;
-    int vp = -1;
-    int vk_minus_vi = 1000;
+
+    int vi_warp = -1;
+    int vk_warp = -1;
     
     
     __host__ PointerOffsets(const CorrelatorParams &params_, int blockId_, int warpId_, int laneId_) :
@@ -61,14 +65,14 @@ struct PointerOffsets {
 	}
 	
 	// FIXME lazy
-	block_atile = 0;
-	block_btile = 1;
+	block_atile = 1;
+	block_btile = 0;
 
 	for (int c = 0; c < blockId; c++) {
-	    block_atile++;
-	    if (block_atile >= block_btile) {
-		block_atile = 0;
-		block_btile++;
+	    block_btile++;
+	    if (block_btile >= block_atile) {
+		block_btile = 0;
+		block_atile++;
 	    }
 	}
 #else
@@ -77,11 +81,11 @@ struct PointerOffsets {
 	block_btile = 0;
 
 	for (int c = 0; c < blockId; c++) {
-	    if (block_atile < block_btile)
-		block_atile++;
-	    else {
-		block_atile = 0;
+	    if (block_btile < block_atile)
 		block_btile++;
+	    else {
+		block_btile = 0;
+		block_atile++;
 	    }
 	}
 #endif
@@ -155,20 +159,9 @@ struct PointerOffsets {
 	ap = (wx * 4 * CorrelatorParams::shmem_s8_stride) + laneId;                                      // one x-tile corresponds to 32 stations
 	bp = (wy * 8 * CorrelatorParams::shmem_s8_stride) + laneId + CorrelatorParams::shmem_ab_stride;  // one y-tile corresponds to 64 stations
 
-	// Location in visibility matrix
-	// t0 t1 t2 t3 t4 <-> k1 k2 k3 i1 i2
-	
-	int vi_warp = 128*block_atile + 32*wx;
-	int vk_warp = 128*block_btile + 64*wy;
-
-	int vi = vi_warp + 2*(laneId >> 3);
-	int vk = vk_warp + 2*(laneId & 0x7);
-
-	// Assign 'vp' pointer offset.
-	vp = (vi * params.vmat_istride) + (vk * params.vmat_kstride);
-
-	// Assign 'vk_minus_vi' offset.
-	vk_minus_vi = vk_warp - vi_warp;
+	// Output visibility matrix
+	vi_warp = 128*block_atile + 32*wx;
+	vk_warp = 128*block_btile + 64*wy;
     }
 };
 
@@ -188,8 +181,8 @@ shared_ptr<int> precompute_offsets(const CorrelatorParams &params)
 		ptable_arr.at({blockId,1,warpId,laneId}) = p.bp;
 		ptable_arr.at({blockId,2,warpId,laneId}) = p.gp;
 		ptable_arr.at({blockId,3,warpId,laneId}) = p.sp;
-		ptable_arr.at({blockId,4,warpId,laneId}) = p.vp;
-		ptable_arr.at({blockId,5,warpId,laneId}) = p.vk_minus_vi;
+		ptable_arr.at({blockId,4,warpId,laneId}) = p.vi_warp;
+		ptable_arr.at({blockId,5,warpId,laneId}) = p.vk_warp;
 	    }
 	}
     }

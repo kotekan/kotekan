@@ -31,10 +31,9 @@ struct CorrelatorKernel
 {
     static_assert(gputils::constexpr_is_divisible(NS,128));
     
-    static constexpr int emat_fstride = NS/4;       // int32 stride, not bytes
-    static constexpr int emat_tstride = NF*(NS/4);  // int32 stride, not bytes
-    static constexpr int vmat_istride = 2*NS;       // int32 stride, not bytes
-    static constexpr int vmat_fstride = 2*NS*NS;    // int32 stride, not bytes
+    static constexpr int emat_fstride = NS/4;        // int32 stride, not bytes
+    static constexpr int emat_tstride = NF*(NS/4);   // int32 stride, not bytes
+    static constexpr int vmat_fstride = NS*(NS+16);  // int32 stride, not int32+32
 
     
     // --------------------------------------   Misc helpers   -----------------------------------------
@@ -236,6 +235,10 @@ struct CorrelatorKernel
     // Prefetching: (global memory) -> (registers) -> (shared memory)
 
 
+    // prefetch_chunk():
+    //  - each warp reads (either A or B) x (8 times).
+    //  - the 8-warp threadblock reads (A and B) x (32 times).
+    
     static __device__ const int *prefetch_chunk(const int *__restrict__ gp, int pf_out[8])
     {
 	constexpr int TS = emat_tstride;
@@ -245,43 +248,50 @@ struct CorrelatorKernel
 	
 	#pragma unroll
 	for (int i = 0; i < 8; i++)
-	    pf_out[i] = gp[i*TS];
+	    pf_out[i] = gp[i*TS];   // FIXME use wide load instructions!
 	
 	return gp + (32*TS);
     }
 
     
-    static __device__ void store_prefetched_chunk(int *__restrict__ sp, int x_in[8])
+    static __device__ void store_prefetched_chunk(int *__restrict__ sp, int pf_in[8], uint rm)
     {
+	const int t8 = threadIdx.x >> 6;  // satisfies 0 <= t8 < 4, indicates 8-time chunk for this warp.
+	rm >>= (t8 << 3);                 // shift rfimask so that bits [0,8) apply to this warp.
+
+	#pragma unroll
+	for (int r = 0; r < 8; r++)
+	    pf_in[r] = (rm & (1 << r)) ? pf_in[r] : 0;
+	
 	// Transpose data ordering in registers.
 	if constexpr (!CorrelatorParams::artificially_remove_input_shuffle)
-	    transpose_rank8_4bit(x_in);
+	    transpose_rank8_4bit(pf_in);
 	
 	// After transpose: (r0, r1, r2) <-> (ReIm, s1, s2)
 	constexpr int S0 = CorrelatorParams::shmem_reim_stride;
 	constexpr int S1 = CorrelatorParams::shmem_s1_stride;
-
+	
 	if constexpr (CorrelatorParams::real_part_in_low_bits) {
 	    // Real part in low 4 bits, imaginary part in high 4 bits.
-	    sp[0] = x_in[0];
-	    sp[S0] = x_in[1];
-	    sp[S1] = x_in[2];
-	    sp[S1+S0] = x_in[3];
-	    sp[2*S1] = x_in[4];
-	    sp[2*S1+S0] = x_in[5];
-	    sp[3*S1] = x_in[6];
-	    sp[3*S1+S0] = x_in[7];
+	    sp[0] = pf_in[0];
+	    sp[S0] = pf_in[1];
+	    sp[S1] = pf_in[2];
+	    sp[S1+S0] = pf_in[3];
+	    sp[2*S1] = pf_in[4];
+	    sp[2*S1+S0] = pf_in[5];
+	    sp[3*S1] = pf_in[6];
+	    sp[3*S1+S0] = pf_in[7];
 	}
 	else {
 	    // Imaginary part in low 4 bits, real part in high 4 bits.
-	    sp[0] = x_in[1];
-	    sp[S0] = x_in[0];
-	    sp[S1] = x_in[3];
-	    sp[S1+S0] = x_in[2];
-	    sp[2*S1] = x_in[5];
-	    sp[2*S1+S0] = x_in[4];
-	    sp[3*S1] = x_in[7];
-	    sp[3*S1+S0] = x_in[6];
+	    sp[0] = pf_in[1];
+	    sp[S0] = pf_in[0];
+	    sp[S1] = pf_in[3];
+	    sp[S1+S0] = pf_in[2];
+	    sp[2*S1] = pf_in[5];
+	    sp[2*S1+S0] = pf_in[4];
+	    sp[3*S1] = pf_in[7];
+	    sp[3*S1+S0] = pf_in[6];
 	}
     }
 
@@ -290,8 +300,9 @@ struct CorrelatorKernel
     // Caller does not need to initialize 'pf'.
     // On exit, 'sp' will be filled with 128 time samples, and 'pf' will be filled with the next 32 time samples.
     
-    static __device__ const int *do_initial_prefetch(const int *__restrict__ gp, int *__restrict__ sp, int pf[8])
+    static __device__ const int *do_initial_prefetch(const int *__restrict__ gp, int *__restrict__ sp, int pf[8], uint rm)
     {
+	constexpr uint ALL_LANES = 0xffffffffU;
 	constexpr int S = CorrelatorParams::shmem_t32_stride;
 	
 	int tmp[8];
@@ -299,16 +310,16 @@ struct CorrelatorKernel
 	gp = prefetch_chunk(gp, pf);
 	
 	gp = prefetch_chunk(gp, tmp);
-	store_prefetched_chunk(sp, pf);
+	store_prefetched_chunk(sp, pf, __shfl_sync(ALL_LANES, rm, 0));
 	
 	gp = prefetch_chunk(gp, pf);
-	store_prefetched_chunk(sp+S, tmp);
+	store_prefetched_chunk(sp+S, tmp, __shfl_sync(ALL_LANES, rm, 1));
 	
 	gp = prefetch_chunk(gp, tmp);
-	store_prefetched_chunk(sp+2*S, pf);
+	store_prefetched_chunk(sp+2*S, pf, __shfl_sync(ALL_LANES, rm, 2));
 	
 	gp = prefetch_chunk(gp, pf);
-	store_prefetched_chunk(sp+3*S, tmp);
+	store_prefetched_chunk(sp+3*S, tmp, __shfl_sync(ALL_LANES, rm, 3));
 
 	return gp;
     }
@@ -337,8 +348,9 @@ struct CorrelatorKernel
     
     template<int P>
     static __device__ const int *
-    correlate_t64(int V[8][2][2][4], const int *__restrict__ ap, const int *__restrict__ bp, const int *__restrict__ gp, int *__restrict__ sp, int pf[8])
+    correlate_t64(int V[8][2][2][4], const int *__restrict__ ap, const int *__restrict__ bp, const int *__restrict__ gp, int *__restrict__ sp, int pf[8], uint rm, int t0)
     {
+	constexpr uint ALL_LANES = 0xffffffffU;
 	constexpr int SA = 2 * CorrelatorParams::shmem_s8_stride;  // one A-fragment corresponds to 16 stations
 	constexpr int SB = CorrelatorParams::shmem_s8_stride;
 	constexpr int SS = CorrelatorParams::shmem_t32_stride;
@@ -363,7 +375,7 @@ struct CorrelatorKernel
 	}
 
 	if constexpr (P <= 1)
-	    store_prefetched_chunk(sp, pf);
+	    store_prefetched_chunk(sp, pf, __shfl_sync(ALL_LANES, rm, t0 >> 5));
 
 	// Second 32 time samples
 	//   V[fy] -> V[fy+4]
@@ -383,7 +395,7 @@ struct CorrelatorKernel
 	}
 
 	if constexpr (P <= 1)
-	    store_prefetched_chunk(sp+SS, pf2);
+	    store_prefetched_chunk(sp+SS, pf2, __shfl_sync(ALL_LANES, rm, (t0>>5)+1));
 
 	return gp;
     }
@@ -407,13 +419,13 @@ struct CorrelatorKernel
 
     template<int P>
     static __device__ const int *
-    correlate_t128(int V[8][2][2][4], const int *__restrict__ ap, const int *__restrict__ bp, const int *__restrict__ gp, int *__restrict__ sp, int pf[8])
+    correlate_t128(int V[8][2][2][4], const int *__restrict__ ap, const int *__restrict__ bp, const int *__restrict__ gp, int *__restrict__ sp, int pf[8], uint rm, int t0)
     {
 	constexpr int S = 2 * CorrelatorParams::shmem_t32_stride;
 	constexpr int Q = (P < 2) ? 0 : 2;
 
-	gp = correlate_t64<Q> (V, ap, bp, gp, sp, pf);
-	gp = correlate_t64<P> (V, ap+S, bp+S, gp, sp+S, pf);
+	gp = correlate_t64<Q> (V, ap, bp, gp, sp, pf, rm, t0);
+	gp = correlate_t64<P> (V, ap+S, bp+S, gp, sp+S, pf, rm, t0+64);
 	return gp;
     }
 
@@ -460,52 +472,71 @@ struct CorrelatorKernel
 	__stcs((int4 *) p, x);  // streaming write is slightly faster than normal store.
     }
     
-    
-    // The 'V0' and 'V1' args correspond to k=0 and k=8.
-    static __device__ void write_V_16_16(int *__restrict__ vp, int V0[2][4], int V1[2][4])
-    {
-	constexpr int S = vmat_istride;
 
+    // The arrays V0[q][r], V1[q][r] represent a 16-by-16 complex matrix, with register assignment:
+    //   V01 <-> k3    q <-> ReIm    r0 r1 <-> k0 i3    t0 t1 t2 t3 t4 <-> k1 k2 i0 i1 i2    (*)
+    //
+    // Note that the first step in write_V_16_16() is warp-transposing to register assignment:
+    //   V01 <-> i0    q <-> ReIm    r0 r1 <-> k0 i3    t0 t1 t2 t3 t4 <-> k1 k2 k3 i1 i2    (**)
+    //
+    // The 'vp_thread' argument is confusing! It's the output pointer after applying per-thread
+    // offsets in register assignment (**) [not (*)]. In particular, pointer offsets for (i1,i2)
+    // and (k1,k2,k3) should be applied, but not i0.
+    
+    static __device__ void write_V_16_16(int *__restrict__ vp_thread, int V0[2][4], int V1[2][4])
+    {
 	if constexpr (!CorrelatorParams::artificially_remove_output_shuffle) {
 	    warp_transpose_4(V0[0], V1[0], 0x04);
 	    warp_transpose_4(V0[1], V1[1], 0x04);
 	}
+
+	// After the warp transposes, the register assignment is:
+	//   V01 <-> i0    q <-> ReIm    r0 r1 <-> k0 i3    t0 t1 t2 t3 t4 <-> k1 k2 k3 i1 i2
 	
-	// r0 r1 r2 r3 <-> k0 i3 ReIm i0
-	
-	write_int4(vp, V0[0][0], V0[1][0], V0[0][1], V0[1][1]);
-	write_int4(vp+S, V1[0][0], V1[1][0], V1[0][1], V1[1][1]);
-	write_int4(vp+8*S, V0[0][2], V0[1][2], V0[0][3], V0[1][3]);
-	write_int4(vp+9*S, V1[0][2], V1[1][2], V1[0][3], V1[1][3]);
+	write_int4(vp_thread, V0[0][0], V0[1][0], V0[0][1], V0[1][1]);        // (i0,i3) = (0,0)
+	write_int4(vp_thread + 32, V1[0][0], V1[1][0], V1[0][1], V1[1][1]);   // (i0,i3) = (1,0)
+	write_int4(vp_thread + 256, V0[0][2], V0[1][2], V0[0][3], V0[1][3]);  // (i0,i3) = (0,1)
+	write_int4(vp_thread + 288, V1[0][2], V1[1][2], V1[0][3], V1[1][3]);  // (i0,i3) = (1,1)
     }
     
 
     // Writes full V-matrix tile (32-by-64 matrix for each warp).
-    
-    static __device__ void write_V(int *__restrict__ vp, int V[8][2][2][4], int vk_minus_vi)
+    // The 'vp_tf' argument has (t,f) offsets applied, but no (i,j) offsets (even per-block offsets)
+    // Note that vi_warp is a multiple of 32, and vk_warp is a multiple of 64.
+    //
+    // Outer three V indices are V[k//8][i//16][ReIm], and innermost int[4] is a 16-by-8 fragment, with:
+    //    r0 r1 <-> k0 i3    t0 t1 t2 t3 t4 <-> k1 k2 i0 i1 i2
+
+    static __device__ void write_V(int *__restrict__ vp_tf, int V[8][2][2][4], int vi_warp, int vk_warp)
     {
-	constexpr int SI = 16 * vmat_istride;
-	constexpr int SK = 16 * CorrelatorParams::vmat_kstride;
+	int *vp_thread = vp_tf
+	    + vi_warp * (vi_warp+16) + (vk_warp << 5)   // tile
+	    + ((threadIdx.x & 0x7) << 2)    // t0 t1 t2 <-> k1 k2 k3
+	    + ((threadIdx.x & 0x18) << 3);  // t3 t4 <-> i1 i2
 
-	if (vk_minus_vi <= -64)
-	    return;
+	// Divide 32-by-64 array into a 2-by-4 array of 16-by-16 tiles.
+	// Let s = int32 offset between tile (0,0) and (1,0).
+	int s = (vi_warp+16) << 5;
 	
-	write_V_16_16(vp+2*SK, V[4][0], V[5][0]);
-	write_V_16_16(vp+3*SK, V[6][0], V[7][0]);	
-	write_V_16_16(vp+SI+3*SK, V[6][1], V[7][1]);
+	if (vi_warp < vk_warp)
+	    return;
 
-	if (vk_minus_vi <= -32)
-	    return;
-	
-	write_V_16_16(vp, V[0][0], V[1][0]);
-	write_V_16_16(vp+SK, V[2][0], V[3][0]);
-	write_V_16_16(vp+SI+SK, V[2][1], V[3][1]);
-	write_V_16_16(vp+SI+2*SK, V[4][1], V[5][1]);
+	write_V_16_16(vp_thread, V[0][0], V[1][0]);               // tile (0,0)
+	write_V_16_16(vp_thread + s, V[0][1], V[1][1]);           // tile (1,0)
+	write_V_16_16(vp_thread + s + 512, V[2][1], V[3][1]);     // tile (1,1)
 
-	if (vk_minus_vi <= 0)
+	if (vi_warp < vk_warp+32)
 	    return;
+
+	write_V_16_16(vp_thread + 512, V[2][0], V[3][0]);         // tile (0,1)
+	write_V_16_16(vp_thread + 1024, V[4][0], V[5][0]);        // tile (0,2)
+	write_V_16_16(vp_thread + s + 1024, V[4][1], V[5][1]);    // tile (1,2)
+	write_V_16_16(vp_thread + s + 1536, V[6][1], V[7][1]);    // tile (1,3)
 	
-	write_V_16_16(vp+SI, V[0][1], V[1][1]);
+	if (vi_warp < vk_warp+64)
+	    return;
+
+	write_V_16_16(vp_thread + 1536, V[6][0], V[7][0]);        // tile (0,3)
     }
 
 
@@ -513,7 +544,7 @@ struct CorrelatorKernel
     
     
     static __device__ void
-    kernel_body(int *dst, const int8_t *src, const int *ptable, int nt_inner)
+    kernel_body(int *dst, const int8_t *src, const uint *rfimask, const int *ptable, int nt_inner)
     {
 	extern __shared__ int shmem[];
 
@@ -527,21 +558,25 @@ struct CorrelatorKernel
 	const int *bp = shmem + ptable[i+n];
 	const int *gp = ((const int *) src) + (f * emat_fstride) + ptable[i+2*n];
 	int *sp = shmem + ptable[i+3*n];
-	int *vp = dst + (f * vmat_fstride) + ptable[i+4*n];
-	int vk_minus_vi = ptable[i+5*n];
 
-	// Adjust pointer offsets for 'touter'.
 	const int touter = blockIdx.z;
 	gp += ssize_t(touter * nt_inner) * emat_tstride;
-	vp += ssize_t(touter * NF) * vmat_fstride;
-	
+
+	// RFI mask stored in (f,t) ordering
+	rfimask += (f*gridDim.z + blockIdx.z) * (nt_inner >> 5);  // apply (f, touter) offsets
+	rfimask += (threadIdx.x & 0x1f);                          // apply laneId
+		
 	// Initialize correlator state.
 
+	uint rm = *rfimask;
+	rfimask += 32;
+	
 	int V[8][2][2][4];
 	zero_V(V);
-	
+
+	// Store first 128 time samples in shared memory, and next 32 time samples in pf[].
 	int pf[8];
-	gp = do_initial_prefetch(gp, sp, pf);
+	gp = do_initial_prefetch(gp, sp, pf, rm);
 	__syncthreads();
 	
 	// Main correlator loop.
@@ -549,21 +584,38 @@ struct CorrelatorKernel
 	constexpr int S = 2 * CorrelatorParams::shmem_t32_stride;
 
 	for (int t = 256; t < nt_inner; t += 256) {
-	    gp = correlate_t128<0> (V, ap, bp, gp, sp+2*S, pf);
+	    // Correlate samples [t-256,t-128)
+	    // Write samples [t-128,t) to shared memory.
+	    // Prefetch samples [t,t+32) to registers.
+	    
+	    gp = correlate_t128<0> (V, ap, bp, gp, sp+2*S, pf, rm, t-128);
 	    __syncthreads();
 
-	    gp = correlate_t128<0> (V, ap+2*S, bp+2*S, gp, sp, pf);
+	    if ((t & 0x300) == 0) {
+		rm = *rfimask;
+		rfimask += 32;
+	    }
+	    
+	    // Correlate samples [t-128,t)
+	    // Write samples [t,t+128) to shared memory.
+	    // Prefetch samples [t+128,t+160) to registers.
+
+	    gp = correlate_t128<0> (V, ap+2*S, bp+2*S, gp, sp, pf, rm, t);
 	    __syncthreads();
 	}
 
-	gp = correlate_t128<1> (V, ap, bp, gp, sp+2*S, pf);
+	gp = correlate_t128<1> (V, ap, bp, gp, sp+2*S, pf, rm, nt_inner-128);
 	__syncthreads();
-
-	gp = correlate_t128<2> (V, ap+2*S, bp+2*S, gp, sp, pf);
+	
+	gp = correlate_t128<2> (V, ap+2*S, bp+2*S, gp, sp, pf, rm, nt_inner);
 	
 	// Write visibility matrix to global memory.
+	// The 'vp_tf' pointer has (t,f) offsets applied, but no (i,j) offsets (even per-block offsets)
+	int *vp_tf = dst + long(touter*NF+f) * vmat_fstride;
 	
-	write_V(vp, V, vk_minus_vi);
+	int vi_warp = ptable[i+4*n];
+	int vk_warp = ptable[i+5*n];
+	write_V(vp_tf, V, vi_warp, vk_warp);
     }
 
 
@@ -580,9 +632,9 @@ struct CorrelatorKernel
 
 template<int NS, int NF>
 __global__ void __launch_bounds__(CorrelatorParams::threads_per_block, 1)
-n2k_kernel(int *dst, const int8_t *src, const int *ptable, int ntime)
+n2k_kernel(int *dst, const int8_t *src, const uint *rfimask, const int *ptable, int ntime)
 {    
-    CorrelatorKernel<NS,NF>::kernel_body(dst, src, ptable, ntime);
+    CorrelatorKernel<NS,NF>::kernel_body(dst, src, rfimask, ptable, ntime);
 }
 
 
