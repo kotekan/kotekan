@@ -48,7 +48,12 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
 
     record_start_event();
 
-    n2correlator.launch((int*)output_memory, (int8_t*)input_memory, num_subintegrations,
+    // TODO: Placeholder code for rfi mask
+    gputils::Array<uint> rfimask({_num_local_freq,_samples_per_data_set/32}, gputils::af_rhost | gputils::af_zero);
+    memset(rfimask.data, 0x00, rfimask.size * sizeof(uint));
+    rfimask = rfimask.to_gpu();
+
+    n2correlator.launch((int*)output_memory, (int8_t*)input_memory, rfimask.data, num_subintegrations,
                         _sub_integration_ntime, device.getStream(cuda_stream_id));
 
     CHECK_CUDA_ERROR(cudaGetLastError());
