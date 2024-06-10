@@ -59,7 +59,7 @@ endforeach()
 
 
 # Add library targets
-add_library(n2k ${HFILES} ${CUFILES})
+add_library(n2k SHARED ${CUFILES} ${HFILES})
 target_link_libraries(n2k gputils)
 
 # Include directories
