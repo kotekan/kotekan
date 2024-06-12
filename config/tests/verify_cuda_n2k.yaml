@@ -29,6 +29,9 @@ sub_integration_ntime: 1024
 samples_per_data_set: 2048
 num_elements: 1024
 num_local_freq: 16
+# vis matrix size
+num_vis_blocks: (num_elements + 1) / 16
+blocked_vis_size: 16*16 * num_vis_blocks * (num_vis_blocks + 1) / 2
 
 #sub_integration_ntime: 16384
 #samples_per_data_set: 32768
@@ -50,19 +53,13 @@ host_voltage_buffer:
 host_correlation_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
-    metadata_pool: main_pool
-
-lower_triangle_correlation_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * blocked_vis_size * 2 * sizeof_int
     metadata_pool: main_pool
 
 simulated_correlation_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * blocked_vis_size * 2 * sizeof_int
     metadata_pool: main_pool
 
 # Ringbuffer signalling buffer
@@ -113,12 +110,6 @@ run_n2k:
           gpu_mem: correlation_matrix
           out_buf: host_correlation
 
-zero_lower_triangle:
-    kotekan_stage: zeroLowerTriangle
-    log_level: debug
-    corr_in_buf: host_correlation_buffer
-    corr_out_buf: lower_triangle_correlation_buffer
-
 cpu:
     kotekan_stage: gpuSimulateN2k
     log_level: debug
@@ -127,6 +118,6 @@ cpu:
 
 check_data:
     kotekan_stage: testDataCheckInt
-    first_buf: lower_triangle_correlation_buffer
+    first_buf: host_correlation_buffer
     second_buf: simulated_correlation_buffer
     num_frames_to_test: buffer_depth
