@@ -291,7 +291,13 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
     int from_idx = header_offset + offset;
     int mbuf_len = mbuf->data_len;
     for (uint32_t time_step = 0; time_step < samples_per_packet; ++time_step) {
+        int output_idx_base = (vdif_frame_location * frame_size +           // Frame location in output buffer.
+			       vdif_header_len +        // Offset for the vdif header.
+			       tel.to_freq_id(encoded_id, 0) + // Offset for ARO as in tel.to_freq_id for _num_freq_per_stream = 128
+			       vdif_packet_len * num_elements * time_step); // Time step in output frame.
         for (int freq = 0; freq < 128; ++freq) {
+	    int output_idx = (output_idx_base +
+			      freq * 8); // Location in the VDIF packet is just frequency.
             for (int elem = 0; elem < num_elements; ++elem) {
 
                 // Advance to the next mbuf in the chain.
@@ -301,19 +307,11 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
                     from_idx -= mbuf_len; // Subtract the last mbuf_len from the current idx.
                     mbuf_len = mbuf->data_len;
                 }
-
-                int output_idx =
-                    vdif_frame_location * frame_size +           // Frame location in output buffer.
-                    vdif_packet_len * num_elements * time_step + // Time step in output frame.
-                    vdif_packet_len * elem + // VDIF pack for the correct element (ThreadID).
-                    vdif_header_len +        // Offset for the vdif header.
-                    tel.to_freq_id(encoded_id,
-                                   freq); // Location in the VDIF packet is just frequency.
-
                 // After all that indexing copy one byte :)
                 out_buf_frame[output_idx] = *(rte_pktmbuf_mtod(mbuf, char*) + from_idx);
 
                 from_idx += 1;
+		output_idx += vdif_packet_len; // VDIF packet for the next element (ThreadID).
             }
             // If we only take 2 elements, then we have to skip 14
             from_idx += total_num_elements - num_elements;
