@@ -45,7 +45,7 @@ hdf5FileWrite::hdf5FileWrite(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&hdf5FileWrite::main_thread, this)) {
 
     buf = get_buffer("in_buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
     _base_dir = config.get<std::string>(unique_name, "base_dir");
     _file_name = config.get<std::string>(unique_name, "file_name");
     _prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
@@ -68,7 +68,7 @@ void hdf5FileWrite::main_thread() {
     while (!stop_thread) {
 
         // This call is blocking.
-        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        frame = buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
@@ -109,7 +109,7 @@ void hdf5FileWrite::main_thread() {
         }
 
         // Write the metadata to file
-        struct metadataContainer* mc = get_metadata_container(buf, frame_id);
+        struct metadataContainer* mc = buf->get_metadata_container(frame_id);
         if (mc != nullptr) {
             const uint32_t metadata_size = mc->metadata_size;
 
@@ -216,8 +216,8 @@ void hdf5FileWrite::main_thread() {
         if (space < 0)
             ERROR("Illegal HDF5 data space");
 
-        const hid_t dataset =
-            H5Dcreate(group, buf->buffer_name, type, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+        const hid_t dataset = H5Dcreate(group, buf->buffer_name.c_str(), type, space, H5P_DEFAULT,
+                                        H5P_DEFAULT, H5P_DEFAULT);
         if (dataset < 0)
             ERROR("Could not create HDF5 dataset");
 
@@ -287,7 +287,7 @@ void hdf5FileWrite::main_thread() {
         double elapsed = current_time() - st;
         write_time_metric.set(elapsed);
 
-        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_empty(unique_name, frame_id);
 
         frame_id = (frame_id + 1) % buf->num_frames;
     }

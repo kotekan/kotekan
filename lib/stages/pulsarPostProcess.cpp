@@ -60,10 +60,10 @@ pulsarPostProcess::pulsarPostProcess(Config& config_, const std::string& unique_
 
     for (uint32_t i = 0; i < _num_gpus; ++i) {
         in_buf[i] = get_buffer("network_input_buffer_" + std::to_string(i));
-        register_consumer(in_buf[i], unique_name.c_str());
+        in_buf[i]->register_consumer(unique_name);
     }
     pulsar_buf = get_buffer("pulsar_out_buf");
-    register_producer(pulsar_buf, unique_name.c_str());
+    pulsar_buf->register_producer(unique_name);
 }
 
 pulsarPostProcess::~pulsarPostProcess() {
@@ -183,7 +183,7 @@ void pulsarPostProcess::main_thread() {
 
     beamCoord beam_coord[_num_gpus];
     // Get the first output buffer which will always be id = 0 to start.
-    uint8_t* out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
+    uint8_t* out_frame = pulsar_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
     if (out_frame == nullptr)
         goto end_loop;
 
@@ -276,11 +276,10 @@ void pulsarPostProcess::main_thread() {
                     frame++;
                     if (frame == _num_packet_per_stream) { // last frame
                         frame = 0;
-                        mark_frame_full(pulsar_buf, unique_name.c_str(), out_buffer_ID);
+                        pulsar_buf->mark_frame_full(unique_name, out_buffer_ID);
                         // Get a new output buffer
                         out_buffer_ID = (out_buffer_ID + 1) % pulsar_buf->num_frames;
-                        out_frame =
-                            wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
+                        out_frame = pulsar_buf->wait_for_empty_frame(unique_name, out_buffer_ID);
                         if (out_frame == nullptr)
                             goto end_loop;
                         // Fill the headers of the new buffer
@@ -335,7 +334,7 @@ void pulsarPostProcess::main_thread() {
         // Release the input buffers
         for (uint32_t i = 0; i < _num_gpus; ++i) {
             // release_info_object(in_buf[gpu_id], in_buffer_ID[i]);
-            mark_frame_empty(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
+            in_buf[i]->mark_frame_empty(unique_name, in_buffer_ID[i]);
             in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
         }
     } // end stop thread
@@ -345,7 +344,7 @@ end_loop:;
 
 std::optional<uint64_t> pulsarPostProcess::sync_input_buffers() {
     for (unsigned i = 0; i < _num_gpus; i++) {
-        in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
+        in_frame[i] = in_buf[i]->wait_for_full_frame(unique_name, in_buffer_ID[i]);
         if (in_frame[i] == nullptr)
             return std::nullopt;
     }
@@ -361,9 +360,9 @@ std::optional<uint64_t> pulsarPostProcess::sync_input_buffers() {
         bool fpga_seq_in_sync = true;
         for (unsigned i = 0; i < _num_gpus; ++i) {
             while (max_fpga_count > get_fpga_seq_num(in_buf[i], in_buffer_ID[i])) {
-                mark_frame_empty(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
+                in_buf[i]->mark_frame_empty(unique_name, in_buffer_ID[i]);
                 in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
-                in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
+                in_frame[i] = in_buf[i]->wait_for_full_frame(unique_name, in_buffer_ID[i]);
                 if (in_frame[i] == nullptr)
                     return std::nullopt;
             }

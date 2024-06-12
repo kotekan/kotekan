@@ -32,11 +32,11 @@ STAGE_CONSTRUCTOR(DPDKShuffleSimulate) {
 
     // Register as consumer on buffer
     lost_samples_buf = get_buffer("lost_samples_buf");
-    register_producer(lost_samples_buf, unique_name.c_str());
+    lost_samples_buf->register_producer(unique_name);
 
     for (uint32_t i = 0; i < shuffle_size; ++i) {
         voltage_data_buf[i] = get_buffer(fmt::format("voltage_data_buf_{:d}", i));
-        register_producer(voltage_data_buf[i], unique_name.c_str());
+        voltage_data_buf[i]->register_producer(unique_name);
     }
 
     // Get some configuration options
@@ -64,14 +64,14 @@ void DPDKShuffleSimulate::main_thread() {
     while (!stop_thread) {
         double start_time = current_time();
 
-        lost_samples_frame = (uint8_t*)wait_for_empty_frame(lost_samples_buf, unique_name.c_str(),
-                                                            lost_samples_frame_id);
+        lost_samples_frame =
+            (uint8_t*)lost_samples_buf->wait_for_empty_frame(unique_name, lost_samples_frame_id);
         if (lost_samples_frame == nullptr)
             break;
 
         for (uint32_t i = 0; i < shuffle_size; ++i) {
-            voltage_data_frames[i] = (uint8_t*)wait_for_empty_frame(
-                voltage_data_buf[i], unique_name.c_str(), voltage_data_frame_id[i]);
+            voltage_data_frames[i] = (uint8_t*)voltage_data_buf[i]->wait_for_empty_frame(
+                unique_name, voltage_data_frame_id[i]);
             if (voltage_data_frames[i] == nullptr)
                 break;
         }
@@ -87,7 +87,7 @@ void DPDKShuffleSimulate::main_thread() {
         struct timeval now;
         gettimeofday(&now, nullptr);
         for (uint32_t i = 0; i < shuffle_size; ++i) {
-            allocate_new_metadata_object(voltage_data_buf[i], voltage_data_frame_id[i]);
+            voltage_data_buf[i]->allocate_new_metadata_object(voltage_data_frame_id[i]);
 
             // StreamID
             ice_stream_id_t ice_stream_id;
@@ -104,16 +104,16 @@ void DPDKShuffleSimulate::main_thread() {
         fpga_seq += _num_samples_per_dataset;
 
         // Set metadata for lost samples buf
-        allocate_new_metadata_object(lost_samples_buf, lost_samples_frame_id);
+        lost_samples_buf->allocate_new_metadata_object(lost_samples_frame_id);
         set_fpga_seq_num(lost_samples_buf, lost_samples_frame_id, fpga_seq);
         set_first_packet_recv_time(lost_samples_buf, lost_samples_frame_id, now);
 
         // TODO Set the default values for the frames to something.
 
         // Release frames
-        mark_frame_full(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id++);
+        lost_samples_buf->mark_frame_full(unique_name, lost_samples_frame_id++);
         for (uint32_t i = 0; i < shuffle_size; ++i) {
-            mark_frame_full(voltage_data_buf[i], unique_name.c_str(), voltage_data_frame_id[i]++);
+            voltage_data_buf[i]->mark_frame_full(unique_name, voltage_data_frame_id[i]++);
         }
 
         // Sleep for a period of time to match the FPGA data rate.

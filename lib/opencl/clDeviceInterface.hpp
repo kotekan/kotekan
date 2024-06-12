@@ -21,8 +21,7 @@
 
 class clDeviceInterface final : public gpuDeviceInterface {
 public:
-    clDeviceInterface(kotekan::Config& config_, const std::string& unique_name, int32_t gpu_id_,
-                      int gpu_buffer_depth_);
+    clDeviceInterface(kotekan::Config& config_, const std::string& unique_name, int32_t gpu_id_);
     ~clDeviceInterface();
 
     void prepareCommandQueue(bool enable_profiling);
@@ -31,7 +30,8 @@ public:
     cl_device_id get_id();
 
     // Function overrides to cast the generic gpu_memory retulsts appropriately.
-    cl_mem get_gpu_memory_array(const std::string& name, const uint32_t index, const size_t len);
+    cl_mem get_gpu_memory_array(const std::string& name, const uint32_t index,
+                                const uint32_t gpu_buffer_depth, const size_t len);
     cl_mem get_gpu_memory(const std::string& name, const size_t len);
 
 protected:

@@ -9,9 +9,18 @@
 
 using kotekan::Config;
 
+std::map<int, std::shared_ptr<cudaDeviceInterface>> cudaDeviceInterface::inst_map;
+
+std::shared_ptr<cudaDeviceInterface>
+cudaDeviceInterface::get(int32_t gpu_id, const std::string& name, Config& config) {
+    if (inst_map.count(gpu_id) == 0)
+        inst_map[gpu_id] = std::make_shared<cudaDeviceInterface>(config, name, gpu_id);
+    return inst_map[gpu_id];
+}
+
 cudaDeviceInterface::cudaDeviceInterface(Config& config, const std::string& unique_name,
-                                         int32_t gpu_id, int gpu_buffer_depth) :
-    gpuDeviceInterface(config, unique_name, gpu_id, gpu_buffer_depth) {
+                                         int32_t gpu_id) :
+    gpuDeviceInterface(config, unique_name, gpu_id) {
 
     // Find out how many GPUs can be probed.
     int max_num_gpus;
@@ -55,8 +64,8 @@ int32_t cudaDeviceInterface::get_num_streams() {
 }
 
 void cudaDeviceInterface::prepareStreams(uint32_t num_streams) {
-    // Create command queues
-    for (uint32_t i = 0; i < num_streams; ++i) {
+    // Create GPU command queues
+    for (uint32_t i = streams.size(); i < num_streams; ++i) {
         cudaStream_t stream = nullptr;
         CHECK_CUDA_ERROR(cudaStreamCreate(&stream));
         streams.push_back(stream);

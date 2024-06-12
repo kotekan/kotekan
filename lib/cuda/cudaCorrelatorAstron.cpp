@@ -60,8 +60,8 @@ cudaEvent_t cudaCorrelatorAstron::execute(cudaPipelineState&, const std::vector<
 
     size_t output_len = (size_t)_num_local_freq * _num_blocks * (_block_size * _block_size) * 2
                         * _num_data_sets * sizeof(int32_t);
-    void* output_memory =
-        device.get_gpu_memory_array(_gpu_mem_correlation_matrix, gpu_frame_id, output_len);
+    void* output_memory = device.get_gpu_memory_array(_gpu_mem_correlation_matrix, gpu_frame_id,
+                                                      _gpu_buffer_depth, output_len);
 
     record_start_event();
 

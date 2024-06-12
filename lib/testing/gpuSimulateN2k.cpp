@@ -30,9 +30,9 @@ gpuSimulateN2k::gpuSimulateN2k(Config& config, const std::string& unique_name,
     _sub_integration_ntime = config.get<int>(unique_name, "sub_integration_ntime");
 
     input_buf = get_buffer("network_in_buf");
-    register_consumer(input_buf, unique_name.c_str());
+    input_buf->register_consumer(unique_name);
     output_buf = get_buffer("corr_out_buf");
-    register_producer(output_buf, unique_name.c_str());
+    output_buf->register_producer(unique_name);
 }
 
 gpuSimulateN2k::~gpuSimulateN2k() {}
@@ -43,10 +43,10 @@ void gpuSimulateN2k::main_thread() {
     int output_frame_id = 0;
 
     while (!stop_thread) {
-        char* input = (char*)wait_for_full_frame(input_buf, unique_name.c_str(), input_frame_id);
+        char* input = (char*)input_buf->wait_for_full_frame(unique_name, input_frame_id);
         if (input == nullptr)
             break;
-        int* output = (int*)wait_for_empty_frame(output_buf, unique_name.c_str(), output_frame_id);
+        int* output = (int*)output_buf->wait_for_empty_frame(unique_name, output_frame_id);
         if (output == nullptr)
             break;
 
@@ -95,9 +95,9 @@ void gpuSimulateN2k::main_thread() {
         INFO("Simulating GPU processing done for {:s}[{:d}] result is in {:s}[{:d}]",
              input_buf->buffer_name, input_frame_id, output_buf->buffer_name, output_frame_id);
 
-        pass_metadata(input_buf, input_frame_id, output_buf, output_frame_id);
-        mark_frame_empty(input_buf, unique_name.c_str(), input_frame_id);
-        mark_frame_full(output_buf, unique_name.c_str(), output_frame_id);
+        input_buf->pass_metadata(input_frame_id, output_buf, output_frame_id);
+        input_buf->mark_frame_empty(unique_name, input_frame_id);
+        output_buf->mark_frame_full(unique_name, output_frame_id);
 
         input_frame_id = (input_frame_id + 1) % input_buf->num_frames;
         output_frame_id = (output_frame_id + 1) % output_buf->num_frames;

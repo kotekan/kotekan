@@ -36,7 +36,7 @@ rawFileWrite::rawFileWrite(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&rawFileWrite::main_thread, this)) {
 
     buf = get_buffer("in_buf");
-    register_consumer(buf, unique_name.c_str());
+    buf->register_consumer(unique_name);
     _base_dir = config.get<std::string>(unique_name, "base_dir");
     _file_name = config.get<std::string>(unique_name, "file_name");
     _file_ext = config.get<std::string>(unique_name, "file_ext");
@@ -66,7 +66,7 @@ void rawFileWrite::main_thread() {
     while (!stop_thread) {
 
         // This call is blocking.
-        frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        frame = buf->wait_for_full_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
@@ -96,7 +96,7 @@ void rawFileWrite::main_thread() {
 
         // Write the meta data to disk
         uint32_t metadata_size = 0;
-        metadataContainer* mc = get_metadata_container(buf, frame_id);
+        metadataContainer* mc = buf->get_metadata_container(frame_id);
         if (mc != nullptr) {
             metadata_size = mc->metadata_size;
         }
@@ -138,7 +138,7 @@ void rawFileWrite::main_thread() {
         double elapsed = current_time() - st;
         write_time_metric.set(elapsed);
 
-        mark_frame_empty(buf, unique_name.c_str(), frame_id);
+        buf->mark_frame_empty(unique_name, frame_id);
 
         // Check if we should exit after writing out a fixed number of files.
         // Useful for some tests and burst modes.  Will hopefully be replaced by frames

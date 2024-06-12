@@ -66,7 +66,8 @@ private:
 
     std::map<std::string, Stage*> stages;
     std::map<std::string, metadataPool*> metadata_pools;
-    std::map<std::string, Buffer*> buffers;
+
+    std::map<std::string, GenericBuffer*> buffers;
 };
 
 } // namespace kotekan
