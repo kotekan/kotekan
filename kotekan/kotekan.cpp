@@ -674,9 +674,12 @@ int main(int argc, char** argv) {
                 }
                 delete kotekan_mode;
             }
+            rest_server.stop();
             break;
         }
     }
+
+    metrics.remove_stage_metrics("/rest_server");
 
     INFO_NON_OO("kotekan shutdown with status: {:s}", get_exit_code_string(get_exit_code()));
 
