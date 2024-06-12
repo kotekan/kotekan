@@ -494,11 +494,11 @@ int main(int argc, char** argv) {
 
     if (string(config_file_name) == "none") {
         __enable_syslog = 1;
-        fprintf(stderr, "Kotekan running in daemon mode, output is to syslog only.\n");
+        fprintf(stderr, "Kotekan running in daemon mode\n");
         fprintf(stderr, "Configuration should be provided via the `/start` REST endpoint.\n");
     }
 
-    if (string(config_file_name) != "none" && enable_stderr) {
+    if (enable_stderr) {
         log_options |= LOG_PERROR;
     }
 
@@ -524,7 +524,7 @@ int main(int argc, char** argv) {
 
         // Create the command line, adding the yaml dump, and extra vars if needed
         std::vector<std::string> exec_command;
-        exec_command.push_back("python");
+        exec_command.push_back("python3.8");
         exec_command.push_back("-c");
         exec_command.push_back(yaml_to_json);
 

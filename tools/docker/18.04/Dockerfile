@@ -1,6 +1,6 @@
 # NOTE, for HSA support, the latest version of the rocm package we can use is 3.0.  Later versions
 # have removed files required by the kotekan CHIME code.
-FROM rocm/dev-ubuntu-18.04:3.0
+FROM rocm/dev-ubuntu-18.04:3.7
 
 ## The maintainer name and email 
 MAINTAINER Rick Nitsche <rick@phas.ubc.ca>
@@ -39,8 +39,8 @@ RUN apt-get update && \
                        clang-format-8=1:8-* \
                        dpdk=17.11.* \
                        dpdk-dev=17.11.* \
-                       rocm-opencl-dev \
-                       rocm-opencl \
+                       rocm-opencl-dev=3.* \
+                       rocm-opencl=3.* \
                        libhdf5-serial-dev=1.10.* \
                        libboost-test-dev=1.65.* \
                        libevent-dev=2.1.* \

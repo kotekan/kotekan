@@ -92,5 +92,18 @@ For example:
 
 When installed kotekan's config files are located at /etc/kotekan/
 
-If running with no options then kotekan just starts a rest server, and waits for someone to send it a config in json
-format on port `12048`
+If running with no options then kotekan just starts a rest server, and waits for someone to send it a config in json format on port `12048`
+
+# Building the Docker image
+
+From the outermost directory of the repo, run:
+
+	docker build -f tools/docker/Dockerfile.full -t kotekan:latest .
+
+This will build the full image with kotekan and python-kotekan installed.
+
+Tag for local registry and to dockerhub:
+    docker tag kotekan:full chimefrb/kotekan:outrig
+    docker tag kotekan:full aux:5000/kotekan:latest
+
+Then `docker push` both.
