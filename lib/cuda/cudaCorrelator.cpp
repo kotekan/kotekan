@@ -35,6 +35,11 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_voltage, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_correlation_triangle, true, false, true));
 
+    // TODO: code for rfi mask. Just using a placeholder zero mask for now.
+    void* device_rfimask = device.get_gpu_memory("rfimask", _num_local_freq*_samples_per_data_set*sizeof(uint)/32);
+    cudaMemset(rfimask, 0, _num_local_freq*_samples_per_data_set*sizeof(uint)/32);
+    rfimask = reinterpret_cast<uint*>(device_rfimask);
+
     set_command_type(gpuCommandType::KERNEL);
     set_name("cudaCorrelator");
 }
@@ -72,7 +77,7 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     // aka "nt_outer" in n2k.hpp
     int num_subintegrations = _samples_per_data_set / _sub_integration_ntime;
     int num_vis_blocks = (_num_elements + 1) / 16;
-    int blocked_vis_size = num_vis_blocks * (num_vis_blocks + 1) / 2;
+    int blocked_vis_size = 16*16 * num_vis_blocks * (num_vis_blocks + 1) / 2;
     int output_array_len =
         num_subintegrations * _num_local_freq * blocked_vis_size * 2 * sizeof(int32_t);
     void* output_memory = device.get_gpu_memory_array(_gpu_mem_correlation_triangle, gpu_frame_id,
@@ -80,12 +85,7 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
 
     record_start_event();
 
-    // TODO: Placeholder code for rfi mask
-    gputils::Array<uint> rfimask({_num_local_freq,_samples_per_data_set/32}, gputils::af_rhost | gputils::af_zero);
-    memset(rfimask.data, 0x00, rfimask.size * sizeof(uint));
-    rfimask = rfimask.to_gpu();
-
-    n2correlator.launch((int*)output_memory, (int8_t*)input_memory, rfimask.data, num_subintegrations,
+    n2correlator.launch((int*)output_memory, (int8_t*)input_memory, rfimask, num_subintegrations,
                         _sub_integration_ntime, device.getStream(cuda_stream_id));
 
     CHECK_CUDA_ERROR(cudaGetLastError());

@@ -31,7 +31,7 @@ num_elements: 1024
 num_local_freq: 16
 # vis matrix size
 num_vis_blocks: (num_elements + 1) / 16
-blocked_vis_size: num_vis_blocks * (num_vis_blocks + 1) / 2
+blocked_vis_size: 16*16 * num_vis_blocks * (num_vis_blocks + 1) / 2
 
 #sub_integration_ntime: 16384
 #samples_per_data_set: 32768
