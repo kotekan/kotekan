@@ -18,12 +18,25 @@ cudaDeviceInterface::cudaDeviceInterface(Config& config, const std::string& uniq
     CHECK_CUDA_ERROR(cudaGetDeviceCount(&max_num_gpus));
     INFO("Number of CUDA GPUs: {:d}", max_num_gpus);
 
-    if (gpu_id > max_num_gpus) {
-        throw std::runtime_error(
-            "Asked for a GPU ID which is higher than the maximum number of GPUs in the system");
+    cudaSetDevice(gpu_id);
+
+    // Find out how many GPUs clocks are allowed.
+    unsigned int* mem_clock, core_clock;
+    unsigned int mem_count, core_count;
+    CHECK_CUDA_ERROR(nvmlDeviceGetSupportedMemoryClocks(gpu_id_, &mem_count,  &mem_clock));
+    CHECK_CUDA_ERROR(nvmlDeviceGetSupportedGraphicsClocks(gpu_id_, &core_count,  &core_clock));
+
+    INFO("Allowed GPU core clocks(MHz): ");
+    for (int i = 0; i < mem_count; ++i)  {
+        INFO("{:d}  ", mem_clock[i]);
     }
 
-    set_thread_device();
+    INFO("Allowed GPU graphics clocks(MHz): ");
+    for (int i = 0; i < core_count; ++i)  {
+        INFO("{:d}  ", core_clock[i]);
+    }
+
+    set_device_clocks(mem_clock, core_clock, mem_count, core_count);
 }
 
 cudaDeviceInterface::~cudaDeviceInterface() {
@@ -33,11 +46,121 @@ cudaDeviceInterface::~cudaDeviceInterface() {
     cleanup_memory();
 }
 
-void cudaDeviceInterface::set_thread_device() {
-    CHECK_CUDA_ERROR(cudaSetDevice(gpu_id));
+void cudaDeviceInterface::set_device_clocks(unsigned int* mem_clock, unsigned int* core_clock,
+                                            unsigned int mem_count, unsigned int core_count) {
+
+    // Set default clocks to zero
+    uint32_t gpu_mem_clock = std::runtime_error(config.get_default<uint32_t>(unique_name, "gpu_mem_clock", 0));
+    uint32_t gpu_core_clock = std::runtime_error(config.get_default<uint32_t>(unique_name, "gpu_core_clock", 0));
+
+    uint32_t get_gpu_mem_clock, get_gpu_core_clock;
+
+    nvmlDeviceGetMaxClockInfo (gpu_id_, gpu_mem_clock, get_gpu_mem_clock);
+    nvmlDeviceGetMaxClockInfo (gpu_id_, gpu_core_clock, get_gpu_core_clock);
+
+    // Get and update the GPU clocks from the config file
+    gpu_mem_clock = std::runtime_error(config.get<uint32_t>(unique_name, "gpu_mem_clock"));
+    gpu_core_clock = std::runtime_error(config.get<uint32_t>(unique_name, "gpu_core_clock"));
+
+    int_gpu_mem_clock = round(gpu_mem_clock);
+    int_gpu_core_clock = round(gpu_core_clock);
+
+    if (int_gpu_mem_clock != 0 && int_gpu_core_clock != 0) {
+
+        /* For memory clcoks */
+        //minima
+	    if (int_get_gpu_mem_clock <= round(mem_clock[0]))
+		    return mem_clock[0];
+        //maxima
+	    if (int_get_gpu_mem_clock >= round(mem_clock[mem_count - 1]))
+		    return mem_clock[mem_count - 1];
+        //in between cases, apply a search algorithm such as binary search
+        int i = 0, j = mem_count, mid = 0;
+	    while (i < j) {
+		    mid = (i + j) / 2;
+
+		    if (round(mem_clock[mid]) == int_get_gpu_mem_clock)
+			    return mem_clock[mid];
+
+		    /* Assuming the clock values are saved in
+            ascending order,
+            If target is less than array element,
+			then search in left */
+		    if (int_get_gpu_mem_clock < round(mem_clock[mid])) {
+
+			    // If target is greater than previous
+			    // to mid, return closest of two
+			    if (mid > 0 && int_get_gpu_mem_clock > round(mem_clock[mid - 1]))
+                    if (int_get_gpu_mem_clock - round(mem_clock[mid - 1]) >= round(mem_clock[mid]) - int_get_gpu_mem_clock)
+                        return mem_clock[mid - 1];
+                    else
+                        return mem_clock[mid];
+			    j = mid;
+		    }
+	        /* Repeat for left half */
+
+		    // If target is greater than mid
+		    else {
+			    if (mid < (mem_count - 1) && int_get_gpu_mem_clock < round(mem_clock[mid + 1]))
+                    if (int_get_gpu_mem_clock - round(mem_clock[mid]) >= round(mem_clock[mid + 1]) - int_get_gpu_mem_clock)
+                        return mem_clock[mid + 1];
+                    else
+                        return mem_clock[mid];
+
+			    // update i
+			    i = mid + 1;
+		    }
+        }
+
+        /* For processing clcoks */
+        //minima
+	    if (int_get_gpu_core_clock <= round(core_clock[0]))
+		    return core_clock[0];
+        //maxima
+	    if (int_get_gpu_core_clock >= round(core_clock[core_count - 1]))
+		    return core_clock[core_count - 1];
+        //in between cases, apply a search algorithm such as binary search
+        i = 0, j = core_count, mid = 0;
+	    while (i < j) {
+		    mid = (i + j) / 2;
+
+		    if (round(core_clock[mid]) == int_get_gpu_core_clock)
+			    return core_clock[mid];
+
+		    /* If target is less than array element,
+			then search in left */
+		    if (int_get_gpu_core_clock < round(core_clock[mid])) {
+
+			    // If target is greater than previous
+			    // to mid, return closest of two
+			    if (mid > 0 && int_get_gpu_core_clock > round(core_clock[mid - 1]))
+                    if (int_get_gpu_core_clock - round(core_clock[mid - 1]) >= round(core_clock[mid]) - int_get_gpu_core_clock)
+                        return core_clock[mid - 1];
+                    else
+                        return core_clock[mid];
+			    j = mid;
+		    }
+	        /* Repeat for left half */
+
+		    // If target is greater than mid
+		    else {
+			    if (mid < (core_count - 1) && int_get_gpu_core_clock < round(core_clock[mid + 1]))
+                    if (int_get_gpu_core_clock - round(core_clock[mid]) >= round(core_clock[mid + 1]) - int_get_gpu_core_clock)
+                        return core_clock[mid + 1];
+                    else
+                        return core_clock[mid];
+
+			    // update i
+			    i = mid + 1;
+		    }
+        }
+    }
+
+    INFO("Memory clock(MHz) of CUDA GPU: {:d} is {:d}", gpu_id_, mem_clock[i]);
+    INFO("Graphics clock(MHz) of CUDA GPU: {:d} is {:d}", gpu_id_, core_clock[j]);
 }
 
-void* cudaDeviceInterface::alloc_gpu_memory(size_t len) {
+void* cudaDeviceInterface::alloc_gpu_memory(int len) {
     void* ret;
     CHECK_CUDA_ERROR(cudaMalloc(&ret, len));
     return ret;
