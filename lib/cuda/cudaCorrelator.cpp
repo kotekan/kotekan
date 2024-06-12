@@ -76,10 +76,10 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
 
     // aka "nt_outer" in n2k.hpp
     int num_subintegrations = _samples_per_data_set / _sub_integration_ntime;
-    int num_vis_blocks = (_num_elements + 1) / 16;
-    int blocked_vis_size = 16*16 * num_vis_blocks * (num_vis_blocks + 1) / 2;
+    int vis_blocks_tr_root = (_num_elements + 1) / 16;
+    int num_vis_blocks = vis_blocks_tr_root * (vis_blocks_tr_root + 1) / 2;
     int output_array_len =
-        num_subintegrations * _num_local_freq * blocked_vis_size * 2 * sizeof(int32_t);
+        num_subintegrations * _num_local_freq * 16 * 16 * num_vis_blocks * 2 * sizeof(int32_t);
     void* output_memory = device.get_gpu_memory_array(_gpu_mem_correlation_triangle, gpu_frame_id,
                                                       _gpu_buffer_depth, output_array_len);
 

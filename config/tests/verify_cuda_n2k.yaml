@@ -27,16 +27,13 @@ sizeof_int: 4
 # For faster CHORD testing, we're using...
 sub_integration_ntime: 1024
 samples_per_data_set: 2048
+#sub_integration_ntime: 16384
+#samples_per_data_set: 32768
 num_elements: 1024
 num_local_freq: 16
 # vis matrix size
-num_vis_blocks: (num_elements + 1) / 16
-blocked_vis_size: 16*16 * num_vis_blocks * (num_vis_blocks + 1) / 2
-
-#sub_integration_ntime: 16384
-#samples_per_data_set: 32768
-#num_elements: 1024
-#num_local_freq: 16
+vis_blocks_tr_root: (num_elements + 1) / 16
+num_vis_blocks: vis_blocks_tr_root * (vis_blocks_tr_root + 1) / 2
 
 # Pool
 main_pool:
@@ -53,13 +50,13 @@ host_voltage_buffer:
 host_correlation_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * blocked_vis_size * 2 * sizeof_int
+    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * num_vis_blocks * 2 * sizeof_int
     metadata_pool: main_pool
 
 simulated_correlation_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * blocked_vis_size * 2 * sizeof_int
+    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * num_vis_blocks * 2 * sizeof_int
     metadata_pool: main_pool
 
 # Ringbuffer signalling buffer

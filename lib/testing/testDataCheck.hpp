@@ -160,6 +160,9 @@ void testDataCheck<A_Type>::main_thread() {
                      num_nonzero, abs_diff / std::max((uint32_t)1, num_nonzero),
                      rel_diff / std::max((uint32_t)1, num_nonzero));
             }
+        } else {
+            INFO("Test failed, exiting!");
+            TEST_FAILED();
         }
 
         first_buf->mark_frame_empty(unique_name, first_buf_id);
@@ -170,9 +173,14 @@ void testDataCheck<A_Type>::main_thread() {
         frames++;
 
         if (num_frames_to_test == frames) {
-            INFO("Test passed, exiting!");
-            TEST_PASSED();
-        }
+            if(!error) {
+                INFO("Test passed, exiting!");
+                TEST_PASSED();
+            } else {
+                INFO("Test failed, exiting!");
+                TEST_FAILED();
+            } // error
+        } // frames
     }
 }
 
