@@ -35,35 +35,47 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame_int, const timespec& gp
     uint hour = utc_time->tm_hour;
     float JD = 2 - int(year / 100.) + int(int(year / 100.) / 4.) + int(365.25 * year) //See this conversion for Skyfield
                + int(30.6001 * (month + 1)) + day + 1720994.5; 
-    double UT = (hour) + (utc_time->tm_min / 60.)
-               + (utc_time->tm_sec + _DUT1 + gps_time.tv_nsec / 1.e9) / 3600.;                //TO DO:UT1_UTC should be a double value in struct _beam_coord containing UT1-UTC in seconds
-    double JD_UT1 = JD + UT / 24.;
+    double T = (JD - 2451545.0)
+               / 36525.0; // Works if time after year 2000, otherwise T is -ve and might break
+    double T0 = fmod((6.697374558 + (2400.051336 * T) + (0.000025862 * T * T)), 24.);
+    double UT = (timeinfo->tm_hour) + (timeinfo->tm_min / 60.)
+                + (timeinfo->tm_sec + time_now.tv_nsec / 1.e9) / 3600.;
+    double GST = fmod((T0 + UT * 1.002737909), 24.);
+    double LST = GST + _inst_long / 15.;
+    while (LST < 0) {
+        LST = LST + 24;
+    }
+    LST = fmod(LST, 24);
+    //double UT = (hour) + (utc_time->tm_min / 60.)
+    //           + (utc_time->tm_sec + _DUT1 + gps_time.tv_nsec / 1.e9) / 3600.;                //TO DO:UT1_UTC should be a double value in struct _beam_coord containing UT1-UTC in seconds
+    //double JD_UT1 = JD + UT / 24.;
 
 
     //Calculating the Local Stellar Angle (LSA) 
-    double JD_frac = fmod(JD_UT1, 1);
-    double DU = JD_UT1 - 2451545.0;
-    double ERA = fmod((0.7790572732640 + 0.00273781191135448 * DU + JD_frac), 1) * 360;
-    double LSA = ERA + _inst_long;
-    if (LSA<0) {
-        LSA = LSA + 360;
-    }
-    if (LSA>360) {
-        LSA = fmod(LSA, 360);
-    }
+    //double JD_frac = fmod(JD_UT1, 1);
+    //double DU = JD_UT1 - 2451545.0;
+    //double ERA = fmod((0.7790572732640 + 0.00273781191135448 * DU + JD_frac), 1) * 360;
+    //double LSA = ERA + _inst_long;
+    //if (LSA<0) {
+    //    LSA = LSA + 360;
+    //}
+    //if (LSA>360) {
+    //    LSA = fmod(LSA, 360);
+    //}
 
     //INFO("GPS Time: {:.9f}, Frequency {}", ts_to_double(gps_time), frequencies_in_frame[0]);
 
     //Calculating the hour angle and phases for all frequencies in a frame for each pointing 
     for (uint32_t b = beam_offset; b < (_num_local_beams + beam_offset); b++) {
         // Special case for forming a beam at the telescope zenith, e.g. only apply gains, no phases.  
-	if (_beam_coord.scaling[b] == 1) {   
+	     if (_beam_coord.scaling[b] == 1) {   
             for (uint32_t i = 0; i < _num_elements * _num_local_freq * 2; ++i) {                             
                 out_frame[b * _num_elements * _num_local_freq * 2 + i] = gains_frame[b * _num_elements * _num_local_freq * 2 + i];
             }
             continue;
         }
-        double hour_angle  = LSA - _beam_coord.ra[b];
+        //double hour_angle  = LSA - _beam_coord.ra[b];
+        double hour_angle = LST * 15. - beam_coord.ra[b];
         double alt = sin(_beam_coord.dec[b] * D2R) * sin(_inst_lat * D2R)
                      + cos(_beam_coord.dec[b] * D2R) * cos(_inst_lat * D2R) * cos(hour_angle * D2R);
         alt = asin(std::clamp(alt, -1.0, 1.0));
