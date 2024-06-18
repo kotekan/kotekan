@@ -174,6 +174,7 @@ public:
 
 protected:
     virtual void* alloc_gpu_memory(size_t len) = 0;
+    virtual void* alloc_gpu_sub_memory(void* base_ptr, const size_t offset, const size_t len) = 0;
     virtual void free_gpu_memory(void*) = 0;
 
     // This is used internally - when a GPU array is actually a view on another array,

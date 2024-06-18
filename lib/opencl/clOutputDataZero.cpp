@@ -53,7 +53,7 @@ clOutputDataZero::clOutputDataZero(Config& config, const std::string& unique_nam
 clOutputDataZero::~clOutputDataZero() {
     cl_event wait_event;
     clEnqueueUnmapMemObject(device.getQueue(0), cl_mem_prt,
-                            output_len, 0, nullptr, &wait_event);
+                            output_zeros, 0, nullptr, &wait_event);
     // Block here to make sure the memory actually gets unmapped.
     clWaitForEvents(1, &wait_event);
 
@@ -63,11 +63,6 @@ clOutputDataZero::~clOutputDataZero() {
 cl_event clOutputDataZero::execute(cl_event pre_event) {
     pre_execute();
 
-    cl_mem gpu_memory_frame = device.get_gpu_memory_array("output", gpu_frame_id, output_len);
-
-    // Data transfer to GPU
-    CHECK_CL_ERROR(clEnqueueWriteBuffer(device.getQueue(0), gpu_memory_frame, CL_FALSE,
-                                        0, // offset
-                                        output_len, output_zeros, 1, &pre_event, &post_event));
+    device.async_copy_host_to_gpu("output", gpu_frame_id, output_zeros, output_len, pre_event, post_event);
     return post_event;
 }

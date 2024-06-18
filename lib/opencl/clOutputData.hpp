@@ -16,9 +16,9 @@ public:
 
 private:
     /// Helper class to manage the input buffers
-    gpuBufferHandler in_bufs;
+    std::vector<Buffer*> in_bufs;
     /// Helper class to manage the output buffers
-    gpuBufferHandler out_bufs;
+    std::vector<Buffer*> out_bufs;
 
     /// Name of the GPU side memory to transfer data out of.
     std::string _gpu_memory;

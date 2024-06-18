@@ -2,7 +2,6 @@
 #define CL_INPUT_DATA_H
 
 #include "clCommand.hpp"
-#include "gpuBufferHandler.hpp"
 
 class clInputData : public clCommand {
 public:
@@ -15,14 +14,8 @@ public:
     void finalize_frame() override;
 
 protected:
-    /// Helper class to manage the buffers
-
-    class clBufferHandlerState : public clCommandState {
-        clBufferHandlerState(kotekan::Config&, const std::string&, kotekan::bufferContainer&,
-                   clDeviceInterface&);
-        public:
-        gpuBufferHandler in_bufs;
-    }
+    // Input buffers
+    std::vector<Buffer*> in_bufs;
 
     cl_event* data_staged_event;
 

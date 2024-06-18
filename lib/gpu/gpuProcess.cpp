@@ -155,7 +155,12 @@ void gpuProcess::main_thread() {
     bool first_run = true;
 
     while (!stop_thread) {
+	DEBUG("Waiting for free slot for GPU[{:d}] frame {:d}", gpu_id, gpu_frame_counter);
+        // We make sure we aren't using a gpu slot that's currently in-flight.
+        int slot = gpu_frame_counter % final_signals.size();
+        final_signals[slot]->wait_for_free_slot();    
 
+	// Update the frame counters for all commands in the current slot. 
         for (auto& command : commands) {
             int ic = gpu_frame_counter % command.size();
             command[ic]->start_frame(gpu_frame_counter);
@@ -167,6 +172,7 @@ void gpuProcess::main_thread() {
         // INFO("Waiting on preconditions for GPU[{:d}][{:d}]", gpu_id, gpu_frame_id);
         for (auto& command : commands) {
             int ic = gpu_frame_counter % command.size();
+	    assert(command.size() == _gpu_buffer_depth);
             if (command[ic]->wait_on_precondition() != 0) {
                 INFO("Received exit signal from GPU command precondition (Command '{:s}')",
                      command[ic]->get_name());
@@ -174,16 +180,14 @@ void gpuProcess::main_thread() {
             }
         }
 
-        DEBUG("Waiting for free slot for GPU[{:d}] frame {:d}", gpu_id, gpu_frame_counter);
-        // We make sure we aren't using a gpu frame that's currently in-flight.
-        int ic = gpu_frame_counter % final_signals.size();
-        final_signals[ic]->wait_for_free_slot();
+	// Queue the commands
         queue_commands(gpu_frame_counter);
-        if (first_run) {
+        
+	// Start the results thread
+	if (first_run) {
             results_thread_handle = std::thread(&gpuProcess::results_thread, std::ref(*this));
 
             // Requires Linux, this could possibly be made more general someday.
-            // TODO Move to config
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
             for (auto& i : config.get<std::vector<int>>(unique_name, "cpu_affinity"))

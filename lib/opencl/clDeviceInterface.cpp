@@ -45,8 +45,21 @@ void* clDeviceInterface::alloc_gpu_memory(size_t len) {
     cl_int err;
     cl_mem ptr = clCreateBuffer(context, CL_MEM_READ_WRITE, len, nullptr, &err);
     CHECK_CL_ERROR(err);
+    INFO("clCreateBuffer: {}, len: {}", fmt::ptr(ptr), len);
     return ptr;
 }
+
+void* clDeviceInterface::alloc_gpu_sub_memory(void* base_ptr, const size_t offset, const size_t len) {
+   cl_int err;
+   cl_buffer_region region;
+   region.origin = offset;
+   region.size = len;
+   cl_mem ptr = clCreateSubBuffer((cl_mem)base_ptr, CL_MEM_READ_WRITE, CL_BUFFER_CREATE_TYPE_REGION, &region, &err);
+   CHECK_CL_ERROR(err);
+   INFO("clCreateSubBuffer: {}, len: {}", fmt::ptr(ptr), len);
+   return ptr;
+}
+
 void clDeviceInterface::free_gpu_memory(void* ptr) {
     CHECK_CL_ERROR(clReleaseMemObject((cl_mem)ptr));
 }
@@ -69,6 +82,29 @@ cl_command_queue clDeviceInterface::getQueue(int queue_id) {
     return queue[queue_id];
 }
 
+void clDeviceInterface::async_copy_host_to_gpu(const std::string& device_memory, const uint64_t& frame_id,
+                                       void* host_memory, const size_t& frame_size,
+                                       cl_event& pre_event, cl_event& post_event) {
+    // We need to pass the base pointer to the GPU, not the offset pointer.  Instead we pass the
+    // offset to the clEnqueueWriteBuffer function.
+    cl_mem gpu_memory_frame = get_gpu_memory_array(device_memory, frame_id % gpu_buffer_depth, frame_size);
+    CHECK_CL_ERROR(clEnqueueWriteBuffer(getQueue(0), gpu_memory_frame, CL_FALSE, 0,
+                                        frame_size, host_memory, (pre_event == nullptr) ? 0 : 1,
+                                        (pre_event == nullptr) ? nullptr : &pre_event,
+                                        &post_event));
+}
+
+void clDeviceInterface::async_copy_gpu_to_host(const std::string& device_memory, const uint64_t& frame_id,
+                                       void* host_memory, const size_t& frame_size,
+                                       cl_event& pre_event, cl_event& post_event) {
+    // We need to pass the base pointer to the GPU, not the offset pointer.  Instead we pass the
+    // offset to the clEnqueueReadBuffer function.
+    cl_mem gpu_memory_frame = get_gpu_memory_array(device_memory, frame_id % gpu_buffer_depth, frame_size);
+    CHECK_CL_ERROR(clEnqueueReadBuffer(getQueue(2), gpu_memory_frame, CL_FALSE, 0,
+                                       frame_size, host_memory, (pre_event == nullptr) ? 0 : 1,
+                                       (pre_event == nullptr) ? nullptr : &pre_event,
+                                       &post_event));
+}
 
 void clDeviceInterface::prepareCommandQueue(bool enable_profiling) {
     cl_int err;
@@ -84,3 +120,4 @@ void clDeviceInterface::prepareCommandQueue(bool enable_profiling) {
         }
     }
 }
+
