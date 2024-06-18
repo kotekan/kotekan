@@ -68,7 +68,7 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame_int, const timespec& gp
     //Calculating the hour angle and phases for all frequencies in a frame for each pointing 
     for (uint32_t b = beam_offset; b < (_num_local_beams + beam_offset); b++) {
         // Special case for forming a beam at the telescope zenith, e.g. only apply gains, no phases.  
-	     if (_beam_coord.scaling[b] == 1) {   
+	if (_beam_coord.scaling[b] == 1) {   
             for (uint32_t i = 0; i < _num_elements * _num_local_freq * 2; ++i) {                             
                 out_frame[b * _num_elements * _num_local_freq * 2 + i] = gains_frame[b * _num_elements * _num_local_freq * 2 + i];
             }
