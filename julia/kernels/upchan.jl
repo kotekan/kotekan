@@ -47,12 +47,13 @@ let
     @assert interp(table, 3.0f0) == +3.0f0
 end
 
-# Un-normalized `sinc` function, without `π`
-@fastmath @inline sinc′(x) = x == 0 ? one(x) : sin(x) / x
+# Base.sinc isn't inlined, probably too complex
+@fastmath @inline sinc1(x) = iszero(x) ? one(x) : sinpi(x) / (pi * x)
 
-# sinc-Hanning weight function, eqn. (11), with `N=U`
+# sinc-Hanning weight function, eqn. (11), with `N = U+2`
 @fastmath @inline function Wkernel(s, M, U)
-    return cospi((s - Int32(M * U - 1) / 2.0f0) / Int32(M * U + 1))^2 * sinc′((s - Int32(M * U - 1) / 2.0f0) / Int32(U))
+    s′ = (Int32(2) * s - (M * U - Int32(1))) / Float32(2 * (M * U))  # normalized to (-1/2; +1/2)
+    return cospi(s′)^2 * sinc1(M * s′)
 end
 
 # CHORD Setup
@@ -101,7 +102,7 @@ elseif setup ≡ :chime
     # const F₀ = 16
     const F = 16
     const F̄ = Dict(1 => 1, 2 => 1, 4 => 1, 8 => 1, 16 => 16, 32 => 1, 64 => 1, 128 => 1)[U] * U
-    const T = 4 * 2048
+    const T = 4 * 16384
 else
     @assert false
 end
@@ -241,7 +242,7 @@ const layout_E_memory = Layout([
     Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
     Dish(:dish, 4, idiv(D, 4)) => Memory(:memory, 1, idiv(D, 4)),
     Polr(:polr, 1, P) => Memory(:memory, idiv(D, 4), P),
-    Freq(:freq, 1, F) => Memory(:memory, idiv(D, 4) * P, F),
+    Freq(:freq, U, F) => Memory(:memory, idiv(D, 4) * P, F),
     Time(:time, 1, T) => Memory(:memory, idiv(D, 4) * P * F, T),
 ])
 
@@ -318,39 +319,21 @@ const layout_F̄_shared_size = Σ * idiv(Touter, U)
 
 function thread2time(thread::Int32)
     time = 0i32
-    if U ≤ 64
-        for bit in 0:(Ubits - 2)
-            threadbit = (1, 0, 2, 4, 3)[bit + 1]
-            val = (thread >> threadbit) & 1i32
-            timebit = Ubits - 2 - bit
-            time |= val << timebit
-        end
-    else
-        for bit in 0:4
-            threadbit = (1, 0, 2, 4, 3)[bit + 1]
-            val = (thread >> threadbit) & 1i32
-            timebit = Ubits - 2 - bit
-            time |= val << timebit
-        end
+    for bit in 0:min(Ubits - 2, 4)
+        threadbit = (1, 0, 2, 4, 3)[bit + 1]
+        val = (thread >> threadbit) & 1i32
+        timebit = Ubits - 2 - bit
+        time |= val << timebit
     end
     return time
 end
 function thread2freq(thread::Int32)
     freq = 0i32
-    if U ≤ 64
-        for bit in 0:(Ubits - 2)
-            threadbit = (1, 0, 2, 4, 3)[bit + 1]
-            val = (thread >> threadbit) & 1i32
-            freqbit = Ubits - 2 - bit
-            freq |= val << freqbit
-        end
-    else
-        for bit in 0:4
-            threadbit = (1, 0, 2, 4, 3)[bit + 1]
-            val = (thread >> threadbit) & 1i32
-            freqbit = Ubits - 2 - bit
-            freq |= val << freqbit
-        end
+    for bit in 0:min(Ubits - 2, 4)
+        threadbit = (1, 0, 2, 4, 3)[bit + 1]
+        val = (thread >> threadbit) & 1i32
+        freqbit = Ubits - 2 - bit
+        freq |= val << freqbit
     end
     return freq
 end
@@ -607,7 +590,7 @@ function upchan!(emitter)
         [Time(:time, 1 << (Ubits - 1 - bit), 2) => simd_threads[bit + 1] for bit in 0:min(5, Ubits - 1)]...,
     ])
     for m in 0:(M - 1), t in 0:((U - 1) ÷ 64)
-        Wsum1 = inv(sum(Wkernel(s, M, U) for s in 0:(M * U - 1)))
+        # Wsum1 = inv(sum(Wkernel(s, M, U) for s in 0:(M * U - 1)))
         push!(
             emitter.statements,
             quote
@@ -617,8 +600,12 @@ function upchan!(emitter)
                     time1 = time0 + $(Int32(idiv(U, 2)))
                     s0 = time0 + $(Int32(m * U))
                     s1 = time1 + $(Int32(m * U))
-                    W0 = $Wsum1 * Wkernel(s0, $M, $U)
-                    W1 = $Wsum1 * Wkernel(s1, $M, $U)
+                    # We scale by 1/U to undo the "natural"
+                    # upchannelization scaling by U. With this 1/U
+                    # scaling amplitudes remain approximately
+                    # constant.
+                    W0 = Wkernel(s0, $(Int32(M)), $(Int32(U))) / $(Float32(U))
+                    W1 = Wkernel(s1, $(Int32(M)), $(Int32(U))) / $(Float32(U))
                     (W0, W1)
                 end
             end,
@@ -651,8 +638,6 @@ function upchan!(emitter)
                 thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
                 time0 = thread2time(thread)
                 time1 = time0 + $(Int32(idiv(U, 2)))
-                # X0 = cispi((time0 * $(Int32(U - 1)) / Float32(U)) % 2.0f0)
-                # X1 = cispi((time1 * $(Int32(U - 1)) / Float32(U)) % 2.0f0)
                 X0 = cispi((time0 * Int32(U - 1) % Int32(2 * U)) / Float32(U))
                 X1 = cispi((time1 * Int32(U - 1) % Int32(2 * U)) / Float32(U))
                 (X0, X1)
@@ -695,15 +680,15 @@ function upchan!(emitter)
                     $(
                         if U == 2
                             quote
-                                timehi0 = 4i32 * 0i32
-                                timehi1 = 4i32 * 1i32
+                                timehi0 = 1i32 * 0i32
+                                timehi1 = 1i32 * 1i32
                                 dish_in0 = 1i32 * thread1 + 2i32 * thread0
                                 dish_in1 = 1i32 * thread1 + 2i32 * thread0
                             end
                         elseif U == 4
                             quote
-                                timehi0 = 4i32 * 0i32 + 2i32 * thread1
-                                timehi1 = 4i32 * 1i32 + 2i32 * thread1
+                                timehi0 = 2i32 * 0i32 + 1i32 * thread1
+                                timehi1 = 1i32 * 1i32 + 1i32 * thread1
                                 dish_in0 = 1i32 * thread0
                                 dish_in1 = 1i32 * thread0
                             end
@@ -742,8 +727,10 @@ function upchan!(emitter)
                     delta0 = dish == dish_in0
                     delta1 = dish == dish_in1
                     Γ¹0, Γ¹1 = (
-                        delta0 * cispi((-2i32 * timehi0 * freqlo / $(Float32(2^m))) % 2.0f0),
-                        delta1 * cispi((-2i32 * timehi1 * freqlo / $(Float32(2^m))) % 2.0f0),
+                        # delta0 * cispi((-2i32 * timehi0 * freqlo / $(Float32(2^m))) % 2.0f0),
+                        # delta1 * cispi((-2i32 * timehi1 * freqlo / $(Float32(2^m))) % 2.0f0),
+                        delta0 * conj(cispi(2i32 * timehi0 * freqlo % $(Int32(2 * 2^m)) / $(Float32(2^m)))),
+                        delta1 * conj(cispi(2i32 * timehi1 * freqlo % $(Int32(2 * 2^m)) / $(Float32(2^m)))),
                     )
                     (Γ¹0, Γ¹1)
                 end
@@ -824,8 +811,10 @@ function upchan!(emitter)
                         )
                         freqlo = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
                         (Γ²0, Γ²1) = (
-                            cispi((-2i32 * timelo0 * freqlo / $(Float32(2^(m + n)))) % 2.0f0),
-                            cispi((-2i32 * timelo1 * freqlo / $(Float32(2^(m + n)))) % 2.0f0),
+                            # cispi((-2i32 * timelo0 * freqlo / $(Float32(2^(m + n)))) % 2.0f0),
+                            # cispi((-2i32 * timelo1 * freqlo / $(Float32(2^(m + n)))) % 2.0f0),
+                            conj(cispi(2i32 * timelo0 * freqlo % $(Int32(2 * 2^(m + n))) / $(Float32(2^(m + n))))),
+                            conj(cispi(2i32 * timelo1 * freqlo % $(Int32(2 * 2^(m + n))) / $(Float32(2^(m + n))))),
                         )
                         (Γ²0, Γ²1)
                     end
@@ -938,8 +927,10 @@ function upchan!(emitter)
                     delta0 = dish == dish_in0
                     delta1 = dish == dish_in1
                     Γ³0, Γ³1 = (
-                        delta0 * cispi((-2i32 * timelo0 * freqhi / $(Float32(2^n))) % 2.0f0),
-                        delta1 * cispi((-2i32 * timelo1 * freqhi / $(Float32(2^n))) % 2.0f0),
+                        # delta0 * cispi((-2i32 * timelo0 * freqhi / $(Float32(2^n))) % 2.0f0),
+                        # delta1 * cispi((-2i32 * timelo1 * freqhi / $(Float32(2^n))) % 2.0f0),
+                        delta0 * conj(cispi(2i32 * timelo0 * freqhi % $(Int32(2 * 2^n)) / $(Float32(2^n)))),
+                        delta1 * conj(cispi(2i32 * timelo1 * freqhi % $(Int32(2 * 2^n)) / $(Float32(2^n)))),
                     )
                     (Γ³0, Γ³1)
                 end

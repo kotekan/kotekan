@@ -92,11 +92,12 @@ class FEngine : public kotekan::Stage {
 
     enum upchan_factor_t { U1, U2, U4, U8, U16, U32, U64, Usize };
     constexpr int upchan_factor(upchan_factor_t U) {
-        return std::array<int, Usize>{1, 2, 4, 8, 16, 32, 64}[U];
+        return std::array<int, Usize>{1, 2, 4, 8, 16, 32, 64}.at(U);
     }
     const std::array<int, Usize> upchan_max_num_channelss, upchan_min_channels, upchan_max_channels;
     const int upchan_all_max_num_output_channels, upchan_all_min_output_channel,
         upchan_all_max_output_channel;
+    const std::array<std::vector<float>, Usize> upchan_gainss;
 
     // FRB beamformer setup
     const int frb1_num_beams_P;

@@ -107,6 +107,15 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         config.get<int>(unique_name, "upchan_all_max_num_output_channels")),
     upchan_all_min_output_channel(config.get<int>(unique_name, "upchan_all_min_output_channel")),
     upchan_all_max_output_channel(config.get<int>(unique_name, "upchan_all_max_output_channel")),
+    upchan_gainss{
+        std::vector<float>(),
+        config.get<std::vector<float>>(unique_name, "upchan_U2_gains"),
+        config.get<std::vector<float>>(unique_name, "upchan_U4_gains"),
+        config.get<std::vector<float>>(unique_name, "upchan_U8_gains"),
+        config.get<std::vector<float>>(unique_name, "upchan_U16_gains"),
+        config.get<std::vector<float>>(unique_name, "upchan_U32_gains"),
+        config.get<std::vector<float>>(unique_name, "upchan_U64_gains"),
+    },
 
     // FRB beamformer setup
     frb1_num_beams_P(2 * num_dish_locations_ns), frb1_num_beams_Q(2 * num_dish_locations_ew),
@@ -212,20 +221,24 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     assert(upchan_all_min_output_channel <= upchan_all_max_output_channel);
     assert(upchan_all_max_output_channel <= upchan_all_max_num_output_channels);
     for (int Uindex = 0; Uindex < Usize; ++Uindex) {
-        assert(upchan_min_channels[Uindex] >= upchan_all_min_output_channel);
-        assert(upchan_min_channels[Uindex] <= upchan_max_channels[Uindex]);
-        assert(upchan_max_channels[Uindex] <= upchan_all_max_output_channel);
-        assert(upchan_max_channels[Uindex] <= num_frequencies);
-        assert(upchan_max_num_channelss[Uindex] >= 0);
-        assert(upchan_max_channels[Uindex] - upchan_min_channels[Uindex]
-               <= upchan_max_num_channelss[Uindex]);
+        assert(upchan_min_channels.at(Uindex) >= upchan_all_min_output_channel);
+        assert(upchan_min_channels.at(Uindex) <= upchan_max_channels.at(Uindex));
+        assert(upchan_max_channels.at(Uindex) <= upchan_all_max_output_channel);
+        assert(upchan_max_channels.at(Uindex) <= num_frequencies);
+        assert(upchan_max_num_channelss.at(Uindex) >= 0);
+        assert(upchan_max_channels.at(Uindex) - upchan_min_channels.at(Uindex)
+               <= upchan_max_num_channelss.at(Uindex));
         // Check that the local channels are contiguous
         if (Uindex == Usize - 1)
-            assert(upchan_min_channels[Uindex] == 0);
+            assert(upchan_min_channels.at(Uindex) == 0);
         else
-            assert(upchan_min_channels[Uindex] == upchan_max_channels[Uindex + 1]);
+            assert(upchan_min_channels.at(Uindex) == upchan_max_channels.at(Uindex + 1));
         if (Uindex == 0)
-            assert(upchan_max_channels[Uindex] == num_frequencies);
+            assert(upchan_max_channels.at(Uindex) == num_frequencies);
+        if (Uindex == 0)
+            assert(upchan_gainss.at(Uindex).empty());
+        else
+            assert(int(upchan_gainss.at(Uindex).size()) == upchan_factor(upchan_factor_t(Uindex)));
     }
 
     assert(E_buffer);
@@ -234,9 +247,9 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     assert(J_buffer);
     for (int Uindex = 0; Uindex < Usize; ++Uindex)
         if (Uindex == 0)
-            assert(!G_buffers[Uindex]);
+            assert(!G_buffers.at(Uindex));
         else
-            assert(G_buffers[Uindex]);
+            assert(G_buffers.at(Uindex));
     for (auto W1_buffer : W1_buffers)
         assert(W1_buffer);
     assert(W2_buffer);
@@ -269,11 +282,14 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
             file.seekg(0, std::ios_base::end);
             const auto julia_source_length = file.tellg();
             file.seekg(0);
-            std::vector<char> julia_source(julia_source_length);
+            std::vector<char> julia_source(std::size_t(julia_source_length) + 1);
             file.read(julia_source.data(), julia_source_length);
             file.close();
+            julia_source.at(julia_source_length) = '\0';
             kotekan::juliaCall([&]() {
                 jl_value_t* const res = jl_eval_string(julia_source.data());
+                if (jl_exception_occurred())
+                    FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
                 assert(res);
             });
         }
@@ -315,7 +331,7 @@ void FEngine::main_thread() {
             args[iargc++] = jl_box_int64(num_dishes);
             args[iargc++] = jl_box_float32(adc_frequency);
             args[iargc++] = jl_box_int64(num_taps);
-            args[iargc++] = jl_box_int64(num_samples_per_frame / 2);
+            args[iargc++] = jl_box_int64(num_samples_per_frame);
             args[iargc++] = jl_box_int64(num_frequencies);
             args[iargc++] = jl_box_voidpointer(
                 const_cast<void*>(static_cast<const void*>(frequency_channels.data())));
@@ -496,7 +512,7 @@ void FEngine::main_thread() {
                 return;
             // We can't have zero-length buffers
             using std::max;
-            const std::ptrdiff_t wanted_frame_size = max(std::ptrdiff_t(1), G_frame_sizes[Ufactor]);
+            const std::ptrdiff_t wanted_frame_size = max(std::int64_t(1), G_frame_sizes[Ufactor]);
             if (std::ptrdiff_t(G_buffers[Ufactor]->frame_size) != wanted_frame_size)
                 FATAL_ERROR("G_buffers[U{:d}]->frame_size={:d} G_frame_sizes[U{:d}]={:d}", U,
                             G_buffers[Ufactor]->frame_size, U, G_frame_sizes[Ufactor]);
@@ -509,9 +525,9 @@ void FEngine::main_thread() {
                 upchan_max_channels[Ufactor] - upchan_min_channels[Ufactor];
             for (int n = 0; n < upchan_max_num_channelss[Ufactor] * U; ++n)
                 if (n < num_local_channels * U)
-                    ((float16_t*)G_frame)[n] = 1;
+                    ((float16_t*)G_frame)[n] = upchan_gainss[Ufactor].at(n % U);
                 else
-                    ((float16_t*)G_frame)[n] = 0; // unused
+                    ((float16_t*)G_frame)[n] = 0.0 / 0.0; // unused
             DEBUG("[{:d}] Done filling G_U{:d} buffer.", G_frame_index, U);
 
             // Set metadata
@@ -562,8 +578,7 @@ void FEngine::main_thread() {
                 return;
             // We can't have zero-length buffers
             using std::max;
-            const std::ptrdiff_t wanted_frame_size =
-                max(std::ptrdiff_t(1), W1_frame_sizes[Ufactor]);
+            const std::ptrdiff_t wanted_frame_size = max(std::int64_t(1), W1_frame_sizes[Ufactor]);
             if (std::ptrdiff_t(W1_buffers[Ufactor]->frame_size) != wanted_frame_size)
                 FATAL_ERROR("W1_buffers[U{:d}]->frame_size={:d} W1_frame_sizes[U{:d}]={:d}", U,
                             W1_buffers[Ufactor]->frame_size, U, W1_frame_sizes[Ufactor]);

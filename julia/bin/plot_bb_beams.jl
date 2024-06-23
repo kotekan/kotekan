@@ -3,7 +3,6 @@
 using ASDF2
 using CUDASIMDTypes
 using CairoMakie
-# using ITerm2Images
 using SixelTerm
 using Statistics
 

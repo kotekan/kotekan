@@ -62,7 +62,7 @@ private:
     static constexpr int cuda_number_of_frequencies = 16;
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_taps = 4;
-    static constexpr int cuda_max_number_of_timesamples = 8192;
+    static constexpr int cuda_max_number_of_timesamples = 65536;
     static constexpr int cuda_granularity_number_of_timesamples = 256;
     static constexpr int cuda_algorithm_overlap = 6;
     static constexpr int cuda_upchannelization_factor = 2;
@@ -163,9 +163,9 @@ private:
         1024,
         2,
         16,
-        8192,
+        65536,
     };
-    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 1024 * 2 * 16 * 8192;
+    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 1024 * 2 * 16 * 65536;
     static_assert(E_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto E_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -199,10 +199,10 @@ private:
         1024,
         2,
         2,
-        4096,
+        32768,
     };
     static constexpr std::ptrdiff_t Ebar_length =
-        chord_datatype_bytes(Ebar_type) * 1024 * 2 * 2 * 4096;
+        chord_datatype_bytes(Ebar_type) * 1024 * 2 * 2 * 32768;
     static_assert(Ebar_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -630,6 +630,10 @@ cudaEvent_t cudaUpchannelizer_chime_U2::execute(cudaPipelineState& /*pipestate*/
 
     DEBUG("Running CUDA Upchannelizer_chime_U2 on GPU frame {:d}", gpu_frame_id);
     const int blocks = blocks_per_frequency * (Fmax - Fmin);
+    DEBUG("More kernel arguments:");
+    DEBUG("    Fmin:   {:d}", Fmin);
+    DEBUG("    Fmax:   {:d}", Fmax);
+    DEBUG("    blocks: {:d}", blocks);
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[symname], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);

@@ -342,7 +342,7 @@ public:
             DEBUG("mark_frame_empty: frame_id={}", frame_id);
             buffer->mark_frame_empty(unique_name, frame_id);
 
-            if (max_frames >= 0 && frame_counter >= max_frames) {
+            if (max_frames >= 0 && frame_counter + 1 >= max_frames) {
                 WARN("Processed {} frames, shutting down Kotekan", frame_counter);
                 exit_kotekan(CLEAN_EXIT);
             }

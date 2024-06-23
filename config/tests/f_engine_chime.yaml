@@ -32,6 +32,7 @@ num_polarizations: 2
 
 # F-Engine simulator: Sky
 source_amplitude: 1.0
+# source_frequency: 400.0e6 + n * 0.390625e6 # [Hz]
 source_frequency: 400.0e6 + 0 * 0.390625e6 # [Hz]
 source_position_ew: 0.02        # east-west
 source_position_ns: 0.03        # north-south
@@ -127,18 +128,17 @@ frequency_channels: [
     1024, 1088, 1152, 1216, 1280, 1344, 1408, 1472, 1536, 1600, 1664, 1728, 1792, 1856, 1920, 1984,
 ]
 
-num_times: 2048
-# num_times: 8192
+#WORKS num_times: 2048
+#WORKS num_times: 4096
+#WORKS num_times: 8192
+num_times: 16384                #WORKS
 
 # Correlator setup
-n2k_sub_integration_ntime: 2048   # 16384
+n2k_sub_integration_ntime: 2 * num_times
 # n2k_samples_per_data_set = max(num_times, n2k_sub_integration_ntime)
-n2k_samples_per_data_set: 2048   # 16384
+n2k_samples_per_data_set: 2 * num_times
 
 # Baseband beamformer setup
-# TODO: use `dish_indices` instead
-bb_num_dishes_M: 4
-bb_num_dishes_N: 256
 # TODO: rename `P`, `Q` to `ew`, `ns`
 bb_num_beams_P: 4
 bb_num_beams_Q: 4
@@ -148,6 +148,7 @@ bb_beam_separation_y: 0.015        # north-south
 bb_num_beams: bb_num_beams_P * bb_num_beams_Q
 
 # Upchannelizer setup
+# TODO: Remove this
 upchannelization_factor: 16
 
 # The GPU-local (not global) channel index range for each upchannelization factor
@@ -447,7 +448,7 @@ host_upchan_U16_voltage_ringbuffer:
 # Stages
 run_fengine:
     kotekan_stage: FEngine
-    num_frames: 1   #TODO 10
+    num_frames: 1
     repeat_count: 10
     skip_julia: true
     E_buffer: host_voltage_buffer

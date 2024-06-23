@@ -39,7 +39,7 @@ std::queue<std::function<void()>> julia_task_queue;
 void runJulia() {
     using namespace std::chrono_literals;
 
-    INFO_F("[JM] Starting Julia run-time system");
+    INFO_F("juliaManager: Starting Julia run-time system");
     {
         // Taking this lock isn't necessary and doesn't help...
         std::unique_lock lk(julia_task_queue_mutex);
@@ -54,14 +54,15 @@ void runJulia() {
         });
     }
 
-    INFO_F("[JM] Julia run-time system is running");
+    INFO_F("juliaManager: Julia run-time system is running");
+#if 0
     while (true) {
         std::function<void()> task;
         // while (!task) {
         {
             std::unique_lock lk(julia_task_queue_mutex);
             if (!julia_task_queue.empty()) {
-                // INFO_F("[JM] Found new task");
+                DEBUG_F("juliaManager: Found new task");
                 task = std::move(julia_task_queue.front());
                 julia_task_queue.pop();
                 if (!task)
@@ -69,9 +70,9 @@ void runJulia() {
             }
         }
         if (task) {
-            // INFO_F("[JM] Running task...");
+            DEBUG_F("juliaManager: Running task...");
             task();
-            // INFO_F("[JM] Done running task.");
+            DEBUG_F("juliaManager: Done running task.");
         } else {
             // Oh no, we are using busy-waiting instead of condition
             // variables! Truth be told, condition variables in C++ are
@@ -81,9 +82,40 @@ void runJulia() {
             std::this_thread::sleep_for(1ms);
         }
     }
+#endif
 
-done:
-    INFO_F("[JM] Stopped Julia run-time system");
+    // Loop until we should terminate
+    while (true) {
+        // Loop while there is a task to run
+        while (true) {
+            std::function<void()> task;
+            {
+                std::unique_lock lk(julia_task_queue_mutex);
+                if (julia_task_queue.empty())
+                    // There is no task, break out of inner loop
+                    goto wait;
+                task = std::move(julia_task_queue.front());
+                julia_task_queue.pop();
+            }
+            if (!task)
+                // An empty task is our termination signal
+                goto terminate;
+            DEBUG_F("juliaManager: Running task...");
+            task();
+            DEBUG_F("juliaManager: Done running task.");
+        }
+
+    wait:
+        // Oh no, we are using busy-waiting instead of condition
+        // variables! Truth be told, condition variables in C++ are
+        // awkward to use, difficult to get correct, and we don't
+        // expect Julia code to be run in production. Busy waiting
+        // is an excellent design choice here.
+        std::this_thread::sleep_for(1ms);
+    }
+
+terminate:
+    INFO_F("juliaManager: Stopped Julia run-time system");
 }
 
 /**
@@ -116,7 +148,7 @@ void juliaShutdown() {
 }
 
 std::any juliaCallAny(const std::function<std::any()>& fun) {
-    // INFO_F("juliaManager: Sending Julia task...");
+    DEBUG_F("juliaManager: Sending Julia task...");
 
     // Check whether the Julia run-time is actually running
     assert(julia_thread.joinable());
@@ -131,11 +163,11 @@ std::any juliaCallAny(const std::function<std::any()>& fun) {
         julia_task_queue.push([&]() { send_result.set_value(fun()); });
     }
 
-    // INFO_F("juliaManager: Waiting for Julia result...");
+    DEBUG_F("juliaManager: Waiting for Julia result...");
     std::future<std::any> recv_result = send_result.get_future();
     const std::any res = recv_result.get();
 
-    // INFO_F("juliaManager: Returning result.");
+    DEBUG_F("juliaManager: Returning result.");
     return res;
 }
 

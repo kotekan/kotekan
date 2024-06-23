@@ -630,6 +630,10 @@ cudaEvent_t cudaUpchannelizer_chord_U64::execute(cudaPipelineState& /*pipestate*
 
     DEBUG("Running CUDA Upchannelizer_chord_U64 on GPU frame {:d}", gpu_frame_id);
     const int blocks = blocks_per_frequency * (Fmax - Fmin);
+    DEBUG("More kernel arguments:");
+    DEBUG("    Fmin:   {:d}", Fmin);
+    DEBUG("    Fmax:   {:d}", Fmax);
+    DEBUG("    blocks: {:d}", blocks);
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[symname], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);

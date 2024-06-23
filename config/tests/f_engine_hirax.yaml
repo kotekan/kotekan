@@ -10,11 +10,19 @@ cpu_affinity: [0,1,2,3,4,5,6,7]
 buffer_depth: 4
 kernel_path: "lib/cuda/kernels"
 
-frame_arrival_period: 2.56e-6 * num_times
+frame_arrival_period: num_samples_per_frame / adc_frequency
 
+sizeof_uint8: 1
+sizeof_uint16: 2
+sizeof_uint32: 4
+sizeof_uint64: 8
+sizeof_int8: 1
 sizeof_int16: 2
 sizeof_int32: 4
+sizeof_int64: 8
 sizeof_float16: 2
+sizeof_float32: 4
+sizeof_float64: 8
 
 # Basic constants
 num_components: 2
@@ -22,7 +30,8 @@ num_polarizations: 2
 
 # F-Engine simulator: Sky
 source_amplitude: 1.0
-source_frequency: 0.3e+9        # [Hz]
+# source_frequency: 400.0e6 + n * 0.390625e6 # [Hz]
+source_frequency: 400.0e6 + 0 * 0.390625e6 # [Hz]
 source_position_ew: 0.02        # east-west
 source_position_ns: 0.03        # north-south
 
@@ -60,20 +69,34 @@ num_samples_per_frame: 2048
 # F-Engine simulator: FT (PFB)
 num_taps: 4
 num_frequencies: 64             # how many frequencies to keep
+# The frequency channels we keep.
+#     A channel's frequency is   freq = channel * adc_frequency / num_samples_per_frame
+#     Note that   channel = freq = 0   is the DC channel.
+#     There are 2.56 channels per MHz, with a channel width of 390625 Hz.
+# (These particular channels were chosen with a fixed step size between these channel boundaries.)
+frequency_channels: [
+    1024, 1040, 1056, 1072, 1088, 1104, 1120, 1136, 1152, 1168, 1184, 1200, 1216, 1232, 1248, 1264,
+    1280, 1296, 1312, 1328, 1344, 1360, 1376, 1392, 1408, 1424, 1440, 1456, 1472, 1488, 1504, 1520,
+    1536, 1552, 1568, 1584, 1600, 1616, 1632, 1648, 1664, 1680, 1696, 1712, 1728, 1744, 1760, 1776,
+    1792, 1808, 1824, 1840, 1856, 1872, 1888, 1904, 1920, 1936, 1952, 1968, 1984, 2000, 2016, 2032,
+]
+
 num_times: 2048                 #TODO 32768
 
 # Baseband beamformer setup
-bb_num_dishes_M: 16
-bb_num_dishes_N: 16
+# TODO: rename `P`, `Q` to `ew`, `ns`
 bb_num_beams_P: 4
 bb_num_beams_Q: 4
+# TODO: rename `x`, `y` to `ew`, `ns`
 bb_beam_separation_x: 0.015        # east-west
 bb_beam_separation_y: 0.015        # north-south
 bb_num_beams: bb_num_beams_P * bb_num_beams_Q
 
 # Upchannelizer setup
+# TODO: Remove this
 upchannelization_factor: 16
 
+# This mapping was suggested by Seth Siegel
 # dm_750_tint_1.0_gamma_0.0:
 #   fbound:
 #   - 800.00
@@ -103,12 +126,81 @@ upchannelization_factor: 16
 #   nbeam: 2359
 #   tsample: 1.02
 
+upchannelization_factor_mapping:
+    # - 0: 32
+    # - 557.05: 16
+    # - 739.42: 8
+    # - 800.00: 4
+    # - 800.00: 2
+    # - 800.00: 1
+    -    0: 32                  # Fmin = 0
+    - 1426: 16                  # Fmin = 26
+    - 1893:  8                  # Fmin = 55
+    - 2048:  4                  # Fmin = 64
+    - 2048:  2                  # Fmin = 64
+    - 2048:  1                  # Fmin = 64
+
+# The GPU-local (not global) channel index range for each upchannelization factor
+# actual = 26, scaled = 832
+upchan_U32_max_num_channels: 1024
+upchan_U32_min_channel: 0
+upchan_U32_max_channel: 26
+upchan_U32_min_output_channel: upchan_all_min_output_channel
+upchan_U32_max_output_channel: upchan_U32_min_output_channel + (upchan_U32_max_channel - upchan_U32_min_channel) * 32
+# actual = 19, scaled = 304
+upchan_U16_max_num_channels: 512
+upchan_U16_min_channel: 26
+upchan_U16_max_channel: 55
+upchan_U16_min_output_channel: upchan_U32_max_output_channel
+upchan_U16_max_output_channel: upchan_U16_min_output_channel + (upchan_U16_max_channel - upchan_U16_min_channel) * 16
+# actual = 9, scaled = 72
+upchan_U8_max_num_channels: 128
+upchan_U8_min_channel: 55
+upchan_U8_max_channel: 64
+upchan_U8_min_output_channel: upchan_U16_max_output_channel
+upchan_U8_max_output_channel: upchan_U8_min_output_channel + (upchan_U8_max_channel - upchan_U8_min_channel) * 8
+# actual = 0, scaled = 0
+upchan_U4_max_num_channels: 0
+upchan_U4_min_channel: 64
+upchan_U4_max_channel: 64
+upchan_U4_min_output_channel: upchan_U8_max_output_channel
+upchan_U4_max_output_channel: upchan_U4_min_output_channel + (upchan_U4_max_channel - upchan_U4_min_channel) * 4
+# actual = 0, scaled = 0
+upchan_U2_max_num_channels: 0
+upchan_U2_min_channel: 64
+upchan_U2_max_channel: 64
+upchan_U2_min_output_channel: upchan_U4_max_output_channel
+upchan_U2_max_output_channel: upchan_U2_min_output_channel + (upchan_U2_max_channel - upchan_U2_min_channel) * 2
+# actual = 0, scaled = 0
+upchan_U1_max_num_channels: 0
+upchan_U1_min_channel: 64
+upchan_U1_max_channel: 64
+upchan_U1_min_output_channel: upchan_U2_max_output_channel
+upchan_U1_max_output_channel: upchan_U1_min_output_channel + (upchan_U1_max_channel - upchan_U1_min_channel) * 1
+
+upchan_all_max_num_output_channels: 1664
+upchan_all_min_output_channel: 0
+upchan_all_max_output_channel: upchan_U1_max_output_channel
+
 # FRB beamformer setup
-frb_downsampling_factor: 25
-# frb_num_output_times: num_times / upchannelization_factor / frb_downsampling_factor   # rounding up to next power of 2
-frb_num_output_times: 8
+frb_downsampling_factor: 256 / upchannelization_factor
+# cudaQuantize requires `frb_num_output_times` to be a multiple of 256
+frb_num_output_times: 256
+# TODO: remove
 frb_num_beams_P: 2 * num_dish_locations_ns
 frb_num_beams_Q: 2 * num_dish_locations_ew
+
+frb_num_beams_ns: 64
+frb_num_beams_ew: 40
+frb_num_beams: frb_num_beams_ns * frb_num_beams_ew
+# Opening angle is specified in radians (here 2 degrees)
+frb_bore_z: 49.3208 * 3.141592653589793 / 180
+frb_opening_angle_ns: 2.0 * 3.141592653589793 / 180
+frb_opening_angle_ew: 2.0 * 3.141592653589793 / 180
+
+frb_chunk_size: 256
+
+CONTINUE HERE
 
 # Pool:
 main_pool:

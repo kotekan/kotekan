@@ -107,7 +107,7 @@ elseif setup ≡ :chime
     const P = 2
     const F₀ = 128
     const F = 16
-    const T = 4 * 2048
+    const T = 4 * 16384
 
     const T1_stride = 128
     const T2_stride = 32

@@ -1,7 +1,7 @@
 using ASDF2
 using CUDASIMDTypes
 using CairoMakie
-using ITerm2Images
+using SixelTerm
 
 setup = :pathfinder
 
@@ -14,7 +14,7 @@ i2t(x::Int4x2) = convert(NTuple{2,Int8}, x)
 i2c(x::Int4x2) = t2c(i2t(x))
 
 # TODO: Read this from metadata
-U = 16
+U = 2
 
 quantity_E = "voltage"
 file_E = ASDF2.load_file("$(dir)/$(prefix)$(quantity_E).$(iter).asdf")
@@ -88,12 +88,11 @@ for dish in 1:ndishs
     push!(dishsy, -dishsΔy * (dishi - dishsi₀))
 end
 
-# Most of the power is in frequency 3
+# Most of the power is in frequency 1
 # (TODO: Read this from metadata)
 # freq = 1:nfreqs
 freq = 1
-freqbar = 1:nfreqbars
-# freqbar = 3 * U
+freqbar = 33
 
 function aspect!(fig::Figure, row::Integer, col::Integer, ratio_x_over_y)
     if ratio_x_over_y > 4 / 3
@@ -109,11 +108,11 @@ data = Float32[
         sum(abs2(real(Complex{Float32}(i2c(j)))) for j in view(array_E, dish, :, freq, :)) / length(view(array_E, dish, :, freq, :))
     ) for dish in 1:ndishs
 ]
-fig = Figure(; size=(1280, 960))
+fig = Figure(; size=(640, 480))
 ax = Axis(fig[1, 1]; title="$setup X-engine electric field", xlabel="x", ylabel="y")
 xlims!(ax, dishs_xlim)
 ylims!(ax, dishs_ylim)
-obj = scatter!(ax, dishsx, dishsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
+obj = scatter!(ax, dishsx, dishsy; color=data, colormap=:plasma, markersize=480 / sqrt(2 * length(data)))
 Colorbar(fig[1, 2], obj; label="|dish|₂")
 aspect!(fig, 1, 1, dishs_xsize / dishs_ysize)
 display(fig)
@@ -124,11 +123,11 @@ data = Float32[
         length(view(array_Ebar, dish, :, freqbar, :)),
     ) for dish in 1:ndishs
 ]
-fig = Figure(; size=(1280, 960))
+fig = Figure(; size=(640, 480))
 ax = Axis(fig[1, 1]; title="$setup X-engine upchannelized electric field (U=$U)", xlabel="x", ylabel="y")
 xlims!(ax, dishs_xlim)
 ylims!(ax, dishs_ylim)
-obj = scatter!(ax, dishsx, dishsy; color=data, colormap=:plasma, markersize=960 / sqrt(2 * length(data)))
+obj = scatter!(ax, dishsx, dishsy; color=data, colormap=:plasma, markersize=480 / sqrt(2 * length(data)))
 Colorbar(fig[1, 2], obj; label="|dish|₂")
 aspect!(fig, 1, 1, dishs_xsize / dishs_ysize)
 display(fig)
