@@ -40,17 +40,23 @@ ftoi4(x::Complex{T}) where {T<:Real} = Int4x2(round.(Int8, clamp.(reim(x) .* T(7
 # We represent the source as complex - valued function of time.The two
 # complex components represent the two polarisations.
 
-struct Source{F}
-    fun::F
-    sinx::Float
-    siny::Float
+# The product f₀ * t can become too large to be represented accurately
+# via single precision. We need to use double precision.
+
+struct Source{T}
+    f₀::T
+    A::Complex{T}
+    sinx::T
+    siny::T
 end
 
-function make_monochromatic_source(A::Complex{Float}, f₀::Float)
-    function source(t::Float)
-        return (A * cispi(2 * f₀ * t))::Complex{Float}
-    end
-    return source
+function eval_source(source::Source{T}, dishx::T, dishy::T, t₀::T) where {T<:Real}
+    t = t₀ + source.sinx * dishx / c₀ + source.siny * dishy / c₀
+    return source.A * cispi(2 * source.f₀ * t)
+end
+
+function eval_sources(sources::Vector{Source{T}}, dishx::T, dishy::T, t₀::T) where {T<:Real}
+    return sum(eval_source(source, dishx, dishy, t₀) for source in sources)
 end
 
 ################################################################################
@@ -81,14 +87,6 @@ function make_dishes(
 end
 
 ################################################################################
-# Receiver
-
-function dish_source(source::Source, dishx::Float, dishy::Float, t::Float)
-    # TODO: Take beam shape into account
-    return source.fun(t + source.sinx * dishx / c₀ + source.siny * dishy / c₀)::Complex{Float}
-end
-
-################################################################################
 # F-engine: ADC
 
 struct ADC
@@ -102,20 +100,20 @@ struct ADCFrame{T}
     data::Array{T,3}            # [time, dish, polr]
 end
 
-function adc_sample(::Type{T}, source::Source, dishes::Dishes, adc::ADC, time::Int, dish::Int, polr::Int) where {T<:Real}
+function adc_sample(::Type{T}, source::Source{T}, dishes::Dishes, adc::ADC, time::Int, dish::Int, polr::Int) where {T<:Real}
     t₀ = adc.t₀
     Δt = adc.Δt
 
     location = dishes.locations[dish]
     dishx, dishy = location
     t = t₀ + Δt * (time - 1)
-    val = dish_source(source, dishx, dishy, t)
+    val = eval_source(source, dishx, dishy, t)
     res = reim(val)[polr]
 
     return res
 end
 
-function adc_sample(::Type{T}, source::Source, dishes::Dishes, adc::ADC, ntimes::Int) where {T<:Real}
+function adc_sample(::Type{T}, sources::Vector{Source{T}}, dishes::Dishes, adc::ADC, ntimes::Int) where {T<:Real}
     t₀ = adc.t₀
     Δt = adc.Δt
     ndishes = length(dishes.locations)
@@ -127,7 +125,7 @@ function adc_sample(::Type{T}, source::Source, dishes::Dishes, adc::ADC, ntimes:
         dishx, dishy = location
         for time in 1:ntimes
             t = t₀ + Δt * (time - 1)
-            val = dish_source(source, dishx, dishy, t)
+            val = eval_sources(sources, dishx, dishy, t)
             data[time, dish, 1] = real(val)
             data[time, dish, 2] = imag(val)
         end
@@ -469,8 +467,12 @@ function quantize(::Type{I}, xframe::XFrame{T}) where {I<:Integer,T<:Real}
     # 
     #     idata1 .= clamp.(round.(Int8, scale * xdata1), T(-7), T(+7))
     # end
-    maxabs = sqrt(maximum(abs2, xdata))
-    scale = T(7.5) / maxabs
+
+    # maxabs = sqrt(maximum(abs2, xdata))
+    # scale = T(7.5) / maxabs
+
+    scale = T(7.5)
+
     idata = clamp.(round.(I, scale * xdata), I(-7), I(+7))
 
     values = -7:+7
@@ -487,8 +489,8 @@ end
 # F-engine: run
 
 function run(
-    source_amplitude::Float,
-    source_frequency::Float,
+    source_channels::Vector{Float},
+    source_amplitudes::Vector{Float},
     source_position_ew::Float,
     source_position_ns::Float,
     num_dish_locations_ew::Int64,
@@ -507,14 +509,16 @@ function run(
     bb_num_beams_Q::Int64,
     nframes::Int64,
 )
-    println("Setting up source...")
-    source = let
-        A = Complex{Float}(source_amplitude)
-        f₀ = source_frequency            # Hz
-        sin_ew = sin(source_position_ew) # east-west
-        sin_ns = sin(source_position_ns) # north-south
-        Source(make_monochromatic_source(A, f₀), sin_ew, sin_ns)
-    end
+    println("Setting up sources...")
+    sources = Source{Float}[
+        let
+            A = Complex{Float}(amplitude)
+            f₀ = channel * adc_frequency / nsamples
+            sin_ew = sin(source_position_ew) # east-west
+            sin_ns = sin(source_position_ns) # north-south
+            Source{Float}(f₀, A, sin_ew, sin_ns)
+        end for (channel, amplitude) in zip(source_channels, source_amplitudes)
+    ]
 
     println("Setting up dishes...")
     dishes = let
@@ -547,7 +551,7 @@ function run(
 
     println("ADC sampling...")
     ntimes_total = nsamples * (nframes * ntimes + ntaps - 1)
-    adcframe = adc_sample(Float, source, dishes, adc, ntimes_total)
+    adcframe = adc_sample(Float, sources, dishes, adc, ntimes_total)
 
     println("PFB FFT...")
     fframe = f_engine(pfb, adcframe)
@@ -568,13 +572,14 @@ function run(
 end
 
 function setup(
-    source_amplitude=1.0,
-    source_frequency=0.3e+9,
+    nsources=1,
+    source_channels_ptr=Ptr{Cfloat}(),
+    source_amplitudes_ptr=Ptr{Cfloat}(),
     source_position_ew=0.02,
     source_position_ns=0.03,
     num_dish_locations_ew=8,
     num_dish_locations_ns=8,
-    dish_indices_ptr=Ptr{Cvoid}(), # [(m,n) for m in 0:M-1, n in 0:N-1],
+    dish_indices_ptr=Ptr{Cint}(),
     dish_separation_ew=6.3,
     dish_separation_ns=8.5,
     ndishes=num_dish_locations_ew * num_dish_locations_ns,
@@ -582,15 +587,21 @@ function setup(
     ntaps=4,
     nsamples=128,
     nfreqs=64,
-    frequency_channels_ptr=Ptr{Cvoid}(),
+    frequency_channels_ptr=Ptr{Cint}(),
     ntimes=64,
     nbeams_i=12,
     nbeams_j=8,
     nframes=2,
 )
+    source_channels_ptr = Ptr{Cfloat}(source_channels_ptr)
+    source_amplitudes_ptr = Ptr{Cfloat}(source_amplitudes_ptr)
+    dish_indices_ptr = Ptr{Cint}(dish_indices_ptr)
+    frequency_channels_ptr = Ptr{Cint}(frequency_channels_ptr)
+
     println("F-Engine setup:")
-    println("    - source_amplitude:       $source_amplitude")
-    println("    - source_frequency:       $source_frequency")
+    println("    - nsources:               $nsources")
+    println("    - source_channels_ptr:    $source_channels_ptr")
+    println("    - source_amplitudes_ptr:  $source_amplitudes_ptr")
     println("    - source_position_ew:     $source_position_ew")
     println("    - source_position_ns:     $source_position_ns")
     println("    - num_dish_locations_ew:  $num_dish_locations_ew")
@@ -609,9 +620,22 @@ function setup(
     println("    - nbeams_j:               $nbeams_j")
     println("    - nframes:                $nframes")
 
-    dish_indices = if dish_indices_ptr != Ptr{Cvoid}()
+    source_channels = if source_channels_ptr != C_NULL
+        Float[unsafe_load(source_channels_ptr, source) for source in 1:nsources]
+    else
+        Float[1536 + source for source in 0:(nsources - 1)]
+    end
+    source_amplitudes = if source_amplitudes_ptr != C_NULL
+        Float[unsafe_load(source_amplitudes_ptr, source) for source in 1:nsources]
+    else
+        Float[1 for source in 1:nsources]
+    end
+    println("    - source_channels:        $source_channels")
+    println("    - source_amplitudes:      $source_amplitudes")
+
+    dish_indices = if dish_indices_ptr != C_NULL
         Int64[
-            unsafe_load(Ptr{Cint}(dish_indices_ptr), loc_ew + num_dish_locations_ew * loc_ns + 1) for
+            unsafe_load(dish_indices_ptr, loc_ew + num_dish_locations_ew * loc_ns + 1) for
             loc_ew in 0:(num_dish_locations_ew - 1), loc_ns in 0:(num_dish_locations_ns - 1)
         ]
     else
@@ -619,21 +643,23 @@ function setup(
     end
     dish_indices::Array{Int64,2}
     @assert size(dish_indices) == (num_dish_locations_ew, num_dish_locations_ns)
+    println("    - dish_indices:           $dish_indices")
 
-    frequency_channels = if frequency_channels_ptr != Ptr{Cvoid}()
-        Int64[unsafe_load(Ptr{Cint}(frequency_channels_ptr), n) for n in 1:nfreqs]
+    frequency_channels = if frequency_channels_ptr != C_NULL
+        Int64[unsafe_load(frequency_channels_ptr, n) for n in 1:nfreqs]
     else
         Int64[n for n in 1:nfreqs]
     end
+    println("    - frequency_channels:     $frequency_channels")
 
     return run(
-        Float(source_amplitude),
-        Float(source_frequency),
+        source_channels::Vector{Float},
+        source_amplitudes::Vector{Float},
         Float(source_position_ew),
         Float(source_position_ns),
         Int64(num_dish_locations_ew),
         Int64(num_dish_locations_ns),
-        dish_indices,
+        dish_indices::Array{Int64,2},
         Float(dish_separation_ew),
         Float(dish_separation_ns),
         Int64(ndishes),
@@ -641,7 +667,7 @@ function setup(
         Int64(ntaps),
         Int64(nsamples),
         Int64(nfreqs),
-        frequency_channels,
+        frequency_channels::Vector{Int64},
         Int64(ntimes),
         Int64(nbeams_i),
         Int64(nbeams_j),

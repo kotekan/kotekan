@@ -2,23 +2,48 @@ using PrettyTables
 using TypedTables
 
 # Load the code
-include("../../lib/stages/FEngine.jl")
+include("../src/FEngine.jl")
 using .FEngine
 
-function calibrate_upchan1(M, U, delta)
-    adcfreq = 3.2e9
-    freq = 0.3e9
-    channel = 1536
-
+function calibrate_pfb(delta)
     ntaps = 4
-    nsamples = 16384
-    ntimes = 16 * U
+    nsamples = 1024 # 16384
+    ntimes = 16
+
+    adcfreq = 3200.0e+6
+    # freq = channel * adcfreq / nsamples
+    freq = 300.0e+6
+    channel = Int(freq / adcfreq * nsamples)
 
     # Set up some data, a monochromatic source in the middle between two channels
     x = sinpi.(2 * (freq / adcfreq + delta / nsamples) * (0:(nsamples * (ntimes + ntaps - 1) - 1)))
     # First PFB
     y = FEngine.upchan(x, ntaps, nsamples)
-    y /= maximum(abs, y)
+    # y /= maximum(abs, y)
+    y /= nsamples/2
+
+    amplitude = maximum(abs, y[channel+1, :])
+    # println("Coarse amplitude: ", amplitude)
+
+    return amplitude
+end
+
+function calibrate_upchan1(M, U, delta)
+    ntaps = 4
+    nsamples = 1024 # 16384
+    ntimes = 16 * U
+
+    adcfreq = 3200.0e+6
+    # freq = channel * adcfreq / nsamples
+    freq = 300.0e+6
+    channel = Int(freq / adcfreq * nsamples)
+
+    # Set up some data, a monochromatic source in the middle between two channels
+    x = sinpi.(2 * (freq / adcfreq + delta / nsamples) * (0:(nsamples * (ntimes + ntaps - 1) - 1)))
+    # First PFB
+    y = FEngine.upchan(x, ntaps, nsamples)
+    # y /= maximum(abs, y)
+    y /= nsamples/2
 
     # println("Coarse amplitude: ", maximum(abs, y[channel+1, :]))
 
@@ -45,7 +70,7 @@ function calibrate_upchan(M, Ulogmax)
             println("U: $U   u: $u   A: $amplitude")
         end
     end
-    return nothign
+    return nothing
 end
 
 # calibrate_upchan(4, 7)

@@ -41,8 +41,8 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
 
     // Sky
-    source_amplitude(config.get<float>(unique_name, "source_amplitude")),
-    source_frequency(config.get<float>(unique_name, "source_frequency")),
+    source_channels(config.get<std::vector<float>>(unique_name, "source_channels")),
+    source_amplitudes(config.get<std::vector<float>>(unique_name, "source_amplitudes")),
     source_position_ew(config.get<float>(unique_name, "source_position_ew")),
     source_position_ns(config.get<float>(unique_name, "source_position_ns")),
 
@@ -194,6 +194,8 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     W2_buffer(get_buffer("W2_buffer")), I1_buffer(get_buffer("I1_buffer"))
 
 {
+    assert(source_channels.size() == source_amplitudes.size());
+
     assert(num_dishes >= 0 && num_dishes <= num_dish_locations);
     assert(std::ptrdiff_t(dish_indices.size()) == num_dish_locations_ew * num_dish_locations_ns);
     int num_dishes_seen = 0;
@@ -272,7 +274,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     if (!skip_julia) {
         INFO("Defining Julia code...");
         {
-            const auto julia_source_filename = "lib/stages/FEngine.jl";
+            const auto julia_source_filename = "julia/src/FEngine.jl";
             std::ifstream file(julia_source_filename);
             if (!file.is_open())
                 FATAL_ERROR(
@@ -315,12 +317,15 @@ void FEngine::main_thread() {
             assert(f_engine_module);
             jl_function_t* const setup = jl_get_function(f_engine_module, "setup");
             assert(setup);
-            const int nargs = 19;
+            const int nargs = 20;
             jl_value_t** args;
             JL_GC_PUSHARGS(args, nargs);
             int iargc = 0;
-            args[iargc++] = jl_box_float32(source_amplitude);
-            args[iargc++] = jl_box_float32(source_frequency);
+            args[iargc++] = jl_box_int64(source_channels.size());
+            args[iargc++] = jl_box_voidpointer(
+                const_cast<void*>(static_cast<const void*>(source_channels.data())));
+            args[iargc++] = jl_box_voidpointer(
+                const_cast<void*>(static_cast<const void*>(source_amplitudes.data())));
             args[iargc++] = jl_box_float32(source_position_ew);
             args[iargc++] = jl_box_float32(source_position_ns);
             args[iargc++] = jl_box_int64(num_dish_locations_ew);
@@ -344,6 +349,10 @@ void FEngine::main_thread() {
             assert(iargc == nargs);
             jl_value_t* const res = jl_call(setup, args, nargs);
             JL_GC_POP();
+            if (jl_exception_occurred())
+                FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
+            if (!res)
+                FATAL_ERROR("Could not initialize F-Engine");
             assert(res);
         });
         INFO("Done initializing world.");

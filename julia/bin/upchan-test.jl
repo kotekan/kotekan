@@ -2,7 +2,7 @@
 # using SixelTerm
 
 # Load the code
-include("../lib/stages/FEngine.jl")
+include("src/FEngine.jl")
 using .FEngine
 
 # ntaps = 4
@@ -23,7 +23,7 @@ maximum(abs, y[1538, :] - y[1537, :])
 maximum(abs, y[1538, :] + y[1537, :])
 
 # Load the code (again)
-include("../lib/stages/FEngine.jl")
+include("src/FEngine.jl")
 
 z1 = FEngine.upchan(y[1537, :], 4, 8);
 z2 = FEngine.upchan(y[1538, :], 4, 8);
