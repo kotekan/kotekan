@@ -542,12 +542,17 @@ int main(int argc, char** argv) {
             ERROR_NON_OO("Unable to load config from {:s}", config_file_name);
             exit(-1);
         }
-        json config_json = {};
+        // Remove all characters before the first '{' and after the last '}'
+        size_t start = json_string.find_first_of('{');
+        size_t end = json_string.find_last_of('}');
+        json_string = json_string.substr(start, end - start + 1);
+	json config_json = {};
         try {
             config_json = json::parse(json_string);
         } catch (const json::exception& exp) {
             ERROR_NON_OO("Unable to parse JSON");
-            ERROR_NON_OO("Error {:s}", exp.what());
+            ERROR_NON_OO("JSON string: {:s}", json_string);
+	    ERROR_NON_OO("Error {:s}", exp.what());
             exit(-1);
         }
         config.update_config(config_json);

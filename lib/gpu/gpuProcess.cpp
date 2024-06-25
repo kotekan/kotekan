@@ -155,39 +155,48 @@ void gpuProcess::main_thread() {
     bool first_run = true;
 
     while (!stop_thread) {
-	DEBUG("Waiting for free slot for GPU[{:d}] frame {:d}", gpu_id, gpu_frame_counter);
-        // We make sure we aren't using a gpu slot that's currently in-flight.
-        int slot = gpu_frame_counter % final_signals.size();
-        final_signals[slot]->wait_for_free_slot();    
+   
+        double start_time = e_time();
+        DEBUG("Waiting for free slot for GPU[{:d}] frame {:d}", gpu_id, gpu_frame_counter);
+        // We make sure we aren't using a gpu frame that's currently in-flight.
+        int ic = gpu_frame_counter % final_signals.size();
+        final_signals[ic]->wait_for_free_slot();
 
-	// Update the frame counters for all commands in the current slot. 
+        double elapsed_time = e_time() - start_time;
+        INFO("free_slot time: {}", elapsed_time);
+
+
         for (auto& command : commands) {
             int ic = gpu_frame_counter % command.size();
             command[ic]->start_frame(gpu_frame_counter);
         }
 
+
+        start_time = e_time();
         // Wait for all the required preconditions
         // This is things like waiting for the input buffer to have data
         // and for there to be free space in the output buffers.
         // INFO("Waiting on preconditions for GPU[{:d}][{:d}]", gpu_id, gpu_frame_id);
         for (auto& command : commands) {
             int ic = gpu_frame_counter % command.size();
-	    assert(command.size() == _gpu_buffer_depth);
             if (command[ic]->wait_on_precondition() != 0) {
                 INFO("Received exit signal from GPU command precondition (Command '{:s}')",
                      command[ic]->get_name());
                 goto exit_loop;
             }
         }
+        INFO("precondition time: {}", e_time() - start_time);
 
-	// Queue the commands
+        start_time = e_time();
         queue_commands(gpu_frame_counter);
-        
-	// Start the results thread
-	if (first_run) {
+        INFO("queue_commands time: {}", e_time() - start_time);
+
+
+        if (first_run) {
             results_thread_handle = std::thread(&gpuProcess::results_thread, std::ref(*this));
 
             // Requires Linux, this could possibly be made more general someday.
+            // TODO Move to config
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
             for (auto& i : config.get<std::vector<int>>(unique_name, "cpu_affinity"))
@@ -197,7 +206,7 @@ void gpuProcess::main_thread() {
             first_run = false;
         }
 
-        gpu_frame_counter++;
+        gpu_frame_counter++; 
     }
 exit_loop:
     for (auto& sig_container : final_signals)

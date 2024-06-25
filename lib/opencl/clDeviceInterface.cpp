@@ -112,8 +112,17 @@ void clDeviceInterface::prepareCommandQueue(bool enable_profiling) {
     // Create command queues
     for (int i = 0; i < NUM_QUEUES; ++i) {
         if (enable_profiling == true) {
-            queue[i] = clCreateCommandQueue(context, device_id, CL_QUEUE_PROFILING_ENABLE, &err);
-            CHECK_CL_ERROR(err);
+		
+            // queue[i] = clCreateCommandQueue(context, device_id, CL_QUEUE_PROFILING_ENABLE, &err);
+	                // Get the maximum device queue size
+            size_t queue_size;
+            CHECK_CL_ERROR(clGetDeviceInfo(device_id, CL_DEVICE_QUEUE_ON_DEVICE_PREFERRED_SIZE, sizeof(size_t),
+                                           &queue_size, nullptr));
+            INFO("GPU id: {:d} Queue size: {:d}", (size_t)device_id, queue_size);
+ 
+            cl_queue_properties properties[] = { CL_QUEUE_PROPERTIES, 0, 0};
+	    queue[i] = clCreateCommandQueueWithProperties(context, device_id, properties, &err);
+	    CHECK_CL_ERROR(err);
         } else {
             queue[i] = clCreateCommandQueue(context, device_id, 0, &err);
             CHECK_CL_ERROR(err);

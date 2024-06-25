@@ -48,6 +48,8 @@ cl_event clOutputData::execute(cl_event pre_event) {
 
     void* host_output_frame = (void*)out_buf->frames[out_frame_index];
 
+    assert(pre_event != nullptr);
+
     // Transfer data from the device to host
     device.async_copy_gpu_to_host(_gpu_memory, gpu_frame_id, host_output_frame,
                                   out_buf->aligned_frame_size, pre_event, post_event);

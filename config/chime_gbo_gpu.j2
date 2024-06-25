@@ -19,8 +19,8 @@ log_level: info
 
 buffer_depth: 12
 # Set to something small like 30 to make startup faster
-baseband_buffer_depth: 228 # ~33 seconds after accounting for margin.
-samples_per_data_set: 32768 * 2
+baseband_buffer_depth:  20 # ~33 seconds after accounting for margin.
+samples_per_data_set: 32768 * 4
 num_local_freq: 8
 num_freq_in_frame: num_local_freq
 num_elements: 256
@@ -54,7 +54,7 @@ telescope:
 ###############
 
 dataset_manager:
-    use_dataset_broker: true # We need this to be true for the N2 recv system to work
+    use_dataset_broker: false # We need this to be true for the N2 recv system to work
     ds_broker_host: 10.41.1.5 # aux
     ds_broker_port: 12050
 
@@ -183,7 +183,7 @@ dpdk:
     kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
     lcore_cpu_map: [0, 1, 2, 3, 4, 5, 6, 7, 24, 25, 26, 27, 28, 29, 30, 31]
-    master_lcore_cpu: 9
+    main_lcore_cpu: 9
     fpga_packet_size: 4800
     num_mem_channels: 8
     alignment: samples_per_data_set * 32
@@ -257,7 +257,7 @@ baseband_merge:
 
 # Transmit baseband data to the baseband receiver
 baseband_send:
-    kotekan_stage: bufferSend
+    #kotekan_stage: bufferSend
     buf: baseband_output_buffer_merged
     server_port: 11027
     server_ip: 10.51.1.6 # c1
@@ -271,22 +271,23 @@ baseband_send:
 ### End Baseband Section ###
 
 meta_debug_0:
-    kotekan_stage: chimeMetadataDump
+    #kotekan_stage: chimeMetadataDump
     in_buf: gpu_input_buffer_0
 
 meta_debug_1:
-    kotekan_stage: chimeMetadataDump
+    #kotekan_stage: chimeMetadataDump
     in_buf: gpu_input_buffer_1
 
 
 ### GPU Processing ###
 
 gpu:
-    profiling: true
+    profiling: false
     log_profiling: false
     kernel_path: "/var/lib/kotekan/opencl/kernels/"
     gain_dir: "/etc/kotekan/"
     log_level: warn
+    buffer_depth: 32
     frame_arrival_period: samples_per_data_set / 390625.0 / num_links
     commands: &command_list
       - name: clInputData
@@ -312,8 +313,9 @@ gpu:
 {%- endfor %}
     gpu_0:
         kotekan_stage: clProcess
-        cpu_affinity: [10]
+        cpu_affinity: [10,11,12]
         gpu_id: 0
+        log_level: INFO
         commands: *command_list
         in_buffers:
 {%- for id in range(16) %}
@@ -325,7 +327,7 @@ gpu:
 {%- endfor %}
     gpu_1:
         kotekan_stage: clProcess
-        cpu_affinity: [34]
+        cpu_affinity: [10,11,12] # [34,35,36]
         gpu_id: 1
         commands: *command_list
         in_buffers:
@@ -345,19 +347,19 @@ vis_accumulate_stages:
     max_age: 80.0
 {%- for id in range(16) %}
     acc_{{ id }}:
-        kotekan_stage: visAccumulate
+        #kotekan_stage: visAccumulate
         in_buf: gpu_output_split_buffer_{{ id }}
         out_buf: visbuf_40s_{{ id }}
 {%- endfor %}
 {%- for id in range(16,32) %}
     acc_{{ id }}:
-        kotekan_stage: visAccumulate
+        #kotekan_stage: visAccumulate
         in_buf: gpu_output_split_buffer_{{ id }}
         out_buf: visbuf_40s_{{ id }}
 {%- endfor %}
 
 merge_acc_0:
-    kotekan_stage: bufferMerge
+    #kotekan_stage: bufferMerge
     in_bufs:
 {%- for id in range(16) %}
         - visbuf_40s_{{ id }}
@@ -365,7 +367,7 @@ merge_acc_0:
     out_buf: visbuf_40s_merged_0
 
 merge_acc_1:
-    kotekan_stage: bufferMerge
+    #kotekan_stage: bufferMerge
     in_bufs:
 {%- for id in range(16,32) %}
         - visbuf_40s_{{ id }}
@@ -385,18 +387,18 @@ eigcalc:
     bands_filled: [[0, 7], [61, 67]]
     exclude_inputs: [37, 51, 61, 104, 110, 111, 123]
     eigcalc_0:
-        kotekan_stage: EigenVisIter
+        #kotekan_stage: EigenVisIter
         cpu_affinity: [15]
         in_buf: visbuf_40s_merged_0
         out_buf: visbuf_eig_40s_merged_0
     eigcalc_1:
-        kotekan_stage: EigenVisIter
+        #kotekan_stage: EigenVisIter
         cpu_affinity: [39]
         in_buf: visbuf_40s_merged_1
         out_buf: visbuf_eig_40s_merged_1
 
 merge_acc_final:
-    kotekan_stage: bufferMerge
+    #kotekan_stage: bufferMerge
     # Force a copy into NUMA2 since that contains the output NIC
     force_copy: true
     in_bufs:
@@ -411,7 +413,7 @@ buffer_send:
     reconnect_time: 20
     log_level: warn
     n2:
-        kotekan_stage: bufferSend
+        #kotekan_stage: bufferSend
         buf: visbuf_eig_40s_merged_final
         server_port: 11024
 
