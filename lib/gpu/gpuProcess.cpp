@@ -156,23 +156,16 @@ void gpuProcess::main_thread() {
 
     while (!stop_thread) {
    
-        double start_time = e_time();
-        DEBUG("Waiting for free slot for GPU[{:d}] frame {:d}", gpu_id, gpu_frame_counter);
         // We make sure we aren't using a gpu frame that's currently in-flight.
+        DEBUG("Waiting for free slot for GPU[{:d}] frame {:d}", gpu_id, gpu_frame_counter);
         int ic = gpu_frame_counter % final_signals.size();
         final_signals[ic]->wait_for_free_slot();
-
-        double elapsed_time = e_time() - start_time;
-        INFO("free_slot time: {}", elapsed_time);
-
 
         for (auto& command : commands) {
             int ic = gpu_frame_counter % command.size();
             command[ic]->start_frame(gpu_frame_counter);
         }
 
-
-        start_time = e_time();
         // Wait for all the required preconditions
         // This is things like waiting for the input buffer to have data
         // and for there to be free space in the output buffers.
@@ -185,12 +178,8 @@ void gpuProcess::main_thread() {
                 goto exit_loop;
             }
         }
-        INFO("precondition time: {}", e_time() - start_time);
 
-        start_time = e_time();
         queue_commands(gpu_frame_counter);
-        INFO("queue_commands time: {}", e_time() - start_time);
-
 
         if (first_run) {
             results_thread_handle = std::thread(&gpuProcess::results_thread, std::ref(*this));
@@ -224,17 +213,12 @@ void gpuProcess::results_thread() {
     int gpu_frame_counter = 0;
 
     while (true) {
-        // Wait for a signal to be completed
-        DEBUG2("Waiting for signal for gpu[{:d}], frame {:d}, time: {:f}", gpu_id,
-               gpu_frame_counter, e_time());
         int ic = gpu_frame_counter % final_signals.size();
         if (final_signals[ic]->wait_for_signal() == -1) {
             // If wait_for_signal returns -1, then we don't have a signal to wait on,
             // but we have been given a shutdown request, so break this loop.
             break;
         }
-        DEBUG2("Got final signal for gpu[{:d}], frame {:d}, time: {:f}", gpu_id, gpu_frame_counter,
-               e_time());
 
         for (auto& command : commands) {
             // Note the fact that we don't run `finalize_frame()` when the shutdown

@@ -42,7 +42,7 @@ cpu_affinity: [11, 12, 13, 35, 36, 37]
 
 telescope:
     name: ICETelescope
-    require_gps: false
+    require_gps: true
     query_gps: true
     gps_host: 10.40.1.1 # `gw`
     allow_default_frequency_map: true
@@ -80,6 +80,7 @@ gpu_input_buffers:
     num_frames: baseband_buffer_depth
     frame_size: samples_per_data_set * num_elements * num_local_freq
     metadata_pool: main_pool
+    use_hugepages: true
 {%- for id in range(16) %}
     gpu_input_buffer_{{ id }}:
         numa_node: 0
@@ -181,7 +182,7 @@ dpdk:
     kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
     lcore_cpu_map: [0, 1, 2, 3, 4, 5, 6, 7, 24, 25, 26, 27, 28, 29, 30, 31]
-    master_lcore_cpu: 9
+    main_lcore_cpu: 9
     fpga_packet_size: 4160
     num_mem_channels: 8
     alignment: samples_per_data_set * 32
@@ -280,11 +281,13 @@ meta_debug_1:
 ### GPU Processing ###
 
 gpu:
-    profiling: true
+    # Profiling must be disabled to avoid an issue with ROCm 6.1
+    profiling: false
     log_profiling: false
     kernel_path: "/var/lib/kotekan/opencl/kernels/"
     gain_dir: "/etc/kotekan/"
     log_level: warn
+    buffer_depth: 32
     frame_arrival_period: samples_per_data_set / 390625.0 / num_links
     commands: &command_list
       - name: clInputData
@@ -310,7 +313,7 @@ gpu:
 {%- endfor %}
     gpu_0:
         kotekan_stage: clProcess
-        cpu_affinity: [10]
+        cpu_affinity: [10,11,12]
         gpu_id: 0
         commands: *command_list
         in_buffers:
@@ -323,7 +326,7 @@ gpu:
 {%- endfor %}
     gpu_1:
         kotekan_stage: clProcess
-        cpu_affinity: [34]
+        cpu_affinity: [10,11,12] # [34,35,36]
         gpu_id: 1
         commands: *command_list
         in_buffers:
