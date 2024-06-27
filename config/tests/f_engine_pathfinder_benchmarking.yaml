@@ -34,8 +34,12 @@ num_components: 2
 num_polarizations: 2
 
 # F-Engine simulator: Sky
-source_amplitude: 1.0
-source_frequency: 0.3e+9        # [Hz]
+noise_amplitude: 1.0/3.0        # 2.3/7.5
+
+# frequency = channel * adc_frequency / num_samples_per_frame
+# frequency = channel * 0.1953125 MHz
+source_channels: [1536]
+source_amplitudes: [1]
 source_position_ew: 0.02        # east-west
 source_position_ns: 0.03        # north-south
 
@@ -215,6 +219,22 @@ upchan_U1_max_output_channel: upchan_U1_min_output_channel + (upchan_U1_max_chan
 upchan_all_max_num_output_channels: 4096
 upchan_all_min_output_channel: 0
 upchan_all_max_output_channel: upchan_U1_max_output_channel
+
+# Upchannelization gains
+upchan_U2_gains: [1, 1]
+upchan_U4_gains: [1, 1, 1, 1]
+upchan_U8_gains: [1, 1, 1, 1, 1, 1, 1, 1]
+upchan_U16_gains: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+upchan_U32_gains: [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+]
+upchan_U64_gains: [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+]
 
 # FRB beamformer setup
 frb_downsampling_factor: 256 / upchannelization_factor
