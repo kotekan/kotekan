@@ -1,0 +1,46 @@
+# -*-yaml-*-
+
+# Universal definitions
+
+################################################################################
+
+# Type sizes
+
+sizeof_uint8: 1
+sizeof_uint16: 2
+sizeof_uint32: 4
+sizeof_uint64: 8
+sizeof_int8: 1
+sizeof_int16: 2
+sizeof_int32: 4
+sizeof_int64: 8
+sizeof_float16: 2
+sizeof_float32: 4
+sizeof_float64: 8
+
+# Basic constants
+
+num_components: 2
+num_polarizations: 2
+
+# Kotekan
+
+type: config
+
+# This is for Indigo with 16 cores per numa node and 2 PUs per core
+cpu_affinity: [0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30]
+numa_node: 0
+# use_hugepages: true
+
+kernel_path: "lib/cuda/kernels"
+
+# Metadata
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 10 * buffer_depth
+
+# Buffers
+buffer_depth: 4
+
+# Other parts of Kotekan want this
+frame_arrival_period: num_samples_per_frame / adc_frequency

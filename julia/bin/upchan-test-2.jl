@@ -8,7 +8,7 @@ function freq_norm(A, p=2)
     return [scale * norm((@view A[:, :, freq, :]), p) for freq in 1:size(A, 3)]
 end
 
-prefix = "/tmp/f_engine_pathfinder";
+prefix = "/tmp/fengine_pathfinder_test";
 host = "indigo";
 U = 64;
 
@@ -27,7 +27,7 @@ Ebarnorminf = freq_norm(Ebar, Inf);
 N = 1 * U   # 23*U
 # barplot(Ebarnorm2[1:N])
 barplot([u ÷ U + 1 for u in 0:(N - 1)], Ebarnorm2[1:N] .+ 0.01; dodge=[u % U + 1 for u in 0:(N - 1)], dodge_gap=2 / U)
-barplot([u ÷ U + 1 for u in 0:(N - 1)], Ebarnorm2[N.+(1:N)] .+ 0.01; dodge=[u % U + 1 for u in 0:(N - 1)], dodge_gap=2 / U)
+barplot([u ÷ U + 1 for u in 0:(N - 1)], Ebarnorm2[N .+ (1:N)] .+ 0.01; dodge=[u % U + 1 for u in 0:(N - 1)], dodge_gap=2 / U)
 
 ###
 
