@@ -20,9 +20,9 @@ function calibrate_pfb(delta)
     # First PFB
     y = FEngine.upchan(x, ntaps, nsamples)
     # y /= maximum(abs, y)
-    y /= nsamples/2
+    y /= nsamples / 2
 
-    amplitude = maximum(abs, y[channel+1, :])
+    amplitude = maximum(abs, y[channel + 1, :])
     # println("Coarse amplitude: ", amplitude)
 
     return amplitude
@@ -43,7 +43,7 @@ function calibrate_upchan1(M, U, delta)
     # First PFB
     y = FEngine.upchan(x, ntaps, nsamples)
     # y /= maximum(abs, y)
-    y /= nsamples/2
+    y /= nsamples / 2
 
     # println("Coarse amplitude: ", maximum(abs, y[channel+1, :]))
 

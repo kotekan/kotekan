@@ -43,20 +43,29 @@ ftoi4(x::Complex{T}) where {T<:Real} = Int4x2(round.(Int8, clamp.(reim(x) .* T(7
 # The product f₀ * t can become too large to be represented accurately
 # via single precision. We need to use double precision.
 
-struct Source{T}
-    f₀::T
-    A::Complex{T}
-    sinx::T
-    siny::T
+struct Noise
+    A::Float
 end
 
-function eval_source(source::Source{T}, dishx::T, dishy::T, t₀::T) where {T<:Real}
-    t = t₀ + source.sinx * dishx / c₀ + source.siny * dishy / c₀
+struct Source
+    f₀::Float
+    A::Complex{Float}
+    sinx::Float
+    siny::Float
+end
+
+function eval_noise(noise::Noise)
+    return noise.A * randn(Complex{Float})
+end
+
+function eval_source(source::Source, dishx::Float, dishy::Float, t₀::Float)
+    # Add a random phase offset (100) to avoid syncing up all sources
+    t = t₀ + source.sinx * dishx / c₀ + source.siny * dishy / c₀ + 100
     return source.A * cispi(2 * source.f₀ * t)
 end
 
-function eval_sources(sources::Vector{Source{T}}, dishx::T, dishy::T, t₀::T) where {T<:Real}
-    return sum(eval_source(source, dishx, dishy, t₀) for source in sources)
+function eval_sources(noise::Noise, sources::Vector{Source}, dishx::Float, dishy::Float, t₀::Float)
+    return eval_noise(noise) + sum(eval_source(source, dishx, dishy, t₀) for source in sources)
 end
 
 ################################################################################
@@ -100,7 +109,7 @@ struct ADCFrame{T}
     data::Array{T,3}            # [time, dish, polr]
 end
 
-function adc_sample(::Type{T}, source::Source{T}, dishes::Dishes, adc::ADC, time::Int, dish::Int, polr::Int) where {T<:Real}
+function adc_sample(::Type{T}, source::Source, dishes::Dishes, adc::ADC, time::Int, dish::Int, polr::Int) where {T<:Real}
     t₀ = adc.t₀
     Δt = adc.Δt
 
@@ -113,11 +122,22 @@ function adc_sample(::Type{T}, source::Source{T}, dishes::Dishes, adc::ADC, time
     return res
 end
 
-function adc_sample(::Type{T}, sources::Vector{Source{T}}, dishes::Dishes, adc::ADC, ntimes::Int) where {T<:Real}
+function adc_sample(::Type{T}, noise::Noise, sources::Vector{Source}, dishes::Dishes, adc::ADC, ntimes::Int) where {T<:Real}
     t₀ = adc.t₀
     Δt = adc.Δt
     ndishes = length(dishes.locations)
     npolrs = 2
+
+    # data = Array{T}(undef, ntimes, ndishes, npolrs)
+    # @showprogress desc = "ADC" dt = 1 @threads for time_dish in CartesianIndices((ntimes, ndishes))
+    #     time, dish = Tuple(time_dish)
+    #     location = dishes.locations[dish]
+    #     dishx, dishy = location
+    #     t = t₀ + Δt * (time - 1)
+    #     val = eval_sources(noise, sources, dishx, dishy, t)
+    #     data[time, dish, 1] = real(val)
+    #     data[time, dish, 2] = imag(val)
+    # end
 
     data = Array{T}(undef, ntimes, ndishes, npolrs)
     @showprogress desc = "ADC" dt = 1 @threads for dish in 1:ndishes
@@ -125,7 +145,7 @@ function adc_sample(::Type{T}, sources::Vector{Source{T}}, dishes::Dishes, adc::
         dishx, dishy = location
         for time in 1:ntimes
             t = t₀ + Δt * (time - 1)
-            val = eval_sources(sources, dishx, dishy, t)
+            val = eval_sources(noise, sources, dishx, dishy, t)
             data[time, dish, 1] = real(val)
             data[time, dish, 2] = imag(val)
         end
@@ -170,19 +190,19 @@ function sinc_hanning(s, M, U)
     # # @assert 0 <= s < M * U
     # s′ = (2 * s - (M * U - 1)) / Float(2 * (M * U - 1)) # normalized to [-1/2; +1/2]
 
-    # # Erik, maximum window width
-    # # @assert -1 <= 2 * s′ <= +1
-    # s′ = (2 * s - (M * U - 1)) / Float(2 * (M * U + 1)) # normalized to [-1/2; +1/2]
+    # Erik, maximum window width
+    # @assert -1 < 2 * s′ < +1
+    s′ = (2 * s - (M * U - 1)) / Float(2 * (M * U + 1)) # normalized to [-1/2; +1/2]
 
     # # Richard Shaw
     # # @assert -1 < 2 * s′ < +1
     # s′ = (2 * s - (M * U)) / Float(2 * (M * U)) # normalized to [-1/2; +1/2)
     # # @assert -1 <= 2 * s′ < +1
 
-    # Erik, correct limit for M->1, U->1
-    # @assert -1 < 2 * s′ < +1
-    s′ = (2 * s - (M * U - 1)) / Float(2 * (M * U)) # normalized to (-1/2; +1/2)
-    # @assert -1 < 2 * s′ < +1
+    # # Erik, correct limit for M->1, U->1
+    # # @assert -1 < 2 * s′ < +1
+    # s′ = (2 * s - (M * U - 1)) / Float(2 * (M * U)) # normalized to (-1/2; +1/2)
+    # # @assert -1 < 2 * s′ < +1
 
     # ∫ cos² π s = 1/2
     # ∫ sinc 4 s ≈ 3.21083
@@ -286,7 +306,8 @@ function f_engine(pfb::PFB, adcframe::ADCFrame{T}) where {T<:Real}
         data = @view fdata[:, time′, dish, polr]
 
         for sample in 1:(ntaps * nsamples)
-            indata[sample] = window[sample] * adcdata[sample]
+            w = window[sample] / (nsamples ÷ 2)
+            indata[sample] = w * adcdata[sample]
         end
         mul!(outdata, FFT, indata)
         for freq in 1:length(frequency_channels)
@@ -343,7 +364,7 @@ function f_engine_16(pfb::PFB, adcframe::ADCFrame{T}) where {T<:Real}
         data = @view fdata[:, time′, (dish0 + 1):dish1, polr]
 
         for sample in 0:(ntaps * nsamples - 1)
-            w = sinc_hanning(sample, ntaps, nsamples)
+            w = sinc_hanning(sample, ntaps, nsamples) / (nsamples ÷ 2)
             for dish in 0:(groupsize - 1)
                 indata[dish + 1, sample + 1] = adcdata[sample + 1, dish + 1] * w
             end
@@ -366,7 +387,7 @@ function prepare_fft_input(indata::AbstractArray{T,3}, adcdata::AbstractArray{T,
     for spectator in 1:nspectators
         for time′ in 1:ntimes′
             for sample in 0:(ntaps * nsamples - 1)
-                w = sinc_hanning(sample, ntaps, nsamples)
+                w = sinc_hanning(sample, ntaps, nsamples) / (nsamples ÷ 2)
                 indata[sample + 1, time′, spectator] = w * adcdata[time′ * nsamples + sample + 1, spectator]
             end
         end
@@ -456,24 +477,34 @@ function quantize(::Type{I}, xframe::XFrame{T}) where {I<:Integer,T<:Real}
     ntimes, nfreqs, ndishes, npolrs = size(xdata)
 
     # idata = similar(xdata, Complex{I})
-    # @showprogress desc="Quantize" dt=1 @threads for freq_dish_polr in CartesianIndices((nfreqs, ndishes, npolrs))
+    # @showprogress desc = "Quantize" dt = 1 @threads for freq_dish_polr in CartesianIndices((nfreqs, ndishes, npolrs))
     #     freq, dish, polr = Tuple(freq_dish_polr)
     # 
     #     xdata1 = @view xdata[:, freq, dish, polr]
     #     idata1 = @view idata[:, freq, dish, polr]
     # 
-    #     maxabs = sqrt(maximum(abs2, xdata1))
-    #     scale = T(7.5) / maxabs
+    #     norm2 = norm(xdata1, 2) / sqrt(T(length(xdata1)))
+    #     # Set the noise level to 1/3
+    #     scale = T(7.5) / T(3) / norm2
     # 
-    #     idata1 .= clamp.(round.(Int8, scale * xdata1), T(-7), T(+7))
+    #     idata1 .= round.(Int8, clamp.(scale * xdata1, T(-7), T(+7)))
     # end
 
     # maxabs = sqrt(maximum(abs2, xdata))
     # scale = T(7.5) / maxabs
 
-    scale = T(7.5)
+    norm1 = norm(xdata, 1) / T(length(xdata))
+    norm2 = norm(xdata, 2) / sqrt(T(length(xdata)))
+    norminf = norm(xdata, Inf)
+    println("    norm1:   $norm1")
+    println("    norm2:   $norm2")
+    println("    norminf: $norminf")
 
-    idata = clamp.(round.(I, scale * xdata), I(-7), I(+7))
+    scale = T(7.5)
+    nclipped = sum(x -> (abs(real(x)) > 7.5) + (abs(imag(x)) > 7.5), scale * xdata)
+    nclipped_fraction = round(nclipped / (2 * length(xdata)); sigdigits=2)
+    idata = round.(I, clamp.(scale * xdata, T(-7), T(+7)))
+    println("    nclipped: $nclipped (fraction $nclipped_fraction)")
 
     values = -7:+7
     counts = [sum(x -> (real(x) == val) + (imag(x) == val), idata) for val in values]
@@ -489,6 +520,7 @@ end
 # F-engine: run
 
 function run(
+    noise_amplitude::Float,
     source_channels::Vector{Float},
     source_amplitudes::Vector{Float},
     source_position_ew::Float,
@@ -510,13 +542,14 @@ function run(
     nframes::Int64,
 )
     println("Setting up sources...")
-    sources = Source{Float}[
+    noise = Noise(noise_amplitude)
+    sources = Source[
         let
             A = Complex{Float}(amplitude)
             f₀ = channel * adc_frequency / nsamples
             sin_ew = sin(source_position_ew) # east-west
             sin_ns = sin(source_position_ns) # north-south
-            Source{Float}(f₀, A, sin_ew, sin_ns)
+            Source(f₀, A, sin_ew, sin_ns)
         end for (channel, amplitude) in zip(source_channels, source_amplitudes)
     ]
 
@@ -551,7 +584,7 @@ function run(
 
     println("ADC sampling...")
     ntimes_total = nsamples * (nframes * ntimes + ntaps - 1)
-    adcframe = adc_sample(Float, sources, dishes, adc, ntimes_total)
+    adcframe = adc_sample(Float, noise, sources, dishes, adc, ntimes_total)
 
     println("PFB FFT...")
     fframe = f_engine(pfb, adcframe)
@@ -572,6 +605,7 @@ function run(
 end
 
 function setup(
+    noise_amplitude=0.0,
     nsources=1,
     source_channels_ptr=Ptr{Cfloat}(),
     source_amplitudes_ptr=Ptr{Cfloat}(),
@@ -599,6 +633,7 @@ function setup(
     frequency_channels_ptr = Ptr{Cint}(frequency_channels_ptr)
 
     println("F-Engine setup:")
+    println("    - noise_amplitude:        $noise_amplitude")
     println("    - nsources:               $nsources")
     println("    - source_channels_ptr:    $source_channels_ptr")
     println("    - source_amplitudes_ptr:  $source_amplitudes_ptr")
@@ -653,6 +688,7 @@ function setup(
     println("    - frequency_channels:     $frequency_channels")
 
     return run(
+        Float(noise_amplitude),
         source_channels::Vector{Float},
         source_amplitudes::Vector{Float},
         Float(source_position_ew),

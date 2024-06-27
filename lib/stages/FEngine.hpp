@@ -54,6 +54,7 @@ class FEngine : public kotekan::Stage {
     const int num_polarizations;
 
     // Sky
+    const float noise_amplitude;
     const std::vector<float> source_channels;
     const std::vector<float> source_amplitudes;
     const float source_position_ew;

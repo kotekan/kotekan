@@ -14,7 +14,7 @@ i2t(x::Int4x2) = convert(NTuple{2,Int8}, x)
 i2c(x::Int4x2) = t2c(i2t(x))
 
 # TODO: Read this from metadata
-U = 2
+U = 64
 
 quantity_E = "voltage"
 file_E = ASDF2.load_file("$(dir)/$(prefix)$(quantity_E).$(iter).asdf")

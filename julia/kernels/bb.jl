@@ -7,6 +7,8 @@ using IndexSpaces
 using Mustache
 using Random
 
+const Memory = IndexSpaces.Memory
+
 # const card = "A30"
 const card = "A40"
 # const card = "GeForce_RTX_4090"

@@ -8,6 +8,8 @@ using Mustache
 using Random
 using StaticArrays
 
+const Memory = IndexSpaces.Memory
+
 # const card = "A30"
 const card = "A40"
 

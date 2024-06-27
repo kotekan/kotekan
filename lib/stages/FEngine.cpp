@@ -41,6 +41,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
 
     // Sky
+    noise_amplitude(config.get_default<float>(unique_name, "noise_amplitude", 0)),
     source_channels(config.get<std::vector<float>>(unique_name, "source_channels")),
     source_amplitudes(config.get<std::vector<float>>(unique_name, "source_amplitudes")),
     source_position_ew(config.get<float>(unique_name, "source_position_ew")),
@@ -317,10 +318,11 @@ void FEngine::main_thread() {
             assert(f_engine_module);
             jl_function_t* const setup = jl_get_function(f_engine_module, "setup");
             assert(setup);
-            const int nargs = 20;
+            const int nargs = 21;
             jl_value_t** args;
             JL_GC_PUSHARGS(args, nargs);
             int iargc = 0;
+            args[iargc++] = jl_box_float32(noise_amplitude);
             args[iargc++] = jl_box_int64(source_channels.size());
             args[iargc++] = jl_box_voidpointer(
                 const_cast<void*>(static_cast<const void*>(source_channels.data())));

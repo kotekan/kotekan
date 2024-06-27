@@ -5,6 +5,8 @@ using CUDASIMDTypes
 using IndexSpaces
 using Mustache
 
+const Memory = IndexSpaces.Memory
+
 const card = "A40"
 
 if CUDA.functional()
