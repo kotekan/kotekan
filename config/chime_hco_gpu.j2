@@ -82,6 +82,7 @@ gpu_input_buffers:
     num_frames: baseband_buffer_depth
     frame_size: samples_per_data_set * num_elements * num_local_freq
     metadata_pool: main_pool
+    use_hugepages: true
 {%- for id in range(16) %}
     gpu_input_buffer_{{ id }}:
         numa_node: 0
@@ -97,7 +98,6 @@ lost_samples_buffers:
     num_frames: buffer_depth
     frame_size: samples_per_data_set
     metadata_pool: main_pool
-    use_hugepages: true
 {%- for id in range(16) %}
     lost_samples_buffer_{{ id }}:
         numa_node: 0
