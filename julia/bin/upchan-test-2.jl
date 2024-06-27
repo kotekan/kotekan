@@ -14,9 +14,10 @@ U = 64;
 
 E = read_kotekan("$(prefix)/$(host)_voltage.00000000.asdf", "voltage", ["D", "P", "F", "T"]);
 
-Emax = vec(maximum(abs ∘ float, (@view E[:, :, :, :]); dims=(1, 2, 4)));
-Emaxind = findmax(Emax)
-barplot(Emax[1:20] .+ 0.01)
+Enorm1 = freq_norm(E, 1);
+Enorm2 = freq_norm(E, 2);
+Enorminf = freq_norm(E, Inf);
+barplot(Enorm2[1:20] .+ 0.01)
 
 Ebar = read_kotekan("$(prefix)/$(host)_upchan_U$(U)_voltage.00000000.asdf", "upchan_U$(U)_voltage", ["D", "P", "Fbar", "Tbar"]);
 

@@ -20,8 +20,10 @@ using TypedTables
 ################################################################################
 # Constants
 
-# const Float = Float32
-const Float = Float64
+const Float = Float32
+
+# const FUInt = Dict(1 => UInt8, 2 => UInt16, 4 => UInt32, 8 => UInt64, 16 => UInt128)[sizeof(Float)]
+# const FInt = Dict(1 => Int8, 2 => Int16, 4 => Int32, 8 => Int64, 16 => Int128)[sizeof(Float)]
 
 const c₀ = 299_792_458          # speed of light in vacuum
 
@@ -66,6 +68,100 @@ end
 
 function eval_sources(noise::Noise, sources::Vector{Source}, dishx::Float, dishy::Float, t₀::Float)
     return eval_noise(noise) + sum(eval_source(source, dishx, dishy, t₀) for source in sources)
+end
+
+# # We use unsigned integers to represent floating point numbers as
+# # fixed point numbers. We assume that `t ∈ [0, 2)` and we scale `u`
+# # such that `typemax(u)+1` would represent `2`.
+# const uscale = 8 * sizeof(FUInt) - 1
+# t2u(t::Float) = round(FUInt, ldexp(mod(t, 2), uscale))
+# u2t(u::FUInt) = ldexp(Float(u), -uscale)
+# 
+# @assert t2u(Float(0)) == 0
+# @assert t2u(Float(1)) == (big(typemax(FUInt)) + 1) ÷ 2
+# @assert u2t(FUInt(0)) == 0
+# @assert u2t(FUInt((big(typemax(FUInt)) + 1) ÷ 2)) == 1
+# @assert 2 - 1 / big(2)^uscale <= u2t(typemax(FUInt)) <= 2
+# for u in rand(FUInt, 100)
+#     # Set low bits to zero because `Float` cannot handle them
+#     u &= ~(typemax(u) >>> (uscale ÷ 2))
+#     @assert 0 ≤ u2t(u) < 2
+#     @assert t2u(u2t(u)) == u
+# end
+
+@fastmath @inline function eval_source(source::Source, dishx::Float, dishy::Float, t₀::Float, Δt::Float, n::Unsigned)
+    # We assume that `t₀` is "not very large" compared to `Δt`
+    # Add dish position delay
+    t₀ -= source.sinx * dishx / c₀ + source.siny * dishy / c₀
+    # Add a random phase offset to avoid syncing up all sources
+    n += 100
+
+    # We want to calculate:
+    #     t = t₀ + Δt * n
+    #     α = mod(f₀ * t, 1)
+    # The problem is that `f₀ * t` can be very large and requires double precision.
+    # We thus use fixed-point arithmetic instead.
+
+    # α = f₀ * t₀ + mod(f₀ * Δt * n, 1)
+    # S := 2^32
+    # α = f₀ * t₀ + mod(S * f₀ * Δt * n, S) / S
+
+    logS = 8 * sizeof(UInt32)
+    X = round(UInt32, ldexp(source.f₀ * Δt, logS))
+    # This can overflow, giving a result mod S
+    Y = (X * n) % UInt32
+    Δα = source.f₀ * t₀
+
+    α = Δα + ldexp(Float(Y), -logS)
+
+    return source.A * cispi(2 * α)
+end
+
+function eval_sources(noise::Noise, sources::Vector{Source}, dishx::Float, dishy::Float, t₀::Float, Δt::Float, n::Unsigned)
+    return eval_noise(noise) + sum(eval_source(source, dishx, dishy, t₀, Δt, n) for source in sources)
+    # res::Complex{Float} = eval_noise(noise)
+    # @inbounds for i in 1:length(sources)
+    #     res += eval_source(sources[i], dishx, dishy, t₀, Δt, n)
+    # end
+    # return res
+end
+
+struct PreparedSource
+    A::Float
+    X::UInt32
+    Δα::Float
+end
+
+function prepare_source(source::Source, dishx::Float, dishy::Float, t₀::Float, Δt::Float)
+    t₀ -= source.sinx * dishx / c₀ + source.siny * dishy / c₀
+    logS = 8 * sizeof(UInt32)
+    X = round(UInt32, source.f₀ * Δt * ldexp(Float(1), logS))
+    Δα = source.f₀ * t₀
+    return PreparedSource(source.A, X, Δα)
+end
+
+@fastmath @inline function eval_source(source::PreparedSource, n::Unsigned)
+    X = source.X
+    Δα = source.Δα
+
+    logS = 8 * sizeof(UInt32)
+    Y = (X * n) % UInt32
+    α = Δα + Float(Y) * ldexp(Float(1), -logS)
+
+    return source.A * cispi(2 * α)
+end
+
+function prepare_sources(sources::Vector{Source}, dishx::Float, dishy::Float, t₀::Float, Δt::Float)
+    return PreparedSource[prepare_source(source, dishx, dishy, t₀, Δt) for source in sources]
+end
+
+function eval_sources(noise::Noise, sources::Vector{PreparedSource}, n::Unsigned)
+    # return eval_noise(noise) + sum(eval_source(source, n) for source in sources)
+    res::Complex{Float} = eval_noise(noise)
+    @inbounds for i in 1:length(sources)
+        res += eval_source(sources[i], n)
+    end
+    return res
 end
 
 ################################################################################
@@ -128,6 +224,7 @@ function adc_sample(::Type{T}, noise::Noise, sources::Vector{Source}, dishes::Di
     ndishes = length(dishes.locations)
     npolrs = 2
 
+    # # More parallelisation but slower
     # data = Array{T}(undef, ntimes, ndishes, npolrs)
     # @showprogress desc = "ADC" dt = 1 @threads for time_dish in CartesianIndices((ntimes, ndishes))
     #     time, dish = Tuple(time_dish)
@@ -139,13 +236,39 @@ function adc_sample(::Type{T}, noise::Noise, sources::Vector{Source}, dishes::Di
     #     data[time, dish, 2] = imag(val)
     # end
 
+    # # Represent time as floating-point number
+    # data = Array{T}(undef, ntimes, ndishes, npolrs)
+    # @showprogress desc = "ADC" dt = 1 @threads for dish in 1:ndishes
+    #     location = dishes.locations[dish]
+    #     dishx, dishy = location
+    #     for time in 1:ntimes
+    #         t = t₀ + Δt * (time - 1)
+    #         val = eval_sources(noise, sources, dishx, dishy, t)
+    #         data[time, dish, 1] = real(val)
+    #         data[time, dish, 2] = imag(val)
+    #     end
+    # end
+
+    # # Represent time as integer
+    # data = Array{T}(undef, ntimes, ndishes, npolrs)
+    # @showprogress desc = "ADC" dt = 1 @threads for dish in 1:ndishes
+    #     location = dishes.locations[dish]
+    #     dishx, dishy = location
+    #     for time in 1:ntimes
+    #         val = eval_sources(noise, sources, dishx, dishy, t₀, Δt, Unsigned(time - 1))
+    #         data[time, dish, 1] = real(val)
+    #         data[time, dish, 2] = imag(val)
+    #     end
+    # end
+
+    # Represent time as integer and preprocess sources
     data = Array{T}(undef, ntimes, ndishes, npolrs)
     @showprogress desc = "ADC" dt = 1 @threads for dish in 1:ndishes
         location = dishes.locations[dish]
         dishx, dishy = location
+        prepared_sources = prepare_sources(sources, dishx, dishy, t₀, Δt)
         for time in 1:ntimes
-            t = t₀ + Δt * (time - 1)
-            val = eval_sources(noise, sources, dishx, dishy, t)
+            val = eval_sources(noise, prepared_sources, Unsigned(time - 1))
             data[time, dish, 1] = real(val)
             data[time, dish, 2] = imag(val)
         end
@@ -658,7 +781,7 @@ function setup(
     source_channels = if source_channels_ptr != C_NULL
         Float[unsafe_load(source_channels_ptr, source) for source in 1:nsources]
     else
-        Float[1536 + source for source in 0:(nsources - 1)]
+        Float[12 + source for source in 0:(nsources - 1)]
     end
     source_amplitudes = if source_amplitudes_ptr != C_NULL
         Float[unsafe_load(source_amplitudes_ptr, source) for source in 1:nsources]
