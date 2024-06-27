@@ -82,11 +82,11 @@ private:
     static constexpr int threads_x = 32;
     static constexpr int threads_y = 16;
     static constexpr int max_blocks = 256;
-    static constexpr int shmem_bytes = 66816;
+    static constexpr int shmem_bytes = 33408;
 
     // Kernel name:
     const char* const kernel_symbol =
-        "_Z6upchan5Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_"
+        "_Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_"
         "Li1ELi1EES0_IS_Li1ELi1EE";
 
     // Kernel arguments:

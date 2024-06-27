@@ -532,10 +532,13 @@ const layout_info_registers = Layout([
 const shmem_F_size = cld(layout_F_shared_size, 32) * 32
 const shmem_F̄_size = cld(layout_F̄_shared_size, 32) * 32
 
-const shmem_F_offset = 0
-const shmem_F̄_offset = shmem_F_offset + shmem_F̄_size
+# const shmem_F_offset = 0
+# const shmem_F̄_offset = shmem_F_offset + shmem_F_size
+# const shmem_size = shmem_F̄_offset + shmem_F̄_size
 
-const shmem_size = shmem_F̄_offset + shmem_F̄_size
+const shmem_F_offset = 0
+const shmem_F̄_offset = shmem_F_offset
+const shmem_size = max(shmem_F_size,  shmem_F̄_size)
 
 const shmem_bytes = 4 * shmem_size
 
@@ -1522,7 +1525,7 @@ open("output-$(card)/upchan_$(setup)_U$(U).jl", "w") do fh
     return nothing
 end
 
-@eval function upchan(
+@eval function $(Symbol(:upchan, U))(
     Tmin::Int32, Tmax::Int32, T̄min::Int32, T̄max::Int32, Fmin::Int32, Fmax::Int32, G_memory, E_memory, Ē_memory, info_memory
 )
     # shmem = @cuDynamicSharedMem(UInt8, shmem_bytes, 0)
@@ -1533,6 +1536,7 @@ end
     $upchan_kernel
     return nothing
 end
+@eval const upchan = $(Symbol(:upchan, U))
 
 function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false, silent::Bool=false)
     !silent && println("CHORD upchannelizer")

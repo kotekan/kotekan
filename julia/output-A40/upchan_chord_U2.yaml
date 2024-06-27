@@ -22,8 +22,8 @@ kernel-description:
   call-parameters:
     threads: [32, 2]
     blocks: [384]
-    shmem_bytes: 99328
-  kernel-symbol: "_Z6upchan5Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE"
+    shmem_bytes: 49664
+  kernel-symbol: "_Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE"
   kernel-arguments:
     - name: "Tmin"
       intent: in
