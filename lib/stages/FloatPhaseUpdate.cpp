@@ -38,8 +38,8 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame_int, const timespec& gp
     double T = (JD - 2451545.0)
                / 36525.0; // Works if time after year 2000, otherwise T is -ve and might break
     double T0 = fmod((6.697374558 + (2400.051336 * T) + (0.000025862 * T * T)), 24.);
-    double UT = (timeinfo->tm_hour) + (timeinfo->tm_min / 60.)
-                + (timeinfo->tm_sec + time_now.tv_nsec / 1.e9) / 3600.;
+    double UT = (hour) + (utc_time->tm_min / 60.)
+                + (utc_time->tm_sec + gps_time.tv_nsec / 1.e9) / 3600.;
     double GST = fmod((T0 + UT * 1.002737909), 24.);
     double LST = GST + _inst_long / 15.;
     while (LST < 0) {
