@@ -84,8 +84,8 @@ void gpuSimulateN2k::main_thread() {
                                 }
 
                                 // clang-format off
-                                int o = tout * tstride + f * fstride + 256*(ihi*(ihi+1)/2 + jhi)
-                                        + 16*ilo + jlo;
+                                int o = 2*( tout * tstride + f * fstride + 256*(ihi*(ihi+1)/2 + jhi)
+                                        + 16*ilo + jlo );
                                 output[o + 0] = +real;
                                 output[o + 1] = +imag;
                                 // clang-format on
