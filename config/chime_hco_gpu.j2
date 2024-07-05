@@ -46,7 +46,7 @@ telescope:
     name: ICETelescope
     require_gps: true
     query_gps: true
-    gps_host: 10.42.1.1 # `aux`
+    gps_host: 10.42.1.1 # ha1
     allow_default_frequency_map: true
 
 ###############
@@ -55,7 +55,7 @@ telescope:
 
 dataset_manager:
     use_dataset_broker: true # We need this to be true for the N2 recv system to work
-    ds_broker_host: 10.41.1.5 # aux
+    ds_broker_host: 10.42.1.1 # ha1
     ds_broker_port: 12050
 
 ##################
@@ -261,7 +261,7 @@ baseband_send:
     kotekan_stage: bufferSend
     buf: baseband_output_buffer_merged
     server_port: 11027
-    server_ip: 10.51.1.6 # c1
+    server_ip: 10.52.2.1 # hc1
     reconnect_time: 60
     send_timeout: 600 # 10 minutes
     log_level: warn
