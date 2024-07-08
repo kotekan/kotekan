@@ -17,7 +17,8 @@ add_custom_command(
     OUTPUT include/device_mma.hpp
     COMMAND mkdir -p include && python3 ${CMAKE_CURRENT_SOURCE_DIR}/generate_device_mma_hpp.py >
             include/device_mma.hpp
-    DEPENDS generate_device_mma_hpp.py)
+    DEPENDS generate_device_mma_hpp.py
+    COMMENT "generating device_mma.hpp")
 
 # Define source files and headers
 set(HFILES
