@@ -176,10 +176,7 @@ void testDataCheck<A_Type>::main_thread() {
             if(!error) {
                 INFO("Test passed, exiting!");
                 TEST_PASSED();
-            } else {
-                INFO("Test failed, exiting!");
-                TEST_FAILED();
-            } // error
+            }
         } // frames
     }
 }

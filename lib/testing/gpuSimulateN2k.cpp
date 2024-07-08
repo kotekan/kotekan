@@ -95,8 +95,8 @@ void gpuSimulateN2k::main_thread() {
                     } // iji
                 } // jhi
 
-                DEBUG("Done t_outer {:d} of {:d} (freq {:d} of {:d})...", tout, n_outer, f,
-                      _num_local_freq);
+                DEBUG("Done t_outer {:d} of {:d} (freq {:d} of {:d}, nt_inner={:d})...", tout, n_outer, f,
+                      _num_local_freq, nt_inner);
                 if(stop_thread)
                     break;
             } // f

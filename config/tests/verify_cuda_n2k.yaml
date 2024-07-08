@@ -66,8 +66,10 @@ host_voltage_ringbuffer:
     metadata_pool: main_pool
 
 gen_data:
-    type: const
-    value: 2
+    # type: const
+    # value: 34 # 1i # 34 # = 2 + 2i
+    type: random_signed
+    value: 1532
     kotekan_stage: testDataGen
     out_buf: host_voltage_buffer
     array_shape: [ 2048, 16, 2, 512 ]

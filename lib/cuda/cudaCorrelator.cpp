@@ -37,7 +37,7 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
 
     // TODO: code for rfi mask. Just using a placeholder zero mask for now.
     void* device_rfimask = device.get_gpu_memory("rfimask", _num_local_freq*_samples_per_data_set*sizeof(uint)/32);
-    cudaMemset(device_rfimask, 1, _num_local_freq*_samples_per_data_set*sizeof(uint)/32);
+    cudaMemset(device_rfimask, 0xFF, _num_local_freq*_samples_per_data_set*sizeof(uint)/32);
     rfimask = reinterpret_cast<uint*>(device_rfimask);
 
     set_command_type(gpuCommandType::KERNEL);
