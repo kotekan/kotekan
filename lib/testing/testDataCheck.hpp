@@ -173,7 +173,7 @@ void testDataCheck<A_Type>::main_thread() {
         frames++;
 
         if (num_frames_to_test == frames) {
-            if(!error) {
+            if (!error) {
                 INFO("Test passed, exiting!");
                 TEST_PASSED();
             }

@@ -36,8 +36,9 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_correlation_triangle, true, false, true));
 
     // TODO: code for rfi mask. Just using a placeholder zero mask for now.
-    void* device_rfimask = device.get_gpu_memory("rfimask", _num_local_freq*_samples_per_data_set*sizeof(uint)/32);
-    cudaMemset(device_rfimask, 0xFF, _num_local_freq*_samples_per_data_set*sizeof(uint)/32);
+    void* device_rfimask = device.get_gpu_memory("rfimask", _num_local_freq * _samples_per_data_set
+                                                                * sizeof(uint) / 32);
+    cudaMemset(device_rfimask, 0xFF, _num_local_freq * _samples_per_data_set * sizeof(uint) / 32);
     rfimask = reinterpret_cast<uint*>(device_rfimask);
 
     set_command_type(gpuCommandType::KERNEL);
@@ -79,7 +80,7 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     int vis_blocks_tr_root = (_num_elements + 1) / 16;
     int num_vis_blocks = vis_blocks_tr_root * (vis_blocks_tr_root + 1) / 2;
     int output_array_len =
-        num_subintegrations * _num_local_freq * 16 *16 * num_vis_blocks * 2 * sizeof(int32_t);
+        num_subintegrations * _num_local_freq * 16 * 16 * num_vis_blocks * 2 * sizeof(int32_t);
     void* output_memory = device.get_gpu_memory_array(_gpu_mem_correlation_triangle, gpu_frame_id,
                                                       _gpu_buffer_depth, output_array_len);
 
