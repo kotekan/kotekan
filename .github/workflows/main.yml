@@ -168,7 +168,7 @@ jobs:
     - name: Run black
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" black --exclude docs --check .
+        docker run "${OPTS[@]}" black --exclude="docs|external" --check .
 
     - name: Run clang-format
       run: |

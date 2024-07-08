@@ -6,10 +6,7 @@ message(STATUS "N2K Current source directory: ${CMAKE_CURRENT_SOURCE_DIR}")
 message(STATUS "N2K Current binary directory: ${CMAKE_CURRENT_BINARY_DIR}")
 
 # Define source files and headers
-set(HFILES
-    include/n2k.hpp
-    include/n2k_kernel.hpp
-)
+set(HFILES include/n2k.hpp include/n2k_kernel.hpp)
 
 # Kernel files (to generate), filename syntax is kernel_{nstations}_{nfreq}.o
 set(KERNELFILES
@@ -35,28 +32,23 @@ set(KERNELFILES
     kernel_1024_48.cu
     kernel_1024_64.cu
     kernel_1024_128.cu
-    kernel_2048_16.cu
-)
+    kernel_2048_16.cu)
 
 # Kernel filename syntax is kernel_{nstations}_{nfreq}.cu
-set(CUFILES
-    src/Correlator.cu
-    src/kernel_table.cu
-    src/precompute_offsets.cu
-)
+set(CUFILES src/Correlator.cu src/kernel_table.cu src/precompute_offsets.cu)
 
 # Special rule for generating kernel_%d_%d.cu
-foreach(FILE ${KERNELFILES})
+foreach(file ${KERNELFILES})
     add_custom_command(
-        OUTPUT template_instantiations/${FILE}
-        COMMAND mkdir -p template_instantiations &&
-            python3 ${CMAKE_CURRENT_SOURCE_DIR}/template_instantiations/make-instantiation.py ${FILE} &&
-            mv ${FILE} template_instantiations/${FILE}
+        OUTPUT template_instantiations/${file}
+        COMMAND
+            mkdir -p template_instantiations && python3
+            ${CMAKE_CURRENT_SOURCE_DIR}/template_instantiations/make-instantiation.py ${file} && mv
+            ${file} template_instantiations/${file}
         DEPENDS template_instantiations/make-instantiation.py
-    )
-    list(APPEND CUFILES "${CMAKE_CURRENT_BINARY_DIR}/template_instantiations/${FILE}")
+        COMMENT "Generating template file ${file}")
+    list(APPEND CUFILES "${CMAKE_CURRENT_BINARY_DIR}/template_instantiations/${file}")
 endforeach()
-
 
 # Add library targets
 add_library(n2k SHARED ${CUFILES} ${HFILES})
@@ -75,4 +67,6 @@ set_target_properties(n2k PROPERTIES LINKER_LANGUAGE CUDA)
 
 # Compiler options
 set_property(TARGET n2k PROPERTY CUDA_STANDARD 17)
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -m64 -O3 --compiler-options -Wall,-fPIC --forward-unknown-to-host-compiler")
+set(CMAKE_CUDA_FLAGS
+    "${CMAKE_CUDA_FLAGS} -m64 -O3 --compiler-options -Wall,-fPIC --forward-unknown-to-host-compiler"
+)

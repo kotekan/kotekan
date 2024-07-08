@@ -116,7 +116,7 @@ public:
     //    the lower triangle). The memory offset of visibility matrix (t,f,i,j) is:
     //
     //        Memory offset in multiples of sizeof(int32)
-    //           =   (t * nfreq * tstride)
+    //           =   (t * nfreq * fstride)
     //             + (f * fstride)
     //             + 512 * (ihi*(ihi+1)/2 + jhi)
     //             + 32*ilo + 2*jlo

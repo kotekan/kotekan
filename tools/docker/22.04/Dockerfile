@@ -8,8 +8,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 # (see https://help.github.com/en/actions/reference/virtual-environments-for-github-hosted-runners).
 # This is to prevent the docker image getting build on a newer architecture and then failing when it
 # is loaded on an older one.
-ENV CFLAGS "-march=haswell"
-ENV CXXFLAGS "-march=haswell"
+ENV CFLAGS="-march=haswell"
+ENV CXXFLAGS="-march=haswell"
 
 RUN mkdir -p /code/build
 WORKDIR /code/build
@@ -103,7 +103,7 @@ RUN dpkg -i cuda-keyring_1.0-1_all.deb
 RUN apt -y update
 RUN apt install -y --no-install-recommends cuda && apt clean
 
-ENV PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin
 
 RUN apt install -y --no-install-recommends \
   libopencl-clang-dev opencl-headers ocl-icd-opencl-dev
@@ -165,7 +165,7 @@ RUN mkdir src && ( \
 # Clone HighFive
 RUN git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git && \
  cd HighFive && git pull && cd ..
-ENV HIGHFIVE_PATH /code/build/HighFive
+ENV HIGHFIVE_PATH=/code/build/HighFive
 
 # Install documentation dependencies
 # Install newer version of doxygen from source. This is slow, but older versions had bugs
@@ -199,11 +199,11 @@ ENV PATH="$PATH:/root/.juliaup/bin"
 RUN apt-get clean && apt-get autoclean
 
 # Set ccache to store things sensibly
-ENV CCACHE_NOHASHDIR 1
-ENV CCACHE_BASEDIR /code/kotekan/
-ENV CCACHE_DIR /code/kotekan/.ccache/
-ENV CCACHE_COMPRESS 1
-ENV CCACHE_MAXSIZE 1G
+ENV CCACHE_NOHASHDIR=1
+ENV CCACHE_BASEDIR=/code/kotekan/
+ENV CCACHE_DIR=/code/kotekan/.ccache/
+ENV CCACHE_COMPRESS=1
+ENV CCACHE_MAXSIZE=1G
 
 # We need the `python` command to point to python3
 RUN ln -s /bin/python3 /bin/python
@@ -215,9 +215,9 @@ RUN rm /usr/bin/gcc /usr/bin/g++ && \
 
 # Set the plugin path so kotekan can find bitshuffle
 # Ideally this would be determined dynamically, but for now...
-ENV HDF5_PLUGIN_PATH /usr/local/lib/python3.10/dist-packages/hdf5plugin/plugins
+ENV HDF5_PLUGIN_PATH=/usr/local/lib/python3.10/dist-packages/hdf5plugin/plugins
 
-ENV KOTEKAN_BUILD_DIRNAME build-2204
+ENV KOTEKAN_BUILD_DIRNAME=build-2204
 
 # Update Julia...
 RUN juliaup update && echo 2

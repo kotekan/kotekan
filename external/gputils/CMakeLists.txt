@@ -1,14 +1,10 @@
 #
 # From the makefile in the gputils code, the following should be done:
 #
-# Make sure to generate device_mma.hpp:
-# include/gputils/device_mma.hpp: generate_device_mma_hpp.py
-#     python3 $^ >$@
-# 
-# Then, compile cu files
-# %.o: %.cu $(HFILES)
-#     $(NVCC) -c -o $@ $<
-# as a library.
+# Make sure to generate device_mma.hpp: include/gputils/device_mma.hpp: generate_device_mma_hpp.py
+# python3 $^ >$@
+#
+# Then, compile cu files %.o: %.cu $(HFILES) $(NVCC) -c -o $@ $< as a library.
 #
 cmake_minimum_required(VERSION 3.5)
 project(gputils)
@@ -19,9 +15,10 @@ message(STATUS "GPUTILS Current binary directory: ${CMAKE_CURRENT_BINARY_DIR}")
 # Special rule for generating 'device_mma.hpp'
 add_custom_command(
     OUTPUT include/device_mma.hpp
-    COMMAND mkdir -p include && python3 ${CMAKE_CURRENT_SOURCE_DIR}/generate_device_mma_hpp.py > include/device_mma.hpp
+    COMMAND mkdir -p include && python3 ${CMAKE_CURRENT_SOURCE_DIR}/generate_device_mma_hpp.py >
+            include/device_mma.hpp
     DEPENDS generate_device_mma_hpp.py
-)
+    COMMENT "generating device_mma.hpp")
 
 # Define source files and headers
 set(HFILES
@@ -42,8 +39,7 @@ set(HFILES
     include/gputils/test_utils.hpp
     include/gputils/time_utils.hpp
     include/gputils.hpp
-    include/device_mma.hpp
-)
+    include/device_mma.hpp)
 
 file(GLOB CUFILES "src_lib/*.cu")
 message(STATUS "CUFILES: ${CUFILES}")
@@ -60,7 +56,9 @@ set_target_properties(gputils PROPERTIES LINKER_LANGUAGE CUDA)
 
 # Compiler options
 set_property(TARGET gputils PROPERTY CUDA_STANDARD 17)
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -m64 -O3 --compiler-options -Wall,-fPIC --forward-unknown-to-host-compiler")
+set(CMAKE_CUDA_FLAGS
+    "${CMAKE_CUDA_FLAGS} -m64 -O3 --compiler-options -Wall,-fPIC --forward-unknown-to-host-compiler"
+)
 
 # Include directories
 target_include_directories(gputils PUBLIC include/.)
