@@ -219,7 +219,12 @@ ENV HDF5_PLUGIN_PATH /usr/local/lib/python3.10/dist-packages/hdf5plugin/plugins
 ENV KOTEKAN_BUILD_DIRNAME build-2204
 
 # Update Julia...
-RUN juliaup update
+RUN juliaup self update && juliaup update
+
+# Install Xtensor (for Zarr file format)
+RUN apt-get update && \
+    apt-get -y install libxtensor-dev xtensor-dev && \
+    apt-get clean && apt-get autoclean
 
 # Do nothing when the container launches
 CMD ["/bin/bash"]
