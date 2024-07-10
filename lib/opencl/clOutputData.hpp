@@ -2,7 +2,6 @@
 #define CL_OUTPUT_DATA_H
 
 #include "clCommand.hpp"
-#include "gpuBufferHandler.hpp"
 
 class clOutputData : public clCommand {
 public:

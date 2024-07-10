@@ -1,7 +1,6 @@
 project(kotekan_gpu)
 
 add_library(kotekan_gpu
-            gpuBufferHandler.cpp
             gpuDeviceInterface.cpp
             gpuEventContainer.cpp
             gpuProcess.cpp
