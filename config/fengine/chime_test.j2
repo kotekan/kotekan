@@ -1,0 +1,31 @@
+# -*-yaml-*-
+
+################################################################################
+#
+# Run a CHIME test
+#
+################################################################################
+
+---
+log_level: debug
+
+fengine_num_frames: 1
+fengine_repeat_count: 10
+
+# CALCULATE SIGNAL WITH COMPLEX PHASE FOR DISHES TO SAVE TIME
+# RUN PFB ETC ON DEMAND TO REDUCE MEMORY USAGE
+skip_julia: true   # TODO: false
+
+base_dir: /tmp/fengine_chime_test
+
+{% include "include/defs.j2" %}
+{% include "include/fengine_chime.j2" %}
+{% include "include/sources_chime.j2" %}
+
+{% include "include/n2k_chime.j2" %}
+{% include "include/bb_chime.j2" %}
+{% include "include/upchan_chime.j2" %}
+{% include "include/frb_chime.j2" %}
+
+{% include "include/output_test_chime.j2" %}
+...

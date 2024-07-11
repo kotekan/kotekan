@@ -127,9 +127,9 @@ private:
         "Fbar",
     };
     static constexpr std::array<std::ptrdiff_t, G_U64_rank> G_U64_lengths = {
-        4096,
+        64,
     };
-    static constexpr std::ptrdiff_t G_U64_length = chord_datatype_bytes(G_U64_type) * 4096;
+    static constexpr std::ptrdiff_t G_U64_length = chord_datatype_bytes(G_U64_type) * 64;
     static_assert(G_U64_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto G_U64_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -198,11 +198,11 @@ private:
     static constexpr std::array<std::ptrdiff_t, Ebar_rank> Ebar_lengths = {
         256,
         2,
-        4096,
+        64,
         512,
     };
     static constexpr std::ptrdiff_t Ebar_length =
-        chord_datatype_bytes(Ebar_type) * 256 * 2 * 4096 * 512;
+        chord_datatype_bytes(Ebar_type) * 256 * 2 * 64 * 512;
     static_assert(Ebar_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;

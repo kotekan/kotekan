@@ -16,7 +16,7 @@ E = read_kotekan("$(prefix)/$(host)_voltage.$(iter).asdf", "voltage", ["D", "P",
 
 Enorm2 = freq_norm(E, 2);
 
-begin
+let
     fig = Figure(; size=(640, 480))
     ax = Axis(fig[1, 1]; title="Coarse channels", xlabel="local channel", ylabel="amplitude")
     ylims!(ax, (0, 10))
@@ -25,7 +25,6 @@ begin
 end;
 
 Us = [2, 4, 8, 16, 32, 64];
-# Ns = [4656, 3664, 2912, 2272, 1760, 1536];
 
 Ebar = Dict(
     U => read_kotekan("$(prefix)/$(host)_upchan_U$(U)_voltage.$(iter).asdf", "upchan_U$(U)_voltage", ["D", "P", "Fbar", "Tbar"]) for

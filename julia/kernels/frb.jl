@@ -31,30 +31,29 @@ ilog2(i::Integer) = (@assert i == nextpow(2, i); trailing_zeros(i))
 # Setup
 
 setup::Symbol
+F::Integer
+T::Integer
 U::Integer
 
+const F̄ = F_per_U[U] * U
+
+const Tbar = T ÷ U
+const Tds = Tds_U1 ÷ U
+
+const Fbar_W = F̄
+const Fbar_in = U == 1 ? F : F̄
+const Tbar = T ÷ U
+
+# Compile-time constants (section 4.4)
 @static if setup ≡ :chord
 
     # CHORD Setup
 
-    # Compile-time constants (section 4.4)
-
-    # Full CHORD
-    const D = 512
     const M = 24
     const N = 24
-    const P = 2
-    # const F₀ = 16 * 16
-    # const F = 16 * 16           # benchmarking A30: 56; A40: 84
-    const Fin = Dict(1 => 16, 2 => 16, 4 => 16, 8 => 8, 16 => 8, 32 => 8, 64 => 4, 128 => 1)[U] * U
-    const F = U == 1 ? 48 : Fin
-    const F̄ = 512
-    const T = 4 * 8192 ÷ U
 
     const Touter = 48
     const Tinner = 4
-
-    const Tds = 256 ÷ U         # downsampling factor
 
     const W = 24                # number of warps
     const B = 1                 # number of blocks per SM
@@ -63,23 +62,11 @@ elseif setup ≡ :hirax
 
     # HIRAX Setup
 
-    # Compile-time constants (section 4.4)
-
-    const D = 256
     const M = 16
     const N = 16
-    const P = 2
-    # const F₀ = 64 * 16
-    # const F = 64 * 16
-    const F = 64 * U
-    const Fin = F
-    const F̄ = F
-    const T = 4 * 8192 ÷ U
 
     const Touter = 64
     const Tinner = 8
-
-    const Tds = 25              # downsampling factor
 
     const W = 16                # number of warps
     const B = 1                 # number of blocks per SM
@@ -87,21 +74,12 @@ elseif setup ≡ :hirax
 elseif setup ≡ :pathfinder
 
     # CHORD pathfinder (case 2)
-    const D = 64
+
     const M = 8
     const N = 12
-    const P = 2
-    # const F₀ = 16 * 128
-    # const F = 16 * 128
-    const Fin = Dict(1 => 128, 2 => 128, 4 => 128, 8 => 64, 16 => 64, 32 => 64, 64 => 32)[U] * U
-    const F = U == 1 ? 384 : Fin
-    const F̄ = 4096
-    const T = 4 * 8192 ÷ U
 
     const Touter = 48
     const Tinner = 6
-
-    const Tds = 256 ÷ U         # downsampling factor
 
     const W = 6                 # number of warps
     const B = 4                 # number of blocks per SM (TODO: check!)
@@ -110,21 +88,21 @@ else
     @assert false
 end
 
-# TODO: This is now wrong
-const sampling_time_μsec = U * 4096 / (2 * 1200)
-const C = 2
-# const T̄ = 4 * 256
-@static if setup ≡ :chord
-    # const T̄ = 4 * 256
-    # Reduce output buffer depth by 2 to stay below 2 GByte
-    const T̄ = 4 * 256 ÷ 2
-elseif setup ≡ :hirax
-    const T̄ = 4 * 256 * 4 ÷ U
-elseif setup ≡ :pathfinder
-    # const T̄ = 4 * 256
-    # Reduce output buffer depth by 2 to stay below 2 GByte
-    const T̄ = 4 * 256 ÷ 2
-end
+# Reduce output buffer depth by 2 to stay below 2 GByte
+const Ttilde = 4 * 256 ÷ 2
+
+# # const Ttilde = 4 * 256
+# @static if setup ≡ :chord
+#     # const Ttilde = 4 * 256
+#     # Reduce output buffer depth by 2 to stay below 2 GByte
+#     const Ttilde = 4 * 256 ÷ 2
+# elseif setup ≡ :hirax
+#     const Ttilde = 4 * 256 * 4 ÷ U
+# elseif setup ≡ :pathfinder
+#     # const Ttilde = 4 * 256
+#     # Reduce output buffer depth by 2 to stay below 2 GByte
+#     const Ttilde = 4 * 256 ÷ 2
+# end
 
 const output_gain = 1 / (8 * Tds)
 
@@ -166,7 +144,7 @@ const Gsh_shmem_size = ΣG0 * 2
 const num_simd_bits = 32
 const num_threads = 32
 const num_warps = W
-const num_blocks = F
+const num_blocks = Fbar_in
 const num_blocks_per_sm = B
 
 # Benchmark results:
@@ -279,8 +257,8 @@ const layout_E_memory = Layout([
     Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
     Dish(:dish, 4, idiv(D, 4)) => Memory(:memory, 1, idiv(D, 4)),
     Polr(:polr, 1, P) => Memory(:memory, idiv(D, 4), P),
-    Freq(:freq, 1, F) => Memory(:memory, idiv(D, 4) * P, F),
-    Time(:time, 1, T) => Memory(:memory, idiv(D, 4) * F * P, T),
+    Freq(:freq, 1, Fbar_in) => Memory(:memory, idiv(D, 4) * P, Fbar_in),
+    Time(:time, 1, Tbar) => Memory(:memory, idiv(D, 4) * Fbar_in * P, Tbar),
 ])
 
 # We have M * N ≥ D dishes here. The additional ("dummy") dishes are initialized to zero.
@@ -300,7 +278,7 @@ const layout_W_memory = Layout([
     DishNLo(:dishNLo, 1, idiv(N, 4)) => Memory(:memory, M, idiv(N, 4)),
     DishNHi(:dishNHi, 1, 4) => Memory(:memory, M * idiv(N, 4), 4),
     Polr(:polr, 1, P) => Memory(:memory, M * N, P),
-    Freq(:freq, 1, F) => Memory(:memory, M * N * P, F),
+    Freq(:freq, 1, Fbar_W) => Memory(:memory, M * N * P, Fbar_W),
 ])
 
 # I layout
@@ -310,8 +288,8 @@ const layout_I_memory = Layout([
     BeamP(:beamP, 1, 2) => SIMD(:simd, 16, 2),
     BeamP(:beamP, 2, M) => Memory(:memory, 1, M),
     BeamQ(:beamQ, 1, 2 * N) => Memory(:memory, M, 2 * N),
-    Freq(:freq, 1, F̄) => Memory(:memory, M * 2 * N, F̄),
-    DSTime(:dstime, 1, T̄) => Memory(:memory, M * 2 * N * F̄, T̄),
+    Freq(:freq, 1, Fbar_out) => Memory(:memory, M * 2 * N, Fbar_out),
+    DSTime(:dstime, 1, Ttilde) => Memory(:memory, M * 2 * N * Fbar_out, Ttilde),
 ])
 
 # info layout
@@ -329,11 +307,11 @@ const layout_Fsh1_shared = Layout([
     Cplx(:cplx, 1, C) => SIMD(:simd, 16, 2),
     Dish(:dish, 1, 8) => Shared(:shared, 32, 8),
     Dish(:dish, 8, idiv(D, 8)) => Shared(:shared, ΣF1, idiv(D, 8)),
-    Freq(:freq, 1, F) => Block(:block, 1, F),
+    Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
     Polr(:polr, 1, P) => SIMD(:simd, 4, 2),
     Time(:time, 1, idiv(Touter, 2)) => Shared(:shared, 1, idiv(Touter, 2)),
     Time(:time, idiv(Touter, 2), 2) => SIMD(:simd, 8, 2),
-    Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+    Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
 ])
 @assert max(32 * 8, ΣF1 * idiv(D, 8), 1 * idiv(Touter, 2)) == Fsh1_shmem_size
 
@@ -342,11 +320,11 @@ const layout_Fsh1_shared = Layout([
 const layout_Fsh2_gridding_shared = Layout([
     IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
     Cplx(:cplx, 1, C) => SIMD(:simd, 16, 2),
-    Freq(:freq, 1, F) => Block(:block, 1, F),
+    Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
     Polr(:polr, 1, P) => SIMD(:simd, 4, 2),
     Time(:time, 1, idiv(Touter, 2)) => Shared(:shared, 1, idiv(Touter, 2)),
     Time(:time, idiv(Touter, 2), 2) => SIMD(:simd, 8, 2),
-    Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+    Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
 ])
 @assert 1 * idiv(Touter, 2) + 33 * (M - 1) + ΣF2 * (N - 1) ≤ Fsh2_shmem_size
 @assert max(1 * idiv(Touter, 2), 33 * M, ΣF2 * N) == Fsh2_shmem_size
@@ -362,11 +340,11 @@ const layout_Fsh2_shared = Layout([
     # DishN(:dishN, 1, N) => Shared(:shared, ΣF2, N),
     DishNLo(:dishNLo, 1, idiv(N, 4)) => Shared(:shared, ΣF2, idiv(N, 4)),
     DishNHi(:dishNHi, 1, 4) => Shared(:shared, ΣF2 * idiv(N, 4), 4),
-    Freq(:freq, 1, F) => Block(:block, 1, F),
+    Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
     Polr(:polr, 1, P) => SIMD(:simd, 4, 2),
     Time(:time, 1, idiv(Touter, 2)) => Shared(:shared, 1, idiv(Touter, 2)),
     Time(:time, idiv(Touter, 2), 2) => SIMD(:simd, 8, 2),
-    Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+    Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
 ])
 @assert max(33 * M, ΣF2 * idiv(N, 4), ΣF2 * idiv(N, 4) * 4, 1 * idiv(Touter, 2)) == Fsh2_shmem_size
 
@@ -405,13 +383,13 @@ const layout_Gsh_fft1_shared = Layout([
             @assert false
         end
     )...,
-    Freq(:freq, 1, F) => Block(:block, 1, F),
+    Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
     Polr(:polr, 1, P) => Shared(:shared, Mpad, 2),
     Time(:time, 1, Tinner) => Shared(:shared, Mpad * 2, Tinner),
     # Time(:time, Tinner, idiv(Touter, Tinner)) => Loop(:t_inner, Tinner, idiv(Touter, Tinner)),
     Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
     Time(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2),
-    Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+    Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
 ])
 @assert max(1 * M, ΣG0 * 2, (
     if Npad == 32
@@ -487,13 +465,13 @@ function copy_global_memory_to_Fsh1!(emitter)
             Dish(:dish, 4, 4) => Register(:dish, 4, 4),
             Dish(:dish, 16, 16) => Thread(:thread, 1, 16),
             Dish(:dish, 256, idiv(D, 256)) => Register(:dish, 256, idiv(D, 256)),
-            Freq(:freq, 1, F) => Block(:block, 1, F),
+            Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
             Polr(:polr, 1, P) => Thread(:thread, 16, 2),
             # Time(:time, 1, idiv(Touter, 2)) => Warp(:warp, 1, W),
             # Time(:time, idiv(Touter, 2), 2) => Register(:time, idiv(Touter, 2), 2),
             Time(:time, 1, W) => Warp(:warp, 1, W),
             Time(:time, W, idiv(Touter, W)) => Register(:time, W, idiv(Touter, W)),
-            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+            Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
         ])
         load!(
             emitter,
@@ -502,15 +480,15 @@ function copy_global_memory_to_Fsh1!(emitter)
             align=16,
             postprocess=addr -> :(
                 let
-                    offset = $(Int32(idiv(D, 4) * P * F)) * Tmin + $(Int32(idiv(D, 4) * P)) * Fmin
-                    length = $(Int32(idiv(D, 4) * P * F * T))
+                    offset = $(Int32(idiv(D, 4) * P * Fbar_in)) * Tbarmin + $(Int32(idiv(D, 4) * P)) * Fbar_in_min
+                    length = $(Int32(idiv(D, 4) * P * Fbar_in * Tbar))
                     mod($addr + offset, length)
                 end
             ),
         )
         # Swap polr0, dish3
         permute!(emitter, :E, :E, Polr(:polr, 1, P), Dish(:dish, 8, 2))
-        # E -> F shuffle
+        # E -> Fbar_in shuffle
         # 1. swap polr0, cplx0
         # 2. swap timehi, dish0
         # 3. swap cplx0, dish1
@@ -532,12 +510,12 @@ function copy_global_memory_to_Fsh1!(emitter)
             Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
             Dish(:dish, 4, 4) => Register(:dish, 4, 4),
             Dish(:dish, 16, 4) => Thread(:thread, 1, 4),
-            Freq(:freq, 1, F) => Block(:block, 1, F),
+            Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
             Polr(:polr, 1, P) => Thread(:thread, 4, 2),
             Time(:time, 1, 4) => Thread(:thread, 8, 4),
             Time(:time, 4, idiv(Touter, 8)) => Warp(:warp, 1, W),
             Time(:time, idiv(Touter, 2), 2) => Register(:time, idiv(Touter, 2), 2),
-            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+            Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
         ])
         load!(
             emitter,
@@ -546,15 +524,15 @@ function copy_global_memory_to_Fsh1!(emitter)
             align=16,
             postprocess=addr -> :(
                 let
-                    offset = $(Int32(idiv(D, 4) * P * F)) * Tmin + $(Int32(idiv(D, 4) * P)) * Fmin
-                    length = $(Int32(idiv(D, 4) * P * F * T))
+                    offset = $(Int32(idiv(D, 4) * P * Fbar_in)) * Tbarmin + $(Int32(idiv(D, 4) * P)) * Fbar_in_min
+                    length = $(Int32(idiv(D, 4) * P * Fbar_in * Tbar))
                     mod($addr + offset, length)
                 end
             ),
         )
         # Swap polr0, dish3
         permute!(emitter, :E, :E, Polr(:polr, 1, P), Dish(:dish, 8, 2))
-        # E -> F shuffle
+        # E -> Fbar_in shuffle
         # 1. swap polr0, cplx0
         # 2. swap timehi, dish0
         # 3. swap cplx0, dish1
@@ -577,11 +555,11 @@ function read_Fsh1!(emitter)
         Cplx(:cplx, 1, C) => SIMD(:simd, 16, 2),
         Dish(:dish, 1, W) => Warp(:warp, 1, W),
         Dish(:dish, W, RF1) => Register(:dish, W, RF1),
-        Freq(:freq, 1, F) => Block(:block, 1, F),
+        Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
         Polr(:polr, 1, 2) => SIMD(:simd, 4, 2),
         Time(:time, 1, idiv(Touter, 2)) => Thread(:thread, 1, idiv(Touter, 2)),
         Time(:time, idiv(Touter, 2), 2) => SIMD(:simd, 8, 2),
-        Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+        Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
     ])
     # This loads garbage for threadidx ≥ idiv(Touter, 2)
     load!(emitter, :Freg1 => layout_Freg1_registers, :Fsh1_shared => layout_Fsh1_shared)
@@ -650,12 +628,12 @@ function read_Fsh2!(emitter)
         # Threads idiv(N,8) .. idiv(Npad,8) are padding
         DishNLo(:dishNLo, 2, idiv(Npad, 8)) => Thread(:thread, 8 * (1 << νm), idiv(Npad, 8)),
         DishNHi(:dishNHi, 1, 4) => Thread(:thread, 1, 4),
-        Freq(:freq, 1, F) => Block(:block, 1, F),
+        Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
         Polr(:polr, 1, P) => SIMD(:simd, 4, 2),
         Time(:time, 1, Tw) => Warp(:warp, Mw, Tw),
         Time(:time, Tw, idiv(Touter, 2 * Tw)) => Register(:time, Tw, Tr),
         Time(:time, idiv(Touter, 2), 2) => SIMD(:simd, 8, 2),
-        Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+        Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
     ])
     # This loads garbage for nlo ≥ idiv(N, 4)
     apply!(emitter, :Freg2 => layout_Freg2_registers, :(zero(Int4x8)))
@@ -945,12 +923,12 @@ function do_first_fft!(emitter)
             DishNLo(:dishNLo, 2, idiv(Npad, 8)) => Thread(:thread, 8 * Mt, idiv(Npad, 8)),
             DishNHi(:dishNHi, 1, 4) => Thread(:thread, 1, 4),
             Polr(:polr, 1, P) => Register(:polr, 1, P),
-            Freq(:freq, 1, F) => Block(:block, 1, F),
+            Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
             Time(:time, 1, Tw) => Warp(:warp, Mw, Tw),
             Time(:time, Tw, idiv(Tinner, Tw)) => Register(:time, Tw, idiv(Tinner, Tw)),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
             Time(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2),
-            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+            Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
         ])
         @assert emitter.environment[:X] == layout_X_registers
 
@@ -969,7 +947,7 @@ function do_first_fft!(emitter)
             DishNLo(:dishNLo, 1, 2) => SIMD(:simd, 16, 2),
             DishNLo(:dishNLo, 2, idiv(Npad, 8)) => Thread(:thread, Mt, idiv(Npad, 8)),
             BeamQ(:beamQ, 1, 8) => Thread(:thread, 4, 8),
-            Freq(:freq, 1, F) => Block(:block, 1, F),
+            Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
             Polr(:polr, 1, P) => Register(:polr, 1, P),
             Time(:time, 1, Tw) => Warp(:warp, Mw, Tw),
             # Time(:time, Tw, idiv(Touter, 2 * Tw)) => Register(:time, Tw, Tr),
@@ -978,7 +956,7 @@ function do_first_fft!(emitter)
             # Time(:time, Tinner, idiv(Touter, Tinner)) => Loop(:t_inner, Tinner, idiv(Touter, Tinner)),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
             Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
-            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+            Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
         ])
         apply!(emitter, :Z => layout_Z_registers, :(zero(Float16x2)))
 
@@ -1011,7 +989,7 @@ function do_first_fft!(emitter)
     # Section 3 `W` is called `V` here
     split!(emitter, [:aΓ²re, :aΓ²im], :aΓ², Register(:cplx, 1, 2))
     split!(emitter, [:Zre, :Zim], :Z, Register(:cplx, 1, 2))
-    # TODO: Find a better set of conditions
+    # TODO: Fbar_Wd a better set of conditions
     if trailing_zeros(Npad) == 5 || setup === :hirax
         apply!(emitter, :Vre, [:Zre, :Zim, :aΓ²re, :aΓ²im], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zre, -$aΓ²im * $Zim)))
         apply!(emitter, :Vim, [:Zre, :Zim, :aΓ²re, :aΓ²im], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zim, +$aΓ²im * $Zre)))
@@ -1042,12 +1020,12 @@ function do_first_fft!(emitter)
                 DishM(:dishM, Mt, Mw) => Warp(:warp, 1, Mw),
                 DishM(:dishM, Mt * Mw, Mr) => Register(:dishM, Mt * Mw, Mr),
                 Polr(:polr, 1, P) => Register(:polr, 1, P),
-                Freq(:freq, 1, F) => Block(:block, 1, F),
+                Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
                 Time(:time, 1, Tw) => Warp(:warp, idiv(M, 4 * Mt) * Mw, Tw),
                 Time(:time, Tw, idiv(Tinner, Tw)) => Register(:time, Tw, idiv(Tinner, Tw)),
                 Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
                 Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
-                Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+                Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
             ])
         elseif trailing_zeros(Npad) == 4
             layout_V_registers = Layout([
@@ -1060,12 +1038,12 @@ function do_first_fft!(emitter)
                 DishM(:dishM, Mt, Mw) => Warp(:warp, 1, Mw),
                 DishM(:dishM, Mt * Mw, Mr) => Register(:dishM, Mt * Mw, Mr),
                 Polr(:polr, 1, P) => Register(:polr, 1, P),
-                Freq(:freq, 1, F) => Block(:block, 1, F),
+                Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
                 Time(:time, 1, Tw) => Warp(:warp, Mw, Tw),
                 Time(:time, Tw, idiv(Tinner, Tw)) => Register(:time, Tw, idiv(Tinner, Tw)),
                 Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
                 Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
-                Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+                Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
             ])
         else
             @assert false
@@ -1087,7 +1065,7 @@ function do_first_fft!(emitter)
             BeamQ(:beamQ, 1, 2) => SIMD(:simd, 16, 2),
             BeamQ(:beamQ, 2, 4) => Thread(:thread, 1, 4),
             BeamQ(:beamQ, 8, 1 << (νn + 1)) => Thread(:thread, 4, 1 << (νn + 1)),
-            Freq(:freq, 1, F) => Block(:block, 1, F),
+            Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
             Polr(:polr, 1, P) => Register(:polr, 1, P),
             Time(:time, 1, Tw) => Warp(:warp, Mw, Tw),
             # Time(:time, Tw, idiv(Touter, 2 * Tw)) => Register(:time, Tw, Tr),
@@ -1096,7 +1074,7 @@ function do_first_fft!(emitter)
             # Time(:time, Tinner, idiv(Touter, Tinner)) => Loop(:t_inner, Tinner, idiv(Touter, Tinner)),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
             Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
-            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+            Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
         ])
         apply!(emitter, :Y => layout_Y_registers, :(zero(Float16x2)))
 
@@ -1138,7 +1116,7 @@ function do_first_fft!(emitter)
             # dense mma
             mma_row_col_m16n8k16_f16!(emitter, :Y, :aΓ³ => (mma_is, mma_js), :V => (mma_js, mma_ks), :Y => (mma_is, mma_ks))
         else
-            # TODO: Find a better set of conditions
+            # TODO: Fbar_Wd a better set of conditions
             if setup === :pathfinder
                 # We can't handle partial index ranges in symbols. If there is
                 # a `dishM` spectator index then the whole `dishM` index range
@@ -1198,14 +1176,14 @@ function do_second_fft!(emitter)
             # BeamQ(:beamQ, 32, 2) => Warp(:warp, 1, 2),
             BeamQ(:beamQ, 1, N) => Warp(:warp, 1, N),
             BeamQ(:beamQ, N, 2) => Register(:beamQ, N, 2),
-            Freq(:freq, 1, F) => Block(:block, 1, F),
+            Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
             # Polr(:polr, 1, P) => Loop(:polr, 1, P),
             Polr(:polr, 1, P) => Register(:polr, 1, P),
             Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner),
             # Time(:time, Tinner, idiv(Touter, Tinner)) => Loop(:t_inner, Tinner, idiv(Touter, Tinner)),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
             Time(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2),
-            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+            Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
         ])
     elseif trailing_zeros(Mpad) == 4
         layout_G_registers = Layout([
@@ -1224,14 +1202,14 @@ function do_second_fft!(emitter)
             # BeamQ(:beamQ, 16, 2) => Warp(:warp, 2, 2),
             # BeamQ(:beamQ, 32, 2) => Warp(:warp, 1, 2),
             BeamQ(:beamQ, 2, N) => Warp(:warp, 1, N),
-            Freq(:freq, 1, F) => Block(:block, 1, F),
+            Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
             # Polr(:polr, 1, P) => Loop(:polr, 1, P),
             Polr(:polr, 1, P) => Register(:polr, 1, P),
             Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner),
             # Time(:time, Tinner, idiv(Touter, Tinner)) => Loop(:t_inner, Tinner, idiv(Touter, Tinner)),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
             Time(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2),
-            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+            Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
         ])
     elseif trailing_zeros(Mpad) == 3
         layout_G_registers = Layout([
@@ -1249,14 +1227,14 @@ function do_second_fft!(emitter)
             # BeamQ(:beamQ, 16, 2) => Warp(:warp, 2, 2),
             # BeamQ(:beamQ, 32, 2) => Warp(:warp, 1, 2),
             BeamQ(:beamQ, 4, idiv(N, 2)) => Warp(:warp, 1, idiv(N, 2)),
-            Freq(:freq, 1, F) => Block(:block, 1, F),
+            Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
             # Polr(:polr, 1, P) => Loop(:polr, 1, P),
             Polr(:polr, 1, P) => Register(:polr, 1, P),
             Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner),
             # Time(:time, Tinner, idiv(Touter, Tinner)) => Loop(:t_inner, Tinner, idiv(Touter, Tinner)),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
             Time(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2),
-            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+            Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
         ])
     else
         @assert false
@@ -1346,11 +1324,11 @@ function do_second_fft!(emitter)
             DishMLo(:dishMLo, 2, idiv(Mpad, 8)) => Thread(:thread, 8 * Mt, idiv(Mpad, 8)),
             DishMHi(:dishMHi, 1, 4) => Thread(:thread, 1, 4),
             Polr(:polr, 1, P) => Register(:polr, 1, P),
-            Freq(:freq, 1, F) => Block(:block, 1, F),
+            Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
             Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
             Time(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2),
-            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+            Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
         ])
         @assert emitter.environment[:X] == layout_X_registers
 
@@ -1365,14 +1343,14 @@ function do_second_fft!(emitter)
             BeamQ(:beamQ, 1, Qt) => Thread(:thread, 1, Qt),
             BeamQ(:beamQ, Qt, Qw) => Warp(:warp, 1, Qw),
             BeamQ(:beamQ, Qt * Qw, Qr) => Register(:beamQ, Qt * Qw, Qr),
-            Freq(:freq, 1, F) => Block(:block, 1, F),
+            Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
             # Polr(:polr, 1, P) => Loop(:polr, 1, P),
             Polr(:polr, 1, P) => Register(:polr, 1, P),
             Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner),
             # Time(:time, Tinner, idiv(Touter, Tinner)) => Loop(:t_inner, Tinner, idiv(Touter, Tinner)),
             Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
             Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
-            Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+            Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
         ])
         apply!(emitter, :Z => layout_Z_registers, :(zero(Float16x2)))
 
@@ -1426,12 +1404,12 @@ function do_second_fft!(emitter)
                 BeamP(:beamP, 8, 8) => Thread(:thread, 4, 8),
                 BeamQ(:beamQ, 1, W) => Warp(:warp, 1, W),
                 BeamQ(:beamQ, W, idiv(2N, W)) => Register(:beamQ, W, idiv(2N, W)),
-                Freq(:freq, 1, F) => Block(:block, 1, F),
+                Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
                 Polr(:polr, 1, P) => Register(:polr, 1, P),
                 Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner),
                 Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
                 Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
-                Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+                Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
             ])
         elseif trailing_zeros(Mpad) == 4
             layout_Y_registers = Layout([
@@ -1443,12 +1421,12 @@ function do_second_fft!(emitter)
                 BeamQ(:beamQ, 1, 2) => Thread(:thread, 16, 2),
                 BeamQ(:beamQ, 2, W) => Warp(:warp, 1, W),
                 BeamQ(:beamQ, 2W, idiv(2N, 2W)) => Register(:beamQ, 2W, idiv(2N, 2W)),
-                Freq(:freq, 1, F) => Block(:block, 1, F),
+                Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
                 Polr(:polr, 1, P) => Register(:polr, 1, P),
                 Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner),
                 Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
                 Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
-                Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+                Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
             ])
         elseif trailing_zeros(Mpad) == 3
             layout_Y_registers = Layout([
@@ -1460,12 +1438,12 @@ function do_second_fft!(emitter)
                 BeamQ(:beamQ, 1, 4) => Thread(:thread, 8, 4),
                 BeamQ(:beamQ, 4, W) => Warp(:warp, 1, W),
                 BeamQ(:beamQ, 4W, idiv(2N, 4W)) => Register(:beamQ, 4W, idiv(2N, 4W)),
-                Freq(:freq, 1, F) => Block(:block, 1, F),
+                Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
                 Polr(:polr, 1, P) => Register(:polr, 1, P),
                 Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner),
                 Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
                 Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
-                Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter)),
+                Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
             ])
         else
             @assert false
@@ -1534,7 +1512,7 @@ function do_second_fft!(emitter)
             muladd($Ẽp1im, $Ẽp1im, muladd($Ẽp1re, $Ẽp1re, muladd($Ẽp0im, $Ẽp0im, $Ẽp0re * $Ẽp0re))),
             $I,
         ));
-        ignore=[Time(:time, 1, T)],
+        ignore=[Time(:time, 1, Tbar)],
     )
 
     return nothing
@@ -1548,17 +1526,17 @@ function make_frb_kernel()
     apply!(emitter, :info => layout_info_registers, 1i32)
     store!(emitter, :info_memory => layout_info_memory, :info)
 
-    # Check parameters `Tmin`, `Tmax`, `T̄min`, `T̄max`
+    # Check parameters `Tbarmin`, `Tbarmax`, `Ttildemin`, `Ttildemax`
     if!(
         emitter,
         :(
             !(
-                0i32 ≤ Tmin < $(Int32(T)) &&
-                Tmin ≤ Tmax < $(Int32(2 * T)) &&
-                (Tmax - Tmin) % $(Int32(Touter)) == 0i32 &&
-                0i32 ≤ T̄min < $(Int32(T̄)) &&
-                T̄min ≤ T̄max < $(Int32(2 * T̄)) &&
-                T̄max - T̄min == (Tmax - Tmin) ÷ $(Int32(Tds))
+                0i32 ≤ Tbarmin < $(Int32(Tbar)) &&
+                Tbarmin ≤ Tbarmax < $(Int32(2 * Tbar)) &&
+                (Tbarmax - Tbarmin) % $(Int32(Touter)) == 0i32 &&
+                0i32 ≤ Ttildemin < $(Int32(Ttilde)) &&
+                Ttildemin ≤ Ttildemax < $(Int32(2 * Ttilde)) &&
+                Ttildemax - Ttildemin == (Tbarmax - Tbarmin) ÷ $(Int32(Tds))
             )
         ),
     ) do emitter
@@ -1568,18 +1546,18 @@ function make_frb_kernel()
         return nothing
     end
 
-    # Check parameters `Fmin`, `Fmax`, `F̄min`, `F̄max`
-    @assert F % U == 0
-    @assert F̄ % U == 0
+    # Check parameters `Fbar_in_min`, `Fbar_in_max`, `Fbar_out_min`, `Fbar_out_max`
+    @assert Fbar_in % U == 0
+    @assert Fbar_out % U == 0
     if!(
         emitter,
         :(
             !(
-                0i32 ≤ Fmin ≤ Fmax ≤ $(Int32(F)) &&
-                (Fmax - Fmin) % $(Int32(U)) == 0i32 &&
-                0i32 ≤ F̄min ≤ F̄max ≤ $(Int32(F̄)) &&
-                (F̄max - F̄min) % $(Int32(U)) == 0i32 &&
-                F̄max - F̄min == Fmax - Fmin
+                0i32 ≤ Fbar_in_min ≤ Fbar_in_max ≤ $(Int32(Fbar_in)) &&
+                (Fbar_in_max - Fbar_in_min) % $(Int32(U)) == 0i32 &&
+                0i32 ≤ Fbar_out_min ≤ Fbar_out_max ≤ $(Int32(Fbar_out)) &&
+                (Fbar_out_max - Fbar_out_min) % $(Int32(U)) == 0i32 &&
+                Fbar_out_max - Fbar_out_min == Fbar_in_max - Fbar_in_min
             )
         ),
     ) do emitter
@@ -1680,7 +1658,7 @@ function make_frb_kernel()
             DishNLo(:dishNLo, 1, 2) => Thread(:thread, 4, 2),
             DishNLo(:dishNLo, 2, idiv(Npad, 8)) => Thread(:thread, 8 * (1 << νm), idiv(Npad, 8)),
             DishNHi(:dishNHi, 1, 4) => Thread(:thread, 1, 4),
-            Freq(:freq, 1, F) => Block(:block, 1, F),
+            Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
             Polr(:polr, 1, P) => Register(:polr, 1, P),
         ])
         # This loads garbage for idiv(N, 4) ≤ nlo ≤ idiv(Npad, 4)
@@ -1712,19 +1690,19 @@ function make_frb_kernel()
             BeamQ(:beamQ, 1, Qt) => Thread(:thread, Pt, Qt),
             BeamQ(:beamQ, Qt, Qw) => Warp(:warp, 1, W),
             BeamQ(:beamQ, Qt * Qw, Qr) => Register(:beamQ, Qt * Qw, Qr),
-            Freq(:freq, 1, F) => Block(:block, 1, F),
-            DSTime(:dstime, 1, T̄) => Loop(:dstime, 1, T̄),
+            Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
+            DSTime(:dstime, 1, Ttilde) => Loop(:dstime, 1, Ttilde),
         ])
         apply!(emitter, :I => layout_I_registers, :(zero(Float16x2)))
         push!(emitter.statements, :(dstime = $(0i32)))
         push!(emitter.statements, :(t_running = $(0i32)))
     end
 
-    loop!(emitter, Time(:time, Touter, fld(T, Touter)) => Loop(:t_outer, Touter, fld(T, Touter))) do emitter
+    loop!(emitter, Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter))) do emitter
         push!(
             emitter.statements,
             quote
-                Tmin + t_outer ≥ Tmax && break
+                Tbarmin + t_outer ≥ Tbarmax && break
             end,
         )
 
@@ -1737,16 +1715,16 @@ function make_frb_kernel()
         block!(emitter) do emitter
             read_Fsh1!(emitter)
             sync_threads!(emitter)
-
+        
             write_Fsh2!(emitter)
             sync_threads!(emitter)
             return nothing
         end
-
+        
         block!(emitter) do emitter
             read_Fsh2!(emitter)
             sync_threads!(emitter)
-
+        
             unrolled_loop!(emitter, Time(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2)) do emitter
                 # This loop should probably be unrolled for execution speed, but that increases compile time significantly
                 # loop!(
@@ -1755,7 +1733,7 @@ function make_frb_kernel()
                 loop!(
                     emitter, Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner))
                 ) do emitter
-
+        
                     # 4.10 First FFT
                     # (111)
                     # unrolled_loop!(emitter, Time(:time, Tw, idiv(Tinner, Tw)) => Loop(:tau_tile, Tw, idiv(Tinner, Tw))) do emitter
@@ -1773,16 +1751,16 @@ function make_frb_kernel()
                     # end
                     do_first_fft!(emitter)
                     sync_threads!(emitter)
-
+        
                     unrolled_loop!(emitter, Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner)) do emitter
-
+        
                         # 4.11 Second FFT
                         # loop!(emitter, Polr(:polr, 1, P) => Loop(:polr, 1, P)) do emitter
                         #     do_second_fft!(emitter)
                         #     nothing
                         # end
                         do_second_fft!(emitter)
-
+        
                         push!(emitter.statements, :(t_running += $(1i32)))
                         # Skip this write-back for some of the `t` and `t_inner` iterations, depending on `% T_ds`
                         # (This condition will be evaluated at compile time)
@@ -1822,8 +1800,8 @@ function make_frb_kernel()
                                     end,
                                     postprocess=addr -> quote
                                         let
-                                            offset = $(Int32(M * 2 * N * F̄)) * T̄min + $(Int32(M * 2 * N)) * F̄min
-                                            length = $(Int32(M * 2 * N * F̄ * T̄))
+                                            offset = $(Int32(M * 2 * N * Fbar_out)) * Ttildemin + $(Int32(M * 2 * N)) * Fbar_out_min
+                                            length = $(Int32(M * 2 * N * Fbar_out * Ttilde))
                                             mod($addr + offset, length)
                                         end
                                     end,
@@ -1831,22 +1809,22 @@ function make_frb_kernel()
                                 apply!(emitter, :I, [:I], (I,) -> :(zero(Float16x2)))
                                 push!(emitter.statements, :(t_running = $(0i32)))
                                 push!(emitter.statements, :(dstime += $(1i32)))
-
+        
                                 return nothing
                             end
-
+        
                             return nothing
                         end
-
+        
                         return nothing
                     end
                     sync_threads!(emitter)
-
+        
                     return nothing
                 end
                 return nothing
             end
-
+        
             return nothing
         end
 
@@ -1891,14 +1869,14 @@ const frb_kernel = make_frb_kernel()
 println("[Done creating frb kernel]")
 
 @eval function frb(
-    Tmin::Int32,
-    Tmax::Int32,
-    T̄min::Int32,
-    T̄max::Int32,
-    Fmin::Int32,
-    Fmax::Int32,
-    F̄min::Int32,
-    F̄max::Int32,
+    Tbarmin::Int32,
+    Tbarmax::Int32,
+    Ttildemin::Int32,
+    Ttildemax::Int32,
+    Fbar_in_min::Int32,
+    Fbar_in_max::Int32,
+    Fbar_out_min::Int32,
+    Fbar_out_max::Int32,
     Smn_memory,
     W_memory,
     E_memory,
@@ -1961,9 +1939,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
     # TODO: determine types and sizes automatically
     Smn_memory = Array{Int16x2}(undef, M * N)
-    W_memory = Array{Float16x2}(undef, M * N * F * P)
-    E_memory = Array{Int4x8}(undef, idiv(D, 4) * P * F * T)
-    I_wanted = Array{Float16x2}(undef, M * 2 * N * T̄ * F)
+    W_memory = Array{Float16x2}(undef, M * N * Fbar_in * P)
+    E_memory = Array{Int4x8}(undef, idiv(D, 4) * P * Fbar_in * Tbar)
+    I_wanted = Array{Float16x2}(undef, M * 2 * N * Fbar_out * Ttilde)
     info_wanted = Array{Int32}(undef, num_threads * num_warps * num_blocks)
 
     Random.seed!(0)
@@ -1981,15 +1959,15 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         map!(i -> zero(Float16x2), I_wanted, I_wanted)
         map!(i -> zero(Int32), info_wanted, info_wanted)
 
-        Tmin = Int32(0)
-        Tmax = Int32(fld(idiv(T, 4), Touter) * Touter)
-        T̄min = Int32(0)
-        T̄max = Int32(T̄min + fld(Tmax - Tmin, Tds))
+        Tbarmin = Int32(0)
+        Tbarmax = Int32(fld(idiv(Tbar, 4), Touter) * Touter)
+        Ttildemin = Int32(0)
+        Ttildemax = Int32(Ttildemin + fld(Tbarmax - Tbarmin, Tds))
 
-        Fmin = Int32(0)
-        Fmax = Int32(F)
-        F̄min = Int32(0)
-        F̄max = Int32(F)
+        Fbar_in_min = Int32(0)
+        Fbar_in_max = Int32(Fbar_in)
+        Fbar_out_min = Int32(0)
+        Fbar_out_max = Int32(Fbar_in)
 
         input = :random
         if input ≡ :zero
@@ -2023,11 +2001,11 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             W_memory .= [Float16x2(c2t(Wvalue)...) for i in eachindex(W_memory)]
 
             dish = rand(0:(D - 1))
-            freq = rand(0:(F - 1))
+            freq = rand(0:(Fbar_in - 1))
             polr = rand(0:(P - 1))
-            time = rand(0:(T - 1))
+            time = rand(0:(Tbar - 1))
             @show dish freq polr time
-            Eidx = dish ÷ 4 + idiv(D, 4) * polr + idiv(D, 4) * P * freq + idiv(D, 4) * F * P * time
+            Eidx = dish ÷ 4 + idiv(D, 4) * polr + idiv(D, 4) * P * freq + idiv(D, 4) * Fbar_in * P * time
             Evalue = rand(-7:7) + im * rand(-7:7)
             Evalue8 = zero(SVector{8,Int8})
             Evalue8 = setindex(Evalue8, imag(Evalue), 2 * (dish % 4) + 0 + 1)
@@ -2038,7 +2016,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             dstime = time ÷ Tds
             @show dstime
             for beamq in 0:(2 * N - 1), beamp in 0:(2 * M - 1)
-                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * dstime + M * 2 * N * T̄ * freq
+                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * dstime + M * 2 * N * Ttilde * freq
                 dishm, dishn = dish_grid[dish + 1]
                 # Eqn. (4)
                 Ẽvalue = cispi((2 * dishm * beamp / Float32(2 * M) + 2 * dishn * beamq / Float32(2 * N)) % 2.0f0) * Wvalue * Evalue
@@ -2058,14 +2036,14 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
         println("Running kernel...")
         kernel(
-            Tmin,
-            Tmax,
-            T̄min,
-            T̄max,
-            Fmin,
-            Fmax,
-            F̄min,
-            F̄max,
+            Tbarmin,
+            Tbarmax,
+            Ttildemin,
+            Ttildemax,
+            Fbar_in_min,
+            Fbar_in_max,
+            Fbar_out_min,
+            Fbar_out_max,
             Smn_cuda,
             W_cuda,
             E_cuda,
@@ -2081,14 +2059,14 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             stats = @timed begin
                 for run in 1:nruns
                     kernel(
-                        Tmin,
-                        Tmax,
-                        T̄min,
-                        T̄max,
-                        Fmin,
-                        Fmax,
-                        F̄min,
-                        F̄max,
+                        Tbarmin,
+                        Tbarmax,
+                        Ttildemin,
+                        Ttildemax,
+                        Fbar_in_min,
+                        Fbar_in_max,
+                        Fbar_out_min,
+                        Fbar_out_max,
                         Smn_cuda,
                         W_cuda,
                         E_cuda,
@@ -2104,7 +2082,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             # All times in μsec
             runtime = stats.time / nruns * 1.0e+6
             num_frequencies_scaled = F₀
-            runtime_scaled = runtime / F * num_frequencies_scaled
+            runtime_scaled = runtime / Fbar_in * num_frequencies_scaled
             dataframe_length = T * sampling_time_μsec
             fraction = runtime_scaled / dataframe_length
             round1(x) = round(x; digits=1)
@@ -2148,8 +2126,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
             println("    I:")
             did_test_I_memory = falses(length(I_memory))
-            for freq in 0:(F - 1), dstime in 0:(T̄ - 1), beamq in 0:(2 * N - 1), beamp in 0:(2 * M - 1)
-                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * dstime + M * 2 * N * T̄ * freq
+            for freq in 0:(F - 1), dstime in 0:(Ttilde - 1), beamq in 0:(2 * N - 1), beamp in 0:(2 * M - 1)
+                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * dstime + M * 2 * N * Ttilde * freq
                 if beamp % 2 == 0
                     @assert !did_test_I_memory[Iidx + 1]
                     did_test_I_memory[Iidx + 1] = true
@@ -2216,9 +2194,9 @@ function fix_ptx_kernel()
         downsampling-factor: $Tds
         number-of-complex-components: $C
         number-of-dishes: $D
-        number-of-frequencies: $F
+        number-of-frequencies: $Fbar_in
         number-of-polarizations: $P
-        number-of-timesamples: $T
+        number-of-timesamples: $Tbar
         output-gain: $output_gain
         sampling-time-μsec: $sampling_time_μsec
         upchannelization-factor: $U
@@ -2231,28 +2209,28 @@ function fix_ptx_kernel()
         shmem_bytes: $shmem_bytes
       kernel-symbol: "$kernel_symbol"
       kernel-arguments:
-        - name: "Tmin"
+        - name: "Tbarmin"
           intent: in
           type: Int32
-        - name: "Tmax"
+        - name: "Tbarmax"
           intent: in
           type: Int32
-        - name: "T̄min"
+        - name: "Ttildemin"
           intent: in
           type: Int32
-        - name: "T̄max"
+        - name: "Ttildemax"
           intent: in
           type: Int32
-        - name: "Fmin"
+        - name: "Fbar_in_min"
           intent: in
           type: Int32
-        - name: "Fmax"
+        - name: "Fbar_in_max"
           intent: in
           type: Int32
-        - name: "F̄min"
+        - name: "Fbar_out_min"
           intent: in
           type: Int32
-        - name: "F̄max"
+        - name: "Fbar_out_max"
           intent: in
           type: Int32
         - name: "S"
@@ -2264,21 +2242,21 @@ function fix_ptx_kernel()
         - name: "W"
           intent: in
           type: Float16
-          indices: [C, dishM, dishN, P, F]
-          shape: [$C, $M, $N, $P, $Fin]
-          strides: [1, $C, $(C*M), $(C*M*N), $(C*M*N*P), $(C*M*N*P*Fin)]
+          indices: [C, dishM, dishN, P, Fbar]
+          shape: [$C, $M, $N, $P, $Fbar_W]
+          strides: [1, $C, $(C*M), $(C*M*N), $(C*M*N*P), $(C*M*N*P*Fbar_W)]
         - name: "Ē"
           intent: in
           type: Int4
-          indices: [C, D, P, F, T]
-          shape: [$C, $D, $P, $F, $T]
-          strides: [1, $C, $(C*D), $(C*D*P), $(C*D*P*F)]
+          indices: [C, D, P, Fbar, Tbar]
+          shape: [$C, $D, $P, $Fbar_in, $Tbar]
+          strides: [1, $C, $(C*D), $(C*D*P), $(C*D*P*Fbar_in)]
         - name: "I"
           intent: out
           type: Float16
-          indices: [beamP, beamQ, F, Tbar]
-          shape: [$(2*M), $(2*N), $F̄, $T̄]
-          strides: [1, $(2*M), $(2*M*2*N), $(2*M*2*N*F̄)]
+          indices: [beamP, beamQ, Fbar, Tbar]
+          shape: [$(2*M), $(2*N), $Fbar_out, $Ttilde]
+          strides: [1, $(2*M), $(2*M*2*N), $(2*M*2*N*Fbar_out)]
         - name: "info"
           intent: out
           type: Int32
@@ -2305,9 +2283,9 @@ function fix_ptx_kernel()
                 Dict("type" => "int", "name" => "cuda_downsampling_factor", "value" => "$Tds"),
                 Dict("type" => "int", "name" => "cuda_number_of_complex_components", "value" => "$C"),
                 Dict("type" => "int", "name" => "cuda_number_of_dishes", "value" => "$D"),
-                Dict("type" => "int", "name" => "cuda_number_of_frequencies", "value" => "$F"),
+                Dict("type" => "int", "name" => "cuda_number_of_frequencies", "value" => "$Fbar_in"),
                 Dict("type" => "int", "name" => "cuda_number_of_polarizations", "value" => "$P"),
-                Dict("type" => "int", "name" => "cuda_number_of_timesamples", "value" => "$T"),
+                Dict("type" => "int", "name" => "cuda_number_of_timesamples", "value" => "$Tbar"),
                 Dict("type" => "int", "name" => "cuda_granularity_number_of_timesamples", "value" => "$Touter"),
             ],
             "minthreads" => num_threads * num_warps,
@@ -2351,32 +2329,32 @@ function fix_ptx_kernel()
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "Fbarmin",
-                    "kotekan_name" => "Fbarmin",
+                    "name" => "Fbar_in_min",
+                    "kotekan_name" => "Fbar_in_min",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "Fbarmax",
-                    "kotekan_name" => "Fbarmax",
+                    "name" => "Fbar_in_max",
+                    "kotekan_name" => "Fbar_in_max",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "Ftildemin",
-                    "kotekan_name" => "Ftildemin",
+                    "name" => "Fbar_out_min",
+                    "kotekan_name" => "Fbar_out_min",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "Ftildemax",
-                    "kotekan_name" => "Ftildemax",
+                    "name" => "Fbar_out_max",
+                    "kotekan_name" => "Fbar_out_max",
                     "type" => "int32",
                     "isoutput" => false,
                     "hasbuffer" => false,
@@ -2400,7 +2378,7 @@ function fix_ptx_kernel()
                         Dict("label" => "dishM", "length" => M),
                         Dict("label" => "dishN", "length" => N),
                         Dict("label" => "P", "length" => P),
-                        Dict("label" => "F", "length" => Fin),
+                        Dict("label" => "F", "length" => Fbar_W),
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
@@ -2413,8 +2391,8 @@ function fix_ptx_kernel()
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),
-                        Dict("label" => "Fbar", "length" => F),
-                        Dict("label" => "Tbar", "length" => T),
+                        Dict("label" => "Fbar", "length" => Fbar_in),
+                        Dict("label" => "Tbar", "length" => Tbar),
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
@@ -2427,8 +2405,8 @@ function fix_ptx_kernel()
                     "axes" => [
                         Dict("label" => "beamP", "length" => 2 * M),
                         Dict("label" => "beamQ", "length" => 2 * N),
-                        Dict("label" => "Fbar", "length" => F̄),
-                        Dict("label" => "Ttilde", "length" => T̄),
+                        Dict("label" => "Fbar", "length" => Fbar_out),
+                        Dict("label" => "Ttilde", "length" => Ttilde),
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,

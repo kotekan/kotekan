@@ -160,10 +160,10 @@ private:
     bool did_init_S_host;
 
     // How many frequencies we will process
-    const int Fbarmin, Fbarmax;
+    const int Fbar_in_min, Fbar_in_max;
 
     // How many frequencies we will produce
-    const int Ftildemin, Ftildemax;
+    const int Fbar_out_min, Fbar_out_max;
 
     // How many samples we will process from the input ringbuffer
     // (Set in `wait_for_precondition`, invalid after `finalize_frame`)
@@ -207,12 +207,18 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     output_ringbuf_signal(dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "out_signal")))),
     did_init_S_host(false),
-    Fbarmin(config.get<int>(unique_name, "Fbarmin")),
-    Fbarmax(config.get<int>(unique_name, "Fbarmax")),
-    Ftildemin(config.get<int>(unique_name, "Ftildemin")),
-    Ftildemax(config.get<int>(unique_name, "Ftildemax"))
+    Fbar_in_min(config.get<int>(unique_name, "Fbar_in_min")),
+    Fbar_in_max(config.get<int>(unique_name, "Fbar_in_max")),
+    Fbar_out_min(config.get<int>(unique_name, "Fbar_out_min")),
+    Fbar_out_max(config.get<int>(unique_name, "Fbar_out_max"))
 {
     // Check ringbuffer sizes
+    if (!(input_ringbuf_signal->size == Ebar_length))
+        FATAL_ERROR("Need input_ringbuf_signal->size == Ebar_length, but have input_ringbuf_signal->size={:d}, Ebar_length={:d}",
+                    input_ringbuf_signal->size, Ebar_length);
+    if (!(output_ringbuf_signal->size == I_length))
+        FATAL_ERROR("Need output_ringbuf_signal->size == I_length, but have output_ringbuf_signal->size={:d}, I_length={:d}",
+                    output_ringbuf_signal->size, I_length);
     assert(input_ringbuf_signal->size == Ebar_length);
     assert(output_ringbuf_signal->size == I_length);
 
@@ -321,7 +327,8 @@ int cuda{{{kernel_name}}}::wait_on_precondition() {
 
     // Wait for space to be available in our output ringbuffer...
     DEBUG("Waiting for output ringbuffer space for frame {:d}...", gpu_frame_id);
-    const std::optional<std::ptrdiff_t> val_out = output_ringbuf_signal->wait_for_writable(unique_name, instance_num, output_bytes);
+    const std::optional<std::ptrdiff_t> val_out =
+        output_ringbuf_signal->wait_for_writable(unique_name, instance_num, output_bytes);
     DEBUG("Finished waiting for output for data frame {:d}.", gpu_frame_id);
     if (!val_out.has_value())
         return -1;
@@ -376,20 +383,6 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                     DEBUG("input {{{name}}} array: {:s} {:s}",
                           {{{name}}}_meta->get_type_string(),
                           {{{name}}}_meta->get_dimensions_string());
-                    // const auto output_meta_{{{name}}} = [&]() {
-                    //     std::ostringstream buf;
-                    //     buf << "    name: " << ({{{name}}}_meta)->name << "\n"
-                    //         << "    type: " << chord_datatype_string(({{{name}}}_meta)->type) << "\n"
-                    //         << "    dim: [";
-                    //     for (int d = 0; d < ({{{name}}}_meta)->dims; ++d)
-                    //         buf << ({{{name}}}_meta)->dim[d] << ", ";
-                    //     buf << "]\n"
-                    //         << "    stride: [";
-                    //     for (int d = 0; d < ({{{name}}}_meta)->dims; ++d)
-                    //         buf << ({{{name}}}_meta)->stride[d] << ", ";
-                    //     buf << "]\n";
-                    //     return buf.str();
-                    // };
                     if (args::{{{name}}} == args::Ebar && {{{upchannelization_factor}}} == 1) {
                         // Replace "Ebar_U1" with "E" etc. because we don't run the upchannelizer for U=1
                         assert(std::strncmp({{{name}}}_meta->name, "E", sizeof {{{name}}}_meta->name) == 0);
@@ -510,10 +503,10 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     Ttildemax_arg = mod(Ttildemin, Ttilde_ringbuf) + Ttildelength;
 
     // Pass frequency spans to kernel
-    Fbarmin_arg = Fbarmin;
-    Fbarmax_arg = Fbarmax;
-    Ftildemin_arg = Ftildemin;
-    Ftildemax_arg = Ftildemax;
+    Fbar_in_min_arg = Fbar_in_min;
+    Fbar_in_max_arg = Fbar_in_max;
+    Fbar_out_min_arg = Fbar_out_min;
+    Fbar_out_max_arg = Fbar_out_max;
 
     // Update metadata
     I_meta->dim[I_rank - 1 - I_index_Ttilde] = Ttildelength;
@@ -602,15 +595,15 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
             const std::ptrdiff_t Ttildelength = (num_chunks == 1 ?
                                                      Ttildemax_arg - Ttildemin_arg :
                                                      chunk == 0 ? Ttilde_ringbuf - Ttildemin_arg : Ttildemax_arg - Ttilde_ringbuf);
-            const std::ptrdiff_t Ftildestride = I_meta->stride[1];
-            const std::ptrdiff_t Ftildeoffset = Ftildemin;
-            const std::ptrdiff_t Ftildelength = Ftildemax - Ftildemin;
+            const std::ptrdiff_t Fbar_out_stride = I_meta->stride[1];
+            const std::ptrdiff_t Fbar_out_offset = Fbar_out_min;
+            const std::ptrdiff_t Fbar_out_length = Fbar_out_max - Fbar_out_min;
             DEBUG("before cudaMemset2DAsync.I");
             CHECK_CUDA_ERROR(cudaMemset2DAsync((std::uint8_t*)I_memory +
-                                                   2 * Ttildeoffset * Ttildestride + 2 * Ftildeoffset * Ftildestride,
+                                                   2 * Ttildeoffset * Ttildestride + 2 * Fbar_out_offset * Fbar_out_stride,
                                                2 * Ttildestride,
                                                0x88,
-                                               2 * Ftildelength * Ftildestride,
+                                               2 * Fbar_out_length * Fbar_out_stride,
                                                Ttildelength,
                                                device.getStream(cuda_stream_id)));
         } // for chunk
@@ -624,10 +617,10 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                                       shmem_bytes));
 
     DEBUG("Running CUDA {{{kernel_name}}} on GPU frame {:d}", gpu_frame_id);
-    assert(0 <= Fbarmin && Fbarmin <= Fbarmax);
-    assert(0 <= Ftildemin && Ftildemin <= Ftildemax);
-    assert(Ftildemax - Ftildemin == Fbarmax - Fbarmin);
-    const int blocks = Fbarmax - Fbarmin;
+    assert(0 <= Fbar_in_min && Fbar_in_min <= Fbar_in_max);
+    assert(0 <= Fbar_out_min && Fbar_out_min <= Fbar_out_max);
+    assert(Fbar_out_max - Fbar_out_min == Fbar_in_max - Fbar_in_min);
+    const int blocks = Fbar_in_max - Fbar_in_min;
     assert(0 <= blocks);
     assert(blocks <= max_blocks);
     const CUresult err =
@@ -704,40 +697,40 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
             const std::ptrdiff_t Ttildelength = (num_chunks == 1 ?
                                                      Ttildemax_arg - Ttildemin_arg :
                                                      chunk == 0 ? Ttilde_ringbuf - Ttildemin_arg : Ttildemax_arg - Ttilde_ringbuf);
-            const std::ptrdiff_t Ftildestride = I_meta->stride[1];
-            const std::ptrdiff_t Ftildeoffset = Ftildemin;
-            const std::ptrdiff_t Ftildelength = Ftildemax - Ftildemin;
+            const std::ptrdiff_t Fbar_out_stride = I_meta->stride[1];
+            const std::ptrdiff_t Fbar_out_offset = Fbar_out_min;
+            const std::ptrdiff_t Fbar_out_length = Fbar_out_max - Fbar_out_min;
             DEBUG("    Ttildestride={}", Ttildestride);
             DEBUG("    Ttildeoffset={}", Ttildeoffset);
             DEBUG("    Ttildelength={}", Ttildelength);
-            DEBUG("    Ftildestride={}", Ftildestride);
-            DEBUG("    Ftildeoffset={}", Ftildeoffset);
-            DEBUG("    Ftildelength={}", Ftildelength);
-            std::vector<std::uint16_t> I_buffer(Ttildelength * Ftildelength * Ftildestride, 0x1111);
+            DEBUG("    Fbar_out_stride={}", Fbar_out_stride);
+            DEBUG("    Fbar_out_offset={}", Fbar_out_offset);
+            DEBUG("    Fbar_out_length={}", Fbar_out_length);
+            std::vector<std::uint16_t> I_buffer(Ttildelength * Fbar_out_length * Fbar_out_stride, 0x1111);
             DEBUG("    I_buffer.size={}", I_buffer.size());
             DEBUG("before cudaMemcpy2D.I");
             CHECK_CUDA_ERROR(cudaMemcpy2D(I_buffer.data(),
-                                          2 * Ftildelength * Ftildestride,
+                                          2 * Fbar_out_length * Fbar_out_stride,
                                           (const std::uint8_t*)I_memory +
-                                              2 * Ttildeoffset * Ttildestride + 2 * Ftildeoffset * Ftildestride,
+                                              2 * Ttildeoffset * Ttildestride + 2 * Fbar_out_offset * Fbar_out_stride,
                                           2 * Ttildestride,
-                                          2 * Ftildelength * Ftildestride,
+                                          2 * Fbar_out_length * Fbar_out_stride,
                                           Ttildelength,
                                           cudaMemcpyDeviceToHost));
 
             DEBUG("before memchr");
             bool I_found_error = false;
             for (std::ptrdiff_t ttilde=0; ttilde<Ttildelength; ++ttilde) {
-                for (std::ptrdiff_t ftilde=0; ftilde<Ftildelength; ++ftilde) {
-                    // for (std::ptrdiff_t n=0; n<Ftildestride; ++n) {
-                    //     const auto val = I_buffer.at(ttilde * (Ftildelength * Ftildestride) + ftilde * Ftildestride + n); 
+                for (std::ptrdiff_t ftilde=0; ftilde<Fbar_out_length; ++ftilde) {
+                    // for (std::ptrdiff_t n=0; n<Fbar_out_stride; ++n) {
+                    //     const auto val = I_buffer.at(ttilde * (Fbar_out_length * Fbar_out_stride) + ftilde * Fbar_out_stride + n); 
                     //     if (val == 0x88) {
                     //         DEBUG("    U={{{upchannelization_factor}}} [{},{},{}]={:#02x}", ttilde, ftilde, n, 0x88);
                     //     }
                     // }
                     bool any_error = false, all_error = true;
-                    for (std::ptrdiff_t n=0; n<Ftildestride; ++n) {
-                        const auto val = I_buffer.at(ttilde * (Ftildelength * Ftildestride) + ftilde * Ftildestride + n); 
+                    for (std::ptrdiff_t n=0; n<Fbar_out_stride; ++n) {
+                        const auto val = I_buffer.at(ttilde * (Fbar_out_length * Fbar_out_stride) + ftilde * Fbar_out_stride + n); 
                         any_error |= val == 0x8888;
                         all_error &= val == 0x8888;
                     }

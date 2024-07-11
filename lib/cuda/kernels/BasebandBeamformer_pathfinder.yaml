@@ -13,7 +13,7 @@ kernel-description:
     number-of-frequencies: 384
     number-of-polarizations: 2
     number-of-timesamples: 32768
-    sampling-time-μsec: 1.7
+    sampling-time-μsec: 5.12
     shift-parameter-σ: 2
   compile-parameters:
     minthreads: 128

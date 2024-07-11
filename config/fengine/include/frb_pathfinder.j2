@@ -1,6 +1,6 @@
 # -*-yaml-*-
 
-# CHORD Pathfinder frb beamformer setup
+# CHORD pathfinder FRB beamformer setup
 
 ################################################################################
 
@@ -113,7 +113,7 @@ host_frb3_beams_meanstd_buffer:
 
 # Stages
 
-# frb 1
+# FRB 1
 
 run_frb1_U1:
     gpu_0:
@@ -136,10 +136,10 @@ run_frb1_U1:
           gpu_mem_voltage: voltage_buffer
           gpu_mem_phase: frb1_U1_phase_buffer
           gpu_mem_beamgrid: frb1_beams_buffer
-          Fbarmin: upchan_U1_min_channel
-          Fbarmax: upchan_U1_max_channel
-          Ftildemin: upchan_U1_min_output_channel
-          Ftildemax: upchan_U1_max_output_channel
+          Fbar_in_min: upchan_U1_min_channel
+          Fbar_in_max: upchan_U1_max_channel
+          Fbar_out_min: upchan_U1_min_output_channel
+          Fbar_out_max: upchan_U1_max_output_channel
 
 run_frb1_U2:
     gpu_0:
@@ -162,10 +162,10 @@ run_frb1_U2:
           gpu_mem_voltage: upchan_U2_voltage_buffer
           gpu_mem_phase: frb1_U2_phase_buffer
           gpu_mem_beamgrid: frb1_beams_buffer
-          Fbarmin: 0
-          Fbarmax: upchan_U2_max_output_channel - upchan_U2_min_output_channel
-          Ftildemin: upchan_U2_min_output_channel
-          Ftildemax: upchan_U2_max_output_channel
+          Fbar_in_min: 0
+          Fbar_in_max: upchan_U2_max_output_channel - upchan_U2_min_output_channel
+          Fbar_out_min: upchan_U2_min_output_channel
+          Fbar_out_max: upchan_U2_max_output_channel
 
 run_frb1_U4:
     gpu_0:
@@ -188,10 +188,10 @@ run_frb1_U4:
           gpu_mem_voltage: upchan_U4_voltage_buffer
           gpu_mem_phase: frb1_U4_phase_buffer
           gpu_mem_beamgrid: frb1_beams_buffer
-          Fbarmin: 0
-          Fbarmax: upchan_U4_max_output_channel - upchan_U4_min_output_channel
-          Ftildemin: upchan_U4_min_output_channel
-          Ftildemax: upchan_U4_max_output_channel
+          Fbar_in_min: 0
+          Fbar_in_max: upchan_U4_max_output_channel - upchan_U4_min_output_channel
+          Fbar_out_min: upchan_U4_min_output_channel
+          Fbar_out_max: upchan_U4_max_output_channel
 
 run_frb1_U8:
     gpu_0:
@@ -214,10 +214,10 @@ run_frb1_U8:
           gpu_mem_voltage: upchan_U8_voltage_buffer
           gpu_mem_phase: frb1_U8_phase_buffer
           gpu_mem_beamgrid: frb1_beams_buffer
-          Fbarmin: 0
-          Fbarmax: upchan_U8_max_output_channel - upchan_U8_min_output_channel
-          Ftildemin: upchan_U8_min_output_channel
-          Ftildemax: upchan_U8_max_output_channel
+          Fbar_in_min: 0
+          Fbar_in_max: upchan_U8_max_output_channel - upchan_U8_min_output_channel
+          Fbar_out_min: upchan_U8_min_output_channel
+          Fbar_out_max: upchan_U8_max_output_channel
 
 run_frb1_U16:
     gpu_0:
@@ -240,10 +240,10 @@ run_frb1_U16:
           gpu_mem_voltage: upchan_U16_voltage_buffer
           gpu_mem_phase: frb1_U16_phase_buffer
           gpu_mem_beamgrid: frb1_beams_buffer
-          Fbarmin: 0
-          Fbarmax: upchan_U16_max_output_channel - upchan_U16_min_output_channel
-          Ftildemin: upchan_U16_min_output_channel
-          Ftildemax: upchan_U16_max_output_channel
+          Fbar_in_min: 0
+          Fbar_in_max: upchan_U16_max_output_channel - upchan_U16_min_output_channel
+          Fbar_out_min: upchan_U16_min_output_channel
+          Fbar_out_max: upchan_U16_max_output_channel
 
 run_frb1_U32:
     gpu_0:
@@ -266,10 +266,10 @@ run_frb1_U32:
           gpu_mem_voltage: upchan_U32_voltage_buffer
           gpu_mem_phase: frb1_U32_phase_buffer
           gpu_mem_beamgrid: frb1_beams_buffer
-          Fbarmin: 0
-          Fbarmax: upchan_U32_max_output_channel - upchan_U32_min_output_channel
-          Ftildemin: upchan_U32_min_output_channel
-          Ftildemax: upchan_U32_max_output_channel
+          Fbar_in_min: 0
+          Fbar_in_max: upchan_U32_max_output_channel - upchan_U32_min_output_channel
+          Fbar_out_min: upchan_U32_min_output_channel
+          Fbar_out_max: upchan_U32_max_output_channel
 
 run_frb1_U64:
     gpu_0:
@@ -292,12 +292,12 @@ run_frb1_U64:
           gpu_mem_voltage: upchan_U64_voltage_buffer
           gpu_mem_phase: frb1_U64_phase_buffer
           gpu_mem_beamgrid: frb1_beams_buffer
-          Fbarmin: 0
-          Fbarmax: upchan_U64_max_output_channel - upchan_U64_min_output_channel
-          Ftildemin: upchan_U64_min_output_channel
-          Ftildemax: upchan_U64_max_output_channel
+          Fbar_in_min: 0
+          Fbar_in_max: upchan_U64_max_output_channel - upchan_U64_min_output_channel
+          Fbar_out_min: upchan_U64_min_output_channel
+          Fbar_out_max: upchan_U64_max_output_channel
 
-# frb 2 and 3
+# FRB 2 and 3
 
 run_frb23:
     gpu_0:

@@ -1,0 +1,51 @@
+# -*-yaml-*-
+
+################################################################################
+#
+# Run a HIRAX test
+#
+################################################################################
+
+---
+log_level: debug
+
+the buffers are too large. for example, the U16 output buffer has size
+
+4 * 256 * 2 * 512 * 8192 = 4 * 2^31
+
+we cannot handle array sizes that are this large.
+
+one relatively clean way to handle this is to separate the ring buffer
+by frequencies, keeping times adjacent, and calculating the frequency
+offset per block.
+
+this frequency-striding will require changes to the kernels (d'oh) and
+also to the functions that copy from standard to ring buffers.
+
+the alternatives would be either (1) having much smaller frames, or
+(2) selectively allowing 64-bit addressing in the kernels.
+
+this is a problem here (with hirax) and likely also with chord and
+chime.
+
+when should we start this change? possibly after benchmarking for
+chime?
+
+fengine_num_frames: 1
+fengine_repeat_count: 10
+
+skip_julia: false
+
+base_dir: /tmp/fengine_hirax_test
+
+{% include "include/defs.j2" %}
+{% include "include/fengine_hirax.j2" %}
+{% include "include/sources_hirax.j2" %}
+
+{% include "include/n2k_hirax.j2" %}
+{% include "include/bb_hirax.j2" %}
+{% include "include/upchan_hirax.j2" %}
+{% include "include/frb_hirax.j2" %}
+
+{% include "include/output_test.j2" %}
+...

@@ -16,7 +16,7 @@ kernel-description:
     number-of-polarizations: 2
     number-of-timesamples: 1024
     output-gain: 0.015625
-    sampling-time-μsec: 54.61333333333334
+    sampling-time-μsec: 5.12
     upchannelization-factor: 32
   compile-parameters:
     minthreads: 192
@@ -27,28 +27,28 @@ kernel-description:
     shmem_bytes: 13920
   kernel-symbol: "_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE"
   kernel-arguments:
-    - name: "Tmin"
+    - name: "Tbarmin"
       intent: in
       type: Int32
-    - name: "Tmax"
+    - name: "Tbarmax"
       intent: in
       type: Int32
-    - name: "T̄min"
+    - name: "Ttildemin"
       intent: in
       type: Int32
-    - name: "T̄max"
+    - name: "Ttildemax"
       intent: in
       type: Int32
-    - name: "Fmin"
+    - name: "Fbar_in_min"
       intent: in
       type: Int32
-    - name: "Fmax"
+    - name: "Fbar_in_max"
       intent: in
       type: Int32
-    - name: "F̄min"
+    - name: "Fbar_out_min"
       intent: in
       type: Int32
-    - name: "F̄max"
+    - name: "Fbar_out_max"
       intent: in
       type: Int32
     - name: "S"
@@ -60,19 +60,19 @@ kernel-description:
     - name: "W"
       intent: in
       type: Float16
-      indices: [C, dishM, dishN, P, F]
+      indices: [C, dishM, dishN, P, Fbar]
       shape: [2, 8, 12, 2, 2048]
       strides: [1, 2, 16, 192, 384, 786432]
     - name: "Ē"
       intent: in
       type: Int4
-      indices: [C, D, P, F, T]
+      indices: [C, D, P, Fbar, Tbar]
       shape: [2, 64, 2, 2048, 1024]
       strides: [1, 2, 128, 256, 524288]
     - name: "I"
       intent: out
       type: Float16
-      indices: [beamP, beamQ, F, Tbar]
+      indices: [beamP, beamQ, Fbar, Tbar]
       shape: [16, 24, 4096, 512]
       strides: [1, 16, 384, 1572864]
     - name: "info"

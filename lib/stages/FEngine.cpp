@@ -44,6 +44,18 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     noise_amplitude(config.get_default<float>(unique_name, "noise_amplitude", 0)),
     source_channels(config.get<std::vector<float>>(unique_name, "source_channels")),
     source_amplitudes(config.get<std::vector<float>>(unique_name, "source_amplitudes")),
+    dispersed_source_start_time(
+        config.get_default<float>(unique_name, "dispersed_source_start_time", 0)),
+    dispersed_source_end_time(
+        config.get_default<float>(unique_name, "dispersed_source_end_time", 1)),
+    dispersed_source_start_frequency(
+        config.get_default<float>(unique_name, "dispersed_source_start_frequency", 2)),
+    dispersed_source_stop_frequency(
+        config.get_default<float>(unique_name, "dispersed_source_stop_frequency", 1)),
+    dispersed_source_linewidth(
+        config.get_default<float>(unique_name, "dispersed_source_linewidth", 1)),
+    dispersed_source_amplitude(
+        config.get_default<float>(unique_name, "dispersed_source_amplitude", 0)),
     source_position_ew(config.get<float>(unique_name, "source_position_ew")),
     source_position_ns(config.get<float>(unique_name, "source_position_ns")),
 
@@ -318,7 +330,7 @@ void FEngine::main_thread() {
             assert(f_engine_module);
             jl_function_t* const setup = jl_get_function(f_engine_module, "setup");
             assert(setup);
-            const int nargs = 21;
+            const int nargs = 27;
             jl_value_t** args;
             JL_GC_PUSHARGS(args, nargs);
             int iargc = 0;
@@ -328,6 +340,12 @@ void FEngine::main_thread() {
                 const_cast<void*>(static_cast<const void*>(source_channels.data())));
             args[iargc++] = jl_box_voidpointer(
                 const_cast<void*>(static_cast<const void*>(source_amplitudes.data())));
+            args[iargc++] = jl_box_float32(dispersed_source_start_time);
+            args[iargc++] = jl_box_float32(dispersed_source_end_time);
+            args[iargc++] = jl_box_float32(dispersed_source_start_frequency);
+            args[iargc++] = jl_box_float32(dispersed_source_stop_frequency);
+            args[iargc++] = jl_box_float32(dispersed_source_linewidth);
+            args[iargc++] = jl_box_float32(dispersed_source_amplitude);
             args[iargc++] = jl_box_float32(source_position_ew);
             args[iargc++] = jl_box_float32(source_position_ns);
             args[iargc++] = jl_box_int64(num_dish_locations_ew);

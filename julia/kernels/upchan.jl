@@ -63,53 +63,12 @@ end
 # Compile-time constants
 
 setup::Symbol
-
-@static if setup ≡ :chord
-    # CHORD Setup
-    const sampling_time_μsec = 4096 / (2 * 1200)
-    const C = 2
-    const D = 512
-    const P = 2
-    # const F₀ = 16
-    const F = 48
-    const F̄ = Dict(1 => 16, 2 => 16, 4 => 16, 8 => 8, 16 => 8, 32 => 8, 64 => 4, 128 => 1)[U] * U
-    const T = 4 * 8192
-elseif setup ≡ :hirax
-    # HIRAX Setup
-    const sampling_time_μsec = 2.56
-    const C = 2
-    const D = 256
-    const P = 2
-    # const F₀ = 64
-    const F = 64
-    const F̄ = F * U
-    const T = 4 * 8192
-elseif setup ≡ :pathfinder
-    # Pathfinder Setup
-    const sampling_time_μsec = 4096 / (2 * 1200)
-    const C = 2
-    const D = 64
-    const P = 2
-    # const F₀ = 128
-    # const F = 128
-    const F = 384
-    const F̄ = Dict(1 => 128, 2 => 128, 4 => 128, 8 => 64, 16 => 64, 32 => 64, 64 => 32)[U] * U
-    const T = 4 * 8192
-elseif setup ≡ :chime
-    # CHIME Setup
-    const sampling_time_μsec = 4096 / (2 * 1200)
-    const C = 2
-    const D = 1024
-    const P = 2
-    # const F₀ = 16
-    const F = 16
-    const F̄ = Dict(1 => 1, 2 => 1, 4 => 1, 8 => 1, 16 => 16, 32 => 1, 64 => 1, 128 => 1)[U] * U
-    const T = 4 * 16384
-else
-    @assert false
-end
-
+F::Integer
+T::Integer
 U::Integer
+
+const F̄ = F_per_U[U] * U
+
 const M = 4
 const K = 4
 

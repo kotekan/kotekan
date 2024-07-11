@@ -56,112 +56,84 @@ struct Source
     siny::Float
 end
 
+struct DispersedSource
+    t₀::Float
+    t₁::Float
+    f₀::Float
+    f₁::Float
+    Δf::Float
+    A::Complex{Float}
+    sinx::Float
+    siny::Float
+end
+
 function eval_noise(noise::Noise)
     return noise.A * randn(Complex{Float})
 end
 
-function eval_source(source::Source, dishx::Float, dishy::Float, t₀::Float)
+function eval_source(source::Source, t::Float)
     # Add a random phase offset (100) to avoid syncing up all sources
-    t = t₀ + source.sinx * dishx / c₀ + source.siny * dishy / c₀ + 100
-    return source.A * cispi(2 * source.f₀ * t)
+    return source.A * cispi(2 * source.f₀ * (t + 100))
 end
 
-function eval_sources(noise::Noise, sources::Vector{Source}, dishx::Float, dishy::Float, t₀::Float)
-    return eval_noise(noise) + sum(eval_source(source, dishx, dishy, t₀) for source in sources)
-end
-
-# # We use unsigned integers to represent floating point numbers as
-# # fixed point numbers. We assume that `t ∈ [0, 2)` and we scale `u`
-# # such that `typemax(u)+1` would represent `2`.
-# const uscale = 8 * sizeof(FUInt) - 1
-# t2u(t::Float) = round(FUInt, ldexp(mod(t, 2), uscale))
-# u2t(u::FUInt) = ldexp(Float(u), -uscale)
-# 
-# @assert t2u(Float(0)) == 0
-# @assert t2u(Float(1)) == (big(typemax(FUInt)) + 1) ÷ 2
-# @assert u2t(FUInt(0)) == 0
-# @assert u2t(FUInt((big(typemax(FUInt)) + 1) ÷ 2)) == 1
-# @assert 2 - 1 / big(2)^uscale <= u2t(typemax(FUInt)) <= 2
-# for u in rand(FUInt, 100)
-#     # Set low bits to zero because `Float` cannot handle them
-#     u &= ~(typemax(u) >>> (uscale ÷ 2))
-#     @assert 0 ≤ u2t(u) < 2
-#     @assert t2u(u2t(u)) == u
-# end
-
-@fastmath @inline function eval_source(source::Source, dishx::Float, dishy::Float, t₀::Float, Δt::Float, n::Unsigned)
-    # We assume that `t₀` is "not very large" compared to `Δt`
-    # Add dish position delay
-    t₀ -= source.sinx * dishx / c₀ + source.siny * dishy / c₀
+function eval_source(source::Source, Δt::Float, n::Integer)
     # Add a random phase offset to avoid syncing up all sources
     n += 100
 
     # We want to calculate:
-    #     t = t₀ + Δt * n
+    #     t = Δt * n
     #     α = mod(f₀ * t, 1)
     # The problem is that `f₀ * t` can be very large and requires double precision.
-    # We thus use fixed-point arithmetic instead.
+    # We use fixed-point arithmetic instead.
 
-    # α = f₀ * t₀ + mod(f₀ * Δt * n, 1)
+    # α = mod(f₀ * Δt * n, 1)
     # S := 2^32
-    # α = f₀ * t₀ + mod(S * f₀ * Δt * n, S) / S
+    # α = mod(S * f₀ * Δt * n, S) / S
 
     logS = 8 * sizeof(UInt32)
-    X = round(UInt32, ldexp(source.f₀ * Δt, logS))
-    # This can overflow, giving a result mod S
+    # ldexp is slow, ensure it can be evaluated at compile time
+    S = ldexp(Float(1), logS)
+    X = round(UInt32, source.f₀ * Δt * S)
+    # This can overflow, giving a result mod S, which is exactly what we want
     Y = (X * n) % UInt32
-    Δα = source.f₀ * t₀
 
-    α = Δα + ldexp(Float(Y), -logS)
+    α = Float(Y) * inv(S)
 
     return source.A * cispi(2 * α)
 end
 
-function eval_sources(noise::Noise, sources::Vector{Source}, dishx::Float, dishy::Float, t₀::Float, Δt::Float, n::Unsigned)
-    return eval_noise(noise) + sum(eval_source(source, dishx, dishy, t₀, Δt, n) for source in sources)
-    # res::Complex{Float} = eval_noise(noise)
-    # @inbounds for i in 1:length(sources)
-    #     res += eval_source(sources[i], dishx, dishy, t₀, Δt, n)
-    # end
-    # return res
+function dispersed_frequency(dispersed_source::DispersedSource, t::Float)
+    # relation:
+    #     t(f) = ts + T / f^2
+    #     f(t) = sqrt(T / (t - ts))
+    # conditions:
+    #     t(f0)=t0, t(f1)=t0
+    # solution:
+    #     T  = f0^2 f1^2 (t1 - t0) / (f0^2 - f1^2)
+    #     ts = (f0^2 t0 - f1^2 t1) / (f0^2 - f1^2)
+
+    t₀ = dispersed_source.t₀
+    t₁ = dispersed_source.t₁
+    f₀ = dispersed_source.f₀
+    f₁ = dispersed_source.f₁
+
+    T = f₀^2 * f₁^2 * (t₁ - t₀) / (f₀^2 - f₁^2)
+    ts = (f₀^2 * t₀ - f₁^2 * t₁) / (f₀^2 - f₁^2)
+
+    f = sqrt(T / (t - ts))
+
+    return f
 end
 
-struct PreparedSource
-    A::Float
-    X::UInt32
-    Δα::Float
-end
+function eval_dispersed_source(dispersed_source::DispersedSource, t::Float64)
+    t₀ = dispersed_source.t₀
+    t₁ = dispersed_source.t₁
+    A = dispersed_source.A
+    t₀ <= t <= t₁ || return Complex{Float}(0)
 
-function prepare_source(source::Source, dishx::Float, dishy::Float, t₀::Float, Δt::Float)
-    t₀ -= source.sinx * dishx / c₀ + source.siny * dishy / c₀
-    logS = 8 * sizeof(UInt32)
-    X = round(UInt32, source.f₀ * Δt * ldexp(Float(1), logS))
-    Δα = source.f₀ * t₀
-    return PreparedSource(source.A, X, Δα)
-end
-
-@fastmath @inline function eval_source(source::PreparedSource, n::Unsigned)
-    X = source.X
-    Δα = source.Δα
-
-    logS = 8 * sizeof(UInt32)
-    Y = (X * n) % UInt32
-    α = Δα + Float(Y) * ldexp(Float(1), -logS)
-
-    return source.A * cispi(2 * α)
-end
-
-function prepare_sources(sources::Vector{Source}, dishx::Float, dishy::Float, t₀::Float, Δt::Float)
-    return PreparedSource[prepare_source(source, dishx, dishy, t₀, Δt) for source in sources]
-end
-
-function eval_sources(noise::Noise, sources::Vector{PreparedSource}, n::Unsigned)
-    # return eval_noise(noise) + sum(eval_source(source, n) for source in sources)
-    res::Complex{Float} = eval_noise(noise)
-    @inbounds for i in 1:length(sources)
-        res += eval_source(sources[i], n)
-    end
-    return res
+    f = dispersed_frequency(dispersed_source, Float32(t))
+    Δf = dispersed_source.Δf
+    return A * Complex{Float}(cispi(2 * f * t))   # * exp(-(f / Δf)^2 / 2)
 end
 
 ################################################################################
@@ -205,70 +177,37 @@ struct ADCFrame{T}
     data::Array{T,3}            # [time, dish, polr]
 end
 
-function adc_sample(::Type{T}, source::Source, dishes::Dishes, adc::ADC, time::Int, dish::Int, polr::Int) where {T<:Real}
+function adc_sample(
+    ::Type{T}, noise::Noise, sources::Vector{Source}, dispersed_source::DispersedSource, dishes::Dishes, adc::ADC, ntimes::Int
+) where {T<:Real}
     t₀ = adc.t₀
     Δt = adc.Δt
-
-    location = dishes.locations[dish]
-    dishx, dishy = location
-    t = t₀ + Δt * (time - 1)
-    val = eval_source(source, dishx, dishy, t)
-    res = reim(val)[polr]
-
-    return res
-end
-
-function adc_sample(::Type{T}, noise::Noise, sources::Vector{Source}, dishes::Dishes, adc::ADC, ntimes::Int) where {T<:Real}
-    t₀ = adc.t₀
-    Δt = adc.Δt
+    nsources = length(sources)
     ndishes = length(dishes.locations)
     npolrs = 2
 
-    # # More parallelisation but slower
-    # data = Array{T}(undef, ntimes, ndishes, npolrs)
-    # @showprogress desc = "ADC" dt = 1 @threads for time_dish in CartesianIndices((ntimes, ndishes))
-    #     time, dish = Tuple(time_dish)
-    #     location = dishes.locations[dish]
-    #     dishx, dishy = location
-    #     t = t₀ + Δt * (time - 1)
-    #     val = eval_sources(noise, sources, dishx, dishy, t)
-    #     data[time, dish, 1] = real(val)
-    #     data[time, dish, 2] = imag(val)
-    # end
+    source_samples = Complex{T}[eval_source(sources[source], Δt, time - 1) for source in 1:nsources, time in 1:ntimes]
+    dispersed_source_samples = Complex{T}[eval_dispersed_source(dispersed_source, Δt * Float64(time - 1)) for time in 1:ntimes]
 
-    # # Represent time as floating-point number
-    # data = Array{T}(undef, ntimes, ndishes, npolrs)
-    # @showprogress desc = "ADC" dt = 1 @threads for dish in 1:ndishes
-    #     location = dishes.locations[dish]
-    #     dishx, dishy = location
-    #     for time in 1:ntimes
-    #         t = t₀ + Δt * (time - 1)
-    #         val = eval_sources(noise, sources, dishx, dishy, t)
-    #         data[time, dish, 1] = real(val)
-    #         data[time, dish, 2] = imag(val)
-    #     end
-    # end
-
-    # # Represent time as integer
-    # data = Array{T}(undef, ntimes, ndishes, npolrs)
-    # @showprogress desc = "ADC" dt = 1 @threads for dish in 1:ndishes
-    #     location = dishes.locations[dish]
-    #     dishx, dishy = location
-    #     for time in 1:ntimes
-    #         val = eval_sources(noise, sources, dishx, dishy, t₀, Δt, Unsigned(time - 1))
-    #         data[time, dish, 1] = real(val)
-    #         data[time, dish, 2] = imag(val)
-    #     end
-    # end
-
-    # Represent time as integer and preprocess sources
     data = Array{T}(undef, ntimes, ndishes, npolrs)
     @showprogress desc = "ADC" dt = 1 @threads for dish in 1:ndishes
         location = dishes.locations[dish]
         dishx, dishy = location
-        prepared_sources = prepare_sources(sources, dishx, dishy, t₀, Δt)
+        ϕs = Complex{T}[
+            let
+                t₁ = t₀ + source.sinx * dishx / c₀ + source.siny * dishy / c₀
+                cis(2 * t₁)
+            end for source in sources
+        ]
+        dϕs = let
+            t₁ = t₀ + dispersed_source.sinx * dishx / c₀ + dispersed_source.siny * dishy / c₀
+            cis(2 * t₁)
+        end
         for time in 1:ntimes
-            val = eval_sources(noise, prepared_sources, Unsigned(time - 1))
+            val =
+                eval_noise(noise) +
+                sum(ϕs[source] * source_samples[source, time] for source in 1:nsources; init=Complex{T}(0)) +
+                dϕs * dispersed_source_samples[time]
             data[time, dish, 1] = real(val)
             data[time, dish, 2] = imag(val)
         end
@@ -646,6 +585,12 @@ function run(
     noise_amplitude::Float,
     source_channels::Vector{Float},
     source_amplitudes::Vector{Float},
+    dispersed_source_start_time::Float,
+    dispersed_source_end_time::Float,
+    dispersed_source_start_frequency::Float,
+    dispersed_source_end_frequency::Float,
+    dispersed_source_linewidth::Float,
+    dispersed_source_amplitude::Float,
     source_position_ew::Float,
     source_position_ns::Float,
     num_dish_locations_ew::Int64,
@@ -668,13 +613,24 @@ function run(
     noise = Noise(noise_amplitude)
     sources = Source[
         let
-            A = Complex{Float}(amplitude)
             f₀ = channel * adc_frequency / nsamples
+            A = Complex{Float}(amplitude)
             sin_ew = sin(source_position_ew) # east-west
             sin_ns = sin(source_position_ns) # north-south
             Source(f₀, A, sin_ew, sin_ns)
         end for (channel, amplitude) in zip(source_channels, source_amplitudes)
     ]
+    dispersed_source = let
+        t₀ = dispersed_source_start_time
+        t₁ = dispersed_source_end_time
+        f₀ = dispersed_source_start_frequency
+        f₁ = dispersed_source_end_frequency
+        Δf = dispersed_source_linewidth
+        A = Complex{Float}(dispersed_source_amplitude)
+        sin_ew = sin(source_position_ew) # east-west
+        sin_ns = sin(source_position_ns) # north-south
+        DispersedSource(t₀, t₁, f₀, f₁, Δf, A, sin_ew, sin_ns)
+    end
 
     println("Setting up dishes...")
     dishes = let
@@ -707,7 +663,7 @@ function run(
 
     println("ADC sampling...")
     ntimes_total = nsamples * (nframes * ntimes + ntaps - 1)
-    adcframe = adc_sample(Float, noise, sources, dishes, adc, ntimes_total)
+    adcframe = adc_sample(Float, noise, sources, dispersed_source, dishes, adc, ntimes_total)
 
     println("PFB FFT...")
     fframe = f_engine(pfb, adcframe)
@@ -732,6 +688,12 @@ function setup(
     nsources=1,
     source_channels_ptr=Ptr{Cfloat}(),
     source_amplitudes_ptr=Ptr{Cfloat}(),
+    dispersed_source_start_time=0.1,
+    dispersed_source_end_time=2.5,
+    dispersed_source_start_frequency=1500e6,
+    dispersed_source_end_frequency=300e6,
+    dispersed_source_linewidth=1.0,
+    dispersed_source_amplitude=0.0,
     source_position_ew=0.02,
     source_position_ns=0.03,
     num_dish_locations_ew=8,
@@ -756,27 +718,33 @@ function setup(
     frequency_channels_ptr = Ptr{Cint}(frequency_channels_ptr)
 
     println("F-Engine setup:")
-    println("    - noise_amplitude:        $noise_amplitude")
-    println("    - nsources:               $nsources")
-    println("    - source_channels_ptr:    $source_channels_ptr")
-    println("    - source_amplitudes_ptr:  $source_amplitudes_ptr")
-    println("    - source_position_ew:     $source_position_ew")
-    println("    - source_position_ns:     $source_position_ns")
-    println("    - num_dish_locations_ew:  $num_dish_locations_ew")
-    println("    - num_dish_locations_ns:  $num_dish_locations_ns")
-    println("    - dish_indices_ptr:       $dish_indices_ptr")
-    println("    - dish_separation_ew:     $dish_separation_ew")
-    println("    - dish_separation_ns:     $dish_separation_ns")
-    println("    - ndishes:                $ndishes")
-    println("    - adc_frequency:          $adc_frequency")
-    println("    - ntaps:                  $ntaps")
-    println("    - nsamples:               $nsamples")
-    println("    - nfreqs:                 $nfreqs")
-    println("    - frequency_channels_ptr: $frequency_channels_ptr")
-    println("    - ntimes:                 $ntimes")
-    println("    - nbeams_i:               $nbeams_i")
-    println("    - nbeams_j:               $nbeams_j")
-    println("    - nframes:                $nframes")
+    println("    - noise_amplitude:                  $noise_amplitude")
+    println("    - nsources:                         $nsources")
+    println("    - source_channels_ptr:              $source_channels_ptr")
+    println("    - source_amplitudes_ptr:            $source_amplitudes_ptr")
+    println("    - dispersed_source_start_time:      $dispersed_source_start_time")
+    println("    - dispersed_source_end_time:        $dispersed_source_end_time")
+    println("    - dispersed_source_start_frequency: $dispersed_source_start_frequency")
+    println("    - dispersed_source_end_frequency:   $dispersed_source_end_frequency")
+    println("    - dispersed_source_linewidth:       $dispersed_source_linewidth")
+    println("    - dispersed_source_amplitude:       $dispersed_source_amplitude")
+    println("    - source_position_ew:               $source_position_ew")
+    println("    - source_position_ns:               $source_position_ns")
+    println("    - num_dish_locations_ew:            $num_dish_locations_ew")
+    println("    - num_dish_locations_ns:            $num_dish_locations_ns")
+    println("    - dish_indices_ptr:                 $dish_indices_ptr")
+    println("    - dish_separation_ew:               $dish_separation_ew")
+    println("    - dish_separation_ns:               $dish_separation_ns")
+    println("    - ndishes:                          $ndishes")
+    println("    - adc_frequency:                    $adc_frequency")
+    println("    - ntaps:                            $ntaps")
+    println("    - nsamples:                         $nsamples")
+    println("    - nfreqs:                           $nfreqs")
+    println("    - frequency_channels_ptr:           $frequency_channels_ptr")
+    println("    - ntimes:                           $ntimes")
+    println("    - nbeams_i:                         $nbeams_i")
+    println("    - nbeams_j:                         $nbeams_j")
+    println("    - nframes:                          $nframes")
 
     source_channels = if source_channels_ptr != C_NULL
         Float[unsafe_load(source_channels_ptr, source) for source in 1:nsources]
@@ -814,6 +782,12 @@ function setup(
         Float(noise_amplitude),
         source_channels::Vector{Float},
         source_amplitudes::Vector{Float},
+        Float(dispersed_source_start_time),
+        Float(dispersed_source_end_time),
+        Float(dispersed_source_start_frequency),
+        Float(dispersed_source_end_frequency),
+        Float(dispersed_source_linewidth),
+        Float(dispersed_source_amplitude),
         Float(source_position_ew),
         Float(source_position_ns),
         Int64(num_dish_locations_ew),
@@ -893,7 +867,6 @@ function set_J(ptr::Ptr{UInt8}, sz::Int64, ntimes::Int64, npolrs::Int64, nfreqs:
     return nothing
 end
 
-stored_frbbeamss = nothing
 function set_W(ptr::Ptr{UInt8}, sz::Int64, ndishsM::Int64, ndishsN::Int64, npolrs::Int64, nfreqs::Int64, frame_index::Int64)
     for i in 1:sz
         unsafe_store!(ptr, 0, i)

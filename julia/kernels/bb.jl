@@ -10,8 +10,9 @@ using Random
 const Memory = IndexSpaces.Memory
 
 # const card = "A30"
-const card = "A40"
+# const card = "A40"
 # const card = "GeForce_RTX_4090"
+const card = "L40S"
 
 if CUDA.functional()
     println("[Choosing CUDA device...]")
@@ -39,20 +40,13 @@ const Time = Index{Physics,TimeTag}
 # Setup
 
 setup::Symbol
-
-# ADC sampling time: 1 / (2 * 1200 MHz) ≈ 0.4166667 ns
+F::Integer
+T::Integer
 
 @static if setup ≡ :chord
 
     # Full CHORD
-    const sampling_time_μsec = 4096 / (2 * 1200) # wrong
-    const C = 2
-    const D = 512
     const B = 96
-    const P = 2
-    const F₀ = 16
-    const F = 48
-    const T = 4 * 8192
 
     const T1_stride = 128
     const T2_stride = 32
@@ -63,15 +57,8 @@ setup::Symbol
 
 elseif setup ≡ :hirax
 
-    # HIRAX:
-    const sampling_time_μsec = 2.56 # wrong
-    const C = 2
-    const D = 256
+    # HIRAX
     const B = 16                # 8...32
-    const P = 2
-    const F₀ = 64
-    const F = 64                # 84 * 8
-    const T = 4 * 16384
 
     const T1_stride = 128
     const T2_stride = 32
@@ -83,14 +70,7 @@ elseif setup ≡ :hirax
 elseif setup ≡ :pathfinder
 
     # CHORD pathfinder
-    const sampling_time_μsec = 1.7 # wrong
-    const C = 2
-    const D = 64
     const B = 16
-    const P = 2
-    const F₀ = 128
-    const F = 384               # 84 * 8
-    const T = 4 * 8192
 
     const T1_stride = 128
     const T2_stride = 32
@@ -102,14 +82,7 @@ elseif setup ≡ :pathfinder
 elseif setup ≡ :chime
 
     # CHIME
-    const sampling_time_μsec = 1.7 # wrong
-    const C = 2
-    const D = 1024
     const B = 16
-    const P = 2
-    const F₀ = 128
-    const F = 16
-    const T = 4 * 16384
 
     const T1_stride = 128
     const T2_stride = 32

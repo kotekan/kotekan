@@ -1,0 +1,29 @@
+# -*-yaml-*-
+
+################################################################################
+#
+# Run a CHIME benchmark
+#
+################################################################################
+
+---
+log_level: warn
+
+fengine_num_frames: 10
+fengine_repeat_count: 10
+
+skip_julia: true
+
+base_dir: /tmp/fengine_chime_benchmark
+
+{% include "include/defs.j2" %}
+{% include "include/fengine_chime.j2" %}
+{% include "include/sources_chime.j2" %}
+
+{% include "include/n2k_chime.j2" %}
+{% include "include/bb_chime.j2" %}
+{% include "include/upchan_chime.j2" %}
+{% include "include/frb_chime.j2" %}
+
+{% include "include/output_benchmark_chime.j2" %}
+...

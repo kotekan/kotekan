@@ -13,7 +13,7 @@ kernel-description:
     number-of-polarizations: 2
     number-of-taps: 4
     number-of-timesamples: 65536
-    sampling-time-μsec: 1.7066666666666668
+    sampling-time-μsec: 2.56
     upchannelization-factor: 64
   compile-parameters:
     minthreads: 512

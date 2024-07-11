@@ -1,2 +1,2 @@
-const setup = :chord
+include("setup_chord.jl")
 include("bb.jl")

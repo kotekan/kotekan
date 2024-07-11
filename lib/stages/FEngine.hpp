@@ -57,6 +57,12 @@ class FEngine : public kotekan::Stage {
     const float noise_amplitude;
     const std::vector<float> source_channels;
     const std::vector<float> source_amplitudes;
+    const float dispersed_source_start_time;
+    const float dispersed_source_end_time;
+    const float dispersed_source_start_frequency;
+    const float dispersed_source_stop_frequency;
+    const float dispersed_source_linewidth;
+    const float dispersed_source_amplitude;
     const float source_position_ew;
     const float source_position_ns;
 

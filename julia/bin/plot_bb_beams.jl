@@ -1,3 +1,47 @@
+using CairoMakie
+using Kotekan
+using LinearAlgebra
+using SixelTerm
+
+prefix = "/tmp/fengine_pathfinder_test";
+host = "indigo";
+iter = "00000007"
+
+E = read_kotekan("$(prefix)/$(host)_voltage.$(iter).asdf", "voltage", ["D", "P", "F", "T"]);
+
+function dish_norm(A, p=2)
+    scale = p == Inf ? 1 : 1 / length(@view A[begin, :, :, :])^(1 / p)
+    return [scale * norm((@view A[dish, :, :, :]), p) for dish in 1:size(A, 1)]
+end
+Enorm2 = dish_norm(E, 2);
+
+let
+    fig = Figure(; size=(640, 480))
+    ax = Axis(fig[1, 1]; title="Dishes", xlabel="dish", ylabel="amplitude")
+    ylims!(ax, (0, 10))
+    barplot!(ax, 0:(length(Enorm2) - 1), Enorm2 .+ 0.1)
+    display(fig)
+end;
+
+A = read_kotekan("$(prefix)/$(host)_bb_phase.00000000.asdf", "bb_phase", ["C", "D", "B", "P", "F"]);
+A = reinterpret(reshape, Complex{eltype(A)}, A);
+s = read_kotekan("$(prefix)/$(host)_bb_shift.00000000.asdf", "bb_shift", ["B", "P", "F"]);
+
+J = read_kotekan("$(prefix)/$(host)_bb_beams.$(iter).asdf", "bb_beams", ["T", "P", "F", "B"]);
+function beam_norm(A, p=2)
+    scale = p == Inf ? 1 : 1 / length(@view A[:, :, :, begin])^(1 / p)
+    return [scale * norm((@view A[:, :, :, beam]), p) for beam in 1:size(A, 4)]
+end
+Jnorm2 = beam_norm(J, 2);
+
+let
+    fig = Figure(; size=(640, 480))
+    ax = Axis(fig[1, 1]; title="Baseband beams", xlabel="beam", ylabel="amplitude")
+    ylims!(ax, (0, 10))
+    barplot!(ax, 0:(length(Jnorm2) - 1), Jnorm2 .+ 0.1)
+    display(fig)
+end;
+
 # This script reads HDF5 files produced by the config/tests/f_engine_chord_bb.yaml
 # and makes amazing plots.
 using ASDF2
