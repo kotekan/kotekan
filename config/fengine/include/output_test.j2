@@ -123,6 +123,10 @@ run_recv_frb1_beams:
 
 write_data:
     # base_dir:
+    write_dish_positions:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_dish_positions_buffer
+        file_name: dish_positions
     write_voltage:
         kotekan_stage: asdfFileWrite
         in_buf: host_voltage_buffer
@@ -131,6 +135,10 @@ write_data:
         kotekan_stage: asdfFileWrite
         in_buf: host_n2k_correlation_buffer
         file_name: n2k_correlation
+    write_bb_beam_positions:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_bb_beam_positions_buffer
+        file_name: bb_beam_positions
     write_bb_phase:
         kotekan_stage: asdfFileWrite
         in_buf: host_bb_phase_buffer

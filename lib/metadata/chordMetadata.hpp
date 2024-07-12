@@ -76,7 +76,7 @@ const int CHORD_META_MAX_FREQ = 1024;
 const int CHORD_META_MAX_DIM = 10;
 
 // Maximum length of dimension names for arrays
-const int CHORD_META_MAX_DIMNAME = 16;
+const int CHORD_META_MAX_DIMNAME = 20;
 
 class chordMetadata : public metadataObject {
 public:

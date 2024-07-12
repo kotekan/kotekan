@@ -25,16 +25,17 @@ const Float = Float32
 # const FUInt = Dict(1 => UInt8, 2 => UInt16, 4 => UInt32, 8 => UInt64, 16 => UInt128)[sizeof(Float)]
 # const FInt = Dict(1 => Int8, 2 => Int16, 4 => Int32, 8 => Int64, 16 => Int128)[sizeof(Float)]
 
-const c₀ = 299_792_458          # speed of light in vacuum
+const c₀ = 299_792_458          # speed of light in vacuum [m/s]
 
 ################################################################################
 # Utilities
 
 c2i4(c::Complex) = Int4x2(real(c), imag(c))
-
 reim(x::Complex) = (x.re, x.im)
-
 ftoi4(x::Complex{T}) where {T<:Real} = Int4x2(round.(Int8, clamp.(reim(x) .* T(7.5), -7, +7))...)
+
+Base.clamp(val::Complex, lo, hi) = Complex(clamp(real(val), lo, hi), clamp(imag(val), lo, hi))
+Base.round(::Type{T}, val::Complex) where {T} = Complex{T}(round(T, real(val)), round(T, imag(val)))
 
 ################################################################################
 # Sources
@@ -140,7 +141,7 @@ end
 # Dishes
 
 struct Dishes
-    locations::Vector{NTuple{2,Float}}
+    locations::Vector{NTuple{2,Float}} # (ew, ns)
 end
 
 function make_dishes(
@@ -157,8 +158,8 @@ function make_dishes(
         let
             x_ew = dish_separation_ew * (i_ew - i_ew₀)
             x_ns = dish_separation_ns * (i_ns - i_ns₀)
-            (x_ns, x_ew)
-        end for (i_ns, i_ew) in dish_locations
+            (x_ew, x_ns)
+        end for (i_ew, i_ns) in dish_locations
     ]
     return Dishes(locations)
 end
@@ -342,7 +343,7 @@ function f_engine(pfb::PFB, adcframe::ADCFrame{T}) where {T<:Real}
 
     Δt′ = Δt * nsamples
     t₀′ = t₀ - Δt / 2 + ntaps * Δt′ / 2
-    Δf′ = 1 / (2 * Δt)
+    Δf′ = 1 / Δt′
 
     ntimes′ = max(0, ntimes ÷ nsamples - pfb.ntaps + 1)
 
@@ -531,9 +532,6 @@ end
 ################################################################################
 # F-engine: quantize
 
-Base.clamp(val::Complex, lo, hi) = Complex(clamp(real(val), lo, hi), clamp(imag(val), lo, hi))
-Base.round(::Type{T}, val::Complex) where {T} = Complex{T}(round(T, real(val)), round(T, imag(val)))
-
 function quantize(::Type{I}, xframe::XFrame{T}) where {I<:Integer,T<:Real}
     xdata = xframe.data
     ntimes, nfreqs, ndishes, npolrs = size(xdata)
@@ -579,6 +577,48 @@ function quantize(::Type{I}, xframe::XFrame{T}) where {I<:Integer,T<:Real}
 end
 
 ################################################################################
+# Baseband phases
+
+struct BasebandBeams
+    angles::Vector{NTuple{2,Float}} # (ew, ns), in radians
+end
+
+function make_baseband_beams(num_beams_ew::Int, num_beams_ns::Int, beam_separation_ew::Float, beam_separation_ns::Float)
+    # Find centre
+    i_ew₀ = (num_beams_ew - 1) / Float(2)
+    i_ns₀ = (num_beams_ns - 1) / Float(2)
+    angles = NTuple{2,Float}[let
+        θ_ew = beam_separation_ew * (i_ew - i_ew₀)
+        θ_ns = beam_separation_ns * (i_ns - i_ns₀)
+        (sin(θ_ew), sin(θ_ns))
+    end for i_ns in 1:num_beams_ns for i_ew in 1:num_beams_ew]
+    return BasebandBeams(angles)
+end
+
+struct BasebandPhases
+    phases::Array{Complex{Int8},4} # [dish, beam, polr, freq]
+end
+
+function baseband_phases(dishes::Dishes, frequencies::AbstractVector{Float}, beams::BasebandBeams)
+    ndishes = length(dishes.locations)
+    nbeams = length(beams.angles)
+    npolrs = 2
+    nfreqs = length(frequencies)
+
+    # We choose `A` independent of polarization
+    A = Complex{Int8}[
+        let
+            dish_ew, dish_ns, = dishes.locations[dish]
+            sin_ew, sin_ns, = beams.angles[beam]
+            Δt = sin_ew * dish_ew / c₀ + sin_ns * dish_ns / c₀
+            f = frequencies[freq]
+            round(Int8, clamp(Float(127.5) * cispi(-2 * f * Δt), Float(-127), Float(+127)))
+        end for dish in 1:ndishes, beam in 1:nbeams, polr in 1:npolrs, freq in 1:nfreqs
+    ]
+    return BasebandPhases(A)
+end
+
+################################################################################
 # F-engine: run
 
 function run(
@@ -605,8 +645,10 @@ function run(
     nfreqs::Int64,
     frequency_channels::Vector{Int64},
     ntimes::Int64,
-    bb_num_beams_P::Int64,
-    bb_num_beams_Q::Int64,
+    bb_num_beams_ew::Int64,
+    bb_num_beams_ns::Int64,
+    bb_beam_separation_ew::Float,
+    bb_beam_separation_ns::Float,
     nframes::Int64,
 )
     println("Setting up sources...")
@@ -644,12 +686,13 @@ function run(
             if dish >= 0
                 ndishes_seen += 1
                 @assert dish_locations[dish + 1] == (-1, -1)
-                dish_locations[dish + 1] = (loc_ns, loc_ew)
+                dish_locations[dish + 1] = (loc_ew, loc_ns)
             end
         end
         @assert ndishes_seen == ndishes
         make_dishes(dish_separation_ew, dish_separation_ns, num_dish_locations_ew, num_dish_locations_ns, dish_locations)
     end
+    global stored_dishes = dishes
 
     println("Setting up ADC...")
     adc = let
@@ -678,6 +721,14 @@ function run(
 
     npolrs = 2
     @assert size(iframe.data) == (ntimes * nframes, nfreqs, ndishes, npolrs)
+
+    println("Calculating baseband phases...")
+    bb_beams = make_baseband_beams(bb_num_beams_ew, bb_num_beams_ns, bb_beam_separation_ew, bb_beam_separation_ns)
+    global stored_bb_beams = bb_beams
+
+    frequencies = mappedarray(c -> fframe.Δf * c, frequency_channels)
+    A = baseband_phases(dishes, frequencies, bb_beams)
+    global stored_A = A
 
     println("Done.")
     return nothing
@@ -708,8 +759,10 @@ function setup(
     nfreqs=64,
     frequency_channels_ptr=Ptr{Cint}(),
     ntimes=64,
-    nbeams_i=12,
-    nbeams_j=8,
+    bb_num_beams_ew=4,
+    bb_num_beams_ns=4,
+    bb_beam_separation_ew=0.015,
+    bb_beam_separation_ns=0.015,
     nframes=2,
 )
     source_channels_ptr = Ptr{Cfloat}(source_channels_ptr)
@@ -742,8 +795,10 @@ function setup(
     println("    - nfreqs:                           $nfreqs")
     println("    - frequency_channels_ptr:           $frequency_channels_ptr")
     println("    - ntimes:                           $ntimes")
-    println("    - nbeams_i:                         $nbeams_i")
-    println("    - nbeams_j:                         $nbeams_j")
+    println("    - bb_num_beams_ew:                  $bb_num_beams_ew")
+    println("    - bb_num_beams_ns:                  $bb_num_beams_ns")
+    println("    - bb_beam_separation_ew:            $bb_beam_separation_ew")
+    println("    - bb_beam_separation_ns:            $bb_beam_separation_ns")
     println("    - nframes:                          $nframes")
 
     source_channels = if source_channels_ptr != C_NULL
@@ -802,8 +857,10 @@ function setup(
         Int64(nfreqs),
         frequency_channels::Vector{Int64},
         Int64(ntimes),
-        Int64(nbeams_i),
-        Int64(nbeams_j),
+        Int64(bb_num_beams_ew),
+        Int64(bb_num_beams_ns),
+        Float(bb_beam_separation_ew),
+        Float(bb_beam_separation_ns),
         Int64(nframes),
     )
 end
@@ -830,6 +887,22 @@ end
 #     end
 # end
 
+function set_dish_positions(ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64)
+    dishes = stored_dishes::Dishes
+    locations_src = dishes.locations::Array{<:NTuple{2,<:Real},1}
+
+    @assert ndishes == size(locations_src, 1)
+
+    locations_dst = unsafe_wrap(Array, reinterpret(Ptr{NTuple{2,Float}}, ptr), (ndishes,))
+    @assert sizeof(locations_dst) == sz
+
+    @assert size(locations_dst) == size(locations_src)
+
+    locations_dst .= locations_src
+
+    return nothing
+end
+
 function set_E(ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64, npolrs::Int64, nfreqs::Int64, ntimes::Int64, frame_index::Int64)
     iframe = stored_iframe::XFrame
     idata = iframe.data::Array{<:Complex{<:Integer},4}
@@ -853,10 +926,36 @@ function set_E(ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64, npolrs::Int64, nfreqs
     return nothing
 end
 
-function set_A(ptr::Ptr{UInt8}, sz::Int64, ndishs::Int64, nbbbeams::Int64, npolrs::Int64, nfreqs::Int64, frame_index::Int64)
-    for i in 1:sz
-        unsafe_store!(ptr, 0, i)
-    end
+function set_bb_beam_positions(ptr::Ptr{UInt8}, sz::Int64, nbbbeams::Int64)
+    bb_beams = stored_bb_beams::BasebandBeams
+    angles_src = bb_beams.angles::Array{<:NTuple{2,<:Real},1}
+
+    @assert nbbbeams == size(angles_src, 1)
+
+    angles_dst = unsafe_wrap(Array, reinterpret(Ptr{NTuple{2,Float}}, ptr), (nbbbeams,))
+    @assert sizeof(angles_dst) == sz
+
+    @assert size(angles_dst) == size(angles_src)
+
+    angles_dst .= angles_src
+
+    return nothing
+end
+
+function set_A(ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64, nbbbeams::Int64, npolrs::Int64, nfreqs::Int64)
+    Aphases = stored_A::BasebandPhases
+    Adata = Aphases.phases::Array{<:Complex{<:Integer},4}
+
+    @assert ndishes == size(Adata, 1)
+    @assert nbbbeams == size(Adata, 2)
+    @assert npolrs == size(Adata, 3)
+    @assert nfreqs == size(Adata, 4)
+
+    A = unsafe_wrap(Array, reinterpret(Ptr{Complex{Int8}}, ptr), (ndishes, nbbbeams, npolrs, nfreqs))
+    @assert sizeof(A) == sz
+    @assert size(A) == size(Adata)
+    A .= Adata
+
     return nothing
 end
 

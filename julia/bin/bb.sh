@@ -10,6 +10,7 @@ cd "$scriptdir/.."
 
 card='A40'
 # card='GeForce_RTX_4090'
+# card='L40S'
 setups='chime chord hirax pathfinder'
 
 mkdir -p output-${card}

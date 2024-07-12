@@ -4,13 +4,11 @@
 
 ################################################################################
 
-# TODO: rename `P`, `Q` to `ew`, `ns`
-bb_num_beams_P: 4
-bb_num_beams_Q: 4
-# TODO: rename `x`, `y` to `ew`, `ns`
-bb_beam_separation_x: 0.015     # east-west
-bb_beam_separation_y: 0.015     # north-south
-bb_num_beams: bb_num_beams_P * bb_num_beams_Q
+bb_num_beams_ew: 4
+bb_num_beams_ns: 4
+bb_beam_separation_ew: 0.015
+bb_beam_separation_ns: 0.015
+bb_num_beams: bb_num_beams_ew * bb_num_beams_ns
 
 ################################################################################
 

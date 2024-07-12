@@ -74,7 +74,7 @@ class FEngine : public kotekan::Stage {
     const float dish_separation_ns;
     const int num_dishes;
     const std::vector<int> dish_indices;
-    std::vector<int> dish_locations;
+    std::vector<int> dish_locations; // (ew, ns)
     int* dish_indices_ptr;
 
     // ADC
@@ -86,12 +86,10 @@ class FEngine : public kotekan::Stage {
     const int num_times;
 
     // Baseband beamformer setup
-    // const int bb_num_dishes_M;
-    // const int bb_num_dishes_N;
-    const int bb_num_beams_P;
-    const int bb_num_beams_Q;
-    const float bb_beam_separation_x;
-    const float bb_beam_separation_y;
+    const int bb_num_beams_ew;
+    const int bb_num_beams_ns;
+    const float bb_beam_separation_ew;
+    const float bb_beam_separation_ns;
     const int bb_num_beams;
 
     // Upchannelizer setup
@@ -109,11 +107,11 @@ class FEngine : public kotekan::Stage {
     // FRB beamformer setup
     const int frb1_num_beams_P;
     const int frb1_num_beams_Q;
-    const int frb2_num_beams_ns;
     const int frb2_num_beams_ew;
+    const int frb2_num_beams_ns;
     const float frb2_bore_z;
-    const float frb2_opening_angle_ns;
     const float frb2_opening_angle_ew;
+    const float frb2_opening_angle_ns;
     const int Tds = 40;
     const int frb_num_times;
 
@@ -122,7 +120,9 @@ class FEngine : public kotekan::Stage {
     const int repeat_count;
 
     // Kotekan
+    const std::int64_t dish_positions_frame_size;
     const std::int64_t E_frame_size;
+    const std::int64_t bb_beam_positions_frame_size;
     const std::int64_t A_frame_size;
     const std::int64_t s_frame_size;
     const std::int64_t J_frame_size;
@@ -131,7 +131,9 @@ class FEngine : public kotekan::Stage {
     const std::int64_t W2_frame_size;
     const std::int64_t I1_frame_size;
 
+    Buffer* const dish_positions_buffer;
     Buffer* const E_buffer;
+    Buffer* const bb_beam_positions_buffer;
     Buffer* const A_buffer;
     Buffer* const s_buffer;
     Buffer* const J_buffer;

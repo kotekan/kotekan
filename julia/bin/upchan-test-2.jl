@@ -4,7 +4,7 @@ using LinearAlgebra
 using SixelTerm
 
 function freq_norm(A, p=2)
-    scale = p == Inf ? 1 : 1 / length(@view A[:, :, begin, :])^(1 / p)
+    scale = p == Inf ? 1 : inv(length(@view A[:, :, begin, :]))^inv(p)
     return [scale * norm((@view A[:, :, freq, :]), p) for freq in 1:size(A, 3)]
 end
 

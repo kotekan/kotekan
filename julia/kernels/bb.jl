@@ -10,9 +10,9 @@ using Random
 const Memory = IndexSpaces.Memory
 
 # const card = "A30"
-# const card = "A40"
+const card = "A40"
 # const card = "GeForce_RTX_4090"
-const card = "L40S"
+# const card = "L40S"
 
 if CUDA.functional()
     println("[Choosing CUDA device...]")
@@ -27,6 +27,30 @@ shift(x::Number, s) = (@assert s ≥ 1; (x + (1 << (s - 1))) >> s)
 shift(x::Complex, s) = Complex(shift(x.re, s), shift(x.im, s))
 Base.clamp(x::Complex, a, b) = Complex(clamp(x.re, a, b), clamp(x.im, a, b))
 Base.clamp(x::Complex, ab::UnitRange) = clamp(x, ab.start, ab.stop)
+
+function shrink(value::Integer)
+    typemin(Int32) <= value <= typemax(Int32) && return Int32(value)
+    typemin(Int64) <= value <= typemax(Int64) && return Int64(value)
+    return value
+end
+function shrinkmul(x::Integer, y::Symbol, ymax::Integer)
+    @assert x >= 0 && ymax >= 0
+    # We assume 0 <= y < ymax
+    if x * (ymax - 1) <= typemax(Int32)
+        # We can use 32-bit arithmetic        
+        return :($(Int32(x)) * $y)
+    elseif x * (ymax - 1) <= typemax(Int64)
+        # We need to use 64-bit arithmetic        
+        return :($(Int64(x)) * $y)
+    else
+        # Something is wrong
+        @assert false
+    end
+end
+
+function make_wrap(value, offset::Integer, length::Integer)
+    return :(mod($value + $offset, $length))
+end
 
 @enum CHORDTag CplxTag BeamTag DishTag FreqTag PolrTag TimeTag ThreadTag WarpTag BlockTag
 
@@ -780,10 +804,17 @@ function make_bb_kernel()
                     :E => layout_E_registers,
                     :E_memory => layout_E_memory;
                     align=16,
+                    # postprocess=addr -> :(
+                    #     let
+                    #         offset = $(Int32(idiv(D, 4) * P * F)) * Tmin
+                    #         length = $(Int32(idiv(D, 4) * P * F * T))
+                    #         mod($addr + offset, length)
+                    #     end
+                    # ),
                     postprocess=addr -> :(
                         let
-                            offset = $(Int32(idiv(D, 4) * P * F)) * Tmin
-                            length = $(Int32(idiv(D, 4) * P * F * T))
+                            offset = $(shrinkmul(idiv(D, 4) * P * F, :Tmin, T))
+                            length = $(shrink(idiv(D, 4) * P * F * T))
                             mod($addr + offset, length)
                         end
                     ),
