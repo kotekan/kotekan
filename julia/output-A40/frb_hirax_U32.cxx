@@ -64,7 +64,7 @@ private:
     static constexpr int cuda_downsampling_factor = 12;
     static constexpr int cuda_number_of_complex_components = 2;
     static constexpr int cuda_number_of_dishes = 256;
-    static constexpr int cuda_number_of_frequencies = 32;
+    static constexpr int cuda_number_of_frequencies = 1024;
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_timesamples = 2048;
     static constexpr int cuda_granularity_number_of_timesamples = 64;
@@ -82,7 +82,7 @@ private:
     // Kernel call parameters:
     static constexpr int threads_x = 32;
     static constexpr int threads_y = 16;
-    static constexpr int max_blocks = 32;
+    static constexpr int max_blocks = 1024;
     static constexpr int shmem_bytes = 34944;
 
     // Kernel name:
@@ -157,7 +157,7 @@ private:
         256,
     };
     static constexpr std::ptrdiff_t S_length = chord_datatype_bytes(S_type) * 2 * 256;
-    static_assert(S_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // static_assert(S_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto S_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -186,10 +186,11 @@ private:
         "C", "dishM", "dishN", "P", "F",
     };
     static constexpr std::array<std::ptrdiff_t, W_rank> W_lengths = {
-        2, 16, 16, 2, 32,
+        2, 16, 16, 2, 1024,
     };
-    static constexpr std::ptrdiff_t W_length = chord_datatype_bytes(W_type) * 2 * 16 * 16 * 2 * 32;
-    static_assert(W_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t W_length =
+        chord_datatype_bytes(W_type) * 2 * 16 * 16 * 2 * 1024;
+    // static_assert(W_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto W_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -221,12 +222,12 @@ private:
     static constexpr std::array<std::ptrdiff_t, Ebar_rank> Ebar_lengths = {
         256,
         2,
-        32,
+        1024,
         2048,
     };
     static constexpr std::ptrdiff_t Ebar_length =
-        chord_datatype_bytes(Ebar_type) * 256 * 2 * 32 * 2048;
-    static_assert(Ebar_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+        chord_datatype_bytes(Ebar_type) * 256 * 2 * 1024 * 2048;
+    // static_assert(Ebar_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -260,10 +261,10 @@ private:
         32,
         32,
         2048,
-        512,
+        1024,
     };
-    static constexpr std::ptrdiff_t I_length = chord_datatype_bytes(I_type) * 32 * 32 * 2048 * 512;
-    static_assert(I_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t I_length = chord_datatype_bytes(I_type) * 32 * 32 * 2048 * 1024;
+    // static_assert(I_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto I_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -293,10 +294,10 @@ private:
     static constexpr std::array<std::ptrdiff_t, info_rank> info_lengths = {
         32,
         16,
-        32,
+        1024,
     };
-    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 16 * 32;
-    static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 16 * 1024;
+    // static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)

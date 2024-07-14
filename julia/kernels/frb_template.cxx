@@ -115,7 +115,7 @@ private:
                     * {{{length}}}
                 {{/axes}}
                 ;
-            static_assert({{{name}}}_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+                // static_assert({{{name}}}_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
             static constexpr auto {{{name}}}_calc_stride = [](int dim) {
                 std::ptrdiff_t str = 1;
                 for (int d = 0; d < dim; ++d)

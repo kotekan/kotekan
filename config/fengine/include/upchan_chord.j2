@@ -9,29 +9,18 @@
 # TODO: Remove this
 upchannelization_factor: 4
 
-# This mapping is defined in Seth Siegel's `ice_rfsoc_comparison_dm_2000_tint_1_gamma_0_tsys_30K_tsky.yaml`.
+# This mapping was suggested by Seth Siegel's `ice_rfsoc_comparison_dm_2000_tint_1_gamma_0_tsys_30K_tsky.yaml`.
 # (This is the "worst case" mapping.)
-#     - 0: 64
-#     - 341.65: 32
-#     - 442.01: 16
-#     - 568.66: 8
-#     - 714.99: 4
-#     - 907.41: 2
-#     - 1168.77: 1
-#
-# This mapping is defined in Seth Siegel's `ice_rfsoc_comparison_dm_750_tint_1_gamma_0_tsys_30K_tsky.yaml`.
-# (This is the "default" mapping.)
-#     - 0: 8
-#     - 607.9: 4
-#     - 790.57: 2
-#     - 1032.16: 1
-
-
-
-# We are using the "worst case" mapping:
 upchannelization_factor_mapping:
+    # - 0: 64
+    # - 341.65: 32
+    # - 442.01: 16
+    # - 568.66: 8
+    # - 714.99: 4
+    # - 907.41: 2
+    # - 1168.77: 1
     -    0: 64                  # Fmin = 0
-    - 1750: 32                  # Fmin = 2
+    - 1750: 32                  # Fmin = 14
     - 2264: 16                  # Fmin = 46
     - 2912:  8                  # Fmin = 86
     - 3661:  4                  # Fmin = 133
@@ -42,15 +31,13 @@ upchannelization_factor_mapping:
 #  U  | lowest local channel | first global channel |    frequency
 #     | (see upchan table)   | (see channel table)  |
 # -----------------------------------------------------------------
-#  64 |                    0 |                 1536 |  300.0 MHz
-#  32 |                    2 |                 1792 |  350.0 MHz
-#  16 |                    6 |                 2304 |  450.0 MHz
-#   8 |                   11 |                 2944 |  575.0 MHz
-#   4 |                   17 |                 3712 |  725.0 MHz
-#   2 |                   25 |                 4736 |  925.0 MHz
-#   1 |                   35 |                 6016 | 1175.0 MHz
-
-
+#  64 |                    0 |                 1536 |  300.000 MHz
+#  32 |                   14 |                 1760 |  343.750 MHz
+#  16 |                   46 |                 2272 |  443.750 MHz
+#   8 |                   86 |                 2912 |  568.750 MHz
+#   4 |                  133 |                 3664 |  715.625 MHz
+#   2 |                  195 |                 4656 |  909.375 MHz
+#   1 |                  279 |                 6000 | 1171.875 MHz
 
 
 
@@ -105,7 +92,7 @@ upchan_U1_max_channel: 48
 upchan_U1_min_output_channel: upchan_U2_max_output_channel
 upchan_U1_max_output_channel: upchan_U1_min_output_channel + (upchan_U1_max_channel - upchan_U1_min_channel) * 1
 
-upchan_all_max_num_output_channels: 128
+upchan_all_max_num_output_channels: 512
 upchan_all_min_output_channel: 0
 upchan_all_max_output_channel: upchan_U1_max_output_channel
 

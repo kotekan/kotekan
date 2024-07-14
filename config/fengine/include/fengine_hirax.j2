@@ -32,6 +32,20 @@ dish_indices: [
     240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,
 ]
 
+# HIRAX:
+#             quantity   frequency    east-west   east-west   north-south   north-south
+# 
+#   angular resolution     400 MHz     7.2 mrad       0.41°      5.5 mrad         0.32°
+#   angular resolution     800 MHz     3.6 mrad       0.21°      2.8 mrad         0.16°
+#        field of view     400 MHz   115.3 mrad       6.61°     88.2 mrad         5.05°
+#        field of view     800 MHz    57.7 mrad        3.3°     44.1 mrad         2.53°
+
+host_dish_positions_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_float32 * 2 * num_dishes
+    metadata_pool: main_pool
+
 ################################################################################
 
 # ADC
@@ -45,7 +59,7 @@ adc_frequency: 1.6e+9           # [Hz]
 num_taps: 4
 num_samples_per_frame: 4096
 
-num_frequencies: 64        # 2048 frequencies / 16 gpus * 50 coverage
+num_frequencies: 64        # 2048 frequencies / 16 gpus * 50% coverage
 # The frequency channels we keep.
 #     A channel's frequency is   freq = channel * adc_frequency / num_samples_per_frame
 #     Note that   channel = freq = 0   is the DC channel.

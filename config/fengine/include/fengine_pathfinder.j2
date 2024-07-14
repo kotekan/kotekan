@@ -25,23 +25,13 @@ dish_indices: [
     -1,53,54,55,56,57,58,59,60,61,62,63,
 ]
 
-# The angular resolution is:
-#                | east-west | north-south
-#     dishes     | 11        |    6
-#     separation |  6.3 m    |    8.5 m
-#     baseline   | 69.3 m    |   51.0 m
-#        300 MHz | 14.4 mrad |   19.6 mrad
-#       1500 MHz |  2.9 mrad |    3.9 mrad
-#        300 MHz |  0.83°    |    1.12°
-#       1500 MHz |  0.17°    |    0.22°
-#
-# The Nyquist (?) limit / primary field of view is:
-#                | east-west | north-south
-#     separation |    6.3 m  |      8.5 m
-#        300 MHz |  159 mrad |    118 mrad
-#       1500 MHz |   32 mrad |     24 mrad
-#        300 MHz |    9.1°   |      6.8°
-#       1500 MHz |    1.8°   |      1.3°
+# Pathfinder:
+#             quantity   frequency    east-west   east-west   north-south   north-south
+# 
+#   angular resolution     300 MHz    14.4 mrad       0.83°     19.6 mrad         1.12°
+#   angular resolution    1500 MHz     2.9 mrad       0.17°      3.9 mrad         0.22°
+#        field of view     300 MHz   158.6 mrad       9.09°    117.6 mrad         6.74°
+#        field of view    1500 MHz    31.7 mrad       1.82°     23.5 mrad         1.35°
 
 host_dish_positions_buffer:
     kotekan_buffer: standard

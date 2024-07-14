@@ -6,37 +6,37 @@
 
 # Stages
 
-run_recv_upchan_U2_voltage:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_upchan_U2_voltage_ringbuffer_in: host_upchan_U2_voltage_ringbuffer
-        out_buffers:
-            host_upchan_U2_voltage_buffer_out: host_upchan_U2_voltage_buffer
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_upchan_U2_voltage_ringbuffer_in
-          gpu_mem_input: upchan_U2_voltage_buffer
-          output_size: num_dishes * num_polarizations * (upchan_U2_max_num_channels * 2) * (num_times / 2)
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_upchan_U2_voltage_buffer_out
-
-run_recv_upchan_U4_voltage:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_upchan_U4_voltage_ringbuffer_in: host_upchan_U4_voltage_ringbuffer
-        out_buffers:
-            host_upchan_U4_voltage_buffer_out: host_upchan_U4_voltage_buffer
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_upchan_U4_voltage_ringbuffer_in
-          gpu_mem_input: upchan_U4_voltage_buffer
-          output_size: num_dishes * num_polarizations * (upchan_U4_max_num_channels * 4) * (num_times / 4)
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_upchan_U4_voltage_buffer_out
+#TODO run_recv_upchan_U2_voltage:
+#TODO     gpu_0:
+#TODO         kotekan_stage: cudaProcess
+#TODO         gpu_id: 0
+#TODO         in_buffers:
+#TODO             host_upchan_U2_voltage_ringbuffer_in: host_upchan_U2_voltage_ringbuffer
+#TODO         out_buffers:
+#TODO             host_upchan_U2_voltage_buffer_out: host_upchan_U2_voltage_buffer
+#TODO         commands:
+#TODO         - name: cudaCopyFromRingbuffer
+#TODO           host_signal: host_upchan_U2_voltage_ringbuffer_in
+#TODO           gpu_mem_input: upchan_U2_voltage_buffer
+#TODO           output_size: num_dishes * num_polarizations * (upchan_U2_max_num_channels * 2) * (num_times / 2)
+#TODO           ring_buffer_size: buffer_depth * output_size
+#TODO           out_buf: host_upchan_U2_voltage_buffer_out
+#TODO 
+#TODO run_recv_upchan_U4_voltage:
+#TODO     gpu_0:
+#TODO         kotekan_stage: cudaProcess
+#TODO         gpu_id: 0
+#TODO         in_buffers:
+#TODO             host_upchan_U4_voltage_ringbuffer_in: host_upchan_U4_voltage_ringbuffer
+#TODO         out_buffers:
+#TODO             host_upchan_U4_voltage_buffer_out: host_upchan_U4_voltage_buffer
+#TODO         commands:
+#TODO         - name: cudaCopyFromRingbuffer
+#TODO           host_signal: host_upchan_U4_voltage_ringbuffer_in
+#TODO           gpu_mem_input: upchan_U4_voltage_buffer
+#TODO           output_size: num_dishes * num_polarizations * (upchan_U4_max_num_channels * 4) * (num_times / 4)
+#TODO           ring_buffer_size: buffer_depth * output_size
+#TODO           out_buf: host_upchan_U4_voltage_buffer_out
 
 run_recv_upchan_U8_voltage:
     gpu_0:
@@ -86,21 +86,21 @@ run_recv_upchan_U32_voltage:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_upchan_U32_voltage_buffer_out
 
-run_recv_upchan_U64_voltage:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_upchan_U64_voltage_ringbuffer_in: host_upchan_U64_voltage_ringbuffer
-        out_buffers:
-            host_upchan_U64_voltage_buffer_out: host_upchan_U64_voltage_buffer
-        commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_upchan_U64_voltage_ringbuffer_in
-          gpu_mem_input: upchan_U64_voltage_buffer
-          output_size: num_dishes * num_polarizations * (upchan_U64_max_num_channels * 64) * (num_times / 64)
-          ring_buffer_size: buffer_depth * output_size
-          out_buf: host_upchan_U64_voltage_buffer_out
+#TODO run_recv_upchan_U64_voltage:
+#TODO     gpu_0:
+#TODO         kotekan_stage: cudaProcess
+#TODO         gpu_id: 0
+#TODO         in_buffers:
+#TODO             host_upchan_U64_voltage_ringbuffer_in: host_upchan_U64_voltage_ringbuffer
+#TODO         out_buffers:
+#TODO             host_upchan_U64_voltage_buffer_out: host_upchan_U64_voltage_buffer
+#TODO         commands:
+#TODO         - name: cudaCopyFromRingbuffer
+#TODO           host_signal: host_upchan_U64_voltage_ringbuffer_in
+#TODO           gpu_mem_input: upchan_U64_voltage_buffer
+#TODO           output_size: num_dishes * num_polarizations * (upchan_U64_max_num_channels * 64) * (num_times / 64)
+#TODO           ring_buffer_size: buffer_depth * output_size
+#TODO           out_buf: host_upchan_U64_voltage_buffer_out
 
 run_recv_frb1_beams:
     gpu_0:
@@ -114,8 +114,7 @@ run_recv_frb1_beams:
         - name: cudaCopyFromRingbuffer
           host_signal: host_frb1_beams_ringbuffer_in
           gpu_mem_input: frb1_beams_buffer
-          # Reduce buffer size by 2 to stay below 2 GByte
-          output_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times / 2
+          output_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_frb1_beams_buffer_out
 
@@ -179,14 +178,14 @@ write_data:
         kotekan_stage: asdfFileWrite
         in_buf: host_upchan_U64_gain_buffer
         file_name: upchan_U64_gain
-    write_upchan_U2_voltage:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_upchan_U2_voltage_buffer
-        file_name: upchan_U2_voltage
-    write_upchan_U4_voltage:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_upchan_U4_voltage_buffer
-        file_name: upchan_U4_voltage
+    #TODO write_upchan_U2_voltage:
+    #TODO     kotekan_stage: asdfFileWrite
+    #TODO     in_buf: host_upchan_U2_voltage_buffer
+    #TODO     file_name: upchan_U2_voltage
+    #TODO write_upchan_U4_voltage:
+    #TODO     kotekan_stage: asdfFileWrite
+    #TODO     in_buf: host_upchan_U4_voltage_buffer
+    #TODO     file_name: upchan_U4_voltage
     write_upchan_U8_voltage:
         kotekan_stage: asdfFileWrite
         in_buf: host_upchan_U8_voltage_buffer
@@ -199,10 +198,10 @@ write_data:
         kotekan_stage: asdfFileWrite
         in_buf: host_upchan_U32_voltage_buffer
         file_name: upchan_U32_voltage
-    write_upchan_U64_voltage:
-        kotekan_stage: asdfFileWrite
-        in_buf: host_upchan_U64_voltage_buffer
-        file_name: upchan_U64_voltage
+    #TODO write_upchan_U64_voltage:
+    #TODO     kotekan_stage: asdfFileWrite
+    #TODO     in_buf: host_upchan_U64_voltage_buffer
+    #TODO     file_name: upchan_U64_voltage
     write_frb1_U1_phase:
         kotekan_stage: asdfFileWrite
         in_buf: host_frb1_U1_phase_buffer

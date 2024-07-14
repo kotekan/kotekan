@@ -24,18 +24,6 @@ upchannelization_factor_mapping:
     - 2048:  2                  # Fmin = 64
     - 2048:  1                  # Fmin = 64
 
-#TODO # Notes:
-#TODO #  U  | lowest local channel | first global channel |    frequency
-#TODO #     | (see upchan table)   | (see channel table)  |
-#TODO # -----------------------------------------------------------------
-#TODO #  64 |                    0 |                 1536 |  300.000 MHz
-#TODO #  32 |                   14 |                 1760 |  343.750 MHz
-#TODO #  16 |                   46 |                 2272 |  443.750 MHz
-#TODO #   8 |                   86 |                 2912 |  568.750 MHz
-#TODO #   4 |                  133 |                 3664 |  715.625 MHz
-#TODO #   2 |                  195 |                 4656 |  909.375 MHz
-#TODO #   1 |                  279 |                 6000 | 1171.875 MHz
-
 
 
 # The GPU-local (not global) channel index range for each upchannelization factor
@@ -48,21 +36,21 @@ upchan_U64_min_output_channel: upchan_all_min_output_channel
 upchan_U64_max_output_channel: upchan_U64_min_output_channel + (upchan_U64_max_channel - upchan_U64_min_channel) * 64
 
 # actual = 26, scaled = 832
-upchan_U32_max_num_channels: 1024
+upchan_U32_max_num_channels: 32
 upchan_U32_min_channel: 0
 upchan_U32_max_channel: 26
 upchan_U32_min_output_channel: upchan_U64_min_output_channel
 upchan_U32_max_output_channel: upchan_U32_min_output_channel + (upchan_U32_max_channel - upchan_U32_min_channel) * 32
 
 # actual = 19, scaled = 304
-upchan_U16_max_num_channels: 512
+upchan_U16_max_num_channels: 32
 upchan_U16_min_channel: 26
 upchan_U16_max_channel: 55
 upchan_U16_min_output_channel: upchan_U32_max_output_channel
 upchan_U16_max_output_channel: upchan_U16_min_output_channel + (upchan_U16_max_channel - upchan_U16_min_channel) * 16
 
 # actual = 9, scaled = 72
-upchan_U8_max_num_channels: 128
+upchan_U8_max_num_channels: 16
 upchan_U8_min_channel: 55
 upchan_U8_max_channel: 64
 upchan_U8_min_output_channel: upchan_U16_max_output_channel
@@ -89,7 +77,7 @@ upchan_U1_max_channel: 64
 upchan_U1_min_output_channel: upchan_U2_max_output_channel
 upchan_U1_max_output_channel: upchan_U1_min_output_channel + (upchan_U1_max_channel - upchan_U1_min_channel) * 1
 
-upchan_all_max_num_output_channels: 1664
+upchan_all_max_num_output_channels: 2048
 upchan_all_min_output_channel: 0
 upchan_all_max_output_channel: upchan_U1_max_output_channel
 
@@ -153,25 +141,25 @@ host_upchan_U64_gain_buffer:
 
 # Voltages
 
-# host_upchan_U2_voltage_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: num_dishes * num_polarizations * (upchan_U2_max_num_channels * 2) * (num_times / 2)
-#     metadata_pool: main_pool
-# host_upchan_U2_voltage_ringbuffer:
-#     kotekan_buffer: ring
-#     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (upchan_U2_max_num_channels * 2) * (num_times / 2)
-#     metadata_pool: main_pool
-# 
-# host_upchan_U4_voltage_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: num_dishes * num_polarizations * (upchan_U4_max_num_channels * 4) * (num_times / 4)
-#     metadata_pool: main_pool
-# host_upchan_U4_voltage_ringbuffer:
-#     kotekan_buffer: ring
-#     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (upchan_U4_max_num_channels * 4) * (num_times / 4)
-#     metadata_pool: main_pool
+host_upchan_U2_voltage_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: 1   # num_dishes * num_polarizations * (upchan_U2_max_num_channels * 2) * (num_times / 2)
+    metadata_pool: main_pool
+host_upchan_U2_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: 1   # buffer_depth * num_dishes * num_polarizations * (upchan_U2_max_num_channels * 2) * (num_times / 2)
+    metadata_pool: main_pool
+
+host_upchan_U4_voltage_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: 1   # num_dishes * num_polarizations * (upchan_U4_max_num_channels * 4) * (num_times / 4)
+    metadata_pool: main_pool
+host_upchan_U4_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: 1   # buffer_depth * num_dishes * num_polarizations * (upchan_U4_max_num_channels * 4) * (num_times / 4)
+    metadata_pool: main_pool
 
 host_upchan_U8_voltage_buffer:
     kotekan_buffer: standard
@@ -203,15 +191,15 @@ host_upchan_U32_voltage_ringbuffer:
     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (upchan_U32_max_num_channels * 32) * (num_times / 32)
     metadata_pool: main_pool
 
-# host_upchan_U64_voltage_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: num_dishes * num_polarizations * (upchan_U64_max_num_channels * 64) * (num_times / 64)
-#     metadata_pool: main_pool
-# host_upchan_U64_voltage_ringbuffer:
-#     kotekan_buffer: ring
-#     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (upchan_U64_max_num_channels * 64) * (num_times / 64)
-#     metadata_pool: main_pool
+host_upchan_U64_voltage_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: 1   # num_dishes * num_polarizations * (upchan_U64_max_num_channels * 64) * (num_times / 64)
+    metadata_pool: main_pool
+host_upchan_U64_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: 1   # buffer_depth * num_dishes * num_polarizations * (upchan_U64_max_num_channels * 64) * (num_times / 64)
+    metadata_pool: main_pool
 
 ################################################################################
 

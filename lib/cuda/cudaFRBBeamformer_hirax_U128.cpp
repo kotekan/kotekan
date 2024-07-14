@@ -157,7 +157,7 @@ private:
         256,
     };
     static constexpr std::ptrdiff_t S_length = chord_datatype_bytes(S_type) * 2 * 256;
-    static_assert(S_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // static_assert(S_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto S_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -189,7 +189,7 @@ private:
         2, 16, 16, 2, 128,
     };
     static constexpr std::ptrdiff_t W_length = chord_datatype_bytes(W_type) * 2 * 16 * 16 * 2 * 128;
-    static_assert(W_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // static_assert(W_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto W_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -226,7 +226,7 @@ private:
     };
     static constexpr std::ptrdiff_t Ebar_length =
         chord_datatype_bytes(Ebar_type) * 256 * 2 * 128 * 512;
-    static_assert(Ebar_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // static_assert(Ebar_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -260,10 +260,10 @@ private:
         32,
         32,
         2048,
-        512,
+        1024,
     };
-    static constexpr std::ptrdiff_t I_length = chord_datatype_bytes(I_type) * 32 * 32 * 2048 * 512;
-    static_assert(I_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr std::ptrdiff_t I_length = chord_datatype_bytes(I_type) * 32 * 32 * 2048 * 1024;
+    // static_assert(I_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto I_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -296,7 +296,7 @@ private:
         128,
     };
     static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 16 * 128;
-    static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)

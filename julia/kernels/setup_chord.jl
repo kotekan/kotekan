@@ -23,7 +23,7 @@ const T = 4 * 8192
 const F_per_U = Dict(1 => 16, 2 => 16, 4 => 16, 8 => 8, 16 => 8, 32 => 8, 64 => 4, 128 => 1)
 
 # Maximum number of fine frequencies per GPU, for all upchannelization factors combined
-const Fbar_out = 128
+const Fbar_out = 512
 
 # FRB downsampling factor for U=1
-const Tds_U1 = 256
+const Tds_U1 = 192

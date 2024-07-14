@@ -26,52 +26,52 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
         IMAD.MOV.U32 R0, RZ, RZ, c[0x0][0x2c] ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/shared_memory.jl:52
         ULDC.64 UR36, c[0x0][0x160] ;
-        IADD3 R1, R1, -0x70, RZ ;
+        IADD3 R1, R1, -0x60, RZ ;
 ; Location ./int.jl:513
         ISETP.GT.U32.AND P0, PT, R0, 0x827f, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/shared_memory.jl:51
     @P0 BRA `(.L_x_2) ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/shared_memory.jl:52
-        MOV R24, 0xa0 ;
+        MOV R23, 0xa0 ;
         UMOV UR4, 32@lo(exception1) ;
         UMOV UR5, 32@hi(exception1) ;
         CALL.REL.NOINC `($_Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE$gpu_report_exception) ;
-        MOV R24, 0xc0 ;
+        MOV R23, 0xc0 ;
         CALL.REL.NOINC `($_Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE$gpu_signal_exception) ;
         BPT.TRAP 0x1 ;
 
 .L_x_2:
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         S2R R2, SR_TID.Y ;
-        IMAD.MOV.U32 R19, RZ, RZ, 0x4 ;
+        IMAD.MOV.U32 R22, RZ, RZ, 0x4 ;
         ULDC.64 UR38, c[0x0][0x118] ;
+        IMAD.MOV.U32 R3, RZ, RZ, 0x1 ;
         S2R R0, SR_CTAID.X ;
-        S2R R22, SR_TID.X ;
+        S2R R18, SR_TID.X ;
 ; Location ./int.jl:88
-        IMAD.SHL.U32 R18, R2, 0x20, RZ ;
-        IMAD.SHL.U32 R3, R0, 0x200, RZ ;
+        IMAD.SHL.U32 R19, R2, 0x20, RZ ;
+        IMAD.SHL.U32 R0, R0, 0x200, RZ ;
+; Location ./int.jl:87
+        LOP3.LUT R17, R0, R19, R18, 0xfe, !PT ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
         IMAD.MOV.U32 R0, RZ, RZ, c[0x0][0x170] ;
-; Location ./int.jl:87
-        LOP3.LUT R16, R3, R18, R22, 0xfe, !PT ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        IMAD.MOV.U32 R3, RZ, RZ, 0x1 ;
+        IMAD.WIDE.U32 R16, R17, R22, c[0x0][0x1e8] ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
         ISETP.GT.U32.AND P0, PT, R0, 0x7fff, PT ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        IMAD.WIDE.U32 R16, R16, R19, c[0x0][0x1e8] ;
         STG.E [R16.64], R3 ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
     @P0 BRA `(.L_x_3) ;
-        IMAD.MOV.U32 R23, RZ, RZ, c[0x0][0x174] ;
+        IMAD.MOV.U32 R24, RZ, RZ, c[0x0][0x174] ;
         IMAD.MOV.U32 R2, RZ, RZ, c[0x0][0x178] ;
 ; Location ./int.jl:86
-        IADD3 R0, R23.reuse, -c[0x0][0x170], RZ ;
+        IADD3 R0, R24.reuse, -c[0x0][0x170], RZ ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
-        ISETP.GT.AND P0, PT, R23.reuse, 0xffff, PT ;
+        ISETP.GT.AND P0, PT, R24, 0xffff, PT ;
 ; Location ./promotion.jl:521
         LOP3.LUT P1, RZ, R0, 0xff, RZ, 0xc0, !PT ;
-        ISETP.LT.OR P0, PT, R23, c[0x0][0x170], P0 ;
+        ISETP.LT.OR P0, PT, R24, c[0x0][0x170], P0 ;
         ISETP.GT.U32.OR P1, PT, R2, 0x1ff, P1 ;
         PLOP3.LUT P0, PT, P0, P1, PT, 0xa8, 0x0 ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
@@ -93,14 +93,14 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         IMAD.MOV.U32 R3, RZ, RZ, 0x2 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:888
-        MOV R24, 0x310 ;
+        MOV R23, 0x310 ;
         UMOV UR4, 32@lo(exception2044) ;
         UMOV UR5, 32@hi(exception2044) ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STG.E [R16.64], R3 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:888
         CALL.REL.NOINC `($_Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE$gpu_report_exception) ;
-        MOV R24, 0x330 ;
+        MOV R23, 0x330 ;
         CALL.REL.NOINC `($_Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE$gpu_signal_exception) ;
         BPT.TRAP 0x1 ;
 
@@ -114,119 +114,119 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         IMAD.MOV.U32 R3, RZ, RZ, 0x3 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:888
-        MOV R24, 0x3f0 ;
+        MOV R23, 0x3f0 ;
         UMOV UR4, 32@lo(exception2044) ;
         UMOV UR5, 32@hi(exception2044) ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STG.E [R16.64], R3 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:888
         CALL.REL.NOINC `($_Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE$gpu_report_exception) ;
-        MOV R24, 0x410 ;
+        MOV R23, 0x410 ;
         CALL.REL.NOINC `($_Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE$gpu_signal_exception) ;
         BPT.TRAP 0x1 ;
 
 .L_x_5:
 ; Location ./int.jl:347
-        SHF.R.U32.HI R8, RZ, 0x2, R22.reuse ;
+        SHF.R.U32.HI R8, RZ, 0x2, R18.reuse ;
 ; Location ./int.jl:529
-        IMAD.SHL.U32 R3, R22, 0x8, RZ ;
+        IMAD.SHL.U32 R3, R18, 0x8, RZ ;
 ; Location ./int.jl:527
-        SHF.R.U32.HI R9, RZ, 0x4, R22.reuse ;
+        SHF.R.U32.HI R7, RZ, 0x4, R18.reuse ;
 ; Location ./float.jl:534
         BSSY B0, `(.L_x_6) ;
 ; Location ./int.jl:347
         SGXT.U32 R8, R8, 0x1 ;
 ; Location ./float.jl:534
-        IMAD.MOV.U32 R25, RZ, RZ, 0x3f800000 ;
+        IMAD.MOV.U32 R12, RZ, RZ, 0x3f800000 ;
 ; Location ./int.jl:347
-        SHF.R.U32.HI R4, RZ, 0x3, R22 ;
+        SHF.R.U32.HI R4, RZ, 0x3, R18 ;
 ; Location ./int.jl:529
-        IMAD.SHL.U32 R11, R9, 0x2, RZ ;
+        IMAD.SHL.U32 R23, R7, 0x2, RZ ;
 ; Location ./int.jl:514
-        ISETP.GT.AND P0, PT, R23, c[0x0][0x170], PT ;
+        ISETP.GT.AND P0, PT, R24, c[0x0][0x170], PT ;
 ; Location ./int.jl:529
         IMAD.SHL.U32 R0, R8, 0x4, RZ ;
 ; Location ./int.jl:347
         SGXT.U32 R4, R4, 0x1 ;
 ; Location ./float.jl:534
-        IMAD.MOV.U32 R33, RZ, RZ, 0x3f800000 ;
+        IMAD.MOV.U32 R21, RZ, RZ, 0x3f800000 ;
 ; Location ./int.jl:372
         LOP3.LUT R0, R0, 0x18, R3, 0xf8, !PT ;
-        LOP3.LUT R11, R4, R11, R0, 0xfe, !PT ;
+        LOP3.LUT R23, R4, R23, R0, 0xfe, !PT ;
 ; Location ./int.jl:88
-        IMAD.SHL.U32 R5, R11, 0x2, RZ ;
+        IMAD.SHL.U32 R10, R23, 0x2, RZ ;
 ; Location ./int.jl:86
-        LOP3.LUT R0, R5.reuse, 0xffffff01, RZ, 0xfc, !PT ;
-        LOP3.LUT R3, R5.reuse, 0xffffff41, RZ, 0xfc, !PT ;
+        LOP3.LUT R0, R10.reuse, 0xffffff01, RZ, 0xfc, !PT ;
+        LOP3.LUT R3, R10.reuse, 0xffffff41, RZ, 0xfc, !PT ;
 ; Location ./float.jl:159
         I2FP.F32.S32 R0, R0 ;
 ; Location ./int.jl:86
-        LOP3.LUT R4, R5, 0xffffff81, RZ, 0xfc, !PT ;
+        LOP3.LUT R4, R10, 0xffffff81, RZ, 0xfc, !PT ;
 ; Location ./float.jl:159
         I2FP.F32.S32 R3, R3 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-        FMUL R15, R0, 0.0019455252913758158684 ;
+        FMUL R6, R0, 0.0019455252913758158684 ;
 ; Location ./float.jl:159
         I2FP.F32.S32 R4, R4 ;
 ; Location ./fastmath.jl:165
-        FMUL R26, R15, 4 ;
+        FMUL R25, R6, 4 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-        FMUL R7, R3, 0.0019455252913758158684 ;
-        FMUL R6, R4, 0.0019455252913758158684 ;
+        FMUL R5, R3, 0.0019455252913758158684 ;
+        FMUL R4, R4, 0.0019455252913758158684 ;
 ; Location ./float.jl:534
-        FSETP.NEU.AND P3, PT, R26, RZ, PT ;
+        FSETP.NEU.AND P3, PT, R25, RZ, PT ;
 ; Location ./fastmath.jl:165
-        FMUL R10, R7, 4 ;
-        FMUL R4, R6, 4 ;
+        FMUL R11, R5, 4 ;
+        FMUL R9, R4, 4 ;
 ; Location ./float.jl:534
-        FSETP.NEU.AND P2, PT, R10, RZ, PT ;
-        FSETP.NEU.AND P1, PT, R4, RZ, PT ;
+        FSETP.NEU.AND P2, PT, R11, RZ, PT ;
+        FSETP.NEU.AND P1, PT, R9, RZ, PT ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:73
    @!P3 BRA `(.L_x_7) ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FADD R3, R26, R26 ;
+        FADD R3, R25, R25 ;
 ; Location ./fastmath.jl:165
-        FMUL R21, R15, 12.566370964050292969 ;
+        FMUL R24, R6, 12.566370964050292969 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FRND.TRUNC R20, R26 ;
+        FRND.TRUNC R21, R25 ;
         IMAD.MOV.U32 R16, RZ, RZ, 0x3e684e12 ;
         LOP3.LUT R0, R3.reuse, 0x80000000, RZ, 0xc0, !PT ;
-        IMAD.MOV.U32 R24, RZ, RZ, 0x3f17acc9 ;
+        IMAD.MOV.U32 R20, RZ, RZ, 0x3f17acc9 ;
         FSETP.GEU.AND P4, PT, |R3|.reuse, 0.5, PT ;
         LOP3.LUT R0, R0, 0x3f000000, RZ, 0xfc, !PT ;
         FSETP.GT.AND P3, PT, |R3|, 8388608, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-        FSETP.GEU.AND P6, PT, |R21|, 1.175494350822287508e-38, PT ;
+        FSETP.GEU.AND P6, PT, |R24|, 1.175494350822287508e-38, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FADD R12, R3, R0 ;
-        FSETP.NEU.AND P5, PT, R26, R20, PT ;
-        FRND.TRUNC R12, R12 ;
+        FADD R13, R3, R0 ;
+        FRND.TRUNC R0, R13 ;
+        FSETP.NEU.AND P5, PT, R25, R21, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-   @!P6 FMUL R21, R21, 16777216 ;
-        MUFU.RCP R21, R21 ;
+   @!P6 FMUL R24, R24, 16777216 ;
+        MUFU.RCP R21, R24 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FSEL R13, R3, R12, P3 ;
-   @!P4 FRND.TRUNC R13, R3 ;
-        F2I.TRUNC.NTZ R14, R13 ;
-        FFMA R0, R13, -0.5, R26 ;
+        FSEL R14, R3, R0, P3 ;
+   @!P4 FRND.TRUNC R14, R3 ;
+        F2I.TRUNC.NTZ R15, R14 ;
+        FFMA R0, R14, -0.5, R25 ;
         FMUL R17, R0, R0 ;
-        FFMA R16, R17, R16, -1.334560394287109375 ;
-        FFMA R16, R17, R16, 4.0586924552917480469 ;
-        LOP3.LUT R12, R14, 0x1, RZ, 0xc0, !PT ;
-        FFMA R16, R17.reuse, R16, -4.9348020553588867188 ;
-        LOP3.LUT P4, RZ, R14, 0x2, RZ, 0xc0, !PT ;
-        FFMA R14, R0, R17, RZ ;
-        ISETP.NE.U32.AND P3, PT, R12, 0x1, PT ;
-        FFMA R12, R17.reuse, -R24, 2.550144195556640625 ;
+        FFMA R16, R17.reuse, R16, -1.334560394287109375 ;
+        FFMA R14, R17.reuse, -R20, 2.550144195556640625 ;
+        FFMA R20, R0, R17, RZ ;
+        FFMA R16, R17.reuse, R16, 4.0586924552917480469 ;
+        FFMA R3, R17, R14, -5.1677198410034179688 ;
+        LOP3.LUT R13, R15, 0x1, RZ, 0xc0, !PT ;
+        FFMA R16, R17, R16, -4.9348020553588867188 ;
+        LOP3.LUT P4, RZ, R15, 0x2, RZ, 0xc0, !PT ;
+        FFMA R3, R3, R20, RZ ;
+        ISETP.NE.U32.AND P3, PT, R13, 0x1, PT ;
         FFMA R16, R17, R16, 1 ;
-        FFMA R3, R17, R12, -5.1677198410034179688 ;
-        FFMA R3, R3, R14, RZ ;
     @P3 FFMA R16, R0, 3.1415927410125732422, R3 ;
     @P4 FADD R16, RZ, -R16 ;
-   @!P5 FMUL R16, RZ, R26 ;
+   @!P5 FMUL R16, RZ, R25 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
    @!P6 FMUL R16, R16, 16777216 ;
-        FMUL R33, R21, R16 ;
+        FMUL R21, R21, R16 ;
 
 .L_x_7:
         BSYNC B0 ;
@@ -235,57 +235,57 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
 ; Location ./float.jl:534
         BSSY B0, `(.L_x_8) ;
 ; Location ./int.jl:86
-        LOP3.LUT R23, R5, 0xffffffc1, RZ, 0xfc, !PT ;
+        LOP3.LUT R26, R10, 0xffffffc1, RZ, 0xfc, !PT ;
 ; Location ./float.jl:534
-        IMAD.MOV.U32 R32, RZ, RZ, 0x3f800000 ;
+        IMAD.MOV.U32 R17, RZ, RZ, 0x3f800000 ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:73
    @!P2 BRA `(.L_x_9) ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FADD R3, R10, R10 ;
+        FADD R3, R11, R11 ;
 ; Location ./fastmath.jl:165
-        FMUL R20, R7, 12.566370964050292969 ;
+        FMUL R25, R5, 12.566370964050292969 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FRND.TRUNC R21, R10 ;
+        FRND.TRUNC R24, R11 ;
         IMAD.MOV.U32 R16, RZ, RZ, 0x3e684e12 ;
         LOP3.LUT R0, R3.reuse, 0x80000000, RZ, 0xc0, !PT ;
-        IMAD.MOV.U32 R24, RZ, RZ, 0x3f17acc9 ;
+        IMAD.MOV.U32 R20, RZ, RZ, 0x3f17acc9 ;
         FSETP.GEU.AND P3, PT, |R3|, 0.5, PT ;
         LOP3.LUT R0, R0, 0x3f000000, RZ, 0xfc, !PT ;
-        FSETP.GT.AND P2, PT, |R3|.reuse, 8388608, PT ;
+        FSETP.GT.AND P2, PT, |R3|, 8388608, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-        FSETP.GEU.AND P5, PT, |R20|, 1.175494350822287508e-38, PT ;
+        FSETP.GEU.AND P5, PT, |R25|, 1.175494350822287508e-38, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FADD R12, R3, R0 ;
-        FSETP.NEU.AND P4, PT, R10, R21, PT ;
-        FRND.TRUNC R12, R12 ;
+        FADD R13, R3, R0 ;
+        FRND.TRUNC R0, R13 ;
+        FSETP.NEU.AND P4, PT, R11, R24, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-   @!P5 FMUL R20, R20, 16777216 ;
+   @!P5 FMUL R25, R25, 16777216 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FSEL R13, R3, R12, P2 ;
-   @!P3 FRND.TRUNC R13, R3 ;
-        F2I.TRUNC.NTZ R14, R13 ;
-        FFMA R0, R13, -0.5, R10 ;
+        FSEL R14, R3, R0, P2 ;
+   @!P3 FRND.TRUNC R14, R3 ;
+        F2I.TRUNC.NTZ R15, R14 ;
+        FFMA R0, R14, -0.5, R11 ;
         FMUL R17, R0, R0 ;
-        FFMA R16, R17, R16, -1.334560394287109375 ;
-        FFMA R16, R17, R16, 4.0586924552917480469 ;
-        LOP3.LUT R12, R14, 0x1, RZ, 0xc0, !PT ;
-        FFMA R16, R17.reuse, R16, -4.9348020553588867188 ;
-        LOP3.LUT P3, RZ, R14, 0x2, RZ, 0xc0, !PT ;
-        FFMA R14, R0, R17, RZ ;
-        ISETP.NE.U32.AND P2, PT, R12, 0x1, PT ;
-        FFMA R12, R17.reuse, -R24, 2.550144195556640625 ;
-        FFMA R16, R17, R16, 1 ;
-        FFMA R3, R17, R12, -5.1677198410034179688 ;
-        FFMA R3, R3, R14, RZ ;
-    @P2 FFMA R16, R0, 3.1415927410125732422, R3 ;
+        FFMA R16, R17.reuse, R16, -1.334560394287109375 ;
+        FFMA R14, R17.reuse, -R20, 2.550144195556640625 ;
+        FFMA R20, R0, R17, RZ ;
+        FFMA R16, R17.reuse, R16, 4.0586924552917480469 ;
+        FFMA R3, R17, R14, -5.1677198410034179688 ;
+        LOP3.LUT R13, R15, 0x1, RZ, 0xc0, !PT ;
+        FFMA R16, R17, R16, -4.9348020553588867188 ;
+        LOP3.LUT P3, RZ, R15, 0x2, RZ, 0xc0, !PT ;
+        FFMA R3, R3, R20, RZ ;
+        ISETP.NE.U32.AND P2, PT, R13, 0x1, PT ;
+        FFMA R17, R17, R16, 1 ;
+    @P2 FFMA R17, R0, 3.1415927410125732422, R3 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-        MUFU.RCP R3, R20 ;
+        MUFU.RCP R0, R25 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-    @P3 FADD R16, RZ, -R16 ;
-   @!P4 FMUL R16, RZ, R10 ;
+    @P3 FADD R17, RZ, -R17 ;
+   @!P4 FMUL R17, RZ, R11 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-   @!P5 FMUL R16, R16, 16777216 ;
-        FMUL R32, R3, R16 ;
+   @!P5 FMUL R17, R17, 16777216 ;
+        FMUL R17, R0, R17 ;
 
 .L_x_9:
         BSYNC B0 ;
@@ -294,198 +294,196 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
 ; Location ./float.jl:534
         BSSY B0, `(.L_x_10) ;
 ; Location ./float.jl:159
-        I2FP.F32.S32 R23, R23 ;
+        I2FP.F32.S32 R26, R26 ;
 ; Location ./float.jl:534
-        IMAD.MOV.U32 R31, RZ, RZ, 0x3f800000 ;
+        IMAD.MOV.U32 R16, RZ, RZ, 0x3f800000 ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:73
    @!P1 BRA `(.L_x_11) ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FADD R3, R4, R4 ;
+        FADD R3, R9, R9 ;
 ; Location ./fastmath.jl:165
-        FMUL R16, R6, 12.566370964050292969 ;
+        FMUL R25, R4, 12.566370964050292969 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FRND.TRUNC R21, R4 ;
-        IMAD.MOV.U32 R14, RZ, RZ, 0x3e684e12 ;
+        FRND.TRUNC R24, R9 ;
+        IMAD.MOV.U32 R16, RZ, RZ, 0x3e684e12 ;
         LOP3.LUT R0, R3.reuse, 0x80000000, RZ, 0xc0, !PT ;
         IMAD.MOV.U32 R20, RZ, RZ, 0x3f17acc9 ;
         FSETP.GEU.AND P2, PT, |R3|, 0.5, PT ;
         LOP3.LUT R0, R0, 0x3f000000, RZ, 0xfc, !PT ;
-        FSETP.GT.AND P1, PT, |R3|.reuse, 8388608, PT ;
+        FSETP.GT.AND P1, PT, |R3|, 8388608, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-        FSETP.GEU.AND P4, PT, |R16|, 1.175494350822287508e-38, PT ;
+        FSETP.GEU.AND P4, PT, |R25|, 1.175494350822287508e-38, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FADD R10, R3, R0 ;
-        FSETP.NEU.AND P3, PT, R4, R21, PT ;
-        FRND.TRUNC R10, R10 ;
+        FADD R11, R3, R0 ;
+        FRND.TRUNC R0, R11 ;
+        FSETP.NEU.AND P3, PT, R9, R24, PT ;
+; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
+   @!P4 FMUL R25, R25, 16777216 ;
+        MUFU.RCP R25, R25 ;
+; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
+        FSEL R14, R3, R0, P1 ;
+   @!P2 FRND.TRUNC R14, R3 ;
+        F2I.TRUNC.NTZ R13, R14 ;
+        FFMA R0, R14, -0.5, R9 ;
+        FMUL R15, R0, R0 ;
+        FFMA R16, R15.reuse, R16, -1.334560394287109375 ;
+        FFMA R14, R15.reuse, -R20, 2.550144195556640625 ;
+        FFMA R20, R0, R15, RZ ;
+        FFMA R16, R15.reuse, R16, 4.0586924552917480469 ;
+        FFMA R3, R15, R14, -5.1677198410034179688 ;
+        LOP3.LUT R11, R13, 0x1, RZ, 0xc0, !PT ;
+        FFMA R16, R15, R16, -4.9348020553588867188 ;
+        LOP3.LUT P2, RZ, R13, 0x2, RZ, 0xc0, !PT ;
+        FFMA R3, R3, R20, RZ ;
+        ISETP.NE.U32.AND P1, PT, R11, 0x1, PT ;
+        FFMA R16, R15, R16, 1 ;
+    @P1 FFMA R16, R0, 3.1415927410125732422, R3 ;
+    @P2 FADD R16, RZ, -R16 ;
+   @!P3 FMUL R16, RZ, R9 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
    @!P4 FMUL R16, R16, 16777216 ;
-        MUFU.RCP R31, R16 ;
-; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FSEL R13, R3, R10, P1 ;
-   @!P2 FRND.TRUNC R13, R3 ;
-        F2I.TRUNC.NTZ R12, R13 ;
-        FFMA R0, R13, -0.5, R4 ;
-        FMUL R17, R0, R0 ;
-        FFMA R14, R17, R14, -1.334560394287109375 ;
-        FFMA R14, R17, R14, 4.0586924552917480469 ;
-        LOP3.LUT R10, R12, 0x1, RZ, 0xc0, !PT ;
-        FFMA R14, R17.reuse, R14, -4.9348020553588867188 ;
-        LOP3.LUT P2, RZ, R12, 0x2, RZ, 0xc0, !PT ;
-        FFMA R12, R0, R17, RZ ;
-        ISETP.NE.U32.AND P1, PT, R10, 0x1, PT ;
-        FFMA R10, R17.reuse, -R20, 2.550144195556640625 ;
-        FFMA R14, R17, R14, 1 ;
-        FFMA R3, R17, R10, -5.1677198410034179688 ;
-        FFMA R3, R3, R12, RZ ;
-    @P1 FFMA R14, R0, 3.1415927410125732422, R3 ;
-    @P2 FADD R14, RZ, -R14 ;
-   @!P3 FMUL R14, RZ, R4 ;
-; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-   @!P4 FMUL R14, R14, 16777216 ;
-        FMUL R31, R31, R14 ;
+        FMUL R16, R25, R16 ;
 
 .L_x_11:
         BSYNC B0 ;
 
 .L_x_10:
-        FMUL R4, R23, 0.0019455252913758158684 ;
+        FMUL R9, R26, 0.0019455252913758158684 ;
 ; Location ./int.jl:86
-        IADD3 R0, R5.reuse, 0x1, RZ ;
+        IADD3 R0, R10.reuse, 0x1, RZ ;
 ; Location ./float.jl:534
         BSSY B0, `(.L_x_12) ;
 ; Location ./int.jl:86
-        LOP3.LUT R3, R5.reuse, 0x41, RZ, 0xfc, !PT ;
+        LOP3.LUT R3, R10.reuse, 0x41, RZ, 0xfc, !PT ;
 ; Location ./fastmath.jl:165
-        FMUL R34, R4, 4 ;
+        FMUL R33, R9, 4 ;
 ; Location ./int.jl:86
-        LOP3.LUT R10, R5.reuse, 0x81, RZ, 0xfc, !PT ;
+        LOP3.LUT R11, R10.reuse, 0x81, RZ, 0xfc, !PT ;
 ; Location ./float.jl:534
-        IMAD.MOV.U32 R27, RZ, RZ, 0x3f800000 ;
+        IMAD.MOV.U32 R13, RZ, RZ, 0x3f800000 ;
 ; Location ./int.jl:86
-        LOP3.LUT R5, R5, 0xc1, RZ, 0xfc, !PT ;
+        LOP3.LUT R10, R10, 0xc1, RZ, 0xfc, !PT ;
 ; Location ./float.jl:534
-        FSETP.NEU.AND P1, PT, R34, RZ, PT ;
+        FSETP.NEU.AND P1, PT, R33, RZ, PT ;
 ; Location ./float.jl:159
         I2FP.F32.S32 R0, R0 ;
         I2FP.F32.S32 R3, R3 ;
-        I2FP.F32.S32 R13, R10 ;
-        I2FP.F32.S32 R12, R5 ;
+        I2FP.F32.S32 R11, R11 ;
+        I2FP.F32.S32 R29, R10 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-        FMUL R5, R0, 0.0019455252913758158684 ;
-        FMUL R10, R3, 0.0019455252913758158684 ;
-        FMUL R13, R13, 0.0019455252913758158684 ;
-        FMUL R12, R12, 0.0019455252913758158684 ;
+        FMUL R10, R0, 0.0019455252913758158684 ;
+        FMUL R24, R3, 0.0019455252913758158684 ;
+        FMUL R30, R11, 0.0019455252913758158684 ;
+        FMUL R29, R29, 0.0019455252913758158684 ;
 ; Location ./fastmath.jl:165
-        FMUL R20, R5, 4 ;
-        FMUL R17, R10, 4 ;
-        FMUL R16, R13, 4 ;
-        FMUL R14, R12, 4 ;
+        FMUL R15, R10, 4 ;
+        FMUL R14, R24, 4 ;
+        FMUL R25, R30, 4 ;
+        FMUL R11, R29, 4 ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:73
    @!P1 BRA `(.L_x_13) ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FADD R3, R34, R34 ;
+        FADD R3, R33, R33 ;
 ; Location ./fastmath.jl:165
-        FMUL R30, R4, 12.566370964050292969 ;
+        FMUL R32, R9, 12.566370964050292969 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FRND.TRUNC R29, R34 ;
+        FRND.TRUNC R31, R33 ;
         IMAD.MOV.U32 R28, RZ, RZ, 0x3e684e12 ;
         LOP3.LUT R0, R3.reuse, 0x80000000, RZ, 0xc0, !PT ;
-        IMAD.MOV.U32 R26, RZ, RZ, 0x3f17acc9 ;
+        IMAD.MOV.U32 R34, RZ, RZ, 0x3f17acc9 ;
         FSETP.GEU.AND P2, PT, |R3|.reuse, 0.5, PT ;
         LOP3.LUT R0, R0, 0x3f000000, RZ, 0xfc, !PT ;
         FSETP.GT.AND P1, PT, |R3|.reuse, 8388608, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-        FSETP.GEU.AND P4, PT, |R30|, 1.175494350822287508e-38, PT ;
+        FSETP.GEU.AND P4, PT, |R32|, 1.175494350822287508e-38, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FADD R21, R3, R0 ;
-        FRND.TRUNC R0, R21 ;
-        FSETP.NEU.AND P3, PT, R34, R29, PT ;
+        FADD R13, R3, R0 ;
+        FRND.TRUNC R0, R13 ;
+        FSETP.NEU.AND P3, PT, R33, R31, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-   @!P4 FMUL R30, R30, 16777216 ;
-        MUFU.RCP R30, R30 ;
+   @!P4 FMUL R32, R32, 16777216 ;
+        MUFU.RCP R32, R32 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FSEL R23, R3, R0, P1 ;
-   @!P2 FRND.TRUNC R23, R3 ;
-        F2I.TRUNC.NTZ R24, R23 ;
-        FFMA R0, R23, -0.5, R34 ;
+        FSEL R20, R3, R0, P1 ;
+   @!P2 FRND.TRUNC R20, R3 ;
+        F2I.TRUNC.NTZ R26, R20 ;
+        FFMA R0, R20, -0.5, R33 ;
         FMUL R27, R0, R0 ;
         FFMA R28, R27.reuse, R28, -1.334560394287109375 ;
-        FFMA R26, R27, -R26, 2.550144195556640625 ;
+        FFMA R20, R27, -R34, 2.550144195556640625 ;
         FFMA R28, R27.reuse, R28, 4.0586924552917480469 ;
-        FFMA R3, R27.reuse, R26, -5.1677198410034179688 ;
-        LOP3.LUT R21, R24.reuse, 0x1, RZ, 0xc0, !PT ;
+        FFMA R3, R27.reuse, R20, -5.1677198410034179688 ;
+        LOP3.LUT R13, R26.reuse, 0x1, RZ, 0xc0, !PT ;
         FFMA R28, R27, R28, -4.9348020553588867188 ;
-        LOP3.LUT P2, RZ, R24, 0x2, RZ, 0xc0, !PT ;
-        FFMA R24, R0, R27, RZ ;
-        ISETP.NE.U32.AND P1, PT, R21, 0x1, PT ;
-        FFMA R27, R27, R28, 1 ;
-        FFMA R3, R3, R24, RZ ;
-    @P1 FFMA R27, R0, 3.1415927410125732422, R3 ;
-    @P2 FADD R27, RZ, -R27 ;
-   @!P3 FMUL R27, RZ, R34 ;
+        LOP3.LUT P2, RZ, R26, 0x2, RZ, 0xc0, !PT ;
+        FFMA R26, R0, R27, RZ ;
+        ISETP.NE.U32.AND P1, PT, R13, 0x1, PT ;
+        FFMA R13, R27, R28, 1 ;
+        FFMA R3, R3, R26, RZ ;
+    @P1 FFMA R13, R0, 3.1415927410125732422, R3 ;
+    @P2 FADD R13, RZ, -R13 ;
+   @!P3 FMUL R13, RZ, R33 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-   @!P4 FMUL R27, R27, 16777216 ;
-        FMUL R27, R30, R27 ;
+   @!P4 FMUL R13, R13, 16777216 ;
+        FMUL R13, R32, R13 ;
 
 .L_x_13:
         BSYNC B0 ;
 
 .L_x_12:
 ; Location ./float.jl:534
-        FSETP.NEU.AND P4, PT, R20, RZ, PT ;
+        FSETP.NEU.AND P4, PT, R15, RZ, PT ;
         BSSY B0, `(.L_x_14) ;
-        FSETP.NEU.AND P3, PT, R17, RZ, PT ;
-        IMAD.MOV.U32 R26, RZ, RZ, 0x3f800000 ;
-        FSETP.NEU.AND P1, PT, R16, RZ, PT ;
-        FSETP.NEU.AND P2, PT, R14, RZ, PT ;
+        FSETP.NEU.AND P3, PT, R14, RZ, PT ;
+        IMAD.MOV.U32 R20, RZ, RZ, 0x3f800000 ;
+        FSETP.NEU.AND P1, PT, R25, RZ, PT ;
+        FSETP.NEU.AND P2, PT, R11, RZ, PT ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:73
    @!P4 BRA `(.L_x_15) ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FADD R3, R20, R20 ;
-        IMAD.MOV.U32 R28, RZ, RZ, 0x3e684e12 ;
+        FADD R3, R15, R15 ;
 ; Location ./fastmath.jl:165
-        FMUL R34, R5, 12.566370964050292969 ;
+        FMUL R33, R10, 12.566370964050292969 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        IMAD.MOV.U32 R30, RZ, RZ, 0x3f17acc9 ;
+        IMAD.MOV.U32 R28, RZ, RZ, 0x3e684e12 ;
+        FRND.TRUNC R34, R15 ;
+        IMAD.MOV.U32 R36, RZ, RZ, 0x3f17acc9 ;
         LOP3.LUT R0, R3.reuse, 0x80000000, RZ, 0xc0, !PT ;
         FSETP.GEU.AND P5, PT, |R3|.reuse, 0.5, PT ;
         LOP3.LUT R0, R0, 0x3f000000, RZ, 0xfc, !PT ;
         FSETP.GT.AND P4, PT, |R3|, 8388608, PT ;
-        FADD R21, R3, R0 ;
-        FRND.TRUNC R0, R21 ;
-        FRND.TRUNC R21, R20 ;
-        FSEL R23, R3, R0, P4 ;
+        FADD R20, R3, R0 ;
+        FRND.TRUNC R20, R20 ;
+        FSEL R26, R3, R20, P4 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-        FSETP.GEU.AND P4, PT, |R34|, 1.175494350822287508e-38, PT ;
+        FSETP.GEU.AND P4, PT, |R33|, 1.175494350822287508e-38, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-   @!P5 FRND.TRUNC R23, R3 ;
+   @!P5 FRND.TRUNC R26, R3 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-   @!P4 FMUL R34, R34, 16777216 ;
+   @!P4 FMUL R33, R33, 16777216 ;
+        MUFU.RCP R33, R33 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        F2I.TRUNC.NTZ R24, R23 ;
-        FFMA R0, R23, -0.5, R20 ;
-        FMUL R29, R0, R0 ;
-        FFMA R28, R29, R28, -1.334560394287109375 ;
-        FFMA R28, R29, R28, 4.0586924552917480469 ;
-        LOP3.LUT R26, R24, 0x1, RZ, 0xc0, !PT ;
-        FFMA R28, R29.reuse, R28, -4.9348020553588867188 ;
-        LOP3.LUT P5, RZ, R24, 0x2, RZ, 0xc0, !PT ;
-        ISETP.NE.U32.AND P6, PT, R26, 0x1, PT ;
-        FFMA R26, R29, -R30, 2.550144195556640625 ;
-        FFMA R30, R0, R29, RZ ;
-        FFMA R3, R29.reuse, R26, -5.1677198410034179688 ;
-        FFMA R26, R29, R28, 1 ;
-        FFMA R3, R3, R30, RZ ;
-    @P6 FFMA R26, R0, 3.1415927410125732422, R3 ;
-        FSETP.NEU.AND P6, PT, R20, R21, PT ;
+        FFMA R0, R26, -0.5, R15 ;
+        FMUL R31, R0, R0 ;
+        F2I.TRUNC.NTZ R27, R26 ;
+        FFMA R28, R31.reuse, R28, -1.334560394287109375 ;
+        FFMA R20, R31, -R36, 2.550144195556640625 ;
+        FFMA R28, R31.reuse, R28, 4.0586924552917480469 ;
+        FFMA R3, R31.reuse, R20, -5.1677198410034179688 ;
+        FFMA R26, R0, R31, RZ ;
+        FFMA R28, R31, R28, -4.9348020553588867188 ;
+        FFMA R3, R3, R26, RZ ;
+        FFMA R20, R31, R28, 1 ;
+        LOP3.LUT R32, R27.reuse, 0x1, RZ, 0xc0, !PT ;
+        LOP3.LUT P5, RZ, R27, 0x2, RZ, 0xc0, !PT ;
+        ISETP.NE.U32.AND P6, PT, R32, 0x1, PT ;
+    @P6 FFMA R20, R0, 3.1415927410125732422, R3 ;
+        FSETP.NEU.AND P6, PT, R15, R34, PT ;
+    @P5 FADD R20, RZ, -R20 ;
+   @!P6 FMUL R20, RZ, R15 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-        MUFU.RCP R3, R34 ;
-; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-    @P5 FADD R26, RZ, -R26 ;
-   @!P6 FMUL R26, RZ, R20 ;
-; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-   @!P4 FMUL R26, R26, 16777216 ;
-        FMUL R26, R3, R26 ;
+   @!P4 FMUL R20, R20, 16777216 ;
+        FMUL R20, R33, R20 ;
 
 .L_x_15:
         BSYNC B0 ;
@@ -493,53 +491,53 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
 .L_x_14:
 ; Location ./float.jl:534
         BSSY B0, `(.L_x_16) ;
-        IMAD.MOV.U32 R30, RZ, RZ, 0x3f800000 ;
+        IMAD.MOV.U32 R15, RZ, RZ, 0x3f800000 ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:73
    @!P3 BRA `(.L_x_17) ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FADD R3, R17, R17 ;
+        FADD R3, R14, R14 ;
 ; Location ./fastmath.jl:165
-        FMUL R29, R10, 12.566370964050292969 ;
+        FMUL R34, R24, 12.566370964050292969 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FRND.TRUNC R30, R17 ;
-        IMAD.MOV.U32 R28, RZ, RZ, 0x3e684e12 ;
+        FRND.TRUNC R33, R14 ;
+        IMAD.MOV.U32 R32, RZ, RZ, 0x3e684e12 ;
         LOP3.LUT R0, R3.reuse, 0x80000000, RZ, 0xc0, !PT ;
-        IMAD.MOV.U32 R34, RZ, RZ, 0x3f17acc9 ;
+        IMAD.MOV.U32 R28, RZ, RZ, 0x3f17acc9 ;
         FSETP.GEU.AND P4, PT, |R3|, 0.5, PT ;
         LOP3.LUT R0, R0, 0x3f000000, RZ, 0xfc, !PT ;
-        FSETP.GT.AND P3, PT, |R3|, 8388608, PT ;
+        FSETP.GT.AND P3, PT, |R3|.reuse, 8388608, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-        FSETP.GEU.AND P6, PT, |R29|, 1.175494350822287508e-38, PT ;
+        FSETP.GEU.AND P6, PT, |R34|, 1.175494350822287508e-38, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FADD R20, R3, R0 ;
-        FSETP.NEU.AND P5, PT, R17, R30, PT ;
-        FRND.TRUNC R20, R20 ;
+        FADD R15, R3, R0 ;
+        FRND.TRUNC R0, R15 ;
+        FSETP.NEU.AND P5, PT, R14, R33, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-   @!P6 FMUL R29, R29, 16777216 ;
-        MUFU.RCP R30, R29 ;
+   @!P6 FMUL R34, R34, 16777216 ;
+        MUFU.RCP R34, R34 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FSEL R24, R3, R20, P3 ;
-   @!P4 FRND.TRUNC R24, R3 ;
-        F2I.TRUNC.NTZ R21, R24 ;
-        FFMA R0, R24, -0.5, R17 ;
-        FMUL R23, R0, R0 ;
-        FFMA R28, R23, R28, -1.334560394287109375 ;
-        FFMA R24, R0, R23, RZ ;
-        FFMA R28, R23, R28, 4.0586924552917480469 ;
-        LOP3.LUT R20, R21, 0x1, RZ, 0xc0, !PT ;
-        FFMA R28, R23, R28, -4.9348020553588867188 ;
-        LOP3.LUT P4, RZ, R21, 0x2, RZ, 0xc0, !PT ;
-        ISETP.NE.U32.AND P3, PT, R20, 0x1, PT ;
-        FFMA R20, R23, -R34, 2.550144195556640625 ;
-        FFMA R3, R23.reuse, R20, -5.1677198410034179688 ;
-        FFMA R23, R23, R28, 1 ;
-        FFMA R3, R3, R24, RZ ;
-    @P3 FFMA R23, R0, 3.1415927410125732422, R3 ;
-    @P4 FADD R23, RZ, -R23 ;
-   @!P5 FMUL R23, RZ, R17 ;
+        FSEL R27, R3, R0, P3 ;
+   @!P4 FRND.TRUNC R27, R3 ;
+        F2I.TRUNC.NTZ R26, R27 ;
+        FFMA R0, R27, -0.5, R14 ;
+        FMUL R31, R0, R0 ;
+        FFMA R32, R31.reuse, R32, -1.334560394287109375 ;
+        FFMA R28, R31, -R28, 2.550144195556640625 ;
+        FFMA R32, R31.reuse, R32, 4.0586924552917480469 ;
+        FFMA R3, R31.reuse, R28, -5.1677198410034179688 ;
+        LOP3.LUT R15, R26.reuse, 0x1, RZ, 0xc0, !PT ;
+        FFMA R32, R31, R32, -4.9348020553588867188 ;
+        LOP3.LUT P4, RZ, R26, 0x2, RZ, 0xc0, !PT ;
+        FFMA R26, R0, R31, RZ ;
+        ISETP.NE.U32.AND P3, PT, R15, 0x1, PT ;
+        FFMA R15, R31, R32, 1 ;
+        FFMA R3, R3, R26, RZ ;
+    @P3 FFMA R15, R0, 3.1415927410125732422, R3 ;
+    @P4 FADD R15, RZ, -R15 ;
+   @!P5 FMUL R15, RZ, R14 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-   @!P6 FMUL R23, R23, 16777216 ;
-        FMUL R30, R30, R23 ;
+   @!P6 FMUL R15, R15, 16777216 ;
+        FMUL R15, R34, R15 ;
 
 .L_x_17:
         BSYNC B0 ;
@@ -547,55 +545,53 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
 .L_x_16:
 ; Location ./float.jl:534
         BSSY B0, `(.L_x_18) ;
-        IMAD.MOV.U32 R28, RZ, RZ, 0x3f800000 ;
+        IMAD.MOV.U32 R14, RZ, RZ, 0x3f800000 ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:73
    @!P1 BRA `(.L_x_19) ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FADD R3, R16, R16 ;
+        FADD R3, R25, R25 ;
 ; Location ./fastmath.jl:165
-        FMUL R34, R13, 12.566370964050292969 ;
+        FMUL R33, R30, 12.566370964050292969 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FRND.TRUNC R29, R16 ;
+        FRND.TRUNC R32, R25 ;
         IMAD.MOV.U32 R28, RZ, RZ, 0x3e684e12 ;
         LOP3.LUT R0, R3.reuse, 0x80000000, RZ, 0xc0, !PT ;
-        IMAD.MOV.U32 R24, RZ, RZ, 0x3f17acc9 ;
+        IMAD.MOV.U32 R34, RZ, RZ, 0x3f17acc9 ;
         FSETP.GEU.AND P3, PT, |R3|, 0.5, PT ;
         LOP3.LUT R0, R0, 0x3f000000, RZ, 0xfc, !PT ;
-        FSETP.GT.AND P1, PT, |R3|.reuse, 8388608, PT ;
+        FSETP.GT.AND P1, PT, |R3|, 8388608, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-        FSETP.GEU.AND P5, PT, |R34|, 1.175494350822287508e-38, PT ;
+        FSETP.GEU.AND P5, PT, |R33|, 1.175494350822287508e-38, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FADD R17, R3, R0 ;
-        FRND.TRUNC R0, R17 ;
-        FSETP.NEU.AND P4, PT, R16, R29, PT ;
+        FADD R14, R3, R0 ;
+        FSETP.NEU.AND P4, PT, R25, R32, PT ;
+        FRND.TRUNC R14, R14 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-   @!P5 FMUL R34, R34, 16777216 ;
+   @!P5 FMUL R33, R33, 16777216 ;
+        MUFU.RCP R33, R33 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FSEL R21, R3, R0, P1 ;
-   @!P3 FRND.TRUNC R21, R3 ;
-        F2I.TRUNC.NTZ R20, R21 ;
-        FFMA R0, R21, -0.5, R16 ;
-        FMUL R23, R0, R0 ;
-        FFMA R28, R23.reuse, R28, -1.334560394287109375 ;
-        FFMA R24, R23, -R24, 2.550144195556640625 ;
-        FFMA R28, R23.reuse, R28, 4.0586924552917480469 ;
-        FFMA R3, R23.reuse, R24, -5.1677198410034179688 ;
-        LOP3.LUT R17, R20.reuse, 0x1, RZ, 0xc0, !PT ;
-        FFMA R28, R23, R28, -4.9348020553588867188 ;
-        LOP3.LUT P3, RZ, R20, 0x2, RZ, 0xc0, !PT ;
-        FFMA R20, R0, R23, RZ ;
-        ISETP.NE.U32.AND P1, PT, R17, 0x1, PT ;
-        FFMA R28, R23, R28, 1 ;
-        FFMA R3, R3, R20, RZ ;
-    @P1 FFMA R28, R0, 3.1415927410125732422, R3 ;
+        FSEL R26, R3, R14, P1 ;
+   @!P3 FRND.TRUNC R26, R3 ;
+        F2I.TRUNC.NTZ R27, R26 ;
+        FFMA R0, R26, -0.5, R25 ;
+        FMUL R31, R0, R0 ;
+        FFMA R28, R31, R28, -1.334560394287109375 ;
+        FFMA R26, R0, R31, RZ ;
+        FFMA R28, R31, R28, 4.0586924552917480469 ;
+        LOP3.LUT R14, R27, 0x1, RZ, 0xc0, !PT ;
+        FFMA R28, R31, R28, -4.9348020553588867188 ;
+        LOP3.LUT P3, RZ, R27, 0x2, RZ, 0xc0, !PT ;
+        ISETP.NE.U32.AND P1, PT, R14, 0x1, PT ;
+        FFMA R14, R31, -R34, 2.550144195556640625 ;
+        FFMA R3, R31.reuse, R14, -5.1677198410034179688 ;
+        FFMA R14, R31, R28, 1 ;
+        FFMA R3, R3, R26, RZ ;
+    @P1 FFMA R14, R0, 3.1415927410125732422, R3 ;
+    @P3 FADD R14, RZ, -R14 ;
+   @!P4 FMUL R14, RZ, R25 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-        MUFU.RCP R3, R34 ;
-; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-    @P3 FADD R28, RZ, -R28 ;
-   @!P4 FMUL R28, RZ, R16 ;
-; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-   @!P5 FMUL R28, R28, 16777216 ;
-        FMUL R28, R3, R28 ;
+   @!P5 FMUL R14, R14, 16777216 ;
+        FMUL R14, R33, R14 ;
 
 .L_x_19:
         BSYNC B0 ;
@@ -605,51 +601,49 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:73
    @!P2 BRA `(.L_x_21) ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FADD R3, R14, R14 ;
+        FADD R3, R11, R11 ;
 ; Location ./fastmath.jl:165
-        FMUL R29, R12, 12.566370964050292969 ;
+        FMUL R31, R29, 12.566370964050292969 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FRND.TRUNC R23, R14 ;
-        IMAD.MOV.U32 R24, RZ, RZ, 0x3e684e12 ;
+        FRND.TRUNC R32, R11 ;
+        IMAD.MOV.U32 R28, RZ, RZ, 0x3e684e12 ;
         LOP3.LUT R0, R3.reuse, 0x80000000, RZ, 0xc0, !PT ;
         IMAD.MOV.U32 R34, RZ, RZ, 0x3f17acc9 ;
         FSETP.GEU.AND P2, PT, |R3|, 0.5, PT ;
         LOP3.LUT R0, R0, 0x3f000000, RZ, 0xfc, !PT ;
         FSETP.GT.AND P1, PT, |R3|, 8388608, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-        FSETP.GEU.AND P4, PT, |R29|, 1.175494350822287508e-38, PT ;
+        FSETP.GEU.AND P4, PT, |R31|, 1.175494350822287508e-38, PT ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FADD R16, R3, R0 ;
-        FSETP.NEU.AND P3, PT, R14, R23, PT ;
-        FRND.TRUNC R16, R16 ;
+        FADD R12, R3, R0 ;
+        FSETP.NEU.AND P3, PT, R11, R32, PT ;
+        FRND.TRUNC R12, R12 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-   @!P4 FMUL R29, R29, 16777216 ;
+   @!P4 FMUL R31, R31, 16777216 ;
+        MUFU.RCP R31, R31 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-        FSEL R17, R3, R16, P1 ;
-   @!P2 FRND.TRUNC R17, R3 ;
-        F2I.TRUNC.NTZ R20, R17 ;
-        FFMA R0, R17, -0.5, R14 ;
-        FMUL R21, R0, R0 ;
-        FFMA R24, R21, R24, -1.334560394287109375 ;
-        FFMA R24, R21, R24, 4.0586924552917480469 ;
-        LOP3.LUT R16, R20, 0x1, RZ, 0xc0, !PT ;
-        FFMA R24, R21.reuse, R24, -4.9348020553588867188 ;
-        LOP3.LUT P2, RZ, R20, 0x2, RZ, 0xc0, !PT ;
-        FFMA R20, R0, R21, RZ ;
-        ISETP.NE.U32.AND P1, PT, R16, 0x1, PT ;
-        FFMA R16, R21, -R34, 2.550144195556640625 ;
-        FFMA R3, R21.reuse, R16, -5.1677198410034179688 ;
-        FFMA R21, R21, R24, 1 ;
-        FFMA R3, R3, R20, RZ ;
-    @P1 FFMA R21, R0, 3.1415927410125732422, R3 ;
+        FSEL R26, R3, R12, P1 ;
+   @!P2 FRND.TRUNC R26, R3 ;
+        F2I.TRUNC.NTZ R25, R26 ;
+        FFMA R0, R26, -0.5, R11 ;
+        FMUL R27, R0, R0 ;
+        FFMA R28, R27, R28, -1.334560394287109375 ;
+        FFMA R26, R0, R27, RZ ;
+        FFMA R28, R27, R28, 4.0586924552917480469 ;
+        LOP3.LUT R12, R25, 0x1, RZ, 0xc0, !PT ;
+        FFMA R28, R27, R28, -4.9348020553588867188 ;
+        LOP3.LUT P2, RZ, R25, 0x2, RZ, 0xc0, !PT ;
+        ISETP.NE.U32.AND P1, PT, R12, 0x1, PT ;
+        FFMA R12, R27, -R34, 2.550144195556640625 ;
+        FFMA R3, R27.reuse, R12, -5.1677198410034179688 ;
+        FFMA R12, R27, R28, 1 ;
+        FFMA R3, R3, R26, RZ ;
+    @P1 FFMA R12, R0, 3.1415927410125732422, R3 ;
+    @P2 FADD R12, RZ, -R12 ;
+   @!P3 FMUL R12, RZ, R11 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-        MUFU.RCP R0, R29 ;
-; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:25
-    @P2 FADD R21, RZ, -R21 ;
-   @!P3 FMUL R21, RZ, R14 ;
-; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/math.jl:378
-   @!P4 FMUL R21, R21, 16777216 ;
-        FMUL R25, R0, R21 ;
+   @!P4 FMUL R12, R12, 16777216 ;
+        FMUL R12, R31, R12 ;
 
 .L_x_21:
         BSYNC B0 ;
@@ -657,692 +651,685 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
 .L_x_20:
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
    @!P0 BRA `(.L_x_22) ;
-        FSETP.GT.AND P0, PT, |R15|, 16777216, PT ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        S2R R61, SR_TID.Y ;
-        FSETP.GT.AND P1, PT, |R7|, 16777216, PT ;
-        IMAD R11, R11, 0x3f, RZ ;
-        LOP3.LUT R2, R22.reuse, 0x8, RZ, 0xc0, !PT ;
-        IMAD.SHL.U32 R60, R22, 0x4, RZ ;
-; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
-        SHF.R.S32.HI R41, RZ, 0x2, R22 ;
-        SGXT R41, R41, 0x1 ;
-        LOP3.LUT R51, R60, 0x10, RZ, 0xc0, !PT ;
-    @P0 FMUL R15, RZ, R15 ;
         FSETP.GT.AND P0, PT, |R6|, 16777216, PT ;
-    @P1 FMUL R7, RZ, R7 ;
-        FSETP.GT.AND P1, PT, |R4|, 16777216, PT ;
-        FADD R3, R15, R15 ;
-        FADD R14, R7, R7 ;
-        LOP3.LUT R0, R3.reuse, 0x80000000, RZ, 0xc0, !PT ;
-        FSETP.GEU.AND P3, PT, |R3|, 0.5, PT ;
-        IMAD.SHL.U32 R44, R61, 0x2, RZ ;
-        LOP3.LUT R0, R0, 0x3f000000, RZ, 0xfc, !PT ;
-    @P0 FMUL R6, RZ, R6 ;
-        FSETP.GT.AND P2, PT, |R3|, 8388608, PT ;
-    @P1 FMUL R4, RZ, R4 ;
-        FSETP.GT.AND P0, PT, |R5|, 16777216, PT ;
-        FADD R20, R3, R0 ;
-        LOP3.LUT R0, R14, 0x80000000, RZ, 0xc0, !PT ;
-        FADD R16, R6, R6 ;
-        FSETP.GT.AND P1, PT, |R10|, 16777216, PT ;
-        LOP3.LUT R17, R0, 0x3f000000, RZ, 0xfc, !PT ;
-        FRND.TRUNC R20, R20 ;
-        LOP3.LUT R0, R16, 0x80000000, RZ, 0xc0, !PT ;
-        LOP3.LUT R44, R44, R9, RZ, 0xfc, !PT ;
-        FADD R21, R14, R17 ;
-        LOP3.LUT R17, R0, 0x3f000000, RZ, 0xfc, !PT ;
-    @P0 FMUL R5, RZ, R5 ;
-        FSETP.GT.AND P0, PT, |R13|, 16777216, PT ;
-        IMAD R44, R44, 0x41, RZ ;
-        SHF.R.U32.HI R9, RZ, 0x3, R22 ;
-        FRND.TRUNC R21, R21 ;
-        FADD R23, R16, R17 ;
-    @P1 FMUL R10, RZ, R10 ;
-        FSETP.GT.AND P1, PT, |R12|, 16777216, PT ;
-        LOP3.LUT R49, R8, 0x2, R9, 0xf8, !PT ;
-        FSEL R24, R3, R20, P2 ;
-        FRND.TRUNC R23, R23 ;
-        FADD R20, R4, R4 ;
-        FSETP.GT.AND P2, PT, |R14|, 8388608, PT ;
-    @P0 FMUL R13, RZ, R13 ;
-        LOP3.LUT R8, R11, 0x7f, RZ, 0xc0, !PT ;
-        LOP3.LUT R17, R20, 0x80000000, RZ, 0xc0, !PT ;
-        FADD R36, R13, R13 ;
-   @!P3 FRND.TRUNC R24, R3 ;
-        FSETP.GEU.AND P3, PT, |R14|.reuse, 0.5, PT ;
-    @P1 FMUL R12, RZ, R12 ;
-        FSEL R0, R14, R21, P2 ;
-        FADD R21, R5, R5 ;
-        LOP3.LUT R17, R17, 0x3f000000, RZ, 0xfc, !PT ;
-        FSETP.GT.AND P2, PT, |R16|, 8388608, PT ;
-        LOP3.LUT R3, R21, 0x80000000, RZ, 0xc0, !PT ;
-        FADD R17, R20, R17 ;
-        FSEL R29, R16, R23, P2 ;
-        FADD R23, R10, R10 ;
-        LOP3.LUT R34, R3, 0x3f000000, RZ, 0xfc, !PT ;
-   @!P3 FRND.TRUNC R0, R14 ;
-        FSETP.GEU.AND P3, PT, |R16|, 0.5, PT ;
-        LOP3.LUT R3, R23, 0x80000000, RZ, 0xc0, !PT ;
-        FADD R34, R21, R34 ;
-        FSETP.GT.AND P2, PT, |R20|, 8388608, PT ;
-        FSETP.GT.AND P0, PT, |R21|, 8388608, PT ;
-        FRND.TRUNC R17, R17 ;
-        LOP3.LUT R14, R3, 0x3f000000, RZ, 0xfc, !PT ;
-        LOP3.LUT R3, R36, 0x80000000, RZ, 0xc0, !PT ;
-        FSETP.GEU.AND P1, PT, |R23|.reuse, 0.5, PT ;
-        FADD R14, R23, R14 ;
-        LOP3.LUT R35, R3, 0x3f000000, RZ, 0xfc, !PT ;
-   @!P3 FRND.TRUNC R29, R16 ;
-        FSETP.GEU.AND P3, PT, |R20|, 0.5, PT ;
-        FADD R3, R12, R12 ;
-        IADD3 R11, R11, 0x60, RZ ;
-        FFMA R7, R0, -0.5, R7 ;
-        I2FP.F32.S32 R8, R8 ;
-        SHF.R.S32.HI R47, RZ, 0x1, R61 ;
-        FRND.TRUNC R34, R34 ;
-        FSEL R17, R20, R17, P2 ;
-        FSETP.GEU.AND P2, PT, |R21|, 0.5, PT ;
-        SGXT R47, R47, 0x1 ;
-        FRND.TRUNC R38, R14 ;
-        FFMA R6, R29, -0.5, R6 ;
-        LOP3.LUT R47, R47, 0x208, RZ, 0xc0, !PT ;
-   @!P3 FRND.TRUNC R17, R20 ;
-        FSEL R16, R21, R34, P0 ;
-        IMAD.SHL.U32 R34, R61, 0x4, RZ ;
-        LOP3.LUT R14, R3, 0x80000000, RZ, 0xc0, !PT ;
-        FSETP.GT.AND P0, PT, |R23|.reuse, 8388608, PT ;
-        LOP3.LUT R14, R14, 0x3f000000, RZ, 0xfc, !PT ;
-   @!P2 FRND.TRUNC R16, R21 ;
-        FADD R20, R36, R35 ;
-        FSEL R35, R23, R38, P0 ;
-        LOP3.LUT R34, R9, R34, RZ, 0xfc, !PT ;
-        LOP3.LUT R9, R22, 0x1, RZ, 0xc0, !PT ;
-        FRND.TRUNC R37, R20 ;
-        FADD R21, R3, R14 ;
-        FSETP.GT.AND P0, PT, |R36|, 8388608, PT ;
-        FFMA R4, R17, -0.5, R4 ;
-        LOP3.LUT P2, RZ, R22, 0x2, RZ, 0xc0, !PT ;
-   @!P1 FRND.TRUNC R35, R23 ;
-        FSETP.GEU.AND P1, PT, |R36|, 0.5, PT ;
-        FFMA R5, R16, -0.5, R5 ;
-        SEL R42, RZ, 0x41, !P2 ;
-        SHF.R.U32.HI R20, RZ, 0x1, R22 ;
-        FRND.TRUNC R38, R21 ;
-        FSEL R14, R36, R37, P0 ;
-        FSETP.GT.AND P0, PT, |R3|, 8388608, PT ;
-        LOP3.LUT R49, R49, 0x4, R20, 0xf8, !PT ;
-   @!P1 FRND.TRUNC R14, R36 ;
-        IMAD.MOV R21, RZ, RZ, -R9 ;
-        LOP3.LUT R9, R11, 0x7f, RZ, 0xc0, !PT ;
-        FMUL R11, R8, 0.015625 ;
-        FSETP.GEU.AND P1, PT, |R3|, 0.5, PT ;
-        LOP3.LUT R42, R42, 0x82, R21, 0xf8, !PT ;
-        FADD R39, R11, R11 ;
-        I2FP.F32.S32 R9, R9 ;
-        IMAD R21, R22, 0x10, R2 ;
-        FSEL R23, R3, R38, P0 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        S2R R2, SR_CTAID.X ;
-        LOP3.LUT R8, R39, 0x80000000, RZ, 0xc0, !PT ;
-        FMUL R43, R9, 0.015625 ;
-; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
-        LOP3.LUT R38, R61, 0x1, RZ, 0xc0, !PT ;
-        F2I.TRUNC.NTZ R20, R24 ;
-        LOP3.LUT R8, R8, 0x3f000000, RZ, 0xfc, !PT ;
-        FADD R36, R43, R43 ;
-        SHF.R.U32.HI R37, RZ, 0x2, R21 ;
-        SHF.R.U32.HI R9, RZ, 0x3, R61 ;
-        FADD R40, R39, R8 ;
-        LOP3.LUT R8, R37, 0xe, RZ, 0xc0, !PT ;
-        IMAD.MOV R37, RZ, RZ, -R38 ;
-   @!P1 FRND.TRUNC R23, R3 ;
-        LOP3.LUT R21, R22, 0x10, RZ, 0xc0, !PT ;
-        LOP3.LUT R46, R8, 0x10, R60, 0xf8, !PT ;
-        LOP3.LUT R37, R37, 0x410, RZ, 0xc0, !PT ;
-        LOP3.LUT R45, R46, 0x1, RZ, 0xfc, !PT ;
-        FRND.TRUNC R40, R40 ;
-        LOP3.LUT R3, R36, 0x80000000, RZ, 0xc0, !PT ;
-        IMAD.IADD R38, R46, 0x1, R37 ;
-        SHF.R.U32.HI R21, RZ, 0x4, R21 ;
-        IMAD.IADD R48, R45, 0x1, R37 ;
+        S2R R58, SR_TID.Y ;
+        FSETP.GT.AND P1, PT, |R5|, 16777216, PT ;
+        LOP3.LUT R2, R18, 0x8, RZ, 0xc0, !PT ;
+        S2R R59, SR_CTAID.X ;
+        SHF.R.U32.HI R48, RZ, 0x1, R18.reuse ;
+        SHF.R.S32.HI R43, RZ, 0x2, R18 ;
+        SGXT R43, R43, 0x1 ;
+    @P0 FMUL R6, RZ, R6 ;
+        FSETP.GT.AND P0, PT, |R4|, 16777216, PT ;
+    @P1 FMUL R5, RZ, R5 ;
+        FSETP.GT.AND P1, PT, |R9|, 16777216, PT ;
+        FADD R0, R6, R6 ;
+        LOP3.LUT R44, R43, 0x104, RZ, 0xc0, !PT ;
+        FADD R11, R5, R5 ;
+        LOP3.LUT R3, R0.reuse, 0x80000000, RZ, 0xc0, !PT ;
+        FSETP.GEU.AND P2, PT, |R0|.reuse, 0.5, PT ;
         LOP3.LUT R3, R3, 0x3f000000, RZ, 0xfc, !PT ;
-        IMAD R38, R9.reuse, 0x82, R38 ;
-        SHF.R.S32.HI R37, RZ, 0x2, R61 ;
-        IMAD R48, R9, 0x82, R48 ;
-        LOP3.LUT R42, R42, 0x104, R41, 0xf8, !PT ;
-        FADD R3, R36, R3 ;
-        IMAD R9, R21.reuse, 0x41, R38 ;
-        LOP3.LUT R38, R60, 0xc, RZ, 0xc0, !PT ;
-        IMAD R41, R21, 0x41, R48 ;
-        FSETP.GT.AND P0, PT, |R39|, 8388608, PT ;
-        IMAD.SHL.U32 R21, R2.reuse, 0x40, RZ ;
-        FRND.TRUNC R3, R3 ;
-        IMAD R50, R2, 0x20, R38 ;
-        SGXT R48, R37, 0x1 ;
-        FSEL R40, R39.reuse, R40, P0 ;
-        FSETP.GT.AND P0, PT, |R36|.reuse, 8388608, PT ;
-        F2I.TRUNC.NTZ R38, R29 ;
-        FSETP.GEU.AND P1, PT, |R39|, 0.5, PT ;
-        FSETP.GEU.AND P2, PT, |R36|, 0.5, PT ;
-        LOP3.LUT R52, R34, 0x7c0, R21, 0xf8, !PT ;
-        IMAD.IADD R34, R51, 0x1, R50 ;
-        LOP3.LUT R48, R48, 0x104, RZ, 0xc0, !PT ;
-        F2I.TRUNC.NTZ R37, R0 ;
-        FSEL R58, R36, R3, P0 ;
-        FFMA R3, R24, -0.5, R15 ;
-        IMAD.MOV.U32 R24, RZ, RZ, 0x3f17acc9 ;
-        IADD3 R9, R47, R9, R48 ;
-        IMAD R59, R52, 0x20, R51 ;
-        IMAD.IADD R51, R51, 0x1, R44 ;
-        IADD3 R38, R38, 0x1, RZ ;
-   @!P1 FRND.TRUNC R40, R39 ;
-        IADD3 R0, R20, 0x1, RZ ;
-        FMUL R20, R3, R3 ;
-        LOP3.LUT P0, RZ, R38, 0x2, RZ, 0xc0, !PT ;
-        IMAD.IADD R57, R8, 0x1, R51 ;
-        LOP3.LUT R38, R38, 0x1, RZ, 0xc0, !PT ;
-        FFMA R15, R20, -R24, 2.550144195556640625 ;
-        IADD3 R37, R37, 0x1, RZ ;
-        FFMA R29, R3, R20, RZ ;
-        LOP3.LUT P5, RZ, R0.reuse, 0x2, RZ, 0xc0, !PT ;
-   @!P2 FRND.TRUNC R58, R36 ;
-        LOP3.LUT R39, R0, 0x1, RZ, 0xc0, !PT ;
-        FFMA R0, R20, R15, -5.1677198410034179688 ;
-        LOP3.LUT P1, RZ, R37, 0x2, RZ, 0xc0, !PT ;
-        F2I.TRUNC.NTZ R16, R16 ;
-        LOP3.LUT R37, R37, 0x1, RZ, 0xc0, !PT ;
-        FFMA R36, R0, R29, RZ ;
-        ISETP.NE.U32.AND P2, PT, R38, 0x1, PT ;
-        FMUL R38, R7, R7 ;
-        IMAD.MOV.U32 R29, RZ, RZ, 0x3e684e12 ;
-        ISETP.NE.U32.AND P4, PT, R37, 0x1, PT ;
-        IMAD.IADD R46, R46, 0x1, R44 ;
-        FFMA R37, R38, -R24, 2.550144195556640625 ;
-        F2I.TRUNC.NTZ R50, R17 ;
-        FFMA R15, R20, R29, -1.334560394287109375 ;
-        IADD3 R8, R47, R41, R48 ;
-        FFMA R41, R7, R38, RZ ;
-        ISETP.NE.U32.AND P3, PT, R39, 0x1, PT ;
-        FFMA R39, R38.reuse, R29, -1.334560394287109375 ;
-        FFMA R0, R38, R37, -5.1677198410034179688 ;
-        FFMA R15, R20, R15, 4.0586924552917480469 ;
-        IADD3 R16, R16, 0x1, RZ ;
-        FFMA R39, R38, R39, 4.0586924552917480469 ;
-        FFMA R48, R0, R41, RZ ;
-        FFMA R0, R35, -0.5, R10 ;
-        FFMA R37, R20, R15, -4.9348020553588867188 ;
-        F2I.TRUNC.NTZ R35, R35 ;
-        FMUL R15, R6, R6 ;
-        FFMA R39, R38, R39, -4.9348020553588867188 ;
-        FFMA R20, R20, R37, 1 ;
-        IADD3 R50, R50, 0x1, RZ ;
-        FFMA R10, R15.reuse, -R24, 2.550144195556640625 ;
-        FFMA R17, R38, R39, 1 ;
-        FFMA R38, R15, R29, -1.334560394287109375 ;
-    @P3 FFMA R20, R3, 3.1415927410125732422, R36 ;
-        FFMA R39, R6, R15, RZ ;
-        FFMA R10, R15.reuse, R10, -5.1677198410034179688 ;
-        FFMA R3, R14, -0.5, R13 ;
-        FMUL R13, R4, R4 ;
-        FFMA R38, R15, R38, 4.0586924552917480469 ;
-        LOP3.LUT R37, R50, 0x1, RZ, 0xc0, !PT ;
-        FFMA R39, R10, R39, RZ ;
-        FFMA R10, R13, -R24, 2.550144195556640625 ;
-        FFMA R38, R15, R38, -4.9348020553588867188 ;
-    @P4 FFMA R17, R7, 3.1415927410125732422, R48 ;
-        ISETP.NE.U32.AND P3, PT, R37, 0x1, PT ;
-        FFMA R36, R4, R13, RZ ;
-        IADD3 R48, R35, 0x1, RZ ;
-        F2I.TRUNC.NTZ R37, R14 ;
-        LOP3.LUT R35, R16, 0x1, RZ, 0xc0, !PT ;
-        FFMA R7, R13, R10, -5.1677198410034179688 ;
-        FFMA R15, R15, R38, 1 ;
-        FMUL R10, R5, R5 ;
-        LOP3.LUT R38, R48, 0x1, RZ, 0xc0, !PT ;
-    @P2 FFMA R15, R6, 3.1415927410125732422, R39 ;
-        ISETP.NE.U32.AND P4, PT, R35, 0x1, PT ;
-        FFMA R35, R7, R36, RZ ;
-        FFMA R7, R10, -R24, 2.550144195556640625 ;
-        ISETP.NE.U32.AND P2, PT, R38, 0x1, PT ;
-        FFMA R6, R23, -0.5, R12 ;
-        F2I.TRUNC.NTZ R38, R23 ;
-        FFMA R14, R13, R29, -1.334560394287109375 ;
-        FFMA R12, R5, R10, RZ ;
-        FFMA R7, R10.reuse, R7, -5.1677198410034179688 ;
-        FFMA R39, R10, R29, -1.334560394287109375 ;
-        FFMA R14, R13, R14, 4.0586924552917480469 ;
-        IADD3 R37, R37, 0x1, RZ ;
-        FFMA R12, R7, R12, RZ ;
-        IMAD.SHL.U32 R7, R22, 0x2, RZ ;
-        FFMA R14, R13, R14, -4.9348020553588867188 ;
-        FFMA R39, R10.reuse, R39, 4.0586924552917480469 ;
-        LOP3.LUT R23, R37, 0x1, RZ, 0xc0, !PT ;
-        IMAD.IADD R2, R45, 0x1, R44 ;
-        LOP3.LUT R36, R7, 0x6, RZ, 0xc0, !PT ;
-        FFMA R14, R13, R14, 1 ;
-        FFMA R39, R10, R39, -4.9348020553588867188 ;
-    @P3 FFMA R14, R4, 3.1415927410125732422, R35 ;
-        ISETP.NE.U32.AND P3, PT, R23, 0x1, PT ;
-        FMUL R23, R0, R0 ;
-        IADD3 R38, R38, 0x1, RZ ;
-        IMAD R36, R49, R36, RZ ;
-        FFMA R13, R10, R39, 1 ;
-    @P4 FFMA R13, R5, 3.1415927410125732422, R12 ;
-        FFMA R4, R23, -R24, 2.550144195556640625 ;
-        LOP3.LUT R5, R38, 0x1, RZ, 0xc0, !PT ;
-        FMUL R10, R3, R3 ;
-        FFMA R12, R23.reuse, R29, -1.334560394287109375 ;
-        I2FP.F32.S32 R47, R36 ;
-        FFMA R4, R23, R4, -5.1677198410034179688 ;
-        LOP3.LUT R39, R21, 0x10, R22, 0xf8, !PT ;
-        FFMA R21, R0, R23, RZ ;
-        ISETP.NE.U32.AND P4, PT, R5, 0x1, PT ;
-        FFMA R5, R10.reuse, -R24, 2.550144195556640625 ;
-        FFMA R12, R23, R12, 4.0586924552917480469 ;
-        FFMA R35, R10, R29, -1.334560394287109375 ;
-        FMUL R47, R47, 0.015625 ;
-        FFMA R21, R4, R21, RZ ;
-        FFMA R4, R10.reuse, R5, -5.1677198410034179688 ;
-        FFMA R12, R23, R12, -4.9348020553588867188 ;
-        FFMA R41, R3, R10, RZ ;
-        FFMA R35, R10, R35, 4.0586924552917480469 ;
-        FADD R5, R47, R47 ;
-        LOP3.LUT R39, R39, 0x4, R60, 0xf8, !PT ;
-        FFMA R12, R23, R12, 1 ;
-        FFMA R52, R4, R41, RZ ;
-        FFMA R35, R10, R35, -4.9348020553588867188 ;
-    @P2 FFMA R12, R0, 3.1415927410125732422, R21 ;
-        LOP3.LUT R4, R39, 0x2, R22, 0xf8, !PT ;
-        FMUL R21, R6, R6 ;
-        LOP3.LUT R0, R5, 0x80000000, RZ, 0xc0, !PT ;
-        FFMA R23, R10, R35, 1 ;
-        LOP3.LUT R4, R4, 0x20, R60, 0xf8, !PT ;
-        FFMA R10, R21, R29, -1.334560394287109375 ;
-        LOP3.LUT R54, R7, 0x8, RZ, 0xfc, !PT ;
-    @P3 FFMA R23, R3, 3.1415927410125732422, R52 ;
-        LOP3.LUT R56, R0, 0x3f000000, RZ, 0xfc, !PT ;
-        FFMA R0, R21, -R24, 2.550144195556640625 ;
-        LOP3.LUT R39, R39, 0x8, R7.reuse, 0xf8, !PT ;
-        FFMA R10, R21, R10, 4.0586924552917480469 ;
-        LOP3.LUT R4, R4, 0x8, R7, 0xf8, !PT ;
-        IMAD R7, R49, R54, RZ ;
-        FFMA R52, R6, R21, RZ ;
-        FFMA R3, R21.reuse, R0, -5.1677198410034179688 ;
-        FFMA R0, R40, -0.5, R11 ;
-        FFMA R54, R21, R10, -4.9348020553588867188 ;
-        LOP3.LUT R7, R7, 0xe, RZ, 0xc0, !PT ;
-        FFMA R3, R3, R52, RZ ;
-        FMUL R51, R0, R0 ;
-        FFMA R21, R21, R54, 1 ;
-        I2FP.F32.S32 R7, R7 ;
-    @P4 FFMA R21, R6, 3.1415927410125732422, R3 ;
-        FFMA R6, R51, -R24, 2.550144195556640625 ;
-        FADD R56, R5, R56 ;
-        F2I.TRUNC.NTZ R40, R40 ;
-        FFMA R52, R0.reuse, R51, RZ ;
-        FFMA R3, R51.reuse, R6, -5.1677198410034179688 ;
-        FFMA R6, R51, R29, -1.334560394287109375 ;
-        FMUL R41, R7, 0.125 ;
-        FSETP.GT.AND P2, PT, |R5|, 8388608, PT ;
-        FFMA R3, R3, R52, RZ ;
-        FFMA R6, R51, R6, 4.0586924552917480469 ;
-        FRND.TRUNC R10, R56 ;
-        FADD R35, R41, R41 ;
-        FFMA R7, R0, 3.1415927410125732422, R3 ;
-        FFMA R6, R51, R6, -4.9348020553588867188 ;
-        FSETP.GEU.AND P3, PT, |R5|, 0.5, PT ;
-        STL [R1+0x24], R59 ;
-        LOP3.LUT R0, R35, 0x80000000, RZ, 0xc0, !PT ;
-        FFMA R52, R51, R6, 1 ;
-        LOP3.LUT R6, R40, 0x1, RZ, 0xc0, !PT ;
-        STL [R1+0x8], R57 ;
-        LOP3.LUT R54, R0, 0x3f000000, RZ, 0xfc, !PT ;
-        FFMA R0, R58, -0.5, R43 ;
-        SHF.R.U32.HI R4, RZ, 0x1, R4 ;
-        FMUL R53, R0, R0 ;
-        FSEL R3, R5, R10, P2 ;
-        FADD R54, R35, R54 ;
-        ISETP.NE.U32.AND P2, PT, R6, 0x1, PT ;
-        FFMA R56, R0, R53, RZ ;
-        SGXT.U32 R4, R4, 0xa ;
-        FSEL R6, R52, R7, !P2 ;
-   @!P3 FRND.TRUNC R3, R5 ;
-        FSEL R10, R7, R52, !P2 ;
-        FFMA R52, R53, -R24, 2.550144195556640625 ;
-        FFMA R51, R53, R52, -5.1677198410034179688 ;
-        FRND.TRUNC R52, R11 ;
-        IMAD.WIDE.U32 R4, R4, R19, c[0x0][0x188] ;
-        FFMA R51, R51, R56, RZ ;
-        FFMA R56, R53, R29, -1.334560394287109375 ;
-        FRND.TRUNC R54, R54 ;
-        FFMA R56, R53, R56, 4.0586924552917480469 ;
-        F2I.TRUNC.NTZ R19, R58 ;
-        FSETP.GT.AND P4, PT, |R35|, 8388608, PT ;
-        FFMA R56, R53, R56, -4.9348020553588867188 ;
-        FFMA R51, R0, 3.1415927410125732422, R51 ;
-        FSETP.GEU.AND P3, PT, |R35|, 0.5, PT ;
-        LDG.E R7, [R4.64] ;
-        FSETP.NEU.AND P2, PT, R52, R11.reuse, PT ;
-        FFMA R56, R53, R56, 1 ;
-        FSEL R52, R35, R54, P4 ;
-    @P5 FADD R20, RZ, -R20 ;
-        LOP3.LUT P4, RZ, R40, 0x2, RZ, 0xc0, !PT ;
-    @P1 FADD R17, RZ, -R17 ;
-    @P0 FADD R15, RZ, -R15 ;
-        LOP3.LUT R39, R39, 0x20, R60, 0xf8, !PT ;
-        STL [R1+0xc], R46 ;
-        FSEL R6, R6, -R6, !P4 ;
-        FMUL R20, R20, R20 ;
-        LOP3.LUT R0, R19, 0x1, RZ, 0xc0, !PT ;
-   @!P3 FRND.TRUNC R52, R35 ;
-        LOP3.LUT P4, RZ, R50, 0x2, RZ, 0xc0, !PT ;
-   @!P2 FMUL R6, RZ, R11 ;
-        ISETP.NE.U32.AND P6, PT, R0, 0x1, PT ;
-        FFMA R0, R3, -0.5, R47 ;
-        LOP3.LUT P2, RZ, R16, 0x2, RZ, 0xc0, !PT ;
-        STL [R1+0x10], R2 ;
-        FSEL R50, R56, R51, !P6 ;
-        F2I.TRUNC.NTZ R3, R3 ;
-        FSEL R5, R51, R56, !P6 ;
-        FMUL R51, R0, R0 ;
-        FSETP.GT.AND P3, PT, |R11|, 16777216, PT ;
-        FMUL R33, R20, R33 ;
-        LOP3.LUT P5, RZ, R19, 0x2, RZ, 0xc0, !PT ;
-        FFMA R4, R51.reuse, R29, -1.334560394287109375 ;
-        FFMA R16, R51, -R24, 2.550144195556640625 ;
-    @P4 FADD R14, RZ, -R14 ;
-        LOP3.LUT R39, R39, 0x2, R22, 0xf8, !PT ;
-        FFMA R54, R51.reuse, R4, 4.0586924552917480469 ;
-        FFMA R55, R51.reuse, R16, -5.1677198410034179688 ;
-        FRND.TRUNC R4, R43 ;
-        FFMA R16, R0, R51, RZ ;
-        FFMA R54, R51, R54, -4.9348020553588867188 ;
-    @P2 FADD R13, RZ, -R13 ;
-        LOP3.LUT P0, RZ, R3, 0x2, RZ, 0xc0, !PT ;
-        FFMA R55, R55, R16, RZ ;
-        FFMA R16, R52, -0.5, R41 ;
-        FFMA R51, R51, R54, 1 ;
-        SHF.R.U32.HI R46, RZ, 0x1, R39 ;
-        FFMA R55, R0, 3.1415927410125732422, R55 ;
-        FMUL R11, R16, R16 ;
-        LOP3.LUT R0, R3, 0x1, RZ, 0xc0, !PT ;
-        FMUL R20, R15, R15 ;
-        SGXT.U32 R46, R46, 0x5 ;
-        FFMA R35, R16, R11, RZ ;
-        ISETP.NE.U32.AND P1, PT, R0, 0x1, PT ;
-        FMUL R14, R14, R14 ;
-        FSETP.NEU.AND P6, PT, R4, R43, PT ;
-        FFMA R4, R11, -R24, 2.550144195556640625 ;
-        FSEL R0, R51, R55, !P1 ;
-        FMUL R13, R13, R13 ;
-        IADD3 R40, R40, 0x1, RZ ;
-        FFMA R4, R11, R4, -5.1677198410034179688 ;
-        FSEL R0, R0, -R0, !P0 ;
-        FMUL R20, R20, R31 ;
-        IADD3 R3, R3, 0x1, RZ ;
-        FFMA R35, R4, R35, RZ ;
-        FFMA R4, R11, R29, -1.334560394287109375 ;
-        FMUL R14, R14, R27 ;
-        FMUL R17, R17, R17 ;
-        FFMA R16, R16, 3.1415927410125732422, R35 ;
-        FFMA R4, R11, R4, 4.0586924552917480469 ;
-        F2I.TRUNC.NTZ R35, R52 ;
-        FMUL R26, R13, R26 ;
-        FMUL R17, R17, R32 ;
-        FFMA R4, R11, R4, -4.9348020553588867188 ;
-        FFMA R54, R11, R4, 1 ;
-        FSEL R11, R50, -R50, !P5 ;
-        IMAD R50, R49, 0x8, R36 ;
-        LOP3.LUT R36, R36, 0xe, RZ, 0xc0, !PT ;
-   @!P6 FMUL R11, RZ, R43 ;
-        SHF.R.U32.HI R49, RZ, 0x1, R61 ;
-        I2FP.F32.S32 R36, R36 ;
-        SHF.R.S32.HI R4, RZ, 0x3, R22 ;
-        ISETP.GT.U32.AND P6, PT, R22, 0xf, PT ;
-        FMUL R36, R36, 0.125 ;
-        LOP3.LUT R49, R49, 0x20, R18, 0xf8, !PT ;
-        SGXT R4, R4, 0x1 ;
-        FADD R53, R36, R36 ;
-        LOP3.LUT R18, R35, 0x1, RZ, 0xc0, !PT ;
-        FSETP.GT.AND P5, PT, |R43|, 16777216, PT ;
-        SEL R43, RZ, 0x208, !P6 ;
-        LOP3.LUT R4, R4, 0x410, RZ, 0xc0, !PT ;
-        ISETP.NE.U32.AND P6, PT, R18, 0x1, PT ;
-        LOP3.LUT R18, R53, 0x80000000, RZ, 0xc0, !PT ;
-        LOP3.LUT R42, R42, R43, RZ, 0xfc, !PT ;
-        LOP3.LUT R43, R4.reuse, 0x8, R49, 0xfe, !PT ;
-        LOP3.LUT R56, R4, R49, RZ, 0xfc, !PT ;
-        LOP3.LUT R18, R18, 0x3f000000, RZ, 0xfc, !PT ;
-        IMAD.IADD R43, R43, 0x1, R42.reuse ;
-        LOP3.LUT R52, R42, R4, RZ, 0xfc, !PT ;
-        IMAD.IADD R42, R56, 0x1, R42 ;
-        I2FP.F32.S32 R50, R50 ;
-        FADD R56, R53, R18 ;
-        FSEL R4, R55, R51, !P1 ;
-        FSETP.GT.AND P1, PT, |R53|.reuse, 8388608, PT ;
-        FMUL R50, R50, 0.015625 ;
-        FSEL R18, R54, R16, !P6 ;
-        FRND.TRUNC R56, R56 ;
-        FSEL R16, R16, R54, !P6 ;
-        FSETP.GEU.AND P6, PT, |R53|, 0.5, PT ;
-        LOP3.LUT P2, RZ, R35, 0x2, RZ, 0xc0, !PT ;
-        LOP3.LUT R39, R49, 0x18, RZ, 0xfc, !PT ;
-        FRND.TRUNC R54, R47 ;
-        FSEL R18, R18, -R18, !P2 ;
-        LOP3.LUT P2, RZ, R37, 0x2, RZ, 0xc0, !PT ;
-        IMAD.IADD R45, R39, 0x1, R52 ;
-        FSEL R51, R53, R56, P1 ;
-        LOP3.LUT P1, RZ, R48, 0x2, RZ, 0xc0, !PT ;
-        FADD R48, R50, R50 ;
-   @!P6 FRND.TRUNC R51, R53 ;
-        LOP3.LUT R55, R48, 0x80000000, RZ, 0xc0, !PT ;
-    @P2 FADD R23, RZ, -R23 ;
-        FSETP.NEU.AND P0, PT, R54, R47, PT ;
-        LOP3.LUT R55, R55, 0x3f000000, RZ, 0xfc, !PT ;
-        FMUL R23, R23, R23 ;
-        FRND.TRUNC R54, R41 ;
-        FSETP.GEU.AND P6, PT, |R48|.reuse, 0.5, PT ;
-    @P1 FADD R12, RZ, -R12 ;
-        FADD R55, R48.reuse, R55 ;
-        FSETP.GT.AND P1, PT, |R48|, 8388608, PT ;
-        FMUL R23, R23, R28 ;
-        LOP3.LUT P2, RZ, R40, 0x2, RZ, 0xc0, !PT ;
-        FMUL R15, R12, R12 ;
-        FRND.TRUNC R55, R55 ;
-   @!P0 FMUL R0, RZ, R47 ;
-        FSETP.GT.AND P0, PT, |R47|, 16777216, PT ;
-        FMUL R15, R15, R30 ;
-        LOP3.LUT R47, R49, 0x10, RZ, 0xfc, !PT ;
-        FSETP.NEU.AND P4, PT, R54, R41, PT ;
-        IMAD.IADD R44, R47, 0x1, R52 ;
-    @P2 FADD R10, RZ, -R10 ;
-        IMAD R47, R46, 0x41, R47 ;
-    @P3 FADD R10, R6, 1 ;
-        F2FP.PACK_AB R6, R11, R6 ;
-        FSEL R37, R48, R55, P1 ;
-        FSETP.GT.AND P1, PT, |R41|, 16777216, PT ;
-   @!P4 FMUL R18, RZ, R41 ;
-        LOP3.LUT P4, RZ, R38, 0x2, RZ, 0xc0, !PT ;
-   @!P6 FRND.TRUNC R37, R48 ;
-        IADD3 R38, R19, 0x1, RZ ;
-        LOP3.LUT R41, R49, 0x8, RZ, 0xfc, !PT ;
-        IMAD R49, R46, 0x41, R49 ;
-        LOP3.LUT P6, RZ, R38, 0x2, RZ, 0xc0, !PT ;
-        IMAD R48, R46.reuse, 0x41, R41 ;
-        IMAD R46, R46, 0x41, R39 ;
-    @P4 FADD R21, RZ, -R21 ;
-        LOP3.LUT P4, RZ, R3, 0x2, RZ, 0xc0, !PT ;
-        FFMA R19, R37, -0.5, R50 ;
-        FMUL R12, R21, R21 ;
-        F2I.TRUNC.NTZ R37, R37 ;
-    @P6 FADD R5, RZ, -R5 ;
-        FMUL R38, R19, R19 ;
-    @P5 FADD R5, R11, 1 ;
-        FMUL R25, R12, R25 ;
-        FMUL R12, R17, 0.015625 ;
-        FFMA R39, R38, -R24, 2.550144195556640625 ;
-        FFMA R40, R19, R38, RZ ;
-    @P4 FADD R4, RZ, -R4 ;
-        F2FP.PACK_AB R5, R5, R10 ;
-        FFMA R3, R38.reuse, R39, -5.1677198410034179688 ;
-        FFMA R39, R38, R29, -1.334560394287109375 ;
-        LOP3.LUT R10, R0.reuse, 0x80000000, RZ, 0x3c, !PT ;
-    @P0 FADD R4, R0, 1 ;
-        FFMA R40, R3, R40, RZ ;
-        FFMA R39, R38.reuse, R39, 4.0586924552917480469 ;
-        IADD3 R3, R35, 0x1, RZ ;
-        IMAD.SHL.U32 R21, R9, 0x4, RZ ;
-        FRND.TRUNC R35, R50 ;
-        FFMA R39, R38.reuse, R39, -4.9348020553588867188 ;
-        LOP3.LUT P2, RZ, R3, 0x2, RZ, 0xc0, !PT ;
-        FFMA R52, R19, 3.1415927410125732422, R40 ;
-        LOP3.LUT R3, R37.reuse, 0x1, RZ, 0xc0, !PT ;
-        FFMA R41, R38, R39, 1 ;
-        LOP3.LUT P3, RZ, R37.reuse, 0x2, RZ, 0xc0, !PT ;
-        IMAD.MOV.U32 R19, RZ, RZ, c[0x0][0x180] ;
-        IADD3 R37, R37, 0x1, RZ ;
-        F2I.TRUNC.NTZ R38, R51 ;
-        ISETP.NE.U32.AND P6, PT, R3, 0x1, PT ;
-        FFMA R3, R51, -0.5, R36 ;
-        LOP3.LUT P4, RZ, R37, 0x2, RZ, 0xc0, !PT ;
-        IMAD R2, R19, 0x20, R34 ;
-        FSEL R40, R41, R52, !P6 ;
-    @P2 FADD R16, RZ, -R16 ;
-        FSEL R37, R52, R41, !P6 ;
-        FMUL R52, R3, R3 ;
-        FSETP.NEU.AND P6, PT, R35, R50, PT ;
+    @P0 FMUL R4, RZ, R4 ;
+        FSETP.GT.AND P0, PT, |R0|.reuse, 8388608, PT ;
+    @P1 FMUL R9, RZ, R9 ;
+        FSETP.GT.AND P1, PT, |R11|.reuse, 8388608, PT ;
+        FADD R27, R0, R3 ;
+        LOP3.LUT R3, R11, 0x80000000, RZ, 0xc0, !PT ;
+        FADD R26, R4, R4 ;
+        LOP3.LUT R42, R58, 0x1, RZ, 0xc0, !PT ;
+        LOP3.LUT R28, R3, 0x3f000000, RZ, 0xfc, !PT ;
+        FRND.TRUNC R27, R27 ;
+        LOP3.LUT R25, R26, 0x80000000, RZ, 0xc0, !PT ;
+        IMAD.MOV R46, RZ, RZ, -R42 ;
+        FADD R28, R11, R28 ;
+        LOP3.LUT R25, R25, 0x3f000000, RZ, 0xfc, !PT ;
+        FRND.TRUNC R28, R28 ;
+        FADD R31, R26, R25 ;
+        FSEL R3, R0, R27, P0 ;
+        FADD R27, R9, R9 ;
+        FSETP.GT.AND P0, PT, |R10|, 16777216, PT ;
+        FRND.TRUNC R31, R31 ;
+        LOP3.LUT R25, R27, 0x80000000, RZ, 0xc0, !PT ;
+        FSEL R32, R11, R28, P1 ;
+   @!P2 FRND.TRUNC R3, R0 ;
+        FSETP.GT.AND P1, PT, |R24|, 16777216, PT ;
+        FSETP.GEU.AND P2, PT, |R11|, 0.5, PT ;
+    @P0 FMUL R10, RZ, R10 ;
+        LOP3.LUT R34, R25, 0x3f000000, RZ, 0xfc, !PT ;
+        FSETP.GT.AND P0, PT, |R26|, 8388608, PT ;
+        FADD R28, R10, R10 ;
+        FADD R33, R27, R34 ;
+        FSEL R25, R26, R31, P0 ;
+        LOP3.LUT R0, R28, 0x80000000, RZ, 0xc0, !PT ;
+    @P1 FMUL R24, RZ, R24 ;
+        FSETP.GT.AND P0, PT, |R30|, 16777216, PT ;
+   @!P2 FRND.TRUNC R32, R11 ;
+        LOP3.LUT R31, R0, 0x3f000000, RZ, 0xfc, !PT ;
+        FADD R34, R24, R24 ;
+        FSETP.GEU.AND P2, PT, |R26|, 0.5, PT ;
+        FSETP.GT.AND P1, PT, |R27|, 8388608, PT ;
+        FADD R31, R28, R31 ;
+        FRND.TRUNC R36, R33 ;
+        LOP3.LUT R11, R34, 0x80000000, RZ, 0xc0, !PT ;
+    @P0 FMUL R30, RZ, R30 ;
+        LOP3.LUT R11, R11, 0x3f000000, RZ, 0xfc, !PT ;
+        FSETP.GT.AND P0, PT, |R29|, 16777216, PT ;
+        FRND.TRUNC R35, R31 ;
+        FADD R33, R34, R11 ;
+   @!P2 FRND.TRUNC R25, R26 ;
+        FSETP.GEU.AND P2, PT, |R27|.reuse, 0.5, PT ;
+        FSEL R0, R27, R36, P1 ;
+    @P0 FMUL R29, RZ, R29 ;
+        FSETP.GT.AND P1, PT, |R28|, 8388608, PT ;
+        FSETP.GT.AND P0, PT, |R34|, 8388608, PT ;
+        FRND.TRUNC R33, R33 ;
+        FSEL R11, R28, R35, P1 ;
+        FADD R26, R30, R30 ;
+        IMAD R35, R23, 0x3f, RZ ;
+        FADD R23, R29, R29 ;
+        FSETP.GEU.AND P1, PT, |R34|, 0.5, PT ;
+        LOP3.LUT R31, R26, 0x80000000, RZ, 0xc0, !PT ;
+   @!P2 FRND.TRUNC R0, R27 ;
+        LOP3.LUT R36, R35, 0x7f, RZ, 0xc0, !PT ;
+        FSETP.GEU.AND P2, PT, |R28|, 0.5, PT ;
+        LOP3.LUT R31, R31, 0x3f000000, RZ, 0xfc, !PT ;
+        IADD3 R35, R35, 0x60, RZ ;
+        FSEL R37, R34, R33, P0 ;
+        FADD R31, R26, R31 ;
+        I2FP.F32.S32 R33, R36 ;
+        LOP3.LUT R27, R23, 0x80000000, RZ, 0xc0, !PT ;
+   @!P1 FRND.TRUNC R37, R34 ;
+        FMUL R33, R33, 0.015625 ;
+        FSETP.GEU.AND P1, PT, |R26|.reuse, 0.5, PT ;
+        FSETP.GT.AND P0, PT, |R26|, 8388608, PT ;
+        FADD R40, R33, R33 ;
+        LOP3.LUT R35, R35, 0x7f, RZ, 0xc0, !PT ;
+   @!P2 FRND.TRUNC R11, R28 ;
+        I2FP.F32.S32 R35, R35 ;
+        FRND.TRUNC R31, R31 ;
+        LOP3.LUT R28, R27, 0x3f000000, RZ, 0xfc, !PT ;
+        LOP3.LUT R27, R40, 0x80000000, RZ, 0xc0, !PT ;
+        FADD R28, R23, R28 ;
+        LOP3.LUT R27, R27, 0x3f000000, RZ, 0xfc, !PT ;
+        FRND.TRUNC R28, R28 ;
+        FADD R36, R40, R27 ;
+        SHF.R.U32.HI R27, RZ, 0x3, R18 ;
+        FSEL R31, R26, R31, P0 ;
+        FSETP.GT.AND P0, PT, |R23|, 8388608, PT ;
         FRND.TRUNC R39, R36 ;
-        FMUL R35, R26, 0.015625 ;
-        FFMA R19, R52.reuse, -R24, 2.550144195556640625 ;
-        FFMA R29, R52.reuse, R29, -1.334560394287109375 ;
-        FFMA R24, R3, R52, RZ ;
-        IADD3 R11, R9, 0x821, RZ ;
-        FFMA R19, R52.reuse, R19, -5.1677198410034179688 ;
-        FFMA R29, R52, R29, 4.0586924552917480469 ;
-        LOP3.LUT R34, R38, 0x1, RZ, 0xc0, !PT ;
-    @P1 FADD R16, R18, 1 ;
-        FFMA R24, R19, R24, RZ ;
-        FFMA R29, R52, R29, -4.9348020553588867188 ;
-        FSEL R19, R40, -R40, !P3 ;
-   @!P6 FMUL R19, RZ, R50 ;
-        FFMA R24, R3, 3.1415927410125732422, R24 ;
-        FFMA R29, R52, R29, 1 ;
-        ISETP.NE.U32.AND P3, PT, R34, 0x1, PT ;
-    @P4 FADD R37, RZ, -R37 ;
-        LOP3.LUT P6, RZ, R38.reuse, 0x2, RZ, 0xc0, !PT ;
-        FMUL R34, R23, 0.015625 ;
-        IADD3 R38, R38, 0x1, RZ ;
-        FMUL R25, R25, 0.015625 ;
-        FSEL R3, R29, R24, !P3 ;
-        STL [R1+0x18], R2 ;
-        FSEL R29, R24, R29, !P3 ;
-        CS2R R26, SRZ ;
-        FSETP.NEU.AND P5, PT, R39, R36, PT ;
-        FMUL R39, R33, 0.015625 ;
+        LOP3.LUT R41, R8, 0x2, R27, 0xf8, !PT ;
+        LOP3.LUT R48, R41, 0x4, R48, 0xf8, !PT ;
+        IMAD.SHL.U32 R41, R59, 0x40, RZ ;
+   @!P1 FRND.TRUNC R31, R26 ;
+        FSETP.GEU.AND P1, PT, |R23|.reuse, 0.5, PT ;
+        FSEL R34, R23, R28, P0 ;
+        IMAD.SHL.U32 R28, R58, 0x2, RZ ;
+        FSETP.GT.AND P0, PT, |R40|, 8388608, PT ;
+        FSEL R38, R40, R39, P0 ;
+        FMUL R39, R35, 0.015625 ;
+        IMAD.SHL.U32 R26, R58, 0x4, RZ ;
+        LOP3.LUT P0, RZ, R18, 0x2, RZ, 0xc0, !PT ;
+   @!P1 FRND.TRUNC R34, R23 ;
+        FSETP.GEU.AND P1, PT, |R40|, 0.5, PT ;
+        FADD R36, R39, R39 ;
+        LOP3.LUT R7, R28, R7, RZ, 0xfc, !PT ;
+        IMAD.SHL.U32 R28, R18.reuse, 0x2, RZ ;
+        LOP3.LUT R26, R27, R26, RZ, 0xfc, !PT ;
+        IMAD.SHL.U32 R27, R18, 0x4, RZ ;
+        LOP3.LUT R8, R36, 0x80000000, RZ, 0xc0, !PT ;
+        LOP3.LUT R23, R41, 0x12, R18, 0xf8, !PT ;
+        LOP3.LUT R35, R8, 0x3f000000, RZ, 0xfc, !PT ;
+        IMAD R8, R18.reuse, 0x10, R2 ;
+   @!P1 FRND.TRUNC R38, R40 ;
+        ISETP.GE.U32.AND P1, PT, R18, 0x10, PT ;
+        FADD R35, R36, R35 ;
+        SHF.R.U32.HI R50, RZ, 0x2, R8 ;
+        SEL R45, RZ, 0x208, !P1 ;
+        LOP3.LUT R50, R50, 0xe, RZ, 0xc0, !PT ;
+        FRND.TRUNC R43, R35 ;
+        SEL R40, RZ, 0x41, !P0 ;
+        LOP3.LUT R8, R23, 0x8, R28, 0xf8, !PT ;
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
+        IADD3 R42, R44, R40, R45 ;
+        LOP3.LUT R44, R46, 0x410, RZ, 0xc0, !PT ;
+        F2I.TRUNC.NTZ R40, R3 ;
+        LOP3.LUT R23, R50, 0x10, R27, 0xf8, !PT ;
+        LOP3.LUT R8, R8, 0x4, R27.reuse, 0xf8, !PT ;
+        LOP3.LUT R46, R18, 0x1, RZ, 0xc0, !PT ;
+        IMAD.IADD R35, R23, 0x1, R44 ;
+        LOP3.LUT R8, R8, 0x20, R27, 0xf8, !PT ;
+        F2I.TRUNC.NTZ R44, R32 ;
+        LOP3.LUT R45, R18, 0x10, RZ, 0xc0, !PT ;
+        IMAD.MOV R47, RZ, RZ, -R46 ;
+        SHF.R.U32.HI R8, RZ, 0x1, R8 ;
+        IMAD R46, R7, 0x41, RZ ;
+        LOP3.LUT R7, R27, 0x10, RZ, 0xc0, !PT ;
+        SHF.R.U32.HI R52, RZ, 0x4, R45 ;
+        LOP3.LUT R45, R47, 0x82, RZ, 0xc0, !PT ;
+        SGXT.U32 R23, R8, 0xa ;
+        FFMA R5, R32, -0.5, R5 ;
+        IADD3 R8, R50.reuse, R46, R7 ;
+        IMAD.IADD R42, R45, 0x1, R42 ;
+        IADD3 R50, R50, R7, R46 ;
+        F2I.TRUNC.NTZ R45, R0 ;
+        IMAD.WIDE.U32 R22, R23, R22, c[0x0][0x188] ;
+        IADD3 R32, R44, 0x1, RZ ;
+        FFMA R6, R3, -0.5, R6 ;
+        FSETP.GEU.AND P1, PT, |R36|, 0.5, PT ;
+        IMAD R35, R52, 0x41, R35 ;
+        IADD3 R47, R40, 0x1, RZ ;
+        LDG.E R7, [R22.64] ;
+        F2I.TRUNC.NTZ R46, R25 ;
+        FFMA R3, R25, -0.5, R4 ;
+        FSETP.GT.AND P0, PT, |R36|, 8388608, PT ;
+        FFMA R4, R0, -0.5, R9 ;
+        LOP3.LUT R9, R47, 0x1, RZ, 0xc0, !PT ;
+        LOP3.LUT R22, R32, 0x1, RZ, 0xc0, !PT ;
+        F2I.TRUNC.NTZ R44, R11 ;
+        FSEL R40, R36, R43, P0 ;
+        IMAD.MOV.U32 R23, RZ, RZ, 0x3e684e12 ;
+        ISETP.NE.U32.AND P2, PT, R22, 0x1, PT ;
+        FMUL R22, R6, R6 ;
+        ISETP.NE.U32.AND P0, PT, R9, 0x1, PT ;
+        IMAD.MOV.U32 R9, RZ, RZ, 0x3f17acc9 ;
+        IADD3 R46, R46, 0x1, RZ ;
+        IADD3 R43, R45, 0x1, RZ ;
+        FFMA R45, R22.reuse, R23, -1.334560394287109375 ;
+   @!P1 FRND.TRUNC R40, R36 ;
+        FFMA R25, R22.reuse, -R9, 2.550144195556640625 ;
+        LOP3.LUT R49, R43, 0x1, RZ, 0xc0, !PT ;
+        FFMA R0, R11, -0.5, R10 ;
+        LOP3.LUT P1, RZ, R47, 0x2, RZ, 0xc0, !PT ;
+        FFMA R45, R22, R45, 4.0586924552917480469 ;
+        FMUL R54, R5, R5 ;
+        LOP3.LUT R36, R46, 0x1, RZ, 0xc0, !PT ;
+        FFMA R47, R6, R22, RZ ;
+        FFMA R10, R22, R25, -5.1677198410034179688 ;
+        ISETP.NE.U32.AND P4, PT, R49, 0x1, PT ;
+        ISETP.NE.U32.AND P3, PT, R36, 0x1, PT ;
+        FMUL R36, R3, R3 ;
+        FFMA R11, R22, R45, -4.9348020553588867188 ;
+        FFMA R49, R54, R23, -1.334560394287109375 ;
+        FFMA R45, R10, R47, RZ ;
+        IADD3 R25, R44, 0x1, RZ ;
+        FFMA R47, R54, -R9.reuse, 2.550144195556640625 ;
+        FFMA R51, R36, -R9, 2.550144195556640625 ;
+        FFMA R49, R54, R49, 4.0586924552917480469 ;
+        FFMA R11, R22, R11, 1 ;
+        LOP3.LUT R44, R25, 0x1, RZ, 0xc0, !PT ;
+        FFMA R10, R54, R47, -5.1677198410034179688 ;
+        FFMA R53, R5, R54, RZ ;
+        FFMA R22, R36, R51, -5.1677198410034179688 ;
+        FFMA R47, R3, R36, RZ ;
+        FFMA R49, R54, R49, -4.9348020553588867188 ;
+        ISETP.NE.U32.AND P5, PT, R44, 0x1, PT ;
+        FFMA R52, R10, R53, RZ ;
+        FFMA R44, R22, R47, RZ ;
+        FFMA R10, R54, R49, 1 ;
+        FFMA R47, R36, R23, -1.334560394287109375 ;
+        FMUL R54, R4, R4 ;
+        LOP3.LUT R53, R28, 0x8, RZ, 0xfc, !PT ;
+        FFMA R49, R36, R47, 4.0586924552917480469 ;
+        FFMA R47, R54, R23, -1.334560394287109375 ;
+    @P0 FFMA R11, R6, 3.1415927410125732422, R45 ;
+        LOP3.LUT R26, R26, 0x7c0, R41, 0xf8, !PT ;
+        IMAD R53, R48, R53, RZ ;
+        LOP3.LUT R45, R41, 0x10, R18, 0xf8, !PT ;
+        FFMA R41, R54, -R9, 2.550144195556640625 ;
+        FFMA R49, R36, R49, -4.9348020553588867188 ;
+        FFMA R47, R54, R47, 4.0586924552917480469 ;
+        FMUL R56, R0, R0 ;
+        FFMA R51, R4, R54, RZ ;
+        FFMA R6, R54, R41, -5.1677198410034179688 ;
+        FFMA R22, R36, R49, 1 ;
+        LOP3.LUT R53, R53, 0xe, RZ, 0xc0, !PT ;
+        FFMA R47, R54, R47, -4.9348020553588867188 ;
+    @P2 FFMA R10, R5, 3.1415927410125732422, R52 ;
+        LOP3.LUT R36, R45, 0x8, R28, 0xf8, !PT ;
+        FFMA R5, R56.reuse, R23, -1.334560394287109375 ;
+        FFMA R45, R56, -R9, 2.550144195556640625 ;
+        FFMA R41, R6, R51, RZ ;
+        LOP3.LUT R49, R28, 0x6, RZ, 0xc0, !PT ;
+        FFMA R6, R54, R47, 1 ;
+        I2FP.F32.S32 R28, R53 ;
+        FFMA R47, R56.reuse, R5, 4.0586924552917480469 ;
+        FFMA R5, R37, -0.5, R24 ;
+        FFMA R24, R56, R45, -5.1677198410034179688 ;
+        FFMA R51, R0, R56, RZ ;
+        F2I.TRUNC.NTZ R45, R37 ;
+        FMUL R28, R28, 0.125 ;
+        IMAD R49, R48, R49, RZ ;
+        FFMA R47, R56, R47, -4.9348020553588867188 ;
+        FFMA R51, R24, R51, RZ ;
+        FADD R52, R28, R28 ;
+        FFMA R24, R56, R47, 1 ;
+        LOP3.LUT R47, R49, 0xe, RZ, 0xc0, !PT ;
+    @P3 FFMA R22, R3, 3.1415927410125732422, R44 ;
+        LOP3.LUT R44, R52, 0x80000000, RZ, 0xc0, !PT ;
+        I2FP.F32.S32 R47, R47 ;
+        LOP3.LUT R53, R44, 0x3f000000, RZ, 0xfc, !PT ;
+        IADD3 R45, R45, 0x1, RZ ;
+        FMUL R37, R47, 0.125 ;
+    @P5 FFMA R24, R0, 3.1415927410125732422, R51 ;
+        FFMA R3, R31, -0.5, R30 ;
+        FADD R51, R52, R53 ;
+        FADD R53, R37, R37 ;
+        LOP3.LUT R30, R45, 0x1, RZ, 0xc0, !PT ;
+    @P4 FFMA R6, R4, 3.1415927410125732422, R41 ;
+        F2I.TRUNC.NTZ R41, R31 ;
+        ISETP.NE.U32.AND P2, PT, R30, 0x1, PT ;
+        FMUL R4, R5, R5 ;
+        LOP3.LUT R30, R53, 0x80000000, RZ, 0xc0, !PT ;
+        FFMA R55, R4, R23, -1.334560394287109375 ;
+        LOP3.LUT R30, R30, 0x3f000000, RZ, 0xfc, !PT ;
+        FFMA R47, R4.reuse, -R9, 2.550144195556640625 ;
+        FFMA R31, R5, R4, RZ ;
+        FFMA R55, R4.reuse, R55, 4.0586924552917480469 ;
+        FRND.TRUNC R51, R51 ;
+        FFMA R0, R4.reuse, R47, -5.1677198410034179688 ;
+        FADD R44, R53, R30 ;
+        FFMA R55, R4, R55, -4.9348020553588867188 ;
+        FMUL R30, R3, R3 ;
+        FFMA R54, R0, R31, RZ ;
+        IADD3 R41, R41, 0x1, RZ ;
+        FFMA R0, R34, -0.5, R29 ;
+        F2I.TRUNC.NTZ R47, R34 ;
+        FFMA R29, R4, R55, 1 ;
+        LOP3.LUT R4, R41, 0x1, RZ, 0xc0, !PT ;
+    @P2 FFMA R29, R5, 3.1415927410125732422, R54 ;
+        FFMA R31, R30.reuse, R23, -1.334560394287109375 ;
+        FFMA R5, R30, -R9, 2.550144195556640625 ;
+        FRND.TRUNC R44, R44 ;
+        ISETP.NE.U32.AND P3, PT, R4, 0x1, PT ;
+        FFMA R31, R30, R31, 4.0586924552917480469 ;
+        FSETP.GEU.AND P4, PT, |R52|.reuse, 0.5, PT ;
+        FFMA R34, R3, R30, RZ ;
+        FSETP.GT.AND P0, PT, |R52|, 8388608, PT ;
+        FFMA R5, R30, R5, -5.1677198410034179688 ;
+        FFMA R4, R38, -0.5, R33 ;
+        FSETP.GEU.AND P2, PT, |R53|, 0.5, PT ;
+        FFMA R31, R30, R31, -4.9348020553588867188 ;
+        FSEL R51, R52, R51, P0 ;
+        FFMA R54, R5, R34, RZ ;
+        FSETP.GT.AND P0, PT, |R53|, 8388608, PT ;
+        FMUL R34, R4, R4 ;
+        FFMA R30, R30, R31, 1 ;
+        IADD3 R47, R47, 0x1, RZ ;
+        FSEL R44, R53, R44, P0 ;
+        FFMA R31, R34.reuse, -R9, 2.550144195556640625 ;
+    @P3 FFMA R30, R3, 3.1415927410125732422, R54 ;
+        LOP3.LUT R5, R47, 0x1, RZ, 0xc0, !PT ;
+   @!P4 FRND.TRUNC R51, R52 ;
+        FFMA R3, R34, R31, -5.1677198410034179688 ;
+        FFMA R54, R4, R34, RZ ;
+   @!P2 FRND.TRUNC R44, R53 ;
+        FMUL R52, R0, R0 ;
+        ISETP.NE.U32.AND P2, PT, R5, 0x1, PT ;
+        FFMA R5, R3, R54, RZ ;
+        FFMA R3, R52, -R9, 2.550144195556640625 ;
+        F2I.TRUNC.NTZ R38, R38 ;
+        FFMA R53, R34, R23.reuse, -1.334560394287109375 ;
+        FFMA R31, R52.reuse, R23, -1.334560394287109375 ;
+        FFMA R3, R52, R3, -5.1677198410034179688 ;
+        FFMA R54, R0, R52, RZ ;
+        FFMA R53, R34, R53, 4.0586924552917480469 ;
+        FFMA R31, R52, R31, 4.0586924552917480469 ;
+        FFMA R55, R34, R53, -4.9348020553588867188 ;
+        FFMA R53, R3, R54, RZ ;
+        FFMA R3, R40, -0.5, R39 ;
+        FFMA R31, R52, R31, -4.9348020553588867188 ;
+        FFMA R55, R34, R55, 1 ;
+        FFMA R4, R4, 3.1415927410125732422, R5 ;
+        FMUL R34, R3, R3 ;
+        LOP3.LUT R5, R38, 0x1, RZ, 0xc0, !PT ;
+        FFMA R31, R52, R31, 1 ;
+    @P2 FFMA R31, R0, 3.1415927410125732422, R53 ;
+        FFMA R53, R34.reuse, R23, -1.334560394287109375 ;
+        ISETP.NE.U32.AND P3, PT, R5, 0x1, PT ;
+        F2I.TRUNC.NTZ R40, R40 ;
+        FFMA R5, R34.reuse, -R9, 2.550144195556640625 ;
+        FFMA R53, R34, R53, 4.0586924552917480469 ;
+        IMAD R48, R48, 0x8, R49 ;
+        FFMA R0, R34.reuse, R5, -5.1677198410034179688 ;
+        FFMA R5, R3, R34, RZ ;
+        I2FP.F32.S32 R49, R49 ;
+        FFMA R53, R34, R53, -4.9348020553588867188 ;
+        FFMA R0, R0, R5, RZ ;
+        FFMA R5, R34, R53, 1 ;
+        FMUL R34, R49, 0.015625 ;
+        FRND.TRUNC R52, R33 ;
+        FFMA R54, R3, 3.1415927410125732422, R0 ;
+        LOP3.LUT R3, R40, 0x1, RZ, 0xc0, !PT ;
+        FADD R0, R34, R34 ;
+        FRND.TRUNC R56, R39 ;
+        ISETP.NE.U32.AND P2, PT, R3, 0x1, PT ;
+        LOP3.LUT R3, R0, 0x80000000, RZ, 0xc0, !PT ;
+        LOP3.LUT R3, R3, 0x3f000000, RZ, 0xfc, !PT ;
+        FSETP.NEU.AND P5, PT, R52, R33, PT ;
+        FSEL R53, R5, R54, !P2 ;
+        FADD R52, R0, R3 ;
+        LOP3.LUT P0, RZ, R32, 0x2, RZ, 0xc0, !PT ;
+        FSEL R5, R54, R5, !P2 ;
+        FSEL R32, R55, R4, !P3 ;
+        FSETP.NEU.AND P2, PT, R56, R39, PT ;
+        FSEL R4, R4, R55, !P3 ;
+        FRND.TRUNC R55, R52 ;
         LOP3.LUT P3, RZ, R38, 0x2, RZ, 0xc0, !PT ;
-        FMUL R38, R20, 0.015625 ;
-        FSEL R13, R3, -R3, !P6 ;
-        FMUL R3, R14, 0.015625 ;
-        FSETP.GT.AND P6, PT, |R36|, 16777216, PT ;
-        FMUL R14, R15, 0.015625 ;
-        F2FP.PACK_AB R39, R12, R39 ;
-        STL [R1+0x64], R21 ;
-        F2FP.PACK_AB R38, R3, R38 ;
-        IMAD.MOV.U32 R2, RZ, RZ, RZ ;
-        LOP3.LUT R3, R19, 0x80000000, RZ, 0x3c, !PT ;
-   @!P5 FMUL R13, RZ, R36 ;
-        LOP3.LUT R12, R22, 0x20, R60, 0xf8, !PT ;
-    @P3 FADD R29, RZ, -R29 ;
-        F2FP.PACK_AB R3, R3, R10 ;
-        CS2R R22, SRZ ;
-        IADD3 R10, R9, 0x20, RZ ;
-    @P6 FADD R29, R13, 1 ;
-        IADD3 R12, R9, 0x841, RZ ;
-        IMAD.MOV.U32 R21, RZ, RZ, RZ ;
-        LOP3.LUT R0, R18, 0x80000000, RZ, 0x3c, !PT ;
-        IMAD.SHL.U32 R20, R10, 0x4, RZ ;
-        F2FP.PACK_AB R35, R14, R35 ;
-        IMAD.SHL.U32 R10, R11, 0x4, RZ ;
-        LOP3.LUT R17, R13, 0x80000000, RZ, 0x3c, !PT ;
-        IMAD.SHL.U32 R11, R12, 0x4, RZ ;
-        F2FP.PACK_AB R18, R18, R13 ;
-        STL [R1+0x60], R20 ;
-        IADD3 R13, R9, 0x1042, RZ ;
-        IADD3 R14, R9.reuse, 0x1062, RZ ;
-        STL [R1+0x54], R10 ;
-        IADD3 R15, R9, 0x1863, RZ ;
-        IMAD.SHL.U32 R12, R13, 0x4, RZ ;
-        IADD3 R9, R9, 0x1883, RZ ;
-        STL [R1+0x50], R11 ;
-        IADD3 R13, R8.reuse, 0x1042, RZ ;
-        IMAD.SHL.U32 R20, R8, 0x4, RZ ;
-        FSETP.GT.AND P4, PT, |R50|, 16777216, PT ;
-        IMAD.SHL.U32 R9, R9, 0x4, RZ ;
-        STL [R1+0x44], R12 ;
-        IMAD.SHL.U32 R10, R14, 0x4, RZ ;
-        IADD3 R14, R8, 0x1062, RZ ;
-        IMAD.MOV.U32 R50, RZ, RZ, RZ ;
-        STL [R1+0x30], R9 ;
-        IMAD.SHL.U32 R11, R15, 0x4, RZ ;
-        F2FP.PACK_AB R34, R25, R34 ;
-        STL [R1+0x40], R10 ;
-        F2FP.PACK_AB R17, R0, R17 ;
-        CS2R R24, SRZ ;
-        IADD3 R12, R8.reuse, 0x841, RZ ;
-        STL [R1+0x34], R11 ;
-    @P4 FADD R37, R19, 1 ;
-        IADD3 R9, R8, 0x1863, RZ ;
-        IMAD.MOV.U32 R0, RZ, RZ, RZ ;
-        STL [R1+0x5c], R20 ;
-        IMAD.SHL.U32 R12, R12, 0x4, RZ ;
-        IADD3 R10, R8.reuse, 0x20, RZ ;
-        IMAD.SHL.U32 R9, R9, 0x4, RZ ;
-        F2FP.PACK_AB R4, R37, R4 ;
-        IMAD.MOV.U32 R19, RZ, RZ, RZ ;
-        IADD3 R11, R8, 0x821, RZ ;
-        IMAD.SHL.U32 R15, R10, 0x4, RZ ;
-        IADD3 R8, R8, 0x1883, RZ ;
-        STL [R1+0x2c], R9 ;
-        F2FP.PACK_AB R16, R16, R29 ;
-        IMAD.SHL.U32 R10, R11, 0x4, RZ ;
-        CS2R R36, SRZ ;
+        SHF.R.U32.HI R54, RZ, 0x1, R58 ;
+        LOP3.LUT P4, RZ, R40, 0x2, RZ, 0xc0, !PT ;
+        FSEL R3, R32, -R32, !P3 ;
+        LOP3.LUT R49, R54, 0x20, R19, 0xf8, !PT ;
+        FSEL R32, R53, -R53, !P4 ;
+   @!P2 FMUL R32, RZ, R39 ;
+        SHF.R.S32.HI R19, RZ, 0x3, R18 ;
+   @!P5 FMUL R3, RZ, R33 ;
+        FSETP.GT.AND P2, PT, |R0|, 8388608, PT ;
+        FSETP.GT.AND P5, PT, |R39|, 16777216, PT ;
+        FSETP.GT.AND P4, PT, |R33|, 16777216, PT ;
+        FSETP.GEU.AND P6, PT, |R0|.reuse, 0.5, PT ;
+        SHF.R.S32.HI R39, RZ, 0x1, R58 ;
+        SGXT R19, R19, 0x1 ;
+        FSEL R33, R0, R55, P2 ;
+        LOP3.LUT P2, RZ, R43, 0x2, RZ, 0xc0, !PT ;
+        LOP3.LUT P3, RZ, R46, 0x2, RZ, 0xc0, !PT ;
+        SHF.R.S32.HI R43, RZ, 0x2, R58 ;
+        SGXT R39, R39, 0x1 ;
+        LOP3.LUT R46, R19, 0x410, RZ, 0xc0, !PT ;
+        SGXT R19, R43, 0x1 ;
+        LOP3.LUT R52, R39, 0x208, RZ, 0xc0, !PT ;
+        LOP3.LUT R43, R46, 0x8, R49, 0xfe, !PT ;
+        LOP3.LUT R39, R49, R46.reuse, RZ, 0xfc, !PT ;
+   @!P6 FRND.TRUNC R33, R0 ;
+        LOP3.LUT R46, R42, R46, RZ, 0xfc, !PT ;
+        IMAD.IADD R43, R43, 0x1, R42.reuse ;
+        IMAD.IADD R42, R39, 0x1, R42 ;
+        F2I.TRUNC.NTZ R39, R51 ;
+        FFMA R0, R51, -0.5, R28 ;
+        LOP3.LUT R19, R19, 0x104, RZ, 0xc0, !PT ;
+    @P1 FADD R11, RZ, -R11 ;
+        FMUL R54, R0, R0 ;
+        LOP3.LUT P1, RZ, R25, 0x2, RZ, 0xc0, !PT ;
+    @P0 FADD R10, RZ, -R10 ;
+        IADD3 R35, R19, R35, R52 ;
+        FFMA R25, R54.reuse, -R9, 2.550144195556640625 ;
+        FFMA R19, R33, -0.5, R34 ;
+        LOP3.LUT P0, RZ, R45, 0x2, RZ, 0xc0, !PT ;
+    @P3 FADD R22, RZ, -R22 ;
+        LOP3.LUT P3, RZ, R41, 0x2, RZ, 0xc0, !PT ;
+        FFMA R41, R54, R23, -1.334560394287109375 ;
+        FFMA R56, R0, R54, RZ ;
+        LOP3.LUT R45, R39, 0x1, RZ, 0xc0, !PT ;
+        FFMA R25, R54.reuse, R25, -5.1677198410034179688 ;
+        FMUL R52, R19, R19 ;
+    @P2 FADD R6, RZ, -R6 ;
+        ISETP.NE.U32.AND P6, PT, R45, 0x1, PT ;
+        FFMA R41, R54, R41, 4.0586924552917480469 ;
+        LOP3.LUT P2, RZ, R47, 0x2, RZ, 0xc0, !PT ;
+        FFMA R45, R25, R56, RZ ;
+        FFMA R51, R52.reuse, R23, -1.334560394287109375 ;
+        FFMA R47, R52, -R9, 2.550144195556640625 ;
+        FFMA R41, R54, R41, -4.9348020553588867188 ;
+        FFMA R56, R0, 3.1415927410125732422, R45 ;
+        FFMA R51, R52.reuse, R51, 4.0586924552917480469 ;
+        FFMA R0, R52, R47, -5.1677198410034179688 ;
+        FFMA R45, R19, R52, RZ ;
+        FFMA R25, R54, R41, 1 ;
+        FFMA R51, R52, R51, -4.9348020553588867188 ;
+        FRND.TRUNC R41, R28 ;
+        FFMA R54, R0, R45, RZ ;
+        FFMA R0, R44, -0.5, R37 ;
+        FFMA R45, R52, R51, 1 ;
+        FMUL R52, R0, R0 ;
+        FFMA R51, R52.reuse, R23, -1.334560394287109375 ;
+        FFMA R54, R19, 3.1415927410125732422, R54 ;
+        FSEL R47, R25, R56, !P6 ;
+        FFMA R51, R52, R51, 4.0586924552917480469 ;
+        FSEL R19, R56, R25, !P6 ;
+        FFMA R25, R52.reuse, -R9, 2.550144195556640625 ;
+        FSETP.NEU.AND P6, PT, R41, R28, PT ;
+        FFMA R51, R52.reuse, R51, -4.9348020553588867188 ;
+        I2FP.F32.S32 R48, R48 ;
+    @P1 FADD R24, RZ, -R24 ;
+        FFMA R25, R52, R25, -5.1677198410034179688 ;
+        FFMA R56, R0, R52, RZ ;
+        LOP3.LUT P1, RZ, R39, 0x2, RZ, 0xc0, !PT ;
+        FFMA R52, R52, R51, 1 ;
+        FMUL R51, R48, 0.015625 ;
+        FFMA R53, R25, R56, RZ ;
+        FSEL R25, R47, -R47, !P1 ;
+        F2I.TRUNC.NTZ R41, R44 ;
+        FADD R47, R51, R51 ;
+        FSETP.GT.AND P1, PT, |R28|, 16777216, PT ;
+   @!P6 FMUL R25, RZ, R28 ;
+        FFMA R55, R0, 3.1415927410125732422, R53 ;
+        LOP3.LUT R28, R47, 0x80000000, RZ, 0xc0, !PT ;
+        F2I.TRUNC.NTZ R53, R33 ;
+        LOP3.LUT R48, R28, 0x3f000000, RZ, 0xfc, !PT ;
+        FADD R48, R47, R48 ;
+        LOP3.LUT R0, R41, 0x1, RZ, 0xc0, !PT ;
+        FRND.TRUNC R44, R37 ;
+        ISETP.NE.U32.AND P6, PT, R0, 0x1, PT ;
+    @P3 FADD R30, RZ, -R30 ;
+        FRND.TRUNC R48, R48 ;
+        LOP3.LUT R33, R53, 0x1, RZ, 0xc0, !PT ;
+        FSEL R28, R52, R55, !P6 ;
+        LOP3.LUT P3, RZ, R41, 0x2, RZ, 0xc0, !PT ;
+        FSEL R0, R55, R52, !P6 ;
+        ISETP.NE.U32.AND P6, PT, R33, 0x1, PT ;
+        FSEL R28, R28, -R28, !P3 ;
+        FSETP.GEU.AND P3, PT, |R47|, 0.5, PT ;
+    @P0 FADD R29, RZ, -R29 ;
+        FSEL R52, R45, R54, !P6 ;
+        FSEL R33, R54, R45, !P6 ;
+        LOP3.LUT R45, R36, 0x20, R27, 0xf8, !PT ;
+        FSETP.NEU.AND P0, PT, R44, R37, PT ;
+        FSETP.GT.AND P6, PT, |R47|, 8388608, PT ;
+        LOP3.LUT R44, R45, 0x2, R18, 0xf8, !PT ;
+        FSEL R36, R47, R48, P6 ;
+        IADD3 R38, R38, 0x1, RZ ;
+        LOP3.LUT R44, R44, 0x4, R27, 0xf8, !PT ;
+        LOP3.LUT P6, RZ, R38, 0x2, RZ, 0xc0, !PT ;
+   @!P3 FRND.TRUNC R36, R47 ;
+        SHF.R.U32.HI R38, RZ, 0x1, R44 ;
+   @!P0 FMUL R28, RZ, R37 ;
+        FSETP.GT.AND P0, PT, |R37|, 16777216, PT ;
+        LOP3.LUT R55, R49.reuse, 0x10, RZ, 0xfc, !PT ;
+        LOP3.LUT R57, R49.reuse, 0x18, RZ, 0xfc, !PT ;
+        LOP3.LUT R37, R49, 0x8, RZ, 0xfc, !PT ;
+        SGXT.U32 R38, R38, 0x5 ;
+        IMAD.IADD R45, R57, 0x1, R46.reuse ;
+        IADD3 R40, R40, 0x1, RZ ;
+        IMAD.IADD R44, R55, 0x1, R46 ;
+    @P2 FADD R31, RZ, -R31 ;
+        IMAD R48, R38, 0x41, R37 ;
+        IMAD R49, R38.reuse, 0x41, R49 ;
+        FRND.TRUNC R37, R34 ;
+        IMAD R47, R38.reuse, 0x41, R55 ;
+        IMAD R46, R38, 0x41, R57 ;
+        LOP3.LUT P2, RZ, R40, 0x2, RZ, 0xc0, !PT ;
+        IADD3 R39, R39, 0x1, RZ ;
+        FRND.TRUNC R38, R51 ;
+        LOP3.LUT R2, R18, 0x20, R27, 0xf8, !PT ;
+    @P6 FADD R4, RZ, -R4 ;
+        LOP3.LUT R27, R27, 0x1c, RZ, 0xc0, !PT ;
+    @P4 FADD R4, R3, 1 ;
+        FFMA R18, R36, -0.5, R51 ;
+        LOP3.LUT P4, RZ, R39, 0x2, RZ, 0xc0, !PT ;
+        F2I.TRUNC.NTZ R36, R36 ;
+        IADD3 R39, R59, c[0x0][0x180], RZ ;
+        IMAD R40, R26, 0x20, R27.reuse ;
+        FMUL R26, R18, R18 ;
+        LOP3.LUT P3, RZ, R53, 0x2, RZ, 0xc0, !PT ;
+        IMAD R2, R39, 0x20, R27 ;
+        FFMA R9, R26.reuse, -R9, 2.550144195556640625 ;
+        FFMA R27, R26, R23, -1.334560394287109375 ;
+        IADD3 R53, R53, 0x1, RZ ;
+    @P2 FADD R5, RZ, -R5 ;
+        STL [R1+0xc], R40 ;
+    @P5 FADD R5, R32, 1 ;
+        FSETP.NEU.AND P6, PT, R37, R34, PT ;
+        FFMA R23, R26, R9, -5.1677198410034179688 ;
+        FSETP.NEU.AND P5, PT, R38, R51, PT ;
+        FFMA R27, R26, R27, 4.0586924552917480469 ;
+        FFMA R38, R18, R26, RZ ;
+        LOP3.LUT P2, RZ, R53, 0x2, RZ, 0xc0, !PT ;
+        SHF.R.U32.HI R40, RZ, 0x3, R58 ;
+        FFMA R27, R26, R27, -4.9348020553588867188 ;
+        FFMA R23, R23, R38, RZ ;
+        IMAD R9, R40, 0x82, R35 ;
+        LOP3.LUT R35, R36, 0x1, RZ, 0xc0, !PT ;
+        FFMA R26, R26, R27, 1 ;
+        FSEL R52, R52, -R52, !P3 ;
+        FFMA R23, R18, 3.1415927410125732422, R23 ;
+        ISETP.NE.U32.AND P3, PT, R35, 0x1, PT ;
+   @!P6 FMUL R52, RZ, R34 ;
+        LOP3.LUT P6, RZ, R36, 0x2, RZ, 0xc0, !PT ;
+    @P2 FADD R33, RZ, -R33 ;
+        FSEL R18, R26, R23, !P3 ;
+        IADD3 R36, R36, 0x1, RZ ;
+        FSETP.GT.AND P2, PT, |R34|, 16777216, PT ;
+        FMUL R34, R11, R11 ;
+        FSEL R18, R18, -R18, !P6 ;
+        FMUL R11, R22, R22 ;
+        FMUL R6, R6, R6 ;
+        LOP3.LUT P6, RZ, R36, 0x2, RZ, 0xc0, !PT ;
+        FMUL R16, R11, R16 ;
+        FMUL R13, R6, R13 ;
+        FMUL R11, R24, R24 ;
+        FMUL R6, R29, R29 ;
+        FSEL R26, R23, R26, !P3 ;
+        FMUL R11, R11, R20 ;
+        FMUL R6, R6, R15 ;
+        FMUL R21, R34, R21 ;
+        FMUL R10, R10, R10 ;
+        FMUL R35, R11, 0.015625 ;
+        FMUL R6, R6, 0.015625 ;
+    @P6 FADD R26, RZ, -R26 ;
+        IADD3 R41, R41, 0x1, RZ ;
+        FMUL R39, R21, 0.015625 ;
+        FSETP.GT.AND P6, PT, |R51|, 16777216, PT ;
+        IADD3 R20, R9.reuse, 0x20, RZ ;
+        FMUL R10, R10, R17 ;
+        IADD3 R21, R9, 0x1, RZ ;
+        FMUL R17, R30, R30 ;
+        FMUL R31, R31, R31 ;
+        F2FP.PACK_AB R35, R6, R35 ;
+        LOP3.LUT P3, RZ, R41, 0x2, RZ, 0xc0, !PT ;
+        F2FP.PACK_AB R6, R32, R3 ;
+        IMAD.SHL.U32 R32, R20, 0x4, RZ ;
+        FMUL R14, R17, R14 ;
+        IMAD.SHL.U32 R20, R21, 0x4, RZ ;
+        FMUL R12, R31, R12 ;
+        FMUL R10, R10, 0.015625 ;
+        IADD3 R29, R9, 0x841, RZ ;
+   @!P5 FMUL R18, RZ, R51 ;
+        FMUL R38, R16, 0.015625 ;
+        FMUL R13, R13, 0.015625 ;
+        FMUL R34, R14, 0.015625 ;
+        FMUL R11, R12, 0.015625 ;
+        STL [R1+0x4c], R20 ;
+        F2FP.PACK_AB R39, R10, R39 ;
+    @P2 FADD R33, R52, 1 ;
+    @P6 FADD R26, R18, 1 ;
+        LOP3.LUT R17, R28, 0x80000000, RZ, 0x3c, !PT ;
         IMAD.SHL.U32 R8, R8, 0x4, RZ ;
-        STL [R1+0x58], R15 ;
-        IMAD.SHL.U32 R11, R13, 0x4, RZ ;
-        STL [R1+0x4c], R10 ;
-        LOP3.LUT R9, R59, 0xc, R60, 0xf8, !PT ;
-        STL [R1+0x28], R8 ;
-        STL [R1+0x48], R12 ;
-        IMAD.SHL.U32 R10, R14, 0x4, RZ ;
-        STL [R1+0x3c], R11 ;
-        IMAD.SHL.U32 R8, R57, 0x4, RZ ;
-        STL [R1+0x38], R10 ;
-        STL [R1+0x14], R8 ;
-        STL [R1+0x1c], R9 ;
+        LOP3.LUT R10, R25, 0x80000000, RZ, 0x3c, !PT ;
+        IADD3 R15, R9, 0x1042, RZ ;
+        IMAD.SHL.U32 R20, R29, 0x4, RZ ;
+        F2FP.PACK_AB R38, R13, R38 ;
+        IADD3 R14, R9.reuse, 0x1062, RZ ;
+        IADD3 R13, R9, 0x1043, RZ ;
+    @P3 FADD R0, RZ, -R0 ;
+        F2FP.PACK_AB R34, R11, R34 ;
+        STL [R1+0x40], R20 ;
+        IADD3 R12, R9, 0x1063, RZ ;
+    @P0 FADD R0, R28, 1 ;
+        F2FP.PACK_AB R5, R5, R4 ;
+        STL [R1+0x10], R8 ;
+        LOP3.LUT R3, R18, 0x80000000, RZ, 0x3c, !PT ;
+        F2FP.PACK_AB R17, R10, R17 ;
+        IADD3 R11, R9, 0x1863, RZ ;
+        IMAD.SHL.U32 R20, R15, 0x4, RZ ;
+        F2FP.PACK_AB R4, R26, R33 ;
+        IMAD.SHL.U32 R33, R9, 0x4, RZ ;
+        F2FP.PACK_AB R18, R25, R28 ;
+        IMAD.SHL.U32 R15, R14, 0x4, RZ ;
+        IADD3 R10, R9, 0x1883, RZ ;
+        IMAD.SHL.U32 R14, R13, 0x4, RZ ;
+        IADD3 R22, R9, 0x21, RZ ;
+        IADD3 R28, R9.reuse, 0x821, RZ ;
+        IADD3 R30, R9.reuse, 0x822, RZ ;
+        IADD3 R31, R9.reuse, 0x842, RZ ;
+        IADD3 R8, R9.reuse, 0x1864, RZ ;
+        IMAD.SHL.U32 R13, R12, 0x4, RZ ;
+        IADD3 R9, R9, 0x1884, RZ ;
+        IMAD.SHL.U32 R12, R11, 0x4, RZ ;
+        IMAD.SHL.U32 R11, R10, 0x4, RZ ;
+        IMAD.SHL.U32 R10, R8, 0x4, RZ ;
+        IMAD.SHL.U32 R8, R9, 0x4, RZ ;
+        STL [R1+0x50], R32 ;
+        STL [R1+0x34], R20 ;
+        STL [R1+0x30], R15 ;
+        STL [R1+0x2c], R14 ;
+        STL [R1+0x28], R13 ;
+        STL [R1+0x24], R12 ;
+        STL [R1+0x20], R11 ;
+        STL [R1+0x1c], R10 ;
+        STL [R1+0x18], R8 ;
+        IMAD.SHL.U32 R22, R22, 0x4, RZ ;
+        IMAD.SHL.U32 R21, R28, 0x4, RZ ;
+    @P4 FADD R19, RZ, -R19 ;
+    @P1 FADD R19, R25, 1 ;
+        STL [R1+0x48], R22 ;
+        LOP3.LUT R52, R52, 0x80000000, RZ, 0x3c, !PT ;
+        STL [R1+0x44], R21 ;
+        F2FP.PACK_AB R16, R19, R0 ;
+        IMAD.SHL.U32 R22, R30, 0x4, RZ ;
+        IMAD.SHL.U32 R21, R31, 0x4, RZ ;
+        STL [R1+0x54], R33 ;
+        F2FP.PACK_AB R3, R3, R52 ;
+        IMAD.MOV.U32 R36, RZ, RZ, RZ ;
+        CS2R R24, SRZ ;
+        STL [R1+0x3c], R22 ;
+        CS2R R26, SRZ ;
+        IMAD.MOV.U32 R2, RZ, RZ, RZ ;
+        STL [R1+0x38], R21 ;
+        IMAD.MOV.U32 R0, RZ, RZ, RZ ;
+        IMAD.MOV.U32 R19, RZ, RZ, RZ ;
+        IMAD.MOV.U32 R33, RZ, RZ, RZ ;
+        CS2R R22, SRZ ;
+        IMAD.MOV.U32 R51, RZ, RZ, RZ ;
+        IMAD.MOV.U32 R21, RZ, RZ, RZ ;
 
 .L_x_28:
-        LDL R40, [R1+0x18] ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        S2R R8, SR_TID.X ;
-        S2R R9, SR_TID.X ;
+        S2R R10, SR_TID.X ;
         IMAD.MOV.U32 R30, RZ, RZ, 0x4 ;
-        S2R R13, SR_TID.X ;
-        LDL R41, [R1+0x64] ;
-        LDL R33, [R1+0x60] ;
-        LDL R29, [R1+0x5c] ;
-        IMAD.SHL.U32 R8, R8, 0x4, RZ ;
-        LDL R32, [R1+0x58] ;
-        LOP3.LUT R9, R9, 0x20, R8, 0xf8, !PT ;
-        LDL R31, [R1+0x54] ;
+        S2R R9, SR_TID.X ;
+        S2R R41, SR_TID.X ;
+        S2R R11, SR_CTAID.X ;
         S2R R8, SR_TID.Y ;
+        S2R R13, SR_TID.X ;
+        IMAD.SHL.U32 R10, R10, 0x4, RZ ;
+        LDL R37, [R1+0x50] ;
+        LOP3.LUT R9, R9, 0x20, R10, 0xf8, !PT ;
+        LDL R29, [R1+0x4c] ;
+        IMAD.SHL.U32 R41, R41, 0x4, RZ ;
 ; Location ./int.jl:296
-        LOP3.LUT R12, R50, 0x7f30, R9, 0xc8, !PT ;
-        LDL R51, [R1+0x44] ;
+        LOP3.LUT R12, R51, 0x7f30, R9, 0xc8, !PT ;
+        LDL R32, [R1+0x48] ;
+        IADD3 R40, R11, c[0x0][0x180], RZ ;
+        LOP3.LUT R41, R41, 0x1c, RZ, 0xc0, !PT ;
+        LDL R31, [R1+0x44] ;
         LOP3.LUT R12, R12, R8, RZ, 0xfc, !PT ;
+        IMAD R40, R40, 0x20, R41 ;
         IADD3 R8, R12, c[0x0][0x170], RZ ;
+        LDL R41, [R1+0x54] ;
+        LOP3.LUT R13, R13, 0x8, RZ, 0xc0, !PT ;
 ; Location ./int.jl:87
         IMAD R8, R8, 0x3000, R40 ;
+        LDL R52, [R1+0x34] ;
 ; Location ./int.jl:295
         IMAD.HI R9, R8, 0x2aaaaaab, RZ ;
         SHF.R.U32.HI R10, RZ, 0x1f, R9 ;
@@ -1351,16 +1338,15 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
         IMAD R9, R10, 0x18000000, RZ ;
 ; Location ./promotion.jl:521
         ISETP.NE.AND P0, PT, R9, R8, PT ;
-        ISETP.LT.AND P0, PT, R8, RZ, P0 ;
 ; Location ./int.jl:86
         IADD3 R9, R10, -0x1, RZ ;
+        ISETP.LT.AND P0, PT, R8, RZ, P0 ;
    @!P0 IMAD.MOV R9, RZ, RZ, R10 ;
         IMAD R9, R9, -0x18000000, R8 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         IMAD.WIDE R8, R9, R30, c[0x0][0x1a8] ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:925
         LDG.E.128 R8, [R8.64] ;
-        LOP3.LUT R13, R13, 0x8, RZ, 0xc0, !PT ;
         ISETP.NE.AND P1, PT, R13, RZ, PT ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
         SEL R14, R10, R8, !P1 ;
@@ -1406,13 +1392,13 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
         PRMT R13, R13, 0x7632, R14 ;
         PRMT R14, R15.reuse, 0x5410, R20.reuse ;
         STS [R41], R28 ;
-        STS [R33], R13 ;
+        STS [R37], R13 ;
         STS [R29], R14 ;
         PRMT R15, R15, 0x7632, R20 ;
-        LDL R41, [R1+0x40] ;
+        LDL R41, [R1+0x30] ;
         STS [R32], R15 ;
-        LDL R33, [R1+0x50] ;
-        LDL R32, [R1+0x4c] ;
+        LDL R37, [R1+0x40] ;
+        LDL R32, [R1+0x3c] ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
         SEL R13, R10, R8, !P1 ;
         SEL R29, R11, R9, !P1 ;
@@ -1427,7 +1413,7 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R11, R8, 0x5410, R10 ;
         STS [R31], R11 ;
-        LDL R31, [R1+0x48] ;
+        LDL R31, [R1+0x38] ;
         PRMT R20, R8, 0x7632, R10 ;
 ; Location ./int.jl:296
         LOP3.LUT R8, R12, 0x80, RZ, 0xfc, !PT ;
@@ -1460,7 +1446,7 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
         IADD3 R12, R12, c[0x0][0x170], RZ ;
 ; Location ./int.jl:87
         IMAD R12, R12, 0x3000, R40 ;
-        LDL R40, [R1+0x3c] ;
+        LDL R40, [R1+0x2c] ;
 ; Location ./int.jl:295
         IMAD.HI R13, R12, 0x2aaaaaab, RZ ;
         SHF.R.U32.HI R14, RZ, 0x1f, R13 ;
@@ -1476,17 +1462,17 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
         IMAD R13, R13, -0x18000000, R12 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         IMAD.WIDE R12, R13, R30, c[0x0][0x1a8] ;
-        STS [R33], R20 ;
-        LDL R30, [R1+0x2c] ;
+        STS [R37], R20 ;
+        LDL R30, [R1+0x1c] ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:925
         LDG.E.128 R12, [R12.64] ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R32], R28 ;
-        LDL R33, [R1+0x38] ;
-        LDL R32, [R1+0x34] ;
-        LDL R28, [R1+0x28] ;
+        LDL R37, [R1+0x28] ;
+        LDL R32, [R1+0x24] ;
+        LDL R28, [R1+0x18] ;
         STS [R31], R29 ;
-        LDL R31, [R1+0x30] ;
+        LDL R31, [R1+0x20] ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
         SEL R20, R10, R8, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
@@ -1503,7 +1489,7 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R11, R8.reuse, 0x5410, R10.reuse ;
         PRMT R8, R8, 0x7632, R10 ;
-        STS [R51], R11 ;
+        STS [R52], R11 ;
         STS [R41], R8 ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
         SEL R11, R15, R13, !P1 ;
@@ -1515,7 +1501,7 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
         PRMT R10, R9.reuse, 0x5410, R20.reuse ;
         PRMT R9, R9, 0x7632, R20 ;
         STS [R40], R10 ;
-        STS [R33], R9 ;
+        STS [R37], R9 ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
         SEL R13, R13, R11, !P1 ;
         SEL R12, R12, R8, !P1 ;
@@ -1527,10 +1513,10 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
         PRMT R12, R13.reuse, 0x5410, R11.reuse ;
         PRMT R11, R13, 0x7632, R11 ;
         STS [R32], R10 ;
-        STL [R1+0x20], R50 ;
+        STL [R1+0x14], R51 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/synchronization.jl:16
         IMAD.MOV.U32 R20, RZ, RZ, R19 ;
-        IMAD.MOV.U32 R15, RZ, RZ, R36 ;
+        IMAD.MOV.U32 R15, RZ, RZ, R33 ;
         UMOV UR6, 0x100 ;
         UMOV UR4, URZ ;
         UMOV UR5, URZ ;
@@ -1546,7 +1532,7 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
 .L_x_24:
         IMAD.MOV.U32 R14, RZ, RZ, R26 ;
 ; Location ./int.jl:373
-        LOP3.LUT R26, R37, 0x88888888, RZ, 0x3c, !PT ;
+        LOP3.LUT R26, R36, 0x88888888, RZ, 0x3c, !PT ;
         IMAD.MOV.U32 R8, RZ, RZ, 0x4800 ;
         LOP3.LUT R30, R30, 0x88888888, RZ, 0x3c, !PT ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
@@ -1814,10 +1800,10 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
         HMUL2 R33, R3, R36.reuse ;
         HMNMX2 R28, R28, 7, 7, PT ;
         HFMA2 R32, R4.reuse, R36, R32 ;
-        HFMA2 R33, R4, R37, R33 ;
 ; Location ./promotion.jl:521
-        IMAD.MOV.U32 R37, RZ, RZ, R14 ;
+        IMAD.MOV.U32 R36, RZ, RZ, R14 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
+        HFMA2 R33, R4, R37, R33 ;
         HADD2 R29, R29, 1536, 1536 ;
         HADD2 R28, R28, 1536, 1536 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:2078
@@ -1935,14 +1921,14 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         HFMA2 R31, R4, R29, R31 ;
 ; Location ./int.jl:528
-        SHF.R.U32.HI R29, RZ, 0x8, R23 ;
+        SHF.R.U32.HI R28, RZ, 0x8, R23 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        LOP3.LUT R28, R23, 0xf000f, R41, 0xe2, !PT ;
+        LOP3.LUT R29, R23, 0xf000f, R41, 0xe2, !PT ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:2078
         HMMA.16816.F16 R30, R16, R30, RZ ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HADD2 R28, R28, -R8 ;
-        HFMA2 R28, R10, R28, RZ.H0_H0 ;
+        HADD2 R29, R29, -R8 ;
+        HFMA2 R29, R10, R29, RZ.H0_H0 ;
         LEA R19, R47, UR4, 0x2 ;
         HMUL2 R33, R7.reuse, R33 ;
         HMUL2 R32, R7, R32 ;
@@ -1970,15 +1956,15 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
         STS [R19], R30 ;
         LOP3.LUT R30, R23, 0xf000f0, R40.reuse, 0xe2, !PT ;
         IMAD.MOV.U32 R19, RZ, RZ, R21 ;
-        LOP3.LUT R23, R29.reuse, 0xf000f, R41, 0xe2, !PT ;
+        LOP3.LUT R23, R28.reuse, 0xf000f, R41, 0xe2, !PT ;
         LDS R21, [R31] ;
-        LOP3.LUT R29, R29, 0xf000f0, R40, 0xe2, !PT ;
+        LOP3.LUT R28, R28, 0xf000f0, R40, 0xe2, !PT ;
         HADD2 R30, R30, -R9.reuse ;
         HADD2 R23, R23, -R8 ;
-        HADD2 R29, R29, -R9 ;
+        HADD2 R28, R28, -R9 ;
         HFMA2 R30, R10.reuse, R30, RZ.H0_H0 ;
         HFMA2 R23, R10.reuse, R23, RZ.H0_H0 ;
-        HFMA2 R29, R10, R29, RZ.H0_H0 ;
+        HFMA2 R28, R10, R28, RZ.H0_H0 ;
 ; Location ./int.jl:373
         LOP3.LUT R10, R15, 0x88888888, RZ, 0x3c, !PT ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
@@ -1991,77 +1977,73 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
         HADD2 R32, R32, -R8 ;
         HFMA2 R30, -R11.reuse, R31, R30 ;
         LOP3.LUT R31, R10.reuse, 0xf000f, R41, 0xe2, !PT ;
-        HFMA2 R28, -R11, R32, R28 ;
+        HFMA2 R29, -R11, R32, R29 ;
         LOP3.LUT R10, R10, 0xf000f0, R40, 0xe2, !PT ;
         HADD2 R31, R31, -R8 ;
         HADD2 R32, R10, -R9 ;
         HFMA2 R10, -R11.reuse, R31, R23 ;
-        HFMA2 R11, -R11, R32, R29 ;
+        HFMA2 R28, -R11, R32, R28 ;
 ; Location ./int.jl:373
         LOP3.LUT R32, R19, 0x88888888, RZ, 0x3c, !PT ;
         LOP3.LUT R31, R21, 0x88888888, RZ, 0x3c, !PT ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        LOP3.LUT R23, R32, 0xf000f0, R40, 0xe2, !PT ;
-        LOP3.LUT R29, R32, 0xf000f, R41.reuse, 0xe2, !PT ;
+        LOP3.LUT R11, R32, 0xf000f0, R40, 0xe2, !PT ;
+        LOP3.LUT R23, R32, 0xf000f, R41.reuse, 0xe2, !PT ;
 ; Location ./int.jl:528
         SHF.R.U32.HI R32, RZ, 0x8, R32 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HADD2 R23, R23, -R9 ;
-        LOP3.LUT R33, R31.reuse, 0xf000f, R41, 0xe2, !PT ;
-        HADD2 R29, R29, -R8 ;
-        HFMA2 R30, R12.reuse, R23, R30 ;
+        HADD2 R11, R11, -R9 ;
+        LOP3.LUT R33, R31, 0xf000f, R41, 0xe2, !PT ;
+        HADD2 R23, R23, -R8 ;
+        HFMA2 R30, R12.reuse, R11, R30 ;
 ; Location ./int.jl:528
-        SHF.R.U32.HI R23, RZ, 0x8, R31 ;
+        SHF.R.U32.HI R11, RZ, 0x8, R31 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HFMA2 R28, R12, R29, R28 ;
-        LOP3.LUT R31, R31, 0xf000f0, R40, 0xe2, !PT ;
+        HFMA2 R29, R12, R23, R29 ;
         HADD2 R33, R33, -R8 ;
-        LOP3.LUT R29, R23, 0xf000f, R41, 0xe2, !PT ;
+        LOP3.LUT R23, R11, 0xf000f, R41, 0xe2, !PT ;
         LOP3.LUT R41, R32.reuse, 0xf000f, R41, 0xe2, !PT ;
-        HADD2 R31, R31, -R9.reuse ;
+        HFMA2 R29, -R13, R33, R29 ;
         LOP3.LUT R32, R32, 0xf000f0, R40.reuse, 0xe2, !PT ;
-        HADD2 R29, R29, -R8.reuse ;
-        LOP3.LUT R23, R23, 0xf000f0, R40, 0xe2, !PT ;
-        HADD2 R8, R41, -R8 ;
-        HADD2 R32, R32, -R9 ;
-        HFMA2 R8, R12, R8, R10 ;
+        HADD2 R23, R23, -R8.reuse ;
+        LOP3.LUT R11, R11, 0xf000f0, R40.reuse, 0xe2, !PT ;
+        HADD2 R41, R41, -R8 ;
+        LOP3.LUT R8, R31, 0xf000f0, R40, 0xe2, !PT ;
+        HADD2 R32, R32, -R9.reuse ;
+        HFMA2 R31, R12, R41, R10 ;
+        HADD2 R8, R8, -R9 ;
+        HFMA2 R28, R12, R32, R28 ;
+        HFMA2 R8, -R13, R8, R30 ;
+        HADD2 R30, R11, -R9 ;
+; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:2078
+        IMAD.MOV.U32 R11, RZ, RZ, R16 ;
+; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
+        HMUL2 R10, -R6.reuse, R8 ;
+        HMUL2 R9, R6, R29 ;
+        HFMA2 R30, -R13, R30, R28 ;
+        HFMA2 R28, R5.reuse, R29, R10 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:2078
         IMAD.MOV.U32 R10, RZ, RZ, R18 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HFMA2 R30, -R13.reuse, R31, R30 ;
-; Location ./promotion.jl:521
-        IMAD.MOV.U32 R31, RZ, RZ, R24 ;
+        HFMA2 R29, R5, R8, R9 ;
+; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:2078
+        IMAD.MOV.U32 R8, RZ, RZ, R16 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HFMA2 R28, -R13, R33, R28 ;
-        HFMA2 R11, R12, R32, R11 ;
-        HFMA2 R12, -R13, R29, R8 ;
-        HADD2 R9, R23, -R9 ;
+        HFMA2 R12, -R13, R23, R31 ;
+; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:2078
+        IMAD.MOV.U32 R9, RZ, RZ, R17 ;
         IMAD.MOV.U32 R23, RZ, RZ, R15 ;
-        HMUL2 R8, -R6.reuse, R30 ;
+; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
+        HMUL2 R13, R6, R12 ;
 ; Location ./promotion.jl:521
         IMAD.MOV.U32 R15, RZ, RZ, R19 ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HMUL2 R29, R6, R28.reuse ;
-        HFMA2 R13, -R13, R9, R11 ;
+        IMAD.MOV.U32 R31, RZ, RZ, R24 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:2078
-        IMAD.MOV.U32 R9, RZ, RZ, R17 ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HFMA2 R28, R5.reuse, R28, R8 ;
-; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:2078
-        IMAD.MOV.U32 R8, RZ, RZ, R16.reuse ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HFMA2 R29, R5, R30, R29 ;
-; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:2078
-        IMAD.MOV.U32 R11, RZ, RZ, R16 ;
         HMMA.16816.F16 R28, R8, R28, RZ ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HMUL2 R9, -R6.reuse, R13.reuse ;
-        HMUL2 R8, R6, R12.reuse ;
-        HFMA2 R12, R5.reuse, R12, R9 ;
-; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:2078
-        IMAD.MOV.U32 R9, RZ, RZ, R17 ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HFMA2 R13, R5, R13, R8 ;
+        HFMA2 R13, R5, R30, R13 ;
+        HMUL2 R8, -R6, R30 ;
+        HFMA2 R12, R5, R12, R8 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:2078
         IMAD.MOV.U32 R8, RZ, RZ, R16 ;
         HMMA.16816.F16 R12, R8, R12, RZ ;
@@ -2127,99 +2109,85 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
         BRA `(.L_x_24) ;
 
 .L_x_23:
-        LDL R55, [R1+0x14] ;
-        LDL R53, [R1+0xc] ;
-        LDL R52, [R1+0x8] ;
-        LDL R51, [R1+0x10] ;
+        LDL R52, [R1+0x10] ;
+; Location ./int.jl:514
+        IMAD.SHL.U32 R59, R51, 0x400, RZ ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/synchronization.jl:16
         BAR.SYNC 0x0 ;
-; Location ./int.jl:514
-        LOP3.LUT P0, RZ, R50, 0x7f00, RZ, 0xc0, !PT ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        LDS R10, [R55] ;
-        LDS R12, [R53.X4+0x80] ;
-        LDS R11, [R52.X4+0x4] ;
-        LDS R33, [R51.X4+0x80] ;
-        LDS R56, [R52.X4+0x2088] ;
-        LDS R30, [R51.X4+0x2104] ;
-        LDS R54, [R55+0x2084] ;
-        LDS R31, [R53.X4+0x2104] ;
-        LDS R32, [R55+0x4108] ;
-        LDS R29, [R53.X4+0x4188] ;
-        LDS R15, [R52.X4+0x410c] ;
-        LDS R20, [R51.X4+0x4188] ;
-        PRMT R8, R10, 0x5410, R12 ;
-        PRMT R10, R10, 0x7632, R12 ;
-        LDS R41, [R55+0x618c] ;
-        LDS R13, [R53.X4+0x620c] ;
-        PRMT R12, R11.reuse, 0x5410, R33.reuse ;
-        PRMT R11, R11, 0x7632, R33 ;
-        LDS R36, [R52.X4+0x6190] ;
-        LDS R9, [R51.X4+0x620c] ;
+        LDS R32, [R50.X4+0x2104] ;
+; Location ./int.jl:514
+        LOP3.LUT P0, RZ, R51, 0x7f00, RZ, 0xc0, !PT ;
+; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
+        LDS R12, [R50.X4+0x80] ;
+        LDS R29, [R50.X4+0x4188] ;
+        LDS R11, [R50.X4+0x4] ;
+        LDS R36, [R50.X4+0x84] ;
+        LDS R56, [R50.X4+0x2088] ;
+        LDS R30, [R50.X4+0x2108] ;
+        LDS R15, [R50.X4+0x410c] ;
+        LDS R20, [R50.X4+0x418c] ;
+        LDS R13, [R50.X4+0x620c] ;
+        LDS R33, [R50.X4+0x6190] ;
+        LDS R9, [R50.X4+0x6210] ;
+        STL [R1+0x8], R59 ;
         PRMT R58, R56, 0x5410, R30 ;
         PRMT R56, R56, 0x7632, R30 ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
         SEL R57, R56, R58, !P1 ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        PRMT R55, R54.reuse, 0x5410, R31.reuse ;
-        PRMT R54, R54, 0x7632, R31 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R57, R57, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
-        SEL R53, R54, R55, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        PRMT R33, R32, 0x5410, R29 ;
-        PRMT R32, R32, 0x7632, R29 ;
-; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R53, R53, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
-        SEL R31, R32, R33, !P1 ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        PRMT R30, R15.reuse, 0x5410, R20.reuse ;
+        PRMT R37, R33.reuse, 0x5410, R9.reuse ;
+        PRMT R33, R33, 0x7632, R9 ;
+        LDS R54, [R52+0x2084] ;
+        LDS R10, [R52] ;
+        LDS R31, [R52+0x4108] ;
+        LDS R40, [R52+0x618c] ;
+        PRMT R55, R54, 0x5410, R32 ;
+        PRMT R54, R54, 0x7632, R32 ;
+        PRMT R8, R10.reuse, 0x5410, R12.reuse ;
+        PRMT R10, R10, 0x7632, R12 ;
+        PRMT R32, R31.reuse, 0x5410, R29.reuse ;
+        PRMT R31, R31, 0x7632, R29 ;
+        PRMT R12, R11, 0x5410, R36 ;
+        PRMT R29, R15, 0x5410, R20 ;
+        PRMT R52, R40.reuse, 0x5410, R13.reuse ;
+        PRMT R11, R11, 0x7632, R36 ;
         PRMT R15, R15, 0x7632, R20 ;
-; Location ./int.jl:514
-        IMAD.SHL.U32 R20, R50, 0x400, RZ ;
-; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R31, R31, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
-        SEL R29, R15, R30, !P1 ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        PRMT R52, R41.reuse, 0x5410, R13.reuse ;
-        PRMT R41, R41, 0x7632, R13 ;
+        PRMT R40, R40, 0x7632, R13 ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
         SEL R13, R10, R8, !P1 ;
-; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R29, R29, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
-        SEL R51, R41, R52, !P1 ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        PRMT R40, R36.reuse, 0x5410, R9.reuse ;
-        PRMT R36, R36, 0x7632, R9 ;
+        SEL R9, R11, R12, !P1 ;
+        SEL R53, R54, R55, !P1 ;
+        SEL R30, R31, R32, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R13, R13, 0x8, 0x1f ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
-        SEL R9, R11, R12, !P1 ;
-        SEL R37, R36, R40, !P1 ;
+        SEL R20, R15, R29, !P1 ;
+        SEL R41, R40, R52, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
-        SHFL.BFLY PT, R51, R51, 0x8, 0x1f ;
         SHFL.BFLY PT, R9, R9, 0x8, 0x1f ;
-        SHFL.BFLY PT, R37, R37, 0x8, 0x1f ;
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
+        SEL R36, R33, R37, !P1 ;
+; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
+        SHFL.BFLY PT, R53, R53, 0x8, 0x1f ;
+        SHFL.BFLY PT, R30, R30, 0x8, 0x1f ;
+        SHFL.BFLY PT, R20, R20, 0x8, 0x1f ;
+        SHFL.BFLY PT, R41, R41, 0x8, 0x1f ;
+        SHFL.BFLY PT, R36, R36, 0x8, 0x1f ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
    @!P0 BRA `(.L_x_25) ;
-        LDL R59, [R1+0x24] ;
+        STL [R1+0x58], R0 ;
+        LDL R59, [R1+0xc] ;
         IMAD.MOV.U32 R61, RZ, RZ, c[0x0][0x178] ;
-        SEL R10, R13, R10, !P1 ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        S2R R60, SR_TID.X ;
-; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
-        SEL R8, R8, R13, !P1 ;
+        LDL R0, [R1+0x8] ;
         LEA R61, R61, 0xfffd0000, 0x10 ;
-        STL [R1+0x68], R0 ;
-        IMAD.SHL.U32 R60, R60, 0x4, RZ ;
-; Location ./int.jl:87
-        LOP3.LUT R59, R20, R59, RZ, 0xfc, !PT ;
-        LOP3.LUT R59, R59, 0xc, R60, 0xf8, !PT ;
+        SEL R10, R13, R10, !P1 ;
+        SEL R8, R8, R13, !P1 ;
         SHF.R.S32.HI R60, RZ, 0x1f, R61 ;
+; Location ./int.jl:87
+        LOP3.LUT R59, R59, R0, RZ, 0xfc, !PT ;
         IADD3 R13, P0, R61, R59, RZ ;
         LEA.HI.X.SX32 R59, R59, R60, 0x1, P0 ;
 ; Location ./int.jl:295
@@ -2232,23 +2200,25 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
         IMAD.X R61, RZ, RZ, R59, P2 ;
 ; Location ./promotion.jl:521
         ISETP.NE.AND.EX P0, PT, R61, R59, PT, P0 ;
+        ISETP.LT.AND P0, PT, R59, RZ, P0 ;
 ; Location ./int.jl:295
         SHF.R.S64 R60, R60, 0x19, R61 ;
-        ISETP.LT.AND P0, PT, R59, RZ, P0 ;
 ; Location ./boot.jl:711
         SEL R0, RZ, 0x1, !P0 ;
 ; Location ./int.jl:86
         IADD3 R60, P0, R0, -R60, RZ ;
-        LDL.LU R0, [R1+0x68] ;
+        LDL.LU R0, [R1+0x58] ;
 ; Location ./int.jl:295
         SHF.R.S32.HI R61, RZ, 0x19, R61 ;
-; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
-        SEL R11, R9, R11, !P1 ;
-        SEL R9, R12, R9, !P1 ;
 ; Location ./int.jl:86
         IMAD.X R61, RZ, RZ, ~R61, P0 ;
-        LEA R13, P0, R60, R13, 0x19 ;
+        LEA R13, P0, R60.reuse, R13, 0x19 ;
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
+        SEL R11, R9, R11, !P1 ;
+; Location ./int.jl:86
         LEA.HI.X R61, R60, R59, R61, 0x19, P0 ;
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
+        SEL R9, R12, R9, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         LEA R12, P0, R13, c[0x0][0x1c8], 0x2 ;
         LEA.HI.X R13, R13, c[0x0][0x1cc], R61, 0x2, P0 ;
@@ -2256,8 +2226,8 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
         STG.E.128 [R12.64], R8 ;
 
 .L_x_25:
-        LDL R61, [R1+0x1c] ;
-        LOP3.LUT R8, R50, 0x40, RZ, 0xfc, !PT ;
+        LDL R61, [R1+0xc] ;
+        LOP3.LUT R8, R51, 0x40, RZ, 0xfc, !PT ;
         IMAD.MOV.U32 R60, RZ, RZ, c[0x0][0x178] ;
 ; Location ./int.jl:514
         ISETP.GE.U32.AND P0, PT, R8, 0xc0, PT ;
@@ -2305,65 +2275,65 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
         STG.E.128 [R12.64], R8 ;
 
 .L_x_26:
-        LOP3.LUT R13, R50, 0x80, RZ, 0xfc, !PT ;
-        SEL R11, R37, R36, !P1 ;
+        LOP3.LUT R13, R51, 0x80, RZ, 0xfc, !PT ;
+        SEL R11, R36, R33, !P1 ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
-        IMAD.MOV.U32 R36, RZ, RZ, R19 ;
+        IMAD.MOV.U32 R33, RZ, RZ, R19 ;
 ; Location ./int.jl:514
         ISETP.GE.U32.AND P0, PT, R13, 0xc0, PT ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
         IMAD.MOV.U32 R19, RZ, RZ, R27 ;
-        SEL R9, R40, R37, !P1 ;
+        SEL R9, R37, R36, !P1 ;
         IMAD.MOV.U32 R27, RZ, RZ, R28 ;
-        SEL R8, R52, R51, !P1 ;
-        IMAD.MOV.U32 R37, RZ, RZ, R14 ;
-        SEL R10, R51, R41, !P1 ;
+        SEL R8, R52, R41, !P1 ;
+        IMAD.MOV.U32 R36, RZ, RZ, R14 ;
+        SEL R10, R41, R40, !P1 ;
    @!P0 BRA `(.L_x_27) ;
 ; Location ./int.jl:88
         IMAD.SHL.U32 R28, R13, 0x400, RZ ;
-        SEL R13, R30, R29, !P1 ;
-        SEL R15, R29, R15, !P1 ;
+        SEL R13, R29, R20, !P1 ;
+        SEL R15, R20, R15, !P1 ;
 ; Location ./int.jl:87
         LOP3.LUT R28, R61, R28, RZ, 0xfc, !PT ;
-        SEL R12, R33, R31, !P1 ;
-        IADD3 R29, P0, R60, R28, RZ ;
-        SEL R14, R31, R32, !P1 ;
+        SEL R12, R32, R30, !P1 ;
+        IADD3 R20, P0, R60, R28, RZ ;
+        SEL R14, R30, R31, !P1 ;
         LEA.HI.X.SX32 R28, R28, R59, 0x1, P0 ;
 ; Location ./int.jl:295
-        LEA.HI R30, P1, R28, R29, RZ, 0x19 ;
+        LEA.HI R29, P1, R28, R20, RZ, 0x19 ;
 ; Location ./int.jl:88
-        LOP3.LUT R31, R30, 0xfe000000, RZ, 0xc0, !PT ;
+        LOP3.LUT R30, R29, 0xfe000000, RZ, 0xc0, !PT ;
 ; Location ./promotion.jl:521
-        ISETP.NE.U32.AND P0, PT, R31, R29, PT ;
+        ISETP.NE.U32.AND P0, PT, R30, R20, PT ;
 ; Location ./int.jl:295
-        IMAD.X R31, RZ, RZ, R28, P1 ;
+        IMAD.X R30, RZ, RZ, R28, P1 ;
 ; Location ./promotion.jl:521
-        ISETP.NE.AND.EX P0, PT, R31, R28, PT, P0 ;
+        ISETP.NE.AND.EX P0, PT, R30, R28, PT, P0 ;
 ; Location ./int.jl:295
-        SHF.R.S64 R30, R30, 0x19, R31.reuse ;
+        SHF.R.S64 R29, R29, 0x19, R30.reuse ;
         ISETP.LT.AND P0, PT, R28, RZ, P0 ;
-        SHF.R.S32.HI R31, RZ, 0x19, R31 ;
+        SHF.R.S32.HI R30, RZ, 0x19, R30 ;
 ; Location ./boot.jl:711
-        SEL R32, RZ, 0x1, !P0 ;
+        SEL R31, RZ, 0x1, !P0 ;
 ; Location ./int.jl:86
-        IADD3 R30, P0, R32, -R30, RZ ;
-        IMAD.X R31, RZ, RZ, ~R31, P0 ;
-        LEA R29, P0, R30, R29, 0x19 ;
-        LEA.HI.X R31, R30, R28, R31, 0x19, P0 ;
+        IADD3 R29, P0, R31, -R29, RZ ;
+        IMAD.X R30, RZ, RZ, ~R30, P0 ;
+        LEA R20, P0, R29, R20, 0x19 ;
+        LEA.HI.X R30, R29, R28, R30, 0x19, P0 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        LEA R28, P0, R29, c[0x0][0x1c8], 0x2 ;
-        LEA.HI.X R29, R29, c[0x0][0x1cc], R31, 0x2, P0 ;
+        LEA R28, P0, R20, c[0x0][0x1c8], 0x2 ;
+        LEA.HI.X R29, R20, c[0x0][0x1cc], R30, 0x2, P0 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/MRozy/src/IndexSpaces.jl:1025
         STG.E.128 [R28.64], R12 ;
 
 .L_x_27:
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
-        LDL.LU R28, [R1+0x20] ;
-; Location ./int.jl:87
-        LOP3.LUT R12, R20, 0x30000, R61, 0xfe, !PT ;
+        LDL.LU R12, [R1+0x8] ;
+        LDL.LU R28, [R1+0x14] ;
 ; Location ./range.jl:901
-        IADD3 R50, R50, 0x100, RZ ;
+        IADD3 R51, R51, 0x100, RZ ;
 ; Location ./int.jl:87
+        LOP3.LUT R12, R12, 0x30000, R61, 0xfe, !PT ;
         IADD3 R13, P0, R60, R12, RZ ;
         LEA.HI.X.SX32 R12, R12, R59, 0x1, P0 ;
 ; Location ./int.jl:295
@@ -2374,6 +2344,7 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
         ISETP.NE.U32.AND P0, PT, R15, R13, PT ;
 ; Location ./int.jl:295
         IMAD.X R15, RZ, RZ, R12, P1 ;
+        ISETP.NE.AND P1, PT, R28, 0x7f00, PT ;
 ; Location ./promotion.jl:521
         ISETP.NE.AND.EX P0, PT, R15, R12, PT, P0 ;
 ; Location ./int.jl:295
@@ -2389,13 +2360,14 @@ _Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
         LEA.HI.X R15, R14, R12, R15, 0x19, P0 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         LEA R12, P0, R13, c[0x0][0x1c8], 0x2 ;
+; Location ./range.jl:901
+        IADD3 R14, R51, c[0x0][0x170], RZ ;
+; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         LEA.HI.X R13, R13, c[0x0][0x1cc], R15, 0x2, P0 ;
+; Location ./range.jl:901
+        ISETP.GE.AND P0, PT, R14, c[0x0][0x174], PT ;
 ; Location ./promotion.jl:521
         STG.E.128 [R12.64], R8 ;
-; Location ./range.jl:901
-        IADD3 R8, R50, c[0x0][0x170], RZ ;
-        ISETP.GE.AND P0, PT, R8, c[0x0][0x174], PT ;
-        ISETP.NE.AND P1, PT, R28, 0x7f00, PT ;
 ; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1515
    @!P0 BRA P1, `(.L_x_28) ;
 
@@ -2436,7 +2408,7 @@ $_Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi
         CALL.ABS.NOINC `(vprintf) ;
 
 .L_x_0:
-        IMAD.MOV.U32 R4, RZ, RZ, R24 ;
+        IMAD.MOV.U32 R4, RZ, RZ, R23 ;
         IMAD.MOV.U32 R5, RZ, RZ, 0x0 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/runtime.jl:59
         RET.REL.NODEC R4 `(_Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE) ;
@@ -2487,6 +2459,8 @@ $_Z8upchan645Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi
 
 .L_x_30:
         BRA `(.L_x_30);
+        NOP;
+        NOP;
         NOP;
         NOP;
         NOP;

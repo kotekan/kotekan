@@ -342,6 +342,10 @@ cudaBasebandBeamformer_hirax::cudaBasebandBeamformer_hirax(Config& config,
     input_ringbuf_signal(dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")))) {
     // Check ringbuffer size
+    if (!(input_ringbuf_signal->size == E_length))
+        FATAL_ERROR("Need input_ringbuf_signal->size == E_length, but have "
+                    "input_ringbuf_signal->size={:d}, E_length={:d}",
+                    input_ringbuf_signal->size, E_length);
     assert(input_ringbuf_signal->size == E_length);
 
     // Register host memory

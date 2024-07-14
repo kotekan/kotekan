@@ -9,13 +9,13 @@ kernel-description:
   design-parameters:
     beam-layout: [32, 32]
     dish-layout: [16, 16]
-    downsampling-factor: 50
+    downsampling-factor: 48
     number-of-complex-components: 2
     number-of-dishes: 256
-    number-of-frequencies: 8
+    number-of-frequencies: 128
     number-of-polarizations: 2
     number-of-timesamples: 8192
-    output-gain: 0.0025
+    output-gain: 0.0026041666666666665
     sampling-time-μsec: 2.56
     upchannelization-factor: 8
   compile-parameters:
@@ -23,7 +23,7 @@ kernel-description:
     blocks_per_sm: 1
   call-parameters:
     threads: [32, 16]
-    blocks: [8]
+    blocks: [128]
     shmem_bytes: 34944
   kernel-symbol: "_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE"
   kernel-arguments:
@@ -61,24 +61,24 @@ kernel-description:
       intent: in
       type: Float16
       indices: [C, dishM, dishN, P, Fbar]
-      shape: [2, 16, 16, 2, 8]
-      strides: [1, 2, 32, 512, 1024, 8192]
+      shape: [2, 16, 16, 2, 128]
+      strides: [1, 2, 32, 512, 1024, 131072]
     - name: "Ē"
       intent: in
       type: Int4
       indices: [C, D, P, Fbar, Tbar]
-      shape: [2, 256, 2, 8, 8192]
-      strides: [1, 2, 512, 1024, 8192]
+      shape: [2, 256, 2, 128, 8192]
+      strides: [1, 2, 512, 1024, 131072]
     - name: "I"
       intent: out
       type: Float16
       indices: [beamP, beamQ, Fbar, Tbar]
-      shape: [32, 32, 2048, 512]
+      shape: [32, 32, 2048, 1024]
       strides: [1, 32, 1024, 2097152]
     - name: "info"
       intent: out
       type: Int32
       indices: [thread, warp, block]
-      shapes: [32, 16, 8]
+      shapes: [32, 16, 128]
       strides: [1, 32, 512]
 ...

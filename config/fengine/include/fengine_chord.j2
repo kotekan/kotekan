@@ -41,6 +41,14 @@ dish_indices: [
     -1,-1,490,491,492,493,494,495,496,497,498,499,500,501,502,503,504,505,506,507,508,509,510,511,
 ]
 
+# CHORD:
+#             quantity   frequency    east-west   east-west   north-south   north-south
+# 
+#   angular resolution     300 MHz     7.2 mrad       0.41°      4.9 mrad         0.28°
+#   angular resolution    1500 MHz     1.4 mrad       0.08°      1.0 mrad         0.06°
+#        field of view     300 MHz   158.6 mrad       9.09°    117.6 mrad         6.74°
+#        field of view    1500 MHz    31.7 mrad       1.82°     23.5 mrad         1.35°
+
 host_dish_positions_buffer:
     kotekan_buffer: standard
     num_frames: 1
@@ -60,7 +68,7 @@ adc_frequency: 3.2e+9           # [Hz]
 num_taps: 4
 num_samples_per_frame: 16384
 
-num_frequencies: 384       # 8192 frequencies / 16 gpus * 75% coverage
+num_frequencies: 48       # 8192 frequencies / 128 gpus * 75% coverage
 # The frequency channels we keep.
 #     A channel's frequency is   freq = channel * adc_frequency / num_samples_per_frame
 #     Note that   channel = freq = 0   is the DC channel.

@@ -8,7 +8,7 @@ function freq_norm(A, p=2)
     return [scale * norm((@view A[:, :, freq, :]), p) for freq in 1:size(A, 3)]
 end
 
-prefix = "/tmp/fengine_pathfinder_test";
+prefix = "/tmp/fengine_test_pathfinder";
 host = "indigo";
 U = 64;
 

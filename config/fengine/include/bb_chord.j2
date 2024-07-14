@@ -6,8 +6,8 @@
 
 bb_num_beams_ew: 12
 bb_num_beams_ns: 8
-bb_beam_separation_ew: 0.015
-bb_beam_separation_ns: 0.015
+bb_beam_separation_ew: 0.0075
+bb_beam_separation_ns: 0.0050
 bb_num_beams: bb_num_beams_ew * bb_num_beams_ns
 
 host_bb_beam_positions_buffer:
@@ -15,6 +15,12 @@ host_bb_beam_positions_buffer:
     num_frames: 1
     frame_size: sizeof_float32 * 2 * bb_num_beams
     metadata_pool: main_pool
+
+# The baseband beams are formed as "incoherent sum" over dishes dishes
+# (sqrt(num_dishes)), and are multiplied by 127 (the scaling of the
+# phase matrix). Thus:
+#     log2(sqrt(num_dishes)) + 7
+bb_scale: 12
 
 ################################################################################
 

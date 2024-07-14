@@ -2,19 +2,22 @@
 
 ################################################################################
 #
-# Run a CHIME benchmark
+# Run a CHIME test
 #
 ################################################################################
 
 ---
-log_level: warn
+log_level: debug
 
-fengine_num_frames: 10
+fengine_num_frames: 1
 fengine_repeat_count: 10
 
-skip_julia: true
+# # CALCULATE SIGNAL WITH COMPLEX PHASE FOR DISHES TO SAVE TIME
+# # RUN PFB ETC ON DEMAND TO REDUCE MEMORY USAGE
+# skip_julia: true   # TODO: false
+skip_julia: false
 
-base_dir: /tmp/fengine_chime_benchmark
+base_dir: /tmp/fengine_test_chime
 
 {% include "include/defs.j2" %}
 {% include "include/fengine_chime.j2" %}
@@ -25,5 +28,5 @@ base_dir: /tmp/fengine_chime_benchmark
 {% include "include/upchan_chime.j2" %}
 {% include "include/frb_chime.j2" %}
 
-{% include "include/output_benchmark_chime.j2" %}
+{% include "include/output_test_chime.j2" %}
 ...

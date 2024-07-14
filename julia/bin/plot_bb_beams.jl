@@ -25,7 +25,7 @@ function aspect!(fig::Figure, row::Integer, col::Integer, ratio_x_over_y::Real)
     return nothing
 end
 
-prefix = "/tmp/fengine_pathfinder_test";
+prefix = "/tmp/fengine_test_pathfinder";
 host = "indigo";
 iter = "00000007"
 

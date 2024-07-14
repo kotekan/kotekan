@@ -4,7 +4,7 @@
 
 ################################################################################
 
-frb_downsampling_factor: 256 / upchannelization_factor
+frb_downsampling_factor: 384 / upchannelization_factor
 # cudaQuantize requires `frb_num_output_times` to be a multiple of 256
 frb_num_output_times: 256
 # TODO: remove
@@ -80,13 +80,12 @@ host_frb2_phase_buffer:
 host_frb1_beams_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    # Reduce buffer size by 2 to stay below 2 GByte
-    frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times / 2
+    frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
     metadata_pool: main_pool
 host_frb1_beams_ringbuffer:
     kotekan_buffer: ring
     num_frames: buffer_depth
-    ring_buffer_size: buffer_depth * sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times / 2
+    ring_buffer_size: buffer_depth * sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
     metadata_pool: main_pool
 
 host_frb2_beams_buffer:

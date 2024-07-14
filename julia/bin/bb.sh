@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# This script generates the Julia-based Cuda kernels for the baseband beamforming kernel.
+# This script generates the Julia-based CUDA kernels for the baseband beamforming kernel.
 # Run it from the kotekan base directory like ./julia/bin/bb.sh
 
 set -euxo pipefail

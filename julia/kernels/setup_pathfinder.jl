@@ -26,4 +26,4 @@ const F_per_U = Dict(1 => 128, 2 => 128, 4 => 128, 8 => 64, 16 => 64, 32 => 64, 
 const Fbar_out = 4096
 
 # FRB downsampling factor for U=1
-const Tds_U1 = 256
+const Tds_U1 = 192

@@ -108,8 +108,7 @@ else
     @assert false
 end
 
-# Reduce output buffer depth by 2 to stay below 2 GByte
-const Ttilde = 4 * 256 ÷ 2
+const Ttilde = 4 * 256
 
 # # const Ttilde = 4 * 256
 # @static if setup ≡ :chord
