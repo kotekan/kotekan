@@ -91,6 +91,7 @@ class FEngine : public kotekan::Stage {
     const float bb_beam_separation_ew;
     const float bb_beam_separation_ns;
     const int bb_num_beams;
+    const int bb_scale;
 
     // Upchannelizer setup
     const int upchannelization_factor;

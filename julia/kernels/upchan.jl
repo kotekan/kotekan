@@ -24,6 +24,26 @@ Base.clamp(x::Complex, a, b) = Complex(clamp(x.re, a, b), clamp(x.im, a, b))
 Base.clamp(x::Complex, ab::UnitRange) = clamp(x, ab.start, ab.stop)
 Base.round(::Type{T}, x::Complex) where {T} = Complex(round(T, x.re), round(T, x.im))
 
+function shrink(value::Integer)
+    typemin(Int32) <= value <= typemax(Int32) && return Int32(value)
+    typemin(Int64) <= value <= typemax(Int64) && return Int64(value)
+    return value
+end
+function shrinkmul(x::Integer, y::Symbol, ymax::Integer)
+    @assert x >= 0 && ymax >= 0
+    # We assume 0 <= y < ymax
+    if x * (ymax - 1) <= typemax(Int32)
+        # We can use 32-bit arithmetic        
+        return :($(Int32(x)) * $y)
+    elseif x * (ymax - 1) <= typemax(Int64)
+        # We need to use 64-bit arithmetic        
+        return :($(Int64(x)) * $y)
+    else
+        # Something is wrong
+        @assert false
+    end
+end
+
 linterp(x1, y1, x2, y2, x) = (x - x2) * y1 / (x1 - x2) + (x - x1) * y2 / (x2 - x1)
 @assert(linterp(1.0f0, 2.0f0, 3.0f0, 4.0f0, 1.0f0) == 2.0f0)
 @assert(linterp(1.0f0, 2.0f0, 3.0f0, 4.0f0, 3.0f0) == 4.0f0)
@@ -497,7 +517,7 @@ const shmem_F̄_size = cld(layout_F̄_shared_size, 32) * 32
 
 const shmem_F_offset = 0
 const shmem_F̄_offset = shmem_F_offset
-const shmem_size = max(shmem_F_size,  shmem_F̄_size)
+const shmem_size = max(shmem_F_size, shmem_F̄_size)
 
 const shmem_bytes = 4 * shmem_size
 
@@ -982,8 +1002,8 @@ function upchan!(emitter)
             align=16,
             postprocess=addr -> :(
                 let
-                    offset = $(Int32(idiv(D, 4) * P * F)) * Tmin + $(Int32(idiv(D, 4) * P)) * Fmin
-                    length = $(Int32(idiv(D, 4) * P * F * T))
+                    offset = $(shrinkmul(idiv(D, 4) * P * F, :Tmin, T)) + $(shrinkmul(idiv(D, 4) * P, :Fmin, F))
+                    length = $(shrink(idiv(D, 4) * P * F * T))
                     mod($addr + offset, length)
                 end
             ),
@@ -1435,8 +1455,8 @@ function upchan!(emitter)
             end,
             postprocess=addr -> quote
                 let
-                    offset = $(Int32(tbarstride)) * T̄min - $(Int32(tbarstride * (M - 1)))
-                    length = $(Int32(tbarstride * idiv(T, U)))
+                    offset = $(shrinkmul(tbarstride, :T̄min, idiv(T, U))) - $(shrink(tbarstride * (M - 1)))
+                    length = $(shrink(tbarstride * idiv(T, U)))
                     mod($addr + offset, length)
                 end
             end,

@@ -62,7 +62,7 @@ private:
     static constexpr int cuda_number_of_frequencies = 64;
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_taps = 4;
-    static constexpr int cuda_max_number_of_timesamples = 32768;
+    static constexpr int cuda_max_number_of_timesamples = 65536;
     static constexpr int cuda_granularity_number_of_timesamples = 256;
     static constexpr int cuda_algorithm_overlap = 48;
     static constexpr int cuda_upchannelization_factor = 16;
@@ -163,9 +163,9 @@ private:
         256,
         2,
         64,
-        32768,
+        65536,
     };
-    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 256 * 2 * 64 * 32768;
+    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 256 * 2 * 64 * 65536;
     static_assert(E_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto E_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -199,10 +199,10 @@ private:
         256,
         2,
         256,
-        2048,
+        4096,
     };
     static constexpr std::ptrdiff_t Ebar_length =
-        chord_datatype_bytes(Ebar_type) * 256 * 2 * 256 * 2048;
+        chord_datatype_bytes(Ebar_type) * 256 * 2 * 256 * 4096;
     static_assert(Ebar_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;

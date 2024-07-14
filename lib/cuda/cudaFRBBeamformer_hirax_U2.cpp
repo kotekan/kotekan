@@ -66,7 +66,7 @@ private:
     static constexpr int cuda_number_of_dishes = 256;
     static constexpr int cuda_number_of_frequencies = 2;
     static constexpr int cuda_number_of_polarizations = 2;
-    static constexpr int cuda_number_of_timesamples = 16384;
+    static constexpr int cuda_number_of_timesamples = 32768;
     static constexpr int cuda_granularity_number_of_timesamples = 64;
 
     // Kernel input and output sizes
@@ -222,10 +222,10 @@ private:
         256,
         2,
         2,
-        16384,
+        32768,
     };
     static constexpr std::ptrdiff_t Ebar_length =
-        chord_datatype_bytes(Ebar_type) * 256 * 2 * 2 * 16384;
+        chord_datatype_bytes(Ebar_type) * 256 * 2 * 2 * 32768;
     static_assert(Ebar_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -544,20 +544,6 @@ cudaEvent_t cudaFRBBeamformer_hirax_U2::execute(cudaPipelineState& /*pipestate*/
     assert(metadata_is_chord(W_mc));
     const std::shared_ptr<chordMetadata> W_meta = get_chord_metadata(W_mc);
     DEBUG("input W array: {:s} {:s}", W_meta->get_type_string(), W_meta->get_dimensions_string());
-    // const auto output_meta_W = [&]() {
-    //     std::ostringstream buf;
-    //     buf << "    name: " << (W_meta)->name << "\n"
-    //         << "    type: " << chord_datatype_string((W_meta)->type) << "\n"
-    //         << "    dim: [";
-    //     for (int d = 0; d < (W_meta)->dims; ++d)
-    //         buf << (W_meta)->dim[d] << ", ";
-    //     buf << "]\n"
-    //         << "    stride: [";
-    //     for (int d = 0; d < (W_meta)->dims; ++d)
-    //         buf << (W_meta)->stride[d] << ", ";
-    //     buf << "]\n";
-    //     return buf.str();
-    // };
     if (args::W == args::Ebar && 2 == 1) {
         // Replace "Ebar_U1" with "E" etc. because we don't run the upchannelizer for U=1
         assert(std::strncmp(W_meta->name, "E", sizeof W_meta->name) == 0);
@@ -603,20 +589,6 @@ cudaEvent_t cudaFRBBeamformer_hirax_U2::execute(cudaPipelineState& /*pipestate*/
     const std::shared_ptr<chordMetadata> Ebar_meta = get_chord_metadata(Ebar_mc);
     DEBUG("input Ebar array: {:s} {:s}", Ebar_meta->get_type_string(),
           Ebar_meta->get_dimensions_string());
-    // const auto output_meta_Ebar = [&]() {
-    //     std::ostringstream buf;
-    //     buf << "    name: " << (Ebar_meta)->name << "\n"
-    //         << "    type: " << chord_datatype_string((Ebar_meta)->type) << "\n"
-    //         << "    dim: [";
-    //     for (int d = 0; d < (Ebar_meta)->dims; ++d)
-    //         buf << (Ebar_meta)->dim[d] << ", ";
-    //     buf << "]\n"
-    //         << "    stride: [";
-    //     for (int d = 0; d < (Ebar_meta)->dims; ++d)
-    //         buf << (Ebar_meta)->stride[d] << ", ";
-    //     buf << "]\n";
-    //     return buf.str();
-    // };
     if (args::Ebar == args::Ebar && 2 == 1) {
         // Replace "Ebar_U1" with "E" etc. because we don't run the upchannelizer for U=1
         assert(std::strncmp(Ebar_meta->name, "E", sizeof Ebar_meta->name) == 0);

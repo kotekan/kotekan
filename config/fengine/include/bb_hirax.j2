@@ -10,6 +10,12 @@ bb_beam_separation_ew: 0.015
 bb_beam_separation_ns: 0.015
 bb_num_beams: bb_num_beams_ew * bb_num_beams_ns
 
+host_bb_beam_positions_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_float32 * 2 * bb_num_beams
+    metadata_pool: main_pool
+
 ################################################################################
 
 # Buffers

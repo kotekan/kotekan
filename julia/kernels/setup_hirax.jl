@@ -17,9 +17,7 @@ const D = 256
 const F = 64
 
 # Number of time samples per frame processed by the GPU, times the Kotekan buffer depth
-# const T = 4 * 4096
-const T = 4 * 8192
-# const T = 4 * 16384   # int32 overflow
+const T = 4 * 16384
 
 # Maximum number of coarse frequencies per upchannelization factor, rounded up to a power of 2
 const F_per_U = Dict(1 => 1, 2 => 1, 4 => 1, 8 => 1, 16 => 16, 32 => 1, 64 => 1, 128 => 1)

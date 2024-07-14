@@ -62,8 +62,8 @@ private:
     static constexpr int cuda_number_of_dishes = 256;
     static constexpr int cuda_number_of_frequencies = 64;
     static constexpr int cuda_number_of_polarizations = 2;
-    static constexpr int cuda_number_of_timesamples = 32768;
-    static constexpr int cuda_granularity_number_of_timesamples = 8192;
+    static constexpr int cuda_number_of_timesamples = 65536;
+    static constexpr int cuda_granularity_number_of_timesamples = 16384;
     static constexpr int cuda_shift_parameter_sigma = 3;
 
     // Kernel input and output sizes
@@ -149,9 +149,9 @@ private:
         256,
         2,
         64,
-        32768,
+        65536,
     };
-    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 256 * 2 * 64 * 32768;
+    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 256 * 2 * 64 * 65536;
     static_assert(E_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto E_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -217,12 +217,12 @@ private:
         "B",
     };
     static constexpr std::array<std::ptrdiff_t, J_rank> J_lengths = {
-        8192,
+        16384,
         2,
         64,
         16,
     };
-    static constexpr std::ptrdiff_t J_length = chord_datatype_bytes(J_type) * 8192 * 2 * 64 * 16;
+    static constexpr std::ptrdiff_t J_length = chord_datatype_bytes(J_type) * 16384 * 2 * 64 * 16;
     static_assert(J_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto J_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;

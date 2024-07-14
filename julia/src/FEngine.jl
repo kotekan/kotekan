@@ -196,13 +196,15 @@ function adc_sample(
         dishx, dishy = location
         ϕs = Complex{T}[
             let
-                t₁ = t₀ + source.sinx * dishx / c₀ + source.siny * dishy / c₀
-                cis(2 * t₁)
+                f₀ = source.f₀
+                t₁ = t₀ - source.sinx * dishx / c₀ - source.siny * dishy / c₀
+                cispi(2 * f₀ * t₁)
             end for source in sources
         ]
         dϕs = let
-            t₁ = t₀ + dispersed_source.sinx * dishx / c₀ + dispersed_source.siny * dishy / c₀
-            cis(2 * t₁)
+            f₀ = dispersed_source.f₀
+            t₁ = t₀ - dispersed_source.sinx * dishx / c₀ - dispersed_source.siny * dishy / c₀
+            cispi(2 * f₀ * t₁)
         end
         for time in 1:ntimes
             val =
@@ -585,12 +587,12 @@ end
 
 function make_baseband_beams(num_beams_ew::Int, num_beams_ns::Int, beam_separation_ew::Float, beam_separation_ns::Float)
     # Find centre
-    i_ew₀ = (num_beams_ew - 1) / Float(2)
-    i_ns₀ = (num_beams_ns - 1) / Float(2)
+    i_ew₀ = (1 + num_beams_ew) / Float(2)
+    i_ns₀ = (1 + num_beams_ns) / Float(2)
     angles = NTuple{2,Float}[let
         θ_ew = beam_separation_ew * (i_ew - i_ew₀)
         θ_ns = beam_separation_ns * (i_ns - i_ns₀)
-        (sin(θ_ew), sin(θ_ns))
+        (θ_ew, θ_ns)
     end for i_ns in 1:num_beams_ns for i_ew in 1:num_beams_ew]
     return BasebandBeams(angles)
 end
@@ -608,11 +610,11 @@ function baseband_phases(dishes::Dishes, frequencies::AbstractVector{Float}, bea
     # We choose `A` independent of polarization
     A = Complex{Int8}[
         let
-            dish_ew, dish_ns, = dishes.locations[dish]
-            sin_ew, sin_ns, = beams.angles[beam]
-            Δt = sin_ew * dish_ew / c₀ + sin_ns * dish_ns / c₀
+            dish_ew, dish_ns = dishes.locations[dish]
+            θ_ew, θ_ns, = beams.angles[beam]
+            Δt = sin(θ_ew) * dish_ew / c₀ + sin(θ_ns) * dish_ns / c₀
             f = frequencies[freq]
-            round(Int8, clamp(Float(127.5) * cispi(-2 * f * Δt), Float(-127), Float(+127)))
+            round(Int8, clamp(Float(127.5) * cispi(2 * f * Δt), Float(-127), Float(+127)))
         end for dish in 1:ndishes, beam in 1:nbeams, polr in 1:npolrs, freq in 1:nfreqs
     ]
     return BasebandPhases(A)

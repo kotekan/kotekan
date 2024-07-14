@@ -26,6 +26,26 @@ idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 # Base.clamp(x::Complex, a, b) = Complex(clamp(x.re, a, b), clamp(x.im, a, b))
 # Base.clamp(x::Complex, ab::UnitRange) = clamp(x, ab.start, ab.stop)
 
+function shrink(value::Integer)
+    typemin(Int32) <= value <= typemax(Int32) && return Int32(value)
+    typemin(Int64) <= value <= typemax(Int64) && return Int64(value)
+    return value
+end
+function shrinkmul(x::Integer, y::Symbol, ymax::Integer)
+    @assert x >= 0 && ymax >= 0
+    # We assume 0 <= y < ymax
+    if x * (ymax - 1) <= typemax(Int32)
+        # We can use 32-bit arithmetic        
+        return :($(Int32(x)) * $y)
+    elseif x * (ymax - 1) <= typemax(Int64)
+        # We need to use 64-bit arithmetic        
+        return :($(Int64(x)) * $y)
+    else
+        # Something is wrong
+        @assert false
+    end
+end
+
 ilog2(i::Integer) = (@assert i == nextpow(2, i); trailing_zeros(i))
 
 # Setup
@@ -480,8 +500,10 @@ function copy_global_memory_to_Fsh1!(emitter)
             align=16,
             postprocess=addr -> :(
                 let
-                    offset = $(Int32(idiv(D, 4) * P * Fbar_in)) * Tbarmin + $(Int32(idiv(D, 4) * P)) * Fbar_in_min
-                    length = $(Int32(idiv(D, 4) * P * Fbar_in * Tbar))
+                    offset =
+                        $(shrinkmul(idiv(D, 4) * P * Fbar_in, :Tbarmin, Tbar)) +
+                        $(shrinkmul(idiv(D, 4) * P, :Fbar_in_min, Fbar_in))
+                    length = $(shrink(idiv(D, 4) * P * Fbar_in * Tbar))
                     mod($addr + offset, length)
                 end
             ),
@@ -524,8 +546,10 @@ function copy_global_memory_to_Fsh1!(emitter)
             align=16,
             postprocess=addr -> :(
                 let
-                    offset = $(Int32(idiv(D, 4) * P * Fbar_in)) * Tbarmin + $(Int32(idiv(D, 4) * P)) * Fbar_in_min
-                    length = $(Int32(idiv(D, 4) * P * Fbar_in * Tbar))
+                    offset =
+                        $(shrinkmul(idiv(D, 4) * P * Fbar_in, :Tbarmin, Tbar)) +
+                        $(shrinkmul(idiv(D, 4) * P, :Fbar_in_min, Fbar_in))
+                    length = $(shrink(idiv(D, 4) * P * Fbar_in * Tbar))
                     mod($addr + offset, length)
                 end
             ),
@@ -1715,16 +1739,16 @@ function make_frb_kernel()
         block!(emitter) do emitter
             read_Fsh1!(emitter)
             sync_threads!(emitter)
-        
+
             write_Fsh2!(emitter)
             sync_threads!(emitter)
             return nothing
         end
-        
+
         block!(emitter) do emitter
             read_Fsh2!(emitter)
             sync_threads!(emitter)
-        
+
             unrolled_loop!(emitter, Time(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2)) do emitter
                 # This loop should probably be unrolled for execution speed, but that increases compile time significantly
                 # loop!(
@@ -1733,7 +1757,7 @@ function make_frb_kernel()
                 loop!(
                     emitter, Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner))
                 ) do emitter
-        
+
                     # 4.10 First FFT
                     # (111)
                     # unrolled_loop!(emitter, Time(:time, Tw, idiv(Tinner, Tw)) => Loop(:tau_tile, Tw, idiv(Tinner, Tw))) do emitter
@@ -1751,16 +1775,16 @@ function make_frb_kernel()
                     # end
                     do_first_fft!(emitter)
                     sync_threads!(emitter)
-        
+
                     unrolled_loop!(emitter, Time(:time, 1, Tinner) => UnrolledLoop(:t, 1, Tinner)) do emitter
-        
+
                         # 4.11 Second FFT
                         # loop!(emitter, Polr(:polr, 1, P) => Loop(:polr, 1, P)) do emitter
                         #     do_second_fft!(emitter)
                         #     nothing
                         # end
                         do_second_fft!(emitter)
-        
+
                         push!(emitter.statements, :(t_running += $(1i32)))
                         # Skip this write-back for some of the `t` and `t_inner` iterations, depending on `% T_ds`
                         # (This condition will be evaluated at compile time)
@@ -1800,7 +1824,8 @@ function make_frb_kernel()
                                     end,
                                     postprocess=addr -> quote
                                         let
-                                            offset = $(Int32(M * 2 * N * Fbar_out)) * Ttildemin + $(Int32(M * 2 * N)) * Fbar_out_min
+                                            offset =
+                                                $(Int32(M * 2 * N * Fbar_out)) * Ttildemin + $(Int32(M * 2 * N)) * Fbar_out_min
                                             length = $(Int32(M * 2 * N * Fbar_out * Ttilde))
                                             mod($addr + offset, length)
                                         end
@@ -1809,22 +1834,22 @@ function make_frb_kernel()
                                 apply!(emitter, :I, [:I], (I,) -> :(zero(Float16x2)))
                                 push!(emitter.statements, :(t_running = $(0i32)))
                                 push!(emitter.statements, :(dstime += $(1i32)))
-        
+
                                 return nothing
                             end
-        
+
                             return nothing
                         end
-        
+
                         return nothing
                     end
                     sync_threads!(emitter)
-        
+
                     return nothing
                 end
                 return nothing
             end
-        
+
             return nothing
         end
 
@@ -1965,9 +1990,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         Ttildemax = Int32(Ttildemin + fld(Tbarmax - Tbarmin, Tds))
 
         Fbar_in_min = Int32(0)
-        Fbar_in_max = Int32(Fbar_in)
+        Fbar_in_max = Int32(min(Fbar_in, Fbar_out))
         Fbar_out_min = Int32(0)
-        Fbar_out_max = Int32(Fbar_in)
+        Fbar_out_max = Int32(min(Fbar_in, Fbar_out))
 
         input = :random
         if input ≡ :zero
@@ -2016,7 +2041,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             dstime = time ÷ Tds
             @show dstime
             for beamq in 0:(2 * N - 1), beamp in 0:(2 * M - 1)
-                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * dstime + M * 2 * N * Ttilde * freq
+                Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * freq + M * 2 * N * Fbar_out * dstime
                 dishm, dishn = dish_grid[dish + 1]
                 # Eqn. (4)
                 Ẽvalue = cispi((2 * dishm * beamp / Float32(2 * M) + 2 * dishn * beamq / Float32(2 * N)) % 2.0f0) * Wvalue * Evalue

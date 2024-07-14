@@ -48,10 +48,6 @@ function shrinkmul(x::Integer, y::Symbol, ymax::Integer)
     end
 end
 
-function make_wrap(value, offset::Integer, length::Integer)
-    return :(mod($value + $offset, $length))
-end
-
 @enum CHORDTag CplxTag BeamTag DishTag FreqTag PolrTag TimeTag ThreadTag WarpTag BlockTag
 
 const Cplx = Index{Physics,CplxTag}
@@ -804,13 +800,6 @@ function make_bb_kernel()
                     :E => layout_E_registers,
                     :E_memory => layout_E_memory;
                     align=16,
-                    # postprocess=addr -> :(
-                    #     let
-                    #         offset = $(Int32(idiv(D, 4) * P * F)) * Tmin
-                    #         length = $(Int32(idiv(D, 4) * P * F * T))
-                    #         mod($addr + offset, length)
-                    #     end
-                    # ),
                     postprocess=addr -> :(
                         let
                             offset = $(shrinkmul(idiv(D, 4) * P * F, :Tmin, T))

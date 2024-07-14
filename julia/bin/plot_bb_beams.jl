@@ -38,7 +38,7 @@ Enorm2 = dish_norm(E, 2, freq);
 
 let
     fig = Figure(; size=(640, 480))
-    ax = Axis(fig[1, 1]; title="Dishes (channel=$(freq-1))", xlabel="dish", ylabel="amplitude")
+    ax = Axis(fig[1, 1]; title="Dishes (local channel $(freq-1))", xlabel="dish", ylabel="amplitude")
     ylims!(ax, (0, 10))
     barplot!(ax, 0:(length(Enorm2) - 1), Enorm2 .+ 0.1)
     display(fig)
@@ -46,7 +46,7 @@ end;
 
 let
     fig = Figure(; size=(640, 480))
-    ax = Axis(fig[1, 1]; title="Dishes (channel=$(freq-1))", xlabel="east-west [m]", ylabel="norh-south [m]")
+    ax = Axis(fig[1, 1]; title="Dishes (local channel $(freq-1))", xlabel="east-west [m]", ylabel="norh-south [m]")
     dishsize = 6                # dish diameter [m]
     min_ew, max_ew = extrema(@view dish_positions[1, :]) .+ (-dishsize, +dishsize)
     min_ns, max_ns = extrema(@view dish_positions[2, :]) .+ (-dishsize, +dishsize)
@@ -79,7 +79,7 @@ Jnorm2 = beam_norm(J, 2, freq);
 
 let
     fig = Figure(; size=(640, 480))
-    ax = Axis(fig[1, 1]; title="Baseband beams (channel=$(freq-1))", xlabel="beam", ylabel="amplitude")
+    ax = Axis(fig[1, 1]; title="Baseband beams (local channel $(freq-1))", xlabel="beam", ylabel="amplitude")
     ylims!(ax, (0, 10))
     barplot!(ax, 0:(length(Jnorm2) - 1), Jnorm2 .+ 0.1)
     display(fig)
@@ -87,10 +87,13 @@ end;
 
 let
     fig = Figure(; size=(640, 480))
-    ax = Axis(fig[1, 1]; title="Baseband beams (channel=$(freq-1))", xlabel="east-west [m]", ylabel="norh-south [m]")
-    beamsize = 0.012            # beam diameter [rad]
-    min_ew, max_ew = extrema(@view beam_positions[1, :]) .+ (-beamsize, +beamsize)
-    min_ns, max_ns = extrema(@view beam_positions[2, :]) .+ (-beamsize, +beamsize)
+    ax = Axis(fig[1, 1]; title="Baseband beams (local channel $(freq-1))", xlabel="east-west [rad]", ylabel="norh-south [rad]")
+    # beamsize_ew = 0.015 * 0.3e9 / f
+    # beamsize_nw = 0.020 * 0.3e9 / f
+    beamsize_ew = 0.015
+    beamsize_ns = 0.020
+    min_ew, max_ew = extrema(@view beam_positions[1, :]) .+ (-beamsize_ew, +beamsize_ew)
+    min_ns, max_ns = extrema(@view beam_positions[2, :]) .+ (-beamsize_ns, +beamsize_ns)
     xlims!(ax, min_ew, max_ew)
     ylims!(ax, min_ns, max_ns)
     obj = scatter!(
@@ -101,7 +104,7 @@ let
         colormap=:plasma,
         colorrange=(0, 10),
         marker=Circle,
-        markersize=beamsize,
+        markersize=(beamsize_ew, beamsize_ns),
         markerspace=:data,
     )
     Colorbar(fig[1, 2], obj; label="baseband beam intensity")

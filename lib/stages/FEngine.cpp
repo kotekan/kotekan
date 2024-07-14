@@ -84,6 +84,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     bb_beam_separation_ew(config.get<float>(unique_name, "bb_beam_separation_ew")),
     bb_beam_separation_ns(config.get<float>(unique_name, "bb_beam_separation_ns")),
     bb_num_beams(bb_num_beams_ew * bb_num_beams_ns),
+    bb_scale(config.get<int>(unique_name, "bb_scale")),
 
     // Upchannelizer setup
     upchannelization_factor(config.get<int>(unique_name, "upchannelization_factor")),
@@ -661,8 +662,9 @@ void FEngine::main_thread() {
 
         // Fill buffer
         DEBUG("[{:d}] Filling s buffer...", s_frame_index);
-        using std::log2, std::lrint;
-        const int scale = lrint(log2(num_dishes)) + 4;
+        using std::log2, std::lrint, std::sqrt;
+        // const int scale = lrint(log2(sqrt(num_dishes))) + 7;
+        const int scale = bb_scale;
         for (int n = 0; n < bb_num_beams * num_polarizations * num_frequencies; ++n)
             ((int32_t*)s_frame)[n] = scale;
         DEBUG("[{:d}] Done filling s buffer.", s_frame_index);
@@ -811,7 +813,7 @@ void FEngine::main_thread() {
                     JL_GC_PUSHARGS(args, nargs);
                     args[0] = jl_box_uint8pointer(W1_frame);
                     args[1] = jl_box_int64(W1_frame_sizes[Ufactor]);
-                    args[2] = jl_box_int64(num_dish_locations_ns);
+                    args[2] = jl_box_int64(num_dish_locations_ns); // Note ns/ew is reversed!
                     args[3] = jl_box_int64(num_dish_locations_ew);
                     args[4] = jl_box_int64(num_polarizations);
                     args[5] = jl_box_int64(num_local_channels * U);
