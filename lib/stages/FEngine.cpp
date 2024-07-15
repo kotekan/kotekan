@@ -329,6 +329,17 @@ void FEngine::main_thread() {
     assert(!stale);
     stale = true;
 
+    // This functions shall be executed only once, during the initialization.
+    jl_value_t* refs = nullptr;
+    jl_function_t* setindex = nullptr;
+    kotekan::juliaCall([&]() {
+      refs = jl_eval_string("refs = IdDict()");
+      assert(refs);
+      setindex = jl_get_function(jl_base_module, "setindex!");
+      assert(setindex);
+    });
+
+    jl_value_t* FEngine_setup = nullptr;
     if (!skip_julia) {
         INFO("Initializing F-Engine...");
         kotekan::juliaCall([&]() {
@@ -374,13 +385,16 @@ void FEngine::main_thread() {
             args[iargc++] = jl_box_float32(bb_beam_separation_ns);
             args[iargc++] = jl_box_int64(num_frames);
             assert(iargc == nargs);
-            jl_value_t* const res = jl_call(setup, args, nargs);
+            FEngine_setup = jl_call(setup, args, nargs);
             JL_GC_POP();
             if (jl_exception_occurred())
                 FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
-            if (!res)
+            if (!FEngine_setup)
                 FATAL_ERROR("Could not initialize F-Engine");
-            assert(res);
+            assert(FEngine_setup);
+
+            // To protect `var`, add its reference to `refs`.
+            jl_call3(setindex, refs, FEngine_setup, FEngine_setup);
         });
         INFO("Done initializing world.");
     } // if !skip_julia
@@ -411,14 +425,15 @@ void FEngine::main_thread() {
                     (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
                 assert(f_engine_module);
                 jl_function_t* const set_dish_positions =
-                    jl_get_function(f_engine_module, "set_dish_positions");
+                    jl_get_function(f_engine_module, "set_dish_positions!");
                 assert(set_dish_positions);
-                const int nargs = 3;
+                const int nargs = 4;
                 jl_value_t** args;
                 JL_GC_PUSHARGS(args, nargs);
                 args[0] = jl_box_uint8pointer(dish_positions_frame);
                 args[1] = jl_box_int64(dish_positions_frame_size);
                 args[2] = jl_box_int64(num_dishes);
+                args[3] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_dish_positions, args, nargs);
                 assert(res);
                 JL_GC_POP();
@@ -499,14 +514,15 @@ void FEngine::main_thread() {
                     (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
                 assert(f_engine_module);
                 jl_function_t* const set_bb_beam_positions =
-                    jl_get_function(f_engine_module, "set_bb_beam_positions");
+                    jl_get_function(f_engine_module, "set_bb_beam_positions!");
                 assert(set_bb_beam_positions);
-                const int nargs = 3;
+                const int nargs = 4;
                 jl_value_t** args;
                 JL_GC_PUSHARGS(args, nargs);
                 args[0] = jl_box_uint8pointer(bb_beam_positions_frame);
                 args[1] = jl_box_int64(bb_beam_positions_frame_size);
                 args[2] = jl_box_int64(bb_num_beams);
+                args[3] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_bb_beam_positions, args, nargs);
                 assert(res);
                 JL_GC_POP();
@@ -582,9 +598,9 @@ void FEngine::main_thread() {
                 jl_module_t* const f_engine_module =
                     (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
                 assert(f_engine_module);
-                jl_function_t* const set_A = jl_get_function(f_engine_module, "set_A");
+                jl_function_t* const set_A = jl_get_function(f_engine_module, "set_A!");
                 assert(set_A);
-                const int nargs = 6;
+                const int nargs = 7;
                 jl_value_t** args;
                 JL_GC_PUSHARGS(args, nargs);
                 args[0] = jl_box_uint8pointer(A_frame);
@@ -593,6 +609,7 @@ void FEngine::main_thread() {
                 args[3] = jl_box_int64(bb_num_beams);
                 args[4] = jl_box_int64(num_polarizations);
                 args[5] = jl_box_int64(num_frequencies);
+                args[6] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_A, args, nargs);
                 assert(res);
                 JL_GC_POP();
@@ -1070,9 +1087,9 @@ void FEngine::main_thread() {
                     jl_module_t* const f_engine_module =
                         (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
                     assert(f_engine_module);
-                    jl_function_t* const set_E = jl_get_function(f_engine_module, "set_E");
+                    jl_function_t* const set_E = jl_get_function(f_engine_module, "set_E!");
                     assert(set_E);
-                    const int nargs = 7;
+                    const int nargs = 8;
                     jl_value_t** args;
                     JL_GC_PUSHARGS(args, nargs);
                     args[0] = jl_box_uint8pointer(E_frame);
@@ -1081,7 +1098,8 @@ void FEngine::main_thread() {
                     args[3] = jl_box_int64(num_polarizations);
                     args[4] = jl_box_int64(num_frequencies);
                     args[5] = jl_box_int64(num_times);
-                    args[6] = jl_box_int64(E_frame_index % num_frames + 1);
+                    args[6] = FEngine_setup;
+                    args[7] = jl_box_int64(E_frame_index % num_frames + 1);
                     jl_value_t* const res = jl_call(set_E, args, nargs);
                     assert(res);
                     JL_GC_POP();

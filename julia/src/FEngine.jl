@@ -179,7 +179,14 @@ struct ADCFrame{T}
 end
 
 function adc_sample(
-    ::Type{T}, noise::Noise, sources::Vector{Source}, dispersed_source::DispersedSource, dishes::Dishes, adc::ADC, ntimes::Int
+    ::Type{T},
+    noise::Noise,
+    sources::Vector{Source},
+    dispersed_source::DispersedSource,
+    dishes::Dishes,
+    adc::ADC,
+    time0::Int,
+    ntimes::Int,
 ) where {T<:Real}
     t₀ = adc.t₀
     Δt = adc.Δt
@@ -187,11 +194,14 @@ function adc_sample(
     ndishes = length(dishes.locations)
     npolrs = 2
 
-    source_samples = Complex{T}[eval_source(sources[source], Δt, time - 1) for source in 1:nsources, time in 1:ntimes]
-    dispersed_source_samples = Complex{T}[eval_dispersed_source(dispersed_source, Δt * Float64(time - 1)) for time in 1:ntimes]
+    source_samples = Complex{T}[eval_source(sources[source], Δt, time0 + time - 1) for source in 1:nsources, time in 1:ntimes]
+    dispersed_source_samples = Complex{T}[
+        eval_dispersed_source(dispersed_source, Δt * Float64(time0 + time - 1)) for time in 1:ntimes
+    ]
 
     data = Array{T}(undef, ntimes, ndishes, npolrs)
-    @showprogress desc = "ADC" dt = 1 @threads for dish in 1:ndishes
+    # @showprogress desc = "ADC" dt = 1 @threads for dish in 1:ndishes
+    for dish in 1:ndishes
         location = dishes.locations[dish]
         dishx, dishy = location
         ϕs = Complex{T}[
@@ -356,7 +366,8 @@ function f_engine(pfb::PFB, adcframe::ADCFrame{T}) where {T<:Real}
     FFTs = [plan_rfft(indatas[thread], 1) for thread in 1:Threads.nthreads()]
 
     fdata = Array{Complex{T}}(undef, length(frequency_channels), ntimes′, ndishes, npolrs)
-    @showprogress desc = "PFB" dt = 1 @threads for time′_dish_polr in CartesianIndices((ntimes′, ndishes, npolrs))
+    # @showprogress desc = "PFB" dt = 1 @threads for time′_dish_polr in CartesianIndices((ntimes′, ndishes, npolrs))
+    for time′_dish_polr in CartesianIndices((ntimes′, ndishes, npolrs))
         thread = Threads.threadid()
         FFT = FFTs[thread]
         indata = indatas[thread]
@@ -578,6 +589,34 @@ function quantize(::Type{I}, xframe::XFrame{T}) where {I<:Integer,T<:Real}
     return XFrame{I}(xframe.t₀, xframe.Δt, xframe.Δf, xframe.frequency_channels, idata)
 end
 
+function quantize(::Type{I}, fframe::FFrame{T}) where {I<:Integer,T<:Real}
+    fdata = fframe.data
+    nfreqs, ntimes, ndishes, npolrs = size(fdata)
+
+    scale = T(7.5)
+
+    #TODO norm1 = norm(fdata, 1) / T(length(fdata))
+    #TODO norm2 = norm(fdata, 2) / sqrt(T(length(fdata)))
+    #TODO norminf = norm(fdata, Inf)
+    #TODO nclipped = sum(x -> (abs(real(x)) > scale) + (abs(imag(x)) > scale), fdata)
+    #TODO nclipped_fraction = nclipped / (2 * length(fdata))
+    #TODO println("    norm1:   $norm1")
+    #TODO println("    norm2:   $norm2")
+    #TODO println("    norminf: $norminf")
+    #TODO println("    nclipped: $nclipped (fraction $(round(nclipped_fraction; sigdigits=2)))")
+
+    idata = round.(I, clamp.(scale * fdata, T(-7), T(+7)))
+
+    #TODO values = -7:+7
+    #TODO counts = [sum(x -> (real(x) == val) + (imag(x) == val), idata) for val in values]
+    #TODO percents = round.(counts * 100 / (2 * length(idata)); digits=1)
+    #TODO stats = Table(; value=values, count=counts, percent=percents)
+    #TODO println("Quantization statistics:")
+    #TODO pretty_table(stats; header=["value", "count", "percent"], tf=tf_borderless)
+
+    return FFrame{I}(fframe.t₀, fframe.Δt, fframe.Δf, fframe.frequency_channels, idata)
+end
+
 ################################################################################
 # Baseband phases
 
@@ -623,7 +662,28 @@ end
 ################################################################################
 # F-engine: run
 
-function run(
+# This struct must be mutable so that it is heap-allocated and the
+# calling C++ code can protect it from garbage collection
+mutable struct Setup
+    # Sources
+    noise::Noise
+    sources::Vector{Source}
+    dispersed_source::DispersedSource
+
+    # Dishes
+    dishes::Dishes
+
+    # ADC
+    adc::ADC
+
+    # PFB
+    pfb::PFB
+
+    # Baseband beams
+    bb_beams::BasebandBeams
+end
+
+function setup(
     noise_amplitude::Float,
     source_channels::Vector{Float},
     source_amplitudes::Vector{Float},
@@ -653,6 +713,36 @@ function run(
     bb_beam_separation_ns::Float,
     nframes::Int64,
 )
+    println("F-Engine setup:")
+    println("    - noise_amplitude:                  $noise_amplitude")
+    println("    - source_channels:                  $source_channels")
+    println("    - source_amplitudes:                $source_amplitudes")
+    println("    - dispersed_source_start_time:      $dispersed_source_start_time")
+    println("    - dispersed_source_end_time:        $dispersed_source_end_time")
+    println("    - dispersed_source_start_frequency: $dispersed_source_start_frequency")
+    println("    - dispersed_source_end_frequency:   $dispersed_source_end_frequency")
+    println("    - dispersed_source_linewidth:       $dispersed_source_linewidth")
+    println("    - dispersed_source_amplitude:       $dispersed_source_amplitude")
+    println("    - source_position_ew:               $source_position_ew")
+    println("    - source_position_ns:               $source_position_ns")
+    println("    - num_dish_locations_ew:            $num_dish_locations_ew")
+    println("    - num_dish_locations_ns:            $num_dish_locations_ns")
+    println("    - dish_indices:                     $dish_indices")
+    println("    - dish_separation_ew:               $dish_separation_ew")
+    println("    - dish_separation_ns:               $dish_separation_ns")
+    println("    - ndishes:                          $ndishes")
+    println("    - adc_frequency:                    $adc_frequency")
+    println("    - ntaps:                            $ntaps")
+    println("    - nsamples:                         $nsamples")
+    println("    - nfreqs:                           $nfreqs")
+    println("    - frequency_channels:               $frequency_channels")
+    println("    - ntimes:                           $ntimes")
+    println("    - bb_num_beams_ew:                  $bb_num_beams_ew")
+    println("    - bb_num_beams_ns:                  $bb_num_beams_ns")
+    println("    - bb_beam_separation_ew:            $bb_beam_separation_ew")
+    println("    - bb_beam_separation_ns:            $bb_beam_separation_ns")
+    println("    - nframes:                          $nframes")
+
     println("Setting up sources...")
     noise = Noise(noise_amplitude)
     sources = Source[
@@ -694,7 +784,6 @@ function run(
         @assert ndishes_seen == ndishes
         make_dishes(dish_separation_ew, dish_separation_ns, num_dish_locations_ew, num_dish_locations_ns, dish_locations)
     end
-    global stored_dishes = dishes
 
     println("Setting up ADC...")
     adc = let
@@ -706,35 +795,14 @@ function run(
     println("Setting up PFB...")
     pfb = PFB(ntaps, nsamples, frequency_channels)
 
-    println("ADC sampling...")
-    ntimes_total = nsamples * (nframes * ntimes + ntaps - 1)
-    adcframe = adc_sample(Float, noise, sources, dispersed_source, dishes, adc, ntimes_total)
-
-    println("PFB FFT...")
-    fframe = f_engine(pfb, adcframe)
-    #TODO fframe = f_engine_16(pfb, adcframe)
-
-    println("Corner turn...")
-    xframe = corner_turn(fframe)
-
-    println("Quantizing...")
-    iframe = quantize(Int8, xframe)
-    global stored_iframe = iframe
-
-    npolrs = 2
-    @assert size(iframe.data) == (ntimes * nframes, nfreqs, ndishes, npolrs)
-
-    println("Calculating baseband phases...")
+    println("Setting up baseband beams...")
     bb_beams = make_baseband_beams(bb_num_beams_ew, bb_num_beams_ns, bb_beam_separation_ew, bb_beam_separation_ns)
-    global stored_bb_beams = bb_beams
 
-    frequencies = mappedarray(c -> fframe.Δf * c, frequency_channels)
-    A = baseband_phases(dishes, frequencies, bb_beams)
-    global stored_A = A
-
-    println("Done.")
-    return nothing
+    return Setup(noise, sources, dispersed_source, dishes, adc, pfb, bb_beams)
 end
+
+# frequencies = mappedarray(c -> fframe.Δf * c, frequency_channels)
+# A = baseband_phases(dishes, frequencies, bb_beams)
 
 function setup(
     noise_amplitude=0.0,
@@ -772,37 +840,6 @@ function setup(
     dish_indices_ptr = Ptr{Cint}(dish_indices_ptr)
     frequency_channels_ptr = Ptr{Cint}(frequency_channels_ptr)
 
-    println("F-Engine setup:")
-    println("    - noise_amplitude:                  $noise_amplitude")
-    println("    - nsources:                         $nsources")
-    println("    - source_channels_ptr:              $source_channels_ptr")
-    println("    - source_amplitudes_ptr:            $source_amplitudes_ptr")
-    println("    - dispersed_source_start_time:      $dispersed_source_start_time")
-    println("    - dispersed_source_end_time:        $dispersed_source_end_time")
-    println("    - dispersed_source_start_frequency: $dispersed_source_start_frequency")
-    println("    - dispersed_source_end_frequency:   $dispersed_source_end_frequency")
-    println("    - dispersed_source_linewidth:       $dispersed_source_linewidth")
-    println("    - dispersed_source_amplitude:       $dispersed_source_amplitude")
-    println("    - source_position_ew:               $source_position_ew")
-    println("    - source_position_ns:               $source_position_ns")
-    println("    - num_dish_locations_ew:            $num_dish_locations_ew")
-    println("    - num_dish_locations_ns:            $num_dish_locations_ns")
-    println("    - dish_indices_ptr:                 $dish_indices_ptr")
-    println("    - dish_separation_ew:               $dish_separation_ew")
-    println("    - dish_separation_ns:               $dish_separation_ns")
-    println("    - ndishes:                          $ndishes")
-    println("    - adc_frequency:                    $adc_frequency")
-    println("    - ntaps:                            $ntaps")
-    println("    - nsamples:                         $nsamples")
-    println("    - nfreqs:                           $nfreqs")
-    println("    - frequency_channels_ptr:           $frequency_channels_ptr")
-    println("    - ntimes:                           $ntimes")
-    println("    - bb_num_beams_ew:                  $bb_num_beams_ew")
-    println("    - bb_num_beams_ns:                  $bb_num_beams_ns")
-    println("    - bb_beam_separation_ew:            $bb_beam_separation_ew")
-    println("    - bb_beam_separation_ns:            $bb_beam_separation_ns")
-    println("    - nframes:                          $nframes")
-
     source_channels = if source_channels_ptr != C_NULL
         Float[unsafe_load(source_channels_ptr, source) for source in 1:nsources]
     else
@@ -813,8 +850,6 @@ function setup(
     else
         Float[1 for source in 1:nsources]
     end
-    println("    - source_channels:        $source_channels")
-    println("    - source_amplitudes:      $source_amplitudes")
 
     dish_indices = if dish_indices_ptr != C_NULL
         Int64[
@@ -826,16 +861,14 @@ function setup(
     end
     dish_indices::Array{Int64,2}
     @assert size(dish_indices) == (num_dish_locations_ew, num_dish_locations_ns)
-    println("    - dish_indices:           $dish_indices")
 
     frequency_channels = if frequency_channels_ptr != C_NULL
         Int64[unsafe_load(frequency_channels_ptr, n) for n in 1:nfreqs]
     else
         Int64[n for n in 1:nfreqs]
     end
-    println("    - frequency_channels:     $frequency_channels")
 
-    return run(
+    return setup(
         Float(noise_amplitude),
         source_channels::Vector{Float},
         source_amplitudes::Vector{Float},
@@ -889,11 +922,11 @@ end
 #     end
 # end
 
-function set_dish_positions(ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64)
-    dishes = stored_dishes::Dishes
+function set_dish_positions!(ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64, setup::Setup)
+    dishes = setup.dishes::Dishes
     locations_src = dishes.locations::Array{<:NTuple{2,<:Real},1}
 
-    @assert ndishes == size(locations_src, 1)
+    @assert (ndishes,) == size(locations_src)
 
     locations_dst = unsafe_wrap(Array, reinterpret(Ptr{NTuple{2,Float}}, ptr), (ndishes,))
     @assert sizeof(locations_dst) == sz
@@ -905,38 +938,14 @@ function set_dish_positions(ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64)
     return nothing
 end
 
-function set_E(ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64, npolrs::Int64, nfreqs::Int64, ntimes::Int64, frame_index::Int64)
-    iframe = stored_iframe::XFrame
-    idata = iframe.data::Array{<:Complex{<:Integer},4}
-
-    @assert ndishes == size(idata, 3)
-    @assert npolrs == size(idata, 4)
-    @assert nfreqs == size(idata, 2)
-    @assert 0 <= (frame_index - 1) * ntimes
-    @assert frame_index * ntimes <= size(idata, 1)
-    @assert sz == ndishes * npolrs * nfreqs * ntimes
-
-    time0 = (frame_index - 1) * ntimes + 1
-    time1 = time0 + ntimes - 1
-    I = @view idata[time0:time1, :, :, :]
-    E = unsafe_wrap(Array, reinterpret(Ptr{Int4x2}, ptr), (ndishes, npolrs, nfreqs, ntimes))
-    @assert sizeof(E) == sz
-
-    @assert size(E) == size(I)[[3, 4, 2, 1]]
-    permutedims!(E, mappedarray(c2i4, I), (3, 4, 2, 1))
-
-    return nothing
-end
-
-function set_bb_beam_positions(ptr::Ptr{UInt8}, sz::Int64, nbbbeams::Int64)
-    bb_beams = stored_bb_beams::BasebandBeams
+function set_bb_beam_positions!(ptr::Ptr{UInt8}, sz::Int64, nbbbeams::Int64, setup::Setup)
+    bb_beams = setup.bb_beams::BasebandBeams
     angles_src = bb_beams.angles::Array{<:NTuple{2,<:Real},1}
 
-    @assert nbbbeams == size(angles_src, 1)
+    @assert (nbbbeams,) == size(angles_src)
 
     angles_dst = unsafe_wrap(Array, reinterpret(Ptr{NTuple{2,Float}}, ptr), (nbbbeams,))
     @assert sizeof(angles_dst) == sz
-
     @assert size(angles_dst) == size(angles_src)
 
     angles_dst .= angles_src
@@ -944,31 +953,96 @@ function set_bb_beam_positions(ptr::Ptr{UInt8}, sz::Int64, nbbbeams::Int64)
     return nothing
 end
 
-function set_A(ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64, nbbbeams::Int64, npolrs::Int64, nfreqs::Int64)
-    Aphases = stored_A::BasebandPhases
-    Adata = Aphases.phases::Array{<:Complex{<:Integer},4}
+function set_A!(ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64, nbbbeams::Int64, npolrs::Int64, nfreqs::Int64, setup::Setup)
+    println("Calculating baseband phases...")
+    Δf = inv(setup.adc.Δt) / setup.pfb.nsamples
+    frequencies = mappedarray(c -> Δf * c, setup.pfb.frequency_channels)
+    bbphases = baseband_phases(setup.dishes, frequencies, setup.bb_beams)
+    Asrc = bbphases.phases::Array{<:Complex{<:Integer},4}
 
-    @assert ndishes == size(Adata, 1)
-    @assert nbbbeams == size(Adata, 2)
-    @assert npolrs == size(Adata, 3)
-    @assert nfreqs == size(Adata, 4)
+    @assert (ndishes, nbbbeams, npolrs, nfreqs) == size(Asrc)
 
-    A = unsafe_wrap(Array, reinterpret(Ptr{Complex{Int8}}, ptr), (ndishes, nbbbeams, npolrs, nfreqs))
-    @assert sizeof(A) == sz
-    @assert size(A) == size(Adata)
-    A .= Adata
+    Adst = unsafe_wrap(Array, reinterpret(Ptr{Complex{Int8}}, ptr), (ndishes, nbbbeams, npolrs, nfreqs))
+    @assert sizeof(Adst) == sz
+    @assert size(Adst) == size(Asrc)
+    Adst .= Asrc
 
     return nothing
 end
 
-function set_J(ptr::Ptr{UInt8}, sz::Int64, ntimes::Int64, npolrs::Int64, nfreqs::Int64, nbbbeams::Int64, frame_index::Int64)
+function set_W(ptr::Ptr{UInt8}, sz::Int64, ndishsM::Int64, ndishsN::Int64, npolrs::Int64, nfreqs::Int64, frame_index::Int64)
     for i in 1:sz
         unsafe_store!(ptr, 0, i)
     end
     return nothing
 end
 
-function set_W(ptr::Ptr{UInt8}, sz::Int64, ndishsM::Int64, ndishsN::Int64, npolrs::Int64, nfreqs::Int64, frame_index::Int64)
+function set_E!(
+    ptr::Ptr{UInt8}, sz::Int64, ndishes::Int64, npolrs::Int64, nfreqs::Int64, ntimes::Int64, setup::Setup, frame_index::Int64
+)
+    E = unsafe_wrap(Array, reinterpret(Ptr{Int4x2}, ptr), (ndishes, npolrs, nfreqs, ntimes))
+    @assert sizeof(E) == sz
+
+    adc = setup.adc
+    pfb = setup.pfb
+
+    # TODO: Reuse memory, don't allocate, pass buffers in, this should save on GC time
+
+    if ndishes == 64
+        chunk_size = 256        # Pathfinder: use 32 threads
+    elseif ndishes == 256
+        chunk_size = 128        # HIRAX: use 32 threads
+    elseif ndishes == 512
+        chunk_size = 32         # CHORD: conserve memory
+    elseif ndishes == 1024
+        chunk_size = 32         # CHIME: conserve memory
+    else
+        chunk_size = 128
+    end
+    @assert ntimes % chunk_size == 0
+    nchunks = ntimes ÷ chunk_size
+    walltimes = zeros(4, nchunks)
+    @showprogress desc = "Generating E-field" dt = 1 @threads for chunk_index in 1:nchunks
+        # for chunk_index in 1:nchunks
+        # println("Generating E-field (chunk $chunk_index/$nchunks)...")
+        time0 = (chunk_index - 1) * chunk_size + 1
+        time1 = time0 + chunk_size - 1
+
+        # println("ADC sampling...")
+        t0 = time()
+        adc_time0 = (frame_index - 1) * ntimes + (chunk_index - 1) * chunk_size
+        adc_ntimes = pfb.nsamples * (chunk_size + pfb.ntaps - 1)
+        adcframe = adc_sample(Float, setup.noise, setup.sources, setup.dispersed_source, setup.dishes, adc, adc_time0, adc_ntimes)
+        t1 = time()
+        walltimes[1, chunk_index] = t1 - t0
+
+        # println("PFB...")
+        t0 = time()
+        fframe = f_engine(pfb, adcframe)
+        #TODO fframe = f_engine_16(pfb, adcframe)
+        t1 = time()
+        walltimes[2, chunk_index] = t1 - t0
+
+        # println("Quantizing...")
+        t0 = time()
+        iframe = quantize(Int8, fframe)
+        t1 = time()
+        walltimes[3, chunk_index] = t1 - t0
+
+        # println("Corner turn...")
+        t0 = time()
+        I = iframe.data
+        permutedims!((@view E[:, :, :, time0:time1]), mappedarray(c2i4, I), (3, 4, 1, 2))
+        t1 = time()
+        walltimes[4, chunk_index] = t1 - t0
+    end
+
+    # @show walltimes
+
+    return nothing
+end
+
+function set_J(ptr::Ptr{UInt8}, sz::Int64, ntimes::Int64, npolrs::Int64, nfreqs::Int64, nbbbeams::Int64, frame_index::Int64)
     for i in 1:sz
         unsafe_store!(ptr, 0, i)
     end

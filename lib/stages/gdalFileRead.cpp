@@ -1,0 +1,1 @@
+// REGISTER_KOTEKAN_STAGE(gdalFileRead);

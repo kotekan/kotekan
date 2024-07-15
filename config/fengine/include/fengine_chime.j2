@@ -89,6 +89,12 @@ dish_indices: [
 #        field of view     400 MHz   37.5 mrad       2.15°   1918.7 mrad       109.93°
 #        field of view     800 MHz   18.7 mrad       1.07°    959.3 mrad        54.97°
 
+host_dish_positions_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_float32 * 2 * num_dishes
+    metadata_pool: main_pool
+
 ################################################################################
 
 # ADC
@@ -154,6 +160,7 @@ run_fengine:
     num_frames: fengine_num_frames
     repeat_count: fengine_repeat_count
     # skip_julia: true
+    join_timeout: 600
     dish_positions_buffer: host_dish_positions_buffer
     E_buffer: host_voltage_buffer
     bb_beam_positions_buffer: host_bb_beam_positions_buffer

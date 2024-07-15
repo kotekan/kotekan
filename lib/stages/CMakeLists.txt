@@ -18,6 +18,8 @@ add_library(
     rawFileRead.cpp
     rawFileWrite.cpp
     $<$<BOOL:${USE_ASDF}>:asdfFileWrite.cpp>
+    #TODO $<$<BOOL:${USE_GDAL}>:gdalFileRead.cpp>
+    $<$<BOOL:${USE_GDAL}>:gdalFileWrite.cpp>
     $<$<BOOL:${USE_HDF5}>:hdf5FileWrite.cpp>
     vdifStream.cpp
     recvSingleDishVDIF.cpp
@@ -103,6 +105,12 @@ if(${USE_ASDF})
     target_include_directories(kotekan_stages PRIVATE ${ASDF_CXX_INCLUDE_DIRS})
     target_link_options(kotekan_stages PUBLIC ${ASDF_CXX_LDFLAGS})
     target_link_libraries(kotekan_stages PUBLIC ${ASDF_CXX_LIBRARIES})
+endif()
+
+if(${USE_GDAL})
+    target_include_directories(kotekan_stages PRIVATE ${GDAL_INCLUDE_DIRS})
+    target_link_options(kotekan_stages PUBLIC ${GDAL_LDFLAGS})
+    target_link_libraries(kotekan_stages PUBLIC ${GDAL_LIBRARIES})
 endif()
 
 if(${USE_HDF5})

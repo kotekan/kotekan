@@ -27,7 +27,7 @@ end
 
 prefix = "/tmp/fengine_test_pathfinder";
 host = "indigo";
-iter = "00000007"
+iter = "00000006"
 
 freq = 1
 
