@@ -24,6 +24,7 @@ enum chordDataType {
     uint32,
     uint64,
     int4p4,
+    int4p4chime, // offset-encoded (stored is value + 8), low and high values swapped
     int8,
     int16,
     int32,
@@ -47,6 +48,8 @@ constexpr std::size_t chord_datatype_bytes(chordDataType type) {
             return 8;
         case int4p4:
             return 1;
+        case int4p4chime:
+            return 1;
         case int8:
             return 1;
         case int16:
@@ -68,6 +71,7 @@ constexpr std::size_t chord_datatype_bytes(chordDataType type) {
 }
 
 const char* chord_datatype_string(chordDataType type);
+chordDataType chord_datatype_from_string(const std::string& type);
 
 // Maximum number of frequencies in metadata array
 const int CHORD_META_MAX_FREQ = 1024;
@@ -129,8 +133,8 @@ public:
 
     // Per-frequency arrays
 
-    // Number of coarse frequency channels. in this frame. The actual
-    // number of frequencies will be larger after
+    // Number of coarse frequency channels in this frame, or -1. The
+    // actual number of frequencies will be larger after
     // upchannelization. This field continues to track the original
     // number of coarse frequency channels.
     int nfreq;
@@ -203,7 +207,7 @@ public:
         assert(dim < CHORD_META_MAX_DIM);
         this->dim[dim] = size;
         // GCC helpfully tries to warn us that the destination string may end up not
-        // null-terminated, which we know.
+        // NUL-terminated, which we know.
 #pragma GCC diagnostic push
 #if GCC_VERSION > 80000
 #pragma GCC diagnostic ignored "-Wstringop-truncation"
@@ -214,7 +218,7 @@ public:
 
     void set_name(const std::string& name) {
         // GCC helpfully tries to warn us that the destination string may end up not
-        // null-terminated, which we know.
+        // NUL-terminated, which we know.
 #pragma GCC diagnostic push
 #if GCC_VERSION > 80000
 #pragma GCC diagnostic ignored "-Wstringop-truncation"

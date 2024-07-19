@@ -35,6 +35,8 @@ ASDF::scalar_type_id_t chord2asdf(const chordDataType type) {
             return ASDF::id_uint64;
         case int4p4:
             return ASDF::id_uint8; // TODO: Define ASDF int4+4 type
+        case int4p4chime:
+            return ASDF::id_uint8; // TODO: Define ASDF int4+4 type
         case int8:
             return ASDF::id_int8;
         case int16:
@@ -255,32 +257,37 @@ public:
 
                 // Describe metadata
 
-                auto coarse_freq = std::make_shared<ASDF::sequence>();
-                for (int freq = 0; freq < meta->nfreq; ++freq)
-                    coarse_freq->push_back(
-                        std::make_shared<ASDF::int_entry>(meta->coarse_freq[freq]));
-                group->emplace("coarse_freq", coarse_freq);
+                if (meta->nfreq >= 0) {
+                    auto coarse_freq = std::make_shared<ASDF::sequence>();
+                    for (int freq = 0; freq < meta->nfreq; ++freq)
+                        coarse_freq->push_back(
+                            std::make_shared<ASDF::int_entry>(meta->coarse_freq[freq]));
+                    group->emplace("coarse_freq", coarse_freq);
 
-                auto freq_upchan_factor = std::make_shared<ASDF::sequence>();
-                for (int freq = 0; freq < meta->nfreq; ++freq)
-                    freq_upchan_factor->push_back(
-                        std::make_shared<ASDF::int_entry>(meta->freq_upchan_factor[freq]));
-                group->emplace("freq_upchan_factor", freq_upchan_factor);
+                    auto freq_upchan_factor = std::make_shared<ASDF::sequence>();
+                    for (int freq = 0; freq < meta->nfreq; ++freq)
+                        freq_upchan_factor->push_back(
+                            std::make_shared<ASDF::int_entry>(meta->freq_upchan_factor[freq]));
+                    group->emplace("freq_upchan_factor", freq_upchan_factor);
+                }
 
-                group->emplace("sample0_offset",
-                               std::make_shared<ASDF::int_entry>(meta->sample0_offset));
+                if (meta->sample0_offset >= 0)
+                    group->emplace("sample0_offset",
+                                   std::make_shared<ASDF::int_entry>(meta->sample0_offset));
 
-                auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
-                for (int freq = 0; freq < meta->nfreq; ++freq)
-                    half_fpga_sample0->push_back(
-                        std::make_shared<ASDF::int_entry>(meta->half_fpga_sample0[freq]));
-                group->emplace("half_fpga_sample0", half_fpga_sample0);
+                if (meta->nfreq >= 0) {
+                    auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
+                    for (int freq = 0; freq < meta->nfreq; ++freq)
+                        half_fpga_sample0->push_back(
+                            std::make_shared<ASDF::int_entry>(meta->half_fpga_sample0[freq]));
+                    group->emplace("half_fpga_sample0", half_fpga_sample0);
 
-                auto time_downsampling_fpga = std::make_shared<ASDF::sequence>();
-                for (int freq = 0; freq < meta->nfreq; ++freq)
-                    time_downsampling_fpga->push_back(
-                        std::make_shared<ASDF::int_entry>(meta->time_downsampling_fpga[freq]));
-                group->emplace("time_downsampling_fpga", time_downsampling_fpga);
+                    auto time_downsampling_fpga = std::make_shared<ASDF::sequence>();
+                    for (int freq = 0; freq < meta->nfreq; ++freq)
+                        time_downsampling_fpga->push_back(
+                            std::make_shared<ASDF::int_entry>(meta->time_downsampling_fpga[freq]));
+                    group->emplace("time_downsampling_fpga", time_downsampling_fpga);
+                }
 
                 auto dim_names = std::make_shared<ASDF::sequence>();
                 for (int d = 0; d < ndims; ++d)

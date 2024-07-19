@@ -13,7 +13,7 @@
 .address_size 64
 
 	// .globl	_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE // -- Begin function _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE
-.extern .func julia_AssertionError_9957
+.extern .func julia_AssertionError_9959
 ()
 ;
 .func gpu_report_exception
@@ -88,13 +88,13 @@ $L__BB0_4:                              // %L26
 	st.global.u32 	[%rd2], %r22;
 	setp.gt.u32 	%p3, %r8, 65535;
 	@%p3 bra 	$L__BB0_9;
-// %bb.5:                               // %L133
+// %bb.5:                               // %L131
 	ld.param.u32 	%r9, [_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE_param_2];
 	setp.lt.s32 	%p4, %r9, %r8;
 	setp.gt.s32 	%p5, %r9, 131071;
 	or.pred  	%p6, %p4, %p5;
 	@%p6 bra 	$L__BB0_9;
-// %bb.6:                               // %L140
+// %bb.6:                               // %L138
 	ld.param.u32 	%r10, [_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE_param_3];
 	sub.s32 	%r23, %r9, %r8;
 	and.b32  	%r24, %r23, 255;
@@ -102,20 +102,20 @@ $L__BB0_4:                              // %L26
 	setp.gt.u32 	%p8, %r10, 511;
 	or.pred  	%p9, %p7, %p8;
 	@%p9 bra 	$L__BB0_9;
-// %bb.7:                               // %L151
+// %bb.7:                               // %L149
 	ld.param.u32 	%r11, [_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE_param_4];
 	setp.lt.s32 	%p10, %r11, %r10;
 	setp.gt.s32 	%p11, %r11, 1023;
 	or.pred  	%p12, %p10, %p11;
 	@%p12 bra 	$L__BB0_9;
-// %bb.8:                               // %L158
+// %bb.8:                               // %L156
 	sub.s32 	%r25, %r11, %r10;
 	and.b32  	%r26, %r25, 1;
 	setp.eq.b32 	%p13, %r26, 1;
 	mov.pred 	%p14, 0;
 	xor.pred  	%p15, %p13, %p14;
 	@%p15 bra 	$L__BB0_10;
-$L__BB0_9:                              // %L180
+$L__BB0_9:                              // %L177
 	mov.u32 	%r308, 2;
 	st.global.u32 	[%rd2], %r308;
 	mov.u64 	%rd13, exception2780;
@@ -204,11 +204,11 @@ $L__BB0_3:                              // %L24
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_10:                             // %L273
+$L__BB0_10:                             // %L269
 	ld.param.u32 	%r12, [_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE_param_5];
 	setp.lt.s32 	%p16, %r12, 0;
 	@%p16 bra 	$L__BB0_12;
-// %bb.11:                              // %L275
+// %bb.11:                              // %L271
 	ld.param.u32 	%r13, [_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE_param_6];
 	setp.le.s32 	%p17, %r12, %r13;
 	setp.lt.s32 	%p18, %r13, 65;
@@ -311,7 +311,7 @@ $L__BB0_13:                             // %pass271
 	{ // callseq 4, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_9957, 
+	julia_AssertionError_9959, 
 	(
 	);
 	} // callseq 4
@@ -343,7 +343,7 @@ $L__BB0_13:                             // %pass271
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_12:                             // %L288
+$L__BB0_12:                             // %L283
 	mov.u32 	%r307, 3;
 	st.global.u32 	[%rd2], %r307;
 	mov.u64 	%rd11, exception2780;

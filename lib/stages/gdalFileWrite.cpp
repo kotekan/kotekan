@@ -1,7 +1,10 @@
+#include "gdalFiles.hpp"
+
 #include <Stage.hpp>
 #include <StageFactory.hpp>
 #include <cassert>
 #include <chordMetadata.hpp>
+#include <complex>
 #include <cstdint>
 #include <errno.h>
 #include <errors.h>
@@ -16,56 +19,13 @@
 #include <sstream>
 #include <string>
 #include <sys/stat.h>
+#include <type_traits>
 #include <unistd.h>
 #include <utility>
 #include <vector>
 #include <visUtil.hpp>
 
-namespace {
-GDALDataType chord2gdal(const chordDataType type) {
-    switch (type) {
-        case uint4p4:
-            return GDT_Byte; // TODO: Define GDAL uint4+4 type
-        case uint8:
-            return GDT_Byte;
-        case uint16:
-            return GDT_UInt16;
-        case uint32:
-            return GDT_UInt32;
-        case uint64:
-            return GDT_UInt64;
-        case int4p4:
-            return GDT_Byte; // TODO: Define GDAL int4+4 type
-        case int8:
-            return GDT_Int8;
-        case int16:
-            return GDT_Int16;
-        case int32:
-            return GDT_Int32;
-        case int64:
-            return GDT_Int64;
-        case float16:
-            return GDT_UInt16; // TODO: Define GDAL float16 type
-        case float32:
-            return GDT_Float32;
-        case float64:
-            return GDT_Float64;
-        default:
-            assert(0);
-    }
-}
-
-std::vector<const char*> convert_to_cstring_list(const std::vector<std::string>& strings) {
-    std::vector<const char*> result;
-    // Convert strings to C strings
-    for (const auto& str : strings)
-        result.push_back(str.c_str());
-    // Add trailing NULL
-    result.push_back(nullptr);
-    return result;
-}
-
-} // namespace
+using namespace gdal;
 
 /**
  * @class gdalFileWrite
@@ -165,9 +125,6 @@ public:
                 const auto driver = driver_manager->GetDriverByName(driver_name.c_str());
 
                 // Define file name
-                std::ostringstream ibuf;
-                ibuf << std::setw(8) << std::setfill('0') << frame_counter;
-                const std::string iteration = ibuf.str();
                 std::ostringstream buf;
                 buf << base_dir << "/";
                 if (prefix_hostname) {
@@ -179,99 +136,221 @@ public:
                     << ".gdal";
                 const std::string full_path = buf.str();
 
+                // Create directory if necessary
+                int ierr = mkdir(base_dir.c_str(), 0777);
+                if (ierr) {
+                    if (errno != EEXIST && errno != EISDIR) {
+                        const char* const msg = strerror(errno);
+                        FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(),
+                                    msg);
+                    }
+                }
+
                 // Create GDAL file (dataset)
                 const std::vector<std::string> root_group_options{};
                 const auto root_group_options_c = convert_to_cstring_list(root_group_options);
-                const std::vector<std::string> options{"FORMAT=ZARR_V3"};
+                const std::vector<std::string> options{
+                    "FORMAT=ZARR_V3",
+                };
                 const auto options_c = convert_to_cstring_list(options);
                 const auto dataset = std::unique_ptr<GDALDataset>(driver->CreateMultiDimensional(
                     full_path.c_str(), root_group_options_c.data(), options_c.data()));
+                if (!dataset)
+                    FATAL_ERROR("Could not create GDAL file {:s}", full_path);
 
                 const auto group = dataset->GetRootGroup();
 
+                // Write metadata (attributes)
+
+                {
+                    const auto chord_metadata_version_attribute =
+                        group->CreateAttribute("chord_metadata_version", std::vector<GUInt64>{2},
+                                               GDALExtendedDataType::Create(GDT_Int32));
+                    const bool success = chord_metadata_version_attribute->Write(
+                        chord_metadata_version.data(), sizeof chord_metadata_version);
+                    assert(success);
+                }
+
+                if (meta->nfreq >= 0) {
+                    const auto nfreq = group->CreateAttribute(
+                        "nfreq", std::vector<GUInt64>{},
+                        GDALExtendedDataType::Create(get_gdal_datatype(meta->nfreq)));
+                    const bool success = nfreq->Write(&nfreq, sizeof meta->nfreq);
+                    assert(success);
+                }
+
+                if (meta->nfreq >= 0) {
+                    const auto coarse_freq = group->CreateAttribute(
+                        "coarse_freq", std::vector<GUInt64>{GUInt64(meta->nfreq)},
+                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->coarse_freq)));
+                    const bool success = coarse_freq->Write(
+                        meta->coarse_freq, meta->nfreq * sizeof *meta->coarse_freq);
+                    assert(success);
+                }
+
+                if (meta->nfreq >= 0) {
+                    const auto freq_upchan_factor = group->CreateAttribute(
+                        "freq_upchan_factor", std::vector<GUInt64>{GUInt64(meta->nfreq)},
+                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->freq_upchan_factor)));
+                    const bool success = freq_upchan_factor->Write(
+                        meta->freq_upchan_factor, meta->nfreq * sizeof *meta->freq_upchan_factor);
+                    assert(success);
+                }
+
+                if (meta->sample0_offset >= 0) {
+                    const auto sample0_offset = group->CreateAttribute(
+                        "sample0_offset", std::vector<GUInt64>{},
+                        GDALExtendedDataType::Create(get_gdal_datatype(meta->sample0_offset)));
+                    const bool success =
+                        sample0_offset->Write(&meta->sample0_offset, sizeof meta->sample0_offset);
+                    assert(success);
+                }
+
+                if (meta->nfreq >= 0) {
+                    const auto half_fpga_sample0 = group->CreateAttribute(
+                        "half_fpga_sample0", std::vector<GUInt64>{GUInt64(meta->nfreq)},
+                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->half_fpga_sample0)));
+                    const bool success = half_fpga_sample0->Write(
+                        meta->half_fpga_sample0, meta->nfreq * sizeof *meta->half_fpga_sample0);
+                    assert(success);
+                }
+
+                if (meta->nfreq >= 0) {
+                    const auto time_downsampling_fpga = group->CreateAttribute(
+                        "time_downsampling_fpga", std::vector<GUInt64>{GUInt64(meta->nfreq)},
+                        GDALExtendedDataType::Create(
+                            get_gdal_datatype(*meta->time_downsampling_fpga)));
+                    const bool success = time_downsampling_fpga->Write(
+                        meta->time_downsampling_fpga,
+                        meta->nfreq * sizeof *meta->time_downsampling_fpga);
+                    assert(success);
+                }
+
+                if (meta->ndishes >= 0) {
+                    const auto ndishes = group->CreateAttribute(
+                        "ndishes", std::vector<GUInt64>{},
+                        GDALExtendedDataType::Create(get_gdal_datatype(meta->ndishes)));
+                    const bool success = ndishes->Write(&meta->ndishes, sizeof meta->ndishes);
+                    assert(success);
+                }
+
+                std::shared_ptr<GDALDimension> dishM, dishN;
+                if (meta->dish_index) {
+                    // const auto dish_index = group->CreateAttribute(
+                    //     "dish_index",
+                    //     std::vector<GUInt64>{GUInt64(meta->n_dish_locations_ns),
+                    //                          GUInt64(meta->n_dish_locations_ew)},
+                    //     GDALExtendedDataType::Create(GDT_Int32));
+                    // dish_index->Write(meta->dish_index,
+                    //                   meta->n_dish_locations_ew * meta->n_dish_locations_ns);
+                    const auto datatype =
+                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->dish_index));
+                    dishM = group->CreateDimension("dishM", "", "", meta->n_dish_locations_ns);
+                    assert(dishM);
+                    dishN = group->CreateDimension("dishN", "", "", meta->n_dish_locations_ew);
+                    assert(dishN);
+                    const std::vector<std::shared_ptr<GDALDimension>> dimensions{dishM, dishN};
+                    assert(dimensions.at(0));
+                    assert(dimensions.at(1));
+                    const auto dish_index =
+                        group->CreateMDArray("dish_index", dimensions, datatype);
+                    assert(dish_index);
+                    const std::vector<GUInt64> arrayStart{0, 0};
+                    const std::vector<std::size_t> count{std::size_t(meta->n_dish_locations_ns),
+                                                         std::size_t(meta->n_dish_locations_ew)};
+                    const bool success = dish_index->Write(arrayStart.data(), count.data(), nullptr,
+                                                           nullptr, datatype, meta->dish_index);
+                    assert(success);
+                }
+
+                // Array rank
+                const int ndims = meta->dims;
+
+                INFO("name={} type={} typesize={} ndims={} dims={}", meta->get_name(),
+                     meta->get_type_string(), chord_datatype_bytes(meta->type), meta->dims,
+                     meta->get_dimensions_string());
+                for (int d = 0; d < ndims; ++d)
+                    INFO("    [{}] name={} size={}", d, meta->get_dimension_name(d), meta->dim[d]);
+                INFO("    buffer addr={} size={}", (const void*)frame, buffer->frame_size);
+
                 // Array element type
                 const auto datatype = GDALExtendedDataType::Create(chord2gdal(meta->type));
+                const std::int64_t datatypesize = GDALGetDataTypeSizeBytes(chord2gdal(meta->type));
+                assert(datatypesize == std::int64_t(chord_datatype_bytes(meta->type)));
 
                 // Array size
-                const int ndims = meta->dims;
                 std::vector<std::shared_ptr<GDALDimension>> dimensions(ndims);
                 for (int d = 0; d < ndims; ++d) {
                     const std::string type;      // unused
                     const std::string direction; // unused
-                    dimensions.at(d) = group->CreateDimension(
-                        meta->get_dimension_name(d), type.c_str(), direction.c_str(), meta->dim[d]);
+                    if (meta->get_dimension_name(d) == "dishM" && dishM)
+                        dimensions.at(d) = dishM;
+                    else if (meta->get_dimension_name(d) == "dishN" && dishN)
+                        dimensions.at(d) = dishN;
+                    else
+                        dimensions.at(d) = group->CreateDimension(meta->get_dimension_name(d), type,
+                                                                  direction, meta->dim[d]);
+                    assert(dimensions.at(d));
+                }
+
+                // Choose chunk (block) size
+                std::vector<std::int64_t> blocksize(ndims);
+                for (int d = 0; d < ndims; ++d)
+                    blocksize.at(d) = meta->dim[d];
+                std::int64_t size = datatypesize;
+                for (int d = 0; d < ndims; ++d)
+                    size *= meta->dim[d];
+                const std::int64_t maxsize = std::int64_t(1024) * 1024 * 1024; // 1 GByte
+                if (size > maxsize) {
+                    const std::int64_t ratio = (size + maxsize - 1) / maxsize;
+                    assert(blocksize.at(0) >= ratio);
+                    blocksize.at(0) /= ratio;
                 }
 
                 // Create GDAL array
                 std::ostringstream bbuf;
                 bbuf << "BLOCKSIZE=";
                 for (int d = 0; d < ndims; ++d)
-                    bbuf << (d == 0 ? "" : ",") << meta->dim[d];
-                const std::string blocksize = bbuf.str();
+                    bbuf << (d == 0 ? "" : ",") << blocksize.at(d);
+                const std::string blocksize_str = bbuf.str();
                 const std::vector<std::string> array_options{
                     "COMPRESS=BLOSC",
-                    blocksize.c_str(),
+                    blocksize_str,
                     "BLOSC_CLEVEL=9",
                     "BLOSC_SHUFFLE=BIT",
                 };
                 const auto array_options_c = convert_to_cstring_list(array_options);
-                const auto mdarray = group->CreateMDArray(meta->get_name().c_str(), dimensions,
-                                                          datatype, array_options_c.data());
+                const auto mdarray = group->CreateMDArray(meta->get_name(), dimensions, datatype,
+                                                          array_options_c.data());
+                assert(mdarray);
 
-                // Write metadata (attributes)
-                const auto coarse_freq = mdarray->CreateAttribute(
-                    "coarse_freq", std::vector<GUInt64>{GUInt64(meta->nfreq)},
-                    GDALExtendedDataType::Create(GDT_Int32));
-                coarse_freq->Write(meta->coarse_freq, meta->nfreq);
-
-                const auto freq_upchan_factor = mdarray->CreateAttribute(
-                    "freq_upchan_factor", std::vector<GUInt64>{GUInt64(meta->nfreq)},
-                    GDALExtendedDataType::Create(GDT_Int32));
-                freq_upchan_factor->Write(meta->freq_upchan_factor, meta->nfreq);
-
-                const auto sample0_offset =
-                    mdarray->CreateAttribute("sample0_offset", std::vector<GUInt64>{},
-                                             GDALExtendedDataType::Create(GDT_Int64));
-                sample0_offset->Write(&meta->sample0_offset, 1);
-
-                const auto half_fpga_sample0 = mdarray->CreateAttribute(
-                    "half_fpga_sample0", std::vector<GUInt64>{GUInt64(meta->nfreq)},
-                    GDALExtendedDataType::Create(GDT_Int64));
-                half_fpga_sample0->Write(meta->half_fpga_sample0, meta->nfreq);
-
-                const auto time_downsampling_fpga = mdarray->CreateAttribute(
-                    "time_downsampling_fpga", std::vector<GUInt64>{GUInt64(meta->nfreq)},
-                    GDALExtendedDataType::Create(GDT_Int64));
-                time_downsampling_fpga->Write(meta->time_downsampling_fpga, meta->nfreq);
-
-                if (meta->ndishes >= 0) {
-                    const auto ndishes = mdarray->CreateAttribute(
-                        "ndishes", std::vector<GUInt64>{}, GDALExtendedDataType::Create(GDT_Int32));
-                    ndishes->Write(&meta->ndishes, 1);
-                }
-
-                if (meta->dish_index) {
-                    const auto dish_index = mdarray->CreateAttribute(
-                        "dish_index",
-                        std::vector<GUInt64>{GUInt64(meta->n_dish_locations_ns),
-                                             GUInt64(meta->n_dish_locations_ew)},
-                        GDALExtendedDataType::Create(GDT_Int32));
-                    dish_index->Write(meta->dish_index,
-                                      meta->n_dish_locations_ew * meta->n_dish_locations_ns);
+                // Describe datatype
+                {
+                    const std::string type_value = chord_datatype_string(meta->type);
+                    const auto type_datatype =
+                        GDALExtendedDataType::CreateString(type_value.size());
+                    const auto type =
+                        mdarray->CreateAttribute("type", std::vector<GUInt64>{}, type_datatype);
+                    assert(type);
+                    const bool success = type->Write(type_value.c_str());
+                    assert(success);
                 }
 
                 // Write data
-                const std::vector<GUInt64> arrayStart(ndims, 0);
-                std::vector<std::size_t> count(ndims);
-                for (int d = 0; d < ndims; ++d)
-                    count.at(d) = meta->dim[d];
-                std::vector<GPtrDiff_t> bufferStride(ndims);
-                for (int d = 0; d < ndims; ++d)
-                    bufferStride.at(d) = meta->stride[d];
+                {
+                    const std::vector<GUInt64> arrayStart(ndims, 0);
+                    std::vector<std::size_t> count(ndims);
+                    for (int d = 0; d < ndims; ++d)
+                        count.at(d) = meta->dim[d];
+                    std::vector<GPtrDiff_t> bufferStride(ndims);
+                    for (int d = 0; d < ndims; ++d)
+                        bufferStride.at(d) = meta->stride[d];
 
-                const bool success = mdarray->Write(arrayStart.data(), count.data(), nullptr,
-                                                    bufferStride.data(), datatype, frame);
-                assert(success);
+                    const bool success = mdarray->Write(
+                        arrayStart.data(), count.data(), nullptr, bufferStride.data(), datatype,
+                        frame + datatypesize * meta->offset, frame, buffer->frame_size);
+                    assert(success);
+                }
 
             } // if !skip_writing
 

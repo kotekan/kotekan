@@ -114,10 +114,10 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
         out_meta->dims = 7;
         out_meta->set_array_dimension(0, num_subintegrations, "Tc");
         out_meta->set_array_dimension(1, _num_local_freq, "F");
-        out_meta->set_array_dimension(2, 2, "P");
-        out_meta->set_array_dimension(3, _num_elements / 2, "D");
-        out_meta->set_array_dimension(4, 2, "P");
-        out_meta->set_array_dimension(5, _num_elements / 2, "D");
+        out_meta->set_array_dimension(2, 2, "P2");
+        out_meta->set_array_dimension(3, _num_elements / 2, "D2");
+        out_meta->set_array_dimension(4, 2, "P1");
+        out_meta->set_array_dimension(5, _num_elements / 2, "D1");
         out_meta->set_array_dimension(6, 2, "C");
         for (int d = out_meta->dims - 1; d >= 0; --d)
             if (d == out_meta->dims - 1)

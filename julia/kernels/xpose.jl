@@ -447,7 +447,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     Dict(
                         "name" => "Ein",
                         "kotekan_name" => "gpu_mem_voltage",
-                        "type" => "int4p4",
+                        "type" => "int4p4chime",
                         "axes" => [
                             Dict("label" => "Dshort", "length" => Dshort),
                             Dict("label" => "Tshort", "length" => Tshort),
@@ -462,7 +462,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     Dict(
                         "name" => "E",
                         "kotekan_name" => "gpu_mem_voltage",
-                        "type" => "int4p4",
+                        "type" => "int4p4chime",
                         "axes" => [
                             Dict("label" => "D", "length" => D),
                             Dict("label" => "P", "length" => P),

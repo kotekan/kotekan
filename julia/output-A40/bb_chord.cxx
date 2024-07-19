@@ -131,7 +131,7 @@ private:
     //
     // E: gpu_mem_voltage
     static constexpr const char* E_name = "E";
-    static constexpr chordDataType E_type = int4p4;
+    static constexpr chordDataType E_type = int4p4chime;
     enum E_indices {
         E_index_D,
         E_index_P,

@@ -333,10 +333,10 @@ void FEngine::main_thread() {
     jl_value_t* refs = nullptr;
     jl_function_t* setindex = nullptr;
     kotekan::juliaCall([&]() {
-      refs = jl_eval_string("refs = IdDict()");
-      assert(refs);
-      setindex = jl_get_function(jl_base_module, "setindex!");
-      assert(setindex);
+        refs = jl_eval_string("refs = IdDict()");
+        assert(refs);
+        setindex = jl_get_function(jl_base_module, "setindex!");
+        assert(setindex);
     });
 
     jl_value_t* FEngine_setup = nullptr;
@@ -415,7 +415,6 @@ void FEngine::main_thread() {
                         dish_positions_buffer->frame_size, dish_positions_frame_size);
         assert(std::ptrdiff_t(dish_positions_buffer->frame_size) == dish_positions_frame_size);
         dish_positions_buffer->allocate_new_metadata_object(dish_positions_frame_id);
-        set_fpga_seq_num(dish_positions_buffer, dish_positions_frame_id, -1);
 
         // Fill buffer
         DEBUG("[{:d}] Filling dish positions buffer...", dish_positions_frame_index);
@@ -504,7 +503,6 @@ void FEngine::main_thread() {
         assert(std::ptrdiff_t(bb_beam_positions_buffer->frame_size)
                == bb_beam_positions_frame_size);
         bb_beam_positions_buffer->allocate_new_metadata_object(bb_beam_positions_frame_id);
-        set_fpga_seq_num(bb_beam_positions_buffer, bb_beam_positions_frame_id, -1);
 
         // Fill buffer
         DEBUG("[{:d}] Filling baseband beam positions buffer...", bb_beam_positions_frame_index);
@@ -589,7 +587,6 @@ void FEngine::main_thread() {
                         A_frame_size);
         assert(std::ptrdiff_t(A_buffer->frame_size) == A_frame_size);
         A_buffer->allocate_new_metadata_object(A_frame_id);
-        set_fpga_seq_num(A_buffer, A_frame_id, -1);
 
         // Fill buffer
         DEBUG("[{:d}] Filling A buffer...", A_frame_index);
@@ -675,7 +672,6 @@ void FEngine::main_thread() {
                         s_frame_size);
         assert(std::ptrdiff_t(s_buffer->frame_size) == s_frame_size);
         s_buffer->allocate_new_metadata_object(s_frame_id);
-        set_fpga_seq_num(s_buffer, s_frame_id, -1);
 
         // Fill buffer
         DEBUG("[{:d}] Filling s buffer...", s_frame_index);
@@ -746,7 +742,6 @@ void FEngine::main_thread() {
                             G_buffers[Ufactor]->frame_size, U, G_frame_sizes[Ufactor]);
             assert(std::ptrdiff_t(G_buffers[Ufactor]->frame_size) == wanted_frame_size);
             G_buffers[Ufactor]->allocate_new_metadata_object(G_frame_id);
-            set_fpga_seq_num(G_buffers[Ufactor], G_frame_id, -1);
 
             DEBUG("[{:d}] Filling G_U{:d} buffer...", G_frame_index, U);
             const int num_local_channels =
@@ -812,7 +807,6 @@ void FEngine::main_thread() {
                             W1_buffers[Ufactor]->frame_size, U, W1_frame_sizes[Ufactor]);
             assert(std::ptrdiff_t(W1_buffers[Ufactor]->frame_size) == wanted_frame_size);
             W1_buffers[Ufactor]->allocate_new_metadata_object(W1_frame_id);
-            set_fpga_seq_num(W1_buffers[Ufactor], W1_frame_id, -1);
 
             DEBUG("[{:d}] Filling W1 buffer for U={:d}...", W1_frame_index, U);
             const int num_local_channels =
@@ -902,7 +896,6 @@ void FEngine::main_thread() {
                         W2_frame_size);
         assert(std::ptrdiff_t(W2_buffer->frame_size) == W2_frame_size);
         W2_buffer->allocate_new_metadata_object(W2_frame_id);
-        set_fpga_seq_num(W2_buffer, W2_frame_id, -1);
 
         DEBUG("[{:d}] Filling W2 buffer...", W2_frame_index);
         float16_t* __restrict__ const W2 = (float16_t*)W2_frame;
@@ -1025,9 +1018,9 @@ void FEngine::main_thread() {
         W2_metadata->dims = 4;
         assert(W2_metadata->dims <= CHORD_META_MAX_DIM);
         std::strncpy(W2_metadata->dim_name[0], "Fbar", sizeof W2_metadata->dim_name[0]);
-        std::strncpy(W2_metadata->dim_name[2], "R", sizeof W2_metadata->dim_name[1]);
-        std::strncpy(W2_metadata->dim_name[3], "beamQ", sizeof W2_metadata->dim_name[2]);
-        std::strncpy(W2_metadata->dim_name[4], "beamP", sizeof W2_metadata->dim_name[3]);
+        std::strncpy(W2_metadata->dim_name[1], "R", sizeof W2_metadata->dim_name[1]);
+        std::strncpy(W2_metadata->dim_name[2], "beamQ", sizeof W2_metadata->dim_name[2]);
+        std::strncpy(W2_metadata->dim_name[3], "beamP", sizeof W2_metadata->dim_name[3]);
         W2_metadata->dim[0] = upchan_all_max_output_channel - upchan_all_min_output_channel;
         W2_metadata->dim[1] = frb2_num_beams_ns * frb2_num_beams_ew;
         W2_metadata->dim[2] = 2 * num_dish_locations_ew;
@@ -1078,7 +1071,6 @@ void FEngine::main_thread() {
                             E_frame_size);
             assert(std::ptrdiff_t(E_buffer->frame_size) == E_frame_size);
             E_buffer->allocate_new_metadata_object(E_frame_id);
-            set_fpga_seq_num(E_buffer, E_frame_id, seq_num);
 
             DEBUG("[{:d}] Filling E buffer...", E_frame_index);
             profile_range_push("E_frame::fill");
@@ -1123,7 +1115,7 @@ void FEngine::main_thread() {
                 get_chord_metadata(E_buffer, E_frame_id);
             E_metadata->frame_counter = E_frame_index;
             std::strncpy(E_metadata->name, "E", sizeof E_metadata->name);
-            E_metadata->type = int4p4;
+            E_metadata->type = int4p4chime;
             E_metadata->dims = 4;
             assert(E_metadata->dims <= CHORD_META_MAX_DIM);
             std::strncpy(E_metadata->dim_name[0], "T", sizeof E_metadata->dim_name[0]);
@@ -1174,7 +1166,6 @@ void FEngine::main_thread() {
                             J_frame_size);
             assert(std::ptrdiff_t(J_buffer->frame_size) == J_frame_size);
             J_buffer->allocate_new_metadata_object(J_frame_id);
-            set_fpga_seq_num(J_buffer, J_frame_id, seq_num);
 
             // Fill buffer
             if (!skip_julia) {
@@ -1257,7 +1248,6 @@ void FEngine::main_thread() {
                             I1_frame_size);
             assert(std::ptrdiff_t(I1_buffer->frame_size) == I1_frame_size);
             I1_buffer->allocate_new_metadata_object(I1_frame_id);
-            set_fpga_seq_num(I1_buffer, I1_frame_id, seq_num);
 
             if (!skip_julia) {
                 DEBUG("[{:d}] Filling I1 buffer...", I1_frame_index);

@@ -2411,7 +2411,7 @@ function fix_ptx_kernel()
                 Dict(
                     "name" => "Ebar",
                     "kotekan_name" => "gpu_mem_voltage",
-                    "type" => "int4p4",
+                    "type" => "int4p4chime",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),

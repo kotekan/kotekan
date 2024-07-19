@@ -57,6 +57,7 @@ add_library(
     cudaRechunk.cpp
     cudaCopyFromRingbuffer.cpp
     cudaCopyToRingbuffer.cpp
+    cudaTranspose2048_chime.cpp
     cudaUpchannelizer_chime_U2.cpp
     cudaUpchannelizer_chime_U4.cpp
     cudaUpchannelizer_chime_U8.cpp

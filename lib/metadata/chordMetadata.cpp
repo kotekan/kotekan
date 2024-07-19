@@ -16,6 +16,8 @@ const char* chord_datatype_string(chordDataType type) {
             return "uint64";
         case int4p4:
             return "int4p4";
+        case int4p4chime:
+            return "int4p4chime";
         case int8:
             return "int8";
         case int16:
@@ -34,6 +36,38 @@ const char* chord_datatype_string(chordDataType type) {
         default:
             return "<unknown-type>";
     }
+}
+
+chordDataType chord_datatype_from_string(const std::string& type) {
+    if (type == "uint4p4")
+        return uint4p4;
+    if (type == "uint8")
+        return uint8;
+    if (type == "uint16")
+        return uint16;
+    if (type == "uint32")
+        return uint32;
+    if (type == "uint64")
+        return uint64;
+    if (type == "int4p4")
+        return int4p4;
+    if (type == "int4p4chime")
+        return int4p4chime;
+    if (type == "int8")
+        return int8;
+    if (type == "int16")
+        return int16;
+    if (type == "int32")
+        return int32;
+    if (type == "int64")
+        return int64;
+    if (type == "float16")
+        return float16;
+    if (type == "float32")
+        return float32;
+    if (type == "float64")
+        return float64;
+    return unknown_type;
 }
 
 chordMetadata::chordMetadata() :

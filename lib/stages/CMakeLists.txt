@@ -18,8 +18,9 @@ add_library(
     rawFileRead.cpp
     rawFileWrite.cpp
     $<$<BOOL:${USE_ASDF}>:asdfFileWrite.cpp>
-    #TODO $<$<BOOL:${USE_GDAL}>:gdalFileRead.cpp>
+    $<$<BOOL:${USE_GDAL}>:gdalFileRead.cpp>
     $<$<BOOL:${USE_GDAL}>:gdalFileWrite.cpp>
+    $<$<BOOL:${USE_GDAL}>:gdalFiles.cpp>
     $<$<BOOL:${USE_HDF5}>:hdf5FileWrite.cpp>
     vdifStream.cpp
     recvSingleDishVDIF.cpp

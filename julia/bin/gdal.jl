@@ -77,7 +77,7 @@ function write_attribute(mdarrayh::GDAL.GDALMDArrayH, name::AbstractString, valu
     return nothing
 end
 
-function write_attribute(mdarrayh::GDAL.GDALMDArrayH, name::AbstractString, values::Array{<:Integer})
+function write_attribute(mdarrayh::GDAL.GDALMDArrayH, name::AbstractString, values::AbstractArray{<:Integer})
     datatypeh = GDAL.gdalextendeddatatypecreate(GDAL.GDT_Int64)
     check_last_error()
     @assert datatypeh != C_NULL
@@ -96,7 +96,7 @@ function write_attribute(mdarrayh::GDAL.GDALMDArrayH, name::AbstractString, valu
     return nothing
 end
 
-function write_attribute(mdarrayh::GDAL.GDALMDArrayH, name::AbstractString, values::Array{<:Real})
+function write_attribute(mdarrayh::GDAL.GDALMDArrayH, name::AbstractString, values::AbstractArray{<:Real})
     datatypeh = GDAL.gdalextendeddatatypecreate(GDAL.GDT_Float64)
     check_last_error()
     @assert datatypeh != C_NULL

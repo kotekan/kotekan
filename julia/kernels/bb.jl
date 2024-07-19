@@ -1247,7 +1247,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                     Dict(
                         "name" => "E",
                         "kotekan_name" => "gpu_mem_voltage",
-                        "type" => "int4p4",
+                        "type" => "int4p4chime",
                         "axes" => [
                             Dict("label" => "D", "length" => D),
                             Dict("label" => "P", "length" => P),

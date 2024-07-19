@@ -205,7 +205,7 @@ private:
     //
     // Ebar: gpu_mem_voltage
     static constexpr const char* Ebar_name = "Ebar";
-    static constexpr chordDataType Ebar_type = int4p4;
+    static constexpr chordDataType Ebar_type = int4p4chime;
     enum Ebar_indices {
         Ebar_index_D,
         Ebar_index_P,

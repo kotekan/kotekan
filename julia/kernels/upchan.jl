@@ -1930,7 +1930,7 @@ function fix_ptx_kernel()
                 Dict(
                     "name" => "E",
                     "kotekan_name" => "gpu_mem_input_voltage",
-                    "type" => "int4p4",
+                    "type" => "int4p4chime",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),
@@ -1944,7 +1944,7 @@ function fix_ptx_kernel()
                 Dict(
                     "name" => "Ebar",
                     "kotekan_name" => "gpu_mem_output_voltage",
-                    "type" => "int4p4",
+                    "type" => "int4p4chime",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),
