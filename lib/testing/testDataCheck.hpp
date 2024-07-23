@@ -37,7 +37,7 @@ private:
     Buffer* first_buf;
     Buffer* second_buf;
     int num_frames_to_test;
-    int max_num_errors;
+    int max_num_errors_logged;
     double epsilon;
 };
 
@@ -52,7 +52,7 @@ testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const std::string&
     second_buf->register_consumer(unique_name);
 
     num_frames_to_test = config.get_default<int32_t>(unique_name, "num_frames_to_test", 0);
-    max_num_errors = config.get_default<int32_t>(unique_name, "max_num_errors", 100);
+    max_num_errors_logged = config.get_default<int32_t>(unique_name, "max_num_errors_logged", 100);
     epsilon = config.get_default<double>(unique_name, "epsilon",
                                          std::numeric_limits<A_Type>::epsilon() * (A_Type)5.0);
 }
@@ -89,7 +89,7 @@ void testDataCheck<A_Type>::main_thread() {
             break;
         DEBUG("testDataCheck: Got the second buffer {:s}[{:d}]", second_buf->buffer_name,
               second_buf_id);
-        bool error = false;
+
         num_errors = 0;
 
         uint32_t num_elements = first_buf->frame_size / sizeof(A_Type);
@@ -118,9 +118,8 @@ void testDataCheck<A_Type>::main_thread() {
                 }
 
                 if (!almost_equal(v1, v2, epsilon)) {
-                    error = true;
                     num_errors += 1;
-                    if (num_errors < max_num_errors) {
+                    if (num_errors < max_num_errors_logged) {
                         ERROR("{:s}[{:d}][{:d}] != {:s}[{:d}][{:d}]; values: ({:f}, {:f}), "
                               "epsilon: {:f}, "
                               "abs(x-y): {:f}, epsilon * abs(x+y): {:f}",
@@ -132,9 +131,8 @@ void testDataCheck<A_Type>::main_thread() {
                 }
             } else {
                 if (first_value != second_value) {
-                    error = true;
                     num_errors += 1;
-                    if (num_errors < max_num_errors)
+                    if (num_errors < max_num_errors_logged)
                         ERROR("{:s}[{:d}][{:d}] != {:s}[{:d}][{:d}]; values: ({:}, {:})",
                               first_buf->buffer_name, first_buf_id, i, second_buf->buffer_name,
                               second_buf_id, i, format_nice_string(first_value),
@@ -143,7 +141,7 @@ void testDataCheck<A_Type>::main_thread() {
             }
         }
 
-        if (!error) {
+        if (num_errors > 0) {
             INFO("The buffers {:s}[{:d}] and {:s}[{:d}] contained values that were equal.", first_buf->buffer_name,
                  first_buf_id, second_buf->buffer_name, second_buf_id);
             if (use_almost_equal) {
@@ -170,7 +168,7 @@ void testDataCheck<A_Type>::main_thread() {
         frames++;
 
         if (num_frames_to_test == frames) {
-            if (!error) {
+            if (num_errors == 0) {
                 INFO("Test passed, exiting.");
                 TEST_PASSED();
             }
