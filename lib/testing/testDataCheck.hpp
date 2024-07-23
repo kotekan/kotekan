@@ -97,12 +97,7 @@ void testDataCheck<A_Type>::main_thread() {
         double rel_diff = 0.0;
         uint32_t num_nonzero = 0;
 
-        bool use_almost_equal = (epsilon != 0.0)
-                                && ((std::is_same<A_Type, float>::value)
-#if KOTEKAN_FLOAT16
-                                    || (std::is_same<A_Type, float16_t>::value)
-#endif
-                                );
+        bool use_almost_equal = !std::is_integral_v<A_Type> && (epsilon != 0.0);
 
         INFO(
             "Checking that the buffers {:s}[{:d}] and {:s}[{:d}] match, this could take a while...",
@@ -126,30 +121,30 @@ void testDataCheck<A_Type>::main_thread() {
                     error = true;
                     num_errors += 1;
                     if (num_errors < max_num_errors) {
-                        FATAL_ERROR("{:s}[{:d}][{:d}] != {:s}[{:d}][{:d}]; values: ({:f}, {:f}), "
-                                    "epsilon: {:f}, "
-                                    "abs(x-y): {:f}, epsilon * abs(x+y): {:f}",
-                                    first_buf->buffer_name, first_buf_id, i,
-                                    second_buf->buffer_name, second_buf_id, i, v1, v2, epsilon,
-                                    std::abs((float)(first_value - second_value)),
-                                    epsilon * std::abs((float)(first_value + second_value)));
+                        ERROR("{:s}[{:d}][{:d}] != {:s}[{:d}][{:d}]; values: ({:f}, {:f}), "
+                              "epsilon: {:f}, "
+                              "abs(x-y): {:f}, epsilon * abs(x+y): {:f}",
+                              first_buf->buffer_name, first_buf_id, i,
+                              second_buf->buffer_name, second_buf_id, i, v1, v2, epsilon,
+                              std::abs((float)(first_value - second_value)),
+                              epsilon * std::abs((float)(first_value + second_value)));
                     }
                 }
-            } else { // N2 numbers are int
-                // INFO("Checking non float numbers-----------");
+            } else {
                 if (first_value != second_value) {
-                    if (num_errors++ < max_num_errors)
+                    error = true;
+                    num_errors += 1;
+                    if (num_errors < max_num_errors)
                         ERROR("{:s}[{:d}][{:d}] != {:s}[{:d}][{:d}]; values: ({:}, {:})",
                               first_buf->buffer_name, first_buf_id, i, second_buf->buffer_name,
                               second_buf_id, i, format_nice_string(first_value),
                               format_nice_string(second_value));
-                    error = true;
                 }
             }
         }
 
         if (!error) {
-            INFO("The buffers {:s}[{:d}] and {:s}[{:d}] are equal", first_buf->buffer_name,
+            INFO("The buffers {:s}[{:d}] and {:s}[{:d}] contained values that were equal.", first_buf->buffer_name,
                  first_buf_id, second_buf->buffer_name, second_buf_id);
             if (use_almost_equal) {
                 INFO("Compared {:d} elements.  Average absolute difference: {:g}.  Average "
@@ -161,7 +156,9 @@ void testDataCheck<A_Type>::main_thread() {
                      rel_diff / std::max((uint32_t)1, num_nonzero));
             }
         } else {
-            INFO("Test failed, exiting!");
+            INFO("The buffers {:s}[{:d}] and {:s}[{:d}] contained values that were NOT equal!", first_buf->buffer_name,
+                 first_buf_id, second_buf->buffer_name, second_buf_id);
+            INFO("Test failed, exiting.");
             TEST_FAILED();
         }
 
@@ -174,7 +171,7 @@ void testDataCheck<A_Type>::main_thread() {
 
         if (num_frames_to_test == frames) {
             if (!error) {
-                INFO("Test passed, exiting!");
+                INFO("Test passed, exiting.");
                 TEST_PASSED();
             }
         } // frames
