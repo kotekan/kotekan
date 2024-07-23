@@ -26,7 +26,7 @@ struct Array {
 
     ssize_t strides[ArrayMaxDim];  // in units sizeof(T), not bytes
 
-    std::shared_ptr<T> base;  // FIXME generalize to shared_ptr<void>?
+    std::shared_ptr<void> base;
     int aflags = 0;
 
     // "Empty" arrays are size-zero objects containing null pointers.
@@ -215,8 +215,9 @@ Array<T>::Array(int ndim_, const ssize_t *shape_, int aflags_)
     }
 
     if (size != 0) {
-	base = af_alloc<T> (size, aflags);
-	data = base.get();
+	std::shared_ptr<T> p = af_alloc<T> (size, aflags);
+	data = p.get();
+	base = p;  // implicit conversion shared_ptr<T> -> shared_ptr<void>
     }
     else
 	data = nullptr;
@@ -253,8 +254,9 @@ Array<T>::Array(int ndim_, const ssize_t *shape_, const ssize_t *strides_, int a
     }
 
     if (size != 0) {
-	base = af_alloc<T> (nalloc, aflags);
-	data = base.get();
+	std::shared_ptr<T> p = af_alloc<T> (nalloc, aflags);
+	data = p.get();
+	base = p;  // implicit conversion shared_ptr<T> -> shared_ptr<void>
     }
     else
 	data = nullptr;

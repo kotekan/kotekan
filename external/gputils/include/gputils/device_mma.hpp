@@ -151,11 +151,33 @@ void mma_s8_m16_n8_k32(int d[4], const int a[4], const int b[2], const int c[4])
 
 
 // D = A*B + C
+__device__ __forceinline__
+void mma_b1_m8_n8_k128(int d[2], const int a[1], const int b[1], const int c[2])
+{
+    asm("mma.sync.aligned.m8n8k128.row.col.s32.b1.b1.s32.and.popc "
+        "{%0, %1}, "
+        "{%2}, "
+        "{%3}, "
+        "{%4, %5};" :
+        "=r" (d[0]), "=r" (d[1]) :
+        "r" (a[0]),
+        "r" (b[0]),
+        "r" (c[0]), "r" (c[1])
+    );
+}
+
+
+// D = A*B + C
 template<unsigned int F>
 __device__ __forceinline__
 void mma_sp_f16_m16_n8_k16(__half2 d[2], const __half2 a[2], const __half2 b[2], const __half2 c[2], unsigned int e)
 {
-    asm("mma.sp.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 "
+    asm(
+#if CUDART_VERSION >= 12050
+        "mma.sp::ordered_metadata.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 "
+#else
+        "mma.sp.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 "
+#endif
         "{%0, %1}, "
         "{%2, %3}, "
         "{%4, %5}, "
@@ -177,7 +199,12 @@ template<unsigned int F>
 __device__ __forceinline__
 void mma_sp_f16_m16_n8_k32(__half2 d[2], const __half2 a[4], const __half2 b[4], const __half2 c[2], unsigned int e)
 {
-    asm("mma.sp.sync.aligned.m16n8k32.row.col.f16.f16.f16.f16 "
+    asm(
+#if CUDART_VERSION >= 12050
+        "mma.sp::ordered_metadata.sync.aligned.m16n8k32.row.col.f16.f16.f16.f16 "
+#else
+        "mma.sp.sync.aligned.m16n8k32.row.col.f16.f16.f16.f16 "
+#endif
         "{%0, %1}, "
         "{%2, %3, %4, %5}, "
         "{%6, %7, %8, %9}, "

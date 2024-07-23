@@ -187,6 +187,8 @@ public:
 // Misc
 
 
+extern void assign_kernel_dims(dim3 &nblocks, dim3 &nthreads, long nx, long ny, long nz, int threads_per_block=128, bool noisy=false);
+    
 // Implements command-line usage: program [device].
 extern void set_device_from_command_line(int argc, char **argv);
 
