@@ -123,8 +123,8 @@ void testDataCheck<A_Type>::main_thread() {
                         ERROR("{:s}[{:d}][{:d}] != {:s}[{:d}][{:d}]; values: ({:f}, {:f}), "
                               "epsilon: {:f}, "
                               "abs(x-y): {:f}, epsilon * abs(x+y): {:f}",
-                              first_buf->buffer_name, first_buf_id, i,
-                              second_buf->buffer_name, second_buf_id, i, v1, v2, epsilon,
+                              first_buf->buffer_name, first_buf_id, i, second_buf->buffer_name,
+                              second_buf_id, i, v1, v2, epsilon,
                               std::abs((float)(first_value - second_value)),
                               epsilon * std::abs((float)(first_value + second_value)));
                     }
@@ -142,8 +142,8 @@ void testDataCheck<A_Type>::main_thread() {
         }
 
         if (num_errors > 0) {
-            INFO("The buffers {:s}[{:d}] and {:s}[{:d}] contained values that were equal.", first_buf->buffer_name,
-                 first_buf_id, second_buf->buffer_name, second_buf_id);
+            INFO("The buffers {:s}[{:d}] and {:s}[{:d}] contained values that were equal.",
+                 first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id);
             if (use_almost_equal) {
                 INFO("Compared {:d} elements.  Average absolute difference: {:g}.  Average "
                      "relative difference: {:g}",
@@ -154,8 +154,8 @@ void testDataCheck<A_Type>::main_thread() {
                      rel_diff / std::max((uint32_t)1, num_nonzero));
             }
         } else {
-            INFO("The buffers {:s}[{:d}] and {:s}[{:d}] contained values that were NOT equal!", first_buf->buffer_name,
-                 first_buf_id, second_buf->buffer_name, second_buf_id);
+            INFO("The buffers {:s}[{:d}] and {:s}[{:d}] contained values that were NOT equal!",
+                 first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id);
             INFO("Test failed, exiting.");
             TEST_FAILED();
         }
