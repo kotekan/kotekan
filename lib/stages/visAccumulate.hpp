@@ -72,6 +72,11 @@
  *                              Default 0..1023.
  * @conf  max_age               Float. Drop frames later than this number of seconds.
  *                              Default is 60.0
+ * @conf  imaginary_first       Reverse the order of the complex numbers in the
+ *                              kernel output. Default is false.
+ *                              Important for the CHIME system, the HSA kernels
+ *                              output the imaginary part first, so this must be set
+ *                              to ture for CHIME HSA kernels.
  *
  * @par Metrics
  * @metric  kotekan_visaccumulate_skipped_frame_total
@@ -160,6 +165,7 @@ private:
     size_t num_gpu_frames;
     size_t minimum_samples;
     float max_age;
+    bool imaginary_first;
 
     // Derived from config
     size_t num_prod_gpu;

@@ -66,6 +66,7 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
     block_size = config.get<size_t>(unique_name, "block_size");
     samples_per_data_set = config.get<size_t>(unique_name, "samples_per_data_set");
     max_age = config.get_default<float>(unique_name, "max_age", 60.0);
+    imaginary_first = config.get_default<bool>(unique_name, "imaginary_first", false);
 
     // Get the indices for reordering
     auto input_reorder = parse_reorder_default(config, unique_name);
@@ -571,12 +572,22 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
         }
 
         // Copy the visibilities into place
-        map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
-                         [&](int32_t pi, int32_t bi, bool conj) {
-                             cfloat t = {(float)state.vis1[2 * bi], (float)state.vis1[2 * bi + 1]};
-                             t = !conj ? t : std::conj(t);
-                             output_frame.vis[pi] = iw * t;
-                         });
+        if (imaginary_first) {
+            // Reverse the order of the real/imag parts from the kernel output.
+            map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
+                            [&](int32_t pi, int32_t bi, bool conj) {
+                                cfloat t = {(float)state.vis1[2 * bi + 1], (float)state.vis1[2 * bi]};
+                                t = !conj ? t : std::conj(t);
+                                output_frame.vis[pi] = iw * t;
+                         }); 
+        } else {
+            map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
+                            [&](int32_t pi, int32_t bi, bool conj) {
+                                cfloat t = {(float)state.vis1[2 * bi], (float)state.vis1[2 * bi + 1]};
+                                t = !conj ? t : std::conj(t);
+                                output_frame.vis[pi] = iw * t;
+                            });
+        }
 
         // Unpack and invert the weights
         map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
