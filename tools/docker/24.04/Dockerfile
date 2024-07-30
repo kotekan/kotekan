@@ -8,8 +8,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 # (see https://help.github.com/en/actions/reference/virtual-environments-for-github-hosted-runners).
 # This is to prevent the docker image getting build on a newer architecture and then failing when it
 # is loaded on an older one.
-ENV CFLAGS "-march=haswell"
-ENV CXXFLAGS "-march=haswell"
+ENV CFLAGS="-march=haswell"
+ENV CXXFLAGS="-march=haswell"
 
 RUN mkdir -p /code/build
 WORKDIR /code/build
@@ -91,20 +91,14 @@ RUN python3 -m pip install msgpack \
 RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
 RUN dpkg -i cuda-keyring_1.1-1_all.deb
 RUN apt-get -y update
-#RUN apt-get install -y --no-install-recommends cuda && apt-get clean
+RUN apt-get install -y --no-install-recommends cuda && apt-get clean
+ENV CUDADIR=/usr/local/cuda
+ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:${LD_LIBRARY_PATH}"
+ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include:${CPLUS_INCLUDE_PATH}"
+ENV PATH="$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin"
 
-ENV PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin
-#
-#RUN apt-get install -y --no-install-recommends \
-#  libopencl-clang-dev opencl-headers ocl-icd-opencl-dev
-
-#RUN git clone https://github.com/kmsmith137/gputils.git \
-#    && cd gputils \
-#    && make install
-#
-#RUN git clone https://github.com/kmsmith137/n2k.git \
-#  && cd n2k \
-#  && make install
+RUN apt-get install -y --no-install-recommends \
+  libopencl-clang-17-dev opencl-headers ocl-icd-opencl-dev
 
 # Install OpenBLAS and clone Blaze for the eigenvalue processes
 RUN apt update && \
@@ -154,7 +148,7 @@ RUN mkdir src && \
 # Clone HighFive
 RUN git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git && \
  cd HighFive && git pull && cd ..
-ENV HIGHFIVE_PATH /code/build/HighFive
+ENV HIGHFIVE_PATH=/code/build/HighFive
 
 # Documentation libs
 RUN apt update && \
@@ -187,17 +181,17 @@ RUN apt-get update && \
 RUN apt-get clean && apt-get autoclean
 
 # Set ccache to store things sensibly
-ENV CCACHE_NOHASHDIR 1
-ENV CCACHE_BASEDIR /code/kotekan/
-ENV CCACHE_DIR /code/kotekan/.ccache/
-ENV CCACHE_COMPRESS 1
-ENV CCACHE_MAXSIZE 1G
+ENV CCACHE_NOHASHDIR=1
+ENV CCACHE_BASEDIR=/code/kotekan/
+ENV CCACHE_DIR=/code/kotekan/.ccache/
+ENV CCACHE_COMPRESS=1
+ENV CCACHE_MAXSIZE=1G
 
 # Set the plugin path so kotekan can find bitshuffle
 # Ideally this would be determined dynamically, but for now...
-ENV HDF5_PLUGIN_PATH /usr/local/lib/python3.12/dist-packages/hdf5plugin/plugins
+ENV HDF5_PLUGIN_PATH=/usr/local/lib/python3.12/dist-packages/hdf5plugin/plugins
 
-ENV KOTEKAN_BUILD_DIRNAME build-2404
+ENV KOTEKAN_BUILD_DIRNAME=build-2404
 
 # Do nothing when the container launches
 CMD ["/bin/bash"]
