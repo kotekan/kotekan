@@ -81,6 +81,9 @@ private:
 
     // Cuda kernel wrapper object
     n2k::Correlator n2correlator;
+
+    // Placeholder rfi mask
+    uint* rfimask;
 };
 
 #endif // KOTEKAN_CUDA_CORRELATOR_H
