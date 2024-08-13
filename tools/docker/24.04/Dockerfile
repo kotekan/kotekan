@@ -144,6 +144,8 @@ RUN mkdir src && \
         cmake --install build && \
     true) && \
     rm -rf src
+# Depends on lz4 (not liblz4!)
+RUN ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/liblz4.pc /usr/local/lib/pkgconfig/lz4.pc
 
 # Clone HighFive
 RUN git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git && \
@@ -195,3 +197,4 @@ ENV KOTEKAN_BUILD_DIRNAME=build-2404
 
 # Do nothing when the container launches
 CMD ["/bin/bash"]
+

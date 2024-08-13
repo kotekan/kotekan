@@ -1,6 +1,6 @@
 find_package(PkgConfig REQUIRED)
 
-pkg_check_modules(ASDF_CXX QUIET asdf-cxx)
+pkg_check_modules(ASDF_CXX asdf-cxx)
 
 message(STATUS "ASDF_CXX_INCLUDE_DIRS: ${ASDF_CXX_INCLUDE_DIRS}")
 message(STATUS "ASDF_CXX_LIBRARY_DIRS: ${ASDF_CXX_LIBRARY_DIRS}")
