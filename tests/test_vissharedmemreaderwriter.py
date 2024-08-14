@@ -136,6 +136,7 @@ def test_shared_mem_buffer(vis_data, comet_broker):
     # start kotekan writer in a thread, to read before it's done (it will delete the shm on exit)
     threading.Thread(target=vis_data.run).start()
     from comet import Manager
+
     ds_manager = Manager("localhost", comet_broker)
     sleep(2)
     reader = []
