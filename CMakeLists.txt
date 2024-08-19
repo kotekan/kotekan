@@ -64,7 +64,9 @@ endif()
 # Compiler warnings
 if(${WERROR})
     message("Treating all warnings as errors")
-    add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:--warn-no-error>)
+    if(${CMAKE_CUDA_COMPILER})
+        add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:--warn-no-error>)
+    endif()
     add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Werror>)
 endif()
 # lots of warnings and all warnings as errors
