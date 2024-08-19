@@ -1,10 +1,5 @@
-#include <mutex>
-#include <stdexcept>
-#include <gputils/cuda_utils.hpp>
-#include <gputils/string_utils.hpp>
-
-#include "../include/n2k/Correlator.hpp"
-#include "../include/n2k/CorrelatorKernel.hpp"
+#include "../include/n2k.hpp"
+#include "../include/n2k_kernel.hpp"
 
 using namespace std;
 using namespace gputils;

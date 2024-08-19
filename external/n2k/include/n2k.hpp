@@ -1,7 +1,7 @@
-#ifndef _N2K_CORRELATOR_HPP
-#define _N2K_CORRELATOR_HPP
+#ifndef _N2K_HPP
+#define _N2K_HPP
 
-#include <gputils/Array.hpp>
+#include <gputils.hpp>
 
 
 namespace n2k {
@@ -198,6 +198,73 @@ extern void register_kernel(int nstations, int nfreq, Correlator::kernel_t kerne
 extern std::vector<std::pair<int,int>> get_all_kernel_params();
 
 
+// -------------------------------------------------------------------------------------------------
+//
+// RFI-related code starts here (I might split into multiple .hpp files later)
+
+
+// launch_rfimask_maker()
+//
+// Arguments:
+//
+//    uint rfimask[nbits/32];      // output array
+//    float sk_sigma[nbits/ds];    // input array
+//    long nbits;                  // defines dimensions of input/output arrays
+//    long ds;                     // downsampling factor, also defines dimensions
+//    float thresh;                // masking threshold in 'sk_sigma' array (e.g. 5.0 for 5 sigma)
+//
+// Constraints:
+//
+//   - nbits must be a multiple of 128, and a multiple of ds.
+//   - ds must be a multiple of 32.
+//
+// Note: in this kernel, we treat 'rfimask' and 'sk_sigma' as 1-d arrays, even though
+// in the larger correlator, they are 2-d arrays:
+//
+//    uint rfimask[F][T/32];
+//    float sk_sigma[F][T/ds];
+//
+// This is because the frequency index is a "spectator" index, so we can flatten these arrays and
+// treat them as 1-d arrays with nbits=F*T.
+//
+// These functions are defined in make_rfimask.cu.
+
+
+// Bare pointer interface.
+extern void launch_rfimask_maker(uint *rfimask, const float *sk_sigma, long nbits, long ds, float thresh, cudaStream_t stream=0);
+
+// gputils::Array<> interface.
+extern void launch_rfimask_maker(gputils::Array<uint> &rfimask, const gputils::Array<float> &sk_sigma, long ds, float thresh, cudaStream_t stream=0);
+
+
+// launch_s0_kernel()
+//
+// Arguments:
+//
+//   uint s0[T/ds][F][S];                  // output array, (downsampled time index, freq channel, station)
+//   ulong pl_mask[T/128][(F+3)/4][S/8];   // input array, packet loss mask
+//   long T;                               // number of time samples
+//   long F;                               // number of freq channels
+//   long S;                               // number of stations (= dish+pol pairs)
+//   long ds;                              // time downsampling factor
+//
+// Constraints:
+//
+//   - ds must be even (but note that the make_rfimask kernel requires ds to be a multiple of 32)
+//   - S must be a multiple of 128 (required by packet loss array layout, see s0_kernel.cu)
+//   - T must be a multiple of 128 (required by packet loss array layout, see s0_kernel.cu)
+//   - T must be a multiple of ds.
+//
+// Note: see s0_kernel.cu for description and discussion of packet loss mask array layout.
+
+
+// Bare pointer interface.
+extern void launch_s0_kernel(uint *s0, const ulong *pl_mask, long T, long F, long S, long ds, cudaStream_t stream=0);
+
+// gputils::Array<> interface.
+extern void launch_s0_kernel(gputils::Array<uint> &s0, const gputils::Array<ulong> &pl_mask, long ds, cudaStream_t stream=0);
+
+
 }  // namespace n2k
 
-#endif // _N2K_CORRELATOR_HPP
+#endif // _N2K_HPP
