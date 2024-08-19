@@ -55,7 +55,6 @@ void gpuSimulateN2k::main_thread() {
              input_buf->buffer_name, input_frame_id, output_buf->buffer_name, output_frame_id);
 
         // number of elements = number of dishes * polarizations
-        // number of elements = number of dishes * polarizations
         int nt_inner = _sub_integration_ntime;
         int nt_outer = _samples_per_data_set / nt_inner;
         int fstride = 128 * _num_elements / 16 * (_num_elements / 16 + 1);
