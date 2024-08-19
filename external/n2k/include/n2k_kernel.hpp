@@ -1,8 +1,8 @@
-#ifndef _N2K_COORELATOR_KERNEL_HPP
-#define _N2K_CORRELATOR_KERNEL_HPP
+#ifndef _N2K_KERNEL_HPP
+#define _N2K_KERNEL_HPP
 
-#include "Correlator.hpp"
-#include <gputils/constexpr_functions.hpp>   // constexpr_is_divisible()
+#include "n2k.hpp"
+#include "gputils/constexpr_functions.hpp"   // constexpr_is_divisible()
 
 
 namespace n2k {
@@ -650,4 +650,4 @@ CorrelatorKernel<NS,NF>::CorrelatorKernel()
 
 }  // namespace n2k
 
-#endif // _N2K_CORRELATOR_KERNEL_HPP
+#endif // _N2K_KERNEL_HPP
