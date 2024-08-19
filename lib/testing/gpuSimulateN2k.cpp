@@ -55,8 +55,9 @@ void gpuSimulateN2k::main_thread() {
              input_buf->buffer_name, input_frame_id, output_buf->buffer_name, output_frame_id);
 
         // number of elements = number of dishes * polarizations
+        // number of elements = number of dishes * polarizations
         int nt_inner = _sub_integration_ntime;
-        int n_outer = _samples_per_data_set / nt_inner;
+        int nt_outer = _samples_per_data_set / nt_inner;
         int fstride = 128 * _num_elements / 16 * (_num_elements / 16 + 1);
         int tstride = _num_local_freq * fstride;
 
@@ -101,7 +102,7 @@ void gpuSimulateN2k::main_thread() {
                 }             // jhi
 
                 DEBUG("Done t_outer {:d} of {:d} (freq {:d} of {:d}, nt_inner={:d})...", tout,
-                      n_outer, f, _num_local_freq, nt_inner);
+                      nt_outer, f, _num_local_freq, nt_inner);
 
                 if (stop_thread)
                     break;
