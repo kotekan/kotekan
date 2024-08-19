@@ -6,7 +6,7 @@ message(STATUS "N2K Current source directory: ${CMAKE_CURRENT_SOURCE_DIR}")
 message(STATUS "N2K Current binary directory: ${CMAKE_CURRENT_BINARY_DIR}")
 
 # Define source files and headers
-set(HFILES include/n2k.hpp include/n2k_kernel.hpp)
+set(HFILES include/n2k/Correlator.hpp include/n2k/CorrelatorKernel.hpp)
 
 # Kernel files (to generate), filename syntax is kernel_{nstations}_{nfreq}.o
 set(KERNELFILES
@@ -35,7 +35,7 @@ set(KERNELFILES
     kernel_2048_16.cu)
 
 # Kernel filename syntax is kernel_{nstations}_{nfreq}.cu
-set(CUFILES src/Correlator.cu src/kernel_table.cu src/precompute_offsets.cu)
+set(CUFILES src_lib/Correlator.cu src_lib/kernel_table.cu src_lib/precompute_offsets.cu)
 
 # Special rule for generating kernel_%d_%d.cu
 foreach(file ${KERNELFILES})
