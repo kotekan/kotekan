@@ -225,7 +225,7 @@ jobs:
     - name: Run serial python tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial"
+        docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial
 
     - name: Run boost tests
       run: |
@@ -291,7 +291,7 @@ jobs:
       shell: bash
       run: |
         OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial"
+        docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial
 
     - name: Run boost tests
       shell: bash
