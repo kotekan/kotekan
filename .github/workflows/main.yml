@@ -204,6 +204,7 @@ jobs:
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
+            -DUSE_CUDA=ON \
             -DWITH_BOOST_TESTS=ON \
             -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
@@ -231,6 +232,76 @@ jobs:
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
         docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
 
+  # Build an OpenCL version of kotekan and run the unit tests
+  build-opencl-2404:
+    runs-on: self-hosted
+    container: 
+      image: summerwind/actions-runner:ubuntu-22.04
+      options: --user root
+    needs: build-docker-2404
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Cache ccache files
+      uses: actions/cache@v4
+      with:
+        path: .ccache
+        key: ccache-opencl-2404-${{ github.sha }}
+        restore-keys: |
+          ccache-opencl-2404
+          ccache-base-build-2404
+
+    - name: Build kotekan
+      shell: bash
+      run: |
+        OPTS=(--pull=always --rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2404/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" ccache -s
+        docker run "${OPTS[@]}" \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
+            -DCMAKE_BUILD_TYPE=Test \
+            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
+            -DNO_MEMLOCK=ON \
+            -DUSE_OMP=ON \
+            -DWITH_BOOST_TESTS=ON \
+            -DUSE_CUDA=OFF \
+            -DUSE_OPENCL=ON \
+            -DCCACHE=ON ..
+        docker run "${OPTS[@]}" make -j 2
+        docker run "${OPTS[@]}" rm -r lib
+        docker run "${OPTS[@]}" ccache -s
+        df -h
+
+    - name: Run parallel python tests
+      shell: bash
+      run: |
+        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile --timeout=${PYTEST_TIMEOUT} -x -m 'not serial'
+
+    - name: Run serial python tests
+      shell: bash
+      run: |
+        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial"
+
+    - name: Run boost tests
+      shell: bash
+      run: |
+        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2404/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
+
+    - name: Clean up
+      run: |
+        rm -rf kotekan
 
   # 2204 Tests
 

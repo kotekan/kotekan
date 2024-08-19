@@ -3,14 +3,6 @@ FROM ubuntu:24.04
 # So tzdata package doesn't ask for user interaction
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Set architecture for all builds done below to haswell, currently the oldest architecture used
-# by github workflows
-# (see https://help.github.com/en/actions/reference/virtual-environments-for-github-hosted-runners).
-# This is to prevent the docker image getting build on a newer architecture and then failing when it
-# is loaded on an older one.
-ENV CFLAGS="-march=haswell"
-ENV CXXFLAGS="-march=haswell"
-
 RUN mkdir -p /code/build
 WORKDIR /code/build
 

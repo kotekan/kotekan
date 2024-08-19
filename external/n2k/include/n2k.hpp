@@ -231,10 +231,10 @@ extern std::vector<std::pair<int,int>> get_all_kernel_params();
 
 
 // Bare pointer interface.
-extern void launch_rfimask_maker(uint *rfimask, const float *sk_sigma, long nbits, long ds, float thresh, cudaStream_t stream=0);
+extern void launch_rfimask_maker(uint *rfimask, const float *sk_sigma, long nbits, long ds, float thresh, cudaStream_t stream=NULL);
 
 // gputils::Array<> interface.
-extern void launch_rfimask_maker(gputils::Array<uint> &rfimask, const gputils::Array<float> &sk_sigma, long ds, float thresh, cudaStream_t stream=0);
+extern void launch_rfimask_maker(gputils::Array<uint> &rfimask, const gputils::Array<float> &sk_sigma, long ds, float thresh, cudaStream_t stream=NULL);
 
 
 // launch_s0_kernel()
@@ -259,10 +259,10 @@ extern void launch_rfimask_maker(gputils::Array<uint> &rfimask, const gputils::A
 
 
 // Bare pointer interface.
-extern void launch_s0_kernel(uint *s0, const ulong *pl_mask, long T, long F, long S, long ds, cudaStream_t stream=0);
+extern void launch_s0_kernel(uint *s0, const ulong *pl_mask, long T, long F, long S, long ds, cudaStream_t stream=NULL);
 
 // gputils::Array<> interface.
-extern void launch_s0_kernel(gputils::Array<uint> &s0, const gputils::Array<ulong> &pl_mask, long ds, cudaStream_t stream=0);
+extern void launch_s0_kernel(gputils::Array<uint> &s0, const gputils::Array<ulong> &pl_mask, long ds, cudaStream_t stream=NULL);
 
 
 }  // namespace n2k

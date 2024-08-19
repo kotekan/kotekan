@@ -64,18 +64,19 @@ endif()
 # Compiler warnings
 if(${WERROR})
     message("Treating all warnings as errors")
-    add_compile_options(-Werror)
+    add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:--warn-no-error>)
+    add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Werror>)
 endif()
 # lots of warnings and all warnings as errors
-add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wall>)
-add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wextra>)
+add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wall>)
+add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wextra>)
 add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wzero-as-null-pointer-constant>)
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -Xcompiler -Wall")
 # Warning about missing override is called differently in clang and gcc
 include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag(-Winconsistent-missing-override HAVE_INCONSISTANT_MISSING_OVERRIDE)
 if(HAVE_INCONSISTANT_MISSING_OVERRIDE AND NOT ${IWYU})
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Winconsistent-missing-override>)
+    add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Winconsistent-missing-override>)
 endif()
 check_cxx_compiler_flag(-Wsuggest-override HAVE_SUGGEST_OVERRIDE)
 if(HAVE_SUGGEST_OVERRIDE AND NOT ${IWYU})
@@ -289,7 +290,10 @@ endif()
 
 find_package(Threads REQUIRED)
 
-add_compile_options(-D_GNU_SOURCE -march=${ARCH} -mtune=${ARCH} -I/opt/rocm/include)
+add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-D_GNU_SOURCE>)
+add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-march=${ARCH}>)
+add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-mtune=${ARCH}>)
+add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-I/opt/rocm/include>)
 
 # OpenMP flag
 if(${USE_OMP})
