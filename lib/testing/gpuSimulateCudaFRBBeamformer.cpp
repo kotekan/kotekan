@@ -288,7 +288,7 @@ static void frb_simple_sub(const int32_t* __restrict__ const S,
                         // I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
                         // Freq varies slowest
                         I[p + 2 * M * q + 2 * M * 2 * N * tds + 2 * M * 2 * N * NT * freq] =
-                            I1[p + 2 * M * q];
+                            (float16_t)I1[p + 2 * M * q];
                 tds += 1;
                 t_running = 0;
                 for (int q = 0; q < 2 * N; ++q)
@@ -305,7 +305,7 @@ static void frb_simple_sub(const int32_t* __restrict__ const S,
                     // I[p + 2 * M * q + 2 * M * 2 * N * freq + 2 * M * 2 * N * F * tds] =
                     // Freq varies slowest
                     I[p + 2 * M * q + 2 * M * 2 * N * tds + 2 * M * 2 * N * NT * freq] =
-                        I1[p + 2 * M * q];
+                        (float16_t)I1[p + 2 * M * q];
         }
 
     } // for freq
