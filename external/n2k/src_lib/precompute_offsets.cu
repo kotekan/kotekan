@@ -1,5 +1,5 @@
 #include <gputils.hpp>
-#include "../include/n2k.hpp"
+#include "../include/n2k/Correlator.hpp"
 
 using namespace std;
 using namespace gputils;
