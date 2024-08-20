@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 set -x
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" # change to directory containing this script (kotekan/external or something)
 
 temp_dir=$(mktemp -d)
 src_dir=$(pwd)
@@ -13,15 +13,15 @@ echo "If this script fails, you should delete this directory."
 cd "$temp_dir"
 
 # Clone n2k, check out right branch / commit
-git clone -b rfimask --single-branch https://github.com/kmsmith137/n2k.git
+git clone -b master --single-branch https://github.com/kmsmith137/n2k.git
 cd n2k
 # Copy over needed files
 cp template_instantiations/make-instantiation.py "$src_dir/n2k/template_instantiations/make-instantiation.py"
-cp src/precompute_offsets.cu "$src_dir/n2k/src/precompute_offsets.cu"
-cp src/kernel_table.cu "$src_dir/n2k/src/kernel_table.cu"
-cp src/Correlator.cu "$src_dir/n2k/src/Correlator.cu"
-cp include/n2k_kernel.hpp "$src_dir/n2k/include/n2k_kernel.hpp"
-cp include/n2k.hpp "$src_dir/n2k/include/n2k.hpp"
+cp src_lib/precompute_offsets.cu "$src_dir/n2k/src_lib/precompute_offsets.cu"
+cp src_lib/kernel_table.cu "$src_dir/n2k/src_lib/kernel_table.cu"
+cp src_lib/Correlator.cu "$src_dir/n2k/src_lib/Correlator.cu"
+cp include/n2k/Correlator.hpp "$src_dir/n2k/include/n2k/Correlator.hpp"
+cp include/n2k/CorrelatorKernel.hpp "$src_dir/n2k/include/n2k/CorrelatorKernel.hpp"
 cd ..
 
 # Clone gputils, check out right branch / commit
