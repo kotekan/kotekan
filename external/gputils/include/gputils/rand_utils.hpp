@@ -157,6 +157,12 @@ inline T rand_element(const std::initializer_list<T> v, std::mt19937 &rng = defa
 }
 
 
+extern std::vector<double> random_doubles_with_fixed_sum(int nelts, double sum);
+
+// Useful in unit tests, when generating randomly-sized arrays.
+extern std::vector<ssize_t> random_integers_with_bounded_product(int nelts, ssize_t bound);
+
+    
 } // namespace gputils
 
 #endif // _GPUTILS_RAND_UTILS_HPP

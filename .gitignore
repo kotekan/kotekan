@@ -17,6 +17,7 @@ build-docs/*
 build-check-format/*
 build-1804/*
 build-2204/*
+build-2404/*
 build-tests/*
 docs/sphinx/html/*
 .ccache/*

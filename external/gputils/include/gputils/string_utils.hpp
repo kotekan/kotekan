@@ -116,6 +116,14 @@ static std::string tuple_str(const std::vector<T> &tuple, const char *space="")
 }
 
 
+static inline std::string dim3_str(const dim3 &d, const char *space="")
+{
+    std::stringstream ss;
+    ss << "[" << d.x << "," << space << d.y << "," << space << d.z << "]";
+    return ss.str();
+}
+
+
 // ---------------------------  nbytes_to_str(), nbytes_from_str()  --------------------------------
 
 

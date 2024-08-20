@@ -3,7 +3,7 @@
 
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
-#include "n2k.hpp"
+#include "n2k/Correlator.hpp"
 #include "ringbuffer.hpp"
 
 /**

@@ -1,7 +1,7 @@
-#ifndef _N2K_HPP
-#define _N2K_HPP
+#ifndef _N2K_CORRELATOR_HPP
+#define _N2K_CORRELATOR_HPP
 
-#include <gputils.hpp>
+#include <gputils/Array.hpp>
 
 
 namespace n2k {
@@ -116,7 +116,7 @@ public:
     //    the lower triangle). The memory offset of visibility matrix (t,f,i,j) is:
     //
     //        Memory offset in multiples of sizeof(int32)
-    //           =   (t * nfreq * fstride)
+    //           =   (t * nfreq * tstride)
     //             + (f * fstride)
     //             + 512 * (ihi*(ihi+1)/2 + jhi)
     //             + 32*ilo + 2*jlo
@@ -200,5 +200,4 @@ extern std::vector<std::pair<int,int>> get_all_kernel_params();
 
 }  // namespace n2k
 
-
-#endif // _N2K_HPP
+#endif // _N2K_CORRELATOR_HPP

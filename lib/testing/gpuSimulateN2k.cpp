@@ -57,6 +57,7 @@ void gpuSimulateN2k::main_thread() {
         // number of elements = number of dishes * polarizations
         int nt_inner = _sub_integration_ntime;
         int nt_outer = _samples_per_data_set / nt_inner;
+
         int fstride = 128 * _num_elements / 16 * (_num_elements / 16 + 1);
         int tstride = _num_local_freq * fstride;
 
@@ -109,7 +110,6 @@ void gpuSimulateN2k::main_thread() {
             if (stop_thread)
                 break;
         } // tout
-
 
         input_buf->pass_metadata(input_frame_id, output_buf, output_frame_id);
         input_buf->mark_frame_empty(unique_name, input_frame_id);
