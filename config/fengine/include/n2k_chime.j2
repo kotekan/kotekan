@@ -13,10 +13,17 @@ n2k_samples_per_data_set: 16384
 
 # Buffers
 
+n2k_num_subintegrations: n2k_samples_per_data_set / n2k_sub_integration_ntime
+n2k_blocksize: 16
+n2k_num_elements: num_dishes * num_polarizations
+n2k_linear_num_blocks: (n2k_num_elements + 1) / n2k_blocksize
+n2k_triangle_num_blocks: n2k_linear_num_blocks * (n2k_linear_num_blocks + 1) / 2
+n2k_triangle_size: n2k_blocksize * n2k_blocksize * n2k_triangle_num_blocks
+
 host_n2k_correlation_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: sizeof_int32 * num_components * num_dishes * num_polarizations * num_dishes * num_polarizations * num_frequencies * (n2k_samples_per_data_set / n2k_sub_integration_ntime)
+    frame_size: sizeof_int32 * num_components * n2k_triangle_size * num_frequencies * n2k_num_subintegrations
     metadata_pool: main_pool
 
 ################################################################################
@@ -28,7 +35,7 @@ run_n2k:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_voltage_ringbuffer_in: host_voltage_ringbuffer
+            host_xposed_voltage_ringbuffer_in: host_xposed_voltage_ringbuffer
         out_buffers:
             host_n2k_correlation_buffer_out: host_n2k_correlation_buffer
         commands:
@@ -37,7 +44,7 @@ run_n2k:
           num_local_freq: num_frequencies
           samples_per_data_set: n2k_samples_per_data_set
           sub_integration_ntime: n2k_sub_integration_ntime
-          in_signal: host_voltage_ringbuffer_in
+          in_signal: host_xposed_voltage_ringbuffer_in
           gpu_mem_voltage: voltage_buffer
           gpu_mem_correlation_triangle: n2k_correlation_matrix_buffer
         - name: cudaSyncOutput

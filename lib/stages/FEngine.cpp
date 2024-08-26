@@ -78,6 +78,9 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     frequency_channels(config.get<std::vector<int>>(unique_name, "frequency_channels")),
     num_times(config.get<int>(unique_name, "num_times")),
 
+    // Dish reordering
+    scatter_indices(config.get_default<std::vector<int>>(unique_name, "scatter_indices", {})),
+
     // Baseband beamformer setup
     bb_num_beams_ew(config.get<int>(unique_name, "bb_num_beams_ew")),
     bb_num_beams_ns(config.get<int>(unique_name, "bb_num_beams_ns")),
@@ -145,6 +148,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     // Frame sizes
     dish_positions_frame_size(sizeof(float) * 2 * num_dishes),
     E_frame_size(sizeof(uint8_t) * num_dishes * num_polarizations * num_frequencies * num_times),
+    scatter_indices_frame_size(sizeof(int) * num_dishes * num_polarizations),
     bb_beam_positions_frame_size(sizeof(float) * 2 * bb_num_beams),
     A_frame_size(sizeof(int8_t) * num_components * num_dishes * bb_num_beams * num_polarizations
                  * num_frequencies),
@@ -190,6 +194,8 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
 
     // Buffers
     dish_positions_buffer(get_buffer("dish_positions_buffer")), E_buffer(get_buffer("E_buffer")),
+    scatter_indices_buffer(scatter_indices.empty() ? nullptr
+                                                   : get_buffer("scatter_indices_buffer")),
     bb_beam_positions_buffer(get_buffer("bb_beam_positions_buffer")),
     A_buffer(get_buffer("A_buffer")), s_buffer(get_buffer("s_buffer")),
     J_buffer(get_buffer("J_buffer")),
@@ -232,6 +238,9 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     }
     assert(num_dishes_seen == num_dishes);
 
+    if (!scatter_indices.empty())
+        assert(std::ptrdiff_t(scatter_indices.size()) == num_dishes * num_polarizations);
+
     // TODO: Remove `num_frequencies`
     assert(int(frequency_channels.size()) == num_frequencies);
 
@@ -261,6 +270,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
 
     assert(dish_positions_buffer);
     assert(E_buffer);
+    assert(scatter_indices.empty() ? !scatter_indices_buffer : !!scatter_indices_buffer);
     assert(bb_beam_positions_buffer);
     assert(A_buffer);
     assert(s_buffer);
@@ -276,6 +286,8 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     assert(I1_buffer);
     dish_positions_buffer->register_producer(unique_name);
     E_buffer->register_producer(unique_name);
+    if (scatter_indices_buffer)
+        scatter_indices_buffer->register_producer(unique_name);
     bb_beam_positions_buffer->register_producer(unique_name);
     A_buffer->register_producer(unique_name);
     s_buffer->register_producer(unique_name);
@@ -483,6 +495,65 @@ void FEngine::main_thread() {
 
         // Mark buffer as full
         dish_positions_buffer->mark_frame_full(unique_name, dish_positions_frame_id);
+    }
+
+    // Produce scatter indices
+    if (scatter_indices_buffer) {
+        const int scatter_indices_frame_index = 0;
+        const int scatter_indices_frame_id =
+            scatter_indices_frame_index % scatter_indices_buffer->num_frames;
+
+        // Wait for buffer
+        std::uint8_t* const scatter_indices_frame =
+            scatter_indices_buffer->wait_for_empty_frame(unique_name, scatter_indices_frame_id);
+        if (!scatter_indices_frame)
+            return;
+        if (!(std::ptrdiff_t(scatter_indices_buffer->frame_size) == scatter_indices_frame_size))
+            FATAL_ERROR("scatter_indices_buffer->frame_size={:d} scatter_indices_frame_size={:d}",
+                        scatter_indices_buffer->frame_size, scatter_indices_frame_size);
+        assert(std::ptrdiff_t(scatter_indices_buffer->frame_size) == scatter_indices_frame_size);
+        scatter_indices_buffer->allocate_new_metadata_object(scatter_indices_frame_id);
+
+        // Fill buffer
+        DEBUG("[{:d}] Filling scatter indices...", scatter_indices_frame_index);
+        for (int polr = 0; polr < num_polarizations; ++polr) {
+            for (int dish = 0; dish < num_dishes; ++dish) {
+                const int n = dish + num_dishes * polr;
+                ((int32_t*)scatter_indices_frame)[n] = scatter_indices.at(n);
+            }
+        }
+        DEBUG("[{:d}] Done filling scatter indices buffer.", scatter_indices_frame_index);
+
+        // Set metadata
+        std::shared_ptr<chordMetadata> const scatter_indices_metadata =
+            get_chord_metadata(scatter_indices_buffer, scatter_indices_frame_id);
+        scatter_indices_metadata->frame_counter = 0;
+        std::strncpy(scatter_indices_metadata->name, "scatter_indices",
+                     sizeof scatter_indices_metadata->name);
+        scatter_indices_metadata->type = int32;
+        scatter_indices_metadata->dims = 2;
+        assert(scatter_indices_metadata->dims <= CHORD_META_MAX_DIM);
+        std::strncpy(scatter_indices_metadata->dim_name[0], "P",
+                     sizeof scatter_indices_metadata->dim_name[1]);
+        std::strncpy(scatter_indices_metadata->dim_name[1], "D",
+                     sizeof scatter_indices_metadata->dim_name[0]);
+        scatter_indices_metadata->dim[0] = num_polarizations;
+        scatter_indices_metadata->dim[1] = num_dishes;
+        for (int d = scatter_indices_metadata->dims - 1; d >= 0; --d)
+            if (d == scatter_indices_metadata->dims - 1)
+                scatter_indices_metadata->stride[d] = 1;
+            else
+                scatter_indices_metadata->stride[d] =
+                    scatter_indices_metadata->stride[d + 1] * scatter_indices_metadata->dim[d + 1];
+        scatter_indices_metadata->sample0_offset = -1; // undefined
+        scatter_indices_metadata->nfreq = -1;          // undefined
+        scatter_indices_metadata->ndishes = num_dishes;
+        scatter_indices_metadata->n_dish_locations_ew = num_dish_locations_ew;
+        scatter_indices_metadata->n_dish_locations_ns = num_dish_locations_ns;
+        scatter_indices_metadata->dish_index = dish_indices_ptr;
+
+        // Mark buffer as full
+        scatter_indices_buffer->mark_frame_full(unique_name, scatter_indices_frame_id);
     }
 
     // Produce baseband beam positions

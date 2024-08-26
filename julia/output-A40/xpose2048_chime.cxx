@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief CUDA TransposeKernel_chime kernel
+ * @brief CUDA Transpose2048_chime kernel
  *
  * This file has been generated automatically.
  * Do not modify this C++ file, your changes will be lost.
@@ -27,15 +27,15 @@ using kotekan::Config;
 using kotekan::round_down, kotekan::div_noremainder, kotekan::div, kotekan::mod;
 
 /**
- * @class cudaTransposeKernel_chime
- * @brief cudaCommand for TransposeKernel_chime
+ * @class cudaTranspose2048_chime
+ * @brief cudaCommand for Transpose2048_chime
  */
-class cudaTransposeKernel_chime : public cudaCommand {
+class cudaTranspose2048_chime : public cudaCommand {
 public:
-    cudaTransposeKernel_chime(Config& config, const std::string& unique_name,
-                              bufferContainer& host_buffers, cudaDeviceInterface& device,
-                              const int instance_num);
-    virtual ~cudaTransposeKernel_chime();
+    cudaTranspose2048_chime(Config& config, const std::string& unique_name,
+                            bufferContainer& host_buffers, cudaDeviceInterface& device,
+                            const int instance_num);
+    virtual ~cudaTranspose2048_chime();
 
     int wait_on_precondition() override;
     cudaEvent_t execute(cudaPipelineState& pipestate,
@@ -104,7 +104,7 @@ private:
     static constexpr const char* Tmax_name = "Tmax";
     static constexpr chordDataType Tmax_type = int32;
     //
-    // Ein: gpu_mem_voltage
+    // Ein: gpu_mem_input_voltage
     static constexpr const char* Ein_name = "Ein";
     static constexpr chordDataType Ein_type = int4p4chime;
     enum Ein_indices {
@@ -141,7 +141,7 @@ private:
     };
     // static_assert(Ein_length == chord_datatype_bytes(Ein_type) * Ein_strides[Ein_rank]);
     //
-    // E: gpu_mem_voltage
+    // E: gpu_mem_output_voltage
     static constexpr const char* E_name = "E";
     static constexpr chordDataType E_type = int4p4chime;
     enum E_indices {
@@ -177,7 +177,7 @@ private:
     };
     // static_assert(E_length == chord_datatype_bytes(E_type) * E_strides[E_rank]);
     //
-    // scatter_indices: scatter_indices
+    // scatter_indices: gpu_mem_scatter_indices
     static constexpr const char* scatter_indices_name = "scatter_indices";
     static constexpr chordDataType scatter_indices_type = int32;
     enum scatter_indices_indices {
@@ -275,17 +275,17 @@ private:
     std::ptrdiff_t Tmin, Tmax;
 };
 
-REGISTER_CUDA_COMMAND(cudaTransposeKernel_chime);
+REGISTER_CUDA_COMMAND(cudaTranspose2048_chime);
 
-cudaTransposeKernel_chime::cudaTransposeKernel_chime(Config& config, const std::string& unique_name,
-                                                     bufferContainer& host_buffers,
-                                                     cudaDeviceInterface& device,
-                                                     const int instance_num) :
+cudaTranspose2048_chime::cudaTranspose2048_chime(Config& config, const std::string& unique_name,
+                                                 bufferContainer& host_buffers,
+                                                 cudaDeviceInterface& device,
+                                                 const int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
-                "TransposeKernel_chime", "TransposeKernel_chime.ptx"),
-    Ein_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
-    E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
-    scatter_indices_memname(config.get<std::string>(unique_name, "scatter_indices")),
+                "Transpose2048_chime", "Transpose2048_chime.ptx"),
+    Ein_memname(config.get<std::string>(unique_name, "gpu_mem_input_voltage")),
+    E_memname(config.get<std::string>(unique_name, "gpu_mem_output_voltage")),
+    scatter_indices_memname(config.get<std::string>(unique_name, "gpu_mem_scatter_indices")),
     info_memname(unique_name + "/gpu_mem_info"),
 
     info_host(info_length),
@@ -318,7 +318,7 @@ cudaTransposeKernel_chime::cudaTransposeKernel_chime(Config& config, const std::
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx(kernel_file_name, {kernel_symbol}, opts, "TransposeKernel_chime_");
+        device.build_ptx(kernel_file_name, {kernel_symbol}, opts, "Transpose2048_chime_");
     }
 
     if (instance_num == 0) {
@@ -328,23 +328,23 @@ cudaTransposeKernel_chime::cudaTransposeKernel_chime(Config& config, const std::
     }
 }
 
-cudaTransposeKernel_chime::~cudaTransposeKernel_chime() {}
+cudaTranspose2048_chime::~cudaTranspose2048_chime() {}
 
 std::int64_t
-cudaTransposeKernel_chime::num_consumed_elements(std::int64_t num_available_elements) const {
+cudaTranspose2048_chime::num_consumed_elements(std::int64_t num_available_elements) const {
     return num_processed_elements(num_available_elements);
 }
 std::int64_t
-cudaTransposeKernel_chime::num_produced_elements(std::int64_t num_available_elements) const {
+cudaTranspose2048_chime::num_produced_elements(std::int64_t num_available_elements) const {
     return num_consumed_elements(num_available_elements);
 }
 
 std::int64_t
-cudaTransposeKernel_chime::num_processed_elements(std::int64_t num_available_elements) const {
+cudaTranspose2048_chime::num_processed_elements(std::int64_t num_available_elements) const {
     return round_down(num_available_elements, cuda_granularity_number_of_timesamples);
 }
 
-int cudaTransposeKernel_chime::wait_on_precondition() {
+int cudaTranspose2048_chime::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer
     DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
     const std::optional<std::ptrdiff_t> val_in1 =
@@ -413,8 +413,8 @@ int cudaTransposeKernel_chime::wait_on_precondition() {
     return 0;
 }
 
-cudaEvent_t cudaTransposeKernel_chime::execute(cudaPipelineState& /*pipestate*/,
-                                               const std::vector<cudaEvent_t>& /*pre_events*/) {
+cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
+                                             const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
 
     void* const Ein_memory =
@@ -449,14 +449,17 @@ cudaEvent_t cudaTransposeKernel_chime::execute(cudaPipelineState& /*pipestate*/,
     const std::shared_ptr<chordMetadata> Ein_meta = get_chord_metadata(Ein_mc);
     DEBUG("input Ein array: {:s} {:s}", Ein_meta->get_type_string(),
           Ein_meta->get_dimensions_string());
-    assert(std::strncmp(Ein_meta->name, Ein_name, sizeof Ein_meta->name) == 0);
+    if (args::Ein == args::Ein)
+        assert(std::strncmp(Ein_meta->name, "E", sizeof Ein_meta->name) == 0);
+    else
+        assert(std::strncmp(Ein_meta->name, Ein_name, sizeof Ein_meta->name) == 0);
     assert(Ein_meta->type == Ein_type);
     assert(Ein_meta->dims == Ein_rank);
     for (std::ptrdiff_t dim = 0; dim < Ein_rank; ++dim) {
         assert(std::strncmp(Ein_meta->dim_name[Ein_rank - 1 - dim], Ein_labels[dim],
                             sizeof Ein_meta->dim_name[Ein_rank - 1 - dim])
                == 0);
-        if (args::Ein == args::E && dim == E_index_T) {
+        if (args::Ein == args::Ein && dim == Ein_index_T) {
             assert(Ein_meta->dim[Ein_rank - 1 - dim] <= int(Ein_lengths[dim]));
             assert(Ein_meta->stride[Ein_rank - 1 - dim] <= Ein_strides[dim]);
         } else {
@@ -494,9 +497,13 @@ cudaEvent_t cudaTransposeKernel_chime::execute(cudaPipelineState& /*pipestate*/,
         get_chord_metadata(scatter_indices_mc);
     DEBUG("input scatter_indices array: {:s} {:s}", scatter_indices_meta->get_type_string(),
           scatter_indices_meta->get_dimensions_string());
-    assert(std::strncmp(scatter_indices_meta->name, scatter_indices_name,
-                        sizeof scatter_indices_meta->name)
-           == 0);
+    if (args::scatter_indices == args::Ein)
+        assert(std::strncmp(scatter_indices_meta->name, "E", sizeof scatter_indices_meta->name)
+               == 0);
+    else
+        assert(std::strncmp(scatter_indices_meta->name, scatter_indices_name,
+                            sizeof scatter_indices_meta->name)
+               == 0);
     assert(scatter_indices_meta->type == scatter_indices_type);
     assert(scatter_indices_meta->dims == scatter_indices_rank);
     for (std::ptrdiff_t dim = 0; dim < scatter_indices_rank; ++dim) {
@@ -504,7 +511,7 @@ cudaEvent_t cudaTransposeKernel_chime::execute(cudaPipelineState& /*pipestate*/,
                             scatter_indices_labels[dim],
                             sizeof scatter_indices_meta->dim_name[scatter_indices_rank - 1 - dim])
                == 0);
-        if (args::scatter_indices == args::E && dim == E_index_T) {
+        if (args::scatter_indices == args::Ein && dim == Ein_index_T) {
             assert(scatter_indices_meta->dim[scatter_indices_rank - 1 - dim]
                    <= int(scatter_indices_lengths[dim]));
             assert(scatter_indices_meta->stride[scatter_indices_rank - 1 - dim]
@@ -599,12 +606,12 @@ cudaEvent_t cudaTransposeKernel_chime::execute(cudaPipelineState& /*pipestate*/,
     }
 #endif
 
-    const std::string symname = "TransposeKernel_chime_" + std::string(kernel_symbol);
+    const std::string symname = "Transpose2048_chime_" + std::string(kernel_symbol);
     CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[symname],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
-    DEBUG("Running CUDA TransposeKernel_chime on GPU frame {:d}", gpu_frame_id);
+    DEBUG("Running CUDA Transpose2048_chime on GPU frame {:d}", gpu_frame_id);
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[symname], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
@@ -621,7 +628,7 @@ cudaEvent_t cudaTransposeKernel_chime::execute(cudaPipelineState& /*pipestate*/,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-    DEBUG("Finished CUDA TransposeKernel_chime on GPU frame {:d}", gpu_frame_id);
+    DEBUG("Finished CUDA Transpose2048_chime on GPU frame {:d}", gpu_frame_id);
 
     // Check error codes
     const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
@@ -631,7 +638,7 @@ cudaEvent_t cudaTransposeKernel_chime::execute(cudaPipelineState& /*pipestate*/,
 
     for (std::size_t i = 0; i < info_host.size(); ++i)
         if (info_host[i] != 0)
-            ERROR("cudaTransposeKernel_chime returned 'info' value {:d} at index {:d} (zero "
+            ERROR("cudaTranspose2048_chime returned 'info' value {:d} at index {:d} (zero "
                   "indicates no error)",
                   info_host[i], i);
 #endif
@@ -698,7 +705,7 @@ cudaEvent_t cudaTransposeKernel_chime::execute(cudaPipelineState& /*pipestate*/,
     return record_end_event();
 }
 
-void cudaTransposeKernel_chime::finalize_frame() {
+void cudaTranspose2048_chime::finalize_frame() {
     const std::ptrdiff_t Tinlength = Tinmax - Tinmin;
     const std::ptrdiff_t Tlength = Tmax - Tmin;
 

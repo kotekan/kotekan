@@ -120,7 +120,7 @@ host_frb2_phase_buffer:
 #         kotekan_stage: cudaProcess
 #         gpu_id: 0
 #         in_buffers:
-#             host_voltage_ringbuffer_in: host_voltage_ringbuffer
+#             host_xposed_voltage_ringbuffer_in: host_xposed_voltage_ringbuffer
 #             host_frb1_U1_phase_buffer_in: host_frb1_U1_phase_buffer
 #         out_buffers:
 #             host_frb1_beams_ringbuffer_out: host_frb1_beams_ringbuffer
@@ -131,7 +131,7 @@ host_frb2_phase_buffer:
 #           gpu_mem: frb1_U1_phase_buffer
 #         - name: cudaSyncInput
 #         - name: cudaFRBBeamformer_chime_U1
-#           in_signal: host_voltage_ringbuffer_in
+#           in_signal: host_xposed_voltage_ringbuffer_in
 #           out_signal: host_frb1_beams_ringbuffer_out
 #           gpu_mem_voltage: voltage_buffer
 #           gpu_mem_phase: frb1_U1_phase_buffer
