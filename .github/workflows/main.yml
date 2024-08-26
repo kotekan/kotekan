@@ -487,6 +487,7 @@ jobs:
             -DCMAKE_LINK_WHAT_YOU_USE=ON \
             -DCMAKE_BUILD_TYPE=Test \
             -DCCACHE=ON \
+            -DUSE_OMP=ON \
             -DWITH_TESTS=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s
