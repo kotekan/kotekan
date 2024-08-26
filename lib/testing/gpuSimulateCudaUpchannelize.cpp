@@ -52,7 +52,7 @@ gpuSimulateCudaUpchannelize::gpuSimulateCudaUpchannelize(Config& config,
                         ngains));
     gains16.resize(gains.size());
     for (size_t i = 0; i < gains.size(); i++)
-        gains16[i] = gains[i];
+        gains16[i] = (float16_t)gains[i];
 #endif
 
     bool zero_output = config.get_default<bool>(unique_name, "zero_output", false);
@@ -252,8 +252,8 @@ void gpuSimulateCudaUpchannelize::upchan_simple_sub(std::string tag,
     float sumW = 0;
     for (int s = 0; s < M * U; ++s) {
         // sinc-Hanning window function, eqn. (11), with `N=U`
-        W.at(s) = pow(cos(float(M_PI) * (s - (M * U - 1) / 2.0f) / (M * U + 1)), 2)
-                  * sinc((s - (M * U - 1) / 2.0f) / U);
+        W.at(s) = (float16_t)(pow(cos(float(M_PI) * (s - (M * U - 1) / 2.0f) / (M * U + 1)), 2)
+                              * sinc((s - (M * U - 1) / 2.0f) / U));
         sumW += (float)W.at(s);
     }
     float16_t sumW16 = (float16_t)sumW;

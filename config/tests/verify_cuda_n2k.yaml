@@ -27,13 +27,13 @@ sizeof_int: 4
 # For faster CHORD testing, we're using...
 sub_integration_ntime: 1024
 samples_per_data_set: 2048
-num_elements: 1024
-num_local_freq: 16
-
 #sub_integration_ntime: 16384
 #samples_per_data_set: 32768
-#num_elements: 1024
-#num_local_freq: 16
+num_elements: 1024
+num_local_freq: 16
+# vis matrix size
+vis_blocks_tr_root: (num_elements + 1) / 16
+num_vis_blocks: vis_blocks_tr_root * (vis_blocks_tr_root + 1) / 2
 
 # Pool
 main_pool:
@@ -50,19 +50,13 @@ host_voltage_buffer:
 host_correlation_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
-    metadata_pool: main_pool
-
-lower_triangle_correlation_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * num_vis_blocks * 2 * sizeof_int
     metadata_pool: main_pool
 
 simulated_correlation_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * num_vis_blocks * 2 * sizeof_int
     metadata_pool: main_pool
 
 # Ringbuffer signalling buffer
@@ -72,6 +66,8 @@ host_voltage_ringbuffer:
     metadata_pool: main_pool
 
 gen_data:
+    # type: const
+    # value: 34 # 1i # 34 # = 2 + 2i
     type: random_signed
     value: 1532
     kotekan_stage: testDataGen
@@ -113,12 +109,6 @@ run_n2k:
           gpu_mem: correlation_matrix
           out_buf: host_correlation
 
-zero_lower_triangle:
-    kotekan_stage: zeroLowerTriangle
-    log_level: debug
-    corr_in_buf: host_correlation_buffer
-    corr_out_buf: lower_triangle_correlation_buffer
-
 cpu:
     kotekan_stage: gpuSimulateN2k
     log_level: debug
@@ -127,6 +117,6 @@ cpu:
 
 check_data:
     kotekan_stage: testDataCheckInt
-    first_buf: lower_triangle_correlation_buffer
+    first_buf: host_correlation_buffer
     second_buf: simulated_correlation_buffer
     num_frames_to_test: buffer_depth

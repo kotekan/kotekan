@@ -158,6 +158,7 @@ void set_error_message_f(const char* format, ...);
 
 // Exit kotekan after a successful test.
 #define TEST_PASSED() exit_kotekan(ReturnCode::TEST_PASSED)
+#define TEST_FAILED() exit_kotekan(ReturnCode::TEST_FAILED)
 
 #ifdef __cplusplus
 }
