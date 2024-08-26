@@ -748,9 +748,9 @@ void FEngine::main_thread() {
                 upchan_max_channels[Ufactor] - upchan_min_channels[Ufactor];
             for (int n = 0; n < upchan_max_num_channelss[Ufactor] * U; ++n)
                 if (n < num_local_channels * U)
-                    ((float16_t*)G_frame)[n] = upchan_gainss[Ufactor].at(n % U);
+                    ((float16_t*)G_frame)[n] = (float16_t)upchan_gainss[Ufactor].at(n % U);
                 else
-                    ((float16_t*)G_frame)[n] = 0.0 / 0.0; // unused
+                    ((float16_t*)G_frame)[n] = (float16_t)(0.0 / 0.0); // unused
             DEBUG("[{:d}] Done filling G_U{:d} buffer.", G_frame_index, U);
 
             // Set metadata
