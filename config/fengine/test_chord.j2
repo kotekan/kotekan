@@ -14,16 +14,18 @@ fengine_repeat_count: 1
 
 skip_julia: false
 
-base_dir: /tmp/fengine_test_chord
+input_dir: /localhome/eschnett/data/fengine_init_chord
+base_dir: /localhome/eschnett/data/fengine_test_chord
 
 {% include "include/defs.j2" %}
 {% include "include/fengine_chord.j2" %}
-{% include "include/sources_chord.j2" %}
 
 {% include "include/n2k_chord.j2" %}
 {% include "include/bb_chord.j2" %}
 {% include "include/upchan_chord.j2" %}
 {% include "include/frb_chord.j2" %}
 
-{% include "include/output_test.j2" %}
+{% include "include/input_init_chord.j2" %}
+
+{% include "include/output_test_chord.j2" %}
 ...

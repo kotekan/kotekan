@@ -796,11 +796,13 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
             const std::ptrdiff_t Fbar_out_offset = Fbar_out_min;
             const std::ptrdiff_t Fbar_out_length = Fbar_out_max - Fbar_out_min;
             DEBUG("before cudaMemset2DAsync.I");
-            CHECK_CUDA_ERROR(
-                cudaMemset2DAsync((std::uint8_t*)I_memory + 2 * Ttildeoffset * Ttildestride
-                                      + 2 * Fbar_out_offset * Fbar_out_stride,
-                                  2 * Ttildestride, 0x88, 2 * Fbar_out_length * Fbar_out_stride,
-                                  Ttildelength, device.getStream(cuda_stream_id)));
+            CHECK_CUDA_ERROR(cudaMemset2DAsync((std::uint8_t*)I_memory
+                                                   + 2 * Ttildeoffset * Ttildestride
+                                                   + 2 * Fbar_out_offset * Fbar_out_stride,
+                                               2 * Ttildestride,
+                                               0xff, // 0xffff is NaN16
+                                               2 * Fbar_out_length * Fbar_out_stride, Ttildelength,
+                                               device.getStream(cuda_stream_id)));
         } // for chunk
         DEBUG("poisoning done.");
     }
@@ -913,8 +915,8 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
                     for (std::ptrdiff_t n = 0; n < Fbar_out_stride; ++n) {
                         const auto val = I_buffer.at(ttilde * (Fbar_out_length * Fbar_out_stride)
                                                      + ftilde * Fbar_out_stride + n);
-                        any_error |= val == 0x8888;
-                        all_error &= val == 0x8888;
+                        any_error |= val == 0xffff;
+                        all_error &= val == 0xffff;
                     }
                     if (any_error) {
                         DEBUG("    U=64 [{},{}]=(any={},all={})", ttilde, ftilde, any_error,

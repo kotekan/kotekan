@@ -834,10 +834,10 @@ void FEngine::main_thread() {
                     JL_GC_POP();
                 });
             } else {
-                for (int n = 0; n < num_components * num_dish_locations_ns * num_dish_locations_ew
+                for (int n = 0; n < num_dish_locations_ns * num_dish_locations_ew
                                         * num_polarizations * num_local_channels * U;
                      ++n)
-                    ((float16_t*)W1_frame)[n] = 1;
+                    ((std::complex<float16_t>*)W1_frame)[n] = 1;
             }
             DEBUG("[{:d}] Done filling W1 buffer for U={:d}.", W1_frame_index, U);
 

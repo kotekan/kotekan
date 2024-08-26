@@ -50,6 +50,7 @@ using namespace gdal;
  * @author Erik Schnetter
  **/
 class gdalFileWrite : public kotekan::Stage {
+
     const std::string base_dir = config.get<std::string>(unique_name, "base_dir");
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
@@ -133,7 +134,7 @@ public:
                     buf << hostname << "_";
                 }
                 buf << file_name << "." << std::setw(8) << std::setfill('0') << frame_counter
-                    << ".gdal";
+                    << ".zarr";
                 const std::string full_path = buf.str();
 
                 // Create directory if necessary
@@ -150,7 +151,8 @@ public:
                 const std::vector<std::string> root_group_options{};
                 const auto root_group_options_c = convert_to_cstring_list(root_group_options);
                 const std::vector<std::string> options{
-                    "FORMAT=ZARR_V3",
+                    "FORMAT=ZARR_V2",
+                    // "FORMAT=ZARR_V3",
                 };
                 const auto options_c = convert_to_cstring_list(options);
                 const auto dataset = std::unique_ptr<GDALDataset>(driver->CreateMultiDimensional(
@@ -161,6 +163,28 @@ public:
                 const auto group = dataset->GetRootGroup();
 
                 // Write metadata (attributes)
+
+                {
+                    const std::string name_value = meta->get_name();
+                    const auto name_datatype =
+                        GDALExtendedDataType::CreateString(name_value.size());
+                    const auto name =
+                        group->CreateAttribute("name", std::vector<GUInt64>{}, name_datatype);
+                    assert(name);
+                    const bool success = name->Write(name_value.c_str());
+                    assert(success);
+                }
+
+                {
+                    const std::string type_value = chord_datatype_string(meta->type);
+                    const auto type_datatype =
+                        GDALExtendedDataType::CreateString(type_value.size());
+                    const auto type =
+                        group->CreateAttribute("type", std::vector<GUInt64>{}, type_datatype);
+                    assert(type);
+                    const bool success = type->Write(type_value.c_str());
+                    assert(success);
+                }
 
                 {
                     const auto chord_metadata_version_attribute =
@@ -175,7 +199,7 @@ public:
                     const auto nfreq = group->CreateAttribute(
                         "nfreq", std::vector<GUInt64>{},
                         GDALExtendedDataType::Create(get_gdal_datatype(meta->nfreq)));
-                    const bool success = nfreq->Write(&nfreq, sizeof meta->nfreq);
+                    const bool success = nfreq->Write(&meta->nfreq, sizeof meta->nfreq);
                     assert(success);
                 }
 
@@ -323,18 +347,6 @@ public:
                 const auto mdarray = group->CreateMDArray(meta->get_name(), dimensions, datatype,
                                                           array_options_c.data());
                 assert(mdarray);
-
-                // Describe datatype
-                {
-                    const std::string type_value = chord_datatype_string(meta->type);
-                    const auto type_datatype =
-                        GDALExtendedDataType::CreateString(type_value.size());
-                    const auto type =
-                        mdarray->CreateAttribute("type", std::vector<GUInt64>{}, type_datatype);
-                    assert(type);
-                    const bool success = type->Write(type_value.c_str());
-                    assert(success);
-                }
 
                 // Write data
                 {

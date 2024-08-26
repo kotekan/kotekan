@@ -17,11 +17,14 @@ end
 function make_data()
     ndishes = 64
     npolarizations = 2
-    nfrequencies = 384
-    ntimes = 8192
+    #TODO nfrequencies = 384
+    #TODO ntimes = 8192
+    #TODO data = Float32[
+    #TODO     1000 * t + 100 * f + 10 * p + 1 * d for d in 0:(ndishes - 1), p in 0:(npolarizations - 1), f in 0:(nfrequencies - 1),
+    #TODO     t in 0:(ntimes - 1)
+    #TODO ]
     data = Float32[
-        1000 * t + 100 * f + 10 * p + 1 * d for d in 0:(ndishes - 1), p in 0:(npolarizations - 1), f in 0:(nfrequencies - 1),
-        t in 0:(ntimes - 1)
+        10 * p + 1 * d for d in 0:(ndishes - 1), p in 0:(npolarizations - 1)
     ]
     return data
 end
@@ -207,7 +210,8 @@ function create_file(driver::AbstractString, path::AbstractString)
     elseif driver == "NETCDF"
         createoptions = ["FORMAT=NC4"]
     elseif driver == "Zarr"
-        createoptions = ["FORMAT=ZARR_V3"]
+        #TODO createoptions = ["FORMAT=ZARR_V3"]
+        createoptions = []
     else
         @assert false
         createoptions = []
@@ -223,7 +227,8 @@ function create_file(driver::AbstractString, path::AbstractString)
     @assert grouph != C_NULL
 
     data = make_data()
-    dimensionnames = ["D", "P", "F", "T"]
+    #TODO dimensionnames = ["D", "P", "F", "T"]
+    dimensionnames = ["D", "P"]
     @assert length(dimensionnames) == ndims(data)
 
     datatypeh = GDAL.gdalextendeddatatypecreate(GDAL.GDT_Float32)
@@ -242,7 +247,8 @@ function create_file(driver::AbstractString, path::AbstractString)
     # blocksize = join(reverse(size(data)), ",")
     blocksize = "8192,1,2,64"
     if driver == "Zarr"
-        arrayoptions = ["COMPRESS=BLOSC", "BLOCKSIZE=$(blocksize)", "BLOSC_CLEVEL=9", "BLOSC_SHUFFLE=BIT"]
+        #TODO arrayoptions = ["COMPRESS=BLOSC", "BLOCKSIZE=$(blocksize)", "BLOSC_CLEVEL=9", "BLOSC_SHUFFLE=BIT"]
+        arrayoptions = []
     elseif driver == "NETCDF"
         arrayoptions = ["COMPRESS=DEFLATE", "BLOCKSIZE=$(blocksize)", "ZLEVEL=9"]
     else
@@ -264,7 +270,8 @@ function create_file(driver::AbstractString, path::AbstractString)
 
     noerr = GDAL.gdalmdarraywrite(
         mdarrayh,
-        GDAL.GUIntBig[0, 0, 0, 0],
+        #TODO GDAL.GUIntBig[0, 0, 0, 0],
+        GDAL.GUIntBig[0, 0],
         GDAL.GUIntBig[size(data, d) for d in ndims(data):-1:1],
         C_NULL,
         C_NULL,

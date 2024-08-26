@@ -1163,18 +1163,18 @@ function do_first_fft!(emitter)
 
     # Write G to shared memory
     permute!(emitter, :G, :G, Register(:cplx, 1, 2), SIMD(:simd, 16, 2))
-    # # This writes superfluous data for 2*N ≤ beamQ < 2*Npad
-    # store!(emitter, :Gsh_shared => layout_Gsh_fft1_shared, :G)
-    # if!(emitter, :(
-    #     let
-    #         thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
-    #         beamq = 2i32 * thread
-    #         beamq < $(Int32(2 * N))
-    #     end
-    # )) do emitter
-    #     store!(emitter, :Gsh_shared => layout_Gsh_fft1_shared, :G)
-    #     nothing
-    # end
+    # This writes superfluous data for 2*N ≤ beamQ < 2*Npad
+    store!(emitter, :Gsh_shared => layout_Gsh_fft1_shared, :G)
+    if!(emitter, :(
+        let
+            thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
+            beamq = 2i32 * thread
+            beamq < $(Int32(2 * N))
+        end
+    )) do emitter
+        store!(emitter, :Gsh_shared => layout_Gsh_fft1_shared, :G)
+        nothing
+    end
 
     return nothing
 end

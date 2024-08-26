@@ -19,7 +19,7 @@
 using namespace gdal;
 
 class gdalFileRead : public kotekan::Stage {
-    const std::string base_dir = config.get<std::string>(unique_name, "base_dir");
+    const std::string input_dir = config.get<std::string>(unique_name, "input_dir");
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
 
@@ -58,13 +58,13 @@ public:
 
             // Define file name
             std::ostringstream buf;
-            buf << base_dir << "/";
+            buf << input_dir << "/";
             if (prefix_hostname) {
                 char hostname[256];
                 gethostname(hostname, sizeof hostname);
                 buf << hostname << "_";
             }
-            buf << file_name << "." << std::setw(8) << std::setfill('0') << frame_index << ".gdal";
+            buf << file_name << "." << std::setw(8) << std::setfill('0') << frame_index << ".zarr";
             const std::string full_path = buf.str();
 
             // Open file
@@ -79,13 +79,13 @@ public:
             const auto group = dataset->GetRootGroup();
 
             // Wait for buffer
-            DEBUG("[{s:}/{:d}] Waiting for buffer...", buffer->buffer_name, frame_index);
+            DEBUG("[{:s}/{:d}] Waiting for buffer...", buffer->buffer_name, frame_index);
             std::uint8_t* const frame = buffer->wait_for_empty_frame(unique_name, frame_id);
             if (!frame)
                 break;
 
             // Read metadata (attributes)
-            DEBUG("[{s:}/{:d}] Setting metadata...", buffer->buffer_name, frame_index);
+            DEBUG("[{:s}/{:d}] Setting metadata...", buffer->buffer_name, frame_index);
             buffer->allocate_new_metadata_object(frame_id);
             const std::shared_ptr<metadataObject> metadata = buffer->get_metadata(frame_id);
             if (!metadata)
@@ -97,8 +97,34 @@ public:
                             buffer->buffer_name, frame_id);
             assert(metadata_is_chord(metadata));
             const std::shared_ptr<chordMetadata> meta = get_chord_metadata(metadata);
+            assert(meta);
 
-            meta->set_name(file_name);
+            {
+                const auto name = group->GetAttribute("name");
+                assert(name);
+                const auto name_shape = name->GetDimensionsSize();
+                assert(name_shape.empty());
+                const auto name_datatype = name->GetDataType();
+                assert(name_datatype.GetClass() == GEDTC_STRING);
+                const std::string name_value = std::string(name->ReadAsString());
+                meta->set_name(name_value);
+                DEBUG("[{:s}/{:d}] meta->name={}", buffer->buffer_name, frame_index,
+                      meta->get_name());
+            }
+
+            {
+                const auto type = group->GetAttribute("type");
+                assert(type);
+                const auto type_shape = type->GetDimensionsSize();
+                assert(type_shape.empty());
+                const auto type_datatype = type->GetDataType();
+                assert(type_datatype.GetClass() == GEDTC_STRING);
+                const std::string type_value = std::string(type->ReadAsString());
+                meta->type = chord_datatype_from_string(type_value);
+                DEBUG("[{:s}/{:d}] meta->type={}", buffer->buffer_name, frame_index,
+                      chord_datatype_string(meta->type));
+                assert(meta->type != unknown_type);
+            }
 
             {
                 const auto chord_metadata_version_attribute =
@@ -125,10 +151,13 @@ public:
                     const auto nfreq_shape = nfreq->GetDimensionsSize();
                     assert(nfreq_shape.empty());
                     meta->nfreq = nfreq->ReadAsInt();
+                    DEBUG("[{:s}/{:d}] meta->nfreq={}", buffer->buffer_name, frame_index,
+                          meta->nfreq);
                     assert(meta->nfreq >= 0);
                     assert(meta->nfreq <= CHORD_META_MAX_FREQ);
                 } else {
                     meta->nfreq = -1;
+                    DEBUG("[{:s}/{:d}] meta->nfreq", buffer->buffer_name, frame_index);
                 }
             }
 
@@ -245,21 +274,11 @@ public:
             }
 
             // Read buffer
-            DEBUG("[{s:}/{:d}] Filling buffer...", buffer->buffer_name, frame_index);
+            DEBUG("[{:s}/{:d}] Filling buffer...", buffer->buffer_name, frame_index);
 
             {
-                const auto mdarray = group->OpenMDArray(file_name);
+                const auto mdarray = group->OpenMDArray(meta->get_name());
                 assert(mdarray);
-
-                const auto type = mdarray->GetAttribute("type");
-                assert(type);
-                const auto type_shape = type->GetDimensionsSize();
-                assert(type_shape.empty());
-                const auto type_datatype = type->GetDataType();
-                assert(type_datatype.GetClass() == GEDTC_STRING);
-                const std::string type_value = std::string(type->ReadAsString());
-                meta->type = chord_datatype_from_string(type_value);
-                assert(meta->type != unknown_type);
 
                 const auto dimensions = mdarray->GetDimensions();
                 meta->dims = dimensions.size();
@@ -269,7 +288,7 @@ public:
                     assert(meta->dim[d] >= 0);
                 }
                 for (int d = 0; d < meta->dims; ++d)
-                    std::strncpy(meta->dim_name[d], dimensions.at(0)->GetName().c_str(),
+                    std::strncpy(meta->dim_name[d], dimensions.at(d)->GetName().c_str(),
                                  CHORD_META_MAX_DIMNAME);
                 for (int d = meta->dims - 1; d >= 0; --d)
                     meta->stride[d] =
@@ -284,7 +303,7 @@ public:
                 const auto datatype = mdarray->GetDataType();
                 const std::ptrdiff_t data_size =
                     std::int64_t(1) * datatype.GetSize() * meta->stride[0] * meta->dim[0];
-                assert(data_size == buffer->frame_size);
+                assert(data_size == std::ptrdiff_t(buffer->frame_size));
 
                 const auto success =
                     mdarray->Read(arrayStartIdx.data(), count.data(), nullptr, nullptr, datatype,
@@ -293,7 +312,7 @@ public:
             }
 
             // Mark buffer as full
-            DEBUG("[{s:}/{:d}] Marking buffer as full...", buffer->buffer_name, frame_index);
+            DEBUG("[{:s}/{:d}] Marking buffer as full...", buffer->buffer_name, frame_index);
             buffer->mark_frame_full(unique_name, frame_id);
 
             // Stop timer

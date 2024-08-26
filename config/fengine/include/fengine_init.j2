@@ -1,0 +1,34 @@
+# -*-yaml-*-
+
+# Calculate initial conditions
+
+################################################################################
+
+# Stages
+
+run_fengine:
+    kotekan_stage: FEngine
+    num_frames: fengine_num_frames
+    repeat_count: fengine_repeat_count
+    # skip_julia: false
+    dish_positions_buffer: host_dish_positions_buffer
+    E_buffer: host_voltage_buffer
+    bb_beam_positions_buffer: host_bb_beam_positions_buffer
+    A_buffer: host_bb_phase_buffer
+    s_buffer: host_bb_shift_buffer
+    J_buffer: host_expected_bb_beams_buffer
+    G_U2_buffer: host_upchan_U2_gain_buffer
+    G_U4_buffer: host_upchan_U4_gain_buffer
+    G_U8_buffer: host_upchan_U8_gain_buffer
+    G_U16_buffer: host_upchan_U16_gain_buffer
+    G_U32_buffer: host_upchan_U32_gain_buffer
+    G_U64_buffer: host_upchan_U64_gain_buffer
+    W1_U1_buffer: host_frb1_U1_phase_buffer
+    W1_U2_buffer: host_frb1_U2_phase_buffer
+    W1_U4_buffer: host_frb1_U4_phase_buffer
+    W1_U8_buffer: host_frb1_U8_phase_buffer
+    W1_U16_buffer: host_frb1_U16_phase_buffer
+    W1_U32_buffer: host_frb1_U32_phase_buffer
+    W1_U64_buffer: host_frb1_U64_phase_buffer
+    W2_buffer: host_frb2_phase_buffer
+    I1_buffer: host_expected_frb1_beams_buffer

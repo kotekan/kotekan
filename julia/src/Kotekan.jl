@@ -4,8 +4,13 @@
 module Kotekan
 
 using ASDF2
+using ArchGDAL
+using DimensionalData
 using CUDASIMDTypes
+using GDAL
 using MappedArrays
+
+const AG = ArchGDAL
 
 export c2t, i2c, i2t, t2c
 c2t(x::Complex) = (real(x), imag(x))
@@ -13,8 +18,14 @@ i2c(x::Int4x2) = t2c(i2t(x))
 i2t(x::Int4x2) = convert(NTuple{2,Int8}, x)
 t2c(x::NTuple{2}) = Complex(x...)
 
-export read_kotekan
-function read_kotekan(filename::AbstractString, quantity::AbstractString, indexnames::Union{AbstractVector,Tuple})
+export u4p42i8
+u4p42i8(x::UInt8) = (((x >>> 0x0) & 0x0f) % Int8, ((x >>> 0x4) & 0x0f) % Int8)
+
+export u162f16
+u162f16(x::UInt16) = reinterpret(Float16, x)
+
+export read_asdf
+function read_asdf(filename::AbstractString, quantity::AbstractString, indexnames::Union{AbstractVector,Tuple})
     if !isempty(indexnames)
         indexnames::Union{AbstractVector{<:AbstractString},NTuple{N,<:AbstractString} where N}
     end
@@ -52,6 +63,66 @@ function read_kotekan(filename::AbstractString, quantity::AbstractString, indexn
         @info "permuting indices via $perm..."
         data = PermutedDimsArray(data, perm)
     end
+
+    return data::AbstractArray
+end
+
+export read_gdal
+function read_gdal(filename::AbstractString)
+    filename = expanduser(filename)
+
+    # @info "using iteration $iter..."
+    # @info "reading dataset \"$datasetname\"..."
+    dataset = AG.open(
+        filename, AG.OF_MULTIDIM_RASTER | AG.OF_READONLY | AG.OF_SHARED | AG.OF_VERBOSE_ERROR, nothing, nothing, nothing
+    )
+    root = AG.getrootgroup(dataset)
+
+    # attrs = AG.getname.(AG.getattributes(root))
+    # AG.getmdarraynames(root)
+
+    name = AG.readattribute(root, "name")::AbstractString
+    @info "found dataset \"$name\""
+    type = AG.readattribute(root, "type")::AbstractString
+    @info "found dataset type $type"
+
+    mdarray = AG.openmdarray(root, name)
+
+    dims = AG.getdimensions(mdarray)
+    dimnames = Tuple(AG.getname.(dims))
+    @info "found index names $dimnames"
+    dimsizes = Tuple(AG.getsize.(dims))
+    @info "found dataset size $dimsizes"
+
+    data = AG.readmdarray(root, name)
+    @assert size(data) == dimsizes
+
+    # Convert type if necessary
+    if type == "float16"
+        @assert eltype(data) == UInt16
+        @info "mapping to Float16..."
+        data = reinterpret(Float16, data)
+    elseif type == "int4p4chime"
+        @assert eltype(data) == UInt8
+        @info "mapping to Complex{Int8}..."
+        data = mappedarray(i2c ∘ Int4x2, data)
+    elseif type == "uint4p4"
+        @assert eltype(data) == UInt8
+        @info "mapping to Int8..."
+        data = reinterpret(Int8, mappedarray(u4p42i8, data))
+        # dims[1] is now wrong!
+        dimsizes = Base.setindex(dimsizes, 2*dimsizes[1], 1)
+    end
+    if dimnames[begin] == "C"
+        @info "mapping to Complex..."
+        data = reinterpret(reshape, Complex{eltype(data)}, data)
+        dims = dims[begin+1:end]
+        dimnames = dimnames[begin+1:end]
+        dimsizes = dimsizes[begin+1:end]
+    end
+
+    # Apply DimArray; do this last, it doesn't survive `mappedarray`
+    data = DimArray(data, ntuple(d -> Dim{Symbol(dimnames[d])}(1:dimsizes[d]), length(dimnames)))
 
     return data::AbstractArray
 end
