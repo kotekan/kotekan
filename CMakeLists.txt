@@ -73,7 +73,8 @@ endif()
 # lots of warnings and all warnings as errors
 add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wall>)
 add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wextra>)
-add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wzero-as-null-pointer-constant>)
+# This warning produces too many false positives in the CUDA header files
+# add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wzero-as-null-pointer-constant>)
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -Xcompiler -Wall")
 # Warning about missing override is called differently in clang and gcc
 include(CheckCXXCompilerFlag)
@@ -133,6 +134,10 @@ if(${USE_CUDA})
     set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
     set(USE_CUDA ${CUDA_FOUND})
     enable_language(CUDA)
+    # TODO: Set the include path and warning options in the proper cmake way
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -I/usr/local/cuda/targets/x86_64-linux/include")
+    set(CMAKE_CXX_FLAGS_TEST "${CMAKE_CXX_FLAGS_TEST} -I/usr/local/cuda/targets/x86_64-linux/include")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -I/usr/local/cuda/targets/x86_64-linux/include")
 endif()
 
 if(${USE_AIRSPY})
