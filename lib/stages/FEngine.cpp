@@ -998,7 +998,7 @@ void FEngine::main_thread() {
                                                                  + beamOut_ew * beamOut_ew_stride
                                                                  + freq * freq_stride;
 
-                                        W2[n] = Up[beamIn_ew] * Uq[beamIn_ns];
+                                        W2[n] = (float16_t)(Up[beamIn_ew] * Uq[beamIn_ns]);
                                     }
                                 }
                             }
