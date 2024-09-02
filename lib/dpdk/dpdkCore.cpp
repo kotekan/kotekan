@@ -317,12 +317,6 @@ void dpdkCore::main_thread() {
                 ERROR("Could not start worker lcore");
             }
         }
-        for (uint32_t i = 0; i < 8; ++i) {
-            INFO("Starting 10G capture handler on lcore {:d}", i + num_workers + 2);
-            if (rte_eal_remote_launch(dpdkCore::lcore_rx, (void*)this, i + num_workers + 2) != 0) {
-                ERROR("Could not start worker lcore");
-            }
-        }
     }
 
     while (!stop_thread) {
@@ -482,22 +476,22 @@ int dpdkCore::lcore_worker(void* args) {
 
         if (num_rx == 0)
             continue;
-        /*
-                for (uint16_t j = 0; j < num_rx; ++j) {
-                    total_packets += 1;
-                    if (unlikely(total_packets % (1250000 * 1) == 0)) {
-                        struct timeval now;
-                        gettimeofday(&now, nullptr);
-                        double elapsed_time = tv_to_double(now) - tv_to_double(last_time);
-                        INFO_NON_OO("Packet rate: {:.0f} pps, data rate: {:.4f}Gb/s",
-                                    total_packets / elapsed_time,
-                                    (double)total_packets * 8224 * 8 / 1e9 / elapsed_time);
-                        last_time = now;
-                        total_packets = 0;
-                    }
-                    // rte_pktmbuf_free(mbufs[j]);
-                }
-        */
+
+        /*for (uint16_t j = 0; j < num_rx; ++j) {
+            total_packets += 1;
+            if (unlikely(total_packets % (1250000 * 1) == 0)) {
+                struct timeval now;
+                gettimeofday(&now, nullptr);
+                double elapsed_time = tv_to_double(now) - tv_to_double(last_time);
+                INFO_NON_OO("Packet rate: {:.0f} pps, data rate: {:.4f}Gb/s",
+                            total_packets / elapsed_time,
+                            (double)total_packets * 3904 * 8 / 1e9 / elapsed_time);
+                last_time = now;
+                total_packets = 0;
+            }
+            // rte_pktmbuf_free(mbufs[j]);
+        }*/
+
         for (uint16_t j = 0; j < num_rx; ++j) {
             if (unlikely(core->handlers[worker_id]->handle_packet(mbufs[j]) != 0))
                 break;
@@ -536,6 +530,7 @@ int dpdkCore::lcore_rx_distributor(void* args) {
         for (uint16_t j = 0; j < num_rx; ++j) {
             total_packets += 1;
             uint64_t seq_num = *rte_pktmbuf_mtod_offset(mbufs[j], uint64_t*, 50);
+            //INFO_NON_OO("Seq num: {:d}", seq_num);
 
             if (unlikely(last_seq) == 0) {
                 last_seq = seq_num;
@@ -553,7 +548,7 @@ int dpdkCore::lcore_rx_distributor(void* args) {
                 INFO_NON_OO("Port: {:d} Packet rate: {:.0f} pps, data rate: {:.4f}Gb/s, "
                             "lost_packets rate: {:.4f}%",
                             port, total_packets / elapsed_time,
-                            (double)total_packets * 8224 * 8 / 1e9 / elapsed_time,
+                            (double)total_packets * 3904 * 8 / 1e9 / elapsed_time,
                             (double)lost_packets / (double)total_packets * 100.0);
                 last_time = now;
                 total_packets = 0;

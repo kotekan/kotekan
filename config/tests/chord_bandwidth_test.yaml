@@ -1,0 +1,316 @@
+##########################################
+#
+# dpdk_example.yaml
+#
+# Example config for a simple DPDK setup, this config just captures packets from
+# one DPDK port (including all headers/footers), and puts them in a buffer
+# Nothing is done with the buffer other than printing the contents of the first
+# packet in each frame to screen.
+#
+# Note all frames must be the same size, set by `packet_size`
+#
+# Author: Andre Renard
+#
+##########################################
+
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: debug
+
+# Default buffer depth (number of frames in buffer)
+buffer_depth: 6
+
+# Default core assignments
+cpu_affinity: [0,1,2,3,8,9,10,11,12,13,14,15]
+
+packets_per_frame: 32768
+voltage_freq: 16
+num_dishes: 512
+# Set this to the size of the packet plus Ethernet/IP/UDP headers
+packet_size: 3904
+payload_size: 3904
+max_rx_pkt_len: 4000
+
+# Global buffer options
+use_hugepages: true
+zero_new_frames: false
+
+main_pool:
+  kotekan_metadata_pool: chimeMetadata
+  num_metadata_objects: 8 * buffer_depth
+  numa_node: 0
+
+# Buffers
+network_capture_buf_0:
+  kotekan_buffer: standard
+  num_frames: 20 # 425
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 0
+network_capture_buf_1:
+  kotekan_buffer: standard
+  num_frames: 20 # 425
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 0
+network_capture_buf_2:
+  #kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 0
+network_capture_buf_3:
+  #kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 0
+
+output_0:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 0
+output_1:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 0
+split_buf_0:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 0
+split_buf_1:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 0
+split_buf_2:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 0
+split_buf_3:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 0
+
+
+## Buffers for numa 1
+main_pool_numa1:
+  kotekan_metadata_pool: chimeMetadata
+  num_metadata_objects: 8 * buffer_depth
+  numa_node: 1
+
+# Buffers
+network_capture_buf_0_numa1:
+  kotekan_buffer: standard
+  num_frames: 20 # 425
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 1
+network_capture_buf_1_numa1:
+  kotekan_buffer: standard
+  num_frames: 20 # 425
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 1
+network_capture_buf_2_numa1:
+  #kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 1
+network_capture_buf_3_numa1:
+  #kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 1
+
+output_0_numa1:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 1
+output_1_numa1:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 1
+split_buf_0_numa1:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 1
+split_buf_1_numa1:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 1
+split_buf_2_numa1:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 1
+split_buf_3_numa1:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 1
+
+# See the dpdkCore class docs in dpdkCore.hpp for details
+# on the options here.
+dpdk:
+  kotekan_stage: dpdkCore
+  # Format is index = lcore (logical core), value = cpu core
+  lcore_cpu_map: [5,6,7]
+  main_lcore_cpu: 4
+  num_mem_channels: 4
+  # Format is index = lcore, value = array of port IDs
+  # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+  # and lcore 1 to service ports 2 and 3.
+  num_workers: 2
+  rx_ring_size: 4096
+  tx_ring_size: 128
+  mbuf_cache_size: 20
+  burst_size: 8
+  lcore_port_map:
+    - [0]
+  # One handler must be given per port.
+  handlers:
+    # This handler is mapped to port 0 which is being handled by lcore 0
+    - dpdk_handler: captureHandler
+      out_buf: network_capture_buf_0
+    - dpdk_handler: captureHandler
+      out_buf: network_capture_buf_1
+    #- dpdk_handler: captureHandler
+    #  out_buf: network_capture_buf_2
+
+gpu:
+    profiling: true
+    kernel_path: "../../lib/cuda/kernels/"
+    log_profiling: false
+    log_level: warn
+    commands: &command_list
+        - name: cudaInputData
+          in_buf: host_voltage
+          gpu_mem: voltage
+        - name: cudaInputData
+          in_buf: host_voltage1
+          gpu_mem: voltage1
+        - name: cudaSyncInput
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          in_buf: host_voltage # Metadata transfer from here
+          gpu_mem: voltage
+          out_buf: host_correlation
+        - name: cudaOutputData
+          in_buf: host_voltage1 # Metadata transfer from here
+          gpu_mem: voltage1
+          out_buf: host_correlation1
+    frame_arrival_period: 2*packets_per_frame/1450000.0
+    buffer_depth: 3
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        commands: *command_list
+        in_buffers:
+            host_voltage: network_capture_buf_0
+            host_voltage1: network_capture_buf_1
+            #host_voltage2: network_capture_buf_2
+            #host_voltage3: network_capture_buf_3
+        out_buffers:
+            host_correlation: output_0
+            host_correlation1: output_1
+            host_mem_0: split_buf_0
+            host_mem_1: split_buf_1
+            host_mem_2: split_buf_2
+            host_mem_3: split_buf_3
+
+
+hexDump:
+  #kotekan_stage: hexDump
+  in_buf: network_capture_buf_1
+  len: packet_size
+
+merge_acc_final_0:
+    #kotekan_stage: bufferMerge
+    # Force a copy into NUMA2 since that contains the output NIC
+    force_copy: true
+    in_bufs:
+        - output_0
+    out_buf: network_send_0
+
+merge_acc_final_1:
+    #kotekan_stage: bufferMerge
+    # Force a copy into NUMA2 since that contains the output NIC
+    force_copy: true
+    in_bufs:
+        - output_1
+    out_buf: network_send_1
+
+buffer_split:
+  kotekan_stage: BufferSplit
+  in_buf: output_0
+  out_bufs:
+    - split_buf_0
+    - split_buf_1
+
+buffer_split_1:
+  kotekan_stage: BufferSplit
+  in_buf: output_1
+  out_bufs:
+    - split_buf_2
+    - split_buf_3
+
+
+buffer_send_0:
+    kotekan_stage: bufferSend
+    server_ip: 10.1.1.2
+    server_port: 11027
+    reconnect_time: 20
+    log_level: warn
+    buf: split_buf_0
+
+buffer_send_0_1:
+    kotekan_stage: bufferSend
+    server_ip: 10.1.1.2
+    server_port: 11027
+    reconnect_time: 20
+    log_level: warn
+    buf: split_buf_1
+
+buffer_send_1:
+    kotekan_stage: bufferSend
+    server_ip: 10.1.2.2
+    server_port: 11028
+    reconnect_time: 20
+    log_level: warn
+    buf: split_buf_2
+
+buffer_send_1_1:
+    kotekan_stage: bufferSend
+    server_ip: 10.1.2.2
+    server_port: 11028
+    reconnect_time: 20
+    log_level: warn
+    buf: split_buf_3
+

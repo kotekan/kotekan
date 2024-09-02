@@ -84,10 +84,6 @@ inline captureHandler::captureHandler(kotekan::Config& config, const std::string
     packet_size = config.get<uint32_t>(unique_name, "packet_size");
     payload_size = config.get<uint32_t>(unique_name, "payload_size");
 
-    if (port > 1) {
-        payload_size = 4096;
-    }
-
     if (payload_size > (uint32_t)out_buf->frame_size) {
         throw std::runtime_error("The packet size must be less than the frame size");
     }
@@ -99,7 +95,7 @@ inline captureHandler::captureHandler(kotekan::Config& config, const std::string
     // TODO this seems overly restrictive, but removing this requires a generalized `copy_block`
     // function
     if ((payload_size % 32) != 0) {
-        // throw std::runtime_error("The packet_size must be a multiple of 32 bytes");
+        throw std::runtime_error("The packet_size must be a multiple of 32 bytes");
     }
 
     INFO("Created captureHandler for port: {:d}", port);
