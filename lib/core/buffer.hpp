@@ -206,6 +206,9 @@ struct Buffer {
 
     /// The NUMA node the frames are allocated in
     int numa_node;
+
+    /// Thread affinity for the zeroing threads
+    cpu_set_t zeroing_thread_cpuset;
 };
 
 /**
@@ -230,7 +233,8 @@ struct Buffer {
  */
 Buffer* create_buffer(int num_frames, size_t frame_size, metadataPool* pool,
                       const char* buffer_name, const char* buffer_type, int numa_node,
-                      bool use_huge_pages, bool mlock_frames, bool zero_new_frames);
+                      bool use_huge_pages, bool mlock_frames, bool zero_new_frames, 
+                      cpu_set_t zeroing_thread_cpuset);
 
 /**
  * @brief Deletes a buffer object and frees all frame memory

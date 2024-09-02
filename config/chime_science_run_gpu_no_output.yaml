@@ -39,6 +39,7 @@ vbuffer_depth: 32
 num_links: 4
 timesamples_per_packet: 2
 cpu_affinity: [2,3,8,9]
+zeroing_thread_affinity: [5]
 block_size: 32
 num_gpus: 4
 link_map: [0,1,2,3]

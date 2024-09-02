@@ -101,11 +101,13 @@ lost_samples_buffers:
 {%- for id in range(16) %}
     lost_samples_buffer_{{ id }}:
         numa_node: 0
+        zeroing_thread_affinity: [8]
         kotekan_buffer: standard
 {%- endfor %}
 {%- for id in range(16,32) %}
     lost_samples_buffer_{{ id }}:
         numa_node: 1
+        zeroing_thread_affinity: [32]
         kotekan_buffer: standard
 {%- endfor %}
 
