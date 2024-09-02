@@ -34,8 +34,18 @@ public:
     cl_mem get_gpu_memory_array(const std::string& name, const uint32_t index, const size_t len);
     cl_mem get_gpu_memory(const std::string& name, const size_t len);
 
+    void async_copy_host_to_gpu(const std::string &device_memory, const uint64_t &frame_id,
+                                void *host_memory, const size_t &frame_size,
+                                cl_event &pre_event, cl_event &post_event);
+
+    void async_copy_gpu_to_host(const std::string &device_memory, const uint64_t &frame_id,
+                                void *host_memory, const size_t &frame_size,
+                                cl_event &pre_event, cl_event &post_event);    
+
+
 protected:
     void* alloc_gpu_memory(size_t len) override;
+    void* alloc_gpu_sub_memory(void* base_ptr, const size_t offset, const size_t len) override;
     void free_gpu_memory(void*) override;
 
     // Extra data

@@ -76,21 +76,31 @@ data_format: "4+4b"
 
 gpu:
   profiling: true
-  kernel_path: "./opencl/kernels/"
+  kernel_path: "/var/lib/kotekan/opencl/kernels/"
   gain_dir: "/etc/kotekan/"
   log_level: debug2
-  commands:
+  buffer_depth: 3
+  frame_arrival_period: 390625
+  commands: &command_list
   - name: clInputData
+    gpu_memory: input
+    in_bufs:
+      - network_buf
   - name: clPresumZero
   - name: clOutputDataZero
   - name: clPresumKernel
-#  - name: clPreseedKernel
-#  - name: clCorrelatorKernel
-  - name: clKVCorr
+  - name: clPreseedKernel
+  - name: clCorrelatorKernel
+#  - name: clKVCorr
   - name: clOutputData
+    out_bufs:
+      - output_buf
+    in_bufs:
+      - network_buf
   gpu_0:
     kotekan_stage: clProcess
-    gpu_id: 1
+    gpu_id: 0
+    commands: *command_list
     in_buffers:
       network_buf: gpu_input_buffer
     out_buffers:

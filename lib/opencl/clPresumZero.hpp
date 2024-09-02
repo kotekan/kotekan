@@ -16,6 +16,7 @@ public:
 private:
     int32_t presum_len;
     void* presum_zeros;
+    cl_mem cl_mem_prt;
 
     // TODO maybe factor these into a CHIME command object class?
     int32_t _num_local_freq;

@@ -74,6 +74,8 @@ Buffer* bufferFactory::new_buffer(const string& type_name, const string& name,
     bool use_hugepages = config.get_default<bool>(location, "use_hugepages", false);
     bool mlock_frames = config.get_default<bool>(location, "mlock_frames", true);
     bool zero_new_frames = config.get_default<bool>(location, "zero_new_frames", true);
+    std::vector<int32_t> zeroing_thread_affinity =
+        config.get_default<std::vector<int32_t>>(location, "zeroing_thread_affinity", {0});
 
     metadataPool* pool = nullptr;
     if (metadataPool_name != "none") {
@@ -97,11 +99,19 @@ Buffer* bufferFactory::new_buffer(const string& type_name, const string& name,
         throw std::runtime_error(fmt::format(fmt("No buffer type named: {:s}"), type_name));
     }
 
+    // Create the CPU affinity cpuset for the zeroing threads
+    cpu_set_t zeroing_cpuset;
+    CPU_ZERO(&zeroing_cpuset);
+    for (int32_t cpu : zeroing_thread_affinity) {
+        CPU_SET(cpu, &zeroing_cpuset);
+    }
+
     INFO_NON_OO("Creating {:s}Buffer named {:s} with {:d} frames, frame size of {:d} and "
                 "metadata pool {:s} on numa_node {:d}",
                 type_name, name, num_frames, frame_size, metadataPool_name, numa_node);
     Buffer* buf = create_buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(),
-                                numa_node, use_hugepages, mlock_frames, zero_new_frames);
+                                numa_node, use_hugepages, mlock_frames, zero_new_frames, 
+                                zeroing_cpuset);
     if (buf == nullptr) {
         throw std::runtime_error(fmt::format(fmt("Could not create the buffer: {:s}"), name));
     }

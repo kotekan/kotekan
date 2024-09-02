@@ -84,7 +84,7 @@ protected:
     int lost_samples_frame_id = 0;
 
     /// Number of frames captured
-    uint64_t num_frames_captured;
+    uint64_t num_frames_captured = 0;
 
     /// Maximum number of frames to capture (used for burst captures), 0 = unlimited
     uint64_t capture_n_frames;

@@ -13,16 +13,14 @@ public:
     cl_event execute(cl_event pre_event) override;
     void finalize_frame() override;
 
-
 protected:
+    // Input buffers
+    std::vector<Buffer*> in_bufs;
+
     cl_event* data_staged_event;
 
-    Buffer* network_buf;
-    int32_t input_frame_len;
-
-    int32_t _num_local_freq;
-    int32_t _num_elements;
-    int32_t _samples_per_data_set;
+    /// Name of the GPU side memory to transfer data into.
+    std::string _gpu_memory;
 };
 
 #endif // CL_INPUT_DATA_H

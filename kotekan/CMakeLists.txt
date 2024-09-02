@@ -19,6 +19,8 @@ else()
     message(FATAL_ERROR "System type ${CMAKE_SYSTEM_NAME} not supported")
 endif()
 
+set_property(TARGET kotekan PROPERTY INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 install(
     TARGETS kotekan
     DESTINATION /usr/local/bin

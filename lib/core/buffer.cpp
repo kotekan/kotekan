@@ -71,7 +71,7 @@ int private_mark_frame_empty(Buffer* buf, const int id);
 
 Buffer* create_buffer(int num_frames, size_t len, metadataPool* pool, const char* buffer_name,
                       const char* buffer_type, int numa_node, bool use_hugepages, bool mlock_frames,
-                      bool zero_new_frames) {
+                      bool zero_new_frames, cpu_set_t zeroing_thread_cpuset) {
 
     assert(num_frames > 0);
 
@@ -165,6 +165,9 @@ Buffer* create_buffer(int num_frames, size_t len, metadataPool* pool, const char
 
     // By default don't zero buffers at the end of their use.
     buf->zero_frames = 0;
+
+    // Set the zeroing thead CPU affinity in case we use it. 
+    buf->zeroing_thread_cpuset = zeroing_thread_cpuset;
 
     buf->last_arrival_time = 0;
 
@@ -326,12 +329,9 @@ int private_mark_frame_empty(Buffer* buf, const int id) {
         zero_args->buf = buf;
 
         cpu_set_t cpuset;
-        CPU_ZERO(&cpuset);
-        // TODO: Move this to the config file (when buffers.c updated to C++11)
-        CPU_SET(5, &cpuset);
 
         CHECK_ERROR_F(pthread_create(&zero_t, nullptr, &private_zero_frames, (void*)zero_args));
-        CHECK_ERROR_F(pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &cpuset));
+        CHECK_ERROR_F(pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &buf->zeroing_cpu_set));
         CHECK_ERROR_F(pthread_detach(zero_t));
     } else {
         buf->is_full[id] = 0;

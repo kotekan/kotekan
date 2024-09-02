@@ -155,6 +155,11 @@ void gpuProcess::main_thread() {
     bool first_run = true;
 
     while (!stop_thread) {
+   
+        // We make sure we aren't using a gpu frame that's currently in-flight.
+        DEBUG("Waiting for free slot for GPU[{:d}] frame {:d}", gpu_id, gpu_frame_counter);
+        int ic = gpu_frame_counter % final_signals.size();
+        final_signals[ic]->wait_for_free_slot();
 
         for (auto& command : commands) {
             int ic = gpu_frame_counter % command.size();
@@ -174,11 +179,8 @@ void gpuProcess::main_thread() {
             }
         }
 
-        DEBUG("Waiting for free slot for GPU[{:d}] frame {:d}", gpu_id, gpu_frame_counter);
-        // We make sure we aren't using a gpu frame that's currently in-flight.
-        int ic = gpu_frame_counter % final_signals.size();
-        final_signals[ic]->wait_for_free_slot();
         queue_commands(gpu_frame_counter);
+
         if (first_run) {
             results_thread_handle = std::thread(&gpuProcess::results_thread, std::ref(*this));
 
@@ -193,7 +195,7 @@ void gpuProcess::main_thread() {
             first_run = false;
         }
 
-        gpu_frame_counter++;
+        gpu_frame_counter++; 
     }
 exit_loop:
     for (auto& sig_container : final_signals)
@@ -211,17 +213,12 @@ void gpuProcess::results_thread() {
     int gpu_frame_counter = 0;
 
     while (true) {
-        // Wait for a signal to be completed
-        DEBUG2("Waiting for signal for gpu[{:d}], frame {:d}, time: {:f}", gpu_id,
-               gpu_frame_counter, e_time());
         int ic = gpu_frame_counter % final_signals.size();
         if (final_signals[ic]->wait_for_signal() == -1) {
             // If wait_for_signal returns -1, then we don't have a signal to wait on,
             // but we have been given a shutdown request, so break this loop.
             break;
         }
-        DEBUG2("Got final signal for gpu[{:d}], frame {:d}, time: {:f}", gpu_id, gpu_frame_counter,
-               e_time());
 
         for (auto& command : commands) {
             // Note the fact that we don't run `finalize_frame()` when the shutdown

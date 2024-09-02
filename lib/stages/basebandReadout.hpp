@@ -144,6 +144,11 @@ private:
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& readout_sent_frame_counter;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& readout_dropped_frame_counter;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& readout_in_progress_metric;
+    kotekan::prometheus::Gauge& readout_time_metric;
+    kotekan::prometheus::Gauge& readout_time_max_metric;
+
+    /// Stat Tracker to record how long it takes to readout the baseband data
+    std::shared_ptr<StatTracker> readout_time_tracker;
 };
 
 #endif

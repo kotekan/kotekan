@@ -98,9 +98,9 @@ void clKVCorr::build() {
     } else if (_data_format == "dot4b") {
         INFO("Running experimental dot-product data");
         int _wi_size = 4;
-        gws[0] = _block_size / _wi_size * _num_local_freq;
-        gws[1] = _block_size / _wi_size;
-        gws[2] = _num_blocks;
+        gws[0] = _block_size / _wi_size;
+        gws[1] = _block_size / _wi_size * _num_blocks;
+        gws[2] = _num_local_freq;
         lws[0] = _block_size / _wi_size;
         lws[1] = _block_size / _wi_size;
         lws[2] = 1;
@@ -149,7 +149,7 @@ cl_event clKVCorr::execute(cl_event pre_event) {
                           * _num_data_sets * sizeof(int32_t);
     uint32_t presum_len = _num_elements * _num_local_freq * 2 * sizeof(int32_t);
 
-    cl_mem input_memory = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
+    cl_mem input_memory = device.get_gpu_memory_array("voltage", gpu_frame_id, input_frame_len);
     cl_mem output_memory_frame = device.get_gpu_memory_array("output", gpu_frame_id, output_len);
     cl_mem presum_memory = device.get_gpu_memory_array("presum", gpu_frame_id, presum_len);
 

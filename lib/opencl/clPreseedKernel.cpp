@@ -76,6 +76,8 @@ cl_event clPreseedKernel::execute(cl_event pre_event) {
     setKernelArg(0, presum_memory);
     setKernelArg(1, output_memory_frame);
 
+    assert(pre_event != nullptr);
+
     CHECK_CL_ERROR(clEnqueueNDRangeKernel(device.getQueue(1), kernel, 3, nullptr, gws, lws, 1,
                                           &pre_event, &post_event));
 

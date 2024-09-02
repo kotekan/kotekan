@@ -28,6 +28,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <string>
+#include <vector>
 
 
 class clCommandState : public gpuCommandState {
@@ -86,6 +87,17 @@ public:
     virtual void finalize_frame() override;
 
 protected:
+
+    /**
+     * Retrieves an array of Buffer objects from a list of buffer names in the config.
+     *
+     * @param array_name The name of the array.
+     * @param register_buffer Flag indicating whether to register the buffer against the command.
+     * @param producer Flag indicating whether the command is a producer.
+     * @return A vector of Buffer pointers.
+     */
+    std::vector<Buffer*> get_buffer_array(const std::string array_name, bool register_buffer = false, bool producer = false);
+
     /// Compiled instance of the kernel that will execute on the GPU once enqueued.
     cl_kernel kernel;
     /// Allocates resources on the GPU for the kernel.
