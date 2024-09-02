@@ -164,7 +164,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
                 if (node_id == 0)
                     num_ports_on_node = 1;
                 if (node_id == 1)
-                    num_ports_on_node = 8;
+                    num_ports_on_node = 1;
             }
         }
         DEBUG("Number of ports on numa node {:d}: {:d}", node_id, num_ports_on_node);
@@ -182,9 +182,9 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
         mbuf_pools.push_back(pool);
     }
 
-    for (uint32_t worker_id = 0; worker_id < num_workers; ++worker_id) {
+    for (uint32_t worker_id = 0; worker_id < num_workers * num_ports; ++worker_id) {
         rte_ring* rx_worker_ring =
-            rte_ring_create(("Worker_" + std::to_string(worker_id)).c_str(), 512, 0, 0);
+            rte_ring_create(("Worker_" + std::to_string(worker_id)).c_str(), 512, worker_id / 2, 0);  // TODO worker_id / 2 is a NUMA node hack
         if (rx_worker_ring == nullptr)
             throw std::runtime_error("Cannot create worker ring");
         worker_rings.push_back(rx_worker_ring);
@@ -280,8 +280,19 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t main_lcore_cpu) {
     char arg5[] = "--socket-mem";
     char* arg6 = (char*)malloc(init_mem_alloc.length() + 1);
     strncpy(arg6, init_mem_alloc.c_str(), init_mem_alloc.length() + 1);
+    // Block the MLX devices
+    char arg7[] = "--block";
+    char arg8[] = "0000:c7:00.0";
+    char arg9[] = "--block";
+    char arg10[] = "0000:c7:00.1";
+    char arg11[] = "--block";
+    char arg12[] = "0001:43:00.0";
+    char arg13[] = "--block";
+    char arg14[] = "0001:43:00.1";
     // Generate final options string for EAL initialization
-    char* argv2[] = {&arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], nullptr};
+    char* argv2[] = {&arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], &arg7[0],
+                     &arg8[0], &arg9[0], &arg10[0], &arg11[0], &arg12[0], &arg13[0], &arg14[0], nullptr};
+    //char* argv2[] = {&arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], nullptr};
     int argc2 = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;
 
     // Initialize the Environment Abstraction Layer (EAL).
@@ -307,14 +318,16 @@ void dpdkCore::main_thread() {
         rte_eal_mp_remote_launch(dpdkCore::lcore_rx, (void*)this, SKIP_MASTER);
 #endif
     } else {
-        INFO("Starting distributor lcore on {:d}, with {:d} workers", 1, num_workers);
-        if (rte_eal_remote_launch(dpdkCore::lcore_rx_distributor, (void*)this, 1) != 0) {
-            ERROR("Could not start distributor lcore");
-        }
-        for (uint32_t i = 0; i < num_workers; ++i) {
-            INFO("Starting worker on lcore {:d}", i + 2);
-            if (rte_eal_remote_launch(dpdkCore::lcore_worker, (void*)this, i + 2) != 0) {
-                ERROR("Could not start worker lcore");
+        for (uint32_t port = 0; port < num_ports; ++port) {
+            INFO("Starting distributor lcore on {:d}, with {:d} workers", port * 3 + 1, num_workers);
+            if (rte_eal_remote_launch(dpdkCore::lcore_rx_distributor, (void*)this, port * 3 + 1) != 0) {
+                ERROR("Could not start distributor lcore");
+            }
+            for (uint32_t worker_id = 0; worker_id < num_workers; ++worker_id) {
+                INFO("Starting worker on lcore {:d}", worker_id + port * 3 + 2);
+                if (rte_eal_remote_launch(dpdkCore::lcore_worker, (void*)this, worker_id + port * 3 + 2) != 0) {
+                    ERROR("Could not start worker lcore");
+                }
             }
         }
     }
@@ -461,9 +474,20 @@ int dpdkCore::lcore_worker(void* args) {
 
     // TODO make this more general
     int port = 0;
+    int worker_id = 0;
 
     int lcore_id = rte_lcore_id();
-    int worker_id = lcore_id - 2;
+    if (lcore_id == 2 || lcore_id == 3) {
+        port = 0; 
+        worker_id = lcore_id - 2;
+    } else if (lcore_id == 5 || lcore_id == 6) {
+        port = 1;
+        worker_id = lcore_id - 3;
+    } else {
+        WARN_NON_OO("Invalid lcore for worker");
+        return -1;
+    }
+
     INFO_NON_OO("Worker: lcore {:d}, worker_id: {:d}", lcore_id, worker_id);
 
     uint64_t total_packets = 0;
@@ -506,14 +530,24 @@ int dpdkCore::lcore_rx_distributor(void* args) {
     const uint32_t burst_size = core->burst_size;
     const uint32_t round_robbin_length = core->round_robbin_length;
 
-    INFO_NON_OO("Started lcore_rx_distributor on lcore: {:d}", rte_lcore_id());
+    unsigned int lcore_id = rte_lcore_id();
 
-    const uint32_t port = 0;
+    uint32_t port = 0;
+    if (lcore_id == 1) {
+        port = 0;
+    } else if (lcore_id == 4) {
+        port = 1;
+    } else {
+        WARN_NON_OO("Invalid lcore for distributor");
+        return -1;
+    }
+
+    INFO_NON_OO("Started lcore_rx_distributor for port {:d} on lcore: {:d}", port, lcore_id);
+    
     const uint32_t num_workers = core->num_workers;
 
     rte_mbuf* mbufs[burst_size];
 
-    uint16_t distributor_idx = 0;
     uint32_t packets_sent_to_worker = 0;
     uint32_t worker_id = 0;
     uint64_t total_packets = 0;
@@ -565,7 +599,7 @@ int dpdkCore::lcore_rx_distributor(void* args) {
 
 
         uint16_t num_enqueued =
-            rte_ring_enqueue_burst(core->worker_rings[worker_id], (void**)mbufs, num_rx, NULL);
+            rte_ring_enqueue_burst(core->worker_rings[worker_id + port * 2], (void**)mbufs, num_rx, NULL);
         packets_sent_to_worker += num_enqueued;
 
         if (unlikely(num_enqueued < num_rx)) {

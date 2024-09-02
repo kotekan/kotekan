@@ -18,6 +18,9 @@ num_elements: num_dishes * 2
 n2coarse_sub_integration_ntime: 16384
 sizeof_int: 4
 
+payload_size: 3904
+packets_per_frame: 32768
+
 # Pool
 main_pool:
   kotekan_metadata_pool: chimeMetadata
@@ -26,26 +29,26 @@ main_pool:
 network_capture_buf_0:
   kotekan_buffer: standard
   num_frames: buffer_depth
-  frame_size: voltage_freq * (voltage_samples / n2coarse_sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+  frame_size: packets_per_frame * payload_size
   metadata_pool: main_pool
   numa_node: 0
 network_capture_buf_1:
   kotekan_buffer: standard
   num_frames: buffer_depth
-  frame_size: voltage_freq * (voltage_samples / n2coarse_sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+  frame_size: packets_per_frame * payload_size
   metadata_pool: main_pool
   numa_node: 0
 
 network_capture_buf_2:
   kotekan_buffer: standard
   num_frames: buffer_depth
-  frame_size: voltage_freq * (voltage_samples / n2coarse_sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+  frame_size: packets_per_frame * payload_size
   metadata_pool: main_pool
   numa_node: 0
 network_capture_buf_3:
   kotekan_buffer: standard
   num_frames: buffer_depth
-  frame_size: voltage_freq * (voltage_samples / n2coarse_sub_integration_ntime) * num_elements * num_elements * 2 * sizeof_int
+  frame_size: packets_per_frame * payload_size
   metadata_pool: main_pool
   numa_node: 0
 
@@ -55,25 +58,30 @@ buffer_recv_0:
     log_level: info
     buf: network_capture_buf_0
     listen_port: 11027
-    num_threads: 1
+    num_threads: 2
 
 buffer_recv_1:
     kotekan_stage: bufferRecv
     log_level: info
     buf: network_capture_buf_1
     listen_port: 11028
-    num_threads: 1
+    num_threads: 2
 
 buffer_recv_2:
     kotekan_stage: bufferRecv
     log_level: info
     buf: network_capture_buf_2
     listen_port: 11029
-    num_threads: 1
+    num_threads: 2
 
 buffer_recv_3:
     kotekan_stage: bufferRecv
     log_level: info
     buf: network_capture_buf_3
     listen_port: 11030
-    num_threads: 1
+    num_threads: 2
+
+hexDump:
+  kotekan_stage: hexDump
+  in_buf: network_capture_buf_3
+  len: payload_size
