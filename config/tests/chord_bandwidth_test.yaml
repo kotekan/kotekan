@@ -56,18 +56,6 @@ network_capture_buf_1:
   frame_size: packets_per_frame * payload_size
   metadata_pool: main_pool
   numa_node: 0
-network_capture_buf_2:
-  #kotekan_buffer: standard
-  num_frames: buffer_depth
-  frame_size: packets_per_frame * payload_size
-  metadata_pool: main_pool
-  numa_node: 0
-network_capture_buf_3:
-  #kotekan_buffer: standard
-  num_frames: buffer_depth
-  frame_size: packets_per_frame * payload_size
-  metadata_pool: main_pool
-  numa_node: 0
 
 output_0:
   kotekan_buffer: standard
@@ -106,6 +94,20 @@ split_buf_3:
   metadata_pool: main_pool
   numa_node: 0
 
+numa0_memcpy:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 0
+
+numa0_memcpy_1:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool
+  numa_node: 0
+
 
 ## Buffers for numa 1
 main_pool_numa1:
@@ -118,62 +120,65 @@ network_capture_buf_0_numa1:
   kotekan_buffer: standard
   num_frames: 20 # 425
   frame_size: packets_per_frame * payload_size
-  metadata_pool: main_pool
+  metadata_pool: main_pool_numa1
   numa_node: 1
 network_capture_buf_1_numa1:
   kotekan_buffer: standard
   num_frames: 20 # 425
   frame_size: packets_per_frame * payload_size
-  metadata_pool: main_pool
+  metadata_pool: main_pool_numa1
   numa_node: 1
-network_capture_buf_2_numa1:
-  #kotekan_buffer: standard
-  num_frames: buffer_depth
-  frame_size: packets_per_frame * payload_size
-  metadata_pool: main_pool
-  numa_node: 1
-network_capture_buf_3_numa1:
-  #kotekan_buffer: standard
-  num_frames: buffer_depth
-  frame_size: packets_per_frame * payload_size
-  metadata_pool: main_pool
-  numa_node: 1
+
 
 output_0_numa1:
   kotekan_buffer: standard
   num_frames: buffer_depth
   frame_size: packets_per_frame * payload_size
-  metadata_pool: main_pool
+  metadata_pool: main_pool_numa1
   numa_node: 1
 output_1_numa1:
   kotekan_buffer: standard
   num_frames: buffer_depth
   frame_size: packets_per_frame * payload_size
-  metadata_pool: main_pool
+  metadata_pool: main_pool_numa1
   numa_node: 1
 split_buf_0_numa1:
   kotekan_buffer: standard
   num_frames: buffer_depth
   frame_size: packets_per_frame * payload_size
-  metadata_pool: main_pool
+  metadata_pool: main_pool_numa1
   numa_node: 1
 split_buf_1_numa1:
   kotekan_buffer: standard
   num_frames: buffer_depth
   frame_size: packets_per_frame * payload_size
-  metadata_pool: main_pool
+  metadata_pool: main_pool_numa1
   numa_node: 1
 split_buf_2_numa1:
   kotekan_buffer: standard
   num_frames: buffer_depth
   frame_size: packets_per_frame * payload_size
-  metadata_pool: main_pool
+  metadata_pool: main_pool_numa1
   numa_node: 1
 split_buf_3_numa1:
   kotekan_buffer: standard
   num_frames: buffer_depth
   frame_size: packets_per_frame * payload_size
-  metadata_pool: main_pool
+  metadata_pool: main_pool_numa1
+  numa_node: 1
+
+numa1_memcpy:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool_numa1
+  numa_node: 1
+
+numa1_memcpy_1:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * payload_size
+  metadata_pool: main_pool_numa1
   numa_node: 1
 
 # See the dpdkCore class docs in dpdkCore.hpp for details
@@ -206,8 +211,7 @@ dpdk:
       out_buf: network_capture_buf_0_numa1
     - dpdk_handler: captureHandler
       out_buf: network_capture_buf_1_numa1
-    #- dpdk_handler: captureHandler
-    #  out_buf: network_capture_buf_2
+
 
 gpu:
     profiling: true
@@ -270,19 +274,39 @@ hexDump:
 
 merge_acc_final_0:
     #kotekan_stage: bufferMerge
-    # Force a copy into NUMA2 since that contains the output NIC
-    force_copy: true
-    in_bufs:
-        - output_0
-    out_buf: network_send_0
-
-merge_acc_final_1:
-    #kotekan_stage: bufferMerge
-    # Force a copy into NUMA2 since that contains the output NIC
+    cpu_affinity: [8, 9, 10, 11, 12, 13, 14, 15]
+    log_level: warn
     force_copy: true
     in_bufs:
         - output_1
-    out_buf: network_send_1
+    out_buf: numa1_memcpy
+
+merge_acc_final_1:
+    #kotekan_stage: bufferMerge
+    cpu_affinity: [16, 17, 18, 19, 23, 24, 25, 26]
+    log_level: warn
+    force_copy: true
+    in_bufs:
+        - output_1_numa1
+    out_buf: numa0_memcpy
+
+merge_acc_final_2:
+    #kotekan_stage: bufferMerge
+    cpu_affinity: [8, 9, 10, 11, 12, 13, 14, 15]
+    log_level: warn
+    force_copy: true
+    in_bufs:
+        - output_0
+    out_buf: numa1_memcpy_1
+
+merge_acc_final_3:
+    #kotekan_stage: bufferMerge
+    cpu_affinity: [16, 17, 18, 19, 23, 24, 25, 26]
+    log_level: warn
+    force_copy: true
+    in_bufs:
+        - output_0_numa1
+    out_buf: numa0_memcpy_1    
 
 buffer_split:
   kotekan_stage: BufferSplit

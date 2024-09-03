@@ -501,20 +501,20 @@ int dpdkCore::lcore_worker(void* args) {
         if (num_rx == 0)
             continue;
 
-        /*for (uint16_t j = 0; j < num_rx; ++j) {
+        for (uint16_t j = 0; j < num_rx; ++j) {
             total_packets += 1;
             if (unlikely(total_packets % (1250000 * 1) == 0)) {
                 struct timeval now;
                 gettimeofday(&now, nullptr);
                 double elapsed_time = tv_to_double(now) - tv_to_double(last_time);
-                INFO_NON_OO("Packet rate: {:.0f} pps, data rate: {:.4f}Gb/s",
-                            total_packets / elapsed_time,
+                INFO_NON_OO("worker_id: {:d} Packet rate: {:.0f} pps, data rate: {:.4f}Gb/s",
+                            worker_id, total_packets / elapsed_time,
                             (double)total_packets * 3904 * 8 / 1e9 / elapsed_time);
                 last_time = now;
                 total_packets = 0;
             }
             // rte_pktmbuf_free(mbufs[j]);
-        }*/
+        }
 
         for (uint16_t j = 0; j < num_rx; ++j) {
             if (unlikely(core->handlers[worker_id]->handle_packet(mbufs[j]) != 0))

@@ -120,14 +120,18 @@ void bufferMerge::main_thread() {
                     break;
 
                 // Move the metadata over to the new frame
-                pass_metadata(in_buf, in_frame_id, out_buf, out_frame_id);
+                allocate_new_metadata_object(out_buf, out_frame_id);
+                copy_metadata(in_buf, in_frame_id, out_buf, out_frame_id);
+                //pass_metadata(in_buf, in_frame_id, out_buf, out_frame_id);
 
                 // Copy or swap the frame.
-                if (get_num_consumers(in_buf) > 1) {
+                //if (get_num_consumers(in_buf) > 1) {
+                    INFO("Copying frame from {:s}[{:d}] to {:s}[{:d}]", in_buf->buffer_name,
+                         in_frame_id, out_buf->buffer_name, out_frame_id);
                     std::memcpy(output_frame, in_buf->frames[in_frame_id], in_buf->frame_size);
-                } else {
-                    swap_frames(in_buf, in_frame_id, out_buf, out_frame_id);
-                }
+                //} else {
+                //    swap_frames(in_buf, in_frame_id, out_buf, out_frame_id);
+                //}
 
                 mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
                 out_frame_id++;
