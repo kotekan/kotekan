@@ -111,14 +111,14 @@ function read_gdal(filename::AbstractString)
         @info "mapping to Int8..."
         data = reinterpret(Int8, mappedarray(u4p42i8, data))
         # dims[1] is now wrong!
-        dimsizes = Base.setindex(dimsizes, 2*dimsizes[1], 1)
+        dimsizes = Base.setindex(dimsizes, 2 * dimsizes[1], 1)
     end
     if dimnames[begin] == "C"
         @info "mapping to Complex..."
         data = reinterpret(reshape, Complex{eltype(data)}, data)
-        dims = dims[begin+1:end]
-        dimnames = dimnames[begin+1:end]
-        dimsizes = dimsizes[begin+1:end]
+        dims = dims[(begin + 1):end]
+        dimnames = dimnames[(begin + 1):end]
+        dimsizes = dimsizes[(begin + 1):end]
     end
 
     # Apply DimArray; do this last, it doesn't survive `mappedarray`

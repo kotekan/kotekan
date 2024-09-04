@@ -534,10 +534,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                         "name" => "scatter_indices",
                         "kotekan_name" => "gpu_mem_scatter_indices",
                         "type" => "int32",
-                        "axes" => [
-                            Dict("label" => "D", "length" => D),
-                            Dict("label" => "P", "length" => P),
-                        ],
+                        "axes" => [Dict("label" => "D", "length" => D), Dict("label" => "P", "length" => P)],
                         "isoutput" => false,
                         "hasbuffer" => true,
                     ),

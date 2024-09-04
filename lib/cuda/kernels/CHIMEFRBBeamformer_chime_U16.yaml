@@ -1,0 +1,66 @@
+# Metadata code for CUDA chimefrb beamformer
+# This file has been generated automatically by `chimefrb.jl`.
+# Do not modify this file, your changes will be lost.
+
+--- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
+kernel-description:
+  name: "chimefrb"
+  description: "CHIMEFRB beamformer"
+  design-parameters:
+    beam-layout: [512, 8]
+    dish-layout: [256, 4]
+    downsampling-factor: 24
+    number-of-complex-components: 2
+    number-of-dishes: 1024
+    number-of-frequencies: 256
+    number-of-polarizations: 2
+    number-of-timesamples: 4096
+    output-gain: 0.005208333333333333
+    sampling-time-μsec: 2.56
+    upchannelization-factor: 16
+  compile-parameters:
+    minthreads: 256
+    blocks_per_sm: 4
+  call-parameters:
+    threads: [32, 8]
+    blocks: [256]
+    shmem_bytes: 16384
+  kernel-symbol: "_Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EE"
+  kernel-arguments:
+    - name: "Tbarmin"
+      intent: in
+      type: Int32
+    - name: "Tbarmax"
+      intent: in
+      type: Int32
+    - name: "Ttildemin"
+      intent: in
+      type: Int32
+    - name: "Ttildemax"
+      intent: in
+      type: Int32
+    - name: "W"
+      intent: in
+      type: Float16
+      indices: [C, dishM, dishN, P, Fbar]
+      shape: [2, 256, 4, 2, 256]
+      strides: [1, 2, 512, 2048, 4096, 1048576]
+    - name: "Ē"
+      intent: in
+      type: Int4
+      indices: [C, D, P, Fbar, Tbar]
+      shape: [2, 1024, 2, 256, 4096]
+      strides: [1, 2, 2048, 4096, 1048576]
+    - name: "I"
+      intent: out
+      type: Float16
+      indices: [beamP, beamQ, Fbar, Tbar]
+      shape: [512, 8, 256, 1024]
+      strides: [1, 512, 4096, 1048576]
+    - name: "info"
+      intent: out
+      type: Int32
+      indices: [thread, warp, block]
+      shapes: [32, 8, 256]
+      strides: [1, 32, 256]
+...

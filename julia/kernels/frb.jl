@@ -1012,7 +1012,7 @@ function do_first_fft!(emitter)
     # Section 3 `W` is called `V` here
     split!(emitter, [:aΓ²re, :aΓ²im], :aΓ², Register(:cplx, 1, 2))
     split!(emitter, [:Zre, :Zim], :Z, Register(:cplx, 1, 2))
-    # TODO: Fbar_Wd a better set of conditions
+    # TODO: Find a better set of conditions
     if trailing_zeros(Npad) == 5 || setup === :hirax
         apply!(emitter, :Vre, [:Zre, :Zim, :aΓ²re, :aΓ²im], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zre, -$aΓ²im * $Zim)))
         apply!(emitter, :Vim, [:Zre, :Zim, :aΓ²re, :aΓ²im], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zim, +$aΓ²im * $Zre)))
