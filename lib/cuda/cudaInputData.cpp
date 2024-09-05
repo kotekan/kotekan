@@ -21,9 +21,6 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
         uint flags;
         // only register the memory if it isn't already...
         if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, in_buf->frames[instance_num])) {
-            WARN("unique_name={} in_buf->buffer_name={} in_buf->frame_size={}, instance_num={} "
-                 "flags={}",
-                 unique_name, in_buf->buffer_name, in_buf->frame_size, instance_num, flags);
             CHECK_CUDA_ERROR(cudaHostRegister(in_buf->frames[instance_num], in_buf->frame_size, 0));
         }
         _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
