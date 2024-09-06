@@ -110,19 +110,6 @@ end
 
 const Ttilde = 4 * 256
 
-# # const Ttilde = 4 * 256
-# @static if setup ≡ :chord
-#     # const Ttilde = 4 * 256
-#     # Reduce output buffer depth by 2 to stay below 2 GByte
-#     const Ttilde = 4 * 256 ÷ 2
-# elseif setup ≡ :hirax
-#     const Ttilde = 4 * 256 * 4 ÷ U
-# elseif setup ≡ :pathfinder
-#     # const Ttilde = 4 * 256
-#     # Reduce output buffer depth by 2 to stay below 2 GByte
-#     const Ttilde = 4 * 256 ÷ 2
-# end
-
 const output_gain = 1 / (8 * Tds)
 
 # Derived compile-time parameters (section 4.4)

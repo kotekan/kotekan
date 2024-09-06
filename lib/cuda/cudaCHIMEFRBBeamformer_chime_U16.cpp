@@ -77,7 +77,7 @@ private:
 
     // Kernel compile parameters:
     static constexpr int minthreads = 256;
-    static constexpr int blocks_per_sm = 4;
+    static constexpr int blocks_per_sm = 2;
 
     // Kernel call parameters:
     static constexpr int threads_x = 32;

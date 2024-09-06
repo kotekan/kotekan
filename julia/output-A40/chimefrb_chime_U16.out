@@ -4,4 +4,19 @@ NVIDIA A40
 [Done creating chimefrb kernel]
 CHIME FRB beamformer
 Compiling kernel...
+Allocating input data...
+Setting up input data...
+   Fixed kernel parameters:
+       Fbar:   256   (number of frequencies)
+       Tbar:   4096   (maximum number of input time samples)
+       Ttilde: 1024   (maximum number of output time samples)
+       Tds:    24   (downsampling factor)
+    Dynamic kernel parameters:
+    Tbarmin:   0   (input time samples)
+    Tbarmax:   1008
+    Ttildemin: 0   (output time samples)
+    Ttildemax: 42
+Copying data from CPU to GPU...
+Running kernel...
+Copying data back from GPU to CPU...
 Done.

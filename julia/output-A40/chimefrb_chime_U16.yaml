@@ -20,7 +20,7 @@ kernel-description:
     upchannelization-factor: 16
   compile-parameters:
     minthreads: 256
-    blocks_per_sm: 4
+    blocks_per_sm: 2
   call-parameters:
     threads: [32, 8]
     blocks: [256]

@@ -39,6 +39,8 @@ function shrinkmul(x::Integer, y::Symbol, ymax::Integer)
     end
 end
 
+Base.isnan(f::Float16x2) = any(isnan, convert(NTuple{2,Float16}, f))
+
 setup::Symbol
 F::Integer
 T::Integer
@@ -47,11 +49,10 @@ U::Integer
 const F̄ = F_per_U[U] * U
 
 const Tbar = T ÷ U
-const Tds = Tds_U1 ÷ U
+const Tds = idiv(Tds_U1, U)
 
 const Fbar_W = F̄
 const Fbar = U == 1 ? F : F̄
-const Tbar = T ÷ U
 
 # Compile-time constants (section 4.4)
 @static if setup ≡ :chime
@@ -61,11 +62,11 @@ const Tbar = T ÷ U
     const M = 256               # north-south
     const N = 4                 # east-west
 
-    const Tinner = idiv(Tds_U1, U)
-    const Touter = Tinner
+    const Treg = 1
+    @assert Tds % Treg == 0
 
     const W = 8                 # number of warps
-    const B = 4                 # number of blocks per SM
+    const B = 2                 # number of blocks per SM
 
 else
     @assert false
@@ -130,16 +131,18 @@ const layout_W_memory = Layout([
 
 const layout_Y_shared = Layout([
     FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
-    Cplx(:cplx, 1, C) => Shared(:shared, 1, C),
     BeamP(:beamP, 1, 2) => SIMD(:simd, 16, 2),
-    BeamP(:beamP, 2, M) => Shared(:shared, C, M),
-    Dish(:dish, 256, 4) => Shared(:shared, C * M, 4),
-    Polr(:polr, 1, P) => Shared(:shared, C * M * 4, P),
+    BeamP(:beamP, idiv(2 * M, 32), 32) => Shared(:shared, 1, 32), # for 32 threads
+    Cplx(:cplx, 1, C) => Shared(:shared, 32, C),
+    BeamP(:beamP, 2, idiv(M, 32)) => Shared(:shared, 32 * C, idiv(M, 32)),
+    Dish(:dish, 256, N) => Shared(:shared, C * M, N),
+    Polr(:polr, 1, P) => Shared(:shared, C * M * N, P),
     Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
-    Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
-    Time(:time, Tds, Ttilde) => Loop(:time_outer, 1, Ttilde),
+    Time(:time, 1, Treg) => Shared(:shared, C * M * N * P, Treg),
+    Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
+    Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
 ])
-const Y_size = 2 * M * 4 * P
+const Y_size = C * M * N * P * Treg
 
 # I layout
 
@@ -148,6 +151,17 @@ const layout_I_memory = Layout([
     BeamP(:beamP, 1, 2) => SIMD(:simd, 16, 2),
     BeamP(:beamP, 2, M) => Memory(:memory, 1, M),
     BeamQ(:beamQ, 1, 2 * N) => Memory(:memory, M, 2 * N),
+    # BeamQ(:beamQ, 1, 2) => Memory(:memory, 1, 2),
+    # BeamQ(:beamQ, 2, 2) => Memory(:memory, 2, 2),
+    # BeamP(:beamP, 16, 2) => Memory(:memory, 4, 2),
+    # BeamP(:beamP, 32, 2) => Memory(:memory, 8, 2),
+    # BeamP(:beamP, 64, 2) => Memory(:memory, 16, 2),
+    # BeamP(:beamP, 128, 2) => Memory(:memory, 32, 2),
+    # BeamP(:beamP, 256, 2) => Memory(:memory, 64, 2),
+    # BeamQ(:beamQ, 4, 2) => Memory(:memory, 128, 2),
+    # BeamP(:beamP, 2, 2) => Memory(:memory, 256, 2),
+    # BeamP(:beamP, 4, 2) => Memory(:memory, 512, 2),
+    # BeamP(:beamP, 8, 2) => Memory(:memory, 1024, 2),
     Freq(:freq, 1, Fbar) => Memory(:memory, M * 2 * N, Fbar),
     Time(:time, Tds, Ttilde) => Memory(:memory, M * 2 * N * Fbar, Ttilde),
 ])
@@ -188,7 +202,7 @@ function make_chimefrb_kernel()
             !(
                 0i32 ≤ Tbarmin < $(Int32(Tbar)) &&
                 Tbarmin ≤ Tbarmax < $(Int32(2 * Tbar)) &&
-                (Tbarmax - Tbarmin) % $(Int32(Touter)) == 0i32 &&
+                (Tbarmax - Tbarmin) % $(Int32(Tds)) == 0i32 &&
                 0i32 ≤ Ttildemin < $(Int32(Ttilde)) &&
                 Ttildemin ≤ Ttildemax < $(Int32(2 * Ttilde)) &&
                 Ttildemax - Ttildemin == (Tbarmax - Tbarmin) ÷ $(Int32(Tds))
@@ -699,63 +713,102 @@ function make_chimefrb_kernel()
 
     # Main loop
 
-    loop!(emitter, Time(:time, Tds, Ttilde) => Loop(:time_outer, 1, Ttilde)) do emitter
+    loop!(emitter, Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds))) do emitter
+        # Note: This layout is very inefficient for writing to global memory
         layout_I_registers = Layout([
             FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
             BeamP(:beamP, 1, 2) => SIMD(:simd, 16, 2),
-            BeamP(:beamP, 2, 2) => Thread(:thread, 1, 2),
-            BeamP(:beamP, 4, 2) => Thread(:thread, 2, 2),
-            BeamP(:beamP, 8, 2) => Thread(:thread, 4, 2),
-            BeamP(:beamP, 16, 2) => Thread(:thread, 8, 2),
-            BeamP(:beamP, 32, 2) => Thread(:thread, 16, 2),
-            BeamP(:beamP, 64, 2) => Warp(:warp, 1, 2),
-            BeamP(:beamP, 128, 2) => Warp(:warp, 2, 2),
-            BeamP(:beamP, 256, 2) => Warp(:warp, 4, 2),
+            BeamP(:beamP, 2, 2) => Warp(:warp, 1, 2),
+            BeamP(:beamP, 4, 2) => Warp(:warp, 2, 2),
+            BeamP(:beamP, 8, 2) => Warp(:warp, 4, 2),
+            BeamP(:beamP, 16, 2) => Thread(:thread, 1, 2),
+            BeamP(:beamP, 32, 2) => Thread(:thread, 2, 2),
+            BeamP(:beamP, 64, 2) => Thread(:thread, 4, 2),
+            BeamP(:beamP, 128, 2) => Thread(:thread, 8, 2),
+            BeamP(:beamP, 256, 2) => Thread(:thread, 16, 2),
             BeamQ(:beamQ, 1, 2) => Register(:beamQ, 1, 2),
             BeamQ(:beamQ, 2, 2) => Register(:beamQ, 2, 2),
             BeamQ(:beamQ, 4, 2) => Register(:beamQ, 4, 2),
             Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
-            Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
-            Time(:time, Tds, Ttilde) => Loop(:time_outer, 1, Ttilde),
+            Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
         ])
         apply!(emitter, :I => layout_I_registers, :(zero(Float16x2)))
 
-        loop!(emitter, Time(:Ttime, 1, Tds) => Loop(:time_inner, 1, Tds)) do emitter
+        loop!(emitter, Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg))) do emitter
 
             # Load E
 
             @assert D == 1024
             @assert P == 2
             @assert W == 8
-            layout_E_registers = Layout([
-                IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
-                Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
-                Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
-                Dish(:dish, 4, 2) => Register(:dish, 4, 2),
-                Dish(:dish, 8, 2) => Thread(:thread, 16, 2),
-                Dish(:dish, 16, 2) => Thread(:thread, 8, 2),
-                Dish(:dish, 32, 2) => Thread(:thread, 4, 2),
-                Dish(:dish, 64, 2) => Thread(:thread, 2, 2),
-                Dish(:dish, 128, 2) => Thread(:thread, 1, 2),
-                Dish(:dish, 256, 4) => Warp(:warp, 1, 4),
-                Polr(:polr, 1, P) => Warp(:warp, 4, 2),
-                Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
-                Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
-                Time(:time, Tds, Ttilde) => Loop(:time_outer, 1, Ttilde),
-            ])
-            load!(
-                emitter,
-                :E => layout_E_registers,
-                :E_memory => layout_E_memory;
-                align=8,
-                postprocess=addr -> :(
-                    let
-                        offset = $(shrinkmul(idiv(D, 4) * P * Fbar, :Tbarmin, Tbar))
-                        length = $(shrink(idiv(D, 4) * P * Fbar * Tbar))
-                        mod($addr + offset, length)
-                    end
-                ),
-            )
+
+            if Treg == 1
+                layout_E_registers = Layout([
+                    IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
+                    Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
+                    Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
+                    Dish(:dish, 4, 2) => Register(:dish, 4, 2),
+                    Dish(:dish, 8, 2) => Thread(:thread, 16, 2),
+                    Dish(:dish, 16, 2) => Thread(:thread, 8, 2),
+                    Dish(:dish, 32, 2) => Thread(:thread, 4, 2),
+                    Dish(:dish, 64, 2) => Thread(:thread, 2, 2),
+                    Dish(:dish, 128, 2) => Thread(:thread, 1, 2),
+                    Dish(:dish, 256, 4) => Warp(:warp, 1, 4),
+                    Polr(:polr, 1, P) => Warp(:warp, 4, 2),
+                    Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
+                    Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
+                    Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                ])
+                load!(
+                    emitter,
+                    :E => layout_E_registers,
+                    :E_memory => layout_E_memory;
+                    align=8,
+                    postprocess=addr -> :(
+                        let
+                            offset = $(shrinkmul(idiv(D, 4) * P * Fbar, :Tbarmin, Tbar))
+                            length = $(shrink(idiv(D, 4) * P * Fbar * Tbar))
+                            mod($addr + offset, length)
+                        end
+                    ),
+                )
+
+            elseif Treg == 2
+                layout_E_registers = Layout([
+                    IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
+                    Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
+                    Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
+                    Dish(:dish, 4, 2) => Register(:dish, 4, 2),
+                    Dish(:dish, 8, 2) => Register(:time, 1, Treg),
+                    Dish(:dish, 16, 2) => Thread(:thread, 8, 2),
+                    Dish(:dish, 32, 2) => Thread(:thread, 4, 2),
+                    Dish(:dish, 64, 2) => Thread(:thread, 2, 2),
+                    Dish(:dish, 128, 2) => Thread(:thread, 1, 2),
+                    Dish(:dish, 256, 4) => Warp(:warp, 1, 4),
+                    Polr(:polr, 1, P) => Warp(:warp, 4, 2),
+                    Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
+                    Time(:time, 1, Treg) => Thread(:thread, 16, 2),
+                    Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
+                    Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                ])
+                load!(
+                    emitter,
+                    :E0 => layout_E_registers,
+                    :E_memory => layout_E_memory;
+                    align=16,
+                    postprocess=addr -> :(
+                        let
+                            offset = $(shrinkmul(idiv(D, 4) * P * Fbar, :Tbarmin, Tbar))
+                            length = $(shrink(idiv(D, 4) * P * Fbar * Tbar))
+                            mod($addr + offset, length)
+                        end
+                    ),
+                )
+                permute!(emitter, :E, :E0, Dish(:dish, 8, 2), Time(:time, 1, 2))
+
+            else
+                @assert false
+            end
 
             # Convert to float16
 
@@ -788,8 +841,9 @@ function make_chimefrb_kernel()
                 Dish(:dish, 256, 4) => Warp(:warp, 1, 4),
                 Polr(:polr, 1, P) => Warp(:warp, 4, 2),
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
-                Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
-                Time(:time, Tds, Ttilde) => Loop(:time_outer, 1, Ttilde),
+                Time(:time, 1, Treg) => Register(:time, 1, Treg),
+                Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
+                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
             ])
             @assert emitter.environment[:X] == layout_X_registers
 
@@ -811,8 +865,9 @@ function make_chimefrb_kernel()
                 Dish(:dish, 256, 4) => Warp(:warp, 1, 4),
                 Polr(:polr, 1, P) => Warp(:warp, 4, 2),
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
-                Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
-                Time(:time, Tds, Ttilde) => Loop(:time_outer, 1, Ttilde),
+                Time(:time, 1, Treg) => Register(:time, 1, Treg),
+                Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
+                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
             ])
             apply!(emitter, :Z1 => layout_Z1_registers, :(zero(Float16x2)))
             let
@@ -869,8 +924,9 @@ function make_chimefrb_kernel()
                 Dish(:dish, 256, 4) => Warp(:warp, 1, 4),
                 Polr(:polr, 1, P) => Warp(:warp, 4, 2),
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
-                Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
-                Time(:time, Tds, Ttilde) => Loop(:time_outer, 1, Ttilde),
+                Time(:time, 1, Treg) => Register(:time, 1, Treg),
+                Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
+                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
             ])
             apply!(emitter, :Z3′ => layout_Z3′_registers, :(zero(Float16x2)))
             split!(emitter, [:Z2_re, :Z2_im], :Z2, Register(:cplx, 1, 2))
@@ -896,8 +952,9 @@ function make_chimefrb_kernel()
                 Dish(:dish, 256, 4) => Warp(:warp, 1, 4),
                 Polr(:polr, 1, P) => Warp(:warp, 4, 2),
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
-                Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
-                Time(:time, Tds, Ttilde) => Loop(:time_outer, 1, Ttilde),
+                Time(:time, 1, Treg) => Register(:time, 1, Treg),
+                Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
+                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
             ])
 
             # initial:
@@ -967,8 +1024,9 @@ function make_chimefrb_kernel()
                 Dish(:dish, 256, 4) => Warp(:warp, 1, 4),
                 Polr(:polr, 1, P) => Warp(:warp, 4, 2),
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
-                Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
-                Time(:time, Tds, Ttilde) => Loop(:time_outer, 1, Ttilde),
+                Time(:time, 1, Treg) => Register(:time, 1, Treg),
+                Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
+                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
             ])
             apply!(emitter, :Y′ => layout_Y′_registers, :(zero(Float16x2)))
             split!(emitter, [:Z4_re, :Z4_im], :Z4, Register(:cplx, 1, 2))
@@ -996,8 +1054,9 @@ function make_chimefrb_kernel()
                 Dish(:dish, 256, 4) => Warp(:warp, 1, 4),
                 Polr(:polr, 1, P) => Warp(:warp, 4, 2),
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
-                Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
-                Time(:time, Tds, Ttilde) => Loop(:time_outer, 1, Ttilde),
+                Time(:time, 1, Treg) => Register(:time, 1, Treg),
+                Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
+                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
             ])
 
             # permute!(emitter, :Y, :Y′, Register(:cplx, 1, 2), SIMD(:simd, 16, 2))
@@ -1019,19 +1078,20 @@ function make_chimefrb_kernel()
                 FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
                 Cplx(:cplx, 1, C) => Register(:cplx, 1, 2),
                 BeamP(:beamP, 1, 2) => SIMD(:simd, 16, 2),
-                BeamP(:beamP, 2, 2) => Thread(:thread, 1, 2),
-                BeamP(:beamP, 4, 2) => Thread(:thread, 2, 2),
-                BeamP(:beamP, 8, 2) => Thread(:thread, 4, 2),
-                BeamP(:beamP, 16, 2) => Thread(:thread, 8, 2),
-                BeamP(:beamP, 32, 2) => Thread(:thread, 16, 2),
-                BeamP(:beamP, 64, 2) => Warp(:warp, 1, 2),
-                BeamP(:beamP, 128, 2) => Warp(:warp, 2, 2),
-                BeamP(:beamP, 256, 2) => Warp(:warp, 4, 2),
+                BeamP(:beamP, 2, 2) => Warp(:warp, 1, 2),
+                BeamP(:beamP, 4, 2) => Warp(:warp, 2, 2),
+                BeamP(:beamP, 8, 2) => Warp(:warp, 4, 2),
+                BeamP(:beamP, 16, 2) => Thread(:thread, 1, 2),
+                BeamP(:beamP, 32, 2) => Thread(:thread, 2, 2),
+                BeamP(:beamP, 64, 2) => Thread(:thread, 4, 2),
+                BeamP(:beamP, 128, 2) => Thread(:thread, 8, 2),
+                BeamP(:beamP, 256, 2) => Thread(:thread, 16, 2),
                 Dish(:dish, 256, 4) => Register(:dish, 256, 4),
                 Polr(:polr, 1, P) => Register(:polr, 1, P),
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
-                Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
-                Time(:time, Tds, Ttilde) => Loop(:time_outer, 1, Ttilde),
+                Time(:time, 1, Treg) => Register(:time, 1, Treg),
+                Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
+                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
             ])
             load!(emitter, :X => layout_X_registers, :Y_shared => layout_Y_shared)
 
@@ -1044,21 +1104,22 @@ function make_chimefrb_kernel()
                 FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
                 # Cplx(:cplx, 1, C) => Register(:cplx, 1, 2),
                 BeamP(:beamP, 1, 2) => SIMD(:simd, 16, 2),
-                BeamP(:beamP, 2, 2) => Thread(:thread, 1, 2),
-                BeamP(:beamP, 4, 2) => Thread(:thread, 2, 2),
-                BeamP(:beamP, 8, 2) => Thread(:thread, 4, 2),
-                BeamP(:beamP, 16, 2) => Thread(:thread, 8, 2),
-                BeamP(:beamP, 32, 2) => Thread(:thread, 16, 2),
-                BeamP(:beamP, 64, 2) => Warp(:warp, 1, 2),
-                BeamP(:beamP, 128, 2) => Warp(:warp, 2, 2),
-                BeamP(:beamP, 256, 2) => Warp(:warp, 4, 2),
+                BeamP(:beamP, 2, 2) => Warp(:warp, 1, 2),
+                BeamP(:beamP, 4, 2) => Warp(:warp, 2, 2),
+                BeamP(:beamP, 8, 2) => Warp(:warp, 4, 2),
+                BeamP(:beamP, 16, 2) => Thread(:thread, 1, 2),
+                BeamP(:beamP, 32, 2) => Thread(:thread, 2, 2),
+                BeamP(:beamP, 64, 2) => Thread(:thread, 4, 2),
+                BeamP(:beamP, 128, 2) => Thread(:thread, 8, 2),
+                BeamP(:beamP, 256, 2) => Thread(:thread, 16, 2),
                 # BeamQ(:beamQ, 1, 2) => Register(:beamQ, 1, 2), 
                 # BeamQ(:beamQ, 2, 2) => Register(:beamQ, 2, 2),
                 # BeamQ(:beamQ, 4, 2) => Register(:beamQ, 4, 2),
                 Polr(:polr, 1, P) => Register(:polr, 1, P),
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
-                Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
-                Time(:time, Tds, Ttilde) => Loop(:time_outer, 1, Ttilde),
+                Time(:time, 1, Treg) => Register(:time, 1, Treg),
+                Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
+                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
             ])
 
             function apply_phase(n, X)
@@ -1151,29 +1212,109 @@ function make_chimefrb_kernel()
             split!(emitter, [:Y_polr0_re, :Y_polr1_re], :Y_re, Polr(:polr, 1, 2))
             split!(emitter, [:Y_polr0_im, :Y_polr1_im], :Y_im, Polr(:polr, 1, 2))
 
-            apply!(
-                emitter,
-                :I,
-                [:I, :Y_polr0_re, :Y_polr0_im, :Y_polr1_re, :Y_polr1_im],
-                (I, Y_polr0_re, Y_polr0_im, Y_polr1_re, Y_polr1_im) ->
-                # :($I + $Y_polr0_re * $Y_polr0_im + $Y_polr1_re * $Y_polr1_im),
-                    :(muladd($Y_polr1_re, $Y_polr1_im, muladd($Y_polr0_re, $Y_polr0_im, $I))),
-            )
+            if Treg == 1
+                apply!(
+                    emitter,
+                    :I,
+                    [:I, :Y_polr0_re, :Y_polr0_im, :Y_polr1_re, :Y_polr1_im],
+                    (I, Y_polr0_re, Y_polr0_im, Y_polr1_re, Y_polr1_im) -> :(muladd(
+                        $(Float16x2(output_gain, output_gain)),
+                        muladd(
+                            $Y_polr1_im,
+                            $Y_polr1_im,
+                            muladd($Y_polr1_re, $Y_polr1_re, muladd($Y_polr0_im, $Y_polr0_im, $Y_polr0_re * $Y_polr0_re)),
+                        ),
+                        $I,
+                    ));
+                    ignore=[Time(:time, Treg, idiv(Tds, Treg))],
+                )
+
+            elseif Treg == 2
+                split!(emitter, [:Y_time0_polr0_re, :Y_time1_polr0_re], :Y_polr0_re, Time(:time, 1, 2))
+                split!(emitter, [:Y_time0_polr0_im, :Y_time1_polr0_im], :Y_polr0_im, Time(:time, 1, 2))
+                split!(emitter, [:Y_time0_polr1_re, :Y_time1_polr1_re], :Y_polr1_re, Time(:time, 1, 2))
+                split!(emitter, [:Y_time0_polr1_im, :Y_time1_polr1_im], :Y_polr1_im, Time(:time, 1, 2))
+
+                apply!(
+                    emitter,
+                    :I,
+                    [
+                        :I,
+                        :Y_time0_polr0_re,
+                        :Y_time0_polr0_im,
+                        :Y_time0_polr1_re,
+                        :Y_time0_polr1_im,
+                        :Y_time1_polr0_re,
+                        :Y_time1_polr0_im,
+                        :Y_time1_polr1_re,
+                        :Y_time1_polr1_im,
+                    ],
+                    (
+                        I,
+                        Y_time0_polr0_re,
+                        Y_time0_polr0_im,
+                        Y_time0_polr1_re,
+                        Y_time0_polr1_im,
+                        Y_time1_polr0_re,
+                        Y_time1_polr0_im,
+                        Y_time1_polr1_re,
+                        Y_time1_polr1_im,
+                    ) -> :(muladd(
+                        $(Float16x2(output_gain, output_gain)),
+                        muladd(
+                            $Y_time1_polr1_im,
+                            $Y_time1_polr1_im,
+                            muladd(
+                                $Y_time1_polr1_re,
+                                $Y_time1_polr1_re,
+                                muladd(
+                                    $Y_time1_polr0_im,
+                                    $Y_time1_polr0_im,
+                                    muladd(
+                                        $Y_time1_polr0_re,
+                                        $Y_time1_polr0_re,
+                                        muladd(
+                                            $Y_time0_polr1_im,
+                                            $Y_time0_polr1_im,
+                                            muladd(
+                                                $Y_time0_polr1_re,
+                                                $Y_time0_polr1_re,
+                                                muladd($Y_time0_polr0_im, $Y_time0_polr0_im, $Y_time0_polr0_re * $Y_time0_polr0_re),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        $I,
+                    ));
+                    ignore=[Time(:time, Treg, idiv(Tds, Treg))],
+                )
+
+            else
+                @assert false
+            end
+
+            sync_threads!(emitter)
 
             return nothing
         end
 
         # Store result
 
-        # Remove `time_inner` from `I`
-        let
-            layout = copy(emitter.environment[:I])
-            @assert layout[Time(:time, 1, Tds)] == Loop(:time_inner, 1, Tds)
-            delete!(layout, Time(:time, 1, Tds))
-            emitter.environment[:I] = layout
-        end
-
-        store!(emitter, :I_memory => layout_I_memory, :I)
+        store!(
+            emitter,
+            :I_memory => layout_I_memory,
+            :I;
+            # align=16,
+            postprocess=addr -> quote
+                let
+                    offset = $(Int32(M * 2 * N * Fbar)) * Ttildemin
+                    length = $(Int32(M * 2 * N * Fbar * Ttilde))
+                    mod($addr + offset, length)
+                end
+            end,
+        )
 
         return nothing
     end
@@ -1209,7 +1350,7 @@ println("[Done creating chimefrb kernel]")
     return nothing
 end
 
-function main(; compile_only::Bool=false, output_kernel::Bool=false, silent::Bool=false)
+function main(; compile_only::Bool=false, output_kernel::Bool=false, nruns::Int=0, silent::Bool=false)
     !silent && println("CHIME FRB beamformer")
 
     if output_kernel
@@ -1248,7 +1389,94 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, silent::Boo
         return nothing
     end
 
-    # TODO: Call kernel here
+    println("Allocating input data...")
+
+    W_memory = Array{Float16x2}(undef, M * N * Fbar * P)
+    E_memory = Array{Int4x8}(undef, idiv(D, 4) * P * Fbar * Tbar)
+    I_memory = Array{Float16x2}(undef, M * 2 * N * Fbar * Ttilde)
+    info_memory = Array{Int32}(undef, num_threads * num_warps * num_blocks)
+
+    println("Setting up input data...")
+    map!(f -> Float16x2(1, 1), W_memory, W_memory)
+    map!(i -> Int4x8(-4, -3, -2, -1, 0, 1, 2, 3), E_memory, E_memory)
+
+    Ttildemin = Int32(0)
+    Ttildemax = Int32(fld(fld(Tbar, 4), Tds))
+
+    Tbarmin = Int32(0)
+    Tbarmax = Int32(Ttildemax * Tds)
+
+    println("   Fixed kernel parameters:")
+    println("       Fbar:   $Fbar   (number of frequencies)")
+    println("       Tbar:   $Tbar   (maximum number of input time samples)")
+    println("       Ttilde: $Ttilde   (maximum number of output time samples)")
+    println("       Tds:    $Tds   (downsampling factor)")
+    println("    Dynamic kernel parameters:")
+    println("    Tbarmin:   $Tbarmin   (input time samples)")
+    println("    Tbarmax:   $Tbarmax")
+    println("    Ttildemin: $Ttildemin   (output time samples)")
+    println("    Ttildemax: $Ttildemax")
+
+    @assert 0i32 ≤ Tbarmin < Int32(Tbar)
+    @assert Tbarmin ≤ Tbarmax < Int32(2 * Tbar)
+    @assert (Tbarmax - Tbarmin) % Int32(Tds) == 0i32
+    @assert 0i32 ≤ Ttildemin < Int32(Ttilde)
+    @assert Ttildemin ≤ Ttildemax < Int32(2 * Ttilde)
+    @assert Ttildemax - Ttildemin == (Tbarmax - Tbarmin) ÷ Int32(Tds)
+
+    println("Copying data from CPU to GPU...")
+    W_cuda = CuArray(W_memory)
+    E_cuda = CuArray(E_memory)
+    I_cuda = CUDA.fill(Float16x2(NaN, NaN), length(I_memory))
+    info_cuda = CUDA.fill(-1i32, length(info_memory))
+
+    println("Running kernel...")
+    kernel(
+        Tbarmin,
+        Tbarmax,
+        Ttildemin,
+        Ttildemax,
+        W_cuda,
+        E_cuda,
+        I_cuda,
+        info_cuda;
+        threads=(num_threads, num_warps),
+        blocks=num_blocks,
+        shmem=shmem_bytes,
+    )
+    synchronize()
+
+    if nruns > 0
+        for i in 1:nruns
+            stats = @timed begin
+                for run in 1:nruns
+                    kernel(
+                        Tbarmin,
+                        Tbarmax,
+                        Ttildemin,
+                        Ttildemax,
+                        W_cuda,
+                        E_cuda,
+                        I_cuda,
+                        info_cuda;
+                        threads=(num_threads, num_warps),
+                        blocks=num_blocks,
+                        shmem=shmem_bytes,
+                    )
+                end
+                synchronize()
+            end
+            # All times in msec
+            runtime = stats.time / nruns * 1.0e+3
+            println("    Kernel run time: $runtime msec")
+        end
+    end
+
+    println("Copying data back from GPU to CPU...")
+    I_memory = Array(I_cuda)
+    @assert all(!isnan, (@view I_memory[1:(M * 2 * N * Fbar * Ttildemax)]))
+    info_memory = Array(info_cuda)
+    @assert all(info_memory .== 0)
 
     println("Done.")
     return nothing
@@ -1367,7 +1595,7 @@ function fix_ptx_kernel()
                 Dict("type" => "int", "name" => "cuda_number_of_frequencies", "value" => "$Fbar"),
                 Dict("type" => "int", "name" => "cuda_number_of_polarizations", "value" => "$P"),
                 Dict("type" => "int", "name" => "cuda_number_of_timesamples", "value" => "$Tbar"),
-                Dict("type" => "int", "name" => "cuda_granularity_number_of_timesamples", "value" => "$Touter"),
+                Dict("type" => "int", "name" => "cuda_granularity_number_of_timesamples", "value" => "$Tds"),
             ],
             "minthreads" => num_threads * num_warps,
             "num_blocks_per_sm" => num_blocks_per_sm,
@@ -1486,6 +1714,9 @@ if CUDA.functional()
         end
     end
     fix_ptx_kernel()
+
+    # # Run benchmark
+    # main(; nruns=100)
 
     # # Regular run, also for profiling
     # main()
