@@ -13,7 +13,7 @@ kernel-description:
     blocks_per_sm: 1
   call-parameters:
     threads: [32, 16]
-    blocks: [16]
+    blocks: [128]
     shmem_bytes: 65536
   kernel-symbol: "_Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE"
   kernel-arguments:
@@ -51,6 +51,6 @@ kernel-description:
       intent: out
       type: Int32
       indices: [thread, warp, block]
-      shapes: [32, 16, 16]
+      shapes: [32, 16, 128]
       strides: [1, 32, 512]
 ...

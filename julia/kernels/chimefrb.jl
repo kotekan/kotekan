@@ -1390,7 +1390,6 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, nruns::Int=
     end
 
     println("Allocating input data...")
-
     W_memory = Array{Float16x2}(undef, M * N * Fbar * P)
     E_memory = Array{Int4x8}(undef, idiv(D, 4) * P * Fbar * Tbar)
     I_memory = Array{Float16x2}(undef, M * 2 * N * Fbar * Ttilde)
