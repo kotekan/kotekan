@@ -19,19 +19,18 @@ kotekanLogging::kotekanLogging() {
 void kotekanLogging::vinternal_logging(int type, fmt::basic_string_view<char> log_prefix,
                                        const fmt::basic_string_view<char> format,
                                        fmt::format_args args) {
-    const char* prefix = get_log_level_string(type);
     std::string log_msg = fmt::vformat(format, args);
     if (log_prefix != "") {
         if (__enable_syslog == 1) {
             syslog(type, "%s: %s\n", log_prefix.data(), log_msg.data());
         } else {
-            fmt::print(stderr, fmt("{:s}: {:s}: {:s}\n"), prefix, log_prefix, log_msg);
+            fmt::print(stderr, fmt("{:s}: {:s}\n"), log_prefix, log_msg);
         }
     } else {
         if (__enable_syslog == 1) {
             syslog(type, "%s\n", log_msg.data());
         } else {
-            fmt::print(stderr, fmt("{:s}: {:s}\n"), prefix, log_msg);
+            fmt::print(stderr, fmt("{:s}\n"), log_msg);
         }
     }
 }
