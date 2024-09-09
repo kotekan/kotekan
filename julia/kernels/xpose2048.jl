@@ -13,7 +13,7 @@ if CUDA.functional()
     println("[Choosing CUDA device...]")
     CUDA.device!(0)
     println(name(device()))
-    #TODO @assert name(device()) == "NVIDIA $card"
+    @assert name(device()) == "NVIDIA $card"
 end
 
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)

@@ -26,7 +26,7 @@
 	trap;
 }
 .extern .shared .align 32 .b8 shmem[];
-.global .align 1 .b8 exception11430[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
+.global .align 1 .b8 exception1[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
                                         // @_Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE
 .visible .entry _Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE(
 	.param .align 8 .b8 _Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE_param_0[16],
@@ -1539,7 +1539,7 @@ $L__BB0_6:                              // %L17888
 $L__BB0_1:                              // %L8
 	ld.param.u32 	%r56, [_Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE_param_0+8];
 	ld.param.u64 	%rd66, [_Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE_param_0];
-	mov.u64 	%rd75, exception11430;
+	mov.u64 	%rd75, exception1;
 	cvta.global.u64 	%rd76, %rd75;
 	{ // callseq 0, 0
 	.reg .b32 temp_param_reg;
