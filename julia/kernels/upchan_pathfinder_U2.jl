@@ -1,4 +1,3 @@
-const setup = :pathfinder
+include("setup_pathfinder.jl")
 const U = 2
-const T = 2^16
 include("upchan.jl")

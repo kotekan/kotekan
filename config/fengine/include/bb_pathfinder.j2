@@ -1,0 +1,80 @@
+# -*-yaml-*-
+
+# CHORD pathfinder baseband beamformer setup
+
+################################################################################
+
+bb_num_beams_ew: 4
+bb_num_beams_ns: 4
+bb_beam_separation_ew: 0.015
+bb_beam_separation_ns: 0.020
+bb_num_beams: bb_num_beams_ew * bb_num_beams_ns
+
+host_bb_beam_positions_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_float32 * 2 * bb_num_beams
+    metadata_pool: main_pool
+
+# The baseband beams are formed as "incoherent sum" over dishes dishes
+# (sqrt(num_dishes)), and are multiplied by 127 (the scaling of the
+# phase matrix). Thus:
+#     log2(sqrt(num_dishes)) + 7
+bb_scale: 12
+
+################################################################################
+
+# Buffers
+
+host_bb_phase_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: num_components * num_dishes * bb_num_beams * num_polarizations * num_frequencies
+    metadata_pool: main_pool
+
+host_bb_shift_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_int32 * bb_num_beams * num_polarizations * num_frequencies
+    metadata_pool: main_pool
+
+host_bb_beams_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
+    metadata_pool: main_pool
+
+################################################################################
+
+# Stages
+
+run_bb:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_ringbuffer_in: host_voltage_ringbuffer
+            host_bb_phase_in: host_bb_phase_buffer
+            host_bb_shift_in: host_bb_shift_buffer
+        out_buffers:
+            host_bb_beams_out: host_bb_beams_buffer
+        commands:
+        - name: cudaInputData
+          do_once: true
+          in_buf: host_bb_phase_in
+          gpu_mem: bb_phase_buffer
+        - name: cudaInputData
+          do_once: true
+          in_buf: host_bb_shift_in
+          gpu_mem: bb_shift_buffer
+        - name: cudaSyncInput
+        - name: cudaBasebandBeamformer_pathfinder
+          in_signal: host_voltage_ringbuffer_in
+          gpu_mem_voltage: voltage_buffer
+          gpu_mem_phase: bb_phase_buffer
+          gpu_mem_output_scaling: bb_shift_buffer
+          gpu_mem_formed_beams: bb_beams_buffer
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: bb_beams_buffer
+          out_buf: host_bb_beams_out

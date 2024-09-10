@@ -114,7 +114,8 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
 
     } else {
         // Unknown buffer type
-        throw std::runtime_error(fmt::format(fmt("No buffer type named: {:s}"), type_name));
+        throw std::runtime_error(
+            fmt::format(fmt("No buffer type named {:s} or buffer size is 0"), type_name));
     }
 
     buf->set_log_level(s_log_level);

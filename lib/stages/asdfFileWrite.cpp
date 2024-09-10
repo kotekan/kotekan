@@ -23,7 +23,19 @@
 namespace {
 ASDF::scalar_type_id_t chord2asdf(const chordDataType type) {
     switch (type) {
+        case uint4p4:
+            return ASDF::id_uint8; // TODO: Define ASDF uint4+4 type
+        case uint8:
+            return ASDF::id_uint8;
+        case uint16:
+            return ASDF::id_uint16;
+        case uint32:
+            return ASDF::id_uint32;
+        case uint64:
+            return ASDF::id_uint64;
         case int4p4:
+            return ASDF::id_uint8; // TODO: Define ASDF int4+4 type
+        case int4p4chime:
             return ASDF::id_uint8; // TODO: Define ASDF int4+4 type
         case int8:
             return ASDF::id_int8;
@@ -96,13 +108,10 @@ public:
         auto& write_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
             "kotekan_asdffilewrite_write_time_seconds", unique_name);
 
+        const double start_time = current_time();
+
         for (std::int64_t frame_counter = 0;; ++frame_counter) {
             const std::uint32_t frame_id = frame_counter % buffer->num_frames;
-
-            if (max_frames >= 0 && frame_counter >= max_frames) {
-                INFO("Processed {} frames, shutting down Kotekan", frame_counter);
-                exit_kotekan(CLEAN_EXIT);
-            }
 
             if (stop_thread)
                 break;
@@ -118,7 +127,7 @@ public:
             const double t0 = current_time();
 
             // Fetch metadata
-            const std::shared_ptr<metadataObject> mc = buffer->get_metadata(frame_id);
+            const std::shared_ptr<const metadataObject> mc = buffer->get_metadata(frame_id);
             if (!mc)
                 FATAL_ERROR("Buffer \"{:s}\" frame {:d} does not have metadata",
                             buffer->buffer_name, frame_id);
@@ -127,7 +136,15 @@ public:
                 FATAL_ERROR("Metadata of buffer \"{:s}\" frame {:d} is not of type CHORD",
                             buffer->buffer_name, frame_id);
             assert(metadata_is_chord(mc));
-            const std::shared_ptr<chordMetadata> meta = get_chord_metadata(mc);
+            const std::shared_ptr<const chordMetadata> meta = get_chord_metadata(mc);
+
+            const double this_time = current_time();
+            const double elapsed_time = this_time - start_time;
+
+            // This is not a warning, but it should be displayed even
+            // when regular INFO messages are not
+            WARN("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
+                 frame_counter, meta->sample0_offset, elapsed_time);
 
             if (!skip_writing) {
 
@@ -146,8 +163,87 @@ public:
                 for (int d = 0; d < ndims; ++d)
                     size *= dims.at(d);
 
-                const std::shared_ptr<ASDF::block_t> block = std::make_shared<ASDF::ptr_block_t>(
-                    const_cast<std::uint8_t*>(frame), size * typesize);
+                // "simple" strides have a layout that does not require copying the array
+                bool strides_are_simple;
+                {
+                    strides_are_simple = true;
+                    std::int64_t str = 1;
+                    for (int d = ndims - 1; d >= 0; --d) {
+                        if (str != meta->stride[d])
+                            ERROR("buffer {} d {} dim {} stride (found) {} str (expected) {}",
+                                  unique_name, d, meta->dim[d], meta->stride[d], str);
+                        strides_are_simple &= str == meta->stride[d];
+                        str *= meta->dim[d];
+                    }
+                    strides_are_simple &= str == size;
+                }
+
+                std::vector<std::uint8_t> frame_copy;
+                std::shared_ptr<ASDF::block_t> block;
+                if (strides_are_simple) {
+                    // Create a block that just points to the frame
+                    block = std::make_shared<ASDF::ptr_block_t>(const_cast<std::uint8_t*>(frame),
+                                                                size * typesize);
+                } else {
+                    // We need to copy the frame
+                    frame_copy.resize(size * typesize);
+                    if (!(meta->stride[meta->dims - 1] == 1))
+                        ERROR("name={} type={} dims={} laststride={}", meta->name,
+                              chord_datatype_string(meta->type), meta->dims,
+                              meta->stride[meta->dims - 1]);
+                    if (!(meta->stride[meta->dims - 1] == 1) && meta->dims == 4)
+                        for (int d = 0; d < 4; ++d)
+                            ERROR("dim[{}]={} stride[{}]={}", d, meta->dim[d], d, meta->stride[d]);
+                    assert(meta->stride[meta->dims - 1] == 1);
+                    const std::uint8_t* __restrict__ const input_ptr = frame;
+                    std::uint8_t* __restrict__ const output_ptr = frame_copy.data();
+                    const std::ptrdiff_t lastdim = meta->dim[meta->dims - 1];
+                    assert(meta->dims < 20);
+                    std::ptrdiff_t output_stride[20];
+                    for (int d = meta->dims - 1; d >= 0; --d)
+                        if (d == meta->dims - 1)
+                            output_stride[d] = 1;
+                        else
+                            output_stride[d] = output_stride[d + 1] * meta->dim[d + 1];
+                    assert(meta->dims <= 4);
+                    switch (meta->dims) {
+                        case 3:
+                            for (int j = 0; j < meta->dim[0]; ++j) {
+                                for (int k = 0; k < meta->dim[1]; ++k) {
+                                    std::ptrdiff_t input_offset =
+                                        j * meta->stride[0] + k * meta->stride[1];
+                                    std::ptrdiff_t output_offset =
+                                        j * output_stride[0] + k * output_stride[1];
+                                    std::memcpy(output_ptr + typesize * output_offset,
+                                                input_ptr + typesize * input_offset,
+                                                typesize * lastdim);
+                                }
+                            }
+                            break;
+                        case 4:
+                            for (int j = 0; j < meta->dim[0]; ++j) {
+                                for (int k = 0; k < meta->dim[1]; ++k) {
+                                    for (int l = 0; l < meta->dim[2]; ++l) {
+                                        std::ptrdiff_t input_offset = j * meta->stride[0]
+                                                                      + k * meta->stride[1]
+                                                                      + l * meta->stride[2];
+                                        std::ptrdiff_t output_offset = j * output_stride[0]
+                                                                       + k * output_stride[1]
+                                                                       + l * output_stride[2];
+                                        std::memcpy(output_ptr + typesize * output_offset,
+                                                    input_ptr + typesize * input_offset,
+                                                    typesize * lastdim);
+                                    }
+                                }
+                            }
+                            break;
+                        default:
+                            ERROR("meta->dims={}", meta->dims);
+                            assert(0);
+                            break;
+                    }
+                    block = std::make_shared<ASDF::ptr_block_t>(frame_copy.data(), size * typesize);
+                }
 
                 const auto compression = ASDF::compression_t::blosc;
                 const int compression_level = 9;
@@ -161,32 +257,37 @@ public:
 
                 // Describe metadata
 
-                auto coarse_freq = std::make_shared<ASDF::sequence>();
-                for (int freq = 0; freq < meta->nfreq; ++freq)
-                    coarse_freq->push_back(
-                        std::make_shared<ASDF::int_entry>(meta->coarse_freq[freq]));
-                group->emplace("coarse_freq", coarse_freq);
+                if (meta->nfreq >= 0) {
+                    auto coarse_freq = std::make_shared<ASDF::sequence>();
+                    for (int freq = 0; freq < meta->nfreq; ++freq)
+                        coarse_freq->push_back(
+                            std::make_shared<ASDF::int_entry>(meta->coarse_freq[freq]));
+                    group->emplace("coarse_freq", coarse_freq);
 
-                auto freq_upchan_factor = std::make_shared<ASDF::sequence>();
-                for (int freq = 0; freq < meta->nfreq; ++freq)
-                    freq_upchan_factor->push_back(
-                        std::make_shared<ASDF::int_entry>(meta->freq_upchan_factor[freq]));
-                group->emplace("freq_upchan_factor", freq_upchan_factor);
+                    auto freq_upchan_factor = std::make_shared<ASDF::sequence>();
+                    for (int freq = 0; freq < meta->nfreq; ++freq)
+                        freq_upchan_factor->push_back(
+                            std::make_shared<ASDF::int_entry>(meta->freq_upchan_factor[freq]));
+                    group->emplace("freq_upchan_factor", freq_upchan_factor);
+                }
 
-                group->emplace("sample0_offset",
-                               std::make_shared<ASDF::int_entry>(meta->sample0_offset));
+                if (meta->sample0_offset >= 0)
+                    group->emplace("sample0_offset",
+                                   std::make_shared<ASDF::int_entry>(meta->sample0_offset));
 
-                auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
-                for (int freq = 0; freq < meta->nfreq; ++freq)
-                    half_fpga_sample0->push_back(
-                        std::make_shared<ASDF::int_entry>(meta->half_fpga_sample0[freq]));
-                group->emplace("half_fpga_sample0", half_fpga_sample0);
+                if (meta->nfreq >= 0) {
+                    auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();
+                    for (int freq = 0; freq < meta->nfreq; ++freq)
+                        half_fpga_sample0->push_back(
+                            std::make_shared<ASDF::int_entry>(meta->half_fpga_sample0[freq]));
+                    group->emplace("half_fpga_sample0", half_fpga_sample0);
 
-                auto time_downsampling_fpga = std::make_shared<ASDF::sequence>();
-                for (int freq = 0; freq < meta->nfreq; ++freq)
-                    time_downsampling_fpga->push_back(
-                        std::make_shared<ASDF::int_entry>(meta->time_downsampling_fpga[freq]));
-                group->emplace("time_downsampling_fpga", time_downsampling_fpga);
+                    auto time_downsampling_fpga = std::make_shared<ASDF::sequence>();
+                    for (int freq = 0; freq < meta->nfreq; ++freq)
+                        time_downsampling_fpga->push_back(
+                            std::make_shared<ASDF::int_entry>(meta->time_downsampling_fpga[freq]));
+                    group->emplace("time_downsampling_fpga", time_downsampling_fpga);
+                }
 
                 auto dim_names = std::make_shared<ASDF::sequence>();
                 for (int d = 0; d < ndims; ++d)
@@ -247,6 +348,11 @@ public:
             // Mark frame as done
             DEBUG("mark_frame_empty: frame_id={}", frame_id);
             buffer->mark_frame_empty(unique_name, frame_id);
+
+            if (max_frames >= 0 && frame_counter + 1 >= max_frames) {
+                WARN("Processed {} frames, shutting down Kotekan", frame_counter);
+                exit_kotekan(CLEAN_EXIT);
+            }
         } // for
 
         DEBUG("exiting");

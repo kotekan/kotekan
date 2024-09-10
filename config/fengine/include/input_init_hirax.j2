@@ -1,0 +1,103 @@
+# -*-yaml-*-
+
+# HIRAX read initial conditions
+
+################################################################################
+
+# Stages
+
+read_data:
+    read_dish_positions:
+        kotekan_stage: gdalFileRead
+        file_name: dish_positions
+        out_buf: host_dish_positions_buffer
+    read_voltage:
+        kotekan_stage: gdalFileRead
+        file_name: voltage
+        out_buf: host_voltage_buffer
+    read_bb_beam_positions:
+        kotekan_stage: gdalFileRead
+        file_name: bb_beam_positions
+        out_buf: host_bb_beam_positions_buffer
+    read_bb_phase:
+        kotekan_stage: gdalFileRead
+        file_name: bb_phase
+        out_buf: host_bb_phase_buffer
+    read_bb_shift:
+        kotekan_stage: gdalFileRead
+        file_name: bb_shift
+        out_buf: host_bb_shift_buffer
+    # expected_bb_beams
+    # read_upchan_U2_gain:
+    #     kotekan_stage: gdalFileRead
+    #     file_name: upchan_U2_gain
+    #     out_buf: host_upchan_U2_gain_buffer
+    # read_upchan_U4_gain:
+    #     kotekan_stage: gdalFileRead
+    #     file_name: upchan_U4_gain
+    #     out_buf: host_upchan_U4_gain_buffer
+    read_upchan_U8_gain:
+        kotekan_stage: gdalFileRead
+        file_name: upchan_U8_gain
+        out_buf: host_upchan_U8_gain_buffer
+    read_upchan_U16_gain:
+        kotekan_stage: gdalFileRead
+        file_name: upchan_U16_gain
+        out_buf: host_upchan_U16_gain_buffer
+    read_upchan_U32_gain:
+        kotekan_stage: gdalFileRead
+        file_name: upchan_U32_gain
+        out_buf: host_upchan_U32_gain_buffer
+    # read_upchan_U64_gain:
+    #     kotekan_stage: gdalFileRead
+    #     file_name: upchan_U64_gain
+    #     out_buf: host_upchan_U64_gain_buffer
+    # read_frb1_U1_phase:
+    #     kotekan_stage: gdalFileRead
+    #     file_name: frb1_U1_phase
+    #     out_buf: host_frb1_U1_phase_buffer
+    # read_frb1_U2_phase:
+    #     kotekan_stage: gdalFileRead
+    #     file_name: frb1_U2_phase
+    #     out_buf: host_frb1_U2_phase_buffer
+    # read_frb1_U4_phase:
+    #     kotekan_stage: gdalFileRead
+    #     file_name: frb1_U4_phase
+    #     out_buf: host_frb1_U4_phase_buffer
+    read_frb1_U8_phase:
+        kotekan_stage: gdalFileRead
+        file_name: frb1_U8_phase
+        out_buf: host_frb1_U8_phase_buffer
+    read_frb1_U16_phase:
+        kotekan_stage: gdalFileRead
+        file_name: frb1_U16_phase
+        out_buf: host_frb1_U16_phase_buffer
+    read_frb1_U32_phase:
+        kotekan_stage: gdalFileRead
+        file_name: frb1_U32_phase
+        out_buf: host_frb1_U32_phase_buffer
+    # read_frb1_U64_phase:
+    #     kotekan_stage: gdalFileRead
+    #     file_name: frb1_U64_phase
+    #     out_buf: host_frb1_U64_phase_buffer
+    read_frb2_phase:
+        kotekan_stage: gdalFileRead
+        file_name: frb2_phase
+        out_buf: host_frb2_phase_buffer
+    # expected_frb1_beams
+
+run_send_voltage:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_buffer_in: host_voltage_buffer
+        out_buffers:
+            host_voltage_ringbuffer_out: host_voltage_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_dishes * num_polarizations * num_frequencies * num_times
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_voltage_buffer_in
+          signal_buf: host_voltage_ringbuffer_out
+          gpu_mem_output: voltage_buffer

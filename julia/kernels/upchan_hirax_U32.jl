@@ -1,4 +1,3 @@
-const setup = :hirax
+include("setup_hirax.jl")
 const U = 32
-const T = 2^16
 include("upchan.jl")

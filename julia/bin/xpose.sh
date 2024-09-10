@@ -10,11 +10,14 @@ cd "$scriptdir/.."
 
 setups='chord hirax pathfinder'
 
+mkdir -p output-A40
+
 # Delete previous output (so that we don't accidentally re-use it)
 for setup in $setups; do
     rm -f output-A40/xpose_$setup.cxx
     rm -f output-A40/xpose_$setup.jl
     rm -f output-A40/xpose_$setup.ptx
+    rm -f output-A40/xpose_$setup.sass
     rm -f output-A40/xpose_$setup.yaml
     rm -f ../lib/cuda/cudaTransposeKernel_$setup.cpp
     rm -f ../lib/cuda/kernels/TransposeKernel_$setup.jl
@@ -33,6 +36,7 @@ for setup in $setups; do
     test -f output-A40/xpose_$setup.cxx
     test -f output-A40/xpose_$setup.jl
     test -f output-A40/xpose_$setup.ptx
+    test -f output-A40/xpose_$setup.sass
     test -f output-A40/xpose_$setup.yaml
 done
 

@@ -6,6 +6,8 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 
+#include <array>
+
 #ifdef WITH_CUDA
 #include <nvToolsExt.h>
 #endif
@@ -52,8 +54,15 @@ class FEngine : public kotekan::Stage {
     const int num_polarizations;
 
     // Sky
-    const float source_amplitude;
-    const float source_frequency;
+    const float noise_amplitude;
+    const std::vector<float> source_channels;
+    const std::vector<float> source_amplitudes;
+    const float dispersed_source_start_time;
+    const float dispersed_source_end_time;
+    const float dispersed_source_start_frequency;
+    const float dispersed_source_stop_frequency;
+    const float dispersed_source_linewidth;
+    const float dispersed_source_amplitude;
     const float source_position_ew;
     const float source_position_ns;
 
@@ -65,30 +74,45 @@ class FEngine : public kotekan::Stage {
     const float dish_separation_ns;
     const int num_dishes;
     const std::vector<int> dish_indices;
-    std::vector<int> dish_locations;
+    std::vector<int> dish_locations; // (ew, ns)
     int* dish_indices_ptr;
 
     // ADC
     const float adc_frequency;
+    const int num_samples_per_frame;
     const int num_taps;
     const int num_frequencies;
+    const std::vector<int> frequency_channels;
     const int num_times;
 
     // Baseband beamformer setup
-    const int bb_num_dishes_M;
-    const int bb_num_dishes_N;
-    const int bb_num_beams_P;
-    const int bb_num_beams_Q;
-    const float bb_beam_separation_x;
-    const float bb_beam_separation_y;
+    const int bb_num_beams_ew;
+    const int bb_num_beams_ns;
+    const float bb_beam_separation_ew;
+    const float bb_beam_separation_ns;
     const int bb_num_beams;
+    const int bb_scale;
 
     // Upchannelizer setup
     const int upchannelization_factor;
 
+    enum upchan_factor_t { U1, U2, U4, U8, U16, U32, U64, Usize };
+    constexpr int upchan_factor(upchan_factor_t U) {
+        return std::array<int, Usize>{1, 2, 4, 8, 16, 32, 64}.at(U);
+    }
+    const std::array<int, Usize> upchan_max_num_channelss, upchan_min_channels, upchan_max_channels;
+    const int upchan_all_max_num_output_channels, upchan_all_min_output_channel,
+        upchan_all_max_output_channel;
+    const std::array<std::vector<float>, Usize> upchan_gainss;
+
     // FRB beamformer setup
-    const int frb_num_beams_P;
-    const int frb_num_beams_Q;
+    const int frb1_num_beams_P;
+    const int frb1_num_beams_Q;
+    const int frb2_num_beams_ew;
+    const int frb2_num_beams_ns;
+    const float frb2_bore_z;
+    const float frb2_opening_angle_ew;
+    const float frb2_opening_angle_ns;
     const int Tds = 40;
     const int frb_num_times;
 
@@ -97,21 +121,27 @@ class FEngine : public kotekan::Stage {
     const int repeat_count;
 
     // Kotekan
+    const std::int64_t dish_positions_frame_size;
     const std::int64_t E_frame_size;
+    const std::int64_t bb_beam_positions_frame_size;
     const std::int64_t A_frame_size;
     const std::int64_t s_frame_size;
     const std::int64_t J_frame_size;
-    const std::int64_t G_frame_size;
-    const std::int64_t W_frame_size;
-    const std::int64_t I_frame_size;
+    const std::array<std::int64_t, Usize> G_frame_sizes;
+    const std::array<std::int64_t, Usize> W1_frame_sizes;
+    const std::int64_t W2_frame_size;
+    const std::int64_t I1_frame_size;
 
+    Buffer* const dish_positions_buffer;
     Buffer* const E_buffer;
+    Buffer* const bb_beam_positions_buffer;
     Buffer* const A_buffer;
     Buffer* const s_buffer;
     Buffer* const J_buffer;
-    Buffer* const G_buffer;
-    Buffer* const W_buffer;
-    Buffer* const I_buffer;
+    std::array<Buffer*, Usize> const G_buffers;
+    std::array<Buffer*, Usize> const W1_buffers;
+    Buffer* const W2_buffer;
+    Buffer* const I1_buffer;
 
 public:
     FEngine(kotekan::Config& config, const std::string& unique_name,

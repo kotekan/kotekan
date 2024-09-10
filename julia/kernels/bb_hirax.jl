@@ -1,3 +1,2 @@
-const setup = :hirax
-const T = 2^16
+include("setup_hirax.jl")
 include("bb.jl")

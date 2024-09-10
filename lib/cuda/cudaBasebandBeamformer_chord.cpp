@@ -60,10 +60,10 @@ private:
     static constexpr int cuda_number_of_beams = 96;
     static constexpr int cuda_number_of_complex_components = 2;
     static constexpr int cuda_number_of_dishes = 512;
-    static constexpr int cuda_number_of_frequencies = 16;
+    static constexpr int cuda_number_of_frequencies = 48;
     static constexpr int cuda_number_of_polarizations = 2;
-    static constexpr int cuda_number_of_timesamples = 131072;
-    static constexpr int cuda_granularity_number_of_timesamples = 32768;
+    static constexpr int cuda_number_of_timesamples = 32768;
+    static constexpr int cuda_granularity_number_of_timesamples = 8192;
     static constexpr int cuda_shift_parameter_sigma = 3;
 
     // Kernel input and output sizes
@@ -79,16 +79,16 @@ private:
     // Kernel call parameters:
     static constexpr int threads_x = 32;
     static constexpr int threads_y = 24;
-    static constexpr int blocks = 512;
+    static constexpr int blocks = 96;
     static constexpr int shmem_bytes = 67712;
 
     // Kernel name:
     const char* const kernel_symbol =
         "_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES0_IS2_"
-        "Li1ELi1EES0_IS_Li1ELi1EE";
+        "Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE";
 
     // Kernel arguments:
-    enum class args { Tmin, Tmax, A, E, s, J, info, count };
+    enum class args { Tmin, Tmax, A, E, s, J, info, log, count };
 
     // Tmin: Tmin
     static constexpr const char* Tmin_name = "Tmin";
@@ -113,14 +113,25 @@ private:
         "C", "D", "B", "P", "F",
     };
     static constexpr std::array<std::ptrdiff_t, A_rank> A_lengths = {
-        2, 512, 96, 2, 16,
+        2, 512, 96, 2, 48,
     };
-    static constexpr std::ptrdiff_t A_length = chord_datatype_bytes(A_type) * 2 * 512 * 96 * 2 * 16;
+    static constexpr std::ptrdiff_t A_length = chord_datatype_bytes(A_type) * 2 * 512 * 96 * 2 * 48;
     static_assert(A_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto A_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= A_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, A_rank + 1> A_strides = {
+        A_calc_stride(A_index_C), A_calc_stride(A_index_D), A_calc_stride(A_index_B),
+        A_calc_stride(A_index_P), A_calc_stride(A_index_F), A_calc_stride(A_rank),
+    };
+    static_assert(A_length == chord_datatype_bytes(A_type) * A_strides[A_rank]);
     //
     // E: gpu_mem_voltage
     static constexpr const char* E_name = "E";
-    static constexpr chordDataType E_type = int4p4;
+    static constexpr chordDataType E_type = int4p4chime;
     enum E_indices {
         E_index_D,
         E_index_P,
@@ -137,11 +148,22 @@ private:
     static constexpr std::array<std::ptrdiff_t, E_rank> E_lengths = {
         512,
         2,
-        16,
-        131072,
+        48,
+        32768,
     };
-    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 16 * 131072;
+    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 48 * 32768;
     static_assert(E_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto E_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= E_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, E_rank + 1> E_strides = {
+        E_calc_stride(E_index_D), E_calc_stride(E_index_P), E_calc_stride(E_index_F),
+        E_calc_stride(E_index_T), E_calc_stride(E_rank),
+    };
+    static_assert(E_length == chord_datatype_bytes(E_type) * E_strides[E_rank]);
     //
     // s: gpu_mem_output_scaling
     static constexpr const char* s_name = "s";
@@ -160,10 +182,23 @@ private:
     static constexpr std::array<std::ptrdiff_t, s_rank> s_lengths = {
         96,
         2,
-        16,
+        48,
     };
-    static constexpr std::ptrdiff_t s_length = chord_datatype_bytes(s_type) * 96 * 2 * 16;
+    static constexpr std::ptrdiff_t s_length = chord_datatype_bytes(s_type) * 96 * 2 * 48;
     static_assert(s_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto s_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= s_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, s_rank + 1> s_strides = {
+        s_calc_stride(s_index_B),
+        s_calc_stride(s_index_P),
+        s_calc_stride(s_index_F),
+        s_calc_stride(s_rank),
+    };
+    static_assert(s_length == chord_datatype_bytes(s_type) * s_strides[s_rank]);
     //
     // J: gpu_mem_formed_beams
     static constexpr const char* J_name = "J";
@@ -182,13 +217,24 @@ private:
         "B",
     };
     static constexpr std::array<std::ptrdiff_t, J_rank> J_lengths = {
-        32768,
+        8192,
         2,
-        16,
+        48,
         96,
     };
-    static constexpr std::ptrdiff_t J_length = chord_datatype_bytes(J_type) * 32768 * 2 * 16 * 96;
+    static constexpr std::ptrdiff_t J_length = chord_datatype_bytes(J_type) * 8192 * 2 * 48 * 96;
     static_assert(J_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto J_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= J_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, J_rank + 1> J_strides = {
+        J_calc_stride(J_index_T), J_calc_stride(J_index_P), J_calc_stride(J_index_F),
+        J_calc_stride(J_index_B), J_calc_stride(J_rank),
+    };
+    static_assert(J_length == chord_datatype_bytes(J_type) * J_strides[J_rank]);
     //
     // info: gpu_mem_info
     static constexpr const char* info_name = "info";
@@ -207,10 +253,50 @@ private:
     static constexpr std::array<std::ptrdiff_t, info_rank> info_lengths = {
         32,
         24,
-        512,
+        96,
     };
-    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 24 * 512;
+    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 24 * 96;
     static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto info_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= info_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, info_rank + 1> info_strides = {
+        info_calc_stride(info_index_thread),
+        info_calc_stride(info_index_warp),
+        info_calc_stride(info_index_block),
+        info_calc_stride(info_rank),
+    };
+    static_assert(info_length == chord_datatype_bytes(info_type) * info_strides[info_rank]);
+    //
+    // log: gpu_mem_log
+    static constexpr const char* log_name = "log";
+    static constexpr chordDataType log_type = int32;
+    enum log_indices {
+        log_index_block,
+        log_rank,
+    };
+    static constexpr std::array<const char*, log_rank> log_labels = {
+        "block",
+    };
+    static constexpr std::array<std::ptrdiff_t, log_rank> log_lengths = {
+        96,
+    };
+    static constexpr std::ptrdiff_t log_length = chord_datatype_bytes(log_type) * 96;
+    static_assert(log_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    static constexpr auto log_calc_stride = [](int dim) {
+        std::ptrdiff_t str = 1;
+        for (int d = 0; d < dim; ++d)
+            str *= log_lengths[d];
+        return str;
+    };
+    static constexpr std::array<std::ptrdiff_t, log_rank + 1> log_strides = {
+        log_calc_stride(log_index_block),
+        log_calc_stride(log_rank),
+    };
+    static_assert(log_length == chord_datatype_bytes(log_type) * log_strides[log_rank]);
     //
 
     // Kotekan buffer names
@@ -219,9 +305,11 @@ private:
     const std::string s_memname;
     const std::string J_memname;
     const std::string info_memname;
+    const std::string log_memname;
 
     // Host-side buffer arrays
     std::vector<std::uint8_t> info_host;
+    std::vector<std::uint8_t> log_host;
 
     static constexpr std::ptrdiff_t E_T_sample_bytes = chord_datatype_bytes(E_type)
                                                        * E_lengths[E_index_D] * E_lengths[E_index_P]
@@ -247,18 +335,26 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
     E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
     s_memname(config.get<std::string>(unique_name, "gpu_mem_output_scaling")),
     J_memname(config.get<std::string>(unique_name, "gpu_mem_formed_beams")),
-    info_memname(unique_name + "/gpu_mem_info"),
+    info_memname(unique_name + "/gpu_mem_info"), log_memname(unique_name + "/gpu_mem_log"),
 
-    info_host(info_length),
+    info_host(info_length), log_host(log_length),
     // Find input buffer used for signalling ring-buffer state
     input_ringbuf_signal(dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")))) {
     // Check ringbuffer size
+    if (!(input_ringbuf_signal->size == E_length))
+        FATAL_ERROR("Need input_ringbuf_signal->size == E_length, but have "
+                    "input_ringbuf_signal->size={:d}, E_length={:d}",
+                    input_ringbuf_signal->size, E_length);
     assert(input_ringbuf_signal->size == E_length);
 
     // Register host memory
     {
         const cudaError_t ierr = cudaHostRegister(info_host.data(), info_host.size(), 0);
+        assert(ierr == cudaSuccess);
+    }
+    {
+        const cudaError_t ierr = cudaHostRegister(log_host.data(), log_host.size(), 0);
         assert(ierr == cudaSuccess);
     }
 
@@ -268,6 +364,7 @@ cudaBasebandBeamformer_chord::cudaBasebandBeamformer_chord(Config& config,
     gpu_buffers_used.push_back(std::make_tuple(s_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(J_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_log", false, true, true));
 
     set_command_type(gpuCommandType::KERNEL);
 
@@ -345,22 +442,27 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     pre_execute();
 
     void* const A_memory =
-        args::A == args::E
-            ? device.get_gpu_memory(A_memname, input_ringbuf_signal->size)
+        args::A == args::E ? device.get_gpu_memory(A_memname, input_ringbuf_signal->size)
+        : args::A == args::A || args::A == args::s
+            ? device.get_gpu_memory(A_memname, A_length)
             : device.get_gpu_memory_array(A_memname, gpu_frame_id, _gpu_buffer_depth, A_length);
     void* const E_memory =
-        args::E == args::E
-            ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
+        args::E == args::E ? device.get_gpu_memory(E_memname, input_ringbuf_signal->size)
+        : args::E == args::A || args::E == args::s
+            ? device.get_gpu_memory(E_memname, E_length)
             : device.get_gpu_memory_array(E_memname, gpu_frame_id, _gpu_buffer_depth, E_length);
     void* const s_memory =
-        args::s == args::E
-            ? device.get_gpu_memory(s_memname, input_ringbuf_signal->size)
+        args::s == args::E ? device.get_gpu_memory(s_memname, input_ringbuf_signal->size)
+        : args::s == args::A || args::s == args::s
+            ? device.get_gpu_memory(s_memname, s_length)
             : device.get_gpu_memory_array(s_memname, gpu_frame_id, _gpu_buffer_depth, s_length);
     void* const J_memory =
-        args::J == args::E
-            ? device.get_gpu_memory(J_memname, input_ringbuf_signal->size)
+        args::J == args::E ? device.get_gpu_memory(J_memname, input_ringbuf_signal->size)
+        : args::J == args::A || args::J == args::s
+            ? device.get_gpu_memory(J_memname, J_length)
             : device.get_gpu_memory_array(J_memname, gpu_frame_id, _gpu_buffer_depth, J_length);
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
+    void* const log_memory = device.get_gpu_memory(log_memname, log_length);
 
     // A is an input buffer: check metadata
     const std::shared_ptr<metadataObject> A_mc =
@@ -377,10 +479,13 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
         assert(std::strncmp(A_meta->dim_name[A_rank - 1 - dim], A_labels[dim],
                             sizeof A_meta->dim_name[A_rank - 1 - dim])
                == 0);
-        if (args::A == args::E)
+        if (args::A == args::E) {
             assert(A_meta->dim[A_rank - 1 - dim] <= int(A_lengths[dim]));
-        else
+            assert(A_meta->stride[A_rank - 1 - dim] == A_strides[dim]);
+        } else {
             assert(A_meta->dim[A_rank - 1 - dim] == int(A_lengths[dim]));
+            assert(A_meta->stride[A_rank - 1 - dim] == A_strides[dim]);
+        }
     }
     //
     // E is an input buffer: check metadata
@@ -398,10 +503,13 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
         assert(std::strncmp(E_meta->dim_name[E_rank - 1 - dim], E_labels[dim],
                             sizeof E_meta->dim_name[E_rank - 1 - dim])
                == 0);
-        if (args::E == args::E)
+        if (args::E == args::E) {
             assert(E_meta->dim[E_rank - 1 - dim] <= int(E_lengths[dim]));
-        else
+            assert(E_meta->stride[E_rank - 1 - dim] == E_strides[dim]);
+        } else {
             assert(E_meta->dim[E_rank - 1 - dim] == int(E_lengths[dim]));
+            assert(E_meta->stride[E_rank - 1 - dim] == E_strides[dim]);
+        }
     }
     //
     // s is an input buffer: check metadata
@@ -419,10 +527,13 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
         assert(std::strncmp(s_meta->dim_name[s_rank - 1 - dim], s_labels[dim],
                             sizeof s_meta->dim_name[s_rank - 1 - dim])
                == 0);
-        if (args::s == args::E)
+        if (args::s == args::E) {
             assert(s_meta->dim[s_rank - 1 - dim] <= int(s_lengths[dim]));
-        else
+            assert(s_meta->stride[s_rank - 1 - dim] == s_strides[dim]);
+        } else {
             assert(s_meta->dim[s_rank - 1 - dim] == int(s_lengths[dim]));
+            assert(s_meta->stride[s_rank - 1 - dim] == s_strides[dim]);
+        }
     }
     //
     // J is an output buffer: set metadata
@@ -437,6 +548,7 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
         std::strncpy(J_meta->dim_name[J_rank - 1 - dim], J_labels[dim],
                      sizeof J_meta->dim_name[J_rank - 1 - dim]);
         J_meta->dim[J_rank - 1 - dim] = J_lengths[dim];
+        J_meta->stride[J_rank - 1 - dim] = J_strides[dim];
     }
     DEBUG("output J array: {:s} {:s}", J_meta->get_type_string(), J_meta->get_dimensions_string());
     //
@@ -453,8 +565,9 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     array_desc s_arg(s_memory, s_length);
     array_desc J_arg(J_memory, J_length);
     array_desc info_arg(info_memory, info_length);
+    array_desc log_arg(log_memory, log_length);
     void* args[] = {
-        &exc_arg, &Tmin_arg, &Tmax_arg, &A_arg, &E_arg, &s_arg, &J_arg, &info_arg,
+        &exc_arg, &Tmin_arg, &Tmax_arg, &A_arg, &E_arg, &s_arg, &J_arg, &info_arg, &log_arg,
     };
 
     // Set E_memory to beginning of input ring buffer
@@ -496,6 +609,13 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     // Initialize host-side buffer arrays
     CHECK_CUDA_ERROR(
         cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(
+        cudaMemsetAsync(log_memory, 0xff, log_length, device.getStream(cuda_stream_id)));
+#endif
+
+#ifdef DEBUGGING
+    // Poison outputs
+    CHECK_CUDA_ERROR(cudaMemsetAsync(J_memory, 0x88, J_length, device.getStream(cuda_stream_id)));
 #endif
 
     const std::string symname = "BasebandBeamformer_chord_" + std::string(kernel_symbol);
@@ -518,9 +638,13 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
     // Copy results back to host memory
     CHECK_CUDA_ERROR(cudaMemcpyAsync(info_host.data(), info_memory, info_length,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(log_host.data(), log_memory, log_length,
+                                     cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
+
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+    DEBUG("Finished CUDA BasebandBeamformer_chord on GPU frame {:d}", gpu_frame_id);
 
     // Check error codes
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
     const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
                                                       (const std::int32_t*)&*info_host.end());
     if (error_code != 0)
@@ -531,6 +655,27 @@ cudaEvent_t cudaBasebandBeamformer_chord::execute(cudaPipelineState& /*pipestate
             ERROR("cudaBasebandBeamformer_chord returned 'info' value {:d} at index {:d} (zero "
                   "indicates no error)",
                   info_host[i], i);
+
+    // Check log codes
+    const std::int32_t log_code = *std::max_element((const std::int32_t*)&*log_host.begin(),
+                                                    (const std::int32_t*)&*log_host.end());
+    if (log_code != 0)
+        ERROR("CUDA kernel returned log code cuLaunchKernel: {}", log_code);
+
+    for (std::size_t i = 0; i < log_host.size(); ++i)
+        if (log_host[i] != 0)
+            ERROR("cudaBasebandBeamformer_chord returned 'log' value {:d} at index {:d} (zero "
+                  "indicates success)",
+                  log_host[i], i);
+#endif
+
+#ifdef DEBUGGING
+    // Check outputs for poison
+    std::vector<std::uint8_t> J_buffer(J_length);
+    CHECK_CUDA_ERROR(cudaMemcpy(J_buffer.data(), J_memory, J_length, cudaMemcpyDeviceToHost));
+
+    const bool J_found_error = std::memchr(J_buffer.data(), 0x88, J_buffer.size());
+    assert(!J_found_error);
 #endif
 
     return record_end_event();

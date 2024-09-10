@@ -148,6 +148,7 @@ void hdf5FileWrite::main_thread() {
 
             switch (metadata->type) {
                 case int4p4:
+                case int4p4chime:
                     type = H5T_NATIVE_UINT8;
                     type_size = 1;
                     break;

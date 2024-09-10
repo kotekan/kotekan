@@ -1,0 +1,42 @@
+# -*-yaml-*-
+
+# Benchmark output
+
+################################################################################
+
+# Stages
+
+run_recv_upchan_U16_voltage:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_upchan_U16_voltage_ringbuffer_in: host_upchan_U16_voltage_ringbuffer
+        out_buffers:
+            host_upchan_U16_voltage_buffer_out: host_upchan_U16_voltage_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_upchan_U16_voltage_ringbuffer_in
+          gpu_mem_input: upchan_U16_voltage_buffer
+          output_size: num_dishes * num_polarizations * (upchan_U16_max_num_channels * 16) * (num_times / 16)
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_upchan_U16_voltage_buffer_out
+
+# Output
+
+write_data:
+    # base_dir:
+    skip_writing: true
+    write_n2k_correlation:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_n2k_correlation_buffer
+        file_name: n2k_correlation
+    write_bb_beams:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_bb_beams_buffer
+        file_name: bb_beams
+    write_upchan_U16_voltage:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_upchan_U16_voltage_buffer
+        file_name: upchan_U16_voltage
+        max_frames: 98

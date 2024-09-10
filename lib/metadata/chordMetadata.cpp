@@ -4,8 +4,20 @@ REGISTER_TYPE_WITH_FACTORY(metadataObject, chordMetadata);
 
 const char* chord_datatype_string(chordDataType type) {
     switch (type) {
+        case uint4p4:
+            return "uint4p4";
+        case uint8:
+            return "uint8";
+        case uint16:
+            return "uint16";
+        case uint32:
+            return "uint32";
+        case uint64:
+            return "uint64";
         case int4p4:
             return "int4p4";
+        case int4p4chime:
+            return "int4p4chime";
         case int8:
             return "int8";
         case int16:
@@ -26,6 +38,38 @@ const char* chord_datatype_string(chordDataType type) {
     }
 }
 
+chordDataType chord_datatype_from_string(const std::string& type) {
+    if (type == "uint4p4")
+        return uint4p4;
+    if (type == "uint8")
+        return uint8;
+    if (type == "uint16")
+        return uint16;
+    if (type == "uint32")
+        return uint32;
+    if (type == "uint64")
+        return uint64;
+    if (type == "int4p4")
+        return int4p4;
+    if (type == "int4p4chime")
+        return int4p4chime;
+    if (type == "int8")
+        return int8;
+    if (type == "int16")
+        return int16;
+    if (type == "int32")
+        return int32;
+    if (type == "int64")
+        return int64;
+    if (type == "float16")
+        return float16;
+    if (type == "float32")
+        return float32;
+    if (type == "float64")
+        return float64;
+    return unknown_type;
+}
+
 chordMetadata::chordMetadata() :
     frame_counter(-1), type(unknown_type), dims(-1), offset(0), n_one_hot(-1), sample0_offset(-1),
     nfreq(-1), ndishes(-1), n_dish_locations_ew(-1), n_dish_locations_ns(-1), dish_index(nullptr) {
@@ -33,7 +77,7 @@ chordMetadata::chordMetadata() :
     for (int d = 0; d < CHORD_META_MAX_DIM; ++d) {
         dim[d] = -1;
         dim_name[d][0] = '\0';
-        strides[d] = -1;
+        stride[d] = -1;
         onehot_name[d][0] = '\0';
         onehot_index[d] = -1;
     }
@@ -59,7 +103,7 @@ struct chordMetadataFormat {
     int32_t dims;
     int32_t dim[CHORD_META_MAX_DIM];
     char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME]; // "F", "Tbar", "D", etc
-    int64_t strides[CHORD_META_MAX_DIM];
+    int64_t stride[CHORD_META_MAX_DIM];
     int64_t offset;
 
     // One-hot arrays?
@@ -125,7 +169,7 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
             dim_name[i][j] = fmt->dim_name[i][j];
             onehot_name[i][j] = fmt->onehot_name[i][j];
         }
-        strides[i] = fmt->strides[i];
+        stride[i] = fmt->stride[i];
         onehot_index[i] = fmt->onehot_index[i];
     }
     offset = fmt->offset;
@@ -162,7 +206,7 @@ size_t chordMetadata::serialize(char* bytes) {
             fmt->dim_name[i][j] = dim_name[i][j];
             fmt->onehot_name[i][j] = onehot_name[i][j];
         }
-        fmt->strides[i] = strides[i];
+        fmt->stride[i] = stride[i];
         fmt->onehot_index[i] = onehot_index[i];
     }
     fmt->offset = offset;

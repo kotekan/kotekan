@@ -1,0 +1,31 @@
+# -*-yaml-*-
+
+################################################################################
+#
+# Initialize a CHIME test
+#
+################################################################################
+
+---
+log_level: debug
+
+fengine_num_frames: 1
+fengine_repeat_count: 10
+
+skip_julia: false
+
+base_dir: /localhome/eschnett/data/fengine_init_chime
+
+{% include "include/defs.j2" %}
+{% include "include/fengine_chime.j2" %}
+
+{% include "include/n2k_chime.j2" %}
+{% include "include/bb_chime.j2" %}
+{% include "include/upchan_chime.j2" %}
+{% include "include/frb_chime.j2" %}
+
+{% include "include/sources_chime.j2" %}
+{% include "include/fengine_init.j2" %}
+
+{% include "include/output_init_chime.j2" %}
+...

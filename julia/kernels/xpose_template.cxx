@@ -193,6 +193,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                                         {{{name}}}_labels[{{{name}}}_rank - 1 - dim],
                                         sizeof {{{name}}}_meta->dim_name[dim]) == 0);
                     assert({{{name}}}_meta->dim[dim] == int({{{name}}}_lengths[{{{name}}}_rank - 1 - dim]));
+                    assert({{{name}}}_meta->stride[dim] == int({{{name}}}_lengths[{{{name}}}_rank - 1 - dim]));
                 }
                 //
             {{/isoutput}}
@@ -209,6 +210,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                                  {{{name}}}_labels[{{{name}}}_rank - 1 - dim],
                                  sizeof {{{name}}}_meta->dim_name[dim]);
                     {{{name}}}_meta->dim[dim] = {{{name}}}_lengths[{{{name}}}_rank - 1 - dim];
+                    {{{name}}}_meta->stride[dim] = {{{name}}}_lengths[{{{name}}}_rank - 1 - dim];
                 }
                 DEBUG("output {{{name}}} array: {:s} {:s}",
                       {{{name}}}_meta->get_type_string(),

@@ -1,0 +1,346 @@
+# -*-yaml-*-
+
+# CHIME FRB beamformer setup
+
+################################################################################
+
+frb_downsampling_factor: 384 / upchannelization_factor
+# cudaQuantize requires `frb_num_output_times` to be a multiple of 256
+frb_num_output_times: 256
+# TODO: remove
+frb_num_beams_P: 2 * num_dish_locations_ns
+frb_num_beams_Q: 2 * num_dish_locations_ew
+
+frb_num_beams_ns: 32
+frb_num_beams_ew: 32
+frb_num_beams: frb_num_beams_ns * frb_num_beams_ew
+# Opening angle is specified in radians (here 2 degrees)
+frb_bore_z: 49.3208 * 3.141592653589793 / 180
+frb_opening_angle_ns: 2.0 * 3.141592653589793 / 180
+frb_opening_angle_ew: 2.0 * 3.141592653589793 / 180
+
+frb_chunk_size: 256
+
+################################################################################
+
+# Buffers
+
+# Phases
+
+host_frb1_U1_phase_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: 1   # sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * upchan_U1_max_num_channels * 1 * num_polarizations
+    metadata_pool: main_pool
+
+host_frb1_U2_phase_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: 1   # sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * upchan_U2_max_num_channels * 2 * num_polarizations
+    metadata_pool: main_pool
+
+host_frb1_U4_phase_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: 1   # sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * upchan_U4_max_num_channels * 4 * num_polarizations
+    metadata_pool: main_pool
+
+host_frb1_U8_phase_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: 1   # sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * upchan_U8_max_num_channels * 8 * num_polarizations
+    metadata_pool: main_pool
+
+host_frb1_U16_phase_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * upchan_U16_max_num_channels * 16 * num_polarizations
+    metadata_pool: main_pool
+
+host_frb1_U32_phase_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: 1   # sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * upchan_U32_max_num_channels * 32 * num_polarizations
+    metadata_pool: main_pool
+
+host_frb1_U64_phase_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: 1   # sizeof_float16 * num_components * num_dish_locations_ns * num_dish_locations_ew * upchan_U64_max_num_channels * 64 * num_polarizations
+    metadata_pool: main_pool
+
+host_frb2_phase_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_float16 * (2 * num_dish_locations_ns) * (2 * num_dish_locations_ew) * (frb_num_beams_ns * frb_num_beams_ew) * (upchan_all_max_output_channel - upchan_all_min_output_channel)
+    metadata_pool: main_pool
+
+# # Beams
+# 
+# host_frb1_beams_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     # Reduce buffer size by 2 to stay below 2 GByte
+#     frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times / 2
+#     metadata_pool: main_pool
+# host_frb1_beams_ringbuffer:
+#     kotekan_buffer: ring
+#     num_frames: buffer_depth
+#     ring_buffer_size: buffer_depth * sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times / 2
+#     metadata_pool: main_pool
+# 
+# host_frb2_beams_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     frame_size: sizeof_float16 * frb_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times
+#     metadata_pool: main_pool
+# 
+# host_frb3_beams_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     # `1/2` because the output is of type `int4`
+#     frame_size: frb_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times / 2
+#     metadata_pool: main_pool
+# 
+# host_frb3_beams_meanstd_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     # the output is quantized in chunks of `frb_chunk_size`
+#     frame_size: sizeof_float16 * 2 * frb_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times / frb_chunk_size
+#     metadata_pool: main_pool
+# 
+# ################################################################################
+# 
+# # Stages
+# 
+# # FRB 1
+# 
+# run_frb1_U1:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_voltage_ringbuffer_in: host_voltage_ringbuffer
+#             host_frb1_U1_phase_buffer_in: host_frb1_U1_phase_buffer
+#         out_buffers:
+#             host_frb1_beams_ringbuffer_out: host_frb1_beams_ringbuffer
+#         commands:
+#         - name: cudaInputData
+#           do_once: true
+#           in_buf: host_frb1_U1_phase_buffer_in
+#           gpu_mem: frb1_U1_phase_buffer
+#         - name: cudaSyncInput
+#         - name: cudaFRBBeamformer_chime_U1
+#           in_signal: host_voltage_ringbuffer_in
+#           out_signal: host_frb1_beams_ringbuffer_out
+#           gpu_mem_voltage: voltage_buffer
+#           gpu_mem_phase: frb1_U1_phase_buffer
+#           gpu_mem_beamgrid: frb1_beams_buffer
+#           Fbar_in_min: upchan_U1_min_channel
+#           Fbar_in_max: upchan_U1_max_channel
+#           Fbar_out_min: upchan_U1_min_output_channel
+#           Fbar_out_max: upchan_U1_max_output_channel
+# 
+# run_frb1_U2:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_upchan_U2_voltage_ringbuffer_in: host_upchan_U2_voltage_ringbuffer
+#             host_frb1_U2_phase_buffer_in: host_frb1_U2_phase_buffer
+#         out_buffers:
+#             host_frb1_beams_ringbuffer_out: host_frb1_beams_ringbuffer
+#         commands:
+#         - name: cudaInputData
+#           do_once: true
+#           in_buf: host_frb1_U2_phase_buffer_in
+#           gpu_mem: frb1_U2_phase_buffer
+#         - name: cudaSyncInput
+#         - name: cudaFRBBeamformer_chime_U2
+#           in_signal: host_upchan_U2_voltage_ringbuffer_in
+#           out_signal: host_frb1_beams_ringbuffer_out
+#           gpu_mem_voltage: upchan_U2_voltage_buffer
+#           gpu_mem_phase: frb1_U2_phase_buffer
+#           gpu_mem_beamgrid: frb1_beams_buffer
+#           Fbar_in_min: 0
+#           Fbar_in_max: upchan_U2_max_output_channel - upchan_U2_min_output_channel
+#           Fbar_out_min: upchan_U2_min_output_channel
+#           Fbar_out_max: upchan_U2_max_output_channel
+# 
+# run_frb1_U4:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_upchan_U4_voltage_ringbuffer_in: host_upchan_U4_voltage_ringbuffer
+#             host_frb1_U4_phase_buffer_in: host_frb1_U4_phase_buffer
+#         out_buffers:
+#             host_frb1_beams_ringbuffer_out: host_frb1_beams_ringbuffer
+#         commands:
+#         - name: cudaInputData
+#           do_once: true
+#           in_buf: host_frb1_U4_phase_buffer_in
+#           gpu_mem: frb1_U4_phase_buffer
+#         - name: cudaSyncInput
+#         - name: cudaFRBBeamformer_chime_U4
+#           in_signal: host_upchan_U4_voltage_ringbuffer_in
+#           out_signal: host_frb1_beams_ringbuffer_out
+#           gpu_mem_voltage: upchan_U4_voltage_buffer
+#           gpu_mem_phase: frb1_U4_phase_buffer
+#           gpu_mem_beamgrid: frb1_beams_buffer
+#           Fbar_in_min: 0
+#           Fbar_in_max: upchan_U4_max_output_channel - upchan_U4_min_output_channel
+#           Fbar_out_min: upchan_U4_min_output_channel
+#           Fbar_out_max: upchan_U4_max_output_channel
+# 
+# run_frb1_U8:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_upchan_U8_voltage_ringbuffer_in: host_upchan_U8_voltage_ringbuffer
+#             host_frb1_U8_phase_buffer_in: host_frb1_U8_phase_buffer
+#         out_buffers:
+#             host_frb1_beams_ringbuffer_out: host_frb1_beams_ringbuffer
+#         commands:
+#         - name: cudaInputData
+#           do_once: true
+#           in_buf: host_frb1_U8_phase_buffer_in
+#           gpu_mem: frb1_U8_phase_buffer
+#         - name: cudaSyncInput
+#         - name: cudaFRBBeamformer_chime_U8
+#           in_signal: host_upchan_U8_voltage_ringbuffer_in
+#           out_signal: host_frb1_beams_ringbuffer_out
+#           gpu_mem_voltage: upchan_U8_voltage_buffer
+#           gpu_mem_phase: frb1_U8_phase_buffer
+#           gpu_mem_beamgrid: frb1_beams_buffer
+#           Fbar_in_min: 0
+#           Fbar_in_max: upchan_U8_max_output_channel - upchan_U8_min_output_channel
+#           Fbar_out_min: upchan_U8_min_output_channel
+#           Fbar_out_max: upchan_U8_max_output_channel
+# 
+# run_frb1_U16:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_upchan_U16_voltage_ringbuffer_in: host_upchan_U16_voltage_ringbuffer
+#             host_frb1_U16_phase_buffer_in: host_frb1_U16_phase_buffer
+#         out_buffers:
+#             host_frb1_beams_ringbuffer_out: host_frb1_beams_ringbuffer
+#         commands:
+#         - name: cudaInputData
+#           do_once: true
+#           in_buf: host_frb1_U16_phase_buffer_in
+#           gpu_mem: frb1_U16_phase_buffer
+#         - name: cudaSyncInput
+#         - name: cudaFRBBeamformer_chime_U16
+#           in_signal: host_upchan_U16_voltage_ringbuffer_in
+#           out_signal: host_frb1_beams_ringbuffer_out
+#           gpu_mem_voltage: upchan_U16_voltage_buffer
+#           gpu_mem_phase: frb1_U16_phase_buffer
+#           gpu_mem_beamgrid: frb1_beams_buffer
+#           Fbar_in_min: 0
+#           Fbar_in_max: upchan_U16_max_output_channel - upchan_U16_min_output_channel
+#           Fbar_out_min: upchan_U16_min_output_channel
+#           Fbar_out_max: upchan_U16_max_output_channel
+# 
+# run_frb1_U32:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_upchan_U32_voltage_ringbuffer_in: host_upchan_U32_voltage_ringbuffer
+#             host_frb1_U32_phase_buffer_in: host_frb1_U32_phase_buffer
+#         out_buffers:
+#             host_frb1_beams_ringbuffer_out: host_frb1_beams_ringbuffer
+#         commands:
+#         - name: cudaInputData
+#           do_once: true
+#           in_buf: host_frb1_U32_phase_buffer_in
+#           gpu_mem: frb1_U32_phase_buffer
+#         - name: cudaSyncInput
+#         - name: cudaFRBBeamformer_chime_U32
+#           in_signal: host_upchan_U32_voltage_ringbuffer_in
+#           out_signal: host_frb1_beams_ringbuffer_out
+#           gpu_mem_voltage: upchan_U32_voltage_buffer
+#           gpu_mem_phase: frb1_U32_phase_buffer
+#           gpu_mem_beamgrid: frb1_beams_buffer
+#           Fbar_in_min: 0
+#           Fbar_in_max: upchan_U32_max_output_channel - upchan_U32_min_output_channel
+#           Fbar_out_min: upchan_U32_min_output_channel
+#           Fbar_out_max: upchan_U32_max_output_channel
+# 
+# run_frb1_U64:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_upchan_U64_voltage_ringbuffer_in: host_upchan_U64_voltage_ringbuffer
+#             host_frb1_U64_phase_buffer_in: host_frb1_U64_phase_buffer
+#         out_buffers:
+#             host_frb1_beams_ringbuffer_out: host_frb1_beams_ringbuffer
+#         commands:
+#         - name: cudaInputData
+#           do_once: true
+#           in_buf: host_frb1_U64_phase_buffer_in
+#           gpu_mem: frb1_U64_phase_buffer
+#         - name: cudaSyncInput
+#         - name: cudaFRBBeamformer_chime_U64
+#           in_signal: host_upchan_U64_voltage_ringbuffer_in
+#           out_signal: host_frb1_beams_ringbuffer_out
+#           gpu_mem_voltage: upchan_U64_voltage_buffer
+#           gpu_mem_phase: frb1_U64_phase_buffer
+#           gpu_mem_beamgrid: frb1_beams_buffer
+#           Fbar_in_min: 0
+#           Fbar_in_max: upchan_U64_max_output_channel - upchan_U64_min_output_channel
+#           Fbar_out_min: upchan_U64_min_output_channel
+#           Fbar_out_max: upchan_U64_max_output_channel
+# 
+# # FRB 2 and 3
+# 
+# run_frb23:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_frb1_beams_ringbuffer_in: host_frb1_beams_ringbuffer
+#             host_frb2_phase_in: host_frb2_phase_buffer
+#         out_buffers:
+#             host_frb2_beams_out: host_frb2_beams_buffer
+#             host_frb3_beams_out: host_frb3_beams_buffer
+#             host_frb3_beams_meanstd_out: host_frb3_beams_meanstd_buffer
+#         commands:
+#         - name: cudaInputData
+#           do_once: true
+#           in_buf: host_frb2_phase_in
+#           gpu_mem: frb2_phase_buffer
+#         - name: cudaFRBBeamReformer
+#           # batched: false
+#           max_num_local_freq: upchan_all_max_num_output_channels
+#           num_local_freq: upchan_all_max_output_channel - upchan_all_min_output_channel
+#           beam_grid_size_ns: frb_num_beams_P
+#           beam_grid_size_ew: frb_num_beams_Q
+#           num_beams: frb_num_beams
+#           samples_per_data_set: frb_num_output_times
+#           # cuda_streams: [2, 3]
+#           in_signal: host_frb1_beams_ringbuffer_in
+#           gpu_mem_beamgrid: frb1_beams_buffer
+#           gpu_mem_phase: frb2_phase_buffer
+#           gpu_mem_beamout: frb2_beams_buffer
+#         - name: cudaQuantize
+#           # the output is quantized in chunks of `frb_chunk_size`
+#           num_chunks: frb_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times / frb_chunk_size
+#           gpu_mem_input: frb2_beams_buffer
+#           gpu_mem_output: frb3_beams_buffer
+#           gpu_mem_meanstd: frb3_beams_meanstd_buffer
+#         - name: cudaSyncOutput
+#         - name: cudaOutputData
+#           gpu_mem: frb2_beams_buffer
+#           out_buf: host_frb2_beams_out
+#         - name: cudaOutputData
+#           gpu_mem: frb3_beams_buffer
+#           out_buf: host_frb3_beams_out
+#         - name: cudaOutputData
+#           gpu_mem: frb3_beams_meanstd_buffer
+#           out_buf: host_frb3_beams_meanstd_out
