@@ -15,11 +15,39 @@
 #define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
 #pragma pack()
 
-enum chordDataType { unknown_type, int4p4, int8, int16, int32, int64, float16, float32, float64 };
+enum chordDataType {
+    unknown_type,
+    uint4p4,
+    uint8,
+    uint16,
+    uint32,
+    uint64,
+    int4p4,
+    int4p4chime, // offset-encoded (stored is value + 8), low and high values swapped
+    int8,
+    int16,
+    int32,
+    int64,
+    float16,
+    float32,
+    float64
+};
 
 constexpr std::size_t chord_datatype_bytes(chordDataType type) {
     switch (type) {
+        case uint4p4:
+            return 1;
+        case uint8:
+            return 1;
+        case uint16:
+            return 2;
+        case uint32:
+            return 4;
+        case uint64:
+            return 8;
         case int4p4:
+            return 1;
+        case int4p4chime:
             return 1;
         case int8:
             return 1;
@@ -42,15 +70,16 @@ constexpr std::size_t chord_datatype_bytes(chordDataType type) {
 }
 
 const char* chord_datatype_string(chordDataType type);
+chordDataType chord_datatype_from_string(const std::string& type);
 
 // Maximum number of frequencies in metadata array
-const int CHORD_META_MAX_FREQ = 2048;
+const int CHORD_META_MAX_FREQ = 1024;
 
 // Maximum number of dimensions for arrays
 const int CHORD_META_MAX_DIM = 10;
 
 // Maximum length of dimension names for arrays
-const int CHORD_META_MAX_DIMNAME = 16;
+const int CHORD_META_MAX_DIMNAME = 20;
 
 // Maximum number of visibility matrix samples in a frame
 const int CHORD_META_MAX_VIS_SAMPLES = 64;
@@ -93,8 +122,10 @@ public:
 
     int dims;
     int dim[CHORD_META_MAX_DIM];
-    char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME]; // 'F', 'T', 'D', etc
-    int64_t strides[CHORD_META_MAX_DIM];
+    char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME]; // "F", "T", "D", etc
+    // The stride counts elements, not bytes
+    int64_t stride[CHORD_META_MAX_DIM];
+    // The offset counts elements, not bytes
     int64_t offset;
 
     // One-hot arrays?
@@ -111,28 +142,22 @@ public:
     //     T_actual = (sample0_offset + T + half_fpga_sample0[F] / 2) / time_downsampling_fpga[F]
     // where `T` is the time sample index and `F` is the coarse frequency index.
     int64_t sample0_offset;
+
     // Number of bytes per time sample
     size_t sample_bytes() const {
-        size_t bytes = chord_datatype_bytes(type);
-        assert(dims >= 0);
-        // Skip the first dimension. The number of bytes per sample is the number of bytes needed to
-        // store one array slice.
-        for (int d = 1; d < dims; ++d) {
-            assert(dim[d] >= 0);
-            bytes *= dim[d];
-        }
-        return bytes;
+        // The number of bytes per sample is the number of bytes needed to store one array slice.
+        return chord_datatype_bytes(type) * stride[0];
     }
 
     // Per-frequency arrays
 
-    // Number of coarse frequency channels. in this frame. The actual
-    // number of frequencies will be larger after
+    // Number of coarse frequency channels in this frame, or -1. The
+    // actual number of frequencies will be larger after
     // upchannelization. This field continues to track the original
     // number of coarse frequency channels.
     int nfreq;
 
-    // frequencies -- integer (0-2047) identifier for FPGA coarse frequencies
+    // frequencies -- integer (0-8192) identifier for FPGA coarse frequencies
     // This is the FPGA frequency channel index, indexed by the local coarse frequency channel.
     int coarse_freq[CHORD_META_MAX_FREQ];
 
@@ -200,7 +225,7 @@ public:
         assert(dim < CHORD_META_MAX_DIM);
         this->dim[dim] = size;
         // GCC helpfully tries to warn us that the destination string may end up not
-        // null-terminated, which we know.
+        // NUL-terminated, which we know.
 #pragma GCC diagnostic push
 #if GCC_VERSION > 80000
 #pragma GCC diagnostic ignored "-Wstringop-truncation"
@@ -211,7 +236,7 @@ public:
 
     void set_name(const std::string& name) {
         // GCC helpfully tries to warn us that the destination string may end up not
-        // null-terminated, which we know.
+        // NUL-terminated, which we know.
 #pragma GCC diagnostic push
 #if GCC_VERSION > 80000
 #pragma GCC diagnostic ignored "-Wstringop-truncation"
@@ -235,7 +260,7 @@ inline bool metadata_is_chord(Buffer* buf, int) {
     return buf && buf->metadata_pool && (buf->metadata_pool->type_name == "chordMetadata");
 }
 
-inline bool metadata_is_chord(const std::shared_ptr<metadataObject> mc) {
+inline bool metadata_is_chord(const std::shared_ptr<metadataObject>& mc) {
     if (!mc)
         return false;
     std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
@@ -243,7 +268,16 @@ inline bool metadata_is_chord(const std::shared_ptr<metadataObject> mc) {
     return (pool->type_name == "chordMetadata");
 }
 
-inline std::shared_ptr<chordMetadata> get_chord_metadata(std::shared_ptr<metadataObject> mc) {
+inline bool metadata_is_chord(const std::shared_ptr<const metadataObject>& mc) {
+    if (!mc)
+        return false;
+    std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
+    assert(pool);
+    return (pool->type_name == "chordMetadata");
+}
+
+inline std::shared_ptr<chordMetadata>
+get_chord_metadata(const std::shared_ptr<metadataObject>& mc) {
     if (!mc)
         return std::shared_ptr<chordMetadata>();
     if (!metadata_is_chord(mc)) {
@@ -253,6 +287,19 @@ inline std::shared_ptr<chordMetadata> get_chord_metadata(std::shared_ptr<metadat
         return std::shared_ptr<chordMetadata>();
     }
     return std::static_pointer_cast<chordMetadata>(mc);
+}
+
+inline std::shared_ptr<const chordMetadata>
+get_chord_metadata(const std::shared_ptr<const metadataObject>& mc) {
+    if (!mc)
+        return std::shared_ptr<const chordMetadata>();
+    if (!metadata_is_chord(mc)) {
+        std::shared_ptr<const metadataPool> pool = mc->parent_pool.lock();
+        WARN_NON_OO("Expected metadata to be type \"chordMetadata\", got \"{:s}\".",
+                    pool->type_name);
+        return std::shared_ptr<const chordMetadata>();
+    }
+    return std::static_pointer_cast<const chordMetadata>(mc);
 }
 
 inline std::shared_ptr<chordMetadata> get_chord_metadata(Buffer* buf, int frame_id) {

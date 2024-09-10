@@ -18,6 +18,7 @@ import subprocess
 import tempfile
 import time
 import warnings
+import re
 
 from . import baseband_buffer
 from . import visbuffer
@@ -173,11 +174,12 @@ class KotekanRunner(object):
                         log = open(f_out.name, "r").read().split("\n")
                         rest_addr = None
                         for line in log:
-                            if (
-                                line[:43]
-                                == "restServer: started server on address:port "
-                            ):
-                                rest_addr = line[43:]
+                            match = re.search(
+                                "^.*restServer: started server on address:port (.*)$",
+                                line,
+                            )
+                            if match is not None:
+                                rest_addr = match.group(1)
                         if rest_addr:
                             print(
                                 "Found REST server address in kotekan log: %s"

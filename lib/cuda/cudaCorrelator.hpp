@@ -77,6 +77,7 @@ private:
     RingBuffer* input_ringbuf_signal;
 
     // Byte offset in the ring buffer to read from
+    std::ptrdiff_t unmodded_input_cursor;
     std::ptrdiff_t input_cursor;
 
     // Cuda kernel wrapper object

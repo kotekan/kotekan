@@ -8,6 +8,8 @@ using CUDASIMDTypes
 using IndexSpaces
 using Mustache
 
+const Memory = IndexSpaces.Memory
+
 # const card = "A30"
 const card = "A40"
 
@@ -21,6 +23,26 @@ idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 Base.clamp(x::Complex, a, b) = Complex(clamp(x.re, a, b), clamp(x.im, a, b))
 Base.clamp(x::Complex, ab::UnitRange) = clamp(x, ab.start, ab.stop)
 Base.round(::Type{T}, x::Complex) where {T} = Complex(round(T, x.re), round(T, x.im))
+
+function shrink(value::Integer)
+    typemin(Int32) <= value <= typemax(Int32) && return Int32(value)
+    typemin(Int64) <= value <= typemax(Int64) && return Int64(value)
+    return value
+end
+function shrinkmul(x::Integer, y::Symbol, ymax::Integer)
+    @assert x >= 0 && ymax >= 0
+    # We assume 0 <= y < ymax
+    if x * (ymax - 1) <= typemax(Int32)
+        # We can use 32-bit arithmetic        
+        return :($(Int32(x)) * $y)
+    elseif x * (ymax - 1) <= typemax(Int64)
+        # We need to use 64-bit arithmetic        
+        return :($(Int64(x)) * $y)
+    else
+        # Something is wrong
+        @assert false
+    end
+end
 
 linterp(x1, y1, x2, y2, x) = (x - x2) * y1 / (x1 - x2) + (x - x1) * y2 / (x2 - x1)
 @assert(linterp(1.0f0, 2.0f0, 3.0f0, 4.0f0, 1.0f0) == 2.0f0)
@@ -40,19 +62,20 @@ function interp(table, x)
 end
 let
     table = [1.0f0 => +1.0f0, 2.0f0 => -1.0f0, 3.0f0 => +3.0f0]
-    @assert(interp(table, 1.0f0) == +1.0f0)
-    @assert(interp(table, 1.5f0) == +0.0f0)
-    @assert(interp(table, 2.0f0) == -1.0f0)
-    @assert(interp(table, 2.5f0) == +1.0f0)
-    @assert(interp(table, 3.0f0) == +3.0f0)
+    @assert interp(table, 1.0f0) == +1.0f0
+    @assert interp(table, 1.5f0) == +0.0f0
+    @assert interp(table, 2.0f0) == -1.0f0
+    @assert interp(table, 2.5f0) == +1.0f0
+    @assert interp(table, 3.0f0) == +3.0f0
 end
 
-# Un-normalized `sinc` function, without `π`
-@fastmath @inline sinc′(x) = x == 0 ? one(x) : sin(x) / x
+# Base.sinc isn't inlined, probably too complex
+@fastmath @inline sinc1(x) = iszero(x) ? one(x) : sinpi(x) / (pi * x)
 
-# sinc-Hanning weight function, eqn. (11), with `N=U`
+# sinc-Hanning weight function, eqn. (11), with `N = U+2`
 @fastmath @inline function Wkernel(s, M, U)
-    return cospi((s - Int32(M * U - 1) / 2.0f0) / Int32(M * U + 1))^2 * sinc′((s - Int32(M * U - 1) / 2.0f0) / Int32(U))
+    s′ = (2i32 * s - (M * U - 1i32)) / Float32(2 * (M * U + 1))  # normalized to (-1/2; +1/2)
+    return cospi(s′)^2 * sinc1(M * s′)
 end
 
 # CHORD Setup
@@ -60,37 +83,12 @@ end
 # Compile-time constants
 
 setup::Symbol
+F::Integer
 T::Integer
-
-@static if setup ≡ :chord
-    # CHORD Setup
-    const sampling_time_μsec = 4096 / (2 * 1200)
-    const C = 2
-    const D = 512
-    const P = 2
-    const F₀ = 16
-    const F = 16
-elseif setup ≡ :hirax
-    # HIRAX Setup
-    const sampling_time_μsec = 2.56
-    const C = 2
-    const D = 256
-    const P = 2
-    const F₀ = 64
-    const F = 64
-elseif setup ≡ :pathfinder
-    # Pathfinder Setup
-    const sampling_time_μsec = 4096 / (2 * 1200)
-    const C = 2
-    const D = 64
-    const P = 2
-    const F₀ = 128
-    const F = 128
-else
-    @assert false
-end
-
 U::Integer
+
+const F̄ = F_per_U[U] * U
+
 const M = 4
 const K = 4
 
@@ -137,7 +135,8 @@ const Wbits = trailing_zeros(W) # l
 const num_simd_bits = 32
 const num_threads = 32
 const num_warps = W
-const num_blocks = idiv(D * P, 128) * F
+const num_blocks_per_frequency = idiv(D * P, 128)
+const num_blocks = num_blocks_per_frequency * F
 const num_blocks_per_sm = B
 
 # Benchmark results:
@@ -178,7 +177,7 @@ const num_blocks_per_sm = B
     DishTag
     PolrTag
     FreqTag
-    MTapsTag
+    MTapTag
     ReplTag
     ThreadTag
     WarpTag
@@ -190,7 +189,7 @@ const Time = Index{Physics,TimeTag}
 const Dish = Index{Physics,DishTag}
 const Polr = Index{Physics,PolrTag}
 const Freq = Index{Physics,FreqTag}
-const MTaps = Index{Physics,MTapsTag}
+const MTap = Index{Physics,MTapTag}
 const Repl = Index{Physics,ReplTag}
 
 # Combine dishes and polarizations
@@ -203,6 +202,7 @@ const dish_polr_in = [
 ]
 
 make_register_pair(index::Index{Physics}) = index => Register(index.name, index.offset, index.length)
+make_unrolled_loop_pair(index::Index{Physics}) = index => UnrolledLoop(index.name, index.offset, index.length)
 
 # Comine 1 SIMD bit and 5 thread bits. This is useful for tensor core
 # multiplications.
@@ -215,7 +215,7 @@ const simd_threads = [SIMD(:simd, 1 << 4, 2), [Thread(:thread, 1 << [1, 0, 2, 4,
 const layout_G_memory = Layout([
     FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
     Freq(:freq, 1, 2) => SIMD(:simd, 16, 2),
-    Freq(:freq, 2, idiv(F * U, 2)) => Memory(:memory, 1, idiv(F * U, 2)),
+    Freq(:freq, 2, idiv(F̄, 2)) => Memory(:memory, 1, idiv(F̄, 2)),
 ])
 
 const layout_E_memory = Layout([
@@ -224,7 +224,7 @@ const layout_E_memory = Layout([
     Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
     Dish(:dish, 4, idiv(D, 4)) => Memory(:memory, 1, idiv(D, 4)),
     Polr(:polr, 1, P) => Memory(:memory, idiv(D, 4), P),
-    Freq(:freq, 1, F) => Memory(:memory, idiv(D, 4) * P, F),
+    Freq(:freq, U, F) => Memory(:memory, idiv(D, 4) * P, F),
     Time(:time, 1, T) => Memory(:memory, idiv(D, 4) * P * F, T),
 ])
 
@@ -234,8 +234,8 @@ const layout_Ē_memory = Layout([
     Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
     Dish(:dish, 4, idiv(D, 4)) => Memory(:memory, 1, idiv(D, 4)),
     Polr(:polr, 1, P) => Memory(:memory, idiv(D, 4), P),
-    Freq(:freq, 1, F * U) => Memory(:memory, idiv(D, 4) * P, F * U),
-    Time(:time, U, idiv(T, U)) => Memory(:memory, idiv(D, 4) * P * (F * U), idiv(T, U)),
+    Freq(:freq, 1, F̄) => Memory(:memory, idiv(D, 4) * P, F̄),
+    Time(:time, U, idiv(T, U)) => Memory(:memory, idiv(D, 4) * P * F̄, idiv(T, U)),
 ])
 
 const layout_info_memory = Layout([
@@ -301,41 +301,13 @@ const layout_F̄_shared_size = Σ * idiv(Touter, U)
 
 function thread2time(thread::Int32)
     time = 0i32
-    if U ≤ 64
-        for bit in 0:(Ubits - 2)
-            threadbit = (1, 0, 2, 4, 3)[bit + 1]
-            val = (thread >> threadbit) & 1i32
-            timebit = Ubits - 2 - bit
-            time |= val << timebit
-        end
-    else
-        for bit in 0:4
-            threadbit = (1, 0, 2, 4, 3)[bit + 1]
-            val = (thread >> threadbit) & 1i32
-            timebit = Ubits - 2 - bit
-            time |= val << timebit
-        end
+    for bit in 0:min(Ubits - 2, 4)
+        threadbit = (1, 0, 2, 4, 3)[bit + 1]
+        val = (thread >> threadbit) & 1i32
+        timebit = Ubits - 2 - bit
+        time |= val << timebit
     end
     return time
-end
-function thread2freq(thread::Int32)
-    freq = 0i32
-    if U ≤ 64
-        for bit in 0:(Ubits - 2)
-            threadbit = (1, 0, 2, 4, 3)[bit + 1]
-            val = (thread >> threadbit) & 1i32
-            freqbit = Ubits - 2 - bit
-            freq |= val << freqbit
-        end
-    else
-        for bit in 0:4
-            threadbit = (1, 0, 2, 4, 3)[bit + 1]
-            val = (thread >> threadbit) & 1i32
-            freqbit = Ubits - 2 - bit
-            freq |= val << freqbit
-        end
-    end
-    return freq
 end
 
 # const layout_W_registers = if U ≤ 64
@@ -344,7 +316,7 @@ end
 #         FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
 #         Time(:time, idiv(U, 2), 2) => SIMD(:simd, 16, 2),
 #         [Time(:time, 1 << (Ubits - 2 - bit), 2) => Thread(:thread, 1 << [1, 0, 2, 4, 3][bit + 1], 2) for bit in 0:(Ubits - 2)]...,
-#         MTaps(:mtaps, 1, M) => Register(:mtaps, 1, M),
+#         MTap(:mtap, 1, M) => Register(:mtap, 1, M),
 #     ])
 # else
 #     # eqn. (129)
@@ -353,7 +325,7 @@ end
 #         Time(:time, idiv(U, 2), 2) => SIMD(:simd, 16, 2),
 #         [Time(:time, 1 << (Ubits - 2 - bit), 2) => Thread(:thread, 1 << [1, 0, 2, 4, 3][bit + 1], 2) for bit in 0:4]...,
 #         Time(:time, 1, 1 << (Ubits - 6)) => Register(:time, 1, 1 << (Ubits - 6)),
-#         MTaps(:mtaps, 1, M) => Register(:mtaps, 1, M),
+#         MTap(:mtap, 1, M) => Register(:mtap, 1, M),
 #     ])
 # end
 
@@ -460,17 +432,17 @@ const layout_F_registers = Layout([
     Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
     Dish(:dish, 1, 2) => SIMD(:simd, 8, 2),
     Dish(:dish, 2, W) => Warp(:warp, 1, W),
-    [make_register_pair(dish_polr[ilog2(2 * W) + bit + 1]) for bit in 0:(Drbits - 1)]...,
-    [dish_polr[ilog2(2 * W * Dr) + bit + 1] => simd_threads[Ubits + bit + 1] for bit in 0:(Dtbits - 1)]...,
+    # [make_register_pair(dish_polr[Wbits + bit + 2]) for bit in 0:(Drbits - 1)]...,
+    [make_unrolled_loop_pair(dish_polr[Wbits + bit + 2]) for bit in 0:(Drbits - 1)]...,
+    [dish_polr[Wbits + Drbits + bit + 2] => simd_threads[Ubits + bit + 1] for bit in 0:(Dtbits - 1)]...,
     # eqn. (111)
     #Unpacked FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
     #Unpacked Cplx(:cplx, 1, C) => Register(:cplx, 1, C),
     #Unpacked Dish(:dish, 1 << 0, 2) => Register(:dish, 1, 2),
     #Unpacked Time(:time, 1 << 3, 2) => SIMD(:simd, 16, 2),
     # eqn. (105)
-    Time(:time, idiv(U, 2), 2) => SIMD(:simd, 16, 2),
-    [Time(:time, 1 << (Ubits - 2 - bit), 2) => simd_threads[1 + bit + 1] for bit in 0:min(4, Ubits - 2)]...,
-    [Time(:time, 1 << (Ubits - 2 - bit), 2) => Register(:time, 1 << (Ubits - 2 - bit), 2) for bit in 5:(Ubits - 2)]...,
+    [Time(:time, 1 << (Ubits - 1 - bit), 2) => simd_threads[bit + 1] for bit in 0:min(5, Ubits - 1)]...,
+    [Time(:time, 1 << (Ubits - 1 - bit), 2) => Register(:time, 1 << (Ubits - 1 - bit), 2) for bit in 6:(Ubits - 1)]...,
     Time(:time, U, idiv(Touter, U)) => Loop(:t_inner, U, idiv(Touter, U)),
     Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
     # sect. 5.2
@@ -486,8 +458,9 @@ const layout_F̄_registers = Layout([
     Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
     Dish(:dish, 1, 2) => SIMD(:simd, 8, 2),
     Dish(:dish, 2, W) => Warp(:warp, 1, W),
-    [make_register_pair(dish_polr[ilog2(2 * W) + bit + 1]) for bit in 0:(Drbits - 1)]...,
-    [dish_polr[ilog2(2 * W * Dr) + bit + 1] => simd_threads[Ubits + bit + 1] for bit in 0:(Dtbits - 1)]...,
+    # [make_register_pair(dish_polr[Wbits + bit + 2]) for bit in 0:(Drbits - 1)]...,
+    [make_unrolled_loop_pair(dish_polr[Wbits + bit + 2]) for bit in 0:(Drbits - 1)]...,
+    [dish_polr[Wbits + Drbits + bit + 2] => simd_threads[Ubits + bit + 1] for bit in 0:(Dtbits - 1)]...,
     # eqn. (111)
     #Unpacked FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
     #Unpacked Cplx(:cplx, 1, C) => Register(:cplx, 1, C),
@@ -509,14 +482,14 @@ const layout_F_ringbuf_registers = Layout([
     Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
     Dish(:dish, 1, 2) => SIMD(:simd, 8, 2),
     Dish(:dish, 2, W) => Warp(:warp, 1, W),
-    [make_register_pair(dish_polr[ilog2(2 * W) + bit + 1]) for bit in 0:(Drbits - 1)]...,
-    [dish_polr[ilog2(2 * W * Dr) + bit + 1] => simd_threads[Ubits + bit + 1] for bit in 0:(Dtbits - 1)]...,
+    [make_register_pair(dish_polr[Wbits + bit + 2]) for bit in 0:(Drbits - 1)]...,
+    [dish_polr[Wbits + Drbits + bit + 2] => simd_threads[Ubits + bit + 1] for bit in 0:(Dtbits - 1)]...,
     # eqn. (111)
     #Unpacked FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
     #Unpacked Cplx(:cplx, 1, C) => Register(:cplx, 1, C),
     #Unpacked Dish(:dish, 1 << 0, 2) => Register(:dish, 1, 2),
     #Unpacked Time(:time, 1 << 3, 2) => SIMD(:simd, 16, 2),
-    MTaps(:mtaps, 1, M - 1) => Register(:mtaps, 1, M - 1),
+    MTap(:mtap, 1, M - 1) => Register(:mtap, 1, M - 1),
     # eqn. (105)
     Time(:time, idiv(U, 2), 2) => SIMD(:simd, 16, 2),
     [Time(:time, 1 << (Ubits - 2 - bit), 2) => simd_threads[1 + bit + 1] for bit in 0:min(4, Ubits - 2)]...,
@@ -535,7 +508,16 @@ const layout_info_registers = Layout([
 
 # Kernel setup
 
-const shmem_size = cld(layout_F_shared_size, 32) * 32 + cld(layout_F̄_shared_size, 32) * 32
+const shmem_F_size = cld(layout_F_shared_size, 32) * 32
+const shmem_F̄_size = cld(layout_F̄_shared_size, 32) * 32
+
+# const shmem_F_offset = 0
+# const shmem_F̄_offset = shmem_F_offset + shmem_F_size
+# const shmem_size = shmem_F̄_offset + shmem_F̄_size
+
+const shmem_F_offset = 0
+const shmem_F̄_offset = shmem_F_offset
+const shmem_size = max(shmem_F_size, shmem_F̄_size)
 
 const shmem_bytes = 4 * shmem_size
 
@@ -554,14 +536,24 @@ function upchan!(emitter)
         emitter,
         :(
             !(
-                0i32 ≤ Tmin ≤ Tmax ≤ $(Int32(2 * T)) &&
+                0i32 ≤ Tmin < $(Int32(T)) &&
+                Tmin ≤ Tmax < $(Int32(2 * T)) &&
                 (Tmax - Tmin) % $(Int32(Touter)) == 0i32 &&
-                0i32 ≤ T̄min ≤ T̄max ≤ $(Int32(2 * idiv(T, U))) &&
+                0i32 ≤ T̄min < $(Int32(idiv(T, U))) &&
+                T̄min ≤ T̄max < $(Int32(2 * idiv(T, U))) &&
                 (T̄max - T̄min + $(Int32(M - 1))) % $(Int32(idiv(Touter, U))) == 0i32
             )
         ),
     ) do emitter
         apply!(emitter, :info => layout_info_registers, 2i32)
+        store!(emitter, :info_memory => layout_info_memory, :info)
+        trap!(emitter)
+        return nothing
+    end
+
+    # Check parameters `Fmin`, `Fmax`
+    if!(emitter, :(!(0i32 ≤ Fmin ≤ Fmax ≤ F))) do emitter
+        apply!(emitter, :info => layout_info_registers, 3i32)
         store!(emitter, :info_memory => layout_info_memory, :info)
         trap!(emitter)
         return nothing
@@ -580,25 +572,26 @@ function upchan!(emitter)
         [Time(:time, 1 << (Ubits - 1 - bit), 2) => simd_threads[bit + 1] for bit in 0:min(5, Ubits - 1)]...,
     ])
     for m in 0:(M - 1), t in 0:((U - 1) ÷ 64)
-        Wsum1 = inv(sum(Wkernel(s, M, U) for s in 0:(M * U - 1)))
         push!(
             emitter.statements,
             quote
-                ($(Symbol(:Wpfb0_m, m)), $(Symbol(:Wpfb1_m, m))) = let
+                (Wpfb0, Wpfb1) = let
                     thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
                     time0 = $(Int32(t)) + thread2time(thread)
                     time1 = time0 + $(Int32(idiv(U, 2)))
                     s0 = time0 + $(Int32(m * U))
                     s1 = time1 + $(Int32(m * U))
-                    W0 = $Wsum1 * Wkernel(s0, $M, $U)
-                    W1 = $Wsum1 * Wkernel(s1, $M, $U)
+                    # We scale by 1/U to undo the "natural"
+                    # upchannelization scaling by U. With this 1/U
+                    # scaling amplitudes remain approximately
+                    # constant.
+                    W0 = Wkernel(s0, $(Int32(M)), $(Int32(U))) / $(Float32(U))
+                    W1 = Wkernel(s1, $(Int32(M)), $(Int32(U))) / $(Float32(U))
                     (W0, W1)
                 end
             end,
         )
-        apply!(
-            emitter, Symbol(:Wpfb_m, m, :_t, t) => layout_Wm_registers, :(Float16x2($(Symbol(:Wpfb0_m, m)), $(Symbol(:Wpfb1_m, m))))
-        )
+        apply!(emitter, Symbol(:Wpfb_m, m, :_t, t) => layout_Wm_registers, :(Float16x2(Wpfb0, Wpfb1)))
     end
     for m in 0:(M - 1)
         if (U - 1) ÷ 64 + 1 > 1
@@ -613,7 +606,7 @@ function upchan!(emitter)
             apply!(emitter, Symbol(:Wpfb_m, m), [Symbol(:Wpfb_m, m, :_t0)], (W,) -> :($W))
         end
     end
-    merge!(emitter, :Wpfb, [Symbol(:Wpfb_m, m) for m in 0:(M - 1)], MTaps(:mtaps, 1, M) => Register(:mtaps, 1, M))
+    merge!(emitter, :Wpfb, [Symbol(:Wpfb_m, m) for m in 0:(M - 1)], MTap(:mtap, 1, M) => Register(:mtap, 1, M))
 
     # Calculate extra phases
     # eqn. (88), (125), (139)
@@ -624,8 +617,8 @@ function upchan!(emitter)
                 thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
                 time0 = thread2time(thread)
                 time1 = time0 + $(Int32(idiv(U, 2)))
-                X0 = cispi((time0 * $(Int32(U - 1)) / Float32(U)) % 2.0f0)
-                X1 = cispi((time1 * $(Int32(U - 1)) / Float32(U)) % 2.0f0)
+                X0 = cispi((time0 * $(Int32(U - 1)) % $(Int32(2 * U))) / $(Float32(U)))
+                X1 = cispi((time1 * $(Int32(U - 1)) % $(Int32(2 * U))) / $(Float32(U)))
                 (X0, X1)
             end
         end,
@@ -647,58 +640,89 @@ function upchan!(emitter)
     # eqn. (60)
     push!(
         emitter.statements,
-        quote
-            (Γ¹0, Γ¹1) = let
-                k = $Ubits
-                @assert $U == 2^k
-                m = 3
-                n = k - m
-                @assert 0 ≤ m
-                @assert 0 ≤ n
-                thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
-                thread0 = (thread ÷ 1i32) % 2i32
-                thread1 = (thread ÷ 2i32) % 2i32
-                thread2 = (thread ÷ 4i32) % 2i32
-                thread3 = (thread ÷ 8i32) % 2i32
-                thread4 = (thread ÷ 16i32) % 2i32
-                if $(U == 2)
-                    timehi0 = 4i32 * 0i32
-                    timehi1 = 4i32 * 1i32
-                    dish_in0 = 1i32 * thread1 + 2i32 * thread0
-                    dish_in1 = 1i32 * thread1 + 2i32 * thread0
-                elseif $(U == 4)
-                    timehi0 = 4i32 * 0i32 + 2i32 * thread1
-                    timehi1 = 4i32 * 1i32 + 2i32 * thread1
-                    dish_in0 = 1i32 * thread0
-                    dish_in1 = 1i32 * thread0
-                elseif $(U ≥ 8)
-                    timehi0 = 4i32 * 0i32 + 2i32 * thread1 + 1i32 * thread0
-                    timehi1 = 4i32 * 1i32 + 2i32 * thread1 + 1i32 * thread0
-                    dish_in0 = 0i32
-                    dish_in1 = 0i32
-                else
-                    @assert false
+        let
+            k = Ubits
+            @assert U == 2^k
+            m = min(k, 3)
+            n = min(k - m, 3)
+            @assert 0 ≤ m ≤ 3
+            @assert 0 ≤ n ≤ 3
+            @assert m + n == min(6, k)
+            quote
+                # (58):
+                #     0 ≤ timelo < 2^n
+                #     0 ≤ timehi < 2^m
+                #     time = timehi * 2^n + timelo
+                # (59):
+                #     0 ≤ freqlo < 2^m
+                #     0 ≤ freqhi < 2^n
+                #     freq = freqhi * 2^m + freqlo
+                # Note that m and n change roles for time and freq.
+                (Γ¹0, Γ¹1) = let
+                    thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
+                    thread0 = (thread ÷ 1i32) % 2i32
+                    thread1 = (thread ÷ 2i32) % 2i32
+                    thread2 = (thread ÷ 4i32) % 2i32
+                    thread3 = (thread ÷ 8i32) % 2i32
+                    thread4 = (thread ÷ 16i32) % 2i32
+                    $(
+                        if U == 2
+                            quote
+                                timehi0 = 1i32 * 0i32
+                                timehi1 = 1i32 * 1i32
+                                dish_in0 = 1i32 * thread1 + 2i32 * thread0
+                                dish_in1 = 1i32 * thread1 + 2i32 * thread0
+                            end
+                        elseif U == 4
+                            quote
+                                timehi0 = 2i32 * 0i32 + 1i32 * thread1
+                                timehi1 = 1i32 * 1i32 + 1i32 * thread1
+                                dish_in0 = 1i32 * thread0
+                                dish_in1 = 1i32 * thread0
+                            end
+                        elseif U ≥ 8
+                            quote
+                                timehi0 = 4i32 * 0i32 + 2i32 * thread1 + 1i32 * thread0
+                                timehi1 = 4i32 * 1i32 + 2i32 * thread1 + 1i32 * thread0
+                                dish_in0 = 0i32
+                                dish_in1 = 0i32
+                            end
+                        else
+                            @assert false
+                        end
+                    )
+                    $(
+                        if U == 2
+                            quote
+                                freqlo = 1i32 * thread2
+                                dish = 1i32 * thread4 + 2i32 * thread3
+                            end
+                        elseif U == 4
+                            quote
+                                freqlo = 1i32 * thread2 + 2i32 * thread4
+                                dish = 1i32 * thread3
+                            end
+                        elseif U ≥ 8
+                            quote
+                                freqlo = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
+                                dish = 0i32
+                            end
+                        else
+                            @assert false
+                        end
+                    )
+                    @assert 0i32 ≤ timehi0 < $(Int32(2^m))
+                    @assert 0i32 ≤ timehi1 < $(Int32(2^m))
+                    @assert 0i32 ≤ freqlo < $(Int32(2^m))
+                    # Sparsity pattern, a Kronecker δ in the spectator indices
+                    delta0 = dish == dish_in0
+                    delta1 = dish == dish_in1
+                    Γ¹0, Γ¹1 = (
+                        delta0 * conj(cispi(2i32 * timehi0 * freqlo % $(Int32(2 * 2^m)) / $(Float32(2^m)))),
+                        delta1 * conj(cispi(2i32 * timehi1 * freqlo % $(Int32(2 * 2^m)) / $(Float32(2^m)))),
+                    )
+                    (Γ¹0, Γ¹1)
                 end
-                if $(U == 2)
-                    freqlo = 1i32 * thread2
-                    dish = 1i32 * thread4 + 2i32 * thread3
-                elseif $(U == 4)
-                    freqlo = 1i32 * thread2 + 2i32 * thread4
-                    dish = 1i32 * thread3
-                elseif $(U ≥ 8)
-                    freqlo = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
-                    dish = 0i32
-                else
-                    @assert false
-                end
-                # Sparsity pattern, a Kronecker δ in the spectator indices
-                delta0 = dish == dish_in0
-                delta1 = dish == dish_in1
-                Γ¹0, Γ¹1 = (
-                    delta0 * cispi((-2i32 * timehi0 * freqlo / Float32(2^m)) % 2.0f0),
-                    delta1 * cispi((-2i32 * timehi1 * freqlo / Float32(2^m)) % 2.0f0),
-                )
-                (Γ¹0, Γ¹1)
             end
         end,
     )
@@ -710,11 +734,14 @@ function upchan!(emitter)
     merge!(emitter, :Γ¹im, [:Γ¹imre, :Γ¹imim], Cplx(:cplx_in, 1, C) => Register(:cplx_in, 1, C))
     merge!(emitter, :Γ¹, [:Γ¹re, :Γ¹im], Cplx(:cplx, 1, C) => Register(:cplx, 1, C))
     # Why do we need this? `mma_row_col_m16n8k16_f16!` should skip this tag if not present.
+    if U < 8
+        merge!(emitter, :Γ¹, [:Γ¹, :Γ¹], make_register_pair(dish_polr[1]))
+    end
     if U ≥ 128
         merge!(emitter, :Γ¹, [:Γ¹, :Γ¹], Time(:time, 1, 2) => Register(:time, 1, 2))
     end
 
-    if U ∉ [2, 4, 8]
+    if U > 8
         # For U in [2, 4, 8] this step is a multiplication by one, and we thus skip it
         @assert 4 ≤ U ≤ 128
         layout_Γ²reim_registers = Layout([
@@ -725,47 +752,57 @@ function upchan!(emitter)
         # eqn. (61)
         push!(
             emitter.statements,
-            quote
-                (Γ²0, Γ²1) = let
-                    k = $Ubits
-                    @assert $U == 2^k
-                    m = 3
-                    n = k - m
-                    @assert 0 ≤ m
-                    @assert 0 ≤ n
-                    thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
-                    thread0 = (thread ÷ 1i32) % 2i32
-                    thread1 = (thread ÷ 2i32) % 2i32
-                    thread2 = (thread ÷ 4i32) % 2i32
-                    thread3 = (thread ÷ 8i32) % 2i32
-                    thread4 = (thread ÷ 16i32) % 2i32
-                    if $(U == 4)
-                        timelo0 = 0i32
-                        timelo1 = 0i32
-                    elseif $(U == 8)
-                        timelo0 = 0i32
-                        timelo1 = 0i32
-                    elseif $(U == 16)
-                        timelo0 = 1i32 * 0i32
-                        timelo1 = 1i32 * 1i32
-                    elseif $(U == 32)
-                        timelo0 = 2i32 * 0i32 + 1i32 * thread1
-                        timelo1 = 2i32 * 1i32 + 1i32 * thread1
-                    elseif $(U == 64)
-                        timelo0 = 4i32 * 0i32 + 2i32 * thread1 + 1i32 * thread0
-                        timelo1 = 4i32 * 1i32 + 2i32 * thread1 + 1i32 * thread0
-                    elseif $(U == 128)
-                        timelo0 = 8i32 * 0i32 + 4i32 * thread1 + 2i32 * thread0
-                        timelo1 = 8i32 * 1i32 + 4i32 * thread1 + 2i32 * thread0
-                    else
-                        @assert false
+            let
+                k = Ubits
+                @assert U == 2^k
+                m = min(k, 3)
+                n = min(k - m, 3)
+                @assert 0 ≤ m ≤ 3
+                @assert 0 ≤ n ≤ 3
+                @assert m + n == min(6, k)
+                quote
+                    (Γ²0, Γ²1) = let
+                        thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
+                        thread0 = (thread ÷ 1i32) % 2i32
+                        thread1 = (thread ÷ 2i32) % 2i32
+                        thread2 = (thread ÷ 4i32) % 2i32
+                        thread3 = (thread ÷ 8i32) % 2i32
+                        thread4 = (thread ÷ 16i32) % 2i32
+                        $(
+                            if U == 16
+                                quote
+                                    timelo0 = 1i32 * 0i32
+                                    timelo1 = 1i32 * 1i32
+                                end
+                            elseif U == 32
+                                quote
+                                    timelo0 = 2i32 * 0i32 + 1i32 * thread1
+                                    timelo1 = 2i32 * 1i32 + 1i32 * thread1
+                                end
+                            elseif U == 64
+                                quote
+                                    timelo0 = 4i32 * 0i32 + 2i32 * thread1 + 1i32 * thread0
+                                    timelo1 = 4i32 * 1i32 + 2i32 * thread1 + 1i32 * thread0
+                                end
+                            elseif U == 128
+                                quote
+                                    timelo0 = 8i32 * 0i32 + 4i32 * thread1 + 2i32 * thread0
+                                    timelo1 = 8i32 * 1i32 + 4i32 * thread1 + 2i32 * thread0
+                                end
+                            else
+                                @assert false
+                            end
+                        )
+                        freqlo = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
+                        @assert 0i32 ≤ timelo0 < $(Int32(2^n))
+                        @assert 0i32 ≤ timelo1 < $(Int32(2^n))
+                        @assert 0i32 ≤ freqlo < $(Int32(2^m))
+                        (Γ²0, Γ²1) = (
+                            conj(cispi(2i32 * timelo0 * freqlo % $(Int32(2 * 2^(m + n))) / $(Float32(2^(m + n))))),
+                            conj(cispi(2i32 * timelo1 * freqlo % $(Int32(2 * 2^(m + n))) / $(Float32(2^(m + n))))),
+                        )
+                        (Γ²0, Γ²1)
                     end
-                    freqlo = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
-                    (Γ²0, Γ²1) = (
-                        cispi((-2i32 * timelo0 * freqlo / Float32(2^(m + n))) % 2.0f0),
-                        cispi((-2i32 * timelo1 * freqlo / Float32(2^(m + n))) % 2.0f0),
-                    )
-                    (Γ²0, Γ²1)
                 end
             end,
         )
@@ -776,9 +813,9 @@ function upchan!(emitter)
         if U ≥ 128
             merge!(emitter, :Γ², [:Γ², :Γ²], Time(:time, 1, 2) => Register(:time, 1, 2))
         end
-    end # if U ∉ [4, 8]
+    end # if U > 8
 
-    # For U in [2, 4] step is a multiplication by one, but we need to perform it anyway to permute the values in the registers
+    # For U ≤ 8 this step is a multiplication by one, but we need to perform it anyway to permute the values in the registers
     @assert 2 ≤ U ≤ 128
     layout_Γ³reim_registers = Layout([
         FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
@@ -790,82 +827,99 @@ function upchan!(emitter)
     # eqn. (62)
     push!(
         emitter.statements,
-        quote
-            (Γ³0, Γ³1) = let
-                k = $Ubits
-                @assert $U == 2^k
-                m = 3
-                n = k - m
-                @assert 0 ≤ m
-                @assert 0 ≤ n
-                thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
-                thread0 = (thread ÷ 1i32) % 2i32
-                thread1 = (thread ÷ 2i32) % 2i32
-                thread2 = (thread ÷ 4i32) % 2i32
-                thread3 = (thread ÷ 8i32) % 2i32
-                thread4 = (thread ÷ 16i32) % 2i32
-                if $(U == 4)
-                    timelo0 = 0i32
-                    timelo1 = 0i32
-                    dish_in0 = 1i32 * 0i32 + 2i32 * thread1 + 4i32 * thread0
-                    dish_in1 = 1i32 * 1i32 + 2i32 * thread1 + 4i32 * thread0
-                elseif $(U == 8)
-                    timelo0 = 0i32
-                    timelo1 = 0i32
-                    dish_in0 = 1i32 * 0i32 + 2i32 * thread1 + 4i32 * thread0
-                    dish_in1 = 1i32 * 1i32 + 2i32 * thread1 + 4i32 * thread0
-                elseif $(U == 16)
-                    timelo0 = 1i32 * 0i32
-                    timelo1 = 1i32 * 1i32
-                    dish_in0 = 1i32 * thread1 + 2i32 * thread0
-                    dish_in1 = 1i32 * thread1 + 2i32 * thread0
-                elseif $(U == 32)
-                    timelo0 = 2i32 * 0i32 + 1i32 * thread1
-                    timelo1 = 2i32 * 1i32 + 1i32 * thread1
-                    dish_in0 = 1i32 * thread0
-                    dish_in1 = 1i32 * thread0
-                elseif $(U == 64)
-                    timelo0 = 4i32 * 0i32 + 2i32 * thread1 + 1i32 * thread0
-                    timelo1 = 4i32 * 1i32 + 2i32 * thread1 + 1i32 * thread0
-                    dish_in0 = 0i32
-                    dish_in1 = 0i32
-                elseif $(U == 128)
-                    timelo0 = 8i32 * 0i32 + 4i32 * thread1 + 2i32 * thread0
-                    timelo1 = 8i32 * 1i32 + 4i32 * thread1 + 2i32 * thread0
-                    dish_in0 = 0i32
-                    dish_in1 = 0i32
-                else
-                    @assert false
+        let
+            k = Ubits
+            @assert U == 2^k
+            m = min(k, 3)
+            n = min(k - m, 3)
+            @assert 0 ≤ m ≤ 3
+            @assert 0 ≤ n ≤ 3
+            @assert m + n == min(6, k)
+            quote
+                (Γ³0, Γ³1) = let
+                    thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
+                    thread0 = (thread ÷ 1i32) % 2i32
+                    thread1 = (thread ÷ 2i32) % 2i32
+                    thread2 = (thread ÷ 4i32) % 2i32
+                    thread3 = (thread ÷ 8i32) % 2i32
+                    thread4 = (thread ÷ 16i32) % 2i32
+                    $(
+                        if U ≤ 8
+                            quote
+                                timelo0 = 0i32
+                                timelo1 = 0i32
+                                dish_in0 = 1i32 * 0i32 + 2i32 * thread1 + 4i32 * thread0
+                                dish_in1 = 1i32 * 1i32 + 2i32 * thread1 + 4i32 * thread0
+                            end
+                        elseif U == 16
+                            quote
+                                timelo0 = 1i32 * 0i32
+                                timelo1 = 1i32 * 1i32
+                                dish_in0 = 1i32 * thread1 + 2i32 * thread0
+                                dish_in1 = 1i32 * thread1 + 2i32 * thread0
+                            end
+                        elseif U == 32
+                            quote
+                                timelo0 = 2i32 * 0i32 + 1i32 * thread1
+                                timelo1 = 2i32 * 1i32 + 1i32 * thread1
+                                dish_in0 = 1i32 * thread0
+                                dish_in1 = 1i32 * thread0
+                            end
+                        elseif U == 64
+                            quote
+                                timelo0 = 4i32 * 0i32 + 2i32 * thread1 + 1i32 * thread0
+                                timelo1 = 4i32 * 1i32 + 2i32 * thread1 + 1i32 * thread0
+                                dish_in0 = 0i32
+                                dish_in1 = 0i32
+                            end
+                        elseif U == 128
+                            quote
+                                timelo0 = 8i32 * 0i32 + 4i32 * thread1 + 2i32 * thread0
+                                timelo1 = 8i32 * 1i32 + 4i32 * thread1 + 2i32 * thread0
+                                dish_in0 = 0i32
+                                dish_in1 = 0i32
+                            end
+                        else
+                            @assert false
+                        end
+                    )
+                    $(
+                        if U ≤ 8
+                            quote
+                                freqhi = 0i32
+                                dish = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
+                            end
+                        elseif U == 16
+                            quote
+                                freqhi = 1i32 * thread2
+                                dish = 1i32 * thread4 + 2i32 * thread3
+                            end
+                        elseif U == 32
+                            quote
+                                freqhi = 1i32 * thread2 + 2i32 * thread4
+                                dish = 1i32 * thread3
+                            end
+                        elseif U ≥ 64
+                            quote
+                                freqhi = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
+                                dish = 0i32
+                            end
+                        else
+                            @assert false
+                        end
+                    )
+                    @assert 0i32 ≤ timelo0 < $(Int32(2^n))
+                    @assert 0i32 ≤ timelo1 < $(Int32(2^n))
+                    @assert 0i32 ≤ freqhi < $(Int32(2^n))
+                    # Sparsity pattern, a Kronecker δ in the spectator indices
+                    delta0 = dish == dish_in0
+                    delta1 = dish == dish_in1
+                    Γ³0, Γ³1 = (
+                        delta0 * conj(cispi(2i32 * timelo0 * freqhi % $(Int32(2 * 2^n)) / $(Float32(2^n)))),
+                        delta1 * conj(cispi(2i32 * timelo1 * freqhi % $(Int32(2 * 2^n)) / $(Float32(2^n)))),
+                    )
+                    (Γ³0, Γ³1)
                 end
-                if $(U == 4)
-                    freqhi = 0i32
-                    dish = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
-                elseif $(U == 8)
-                    freqhi = 0i32
-                    dish = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
-                elseif $(U == 16)
-                    freqhi = 1i32 * thread2
-                    dish = 1i32 * thread4 + 2i32 * thread3
-                elseif $(U == 32)
-                    freqhi = 1i32 * thread2 + 2i32 * thread4
-                    dish = 1i32 * thread3
-                elseif $(U == 64)
-                    freqhi = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
-                    dish = 0i32
-                elseif $(U == 128)
-                    freqhi = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
-                    dish = 0i32
-                else
-                    @assert false
-                end
-                # Sparsity pattern, a Kronecker δ in the spectator indices
-                delta0 = dish == dish_in0
-                delta1 = dish == dish_in1
-                Γ³0, Γ³1 = (
-                    delta0 * cispi((-2i32 * timelo0 * freqhi / Float32(2^n)) % 2.0f0),
-                    delta1 * cispi((-2i32 * timelo1 * freqhi / Float32(2^n)) % 2.0f0),
-                )
-                (Γ³0, Γ³1)
             end
         end,
     )
@@ -891,33 +945,36 @@ function upchan!(emitter)
             [Freq(:freq, 1 << bit, 2) => simd_threads[bit + 1] for bit in 0:5]...,
         ])
         # eqn. (61)
+        # TODO: shouldn't this be eqn. (78)?
         push!(
             emitter.statements,
-            quote
-                (Γ⁴0, Γ⁴1) = let
-                    k = Ubits
-                    @assert U == 2^k
-                    m = 6
-                    n = k - m
-                    @assert 0 ≤ m
-                    @assert 0 ≤ n
-                    thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
-                    thread0 = (thread ÷ 1i32) % 2i32
-                    thread1 = (thread ÷ 2i32) % 2i32
-                    thread2 = (thread ÷ 4i32) % 2i32
-                    thread3 = (thread ÷ 8i32) % 2i32
-                    thread4 = (thread ÷ 16i32) % 2i32
-                    # We only calculate the coefficient for `timelo = 1` since the coefficient for `timelo = 0` is trivial
-                    timelo = 1i32
-                    freqlo0 =
-                        1i32 * 0i32 + 2i32 * thread1 + 4i32 * thread0 + 8i32 * thread2 + 16i32 * thread4 + 32i32 * thread3
-                    freqlo1 =
-                        1i32 * 1i32 + 2i32 * thread1 + 4i32 * thread0 + 8i32 * thread2 + 16i32 * thread4 + 32i32 * thread3
-                    (Γ⁴0, Γ⁴1) = (
-                        cispi((-2i32 * timelo * freqlo0 / Float32(2^(m + n))) % 2.0f0),
-                        cispi((-2i32 * timelo * freqlo1 / Float32(2^(m + n))) % 2.0f0),
-                    )
-                    (Γ⁴0, Γ⁴1)
+            let
+                k = Ubits
+                @assert U == 2^k
+                m = 6
+                n = k - m
+                @assert 0 ≤ m
+                @assert 0 ≤ n
+                quote
+                    (Γ⁴0, Γ⁴1) = let
+                        thread = IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx(), 0, $num_threads)
+                        thread0 = (thread ÷ 1i32) % 2i32
+                        thread1 = (thread ÷ 2i32) % 2i32
+                        thread2 = (thread ÷ 4i32) % 2i32
+                        thread3 = (thread ÷ 8i32) % 2i32
+                        thread4 = (thread ÷ 16i32) % 2i32
+                        # We only calculate the coefficient for `timelo = 1` since the coefficient for `timelo = 0` is trivial
+                        timelo = 1i32
+                        freqlo0 =
+                            1i32 * 0i32 + 2i32 * thread1 + 4i32 * thread0 + 8i32 * thread2 + 16i32 * thread4 + 32i32 * thread3
+                        freqlo1 =
+                            1i32 * 1i32 + 2i32 * thread1 + 4i32 * thread0 + 8i32 * thread2 + 16i32 * thread4 + 32i32 * thread3
+                        (Γ⁴0, Γ⁴1) = (
+                            cispi((-2i32 * timelo * freqlo0 / $(Float32(2^(m + n)))) % 2.0f0),
+                            cispi((-2i32 * timelo * freqlo1 / $(Float32(2^(m + n)))) % 2.0f0),
+                        )
+                        (Γ⁴0, Γ⁴1)
+                    end
                 end
             end,
         )
@@ -938,7 +995,6 @@ function upchan!(emitter)
         # Step1: Copy outer block from global memory to shared memory
 
         # Load E
-        tstride = idiv(D, 4) * P * F
         load!(
             emitter,
             :E => layout_E_registers,
@@ -946,8 +1002,8 @@ function upchan!(emitter)
             align=16,
             postprocess=addr -> :(
                 let
-                    offset = $(Int32(tstride)) * Tmin
-                    length = $(Int32(idiv(D, 4) * P * F * T))
+                    offset = $(shrinkmul(idiv(D, 4) * P * F, :Tmin, T)) + $(shrinkmul(idiv(D, 4) * P, :Fmin, F))
+                    length = $(shrink(idiv(D, 4) * P * F * T))
                     mod($addr + offset, length)
                 end
             ),
@@ -978,80 +1034,143 @@ function upchan!(emitter)
 
         # Loop over inner blocks
         loop!(emitter, Time(:time, U, idiv(Touter, U)) => Loop(:t_inner, U, idiv(Touter, U))) do emitter
-
-            # Loop over packed miniblocks
-            unrolled_loop!(emitter, Dish(:dish, idiv(D, Dr), Dr) => UnrolledLoop(:dish, idiv(D, Dr), Dr)) do emitter
-
-                # Step 2: Read F-array miniblock from shared memory
-
-                load!(emitter, :F_in => layout_F_registers, :F_shared => layout_F_shared)
-
-                # Loop over unpacked miniblocks:
-                # This is an implicit loop over Dish(:dish, 1, 2)
-
-                # Step 3: Compute E by unpacking F_in
-                widen2!(
-                    emitter,
-                    :E,
-                    :F_in,
-                    SIMD(:simd, 4, 2) => Register(:cplx, 1, C),
-                    SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
-                    newtype=FloatValue,
+            Doffset = 2 * W
+            Dlength = Dr
+            Poffset = 1
+            Plength = 1
+            if Doffset * Dlength > D
+                Plength *= idiv(Doffset * Dlength, D)
+                Dlength = idiv(D, Doffset)
+            end
+            @assert 1 <= Doffset <= Doffset * Dlength <= D
+            @assert 1 <= Poffset <= Poffset * Plength <= P
+            @assert Plength * Dlength == Dr
+            unrolled_loop!(emitter, Polr(:polr, Poffset, Plength) => UnrolledLoop(:polr, Poffset, Plength)) do emitter
+                select!(
+                    emitter, :F_ringbuf_polr, :F_ringbuf, Register(:polr, Poffset, Plength) => UnrolledLoop(:polr, Poffset, Plength)
                 )
+                unrolled_loop!(emitter, Dish(:dish, Doffset, Dlength) => UnrolledLoop(:dish, Doffset, Dlength)) do emitter
+                    select!(
+                        emitter,
+                        :F_ringbuf_polr_dish,
+                        :F_ringbuf_polr,
+                        Register(:dish, Doffset, Dlength) => UnrolledLoop(:dish, Doffset, Dlength),
+                    )
 
-                # Step 4: Compute E2 from E
-                # m = M-1
-                split!(emitter, [Symbol(:W_m, m) for m in 0:(M - 1)], :Wpfb, Register(:mtaps, 1, M))
-                apply!(emitter, :E2, [:E, Symbol(:W_m, M - 1)], (E, W) -> :($(isodd(M - 1) ? :(-$W) : :(+$W)) * $E))
-                # m ∈ 0:M-2
-                # NOTE: For some reason, this `unrolled_loop!`
-                # construct calls `widen2!` on all mtaps, not just the
-                # ones selected in the current unrolled loop
-                # iteration. This makes `unrolled_loop!` unusable, and
-                # we have to roll our own.
-                # unrolled_loop!(emitter, MTaps(:mtaps, 1, M - 1) => UnrolledLoop(:mtaps, 1, M - 1)) do emitter
-                #     widen2!(
-                #         emitter,
-                #         :E_ringbuf,
-                #         :F_ringbuf,
-                #         SIMD(:simd, 4, 2) => Register(:cplx, 1, C),
-                #         SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
-                #         newtype=FloatValue,
-                #     )
-                #     delete!(emitter.environment[:E_ringbuf], MTaps(:mtaps, 1, M - 1))
-                #     apply!(emitter, :E2, [:E2, :E_ringbuf, :W1], (E2, E, W1) -> :(muladd($W1, $E, $E2)))
-                #     return nothing
-                # end
-                split!(emitter, [Symbol(:F_ringbuf_m, m) for m in 0:(M - 2)], :F_ringbuf, Register(:mtaps, 1, M - 1))
-                for m in 0:(M - 2)
+                    # Step 2: Read F-array miniblock from shared memory
+
+                    load!(emitter, :F_in => layout_F_registers, :F_shared => layout_F_shared)
+
+                    # Loop over unpacked miniblocks:
+                    # This is an implicit loop over Dish(:dish, 1, 2)
+
+                    # Step 3: Compute E by unpacking F_in
                     widen2!(
                         emitter,
-                        Symbol(:E_ringbuf_m, m),
-                        Symbol(:F_ringbuf_m, m),
+                        :E,
+                        :F_in,
                         SIMD(:simd, 4, 2) => Register(:cplx, 1, C),
                         SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
                         newtype=FloatValue,
                     )
+
+                    # Step 4: Compute E2 from E
+                    #TODO # m = M-1
+                    #TODO split!(emitter, [Symbol(:W_m, m) for m in 0:(M - 1)], :Wpfb, Register(:mtap, 1, M))
+                    #TODO apply!(emitter, :E2, [:E, Symbol(:W_m, M - 1)], (E, W) -> :($(isodd(M - 1) ? :(-$W) : :(+$W)) * $E))
+                    #TODO # m ∈ 0:M-2
+                    #TODO # NOTE: For some reason, this `unrolled_loop!`
+                    #TODO # construct calls `widen2!` on all mtaps, not just the
+                    #TODO # ones selected in the current unrolled loop
+                    #TODO # iteration. This makes `unrolled_loop!` unusable, and
+                    #TODO # we have to roll our own.
+                    #TODO # unrolled_loop!(emitter, MTap(:mtap, 1, M - 1) => UnrolledLoop(:mtap, 1, M - 1)) do emitter
+                    #TODO #     widen2!(
+                    #TODO #         emitter,
+                    #TODO #         :E_ringbuf,
+                    #TODO #         :F_ringbuf,
+                    #TODO #         SIMD(:simd, 4, 2) => Register(:cplx, 1, C),
+                    #TODO #         SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
+                    #TODO #         newtype=FloatValue,
+                    #TODO #     )
+                    #TODO #     delete!(emitter.environment[:E_ringbuf], MTap(:mtap, 1, M - 1))
+                    #TODO #     apply!(emitter, :E2, [:E2, :E_ringbuf, :W1], (E2, E, W1) -> :(muladd($W1, $E, $E2)))
+                    #TODO #     return nothing
+                    #TODO # end
+                    #TODO split!(emitter, [Symbol(:F_ringbuf_m, m) for m in 0:(M - 2)], :F_ringbuf, Register(:mtap, 1, M - 1))
+                    #TODO for m in 0:(M - 2)
+                    #TODO     widen2!(
+                    #TODO         emitter,
+                    #TODO         Symbol(:E_ringbuf_m, m),
+                    #TODO         Symbol(:F_ringbuf_m, m),
+                    #TODO         SIMD(:simd, 4, 2) => Register(:cplx, 1, C),
+                    #TODO         SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
+                    #TODO         newtype=FloatValue,
+                    #TODO     )
+                    #TODO     apply!(
+                    #TODO         emitter,
+                    #TODO         :E2,
+                    #TODO         [:E2, Symbol(:E_ringbuf_m, m), Symbol(:W_m, m)],
+                    #TODO         (E2, E, W) -> :(muladd($(isodd(m) ? :(-$W) : :(+$W)), $E, $E2)),
+                    #TODO     )
+                    #TODO end
+                    apply!(emitter, :E2, [:E], (E,) -> :(zero($E)))
+                    unrolled_loop!(emitter, MTap(:mtap, 1, M) => UnrolledLoop(:mtap, 1, M)) do emitter
+                        select!(emitter, :W_mtap, :Wpfb, Register(:mtap, 1, M) => UnrolledLoop(:mtap, 1, M))
+                        if!(emitter, :(mtap < $(Int32(M - 1)))) do emitter
+                            select!(
+                                emitter,
+                                :F_ringbuf_polr_dish_mtap,
+                                :F_ringbuf_polr_dish,
+                                Register(:mtap, 1, M - 1) => UnrolledLoop(:mtap, 1, M - 1),
+                            )
+                            widen2!(
+                                emitter,
+                                :E_ringbuf_polr_dish_mtap,
+                                :F_ringbuf_polr_dish_mtap,
+                                SIMD(:simd, 4, 2) => Register(:cplx, 1, C),
+                                SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
+                                newtype=FloatValue,
+                            )
+                            apply!(
+                                emitter,
+                                :E2,
+                                [:E2, :E_ringbuf_polr_dish_mtap, :W_mtap],
+                                (E2, E, W) -> :(muladd(ifelse(isodd(mtap), -$W, +$W), $E, $E2));
+                                ignore=[
+                                    #??? Dish(:dish, idiv(D, Dr), Dr),
+                                    MTap(:mtap, 1, M),
+                                ],
+                            )
+                            nothing
+                        end
+                        if!(emitter, :(mtap == $(Int32(M - 1)))) do emitter
+                            apply!(
+                                emitter,
+                                :E2,
+                                [:E2, :E, :W_mtap],
+                                (E2, E, W) -> :(muladd(ifelse(isodd(mtap), -$W, +$W), $E, $E2));
+                                ignore=[MTap(:mtap, 1, M)],
+                            )
+                            nothing
+                        end
+                        return nothing
+                    end
+
+                    # Step 5: Compute E3 by applying phases to E2
+                    # TODO: Combine `W` and `X` into a single factor (only for small `M`?)
+                    split!(emitter, [:E2re, :E2im], :E2, Cplx(:cplx, 1, C))
+                    split!(emitter, [:Xre, :Xim], :X, Cplx(:cplx, 1, C))
                     apply!(
-                        emitter,
-                        :E2,
-                        [:E2, Symbol(:E_ringbuf_m, m), Symbol(:W_m, m)],
-                        (E2, E, W) -> :(muladd($(isodd(m) ? :(-$W) : :(+$W)), $E, $E2)),
+                        emitter, :E3re, [:E2re, :E2im, :Xre, :Xim], (E2re, E2im, Xre, Xim) -> :(muladd($Xre, $E2re, -$Xim * $E2im))
                     )
-                end
+                    apply!(
+                        emitter, :E3im, [:E2re, :E2im, :Xre, :Xim], (E2re, E2im, Xre, Xim) -> :(muladd($Xre, $E2im, $Xim * $E2re))
+                    )
+                    merge!(emitter, :E3, [:E3re, :E3im], Cplx(:cplx, 1, C) => Register(:cplx, 1, C))
 
-                # Step 5: Compute E3 by applying phases to E2
-                # TODO: Combine `W` and `X` into a single factor (only for small `M`?)
-                split!(emitter, [:E2re, :E2im], :E2, Cplx(:cplx, 1, C))
-                split!(emitter, [:Xre, :Xim], :X, Cplx(:cplx, 1, C))
-                apply!(emitter, :E3re, [:E2re, :E2im, :Xre, :Xim], (E2re, E2im, Xre, Xim) -> :(muladd($Xre, $E2re, -$Xim * $E2im)))
-                apply!(emitter, :E3im, [:E2re, :E2im, :Xre, :Xim], (E2re, E2im, Xre, Xim) -> :(muladd($Xre, $E2im, $Xim * $E2re)))
-                merge!(emitter, :E3, [:E3re, :E3im], Cplx(:cplx, 1, C) => Register(:cplx, 1, C))
-
-                # Step 6: Compute E4 by FFTing E3
-                apply!(emitter, :XX, [:E3], (E3,) -> :($E3))
-
-                if U in [2, 4, 8, 16, 32, 64, 128]
+                    # Step 6: Compute E4 by FFTing E3
+                    apply!(emitter, :XX, [:E3], (E3,) -> :($E3))
 
                     # Step 6.1: Length 8 FFT: W = exp(...) X
                     begin
@@ -1083,7 +1202,8 @@ function upchan!(emitter)
                             Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
                             Dish(:dish, 1, 2) => Register(:dish, 1, 2),
                             Dish(:dish, 2, W) => Warp(:warp, 1, W),
-                            [make_register_pair(dish_polr[bit + 1]) for bit in 5:min(6, Ubits)]...,
+                            # [make_register_pair(dish_polr[bit + 1]) for bit in 5:min(6, Ubits)]...,
+                            [make_unrolled_loop_pair(dish_polr[bit + 1]) for bit in 5:min(6, Ubits)]...,
                             [Time(:time, 1 << bit, 2) => Register(:time, 1 << bit, 2) for bit in 0:(Ubits - 7)]...,
                             # sect. 5.2
                             [dish_polr[7 + bit + 1] => Block(:block, 1 << bit, 2) for bit in 0:(ilog2(idiv(D * P, 128)) - 1)]...,
@@ -1113,7 +1233,7 @@ function upchan!(emitter)
                     end
 
                     # Step 6.2: Z = exp(...) W
-                    if U in [2, 4, 8]
+                    if U ≤ 8
                         # Skip this multiplication for U in [2, 4, 8] because Γ² = 1 there
                         apply!(emitter, :ZZ, [:WW], (WW,) -> :($WW))
                     else
@@ -1182,7 +1302,8 @@ function upchan!(emitter)
                             Time(:time, Touter, idiv(T, Touter)) => Loop(:t_outer, Touter, idiv(T, Touter)),
                             Dish(:dish, 2, W) => Warp(:warp, 1, W),
                             Dish(:dish, 1, 2) => Register(:dish, 1, 2),
-                            [make_register_pair(dish_polr[bit + 1]) for bit in 5:min(6, Ubits)]...,
+                            # [make_register_pair(dish_polr[bit + 1]) for bit in 5:min(6, Ubits)]...,
+                            [make_unrolled_loop_pair(dish_polr[bit + 1]) for bit in 5:min(6, Ubits)]...,
                             [Time(:time, 1 << bit, 2) => Register(:time, 1 << bit, 2) for bit in 0:(Ubits - 7)]...,
                             # sect. 5.2
                             [dish_polr[7 + bit + 1] => Block(:block, 1 << bit, 2) for bit in 0:(ilog2(idiv(D * P, 128)) - 1)]...,
@@ -1197,7 +1318,7 @@ function upchan!(emitter)
                     if U < 128
                         apply!(emitter, :E4, [:YY], (YY,) -> :($YY))
 
-                    else
+                    elseif U == 128
 
                         # Step 6.4 (equivalent to 6.2): Z = exp(...) W
                         apply!(emitter, :WWW, [:YY], (YY,) -> :($YY))
@@ -1228,52 +1349,69 @@ function upchan!(emitter)
                         merge!(emitter, :YYY, [:YYY_u0, :YYY_u1], Freq(:freq, idiv(U, 2), 2) => Register(:freq, idiv(U, 2), 2))
 
                         apply!(emitter, :E4, [:YYY], (YYY,) -> :($YYY))
+
+                    else
+                        @assert false
                     end
 
-                else
-                    @assert false
-                end
+                    # Step 7: Compute E5 by applying gains to E4
+                    # TODO: Combine gains and last FFT step
+                    apply!(emitter, :E5, [:E4, :Gains], (E4, G) -> :($G * $E4))
 
-                # Step 7: Compute E5 by applying gains to E4
-                # TODO: Combine gains and last FFT step
-                apply!(emitter, :E5, [:E4, :Gains], (E4, G) -> :($G * $E4))
+                    # Step 8: Compute F̄_out by quantizing E5
+                    apply!(emitter, :E5, [:E5], (E5,) -> :(clamp($E5, Float16x2(-7, -7), Float16x2(+7, +7))))
+                    narrow2!(
+                        emitter,
+                        :F̄_out,
+                        :E5,
+                        Register(:cplx, 1, C) => SIMD(:simd, 4, 2),
+                        Register(:dish, 1, 2) => SIMD(:simd, 8, 2);
+                        newtype=IntValue,
+                    )
+                    @assert emitter.environment[:F̄_out] == layout_F̄_registers
 
-                # Step 8: Compute F̄_out by quantizing E5
-                apply!(emitter, :E5, [:E5], (E5,) -> :(clamp($E5, Float16x2(-7, -7), Float16x2(+7, +7))))
-                narrow2!(
-                    emitter,
-                    :F̄_out,
-                    :E5,
-                    Register(:cplx, 1, C) => SIMD(:simd, 4, 2),
-                    Register(:dish, 1, 2) => SIMD(:simd, 8, 2);
-                    newtype=IntValue,
+                    # Step 9: Write F̄_out to shared memory
+                    store!(emitter, :F̄_shared => layout_F̄_shared, :F̄_out)
+
+                    # Advance ring buffer
+                    split!(
+                        emitter,
+                        [Symbol(:F_ringbuf_polr_dish_m, m) for m in 0:(M - 2)],
+                        :F_ringbuf_polr_dish,
+                        Register(:mtap, 1, M - 1),
+                    )
+                    for m in 0:(M - 3)
+                        apply!(emitter, Symbol(:F_ringbuf_polr_dish_m, m), [Symbol(:F_ringbuf_polr_dish_m, m + 1)], (F,) -> :($F))
+                    end
+                    # Ignore the higher time bits for the ring buffer
+                    apply!(
+                        emitter,
+                        Symbol(:F_ringbuf_polr_dish_m, M - 2),
+                        [Symbol(:F_ringbuf_polr_dish_m, M - 2), :F_in],
+                        (F_ringbuf, F) -> :($F);
+                        ignore=[Time(:time, U, idiv(T, U))],
+                    )
+                    merge!(
+                        emitter,
+                        :F_ringbuf_polr_dish,
+                        [Symbol(:F_ringbuf_polr_dish_m, m) for m in 0:(M - 2)],
+                        MTap(:mtap, 1, M - 1) => Register(:mtap, 1, M - 1),
+                    )
+
+                    unselect!(
+                        emitter,
+                        :F_ringbuf_polr,
+                        :F_ringbuf_polr_dish,
+                        UnrolledLoop(:dish, Doffset, Dlength) => Register(:dish, Doffset, Dlength),
+                    )
+                    return nothing
+                end # unrolled_loop!(Dish(:dish, Doffset, Dlength) => UnrolledLoop(:dish, Doffset, Dlength))
+
+                unselect!(
+                    emitter, :F_ringbuf, :F_ringbuf_polr, UnrolledLoop(:polr, Poffset, Plength) => Register(:polr, Poffset, Plength)
                 )
-                @assert emitter.environment[:F̄_out] == layout_F̄_registers
-
-                # Step 9: Write F̄_out to shared memory
-                store!(emitter, :F̄_shared => layout_F̄_shared, :F̄_out)
-
-                # Advance ring buffer
-                split!(emitter, [Symbol(:F_ringbuf_m, m) for m in 0:(M - 2)], :F_ringbuf, Register(:mtaps, 1, M - 1))
-                for m in 0:(M - 3)
-                    apply!(emitter, Symbol(:F_ringbuf_m, m), [Symbol(:F_ringbuf_m, m + 1)], (F,) -> :($F))
-                end
-                apply!(
-                    emitter,
-                    Symbol(:F_ringbuf_m, M - 2),
-                    [Symbol(:F_ringbuf_m, M - 2), :F_in],
-                    (F_ringbuf, F) -> :($F);
-                    ignore=[Time(:time, U, idiv(T, U))],
-                )
-                merge!(
-                    emitter,
-                    :F_ringbuf,
-                    [Symbol(:F_ringbuf_m, m) for m in 0:(M - 2)],
-                    MTaps(:mtaps, 1, M - 1) => Register(:mtaps, 1, M - 1),
-                )
-
                 return nothing
-            end # unrolled_loop!(Dish(:dish, idiv(D, Dr), Dr) => UnrolledLoop(:dish, idiv(D, Dr), Dr))
+            end # unrolled_loop!(Dish(:polr, Poffset, Plength) => UnrolledLoop(:polr, Poffset, Plength))
 
             return nothing
         end # loop!(Time(:time, U, idiv(Touter, U)) => Loop(:t_inner, U, idiv(Touter, U)))
@@ -1292,8 +1430,8 @@ function upchan!(emitter)
         split!(emitter, [:Ē2lo, :Ē2hi], :Ē2, Register(:freq, 1, 2))
         merge!(emitter, :Ē3, [:Ē2lo, :Ē2hi], Dish(:dish, 8, 2) => Register(:dish, 8, 2))
 
-        # Skip the first MTaps-1 outputs when writing to memory.
-        tbarstride = idiv(D, 4) * P * (F * U)
+        # Skip the first MTap-1 outputs when writing to memory.
+        tbarstride = idiv(D, 4) * P * F̄
         t_min = U * (M - 1)
         layout_Ē3 = emitter.environment[:Ē3]
         store!(
@@ -1302,64 +1440,23 @@ function upchan!(emitter)
             :Ē3;
             align=16,
             condition=state -> let
-                # if U == 16
-                #     @assert layout_Ē3[Time(:time, 16, 4)] == Warp(:warp, 4, 4)
-                #     @assert layout_Ē3[Time(:time, 64, 4)] == Register(:time, 64, 4)
-                #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
-                #     t_warp = :(16i32 * (IndexSpaces.cuda_warpidx() ÷ 4i32 % 4i32))
-                # elseif U == 32
-                #     @assert layout_Ē3[Time(:time, 32, 4)] == Warp(:warp, 8, 4)
-                #     @assert layout_Ē3[Time(:time, 128, 2)] == Register(:time, 128, 2)
-                #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
-                #     t_warp = :(32i32 * (IndexSpaces.cuda_warpidx() ÷ 8i32 % 4i32))
-                # elseif U == 64
-                #     @assert layout_Ē3[Time(:time, 64, 4)] == Warp(:warp, 16, 4)
-                #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
-                #     t_warp = :(64i32 * (IndexSpaces.cuda_warpidx() ÷ 16i32 % 4i32))
-                # elseif U == 128
-                #     @assert layout_Ē3[Time(:time, 128, 2)] == Warp(:warp, 16, 2)
-                #     @assert layout_Ē3[Time(:time, 256, 512)] == Loop(:t_outer, 256, 512)
-                #     t_warp = :(128i32 * (IndexSpaces.cuda_warpidx() ÷ 16i32 % 2i32))
-                # else
-                #     @show layout_Ē3
-                #     @assert false
-                # end
-                # t_register = Int32(get(state.dict, :time, 0))
-                # t_loop = :(t_outer)
-                # t = :($t_loop + $t_register + $t_warp)
-                # Look at the time bits from `U` to `nextpow(2, t_min)`
-                tbit_min = Int(log(2, U))
-                tbit_max = ceil(Int, log(2, t_min))
-                warp_val = :(IndexSpaces.cuda_warpidx())
-                thread_val = :(IndexSpaces.cuda_threadidx())
-                register_val = Int32(get(state.dict, :time, 0))
-                loop_val = :(t_outer)
-                t_expr = 0i32
-                for tbit in tbit_min:tbit_max
-                    mach = layout_Ē3[Time(:time, 1 << tbit, 2)]
-                    @assert mach.length == 2
-                    if mach isa Warp
-                        t_expr = :($t_expr + $warp_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
-                        # @show tbit t_expr
-                    elseif mach isa Thread
-                        t_expr = :($t_expr + $thread_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
-                        # @show tbit t_expr
-                    elseif mach isa Register
-                        t_expr = :($t_expr + $register_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
-                        # @show tbit t_expr
-                    elseif mach isa Loop
-                        t_expr = :($t_expr + $loop_val ÷ $(Int32(mach.offset)) % 2i32 * $(1i32 << tbit))
-                        # @show tbit t_expr
-                    else
-                        @assert false
+                t_exprs = []
+                for (phys, mach) in layout_Ē3.dict
+                    mach isa SIMD && continue
+                    if phys isa Time
+                        machval = :($(IndexSpaces.indexvalue(state, mach)) ÷ $(Int32(mach.offset)) % $(Int32(mach.length)))
+                        physval = :($machval * $(Int32(phys.offset)))
+                        t_expr = physval
+                        push!(t_exprs, t_expr)
                     end
                 end
+                t_expr = :(+($(t_exprs...)))
                 :($t_expr ≥ $(Int32(t_min)))
             end,
             postprocess=addr -> quote
                 let
-                    offset = $(Int32(tbarstride)) * T̄min - $(Int32(tbarstride * (M - 1)))
-                    length = $(Int32(idiv(D, 4) * P * (F * U) * idiv(T, U)))
+                    offset = $(shrinkmul(tbarstride, :T̄min, idiv(T, U))) - $(shrink(tbarstride * (M - 1)))
+                    length = $(shrink(tbarstride * idiv(T, U)))
                     mod($addr + offset, length)
                 end
             end,
@@ -1407,13 +1504,18 @@ open("output-$(card)/upchan_$(setup)_U$(U).jl", "w") do fh
     return nothing
 end
 
-@eval function upchan(Tmin::Int32, Tmax::Int32, T̄min::Int32, T̄max::Int32, G_memory, E_memory, Ē_memory, info_memory)
-    shmem = @cuDynamicSharedMem(UInt8, shmem_bytes, 0)
-    F_shared = reinterpret(Int4x8, shmem)
-    F̄_shared = reinterpret(Int4x8, shmem)
+@eval function $(Symbol(:upchan, U))(
+    Tmin::Int32, Tmax::Int32, T̄min::Int32, T̄max::Int32, Fmin::Int32, Fmax::Int32, G_memory, E_memory, Ē_memory, info_memory
+)
+    # shmem = @cuDynamicSharedMem(UInt8, shmem_bytes, 0)
+    # F_shared = reinterpret(Int4x8, shmem)
+    # F̄_shared = reinterpret(Int4x8, shmem)
+    F_shared = @cuDynamicSharedMem(Int4x8, $shmem_F_size, $(shmem_F_offset * sizeof(Int4x8)))
+    F̄_shared = @cuDynamicSharedMem(Int4x8, $shmem_F̄_size, $(shmem_F̄_offset * sizeof(Int4x8)))
     $upchan_kernel
     return nothing
 end
+@eval const upchan = $(Symbol(:upchan, U))
 
 function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false, silent::Bool=false)
     !silent && println("CHORD upchannelizer")
@@ -1426,8 +1528,10 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     shmem_bytes = kernel_setup.shmem_bytes
     shmem_size = idiv(shmem_bytes, 4)
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
-    @assert shmem_bytes ≤ 99 * 1024 # NVIDIA A10/A40 have 99 kB shared memory
+    @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
     kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm upchan(
+        Int32(0),
+        Int32(0),
         Int32(0),
         Int32(0),
         Int32(0),
@@ -1444,14 +1548,14 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     end
 
     !silent && println("Allocating input data...")
-    G_memory = Array{Float16}(undef, F * U)
+    G_memory = Array{Float16}(undef, F̄)
     E_memory = Array{Int4x2}(undef, D * P * F * T)
-    Ē_wanted = Array{Complex{Float32}}(undef, D * P * (F * U) * idiv(T, U))
+    Ē_wanted = Array{Complex{Float32}}(undef, D * P * (F̄) * idiv(T, U))
     info_wanted = Array{Int32}(undef, num_threads * num_warps * num_blocks)
 
     !silent && println("Setting up input data...")
 
-    for freq in 0:(F * U - 1)
+    for freq in 0:(F̄ - 1)
         G_memory[freq + 1] = 1
     end
 
@@ -1459,6 +1563,8 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     @show Tmax = Int32(idiv(T, 4))
     @show T̄min = Int32(0)
     @show T̄max = Int32(idiv(Tmax, U) - (M - 1))
+    @show Fmin = Int32(0)
+    @show Fmax = Int32(F)
 
     amp = 7.5f0                 # amplitude
     bin = 0                     # frequency bin
@@ -1494,8 +1600,8 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
 
     # map!(i -> zero(Int4x2), Ẽ_wanted, Ẽ_wanted)
     @assert T̄min == 0
-    for tbar in T̄min:(T̄max - 1), fbar in 0:(F * U - 1), polr in 0:(P - 1), dish in 0:(D - 1)
-        Ēidx = dish + D * polr + D * P * fbar + D * P * (F * U) * tbar
+    for tbar in T̄min:(T̄max - 1), fbar in 0:(F̄ - 1), polr in 0:(P - 1), dish in 0:(D - 1)
+        Ēidx = dish + D * polr + D * P * fbar + D * P * (F̄) * tbar
         if polr == 0 && dish == 0 && fbar ÷ U == 0
             Ē1 = fbar == bin ? att * amp * cispi((2 * (tbar - (M - 1) + M / 2.0f0) * (0.5f0 + delta)) % 2.0f0) : 0
         else
@@ -1512,7 +1618,7 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     !silent && println("Copying data from CPU to GPU...")
     G_cuda = CuArray(G_memory)
     E_cuda = CuArray(E_memory)
-    Ē_cuda = CUDA.fill(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8), idiv(C, 2) * idiv(D, 4) * P * (F * U) * idiv(T, U))
+    Ē_cuda = CUDA.fill(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8), idiv(C, 2) * idiv(D, 4) * P * (F̄) * idiv(T, U))
     info_cuda = CUDA.fill(-1i32, length(info_wanted))
 
     @assert sizeof(G_cuda) < 2^32
@@ -1525,6 +1631,8 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
         Tmax,
         T̄min,
         T̄max,
+        Fmin,
+        Fmax,
         G_cuda,
         E_cuda,
         Ē_cuda,
@@ -1544,6 +1652,8 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
                     Tmax,
                     T̄min,
                     T̄max,
+                    Fmin,
+                    Fmax,
                     G_cuda,
                     E_cuda,
                     Ē_cuda,
@@ -1578,6 +1688,7 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
           compile-parameters:
             minthreads: $(num_threads * num_warps)
             blocks_per_sm: $num_blocks_per_sm
+            blocks_per_frequency: $num_blocks_per_frequency
           call-parameters:
             threads: [$num_threads, $num_warps]
             blocks: [$num_blocks]
@@ -1604,9 +1715,9 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
         num_errors = 0
         println("    Ē:")
         did_test_Ē_memory = falses(length(Ē_memory))
-        # for tbar in 0:(idiv(T, U) - 1), fbar in 0:(F * U - 1), polr in 0:(P - 1), dish in 0:(D - 1)
-        for polr in 0:(P - 1), dish in 0:(D - 1), fbar in 0:(F * U - 1), tbar in 0:(T̄max - 1)
-            Ēidx = dish + D * polr + D * P * fbar + D * (F * U) * P * tbar
+        # for tbar in 0:(idiv(T, U) - 1), fbar in 0:(F̄ - 1), polr in 0:(P - 1), dish in 0:(D - 1)
+        for polr in 0:(P - 1), dish in 0:(D - 1), fbar in 0:(F̄ - 1), tbar in 0:(T̄max - 1)
+            Ēidx = dish + D * polr + D * P * fbar + D * (F̄) * P * tbar
             @assert !did_test_Ē_memory[Ēidx + 1]
             did_test_Ē_memory[Ēidx + 1] = true
             have_value = Complex(convert(NTuple{2,Int32}, Ē_memory[Ēidx + 1])...)
@@ -1624,8 +1735,8 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
                 end
             end
         end
-        @assert all(@view did_test_Ē_memory[1:(P * D * F * U * T̄max)])
-        @assert !any(@view did_test_Ē_memory[(P * D * F * U * T̄max + 1):end])
+        @assert all(@view did_test_Ē_memory[1:(P * D * F̄ * T̄max)])
+        @assert !any(@view did_test_Ē_memory[(P * D * F̄ * T̄max + 1):end])
         println("Found $num_errors errors in $num_samples samples")
         @assert num_errors == 0
     end
@@ -1636,7 +1747,7 @@ end
 
 function fix_ptx_kernel()
     ptx = read("output-$(card)/upchan_$(setup)_U$(U).ptx", String)
-    ptx = replace(ptx, r".extern .func ([^;]*);"s => s".func \1.noreturn\n{\n\ttrap;\n}")
+    ptx = replace(ptx, r".extern .func gpu_([^;]*);"s => s".func gpu_\1.noreturn\n{\n\ttrap;\n}")
     open("output-$(card)/upchan_$(setup)_U$(U).ptx", "w") do fh
         println(fh, "// PTX kernel code for the CUDA upchannelizer")
         println(fh, "// This file has been generated automatically by `upchan.jl`.")
@@ -1679,6 +1790,7 @@ function fix_ptx_kernel()
       compile-parameters:
         minthreads: $(num_threads * num_warps)
         blocks_per_sm: $num_blocks_per_sm
+        blocks_per_frequency: $num_blocks_per_frequency
       call-parameters:
         threads: [$num_threads, $num_warps]
         blocks: [$num_blocks]
@@ -1697,7 +1809,13 @@ function fix_ptx_kernel()
         - name: "T̄max"
           intent: in
           type: Int32
-        - name: "G"
+        - name: "Fmin"
+          intent: in
+          type: Int32
+        - name: "Fmax"
+          intent: in
+          type: Int32
+        - name: "G_U$U"
           intent: in
           type: Float16
           indices: [F̄]
@@ -1731,6 +1849,7 @@ function fix_ptx_kernel()
         cxx,
         Dict(
             "kernel_name" => "Upchannelizer_$(setup)_U$(U)",
+            "upchannelization_factor" => "$U",
             "kernel_design_parameters" => [
                 Dict("type" => "int", "name" => "cuda_number_of_complex_components", "value" => "$C"),
                 Dict("type" => "int", "name" => "cuda_number_of_dishes", "value" => "$D"),
@@ -1744,6 +1863,7 @@ function fix_ptx_kernel()
             ],
             "minthreads" => num_threads * num_warps,
             "num_blocks_per_sm" => num_blocks_per_sm,
+            "num_blocks_per_frequency" => num_blocks_per_frequency,
             "num_threads" => num_threads,
             "num_warps" => num_warps,
             "num_blocks" => num_blocks,
@@ -1783,10 +1903,26 @@ function fix_ptx_kernel()
                     "isscalar" => true,
                 ),
                 Dict(
-                    "name" => "G",
+                    "name" => "Fmin",
+                    "kotekan_name" => "Fmin",
+                    "type" => "int32",
+                    "isoutput" => false,
+                    "hasbuffer" => false,
+                    "isscalar" => true,
+                ),
+                Dict(
+                    "name" => "Fmax",
+                    "kotekan_name" => "Fmax",
+                    "type" => "int32",
+                    "isoutput" => false,
+                    "hasbuffer" => false,
+                    "isscalar" => true,
+                ),
+                Dict(
+                    "name" => "G_U$(U)",
                     "kotekan_name" => "gpu_mem_gain",
                     "type" => "float16",
-                    "axes" => [Dict("label" => "Fbar", "length" => F * U)],
+                    "axes" => [Dict("label" => "Fbar", "length" => F̄)],
                     "isoutput" => false,
                     "hasbuffer" => true,
                     "isscalar" => false,
@@ -1794,7 +1930,7 @@ function fix_ptx_kernel()
                 Dict(
                     "name" => "E",
                     "kotekan_name" => "gpu_mem_input_voltage",
-                    "type" => "int4p4",
+                    "type" => "int4p4chime",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),
@@ -1808,11 +1944,11 @@ function fix_ptx_kernel()
                 Dict(
                     "name" => "Ebar",
                     "kotekan_name" => "gpu_mem_output_voltage",
-                    "type" => "int4p4",
+                    "type" => "int4p4chime",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),
-                        Dict("label" => "Fbar", "length" => F * U),
+                        Dict("label" => "Fbar", "length" => F̄),
                         Dict("label" => "Tbar", "length" => idiv(T, U)),
                     ],
                     "isoutput" => true,

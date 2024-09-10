@@ -1,0 +1,30 @@
+# -*-yaml-*-
+
+# Benchmark output
+
+################################################################################
+
+# Stages
+
+# Output
+
+write_data:
+    # base_dir:
+    skip_writing: true
+    write_n2k_correlation:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_n2k_correlation_buffer
+        file_name: n2k_correlation
+    write_bb_beams:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_bb_beams_buffer
+        file_name: bb_beams
+    write_frb3_beams:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_frb3_beams_buffer
+        file_name: frb3_beams
+    write_frb3_beams_meanstd:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_frb3_beams_meanstd_buffer
+        file_name: frb3_beams_meanstd
+        max_frames: 10

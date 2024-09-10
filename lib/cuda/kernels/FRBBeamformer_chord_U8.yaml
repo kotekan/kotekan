@@ -1,0 +1,84 @@
+# Metadata code for CUDA frb beamformer
+# This file has been generated automatically by `frb.jl`.
+# Do not modify this file, your changes will be lost.
+
+--- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
+kernel-description:
+  name: "frb"
+  description: "FRB beamformer"
+  design-parameters:
+    beam-layout: [48, 48]
+    dish-layout: [24, 24]
+    downsampling-factor: 24
+    number-of-complex-components: 2
+    number-of-dishes: 512
+    number-of-frequencies: 64
+    number-of-polarizations: 2
+    number-of-timesamples: 4096
+    output-gain: 0.005208333333333333
+    sampling-time-μsec: 5.12
+    upchannelization-factor: 8
+  compile-parameters:
+    minthreads: 768
+    blocks_per_sm: 1
+  call-parameters:
+    threads: [32, 24]
+    blocks: [64]
+    shmem_bytes: 76896
+  kernel-symbol: "_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE"
+  kernel-arguments:
+    - name: "Tbarmin"
+      intent: in
+      type: Int32
+    - name: "Tbarmax"
+      intent: in
+      type: Int32
+    - name: "Ttildemin"
+      intent: in
+      type: Int32
+    - name: "Ttildemax"
+      intent: in
+      type: Int32
+    - name: "Fbar_in_min"
+      intent: in
+      type: Int32
+    - name: "Fbar_in_max"
+      intent: in
+      type: Int32
+    - name: "Fbar_out_min"
+      intent: in
+      type: Int32
+    - name: "Fbar_out_max"
+      intent: in
+      type: Int32
+    - name: "S"
+      intent: in
+      type: Int16
+      indices: [MN, D]
+      shape: [2, 576]
+      strides: [1, 2]
+    - name: "W"
+      intent: in
+      type: Float16
+      indices: [C, dishM, dishN, P, Fbar]
+      shape: [2, 24, 24, 2, 64]
+      strides: [1, 2, 48, 1152, 2304, 147456]
+    - name: "Ē"
+      intent: in
+      type: Int4
+      indices: [C, D, P, Fbar, Tbar]
+      shape: [2, 512, 2, 64, 4096]
+      strides: [1, 2, 1024, 2048, 131072]
+    - name: "I"
+      intent: out
+      type: Float16
+      indices: [beamP, beamQ, Fbar, Tbar]
+      shape: [48, 48, 512, 1024]
+      strides: [1, 48, 2304, 1179648]
+    - name: "info"
+      intent: out
+      type: Int32
+      indices: [thread, warp, block]
+      shapes: [32, 24, 64]
+      strides: [1, 32, 768]
+...

@@ -1,4 +1,3 @@
-const setup = :chord
+include("setup_chord.jl")
 const U = 8
-const T = 2^17
 include("upchan.jl")

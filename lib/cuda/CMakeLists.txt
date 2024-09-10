@@ -24,20 +24,48 @@ add_library(
     # Kernels
     cudaCorrelatorAstron.cpp
     cudaShuffleAstron.cu
+    cudaBasebandBeamformer_chime.cpp
     cudaBasebandBeamformer_chord.cpp
     cudaBasebandBeamformer_hirax.cpp
     cudaBasebandBeamformer_pathfinder.cpp
-    cudaFRBBeamformer_chord.cpp
-    cudaFRBBeamformer_hirax.cpp
-    cudaFRBBeamformer_pathfinder.cpp
+    cudaFRBBeamformer_chord_U1.cpp
+    cudaFRBBeamformer_chord_U2.cpp
+    cudaFRBBeamformer_chord_U4.cpp
+    cudaFRBBeamformer_chord_U8.cpp
+    cudaFRBBeamformer_chord_U16.cpp
+    cudaFRBBeamformer_chord_U32.cpp
+    cudaFRBBeamformer_chord_U64.cpp
+    cudaFRBBeamformer_chord_U128.cpp
+    cudaFRBBeamformer_hirax_U1.cpp
+    cudaFRBBeamformer_hirax_U2.cpp
+    cudaFRBBeamformer_hirax_U4.cpp
+    cudaFRBBeamformer_hirax_U8.cpp
+    cudaFRBBeamformer_hirax_U16.cpp
+    cudaFRBBeamformer_hirax_U32.cpp
+    cudaFRBBeamformer_hirax_U64.cpp
+    cudaFRBBeamformer_hirax_U128.cpp
+    cudaFRBBeamformer_pathfinder_U1.cpp
+    cudaFRBBeamformer_pathfinder_U2.cpp
+    cudaFRBBeamformer_pathfinder_U4.cpp
+    cudaFRBBeamformer_pathfinder_U8.cpp
+    cudaFRBBeamformer_pathfinder_U16.cpp
+    cudaFRBBeamformer_pathfinder_U32.cpp
+    cudaFRBBeamformer_pathfinder_U64.cpp
     cudaFRBBeamReformer.cpp
-    quantize_kernel_wrapper.cu
+    cudaQuantizeKernel.cu
     cudaQuantize.cpp
     cudaRechunk.cpp
     cudaCopyFromRingbuffer.cpp
     cudaCopyToRingbuffer.cpp
-    cudaTransposeKernel_chord.cpp
-    cudaTransposeKernel_pathfinder.cpp
+    cudaTranspose2048_chime.cpp
+    cudaUpchannelizer_chime_U2.cpp
+    cudaUpchannelizer_chime_U4.cpp
+    cudaUpchannelizer_chime_U8.cpp
+    cudaUpchannelizer_chime_U16.cpp
+    cudaUpchannelizer_chime_U32.cpp
+    cudaUpchannelizer_chime_U64.cpp
+    cudaUpchannelizer_chord_U2.cpp
+    cudaUpchannelizer_chord_U4.cpp
     cudaUpchannelizer_chord_U8.cpp
     cudaUpchannelizer_chord_U16.cpp
     cudaUpchannelizer_chord_U32.cpp

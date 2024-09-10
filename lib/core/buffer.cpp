@@ -246,7 +246,7 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
                                       zero_new_frames);
             if (frames[i] == nullptr) {
                 throw std::runtime_error(
-                    fmt::format(fmt("Failed to allocate Buffer memory: %d bytes: %s (%d)"),
+                    fmt::format(fmt("Failed to allocate Buffer memory: {} bytes: {} ({})"),
                                 aligned_frame_size, strerror(errno), errno));
             }
         } else {
@@ -592,6 +592,9 @@ uint8_t* Buffer::wait_for_empty_frame(const std::string& producer_name, const in
 
     std::unique_lock<std::recursive_mutex> lock(mutex);
 
+    if (!producers.count(producer_name)) {
+        ERROR("wait_for_empty_frame: Producer \"{:s}\" not found", producer_name);
+    }
     pro = &producers.at(producer_name);
     // If the buffer isn't full, i.e. is_full[ID] == 0, then we never sleep on the cond var.
     // The second condition stops us from using a buffer we've already filled,
