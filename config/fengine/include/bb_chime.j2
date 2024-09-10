@@ -53,7 +53,7 @@ run_bb:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_voltage_ringbuffer_in: host_voltage_ringbuffer
+            host_xposed_voltage_ringbuffer_in: host_xposed_voltage_ringbuffer
             host_bb_phase_in: host_bb_phase_buffer
             host_bb_shift_in: host_bb_shift_buffer
         out_buffers:
@@ -69,7 +69,7 @@ run_bb:
           gpu_mem: bb_shift_buffer
         - name: cudaSyncInput
         - name: cudaBasebandBeamformer_chime
-          in_signal: host_voltage_ringbuffer_in
+          in_signal: host_xposed_voltage_ringbuffer_in
           gpu_mem_voltage: voltage_buffer
           gpu_mem_phase: bb_phase_buffer
           gpu_mem_output_scaling: bb_shift_buffer

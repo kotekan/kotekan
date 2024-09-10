@@ -23,6 +23,7 @@ set(KERNELFILES
     kernel_128_512.cu
     kernel_128_1024.cu
     kernel_128_2048.cu
+    kernel_512_64.cu
     kernel_1024_1.cu
     kernel_1024_2.cu
     kernel_1024_4.cu

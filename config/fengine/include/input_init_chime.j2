@@ -15,6 +15,10 @@ read_data:
         kotekan_stage: gdalFileRead
         file_name: voltage
         out_buf: host_voltage_buffer
+    read_scatter_indices:
+        kotekan_stage: gdalFileRead
+        file_name: scatter_indices
+        out_buf: host_scatter_indices_buffer
     read_bb_beam_positions:
         kotekan_stage: gdalFileRead
         file_name: bb_beam_positions

@@ -17,6 +17,10 @@ write_data:
         in_buf: host_voltage_buffer
         file_name: voltage
         max_frames: 10
+    write_scatter_indices:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_scatter_indices_buffer
+        file_name: scatter_indices
     write_bb_beam_positions:
         kotekan_stage: asdfFileWrite
         in_buf: host_bb_beam_positions_buffer
@@ -105,6 +109,10 @@ write_data2:
         in_buf: host_voltage_buffer
         file_name: voltage
         max_frames: 10
+    write_scatter_indices:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_scatter_indices_buffer
+        file_name: scatter_indices
     write_bb_beam_positions:
         kotekan_stage: gdalFileWrite
         in_buf: host_bb_beam_positions_buffer

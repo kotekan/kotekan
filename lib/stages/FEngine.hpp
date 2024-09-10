@@ -85,6 +85,9 @@ class FEngine : public kotekan::Stage {
     const std::vector<int> frequency_channels;
     const int num_times;
 
+    // Dish reordering
+    const std::vector<int> scatter_indices;
+
     // Baseband beamformer setup
     const int bb_num_beams_ew;
     const int bb_num_beams_ns;
@@ -123,6 +126,7 @@ class FEngine : public kotekan::Stage {
     // Kotekan
     const std::int64_t dish_positions_frame_size;
     const std::int64_t E_frame_size;
+    const std::int64_t scatter_indices_frame_size;
     const std::int64_t bb_beam_positions_frame_size;
     const std::int64_t A_frame_size;
     const std::int64_t s_frame_size;
@@ -134,6 +138,7 @@ class FEngine : public kotekan::Stage {
 
     Buffer* const dish_positions_buffer;
     Buffer* const E_buffer;
+    Buffer* const scatter_indices_buffer;
     Buffer* const bb_beam_positions_buffer;
     Buffer* const A_buffer;
     Buffer* const s_buffer;

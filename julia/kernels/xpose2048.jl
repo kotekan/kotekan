@@ -455,7 +455,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
         cxx = Mustache.render(
             cxx,
             Dict(
-                "kernel_name" => "TransposeKernel_$setup",
+                "kernel_name" => "Transpose2048_$setup",
                 "kernel_design_parameters" => [
                     Dict("type" => "int", "name" => "cuda_number_of_complex_components", "value" => "$C"),
                     Dict("type" => "int", "name" => "cuda_number_of_dishes", "value" => "$D"),
@@ -506,7 +506,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     ),
                     Dict(
                         "name" => "Ein",
-                        "kotekan_name" => "gpu_mem_voltage",
+                        "kotekan_name" => "gpu_mem_input_voltage",
                         "type" => "int4p4chime",
                         "axes" => [
                             Dict("label" => "D", "length" => D),
@@ -519,7 +519,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     ),
                     Dict(
                         "name" => "E",
-                        "kotekan_name" => "gpu_mem_voltage",
+                        "kotekan_name" => "gpu_mem_output_voltage",
                         "type" => "int4p4chime",
                         "axes" => [
                             Dict("label" => "D", "length" => D),
@@ -532,7 +532,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     ),
                     Dict(
                         "name" => "scatter_indices",
-                        "kotekan_name" => "scatter_indices",
+                        "kotekan_name" => "gpu_mem_scatter_indices",
                         "type" => "int32",
                         "axes" => [
                             Dict("label" => "D", "length" => D),

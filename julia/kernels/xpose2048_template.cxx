@@ -363,14 +363,17 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                     DEBUG("input {{{name}}} array: {:s} {:s}",
                           {{{name}}}_meta->get_type_string(),
                           {{{name}}}_meta->get_dimensions_string());
-                    assert(std::strncmp({{{name}}}_meta->name, {{{name}}}_name, sizeof {{{name}}}_meta->name) == 0);
+                    if (args::{{{name}}} == args::Ein)
+                        assert(std::strncmp({{{name}}}_meta->name, "E", sizeof {{{name}}}_meta->name) == 0);
+                    else
+                        assert(std::strncmp({{{name}}}_meta->name, {{{name}}}_name, sizeof {{{name}}}_meta->name) == 0);
                     assert({{{name}}}_meta->type == {{{name}}}_type);
                     assert({{{name}}}_meta->dims == {{{name}}}_rank);
                     for (std::ptrdiff_t dim = 0; dim < {{{name}}}_rank; ++dim) {
                         assert(std::strncmp({{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim],
                                             {{{name}}}_labels[dim],
                                             sizeof {{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim]) == 0);
-                        if (args::{{{name}}} == args::E && dim == E_index_T) {
+                        if (args::{{{name}}} == args::Ein && dim == Ein_index_T) {
                             assert({{{name}}}_meta->dim[{{{name}}}_rank - 1 - dim] <= int({{{name}}}_lengths[dim]));
                             assert({{{name}}}_meta->stride[{{{name}}}_rank - 1 - dim] <= {{{name}}}_strides[dim]);
                         } else {

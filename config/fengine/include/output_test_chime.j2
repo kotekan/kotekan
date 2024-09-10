@@ -6,6 +6,22 @@
 
 # Stages
 
+run_recv_xposed_voltage:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_xposed_voltage_ringbuffer_in: host_xposed_voltage_ringbuffer
+        out_buffers:
+            host_xposed_voltage_buffer_out: host_xposed_voltage_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_xposed_voltage_ringbuffer_in
+          gpu_mem_input: xposed_voltage_buffer
+          output_size: num_dishes * num_polarizations * num_frequencies * num_times
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_xposed_voltage_buffer_out
+
 # run_recv_upchan_U2_voltage:
 #     gpu_0:
 #         kotekan_stage: cudaProcess
@@ -106,10 +122,22 @@ run_recv_upchan_U16_voltage:
 
 write_data:
     # base_dir:
+    write_dish_positions:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_dish_positions_buffer
+        file_name: dish_positions
     write_voltage:
         kotekan_stage: asdfFileWrite
         in_buf: host_voltage_buffer
         file_name: voltage
+    write_scatter_indices:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_scatter_indices_buffer
+        file_name: scatter_indices
+    write_xposed_voltage:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_xposed_voltage_buffer
+        file_name: xposed_voltage
     write_n2k_correlation:
         kotekan_stage: asdfFileWrite
         in_buf: host_n2k_correlation_buffer
@@ -170,12 +198,100 @@ write_data:
         kotekan_stage: asdfFileWrite
         in_buf: host_upchan_U16_voltage_buffer
         file_name: upchan_U16_voltage
-        max_frames: 8
+        max_frames: 4
     # write_upchan_U32_voltage:
     #     kotekan_stage: asdfFileWrite
     #     in_buf: host_upchan_U32_voltage_buffer
     #     file_name: upchan_U32_voltage
     # write_upchan_U64_voltage:
     #     kotekan_stage: asdfFileWrite
+    #     in_buf: host_upchan_U64_voltage_buffer
+    #     file_name: upchan_U64_voltage
+
+write_data2:
+    # base_dir:
+    write_dish_positions:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_dish_positions_buffer
+        file_name: dish_positions
+    write_voltage:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_voltage_buffer
+        file_name: voltage
+    write_scatter_indices:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_scatter_indices_buffer
+        file_name: scatter_indices
+    write_xposed_voltage:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_xposed_voltage_buffer
+        file_name: xposed_voltage
+    write_n2k_correlation:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_n2k_correlation_buffer
+        file_name: n2k_correlation
+    write_bb_phase:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_bb_phase_buffer
+        file_name: bb_phase
+    write_bb_shift:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_bb_shift_buffer
+        file_name: bb_shift
+    write_expected_bb_beams:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_expected_bb_beams_buffer
+        file_name: expected_bb_beams
+    write_bb_beams:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_bb_beams_buffer
+        file_name: bb_beams
+    # write_upchan_U2_gain:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_upchan_U2_gain_buffer
+    #     file_name: upchan_U2_gain
+    # write_upchan_U4_gain:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_upchan_U4_gain_buffer
+    #     file_name: upchan_U4_gain
+    # write_upchan_U8_gain:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_upchan_U8_gain_buffer
+    #     file_name: upchan_U8_gain
+    write_upchan_U16_gain:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_upchan_U16_gain_buffer
+        file_name: upchan_U16_gain
+    # write_upchan_U32_gain:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_upchan_U32_gain_buffer
+    #     file_name: upchan_U32_gain
+    # write_upchan_U64_gain:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_upchan_U64_gain_buffer
+    #     file_name: upchan_U64_gain
+    # write_upchan_U2_voltage:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_upchan_U2_voltage_buffer
+    #     file_name: upchan_U2_voltage
+    # write_upchan_U4_voltage:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_upchan_U4_voltage_buffer
+    #     file_name: upchan_U4_voltage
+    # write_upchan_U8_voltage:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_upchan_U8_voltage_buffer
+    #     file_name: upchan_U8_voltage
+    write_upchan_U16_voltage:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_upchan_U16_voltage_buffer
+        file_name: upchan_U16_voltage
+        max_frames: 4
+    # write_upchan_U32_voltage:
+    #     kotekan_stage: gdalFileWrite
+    #     in_buf: host_upchan_U32_voltage_buffer
+    #     file_name: upchan_U32_voltage
+    # write_upchan_U64_voltage:
+    #     kotekan_stage: gdalFileWrite
     #     in_buf: host_upchan_U64_voltage_buffer
     #     file_name: upchan_U64_voltage
