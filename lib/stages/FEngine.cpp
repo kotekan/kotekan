@@ -1170,7 +1170,7 @@ void FEngine::main_thread() {
                         JL_GC_POP();
                     });
                 } else {
-                    std::memset(E_frame, 0x44,
+                    std::memset(E_frame, 0xcc,
                                 num_dishes * num_polarizations * num_frequencies * num_times);
                 }
             }

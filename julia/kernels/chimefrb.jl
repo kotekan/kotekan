@@ -819,6 +819,7 @@ function make_chimefrb_kernel()
                 SIMD(:simd, 4, 2) => Register(:dish, 2, 2),
                 SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
                 newtype=FloatValue,
+                swapped_withoffset=true,
             )
             permute!(emitter, :X1, :X0, Cplx(:cplx, 1, 2), Dish(:dish, 2, 2))
 

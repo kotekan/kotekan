@@ -12,11 +12,16 @@ using MappedArrays
 
 const AG = ArchGDAL
 
-export c2t, i2c, i2t, t2c
+export c2t, t2c, t2cso, i2t, i2c, i2cso
 c2t(x::Complex) = (real(x), imag(x))
-i2c(x::Int4x2) = t2c(i2t(x))
-i2t(x::Int4x2) = convert(NTuple{2,Int8}, x)
 t2c(x::NTuple{2}) = Complex(x...)
+# swapped and offset-encoded
+t2cso(x::NTuple{2}) = Complex(x[2] - Int8(8), x[1] - Int8(8))
+
+i2t(x::Int4x2) = convert(NTuple{2,Int8}, x)
+
+i2c(x::Int4x2) = t2c(i2t(x))
+i2cso(x::Int4x2) = t2cso(i2t(x))
 
 export u4p42i8
 u4p42i8(x::UInt8) = (((x >>> 0x0) & 0x0f) % Int8, ((x >>> 0x4) & 0x0f) % Int8)
@@ -102,10 +107,14 @@ function read_gdal(filename::AbstractString)
         @assert eltype(data) == UInt16
         @info "mapping to Float16..."
         data = reinterpret(Float16, data)
-    elseif type == "int4p4chime"
+    elseif type == "int4p4"
         @assert eltype(data) == UInt8
         @info "mapping to Complex{Int8}..."
         data = mappedarray(i2c ∘ Int4x2, data)
+    elseif type == "int4p4chime"
+        @assert eltype(data) == UInt8
+        @info "mapping to Complex{Int8}..."
+        data = mappedarray(i2cso ∘ Int4x2, data)
     elseif type == "uint4p4"
         @assert eltype(data) == UInt8
         @info "mapping to Int8..."

@@ -13,7 +13,7 @@
 .address_size 64
 
 	// .globl	_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE // -- Begin function _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE
-.extern .func julia_AssertionError_9951
+.extern .func julia_AssertionError_9991
 ()
 ;
 .func gpu_report_exception
@@ -75,10 +75,10 @@ $L__BB0_2:                              // %L10
 $L__BB0_4:                              // %L26
 	ld.param.u32 	%r8, [_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE_param_1];
 	ld.param.u64 	%rd1, [_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE_param_10];
-	mov.u32 	%r16, %ctaid.x;
-	shl.b32 	%r17, %r16, 9;
-	mov.u32 	%r18, %tid.y;
-	shl.b32 	%r19, %r18, 5;
+	mov.u32 	%r16, %tid.y;
+	shl.b32 	%r17, %r16, 5;
+	mov.u32 	%r18, %ctaid.x;
+	shl.b32 	%r19, %r18, 9;
 	mov.u32 	%r1, %tid.x;
 	or.b32  	%r20, %r19, %r1;
 	or.b32  	%r21, %r20, %r17;
@@ -311,7 +311,7 @@ $L__BB0_13:                             // %pass271
 	{ // callseq 4, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_9951, 
+	julia_AssertionError_9991, 
 	(
 	);
 	} // callseq 4

@@ -599,7 +599,7 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
                                             : chunk == 0    ? T_ringbuf - Tmin_arg
                                                             : Tmax_arg - T_ringbuf);
             DEBUG("before cudaMemset2DAsync.E");
-            CHECK_CUDA_ERROR(cudaMemsetAsync((std::uint8_t*)E_memory + Toffset * Tstride, 0x88,
+            CHECK_CUDA_ERROR(cudaMemsetAsync((std::uint8_t*)E_memory + Toffset * Tstride, 0x00,
                                              Tlength * Tstride, device.getStream(cuda_stream_id)));
         } // for chunk
         DEBUG("poisoning done.");
@@ -684,16 +684,16 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
                                         Tlength * Tstride, cudaMemcpyDeviceToHost));
 
             DEBUG("before memchr");
-            const bool E_found_error = std::memchr(E_buffer.data(), 0x88, E_buffer.size());
+            const bool E_found_error = std::memchr(E_buffer.data(), 0x00, E_buffer.size());
             if (E_found_error) {
                 for (std::ptrdiff_t t = 0; t < Tlength; ++t) {
                     bool any_error = false;
                     for (std::ptrdiff_t n = 0; n < Tstride; ++n) {
                         const auto val = E_buffer.at(t * Tstride + n);
-                        any_error |= val == 0x88;
+                        any_error |= val == 0x00;
                     }
                     if (any_error)
-                        DEBUG("    [{}]={:#02x}", t, 0x88);
+                        DEBUG("    [{}]={:#02x}", t, 0x00);
                 }
             }
             assert(!E_found_error);

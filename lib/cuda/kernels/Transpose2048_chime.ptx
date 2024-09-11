@@ -26,7 +26,7 @@
 	trap;
 }
 .extern .shared .align 32 .b8 shmem[];
-.global .align 1 .b8 exception1[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
+.global .align 1 .b8 exception11430[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
                                         // @_Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE
 .visible .entry _Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE(
 	.param .align 8 .b8 _Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE_param_0[16],
@@ -109,18 +109,18 @@ $L__BB0_2:                              // %L10
 	ld.global.u32 	%r101, [%rd79+480];
 	ld.global.u32 	%r102, [%rd79+496];
 	shl.b32 	%r103, %r57, 13;
-	and.b32  	%r2, %r64, 256;
-	shl.b32 	%r3, %r61, 13;
-	or.b32  	%r104, %r3, %r1;
+	shl.b32 	%r2, %r61, 13;
+	or.b32  	%r104, %r2, %r1;
 	and.b32  	%r105, %r104, 57368;
-	shl.b32 	%r106, %r1, 2;
-	and.b32  	%r107, %r106, 28;
-	and.b32  	%r108, %r64, 224;
-	or.b32  	%r4, %r107, %r108;
-	shl.b32 	%r109, %r61, 6;
-	and.b32  	%r5, %r109, 7680;
-	or.b32  	%r110, %r5, %r2;
-	or.b32  	%r111, %r110, %r4;
+	and.b32  	%r3, %r64, 256;
+	shl.b32 	%r106, %r61, 6;
+	and.b32  	%r4, %r106, 7680;
+	and.b32  	%r107, %r64, 224;
+	shl.b32 	%r108, %r1, 2;
+	and.b32  	%r109, %r108, 28;
+	or.b32  	%r5, %r107, %r109;
+	or.b32  	%r110, %r4, %r3;
+	or.b32  	%r111, %r110, %r5;
 	or.b32  	%r6, %r111, %r103;
 	and.b32  	%r7, %r1, 1;
 	and.b32  	%r8, %r1, 2;
@@ -389,7 +389,7 @@ $L__BB0_2:                              // %L10
 	setp.eq.s32 	%p4, %r7, 0;
 	mov.u32 	%r1153, %r1152;
 	bra.uni 	$L__BB0_3;
-$L__BB0_5:                              // %pass2195
+$L__BB0_5:                              // %pass2200
                                         //   in Loop: Header=BB0_3 Depth=1
 	st.shared.u32 	[%rd5], %r23;
 	st.shared.u32 	[%rd6], %r25;
@@ -840,7 +840,7 @@ $L__BB0_5:                              // %pass2195
 	// begin inline asm
 	prmt.b32 %r931, %r928, %r929, %r306;
 	// end inline asm
-	or.b32  	%r1127, %r14, %r2;
+	or.b32  	%r1127, %r14, %r3;
 	or.b32  	%r1128, %r1127, %r4;
 	or.b32  	%r1129, %r1128, %r5;
 	cvt.s64.s32 	%rd223, %r1129;
@@ -859,7 +859,7 @@ $L__BB0_5:                              // %pass2195
 	shl.b64 	%rd233, %rd232, 2;
 	add.s64 	%rd234, %rd2, %rd233;
 	st.global.v4.u32 	[%rd234], {%r807, %r815, %r823, %r831};
-	or.b32  	%r1130, %r15, %r2;
+	or.b32  	%r1130, %r15, %r3;
 	or.b32  	%r1131, %r1130, %r4;
 	or.b32  	%r1132, %r1131, %r5;
 	cvt.s64.s32 	%rd235, %r1132;
@@ -878,7 +878,7 @@ $L__BB0_5:                              // %pass2195
 	shl.b64 	%rd245, %rd244, 2;
 	add.s64 	%rd246, %rd2, %rd245;
 	st.global.v4.u32 	[%rd246], {%r811, %r819, %r827, %r835};
-	or.b32  	%r1133, %r16, %r2;
+	or.b32  	%r1133, %r16, %r3;
 	or.b32  	%r1134, %r1133, %r4;
 	or.b32  	%r1135, %r1134, %r5;
 	cvt.s64.s32 	%rd247, %r1135;
@@ -897,7 +897,7 @@ $L__BB0_5:                              // %pass2195
 	shl.b64 	%rd257, %rd256, 2;
 	add.s64 	%rd258, %rd2, %rd257;
 	st.global.v4.u32 	[%rd258], {%r839, %r847, %r855, %r863};
-	or.b32  	%r1136, %r17, %r2;
+	or.b32  	%r1136, %r17, %r3;
 	or.b32  	%r1137, %r1136, %r4;
 	or.b32  	%r1138, %r1137, %r5;
 	cvt.s64.s32 	%rd259, %r1138;
@@ -916,7 +916,7 @@ $L__BB0_5:                              // %pass2195
 	shl.b64 	%rd269, %rd268, 2;
 	add.s64 	%rd270, %rd2, %rd269;
 	st.global.v4.u32 	[%rd270], {%r843, %r851, %r859, %r867};
-	or.b32  	%r1139, %r18, %r2;
+	or.b32  	%r1139, %r18, %r3;
 	or.b32  	%r1140, %r1139, %r4;
 	or.b32  	%r1141, %r1140, %r5;
 	cvt.s64.s32 	%rd271, %r1141;
@@ -935,7 +935,7 @@ $L__BB0_5:                              // %pass2195
 	shl.b64 	%rd281, %rd280, 2;
 	add.s64 	%rd282, %rd2, %rd281;
 	st.global.v4.u32 	[%rd282], {%r871, %r879, %r887, %r895};
-	or.b32  	%r1142, %r19, %r2;
+	or.b32  	%r1142, %r19, %r3;
 	or.b32  	%r1143, %r1142, %r4;
 	or.b32  	%r1144, %r1143, %r5;
 	cvt.s64.s32 	%rd283, %r1144;
@@ -954,7 +954,7 @@ $L__BB0_5:                              // %pass2195
 	shl.b64 	%rd293, %rd292, 2;
 	add.s64 	%rd294, %rd2, %rd293;
 	st.global.v4.u32 	[%rd294], {%r875, %r883, %r891, %r899};
-	or.b32  	%r1145, %r20, %r2;
+	or.b32  	%r1145, %r20, %r3;
 	or.b32  	%r1146, %r1145, %r4;
 	or.b32  	%r1147, %r1146, %r5;
 	cvt.s64.s32 	%rd295, %r1147;
@@ -973,7 +973,7 @@ $L__BB0_5:                              // %pass2195
 	shl.b64 	%rd305, %rd304, 2;
 	add.s64 	%rd306, %rd2, %rd305;
 	st.global.v4.u32 	[%rd306], {%r903, %r911, %r919, %r927};
-	or.b32  	%r1148, %r21, %r2;
+	or.b32  	%r1148, %r21, %r3;
 	or.b32  	%r1149, %r1148, %r4;
 	or.b32  	%r1150, %r1149, %r5;
 	cvt.u64.u32 	%rd307, %r1150;
@@ -1119,7 +1119,7 @@ $L__BB0_3:                              // %L3021
 	ld.global.v4.u32 	{%r276, %r284, %r292, %r300}, [%rd220];
 	or.b32  	%r505, %r1, %r1153;
 	or.b32  	%r506, %r505, 7;
-	add.s32 	%r507, %r506, %r3;
+	add.s32 	%r507, %r506, %r2;
 	shl.b32 	%r508, %r507, 13;
 	and.b32  	%r21, %r508, 536862720;
 	add.s32 	%r509, %r6, %r21;
@@ -1539,7 +1539,7 @@ $L__BB0_6:                              // %L17888
 $L__BB0_1:                              // %L8
 	ld.param.u32 	%r56, [_Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE_param_0+8];
 	ld.param.u64 	%rd66, [_Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE_param_0];
-	mov.u64 	%rd75, exception1;
+	mov.u64 	%rd75, exception11430;
 	cvta.global.u64 	%rd76, %rd75;
 	{ // callseq 0, 0
 	.reg .b32 temp_param_reg;

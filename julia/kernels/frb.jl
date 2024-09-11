@@ -857,6 +857,7 @@ function do_first_fft!(emitter)
     #     SIMD(:simd, 4, 2) => Register(:polr, 1, P),
     #     SIMD(:simd, 8, 2) => Register(:time, idiv(Touter, 2), 2);
     #     newtype=FloatValue,
+    #     swapped_withoffset=true,
     # )
     # 
     # select!(emitter, :E, :Freg2, Register(:time, Tinner, idiv(Touter, Tinner)) => Loop(:t_inner, Tinner, idiv(Touter, Tinner)))
@@ -875,6 +876,7 @@ function do_first_fft!(emitter)
         SIMD(:simd, 4, 2) => Register(:polr, 1, P),
         SIMD(:simd, 8, 2) => Register(:time, idiv(Touter, 2), 2);
         newtype=FloatValue,
+        swapped_withoffset=true,
     )
 
     select!(emitter, :E, :E′, Register(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2))
