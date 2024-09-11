@@ -38,7 +38,8 @@ RUN apt update && \
                    libnuma-dev \
                    libssl-dev \
                    libyaml-cpp-dev \
-                   libsystemd-dev && \
+                   libsystemd-dev \
+                   libgdal-dev && \
     apt install -y python3 \
                    python3-dev && \
     apt clean && apt autoclean

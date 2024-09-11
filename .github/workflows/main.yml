@@ -202,6 +202,7 @@ jobs:
             -DCMAKE_LINK_WHAT_YOU_USE=ON \
             -DCMAKE_BUILD_TYPE=Test \
             -DUSE_ASDF=ON \
+            -DUSE_GDAL=ON \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
@@ -536,6 +537,7 @@ jobs:
             -DCMAKE_LINK_WHAT_YOU_USE=ON \
             -DCMAKE_BUILD_TYPE=Test \
             -DUSE_ASDF=ON \
+            -DUSE_GDAL=ON \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
@@ -677,6 +679,7 @@ jobs:
         -DUSE_OLD_DPDK=ON \
         -DCMAKE_BUILD_TYPE=Test \
         -DUSE_ASDF=ON \
+        -DUSE_GDAL=ON \
         -DUSE_HDF5=ON \
         -DHIGHFIVE_PATH=/code/build/HighFive \
         -DUSE_LAPACK=ON \
