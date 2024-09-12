@@ -82,6 +82,9 @@ add_library(
     ExampleProducer.cpp
     ExampleConsumer.cpp
     ExampleDotProduct.cpp
+    GeoffProducer.cpp
+    GeoffCompute.cpp
+    GeoffConsumer.cpp
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 
