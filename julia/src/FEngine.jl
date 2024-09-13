@@ -34,6 +34,8 @@ c2i4(c::Complex) = Int4x2(real(c), imag(c))
 reim(x::Complex) = (x.re, x.im)
 ftoi4(x::Complex{T}) where {T<:Real} = Int4x2(round.(Int8, clamp.(reim(x) .* T(7.5), -7, +7))...)
 
+c2i4_swapped_withoffset(c::Complex) = Int4x2(imag(c) ⊻ 0x8, real(c) ⊻ 0x8)
+
 Base.clamp(val::Complex, lo, hi) = Complex(clamp(real(val), lo, hi), clamp(imag(val), lo, hi))
 Base.round(::Type{T}, val::Complex) where {T} = Complex{T}(round(T, real(val)), round(T, imag(val)))
 
@@ -1032,7 +1034,7 @@ function set_E!(
         # println("Corner turn...")
         t0 = time()
         I = iframe.data
-        permutedims!((@view E[:, :, :, time0:time1]), mappedarray(c2i4, I), (3, 4, 1, 2))
+        permutedims!((@view E[:, :, :, time0:time1]), mappedarray(c2i4_swapped_withoffset, I), (3, 4, 1, 2))
         t1 = time()
         walltimes[4, chunk_index] = t1 - t0
     end

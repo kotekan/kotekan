@@ -1145,38 +1145,34 @@ void FEngine::main_thread() {
 
             DEBUG("[{:d}] Filling E buffer...", E_frame_index);
             profile_range_push("E_frame::fill");
-            if (!skip_julia) {
-                kotekan::juliaCall([&]() {
-                    jl_module_t* const f_engine_module =
-                        (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
-                    assert(f_engine_module);
-                    jl_function_t* const set_E = jl_get_function(f_engine_module, "set_E!");
-                    assert(set_E);
-                    const int nargs = 8;
-                    jl_value_t** args;
-                    JL_GC_PUSHARGS(args, nargs);
-                    args[0] = jl_box_uint8pointer(E_frame);
-                    args[1] = jl_box_int64(E_frame_size);
-                    args[2] = jl_box_int64(num_dishes);
-                    args[3] = jl_box_int64(num_polarizations);
-                    args[4] = jl_box_int64(num_frequencies);
-                    args[5] = jl_box_int64(num_times);
-                    args[6] = FEngine_setup;
-                    args[7] = jl_box_int64(E_frame_index % num_frames + 1);
-                    jl_value_t* const res = jl_call(set_E, args, nargs);
-                    assert(res);
-                    JL_GC_POP();
-                });
-            } else {
-                // for (int n = 0; n < num_dishes * num_polarizations * num_frequencies *
-                // num_times;
-                //      ++n)
-                //     ((uint8_t*)E_frame)[n] = 0x44;
-                // std::memset(E_frame, 0x44,
-                //        num_dishes * num_polarizations * num_frequencies * num_times);
-                if (E_frame_index < E_buffer->num_frames)
-                    std::memset(E_frame, 0x44,
+            using std::max;
+            if (E_frame_index < max(E_buffer->num_frames, num_frames)) {
+                if (!skip_julia) {
+                    kotekan::juliaCall([&]() {
+                        jl_module_t* const f_engine_module =
+                            (jl_module_t*)jl_get_global(jl_main_module, jl_symbol("FEngine"));
+                        assert(f_engine_module);
+                        jl_function_t* const set_E = jl_get_function(f_engine_module, "set_E!");
+                        assert(set_E);
+                        const int nargs = 8;
+                        jl_value_t** args;
+                        JL_GC_PUSHARGS(args, nargs);
+                        args[0] = jl_box_uint8pointer(E_frame);
+                        args[1] = jl_box_int64(E_frame_size);
+                        args[2] = jl_box_int64(num_dishes);
+                        args[3] = jl_box_int64(num_polarizations);
+                        args[4] = jl_box_int64(num_frequencies);
+                        args[5] = jl_box_int64(num_times);
+                        args[6] = FEngine_setup;
+                        args[7] = jl_box_int64(E_frame_index % num_frames + 1);
+                        jl_value_t* const res = jl_call(set_E, args, nargs);
+                        assert(res);
+                        JL_GC_POP();
+                    });
+                } else {
+                    std::memset(E_frame, 0xcc,
                                 num_dishes * num_polarizations * num_frequencies * num_times);
+                }
             }
             profile_range_pop();
             DEBUG("[{:d}] Done filling E buffer.", E_frame_index);
