@@ -75,7 +75,7 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame_int, const timespec& gp
             continue;
         }
         //double hour_angle  = LSA - _beam_coord.ra[b];
-        double hour_angle = LST * 15. - beam_coord.ra[b];
+        double hour_angle = LST * 15. - _beam_coord.ra[b];
         double alt = sin(_beam_coord.dec[b] * D2R) * sin(_inst_lat * D2R)
                      + cos(_beam_coord.dec[b] * D2R) * cos(_inst_lat * D2R) * cos(hour_angle * D2R);
         alt = asin(std::clamp(alt, -1.0, 1.0));
