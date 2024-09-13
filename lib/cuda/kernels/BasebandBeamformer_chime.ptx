@@ -31,7 +31,7 @@
 }
 .extern .shared .align 32 .b8 shmem[];
 .global .align 1 .b8 exception2743[6] = {101, 114, 114, 111, 114, 0};
-.global .align 1 .b8 exception12749[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
+.global .align 1 .b8 exception12750[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
                                         // @_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE
 .visible .entry _Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE(
 	.param .align 8 .b8 _Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE_param_0[16],
@@ -2570,7 +2570,7 @@ $L__BB0_7:                              // %L149
 	exit;
 	// end inline asm
 $L__BB0_1:                              // %L8
-	mov.u64 	%rd26, exception12749;
+	mov.u64 	%rd26, exception12750;
 	cvta.global.u64 	%rd27, %rd26;
 	{ // callseq 0, 0
 	.reg .b32 temp_param_reg;
@@ -2599,7 +2599,7 @@ $L__BB0_1:                              // %L8
 	exit;
 	// end inline asm
 $L__BB0_3:                              // %L24
-	mov.u64 	%rd28, exception12749;
+	mov.u64 	%rd28, exception12750;
 	cvta.global.u64 	%rd29, %rd28;
 	{ // callseq 2, 0
 	.reg .b32 temp_param_reg;
