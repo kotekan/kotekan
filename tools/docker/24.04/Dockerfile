@@ -137,7 +137,7 @@ RUN mkdir src && \
         cmake --install build && \
     true) && \
     rm -rf src
-# Depends on lz4 (not liblz4!)
+# Depends on lz4.pc (called liblz4.pc in apt install)
 RUN ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/liblz4.pc /usr/local/lib/pkgconfig/lz4.pc
 
 # Clone HighFive

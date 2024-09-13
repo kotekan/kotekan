@@ -122,6 +122,8 @@ RUN apt-get update && \
     cmake -DCMAKE_INSTALL_PREFIX=/usr/local/ && make install && cd ..
 
 # Install Blosc2 (a prerequisite for ASDF)
+RUN apt update && apt install -y libbz2-dev liblz4-dev && \
+    apt clean && apt autoclean
 RUN mkdir src && \
     (cd src && \
     wget https://github.com/Blosc/c-blosc2/archive/refs/tags/v2.13.2.tar.gz && \
@@ -152,6 +154,8 @@ RUN mkdir src && \
         cmake --install build && \
     true) && \
     rm -rf src
+# Depends on lz4.pc (called liblz4.pc in apt install)
+RUN ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/liblz4.pc /usr/local/lib/pkgconfig/lz4.pc
 
 # Clone HighFive
 RUN git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git && \
