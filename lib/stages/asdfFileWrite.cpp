@@ -141,9 +141,7 @@ public:
             const double this_time = current_time();
             const double elapsed_time = this_time - start_time;
 
-            // This is not a warning, but it should be displayed even
-            // when regular INFO messages are not
-            WARN("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
+            INFO("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
                  frame_counter, meta->sample0_offset, elapsed_time);
 
             if (!skip_writing) {

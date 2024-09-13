@@ -6,6 +6,7 @@
 set -euxo pipefail
 
 ./julia/bin/bb.sh
-./julia/bin/upchan.sh
+./julia/bin/chimefrb.sh
 ./julia/bin/frb.sh
+./julia/bin/upchan.sh
 ./julia/bin/xpose2048.sh
