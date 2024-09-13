@@ -49,6 +49,7 @@ RUN apt-get -y update && \
                        libnuma-dev \
                        libssl-dev \
                        libyaml-cpp-dev \
+                       libgdal-dev \
                        wget \
                        flex \
                        bison \
