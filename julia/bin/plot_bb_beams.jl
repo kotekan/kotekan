@@ -25,15 +25,15 @@ function aspect!(fig::Figure, row::Integer, col::Integer, ratio_x_over_y::Real)
     return nothing
 end
 
-prefix = "/tmp/fengine_test_pathfinder";
+prefix = "/localhome/eschnett/data/fengine_test_pathfinder";
 host = "indigo";
 iter = "00000006"
 
 freq = 1
 
-dish_positions = read_kotekan("$(prefix)/$(host)_dish_positions.00000000.asdf", "dish_positions", ["EW/NS", "D"]);
+dish_positions = read_asdf("$(prefix)/$(host)_dish_positions.00000000.asdf", "dish_positions", ["EW/NS", "D"]);
 
-E = read_kotekan("$(prefix)/$(host)_voltage.$(iter).asdf", "voltage", ["D", "P", "F", "T"]);
+E = read_asdf("$(prefix)/$(host)_voltage.$(iter).asdf", "voltage", ["D", "P", "F", "T"]);
 Enorm2 = dish_norm(E, 2, freq);
 
 let
@@ -68,13 +68,13 @@ let
     display(fig)
 end;
 
-beam_positions = read_kotekan("$(prefix)/$(host)_bb_beam_positions.00000000.asdf", "bb_beam_positions", ["EW/NS", "B"]);
+beam_positions = read_asdf("$(prefix)/$(host)_bb_beam_positions.00000000.asdf", "bb_beam_positions", ["EW/NS", "B"]);
 
-A = read_kotekan("$(prefix)/$(host)_bb_phase.00000000.asdf", "bb_phase", ["C", "D", "B", "P", "F"]);
+A = read_asdf("$(prefix)/$(host)_bb_phase.00000000.asdf", "bb_phase", ["C", "D", "B", "P", "F"]);
 A = reinterpret(reshape, Complex{eltype(A)}, A);
-s = read_kotekan("$(prefix)/$(host)_bb_shift.00000000.asdf", "bb_shift", ["B", "P", "F"]);
+s = read_asdf("$(prefix)/$(host)_bb_shift.00000000.asdf", "bb_shift", ["B", "P", "F"]);
 
-J = read_kotekan("$(prefix)/$(host)_bb_beams.$(iter).asdf", "bb_beams", ["T", "P", "F", "B"]);
+J = read_asdf("$(prefix)/$(host)_bb_beams.$(iter).asdf", "bb_beams", ["T", "P", "F", "B"]);
 Jnorm2 = beam_norm(J, 2, freq);
 
 let
