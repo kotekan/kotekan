@@ -39,6 +39,8 @@ function shrinkmul(x::Integer, y::Symbol, ymax::Integer)
     end
 end
 
+Base.isnan(i::Int4x8) = any(==(-8), convert(NTuple{8,Int8}, i))
+
 ################################################################################
 
 @enum CHORDTag CplxTag DishTag PolrTag FreqTag TimeTag ThreadTag WarpTag BlockTag
@@ -54,10 +56,11 @@ const Time = Index{Physics,TimeTag} # time
 @assert D * P == 2048
 const T1 = 32
 
-const W = 16                    # warps
-const B = F                     # blocks
+const Tblocks = 8
+const Tloop = idiv(T, T1 * Tblocks)
 
-const Tloop = idiv(T, T1)
+const W = 16                    # warps
+const B = F * Tblocks           # blocks
 
 const num_simd_bits = 32
 const num_threads = 32
@@ -162,7 +165,7 @@ const layout_E_shared = let
         Time(:time, 1, T1),
         Dish(:dish, 1, D),
         Polr(:polr, 1, P),
-        Time(:time, T1, idiv(T, T1)),
+        Time(:time, T1, Tloop),
         Freq(:freq, 1, F),
     ]
     machine_indices = Index{Machine}[
@@ -381,6 +384,52 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
         return nothing
     end
 
+    println("Allocating input data...")
+    Ein_memory = Array{Int4x8}(undef, idiv(D, 4) * P * F * T)
+    E_memory = Array{Int4x8}(undef, idiv(D, 4) * P * F * T)
+    scatter_indices_memory = Array{Int32}(undef, D * P)
+    info_memory = Array{Int32}(undef, num_threads * num_warps * num_blocks)
+
+    println("Setting up input data...")
+    map!(i -> Int4x8(-4, -3, -2, -1, 0, 1, 2, 3), Ein_memory, Ein_memory)
+    for i in (D * P - 1):-1:0
+        scatter_indices_memory[i + 1] = i
+    end
+
+    Tinmin = Int32(0)
+    Tinmax = Int32(fld(T, 4))
+
+    Tmin = Int32(Tinmin)
+    Tmax = Int32(Tinmax)
+
+    println("Copying data from CPU to GPU...")
+    Ein_cuda = CuArray(Ein_memory)
+    E_cuda = CUDA.fill(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8), length(E_memory))
+    scatter_indices_cuda = CuArray(scatter_indices_memory)
+    info_cuda = CUDA.fill(-1i32, length(info_memory))
+
+    println("Running kernel...")
+    kernel(
+        Tinmin,
+        Tinmax,
+        Tmin,
+        Tmax,
+        Ein_cuda,
+        E_cuda,
+        scatter_indices_cuda,
+        info_cuda;
+        threads=(num_threads, num_warps),
+        blocks=num_blocks,
+        shmem=shmem_bytes,
+    )
+    synchronize()
+
+    println("Copying data back from GPU to CPU...")
+    E_memory = Array(E_cuda)
+    @assert all(!isnan, (@view E_memory[1:(D * P * F * Tmax)]))
+    info_memory = Array(info_cuda)
+    @assert all(info_memory .== 0)
+
     if output_kernel
         ptx = read("output-$card/xpose2048_$setup.ptx", String)
         ptx = replace(ptx, r".extern .func gpu_([^;]*);"s => s".func gpu_\1.noreturn\n{\n\ttrap;\n}")
@@ -534,10 +583,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                         "name" => "scatter_indices",
                         "kotekan_name" => "gpu_mem_scatter_indices",
                         "type" => "int32",
-                        "axes" => [
-                            Dict("label" => "D", "length" => D),
-                            Dict("label" => "P", "length" => P),
-                        ],
+                        "axes" => [Dict("label" => "D", "length" => D), Dict("label" => "P", "length" => P)],
                         "isoutput" => false,
                         "hasbuffer" => true,
                     ),

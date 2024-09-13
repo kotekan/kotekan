@@ -110,19 +110,6 @@ end
 
 const Ttilde = 4 * 256
 
-# # const Ttilde = 4 * 256
-# @static if setup ≡ :chord
-#     # const Ttilde = 4 * 256
-#     # Reduce output buffer depth by 2 to stay below 2 GByte
-#     const Ttilde = 4 * 256 ÷ 2
-# elseif setup ≡ :hirax
-#     const Ttilde = 4 * 256 * 4 ÷ U
-# elseif setup ≡ :pathfinder
-#     # const Ttilde = 4 * 256
-#     # Reduce output buffer depth by 2 to stay below 2 GByte
-#     const Ttilde = 4 * 256 ÷ 2
-# end
-
 const output_gain = 1 / (8 * Tds)
 
 # Derived compile-time parameters (section 4.4)
@@ -870,6 +857,7 @@ function do_first_fft!(emitter)
     #     SIMD(:simd, 4, 2) => Register(:polr, 1, P),
     #     SIMD(:simd, 8, 2) => Register(:time, idiv(Touter, 2), 2);
     #     newtype=FloatValue,
+    #     swapped_withoffset=true,
     # )
     # 
     # select!(emitter, :E, :Freg2, Register(:time, Tinner, idiv(Touter, Tinner)) => Loop(:t_inner, Tinner, idiv(Touter, Tinner)))
@@ -888,6 +876,7 @@ function do_first_fft!(emitter)
         SIMD(:simd, 4, 2) => Register(:polr, 1, P),
         SIMD(:simd, 8, 2) => Register(:time, idiv(Touter, 2), 2);
         newtype=FloatValue,
+        swapped_withoffset=true,
     )
 
     select!(emitter, :E, :E′, Register(:time, idiv(Touter, 2), 2) => UnrolledLoop(:t_inner_hi, idiv(Touter, 2), 2))
@@ -1012,7 +1001,7 @@ function do_first_fft!(emitter)
     # Section 3 `W` is called `V` here
     split!(emitter, [:aΓ²re, :aΓ²im], :aΓ², Register(:cplx, 1, 2))
     split!(emitter, [:Zre, :Zim], :Z, Register(:cplx, 1, 2))
-    # TODO: Fbar_Wd a better set of conditions
+    # TODO: Find a better set of conditions
     if trailing_zeros(Npad) == 5 || setup === :hirax
         apply!(emitter, :Vre, [:Zre, :Zim, :aΓ²re, :aΓ²im], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zre, -$aΓ²im * $Zim)))
         apply!(emitter, :Vim, [:Zre, :Zim, :aΓ²re, :aΓ²im], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zim, +$aΓ²im * $Zre)))
