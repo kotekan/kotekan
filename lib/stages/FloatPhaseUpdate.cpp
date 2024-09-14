@@ -86,7 +86,6 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame_int, const timespec& gp
             az = TAU - az;                                                 
         }
         double projection_angle, effective_angle, offset_distance;
-        int zero_feeds;
 
 	//INFO("Beam: {} (Ra: {}, Dec {}), LSA: {}, ERA: {}, JD_UT1: {}, hour_angle {}, alt: {}, az: {}", b, _beam_coord.ra[b], _beam_coord.dec[b], LSA, ERA, JD_UT1, hour_angle, alt, az);
 
@@ -96,40 +95,30 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame_int, const timespec& gp
             for(size_t j = 0; j < feed_locations.size(); j++){
                 double dist_x = feed_locations[j].first;
                 double dist_y = feed_locations[j].second;
-                if (dist_x == 0 && dist_y == 0) {
-                  projection_angle = 0;
-                  zero_feeds = 1;
-                }
-                else {
-                  projection_angle = 90 * D2R - atan2(dist_y, dist_x);
-                  zero_feeds = 0;
-                }
+                
+		projection_angle = 90 * D2R - atan2(dist_y, dist_x);
                 offset_distance = sqrt(pow(dist_y, 2) + pow(dist_x, 2));
                 effective_angle = projection_angle - az;
-                double delay_real = cos(TAU * cos(effective_angle) * cos(alt) * offset_distance
+                
+		double delay_real = cos(TAU * cos(effective_angle) * cos(alt) * offset_distance
                                        * frequencies_in_frame[i] * one_over_c);
                 double delay_imag = -sin(TAU * cos(effective_angle) * cos(-alt) * offset_distance            //DOUBT: Why is imag delay -sin(phase)? Has it something to do with the way gains are applied?
                                         * frequencies_in_frame[i] * one_over_c);
                 //if (j == 0) {
                 //   INFO("feed: 0, dist_x: {}, dist_y: {}, projection_angle: {}, delay_real: {}, delay_imag: {}", dist_x, dist_y, projection_angle, delay_real, delay_imag);
 		//}
+		
 		//Looping over 2 polarisations
                 for (int p = 0; p < 2; p++) {                                                                //TO DO: Make sure that the gains are in accordance with the feed locations and frequencies
                     uint elem_id = p * _num_elements / 2 + j;
                     uint offset = b * _num_local_freq * _num_elements + i * _num_elements;
-                    // Not scrembled, assume reordering kernel has been run
-                    if (zero_feeds == 1) {
-                      out_frame[(offset + elem_id) * 2] = 0;
-                      out_frame[(offset + elem_id) * 2 + 1] = 0;
-                      }
-                    else {
-                      out_frame[(offset + elem_id) * 2] =                                        
-                          delay_real * gains_frame[(offset + elem_id) * 2]
-                          - delay_imag * gains_frame[(offset + elem_id) * 2 + 1];
-                      out_frame[(offset + elem_id) * 2 + 1] =
-                          delay_real * gains_frame[(offset + elem_id) * 2 + 1]
-                          + delay_imag * gains_frame[(offset + elem_id) * 2]; 
-                    }
+                    // Not scrambled, assume reordering kernel has been run
+                    out_frame[(offset + elem_id) * 2] =                                        
+                        delay_real * gains_frame[(offset + elem_id) * 2]
+                        - delay_imag * gains_frame[(offset + elem_id) * 2 + 1];
+                    out_frame[(offset + elem_id) * 2 + 1] =
+                        delay_real * gains_frame[(offset + elem_id) * 2 + 1]
+                        + delay_imag * gains_frame[(offset + elem_id) * 2]; 
                   }
             }
         }
