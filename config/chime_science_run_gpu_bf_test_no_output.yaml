@@ -109,41 +109,41 @@ dataset_manager:
 updatable_config:
   frb_gain:
     kotekan_update_endpoint: json
-    frb_gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_FRB
+    frb_gain_dir: /root/andre/phase_test/gains/Latest_FRB
   UT1_UTC_offset:
     kotekan_update_endpoint: json
     UT1_UTC_val: -0.01771538093532198585 
   tracking_gain:
     0:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_dir: /root/andre/phase_test/gains/Latest_PSR
     1:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_dir: /root/andre/phase_test/gains/Latest_PSR
     2:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_dir: /root/andre/phase_test/gains/Latest_PSR
     3:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_dir: /root/andre/phase_test/gains/Latest_PSR
     4:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_dir: /root/andre/phase_test/gains/Latest_PSR
     5:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_dir: /root/andre/phase_test/gains/Latest_PSR
     6:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_dir: /root/andre/phase_test/gains/Latest_PSR
     7:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_dir: /root/andre/phase_test/gains/Latest_PSR
     8:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_dir: /root/andre/phase_test/gains/Latest_PSR
     9:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_dir: /root/andre/phase_test/gains/Latest_PSR
     10:
       kotekan_update_endpoint: json
       gain_dir: /root/andre/phase_test/gains/Latest_PSR
