@@ -9,21 +9,23 @@
 ---
 log_level: warn
 
-fengine_num_frames: 10
-fengine_repeat_count: 10
+fengine_num_frames: 1
+fengine_repeat_count: 100
 
 skip_julia: true
 
-base_dir: /localhome/eschnett/data/fengine_benchmark_pathfinder
+base_dir: /localhome/eschnett/data/fengine_benchmark_pathfinder # unused
 
 {% include "include/defs.j2" %}
 {% include "include/fengine_pathfinder.j2" %}
-{% include "include/sources_pathfinder.j2" %}
 
 {% include "include/n2k_pathfinder.j2" %}
 {% include "include/bb_pathfinder.j2" %}
 {% include "include/upchan_pathfinder.j2" %}
 {% include "include/frb_pathfinder.j2" %}
+
+{% include "include/sources_pathfinder.j2" %}
+{% include "include/fengine_init.j2" %}
 
 {% include "include/output_benchmark.j2" %}
 ...
