@@ -215,11 +215,6 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         df -h
 
-    - name: Run direct Kotekan tests
-      run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" ./build-2404/kotekan/kotekan --bind-address 0:23000 --config config/tests/julia_hello_world.yaml
-
     - name: Run parallel python tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
@@ -305,6 +300,68 @@ jobs:
     - name: Clean up
       run: |
         rm -rf kotekan
+
+
+  # Build an OpenCL version of kotekan and run the unit tests
+  build-direct-tests-2404:
+    runs-on: self-hosted
+    container: 
+      image: summerwind/actions-runner:ubuntu-22.04
+      options: --user root
+    needs: build-docker-2404
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Cache ccache files
+      uses: actions/cache@v4
+      with:
+        path: .ccache
+        key: ccache-direct-2404-${{ github.sha }}
+        restore-keys: |
+          ccache-direct-2404
+          ccache-base-build-2404
+
+    - name: Build kotekan
+      shell: bash
+      run: |
+        OPTS=(--pull=always --rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2404/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" ccache -s
+        docker run "${OPTS[@]}" \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
+            -DCMAKE_BUILD_TYPE=Test \
+            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
+            -DNO_MEMLOCK=ON \
+            -DUSE_OMP=ON \
+            -DUSE_ASDF=ON \
+            -DUSE_GDAL=ON \
+            -DWITH_BOOST_TESTS=ON \
+            -DUSE_CUDA=ON \
+            -DCCACHE=ON ..
+        docker run "${OPTS[@]}" make -j 2
+        docker run "${OPTS[@]}" rm -r lib
+        docker run "${OPTS[@]}" ccache -s
+        df -h
+
+    # Run all tests in the config/ci-tests directory
+    - name: Run direct Kotekan tests
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" for config_file in config/ci-tests/*.yaml; do ./build-2404/kotekan/kotekan --bind-address 0:23000 --config "$config_file"; done
+
+    - name: Clean up
+      run: |
+        rm -rf kotekan
+
 
   # 2204 Tests
 
@@ -547,11 +604,6 @@ jobs:
         docker run "${OPTS[@]}" rm -r lib
         docker run "${OPTS[@]}" ccache -s
         df -h
-
-    - name: Run direct Kotekan tests
-      run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2204.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" ./build-2204/kotekan/kotekan --bind-address 0:23000 --config config/tests/julia_hello_world.yaml
 
     - name: Run parallel python tests
       run: |
