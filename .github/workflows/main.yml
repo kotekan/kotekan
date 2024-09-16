@@ -302,7 +302,7 @@ jobs:
         rm -rf kotekan
 
 
-  # Build an OpenCL version of kotekan and run the unit tests
+  # Build a version of kotekan and run some direct tests
   build-direct-tests-2404:
     runs-on: self-hosted
     container: 
