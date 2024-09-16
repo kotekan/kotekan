@@ -20,7 +20,7 @@
 _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE:
 
 .text._Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE:
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1507
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1513
         IMAD.MOV.U32 R1, RZ, RZ, c[0x0][0x28] ;
 ; Location ./int.jl:513
         IMAD.MOV.U32 R0, RZ, RZ, c[0x0][0x2c] ;
@@ -47,11 +47,11 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         ULDC.64 UR38, c[0x0][0x118] ;
         IMAD.MOV.U32 R3, RZ, RZ, 0x1 ;
         S2R R0, SR_CTAID.X ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         IMAD.MOV.U32 R22, RZ, RZ, c[0x0][0x170] ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         S2R R36, SR_TID.X ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         ISETP.GT.U32.AND P0, PT, R22, 0xffff, PT ;
 ; Location ./int.jl:88
         IMAD.SHL.U32 R55, R25, 0x20, RZ ;
@@ -61,32 +61,32 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         IMAD.WIDE.U32 R16, R0, R17, c[0x0][0x1e8] ;
         STG.E [R16.64], R3 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
     @P0 BRA `(.L_x_3) ;
         IMAD.MOV.U32 R19, RZ, RZ, c[0x0][0x174] ;
         IMAD.MOV.U32 R61, RZ, RZ, c[0x0][0x178] ;
 ; Location ./int.jl:86
         IADD3 R0, R19.reuse, -c[0x0][0x170], RZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         ISETP.GT.AND P0, PT, R19.reuse, 0x1ffff, PT ;
 ; Location ./promotion.jl:521
         LOP3.LUT P1, RZ, R0, 0xff, RZ, 0xc0, !PT ;
         ISETP.LT.OR P0, PT, R19, c[0x0][0x170], P0 ;
         ISETP.GT.U32.OR P1, PT, R61, 0x7fff, P1 ;
         PLOP3.LUT P0, PT, P0, P1, PT, 0xa8, 0x0 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
     @P0 BRA `(.L_x_3) ;
         IMAD.MOV.U32 R2, RZ, RZ, c[0x0][0x17c] ;
 ; Location ./int.jl:87
         IADD3 R0, R2.reuse, -c[0x0][0x178], RZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         ISETP.GT.AND P0, PT, R2, 0xffff, PT ;
 ; Location ./int.jl:87
         IADD3 R0, R0, 0x3, RZ ;
         ISETP.LT.OR P0, PT, R2, c[0x0][0x178], P0 ;
 ; Location ./promotion.jl:521
         LOP3.LUT P1, RZ, R0, 0x7f, RZ, 0xc0, !PT ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
    @!P1 BRA !P0, `(.L_x_4) ;
 
 .L_x_3:
@@ -105,7 +105,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         BPT.TRAP 0x1 ;
 
 .L_x_4:
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         IMAD.MOV.U32 R0, RZ, RZ, c[0x0][0x184] ;
         ISETP.LE.AND P1, PT, RZ, c[0x0][0x180], PT ;
         ISETP.GE.AND P0, PT, R0, 0x11, PT ;
@@ -192,7 +192,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         FADD R6, RZ, -R11 ;
         FADD R21, RZ, -R21 ;
         FADD R5, RZ, -R5 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
    @!P0 BRA `(.L_x_6) ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         S2R R15, SR_CTAID.X ;
@@ -784,7 +784,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         F2FP.PACK_AB R7, R51, RZ ;
         STL [R1+0x318], R9 ;
         STL [R1+0x314], R8 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         CS2R R8, SRZ ;
 
 .L_x_10:
@@ -1002,15 +1002,15 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         IMAD R52, R33, 0x20000000, R52 ;
 ; Location ./int.jl:87
         IMAD R19, R19, 0x2000, R60 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R32, R26, R24, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R32, R32, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R33, R27, R25, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R33, R33, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R24, R24, R32, !P2 ;
         SEL R26, R32, R26, !P2 ;
 ; Location ./int.jl:295
@@ -1023,11 +1023,11 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         ISETP.LT.AND P0, PT, R19, RZ, P0 ;
 ; Location ./int.jl:295
         SHF.R.S32.HI R32, RZ, 0x1d, R32 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R25, R25, R33, !P2 ;
 ; Location ./int.jl:86
         IADD3 R40, -R32, 0x1, RZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R27, R33, R27, !P2 ;
 ; Location ./int.jl:86
    @!P0 IMAD.MOV R40, RZ, RZ, -R32 ;
@@ -1060,12 +1060,12 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LOP3.LUT R13, R19, 0xe0000000, RZ, 0xc0, !PT ;
 ; Location ./promotion.jl:521
         ISETP.NE.AND P0, PT, R13, R32, PT ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R13, R22, R20, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R13, R13, 0x8, 0x1f ;
         ISETP.LT.AND P0, PT, R32, RZ, P0 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R24, R23, R21, !P2 ;
 ; Location ./int.jl:295
         SHF.R.S32.HI R19, RZ, 0x1d, R19 ;
@@ -1080,11 +1080,11 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
    @!P0 IMAD.MOV R24, RZ, RZ, -R19 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         S2R R33, SR_TID.Y ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R20, R20, R13, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         IMAD.WIDE R52, R52, R56, c[0x0][0x1a8] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R13, R13, R22, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/ECJ3K/src/IndexSpaces.jl:973
         LDG.E.128 R48, [R48.64] ;
@@ -1092,7 +1092,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         PRMT R19, R20, 0x5410, R13 ;
 ; Location ./int.jl:86
         IMAD R32, R24, 0x20000000, R32 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R21, R21, R15, !P2 ;
         LDL R24, [R1+0x1ec] ;
         SEL R23, R15, R23, !P2 ;
@@ -1107,7 +1107,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SHF.R.U32.HI R27, RZ, 0x3, R27 ;
         LOP3.LUT R27, R27, 0x48, R33, 0xfe, !PT ;
         LDL R33, [R1+0x388] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R15, R30, R28, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R15, R15, 0x8, 0x1f ;
@@ -1119,15 +1119,15 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LOP3.LUT R20, R27, 0xff00, R9, 0xf8, !PT ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R13, R21, 0x7632, R23 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R28, R28, R15, !P2 ;
 ; Location ./int.jl:87
         IMAD R20, R20, 0x2000, R60 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R30, R15, R30, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R26.X4+0x4], R22 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R21, R31, R29, !P2 ;
 ; Location ./int.jl:295
         SHF.R.S32.HI R15, RZ, 0x1f, R20 ;
@@ -1149,11 +1149,11 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SHF.R.S32.HI R19, RZ, 0x1d, R15 ;
 ; Location ./int.jl:86
         IADD3 R15, -R19, 0x1, RZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R31, R21, R31, !P2 ;
 ; Location ./int.jl:86
    @!P0 IMAD.MOV R15, RZ, RZ, -R19 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R19, R29, R21, !P2 ;
         SEL R21, R38, R36, !P2 ;
         SHF.R.U32.HI R25, RZ, 0x3, R25 ;
@@ -1172,7 +1172,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         PRMT R15, R19, 0x5410, R31 ;
 ; Location ./int.jl:87
         IMAD R13, R13, 0x2000, R60 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R36, R36, R21, !P2 ;
         LDL R30, [R1+0x37c] ;
         SEL R38, R21, R38, !P2 ;
@@ -1189,13 +1189,13 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LOP3.LUT R21, R15, 0xe0000000, RZ, 0xc0, !PT ;
 ; Location ./promotion.jl:521
         ISETP.NE.AND P0, PT, R21, R13, PT ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R21, R39, R37, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R21, R21, 0x8, 0x1f ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R24.X4+0x84], R19 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R37, R37, R21, !P2 ;
         SEL R39, R21, R39, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
@@ -1206,7 +1206,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         PRMT R21, R36.reuse, 0x5410, R38.reuse ;
         PRMT R36, R36, 0x7632, R38 ;
         S2R R28, SR_TID.Y ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R24, R46, R44, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         S2R R26, SR_TID.X ;
@@ -1217,7 +1217,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SHFL.BFLY PT, R24, R24, 0x8, 0x1f ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         S2R R29, SR_TID.Y ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R25, R47, R45, !P2 ;
         ISETP.LT.AND P0, PT, R13, RZ, P0 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
@@ -1236,27 +1236,27 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         S2R R27, SR_TID.X ;
         LOP3.LUT R26, R26, 0x58, R28, 0xfe, !PT ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R44, R44, R24, !P2 ;
 ; Location ./int.jl:296
         LOP3.LUT R28, R26, 0xff00, R9, 0xf8, !PT ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R24, R24, R46, !P2 ;
 ; Location ./int.jl:86
         IADD3 R15, -R22, 0x1, RZ ;
    @!P0 IMAD.MOV R15, RZ, RZ, -R22 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R45, R45, R25, !P2 ;
 ; Location ./int.jl:87
         IMAD R28, R28, 0x2000, R60 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R47, R25, R47, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R25, R44, 0x5410, R24 ;
         PRMT R44, R44, 0x7632, R24 ;
 ; Location ./int.jl:86
         IMAD R15, R15, 0x20000000, R13 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R24, R54, R52, !P2 ;
 ; Location ./int.jl:295
         SHF.R.S32.HI R13, RZ, 0x1f, R28 ;
@@ -1282,12 +1282,12 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SHF.R.S32.HI R26, RZ, 0x1d, R13 ;
 ; Location ./int.jl:86
         IADD3 R13, -R26, 0x1, RZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R52, R52, R24, !P2 ;
         SEL R54, R24, R54, !P2 ;
 ; Location ./int.jl:86
    @!P0 IMAD.MOV R13, RZ, RZ, -R26 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R26, R55, R53, !P2 ;
 ; Location ./int.jl:86
         IMAD R28, R13, 0x20000000, R28 ;
@@ -1322,7 +1322,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
    @!P0 IMAD.MOV R44, RZ, RZ, -R19 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/ECJ3K/src/IndexSpaces.jl:973
         LDG.E.128 R24, [R24.64] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R53, R53, R15, !P2 ;
         SEL R55, R15, R55, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
@@ -1346,7 +1346,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         STS [R39.X4+0x84], R13 ;
         S2R R30, SR_TID.X ;
         IMAD.SHL.U32 R31, R31, 0x4, RZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R29, R50, R48, !P2 ;
         SEL R15, R51, R49, !P2 ;
         LDL R52, [R1+0x230] ;
@@ -1375,12 +1375,12 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         ISETP.LT.AND P0, PT, R19, RZ, P0 ;
 ; Location ./int.jl:295
         SHF.R.S32.HI R36, RZ, 0x1d, R36 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R48, R48, R29, !P2 ;
         SEL R50, R29, R50, !P2 ;
 ; Location ./int.jl:86
         IADD3 R37, -R36, 0x1, RZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R49, R49, R15, !P2 ;
         SEL R51, R15, R51, !P2 ;
 ; Location ./int.jl:86
@@ -1393,20 +1393,20 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R37, R49, 0x5410, R51 ;
         STS [R38], R13 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R15, R42, R40, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R15, R15, 0x8, 0x1f ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R36, R49, 0x7632, R51 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R40, R40, R15, !P2 ;
         SEL R42, R15, R42, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R53.X4+0x80], R48 ;
         STS [R53.X4+0x4], R37 ;
         LDL R48, [R1+0x234] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R37, R43, R41, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R37, R37, 0x8, 0x1f ;
@@ -1416,11 +1416,11 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         S2R R50, SR_TID.Y ;
         S2R R49, SR_TID.X ;
         S2R R51, SR_TID.Y ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R41, R41, R37, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         IMAD.WIDE R28, R28, R56, c[0x0][0x1a8] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R43, R37, R43, !P2 ;
         LDL R53, [R1+0x334] ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
@@ -1455,7 +1455,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         PRMT R38, R41, 0x5410, R43 ;
         STS [R52.X4+0x80], R40 ;
         STS [R52.X4+0x4], R38 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R38, R34, R32, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R38, R38, 0x8, 0x1f ;
@@ -1466,7 +1466,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         STS [R52.X4+0x84], R36 ;
         LOP3.LUT R49, R49, 0x78, R50, 0xfe, !PT ;
         S2R R50, SR_TID.Y ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R32, R32, R38, !P2 ;
         SEL R34, R38, R34, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
@@ -1474,7 +1474,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         IMAD.WIDE R40, R19, R56, c[0x0][0x1a8] ;
 ; Location ./int.jl:296
         LOP3.LUT R19, R49, 0xff00, R9, 0xf8, !PT ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R37, R35, R33, !P2 ;
 ; Location ./int.jl:86
         IMAD R15, R15, 0x20000000, R13 ;
@@ -1504,7 +1504,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         ISETP.LT.AND P0, PT, R19, RZ, P0 ;
 ; Location ./int.jl:295
         SHF.R.S32.HI R13, RZ, 0x1d, R13 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R33, R33, R37, !P2 ;
         SEL R37, R37, R35, !P2 ;
 ; Location ./int.jl:86
@@ -1541,7 +1541,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location ./promotion.jl:521
         ISETP.NE.AND P0, PT, R33, R32, PT ;
         ISETP.LT.AND P0, PT, R32, RZ, P0 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R34, R23, R21, !P2 ;
 ; Location ./int.jl:295
         SHF.R.S32.HI R15, RZ, 0x1d, R15 ;
@@ -1552,7 +1552,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         IADD3 R34, -R15, 0x1, RZ ;
    @!P0 IMAD.MOV R34, RZ, RZ, -R15 ;
         LOP3.LUT R48, R48, 0x88, R51, 0xfe, !PT ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R35, R22, R20, !P2 ;
 ; Location ./int.jl:86
         IMAD R15, R34, 0x20000000, R32 ;
@@ -1565,7 +1565,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SHFL.BFLY PT, R35, R35, 0x8, 0x1f ;
 ; Location ./int.jl:87
         IMAD R32, R32, 0x2000, R60 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R21, R21, R33, !P2 ;
         LDL R51, [R1+0x360] ;
         SEL R23, R33, R23, !P2 ;
@@ -1575,7 +1575,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LDG.E.128 R36, [R36.64] ;
 ; Location ./int.jl:295
         LEA.HI R33, R33, R32, RZ, 0x1d ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R20, R20, R35, !P2 ;
         SEL R22, R35, R22, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
@@ -1590,16 +1590,16 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LDL R49, [R1+0x23c] ;
 ; Location ./promotion.jl:521
         ISETP.NE.AND P0, PT, R13, R32, PT ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R13, R27, R25, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R13, R13, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R23, R26, R24, !P2 ;
         SHF.R.U32.HI R35, RZ, 0x3, R35 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R23, R23, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R25, R25, R13, !P2 ;
         SEL R27, R13, R27, !P2 ;
         SEL R24, R24, R23, !P2 ;
@@ -1624,7 +1624,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location ./int.jl:86
         IADD3 R34, -R33, 0x1, RZ ;
    @!P0 IMAD.MOV R34, RZ, RZ, -R33 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R33, R30, R28, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R33, R33, 0x8, 0x1f ;
@@ -1633,7 +1633,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         IMAD.WIDE R20, R19, R56, c[0x0][0x1a8] ;
         PRMT R24, R25.reuse, 0x5410, R27.reuse ;
         PRMT R25, R25, 0x7632, R27 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R19, R31, R29, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         S2R R50, SR_TID.Y ;
@@ -1641,7 +1641,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SHFL.BFLY PT, R19, R19, 0x8, 0x1f ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R49.X4+0x80], R26 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R28, R28, R33, !P2 ;
         SEL R30, R33, R30, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
@@ -1649,7 +1649,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         STS [R49.X4+0x84], R25 ;
         PRMT R25, R28, 0x5410, R30 ;
         LDL R49, [R1+0x244] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R24, R29, R19, !P2 ;
         SEL R19, R19, R31, !P2 ;
         IMAD.SHL.U32 R50, R50, 0x4, RZ ;
@@ -1682,7 +1682,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LOP3.LUT R28, R35, 0xff00, R9, 0xf8, !PT ;
 ; Location ./int.jl:88
         LOP3.LUT R22, R27, 0xe0000000, RZ, 0xc0, !PT ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R31, R46, R44, !P2 ;
 ; Location ./int.jl:87
         IMAD R28, R28, 0x2000, R60 ;
@@ -1699,7 +1699,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SHF.R.S32.HI R29, RZ, 0x1f, R28 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R31, R31, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R15, R47, R45, !P2 ;
 ; Location ./int.jl:295
         LEA.HI R29, R29, R28.reuse, RZ, 0x1d ;
@@ -1725,14 +1725,14 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LDG.E.128 R24, [R24.64] ;
 ; Location ./int.jl:86
         IADD3 R30, -R29, 0x1, RZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R44, R44, R31, !P2 ;
         SEL R46, R31, R46, !P2 ;
 ; Location ./int.jl:86
    @!P0 IMAD.MOV R30, RZ, RZ, -R29 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R29, R44.reuse, 0x5410, R46.reuse ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R45, R45, R15, !P2 ;
         SEL R47, R15, R47, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
@@ -1759,11 +1759,11 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         STS [R49.X4+0x84], R28 ;
 ; Location ./promotion.jl:521
         ISETP.NE.AND P0, PT, R30, R19, PT ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R30, R43, R41, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         S2R R51, SR_TID.Y ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R31, R42, R40, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         IMAD.WIDE R44, R13, R56, c[0x0][0x1a8] ;
@@ -1779,7 +1779,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LDG.E.128 R44, [R44.64] ;
         IMAD.SHL.U32 R51, R51, 0x4, RZ ;
         SHF.R.U32.HI R49, RZ, 0x3, R49 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R41, R41, R13, !P2 ;
         SEL R13, R13, R43, !P2 ;
         LOP3.LUT R49, R49, 0xa8, R51, 0xfe, !PT ;
@@ -1795,7 +1795,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R13, R41, 0x7632, R13 ;
         S2R R51, SR_TID.X ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R41, R38, R36, !P2 ;
 ; Location ./int.jl:87
         IMAD R29, R29, 0x2000, R60 ;
@@ -1824,7 +1824,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         IMAD.WIDE R32, R32, R56, c[0x0][0x1a8] ;
         LDL R52, [R1+0x344] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R36, R36, R41, !P2 ;
         SEL R38, R41, R38, !P2 ;
 ; Location ./int.jl:86
@@ -1837,7 +1837,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R48], R30 ;
         STS [R50.X4+0x80], R40 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R30, R39, R37, !P2 ;
         LDL R48, [R1+0x24c] ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
@@ -1875,32 +1875,32 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
    @!P0 IMAD.MOV R31, RZ, RZ, -R28 ;
         LOP3.LUT R50, R50, 0xb8, R51, 0xfe, !PT ;
         IMAD R28, R31, 0x20000000, R30 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R37, R37, R15, !P2 ;
         LDL R51, [R1+0x34c] ;
 ; Location ./int.jl:296
         LOP3.LUT R31, R50, 0xff00, R9, 0xf8, !PT ;
         LDL R50, [R1+0x354] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R15, R15, R39, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R13, R36.reuse, 0x5410, R38.reuse ;
         PRMT R36, R36, 0x7632, R38 ;
         PRMT R30, R37.reuse, 0x5410, R15.reuse ;
         PRMT R15, R37, 0x7632, R15 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R37, R22, R20, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         S2R R39, SR_TID.X ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R37, R37, 0x8, 0x1f ;
         SHF.R.U32.HI R39, RZ, 0x3, R39 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R20, R20, R37, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R49], R13 ;
         LDL R49, [R1+0x250] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R22, R37, R22, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R48.X4+0x80], R36 ;
@@ -1925,7 +1925,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LOP3.LUT R36, R13, 0xe0000000, RZ, 0xc0, !PT ;
 ; Location ./promotion.jl:521
         ISETP.NE.AND P0, PT, R36, R31, PT ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R36, R23, R21, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R36, R36, 0x8, 0x1f ;
@@ -1936,12 +1936,12 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         PRMT R20, R20, 0x7632, R22 ;
 ; Location ./int.jl:86
         IADD3 R38, -R13, 0x1, RZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R22, R26, R24, !P2 ;
 ; Location ./int.jl:86
    @!P0 IMAD.MOV R38, RZ, RZ, -R13 ;
         IMAD R13, R38, 0x20000000, R31 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R21, R21, R36, !P2 ;
         SEL R36, R36, R23, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
@@ -1951,7 +1951,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         IMAD.WIDE R20, R19, R56, c[0x0][0x1a8] ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R19, R22, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R37, R27, R25, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R37, R37, 0x8, 0x1f ;
@@ -1962,12 +1962,12 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         IMAD R15, R15, 0x2000, R60 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/ECJ3K/src/IndexSpaces.jl:973
         LDG.E.128 R20, [R20.64] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R24, R24, R19, !P2 ;
         SEL R19, R19, R26, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R26, R24.reuse, 0x5410, R19.reuse ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R25, R25, R37, !P2 ;
         SEL R37, R37, R27, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
@@ -1988,7 +1988,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SHF.R.S32.HI R38, RZ, 0x1d, R30 ;
 ; Location ./int.jl:86
         IADD3 R30, -R38, 0x1, RZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R19, R35, R33, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R39], R26 ;
@@ -2002,12 +2002,12 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LDL R49, [R1+0x25c] ;
 ; Location ./int.jl:86
    @!P0 IMAD.MOV R30, RZ, RZ, -R38 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R38, R34, R32, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R19, R19, 0x8, 0x1f ;
         SHFL.BFLY PT, R38, R38, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R33, R33, R19, !P2 ;
         SEL R32, R32, R38, !P2 ;
         SEL R34, R38, R34, !P2 ;
@@ -2028,7 +2028,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         S2R R38, SR_TID.X ;
 ; Location ./int.jl:295
         SHF.R.S32.HI R36, RZ, 0x1f, R48 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R33, R46, R44, !P2 ;
 ; Location ./int.jl:295
         LEA.HI R36, R36, R48, RZ, 0x1d ;
@@ -2038,7 +2038,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SHFL.BFLY PT, R33, R33, 0x8, 0x1f ;
 ; Location ./promotion.jl:521
         ISETP.NE.AND P0, PT, R37, R48, PT ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R37, R47, R45, !P2 ;
         ISETP.LT.AND P0, PT, R48, RZ, P0 ;
 ; Location ./int.jl:295
@@ -2050,7 +2050,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         IADD3 R37, -R35, 0x1, RZ ;
    @!P0 IMAD.MOV R37, RZ, RZ, -R35 ;
         IMAD R48, R37, 0x20000000, R48 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R44, R44, R33, !P2 ;
         SEL R46, R33, R46, !P2 ;
         SEL R47, R36, R47, !P2 ;
@@ -2063,7 +2063,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         S2R R39, SR_TID.Y ;
         PRMT R19, R44, 0x5410, R46 ;
         IMAD.WIDE R32, R13, R56, c[0x0][0x1a8] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R13, R45, R36, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R50], R19 ;
@@ -2127,14 +2127,14 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         IMAD.WIDE R44, R15, R56, c[0x0][0x1a8] ;
 ; Location ./int.jl:88
         LOP3.LUT R38, R19, 0xe0000000, RZ, 0xc0, !PT ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R15, R42, R40, !P2 ;
         IMAD.SHL.U32 R50, R50, 0x4, RZ ;
 ; Location ./promotion.jl:521
         ISETP.NE.AND P0, PT, R38, R36, PT ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         IMAD.WIDE R28, R28, R56, c[0x0][0x1a8] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R13, R43, R41, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/ECJ3K/src/IndexSpaces.jl:973
         LDG.E.128 R44, [R44.64] ;
@@ -2159,15 +2159,15 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LOP3.LUT R19, R39, 0xff00, R9, 0xf8, !PT ;
 ; Location ./int.jl:87
         IMAD R19, R19, 0x2000, R60 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R40, R40, R15, !P2 ;
 ; Location ./int.jl:295
         SHF.R.S32.HI R39, RZ, 0x1f, R19 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R15, R15, R42, !P2 ;
 ; Location ./int.jl:295
         LEA.HI R39, R39, R19, RZ, 0x1d ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R41, R41, R13, !P2 ;
         SEL R43, R13, R43, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
@@ -2213,9 +2213,9 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R38, R41, 0x5410, R43.reuse ;
         ISETP.LT.AND P0, PT, R13, RZ, P0 ;
+        IMAD.SHL.U32 R50, R50, 0x4, RZ ;
         PRMT R41, R41, 0x7632, R43 ;
         LDL R43, [R1+0x264] ;
-        IMAD.SHL.U32 R50, R50, 0x4, RZ ;
         SHF.R.U32.HI R42, RZ, 0x3, R42 ;
 ; Location ./int.jl:295
         SHF.R.S32.HI R39, RZ, 0x1d, R39 ;
@@ -2229,7 +2229,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LDL R42, [R1+0x33c] ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R51.X4+0x4], R38 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R15, R23, R21, !P2 ;
         SEL R38, R22, R20, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
@@ -2239,16 +2239,16 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         IMAD R39, R39, 0x2000, R60 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R51.X4+0x84], R41 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R20, R20, R38, !P2 ;
         SEL R38, R38, R22, !P2 ;
 ; Location ./int.jl:295
         SHF.R.S32.HI R22, RZ, 0x1f, R39 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R21, R21, R15, !P2 ;
 ; Location ./int.jl:295
         LEA.HI R22, R22, R39, RZ, 0x1d ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R15, R15, R23, !P2 ;
 ; Location ./int.jl:88
         LOP3.LUT R23, R22, 0xe0000000, RZ, 0xc0, !PT ;
@@ -2264,13 +2264,13 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         PRMT R21, R21, 0x7632, R15 ;
 ; Location ./int.jl:295
         SHF.R.S32.HI R40, RZ, 0x1d, R22 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R41, R26, R24, !P2 ;
         SEL R15, R27, R25, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R22, R41, 0x8, 0x1f ;
         SHFL.BFLY PT, R41, R15, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R24, R24, R22, !P2 ;
         SEL R22, R22, R26, !P2 ;
         LDL R26, [R1+0x338] ;
@@ -2284,7 +2284,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         STS [R43.X4+0x80], R38 ;
         STS [R43.X4+0x4], R20 ;
         STS [R43.X4+0x84], R21 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R20, R25, R41, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R21, R24.reuse, 0x5410, R22.reuse ;
@@ -2295,7 +2295,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         STS [R42], R21 ;
         S2R R43, SR_TID.Y ;
         S2R R42, SR_TID.X ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R23, R30, R28, !P2 ;
         SEL R21, R31, R29, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
@@ -2308,7 +2308,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LOP3.LUT R42, R42, 0xf8, R43, 0xfe, !PT ;
         STS [R54.X4+0x4], R24 ;
         IMAD.WIDE R48, R48, R56, c[0x0][0x1a8] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R28, R28, R23, !P2 ;
         SEL R30, R23, R30, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/ECJ3K/src/IndexSpaces.jl:973
@@ -2320,7 +2320,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location ./int.jl:295
         SHF.R.S32.HI R23, RZ, 0x1f, R24 ;
         LEA.HI R23, R23, R24, RZ, 0x1d ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R29, R29, R21, !P2 ;
         SEL R31, R21, R31, !P2 ;
 ; Location ./int.jl:88
@@ -2337,11 +2337,11 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         PRMT R23, R29.reuse, 0x5410, R31.reuse ;
         PRMT R29, R29, 0x7632, R31 ;
         LDL R31, [R1+0x330] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R21, R34, R32, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         IMAD.WIDE R40, R37, R56, c[0x0][0x1a8] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R22, R35, R33, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R21, R21, 0x8, 0x1f ;
@@ -2359,12 +2359,12 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         IMAD R15, R15, 0x20000000, R39 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/ECJ3K/src/IndexSpaces.jl:973
         LDG.E.128 R36, [R36.64] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R30, R33, R22, !P2 ;
         SEL R22, R22, R35, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R26], R20 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R26, R32, R21, !P2 ;
         SEL R21, R21, R34, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
@@ -2377,17 +2377,17 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         STS [R27.X4+0x4], R23 ;
         STS [R27.X4+0x84], R29 ;
         STS [R53], R20 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R28, R47, R45, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R29, R30.reuse, 0x5410, R22.reuse ;
         IMAD.WIDE R20, R19, R56, c[0x0][0x1a8] ;
         PRMT R30, R30, 0x7632, R22 ;
         LDL R53, [R1+0x328] ;
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
+        SEL R27, R46, R44, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/ECJ3K/src/IndexSpaces.jl:973
         LDG.E.128 R20, [R20.64] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
-        SEL R27, R46, R44, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R28, R28, 0x8, 0x1f ;
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
@@ -2396,7 +2396,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         STS [R52.X4+0x4], R29 ;
         STS [R52.X4+0x84], R30 ;
         LDL R52, [R1+0x27c] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R45, R45, R28, !P2 ;
         SEL R28, R28, R47, !P2 ;
         SEL R19, R44, R27, !P2 ;
@@ -2405,20 +2405,20 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         PRMT R44, R45.reuse, 0x5410, R28.reuse ;
         PRMT R45, R45, 0x7632, R28 ;
         IMAD.WIDE R28, R15, R56, c[0x0][0x1a8] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R15, R50, R48, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R15, R15, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R27, R27, R46, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R24, R19.reuse, 0x5410, R27.reuse ;
         PRMT R19, R19, 0x7632, R27 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R48, R48, R15, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R31], R24 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R15, R15, R50, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R57.X4+0x80], R19 ;
@@ -2434,7 +2434,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R15, R48, 0x7632, R15 ;
         LDL R48, [R1+0x324] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R13, R51, R49, !P2 ;
         SEL R19, R42, R40, !P2 ;
         SEL R44, R43, R41, !P2 ;
@@ -2448,7 +2448,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         STS [R54.X4+0x80], R15 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/ECJ3K/src/IndexSpaces.jl:973
         LDG.E.128 R32, [R32.64] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R49, R49, R13, !P2 ;
         LDL R45, [R1+0x320] ;
         SEL R13, R13, R51, !P2 ;
@@ -2456,13 +2456,13 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R46, R49.reuse, 0x5410, R13.reuse ;
         PRMT R13, R49, 0x7632, R13 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R19, R19, R42, !P2 ;
         SEL R41, R41, R44, !P2 ;
         SEL R43, R44, R43, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R54.X4+0x4], R46 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R15, R38, R36, !P2 ;
         SEL R42, R39, R37, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
@@ -2477,7 +2477,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R42, R42, 0x8, 0x1f ;
         LDL R43, [R1+0x284] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R36, R36, R15, !P2 ;
         SEL R15, R15, R38, !P2 ;
         LDL R38, [R1+0x314] ;
@@ -2492,7 +2492,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         STS [R52.X4+0x80], R19 ;
         STS [R52.X4+0x4], R13 ;
         STS [R52.X4+0x84], R41 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R21, R21, R40, !P2 ;
         SEL R23, R40, R23, !P2 ;
         LDL R40, [R1+0x318] ;
@@ -2508,17 +2508,17 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         STS [R47.X4+0x4], R36 ;
         STS [R47.X4+0x84], R37 ;
         LDL R37, [R1+0x290] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R19, R22, R20, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R19, R19, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R13, R27, R25, !P2 ;
         SEL R15, R26, R24, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R13, R13, 0x8, 0x1f ;
         SHFL.BFLY PT, R15, R15, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R36, R30, R28, !P2 ;
         SEL R20, R20, R19, !P2 ;
         SEL R19, R19, R22, !P2 ;
@@ -2527,29 +2527,29 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         PRMT R20, R20, 0x7632, R19 ;
         PRMT R19, R21.reuse, 0x5410, R23.reuse ;
         PRMT R21, R21, 0x7632, R23 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R23, R31, R29, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R45], R22 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R25, R25, R13, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R36, R36, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R13, R13, R27, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R43.X4+0x80], R20 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R23, R23, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R20, R34, R32, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R43.X4+0x4], R19 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R24, R24, R15, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R43.X4+0x84], R21 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R15, R15, R26, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R20, R20, 0x8, 0x1f ;
@@ -2560,324 +2560,324 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         S2R R25, SR_TID.Y ;
         PRMT R22, R24.reuse, 0x5410, R15.reuse ;
         PRMT R15, R24, 0x7632, R15 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R28, R28, R36, !P2 ;
         SEL R30, R36, R30, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R42], R22 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R29, R29, R23, !P2 ;
         SEL R23, R23, R31, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        S2R R27, SR_TID.Y ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+        S2R R27, SR_TID.X ;
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R32, R32, R20, !P2 ;
         SEL R20, R20, R34, !P2 ;
         SHF.R.U32.HI R26, RZ, 0x3, R26 ;
         IMAD.SHL.U32 R25, R25, 0x4, RZ ;
-        SEL R19, R35, R33, !P2 ;
-        LDL.LU R24, [R1+0xa0] ;
-        LOP3.LUT R25, R25, 0x2, R26, 0xf8, !PT ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        S2R R31, SR_TID.X ;
+        S2R R31, SR_TID.Y ;
+        LOP3.LUT R25, R25, 0x2, R26, 0xf8, !PT ;
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
+        SEL R19, R35, R33, !P2 ;
+; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
+        S2R R36, SR_TID.X ;
         S2R R26, SR_TID.X ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R19, R19, 0x8, 0x1f ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        S2R R22, SR_TID.X ;
-        IMAD.SHL.U32 R27, R27, 0x4, RZ ;
-        SHF.R.U32.HI R31, RZ, 0x3, R31 ;
-        LOP3.LUT R27, R27, 0x10, RZ, 0xfc, !PT ;
+        S2R R22, SR_TID.Y ;
+        LDL.LU R24, [R1+0xa0] ;
+        IMAD.SHL.U32 R31, R31, 0x4, RZ ;
+        LOP3.LUT R31, R31, 0x8, RZ, 0xfc, !PT ;
+        SHF.R.U32.HI R36, RZ, 0x3, R36 ;
+        LOP3.LUT R31, R31, 0x2, R36, 0xf8, !PT ;
         SHF.R.U32.HI R26, RZ, 0x3, R26 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R33, R33, R19, !P2 ;
         SEL R19, R19, R35, !P2 ;
-        SHF.R.U32.HI R22, RZ, 0x3, R22 ;
+        IMAD.SHL.U32 R22, R22, 0x4, RZ ;
+        SHF.R.U32.HI R27, RZ, 0x3, R27 ;
+        LOP3.LUT R22, R22, 0x18, RZ, 0xfc, !PT ;
+        LOP3.LUT R22, R22, 0x2, R27, 0xf8, !PT ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STS [R41.X4+0x80], R15 ;
         STS [R41.X4+0x4], R21 ;
         STS [R41.X4+0x84], R13 ;
         PRMT R15, R28, 0x5410, R30 ;
         PRMT R28, R28, 0x7632, R30 ;
-        STS [R40], R15 ;
+        S2R R27, SR_TID.X ;
+        LDL.LU R21, [R1+0x9c] ;
         PRMT R13, R29, 0x5410, R23 ;
-        STS [R39.X4+0x80], R28 ;
+        STS [R40], R15 ;
         PRMT R23, R29, 0x7632, R23 ;
+        STS [R39.X4+0x80], R28 ;
         STS [R39.X4+0x4], R13 ;
-        S2R R30, SR_TID.Y ;
-        PRMT R13, R32, 0x5410, R20 ;
         STS [R39.X4+0x84], R23 ;
+        PRMT R13, R32, 0x5410, R20 ;
+        S2R R29, SR_TID.Y ;
         STS [R38], R13 ;
-        S2R R21, SR_TID.Y ;
 ; Location ./int.jl:87
         LOP3.LUT R13, R25, R9, RZ, 0xfc, !PT ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         S2R R25, SR_TID.Y ;
-        S2R R29, SR_TID.X ;
-        IMAD.SHL.U32 R30, R30, 0x4, RZ ;
-        LOP3.LUT R30, R30, 0x8, RZ, 0xfc, !PT ;
-        STL [R1+0x1b0], R13 ;
-        LOP3.LUT R30, R30, 0x2, R31, 0xf8, !PT ;
-        IMAD.SHL.U32 R21, R21, 0x4, RZ ;
-        IMAD.SHL.U32 R25, R25, 0x4, RZ ;
-; Location ./int.jl:87
-        LOP3.LUT R13, R30, R9, RZ, 0xfc, !PT ;
-        LOP3.LUT R25, R25, 0x20, RZ, 0xfc, !PT ;
-        SHF.R.U32.HI R29, RZ, 0x3, R29 ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        S2R R28, SR_TID.Y ;
-        LOP3.LUT R25, R25, 0x2, R26, 0xf8, !PT ;
-        PRMT R20, R32, 0x7632, R20 ;
-        LOP3.LUT R21, R21, 0x18, RZ, 0xfc, !PT ;
-        LOP3.LUT R27, R27, 0x2, R29, 0xf8, !PT ;
-        STL [R1+0x294], R13 ;
-        PRMT R15, R33, 0x5410, R19 ;
-        PRMT R19, R33, 0x7632, R19 ;
         S2R R30, SR_TID.X ;
-        LOP3.LUT R21, R21, 0x2, R22, 0xf8, !PT ;
+        IMAD.SHL.U32 R29, R29, 0x4, RZ ;
+        STL [R1+0x1b0], R13 ;
+        PRMT R20, R32, 0x7632, R20 ;
+        LOP3.LUT R29, R29, 0x10, RZ, 0xfc, !PT ;
+        S2R R28, SR_TID.Y ;
+        PRMT R15, R33, 0x5410, R19 ;
+        IMAD.SHL.U32 R25, R25, 0x4, RZ ;
+; Location ./int.jl:87
+        LOP3.LUT R13, R31, R9, RZ, 0xfc, !PT ;
+        LOP3.LUT R25, R25, 0x20, RZ, 0xfc, !PT ;
+        SHF.R.U32.HI R30, RZ, 0x3, R30 ;
+        LOP3.LUT R25, R25, 0x2, R26, 0xf8, !PT ;
+; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
+        PRMT R19, R33, 0x7632, R19 ;
+        LOP3.LUT R29, R29, 0x2, R30, 0xf8, !PT ;
         STS [R37.X4+0x80], R20 ;
+        STL [R1+0x294], R13 ;
+        STS [R37.X4+0x4], R15 ;
+        S2R R31, SR_TID.X ;
 ; Location ./int.jl:87
         LOP3.LUT R13, R25, R9, RZ, 0xfc, !PT ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        S2R R25, SR_TID.Y ;
-        STS [R37.X4+0x4], R15 ;
-; Location ./int.jl:87
-        LOP3.LUT R20, R27, R9, RZ, 0xfc, !PT ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        S2R R27, SR_TID.Y ;
         STS [R37.X4+0x84], R19 ;
-        S2R R26, SR_TID.X ;
-        S2R R29, SR_TID.X ;
+        S2R R25, SR_TID.Y ;
 ; Location ./int.jl:87
-        LOP3.LUT R19, R21, R9, RZ, 0xfc, !PT ;
+        LOP3.LUT R15, R22, R9.reuse, RZ, 0xfc, !PT ;
+        LOP3.LUT R19, R29, R9, RZ, 0xfc, !PT ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        S2R R21, SR_TID.Y ;
-        S2R R22, SR_TID.X ;
+        S2R R29, SR_TID.Y ;
+        S2R R26, SR_TID.X ;
+        S2R R22, SR_TID.Y ;
+        S2R R30, SR_TID.X ;
         IMAD.SHL.U32 R28, R28, 0x4, RZ ;
-        SHF.R.U32.HI R30, RZ, 0x3, R30 ;
+        SHF.R.U32.HI R31, RZ, 0x3, R31 ;
         IMAD.SHL.U32 R25, R25, 0x4, RZ ;
-        LDL.LU R15, [R1+0x9c] ;
         LOP3.LUT R28, R28, 0x28, RZ, 0xfc, !PT ;
-        IMAD.SHL.U32 R27, R27, 0x4, RZ ;
-        LOP3.LUT R25, R25, 0x40, RZ, 0xfc, !PT ;
-        LOP3.LUT R28, R28, 0x2, R30, 0xf8, !PT ;
         STL [R1+0x2a0], R13 ;
+        LOP3.LUT R28, R28, 0x2, R31, 0xf8, !PT ;
+        IMAD.SHL.U32 R29, R29, 0x4, RZ ;
+        LOP3.LUT R25, R25, 0x40, RZ, 0xfc, !PT ;
         SHF.R.U32.HI R26, RZ, 0x3, R26 ;
-        LOP3.LUT R27, R27, 0x30, RZ, 0xfc, !PT ;
-        SHF.R.U32.HI R29, RZ, 0x3, R29 ;
-        IMAD.SHL.U32 R21, R21, 0x4, RZ ;
+        LOP3.LUT R29, R29, 0x30, RZ, 0xfc, !PT ;
+        IMAD.SHL.U32 R22, R22, 0x4, RZ ;
 ; Location ./int.jl:87
         LOP3.LUT R13, R28, R9, RZ, 0xfc, !PT ;
+        SHF.R.U32.HI R30, RZ, 0x3, R30 ;
         LOP3.LUT R25, R25, 0x2, R26, 0xf8, !PT ;
-        SHF.R.U32.HI R22, RZ, 0x3, R22 ;
-        LOP3.LUT R21, R21, 0x38, RZ, 0xfc, !PT ;
+        SHF.R.U32.HI R27, RZ, 0x3, R27 ;
+        LOP3.LUT R22, R22, 0x38, RZ, 0xfc, !PT ;
         STL [R1+0x2a4], R13 ;
-        LOP3.LUT R27, R27, 0x2, R29, 0xf8, !PT ;
-        LOP3.LUT R21, R21, 0x2, R22, 0xf8, !PT ;
-        STL [R1+0x298], R20 ;
+        LOP3.LUT R29, R29, 0x2, R30, 0xf8, !PT ;
+        LOP3.LUT R22, R22, 0x2, R27, 0xf8, !PT ;
+        STL [R1+0x298], R19 ;
         LOP3.LUT R13, R25, R9, RZ, 0xfc, !PT ;
-        STL [R1+0x29c], R19 ;
-        LOP3.LUT R20, R27, R9, RZ, 0xfc, !PT ;
+        STL [R1+0x29c], R15 ;
+        LOP3.LUT R19, R29, R9, RZ, 0xfc, !PT ;
         STL [R1+0x2b0], R13 ;
-        STL [R1+0x2a8], R20 ;
-        LOP3.LUT R19, R21, R9, RZ, 0xfc, !PT ;
+        STL [R1+0x2a8], R19 ;
+        LOP3.LUT R15, R22, R9, RZ, 0xfc, !PT ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        S2R R21, SR_TID.Y ;
+        S2R R22, SR_TID.Y ;
         S2R R13, SR_TID.Y ;
-        S2R R20, SR_TID.Y ;
-        STL [R1+0x2ac], R19 ;
-        S2R R22, SR_TID.X ;
-        S2R R23, SR_TID.X ;
-        S2R R19, SR_TID.X ;
-        S2R R25, SR_TID.Y ;
+        S2R R19, SR_TID.Y ;
+        STL [R1+0x2ac], R15 ;
+        S2R R25, SR_TID.X ;
+        S2R R20, SR_TID.X ;
+        S2R R15, SR_TID.X ;
+        S2R R23, SR_TID.Y ;
         S2R R26, SR_TID.X ;
         IMAD.SHL.U32 R13, R13, 0x4, RZ ;
-        IMAD.SHL.U32 R21, R21, 0x4, RZ ;
-        IMAD.SHL.U32 R20, R20, 0x4, RZ ;
+        IMAD.SHL.U32 R22, R22, 0x4, RZ ;
+        IMAD.SHL.U32 R19, R19, 0x4, RZ ;
         LOP3.LUT R13, R13, 0x58, RZ, 0xfc, !PT ;
-        SHF.R.U32.HI R22, RZ, 0x3, R22 ;
-        LOP3.LUT R21, R21, 0x60, RZ, 0xfc, !PT ;
-        SHF.R.U32.HI R23, RZ, 0x3, R23 ;
-        LOP3.LUT R20, R20, 0x50, RZ, 0xfc, !PT ;
-        SHF.R.U32.HI R19, RZ, 0x3, R19 ;
-        IMAD.SHL.U32 R25, R25, 0x4, RZ ;
-        LOP3.LUT R13, R13, 0x2, R19, 0xf8, !PT ;
-        LOP3.LUT R21, R21, 0x2, R22, 0xf8, !PT ;
-        LOP3.LUT R20, R20, 0x2, R23, 0xf8, !PT ;
+        SHF.R.U32.HI R25, RZ, 0x3, R25 ;
+        LOP3.LUT R22, R22, 0x60, RZ, 0xfc, !PT ;
+        SHF.R.U32.HI R20, RZ, 0x3, R20 ;
+        LOP3.LUT R19, R19, 0x50, RZ, 0xfc, !PT ;
+        SHF.R.U32.HI R15, RZ, 0x3, R15 ;
+        IMAD.SHL.U32 R23, R23, 0x4, RZ ;
+        LOP3.LUT R13, R13, 0x2, R15, 0xf8, !PT ;
+        LOP3.LUT R22, R22, 0x2, R25, 0xf8, !PT ;
+        LOP3.LUT R19, R19, 0x2, R20, 0xf8, !PT ;
         SHF.R.U32.HI R26, RZ, 0x3, R26 ;
-        LOP3.LUT R25, R25, 0x48, RZ, 0xfc, !PT ;
+        LOP3.LUT R23, R23, 0x48, RZ, 0xfc, !PT ;
 ; Location ./int.jl:87
-        LOP3.LUT R19, R13, R9, RZ, 0xfc, !PT ;
-        LOP3.LUT R13, R21, R9.reuse, RZ, 0xfc, !PT ;
-        LOP3.LUT R20, R20, R9.reuse, RZ, 0xfc, !PT ;
-        LOP3.LUT R25, R25, 0x2, R26, 0xf8, !PT ;
+        LOP3.LUT R15, R13, R9, RZ, 0xfc, !PT ;
+        LOP3.LUT R13, R22, R9.reuse, RZ, 0xfc, !PT ;
+        LOP3.LUT R19, R19, R9.reuse, RZ, 0xfc, !PT ;
+        LOP3.LUT R23, R23, 0x2, R26, 0xf8, !PT ;
         STL [R1+0x2c0], R13 ;
-        LOP3.LUT R22, R25, R9, RZ, 0xfc, !PT ;
-        STL [R1+0x2b8], R20 ;
+        LOP3.LUT R20, R23, R9, RZ, 0xfc, !PT ;
+        STL [R1+0x2b8], R19 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        S2R R21, SR_TID.Y ;
+        S2R R22, SR_TID.Y ;
         S2R R13, SR_TID.Y ;
-        S2R R20, SR_TID.Y ;
-        STL [R1+0x2bc], R19 ;
-        STL [R1+0x2b4], R22 ;
-        S2R R23, SR_TID.X ;
-        S2R R19, SR_TID.X ;
-        S2R R22, SR_TID.X ;
+        S2R R19, SR_TID.Y ;
+        STL [R1+0x2bc], R15 ;
+        STL [R1+0x2b4], R20 ;
+        S2R R25, SR_TID.X ;
+        S2R R15, SR_TID.X ;
+        S2R R20, SR_TID.X ;
         IMAD.SHL.U32 R13, R13, 0x4, RZ ;
-        IMAD.SHL.U32 R21, R21, 0x4, RZ ;
-        IMAD.SHL.U32 R20, R20, 0x4, RZ ;
+        IMAD.SHL.U32 R22, R22, 0x4, RZ ;
+        IMAD.SHL.U32 R19, R19, 0x4, RZ ;
         LOP3.LUT R13, R13, 0x70, RZ, 0xfc, !PT ;
-        LOP3.LUT R21, R21, 0x78, RZ, 0xfc, !PT ;
-        LOP3.LUT R20, R20, 0x68, RZ, 0xfc, !PT ;
-        SHF.R.U32.HI R23, RZ, 0x3, R23 ;
-        SHF.R.U32.HI R19, RZ, 0x3, R19 ;
-        SHF.R.U32.HI R22, RZ, 0x3, R22 ;
-        LOP3.LUT R13, R13, 0x2, R19, 0xf8, !PT ;
-        LOP3.LUT R20, R20, 0x2, R23, 0xf8, !PT ;
-        LOP3.LUT R21, R21, 0x2, R22, 0xf8, !PT ;
+        LOP3.LUT R22, R22, 0x78, RZ, 0xfc, !PT ;
+        LOP3.LUT R19, R19, 0x68, RZ, 0xfc, !PT ;
+        SHF.R.U32.HI R25, RZ, 0x3, R25 ;
+        SHF.R.U32.HI R15, RZ, 0x3, R15 ;
+        SHF.R.U32.HI R20, RZ, 0x3, R20 ;
+        LOP3.LUT R13, R13, 0x2, R15, 0xf8, !PT ;
+        LOP3.LUT R19, R19, 0x2, R20, 0xf8, !PT ;
+        LOP3.LUT R22, R22, 0x2, R25, 0xf8, !PT ;
 ; Location ./int.jl:87
-        LOP3.LUT R19, R13, R9.reuse, RZ, 0xfc, !PT ;
-        LOP3.LUT R20, R20, R9, RZ, 0xfc, !PT ;
-        LOP3.LUT R13, R21, R9, RZ, 0xfc, !PT ;
-        STL [R1+0x2c4], R20 ;
+        LOP3.LUT R15, R13, R9.reuse, RZ, 0xfc, !PT ;
+        LOP3.LUT R19, R19, R9, RZ, 0xfc, !PT ;
+        LOP3.LUT R13, R22, R9, RZ, 0xfc, !PT ;
+        STL [R1+0x2c4], R19 ;
         STL [R1+0x2cc], R13 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        S2R R20, SR_TID.Y ;
+        S2R R19, SR_TID.Y ;
         S2R R13, SR_TID.Y ;
-        STL [R1+0x2c8], R19 ;
-        S2R R21, SR_TID.X ;
+        STL [R1+0x2c8], R15 ;
+        S2R R20, SR_TID.X ;
         S2R R22, SR_TID.Y ;
-        S2R R19, SR_TID.X ;
+        S2R R15, SR_TID.X ;
         S2R R25, SR_TID.Y ;
         S2R R23, SR_TID.X ;
         S2R R26, SR_TID.X ;
         IMAD.SHL.U32 R13, R13, 0x4, RZ ;
-        IMAD.SHL.U32 R20, R20, 0x4, RZ ;
-        SHF.R.U32.HI R21, RZ, 0x3, R21 ;
+        IMAD.SHL.U32 R19, R19, 0x4, RZ ;
+        SHF.R.U32.HI R20, RZ, 0x3, R20 ;
         LOP3.LUT R13, R13, 0x98, RZ, 0xfc, !PT ;
-        LOP3.LUT R20, R20, 0x90, RZ, 0xfc, !PT ;
+        LOP3.LUT R19, R19, 0x90, RZ, 0xfc, !PT ;
         IMAD.SHL.U32 R22, R22, 0x4, RZ ;
-        SHF.R.U32.HI R19, RZ, 0x3, R19 ;
+        SHF.R.U32.HI R15, RZ, 0x3, R15 ;
         IMAD.SHL.U32 R25, R25, 0x4, RZ ;
-        LOP3.LUT R20, R20, 0x2, R21, 0xf8, !PT ;
-        LOP3.LUT R13, R13, 0x2, R19, 0xf8, !PT ;
+        LOP3.LUT R19, R19, 0x2, R20, 0xf8, !PT ;
+        LOP3.LUT R13, R13, 0x2, R15, 0xf8, !PT ;
         SHF.R.U32.HI R23, RZ, 0x3, R23 ;
         LOP3.LUT R22, R22, 0x88, RZ, 0xfc, !PT ;
         SHF.R.U32.HI R26, RZ, 0x3, R26 ;
         LOP3.LUT R25, R25, 0x80, RZ, 0xfc, !PT ;
 ; Location ./int.jl:87
-        LOP3.LUT R20, R20, R9.reuse, RZ, 0xfc, !PT ;
+        LOP3.LUT R19, R19, R9.reuse, RZ, 0xfc, !PT ;
         LOP3.LUT R13, R13, R9, RZ, 0xfc, !PT ;
         LOP3.LUT R25, R25, 0x2, R26, 0xf8, !PT ;
         LOP3.LUT R22, R22, 0x2, R23, 0xf8, !PT ;
-        STL [R1+0x2d8], R20 ;
-        LOP3.LUT R21, R25, R9.reuse, RZ, 0xfc, !PT ;
-        LOP3.LUT R19, R22, R9, RZ, 0xfc, !PT ;
+        STL [R1+0x2d8], R19 ;
+        LOP3.LUT R20, R25, R9.reuse, RZ, 0xfc, !PT ;
+        LOP3.LUT R15, R22, R9, RZ, 0xfc, !PT ;
         STL [R1+0x2dc], R13 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        S2R R20, SR_TID.Y ;
+        S2R R19, SR_TID.Y ;
         S2R R13, SR_TID.Y ;
-        STL [R1+0x2d0], R21 ;
-        STL [R1+0x2d4], R19 ;
+        STL [R1+0x2d0], R20 ;
+        STL [R1+0x2d4], R15 ;
         S2R R22, SR_TID.Y ;
-        S2R R21, SR_TID.X ;
-        S2R R19, SR_TID.X ;
+        S2R R20, SR_TID.X ;
+        S2R R15, SR_TID.X ;
         S2R R25, SR_TID.Y ;
         S2R R23, SR_TID.X ;
         S2R R26, SR_TID.X ;
         IMAD.SHL.U32 R13, R13, 0x4, RZ ;
-        IMAD.SHL.U32 R20, R20, 0x4, RZ ;
+        IMAD.SHL.U32 R19, R19, 0x4, RZ ;
         IMAD.SHL.U32 R22, R22, 0x4, RZ ;
         LOP3.LUT R13, R13, 0xb8, RZ, 0xfc, !PT ;
-        SHF.R.U32.HI R21, RZ, 0x3, R21 ;
-        LOP3.LUT R20, R20, 0xb0, RZ, 0xfc, !PT ;
-        SHF.R.U32.HI R19, RZ, 0x3, R19 ;
+        SHF.R.U32.HI R20, RZ, 0x3, R20 ;
+        LOP3.LUT R19, R19, 0xb0, RZ, 0xfc, !PT ;
+        SHF.R.U32.HI R15, RZ, 0x3, R15 ;
         IMAD.SHL.U32 R25, R25, 0x4, RZ ;
-        LOP3.LUT R20, R20, 0x2, R21, 0xf8, !PT ;
-        LOP3.LUT R13, R13, 0x2, R19, 0xf8, !PT ;
+        LOP3.LUT R19, R19, 0x2, R20, 0xf8, !PT ;
+        LOP3.LUT R13, R13, 0x2, R15, 0xf8, !PT ;
         SHF.R.U32.HI R23, RZ, 0x3, R23 ;
         LOP3.LUT R22, R22, 0xa8, RZ, 0xfc, !PT ;
         SHF.R.U32.HI R26, RZ, 0x3, R26 ;
         LOP3.LUT R25, R25, 0xa0, RZ, 0xfc, !PT ;
 ; Location ./int.jl:87
-        LOP3.LUT R20, R20, R9, RZ, 0xfc, !PT ;
+        LOP3.LUT R19, R19, R9, RZ, 0xfc, !PT ;
         LOP3.LUT R13, R13, R9.reuse, RZ, 0xfc, !PT ;
         LOP3.LUT R25, R25, 0x2, R26, 0xf8, !PT ;
         LOP3.LUT R22, R22, 0x2, R23, 0xf8, !PT ;
-        STL [R1+0x2e8], R20 ;
-        LOP3.LUT R21, R25, R9.reuse, RZ, 0xfc, !PT ;
-        LOP3.LUT R19, R22, R9, RZ, 0xfc, !PT ;
+        STL [R1+0x2e8], R19 ;
+        LOP3.LUT R20, R25, R9.reuse, RZ, 0xfc, !PT ;
+        LOP3.LUT R15, R22, R9, RZ, 0xfc, !PT ;
         STL [R1+0x2ec], R13 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        S2R R20, SR_TID.Y ;
+        S2R R19, SR_TID.Y ;
         S2R R13, SR_TID.Y ;
-        STL [R1+0x2e0], R21 ;
-        STL [R1+0x2e4], R19 ;
+        STL [R1+0x2e0], R20 ;
+        STL [R1+0x2e4], R15 ;
         S2R R22, SR_TID.Y ;
         S2R R25, SR_TID.Y ;
-        S2R R19, SR_TID.X ;
-        S2R R21, SR_TID.X ;
+        S2R R15, SR_TID.X ;
+        S2R R20, SR_TID.X ;
         S2R R23, SR_TID.X ;
         S2R R26, SR_TID.X ;
         IMAD.SHL.U32 R13, R13, 0x4, RZ ;
-        IMAD.SHL.U32 R20, R20, 0x4, RZ ;
+        IMAD.SHL.U32 R19, R19, 0x4, RZ ;
         IMAD.SHL.U32 R22, R22, 0x4, RZ ;
         LOP3.LUT R13, R13, 0xd8, RZ, 0xfc, !PT ;
         IMAD.SHL.U32 R25, R25, 0x4, RZ ;
-        LOP3.LUT R20, R20, 0xd0, RZ, 0xfc, !PT ;
-        SHF.R.U32.HI R19, RZ, 0x3, R19 ;
-        SHF.R.U32.HI R21, RZ, 0x3, R21 ;
+        LOP3.LUT R19, R19, 0xd0, RZ, 0xfc, !PT ;
+        SHF.R.U32.HI R15, RZ, 0x3, R15 ;
+        SHF.R.U32.HI R20, RZ, 0x3, R20 ;
         LOP3.LUT R22, R22, 0xc8, RZ, 0xfc, !PT ;
         SHF.R.U32.HI R23, RZ, 0x3, R23 ;
         LOP3.LUT R25, R25, 0xc0, RZ, 0xfc, !PT ;
         SHF.R.U32.HI R26, RZ, 0x3, R26 ;
-        LOP3.LUT R20, R20, 0x2, R21, 0xf8, !PT ;
-        LOP3.LUT R13, R13, 0x2, R19, 0xf8, !PT ;
+        LOP3.LUT R19, R19, 0x2, R20, 0xf8, !PT ;
+        LOP3.LUT R13, R13, 0x2, R15, 0xf8, !PT ;
         LOP3.LUT R25, R25, 0x2, R26, 0xf8, !PT ;
         LOP3.LUT R22, R22, 0x2, R23, 0xf8, !PT ;
 ; Location ./int.jl:87
-        LOP3.LUT R20, R20, R9.reuse, RZ, 0xfc, !PT ;
+        LOP3.LUT R19, R19, R9.reuse, RZ, 0xfc, !PT ;
         LOP3.LUT R13, R13, R9.reuse, RZ, 0xfc, !PT ;
-        LOP3.LUT R21, R25, R9.reuse, RZ, 0xfc, !PT ;
-        STL [R1+0x2f8], R20 ;
-        LOP3.LUT R19, R22, R9, RZ, 0xfc, !PT ;
+        LOP3.LUT R20, R25, R9.reuse, RZ, 0xfc, !PT ;
+        STL [R1+0x2f8], R19 ;
+        LOP3.LUT R15, R22, R9, RZ, 0xfc, !PT ;
         STL [R1+0x2fc], R13 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         S2R R22, SR_TID.Y ;
-        S2R R20, SR_TID.Y ;
+        S2R R19, SR_TID.Y ;
         S2R R13, SR_TID.Y ;
         S2R R25, SR_TID.Y ;
-        STL [R1+0x2f0], R21 ;
-        STL [R1+0x2f4], R19 ;
+        STL [R1+0x2f0], R20 ;
+        STL [R1+0x2f4], R15 ;
         S2R R23, SR_TID.X ;
-        S2R R21, SR_TID.X ;
-        S2R R19, SR_TID.X ;
+        S2R R20, SR_TID.X ;
+        S2R R15, SR_TID.X ;
         S2R R26, SR_TID.X ;
         IMAD.SHL.U32 R13, R13, 0x4, RZ ;
-        IMAD.SHL.U32 R20, R20, 0x4, RZ ;
+        IMAD.SHL.U32 R19, R19, 0x4, RZ ;
         IMAD.SHL.U32 R22, R22, 0x4, RZ ;
         IMAD.SHL.U32 R25, R25, 0x4, RZ ;
         LOP3.LUT R13, R13, 0xf8, RZ, 0xfc, !PT ;
-        LOP3.LUT R20, R20, 0xf0, RZ, 0xfc, !PT ;
+        LOP3.LUT R19, R19, 0xf0, RZ, 0xfc, !PT ;
         SHF.R.U32.HI R23, RZ, 0x3, R23 ;
         LOP3.LUT R22, R22, 0xe8, RZ, 0xfc, !PT ;
-        SHF.R.U32.HI R21, RZ, 0x3, R21 ;
+        SHF.R.U32.HI R20, RZ, 0x3, R20 ;
         LOP3.LUT R25, R25, 0xe0, RZ, 0xfc, !PT ;
-        SHF.R.U32.HI R19, RZ, 0x3, R19 ;
+        SHF.R.U32.HI R15, RZ, 0x3, R15 ;
         SHF.R.U32.HI R26, RZ, 0x3, R26 ;
         LOP3.LUT R22, R22, 0x2, R23, 0xf8, !PT ;
         LOP3.LUT R25, R25, 0x2, R26, 0xf8, !PT ;
-        LOP3.LUT R20, R20, 0x2, R21, 0xf8, !PT ;
-        LOP3.LUT R13, R13, 0x2, R19, 0xf8, !PT ;
+        LOP3.LUT R19, R19, 0x2, R20, 0xf8, !PT ;
+        LOP3.LUT R13, R13, 0x2, R15, 0xf8, !PT ;
 ; Location ./int.jl:87
         LOP3.LUT R23, R25, R9.reuse, RZ, 0xfc, !PT ;
-        LOP3.LUT R21, R22, R9.reuse, RZ, 0xfc, !PT ;
-        LOP3.LUT R19, R20, R9.reuse, RZ, 0xfc, !PT ;
+        LOP3.LUT R20, R22, R9.reuse, RZ, 0xfc, !PT ;
+        LOP3.LUT R15, R19, R9.reuse, RZ, 0xfc, !PT ;
         LOP3.LUT R13, R13, R9, RZ, 0xfc, !PT ;
         STL [R1+0x310], R9 ;
         STL [R1+0x300], R23 ;
-        STL [R1+0x304], R21 ;
-        STL [R1+0x308], R19 ;
+        STL [R1+0x304], R20 ;
+        STL [R1+0x308], R15 ;
         STL [R1+0x30c], R13 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/synchronization.jl:16
         UMOV UR4, URZ ;
@@ -2885,151 +2885,151 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 
 .L_x_7:
         IMAD.MOV.U32 R13, RZ, RZ, 0x4800 ;
-; Location ./int.jl:373
-        LOP3.LUT R21, R15, 0x88888888, RZ, 0x3c, !PT ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        IMAD.MOV.U32 R31, RZ, RZ, 0x64006400 ;
-; Location ./int.jl:373
-        LOP3.LUT R19, R24, 0x88888888, RZ, 0x3c, !PT ;
+; Location ./int.jl:528
+        SHF.R.U32.HI R22, RZ, 0x8, R21 ;
         IMAD.MOV.U32 R28, RZ, RZ, R8 ;
+        SHF.R.U32.HI R26, RZ, 0x8, R24 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        PRMT R23, R13, 0x7610, R23 ;
         LDS R8, [R11.X4+UR4] ;
-        LOP3.LUT R13, R21, 0xf000f, R31.reuse, 0xe2, !PT ;
+        IMAD.MOV.U32 R30, RZ, RZ, 0x64006400 ;
+        PRMT R15, R13, 0x7610, R15 ;
+        IMAD.MOV.U32 R13, RZ, RZ, 0x54005400 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/ECJ3K/src/IndexSpaces.jl:2168
         UMOV UR5, 0x8000 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        LOP3.LUT R15, R19, 0xf000f, R31, 0xe2, !PT ;
-        HADD2 R20, R23.H0_H0, 1024, 1024 ;
-; Location ./int.jl:373
-        LOP3.LUT R29, R28, 0x88888888, RZ, 0x3c, !PT ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HADD2 R13, R13, -R20.reuse ;
-        HADD2 R22, R15, -R20 ;
-        HFMA2 R13, R2, R13, RZ.H0_H0 ;
-        HADD2 R15, R23.H0_H0, 64, 64 ;
-        HFMA2 R22, -R3, R22, R13 ;
-        IMAD.MOV.U32 R13, RZ, RZ, 0x54005400 ;
-        LOP3.LUT R23, R21, 0xf000f0, R13.reuse, 0xe2, !PT ;
-        LOP3.LUT R25, R19, 0xf000f0, R13, 0xe2, !PT ;
-; Location ./int.jl:528
-        SHF.R.U32.HI R21, RZ, 0x8, R21 ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HADD2 R23, R23, -R15.reuse ;
-; Location ./int.jl:528
-        SHF.R.U32.HI R19, RZ, 0x8, R19 ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HADD2 R25, R25, -R15 ;
-        HFMA2 R23, R2, R23, RZ.H0_H0 ;
-        LOP3.LUT R27, R19, 0xf000f, R31, 0xe2, !PT ;
-        LOP3.LUT R19, R19, 0xf000f0, R13, 0xe2, !PT ;
-        HFMA2 R23, -R3, R25, R23 ;
-        LOP3.LUT R25, R21.reuse, 0xf000f, R31, 0xe2, !PT ;
-        HADD2 R27, R27, -R20.reuse ;
+        LOP3.LUT R23, R22.reuse, 0xf000f, R30.reuse, 0xe2, !PT ;
+        HADD2 R20, R15.reuse.H0_H0, 1024, 1024 ;
+        LOP3.LUT R22, R22, 0xf000f0, R13.reuse, 0xe2, !PT ;
+        HADD2 R15, R15.H0_H0, 64, 64 ;
+        LOP3.LUT R19, R26.reuse, 0xf000f, R30.reuse, 0xe2, !PT ;
+        HADD2 R23, R23, -R20.reuse ;
+        LOP3.LUT R26, R26, 0xf000f0, R13.reuse, 0xe2, !PT ;
+        HADD2 R22, R22, -R15 ;
+        LOP3.LUT R25, R21.reuse, 0xf000f, R30, 0xe2, !PT ;
+        HADD2 R19, R19, -R20 ;
         LOP3.LUT R21, R21, 0xf000f0, R13, 0xe2, !PT ;
-        HADD2 R19, R19, -R15.reuse ;
-        HADD2 R25, R25, -R20 ;
+        HFMA2 R23, R2, R23, RZ.H0_H0 ;
+        HADD2 R26, R26, -R15 ;
+        HFMA2 R22, R2, R22, RZ.H0_H0 ;
+        HFMA2 R19, -R3, R19, R23 ;
+        LOP3.LUT R23, R24.reuse, 0xf000f0, R13, 0xe2, !PT ;
         HADD2 R21, R21, -R15 ;
-        HFMA2 R25, R2, R25, RZ.H0_H0 ;
+        HFMA2 R26, -R3, R26, R22 ;
+        LOP3.LUT R22, R24, 0xf000f, R30, 0xe2, !PT ;
+        HADD2 R25, R25, -R20 ;
+        HADD2 R23, R23, -R15 ;
         HFMA2 R21, R2, R21, RZ.H0_H0 ;
-        HFMA2 R27, -R3.reuse, R27, R25 ;
-        LOP3.LUT R25, R29.reuse, 0xf000f, R31, 0xe2, !PT ;
-        HFMA2 R19, -R3, R19, R21 ;
-        LOP3.LUT R21, R29, 0xf000f0, R13, 0xe2, !PT ;
+        HADD2 R22, R22, -R20 ;
+        HFMA2 R25, R2, R25, RZ.H0_H0 ;
+        HFMA2 R23, -R3.reuse, R23, R21 ;
+        LOP3.LUT R21, R28.reuse, 0xf000f0, R13, 0xe2, !PT ;
+        HFMA2 R22, -R3, R22, R25 ;
+        LOP3.LUT R25, R28, 0xf000f, R30, 0xe2, !PT ;
 ; Location ./int.jl:528
-        SHF.R.U32.HI R29, RZ, 0x8, R29 ;
+        SHF.R.U32.HI R27, RZ, 0x8, R8 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HADD2 R25, R25, -R20 ;
         HADD2 R21, R21, -R15 ;
-        HFMA2 R22, R4.reuse, R25, R22 ;
-; Location ./int.jl:373
-        LOP3.LUT R25, R8, 0x88888888, RZ, 0x3c, !PT ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HFMA2 R23, R4, R21, R23 ;
+        HADD2 R25, R25, -R20 ;
+        LOP3.LUT R29, R27, 0xf000f, R30, 0xe2, !PT ;
+        HFMA2 R23, R4.reuse, R21, R23 ;
 ; Location ./int.jl:528
-        SHF.R.U32.HI R21, RZ, 0x8, R25 ;
+        SHF.R.U32.HI R21, RZ, 0x8, R28 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        LOP3.LUT R26, R25, 0xf000f, R31.reuse, 0xe2, !PT ;
-        LOP3.LUT R30, R21, 0xf000f, R31.reuse, 0xe2, !PT ;
-        LOP3.LUT R31, R29.reuse, 0xf000f, R31, 0xe2, !PT ;
-        HADD2 R26, R26, -R20.reuse ;
-        LOP3.LUT R29, R29, 0xf000f0, R13.reuse, 0xe2, !PT ;
-        HADD2 R30, R30, -R20.reuse ;
+        HFMA2 R22, R4, R25, R22 ;
+        LOP3.LUT R25, R8, 0xf000f, R30.reuse, 0xe2, !PT ;
+        HADD2 R29, R29, -R20 ;
+        LOP3.LUT R30, R21, 0xf000f, R30, 0xe2, !PT ;
         LOP3.LUT R21, R21, 0xf000f0, R13.reuse, 0xe2, !PT ;
-        HADD2 R20, R31, -R20 ;
-        LOP3.LUT R13, R25, 0xf000f0, R13, 0xe2, !PT ;
-        HADD2 R29, R29, -R15 ;
-        HFMA2 R20, R4.reuse, R20, R27 ;
-        HFMA2 R19, R4, R29, R19 ;
+        HADD2 R25, R25, -R20.reuse ;
+        LOP3.LUT R27, R27, 0xf000f0, R13.reuse, 0xe2, !PT ;
+        HADD2 R20, R30, -R20 ;
+        LOP3.LUT R13, R8, 0xf000f0, R13, 0xe2, !PT ;
         HADD2 R21, R21, -R15.reuse ;
+        HADD2 R27, R27, -R15 ;
+        HFMA2 R21, R4.reuse, R21, R26 ;
+        HFMA2 R19, R4, R20, R19 ;
         HADD2 R13, R13, -R15 ;
-        HFMA2 R20, -R5.reuse, R30, R20 ;
-        HFMA2 R19, -R5, R21, R19 ;
-        HFMA2 R23, -R5.reuse, R13, R23 ;
-        HFMA2 R22, -R5, R26, R22 ;
-        HMUL2 R21, R7.reuse, R20 ;
-        HMUL2 R27, -R7.reuse, R19 ;
-        HMUL2 R15, -R7.reuse, R23 ;
-        HMUL2 R13, R7, R22 ;
+; Location /localhome/eschnett/.julia/packages/IndexSpaces/ECJ3K/src/IndexSpaces.jl:2168
+        IMAD.MOV.U32 R15, RZ, RZ, R12 ;
+; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
+        HFMA2 R20, -R5.reuse, R27, R21 ;
+        HFMA2 R19, -R5.reuse, R29, R19 ;
+        HFMA2 R25, -R5.reuse, R25, R22 ;
+        HFMA2 R13, -R5, R13, R23 ;
+        HMUL2 R21, R7, R20 ;
+        HMUL2 R26, -R7.reuse, R19 ;
+        HMUL2 R22, -R7.reuse, R25 ;
+        HMUL2 R23, R7, R13 ;
         HFMA2 R21, R6.reuse, R19, R21 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/ECJ3K/src/IndexSpaces.jl:2168
         IMAD.MOV.U32 R19, RZ, RZ, R16 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HFMA2 R20, R6.reuse, R20, R27 ;
-        HFMA2 R22, R6.reuse, R22, R15 ;
-; Location /localhome/eschnett/.julia/packages/IndexSpaces/ECJ3K/src/IndexSpaces.jl:2168
-        IMAD.MOV.U32 R15, RZ, RZ, R12 ;
-; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HFMA2 R23, R6, R23, R13 ;
+        HFMA2 R20, R6.reuse, R20, R26 ;
+        HFMA2 R22, R6.reuse, R13, R22 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/ECJ3K/src/IndexSpaces.jl:2168
         FADD R13, -RZ, -UR5 ;
+; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
+        HFMA2 R23, R6, R25, R23 ;
+; Location /localhome/eschnett/.julia/packages/IndexSpaces/ECJ3K/src/IndexSpaces.jl:2168
         HMMA.16816.F16 R20, R16.reuse, R20, RZ ;
         HMMA.16816.F16 R22, R16, R22, RZ ;
         NOP ;
         HMMA.16816.F16 R20, R12.reuse, R20, RZ ;
         HMMA.16816.F16 R22, R12, R22, RZ ;
-        IMAD.MOV.U32 R13, RZ, RZ, R24 ;
-; Location ./promotion.jl:521
-        IMAD.MOV.U32 R15, RZ, RZ, R24 ;
-        IMAD.MOV.U32 R24, RZ, RZ, R28 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        HMUL2 R21, R0.reuse, R21 ;
-        HMUL2 R20, R0, R20 ;
-        HMNMX2 R21, R21, -7, -7, !PT ;
+        IMAD.MOV.U32 R13, RZ, RZ, 0x8 ;
+        I2IP.S8.S32.SAT R15, R13, 0x8, RZ ;
+        HMUL2 R20, R0.reuse, R20 ;
+        I2IP.S8.S32.SAT R15, R13, 0x8, R15 ;
+        HMUL2 R21, R0, R21 ;
         HMNMX2 R20, R20, -7, -7, !PT ;
-        HMUL2 R23, R0.reuse, R23 ;
-        HMNMX2 R21, R21, 7, 7, PT ;
+; Location ./int.jl:529
+        IMAD.SHL.U32 R13, R15, 0x10, RZ ;
+; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
+        HMNMX2 R21, R21, -7, -7, !PT ;
         HMUL2 R22, R0, R22 ;
         HMNMX2 R20, R20, 7, 7, PT ;
-        HMNMX2 R23, R23, -7, -7, !PT ;
-        HADD2 R21, R21, 1536, 1536 ;
+        HMUL2 R23, R0, R23 ;
+        HMNMX2 R21, R21, 7, 7, PT ;
         HMNMX2 R22, R22, -7, -7, !PT ;
         HADD2 R20, R20, 1536, 1536 ;
-        HMNMX2 R23, R23, 7, 7, PT ;
+        HMNMX2 R23, R23, -7, -7, !PT ;
+        HADD2 R21, R21, 1536, 1536 ;
         HMNMX2 R22, R22, 7, 7, PT ;
-        HADD2 R23, R23, 1536, 1536 ;
+        HMNMX2 R23, R23, 7, 7, PT ;
+        LOP3.LUT R13, R15, 0xf0f0f0f, R13, 0xe2, !PT ;
         HADD2 R22, R22, 1536, 1536 ;
-        PRMT R21, R23, 0x6240, R21 ;
+        HADD2 R23, R23, 1536, 1536 ;
         PRMT R20, R22, 0x6240, R20 ;
+        PRMT R21, R23, 0x6240, R21 ;
 ; Location ./int.jl:529
-        IMAD.SHL.U32 R21, R21, 0x10, RZ ;
+        IMAD.SHL.U32 R20, R20, 0x10, RZ ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        LOP3.LUT R20, R20, 0xf0f0f0f, R21, 0xe2, !PT ;
-        STS [R11.X4+UR4], R20 ;
+        LOP3.LUT R20, R21, 0xf0f0f0f, R20, 0xe2, !PT ;
+; Location ./promotion.jl:521
+        IMAD.MOV.U32 R21, RZ, RZ, R24 ;
+; Location ./int.jl:373
+        LOP3.LUT R13, R13, R20, RZ, 0x3c, !PT ;
+; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
+        STS [R11.X4+UR4], R13 ;
 ; Location ./promotion.jl:521
         UIADD3 UR4, UR4, 0x184, URZ ;
         UISETP.NE.AND UP0, UPT, UR4, 0xc200, UPT ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+        IMAD.MOV.U32 R13, RZ, RZ, R24 ;
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         PLOP3.LUT P0, PT, PT, PT, UP0, 0x80, 0x0 ;
+; Location ./promotion.jl:521
+        IMAD.MOV.U32 R24, RZ, RZ, R28 ;
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
     @P0 BRA `(.L_x_7) ;
-        LDL R36, [R1+0x390] ;
-        LDL R35, [R1+0x1e4] ;
-        LDL R34, [R1+0x38c] ;
-        LDL R33, [R1+0x1e8] ;
+        LDL R35, [R1+0x390] ;
+        LDL R34, [R1+0x1e4] ;
+        LDL R33, [R1+0x38c] ;
+        LDL R32, [R1+0x1e8] ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/synchronization.jl:16
         BAR.SYNC 0x0 ;
         STL [R1+0x47c], R3 ;
-        LDL R32, [R1+0x388] ;
+        LDL R31, [R1+0x388] ;
         STL [R1+0x4b0], R18 ;
         LDL R3, [R1+0x1ec] ;
         STL [R1+0x478], R2 ;
@@ -3063,12 +3063,12 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LDL R17, [R1+0x380] ;
         STL [R1+0x4b4], R60 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        LDS R22, [R36] ;
-        LDS R23, [R35.X4+0x80] ;
-        LDS R15, [R34] ;
-        LDS R19, [R33.X4+0x80] ;
-        LDS R20, [R35.X4+0x4] ;
-        LDS R21, [R35.X4+0x84] ;
+        LDS R22, [R35] ;
+        LDS R23, [R34.X4+0x80] ;
+        LDS R15, [R33] ;
+        LDS R19, [R32.X4+0x80] ;
+        LDS R20, [R34.X4+0x4] ;
+        LDS R21, [R34.X4+0x84] ;
         LDS R25, [R18.X4+0x80] ;
         PRMT R0, R22, 0x5410, R23 ;
         LDS R26, [R18.X4+0x4] ;
@@ -3082,21 +3082,21 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         STL [R1+0x1c], R0 ;
         PRMT R4, R22, 0x7632, R23 ;
         STL [R1+0x1b8], R5 ;
-        LDS R31, [R16.X4+0x4] ;
+        LDS R33, [R14] ;
         LDL R0, [R1+0x240] ;
         LDL R5, [R1+0x238] ;
         STL [R1+0x1bc], R4 ;
         LDS R34, [R13.X4+0x80] ;
         LDS R37, [R12] ;
         PRMT R4, R20, 0x7632, R21 ;
-        LDS R20, [R32] ;
+        LDS R20, [R31] ;
         STL [R1+0x1b4], R4 ;
         LDS R21, [R3.X4+0x80] ;
-        LDS R32, [R16.X4+0x84] ;
+        LDS R31, [R16.X4+0x4] ;
         PRMT R4, R15, 0x5410, R19 ;
-        LDS R15, [R33.X4+0x4] ;
-        LDS R19, [R33.X4+0x84] ;
-        LDS R33, [R14] ;
+        LDS R15, [R32.X4+0x4] ;
+        LDS R19, [R32.X4+0x84] ;
+        LDS R32, [R16.X4+0x84] ;
         LDS R38, [R11.X4+0x80] ;
         LDS R39, [R11.X4+0x4] ;
         LDS R40, [R11.X4+0x84] ;
@@ -3461,13 +3461,13 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         PRMT R19, R15.reuse, 0x5410, R31.reuse ;
         PRMT R15, R15, 0x7632, R31 ;
         PRMT R31, R26, 0x7632, R27 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R27, R18, R42, !P2 ;
         SEL R26, R36, R37, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R8, R42, R27, !P2 ;
         SEL R10, R27, R18, !P2 ;
         LDL.LU R42, [R1+0x6c] ;
@@ -3487,7 +3487,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LDS R21, [R5.X4+0x80] ;
         LDS R20, [R5.X4+0x4] ;
         LDS R32, [R5.X4+0x84] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R8, R61, R27, !P2 ;
         STL [R1+0x20], R10 ;
         STL [R1+0x8], R8 ;
@@ -3495,14 +3495,14 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         PRMT R2, R24, 0x5410, R25 ;
         PRMT R5, R55, 0x5410, R56 ;
         LDL.LU R61, [R1+0x64] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R8, R26, R58, !P2 ;
         SEL R58, R60, R40, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R58, R58, 0x8, 0x1f ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R24, R55, 0x7632, R56 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R10, R27, R39, !P2 ;
         LDL.LU R39, [R1+0x3c] ;
         SEL R56, R40, R58, !P2 ;
@@ -3513,13 +3513,13 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         PRMT R7, R53, 0x5410, R54 ;
         STL [R1+0x1c], R9 ;
         PRMT R6, R53, 0x7632, R54 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R54, R28, R38, !P2 ;
         SEL R9, R59, R26, !P2 ;
         SEL R59, R13, R57, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R54, R54, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R55, R41, R0, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R59, R59, 0x8, 0x1f ;
@@ -3528,7 +3528,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R2, R33, 0x7632, R34 ;
         PRMT R33, R51, 0x7632, R52 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R52, R38, R54, !P2 ;
         SEL R57, R57, R59, !P2 ;
         LDL.LU R38, [R1+0x34] ;
@@ -3559,13 +3559,13 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LDL.LU R17, [R1+0xc0] ;
         STL [R1+0x4f4], R34 ;
         LDL.LU R34, [R1+0xbc] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R50, R37, R42, !P2 ;
         SEL R51, R18, R36, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R50, R50, 0x8, 0x1f ;
         SHFL.BFLY PT, R51, R51, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R48, R42, R50, !P2 ;
         SEL R50, R50, R37, !P2 ;
         LDL.LU R37, [R1+0xc4] ;
@@ -3576,11 +3576,11 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SEL R46, R39, R61, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R46, R46, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R47, R60, R40, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R47, R47, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R44, R61, R46, !P2 ;
         LDL.LU R61, [R1+0x138] ;
         SEL R45, R40, R47, !P2 ;
@@ -3589,12 +3589,12 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SEL R42, R38, R13, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R42, R42, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R43, R0, R28, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R43, R43, 0x8, 0x1f ;
         STL [R1+0x4f0], R11 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R55, R55, R41, !P2 ;
         LDL.LU R11, [R1+0x174] ;
         SEL R40, R13, R42, !P2 ;
@@ -3612,7 +3612,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
         STL [R1+0xc], R9 ;
         STL [R1+0x14], R8 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R9, R27, R35, !P2 ;
         LDL.LU R35, [R1+0x124] ;
         SEL R8, R16, R26, !P2 ;
@@ -3626,7 +3626,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R39, R39, 0x8, 0x1f ;
         SHFL.BFLY PT, R38, R38, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R37, R37, R39, !P2 ;
         SEL R39, R39, R12, !P2 ;
         SEL R36, R36, R38, !P2 ;
@@ -3638,11 +3638,11 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SEL R27, R61, R18, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R26, R34, R60, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R10, R18, R27, !P2 ;
         SEL R9, R27, R61, !P2 ;
         STL [R1+0x21c], R8 ;
@@ -3656,14 +3656,14 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         STL [R1+0x208], R9 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R26, R0, R28, !P2 ;
         STL [R1+0x200], R10 ;
         LDL.LU R34, [R1+0xac] ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
         STL [R1+0x20c], R8 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R9, R27, R13, !P2 ;
         LDL.LU R13, [R1+0x164] ;
         SEL R8, R11, R27, !P2 ;
@@ -3686,14 +3686,14 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R2, R29.reuse, 0x5410, R30.reuse ;
         PRMT R29, R29, 0x7632, R30 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R16, R26, R16, !P2 ;
         STL [R1+0x1dc], R16 ;
         LDL.LU R16, [R1+0xa4] ;
         SEL R27, R14, R12, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R30, R12, R27, !P2 ;
         SEL R12, R27, R14, !P2 ;
         SEL R14, R35, R26, !P2 ;
@@ -3705,12 +3705,12 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SEL R27, R18, R17, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R26, R60, R61, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
         STL [R1+0x1d0], R30 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R30, R17, R27, !P2 ;
         SEL R17, R27, R18, !P2 ;
         SEL R18, R61, R26, !P2 ;
@@ -3725,11 +3725,11 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SEL R27, R9, R8, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R26, R34, R10, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R8, R8, R27, !P2 ;
         SEL R27, R27, R9, !P2 ;
         STL [R1+0x1a0], R8 ;
@@ -3749,7 +3749,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R23, R23, 0x7632, R21 ;
         LDL.LU R34, [R1+0x150] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R10, R13, R27, !P2 ;
         LDL.LU R33, [R1+0x154] ;
         SEL R8, R0, R26, !P2 ;
@@ -3758,7 +3758,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R21, R20.reuse, 0x5410, R32.reuse ;
         PRMT R20, R20, 0x7632, R32 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R9, R27, R28, !P2 ;
         LDL.LU R32, [R1+0xf4] ;
         LDL.LU R28, [R1+0x9c] ;
@@ -3770,11 +3770,11 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SEL R26, R16, R35, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R27, R14, R12, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R8, R35, R26, !P2 ;
         LDL.LU R35, [R1+0x14c] ;
         STL [R1+0x184], R8 ;
@@ -3791,7 +3791,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SEL R27, R18, R17, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R26, R60, R61, !P2 ;
         SEL R11, R17, R27, !P2 ;
         SEL R12, R27, R18, !P2 ;
@@ -3802,7 +3802,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LDL.LU R18, [R1+0x90] ;
         LDL.LU R11, [R1+0xe8] ;
         LDL.LU R12, [R1+0xe4] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R16, R61, R26, !P2 ;
         SEL R17, R26, R60, !P2 ;
         STL [R1+0x1c0], R30 ;
@@ -3815,7 +3815,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SEL R27, R0, R13, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R26, R28, R32, !P2 ;
         SEL R30, R13, R27, !P2 ;
         SEL R13, R27, R0, !P2 ;
@@ -3826,7 +3826,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
         STL [R1+0x158], R30 ;
         LDL.LU R30, [R1+0xd0] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R27, R32, R26, !P2 ;
         SEL R26, R26, R28, !P2 ;
         LDL.LU R32, [R1+0xcc] ;
@@ -3836,11 +3836,11 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SEL R27, R8, R33, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R26, R10, R9, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R33, R33, R27, !P2 ;
         SEL R27, R27, R8, !P2 ;
         LDL.LU R8, [R1+0x500] ;
@@ -3858,7 +3858,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R34, R34, R27, !P2 ;
         SEL R27, R27, R11, !P2 ;
         LDL.LU R11, [R1+0x4f0] ;
@@ -3874,7 +3874,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R35, R35, R27, !P2 ;
         SEL R27, R27, R16, !P2 ;
         LDL.LU R16, [R1+0x4e0] ;
@@ -3890,7 +3890,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R61, R61, R27, !P2 ;
         SEL R27, R27, R0, !P2 ;
         LDL.LU R0, [R1+0x4d0] ;
@@ -3905,7 +3905,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LDL.LU R60, [R1+0x4cc] ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R28, R28, R27, !P2 ;
         STL [R1+0xf0], R28 ;
         LDL.LU R28, [R1+0x4c4] ;
@@ -3919,7 +3919,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SEL R26, R0, R32, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R27, R32, R26, !P2 ;
         STL [R1+0xf4], R27 ;
         SEL R30, R26, R0, !P2 ;
@@ -3927,12 +3927,12 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LDL.LU R0, [R1+0x4c0] ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R27, R13, R28, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
         STL [R1+0xfc], R30 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R32, R60, R26, !P2 ;
         LDL.LU R60, [R1+0x4b4] ;
         SEL R30, R28, R27, !P2 ;
@@ -3945,14 +3945,14 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LDL.LU R13, [R1+0x4b8] ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R30, R26, R61, !P2 ;
         SEL R26, R35, R16, !P2 ;
         LDL R61, [R1+0x1b8] ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
         STL [R1+0xec], R30 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R30, R18, R27, !P2 ;
         SEL R27, R27, R17, !P2 ;
         LDL.LU R18, [R1+0x4b0] ;
@@ -3965,13 +3965,13 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SEL R30, R26, R35, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R26, R34, R11, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
         STL [R1+0xdc], R30 ;
         STL [R1+0xd4], R32 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R30, R14, R27, !P2 ;
         SEL R27, R27, R12, !P2 ;
         LDL.LU R14, [R1+0x4a4] ;
@@ -3988,7 +3988,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SHFL.BFLY PT, R27, R27, 0x8, 0x1f ;
         STL [R1+0xbc], R32 ;
         STL [R1+0xc4], R30 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R32, R10, R27, !P2 ;
         SEL R30, R27, R9, !P2 ;
         LDL.LU R10, [R1+0x498] ;
@@ -4006,7 +4006,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
         LDL R30, [R1+0x1bc] ;
         LDL.LU R8, [R1+0x490] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R32, R7, R27, !P2 ;
         SEL R27, R27, R6, !P2 ;
         LDL.LU R7, [R1+0x48c] ;
@@ -4022,7 +4022,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SHFL.BFLY PT, R24, R24, 0x8, 0x1f ;
         SHFL.BFLY PT, R26, R26, 0x8, 0x1f ;
         LDL.LU R5, [R1+0x484] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R33, R21, R24, !P2 ;
         SEL R21, R22, R4, !P2 ;
         SEL R34, R26, R23, !P2 ;
@@ -4030,7 +4030,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R21, R21, 0x8, 0x1f ;
         SHFL.BFLY PT, R23, R23, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R35, R24, R20, !P2 ;
         SEL R20, R4, R21, !P2 ;
         SEL R22, R21, R22, !P2 ;
@@ -4041,14 +4041,14 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         SEL R15, R31, R3, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R15, R15, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R32, R25, R26, !P2 ;
         SEL R26, R15, R31, !P2 ;
         LDL R31, [R1+0x1b4] ;
         SEL R19, R29, R2, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R19, R19, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R24, R3, R15, !P2 ;
         LDL.LU R3, [R1+0x47c] ;
         SEL R27, R19, R29, !P2 ;
@@ -4058,7 +4058,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LDL.LU R0, [R1+0x474] ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R19, R15, 0x8, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R29, R31, R61, !P2 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R15, R29, 0x8, 0x1f ;
@@ -4068,25 +4068,25 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         BSSY B0, `(.L_x_8) ;
 ; Location ./int.jl:514
         ISETP.GE.U32.AND P0, PT, R29, 0x6, PT ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
    @!P0 BRA `(.L_x_9) ;
         LDL.LU R28, [R1+0x1e0] ;
 ; Location ./int.jl:88
         IMAD.SHL.U32 R13, R29, 0x200, RZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R29, R61, R15, !P2 ;
         STL.64 [R1+0x478], R2 ;
         SEL R30, R19, R30, !P2 ;
 ; Location ./int.jl:87
         LOP3.LUT R13, R10, 0x1fe0c00, R13, 0xf8, !PT ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R31, R15, R31, !P2 ;
         IMAD.MOV.U32 R3, RZ, RZ, c[0x0][0x178] ;
         LEA R3, R3, 0xfffff400, 0xa ;
         SHF.R.S32.HI R61, RZ, 0x1f, R3 ;
 ; Location ./int.jl:87
         IADD3 R13, P0, R3, R13, RZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         SEL R28, R28, R19, !P2 ;
 ; Location ./int.jl:87
         IMAD.X R19, RZ, RZ, R61, P0 ;
@@ -4119,7 +4119,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         LDL.LU.64 R2, [R1+0x478] ;
 
 .L_x_9:
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
         BSYNC B0 ;
 
 .L_x_8:
@@ -5390,7 +5390,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         STG.E.128 [R44.64], R20 ;
 ; Location ./promotion.jl:521
         STG.E.128 [R46.64], R24 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1515
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1521
    @!P0 BRA P1, `(.L_x_10) ;
 
 .L_x_6:
@@ -5407,7 +5407,7 @@ _Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         IMAD.WIDE.U32 R2, R2, R5, c[0x0][0x1e8] ;
         STG.E [R2.64], RZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1516
+; Location /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1522
         EXIT ;
         .type           $_Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE$gpu_report_exception,@function
         .size           $_Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE$gpu_report_exception,($_Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE$gpu_signal_exception - $_Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE$gpu_report_exception)
@@ -5439,50 +5439,48 @@ $_Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1
 $_Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE$gpu_signal_exception:
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/runtime.jl:41
         ISETP.NE.U32.AND P0, PT, RZ, UR36, PT ;
-        ISETP.NE.AND.EX P0, PT, RZ, UR37, PT, P0 ;
-   @!P0 BRA `(.L_x_11) ;
-        /*10000*/                   IMAD.MOV.U32 R0, RZ, RZ, 0x1 ;
-        /*10010*/                   ULDC.64 UR4, c[0x0][0x118] ;
+        /*10000*/                   ISETP.NE.AND.EX P0, PT, RZ, UR37, PT, P0 ;
+        /*10010*/              @!P0 BRA `(.L_x_11) ;
+        /*10020*/                   IMAD.MOV.U32 R0, RZ, RZ, 0x1 ;
+        /*10030*/                   ULDC.64 UR4, c[0x0][0x118] ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/runtime.jl:39
-        /*10020*/                   IMAD.U32 R2, RZ, RZ, UR36 ;
-        /*10030*/                   IMAD.U32 R3, RZ, RZ, UR37 ;
+        /*10040*/                   IMAD.U32 R2, RZ, RZ, UR36 ;
+        /*10050*/                   IMAD.U32 R3, RZ, RZ, UR37 ;
 ; Location ./pointer.jl:146
-        /*10040*/                   ST.E.U8 [R2.64], R0 ;
-        /*10050*/                   ST.E.U8 [R2.64+0x7], RZ ;
-        /*10060*/                   ST.E.U8 [R2.64+0x6], RZ ;
-        /*10070*/                   ST.E.U8 [R2.64+0x5], RZ ;
-        /*10080*/                   ST.E.U8 [R2.64+0x4], RZ ;
-        /*10090*/                   ST.E.U8 [R2.64+0x3], RZ ;
-        /*100a0*/                   ST.E.U8 [R2.64+0x2], RZ ;
-        /*100b0*/                   ST.E.U8 [R2.64+0x1], RZ ;
+        /*10060*/                   ST.E.U8 [R2.64], R0 ;
+        /*10070*/                   ST.E.U8 [R2.64+0x7], RZ ;
+        /*10080*/                   ST.E.U8 [R2.64+0x6], RZ ;
+        /*10090*/                   ST.E.U8 [R2.64+0x5], RZ ;
+        /*100a0*/                   ST.E.U8 [R2.64+0x4], RZ ;
+        /*100b0*/                   ST.E.U8 [R2.64+0x3], RZ ;
+        /*100c0*/                   ST.E.U8 [R2.64+0x2], RZ ;
+        /*100d0*/                   ST.E.U8 [R2.64+0x1], RZ ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/synchronization.jl:109
-        /*100c0*/              @!PT LDS RZ, [RZ] ;
-        /*100d0*/              @!PT LDS RZ, [RZ] ;
         /*100e0*/              @!PT LDS RZ, [RZ] ;
         /*100f0*/              @!PT LDS RZ, [RZ] ;
-        /*10100*/                   MEMBAR.SC.SYS ;
-        /*10110*/                   ERRBAR;
-        /*10120*/                   CCTL.IVALL ;
-        /*10130*/                   EXIT ;
+        /*10100*/              @!PT LDS RZ, [RZ] ;
+        /*10110*/              @!PT LDS RZ, [RZ] ;
+        /*10120*/                   MEMBAR.SC.SYS ;
+        /*10130*/                   ERRBAR;
+        /*10140*/                   CCTL.IVALL ;
+        /*10150*/                   EXIT ;
 
 .L_x_11:
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
-        /*10140*/                   UMOV UR4, 32@lo(__unnamed_2) ;
-        /*10150*/                   CS2R R6, SRZ ;
-        /*10160*/                   UMOV UR5, 32@hi(__unnamed_2) ;
-        /*10170*/                   IMAD.U32 R4, RZ, RZ, UR4 ;
-        /*10180*/                   MOV R20, 32@lo((_Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE + .L_x_1@srel)) ;
-        /*10190*/                   IMAD.U32 R5, RZ, RZ, UR5 ;
-        /*101a0*/                   MOV R21, 32@hi((_Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE + .L_x_1@srel)) ;
-        /*101b0*/                   CALL.ABS.NOINC `(vprintf) ;
+        /*10160*/                   UMOV UR4, 32@lo(__unnamed_2) ;
+        /*10170*/                   CS2R R6, SRZ ;
+        /*10180*/                   UMOV UR5, 32@hi(__unnamed_2) ;
+        /*10190*/                   IMAD.U32 R4, RZ, RZ, UR4 ;
+        /*101a0*/                   MOV R20, 32@lo((_Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE + .L_x_1@srel)) ;
+        /*101b0*/                   IMAD.U32 R5, RZ, RZ, UR5 ;
+        /*101c0*/                   MOV R21, 32@hi((_Z7upchan25Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE + .L_x_1@srel)) ;
+        /*101d0*/                   CALL.ABS.NOINC `(vprintf) ;
 
 .L_x_1:
-        /*101c0*/                   EXIT ;
+        /*101e0*/                   EXIT ;
 
 .L_x_12:
-        /*101d0*/                   BRA `(.L_x_12);
-        /*101e0*/                   NOP;
-        /*101f0*/                   NOP;
+        /*101f0*/                   BRA `(.L_x_12);
         /*10200*/                   NOP;
         /*10210*/                   NOP;
         /*10220*/                   NOP;

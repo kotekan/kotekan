@@ -616,7 +616,7 @@ cudaEvent_t cudaUpchannelizer_chord_U8::execute(cudaPipelineState& /*pipestate*/
             DEBUG("before cudaMemset2DAsync.Ebar");
             CHECK_CUDA_ERROR(cudaMemset2DAsync((std::uint8_t*)Ebar_memory + Tbaroffset * Tbarstride
                                                    + Fbaroffset * Fbarstride,
-                                               Tbarstride, 0x88, Fbarlength * Fbarstride,
+                                               Tbarstride, 0x00, Fbarlength * Fbarstride,
                                                Tbarlength, device.getStream(cuda_stream_id)));
         } // for chunk
         DEBUG("poisoning done.");
@@ -714,7 +714,7 @@ cudaEvent_t cudaUpchannelizer_chord_U8::execute(cudaPipelineState& /*pipestate*/
                                           cudaMemcpyDeviceToHost));
 
             DEBUG("before memchr");
-            const bool Ebar_found_error = std::memchr(Ebar_buffer.data(), 0x88, Ebar_buffer.size());
+            const bool Ebar_found_error = std::memchr(Ebar_buffer.data(), 0x00, Ebar_buffer.size());
             if (Ebar_found_error) {
                 for (std::ptrdiff_t tbar = 0; tbar < Tbarlength; ++tbar) {
                     for (std::ptrdiff_t fbar = 0; fbar < Fbarlength; ++fbar) {
@@ -722,11 +722,11 @@ cudaEvent_t cudaUpchannelizer_chord_U8::execute(cudaPipelineState& /*pipestate*/
                         for (std::ptrdiff_t n = 0; n < Fbarstride; ++n) {
                             const auto val = Ebar_buffer.at(tbar * (Fbarlength * Fbarstride)
                                                             + fbar * Fbarstride + n);
-                            any_error |= val == 0x88;
+                            any_error |= val == 0x00;
                         }
                         if (any_error)
                             DEBUG("    U={} [{},{}]={:#02x}", cuda_upchannelization_factor, tbar,
-                                  fbar, 0x88);
+                                  fbar, 0x00);
                     }
                 }
             }
