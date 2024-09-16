@@ -306,8 +306,8 @@ jobs:
   build-direct-tests-2404:
     runs-on: self-hosted
     container: 
-      image: summerwind/actions-runner:ubuntu-22.04
-      options: --user root
+      image: ghcr.io/kotekan/kotekan/kotekan-2404:chord
+      options: --user root --privileged
     needs: build-docker-2404
 
     steps:
