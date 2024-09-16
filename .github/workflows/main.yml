@@ -306,8 +306,8 @@ jobs:
   build-direct-tests-2404:
     runs-on: self-hosted
     container: 
-      image: ghcr.io/kotekan/kotekan/kotekan-2404:chord
-      options: --user root --privileged
+      image: summerwind/actions-runner:ubuntu-22.04
+      options: --user root
     needs: build-docker-2404
 
     steps:
@@ -355,7 +355,7 @@ jobs:
     # Run all tests in the config/ci-tests directory
     - name: Run direct Kotekan tests
       run: |
-        OPTS="--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }}"
+        OPTS="--rm --privileged --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }}"
         docker run $OPTS sh -c 'for config_file in config/ci-tests/*.yaml; do ./build-2404/kotekan/kotekan --bind-address 0:23000 --config $config_file; done'
 
     - name: Clean up
