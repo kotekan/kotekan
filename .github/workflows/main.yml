@@ -68,7 +68,7 @@ jobs:
           fi
           echo "docker_build=1" >> $GITHUB_OUTPUT;
         else
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request" || "${GITHUB_EVENT_NAME}" = "pull_request_target" ]; then
+          if [[ "${GITHUB_EVENT_NAME}" = "pull_request" || "${GITHUB_EVENT_NAME}" = "pull_request_target" ]]; then
             echo "Dockerfile was not modified. Using image from branch ${GITHUB_BASE_REF}."
             IMAGE_NAME="${IMG_2404}:$(echo ${GITHUB_BASE_REF} | tr / .)"
           else
@@ -400,7 +400,7 @@ jobs:
           fi
           echo "docker_build=1" >> $GITHUB_OUTPUT;
         else
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request" || "${GITHUB_EVENT_NAME}" = "pull_request_target" ]; then
+          if [[ "${GITHUB_EVENT_NAME}" = "pull_request" || "${GITHUB_EVENT_NAME}" = "pull_request_target" ]]; then
             echo "Dockerfile was not modified. Using image from branch ${GITHUB_BASE_REF}."
             IMAGE_NAME="${IMG_2204}:$(echo ${GITHUB_BASE_REF} | tr / .)"
           else
