@@ -355,8 +355,8 @@ jobs:
     # Run all tests in the config/ci-tests directory
     - name: Run direct Kotekan tests
       run: |
-        OPTS=(--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" "for config_file in config/ci-tests/*.yaml; do ./build-2404/kotekan/kotekan --bind-address 0:23000 --config $config_file; done"
+        OPTS="--rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }}"
+        docker run $OPTS "for config_file in config/ci-tests/*.yaml; do ./build-2404/kotekan/kotekan --bind-address 0:23000 --config $config_file; done"
 
     - name: Clean up
       run: |
