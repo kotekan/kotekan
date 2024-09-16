@@ -3,7 +3,7 @@
 # Do not modify this file, your changes will be lost.
 
 @fastmath @inbounds(
-    begin #= /localhome/eschnett/src/kotekan-chord/julia/kernels/frb.jl:1881 =#
+    begin #= /localhome/eschnett/src/kotekan/julia/kernels/frb.jl:1870 =#
         info = 1
         info_memory[(((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 128) % 128) % 128) * 512 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) % 16) * 32) + 0) + 0x01] =
             info
@@ -163,7 +163,7 @@
             if !(0i32 ≤ Sm < 16 && 0i32 ≤ Sn < 16)
                 CUDA.@cuprintf "thread=%d warp=%d block=%d Sm=%d Sn=%d\n" Cint((threadIdx()).x - 1) Cint((threadIdx()).y - 1) Cint(
                     (blockIdx()).x - 1
-                ) Cint(Sm) Cint(Sn)                    #= /localhome/eschnett/src/kotekan-chord/julia/kernels/frb.jl:1648 =#
+                ) Cint(Sm) Cint(Sn)                    #= /localhome/eschnett/src/kotekan/julia/kernels/frb.jl:1637 =#
                 info = 4
                 info_memory[(((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 32) % 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 128) % 128) % 128) * 512 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) % 16) * 32) + 0) + 0x01] =
                     info
@@ -780,16 +780,16 @@
                         if t_inner_lo == 24
                             Freg2′_time6 = Freg2_time30
                         end
-                        (E′_polr0_time0, E′_polr1_time0, E′_polr0_time32, E′_polr1_time32) = convert(
+                        (E′_polr0_time0, E′_polr1_time0, E′_polr0_time32, E′_polr1_time32) = convert_swapped_withoffset(
                             NTuple{4,Float16x2}, Freg2′_time0
                         )
-                        (E′_polr0_time2, E′_polr1_time2, E′_polr0_time34, E′_polr1_time34) = convert(
+                        (E′_polr0_time2, E′_polr1_time2, E′_polr0_time34, E′_polr1_time34) = convert_swapped_withoffset(
                             NTuple{4,Float16x2}, Freg2′_time2
                         )
-                        (E′_polr0_time4, E′_polr1_time4, E′_polr0_time36, E′_polr1_time36) = convert(
+                        (E′_polr0_time4, E′_polr1_time4, E′_polr0_time36, E′_polr1_time36) = convert_swapped_withoffset(
                             NTuple{4,Float16x2}, Freg2′_time4
                         )
-                        (E′_polr0_time6, E′_polr1_time6, E′_polr0_time38, E′_polr1_time38) = convert(
+                        (E′_polr0_time6, E′_polr1_time6, E′_polr0_time38, E′_polr1_time38) = convert_swapped_withoffset(
                             NTuple{4,Float16x2}, Freg2′_time6
                         )
                         E_polr0_time0 = E′_polr0_time0
@@ -2690,16 +2690,16 @@
                         if t_inner_lo == 24
                             Freg2′_time6 = Freg2_time30
                         end
-                        (E′_polr0_time0, E′_polr1_time0, E′_polr0_time32, E′_polr1_time32) = convert(
+                        (E′_polr0_time0, E′_polr1_time0, E′_polr0_time32, E′_polr1_time32) = convert_swapped_withoffset(
                             NTuple{4,Float16x2}, Freg2′_time0
                         )
-                        (E′_polr0_time2, E′_polr1_time2, E′_polr0_time34, E′_polr1_time34) = convert(
+                        (E′_polr0_time2, E′_polr1_time2, E′_polr0_time34, E′_polr1_time34) = convert_swapped_withoffset(
                             NTuple{4,Float16x2}, Freg2′_time2
                         )
-                        (E′_polr0_time4, E′_polr1_time4, E′_polr0_time36, E′_polr1_time36) = convert(
+                        (E′_polr0_time4, E′_polr1_time4, E′_polr0_time36, E′_polr1_time36) = convert_swapped_withoffset(
                             NTuple{4,Float16x2}, Freg2′_time4
                         )
-                        (E′_polr0_time6, E′_polr1_time6, E′_polr0_time38, E′_polr1_time38) = convert(
+                        (E′_polr0_time6, E′_polr1_time6, E′_polr0_time38, E′_polr1_time38) = convert_swapped_withoffset(
                             NTuple{4,Float16x2}, Freg2′_time6
                         )
                         E_polr0_time0 = E′_polr0_time32

@@ -20,7 +20,7 @@
 _Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EE:
 
 .text._Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EE:
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1344
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1344
         IMAD.MOV.U32 R1, RZ, RZ, c[0x0][0x28] ;
 ; Location ./int.jl:513
         IMAD.MOV.U32 R0, RZ, RZ, c[0x0][0x2c] ;
@@ -53,26 +53,26 @@ _Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0
         IMAD.SHL.U32 R0, R2, 0x100, RZ ;
 ; Location ./int.jl:87
         LOP3.LUT R3, R3, R0, R16, 0xfe, !PT ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         IMAD.MOV.U32 R0, RZ, RZ, c[0x0][0x170] ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         IMAD.WIDE.U32 R4, R3, R18, c[0x0][0x1e0] ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         IMAD.MOV.U32 R3, RZ, RZ, c[0x0][0x174] ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         STG.E [R4.64], R7 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         ISETP.GT.AND P0, PT, R3, 0x1fff, PT ;
         ISETP.LT.OR P0, PT, R3, c[0x0][0x170], P0 ;
         ISETP.GT.U32.OR P0, PT, R0, 0xfff, P0 ;
     @P0 BRA `(.L_x_3) ;
 ; Location ./int.jl:86
         IADD3 R0, R3, -c[0x0][0x170], RZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         IMAD.MOV.U32 R7, RZ, RZ, c[0x0][0x178] ;
 ; Location ./int.jl:295
         IMAD.HI R3, R0, 0x2aaaaaab, RZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         ISETP.GT.U32.AND P0, PT, R7, 0x3ff, PT ;
         IMAD.MOV R0, RZ, RZ, -R0 ;
 ; Location ./int.jl:295
@@ -80,7 +80,7 @@ _Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0
         LEA.HI.SX32 R6, R3, R6, 0x1e ;
         IMAD R3, R6, -0x18, RZ ;
         ISETP.NE.OR P0, PT, R3, R0, P0 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
     @P0 BRA `(.L_x_3) ;
         IMAD.MOV.U32 R0, RZ, RZ, c[0x0][0x17c] ;
         IADD3 R3, R0.reuse, -c[0x0][0x178], RZ ;
@@ -1185,13 +1185,13 @@ _Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0
         HFMA2 R73, R6.reuse, R73, R94 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/ECJ3K/src/IndexSpaces.jl:2168
         HMMA.16816.F16 R68, R36.reuse, R68, RZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R101, R96, R98, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         HMUL2 R35, -R49.reuse, R71.reuse ;
         PRMT R63, R65, 0x5410, R63 ;
         HMUL2 R94, R49, R70.reuse ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R105, R95, R100, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         HFMA2 R70, R6.reuse, R70, R35 ;
@@ -1206,7 +1206,7 @@ _Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0
         PRMT R39, R64, 0x5410, R62 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R64, R105, 0x1, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R65, R104, R39, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R97, R68.reuse, 0x7632, R72.reuse ;
@@ -1218,36 +1218,36 @@ _Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0
         PRMT R58, R68, 0x5410, R72 ;
         PRMT R94, R74, 0x7632, R70 ;
         PRMT R35, R75, 0x7632, R71 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R99, R94, R97, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R75, R75, 0x5410, R71 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R106, R35, R102, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R99, R99, 0x1, 0x1f ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         PRMT R71, R74, 0x5410, R70 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R72, R103, R63, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R62, R106, 0x1, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R74, R75, R73, !P1 ;
         SEL R59, R71, R58, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R72, R72, 0x1, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R107, R100, R64, !P1 ;
         SEL R106, R98, R101, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R74, R74, 0x1, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R65, R105, R104, !P1 ;
         SEL R64, R64, R95, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R59, R59, 0x1, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R101, R101, R96, !P1 ;
         SEL R39, R39, R105, !P1 ;
         SEL R67, R97, R99, !P1 ;
@@ -1258,96 +1258,96 @@ _Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0
         SEL R100, R72, R103, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R98, R98, 0x2, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R70, R74, R75, !P1 ;
         SEL R69, R62, R35, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R97, R97, 0x2, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R71, R59, R71, !P1 ;
         SEL R103, R70, R100, !P0 ;
         SEL R102, R71, R65, !P0 ;
         SEL R94, R69, R64, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R95, R103, 0x2, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R72, R63, R72, !P1 ;
         SEL R75, R68, R101, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R96, R102, 0x2, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R99, R58, R59, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R94, R94, 0x2, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R102, R73, R74, !P1 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R75, R75, 0x2, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R74, R99, R39, !P0 ;
         SEL R73, R102, R72, !P0 ;
         SEL R106, R106, R98, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R74, R74, 0x2, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R107, R107, R97, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         HMUL2 R62, R3.reuse, R106.reuse ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/warp.jl:29
         SHFL.BFLY PT, R73, R73, 0x2, 0x1f ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R63, R100, R95, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         HMUL2 R35, -R3.reuse, R107.reuse ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R97, R97, R66, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         HFMA2 R59, R4.reuse, R107, R62 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R62, R65, R96, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         HMUL2 R65, -R3.reuse, R63.reuse ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R98, R98, R67, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         HFMA2 R58, R4.reuse, R106, R35 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R96, R96, R71, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         HMUL2 R100, R3.reuse, R62.reuse ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R95, R95, R70, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         HFMA2 R62, R4.reuse, R62, R65 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R65, R64, R94, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         HFMA2 R63, R4.reuse, R63, R100 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R64, R101, R75, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/ECJ3K/src/IndexSpaces.jl:2168
         IMAD.MOV.U32 R35, RZ, RZ, R32 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R94, R94, R69, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         HMUL2 R100, -R3.reuse, R65.reuse ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R75, R75, R68, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         HMUL2 R101, R3.reuse, R64.reuse ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R99, R74, R99, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         HFMA2 R64, R4.reuse, R64, R100 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R74, R39, R74, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         HFMA2 R65, R4, R65, R101 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R102, R73, R102, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         HMUL2 R101, R3.reuse, R99 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         SEL R39, R72, R73, !P0 ;
 ; Location /localhome/eschnett/.julia/packages/IndexSpaces/ECJ3K/src/IndexSpaces.jl:2168
         HMMA.16816.F16 R58, R32, R58, RZ ;
@@ -1573,7 +1573,7 @@ _Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0
         HFMA2 R52, R69, 0.005207061767578125, 0.005207061767578125, R52 ;
 ; Location /localhome/eschnett/.julia/packages/CUDA/htRwP/src/device/intrinsics/synchronization.jl:16
         BAR.SYNC 0x0 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
    @!P0 CALL.REL.NOINC `(.L_x_5) ;
         BRA `(.L_x_6) ;
 
@@ -1584,7 +1584,7 @@ _Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0
         IADD3 R8, R8, 0x18, RZ ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         USHF.L.U32 UR4, UR4, 0x13, URZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
         IADD3 R7, R7, 0x18, RZ ;
         SHF.R.U32.HI R35, RZ, 0x4, R35 ;
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
@@ -1760,7 +1760,7 @@ _Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0
         STG.E [R64.64], R57 ;
         STG.E [R62.64], R55 ;
         STG.E [R58.64], R52 ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1350
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1350
    @!P0 CALL.REL.NOINC `(.L_x_7) ;
         BRA `(.L_x_8) ;
 
@@ -1779,7 +1779,7 @@ _Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0
 ; Location /localhome/eschnett/.julia/packages/LLVM/bzSzE/src/interop/base.jl:38
         IMAD.WIDE.U32 R2, R3, R2, c[0x0][0x1e0] ;
         STG.E [R2.64], RZ ;
-; Location /localhome/eschnett/src/kotekan-chord/julia/kernels/chimefrb.jl:1351
+; Location /localhome/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1351
         EXIT ;
         .type           $_Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EE$gpu_report_exception,@function
         .size           $_Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EE$gpu_report_exception,($_Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EE$gpu_signal_exception - $_Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EE$gpu_report_exception)

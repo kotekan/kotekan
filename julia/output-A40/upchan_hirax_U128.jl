@@ -3,7 +3,7 @@
 # Do not modify this file, your changes will be lost.
 
 @fastmath @inbounds(
-    begin #= /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:1484 =#
+    begin #= /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:1490 =#
         info = 1
         info_memory[((((IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) % 16) * 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 256) % 256) * 512 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 32) % 32) + 0) + 0x01] =
             info
@@ -185,9 +185,9 @@
             dish_in1 = 0i32
             freqlo = (1i32) * thread2 + (2i32) * thread4 + (4i32) * thread3
             dish = 0i32
-            @assert 0i32 ≤ timehi0 < 8                    #= /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:714 =#
-            @assert 0i32 ≤ timehi1 < 8                    #= /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:715 =#
-            @assert 0i32 ≤ freqlo < 8                    #= /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:716 =#
+            @assert 0i32 ≤ timehi0 < 8                    #= /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:714 =#
+            @assert 0i32 ≤ timehi1 < 8                    #= /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:715 =#
+            @assert 0i32 ≤ freqlo < 8                    #= /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:716 =#
             delta0 = dish == dish_in0
             delta1 = dish == dish_in1
             (Γ¹0, Γ¹1) = (
@@ -226,9 +226,9 @@
             timelo0 = (8i32) * (0i32) + (4i32) * thread1 + (2i32) * thread0
             timelo1 = (8i32) * (1i32) + (4i32) * thread1 + (2i32) * thread0
             freqlo = (1i32) * thread2 + (2i32) * thread4 + (4i32) * thread3
-            @assert 0i32 ≤ timelo0 < 8                    #= /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:797 =#
-            @assert 0i32 ≤ timelo1 < 8                    #= /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:798 =#
-            @assert 0i32 ≤ freqlo < 8                    #= /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:799 =#
+            @assert 0i32 ≤ timelo0 < 8                    #= /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:797 =#
+            @assert 0i32 ≤ timelo1 < 8                    #= /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:798 =#
+            @assert 0i32 ≤ freqlo < 8                    #= /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:799 =#
             (Γ²0, Γ²1) = (
                 conj(cispi((((2i32) * timelo0 * freqlo) % 128) / 64.0f0)),
                 conj(cispi((((2i32) * timelo1 * freqlo) % 128) / 64.0f0)),
@@ -256,9 +256,9 @@
             dish_in1 = 0i32
             freqhi = (1i32) * thread2 + (2i32) * thread4 + (4i32) * thread3
             dish = 0i32
-            @assert 0i32 ≤ timelo0 < 8                    #= /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:911 =#
-            @assert 0i32 ≤ timelo1 < 8                    #= /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:912 =#
-            @assert 0i32 ≤ freqhi < 8                    #= /localhome/eschnett/src/kotekan-chord/julia/kernels/upchan.jl:913 =#
+            @assert 0i32 ≤ timelo0 < 8                    #= /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:911 =#
+            @assert 0i32 ≤ timelo1 < 8                    #= /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:912 =#
+            @assert 0i32 ≤ freqhi < 8                    #= /localhome/eschnett/src/kotekan/julia/kernels/upchan.jl:913 =#
             delta0 = dish == dish_in0
             delta1 = dish == dish_in1
             (Γ³0, Γ³1) = (
@@ -971,10 +971,10 @@
                         F_ringbuf_polr_dish_mtap2_time1 = F_ringbuf_polr_dish0_mtap2_time1
                         F_in_time0 = F_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 16) % 2) * 130 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 4) % 32 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 8) % 2) * 260 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 32) % 2) * 65 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 128) % 2) * 4161 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 4) % 2) * 520 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 2) % 2) * 1040 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 2) % 2) * 32 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) % 2) * 2080) + 0x01]
                         F_in_time1 = F_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 16) % 2) * 130 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 4) % 32 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 8) % 2) * 260 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 32) % 2) * 65 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 128) % 2) * 4161 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 4) % 2) * 520 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 2) % 2) * 1040 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 2) % 2) * 32 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) % 2) * 2080) + 0x01]
-                        (E_cplx0_dish0_time0, E_cplx1_dish0_time0, E_cplx0_dish1_time0, E_cplx1_dish1_time0) = convert(
+                        (E_cplx0_dish0_time0, E_cplx1_dish0_time0, E_cplx0_dish1_time0, E_cplx1_dish1_time0) = convert_swapped_withoffset(
                             NTuple{4,Float16x2}, F_in_time0
                         )
-                        (E_cplx0_dish0_time1, E_cplx1_dish0_time1, E_cplx0_dish1_time1, E_cplx1_dish1_time1) = convert(
+                        (E_cplx0_dish0_time1, E_cplx1_dish0_time1, E_cplx0_dish1_time1, E_cplx1_dish1_time1) = convert_swapped_withoffset(
                             NTuple{4,Float16x2}, F_in_time1
                         )
                         E2_cplx0_dish0_time0 = zero(E_cplx0_dish0_time0)
@@ -991,10 +991,10 @@
                             if mtap < 3
                                 F_ringbuf_polr_dish_mtap_time0 = F_ringbuf_polr_dish_mtap0_time0
                                 F_ringbuf_polr_dish_mtap_time1 = F_ringbuf_polr_dish_mtap0_time1
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time0
                                 )
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time1
                                 )
                                 E2_cplx0_dish0_time0 = muladd(
@@ -1071,10 +1071,10 @@
                             if mtap < 3
                                 F_ringbuf_polr_dish_mtap_time0 = F_ringbuf_polr_dish_mtap1_time0
                                 F_ringbuf_polr_dish_mtap_time1 = F_ringbuf_polr_dish_mtap1_time1
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time0
                                 )
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time1
                                 )
                                 E2_cplx0_dish0_time0 = muladd(
@@ -1151,10 +1151,10 @@
                             if mtap < 3
                                 F_ringbuf_polr_dish_mtap_time0 = F_ringbuf_polr_dish_mtap2_time0
                                 F_ringbuf_polr_dish_mtap_time1 = F_ringbuf_polr_dish_mtap2_time1
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time0
                                 )
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time1
                                 )
                                 E2_cplx0_dish0_time0 = muladd(
@@ -1231,10 +1231,10 @@
                             if mtap < 3
                                 F_ringbuf_polr_dish_mtap_time0 = F_ringbuf_polr_dish_mtap3_time0
                                 F_ringbuf_polr_dish_mtap_time1 = F_ringbuf_polr_dish_mtap3_time1
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time0
                                 )
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time1
                                 )
                                 E2_cplx0_dish0_time0 = muladd(
@@ -1551,10 +1551,10 @@
                         E5_cplx1_dish0_freq64 = clamp(E5_cplx1_dish0_freq64, Float16x2(-7, -7), Float16x2(7, 7))
                         E5_cplx0_dish1_freq64 = clamp(E5_cplx0_dish1_freq64, Float16x2(-7, -7), Float16x2(7, 7))
                         E5_cplx1_dish1_freq64 = clamp(E5_cplx1_dish1_freq64, Float16x2(-7, -7), Float16x2(7, 7))
-                        F̄_out_freq0 = convert(
+                        F̄_out_freq0 = convert_swapped_withoffset(
                             Int4x8, (E5_cplx0_dish0_freq0, E5_cplx1_dish0_freq0, E5_cplx0_dish1_freq0, E5_cplx1_dish1_freq0)
                         )
-                        F̄_out_freq64 = convert(
+                        F̄_out_freq64 = convert_swapped_withoffset(
                             Int4x8, (E5_cplx0_dish0_freq64, E5_cplx1_dish0_freq64, E5_cplx0_dish1_freq64, E5_cplx1_dish1_freq64)
                         )
                         F̄_shared[(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 4) % 32 + (((((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128) ÷ 128) % 2) * 4161 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 2) * 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 16) % 2) * 16 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) ÷ 4) % 64) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 2) * 4 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 2) % 2) * 2 + ((0::Int32 ÷ 64) % 2) * 64) ÷ 2) % 64) * 65 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 2) % 2) * 32) + 0) + 0x01] =
@@ -1595,10 +1595,10 @@
                         F_ringbuf_polr_dish_mtap2_time1 = F_ringbuf_polr_dish32_mtap2_time1
                         F_in_time0 = F_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 16) % 2) * 130 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 4) % 32 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 8) % 2) * 260 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 32) % 2) * 65 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 128) % 2) * 4161 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 4) % 2) * 520 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 2) % 2) * 1040 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 2) % 2) * 32 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) % 2) * 2080) + 0x01]
                         F_in_time1 = F_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 16) % 2) * 130 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 4) % 32 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 8) % 2) * 260 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 32) % 2) * 65 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 128) % 2) * 4161 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 4) % 2) * 520 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 2) % 2) * 1040 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 2) % 2) * 32 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) % 2) * 2080) + 0x01]
-                        (E_cplx0_dish0_time0, E_cplx1_dish0_time0, E_cplx0_dish1_time0, E_cplx1_dish1_time0) = convert(
+                        (E_cplx0_dish0_time0, E_cplx1_dish0_time0, E_cplx0_dish1_time0, E_cplx1_dish1_time0) = convert_swapped_withoffset(
                             NTuple{4,Float16x2}, F_in_time0
                         )
-                        (E_cplx0_dish0_time1, E_cplx1_dish0_time1, E_cplx0_dish1_time1, E_cplx1_dish1_time1) = convert(
+                        (E_cplx0_dish0_time1, E_cplx1_dish0_time1, E_cplx0_dish1_time1, E_cplx1_dish1_time1) = convert_swapped_withoffset(
                             NTuple{4,Float16x2}, F_in_time1
                         )
                         E2_cplx0_dish0_time0 = zero(E_cplx0_dish0_time0)
@@ -1615,10 +1615,10 @@
                             if mtap < 3
                                 F_ringbuf_polr_dish_mtap_time0 = F_ringbuf_polr_dish_mtap0_time0
                                 F_ringbuf_polr_dish_mtap_time1 = F_ringbuf_polr_dish_mtap0_time1
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time0
                                 )
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time1
                                 )
                                 E2_cplx0_dish0_time0 = muladd(
@@ -1695,10 +1695,10 @@
                             if mtap < 3
                                 F_ringbuf_polr_dish_mtap_time0 = F_ringbuf_polr_dish_mtap1_time0
                                 F_ringbuf_polr_dish_mtap_time1 = F_ringbuf_polr_dish_mtap1_time1
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time0
                                 )
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time1
                                 )
                                 E2_cplx0_dish0_time0 = muladd(
@@ -1775,10 +1775,10 @@
                             if mtap < 3
                                 F_ringbuf_polr_dish_mtap_time0 = F_ringbuf_polr_dish_mtap2_time0
                                 F_ringbuf_polr_dish_mtap_time1 = F_ringbuf_polr_dish_mtap2_time1
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time0
                                 )
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time1
                                 )
                                 E2_cplx0_dish0_time0 = muladd(
@@ -1855,10 +1855,10 @@
                             if mtap < 3
                                 F_ringbuf_polr_dish_mtap_time0 = F_ringbuf_polr_dish_mtap3_time0
                                 F_ringbuf_polr_dish_mtap_time1 = F_ringbuf_polr_dish_mtap3_time1
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time0
                                 )
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time1
                                 )
                                 E2_cplx0_dish0_time0 = muladd(
@@ -2175,10 +2175,10 @@
                         E5_cplx1_dish0_freq64 = clamp(E5_cplx1_dish0_freq64, Float16x2(-7, -7), Float16x2(7, 7))
                         E5_cplx0_dish1_freq64 = clamp(E5_cplx0_dish1_freq64, Float16x2(-7, -7), Float16x2(7, 7))
                         E5_cplx1_dish1_freq64 = clamp(E5_cplx1_dish1_freq64, Float16x2(-7, -7), Float16x2(7, 7))
-                        F̄_out_freq0 = convert(
+                        F̄_out_freq0 = convert_swapped_withoffset(
                             Int4x8, (E5_cplx0_dish0_freq0, E5_cplx1_dish0_freq0, E5_cplx0_dish1_freq0, E5_cplx1_dish1_freq0)
                         )
-                        F̄_out_freq64 = convert(
+                        F̄_out_freq64 = convert_swapped_withoffset(
                             Int4x8, (E5_cplx0_dish0_freq64, E5_cplx1_dish0_freq64, E5_cplx0_dish1_freq64, E5_cplx1_dish1_freq64)
                         )
                         F̄_shared[(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 4) % 32 + (((((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128) ÷ 128) % 2) * 4161 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 2) * 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 16) % 2) * 16 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) ÷ 4) % 64) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 2) * 4 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 2) % 2) * 2 + ((0::Int32 ÷ 64) % 2) * 64) ÷ 2) % 64) * 65 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 2) % 2) * 32) + 0) + 0x01] =
@@ -2219,10 +2219,10 @@
                         F_ringbuf_polr_dish_mtap2_time1 = F_ringbuf_polr_dish64_mtap2_time1
                         F_in_time0 = F_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 16) % 2) * 130 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 4) % 32 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 8) % 2) * 260 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 32) % 2) * 65 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 128) % 2) * 4161 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 4) % 2) * 520 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 2) % 2) * 1040 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 2) % 2) * 32 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) % 2) * 2080) + 0x01]
                         F_in_time1 = F_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 16) % 2) * 130 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 4) % 32 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 8) % 2) * 260 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 32) % 2) * 65 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 128) % 2) * 4161 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 4) % 2) * 520 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 2) % 2) * 1040 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 2) % 2) * 32 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) % 2) * 2080) + 0x01]
-                        (E_cplx0_dish0_time0, E_cplx1_dish0_time0, E_cplx0_dish1_time0, E_cplx1_dish1_time0) = convert(
+                        (E_cplx0_dish0_time0, E_cplx1_dish0_time0, E_cplx0_dish1_time0, E_cplx1_dish1_time0) = convert_swapped_withoffset(
                             NTuple{4,Float16x2}, F_in_time0
                         )
-                        (E_cplx0_dish0_time1, E_cplx1_dish0_time1, E_cplx0_dish1_time1, E_cplx1_dish1_time1) = convert(
+                        (E_cplx0_dish0_time1, E_cplx1_dish0_time1, E_cplx0_dish1_time1, E_cplx1_dish1_time1) = convert_swapped_withoffset(
                             NTuple{4,Float16x2}, F_in_time1
                         )
                         E2_cplx0_dish0_time0 = zero(E_cplx0_dish0_time0)
@@ -2239,10 +2239,10 @@
                             if mtap < 3
                                 F_ringbuf_polr_dish_mtap_time0 = F_ringbuf_polr_dish_mtap0_time0
                                 F_ringbuf_polr_dish_mtap_time1 = F_ringbuf_polr_dish_mtap0_time1
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time0
                                 )
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time1
                                 )
                                 E2_cplx0_dish0_time0 = muladd(
@@ -2319,10 +2319,10 @@
                             if mtap < 3
                                 F_ringbuf_polr_dish_mtap_time0 = F_ringbuf_polr_dish_mtap1_time0
                                 F_ringbuf_polr_dish_mtap_time1 = F_ringbuf_polr_dish_mtap1_time1
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time0
                                 )
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time1
                                 )
                                 E2_cplx0_dish0_time0 = muladd(
@@ -2399,10 +2399,10 @@
                             if mtap < 3
                                 F_ringbuf_polr_dish_mtap_time0 = F_ringbuf_polr_dish_mtap2_time0
                                 F_ringbuf_polr_dish_mtap_time1 = F_ringbuf_polr_dish_mtap2_time1
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time0
                                 )
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time1
                                 )
                                 E2_cplx0_dish0_time0 = muladd(
@@ -2479,10 +2479,10 @@
                             if mtap < 3
                                 F_ringbuf_polr_dish_mtap_time0 = F_ringbuf_polr_dish_mtap3_time0
                                 F_ringbuf_polr_dish_mtap_time1 = F_ringbuf_polr_dish_mtap3_time1
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time0
                                 )
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time1
                                 )
                                 E2_cplx0_dish0_time0 = muladd(
@@ -2799,10 +2799,10 @@
                         E5_cplx1_dish0_freq64 = clamp(E5_cplx1_dish0_freq64, Float16x2(-7, -7), Float16x2(7, 7))
                         E5_cplx0_dish1_freq64 = clamp(E5_cplx0_dish1_freq64, Float16x2(-7, -7), Float16x2(7, 7))
                         E5_cplx1_dish1_freq64 = clamp(E5_cplx1_dish1_freq64, Float16x2(-7, -7), Float16x2(7, 7))
-                        F̄_out_freq0 = convert(
+                        F̄_out_freq0 = convert_swapped_withoffset(
                             Int4x8, (E5_cplx0_dish0_freq0, E5_cplx1_dish0_freq0, E5_cplx0_dish1_freq0, E5_cplx1_dish1_freq0)
                         )
-                        F̄_out_freq64 = convert(
+                        F̄_out_freq64 = convert_swapped_withoffset(
                             Int4x8, (E5_cplx0_dish0_freq64, E5_cplx1_dish0_freq64, E5_cplx0_dish1_freq64, E5_cplx1_dish1_freq64)
                         )
                         F̄_shared[(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 4) % 32 + (((((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128) ÷ 128) % 2) * 4161 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 2) * 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 16) % 2) * 16 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) ÷ 4) % 64) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 2) * 4 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 2) % 2) * 2 + ((0::Int32 ÷ 64) % 2) * 64) ÷ 2) % 64) * 65 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 2) % 2) * 32) + 0) + 0x01] =
@@ -2843,10 +2843,10 @@
                         F_ringbuf_polr_dish_mtap2_time1 = F_ringbuf_polr_dish96_mtap2_time1
                         F_in_time0 = F_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 16) % 2) * 130 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 4) % 32 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 8) % 2) * 260 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 32) % 2) * 65 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 128) % 2) * 4161 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 4) % 2) * 520 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) ÷ 2) % 2) * 1040 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 2) % 2) * 32 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 0::Int32 % 2) % 2) * 2080) + 0x01]
                         F_in_time1 = F_shared[((((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 16) % 2) * 130 + (((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 4) % 32 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 8) % 2) * 260 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 32) % 2) * 65 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 128) % 2) * 4161 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 4) % 2) * 520 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) ÷ 2) % 2) * 1040 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 2) % 2) * 32 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 4) * 2 + ((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 4) * 16 + 1::Int32 % 2) % 2) * 2080) + 0x01]
-                        (E_cplx0_dish0_time0, E_cplx1_dish0_time0, E_cplx0_dish1_time0, E_cplx1_dish1_time0) = convert(
+                        (E_cplx0_dish0_time0, E_cplx1_dish0_time0, E_cplx0_dish1_time0, E_cplx1_dish1_time0) = convert_swapped_withoffset(
                             NTuple{4,Float16x2}, F_in_time0
                         )
-                        (E_cplx0_dish0_time1, E_cplx1_dish0_time1, E_cplx0_dish1_time1, E_cplx1_dish1_time1) = convert(
+                        (E_cplx0_dish0_time1, E_cplx1_dish0_time1, E_cplx0_dish1_time1, E_cplx1_dish1_time1) = convert_swapped_withoffset(
                             NTuple{4,Float16x2}, F_in_time1
                         )
                         E2_cplx0_dish0_time0 = zero(E_cplx0_dish0_time0)
@@ -2863,10 +2863,10 @@
                             if mtap < 3
                                 F_ringbuf_polr_dish_mtap_time0 = F_ringbuf_polr_dish_mtap0_time0
                                 F_ringbuf_polr_dish_mtap_time1 = F_ringbuf_polr_dish_mtap0_time1
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time0
                                 )
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time1
                                 )
                                 E2_cplx0_dish0_time0 = muladd(
@@ -2943,10 +2943,10 @@
                             if mtap < 3
                                 F_ringbuf_polr_dish_mtap_time0 = F_ringbuf_polr_dish_mtap1_time0
                                 F_ringbuf_polr_dish_mtap_time1 = F_ringbuf_polr_dish_mtap1_time1
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time0
                                 )
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time1
                                 )
                                 E2_cplx0_dish0_time0 = muladd(
@@ -3023,10 +3023,10 @@
                             if mtap < 3
                                 F_ringbuf_polr_dish_mtap_time0 = F_ringbuf_polr_dish_mtap2_time0
                                 F_ringbuf_polr_dish_mtap_time1 = F_ringbuf_polr_dish_mtap2_time1
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time0
                                 )
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time1
                                 )
                                 E2_cplx0_dish0_time0 = muladd(
@@ -3103,10 +3103,10 @@
                             if mtap < 3
                                 F_ringbuf_polr_dish_mtap_time0 = F_ringbuf_polr_dish_mtap3_time0
                                 F_ringbuf_polr_dish_mtap_time1 = F_ringbuf_polr_dish_mtap3_time1
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time0, E_ringbuf_polr_dish_mtap_cplx1_dish0_time0, E_ringbuf_polr_dish_mtap_cplx0_dish1_time0, E_ringbuf_polr_dish_mtap_cplx1_dish1_time0) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time0
                                 )
-                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert(
+                                (E_ringbuf_polr_dish_mtap_cplx0_dish0_time1, E_ringbuf_polr_dish_mtap_cplx1_dish0_time1, E_ringbuf_polr_dish_mtap_cplx0_dish1_time1, E_ringbuf_polr_dish_mtap_cplx1_dish1_time1) = convert_swapped_withoffset(
                                     NTuple{4,Float16x2}, F_ringbuf_polr_dish_mtap_time1
                                 )
                                 E2_cplx0_dish0_time0 = muladd(
@@ -3423,10 +3423,10 @@
                         E5_cplx1_dish0_freq64 = clamp(E5_cplx1_dish0_freq64, Float16x2(-7, -7), Float16x2(7, 7))
                         E5_cplx0_dish1_freq64 = clamp(E5_cplx0_dish1_freq64, Float16x2(-7, -7), Float16x2(7, 7))
                         E5_cplx1_dish1_freq64 = clamp(E5_cplx1_dish1_freq64, Float16x2(-7, -7), Float16x2(7, 7))
-                        F̄_out_freq0 = convert(
+                        F̄_out_freq0 = convert_swapped_withoffset(
                             Int4x8, (E5_cplx0_dish0_freq0, E5_cplx1_dish0_freq0, E5_cplx0_dish1_freq0, E5_cplx1_dish1_freq0)
                         )
-                        F̄_out_freq64 = convert(
+                        F̄_out_freq64 = convert_swapped_withoffset(
                             Int4x8, (E5_cplx0_dish0_freq64, E5_cplx1_dish0_freq64, E5_cplx0_dish1_freq64, E5_cplx1_dish1_freq64)
                         )
                         F̄_shared[(((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 4) % 32 + (((((IndexSpaces.assume_inrange(t_outer::Int32, 0, 256, 65536) ÷ 256) % 256) * 256 + ((IndexSpaces.assume_inrange(t_inner::Int32, 0, 128, 256) ÷ 128) % 2) * 128) ÷ 128) % 2) * 4161 + (((((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 8) % 2) * 32 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 16) % 2) * 16 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) ÷ 4) % 64) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) % 2) * 4 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 4) % 2) * 8 + ((IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32) ÷ 2) % 2) * 2 + ((0::Int32 ÷ 64) % 2) * 64) ÷ 2) % 64) * 65 + ((((IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256) % 2) * 128 + (IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16) % 16) * 2 + ((dish::Int32 ÷ 32) % 4) * 32) ÷ 2) % 2) * 32) + 0) + 0x01] =
