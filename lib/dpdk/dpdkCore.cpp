@@ -606,8 +606,10 @@ int dpdkCore::lcore_rx_distributor(void* args) {
             // TODO we could try another working lcore in this case,
             // but that has balancing considerations
             WARN_NON_OO("Packet loss due to full worker lcore ring");
-            while (num_enqueued < num_rx)
+            while (num_enqueued < num_rx) {
+                lost_packets += 1;
                 rte_pktmbuf_free(mbufs[num_enqueued++]);
+            }
         }
 
         // Note this isn't a perfect load_balancing system.  However, it's cheaper to implement
