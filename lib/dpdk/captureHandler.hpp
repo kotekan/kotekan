@@ -130,17 +130,17 @@ inline int captureHandler::handle_packet(struct rte_mbuf* mbuf) {
 #endif
 
     uint32_t actual_payload_size = payload_size;
-    if (port > 1) {
+//    if (port > 1) {
         // Reduce the size of the copy if the payload is less than expected.
         // This is very much a hack to deal with an ICEBoard firmware bug...
         // actual_payload_size = 3584;
-    } else {
+  //  } else {
         if (unlikely(packet_size != mbuf->pkt_len)) {
             WARN("Port: {:d}; Got packet with size {:d}, but expected size was {:d}", port,
                  mbuf->pkt_len, packet_size);
             return 0;
         }
-    }
+   // }
 
 
     // Copy the packet.

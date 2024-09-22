@@ -282,13 +282,13 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t main_lcore_cpu) {
     strncpy(arg6, init_mem_alloc.c_str(), init_mem_alloc.length() + 1);
     // Block the MLX devices
     char arg7[] = "--block";
-    char arg8[] = "0000:c7:00.0";
+    char arg8[] = "0000:37:00.0";
     char arg9[] = "--block";
-    char arg10[] = "0000:c7:00.1";
+    char arg10[] = "0000:37:00.1";
     char arg11[] = "--block";
-    char arg12[] = "0001:43:00.0";
+    char arg12[] = "0001:b5:00.0";
     char arg13[] = "--block";
-    char arg14[] = "0001:43:00.1";
+    char arg14[] = "0001:b5:00.1";
     // Generate final options string for EAL initialization
     char* argv2[] = {&arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], &arg7[0],
                      &arg8[0], &arg9[0], &arg10[0], &arg11[0], &arg12[0], &arg13[0], &arg14[0], nullptr};

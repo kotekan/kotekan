@@ -308,7 +308,7 @@ gpu:
         - name: cudaShuffleAstron
           gpu_mem_voltage: voltage
           gpu_mem_ordered_voltage: ordered_voltage
-{%- for id in range(8) %}
+{%- for id in range(16) %}
         - name: cudaCorrelatorAstron
           gpu_mem_voltage: ordered_voltage
           gpu_mem_correlation_matrix: correlation_matrix
