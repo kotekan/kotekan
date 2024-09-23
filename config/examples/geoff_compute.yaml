@@ -1,0 +1,73 @@
+---
+type: config
+# Logging level can be OFF, ERROR, WARN, INFO, DEBUG, or DEBUG2
+log_level: DEBUG
+# Which CPUs is kotekan allowed to run on?
+cpu_affinity: [0,1,2,3]
+
+# Constants
+sizeof_float: 4
+
+# Construct input buffers
+input_buffers:
+  # Both input buffers will have the same number of frames, and frame size
+  num_frames: 100
+  frame_size: 1024 * sizeof_float
+  input_a_buffer:
+    kotekan_buffer: standard
+  input_b_buffer:
+    kotekan_buffer: standard
+
+# Construct output buffer
+output_buffers:
+  num_frames: 100
+  frame_size: 1024 * sizeof_float
+  output_buffer:
+    kotekan_buffer: standard
+
+# Create the producer stages that fill the input buffers with data
+data_gen:
+  data_gen_a:
+    # Fills each element of a each frame with a constant value
+    kotekan_stage: GeoffProducer
+    x_period: 5.0
+    speed: 0.01
+    x0: 0.0
+    lo: -1.0
+    hi: 1.0
+    width: 1.0
+    type: 1
+    out_buf: input_a_buffer
+  data_gen_b:  
+    kotekan_stage: GeoffProducer 
+    x_period: 5.0
+    speed: 0.0
+    x0: 2.5
+    lo: 0.0
+    hi: 1.0
+    width: 0.125
+    type: 3
+    out_buf: input_b_buffer
+
+# Add the dot-product stage that reads from the input buffers and writes to
+# the output buffer.
+dot_product:
+  kotekan_stage: GeoffCompute
+  in_a_buf: input_a_buffer
+  in_b_buf: input_b_buffer
+  out_buf: output_buffer
+
+# Add a consumer stage that prints the output buffer to screen
+screen_dump:
+  dump_out:
+    kotekan_stage: GeoffConsumer
+    in_buf: output_buffer
+    filename: out.txt
+  dump_ina:
+    kotekan_stage: GeoffConsumer
+    in_buf: input_a_buffer
+    filename: in_a.txt
+  dump_inb:
+    kotekan_stage: GeoffConsumer
+    in_buf: input_b_buffer
+    filename: in_b.txt
