@@ -1165,6 +1165,11 @@ class KotekanStageTester(KotekanRunner):
             elif isinstance(buffers_in, (list, tuple)):
                 config["in_bufs"] = [buf.name for buf in buffers_in]
                 parallel_config["in_bufs"] = [buf.name for buf in buffers_in]
+            elif isinstance(buffers_in, dict):
+                for name, buf in buffers_in.items():
+                    config[name] = buf.name
+                    parallel_config[name] = buf.name
+                buffers_in = [buf for buf in buffers_in.values()]
             else:
                 config["in_buf"] = buffers_in.name
                 parallel_config["in_buf"] = buffers_in.name
@@ -1174,6 +1179,11 @@ class KotekanStageTester(KotekanRunner):
             buffers_out = []
         elif isinstance(buffers_out, (list, tuple)):
             config["out_bufs"] = [buf.name for buf in buffers_out]
+        elif isinstance(buffers_out, dict):
+            for name, buf in buffers_out.items():
+                config[name] = buf.name
+                parallel_config[name] = buf.name
+            buffers_out = [buf for buf in buffers_out.values()]
         else:
             config["out_buf"] = buffers_out.name
             buffers_out = [buffers_out]

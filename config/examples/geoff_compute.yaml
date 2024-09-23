@@ -51,7 +51,7 @@ data_gen:
 
 # Add the dot-product stage that reads from the input buffers and writes to
 # the output buffer.
-dot_product:
+convolve:
   kotekan_stage: GeoffCompute
   in_a_buf: input_a_buffer
   in_b_buf: input_b_buffer
