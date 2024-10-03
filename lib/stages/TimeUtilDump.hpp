@@ -25,8 +25,9 @@ public:
      *   if your constructor does not need additional customisation
      *   and you wish to hide the complexity.
      */
-    TimeUtilDump(kotekan::Config& config, const std::string& unique_name,
-                    kotekan::bufferContainer& buffer_container);
+    TimeUtilDump(kotekan::Config& config,
+                 const std::string& unique_name,
+                 kotekan::bufferContainer& buffer_container);
 
     /**
      * @brief Deconstructor - what happens when Kotekan shuts down.
@@ -39,8 +40,15 @@ public:
     void main_thread() override;
 
 private:
-    // Input time
-    timespec _gps_time;
+    // Time conversions
+    double _dUT;
+    double _dAT;
+
+    // Input buffer
+    Buffer* in_buf;
+    
+    // Output buffer
+    Buffer* out_buf;
 };
 
 #endif
