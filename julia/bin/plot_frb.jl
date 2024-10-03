@@ -8,13 +8,13 @@ function freq_time_norm(A, p=2)
     return [scale * norm((@view A[:, :, freq, time]), p) for freq in 1:size(A, 3), time in 1:size(A, 4)]
 end
 
-prefix = "/tmp/fengine_pathfinder_frb";
+prefix = "/localhome/eschnett/data/fengine_pathfinder_frb";
 host = "indigo";
 iter0 = "00000000"
 iter1 = "00000001"
 
-E0 = read_kotekan("$(prefix)/$(host)_voltage.$(iter0).asdf", "voltage", ["D", "P", "F", "T"]);
-E1 = read_kotekan("$(prefix)/$(host)_voltage.$(iter1).asdf", "voltage", ["D", "P", "F", "T"]);
+E0 = read_asdf("$(prefix)/$(host)_voltage.$(iter0).asdf", "voltage", ["D", "P", "F", "T"]);
+E1 = read_asdf("$(prefix)/$(host)_voltage.$(iter1).asdf", "voltage", ["D", "P", "F", "T"]);
 E = cat(E0, E1; dims=4);
 
 Enorm2 = freq_time_norm(E, 2);

@@ -1026,6 +1026,7 @@ function upchan!(emitter)
         #Unpack     SIMD(:simd, 4, 2) => Register(:cplx, 1, C),
         #Unpack     SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
         #Unpack     newtype=FloatValue,
+        #Unpack     swapped_withoffset=true,
         #Unpack )
         # Store F
         store!(emitter, :F_shared => layout_F_shared, :F)
@@ -1072,6 +1073,7 @@ function upchan!(emitter)
                         SIMD(:simd, 4, 2) => Register(:cplx, 1, C),
                         SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
                         newtype=FloatValue,
+                        swapped_withoffset=true,
                     )
 
                     # Step 4: Compute E2 from E
@@ -1092,6 +1094,7 @@ function upchan!(emitter)
                     #TODO #         SIMD(:simd, 4, 2) => Register(:cplx, 1, C),
                     #TODO #         SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
                     #TODO #         newtype=FloatValue,
+                    #TODO #         swapped_withoffset=true,
                     #TODO #     )
                     #TODO #     delete!(emitter.environment[:E_ringbuf], MTap(:mtap, 1, M - 1))
                     #TODO #     apply!(emitter, :E2, [:E2, :E_ringbuf, :W1], (E2, E, W1) -> :(muladd($W1, $E, $E2)))
@@ -1105,6 +1108,7 @@ function upchan!(emitter)
                     #TODO         Symbol(:F_ringbuf_m, m),
                     #TODO         SIMD(:simd, 4, 2) => Register(:cplx, 1, C),
                     #TODO         SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
+                    #TODO         newtype=FloatValue,
                     #TODO         newtype=FloatValue,
                     #TODO     )
                     #TODO     apply!(
@@ -1131,6 +1135,7 @@ function upchan!(emitter)
                                 SIMD(:simd, 4, 2) => Register(:cplx, 1, C),
                                 SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
                                 newtype=FloatValue,
+                                swapped_withoffset=true,
                             )
                             apply!(
                                 emitter,
@@ -1367,6 +1372,7 @@ function upchan!(emitter)
                         Register(:cplx, 1, C) => SIMD(:simd, 4, 2),
                         Register(:dish, 1, 2) => SIMD(:simd, 8, 2);
                         newtype=IntValue,
+                        swapped_withoffset=true,
                     )
                     @assert emitter.environment[:F̄_out] == layout_F̄_registers
 

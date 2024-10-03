@@ -68,7 +68,7 @@ jobs:
           fi
           echo "docker_build=1" >> $GITHUB_OUTPUT;
         else
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request" || "${GITHUB_EVENT_NAME}" = "pull_request_target" ]; then
+          if [[ "${GITHUB_EVENT_NAME}" = "pull_request" || "${GITHUB_EVENT_NAME}" = "pull_request_target" ]]; then
             echo "Dockerfile was not modified. Using image from branch ${GITHUB_BASE_REF}."
             IMAGE_NAME="${IMG_2404}:$(echo ${GITHUB_BASE_REF} | tr / .)"
           else
@@ -202,6 +202,7 @@ jobs:
             -DCMAKE_LINK_WHAT_YOU_USE=ON \
             -DCMAKE_BUILD_TYPE=Test \
             -DUSE_ASDF=ON \
+            -DUSE_GDAL=ON \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DNO_MEMLOCK=ON \
@@ -213,11 +214,6 @@ jobs:
         docker run "${OPTS[@]}" rm -r lib
         docker run "${OPTS[@]}" ccache -s
         df -h
-
-    - name: Run direct Kotekan tests
-      run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" ./build-2404/kotekan/kotekan --bind-address 0:23000 --config config/tests/julia_hello_world.yaml
 
     - name: Run parallel python tests
       run: |
@@ -305,6 +301,68 @@ jobs:
       run: |
         rm -rf kotekan
 
+
+  # Build a version of kotekan and run some direct tests
+  build-direct-tests-2404:
+    runs-on: self-hosted
+    container: 
+      image: summerwind/actions-runner:ubuntu-22.04
+      options: --user root
+    needs: build-docker-2404
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Cache ccache files
+      uses: actions/cache@v4
+      with:
+        path: .ccache
+        key: ccache-direct-2404-${{ github.sha }}
+        restore-keys: |
+          ccache-direct-2404
+          ccache-base-build-2404
+
+    - name: Build kotekan
+      shell: bash
+      run: |
+        OPTS=(--pull=always --privileged --rm --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan/build-2404/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
+        docker run "${OPTS[@]}" ccache -s
+        docker run "${OPTS[@]}" \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
+            -DCMAKE_BUILD_TYPE=Test \
+            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
+            -DNO_MEMLOCK=ON \
+            -DUSE_OMP=ON \
+            -DUSE_ASDF=ON \
+            -DUSE_GDAL=ON \
+            -DWITH_BOOST_TESTS=ON \
+            -DUSE_CUDA=ON \
+            -DCCACHE=ON ..
+        docker run "${OPTS[@]}" make -j
+        docker run "${OPTS[@]}" rm -r lib
+        docker run "${OPTS[@]}" ccache -s
+        df -h
+
+    # Run all tests in the config/ci-tests directory
+    - name: Run direct Kotekan tests
+      run: |
+        OPTS="--rm --privileged --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }}"
+        docker run $OPTS sh -c 'for config_file in config/ci-tests/*.yaml; do ./build-2404/kotekan/kotekan --bind-address 0:23000 --config $config_file || exit 41; done'
+
+    - name: Clean up
+      run: |
+        rm -rf kotekan
+
+
   # 2204 Tests
 
   # Ubuntu 22.04 docker image build and push
@@ -342,7 +400,7 @@ jobs:
           fi
           echo "docker_build=1" >> $GITHUB_OUTPUT;
         else
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request" || "${GITHUB_EVENT_NAME}" = "pull_request_target" ]; then
+          if [[ "${GITHUB_EVENT_NAME}" = "pull_request" || "${GITHUB_EVENT_NAME}" = "pull_request_target" ]]; then
             echo "Dockerfile was not modified. Using image from branch ${GITHUB_BASE_REF}."
             IMAGE_NAME="${IMG_2204}:$(echo ${GITHUB_BASE_REF} | tr / .)"
           else
@@ -547,11 +605,6 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         df -h
 
-    - name: Run direct Kotekan tests
-      run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2204.outputs.docker_img_name }})
-        docker run "${OPTS[@]}" ./build-2204/kotekan/kotekan --bind-address 0:23000 --config config/tests/julia_hello_world.yaml
-
     - name: Run parallel python tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
@@ -611,7 +664,7 @@ jobs:
             -DUSE_CUDA=OFF \
             -DUSE_OPENCL=ON \
             -DCCACHE=ON ..
-        docker run "${OPTS[@]}" make -j 2
+        docker run "${OPTS[@]}" make -j
         docker run "${OPTS[@]}" rm -r lib
         docker run "${OPTS[@]}" ccache -s
         df -h

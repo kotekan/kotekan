@@ -846,8 +846,7 @@ function make_bb_kernel()
 
                         load!(emitter, :E0 => layout_E0_registers, :E_shared => layout_E_shared)
 
-                        # TODO: Don't undo offset encoding, don't shift right; fold this into a fixup after multiplying by A
-                        widen!(emitter, :E1, :E0, SIMD(:simd, 4, 2) => Register(:cplx, 1, C))
+                        widen!(emitter, :E1, :E0, SIMD(:simd, 4, 2) => Register(:cplx, 1, C); swapped_withoffset=true)
 
                         split!(emitter, [:E1re, :E1im], :E1, cplx)
 
