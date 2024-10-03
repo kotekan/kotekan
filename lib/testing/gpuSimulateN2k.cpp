@@ -1,5 +1,6 @@
 #include "gpuSimulateN2k.hpp"
 
+#include "chordMetadata.hpp"   // for chordMetadata
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"          // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
@@ -55,11 +56,15 @@ void gpuSimulateN2k::main_thread() {
 
         // number of elements = number of dishes * polarizations
         int nt_inner = _sub_integration_ntime;
-        int n_outer = _samples_per_data_set / nt_inner;
+        int nt_outer = _samples_per_data_set / nt_inner;
+
         int fstride = 128 * _num_elements / 16 * (_num_elements / 16 + 1);
         int tstride = _num_local_freq * fstride;
 
-        for (int tout = 0; tout < n_outer; ++tout) {
+        INFO("Running stage with nt_outer={:d}, nt_inner={:d}, _num_local_freq={:d}, _num_elements={:d}",
+            nt_outer, nt_inner, _num_local_freq, _num_elements);
+
+        for (int tout = 0; tout < nt_outer; ++tout) {
             for (int f = 0; f < _num_local_freq; ++f) {
                 // loop through blocks
                 for (int jhi = 0; jhi < _num_elements / 16; jhi++) {
@@ -70,7 +75,6 @@ void gpuSimulateN2k::main_thread() {
                                 int imag = 0;
 
                                 for (int tin = 0; tin < nt_inner; ++tin) {
-
                                     int t = tout * nt_inner + tin;
                                     int ix = (t * _num_local_freq + f) * _num_elements
                                              + (16 * ihi + ilo);
@@ -98,7 +102,8 @@ void gpuSimulateN2k::main_thread() {
                 }             // jhi
 
                 DEBUG("Done t_outer {:d} of {:d} (freq {:d} of {:d}, nt_inner={:d})...", tout,
-                      n_outer, f, _num_local_freq, nt_inner);
+                      nt_outer, f, _num_local_freq, nt_inner);
+
                 if (stop_thread)
                     break;
             } // f
@@ -106,13 +111,17 @@ void gpuSimulateN2k::main_thread() {
                 break;
         } // tout
 
+        input_buf->pass_metadata(input_frame_id, output_buf, output_frame_id);
+        input_buf->mark_frame_empty(unique_name, input_frame_id);
+
+        // Pretend some samples were lost
+        // chordMetadata* chord_metadata = (chordMetadata*) output_buf->get_metadata(output_frame_id);
+        // chord_metadata->lost_timesamples[0] = 1;
+
+        output_buf->mark_frame_full(unique_name, output_frame_id);
 
         INFO("Simulating GPU processing done for {:s}[{:d}] result is in {:s}[{:d}]",
              input_buf->buffer_name, input_frame_id, output_buf->buffer_name, output_frame_id);
-
-        input_buf->pass_metadata(input_frame_id, output_buf, output_frame_id);
-        input_buf->mark_frame_empty(unique_name, input_frame_id);
-        output_buf->mark_frame_full(unique_name, output_frame_id);
 
         input_frame_id = (input_frame_id + 1) % input_buf->num_frames;
         output_frame_id = (output_frame_id + 1) % output_buf->num_frames;

@@ -4,14 +4,12 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"          // for allocate_new_metadata_object, mark_frame_full, register_p...
 #include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager
-#include "datasetState.hpp"    // for eigenvalueState, freqState, inputState, metadataState
 #include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
 #include "factory.hpp"         // for FACTORY
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 #include "version.h"           // for get_git_commit_hash
-#include "visBuffer.hpp"       // for VisFrameView
-#include "visUtil.hpp"         // for prod_ctype, input_ctype, double_to_ts, current_time, freq...
+#include "N2FrameView.hpp"     // for N2FrameView
+#include "N2Util.hpp"          // for prod_ctype, input_ctype, double_to_ts, current_time, freq...
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span<>::iterator, span
@@ -64,13 +62,6 @@ FakeVis::FakeVis(Config& config, const std::string& unique_name,
     // Get frequency IDs from config
     freq = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
 
-    // Was a fixed dataset ID configured?
-    if (config.exists(unique_name, "dataset_id")) {
-        _dset_id = config.get<dset_id_t>(unique_name, "dataset_id");
-        _fixed_dset_id = true;
-    } else
-        _fixed_dset_id = false;
-
     mode = config.get_default<std::string>(unique_name, "mode", "default");
     INFO("Using fill type: {:s}", mode);
     pattern = FACTORY(FakeVisPattern)::create_unique(mode, config, unique_name);
@@ -96,41 +87,6 @@ void FakeVis::main_thread() {
     uint64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
     uint64_t delta_ns = (uint64_t)(cadence * 1000000000);
 
-    // Register datasetStates to describe the properties of the created stream
-    dset_id_t ds_id = dset_id_t::null;
-    auto& dm = datasetManager::instance();
-
-    if (_fixed_dset_id) {
-        ds_id = _dset_id;
-    } else {
-        std::vector<state_id_t> states;
-        states.push_back(
-            dm.create_state<metadataState>("not set", "FakeVis", get_git_commit_hash()).first);
-
-        std::vector<std::pair<uint32_t, freq_ctype>> fspec;
-        // TODO: CHIME specific
-        std::transform(std::begin(freq), std::end(freq), std::back_inserter(fspec),
-                       [](const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
-                           return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
-                       });
-        states.push_back(dm.create_state<freqState>(fspec).first);
-
-        std::vector<input_ctype> ispec;
-        for (uint32_t i = 0; i < num_elements; i++)
-            ispec.emplace_back((uint32_t)i, fmt::format(fmt("dm_input_{:d}"), i));
-        states.push_back(dm.create_state<inputState>(ispec).first);
-
-        std::vector<prod_ctype> pspec;
-        for (uint16_t i = 0; i < num_elements; i++)
-            for (uint16_t j = i; j < num_elements; j++)
-                pspec.push_back({i, j});
-        states.push_back(dm.create_state<prodState>(pspec).first);
-        states.push_back(dm.create_state<eigenvalueState>(num_eigenvectors).first);
-
-        // Register a root state
-        ds_id = dm.add_dataset(states);
-    }
-
     // Sleep before starting up
     timespec ts_sleep = double_to_ts(sleep_before);
     nanosleep(&ts_sleep, nullptr);
@@ -141,7 +97,7 @@ void FakeVis::main_thread() {
 
         for (auto f : freq) {
 
-            DEBUG("Making fake VisBuffer for freq={:d}, fpga_seq={:d}", f, fpga_seq);
+            DEBUG("Making fake N2FrameView for freq={:d}, fpga_seq={:d}", f, fpga_seq);
 
             // Wait for the buffer frame to be free
             if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
@@ -152,8 +108,6 @@ void FakeVis::main_thread() {
             auto output_frame = VisFrameView::create_frame_view(
                 out_buf, output_frame_id, num_elements, num_elements * (num_elements + 1) / 2,
                 num_eigenvectors);
-
-            output_frame.dataset_id = ds_id;
 
             // Set the frequency index
             output_frame.freq_id = f;

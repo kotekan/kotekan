@@ -3,7 +3,8 @@
 #include "FrameView.hpp"     // for bind_span, bind_scalar, FrameView
 #include "Telescope.hpp"     // for Telescope
 #include "buffer.hpp"        // for Buffer, allocate_new_metadata_object
-#include "chimeMetadata.hpp" // for chimeMetadata, get_stream_id_from_metadata
+#include "chordMetadata.hpp" // for chordMetadata
+#include "chimeMetadata.hpp" // for chimedMetadata, get_stream_id_from_metadata
 #include "metadata.hpp"      // for metadataContainer
 
 #include "fmt.hpp" // for format, fmt
@@ -38,6 +39,7 @@ struct VisMetadataFormat {
     uint64_t rfi_total;
     freq_id_t freq_id;
     dset_id_t dataset_id;
+    uint64_t n_valid_fpga_samples;
     uint32_t num_elements;
     uint32_t num_prod;
     uint32_t num_ev;
@@ -59,6 +61,7 @@ size_t VisMetadata::set_from_bytes(const char* bytes, size_t length) {
     freq_id = fmt->freq_id;
     dataset_id = fmt->dataset_id;
     num_elements = fmt->num_elements;
+    n_valid_fpga_samples = fmt->n_valid_fpga_samples;
     num_prod = fmt->num_prod;
     num_ev = fmt->num_ev;
     return sz;
@@ -74,6 +77,7 @@ size_t VisMetadata::serialize(char* bytes) {
     fmt->rfi_total = rfi_total;
     fmt->freq_id = freq_id;
     fmt->dataset_id = dataset_id;
+    fmt->n_valid_fpga_samples = n_valid_fpga_samples;
     fmt->num_elements = num_elements;
     fmt->num_prod = num_prod;
     fmt->num_ev = num_ev;
@@ -94,6 +98,7 @@ void to_json(nlohmann::json& j, const VisMetadata& m) {
     j["rfi_total"] = m.rfi_total;
     j["freq_id"] = m.freq_id;
     j["dataset_id"] = m.dataset_id;
+    j["n_valid_fpga_samples"] = m.n_valid_fpga_samples;
     j["num_elements"] = m.num_elements;
     j["num_prod"] = m.num_prod;
     j["num_ev"] = m.num_ev;
@@ -107,6 +112,7 @@ void from_json(const nlohmann::json& j, VisMetadata& m) {
     m.rfi_total = j["rfi_total"];
     m.freq_id = j["freq_id"];
     m.dataset_id = j["dataset_id"];
+    m.n_valid_fpga_samples = j["n_valid_fpga_samples"];
     m.num_elements = j["num_elements"];
     m.num_prod = j["num_prod"];
     m.num_ev = j["num_ev"];
@@ -126,6 +132,7 @@ VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
     time(std::tie(_metadata->fpga_seq_start, _metadata->ctime)),
     fpga_seq_length(_metadata->fpga_seq_length), fpga_seq_total(_metadata->fpga_seq_total),
     rfi_total(_metadata->rfi_total), freq_id(_metadata->freq_id), dataset_id(_metadata->dataset_id),
+    n_valid_fpga_samples(_metadata->n_valid_fpga_samples),
 
     // Bind the regions of the buffer to spans and references on the view
     vis(bind_span<cfloat>(_frame, buffer_layout.second[VisField::vis])),
@@ -135,7 +142,6 @@ VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
     evec(bind_span<cfloat>(_frame, buffer_layout.second[VisField::evec])),
     erms(bind_scalar<float>(_frame, buffer_layout.second[VisField::erms])),
     gain(bind_span<cfloat>(_frame, buffer_layout.second[VisField::gain]))
-
 {
     // Check that the actual buffer size is big enough to contain the calculated
     // view
@@ -144,9 +150,9 @@ VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
     if (required_size > (uint32_t)buffer->frame_size) {
 
         std::string s =
-            fmt::format(fmt("Visibility buffer [{:s}] too small. Must be a minimum of {:d} bytes "
+            fmt::format(fmt("Visibility buffer [{:s}] frames are too small with {:d} bytes. Must be a minimum of {:d} bytes "
                             "for elements={:d}, products={:d}, ev={:d}"),
-                        buffer->buffer_name, required_size, num_elements, num_prod, num_ev);
+                        buffer->buffer_name, (uint32_t)buffer->frame_size, required_size, num_elements, num_prod, num_ev);
 
         throw std::runtime_error(s);
     }
@@ -169,7 +175,6 @@ VisFrameView VisFrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer*
     return VisFrameView(buf_dest, frame_id_dest);
 }
 
-
 // Copy the non-const parts of the metadata
 void VisFrameView::copy_metadata(VisFrameView frame_to_copy) {
     _metadata->fpga_seq_start = frame_to_copy.metadata()->fpga_seq_start;
@@ -179,6 +184,7 @@ void VisFrameView::copy_metadata(VisFrameView frame_to_copy) {
     _metadata->ctime = frame_to_copy.metadata()->ctime;
     _metadata->freq_id = frame_to_copy.metadata()->freq_id;
     _metadata->dataset_id = frame_to_copy.metadata()->dataset_id;
+    _metadata->n_valid_fpga_samples = frame_to_copy.metadata()->n_valid_fpga_samples;
 }
 
 // Copy the non-visibility parts of the buffer
@@ -283,31 +289,6 @@ size_t VisFrameView::calculate_frame_size(kotekan::Config& config, const std::st
     return calculate_buffer_layout(num_elements, num_prod, num_ev).first;
 }
 
-void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t ind) {
-
-    auto& tel = Telescope::instance();
-
-    // Set to zero as there's no information in chimeMetadata about it.
-    dataset_id = dset_id_t::null;
-
-    // Set the frequency index from the stream id of the metadata
-    freq_id = tel.to_freq_id(get_stream_id_from_metadata(chime_metadata), ind);
-
-    // Set the time
-    uint64_t fpga_seq = chime_metadata->fpga_seq_num;
-
-    timespec ts;
-
-    // Use the GPS time if appropriate.
-    if (tel.gps_time_enabled()) {
-        ts = chime_metadata->gps_time;
-    } else {
-        TIMEVAL_TO_TIMESPEC(&(chime_metadata->first_packet_recv_time), &ts);
-    }
-
-    time = std::make_tuple(fpga_seq, ts);
-}
-
 void VisFrameView::set_metadata(VisMetadata* metadata, const uint32_t num_elements,
                                 const uint32_t num_prod, const uint32_t num_ev) {
     metadata->num_elements = num_elements;
@@ -350,6 +331,7 @@ void VisFrameView::zero_frame() {
     freq_id = 0;
     dataset_id = dset_id_t::null;
     time = std::make_tuple(0, timespec{0, 0});
+    n_valid_fpga_samples = 0;
 
     // mark frame as empty by ensuring this is 0
     fpga_seq_length = 0;

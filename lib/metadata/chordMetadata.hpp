@@ -3,7 +3,6 @@
 
 #include "Telescope.hpp"
 #include "buffer.hpp"
-#include "datasetManager.hpp"
 #include "metadata.hpp"
 
 #include <assert.h>
@@ -82,6 +81,9 @@ const int CHORD_META_MAX_DIM = 10;
 // Maximum length of dimension names for arrays
 const int CHORD_META_MAX_DIMNAME = 20;
 
+// Maximum number of visibility matrix samples in a frame
+const int CHORD_META_MAX_VIS_SAMPLES = 64;
+
 class chordMetadata : public metadataObject {
 public:
     chordMetadata();
@@ -97,10 +99,26 @@ public:
     /// expected to be of length (at least) get_serialized_size().
     size_t serialize(char* bytes) override;
 
+    /// The ICEBoard sequence number
+    int64_t fpga_seq_num;
+    /// The system time when the first packet in the frame was captured
+    struct timeval first_packet_recv_time;
+    /// The GPS time of @c fpga_seq_num.
+    struct timespec gps_time;
+    /// The stream ID from the ICEBoard
+    /// Note in the case of CHIME-2048 the normally unused section
+    /// Encodes the port-shuffle frequency information
+    uint16_t stream_ID;
+
     int frame_counter;
 
     char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
     chordDataType type;
+
+    /// Track the number of lost fpga samples in each gpu sub-integration
+    int lost_fpga_samples[CHORD_META_MAX_FREQ][CHORD_META_MAX_VIS_SAMPLES];
+    /// Track the number of rfi-flagged samples in each gpu sub-integration
+    int rfi_flagged_samples[CHORD_META_MAX_FREQ][CHORD_META_MAX_VIS_SAMPLES];
 
     int dims;
     int dim[CHORD_META_MAX_DIM];

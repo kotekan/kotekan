@@ -41,9 +41,6 @@
 #include <utility>     // for pair
 #include <vector>      // for vector
 
-/// Define an alias for the single precision complex type
-using cfloat = typename std::complex<float>;
-
 #if defined(WITH_CUDA)
 #include <cuda_fp16.h>
 using float16_t = __half;
@@ -57,6 +54,9 @@ using float16_t = _Float16;
 #define KOTEKAN_FLOAT16 0
 #endif
 #endif
+
+/// Define an alias for the single precision complex type
+using cfloat = typename std::complex<float>;
 
 /// Aliased type for storing the layout of members in a struct
 /// The first element of the pair is the total struct size, the second is a map
@@ -282,6 +282,15 @@ inline double tv_to_double(const timeval& tv) {
  */
 inline double ts_to_double(const timespec& ts) {
     return (ts.tv_sec + 1e-9 * ts.tv_nsec);
+}
+
+/**
+ * @brief Convert timespec type into total nanoseconds as an uint64.
+ * @param  ts Time as timespec.
+ * @return    Time as an uint64.
+ */
+inline uint64_t ts_to_uint64(const timespec& ts) {
+    return 1000000000L * (uint64_t) ts.tv_sec + (uint64_t) ts.tv_nsec;
 }
 
 

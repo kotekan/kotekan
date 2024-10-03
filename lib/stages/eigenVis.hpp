@@ -10,8 +10,7 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for dset_id_t, state_id_t
-#include "visUtil.hpp"         // for movingAverage
+#include "N2Util.hpp"         // for movingAverage
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
@@ -23,21 +22,19 @@
  *
  * This task performs the factorization of the visibility matrix into
  * ``num_ev`` eigenvectors and eigenvalues and stores them in reserve space
- * in the ``VisBuffer``. They are stored in descending order of the eigenvalue.
+ * in the ``N2Buffer``. They are stored in descending order of the eigenvalue.
  *
  * @par Buffers
  * @buffer in_buf The set of buffers coming out the GPU buffers
- *         @buffer_format VisBuffer structured
- *         @buffer_metadata VisMetadata
+ *         @buffer_format N2Buffer structured
+ *         @buffer_metadata N2Metadata
  * @buffer out_buf The merged and transformed buffer
- *         @buffer_format VisBuffer structured
- *         @buffer_metadata VisMetadata
+ *         @buffer_format N2Buffer structured
+ *         @buffer_metadata N2Metadata
  *
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
  *                              correlator data.
  * @conf  block_size            Int. The block size of the packed data.
- * @conf  num_ev                UInt. The number of eigenvectors to be calculated as
- *                              an approximation to the visibilities.
  * @conf  num_diagonals_filled  Int, default 0. Number of diagonals to fill with
  *                              the previous time step's solution prior to
  *                              factorization. For example, setting to 1 will replace
@@ -68,21 +65,16 @@ public:
     void main_thread() override;
 
 private:
-    dset_id_t change_dataset_state(dset_id_t input_dset_id);
 
     Buffer* input_buffer;
     Buffer* output_buffer;
 
-    uint32_t num_eigenvectors;
     uint32_t num_diagonals_filled;
     /// List of input indeces to zero prior to decomposition.
     std::vector<uint32_t> exclude_inputs;
 
     /// Keep track of the average write time
-    movingAverage calc_time;
-
-    state_id_t ev_state_id;
-    dset_id_t input_dset_id = dset_id_t::null;
+    N2::movingAverage calc_time;
 };
 
 #endif

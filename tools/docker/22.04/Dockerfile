@@ -156,6 +156,16 @@ RUN mkdir src && \
 # Depends on lz4.pc (called liblz4.pc in apt install)
 RUN ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/liblz4.pc /usr/local/lib/pkgconfig/lz4.pc
 
+# Install zarr
+RUN apt install -y xtl-dev libxsimd-dev libxtensor-dev nlohmann-json3-dev libbz2-dev
+RUN mkdir src && ( \
+        git clone https://github.com/constantinpape/z5.git && \
+        cd z5 && \
+        mkdir build && cd build && \
+        cmake -DWITH_ZLIB=ON -DWITH_BZIP2=ON -DBUILD_Z5PY=OFF -DCMAKE_INSTALL_PREFIX=/usr/local .. && \
+        make install && \
+    true) && rm -rf src
+
 # Clone HighFive
 RUN git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git && \
  cd HighFive && git pull && cd ..

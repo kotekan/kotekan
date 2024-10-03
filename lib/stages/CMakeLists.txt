@@ -22,6 +22,7 @@ add_library(
     $<$<BOOL:${USE_GDAL}>:gdalFileWrite.cpp>
     $<$<BOOL:${USE_GDAL}>:gdalFiles.cpp>
     $<$<BOOL:${USE_HDF5}>:hdf5FileWrite.cpp>
+    $<$<BOOL:${USE_ZARR}>:zarrFileWrite.cpp>
     vdifStream.cpp
     recvSingleDishVDIF.cpp
     streamSingleDishVDIF.cpp
@@ -66,7 +67,6 @@ add_library(
     ReceiveFlags.cpp
     valve.cpp
     visTransform.cpp
-    visTestPattern.cpp
     visDebug.cpp
     removeEv.cpp
     HFBAccumulate.cpp
@@ -85,6 +85,7 @@ add_library(
     ExampleProducer.cpp
     ExampleConsumer.cpp
     ExampleDotProduct.cpp
+    N2Accumulate.cpp
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 
@@ -118,6 +119,12 @@ if(${USE_HDF5})
     target_sources(kotekan_stages PRIVATE applyGains.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${HDF5_INCLUDE_DIRS})
     target_link_libraries(kotekan_stages PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
+endif()
+
+if(${USE_ZARR})
+    target_include_directories(kotekan_stages PRIVATE ${ZARR_CXX_INCLUDE_DIRS})
+    target_link_options(kotekan_stages PUBLIC ${ZARR_CXX_LDFLAGS})
+    target_link_libraries(kotekan_stages PUBLIC ${ZARR_CXX_LIBRARIES})
 endif()
 
 if(${USE_HDF5} AND ${USE_OMP})

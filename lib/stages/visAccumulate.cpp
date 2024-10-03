@@ -462,7 +462,7 @@ void visAccumulate::main_thread() {
 
 bool visAccumulate::initialise_output(visAccumulate::internalState& state, int in_frame_id) {
 
-    auto metadata = (const chimeMetadata*)in_buf->metadata[in_frame_id].get();
+    std::shared_ptr<chimeMetadata> metadata = get_chime_metadata(in_buf, in_frame_id);
 
     for (size_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
 
@@ -478,7 +478,7 @@ bool visAccumulate::initialise_output(visAccumulate::internalState& state, int i
         auto& frame = state.frames[freq_ind];
 
         // Copy over the metadata
-        frame.fill_chime_metadata(metadata, freq_ind);
+        frame.fill_metadata<chimeMetadata>(metadata, freq_ind);
 
         // Set dataset ID produced by the dM
         frame.dataset_id = state.output_dataset_id;

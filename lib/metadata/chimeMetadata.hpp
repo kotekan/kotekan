@@ -84,6 +84,11 @@ inline std::shared_ptr<chimeMetadata> get_chime_metadata(std::shared_ptr<metadat
     return std::static_pointer_cast<chimeMetadata>(mc);
 }
 
+inline std::shared_ptr<chimeMetadata> get_chime_metadata(Buffer* buf, int frame_id) {
+    std::shared_ptr<metadataObject> mc = buf->get_metadata(frame_id);
+    return get_chime_metadata(mc);
+}
+
 // Helper functions to save lots of pointer work
 
 inline int64_t get_fpga_seq_num(const Buffer* buf, int ID) {
@@ -131,6 +136,10 @@ inline uint32_t get_rfi_num_bad_inputs(const Buffer* buf, int ID) {
 }
 
 inline stream_t get_stream_id_from_metadata(const chimeMetadata* metadata) {
+    return {(uint64_t)metadata->stream_ID};
+}
+
+inline stream_t get_stream_id_from_metadata(std::shared_ptr<chimeMetadata> metadata) {
     return {(uint64_t)metadata->stream_ID};
 }
 

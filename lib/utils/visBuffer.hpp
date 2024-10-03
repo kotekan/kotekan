@@ -11,7 +11,6 @@
 #include "FrameView.hpp"      // for FrameView
 #include "Telescope.hpp"      // for freq_id_t
 #include "buffer.hpp"         // for Buffer
-#include "chimeMetadata.hpp"  // for chimeMetadata
 #include "datasetManager.hpp" // for dset_id_t
 #include "visUtil.hpp"        // for cfloat
 
@@ -74,6 +73,9 @@ public:
     /// ID of the dataset
     dset_id_t dataset_id;
 
+    /// Sample information
+    uint64_t n_valid_fpga_samples;
+
     /// Number of elements for data in buffer
     uint32_t num_elements;
     /// Number of products for data in buffer
@@ -81,6 +83,18 @@ public:
     /// Number of eigenvectors and values calculated
     uint32_t num_ev;
 };
+
+/**
+ * @brief Check if the metadata is of type visMetadata.
+ */
+inline bool metadata_is_vis(const std::shared_ptr<metadataObject> mc) {
+    if (!mc)
+        return false;
+    std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
+    assert(pool);
+    return (pool->type_name == "VisMetadata");
+    return false;
+}
 
 void to_json(nlohmann::json& j, const VisMetadata& m);
 void from_json(const nlohmann::json& j, VisMetadata& m);
@@ -90,7 +104,7 @@ void from_json(const nlohmann::json& j, VisMetadata& m);
  * @brief Provide a structured view of a visibility buffer.
  *
  * This class inherits from the FrameView base class and sets up a view on a visibility buffer with
- *the ability to interact with the data and metadata. Structural parameters can only be set at
+ * the ability to interact with the data and metadata. Structural parameters can only be set at
  * creation, everything else is returned as a reference or pointer so can be
  * modified at will.
  *
@@ -211,19 +225,43 @@ public:
     void copy_data(VisFrameView frame_to_copy, const std::set<VisField>& skip_members);
 
     /**
-     * @brief Fill the VisMetadata from a chimeMetadata struct.
+     * @brief Fill the VisMetadata from a chordMetadata or chimeMetadata object.
      *
      * The time field is filled with the GPS time if it is set (checked via
      * `Telescope.gps_time_enabled`), otherwise the `first_packet_recv_time` is
-     * used. Also note, there is no dataset information in chimeMetadata so the
-     * `dataset_id` is set to zero.
+     * used. Also note, there is no dataset information in the chime/chord metadata so
+     * the `dataset_id` is set to zero.
      *
      * @param chime_metadata Metadata to fill from.
      * @param ind            Frequency ind for multifrequency buffers (use zero
      *                       if not multifrequency)
      *
      **/
-    void fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t ind);
+    template <typename CH_Metadata>
+    void fill_metadata(const std::shared_ptr<CH_Metadata> metadata, uint32_t f_ind) {
+
+        auto& tel = Telescope::instance();
+
+        // Set to zero as there's no information about it.
+        dataset_id = dset_id_t::null;
+
+        // Set the frequency index from the stream id of the metadata
+        freq_id = tel.to_freq_id({(uint64_t)metadata->stream_ID}, f_ind);
+
+        // Set the time
+        uint64_t fpga_seq = metadata->fpga_seq_num;
+
+        timespec ts;
+
+        // Use the GPS time if appropriate.
+        if (tel.gps_time_enabled()) {
+            ts = metadata->gps_time;
+        } else {
+            TIMEVAL_TO_TIMESPEC(&(metadata->first_packet_recv_time), &ts);
+        }
+
+        time = std::make_tuple(fpga_seq, ts);
+    }
 
     /**
      * @brief Populate metadata.
@@ -304,6 +342,9 @@ public:
     uint32_t& freq_id;
     /// A reference to the dataset ID.
     dset_id_t& dataset_id;
+
+    /// Sample information
+    uint64_t& n_valid_fpga_samples;
 
     /// View of the visibility data.
     const gsl::span<cfloat> vis;
