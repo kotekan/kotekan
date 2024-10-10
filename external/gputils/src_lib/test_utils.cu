@@ -357,7 +357,7 @@ assert_arrays_equal(const Array<T> &arr1,
 
 #define INSTANTIATE_TEMPLATES(T) \
     INSTANTIATE_PRINT_ARRAY(T); \
-    INSTANTIATE_ASSERT_ARRAYS_EQUAL(T)
+    INSTANTIATE_ASSERT_ARRAYS_EQUAL(T);
 
 
 INSTANTIATE_TEMPLATES(float);
@@ -372,6 +372,7 @@ INSTANTIATE_TEMPLATES(unsigned short);
 INSTANTIATE_TEMPLATES(unsigned char);
 INSTANTIATE_TEMPLATES(complex<float>);
 INSTANTIATE_TEMPLATES(complex<double>);
+INSTANTIATE_TEMPLATES(complex<int>);
 
 // FIXME implement assert_arrays_equal<__half>().
 // In the meantime, I'm instantiating print_array<__half>(), but not assert_arrays_equal<__half>().

@@ -6,9 +6,12 @@ message(STATUS "N2K Current source directory: ${CMAKE_CURRENT_SOURCE_DIR}")
 message(STATUS "N2K Current binary directory: ${CMAKE_CURRENT_BINARY_DIR}")
 
 # Define source files and headers
-set(HFILES include/n2k/Correlator.hpp include/n2k/CorrelatorKernel.hpp)
+set(HFILES include/n2k/Correlator.hpp include/n2k/pl_kernels.hpp include/n2k/rfi_kernels.hpp
+    include/n2k/internals/sk_globals.hpp include/n2k/internals/interpolation.hpp
+    include/n2k/internals/internals.hpp include/n2k/internals/device_inlines.hpp
+    include/n2k/internals/CorrelatorKernel.hpp include/n2k/internals/bad_feed_mask.hpp)
 
-# Kernel files (to generate), filename syntax is kernel_{nstations}_{nfreq}.o
+# Kernel files (to generate), filename syntax is kernel_{nstations}_{nfreq}.cu
 set(KERNELFILES
     kernel_128_1.cu
     kernel_128_2.cu
@@ -35,8 +38,12 @@ set(KERNELFILES
     kernel_1024_128.cu
     kernel_2048_16.cu)
 
-# Kernel filename syntax is kernel_{nstations}_{nfreq}.cu
-set(CUFILES src_lib/Correlator.cu src_lib/kernel_table.cu src_lib/precompute_offsets.cu)
+# Additional CUDA files
+set(CUFILES src_lib/Correlator.cu src_lib/SkKernel.cu src_lib/internals.cu
+    src_lib/kernel_table.cu src_lib/pl_1bit_correlator.cu src_lib/pl_mask_expander.cu
+    src_lib/precompute_offsets.cu src_lib/s012_station_downsample.cu
+    src_lib/s012_time_downsample.cu src_lib/s0_kernel.cu src_lib/s12_kernel.cu
+    src_lib/sk_globals.cu)
 
 # Special rule for generating kernel_%d_%d.cu
 foreach(file ${KERNELFILES})
