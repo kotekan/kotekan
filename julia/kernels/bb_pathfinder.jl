@@ -1,3 +1,2 @@
-const setup = :pathfinder
-const T = 2^16
+include("setup_pathfinder.jl")
 include("bb.jl")

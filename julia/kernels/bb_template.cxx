@@ -116,6 +116,19 @@ private:
                 {{/axes}}
                 ;
             static_assert({{{name}}}_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+            static constexpr auto {{{name}}}_calc_stride = [](int dim) {
+                std::ptrdiff_t str = 1;
+                for (int d = 0; d < dim; ++d)
+                    str *= {{{name}}}_lengths[d];
+                return str;
+            };
+            static constexpr std::array<std::ptrdiff_t, {{{name}}}_rank + 1> {{{name}}}_strides = {
+                {{#axes}}
+                    {{{name}}}_calc_stride({{{name}}}_index_{{{label}}}),
+                {{/axes}}
+                {{{name}}}_calc_stride({{{name}}}_rank),
+            };
+            static_assert({{{name}}}_length == chord_datatype_bytes({{{name}}}_type) * {{{name}}}_strides[{{{name}}}_rank]);
         {{/isscalar}}
         //
     {{/kernel_arguments}}
@@ -178,6 +191,9 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal"))))
 {
     // Check ringbuffer size
+    if (!(input_ringbuf_signal->size == E_length))
+        FATAL_ERROR("Need input_ringbuf_signal->size == E_length, but have input_ringbuf_signal->size={:d}, E_length={:d}",
+                    input_ringbuf_signal->size, E_length);
     assert(input_ringbuf_signal->size == E_length);
 
     // Register host memory
@@ -281,6 +297,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                 void* const {{{name}}}_memory =
                     args::{{{name}}} == args::E ?
                         device.get_gpu_memory({{{name}}}_memname, input_ringbuf_signal->size) :
+                    args::{{{name}}} == args::A || args::{{{name}}} == args::s ?
+                        device.get_gpu_memory({{{name}}}_memname, {{{name}}}_length) :
                         device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length);
             {{/hasbuffer}}
             {{^hasbuffer}}
@@ -311,10 +329,13 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                         assert(std::strncmp({{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim],
                                             {{{name}}}_labels[dim],
                                             sizeof {{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim]) == 0);
-                        if (args::{{{name}}} == args::E)
+                        if (args::{{{name}}} == args::E) {
                             assert({{{name}}}_meta->dim[{{{name}}}_rank - 1 - dim] <= int({{{name}}}_lengths[dim]));
-                        else
+                            assert({{{name}}}_meta->stride[{{{name}}}_rank - 1 - dim] == {{{name}}}_strides[dim]);
+                        } else {
                             assert({{{name}}}_meta->dim[{{{name}}}_rank - 1 - dim] == int({{{name}}}_lengths[dim]));
+                            assert({{{name}}}_meta->stride[{{{name}}}_rank - 1 - dim] == {{{name}}}_strides[dim]);
+                        }
                     }
                     //
                 {{/isoutput}}
@@ -332,6 +353,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                                      {{{name}}}_labels[dim],
                                      sizeof {{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim]);
                         {{{name}}}_meta->dim[{{{name}}}_rank - 1 - dim] = {{{name}}}_lengths[dim];
+                        {{{name}}}_meta->stride[{{{name}}}_rank - 1 - dim] = {{{name}}}_strides[dim];
                     }
                     DEBUG("output {{{name}}} array: {:s} {:s}",
                           {{{name}}}_meta->get_type_string(),
@@ -423,6 +445,11 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {{/kernel_arguments}}
 #endif
 
+#ifdef DEBUGGING
+    // Poison outputs
+    CHECK_CUDA_ERROR(cudaMemsetAsync(J_memory, 0x88, J_length, device.getStream(cuda_stream_id)));
+#endif
+
     const std::string symname = "{{{kernel_name}}}_" + std::string(kernel_symbol);
     CHECK_CU_ERROR(cuFuncSetAttribute(device.runtime_kernels[symname],
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
@@ -458,8 +485,10 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    // Check error codes
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+    DEBUG("Finished CUDA {{{kernel_name}}} on GPU frame {:d}", gpu_frame_id);
+
+    // Check error codes
     const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
                                                       (const std::int32_t*)&*info_host.end());
     if (error_code != 0)
@@ -469,6 +498,26 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         if (info_host[i] != 0)
             ERROR("cuda{{{kernel_name}}} returned 'info' value {:d} at index {:d} (zero indicates no error)",
                 info_host[i], i);
+
+    // Check log codes
+    const std::int32_t log_code = *std::max_element((const std::int32_t*)&*log_host.begin(),
+                                                      (const std::int32_t*)&*log_host.end());
+    if (log_code != 0)
+        ERROR("CUDA kernel returned log code cuLaunchKernel: {}", log_code);
+
+    for (std::size_t i = 0; i < log_host.size(); ++i)
+        if (log_host[i] != 0)
+            ERROR("cuda{{{kernel_name}}} returned 'log' value {:d} at index {:d} (zero indicates success)",
+                  log_host[i], i);
+#endif
+
+#ifdef DEBUGGING
+    // Check outputs for poison
+    std::vector<std::uint8_t> J_buffer(J_length);
+    CHECK_CUDA_ERROR(cudaMemcpy(J_buffer.data(), J_memory, J_length, cudaMemcpyDeviceToHost));
+
+    const bool J_found_error = std::memchr(J_buffer.data(), 0x88, J_buffer.size());
+    assert(!J_found_error);
 #endif
 
     return record_end_event();

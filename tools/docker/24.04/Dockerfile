@@ -38,7 +38,8 @@ RUN apt update && \
                    libnuma-dev \
                    libssl-dev \
                    libyaml-cpp-dev \
-                   libsystemd-dev && \
+                   libsystemd-dev \
+                   libgdal-dev && \
     apt install -y python3 \
                    python3-dev && \
     apt clean && apt autoclean
@@ -136,7 +137,7 @@ RUN mkdir src && \
         cmake --install build && \
     true) && \
     rm -rf src
-# Depends on lz4 (not liblz4!)
+# Depends on lz4.pc (called liblz4.pc in apt install)
 RUN ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/liblz4.pc /usr/local/lib/pkgconfig/lz4.pc
 
 # Clone HighFive

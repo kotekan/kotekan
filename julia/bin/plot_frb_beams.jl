@@ -1,7 +1,7 @@
 using ASDF2
 using CUDASIMDTypes
 using CairoMakie
-using SixelTerm
+using ITerm2Images
 using Statistics
 
 setup = :pathfinder

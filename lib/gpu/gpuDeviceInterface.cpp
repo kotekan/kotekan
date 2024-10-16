@@ -44,6 +44,10 @@ void* gpuDeviceInterface::get_gpu_memory(const std::string& name, const size_t l
               gpu_memory[name].len);
     }
     assert(len == gpu_memory[name].len);
+    if (gpu_memory[name].gpu_pointers.size() != 1) {
+        ERROR("GPU[{:d}] memory: {:s}, implicitly requested 1 frame, have {:d}", gpu_id, name,
+              gpu_memory[name].gpu_pointers.size());
+    }
     assert(gpu_memory[name].gpu_pointers.size() == 1);
 
     // Return the requested memory.

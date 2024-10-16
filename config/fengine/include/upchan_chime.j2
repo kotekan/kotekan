@@ -1,0 +1,333 @@
+# -*-yaml-*-
+
+# CHIME upchannelizer setup
+
+################################################################################
+
+# Upchannelizer setup
+
+# TODO: Remove this
+upchannelization_factor: 16
+
+# The GPU-local (not global) channel index range for each upchannelization factor
+
+# actual = 0, scaled = 0
+upchan_U64_max_num_channels: 0
+upchan_U64_min_channel: 0
+upchan_U64_max_channel: 0
+upchan_U64_min_output_channel: upchan_all_min_output_channel
+upchan_U64_max_output_channel: upchan_U64_min_output_channel + (upchan_U64_max_channel - upchan_U64_min_channel) * 64
+
+# actual = 0, scaled = 0
+upchan_U32_max_num_channels: 0
+upchan_U32_min_channel: 0
+upchan_U32_max_channel: 0
+upchan_U32_min_output_channel: upchan_U64_max_output_channel
+upchan_U32_max_output_channel: upchan_U32_min_output_channel + (upchan_U32_max_channel - upchan_U32_min_channel) * 32
+
+# actual = 16, scaled = 256
+upchan_U16_max_num_channels: 16
+upchan_U16_min_channel: 0
+upchan_U16_max_channel: 16
+upchan_U16_min_output_channel: upchan_U32_max_output_channel
+upchan_U16_max_output_channel: upchan_U16_min_output_channel + (upchan_U16_max_channel - upchan_U16_min_channel) * 16
+
+# actual = 0, scaled = 0
+upchan_U8_max_num_channels: 0
+upchan_U8_min_channel: 16
+upchan_U8_max_channel: 16
+upchan_U8_min_output_channel: upchan_U16_max_output_channel
+upchan_U8_max_output_channel: upchan_U8_min_output_channel + (upchan_U8_max_channel - upchan_U8_min_channel) * 8
+
+# actual = 0, scaled = 0
+upchan_U4_max_num_channels: 0
+upchan_U4_min_channel: 16
+upchan_U4_max_channel: 16
+upchan_U4_min_output_channel: upchan_U8_max_output_channel
+upchan_U4_max_output_channel: upchan_U4_min_output_channel + (upchan_U4_max_channel - upchan_U4_min_channel) * 4
+
+# actual = 0, scaled = 0
+upchan_U2_max_num_channels: 0
+upchan_U2_min_channel: 16
+upchan_U2_max_channel: 16
+upchan_U2_min_output_channel: upchan_U4_max_output_channel
+upchan_U2_max_output_channel: upchan_U2_min_output_channel + (upchan_U2_max_channel - upchan_U2_min_channel) * 2
+
+# actual = 0, scaled = 0
+upchan_U1_max_num_channels: 0
+upchan_U1_min_channel: 16
+upchan_U1_max_channel: 16
+upchan_U1_min_output_channel: upchan_U2_min_output_channel
+upchan_U1_max_output_channel: upchan_U1_min_output_channel + (upchan_U1_max_channel - upchan_U1_min_channel) * 1
+
+upchan_all_max_num_output_channels: 256
+upchan_all_min_output_channel: 0
+upchan_all_max_output_channel: upchan_U1_max_output_channel
+
+# Upchannelization gains
+upchan_U2_gains: [1, 1]
+upchan_U4_gains: [1, 1, 1, 1]
+upchan_U8_gains: [1, 1, 1, 1, 1, 1, 1, 1]
+upchan_U16_gains: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+upchan_U32_gains: [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+]
+upchan_U64_gains: [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+]
+
+################################################################################
+
+# Buffers
+
+# Gains
+
+host_upchan_U2_gain_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: 1   # sizeof_float16 * upchan_U2_max_num_channels * 2
+    metadata_pool: main_pool
+
+host_upchan_U4_gain_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: 1   # sizeof_float16 * upchan_U4_max_num_channels * 4
+    metadata_pool: main_pool
+
+host_upchan_U8_gain_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: 1   # sizeof_float16 * upchan_U8_max_num_channels * 8
+    metadata_pool: main_pool
+
+host_upchan_U16_gain_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_float16 * upchan_U16_max_num_channels * 16
+    metadata_pool: main_pool
+
+host_upchan_U32_gain_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: 1   # sizeof_float16 * upchan_U32_max_num_channels * 32
+    metadata_pool: main_pool
+
+host_upchan_U64_gain_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: 1   # sizeof_float16 * upchan_U64_max_num_channels * 64
+    metadata_pool: main_pool
+
+# Voltages
+
+# host_upchan_U2_voltage_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     frame_size: num_dishes * num_polarizations * (upchan_U2_max_num_channels * 2) * (num_times / 2)
+#     metadata_pool: main_pool
+# host_upchan_U2_voltage_ringbuffer:
+#     kotekan_buffer: ring
+#     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (upchan_U2_max_num_channels * 2) * (num_times / 2)
+#     metadata_pool: main_pool
+# 
+# host_upchan_U4_voltage_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     frame_size: num_dishes * num_polarizations * (upchan_U4_max_num_channels * 4) * (num_times / 4)
+#     metadata_pool: main_pool
+# host_upchan_U4_voltage_ringbuffer:
+#     kotekan_buffer: ring
+#     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (upchan_U4_max_num_channels * 4) * (num_times / 4)
+#     metadata_pool: main_pool
+# 
+# host_upchan_U8_voltage_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     frame_size: num_dishes * num_polarizations * (upchan_U8_max_num_channels * 8) * (num_times / 8)
+#     metadata_pool: main_pool
+# host_upchan_U8_voltage_ringbuffer:
+#     kotekan_buffer: ring
+#     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (upchan_U8_max_num_channels * 8) * (num_times / 8)
+#     metadata_pool: main_pool
+
+host_upchan_U16_voltage_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_dishes * num_polarizations * (upchan_U16_max_num_channels * 16) * (num_times / 16)
+    metadata_pool: main_pool
+host_upchan_U16_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (upchan_U16_max_num_channels * 16) * (num_times / 16)
+    metadata_pool: main_pool
+
+# host_upchan_U32_voltage_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     frame_size: num_dishes * num_polarizations * (upchan_U32_max_num_channels * 32) * (num_times / 32)
+#     metadata_pool: main_pool
+# host_upchan_U32_voltage_ringbuffer:
+#     kotekan_buffer: ring
+#     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (upchan_U32_max_num_channels * 32) * (num_times / 32)
+#     metadata_pool: main_pool
+# 
+# host_upchan_U64_voltage_buffer:
+#     kotekan_buffer: standard
+#     num_frames: buffer_depth
+#     frame_size: num_dishes * num_polarizations * (upchan_U64_max_num_channels * 64) * (num_times / 64)
+#     metadata_pool: main_pool
+# host_upchan_U64_voltage_ringbuffer:
+#     kotekan_buffer: ring
+#     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (upchan_U64_max_num_channels * 64) * (num_times / 64)
+#     metadata_pool: main_pool
+
+################################################################################
+
+# Stages
+
+# run_upchan_U2:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_xposed_voltage_ringbuffer_in: host_xposed_voltage_ringbuffer
+#             host_upchan_U2_gain_buffer_in: host_upchan_U2_gain_buffer
+#         out_buffers:
+#             host_upchan_U2_voltage_ringbuffer_out: host_upchan_U2_voltage_ringbuffer
+#         commands:
+#         - name: cudaInputData
+#           do_once: true
+#           in_buf: host_upchan_U2_gain_buffer_in
+#           gpu_mem: upchan_U2_gain_buffer
+#         - name: cudaSyncInput
+#         - name: cudaUpchannelizer_chime_U2
+#           in_signal: host_xposed_voltage_ringbuffer_in
+#           out_signal: host_upchan_U2_voltage_ringbuffer_out
+#           gpu_mem_input_voltage: voltage_buffer
+#           gpu_mem_gain: upchan_U2_gain_buffer
+#           gpu_mem_output_voltage: upchan_U2_voltage_buffer
+#           Fmin: upchan_U2_min_channel
+#           Fmax: upchan_U2_max_channel
+# 
+# run_upchan_U4:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_xposed_voltage_ringbuffer_in: host_xposed_voltage_ringbuffer
+#             host_upchan_U4_gain_buffer_in: host_upchan_U4_gain_buffer
+#         out_buffers:
+#             host_upchan_U4_voltage_ringbuffer_out: host_upchan_U4_voltage_ringbuffer
+#         commands:
+#         - name: cudaInputData
+#           do_once: true
+#           in_buf: host_upchan_U4_gain_buffer_in
+#           gpu_mem: upchan_U4_gain_buffer
+#         - name: cudaSyncInput
+#         - name: cudaUpchannelizer_chime_U4
+#           in_signal: host_xposed_voltage_ringbuffer_in
+#           out_signal: host_upchan_U4_voltage_ringbuffer_out
+#           gpu_mem_input_voltage: voltage_buffer
+#           gpu_mem_gain: upchan_U4_gain_buffer
+#           gpu_mem_output_voltage: upchan_U4_voltage_buffer
+#           Fmin: upchan_U4_min_channel
+#           Fmax: upchan_U4_max_channel
+# 
+# run_upchan_U8:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_xposed_voltage_ringbuffer_in: host_xposed_voltage_ringbuffer
+#             host_upchan_U8_gain_buffer_in: host_upchan_U8_gain_buffer
+#         out_buffers:
+#             host_upchan_U8_voltage_ringbuffer_out: host_upchan_U8_voltage_ringbuffer
+#         commands:
+#         - name: cudaInputData
+#           do_once: true
+#           in_buf: host_upchan_U8_gain_buffer_in
+#           gpu_mem: upchan_U8_gain_buffer
+#         - name: cudaSyncInput
+#         - name: cudaUpchannelizer_chime_U8
+#           in_signal: host_xposed_voltage_ringbuffer_in
+#           out_signal: host_upchan_U8_voltage_ringbuffer_out
+#           gpu_mem_input_voltage: voltage_buffer
+#           gpu_mem_gain: upchan_U8_gain_buffer
+#           gpu_mem_output_voltage: upchan_U8_voltage_buffer
+#           Fmin: upchan_U8_min_channel
+#           Fmax: upchan_U8_max_channel
+
+run_upchan_U16:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_xposed_voltage_ringbuffer_in: host_xposed_voltage_ringbuffer
+            host_upchan_U16_gain_buffer_in: host_upchan_U16_gain_buffer
+        out_buffers:
+            host_upchan_U16_voltage_ringbuffer_out: host_upchan_U16_voltage_ringbuffer
+        commands:
+        - name: cudaInputData
+          do_once: true
+          in_buf: host_upchan_U16_gain_buffer_in
+          gpu_mem: upchan_U16_gain_buffer
+        - name: cudaSyncInput
+        - name: cudaUpchannelizer_chime_U16
+          in_signal: host_xposed_voltage_ringbuffer_in
+          out_signal: host_upchan_U16_voltage_ringbuffer_out
+          gpu_mem_input_voltage: voltage_buffer
+          gpu_mem_gain: upchan_U16_gain_buffer
+          gpu_mem_output_voltage: upchan_U16_voltage_buffer
+          Fmin: upchan_U16_min_channel
+          Fmax: upchan_U16_max_channel
+
+# run_upchan_U32:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_xposed_voltage_ringbuffer_in: host_xposed_voltage_ringbuffer
+#             host_upchan_U32_gain_buffer_in: host_upchan_U32_gain_buffer
+#         out_buffers:
+#             host_upchan_U32_voltage_ringbuffer_out: host_upchan_U32_voltage_ringbuffer
+#         commands:
+#         - name: cudaInputData
+#           do_once: true
+#           in_buf: host_upchan_U32_gain_buffer_in
+#           gpu_mem: upchan_U32_gain_buffer
+#         - name: cudaSyncInput
+#         - name: cudaUpchannelizer_chime_U32
+#           in_signal: host_xposed_voltage_ringbuffer_in
+#           out_signal: host_upchan_U32_voltage_ringbuffer_out
+#           gpu_mem_input_voltage: voltage_buffer
+#           gpu_mem_gain: upchan_U32_gain_buffer
+#           gpu_mem_output_voltage: upchan_U32_voltage_buffer
+#           Fmin: upchan_U32_min_channel
+#           Fmax: upchan_U32_max_channel
+# 
+# run_upchan_U64:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         in_buffers:
+#             host_xposed_voltage_ringbuffer_in: host_xposed_voltage_ringbuffer
+#             host_upchan_U64_gain_buffer_in: host_upchan_U64_gain_buffer
+#         out_buffers:
+#             host_upchan_U64_voltage_ringbuffer_out: host_upchan_U64_voltage_ringbuffer
+#         commands:
+#         - name: cudaInputData
+#           do_once: true
+#           in_buf: host_upchan_U64_gain_buffer_in
+#           gpu_mem: upchan_U64_gain_buffer
+#         - name: cudaSyncInput
+#         - name: cudaUpchannelizer_chime_U64
+#           in_signal: host_xposed_voltage_ringbuffer_in
+#           out_signal: host_upchan_U64_voltage_ringbuffer_out
+#           gpu_mem_input_voltage: voltage_buffer
+#           gpu_mem_gain: upchan_U64_gain_buffer
+#           gpu_mem_output_voltage: upchan_U64_voltage_buffer
+#           Fmin: upchan_U64_min_channel
+#           Fmax: upchan_U64_max_channel

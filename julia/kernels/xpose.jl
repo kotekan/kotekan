@@ -5,6 +5,8 @@ using CUDASIMDTypes
 using IndexSpaces
 using Mustache
 
+const Memory = IndexSpaces.Memory
+
 const card = "A40"
 
 if CUDA.functional()
@@ -356,7 +358,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     num_blocks_per_sm = kernel_setup.num_blocks_per_sm
     shmem_bytes = kernel_setup.shmem_bytes
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
-    @assert shmem_bytes ≤ 99 * 1024 # NVIDIA A10/A40 have 99 kB shared memory
+    @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
     kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm xpose_kernel(
         CUDA.zeros(Int4x8, 0), CUDA.zeros(Int4x8, 0), CUDA.zeros(Int32, 0)
     )
@@ -368,7 +370,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
 
     if output_kernel
         ptx = read("output-$card/xpose_$setup.ptx", String)
-        ptx = replace(ptx, r".extern .func ([^;]*);"s => s".func \1.noreturn\n{\n\ttrap;\n}")
+        ptx = replace(ptx, r".extern .func gpu_([^;]*);"s => s".func gpu_\1.noreturn\n{\n\ttrap;\n}")
         open("output-$card/xpose_$setup.ptx", "w") do fh
             return write(fh, ptx)
         end
@@ -445,7 +447,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     Dict(
                         "name" => "Ein",
                         "kotekan_name" => "gpu_mem_voltage",
-                        "type" => "int4p4",
+                        "type" => "int4p4chime",
                         "axes" => [
                             Dict("label" => "Dshort", "length" => Dshort),
                             Dict("label" => "Tshort", "length" => Tshort),
@@ -460,7 +462,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     Dict(
                         "name" => "E",
                         "kotekan_name" => "gpu_mem_voltage",
-                        "type" => "int4p4",
+                        "type" => "int4p4chime",
                         "axes" => [
                             Dict("label" => "D", "length" => D),
                             Dict("label" => "P", "length" => P),

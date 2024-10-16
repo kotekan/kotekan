@@ -20,9 +20,9 @@ kernel-description:
     blocks_per_sm: 8
   call-parameters:
     threads: [32, 4]
-    blocks: [2048]
+    blocks: [128]
     shmem_bytes: 13440
-  kernel-symbol: "_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EE"
+  kernel-symbol: "_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES0_IS2_Li1ELi1EES0_IS_Li1ELi1EES0_IS_Li1ELi1EE"
   kernel-arguments:
     - name: "Tmin"
       intent: in
@@ -58,6 +58,12 @@ kernel-description:
       intent: out
       type: Int32
       indices: [thread, warp, block]
-      shapes: [32, 4, 2048]
+      shapes: [32, 4, 128]
       strides: [1, 32, 128]
+    - name: "log"
+      intent: inout
+      type: Int32
+      indices: [block]
+      shapes: [128]
+      strides: [1]
 ...

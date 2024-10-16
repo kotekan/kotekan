@@ -1,6 +1,8 @@
 #include "cudaFRBBeamReformer.hpp"
 
+#include "chordMetadata.hpp"
 #include "cudaUtils.hpp"
+#include "div.hpp"
 #include "visUtil.hpp"
 
 #include "fmt.hpp"
@@ -10,393 +12,315 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using kotekan::div_noremainder;
+using kotekan::mod;
 
 REGISTER_CUDA_COMMAND(cudaFRBBeamReformer);
-
-// This matches a function defined in Kendrick's beamforming note (eqn 7/8).
-static float Ufunc(int p, int M, float theta) {
-    float acc = 0;
-    for (int s = 0; s <= M; s++) {
-        float A = 1;
-        if (s == 0 || s == M)
-            A = 0.5f;
-        acc += A * cosf((float(M_PI) * (2 * theta - p) * s) / M);
-    }
-    return acc;
-}
-static void compute_beam_reformer_phase(int M, int N, float16_t* __restrict__ host_phase,
-                                        int _num_local_freq, int _num_beams,
-                                        const float* __restrict__ beam_dra,
-                                        const float* __restrict__ beam_ddec,
-                                        const float* __restrict__ freqs, float dish_spacing_ew,
-                                        float dish_spacing_ns, float bore_zd) {
-    const float c = 3.0e8;
-    const int B = _num_beams;
-    const int Q = 2 * N;
-    const int PQ = 2 * M * 2 * N;
-
-    for (int fi = 0; fi < _num_local_freq; fi++) {
-        float wavelength = c / freqs[fi];
-
-        for (int bi = 0; bi < _num_beams; bi++) {
-            // Kendrick's FRB beamforming note, equation 7:
-            //   theta = M (nhat . sigma) / lambda
-            // where nhat is the unit vector in the direction of the sky location
-            // sigma is the dish displacement in meters East-West.
-            //
-            // We'll assume that the dishes are pointed along the meridian, so
-            // the boresight lies in the y,z plane (x=0)
-            //   nhat_0_x = 0  (x is the direction of RA = EW, y of Dec = NS)
-            //   nhat_0_y = cos(zd)
-            //   nhat_0_z = sin(zd)
-            // And nhat for each beam will be
-            //   nhat_z ~ sin(zd - ddec)
-            //   nhat_x ~ cos(zd - ddec) * sin(dra)
-            //   nhat_y ~ cos(zd - ddec) * cos(dra)
-            // We could probably get away with small-angle
-            // approximations of beam_dra,beam_ddec,
-            //   nhat_z ~ sin(zd)
-            //   nhat_y ~ cos(zd) - ddec * sin(zd)    (cos(a-b) ~ cos(a) + b sin(a) when b->0);
-            //   cos(dra)~1 nhat_x ~ cos(zd) * dra
-            // (but here we don't use the small-angle approx)
-            float theta1 = cosdf(bore_zd - beam_ddec[bi]) * sindf(beam_dra[bi]) * M
-                           * dish_spacing_ew / wavelength;
-            float theta2 = cosdf(bore_zd - beam_ddec[bi]) * cosdf(beam_dra[bi]) * N
-                           * dish_spacing_ns / wavelength;
-
-            float Up[2 * M];
-            float Uq[2 * N];
-            for (int i = 0; i < 2 * M; i++)
-                Up[i] = Ufunc(i, M, theta1);
-            for (int i = 0; i < 2 * N; i++)
-                Uq[i] = Ufunc(i, N, theta2);
-
-            for (int p = 0; p < 2 * M; p++) {
-                for (int q = 0; q < 2 * N; q++) {
-                    host_phase[fi * (B * PQ) + bi * PQ + p * Q + q] = Up[p] * Uq[q];
-                }
-            }
-        }
-    }
-}
 
 cudaFRBBeamReformer::cudaFRBBeamReformer(Config& config, const std::string& unique_name,
                                          bufferContainer& host_buffers, cudaDeviceInterface& device,
                                          int inst) :
     cudaCommand(config, unique_name, host_buffers, device, inst) {
+
+    // Number of output beams
     _num_beams = config.get<int>(unique_name, "num_beams");
-    _beam_grid_size = config.get<int>(unique_name, "beam_grid_size");
+    // Number of input beams
+    _beam_grid_size_ns = config.get<int>(unique_name, "beam_grid_size_ns");
+    _beam_grid_size_ew = config.get<int>(unique_name, "beam_grid_size_ew");
+    num_input_beams = _beam_grid_size_ew * _beam_grid_size_ns;
+    // Number of frequencies
+    _max_num_local_freq = config.get<int>(unique_name, "max_num_local_freq");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
+    assert(_num_local_freq <= _max_num_local_freq);
+    // Number of time samples
     _Td = config.get<int>(unique_name, "samples_per_data_set");
+
+    // Should BLAS calls be batched for performance?
     _batched = config.get_default<bool>(unique_name, "batched", true);
+
+    // Input and output buffer names
     _gpu_mem_beamgrid = config.get<std::string>(unique_name, "gpu_mem_beamgrid");
     _gpu_mem_phase = config.get<std::string>(unique_name, "gpu_mem_phase");
     _gpu_mem_beamout = config.get<std::string>(unique_name, "gpu_mem_beamout");
+
+    // CUDA streams
     _cuda_streams =
         config.get_default<std::vector<int>>(unique_name, "cuda_streams", std::vector<int>());
-    int nstreams = std::max((int)_cuda_streams.size(), 1);
-    if (inst == 0) {
-        for (size_t i = 0; i < _cuda_streams.size(); i++)
-            if (_cuda_streams[i] >= device.get_num_streams())
-                ERROR("Error: cudaFRBBeamReformer's config setting cuda_streams must have all "
-                      "elements < number of streams on the device = {:d}",
-                      device.get_num_streams());
-        if (_num_local_freq % nstreams != 0)
-            ERROR("Number of CUDA streams must evenly divide number of frequencies!");
-    }
+    assert(_cuda_streams.empty());
 
+    // Check CUDA stream ids
+    if (!_cuda_streams.empty()) {
+        if (inst == 0) {
+            for (const int stream : _cuda_streams)
+                if (stream < 0 || stream >= device.get_num_streams())
+                    ERROR("Error: cudaFRBBeamReformer's config setting cuda_streams must have all "
+                          "elements < number of streams on the device = {:d}",
+                          device.get_num_streams());
+            if (_num_local_freq % _cuda_streams.size() != 0)
+                ERROR("Number of CUDA streams must evenly divide number of frequencies!");
+        }
+    }
+    // We need one synchronization event per CUDA stream
+    sync_events.resize(_cuda_streams.size(), nullptr);
+
+    // Calculate buffer sizes (in bytes)
+    beamgrid_len = sizeof(float16_t) * num_input_beams * _max_num_local_freq * _Td;
+    phase_len = sizeof(float16_t) * num_input_beams * _num_beams * _num_local_freq;
+    beamout_len = sizeof(float16_t) * _num_beams * _num_local_freq * _Td;
+
+    // Find input buffer used for signalling ring-buffer state
+    input_ringbuf_signal = dynamic_cast<RingBuffer*>(
+        host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")));
+    if (inst == 0)
+        input_ringbuf_signal->register_consumer(unique_name);
+
+    // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beamgrid, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_phase, false, true, true));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beamout, true, false, true));
 
-    sync_events.resize(_cuda_streams.size());
-
+    // Kotekan stuff
     set_command_type(gpuCommandType::KERNEL);
     set_name("FRB_beamreformer");
 
-    rho = _beam_grid_size * _beam_grid_size;
-
-    beamgrid_len = (size_t)_num_local_freq * _Td * rho * sizeof(float16_t);
-    phase_len = (size_t)_num_local_freq * rho * _num_beams * sizeof(float16_t);
-    beamout_len = (size_t)_num_local_freq * _Td * _num_beams * sizeof(float16_t);
-
-    cublasStatus_t err = cublasCreate(&(this->handle));
-    if (err != CUBLAS_STATUS_SUCCESS) {
+    // Create cuBLAS handle
+    cublasStatus_t ierr = cublasCreate(&handle);
+    if (ierr != CUBLAS_STATUS_SUCCESS) {
         ERROR("Error at {:s}:{:d}: cublasCreate: {:s}", __FILE__, __LINE__,
-              cublasGetStatusString(err));
+              cublasGetStatusString(ierr));
         std::abort();
     }
 
-    if (inst == 0) {
-        // HACK -- for Minimum-Viable-Product purposes, we're going to
-        // hard-code the FRB beamformer beam locations on the sky.  In
-        // turn, this requires knowing the actual frequencies we're
-        // processing!
-        std::vector<float> beam_dra(_num_beams);
-        std::vector<float> beam_ddec(_num_beams);
-        std::vector<float> freqs(_num_local_freq);
-
-        // TODO -- in the real thing this should be an updatable config
-        // or somesuch.  Tracking beams would update single elements of
-        // these arrays.
-        // We'll place beams on an RA,Dec grid, expressed in *degrees*
-        // from -1.0 to +1.0
-        float dra_min = -1.0;
-        float dra_max = +1.0;
-        float ddec_min = -1.0;
-        float ddec_max = +1.0;
-        int Nra = 50;
-        int Ndec = 100;
-        assert(Nra * Ndec == _num_beams);
-        assert(_num_beams == 5000);
-        for (int i = 0; i < Nra; i++) {
-            for (int j = 0; j < Ndec; j++) {
-                beam_dra[i * Ndec + j] = dra_min + (dra_max - dra_min) * (float)i / (Nra - 1);
-                beam_ddec[i * Ndec + j] = ddec_min + (ddec_max - ddec_min) * (float)j / (Ndec - 1);
-            }
-        }
-
-        // TODO -- the real frequencies should be passed in with the
-        // metadata, probably!
-        for (int i = 0; i < _num_local_freq; i++) {
-            freqs[i] = 600e6 + i * (1.2e9 / 65536.);
-        }
-
-        // TODO -- the dish spacings, in meters, should be passed in as config parameters!
-        float dish_spacing_ew = 6.3;
-        float dish_spacing_ns = 8.5;
-
-        // TODO -- the zenith distance of the dishes, in degrees.  We'll
-        // assume the dishes remain pointed at HA=0, ie, they're always on
-        // the meridian.
-        float bore_zd = 30.;
-
-        std::vector<float16_t> host_phase(phase_len / sizeof(float16_t));
-
-        const char* beamphase_cache_fn = "beamphase-cache.bin";
-        FILE* f = fopen(beamphase_cache_fn, "r");
-        bool gotit = false;
-        if (f) {
-            INFO("Trying to read beamformer phase matrix from {:s}...", beamphase_cache_fn);
-            double t0 = gettime();
-            size_t nr = fread(host_phase.data(), 1, phase_len, f);
-            if (nr != phase_len) {
-                INFO("Reading file {:s}: got {:d} bytes, but expected {:d}", beamphase_cache_fn, nr,
-                     phase_len);
-            } else {
-                gotit = true;
-            }
-            fclose(f);
-            INFO("That took {:g} sec", gettime() - t0);
-        }
-        if (!gotit) {
-            int M = _beam_grid_size / 2;
-            int N = M;
-            INFO("Computing beam-reformer phase matrix...");
-            double t0 = gettime();
-            compute_beam_reformer_phase(M, N, host_phase.data(), _num_local_freq, _num_beams,
-                                        beam_dra.data(), beam_ddec.data(), freqs.data(),
-                                        dish_spacing_ew, dish_spacing_ns, bore_zd);
-            INFO("That took {:g} sec", gettime() - t0);
-            INFO("Computed beam-reformer phase matrix");
-            f = fopen(beamphase_cache_fn, "w+");
-            if (f) {
-                size_t nw = fwrite(host_phase.data(), 1, phase_len, f);
-                if (nw != phase_len) {
-                    INFO("Failed to write beamformer phase matrix to {:s}: {:s}",
-                         beamphase_cache_fn, strerror(errno));
-                    fclose(f);
-                    unlink(beamphase_cache_fn);
-                } else {
-                    if (fclose(f)) {
-                        INFO("Failed to close beamformer phase matrix in {:s}: {:s}",
-                             beamphase_cache_fn, strerror(errno));
-                        unlink(beamphase_cache_fn);
-                    } else {
-                        INFO("Wrote beamformer phase matrix to {:s}", beamphase_cache_fn);
-                    }
-                }
-            }
-        }
-
-        float16_t* phase_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
-        CHECK_CUDA_ERROR(
-            cudaMemcpy(phase_memory, host_phase.data(), phase_len, cudaMemcpyHostToDevice));
-    }
-
-    // for cublas_hgemmBatched, pre-compute the GPU array pointers.
-    if (_batched) {
-        // GPU-memory arrays of pointers to the input & output
-        // matrices (in GPU memory)
-        __half** in = (__half**)device.get_gpu_memory(
-            unique_name + "_batch_in", _gpu_buffer_depth * _num_local_freq * sizeof(__half*));
-        __half** out = (__half**)device.get_gpu_memory(
-            unique_name + "_batch_out", _gpu_buffer_depth * _num_local_freq * sizeof(__half*));
-        __half** ph = (__half**)device.get_gpu_memory(unique_name + "_batch_ph",
-                                                      _num_local_freq * sizeof(__half*));
-
-        float16_t* phase_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
-
-        int freqs_per_stream = _num_local_freq / nstreams;
-
-        // loop over streams and save the final GPU memory pointers (which we haven't yet
-        // filled with data!)
-        int bufindex = inst;
-        for (int i = 0; i < nstreams; i++) {
-            _gpu_in_pointers.push_back(in + (bufindex * nstreams + i) * freqs_per_stream);
-            _gpu_out_pointers.push_back(out + (bufindex * nstreams + i) * freqs_per_stream);
-            _gpu_phase_pointers.push_back(ph + i * freqs_per_stream);
-        }
-
-        if (inst == 0) {
-            // Temporary CPU-memory arrays of pointers to the input &
-            // output matrices (which live in GPU memory); these will get
-            // copied to in/out/ph.
-            __half* host_in[_gpu_buffer_depth * _num_local_freq];
-            __half* host_out[_gpu_buffer_depth * _num_local_freq];
-            __half* host_ph[_gpu_buffer_depth * _num_local_freq];
-
-            // loop over gpu frames
-            for (int gpu_frame_id = 0; gpu_frame_id < _gpu_buffer_depth; gpu_frame_id++) {
-                // GPU input & output memory buffers for this gpu frame #.
-                float16_t* gpu_in_base = (float16_t*)device.get_gpu_memory_array(
-                    _gpu_mem_beamgrid, gpu_frame_id, _gpu_buffer_depth, beamgrid_len);
-                float16_t* gpu_out_base = (float16_t*)device.get_gpu_memory_array(
-                    _gpu_mem_beamout, gpu_frame_id, _gpu_buffer_depth, beamout_len);
-                // Compute the per-frequency matrix offsets.
-                for (int f = 0; f < _num_local_freq; f++) {
-                    host_in[gpu_frame_id * _num_local_freq + f] =
-                        gpu_in_base + (size_t)f * _Td * rho;
-                    host_out[gpu_frame_id * _num_local_freq + f] =
-                        gpu_out_base + (size_t)f * _Td * _num_beams;
-                    if (gpu_frame_id == 0)
-                        host_ph[f] = phase_memory + (size_t)f * rho * _num_beams;
-                }
-            }
-            // Now copy the GPU pointer offsets (that we computed on the CPU) over to the GPU!
-            CHECK_CUDA_ERROR(cudaMemcpy(in, host_in,
-                                        _gpu_buffer_depth * _num_local_freq * sizeof(__half*),
-                                        cudaMemcpyHostToDevice));
-            CHECK_CUDA_ERROR(cudaMemcpy(out, host_out,
-                                        _gpu_buffer_depth * _num_local_freq * sizeof(__half*),
-                                        cudaMemcpyHostToDevice));
-            CHECK_CUDA_ERROR(
-                cudaMemcpy(ph, host_ph, _num_local_freq * sizeof(__half*), cudaMemcpyHostToDevice));
-        }
-    }
-
-    if (nstreams == 1) {
+    // If we don't specify explicit streams, then set up the CUDA
+    // stream that cuBLAS should used
+    if (_cuda_streams.empty()) {
         // We MUST set the stream -- otherwise it uses the CUDA
-        // default stream, which != our default compute stream!
+        // default stream, which is not our default compute stream!
         DEBUG("Set cublas stream {:d}", cuda_stream_id);
         cublasSetStream(handle, device.getStream(cuda_stream_id));
     }
 }
 
 cudaFRBBeamReformer::~cudaFRBBeamReformer() {
-    cublasDestroy(this->handle);
+    // Destroy cuBLAS handle
+    cublasDestroy(handle);
+}
+
+int cudaFRBBeamReformer::wait_on_precondition() {
+    // Wait for data to be available in input ringbuffer
+    const std::ptrdiff_t input_bytes = beamgrid_len;
+    DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
+    DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
+    const std::optional<std::ptrdiff_t> val_in =
+        input_ringbuf_signal->wait_and_claim_readable(unique_name, instance_num, input_bytes);
+    DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
+    if (!val_in.has_value())
+        return -1;
+    input_cursor = val_in.value();
+    DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
+    // Mod input cursor by the ringbuffer size
+    input_position = mod(input_cursor, input_ringbuf_signal->size);
+    // Assert that we don't wrap around!
+    assert(input_position + input_bytes <= input_ringbuf_signal->size);
+    DEBUG("Modded input ring-buffer byte offset: {:d}", input_position);
+    return 0;
 }
 
 cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
     pre_execute();
 
-    float16_t* beamgrid_memory = (float16_t*)device.get_gpu_memory_array(
-        _gpu_mem_beamgrid, gpu_frame_id, _gpu_buffer_depth, beamgrid_len);
-    float16_t* phase_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
-    float16_t* beamout_memory = (float16_t*)device.get_gpu_memory_array(
-        _gpu_mem_beamout, gpu_frame_id, _gpu_buffer_depth, beamout_len);
-
     record_start_event();
 
-    DEBUG("Running CUDA FRB BeamReformer on GPU frame {:d}: F={:d}, T={:d}, B={:d}, rho={:d}",
-          gpu_frame_id, _num_local_freq, _Td, _num_beams, rho);
+    // Get buffer pointers
+    DEBUG("beamgrid_memory");
+    float16_t* const beamgrid_memory =
+        (float16_t*)device.get_gpu_memory(_gpu_mem_beamgrid, input_ringbuf_signal->size)
+        + div_noremainder(input_position, sizeof(float16_t));
+    DEBUG("phase_memory");
+    float16_t* const phase_memory = (float16_t*)device.get_gpu_memory(_gpu_mem_phase, phase_len);
+    DEBUG("beamout_memory");
+    float16_t* const beamout_memory = (float16_t*)device.get_gpu_memory_array(
+        _gpu_mem_beamout, gpu_frame_id, _gpu_buffer_depth, beamout_len);
 
-    int calls_per_stream = (_cuda_streams.size() > 0) ? _num_local_freq / _cuda_streams.size() : 0;
+    DEBUG("Running CUDA FRB BeamReformer on GPU frame {:d}: F={:d}, T={:d}, B={:d}, "
+          "num_input_beams={:d}",
+          gpu_frame_id, _num_local_freq, _Td, _num_beams, num_input_beams);
 
-    if (_batched) {
-        int nstreams = std::max((int)_cuda_streams.size(), 1);
-        int freqs_per_stream = _num_local_freq / nstreams;
+    const int calls_per_stream =
+        _cuda_streams.empty() ? 1 : div_noremainder(_num_local_freq, _cuda_streams.size());
 
-        for (int i = 0; i < nstreams; i++) {
-            if (nstreams > 1) {
-                DEBUG("Set cublas stream {:d}", _cuda_streams[i]);
-                cublasSetStream(handle, device.getStream(_cuda_streams[i]));
-            }
-            __half alpha = 1.;
-            __half beta = 0.;
-            cublasStatus_t stat =
-                cublasHgemmBatched(handle, CUBLAS_OP_T, CUBLAS_OP_N, _Td, _num_beams, rho, &alpha,
-                                   _gpu_in_pointers[i], rho, _gpu_phase_pointers[i], rho, &beta,
-                                   _gpu_out_pointers[i], _Td, freqs_per_stream);
-            if (stat != CUBLAS_STATUS_SUCCESS) {
-                ERROR("Error at {:s}:{:d}: cublasHgemmBatched: {:s}", __FILE__, __LINE__,
-                      cublasGetStatusString(stat));
-                std::abort();
-            }
-        }
+    const float16_t alpha = 1;
+    const float16_t beta = 0;
 
-    } else {
+    // Calculate
+    //     Iout[T,F,Bout] = Iin[Bin,F0,T] * W[Bin,Bout,F]
+    //     C = A^T * B
+    //
+    //     C[m,n] = A^T[k,m] B[k,n]
+    //
+    // Thus
+    //     m       = T
+    //     n       = Bout
+    //     k       = Bin
+    //     lda     = Bin * F0
+    //     ldb     = Bin
+    //     ldc     = T * F
+    //     strideA = Bin
+    //     strideB = Bin * Bout
+    //     strideC = T
+    //
+    // These indices are in Fortran notation (which cuBLAS
+    // uses), i.e. the leftmost index is contiguous in memory.
+    //
+    // The frequency is a spectator index, i.e. we only show
+    // one frequency at a time to cuBLAS. This makes the
+    // matrices non-contiguous in memory. This is fine, cuBLAS
+    // supports this.
+
+    const int m = _Td;
+    const int n = _num_beams;
+    const int k = num_input_beams;
+
+    const int lda = _max_num_local_freq * num_input_beams;
+    const int ldb = num_input_beams;
+    const int ldc = _Td * _num_local_freq;
+
+    const std::ptrdiff_t strideA = num_input_beams;
+    const std::ptrdiff_t strideB = num_input_beams;
+    const std::ptrdiff_t strideC = _Td;
+
+    if (!_batched) {
+        // Simple (unbatched, slow) case: Loop over frequencies
         for (int f = 0; f < _num_local_freq; f++) {
-            int B = _num_beams;
-            float16_t* d_Iin = beamgrid_memory + (size_t)f * _Td * rho;
-            float16_t* d_W = phase_memory + (size_t)f * rho * B;
-            float16_t* d_Iout = beamout_memory + (size_t)f * _Td * B;
-
-            __half alpha = 1.;
-            __half beta = 0.;
-
-            if ((calls_per_stream > 0) && (f % calls_per_stream == 0)) {
+            if (!_cuda_streams.empty()) {
                 DEBUG("Freq {:d}: set Cuda stream {:d}", f, _cuda_streams[f / calls_per_stream]);
                 cublasSetStream(handle, device.getStream(_cuda_streams[f / calls_per_stream]));
             }
-            // Multiply A^T and B on GPU, where the transposes are
-            // according to cublas, ie, in the Fortran column-major view
-            // of things.  That is, Transpose is the regular C row-major
-            // ordering.
-            cublasStatus_t stat = cublasHgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, _Td, B, rho, &alpha,
-                                              d_Iin, rho, d_W, rho, &beta, d_Iout, _Td);
+            // Pointers to first element for frequency `f` in the buffers
+            const float16_t* const d_Iin = beamgrid_memory + f * strideA;
+            const float16_t* const d_W = phase_memory + f * strideB;
+            float16_t* const d_Iout = beamout_memory + f * strideC;
 
+            cublasStatus_t stat = cublasHgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, m, n, k, &alpha,
+                                              d_Iin, lda, d_W, ldb, &beta, d_Iout, ldc);
             if (stat != CUBLAS_STATUS_SUCCESS) {
                 ERROR("Error at {:s}:{:d}: cublasHgemm: {:s}", __FILE__, __LINE__,
                       cublasGetStatusString(stat));
                 std::abort();
             }
+        } // for f
+    } else {
+        // Batched (fast) case
+
+        const float16_t alpha = 1;
+        const float16_t beta = 0;
+
+        assert(_cuda_streams.empty());
+        cublasStatus_t stat = cublasHgemmStridedBatched(
+            handle, CUBLAS_OP_T, CUBLAS_OP_N, m, n, k, &alpha, beamgrid_memory, lda, strideA,
+            phase_memory, ldb, strideB, &beta, beamout_memory, ldc, strideC, _num_local_freq);
+        if (stat != CUBLAS_STATUS_SUCCESS) {
+            ERROR("Error at {:s}:{:d}: cublasHgemmStridedBatched: {:s}", __FILE__, __LINE__,
+                  cublasGetStatusString(stat));
+            std::abort();
+        }
+    } // if _batched
+
+    if (!_cuda_streams.empty()) {
+        int event_count = 0;
+        for (const int stream : _cuda_streams) {
+            if (stream != cuda_stream_id) {
+                // Create an event on each compute stream that we "forked"
+                CHECK_CUDA_ERROR(cudaEventCreate(&sync_events[event_count]));
+                CHECK_CUDA_ERROR(
+                    cudaEventRecord(sync_events[event_count], device.getStream(stream)));
+                // Now wait for that event on the main compute stream.
+                CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(cuda_stream_id),
+                                                     sync_events[event_count]));
+                ++event_count;
+            }
         }
     }
 
-    if (calls_per_stream > 0) {
-        for (size_t i = 0; i < _cuda_streams.size(); i++) {
-            if (_cuda_streams[i] != cuda_stream_id) {
-                // Create an event on each compute stream that we "forked"
-                CHECK_CUDA_ERROR(cudaEventCreate(&sync_events[i]));
-                CHECK_CUDA_ERROR(
-                    cudaEventRecord(sync_events[i], device.getStream(_cuda_streams[i])));
-                // Now wait for that event on the main compute stream.
-                CHECK_CUDA_ERROR(
-                    cudaStreamWaitEvent(device.getStream(cuda_stream_id), sync_events[i]));
-            }
-        }
+    const std::shared_ptr<metadataObject> in_mc = input_ringbuf_signal->get_metadata(0);
+    if (metadata_is_chord(in_mc)) {
+        const std::shared_ptr<chordMetadata> in_meta = get_chord_metadata(in_mc);
+        // Assert that input metadata array shape is as expected.
+        DEBUG("Input metadata: array shape {:s}, array type {:s}", in_meta->get_dimensions_string(),
+              in_meta->get_type_string());
+        assert(in_meta->type == chordDataType::float16);
+        // Assert Ttilde x Fbar x beamQ x beamP
+        assert(in_meta->dims == 4);
+        // in_meta->dim[0] is in the ringbuffer
+        // in_meta->dim[1] is set wrong
+        // if (!(in_meta->dim[1] == _num_local_freq))
+        //     ERROR("in dim=[{},{},{},{}] num_local_freq={}", in_meta->dim[0], in_meta->dim[1],
+        //           in_meta->dim[2], in_meta->dim[3], _num_local_freq);
+        // assert(in_meta->dim[1] == _num_local_freq);
+        if (!(in_meta->dim[1] == _max_num_local_freq))
+            ERROR("in dim=[{},{},{},{}] max_num_local_freq={}", in_meta->dim[0], in_meta->dim[1],
+                  in_meta->dim[2], in_meta->dim[3], _max_num_local_freq);
+        assert(in_meta->dim[1] == _max_num_local_freq);
+        assert(in_meta->dim[2] == _beam_grid_size_ew);
+        assert(in_meta->dim[3] == _beam_grid_size_ns);
+        for (int d = in_meta->dims - 1; d >= 0; --d)
+            if (d == in_meta->dims - 1)
+                assert(in_meta->stride[d] == 1);
+            else
+                assert(in_meta->stride[d] == in_meta->stride[d + 1] * in_meta->dim[d + 1]);
+        // Set metadata on output buffer
+        std::shared_ptr<metadataObject> const out_mc = device.create_gpu_memory_array_metadata(
+            _gpu_mem_beamout, gpu_frame_id, in_mc->parent_pool);
+        std::shared_ptr<chordMetadata> const out_meta = get_chord_metadata(out_mc);
+        *out_meta = *in_meta;
+        // Output shape is (Ttilde x Fbar x beam) in float16
+        out_meta->set_name("I2");
+        out_meta->type = chordDataType::float16;
+        out_meta->dims = 3;
+        out_meta->set_array_dimension(0, _num_beams, "R");
+        out_meta->set_array_dimension(1, _num_local_freq, "Fbar");
+        out_meta->set_array_dimension(2, _Td, "Ttilde");
+        for (int d = out_meta->dims - 1; d >= 0; --d)
+            if (d == out_meta->dims - 1)
+                out_meta->stride[d] = 1;
+            else
+                out_meta->stride[d] = out_meta->stride[d + 1] * out_meta->dim[d + 1];
+        DEBUG("Set output metadata: array shape {:s}, array type {:s}",
+              out_meta->get_dimensions_string(), out_meta->get_type_string());
+
+        // Since we do not use a ring buffer we need to set `meta->sample0_offset`
+        assert(input_cursor % in_meta->sample_bytes() == 0);
+        out_meta->sample0_offset = div_noremainder(input_cursor, in_meta->sample_bytes());
     }
 
     return record_end_event();
 }
 
 void cudaFRBBeamReformer::finalize_frame() {
-    float exec_time;
-    for (size_t i = 0; i < _cuda_streams.size(); i++) {
-        if (sync_events[i]) {
-            CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_event, sync_events[i]));
-            DEBUG("Sync for stream {:d} took {:.3f} ms", _cuda_streams[i], exec_time);
-        }
-    }
-    if (start_event && end_event) {
-        CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_event, end_event));
-        DEBUG("Start to end took {:.3f} ms", exec_time);
-    }
+    // float exec_time;
+    // for (size_t i = 0; i < _cuda_streams.size(); i++) {
+    //     if (sync_events[i]) {
+    //         CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_event, sync_events[i]));
+    //         DEBUG("Sync for stream {:d} took {:.3f} ms", _cuda_streams[i], exec_time);
+    //     }
+    // }
+    // if (start_event && end_event) {
+    //     CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, start_event, end_event));
+    //     DEBUG("Start to end took {:.3f} ms", exec_time);
+    // }
+
+    // Advance the input ringbuffer
+    const std::ptrdiff_t input_bytes = beamgrid_len;
+    DEBUG("Advancing input ringbuffer by {:d} bytes", input_bytes);
+    input_ringbuf_signal->finish_read(unique_name, instance_num, input_bytes);
     cudaCommand::finalize_frame();
-    for (size_t i = 0; i < _cuda_streams.size(); i++) {
-        if (sync_events[i])
-            CHECK_CUDA_ERROR(cudaEventDestroy(sync_events[i]));
-        sync_events[i] = nullptr;
+
+    // Destroy synchronization events
+    // TODO: Allocate events once, don't create/destroy them at every iteration?
+    for (auto& event : sync_events) {
+        if (event) {
+            CHECK_CUDA_ERROR(cudaEventDestroy(event));
+            event = nullptr;
+        }
     }
 }

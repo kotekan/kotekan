@@ -7,6 +7,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using kotekan::div_noremainder;
 using kotekan::mod;
 
 REGISTER_CUDA_COMMAND(cudaCorrelator);
@@ -32,6 +33,7 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     if (inst == 0)
         input_ringbuf_signal->register_consumer(unique_name);
 
+    // Add Graphviz entries for the GPU buffers used by this kernel
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_voltage, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_correlation_triangle, true, false, true));
 
@@ -57,10 +59,10 @@ int cudaCorrelator::wait_on_precondition() {
     DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
     if (!val_in.has_value())
         return -1;
-    input_cursor = val_in.value();
+    unmodded_input_cursor = val_in.value();
     DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
     // Mod input cursor by the ringbuffer size
-    input_cursor = mod(input_cursor, input_ringbuf_signal->size);
+    input_cursor = mod(unmodded_input_cursor, input_ringbuf_signal->size);
     // Assert that we don't wrap around!
     assert(input_cursor + input_bytes <= input_ringbuf_signal->size);
     DEBUG("Modded input ring-buffer byte offset: {:d}", input_cursor);
@@ -76,11 +78,13 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
     int8_t* input_memory = ((int8_t*)all_input_memory) + input_cursor;
 
     // aka "nt_outer" in n2k.hpp
-    int num_subintegrations = _samples_per_data_set / _sub_integration_ntime;
-    int vis_blocks_tr_root = (_num_elements + 1) / 16;
-    int num_vis_blocks = vis_blocks_tr_root * (vis_blocks_tr_root + 1) / 2;
-    int output_array_len =
-        num_subintegrations * _num_local_freq * 16 * 16 * num_vis_blocks * 2 * sizeof(int32_t);
+    const int num_subintegrations = _samples_per_data_set / _sub_integration_ntime;
+    const int blocksize = 16;
+    const int linear_num_blocks = (_num_elements + 1) / blocksize;
+    const int triangle_num_blocks = linear_num_blocks * (linear_num_blocks + 1) / 2;
+    const std::ptrdiff_t output_array_len = std::ptrdiff_t(sizeof(int32_t)) * 2
+                                            * num_subintegrations * _num_local_freq * blocksize
+                                            * blocksize * triangle_num_blocks;
     void* output_memory = device.get_gpu_memory_array(_gpu_mem_correlation_triangle, gpu_frame_id,
                                                       _gpu_buffer_depth, output_array_len);
 
@@ -117,14 +121,22 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
         // In int32 format.
         out_meta->set_name("N2");
         out_meta->type = chordDataType::int32;
-        out_meta->dims = 7;
+        out_meta->dims = 6;
         out_meta->set_array_dimension(0, num_subintegrations, "Tc");
         out_meta->set_array_dimension(1, _num_local_freq, "F");
-        out_meta->set_array_dimension(2, 2, "P");
-        out_meta->set_array_dimension(3, _num_elements / 2, "D");
-        out_meta->set_array_dimension(4, 2, "P");
-        out_meta->set_array_dimension(5, _num_elements / 2, "D");
-        out_meta->set_array_dimension(6, 2, "C");
+        out_meta->set_array_dimension(2, triangle_num_blocks, "DPhi");
+        out_meta->set_array_dimension(3, blocksize, "DPlo1");
+        out_meta->set_array_dimension(4, blocksize, "DPlo2");
+        out_meta->set_array_dimension(5, 2, "C");
+        for (int d = out_meta->dims - 1; d >= 0; --d)
+            if (d == out_meta->dims - 1)
+                out_meta->stride[d] = 1;
+            else
+                out_meta->stride[d] = out_meta->stride[d + 1] * out_meta->dim[d + 1];
+
+        // Since we do not use a ring buffer we need to set `meta->sample0_offset`
+        assert(input_cursor % in_meta->sample_bytes() == 0);
+        out_meta->sample0_offset = div_noremainder(unmodded_input_cursor, in_meta->sample_bytes());
 
         for (int freq = 0; freq < out_meta->nfreq; ++freq) {
             out_meta->time_downsampling_fpga[freq] =

@@ -1,3 +1,2 @@
-const setup = :chord
-const T = 2^17
+include("setup_chord.jl")
 include("bb.jl")
