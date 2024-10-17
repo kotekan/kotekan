@@ -62,6 +62,14 @@ inline bool metadata_is_N2(Buffer* buf, int) {
     return buf && buf->metadata_pool && (buf->metadata_pool->type_name == "N2Metadata");
 }
 
+inline bool metadata_is_N2(const std::shared_ptr<const metadataObject> mc) {
+    if (!mc)
+        return false;
+    std::shared_ptr<metadataPool> pool = mc->parent_pool.lock();
+    assert(pool);
+    return (pool->type_name == "N2Metadata");
+}
+
 inline bool metadata_is_N2(const std::shared_ptr<metadataObject> mc) {
     if (!mc)
         return false;
@@ -70,7 +78,7 @@ inline bool metadata_is_N2(const std::shared_ptr<metadataObject> mc) {
     return (pool->type_name == "N2Metadata");
 }
 
-inline std::shared_ptr<N2Metadata> get_N2_metadata(std::shared_ptr<metadataObject> mc) {
+inline std::shared_ptr<N2Metadata> get_N2_metadata(const std::shared_ptr<metadataObject> mc) {
     if (!mc)
         return std::shared_ptr<N2Metadata>();
     if (!metadata_is_N2(mc)) {
