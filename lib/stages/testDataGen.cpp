@@ -200,15 +200,7 @@ void testDataGen::main_thread() {
         std::shared_ptr<chordMetadata> chordmeta;
         if (metadata_is_chord(buf, frame_id)) {
             chordmeta = get_chord_metadata(buf, frame_id);
-            chordmeta->dims = (int)_array_shape.size();
-            for (int d = chordmeta->dims - 1; d >= 0; --d)
-            {
-                chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
-                if(d == chordmeta->dims - 1)
-                    chordmeta->stride[d] = 1;
-                else
-                    chordmeta->stride[d] = chordmeta->stride[d + 1] * chordmeta->dim[d + 1];
-            }
+            chordmeta->set_array_dimensions(_array_shape, _dim_name, true);
         }
 
         unsigned char temp_output;

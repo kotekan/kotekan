@@ -53,40 +53,53 @@ void gpuSimulateN2k::main_thread() {
         INFO("Simulating GPU processing for {:s}[{:d}] putting result in {:s}[{:d}]",
              input_buf->buffer_name, input_frame_id, output_buf->buffer_name, output_frame_id);
 
-        // number of elements = number of dishes * polarizations
+        // number of vis matrix entries = nfreq*ntiles*16*16
+        int ihimax = _num_elements / 16;
+        int jhimax = ihimax;
+        int ntiles = ihimax*(ihimax+1)/2 + jhimax;
+
         int nt_inner = _sub_integration_ntime;
-        int n_outer = _samples_per_data_set / nt_inner;
-        int fstride = 128 * _num_elements / 16 * (_num_elements / 16 + 1);
+        int nt_outer = _samples_per_data_set / nt_inner;
+
+        int fstride = 16 * 16 * ntiles;
         int tstride = _num_local_freq * fstride;
 
-        for (int tout = 0; tout < n_outer; ++tout) {
+        for (int tout = 0; tout < nt_outer; ++tout) {
             for (int f = 0; f < _num_local_freq; ++f) {
+
                 // loop through blocks
-                for (int jhi = 0; jhi < _num_elements / 16; jhi++) {
-                    for (int ihi = jhi; ihi < _num_elements / 16; ihi++) {
+                for (int jhi = 0; jhi < jhimax; jhi++) {
+                    for (int ihi = jhi; ihi < ihimax; ihi++) {
+
                         for (int jlo = 0; jlo < 16; jlo++) {
                             for (int ilo = 0; ilo < 16; ilo++) {
+
                                 int real = 0;
                                 int imag = 0;
 
                                 for (int tin = 0; tin < nt_inner; ++tin) {
 
                                     int t = tout * nt_inner + tin;
+
                                     int ix = (t * _num_local_freq + f) * _num_elements
                                              + (16 * ihi + ilo);
                                     int iy = (t * _num_local_freq + f) * _num_elements
                                              + (16 * jhi + jlo);
 
-                                    int xi = ((input[ix] + 8) & 0xf) - 8;
-                                    int xr = (((input[ix] >> 4) + 8) & 0xf) - 8;
+                                    int xi = ((input[ix] + 8) & 0xf) - 8; // lower/last 4 bits
+                                    int xr = (((input[ix] >> 4) + 8) & 0xf) - 8; // upper/first 4 bits
                                     int yi = ((input[iy] + 8) & 0xf) - 8;
                                     int yr = (((input[iy] >> 4) + 8) & 0xf) - 8;
+
                                     real += xr * yr + xi * yi;
                                     imag += xi * yr - yi * xr;
                                 }
 
                                 // clang-format off
-                                int o = 2*( tout * tstride + f * fstride + 256*(ihi*(ihi+1)/2 + jhi)
+                                
+                                int itile = ihi*(ihi+1)/2 + jhi;
+
+                                int o = 2*( tout * tstride + f * fstride + itile*16*16
                                         + 16*ilo + jlo );
                                 output[o + 0] = +real;
                                 output[o + 1] = +imag;
@@ -94,11 +107,12 @@ void gpuSimulateN2k::main_thread() {
 
                             } // ilo
                         }     // jlo
+
                     }         // iji
                 }             // jhi
 
                 DEBUG("Done t_outer {:d} of {:d} (freq {:d} of {:d}, nt_inner={:d})...", tout,
-                      n_outer, f, _num_local_freq, nt_inner);
+                      nt_outer, f, _num_local_freq, nt_inner);
                 if (stop_thread)
                     break;
             } // f
