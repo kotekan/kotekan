@@ -257,10 +257,9 @@ extern void launch_s012_station_downsample_kernel(
 //
 //     uint rfimask[F][T_ringbuf * Nds / 32];   // T_ringbuf, not T_kernel
 //
-// From the perspective of the SkKernel, the rfimask is now a discontiguous subarray of a larger
-// array. This can be handled by using the 'rfimask_fstride' kernel argument (see below) to the
-// 32-bit frequency stride (T_ringbuf * Nds / 32). (If the rfimask array were contiguous, then
-// 'rfimask_fstride' would be (T_kernel * Nds / 32).)
+// From the perspective of the SkKernel, the rfimask is now a discontiguous subarray
+// of a larger array. This can be handled by setting the 'rfimask_fstride' kernel argument
+// to (T_ringbuf * Nds / 32), and the 'T' kernel argument to (T_kernel).
 //
 // The SkKernel uses the "bad feed" mask when computing the feed-averaged SK-statistic
 // and the boolean RFI mask. Logically, the bad feed mask is a boolean 1-d array of

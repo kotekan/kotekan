@@ -80,22 +80,27 @@ __global__ void pl_mask_expand_kernel(uint *pl_out, const uint *pl_in, int F, in
 }
 
 
-void launch_pl_mask_expander(ulong *pl_out, const ulong *pl_in, long Tout, long Fout, long S, cudaStream_t stream)
+void launch_pl_mask_expander(ulong *pl_out, const ulong *pl_in, long Tout, long Fout, long Sds, cudaStream_t stream)
 {
-    // FIXME asserts -> exceptions.
-    assert(pl_out != nullptr);
-    assert(pl_in != nullptr);
-    assert(Tout > 0);
-    assert(Fout > 0);
-    assert(S > 0);
-
-    assert((Tout % 128) == 0);
-    assert((S % 16) == 0);
+    if (!pl_out)
+	throw runtime_error("launch_pl_mask_expander: 'pl_out' must be non-NULL");
+    if (!pl_in)
+	throw runtime_error("launch_pl_mask_expander: 'pl_in' must be non-NULL");
+    if (Tout <= 0)
+	throw runtime_error("launch_pl_mask_expander: expected Tout > 0");
+    if (Fout <= 0)
+	throw runtime_error("launch_pl_mask_expander: expected Fout > 0");
+    if (Sds <= 0)
+	throw runtime_error("launch_pl_mask_expander: expected Sds > 0");
+    if (Tout % 128)
+	throw runtime_error("launch_pl_mask_expander: expected Tout to be a multiple of 128");
+    if (Sds % 16)
+	throw runtime_error("launch_pl_mask_expander: expected Sds to be a multiple of 16");
 
     // FIXME check for 32-bit overflows.
     
     long M = Tout / 128;
-    long N = S * 2;
+    long N = Sds * 2;
 
     dim3 nblocks, nthreads;
     gputils::assign_kernel_dims(nblocks, nthreads, N, Fout, M);  // x <-> n, y <-> f, z <-> m
@@ -114,19 +119,19 @@ void launch_pl_mask_expander(Array<ulong> &pl_out, const Array<ulong> &pl_in, cu
 
     long Tout = 64 * pl_out.shape[0];
     long Fout = pl_out.shape[1];
-    long S = pl_out.shape[2];
+    long Sds = pl_out.shape[2];
 
-    if (!pl_in.shape_equals({Tout/128, (Fout+3)/4, S})) {
+    if (!pl_in.shape_equals({Tout/128, (Fout+3)/4, Sds})) {
 	stringstream ss;
 	ss << "launch_pl_mask_expander: pl_out.shape=" << pl_out.shape_str()
 	   << " and pl_in.shape=" << pl_in.shape_str()
 	   << " are inconsistent (expected pl_in.shape=("
-	   << (Tout/128) << "," << ((Fout+3)/4) << "," << S 
+	   << (Tout/128) << "," << ((Fout+3)/4) << "," << Sds 
 	   << "))";
 	throw runtime_error(ss.str());
     }
 
-    launch_pl_mask_expander(pl_out.data, pl_in.data, Tout, Fout, S, stream);
+    launch_pl_mask_expander(pl_out.data, pl_in.data, Tout, Fout, Sds, stream);
 }
 
 

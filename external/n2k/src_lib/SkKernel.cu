@@ -362,7 +362,7 @@ __global__ void sk_kernel(
 
 SkKernel::SkKernel(const SkKernel::Params &params_, bool check_params)
 {
-    constexpr int ncoeffs = (4 * sk_globals::bias_nx) + sk_globals::sigma_nx;
+    constexpr int ncoeffs = (sk_globals::bias_nx * sk_globals::bias_ny) + sk_globals::sigma_nx;
 
     if (check_params)
 	SkKernel::check_params(params_);
@@ -525,12 +525,10 @@ void SkKernel::launch(
     uint Bf = (F+Wf-1) / Wf;
 
     // Shared memory size.
-    constexpr int bnx = sk_globals::bias_nx;
-    constexpr int snx = sk_globals::sigma_nx;
     uint shmem_nbytes = bf_mask_shmem_nbytes(S,Ws);
     shmem_nbytes += 16*Ws*Wt*Wf;   // 'shmem_red' has shape (Ws,Wt,Wf,4) and dtype float
     shmem_nbytes += 4*32;          // 'shmem_rfimask' has shape (32,) and dtype uint
-    shmem_nbytes += 48*bnx + 36*snx;
+    shmem_nbytes += bsigma_shmem_nbytes;
 
     // Launch kernel!
     sk_kernel<<< {1,Bf,Bt}, {32*Ws,Wf,Wt}, shmem_nbytes, stream >>>

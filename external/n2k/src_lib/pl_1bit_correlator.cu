@@ -26,7 +26,7 @@ namespace n2k {
 //
 // The input array layouts are:
 //
-//   uint1 pl_mask[T/64][F][S][64];    // where (F,S) may be downsampled by (2,4,8)
+//   uint1 pl_mask[T/64][F][Sds][64];    // where (F,Sds) may be downsampled by (2,4,8)
 //   uint1 rfimask[F][T];
 
 
@@ -70,7 +70,7 @@ __device__ inline void read_pl_16_128(int pl[2][1], const ulong *pl_adjusted, ui
 // b0 b1 b2 b3 b4 <-> j0 j1 j2 j3 j4    t0 t1 t2 t3 t4 <-> i3 j6 i0 i1 i2    r <-> j5
 //
 // Reminder: offsets/strides are 64-bit, since pl is (const ulong *).
-// (In particular, the 't64_stride' argument should be F*S.)
+// (In particular, the 't64_stride' argument should be F*Sds.)
 
 __device__ inline int pl_lane_offset(uint t64_stride)
 {
@@ -86,23 +86,31 @@ __device__ inline int pl_lane_offset(uint t64_stride)
 // -------------------------------------------------------------------------------------------------
 
 
-// FIXME comment this
-//   r <-> k0      t0 t1 t2 t3 t4 <-> k1 k2 i0 i1 i2
-__device__ inline void write_8_8(int *v_out, int v[2])
+// Write one 8-by-8 tile of the 'counts' array C_{ik} to global memory.
+// The tile is stored in tensor core ordering:
+//
+//    r <-> k0      t0 t1 t2 t3 t4 <-> k1 k2 i0 i1 i2
+
+__device__ inline void write_8_8(int *counts, int v[2])
 {
     int2 t;
     t.x = v[0];
     t.y = v[1];
 
-    int2 *p = (int2 *) (v_out);
+    int2 *p = (int2 *) (counts);
     p[threadIdx.x & 31] = t;
 }
 
 
-__device__ inline void write_8_16(int *v_out, int v[2][2])
+// Write two 8-by-8 tiles of the 'counts' array C_{ik} to global memory.
+//
+// This needs a little explanation! We assume that the two tiles differ by k=16
+// (not k=8 as might be expected), and that both tiles are in the lower triangle.
+
+__device__ inline void write_8_16(int *counts, int v[2][2])
 {
-    write_8_8(v_out, v[0]);
-    write_8_8(v_out + 128, v[1]);
+    write_8_8(counts, v[0]);
+    write_8_8(counts + 128, v[1]);   // pointer offset is 128 if tiles differ by k=16
 }
 
 
@@ -112,12 +120,12 @@ __device__ inline void write_8_16(int *v_out, int v[2][2])
 //
 //   blockIdx.z, threadIdx.z <-> downsampled (output) time
 //   blockIdx.y, threadIdx.y <-> frequency channel
-//   threadIdx.x <-> sub-tile of S-by-S matrix
-//     (blockIdx.x not currently used, but will be used when S > 1024 is implemented)
+//   threadIdx.x <-> sub-tile of Sds-by-Sds matrix
+//     (blockIdx.x not currently used, but will be used when Sds > 128 is implemented)
 
 
 __global__ void __launch_bounds__(128,8)
-correlate_pl_kernel_S16(int *V_out, const ulong *pl_mask, const uint *rfimask, int rfimask_fstride, int Tout, int F, uint N128)
+correlate_pl_kernel_S16(int *counts, const ulong *pl_mask, const uint *rfimask, int rfimask_fstride, int Tout, int F, uint N128)
 {
     // Assumes blockDim = {32,Wy,Wz} where (Wy*Wz)=4.
     
@@ -160,14 +168,14 @@ correlate_pl_kernel_S16(int *V_out, const ulong *pl_mask, const uint *rfimask, i
 	pl_mask += t128_stride;
     }
     
-    // int V_out[Tout][F][3][8][8]
-    V_out += ulong(tout) * ulong(192*F);
-    V_out += (192 * f);
+    // int counts[Tout][F][3][8][8]
+    counts += ulong(tout) * ulong(192*F);
+    counts += (192 * f);
 
     // Write to global memory.
-    write_8_8(V_out, v[0]);
-    write_8_8(V_out + 64, v[1]);
-    write_8_8(V_out + 128, v[2]);
+    write_8_8(counts, v[0]);
+    write_8_8(counts + 64, v[1]);
+    write_8_8(counts + 128, v[2]);
 }
 
 
@@ -182,7 +190,7 @@ __device__ inline void multiply_8_16(int v[2][2], int plx[1], int ply[2][1])
 
 
 __global__ void __launch_bounds__(256,2)
-correlate_pl_kernel_S128(int *V_out, const ulong *pl_mask, const uint *rfimask, int rfimask_fstride, uint N128)
+correlate_pl_kernel_S128(int *counts, const ulong *pl_mask, const uint *rfimask, int rfimask_fstride, uint N128)
 {
     constexpr int S = 128;
     const uint tout = blockIdx.z;
@@ -287,38 +295,38 @@ correlate_pl_kernel_S128(int *V_out, const ulong *pl_mask, const uint *rfimask, 
     //  where a = 256*wx + 128
     //        b = 32*wx*(wx+1) + 64*wy
 
-    // int V_out[Tout][F][8*17][8][8]
+    // int counts[Tout][F][8*17][8][8]
     int a = 256*wx + 128;
     int b = 32*wx*(wx+1) + 64*wy;
     ulong tf = ulong(tout)*ulong(F) + f;
-    V_out += tf*(8*17*64);
-    V_out += b;
+    counts += tf*(8*17*64);
+    counts += b;
 
     // Off-diagonals (I > J).
     // Pointer offsets are (a*I + 512*I^2 + 256*J).
     
-    write_8_16(V_out + a + 512, v[1]);              // I=1, J=0
-    write_8_16(V_out + 2*a + 4*512, v[3]);          // I=2, J=0
-    write_8_16(V_out + 2*a + 4*512 + 256, v[4]);    // I=2, J=1
-    write_8_16(V_out + 3*a + 9*512, v[6]);          // I=3, J=0
-    write_8_16(V_out + 3*a + 9*512 + 256, v[7]);    // I=3, J=1
-    write_8_16(V_out + 3*a + 9*512 + 2*256, v[8]);    // I=3, J=2
+    write_8_16(counts + a + 512, v[1]);              // I=1, J=0
+    write_8_16(counts + 2*a + 4*512, v[3]);          // I=2, J=0
+    write_8_16(counts + 2*a + 4*512 + 256, v[4]);    // I=2, J=1
+    write_8_16(counts + 3*a + 9*512, v[6]);          // I=3, J=0
+    write_8_16(counts + 3*a + 9*512 + 256, v[7]);    // I=3, J=1
+    write_8_16(counts + 3*a + 9*512 + 2*256, v[8]);  // I=3, J=2
 
     // Diagonals (I = J).
     // We only write if (wx >= wy+2R).
 
     if (wx >= wy) {   // write R=0
-	write_8_8(V_out, v[0][0]);                        // I=J=0
-	write_8_8(V_out + a + 512 + 256, v[2][0]);        // I=J=1
-	write_8_8(V_out + 2*a + 4*512 + 2*256, v[5][0]);  // I=J=2
-	write_8_8(V_out + 3*a + 9*512 + 3*256, v[9][0]);  // I=J=3
+	write_8_8(counts, v[0][0]);                        // I=J=0
+	write_8_8(counts + a + 512 + 256, v[2][0]);        // I=J=1
+	write_8_8(counts + 2*a + 4*512 + 2*256, v[5][0]);  // I=J=2
+	write_8_8(counts + 3*a + 9*512 + 3*256, v[9][0]);  // I=J=3
     }
 
     if (wx >= wy+2) {  // write R=1
-	write_8_8(V_out + 128, v[0][1]);                        // I=J=0
-	write_8_8(V_out + a + 512 + 256 + 128, v[2][1]);        // I=J=1
-	write_8_8(V_out + 2*a + 4*512 + 2*256 + 128, v[5][1]);  // I=J=2
-	write_8_8(V_out + 3*a + 9*512 + 3*256 + 128, v[9][1]);  // I=J=3
+	write_8_8(counts + 128, v[0][1]);                        // I=J=0
+	write_8_8(counts + a + 512 + 256 + 128, v[2][1]);        // I=J=1
+	write_8_8(counts + 2*a + 4*512 + 2*256 + 128, v[5][1]);  // I=J=2
+	write_8_8(counts + 3*a + 9*512 + 3*256 + 128, v[9][1]);  // I=J=3
     }
 }
 
@@ -326,71 +334,103 @@ correlate_pl_kernel_S128(int *V_out, const ulong *pl_mask, const uint *rfimask, 
 // -------------------------------------------------------------------------------------------------
 
 
-void launch_pl_1bit_correlator(int *V_out, const ulong *pl_mask, const uint *rfimask, long rfimask_fstride, long T, long F, long S, long Nds, cudaStream_t stream)
+void launch_pl_1bit_correlator(int *counts, const ulong *pl_mask, const uint *rfimask, long rfimask_fstride, long T, long F, long Sds, long Nds, cudaStream_t stream)
 {
-    // FIXME asserts -> exceptions
-    assert(V_out != nullptr);
-    assert(pl_mask != nullptr);
-    assert(rfimask != nullptr);
-    assert(rfimask_fstride >= (T/32));
-    assert(T > 0);
-    assert(F > 0);
-    assert(Nds > 0);
-    assert((Nds % 128) == 0);
-    assert((T % Nds) == 0);
+    if (!counts)
+	throw runtime_error("launch_pl_1bit_correlator: 'counts' must be non-NULL");
+    if (!pl_mask)
+	throw runtime_error("launch_pl_1bit_correlator: 'pl_mask' must be non-NULL");
+    if (!rfimask)
+	throw runtime_error("launch_pl_1bit_correlator: 'rfimask' must be non-NULL");
+    if (rfimask_fstride < (T/32))	
+	throw runtime_error("launch_pl_1bit_correlator: expected rfimask_fstride >= T/32");
+    if (T <= 0)
+	throw runtime_error("launch_pl_1bit_correlator: expected T > 0");
+    if (T <= 0)
+	throw runtime_error("launch_pl_1bit_correlator: expected T > 0");
+    if (F <= 0)
+	throw runtime_error("launch_pl_1bit_correlator: expected F > 0");
+    if (Nds <= 0)
+	throw runtime_error("launch_pl_1bit_correlator: expected Nds > 0");
+    if (Nds % 128)
+	throw runtime_error("launch_pl_1bit_correlator: expected Nds to be a multiple of 128 (could be relaxed)");
+    if (T % Nds)
+	throw runtime_error("launch_pl_1bit_correlator: expected T to be a multiple of Nds");
 
     // FIXME 32-bit overflow checks
     
     long Tout = T / Nds;
     uint N128 = Nds >> 7;
 
-    if (S == 16) {
+    if (Sds == 16) {
 	dim3 nthreads = {32, 2, 2};
 	dim3 nblocks = { 1, uint(F+1)/2, uint(Tout+1)/2 };
 	
 	correlate_pl_kernel_S16
 	    <<< nblocks, nthreads, 0, stream >>>
-	    (V_out, pl_mask, rfimask, rfimask_fstride, Tout, F, N128);
+	    (counts, pl_mask, rfimask, rfimask_fstride, Tout, F, N128);
     }
-    else if (S == 128) {
+    else if (Sds == 128) {
 	dim3 nblocks = { 1, uint(F), uint(Tout) };
 	
 	correlate_pl_kernel_S128
 	    <<< nblocks, 256, 0, stream >>>
-	    (V_out, pl_mask, rfimask, rfimask_fstride, N128);
+	    (counts, pl_mask, rfimask, rfimask_fstride, N128);
     }
-    else
-	throw runtime_error("launch_pl_1bit_correlator: currently, only S=16 and S=128 are implemented");
+    else {
+	throw runtime_error("launch_pl_1bit_correlator: Currently, only Sds=16 and Sds=128 are implemented."
+			    " These values correspond to the CHORD pathfinder, and full CHORD. Let me know"
+			    " if you need more generality");
+    }
     
     CUDA_PEEK("correlate_pl_kernel");
 }
 
 
-void launch_pl_1bit_correlator(Array<int> &V_out, const Array<ulong> &pl_mask, const Array<uint> &rfimask, long Nds, cudaStream_t stream)
+void launch_pl_1bit_correlator(Array<int> &counts, const Array<ulong> &pl_mask, const Array<uint> &rfimask, long Nds, cudaStream_t stream)
 {
-    // pl_mask shape = (T/64, F, S)
-    // V_out shape = (T/Nds, F, ntiles, 8, 8)
+    // pl_mask shape = (T/64, F, Sds)
+    // counts shape = (T/Nds, F, ntiles, 8, 8)
     // rfimask shape = (F, T/32)
     
-    check_array(V_out, "launch_pl_1bit_correlator", "V_out", 5, true);       // contiguous=true
+    check_array(counts, "launch_pl_1bit_correlator", "counts", 5, true);       // contiguous=true
     check_array(pl_mask, "launch_pl_1bit_correlator", "pl_mask", 3, true);   // contiguous=true
     check_array(rfimask, "launch_pl_1bit_correlator", "rfimask", 2, false);  // contiguous=false
     
     long T = 64 * pl_mask.shape[0];
     long F = pl_mask.shape[1];
-    long S = pl_mask.shape[2];
-    long ntiles = ((S/8) * ((S/8) + 1)) / 2;
+    long Sds = pl_mask.shape[2];
+    long ntiles = ((Sds/8) * ((Sds/8) + 1)) / 2;
 
-    // FIXME asserts -> exceptions
-    assert(Nds > 0);
-    assert((S & 8) == 0);
-    assert((T % 32) == 0);
-    assert((T % Nds) == 0);
-    assert(V_out.shape_equals({T/Nds,F,ntiles,8,8}));
-    assert(rfimask.shape_equals({F,T/32}));
-    assert(rfimask.strides[1] == 1);
+    if (Nds <= 0)
+	throw runtime_error("launch_pl_1bit_correlator: expected Nds > 0");
+    if (Nds % 128)
+	throw runtime_error("launch_pl_1bit_correlator: expected Nds to be a multiple of 128 (could be relaxed)");
+    if (T % Nds)
+	throw runtime_error("launch_pl_1bit_correlator: expected T to be a multiple of Nds");
+    if (Sds % 8)
+	throw runtime_error("launch_pl_1bit_correlator: expected Sds to be a multiple of 8");;
+
+    if (!counts.shape_equals({T/Nds,F,ntiles,8,8})) {
+	stringstream ss;
+	ss << "launch_pl_1bit_correlator: counts.shape (=" << counts.shape_str() << ")."
+	   << " Based on pl_mask.shape (=" << pl_mask.shape_str() << ") and Nds=" << Nds
+	   << ", expected shape (" << (T/Nds) << "," << F << "," << ntiles << ",8,8)";
+	throw runtime_error(ss.str());
+    }
+
+    if (!rfimask.shape_equals({F,T/32})) {
+	stringstream ss;
+	ss << "launch_pl_1bit_correlator: rfimask.shape (=" << rfimask.shape_str() << ")."
+	   << " Based on pl_mask.shape (=" << pl_mask.shape_str()
+	   << ", expected shape (" << F << "," << (T/32) << ")";
+	throw runtime_error(ss.str());
+    }
+
+    if (rfimask.strides[1] != 1)
+	throw runtime_error("launch_pl_1bit_correlator: expected inner (time) axis of rfimask to be contiguous");
     
-    launch_pl_1bit_correlator(V_out.data, pl_mask.data, rfimask.data, rfimask.strides[0], T, F, S, Nds, stream);
+    launch_pl_1bit_correlator(counts.data, pl_mask.data, rfimask.data, rfimask.strides[0], T, F, Sds, Nds, stream);
 }
 
 

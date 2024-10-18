@@ -10,15 +10,36 @@ namespace n2k {
 }  // editor auto-indent
 #endif
 
+
 // This file contains inline functions (mostly __device__ inline) used internally.
 // It probably won't be useful "externally" to n2k.
+//
+// Reminder: x=log(mu)=log(S1/S0), and y=(1/N)=(1/S0).
+// Bias is a function b(x,y) and sigma is a function sigma(x).
+//
+// Global memory layout (on both host and device) is:
+//
+//   T bias_coeffs[bias_nx][bias_ny];    // T=float on GPU, T=double on CPU
+//   T sigma_coeffs[sigma_nx];           // T=float on GPU, T=double on CPU
+//
+// Shared memory layout is:
+//
+//   static_assert(bias_ny == 4);
+//   float shmem_bias_coeffs[bias_nx][4][2];  // length-2 axis is a spectator, i.e. both values are equal
+//   float shmem_sigma_coeffs[sigma_nx][8];   // length-8 axis is a spectator, i.e. all 8 values are equal
+//   float shmem_tmp_coeffs[4*bias_nx + sigma_nx];
+//
+// Total shmem nbytes: (12*bias_nx + 9*sigma_nx) * sizeof(float)
+// If (bias_nx,sigma_nx) = (128,64), then gmem/shmem footprint is 8.25/2.25 KiB.
+
+
+static constexpr int bsigma_shmem_nelts = 12 * sk_globals::bias_nx + 9 * sk_globals::sigma_nx;
+static constexpr int bsigma_shmem_nbytes = bsigma_shmem_nelts * sizeof(float);
 
 
 // -------------------------------------------------------------------------------------------------
 //
 // Host (and __host__ __device__) code
-//
-// Reminder: x=log(mu)=log(S1/S0), and y=(1/N)=(1/S0).
 
 
 // t = (-1,0,1,2) returns (y0,y1,y2,y3) respectively.
@@ -109,8 +130,9 @@ __host__ inline double interpolate_sigma_cpu(double x)
 
 
 // load_sigma_coeffs(sigma_coeffs, i, c0, c1, c2 ,c3)
+// Helper for interpolate_sigma_gpu().
 //
-// 'sigma_coeffs' points to an array of shape (N,8).
+// 'sigma_coeffs' points to an array coeffs[sigma_nx][8] in shared memory.
 // The length-8 axis is a spectator, i.e. all 8 values are equal.
 //
 // This function is equivalent to:
@@ -131,11 +153,12 @@ __device__ inline void load_sigma_coeffs(const float *sigma_coeffs, int i, float
     c1 = bank_conflict_free_load<Debug> (sigma_coeffs + ((8*i + t + 16) & ~31) - t + 15);
     c2 = bank_conflict_free_load<Debug> (sigma_coeffs + ((8*i + t + 8) & ~31) - t + 23);
     c3 = bank_conflict_free_load<Debug> (sigma_coeffs + ((8*i + t ) & ~31) - t + 31);
-    roll_forward(i + (t >> 3), c0, c1, c2, c3);
+    roll_forward(i + (t >> 3), c0, c1, c2, c3);   // roll_forward() is defined in device_inlines.hpp
 }
 
 
 // load_bias_coeffs(bias_coeffs, i, y, c0, c1, c2 ,c3)
+// Helper for interpolate_bias_gpu().
 //
 // 'bias_coeffs' points to an array of shape (N,4,2).
 // The length-2 axis is a spectator, i.e. all 2 values are equal.
@@ -169,7 +192,7 @@ __device__ inline void load_bias_coeffs(const float *bias_coeffs, int i, float y
     float y1 = y;
     float y2 = y*y;
     float y3 = y2*y;
-    roll_backward(threadIdx.x >> 1, y0, y1, y2, y3);
+    roll_backward(threadIdx.x >> 1, y0, y1, y2, y3);   // defined in device_inlines.hpp
 
     int s = (threadIdx.x >> 3) & 3;
     c0 = load_bias_inner<Debug> (bias_coeffs + 8 * (((i+s+3) & ~3) - s), y0, y1, y2, y3);
@@ -198,8 +221,11 @@ __device__ inline void load_bias_coeffs(const float *bias_coeffs, int i, float y
 // If (bias_nx,sigma_nx) = (128,64), then gmem/shmem footprint is 8.25/2.25 KiB.
 
 
-__device__ void unpack_bias_sigma_coeffs(const float *gp, float *sp)
+__device__ inline void unpack_bias_sigma_coeffs(const float *gp, float *sp)
 {
+    // Assumed throughout GPU kernels (not just this function)
+    static_assert(sk_globals::bias_ny == 4);
+    
     constexpr int nsh1 = (8 * sk_globals::bias_nx);
     constexpr int nsh = (8 * sk_globals::sigma_nx) + nsh1;
     constexpr int nglo = (4 * sk_globals::bias_nx) + sk_globals::sigma_nx;

@@ -17,9 +17,13 @@ static constexpr int bias_ny = 4;
 static constexpr int bias_nmin = 64;
 static constexpr int sigma_nx = 64;
 
+// Returns a pointer to these arrays (back-to-back in memory):
+//   double bias_coeffs[bias_nx][bias_ny];
+//   double sigma_coeffs[sigma_nx];
 extern const double *get_bsigma_coeffs();
 
 // Enables a unit test for consistency between python/C++ interpolators
+// The (x,y,b,s) arrays are all 1-d arrays of length 'num_debug_checks'.
 static constexpr int num_debug_checks = 100;
 extern const double *get_debug_x();
 extern const double *get_debug_y();
