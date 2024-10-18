@@ -231,6 +231,27 @@ public:
         return std::string(name, strnlen(name, CHORD_META_MAX_DIMNAME));
     }
 
+    /**
+     * Helper function to set all dims (and optionally stride)
+     */
+    void set_array_dimensions(const std::vector<int>& _array_shape,
+                              const std::vector<std::string>& _dim_names,
+                              bool set_default_stride = false) {
+        
+        this->dims = (int)_array_shape.size();
+        for (int d = this->dims - 1; d >= 0; --d)
+        {
+            set_array_dimension(d, _array_shape[d], _dim_names[d]);
+            if(set_default_stride) {
+                if(d == this->dims - 1) {
+                    this->stride[d] = 1;
+                } else {
+                    this->stride[d] = this->stride[d + 1] * this->dim[d + 1];
+                }
+            }
+        }
+    }
+
     void set_onehot_dimension(int dim, int i, const std::string& name) {
         assert(dim < CHORD_META_MAX_DIM);
         this->onehot_index[dim] = i;

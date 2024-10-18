@@ -20,7 +20,7 @@ NF = int(m.group(2))
 # print(f'Writing {output_filename}, {NS=}, {NF=}')
 
 with open(output_filename,'w') as fout:
-    print('#include "../include/n2k/CorrelatorKernel.hpp"', file=fout)
+    print('#include "../include/n2k/internals/CorrelatorKernel.hpp"', file=fout)
     print('namespace {', file=fout)
     print('    #pragma nv_diag_suppress 177  // spurious nvcc warning "k declared but never referenced"', file=fout)
     print(f'    n2k::CorrelatorKernel<{NS},{NF}> k;', file=fout)

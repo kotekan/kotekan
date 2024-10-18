@@ -13,15 +13,12 @@ echo "If this script fails, you should delete this directory."
 cd "$temp_dir"
 
 # Clone n2k, check out right branch / commit
-git clone -b master --single-branch https://github.com/kmsmith137/n2k.git
+git clone -b 24_08_rfi_kernels --single-branch https://github.com/kmsmith137/n2k.git
 cd n2k
 # Copy over needed files
 cp template_instantiations/make-instantiation.py "$src_dir/n2k/template_instantiations/make-instantiation.py"
-cp src_lib/precompute_offsets.cu "$src_dir/n2k/src_lib/precompute_offsets.cu"
-cp src_lib/kernel_table.cu "$src_dir/n2k/src_lib/kernel_table.cu"
-cp src_lib/Correlator.cu "$src_dir/n2k/src_lib/Correlator.cu"
-cp include/n2k/Correlator.hpp "$src_dir/n2k/include/n2k/Correlator.hpp"
-cp include/n2k/CorrelatorKernel.hpp "$src_dir/n2k/include/n2k/CorrelatorKernel.hpp"
+cp -R src_lib/* "$src_dir/n2k/src_lib/."
+cp -R include/n2k/* "$src_dir/n2k/include/n2k/."
 cd ..
 
 # Clone gputils, check out right branch / commit
