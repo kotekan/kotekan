@@ -1,6 +1,8 @@
 #include <math.h>
 #include "timeUtil.hpp"
 
+static constexpr double C = 2.99792458e8;
+
 timespec get_TAI_from_GPS(const timespec &gps_time) {
     return timespec{
                 .tv_sec=(gps_time.tv_sec+19),
@@ -63,10 +65,12 @@ double get_ERA_from_UT1(const timespec &ut1) {
     //auto dv = std::div(t_sec, 86400);
 
     double temp;
-    double dayfrac_sec = modf(t_sec/86400.0, &temp);
-    double dayfrac_nsec = modf(1.0e-9*(t_nsec/86400.0), &temp);
-    double sidcor_frac_sec = modf(2.73781191135448e-3*t_sec/86400.0, &temp);
-    double sidcor_frac_nsec = modf(1.0e-9*2.73781191135448e-3*t_nsec/86400.0, &temp);
+    double day_sec = t_sec / 86400.0;
+    double day_nsec = 1.0e-9 * (t_nsec / 86400.0);
+    double dayfrac_sec = modf(day_sec, &temp);
+    double dayfrac_nsec = modf(day_nsec, &temp);
+    double sidcor_frac_sec =  modf(2.73781191135448e-3 * day_sec, &temp);
+    double sidcor_frac_nsec = modf(2.73781191135448e-3 * day_nsec, &temp);
 
     double f = modf(0.7790572732640 + dayfrac_sec + dayfrac_nsec
                     + sidcor_frac_sec + sidcor_frac_nsec, &temp);
@@ -82,3 +86,36 @@ double get_ERA_from_GPS(const timespec &gpstime, double dAT, double dUT) {
     return get_ERA_from_UT1(ut1);
 }
 
+void fringestopping_phases(vector<double>& phases,
+                           double nu, double era, double era0,
+                           const vector<int> &dish_indices,
+                           const vector<float> &dish_positions,
+                           int n_elements, int n_dish,
+                           double lat) {
+
+    double two_pi_k = 2*M_PI*C/nu * cos(lat);
+
+    int el = 0;
+
+    for(int i = 0; i < n_elements; i++) {
+        for(int j = 0; j <= i; j++) {
+            int i_dish = i % n_dish;
+            int j_dish = j % n_dish;
+            //Assuming here dish_positions is Ndish x 2, with E/W in the
+            //first position and N/S in the second.
+            float dish_sep_ew = dish_positions[2*i_dish]
+                                - dish_positions[2*j_dish];
+
+            // In principle we could compute the precise component of the
+            // baseline transverse to the local meridian and the Earth's
+            // current rotational axis, but instead we'll assume
+            // for now this is just the E/W distance.
+
+            double Phi = two_pi_k * dish_sep_ew * (era - era0);
+
+            phases[2*el] = cos(Phi);
+            phases[2*el+1] = sin(Phi);
+            el++;
+        }
+    }
+}
