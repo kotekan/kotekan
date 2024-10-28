@@ -1,0 +1,139 @@
+#include "CHORDTelescope.hpp"
+
+#include "Telescope.hpp"        // for REGISTER_TELESCOPE, Telescope, ...
+#include "kotekanLogging.hpp"   // for WARN, INFO, FATAL_ERROR
+#include "restClient.hpp"       // for restClient
+
+#include "fmt.hpp"  // for format
+#include "json.hpp" //for basic_json, basic_json<>::object_t, basic_jason<>::value_type
+
+#include <cstdint>      // for uint64_t  TODO: why not stdint.h?
+#include <exception>    // for exception
+#include <math.h>       // for abs
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error, invalid_argument
+#include <vector>       // for vector
+
+
+REGISTER_TELESCOPE(CHORDTelescope, "CHORDTelescope");
+
+#define GIGA 1000000000
+
+CHORDTelescope::CHORDTelescope(const kotekan::Config& config,
+                               const std::string& path) :
+    Telescope(config.get<std::string>(path, "log_level")) {
+
+    bool require_gps = config.get_default<uint32_t>(path, "require_gps", false);
+    _query_gps = config.get_default<bool>(path, "query_gps", false);
+    _gps_host = config.get_default<std::string>(path, "gps_host", "127.0.0.1");
+    _gps_port = config.get_default<uint32_t>(path, "gps_port", 54321);
+    _gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", "/get-frame0-time");
+    if (_query_gps)
+        set_gps(_gps_host, _gps_port, _gps_endpoint);
+    if (!gps_enabled)
+        set_gps(config);
+
+    if (require_gps && !gps_enabled) {
+        throw std::runtime_error("The system requires a GPS time, but none was found.");
+    }
+}
+
+
+void CHORDTelescope::set_gps(const kotekan::Config& config) {
+    if (!config.exists("/", "gps_time")) {
+        WARN("No GPS time section found. Ignoring.");
+        return;
+    }
+
+    if (config.exists("/gps_time", "error")) {
+        auto error_message = config.get<std::string>("/gps_time", "error");
+        WARN("GPS time lookup failed with reason: \n {:s}\n", error_message);
+        return;
+    }
+
+    if(!config.exists("/gps_time", "frame0_nano")) {
+        WARN("No GPS frame0 time found in config.");
+        return;
+    }
+
+    time0_ns = config.get<uint64_t>("/gps_time", "frame0_nano");
+    gps_enabled = true;
+}
+
+void CHORDTelescope::set_gps(const std::string& host, const uint32_t port,
+                             const std::string& path) {
+
+    INFO("Requesting GPS time from server: {:s}.{:d}{:s} This might take some time...",
+            host, port, path);
+    auto reply = restClient::instance().make_request_blocking(path, {}, host,
+                                                              port, 0, 30);
+
+    if (!reply.first) {
+        WARN("Failed to get GPS time, using system time");
+        return;
+    }
+
+    auto json_reply = nlohmann::json::parse(reply.second);
+
+    if (json_reply.count("error") == 1) {
+        std::string error_message = json_reply["error"];
+        WARN("Error returned by GPS server, error: {:s}", error_message);
+        return;
+    }
+
+    if (json_reply.count("frame0_nano") == 0) {
+        WARN("No `frame0_nano` value returned by GPS server, the server reply was: {:s} - {:s}",
+                reply.second, json_reply.dump());
+    }
+
+    time0_ns = json_reply["frame0_nano"].get<uint64_t>();
+    INFO("GPS frame0 time set to {:d}", time0_ns);
+    gps_enabled = true;
+}
+
+timespec CHORDTelescope::to_time(uint64_t seq) const {
+    auto time_ns = time0_ns + seq * dt_ns;
+    return {(time_t)(time_ns / GIGA), (long)(time_ns % GIGA)};
+}
+
+uint64_t CHORDTelescope::to_seq(timespec time) const {
+    return (time.tv_sec * GIGA + time.tv_nsec - time0_ns) / dt_ns;
+}
+
+bool CHORDTelescope::gps_time_enabled() const {
+    return gps_enabled;
+}
+
+uint64_t CHORDTelescope::seq_length_nsec() const {
+    return dt_ns;
+}
+
+//TODO: This is a stub to satisfy inheritance and should not be used.
+freq_id_t CHORDTelescope::to_freq_id(stream_t stream, uint32_t ind) const {
+    return 0;
+}
+    
+//TODO: This is a stub to satisfy inheritance and should not be used.
+double CHORDTelescope::to_freq(freq_id_t freq_id) const {
+    return 0;
+}
+    
+uint32_t CHORDTelescope::num_freq_per_stream() const {
+//TODO: This is a stub to satisfy inheritance and should not be used.
+    return 0;
+}
+    
+//TODO: This is a stub to satisfy inheritance and should not be used.
+uint32_t CHORDTelescope::num_freq() const {
+    return 0;
+}
+    
+//TODO: This is a stub to satisfy inheritance and should not be used.
+double CHORDTelescope::freq_width(freq_id_t freq_id) const {
+    return 0;
+}
+    
+//TODO: This is a stub to satisfy inheritance and should not be used.
+uint8_t CHORDTelescope::nyquist_zone() const {
+    return 0;
+}

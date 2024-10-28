@@ -86,10 +86,10 @@ double get_ERA_from_GPS(const timespec &gpstime, double dAT, double dUT) {
     return get_ERA_from_UT1(ut1);
 }
 
-void fringestopping_phases(vector<double>& phases,
+void fringestopping_phases(std::vector<double>& phases,
                            double nu, double era, double era0,
-                           const vector<int> &dish_indices,
-                           const vector<float> &dish_positions,
+                           const std::vector<int> &dish_indices,
+                           const std::vector<float> &dish_positions,
                            int n_elements, int n_dish,
                            double lat) {
 

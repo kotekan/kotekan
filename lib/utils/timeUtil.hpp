@@ -6,6 +6,7 @@
 #define TIME_UTIL_HPP
 
 #include <time.h>   // for timespec
+#include <vector>
 
 /**
  * @brief Compute TAI time from GPS time
@@ -40,5 +41,10 @@ double get_ERA_from_UT1(const timespec &ut1);
  */
 double get_ERA_from_GPS(const timespec &gpstime, double dAT, double dUT);
 
-
+void fringestopping_phases(std::vector<double>& phases,
+                           double nu, double era, double era0,
+                           const std::vector<int> &dish_indices,
+                           const std::vector<float> &dish_positions,
+                           int n_elements, int n_dish,
+                           double lat);
 #endif
