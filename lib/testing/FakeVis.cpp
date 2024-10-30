@@ -81,7 +81,7 @@ void FakeVis::main_thread() {
     unsigned int output_frame_id = 0, frame_count = 0;
     uint64_t fpga_seq = 0;
 
-    timespec ts = double_to_ts(start_time);
+    uint64_t time_ns = (uint64_t) start_time * 1000000000;
 
     // Calculate the time increments in seq and ctime
     uint64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
@@ -105,19 +105,30 @@ void FakeVis::main_thread() {
             }
 
             // Create view to output frame
-            auto output_frame = VisFrameView::create_frame_view(
-                out_buf, output_frame_id, num_elements, num_elements * (num_elements + 1) / 2,
-                num_eigenvectors);
-
+            DEBUG("Setting metadata for output frame.");
+            out_buf->allocate_new_metadata_object(output_frame_id);
+            std::shared_ptr<N2Metadata> meta = get_N2_metadata(out_buf, output_frame_id); DEBUG("Got meta.");
+    
+            meta->num_elements = num_elements; DEBUG("Got num_elements.");
+            /// Number of products in the data
+            meta->num_prod = N2::get_num_prod(num_elements); DEBUG("Got num_elements.");
+            /// Number of eigenvectors and values calculated
+            meta->num_ev = num_eigenvectors; DEBUG("Got num_eigenvectors.");
+            /// Total number of frequencies in pipeline
+            meta->nfreq = freq.size(); DEBUG("Got size.");
             // Set the frequency index
-            output_frame.freq_id = f;
+            meta->freq_id = f; DEBUG("Got f.");
 
             // Set the time
-            output_frame.time = std::make_tuple(fpga_seq, ts);
-
+            meta->frame_start_time_ns = time_ns; DEBUG("Got time_ns.");
             // Set the length and total data
-            output_frame.fpga_seq_length = delta_seq;
-            output_frame.fpga_seq_total = delta_seq;
+            meta->frame_length_fpga_ticks = delta_seq; DEBUG("Got delta_seq.");
+            /// The sequence number of the first FPGA frame integrated into this visibility frame
+            meta->fpga_start_tick = fpga_seq; DEBUG("Got fpga_seq.");
+
+            DEBUG("Creating N2FrameView.");
+            N2FrameView output_frame (out_buf, output_frame_id);
+
 
             // Fill out the non-visibility data sections, these can always be
             // overwritten, it just means that the patterns don't have to bother
@@ -144,8 +155,7 @@ void FakeVis::main_thread() {
         frame_count++; // NOTE: frame count increase once for all freq
 
         // Increment the timespec
-        ts.tv_sec += ((ts.tv_nsec + delta_ns) / 1000000000);
-        ts.tv_nsec = (ts.tv_nsec + delta_ns) % 1000000000;
+        time_ns += delta_ns;
 
         // Cause kotekan to exit if we've hit the maximum number of frames
         if (num_frames > 0 && frame_count >= (unsigned)num_frames) {
@@ -168,7 +178,7 @@ void FakeVis::main_thread() {
 }
 
 
-void FakeVis::fill_non_vis(VisFrameView& frame) {
+void FakeVis::fill_non_vis(N2FrameView& frame) {
     // Set ev section
     for (uint32_t i = 0; i < num_eigenvectors; i++) {
         for (uint32_t j = 0; j < num_elements; j++) {

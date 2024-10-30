@@ -33,7 +33,7 @@
  * @par Buffers
  * @buffer out_buf The kotekan buffer which will be fed, can be any size.
  *     @buffer_format N2FrameView structured
- *     @buffer_metadata VisMetadata
+ *     @buffer_metadata N2Metadata
  *
  * @conf  num_elements  Int. The number of elements (i.e. inputs) in the
  *                      correlator data,
@@ -68,7 +68,6 @@
  *        visibilities.
  *
  * @author  Tristan Pinsonneault-Marotte
- *
  */
 class FakeVis : public kotekan::Stage {
 
@@ -118,7 +117,7 @@ private:
     double sleep_after;
 
     /// Fill non vis components. A helper for the fill_mode functions.
-    void fill_non_vis(VisFrameView& frame);
+    void fill_non_vis(N2FrameView& frame);
 };
 
 
@@ -128,10 +127,10 @@ private:
  * @par Buffers
  * @buffer in_buf The kotekan buffer which will be read from.
  *     @buffer_format VisBuffer structured
- *     @buffer_metadata VisMetadata
+ *     @buffer_metadata N2Metadata
  * @buffer out_buf The kotekan buffer to be filled with the replaced data.
  *     @buffer_format VisBuffer structured
- *     @buffer_metadata VisMetadata
+ *     @buffer_metadata N2Metadata
  *
  * @author Richard Shaw
  *

@@ -20,6 +20,7 @@
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "visBuffer.hpp"      // for VisFrameView
 #include "visUtil.hpp"        // for cfloat
+#include "N2FrameView.hpp"    // for N2FrameView
 
 #include <deque>      // for deque
 #include <functional> // for function
@@ -64,6 +65,17 @@ public:
      * @param  frame  The vis buffer frame to fill with data.
      **/
     virtual void fill(VisFrameView& frame) = 0;
+
+    /**
+     * @brief Fill the data with a test pattern.
+     *
+     * @note The weights, eigenvalues, eigenvectors, erms, gains and flags will
+     *       have been pre-filled with some reasonable values. However, they can be
+     *       overwritten if desired.
+     *
+     * @param  frame  The N2 frame to fill with data.
+     **/
+    virtual void fill(N2FrameView& frame) = 0;
 };
 
 // Create the abstract factory for generating patterns
@@ -87,6 +99,7 @@ public:
 
     /// @sa FakeVisPattern::fill
     void fill(VisFrameView& frame) override;
+    void fill(N2FrameView& frame) override;
 };
 
 
@@ -103,6 +116,7 @@ public:
 
     /// @sa FakeVisPattern::fill
     void fill(VisFrameView& frame) override;
+    void fill(N2FrameView& frame) override;
 };
 
 
@@ -122,6 +136,7 @@ public:
 
     /// @sa FakeVisPattern::fill
     void fill(VisFrameView& frame) override;
+    void fill(N2FrameView& frame) override;
 };
 
 
@@ -138,6 +153,7 @@ public:
 
     /// @sa FakeVisPattern::fill
     void fill(VisFrameView& frame) override;
+    void fill(N2FrameView& frame) override;
 };
 
 
@@ -156,6 +172,7 @@ public:
 
     /// @sa FakeVisPattern::fill
     void fill(VisFrameView& frame) override;
+    void fill(N2FrameView& frame) override;
 };
 
 /**
@@ -171,6 +188,7 @@ public:
 
     /// @sa FakeVisPattern::fill
     void fill(VisFrameView& frame) override;
+    void fill(N2FrameView& frame) override;
 
 private:
     cfloat test_pattern_value;
@@ -195,6 +213,7 @@ public:
 
     /// @sa FakeVisPattern::fill
     void fill(VisFrameView& frame) override;
+    void fill(N2FrameView& frame) override;
 
 private:
     std::vector<cfloat> test_pattern_value;
@@ -216,6 +235,7 @@ public:
 
     /// @sa FakeVisPattern::fill
     void fill(VisFrameView& frame) override;
+    void fill(N2FrameView& frame) override;
 
 private:
     std::vector<cfloat> test_pattern_value;

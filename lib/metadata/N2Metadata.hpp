@@ -22,14 +22,16 @@ struct N2MetadataFormat {
     uint32_t num_prod;
     /// Number of eigenvectors and values calculated
     uint32_t num_ev;
+    /// Total number of frequencies in pipeline
+    uint32_t nfreq;
 
     /// ID of the frequency bin
-    int freq_id; // this is an int in chordMetadata, maybe change later
+    uint32_t freq_id; // this is an int in chordMetadata, maybe change later
 
     /// The sequence number of the first FPGA frame integrated into this visibility frame
     uint64_t fpga_start_tick;
-    /// The ctime of the integration frame
-    timespec frame_start_ctime;
+    /// The time of the start of the integration frame in nanosec
+    uint64_t frame_start_time_ns;
     /// Nominal length of the frame in FPGA ticks
     uint64_t frame_length_fpga_ticks;
     /// Amount of data that actually went into the frame (in FPGA ticks)
@@ -98,7 +100,7 @@ inline std::shared_ptr<N2Metadata> get_N2_metadata(Buffer* buf, int frame_id) {
     return get_N2_metadata(meta);
 }
 
-inline std::shared_ptr<N2Metadata> alloc_N2_from_chord_metadata(Buffer* chord_buf, size_t chord_frame_id,
+ inline std::shared_ptr<N2Metadata> alloc_N2_from_chord_metadata(Buffer* chord_buf, size_t chord_frame_id,
     Buffer* N2_buf, N2::frameID N2_frame_id, Config& config, const std::string& unique_name, int f) {
     
     assert(f >= 0 && f < CHORD_META_MAX_FREQ);
@@ -111,10 +113,11 @@ inline std::shared_ptr<N2Metadata> alloc_N2_from_chord_metadata(Buffer* chord_bu
     N2_meta->num_elements = config.get<int32_t>(unique_name, "num_elements");
     N2_meta->num_prod = N2::get_num_prod(N2_meta->num_elements);
     N2_meta->num_ev = config.get<int32_t>(unique_name, "num_ev");
+    N2_meta->nfreq = config.get<int32_t>(unique_name, "num_local_freq");
 
     N2_meta->freq_id = chord_meta->coarse_freq[f];
     N2_meta->fpga_start_tick = 0;
-    N2_meta->frame_start_ctime = {0, 0};
+    N2_meta->frame_start_time_ns = 0;
     N2_meta->frame_length_fpga_ticks = 0;
     N2_meta->n_valid_fpga_ticks_in_frame = 0;
     N2_meta->n_rfi_fpga_ticks = 0;
