@@ -107,24 +107,25 @@ void FakeVis::main_thread() {
             // Create view to output frame
             DEBUG("Setting metadata for output frame.");
             out_buf->allocate_new_metadata_object(output_frame_id);
-            std::shared_ptr<N2Metadata> meta = get_N2_metadata(out_buf, output_frame_id); DEBUG("Got meta.");
+            std::shared_ptr<N2Metadata> meta = get_N2_metadata(out_buf, output_frame_id);
+            assert(meta);
     
-            meta->num_elements = num_elements; DEBUG("Got num_elements.");
+            meta->num_elements = num_elements;
             /// Number of products in the data
-            meta->num_prod = N2::get_num_prod(num_elements); DEBUG("Got num_elements.");
+            meta->num_prod = N2::get_num_prod(num_elements);
             /// Number of eigenvectors and values calculated
-            meta->num_ev = num_eigenvectors; DEBUG("Got num_eigenvectors.");
+            meta->num_ev = num_eigenvectors;
             /// Total number of frequencies in pipeline
-            meta->nfreq = freq.size(); DEBUG("Got size.");
+            meta->nfreq = freq.size();
             // Set the frequency index
-            meta->freq_id = f; DEBUG("Got f.");
+            meta->freq_id = f;
 
             // Set the time
-            meta->frame_start_time_ns = time_ns; DEBUG("Got time_ns.");
+            meta->frame_start_time_ns = time_ns;
             // Set the length and total data
-            meta->frame_length_fpga_ticks = delta_seq; DEBUG("Got delta_seq.");
+            meta->frame_length_fpga_ticks = delta_seq;
             /// The sequence number of the first FPGA frame integrated into this visibility frame
-            meta->fpga_start_tick = fpga_seq; DEBUG("Got fpga_seq.");
+            meta->fpga_start_tick = fpga_seq;
 
             DEBUG("Creating N2FrameView.");
             N2FrameView output_frame (out_buf, output_frame_id);
