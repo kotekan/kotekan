@@ -25,6 +25,7 @@ upchan_U32_max_channel: 0
 upchan_U32_min_output_channel: upchan_U64_max_output_channel
 upchan_U32_max_output_channel: upchan_U32_min_output_channel + (upchan_U32_max_channel - upchan_U32_min_channel) * 32
 
+# TODO: use U128, then average (?) over frequencies in other kernels, produce 2 FRB outputs, the high-res F with low-res T
 # actual = 16, scaled = 256
 upchan_U16_max_num_channels: 16
 upchan_U16_min_channel: 0
