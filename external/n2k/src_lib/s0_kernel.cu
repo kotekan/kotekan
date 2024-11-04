@@ -96,6 +96,7 @@ __device__ uint _cmask(int b)
 //
 // Notes on parallelization:
 //
+//   - blockIdx.z, 
 //   - Each warp independently processes one tds index, 4 freqs, and 128 stations.
 //     Each thread processes one (t/32) index, 4 freqs, and 8 stations.
 //
@@ -104,8 +105,6 @@ __device__ uint _cmask(int b)
 //
 //   - Within the larger kernel, the warp mapping is:
 //       wz wy wx <-> (tds) (f/4) (s/128)
-//
-// FIXME think carefully about int32 overflows!!
 
 __global__ void s0_kernel(ulong4 *s0, const uint *pl, int T, int F, int S, int Nds, int out_fstride4)
 {
@@ -133,7 +132,7 @@ __global__ void s0_kernel(ulong4 *s0, const uint *pl, int T, int F, int S, int N
     // After these shifts, 'pl' has shape uint[T/128] and stride Fds * (S/4).
     
     pl += (sds << 1);
-    pl += fds * (S >> 2);
+    pl += long(fds) * long(S >> 2);
     pl += (threadIdx.x & 31);  // laneId
     long pl_stride = long(Fds) * long(S >> 2);
 
@@ -142,8 +141,8 @@ __global__ void s0_kernel(ulong4 *s0, const uint *pl, int T, int F, int S, int N
     // After the shifts, 's0' has shape ulong4[4] and stride 'out_fstride4'.
     
     s0 += (sds << 1);
-    s0 += (fds << 2) * out_fstride4;
-    s0 += tds * F * out_fstride4;
+    s0 += long(fds << 2) * long(out_fstride4);
+    s0 += long(tds) * long(F) * long(out_fstride4);
     s0 += (threadIdx.x & 31);  // laneId
     
     // [t2_lo:t2_hi) = range of t2 values processed on this warp.
@@ -209,6 +208,10 @@ __global__ void s0_kernel(ulong4 *s0, const uint *pl, int T, int F, int S, int N
 
 void launch_s0_kernel(ulong *s0, const ulong *pl_mask, long T, long F, long S, long Nds, long out_fstride, cudaStream_t stream)
 {
+    // Note: this kernel does not assume (S <= rfi_max_stations).
+
+    if (!s0 || !pl_mask)
+	throw runtime_error("launch_s0_kernel: null pointer was specified");	
     if (T <= 0)
 	throw runtime_error("launch_s0_kernel: number of time samples T must be > 0");
     if (T & 127)
@@ -225,8 +228,10 @@ void launch_s0_kernel(ulong *s0, const ulong *pl_mask, long T, long F, long S, l
 	throw runtime_error("launch_s0_kernel: downsampling factor 'Nds' must be even");
     if (out_fstride < S)
 	throw runtime_error("launch_s0_kernel(): out_fstride must be >= S");	
-    if (out_fstride % 4)
+    if (out_fstride & 3)
 	throw runtime_error("launch_s0_kernel(): out_fstride must be a multiple of 4");
+    if ((T >= INT_MAX) || (F >= INT_MAX) || (S >= INT_MAX) || (Nds >= INT_MAX) || (out_fstride >= INT_MAX))
+	throw runtime_error("launch_s0_kernel(): 32-bit overflow");
 
     long Tds = T / Nds;
     

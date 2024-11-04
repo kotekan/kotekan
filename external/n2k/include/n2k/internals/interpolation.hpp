@@ -14,8 +14,9 @@ namespace n2k {
 // This file contains inline functions (mostly __device__ inline) used internally.
 // It probably won't be useful "externally" to n2k.
 //
-// Reminder: x=log(mu)=log(S1/S0), and y=(1/N)=(1/S0).
-// Bias is a function b(x,y) and sigma is a function sigma(x).
+// Reminder: bias is a function b(x,y) and sigma is a function sigma(x), where:
+//   x = log(mu) = log(S1/S0)
+//   y = (1/N) = (1/S0).
 //
 // Global memory layout (on both host and device) is:
 //
@@ -111,6 +112,7 @@ __host__ inline double interpolate_bias_cpu(double x, double y)
 }
 
 
+// Returns (sigma * sqrt(N)), not sigma!
 __host__ inline double interpolate_sigma_cpu(double x)
 {
     const double *stab = sk_globals::get_bsigma_coeffs() + (4 * sk_globals::bias_nx);
@@ -270,6 +272,7 @@ __device__ inline float interpolate_bias_gpu(const float *shmem_bsigma_coeffs, f
 }
 
 
+// Returns (sigma * sqrt(N)), not sigma!
 __device__ inline float interpolate_sigma_gpu(const float *shmem_bsigma_coeffs, float x)
 {
     constexpr int nx = sk_globals::sigma_nx;   // note sigma_nx (not bias_nx) here

@@ -13,7 +13,7 @@ echo "If this script fails, you should delete this directory."
 cd "$temp_dir"
 
 # Clone n2k, check out right branch / commit
-git clone -b 24_08_rfi_kernels --single-branch https://github.com/kmsmith137/n2k.git
+git clone -b master --single-branch https://github.com/kmsmith137/n2k.git
 cd n2k
 # Copy over needed files
 cp template_instantiations/make-instantiation.py "$src_dir/n2k/template_instantiations/make-instantiation.py"

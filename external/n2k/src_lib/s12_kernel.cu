@@ -27,9 +27,10 @@ namespace n2k {
 //
 // Constraints (checked in launch_s12_kernel below):
 //
+//   - T must be a multiple of Nds.
 //   - S must be a multiple of 128.
 //   - out_fstride must be a multiple of 4.
-//   - out_fstride must be >= 2*S
+//   - out_fstride must be >= 2*S.
 //
 // Parallelization:
 //
@@ -70,10 +71,10 @@ s12_kernel(ulong *S12, const uint *E, int Tds, int F, int S, int Nds, int out_fs
     s1_0 = s1_1 = s1_2 = s1_3 = s2_0 = s2_1 = s2_2 = s2_3 = 0;
 
     // Each thread processes 4 stations, at the following base (time, freq, station_quadruple) indices.
-    ulong tout = (blockIdx.z * blockDim.z) + threadIdx.z;    // coarse time index (no factor Nds)
-    uint freq = (blockIdx.y * blockDim.y) + threadIdx.y;     // frequency channel
-    uint sq = (blockIdx.x * blockDim.x) + threadIdx.x;       // station quadruple
-    uint Q = (S >> 2);                                       // number of quadruples
+    long tout = (blockIdx.z * blockDim.z) + threadIdx.z;     // coarse time index (no factor Nds)
+    long freq = (blockIdx.y * blockDim.y) + threadIdx.y;     // frequency channel
+    long sq = (blockIdx.x * blockDim.x) + threadIdx.x;       // station quadruple
+    int Q = (S >> 2);                                        // number of quadruples
 
     if ((tout >= Tds) || (freq >= F) || (sq >= Q))
 	return;
@@ -84,10 +85,12 @@ s12_kernel(ulong *S12, const uint *E, int Tds, int F, int S, int Nds, int out_fs
     
     S12 += (tout*F + freq) * out_fstride + (4*sq);
     E += (Nds*F*Q)*tout + Q*freq + sq;
+    long FQ = long(F) * long(Q);
     
     for (uint n = 0; n < Nds; n++) {
-        // Get 4 stations (packed into one uint32)
-        uint e = E[F*Q*n] ^ to_offset_encoded;   // offset-encoded
+        // Get 4 stations (packed into one uint32).
+        uint e = E[0] ^ to_offset_encoded;   // offset-encoded
+	E += FQ;
         
         // Unpack uint32 into 4 complex numbers (each with real and imaginary components)
         int e0_re = int(e & 0xf) - 8;
@@ -118,33 +121,34 @@ s12_kernel(ulong *S12, const uint *E, int Tds, int F, int S, int Nds, int out_fs
 
 void launch_s12_kernel(ulong *S12, const uint8_t *E, long T, long F, long S, long Nds, long out_fstride, bool offset_encoded, cudaStream_t stream)
 {
+    // Note: this kernel does not assume (S <= rfi_max_stations)
+    //
     // ulong    S12[T/Tds][F][2][S];
     // uint4+4  E[T][F][S];
     
     if (!E || !S12)
-	throw runtime_error("launch_s12_kernel(): null array pointer was specified");
-    
-    // Define some reasonable ranges for integer-valued arguments.
-    if ((T <= 0) || (T > 1000000))
-	throw runtime_error("launch_s12_kernel(): invalid value of T");
-    if ((F <= 0) || (F > 10000))
-	throw runtime_error("launch_s12_kernel(): invalid value of F");
-    if ((S <= 0) || (S > 10000))
-	throw runtime_error("launch_s12_kernel(): invalid value of S");
-    if ((Nds <= 0) || (Nds > 10000))
-	throw runtime_error("launch_s12_kernel(): invalid value of Nds");
+	throw runtime_error("launch_s12_kernel: null array pointer was specified");
+    if (T <= 0)
+	throw runtime_error("launch_s12_kernel: number of time samples T must be > 0");
+    if (F <= 0)
+	throw runtime_error("launch_s12_kernel: number of frequency samples F must be > 0");
+    if (S <= 0)
+	throw runtime_error("launch_s12_kernel: number of stations S must be > 0");
+    if (S & 127)
+	throw runtime_error("launch_s12_kernel: number of stations S must be a multiple of 128");
+    if (Nds <= 0)
+	throw runtime_error("launch_s12_kernel: downsampling factor 'Nds' must be positive");
+    if (out_fstride < 2*S)
+	throw runtime_error("launch_s12_kernel: out_fstride must be >= 2*S");	
+    if (out_fstride & 3)
+	throw runtime_error("launch_s12_kernel: out_fstride must be a multiple of 4");
+    if ((T >= INT_MAX) || (F >= INT_MAX) || (S >= INT_MAX) || (Nds >= INT_MAX) || (out_fstride >= INT_MAX))
+	throw runtime_error("launch_s12_kernel: 32-bit overflow");
 
     long Tds = T/Nds;
 
-    // Some more substantial checks.
-    if (S % 128)
-	throw runtime_error("launch_s12_kernel(): S must be a multiple of 128");		
     if (T != Tds*Nds)
-	throw runtime_error("launch_s12_kernel(): T must be a multiple of Nds");	
-    if (out_fstride < 2*S)
-	throw runtime_error("launch_s12_kernel(): out_fstride must be >= 2*S");	
-    if (out_fstride % 4)
-	throw runtime_error("launch_s12_kernel(): out_fstride must be a multiple of 4");
+	throw runtime_error("launch_s12_kernel: T must be a multiple of Nds");	
 
     dim3 nblocks, nthreads;
     gputils::assign_kernel_dims(nblocks, nthreads, S/4, F, Tds);

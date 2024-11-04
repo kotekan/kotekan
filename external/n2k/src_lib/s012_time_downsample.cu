@@ -57,6 +57,10 @@ __global__ void s012_time_downsample_kernel(ulong *Sout, const ulong *Sin, int T
 //   long   T;                    // number of time samples before downsampling
 //   long   M;                    // number of spectator indices (3*F*S), see above
 //   long   Nds;                  // time downsampling factor
+//
+// Constraints:
+//   - T must be a multiple of Nds
+//   - M must be a multiple of 32 (could easily be relaxed)
 
 void launch_s012_time_downsample_kernel(ulong *Sout, const ulong *Sin, long T, long M, long Nds, cudaStream_t stream)
 {
@@ -69,18 +73,17 @@ void launch_s012_time_downsample_kernel(ulong *Sout, const ulong *Sin, long T, l
 	throw runtime_error("launch_s012_time_downsample_kernel(): expected Tds > 0");
     if (M <= 0)
 	throw runtime_error("launch_s012_time_downsample_kernel(): expected M > 0");
+    if (M & 31)
+	throw runtime_error("launch_s012_time_downsample_kernel(): expected M to be a multiple of 32");
     if (Nds <= 0)
 	throw runtime_error("launch_s012_time_downsample_kernel(): expected Nds > 0");
+    if ((T >= INT_MAX) || (M >= INT_MAX) || (Nds >= INT_MAX))
+	throw runtime_error("launch_s012_time_downsample_kernel(): 32-bit overflow");
 
     long Tds = T/Nds;
 
     if (T != Tds*Nds)
 	throw runtime_error("launch_s012_time_downsample_kernel(): T must be a multiple of Nds");	
-    
-    // Necessary for efficiency (but not correctness) of kernel.
-    // Always satisfied for CHORD, CHIME, HIRAX.
-    if (M % 32)
-	throw runtime_error("launch_s012_time_downsample_kernel(): expected M to be a multple of 32");
     
     dim3 nblocks, nthreads;
     gputils::assign_kernel_dims(nblocks, nthreads, M, Tds, 1, threads_per_block, noisy);

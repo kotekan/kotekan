@@ -25,8 +25,9 @@ namespace n2k {
 // Constraints:
 //
 //   - S must be a multiple of 128 (from load_bad_feed_mask()).
-//   - S must be <= 32K (from load_bad_feed_mask()).
+//   - S must be <= 32 * blockDim.x (from load_bad_feed_mask()).
 //   - Wy is a power of two.
+//   - No constraint on M.
 //
 // Parallelization:
 //
@@ -114,7 +115,7 @@ __global__ void s012_station_downsample_kernel(ulong *Sout, const ulong *Sin, co
     // No syncthreads() needed after load_bad_feed_mask(), since 'shmem_bf' is not re-used.
     int m = 32*blockIdx.x + N*threadIdx.y;
     uint bf = load_bad_feed_mask(bf_mask, shmem_bf, S);
-    ulong x = template_magic<N,32>::load_and_sum(Sin, bf, m, M, S);
+    ulong x = template_magic<N,32>::load_and_sum(Sin, bf, m, M, S);  // handles case m >= M
 	
     if (laneId < N)
 	shmem_red[warpId*N + laneId] = x;
@@ -146,15 +147,17 @@ void launch_s012_station_downsample_kernel(ulong *Sout, const ulong *Sin, const 
 	throw runtime_error("launch_s012_station_downsample_kernel(): expected M > 0");
     if (S <= 0)
 	throw runtime_error("launch_s012_station_downsample_kernel(): expected S > 0");
-    if (S % 128)
+    if (S & 127)
 	throw runtime_error("launch_s012_station_downsample_kernel(): expected S to be a multple of 128");
-    if (S > 32*1024)
-	throw runtime_error("launch_s012_station_downsample_kernel(): expected S to be <= 32*1024");
+    if (S > rfi_max_stations)
+	throw runtime_error("launch_s012_station_downsample_kernel(): expected S to be <= max_rfi_stations");
+    if ((M*S) > INT_MAX)
+	throw runtime_error("launch_s012_station_downsample_kernel(): 32-bit overflow");
 
     uint Wx = (S+1023) / 1024;
     int nblocks = (M+31) / 32;
-    int shmem_nbytes = bf_mask_shmem_nbytes(S,Wx);
-    shmem_nbytes += (8*32*Wx);   // 'shmem_red' array has shape (Wx,Wy,32/Wy) and dtype ulong
+    int shmem_nbytes = bf_mask_shmem_nbytes(S,Wx);    // asserts that Wx is chosen correctly
+    shmem_nbytes += (8*32*Wx);  // 'shmem_red' array has shape (Wx,Wy,32/Wy) and dtype ulong
 
     if (Wx == 1)       // use Wy=4
 	s012_station_downsample_kernel<4> <<< nblocks, {32*Wx,4}, shmem_nbytes, stream >>> 

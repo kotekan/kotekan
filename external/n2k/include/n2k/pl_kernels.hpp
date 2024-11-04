@@ -35,8 +35,9 @@ namespace n2k {
 //
 // Constraints:
 //
-//   - Number of stations after downsampling must be a multiple of 16
-//      (i.e. number of stations before downsampling must be a multiple of 128)
+//   - Number of time samples T must be a multiple of 128.
+//   - Number of downsampled stations (S/8) must be a multiple of 16
+//      (i.e. number of stations S must be a multiple of 128).
 
 
 // Version 1: bare-pointer interface.
@@ -97,6 +98,8 @@ extern void launch_pl_mask_expander(
 //         int32 counts[T/Nds][F][Ntiles][8][8];
 //
 // Constraints:
+//
+//     - T must be a multiple of Nds.
 //
 //     - Nds must be a multiple of 128 (convenient for tensor core reasons, could be relaxed).
 //

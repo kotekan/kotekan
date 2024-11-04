@@ -13,11 +13,19 @@ namespace n2k {
 #endif
 
 
-// FIXME can be improved.
+// Input: 32-bit integer, represented as bit sequence [ x0 x1 ... x32 ].
+//
+// Output: "Doubled" bit sequence, represented as two 32-bit integers:
+//   ret.x = [ x0 x0 x1 x1 ... x15 x15 ]
+//   ret.y = [ x16 x16 x17 x17 ... x31 x31 ]
+//
+// Note: I tried a fancy bit-transposing implementation with lop3() and
+// __byte_perm(), but this boneheaded implementation was faster (?!).
+
 __device__ inline uint2 double_bits(uint x)
 {
     uint2 ret{0U,0U};
-    
+
     for (uint i = 0; i < 16; i++) {
 	uint x_shifted = x >> i;
 	uint bit_pair = 3U << (2*i);
@@ -41,15 +49,15 @@ __device__ inline uint2 double_bits(uint x)
 
 __global__ void pl_mask_expand_kernel(uint *pl_out, const uint *pl_in, int F, int M, int N)
 {
-    const int Fin = (F+3) >> 2;
+    const long Fin = (F+3) >> 2;
     
     // Parallelization: x <-> n, y <-> f, z <-> m
-    int n = (blockIdx.x * blockDim.x) + threadIdx.x;
-    int f = (blockIdx.y * blockDim.y) + threadIdx.y; 
-    int m = (blockIdx.z * blockDim.z) + threadIdx.z;
+    long n = (blockIdx.x * blockDim.x) + threadIdx.x;
+    long f = (blockIdx.y * blockDim.y) + threadIdx.y; 
+    long m = (blockIdx.z * blockDim.z) + threadIdx.z;
     
     bool valid = (f < Fin) && (m < M) && (n < N);
-    int nf_out = valid ? min(F-4*f,4) : 0;
+    long nf_out = valid ? min(F-4*f,4L) : 0;
 
     // Ensure array accesses are within bounds.
     f = (f < Fin) ? f : (Fin-1);
@@ -59,23 +67,23 @@ __global__ void pl_mask_expand_kernel(uint *pl_out, const uint *pl_in, int F, in
     // pl_in = uint array of shape (M, Fin, N)
     // After these shifts, 'pl_in' points to a scalar.
     
-    pl_in += long(m) * long(Fin*N);
-    pl_in += (f*N + n);
+    pl_in += m*Fin*N;  // 64-bit safe
+    pl_in += f*N + n;  // 64-bit safe
 
     // pl_out = uint array of shape (2*M, F, N)
     // After these shifts, 'pl_out' points to an array of shape (nf_out, 2) with strides (N, 1).
 
-    int mout = 2*m + (n & 1);
-    int nout = n & ~1;
-    pl_out += long(mout) * long(F*N);
-    pl_out += (4*f*N + nout);
+    long mout = 2*m + (n & 1);
+    long nout = n & ~1;
+    pl_out += mout * long(F) * long(N);  // 64-bit safe
+    pl_out += (4*f*N + nout);            // 64-bit safe
 
     // Read input mask.
     uint x = *pl_in;
     uint2 y = double_bits(x);
 	
     // Write (expanded) output mask.
-    for (int i = 0; i < nf_out; i++)
+    for (long i = 0; i < nf_out; i++)
 	*((uint2 *) (pl_out + i*N)) = y;
 }
 
@@ -92,16 +100,17 @@ void launch_pl_mask_expander(ulong *pl_out, const ulong *pl_in, long Tout, long 
 	throw runtime_error("launch_pl_mask_expander: expected Fout > 0");
     if (Sds <= 0)
 	throw runtime_error("launch_pl_mask_expander: expected Sds > 0");
-    if (Tout % 128)
+    if (Tout & 127)
 	throw runtime_error("launch_pl_mask_expander: expected Tout to be a multiple of 128");
-    if (Sds % 16)
+    if (Sds & 15)
 	throw runtime_error("launch_pl_mask_expander: expected Sds to be a multiple of 16");
 
-    // FIXME check for 32-bit overflows.
-    
     long M = Tout / 128;
     long N = Sds * 2;
-
+    
+    if ((N > INT_MAX) || (Fout > INT_MAX) || (M > INT_MAX))
+	throw runtime_error("launch_pl_mask_expander: 32-bit overflow");
+    
     dim3 nblocks, nthreads;
     gputils::assign_kernel_dims(nblocks, nthreads, N, Fout, M);  // x <-> n, y <-> f, z <-> m
 
