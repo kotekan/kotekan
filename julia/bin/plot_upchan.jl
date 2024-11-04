@@ -8,11 +8,12 @@ function freq_norm(A, p=2)
     return [scale * norm((@view A[:, :, freq, :]), p) for freq in 1:size(A, 3)]
 end
 
-prefix = "/tmp/fengine_test_pathfinder";
+prefix = "/localhome/eschnett/data/fengine_test_pathfinder";
 host = "indigo";
-iter = "00000007"
+#TODO iter = "00000007"
+iter = "00000005"
 
-E = read_kotekan("$(prefix)/$(host)_voltage.$(iter).asdf", "voltage", ["D", "P", "F", "T"]);
+E = read_asdf("$(prefix)/$(host)_voltage.$(iter).asdf", "voltage", ["D", "P", "F", "T"]);
 
 Enorm2 = freq_norm(E, 2);
 
@@ -27,7 +28,7 @@ end;
 Us = [2, 4, 8, 16, 32, 64];
 
 Ebar = Dict(
-    U => read_kotekan("$(prefix)/$(host)_upchan_U$(U)_voltage.$(iter).asdf", "upchan_U$(U)_voltage", ["D", "P", "Fbar", "Tbar"]) for
+    U => read_asdf("$(prefix)/$(host)_upchan_U$(U)_voltage.$(iter).asdf", "upchan_U$(U)_voltage", ["D", "P", "Fbar", "Tbar"]) for
     U in Us
 );
 

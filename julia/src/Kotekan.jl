@@ -23,6 +23,9 @@ i2t(x::Int4x2) = convert(NTuple{2,Int8}, x)
 i2c(x::Int4x2) = t2c(i2t(x))
 i2cso(x::Int4x2) = t2cso(i2t(x))
 
+export i4p4so2i8
+i4p4so2i8(x::UInt8) = (((x >>> 0x4) & 0x0f) % Int8 - Int8(8), ((x >>> 0x0) & 0x0f) % Int8 - Int8(8))
+
 export u4p42i8
 u4p42i8(x::UInt8) = (((x >>> 0x0) & 0x0f) % Int8, ((x >>> 0x4) & 0x0f) % Int8)
 
@@ -54,7 +57,9 @@ function read_asdf(filename::AbstractString, quantity::AbstractString, indexname
     # Convert type if necessary
     if eltype(data) == UInt8
         @info "mapping to Complex{Int8}..."
-        data = mappedarray(i2c ∘ Int4x2, data)
+        # data = mappedarray(i2c ∘ Int4x2, data)
+        # data = mappedarray(i2cso ∘ Int4x2, data)
+        data = mappedarray(i4p4so2i8, data)
     end
 
     # Permute indices

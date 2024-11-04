@@ -8,7 +8,7 @@ function freq_time_norm(A, p=2)
     return [scale * norm((@view A[:, :, freq, time]), p) for freq in 1:size(A, 3), time in 1:size(A, 4)]
 end
 
-prefix = "/localhome/eschnett/data/fengine_pathfinder_frb";
+prefix = "/localhome/eschnett/data/fengine_frb_pathfinder";
 host = "indigo";
 iter0 = "00000000"
 iter1 = "00000001"
@@ -24,7 +24,16 @@ Enorm2small = Enorm2 |> A -> reshape(A, (size(A, 1), 32, :)) |> A -> maximum(A; 
 let
     fig = Figure(; size=(640, 480))
     ax = Axis(fig[1, 1]; title="FRB time/frequency diagram", xlabel="time [ms]", ylabel="local channel")
-    yscale = 1e+3 * 16384 / 3200e6
-    heatmap!(yscale * 32 * (0:(size(Enorm2small, 2) - 1)), 0:(size(Enorm2small, 1) - 1), permutedims(Enorm2small))
+    tscale = 1e+3 * 16384 / 3200e+6 # [ms]
+    obj = heatmap!(
+        tscale * 32 * (0:(size(Enorm2small, 2) - 1)),
+        0:(size(Enorm2small, 1) - 1),
+        permutedims(Enorm2small);
+        colormap=:plasma,
+        colorrange=(0, √2 * 7),
+    )
+    Colorbar(fig[1, 2], obj; label="voltage intensity")
     display(fig)
 end;
+
+nothing
