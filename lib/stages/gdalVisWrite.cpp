@@ -41,19 +41,18 @@ using namespace gdal;
  *
  * @conf base_dir  String. Directory to write into.
  * @conf file_name String. Base filename to write.
- * @conf exit_after_n_frames  Int. Stop writing after this many frames, Default 0 = unlimited
- *       frames.
- * @conf exit_with_n_writers  Int. Exit after this many GDAL writers finished writing, Default 0 =
- *       unlimited writers.
  *
  * @par Metrics
  * @metric kotekan_gdalviswrite_write_time_seconds
  *         The write time to write out the last frame.
+ * @metric kotekan_gdalviswrite_n_datasets
+ *         The number of datasets currently being held open.
  **/
 class gdalVisWrite : public kotekan::Stage {
 
     const std::string base_dir = config.get<std::string>(unique_name, "base_dir");
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
+    const std::string zip_compression = config.get_default<std::string>(unique_name, "zip_compression", "1");
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
 
     const int max_frames = config.get_default<int>(unique_name, "max_frames", -1);
@@ -100,7 +99,7 @@ private:
 
         // Use {YYYYMMDD}T{HHMMSS}Z //_{instrument -name}_{type} format
         std::time_t time_t_format = file_start_time_ns / 1'000'000'000; // Convert to seconds
-        buf << file_name << "." << std::put_time(std::gmtime(&time_t_format), "%Y%m%dT%H%M%S") << ".zarr";
+        buf << file_name << "." << std::put_time(std::gmtime(&time_t_format), "%Y%m%dT%H%M%S") << ".zarr.zip";
         const std::string full_path = buf.str();
 
         return full_path;
@@ -217,6 +216,8 @@ public:
 
         auto& write_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
             "kotekan_gdalviswrite_write_time_seconds", unique_name);
+        auto& n_datasets_metric = kotekan::prometheus::Metrics::instance().add_gauge(
+            "kotekan_gdalviswrite_n_datasets", unique_name);
 
         const double start_time = current_time();
 
@@ -258,7 +259,8 @@ public:
                 break;
             DEBUG("got frame: frame_id={}", in_frame_id);
 
-            // Fetch metadata
+            // Fetch metadata and frame vieww
+            N2FrameView vis(buffer, in_frame_id);
             const std::shared_ptr<N2Metadata> meta = get_N2_metadata(buffer, in_frame_id);
             assert(meta);
 
@@ -275,7 +277,7 @@ public:
             struct stat filecheck_buffer {};
             if (datasets.find(full_path) != datasets.end()) // file/dataset already open
             { 
-                dataset = datasets["full_path"];
+                dataset = datasets[full_path];
             }
             else if (stat(full_path.c_str(), &filecheck_buffer) == 0) // check if file exists
             {
@@ -290,23 +292,24 @@ public:
                     nullptr));
                 // store the dataset as open
                 DEBUG("Storing dataset for file {:s}", full_path);
-                datasets["full_path"] = dataset;
+                datasets[full_path] = dataset;
             }
             else // if file and/or dataset do not exist
             {
                 // Create GDAL file (dataset)
                 char** options = nullptr;
                 options = CSLSetNameValue(options, "FORMAT", "ZARR_V2");
-                dataset = driver->CreateMultiDimensional(full_path.c_str(), nullptr, const_cast<const char**>(options));
+                options = CSLSetNameValue(options, "COMPRESS", "DEFLATE"); // zip compression
+                options = CSLSetNameValue(options, "LEVEL", zip_compression.c_str());
+                options = CSLSetNameValue(options, "STORAGE", "ZIP"); 
+                dataset = driver->CreateMultiDimensional(full_path.c_str(), nullptr,
+                                                         const_cast<const char**>(options));
                 CSLDestroy(options);
                 if (!dataset)
                     FATAL_ERROR("Could not initialize GDAL file {:s}", full_path);
                 DEBUG("New dataset created for file: {:s}", full_path);
                 datasets[full_path] = dataset;
-
-                // track the dataset
-                datasets.at(full_path) = dataset;
-
+                
                 // initialize the dataset with relevant vis meta and arrays
                 _initialize_gdal_vis_file(dataset, meta);
             }
@@ -337,23 +340,32 @@ public:
                 std::vector<GUInt64> arrayStartIdx = {meta->freq_id, 0, frame_n_in_file};
                 std::vector<size_t> count = {1, meta->num_prod, 1}; // write along products dimension only
 
-                // Create and populate dataChunk with complex<float> values
-                std::vector<std::complex<float>> dataChunk(meta->num_prod);
-                for (size_t i = 0; i < meta->num_prod; ++i) {
-                    dataChunk[i] = std::complex<float>(i * 0.1f, i * 0.2f);
+                bool success = false;
+                
+                success = vis_array->Write(arrayStartIdx.data(), count.data(), nullptr, nullptr,
+                                cDataType, static_cast<const void*>(vis.vis.data()), nullptr, 0);
+                if (!success)
+                {
+                    GDALClose(dataset);
+                    FATAL_ERROR("Error writing vis array at F = {:d}, T = {:d}", meta->freq_id, frame_n_in_file );
                 }
 
-                bool success = vis_array->Write(arrayStartIdx.data(), count.data(), nullptr, nullptr,
-                                cDataType, dataChunk.data(), nullptr, 0);
-
+                success = weights_array->Write(arrayStartIdx.data(), count.data(), nullptr, nullptr,
+                                cDataType, static_cast<const void*>(vis.weight.data()), nullptr, 0);
                 if (!success)
-                    FATAL_ERROR("Error writing chunk at F = {:d}, T = {:d}", meta->freq_id, frame_n_in_file );
+                {
+                    GDALClose(dataset);
+                    FATAL_ERROR("Error writing weights array at F = {:d}, T = {:d}", meta->freq_id, frame_n_in_file );
+                }
             }
 
             // Stop timer
-            const double t = current_time();
-            const double elapsed_writing_frame = t - frame_recv_time;
+            const double currt = current_time();
+            const double elapsed_writing_frame = currt - frame_recv_time;
             write_time_metric.set(elapsed_writing_frame);
+
+            // Record current datasets open
+            n_datasets_metric.set(datasets.size());
 
             // Mark frame as done
             DEBUG("mark_frame_empty: frame_id={}", in_frame_id);

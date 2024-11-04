@@ -22,6 +22,8 @@
 #include <functional>  // for _Bind_helper<>::type, bind, function, placeholders
 #include <iterator>    // for back_insert_iterator, back_inserter, begin, end
 #include <memory>      // for allocator, unique_ptr
+#include <numeric>     // for iota
+#include <random>      // for random_device, mt19937
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error
 #include <time.h>      // for nanosleep, timespec
@@ -69,8 +71,10 @@ FakeVis::FakeVis(Config& config, const std::string& unique_name,
     // Get timing and frame params
     start_time = config.get_default<double>(unique_name, "start_time", current_time());
     cadence = config.get<float>(unique_name, "cadence");
-    num_frames = config.get_default<int32_t>(unique_name, "num_frames", -1);
+    num_frames = config.get_default<int64_t>(unique_name, "num_frames", -1);
     wait = config.get_default<bool>(unique_name, "wait", true);
+    randomize = config.get_default<bool>(unique_name, "randomize", false);
+    randomize_chunksize = config.get_default<int64_t>(unique_name, "randomize_chunksize", 5);
 
     // Get zero_weight option
     zero_weight = config.get_default<bool>(unique_name, "zero_weight", false);
@@ -78,14 +82,15 @@ FakeVis::FakeVis(Config& config, const std::string& unique_name,
 
 void FakeVis::main_thread() {
 
-    unsigned int output_frame_id = 0, frame_count = 0;
-    uint64_t fpga_seq = 0;
+    unsigned int output_frame_id = 0;
+    int64_t fpga_seq = 0, frame_count = 0;
 
-    uint64_t time_ns = (uint64_t) start_time * 1000000000;
+    int64_t time_ns = (uint64_t) start_time * 1000000000;
 
     // Calculate the time increments in seq and ctime
-    uint64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
-    uint64_t delta_ns = (uint64_t)(cadence * 1000000000);
+    int64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
+    int64_t delta_ns = (uint64_t)(cadence * 1000000000);
+    DEBUG("delta_seq = {:d}, delta_ns = {:d}", delta_seq, delta_ns);
 
     // Sleep before starting up
     timespec ts_sleep = double_to_ts(sleep_before);
@@ -93,9 +98,35 @@ void FakeVis::main_thread() {
 
     double start = current_time();
 
+    // random number generators in case we randomize things
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<double> distrib(0.0, 1.0);
+
     while (!stop_thread) {
 
-        for (auto f : freq) {
+        // process times in chunks of `randomize_chunksize` if randomized... otherwise, chunks of 1
+        uint64_t curr_n_frames = 1;
+        if( randomize && num_frames > 0 && frame_count < num_frames - 5 ) {
+            curr_n_frames = randomize_chunksize;
+        }
+        std::vector<uint64_t> times(curr_n_frames);
+        std::iota(times.begin(), times.end(), 0);
+
+        // Get frequency/time pairs
+        std::vector<std::pair<uint32_t, uint64_t>> ftpairs;
+        for (uint32_t f : freq) {
+            for (uint32_t t : times) {
+                ftpairs.emplace_back(f, t);
+            }
+        }
+        if(randomize)
+            std::shuffle(ftpairs.begin(), ftpairs.end(), gen);
+
+        DEBUG("Making fake N2FrameViews for {:d} freqs, {:d} times ({:d} total frames)",
+              freq.size(), times.size(), ftpairs.size());
+
+        for (const auto& [f, t] : ftpairs) {
 
             DEBUG("Making fake N2FrameView for freq={:d}, fpga_seq={:d}", f, fpga_seq);
 
@@ -121,11 +152,11 @@ void FakeVis::main_thread() {
             meta->freq_id = f;
 
             // Set the time
-            meta->frame_start_time_ns = time_ns;
+            meta->frame_start_time_ns = time_ns + t * delta_ns;
             // Set the length and total data
             meta->frame_length_fpga_ticks = delta_seq;
             /// The sequence number of the first FPGA frame integrated into this visibility frame
-            meta->fpga_start_tick = fpga_seq;
+            meta->fpga_start_tick = fpga_seq + t * delta_seq;
 
             DEBUG("Creating N2FrameView.");
             N2FrameView output_frame (out_buf, output_frame_id);
@@ -149,17 +180,18 @@ void FakeVis::main_thread() {
 
             // Advance the current frame ids
             output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
-        }
+
+        } // frequency loop
 
         // Increment time
-        fpga_seq += delta_seq;
-        frame_count++; // NOTE: frame count increase once for all freq
+        fpga_seq += curr_n_frames * delta_seq;
+        frame_count += curr_n_frames; // NOTE: frame count increases only once for all freq
 
         // Increment the timespec
-        time_ns += delta_ns;
+        time_ns += curr_n_frames*delta_ns;
 
         // Cause kotekan to exit if we've hit the maximum number of frames
-        if (num_frames > 0 && frame_count >= (unsigned)num_frames) {
+        if (num_frames > 0 && frame_count >= num_frames) {
             INFO("Reached frame limit [{:d} frames]. Sleeping and then exiting kotekan...",
                  num_frames);
             timespec ts = double_to_ts(sleep_after);
@@ -172,6 +204,8 @@ void FakeVis::main_thread() {
         // at the correct cadence
         if (this->wait) {
             double diff = cadence * frame_count - (current_time() - start);
+            if(randomize) // random delays from 0*cadence to 2*cadence
+                diff *= 2*distrib(gen);
             timespec ts_diff = double_to_ts(diff);
             nanosleep(&ts_diff, nullptr);
         }

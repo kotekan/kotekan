@@ -108,7 +108,9 @@ private:
     bool zero_weight;
 
     bool wait;
-    int32_t num_frames;
+    int64_t num_frames;
+    bool randomize;
+    int64_t randomize_chunksize;
 
     // How long to sleep before starting.
     double sleep_before;
