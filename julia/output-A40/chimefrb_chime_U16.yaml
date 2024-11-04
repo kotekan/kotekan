@@ -25,7 +25,7 @@ kernel-description:
     threads: [32, 8]
     blocks: [256]
     shmem_bytes: 16384
-  kernel-symbol: "_Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS1_Li1ELi1EES0_IS_Li1ELi1EE"
+  kernel-symbol: "_Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Ll1ELl1EES0_I6Int4x8Ll1ELl1EES0_IS1_Ll1ELl1EES0_IS_Ll1ELl1EE"
   kernel-arguments:
     - name: "Tbarmin"
       intent: in

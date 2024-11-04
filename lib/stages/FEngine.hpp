@@ -63,6 +63,18 @@ class FEngine : public kotekan::Stage {
     const float dispersed_source_stop_frequency;
     const float dispersed_source_linewidth;
     const float dispersed_source_amplitude;
+    const float frb_source_start_time;
+    const float frb_source_stop_time;
+    const float frb_source_start_frequency;
+    const float frb_source_stop_frequency;
+    const int frb_source_scale;
+    const float frb_source_time_envelope_centre;
+    const float frb_source_time_envelope_width;
+    const float frb_source_frequency_envelope_lo_centre;
+    const float frb_source_frequency_envelope_lo_width;
+    const float frb_source_frequency_envelope_hi_centre;
+    const float frb_source_frequency_envelope_hi_width;
+    const float frb_source_amplitude;
     const float source_position_ew;
     const float source_position_ns;
 

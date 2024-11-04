@@ -9,6 +9,7 @@
 #include <cmath>
 #include <complex>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <julia.h>
@@ -56,6 +57,26 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
         config.get_default<float>(unique_name, "dispersed_source_linewidth", 1)),
     dispersed_source_amplitude(
         config.get_default<float>(unique_name, "dispersed_source_amplitude", 0)),
+    frb_source_start_time(config.get_default<float>(unique_name, "frb_source_start_time", 0)),
+    frb_source_stop_time(config.get_default<float>(unique_name, "frb_source_stop_time", 0)),
+    frb_source_start_frequency(
+        config.get_default<float>(unique_name, "frb_source_start_frequency", 0)),
+    frb_source_stop_frequency(
+        config.get_default<float>(unique_name, "frb_source_stop_frequency", 0)),
+    frb_source_scale(config.get_default<float>(unique_name, "frb_source_scale", 0)),
+    frb_source_time_envelope_centre(
+        config.get_default<float>(unique_name, "frb_source_time_envelope_centre", 0)),
+    frb_source_time_envelope_width(
+        config.get_default<float>(unique_name, "frb_source_time_envelope_width", 0)),
+    frb_source_frequency_envelope_lo_centre(
+        config.get_default<float>(unique_name, "frb_source_frequency_envelope_lo_centre", 0)),
+    frb_source_frequency_envelope_lo_width(
+        config.get_default<float>(unique_name, "frb_source_frequency_envelope_lo_width", 0)),
+    frb_source_frequency_envelope_hi_centre(
+        config.get_default<float>(unique_name, "frb_source_frequency_envelope_hi_centre", 0)),
+    frb_source_frequency_envelope_hi_width(
+        config.get_default<float>(unique_name, "frb_source_frequency_envelope_hi_width", 0)),
+    frb_source_amplitude(config.get_default<float>(unique_name, "frb_source_amplitude", 0)),
     source_position_ew(config.get<float>(unique_name, "source_position_ew")),
     source_position_ns(config.get<float>(unique_name, "source_position_ns")),
 
@@ -360,7 +381,7 @@ void FEngine::main_thread() {
             assert(f_engine_module);
             jl_function_t* const setup = jl_get_function(f_engine_module, "setup");
             assert(setup);
-            const int nargs = 29;
+            const int nargs = 41;
             jl_value_t** args;
             JL_GC_PUSHARGS(args, nargs);
             int iargc = 0;
@@ -376,6 +397,18 @@ void FEngine::main_thread() {
             args[iargc++] = jl_box_float32(dispersed_source_stop_frequency);
             args[iargc++] = jl_box_float32(dispersed_source_linewidth);
             args[iargc++] = jl_box_float32(dispersed_source_amplitude);
+            args[iargc++] = jl_box_float32(frb_source_start_time);
+            args[iargc++] = jl_box_float32(frb_source_stop_time);
+            args[iargc++] = jl_box_float32(frb_source_start_frequency);
+            args[iargc++] = jl_box_float32(frb_source_stop_frequency);
+            args[iargc++] = jl_box_int64(frb_source_scale);
+            args[iargc++] = jl_box_float32(frb_source_time_envelope_centre);
+            args[iargc++] = jl_box_float32(frb_source_time_envelope_width);
+            args[iargc++] = jl_box_float32(frb_source_frequency_envelope_lo_centre);
+            args[iargc++] = jl_box_float32(frb_source_frequency_envelope_lo_width);
+            args[iargc++] = jl_box_float32(frb_source_frequency_envelope_hi_centre);
+            args[iargc++] = jl_box_float32(frb_source_frequency_envelope_hi_width);
+            args[iargc++] = jl_box_float32(frb_source_amplitude);
             args[iargc++] = jl_box_float32(source_position_ew);
             args[iargc++] = jl_box_float32(source_position_ns);
             args[iargc++] = jl_box_int64(num_dish_locations_ew);
@@ -446,6 +479,8 @@ void FEngine::main_thread() {
                 args[2] = jl_box_int64(num_dishes);
                 args[3] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_dish_positions, args, nargs);
+                if (jl_exception_occurred())
+                    FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
                 assert(res);
                 JL_GC_POP();
             });
@@ -593,6 +628,8 @@ void FEngine::main_thread() {
                 args[2] = jl_box_int64(bb_num_beams);
                 args[3] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_bb_beam_positions, args, nargs);
+                if (jl_exception_occurred())
+                    FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
                 assert(res);
                 JL_GC_POP();
             });
@@ -679,6 +716,8 @@ void FEngine::main_thread() {
                 args[5] = jl_box_int64(num_frequencies);
                 args[6] = FEngine_setup;
                 jl_value_t* const res = jl_call(set_A, args, nargs);
+                if (jl_exception_occurred())
+                    FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
                 assert(res);
                 JL_GC_POP();
             });
@@ -901,6 +940,9 @@ void FEngine::main_thread() {
                     args[5] = jl_box_int64(num_local_channels * U);
                     args[6] = jl_box_int64(W1_frame_index + 1);
                     jl_value_t* const res = jl_call(set_W1, args, nargs);
+                    if (jl_exception_occurred())
+                        FATAL_ERROR("Julia exception:\n{:s}",
+                                    jl_typeof_str(jl_exception_occurred()));
                     assert(res);
                     JL_GC_POP();
                 });
@@ -1166,6 +1208,9 @@ void FEngine::main_thread() {
                         args[6] = FEngine_setup;
                         args[7] = jl_box_int64(E_frame_index % num_frames + 1);
                         jl_value_t* const res = jl_call(set_E, args, nargs);
+                        if (jl_exception_occurred())
+                            fprintf(stderr, "Julia exception:\n%s",
+                                    jl_typeof_str(jl_exception_occurred()));
                         assert(res);
                         JL_GC_POP();
                     });
@@ -1254,6 +1299,8 @@ void FEngine::main_thread() {
                     args[5] = jl_box_int64(bb_num_beams);
                     args[6] = jl_box_int64(J_frame_index + 1);
                     jl_value_t* const res = jl_call(set_J, args, nargs);
+                    if (jl_exception_occurred())
+                        FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
                     assert(res);
                     JL_GC_POP();
                 });
@@ -1337,6 +1384,8 @@ void FEngine::main_thread() {
                         args[5] = jl_box_int64(num_frequencies * U);
                         args[6] = jl_box_int64(I1_frame_index + 1);
                         jl_value_t* const res = jl_call(set_I, args, nargs);
+                        if (jl_exception_occurred())
+                            FATAL_ERROR("Julia exception:\n{:s}", jl_typeof_str(jl_exception_occurred()));
                         assert(res);
                         JL_GC_POP();
                     });

@@ -87,8 +87,8 @@ private:
 
     // Kernel name:
     static constexpr const char* kernel_symbol =
-        "_Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS1_"
-        "Li1ELi1EES0_IS_Li1ELi1EE";
+        "_Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Ll1ELl1EES0_I6Int4x8Ll1ELl1EES0_IS1_"
+        "Ll1ELl1EES0_IS_Ll1ELl1EE";
 
     // Kernel arguments:
     enum class args { Tbarmin, Tbarmax, Ttildemin, Ttildemax, W, Ebar, I, info, count };
