@@ -1,0 +1,43 @@
+name: Build and Publish Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_branch:
+        description: 'branch'
+        required: true
+        default: 'chord'
+      uyear:
+        description: 'ubuntu year (18, 22, or 24)'
+        required: true
+        default: '24'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+    
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Get docker image name
+        id: docker_img
+        run: |
+          IMAGE_NAME="docker.pkg.github.com/${{ github.repository }}/kotekan-${{ github.event.inputs.uyear }}04:$(echo ${{ github.event.inputs.branch }} | tr / .)| tr / .)"
+          echo "img_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT;
+        
+      - name: Build and Push Docker Image
+        if: steps.docker_img.outputs.docker_build
+        run: |
+          echo "Building and pushing ${{ steps.docker_img.outputs.img_name }}"
+          docker build -t "${{ steps.docker_img.outputs.img_name }}" - < "tools/docker/${{ github.event.inputs.uyear }}.04/Dockerfile"
+          docker push "${{ steps.docker_img.outputs.img_name }}"
