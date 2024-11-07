@@ -3,11 +3,11 @@ on:
   workflow_dispatch:
     inputs:
       image_branch:
-        description: 'branch'
+        description: 'Branch with Dockerfile (and image tag)'
         required: true
         default: 'chord'
       uyear:
-        description: 'ubuntu year (18, 22, or 24)'
+        description: 'Ubuntu year (18, 22, or 24)'
         required: true
         default: '24'
 
@@ -19,7 +19,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.branch }}
+          ref: ${{ github.event.inputs.image_branch }}
 
       - name: Login to GitHub Container Registry # https://github.com/docker/login-action?tab=readme-ov-file#github-container-registry
         uses: docker/login-action@v3
@@ -31,11 +31,10 @@ jobs:
       - name: Get docker image name
         id: docker_img
         run: |
-          IMAGE_NAME="docker.pkg.github.com/${{ github.repository }}/kotekan-${{ github.event.inputs.uyear }}04:$(echo ${{ github.event.inputs.branch }} | tr / .)| tr / .)"
+          IMAGE_NAME="docker.pkg.github.com/${{ github.repository }}/kotekan-${{ github.event.inputs.uyear }}04:$(echo ${{ github.event.inputs.image_branch }} | tr / .)| tr / .)"
           echo "img_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT;
         
       - name: Build and Push Docker Image
-        if: steps.docker_img.outputs.docker_build
         run: |
           echo "Building and pushing ${{ steps.docker_img.outputs.img_name }}"
           docker build -t "${{ steps.docker_img.outputs.img_name }}" - < "tools/docker/${{ github.event.inputs.uyear }}.04/Dockerfile"
