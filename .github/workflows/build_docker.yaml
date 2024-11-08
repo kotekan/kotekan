@@ -27,13 +27,13 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-          
+
       - name: Get docker image name
         id: docker_img
         run: |
-          IMAGE_NAME="docker.pkg.github.com/${{ github.repository }}/kotekan-${{ github.event.inputs.uyear }}04:$(echo ${{ github.event.inputs.image_branch }} | tr / .)| tr / .)"
-          echo "img_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT;
-        
+          IMAGE_NAME="docker.pkg.github.com/${{ github.repository }}/kotekan-${{ github.event.inputs.uyear }}04:$(echo ${{ github.event.inputs.image_branch }} | tr / .)"
+          echo "img_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
+
       - name: Build and Push Docker Image
         run: |
           echo "Building and pushing ${{ steps.docker_img.outputs.img_name }}"
