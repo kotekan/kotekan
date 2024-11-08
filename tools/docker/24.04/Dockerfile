@@ -83,8 +83,8 @@ RUN python3 -m pip install msgpack \
 # CUDA / GPU tools
 RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
 RUN dpkg -i cuda-keyring_1.1-1_all.deb
-RUN apt-get -y update
-RUN apt-get install -y --no-install-recommends cuda && apt-get clean
+RUN apt -y update && \
+    apt-get install -y cuda-toolkit nvidia-open && apt-get clean
 ENV CUDADIR=/usr/local/cuda
 ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:${LD_LIBRARY_PATH}"
 ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include:${CPLUS_INCLUDE_PATH}"
