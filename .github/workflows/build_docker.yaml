@@ -31,7 +31,7 @@ jobs:
       - name: Get docker image name
         id: docker_img
         run: |
-          IMAGE_NAME="docker.pkg.github.com/${{ github.repository }}/kotekan-${{ github.event.inputs.uyear }}04:$(echo ${{ github.event.inputs.image_branch }} | tr / .)"
+          IMAGE_NAME="ghcr.io/${{ github.repository }}/kotekan-${{ github.event.inputs.uyear }}04:$(echo ${{ github.event.inputs.image_branch }} | tr / .)"
           echo "img_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
 
       - name: Build and Push Docker Image
