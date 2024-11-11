@@ -22,6 +22,7 @@ add_library(
     testDataGenQuad.cpp
     testDataGenFloat.cpp
     TestDropFrames.cpp
+    testCHORDTelescope.cpp
     GenHFBFrames.cpp
     pulsarSimProcess.cpp
     visNoise.cpp

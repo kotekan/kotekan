@@ -62,6 +62,10 @@ public:
 
     virtual ~Telescope() = default;
 
+    std::string get_name() const {
+        return FACTORY(Telescope)::label(*this);
+    }
+
     /**
      * Get the frequency ID from the FPGA stream ID.
      *

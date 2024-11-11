@@ -36,6 +36,26 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config,
     if (require_gps && !gps_enabled) {
         throw std::runtime_error("The system requires a GPS time, but none was found.");
     }
+
+    _inst_long = config.get<double>(path, "inst_long");
+    _inst_lat = config.get<double>(path, "inst_lat");
+    INFO("Telescope configured with latitude:  {:f} deg", _inst_long);
+    INFO("Telescope configured with longitude: {:f} deg", _inst_lat);
+    if (gps_enabled)
+        INFO("Telescope configured with GPS time0: {:d} ns", time0_ns);
+    else
+        INFO("Telescope GPS time not enabled.");
+
+    std::vector<double> orientation_vec = config.get<std::vector<double>>(path,
+                                                        "inst_orientation");
+    if (orientation_vec.size() != 9){
+        throw std::runtime_error("The instrument orienation must be 9 elements specifying a 3x3 matrix.");
+    }
+
+    for(int i=0; i < 3; i++)
+        for(int j=0; j<3; j++)
+            _inst_orientation[i][j] = orientation_vec[3*i+j];
+    
 }
 
 
@@ -106,6 +126,14 @@ bool CHORDTelescope::gps_time_enabled() const {
 
 uint64_t CHORDTelescope::seq_length_nsec() const {
     return dt_ns;
+}
+
+double CHORDTelescope::get_inst_long() const {
+    return _inst_long;
+}
+
+double CHORDTelescope::get_inst_lat() const {
+    return _inst_lat;
 }
 
 //TODO: This is a stub to satisfy inheritance and should not be used.

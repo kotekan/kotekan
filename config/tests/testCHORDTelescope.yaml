@@ -1,0 +1,24 @@
+---
+type: config
+# Logging level can be OFF, ERROR, WARN, INFO, DEBUG, or DEBUG2
+log_level: DEBUG
+# Which CPUs is kotekan allowed to run on?
+cpu_affinity: [5]
+
+# Constants
+sizeof_float: 4
+
+telescope:
+  name: CHIMETelescope
+  require_gps: false
+  inst_long: -119.62081125
+  inst_lat: 49.3207514444444444
+  inst_orientation: [1, 0, 0,
+                     0, 1, 0,
+                     0, 0, 1]
+gps_time:
+  frame0_nano: 1234567890
+
+# Add a consumer stage that prints the output buffer to screen
+screen_dump:
+  kotekan_stage: TestCHORDTelescope
