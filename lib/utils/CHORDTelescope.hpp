@@ -41,6 +41,8 @@ public:
 
     double get_inst_long() const;
     double get_inst_lat() const;
+    double get_orientation_el(int i, int j) const;
+    double get_dut1() const;
 
     // Implementations of the required frequency mapping functions
     // TODO: These are not necessary for CHORD and should maybe be shunted to
@@ -75,6 +77,13 @@ protected:
     void set_gps(const std::string& host, const uint32_t port,
                  const std::string& path);
 
+    /**
+     * @brief Callback to update UT1 data
+     *
+     * @param json JSON reference of the config
+     */
+    bool receive_ut1_updates(nlohmann::json& json);
+
     /// Should we try to get the GPS time from remote server
     bool _query_gps;
 
@@ -98,6 +107,9 @@ protected:
     bool gps_enabled = false;
     uint64_t time0_ns = 0;
     uint64_t dt_ns;
+
+    //UT1 time conversion data
+    double _dut1;  // UT1 - UTC in seconds
 };
 
 #endif // CHORD_TELESCOPE_HPP

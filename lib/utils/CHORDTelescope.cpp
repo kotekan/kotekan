@@ -3,6 +3,7 @@
 #include "Telescope.hpp"        // for REGISTER_TELESCOPE, Telescope, ...
 #include "kotekanLogging.hpp"   // for WARN, INFO, FATAL_ERROR
 #include "restClient.hpp"       // for restClient
+#include "configUpdater.hpp"   // for ConfigUpdater
 
 #include "fmt.hpp"  // for format
 #include "json.hpp" //for basic_json, basic_json<>::object_t, basic_jason<>::value_type
@@ -55,6 +56,12 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config,
     for(int i=0; i < 3; i++)
         for(int j=0; j<3; j++)
             _inst_orientation[i][j] = orientation_vec[3*i+j];
+
+    using namespace std::placeholders;
+
+    kotekan::configUpdater::instance().subscribe(
+            config.get<std::string>(path, "updatable_config"),
+            std::bind(&CHORDTelescope::receive_ut1_updates, this, _1));
     
 }
 
@@ -110,6 +117,18 @@ void CHORDTelescope::set_gps(const std::string& host, const uint32_t port,
     INFO("GPS frame0 time set to {:d}", time0_ns);
     gps_enabled = true;
 }
+    
+bool CHORDTelescope::receive_ut1_updates(nlohmann::json& json) {
+    //TODO: This is needs a mutex/lock to be thread-safe.
+    try {
+        _dut1 = json.at("DUT1").get<double>();
+    } catch (std::exception& e) {
+        WARN("CHORDTelescope failed to read DUT1 update: {:s}", e.what());
+        return false;
+    }
+
+    return true;
+}
 
 timespec CHORDTelescope::to_time(uint64_t seq) const {
     auto time_ns = time0_ns + seq * dt_ns;
@@ -134,6 +153,14 @@ double CHORDTelescope::get_inst_long() const {
 
 double CHORDTelescope::get_inst_lat() const {
     return _inst_lat;
+}
+
+double CHORDTelescope::get_orientation_el(int i, int j) const {
+    return _inst_orientation[i][j];
+}
+
+double CHORDTelescope::get_dut1() const {
+    return _dut1;
 }
 
 //TODO: This is a stub to satisfy inheritance and should not be used.
