@@ -109,6 +109,7 @@ protected:
     uint64_t dt_ns;
 
     //UT1 time conversion data
+    mutable std::mutex _ut1_lock;
     double _dut1;  // UT1 - UTC in seconds
 };
 

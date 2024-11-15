@@ -119,7 +119,7 @@ void CHORDTelescope::set_gps(const std::string& host, const uint32_t port,
 }
     
 bool CHORDTelescope::receive_ut1_updates(nlohmann::json& json) {
-    //TODO: This is needs a mutex/lock to be thread-safe.
+    std::lock_guard<std::mutex> lock(_ut1_lock);
     try {
         _dut1 = json.at("DUT1").get<double>();
     } catch (std::exception& e) {
@@ -160,6 +160,7 @@ double CHORDTelescope::get_orientation_el(int i, int j) const {
 }
 
 double CHORDTelescope::get_dut1() const {
+    std::lock_guard<std::mutex> lock(_ut1_lock);
     return _dut1;
 }
 
