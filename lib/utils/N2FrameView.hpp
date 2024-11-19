@@ -53,11 +53,13 @@ public:
     const uint32_t& num_prod;
     /// Number of eigenvectors and values calculated
     const uint32_t& num_ev;
+    /// Total number of frequencies in the pipeline
+    const uint32_t& nfreq;
 
     std::map<N2Field, std::pair<size_t, size_t>> frame_layout;
 
     /// ID of the frequency bin
-    const int& freq_id;
+    const uint32_t& freq_id;
 
     /// View of the visibility data.
     const gsl::span<N2::cfloat> vis;

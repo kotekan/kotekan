@@ -156,8 +156,11 @@ public:
                 auto group = std::make_shared<ASDF::group>();
 
                 // Create ASDF ndarray
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
                 const ASDF::scalar_type_id_t type = chord2asdf(meta->type);
                 const std::size_t typesize = chord_datatype_bytes(meta->type);
+#pragma GCC diagnostic pop
 
                 const int ndims = meta->dims;
                 std::vector<std::int64_t> dims(ndims);
@@ -254,8 +257,8 @@ public:
 
                 if(metadata_is_chord(mc)) {
                     // Create ASDF ndarray
-                    const ASDF::scalar_type_id_t type = chord2asdf(meta->type);
-                    const std::size_t typesize = chord_datatype_bytes(meta->type);
+                    // const ASDF::scalar_type_id_t type = chord2asdf(meta->type);
+                    // const std::size_t typesize = chord_datatype_bytes(meta->type);
 
                     const int ndims = meta->dims;
                     std::vector<std::int64_t> dims(ndims);
@@ -335,7 +338,7 @@ public:
 
                 } else if(metadata_is_N2(mc)) {
                     
-                    const std::shared_ptr<N2Metadata> meta = std::static_pointer_cast<N2Metadata>(mc);
+                    const std::shared_ptr<const N2Metadata> meta = std::static_pointer_cast<const N2Metadata>(mc);
                     N2FrameView frame_view (buffer, frame_id);
 
                     std::vector<ASDF::complex64_t> vis_view( frame_view.vis.begin(), frame_view.vis.end() );

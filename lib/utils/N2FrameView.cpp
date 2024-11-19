@@ -4,10 +4,11 @@
 
 N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
 
-    FrameView(buf, frame_id), _metadata(std::static_pointer_cast<N2Metadata>(buf->metadata[id])),
+    FrameView(buf, frame_id), _metadata(std::static_pointer_cast<N2Metadata>(buf->metadata[frame_id])),
 
     // Set the const refs to the structural metadata
-    num_elements(_metadata->num_elements), num_prod(_metadata->num_prod), num_ev(_metadata->num_ev),
+    num_elements(_metadata->num_elements), num_prod(_metadata->num_prod),
+    num_ev(_metadata->num_ev), nfreq(_metadata->nfreq),
     frame_layout(get_frame_layout(_metadata->num_elements, _metadata->num_ev)),
 
     // Non-structural data
@@ -38,6 +39,8 @@ void N2FrameView::zero_frame() {
 void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Field>& skip_members)
 {
     auto copy_member = [&](N2Field member) { return (skip_members.count(member) == 0); };
+
+    assert(nfreq == frame_to_copy_from.nfreq);
 
     if (copy_member(N2Field::vis) || copy_member(N2Field::weight) || copy_member(N2Field::flags)
             || copy_member(N2Field::evec) || copy_member(N2Field::gain) ) {

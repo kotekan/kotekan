@@ -66,11 +66,40 @@ void DefaultVisPattern::fill(VisFrameView& frame) {
     }
 }
 
+void DefaultVisPattern::fill(N2FrameView& frame) {
+    auto out_vis = frame.vis;
+    // Set diagonal elements to (0, row)
+    for (uint32_t i = 0; i < frame.num_elements; i++) {
+        uint32_t pi = cmap(i, i, frame.num_elements);
+        out_vis[pi] = {0., (float)i};
+    }
+    // Save metadata in first few cells
+    if (out_vis.size() < 3) {
+        FATAL_ERROR("Number of elements ({:d}) is too small to encode the 3 debugging values of "
+                    "fill-mode 'default' in fake visibilities.\nExiting...",
+                    frame.num_elements);
+    } else {
+        out_vis[0] = {(float)frame._metadata->frame_start_time_ns, 0.0};
+        out_vis[1] = {(float)frame._metadata->frame_start_time_ns, 0.0};
+        out_vis[2] = {(float)frame.freq_id, 0.};
+    }
+}
+
 FillIJVisPattern::FillIJVisPattern(kotekan::Config& config, const std::string& path) :
     FakeVisPattern(config, path) {}
 
 
 void FillIJVisPattern::fill(VisFrameView& frame) {
+    int ind = 0;
+    for (uint32_t i = 0; i < frame.num_elements; i++) {
+        for (uint32_t j = i; j < frame.num_elements; j++) {
+            frame.vis[ind] = {(float)i, (float)j};
+            ind++;
+        }
+    }
+}
+
+void FillIJVisPattern::fill(N2FrameView& frame) {
     int ind = 0;
     for (uint32_t i = 0; i < frame.num_elements; i++) {
         for (uint32_t j = i; j < frame.num_elements; j++) {
@@ -92,6 +121,12 @@ void FillIJMissingVisPattern::fill(VisFrameView& frame) {
     frame.rfi_total = 1;
 }
 
+void FillIJMissingVisPattern::fill(N2FrameView& frame) {
+    FillIJVisPattern::fill(frame);
+
+    frame._metadata->n_valid_fpga_ticks_in_frame = frame._metadata->frame_length_fpga_ticks - 2;
+    frame._metadata->n_rfi_fpga_ticks = 1;
+}
 
 PhaseIJVisPattern::PhaseIJVisPattern(kotekan::Config& config, const std::string& path) :
     FakeVisPattern(config, path) {}
@@ -108,6 +143,16 @@ void PhaseIJVisPattern::fill(VisFrameView& frame) {
     }
 }
 
+void PhaseIJVisPattern::fill(N2FrameView& frame) {
+    int ind = 0;
+    for (uint32_t i = 0; i < frame.num_elements; i++) {
+        for (uint32_t j = i; j < frame.num_elements; j++) {
+            float phase = (float)i - (float)j;
+            frame.vis[ind] = {cosf(phase), sinf(phase)};
+            ind++;
+        }
+    }
+}
 
 ChimeVisPattern::ChimeVisPattern(kotekan::Config& config, const std::string& path) :
     FakeVisPattern(config, path) {}
@@ -128,6 +173,11 @@ void ChimeVisPattern::fill(VisFrameView& frame) {
     }
 }
 
+void ChimeVisPattern::fill(N2FrameView& frame) {
+    std::shared_ptr<metadataPool> pool = frame._metadata->parent_pool.lock();
+    ERROR("Invalid fill pattern (ChimeVisPattern) for N2 frame {:d}.", pool->type_name);
+}
+
 
 TestPatternSimpleVisPattern::TestPatternSimpleVisPattern(kotekan::Config& config,
                                                          const std::string& path) :
@@ -137,6 +187,35 @@ TestPatternSimpleVisPattern::TestPatternSimpleVisPattern(kotekan::Config& config
 
 
 void TestPatternSimpleVisPattern::fill(VisFrameView& frame) {
+    // Fill vis
+    int ind = 0;
+    for (uint32_t i = 0; i < frame.num_elements; i++) {
+        for (uint32_t j = i; j < frame.num_elements; j++) {
+            frame.vis[ind] = test_pattern_value;
+            ind++;
+        }
+    }
+
+    // Fill ev (slightly different to the vals in fill_non_vis)
+    for (uint32_t i = 0; i < frame.num_ev; i++) {
+        for (uint32_t j = 0; j < frame.num_elements; j++) {
+            int k = i * frame.num_elements + j;
+            frame.evec[k] = {(float)i, 1};
+        }
+        frame.eval[i] = i;
+    }
+
+    // Fill weights (slightly different to the vals in fill_non_vis)
+    ind = 0;
+    for (uint32_t i = 0; i < frame.num_elements; i++) {
+        for (uint32_t j = i; j < frame.num_elements; j++) {
+            frame.weight[ind] = 1.;
+            ind++;
+        }
+    }
+}
+
+void TestPatternSimpleVisPattern::fill(N2FrameView& frame) {
     // Fill vis
     int ind = 0;
     for (uint32_t i = 0; i < frame.num_elements; i++) {
@@ -236,6 +315,11 @@ void TestPatternFreqVisPattern::fill(VisFrameView& frame) {
     }
 }
 
+void TestPatternFreqVisPattern::fill(N2FrameView& frame) {
+    std::shared_ptr<metadataPool> pool = frame._metadata->parent_pool.lock();
+    ERROR("Invalid fill pattern (ChimeVisPattern) for N2 frame {:d}.", pool->type_name);
+}
+
 
 TestPatternInputVisPattern::TestPatternInputVisPattern(kotekan::Config& config,
                                                        const std::string& path) :
@@ -288,6 +372,11 @@ void TestPatternInputVisPattern::fill(VisFrameView& frame) {
             ind++;
         }
     }
+}
+
+void TestPatternInputVisPattern::fill(N2FrameView& frame) {
+    std::shared_ptr<metadataPool> pool = frame._metadata->parent_pool.lock();
+    ERROR("Invalid fill pattern (ChimeVisPattern) for N2 frame {:d}.", pool->type_name);
 }
 
 
