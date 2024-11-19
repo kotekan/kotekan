@@ -37,7 +37,6 @@
  *
  * @conf  num_elements  Int. The number of elements (i.e. inputs) in the
  *                      correlator data,
- * @conf  block_size    Int. The block size of the packed data.
  * @conf  num_ev        Int. The number of eigenvectors to be stored.
  * @conf  freq_ids      List of int. The frequency IDs to generate frames
  *                      for.
@@ -81,7 +80,7 @@ public:
 
 private:
     /// Parameters saved from the config files
-    size_t num_elements, num_eigenvectors, block_size;
+    size_t num_elements, num_eigenvectors;
 
     /// Config parameters for freq or inputs test pattern
     std::vector<cfloat> test_pattern_value;

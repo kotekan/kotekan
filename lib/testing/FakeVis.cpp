@@ -49,7 +49,6 @@ FakeVis::FakeVis(Config& config, const std::string& unique_name,
 
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
-    block_size = config.get<size_t>(unique_name, "block_size");
     num_eigenvectors = config.get<size_t>(unique_name, "num_ev");
     sleep_before = config.get_default<float>(unique_name, "sleep_before", 0.0);
     sleep_after = config.get_default<float>(unique_name, "sleep_after", 1.0);
@@ -63,6 +62,11 @@ FakeVis::FakeVis(Config& config, const std::string& unique_name,
 
     // Get frequency IDs from config
     freq = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
+    if(freq.size() == 0) {
+        size_t n = config.get<size_t>(unique_name, "num_total_freq");
+        freq.resize(n);
+        std::iota(freq.begin(), freq.end(), 0);
+    }
 
     mode = config.get_default<std::string>(unique_name, "mode", "default");
     INFO("Using fill type: {:s}", mode);
@@ -107,7 +111,7 @@ void FakeVis::main_thread() {
 
         // process times in chunks of `randomize_chunksize` if randomized... otherwise, chunks of 1
         uint64_t curr_n_frames = 1;
-        if( randomize && num_frames > 0 && frame_count < num_frames - 5 ) {
+        if( randomize && (num_frames < 0 || frame_count < num_frames - randomize_chunksize )) {
             curr_n_frames = randomize_chunksize;
         }
         std::vector<uint64_t> times(curr_n_frames);
