@@ -3,7 +3,6 @@
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "kotekanLogging.hpp" // for INFO
 #include "CHORDTelescope.hpp" // for CHORDTelescope
-#include "configUpdater.hpp"   // for ConfigUpdater
 #include "errors.h" // for exit_kotekan
 
 #include <atomic>     // for atomic_bool
@@ -31,43 +30,16 @@ TestCHORDTelescope::TestCHORDTelescope(Config& config,
                                 const std::string& unique_name,
                                 bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
-          std::bind(&TestCHORDTelescope::main_thread, this)) {
-
-    // Check telescope is correct type.
-    // This will print an informative error message, unlike the exception
-    // thrown later.
-    auto& tel = Telescope::instance();
-    if (tel.get_name() != "CHORDTelescope")
-    {
-        ERROR("Telescope configured as: {}, not CHORDTelescope.",
-                tel.get_name());
-    }
-
-    using namespace std::placeholders;
-    kotekan::configUpdater::instance().subscribe(this,
-            std::bind(&TestCHORDTelescope::update_var, this, _1));
-}
+          std::bind(&TestCHORDTelescope::main_thread, this)) {}
 
 TestCHORDTelescope::~TestCHORDTelescope() {}
-
-bool TestCHORDTelescope::update_var(nlohmann::json& json) {
-    try {
-        _my_var = json.at("var").get<double>();
-    } catch (std::exception &e) {
-        WARN("TestCHORDTel failed to read var {:s}", e.what());
-        return false;
-    }
-
-    return true;
-}
 
 // Framework managed pthread
 void TestCHORDTelescope::main_thread() {
     // Logging function
     INFO("Reached main_thread!");
 
-    const CHORDTelescope& tel = dynamic_cast<const CHORDTelescope&>(
-                                    Telescope::instance());
+    const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
 
     // Until the thread is stopped
     while (!stop_thread) {
@@ -96,7 +68,6 @@ void TestCHORDTelescope::main_thread() {
                 tel.get_orientation_el(2, 1),
                 tel.get_orientation_el(2, 2));
         INFO("            DUT1:        {:f} s", tel.get_dut1());
-        INFO("My var: {}", _my_var);
 
         //break;
         std::this_thread::sleep_for(std::chrono::milliseconds(2000));

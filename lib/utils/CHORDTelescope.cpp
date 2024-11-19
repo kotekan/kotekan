@@ -122,6 +122,7 @@ bool CHORDTelescope::receive_ut1_updates(nlohmann::json& json) {
     std::lock_guard<std::mutex> lock(_ut1_lock);
     try {
         _dut1 = json.at("DUT1").get<double>();
+        _dtai = json.at("DTAI").get<double>();
     } catch (std::exception& e) {
         WARN("CHORDTelescope failed to read DUT1 update: {:s}", e.what());
         return false;
@@ -161,6 +162,7 @@ double CHORDTelescope::get_orientation_el(int i, int j) const {
 
 double CHORDTelescope::get_dut1() const {
     std::lock_guard<std::mutex> lock(_ut1_lock);
+
     return _dut1;
 }
 

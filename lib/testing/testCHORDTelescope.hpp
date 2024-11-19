@@ -34,13 +34,10 @@ public:
      */
     virtual ~TestCHORDTelescope();
 
-    bool update_var(nlohmann::json& json);
     /**
      * @brief Framework managed pthread.
      */
     void main_thread() override;
-
-    double _my_var;
 };
 
 #endif /* EXAMPLE_CONSUMER_H */

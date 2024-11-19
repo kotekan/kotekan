@@ -3,7 +3,7 @@ type: config
 # Logging level can be OFF, ERROR, WARN, INFO, DEBUG, or DEBUG2
 log_level: DEBUG
 # Which CPUs is kotekan allowed to run on?
-cpu_affinity: [5]
+cpu_affinity: [5,6]
 
 # Constants
 sizeof_float: 4
@@ -11,6 +11,7 @@ sizeof_float: 4
 earth_rotation_data:
   kotekan_update_endpoint: "json"
   DUT1: 0.0
+  DTAI: 0.0
 
 
 telescope:
