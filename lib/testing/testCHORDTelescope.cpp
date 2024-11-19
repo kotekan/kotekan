@@ -68,6 +68,14 @@ void TestCHORDTelescope::main_thread() {
                 tel.get_orientation_el(2, 1),
                 tel.get_orientation_el(2, 2));
         INFO("            DUT1:        {:f} s", tel.get_dut1());
+        INFO("            DTAI:        {:f} s", tel.get_dtai());
+        int n_dish = tel.get_num_dishes();
+        int i;
+        INFO("            Num Dishes:  {:d}", n_dish); 
+        for(i=0; i<n_dish; i++)
+            INFO("            Dish Pos:    {0:d} - ({1:f}, {2:f}, {3:f})",
+                 i, tel.get_dish_coord(i, 0),
+                 tel.get_dish_coord(i, 1), tel.get_dish_coord(i, 2));
 
         //break;
         std::this_thread::sleep_for(std::chrono::milliseconds(2000));

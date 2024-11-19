@@ -57,6 +57,9 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config,
         for(int j=0; j<3; j++)
             _inst_orientation[i][j] = orientation_vec[3*i+j];
 
+    _dish_positions = config.get<std::vector<std::array<double, 3>>>(path,
+                                                        "dish_positions");
+
     using namespace std::placeholders;
 
     kotekan::configUpdater::instance().subscribe(
@@ -160,10 +163,22 @@ double CHORDTelescope::get_orientation_el(int i, int j) const {
     return _inst_orientation[i][j];
 }
 
+double CHORDTelescope::get_dish_coord(int i, int j) const {
+    return _dish_positions[i][j];
+}
+
+int CHORDTelescope::get_num_dishes() const {
+    return _dish_positions.size();
+}
+
 double CHORDTelescope::get_dut1() const {
     std::lock_guard<std::mutex> lock(_ut1_lock);
-
     return _dut1;
+}
+
+double CHORDTelescope::get_dtai() const {
+    std::lock_guard<std::mutex> lock(_ut1_lock);
+    return _dtai;
 }
 
 //TODO: This is a stub to satisfy inheritance and should not be used.

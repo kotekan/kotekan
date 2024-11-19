@@ -42,7 +42,10 @@ public:
     double get_inst_long() const;
     double get_inst_lat() const;
     double get_orientation_el(int i, int j) const;
+    double get_dish_coord(int i, int j) const;
+    int get_num_dishes() const;
     double get_dut1() const;
+    double get_dtai() const;
 
     // Implementations of the required frequency mapping functions
     // TODO: These are not necessary for CHORD and should maybe be shunted to
@@ -100,6 +103,7 @@ protected:
     double _inst_long;
     double _inst_lat;
     double _inst_orientation[3][3];
+    std::vector<std::array<double, 3>> _dish_positions;
 
     // The time of FPGA frame=0, and the time length of each frame (in ns)
     // TODO: Document precisely what epoch the time0 is measured from, whether
