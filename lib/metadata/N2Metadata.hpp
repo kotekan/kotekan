@@ -28,6 +28,7 @@ struct N2MetadataFormat {
     /// ID of the frequency bin
     uint32_t freq_id; // this is an int in chordMetadata, maybe change later
 
+
     /// The sequence number of the first FPGA frame integrated into this visibility frame
     uint64_t fpga_start_tick;
     /// The time of the start of the integration frame in nanosec
@@ -47,6 +48,9 @@ class N2Metadata :
     public metadataObject, public N2MetadataFormat {
 public:
     N2Metadata();
+    
+    // ASSUMES the "other" is my type!
+    void deepCopy(std::shared_ptr<metadataObject> other) override;
 
     /// Returns the size of objects of this type when serialized into bytes.
     size_t get_serialized_size() override;

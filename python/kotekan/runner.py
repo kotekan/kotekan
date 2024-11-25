@@ -22,6 +22,7 @@ import re
 
 from . import baseband_buffer
 from . import visbuffer
+from . import n2buffer
 from . import frbbuffer
 from . import psrbuffer
 
@@ -441,8 +442,8 @@ class FakeVisBuffer(InputBuffer):
 
         self.buffer_block = {
             self.name: {
-                "kotekan_buffer": "vis",
-                "metadata_pool": "vis_pool",
+                "kotekan_buffer": "N2",
+                "metadata_pool": "N2_pool",
                 "num_frames": "buffer_depth",
             }
         }
@@ -612,6 +613,96 @@ class DumpVisBuffer(OutputBuffer):
             The buffer output.
         """
         return visbuffer.VisBuffer.load_files(
+            "%s/*%s*.dump" % (self.output_dir, self.name)
+        )
+
+
+class ReadN2Buffer(InputBuffer):
+    """Write down an N2Buffer and reads it with rawFileRead."""
+
+    _buf_ind = 0
+
+    def __init__(self, input_dir, buffer_list):
+
+        self.name = "rawfileread_buf"
+        stage_name = "rawfileread%i" % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.input_dir = input_dir
+        self.buffer_list = buffer_list
+
+        self.buffer_block = {
+            self.name: {
+                "kotekan_buffer": "N2",
+                "metadata_pool": "N2_pool",
+                "num_frames": "buffer_depth",
+            }
+        }
+
+        stage_config = {
+            "kotekan_stage": "rawFileRead",
+            "buf": self.name,
+            "base_dir": input_dir,
+            "file_ext": "dump",
+            "file_name": self.name,
+            "end_interrupt": True,
+        }
+
+        self.stage_block = {stage_name: stage_config}
+
+    def write(self):
+        """Write a list of VisBuffer objects to disk."""
+        n2buffer.N2Buffer.to_files(self.buffer_list, self.input_dir + "/" + self.name)
+
+
+class DumpN2Buffer(OutputBuffer):
+    """Consume an N2Buffer and provide its contents as `N2Buffer` objects.
+
+    Parameters
+    ----------
+    output_dir : string
+        Temporary directory to output to. The dumped files are not removed.
+    """
+
+    _buf_ind = 0
+
+    name = None
+
+    def __init__(self, output_dir):
+
+        self.name = "dumpvis_buf%i" % self._buf_ind
+        stage_name = "dump%i" % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.output_dir = output_dir
+
+        self.buffer_block = {
+            self.name: {
+                "kotekan_buffer": "N2",
+                "metadata_pool": "N2_pool",
+                "num_frames": "buffer_depth",
+            }
+        }
+
+        stage_config = {
+            "kotekan_stage": "rawFileWrite",
+            "in_buf": self.name,
+            "file_name": self.name,
+            "file_ext": "dump",
+            "base_dir": output_dir,
+        }
+
+        self.stage_block = {stage_name: stage_config}
+
+    def load(self):
+        """Load the output data from the buffer.
+
+        Returns
+        -------
+        dumps : list of VisBuffer
+            The buffer output.
+        """
+        return n2buffer.N2Buffer.load_files(
             "%s/*%s*.dump" % (self.output_dir, self.name)
         )
 
@@ -1274,6 +1365,11 @@ main_pool:
 
 vis_pool:
     kotekan_metadata_pool: VisMetadata
+    num_metadata_objects: 30 * buffer_depth
+    int_frames: 64
+
+N2_pool:
+    kotekan_metadata_pool: N2Metadata
     num_metadata_objects: 30 * buffer_depth
     int_frames: 64
 """

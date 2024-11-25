@@ -6,6 +6,11 @@ N2Metadata::N2Metadata() :
     ;
 }
 
+void N2Metadata::deepCopy(std::shared_ptr<metadataObject> other) {
+    std::shared_ptr<N2Metadata> o = std::dynamic_pointer_cast<N2Metadata>(other);
+    *this = *o;
+}
+
 size_t N2Metadata::get_serialized_size() {
     return sizeof(N2MetadataFormat);
 }

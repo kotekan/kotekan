@@ -12,6 +12,12 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     frame_layout(get_frame_layout(_metadata->num_elements, _metadata->num_ev)),
 
     // Non-structural data
+    fpga_start_tick(_metadata->fpga_start_tick),
+    frame_start_time_ns(_metadata->frame_start_time_ns),
+    frame_length_fpga_ticks(_metadata->frame_length_fpga_ticks),
+    n_valid_fpga_ticks_in_frame(_metadata->n_valid_fpga_ticks_in_frame),
+    n_rfi_fpga_ticks(_metadata->n_rfi_fpga_ticks), 
+
     freq_id(_metadata->freq_id),
 
     vis(bind_span<N2::cfloat>(_frame, frame_layout[N2Field::vis])),
@@ -23,7 +29,6 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     erms(bind_scalar<float>(_frame, frame_layout[N2Field::erms])),
     gain(bind_span<N2::cfloat>(_frame, frame_layout[N2Field::gain])) {
 
-    // assert frame size is correct
     assert(data_size() == buf->frame_size);
 }
 
@@ -34,6 +39,13 @@ size_t N2FrameView::data_size() const {
 void N2FrameView::zero_frame() {
     // Fill data with zeros
     std::memset(_frame, 0, data_size());
+}
+
+N2FrameView N2FrameView::copy_frame(Buffer* buf_src, int frame_id_src,
+                                    Buffer* buf_dest, int frame_id_dest) {
+    FrameView::copy_frame(buf_src, frame_id_src, buf_dest, frame_id_dest);
+
+    return N2FrameView(buf_dest, frame_id_dest);
 }
 
 void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Field>& skip_members)
