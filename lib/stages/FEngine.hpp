@@ -138,6 +138,8 @@ class FEngine : public kotekan::Stage {
     // Kotekan
     const std::int64_t dish_positions_frame_size;
     const std::int64_t E_frame_size;
+    const std::int64_t pl_mask_frame_size;
+    const std::int64_t bf_mask_frame_size;
     const std::int64_t scatter_indices_frame_size;
     const std::int64_t bb_beam_positions_frame_size;
     const std::int64_t A_frame_size;
@@ -150,6 +152,10 @@ class FEngine : public kotekan::Stage {
 
     Buffer* const dish_positions_buffer;
     Buffer* const E_buffer;
+    // bool pl_mask[time / 2 % 64][dish][polr][freq / 4][time / 2 / 64]
+    Buffer* const pl_mask_buffer; // 0=bad, 1=good
+    // int8 bf_mask[dish][polr]
+    Buffer* const bf_mask_buffer; // 0=bad, 1=good
     Buffer* const scatter_indices_buffer;
     Buffer* const bb_beam_positions_buffer;
     Buffer* const A_buffer;

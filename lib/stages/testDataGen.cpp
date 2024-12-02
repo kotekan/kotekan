@@ -209,8 +209,10 @@ void testDataGen::main_thread() {
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
         uint n_to_set = buf->frame_size / sizeof(uint8_t);
 
-        if (chordmeta)
+        if (chordmeta) {
             chordmeta->sample0_offset = frame_id_abs * samples_per_data_set;
+            chordmeta->offset_downsampling = 1;
+        }
 
         if (type == "const") {
             n_to_set /= sizeof(int8_t);

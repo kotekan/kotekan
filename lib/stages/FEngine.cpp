@@ -169,6 +169,9 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     // Frame sizes
     dish_positions_frame_size(sizeof(float) * 2 * num_dishes),
     E_frame_size(sizeof(uint8_t) * num_dishes * num_polarizations * num_frequencies * num_times),
+    pl_mask_frame_size(sizeof(uint8_t) * num_dishes * num_polarizations * (num_frequencies / 4)
+                       * (num_times / 2 / 8)),
+    bf_mask_frame_size(sizeof(int8_t) * num_dishes * num_polarizations),
     scatter_indices_frame_size(sizeof(int) * num_dishes * num_polarizations),
     bb_beam_positions_frame_size(sizeof(float) * 2 * bb_num_beams),
     A_frame_size(sizeof(int8_t) * num_components * num_dishes * bb_num_beams * num_polarizations
@@ -215,6 +218,7 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
 
     // Buffers
     dish_positions_buffer(get_buffer("dish_positions_buffer")), E_buffer(get_buffer("E_buffer")),
+    pl_mask_buffer(get_buffer("pl_mask_buffer")), bf_mask_buffer(get_buffer("bf_mask_buffer")),
     scatter_indices_buffer(scatter_indices.empty() ? nullptr
                                                    : get_buffer("scatter_indices_buffer")),
     bb_beam_positions_buffer(get_buffer("bb_beam_positions_buffer")),
@@ -259,6 +263,10 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     }
     assert(num_dishes_seen == num_dishes);
 
+    // for pl_mask consistency:
+    assert(num_frequencies % 4 == 0);
+    assert(num_times % (2 * 8) == 0);
+
     if (!scatter_indices.empty())
         assert(std::ptrdiff_t(scatter_indices.size()) == num_dishes * num_polarizations);
 
@@ -291,6 +299,8 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
 
     assert(dish_positions_buffer);
     assert(E_buffer);
+    assert(pl_mask_buffer);
+    assert(bf_mask_buffer);
     assert(scatter_indices.empty() ? !scatter_indices_buffer : !!scatter_indices_buffer);
     assert(bb_beam_positions_buffer);
     assert(A_buffer);
@@ -307,6 +317,8 @@ FEngine::FEngine(kotekan::Config& config, const std::string& unique_name,
     assert(I1_buffer);
     dish_positions_buffer->register_producer(unique_name);
     E_buffer->register_producer(unique_name);
+    pl_mask_buffer->register_producer(unique_name);
+    bf_mask_buffer->register_producer(unique_name);
     if (scatter_indices_buffer)
         scatter_indices_buffer->register_producer(unique_name);
     bb_beam_positions_buffer->register_producer(unique_name);
@@ -521,8 +533,9 @@ void FEngine::main_thread() {
             else
                 dish_positions_metadata->stride[d] =
                     dish_positions_metadata->stride[d + 1] * dish_positions_metadata->dim[d + 1];
-        dish_positions_metadata->sample0_offset = -1; // undefined
-        dish_positions_metadata->nfreq = -1;          // undefined
+        dish_positions_metadata->sample0_offset = -1;      // undefined
+        dish_positions_metadata->offset_downsampling = -1; // undefined
+        dish_positions_metadata->nfreq = -1;               // undefined
         dish_positions_metadata->ndishes = num_dishes;
         dish_positions_metadata->n_dish_locations_ew = num_dish_locations_ew;
         dish_positions_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -580,8 +593,9 @@ void FEngine::main_thread() {
             else
                 scatter_indices_metadata->stride[d] =
                     scatter_indices_metadata->stride[d + 1] * scatter_indices_metadata->dim[d + 1];
-        scatter_indices_metadata->sample0_offset = -1; // undefined
-        scatter_indices_metadata->nfreq = -1;          // undefined
+        scatter_indices_metadata->sample0_offset = -1;      // undefined
+        scatter_indices_metadata->offset_downsampling = -1; // undefined
+        scatter_indices_metadata->nfreq = -1;               // undefined
         scatter_indices_metadata->ndishes = num_dishes;
         scatter_indices_metadata->n_dish_locations_ew = num_dish_locations_ew;
         scatter_indices_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -589,6 +603,63 @@ void FEngine::main_thread() {
 
         // Mark buffer as full
         scatter_indices_buffer->mark_frame_full(unique_name, scatter_indices_frame_id);
+    }
+
+    // Produce bf mask (bad feed)
+    {
+        const int bf_mask_frame_index = 0;
+        const int bf_mask_frame_id = bf_mask_frame_index % bf_mask_buffer->num_frames;
+
+        // Wait for buffer
+        std::uint8_t* const bf_mask_frame =
+            bf_mask_buffer->wait_for_empty_frame(unique_name, bf_mask_frame_id);
+        if (!bf_mask_frame)
+            return;
+        if (!(std::ptrdiff_t(bf_mask_buffer->frame_size) == bf_mask_frame_size))
+            FATAL_ERROR("bf_mask_buffer->frame_size={:d} bf_mask_frame_size={:d}",
+                        bf_mask_buffer->frame_size, bf_mask_frame_size);
+        assert(std::ptrdiff_t(bf_mask_buffer->frame_size) == bf_mask_frame_size);
+        bf_mask_buffer->allocate_new_metadata_object(bf_mask_frame_id);
+
+        DEBUG("[{:d}] Filling bf mask buffer...", bf_mask_frame_index);
+        profile_range_push("bf_mask_frame::fill");
+        using std::max;
+        if (bf_mask_frame_index < max(bf_mask_buffer->num_frames, num_frames)) {
+            std::memset(bf_mask_frame, 0x01, num_dishes * num_polarizations);
+        }
+        profile_range_pop();
+        DEBUG("[{:d}] Done filling bf mask buffer.", bf_mask_frame_index);
+
+        // Set metadata
+        std::shared_ptr<chordMetadata> const bf_mask_metadata =
+            get_chord_metadata(bf_mask_buffer, bf_mask_frame_id);
+        bf_mask_metadata->frame_counter = 0;
+        std::strncpy(bf_mask_metadata->name, "bf_mask", sizeof bf_mask_metadata->name);
+        bf_mask_metadata->type = int8;
+        bf_mask_metadata->dims = 2;
+        assert(bf_mask_metadata->dims <= CHORD_META_MAX_DIM);
+        std::strncpy(bf_mask_metadata->dim_name[0], "P", sizeof bf_mask_metadata->dim_name[0]);
+        std::strncpy(bf_mask_metadata->dim_name[1], "D", sizeof bf_mask_metadata->dim_name[1]);
+        bf_mask_metadata->dim[0] = num_polarizations;
+        bf_mask_metadata->dim[1] = num_dishes;
+        for (int d = bf_mask_metadata->dims - 1; d >= 0; --d)
+            if (d == bf_mask_metadata->dims - 1)
+                bf_mask_metadata->stride[d] = 1;
+            else
+                bf_mask_metadata->stride[d] =
+                    bf_mask_metadata->stride[d + 1] * bf_mask_metadata->dim[d + 1];
+        // This bf mask is not time-dependent
+        bf_mask_metadata->sample0_offset = -1;      // undefined
+        bf_mask_metadata->offset_downsampling = -1; // undefined
+        bf_mask_metadata->nfreq = -1;               // undefined
+        bf_mask_metadata->ndishes = num_dishes;
+        bf_mask_metadata->n_dish_locations_ew = num_dish_locations_ew;
+        bf_mask_metadata->n_dish_locations_ns = num_dish_locations_ns;
+        bf_mask_metadata->dish_index = dish_indices_ptr;
+
+        // Mark buffer as full
+        profile_mark("bf_mask_frame::mark_frame_full");
+        bf_mask_buffer->mark_frame_full(unique_name, bf_mask_frame_id);
     }
 
     // Produce baseband beam positions
@@ -671,8 +742,9 @@ void FEngine::main_thread() {
             else
                 bb_beam_positions_metadata->stride[d] = bb_beam_positions_metadata->stride[d + 1]
                                                         * bb_beam_positions_metadata->dim[d + 1];
-        bb_beam_positions_metadata->sample0_offset = -1; // undefined
-        bb_beam_positions_metadata->nfreq = -1;          // undefined
+        bb_beam_positions_metadata->sample0_offset = -1;      // undefined
+        bb_beam_positions_metadata->offset_downsampling = -1; // undefined
+        bb_beam_positions_metadata->nfreq = -1;               // undefined
         bb_beam_positions_metadata->ndishes = num_dishes;
         bb_beam_positions_metadata->n_dish_locations_ew = num_dish_locations_ew;
         bb_beam_positions_metadata->n_dish_locations_ns = num_dish_locations_ns;
@@ -751,7 +823,8 @@ void FEngine::main_thread() {
                 A_metadata->stride[d] = 1;
             else
                 A_metadata->stride[d] = A_metadata->stride[d + 1] * A_metadata->dim[d + 1];
-        A_metadata->sample0_offset = -1; // undefined
+        A_metadata->sample0_offset = -1;      // undefined
+        A_metadata->offset_downsampling = -1; // undefined
         A_metadata->nfreq = num_frequencies;
         assert(A_metadata->nfreq <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
@@ -810,7 +883,8 @@ void FEngine::main_thread() {
                 s_metadata->stride[d] = 1;
             else
                 s_metadata->stride[d] = s_metadata->stride[d + 1] * s_metadata->dim[d + 1];
-        s_metadata->sample0_offset = -1; // undefined
+        s_metadata->sample0_offset = -1;      // undefined
+        s_metadata->offset_downsampling = -1; // undefined
         s_metadata->nfreq = num_frequencies;
         assert(s_metadata->nfreq <= CHORD_META_MAX_FREQ);
         for (int freq = 0; freq < num_frequencies; ++freq) {
@@ -876,7 +950,8 @@ void FEngine::main_thread() {
             // G_metadata->dim[0] = num_local_channels * U;
             G_metadata->dim[0] = upchan_max_num_channelss[Ufactor] * U;
             G_metadata->stride[0] = 1;
-            G_metadata->sample0_offset = -1; // undefined
+            G_metadata->sample0_offset = -1;      // undefined
+            G_metadata->offset_downsampling = -1; // undefined
             G_metadata->nfreq = U * num_local_channels;
             assert(G_metadata->nfreq <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < U * num_local_channels; ++freq) {
@@ -977,7 +1052,8 @@ void FEngine::main_thread() {
                     W1_metadata->stride[d] = 1;
                 else
                     W1_metadata->stride[d] = W1_metadata->stride[d + 1] * W1_metadata->dim[d + 1];
-            W1_metadata->sample0_offset = -1; // undefined
+            W1_metadata->sample0_offset = -1;      // undefined
+            W1_metadata->offset_downsampling = -1; // undefined
             W1_metadata->nfreq = num_local_channels;
             assert(W1_metadata->nfreq <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
@@ -1143,7 +1219,8 @@ void FEngine::main_thread() {
                 W2_metadata->stride[d] = 1;
             else
                 W2_metadata->stride[d] = W2_metadata->stride[d + 1] * W2_metadata->dim[d + 1];
-        W2_metadata->sample0_offset = -1; // undefined
+        W2_metadata->sample0_offset = -1;      // undefined
+        W2_metadata->offset_downsampling = -1; // undefined
         // TODO: correct this
         // W2_metadata->nfreq = (upchan_all_max_output_channel - upchan_all_min_output_channel)
         // / 4;
@@ -1244,6 +1321,7 @@ void FEngine::main_thread() {
                 else
                     E_metadata->stride[d] = E_metadata->stride[d + 1] * E_metadata->dim[d + 1];
             E_metadata->sample0_offset = seq_num;
+            E_metadata->offset_downsampling = 1;
             E_metadata->nfreq = num_frequencies;
             assert(E_metadata->nfreq <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
@@ -1260,6 +1338,91 @@ void FEngine::main_thread() {
             // Mark buffer as full
             profile_mark("E_frame::mark_frame_full");
             E_buffer->mark_frame_full(unique_name, E_frame_id);
+        }
+
+        {
+            // Produce pl mask (packet loss)
+            const int pl_mask_frame_id = E_frame_index % pl_mask_buffer->num_frames;
+
+            // Wait for buffer
+            profile_range_push("pl_mask_frame::wait_for_empty_frame");
+            std::uint8_t* const pl_mask_frame =
+                pl_mask_buffer->wait_for_empty_frame(unique_name, pl_mask_frame_id);
+            profile_range_pop();
+            if (!pl_mask_frame)
+                break;
+            if (!(std::ptrdiff_t(pl_mask_buffer->frame_size) == pl_mask_frame_size))
+                FATAL_ERROR("pl_mask_buffer->frame_size={:d} pl_mask_frame_size={:d}",
+                            pl_mask_buffer->frame_size, pl_mask_frame_size);
+            assert(std::ptrdiff_t(pl_mask_buffer->frame_size) == pl_mask_frame_size);
+            pl_mask_buffer->allocate_new_metadata_object(pl_mask_frame_id);
+
+            DEBUG("[{:d}] Filling pl mask buffer...", E_frame_index);
+            profile_range_push("pl_mask_frame::fill");
+            using std::max;
+            if (E_frame_index < max(pl_mask_buffer->num_frames, num_frames)) {
+                assert(8 * num_dishes * num_polarizations * (num_frequencies / 4)
+                           * (num_times / 2 / 64)
+                       == pl_mask_frame_size);
+                std::memset(pl_mask_frame, 0xff,
+                            8 * num_dishes * num_polarizations * (num_frequencies / 4)
+                                * (num_times / 2 / 64));
+                // TODO: Make some packet loss happen
+            }
+            profile_range_pop();
+            DEBUG("[{:d}] Done filling pl mask buffer.", E_frame_index);
+
+            // Set metadata
+            std::shared_ptr<chordMetadata> const pl_mask_metadata =
+                get_chord_metadata(pl_mask_buffer, pl_mask_frame_id);
+            pl_mask_metadata->frame_counter = E_frame_index;
+            std::strncpy(pl_mask_metadata->name, "pl_mask", sizeof pl_mask_metadata->name);
+            pl_mask_metadata->type = bool8;
+            pl_mask_metadata->dims = 5;
+            assert(pl_mask_metadata->dims <= CHORD_META_MAX_DIM);
+            std::strncpy(pl_mask_metadata->dim_name[0], "T16hi8",
+                         sizeof pl_mask_metadata->dim_name[0]);
+            std::strncpy(pl_mask_metadata->dim_name[1], "F4", sizeof pl_mask_metadata->dim_name[1]);
+            std::strncpy(pl_mask_metadata->dim_name[2], "P", sizeof pl_mask_metadata->dim_name[2]);
+            std::strncpy(pl_mask_metadata->dim_name[3], "D", sizeof pl_mask_metadata->dim_name[3]);
+            std::strncpy(pl_mask_metadata->dim_name[4], "T16lo8",
+                         sizeof pl_mask_metadata->dim_name[4]);
+            pl_mask_metadata->dim[0] = num_times / 2 / 8 / 8;
+            pl_mask_metadata->dim[1] = num_frequencies / 4;
+            pl_mask_metadata->dim[2] = num_polarizations;
+            pl_mask_metadata->dim[3] = num_dishes;
+            pl_mask_metadata->dim[4] = 8;
+            for (int d = pl_mask_metadata->dims - 1; d >= 0; --d)
+                if (d == pl_mask_metadata->dims - 1)
+                    pl_mask_metadata->stride[d] = 1;
+                else
+                    pl_mask_metadata->stride[d] =
+                        pl_mask_metadata->stride[d + 1] * pl_mask_metadata->dim[d + 1];
+            pl_mask_metadata->sample0_offset = seq_num;
+            // This pl mask:
+            // - is downsampled by 2
+            // - is stored with 8 bits per byte (we count this as "downsampling" as well)
+            // - has a factor of 8 split off the slowest-varying index
+            //   (we count this as "downsampling" as well)
+            // Only the slowest-varying index counts as "time" for the
+            // ring buffer mechanics.
+            pl_mask_metadata->offset_downsampling = 2 * 8 * 8;
+            pl_mask_metadata->nfreq = num_frequencies;
+            assert(pl_mask_metadata->nfreq <= CHORD_META_MAX_FREQ);
+            for (int freq = 0; freq < num_frequencies; ++freq) {
+                pl_mask_metadata->coarse_freq[freq] = frequency_channels.at(freq);
+                pl_mask_metadata->freq_upchan_factor[freq] = 1;
+                pl_mask_metadata->half_fpga_sample0[freq] = 7;
+                pl_mask_metadata->time_downsampling_fpga[freq] = 1;
+            }
+            pl_mask_metadata->ndishes = num_dishes;
+            pl_mask_metadata->n_dish_locations_ew = num_dish_locations_ew;
+            pl_mask_metadata->n_dish_locations_ns = num_dish_locations_ns;
+            pl_mask_metadata->dish_index = dish_indices_ptr;
+
+            // Mark buffer as full
+            profile_mark("pl_mask_frame::mark_frame_full");
+            pl_mask_buffer->mark_frame_full(unique_name, pl_mask_frame_id);
         }
 
 #if 0
@@ -1329,6 +1492,7 @@ void FEngine::main_thread() {
                 else
                     J_metadata->stride[d] = J_metadata->stride[d + 1] * J_metadata->dim[d + 1];
             J_metadata->sample0_offset = seq_num;
+            J_metadata->offset_downsampling = 1;
             J_metadata->nfreq = num_frequencies;
             assert(J_metadata->nfreq <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
@@ -1416,6 +1580,7 @@ void FEngine::main_thread() {
                 else
                     I1_metadata->stride[d] = I1_metadata->stride[d + 1] * I1_metadata->dim[d + 1];
             I1_metadata->sample0_offset = seq_num;
+            I1_metadata->offset_downsampling = 1;
             I1_metadata->nfreq = num_frequencies;
             assert(I1_metadata->nfreq <= CHORD_META_MAX_FREQ);
             for (int freq = 0; freq < num_frequencies; ++freq) {
