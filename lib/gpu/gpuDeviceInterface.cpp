@@ -10,8 +10,7 @@ using kotekan::Config;
 
 gpuDeviceInterface::gpuDeviceInterface(Config& config, const std::string& unique_name,
                                        int32_t gpu_id) :
-    config(config),
-    unique_name(unique_name), gpu_id(gpu_id) {}
+    config(config), unique_name(unique_name), gpu_id(gpu_id) {}
 
 gpuDeviceInterface::~gpuDeviceInterface() {}
 
@@ -173,6 +172,9 @@ gpuDeviceInterface::get_gpu_memory_array_metadata(const std::string& name, const
     }
     // mod the index by the array size (buffer depth)
     uint32_t depth = gpu_memory[name].metadata_pointers.size();
+    if (depth == 0) {
+        FATAL_ERROR("get_gpu_memory_array_metadata for name \"{:s}\": depth is zero.", name);
+    }
     assert(depth > 0);
     uint32_t index = index_ % depth;
     // If view, recurse
