@@ -1,11 +1,3 @@
-Precompiling CUDASIMDTypes...
-    CUDASIMDTypes Being precompiled by another process (pid: 4120677, pidfile: /localhome/eschnett/.julia/compiled/v1.11/CUDASIMDTypes/ZMfhI_yE2Ym.ji.pidfile)
-   3265.6 ms  ✓ CUDASIMDTypes
-  1 dependency successfully precompiled in 4 seconds. 118 already precompiled.
-Precompiling IndexSpaces...
-    IndexSpaces Being precompiled by another process (pid: 4120677, pidfile: /localhome/eschnett/.julia/compiled/v1.11/IndexSpaces/n38FD_yE2Ym.ji.pidfile)
-   3356.4 ms  ✓ IndexSpaces
-  1 dependency successfully precompiled in 4 seconds. 119 already precompiled.
 [Choosing CUDA device...]
 NVIDIA A40
 [Creating bb kernel...]

@@ -1,9 +1,3 @@
-Precompiling CUDASIMDTypes...
-   3444.4 ms  ✓ CUDASIMDTypes
-  1 dependency successfully precompiled in 4 seconds. 118 already precompiled.
-Precompiling IndexSpaces...
-   3388.4 ms  ✓ IndexSpaces
-  1 dependency successfully precompiled in 4 seconds. 119 already precompiled.
 [Choosing CUDA device...]
 NVIDIA A40
 [Creating bb kernel...]

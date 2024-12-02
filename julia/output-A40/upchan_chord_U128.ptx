@@ -13,7 +13,7 @@
 .address_size 64
 
 	// .globl	_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Ll1ELl1EES0_I6Int4x8Ll1ELl1EES0_IS2_Ll1ELl1EES0_IS_Ll1ELl1EE // -- Begin function _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Ll1ELl1EES0_I6Int4x8Ll1ELl1EES0_IS2_Ll1ELl1EES0_IS_Ll1ELl1EE
-.extern .func julia_AssertionError_32079
+.extern .func julia_AssertionError_32048
 ()
 ;
 .func gpu_report_exception
@@ -324,7 +324,7 @@ $L__BB0_12:                             // %pass231
 	{ // callseq 6, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_32079, 
+	julia_AssertionError_32048, 
 	(
 	);
 	} // callseq 6

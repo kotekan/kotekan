@@ -13,21 +13,21 @@
 .address_size 64
 
 	// .globl	_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Ll1ELl1EES0_I6Int4x8Ll1ELl1EES0_IS2_Ll1ELl1EES0_IS_Ll1ELl1EE // -- Begin function _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Ll1ELl1EES0_I6Int4x8Ll1ELl1EES0_IS2_Ll1ELl1EES0_IS_Ll1ELl1EE
-.extern .func julia_AssertionError_32079
+.extern .func julia_AssertionError_32053
 ()
 ;
-.func gpu_report_exception
+.func gpu_signal_exception
 (
-	.param .align 8 .b8 gpu_report_exception_param_0[16],
-	.param .b64 gpu_report_exception_param_1
+	.param .align 8 .b8 gpu_signal_exception_param_0[16]
 )
 .noreturn
 {
 	trap;
 }
-.func gpu_signal_exception
+.func gpu_report_exception
 (
-	.param .align 8 .b8 gpu_signal_exception_param_0[16]
+	.param .align 8 .b8 gpu_report_exception_param_0[16],
+	.param .b64 gpu_report_exception_param_1
 )
 .noreturn
 {
@@ -76,11 +76,11 @@ $L__BB0_2:                              // %L11
 $L__BB0_4:                              // %L27
 	ld.param.u32 	%r8, [_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Ll1ELl1EES0_I6Int4x8Ll1ELl1EES0_IS2_Ll1ELl1EES0_IS_Ll1ELl1EE_param_1];
 	ld.param.u64 	%rd1, [_Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Ll1ELl1EES0_I6Int4x8Ll1ELl1EES0_IS2_Ll1ELl1EES0_IS_Ll1ELl1EE_param_10];
-	mov.u32 	%r16, %ctaid.x;
-	shl.b32 	%r17, %r16, 9;
 	mov.u32 	%r1, %tid.x;
-	mov.u32 	%r18, %tid.y;
-	shl.b32 	%r19, %r18, 5;
+	mov.u32 	%r16, %tid.y;
+	shl.b32 	%r17, %r16, 5;
+	mov.u32 	%r18, %ctaid.x;
+	shl.b32 	%r19, %r18, 9;
 	or.b32  	%r20, %r17, %r19;
 	or.b32  	%r21, %r20, %r1;
 	mul.wide.u32 	%rd8, %r21, 4;
@@ -324,7 +324,7 @@ $L__BB0_12:                             // %pass231
 	{ // callseq 6, 0
 	.reg .b32 temp_param_reg;
 	call.uni 
-	julia_AssertionError_32079, 
+	julia_AssertionError_32053, 
 	(
 	);
 	} // callseq 6
