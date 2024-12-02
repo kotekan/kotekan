@@ -15,6 +15,14 @@ read_data:
         kotekan_stage: gdalFileRead
         file_name: voltage
         out_buf: host_voltage_buffer
+    read_pl_mask:
+        kotekan_stage: gdalFileRead
+        file_name: pl_mask
+        out_buf: host_pl_mask_buffer
+    read_bf_mask:
+        kotekan_stage: gdalFileRead
+        file_name: bf_mask
+        out_buf: host_bf_mask_buffer
     read_bb_beam_positions:
         kotekan_stage: gdalFileRead
         file_name: bb_beam_positions
