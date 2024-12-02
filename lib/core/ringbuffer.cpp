@@ -36,17 +36,17 @@ static void print_py_status(const RingBuffer* const rb) {
 
 RingBuffer::RingBuffer(std::ptrdiff_t sz, std::shared_ptr<metadataPool> pool,
                        const std::string& _buffer_name, const std::string& _buffer_type) :
-    GenericBuffer(_buffer_name, _buffer_type, pool, 1),
-    size(sz), first_write_head(0), last_read_tail(0) {
+    GenericBuffer(_buffer_name, _buffer_type, pool, 1), size(sz), first_write_head(0),
+    last_read_tail(0) {
     assert(sz > 0);
 }
 
 void RingBuffer::register_producer(const std::string& name) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
     if (write_heads.find(name) != write_heads.end())
-        throw std::runtime_error(fmt::format("RingBuffer: cannot register producer \"{:s}\" - "
-                                             "has already been registered!",
-                                             name));
+        throw std::runtime_error(fmt::format("RingBuffer: cannot register producer \"{:s}\" for "
+                                             "ringbuffer \"{:s}\" - has already been registered!",
+                                             name, buffer_name));
     // Start just after the first element that all other producers have already written.
     write_heads[name] = first_write_head;
     GenericBuffer::register_producer(name);
@@ -55,9 +55,9 @@ void RingBuffer::register_producer(const std::string& name) {
 void RingBuffer::register_consumer(const std::string& name) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
     if (read_tails.find(name) != read_tails.end())
-        throw std::runtime_error(fmt::format("RingBuffer: cannot register consumer \"{:s}\" - "
-                                             "has already been registered!",
-                                             name));
+        throw std::runtime_error(fmt::format("RingBuffer: cannot register consumer \"{:s}\" for "
+                                             "ringbuffer \"{:s}\" - has already been registered!",
+                                             name, buffer_name));
     // Start at the oldest valid data in the ringbuffer
     read_tails[name] = last_read_tail;
     read_heads[name] = last_read_tail;
