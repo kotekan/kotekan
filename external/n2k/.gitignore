@@ -1,0 +1,6 @@
+*~
+*.o
+bin
+lib
+template_instantiations/kernel_*.cu
+scratch

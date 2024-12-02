@@ -1,15 +1,17 @@
 #ifndef _N2K_COORELATOR_KERNEL_HPP
 #define _N2K_CORRELATOR_KERNEL_HPP
 
-#include "Correlator.hpp"
+#include "../Correlator.hpp"
+#include "device_inlines.hpp"                // lop3(), blend(), FULL_MASK
 #include <gputils/constexpr_functions.hpp>   // constexpr_is_divisible()
 
+// This source file is used internally in CUDA kernels.
+// It probably won't be useful "externally" to n2k.
 
 namespace n2k {
 #if 0
 }  // editor auto-indent
 #endif
-
 
 // Compile-time parameters:
 //
@@ -50,33 +52,6 @@ struct CorrelatorKernel
 	    x ^= 0x88888888;
 	}
 	return x;
-    }
-
-    // The nvidia LOP3 instruction.
-    // Reference: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#logic-and-shift-instructions-lop3
-    
-    template<int immLut>
-    static __device__ int lop3(int a, int b, int c)
-    {
-	int d;
-	
-	asm("lop3.b32 %0, %1, %2, %3, %4;" :
-	    "=r"(d) : "r"(a), "r"(b), "r"(c), "n"(immLut)
-	);
-	
-	return d;
-    }
-    
-    // blend(): equivalent to (c & a) | (~c & b), but using a single LOP3 instruction.
-    
-    static __device__ int blend(int a, int b, int c)
-    {
-	constexpr int A = 0xf0;
-	constexpr int B = 0xcc;
-	constexpr int C = 0xaa;
-	constexpr int N = (C & A) | (~C & B);
-	
-	return lop3<N> (a, b, c);
     }
 
     
@@ -247,8 +222,13 @@ struct CorrelatorKernel
 	// but this turned out to make the kernel slightly slower.
 	
 	#pragma unroll
-	for (int i = 0; i < 8; i++)
-	    pf_out[i] = gp[i*TS];   // FIXME use wide load instructions!
+	for (int i = 0; i < 8; i++) {
+	    // FIXME use wide load instructions!
+	    if constexpr (CorrelatorParams::offset_encoded)
+		pf_out[i] = gp[i*TS] ^ 0x88888888;
+	    else
+		pf_out[i] = gp[i*TS];
+	}
 	
 	return gp + (32*TS);
     }
@@ -302,7 +282,6 @@ struct CorrelatorKernel
     
     static __device__ const int *do_initial_prefetch(const int *__restrict__ gp, int *__restrict__ sp, int pf[8], uint rm)
     {
-	constexpr uint ALL_LANES = 0xffffffffU;
 	constexpr int S = CorrelatorParams::shmem_t32_stride;
 	
 	int tmp[8];
@@ -310,16 +289,16 @@ struct CorrelatorKernel
 	gp = prefetch_chunk(gp, pf);
 	
 	gp = prefetch_chunk(gp, tmp);
-	store_prefetched_chunk(sp, pf, __shfl_sync(ALL_LANES, rm, 0));
+	store_prefetched_chunk(sp, pf, __shfl_sync(FULL_MASK, rm, 0));
 	
 	gp = prefetch_chunk(gp, pf);
-	store_prefetched_chunk(sp+S, tmp, __shfl_sync(ALL_LANES, rm, 1));
+	store_prefetched_chunk(sp+S, tmp, __shfl_sync(FULL_MASK, rm, 1));
 	
 	gp = prefetch_chunk(gp, tmp);
-	store_prefetched_chunk(sp+2*S, pf, __shfl_sync(ALL_LANES, rm, 2));
+	store_prefetched_chunk(sp+2*S, pf, __shfl_sync(FULL_MASK, rm, 2));
 	
 	gp = prefetch_chunk(gp, pf);
-	store_prefetched_chunk(sp+3*S, tmp, __shfl_sync(ALL_LANES, rm, 3));
+	store_prefetched_chunk(sp+3*S, tmp, __shfl_sync(FULL_MASK, rm, 3));
 
 	return gp;
     }
@@ -350,7 +329,6 @@ struct CorrelatorKernel
     static __device__ const int *
     correlate_t64(int V[8][2][2][4], const int *__restrict__ ap, const int *__restrict__ bp, const int *__restrict__ gp, int *__restrict__ sp, int pf[8], uint rm, int t0)
     {
-	constexpr uint ALL_LANES = 0xffffffffU;
 	constexpr int SA = 2 * CorrelatorParams::shmem_s8_stride;  // one A-fragment corresponds to 16 stations
 	constexpr int SB = CorrelatorParams::shmem_s8_stride;
 	constexpr int SS = CorrelatorParams::shmem_t32_stride;
@@ -375,7 +353,7 @@ struct CorrelatorKernel
 	}
 
 	if constexpr (P <= 1)
-	    store_prefetched_chunk(sp, pf, __shfl_sync(ALL_LANES, rm, t0 >> 5));
+	    store_prefetched_chunk(sp, pf, __shfl_sync(FULL_MASK, rm, t0 >> 5));
 
 	// Second 32 time samples
 	//   V[fy] -> V[fy+4]
@@ -395,7 +373,7 @@ struct CorrelatorKernel
 	}
 
 	if constexpr (P <= 1)
-	    store_prefetched_chunk(sp+SS, pf2, __shfl_sync(ALL_LANES, rm, (t0>>5)+1));
+	    store_prefetched_chunk(sp+SS, pf2, __shfl_sync(FULL_MASK, rm, (t0>>5)+1));
 
 	return gp;
     }
@@ -452,7 +430,7 @@ struct CorrelatorKernel
     {
 	int flag = (threadIdx.x & bit);
 	int src = flag ? in0 : in1;
-	int dst = __shfl_xor_sync(0xffffffff, src, bit);
+	int dst = __shfl_xor_sync(FULL_MASK, src, bit);
 	(flag ? in0 : in1) = dst;
     }
 

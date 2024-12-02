@@ -1,0 +1,9 @@
+[project]
+name = "sk_bias"
+version = "1.0.0"
+requires-python = ">=3.8"
+dependencies = [ "numpy", "scipy", "matplotlib" ]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
