@@ -202,6 +202,18 @@ public:
             }
 
             {
+                const auto offset_downsampling = group->GetAttribute("offset_downsampling");
+                if (offset_downsampling) {
+                    const auto offset_downsampling_shape = offset_downsampling->GetDimensionsSize();
+                    assert(offset_downsampling_shape.empty());
+                    meta->offset_downsampling = offset_downsampling->ReadAsInt();
+                    assert(meta->offset_downsampling > 0);
+                } else {
+                    meta->offset_downsampling = -1;
+                }
+            }
+
+            {
                 const auto half_fpga_sample0 = group->GetAttribute("half_fpga_sample0");
                 assert((meta->nfreq >= 0) == bool(half_fpga_sample0));
                 if (half_fpga_sample0) {

@@ -230,6 +230,15 @@ public:
                     assert(success);
                 }
 
+                if (meta->offset_downsampling >= 0) {
+                    const auto offset_downsampling = group->CreateAttribute(
+                        "offset_downsampling", std::vector<GUInt64>{},
+                        GDALExtendedDataType::Create(get_gdal_datatype(meta->offset_downsampling)));
+                    const bool success = offset_downsampling->Write(
+                        &meta->offset_downsampling, sizeof meta->offset_downsampling);
+                    assert(success);
+                }
+
                 if (meta->nfreq >= 0) {
                     const auto half_fpga_sample0 = group->CreateAttribute(
                         "half_fpga_sample0", std::vector<GUInt64>{GUInt64(meta->nfreq)},
@@ -290,12 +299,12 @@ public:
                 // Array rank
                 const int ndims = meta->dims;
 
-                INFO("name={} type={} typesize={} ndims={} dims={}", meta->get_name(),
-                     meta->get_type_string(), chord_datatype_bytes(meta->type), meta->dims,
-                     meta->get_dimensions_string());
+                DEBUG("name={} type={} typesize={} ndims={} dims={}", meta->get_name(),
+                      meta->get_type_string(), chord_datatype_bytes(meta->type), meta->dims,
+                      meta->get_dimensions_string());
                 for (int d = 0; d < ndims; ++d)
-                    INFO("    [{}] name={} size={}", d, meta->get_dimension_name(d), meta->dim[d]);
-                INFO("    buffer addr={} size={}", (const void*)frame, buffer->frame_size);
+                    DEBUG("    [{}] name={} size={}", d, meta->get_dimension_name(d), meta->dim[d]);
+                DEBUG("    buffer addr={} size={}", (const void*)frame, buffer->frame_size);
 
                 // Array element type
                 const auto datatype = GDALExtendedDataType::Create(chord2gdal(meta->type));

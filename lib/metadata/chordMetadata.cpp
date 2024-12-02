@@ -4,6 +4,8 @@ REGISTER_TYPE_WITH_FACTORY(metadataObject, chordMetadata);
 
 const char* chord_datatype_string(chordDataType type) {
     switch (type) {
+        case bool8:
+            return "bool8";
         case uint4p4:
             return "uint4p4";
         case uint8:
@@ -39,6 +41,8 @@ const char* chord_datatype_string(chordDataType type) {
 }
 
 chordDataType chord_datatype_from_string(const std::string& type) {
+    if (type == "bool8")
+        return bool8;
     if (type == "uint4p4")
         return uint4p4;
     if (type == "uint8")
@@ -72,7 +76,8 @@ chordDataType chord_datatype_from_string(const std::string& type) {
 
 chordMetadata::chordMetadata() :
     frame_counter(-1), type(unknown_type), dims(-1), offset(0), n_one_hot(-1), sample0_offset(-1),
-    nfreq(-1), ndishes(-1), n_dish_locations_ew(-1), n_dish_locations_ns(-1), dish_index(nullptr) {
+    offset_downsampling(-1), nfreq(-1), ndishes(-1), n_dish_locations_ew(-1),
+    n_dish_locations_ns(-1), dish_index(nullptr) {
     name[0] = '\0';
     for (int d = 0; d < CHORD_META_MAX_DIM; ++d) {
         dim[d] = -1;
@@ -117,9 +122,12 @@ struct chordMetadataFormat {
     // shifting metadata in time to re-use metadata objects.)
     //
     // The actual (possibly fractional) time sample index is calculated as follows:
-    //     T_actual = (sample0_offset + T + half_fpga_sample0[F]) / time_downsampling_fpga[F]
-    // where `T` is the time sample index and `F` is the coarse frequency index.
+    //     T_actual = (sample0_offset + T / offset_downsampling + half_fpga_sample0[F]) /
+    //                time_downsampling_fpga[F]
+    // where `T` is the time sample index (the slowest varying index)
+    // and `F` is the coarse frequency index.
     int64_t sample0_offset;
+    int offset_downsampling;
 
     // Per-frequency arrays
     int32_t nfreq;
@@ -175,6 +183,7 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
     offset = fmt->offset;
     n_one_hot = fmt->n_one_hot;
     sample0_offset = fmt->sample0_offset;
+    offset_downsampling = fmt->offset_downsampling;
     nfreq = fmt->nfreq;
     assert(nfreq < CHORD_META_MAX_FREQ);
     for (int i = 0; i < nfreq; i++) {
@@ -212,6 +221,7 @@ size_t chordMetadata::serialize(char* bytes) {
     fmt->offset = offset;
     fmt->n_one_hot = n_one_hot;
     fmt->sample0_offset = sample0_offset;
+    fmt->offset_downsampling = offset_downsampling;
     fmt->nfreq = nfreq;
     assert(nfreq < CHORD_META_MAX_FREQ);
     for (int i = 0; i < nfreq; i++) {

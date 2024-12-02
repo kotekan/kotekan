@@ -18,6 +18,7 @@
 
 enum chordDataType {
     unknown_type,
+    bool8,
     uint4p4,
     uint8,
     uint16,
@@ -36,6 +37,8 @@ enum chordDataType {
 
 constexpr std::size_t chord_datatype_bytes(chordDataType type) {
     switch (type) {
+        case bool8:
+            return 1;
         case uint4p4:
             return 1;
         case uint8:
@@ -121,11 +124,13 @@ public:
     // shifting metadata in time to re-use metadata objects.)
     //
     // The actual (possibly fractional) time sample index is calculated as follows:
-    //     T_actual = (sample0_offset + T + half_fpga_sample0[F] / 2) / time_downsampling_fpga[F]
-    // where `T` is the time sample index and `F` is the coarse frequency index.
+    //     T_actual = (sample0_offset + T / offset_downsampling + half_fpga_sample0[F] / 2) /
+    //                time_downsampling_fpga[F]
+    // where `T` is the time sample index (the slowest varying index)
+    // and `F` is the coarse frequency index.
     int64_t sample0_offset;
+    int offset_downsampling;
 
-    // Number of bytes per time sample
     size_t sample_bytes() const {
         // The number of bytes per sample is the number of bytes needed to store one array slice.
         return chord_datatype_bytes(type) * stride[0];

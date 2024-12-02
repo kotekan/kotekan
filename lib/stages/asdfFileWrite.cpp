@@ -23,6 +23,8 @@
 namespace {
 ASDF::scalar_type_id_t chord2asdf(const chordDataType type) {
     switch (type) {
+        case bool8:
+            return ASDF::id_uint8; // TODO: Define ASDF bool8 type
         case uint4p4:
             return ASDF::id_uint8; // TODO: Define ASDF uint4+4 type
         case uint8:
@@ -272,6 +274,10 @@ public:
                 if (meta->sample0_offset >= 0)
                     group->emplace("sample0_offset",
                                    std::make_shared<ASDF::int_entry>(meta->sample0_offset));
+
+                if (meta->offset_downsampling >= 0)
+                    group->emplace("offset_downsampling",
+                                   std::make_shared<ASDF::int_entry>(meta->offset_downsampling));
 
                 if (meta->nfreq >= 0) {
                     auto half_fpga_sample0 = std::make_shared<ASDF::sequence>();

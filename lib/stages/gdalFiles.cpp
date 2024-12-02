@@ -4,6 +4,8 @@ namespace gdal {
 
 GDALDataType chord2gdal(const chordDataType type) {
     switch (type) {
+        case bool8: // TODO: Define GDAL bool8 type
+            return GDT_Byte;
         case uint4p4:
             return GDT_Byte; // TODO: Define GDAL uint4+4 type
         case uint8:
