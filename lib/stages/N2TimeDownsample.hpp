@@ -3,8 +3,8 @@
 @brief Reduce cadence of a single-frequency.
 - N2TimeDownsample : public kotekan::Stage
 *****************************************/
-#ifndef TIME_DOWNSAMP_HPP
-#define TIME_DOWNSAMP_HPP
+#ifndef N2_TIME_DOWNSAMP_HPP
+#define N2_TIME_DOWNSAMP_HPP
 
 #include "Config.hpp"
 #include "Stage.hpp" // for Stage
@@ -16,14 +16,15 @@
 
 /**
  * @class N2TimeDownsample
- * @brief Average a set number of frames on a single-frequency stream to effectively
- *        reduce the cadence of the acquisition.
+ * @brief Average a set number of frames on a single-frequency stream to
+ *        effectively reduce the cadence of the acquisition.
  *
- * This stage accumulates and averages a specified number of incoming frames on a
- * single-frequency stream to reduce the cadence of the acquisition. Visibilities,
- * eigenvectors, eigenvalues, eigen-rms are averaged. Inverse weights are averaged
- * and divided by number of combined frames to track reduction in variance. Metadata
- * from the first frame is passed on and that of the others discarded.
+ * This stage accumulates and averages a specified number of incoming frames on 
+ * a single-frequency stream to reduce the cadence of the acquisition.
+ * Visibilities, eigenvectors, eigenvalues, eigen-rms are averaged. Inverse
+ * weights are averaged and divided by number of combined frames to track
+ * reduction in variance. Metadata from the first frame is passed on and that
+ * of the others discarded.
  * Will throw an exception if more than one frequency is found in the stream.
  *
  * @par Buffers

@@ -20,8 +20,10 @@
  * @conf    gps_host        string. The GPS server IP address.
  * @conf    gps_port        uint.   The port number on the GPS server.
  * @conf    gps_endpoint    string. The enpoint with the GPS time.
- * @conf    inst_long       double. Instrument longitude.
- * @conf    inst_lat        double. Instrument latitude.
+ * @conf    inst_long_deg   double. Instrument longitude in degrees.
+ * @conf    inst_lat_deg    double. Instrument latitude in degrees.
+ * @conf    inst_alt_deg    double. Instrument pointing altitude, in degrees
+ *                                  from the northern horizon (az=0).
  **/
 
 /*
@@ -39,13 +41,14 @@ public:
     uint64_t to_seq(timespec time) const override;
     uint64_t seq_length_nsec() const override; 
 
-    double get_inst_long() const;
-    double get_inst_lat() const;
+    double get_inst_long_deg() const;
+    double get_inst_lat_deg() const;
     double get_orientation_el(int i, int j) const;
     double get_dish_coord(int i, int j) const;
     int get_num_dishes() const;
     double get_dut1() const;
     double get_dtai() const;
+    std::array<double, 3> get_sky_vec_in_dish_coords(double ra, double dec,                                                 double era) const;
 
     // Implementations of the required frequency mapping functions
     // TODO: These are not necessary for CHORD and should maybe be shunted to
@@ -99,10 +102,18 @@ protected:
     /// The endpoint with the GPS time
     std::string _gps_endpoint;
 
-    /// Instument geographic coordinates
-    double _inst_long;
-    double _inst_lat;
+    /// Instument geographic coordinates in degrees.
+    double _inst_long_deg;
+    double _inst_lat_deg;
+
+    // Dish pointing angle.  Measured in degrees from the Northern horizon.
+    double _inst_alt_deg;
+
+    // Matrix to transform from local topocentric coordinates to the 
+    // dish coordinate system.
     double _inst_orientation[3][3];
+
+    // Dish positions in dish coordinate system.
     std::vector<std::array<double, 3>> _dish_positions;
 
     // The time of FPGA frame=0, and the time length of each frame (in ns)

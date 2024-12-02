@@ -4,6 +4,7 @@
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"            // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
 #include "bufferContainer.hpp"   // for bufferContainer
+#include "CHORDTelescope.hpp" // for CHORDTelescope
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
 //#include "visBuffer.hpp"         // for VisFrameView
@@ -31,9 +32,11 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(N2TimeDownsample);
 
-N2TimeDownsample::N2TimeDownsample(Config& config, const std::string& unique_name,
-                               bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&N2TimeDownsample::main_thread, this)) {
+N2TimeDownsample::N2TimeDownsample(Config& config,
+                                   const std::string& unique_name,
+                                   bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container,
+          std::bind(&N2TimeDownsample::main_thread, this)) {
 
     // Fetch the buffers, register
     in_buf = get_buffer("in_buf");
@@ -54,14 +57,16 @@ void N2TimeDownsample::main_thread() {
     frameID frame_id(in_buf);
     frameID output_frame_id(out_buf);
     unsigned int nframes = 0; // the number of frames accumulated so far
-    unsigned int wdw_pos = 0; // the current position within the accumulation window
+    unsigned int wdw_pos = 0; // the current position within the accumulation window in FPGA counts
     uint64_t wdw_end = 0;     // the end of the accumulation window in FPGA counts
-    unsigned int wdw_len = 0; // the length of the accumulation window
+    unsigned int wdw_len = 0; // the length of the accumulation window in FPGA counts
     uint64_t fpga_seq_start = 0;
     int32_t freq_id = -1; // needs to be set by first frame
 
     auto& skipped_frame_counter = Metrics::instance().add_counter(
         "kotekan_timedownsample_skipped_frame_total", unique_name, {"freq_id", "reason"});
+    
+    const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
@@ -69,7 +74,6 @@ void N2TimeDownsample::main_thread() {
             break;
         }
 
-        //auto frame = VisFrameView(in_buf, frame_id);
         N2FrameView frame(in_buf, frame_id);
         fpga_seq_start = frame.fpga_start_tick;
         DEBUG("Input frame - num_elements: {:d}", frame.num_elements);
@@ -89,7 +93,11 @@ void N2TimeDownsample::main_thread() {
             // Set the parameters of the accumulation window
             wdw_len = nsamp * frame.frame_length_fpga_ticks;
             wdw_end = fpga_seq_start + wdw_len;
-        } else if (frame.freq_id != (unsigned)freq_id) {
+        }
+
+        // Check that this is the frequency we care about,
+        // throw runtime error if not.
+        if (frame.freq_id != (unsigned)freq_id) {
             throw std::runtime_error("Cannot downsample stream with more than one frequency.");
         }
 
@@ -103,8 +111,10 @@ void N2TimeDownsample::main_thread() {
             skipped_frame_counter.labels({std::to_string(freq_id), "alignment"}).inc();
             in_buf->mark_frame_empty(unique_name, frame_id++);
             continue;
-        } else if (nframes == 0) { // Start accumulating frames
+        }
 
+        // Start a new accumulation
+        if (nframes == 0) { 
             // Update window
             wdw_end = fpga_seq_start + wdw_len;
 

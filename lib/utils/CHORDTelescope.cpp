@@ -38,10 +38,14 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config,
         throw std::runtime_error("The system requires a GPS time, but none was found.");
     }
 
-    _inst_long = config.get<double>(path, "inst_long");
-    _inst_lat = config.get<double>(path, "inst_lat");
-    INFO("Telescope configured with latitude:  {:f} deg", _inst_long);
-    INFO("Telescope configured with longitude: {:f} deg", _inst_lat);
+    _inst_long_deg = config.get<double>(path, "inst_long_deg");
+    _inst_lat_deg = config.get<double>(path, "inst_lat_deg");
+    _inst_alt_deg = config.get<double>(path, "inst_alt_deg");
+    INFO("Telescope configured with longitude: {:f} deg", _inst_long_deg);
+    INFO("Telescope configured with latitude:  {:f} deg", _inst_lat_deg);
+    INFO("Telescope configured with altitude: {:f} deg", _inst_alt_deg);
+    INFO("Telescope targetting declination: {:f} deg",
+            _inst_lat_deg + 90-_inst_alt_deg);
     if (gps_enabled)
         INFO("Telescope configured with GPS time0: {:d} ns", time0_ns);
     else
@@ -151,12 +155,48 @@ uint64_t CHORDTelescope::seq_length_nsec() const {
     return dt_ns;
 }
 
-double CHORDTelescope::get_inst_long() const {
-    return _inst_long;
+double CHORDTelescope::get_inst_long_deg() const {
+    return _inst_long_deg;
 }
 
-double CHORDTelescope::get_inst_lat() const {
-    return _inst_lat;
+double CHORDTelescope::get_inst_lat_deg() const {
+    return _inst_lat_deg;
+}
+
+std::array<double, 3> CHORDTelescope::get_sky_vec_in_dish_coords(
+        double ra, double dec, double era) const {
+
+    double phi = M_PI * (ra - era);
+    double theta = M_PI * (90 - dec);
+
+    // unit vector pointing to ra/dec in spherical coordinates
+    // fixed to the Earth.  phi=0 ~ Greenwich
+    double n_geocen[3] = {cos(phi) * sin(theta),
+                          sin(phi) * sin(theta),
+                          cos(theta)};
+
+    double clon = cos(M_PI * _inst_long_deg);
+    double slon = sin(M_PI * _inst_long_deg);
+    double clat = cos(M_PI * (90 - _inst_lat_deg));
+    double slat = sin(M_PI * (90 - _inst_lat_deg));
+
+    double R_geocen_to_local[3][3] = {
+        {-slon,       clon,      0},      // x: local East  in topocen coords.
+        {-clon*clat, -slon*clat, slat},   // y: local North in topocen coords.
+        { clon*slat,  slon*slat, clat}};  // z: local Up in topocen coords.
+
+    double n_local_geoid[3] = {0, 0, 0};
+    for(int i = 0; i<3; i++)
+        for(int j = 0; j<3; j++) 
+            n_local_geoid[i] = R_geocen_to_local[i][j] * n_geocen[j];
+
+    std::array<double, 3> n_local = {0, 0, 0};
+
+    for(int i = 0; i<3; i++)
+        for(int j = 0; j<3; j++) 
+            n_local[i] = _inst_orientation[i][j] * n_local_geoid[j];
+
+    return n_local;
 }
 
 double CHORDTelescope::get_orientation_el(int i, int j) const {
@@ -188,7 +228,7 @@ freq_id_t CHORDTelescope::to_freq_id(stream_t stream, uint32_t ind) const {
     
 //TODO: This is a stub to satisfy inheritance and should not be used.
 double CHORDTelescope::to_freq(freq_id_t freq_id) const {
-    return 0;
+    return freq_id * 1.6e9/8192;
 }
     
 uint32_t CHORDTelescope::num_freq_per_stream() const {

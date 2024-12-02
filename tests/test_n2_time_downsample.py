@@ -11,12 +11,29 @@ import numpy as np
 from kotekan import runner
 
 downsamp_params = {
-    "num_elements": 4,
-    "num_ev": 4,
     "num_samples": 2,
     "total_frames": 11,
     "fakevis_mode": "fill_ij_missing",
     "cadence": 2.0,
+}
+
+global_params = {
+    "num_elements": 4,
+    "num_ev": 4,
+    "earth_rotation_data": {
+        "kotekan_update_endpoint": "json",
+        "DUT1": 0.0,
+        "DTAI": 0.0},
+    "telescope": {
+        "name": "CHORDTelescope",
+        "require_gps": False,
+        "inst_long": -119.62081125,
+        "inst_lat":    49.32075144444,
+        "inst_orientation": [1, 0, 0, 0, 1, 0, 0, 0, 1],
+        "dish_positions": [[0.0, 0.0, 0.0]],
+        "updatable_config": "/earth_rotation_data"},
+    "gps_time": {
+        "frame0_nano": 0},
 }
 
 
@@ -36,7 +53,7 @@ def n2_data(tmpdir_factory):
             cadence=downsamp_params["cadence"],
         ),
         dump_buffer,
-        downsamp_params,
+        global_params,
     )
 
     test.run()
@@ -46,13 +63,13 @@ def n2_data(tmpdir_factory):
 
 def test_structure(n2_data):
 
-    n = downsamp_params["num_elements"]
+    n = global_params["num_elements"]
 
     # Check that each samples is the expected shape
     for frame in n2_data:
         assert frame.metadata.num_elements == n
         assert frame.metadata.num_prod == (n * (n + 1) // 2)
-        assert frame.metadata.num_ev == downsamp_params["num_ev"]
+        assert frame.metadata.num_ev == global_params["num_ev"]
 
     # Check that we have the expected number of samples
     nsamp = downsamp_params["total_frames"] // downsamp_params["num_samples"]
@@ -88,8 +105,8 @@ def test_time(n2_data):
 
 def test_contents(n2_data):
 
-    n = downsamp_params["num_elements"]
-    n_ev = downsamp_params["num_ev"]
+    n = global_params["num_elements"]
+    n_ev = global_params["num_ev"]
 
     # Reproduce expected fakeVis output
     model_vis = np.zeros(n * (n + 1) // 2, dtype=np.complex64)

@@ -2,8 +2,10 @@
 
 #include "Config.hpp"         // for Config
 #include "Hash.hpp"           // for Hash
+#include "CHORDTelescope.hpp" // for CHORDTelescope
 #include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
 #include "datasetState.hpp"   // for flagState, inputState
+#include "timeUtil.hpp"       // for get_ERA_from_GPS
 #include "visBuffer.hpp"      // for VisFrameView
 #include "visUtil.hpp"        // for cfloat, input_ctype, ts_to_double, cmap
 
@@ -22,6 +24,7 @@
 #include <tuple>     // for get
 #include <vector>    // for vector, __alloc_traits<>::value_type
 
+static constexpr double C = 299792458.0;
 
 // Register test patterns
 REGISTER_FAKE_VIS_PATTERN(DefaultVisPattern, "default");
@@ -33,6 +36,7 @@ REGISTER_FAKE_VIS_PATTERN(TestPatternSimpleVisPattern, "test_pattern_simple");
 REGISTER_FAKE_VIS_PATTERN(TestPatternFreqVisPattern, "test_pattern_freq");
 REGISTER_FAKE_VIS_PATTERN(TestPatternInputVisPattern, "test_pattern_inputs");
 REGISTER_FAKE_VIS_PATTERN(ChangeStatePattern, "change_state");
+REGISTER_FAKE_VIS_PATTERN(PointSourceVisPattern, "point_source");
 
 
 FakeVisPattern::FakeVisPattern(kotekan::Config& config, const std::string& path) {
@@ -458,4 +462,110 @@ state_id_t ChangeStatePattern::gen_state_gains() {
     std::string update_id = fmt::format("gain_update_{}", _gain_update_ind);
     auto& dm = datasetManager::instance();
     return dm.create_state<gainState>(update_id, _gain_update_ind++).first;
+}
+
+PointSourceVisPattern::PointSourceVisPattern(kotekan::Config& config,
+                                             const std::string& path) : 
+        FakeVisPattern(config, path) {
+    ra = config.get_default<double>(path, "ra", 0.0);
+    dec = config.get_default<double>(path, "dec", 45.0);
+    stokes_I = config.get_default<double>(path, "stokes_I", 1.0);
+    stokes_Q = config.get_default<double>(path, "stokes_Q", 0.0);
+    stokes_U = config.get_default<double>(path, "stokes_U", 0.0);
+    stokes_V = config.get_default<double>(path, "stokes_V", 0.0);
+    noise_var = config.get_default<double>(path, "noise_var", 0.01);
+}
+
+void PointSourceVisPattern::fill(VisFrameView& frame) {
+
+}
+
+void PointSourceVisPattern::fill(N2FrameView& frame) {
+
+
+    const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
+
+    uint32_t num_dishes = tel.get_num_dishes();
+
+    double dut1 = tel.get_dut1();
+    double dtai = tel.get_dtai();
+
+    timespec gps_time = tel.to_time(frame.fpga_start_tick
+                                    + frame.frame_length_fpga_ticks/2);
+
+    double era = get_ERA_from_GPS(gps_time, dtai, dut1);
+
+    std::array<double, 3> n = tel.get_sky_vec_in_dish_coords(ra, dec, era);
+
+    double f = tel.to_freq(frame.freq_id);
+    double lambda = C / f;
+
+    INFO("Making fake vis at t: {:d} s + {:d} ns",
+            gps_time.tv_sec, gps_time.tv_nsec);
+    INFO("                   f: {:d} = {:e} Hz", frame.freq_id, f);
+    INFO("                   ERA: {:f} deg", era);
+
+    int ind = 0;
+    for (uint32_t el_i = 0; el_i < frame.num_elements; el_i++) {
+        for (uint32_t el_j = el_i; el_j < frame.num_elements; el_j++) {
+
+            uint32_t dish_i = el_i % (num_dishes);
+            uint32_t dish_j = el_j % (num_dishes);
+            uint32_t pol_i = el_i / num_dishes;
+            uint32_t pol_j = el_j / num_dishes;
+
+            double phase = 2*M_PI * (
+                      (tel.get_dish_coord(dish_i, 0)
+                        - tel.get_dish_coord(dish_j, 0)) * n[0]
+                    + (tel.get_dish_coord(dish_i, 1)
+                        - tel.get_dish_coord(dish_j, 1)) * n[1]
+                    + (tel.get_dish_coord(dish_i, 2)
+                        - tel.get_dish_coord(dish_j, 2)) * n[2])
+                    / lambda;
+
+            double cp = cos(phase);
+            double sp = sin(phase);
+
+            double power_r = 0;
+            double power_i = 0;
+            if (pol_i == 0 && pol_j == 0)
+                power_r = stokes_I + stokes_Q;
+            else if (pol_i == 1 && pol_j == 1)
+                power_r = stokes_I - stokes_Q;
+            else if (pol_i == 0 && pol_j == 1) {
+                power_r = stokes_U;
+                power_i = stokes_V;
+            }
+            else if (pol_i == 1 && pol_j == 0) {
+                power_r = stokes_U;
+                power_i = -stokes_V;
+            }
+
+            frame.vis[ind] = {(float)(power_r * cp - power_i * sp),
+                              (float)(power_r * sp + power_i * cp)};
+            ind++;
+        }
+    }
+
+    //Memory for LAPACK
+    std::vector<N2::cfloat> vis_square;
+    std::vector<N2::cfloat> evecs;
+    std::vector<float> evals;
+    
+    vis_square.resize(frame.num_elements * frame.num_elements);
+    evecs.resize(frame.num_elements * frame.num_ev);
+    evals.resize(frame.num_elements);
+    int info;
+    int64_t nside;
+
+    LAPACKE_cheevr(LAPACK_COL_MAJOR, 'V', 'I', 'L', nside,
+                   (lapack_complex_float *)vis_square.data(),
+                   nside, 0.0, 0.0,
+                   nside - num_ev + 1, nside, 0.0, &ev_found,
+                   evals.data(), (lapack_complex_float *)evecs.data(), nside,
+                   nullptr);
+
+    
+
+
 }
