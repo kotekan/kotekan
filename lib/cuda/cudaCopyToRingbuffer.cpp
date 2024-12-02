@@ -146,8 +146,9 @@ cudaEvent_t cudaCopyToRingbuffer::execute(cudaPipelineState& pipestate,
         DEBUG("Copying metadata for frame {:d} to GPU array {:s}", gpu_frame_id, _gpu_mem_output);
         // Copy metadata (because we modify it)
         meta = std::make_shared<chordMetadata>(*meta);
-        assert(output_cursor % meta->sample_bytes() == 0);
-        meta->sample0_offset -= output_cursor / meta->sample_bytes();
+        assert(meta->offset_downsampling > 0);
+        assert(output_cursor * meta->offset_downsampling % meta->sample_bytes() == 0);
+        meta->sample0_offset -= output_cursor * meta->offset_downsampling / meta->sample_bytes();
         assert(meta->sample0_offset == 0);
         assert(meta->dims > 0);
         assert(in_buffer->frame_size % meta->sample_bytes() == 0);
