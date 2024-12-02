@@ -409,6 +409,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
 
     // Since we do not use a ring buffer we need to set `meta->sample0_offset`
     J_meta->sample0_offset = Tmin;
+    assert(J_meta->offset_downsampling == 1);
 
     assert(J_meta->nfreq >= 0);
     assert(J_meta->nfreq == J_meta->nfreq);
