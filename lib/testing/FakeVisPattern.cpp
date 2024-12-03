@@ -17,6 +17,7 @@
 #include <complex>   // for complex, operator*
 #include <cstdint>   // for uint32_t, uint16_t
 #include <exception> // for exception
+#include <lapacke.h> // for LAPACKE_cheevr, LAPACK_ROW_MAJOR
 #include <map>       // for map, map<>::mapped_type
 #include <math.h>    // for cosf, sinf
 #include <regex>     // for match_results<>::_Base_type
@@ -552,20 +553,37 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     std::vector<N2::cfloat> evecs;
     std::vector<float> evals;
     
-    vis_square.resize(frame.num_elements * frame.num_elements);
+    vis_square.resize(frame.num_elements * frame.num_elements, 0);
     evecs.resize(frame.num_elements * frame.num_ev);
     evals.resize(frame.num_elements);
-    int info;
-    int64_t nside;
 
-    LAPACKE_cheevr(LAPACK_COL_MAJOR, 'V', 'I', 'L', nside,
-                   (lapack_complex_float *)vis_square.data(),
-                   nside, 0.0, 0.0,
-                   nside - num_ev + 1, nside, 0.0, &ev_found,
-                   evals.data(), (lapack_complex_float *)evecs.data(), nside,
+    uint32_t vis_idx = 0;
+
+    for(uint32_t i = 0; i < frame.num_elements; i++) {
+        for(uint32_t j = i; j < num_elements; j++) {
+            vis_square[i * frame.num_elements + j] = frame.vis[vis_idx];
+            vis_idx++:
+        }
+    }
+
+
+    int info;
+    int64_t nside = frame.num_elements;
+
+    LAPACKE_cheevr(LAPACK_ROW_MAJOR, 'V', 'I', 'U', nside,
+                   (lapack_complex_float *)vis_square.data(), nside,
+                   0.0, 0.0, nside-frame.num_ev, nside, 
+                   0.0, &ev_found, evals.data(),
+                   (lapack_complex_float *)evecs.data(), nside,
                    nullptr);
 
-    
-
-
+    for(uint32_t i = 0; i < frame.num_ev; i++)
+    {
+        frame.eval[i] = evals[nside-i-1];
+        for(uint32_t j = 0; j < frame.num_elements; j++)
+        {
+            frame.evec[i*frame.num_elements + j]
+                = evecs[(nside-i-1)*frame.num_elements + j];
+        }
+    }
 }
