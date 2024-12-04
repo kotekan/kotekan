@@ -487,6 +487,7 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
 
     uint32_t num_dishes = tel.get_num_dishes();
+    uint32_t num_elements = frame.num_elements;
 
     double dut1 = tel.get_dut1();
     double dtai = tel.get_dtai();
@@ -507,8 +508,8 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     INFO("                   ERA: {:f} deg", era);
 
     int ind = 0;
-    for (uint32_t el_i = 0; el_i < frame.num_elements; el_i++) {
-        for (uint32_t el_j = el_i; el_j < frame.num_elements; el_j++) {
+    for (uint32_t el_i = 0; el_i < num_elements; el_i++) {
+        for (uint32_t el_j = el_i; el_j < num_elements; el_j++) {
 
             uint32_t dish_i = el_i % (num_dishes);
             uint32_t dish_j = el_j % (num_dishes);
@@ -553,22 +554,23 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     std::vector<N2::cfloat> evecs;
     std::vector<float> evals;
     
-    vis_square.resize(frame.num_elements * frame.num_elements, 0);
-    evecs.resize(frame.num_elements * frame.num_ev);
-    evals.resize(frame.num_elements);
+    vis_square.resize(num_elements * num_elements, 0);
+    evecs.resize(num_elements * frame.num_ev);
+    evals.resize(num_elements);
 
     uint32_t vis_idx = 0;
 
-    for(uint32_t i = 0; i < frame.num_elements; i++) {
+    for(uint32_t i = 0; i < num_elements; i++) {
         for(uint32_t j = i; j < num_elements; j++) {
-            vis_square[i * frame.num_elements + j] = frame.vis[vis_idx];
-            vis_idx++:
+            vis_square[i * num_elements + j] = frame.vis[vis_idx];
+            vis_idx++;
         }
     }
 
 
     int info;
-    int64_t nside = frame.num_elements;
+    int64_t nside = num_elements;
+    int ev_found;
 
     LAPACKE_cheevr(LAPACK_ROW_MAJOR, 'V', 'I', 'U', nside,
                    (lapack_complex_float *)vis_square.data(), nside,
@@ -580,10 +582,10 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     for(uint32_t i = 0; i < frame.num_ev; i++)
     {
         frame.eval[i] = evals[nside-i-1];
-        for(uint32_t j = 0; j < frame.num_elements; j++)
+        for(uint32_t j = 0; j < num_elements; j++)
         {
-            frame.evec[i*frame.num_elements + j]
-                = evecs[(nside-i-1)*frame.num_elements + j];
+            frame.evec[i*num_elements + j]
+                = evecs[(nside-i-1)*num_elements + j];
         }
     }
 }
