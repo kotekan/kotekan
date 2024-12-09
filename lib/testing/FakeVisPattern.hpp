@@ -303,5 +303,7 @@ private:
     double stokes_U;
     double stokes_V;
     double noise_var;
+    uint32_t n_rfi_ticks;
+    uint32_t n_lost_ticks;
 };
 #endif // FAKE_VIS_PATTERN

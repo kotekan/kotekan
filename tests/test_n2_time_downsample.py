@@ -27,8 +27,9 @@ global_params = {
     "telescope": {
         "name": "CHORDTelescope",
         "require_gps": False,
-        "inst_long": -119.62081125,
-        "inst_lat":    49.32075144444,
+        "inst_long_deg": -119.62081125,
+        "inst_lat_deg":    49.32075144444,
+        "inst_alt_deg":     90.0,
         "inst_orientation": [1, 0, 0, 0, 1, 0, 0, 0, 1],
         "dish_positions": [[0.0, 0.0, 0.0]],
         "updatable_config": "/earth_rotation_data"},

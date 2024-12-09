@@ -475,6 +475,8 @@ PointSourceVisPattern::PointSourceVisPattern(kotekan::Config& config,
     stokes_U = config.get_default<double>(path, "stokes_U", 0.0);
     stokes_V = config.get_default<double>(path, "stokes_V", 0.0);
     noise_var = config.get_default<double>(path, "noise_var", 0.01);
+    n_rfi_ticks = config.get_default<uint32_t>(path, "n_rfi_ticks", 0);
+    n_lost_ticks = config.get_default<uint32_t>(path, "n_lost_ticks", 0);
 }
 
 void PointSourceVisPattern::fill(VisFrameView& frame) {
@@ -483,6 +485,8 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
 
 void PointSourceVisPattern::fill(N2FrameView& frame) {
 
+    frame._metadata->n_valid_fpga_ticks_in_frame = frame._metadata->frame_length_fpga_ticks - n_rfi_ticks - n_lost_ticks;
+    frame._metadata->n_rfi_fpga_ticks = n_rfi_ticks;
 
     const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
 
@@ -556,7 +560,7 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     
     vis_square.resize(num_elements * num_elements, 0);
     evecs.resize(num_elements * frame.num_ev);
-    evals.resize(num_elements);
+    evals.resize(frame.num_ev);
 
     uint32_t vis_idx = 0;
 
@@ -571,21 +575,24 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     int info;
     int64_t nside = num_elements;
     int ev_found;
+    int isuppz[2*frame.num_ev];
 
-    LAPACKE_cheevr(LAPACK_ROW_MAJOR, 'V', 'I', 'U', nside,
+    info = LAPACKE_cheevr(LAPACK_ROW_MAJOR, 'V', 'I', 'U', nside,
                    (lapack_complex_float *)vis_square.data(), nside,
-                   0.0, 0.0, nside-frame.num_ev, nside, 
+                   0.0, 0.0, nside-frame.num_ev+1, nside, 
                    0.0, &ev_found, evals.data(),
-                   (lapack_complex_float *)evecs.data(), nside,
-                   nullptr);
+                   (lapack_complex_float *)evecs.data(), frame.num_ev,
+                   isuppz);
+
+    INFO("LAPACKE INFO = {}.  Found {} eigenvalues", info, ev_found);
 
     for(uint32_t i = 0; i < frame.num_ev; i++)
     {
-        frame.eval[i] = evals[nside-i-1];
+        frame.eval[i] = evals[frame.num_ev-i-1];
         for(uint32_t j = 0; j < num_elements; j++)
         {
             frame.evec[i*num_elements + j]
-                = evecs[(nside-i-1)*num_elements + j];
+                = evecs[frame.num_ev*j + (frame.num_ev-i-1)];
         }
     }
 }
