@@ -166,8 +166,10 @@ double CHORDTelescope::get_inst_lat_deg() const {
 std::array<double, 3> CHORDTelescope::get_sky_vec_in_dish_coords(
         double ra, double dec, double era) const {
 
-    double phi = M_PI * (ra - era);
-    double theta = M_PI * (90 - dec);
+    double deg2rad = M_PI / 180;
+
+    double phi = deg2rad * (ra - era);
+    double theta = deg2rad * (90 - dec);
 
     // unit vector pointing to ra/dec in spherical coordinates
     // fixed to the Earth.  phi=0 ~ Greenwich
@@ -175,26 +177,41 @@ std::array<double, 3> CHORDTelescope::get_sky_vec_in_dish_coords(
                           sin(phi) * sin(theta),
                           cos(theta)};
 
-    double clon = cos(M_PI * _inst_long_deg);
-    double slon = sin(M_PI * _inst_long_deg);
-    double clat = cos(M_PI * (90 - _inst_lat_deg));
-    double slat = sin(M_PI * (90 - _inst_lat_deg));
+    double clon = cos(deg2rad * _inst_long_deg);
+    double slon = sin(deg2rad * _inst_long_deg);
+    double clat = cos(deg2rad * (90 - _inst_lat_deg));
+    double slat = sin(deg2rad * (90 - _inst_lat_deg));
 
     double R_geocen_to_local[3][3] = {
         {-slon,       clon,      0},      // x: local East  in topocen coords.
         {-clon*clat, -slon*clat, slat},   // y: local North in topocen coords.
         { clon*slat,  slon*slat, clat}};  // z: local Up in topocen coords.
 
+    /*
+    double test_R[3][3];
+    for(int i = 0; i < 3; i++)
+        for(int j = 0; j<3; j++)
+        {
+            test_R1[i][j] = 0.0;
+            for(int k = 0; k < 3; k++)
+                test_R1[i][j] += R_geocen_to_local[i][j]
+                                    * R_geocen_to_local[j][i];
+        }
+    */
+
+
+
+
     double n_local_geoid[3] = {0, 0, 0};
     for(int i = 0; i<3; i++)
         for(int j = 0; j<3; j++) 
-            n_local_geoid[i] = R_geocen_to_local[i][j] * n_geocen[j];
+            n_local_geoid[i] += R_geocen_to_local[i][j] * n_geocen[j];
 
     std::array<double, 3> n_local = {0, 0, 0};
 
     for(int i = 0; i<3; i++)
         for(int j = 0; j<3; j++) 
-            n_local[i] = _inst_orientation[i][j] * n_local_geoid[j];
+            n_local[i] += _inst_orientation[i][j] * n_local_geoid[j];
 
     return n_local;
 }

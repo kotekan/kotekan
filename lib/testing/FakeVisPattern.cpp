@@ -506,10 +506,17 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     double f = tel.to_freq(frame.freq_id);
     double lambda = C / f;
 
+    /*
+    n[0] = 0.0;
+    n[1] = 0.0;
+    n[2] = 1.0;
+    */
+
     INFO("Making fake vis at t: {:d} s + {:d} ns",
             gps_time.tv_sec, gps_time.tv_nsec);
     INFO("                   f: {:d} = {:e} Hz", frame.freq_id, f);
     INFO("                   ERA: {:f} deg", era);
+    INFO("                   n: {:f} {:f} {:f}", n[0], n[1], n[2]);
 
     int ind = 0;
     for (uint32_t el_i = 0; el_i < num_elements; el_i++) {

@@ -2,6 +2,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 from future.builtins import *  # noqa  pylint: disable=W0401, W0614
 from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+import astropy.constants as const
 
 # === End Python 2/3 compatibility
 
@@ -12,7 +13,7 @@ from kotekan import runner
 
 downsamp_params = {
     "num_samples": 2,
-    "max_age": 8000.0,
+    "max_age": 10000.0,
 }
 
 fakevis_params = {
@@ -20,7 +21,7 @@ fakevis_params = {
     "wait": False,
     "num_frames": 11,
     "mode": "point_source",
-    "cadence": 401.0,
+    "cadence": 2.0,
     "ra": -118,
     "dec": 48,
     "stokes_I": 10.0,
@@ -34,7 +35,7 @@ fakevis_params = {
 
 global_params = {
     "num_elements": 8,
-    "num_ev": 4,
+    "num_ev": 8,
     "earth_rotation_data": {
         "kotekan_update_endpoint": "json",
         "DUT1": 0.0,
@@ -119,26 +120,63 @@ def test_time(n2_data):
         np.diff(time_s) == fakevis_params["cadence"] * downsamp_params["num_samples"]
     )
 
-def test_contents(n2_data):
+def test_vis(n2_data):
 
     n = global_params["num_elements"]
-    n_ev = global_params["num_ev"]
 
     # Reproduce expected fakeVis output
+
+    """
     model_vis = np.zeros(n * (n + 1) // 2, dtype=np.complex64)
     ind = 0
     for i in range(n):
         for j in range(i, n):
             model_vis[ind] = i + j * 1j
             ind += 1
-    model_evec = np.zeros(n_ev * n, dtype=np.complex64)
-    model_eval = np.zeros(n_ev, dtype=np.float32)
-    for i in range(n_ev):
-        model_eval[i] = i
-        for j in range(n):
-            model_evec[i * n + j] = i + 1j * j
+    """
 
-    # Averaging shouldn't change vis, eigenstuff
+    # Averaging shouldn't change vis
+
+    with open("vis_out.txt", "w") as f:
+        pass
+
+    for k, frame in enumerate(n2_data):
+    
+        model_vis = calc_vis_pointsource(frame.metadata.frame_start_time_ns,
+                                         frame.metadata.freq_id * 1.6e9/8192)
+
+
+        with open("vis_out.txt", "a") as f:
+            f.write("{} frame vis:\n".format(k))
+            idx = 0
+            for i in range(n):
+                line_vals = ["-------"]*i + ["{}".format(x)
+                                       for x in frame.vis[idx:idx+n-i]]
+                idx += n-i
+                f.write(" ".join(line_vals) + "\n")
+            f.write("{} model vis:\n".format(k))
+            idx = 0
+            for i in range(n):
+                line_vals = ["-------"]*i + ["{}".format(x)
+                                       for x in model_vis[idx:idx+n-i]]
+                idx += n-i
+                f.write(" ".join(line_vals) + "\n")
+
+
+        assert np.all(np.isclose(frame.vis, model_vis,
+                                 atol=0.0, rtol=1.0e-6))
+        assert frame.erms == 1.0
+
+        # weights get an extra factor of nsamp
+        assert np.all(frame.weight == downsamp_params["num_samples"])
+
+
+def test_evec(n2_data):
+
+    n = global_params["num_elements"]
+    n_ev = global_params["num_ev"]
+
+    # Averaging shouldn't change eigenstuff
 
     frame_idx = 0
 
@@ -146,9 +184,12 @@ def test_contents(n2_data):
         pass
 
     for frame in n2_data:
+        model_vis = calc_vis_pointsource(frame.metadata.frame_start_time_ns,
+                                         frame.metadata.freq_id * 1.6e9/8192)
 
-        num_elements = frame.metadata.num_elements
-        num_ev = frame.metadata.num_ev
+        model_eval, model_evec = calc_eig_from_vis(model_vis)
+
+        """
         vis_square = np.zeros((num_elements, num_elements), dtype=np.complex64)
         idx = 0
         for i in range(num_elements):
@@ -176,16 +217,93 @@ def test_contents(n2_data):
                 f.write("{} {} {} {} {}\n".format(frame_idx, k, res,
                                             np.sqrt((np.abs(evec_k)**2).sum()),
                                             frame.eval[k]))
+        """
+        with open("ev_out.txt", "a") as f:
+            for k in range(n_ev):
+                f.write("{} {} model-ev {} frame-ev {}\n".format(
+                    frame_idx, k, model_eval[k], frame.eval[k]))
 
 
 
-        # assert np.all(frame.vis == model_vis)
-        # assert np.all(frame.evec == model_evec)
-        # assert np.all(frame.eval == model_eval)
-        # assert frame.erms == 1.0
-
+        assert np.all(isclose_sym(frame.eval, model_eval,
+                                  atol=2.0e-5, rtol=1.0e-6))
+        # assert np.all(np.isclose(frame.evec, model_evec.flat,
+        #                          atol=1.0e-4, rtol=1.0e-4))
         frame_idx += 1
 
-    # weights get an extra factor of nsamp
-    for frame in n2_data:
-        assert np.all(frame.weight == downsamp_params["num_samples"])
+
+def calc_sky_vec(time_ns):
+    pass
+
+
+def calc_eig_from_vis(vis):
+
+    num_el = global_params["num_elements"]
+    vis_square = np.empty((num_el, num_el), dtype=vis.dtype)
+
+    idx = 0
+    for i in range(num_el):
+        for j in range(i, num_el):
+            vis_square[i, j] = vis[idx]
+            vis_square[j, i] = vis[idx].conj()
+            idx += 1
+
+
+    eigval, eigvec = np.linalg.eigh(vis_square)
+
+    num_ev = global_params['num_ev']
+
+    return eigval[-num_ev:][::-1], eigvec[:, -num_ev:][:, ::-1].T
+
+
+def calc_vis_pointsource(time_ns, freq_Hz):
+
+    idx = 0
+
+    num_el = global_params["num_elements"]
+
+    tel_params = global_params["telescope"]
+
+    num_dishes = len(tel_params["dish_positions"])
+
+    n_source = [0,0,1]
+
+    lambda_m = const.c.to_value("m/s") / freq_Hz
+
+    vis = np.empty((num_el*(num_el+1))//2, dtype=np.complex64)
+
+    for el_i in range(num_el):
+        for el_j in range(el_i, num_el):
+            dish_i = el_i % num_dishes
+            dish_j = el_j % num_dishes
+            pol_i = el_i // num_dishes
+            pol_j = el_j // num_dishes
+
+            x_i = np.array(tel_params["dish_positions"][dish_i])
+            x_j = np.array(tel_params["dish_positions"][dish_j])
+            u_ij = (x_i - x_j) / lambda_m
+
+            phase = 2*np.pi * (u_ij * n_source).sum()
+
+            power = 0.0
+            if pol_i == 0 and pol_j == 0:
+                power = fakevis_params["stokes_I"]\
+                            + fakevis_params["stokes_Q"]
+            elif pol_i == 1 and pol_j == 1:
+                power = fakevis_params["stokes_I"]\
+                            - fakevis_params["stokes_Q"]
+            elif pol_i == 0 and pol_j == 1:
+                power = fakevis_params['stokes_U']\
+                            + 1j*fakevis_params['stokes_V']
+            elif pol_i == 1 and pol_j == 0:
+                power = fakevis_params['stokes_U']\
+                            - 1j*fakevis_params['stokes_V']
+
+            vis[idx] = np.exp(1j * phase) * power
+            idx += 1
+
+    return vis
+
+def isclose_sym(a, b, atol=0.0, rtol=1.0e-6):
+    return (np.isclose(a, b, atol=atol, rtol=rtol)
+            | np.isclose(b, a, atol=atol, rtol=rtol))
