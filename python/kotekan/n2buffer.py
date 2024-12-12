@@ -52,11 +52,11 @@ class N2Buffer(object):
 
         meta_size = ctypes.sizeof(N2Metadata)
 
-        print("Loading N2Buffer")
-        print("File size: {:d}".format(len(buffer)))
-        print("buffer size: {:d}".format(len(self._buffer)))
-        print("meta size: {:d}".format(meta_size))
-        print("data size: {:d}".format(len(self._buffer) - meta_size))
+        # print("Loading N2Buffer")
+        # print("File size: {:d}".format(len(buffer)))
+        # print("buffer size: {:d}".format(len(self._buffer)))
+        # print("meta size: {:d}".format(meta_size))
+        # print("data size: {:d}".format(len(self._buffer) - meta_size))
 
         if len(self._buffer) < meta_size:
             raise ValueError("Buffer too small to contain metadata.")

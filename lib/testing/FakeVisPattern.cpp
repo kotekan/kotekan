@@ -514,8 +514,11 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
 
     INFO("Making fake vis at t: {:d} s + {:d} ns",
             gps_time.tv_sec, gps_time.tv_nsec);
+    INFO("     telescope dt_ns: {}", tel.seq_length_nsec());
+    INFO("          start tick: {}", frame.fpga_start_tick);
+    INFO("          Frame time: {:d} ns", frame.frame_start_time_ns);
     INFO("                   f: {:d} = {:e} Hz", frame.freq_id, f);
-    INFO("                   ERA: {:f} deg", era);
+    INFO("                   ERA: {:.10f} deg", era);
     INFO("                   n: {:f} {:f} {:f}", n[0], n[1], n[2]);
 
     int ind = 0;

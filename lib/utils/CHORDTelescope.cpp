@@ -38,6 +38,12 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config,
         throw std::runtime_error("The system requires a GPS time, but none was found.");
     }
 
+    double sampling_rate = config.get_default<double>(path, "sampling_rate_Hz",
+                                                      3.2e9);
+    uint64_t fft_length = config.get_default<uint64_t>(path, "fft_length",
+                                                       16384);
+    dt_ns = (GIGA * fft_length) / sampling_rate;
+
     _inst_long_deg = config.get<double>(path, "inst_long_deg");
     _inst_lat_deg = config.get<double>(path, "inst_lat_deg");
     _inst_alt_deg = config.get<double>(path, "inst_alt_deg");
@@ -177,6 +183,8 @@ std::array<double, 3> CHORDTelescope::get_sky_vec_in_dish_coords(
                           sin(phi) * sin(theta),
                           cos(theta)};
 
+    INFO("n_geocen: {} {} {}", n_geocen[0], n_geocen[1], n_geocen[2]);
+
     double clon = cos(deg2rad * _inst_long_deg);
     double slon = sin(deg2rad * _inst_long_deg);
     double clat = cos(deg2rad * (90 - _inst_lat_deg));
@@ -186,6 +194,16 @@ std::array<double, 3> CHORDTelescope::get_sky_vec_in_dish_coords(
         {-slon,       clon,      0},      // x: local East  in topocen coords.
         {-clon*clat, -slon*clat, slat},   // y: local North in topocen coords.
         { clon*slat,  slon*slat, clat}};  // z: local Up in topocen coords.
+    
+    INFO("R_geocen_to_topocen: {} {} {}", R_geocen_to_local[0][0],
+                                          R_geocen_to_local[0][1],
+                                          R_geocen_to_local[0][2]);
+    INFO("                     {} {} {}", R_geocen_to_local[1][0],
+                                          R_geocen_to_local[1][1],
+                                          R_geocen_to_local[1][2]);
+    INFO("                     {} {} {}", R_geocen_to_local[2][0],
+                                          R_geocen_to_local[2][1],
+                                          R_geocen_to_local[2][2]);
 
     /*
     double test_R[3][3];

@@ -3,6 +3,9 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from future.builtins import *  # noqa  pylint: disable=W0401, W0614
 from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 import astropy.constants as const
+import astropy.units as units
+import astropy.time
+import erfa
 
 # === End Python 2/3 compatibility
 
@@ -11,8 +14,24 @@ import numpy as np
 
 from kotekan import runner
 
+obs_start_time = astropy.time.Time('2024-12-11 00:00:00', scale='utc')
+
+t_gps_0 = astropy.time.Time('1980-01-06 00:00:00', scale='utc')
+
+def calc_dtai(t):
+    
+    tdate = t.ymdhms
+    return erfa.dat(tdate.year, tdate.month, tdate.day, 0.0)
+
+dut1 = float(obs_start_time.delta_ut1_utc)
+dtai = float(calc_dtai(obs_start_time))
+
+t0_nanosec = int((obs_start_time - t_gps_0).to_value('ns'))
+t0_sec = int((obs_start_time - t_gps_0).to_value('s'))
+
+
 downsamp_params = {
-    "num_samples": 2,
+    "num_samples": 1,
     "max_age": 10000.0,
 }
 
@@ -22,6 +41,8 @@ fakevis_params = {
     "num_frames": 11,
     "mode": "point_source",
     "cadence": 2.0,
+    "start_time": t0_sec,
+    "sleep_after": 1.0,
     "ra": -118,
     "dec": 48,
     "stokes_I": 10.0,
@@ -29,8 +50,8 @@ fakevis_params = {
     "stokes_U": 0.0,
     "stokes_V": 0.0,
     "noise_var": 0.1,
-    "n_rfi_ticks": 1,
-    "n_lost_ticks": 1,
+    "n_rfi_ticks": 0,
+    "n_lost_ticks": 0,
 }
 
 global_params = {
@@ -38,8 +59,8 @@ global_params = {
     "num_ev": 8,
     "earth_rotation_data": {
         "kotekan_update_endpoint": "json",
-        "DUT1": 0.0,
-        "DTAI": 0.0},
+        "DUT1": dut1,
+        "DTAI": dtai},
     "telescope": {
         "name": "CHORDTelescope",
         "require_gps": False,
@@ -50,10 +71,11 @@ global_params = {
         "dish_positions": [[0.0, 0.0, 0.0],
                            [1.0, 0.0, 0.0],
                            [0.0, 1.0, 0.0],
-                           [1.0, 1.0, 0.0]],
+                           [1.0, 1.0, 0.0]
+                           ],
         "updatable_config": "/earth_rotation_data"},
     "gps_time": {
-        "frame0_nano": 0},
+        "frame0_nano": t0_nanosec},
 }
 
 
@@ -88,13 +110,13 @@ def test_structure(n2_data):
         assert frame.metadata.num_ev == global_params["num_ev"]
 
     # Check that we have the expected number of samples
-    nsamp = fakevis_params["num_frames"] // downsamp_params["num_samples"]
+    nsamp = (fakevis_params["num_frames"]-1) // downsamp_params["num_samples"]
     assert len(n2_data) == nsamp
 
 
 def test_metadata(n2_data):
 
-    input_frame_length = int(800e6 / 2048 * fakevis_params["cadence"])
+    input_frame_length = int(3.2e9 / 16384 * fakevis_params["cadence"])
     frame_length = input_frame_length * downsamp_params["num_samples"]
     frame_total = (input_frame_length - fakevis_params["n_rfi_ticks"]
             - fakevis_params["n_lost_ticks"]) * downsamp_params["num_samples"]
@@ -113,12 +135,19 @@ def test_time(n2_data):
 
     time_ns = np.array([v.metadata.frame_start_time_ns for v in n2_data])
     time_s = time_ns // 1000000000
-    print("time check", time_ns, time_s)
+    # print("time check", time_ns, time_s)
+
+    dt_downsamp = fakevis_params['cadence'] * downsamp_params['num_samples']
 
     # Check downsampled cadence
-    assert np.all(
-        np.diff(time_s) == fakevis_params["cadence"] * downsamp_params["num_samples"]
-    )
+    assert np.all(np.diff(time_s) == dt_downsamp)
+
+    n_downsamp = (fakevis_params['num_frames'] - 1
+                  ) // downsamp_params['num_samples']
+
+    assert np.all(time_s == ((obs_start_time + np.arange(n_downsamp)
+                              * dt_downsamp * units.second)
+                             - t_gps_0).to_value('s').astype(int))
 
 def test_vis(n2_data):
 
@@ -142,7 +171,10 @@ def test_vis(n2_data):
 
     for k, frame in enumerate(n2_data):
     
-        model_vis = calc_vis_pointsource(frame.metadata.frame_start_time_ns,
+        model_vis = calc_vis_pointsource(frame.metadata.frame_start_time_ns
+                                         + int(0.5 * fakevis_params['cadence']
+                                           * 1e9)
+                                           * downsamp_params['num_samples'],
                                          frame.metadata.freq_id * 1.6e9/8192)
 
 
@@ -163,8 +195,8 @@ def test_vis(n2_data):
                 f.write(" ".join(line_vals) + "\n")
 
 
-        assert np.all(np.isclose(frame.vis, model_vis,
-                                 atol=0.0, rtol=1.0e-6))
+        assert np.all(isclose_sym(frame.vis, model_vis,
+                                  atol=0.0, rtol=1.0e-6))
         assert frame.erms == 1.0
 
         # weights get an extra factor of nsamp
@@ -184,7 +216,10 @@ def test_evec(n2_data):
         pass
 
     for frame in n2_data:
-        model_vis = calc_vis_pointsource(frame.metadata.frame_start_time_ns,
+        model_vis = calc_vis_pointsource(frame.metadata.frame_start_time_ns
+                                         + int(0.5 * fakevis_params['cadence']
+                                           * 1e9)
+                                           * downsamp_params['num_samples'],
                                          frame.metadata.freq_id * 1.6e9/8192)
 
         model_eval, model_evec = calc_eig_from_vis(model_vis)
@@ -232,10 +267,6 @@ def test_evec(n2_data):
         frame_idx += 1
 
 
-def calc_sky_vec(time_ns):
-    pass
-
-
 def calc_eig_from_vis(vis):
 
     num_el = global_params["num_elements"]
@@ -266,7 +297,11 @@ def calc_vis_pointsource(time_ns, freq_Hz):
 
     num_dishes = len(tel_params["dish_positions"])
 
-    n_source = [0,0,1]
+    print("Modeling vis at:", time_ns, "ns")
+
+    n_source = calc_n_source(time_ns)
+
+    print("n_source:", n_source)
 
     lambda_m = const.c.to_value("m/s") / freq_Hz
 
@@ -303,6 +338,46 @@ def calc_vis_pointsource(time_ns, freq_Hz):
             idx += 1
 
     return vis
+
+def calc_n_source(time_ns):
+
+    t = time_ns * units.ns + t_gps_0
+
+    tel_params = global_params['telescope']
+    
+    era = t.earth_rotation_angle('tio').degree
+
+    print("ERA:", era, "deg")
+
+    deg2rad = np.pi/180
+
+    phi = deg2rad * (fakevis_params['ra'] - era)
+    theta = deg2rad * (90 - fakevis_params['dec'])
+
+    n_geocen = np.array([np.cos(phi) * np.sin(theta),
+                         np.sin(phi) * np.sin(theta),
+                         np.cos(theta)])
+
+    # print("n_geocen", n_geocen)
+
+    clon = np.cos(deg2rad * tel_params['inst_long_deg'])
+    slon = np.sin(deg2rad * tel_params['inst_long_deg'])
+    clat = np.cos(deg2rad * (90 - tel_params['inst_lat_deg']))
+    slat = np.sin(deg2rad * (90 - tel_params['inst_lat_deg']))
+
+    R_geocen_to_topocen = np.array([
+        [-slon,         clon, 0.0],
+        [-clon*clat, -slon*clat, slat],
+        [ clon*slat,  slon*slat, clat]])
+
+    # print("R:", R_geocen_to_topocen[0])
+    # print("  ", R_geocen_to_topocen[1])
+    # print("  ", R_geocen_to_topocen[2])
+
+    n_topocen = (R_geocen_to_topocen[:, :] * n_geocen[None, :]).sum(axis=1)
+
+    return n_topocen
+    
 
 def isclose_sym(a, b, atol=0.0, rtol=1.0e-6):
     return (np.isclose(a, b, atol=atol, rtol=rtol)

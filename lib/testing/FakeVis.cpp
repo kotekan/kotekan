@@ -92,7 +92,8 @@ void FakeVis::main_thread() {
     int64_t time_ns = (uint64_t) start_time * 1000000000;
 
     // Calculate the time increments in seq and ctime
-    int64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
+    //int64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
+    int64_t delta_seq = (uint64_t)(3.2e9 / 16384 * cadence);
     int64_t delta_ns = (uint64_t)(cadence * 1000000000);
     DEBUG("delta_seq = {:d}, delta_ns = {:d}", delta_seq, delta_ns);
 
