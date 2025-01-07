@@ -182,16 +182,6 @@ jobs:
           ccache-full-build-2404
           ccache-base-build-2404
 
-    - name: Free disk space
-      if: ${{ !env.ACT }} # Don't free up if running locally
-      run: |
-          df -h
-          docker rmi $(docker image ls -aq)
-          df -h
-          sudo apt-get clean
-          sudo apt-get autoclean
-          df -h
-
     - name: Build kotekan
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
@@ -574,16 +564,6 @@ jobs:
           ccache-full-build-2204
           ccache-base-build-2204
 
-    - name: Free disk space
-      if: ${{ !env.ACT }} # Don't free up if running locally
-      run: |
-          df -h
-          docker rmi $(docker image ls -aq)
-          df -h
-          sudo apt-get clean
-          sudo apt-get autoclean
-          df -h
-
     - name: Build kotekan
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2204/ ${{ needs.build-docker-2204.outputs.docker_img_name }})
@@ -870,16 +850,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-
-    - name: Free disk space
-      if: ${{ !env.ACT }} # Don't free up if running locally
-      run: |
-          df -h
-          docker rmi $(docker image ls -aq)
-          df -h
-          sudo apt-get clean
-          sudo apt-get autoclean
-          df -h
 
     - name: Cache ccache files
       uses: actions/cache@v1
