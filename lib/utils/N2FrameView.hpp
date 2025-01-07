@@ -59,8 +59,6 @@ public:
     std::map<N2Field, std::pair<size_t, size_t>> frame_layout;
 
 
-    /**** BEGIN visFrameView stuff that we may want to deprecate ****/
-    
     /// The sequence number of the first FPGA frame integrated into this
     /// visibility frame (time<0> in VisFrameView)
     uint64_t& fpga_start_tick;
@@ -72,10 +70,14 @@ public:
     uint64_t& n_valid_fpga_ticks_in_frame;
     /// The number of lost samples due to RFI (rfi_total)
     uint64_t& n_rfi_fpga_ticks;
-    /**** END ****/
 
     /// ID of the frequency bin
     const uint32_t& freq_id;
+    /// Physical frequency of bin
+    const double& freq_Hz;
+
+    ///Earth Rotation Angle of phase center
+    double& era_deg;
 
     /// View of the visibility data.
     const gsl::span<N2::cfloat> vis;

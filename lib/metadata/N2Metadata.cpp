@@ -2,7 +2,7 @@
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, N2Metadata);
 N2Metadata::N2Metadata() :
-    N2MetadataFormat{0, 0, 0, 0, 0, 0, 0, 0, 0, 0} {
+    N2MetadataFormat{0, 0, 0, 0, 0, 0.0, 0.0, 0, 0, 0, 0, 0} {
     ;
 }
 
@@ -29,6 +29,8 @@ size_t N2Metadata::set_from_bytes(const char* bytes, size_t length) {
     n_rfi_fpga_ticks = fmt->n_rfi_fpga_ticks;
 
     freq_id = fmt->freq_id; // this is an int in chordMetadata, maybe change later
+    freq_Hz = fmt->freq_Hz;
+    era_deg = fmt->era_deg;
 
     num_elements = fmt->num_elements;
     num_prod = fmt->num_prod;
@@ -50,6 +52,8 @@ size_t N2Metadata::serialize(char* bytes) {
     fmt->n_rfi_fpga_ticks = n_rfi_fpga_ticks;
 
     fmt->freq_id = freq_id; // this is an int in chordMetadata, maybe change later
+    fmt->freq_Hz = freq_Hz;
+    fmt->era_deg = era_deg;
 
     fmt->num_elements = num_elements;
     fmt->num_prod = num_prod;

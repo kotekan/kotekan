@@ -27,7 +27,11 @@ struct N2MetadataFormat {
 
     /// ID of the frequency bin
     uint32_t freq_id; // this is an int in chordMetadata, maybe change later
+    /// Physical frequency in Hz
+    double freq_Hz;
 
+    /// Earth Rotation Angle of phase center
+    double era_deg;
 
     /// The sequence number of the first FPGA frame integrated into this visibility frame
     uint64_t fpga_start_tick;

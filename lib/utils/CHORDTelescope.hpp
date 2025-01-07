@@ -50,6 +50,23 @@ public:
     double get_dtai() const;
     std::array<double, 3> get_sky_vec_in_dish_coords(double ra, double dec,                                                 double era) const;
 
+    std::array<double, 3> get_pointing_vec_in_tel_coords() const;
+    std::array<double, 3> topocen_vec_to_tel_vec(
+            const std::array<double, 3>& v_topo) const;
+    std::array<double, 3> tel_vec_to_topocen_vec(
+            const std::array<double, 3>& v_tel) const;
+    std::array<double, 3> geocen_vec_to_topocen_vec(
+            const std::array<double, 3>& v_geo) const;
+    std::array<double, 3> topocen_vec_to_geocen_vec(
+            const std::array<double, 3>& v_topo) const;
+    std::array<double, 3> cirs_vec_to_geocen_vec(
+        const std::array<double, 3>& v_cirs, double era_deg) const;
+    std::array<double, 3> geocen_vec_to_cirs_vec(
+        const std::array<double, 3>& v_geocen, double era_deg) const;
+
+    void fringestop_phases_1d(double freq_Hz, double era_deg,
+        double era_deg0, std::vector<std::complex<double>>& phases) const;
+
     // Implementations of the required frequency mapping functions
     // TODO: These are not necessary for CHORD and should maybe be shunted to
     // a different part of the inheritance tree.
@@ -112,6 +129,10 @@ protected:
     // Matrix to transform from local topocentric coordinates to the 
     // dish coordinate system.
     double _inst_orientation[3][3];
+
+    // Matrix to transform vectors from geocentric coordinates (ECEF) to
+    // local topocentric coordinates
+    double _R_geo_to_topo[3][3];
 
     // Dish positions in dish coordinate system.
     std::vector<std::array<double, 3>> _dish_positions;

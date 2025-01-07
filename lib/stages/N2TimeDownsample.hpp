@@ -62,6 +62,8 @@ private:
 
     // Number of samples to combine
     int nsamp;
+    
+    uint32_t num_bins_per_rotation;
 
     // Maximum age of data
     float max_age;

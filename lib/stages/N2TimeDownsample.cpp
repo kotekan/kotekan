@@ -44,8 +44,11 @@ N2TimeDownsample::N2TimeDownsample(Config& config,
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
-    // Get the number of time samples to combine
+    // Get the number of bins per earth rotation (sidereal day)
+    num_bins_per_rotation = config.get_default<uint32_t>(unique_name,
+                        "num_bins_per_rotation", 86400);
     nsamp = config.get_default<int>(unique_name, "num_samples", 2);
+    
     max_age = config.get_default<float>(unique_name, "max_age", 120.0);
 
     num_elements = 0;
@@ -60,13 +63,23 @@ void N2TimeDownsample::main_thread() {
     unsigned int wdw_pos = 0; // the current position within the accumulation window in FPGA counts
     uint64_t wdw_end = 0;     // the end of the accumulation window in FPGA counts
     unsigned int wdw_len = 0; // the length of the accumulation window in FPGA counts
-    uint64_t fpga_seq_start = 0;
     int32_t freq_id = -1; // needs to be set by first frame
+    double freq_Hz = -1.0;
+
+    double era_target = -1.0;
+    double wdw_len_era = -1.0;
 
     auto& skipped_frame_counter = Metrics::instance().add_counter(
         "kotekan_timedownsample_skipped_frame_total", unique_name, {"freq_id", "reason"});
     
     const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
+
+    int num_dishes = tel.get_num_dishes();
+    std::vector<std::complex<double>> fringe_phase(num_dishes, 1.0);
+
+    uint64_t seq_len_ns = tel.seq_length_nsec();
+
+    double seq_to_era = 1.0e-9 * seq_len_ns * 360.0 * 1.00273781191135448 / 86400.0;
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
@@ -75,7 +88,8 @@ void N2TimeDownsample::main_thread() {
         }
 
         N2FrameView frame(in_buf, frame_id);
-        fpga_seq_start = frame.fpga_start_tick;
+        uint64_t fpga_seq_start = frame.fpga_start_tick;
+        
         DEBUG("Input frame - num_elements: {:d}", frame.num_elements);
 
         // The first frame
@@ -85,14 +99,22 @@ void N2TimeDownsample::main_thread() {
                 in_buf->mark_frame_empty(unique_name, frame_id++);
                 continue;
             }
+
             // Get parameters from first frame
             freq_id = frame.freq_id;
+            freq_Hz = frame.freq_Hz;
             nprod = frame.num_prod;
             num_elements = frame.num_elements;
             num_eigenvectors = frame.num_ev;
+            
             // Set the parameters of the accumulation window
             wdw_len = nsamp * frame.frame_length_fpga_ticks;
             wdw_end = fpga_seq_start + wdw_len;
+
+            wdw_len_era = wdw_len * seq_to_era;
+            era_target = frame.era_deg
+                         - 0.5 * frame.frame_length_fpga_ticks*seq_to_era
+                         + 0.5 * wdw_len_era;
         }
 
         // Check that this is the frequency we care about,
@@ -104,6 +126,8 @@ void N2TimeDownsample::main_thread() {
         // Get position within accumulation window
         wdw_pos = (fpga_seq_start % wdw_len) / frame.frame_length_fpga_ticks;
         DEBUG("wdw_pos: {:d}; wdw_end: {:d}", wdw_pos, wdw_end);
+        DEBUG("ERA: {:f}; ERA_target: {:f} ERA_wdw_len: {:f}", frame.era_deg,
+                era_target, wdw_len_era);
 
         // Don't start accumulating unless at the start of window
         if (nframes == 0 and wdw_pos != 0) {
@@ -117,6 +141,11 @@ void N2TimeDownsample::main_thread() {
         if (nframes == 0) { 
             // Update window
             wdw_end = fpga_seq_start + wdw_len;
+            era_target = frame.era_deg
+                         - 0.5 * frame.frame_length_fpga_ticks*seq_to_era
+                         + 0.5 * wdw_len_era;
+            if(era_target > 360)
+                era_target -= 360;
 
             // Wait for an empty frame
             if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
@@ -125,12 +154,29 @@ void N2TimeDownsample::main_thread() {
 
             // Copy frame into output buffer
             auto output_frame =
-                N2FrameView::copy_frame(in_buf, frame_id, out_buf, output_frame_id);
+                N2FrameView::copy_frame(in_buf, frame_id,
+                                        out_buf, output_frame_id);
 
             // Increase the total frame length
             output_frame.frame_length_fpga_ticks *= nsamp;
 
-            // We will accumulate inverse weights, i.e. variance
+            // Set the target ERA.
+            output_frame.era_deg = era_target;
+
+            //tel.fringestop_phases_1d(freq_Hz, frame.era_deg,
+            //                         era_target, fringe_phase);
+
+            size_t idx = 0;
+            for(size_t i = 0; i < num_elements; i++) {
+                for(size_t j = i; j < num_elements; j++) {
+
+                    size_t d_i = i % num_dishes;
+                    size_t d_j = j % num_dishes;
+                    output_frame.vis[idx] *= 
+                        fringe_phase[d_i] * std::conj(fringe_phase[d_j]);
+                    idx++;
+                }
+            }
             for (size_t i = 0; i < nprod; i++) {
                 output_frame.weight[i] = 1. / output_frame.weight[i];
             }
@@ -145,10 +191,30 @@ void N2TimeDownsample::main_thread() {
 
         // Check we are still in accumulation window
         if (fpga_seq_start < wdw_end) {
+            
+            //Recalculate fringestop phases
+            //tel.fringestop_phases_1d(freq_Hz, frame.era_deg,
+            //                         era_target, fringe_phase);
+
             // Accumulate contents of buffer
+            size_t idx = 0;
+            for(size_t i = 0; i < num_elements; i++) {
+                for(size_t j = i; j < num_elements; j++) {
+
+                    size_t d_i = i % num_dishes;
+                    size_t d_j = j % num_dishes;
+
+                    std::complex<double> w_doub = fringe_phase[d_i]
+                                        * std::conj(fringe_phase[d_j]);
+                    N2::cfloat w_fs{w_doub.real(), w_doub.imag()};
+
+                    output_frame.vis[idx] += w_fs * frame.vis[idx];
+                    idx++;
+                }
+            }
+            
+            // average inverse weights, i.e. variance
             for (size_t i = 0; i < nprod; i++) {
-                output_frame.vis[i] += frame.vis[i];
-                // average inverse weights, i.e. variance
                 output_frame.weight[i] += 1. / frame.weight[i];
             }
             for (uint32_t i = 0; i < num_eigenvectors; i++) {

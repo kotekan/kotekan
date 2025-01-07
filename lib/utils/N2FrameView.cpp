@@ -19,6 +19,9 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     n_rfi_fpga_ticks(_metadata->n_rfi_fpga_ticks), 
 
     freq_id(_metadata->freq_id),
+    freq_Hz(_metadata->freq_Hz),
+
+    era_deg(_metadata->era_deg),
 
     vis(bind_span<N2::cfloat>(_frame, frame_layout[N2Field::vis])),
     weight(bind_span<float>(_frame, frame_layout[N2Field::weight])),

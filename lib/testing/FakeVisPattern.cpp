@@ -505,6 +505,9 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
 
     double f = tel.to_freq(frame.freq_id);
     double lambda = C / f;
+    
+    frame._metadata->freq_Hz = f;
+    frame._metadata->era_deg = era;
 
     /*
     n[0] = 0.0;

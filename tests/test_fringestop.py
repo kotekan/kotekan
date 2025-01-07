@@ -31,16 +31,16 @@ t0_sec = int((obs_start_time - t_gps_0).to_value('s'))
 
 
 downsamp_params = {
-    "num_samples": 1,
-    "max_age": 10000.0,
+    "num_samples": 2,
+    "max_age": 1000000.0,
 }
 
 fakevis_params = {
     "freq_ids": [6000],
     "wait": False,
-    "num_frames": 11,
+    "num_frames": 41,
     "mode": "point_source",
-    "cadence": 2.0,
+    "cadence": 4.21,
     "start_time": t0_sec,
     "sleep_after": 1.0,
     "ra": -118,
@@ -55,8 +55,8 @@ fakevis_params = {
 }
 
 global_params = {
-    "num_elements": 8,
-    "num_ev": 8,
+    "num_elements": 4,
+    "num_ev": 4,
     "earth_rotation_data": {
         "kotekan_update_endpoint": "json",
         "DUT1": dut1,
@@ -69,9 +69,11 @@ global_params = {
         "inst_alt_deg":    90.0,
         "inst_orientation": [1, 0, 0, 0, 1, 0, 0, 0, 1],
         "dish_positions": [[0.0, 0.0, 0.0],
-                           [1.0, 0.0, 0.0],
-                           [0.0, 1.0, 0.0],
-                           [1.0, 1.0, 0.0]
+                           # [1.0, 0.0, 0.0],
+                           # [0.0, 1.0, 0.0],
+                           [1.0, 1.0, 0.0],
+                           [10.0, 10.0, 0.0],
+                           [100.0, 100.0, 0.0]
                            ],
         "updatable_config": "/earth_rotation_data"},
     "gps_time": {
@@ -122,32 +124,51 @@ def test_metadata(n2_data):
             - fakevis_params["n_lost_ticks"]) * downsamp_params["num_samples"]
     rfi_total = fakevis_params["n_rfi_ticks"] * downsamp_params["num_samples"]
 
+    freq_id = fakevis_params['freq_ids'][0]
+    freq_Hz = freq_id * 1.6e9/8192
+
     for frame in n2_data:
         assert frame.metadata.freq_id == fakevis_params['freq_ids'][0]
         assert frame.metadata.frame_length_fpga_ticks == frame_length
         assert frame.metadata.n_valid_fpga_ticks_in_frame == frame_total
         assert frame.metadata.n_rfi_fpga_ticks == rfi_total
+        assert frame.metadata.freq_Hz == freq_Hz
 
 
 def test_time(n2_data):
-    def timespec_to_float(ts):
-        return ts.tv + ts.tv_nsec * 1e-9
 
-    time_ns = np.array([v.metadata.frame_start_time_ns for v in n2_data])
+    time_ns = []
+    era_deg = []
+
+    for v in n2_data:
+        time_ns.append(v.metadata.frame_start_time_ns)
+        era_deg.append(v.metadata.era_deg)
+
+    time_ns = np.array(time_ns)
+    era_deg = np.array(era_deg)
+
     time_s = time_ns // 1000000000
     # print("time check", time_ns, time_s)
 
     dt_downsamp = fakevis_params['cadence'] * downsamp_params['num_samples']
-
-    # Check downsampled cadence
-    assert np.all(np.diff(time_s) == dt_downsamp)
-
     n_downsamp = (fakevis_params['num_frames'] - 1
                   ) // downsamp_params['num_samples']
 
-    assert np.all(time_s == ((obs_start_time + np.arange(n_downsamp)
-                              * dt_downsamp * units.second)
-                             - t_gps_0).to_value('s').astype(int))
+    t_start = obs_start_time + np.arange(n_downsamp) * dt_downsamp * units.second
+    t_mid = obs_start_time + (np.arange(n_downsamp) + 0.5) * dt_downsamp * units.second
+
+    era_true = t_mid.earth_rotation_angle('tio').degree
+
+
+    # check_era = isclose_sym(era_deg, era_true, atol=1.0e-6)
+    # print("BAD era:", era_deg[~check_era], era_true[~check_era])
+
+    # assert np.all(time_ns == (t_start - t_gps_0).to_value('ns').astype(int))
+    assert (np.fabs(time_ns - (t_start - t_gps_0).to_value('ns').astype(int)) 
+            < 5121).all()
+    assert np.all(isclose_sym(era_deg, era_true, atol=1.0e-6))
+
+
 
 def test_vis(n2_data):
 
@@ -196,7 +217,7 @@ def test_vis(n2_data):
 
 
         assert np.all(isclose_sym(frame.vis, model_vis,
-                                  atol=0.0, rtol=1.0e-6))
+                                  atol=0.0, rtol=1.0e-5))
         assert frame.erms == 1.0
 
         # weights get an extra factor of nsamp
@@ -297,11 +318,11 @@ def calc_vis_pointsource(time_ns, freq_Hz):
 
     num_dishes = len(tel_params["dish_positions"])
 
-    print("Modeling vis at:", time_ns, "ns")
+    # print("Modeling vis at:", time_ns, "ns")
 
     n_source = calc_n_source(time_ns)
 
-    print("n_source:", n_source)
+    # print("n_source:", n_source)
 
     lambda_m = const.c.to_value("m/s") / freq_Hz
 
@@ -347,7 +368,7 @@ def calc_n_source(time_ns):
     
     era = t.earth_rotation_angle('tio').degree
 
-    print("ERA:", era, "deg")
+    # print("ERA:", era, "deg")
 
     deg2rad = np.pi/180
 

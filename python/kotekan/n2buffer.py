@@ -24,6 +24,8 @@ class N2Metadata(ctypes.Structure):
         ("num_ev", ctypes.c_uint32),
         ("nfreq", ctypes.c_uint32),
         ("freq_id", ctypes.c_uint32),
+        ("freq_Hz", ctypes.c_double),
+        ("era_deg", ctypes.c_double),
         ("fpga_start_tick", ctypes.c_uint64),
         ("frame_start_time_ns", ctypes.c_uint64),
         ("frame_length_fpga_ticks", ctypes.c_uint64),
