@@ -1,0 +1,67 @@
+type: config
+log_level: debug
+
+cpu_affinity: [1,2,3,4]
+
+num_frame_samples: 2048
+buffer_depth: 2
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 2 * buffer_depth
+
+# Buffers
+send_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_frame_samples
+    metadata_pool: main_pool
+
+recv_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: num_frame_samples
+    metadata_pool: main_pool
+
+
+# Kotekan stages
+gen_data:
+    # type: const
+    # value: 34 # 1i # 34 # = 2 + 2i
+    type: random_signed
+    value: 1532
+    kotekan_stage: testDataGen
+    out_buf: send_buffer
+    array_shape: [ 2048 ]
+    dim_name: ["S"]
+
+# buffer to send:
+# Transmit all the data to the receiver node
+buffer_send:
+  server_ip: 127.0.0.1
+  reconnect_time: 1
+  log_level: warn
+  send:
+    kotekan_stage: bufferSend
+    buf: send_buffer
+    server_port: 11024
+
+buffer_recv:
+  log_level: debug
+  recv:
+    kotekan_stage: bufferRecv
+    buf: recv_buffer
+    listen_port: 11024
+    cpu_affinity: [5, 6]
+    num_threads: 2
+
+asdf_write:
+    log_level: DEBUG
+    kotekan_stage: asdfFileWrite
+    in_buf: recv_buffer
+    base_dir: /code/kotekan/build-2404/data/
+    file_name: asdf_test_verify
+    prefix_hostname: false
+    max_frames: 10
+    skip_writing: true
