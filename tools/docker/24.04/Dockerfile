@@ -101,7 +101,7 @@ RUN apt update && \
                    && \
     apt clean && apt autoclean && \
     git clone https://bitbucket.org/blaze-lib/blaze.git blaze && \
-    cd blaze && git checkout v3.4 && \
+    cd blaze && git checkout v3.8.2 && \
     cmake -DCMAKE_INSTALL_PREFIX=/usr/local/ && make install && cd ..
 
 # Install Blosc2 (a prerequisite for ASDF)
