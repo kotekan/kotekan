@@ -1,3 +1,5 @@
+# Just a simple stub pipeline that generates random data, does a send/recieve, and asdf-writes.
+
 type: config
 log_level: debug
 
