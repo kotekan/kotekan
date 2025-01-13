@@ -33,12 +33,3 @@ add_library(
 target_include_directories(kotekan_testing PUBLIC .)
 
 target_link_libraries(kotekan_testing PRIVATE libexternal kotekan_libs)
-
-if(${USE_LAPACK})
-    target_sources(kotekan_testing PRIVATE FakeVis.cpp FakeVisPattern.cpp)
-    target_include_directories(kotekan_testing SYSTEM PRIVATE ${BLAS_INCLUDE_DIRS}
-                                                             ${LAPACKE_INCLUDE_DIRS} ${BLAZE_PATH})
-    target_link_libraries(kotekan_testing PRIVATE ${BLAS_LIBRARIES})
-    target_link_libraries(kotekan_testing PRIVATE ${LAPACK_LIBRARIES})
-    target_link_libraries(kotekan_testing PRIVATE ${LAPACKE_LIBRARIES})
-endif()

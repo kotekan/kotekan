@@ -217,7 +217,7 @@ std::array<double, 3> CHORDTelescope::get_sky_vec_in_dish_coords(
 
 std::array<double, 3> CHORDTelescope::get_pointing_vec_in_tel_coords() const {
 
-    double deg2rad = 180/M_PI;
+    double deg2rad = M_PI/180;
     std::array<double, 3> n = {0.0, cos(deg2rad * _inst_alt_deg),
                                     sin(deg2rad * _inst_alt_deg)};
 
@@ -319,10 +319,8 @@ void CHORDTelescope::fringestop_phases_1d(double freq_Hz, double era_deg,
     // n_tel is now (at ERA) the point on the sky which will be at the
     // phase center (n_tel0) at ERA0.
    
-    double wavelength_m = C / freq_Hz;
-
     // wavenumber for this frequency
-    double k = 2*M_PI * C / freq_Hz;
+    double k = 2*M_PI * freq_Hz / C;
 
     for(int i = 0; i < _dish_positions.size(); i++)
     {
@@ -333,6 +331,16 @@ void CHORDTelescope::fringestop_phases_1d(double freq_Hz, double era_deg,
 
         phases[i] = {cos(phase) , sin(phase)};
     }
+
+    /*
+    DEBUG("Fringestop Phases: [{}+{}i, {}+{}i, {}+{}i, {}+{}i, {}+{}i, {}+{}i]",
+            phases[0].real(), phases[0].imag(),
+            phases[1].real(), phases[1].imag(),
+            phases[2].real(), phases[2].imag(),
+            phases[3].real(), phases[3].imag(),
+            phases[4].real(), phases[4].imag(),
+            phases[5].real(), phases[5].imag());
+    */
 }
 
 

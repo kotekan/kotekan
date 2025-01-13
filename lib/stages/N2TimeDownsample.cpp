@@ -51,6 +51,9 @@ N2TimeDownsample::N2TimeDownsample(Config& config,
     
     max_age = config.get_default<float>(unique_name, "max_age", 120.0);
 
+    do_fringestop = config.get_default<int>(unique_name, "do_fringestop",
+                                         true);
+
     num_elements = 0;
     nprod = num_elements * (num_elements + 1) / 2;
 }
@@ -163,20 +166,24 @@ void N2TimeDownsample::main_thread() {
             // Set the target ERA.
             output_frame.era_deg = era_target;
 
-            //tel.fringestop_phases_1d(freq_Hz, frame.era_deg,
-            //                         era_target, fringe_phase);
+            if(do_fringestop) {
+                tel.fringestop_phases_1d(freq_Hz, frame.era_deg,
+                                         era_target, fringe_phase);
 
-            size_t idx = 0;
-            for(size_t i = 0; i < num_elements; i++) {
-                for(size_t j = i; j < num_elements; j++) {
+                size_t idx = 0;
+                for(size_t i = 0; i < num_elements; i++) {
+                    for(size_t j = i; j < num_elements; j++) {
 
-                    size_t d_i = i % num_dishes;
-                    size_t d_j = j % num_dishes;
-                    output_frame.vis[idx] *= 
-                        fringe_phase[d_i] * std::conj(fringe_phase[d_j]);
-                    idx++;
+                        size_t d_i = i % num_dishes;
+                        size_t d_j = j % num_dishes;
+                        output_frame.vis[idx] *= 
+                            fringe_phase[d_i] * std::conj(fringe_phase[d_j]);
+
+                        idx++;
+                    }
                 }
             }
+
             for (size_t i = 0; i < nprod; i++) {
                 output_frame.weight[i] = 1. / output_frame.weight[i];
             }
@@ -193,8 +200,9 @@ void N2TimeDownsample::main_thread() {
         if (fpga_seq_start < wdw_end) {
             
             //Recalculate fringestop phases
-            //tel.fringestop_phases_1d(freq_Hz, frame.era_deg,
-            //                         era_target, fringe_phase);
+            if(do_fringestop)
+                tel.fringestop_phases_1d(freq_Hz, frame.era_deg,
+                                         era_target, fringe_phase);
 
             // Accumulate contents of buffer
             size_t idx = 0;
@@ -206,7 +214,11 @@ void N2TimeDownsample::main_thread() {
 
                     std::complex<double> w_doub = fringe_phase[d_i]
                                         * std::conj(fringe_phase[d_j]);
-                    N2::cfloat w_fs{w_doub.real(), w_doub.imag()};
+                    N2::cfloat w_fs{(float) w_doub.real(),
+                                    (float) w_doub.imag()};
+
+                    //DEBUG("fringestop phase: {}-{}: {}+{}i", i, j,
+                    //        w_fs.real(), w_fs.imag());
 
                     output_frame.vis[idx] += w_fs * frame.vis[idx];
                     idx++;
@@ -261,6 +273,17 @@ void N2TimeDownsample::main_thread() {
 
             DEBUG("Output frame - num_elements: {:d}",
                     output_frame.num_elements);
+
+            char *addr0 = (char *)&(output_frame.vis[0]);
+            DEBUG("Output frame Struct - vis: {}, w: {}, flags: {}, eval: {}, evec: {}, emeth: {}, erms: {}, gain: {}",
+                    (char *)&(output_frame.vis[0])  - addr0,
+                    (char *)&(output_frame.weight[0]) - addr0,
+                    (char *)&(output_frame.flags[0]) - addr0,
+                    (char *)&(output_frame.eval[0]) - addr0,
+                    (char *)&(output_frame.evec[0]) - addr0,
+                    (char *)&(output_frame.emethod) - addr0,
+                    (char *)&(output_frame.erms) - addr0,
+                    (char *)&(output_frame.gain[0]) - addr0);
             // mark as full
             out_buf->mark_frame_full(unique_name, output_frame_id++);
             // reset accumulation and move on, starting with this frame

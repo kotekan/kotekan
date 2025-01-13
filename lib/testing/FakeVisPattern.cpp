@@ -17,7 +17,7 @@
 #include <complex>   // for complex, operator*
 #include <cstdint>   // for uint32_t, uint16_t
 #include <exception> // for exception
-#include <lapacke.h> // for LAPACKE_cheevr, LAPACK_ROW_MAJOR
+//#include <lapacke.h> // for LAPACKE_cheevr, LAPACK_ROW_MAJOR
 #include <map>       // for map, map<>::mapped_type
 #include <math.h>    // for cosf, sinf
 #include <regex>     // for match_results<>::_Base_type
@@ -468,8 +468,8 @@ state_id_t ChangeStatePattern::gen_state_gains() {
 PointSourceVisPattern::PointSourceVisPattern(kotekan::Config& config,
                                              const std::string& path) : 
         FakeVisPattern(config, path) {
-    ra = config.get_default<double>(path, "ra", 0.0);
-    dec = config.get_default<double>(path, "dec", 45.0);
+    ra = config.get<double>(path, "ra");
+    dec = config.get<double>(path, "dec");
     stokes_I = config.get_default<double>(path, "stokes_I", 1.0);
     stokes_Q = config.get_default<double>(path, "stokes_Q", 0.0);
     stokes_U = config.get_default<double>(path, "stokes_U", 0.0);
@@ -566,14 +566,15 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
         }
     }
 
+    /*
     //Memory for LAPACK
     std::vector<N2::cfloat> vis_square;
     std::vector<N2::cfloat> evecs;
     std::vector<float> evals;
     
     vis_square.resize(num_elements * num_elements, 0);
-    evecs.resize(num_elements * frame.num_ev);
-    evals.resize(frame.num_ev);
+    evecs.resize(num_elements * frame.num_ev, 0);
+    evals.resize(frame.num_ev, 0);
 
     uint32_t vis_idx = 0;
 
@@ -608,4 +609,5 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
                 = evecs[frame.num_ev*j + (frame.num_ev-i-1)];
         }
     }
+    */
 }

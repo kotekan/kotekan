@@ -164,7 +164,11 @@ void FakeVis::main_thread() {
             meta->fpga_start_tick = fpga_seq + t * delta_seq;
 
             DEBUG("Creating N2FrameView.");
+            DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}, n_freq {}",
+                    meta->num_elements, meta->num_prod, meta->num_ev,
+                    meta->nfreq);
             N2FrameView output_frame (out_buf, output_frame_id);
+            DEBUG("Created.");
 
 
             // Fill out the non-visibility data sections, these can always be

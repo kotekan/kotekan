@@ -1,10 +1,10 @@
 /*****************************************
 @file
 @brief Reduce cadence of a single-frequency.
-- N2TimeDownsample : public kotekan::Stage
+- N2FringeStop : public kotekan::Stage
 *****************************************/
-#ifndef N2_TIME_DOWNSAMP_HPP
-#define N2_TIME_DOWNSAMP_HPP
+#ifndef N2_FRINGE_STOP_HPP
+#define N2_FRINGE_STOP_HPP
 
 #include "Config.hpp"
 #include "Stage.hpp" // for Stage
@@ -15,7 +15,7 @@
 #include <string>   // for string
 
 /**
- * @class N2TimeDownsample
+ * @class N2FringeStop
  * @brief Average a set number of frames on a single-frequency stream to
  *        effectively reduce the cadence of the acquisition.
  *
@@ -45,11 +45,11 @@
  * @author  Tristan Pinsonneault-Marotte
  *
  */
-class N2TimeDownsample : public kotekan::Stage {
+class N2FringeStop : public kotekan::Stage {
 
 public:
     /// Default constructor, loads config params.
-    N2TimeDownsample(kotekan::Config& config, const std::string& unique_name,
+    N2FringeStop(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
 
     /// Main loop for the stage
@@ -60,16 +60,10 @@ private:
     size_t num_elements, num_eigenvectors;
     size_t nprod;
 
-    // Number of samples to combine
-    int nsamp;
-    
-    uint32_t num_bins_per_rotation;
-
-    // Maximum age of data
-    float max_age;
-
     // Whether to apply fringestopping phases.
-    bool do_fringestop;
+    int fringestop_mode;
+
+    double era_target_deg;
 
     // Buffers
     Buffer* in_buf;
