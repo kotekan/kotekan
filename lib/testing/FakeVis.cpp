@@ -92,7 +92,8 @@ void FakeVis::main_thread() {
     int64_t time_ns = (uint64_t) start_time * 1000000000;
 
     // Calculate the time increments in seq and ctime
-    int64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
+    //int64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
+    int64_t delta_seq = (uint64_t)(3.2e9 / 16384 * cadence);
     int64_t delta_ns = (uint64_t)(cadence * 1000000000);
     DEBUG("delta_seq = {:d}, delta_ns = {:d}", delta_seq, delta_ns);
 
@@ -163,7 +164,11 @@ void FakeVis::main_thread() {
             meta->fpga_start_tick = fpga_seq + t * delta_seq;
 
             DEBUG("Creating N2FrameView.");
+            DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}, n_freq {}",
+                    meta->num_elements, meta->num_prod, meta->num_ev,
+                    meta->nfreq);
             N2FrameView output_frame (out_buf, output_frame_id);
+            DEBUG("Created.");
 
 
             // Fill out the non-visibility data sections, these can always be
@@ -173,6 +178,7 @@ void FakeVis::main_thread() {
 
             // Fill out the frame with the selected pattern
             pattern->fill(output_frame);
+            INFO("First eval is: {}", output_frame.eval[0]);
 
             // gains
             for (uint32_t i = 0; i < num_elements; i++) {

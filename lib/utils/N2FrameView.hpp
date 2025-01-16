@@ -58,8 +58,26 @@ public:
 
     std::map<N2Field, std::pair<size_t, size_t>> frame_layout;
 
+
+    /// The sequence number of the first FPGA frame integrated into this
+    /// visibility frame (time<0> in VisFrameView)
+    uint64_t& fpga_start_tick;
+    /// The time of the start of the integration frame in nanosec (time<1>)
+    uint64_t& frame_start_time_ns;
+    /// The nominal frame length in FPGA ticks (fpga_seq_length in VisFrameView)
+    uint64_t& frame_length_fpga_ticks;
+    /// The actual amount of data accumulated in FPGA ticks (fpga_seq_total)
+    uint64_t& n_valid_fpga_ticks_in_frame;
+    /// The number of lost samples due to RFI (rfi_total)
+    uint64_t& n_rfi_fpga_ticks;
+
     /// ID of the frequency bin
     const uint32_t& freq_id;
+    /// Physical frequency of bin
+    const double& freq_Hz;
+
+    ///Earth Rotation Angle of phase center
+    double& era_deg;
 
     /// View of the visibility data.
     const gsl::span<N2::cfloat> vis;
@@ -147,6 +165,28 @@ public:
     
     size_t data_size() const override;
     void zero_frame() override;
+    
+    /**
+     * @brief Copy a whole frame from a buffer and create a view of it.
+     *
+     * This will attempt to do a zero copy transfer of the frame for speed, and
+     * fall back on a full copy if any other stages consume from the input
+     * buffer.
+     *
+     * @note This will allocate metadata for the destination.
+     *
+     * @warning This may invalidate anything pointing at the input buffer.
+     *
+     * @param buf_src        The buffer to copy from.
+     * @param frame_id_src   The buffer location to copy from.
+     * @param buf_dest       The buffer to copy into.
+     * @param frame_id_dest  The buffer location to copy into.
+     *
+     * @returns An N2FrameView of the copied frame.
+     *
+     **/
+    static N2FrameView copy_frame(Buffer* buf_src, int frame_id_src,
+                                  Buffer* buf_dest, int frame_id_dest);
 
     /**
      * @brief Copy over the data, skipping specified members.

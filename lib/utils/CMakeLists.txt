@@ -32,7 +32,9 @@ add_library(
     ICETelescope.cpp
     CHIMETelescope.cpp
     SystemInterface.cpp
-    N2FrameView.cpp)
+    N2FrameView.cpp
+    timeUtil.cpp
+    CHORDTelescope.cpp)
 
 target_link_libraries(
     kotekan_utils

@@ -277,4 +277,33 @@ private:
     size_t _flag_update_ind = 0;
     size_t _gain_update_ind = 0;
 };
+
+/**
+ * @brief Fill with an ideal point source.
+ *
+ * Here the input values are defined in the config value 'input_values'.
+ *
+ * @conf  input_values  Array of CFloat. Values for the frequency IDs
+ *
+ **/
+class PointSourceVisPattern : public FakeVisPattern {
+public:
+    /// @sa FakeVisPattern::FakeVisPattern
+    PointSourceVisPattern(kotekan::Config& config, const std::string& path);
+
+    /// @sa FakeVisPattern::fill
+    void fill(VisFrameView& frame) override;
+    void fill(N2FrameView& frame) override;
+
+private:
+    double ra;
+    double dec;
+    double stokes_I;
+    double stokes_Q;
+    double stokes_U;
+    double stokes_V;
+    double noise_var;
+    uint32_t n_rfi_ticks;
+    uint32_t n_lost_ticks;
+};
 #endif // FAKE_VIS_PATTERN
