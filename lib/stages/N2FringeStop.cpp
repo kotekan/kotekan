@@ -46,7 +46,11 @@ N2FringeStop::N2FringeStop(Config& config,
 
     fringestop_mode = config.get_default<int>(unique_name, "fringestop_mode",
                                               1);
-    era_target_deg = config.get_default<int>(unique_name, "era_target_deg",
+    era_target_deg = config.get_default<double>(unique_name, "era_target_deg",
+                                             0.0);
+    xp_target_as = config.get_default<double>(unique_name, "xp_target_as",
+                                             0.0);
+    yp_target_as = config.get_default<double>(unique_name, "yp_target_as",
                                              0.0);
 
     num_elements = 0;
@@ -89,12 +93,16 @@ void N2FringeStop::main_thread() {
                                     out_buf, output_frame_id);
 
 
-        // Set the target ERA.
+        // Set the target EOP.
         output_frame.era_deg = era_target_deg;
+        output_frame.xp_as = xp_target_as;
+        output_frame.yp_as = yp_target_as;
 
         if(fringestop_mode > 0)
             tel.fringestop_phases_1d(frame.freq_Hz, frame.era_deg,
-                                     era_target_deg, fringe_phase);
+                                     frame.xp_as, frame.yp_as,
+                                     era_target_deg, xp_target_as, yp_target_as,
+                                     fringe_phase);
 
         size_t idx = 0;
         for(size_t i = 0; i < num_elements; i++) {

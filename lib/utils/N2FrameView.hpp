@@ -76,8 +76,10 @@ public:
     /// Physical frequency of bin
     const double& freq_Hz;
 
-    ///Earth Rotation Angle of phase center
-    double& era_deg;
+    /// Earth Orientation Paramters
+    double& era_deg; //Earth Rotation Angle at obs time
+    double& xp_as; //polar motion x at obs time
+    double& yp_as; //polar motion y at obs time
 
     /// View of the visibility data.
     const gsl::span<N2::cfloat> vis;

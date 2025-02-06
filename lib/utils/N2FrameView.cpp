@@ -22,6 +22,8 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     freq_Hz(_metadata->freq_Hz),
 
     era_deg(_metadata->era_deg),
+    xp_as(_metadata->xp_as),
+    yp_as(_metadata->yp_as),
 
     vis(bind_span<N2::cfloat>(_frame, frame_layout[N2Field::vis])),
     weight(bind_span<float>(_frame, frame_layout[N2Field::weight])),

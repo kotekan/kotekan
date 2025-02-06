@@ -79,26 +79,26 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config,
     double sin_lat = sin(deg2rad * _inst_lat_deg);
 
     // Topocentric X (East) in Geocentric (Earth-centered, Earth-fixed) coords
-    _R_geo_to_topo[0][0] = -sin_lon;
-    _R_geo_to_topo[0][1] =  cos_lon;
-    _R_geo_to_topo[0][2] =  0.0;
+    _R_itrs_to_topo[0][0] = -sin_lon;
+    _R_itrs_to_topo[0][1] =  cos_lon;
+    _R_itrs_to_topo[0][2] =  0.0;
 
     // Topocentric Y (North) in Geocentric (Earth-centered, Earth-fixed) coords
-    _R_geo_to_topo[1][0] = -sin_lat * cos_lon;
-    _R_geo_to_topo[1][1] = -sin_lat * sin_lon;
-    _R_geo_to_topo[1][2] =  cos_lat;
+    _R_itrs_to_topo[1][0] = -sin_lat * cos_lon;
+    _R_itrs_to_topo[1][1] = -sin_lat * sin_lon;
+    _R_itrs_to_topo[1][2] =  cos_lat;
 
     // Topocentric Z (Up) in Geocentric (Earth-centered, Earth-fixed) coords
-    _R_geo_to_topo[2][0] =  cos_lat * cos_lon;
-    _R_geo_to_topo[2][1] =  cos_lat * sin_lon;
-    _R_geo_to_topo[2][2] =  sin_lat;
+    _R_itrs_to_topo[2][0] =  cos_lat * cos_lon;
+    _R_itrs_to_topo[2][1] =  cos_lat * sin_lon;
+    _R_itrs_to_topo[2][2] =  sin_lat;
 
 
     using namespace std::placeholders;
 
     kotekan::configUpdater::instance().subscribe(
             config.get<std::string>(path, "updatable_config"),
-            std::bind(&CHORDTelescope::receive_ut1_updates, this, _1));
+            std::bind(&CHORDTelescope::receive_eop_updates, this, _1));
     
 }
 
@@ -155,13 +155,15 @@ void CHORDTelescope::set_gps(const std::string& host, const uint32_t port,
     gps_enabled = true;
 }
     
-bool CHORDTelescope::receive_ut1_updates(nlohmann::json& json) {
-    std::lock_guard<std::mutex> lock(_ut1_lock);
+bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
+    std::lock_guard<std::mutex> lock(_eop_lock);
     try {
         _dut1 = json.at("DUT1").get<double>();
         _dtai = json.at("DTAI").get<double>();
+        _x_pm = json.at("x_pm").get<double>();
+        _y_pm = json.at("y_pm").get<double>();
     } catch (std::exception& e) {
-        WARN("CHORDTelescope failed to read DUT1 update: {:s}", e.what());
+        WARN("CHORDTelescope failed to read EOP update: {:s}", e.what());
         return false;
     }
 
@@ -203,14 +205,14 @@ std::array<double, 3> CHORDTelescope::get_sky_vec_in_dish_coords(
 
     // unit vector pointing to ra/dec in spherical coordinates
     // fixed to the Earth.  phi=0 ~ Greenwich
-    std::array<double, 3> n_geocen= {
+    std::array<double, 3> n_itrs= {
                           cos(phi) * sin(theta),
                           sin(phi) * sin(theta),
                           cos(theta)};
 
-    INFO("n_geocen: {} {} {}", n_geocen[0], n_geocen[1], n_geocen[2]);
+    INFO("n_itrs: {} {} {}", n_itrs[0], n_itrs[1], n_itrs[2]);
 
-    std::array<double, 3> n_topo = geocen_vec_to_topocen_vec(n_geocen);
+    std::array<double, 3> n_topo = itrs_vec_to_topocen_vec(n_itrs);
 
     return topocen_vec_to_tel_vec(n_topo);
 }
@@ -246,74 +248,127 @@ std::array<double, 3> CHORDTelescope::tel_vec_to_topocen_vec(
     return v_topocen;
 }
 
+std::array<double, 3> CHORDTelescope::vec_axes_rotation_R1(
+        const std::array<double, 3>& v, double theta) const {
+    // Return coordinates of vector v in frame rotated by theta about x-axis
 
-std::array<double, 3> CHORDTelescope::geocen_vec_to_topocen_vec(
-        const std::array<double, 3>& v_geo) const {
+    double cos_th = cos(theta);
+    double sin_th = sin(theta);
+
+    std::array<double, 3> v_rot = {
+         v[0],
+         cos_th * v[1] + sin_th * v[2],
+        -sin_th * v[1] + cos_th * v[2]};
+
+    return v_rot;
+}
+
+std::array<double, 3> CHORDTelescope::vec_axes_rotation_R2(
+        const std::array<double, 3>& v, double theta) const {
+    // Return coordinates of vector v in frame rotated by theta about y-axis
+
+    double cos_th = cos(theta);
+    double sin_th = sin(theta);
+
+    std::array<double, 3> v_rot = {
+        cos_th * v[0] - sin_th * v[2],
+        v[1],
+        sin_th * v[0] + cos_th * v[2]};
+
+    return v_rot;
+}
+
+std::array<double, 3> CHORDTelescope::vec_axes_rotation_R3(
+        const std::array<double, 3>& v, double theta) const {
+    // Return coordinates of vector v in frame rotated by theta about z-axis
+
+    double cos_th = cos(theta);
+    double sin_th = sin(theta);
+
+    std::array<double, 3> v_rot = {
+         cos_th * v[0] + sin_th * v[1],
+        -sin_th * v[0] + cos_th * v[1],
+         v[2]};
+
+    return v_rot;
+}
+
+
+std::array<double, 3> CHORDTelescope::itrs_vec_to_topocen_vec(
+        const std::array<double, 3>& v_itrs) const {
 
     std::array<double, 3> v_topo = {0, 0, 0};
     for(int i = 0; i < 3; i++)
         for(int j = 0; j < 3; j++)
-            v_topo[i] += _R_geo_to_topo[i][j] * v_geo[j];
+            v_topo[i] += _R_itrs_to_topo[i][j] * v_itrs[j];
 
     return v_topo;
 }
 
-std::array<double, 3> CHORDTelescope::topocen_vec_to_geocen_vec(
+std::array<double, 3> CHORDTelescope::topocen_vec_to_itrs_vec(
         const std::array<double, 3>& v_topo) const {
 
-    std::array<double, 3> v_geo = {0, 0, 0};
+    std::array<double, 3> v_itrs = {0, 0, 0};
     for(int i = 0; i < 3; i++)
         for(int j = 0; j < 3; j++)
-            v_geo[i] += _R_geo_to_topo[j][i] * v_topo[j];
+            v_itrs[i] += _R_itrs_to_topo[j][i] * v_topo[j];
 
-    return v_geo;
+    return v_itrs;
 }
 
-std::array<double, 3> CHORDTelescope::cirs_vec_to_geocen_vec(
-        const std::array<double, 3>& v_cirs, double era_deg) const {
+std::array<double, 3> CHORDTelescope::cirs_vec_to_itrs_vec(
+        const std::array<double, 3>& v_cirs, double era_deg,
+        double xp_as, double yp_as) const {
 
     double deg2rad = M_PI/180;
-    double cos_era = cos(deg2rad * era_deg);
-    double sin_era = sin(deg2rad * era_deg);
+    double as2rad = deg2rad / 3600;
+    
+    double era = deg2rad * era_deg;
+    double xp = as2rad * xp_as;
+    double yp = as2rad * yp_as;
 
-    std::array<double, 3> v_geocen = {
-         v_cirs[0] * cos_era + v_cirs[1] * sin_era,
-        -v_cirs[0] * sin_era + v_cirs[1] * cos_era,
-         v_cirs[2]};
+    std::array<double, 3> v1     = vec_axes_rotation_R3(v_cirs, era);
+    std::array<double, 3> v2     = vec_axes_rotation_R2(v1,    -xp);
+    std::array<double, 3> v_itrs = vec_axes_rotation_R1(v2,    -yp);
 
-    return v_geocen;
+    return v_itrs;
 }
 
-std::array<double, 3> CHORDTelescope::geocen_vec_to_cirs_vec(
-        const std::array<double, 3>& v_geocen, double era_deg) const {
+std::array<double, 3> CHORDTelescope::itrs_vec_to_cirs_vec(
+        const std::array<double, 3>& v_itrs, double era_deg,
+        double xp_as, double yp_as) const {
 
     double deg2rad = M_PI/180;
-    double cos_era = cos(deg2rad * era_deg);
-    double sin_era = sin(deg2rad * era_deg);
+    double as2rad = deg2rad / 3600;
+    double era = deg2rad * era_deg;
+    double xp = as2rad * xp_as;
+    double yp = as2rad * yp_as;
 
-    std::array<double, 3> v_cirs = {
-        v_geocen[0] * cos_era - v_geocen[1] * sin_era,
-        v_geocen[0] * sin_era + v_geocen[1] * cos_era,
-        v_geocen[2]};
+    std::array<double, 3> v1     = vec_axes_rotation_R1(v_itrs, yp);
+    std::array<double, 3> v2     = vec_axes_rotation_R2(v1,     xp);
+    std::array<double, 3> v_cirs = vec_axes_rotation_R3(v2,    -era);
 
     return v_cirs;
 }
 
 void CHORDTelescope::fringestop_phases_1d(double freq_Hz, double era_deg,
-        double era_deg0, std::vector<std::complex<double>>& phases) const {
+        double xp_as, double yp_as, double era_deg0, double xp_as0,
+        double yp_as0, std::vector<std::complex<double>>& phases) const {
 
     //Take the pointing vector for the telescope (constant in time),
     //and find it in the CIRS frame at ERA0.  This is the point we are
     //attempting to stop the fringes at.
     std::array<double, 3> n_tel0 = get_pointing_vec_in_tel_coords();
     std::array<double, 3> n_topo0 = tel_vec_to_topocen_vec(n_tel0);
-    std::array<double, 3> n_geo0 = topocen_vec_to_geocen_vec(n_topo0);
-    std::array<double, 3> n_cirs = geocen_vec_to_cirs_vec(n_geo0, era_deg0);
+    std::array<double, 3> n_itrs0 = topocen_vec_to_itrs_vec(n_topo0);
+    std::array<double, 3> n_cirs = itrs_vec_to_cirs_vec(n_itrs0, era_deg0,
+                                                        xp_as0, yp_as0);
 
     //Now, given this CIRS vector, find its components in the telescope
     //frame at the requested ERA
-    std::array<double, 3> n_geo = cirs_vec_to_geocen_vec(n_cirs, era_deg);
-    std::array<double, 3> n_topo = geocen_vec_to_topocen_vec(n_geo);
+    std::array<double, 3> n_itrs = cirs_vec_to_itrs_vec(n_cirs, era_deg,
+                                                        xp_as, yp_as);
+    std::array<double, 3> n_topo = itrs_vec_to_topocen_vec(n_itrs);
     std::array<double, 3> n_tel = topocen_vec_to_tel_vec(n_topo);
 
     // n_tel is now (at ERA) the point on the sky which will be at the
@@ -357,12 +412,12 @@ int CHORDTelescope::get_num_dishes() const {
 }
 
 double CHORDTelescope::get_dut1() const {
-    std::lock_guard<std::mutex> lock(_ut1_lock);
+    std::lock_guard<std::mutex> lock(_eop_lock);
     return _dut1;
 }
 
 double CHORDTelescope::get_dtai() const {
-    std::lock_guard<std::mutex> lock(_ut1_lock);
+    std::lock_guard<std::mutex> lock(_eop_lock);
     return _dtai;
 }
 

@@ -64,6 +64,8 @@ private:
     int fringestop_mode;
 
     double era_target_deg;
+    double xp_target_as;
+    double yp_target_as;
 
     // Buffers
     Buffer* in_buf;

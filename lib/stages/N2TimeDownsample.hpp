@@ -60,9 +60,9 @@ private:
     size_t num_elements, num_eigenvectors;
     size_t nprod;
 
-    // Number of samples to combine
-    int nsamp;
-    
+    // Number of accumulations per Earth rotation (sidereal day).
+    // e.g. 360 will average the incoming stream over one degree of rotation
+    // (4 sidereal minutes)
     uint32_t num_bins_per_rotation;
 
     // Maximum age of data

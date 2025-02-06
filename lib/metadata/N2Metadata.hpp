@@ -30,8 +30,10 @@ struct N2MetadataFormat {
     /// Physical frequency in Hz
     double freq_Hz;
 
-    /// Earth Rotation Angle of phase center
-    double era_deg;
+    /// Earth Orientation Paramters
+    double era_deg; //Earth Rotation Angle at obs time
+    double xp_as; //polar motion x at obs time
+    double yp_as; //polar motion y at obs time
 
     /// The sequence number of the first FPGA frame integrated into this visibility frame
     uint64_t fpga_start_tick;
@@ -129,6 +131,10 @@ inline std::shared_ptr<N2Metadata> get_N2_metadata(Buffer* buf, int frame_id) {
     N2_meta->frame_length_fpga_ticks = 0;
     N2_meta->n_valid_fpga_ticks_in_frame = 0;
     N2_meta->n_rfi_fpga_ticks = 0;
+
+    N2_meta->era_deg = 0.0;
+    N2_meta->xp_as = 0.0;
+    N2_meta->yp_as = 0.0;
 
     return N2_meta;
 }
