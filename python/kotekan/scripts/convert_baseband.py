@@ -30,16 +30,15 @@ Parameters to be set from environmental variables:
 
 # Default backend parameters
 conv_backend = {
-    "ARCHIVER_MOUNT": "/data/kko/baseband/raw",
+    "ARCHIVER_MOUNT": "/data/hco/baseband/raw",
     "NUM_THREADS": 5,
     "KOTEKAN_CONFIG": "../../../config/baseband_commissioning/kotekan/config/chime_science_run_recv_baseband.yaml",
     "USE_L4_DB": True,
-    "RAW_PATH": "/data/baseband_raw/",
+    "RAW_PATH": "/tank/baseband_raw/",
     "PROMETHEUS_GW": "frb-vsop.chime:9091",
     "COCO_URL": "http://csBfs:54323/baseband-status",
     "AUTO_DELETE": False,
 }
-conv_backend = conv_backends.get_backend('kko') # kko by default, since this code is deprecated at CHIME
 
 # If defined in environment, use those
 for k in conv_backend.keys():
@@ -377,6 +376,12 @@ def h5_path_from_event_id(event_id, archiver_mount):
 def events_from_filepath(raw_filepath, archiver_mount):
     """If we are not using the L4-db to get the event to be converted, we need to return an adequate list of events. Do this by comparing the raw and converted directory trees.
 
+    The logic goes as follows.
+    Every event we have access to can be classified as finished or not.
+    We run the converter on anything that is unfinished.
+
+    Parameters
+    ----------
     raw_filepath : str
         Path to a folder which has sub-folders of the form baseband_raw_[event_id], as seen relative to the conversion node e.g. "/tank/baseband_raw" on cfdn9.
 
@@ -389,6 +394,7 @@ def events_from_filepath(raw_filepath, archiver_mount):
     """
     all_raw_folders = glob(os.path.join(raw_filepath, "*"))
     raw_event_ids = [int(folder.split("_")[-1]) for folder in all_raw_folders]
+    raw_event_ids.sort()
 
     all_h5_folders = glob(os.path.join(archiver_mount, "*/*/*/*"))
     h5_event_ids = [int(folder.split("_")[-1]) for folder in all_h5_folders]
@@ -463,9 +469,14 @@ def main():
         registry=registry,
     )
     assert os.path.exists(
+        conv_backend["RAW_PATH"]
+    ), f"{conv_backend['RAW_PATH']} is not mounted, it is required for this process. Exiting!!!"
+    print('Converting data from:', conv_backend["RAW_PATH"])
+
+    assert os.path.exists(
         conv_backend["ARCHIVER_MOUNT"]
     ), f"{conv_backend['ARCHIVER_MOUNT']} is not mounted, it is required for this process. Exiting!!!"
-    print(conv_backend["ARCHIVER_MOUNT"])
+    print('Writing data to:', conv_backend["ARCHIVER_MOUNT"])
 
     while True:
         # set last_active, inventory, and bcle.
