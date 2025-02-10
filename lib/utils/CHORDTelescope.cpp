@@ -4,6 +4,7 @@
 #include "kotekanLogging.hpp"   // for WARN, INFO, FATAL_ERROR
 #include "restClient.hpp"       // for restClient
 #include "configUpdater.hpp"   // for ConfigUpdater
+#include "timeUtil.hpp"
 
 #include "fmt.hpp"  // for format
 #include "json.hpp" //for basic_json, basic_json<>::object_t, basic_jason<>::value_type
@@ -148,7 +149,7 @@ void CHORDTelescope::set_gps(const std::string& host, const uint32_t port,
     if (json_reply.count("frame0_nano") == 0) {
         WARN("No `frame0_nano` value returned by GPS server, the server reply was: {:s} - {:s}",
                 reply.second, json_reply.dump());
-    }
+}
 
     time0_ns = json_reply["frame0_nano"].get<uint64_t>();
     INFO("GPS frame0 time set to {:d}", time0_ns);
@@ -158,10 +159,19 @@ void CHORDTelescope::set_gps(const std::string& host, const uint32_t port,
 bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
     std::lock_guard<std::mutex> lock(_eop_lock);
     try {
-        _dut1 = json.at("DUT1").get<double>();
-        _dtai = json.at("DTAI").get<double>();
-        _x_pm = json.at("x_pm").get<double>();
-        _y_pm = json.at("y_pm").get<double>();
+        std::vector<struct EOP> tmp_eop_table;
+        for(const auto& elem : json.at("earth_orientation_parameter_table")) {
+            uint64_t t_ns = elem.at("tgps").get<uint64_t>();
+            double dut1 = elem.at("DUT1").get<double>();
+            double dtai = elem.at("DTAI").get<double>();
+            double x_pm = elem.at("x_pm").get<double>();
+            double y_pm = elem.at("y_pm").get<double>();
+            tmp_eop_table.push_back(
+                    build_EOP_from_update(t_ns, dut1, dtai, x_pm, y_pm));
+        }
+
+        _eop_table = tmp_eop_table;
+
     } catch (std::exception& e) {
         WARN("CHORDTelescope failed to read EOP update: {:s}", e.what());
         return false;
@@ -449,4 +459,24 @@ double CHORDTelescope::freq_width(freq_id_t freq_id) const {
 //TODO: This is a stub to satisfy inheritance and should not be used.
 uint8_t CHORDTelescope::nyquist_zone() const {
     return 0;
+}
+
+struct EOP build_EOP_from_update(uint64_t t_ns, double dut1, double dtai,
+                                 double xp_as, double yp_as) {
+
+    struct timespec t {
+        .tv_sec=(time_t)(t_ns/GIGA),
+        .tv_nsec=(long)(t_ns % GIGA)};
+
+    struct timespec ut1 = get_UT1_from_GPS(t, dtai, dut1);
+    double era = get_ERA_from_UT1(ut1);
+
+    struct EOP eop {
+        .t_gps = t,
+        .t_ut1 = ut1,
+        .ERA_deg = era,
+        .xp_as = xp_as,
+        .yp_as = yp_as};
+    
+    return eop;
 }

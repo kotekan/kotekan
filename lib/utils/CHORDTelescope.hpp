@@ -34,7 +34,6 @@
 struct EOP {
     struct timespec t_gps;
     struct timespec t_ut1;
-    uint64_t seq;
     double ERA_deg;
     double xp_as;
     double yp_as;
@@ -170,11 +169,15 @@ protected:
 
     //Earth Orientation Parameters
     mutable std::mutex _eop_lock;
+    std::vector<struct EOP> _eop_table;
     double _dut1;  // UT1 - UTC in seconds
     double _dtai;  // TAI - UTC in seconds
     double _x_pm;  // Polar Motion x coordinate (arcseconds)
     double _y_pm;  // Polat Motion y coordinate (arcseconds)
 
 };
+
+struct EOP build_EOP_from_update(uint64_t t_ns, double dut1, double dtai,
+                                 double xp_as, double yp_as);
 
 #endif // CHORD_TELESCOPE_HPP
