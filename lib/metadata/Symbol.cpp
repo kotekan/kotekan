@@ -31,7 +31,3 @@ std::string Symbol::get_string() const {
 std::ostream& operator<<(std::ostream& os, Symbol sym) {
     return os << sym.get_string();
 }
-
-// Test
-
-Symbol sym("Hello, World!");

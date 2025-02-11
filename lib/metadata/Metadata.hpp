@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <initializer_list>
+#include <iostream>
 #include <map>
 #include <string>
 #include <type_traits>
@@ -28,14 +30,34 @@ public:
     Metadata(const Metadata&) = delete;
     Metadata& operator=(const Metadata&) = delete;
 
-    bool has_bool(const std::string& key) const;
-    bool has_int(const std::string& key) const;
-    bool has_real(const std::string& key) const;
-    bool has_string(const std::string& key) const;
-    bool has_bool_vector(const std::string& key) const;
-    bool has_int_vector(const std::string& key) const;
-    bool has_real_vector(const std::string& key) const;
-    bool has_string_vector(const std::string& key) const;
+    std::size_t size() const noexcept;
+
+    std::size_t bool_size() const noexcept;
+    std::size_t int_size() const noexcept;
+    std::size_t real_size() const noexcept;
+    std::size_t string_size() const noexcept;
+    std::size_t bool_vector_size() const noexcept;
+    std::size_t int_vector_size() const noexcept;
+    std::size_t real_vector_size() const noexcept;
+    std::size_t string_vector_size() const noexcept;
+
+    std::vector<std::string> bool_keys() const;
+    std::vector<std::string> int_keys() const;
+    std::vector<std::string> real_keys() const;
+    std::vector<std::string> string_keys() const;
+    std::vector<std::string> bool_vector_keys() const;
+    std::vector<std::string> int_vector_keys() const;
+    std::vector<std::string> real_vector_keys() const;
+    std::vector<std::string> string_vector_keys() const;
+
+    bool has_bool(const std::string& key) const noexcept;
+    bool has_int(const std::string& key) const noexcept;
+    bool has_real(const std::string& key) const noexcept;
+    bool has_string(const std::string& key) const noexcept;
+    bool has_bool_vector(const std::string& key) const noexcept;
+    bool has_int_vector(const std::string& key) const noexcept;
+    bool has_real_vector(const std::string& key) const noexcept;
+    bool has_string_vector(const std::string& key) const noexcept;
 
     void set_bool(const std::string& key, bool value);
     void set_int(const std::string& key, std::int64_t value);
@@ -66,6 +88,7 @@ public:
     void set_string_vector(const std::string& key, std::vector<std::string> value);
     void set_string_vector(const std::string& key, const std::vector<const char*>& value);
     void set_string_vector(const std::string& key, const std::vector<char*>& value);
+    void set_string_vector(const std::string& key, const std::initializer_list<const char*>& value);
 
     bool get_bool(const std::string& key) const;
     std::int64_t get_int(const std::string& key) const;
@@ -75,6 +98,8 @@ public:
     std::vector<std::int64_t> get_int_vector(const std::string& key) const;
     std::vector<double> get_real_vector(const std::string& key) const;
     std::vector<std::string> get_string_vector(const std::string& key) const;
+
+    friend std::ostream& operator<<(std::ostream& os, const Metadata& meta);
 };
 
 #endif // #ifndef METADATA_HPP
