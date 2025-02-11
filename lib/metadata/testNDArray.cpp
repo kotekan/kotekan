@@ -1,36 +1,13 @@
 #include <NDArray.hpp>
 #include <iostream>
-#include <sstream>
-#include <string>
 
 namespace {
 
-const char* format_bool(bool b) {
-    return b ? "true" : "false";
-}
-
-template<typename T>
-std::string format_vector(const std::vector<T>& vec) {
-    std::ostringstream buf;
-    buf << "[";
-    bool isfirst = true;
-    for (const auto& x : vec)
-        buf << (isfirst ? "" : ", ") << x, isfirst = false;
-    buf << "]";
-    return buf.str();
-}
-
 void examineNDArray(const std::string& name, const GenericNDArray& arr) {
-    std::cout << "name: " << name << "\n"
-              << "    type:      " << arr.get_value_type() << "\n"
-              << "    type size: " << arr.get_value_type_size() << "\n"
-              << "    rank:      " << arr.get_rank() << "\n"
-              << "    extents:   " << format_vector(arr.get_extents()) << "\n"
-              << "    empty:     " << format_bool(arr.get_empty()) << "\n"
-              << "    size:      " << arr.get_size() << "\n"
-              << "    dimnames:  " << format_vector(arr.get_dimnames()) << "\n"
-              << "    strides:   " << format_vector(arr.get_strides()) << "\n";
+    std::cout << "name: " << name << "\n";
+    arr.output_metadata(std::cout);
 }
+
 } // namespace
 
 int main() {

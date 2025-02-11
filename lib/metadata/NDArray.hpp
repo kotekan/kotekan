@@ -71,6 +71,8 @@ public:
     virtual Symbol get_dimname(std::size_t d) const = 0;
     virtual std::vector<std::ptrdiff_t> get_strides() const = 0;
     virtual std::ptrdiff_t get_stride(std::size_t d) const = 0;
+
+    void output_metadata(std::ostream& os) const;
 };
 
 template<typename T, std::size_t D>
@@ -205,7 +207,7 @@ public:
     // For GenericNDArray
 
     DataType get_value_type() const override {
-        return GetDataType_v<T>;
+        return GetDataType_v<value_type>;
     }
     std::size_t get_value_type_size() const override {
         return value_type_size;
