@@ -14,6 +14,6 @@ target_link_libraries(testMetadata kotekan_metadata)
 
 #TODO add_executable(testNDArray testNDArray.cpp)
 #TODO target_link_libraries(testNDArray kotekan_metadata)
-#TODO 
-#TODO add_executable(testSymbol testSymbol.cpp)
-#TODO target_link_libraries(testSymbol kotekan_metadata)
+
+add_executable(testSymbol testSymbol.cpp)
+target_link_libraries(testSymbol kotekan_metadata)

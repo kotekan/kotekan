@@ -1,52 +1,42 @@
 #ifndef SYMBOL_HPP
 #define SYMBOL_HPP
 
+#include <cstring>
 #include <iostream>
-#include <limits>
 #include <mutex>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
-#include <vector>
+#include <unordered_set>
 
 class Symbol {
-public:
-    using value_type = std::size_t;
-
-private:
     static std::mutex mutex;
-    static std::unordered_map<std::string, value_type> values;
-    static std::vector<std::string> strings;
+    static std::unordered_set<std::string_view> known_symbols;
 
-    value_type value;
+    const char* value;
 
-    value_type lookup_or_insert(const std::string& str) const;
-
-    Symbol(value_type value);
+    const char* lookup_or_insert(const char* str);
 
 public:
-    Symbol() : value(std::numeric_limits<value_type>::max()) {}
+    Symbol() : value() {}
 
-    Symbol(const std::string& str) : value(lookup_or_insert(str)) {}
-    Symbol(const char* str) : value(lookup_or_insert(str)) {}
+    Symbol(const std::string_view& str);
+    Symbol(const std::string& str);
+    Symbol(const char* str);
 
     Symbol(const Symbol&) = default;
     Symbol(Symbol&&) = default;
     Symbol& operator=(const Symbol&) = default;
     Symbol& operator=(Symbol&&) = default;
 
-    static Symbol from_value(value_type value) {
-        return Symbol(value);
-    }
-
     bool valid() const noexcept {
-        return value != std::numeric_limits<value_type>::max();
+        return bool(value);
     }
 
-    value_type get_value() const {
-        if (!valid())
-            throw std::invalid_argument("Invalid symbol");
+    const char* get_c_string() const noexcept {
         return value;
+    }
+    operator const char*() const noexcept {
+        return get_c_string();
     }
     std::string get_string() const;
     operator std::string() const {
@@ -54,7 +44,7 @@ public:
     }
 
     friend bool operator==(Symbol sym1, Symbol sym2) {
-        return sym1.get_value() == sym2.get_value();
+        return sym1.value == sym2.value;
     }
     friend bool operator!=(Symbol sym1, Symbol sym2) {
         return !(sym1 == sym2);
@@ -62,7 +52,7 @@ public:
 
     // Arbitrary order
     friend bool operator<(Symbol sym1, Symbol sym2) {
-        return sym1.get_value() < sym2.get_value();
+        return sym1.value < sym2.value;
     }
     friend bool operator>(Symbol sym1, Symbol sym2) {
         return sym2 < sym1;
@@ -79,9 +69,21 @@ public:
 
 namespace std {
 template<>
+struct equal_to<::Symbol> {
+    bool operator()(const ::Symbol& lhs, const ::Symbol& rhs) const noexcept {
+        return lhs == rhs;
+    }
+};
+template<>
+struct less<::Symbol> {
+    bool operator()(const ::Symbol& lhs, const ::Symbol& rhs) const noexcept {
+        return lhs < rhs;
+    }
+};
+template<>
 struct hash<::Symbol> {
     std::size_t operator()(const ::Symbol& sym) const noexcept {
-        return std::hash<Symbol::value_type>()(sym.get_value());
+        return std::size_t(sym.get_c_string());
     }
 };
 } // namespace std

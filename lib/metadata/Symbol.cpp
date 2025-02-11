@@ -1,33 +1,32 @@
 #include <Symbol.hpp>
 
 std::mutex Symbol::mutex;
-std::unordered_map<std::string, Symbol::value_type> Symbol::values;
-std::vector<std::string> Symbol::strings;
+std::unordered_set<std::string_view> Symbol::known_symbols;
 
-Symbol::value_type Symbol::lookup_or_insert(const std::string& str) const {
+const char* Symbol::lookup_or_insert(const char* str) {
+    if (!str)
+        return str;
+    const std::string_view strview(str);
     std::lock_guard<std::mutex> lock(mutex);
-    const auto iter = values.find(str);
-    if (iter != values.end())
-        return iter->second;
-    const value_type val = strings.size();
-    values[str] = val;
-    strings.push_back(str);
-    return val;
+    const auto iter = known_symbols.find(strview);
+    if (iter != known_symbols.end())
+        return iter->data();
+    char* symbol = new char[strview.length() + 1];
+    std::strcpy(symbol, str);
+    known_symbols.insert(std::string_view(symbol));
+    return symbol;
 }
 
-Symbol::Symbol(value_type value) : value(value) {
-    std::lock_guard<std::mutex> lock(mutex);
-    if (value >= strings.size())
-        throw std::invalid_argument("Value out of range");
-}
+Symbol::Symbol(const std::string_view& str) : value(lookup_or_insert(str.data())) {}
+Symbol::Symbol(const std::string& str) : value(lookup_or_insert(str.data())) {}
+Symbol::Symbol(const char* str) : value(lookup_or_insert(str)) {}
 
 std::string Symbol::get_string() const {
     if (!valid())
         throw std::invalid_argument("Invalid symbol");
-    std::lock_guard<std::mutex> lock(mutex);
-    return strings.at(value);
+    return std::string(get_c_string());
 }
 
 std::ostream& operator<<(std::ostream& os, Symbol sym) {
-    return os << sym.get_string();
+    return os << sym.get_c_string();
 }
