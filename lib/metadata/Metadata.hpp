@@ -1,3 +1,8 @@
+/**
+ * @file
+ * @brief Contains Metadata class.
+ */
+
 #ifndef METADATA_HPP
 #define METADATA_HPP
 
@@ -12,7 +17,30 @@
 #include <utility>
 #include <vector>
 
+// The Metadata class is roughly similar to a Python dictionary. It
+// holds typed key/value pairs. The keys are strings, and the values
+// are either boolen, integer, real, string, or a vector of these.
+//
+// Values cannot be overridden once set. This is a write-once data
+// structure.
+//
+// Internally, integers and reals are stored using 64 bits.
 class Metadata {
+public:
+    enum type {
+        type_bool,
+        type_int,
+        type_real,
+        type_string,
+        type_bool_vector,
+        type_int_vector,
+        type_real_vector,
+        type_string_vector,
+    };
+
+private:
+    std::map<std::string, type> m_type;
+
     std::map<std::string, bool> m_bool;
     std::map<std::string, std::int64_t> m_int;
     std::map<std::string, double> m_real;
@@ -31,6 +59,9 @@ public:
     Metadata& operator=(const Metadata&) = delete;
 
     std::size_t size() const noexcept;
+    bool has_key(const std::string& key) const noexcept;
+    std::vector<std::string> keys() const;
+    type value_type(const std::string& key) const;
 
     std::size_t bool_size() const noexcept;
     std::size_t int_size() const noexcept;

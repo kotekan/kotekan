@@ -13,6 +13,20 @@ std::size_t Metadata::size() const noexcept {
     return bool_size() + int_size() + real_size() + string_size() + bool_vector_size()
            + int_vector_size() + real_vector_size() + string_vector_size();
 }
+bool Metadata::has_key(const std::string& key) const noexcept {
+    return m_type.count(key);
+}
+std::vector<std::string> Metadata::keys() const {
+    std::vector<std::string> keys1;
+    keys1.reserve(m_type.size());
+    for (const auto& [key, value] : m_type)
+        keys1.push_back(key);
+    return keys1;
+}
+Metadata::type Metadata::value_type(const std::string& key) const {
+    assert(has_key(key));
+    return m_type.at(key);
+}
 
 std::size_t Metadata::bool_size() const noexcept {
     return m_bool.size();
@@ -122,38 +136,46 @@ std::vector<std::string> Metadata::string_vector_keys() const {
 }
 
 void Metadata::set_bool(const std::string& key, bool value) {
-    assert(!has_bool(key));
+    assert(!has_key(key));
+    m_type[key] = type_bool;
     m_bool[key] = value;
 }
 void Metadata::set_int(const std::string& key, std::int64_t value) {
-    assert(!has_int(key));
+    assert(!has_key(key));
+    m_type[key] = type_int;
     m_int[key] = value;
 }
 void Metadata::set_real(const std::string& key, double value) {
-    assert(!has_real(key));
+    assert(!has_key(key));
+    m_type[key] = type_real;
     m_real[key] = value;
 }
 void Metadata::set_string(const std::string& key, std::string value) {
-    assert(!has_string(key));
+    assert(!has_key(key));
+    m_type[key] = type_string;
     m_string[key] = std::move(value);
 }
 void Metadata::set_string(const std::string& key, const char* value) {
     set_string(key, std::string(value));
 }
 void Metadata::set_bool_vector(const std::string& key, std::vector<bool> value) {
-    assert(!has_bool_vector(key));
+    assert(!has_key(key));
+    m_type[key] = type_bool_vector;
     m_bool_vector[key] = std::move(value);
 }
 void Metadata::set_int_vector(const std::string& key, std::vector<std::int64_t> value) {
-    assert(!has_int_vector(key));
+    assert(!has_key(key));
+    m_type[key] = type_int_vector;
     m_int_vector[key] = std::move(value);
 }
 void Metadata::set_real_vector(const std::string& key, std::vector<double> value) {
-    assert(!has_real_vector(key));
+    assert(!has_key(key));
+    m_type[key] = type_real_vector;
     m_real_vector[key] = std::move(value);
 }
 void Metadata::set_string_vector(const std::string& key, std::vector<std::string> value) {
-    assert(!has_string_vector(key));
+    assert(!has_key(key));
+    m_type[key] = type_string_vector;
     m_string_vector[key] = std::move(value);
 }
 void Metadata::set_string_vector(const std::string& key, const std::vector<const char*>& value) {
@@ -303,7 +325,7 @@ std::string format_key(const std::string& value) {
         return value;
     return format_string(value);
 }
-std::string format_key(const char* value) {
+[[maybe_unused]] std::string format_key(const char* value) {
     if (is_valid_identifier(value))
         return value;
     return format_string(value);
