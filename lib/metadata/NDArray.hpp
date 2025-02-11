@@ -1,12 +1,15 @@
 #ifndef NDARRAY_HPP
 #define NDARRAY_HPP
 
+#include <DataType.hpp>
 #include <Symbol.hpp>
 #include <array>
 #include <cassert>
 #include <cstddef>
 #include <functional>
 #include <initializer_list>
+#include <iostream>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -55,7 +58,7 @@ make_arrays_from_pairs(std::initializer_list<std::pair<T, U>> values) {
 class GenericNDArray {
 public:
     virtual ~GenericNDArray() {}
-    // TODO: value_type
+    virtual DataType get_value_type() const = 0;
     virtual std::size_t get_value_type_size() const = 0;
     virtual std::size_t get_rank() const = 0;
     virtual const void* get_data() const = 0;
@@ -71,7 +74,7 @@ public:
 };
 
 template<typename T, std::size_t D>
-class NDArray : GenericNDArray {
+class NDArray : public GenericNDArray {
 public:
     using value_type = T;
     constexpr static std::size_t rank = D;
@@ -201,6 +204,9 @@ public:
 
     // For GenericNDArray
 
+    DataType get_value_type() const override {
+        return GetDataType_v<T>;
+    }
     std::size_t get_value_type_size() const override {
         return value_type_size;
     }

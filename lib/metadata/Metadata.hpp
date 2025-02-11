@@ -19,22 +19,22 @@
 
 // The Metadata class is roughly similar to a Python dictionary. It
 // holds typed key/value pairs. The keys are strings, and the values
-// are either boolen, integer, real, string, or a vector of these.
+// are either boolen, integer, float, string, or a vector of these.
 //
 // Values cannot be overridden once set. This is a write-once data
 // structure.
 //
-// Internally, integers and reals are stored using 64 bits.
+// Internally, integers and floats are stored using 64 bits.
 class Metadata {
 public:
     enum type {
         type_bool,
         type_int,
-        type_real,
+        type_float,
         type_string,
         type_bool_vector,
         type_int_vector,
-        type_real_vector,
+        type_float_vector,
         type_string_vector,
     };
 
@@ -43,11 +43,11 @@ private:
 
     std::map<std::string, bool> m_bool;
     std::map<std::string, std::int64_t> m_int;
-    std::map<std::string, double> m_real;
+    std::map<std::string, double> m_float;
     std::map<std::string, std::string> m_string;
     std::map<std::string, std::vector<bool>> m_bool_vector;
     std::map<std::string, std::vector<std::int64_t>> m_int_vector;
-    std::map<std::string, std::vector<double>> m_real_vector;
+    std::map<std::string, std::vector<double>> m_float_vector;
     std::map<std::string, std::vector<std::string>> m_string_vector;
 
 public:
@@ -65,29 +65,29 @@ public:
 
     std::size_t bool_size() const noexcept;
     std::size_t int_size() const noexcept;
-    std::size_t real_size() const noexcept;
+    std::size_t float_size() const noexcept;
     std::size_t string_size() const noexcept;
     std::size_t bool_vector_size() const noexcept;
     std::size_t int_vector_size() const noexcept;
-    std::size_t real_vector_size() const noexcept;
+    std::size_t float_vector_size() const noexcept;
     std::size_t string_vector_size() const noexcept;
 
     std::vector<std::string> bool_keys() const;
     std::vector<std::string> int_keys() const;
-    std::vector<std::string> real_keys() const;
+    std::vector<std::string> float_keys() const;
     std::vector<std::string> string_keys() const;
     std::vector<std::string> bool_vector_keys() const;
     std::vector<std::string> int_vector_keys() const;
-    std::vector<std::string> real_vector_keys() const;
+    std::vector<std::string> float_vector_keys() const;
     std::vector<std::string> string_vector_keys() const;
 
     bool has_bool(const std::string& key) const noexcept;
     bool has_int(const std::string& key) const noexcept;
-    bool has_real(const std::string& key) const noexcept;
+    bool has_float(const std::string& key) const noexcept;
     bool has_string(const std::string& key) const noexcept;
     bool has_bool_vector(const std::string& key) const noexcept;
     bool has_int_vector(const std::string& key) const noexcept;
-    bool has_real_vector(const std::string& key) const noexcept;
+    bool has_float_vector(const std::string& key) const noexcept;
     bool has_string_vector(const std::string& key) const noexcept;
 
     void set_bool(const std::string& key, bool value);
@@ -96,10 +96,10 @@ public:
     std::enable_if_t<std::is_integral_v<T>, void> set_int(const std::string& key, T value) {
         set_int(key, std::int64_t(value));
     }
-    void set_real(const std::string& key, double value);
+    void set_float(const std::string& key, double value);
     template<typename T>
-    std::enable_if_t<std::is_floating_point_v<T>, void> set_real(const std::string& key, T value) {
-        set_real(key, double(value));
+    std::enable_if_t<std::is_floating_point_v<T>, void> set_float(const std::string& key, T value) {
+        set_float(key, double(value));
     }
     void set_string(const std::string& key, std::string value);
     void set_string(const std::string& key, const char* value);
@@ -110,11 +110,11 @@ public:
                                                                  const std::vector<T>& value) {
         set_int_vector(key, std::vector<std::int64_t>(value));
     }
-    void set_real_vector(const std::string& key, std::vector<double> value);
+    void set_float_vector(const std::string& key, std::vector<double> value);
     template<typename T>
     std::enable_if_t<std::is_floating_point_v<T>, void>
-    set_real_vector(const std::string& key, const std::vector<T>& value) {
-        set_real_vector(key, std::vector<double>(value));
+    set_float_vector(const std::string& key, const std::vector<T>& value) {
+        set_float_vector(key, std::vector<double>(value));
     }
     void set_string_vector(const std::string& key, std::vector<std::string> value);
     void set_string_vector(const std::string& key, const std::vector<const char*>& value);
@@ -123,11 +123,11 @@ public:
 
     bool get_bool(const std::string& key) const;
     std::int64_t get_int(const std::string& key) const;
-    double get_real(const std::string& key) const;
+    double get_float(const std::string& key) const;
     std::string get_string(const std::string& key) const;
     std::vector<bool> get_bool_vector(const std::string& key) const;
     std::vector<std::int64_t> get_int_vector(const std::string& key) const;
-    std::vector<double> get_real_vector(const std::string& key) const;
+    std::vector<double> get_float_vector(const std::string& key) const;
     std::vector<std::string> get_string_vector(const std::string& key) const;
 
     friend std::ostream& operator<<(std::ostream& os, const Metadata& meta);

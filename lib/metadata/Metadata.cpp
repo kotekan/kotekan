@@ -10,8 +10,8 @@ Metadata& Metadata::operator=(Metadata&&) = default;
 
 
 std::size_t Metadata::size() const noexcept {
-    return bool_size() + int_size() + real_size() + string_size() + bool_vector_size()
-           + int_vector_size() + real_vector_size() + string_vector_size();
+    return bool_size() + int_size() + float_size() + string_size() + bool_vector_size()
+           + int_vector_size() + float_vector_size() + string_vector_size();
 }
 bool Metadata::has_key(const std::string& key) const noexcept {
     return m_type.count(key);
@@ -34,8 +34,8 @@ std::size_t Metadata::bool_size() const noexcept {
 std::size_t Metadata::int_size() const noexcept {
     return m_int.size();
 }
-std::size_t Metadata::real_size() const noexcept {
-    return m_real.size();
+std::size_t Metadata::float_size() const noexcept {
+    return m_float.size();
 }
 std::size_t Metadata::string_size() const noexcept {
     return m_string.size();
@@ -46,8 +46,8 @@ std::size_t Metadata::bool_vector_size() const noexcept {
 std::size_t Metadata::int_vector_size() const noexcept {
     return m_int_vector.size();
 }
-std::size_t Metadata::real_vector_size() const noexcept {
-    return m_real_vector.size();
+std::size_t Metadata::float_vector_size() const noexcept {
+    return m_float_vector.size();
 }
 std::size_t Metadata::string_vector_size() const noexcept {
     return m_string_vector.size();
@@ -59,8 +59,8 @@ bool Metadata::has_bool(const std::string& key) const noexcept {
 bool Metadata::has_int(const std::string& key) const noexcept {
     return m_int.count(key);
 }
-bool Metadata::has_real(const std::string& key) const noexcept {
-    return m_real.count(key);
+bool Metadata::has_float(const std::string& key) const noexcept {
+    return m_float.count(key);
 }
 bool Metadata::has_string(const std::string& key) const noexcept {
     return m_string.count(key);
@@ -71,8 +71,8 @@ bool Metadata::has_bool_vector(const std::string& key) const noexcept {
 bool Metadata::has_int_vector(const std::string& key) const noexcept {
     return m_int_vector.count(key);
 }
-bool Metadata::has_real_vector(const std::string& key) const noexcept {
-    return m_real_vector.count(key);
+bool Metadata::has_float_vector(const std::string& key) const noexcept {
+    return m_float_vector.count(key);
 }
 bool Metadata::has_string_vector(const std::string& key) const noexcept {
     return m_string_vector.count(key);
@@ -92,10 +92,10 @@ std::vector<std::string> Metadata::int_keys() const {
         keys.push_back(key);
     return keys;
 }
-std::vector<std::string> Metadata::real_keys() const {
+std::vector<std::string> Metadata::float_keys() const {
     std::vector<std::string> keys;
-    keys.reserve(m_real.size());
-    for (const auto& [key, value] : m_real)
+    keys.reserve(m_float.size());
+    for (const auto& [key, value] : m_float)
         keys.push_back(key);
     return keys;
 }
@@ -120,10 +120,10 @@ std::vector<std::string> Metadata::int_vector_keys() const {
         keys.push_back(key);
     return keys;
 }
-std::vector<std::string> Metadata::real_vector_keys() const {
+std::vector<std::string> Metadata::float_vector_keys() const {
     std::vector<std::string> keys;
-    keys.reserve(m_real_vector.size());
-    for (const auto& [key, value] : m_real_vector)
+    keys.reserve(m_float_vector.size());
+    for (const auto& [key, value] : m_float_vector)
         keys.push_back(key);
     return keys;
 }
@@ -145,10 +145,10 @@ void Metadata::set_int(const std::string& key, std::int64_t value) {
     m_type[key] = type_int;
     m_int[key] = value;
 }
-void Metadata::set_real(const std::string& key, double value) {
+void Metadata::set_float(const std::string& key, double value) {
     assert(!has_key(key));
-    m_type[key] = type_real;
-    m_real[key] = value;
+    m_type[key] = type_float;
+    m_float[key] = value;
 }
 void Metadata::set_string(const std::string& key, std::string value) {
     assert(!has_key(key));
@@ -168,10 +168,10 @@ void Metadata::set_int_vector(const std::string& key, std::vector<std::int64_t> 
     m_type[key] = type_int_vector;
     m_int_vector[key] = std::move(value);
 }
-void Metadata::set_real_vector(const std::string& key, std::vector<double> value) {
+void Metadata::set_float_vector(const std::string& key, std::vector<double> value) {
     assert(!has_key(key));
-    m_type[key] = type_real_vector;
-    m_real_vector[key] = std::move(value);
+    m_type[key] = type_float_vector;
+    m_float_vector[key] = std::move(value);
 }
 void Metadata::set_string_vector(const std::string& key, std::vector<std::string> value) {
     assert(!has_key(key));
@@ -203,9 +203,9 @@ std::int64_t Metadata::get_int(const std::string& key) const {
     assert(has_int(key));
     return m_int.at(key);
 }
-double Metadata::get_real(const std::string& key) const {
-    assert(has_real(key));
-    return m_real.at(key);
+double Metadata::get_float(const std::string& key) const {
+    assert(has_float(key));
+    return m_float.at(key);
 }
 std::string Metadata::get_string(const std::string& key) const {
     assert(has_string(key));
@@ -219,9 +219,9 @@ std::vector<std::int64_t> Metadata::get_int_vector(const std::string& key) const
     assert(has_int_vector(key));
     return m_int_vector.at(key);
 }
-std::vector<double> Metadata::get_real_vector(const std::string& key) const {
-    assert(has_real_vector(key));
-    return m_real_vector.at(key);
+std::vector<double> Metadata::get_float_vector(const std::string& key) const {
+    assert(has_float_vector(key));
+    return m_float_vector.at(key);
 }
 std::vector<std::string> Metadata::get_string_vector(const std::string& key) const {
     assert(has_string_vector(key));
@@ -241,7 +241,7 @@ std::enable_if_t<std::is_integral_v<T>, T> format_int(T value) {
 }
 
 template<typename T>
-std::enable_if_t<std::is_floating_point_v<T>, std::string> format_real(T value) {
+std::enable_if_t<std::is_floating_point_v<T>, std::string> format_float(T value) {
     // Use a stringstream to avoid changing the properties of the output stream `os`
     std::ostringstream buf;
     buf << std::setprecision(std::numeric_limits<T>::max_digits10) << std::showpoint << value;
@@ -338,8 +338,8 @@ std::ostream& operator<<(std::ostream& os, const Metadata& meta) {
         os << format_key(key) << ": " << format_bool(meta.get_bool(key)) << "\n";
     for (const auto& key : meta.int_keys())
         os << format_key(key) << ": " << format_int(meta.get_int(key)) << "\n";
-    for (const auto& key : meta.real_keys())
-        os << format_key(key) << ": " << format_real(meta.get_real(key)) << "\n";
+    for (const auto& key : meta.float_keys())
+        os << format_key(key) << ": " << format_float(meta.get_float(key)) << "\n";
     for (const auto& key : meta.string_keys())
         os << format_key(key) << ": " << format_string(meta.get_string(key)) << "\n";
     for (const auto& key : meta.bool_vector_keys()) {
@@ -356,11 +356,11 @@ std::ostream& operator<<(std::ostream& os, const Metadata& meta) {
             os << (isfirst ? "" : ", ") << format_int(value), isfirst = false;
         os << "]\n";
     }
-    for (const auto& key : meta.real_vector_keys()) {
+    for (const auto& key : meta.float_vector_keys()) {
         os << format_key(key) << ": [";
         bool isfirst = true;
-        for (const auto& value : meta.get_real_vector(key))
-            os << (isfirst ? "" : ", ") << format_real(value), isfirst = false;
+        for (const auto& value : meta.get_float_vector(key))
+            os << (isfirst ? "" : ", ") << format_float(value), isfirst = false;
         os << "]\n";
     }
     for (const auto& key : meta.string_vector_keys()) {
