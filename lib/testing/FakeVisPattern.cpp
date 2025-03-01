@@ -5,7 +5,7 @@
 #include "CHORDTelescope.hpp" // for CHORDTelescope
 #include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
 #include "datasetState.hpp"   // for flagState, inputState
-#include "timeUtil.hpp"       // for get_ERA_from_GPS
+#include "timeUtil.hpp"       // for get_ERA_from_time
 #include "visBuffer.hpp"      // for VisFrameView
 #include "visUtil.hpp"        // for cfloat, input_ctype, ts_to_double, cmap
 
@@ -496,10 +496,10 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     double dut1 = tel.get_dut1();
     double dtai = tel.get_dtai();
 
-    timespec gps_time = tel.to_time(frame.fpga_start_tick
+    timespec time = tel.to_time(frame.fpga_start_tick
                                     + frame.frame_length_fpga_ticks/2);
 
-    double era = get_ERA_from_GPS(gps_time, dtai, dut1);
+    double era = get_ERA_from_time(time, dtai, dut1);
 
     std::array<double, 3> n = tel.get_sky_vec_in_dish_coords(ra, dec, era);
 
@@ -516,7 +516,7 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     */
 
     INFO("Making fake vis at t: {:d} s + {:d} ns",
-            gps_time.tv_sec, gps_time.tv_nsec);
+            time.tv_sec, time.tv_nsec);
     INFO("     telescope dt_ns: {}", tel.seq_length_nsec());
     INFO("          start tick: {}", frame.fpga_start_tick);
     INFO("          Frame time: {:d} ns", frame.frame_start_time_ns);

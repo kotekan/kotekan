@@ -4,6 +4,8 @@
 #include "Config.hpp" // for Config
 #include "Telescope.hpp"
 
+#include "restServer.hpp"
+
 #include <stdint.h> // for int32_t, uint32_t  TODO: why not cstdint?
 #include <string>
 #include <time.h>
@@ -34,6 +36,7 @@
 struct EOP {
     struct timespec t_gps;
     struct timespec t_ut1;
+    uint64_t seq;
     double ERA_deg;
     double xp_as;
     double yp_as;
@@ -105,6 +108,8 @@ public:
     template<typename... Args>
     CHORDTelescope(Args&&... args) : Telescope(std::forward<Args>(args)...){};
 
+    ~CHORDTelescope();
+
 protected:
     /**
      * @brief Set the GPS time parameters from the config.
@@ -129,6 +134,13 @@ protected:
      * @param json JSON reference of the config
      */
     bool receive_eop_updates(nlohmann::json& json);
+
+    void send_time0_ns(kotekan::connectionInstance& conn);
+
+    struct EOP build_EOP_from_update(uint64_t t_ns, double dut1, double dtai,
+                                     double xp_as, double yp_as);
+
+    std::string _unique_name;
 
     /// Should we try to get the GPS time from remote server
     bool _query_gps;
@@ -176,8 +188,5 @@ protected:
     double _y_pm;  // Polat Motion y coordinate (arcseconds)
 
 };
-
-struct EOP build_EOP_from_update(uint64_t t_ns, double dut1, double dtai,
-                                 double xp_as, double yp_as);
 
 #endif // CHORD_TELESCOPE_HPP

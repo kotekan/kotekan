@@ -1,53 +1,80 @@
 #include <math.h>
 #include "timeUtil.hpp"
 
-static constexpr double C = 2.99792458e8;
+timespec get_UT1_from_time(const timespec &t, double dAT0, double dUT) {
+    /*
+     * Compute the UT1 time at given instrument time t.
+     *
+     * t is a UNIX time (non leap seconds since 1970-01-01 00:00:00 UTC)
+     *
+     * We produce ut1 in a timespec (seconds and nanoseconds) with the Julian
+     * Date (JD) epoch.  
+     *
+     * To convert to JD we use the J2000 as a reference point with a known
+     * conversion.
+     *
+     * J2000 = 2000-01-01 12:00:00 TT
+     *       = 2000-01-01 11:58:55.816 UTC  (64.184 s behind TT)
+     * 
+     * In JD this is:
+     *       = 2'451'545.0 TT
+     *       = 2'451'545.0 - 64.184 / 86400 UTC
+     *
+     * In UNIX this is:
+     *       = 946'728'000.0 - 64.184
+     *       = 946'727'935.816
+     */
 
-timespec get_TAI_from_GPS(const timespec &gps_time) {
-    return timespec{
-                .tv_sec=(gps_time.tv_sec+19),
-                .tv_nsec=gps_time.tv_nsec};
-}
+    long GIGA = 1'000'000'000;
 
-timespec get_UT1_from_GPS(const timespec &gps_time, double dAT, double dUT) {
+    // UNIX time of J2000
+    long J2000_s_unix = 946'728'935L;
+    long J2000_ns_unix = 816'000'000L;
+
+    // JD of J2000 in s,ns
+    long J2000_s_jd = 2'451'545L * 86400L - 64;
+    long J2000_ns_jd = -184'000'000L;
+
+    // Instrument time relative to J2000 (in UNIX (UTC) seconds)
+    long t_J2000_s = t.tv_sec - J2000_s_unix;
+    long t_J2000_ns = t.tv_nsec - J2000_ns_unix;
+
+    // The additive conversion to take instrument time to UT1
+    double dUT1 = dUT - dAT0;
     
-    // This is the Julian Date of the GPS epoch in seconds.
-    // The GPS epoch is 1980-01-06 00:00:00 UTC,
-    // this is 1980-10-06 00:00:19 TAI,
-    // which is Julian Date 2444244.5002199074074074 (days),
-    // which in seconds (x86400) is 211182724819.0
-    long gps_t0_jd_sec = 211182724819;
-    long gps_t0_jd_nsec = 0;
+    // extract the seconds and fractional seconds from dUT1
+    double dUT1_secd;
+    double dUT1_fracsec = modf(dUT1, &dUT1_secd);
 
-    double dAT_secd, dUT_secd;
-    double dAT_fracsec = modf(dAT, &dAT_secd);
-    double dUT_fracsec = modf(dUT, &dUT_secd);
+    // convert from floating point sec & frac sec to integral s & ns
 
-    long GIGA = 1000000000;
+    // The seconds are already guaranteed to be integral, so a simple cast
+    // works here.
+    long dUT1_s = (long) dUT1_secd;
 
-    //These conversions truncate instead of round, might lose a nanosecond
-    //in the conversion. --> 15 nas in ERA
-    long dAT_sec = (long) dAT_secd;
-    long dUT_sec = (long) dUT_secd;
+    // The fracsec are doubles, with precision ~ 1e-16 s, so rounding 
+    // will produce the correct number of ns.
+    // NOTE: dUT1 is only accurate to ~microseconds at best, so
+    // nanoseconds is comfortably overkill.
+    long dUT1_ns = (long) round(1e9 * dUT1_fracsec);
 
-    // fracsec values are < 1.0 s and have ~16 digits precision, so they
-    // can represent ns with "exactly".
-    long dT_nsec = (long) round(1e9 * (dUT_fracsec - dAT_fracsec));
+    // Finally, compute the UT1 time with JD epoch.  
+    long ut1_s = J2000_s_jd + t_J2000_s + dUT1_s;
+    long ut1_ns = J2000_ns_jd + t_J2000_ns + dUT1_ns;
 
-    long ut1_sec = gps_t0_jd_sec + gps_time.tv_sec + dUT_sec - dAT_sec;
-    long ut1_nsec = gps_t0_jd_nsec + gps_time.tv_nsec + dT_nsec;
+    // Our ns count may be negative or greater than 1'000'000'000,
+    // need to normalize for putting in a timespec.
+    long full_sec_over = ut1_ns / GIGA;
 
-    while(ut1_nsec < 0) {
-        ut1_nsec += GIGA;
-        ut1_sec -= 1;
-    }
+    // if ns count is negative, the division above will undercount by 1 the
+    // the number of seconds to shift;
+    if(ut1_ns < 0)
+        full_sec_over -= 1;
 
-    while(ut1_nsec >= GIGA) {
-        ut1_nsec -= GIGA;
-        ut1_sec += 1;
-    }
+    ut1_s += full_sec_over;
+    ut1_ns -= full_sec_over * GIGA;
 
-    return timespec{.tv_sec=ut1_sec, .tv_nsec=ut1_nsec};
+    return timespec{.tv_sec=ut1_s, .tv_nsec=ut1_ns};
 }
 
 double get_ERA_from_UT1(const timespec &ut1) {
@@ -57,7 +84,7 @@ double get_ERA_from_UT1(const timespec &ut1) {
     //              + Tu(d)_frac
     //              + 0.00273781191135448 * (Tu(d) - 2451545)
 
-    long t0_sec = 2451545L * 86400L;
+    long t0_sec = 2'451'545L * 86400L;
 
     long t_sec = ut1.tv_sec - t0_sec;
     long t_nsec = ut1.tv_nsec;
@@ -80,76 +107,9 @@ double get_ERA_from_UT1(const timespec &ut1) {
     return 360.0 * f;
 }
 
-double get_ERA_from_GPS(const timespec &gpstime, double dAT, double dUT) {
+double get_ERA_from_time(const timespec &time, double dAT, double dUT) {
 
-    timespec ut1 = get_UT1_from_GPS(gpstime, dAT, dUT);
+    timespec ut1 = get_UT1_from_time(time, dAT, dUT);
     return get_ERA_from_UT1(ut1);
 }
 
-void fringestopping_phases_linear(std::vector<double>& phases,
-                                  double nu, double era, double era0,
-                                  const std::vector<int> &dish_indices,
-                                  const std::vector<float> &dish_positions,
-                                  int n_elements, int n_dish,
-                                  double lat) {
-
-    double two_pi_k = 2*M_PI*C/nu * cos(lat);
-
-    int el = 0;
-
-    for(int i = 0; i < n_elements; i++) {
-        for(int j = 0; j <= i; j++) {
-            int i_dish = i % n_dish;
-            int j_dish = j % n_dish;
-            //Assuming here dish_positions is Ndish x 2, with E/W in the
-            //first position and N/S in the second.
-            float dish_sep_ew = dish_positions[2*i_dish]
-                                - dish_positions[2*j_dish];
-
-            // In principle we could compute the precise component of the
-            // baseline transverse to the local meridian and the Earth's
-            // current rotational axis, but instead we'll assume
-            // for now this is just the E/W distance.
-
-            double Phi = two_pi_k * dish_sep_ew * (era - era0);
-
-            phases[2*el] = cos(Phi);
-            phases[2*el+1] = sin(Phi);
-            el++;
-        }
-    }
-}
-
-void fringestopping_phases(std::vector<double>& phases,
-                           double nu, double era, double era0,
-                           const std::vector<int> &dish_indices,
-                           const std::vector<float> &dish_positions,
-                           int n_elements, int n_dish,
-                           double lat) {
-
-    double two_pi_k = 2*M_PI*C/nu * cos(lat);
-
-    int el = 0;
-
-    for(int i = 0; i < n_elements; i++) {
-        for(int j = 0; j <= i; j++) {
-            int i_dish = i % n_dish;
-            int j_dish = j % n_dish;
-            //Assuming here dish_positions is Ndish x 2, with E/W in the
-            //first position and N/S in the second.
-            float dish_sep_ew = dish_positions[2*i_dish]
-                                - dish_positions[2*j_dish];
-
-            // In principle we could compute the precise component of the
-            // baseline transverse to the local meridian and the Earth's
-            // current rotational axis, but instead we'll assume
-            // for now this is just the E/W distance.
-
-            double Phi = two_pi_k * dish_sep_ew * (era - era0);
-
-            phases[2*el] = cos(Phi);
-            phases[2*el+1] = sin(Phi);
-            el++;
-        }
-    }
-}

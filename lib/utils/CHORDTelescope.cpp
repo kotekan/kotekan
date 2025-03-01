@@ -3,6 +3,7 @@
 #include "Telescope.hpp"        // for REGISTER_TELESCOPE, Telescope, ...
 #include "kotekanLogging.hpp"   // for WARN, INFO, FATAL_ERROR
 #include "restClient.hpp"       // for restClient
+#include "restServer.hpp"       // for restServer, connectionInstance
 #include "configUpdater.hpp"   // for ConfigUpdater
 #include "timeUtil.hpp"
 
@@ -23,10 +24,14 @@ REGISTER_TELESCOPE(CHORDTelescope, "CHORDTelescope");
 
 static constexpr double C = 2.99792458e8;
 
+using kotekan::connectionInstance;
+using kotekan::restServer;
+
 CHORDTelescope::CHORDTelescope(const kotekan::Config& config,
                                const std::string& path) :
     Telescope(config.get<std::string>(path, "log_level")) {
 
+    _unique_name = path;
     bool require_gps = config.get_default<uint32_t>(path, "require_gps", false);
     _query_gps = config.get_default<bool>(path, "query_gps", false);
     _gps_host = config.get_default<std::string>(path, "gps_host", "127.0.0.1");
@@ -100,7 +105,16 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config,
     kotekan::configUpdater::instance().subscribe(
             config.get<std::string>(path, "updatable_config"),
             std::bind(&CHORDTelescope::receive_eop_updates, this, _1));
-    
+
+    restServer &rest_server = restServer::instance();
+
+    rest_server.register_get_callback(path + "/time0_ns",
+                        std::bind(&CHORDTelescope::send_time0_ns, this, _1));
+}
+
+CHORDTelescope::~CHORDTelescope() {
+    restServer &rest_server = restServer::instance();
+    rest_server.remove_json_callback(_unique_name + "/time0_ns");
 }
 
 
@@ -178,6 +192,12 @@ bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
     }
 
     return true;
+}
+
+void CHORDTelescope::send_time0_ns(connectionInstance& conn) {
+    nlohmann::json reply;
+    reply["time0_ns"] = time0_ns;
+    conn.send_json_reply(reply);
 }
 
 timespec CHORDTelescope::to_time(uint64_t seq) const {
@@ -430,6 +450,17 @@ double CHORDTelescope::get_dtai() const {
     std::lock_guard<std::mutex> lock(_eop_lock);
     return _dtai;
 }
+    
+struct EOP CHORDTelescope::get_EOP_at_seq(uint64_t seq) const {
+    std::lock_guard<std::mutex> lock(_eop_lock);
+
+
+
+    
+}
+
+struct EOP CHORDTelescope::get_EOP_at_ERA(double ERA_deg) const {
+}
 
 //TODO: This is a stub to satisfy inheritance and should not be used.
 freq_id_t CHORDTelescope::to_freq_id(stream_t stream, uint32_t ind) const {
@@ -461,14 +492,15 @@ uint8_t CHORDTelescope::nyquist_zone() const {
     return 0;
 }
 
-struct EOP build_EOP_from_update(uint64_t t_ns, double dut1, double dtai,
-                                 double xp_as, double yp_as) {
+struct EOP CHORDTelescope::build_EOP_from_update(uint64_t t_ns, double dut1,
+                                                 double dtai, double xp_as,
+                                                 double yp_as) {
 
     struct timespec t {
         .tv_sec=(time_t)(t_ns/GIGA),
         .tv_nsec=(long)(t_ns % GIGA)};
 
-    struct timespec ut1 = get_UT1_from_GPS(t, dtai, dut1);
+    struct timespec ut1 = get_UT1_from_time(t, dtai, dut1);
     double era = get_ERA_from_UT1(ut1);
 
     struct EOP eop {

@@ -86,7 +86,6 @@ add_library(
     ExampleConsumer.cpp
     ExampleDotProduct.cpp
     N2Accumulate.cpp
-    TimeUtilDump.cpp
     N2TimeDownsample.cpp
     N2FringeStop.cpp
     # Julia
