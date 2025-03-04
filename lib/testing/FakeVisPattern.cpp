@@ -480,7 +480,83 @@ PointSourceVisPattern::PointSourceVisPattern(kotekan::Config& config,
 }
 
 void PointSourceVisPattern::fill(VisFrameView& frame) {
+    
+    frame.fpga_seq_total = frame.fpga_seq_length - n_rfi_ticks - n_lost_ticks;
+    frame.rfi_total = n_rfi_ticks;
 
+    const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
+
+    uint32_t num_dishes = tel.get_num_dishes();
+    uint32_t num_elements = frame.num_elements;
+
+    double dut1 = tel.get_dut1();
+    double dtai = tel.get_dtai();
+
+    timespec time = tel.to_time(std::get<0>(frame.time) + frame.fpga_seq_length/2);
+
+    double era = get_ERA_from_time(time, dtai, dut1);
+
+    std::array<double, 3> n = tel.get_sky_vec_in_dish_coords(ra, dec, era);
+
+    double f = tel.to_freq(frame.freq_id);
+    double lambda = C / f;
+    
+    /*
+    n[0] = 0.0;
+    n[1] = 0.0;
+    n[2] = 1.0;
+    */
+
+    INFO("Making fake vis at t: {:d} s + {:d} ns",
+            time.tv_sec, time.tv_nsec);
+    INFO("     telescope dt_ns: {}", tel.seq_length_nsec());
+    INFO("          start tick: {}", std::get<0>(frame.time));
+    INFO("          Frame time: {:d} ns", std::get<1>(frame.time).tv_sec*1000000000 + std::get<1>(frame.time).tv_nsec);
+    INFO("                   f: {:d} = {:e} Hz", frame.freq_id, f);
+    INFO("                   ERA: {:.10f} deg", era);
+    INFO("                   n: {:f} {:f} {:f}", n[0], n[1], n[2]);
+
+    int ind = 0;
+    for (uint32_t el_i = 0; el_i < num_elements; el_i++) {
+        for (uint32_t el_j = el_i; el_j < num_elements; el_j++) {
+
+            uint32_t dish_i = el_i % (num_dishes);
+            uint32_t dish_j = el_j % (num_dishes);
+            uint32_t pol_i = el_i / num_dishes;
+            uint32_t pol_j = el_j / num_dishes;
+
+            double phase = 2*M_PI * (
+                      (tel.get_dish_coord(dish_i, 0)
+                        - tel.get_dish_coord(dish_j, 0)) * n[0]
+                    + (tel.get_dish_coord(dish_i, 1)
+                        - tel.get_dish_coord(dish_j, 1)) * n[1]
+                    + (tel.get_dish_coord(dish_i, 2)
+                        - tel.get_dish_coord(dish_j, 2)) * n[2])
+                    / lambda;
+
+            double cp = cos(phase);
+            double sp = sin(phase);
+
+            double power_r = 0;
+            double power_i = 0;
+            if (pol_i == 0 && pol_j == 0)
+                power_r = stokes_I + stokes_Q;
+            else if (pol_i == 1 && pol_j == 1)
+                power_r = stokes_I - stokes_Q;
+            else if (pol_i == 0 && pol_j == 1) {
+                power_r = stokes_U;
+                power_i = stokes_V;
+            }
+            else if (pol_i == 1 && pol_j == 0) {
+                power_r = stokes_U;
+                power_i = -stokes_V;
+            }
+
+            frame.vis[ind] = {(float)(power_r * cp - power_i * sp),
+                              (float)(power_r * sp + power_i * cp)};
+            ind++;
+        }
+    }
 }
 
 void PointSourceVisPattern::fill(N2FrameView& frame) {
