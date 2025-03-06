@@ -34,9 +34,9 @@
  */
 
 struct EOP {
-    struct timespec t_gps;
+    struct timespec t_inst;
     struct timespec t_ut1;
-    uint64_t seq;
+    double delta_UT1_inst;
     double ERA_deg;
     double xp_as;
     double yp_as;
@@ -59,8 +59,10 @@ public:
     int get_num_dishes() const;
     double get_dut1() const;
     double get_dtai() const;
-    struct EOP get_EOP_at_seq(uint64_t seq) const;
-    struct EOP get_EOP_at_ERA(double ERA_deg) const;
+    int get_EOP_table_len() const;
+    struct EOP get_EOP_at_idx(uint64_t i) const;
+    struct EOP get_EOP_at_time(const timespec &ts) const;
+    struct EOP get_EOP_at_UT1(const timespec &ut1) const;
     std::array<double, 3> get_sky_vec_in_dish_coords(double ra, double dec,                                                 double era) const;
 
     std::array<double, 3> get_pointing_vec_in_tel_coords() const;
@@ -137,8 +139,8 @@ protected:
 
     void send_time0_ns(kotekan::connectionInstance& conn);
 
-    struct EOP build_EOP_from_update(uint64_t t_ns, double dut1, double dtai,
-                                     double xp_as, double yp_as);
+    struct EOP build_EOP_from_update(uint64_t t_ns, double delta_ut1_inst,
+                                     double xp_as, double yp_as) const;
 
     std::string _unique_name;
 
@@ -188,5 +190,8 @@ protected:
     double _y_pm;  // Polat Motion y coordinate (arcseconds)
 
 };
+
+bool EOP_comp_time(const struct EOP &eop1, const struct EOP &eop2);
+bool EOP_comp_ut1(const struct EOP &eop1, const struct EOP &eop2);
 
 #endif // CHORD_TELESCOPE_HPP

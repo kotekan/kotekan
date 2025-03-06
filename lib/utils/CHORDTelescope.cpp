@@ -20,7 +20,7 @@
 
 REGISTER_TELESCOPE(CHORDTelescope, "CHORDTelescope");
 
-#define GIGA 1000000000
+#define GIGA 1'000'000'000
 
 static constexpr double C = 2.99792458e8;
 
@@ -175,14 +175,16 @@ bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
     try {
         std::vector<struct EOP> tmp_eop_table;
         for(const auto& elem : json.at("earth_orientation_parameter_table")) {
-            uint64_t t_ns = elem.at("tgps").get<uint64_t>();
-            double dut1 = elem.at("DUT1").get<double>();
-            double dtai = elem.at("DTAI").get<double>();
+            INFO("CHORDTelescope EOP update: {:s}", elem.dump());
+            uint64_t t_ns = elem.at("time_inst_ns").get<uint64_t>();
+            double dut1 = elem.at("delta_UT1_inst").get<double>();
             double x_pm = elem.at("x_pm").get<double>();
             double y_pm = elem.at("y_pm").get<double>();
             tmp_eop_table.push_back(
-                    build_EOP_from_update(t_ns, dut1, dtai, x_pm, y_pm));
+                    build_EOP_from_update(t_ns, dut1, x_pm, y_pm));
         }
+
+        std::sort(tmp_eop_table.begin(), tmp_eop_table.end(), EOP_comp_time);
 
         _eop_table = tmp_eop_table;
 
@@ -407,7 +409,7 @@ void CHORDTelescope::fringestop_phases_1d(double freq_Hz, double era_deg,
     // wavenumber for this frequency
     double k = 2*M_PI * freq_Hz / C;
 
-    for(int i = 0; i < _dish_positions.size(); i++)
+    for(uint64_t i = 0; i < _dish_positions.size(); i++)
     {
         double phase = -k * (
                   _dish_positions[i][0] * (n_tel[0] - n_tel0[0])
@@ -442,7 +444,6 @@ int CHORDTelescope::get_num_dishes() const {
 }
 
 double CHORDTelescope::get_dut1() const {
-    std::lock_guard<std::mutex> lock(_eop_lock);
     return _dut1;
 }
 
@@ -450,16 +451,141 @@ double CHORDTelescope::get_dtai() const {
     std::lock_guard<std::mutex> lock(_eop_lock);
     return _dtai;
 }
-    
-struct EOP CHORDTelescope::get_EOP_at_seq(uint64_t seq) const {
+
+int CHORDTelescope::get_EOP_table_len() const {
     std::lock_guard<std::mutex> lock(_eop_lock);
-
-
-
-    
+    return _eop_table.size();
 }
 
-struct EOP CHORDTelescope::get_EOP_at_ERA(double ERA_deg) const {
+struct EOP CHORDTelescope::get_EOP_at_idx(uint64_t i) const {
+    std::lock_guard<std::mutex> lock(_eop_lock);
+
+    if(i < _eop_table.size()) {
+        struct EOP eop = _eop_table[i];
+        return eop;
+    }
+
+    struct EOP eop_null = {.t_inst={(time_t)0,(long)0},
+        .t_ut1={(time_t)0,(long)0}, .delta_UT1_inst=0.0, .ERA_deg=0.0,
+        .xp_as=0.0, .yp_as=0.0};
+
+    return eop_null;
+}
+
+struct EOP CHORDTelescope::get_EOP_at_time(const timespec &t_target) const {
+    //Interpolate on the EOP table to find EOP for the given instrument time.
+
+    std::lock_guard<std::mutex> lock(_eop_lock);
+
+    struct EOP eop;
+    eop.t_inst = t_target;
+
+    // _eop_table is always sorted by instrument time. Do a quick search
+    // for the first table entry with larger time than the target.
+    auto eop_b = std::lower_bound(_eop_table.begin(), _eop_table.end(),
+                                  eop, EOP_comp_time);
+    
+    // DUT1, xp_as, and yp_as evolve slowly, on secular time scales, so we
+    // interpolate these, and calculate ERA after.
+
+    if(eop_b == _eop_table.begin()) {
+        // Time is earlier than covered by the table, use the first value.
+        eop.delta_UT1_inst = eop_b->delta_UT1_inst;
+        eop.xp_as = eop_b->xp_as;
+        eop.yp_as = eop_b->yp_as;
+    }
+    else if(eop_b == _eop_table.end()) {
+        // Time is later than covered by the table, use the last value.
+        auto eop_last = eop_b - 1;
+        eop.delta_UT1_inst = eop_last->delta_UT1_inst;
+        eop.xp_as = eop_last->xp_as;
+        eop.yp_as = eop_last->yp_as;
+    }
+    else {
+        // Interpolate!
+        auto eop_a = eop_b - 1;
+        int64_t diff_ns_a = GIGA * (t_target.tv_sec - eop_a->t_inst.tv_sec)
+                             + t_target.tv_nsec - eop_a->t_inst.tv_nsec;
+        int64_t diff_ns_b = GIGA * (t_target.tv_sec - eop_b->t_inst.tv_sec)
+                             + t_target.tv_nsec - eop_b->t_inst.tv_nsec;
+
+        int64_t diff_ns = diff_ns_a - diff_ns_b;
+
+        double wb = diff_ns_a / ((double) diff_ns);
+        double wa = 1.0 - wb;
+
+        eop.delta_UT1_inst = wa * eop_a->delta_UT1_inst
+                            + wb * eop_b->delta_UT1_inst;
+        eop.xp_as = wa * eop_a->xp_as + wb * eop_b->xp_as;
+        eop.yp_as = wa * eop_a->yp_as + wb * eop_b->yp_as;
+    }
+
+    timespec t_ut1 = get_UT1_from_time(t_target, eop.delta_UT1_inst);
+    double era = get_ERA_from_UT1(t_ut1);
+
+    eop.t_ut1 = t_ut1;
+    eop.ERA_deg = era;
+    
+    return eop;
+}
+
+struct EOP CHORDTelescope::get_EOP_at_UT1(const timespec &t_ut1) const {
+    //Interpolate on the EOP table to find EOP for the given UT1 time.
+
+    std::lock_guard<std::mutex> lock(_eop_lock);
+
+    struct EOP eop;
+    eop.t_ut1 = t_ut1;
+
+    // _eop_table is always sorted by instrument time. UT1 is monotonic 
+    // with instrument time, unless the Earth has been met with catastrophe.
+    // Do a quick search for the first table entry with larger UT1 time than
+    // the target.
+    auto eop_b = std::lower_bound(_eop_table.begin(), _eop_table.end(),
+                                  eop, EOP_comp_ut1);
+
+    // DUT1, xp_as, and yp_as evolve slowly, on secular time scales, so we
+    // interpolate these, and calculate ERA after.
+
+    if(eop_b == _eop_table.begin()) {
+        // Time is earlier than covered by the table, use the first value.
+        eop.delta_UT1_inst = eop_b->delta_UT1_inst;
+        eop.xp_as = eop_b->xp_as;
+        eop.yp_as = eop_b->yp_as;
+    }
+    else if(eop_b == _eop_table.end()) {
+        // Time is later than covered by the table, use the last value.
+        auto eop_last = eop_b - 1;
+        eop.delta_UT1_inst = eop_last->delta_UT1_inst;
+        eop.xp_as = eop_last->xp_as;
+        eop.yp_as = eop_last->yp_as;
+    }
+    else {
+        // Interpolate!
+        auto eop_a = eop_b - 1;
+        int64_t diff_ns_a = GIGA * (t_ut1.tv_sec - eop_a->t_ut1.tv_sec)
+                             + t_ut1.tv_nsec - eop_a->t_ut1.tv_nsec;
+        int64_t diff_ns_b = GIGA * (t_ut1.tv_sec - eop_b->t_ut1.tv_sec)
+                             + t_ut1.tv_nsec - eop_b->t_ut1.tv_nsec;
+
+        int64_t diff_ns = diff_ns_a - diff_ns_b;
+
+        double wb = diff_ns_a / ((double) diff_ns);
+        double wa = 1.0 - wb;
+
+        eop.delta_UT1_inst = wa * eop_a->delta_UT1_inst
+                            + wb * eop_b->delta_UT1_inst;
+        eop.xp_as = wa * eop_a->xp_as + wb * eop_b->xp_as;
+        eop.yp_as = wa * eop_a->yp_as + wb * eop_b->yp_as;
+    }
+
+    timespec t_inst = get_time_from_UT1(t_ut1, eop.delta_UT1_inst);
+    double era = get_ERA_from_UT1(t_ut1);
+
+    eop.t_inst = t_inst;
+    eop.ERA_deg = era;
+    
+    return eop;
 }
 
 //TODO: This is a stub to satisfy inheritance and should not be used.
@@ -479,7 +605,7 @@ uint32_t CHORDTelescope::num_freq_per_stream() const {
     
 //TODO: This is a stub to satisfy inheritance and should not be used.
 uint32_t CHORDTelescope::num_freq() const {
-    return 0;
+    return 0; 
 }
     
 //TODO: This is a stub to satisfy inheritance and should not be used.
@@ -492,23 +618,47 @@ uint8_t CHORDTelescope::nyquist_zone() const {
     return 0;
 }
 
-struct EOP CHORDTelescope::build_EOP_from_update(uint64_t t_ns, double dut1,
-                                                 double dtai, double xp_as,
-                                                 double yp_as) {
+struct EOP CHORDTelescope::build_EOP_from_update(uint64_t time_ns,
+                                                 double delta_ut1_inst,
+                                                 double xp_as,
+                                                 double yp_as) const {
 
     struct timespec t {
-        .tv_sec=(time_t)(t_ns/GIGA),
-        .tv_nsec=(long)(t_ns % GIGA)};
+        .tv_sec=(time_t)(time_ns / GIGA),
+        .tv_nsec=(long)(time_ns % GIGA)};
 
-    struct timespec ut1 = get_UT1_from_time(t, dtai, dut1);
+    struct timespec ut1 = get_UT1_from_time(t, delta_ut1_inst);
     double era = get_ERA_from_UT1(ut1);
 
     struct EOP eop {
-        .t_gps = t,
+        .t_inst = t,
         .t_ut1 = ut1,
+        .delta_UT1_inst = delta_ut1_inst,
         .ERA_deg = era,
         .xp_as = xp_as,
         .yp_as = yp_as};
     
     return eop;
+}
+
+bool EOP_comp_time(const struct EOP &eop1, const struct EOP &eop2)
+{
+    if(eop1.t_inst.tv_sec < eop2.t_inst.tv_sec)
+        return true;
+    if(eop1.t_inst.tv_sec == eop2.t_inst.tv_sec
+            && eop1.t_inst.tv_nsec < eop2.t_inst.tv_nsec)
+        return true;
+
+    return false;
+}
+
+bool EOP_comp_ut1(const struct EOP &eop1, const struct EOP &eop2)
+{
+    if(eop1.t_ut1.tv_sec < eop2.t_ut1.tv_sec)
+        return true;
+    if(eop1.t_ut1.tv_sec == eop2.t_ut1.tv_sec
+            && eop1.t_ut1.tv_nsec < eop2.t_ut1.tv_nsec)
+        return true;
+
+    return false;
 }

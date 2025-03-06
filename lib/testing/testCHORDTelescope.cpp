@@ -69,8 +69,76 @@ void TestCHORDTelescope::main_thread() {
                 tel.get_orientation_el(2, 2));
         INFO("            DUT1:        {:f} s", tel.get_dut1());
         INFO("            DTAI:        {:f} s", tel.get_dtai());
-        int n_dish = tel.get_num_dishes();
+        int n_eop = tel.get_EOP_table_len();
+
+        std::vector<timespec> eop_times;
+
         int i;
+        INFO("            EOP entries: {:d}", n_eop);
+        for(i=0; i<n_eop; i++) {
+            struct EOP eop = tel.get_EOP_at_idx(i);
+            eop_times.push_back(eop.t_inst);
+            INFO("            {0: 2d} - t_inst: {1:d} s + {2:d} ns",
+                    i, eop.t_inst.tv_sec, eop.t_inst.tv_nsec);
+            INFO("               - t_ut1:  {0:d} s + {1:d} ns",
+                    eop.t_ut1.tv_sec, eop.t_ut1.tv_nsec);
+            INFO("               - dut1:   {:f} s", eop.delta_UT1_inst);
+            INFO("               - era:    {:f} deg", eop.ERA_deg);
+            INFO("               - xp:     {:f} arcsec", eop.xp_as);
+            INFO("               - yp:     {:f} arcsec", eop.yp_as);
+        }
+
+        int nt = eop_times.size();
+
+        INFO("            EOP Probes:");
+
+        for(i=0; i <= nt; i++)
+        {
+            timespec ta, tb;
+            if(i==0)
+                ta = {eop_times[0].tv_sec
+                        - 2*(eop_times[1].tv_sec-eop_times[0].tv_sec), 0};
+            else
+                ta = eop_times[i-1];
+
+            if(i == nt)
+                tb = {eop_times[nt-1].tv_sec
+                        + 2*(eop_times[nt-1].tv_sec - eop_times[nt-2].tv_sec),
+                      0};
+            else
+                tb = eop_times[i];
+
+            int n_seg = 4;
+            int64_t dns = 1'000'000'000L * (tb.tv_sec - ta.tv_sec)
+                             + tb.tv_nsec - ta.tv_nsec;
+            for(int j = 0; j<n_seg; j++)
+            {
+                int64_t ns = (j*dns)/n_seg;
+                int64_t s = ns / 1'000'000'000;
+                ns = ns - 1'000'000'000*s;
+
+                if(ns + ta.tv_nsec >= 1'000'000'000) {
+                    ns -= 1'000'000'000;
+                    s += 1;
+                }
+
+                timespec t = {ta.tv_sec + s, ta.tv_nsec + ns};
+
+                struct EOP eop = tel.get_EOP_at_time(t);
+                INFO("               - t_inst: {1:d} s + {2:d} ns",
+                        i, eop.t_inst.tv_sec, eop.t_inst.tv_nsec);
+                INFO("               - t_ut1:  {0:d} s + {1:d} ns",
+                        eop.t_ut1.tv_sec, eop.t_ut1.tv_nsec);
+                INFO("               - dut1:   {:f} s", eop.delta_UT1_inst);
+                INFO("               - era:    {:f} deg", eop.ERA_deg);
+                INFO("               - xp:     {:f} arcsec", eop.xp_as);
+                INFO("               - yp:     {:f} arcsec", eop.yp_as);
+
+
+            }
+        }
+
+        int n_dish = tel.get_num_dishes();
         INFO("            Num Dishes:  {:d}", n_dish); 
         for(i=0; i<n_dish; i++)
             INFO("            Dish Pos:    {0:d} - ({1:f}, {2:f}, {3:f})",

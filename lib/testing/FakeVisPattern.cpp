@@ -489,12 +489,11 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
     uint32_t num_dishes = tel.get_num_dishes();
     uint32_t num_elements = frame.num_elements;
 
-    double dut1 = tel.get_dut1();
-    double dtai = tel.get_dtai();
+    double dut1 = tel.get_dut1() - tel.get_dtai();
 
     timespec time = tel.to_time(std::get<0>(frame.time) + frame.fpga_seq_length/2);
 
-    double era = get_ERA_from_time(time, dtai, dut1);
+    double era = get_ERA_from_time(time, dut1);
 
     std::array<double, 3> n = tel.get_sky_vec_in_dish_coords(ra, dec, era);
 
@@ -569,13 +568,12 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     uint32_t num_dishes = tel.get_num_dishes();
     uint32_t num_elements = frame.num_elements;
 
-    double dut1 = tel.get_dut1();
-    double dtai = tel.get_dtai();
+    double dut1 = tel.get_dut1() - tel.get_dtai();
 
     timespec time = tel.to_time(frame.fpga_start_tick
                                     + frame.frame_length_fpga_ticks/2);
 
-    double era = get_ERA_from_time(time, dtai, dut1);
+    double era = get_ERA_from_time(time, dut1);
 
     std::array<double, 3> n = tel.get_sky_vec_in_dish_coords(ra, dec, era);
 

@@ -8,27 +8,33 @@ cpu_affinity: [5]
 # Constants
 sizeof_float: 4
 
+giga: 1000000000
+
+sec_in_jyear: 36525 * 864
+nsec_in_jyear: sec_in_jyear * giga
+
+sec_in_day: 86400
+nsec_in_day: sec_in_day * giga
+
 earth_rotation_data:
   kotekan_update_endpoint: "json"
   earth_orientation_parameter_table: [
     {
-      tgps: 00110000000,
-      DUT1: 0.0,
-      DTAI: 0.0,
-      x_pm: 0.0,
-      y_pm: 0.0
+      time_inst_ns: 1578010000000000000,
+      delta_UT1_inst: 0.5,
+      x_pm: 0.1,
+      y_pm: 0.2
     }, {
-      tgps: 00120000000,
-      DUT1: 0.0,
-      DTAI: 0.0,
-      x_pm: 0.0,
-      y_pm: 0.0,
+      time_inst_ns: 1578040000000000000,
+      DUT1: 0.8,
+      delta_UT1_inst: 0.8,
+      x_pm: 3.0,
+      y_pm: 4.0,
     }, {
-      tgps: 00130000000,
-      DUT1: 0.0,
-      DTAI: 0.0,
-      x_pm: 0.0,
-      y_pm: 0.0
+      time_inst_ns: 1578030000000000000,
+      delta_UT1_inst: 0.1,
+      x_pm: -0.5,
+      y_pm: -0.6,
     }]
 
 
@@ -50,7 +56,7 @@ telescope:
 
   updatable_config: "/earth_rotation_data"
 gps_time:
-  frame0_nano: 1234567890
+  frame0_nano: 50 * nsec_in_jyear
 
 updates:
   kotekan_update_endpoint: "json"
