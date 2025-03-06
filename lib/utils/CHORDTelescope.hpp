@@ -41,6 +41,11 @@ struct EOP {
     double xp_as;
     double yp_as;
 };
+    
+const static struct EOP eop_null = {.t_inst={(time_t)0,(long)0},
+        .t_ut1={(time_t)0,(long)0}, .delta_UT1_inst=0.0, .ERA_deg=0.0,
+        .xp_as=0.0, .yp_as=0.0};
+
 
 class CHORDTelescope : public Telescope {
 public:
@@ -63,7 +68,8 @@ public:
     struct EOP get_EOP_at_idx(uint64_t i) const;
     struct EOP get_EOP_at_time(const timespec &ts) const;
     struct EOP get_EOP_at_UT1(const timespec &ut1) const;
-    std::array<double, 3> get_sky_vec_in_dish_coords(double ra, double dec,                                                 double era) const;
+    std::array<double, 3> get_sky_vec_in_dish_coords(double ra,
+                                    double dec, const struct EOP &eop) const;
 
     std::array<double, 3> get_pointing_vec_in_tel_coords() const;
 
@@ -85,14 +91,12 @@ public:
         const std::array<double, 3>& v, double theta) const;
 
     std::array<double, 3> cirs_vec_to_itrs_vec(
-        const std::array<double, 3>& v_cirs, double era_deg,
-        double xp_as, double yp_as) const;
+        const std::array<double, 3>& v_cirs, const struct EOP &eop) const;
     std::array<double, 3> itrs_vec_to_cirs_vec(
-        const std::array<double, 3>& v_itrs, double era_deg,
-        double xp_as, double yp_as) const;
+        const std::array<double, 3>& v_itrs, const struct EOP &eop) const;
 
-    void fringestop_phases_1d(double freq_Hz, double era_deg, double xp_as,
-        double yp_as, double era_deg0, double xp_as0, double yp_as0,
+    void fringestop_phases_1d(double freq_Hz, const struct EOP &eop,
+            const struct EOP &eop0,
         std::vector<std::complex<double>>& phases) const;
 
     // Implementations of the required frequency mapping functions

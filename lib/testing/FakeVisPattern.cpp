@@ -489,13 +489,11 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
     uint32_t num_dishes = tel.get_num_dishes();
     uint32_t num_elements = frame.num_elements;
 
-    double dut1 = tel.get_dut1() - tel.get_dtai();
 
     timespec time = tel.to_time(std::get<0>(frame.time) + frame.fpga_seq_length/2);
+    struct EOP eop = tel.get_EOP_at_time(time);
 
-    double era = get_ERA_from_time(time, dut1);
-
-    std::array<double, 3> n = tel.get_sky_vec_in_dish_coords(ra, dec, era);
+    std::array<double, 3> n = tel.get_sky_vec_in_dish_coords(ra, dec, eop);
 
     double f = tel.to_freq(frame.freq_id);
     double lambda = C / f;
@@ -512,7 +510,9 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
     INFO("          start tick: {}", std::get<0>(frame.time));
     INFO("          Frame time: {:d} ns", std::get<1>(frame.time).tv_sec*1000000000 + std::get<1>(frame.time).tv_nsec);
     INFO("                   f: {:d} = {:e} Hz", frame.freq_id, f);
-    INFO("                   ERA: {:.10f} deg", era);
+    INFO("                   ERA: {:.10f} deg", eop.ERA_deg);
+    INFO("                   xp: {:.10f} arcsec", eop.xp_as);
+    INFO("                   yp: {:.10f} arcsec", eop.yp_as);
     INFO("                   n: {:f} {:f} {:f}", n[0], n[1], n[2]);
 
     int ind = 0;
@@ -568,20 +568,18 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     uint32_t num_dishes = tel.get_num_dishes();
     uint32_t num_elements = frame.num_elements;
 
-    double dut1 = tel.get_dut1() - tel.get_dtai();
-
     timespec time = tel.to_time(frame.fpga_start_tick
                                     + frame.frame_length_fpga_ticks/2);
 
-    double era = get_ERA_from_time(time, dut1);
+    struct EOP eop = tel.get_EOP_at_time(time);
 
-    std::array<double, 3> n = tel.get_sky_vec_in_dish_coords(ra, dec, era);
+    std::array<double, 3> n = tel.get_sky_vec_in_dish_coords(ra, dec, eop);
 
     double f = tel.to_freq(frame.freq_id);
     double lambda = C / f;
     
     frame._metadata->freq_Hz = f;
-    frame._metadata->era_deg = era;
+    frame._metadata->era_deg = eop.ERA_deg;
 
     /*
     n[0] = 0.0;
@@ -595,7 +593,9 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     INFO("          start tick: {}", frame.fpga_start_tick);
     INFO("          Frame time: {:d} ns", frame.frame_start_time_ns);
     INFO("                   f: {:d} = {:e} Hz", frame.freq_id, f);
-    INFO("                   ERA: {:.10f} deg", era);
+    INFO("                   ERA: {:.10f} deg", eop.ERA_deg);
+    INFO("                   xp: {:.10f} arcsec", eop.xp_as);
+    INFO("                   yp: {:.10f} arcsec", eop.yp_as);
     INFO("                   n: {:f} {:f} {:f}", n[0], n[1], n[2]);
 
     int ind = 0;

@@ -228,22 +228,25 @@ double CHORDTelescope::get_inst_lat_deg() const {
 }
 
 std::array<double, 3> CHORDTelescope::get_sky_vec_in_dish_coords(
-        double ra, double dec, double era) const {
+        double ra, double dec, const struct EOP &eop) const {
+
+    // Taking the ra & dec to be in CIRS frame
 
     double deg2rad = M_PI / 180;
 
-    double phi = deg2rad * (ra - era);
+    double phi = deg2rad * ra;
     double theta = deg2rad * (90 - dec);
 
     // unit vector pointing to ra/dec in spherical coordinates
     // fixed to the Earth.  phi=0 ~ Greenwich
-    std::array<double, 3> n_itrs= {
+    std::array<double, 3> n_cirs= {
                           cos(phi) * sin(theta),
                           sin(phi) * sin(theta),
                           cos(theta)};
 
-    INFO("n_itrs: {} {} {}", n_itrs[0], n_itrs[1], n_itrs[2]);
+    INFO("n_cirs: {} {} {}", n_cirs[0], n_cirs[1], n_cirs[2]);
 
+    std::array<double, 3> n_itrs = cirs_vec_to_itrs_vec(n_cirs, eop);
     std::array<double, 3> n_topo = itrs_vec_to_topocen_vec(n_itrs);
 
     return topocen_vec_to_tel_vec(n_topo);
@@ -349,15 +352,14 @@ std::array<double, 3> CHORDTelescope::topocen_vec_to_itrs_vec(
 }
 
 std::array<double, 3> CHORDTelescope::cirs_vec_to_itrs_vec(
-        const std::array<double, 3>& v_cirs, double era_deg,
-        double xp_as, double yp_as) const {
+        const std::array<double, 3>& v_cirs, const struct EOP &eop) const {
 
     double deg2rad = M_PI/180;
     double as2rad = deg2rad / 3600;
     
-    double era = deg2rad * era_deg;
-    double xp = as2rad * xp_as;
-    double yp = as2rad * yp_as;
+    double era = deg2rad * eop.ERA_deg;
+    double xp = as2rad * eop.xp_as;
+    double yp = as2rad * eop.yp_as;
 
     std::array<double, 3> v1     = vec_axes_rotation_R3(v_cirs, era);
     std::array<double, 3> v2     = vec_axes_rotation_R2(v1,    -xp);
@@ -367,14 +369,13 @@ std::array<double, 3> CHORDTelescope::cirs_vec_to_itrs_vec(
 }
 
 std::array<double, 3> CHORDTelescope::itrs_vec_to_cirs_vec(
-        const std::array<double, 3>& v_itrs, double era_deg,
-        double xp_as, double yp_as) const {
+        const std::array<double, 3>& v_itrs, const struct EOP &eop) const {
 
     double deg2rad = M_PI/180;
     double as2rad = deg2rad / 3600;
-    double era = deg2rad * era_deg;
-    double xp = as2rad * xp_as;
-    double yp = as2rad * yp_as;
+    double era = deg2rad * eop.ERA_deg;
+    double xp = as2rad * eop.xp_as;
+    double yp = as2rad * eop.yp_as;
 
     std::array<double, 3> v1     = vec_axes_rotation_R1(v_itrs, yp);
     std::array<double, 3> v2     = vec_axes_rotation_R2(v1,     xp);
@@ -383,9 +384,9 @@ std::array<double, 3> CHORDTelescope::itrs_vec_to_cirs_vec(
     return v_cirs;
 }
 
-void CHORDTelescope::fringestop_phases_1d(double freq_Hz, double era_deg,
-        double xp_as, double yp_as, double era_deg0, double xp_as0,
-        double yp_as0, std::vector<std::complex<double>>& phases) const {
+void CHORDTelescope::fringestop_phases_1d(double freq_Hz, 
+        const struct EOP &eop, const struct EOP &eop0,
+        std::vector<std::complex<double>>& phases) const {
 
     //Take the pointing vector for the telescope (constant in time),
     //and find it in the CIRS frame at ERA0.  This is the point we are
@@ -393,13 +394,11 @@ void CHORDTelescope::fringestop_phases_1d(double freq_Hz, double era_deg,
     std::array<double, 3> n_tel0 = get_pointing_vec_in_tel_coords();
     std::array<double, 3> n_topo0 = tel_vec_to_topocen_vec(n_tel0);
     std::array<double, 3> n_itrs0 = topocen_vec_to_itrs_vec(n_topo0);
-    std::array<double, 3> n_cirs = itrs_vec_to_cirs_vec(n_itrs0, era_deg0,
-                                                        xp_as0, yp_as0);
+    std::array<double, 3> n_cirs = itrs_vec_to_cirs_vec(n_itrs0, eop0);
 
     //Now, given this CIRS vector, find its components in the telescope
     //frame at the requested ERA
-    std::array<double, 3> n_itrs = cirs_vec_to_itrs_vec(n_cirs, era_deg,
-                                                        xp_as, yp_as);
+    std::array<double, 3> n_itrs = cirs_vec_to_itrs_vec(n_cirs, eop);
     std::array<double, 3> n_topo = itrs_vec_to_topocen_vec(n_itrs);
     std::array<double, 3> n_tel = topocen_vec_to_tel_vec(n_topo);
 
@@ -464,10 +463,6 @@ struct EOP CHORDTelescope::get_EOP_at_idx(uint64_t i) const {
         struct EOP eop = _eop_table[i];
         return eop;
     }
-
-    struct EOP eop_null = {.t_inst={(time_t)0,(long)0},
-        .t_ut1={(time_t)0,(long)0}, .delta_UT1_inst=0.0, .ERA_deg=0.0,
-        .xp_as=0.0, .yp_as=0.0};
 
     return eop_null;
 }

@@ -67,6 +67,11 @@ void N2FringeStop::main_thread() {
     int num_dishes = tel.get_num_dishes();
     std::vector<std::complex<double>> fringe_phase(num_dishes, 1.0);
 
+    struct EOP eop_target = eop_null;
+    eop_target.ERA_deg = era_target_deg;
+    eop_target.xp_as = xp_target_as;
+    eop_target.yp_as = yp_target_as;
+
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
@@ -81,6 +86,11 @@ void N2FringeStop::main_thread() {
         size_t num_elements = frame.num_elements;
             
         DEBUG("ERA: {:f}; ERA_target: {:f}", frame.era_deg, era_target_deg);
+    
+        struct EOP eop = eop_null;
+        eop.ERA_deg = frame.era_deg;
+        eop.xp_as = frame.xp_as;
+        eop.yp_as = frame.yp_as;
 
         // Wait for an empty frame
         if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
@@ -99,9 +109,7 @@ void N2FringeStop::main_thread() {
         output_frame.yp_as = yp_target_as;
 
         if(fringestop_mode > 0)
-            tel.fringestop_phases_1d(frame.freq_Hz, frame.era_deg,
-                                     frame.xp_as, frame.yp_as,
-                                     era_target_deg, xp_target_as, yp_target_as,
+            tel.fringestop_phases_1d(frame.freq_Hz, eop, eop_target,
                                      fringe_phase);
 
         size_t idx = 0;

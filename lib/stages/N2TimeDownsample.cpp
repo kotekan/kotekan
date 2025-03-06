@@ -179,10 +179,14 @@ void N2TimeDownsample::main_thread() {
             output_frame.xp_as = xp_target;
             output_frame.yp_as = yp_target;
 
+            // TODO INITIALIZE THESE !!!
+            struct EOP eop_target;
+            struct EOP eop;
+
+
             if(do_fringestop) {
-                tel.fringestop_phases_1d(freq_Hz, frame.era_deg, frame.xp_as,
-                                         frame.yp_as, era_target, xp_target,
-                                         yp_target, fringe_phase);
+                tel.fringestop_phases_1d(freq_Hz, eop, eop_target,
+                                         fringe_phase);
 
                 size_t idx = 0;
                 for(size_t i = 0; i < num_elements; i++) {
@@ -214,11 +218,14 @@ void N2TimeDownsample::main_thread() {
         //if (fpga_seq_start < wdw_end) {
         if (frame.era_deg >= era_deg_lo && frame.era_deg < era_deg_hi) {
             
+            // TODO INITIALIZE THESE !!!
+            struct EOP eop_target;
+            struct EOP eop;
+
             //Recalculate fringestop phases
             if(do_fringestop)
-                tel.fringestop_phases_1d(freq_Hz, frame.era_deg, frame.xp_as,
-                                         frame.yp_as, era_target, xp_target,
-                                         yp_target, fringe_phase);
+                tel.fringestop_phases_1d(freq_Hz, eop, eop_target,
+                                         fringe_phase);
 
             // Accumulate contents of buffer
             size_t idx = 0;
