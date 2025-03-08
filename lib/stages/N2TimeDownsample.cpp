@@ -67,10 +67,8 @@ void N2TimeDownsample::main_thread() {
                                   // in [0, num_bins_per_rotation-1]
     double era_deg_lo = 0.0;      // lower bound of current ERA bin, in degrees
     double era_deg_hi = 360.0;    // upper bound of current ERA bin, in degrees
-    double era_target = -1.0;     // Center of ERA bin, time to which we're
-                                  // fringestopping.
-    double xp_target = 0.0;
-    double yp_target = 0.0;
+
+    struct EOP eop_target = eop_null;   // EOP at center of current bin.
 
     int32_t freq_id = -1; // needs to be set by first frame
     double freq_Hz = -1.0;
@@ -113,7 +111,7 @@ void N2TimeDownsample::main_thread() {
                                       * frame.era_deg / 360.0);
             era_deg_lo = era_bin_idx * (360.0 / num_bins_per_rotation);
             era_deg_hi = (era_bin_idx + 1) * (360.0 / num_bins_per_rotation);
-            era_target = 0.5*(era_deg_lo + era_deg_hi);
+            //era_target = 0.5*(era_deg_lo + era_deg_hi);
         }
 
         // Check that this is the frequency we care about,
@@ -130,7 +128,7 @@ void N2TimeDownsample::main_thread() {
                 era_target, wdw_len_era);
         */
         DEBUG("ERA: {:f}; ERA_target: {:f}; ERA_bin_lo: {:f}; ERA_bin_hi: {:f}",
-                frame.era_deg, era_target, era_deg_lo, era_deg_hi);
+                frame.era_deg, eop_target.ERA_deg, era_deg_lo, era_deg_hi);
 
         // Don't start accumulating unless at the start of window
         // TODO: Re-implement for ERA bins.
@@ -159,7 +157,7 @@ void N2TimeDownsample::main_thread() {
                                       * frame.era_deg / 360.0);
             era_deg_lo = era_bin_idx * (360.0 / num_bins_per_rotation);
             era_deg_hi = (era_bin_idx + 1) * (360.0 / num_bins_per_rotation);
-            era_target = 0.5*(era_deg_lo + era_deg_hi);
+            //era_target = 0.5*(era_deg_lo + era_deg_hi);
 
             // Wait for an empty frame
             if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
@@ -175,9 +173,9 @@ void N2TimeDownsample::main_thread() {
             //output_frame.frame_length_fpga_ticks *= nsamp;
 
             // Set the target ERA.
-            output_frame.era_deg = era_target;
-            output_frame.xp_as = xp_target;
-            output_frame.yp_as = yp_target;
+            output_frame.era_deg = eop_target.ERA_deg;
+            output_frame.xp_as = eop_target.xp_as;
+            output_frame.yp_as = eop_target.yp_as;
 
             // TODO INITIALIZE THESE !!!
             struct EOP eop_target;

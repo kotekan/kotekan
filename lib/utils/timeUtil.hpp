@@ -30,9 +30,18 @@ timespec get_time_from_UT1(const timespec &t_ut1, double delta_UT1_inst);
 /**
  * @brief Compute Earth Rotation Angle (ERA) from UT1
  * @param   ut1 const ref timespec The UT1 time to convert, since JD=0.
- * @return  ERA in degrees
+ * @param   num_rot int64_t pointer Optional location to store number of rotations since UT1 2451545 JD
+ * @return  ERA in degrees, [0.0, 360.0)
  */
-double get_ERA_from_UT1(const timespec &ut1);
+double get_ERA_from_UT1(const timespec &ut1, int64_t *num_rot);
+
+/**
+ * @brief Compute UT1 time from Earth Rotation Angle (ERA).
+ * @param   num_rot int64_t Number of Earth rotations since UT1 2451545 JD
+ * @param   ERA_deg double ERA in degrees
+ * @return  timespec containing the UT1 time with JD epoch.
+ */
+timespec get_UT1_from_ERA(int64_t num_rot, double ERA_deg);
 
 /**
  * @brief Compute Earth Rotation Angle (ERA) from GPS time

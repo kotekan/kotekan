@@ -442,15 +442,6 @@ int CHORDTelescope::get_num_dishes() const {
     return _dish_positions.size();
 }
 
-double CHORDTelescope::get_dut1() const {
-    return _dut1;
-}
-
-double CHORDTelescope::get_dtai() const {
-    std::lock_guard<std::mutex> lock(_eop_lock);
-    return _dtai;
-}
-
 int CHORDTelescope::get_EOP_table_len() const {
     std::lock_guard<std::mutex> lock(_eop_lock);
     return _eop_table.size();
@@ -516,7 +507,7 @@ struct EOP CHORDTelescope::get_EOP_at_time(const timespec &t_target) const {
     }
 
     timespec t_ut1 = get_UT1_from_time(t_target, eop.delta_UT1_inst);
-    double era = get_ERA_from_UT1(t_ut1);
+    double era = get_ERA_from_UT1(t_ut1, nullptr);
 
     eop.t_ut1 = t_ut1;
     eop.ERA_deg = era;
@@ -575,7 +566,7 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(const timespec &t_ut1) const {
     }
 
     timespec t_inst = get_time_from_UT1(t_ut1, eop.delta_UT1_inst);
-    double era = get_ERA_from_UT1(t_ut1);
+    double era = get_ERA_from_UT1(t_ut1, nullptr);
 
     eop.t_inst = t_inst;
     eop.ERA_deg = era;
@@ -623,7 +614,7 @@ struct EOP CHORDTelescope::build_EOP_from_update(uint64_t time_ns,
         .tv_nsec=(long)(time_ns % GIGA)};
 
     struct timespec ut1 = get_UT1_from_time(t, delta_ut1_inst);
-    double era = get_ERA_from_UT1(ut1);
+    double era = get_ERA_from_UT1(ut1, nullptr);
 
     struct EOP eop {
         .t_inst = t,

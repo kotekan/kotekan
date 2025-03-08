@@ -3,6 +3,7 @@
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "kotekanLogging.hpp" // for INFO
 #include "CHORDTelescope.hpp" // for CHORDTelescope
+#include "timeUtil.hpp" // for CHORDTelescope
 #include "errors.h" // for exit_kotekan
 
 #include <atomic>     // for atomic_bool
@@ -67,8 +68,6 @@ void TestCHORDTelescope::main_thread() {
                 tel.get_orientation_el(2, 0),
                 tel.get_orientation_el(2, 1),
                 tel.get_orientation_el(2, 2));
-        INFO("            DUT1:        {:f} s", tel.get_dut1());
-        INFO("            DTAI:        {:f} s", tel.get_dtai());
         int n_eop = tel.get_EOP_table_len();
 
         std::vector<timespec> eop_times;
@@ -133,6 +132,31 @@ void TestCHORDTelescope::main_thread() {
                 INFO("               - era:    {:f} deg", eop.ERA_deg);
                 INFO("               - xp:     {:f} arcsec", eop.xp_as);
                 INFO("               - yp:     {:f} arcsec", eop.yp_as);
+
+                timespec t_inst2 = get_time_from_UT1(eop.t_ut1, eop.delta_UT1_inst);
+                int64_t n_rot;
+                double era = get_ERA_from_UT1(eop.t_ut1, &n_rot);
+                timespec t_ut12 = get_UT1_from_ERA(n_rot, eop.ERA_deg);
+
+                INFO("               -t_inst2: {0:d} s + {1:d} ns",
+                        t_inst2.tv_sec, t_inst2.tv_nsec);
+                INFO("               -diff:    {0:d} s + {1:d} ns",
+                        t_inst2.tv_sec - eop.t_inst.tv_sec,
+                        t_inst2.tv_nsec - eop.t_inst.tv_nsec);
+                INFO("               -t_ut12:  {0:d} s + {1:d} ns",
+                        t_ut12.tv_sec, t_ut12.tv_nsec);
+                INFO("               -diff:    {0:d} s + {1:d} ns",
+                        t_ut12.tv_sec - eop.t_ut1.tv_sec,
+                        t_ut12.tv_nsec - eop.t_ut1.tv_nsec);
+
+
+                int64_t n_rot2;
+                double era2 = get_ERA_from_UT1(t_ut12, &n_rot2);
+
+                INFO("               -era:  {0:f} deg + {1:d}", era, n_rot);
+                INFO("               -diff: {0:e} deg + {1:d}", era2-era,
+                        n_rot2 - n_rot);
+
 
 
             }

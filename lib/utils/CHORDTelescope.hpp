@@ -62,8 +62,6 @@ public:
     double get_orientation_el(int i, int j) const;
     double get_dish_coord(int i, int j) const;
     int get_num_dishes() const;
-    double get_dut1() const;
-    double get_dtai() const;
     int get_EOP_table_len() const;
     struct EOP get_EOP_at_idx(uint64_t i) const;
     struct EOP get_EOP_at_time(const timespec &ts) const;
@@ -188,11 +186,6 @@ protected:
     //Earth Orientation Parameters
     mutable std::mutex _eop_lock;
     std::vector<struct EOP> _eop_table;
-    double _dut1;  // UT1 - UTC in seconds
-    double _dtai;  // TAI - UTC in seconds
-    double _x_pm;  // Polar Motion x coordinate (arcseconds)
-    double _y_pm;  // Polat Motion y coordinate (arcseconds)
-
 };
 
 bool EOP_comp_time(const struct EOP &eop1, const struct EOP &eop2);

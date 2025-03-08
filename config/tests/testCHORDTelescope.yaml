@@ -20,18 +20,18 @@ earth_rotation_data:
   kotekan_update_endpoint: "json"
   earth_orientation_parameter_table: [
     {
-      time_inst_ns: 1578010000000000000,
+      time_inst_ns: 1578010000000000300,
       delta_UT1_inst: 0.5,
       x_pm: 0.1,
       y_pm: 0.2
     }, {
-      time_inst_ns: 1578040000000000000,
+      time_inst_ns: 1578040000000000380,
       DUT1: 0.8,
-      delta_UT1_inst: 0.8,
+      delta_UT1_inst: 0.801234,
       x_pm: 3.0,
       y_pm: 4.0,
     }, {
-      time_inst_ns: 1578030000000000000,
+      time_inst_ns: 1578030000000000350,
       delta_UT1_inst: 0.1,
       x_pm: -0.5,
       y_pm: -0.6,
