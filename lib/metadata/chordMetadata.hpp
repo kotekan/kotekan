@@ -1,9 +1,9 @@
 #ifndef CHORD_METADATA
 #define CHORD_METADATA
 
+#include "DataType.hpp"
 #include "Telescope.hpp"
 #include "buffer.hpp"
-#include "datasetManager.hpp"
 #include "metadata.hpp"
 
 #include <cassert>
@@ -18,6 +18,7 @@
 #define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
 #pragma pack()
 
+// TODO: Switch to `chord::DataType` instead
 enum chordDataType {
     unknown_type,
     uint4p4,
