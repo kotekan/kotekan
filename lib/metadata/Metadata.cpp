@@ -19,7 +19,7 @@ bool Metadata::has_key(const std::string& key) const noexcept {
 std::vector<std::string> Metadata::keys() const {
     std::vector<std::string> keys1;
     keys1.reserve(m_type.size());
-    for (const auto& [key, value] : m_type)
+    for (const auto& [key, _] : m_type)
         keys1.push_back(key);
     return keys1;
 }
@@ -81,56 +81,56 @@ bool Metadata::has_string_vector(const std::string& key) const noexcept {
 std::vector<std::string> Metadata::bool_keys() const {
     std::vector<std::string> keys;
     keys.reserve(m_bool.size());
-    for (const auto& [key, value] : m_bool)
+    for (const auto& [key, _] : m_bool)
         keys.push_back(key);
     return keys;
 }
 std::vector<std::string> Metadata::int_keys() const {
     std::vector<std::string> keys;
     keys.reserve(m_int.size());
-    for (const auto& [key, value] : m_int)
+    for (const auto& [key, _] : m_int)
         keys.push_back(key);
     return keys;
 }
 std::vector<std::string> Metadata::float_keys() const {
     std::vector<std::string> keys;
     keys.reserve(m_float.size());
-    for (const auto& [key, value] : m_float)
+    for (const auto& [key, _] : m_float)
         keys.push_back(key);
     return keys;
 }
 std::vector<std::string> Metadata::string_keys() const {
     std::vector<std::string> keys;
     keys.reserve(m_string.size());
-    for (const auto& [key, value] : m_string)
+    for (const auto& [key, _] : m_string)
         keys.push_back(key);
     return keys;
 }
 std::vector<std::string> Metadata::bool_vector_keys() const {
     std::vector<std::string> keys;
     keys.reserve(m_bool_vector.size());
-    for (const auto& [key, value] : m_bool_vector)
+    for (const auto& [key, _] : m_bool_vector)
         keys.push_back(key);
     return keys;
 }
 std::vector<std::string> Metadata::int_vector_keys() const {
     std::vector<std::string> keys;
     keys.reserve(m_int_vector.size());
-    for (const auto& [key, value] : m_int_vector)
+    for (const auto& [key, _] : m_int_vector)
         keys.push_back(key);
     return keys;
 }
 std::vector<std::string> Metadata::float_vector_keys() const {
     std::vector<std::string> keys;
     keys.reserve(m_float_vector.size());
-    for (const auto& [key, value] : m_float_vector)
+    for (const auto& [key, _] : m_float_vector)
         keys.push_back(key);
     return keys;
 }
 std::vector<std::string> Metadata::string_vector_keys() const {
     std::vector<std::string> keys;
     keys.reserve(m_string_vector.size());
-    for (const auto& [key, value] : m_string_vector)
+    for (const auto& [key, _] : m_string_vector)
         keys.push_back(key);
     return keys;
 }
