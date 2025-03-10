@@ -126,10 +126,12 @@ template<>
 struct chordDataType_type<int64> {
     using type = std::int64_t;
 };
+#if KOTEKAN_FLOAT16
 template<>
 struct chordDataType_type<float16> {
     using type = float16_t;
 };
+#endif
 template<>
 struct chordDataType_type<float32> {
     using type = float;
@@ -174,9 +176,11 @@ struct chordDataType_value<signed long>
 template<>
 struct chordDataType_value<signed long long>
     : std::integral_constant<chordDataType, detail::signed_from_size(sizeof(signed long long))> {};
+#if KOTEKAN_FLOAT16
 template<>
 struct chordDataType_value<float16_t>
     : std::integral_constant<chordDataType, detail::real_from_size(sizeof(float16_t))> {};
+#endif
 template<>
 struct chordDataType_value<float>
     : std::integral_constant<chordDataType, detail::real_from_size(sizeof(float))> {};
