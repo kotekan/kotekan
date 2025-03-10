@@ -5,7 +5,7 @@
 #include <memory>
 #include <vector>
 
-namespace {
+using namespace chord;
 
 void writeMetadata(const std::shared_ptr<Metadata>& meta) {
     // Write some metadata entries
@@ -94,8 +94,6 @@ void readMetadata(const std::shared_ptr<const Metadata>& meta) {
     assert(isequal(meta->get_string_vector("some strings"),
                    std::vector<std::string>{"hello", "world"}));
 }
-
-} // namespace
 
 int main() {
     std::cout << "Testing Metadata class...\n";
