@@ -579,7 +579,7 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     double lambda = C / f;
     
     frame._metadata->freq_Hz = f;
-    frame._metadata->era_deg = eop.ERA_deg;
+    frame._metadata->eop = eop;
 
     /*
     n[0] = 0.0;

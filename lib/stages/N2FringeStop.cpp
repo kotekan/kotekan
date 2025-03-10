@@ -10,6 +10,7 @@
 //#include "visBuffer.hpp"         // for VisFrameView
 #include "N2FrameView.hpp"
 #include "visUtil.hpp"           // for frameID, modulo, cfloat, operator-, ts_to_double
+#include "timeUtil.hpp"         //for get_UT1_from_ERA
 
 #include "gsl-lite.hpp" // for span
 
@@ -46,6 +47,8 @@ N2FringeStop::N2FringeStop(Config& config,
 
     fringestop_mode = config.get_default<int>(unique_name, "fringestop_mode",
                                               1);
+    num_rot_target = config.get_default<int>(unique_name, "num_rot_target",
+                                             9000);
     era_target_deg = config.get_default<double>(unique_name, "era_target_deg",
                                              0.0);
     xp_target_as = config.get_default<double>(unique_name, "xp_target_as",
@@ -67,10 +70,15 @@ void N2FringeStop::main_thread() {
     int num_dishes = tel.get_num_dishes();
     std::vector<std::complex<double>> fringe_phase(num_dishes, 1.0);
 
-    struct EOP eop_target = eop_null;
-    eop_target.ERA_deg = era_target_deg;
-    eop_target.xp_as = xp_target_as;
-    eop_target.yp_as = yp_target_as;
+    timespec ut1 = get_UT1_from_ERA(num_rot_target, era_target_deg);
+
+    struct EOP eop_target = {
+        .t_inst = ut1,
+        .t_ut1 = ut1,
+        .delta_UT1_inst = 0.0,
+        .ERA_deg = era_target_deg,
+        .xp_as = xp_target_as,
+        .yp_as = yp_target_as};
 
 
     while (!stop_thread) {
@@ -85,12 +93,9 @@ void N2FringeStop::main_thread() {
 
         size_t num_elements = frame.num_elements;
             
-        DEBUG("ERA: {:f}; ERA_target: {:f}", frame.era_deg, era_target_deg);
+        DEBUG("ERA: {:f}; ERA_target: {:f}", frame.eop.ERA_deg, era_target_deg);
     
-        struct EOP eop = eop_null;
-        eop.ERA_deg = frame.era_deg;
-        eop.xp_as = frame.xp_as;
-        eop.yp_as = frame.yp_as;
+        struct EOP eop = frame.eop;
 
         // Wait for an empty frame
         if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
@@ -104,9 +109,7 @@ void N2FringeStop::main_thread() {
 
 
         // Set the target EOP.
-        output_frame.era_deg = era_target_deg;
-        output_frame.xp_as = xp_target_as;
-        output_frame.yp_as = yp_target_as;
+        output_frame.eop = eop_target;
 
         if(fringestop_mode > 0)
             tel.fringestop_phases_1d(frame.freq_Hz, eop, eop_target,

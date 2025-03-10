@@ -13,6 +13,7 @@
 #include "buffer.hpp"       // for Buffer
 #include "N2Util.hpp"       // for cfloat
 #include "N2Metadata.hpp"   // for N2Metadata
+#include "CHORDTelescope.hpp" // for struct EOP
 
 #include "gsl-lite.hpp"     // for span
 
@@ -77,9 +78,7 @@ public:
     const double& freq_Hz;
 
     /// Earth Orientation Paramters
-    double& era_deg; //Earth Rotation Angle at obs time
-    double& xp_as; //polar motion x at obs time
-    double& yp_as; //polar motion y at obs time
+    struct EOP &eop;
 
     /// View of the visibility data.
     const gsl::span<N2::cfloat> vis;

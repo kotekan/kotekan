@@ -10,6 +10,7 @@
 //#include "visBuffer.hpp"         // for VisFrameView
 #include "N2FrameView.hpp"
 #include "visUtil.hpp"           // for frameID, modulo, cfloat, operator-, ts_to_double
+#include "timeUtil.hpp"          // for get_ERA_from_UT1, get_UT1_from_ERA
 
 #include "gsl-lite.hpp" // for span
 
@@ -54,7 +55,7 @@ N2TimeDownsample::N2TimeDownsample(Config& config,
                                          true);
 
     num_elements = 0;
-    nprod = num_elements * (num_elements + 1) / 2;
+    nprod = 0;
 }
 
 void N2TimeDownsample::main_thread() {
@@ -63,16 +64,19 @@ void N2TimeDownsample::main_thread() {
     frameID output_frame_id(out_buf);
     unsigned int nframes = 0; // the number of frames accumulated so far
     
-    unsigned int era_bin_idx = 0; // index of the current ERA bin,
+    uint32_t era_bin_idx = 0; // index of the current ERA bin,
                                   // in [0, num_bins_per_rotation-1]
     double era_deg_lo = 0.0;      // lower bound of current ERA bin, in degrees
     double era_deg_hi = 360.0;    // upper bound of current ERA bin, in degrees
+    double era_bin_width = 360.0 / num_bins_per_rotation;
 
     struct EOP eop_target = eop_null;   // EOP at center of current bin.
 
+    int64_t num_rotations = -1;
     int32_t freq_id = -1; // needs to be set by first frame
     double freq_Hz = -1.0;
 
+    bool wait_for_alignment = true;
 
     auto& skipped_frame_counter = Metrics::instance().add_counter(
         "kotekan_timedownsample_skipped_frame_total", unique_name, {"freq_id", "reason"});
@@ -82,10 +86,6 @@ void N2TimeDownsample::main_thread() {
     int num_dishes = tel.get_num_dishes();
     std::vector<std::complex<double>> fringe_phase(num_dishes, 1.0);
 
-    //uint64_t seq_len_ns = tel.seq_length_nsec();
-
-    //double seq_to_era = 1.0e-9 * seq_len_ns * 360.0 * 1.00273781191135448 / 86400.0;
-
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
         if ((in_buf->wait_for_full_frame(unique_name, frame_id)) == nullptr) {
@@ -93,7 +93,6 @@ void N2TimeDownsample::main_thread() {
         }
 
         N2FrameView frame(in_buf, frame_id);
-        uint64_t fpga_seq_start = frame.fpga_start_tick;
         
         DEBUG("Input frame - num_elements: {:d}", frame.num_elements);
 
@@ -107,11 +106,33 @@ void N2TimeDownsample::main_thread() {
             num_elements = frame.num_elements;
             num_eigenvectors = frame.num_ev;
             
-            era_bin_idx = (unsigned int) (num_bins_per_rotation
-                                      * frame.era_deg / 360.0);
-            era_deg_lo = era_bin_idx * (360.0 / num_bins_per_rotation);
-            era_deg_hi = (era_bin_idx + 1) * (360.0 / num_bins_per_rotation);
-            //era_target = 0.5*(era_deg_lo + era_deg_hi);
+            era_bin_idx = (uint32_t) (frame.eop.ERA_deg / era_bin_width);
+            era_deg_lo = era_bin_idx * era_bin_width;
+            era_deg_hi = (era_bin_idx + 1) * era_bin_width;
+
+            double era_deg_target = 0.5*(era_deg_lo + era_deg_hi);
+
+            // Initialize num_rotations from first frame.
+            get_ERA_from_UT1(frame.eop.t_ut1, &num_rotations);
+
+            // Get UT1 time at target ERA
+            timespec t_ut1 = get_UT1_from_ERA(num_rotations, era_deg_target);
+
+            // Set EOP at target ERA
+            eop_target = tel.get_EOP_at_UT1(t_ut1);
+            
+            // Check ERA at the beginning of the frame. If it's earlier than
+            // the bin edge, we'll fill the bin and can start integrating
+            // immediately.
+            timespec frame_start = {
+                .tv_sec=(time_t) (frame.frame_start_time_ns / 1'000'000'000),
+                .tv_nsec=(long) (frame.frame_start_time_ns % 1'000'000'000)};
+            struct EOP eop_start = tel.get_EOP_at_time(frame_start);
+
+            if(eop_start.ERA_deg < era_deg_lo
+                    || eop_start.ERA_deg >= era_deg_hi)
+                wait_for_alignment = false;
+        
         }
 
         // Check that this is the frequency we care about,
@@ -120,7 +141,15 @@ void N2TimeDownsample::main_thread() {
             throw std::runtime_error("Cannot downsample stream with more than one frequency.");
         }
 
-        // Get position within accumulation window
+
+        // Check if bin index has changed. If so, we're at the start of a
+        // new bin.
+        uint32_t new_era_bin_idx = (uint32_t) (frame.eop.ERA_deg
+                                                / era_bin_width);
+        if(new_era_bin_idx != era_bin_idx)
+            wait_for_alignment = false;
+
+
         /*
         wdw_pos = (fpga_seq_start % wdw_len) / frame.frame_length_fpga_ticks;
         DEBUG("wdw_pos: {:d}; wdw_end: {:d}", wdw_pos, wdw_end);
@@ -128,36 +157,34 @@ void N2TimeDownsample::main_thread() {
                 era_target, wdw_len_era);
         */
         DEBUG("ERA: {:f}; ERA_target: {:f}; ERA_bin_lo: {:f}; ERA_bin_hi: {:f}",
-                frame.era_deg, eop_target.ERA_deg, era_deg_lo, era_deg_hi);
+                frame.eop.ERA_deg, eop_target.ERA_deg, era_deg_lo, era_deg_hi);
 
         // Don't start accumulating unless at the start of window
-        // TODO: Re-implement for ERA bins.
-        /*
-        if (nframes == 0 and wdw_pos != 0) {
+        if (nframes == 0 && wait_for_alignment) {
             // Skip this frame
             skipped_frame_counter.labels({std::to_string(freq_id), "alignment"}).inc();
             in_buf->mark_frame_empty(unique_name, frame_id++);
             continue;
-        }
-        */
+        } else if (nframes == 0) { // Start a new accumulation
 
-        // Start a new accumulation
-        if (nframes == 0) { 
-            // Update window
-            /*
-            wdw_end = fpga_seq_start + wdw_len;
-            era_target = frame.era_deg
-                         - 0.5 * frame.frame_length_fpga_ticks*seq_to_era
-                         + 0.5 * wdw_len_era;
-            if(era_target > 360)
-                era_target -= 360;
-            */
+            // We know we're in a fresh bin now.
+            wait_for_alignment = false;
             
-            era_bin_idx = (unsigned int) (num_bins_per_rotation
-                                      * frame.era_deg / 360.0);
-            era_deg_lo = era_bin_idx * (360.0 / num_bins_per_rotation);
+            // Update the window.
+            era_bin_idx = (uint32_t) (frame.eop.ERA_deg / era_bin_width);
+            era_deg_lo = era_bin_idx * era_bin_width;
             era_deg_hi = (era_bin_idx + 1) * (360.0 / num_bins_per_rotation);
-            //era_target = 0.5*(era_deg_lo + era_deg_hi);
+
+            double era_deg_target = 0.5*(era_deg_lo + era_deg_hi);
+
+            // Get the current num_rotations from frame.
+            get_ERA_from_UT1(frame.eop.t_ut1, &num_rotations);
+            
+            // Get UT1 time at target ERA
+            timespec t_ut1 = get_UT1_from_ERA(num_rotations, era_deg_target);
+
+            // Set EOP at target ERA / UT1
+            eop_target = tel.get_EOP_at_UT1(t_ut1);
 
             // Wait for an empty frame
             if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
@@ -172,18 +199,11 @@ void N2TimeDownsample::main_thread() {
             // Increase the total frame length
             //output_frame.frame_length_fpga_ticks *= nsamp;
 
-            // Set the target ERA.
-            output_frame.era_deg = eop_target.ERA_deg;
-            output_frame.xp_as = eop_target.xp_as;
-            output_frame.yp_as = eop_target.yp_as;
-
-            // TODO INITIALIZE THESE !!!
-            struct EOP eop_target;
-            struct EOP eop;
-
+            // Set the output to target EOP.
+            output_frame.eop = eop_target;
 
             if(do_fringestop) {
-                tel.fringestop_phases_1d(freq_Hz, eop, eop_target,
+                tel.fringestop_phases_1d(freq_Hz, frame.eop, eop_target,
                                          fringe_phase);
 
                 size_t idx = 0;
@@ -213,16 +233,11 @@ void N2TimeDownsample::main_thread() {
         auto output_frame = N2FrameView(out_buf, output_frame_id);
 
         // Check we are still in accumulation window
-        //if (fpga_seq_start < wdw_end) {
-        if (frame.era_deg >= era_deg_lo && frame.era_deg < era_deg_hi) {
+        if (frame.eop.ERA_deg >= era_deg_lo && frame.eop.ERA_deg < era_deg_hi) {
             
-            // TODO INITIALIZE THESE !!!
-            struct EOP eop_target;
-            struct EOP eop;
-
             //Recalculate fringestop phases
             if(do_fringestop)
-                tel.fringestop_phases_1d(freq_Hz, eop, eop_target,
+                tel.fringestop_phases_1d(freq_Hz, frame.eop, eop_target,
                                          fringe_phase);
 
             // Accumulate contents of buffer

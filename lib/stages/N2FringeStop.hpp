@@ -63,6 +63,7 @@ private:
     // Whether to apply fringestopping phases.
     int fringestop_mode;
 
+    int num_rot_target;
     double era_target_deg;
     double xp_target_as;
     double yp_target_as;
