@@ -20,7 +20,7 @@ std::vector<std::string> Metadata::keys() const {
     keys1.reserve(m_type.size());
     // Ubuntu 18 outputs a spurious fatal warning
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Werror=unused-variable"
+#pragma GCC diagnostic ignored "-Wunused-variable"
     for (const auto& [key, _] : m_type)
         keys1.push_back(key);
 #pragma GCC diagnostic pop
@@ -83,7 +83,7 @@ bool Metadata::has_string_vector(const std::string& key) const noexcept {
 
 // Ubuntu 18 outputs a spurious fatal warning
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Werror=unused-variable"
+#pragma GCC diagnostic ignored "-Wunused-variable"
 std::vector<std::string> Metadata::bool_keys() const {
     std::vector<std::string> keys;
     keys.reserve(m_bool.size());
