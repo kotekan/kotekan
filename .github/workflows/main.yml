@@ -874,7 +874,7 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Cache ccache files
-      uses: actions/cache@v1
+      uses: actions/cache@v4
       with:
         path: .ccache
         key: ccache-full-build-1804-${{ github.sha }}
@@ -934,7 +934,7 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Cache ccache files
-      uses: actions/cache@v1
+      uses: actions/cache@v4
       with:
         path: .ccache
         key: ccache-chime-build-1804-${{ github.sha }}
@@ -978,7 +978,7 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Cache ccache files
-      uses: actions/cache@v1
+      uses: actions/cache@v4
       with:
         path: .ccache
         key: ccache-clang-build-1804-${{ github.sha }}
