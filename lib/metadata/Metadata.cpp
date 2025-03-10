@@ -4,6 +4,8 @@
 #include <limits>
 #include <sstream>
 
+namespace chord {
+
 Metadata::Metadata() = default;
 Metadata::Metadata(Metadata&&) = default;
 Metadata& Metadata::operator=(Metadata&&) = default;
@@ -379,3 +381,5 @@ std::ostream& operator<<(std::ostream& os, const Metadata& meta) {
     }
     return os;
 }
+
+} // namespace chord
