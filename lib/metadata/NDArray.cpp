@@ -2,6 +2,8 @@
 #include <sstream>
 #include <string>
 
+namespace chord {
+
 namespace {
 
 const char* format_bool(bool b) {
@@ -32,3 +34,5 @@ void GenericNDArray::output_metadata(std::ostream& os) const {
        << "    dimnames:  " << format_vector(get_dimnames()) << "\n"
        << "    strides:   " << format_vector(get_strides()) << "\n";
 }
+
+} // namespace chord

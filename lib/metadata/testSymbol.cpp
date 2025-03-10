@@ -4,6 +4,8 @@
 #include <set>
 #include <unordered_set>
 
+using namespace chord;
+
 int main() {
     std::cout << "Testing Symbol class...\n";
 

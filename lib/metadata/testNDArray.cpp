@@ -1,14 +1,12 @@
 #include <NDArray.hpp>
 #include <iostream>
 
-namespace {
+using namespace chord;
 
 void examineNDArray(const std::string& name, const GenericNDArray& arr) {
     std::cout << "name: " << name << "\n";
     arr.output_metadata(std::cout);
 }
-
-} // namespace
 
 int main() {
 
