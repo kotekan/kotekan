@@ -58,8 +58,8 @@ public:
     Metadata(Metadata&&);
     Metadata& operator=(Metadata&&);
 
-    Metadata(const Metadata&) = delete;
-    Metadata& operator=(const Metadata&) = delete;
+    Metadata(const Metadata&) = default;
+    Metadata& operator=(const Metadata&) = default;
 
     // Total number of metadata attributes
     std::size_t size() const noexcept;
