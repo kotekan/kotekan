@@ -10,13 +10,13 @@ BOOST_AUTO_TEST_CASE(test1) {
 
     std::cout << "Test 1:\n";
     std::cout << "    uint1x8:     " << uint1x8 << "\n";
-    std::cout << "    uint4p4:     " << uint4p4 << "\n";
+    std::cout << "    uint4x2:     " << uint4x2 << "\n";
     std::cout << "    uint8:       " << uint8 << "\n";
     std::cout << "    uint16:      " << uint16 << "\n";
     std::cout << "    uint32:      " << uint32 << "\n";
     std::cout << "    uint64:      " << uint64 << "\n";
-    std::cout << "    int4p4:      " << int4p4 << "\n";
-    std::cout << "    int4p4chime: " << int4p4chime << "\n";
+    std::cout << "    int4x2:      " << int4x2 << "\n";
+    std::cout << "    int4x2chime: " << int4x2chime << "\n";
     std::cout << "    int8:        " << int8 << "\n";
     std::cout << "    int16:       " << int16 << "\n";
     std::cout << "    int32:       " << int32 << "\n";

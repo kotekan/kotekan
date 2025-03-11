@@ -8,8 +8,8 @@ std::string type_to_string(DataType type) {
             return "unknown_type";
         case uint1x8:
             return "uint1x8";
-        case uint4p4:
-            return "uint4p4";
+        case uint4x2:
+            return "uint4x2";
         case uint8:
             return "uint8";
         case uint16:
@@ -18,10 +18,10 @@ std::string type_to_string(DataType type) {
             return "uint32";
         case uint64:
             return "uint64";
-        case int4p4:
-            return "int4p4";
-        case int4p4chime:
-            return "int4p4chime";
+        case int4x2:
+            return "int4x2";
+        case int4x2chime:
+            return "int4x2chime";
         case int8:
             return "int8";
         case int16:
