@@ -1,6 +1,6 @@
 #include <DataType.hpp>
 
-namespace chord {
+namespace kotekan {
 
 std::string type_to_string(DataType type) {
     switch (type) {
@@ -45,4 +45,4 @@ std::ostream& operator<<(std::ostream& os, DataType type) {
     return os << type_to_string(type);
 }
 
-} // namespace chord
+} // namespace kotekan

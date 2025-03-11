@@ -1,12 +1,15 @@
+#define BOOST_TEST_MODULE "test_Symbol"
+
 #include <Symbol.hpp>
+#include <boost/test/included/unit_test.hpp>
 #include <cassert>
 #include <iostream>
 #include <set>
 #include <unordered_set>
 
-using namespace chord;
+using namespace kotekan;
 
-int main() {
+BOOST_AUTO_TEST_CASE(test1) {
     std::cout << "Testing Symbol class...\n";
 
     Symbol sym("Hello, World!");
@@ -19,19 +22,18 @@ int main() {
     std::cout << "y: " << y << "\n";
     std::cout << "x2: " << x2 << "\n";
 
-    assert(x != y);
-    assert(x == x2);
+    BOOST_CHECK(x != y);
+    BOOST_CHECK(x == x2);
 
     std::set<Symbol> set1;
     std::unordered_set<Symbol> set2;
 
     set1.insert(x);
     set2.insert(x);
-    assert(set1.count(x));
-    assert(!set1.count(y));
-    assert(set2.count(x));
-    assert(!set2.count(y));
+    BOOST_CHECK(set1.count(x));
+    BOOST_CHECK(!set1.count(y));
+    BOOST_CHECK(set2.count(x));
+    BOOST_CHECK(!set2.count(y));
 
     std::cout << "Success.\n";
-    return 0;
 }

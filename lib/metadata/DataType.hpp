@@ -26,7 +26,7 @@ using float16_t = _Float16;
 #endif
 #endif
 
-namespace chord {
+namespace kotekan {
 
 // This enum lets us talk about the various datatypes we're using.
 enum DataType {
@@ -193,6 +193,6 @@ struct GetDataType<long double>
 template<typename T>
 constexpr DataType GetDataType_v = GetDataType<T>::value;
 
-} // namespace chord
+} // namespace kotekan
 
 #endif // #ifndef DATATYPE_HPP

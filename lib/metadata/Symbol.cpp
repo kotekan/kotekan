@@ -1,6 +1,6 @@
 #include <Symbol.hpp>
 
-namespace chord {
+namespace kotekan {
 
 std::mutex Symbol::mutex;
 std::unordered_set<std::string_view> Symbol::known_symbols;
@@ -41,4 +41,4 @@ std::ostream& operator<<(std::ostream& os, Symbol sym) {
     return os << sym.get_c_string();
 }
 
-} // namespace chord
+} // namespace kotekan

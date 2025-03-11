@@ -1,15 +1,17 @@
+#define BOOST_TEST_MODULE "test_NDArray"
+
 #include <NDArray.hpp>
+#include <boost/test/included/unit_test.hpp>
 #include <iostream>
 
-using namespace chord;
+using namespace kotekan;
 
 void examineNDArray(const std::string& name, const GenericNDArray& arr) {
     std::cout << "name: " << name << "\n";
     arr.output_metadata(std::cout);
 }
 
-int main() {
-
+BOOST_AUTO_TEST_CASE(test1) {
     NDArray<int, 0> a0({}, {});
     NDArray<long long, 1> a1({1}, {"a"});
     NDArray<float, 2> a2({2, 3}, {"u", "v"});
@@ -22,6 +24,4 @@ int main() {
     examineNDArray("a2", a2);
     examineNDArray("a3", a3);
     examineNDArray("a4", a4);
-
-    return 0;
 }

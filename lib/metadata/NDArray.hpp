@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-namespace chord {
+namespace kotekan {
 
 namespace {
 
@@ -350,6 +350,6 @@ public:
     }
 };
 
-} // namespace chord
+} // namespace kotekan
 
 #endif // #ifndef NDARRAY_HPP

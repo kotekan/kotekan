@@ -1,8 +1,11 @@
+#define BOOST_TEST_MODULE "test_DataType"
+
 #include <DataType.hpp>
+#include <boost/test/included/unit_test.hpp>
 
-using namespace chord;
+using namespace kotekan;
 
-int main() {
+BOOST_AUTO_TEST_CASE(test1) {
     std::cout << "Testing DataType class...\n";
 
     std::cout << "Test 1:\n";
@@ -40,5 +43,4 @@ int main() {
     std::cout << "    double:             " << GetDataType_v<double> << "\n";
 
     std::cout << "Success.\n";
-    return 0;
 }

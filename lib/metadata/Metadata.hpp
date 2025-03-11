@@ -17,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-namespace chord {
+namespace kotekan {
 
 // The Metadata class is roughly similar to a Python dictionary. It
 // holds typed key/value pairs. The keys are strings, and the values
@@ -181,6 +181,6 @@ public:
     friend std::ostream& operator<<(std::ostream& os, const Metadata& meta);
 };
 
-} // namespace chord
+} // namespace kotekan
 
 #endif // #ifndef METADATA_HPP

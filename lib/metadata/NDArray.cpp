@@ -2,7 +2,7 @@
 #include <sstream>
 #include <string>
 
-namespace chord {
+namespace kotekan {
 
 namespace {
 
@@ -35,4 +35,4 @@ void GenericNDArray::output_metadata(std::ostream& os) const {
        << "    strides:   " << format_vector(get_strides()) << "\n";
 }
 
-} // namespace chord
+} // namespace kotekan

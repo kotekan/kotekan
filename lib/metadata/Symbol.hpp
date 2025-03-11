@@ -8,7 +8,7 @@
 #include <string>
 #include <unordered_set>
 
-namespace chord {
+namespace kotekan {
 
 // A symbol is similar to a string: A symbol can be created from a
 // string (this is expensive). As pay-off, comparing symbols to each
@@ -86,26 +86,26 @@ public:
     friend std::ostream& operator<<(std::ostream& os, Symbol sym);
 };
 
-} // namespace chord
+} // namespace kotekan
 
 namespace std {
 // Comparison functions for Symbol
 template<>
-struct equal_to<chord::Symbol> {
-    bool operator()(const chord::Symbol& lhs, const chord::Symbol& rhs) const noexcept {
+struct equal_to<kotekan::Symbol> {
+    bool operator()(const kotekan::Symbol& lhs, const kotekan::Symbol& rhs) const noexcept {
         return lhs == rhs;
     }
 };
 template<>
-struct less<chord::Symbol> {
-    bool operator()(const chord::Symbol& lhs, const chord::Symbol& rhs) const noexcept {
+struct less<kotekan::Symbol> {
+    bool operator()(const kotekan::Symbol& lhs, const kotekan::Symbol& rhs) const noexcept {
         return lhs < rhs;
     }
 };
 // Hash function for Symbol
 template<>
-struct hash<chord::Symbol> {
-    std::size_t operator()(const chord::Symbol& sym) const noexcept {
+struct hash<kotekan::Symbol> {
+    std::size_t operator()(const kotekan::Symbol& sym) const noexcept {
         return std::size_t(sym.get_c_string());
     }
 };

@@ -4,7 +4,7 @@
 #include <limits>
 #include <sstream>
 
-namespace chord {
+namespace kotekan {
 
 Metadata::Metadata() = default;
 Metadata::Metadata(Metadata&&) = default;
@@ -382,4 +382,4 @@ std::ostream& operator<<(std::ostream& os, const Metadata& meta) {
     return os;
 }
 
-} // namespace chord
+} // namespace kotekan
