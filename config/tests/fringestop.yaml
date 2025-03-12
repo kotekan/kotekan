@@ -213,9 +213,24 @@ dumpvis_direct_pfs0_buf:
   num_frames: buffer_depth
 
 earth_rotation_data:
-  DTAI: 37.0
-  DUT1: 0.0489249
   kotekan_update_endpoint: json
+  earth_orientation_parameter_table: [
+    {
+      time_inst_ns: 1578010000000000000,
+      delta_UT1_inst: 0.5,
+      x_pm: 0.1,
+      y_pm: 0.2
+    }, {
+      time_inst_ns: 1578010100000000000,
+      delta_UT1_inst: 0.5,
+      x_pm: 0.1,
+      y_pm: 0.2
+    }, {
+      time_inst_ns: 1578010200000000000,
+      delta_UT1_inst: 0.5,
+      x_pm: 0.1,
+      y_pm: 0.2
+    }]
 
 fakevis0:
   cadence: 1.0 / raw_rate
@@ -256,6 +271,7 @@ num_local_freq: 1
 samples_per_dataset: 32768
 
 telescope:
+  name: CHORDTelescope
   dish_positions: [
     [0.0, 0.0, 0.0],
     [6.3, 0.0, 0.0],
@@ -264,14 +280,13 @@ telescope:
     [151.0, 0.0, 0.0],
     [0.0, 204.0, 0.0],
     [151.0, 204.0, 0.0]]
-  inst_alt_deg: 90.0
   inst_lat_deg: 49.32075144444
   inst_long_deg: -119.62081125
-  inst_orientation: [
-    1.0, 0.0, 0.0,
-    0.0, 1.0, 0.0,
-    0.0, 0.0, 1.0]
-  name: CHORDTelescope
+  inst_grid_x_axis: [1.0, 0.0, 0.0]
+  inst_grid_y_axis: [0.0, 1.0, 0.0]
+  inst_alt_deg: 90.0
+  inst_alt_axis_polar_angle_deg: 90.0
+  inst_alt_axis_azimuth_angle_deg: 0.0
   require_gps: false
   updatable_config: /earth_rotation_data
 

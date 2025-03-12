@@ -163,12 +163,24 @@ protected:
     double _inst_long_deg;
     double _inst_lat_deg;
 
-    // Dish pointing angle.  Measured in degrees from the Northern horizon.
-    double _inst_alt_deg;
-
     // Matrix to transform from local topocentric coordinates to the 
     // dish coordinate system.
     double _inst_orientation[3][3];
+
+    // Dish pointing angle.  Measured in degrees from the Northern horizon.
+    double _inst_alt_deg;
+
+    // Coordinates for the direction of the dish altitude axis in the
+    // Topocentric frame.  
+    std::array<double, 3> _inst_alt_axis;
+
+    // Alt axis position in angular coordinates, in radians. 
+    // In standard spherical coordinates, theta is the angle from vertical,
+    // phi is measured in the x-y plane anti-clockwise from East.
+    // ie. theta=90, phi=0 means the axis points precisely to geographic East.
+    // theta=90, phi=90 means the axis points precisely to geographic North.
+    double _inst_alt_axis_theta;
+    double _inst_alt_axis_phi;
 
     // Matrix to transform vectors from ITRS geocentric coordinates (ECEF) to
     // local topocentric coordinates

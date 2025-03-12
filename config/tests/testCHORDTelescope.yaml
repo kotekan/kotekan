@@ -43,10 +43,11 @@ telescope:
   require_gps: false
   inst_long_deg: -119.62081125
   inst_lat_deg: 49.3207514444444444
+  inst_grid_x_axis: [1.0, 0.0, 0.0]
+  inst_grid_y_axis: [1.0, 0.0, 0.0]
   inst_alt_deg: 90.0
-  inst_orientation: [1, 0, 0,
-                     0, 1, 0,
-                     0, 0, 1]
+  inst_alt_axis_polar_angle_deg:  90.0
+  inst_alt_axis_azimuth_angle_deg:  0.0
   dish_positions: [[0.0, 1.0, 2.0],
                    [0.0, 2.0, 2.0],
                    [0.0, 3.0, 2.0],

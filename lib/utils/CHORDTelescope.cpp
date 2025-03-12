@@ -65,15 +65,32 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config,
     else
         INFO("Telescope GPS time not enabled.");
 
-    std::vector<double> orientation_vec = config.get<std::vector<double>>(path,
-                                                        "inst_orientation");
-    if (orientation_vec.size() != 9){
-        throw std::runtime_error("The instrument orienation must be 9 elements specifying a 3x3 matrix.");
-    }
+    //std::vector<double> orientation_vec = config.get<std::vector<double>>(path,
+    //                                                    "inst_orientation");
+    std::array<double, 3> sep_x
+        = config.get<std::array<double, 3>>(path, "inst_grid_x_axis");
+    std::array<double, 3> sep_y
+        = config.get<std::array<double, 3>>(path, "inst_grid_y_axis");
+    std::array<double, 3> sep_z = {
+        sep_x[1] * sep_y[2] - sep_x[2] * sep_y[1],
+        sep_x[2] * sep_y[0] - sep_x[0] * sep_y[2],
+        sep_x[0] * sep_y[1] - sep_x[1] * sep_y[0]};
 
     for(int i=0; i < 3; i++)
-        for(int j=0; j<3; j++)
-            _inst_orientation[i][j] = orientation_vec[3*i+j];
+    {
+        _inst_orientation[0][i] = sep_x[i];
+        _inst_orientation[1][i] = sep_y[i];
+        _inst_orientation[2][i] = sep_z[i];
+    }
+
+    _inst_alt_axis = config.get<std::array<double, 3>>(path, "inst_alt_axis");
+
+    double n = sqrt(  _inst_alt_axis[0] * _inst_alt_axis[0]
+                    + _inst_alt_axis[1] * _inst_alt_axis[1]
+                    + _inst_alt_axis[2] * _inst_alt_axis[2]);
+
+    _inst_alt_axis_theta = acos(_inst_alt_axis[2] / n);
+    _inst_alt_axis_phi = atan2(_inst_alt_axis[1], _inst_alt_axis[0]);
 
     _dish_positions = config.get<std::vector<std::array<double, 3>>>(path,
                                                         "dish_positions");

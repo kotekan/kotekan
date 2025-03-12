@@ -22,15 +22,33 @@ global_params = {
     "num_ev": 4,
     "earth_rotation_data": {
         "kotekan_update_endpoint": "json",
-        "DUT1": 0.0,
-        "DTAI": 0.0},
+        "earth_orientation_parameter_table": [
+            {
+                "time_inst_ns": 1578010000_000_000_000,
+                "delta_UT1_inst": 0.5,
+                "x_pm": 0.1,
+                "y_pm": 0.1,
+            }, {
+                "time_inst_ns": 1578010001_000_000_000,
+                "delta_UT1_inst": 0.4,
+                "x_pm": 0.12,
+                "y_pm": 0.12,
+            }, {
+                "time_inst_ns": 1578010002_000_000_000,
+                "delta_UT1_inst": 0.3,
+                "x_pm": 0.123,
+                "y_pm": 0.123,
+            }]},
     "telescope": {
         "name": "CHORDTelescope",
         "require_gps": False,
         "inst_long_deg": -119.62081125,
         "inst_lat_deg":    49.32075144444,
+        "inst_grid_axis_x": [1, 0, 0],
+        "inst_grid_axis_y": [0, 1, 0],
+        "inst_alt_axis_polar_angle_deg":    90.0,
+        "inst_alt_axis_azimuth_angle_deg":  0.0,
         "inst_alt_deg":     90.0,
-        "inst_orientation": [1, 0, 0, 0, 1, 0, 0, 0, 1],
         "dish_positions": [[0.0, 0.0, 0.0]],
         "updatable_config": "/earth_rotation_data"},
     "gps_time": {
