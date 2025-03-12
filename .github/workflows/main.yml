@@ -182,16 +182,6 @@ jobs:
           ccache-full-build-2404
           ccache-base-build-2404
 
-    - name: Free disk space
-      if: ${{ !env.ACT }} # Don't free up if running locally
-      run: |
-          df -h
-          docker rmi $(docker image ls -aq)
-          df -h
-          sudo apt-get clean
-          sudo apt-get autoclean
-          df -h
-
     - name: Build kotekan
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-2404/ ${{ needs.build-docker-2404.outputs.docker_img_name }})
@@ -352,11 +342,33 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         df -h
 
-    # Run all tests in the config/ci-tests directory
+    # Run tests in the config/ci-tests directory with timeout
     - name: Run direct Kotekan tests
       run: |
-        OPTS="--rm --privileged --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan -w /code/kotekan ${{ needs.build-docker-2404.outputs.docker_img_name }}"
-        docker run $OPTS sh -c 'for config_file in config/ci-tests/*.yaml; do ./build-2404/kotekan/kotekan --bind-address 0:23000 --config $config_file || exit 41; done'
+        TIMEOUT_DURATION="5m"  # Timeout duration per test
+        TEST_CONFIG_DIR="config/ci-tests"
+        for config_file in "$TEST_CONFIG_DIR"/*.yaml; do
+          echo "Running test with config: $config_file"
+          
+          # Run the test with timeout
+          timeout "$TIMEOUT_DURATION" docker run --rm --privileged \
+            --mount type=bind,src=/home/lwlab/kotekan-runner/_work/kotekan/kotekan/,target=/code/kotekan \
+            -w /code/kotekan \
+            ${{ needs.build-docker-2404.outputs.docker_img_name }} \
+            ./build-2404/kotekan/kotekan --bind-address 0:23000 --config "$config_file"
+
+          EXIT_CODE=$?
+
+          if [ $EXIT_CODE -eq 124 ]; then
+            echo "Test timed out for config: $config_file"
+            exit 1
+          elif [ $EXIT_CODE -ne 0 ]; then
+            echo "Test failed for config: $config_file with exit code $EXIT_CODE"
+            exit 1
+          else
+            echo "Test passed for config: $config_file"
+          fi
+        done
 
     - name: Clean up
       run: |
@@ -573,16 +585,6 @@ jobs:
         restore-keys: |
           ccache-full-build-2204
           ccache-base-build-2204
-
-    - name: Free disk space
-      if: ${{ !env.ACT }} # Don't free up if running locally
-      run: |
-          df -h
-          docker rmi $(docker image ls -aq)
-          df -h
-          sudo apt-get clean
-          sudo apt-get autoclean
-          df -h
 
     - name: Build kotekan
       run: |
@@ -871,18 +873,8 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Free disk space
-      if: ${{ !env.ACT }} # Don't free up if running locally
-      run: |
-          df -h
-          docker rmi $(docker image ls -aq)
-          df -h
-          sudo apt-get clean
-          sudo apt-get autoclean
-          df -h
-
     - name: Cache ccache files
-      uses: actions/cache@v1
+      uses: actions/cache@v4
       with:
         path: .ccache
         key: ccache-full-build-1804-${{ github.sha }}
@@ -942,7 +934,7 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Cache ccache files
-      uses: actions/cache@v1
+      uses: actions/cache@v4
       with:
         path: .ccache
         key: ccache-chime-build-1804-${{ github.sha }}
@@ -986,7 +978,7 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Cache ccache files
-      uses: actions/cache@v1
+      uses: actions/cache@v4
       with:
         path: .ccache
         key: ccache-clang-build-1804-${{ github.sha }}

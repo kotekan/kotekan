@@ -104,3 +104,15 @@ if(${USE_HDF5})
     target_include_directories(test_transpose SYSTEM PUBLIC ${CUDA_INCLUDE_DIR}
                                                             ${CUDA_INCLUDE_DIRS})
 endif()
+
+add_executable(test_DataType test_DataType.cpp)
+target_link_libraries(test_DataType kotekan_metadata)
+
+add_executable(test_Metadata test_Metadata.cpp)
+target_link_libraries(test_Metadata kotekan_metadata)
+
+add_executable(test_NDArray test_NDArray.cpp)
+target_link_libraries(test_NDArray kotekan_metadata)
+
+add_executable(test_Symbol test_Symbol.cpp)
+target_link_libraries(test_Symbol kotekan_metadata)
