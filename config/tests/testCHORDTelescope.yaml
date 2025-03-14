@@ -24,18 +24,18 @@ earth_rotation_data:
       delta_UT1_inst: 0.5,
       x_pm: 0.1,
       y_pm: 0.2
-    }, {
-      time_inst_ns: 1578040000000000380,
-      DUT1: 0.8,
-      delta_UT1_inst: 0.801234,
-      x_pm: 3.0,
-      y_pm: 4.0,
-    }, {
-      time_inst_ns: 1578030000000000350,
-      delta_UT1_inst: 0.1,
-      x_pm: -0.5,
-      y_pm: -0.6,
     }]
+#, {
+#  time_inst_ns: 1578040000000000380,
+#  delta_UT1_inst: 0.801234,
+#  x_pm: 3.0,
+#  y_pm: 4.0,
+#}, {
+#  time_inst_ns: 1578030000000000350,
+#  delta_UT1_inst: 0.1,
+#  x_pm: -0.5,
+#  y_pm: -0.6,
+#}]
 
 
 telescope:
@@ -44,10 +44,10 @@ telescope:
   inst_long_deg: -119.62081125
   inst_lat_deg: 49.3207514444444444
   inst_grid_x_axis: [1.0, 0.0, 0.0]
-  inst_grid_y_axis: [1.0, 0.0, 0.0]
+  inst_grid_y_axis: [0.0, 1.0, 0.0]
   inst_alt_deg: 90.0
-  inst_alt_axis_polar_angle_deg:  90.0
-  inst_alt_axis_azimuth_angle_deg:  0.0
+  inst_dish_alt_axis: [1.0, 0.0, 0.0]
+  inst_dish_vert_axis: [0.0, 0.0, 1.0]
   dish_positions: [[0.0, 1.0, 2.0],
                    [0.0, 2.0, 2.0],
                    [0.0, 3.0, 2.0],

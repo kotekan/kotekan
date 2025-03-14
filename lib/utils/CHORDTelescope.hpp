@@ -60,39 +60,44 @@ public:
 
     double get_inst_long_deg() const;
     double get_inst_lat_deg() const;
-    double get_orientation_el(int i, int j) const;
-    double get_dish_coord(int i, int j) const;
+    double get_inst_alt_deg() const;
+    double get_tel_orientation_el(int i, int j) const;
+    double get_dish_orientation_el(int i, int j) const;
+    std::array<double, 3> get_dish_position(int i) const;
     int get_num_dishes() const;
     int get_EOP_table_len() const;
     struct EOP get_EOP_at_idx(uint64_t i) const;
     struct EOP get_EOP_at_time(const timespec &ts) const;
     struct EOP get_EOP_at_UT1(const timespec &ut1) const;
-    std::array<double, 3> get_sky_vec_in_dish_coords(double ra,
+
+    std::array<double, 3> get_sky_vec_in_tel_coords(double ra,
                                     double dec, const struct EOP &eop) const;
+    std::array<double, 3> get_pointing_vec_in_dish_coords() const;
 
-    std::array<double, 3> get_pointing_vec_in_tel_coords() const;
 
-    std::array<double, 3> topocen_vec_to_tel_vec(
+    std::array<double, 3> vec_topocen_to_dish(
             const std::array<double, 3>& v_topo) const;
-    std::array<double, 3> tel_vec_to_topocen_vec(
+    std::array<double, 3> vec_dish_to_topocen(
+            const std::array<double, 3>& v_dish) const;
+    std::array<double, 3> vec_topocen_to_tel(
+            const std::array<double, 3>& v_topo) const;
+    std::array<double, 3> vec_tel_to_topocen(
             const std::array<double, 3>& v_tel) const;
-    std::array<double, 3> itrs_vec_to_topocen_vec(
+    std::array<double, 3> vec_itrs_to_topocen(
             const std::array<double, 3>& v_itrs) const;
-    std::array<double, 3> topocen_vec_to_itrs_vec(
+    std::array<double, 3> vec_topocen_to_itrs(
             const std::array<double, 3>& v_topo) const;
+    std::array<double, 3> vec_cirs_to_itrs(
+        const std::array<double, 3>& v_cirs, const struct EOP &eop) const;
+    std::array<double, 3> vec_itrs_to_cirs(
+        const std::array<double, 3>& v_itrs, const struct EOP &eop) const;
 
     std::array<double, 3> vec_axes_rotation_R1(
         const std::array<double, 3>& v, double theta) const;
     std::array<double, 3> vec_axes_rotation_R2(
-
         const std::array<double, 3>& v, double theta) const;
     std::array<double, 3> vec_axes_rotation_R3(
         const std::array<double, 3>& v, double theta) const;
-
-    std::array<double, 3> cirs_vec_to_itrs_vec(
-        const std::array<double, 3>& v_cirs, const struct EOP &eop) const;
-    std::array<double, 3> itrs_vec_to_cirs_vec(
-        const std::array<double, 3>& v_itrs, const struct EOP &eop) const;
 
     void fringestop_phases_1d(double freq_Hz, const struct EOP &eop,
             const struct EOP &eop0,
@@ -164,23 +169,15 @@ protected:
     double _inst_lat_deg;
 
     // Matrix to transform from local topocentric coordinates to the 
-    // dish coordinate system.
-    double _inst_orientation[3][3];
+    // telescope (ie. dish position) coordinate system.
+    double _R_topo_to_tel[3][3];
 
-    // Dish pointing angle.  Measured in degrees from the Northern horizon.
+    // Dish pointing angle.  Measured in degrees from vertical.
     double _inst_alt_deg;
 
-    // Coordinates for the direction of the dish altitude axis in the
-    // Topocentric frame.  
-    std::array<double, 3> _inst_alt_axis;
-
-    // Alt axis position in angular coordinates, in radians. 
-    // In standard spherical coordinates, theta is the angle from vertical,
-    // phi is measured in the x-y plane anti-clockwise from East.
-    // ie. theta=90, phi=0 means the axis points precisely to geographic East.
-    // theta=90, phi=90 means the axis points precisely to geographic North.
-    double _inst_alt_axis_theta;
-    double _inst_alt_axis_phi;
+    // Matrix to transform from local topocentric coordinates to the 
+    // dish (ie. z is dish zenith, x is altitude axis) coordinate system.
+    double _R_topo_to_dish[3][3];
 
     // Matrix to transform vectors from ITRS geocentric coordinates (ECEF) to
     // local topocentric coordinates

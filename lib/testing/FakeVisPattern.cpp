@@ -493,7 +493,7 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
     timespec time = tel.to_time(std::get<0>(frame.time) + frame.fpga_seq_length/2);
     struct EOP eop = tel.get_EOP_at_time(time);
 
-    std::array<double, 3> n = tel.get_sky_vec_in_dish_coords(ra, dec, eop);
+    std::array<double, 3> n = tel.get_sky_vec_in_tel_coords(ra, dec, eop);
 
     double f = tel.to_freq(frame.freq_id);
     double lambda = C / f;
@@ -524,14 +524,13 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
             uint32_t pol_i = el_i / num_dishes;
             uint32_t pol_j = el_j / num_dishes;
 
-            double phase = 2*M_PI * (
-                      (tel.get_dish_coord(dish_i, 0)
-                        - tel.get_dish_coord(dish_j, 0)) * n[0]
-                    + (tel.get_dish_coord(dish_i, 1)
-                        - tel.get_dish_coord(dish_j, 1)) * n[1]
-                    + (tel.get_dish_coord(dish_i, 2)
-                        - tel.get_dish_coord(dish_j, 2)) * n[2])
-                    / lambda;
+            std::array<double, 3> pos_i = tel.get_dish_position(dish_i);
+            std::array<double, 3> pos_j = tel.get_dish_position(dish_j);
+
+            double phase = 2*M_PI * ( (pos_i[0]-pos_j[0]) * n[0]
+                                    + (pos_i[1]-pos_j[1]) * n[1]
+                                    + (pos_i[2]-pos_j[2]) * n[2])
+                                    / lambda;
 
             double cp = cos(phase);
             double sp = sin(phase);
@@ -573,7 +572,7 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
 
     struct EOP eop = tel.get_EOP_at_time(time);
 
-    std::array<double, 3> n = tel.get_sky_vec_in_dish_coords(ra, dec, eop);
+    std::array<double, 3> n = tel.get_sky_vec_in_tel_coords(ra, dec, eop);
 
     double f = tel.to_freq(frame.freq_id);
     double lambda = C / f;
@@ -607,14 +606,13 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
             uint32_t pol_i = el_i / num_dishes;
             uint32_t pol_j = el_j / num_dishes;
 
-            double phase = 2*M_PI * (
-                      (tel.get_dish_coord(dish_i, 0)
-                        - tel.get_dish_coord(dish_j, 0)) * n[0]
-                    + (tel.get_dish_coord(dish_i, 1)
-                        - tel.get_dish_coord(dish_j, 1)) * n[1]
-                    + (tel.get_dish_coord(dish_i, 2)
-                        - tel.get_dish_coord(dish_j, 2)) * n[2])
-                    / lambda;
+            std::array<double, 3> pos_i = tel.get_dish_position(dish_i);
+            std::array<double, 3> pos_j = tel.get_dish_position(dish_j);
+
+            double phase = 2*M_PI * ( (pos_i[0]-pos_j[0]) * n[0]
+                                    + (pos_i[1]-pos_j[1]) * n[1]
+                                    + (pos_i[2]-pos_j[2]) * n[2])
+                                    / lambda;
 
             double cp = cos(phase);
             double sp = sin(phase);

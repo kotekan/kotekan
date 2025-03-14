@@ -285,8 +285,8 @@ telescope:
   inst_grid_x_axis: [1.0, 0.0, 0.0]
   inst_grid_y_axis: [0.0, 1.0, 0.0]
   inst_alt_deg: 90.0
-  inst_alt_axis_polar_angle_deg: 90.0
-  inst_alt_axis_azimuth_angle_deg: 0.0
+  inst_dish_alt_axis: [1.0, 0.0, 0.0]
+  inst_dish_vert_axis: [0.0, 0.0, 1.0]
   require_gps: false
   updatable_config: /earth_rotation_data
 

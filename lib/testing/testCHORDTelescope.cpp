@@ -56,18 +56,30 @@ void TestCHORDTelescope::main_thread() {
         double lon = tel.get_inst_long_deg();
         INFO("            lat:         {:f} deg", lat);
         INFO("            long:        {:f} deg", lon);
-        INFO("            Orientation: {0:.6f} {1:.6f} {2:.6f}",
-                tel.get_orientation_el(0, 0),
-                tel.get_orientation_el(0, 1),
-                tel.get_orientation_el(0, 2));
-        INFO("                         {0:.6f} {1:.6f} {2:.6f}",
-                tel.get_orientation_el(1, 0),
-                tel.get_orientation_el(1, 1),
-                tel.get_orientation_el(1, 2));
-        INFO("                         {0:.6f} {1:.6f} {2:.6f}",
-                tel.get_orientation_el(2, 0),
-                tel.get_orientation_el(2, 1),
-                tel.get_orientation_el(2, 2));
+        INFO("            Telescope Orientation: {0:.6f} {1:.6f} {2:.6f}",
+                tel.get_tel_orientation_el(0, 0),
+                tel.get_tel_orientation_el(0, 1),
+                tel.get_tel_orientation_el(0, 2));
+        INFO("                                   {0:.6f} {1:.6f} {2:.6f}",
+                tel.get_tel_orientation_el(1, 0),
+                tel.get_tel_orientation_el(1, 1),
+                tel.get_tel_orientation_el(1, 2));
+        INFO("                                   {0:.6f} {1:.6f} {2:.6f}",
+                tel.get_tel_orientation_el(2, 0),
+                tel.get_tel_orientation_el(2, 1),
+                tel.get_tel_orientation_el(2, 2));
+        INFO("            Dish Orientation: {0:.6f} {1:.6f} {2:.6f}",
+                tel.get_dish_orientation_el(0, 0),
+                tel.get_dish_orientation_el(0, 1),
+                tel.get_dish_orientation_el(0, 2));
+        INFO("                              {0:.6f} {1:.6f} {2:.6f}",
+                tel.get_dish_orientation_el(1, 0),
+                tel.get_dish_orientation_el(1, 1),
+                tel.get_dish_orientation_el(1, 2));
+        INFO("                              {0:.6f} {1:.6f} {2:.6f}",
+                tel.get_dish_orientation_el(2, 0),
+                tel.get_dish_orientation_el(2, 1),
+                tel.get_dish_orientation_el(2, 2));
         int n_eop = tel.get_EOP_table_len();
 
         std::vector<timespec> eop_times;
@@ -94,18 +106,23 @@ void TestCHORDTelescope::main_thread() {
         for(i=0; i <= nt; i++)
         {
             timespec ta, tb;
-            if(i==0)
+            if(i==0 && nt == 1)
+                ta = {eop_times[0].tv_sec - 43200, 0};
+            else if(i==0)
                 ta = {eop_times[0].tv_sec
                         - 2*(eop_times[1].tv_sec-eop_times[0].tv_sec), 0};
             else
                 ta = eop_times[i-1];
 
-            if(i == nt)
+            if(i == nt && nt == 1)
+                tb = {eop_times[0].tv_sec + 43200, 0};
+            else if(i == nt)
                 tb = {eop_times[nt-1].tv_sec
                         + 2*(eop_times[nt-1].tv_sec - eop_times[nt-2].tv_sec),
                       0};
             else
                 tb = eop_times[i];
+                
 
             int n_seg = 4;
             int64_t dns = 1'000'000'000L * (tb.tv_sec - ta.tv_sec)
@@ -164,10 +181,11 @@ void TestCHORDTelescope::main_thread() {
 
         int n_dish = tel.get_num_dishes();
         INFO("            Num Dishes:  {:d}", n_dish); 
-        for(i=0; i<n_dish; i++)
+        for(i=0; i<n_dish; i++) {
+            std::array<double, 3> pos = tel.get_dish_position(i);
             INFO("            Dish Pos:    {0:d} - ({1:f}, {2:f}, {3:f})",
-                 i, tel.get_dish_coord(i, 0),
-                 tel.get_dish_coord(i, 1), tel.get_dish_coord(i, 2));
+                 i, pos[0], pos[1], pos[2]);
+        }
 
         //break;
         std::this_thread::sleep_for(std::chrono::milliseconds(2000));

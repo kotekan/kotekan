@@ -20,9 +20,11 @@
 
 REGISTER_TELESCOPE(CHORDTelescope, "CHORDTelescope");
 
-#define GIGA 1'000'000'000
+#define GIGA 1'000'000'000L
 
 static constexpr double C = 2.99792458e8;
+static constexpr double deg2rad = M_PI/180.0;
+static constexpr double arcsec2rad = M_PI/(180.0*3600);
 
 using kotekan::connectionInstance;
 using kotekan::restServer;
@@ -55,11 +57,13 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config,
     _inst_long_deg = config.get<double>(path, "inst_long_deg");
     _inst_lat_deg = config.get<double>(path, "inst_lat_deg");
     _inst_alt_deg = config.get<double>(path, "inst_alt_deg");
+    
     INFO("Telescope configured with longitude: {:f} deg", _inst_long_deg);
     INFO("Telescope configured with latitude:  {:f} deg", _inst_lat_deg);
     INFO("Telescope configured with altitude: {:f} deg", _inst_alt_deg);
-    INFO("Telescope targetting declination: {:f} deg",
+    INFO("Telescope targetting approximate declination: {:f} deg",
             _inst_lat_deg + 90-_inst_alt_deg);
+    
     if (gps_enabled)
         INFO("Telescope configured with GPS time0: {:d} ns", time0_ns);
     else
@@ -78,24 +82,31 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config,
 
     for(int i=0; i < 3; i++)
     {
-        _inst_orientation[0][i] = sep_x[i];
-        _inst_orientation[1][i] = sep_y[i];
-        _inst_orientation[2][i] = sep_z[i];
+        _R_topo_to_tel[0][i] = sep_x[i];
+        _R_topo_to_tel[1][i] = sep_y[i];
+        _R_topo_to_tel[2][i] = sep_z[i];
     }
 
-    _inst_alt_axis = config.get<std::array<double, 3>>(path, "inst_alt_axis");
+    std::array<double, 3> dish_x
+        = config.get<std::array<double, 3>>(path, "inst_dish_alt_axis");
+    std::array<double, 3> dish_z
+        = config.get<std::array<double, 3>>(path, "inst_dish_vert_axis");
+    std::array<double, 3> dish_y = {
+        dish_z[1] * dish_x[2] - dish_z[2] * dish_x[1],
+        dish_z[2] * dish_x[0] - dish_z[0] * dish_x[2],
+        dish_z[0] * dish_x[1] - dish_z[1] * dish_x[0]};
 
-    double n = sqrt(  _inst_alt_axis[0] * _inst_alt_axis[0]
-                    + _inst_alt_axis[1] * _inst_alt_axis[1]
-                    + _inst_alt_axis[2] * _inst_alt_axis[2]);
-
-    _inst_alt_axis_theta = acos(_inst_alt_axis[2] / n);
-    _inst_alt_axis_phi = atan2(_inst_alt_axis[1], _inst_alt_axis[0]);
+    for(int i=0; i < 3; i++)
+    {
+        _R_topo_to_dish[0][i] = dish_x[i];
+        _R_topo_to_dish[1][i] = dish_y[i];
+        _R_topo_to_dish[2][i] = dish_z[i];
+    }
 
     _dish_positions = config.get<std::vector<std::array<double, 3>>>(path,
                                                         "dish_positions");
 
-    double deg2rad = M_PI/180;
+    //double deg2rad = M_PI/180;
     double cos_lon = cos(deg2rad * _inst_long_deg);
     double sin_lon = sin(deg2rad * _inst_long_deg);
     double cos_lat = cos(deg2rad * _inst_lat_deg);
@@ -244,12 +255,16 @@ double CHORDTelescope::get_inst_lat_deg() const {
     return _inst_lat_deg;
 }
 
-std::array<double, 3> CHORDTelescope::get_sky_vec_in_dish_coords(
+double CHORDTelescope::get_inst_alt_deg() const {
+    return _inst_alt_deg;
+}
+
+std::array<double, 3> CHORDTelescope::get_sky_vec_in_tel_coords(
         double ra, double dec, const struct EOP &eop) const {
 
     // Taking the ra & dec to be in CIRS frame
 
-    double deg2rad = M_PI / 180;
+    //double deg2rad = M_PI / 180;
 
     double phi = deg2rad * ra;
     double theta = deg2rad * (90 - dec);
@@ -263,39 +278,63 @@ std::array<double, 3> CHORDTelescope::get_sky_vec_in_dish_coords(
 
     INFO("n_cirs: {} {} {}", n_cirs[0], n_cirs[1], n_cirs[2]);
 
-    std::array<double, 3> n_itrs = cirs_vec_to_itrs_vec(n_cirs, eop);
-    std::array<double, 3> n_topo = itrs_vec_to_topocen_vec(n_itrs);
+    std::array<double, 3> n_itrs = vec_cirs_to_itrs(n_cirs, eop);
+    std::array<double, 3> n_topo = vec_itrs_to_topocen(n_itrs);
 
-    return topocen_vec_to_tel_vec(n_topo);
+    return vec_topocen_to_tel(n_topo);
 }
 
-std::array<double, 3> CHORDTelescope::get_pointing_vec_in_tel_coords() const {
+std::array<double, 3> CHORDTelescope::get_pointing_vec_in_dish_coords() const {
 
-    double deg2rad = M_PI/180;
-    std::array<double, 3> n = {0.0, cos(deg2rad * _inst_alt_deg),
-                                    sin(deg2rad * _inst_alt_deg)};
+    //double deg2rad = M_PI/180;
 
-    return n;
+    double alt = deg2rad * _inst_alt_deg;
+
+    std::array<double, 3> n_point = {0.0, cos(alt), sin(alt)};
+
+    return n_point;
 }
 
-std::array<double, 3> CHORDTelescope::topocen_vec_to_tel_vec(
+std::array<double, 3> CHORDTelescope::vec_topocen_to_dish(
+        const std::array<double, 3>& v_topocen) const {
+
+    std::array<double, 3> v_dish = {0, 0, 0};
+    for(int i = 0; i < 3; i++)
+        for(int j = 0; j < 3; j++)
+            v_dish[i] += _R_topo_to_dish[i][j] * v_topocen[j];
+
+    return v_dish;
+}
+
+std::array<double, 3> CHORDTelescope::vec_dish_to_topocen(
+        const std::array<double, 3>& v_dish) const {
+
+    std::array<double, 3> v_topo = {0, 0, 0};
+    for(int i = 0; i < 3; i++)
+        for(int j = 0; j < 3; j++)
+            v_topo[i] += _R_topo_to_dish[j][i] * v_dish[j];
+
+    return v_topo;
+}
+
+std::array<double, 3> CHORDTelescope::vec_topocen_to_tel(
         const std::array<double, 3>& v_topocen) const {
     
     std::array<double, 3> v_tel = {0, 0, 0};
     for(int i = 0; i < 3; i++)
         for(int j = 0; j < 3; j++)
-            v_tel[i] += _inst_orientation[i][j] * v_topocen[j];
+            v_tel[i] += _R_topo_to_tel[i][j] * v_topocen[j];
 
     return v_tel;
 }
 
-std::array<double, 3> CHORDTelescope::tel_vec_to_topocen_vec(
+std::array<double, 3> CHORDTelescope::vec_tel_to_topocen(
         const std::array<double, 3>& v_tel) const {
     
     std::array<double, 3> v_topocen = {0, 0, 0};
     for(int i = 0; i < 3; i++)
         for(int j = 0; j < 3; j++)
-            v_topocen[i] += _inst_orientation[j][i] * v_tel[j];
+            v_topocen[i] += _R_topo_to_tel[j][i] * v_tel[j];
 
     return v_topocen;
 }
@@ -346,7 +385,7 @@ std::array<double, 3> CHORDTelescope::vec_axes_rotation_R3(
 }
 
 
-std::array<double, 3> CHORDTelescope::itrs_vec_to_topocen_vec(
+std::array<double, 3> CHORDTelescope::vec_itrs_to_topocen(
         const std::array<double, 3>& v_itrs) const {
 
     std::array<double, 3> v_topo = {0, 0, 0};
@@ -357,7 +396,7 @@ std::array<double, 3> CHORDTelescope::itrs_vec_to_topocen_vec(
     return v_topo;
 }
 
-std::array<double, 3> CHORDTelescope::topocen_vec_to_itrs_vec(
+std::array<double, 3> CHORDTelescope::vec_topocen_to_itrs(
         const std::array<double, 3>& v_topo) const {
 
     std::array<double, 3> v_itrs = {0, 0, 0};
@@ -368,15 +407,15 @@ std::array<double, 3> CHORDTelescope::topocen_vec_to_itrs_vec(
     return v_itrs;
 }
 
-std::array<double, 3> CHORDTelescope::cirs_vec_to_itrs_vec(
+std::array<double, 3> CHORDTelescope::vec_cirs_to_itrs(
         const std::array<double, 3>& v_cirs, const struct EOP &eop) const {
 
-    double deg2rad = M_PI/180;
-    double as2rad = deg2rad / 3600;
+    //double deg2rad = M_PI/180;
+    //double as2rad = deg2rad / 3600;
     
     double era = deg2rad * eop.ERA_deg;
-    double xp = as2rad * eop.xp_as;
-    double yp = as2rad * eop.yp_as;
+    double xp = arcsec2rad * eop.xp_as;
+    double yp = arcsec2rad * eop.yp_as;
 
     std::array<double, 3> v1     = vec_axes_rotation_R3(v_cirs, era);
     std::array<double, 3> v2     = vec_axes_rotation_R2(v1,    -xp);
@@ -385,14 +424,14 @@ std::array<double, 3> CHORDTelescope::cirs_vec_to_itrs_vec(
     return v_itrs;
 }
 
-std::array<double, 3> CHORDTelescope::itrs_vec_to_cirs_vec(
+std::array<double, 3> CHORDTelescope::vec_itrs_to_cirs(
         const std::array<double, 3>& v_itrs, const struct EOP &eop) const {
 
-    double deg2rad = M_PI/180;
-    double as2rad = deg2rad / 3600;
+    //double deg2rad = M_PI/180;
+    //double as2rad = deg2rad / 3600;
     double era = deg2rad * eop.ERA_deg;
-    double xp = as2rad * eop.xp_as;
-    double yp = as2rad * eop.yp_as;
+    double xp = arcsec2rad * eop.xp_as;
+    double yp = arcsec2rad * eop.yp_as;
 
     std::array<double, 3> v1     = vec_axes_rotation_R1(v_itrs, yp);
     std::array<double, 3> v2     = vec_axes_rotation_R2(v1,     xp);
@@ -408,16 +447,16 @@ void CHORDTelescope::fringestop_phases_1d(double freq_Hz,
     //Take the pointing vector for the telescope (constant in time),
     //and find it in the CIRS frame at ERA0.  This is the point we are
     //attempting to stop the fringes at.
-    std::array<double, 3> n_tel0 = get_pointing_vec_in_tel_coords();
-    std::array<double, 3> n_topo0 = tel_vec_to_topocen_vec(n_tel0);
-    std::array<double, 3> n_itrs0 = topocen_vec_to_itrs_vec(n_topo0);
-    std::array<double, 3> n_cirs = itrs_vec_to_cirs_vec(n_itrs0, eop0);
+    std::array<double, 3> n_tel0 = get_pointing_vec_in_dish_coords();
+    std::array<double, 3> n_topo0 = vec_dish_to_topocen(n_tel0);
+    std::array<double, 3> n_itrs0 = vec_topocen_to_itrs(n_topo0);
+    std::array<double, 3> n_cirs = vec_itrs_to_cirs(n_itrs0, eop0);
 
     //Now, given this CIRS vector, find its components in the telescope
     //frame at the requested ERA
-    std::array<double, 3> n_itrs = cirs_vec_to_itrs_vec(n_cirs, eop);
-    std::array<double, 3> n_topo = itrs_vec_to_topocen_vec(n_itrs);
-    std::array<double, 3> n_tel = topocen_vec_to_tel_vec(n_topo);
+    std::array<double, 3> n_itrs = vec_cirs_to_itrs(n_cirs, eop);
+    std::array<double, 3> n_topo = vec_itrs_to_topocen(n_itrs);
+    std::array<double, 3> n_tel = vec_topocen_to_tel(n_topo);
 
     // n_tel is now (at ERA) the point on the sky which will be at the
     // phase center (n_tel0) at ERA0.
@@ -446,13 +485,16 @@ void CHORDTelescope::fringestop_phases_1d(double freq_Hz,
     */
 }
 
-
-double CHORDTelescope::get_orientation_el(int i, int j) const {
-    return _inst_orientation[i][j];
+double CHORDTelescope::get_tel_orientation_el(int i, int j) const {
+    return _R_topo_to_tel[i][j];
 }
 
-double CHORDTelescope::get_dish_coord(int i, int j) const {
-    return _dish_positions[i][j];
+double CHORDTelescope::get_dish_orientation_el(int i, int j) const {
+    return _R_topo_to_dish[i][j];
+}
+
+std::array<double, 3> CHORDTelescope::get_dish_position(int i) const {
+    return _dish_positions[i];
 }
 
 int CHORDTelescope::get_num_dishes() const {
