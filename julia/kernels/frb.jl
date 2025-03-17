@@ -20,6 +20,8 @@ if CUDA.functional()
     @assert name(device()) == "NVIDIA $card"
 end
 
+chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
+unchimify(x) = chimify(x)
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 # shift(x::Number, s) = (@assert s ≥ 1; (x + (1 << (s - 1))) >> s)
 # shift(x::Complex, s) = Complex(shift(x.re, s), shift(x.im, s))
@@ -47,6 +49,8 @@ function shrinkmul(x::Integer, y::Symbol, ymax::Integer)
 end
 
 ilog2(i::Integer) = (@assert i == nextpow(2, i); trailing_zeros(i))
+
+Base.isnan(f::Float16x2) = any(isnan, convert(NTuple{2,Float16}, f))
 
 # Setup
 
@@ -2043,7 +2047,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         println("Copying data from CPU to GPU...")
         Smn_cuda = CuArray(Smn_memory)
         W_cuda = CuArray(W_memory)
-        E_cuda = CuArray(E_memory)
+        E_cuda = CuArray(chimify.(E_memory))
         I_cuda = CUDA.fill(Float16x2(NaN, NaN), length(I_wanted))
         info_cuda = CUDA.fill(-1i32, length(info_wanted))
 
@@ -2131,8 +2135,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
         println("Copying data back from GPU to CPU...")
         I_memory = Array(I_cuda)
+        # @show count(isnan, (@view I_memory[1:(M * 2 * N * Fbar_out * Ttildemax)]))
+        # @assert all(!isnan, (@view I_memory[1:(M * 2 * N * Fbar_out * Ttildemax)]))
         info_memory = Array(info_cuda)
-        @assert all(info_memory .== 0)
+        @assert all(==(0), info_memory)
 
         if run_selftest
             println("Checking results...")

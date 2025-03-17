@@ -65,6 +65,7 @@ add_library(
     cudaUpchannelizer_chime_U16.cpp
     cudaUpchannelizer_chime_U32.cpp
     cudaUpchannelizer_chime_U64.cpp
+    cudaUpchannelizer_chime_U128.cpp
     cudaUpchannelizer_chord_U2.cpp
     cudaUpchannelizer_chord_U4.cpp
     cudaUpchannelizer_chord_U8.cpp

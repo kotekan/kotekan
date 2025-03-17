@@ -44,9 +44,8 @@ typedef std::lock_guard<std::recursive_mutex> buffer_lock;
 
 GenericBuffer::GenericBuffer(const std::string& _buffer_name, const std::string& _buffer_type,
                              std::shared_ptr<metadataPool> pool, int _num_frames) :
-    num_frames(_num_frames),
-    shutdown_signal(false), buffer_name(_buffer_name), buffer_type(_buffer_type),
-    metadata_pool(pool), metadata(num_frames, nullptr) {
+    num_frames(_num_frames), shutdown_signal(false), buffer_name(_buffer_name),
+    buffer_type(_buffer_type), metadata_pool(pool), metadata(num_frames, nullptr) {
     set_log_prefix(_buffer_type + "Buffer \"" + _buffer_name + "\"");
 }
 
@@ -210,8 +209,7 @@ std::string GenericBuffer::get_dot_node_label() {
 Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
                const std::string& _buffer_name, const std::string& _buffer_type, int _numa_node,
                bool _use_hugepages, bool _mlock_frames, bool zero_new_frames) :
-    GenericBuffer(_buffer_name, _buffer_type, pool, num_frames),
-    frame_size(len),
+    GenericBuffer(_buffer_name, _buffer_type, pool, num_frames), frame_size(len),
     // By default don't zero buffers at the end of their use.
     _zero_frames(false), frames(num_frames, nullptr), is_full(num_frames, false),
     last_arrival_time(0), use_hugepages(_use_hugepages), mlock_frames(_mlock_frames),
@@ -337,7 +335,9 @@ uint8_t* Buffer::wait_for_full_frame(const std::string& name, const int ID) {
         if ((is_full[ID] && !con.is_done[ID]) || shutdown_signal) {
             break;
         }
+        DEBUG("wait_for_full_frame {:s}[{:d}]: waiting...", name, ID);
         full_cond.wait(lock);
+        DEBUG("wait_for_full_frame {:s}[{:d}]: waiting done.", name, ID);
     }
     lock.unlock();
 
@@ -357,7 +357,9 @@ int Buffer::wait_for_full_frame_timeout(const std::string& name, const int ID,
     auto& con = consumers.at(name);
 
     while ((!is_full[ID] || con.is_done[ID]) && !shutdown_signal) {
+        DEBUG("wait_for_full_frame_timeout {:s}[{:d}]: waiting...", name, ID);
         st = full_cond.wait_until(lock, deadline);
+        DEBUG("wait_for_full_frame_timeout {:s}[{:d}]: waiting done.", name, ID);
         if (st == std::cv_status::timeout)
             break;
     }
@@ -433,28 +435,30 @@ void Buffer::print_full_status() {
     INFO_F("Full Frames (X)                : %s", status_string);
 
     INFO_F("---- Producers ----");
-    for (auto& xit : producers)
+    for (auto& xit : producers) {
+        auto& x = xit.second;
         for (int i = 0; i < num_frames; ++i) {
-            auto& x = xit.second;
             if (x.is_done[i])
                 status_string[i] = '+';
             else
                 status_string[i] = '_';
-            INFO_F("%-30s : %s (%d, %d)", x.name.c_str(), status_string, x.last_frame_acquired,
-                   x.last_frame_released);
         }
+        INFO_F("%-30s : %s (%d, %d)", x.name.c_str(), status_string, x.last_frame_acquired,
+               x.last_frame_released);
+    }
 
     INFO_F("---- Consumers ----");
-    for (auto& xit : consumers)
+    for (auto& xit : consumers) {
+        auto& x = xit.second;
         for (int i = 0; i < num_frames; ++i) {
-            auto& x = xit.second;
             if (x.is_done[i])
                 status_string[i] = '=';
             else
                 status_string[i] = '_';
-            INFO_F("%-30s : %s (%d, %d)", x.name.c_str(), status_string, x.last_frame_acquired,
-                   x.last_frame_released);
         }
+        INFO_F("%-30s : %s (%d, %d)", x.name.c_str(), status_string, x.last_frame_acquired,
+               x.last_frame_released);
+    }
 }
 
 void Buffer::mark_frame_full(const std::string& name, const int ID) {
@@ -547,6 +551,7 @@ void Buffer::mark_frame_empty(const std::string& consumer_name, const int ID) {
     {
         buffer_lock lock(mutex);
         consumers.at(consumer_name).is_done[ID] = true;
+        consumers.at(consumer_name).last_frame_released = ID;
         if (private_consumers_done(ID)) {
             broadcast = private_mark_frame_empty(ID);
         }
@@ -603,7 +608,9 @@ uint8_t* Buffer::wait_for_empty_frame(const std::string& producer_name, const in
         DEBUG("wait_for_empty_frame: {:s} waiting for empty frame ID = {:d} in buffer {:s}",
               producer_name, ID, buffer_name);
         print_stat = true;
+        DEBUG("wait_for_empty_frame {:s}[{:d}]: waiting...", producer_name, ID);
         empty_cond.wait(lock);
+        DEBUG("wait_for_empty_frame {:s}[{:d}]: waiting done.", producer_name, ID);
     }
     lock.unlock();
 

@@ -87,8 +87,8 @@ private:
 
     // Kernel name:
     static constexpr const char* kernel_symbol =
-        "_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Ll1ELl1EES0_I9Float16x2Ll1ELl1EES0_"
-        "I6Int4x8Ll1ELl1EES0_IS2_Ll1ELl1EES0_IS_Ll1ELl1EE";
+        "_Z3frb5Int32S_S_S_S_S_S_S_13CuDeviceArrayI7Int16x2Li1ELi1EES0_I9Float16x2Li1ELi1EES0_"
+        "I6Int4x8Li1ELi1EES4_S0_IS_Li1ELi1EE";
 
     // Kernel arguments:
     enum class args {
@@ -444,7 +444,7 @@ int cudaFRBBeamformer_chord_U64::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer
     DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
     const std::optional<std::ptrdiff_t> val_in1 =
-        input_ringbuf_signal->wait_without_claiming(unique_name, instance_num);
+        input_ringbuf_signal->wait_without_claiming(unique_name, instance_num, 1);
     DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
     if (!val_in1.has_value())
         return -1;
@@ -875,12 +875,12 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
         DEBUG("    I_stride[3]={}", I_meta->stride[3]);
         const int num_chunks = Ttildemax_arg <= Ttilde_ringbuf ? 1 : 2;
         for (int chunk = 0; chunk < num_chunks; ++chunk) {
-            DEBUG("poisoning chunk={}/{}", chunk, num_chunks);
+            DEBUG("poison check chunk={}/{}", chunk, num_chunks);
             const std::ptrdiff_t Ttildestride = I_meta->stride[0];
             const std::ptrdiff_t Ttildeoffset = chunk == 0 ? Ttildemin_arg : 0;
-            const std::ptrdiff_t Ttildelength = (num_chunks == 1 ? Ttildemax_arg - Ttildemin_arg
-                                                 : chunk == 0    ? Ttilde_ringbuf - Ttildemin_arg
-                                                                 : Ttildemax_arg - Ttilde_ringbuf);
+            const std::ptrdiff_t Ttildelength = num_chunks == 1 ? Ttildemax_arg - Ttildemin_arg
+                                                : chunk == 0    ? Ttilde_ringbuf - Ttildemin_arg
+                                                                : Ttildemax_arg - Ttilde_ringbuf;
             const std::ptrdiff_t Fbar_out_stride = I_meta->stride[1];
             const std::ptrdiff_t Fbar_out_offset = Fbar_out_min;
             const std::ptrdiff_t Fbar_out_length = Fbar_out_max - Fbar_out_min;
@@ -891,7 +891,7 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
             DEBUG("    Fbar_out_offset={}", Fbar_out_offset);
             DEBUG("    Fbar_out_length={}", Fbar_out_length);
             std::vector<std::uint16_t> I_buffer(Ttildelength * Fbar_out_length * Fbar_out_stride,
-                                                0x1111);
+                                                0xfffe);
             DEBUG("    I_buffer.size={}", I_buffer.size());
             DEBUG("before cudaMemcpy2D.I");
             CHECK_CUDA_ERROR(cudaMemcpy2D(I_buffer.data(), 2 * Fbar_out_length * Fbar_out_stride,
@@ -905,23 +905,19 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
             bool I_found_error = false;
             for (std::ptrdiff_t ttilde = 0; ttilde < Ttildelength; ++ttilde) {
                 for (std::ptrdiff_t ftilde = 0; ftilde < Fbar_out_length; ++ftilde) {
-                    // for (std::ptrdiff_t n=0; n<Fbar_out_stride; ++n) {
-                    //     const auto val = I_buffer.at(ttilde * (Fbar_out_length * Fbar_out_stride)
-                    //     + ftilde * Fbar_out_stride + n); if (val == 0x88) {
-                    //         DEBUG("    U=64 [{},{},{}]={:#02x}", ttilde, ftilde, n, 0x88);
-                    //     }
-                    // }
                     bool any_error = false, all_error = true;
                     for (std::ptrdiff_t n = 0; n < Fbar_out_stride; ++n) {
                         const auto val = I_buffer.at(ttilde * (Fbar_out_length * Fbar_out_stride)
                                                      + ftilde * Fbar_out_stride + n);
-                        any_error |= val == 0xffff;
-                        all_error &= val == 0xffff;
+                        const bool val_is_finite = (val & 0b0111110000000000) != 0b0111110000000000;
+                        if (!val_is_finite)
+                            DEBUG("    U=16 [{},{}]=val={}", ttilde, n, val);
+                        any_error |= !val_is_finite;
+                        all_error &= !val_is_finite;
                     }
-                    if (any_error) {
+                    if (any_error)
                         DEBUG("    U=64 [{},{}]=(any={},all={})", ttilde, ftilde, any_error,
                               all_error);
-                    }
                     I_found_error |= any_error;
                 }
             }

@@ -87,8 +87,8 @@ private:
 
     // Kernel name:
     static constexpr const char* kernel_symbol =
-        "_Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Ll1ELl1EES0_I6Int4x8Ll1ELl1EES0_IS1_"
-        "Ll1ELl1EES0_IS_Ll1ELl1EE";
+        "_Z8chimefrb5Int32S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES2_S0_IS_"
+        "Li1ELi1EE";
 
     // Kernel arguments:
     enum class args { Tbarmin, Tbarmax, Ttildemin, Ttildemax, W, Ebar, I, info, count };
@@ -353,40 +353,63 @@ cudaCHIMEFRBBeamformer_chime_U16::num_produced_elements(std::int64_t num_availab
 
 std::int64_t cudaCHIMEFRBBeamformer_chime_U16::num_processed_elements(
     std::int64_t num_available_elements) const {
+    if (num_available_elements < cuda_granularity_number_of_timesamples)
+        return 0;
     assert(num_available_elements >= cuda_granularity_number_of_timesamples);
     return round_down(num_available_elements, cuda_granularity_number_of_timesamples);
 }
 
 int cudaCHIMEFRBBeamformer_chime_U16::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer
-    DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const std::optional<std::ptrdiff_t> val_in1 =
-        input_ringbuf_signal->wait_without_claiming(unique_name, instance_num);
-    DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
-    if (!val_in1.has_value())
+
+    // Check available samples
+    DEBUG("Checking available input ringbuffer data for frame {:d}...", gpu_frame_id);
+    const std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>> peeked =
+        input_ringbuf_signal->peek_readable(unique_name, instance_num);
+    if (!peeked.has_value())
         return -1;
-    const std::ptrdiff_t input_bytes = val_in1.value();
+    std::ptrdiff_t input_bytes = peeked.value().second;
     DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
+
+wait_for_data:
 
     // How many inputs samples are available?
     const std::ptrdiff_t Tbar_available = div_noremainder(input_bytes, Ebar_Tbar_sample_bytes);
     DEBUG("Available samples:      Tbar_available: {:d}", Tbar_available);
 
-    // How many outputs will we process and consume?
+    // How many inputs will we process and consume?
     const std::ptrdiff_t Tbar_processed = num_processed_elements(Tbar_available);
     const std::ptrdiff_t Tbar_consumed = num_consumed_elements(Tbar_available);
     DEBUG("Will process (samples): Tbar_processed: {:d}", Tbar_processed);
     DEBUG("Will consume (samples): Tbar_consumed:  {:d}", Tbar_consumed);
-    assert(Tbar_processed > 0);
     assert(Tbar_consumed <= Tbar_processed);
     const std::ptrdiff_t Tbar_consumed2 = num_consumed_elements(Tbar_processed);
     assert(Tbar_consumed2 == Tbar_consumed);
 
-    const std::optional<std::ptrdiff_t> val_in2 = input_ringbuf_signal->wait_and_claim_readable(
+    // Can we make progress?
+    if (Tbar_consumed <= 0) {
+        // We cannot make progress, we need to wait
+        DEBUG("We cannot make progress, we need to wait for more input");
+
+        DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
+        const std::optional<std::ptrdiff_t> waited =
+            input_ringbuf_signal->wait_without_claiming(unique_name, instance_num, 1);
+        DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
+        if (!waited.has_value())
+            return -1;
+        input_bytes = waited.value();
+        DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
+
+        goto wait_for_data;
+    }
+
+    // Claim inputs
+    assert(Tbar_consumed > 0);
+    const std::optional<std::ptrdiff_t> claimed = input_ringbuf_signal->wait_and_claim_readable(
         unique_name, instance_num, Tbar_consumed * Ebar_Tbar_sample_bytes);
-    if (!val_in2.has_value())
+    if (!claimed.has_value())
         return -1;
-    const std::ptrdiff_t input_cursor = val_in2.value();
+    const std::ptrdiff_t input_cursor = claimed.value();
     DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
     Tbarmin = div_noremainder(input_cursor, Ebar_Tbar_sample_bytes);
     Tbarmax = Tbarmin + Tbar_processed;
@@ -719,21 +742,21 @@ cudaCHIMEFRBBeamformer_chime_U16::execute(cudaPipelineState& /*pipestate*/,
         DEBUG("    I_stride[3]={}", I_meta->stride[3]);
         const int num_chunks = Ttildemax_arg <= Ttilde_ringbuf ? 1 : 2;
         for (int chunk = 0; chunk < num_chunks; ++chunk) {
-            DEBUG("poisoning chunk={}/{}", chunk, num_chunks);
+            DEBUG("poison checking chunk={}/{}", chunk, num_chunks);
             const std::ptrdiff_t Ttildestride = I_meta->stride[0];
             const std::ptrdiff_t Ttildeoffset = chunk == 0 ? Ttildemin_arg : 0;
-            const std::ptrdiff_t Ttildelength = (num_chunks == 1 ? Ttildemax_arg - Ttildemin_arg
-                                                 : chunk == 0    ? Ttilde_ringbuf - Ttildemin_arg
-                                                                 : Ttildemax_arg - Ttilde_ringbuf);
+            const std::ptrdiff_t Ttildelength = num_chunks == 1 ? Ttildemax_arg - Ttildemin_arg
+                                                : chunk == 0    ? Ttilde_ringbuf - Ttildemin_arg
+                                                                : Ttildemax_arg - Ttilde_ringbuf;
             DEBUG("    Ttildestride={}", Ttildestride);
             DEBUG("    Ttildeoffset={}", Ttildeoffset);
             DEBUG("    Ttildelength={}", Ttildelength);
-            std::vector<std::uint16_t> I_buffer(Ttildelength * Ttildestride, 0x1111);
+            std::vector<std::uint16_t> I_buffer(Ttildelength * Ttildestride, 0xfffe);
             DEBUG("    I_buffer.size={}", I_buffer.size());
             DEBUG("before cudaMemcpy2D.I");
             CHECK_CUDA_ERROR(cudaMemcpy(
                 I_buffer.data(), (const std::uint8_t*)I_memory + 2 * Ttildeoffset * Ttildestride,
-                2 * Ttildelength, cudaMemcpyDeviceToHost));
+                2 * Ttildelength * Ttildestride, cudaMemcpyDeviceToHost));
 
             DEBUG("before memchr");
             bool I_found_error = false;
@@ -741,12 +764,16 @@ cudaCHIMEFRBBeamformer_chime_U16::execute(cudaPipelineState& /*pipestate*/,
                 bool any_error = false, all_error = true;
                 for (std::ptrdiff_t n = 0; n < Ttildestride; ++n) {
                     const auto val = I_buffer.at(ttilde * Ttildestride + n);
-                    any_error |= val == 0xffff;
-                    all_error &= val == 0xffff;
+                    const bool val_is_finite = (val & 0b0111110000000000) != 0b0111110000000000;
+                    const bool val_is_nan = (val & 0b0111110000000000) == 0b0111110000000000
+                                            && (val & 0b0000001111111111) != 0b0000000000000000;
+                    if (val_is_nan)
+                        DEBUG("    U=16 [{},{}]=val={}", ttilde, n, val);
+                    any_error |= val_is_nan;
+                    all_error &= val_is_nan;
                 }
-                if (any_error) {
+                if (any_error)
                     DEBUG("    U=16 [{}]=(any={},all={})", ttilde, any_error, all_error);
-                }
                 I_found_error |= any_error;
             }
             assert(!I_found_error);

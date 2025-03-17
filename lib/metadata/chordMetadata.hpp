@@ -308,6 +308,8 @@ public:
     // Also indexed by the local coarse frequency channel.
     int freq_upchan_factor[CHORD_META_MAX_FREQ];
 
+    // TODO: Store upchannelization index as well
+
     // Time sampling -- for each coarse frequency channel, 2x the FPGA
     // sample number of the first sample.  The 2x is there to handle
     // the upchannelization case, where 2 or more samples may get

@@ -858,7 +858,7 @@ void FEngine::main_thread() {
 
         // Fill buffer
         DEBUG("[{:d}] Filling s buffer...", s_frame_index);
-        using std::log2, std::lrint, std::sqrt;
+        // using std::log2, std::lrint, std::sqrt;
         // const int scale = lrint(log2(sqrt(num_dishes))) + 7;
         const int scale = bb_scale;
         for (int n = 0; n < bb_num_beams * num_polarizations * num_frequencies; ++n)
@@ -1292,8 +1292,21 @@ void FEngine::main_thread() {
                         JL_GC_POP();
                     });
                 } else {
-                    std::memset(E_frame, 0xcc,
-                                num_dishes * num_polarizations * num_frequencies * num_times);
+                    // std::memset(E_frame, 0xcc,
+                    //             num_dishes * num_polarizations * num_frequencies * num_times);
+                    for (int t = 0; t < num_times; ++t) {
+                        for (int f = 0; f < num_frequencies; ++f) {
+                            for (int p = 0; p < num_polarizations; ++p) {
+                                for (int d = 0; d < num_dishes; ++d) {
+                                    const int idx =
+                                        d
+                                        + num_dishes
+                                              * (p + num_polarizations * (f + num_frequencies * t));
+                                    E_frame[idx] = d % 2 == 0 ? 0xcc : 0x44;
+                                }
+                            }
+                        }
+                    }
                 }
             }
             profile_range_pop();

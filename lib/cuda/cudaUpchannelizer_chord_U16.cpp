@@ -86,8 +86,8 @@ private:
 
     // Kernel name:
     const char* const kernel_symbol =
-        "_Z8upchan165Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Ll1ELl1EES0_I6Int4x8Ll1ELl1EES0_IS2_"
-        "Ll1ELl1EES0_IS_Ll1ELl1EE";
+        "_Z8upchan165Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1EES4_S0_"
+        "IS_Li1ELi1EE";
 
     // Kernel arguments:
     enum class args { Tmin, Tmax, Tbarmin, Tbarmax, Fmin, Fmax, G_U16, E, Ebar, info, count };
@@ -343,6 +343,8 @@ cudaUpchannelizer_chord_U16::~cudaUpchannelizer_chord_U16() {}
 
 std::int64_t
 cudaUpchannelizer_chord_U16::num_consumed_elements(std::int64_t num_available_elements) const {
+    if (num_processed_elements(num_available_elements) < cuda_algorithm_overlap)
+        return 0;
     return num_processed_elements(num_available_elements) - cuda_algorithm_overlap;
 }
 std::int64_t
@@ -358,34 +360,55 @@ cudaUpchannelizer_chord_U16::num_processed_elements(std::int64_t num_available_e
 
 int cudaUpchannelizer_chord_U16::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer
-    DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const std::optional<std::ptrdiff_t> val_in1 =
-        input_ringbuf_signal->wait_without_claiming(unique_name, instance_num);
-    DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
-    if (!val_in1.has_value())
+
+    // Check available samples
+    DEBUG("Checking available input ringbuffer data for frame {:d}...", gpu_frame_id);
+    const std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>> peeked =
+        input_ringbuf_signal->peek_readable(unique_name, instance_num);
+    if (!peeked.has_value())
         return -1;
-    const std::ptrdiff_t input_bytes = val_in1.value();
+    std::ptrdiff_t input_bytes = peeked.value().second;
     DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
+
+wait_for_data:
 
     // How many inputs samples are available?
     const std::ptrdiff_t T_available = div_noremainder(input_bytes, E_T_sample_bytes);
     DEBUG("Available samples:      T_available: {:d}", T_available);
 
-    // How many outputs will we process and consume?
+    // How many inputs will we process and consume?
     const std::ptrdiff_t T_processed = num_processed_elements(T_available);
     const std::ptrdiff_t T_consumed = num_consumed_elements(T_available);
     DEBUG("Will process (samples): T_processed: {:d}", T_processed);
     DEBUG("Will consume (samples): T_consumed:  {:d}", T_consumed);
-    assert(T_processed > 0);
     assert(T_consumed <= T_processed);
     const std::ptrdiff_t T_consumed2 = num_consumed_elements(T_processed);
     assert(T_consumed2 == T_consumed);
 
-    const std::optional<std::ptrdiff_t> val_in2 = input_ringbuf_signal->wait_and_claim_readable(
+    // Can we make progress?
+    if (T_consumed <= 0) {
+        // We cannot make progress, we need to wait
+        DEBUG("We cannot make progress, we need to wait for more input");
+
+        DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
+        const std::optional<std::ptrdiff_t> waited =
+            input_ringbuf_signal->wait_without_claiming(unique_name, instance_num, input_bytes + 1);
+        DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
+        if (!waited.has_value())
+            return -1;
+        input_bytes = waited.value();
+        DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
+
+        goto wait_for_data;
+    }
+
+    // Claim inputs
+    assert(T_consumed > 0);
+    const std::optional<std::ptrdiff_t> claimed = input_ringbuf_signal->wait_and_claim_readable(
         unique_name, instance_num, T_consumed * E_T_sample_bytes);
-    if (!val_in2.has_value())
+    if (!claimed.has_value())
         return -1;
-    const std::ptrdiff_t input_cursor = val_in2.value();
+    const std::ptrdiff_t input_cursor = claimed.value();
     DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
     Tmin = div_noremainder(input_cursor, E_T_sample_bytes);
     Tmax = Tmin + T_processed;
@@ -504,7 +527,7 @@ cudaEvent_t cudaUpchannelizer_chord_U16::execute(cudaPipelineState& /*pipestate*
     std::shared_ptr<metadataObject> const Ebar_mc =
         args::Ebar == args::Ebar ? output_ringbuf_signal->get_metadata(0)
                                  : device.create_gpu_memory_array_metadata(
-                                     Ebar_memname, gpu_frame_id, E_mc->parent_pool);
+                                       Ebar_memname, gpu_frame_id, E_mc->parent_pool);
     std::shared_ptr<chordMetadata> const Ebar_meta = get_chord_metadata(Ebar_mc);
     *Ebar_meta = *E_meta;
     std::strncpy(Ebar_meta->name, Ebar_name, sizeof Ebar_meta->name);

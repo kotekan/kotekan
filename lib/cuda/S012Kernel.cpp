@@ -185,29 +185,34 @@ std::int64_t S012Kernel::num_processed_elements(std::int64_t num_available_eleme
     const int granularity = max(128, rfi_downsampling_factor);
     assert(granularity % 128 == 0);
     assert(granularity % rfi_downsampling_factor == 0);
+    if (num_available_elements < granularity)
+        return 0;
     assert(num_available_elements >= granularity);
     return kotekan::round_down(num_available_elements, granularity);
 }
 
 int S012Kernel::wait_on_precondition() {
     // Wait for data to be available in input ringbuffers
-    DEBUG("Waiting for pl_mask input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const std::optional<std::ptrdiff_t> val_pl_mask_in1 =
-        pl_mask_input_ringbuf_signal->wait_without_claiming(unique_name, instance_num);
-    DEBUG("Finished waiting for pl_mask input for data frame {:d}.", gpu_frame_id);
-    if (!val_pl_mask_in1.has_value())
+
+    // Check available pl_mask samples
+    DEBUG("Checking available pl_mask input ringbuffer data for frame {:d}...", gpu_frame_id);
+    const std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>> pl_mask_peeked =
+        pl_mask_input_ringbuf_signal->peek_readable(unique_name, instance_num);
+    if (!pl_mask_peeked.has_value())
         return -1;
-    const std::ptrdiff_t pl_mask_input_bytes = val_pl_mask_in1.value();
+    std::ptrdiff_t pl_mask_input_bytes = pl_mask_peeked.value().second;
     DEBUG("pl_mask input ring-buffer byte count: {:d}", pl_mask_input_bytes);
 
-    DEBUG("Waiting for voltage input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const std::optional<std::ptrdiff_t> val_voltage_in1 =
-        voltage_input_ringbuf_signal->wait_without_claiming(unique_name, instance_num);
-    DEBUG("Finished waiting for voltage input for data frame {:d}.", gpu_frame_id);
-    if (!val_voltage_in1.has_value())
+    // Check available voltage samples
+    DEBUG("Checking available voltage input ringbuffer data for frame {:d}...", gpu_frame_id);
+    const std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>> voltage_peeked =
+        voltage_input_ringbuf_signal->peek_readable(unique_name, instance_num);
+    if (!voltage_peeked.has_value())
         return -1;
-    const std::ptrdiff_t voltage_input_bytes = val_voltage_in1.value();
+    std::ptrdiff_t voltage_input_bytes = voltage_peeked.value().second;
     DEBUG("voltage input ring-buffer byte count: {:d}", voltage_input_bytes);
+
+wait_for_data:
 
     // How many inputs samples are available?
     const std::ptrdiff_t T_available_pl_mask =
@@ -220,29 +225,64 @@ int S012Kernel::wait_on_precondition() {
     const std::ptrdiff_t T_available = min(T_available_pl_mask, T_available_voltage);
     DEBUG("Available samples:      T_available: {:d}", T_available);
 
-    // How many outputs will we process and consume?
+    // How many inputs will we process and consume?
     const std::ptrdiff_t T_processed = num_processed_elements(T_available);
     const std::ptrdiff_t T_consumed = num_consumed_elements(T_available);
     DEBUG("Will process (samples): T_processed: {:d}", T_processed);
     DEBUG("Will consume (samples): T_consumed:  {:d}", T_consumed);
-    assert(T_processed > 0);
     assert(T_consumed <= T_processed);
     const std::ptrdiff_t T_consumed2 = num_consumed_elements(T_processed);
     assert(T_consumed2 == T_consumed);
 
+    // Can we make progress?
+    if (T_consumed == 0) {
+        // We cannot make progress, we need to wait
+        DEBUG("We cannot make progress, we need to wait for more input");
+
+        // Wait for pl_mask data if that limits our progress
+        if (T_available == T_available_pl_mask) {
+            DEBUG("Waiting for pl_mask input ringbuffer data for frame {:d}...", gpu_frame_id);
+            const std::optional<std::ptrdiff_t> pl_mask_waited =
+                pl_mask_input_ringbuf_signal->wait_without_claiming(unique_name, instance_num,
+                                                                    pl_mask_input_bytes + 1);
+            DEBUG("Finished waiting for pl_mask input for data frame {:d}.", gpu_frame_id);
+            if (!pl_mask_waited.has_value())
+                return -1;
+            pl_mask_input_bytes = pl_mask_waited.value();
+            DEBUG("pl_mask input ring-buffer byte count: {:d}", pl_mask_input_bytes);
+        }
+
+        // Wait for voltage data if that limits our progress
+        if (T_available == T_available_voltage) {
+            DEBUG("Waiting for voltage input ringbuffer data for frame {:d}...", gpu_frame_id);
+            const std::optional<std::ptrdiff_t> voltage_waited =
+                voltage_input_ringbuf_signal->wait_without_claiming(unique_name, instance_num,
+                                                                    voltage_input_bytes + 1);
+            DEBUG("Finished waiting for voltage input for data frame {:d}.", gpu_frame_id);
+            if (!voltage_waited.has_value())
+                return -1;
+            voltage_input_bytes = voltage_waited.value();
+            DEBUG("voltage input ring-buffer byte count: {:d}", voltage_input_bytes);
+        }
+
+        goto wait_for_data;
+    }
+
+    // Claim inputs
+    assert(T_consumed > 0);
     assert(T_consumed % 128 == 0);
-    const std::optional<std::ptrdiff_t> val_pl_mask_in2 =
+    const std::optional<std::ptrdiff_t> pl_mask_claimed =
         pl_mask_input_ringbuf_signal->wait_and_claim_readable(
             unique_name, instance_num, T_consumed / 128 * pl_mask_T128_sample_bytes);
-    if (!val_pl_mask_in2.has_value())
+    if (!pl_mask_claimed.has_value())
         return -1;
-    const std::ptrdiff_t pl_mask_input_cursor = val_pl_mask_in2.value();
-    const std::optional<std::ptrdiff_t> val_voltage_in2 =
+    const std::ptrdiff_t pl_mask_input_cursor = pl_mask_claimed.value();
+    const std::optional<std::ptrdiff_t> voltage_claimed =
         voltage_input_ringbuf_signal->wait_and_claim_readable(unique_name, instance_num,
                                                               T_consumed * E_T_sample_bytes);
-    if (!val_pl_mask_in2.has_value())
+    if (!voltage_claimed.has_value())
         return -1;
-    const std::ptrdiff_t voltage_input_cursor = val_voltage_in2.value();
+    const std::ptrdiff_t voltage_input_cursor = voltage_claimed.value();
 
     DEBUG("pl_mask input ring-buffer byte offset: {:d}", pl_mask_input_cursor);
     DEBUG("voltage input ring-buffer byte offset: {:d}", voltage_input_cursor);
@@ -496,6 +536,8 @@ cudaEvent_t S012Kernel::execute(cudaPipelineState& /*pipestate*/,
     const int F_stride = S012_meta->stride[1];
     const int S_stride = S012_meta->stride[2];
     constexpr bool offset_encoded = true;
+#warning "TODO"
+#if 0
     n2k::launch_s0_kernel(
         static_cast<ulong*>(static_cast<void*>(S012_memory + S012_offset_bytes)),
         static_cast<const ulong*>(static_cast<const void*>(pl_mask_memory + pl_mask_offset_bytes)),
@@ -524,6 +566,7 @@ cudaEvent_t S012Kernel::execute(cudaPipelineState& /*pipestate*/,
     //     frequency channels long S,                               // Number of stations (= 2 *
     //     dishes) cudaStream_t stream = 0,
     //                 );
+#endif
 
     return record_end_event();
 }
@@ -535,9 +578,9 @@ void S012Kernel::finalize_frame() {
     // Advance the input ringbuffer
     const std::ptrdiff_t T_consumed = num_consumed_elements(Tlength);
     DEBUG("Advancing input ringbuffer:");
-    DEBUG("    Consumed samples:       {:d}", T_consumed);
-    DEBUG("    Consumed pl_mask bytes: {:d}", T_consumed / 128 * pl_mask_T128_sample_bytes);
-    DEBUG("    Consumed voltage bytes: {:d}", T_consumed * E_T_sample_bytes);
+    DEBUG("    Consumed samples:         {:d}", T_consumed);
+    DEBUG("    Consumed pl_mask bytes:   {:d}", T_consumed / 128 * pl_mask_T128_sample_bytes);
+    DEBUG("    Consumed voltage bytes:   {:d}", T_consumed * E_T_sample_bytes);
     pl_mask_input_ringbuf_signal->finish_read(unique_name, instance_num,
                                               T_consumed / 128 * pl_mask_T128_sample_bytes);
     voltage_input_ringbuf_signal->finish_read(unique_name, instance_num,
@@ -546,10 +589,13 @@ void S012Kernel::finalize_frame() {
     // Advance the output ringbuffer
     const std::ptrdiff_t Tcoarse_produced = Tcoarselength;
     DEBUG("Advancing output ringbuffer:");
-    DEBUG("    Produced samples:       {:d}", Tcoarse_produced);
-    DEBUG("    Produced bytes:         {:d}", Tcoarse_produced * S012_Tcoarse_sample_bytes);
+    DEBUG("    Produced samples:         {:d}", Tcoarse_produced);
+    DEBUG("    Produced S012 bytes:      {:d}", Tcoarse_produced * S012_Tcoarse_sample_bytes);
+    DEBUG("    Produced S012tilde bytes: {:d}", Tcoarse_produced * S012tilde_Tcoarse_sample_bytes);
     rfi_S012_output_ringbuf_signal->finish_write(unique_name, instance_num,
                                                  Tcoarse_produced * S012_Tcoarse_sample_bytes);
+    rfi_S012tilde_output_ringbuf_signal->finish_write(
+        unique_name, instance_num, Tcoarse_produced * S012tilde_Tcoarse_sample_bytes);
 
     cudaCommand::finalize_frame();
 }

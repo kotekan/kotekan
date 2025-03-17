@@ -82,8 +82,7 @@ private:
 
     // Kernel name:
     const char* const kernel_symbol =
-        "_Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Ll1ELl1EES0_IS1_Ll1ELl1EES0_IS_"
-        "Ll1ELl1EES0_IS_Ll1ELl1EE";
+        "_Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES2_S0_IS_Li1ELi1EES3_";
 
     // Kernel arguments:
     enum class args { Tinmin, Tinmax, Tmin, Tmax, Ein, E, scatter_indices, info, count };
@@ -348,7 +347,7 @@ int cudaTranspose2048_chime::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer
     DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
     const std::optional<std::ptrdiff_t> val_in1 =
-        input_ringbuf_signal->wait_without_claiming(unique_name, instance_num);
+        input_ringbuf_signal->wait_without_claiming(unique_name, instance_num, 1);
     DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
     if (!val_in1.has_value())
         return -1;

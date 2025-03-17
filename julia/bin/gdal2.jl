@@ -7,6 +7,3 @@ using Kotekan
 using MappedArrays
 
 const AG = ArchGDAL
-
-
-

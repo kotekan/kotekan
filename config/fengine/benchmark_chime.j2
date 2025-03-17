@@ -2,23 +2,29 @@
 
 ################################################################################
 #
-# Run a CHORD chime benchmark
+# Run a CHIME benchmark
 #
 ################################################################################
 
 ---
-log_level: debug   #TODO warn
+log_level: warn
+
+# buffer_status:
+#   kotekan_stage: bufferStatus
+#   time_delay: 10000000          # μs
+#   print_full_status: true
 
 fengine_num_frames: 1
 fengine_repeat_count: 100
 
 skip_julia: true
 
-base_dir: /localhome/eschnett/data/fengine_benchmark_chime # unused
+base_dir: /data/fengine_benchmark_chime # unused
 
 {% include "include/defs.j2" %}
 {% include "include/fengine_chime.j2" %}
 
+{% include "include/rfi_chime.j2" %}
 {% include "include/xpose2048_chime.j2" %}
 {% include "include/n2k_chime.j2" %}
 {% include "include/bb_chime.j2" %}

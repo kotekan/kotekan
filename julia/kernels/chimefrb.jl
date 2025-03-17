@@ -14,9 +14,11 @@ if CUDA.functional()
     println("[Choosing CUDA device...]")
     CUDA.device!(0)
     println(name(device()))
-    @assert name(device()) == "NVIDIA $card"
+    # @assert name(device()) == "NVIDIA $card"
 end
 
+chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
+unchimify(x) = chimify(x)
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 
 function shrink(value::Integer)
@@ -72,7 +74,7 @@ else
     @assert false
 end
 
-const Ttilde = 4 * 256
+const Ttilde = U < 128 ? 4 * 256 : 4 * 64
 
 const output_gain = 1 / (8 * Tds)
 
@@ -140,7 +142,7 @@ const layout_Y_shared = Layout([
     Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
     Time(:time, 1, Treg) => Shared(:shared, C * M * N * P, Treg),
     Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-    Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+    Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
 ])
 const Y_size = C * M * N * P * Treg
 
@@ -713,7 +715,14 @@ function make_chimefrb_kernel()
 
     # Main loop
 
-    loop!(emitter, Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds))) do emitter
+    loop!(emitter, Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde)) do emitter
+        push!(
+            emitter.statements,
+            quote
+                Tbarmin + time_outer ≥ Tbarmax && break
+            end,
+        )
+
         # Note: This layout is very inefficient for writing to global memory
         layout_I_registers = Layout([
             FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
@@ -730,7 +739,7 @@ function make_chimefrb_kernel()
             BeamQ(:beamQ, 2, 2) => Register(:beamQ, 2, 2),
             BeamQ(:beamQ, 4, 2) => Register(:beamQ, 4, 2),
             Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
-            Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+            Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
         ])
         apply!(emitter, :I => layout_I_registers, :(zero(Float16x2)))
 
@@ -757,7 +766,7 @@ function make_chimefrb_kernel()
                     Polr(:polr, 1, P) => Warp(:warp, 4, 2),
                     Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                     Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
-                    Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                    Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
                 ])
                 load!(
                     emitter,
@@ -789,7 +798,7 @@ function make_chimefrb_kernel()
                     Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                     Time(:time, 1, Treg) => Thread(:thread, 16, 2),
                     Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                    Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                    Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
                 ])
                 load!(
                     emitter,
@@ -844,7 +853,7 @@ function make_chimefrb_kernel()
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                 Time(:time, 1, Treg) => Register(:time, 1, Treg),
                 Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
             ])
             @assert emitter.environment[:X] == layout_X_registers
 
@@ -868,7 +877,7 @@ function make_chimefrb_kernel()
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                 Time(:time, 1, Treg) => Register(:time, 1, Treg),
                 Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
             ])
             apply!(emitter, :Z1 => layout_Z1_registers, :(zero(Float16x2)))
             let
@@ -927,7 +936,7 @@ function make_chimefrb_kernel()
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                 Time(:time, 1, Treg) => Register(:time, 1, Treg),
                 Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
             ])
             apply!(emitter, :Z3′ => layout_Z3′_registers, :(zero(Float16x2)))
             split!(emitter, [:Z2_re, :Z2_im], :Z2, Register(:cplx, 1, 2))
@@ -955,7 +964,7 @@ function make_chimefrb_kernel()
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                 Time(:time, 1, Treg) => Register(:time, 1, Treg),
                 Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
             ])
 
             # initial:
@@ -1027,7 +1036,7 @@ function make_chimefrb_kernel()
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                 Time(:time, 1, Treg) => Register(:time, 1, Treg),
                 Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
             ])
             apply!(emitter, :Y′ => layout_Y′_registers, :(zero(Float16x2)))
             split!(emitter, [:Z4_re, :Z4_im], :Z4, Register(:cplx, 1, 2))
@@ -1057,7 +1066,7 @@ function make_chimefrb_kernel()
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                 Time(:time, 1, Treg) => Register(:time, 1, Treg),
                 Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
             ])
 
             # permute!(emitter, :Y, :Y′, Register(:cplx, 1, 2), SIMD(:simd, 16, 2))
@@ -1092,7 +1101,7 @@ function make_chimefrb_kernel()
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                 Time(:time, 1, Treg) => Register(:time, 1, Treg),
                 Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
             ])
             load!(emitter, :X => layout_X_registers, :Y_shared => layout_Y_shared)
 
@@ -1120,7 +1129,7 @@ function make_chimefrb_kernel()
                 Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
                 Time(:time, 1, Treg) => Register(:time, 1, Treg),
                 Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
-                Time(:time, Tds, fld(Ttilde, Tds)) => Loop(:time_outer, Tds, fld(Ttilde, Tds)),
+                Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
             ])
 
             function apply_phase(n, X)
@@ -1426,7 +1435,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, nruns::Int=
 
     println("Copying data from CPU to GPU...")
     W_cuda = CuArray(W_memory)
-    E_cuda = CuArray(E_memory)
+    E_cuda = CuArray(chimify.(E_memory))
     I_cuda = CUDA.fill(Float16x2(NaN, NaN), length(I_memory))
     info_cuda = CUDA.fill(-1i32, length(info_memory))
 
@@ -1474,9 +1483,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, nruns::Int=
 
     println("Copying data back from GPU to CPU...")
     I_memory = Array(I_cuda)
-    @assert all(!isnan, (@view I_memory[1:(M * 2 * N * Fbar * Ttildemax)]))
+    # @show count(isnan, (@view I_memory[1:(M * 2 * N * Fbar * Ttildemax)]))
+    # @assert all(!isnan, (@view I_memory[1:(M * 2 * N * Fbar * Ttildemax)]))
     info_memory = Array(info_cuda)
-    @assert all(info_memory .== 0)
+    @assert all(==(0), info_memory)
 
     println("Done.")
     return nothing

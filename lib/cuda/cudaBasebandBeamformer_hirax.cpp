@@ -84,8 +84,7 @@ private:
 
     // Kernel name:
     const char* const kernel_symbol =
-        "_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Ll1ELl1EES0_I6Int4x8Ll1ELl1EES0_IS_Ll1ELl1EES0_IS2_"
-        "Ll1ELl1EES0_IS_Ll1ELl1EES0_IS_Ll1ELl1EE";
+        "_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES4_S5_S5_";
 
     // Kernel arguments:
     enum class args { Tmin, Tmax, A, E, s, J, info, log, count };

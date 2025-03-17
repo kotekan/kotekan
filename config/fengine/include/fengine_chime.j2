@@ -139,6 +139,22 @@ host_voltage_ringbuffer:
     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * num_frequencies * num_times
     metadata_pool: main_pool
 
+host_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: 8 * num_dishes * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 8 / 8)
+    metadata_pool: main_pool
+host_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * 8 * num_dishes * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 8 / 8)
+    metadata_pool: main_pool
+
+host_bf_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    metadata_pool: main_pool
+
 host_expected_bb_beams_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
@@ -170,3 +186,19 @@ run_send_voltage:
           in_buf: host_voltage_buffer_in
           signal_buf: host_voltage_ringbuffer_out
           gpu_mem_output: voltage_buffer
+
+run_send_pl_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_mask_buffer_in: host_pl_mask_buffer
+        out_buffers:
+            host_pl_mask_ringbuffer_out: host_pl_mask_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_dishes * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 8)
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_pl_mask_buffer_in
+          signal_buf: host_pl_mask_ringbuffer_out
+          gpu_mem_output: pl_mask_buffer

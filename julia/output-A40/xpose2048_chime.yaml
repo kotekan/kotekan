@@ -15,7 +15,7 @@ kernel-description:
     threads: [32, 16]
     blocks: [128]
     shmem_bytes: 65536
-  kernel-symbol: "_Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Ll1ELl1EES0_IS1_Ll1ELl1EES0_IS_Ll1ELl1EES0_IS_Ll1ELl1EE"
+  kernel-symbol: "_Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES2_S0_IS_Li1ELi1EES3_"
   kernel-arguments:
     - name: "Tinmin"
       intent: in

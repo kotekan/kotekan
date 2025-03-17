@@ -16,6 +16,9 @@ if CUDA.functional()
     @assert name(device()) == "NVIDIA $card"
 end
 
+chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
+unchimify(x) = chimify(x)
+
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 ilog2(i::Integer) = (j = round(Int, log2(i)); @assert 2^j == i; j)
 
@@ -403,8 +406,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     Tmax = Int32(Tinmax)
 
     println("Copying data from CPU to GPU...")
-    Ein_cuda = CuArray(Ein_memory)
-    E_cuda = CUDA.fill(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8), length(E_memory))
+    Ein_cuda = CuArray(chimify.(Ein_memory))
+    E_cuda = CUDA.fill(chimify(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8)), length(E_memory))
     scatter_indices_cuda = CuArray(scatter_indices_memory)
     info_cuda = CUDA.fill(-1i32, length(info_memory))
 
@@ -425,7 +428,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     synchronize()
 
     println("Copying data back from GPU to CPU...")
-    E_memory = Array(E_cuda)
+    E_memory = unchimify.(Array(E_cuda))
     @assert all(!isnan, (@view E_memory[1:(D * P * F * Tmax)]))
     info_memory = Array(info_cuda)
     @assert all(info_memory .== 0)

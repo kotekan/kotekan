@@ -9,7 +9,7 @@ scriptdir=$(dirname "$0")
 cd "$scriptdir/.."
 
 setups='
-    chime_U16
+    chime_U16 chime_U128
 '
 
 mkdir -p output-A40

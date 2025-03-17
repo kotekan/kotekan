@@ -354,7 +354,7 @@ public:
             buffer->mark_frame_empty(unique_name, frame_id);
 
             if (max_frames >= 0 && frame_counter + 1 >= max_frames) {
-                WARN("Processed {} frames, shutting down Kotekan", frame_counter);
+                WARN("Processed {} frames, shutting down Kotekan", frame_counter + 1);
                 exit_kotekan(CLEAN_EXIT);
             }
         } // for

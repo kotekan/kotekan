@@ -13,6 +13,9 @@ const Memory = IndexSpaces.Memory
 # const card = "A30"
 const card = "A40"
 
+chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
+unchimify(x) = chimify(x)
+
 bitsign(b::Bool) = b ? -1 : +1
 bitsign(i::Integer) = bitsign(isodd(i))
 
@@ -1623,8 +1626,8 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
 
     !silent && println("Copying data from CPU to GPU...")
     G_cuda = CuArray(G_memory)
-    E_cuda = CuArray(E_memory)
-    Ē_cuda = CUDA.fill(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8), idiv(C, 2) * idiv(D, 4) * P * (F̄) * idiv(T, U))
+    E_cuda = CuArray(chimify.(E_memory))
+    Ē_cuda = CUDA.fill(chimify(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8)), idiv(C, 2) * idiv(D, 4) * P * (F̄) * idiv(T, U))
     info_cuda = CUDA.fill(-1i32, length(info_wanted))
 
     @assert sizeof(G_cuda) < 2^32
@@ -1709,7 +1712,7 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     end
 
     !silent && println("Copying data back from GPU to CPU...")
-    Ē_memory = Array(Ē_cuda)
+    Ē_memory = unchimify.(Array(Ē_cuda))
     info_memory = Array(info_cuda)
     @assert all(info_memory .== 0)
 

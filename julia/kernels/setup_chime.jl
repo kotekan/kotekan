@@ -20,7 +20,8 @@ const F = 16
 const T = 4 * 16384
 
 # Maximum number of coarse frequencies per upchannelization factor, rounded up to a power of 2
-const F_per_U = Dict(1 => 1, 2 => 1, 4 => 1, 8 => 1, 16 => 16, 32 => 1, 64 => 1, 128 => 1)
+# NOTE: We want _either_ U=16 _or_ U=128, but never both. This table here is just a hack.
+const F_per_U = Dict(1 => 1, 2 => 1, 4 => 1, 8 => 1, 16 => 16, 32 => 1, 64 => 1, 128 => 16)
 
 # Maximum number of fine frequencies per GPU, for all upchannelization factors combined
 const Fbar_out = 256

@@ -113,9 +113,7 @@ public:
             const double this_time = current_time();
             const double elapsed_time = this_time - start_time;
 
-            // This is not a warning, but it should be displayed even
-            // when regular INFO messages are not
-            WARN("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
+            INFO("Received buffer {} frame {} time sample {} (duration {} sec)", unique_name,
                  frame_counter, meta->sample0_offset, elapsed_time);
 
             if (!skip_writing) {
@@ -385,7 +383,7 @@ public:
             buffer->mark_frame_empty(unique_name, frame_id);
 
             if (max_frames >= 0 && frame_counter + 1 >= max_frames) {
-                WARN("Processed {} frames, shutting down Kotekan", frame_counter);
+                WARN("Processed {} frames, shutting down Kotekan", frame_counter + 1);
                 exit_kotekan(CLEAN_EXIT);
             }
         } // for

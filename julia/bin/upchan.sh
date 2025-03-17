@@ -9,7 +9,7 @@ scriptdir=$(dirname "$0")
 cd "$scriptdir/.."
 
 setups='
-    chime_U2 chime_U4 chime_U8 chime_U16 chime_U32 chime_U64
+    chime_U2 chime_U4 chime_U8 chime_U16 chime_U32 chime_U64 chime_U128
     chord_U2 chord_U4 chord_U8 chord_U16 chord_U32 chord_U64 chord_U128
     hirax_U8 hirax_U16 hirax_U32 hirax_U64 hirax_U128
     pathfinder_U2 pathfinder_U4 pathfinder_U8 pathfinder_U16 pathfinder_U32 pathfinder_U64

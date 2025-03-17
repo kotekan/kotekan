@@ -23,7 +23,7 @@ adcfreq::Float = 3200e+6        # 3200 MHz, ADC sampling frequency
 
 # We upchannelize and thus need to have a higher frequency resolution
 scale = 64
-ntimes = 8192 ÷ scale
+ntimes = 2 * 8192 ÷ scale
 nfreqs = 8192 * scale + 1
 
 F::Float = adcfreq / 2          # 1500 MHz
@@ -36,7 +36,7 @@ function time_delay(f::F) where {F<:Real}
     f == 0 && return F(0)
 
     t₀::F = 0.0e-3              # 0 ms
-    t₁::F = 20.0e-3             # 20 ms
+    t₁::F = 40.0e-3             # 40 ms
     f₀::F = 1500.0e+6           # 1500 MHz
     f₁::F = 300.0e+6            # 300 MHz
 
@@ -48,26 +48,67 @@ function time_delay(f::F) where {F<:Real}
 end
 
 # Time envelope
-# Peaked at 5 ms with a width of 1 ms
-time_envelope(t::Real) = gauss(t - T / 8, T / 16)
+# Peaked at 20 ms with a width of 2 ms
+time_envelope(t::Real) = gauss(t - Float(20.0e-3), Float(2.0e-3))
 
 # Frequency envelope
 # Cut off below 300 MHz (channel 1536) and above 1500 MHz (channel 7680)
 freq_envelope(f::Real) = hipass(f, Float(250e+6), Float(50e+6)) * lopass(f, Float(1550e+6), Float(50e+6))
 
+# frb = let
+#     frb = Array{Complex{Float}}(undef, nfreqs, ntimes)
+#     @showprogress desc = "FRB" dt = 1 @threads for time in 1:ntimes
+#         for freq in 1:nfreqs
+#             t = phystime(time - 1)
+#             f = physfreq(freq - 1)
+#             dt = time_delay(f)
+#             t′ = t - dt
+#             # TODO: Skip sampling when the envelope is less than e.g. 1.0e-6
+#             frb[freq, time] = time_envelope(t′) * freq_envelope(f) * randn(Complex{Float})
+#         end
+#     end
+#     frb
+# end;
+
 frb = let
     frb = Array{Complex{Float}}(undef, nfreqs, ntimes)
-    @showprogress desc = "FRB" dt = 1 @threads for time in 1:ntimes
-        for freq in 1:nfreqs
+    @showprogress desc = "FRB" dt = 1 @threads for freq in 1:nfreqs
+        f = physfreq(freq - 1)
+        fenv = freq_envelope(f)
+        dt = time_delay(f)
+        for time in 1:ntimes
             t = phystime(time - 1)
-            f = physfreq(freq - 1)
-            dt = time_delay(f)
             t′ = t - dt
-            frb[freq, time] = time_envelope(t′) * freq_envelope(f) * randn(Complex{Float})
+            tenv = time_envelope(t′)
+            env = tenv * fenv
+            frb[freq, time] = env * randn(Complex{Float})
         end
     end
     frb
 end;
+
+# frb = let
+#     frb = zeros(Complex{Float}, nfreqs, ntimes)
+#     @showprogress desc = "FRB" dt = 1 @threads for freq in 1:nfreqs
+#         f = physfreq(freq - 1)
+#         fenv = freq_envelope(f)
+#         dt = time_delay(f)
+#         tmin = Float(20.0e-3) + dt - 5 * Float(5.0e-3)
+#         tmax = Float(20.0e-3) + dt + 5 * Float(5.0e-3)
+#         timemin = max(1, round(Int, tmin / T * ntimes))
+#         timemax = min(ntimes-1, round(Int, tmax / T * ntimes))
+#         @assert time_envelope(timemin - dt) < eps(Float)
+#         @assert time_envelope(timemax - dt) < eps(Float)
+#         for time in timemin:timemax
+#             t = phystime(time - 1)
+#             t′ = t - dt
+#             tenv = time_envelope(t′)
+#             env = tenv * fenv
+#             frb[freq, time] = env * randn(Complex{Float})
+#         end
+#     end
+#     frb
+# end;
 
 let
     fig = Figure(; size=(640, 480))
@@ -75,8 +116,10 @@ let
     heatmap!(
         1.0e+3 * phystime(1) * (0:1:(ntimes - 1)),
         1.0e-6 * physfreq(1) * (0:1:(nfreqs - 1)),
-        permutedims(abs.(@view frb[begin:128:end, :])),
+        permutedims(abs.(@view frb[begin:128:end, :]));
+        colormap=:plasma,
     )
+    linesegments!(1.0e+3 * phystime(1) * [0, ntimes - 1, 0, ntimes - 1], 1.0e-6 * [300.0e+6, 300.0e+6, 1500.0e+6, 1500.0e+6];)
     display(fig)
 end;
 
@@ -88,7 +131,11 @@ samples = reshape(irfft(frb, 2 * (nfreqs - 1), 1), :);
 let
     fig = Figure(; size=(640, 480))
     ax = Axis(fig[1, 1]; title="Dispersed FRB pulse", xlabel="time [ms]", ylabel="amplitude")
-    scatter!(1.0e+3 * range(0, T; length=1024 + 1)[begin:(end - 1)], reshape(maximum(abs, reshape(samples, :, 1024); dims=1), :))
+    scatter!(
+        1.0e+3 * range(0, T; length=1024 + 1)[begin:(end - 1)],
+        reshape(maximum(abs, reshape(samples, :, 1024); dims=1), :);
+        colormap=:plasma,
+    )
     display(fig)
 end;
 
@@ -103,13 +150,16 @@ let
     heatmap!(
         1.0e+3 * phystime(1) * (0:1:(ntimes - 1)),
         1.0e-6 * physfreq(1) * (0:1:(nfreqs - 1)),
-        permutedims(abs.(@view frb2[begin:1:end, :])),
+        permutedims(abs.(@view frb2[begin:1:end, :]));
+        colormap=:plasma,
     )
+    linesegments!(1.0e+3 * phystime(1) * [0, ntimes - 1, 0, ntimes - 1], 1.0e-6 * [300.0e+6, 300.0e+6, 1500.0e+6, 1500.0e+6];)
     # scatter!(1.0e+3 * (T/8 .+ time_delay.(physfreq(1) * (0:(nfreqs - 1)))),
     #          1.0e-6 * physfreq(1) * (0:(nfreqs - 1)),
     #          )
     # xlims!(ax, 1.0e+3 .* phystime.((0, ntimes-1)))
     display(fig)
+    # save("frb.png", fig)
 end;
 
 ################################################################################

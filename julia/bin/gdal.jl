@@ -23,9 +23,7 @@ function make_data()
     #TODO     1000 * t + 100 * f + 10 * p + 1 * d for d in 0:(ndishes - 1), p in 0:(npolarizations - 1), f in 0:(nfrequencies - 1),
     #TODO     t in 0:(ntimes - 1)
     #TODO ]
-    data = Float32[
-        10 * p + 1 * d for d in 0:(ndishes - 1), p in 0:(npolarizations - 1)
-    ]
+    data = Float32[10 * p + 1 * d for d in 0:(ndishes - 1), p in 0:(npolarizations - 1)]
     return data
 end
 

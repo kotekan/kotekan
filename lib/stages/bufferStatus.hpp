@@ -51,6 +51,9 @@ private:
 
     /// Set to true to output the status to the logs
     bool print_status;
+
+    /// Set to true to output the full status to the logs
+    bool print_full_status;
 };
 
 #endif

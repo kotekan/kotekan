@@ -17,6 +17,14 @@ write_data:
         in_buf: host_voltage_buffer
         file_name: voltage
         max_frames: 10
+    write_pl_mask:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_pl_mask_buffer
+        file_name: pl_mask
+    write_bf_mask:
+        kotekan_stage: asdfFileWrite
+        in_buf: host_bf_mask_buffer
+        file_name: bf_mask
     write_scatter_indices:
         kotekan_stage: asdfFileWrite
         in_buf: host_scatter_indices_buffer
@@ -109,6 +117,14 @@ write_data2:
         in_buf: host_voltage_buffer
         file_name: voltage
         max_frames: 10
+    write_pl_mask:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_pl_mask_buffer
+        file_name: pl_mask
+    write_bf_mask:
+        kotekan_stage: gdalFileWrite
+        in_buf: host_bf_mask_buffer
+        file_name: bf_mask
     write_scatter_indices:
         kotekan_stage: gdalFileWrite
         in_buf: host_scatter_indices_buffer
