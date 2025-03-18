@@ -642,7 +642,7 @@ freq_id_t CHORDTelescope::to_freq_id(stream_t stream, uint32_t ind) const {
     
 //TODO: This is a stub to satisfy inheritance and must be updated.
 double CHORDTelescope::to_freq(freq_id_t freq_id) const {
-    return freq_id * 1.6e9/8192;
+    return freq_id * (GIGA / dt_ns);
 }
     
 uint32_t CHORDTelescope::num_freq_per_stream() const {

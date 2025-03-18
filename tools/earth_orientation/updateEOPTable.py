@@ -371,20 +371,31 @@ def build_time_array(t_ref, n_intervals_before, n_intervals_after,
 
 if __name__ == "__main__":
 
+    kotekan_url = "http://localhost"
+    kotekan_port = 12048
 
-    t0_ns = read_time0_ns("http://localhost", 12048)
+    # Get the Frame0 time from kotekan
+    t0_ns = read_time0_ns(kotekan_url, kotekan_port)
 
+    # Build the list of times to generate EOP entries for
     t_ref = Time.now()
-    ts = build_time_array(t_ref, 2, 3, 1.0, True)
-    print(t_ref, t_ref.mjd)
-    print(ts.iso)
-    print(ts.mjd)
 
+    # Add 2 intervals before the current one, 3 after.  Intervals are 1.0 days
+    # long, intervals are snapped to whole days.
+    ts = build_time_array(t_ref, 2, 3, 1.0, snap_to_grid=True)
+    print("t_ref (now):", t_ref, t_ref.mjd)
+    print("times in table:", ts.iso)
+    print("times in table (mjd):", ts.mjd)
+
+    # Build the table, use astropy's automatic IERS table
+    # TODO: Make sure this table is up to date (force download, or set short
+    # expiry time)
     iers = astropy.utils.iers.IERS_Auto.open()
     eop_table = build_EOP_table(ts, t0_ns, iers)
     iers.close()
 
     print(eop_table)
-    broadcast_eop_table("http://localhost", 12048, eop_table)
 
+    # Send table to Kotekan
+    broadcast_eop_table(kotekan_url, kotekan_port, eop_table)
 
