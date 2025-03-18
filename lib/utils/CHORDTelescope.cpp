@@ -216,6 +216,8 @@ bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
 
         _eop_table = tmp_eop_table;
 
+        INFO("Updated EOP Table with {:d} entries", _eop_table.size());
+
     } catch (std::exception& e) {
         WARN("CHORDTelescope failed to read EOP update: {:s}", e.what());
         return false;
@@ -633,32 +635,32 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(const timespec &t_ut1) const {
     return eop;
 }
 
-//TODO: This is a stub to satisfy inheritance and should not be used.
+//TODO: This is a stub to satisfy inheritance and must be updated.
 freq_id_t CHORDTelescope::to_freq_id(stream_t stream, uint32_t ind) const {
     return 0;
 }
     
-//TODO: This is a stub to satisfy inheritance and should not be used.
+//TODO: This is a stub to satisfy inheritance and must be updated.
 double CHORDTelescope::to_freq(freq_id_t freq_id) const {
     return freq_id * 1.6e9/8192;
 }
     
 uint32_t CHORDTelescope::num_freq_per_stream() const {
-//TODO: This is a stub to satisfy inheritance and should not be used.
+//TODO: This is a stub to satisfy inheritance and must be updated.
     return 0;
 }
     
-//TODO: This is a stub to satisfy inheritance and should not be used.
+//TODO: This is a stub to satisfy inheritance and must be updated.
 uint32_t CHORDTelescope::num_freq() const {
     return 0; 
 }
     
-//TODO: This is a stub to satisfy inheritance and should not be used.
+//TODO: This is a stub to satisfy inheritance and must be updated.
 double CHORDTelescope::freq_width(freq_id_t freq_id) const {
     return 0;
 }
     
-//TODO: This is a stub to satisfy inheritance and should not be used.
+//TODO: This is a stub to satisfy inheritance and must be updated.
 uint8_t CHORDTelescope::nyquist_zone() const {
     return 0;
 }

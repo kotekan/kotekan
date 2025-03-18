@@ -317,23 +317,74 @@ def build_EOP_table(times, time0_ns, iers):
 
 def build_time_array(t_ref, n_intervals_before, n_intervals_after,
                      interval_length_days, snap_to_grid=False):
+    r"""
+    Construct an array of times for the entries in the EOP Table.
 
-    pass
+    The table will have n_intervals_before + n_intervals_after + 2 entries.
+
+    Parameters
+    ----------
+    t_ref : astropy Time object
+        Reference time to align the bins. If snap_to_grid is False, the central
+        time for the current interval.
+    n_intervals_before : int
+        Number of intervals to add before the current interval.
+    n_intervals_after : int
+        Number of intervals to add after the current interval.
+    interval_length_days : float
+        Length of intervals in days (86400 seconds).
+    snap_to_grid : boolean
+        Whether to snap the intervals to be at e.g. whole days.
+    """
+
+    # Interval length with units
+    dt = interval_length_days * units.day
+
+    # Array of all entry offsets from t0 (the beginning time of the current
+    # interval).
+    dts = dt * np.arange(-n_intervals_before, n_intervals_after+2)
+
+    if snap_to_grid:
+        # We'll "grid" in MJD, which is an integer at 0h.
+        mjd_ref = t_ref.mjd
+
+        # Compute the MJD value for the beginning of the interval containing
+        # t_ref. If length is 1.0, this just takes the floor of mjd_ref, 
+        # returning the most recent midnight UTC (assuming t_ref is UTC).
+        # If length is 0,5, will return the most recent midnight or noon UTC
+        # (if t_ref is UTC).
+        mjd0 = int(mjd_ref / interval_length_days) * interval_length_days
+
+        # Make the time object for this mjd.
+        t0 = Time(mjd0, format='mjd', scale=t_ref.scale)
+
+    else:
+        # If not snapping, then t_ref is center of current interval and
+        # t0 is half a dt earlier.
+        t0 = t_ref - 0.5*dt
+
+    # constuct list of times.
+    times = t0 + dts
+
+    return times
 
 
 if __name__ == "__main__":
 
 
-    iers = astropy.utils.iers.IERS_Auto.open()
-
-    dt = np.linspace(0.0, 0.03, 10) * units.year
-
     t0_ns = read_time0_ns("http://localhost", 12048)
-    t0 = calc_astropy_time_from_unix_ns(t0_ns)
-    ts = t0 + dt
+
+    t_ref = Time.now()
+    ts = build_time_array(t_ref, 2, 3, 1.0, True)
+    print(t_ref, t_ref.mjd)
+    print(ts.iso)
+    print(ts.mjd)
+
+    iers = astropy.utils.iers.IERS_Auto.open()
     eop_table = build_EOP_table(ts, t0_ns, iers)
+    iers.close()
+
     print(eop_table)
     broadcast_eop_table("http://localhost", 12048, eop_table)
 
 
-    iers.close()
