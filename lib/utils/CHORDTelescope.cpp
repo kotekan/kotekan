@@ -69,17 +69,20 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config,
     else
         INFO("Telescope GPS time not enabled.");
 
-    //std::vector<double> orientation_vec = config.get<std::vector<double>>(path,
-    //                                                    "inst_orientation");
+    
+    // Read in the Telescope Coord axes. Must be normalized and orthogonal.
     std::array<double, 3> sep_x
         = config.get<std::array<double, 3>>(path, "inst_grid_x_axis");
     std::array<double, 3> sep_y
         = config.get<std::array<double, 3>>(path, "inst_grid_y_axis");
+    // Compute the Z axis as X x Y
     std::array<double, 3> sep_z = {
         sep_x[1] * sep_y[2] - sep_x[2] * sep_y[1],
         sep_x[2] * sep_y[0] - sep_x[0] * sep_y[2],
         sep_x[0] * sep_y[1] - sep_x[1] * sep_y[0]};
 
+    // Construct the topocentric -> tel rotation matrix.
+    // We assume the inverse is the transpose.
     for(int i=0; i < 3; i++)
     {
         _R_topo_to_tel[0][i] = sep_x[i];
@@ -87,15 +90,19 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config,
         _R_topo_to_tel[2][i] = sep_z[i];
     }
 
+    // Read in the Dish Coord axes. Must be normalized and orthogonal.
     std::array<double, 3> dish_x
         = config.get<std::array<double, 3>>(path, "inst_dish_alt_axis");
     std::array<double, 3> dish_z
         = config.get<std::array<double, 3>>(path, "inst_dish_vert_axis");
+    // Compute the Y axis as Z x X
     std::array<double, 3> dish_y = {
         dish_z[1] * dish_x[2] - dish_z[2] * dish_x[1],
         dish_z[2] * dish_x[0] - dish_z[0] * dish_x[2],
         dish_z[0] * dish_x[1] - dish_z[1] * dish_x[0]};
 
+    // Construct the topocentric -> dish rotation matrix.
+    // We assume the inverse is the transpose.
     for(int i=0; i < 3; i++)
     {
         _R_topo_to_dish[0][i] = dish_x[i];
@@ -106,28 +113,28 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config,
     _dish_positions = config.get<std::vector<std::array<double, 3>>>(path,
                                                         "dish_positions");
 
-    //double deg2rad = M_PI/180;
     double cos_lon = cos(deg2rad * _inst_long_deg);
     double sin_lon = sin(deg2rad * _inst_long_deg);
     double cos_lat = cos(deg2rad * _inst_lat_deg);
     double sin_lat = sin(deg2rad * _inst_lat_deg);
 
-    // Topocentric X (East) in Geocentric (Earth-centered, Earth-fixed) coords
+    // Topocentric X (East) in ITRS (Earth-centered, Earth-fixed) coords
     _R_itrs_to_topo[0][0] = -sin_lon;
     _R_itrs_to_topo[0][1] =  cos_lon;
     _R_itrs_to_topo[0][2] =  0.0;
 
-    // Topocentric Y (North) in Geocentric (Earth-centered, Earth-fixed) coords
+    // Topocentric Y (North) in ITRS (Earth-centered, Earth-fixed) coords
     _R_itrs_to_topo[1][0] = -sin_lat * cos_lon;
     _R_itrs_to_topo[1][1] = -sin_lat * sin_lon;
     _R_itrs_to_topo[1][2] =  cos_lat;
 
-    // Topocentric Z (Up) in Geocentric (Earth-centered, Earth-fixed) coords
+    // Topocentric Z (Up) in ITRS (Earth-centered, Earth-fixed) coords
     _R_itrs_to_topo[2][0] =  cos_lat * cos_lon;
     _R_itrs_to_topo[2][1] =  cos_lat * sin_lon;
     _R_itrs_to_topo[2][2] =  sin_lat;
 
 
+    // Set up callbacks for updating EOP and sending time0_ns
     using namespace std::placeholders;
 
     kotekan::configUpdater::instance().subscribe(
@@ -141,6 +148,7 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config,
 }
 
 CHORDTelescope::~CHORDTelescope() {
+    // Must manually remove the POST callback
     restServer &rest_server = restServer::instance();
     rest_server.remove_json_callback(_unique_name + "/time0_ns");
 }
@@ -199,8 +207,10 @@ void CHORDTelescope::set_gps(const std::string& host, const uint32_t port,
 }
     
 bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
+    // Make sure no one is using the EOP table while we're updating it.
     std::lock_guard<std::mutex> lock(_eop_lock);
     try {
+        // Fill a temporary table with the updated values.
         std::vector<struct EOP> tmp_eop_table;
         for(const auto& elem : json.at("earth_orientation_parameter_table")) {
             INFO("CHORDTelescope EOP update: {:s}", elem.dump());
@@ -212,8 +222,10 @@ bool CHORDTelescope::receive_eop_updates(nlohmann::json& json) {
                     build_EOP_from_update(t_ns, dut1, x_pm, y_pm));
         }
 
+        // Sort chronologically
         std::sort(tmp_eop_table.begin(), tmp_eop_table.end(), EOP_comp_time);
 
+        // Replace old table with new.
         _eop_table = tmp_eop_table;
 
         INFO("Updated EOP Table with {:d} entries", _eop_table.size());
@@ -266,8 +278,6 @@ std::array<double, 3> CHORDTelescope::get_sky_vec_in_tel_coords(
 
     // Taking the ra & dec to be in CIRS frame
 
-    //double deg2rad = M_PI / 180;
-
     double phi = deg2rad * ra;
     double theta = deg2rad * (90 - dec);
 
@@ -278,8 +288,9 @@ std::array<double, 3> CHORDTelescope::get_sky_vec_in_tel_coords(
                           sin(phi) * sin(theta),
                           cos(theta)};
 
-    INFO("n_cirs: {} {} {}", n_cirs[0], n_cirs[1], n_cirs[2]);
+    DEBUG("n_cirs: {} {} {}", n_cirs[0], n_cirs[1], n_cirs[2]);
 
+    // Transform CIRS -> ITRS -> TOPO -> Telescope.
     std::array<double, 3> n_itrs = vec_cirs_to_itrs(n_cirs, eop);
     std::array<double, 3> n_topo = vec_itrs_to_topocen(n_itrs);
 
@@ -288,10 +299,13 @@ std::array<double, 3> CHORDTelescope::get_sky_vec_in_tel_coords(
 
 std::array<double, 3> CHORDTelescope::get_pointing_vec_in_dish_coords() const {
 
-    //double deg2rad = M_PI/180;
+    // Dish coordinates are fixed with z "up" (altitude 90 degrees) and x
+    // along the altitude axis of the dish mount.  In this frame the pointing
+    // vector is just given by the curren altitude.
 
     double alt = deg2rad * _inst_alt_deg;
 
+    // alt=0 ==> North (y), alt=90 => Up (z), alt=180 -> South (-y)
     std::array<double, 3> n_point = {0.0, cos(alt), sin(alt)};
 
     return n_point;
@@ -300,6 +314,7 @@ std::array<double, 3> CHORDTelescope::get_pointing_vec_in_dish_coords() const {
 std::array<double, 3> CHORDTelescope::vec_topocen_to_dish(
         const std::array<double, 3>& v_topocen) const {
 
+    //Just multiply by known Rotation matrix.
     std::array<double, 3> v_dish = {0, 0, 0};
     for(int i = 0; i < 3; i++)
         for(int j = 0; j < 3; j++)
@@ -311,6 +326,7 @@ std::array<double, 3> CHORDTelescope::vec_topocen_to_dish(
 std::array<double, 3> CHORDTelescope::vec_dish_to_topocen(
         const std::array<double, 3>& v_dish) const {
 
+    //Inverse transform, use R transpose.
     std::array<double, 3> v_topo = {0, 0, 0};
     for(int i = 0; i < 3; i++)
         for(int j = 0; j < 3; j++)
@@ -322,6 +338,7 @@ std::array<double, 3> CHORDTelescope::vec_dish_to_topocen(
 std::array<double, 3> CHORDTelescope::vec_topocen_to_tel(
         const std::array<double, 3>& v_topocen) const {
     
+    //Just multiply by known Rotation matrix.
     std::array<double, 3> v_tel = {0, 0, 0};
     for(int i = 0; i < 3; i++)
         for(int j = 0; j < 3; j++)
@@ -333,6 +350,7 @@ std::array<double, 3> CHORDTelescope::vec_topocen_to_tel(
 std::array<double, 3> CHORDTelescope::vec_tel_to_topocen(
         const std::array<double, 3>& v_tel) const {
     
+    //Inverse transform, use R transpose.
     std::array<double, 3> v_topocen = {0, 0, 0};
     for(int i = 0; i < 3; i++)
         for(int j = 0; j < 3; j++)
@@ -390,6 +408,7 @@ std::array<double, 3> CHORDTelescope::vec_axes_rotation_R3(
 std::array<double, 3> CHORDTelescope::vec_itrs_to_topocen(
         const std::array<double, 3>& v_itrs) const {
 
+    //Just multiply by known Rotation matrix.
     std::array<double, 3> v_topo = {0, 0, 0};
     for(int i = 0; i < 3; i++)
         for(int j = 0; j < 3; j++)
@@ -401,6 +420,7 @@ std::array<double, 3> CHORDTelescope::vec_itrs_to_topocen(
 std::array<double, 3> CHORDTelescope::vec_topocen_to_itrs(
         const std::array<double, 3>& v_topo) const {
 
+    //Inverse transform, use R transpose.
     std::array<double, 3> v_itrs = {0, 0, 0};
     for(int i = 0; i < 3; i++)
         for(int j = 0; j < 3; j++)
@@ -412,15 +432,28 @@ std::array<double, 3> CHORDTelescope::vec_topocen_to_itrs(
 std::array<double, 3> CHORDTelescope::vec_cirs_to_itrs(
         const std::array<double, 3>& v_cirs, const struct EOP &eop) const {
 
-    //double deg2rad = M_PI/180;
-    //double as2rad = deg2rad / 3600;
-    
+    // IERS Conventions (2010) Chapter 5, Eq 5.1-5.3, and 5.5 give the 
+    // ITRS -> CIRS Transformation:
+    //
+    // [CIRS] = R(t) W(t) [ITRS]        Eq. 5.1
+    //
+    // W(t) = R3(s') R2(x') R1(y')      Eq. 5.3
+    // R(t) = R3(-ERA)                  Eq. 5.5
+    //
+    // We ignore the s' contribution here, it's magnitude is only
+    // microarcsecond.
+    //
+    // The inverse transformation reverses this, taking the negative of each
+    // argument.
     double era = deg2rad * eop.ERA_deg;
     double xp = arcsec2rad * eop.xp_as;
     double yp = arcsec2rad * eop.yp_as;
 
+    // 5.5 inverse
     std::array<double, 3> v1     = vec_axes_rotation_R3(v_cirs, era);
+    // 5.3, second factor, inverse
     std::array<double, 3> v2     = vec_axes_rotation_R2(v1,    -xp);
+    // 5.3, first factor, inverse
     std::array<double, 3> v_itrs = vec_axes_rotation_R1(v2,    -yp);
 
     return v_itrs;
@@ -429,14 +462,26 @@ std::array<double, 3> CHORDTelescope::vec_cirs_to_itrs(
 std::array<double, 3> CHORDTelescope::vec_itrs_to_cirs(
         const std::array<double, 3>& v_itrs, const struct EOP &eop) const {
 
-    //double deg2rad = M_PI/180;
-    //double as2rad = deg2rad / 3600;
+    // IERS Conventions (2010) Chapter 5, Eq 5.1-5.3, and 5.5 give the 
+    // ITRS -> CIRS Transformation:
+    //
+    // [CIRS] = R(t) W(t) [ITRS]        Eq. 5.1
+    //
+    // W(t) = R3(s') R2(x') R1(y')      Eq. 5.3
+    // R(t) = R3(-ERA)                  Eq. 5.5
+    //
+    // We ignore the s' contribution here, it's magnitude is only
+    // microarcsecond.
+
     double era = deg2rad * eop.ERA_deg;
     double xp = arcsec2rad * eop.xp_as;
     double yp = arcsec2rad * eop.yp_as;
 
+    // 5.3 (First factor in W)
     std::array<double, 3> v1     = vec_axes_rotation_R1(v_itrs, yp);
+    // 5.3 (Second factor in W)
     std::array<double, 3> v2     = vec_axes_rotation_R2(v1,     xp);
+    // 5.5 
     std::array<double, 3> v_cirs = vec_axes_rotation_R3(v2,    -era);
 
     return v_cirs;
@@ -475,16 +520,6 @@ void CHORDTelescope::fringestop_phases_1d(double freq_Hz,
 
         phases[i] = {cos(phase) , sin(phase)};
     }
-
-    /*
-    DEBUG("Fringestop Phases: [{}+{}i, {}+{}i, {}+{}i, {}+{}i, {}+{}i, {}+{}i]",
-            phases[0].real(), phases[0].imag(),
-            phases[1].real(), phases[1].imag(),
-            phases[2].real(), phases[2].imag(),
-            phases[3].real(), phases[3].imag(),
-            phases[4].real(), phases[4].imag(),
-            phases[5].real(), phases[5].imag());
-    */
 }
 
 double CHORDTelescope::get_tel_orientation_el(int i, int j) const {
@@ -540,6 +575,8 @@ struct EOP CHORDTelescope::get_EOP_at_time(const timespec &t_target) const {
         eop.delta_UT1_inst = eop_b->delta_UT1_inst;
         eop.xp_as = eop_b->xp_as;
         eop.yp_as = eop_b->yp_as;
+        WARN("Requesting EOP earlier than in table. Requested time = {:d} s + {:d} ns. Earliest time = {:d} s + {:d} ns.", t_target.tv_sec, t_target.tv_nsec,
+                _eop_table[0].t_inst.tv_sec, _eop_table[0].t_inst.tv_nsec);
     }
     else if(eop_b == _eop_table.end()) {
         // Time is later than covered by the table, use the last value.
@@ -547,26 +584,35 @@ struct EOP CHORDTelescope::get_EOP_at_time(const timespec &t_target) const {
         eop.delta_UT1_inst = eop_last->delta_UT1_inst;
         eop.xp_as = eop_last->xp_as;
         eop.yp_as = eop_last->yp_as;
+        WARN("Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. Latest UT1 = {:d} s + {:d} ns.", t_target.tv_sec, t_target.tv_nsec,
+                _eop_table[eop_last].t_inst.tv_sec,
+                _eop_table[eop_last].t_inst.tv_nsec);
     }
     else {
         // Interpolate!
         auto eop_a = eop_b - 1;
+        // t - ta in ns. Should be > 0
         int64_t diff_ns_a = GIGA * (t_target.tv_sec - eop_a->t_inst.tv_sec)
                              + t_target.tv_nsec - eop_a->t_inst.tv_nsec;
+        // t - tb in ns. Should be < 0
         int64_t diff_ns_b = GIGA * (t_target.tv_sec - eop_b->t_inst.tv_sec)
                              + t_target.tv_nsec - eop_b->t_inst.tv_nsec;
 
+        // tb - ta in ns.
         int64_t diff_ns = diff_ns_a - diff_ns_b;
 
+        // weights for points a and b.
         double wb = diff_ns_a / ((double) diff_ns);
         double wa = 1.0 - wb;
 
+        // interpolate
         eop.delta_UT1_inst = wa * eop_a->delta_UT1_inst
                             + wb * eop_b->delta_UT1_inst;
         eop.xp_as = wa * eop_a->xp_as + wb * eop_b->xp_as;
         eop.yp_as = wa * eop_a->yp_as + wb * eop_b->yp_as;
     }
 
+    // now that we have a delta_UT1, can compute UT1 and ERA
     timespec t_ut1 = get_UT1_from_time(t_target, eop.delta_UT1_inst);
     double era = get_ERA_from_UT1(t_ut1, nullptr);
 
@@ -599,6 +645,8 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(const timespec &t_ut1) const {
         eop.delta_UT1_inst = eop_b->delta_UT1_inst;
         eop.xp_as = eop_b->xp_as;
         eop.yp_as = eop_b->yp_as;
+        WARN("Requesting EOP earlier than in table. Requested UT1 = {:d} s + {:d} ns. Earliest UT1 = {:d} s + {:d} ns.", t_ut1.tv_sec, t_ut1.tv_nsec,
+                _eop_table[0].t_ut1.tv_sec, _eop_table[0].t_ut1.tv_nsec);
     }
     else if(eop_b == _eop_table.end()) {
         // Time is later than covered by the table, use the last value.
@@ -606,26 +654,37 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(const timespec &t_ut1) const {
         eop.delta_UT1_inst = eop_last->delta_UT1_inst;
         eop.xp_as = eop_last->xp_as;
         eop.yp_as = eop_last->yp_as;
+        WARN("Requesting EOP later than in table. Requested UT1 = {:d} s + {:d} ns. Latest UT1 = {:d} s + {:d} ns.", t_ut1.tv_sec, t_ut1.tv_nsec,
+                _eop_table[eop_last].t_ut1.tv_sec,
+                _eop_table[eop_last].t_ut1.tv_nsec);
     }
     else {
-        // Interpolate!
+        // Interpolate! Target time = t, in table interval [ta, tb]
         auto eop_a = eop_b - 1;
+
+        // t - ta in ns. Should be > 0
         int64_t diff_ns_a = GIGA * (t_ut1.tv_sec - eop_a->t_ut1.tv_sec)
                              + t_ut1.tv_nsec - eop_a->t_ut1.tv_nsec;
+        // t - tb in ns. Should be < 0
         int64_t diff_ns_b = GIGA * (t_ut1.tv_sec - eop_b->t_ut1.tv_sec)
                              + t_ut1.tv_nsec - eop_b->t_ut1.tv_nsec;
 
+        // tb - ta in ns.
         int64_t diff_ns = diff_ns_a - diff_ns_b;
 
+        // weight for b point
         double wb = diff_ns_a / ((double) diff_ns);
+        // weight for a point.
         double wa = 1.0 - wb;
 
+        // interpolate.
         eop.delta_UT1_inst = wa * eop_a->delta_UT1_inst
                             + wb * eop_b->delta_UT1_inst;
         eop.xp_as = wa * eop_a->xp_as + wb * eop_b->xp_as;
         eop.yp_as = wa * eop_a->yp_as + wb * eop_b->yp_as;
     }
 
+    // Now that we have a delta_UT1, can get t_inst and the ERA
     timespec t_inst = get_time_from_UT1(t_ut1, eop.delta_UT1_inst);
     double era = get_ERA_from_UT1(t_ut1, nullptr);
 
