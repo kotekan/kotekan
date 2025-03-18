@@ -76,6 +76,7 @@ void N2TimeDownsample::main_thread() {
     int32_t freq_id = -1; // needs to be set by first frame
     double freq_Hz = -1.0;
 
+    // Whether we're waiting for an accumulation bin to start.
     bool wait_for_alignment = true;
 
     auto& skipped_frame_counter = Metrics::instance().add_counter(
@@ -83,6 +84,7 @@ void N2TimeDownsample::main_thread() {
     
     const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
 
+    // Make an array to hold the per-dish phases.
     int num_dishes = tel.get_num_dishes();
     std::vector<std::complex<double>> fringe_phase(num_dishes, 1.0);
 
@@ -150,12 +152,6 @@ void N2TimeDownsample::main_thread() {
             wait_for_alignment = false;
 
 
-        /*
-        wdw_pos = (fpga_seq_start % wdw_len) / frame.frame_length_fpga_ticks;
-        DEBUG("wdw_pos: {:d}; wdw_end: {:d}", wdw_pos, wdw_end);
-        DEBUG("ERA: {:f}; ERA_target: {:f} ERA_wdw_len: {:f}", frame.era_deg,
-                era_target, wdw_len_era);
-        */
         DEBUG("ERA: {:f}; ERA_target: {:f}; ERA_bin_lo: {:f}; ERA_bin_hi: {:f}",
                 frame.eop.ERA_deg, eop_target.ERA_deg, era_deg_lo, era_deg_hi);
 
@@ -196,19 +192,22 @@ void N2TimeDownsample::main_thread() {
                 N2FrameView::copy_frame(in_buf, frame_id,
                                         out_buf, output_frame_id);
 
-            // Increase the total frame length
-            //output_frame.frame_length_fpga_ticks *= nsamp;
-
             // Set the output to target EOP.
             output_frame.eop = eop_target;
 
             if(do_fringestop) {
+                // Get the per-dish fringestopping phases.
                 tel.fringestop_phases_1d(freq_Hz, frame.eop, eop_target,
                                          fringe_phase);
 
+                // This indexing requires the el_id = (n_dish)*pol_id + dish_id
                 size_t idx = 0;
                 for(size_t i = 0; i < num_elements; i++) {
                     for(size_t j = i; j < num_elements; j++) {
+
+                        //To apply phases:
+                        // Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
+                        //                  = V_ij * Phase_i * conj(Phase_j)
 
                         size_t d_i = i % num_dishes;
                         size_t d_j = j % num_dishes;
@@ -223,12 +222,23 @@ void N2TimeDownsample::main_thread() {
             for (size_t i = 0; i < nprod; i++) {
                 output_frame.weight[i] = 1. / output_frame.weight[i];
             }
+                
+            for (uint32_t i = 0; i < num_eigenvectors; i++) {
+                for (uint32_t j = 0; j < num_elements; j++) {
+                    // Eigenvectors get phases too.
+                    int k = i * num_elements + j;
+                    size_t d_j = j % num_dishes;
+                    output_frame.evec[k] *= fringe_phase[d_j];
+                }
+            }
 
             // Go to next frame
             nframes += 1;
             in_buf->mark_frame_empty(unique_name, frame_id++);
             continue;
         }
+
+        //If we're here, an accumulation has started.
 
         auto output_frame = N2FrameView(out_buf, output_frame_id);
 
@@ -248,14 +258,18 @@ void N2TimeDownsample::main_thread() {
                     size_t d_i = i % num_dishes;
                     size_t d_j = j % num_dishes;
 
+                    // Computing the total phase in double precision
+                    // in case one of the dish phases is small.
                     std::complex<double> w_doub = fringe_phase[d_i]
                                         * std::conj(fringe_phase[d_j]);
+                    
+                    // Now truncate the phase to a float to match vis[]
+                    // Have to be explicit about this, compiler complains
+                    // otherwise.
                     N2::cfloat w_fs{(float) w_doub.real(),
                                     (float) w_doub.imag()};
 
-                    //DEBUG("fringestop phase: {}-{}: {}+{}i", i, j,
-                    //        w_fs.real(), w_fs.imag());
-
+                    // Accumulate
                     output_frame.vis[idx] += w_fs * frame.vis[idx];
                     idx++;
                 }
@@ -269,7 +283,10 @@ void N2TimeDownsample::main_thread() {
                 output_frame.eval[i] += frame.eval[i];
                 for (uint32_t j = 0; j < num_elements; j++) {
                     int k = i * num_elements + j;
-                    output_frame.evec[k] += frame.evec[k];
+                    size_t d_j = j % num_dishes;
+                    N2::cfloat phase{(float) fringe_phase[d_j].real(),
+                                     (float) fringe_phase[d_j].imag()};
+                    output_frame.evec[k] += frame.evec[k] * phase;
                 }
             }
             output_frame.erms += frame.erms;

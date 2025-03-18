@@ -576,7 +576,7 @@ struct EOP CHORDTelescope::get_EOP_at_time(const timespec &t_target) const {
         eop.xp_as = eop_b->xp_as;
         eop.yp_as = eop_b->yp_as;
         WARN("Requesting EOP earlier than in table. Requested time = {:d} s + {:d} ns. Earliest time = {:d} s + {:d} ns.", t_target.tv_sec, t_target.tv_nsec,
-                _eop_table[0].t_inst.tv_sec, _eop_table[0].t_inst.tv_nsec);
+                eop_b->t_inst.tv_sec, eop_b->t_inst.tv_nsec);
     }
     else if(eop_b == _eop_table.end()) {
         // Time is later than covered by the table, use the last value.
@@ -585,8 +585,8 @@ struct EOP CHORDTelescope::get_EOP_at_time(const timespec &t_target) const {
         eop.xp_as = eop_last->xp_as;
         eop.yp_as = eop_last->yp_as;
         WARN("Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. Latest UT1 = {:d} s + {:d} ns.", t_target.tv_sec, t_target.tv_nsec,
-                _eop_table[eop_last].t_inst.tv_sec,
-                _eop_table[eop_last].t_inst.tv_nsec);
+                eop_last->t_inst.tv_sec,
+                eop_last->t_inst.tv_nsec);
     }
     else {
         // Interpolate!
@@ -646,7 +646,7 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(const timespec &t_ut1) const {
         eop.xp_as = eop_b->xp_as;
         eop.yp_as = eop_b->yp_as;
         WARN("Requesting EOP earlier than in table. Requested UT1 = {:d} s + {:d} ns. Earliest UT1 = {:d} s + {:d} ns.", t_ut1.tv_sec, t_ut1.tv_nsec,
-                _eop_table[0].t_ut1.tv_sec, _eop_table[0].t_ut1.tv_nsec);
+                eop_b->t_ut1.tv_sec, eop_b->t_ut1.tv_nsec);
     }
     else if(eop_b == _eop_table.end()) {
         // Time is later than covered by the table, use the last value.
@@ -655,8 +655,8 @@ struct EOP CHORDTelescope::get_EOP_at_UT1(const timespec &t_ut1) const {
         eop.xp_as = eop_last->xp_as;
         eop.yp_as = eop_last->yp_as;
         WARN("Requesting EOP later than in table. Requested UT1 = {:d} s + {:d} ns. Latest UT1 = {:d} s + {:d} ns.", t_ut1.tv_sec, t_ut1.tv_nsec,
-                _eop_table[eop_last].t_ut1.tv_sec,
-                _eop_table[eop_last].t_ut1.tv_nsec);
+                eop_last->t_ut1.tv_sec,
+                eop_last->t_ut1.tv_nsec);
     }
     else {
         // Interpolate! Target time = t, in table interval [ta, tb]

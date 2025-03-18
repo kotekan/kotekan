@@ -42,7 +42,7 @@
  * @metric  kotekan_timedownsample_skipped_frame_total
  *      The number of frames skipped entirely because they were too old.
  *
- * @author  Tristan Pinsonneault-Marotte
+ * @author  Geoffrey Ryan & Tristan Pinsonneault-Marotte
  *
  */
 class N2TimeDownsample : public kotekan::Stage {
