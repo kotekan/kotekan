@@ -486,12 +486,12 @@ gpu:
         in_buffers:
 {%- for id in range(16,32) %}
             in_buf_{{ id - 16 }}: gpu_input_buffer_{{ id }}
-            tracking_phase_{{ id }}: tracking_phase_{{ id }}
+            tracking_phase_{{ id - 16 }}: tracking_phase_{{ id }}
 {%- endfor %}
         out_buffers:
 {%- for id in range(16,32) %}
             out_buf_{{ id - 16 }}: gpu_output_split_buffer_{{ id }}
-            tracking_beam_buf_{{ id }}: tracking_beam_buf_{{ id }}
+            tracking_beam_buf_{{ id - 16 }}: tracking_beam_buf_{{ id }}
 {%- endfor %}
 
 ### N^2 Accumulation ###
