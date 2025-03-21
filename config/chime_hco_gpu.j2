@@ -35,6 +35,7 @@ num_links: 16
 instrument_name: hco
 num_ev: 4
 join_timeout: 15
+num_pol: 2
 
 cpu_affinity: [11, 12, 13, 35, 36, 37]
 
@@ -57,6 +58,26 @@ dataset_manager:
     use_dataset_broker: true # We need this to be true for the N2 recv system to work
     ds_broker_host: 10.42.1.1 # ha1
     ds_broker_port: 12050
+
+
+##################################
+#### Updatable Config section ####
+##################################
+updatable_config:
+    UT1_UTC_offset:
+        kotekan_update_endpoint: json
+        UT1_UTC_val: 0.05904211328819444771
+    tracking_gain:
+        0:
+            kotekan_update_endpoint: json
+            gain_dir: /mnt/<gainlocation>
+    tracking_pointing:
+        0:
+            kotekan_update_endpoint: json
+            ra: 53.6197236741
+            dec: 54.6433973569
+            scaling: 48
+
 
 ##################
 #### Metadata ####
@@ -174,6 +195,80 @@ vis_buffers:
         kotekan_buffer: vis
 {%- endfor %}
 
+### Beamformer Related Buffers ###
+
+gain_tracking_buffers:
+    num_frames: 5
+    frame_size: num_elements * 2 * num_beams * sizeof_float
+    metadata_pool: main_pool
+{%- for id in range(16) %}
+    gain_tracking_buffer_{{ id }}:
+        numa_node: 0
+        kotekan_buffer: standard
+{%- endfor %}
+{%- for id in range(16,32) %}
+    gain_tracking_buffer_{{ id }}:
+        numa_node: 1
+        kotekan_buffer: standard
+{%- endfor %}
+
+tracking_phase_buffers:
+    num_frames: 5
+    # TODO The scaling factor currently isn't implmented into the old beamformer kernels
+    # The scaling factor is stored in the last `num_beams * sizeof_float` bytes. 
+    frame_size: num_elements * num_beams * 2 * sizeof_float + num_beams * sizeof_float
+    metadata_pool: main_pool
+{%- for id in range(16) %}
+    tracking_phase_{{ id }}:
+        numa_node: 0
+        kotekan_buffer: standard
+{%- endfor %}
+{%- for id in range(16,32) %}
+    tracking_phase_{{ id }}:
+        numa_node: 1
+        kotekan_buffer: standard
+{%- endfor %}
+
+tracking_beam_buffers:
+    num_frames: 5
+    frame_size: samples_per_data_set * num_local_freq * num_pol 
+    metadata_pool: main_pool
+{%- for id in range(16) %}
+    tracking_beam_buf_{{ id }}:
+        numa_node: 0
+        kotekan_buffer: standard
+{%- endfor %}
+{%- for id in range(16,32) %}
+    tracking_beam_buf_{{ id }}:
+        numa_node: 1
+        kotekan_buffer: standard
+{%- endfor %}
+
+processed_beam_buffers:
+    num_frames: 8*5
+    frame_size: samples_per_data_set * num_pol
+    metadata_pool: main_pool
+{%- for id in range(16) %}
+    processed_beam_buffer_{{ id }}:
+        numa_node: 0
+        kotekan_buffer: standard
+{%- endfor %}
+{%- for id in range(16,32) %}
+    processed_beam_buffer_{{ id }}:
+        numa_node: 1
+        kotekan_buffer: standard
+{%- endfor %}
+
+processed_beam_buffer_merged:
+    numa_node: 1
+    num_frames: 128
+    frame_size: samples_per_data_set * num_pol
+    metadata_pool: main_pool
+    processed_beam_buffer_merged_0:
+        kotekan_buffer: standard
+    processed_beam_buffer_merged_1:
+        kotekan_buffer: standard
+
 
 ################
 #### Stages ####
@@ -281,6 +376,42 @@ meta_debug_1:
     kotekan_stage: chimeMetadataDump
     in_buf: gpu_input_buffer_1
 
+### Beamformer Phase Generation ###
+
+inst_lat: <add here>
+inst_long: <add here>
+num_beams: 1
+
+# TODO: ReadGain needs to be updated to support multiple frequencies
+# Currently it only supports a single frequency.  The output frames should
+# contain gains for all 8 frequencies per input frames
+read_gain:
+    num_pulsar: 1
+    updatable_config:
+        gain_tracking: /updatable_config/tracking_gain
+{%- for id in range(32) %}
+    read_gains_{{ id }}:
+        kotekan_stage: ReadGains
+        in_buf: gpu_input_buffer_{{ id }} # Provides the metadata for which frequencies to use.
+        gain_tracking_buf: gain_tracking_buffer_{{ id }}
+{%- endfor %}
+
+tracking_phases:
+    updatable_config:
+        UT1_UTC: /updatable_config/UT1_UTC_offset
+        tracking_pt: /updatable_config/tracking_pointing
+    log_level: INFO
+    num_local_beams: num_beams
+{%- for id in range(32) %}
+    tracking_phases_{{ id}}:
+        kotekan_stage: FloatPhaseUpdate
+        in_buf: gpu_input_buffer_{{ id }}
+        gains_buf: gain_tracking_buffer_{{ id }}
+        out_buf: tracking_phase_{{ id }}
+{%- endfor %}
+
+
+### End Beamformer Phase Generation ###
 
 ### GPU Processing ###
 
@@ -294,18 +425,25 @@ gpu:
     buffer_depth: 32
     frame_arrival_period: samples_per_data_set / 390625.0 / num_links
     commands: &command_list
-      - name: clInputData
+      - name: clInputData # Baseband data
         gpu_memory: input
         in_bufs:
 {%- for id in range(16) %}
             - in_buf_{{ id }}
+{%- endfor %}
+      - name: clInputData # Beamformer phase data
+        gpu_memory: phases
+        in_bufs:
+{%- for id in range(16) %}
+            - tracking_phase_{{ id }}
 {%- endfor %}
       - name: clPresumZero
       - name: clOutputDataZero
       - name: clPresumKernel
       - name: clPreseedKernel
       - name: clCorrelatorKernel
-      - name: clOutputData
+      - name: clBeamformerKernel # This might need a full rewrite. The kernel inputs have changed considerably.
+      - name: clOutputData # Correlatorion data
         gpu_memory: output
         in_bufs:
 {%- for id in range(16) %}
@@ -315,6 +453,16 @@ gpu:
 {%- for id in range(16) %}
             - out_buf_{{ id }}
 {%- endfor %}
+      - name: clOutputData # Beamformer data
+        gpu_memory: beamform_output_buf
+        in_bufs:
+{%- for id in range(16) %}
+            - in_buf_{{ id }}
+{%- endfor %}
+        out_bufs:
+{%- for id in range(16) %}
+            - tracking_beam_buf_{{ id }}
+{%- endfor %}
     gpu_0:
         kotekan_stage: clProcess
         cpu_affinity: [10,11,12]
@@ -323,10 +471,12 @@ gpu:
         in_buffers:
 {%- for id in range(16) %}
             in_buf_{{ id }}: gpu_input_buffer_{{ id }}
+            tracking_phase_{{ id }}: tracking_phase_{{ id }}
 {%- endfor %}
         out_buffers:
 {%- for id in range(16) %}
             out_buf_{{ id }}: gpu_output_split_buffer_{{ id }}
+            tracking_beam_buf_{{ id }}: tracking_beam_buf_{{ id }}
 {%- endfor %}
     gpu_1:
         kotekan_stage: clProcess
@@ -336,10 +486,12 @@ gpu:
         in_buffers:
 {%- for id in range(16,32) %}
             in_buf_{{ id - 16 }}: gpu_input_buffer_{{ id }}
+            tracking_phase_{{ id }}: tracking_phase_{{ id }}
 {%- endfor %}
         out_buffers:
 {%- for id in range(16,32) %}
             out_buf_{{ id - 16 }}: gpu_output_split_buffer_{{ id }}
+            tracking_beam_buf_{{ id }}: tracking_beam_buf_{{ id }}
 {%- endfor %}
 
 ### N^2 Accumulation ###
@@ -419,6 +571,54 @@ buffer_send:
         kotekan_stage: bufferSend
         buf: visbuf_eig_40s_merged_final
         server_port: 11024
+
+
+### Tracking beam post process and output ###
+
+tracking_beam_post_process:
+{%- for id in range(32) %}
+    trackingBeamPostProcess_{{ id }}:
+        # TODO Write this stage
+        # Closest to BeamExtract.  We need to extract the beams for each frequency
+        # and put them into the "CHIME" format, with one frequency per frame
+        kotekan_stage: trackingBeamPostProcess
+        in_buf: tracking_beam_buf_{{ id }}
+        out_buf: processed_beam_buffer_{{ id }}
+{%- endfor %}
+
+beam_merge_0:
+    kotekan_stage: bufferMerge
+    timeout: 0.1
+    force_copy: true # Copy across the NUMA boundary
+    in_bufs:
+{%- for id in range(16) %}
+        - processed_beam_buffer_{{ id }}
+{%- endfor %}
+    out_buf: processed_beam_buffer_merged_0
+
+beam_merge_1:
+    kotekan_stage: bufferMerge
+    timeout: 0.1
+    in_bufs:
+{%- for id in range(16,32) %}
+        - processed_beam_buffer_{{ id }}
+{%- endfor %}
+    out_buf: processed_beam_buffer_merged_1
+
+beam_send:
+    # TODO: Replace with the correct IP for the recorder node.
+    server_ip: 10.1.50.52
+    server_port: 10030
+    log_level: info
+    reconnect_time: 10
+    beam_send_0:
+        kotekan_stage: bufferSend
+        buf: processed_beam_buffer_merged_0
+    beam_send_1:
+        kotekan_stage: bufferSend
+        buf: processed_beam_buffer_merged_0
+
+### Monitoring ###
 
 monitor:
     kotekan_stage: monitorBuffer
