@@ -51,6 +51,9 @@ enum DataType {
 // Convert a type to a string
 std::string type_to_string(DataType type);
 
+// Convert a string to a type
+DataType string_to_type(const std::string& type_name);
+
 // Output a type
 std::ostream& operator<<(std::ostream& os, DataType type);
 
@@ -74,6 +77,8 @@ constexpr std::size_t type_value_bits(DataType type) {
             return 4;
         case int4x2chime:
             return 4;
+        case int8:
+            return 8;
         case int16:
             return 16;
         case int32:
@@ -87,7 +92,7 @@ constexpr std::size_t type_value_bits(DataType type) {
         case float64:
             return 64;
         default:
-            return 0;
+            return -1;
     }
 }
 
@@ -111,6 +116,8 @@ constexpr std::size_t type_total_bytes(DataType type) {
             return 1;
         case int4x2chime:
             return 1;
+        case int8:
+            return 1;
         case int16:
             return 2;
         case int32:
@@ -124,7 +131,7 @@ constexpr std::size_t type_total_bytes(DataType type) {
         case float64:
             return 8;
         default:
-            return 0;
+            return -1;
     }
 }
 
@@ -202,7 +209,11 @@ struct GetDataType<unsigned long long>
 template<>
 struct GetDataType<signed char>
     : std::integral_constant<DataType, int_from_element_bits(8 * sizeof(signed char))> {};
-// We omit char because we don't know whether it's signed or unsigned
+template<>
+struct GetDataType<char>
+    : std::integral_constant<DataType, (std::is_signed_v<char>
+                                            ? int_from_element_bits(8 * sizeof(char))
+                                            : uint_from_element_bits(8 * sizeof(char)))> {};
 template<>
 struct GetDataType<short>
     : std::integral_constant<DataType, int_from_element_bits(8 * sizeof(short))> {};

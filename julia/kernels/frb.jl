@@ -1931,7 +1931,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     shmem_size = idiv(shmem_bytes, 4)
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
-    kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm frb(
+    kernel = @cuda launch = false minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm frb(
         Int32(0),
         Int32(0),
         Int32(0),
@@ -2406,7 +2406,7 @@ function fix_ptx_kernel()
                 Dict(
                     "name" => "Ebar",
                     "kotekan_name" => "gpu_mem_voltage",
-                    "type" => "int4p4chime",
+                    "type" => "int4x2chime",
                     "axes" => [
                         Dict("label" => "D", "length" => D),
                         Dict("label" => "P", "length" => P),

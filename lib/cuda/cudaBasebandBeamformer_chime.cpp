@@ -6,6 +6,7 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
+#include <DataType.hpp>
 #include <algorithm>
 #include <array>
 #include <bufferContainer.hpp>
@@ -54,7 +55,7 @@ private:
             ptr(static_cast<T*>(ptr)), maxsize(bytes), dims{std::int64_t(maxsize / sizeof(T))},
             len(maxsize / sizeof(T)) {}
     };
-    using array_desc = CuDeviceArray<int32_t, 1>;
+    using array_desc = CuDeviceArray<std::int32_t, 1>;
 
     // Kernel design parameters:
     static constexpr int cuda_number_of_beams = 16;
@@ -91,15 +92,15 @@ private:
 
     // Tmin: Tmin
     static constexpr const char* Tmin_name = "Tmin";
-    static constexpr chordDataType Tmin_type = int32;
+    static constexpr kotekan::DataType Tmin_type = kotekan::int32;
     //
     // Tmax: Tmax
     static constexpr const char* Tmax_name = "Tmax";
-    static constexpr chordDataType Tmax_type = int32;
+    static constexpr kotekan::DataType Tmax_type = kotekan::int32;
     //
     // A: gpu_mem_phase
     static constexpr const char* A_name = "A";
-    static constexpr chordDataType A_type = int8;
+    static constexpr kotekan::DataType A_type = kotekan::int8;
     enum A_indices {
         A_index_C,
         A_index_D,
@@ -114,8 +115,7 @@ private:
     static constexpr std::array<std::ptrdiff_t, A_rank> A_lengths = {
         2, 1024, 16, 2, 16,
     };
-    static constexpr std::ptrdiff_t A_length =
-        chord_datatype_bytes(A_type) * 2 * 1024 * 16 * 2 * 16;
+    static constexpr std::ptrdiff_t A_length = type_total_bytes(A_type) * 2 * 1024 * 16 * 2 * 16;
     static_assert(A_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto A_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -127,11 +127,11 @@ private:
         A_calc_stride(A_index_C), A_calc_stride(A_index_D), A_calc_stride(A_index_B),
         A_calc_stride(A_index_P), A_calc_stride(A_index_F), A_calc_stride(A_rank),
     };
-    static_assert(A_length == chord_datatype_bytes(A_type) * A_strides[A_rank]);
+    static_assert(A_length == type_total_bytes(A_type) * A_strides[A_rank]);
     //
     // E: gpu_mem_voltage
     static constexpr const char* E_name = "E";
-    static constexpr chordDataType E_type = int4p4chime;
+    static constexpr kotekan::DataType E_type = kotekan::int4x2chime;
     enum E_indices {
         E_index_D,
         E_index_P,
@@ -151,7 +151,7 @@ private:
         16,
         65536,
     };
-    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 1024 * 2 * 16 * 65536;
+    static constexpr std::ptrdiff_t E_length = type_total_bytes(E_type) * 1024 * 2 * 16 * 65536;
     static_assert(E_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto E_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -163,11 +163,11 @@ private:
         E_calc_stride(E_index_D), E_calc_stride(E_index_P), E_calc_stride(E_index_F),
         E_calc_stride(E_index_T), E_calc_stride(E_rank),
     };
-    static_assert(E_length == chord_datatype_bytes(E_type) * E_strides[E_rank]);
+    static_assert(E_length == type_total_bytes(E_type) * E_strides[E_rank]);
     //
     // s: gpu_mem_output_scaling
     static constexpr const char* s_name = "s";
-    static constexpr chordDataType s_type = int32;
+    static constexpr kotekan::DataType s_type = kotekan::int32;
     enum s_indices {
         s_index_B,
         s_index_P,
@@ -184,7 +184,7 @@ private:
         2,
         16,
     };
-    static constexpr std::ptrdiff_t s_length = chord_datatype_bytes(s_type) * 16 * 2 * 16;
+    static constexpr std::ptrdiff_t s_length = type_total_bytes(s_type) * 16 * 2 * 16;
     static_assert(s_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto s_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -198,11 +198,11 @@ private:
         s_calc_stride(s_index_F),
         s_calc_stride(s_rank),
     };
-    static_assert(s_length == chord_datatype_bytes(s_type) * s_strides[s_rank]);
+    static_assert(s_length == type_total_bytes(s_type) * s_strides[s_rank]);
     //
     // J: gpu_mem_formed_beams
     static constexpr const char* J_name = "J";
-    static constexpr chordDataType J_type = int4p4;
+    static constexpr kotekan::DataType J_type = kotekan::int4x2;
     enum J_indices {
         J_index_T,
         J_index_P,
@@ -222,7 +222,7 @@ private:
         16,
         16,
     };
-    static constexpr std::ptrdiff_t J_length = chord_datatype_bytes(J_type) * 16384 * 2 * 16 * 16;
+    static constexpr std::ptrdiff_t J_length = type_total_bytes(J_type) * 16384 * 2 * 16 * 16;
     static_assert(J_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto J_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -234,11 +234,11 @@ private:
         J_calc_stride(J_index_T), J_calc_stride(J_index_P), J_calc_stride(J_index_F),
         J_calc_stride(J_index_B), J_calc_stride(J_rank),
     };
-    static_assert(J_length == chord_datatype_bytes(J_type) * J_strides[J_rank]);
+    static_assert(J_length == type_total_bytes(J_type) * J_strides[J_rank]);
     //
     // info: gpu_mem_info
     static constexpr const char* info_name = "info";
-    static constexpr chordDataType info_type = int32;
+    static constexpr kotekan::DataType info_type = kotekan::int32;
     enum info_indices {
         info_index_thread,
         info_index_warp,
@@ -255,7 +255,7 @@ private:
         4,
         32,
     };
-    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 4 * 32;
+    static constexpr std::ptrdiff_t info_length = type_total_bytes(info_type) * 32 * 4 * 32;
     static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -269,11 +269,11 @@ private:
         info_calc_stride(info_index_block),
         info_calc_stride(info_rank),
     };
-    static_assert(info_length == chord_datatype_bytes(info_type) * info_strides[info_rank]);
+    static_assert(info_length == type_total_bytes(info_type) * info_strides[info_rank]);
     //
     // log: gpu_mem_log
     static constexpr const char* log_name = "log";
-    static constexpr chordDataType log_type = int32;
+    static constexpr kotekan::DataType log_type = kotekan::int32;
     enum log_indices {
         log_index_block,
         log_rank,
@@ -284,7 +284,7 @@ private:
     static constexpr std::array<std::ptrdiff_t, log_rank> log_lengths = {
         32,
     };
-    static constexpr std::ptrdiff_t log_length = chord_datatype_bytes(log_type) * 32;
+    static constexpr std::ptrdiff_t log_length = type_total_bytes(log_type) * 32;
     static_assert(log_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto log_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -296,7 +296,7 @@ private:
         log_calc_stride(log_index_block),
         log_calc_stride(log_rank),
     };
-    static_assert(log_length == chord_datatype_bytes(log_type) * log_strides[log_rank]);
+    static_assert(log_length == type_total_bytes(log_type) * log_strides[log_rank]);
     //
 
     // Kotekan buffer names
@@ -311,7 +311,7 @@ private:
     std::vector<std::uint8_t> info_host;
     std::vector<std::uint8_t> log_host;
 
-    static constexpr std::ptrdiff_t E_T_sample_bytes = chord_datatype_bytes(E_type)
+    static constexpr std::ptrdiff_t E_T_sample_bytes = type_total_bytes(E_type)
                                                        * E_lengths[E_index_D] * E_lengths[E_index_P]
                                                        * E_lengths[E_index_F];
 
@@ -646,28 +646,52 @@ cudaEvent_t cudaBasebandBeamformer_chime::execute(cudaPipelineState& /*pipestate
     DEBUG("Finished CUDA BasebandBeamformer_chime on GPU frame {:d}", gpu_frame_id);
 
     // Check error codes
-    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
-                                                      (const std::int32_t*)&*info_host.end());
+    std::uint32_t error_code = 0;
+    for (int block = 0; block < info_lengths[info_index_block]; ++block) {
+        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                const std::ptrdiff_t i = info_strides[info_index_thread] * thread
+                                         + info_strides[info_index_warp] * warp
+                                         + info_strides[info_index_block] * block;
+                const std::uint32_t val = *(const std::uint32_t*)&info_host[i];
+                using std::max;
+                error_code = max(error_code, val);
+            }
+        }
+    }
     if (error_code != 0)
-        ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
+        ERROR("CUDA kernel returned error code: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.size(); ++i)
-        if (info_host[i] != 0)
-            ERROR("cudaBasebandBeamformer_chime returned 'info' value {:d} at index {:d} (zero "
-                  "indicates no error)",
-                  info_host[i], i);
+    for (int block = 0; block < info_lengths[info_index_block]; ++block) {
+        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                const std::ptrdiff_t i = info_strides[info_index_thread] * thread
+                                         + info_strides[info_index_warp] * warp
+                                         + info_strides[info_index_block] * block;
+                const std::uint32_t val = ((const std::uint32_t*)info_host.data())[i];
+                if (val != 0)
+                    ERROR("CUDA kernel BasebandBeamformer_chime returned 'info' value {:d} "
+                          "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates no "
+                          "error)",
+                          val, thread, warp, block, i);
+            }
+        }
+    }
 
     // Check log codes
-    const std::int32_t log_code = *std::max_element((const std::int32_t*)&*log_host.begin(),
-                                                    (const std::int32_t*)&*log_host.end());
+    const std::uint32_t log_code = *std::max_element((const std::uint32_t*)&*log_host.begin(),
+                                                     (const std::uint32_t*)&*log_host.end());
     if (log_code != 0)
-        ERROR("CUDA kernel returned log code cuLaunchKernel: {}", log_code);
+        WARN("CUDA kernel BasebandBeamformer_chime returned log code cuLaunchKernel: {}", log_code);
 
-    for (std::size_t i = 0; i < log_host.size(); ++i)
-        if (log_host[i] != 0)
-            ERROR("cudaBasebandBeamformer_chime returned 'log' value {:d} at index {:d} (zero "
-                  "indicates success)",
-                  log_host[i], i);
+    for (std::size_t i = 0; i < log_host.size() / type_total_bytes(log_type); ++i) {
+        const std::uint32_t val = ((const std::uint32_t*)log_host.data())[i];
+        if (val != 0)
+            WARN("CUDA kernel BasebandBeamformer_chime returned 'log' value {:d} at index {:d} "
+                 "(zero "
+                 "indicates success)",
+                 val, i);
+    }
 #endif
 
 #ifdef DEBUGGING

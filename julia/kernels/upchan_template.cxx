@@ -6,6 +6,7 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
+#include <DataType.hpp>
 #include <algorithm>
 #include <array>
 #include <bufferContainer.hpp>
@@ -55,7 +56,7 @@ private:
             dims{std::int64_t(maxsize / sizeof(T))},
             len(maxsize / sizeof(T)) {}
     };
-    using array_desc = CuDeviceArray<int32_t, 1>;
+    using array_desc = CuDeviceArray<std::int32_t, 1>;
 
     // Kernel design parameters:
     {{#kernel_design_parameters}}
@@ -93,7 +94,7 @@ private:
     {{#kernel_arguments}}
         // {{{name}}}: {{{kotekan_name}}}
         static constexpr const char *{{{name}}}_name = "{{{name}}}";
-        static constexpr chordDataType {{{name}}}_type = {{{type}}};
+        static constexpr kotekan::DataType {{{name}}}_type = kotekan::{{{type}}};
         {{^isscalar}}
             enum {{{name}}}_indices {
                 {{#axes}}
@@ -111,7 +112,7 @@ private:
                     {{{length}}},
                 {{/axes}}
             };
-            static constexpr std::ptrdiff_t {{{name}}}_length = chord_datatype_bytes({{{name}}}_type)
+            static constexpr std::ptrdiff_t {{{name}}}_length = type_total_bytes({{{name}}}_type)
                 {{#axes}}
                     * {{{length}}}
                 {{/axes}}
@@ -129,7 +130,7 @@ private:
                 {{/axes}}
                 {{{name}}}_calc_stride({{{name}}}_rank),
             };
-            static_assert({{{name}}}_length == chord_datatype_bytes({{{name}}}_type) * {{{name}}}_strides[{{{name}}}_rank]);
+            static_assert({{{name}}}_length == type_total_bytes({{{name}}}_type) * {{{name}}}_strides[{{{name}}}_rank]);
         {{/isscalar}}
         //
     {{/kernel_arguments}}
@@ -151,9 +152,9 @@ private:
     {{/kernel_arguments}}
 
     static constexpr std::ptrdiff_t E_T_sample_bytes =
-        chord_datatype_bytes(E_type) * E_lengths[E_index_D] * E_lengths[E_index_P] * E_lengths[E_index_F];
+        type_total_bytes(E_type) * E_lengths[E_index_D] * E_lengths[E_index_P] * E_lengths[E_index_F];
     static constexpr std::ptrdiff_t Ebar_Tbar_sample_bytes =
-        chord_datatype_bytes(Ebar_type) * Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P] * Ebar_lengths[Ebar_index_Fbar];
+        type_total_bytes(Ebar_type) * Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P] * Ebar_lengths[Ebar_index_Fbar];
 
     RingBuffer* input_ringbuf_signal;
     RingBuffer* output_ringbuf_signal;
@@ -604,15 +605,38 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     DEBUG("Finished CUDA {{{kernel_name}}} on GPU frame {:d}", gpu_frame_id);
 
     // Check error codes
-    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
-                                                      (const std::int32_t*)&*info_host.end());
+    std::uint32_t error_code = 0;
+    for (int block = 0; block < blocks; ++block) {
+        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                const std::ptrdiff_t i =
+                    info_strides[info_index_thread] * thread +
+                    info_strides[info_index_warp] * warp +
+                    info_strides[info_index_block] * block;
+                const std::uint32_t val = *(const std::uint32_t*)&info_host[i];
+                using std::max;
+                error_code = max(error_code, val);
+            }
+        }
+    }
     if (error_code != 0)
-        ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
+        ERROR("CUDA kernel {{{kernel_name}}} returned error code: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.size() * blocks / max_blocks; ++i)
-        if (info_host[i] != 0)
-            ERROR("cuda{{{kernel_name}}} returned 'info' value {:d} at index {:d} (zero indicates no error)",
-                info_host[i], i);
+    for (int block = 0; block < blocks; ++block) {
+        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                const std::ptrdiff_t i =
+                    info_strides[info_index_thread] * thread +
+                    info_strides[info_index_warp] * warp +
+                    info_strides[info_index_block] * block;
+                const std::uint32_t val = ((const std::uint32_t*)info_host.data())[i];
+                if (val != 0)
+                    ERROR("CUDA kernel {{{kernel_name}}} returned 'info' value {:d} "
+                          "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates no error)",
+                          val, thread, warp, block, i);
+            }
+        }
+    }
 #endif
 
 #ifdef DEBUGGING

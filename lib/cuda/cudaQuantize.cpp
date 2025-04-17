@@ -1,5 +1,6 @@
 #include "cudaQuantize.hpp"
 
+#include "DataType.hpp"
 #include "chordMetadata.hpp"
 #include "cudaUtils.hpp"
 #include "mma.h"
@@ -67,7 +68,7 @@ cudaEvent_t cudaQuantize::execute(cudaPipelineState&, const std::vector<cudaEven
     assert(metadata_is_chord(in_mc));
     const std::shared_ptr<const chordMetadata> in_meta = get_chord_metadata(in_mc);
     assert(in_meta->get_name() == "I2");
-    assert(in_meta->type == chordDataType::float16);
+    assert(in_meta->type == kotekan::float16);
     assert(in_meta->dims == 3);
     assert(in_meta->get_dimension_name(0) == "R");
     assert(in_meta->get_dimension_name(1) == "Fbar");
@@ -75,7 +76,7 @@ cudaEvent_t cudaQuantize::execute(cudaPipelineState&, const std::vector<cudaEven
 
     size_t input_frame_len = (size_t)_num_chunks * CHUNK_SIZE * sizeof(float16_t);
     assert(input_frame_len
-           == chord_datatype_bytes(in_meta->type) * in_meta->dim[0] * in_meta->dim[1]
+           == type_total_bytes(in_meta->type) * in_meta->dim[0] * in_meta->dim[1]
                   * in_meta->dim[2]);
 
     void* input_memory = device.get_gpu_memory_array(_gpu_mem_input, gpu_frame_id,
@@ -111,7 +112,7 @@ cudaEvent_t cudaQuantize::execute(cudaPipelineState&, const std::vector<cudaEven
     const std::shared_ptr<chordMetadata> out_meta_beam = get_chord_metadata(out_mc_beam);
     *out_meta_beam = *in_meta;
     out_meta_beam->set_name("I3");
-    out_meta_beam->type = chordDataType::uint4p4;
+    out_meta_beam->type = kotekan::uint4x2;
     // The data are stored as 4-bit integers, 2 values per byte
     assert(in_meta->dim[0] % 2 == 0);
     out_meta_beam->set_array_dimension(0, in_meta->dim[0] / 2, "R");
@@ -128,7 +129,7 @@ cudaEvent_t cudaQuantize::execute(cudaPipelineState&, const std::vector<cudaEven
     const std::shared_ptr<chordMetadata> out_meta_meanstd = get_chord_metadata(out_mc_meanstd);
     *out_meta_meanstd = *in_meta;
     out_meta_meanstd->set_name("I3meanstd");
-    out_meta_meanstd->type = chordDataType::float16;
+    out_meta_meanstd->type = kotekan::float16;
     out_meta_meanstd->dims = in_meta->dims + 1;
     out_meta_meanstd->set_array_dimension(0, in_meta->dim[0], "R");
     out_meta_meanstd->set_array_dimension(1, in_meta->dim[1], "Fbar");

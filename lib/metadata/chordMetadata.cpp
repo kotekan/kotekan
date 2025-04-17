@@ -2,6 +2,8 @@
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, chordMetadata);
 
+#if 0
+
 const char* chord_datatype_string(chordDataType type) {
     switch (type) {
         case bool8:
@@ -74,9 +76,11 @@ chordDataType chord_datatype_from_string(const std::string& type) {
     return unknown_type;
 }
 
+#endif
+
 chordMetadata::chordMetadata() :
-    frame_counter(-1), type(unknown_type), dims(-1), offset(0), n_one_hot(-1), sample0_offset(-1),
-    offset_downsampling(-1), nfreq(-1), ndishes(-1), n_dish_locations_ew(-1),
+    frame_counter(-1), type(kotekan::unknown_type), dims(-1), offset(0), n_one_hot(-1),
+    sample0_offset(-1), offset_downsampling(-1), nfreq(-1), ndishes(-1), n_dish_locations_ew(-1),
     n_dish_locations_ns(-1), dish_index(nullptr) {
     name[0] = '\0';
     for (int d = 0; d < CHORD_META_MAX_DIM; ++d) {
@@ -165,7 +169,7 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
     for (int i = 0; i < CHORD_META_MAX_DIMNAME; i++) {
         name[i] = fmt->name[i];
     }
-    type = (chordDataType)fmt->type;
+    type = (kotekan::DataType)fmt->type;
     assert(CHORD_META_MAX_DIM == fmt->max_dim);
     assert(CHORD_META_MAX_DIMNAME == fmt->max_dimname);
     assert(CHORD_META_MAX_FREQ == fmt->max_freq);

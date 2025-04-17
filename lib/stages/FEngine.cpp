@@ -518,7 +518,7 @@ void FEngine::main_thread() {
         dish_positions_metadata->frame_counter = 0;
         std::strncpy(dish_positions_metadata->name, "dish_positions",
                      sizeof dish_positions_metadata->name);
-        dish_positions_metadata->type = float32;
+        dish_positions_metadata->type = kotekan::float32;
         dish_positions_metadata->dims = 2;
         assert(dish_positions_metadata->dims <= CHORD_META_MAX_DIM);
         std::strncpy(dish_positions_metadata->dim_name[0], "D",
@@ -578,7 +578,7 @@ void FEngine::main_thread() {
         scatter_indices_metadata->frame_counter = 0;
         std::strncpy(scatter_indices_metadata->name, "scatter_indices",
                      sizeof scatter_indices_metadata->name);
-        scatter_indices_metadata->type = int32;
+        scatter_indices_metadata->type = kotekan::int32;
         scatter_indices_metadata->dims = 2;
         assert(scatter_indices_metadata->dims <= CHORD_META_MAX_DIM);
         std::strncpy(scatter_indices_metadata->dim_name[0], "P",
@@ -635,7 +635,7 @@ void FEngine::main_thread() {
             get_chord_metadata(bf_mask_buffer, bf_mask_frame_id);
         bf_mask_metadata->frame_counter = 0;
         std::strncpy(bf_mask_metadata->name, "bf_mask", sizeof bf_mask_metadata->name);
-        bf_mask_metadata->type = int8;
+        bf_mask_metadata->type = kotekan::int8;
         bf_mask_metadata->dims = 2;
         assert(bf_mask_metadata->dims <= CHORD_META_MAX_DIM);
         std::strncpy(bf_mask_metadata->dim_name[0], "P", sizeof bf_mask_metadata->dim_name[0]);
@@ -727,7 +727,7 @@ void FEngine::main_thread() {
         bb_beam_positions_metadata->frame_counter = 0;
         std::strncpy(bb_beam_positions_metadata->name, "bb_beam_positions",
                      sizeof bb_beam_positions_metadata->name);
-        bb_beam_positions_metadata->type = float32;
+        bb_beam_positions_metadata->type = kotekan::float32;
         bb_beam_positions_metadata->dims = 2;
         assert(bb_beam_positions_metadata->dims <= CHORD_META_MAX_DIM);
         std::strncpy(bb_beam_positions_metadata->dim_name[0], "B",
@@ -805,7 +805,7 @@ void FEngine::main_thread() {
         std::shared_ptr<chordMetadata> const A_metadata = get_chord_metadata(A_buffer, A_frame_id);
         A_metadata->frame_counter = 0; /*A_frame_index;*/
         std::strncpy(A_metadata->name, "A", sizeof A_metadata->name);
-        A_metadata->type = int8;
+        A_metadata->type = kotekan::int8;
         A_metadata->dims = 5;
         assert(A_metadata->dims <= CHORD_META_MAX_DIM);
         std::strncpy(A_metadata->dim_name[0], "F", sizeof A_metadata->dim_name[0]);
@@ -869,7 +869,7 @@ void FEngine::main_thread() {
         std::shared_ptr<chordMetadata> const s_metadata = get_chord_metadata(s_buffer, s_frame_id);
         s_metadata->frame_counter = s_frame_index;
         std::strncpy(s_metadata->name, "s", sizeof s_metadata->name);
-        s_metadata->type = int32;
+        s_metadata->type = kotekan::int32;
         s_metadata->dims = 3;
         assert(s_metadata->dims <= CHORD_META_MAX_DIM);
         std::strncpy(s_metadata->dim_name[0], "F", sizeof s_metadata->dim_name[0]);
@@ -942,7 +942,7 @@ void FEngine::main_thread() {
                 get_chord_metadata(G_buffers[Ufactor], G_frame_id);
             G_metadata->frame_counter = G_frame_index;
             std::snprintf(G_metadata->name, sizeof G_metadata->name, "G_U%d", U);
-            G_metadata->type = float16;
+            G_metadata->type = kotekan::float16;
             G_metadata->dims = 1;
             assert(G_metadata->dims <= CHORD_META_MAX_DIM);
             std::strncpy(G_metadata->dim_name[0], "Fbar", sizeof G_metadata->dim_name[0]);
@@ -1034,7 +1034,7 @@ void FEngine::main_thread() {
                 get_chord_metadata(W1_buffers[Ufactor], W1_frame_id);
             W1_metadata->frame_counter = W1_frame_index;
             std::strncpy(W1_metadata->name, "W", sizeof W1_metadata->name);
-            W1_metadata->type = float16;
+            W1_metadata->type = kotekan::float16;
             W1_metadata->dims = 5;
             assert(W1_metadata->dims <= CHORD_META_MAX_DIM);
             std::strncpy(W1_metadata->dim_name[0], "F", sizeof W1_metadata->dim_name[0]);
@@ -1203,7 +1203,7 @@ void FEngine::main_thread() {
             get_chord_metadata(W2_buffer, W2_frame_id);
         W2_metadata->frame_counter = W2_frame_index;
         std::strncpy(W2_metadata->name, "W2", sizeof W2_metadata->name);
-        W2_metadata->type = float16;
+        W2_metadata->type = kotekan::float16;
         W2_metadata->dims = 4;
         assert(W2_metadata->dims <= CHORD_META_MAX_DIM);
         std::strncpy(W2_metadata->dim_name[0], "Fbar", sizeof W2_metadata->dim_name[0]);
@@ -1317,7 +1317,7 @@ void FEngine::main_thread() {
                 get_chord_metadata(E_buffer, E_frame_id);
             E_metadata->frame_counter = E_frame_index;
             std::strncpy(E_metadata->name, "E", sizeof E_metadata->name);
-            E_metadata->type = int4p4chime;
+            E_metadata->type = kotekan::int4x2chime;
             E_metadata->dims = 4;
             assert(E_metadata->dims <= CHORD_META_MAX_DIM);
             std::strncpy(E_metadata->dim_name[0], "T", sizeof E_metadata->dim_name[0]);
@@ -1390,7 +1390,7 @@ void FEngine::main_thread() {
                 get_chord_metadata(pl_mask_buffer, pl_mask_frame_id);
             pl_mask_metadata->frame_counter = E_frame_index;
             std::strncpy(pl_mask_metadata->name, "pl_mask", sizeof pl_mask_metadata->name);
-            pl_mask_metadata->type = bool8;
+            pl_mask_metadata->type = kotekan::uint1x8;
             pl_mask_metadata->dims = 5;
             assert(pl_mask_metadata->dims <= CHORD_META_MAX_DIM);
             std::strncpy(pl_mask_metadata->dim_name[0], "T16hi8",
@@ -1488,7 +1488,7 @@ void FEngine::main_thread() {
                 get_chord_metadata(J_buffer, J_frame_id);
             J_metadata->frame_counter = J_frame_index;
 	    std::strncpy(J_metadata->name, "J", sizeof J_metadata->name);
-            J_metadata->type = int4p4;
+            J_metadata->type = kotekan::int4x2;
             J_metadata->dims = 4;
             assert(J_metadata->dims <= CHORD_META_MAX_DIM);
             std::strncpy(J_metadata->dim_name[0], "B", sizeof J_metadata->dim_name[0]);
@@ -1576,7 +1576,7 @@ void FEngine::main_thread() {
                 get_chord_metadata(I1_buffer, I1_frame_id);
             I1_metadata->frame_counter = I1_frame_index;
 	    std::strncpy(I1_metadata->name, "I1", sizeof I1_metadata->name);
-            I1_metadata->type = float16;
+            I1_metadata->type = kotekan::float16;
             I1_metadata->dims = 4;
             assert(I1_metadata->dims <= CHORD_META_MAX_DIM);
             std::strncpy(I1_metadata->dim_name[0], "Ttilde", sizeof I1_metadata->dim_name[0]);

@@ -1,4 +1,5 @@
 #include <DataType.hpp>
+#include <unordered_map>
 
 namespace kotekan {
 
@@ -39,6 +40,31 @@ std::string type_to_string(DataType type) {
         default:
             return "error_type";
     }
+}
+
+const std::unordered_map<std::string, DataType> string_to_type_map{
+    {"uint1x8", uint1x8},         //
+    {"uint4x2", uint4x2},         //
+    {"uint8", uint8},             //
+    {"uint16", uint16},           //
+    {"uint32", uint32},           //
+    {"uint64", uint64},           //
+    {"int4x2", int4x2},           //
+    {"int4x2chime", int4x2chime}, //
+    {"int8", int8},               //
+    {"int16", int16},             //
+    {"int32", int32},             //
+    {"int64", int64},             //
+    {"float16", float16},         //
+    {"float32", float32},         //
+    {"float64", float64},         //
+};
+
+DataType string_to_type(const std::string& type_name) {
+    const auto iter = string_to_type_map.find(type_name);
+    if (iter == string_to_type_map.end())
+        return unknown_type;
+    return iter->second;
 }
 
 std::ostream& operator<<(std::ostream& os, DataType type) {

@@ -18,6 +18,8 @@
 #define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
 #pragma pack()
 
+#if 0
+
 // TODO: Switch to `chord::DataType` instead
 enum chordDataType {
     unknown_type,
@@ -232,6 +234,8 @@ constexpr std::size_t chord_datatype_bytes(chordDataType type) {
 const char* chord_datatype_string(chordDataType type);
 chordDataType chord_datatype_from_string(const std::string& type);
 
+#endif
+
 // Maximum number of frequencies in metadata array
 const int CHORD_META_MAX_FREQ = 1024;
 
@@ -258,8 +262,9 @@ public:
 
     int frame_counter;
 
+    // TODO: Replace by NDArray
     char name[CHORD_META_MAX_DIMNAME]; // "E", "J", "I", etc
-    chordDataType type;
+    kotekan::DataType type;
 
     int dims;
     int dim[CHORD_META_MAX_DIM];
@@ -289,7 +294,7 @@ public:
 
     size_t sample_bytes() const {
         // The number of bytes per sample is the number of bytes needed to store one array slice.
-        return chord_datatype_bytes(type) * stride[0];
+        return type_total_bytes(type) * stride[0];
     }
 
     // Per-frequency arrays
@@ -339,7 +344,7 @@ public:
     }
 
     std::string get_type_string() const {
-        return std::string(chord_datatype_string(type));
+        return type_to_string(type);
     }
 
     std::string get_dimensions_string() const {

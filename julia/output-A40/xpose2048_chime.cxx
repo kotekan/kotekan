@@ -6,6 +6,7 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
+#include <DataType.hpp>
 #include <algorithm>
 #include <array>
 #include <bufferContainer.hpp>
@@ -54,7 +55,7 @@ private:
             ptr(static_cast<T*>(ptr)), maxsize(bytes), dims{std::int64_t(maxsize / sizeof(T))},
             len(maxsize / sizeof(T)) {}
     };
-    using array_desc = CuDeviceArray<int32_t, 1>;
+    using array_desc = CuDeviceArray<std::int32_t, 1>;
 
     // Kernel design parameters:
     static constexpr int cuda_number_of_complex_components = 2;
@@ -89,23 +90,23 @@ private:
 
     // Tinmin: Tinmin
     static constexpr const char* Tinmin_name = "Tinmin";
-    static constexpr chordDataType Tinmin_type = int32;
+    static constexpr kotekan::DataType Tinmin_type = kotekan::int32;
     //
     // Tinmax: Tinmax
     static constexpr const char* Tinmax_name = "Tinmax";
-    static constexpr chordDataType Tinmax_type = int32;
+    static constexpr kotekan::DataType Tinmax_type = kotekan::int32;
     //
     // Tmin: Tmin
     static constexpr const char* Tmin_name = "Tmin";
-    static constexpr chordDataType Tmin_type = int32;
+    static constexpr kotekan::DataType Tmin_type = kotekan::int32;
     //
     // Tmax: Tmax
     static constexpr const char* Tmax_name = "Tmax";
-    static constexpr chordDataType Tmax_type = int32;
+    static constexpr kotekan::DataType Tmax_type = kotekan::int32;
     //
     // Ein: gpu_mem_input_voltage
     static constexpr const char* Ein_name = "Ein";
-    static constexpr chordDataType Ein_type = int4p4chime;
+    static constexpr kotekan::DataType Ein_type = kotekan::int4x2chime;
     enum Ein_indices {
         Ein_index_D,
         Ein_index_P,
@@ -125,8 +126,7 @@ private:
         16,
         65536,
     };
-    static constexpr std::ptrdiff_t Ein_length =
-        chord_datatype_bytes(Ein_type) * 1024 * 2 * 16 * 65536;
+    static constexpr std::ptrdiff_t Ein_length = type_total_bytes(Ein_type) * 1024 * 2 * 16 * 65536;
     static_assert(Ein_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto Ein_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -138,11 +138,11 @@ private:
         Ein_calc_stride(Ein_index_D), Ein_calc_stride(Ein_index_P), Ein_calc_stride(Ein_index_F),
         Ein_calc_stride(Ein_index_T), Ein_calc_stride(Ein_rank),
     };
-    // static_assert(Ein_length == chord_datatype_bytes(Ein_type) * Ein_strides[Ein_rank]);
+    // static_assert(Ein_length == type_total_bytes(Ein_type) * Ein_strides[Ein_rank]);
     //
     // E: gpu_mem_output_voltage
     static constexpr const char* E_name = "E";
-    static constexpr chordDataType E_type = int4p4chime;
+    static constexpr kotekan::DataType E_type = kotekan::int4x2chime;
     enum E_indices {
         E_index_D,
         E_index_P,
@@ -162,7 +162,7 @@ private:
         16,
         65536,
     };
-    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 1024 * 2 * 16 * 65536;
+    static constexpr std::ptrdiff_t E_length = type_total_bytes(E_type) * 1024 * 2 * 16 * 65536;
     static_assert(E_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto E_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -174,11 +174,11 @@ private:
         E_calc_stride(E_index_D), E_calc_stride(E_index_P), E_calc_stride(E_index_F),
         E_calc_stride(E_index_T), E_calc_stride(E_rank),
     };
-    // static_assert(E_length == chord_datatype_bytes(E_type) * E_strides[E_rank]);
+    // static_assert(E_length == type_total_bytes(E_type) * E_strides[E_rank]);
     //
     // scatter_indices: gpu_mem_scatter_indices
     static constexpr const char* scatter_indices_name = "scatter_indices";
-    static constexpr chordDataType scatter_indices_type = int32;
+    static constexpr kotekan::DataType scatter_indices_type = kotekan::int32;
     enum scatter_indices_indices {
         scatter_indices_index_D,
         scatter_indices_index_P,
@@ -193,7 +193,7 @@ private:
         2,
     };
     static constexpr std::ptrdiff_t scatter_indices_length =
-        chord_datatype_bytes(scatter_indices_type) * 1024 * 2;
+        type_total_bytes(scatter_indices_type) * 1024 * 2;
     static_assert(scatter_indices_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto scatter_indices_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -207,12 +207,12 @@ private:
             scatter_indices_calc_stride(scatter_indices_index_P),
             scatter_indices_calc_stride(scatter_indices_rank),
         };
-    // static_assert(scatter_indices_length == chord_datatype_bytes(scatter_indices_type) *
+    // static_assert(scatter_indices_length == type_total_bytes(scatter_indices_type) *
     // scatter_indices_strides[scatter_indices_rank]);
     //
     // info: gpu_mem_info
     static constexpr const char* info_name = "info";
-    static constexpr chordDataType info_type = int32;
+    static constexpr kotekan::DataType info_type = kotekan::int32;
     enum info_indices {
         info_index_thread,
         info_index_warp,
@@ -229,7 +229,7 @@ private:
         16,
         128,
     };
-    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 16 * 128;
+    static constexpr std::ptrdiff_t info_length = type_total_bytes(info_type) * 32 * 16 * 128;
     static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -243,7 +243,7 @@ private:
         info_calc_stride(info_index_block),
         info_calc_stride(info_rank),
     };
-    // static_assert(info_length == chord_datatype_bytes(info_type) * info_strides[info_rank]);
+    // static_assert(info_length == type_total_bytes(info_type) * info_strides[info_rank]);
     //
 
     // Kotekan buffer names
@@ -256,9 +256,9 @@ private:
     std::vector<std::uint8_t> info_host;
 
     static constexpr std::ptrdiff_t Ein_T_sample_bytes =
-        chord_datatype_bytes(Ein_type) * Ein_lengths[Ein_index_D] * Ein_lengths[Ein_index_P]
+        type_total_bytes(Ein_type) * Ein_lengths[Ein_index_D] * Ein_lengths[Ein_index_P]
         * Ein_lengths[Ein_index_F];
-    static constexpr std::ptrdiff_t E_T_sample_bytes = chord_datatype_bytes(E_type)
+    static constexpr std::ptrdiff_t E_T_sample_bytes = type_total_bytes(E_type)
                                                        * E_lengths[E_index_D] * E_lengths[E_index_P]
                                                        * E_lengths[E_index_F];
 
@@ -601,6 +601,8 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
             CHECK_CUDA_ERROR(cudaMemsetAsync((std::uint8_t*)E_memory + Toffset * Tstride, 0x00,
                                              Tlength * Tstride, device.getStream(cuda_stream_id)));
         } // for chunk
+        CHECK_CUDA_ERROR(
+            cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
         DEBUG("poisoning done.");
     }
 #endif
@@ -627,19 +629,21 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-    DEBUG("Finished CUDA Transpose2048_chime on GPU frame {:d}", gpu_frame_id);
+    DEBUG("Finished CUDA kernel Transpose2048_chime on GPU frame {:d}", gpu_frame_id);
 
     // Check error codes
     const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
                                                       (const std::int32_t*)&*info_host.end());
     if (error_code != 0)
-        ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
+        ERROR("CUDA kernel Transpose2048_chime returned error code: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.size(); ++i)
-        if (info_host[i] != 0)
-            ERROR("cudaTranspose2048_chime returned 'info' value {:d} at index {:d} (zero "
-                  "indicates no error)",
-                  info_host[i], i);
+    for (std::size_t i = 0; i < info_host.size() / type_total_bytes(info_type); ++i) {
+        const std::int32_t val = ((const std::int32_t*)info_host.data())[i];
+        if (val != 0)
+            ERROR("CUDA kernel Transpose2048_chime returned 'info' value {:d} at index {:d} "
+                  "(zero indicates no error)",
+                  val, i);
+    }
 #endif
 
 #ifdef DEBUGGING

@@ -6,6 +6,7 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
+#include <DataType.hpp>
 #include <algorithm>
 #include <array>
 #include <bufferContainer.hpp>
@@ -55,7 +56,7 @@ private:
             dims{std::int64_t(maxsize / sizeof(T))},
             len(maxsize / sizeof(T)) {}
     };
-    using array_desc = CuDeviceArray<int32_t, 1>;
+    using array_desc = CuDeviceArray<std::int32_t, 1>;
 
     // Kernel design parameters:
     {{#kernel_design_parameters}}
@@ -92,7 +93,7 @@ private:
     {{#kernel_arguments}}
         // {{{name}}}: {{{kotekan_name}}}
         static constexpr const char *{{{name}}}_name = "{{{name}}}";
-        static constexpr chordDataType {{{name}}}_type = {{{type}}};
+        static constexpr kotekan::DataType {{{name}}}_type = kotekan::{{{type}}};
         {{^isscalar}}
             enum {{{name}}}_indices {
                 {{#axes}}
@@ -110,7 +111,7 @@ private:
                     {{{length}}},
                 {{/axes}}
             };
-            static constexpr std::ptrdiff_t {{{name}}}_length = chord_datatype_bytes({{{name}}}_type)
+            static constexpr std::ptrdiff_t {{{name}}}_length = type_total_bytes({{{name}}}_type)
                 {{#axes}}
                     * {{{length}}}
                 {{/axes}}
@@ -128,7 +129,7 @@ private:
                 {{/axes}}
                 {{{name}}}_calc_stride({{{name}}}_rank),
             };
-            // static_assert({{{name}}}_length == chord_datatype_bytes({{{name}}}_type) * {{{name}}}_strides[{{{name}}}_rank]);
+            // static_assert({{{name}}}_length == type_total_bytes({{{name}}}_type) * {{{name}}}_strides[{{{name}}}_rank]);
         {{/isscalar}}
         //
     {{/kernel_arguments}}
@@ -150,9 +151,9 @@ private:
     {{/kernel_arguments}}
 
     static constexpr std::ptrdiff_t Ein_T_sample_bytes =
-        chord_datatype_bytes(Ein_type) * Ein_lengths[Ein_index_D] * Ein_lengths[Ein_index_P] * Ein_lengths[Ein_index_F];
+        type_total_bytes(Ein_type) * Ein_lengths[Ein_index_D] * Ein_lengths[Ein_index_P] * Ein_lengths[Ein_index_F];
     static constexpr std::ptrdiff_t E_T_sample_bytes =
-        chord_datatype_bytes(E_type) * E_lengths[E_index_D] * E_lengths[E_index_P] * E_lengths[E_index_F];
+        type_total_bytes(E_type) * E_lengths[E_index_D] * E_lengths[E_index_P] * E_lengths[E_index_F];
 
     RingBuffer* input_ringbuf_signal;
     RingBuffer* output_ringbuf_signal;
@@ -511,6 +512,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                                              Tlength * Tstride,
                                              device.getStream(cuda_stream_id)));
         } // for chunk
+        CHECK_CUDA_ERROR(cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
         DEBUG("poisoning done.");
     }
 #endif
@@ -551,18 +553,21 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {{/kernel_arguments}}
 
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-    DEBUG("Finished CUDA {{{kernel_name}}} on GPU frame {:d}", gpu_frame_id);
+    DEBUG("Finished CUDA kernel {{{kernel_name}}} on GPU frame {:d}", gpu_frame_id);
 
     // Check error codes
     const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
                                                       (const std::int32_t*)&*info_host.end());
     if (error_code != 0)
-        ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
+        ERROR("CUDA kernel {{{kernel_name}}} returned error code: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.size(); ++i)
-        if (info_host[i] != 0)
-            ERROR("cuda{{{kernel_name}}} returned 'info' value {:d} at index {:d} (zero indicates no error)",
-                info_host[i], i);
+    for (std::size_t i = 0; i < info_host.size() / type_total_bytes(info_type); ++i) {
+        const std::int32_t val = ((const std::int32_t*)info_host.data())[i];
+        if (val != 0)
+            ERROR("CUDA kernel {{{kernel_name}}} returned 'info' value {:d} at index {:d} "
+                  "(zero indicates no error)",
+                  val, i);
+    }
 #endif
 
 #ifdef DEBUGGING

@@ -147,37 +147,37 @@ void hdf5FileWrite::main_thread() {
             const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
 
             switch (metadata->type) {
-                case int4p4:
-                case int4p4chime:
+                case kotekan::int4x2:
+                case kotekan::int4x2chime:
                     type = H5T_NATIVE_UINT8;
                     type_size = 1;
                     break;
-                case int8:
+                case kotekan::int8:
                     type = H5T_NATIVE_INT8;
                     type_size = 1;
                     break;
-                case int16:
+                case kotekan::int16:
                     type = H5T_NATIVE_INT16;
                     type_size = 2;
                     break;
-                case int32:
+                case kotekan::int32:
                     type = H5T_NATIVE_INT32;
                     type_size = 4;
                     break;
-                case int64:
+                case kotekan::int64:
                     type = H5T_NATIVE_INT64;
                     type_size = 8;
                     break;
-                case float16:
+                case kotekan::float16:
                     // TODO: Define HDF5 float16 type
                     type = H5T_NATIVE_UINT16;
                     type_size = 2;
                     break;
-                case float32:
+                case kotekan::float32:
                     type = H5T_NATIVE_FLOAT;
                     type_size = 4;
                     break;
-                case float64:
+                case kotekan::float64:
                     type = H5T_NATIVE_DOUBLE;
                     type_size = 8;
                     break;

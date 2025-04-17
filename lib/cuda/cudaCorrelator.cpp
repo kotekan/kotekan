@@ -120,7 +120,7 @@ cudaEvent_t cudaCorrelator::execute(cudaPipelineState&, const std::vector<cudaEv
         //  2 complex components)
         // In int32 format.
         out_meta->set_name("N2");
-        out_meta->type = chordDataType::int32;
+        out_meta->type = kotekan::int32;
         out_meta->dims = 6;
         out_meta->set_array_dimension(0, num_subintegrations, "Tc");
         out_meta->set_array_dimension(1, _num_local_freq, "F");

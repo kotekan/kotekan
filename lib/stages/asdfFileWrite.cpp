@@ -1,3 +1,4 @@
+#include <DataType.hpp>
 #include <Stage.hpp>
 #include <StageFactory.hpp>
 #include <asdf/asdf.hxx>
@@ -21,37 +22,37 @@
 #include <visUtil.hpp>
 
 namespace {
-ASDF::scalar_type_id_t chord2asdf(const chordDataType type) {
+ASDF::scalar_type_id_t chord2asdf(const kotekan::DataType type) {
     switch (type) {
-        case bool8:
+        case kotekan::uint1x8:
             return ASDF::id_uint8; // TODO: Define ASDF bool8 type
-        case uint4p4:
+        case kotekan::uint4x2:
             return ASDF::id_uint8; // TODO: Define ASDF uint4+4 type
-        case uint8:
+        case kotekan::uint8:
             return ASDF::id_uint8;
-        case uint16:
+        case kotekan::uint16:
             return ASDF::id_uint16;
-        case uint32:
+        case kotekan::uint32:
             return ASDF::id_uint32;
-        case uint64:
+        case kotekan::uint64:
             return ASDF::id_uint64;
-        case int4p4:
+        case kotekan::int4x2:
             return ASDF::id_uint8; // TODO: Define ASDF int4+4 type
-        case int4p4chime:
+        case kotekan::int4x2chime:
             return ASDF::id_uint8; // TODO: Define ASDF int4+4 type
-        case int8:
+        case kotekan::int8:
             return ASDF::id_int8;
-        case int16:
+        case kotekan::int16:
             return ASDF::id_int16;
-        case int32:
+        case kotekan::int32:
             return ASDF::id_int32;
-        case int64:
+        case kotekan::int64:
             return ASDF::id_int64;
-        case float16:
+        case kotekan::float16:
             return ASDF::id_float16;
-        case float32:
+        case kotekan::float32:
             return ASDF::id_float32;
-        case float64:
+        case kotekan::float64:
             return ASDF::id_float64;
         default:
             assert(0);
@@ -153,7 +154,7 @@ public:
 
                 // Create ASDF ndarray
                 const ASDF::scalar_type_id_t type = chord2asdf(meta->type);
-                const std::size_t typesize = chord_datatype_bytes(meta->type);
+                const std::size_t typesize = type_total_bytes(meta->type);
 
                 const int ndims = meta->dims;
                 std::vector<std::int64_t> dims(ndims);
@@ -189,8 +190,7 @@ public:
                     frame_copy.resize(size * typesize);
                     if (!(meta->stride[meta->dims - 1] == 1))
                         ERROR("name={} type={} dims={} laststride={}", meta->name,
-                              chord_datatype_string(meta->type), meta->dims,
-                              meta->stride[meta->dims - 1]);
+                              type_to_string(meta->type), meta->dims, meta->stride[meta->dims - 1]);
                     if (!(meta->stride[meta->dims - 1] == 1) && meta->dims == 4)
                         for (int d = 0; d < 4; ++d)
                             ERROR("dim[{}]={} stride[{}]={}", d, meta->dim[d], d, meta->stride[d]);

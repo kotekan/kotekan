@@ -218,32 +218,32 @@ void testDataGen::main_thread() {
             n_to_set /= sizeof(int8_t);
             frame8 = (int8_t*)frame;
             if (chordmeta)
-                chordmeta->type = chordDataType::int4p4;
+                chordmeta->type = kotekan::int4x2;
         } else if (type == "const8") {
             n_to_set /= sizeof(int8_t);
             frame8 = (int8_t*)frame;
             if (chordmeta)
-                chordmeta->type = chordDataType::int8;
+                chordmeta->type = kotekan::int8;
         } else if (type == "const16") {
             n_to_set /= sizeof(int16_t);
             frame16 = (int16_t*)frame;
             if (chordmeta)
-                chordmeta->type = chordDataType::int16;
+                chordmeta->type = kotekan::int16;
         } else if (type == "const32") {
             n_to_set /= sizeof(int32_t);
             frame32 = (int32_t*)frame;
             if (chordmeta)
-                chordmeta->type = chordDataType::int32;
+                chordmeta->type = kotekan::int32;
 #if KOTEKAN_FLOAT16
         } else if (type == "constf16") {
             n_to_set /= sizeof(float16_t);
             framef16 = (float16_t*)frame;
             if (chordmeta)
-                chordmeta->type = chordDataType::float16;
+                chordmeta->type = kotekan::float16;
 #endif
         } else if (type == "random_signed") {
             if (chordmeta)
-                chordmeta->type = chordDataType::int4p4;
+                chordmeta->type = kotekan::int4x2;
         }
         if (type == "onehot") {
             int val = value;
@@ -295,7 +295,7 @@ void testDataGen::main_thread() {
                     }
                     chordmeta->dims = (int)_array_shape.size();
                     chordmeta->n_one_hot = chordmeta->dims;
-                    chordmeta->type = chordDataType::int4p4;
+                    chordmeta->type = kotekan::int4x2;
                     // DEBUG("one-hot: nfreq = {:d}, ntime = {:d}", nfreq, ntime);
                     if (nfreq) {
                         assert(nfreq <= CHORD_META_MAX_FREQ);

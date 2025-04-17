@@ -371,7 +371,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     shmem_bytes = kernel_setup.shmem_bytes
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
-    kernel = @cuda launch = false minthreads = num_threads * num_warps blocks_per_sm = num_blocks_per_sm xpose2048_kernel(
+    kernel = @cuda launch = false minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm xpose2048_kernel(
         Int32(0),
         Int32(0),
         Int32(0),
@@ -559,7 +559,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     Dict(
                         "name" => "Ein",
                         "kotekan_name" => "gpu_mem_input_voltage",
-                        "type" => "int4p4chime",
+                        "type" => "int4x2chime",
                         "axes" => [
                             Dict("label" => "D", "length" => D),
                             Dict("label" => "P", "length" => P),
@@ -572,7 +572,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     Dict(
                         "name" => "E",
                         "kotekan_name" => "gpu_mem_output_voltage",
-                        "type" => "int4p4chime",
+                        "type" => "int4x2chime",
                         "axes" => [
                             Dict("label" => "D", "length" => D),
                             Dict("label" => "P", "length" => P),

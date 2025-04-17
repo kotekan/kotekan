@@ -6,6 +6,7 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
+#include <DataType.hpp>
 #include <algorithm>
 #include <array>
 #include <bufferContainer.hpp>
@@ -55,7 +56,7 @@ private:
             dims{std::int64_t(maxsize / sizeof(T))},
             len(maxsize / sizeof(T)) {}
     };
-    using array_desc = CuDeviceArray<int32_t, 1>;
+    using array_desc = CuDeviceArray<std::int32_t, 1>;
 
     // Kernel design parameters:
     {{#kernel_design_parameters}}
@@ -92,7 +93,7 @@ private:
     {{#kernel_arguments}}
         // {{{name}}}: {{{kotekan_name}}}
         static constexpr const char *{{{name}}}_name = "{{{name}}}";
-        static constexpr chordDataType {{{name}}}_type = {{{type}}};
+        static constexpr kotekan::DataType {{{name}}}_type = kotekan::{{{type}}};
         {{^isscalar}}
             enum {{{name}}}_indices {
                 {{#axes}}
@@ -110,7 +111,7 @@ private:
                     {{{length}}},
                 {{/axes}}
             };
-            static constexpr std::ptrdiff_t {{{name}}}_length = chord_datatype_bytes({{{name}}}_type)
+            static constexpr std::ptrdiff_t {{{name}}}_length = type_total_bytes({{{name}}}_type)
                 {{#axes}}
                     * {{{length}}}
                 {{/axes}}
@@ -128,7 +129,7 @@ private:
                 {{/axes}}
                 {{{name}}}_calc_stride({{{name}}}_rank),
             };
-            static_assert({{{name}}}_length == chord_datatype_bytes({{{name}}}_type) * {{{name}}}_strides[{{{name}}}_rank]);
+            static_assert({{{name}}}_length == type_total_bytes({{{name}}}_type) * {{{name}}}_strides[{{{name}}}_rank]);
         {{/isscalar}}
         //
     {{/kernel_arguments}}
@@ -150,9 +151,9 @@ private:
     {{/kernel_arguments}}
 
     static constexpr std::ptrdiff_t Ebar_Tbar_sample_bytes =
-        chord_datatype_bytes(Ebar_type) * Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P] * Ebar_lengths[Ebar_index_Fbar];
+        type_total_bytes(Ebar_type) * Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P] * Ebar_lengths[Ebar_index_Fbar];
     static constexpr std::ptrdiff_t I_Ttilde_sample_bytes =
-        chord_datatype_bytes(I_type) * I_lengths[I_index_beamP] * I_lengths[I_index_beamQ] * I_lengths[I_index_Fbar];
+        type_total_bytes(I_type) * I_lengths[I_index_beamP] * I_lengths[I_index_beamQ] * I_lengths[I_index_Fbar];
 
     RingBuffer* const input_ringbuf_signal;
     RingBuffer* const output_ringbuf_signal;
@@ -274,39 +275,60 @@ std::int64_t cuda{{{kernel_name}}}::num_produced_elements(std::int64_t num_avail
 }
 
 std::int64_t cuda{{{kernel_name}}}::num_processed_elements(std::int64_t num_available_elements) const {
-    assert(num_available_elements >= cuda_granularity_number_of_timesamples);
     return round_down(num_available_elements, cuda_granularity_number_of_timesamples);
 }
 
 int cuda{{{kernel_name}}}::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer
-    DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const std::optional<std::ptrdiff_t> val_in1 = input_ringbuf_signal->wait_without_claiming(unique_name, instance_num, 1);
-    DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
-    if (!val_in1.has_value())
+
+    // Check available samples
+    DEBUG("Checking available input ringbuffer data for frame {:d}...", gpu_frame_id);
+    const std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>> peeked =
+        input_ringbuf_signal->peek_readable(unique_name, instance_num);
+    if (!peeked.has_value())
         return -1;
-    const std::ptrdiff_t input_bytes = val_in1.value();
+    std::ptrdiff_t input_bytes = peeked.value().second;
     DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
+
+wait_for_data:
 
     // How many inputs samples are available?
     const std::ptrdiff_t Tbar_available = div_noremainder(input_bytes, Ebar_Tbar_sample_bytes);
     DEBUG("Available samples:      Tbar_available: {:d}", Tbar_available);
 
-    // How many outputs will we process and consume?
+    // How many inputs will we process and consume?
     const std::ptrdiff_t Tbar_processed = num_processed_elements(Tbar_available);
     const std::ptrdiff_t Tbar_consumed = num_consumed_elements(Tbar_available);
     DEBUG("Will process (samples): Tbar_processed: {:d}", Tbar_processed);
     DEBUG("Will consume (samples): Tbar_consumed:  {:d}", Tbar_consumed);
-    assert(Tbar_processed > 0);
     assert(Tbar_consumed <= Tbar_processed);
     const std::ptrdiff_t Tbar_consumed2 = num_consumed_elements(Tbar_processed);
     assert(Tbar_consumed2 == Tbar_consumed);
 
-    const std::optional<std::ptrdiff_t> val_in2 =
+    // Can we make progress?
+    if (Tbar_consumed <= 0) {
+        // We cannot make progress, we need to wait
+        DEBUG("We cannot make progress, we need to wait for more input");
+
+        DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
+        const std::optional<std::ptrdiff_t> waited =
+            input_ringbuf_signal->wait_without_claiming(unique_name, instance_num, input_bytes + 1);
+        DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
+        if (!waited.has_value())
+            return -1;
+        input_bytes = waited.value();
+        DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
+
+        goto wait_for_data;
+    }
+
+    // Claim inputs
+    assert(Tbar_consumed > 0);
+    const std::optional<std::ptrdiff_t> claimed =
         input_ringbuf_signal->wait_and_claim_readable(unique_name, instance_num, Tbar_consumed * Ebar_Tbar_sample_bytes);
-    if (!val_in2.has_value())
+    if (!claimed.has_value())
         return -1;
-    const std::ptrdiff_t input_cursor = val_in2.value();
+    const std::ptrdiff_t input_cursor = claimed.value();
     DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
     Tbarmin = div_noremainder(input_cursor, Ebar_Tbar_sample_bytes);
     Tbarmax = Tbarmin + Tbar_processed;
@@ -653,18 +675,41 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {{/kernel_arguments}}
 
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-    DEBUG("Finished CUDA {{{kernel_name}}} on GPU frame {:d}", gpu_frame_id);
+    DEBUG("Finished CUDA kernel {{{kernel_name}}} on GPU frame {:d}", gpu_frame_id);
 
     // Check error codes
-    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
-                                                      (const std::int32_t*)&*info_host.end());
+    std::uint32_t error_code = 0;
+    for (int block = 0; block < blocks; ++block) {
+        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                const std::ptrdiff_t i =
+                    info_strides[info_index_thread] * thread +
+                    info_strides[info_index_warp] * warp +
+                    info_strides[info_index_block] * block;
+                const std::uint32_t val = *(const std::uint32_t*)&info_host[i];
+                using std::max;
+                error_code = max(error_code, val);
+            }
+        }
+    }
     if (error_code != 0)
-        ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
+        ERROR("CUDA kernel {{{kernel_name}}} returned error code: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.size() * blocks / max_blocks; ++i)
-        if (info_host[i] != 0)
-            ERROR("cuda{{{kernel_name}}} returned 'info' value {:d} at index {:d} (zero indicates no error)",
-                info_host[i], i);
+    for (int block = 0; block < blocks; ++block) {
+        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                const std::ptrdiff_t i =
+                    info_strides[info_index_thread] * thread +
+                    info_strides[info_index_warp] * warp +
+                    info_strides[info_index_block] * block;
+                const std::uint32_t val = ((const std::uint32_t*)info_host.data())[i];
+                if (val != 0)
+                    ERROR("CUDA kernel {{{kernel_name}}} returned 'info' value {:d} "
+                          "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates no error)",
+                          val, thread, warp, block, i);
+            }
+        }
+    }
 #endif
 
 #ifdef DEBUGGING
@@ -726,18 +771,19 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                     for (std::ptrdiff_t n=0; n<Fbar_out_stride; ++n) {
                         const auto val = I_buffer.at(ttilde * (Fbar_out_length * Fbar_out_stride) + ftilde * Fbar_out_stride + n); 
                         const bool val_is_finite = (val & 0b0111110000000000) != 0b0111110000000000;
-                        if (!val_is_finite)
-                            DEBUG("    U=16 [{},{}]=val={}", ttilde, n, val);
+                        // if (!val_is_finite)
+                        //     DEBUG("    [{},{}]=val={}", ttilde, n, val);
                         any_error |= !val_is_finite;
                         all_error &= !val_is_finite;
                     }
-                    if (any_error)
-                        DEBUG("    U={{{upchannelization_factor}}} [{},{}]=(any={},all={})",
-                              ttilde, ftilde, any_error, all_error);
+                    // if (any_error)
+                    //     DEBUG("    [{},{}]=(any={},all={})",
+                    //           ttilde, ftilde, any_error, all_error);
                     I_found_error |= any_error;
                 }
             }
-            assert(!I_found_error);
+            if (I_found_error)
+                WARN("CUDA kernel {{{kernel_name}}} returned produced non-finite results");
         } // for chunk
         DEBUG("poison check done.");
     }

@@ -74,7 +74,7 @@ class GenericNDArray {
 public:
     virtual ~GenericNDArray() {}
     // The value (element) type
-    virtual DataType get_value_type() const = 0;
+    virtual DataType get_value_datatype() const = 0;
     // The number of bytes for each value (element)
     virtual std::size_t get_value_type_size() const = 0;
     // The rank (number of dimensions)
@@ -109,6 +109,7 @@ class NDArray : public GenericNDArray {
 public:
     // Value (element) type
     using value_type = T;
+    constexpr static DataType value_datatype = GetDataType_v<T>;
     // Rank (number of dimensions)
     constexpr static std::size_t rank = D;
     constexpr static std::size_t value_type_size = sizeof(T);
@@ -296,12 +297,10 @@ public:
         return cend();
     }
 
-    // TODO: Add begin, end iterators?
-
     // For GenericNDArray
 
-    DataType get_value_type() const override {
-        return GetDataType_v<value_type>;
+    DataType get_value_datatype() const override {
+        return value_datatype;
     }
     std::size_t get_value_type_size() const override {
         return value_type_size;

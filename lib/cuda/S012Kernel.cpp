@@ -1,3 +1,5 @@
+#include <DataType.hpp>
+#include <NDArrayBuffer.hpp>
 #include <cassert>
 #include <chordMetadata.hpp>
 #include <cstddef>
@@ -33,19 +35,19 @@ private:
     std::int64_t num_processed_elements(std::int64_t num_available_elements) const;
 
     static constexpr const char* bf_mask_name = "bf_mask";
-    static constexpr chordDataType bf_mask_type = int8;
+    static constexpr kotekan::DataType bf_mask_type = kotekan::int8;
 
     static constexpr const char* pl_mask_name = "pl_mask";
-    static constexpr chordDataType pl_mask_type = bool8;
+    static constexpr kotekan::DataType pl_mask_type = kotekan::uint1x8;
 
     static constexpr const char* E_name = "E";
-    static constexpr chordDataType E_type = int4p4chime;
+    static constexpr kotekan::DataType E_type = kotekan::int4x2chime;
 
     static constexpr const char* S012_name = "S012";
-    static constexpr chordDataType S012_type = uint64;
+    static constexpr kotekan::DataType S012_type = kotekan::uint64;
 
     static constexpr const char* S012tilde_name = "S012tilde";
-    static constexpr chordDataType S012tilde_type = uint64;
+    static constexpr kotekan::DataType S012tilde_type = kotekan::uint64;
 
     // Kotekan buffer names
     const std::string bf_mask_memname;
@@ -72,7 +74,7 @@ private:
 
     // Buffer lengths
     const std::ptrdiff_t bf_mask_length =
-        chord_datatype_bytes(bf_mask_type) * num_dishes * num_polarizations;
+        type_total_bytes(bf_mask_type) * num_dishes * num_polarizations;
 
     // Ringbuffer strides
     const std::ptrdiff_t pl_mask_T128_sample_bytes;
@@ -123,13 +125,12 @@ S012Kernel::S012Kernel(kotekan::Config& config, const std::string& unique_name,
         config.get<double>(unique_name, "rfi_mu_max"),
         rfi_downsampling_factor,
     }),
-    pl_mask_T128_sample_bytes(chord_datatype_bytes(pl_mask_type) * 8 * num_dishes
-                              * num_polarizations * num_frequencies / 4),
-    E_T_sample_bytes(chord_datatype_bytes(E_type) * num_dishes * num_polarizations
-                     * num_frequencies),
-    S012_Tcoarse_sample_bytes(chord_datatype_bytes(S012_type) * num_dishes * num_polarizations * 3
+    pl_mask_T128_sample_bytes(type_total_bytes(pl_mask_type) * 8 * num_dishes * num_polarizations
+                              * num_frequencies / 4),
+    E_T_sample_bytes(type_total_bytes(E_type) * num_dishes * num_polarizations * num_frequencies),
+    S012_Tcoarse_sample_bytes(type_total_bytes(S012_type) * num_dishes * num_polarizations * 3
                               * num_frequencies),
-    S012tilde_Tcoarse_sample_bytes(chord_datatype_bytes(S012tilde_type) * 3 * num_frequencies) {
+    S012tilde_Tcoarse_sample_bytes(type_total_bytes(S012tilde_type) * 3 * num_frequencies) {
     // Ensure max_num_times is a power of two
     if (max_num_times <= 0 || ((max_num_times & (max_num_times - 1)) != 0))
         FATAL_ERROR("max_num_times is not a power of 2");
@@ -137,11 +138,11 @@ S012Kernel::S012Kernel(kotekan::Config& config, const std::string& unique_name,
     // For pl_mask_T128_sample_bytes
     if (num_frequencies % 4 != 0)
         FATAL_ERROR("num_frequencies % 4 != 0");
-    // if (chord_datatype_bytes(pl_mask_type) * 8 * num_dishes * num_polarizations *
+    // if (type_total_bytes(pl_mask_type) * 8 * num_dishes * num_polarizations *
     // num_frequencies
     //         / 4 % 128
     //     != 0)
-    //     FATAL_ERROR("chord_datatype_bytes(pl_mask_type) * 8 * num_dishes * num_polarizations
+    //     FATAL_ERROR("type_total_bytes(pl_mask_type) * 8 * num_dishes * num_polarizations
     //     * "
     //                 "num_frequencies / 4 % 128 != 0");
 
@@ -356,7 +357,7 @@ cudaEvent_t S012Kernel::execute(cudaPipelineState& /*pipestate*/,
     DEBUG("input bf_mask array: {:s} {:s}", bf_mask_meta->get_type_string(),
           bf_mask_meta->get_dimensions_string());
     assert(std::strncmp(bf_mask_meta->name, bf_mask_name, sizeof bf_mask_meta->name) == 0);
-    assert(bf_mask_meta->type == chordDataType::int8);
+    assert(bf_mask_meta->type == kotekan::int8);
     assert(bf_mask_meta->dims == 2);
     assert(std::strncmp(bf_mask_meta->dim_name[0], "P", sizeof bf_mask_meta->dim_name[0]) == 0);
     assert(std::strncmp(bf_mask_meta->dim_name[1], "D", sizeof bf_mask_meta->dim_name[1]) == 0);
@@ -378,7 +379,7 @@ cudaEvent_t S012Kernel::execute(cudaPipelineState& /*pipestate*/,
     DEBUG("input pl_mask array: {:s} {:s}", pl_mask_meta->get_type_string(),
           pl_mask_meta->get_dimensions_string());
     assert(std::strncmp(pl_mask_meta->name, pl_mask_name, sizeof pl_mask_meta->name) == 0);
-    assert(pl_mask_meta->type == chordDataType::bool8);
+    assert(pl_mask_meta->type == kotekan::uint1x8);
     assert(pl_mask_meta->dims == 5);
     assert(std::strncmp(pl_mask_meta->dim_name[0], "T16hi8", sizeof pl_mask_meta->dim_name[0])
            == 0);
@@ -406,7 +407,7 @@ cudaEvent_t S012Kernel::execute(cudaPipelineState& /*pipestate*/,
     const std::shared_ptr<chordMetadata> E_meta = get_chord_metadata(E_mc);
     DEBUG("input E array: {:s} {:s}", E_meta->get_type_string(), E_meta->get_dimensions_string());
     assert(std::strncmp(E_meta->name, E_name, sizeof E_meta->name) == 0);
-    assert(E_meta->type == chordDataType::int4p4chime);
+    assert(E_meta->type == kotekan::int4x2chime);
     assert(E_meta->dims == 4);
     assert(std::strncmp(E_meta->dim_name[0], "T", sizeof E_meta->dim_name[0]) == 0);
     assert(std::strncmp(E_meta->dim_name[1], "F", sizeof E_meta->dim_name[1]) == 0);
@@ -427,7 +428,7 @@ cudaEvent_t S012Kernel::execute(cudaPipelineState& /*pipestate*/,
     std::shared_ptr<chordMetadata> const S012_meta = get_chord_metadata(S012_mc);
     *S012_meta = *pl_mask_meta;
     std::strncpy(S012_meta->name, S012_name, sizeof S012_meta->name);
-    S012_meta->type = chordDataType::uint64;
+    S012_meta->type = kotekan::uint64;
     S012_meta->dims = 5;
     std::strncpy(S012_meta->dim_name[0], "Tcoarse", sizeof S012_meta->dim_name[0]);
     std::strncpy(S012_meta->dim_name[1], "F", sizeof S012_meta->dim_name[1]);
@@ -452,7 +453,7 @@ cudaEvent_t S012Kernel::execute(cudaPipelineState& /*pipestate*/,
     std::shared_ptr<chordMetadata> const S012tilde_meta = get_chord_metadata(S012tilde_mc);
     *S012tilde_meta = *pl_mask_meta;
     std::strncpy(S012tilde_meta->name, S012tilde_name, sizeof S012tilde_meta->name);
-    S012tilde_meta->type = chordDataType::uint64;
+    S012tilde_meta->type = kotekan::uint64;
     S012tilde_meta->dims = 3;
     std::strncpy(S012tilde_meta->dim_name[0], "Tcoarse", sizeof S012tilde_meta->dim_name[0]);
     std::strncpy(S012tilde_meta->dim_name[1], "F", sizeof S012tilde_meta->dim_name[1]);

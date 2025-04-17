@@ -6,6 +6,7 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
+#include <DataType.hpp>
 #include <algorithm>
 #include <array>
 #include <bufferContainer.hpp>
@@ -55,7 +56,7 @@ private:
             dims{std::int64_t(maxsize / sizeof(T))},
             len(maxsize / sizeof(T)) {}
     };
-    using array_desc = CuDeviceArray<int32_t, 1>;
+    using array_desc = CuDeviceArray<std::int32_t, 1>;
 
     // Kernel design parameters:
     {{#kernel_design_parameters}}
@@ -92,7 +93,7 @@ private:
     {{#kernel_arguments}}
         // {{{name}}}: {{{kotekan_name}}}
         static constexpr const char *{{{name}}}_name = "{{{name}}}";
-        static constexpr chordDataType {{{name}}}_type = {{{type}}};
+        static constexpr kotekan::DataType {{{name}}}_type = kotekan::{{{type}}};
         {{^isscalar}}
             enum {{{name}}}_indices {
                 {{#axes}}
@@ -110,7 +111,7 @@ private:
                     {{{length}}},
                 {{/axes}}
             };
-            static constexpr std::ptrdiff_t {{{name}}}_length = chord_datatype_bytes({{{name}}}_type)
+            static constexpr std::ptrdiff_t {{{name}}}_length = type_total_bytes({{{name}}}_type)
                 {{#axes}}
                     * {{{length}}}
                 {{/axes}}
@@ -128,7 +129,7 @@ private:
                 {{/axes}}
                 {{{name}}}_calc_stride({{{name}}}_rank),
             };
-            static_assert({{{name}}}_length == chord_datatype_bytes({{{name}}}_type) * {{{name}}}_strides[{{{name}}}_rank]);
+            static_assert({{{name}}}_length == type_total_bytes({{{name}}}_type) * {{{name}}}_strides[{{{name}}}_rank]);
         {{/isscalar}}
         //
     {{/kernel_arguments}}
@@ -150,9 +151,9 @@ private:
     {{/kernel_arguments}}
 
     static constexpr std::ptrdiff_t Ebar_Tbar_sample_bytes =
-        chord_datatype_bytes(Ebar_type) * Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P] * Ebar_lengths[Ebar_index_Fbar];
+        type_total_bytes(Ebar_type) * Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P] * Ebar_lengths[Ebar_index_Fbar];
     static constexpr std::ptrdiff_t I_Ttilde_sample_bytes =
-        chord_datatype_bytes(I_type) * I_lengths[I_index_beamP] * I_lengths[I_index_beamQ] * I_lengths[I_index_Fbar];
+        type_total_bytes(I_type) * I_lengths[I_index_beamP] * I_lengths[I_index_beamQ] * I_lengths[I_index_Fbar];
 
     RingBuffer* const input_ringbuf_signal;
     RingBuffer* const output_ringbuf_signal;
@@ -290,6 +291,10 @@ wait_for_data:
     const std::ptrdiff_t Tbar_consumed = num_consumed_elements(Tbar_available);
     DEBUG("Will process (samples): Tbar_processed: {:d}", Tbar_processed);
     DEBUG("Will consume (samples): Tbar_consumed:  {:d}", Tbar_consumed);
+    if (Tbar_processed == 0 || Tbar_consumed == 0)
+        return -1;
+    assert(Tbar_processed > 0);
+    assert(Tbar_consumed > 0);
     assert(Tbar_consumed <= Tbar_processed);
     const std::ptrdiff_t Tbar_consumed2 = num_consumed_elements(Tbar_processed);
     assert(Tbar_consumed2 == Tbar_consumed);
@@ -614,15 +619,38 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     DEBUG("Finished CUDA {{{kernel_name}}} on GPU frame {:d}", gpu_frame_id);
 
     // Check error codes
-    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
-                                                      (const std::int32_t*)&*info_host.end());
+    std::uint32_t error_code = 0;
+    for (int block = 0; block < blocks; ++block) {
+        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                const std::ptrdiff_t i =
+                    info_strides[info_index_thread] * thread +
+                    info_strides[info_index_warp] * warp +
+                    info_strides[info_index_block] * block;
+                const std::uint32_t val = *(const std::uint32_t*)&info_host[i];
+                using std::max;
+                error_code = max(error_code, val);
+            }
+        }
+    }
     if (error_code != 0)
-        ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
+        ERROR("CUDA kernel {{{kernel_name}}} returned error code: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.size(); ++i)
-        if (info_host[i] != 0)
-            ERROR("cuda{{{kernel_name}}} returned 'info' value {:d} at index {:d} (zero indicates no error)",
-                info_host[i], i);
+    for (int block = 0; block < blocks; ++block) {
+        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                const std::ptrdiff_t i =
+                    info_strides[info_index_thread] * thread +
+                    info_strides[info_index_warp] * warp +
+                    info_strides[info_index_block] * block;
+                const std::uint32_t val = ((const std::uint32_t*)info_host.data())[i];
+                if (val != 0)
+                    ERROR("CUDA kernel {{{kernel_name}}} returned 'info' value {:d} "
+                          "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates no error)",
+                          val, thread, warp, block, i);
+            }
+        }
+    }
 #endif
 
 #ifdef DEBUGGING
@@ -675,17 +703,18 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                     const bool val_is_finite = (val & 0b0111110000000000) != 0b0111110000000000;
                     const bool val_is_nan = (val & 0b0111110000000000) == 0b0111110000000000 &&
                                             (val & 0b0000001111111111) != 0b0000000000000000;
-                    if (val_is_nan)
-                        DEBUG("    U=16 [{},{}]=val={}", ttilde, n, val);
+                    // if (val_is_nan)
+                    //     DEBUG("    U=16 [{},{}]=val={}", ttilde, n, val);
                     any_error |= val_is_nan;
                     all_error &= val_is_nan;
                 }
-                if (any_error)
-                    DEBUG("    U={{{upchannelization_factor}}} [{}]=(any={},all={})",
-                          ttilde, any_error, all_error);
+                // if (any_error)
+                //     DEBUG("    U={{{upchannelization_factor}}} [{}]=(any={},all={})",
+                //           ttilde, any_error, all_error);
                 I_found_error |= any_error;
             }
-            assert(!I_found_error);
+            if (I_found_error)
+                WARN("CUDA kernel {{{kernel_name}}} returned produced non-finite results");
         } // for chunk
         DEBUG("poison check done.");
     }

@@ -6,6 +6,7 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
+#include <DataType.hpp>
 #include <algorithm>
 #include <array>
 #include <bufferContainer.hpp>
@@ -54,7 +55,7 @@ private:
             ptr(static_cast<T*>(ptr)), maxsize(bytes), dims{std::int64_t(maxsize / sizeof(T))},
             len(maxsize / sizeof(T)) {}
     };
-    using array_desc = CuDeviceArray<int32_t, 1>;
+    using array_desc = CuDeviceArray<std::int32_t, 1>;
 
     // Kernel design parameters:
     static constexpr int cuda_number_of_complex_components = 2;
@@ -94,31 +95,31 @@ private:
 
     // Tmin: Tmin
     static constexpr const char* Tmin_name = "Tmin";
-    static constexpr chordDataType Tmin_type = int32;
+    static constexpr kotekan::DataType Tmin_type = kotekan::int32;
     //
     // Tmax: Tmax
     static constexpr const char* Tmax_name = "Tmax";
-    static constexpr chordDataType Tmax_type = int32;
+    static constexpr kotekan::DataType Tmax_type = kotekan::int32;
     //
     // Tbarmin: Tbarmin
     static constexpr const char* Tbarmin_name = "Tbarmin";
-    static constexpr chordDataType Tbarmin_type = int32;
+    static constexpr kotekan::DataType Tbarmin_type = kotekan::int32;
     //
     // Tbarmax: Tbarmax
     static constexpr const char* Tbarmax_name = "Tbarmax";
-    static constexpr chordDataType Tbarmax_type = int32;
+    static constexpr kotekan::DataType Tbarmax_type = kotekan::int32;
     //
     // Fmin: Fmin
     static constexpr const char* Fmin_name = "Fmin";
-    static constexpr chordDataType Fmin_type = int32;
+    static constexpr kotekan::DataType Fmin_type = kotekan::int32;
     //
     // Fmax: Fmax
     static constexpr const char* Fmax_name = "Fmax";
-    static constexpr chordDataType Fmax_type = int32;
+    static constexpr kotekan::DataType Fmax_type = kotekan::int32;
     //
     // G_U4: gpu_mem_gain
     static constexpr const char* G_U4_name = "G_U4";
-    static constexpr chordDataType G_U4_type = float16;
+    static constexpr kotekan::DataType G_U4_type = kotekan::float16;
     enum G_U4_indices {
         G_U4_index_Fbar,
         G_U4_rank,
@@ -129,7 +130,7 @@ private:
     static constexpr std::array<std::ptrdiff_t, G_U4_rank> G_U4_lengths = {
         64,
     };
-    static constexpr std::ptrdiff_t G_U4_length = chord_datatype_bytes(G_U4_type) * 64;
+    static constexpr std::ptrdiff_t G_U4_length = type_total_bytes(G_U4_type) * 64;
     static_assert(G_U4_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto G_U4_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -141,11 +142,11 @@ private:
         G_U4_calc_stride(G_U4_index_Fbar),
         G_U4_calc_stride(G_U4_rank),
     };
-    static_assert(G_U4_length == chord_datatype_bytes(G_U4_type) * G_U4_strides[G_U4_rank]);
+    static_assert(G_U4_length == type_total_bytes(G_U4_type) * G_U4_strides[G_U4_rank]);
     //
     // E: gpu_mem_input_voltage
     static constexpr const char* E_name = "E";
-    static constexpr chordDataType E_type = int4p4chime;
+    static constexpr kotekan::DataType E_type = kotekan::int4x2chime;
     enum E_indices {
         E_index_D,
         E_index_P,
@@ -165,7 +166,7 @@ private:
         48,
         32768,
     };
-    static constexpr std::ptrdiff_t E_length = chord_datatype_bytes(E_type) * 512 * 2 * 48 * 32768;
+    static constexpr std::ptrdiff_t E_length = type_total_bytes(E_type) * 512 * 2 * 48 * 32768;
     static_assert(E_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto E_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -177,11 +178,11 @@ private:
         E_calc_stride(E_index_D), E_calc_stride(E_index_P), E_calc_stride(E_index_F),
         E_calc_stride(E_index_T), E_calc_stride(E_rank),
     };
-    static_assert(E_length == chord_datatype_bytes(E_type) * E_strides[E_rank]);
+    static_assert(E_length == type_total_bytes(E_type) * E_strides[E_rank]);
     //
     // Ebar: gpu_mem_output_voltage
     static constexpr const char* Ebar_name = "Ebar";
-    static constexpr chordDataType Ebar_type = int4p4chime;
+    static constexpr kotekan::DataType Ebar_type = kotekan::int4x2chime;
     enum Ebar_indices {
         Ebar_index_D,
         Ebar_index_P,
@@ -201,8 +202,7 @@ private:
         64,
         8192,
     };
-    static constexpr std::ptrdiff_t Ebar_length =
-        chord_datatype_bytes(Ebar_type) * 512 * 2 * 64 * 8192;
+    static constexpr std::ptrdiff_t Ebar_length = type_total_bytes(Ebar_type) * 512 * 2 * 64 * 8192;
     static_assert(Ebar_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -215,11 +215,11 @@ private:
         Ebar_calc_stride(Ebar_index_Fbar), Ebar_calc_stride(Ebar_index_Tbar),
         Ebar_calc_stride(Ebar_rank),
     };
-    static_assert(Ebar_length == chord_datatype_bytes(Ebar_type) * Ebar_strides[Ebar_rank]);
+    static_assert(Ebar_length == type_total_bytes(Ebar_type) * Ebar_strides[Ebar_rank]);
     //
     // info: gpu_mem_info
     static constexpr const char* info_name = "info";
-    static constexpr chordDataType info_type = int32;
+    static constexpr kotekan::DataType info_type = kotekan::int32;
     enum info_indices {
         info_index_thread,
         info_index_warp,
@@ -236,7 +236,7 @@ private:
         4,
         384,
     };
-    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 4 * 384;
+    static constexpr std::ptrdiff_t info_length = type_total_bytes(info_type) * 32 * 4 * 384;
     static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -250,7 +250,7 @@ private:
         info_calc_stride(info_index_block),
         info_calc_stride(info_rank),
     };
-    static_assert(info_length == chord_datatype_bytes(info_type) * info_strides[info_rank]);
+    static_assert(info_length == type_total_bytes(info_type) * info_strides[info_rank]);
     //
 
     // Kotekan buffer names
@@ -262,11 +262,11 @@ private:
     // Host-side buffer arrays
     std::vector<std::uint8_t> info_host;
 
-    static constexpr std::ptrdiff_t E_T_sample_bytes = chord_datatype_bytes(E_type)
+    static constexpr std::ptrdiff_t E_T_sample_bytes = type_total_bytes(E_type)
                                                        * E_lengths[E_index_D] * E_lengths[E_index_P]
                                                        * E_lengths[E_index_F];
     static constexpr std::ptrdiff_t Ebar_Tbar_sample_bytes =
-        chord_datatype_bytes(Ebar_type) * Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P]
+        type_total_bytes(Ebar_type) * Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P]
         * Ebar_lengths[Ebar_index_Fbar];
 
     RingBuffer* input_ringbuf_signal;
@@ -676,16 +676,37 @@ cudaEvent_t cudaUpchannelizer_chord_U4::execute(cudaPipelineState& /*pipestate*/
     DEBUG("Finished CUDA Upchannelizer_chord_U4 on GPU frame {:d}", gpu_frame_id);
 
     // Check error codes
-    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
-                                                      (const std::int32_t*)&*info_host.end());
+    std::uint32_t error_code = 0;
+    for (int block = 0; block < blocks; ++block) {
+        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                const std::ptrdiff_t i = info_strides[info_index_thread] * thread
+                                         + info_strides[info_index_warp] * warp
+                                         + info_strides[info_index_block] * block;
+                const std::uint32_t val = *(const std::uint32_t*)&info_host[i];
+                using std::max;
+                error_code = max(error_code, val);
+            }
+        }
+    }
     if (error_code != 0)
-        ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
+        ERROR("CUDA kernel Upchannelizer_chord_U4 returned error code: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.size() * blocks / max_blocks; ++i)
-        if (info_host[i] != 0)
-            ERROR("cudaUpchannelizer_chord_U4 returned 'info' value {:d} at index {:d} (zero "
-                  "indicates no error)",
-                  info_host[i], i);
+    for (int block = 0; block < blocks; ++block) {
+        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                const std::ptrdiff_t i = info_strides[info_index_thread] * thread
+                                         + info_strides[info_index_warp] * warp
+                                         + info_strides[info_index_block] * block;
+                const std::uint32_t val = ((const std::uint32_t*)info_host.data())[i];
+                if (val != 0)
+                    ERROR("CUDA kernel Upchannelizer_chord_U4 returned 'info' value {:d} "
+                          "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates no "
+                          "error)",
+                          val, thread, warp, block, i);
+            }
+        }
+    }
 #endif
 
 #ifdef DEBUGGING

@@ -6,6 +6,7 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
+#include <DataType.hpp>
 #include <algorithm>
 #include <array>
 #include <bufferContainer.hpp>
@@ -54,7 +55,7 @@ private:
             ptr(static_cast<T*>(ptr)), maxsize(bytes), dims{std::int64_t(maxsize / sizeof(T))},
             len(maxsize / sizeof(T)) {}
     };
-    using array_desc = CuDeviceArray<int32_t, 1>;
+    using array_desc = CuDeviceArray<std::int32_t, 1>;
 
     // Kernel design parameters:
     static constexpr int cuda_beam_layout_M = 512;
@@ -95,23 +96,23 @@ private:
 
     // Tbarmin: Tbarmin
     static constexpr const char* Tbarmin_name = "Tbarmin";
-    static constexpr chordDataType Tbarmin_type = int32;
+    static constexpr kotekan::DataType Tbarmin_type = kotekan::int32;
     //
     // Tbarmax: Tbarmax
     static constexpr const char* Tbarmax_name = "Tbarmax";
-    static constexpr chordDataType Tbarmax_type = int32;
+    static constexpr kotekan::DataType Tbarmax_type = kotekan::int32;
     //
     // Ttildemin: Ttildemin
     static constexpr const char* Ttildemin_name = "Ttildemin";
-    static constexpr chordDataType Ttildemin_type = int32;
+    static constexpr kotekan::DataType Ttildemin_type = kotekan::int32;
     //
     // Ttildemax: Ttildemax
     static constexpr const char* Ttildemax_name = "Ttildemax";
-    static constexpr chordDataType Ttildemax_type = int32;
+    static constexpr kotekan::DataType Ttildemax_type = kotekan::int32;
     //
     // W: gpu_mem_phase
     static constexpr const char* W_name = "W";
-    static constexpr chordDataType W_type = float16;
+    static constexpr kotekan::DataType W_type = kotekan::float16;
     enum W_indices {
         W_index_C,
         W_index_dishM,
@@ -126,8 +127,7 @@ private:
     static constexpr std::array<std::ptrdiff_t, W_rank> W_lengths = {
         2, 256, 4, 2, 2048,
     };
-    static constexpr std::ptrdiff_t W_length =
-        chord_datatype_bytes(W_type) * 2 * 256 * 4 * 2 * 2048;
+    static constexpr std::ptrdiff_t W_length = type_total_bytes(W_type) * 2 * 256 * 4 * 2 * 2048;
     // static_assert(W_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto W_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -139,11 +139,11 @@ private:
         W_calc_stride(W_index_C), W_calc_stride(W_index_dishM), W_calc_stride(W_index_dishN),
         W_calc_stride(W_index_P), W_calc_stride(W_index_F),     W_calc_stride(W_rank),
     };
-    static_assert(W_length == chord_datatype_bytes(W_type) * W_strides[W_rank]);
+    static_assert(W_length == type_total_bytes(W_type) * W_strides[W_rank]);
     //
     // Ebar: gpu_mem_voltage
     static constexpr const char* Ebar_name = "Ebar";
-    static constexpr chordDataType Ebar_type = int4p4chime;
+    static constexpr kotekan::DataType Ebar_type = kotekan::int4x2chime;
     enum Ebar_indices {
         Ebar_index_D,
         Ebar_index_P,
@@ -164,7 +164,7 @@ private:
         512,
     };
     static constexpr std::ptrdiff_t Ebar_length =
-        chord_datatype_bytes(Ebar_type) * 1024 * 2 * 2048 * 512;
+        type_total_bytes(Ebar_type) * 1024 * 2 * 2048 * 512;
     // static_assert(Ebar_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -177,11 +177,11 @@ private:
         Ebar_calc_stride(Ebar_index_Fbar), Ebar_calc_stride(Ebar_index_Tbar),
         Ebar_calc_stride(Ebar_rank),
     };
-    static_assert(Ebar_length == chord_datatype_bytes(Ebar_type) * Ebar_strides[Ebar_rank]);
+    static_assert(Ebar_length == type_total_bytes(Ebar_type) * Ebar_strides[Ebar_rank]);
     //
     // I: gpu_mem_beamgrid
     static constexpr const char* I_name = "I";
-    static constexpr chordDataType I_type = float16;
+    static constexpr kotekan::DataType I_type = kotekan::float16;
     enum I_indices {
         I_index_beamP,
         I_index_beamQ,
@@ -201,7 +201,7 @@ private:
         2048,
         256,
     };
-    static constexpr std::ptrdiff_t I_length = chord_datatype_bytes(I_type) * 512 * 8 * 2048 * 256;
+    static constexpr std::ptrdiff_t I_length = type_total_bytes(I_type) * 512 * 8 * 2048 * 256;
     // static_assert(I_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto I_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -213,11 +213,11 @@ private:
         I_calc_stride(I_index_beamP),  I_calc_stride(I_index_beamQ), I_calc_stride(I_index_Fbar),
         I_calc_stride(I_index_Ttilde), I_calc_stride(I_rank),
     };
-    static_assert(I_length == chord_datatype_bytes(I_type) * I_strides[I_rank]);
+    static_assert(I_length == type_total_bytes(I_type) * I_strides[I_rank]);
     //
     // info: gpu_mem_info
     static constexpr const char* info_name = "info";
-    static constexpr chordDataType info_type = int32;
+    static constexpr kotekan::DataType info_type = kotekan::int32;
     enum info_indices {
         info_index_thread,
         info_index_warp,
@@ -234,7 +234,7 @@ private:
         8,
         2048,
     };
-    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 8 * 2048;
+    static constexpr std::ptrdiff_t info_length = type_total_bytes(info_type) * 32 * 8 * 2048;
     // static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -248,7 +248,7 @@ private:
         info_calc_stride(info_index_block),
         info_calc_stride(info_rank),
     };
-    static_assert(info_length == chord_datatype_bytes(info_type) * info_strides[info_rank]);
+    static_assert(info_length == type_total_bytes(info_type) * info_strides[info_rank]);
     //
 
     // Kotekan buffer names
@@ -261,10 +261,10 @@ private:
     std::vector<std::uint8_t> info_host;
 
     static constexpr std::ptrdiff_t Ebar_Tbar_sample_bytes =
-        chord_datatype_bytes(Ebar_type) * Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P]
+        type_total_bytes(Ebar_type) * Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P]
         * Ebar_lengths[Ebar_index_Fbar];
     static constexpr std::ptrdiff_t I_Ttilde_sample_bytes =
-        chord_datatype_bytes(I_type) * I_lengths[I_index_beamP] * I_lengths[I_index_beamQ]
+        type_total_bytes(I_type) * I_lengths[I_index_beamP] * I_lengths[I_index_beamQ]
         * I_lengths[I_index_Fbar];
 
     RingBuffer* const input_ringbuf_signal;
@@ -383,6 +383,10 @@ wait_for_data:
     const std::ptrdiff_t Tbar_consumed = num_consumed_elements(Tbar_available);
     DEBUG("Will process (samples): Tbar_processed: {:d}", Tbar_processed);
     DEBUG("Will consume (samples): Tbar_consumed:  {:d}", Tbar_consumed);
+    if (Tbar_processed == 0 || Tbar_consumed == 0)
+        return -1;
+    assert(Tbar_processed > 0);
+    assert(Tbar_consumed > 0);
     assert(Tbar_consumed <= Tbar_processed);
     const std::ptrdiff_t Tbar_consumed2 = num_consumed_elements(Tbar_processed);
     assert(Tbar_consumed2 == Tbar_consumed);
@@ -707,16 +711,37 @@ cudaCHIMEFRBBeamformer_chime_U128::execute(cudaPipelineState& /*pipestate*/,
     DEBUG("Finished CUDA CHIMEFRBBeamformer_chime_U128 on GPU frame {:d}", gpu_frame_id);
 
     // Check error codes
-    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
-                                                      (const std::int32_t*)&*info_host.end());
+    std::uint32_t error_code = 0;
+    for (int block = 0; block < blocks; ++block) {
+        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                const std::ptrdiff_t i = info_strides[info_index_thread] * thread
+                                         + info_strides[info_index_warp] * warp
+                                         + info_strides[info_index_block] * block;
+                const std::uint32_t val = *(const std::uint32_t*)&info_host[i];
+                using std::max;
+                error_code = max(error_code, val);
+            }
+        }
+    }
     if (error_code != 0)
-        ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
+        ERROR("CUDA kernel CHIMEFRBBeamformer_chime_U128 returned error code: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.size(); ++i)
-        if (info_host[i] != 0)
-            ERROR("cudaCHIMEFRBBeamformer_chime_U128 returned 'info' value {:d} at index {:d} "
-                  "(zero indicates no error)",
-                  info_host[i], i);
+    for (int block = 0; block < blocks; ++block) {
+        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                const std::ptrdiff_t i = info_strides[info_index_thread] * thread
+                                         + info_strides[info_index_warp] * warp
+                                         + info_strides[info_index_block] * block;
+                const std::uint32_t val = ((const std::uint32_t*)info_host.data())[i];
+                if (val != 0)
+                    ERROR("CUDA kernel CHIMEFRBBeamformer_chime_U128 returned 'info' value {:d} "
+                          "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates no "
+                          "error)",
+                          val, thread, warp, block, i);
+            }
+        }
+    }
 #endif
 
 #ifdef DEBUGGING
@@ -768,16 +793,19 @@ cudaCHIMEFRBBeamformer_chime_U128::execute(cudaPipelineState& /*pipestate*/,
                     const bool val_is_finite = (val & 0b0111110000000000) != 0b0111110000000000;
                     const bool val_is_nan = (val & 0b0111110000000000) == 0b0111110000000000
                                             && (val & 0b0000001111111111) != 0b0000000000000000;
-                    if (val_is_nan)
-                        DEBUG("    U=16 [{},{}]=val={}", ttilde, n, val);
+                    // if (val_is_nan)
+                    //     DEBUG("    U=16 [{},{}]=val={}", ttilde, n, val);
                     any_error |= val_is_nan;
                     all_error &= val_is_nan;
                 }
-                if (any_error)
-                    DEBUG("    U=128 [{}]=(any={},all={})", ttilde, any_error, all_error);
+                // if (any_error)
+                //     DEBUG("    U=128 [{}]=(any={},all={})",
+                //           ttilde, any_error, all_error);
                 I_found_error |= any_error;
             }
-            assert(!I_found_error);
+            if (I_found_error)
+                WARN("CUDA kernel CHIMEFRBBeamformer_chime_U128 returned produced non-finite "
+                     "results");
         } // for chunk
         DEBUG("poison check done.");
     }

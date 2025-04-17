@@ -6,6 +6,7 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
+#include <DataType.hpp>
 #include <bufferContainer.hpp>
 #include <chordMetadata.hpp>
 #include <cudaCommand.hpp>
@@ -53,7 +54,7 @@ private:
             dims{std::int64_t(maxsize / sizeof(T))},
             len(maxsize / sizeof(T)) {}
     };
-    using kernel_arg = CuDeviceArray<int32_t, 1>;
+    using kernel_arg = CuDeviceArray<std::int32_t, 1>;
 
     // Kernel design parameters:
     {{#kernel_design_parameters}}
@@ -76,7 +77,7 @@ private:
     // Kernel arguments:
     {{#kernel_arguments}}
         // {{{name}}}: {{{kotekan_name}}}
-        static constexpr chordDataType {{{name}}}_type = {{{type}}};
+        static constexpr kotekan::DataType {{{name}}}_type = kotekan::{{{type}}};
         static constexpr std::size_t {{{name}}}_rank = 0
             {{#axes}}
                 +1
@@ -92,7 +93,7 @@ private:
                 {{{length}}},
             {{/axes}}
         };
-        static constexpr std::size_t {{{name}}}_length = chord_datatype_bytes({{{name}}}_type)
+        static constexpr std::size_t {{{name}}}_length = type_total_bytes({{{name}}}_type)
             {{#axes}}
                 * {{{length}}}
             {{/axes}}
@@ -296,7 +297,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
                                                       (const std::int32_t*)&*info_host.end());
     if (error_code != 0)
-        ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
+        ERROR("CUDA kernel returned error code: {}", error_code);
 
     for (std::size_t i = 0; i < info_host.size(); ++i)
         if (info_host[i] != 0)

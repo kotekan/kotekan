@@ -174,7 +174,7 @@ public:
                 }
 
                 {
-                    const std::string type_value = chord_datatype_string(meta->type);
+                    const std::string type_value = type_to_string(meta->type);
                     const auto type_datatype =
                         GDALExtendedDataType::CreateString(type_value.size());
                     const auto type =
@@ -298,7 +298,7 @@ public:
                 const int ndims = meta->dims;
 
                 DEBUG("name={} type={} typesize={} ndims={} dims={}", meta->get_name(),
-                      meta->get_type_string(), chord_datatype_bytes(meta->type), meta->dims,
+                      meta->get_type_string(), type_total_bytes(meta->type), meta->dims,
                       meta->get_dimensions_string());
                 for (int d = 0; d < ndims; ++d)
                     DEBUG("    [{}] name={} size={}", d, meta->get_dimension_name(d), meta->dim[d]);
@@ -307,7 +307,7 @@ public:
                 // Array element type
                 const auto datatype = GDALExtendedDataType::Create(chord2gdal(meta->type));
                 const std::int64_t datatypesize = GDALGetDataTypeSizeBytes(chord2gdal(meta->type));
-                assert(datatypesize == std::int64_t(chord_datatype_bytes(meta->type)));
+                assert(datatypesize == std::int64_t(type_total_bytes(meta->type)));
 
                 // Array size
                 std::vector<std::shared_ptr<GDALDimension>> dimensions(ndims);

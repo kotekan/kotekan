@@ -6,6 +6,7 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
+#include <DataType.hpp>
 #include <algorithm>
 #include <array>
 #include <bufferContainer.hpp>
@@ -54,7 +55,7 @@ private:
             ptr(static_cast<T*>(ptr)), maxsize(bytes), dims{std::int64_t(maxsize / sizeof(T))},
             len(maxsize / sizeof(T)) {}
     };
-    using array_desc = CuDeviceArray<int32_t, 1>;
+    using array_desc = CuDeviceArray<std::int32_t, 1>;
 
     // Kernel design parameters:
     static constexpr int cuda_beam_layout_M = 16;
@@ -110,39 +111,39 @@ private:
 
     // Tbarmin: Tbarmin
     static constexpr const char* Tbarmin_name = "Tbarmin";
-    static constexpr chordDataType Tbarmin_type = int32;
+    static constexpr kotekan::DataType Tbarmin_type = kotekan::int32;
     //
     // Tbarmax: Tbarmax
     static constexpr const char* Tbarmax_name = "Tbarmax";
-    static constexpr chordDataType Tbarmax_type = int32;
+    static constexpr kotekan::DataType Tbarmax_type = kotekan::int32;
     //
     // Ttildemin: Ttildemin
     static constexpr const char* Ttildemin_name = "Ttildemin";
-    static constexpr chordDataType Ttildemin_type = int32;
+    static constexpr kotekan::DataType Ttildemin_type = kotekan::int32;
     //
     // Ttildemax: Ttildemax
     static constexpr const char* Ttildemax_name = "Ttildemax";
-    static constexpr chordDataType Ttildemax_type = int32;
+    static constexpr kotekan::DataType Ttildemax_type = kotekan::int32;
     //
     // Fbar_in_min: Fbar_in_min
     static constexpr const char* Fbar_in_min_name = "Fbar_in_min";
-    static constexpr chordDataType Fbar_in_min_type = int32;
+    static constexpr kotekan::DataType Fbar_in_min_type = kotekan::int32;
     //
     // Fbar_in_max: Fbar_in_max
     static constexpr const char* Fbar_in_max_name = "Fbar_in_max";
-    static constexpr chordDataType Fbar_in_max_type = int32;
+    static constexpr kotekan::DataType Fbar_in_max_type = kotekan::int32;
     //
     // Fbar_out_min: Fbar_out_min
     static constexpr const char* Fbar_out_min_name = "Fbar_out_min";
-    static constexpr chordDataType Fbar_out_min_type = int32;
+    static constexpr kotekan::DataType Fbar_out_min_type = kotekan::int32;
     //
     // Fbar_out_max: Fbar_out_max
     static constexpr const char* Fbar_out_max_name = "Fbar_out_max";
-    static constexpr chordDataType Fbar_out_max_type = int32;
+    static constexpr kotekan::DataType Fbar_out_max_type = kotekan::int32;
     //
     // S: gpu_mem_dishlayout
     static constexpr const char* S_name = "S";
-    static constexpr chordDataType S_type = int16;
+    static constexpr kotekan::DataType S_type = kotekan::int16;
     enum S_indices {
         S_index_MN,
         S_index_D,
@@ -156,7 +157,7 @@ private:
         2,
         96,
     };
-    static constexpr std::ptrdiff_t S_length = chord_datatype_bytes(S_type) * 2 * 96;
+    static constexpr std::ptrdiff_t S_length = type_total_bytes(S_type) * 2 * 96;
     // static_assert(S_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto S_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -169,11 +170,11 @@ private:
         S_calc_stride(S_index_D),
         S_calc_stride(S_rank),
     };
-    static_assert(S_length == chord_datatype_bytes(S_type) * S_strides[S_rank]);
+    static_assert(S_length == type_total_bytes(S_type) * S_strides[S_rank]);
     //
     // W: gpu_mem_phase
     static constexpr const char* W_name = "W";
-    static constexpr chordDataType W_type = float16;
+    static constexpr kotekan::DataType W_type = kotekan::float16;
     enum W_indices {
         W_index_C,
         W_index_dishM,
@@ -188,7 +189,7 @@ private:
     static constexpr std::array<std::ptrdiff_t, W_rank> W_lengths = {
         2, 8, 12, 2, 1024,
     };
-    static constexpr std::ptrdiff_t W_length = chord_datatype_bytes(W_type) * 2 * 8 * 12 * 2 * 1024;
+    static constexpr std::ptrdiff_t W_length = type_total_bytes(W_type) * 2 * 8 * 12 * 2 * 1024;
     // static_assert(W_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto W_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -200,11 +201,11 @@ private:
         W_calc_stride(W_index_C), W_calc_stride(W_index_dishM), W_calc_stride(W_index_dishN),
         W_calc_stride(W_index_P), W_calc_stride(W_index_F),     W_calc_stride(W_rank),
     };
-    static_assert(W_length == chord_datatype_bytes(W_type) * W_strides[W_rank]);
+    static_assert(W_length == type_total_bytes(W_type) * W_strides[W_rank]);
     //
     // Ebar: gpu_mem_voltage
     static constexpr const char* Ebar_name = "Ebar";
-    static constexpr chordDataType Ebar_type = int4p4chime;
+    static constexpr kotekan::DataType Ebar_type = kotekan::int4x2chime;
     enum Ebar_indices {
         Ebar_index_D,
         Ebar_index_P,
@@ -225,7 +226,7 @@ private:
         2048,
     };
     static constexpr std::ptrdiff_t Ebar_length =
-        chord_datatype_bytes(Ebar_type) * 64 * 2 * 1024 * 2048;
+        type_total_bytes(Ebar_type) * 64 * 2 * 1024 * 2048;
     // static_assert(Ebar_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -238,11 +239,11 @@ private:
         Ebar_calc_stride(Ebar_index_Fbar), Ebar_calc_stride(Ebar_index_Tbar),
         Ebar_calc_stride(Ebar_rank),
     };
-    static_assert(Ebar_length == chord_datatype_bytes(Ebar_type) * Ebar_strides[Ebar_rank]);
+    static_assert(Ebar_length == type_total_bytes(Ebar_type) * Ebar_strides[Ebar_rank]);
     //
     // I: gpu_mem_beamgrid
     static constexpr const char* I_name = "I";
-    static constexpr chordDataType I_type = float16;
+    static constexpr kotekan::DataType I_type = kotekan::float16;
     enum I_indices {
         I_index_beamP,
         I_index_beamQ,
@@ -262,7 +263,7 @@ private:
         4096,
         1024,
     };
-    static constexpr std::ptrdiff_t I_length = chord_datatype_bytes(I_type) * 16 * 24 * 4096 * 1024;
+    static constexpr std::ptrdiff_t I_length = type_total_bytes(I_type) * 16 * 24 * 4096 * 1024;
     // static_assert(I_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto I_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -274,11 +275,11 @@ private:
         I_calc_stride(I_index_beamP),  I_calc_stride(I_index_beamQ), I_calc_stride(I_index_Fbar),
         I_calc_stride(I_index_Ttilde), I_calc_stride(I_rank),
     };
-    static_assert(I_length == chord_datatype_bytes(I_type) * I_strides[I_rank]);
+    static_assert(I_length == type_total_bytes(I_type) * I_strides[I_rank]);
     //
     // info: gpu_mem_info
     static constexpr const char* info_name = "info";
-    static constexpr chordDataType info_type = int32;
+    static constexpr kotekan::DataType info_type = kotekan::int32;
     enum info_indices {
         info_index_thread,
         info_index_warp,
@@ -295,7 +296,7 @@ private:
         6,
         1024,
     };
-    static constexpr std::ptrdiff_t info_length = chord_datatype_bytes(info_type) * 32 * 6 * 1024;
+    static constexpr std::ptrdiff_t info_length = type_total_bytes(info_type) * 32 * 6 * 1024;
     // static_assert(info_length <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -309,7 +310,7 @@ private:
         info_calc_stride(info_index_block),
         info_calc_stride(info_rank),
     };
-    static_assert(info_length == chord_datatype_bytes(info_type) * info_strides[info_rank]);
+    static_assert(info_length == type_total_bytes(info_type) * info_strides[info_rank]);
     //
 
     // Kotekan buffer names
@@ -324,10 +325,10 @@ private:
     std::vector<std::uint8_t> info_host;
 
     static constexpr std::ptrdiff_t Ebar_Tbar_sample_bytes =
-        chord_datatype_bytes(Ebar_type) * Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P]
+        type_total_bytes(Ebar_type) * Ebar_lengths[Ebar_index_D] * Ebar_lengths[Ebar_index_P]
         * Ebar_lengths[Ebar_index_Fbar];
     static constexpr std::ptrdiff_t I_Ttilde_sample_bytes =
-        chord_datatype_bytes(I_type) * I_lengths[I_index_beamP] * I_lengths[I_index_beamQ]
+        type_total_bytes(I_type) * I_lengths[I_index_beamP] * I_lengths[I_index_beamQ]
         * I_lengths[I_index_Fbar];
 
     RingBuffer* const input_ringbuf_signal;
@@ -436,40 +437,60 @@ cudaFRBBeamformer_pathfinder_U16::num_produced_elements(std::int64_t num_availab
 
 std::int64_t cudaFRBBeamformer_pathfinder_U16::num_processed_elements(
     std::int64_t num_available_elements) const {
-    assert(num_available_elements >= cuda_granularity_number_of_timesamples);
     return round_down(num_available_elements, cuda_granularity_number_of_timesamples);
 }
 
 int cudaFRBBeamformer_pathfinder_U16::wait_on_precondition() {
     // Wait for data to be available in input ringbuffer
-    DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const std::optional<std::ptrdiff_t> val_in1 =
-        input_ringbuf_signal->wait_without_claiming(unique_name, instance_num, 1);
-    DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
-    if (!val_in1.has_value())
+
+    // Check available samples
+    DEBUG("Checking available input ringbuffer data for frame {:d}...", gpu_frame_id);
+    const std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>> peeked =
+        input_ringbuf_signal->peek_readable(unique_name, instance_num);
+    if (!peeked.has_value())
         return -1;
-    const std::ptrdiff_t input_bytes = val_in1.value();
+    std::ptrdiff_t input_bytes = peeked.value().second;
     DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
+
+wait_for_data:
 
     // How many inputs samples are available?
     const std::ptrdiff_t Tbar_available = div_noremainder(input_bytes, Ebar_Tbar_sample_bytes);
     DEBUG("Available samples:      Tbar_available: {:d}", Tbar_available);
 
-    // How many outputs will we process and consume?
+    // How many inputs will we process and consume?
     const std::ptrdiff_t Tbar_processed = num_processed_elements(Tbar_available);
     const std::ptrdiff_t Tbar_consumed = num_consumed_elements(Tbar_available);
     DEBUG("Will process (samples): Tbar_processed: {:d}", Tbar_processed);
     DEBUG("Will consume (samples): Tbar_consumed:  {:d}", Tbar_consumed);
-    assert(Tbar_processed > 0);
     assert(Tbar_consumed <= Tbar_processed);
     const std::ptrdiff_t Tbar_consumed2 = num_consumed_elements(Tbar_processed);
     assert(Tbar_consumed2 == Tbar_consumed);
 
-    const std::optional<std::ptrdiff_t> val_in2 = input_ringbuf_signal->wait_and_claim_readable(
+    // Can we make progress?
+    if (Tbar_consumed <= 0) {
+        // We cannot make progress, we need to wait
+        DEBUG("We cannot make progress, we need to wait for more input");
+
+        DEBUG("Waiting for input ringbuffer data for frame {:d}...", gpu_frame_id);
+        const std::optional<std::ptrdiff_t> waited =
+            input_ringbuf_signal->wait_without_claiming(unique_name, instance_num, input_bytes + 1);
+        DEBUG("Finished waiting for input for data frame {:d}.", gpu_frame_id);
+        if (!waited.has_value())
+            return -1;
+        input_bytes = waited.value();
+        DEBUG("Input ring-buffer byte count: {:d}", input_bytes);
+
+        goto wait_for_data;
+    }
+
+    // Claim inputs
+    assert(Tbar_consumed > 0);
+    const std::optional<std::ptrdiff_t> claimed = input_ringbuf_signal->wait_and_claim_readable(
         unique_name, instance_num, Tbar_consumed * Ebar_Tbar_sample_bytes);
-    if (!val_in2.has_value())
+    if (!claimed.has_value())
         return -1;
-    const std::ptrdiff_t input_cursor = val_in2.value();
+    const std::ptrdiff_t input_cursor = claimed.value();
     DEBUG("Input ring-buffer byte offset: {:d}", input_cursor);
     Tbarmin = div_noremainder(input_cursor, Ebar_Tbar_sample_bytes);
     Tbarmax = Tbarmin + Tbar_processed;
@@ -837,19 +858,40 @@ cudaFRBBeamformer_pathfinder_U16::execute(cudaPipelineState& /*pipestate*/,
                                      cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
 
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
-    DEBUG("Finished CUDA FRBBeamformer_pathfinder_U16 on GPU frame {:d}", gpu_frame_id);
+    DEBUG("Finished CUDA kernel FRBBeamformer_pathfinder_U16 on GPU frame {:d}", gpu_frame_id);
 
     // Check error codes
-    const std::int32_t error_code = *std::max_element((const std::int32_t*)&*info_host.begin(),
-                                                      (const std::int32_t*)&*info_host.end());
+    std::uint32_t error_code = 0;
+    for (int block = 0; block < blocks; ++block) {
+        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                const std::ptrdiff_t i = info_strides[info_index_thread] * thread
+                                         + info_strides[info_index_warp] * warp
+                                         + info_strides[info_index_block] * block;
+                const std::uint32_t val = *(const std::uint32_t*)&info_host[i];
+                using std::max;
+                error_code = max(error_code, val);
+            }
+        }
+    }
     if (error_code != 0)
-        ERROR("CUDA kernel returned error code cuLaunchKernel: {}", error_code);
+        ERROR("CUDA kernel FRBBeamformer_pathfinder_U16 returned error code: {}", error_code);
 
-    for (std::size_t i = 0; i < info_host.size() * blocks / max_blocks; ++i)
-        if (info_host[i] != 0)
-            ERROR("cudaFRBBeamformer_pathfinder_U16 returned 'info' value {:d} at index {:d} (zero "
-                  "indicates no error)",
-                  info_host[i], i);
+    for (int block = 0; block < blocks; ++block) {
+        for (int warp = 0; warp < info_lengths[info_index_warp]; ++warp) {
+            for (int thread = 0; thread < info_lengths[info_index_thread]; ++thread) {
+                const std::ptrdiff_t i = info_strides[info_index_thread] * thread
+                                         + info_strides[info_index_warp] * warp
+                                         + info_strides[info_index_block] * block;
+                const std::uint32_t val = ((const std::uint32_t*)info_host.data())[i];
+                if (val != 0)
+                    ERROR("CUDA kernel FRBBeamformer_pathfinder_U16 returned 'info' value {:d} "
+                          "for thread {:d} warp {:d} block {:d} at index {:d} (zero indicates no "
+                          "error)",
+                          val, thread, warp, block, i);
+            }
+        }
+    }
 #endif
 
 #ifdef DEBUGGING
@@ -911,18 +953,20 @@ cudaFRBBeamformer_pathfinder_U16::execute(cudaPipelineState& /*pipestate*/,
                         const auto val = I_buffer.at(ttilde * (Fbar_out_length * Fbar_out_stride)
                                                      + ftilde * Fbar_out_stride + n);
                         const bool val_is_finite = (val & 0b0111110000000000) != 0b0111110000000000;
-                        if (!val_is_finite)
-                            DEBUG("    U=16 [{},{}]=val={}", ttilde, n, val);
+                        // if (!val_is_finite)
+                        //     DEBUG("    [{},{}]=val={}", ttilde, n, val);
                         any_error |= !val_is_finite;
                         all_error &= !val_is_finite;
                     }
-                    if (any_error)
-                        DEBUG("    U=16 [{},{}]=(any={},all={})", ttilde, ftilde, any_error,
-                              all_error);
+                    // if (any_error)
+                    //     DEBUG("    [{},{}]=(any={},all={})",
+                    //           ttilde, ftilde, any_error, all_error);
                     I_found_error |= any_error;
                 }
             }
-            assert(!I_found_error);
+            if (I_found_error)
+                WARN("CUDA kernel FRBBeamformer_pathfinder_U16 returned produced non-finite "
+                     "results");
         } // for chunk
         DEBUG("poison check done.");
     }

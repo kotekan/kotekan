@@ -120,10 +120,10 @@ public:
                 const auto type_datatype = type->GetDataType();
                 assert(type_datatype.GetClass() == GEDTC_STRING);
                 const std::string type_value = std::string(type->ReadAsString());
-                meta->type = chord_datatype_from_string(type_value);
+                meta->type = kotekan::string_to_type(type_value);
                 DEBUG("[{:s}/{:d}] meta->type={}", buffer->buffer_name, frame_index,
-                      chord_datatype_string(meta->type));
-                assert(meta->type != unknown_type);
+                      type_to_string(meta->type));
+                assert(meta->type != kotekan::unknown_type);
             }
 
             {

@@ -1,5 +1,6 @@
 #include "cudaFRBBeamReformer.hpp"
 
+#include "DataType.hpp"
 #include "chordMetadata.hpp"
 #include "cudaUtils.hpp"
 #include "div.hpp"
@@ -248,7 +249,7 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
         // Assert that input metadata array shape is as expected.
         DEBUG("Input metadata: array shape {:s}, array type {:s}", in_meta->get_dimensions_string(),
               in_meta->get_type_string());
-        assert(in_meta->type == chordDataType::float16);
+        assert(in_meta->type == kotekan::float16);
         // Assert Ttilde x Fbar x beamQ x beamP
         assert(in_meta->dims == 4);
         // in_meta->dim[0] is in the ringbuffer
@@ -275,7 +276,7 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
         *out_meta = *in_meta;
         // Output shape is (Ttilde x Fbar x beam) in float16
         out_meta->set_name("I2");
-        out_meta->type = chordDataType::float16;
+        out_meta->type = kotekan::float16;
         out_meta->dims = 3;
         out_meta->set_array_dimension(0, _num_beams, "R");
         out_meta->set_array_dimension(1, _num_local_freq, "Fbar");
