@@ -1,7 +1,9 @@
 #ifndef DATATYPE_HPP
 #define DATATYPE_HPP
 
+#include <cassert>
 #include <cstdint>
+#include <initializer_list>
 #include <iostream>
 #include <string>
 #include <type_traits>
@@ -28,6 +30,97 @@ using float16_t = _Float16;
 
 namespace kotekan {
 
+#ifdef DEBUGGING
+#define KOTEKAN_ASSERT(cond) assert(cond)
+#else
+#define KOTEKAN_ASSERT(cond) 0
+#endif
+
+// 8 bools (packed into a type)
+struct uint1x8_t {
+    std::uint8_t val;
+
+    uint1x8_t() = default;
+    uint1x8_t(const uint1x8_t&) = default;
+    uint1x8_t(uint1x8_t&&) = default;
+    uint1x8_t& operator=(const uint1x8_t&) = default;
+    uint1x8_t& operator=(uint1x8_t&&) = default;
+    constexpr uint1x8_t(std::initializer_list<std::uint8_t> vals) :
+        val((KOTEKAN_ASSERT(vals.size() == 1), *vals.begin())) {}
+
+    constexpr uint1x8_t(bool v0, bool v1, bool v2, bool v3, bool v4, bool v5, bool v6, bool v7) :
+        val(((v0 & 1) << 0) | ((v1 & 1) << 1) | ((v2 & 1) << 2) | ((v3 & 1) << 3) | ((v4 & 1) << 4)
+            | ((v5 & 1) << 5) | ((v6 & 1) << 6) | ((v7 & 1) << 7)) {}
+    constexpr bool operator[](int n) const {
+        KOTEKAN_ASSERT(0 <= n && n < 8);
+        return (val >> n) & 1;
+    }
+};
+
+// 2 unsigned 4-bit integers (packed into a byte)
+struct uint4x2_t {
+    std::uint8_t val;
+
+    uint4x2_t() = default;
+    uint4x2_t(const uint4x2_t&) = default;
+    uint4x2_t(uint4x2_t&&) = default;
+    uint4x2_t& operator=(const uint4x2_t&) = default;
+    uint4x2_t& operator=(uint4x2_t&&) = default;
+    constexpr uint4x2_t(std::initializer_list<std::uint8_t> vals) :
+        val((KOTEKAN_ASSERT(vals.size() == 1), *vals.begin())) {}
+
+    constexpr uint4x2_t(std::uint8_t v0, std::uint8_t v1) :
+        val(((v0 & 0xf) << 0) | ((v1 & 0xf) << 4)) {}
+    constexpr std::uint8_t operator[](int n) const {
+        KOTEKAN_ASSERT(0 <= n && n < 2);
+        return (val >> (4 * n)) & 0xf;
+    }
+};
+
+// 2 signed 4-bit integers (packed into a byte)
+struct int4x2_t {
+    std::uint8_t val;
+
+    int4x2_t() = default;
+    int4x2_t(const int4x2_t&) = default;
+    int4x2_t(int4x2_t&&) = default;
+    int4x2_t& operator=(const int4x2_t&) = default;
+    int4x2_t& operator=(int4x2_t&&) = default;
+    constexpr int4x2_t(std::initializer_list<std::uint8_t> vals) :
+        val((KOTEKAN_ASSERT(vals.size() == 1), *vals.begin())) {}
+
+    constexpr int4x2_t(std::int8_t v0, std::int8_t v1) :
+        val(((v0 & 0xf) << 0) | ((v1 & 0xf) << 4)) {}
+    constexpr std::int8_t operator[](int n) const {
+        KOTEKAN_ASSERT(0 <= n && n < 2);
+        const int bits = (val >> (4 * n)) & 0xf;
+        return (std::int8_t)(bits << 4) >> 4;
+    }
+};
+
+// offset-encoded (stored is value + 8), low and high values swapped
+struct int4x2chime_t {
+    std::uint8_t val;
+
+    int4x2chime_t() = default;
+    int4x2chime_t(const int4x2chime_t&) = default;
+    int4x2chime_t(int4x2chime_t&&) = default;
+    int4x2chime_t& operator=(const int4x2chime_t&) = default;
+    int4x2chime_t& operator=(int4x2chime_t&&) = default;
+    constexpr int4x2chime_t(std::initializer_list<std::uint8_t> vals) :
+        val((KOTEKAN_ASSERT(vals.size() == 1), *vals.begin())) {}
+
+    constexpr int4x2chime_t(std::int8_t v0, std::int8_t v1) :
+        val((((unsigned)(v0 + 8) & 0xf) << 0) | (((unsigned)(v1 + 8) & 0xf) << 4)) {}
+    constexpr std::int8_t operator[](int n) const {
+        KOTEKAN_ASSERT(0 <= n && n < 2);
+        const int bits = (val >> (4 * n)) & 0xf;
+        return bits - 8;
+    }
+};
+
+#undef KOTEKAN_ASSERT
+
 // This enum lets us talk about the various datatypes we're using.
 enum DataType {
     unknown_type,
@@ -47,15 +140,6 @@ enum DataType {
     float32,
     float64,
 };
-
-// Convert a type to a string
-std::string type_to_string(DataType type);
-
-// Convert a string to a type
-DataType string_to_type(const std::string& type_name);
-
-// Output a type
-std::ostream& operator<<(std::ostream& os, DataType type);
 
 // Number of bits (not bytes!) in a type. For packed types, say how
 // many bits there are in each element.
@@ -241,9 +325,95 @@ template<>
 struct GetDataType<long double>
     : std::integral_constant<DataType, float_from_element_bits(8 * sizeof(long double))> {};
 
+template<>
+struct GetDataType<uint1x8_t> : std::integral_constant<DataType, uint1x8> {};
+template<>
+struct GetDataType<uint4x2_t> : std::integral_constant<DataType, uint4x2> {};
+template<>
+struct GetDataType<int4x2_t> : std::integral_constant<DataType, int4x2> {};
+template<>
+struct GetDataType<int4x2chime_t> : std::integral_constant<DataType, int4x2chime> {};
+
 // Use e.g. as `DataType double_type = GetDataType_v<double>`
 template<typename T>
 constexpr DataType GetDataType_v = GetDataType<T>::value;
+
+template<DataType type>
+struct GetType;
+template<>
+struct GetType<uint1x8> {
+    using type = uint1x8_t;
+};
+template<>
+struct GetType<uint4x2> {
+    using type = uint4x2_t;
+};
+template<>
+struct GetType<uint8> {
+    using type = std::uint8_t;
+};
+template<>
+struct GetType<uint16> {
+    using type = std::uint16_t;
+};
+template<>
+struct GetType<uint32> {
+    using type = std::uint32_t;
+};
+template<>
+struct GetType<uint64> {
+    using type = std::uint64_t;
+};
+template<>
+struct GetType<int4x2> {
+    using type = int4x2_t;
+};
+template<>
+struct GetType<int4x2chime> {
+    using type = int4x2chime_t;
+};
+template<>
+struct GetType<int8> {
+    using type = std::int8_t;
+};
+template<>
+struct GetType<int16> {
+    using type = std::int16_t;
+};
+template<>
+struct GetType<int32> {
+    using type = std::int32_t;
+};
+template<>
+struct GetType<int64> {
+    using type = std::int64_t;
+};
+#if KOTEKAN_FLOAT16
+template<>
+struct GetType<float16> {
+    using type = float16_t;
+};
+#endif
+template<>
+struct GetType<float32> {
+    using type = float;
+};
+template<>
+struct GetType<float64> {
+    using type = double;
+};
+
+template<DataType type>
+using GetType_t = typename GetType<type>::type;
+
+// Convert a type to a string
+std::string type_to_string(DataType type);
+
+// Convert a string to a type
+DataType string_to_type(const std::string& type_name);
+
+// Output a type
+std::ostream& operator<<(std::ostream& os, DataType type);
 
 } // namespace kotekan
 

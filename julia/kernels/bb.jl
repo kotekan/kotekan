@@ -1274,7 +1274,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                     Dict(
                         "name" => "J",
                         "type" => "int4x2",
-                        "kotekan_name" => "gpu_mem_formed_beams",
+                        "kotekan_name" => "bb_beams",
                         "axes" => [
                             Dict("label" => "T", "length" => Tout),
                             Dict("label" => "P", "length" => P),

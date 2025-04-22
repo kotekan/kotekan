@@ -7,6 +7,7 @@
  */
 
 #include <DataType.hpp>
+#include <NDArrayBuffer.hpp>
 #include <algorithm>
 #include <array>
 #include <bufferContainer.hpp>
@@ -26,6 +27,16 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::round_down, kotekan::div_noremainder, kotekan::div, kotekan::mod;
+
+namespace {
+template<typename T, std::size_t D>
+std::array<T, D> reverse(const std::array<T, D>& values) {
+    std::array<T, D> result;
+    for (std::size_t d=0; d<D; ++d)
+        result[d] = values[D - 1 - d];
+    return result;
+}
+}
 
 /**
  * @class cuda{{{kernel_name}}}
@@ -137,7 +148,14 @@ private:
     // Kotekan buffer names
     {{#kernel_arguments}}
         {{^isscalar}}
-            const std::string {{{name}}}_memname;
+            {{#hasbuffer}}
+                {{^isoutput}}
+                    const std::string {{{name}}}_memname;
+                {{/isoutput}}
+            {{/hasbuffer}}
+            {{^hasbuffer}}
+                const std::string {{{name}}}_memname;
+            {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
 
@@ -172,7 +190,9 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     {{#kernel_arguments}}
         {{^isscalar}}
             {{#hasbuffer}}
-                {{{name}}}_memname(config.get<std::string>(unique_name, "{{{kotekan_name}}}")),
+                {{^isoutput}}
+                    {{{name}}}_memname(config.get<std::string>(unique_name, "{{{kotekan_name}}}")),
+                {{/isoutput}}
             {{/hasbuffer}}
             {{^hasbuffer}}
                 {{{name}}}_memname(unique_name + "/{{{kotekan_name}}}"),
@@ -187,6 +207,7 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
+
     // Find input buffer used for signalling ring-buffer state
     input_ringbuf_signal(dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal"))))
@@ -213,7 +234,12 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
     {{#kernel_arguments}}
         {{^isscalar}}
             {{#hasbuffer}}
-                gpu_buffers_used.push_back(std::make_tuple({{{name}}}_memname, true, true, false));
+                {{^isoutput}}
+                    gpu_buffers_used.push_back(std::make_tuple({{{name}}}_memname, true, true, false));
+                {{/isoutput}}
+                {{#isoutput}}
+                    gpu_buffers_used.push_back(std::make_tuple("{{{kotekan_name}}}_buffer", true, true, false));
+                {{/isoutput}}
             {{/hasbuffer}}
             {{^hasbuffer}}
                 gpu_buffers_used.push_back(std::make_tuple(get_name() + "_{{{kotekan_name}}}", false, true, true));
@@ -295,12 +321,22 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     {{#kernel_arguments}}
         {{^isscalar}}
             {{#hasbuffer}}
-                void* const {{{name}}}_memory =
-                    args::{{{name}}} == args::E ?
-                        device.get_gpu_memory({{{name}}}_memname, input_ringbuf_signal->size) :
-                    args::{{{name}}} == args::A || args::{{{name}}} == args::s ?
-                        device.get_gpu_memory({{{name}}}_memname, {{{name}}}_length) :
-                        device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length);
+                {{^isoutput}}
+                    void* const {{{name}}}_memory =
+                        args::{{{name}}} == args::E ?
+                            device.get_gpu_memory({{{name}}}_memname, input_ringbuf_signal->size) :
+                        args::{{{name}}} == args::A || args::{{{name}}} == args::s ?
+                            device.get_gpu_memory({{{name}}}_memname, {{{name}}}_length) :
+                            device.get_gpu_memory_array({{{name}}}_memname, gpu_frame_id, _gpu_buffer_depth, {{{name}}}_length);
+                {{/isoutput}}
+                {{#isoutput}}
+                    NDArrayBuffer<kotekan::GetType_t<{{{name}}}_type>, {{{name}}}_rank> {{{name}}}_buffer(
+                        "{{{kotekan_name}}}", reverse({{{name}}}_lengths), reverse({{{name}}}_labels),
+                        device, cuda_stream_id, _gpu_buffer_depth, gpu_frame_id
+                    );
+                    const std::string {{{name}}}_memname({{{name}}}_buffer.get_buffer_name_device());
+                    void* const {{{name}}}_memory = {{{name}}}_buffer.get_ndarray().data();
+                {{/isoutput}}
             {{/hasbuffer}}
             {{^hasbuffer}}
                 void* const {{{name}}}_memory = device.get_gpu_memory({{{name}}}_memname, {{{name}}}_length);
@@ -342,23 +378,10 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
                 {{/isoutput}}
                 {{#isoutput}}
                     // {{{name}}} is an output buffer: set metadata
-                    std::shared_ptr<metadataObject> const {{{name}}}_mc =
-                        device.create_gpu_memory_array_metadata({{{name}}}_memname, gpu_frame_id, E_mc->parent_pool);
-                    std::shared_ptr<chordMetadata> const {{{name}}}_meta = get_chord_metadata({{{name}}}_mc);
-                    *{{{name}}}_meta = *E_meta;
-                    std::strncpy({{{name}}}_meta->name, {{{name}}}_name, sizeof {{{name}}}_meta->name);
-                    {{{name}}}_meta->type = {{{name}}}_type;
-                    {{{name}}}_meta->dims = {{{name}}}_rank;
-                    for (std::ptrdiff_t dim = 0; dim < {{{name}}}_rank; ++dim) {
-                        std::strncpy({{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim],
-                                     {{{name}}}_labels[dim],
-                                     sizeof {{{name}}}_meta->dim_name[{{{name}}}_rank - 1 - dim]);
-                        {{{name}}}_meta->dim[{{{name}}}_rank - 1 - dim] = {{{name}}}_lengths[dim];
-                        {{{name}}}_meta->stride[{{{name}}}_rank - 1 - dim] = {{{name}}}_strides[dim];
-                    }
-                    DEBUG("output {{{name}}} array: {:s} {:s}",
-                          {{{name}}}_meta->get_type_string(),
-                          {{{name}}}_meta->get_dimensions_string());
+                    {{{name}}}_buffer.set_metadata(E_meta);
+                    // DEBUG("output {{{name}}} array: {:s} {:s}",
+                    //       {{{name}}}_meta->get_type_string(),
+                    //       {{{name}}}_meta->get_dimensions_string());
                     //
                 {{/isoutput}}
             {{/hasbuffer}}
@@ -405,18 +428,23 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     Tmax_arg = mod(Tmin, T_ringbuf) + Tlength;
 
     // Update metadata
-    assert(J_meta->dim[J_rank - 1 - J_index_T] == int(Tlength));
-    assert(J_meta->dim[J_rank - 1 - J_index_T] == int(J_lengths[J_index_T]));
-
-    // Since we do not use a ring buffer we need to set `meta->sample0_offset`
-    J_meta->sample0_offset = Tmin;
-    assert(J_meta->offset_downsampling == 1);
-
-    assert(J_meta->nfreq >= 0);
-    assert(J_meta->nfreq == J_meta->nfreq);
-    for (int freq = 0; freq < J_meta->nfreq; ++freq) {
-        J_meta->freq_upchan_factor[freq] = J_meta->freq_upchan_factor[freq];
-        J_meta->time_downsampling_fpga[freq] = J_meta->time_downsampling_fpga[freq];
+    {
+        std::shared_ptr<metadataObject> const J_mc = device.get_gpu_memory_array_metadata(J_memname, gpu_frame_id);
+        std::shared_ptr<chordMetadata> const J_meta = get_chord_metadata(J_mc);
+    
+        assert(J_meta->dim[J_rank - 1 - J_index_T] == int(Tlength));
+        assert(J_meta->dim[J_rank - 1 - J_index_T] == int(J_lengths[J_index_T]));
+    
+        // Since we do not use a ring buffer we need to set `meta->sample0_offset`
+        J_meta->sample0_offset = Tmin;
+        assert(J_meta->offset_downsampling == 1);
+    
+        assert(J_meta->nfreq >= 0);
+        assert(J_meta->nfreq == J_meta->nfreq);
+        for (int freq = 0; freq < J_meta->nfreq; ++freq) {
+            J_meta->freq_upchan_factor[freq] = J_meta->freq_upchan_factor[freq];
+            J_meta->time_downsampling_fpga[freq] = J_meta->time_downsampling_fpga[freq];
+        }
     }
 
     // Copy inputs to device memory
@@ -434,6 +462,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{/isscalar}}
     {{/kernel_arguments}}
 
+    J_buffer.set_to_poison(0x88);
+
 #ifdef DEBUGGING
     // Initialize host-side buffer arrays
     {{#kernel_arguments}}
@@ -445,11 +475,6 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
-#endif
-
-#ifdef DEBUGGING
-    // Poison outputs
-    CHECK_CUDA_ERROR(cudaMemsetAsync(J_memory, 0x88, J_length, device.getStream(cuda_stream_id)));
 #endif
 
     const std::string symname = "{{{kernel_name}}}_" + std::string(kernel_symbol);
@@ -539,14 +564,7 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
     }
 #endif
 
-#ifdef DEBUGGING
-    // Check outputs for poison
-    std::vector<std::uint8_t> J_buffer(J_length);
-    CHECK_CUDA_ERROR(cudaMemcpy(J_buffer.data(), J_memory, J_length, cudaMemcpyDeviceToHost));
-
-    const bool J_found_error = std::memchr(J_buffer.data(), 0x88, J_buffer.size());
-    assert(!J_found_error);
-#endif
+    J_buffer.check_for_poison(0x88);
 
     return record_end_event();
 }

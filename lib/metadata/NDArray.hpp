@@ -17,6 +17,14 @@ namespace kotekan {
 
 namespace {
 
+template<typename T, std::size_t D, typename U>
+std::array<T, D> convert_array(const std::array<U, D>& values) {
+    std::array<T, D> result;
+    for (std::size_t d = 0; d < D; ++d)
+        result[d] = values[d];
+    return result;
+}
+
 // Helper function to create a `std::array` from an initializer list.
 // The initializer list must have the correct size.
 template<std::size_t D, typename T>
@@ -145,8 +153,8 @@ public:
     NDArray& operator=(NDArray&&) = default;
 
     // Construct from extents and dimension names
-    template<typename I = std::ptrdiff_t>
-    NDArray(const std::array<I, D>& extents, const std::array<Symbol, D>& dimnames) {
+    NDArray(const std::array<std::ptrdiff_t, D>& extents, const std::array<Symbol, D>& dimnames,
+            T* data) {
         for (std::size_t d = 0; d < D; ++d)
             m_extents[d] = extents[d];
         for (std::size_t d = 0; d < D; ++d)
@@ -159,15 +167,27 @@ public:
                 assert(m_dimnames[d] != m_dimnames[d1]);
 
         m_size = 1;
-        for (std::size_t d = 0; d < D; ++d)
-            m_size *= m_extents[d];
-        for (std::size_t d = D; d > 0; --d)
-            m_strides[d - 1] = d == D ? 1 : m_strides[d] * m_extents[d];
+        for (std::size_t d = D; d > 0; --d) {
+            m_strides[d - 1] = m_size;
+            m_size *= m_extents[d - 1];
+        }
 
+        m_data = data;
+    }
+    NDArray(const std::array<std::ptrdiff_t, D>& extents, const std::array<Symbol, D>& dimnames) :
+        NDArray(extents, dimnames, nullptr) {
         // We allocate the array without initializing its elements
         m_data = new T[m_size];
         m_cleanup = [&]() { delete[] m_data; };
     }
+
+    template<typename I = std::ptrdiff_t>
+    NDArray(const std::array<I, D>& extents, const std::array<Symbol, D>& dimnames, T* data) :
+        NDArray(std::array<std::ptrdiff_t, D>(extents), dimnames, data) {}
+    template<typename I = std::ptrdiff_t>
+    NDArray(const std::array<I, D>& extents, const std::array<Symbol, D>& dimnames) :
+        NDArray(convert_array<std::ptrdiff_t, D>(extents), dimnames) {}
+
     template<typename I = std::ptrdiff_t>
     NDArray(std::initializer_list<I> extents, std::initializer_list<Symbol> dimnames) :
         NDArray(make_array<D>(extents), make_array<D>(dimnames)) {}
@@ -181,6 +201,12 @@ public:
     virtual ~NDArray() {
         if (m_cleanup)
             m_cleanup();
+    }
+
+    // Set the (non-owning) pointer to the first element
+    void set_data(T* data) {
+        assert(!m_cleanup);
+        m_data = data;
     }
 
     // Get a pointer to the first element

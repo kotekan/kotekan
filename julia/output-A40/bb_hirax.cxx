@@ -7,6 +7,7 @@
  */
 
 #include <DataType.hpp>
+#include <NDArrayBuffer.hpp>
 #include <algorithm>
 #include <array>
 #include <bufferContainer.hpp>
@@ -26,6 +27,16 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::round_down, kotekan::div_noremainder, kotekan::div, kotekan::mod;
+
+namespace {
+template<typename T, std::size_t D>
+std::array<T, D> reverse(const std::array<T, D>& values) {
+    std::array<T, D> result;
+    for (std::size_t d = 0; d < D; ++d)
+        result[d] = values[D - 1 - d];
+    return result;
+}
+} // namespace
 
 /**
  * @class cudaBasebandBeamformer_hirax
@@ -200,7 +211,7 @@ private:
     };
     static_assert(s_length == type_total_bytes(s_type) * s_strides[s_rank]);
     //
-    // J: gpu_mem_formed_beams
+    // J: bb_beams
     static constexpr const char* J_name = "J";
     static constexpr kotekan::DataType J_type = kotekan::int4x2;
     enum J_indices {
@@ -303,7 +314,6 @@ private:
     const std::string A_memname;
     const std::string E_memname;
     const std::string s_memname;
-    const std::string J_memname;
     const std::string info_memname;
     const std::string log_memname;
 
@@ -334,10 +344,10 @@ cudaBasebandBeamformer_hirax::cudaBasebandBeamformer_hirax(Config& config,
     A_memname(config.get<std::string>(unique_name, "gpu_mem_phase")),
     E_memname(config.get<std::string>(unique_name, "gpu_mem_voltage")),
     s_memname(config.get<std::string>(unique_name, "gpu_mem_output_scaling")),
-    J_memname(config.get<std::string>(unique_name, "gpu_mem_formed_beams")),
     info_memname(unique_name + "/gpu_mem_info"), log_memname(unique_name + "/gpu_mem_log"),
 
     info_host(info_length), log_host(log_length),
+
     // Find input buffer used for signalling ring-buffer state
     input_ringbuf_signal(dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "in_signal")))) {
@@ -362,7 +372,7 @@ cudaBasebandBeamformer_hirax::cudaBasebandBeamformer_hirax(Config& config,
     gpu_buffers_used.push_back(std::make_tuple(A_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(E_memname, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(s_memname, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(J_memname, true, true, false));
+    gpu_buffers_used.push_back(std::make_tuple("bb_beams_buffer", true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_info", false, true, true));
     gpu_buffers_used.push_back(std::make_tuple(get_name() + "_gpu_mem_log", false, true, true));
 
@@ -456,11 +466,11 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
         : args::s == args::A || args::s == args::s
             ? device.get_gpu_memory(s_memname, s_length)
             : device.get_gpu_memory_array(s_memname, gpu_frame_id, _gpu_buffer_depth, s_length);
-    void* const J_memory =
-        args::J == args::E ? device.get_gpu_memory(J_memname, input_ringbuf_signal->size)
-        : args::J == args::A || args::J == args::s
-            ? device.get_gpu_memory(J_memname, J_length)
-            : device.get_gpu_memory_array(J_memname, gpu_frame_id, _gpu_buffer_depth, J_length);
+    NDArrayBuffer<kotekan::GetType_t<J_type>, J_rank> J_buffer(
+        "bb_beams", reverse(J_lengths), reverse(J_labels), device, cuda_stream_id,
+        _gpu_buffer_depth, gpu_frame_id);
+    const std::string J_memname(J_buffer.get_buffer_name_device());
+    void* const J_memory = J_buffer.get_ndarray().data();
     void* const info_memory = device.get_gpu_memory(info_memname, info_length);
     void* const log_memory = device.get_gpu_memory(log_memname, log_length);
 
@@ -537,20 +547,10 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
     }
     //
     // J is an output buffer: set metadata
-    std::shared_ptr<metadataObject> const J_mc =
-        device.create_gpu_memory_array_metadata(J_memname, gpu_frame_id, E_mc->parent_pool);
-    std::shared_ptr<chordMetadata> const J_meta = get_chord_metadata(J_mc);
-    *J_meta = *E_meta;
-    std::strncpy(J_meta->name, J_name, sizeof J_meta->name);
-    J_meta->type = J_type;
-    J_meta->dims = J_rank;
-    for (std::ptrdiff_t dim = 0; dim < J_rank; ++dim) {
-        std::strncpy(J_meta->dim_name[J_rank - 1 - dim], J_labels[dim],
-                     sizeof J_meta->dim_name[J_rank - 1 - dim]);
-        J_meta->dim[J_rank - 1 - dim] = J_lengths[dim];
-        J_meta->stride[J_rank - 1 - dim] = J_strides[dim];
-    }
-    DEBUG("output J array: {:s} {:s}", J_meta->get_type_string(), J_meta->get_dimensions_string());
+    J_buffer.set_metadata(E_meta);
+    // DEBUG("output J array: {:s} {:s}",
+    //       J_meta->get_type_string(),
+    //       J_meta->get_dimensions_string());
     //
 
     record_start_event();
@@ -590,21 +590,29 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
     Tmax_arg = mod(Tmin, T_ringbuf) + Tlength;
 
     // Update metadata
-    assert(J_meta->dim[J_rank - 1 - J_index_T] == int(Tlength));
-    assert(J_meta->dim[J_rank - 1 - J_index_T] == int(J_lengths[J_index_T]));
+    {
+        std::shared_ptr<metadataObject> const J_mc =
+            device.get_gpu_memory_array_metadata(J_memname, gpu_frame_id);
+        std::shared_ptr<chordMetadata> const J_meta = get_chord_metadata(J_mc);
 
-    // Since we do not use a ring buffer we need to set `meta->sample0_offset`
-    J_meta->sample0_offset = Tmin;
-    assert(J_meta->offset_downsampling == 1);
+        assert(J_meta->dim[J_rank - 1 - J_index_T] == int(Tlength));
+        assert(J_meta->dim[J_rank - 1 - J_index_T] == int(J_lengths[J_index_T]));
 
-    assert(J_meta->nfreq >= 0);
-    assert(J_meta->nfreq == J_meta->nfreq);
-    for (int freq = 0; freq < J_meta->nfreq; ++freq) {
-        J_meta->freq_upchan_factor[freq] = J_meta->freq_upchan_factor[freq];
-        J_meta->time_downsampling_fpga[freq] = J_meta->time_downsampling_fpga[freq];
+        // Since we do not use a ring buffer we need to set `meta->sample0_offset`
+        J_meta->sample0_offset = Tmin;
+        assert(J_meta->offset_downsampling == 1);
+
+        assert(J_meta->nfreq >= 0);
+        assert(J_meta->nfreq == J_meta->nfreq);
+        for (int freq = 0; freq < J_meta->nfreq; ++freq) {
+            J_meta->freq_upchan_factor[freq] = J_meta->freq_upchan_factor[freq];
+            J_meta->time_downsampling_fpga[freq] = J_meta->time_downsampling_fpga[freq];
+        }
     }
 
     // Copy inputs to device memory
+
+    J_buffer.set_to_poison(0x88);
 
 #ifdef DEBUGGING
     // Initialize host-side buffer arrays
@@ -612,11 +620,6 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
         cudaMemsetAsync(info_memory, 0xff, info_length, device.getStream(cuda_stream_id)));
     CHECK_CUDA_ERROR(
         cudaMemsetAsync(log_memory, 0xff, log_length, device.getStream(cuda_stream_id)));
-#endif
-
-#ifdef DEBUGGING
-    // Poison outputs
-    CHECK_CUDA_ERROR(cudaMemsetAsync(J_memory, 0x88, J_length, device.getStream(cuda_stream_id)));
 #endif
 
     const std::string symname = "BasebandBeamformer_hirax_" + std::string(kernel_symbol);
@@ -694,14 +697,7 @@ cudaEvent_t cudaBasebandBeamformer_hirax::execute(cudaPipelineState& /*pipestate
     }
 #endif
 
-#ifdef DEBUGGING
-    // Check outputs for poison
-    std::vector<std::uint8_t> J_buffer(J_length);
-    CHECK_CUDA_ERROR(cudaMemcpy(J_buffer.data(), J_memory, J_length, cudaMemcpyDeviceToHost));
-
-    const bool J_found_error = std::memchr(J_buffer.data(), 0x88, J_buffer.size());
-    assert(!J_found_error);
-#endif
+    J_buffer.check_for_poison(0x88);
 
     return record_end_event();
 }
