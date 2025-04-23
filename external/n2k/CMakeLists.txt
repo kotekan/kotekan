@@ -16,8 +16,7 @@ set(HFILES
     include/n2k/internals/device_inlines.hpp
     include/n2k/internals/internals.hpp
     include/n2k/internals/interpolation.hpp
-    include/n2k/internals/sk_globals.hpp
-)
+    include/n2k/internals/sk_globals.hpp)
 
 # Kernel files (to generate), filename syntax is kernel_{nstations}_{nfreq}.o
 set(KERNELFILES
@@ -59,8 +58,7 @@ set(CUFILES
     src_lib/s012_station_downsample.cu
     src_lib/s012_time_downsample.cu
     src_lib/s12_kernel.cu
-    src_lib/sk_globals.cu
-)
+    src_lib/sk_globals.cu)
 
 # Special rule for generating kernel_%d_%d.cu
 foreach(file ${KERNELFILES})
