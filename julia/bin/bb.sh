@@ -45,7 +45,7 @@ done
 
 # Format generated C++ code
 for setup in ${setups}; do
-    clang-format -i output-${card}/bb_${setup}.cxx &
+    clang-format-14 -i output-${card}/bb_${setup}.cxx &
 done
 
 # Format generated Julia code

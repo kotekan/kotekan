@@ -44,7 +44,7 @@ done
 
 # Format generated C++ code
 for setup in ${setups}; do
-    clang-format -i output-A40/chimefrb_${setup}.cxx &
+    clang-format-14 -i output-A40/chimefrb_${setup}.cxx &
 done
 
 # Format generated Julia code
