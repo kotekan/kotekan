@@ -15,7 +15,7 @@ void parse_chime_host_name(int& my_rack, int& my_node, int& my_nos, int& my_node
 
     if (my_host_name[0] != 'c' && my_host_name[3] != 'g') {
         // INFO_NON_OO("Not a valid name \n");
-        throw std::runtime_error("Invalid host name");
+        throw std::runtime_error("Invalid host name[0]: " + std::string(my_host_name));
     }
 
 
@@ -26,7 +26,7 @@ void parse_chime_host_name(int& my_rack, int& my_node, int& my_nos, int& my_node
         nos = 100;
         my_node_id = 128;
     } else {
-        throw std::runtime_error("Invalid host name");
+        throw std::runtime_error("Invalid host name[1]: " + std::string(my_host_name));
     }
 
     switch (my_host_name[2]) {
@@ -71,7 +71,7 @@ void parse_chime_host_name(int& my_rack, int& my_node, int& my_nos, int& my_node
             rack = 13;
             break;
         default:
-            throw std::runtime_error("Invalid host name");
+            throw std::runtime_error("Invalid host name[2]: " + std::string(my_host_name));
     }
 
     switch (my_host_name[4]) {
@@ -106,7 +106,7 @@ void parse_chime_host_name(int& my_rack, int& my_node, int& my_nos, int& my_node
             node = 9;
             break;
         default:
-            throw std::runtime_error("Invalid host name");
+            throw std::runtime_error("Invalid host name[4]: " + std::string(my_host_name));
     }
 
     if (rack < 7)
