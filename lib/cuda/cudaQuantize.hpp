@@ -38,16 +38,16 @@ public:
     static constexpr int FRAME_SIZE = 32;
 
 private:
-    int64_t _num_chunks;
+    const int64_t _num_chunks;
 
     /// GPU side memory name for the time-stream input
-    std::string _gpu_mem_input;
+    const std::string _gpu_mem_input;
     /// GPU side memory name for the time-stream output
-    std::string _gpu_mem_output;
+    const std::string _gpu_mem_beams;
     /// GPU side memory name for mean,stdev output
-    std::string _gpu_mem_meanstd;
+    const std::string _gpu_mem_beams_meanstd;
     /// GPU side index array
-    std::string _gpu_mem_index;
+    const std::string _gpu_mem_index;
 };
 
 #endif // KOTEKAN_CUDA_QUANTIZE_HPP

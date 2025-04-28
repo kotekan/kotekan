@@ -331,8 +331,8 @@ run_frb23:
           # the output is quantized in chunks of `frb_chunk_size`
           num_chunks: frb_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times / frb_chunk_size
           gpu_mem_input: frb2_beams_buffer
-          gpu_mem_output: frb3_beams_buffer
-          gpu_mem_meanstd: frb3_beams_meanstd_buffer
+          #OUTDATED gpu_mem_output: frb3_beams_buffer
+          #OUTDATED gpu_mem_meanstd: frb3_beams_meanstd_buffer
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: frb2_beams_buffer

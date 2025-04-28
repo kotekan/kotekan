@@ -20,12 +20,11 @@ REGISTER_CUDA_COMMAND(cudaQuantize);
 
 cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
                            bufferContainer& host_buffers, cudaDeviceInterface& device, int inst) :
-    cudaCommand(config, unique_name, host_buffers, device, inst) {
-    _num_chunks = config.get<int64_t>(unique_name, "num_chunks");
-    _gpu_mem_input = config.get<std::string>(unique_name, "gpu_mem_input");
-    _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
-    _gpu_mem_meanstd = config.get<std::string>(unique_name, "gpu_mem_meanstd");
-    _gpu_mem_index = unique_name + "/index";
+    cudaCommand(config, unique_name, host_buffers, device, inst),
+    _num_chunks(config.get<int64_t>(unique_name, "num_chunks")),
+    _gpu_mem_input(config.get<std::string>(unique_name, "gpu_mem_input")),
+    _gpu_mem_beams("frb3_beams"), _gpu_mem_beams_meanstd("frb3_beams_meanstd"),
+    _gpu_mem_index(unique_name + "/index") {
     if (_num_chunks % FRAME_SIZE)
         throw std::runtime_error("The num_chunks parameter must be a multiple of 32");
 
@@ -33,9 +32,9 @@ cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
     set_name("cudaQuantize");
 
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, true, false, true));
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_meanstd, true, false, true));
-    gpu_buffers_used.push_back(std::make_tuple(get_name() + "_index", false, true, true));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams, true, false, true));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams_meanstd, true, false, true));
+    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_index, false, true, true));
 
     const size_t index_array_len = (size_t)_num_chunks * 2 * sizeof(int32_t);
     int32_t* const index_array_memory =
@@ -95,7 +94,7 @@ cudaEvent_t cudaQuantize::execute(cudaPipelineState&, const std::vector<cudaEven
     const std::array<std::ptrdiff_t, 3> beam_lengths{in_meta->dim[0] / 2, in_meta->dim[1],
                                                      in_meta->dim[2]};
     const std::array<std::string, 3> beam_dimnames{"R", "Fbar", "Ttilde"};
-    NDArrayBuffer<kotekan::uint4x2_t, 3> beam_buffer("frb3_beams", beam_lengths, beam_dimnames,
+    NDArrayBuffer<kotekan::uint4x2_t, 3> beam_buffer(_gpu_mem_beams, beam_lengths, beam_dimnames,
                                                      device, cuda_stream_id, _gpu_buffer_depth,
                                                      gpu_frame_id);
 
@@ -104,7 +103,7 @@ cudaEvent_t cudaQuantize::execute(cudaPipelineState&, const std::vector<cudaEven
     const std::array<std::ptrdiff_t, 4> meanstd_lengths{in_meta->dim[0], in_meta->dim[1],
                                                         in_meta->dim[2] / CHUNK_SIZE, 2};
     const std::array<std::string, 4> meanstd_dimnames{"R", "Fbar", "Ttilde256", "mean/std"};
-    NDArrayBuffer<float16_t, 4> meanstd_buffer("frb3_beams_meanstd", meanstd_lengths,
+    NDArrayBuffer<float16_t, 4> meanstd_buffer(_gpu_mem_beams_meanstd, meanstd_lengths,
                                                meanstd_dimnames, device, cuda_stream_id,
                                                _gpu_buffer_depth, gpu_frame_id);
 
