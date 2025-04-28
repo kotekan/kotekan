@@ -13,6 +13,7 @@
 /.vscode/
 /nbproject/
 /cmake-build*/
+/data
 build-docs/*
 build-check-format/*
 build-1804/*
@@ -20,5 +21,5 @@ build-2204/*
 build-2404/*
 docs/sphinx/html/*
 .ccache/*
-Manifest.toml
+Manifest*.toml
 *.log
