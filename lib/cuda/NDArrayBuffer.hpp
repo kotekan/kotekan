@@ -140,6 +140,12 @@ public:
         assert(mc);
         assert(metadata_is_chord(mc));
         const std::shared_ptr<const chordMetadata> metadata = get_chord_metadata(mc);
+#warning "TODO"
+        if (!(metadata->get_name() == buffer_name))
+            std::cerr << "metadata->get_name()=" << metadata->get_name()
+                      << "\n"
+                         "buffer_name="
+                      << buffer_name << "\n";
         assert(metadata->get_name() == buffer_name);
         assert(metadata->type == ndarray.value_datatype);
         assert(metadata->dims == ndarray.rank);
@@ -150,6 +156,7 @@ public:
         }
     }
 
+    // TODO: Use other NDArrayBuffer instead of other metadata
     void set_metadata(const std::shared_ptr<const chordMetadata>& other_metadata) const {
         const std::shared_ptr<metadataObject> mc = device.create_gpu_memory_array_metadata(
             buffer_name_device, gpu_frame_id, other_metadata->parent_pool);

@@ -21,8 +21,7 @@ REGISTER_CUDA_COMMAND(cudaQuantize);
 cudaQuantize::cudaQuantize(Config& config, const std::string& unique_name,
                            bufferContainer& host_buffers, cudaDeviceInterface& device, int inst) :
     cudaCommand(config, unique_name, host_buffers, device, inst),
-    _num_chunks(config.get<int64_t>(unique_name, "num_chunks")),
-    _gpu_mem_input(config.get<std::string>(unique_name, "gpu_mem_input")),
+    _num_chunks(config.get<int64_t>(unique_name, "num_chunks")), _gpu_mem_input("frb2_beams"),
     _gpu_mem_beams("frb3_beams"), _gpu_mem_beams_meanstd("frb3_beams_meanstd"),
     _gpu_mem_index(unique_name + "/index") {
     if (_num_chunks % FRAME_SIZE)
@@ -63,62 +62,59 @@ cudaQuantize::~cudaQuantize() {}
 cudaEvent_t cudaQuantize::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
     pre_execute();
 
-    // Check metadata
-    const std::shared_ptr<const metadataObject> in_mc =
-        device.get_gpu_memory_array_metadata(_gpu_mem_input, gpu_frame_id);
-    assert(in_mc);
-    assert(metadata_is_chord(in_mc));
-    const std::shared_ptr<const chordMetadata> in_meta = get_chord_metadata(in_mc);
-    assert(in_meta->get_name() == "I2");
-    assert(in_meta->type == kotekan::float16);
-    assert(in_meta->dims == 3);
-    assert(in_meta->get_dimension_name(0) == "R");
-    assert(in_meta->get_dimension_name(1) == "Fbar");
-    assert(in_meta->get_dimension_name(2) == "Ttilde");
-
-    const size_t input_frame_len = (size_t)_num_chunks * CHUNK_SIZE * sizeof(float16_t);
-    assert(input_frame_len
-           == type_total_bytes(in_meta->type) * in_meta->dim[0] * in_meta->dim[1]
-                  * in_meta->dim[2]);
-
-    const void* const input_memory = device.get_gpu_memory_array(
-        _gpu_mem_input, gpu_frame_id, _gpu_buffer_depth, input_frame_len);
-    INFO("Input frame length: {:d} x {:d} x 2 = {:d}", _num_chunks, CHUNK_SIZE, input_frame_len);
-
-    const size_t index_array_len = (size_t)_num_chunks * 2 * sizeof(int32_t);
-    const int32_t* const index_array_memory =
-        (const int32_t*)device.get_gpu_memory(_gpu_mem_index, index_array_len);
+    // TODO: Create NDArrayBuffer from chordMetadata
+    const std::shared_ptr<const metadataObject> input_mc =
+        device.get_gpu_memory_array_metadata(_gpu_mem_input + "_buffer", gpu_frame_id);
+    assert(input_mc);
+    assert(metadata_is_chord(input_mc));
+    const std::shared_ptr<const chordMetadata> input_meta = get_chord_metadata(input_mc);
+    assert(input_meta->dims == 3);
+    const std::array<std::ptrdiff_t, 3> input_lengths{input_meta->dim[0], input_meta->dim[1],
+                                                      input_meta->dim[2]};
+    const std::array<std::string, 3> input_dimnames{"R", "Fbar", "Ttilde"};
+    const NDArrayBuffer<float16_t, 3> input_buffer(_gpu_mem_input, input_lengths, input_dimnames,
+                                                   device, cuda_stream_id, _gpu_buffer_depth,
+                                                   gpu_frame_id);
 
     // The data are stored as 4-bit integers, 2 values per byte
-    assert(in_meta->dim[0] % 2 == 0);
-    const std::array<std::ptrdiff_t, 3> beam_lengths{in_meta->dim[0] / 2, in_meta->dim[1],
-                                                     in_meta->dim[2]};
+    assert(input_meta->dim[0] % 2 == 0);
+    const std::array<std::ptrdiff_t, 3> beam_lengths{input_meta->dim[0] / 2, input_meta->dim[1],
+                                                     input_meta->dim[2]};
     const std::array<std::string, 3> beam_dimnames{"R", "Fbar", "Ttilde"};
     NDArrayBuffer<kotekan::uint4x2_t, 3> beam_buffer(_gpu_mem_beams, beam_lengths, beam_dimnames,
                                                      device, cuda_stream_id, _gpu_buffer_depth,
                                                      gpu_frame_id);
 
-    assert(in_meta->dim[2] % CHUNK_SIZE == 0);
+    assert(input_meta->dim[2] % CHUNK_SIZE == 0);
     static_assert(CHUNK_SIZE == 256);
-    const std::array<std::ptrdiff_t, 4> meanstd_lengths{in_meta->dim[0], in_meta->dim[1],
-                                                        in_meta->dim[2] / CHUNK_SIZE, 2};
+    const std::array<std::ptrdiff_t, 4> meanstd_lengths{input_meta->dim[0], input_meta->dim[1],
+                                                        input_meta->dim[2] / CHUNK_SIZE, 2};
     const std::array<std::string, 4> meanstd_dimnames{"R", "Fbar", "Ttilde256", "mean/std"};
     NDArrayBuffer<float16_t, 4> meanstd_buffer(_gpu_mem_beams_meanstd, meanstd_lengths,
                                                meanstd_dimnames, device, cuda_stream_id,
                                                _gpu_buffer_depth, gpu_frame_id);
 
-    void* const beam_memory = beam_buffer.get_ndarray().data();
-    void* const meanstd_memory = meanstd_buffer.get_ndarray().data();
+    const size_t index_array_len = (size_t)_num_chunks * 2 * sizeof(int32_t);
+    const int32_t* const index_array_memory =
+        (const int32_t*)device.get_gpu_memory(_gpu_mem_index, index_array_len);
 
     record_start_event();
+
+    // Check metadata
+    input_buffer.check_metadata();
+
+    const void* const input_memory = input_buffer.get_ndarray().data();
+    void* const beam_memory = beam_buffer.get_ndarray().data();
+    void* const meanstd_memory = meanstd_buffer.get_ndarray().data();
 
     launch_quantize_kernel(device.getStream(cuda_stream_id), _num_chunks / FRAME_SIZE,
                            (const __half2*)input_memory, (__half2*)meanstd_memory,
                            (unsigned int*)beam_memory, index_array_memory);
     CHECK_CUDA_ERROR(cudaGetLastError());
 
-    beam_buffer.set_metadata(in_meta);
-    meanstd_buffer.set_metadata(in_meta);
+    // Set metadata
+    beam_buffer.set_metadata(input_meta);
+    meanstd_buffer.set_metadata(input_meta);
 
     return record_end_event();
 }

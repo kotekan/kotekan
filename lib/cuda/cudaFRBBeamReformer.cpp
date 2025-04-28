@@ -275,7 +275,7 @@ cudaEvent_t cudaFRBBeamReformer::execute(cudaPipelineState&, const std::vector<c
         std::shared_ptr<chordMetadata> const out_meta = get_chord_metadata(out_mc);
         *out_meta = *in_meta;
         // Output shape is (Ttilde x Fbar x beam) in float16
-        out_meta->set_name("I2");
+        out_meta->set_name("frb2_beams");
         out_meta->type = kotekan::float16;
         out_meta->dims = 3;
         out_meta->set_array_dimension(0, _num_beams, "R");
